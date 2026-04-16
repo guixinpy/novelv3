@@ -250,7 +250,7 @@ BackgroundAnalyzer 优先实现 3 类核心检查器，`RelationshipChecker` 作
 
 **推迟的检查器**：`ForeshadowingChecker`、`ItemPossessionChecker`、`ToneConsistencyChecker`。
 
-> `CharacterStateChecker` 先覆盖"人物关系变更"子类作为过渡；若资源允许，P1 阶段将 `RelationshipChecker` 独立实现。
+> `CharacterStateChecker` 仅负责角色生死、伤势、能力变化，不覆盖人物关系变更。`RelationshipChecker` 作为 P1 候补独立实现。
 
 ### 5.1 检查结果分级
 

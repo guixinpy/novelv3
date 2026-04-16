@@ -159,7 +159,10 @@ POST /api/v1/dialog/resolve-action
 | `preview_storyline` | `generate_storyline` |
 | `preview_outline` | `generate_outline` |
 
-`ACTION_RESULT` 中的 `type` 字段统一记录实际执行类型（如 `generate_setup`）。
+`ACTION_RESULT` 中的 `type` 字段规则：
+- `confirm + success`：记录实际执行类型（如 `generate_setup`）
+- `cancel / revise`：记录原始 `pending_action.type`（如 `preview_setup`），因为未发生实际执行
+- `failure`：记录尝试执行的类型（如 `generate_setup`）
 
 ### 1.4 意图识别规则表
 
@@ -311,6 +314,7 @@ Phase 2 在 Phase 1 基础上新增/扩展以下表。
 | confidence | Float | 置信度 |
 | data | JSON | {subject, attribute, old_value, new_value} |
 | evidence | JSON | {text, position, summary} |
+| validation | JSON | L1/L2 交叉验证结果（可选） |
 | created_at | DateTime | 创建时间 |
 
 ### 3.6 dialogs（新增）
@@ -824,11 +828,18 @@ class DomainEvent:
   "old_value": null,
   "new_value": "左腿骨折",
   "confidence": 0.95,
-  "evidence": "李明一瘸一拐地走出废墟，左腿传来的剧痛让他冷汗直冒。"
+  "evidence": "李明一瘸一拐地走出废墟，左腿传来的剧痛让他冷汗直冒。",
+  "validation": {
+    "l1_extracted": true,
+    "l2_extracted": true,
+    "cross_confidence": 0.95
+  }
 }
 ```
 
 `type` 枚举：`character_state_change` / `location_presence` / `time_reference` / `relationship_change`。
+
+> `validation` 为可选字段，仅当经过 L1/L2 交叉验证时填充。
 
 ### B.7 ConsistencyIssue
 
