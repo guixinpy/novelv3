@@ -57,43 +57,18 @@ AI: 明白，主角改为普通人。我现在生成调整后的故事线：
 
 ### 1.2 Action Proposal 协议
 
-由于系统使用纯 API Key 调用（无原生 tool use），采用**混合模式**确保对话能可靠触发操作：
+由于系统使用纯 API Key 调用（无原生 tool use），采用**服务端 Action Router** 架构确保对话能可靠触发操作。核心原则：**动作来源由系统状态决定，LLM 只负责自然语言解释，不再输出任何动作编码**。
 
-#### 第一层：固定话术提案（主路径）
+#### 路由一：用户主动触发（主路径）
 
-在 system prompt 中要求 LLM 只在明确需要用户确认时才说固定话术。LLM 的自然语言回复中不应包含 JSON、XML 或代码块。
+前端对话气泡下方始终提供快捷操作按钮，用户点击后直接向服务端发送动作请求：
 
-```markdown
-可用的固定话术：
-- "我现在可以为你生成主角设定，是否继续？" → generate_setup
-- "我现在可以为你生成故事线，是否继续？" → generate_storyline
-- "我现在可以为你生成章节大纲，是否继续？" → generate_outline
+```json
+POST /api/v1/dialog/chat
+{ "project_id": "xxx", "input_type": "button", "action_type": "preview_setup", "params": { "scope": "character" } }
 ```
 
-后端检测到固定话术后，直接拼接对应 `pending_action`。
-
-#### 第二层：XML 标记双保险（补漏路径）
-
-如果固定话术无法清晰表达，允许 LLM 在回复末尾附加一个注释标记作为补充：
-
-```markdown
-我已经理解了你的需求，接下来为你生成主角设定。
-
-<!--ACTION:{"type":"generate_setup","scope":"character"}-->
-```
-
-后端在第一层未命中时，通过正则 `<!--ACTION:(.*?)-->` 提取并解析标记，同样拼接 `pending_action`。
-
-#### 第三层：上下文继承确认
-
-如果上一轮 AI 已提出 proposal，用户本轮回复确认/取消意向时，系统不依赖 LLM 再次输出固定话术，直接触发对应 action：
-
-- **确认**："好的"、"可以"、"同意"、"那就这样吧"、"行"、"OK"、"没问题"、"搞吧"
-- **取消**："算了"、"先不要"、"等等"、"不对"、"改一下"、"先别"、"我还没想好"、"换一个"
-
-#### 第四层：快捷命令 / 按钮兜底（极端情况）
-
-前端在对话气泡下方始终提供快捷操作按钮（如"生成设定""生成故事线"），用户点击后直接触发对应 action，完全绕过 LLM。同时支持手动输入斜杠命令：
+同时支持斜杠命令：
 
 ```
 /generate setup
@@ -101,34 +76,57 @@ AI: 明白，主角改为普通人。我现在生成调整后的故事线：
 /generate outline
 ```
 
+#### 路由二：服务端 Intent Router（补路径）
+
+当用户发送自由文本时，服务端基于 `project_diagnosis + 当前对话状态 + 用户输入` 推断意图。若匹配度高，则自动生成 preview 动作并写入 `pending_actions` 表；若匹配度低，则**不拼接 pending_action，直接让 LLM 自由回复或追问**。
+
+```python
+class IntentRouter:
+    def resolve(self, user_input: str, dialog_state: DialogState, diagnosis: ProjectDiagnosis) -> ActionCandidate | None:
+        # 1. 若已有 pending_action，仅解析 confirm / cancel / revise
+        if dialog_state.pending_action_id:
+            return self.resolve_confirmation(user_input)
+        # 2. 否则根据 diagnosis + 关键词匹配动作候选
+        return self.resolve_action_candidate(user_input, diagnosis)
+```
+
+**关键约束**：自由文本不猜动作。只有以下情况才生成 `pending_action`：
+- 用户输入包含明确动作关键词 + 项目当前状态允许该动作
+- 输入与上轮 AI 提议高度相关（如 AI 刚问"要生成故事线吗？"，用户回"好"）
+
+#### 路由三：上下文继承确认
+
+如果上一轮 AI 已提出 proposal（存在未决 `pending_action`），用户本轮回复确认/取消意向时，系统不依赖 LLM，直接触发确认解析：
+
+- **确认**："好的"、"可以"、"同意"、"那就这样吧"、"行"、"OK"、"没问题"、"搞吧"
+- **取消**："算了"、"先不要"、"等等"、"不对"、"改一下"、"先别"、"我还没想好"、"换一个"
+- **修改**："改一下..."、"先把主角换成..." → 触发 `revise` 决策，携带用户补充说明
+
+#### 响应结构
+
 ```json
 {
-  "message": "AI 的自然语言回复...",
+  "message": "AI 的自然语言回复（只解释，不含任何动作编码）...",
   "pending_action": {
     "id": "act_xxx",
-    "type": "generate_setup",
+    "type": "preview_setup",
     "description": "AI 解释为什么要做这个操作",
-    "params": {
-      "project_id": "xxx",
-      "scope": "character"
-    },
+    "params": { "project_id": "xxx", "scope": "character" },
     "requires_confirmation": true
   },
-  "project_state": {
+  "project_diagnosis": {
     "missing_items": ["world_building", "plotlines"],
     "completed_items": ["setup_characters"],
-    "suggested_next_step": "generate_storyline"
+    "suggested_next_step": "preview_storyline"
   }
 }
 ```
 
 #### 安全机制
 
-无论通过哪一层触发 action，后端都必须执行以下保护：
-
-1. **参数白名单**：后端只接受预定义的 `type`（如 `generate_setup`、`generate_storyline`、`generate_outline`），非法 type 直接拒绝
+1. **参数白名单**：后端只接受预定义的 `type`（如 `preview_setup`、`generate_setup`、`preview_storyline`、`preview_outline`），非法 type 直接拒绝
 2. **确认卡片**：任何 action 在真正执行前，必须通过前端确认卡片由用户点击"同意"后方可执行
-3. **沙箱执行**：action 处理函数只读写项目数据库，禁止直接操作文件系统或发起外部网络请求
+3. **沙箱执行**：action 处理函数只读写项目数据库，禁止直接操作文件系统或发起非 AI 服务的外部网络请求
 
 ### 1.3 前端确认卡片
 
@@ -149,16 +147,28 @@ POST /api/v1/dialog/resolve-action
 
 ### 1.4 意图识别规则表
 
-| 意图 | 关键词/正则示例 | 上下文继承规则 |
-|------|----------------|----------------|
-| `generate_setup` | `创建(主角\|人物\|设定\|世界观)`、`给我人物设定`、`写一下世界观` | 上轮 AI 提议生成设定，本轮回复"好的/可以/同意/行/OK/那就这样吧" |
-| `generate_storyline` | `创建(主枝干\|故事线)`、`生成故事线`、`剧情怎么走` | 上轮 AI 提议生成故事线，本轮口语化确认 |
-| `generate_outline` | `写第.*章大纲`、`生成章节大纲`、`大纲怎么写` | 上轮 AI 提议生成大纲，本轮口语化确认 |
-| `query_state` | `还有什么要设定的吗`、`接下来做什么`、`然后呢`、`接下来呢` | 无 |
-| `confirm_proposal` | `同意`、`可以`、`好的`、`行`、`OK`、`没问题`、`就这样`、`搞吧`、`那就这样吧` | **仅在上轮存在 pending_action 时生效** |
-| `cancel_proposal` | `算了`、`先不要`、`等等`、`不对`、`改一下`、`先别`、`我还没想好`、`换一个` | **仅在上轮存在 pending_action 时生效** |
+Intent Router 仅处理以下两类输入：
 
-**兜底策略**：任何意图匹配失败时，系统不拼接 `pending_action`，直接让 LLM 自由回复。
+**A. 动作请求（生成 pending_action）**
+
+| 候选动作 | 触发条件 | 状态约束 |
+|----------|----------|----------|
+| `preview_setup` | 关键词命中 `创建(主角\|人物\|设定\|世界观)` 等，或按钮/斜杠命令触发 | 项目处于 `setup` 阶段 |
+| `preview_storyline` | 关键词命中 `创建(主枝干\|故事线)` 等，或按钮/斜杠命令触发 | `setup` 已完成 |
+| `preview_outline` | 关键词命中 `写第.*章大纲`、`生成章节大纲` 等，或按钮/斜杠命令触发 | `storyline` 已存在 |
+| `query_diagnosis` | `还有什么要设定的吗`、`接下来做什么`、`然后呢` | 无 |
+
+**B. 继承确认（解析已有 pending_action）**
+
+| 决策 | 关键词示例 | 生效条件 |
+|------|------------|----------|
+| `confirm` | `同意`、`可以`、`好的`、`行`、`OK`、`没问题`、`搞吧`、`那就这样吧` | **必须存在未决 pending_action** |
+| `cancel` | `算了`、`先不要`、`等等`、`不对`、`先别`、`我还没想好`、`换一个` | **必须存在未决 pending_action** |
+| `revise` | `改一下...`、`先把主角换成...` | **必须存在未决 pending_action** |
+
+**兜底策略**：
+- 自由文本若未命中动作请求规则，**不拼接 `pending_action`**，直接交由 LLM 自由回复或追问。
+- 若用户意图模糊但状态明确（如缺少设定时问"然后呢"），由 LLM 基于 `project_diagnosis` 引导，而不是强制生成 action。
 
 ---
 
@@ -287,6 +297,58 @@ Phase 2 在 Phase 1 基础上新增/扩展以下表。
 | evidence | JSON | {text, position, summary} |
 | created_at | DateTime | 创建时间 |
 
+### 3.6 dialogs（新增）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | String(PK) | UUID |
+| project_id | String(FK) | 关联项目 |
+| state | String | `idle` / `chatting` / `pending_action` / `generating` |
+| pending_action_id | String | 当前未决 action ID（可为空） |
+| created_at | DateTime | 创建时间 |
+| updated_at | DateTime | 更新时间 |
+
+### 3.7 dialog_messages（新增）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | String(PK) | UUID |
+| dialog_id | String(FK) | 关联对话 |
+| role | String | `user` / `ai` / `system` |
+| content | Text | 消息内容 |
+| action_result | JSON | 若为 system 的 ACTION_RESULT，结构化存储 |
+| created_at | DateTime | 创建时间 |
+
+### 3.8 pending_actions（新增）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | String(PK) | UUID |
+| dialog_id | String(FK) | 关联对话 |
+| type | String | 动作类型（白名单内） |
+| params | JSON | 动作参数 |
+| status | String | `pending` / `confirmed` / `cancelled` / `revised` |
+| decision_comment | Text | 用户决策时的补充说明 |
+| created_at | DateTime | 创建时间 |
+| resolved_at | DateTime | 决策时间 |
+
+### 3.9 background_tasks（新增）
+
+统一后台任务表，替代各 Phase 分散的队列实现。
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | String(PK) | UUID |
+| project_id | String(FK) | 关联项目 |
+| task_type | String | `consistency_check` / `topology_build` / `outline_generate` 等 |
+| payload | JSON | 任务参数 |
+| status | String | `pending` / `running` / `completed` / `failed` |
+| result | JSON | 任务结果（可选） |
+| error | Text | 失败信息 |
+| created_at | DateTime | 创建时间 |
+| started_at | DateTime | 开始执行时间 |
+| finished_at | DateTime | 完成时间 |
+
 ---
 
 ## 4. 核心 API 扩展
@@ -329,7 +391,7 @@ POST /api/v1/dialog/resolve-action
 GET  /api/v1/projects/{project_id}/state-diagnosis
 ```
 
-`state-diagnosis` 返回项目当前缺失项和已完成项，供 AI 引导用户使用。
+`state-diagnosis` 返回 `ProjectDiagnosis`（缺失项、已完成项、下一步建议），供 AI 引导和 Intent Router 使用。
 
 ---
 
@@ -342,17 +404,26 @@ Phase 2 沿用并扩展 Phase 1 已建立的基础设施：
 - **ErrorHandler / with_retry**：统一处理 AI 服务超时和异常
 - **TokenBudgetManager / ContextCompressor**：扩展新增 `storyline`、`outline` 预算项
 
-Phase 2 新增**轻量级后台任务队列**（基于 `asyncio` + SQLite），用于异步执行一致性检查和拓扑构建，避免阻塞主线程。
+Phase 2 新增**统一后台任务队列**（基于 `asyncio` + `background_tasks` 表），用于异步执行一致性检查、拓扑构建等任务，避免阻塞主线程。
 
 ```python
-class BackgroundTaskQueue:
+class TaskQueue:
+    def __init__(self, max_workers: int = 2):
+        self.queue: asyncio.Queue = asyncio.Queue()
+        self.max_workers = max_workers
+        self.workers = [asyncio.create_task(self._worker_loop()) for _ in range(max_workers)]
+
     async def enqueue(self, task_type: str, payload: dict) -> str:
-        # 写入 SQLite 任务表
+        # 写入 background_tasks 表，并放入内存队列
         ...
 
-    async def worker_loop(self):
-        # 单 worker 循环消费任务
-        ...
+    async def _worker_loop(self):
+        while True:
+            task = await self.queue.get()
+            try:
+                await task()
+            except Exception as e:
+                logger.error("Background task failed", error=str(e))
 ```
 
 ---

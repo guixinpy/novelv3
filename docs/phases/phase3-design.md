@@ -183,19 +183,20 @@ PAUSED --(用户取消)--> CHATTING
 
 ### 6.1 响应消息协议扩展
 
-由于无原生 tool use，**不依赖 LLM 返回 `attachments` 结构**。前端根据 `project_state` 和当前对话状态自动渲染辅助卡片：
+由于无原生 tool use，**不依赖 LLM 返回 `attachments` 结构**。前端根据 `ui_state`（对话/视图状态）和 `project_diagnosis`（项目缺失项诊断）自动渲染辅助卡片：
 
 ```typescript
 interface AIResponse {
   message: string;
   pending_action?: PendingAction;
-  project_state?: ProjectState;
+  ui_state?: UIState;
+  project_diagnosis?: ProjectDiagnosis;
 }
 ```
 
 ### 6.2 前端状态驱动渲染
 
-**状态更新路径**：用户在工作区切换 Tab 时，前端主动调用 `POST /api/v1/projects/{id}/state` 上报当前视图，后端透存并返回最新的 `project_state`。不依赖 LLM 推断用户当前在看什么。
+**状态更新路径**：用户在工作区切换 Tab 时，前端主动调用 `POST /api/v1/projects/{id}/state` 上报当前视图（`ui_state`），后端透存并返回最新的 `ui_state` 和 `project_diagnosis`。不依赖 LLM 推断用户当前在看什么。
 
 **渲染优先级规则**（高优先级覆盖低优先级）：
 1. 当 `dialogState === 'GENERATING'` 时，**始终显示进度条/骨架屏**，无论当前在哪个 Tab

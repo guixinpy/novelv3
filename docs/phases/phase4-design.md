@@ -1,8 +1,8 @@
-# Phase 4 设计文档：反馈学习 + 增强一致性 + 后台多 Agent
+# Phase 4 设计文档：反馈学习 + 增强一致性 + 后台分析器
 
 > **版本**: v3.0 Phase 4  
 > **日期**: 2026-04-15  
-> **目标**: 构建自优化能力，引入增强版一致性引擎和后台多 Agent 架构
+> **目标**: 构建自优化能力，引入增强版一致性引擎和统一后台分析器
 
 ---
 
@@ -51,25 +51,17 @@ class BackgroundAnalyzer:
             await self.update_prompt_rules(event.payload)
         ...
 
-class TaskQueue:
-    def __init__(self, max_workers: int = 2):
-        self.queue: asyncio.Queue = asyncio.Queue()
-        self.max_workers = max_workers
-        self.workers = [
-            asyncio.create_task(self._worker_loop())
-            for _ in range(max_workers)
-        ]
-
-    async def _worker_loop(self):
-        while True:
-            task = await self.queue.get()
-            if self.queue.qsize() > 10:
-                logger.warning("background_queue_backlog", depth=self.queue.qsize())
-            try:
-                await task()
-            except Exception as e:
-                logger.error("Background task failed", error=str(e))
+class BackgroundAnalyzer:
+    async def process(self, event: DomainEvent) -> AgentResult:
+        if event.type == "CHAPTER_GENERATED":
+            await self.run_consistency_check(event.payload)
+            await self.update_topology(event.payload)
+        elif event.type == "PREFERENCE_CHANGED":
+            await self.update_prompt_rules(event.payload)
+        ...
 ```
+
+> **TaskQueue 复用说明**：Phase 4 直接复用 Phase 2 定义的 `TaskQueue`（基于 `asyncio` + `background_tasks` 表），不再引入新的队列实现。
 
 ---
 
@@ -105,7 +97,7 @@ QUICK_FEEDBACK_MAP = {
 class PreferenceConfig:
     async def save(self, project_id: str, config: dict) -> None:
         record = await self.storage.save(project_id, config)
-        self.event_bus.emit("PREFERENCE_CHANGED", {"project_id": project_id, "config": config})
+        await self.event_bus.emit("PREFERENCE_CHANGED", {"project_id": project_id, "config": config})
 ```
 
 ### 2.4 偏好画像结构
