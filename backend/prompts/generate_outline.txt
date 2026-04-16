@@ -1,0 +1,11 @@
+基于以下故事线，生成完整的小说大纲。
+
+项目：{{ name }}
+故事线：{{ storyline }}
+总章节数：{{ total_chapters }}
+
+请以 JSON 格式返回：
+- total_chapters: 整数
+- chapters: ChapterOutline[]，每个包含 chapter_index, title, summary, scenes[], characters[], purpose
+- plotlines: 继承并细化的 Plotline[]
+- foreshadowing: 继承并调整的 Foreshadowing[]
