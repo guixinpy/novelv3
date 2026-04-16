@@ -578,13 +578,13 @@ class L1RuleExtractor:
 
 | 检查器 | 检查内容 | 状态来源 |
 |--------|----------|----------|
-| `CharacterStateChecker` | 角色状态冲突（如已死角色再次出现） | storyline / setup 中的 `character_status` 作为"官方状态"，与 L1 提取到的"角色在本章出现"做比对 |
+| `CharacterStateChecker` | 角色状态冲突（如已死角色再次出现） | `setups.characters` 中的 `character_status` 作为"官方状态"，与 L1 提取到的"角色在本章出现"做比对 |
 | `LocationChecker` | 地点逻辑异常（同一角色同时出现在两地） | L1 提取的事实 |
 | `TimelineChecker` | 时间线明显矛盾（时间倒流） | L1 提取的时间词 |
 
 检查器输出 `ConsistencyIssue`，写入 `consistency_checks` 表。
 
-> **character_status 说明**：在 setup 的 `characters` 或 storyline 中维护角色的官方状态字段（`alive` / `dead` / `missing` 等），`CharacterStateChecker` 通过比对官方状态与章节实际出现情况来检测冲突。
+> **character_status 说明**：在 setup 的 `characters` 中维护角色的官方状态字段（`alive` / `dead` / `missing` 等），`CharacterStateChecker` 通过比对官方状态与章节实际出现情况来检测冲突。
 
 ---
 
@@ -675,7 +675,7 @@ POST /api/v1/projects/{project_id}/writing/chapters/{chapter_index}/retry
 }
 ```
 
-> **item 命名空间约定**：`missing_items` 与 `completed_items` 使用标准节点类型键：`setup` / `storyline` / `outline` / `chapters`。
+> **item 命名空间约定**：`missing_items` 与 `completed_items` 使用标准节点类型键：`setup` / `storyline` / `outline` / `content`（与 `projects.current_phase` 对齐）。
 
 ### A.3 DomainEvent
 
@@ -694,8 +694,9 @@ class DomainEvent:
 
 ### A.4 ActionResult
 
-`resolve-action` 执行成功后注入对话上下文的结构化格式：
+`resolve-action` 执行后注入对话上下文的结构化格式：
 
+**confirm + success**：
 ```json
 {
   "type": "generate_setup",
@@ -705,7 +706,41 @@ class DomainEvent:
 }
 ```
 
-对话中的 system 消息文本表示为：`[ACTION_RESULT] type=generate_setup, decision=confirm, result=success, setup_id=xxx`。
+**cancel**：
+```json
+{
+  "type": "preview_setup",
+  "decision": "cancel",
+  "result": "cancelled",
+  "reason": "用户想先修改主角背景"
+}
+```
+
+**revise**：
+```json
+{
+  "type": "preview_setup",
+  "decision": "revise",
+  "result": "revised",
+  "comment": "把主角改成普通人"
+}
+```
+
+**failure**：
+```json
+{
+  "type": "generate_setup",
+  "decision": "confirm",
+  "result": "failed",
+  "error": "AI 服务超时"
+}
+```
+
+对话中的 system 消息文本表示：
+- confirm success: `[ACTION_RESULT] type=generate_setup, decision=confirm, result=success, setup_id=xxx`
+- cancel: `[ACTION_RESULT] type=preview_setup, decision=cancel, result=cancelled, reason=用户想先修改主角背景`
+- revise: `[ACTION_RESULT] type=preview_setup, decision=revise, result=revised, comment=把主角改成普通人`
+- failure: `[ACTION_RESULT] type=generate_setup, decision=confirm, result=failed, error=AI 服务超时`
 
 ---
 

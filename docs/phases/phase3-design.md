@@ -400,7 +400,7 @@ POST /api/v1/projects/{project_id}/state
 }
 ```
 
-> **item 命名空间约定**：`missing_items` 与 `completed_items` 统一使用标准节点类型键：`setup` / `storyline` / `outline` / `chapters`。
+> **item 命名空间约定**：`missing_items` 与 `completed_items` 统一使用标准节点类型键：`setup` / `storyline` / `outline` / `content`（与 `projects.current_phase` 对齐）。
 
 后端将 `current_view` 直接写入 `dialogs.current_view` 字段，供后续 `Intent Router` 和前端渲染使用。
 
