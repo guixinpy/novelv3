@@ -115,8 +115,8 @@ class IntentRouter:
     "requires_confirmation": true
   },
   "project_diagnosis": {
-    "missing_items": ["world_building", "plotlines"],
-    "completed_items": ["setup_characters"],
+    "missing_items": ["storyline"],
+    "completed_items": ["setup"],
     "suggested_next_step": "preview_storyline"
   }
 }

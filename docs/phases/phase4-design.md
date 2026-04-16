@@ -14,13 +14,13 @@ Phase 4 不引入多个独立 Agent 微服务，而是用一个统一的 **Backg
 
 | 组件 | 职责 | 输出物 |
 |-------|------|--------|
-| **Main Agent** | 对话交互、流程导演、向用户提案操作 | 自然语言回复 + Action Proposal |
+| **主对话模块** | 对话交互、流程导演、向用户提案操作 | 自然语言回复 + Action Proposal |
 | **BackgroundAnalyzer** | 统一处理一致性检查、拓扑更新、Prompt 优化建议 | ConsistencyIssue[] / Topology 增量 / Prompt 规则建议 |
 
 ### 1.2 协作模式
 
 ```
-Main Agent 生成章节内容
+主对话模块生成章节内容
     ↓
 写入 chapter_contents
     ↓
@@ -35,7 +35,7 @@ Event Bus 触发事件
 
 分析结果通过 Event Bus 回传
     ↓
-Main Agent 在后续对话中引用结果
+主对话模块在后续对话中引用结果
     "第 5 章检测到一处地点矛盾：主角同时在 A 城和 B 城出现，已标记。"
 ```
 
@@ -43,7 +43,7 @@ Main Agent 在后续对话中引用结果
 
 ```python
 class BackgroundAnalyzer:
-    async def process(self, event: DomainEvent) -> AgentResult:
+    async def process(self, event: DomainEvent) -> AnalyzerResult:
         if event.type == "CHAPTER_GENERATED":
             await self.run_consistency_check(event.payload)
             await self.update_topology(event.payload)
@@ -130,7 +130,7 @@ class PromptOptimizer:
 | `description_density >= 4` | 增加环境描写和感官细节 |
 | `dialogue_ratio <= 2` | 减少对话比例，增加叙述和心理描写 |
 | `pacing_speed >= 4` | 加快节奏，减少铺垫 |
-| `tone_preferences` 含"黑暗" | 保持压抑、沉重的叙事基调 |
+| `tone_preferences` 含 `dark` | 保持压抑、沉重的叙事基调 |
 
 ### 3.3 Few-shot 示例库
 
@@ -233,7 +233,7 @@ class CrossValidator:
 - L2 提取改为**可选/按需**：用户可手动触发"深度检查"，或只对最新生成的章节执行
 - BackgroundAnalyzer 在后台异步执行交叉验证（耗时 5-30 秒）
 - 结果写入 `consistency_checks` 和 `extracted_facts`
-- 主 Agent 在下一轮对话或工作区刷新时读取并展示结果
+- 主对话模块在下一轮对话或工作区刷新时读取并展示结果
 
 ---
 

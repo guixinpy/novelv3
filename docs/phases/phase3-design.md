@@ -46,7 +46,7 @@ Phase 3 延续 Phase 2 的 **Action Proposal + 对话确认** 机制，不引入
 工作区取代 Phase 1 的简易详情页，成为项目的核心视图。
 
 ```
-/project/:id/workspace
+/projects/:id/workspace
 ├── 概览          # 项目信息、进度、最近动态
 ├── 设定          # 世界观、角色、核心概念（可编辑 JSON/表单）
 ├── 故事线        # 主线/支线/伏笔（可视化时间线）
@@ -212,8 +212,8 @@ interface ProjectDiagnosis {
 **状态更新路径**：用户在工作区切换 Tab 时，前端主动调用 `POST /api/v1/projects/{id}/state` 上报当前视图（`ui_state`），后端透存并返回最新的 `ui_state` 和 `project_diagnosis`。不依赖 LLM 推断用户当前在看什么。
 
 **渲染优先级规则**（高优先级覆盖低优先级）：
-1. 当 `dialogState === 'GENERATING'` 时，**始终显示进度条/骨架屏**，无论当前在哪个 Tab
-2. 当 `dialogState === 'PENDING_ACTION'` 时，优先显示确认卡片
+1. 当 `dialog_state === 'GENERATING'` 时，**始终显示进度条/骨架屏**，无论当前在哪个 Tab
+2. 当 `dialog_state === 'PENDING_ACTION'` 时，优先显示确认卡片
 3. 当 `current_view === 'setup'` 时，对话气泡旁显示角色卡片
 4. 当 `current_view === 'outline'` 时，显示大纲节点折叠卡片
 5. 当 `current_view === 'topology'` 时，工作区主体显示拓扑图
