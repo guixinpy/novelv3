@@ -1,9 +1,6 @@
-from typing import Any
-
-
 class LRUCache:
     def __init__(self, max_size: int):
-        self._cache: dict[str, Any] = {}
+        self._cache: dict[str, object] = {}
         self._max_size = max_size
 
     def get(self, key: str):

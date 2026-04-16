@@ -15,6 +15,11 @@ class AIService:
             self._adapter = DeepSeekAdapter(api_key=key)
         return self._adapter
 
+    async def close(self):
+        if self._adapter is not None:
+            await self._adapter.close()
+            self._adapter = None
+
     async def complete(self, messages: list[dict], **kwargs):
         adapter = self._get_adapter()
         return await with_retry(lambda: adapter.complete(messages, **kwargs))
