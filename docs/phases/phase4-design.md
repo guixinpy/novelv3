@@ -73,7 +73,7 @@ class BackgroundAnalyzer:
 
 在章节生成结果页面增加一键反馈按钮（如"对话太多"、"节奏太慢"、"描写太少"），点击后执行以下两步：
 1. 自动调用 `PUT /api/v1/projects/{project_id}/preferences` 将对应滑块调整一档
-2. 自动调用 `POST /api/v1/projects/{project_id}/writing/chapters/{current_chapter}/retry` 重新生成当前章
+2. 自动调用 `POST /api/v1/projects/{project_id}/writing/chapters/{chapter_index}/retry` 重新生成当前章
 
 ```python
 QUICK_FEEDBACK_MAP = {
@@ -311,6 +311,8 @@ GET  /api/v1/projects/{project_id}/preferences
 PUT  /api/v1/projects/{project_id}/preferences
 POST /api/v1/projects/{project_id}/preferences/reset
 ```
+
+**PUT 语义**：全量覆盖。前端需先 GET 当前配置，在本地修改完整对象后再 PUT。
 
 **PUT 请求体示例**：
 ```json

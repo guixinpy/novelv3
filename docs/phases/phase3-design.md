@@ -209,7 +209,7 @@ interface ProjectDiagnosis {
 
 ### 6.2 前端状态驱动渲染
 
-**状态更新路径**：用户在工作区切换 Tab 时，前端主动调用 `POST /api/v1/projects/{id}/state` 上报当前视图（`ui_state`），后端透存并返回最新的 `ui_state` 和 `project_diagnosis`。不依赖 LLM 推断用户当前在看什么。
+**状态更新路径**：用户在工作区切换 Tab 时，前端主动调用 `POST /api/v1/projects/{project_id}/state` 上报当前视图（`ui_state`），后端透存并返回最新的 `ui_state` 和 `project_diagnosis`。不依赖 LLM 推断用户当前在看什么。
 
 **渲染优先级规则**（高优先级覆盖低优先级）：
 1. 当 `dialog_state === 'GENERATING'` 时，**始终显示进度条/骨架屏**，无论当前在哪个 Tab

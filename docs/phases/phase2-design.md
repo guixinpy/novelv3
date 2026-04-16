@@ -82,9 +82,15 @@ POST /api/v1/dialog/chat
 
 ```python
 class IntentRouter:
-    def resolve(self, user_input: str, dialog_state: DialogState, diagnosis: ProjectDiagnosis) -> ActionCandidate | None:
+    def resolve(
+        self,
+        user_input: str,
+        dialog_state: str,
+        pending_action_id: str | None,
+        diagnosis: ProjectDiagnosis,
+    ) -> ActionCandidate | None:
         # 1. 若已有 pending_action，仅解析 confirm / cancel / revise
-        if dialog_state.pending_action_id:
+        if pending_action_id:
             return self.resolve_confirmation(user_input)
         # 2. 否则根据 diagnosis + 关键词匹配动作候选
         return self.resolve_action_candidate(user_input, diagnosis)
