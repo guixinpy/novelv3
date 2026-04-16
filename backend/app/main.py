@@ -13,10 +13,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from app.api import projects, config
+from app.api import projects, config, setups, chapters
 
 app.include_router(projects.router)
 app.include_router(config.router)
+app.include_router(setups.router)
+app.include_router(chapters.router)
 
 @app.get("/api/v1/health")
 def health():
