@@ -311,6 +311,8 @@ DELETE /api/v1/projects/{project_id}/versions/{version_id}
 }
 ```
 
+> `node_id` 来源：`setup` 对应 `setups.id`，`storyline` 对应 `storylines.id`，`outline` 对应 `outlines.id`，`chapter` 对应 `chapter_contents.id`。
+
 **POST /versions 响应**：
 ```json
 {

@@ -370,9 +370,14 @@ GET /api/v1/background-tasks/{task_id}
     "issues": [
       {
         "id": "issue_xxx",
+        "chapter_index": 5,
+        "checker_name": "CharacterStateChecker",
         "severity": "fatal",
         "subject": "李明",
-        "description": "已死亡角色在本章再次出现"
+        "description": "已死亡角色在本章再次出现",
+        "evidence": "李明冷冷地看着对方。",
+        "suggested_fix": "确认角色状态或修改出场安排",
+        "status": "pending"
       }
     ]
   },

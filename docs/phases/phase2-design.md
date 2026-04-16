@@ -355,7 +355,7 @@ Phase 2 在 Phase 1 基础上新增/扩展以下表。
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| id | String(PK) | UUID |
+| id | String(PK) | UUID（API 层对外映射为 `task_id`） |
 | project_id | String(FK) | 关联项目 |
 | task_type | String | `consistency_check` / `topology_build` / `outline_generate` 等 |
 | payload | JSON | 任务参数 |
@@ -405,10 +405,15 @@ GET  /api/v1/projects/{project_id}/consistency-issues
 {
   "issues": [
     {
+      "id": "issue_xxx",
+      "chapter_index": 5,
+      "checker_name": "CharacterStateChecker",
       "severity": "fatal",
       "subject": "李明",
       "description": "已死亡角色在本章再次出现",
-      "suggested_fix": "确认角色状态或修改出场安排"
+      "evidence": "李明冷冷地看着对方。",
+      "suggested_fix": "确认角色状态或修改出场安排",
+      "status": "pending"
     }
   ]
 }
