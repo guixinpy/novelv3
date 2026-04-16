@@ -349,7 +349,7 @@ GET /api/v1/background-tasks/{task_id}
 {
   "tasks": [
     {
-      "id": "task_xxx",
+      "task_id": "task_xxx",
       "task_type": "consistency_check",
       "status": "completed",
       "created_at": "2026-04-16T10:00:00Z",
@@ -363,10 +363,19 @@ GET /api/v1/background-tasks/{task_id}
 **详情响应示例**：
 ```json
 {
-  "id": "task_xxx",
+  "task_id": "task_xxx",
   "task_type": "consistency_check",
   "status": "completed",
-  "result": { "issues_found": 2 },
+  "result": {
+    "issues": [
+      {
+        "id": "issue_xxx",
+        "severity": "fatal",
+        "subject": "李明",
+        "description": "已死亡角色在本章再次出现"
+      }
+    ]
+  },
   "error": null,
   "created_at": "2026-04-16T10:00:00Z",
   "started_at": "2026-04-16T10:00:05Z",
@@ -388,7 +397,7 @@ POST /api/v1/projects/{project_id}/chapters/{chapter_index}/consistency-check
 - `depth=l1`（默认）：仅运行 L1 规则提取器和基础检查器，同步返回检查结果
 - `depth=l2`：额外触发 LLM 深度事实提取和 L1/L2 交叉验证，异步执行，响应返回 `task_id` 供轮询：
   ```json
-  { "task_id": "task_xxx", "status": "queued" }
+  { "task_id": "task_xxx", "status": "pending" }
   ```
 
 用户在工作区点击"深度检查"时，前端自动发送 `depth=l2` 请求，并通过 `GET /api/v1/background-tasks/{task_id}` 轮询结果。

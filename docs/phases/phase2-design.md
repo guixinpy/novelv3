@@ -400,6 +400,39 @@ POST /api/v1/projects/{project_id}/chapters/{chapter_index}/consistency-check
 GET  /api/v1/projects/{project_id}/consistency-issues
 ```
 
+**POST /consistency-check 同步响应**（`depth=l1` 时）：
+```json
+{
+  "issues": [
+    {
+      "severity": "fatal",
+      "subject": "李明",
+      "description": "已死亡角色在本章再次出现",
+      "suggested_fix": "确认角色状态或修改出场安排"
+    }
+  ]
+}
+```
+
+**GET /consistency-issues 响应**：
+```json
+{
+  "issues": [
+    {
+      "id": "issue_xxx",
+      "chapter_index": 5,
+      "checker_name": "CharacterStateChecker",
+      "severity": "fatal",
+      "subject": "李明",
+      "description": "已死亡角色在本章再次出现",
+      "evidence": "李明冷冷地看着对方。",
+      "suggested_fix": "确认角色状态或修改出场安排",
+      "status": "pending"
+    }
+  ]
+}
+```
+
 ### 4.5 对话/Action API
 
 ```
@@ -756,3 +789,22 @@ class DomainEvent:
 ```
 
 `type` 枚举：`character_state_change` / `location_presence` / `time_reference` / `relationship_change`。
+
+### B.7 ConsistencyIssue
+
+```json
+{
+  "id": "issue_xxx",
+  "chapter_index": 5,
+  "checker_name": "CharacterStateChecker",
+  "severity": "fatal",
+  "subject": "李明",
+  "description": "已死亡角色在本章再次出现",
+  "evidence": "李明冷冷地看着对方。",
+  "suggested_fix": "确认角色状态或修改出场安排",
+  "status": "pending"
+}
+```
+
+`severity` 枚举：`fatal` / `warn` / `info`。
+`status` 枚举：`pending` / `acknowledged` / `resolved`。

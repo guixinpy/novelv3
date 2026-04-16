@@ -294,6 +294,7 @@ Content-Type: application/json
 ```
 GET    /api/v1/projects/{project_id}/versions
 GET    /api/v1/projects/{project_id}/versions?node_type=setup&node_id=xxx
+GET    /api/v1/projects/{project_id}/versions/{version_id}
 POST   /api/v1/projects/{project_id}/versions
 POST   /api/v1/projects/{project_id}/versions/{version_id}/rollback
 DELETE /api/v1/projects/{project_id}/versions/{version_id}
