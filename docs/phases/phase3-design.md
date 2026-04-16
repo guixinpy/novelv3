@@ -60,8 +60,8 @@ Phase 3 延续 Phase 2 的 **Action Proposal + 对话确认** 机制，不引入
 
 工作区中的编辑是**本地草稿式**的：
 - 用户修改内容后点击"保存草稿"
-- 只有点击"提交为正式版"时才会触发 Action Proposal，由 AI 确认后覆盖当前版本
-- 或者直接触发 `revise_xxx` 的 Action，让 AI 基于修改重生成
+- 点击"提交为正式版"时，前端直接调用 `POST /api/v1/projects/{project_id}/versions` 创建新版本（不经过 Action Proposal）
+- 点击"让 AI 基于修改重生成"时，触发 `revise_xxx` Action，走对话确认流程
 
 ### 3.3 与对话的联动
 
@@ -318,6 +318,39 @@ DELETE /api/v1/projects/{project_id}/versions/{version_id}
   "version_number": 3
 }
 ```
+
+**GET /versions 响应**（列表）：
+```json
+{
+  "versions": [
+    {
+      "version_id": "ver_xxx",
+      "version_number": 3,
+      "node_type": "setup",
+      "node_id": "setup_xxx",
+      "description": "用户手动保存",
+      "author": "user",
+      "created_at": "2026-04-16T10:00:00Z"
+    }
+  ]
+}
+```
+
+**GET /versions/{version_id} 响应**（含完整内容，用于对比）：
+```json
+{
+  "version_id": "ver_xxx",
+  "version_number": 3,
+  "node_type": "setup",
+  "node_id": "setup_xxx",
+  "content": "{...}",
+  "description": "用户手动保存",
+  "author": "user",
+  "created_at": "2026-04-16T10:00:00Z"
+}
+```
+
+> 版本对比在前端进行：列表页调用 `GET /versions`，对比页调用 `GET /versions/{version_id}` 获取两份 `content` 后本地 diff。
 
 ### 9.2 导出 API
 

@@ -625,7 +625,7 @@ POST /api/v1/projects/{project_id}/writing/chapters/{chapter_index}/retry
 }
 ```
 
-`type` 白名单：`preview_setup`、`preview_storyline`、`preview_outline`、`generate_setup`、`generate_storyline`、`generate_outline`、`revise_setup`、`revise_storyline`、`revise_outline`、`query_diagnosis`。
+`type` 白名单：`preview_setup`、`preview_storyline`、`preview_outline`、`generate_setup`、`generate_storyline`、`generate_outline`、`revise_setup`、`revise_storyline`、`revise_outline`、`revise_chapter`、`query_diagnosis`。
 
 ### A.2 ProjectDiagnosis
 

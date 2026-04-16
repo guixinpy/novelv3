@@ -385,10 +385,13 @@ POST /api/v1/projects/{project_id}/chapters/{chapter_index}/consistency-check
 }
 ```
 
-- `depth=l1`（默认）：仅运行 L1 规则提取器和基础检查器
-- `depth=l2`：额外触发 LLM 深度事实提取和 L1/L2 交叉验证，异步执行，结果通过 `background_tasks` 和 `consistency_checks` 回写
+- `depth=l1`（默认）：仅运行 L1 规则提取器和基础检查器，同步返回检查结果
+- `depth=l2`：额外触发 LLM 深度事实提取和 L1/L2 交叉验证，异步执行，响应返回 `task_id` 供轮询：
+  ```json
+  { "task_id": "task_xxx", "status": "queued" }
+  ```
 
-用户在工作区点击"深度检查"时，前端自动发送 `depth=l2` 请求。
+用户在工作区点击"深度检查"时，前端自动发送 `depth=l2` 请求，并通过 `GET /api/v1/background-tasks/{task_id}` 轮询结果。
 
 ---
 
