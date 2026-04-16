@@ -1,12 +1,48 @@
 <template>
   <div>
-    <h2>项目列表</h2>
-    <button @click="showForm = true" style="margin-bottom: 1rem;">新建项目</button>
-    <div v-if="showForm" style="border: 1px solid #ccc; padding: 1rem; margin-bottom: 1rem;">
-      <input v-model="form.name" placeholder="项目名称" />
-      <input v-model="form.genre" placeholder="类型" style="margin-left: 0.5rem;" />
-      <button @click="create" style="margin-left: 0.5rem;">创建</button>
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-xl font-semibold text-gray-900">项目列表</h2>
+      <button
+        @click="showForm = true"
+        class="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+      >
+        新建项目
+      </button>
     </div>
+
+    <div v-if="showForm" class="bg-white rounded-lg shadow p-4 mb-4">
+      <div class="flex flex-col sm:flex-row gap-3">
+        <input
+          v-model="form.name"
+          placeholder="项目名称"
+          class="flex-1 border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        />
+        <input
+          v-model="form.genre"
+          placeholder="类型"
+          class="flex-1 border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        />
+        <div class="flex gap-2">
+          <button
+            @click="create"
+            class="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+          >
+            创建
+          </button>
+          <button
+            @click="showForm = false"
+            class="inline-flex items-center rounded-md bg-white border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          >
+            取消
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="store.projects.length === 0" class="text-center text-gray-500 py-12">
+      暂无项目，点击上方按钮创建第一个项目
+    </div>
+
     <ProjectCard v-for="p in store.projects" :key="p.id" :project="p" />
   </div>
 </template>

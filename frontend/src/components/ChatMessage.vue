@@ -1,8 +1,16 @@
 <template>
-  <div style="margin: 0.5rem 0; text-align: left;">
-    <div :style="{ background: msg.role === 'user' ? '#e3f2fd' : '#f5f5f5', padding: '0.75rem', borderRadius: '4px', display: 'inline-block', maxWidth: '80%' }">
-      <div style="font-size: 0.75rem; color: #888; margin-bottom: 0.25rem;">{{ msg.role === 'user' ? '我' : '墨舟' }}</div>
-      <div style="white-space: pre-wrap;">{{ msg.content }}</div>
+  <div
+    class="flex"
+    :class="msg.role === 'user' ? 'justify-end' : 'justify-start'"
+  >
+    <div
+      class="max-w-[80%] rounded-lg px-4 py-2"
+      :class="msg.role === 'user' ? 'bg-indigo-100 text-gray-900' : 'bg-gray-100 text-gray-900'"
+    >
+      <div class="text-xs text-gray-500 mb-1">
+        {{ msg.role === 'user' ? '我' : '墨舟' }}
+      </div>
+      <div class="text-sm whitespace-pre-wrap">{{ msg.content }}</div>
     </div>
   </div>
 </template>
