@@ -25,7 +25,7 @@ Phase 3 延续 Phase 2 的 **Action Proposal + 对话确认** 机制，不引入
 |------|------|--------|
 | 项目工作区（Workspace） | 详情页升级为 Tab 式工作区，支持查看和轻量编辑 | P0 |
 | 版本管理 | 设定/故事线/大纲/章节的历史快照、对比、一键回滚 | P0 |
-| 对话状态机 | 明确 `IDLE` / `CHATTING` / `PENDING_ACTION` / `GENERATING` / `REVISION` 状态 | P0 |
+| 对话状态机 | 明确 `IDLE` / `CHATTING` / `PENDING_ACTION` / `GENERATING` / `REVISION` / `PAUSED` / `ERROR` 七态 | P0 |
 | 富响应生成器 | AI 回复可内嵌卡片、进度条、操作按钮 | P0 |
 | 拓扑图可视化 | 角色关系图、情节时间线的简单图形展示 | P1 |
 | 导出模块 | 支持导出 Markdown / TXT（Phase 1-2 预留） | P1 |
@@ -175,6 +175,7 @@ PAUSED --(用户取消)--> CHATTING
 | `PENDING_ACTION` | 输入框禁用或缩小，突出显示确认卡片 |
 | `GENERATING` | 输入框禁用，显示进度条/骨架屏 |
 | `REVISION` | 工作区进入编辑模式，对话侧显示修订上下文 |
+| `PAUSED` | 输入框可用，显示"继续生成"和"取消"按钮 |
 | `ERROR` | 输入框可用，消息气泡内显示重试按钮 |
 
 ---
@@ -336,7 +337,31 @@ POST /api/v1/projects/{project_id}/state
 }
 ```
 
-后端将 `current_view` 透存到 `dialogs` 或项目会话记录中，供后续 `Intent Router` 和前端渲染使用。
+后端将 `current_view` 直接写入 `dialogs.current_view` 字段，供后续 `Intent Router` 和前端渲染使用。
+
+### 9.5 ChapterSummary 结构
+
+`GET /api/v1/projects/{project_id}/chapters` 返回的章节摘要：
+
+```json
+{
+  "chapters": [
+    {
+      "chapter_index": 1,
+      "title": "第一章 初入末世",
+      "word_count": 3200,
+      "status": "generated"
+    }
+  ]
+}
+```
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| chapter_index | Integer | 章节序号 |
+| title | String | 章节标题 |
+| word_count | Integer | 字数 |
+| status | String | `pending` / `generating` / `generated` / `approved` / `rejected` |
 
 ---
 

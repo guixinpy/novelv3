@@ -315,6 +315,7 @@ Phase 2 在 Phase 1 基础上新增/扩展以下表。
 | project_id | String(FK) | 关联项目 |
 | state | String | `idle` / `chatting` / `pending_action` / `generating` / `revision` / `paused` / `error` |
 | pending_action_id | String | 当前未决 action ID（可为空） |
+| current_view | String | 用户当前工作区视图，如 `setup` / `outline` / `content` |
 | created_at | DateTime | 创建时间 |
 | updated_at | DateTime | 更新时间 |
 
