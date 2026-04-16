@@ -192,6 +192,18 @@ interface AIResponse {
   ui_state?: UIState;
   project_diagnosis?: ProjectDiagnosis;
 }
+
+interface UIState {
+  dialog_state: 'IDLE' | 'CHATTING' | 'PENDING_ACTION' | 'GENERATING' | 'REVISION' | 'PAUSED' | 'ERROR';
+  current_view: 'overview' | 'setup' | 'storyline' | 'outline' | 'content' | 'topology' | 'versions';
+  generating_progress?: { node_type: string; current: number; total: number };
+}
+
+interface ProjectDiagnosis {
+  missing_items: string[];
+  completed_items: string[];
+  suggested_next_step: string | null;
+}
 ```
 
 ### 6.2 前端状态驱动渲染
@@ -290,11 +302,41 @@ GET  /api/v1/export/{task_id}/download
 ### 9.3 工作区数据 API
 
 复用现有 API，工作区是前端组合页面：
-- `GET /setup`
-- `GET /storyline`
-- `GET /outline`
-- `GET /chapters`
-- `GET /topology`
+- `GET /api/v1/projects/{project_id}/setup`
+- `GET /api/v1/projects/{project_id}/storyline`
+- `GET /api/v1/projects/{project_id}/outline`
+- `GET /api/v1/projects/{project_id}/chapters`（章节列表，返回 `{ chapters: ChapterSummary[] }`）
+- `GET /api/v1/projects/{project_id}/topology`
+
+### 9.4 UI 状态 API
+
+```
+POST /api/v1/projects/{project_id}/state
+```
+
+**请求体**：
+```json
+{
+  "current_view": "outline"
+}
+```
+
+**响应**：
+```json
+{
+  "ui_state": {
+    "dialog_state": "CHATTING",
+    "current_view": "outline"
+  },
+  "project_diagnosis": {
+    "missing_items": ["storyline"],
+    "completed_items": ["setup"],
+    "suggested_next_step": "preview_storyline"
+  }
+}
+```
+
+后端将 `current_view` 透存到 `dialogs` 或项目会话记录中，供后续 `Intent Router` 和前端渲染使用。
 
 ---
 

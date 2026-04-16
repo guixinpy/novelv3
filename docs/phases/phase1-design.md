@@ -78,7 +78,7 @@ Phase 1 只建立三张核心表，其余表推迟到 Phase 2。
 | target_word_count | Integer | 目标字数 |
 | current_word_count | Integer | 当前字数（默认 0） |
 | status | String | `draft` / `setup_pending` / `setup_approved` / `writing` / `completed` |
-| current_phase | String | `setup` / `outline` / `content` / `revision` |
+| current_phase | String | `setup` / `storyline` / `outline` / `content` / `revision` |
 | ai_model | String | 默认使用模型 |
 | language | String | 语言（默认 `zh-CN`） |
 | style | String | 写作风格 |

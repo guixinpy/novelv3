@@ -125,7 +125,7 @@ class IntentRouter:
 #### 安全机制
 
 1. **参数白名单**：后端只接受预定义的 `type`（如 `preview_setup`、`generate_setup`、`preview_storyline`、`preview_outline`），非法 type 直接拒绝
-2. **确认卡片**：任何 action 在真正执行前，必须通过前端确认卡片由用户点击"同意"后方可执行
+2. **统一执行入口**：任何 action 的确认、取消、修改都**必须通过** `POST /api/v1/dialog/resolve-action` 提交。不存在后端因解析到用户文本"同意"就直接执行的逻辑
 3. **沙箱执行**：action 处理函数只读写项目数据库，禁止直接操作文件系统或发起非 AI 服务的外部网络请求
 
 ### 1.3 前端确认卡片
@@ -135,7 +135,7 @@ class IntentRouter:
 - **预览内容**（如有）：设定卡片/故事线摘要/大纲摘要
 - **操作按钮**：`同意执行` / `取消` / `修改后再执行`
 
-用户选择后，前端发送：
+**用户点击卡片按钮**或**在自由文本中回复确认意向**时，前端最终都统一发送：
 ```json
 POST /api/v1/dialog/resolve-action
 {
@@ -144,6 +144,16 @@ POST /api/v1/dialog/resolve-action
   "comment": "用户补充说明"
 }
 ```
+
+> **执行映射规则**：`resolve-action` 接收到的 `pending_action.type` 若为 `preview_*`，则内部映射为对应的 `generate_*` 实际执行。映射表如下：
+
+| pending_action.type | 实际执行 |
+|---------------------|----------|
+| `preview_setup` | `generate_setup` |
+| `preview_storyline` | `generate_storyline` |
+| `preview_outline` | `generate_outline` |
+
+`ACTION_RESULT` 中的 `type` 字段统一记录实际执行类型（如 `generate_setup`）。
 
 ### 1.4 意图识别规则表
 
@@ -303,7 +313,7 @@ Phase 2 在 Phase 1 基础上新增/扩展以下表。
 |------|------|------|
 | id | String(PK) | UUID |
 | project_id | String(FK) | 关联项目 |
-| state | String | `idle` / `chatting` / `pending_action` / `generating` |
+| state | String | `idle` / `chatting` / `pending_action` / `generating` / `revision` / `paused` / `error` |
 | pending_action_id | String | 当前未决 action ID（可为空） |
 | created_at | DateTime | 创建时间 |
 | updated_at | DateTime | 更新时间 |
@@ -589,3 +599,63 @@ POST /api/v1/projects/{project_id}/writing/chapters/{chapter_index}/retry
 | 大纲过长超出模型上下文 | 上下文压缩器优先，必要时拆分大纲生成 |
 | 拓扑图解析不准确 | L1 规则为主，允许用户手动修正节点（Phase 3） |
 | 连续写作中途失败 | 断点续写，从失败章节重试，已生成章节保留 |
+
+---
+
+## 附录 A：统一数据契约（跨 Phase 使用）
+
+以下结构在 Phase 2-4 中复用，避免各文档定义不一致。
+
+### A.1 PendingAction
+
+```json
+{
+  "id": "act_xxx",
+  "type": "preview_setup",
+  "description": "AI 解释为什么要做这个操作",
+  "params": { "project_id": "xxx", "scope": "character" },
+  "requires_confirmation": true
+}
+```
+
+`type` 白名单：`preview_setup`、`preview_storyline`、`preview_outline`、`generate_setup`、`generate_storyline`、`generate_outline`、`query_diagnosis`。
+
+### A.2 ProjectDiagnosis
+
+```json
+{
+  "missing_items": ["world_building", "plotlines"],
+  "completed_items": ["setup_characters"],
+  "suggested_next_step": "preview_storyline"
+}
+```
+
+### A.3 DomainEvent
+
+```python
+class DomainEvent:
+    type: str
+    payload: dict
+```
+
+核心事件类型枚举：
+- `CHAPTER_GENERATED`
+- `PREFERENCE_CHANGED`
+- `BACKGROUND_TASK_STARTED`
+- `BACKGROUND_TASK_COMPLETED`
+- `CONSISTENCY_DEEP_CHECK_COMPLETED`
+
+### A.4 ActionResult
+
+`resolve-action` 执行成功后注入对话上下文的结构化格式：
+
+```json
+{
+  "type": "generate_setup",
+  "decision": "confirm",
+  "result": "success",
+  "setup_id": "xxx"
+}
+```
+
+对话中的 system 消息文本表示为：`[ACTION_RESULT] type=generate_setup, decision=confirm, result=success, setup_id=xxx`。

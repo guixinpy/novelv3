@@ -50,15 +50,6 @@ class BackgroundAnalyzer:
         elif event.type == "PREFERENCE_CHANGED":
             await self.update_prompt_rules(event.payload)
         ...
-
-class BackgroundAnalyzer:
-    async def process(self, event: DomainEvent) -> AgentResult:
-        if event.type == "CHAPTER_GENERATED":
-            await self.run_consistency_check(event.payload)
-            await self.update_topology(event.payload)
-        elif event.type == "PREFERENCE_CHANGED":
-            await self.update_prompt_rules(event.payload)
-        ...
 ```
 
 > **TaskQueue 复用说明**：Phase 4 直接复用 Phase 2 定义的 `TaskQueue`（基于 `asyncio` + `background_tasks` 表），不再引入新的队列实现。
@@ -363,6 +354,8 @@ class BackgroundTaskTracker:
             task["error"] = error
             logger.error("Background task failed", task_id=task_id, error=error)
 ```
+
+> **状态源统一规则**：`background_tasks` 表是后台任务状态的唯一权威源。`BackgroundTaskTracker` 仅作为进程内内存缓存，用于快速日志标注和前端小面板展示；服务重启后通过读取数据库表恢复状态，HTTP API 查询也始终优先读表。
 
 监控指标通过结构化日志输出，同时保留 7.2 节的轻量 HTTP API 供前端小面板展示后台任务状态（进行中/已完成/失败），方便用户查看按需触发的 L2 检查是否跑完。
 
