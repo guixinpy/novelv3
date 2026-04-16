@@ -1,7 +1,4 @@
 import os
-from pathlib import Path
-
-PROJECT_ROOT = Path(__file__).parent.parent.parent
 
 
 def load_api_key() -> str | None:
@@ -11,14 +8,7 @@ def load_api_key() -> str | None:
         import keyring
         return keyring.get_password("mozhou", "deepseek_api_key")
     except Exception:
-        pass
-    env_path = PROJECT_ROOT / ".env"
-    if env_path.exists():
-        with open(env_path, "r") as f:
-            for line in f:
-                if line.startswith("DEEPSEEK_API_KEY="):
-                    return line.strip().split("=", 1)[1]
-    return None
+        return None
 
 
 def save_api_key(key: str) -> None:
@@ -26,5 +16,4 @@ def save_api_key(key: str) -> None:
         import keyring
         keyring.set_password("mozhou", "deepseek_api_key", key)
     except Exception:
-        with open(PROJECT_ROOT / ".env", "w") as f:
-            f.write(f"DEEPSEEK_API_KEY={key}\n")
+        pass
