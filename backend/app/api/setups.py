@@ -1,3 +1,4 @@
+import json
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.db import get_db
@@ -8,6 +9,8 @@ from app.core.prompt_manager import PromptManager
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/setup", tags=["setups"])
 
+ai_service = AIService()
+
 
 @router.post("/generate", response_model=SetupOut)
 async def generate_setup(project_id: str, db: Session = Depends(get_db)):
@@ -16,8 +19,6 @@ async def generate_setup(project_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Project not found")
 
     existing = db.query(Setup).filter(Setup.project_id == project_id).first()
-    if existing:
-        db.delete(existing)
 
     pm = PromptManager()
     prompt = pm.load(
@@ -31,13 +32,12 @@ async def generate_setup(project_id: str, db: Session = Depends(get_db)):
         },
     )
 
-    ai = AIService()
-    result = await ai.complete(
+    result = await ai_service.complete(
         [{"role": "user", "content": prompt}],
         temperature=0.7,
         max_tokens=4000,
     )
-    data = ai.parse_json(result.content)
+    data = ai_service.parse_json(result.content)
 
     setup = Setup(
         project_id=project_id,
@@ -46,12 +46,21 @@ async def generate_setup(project_id: str, db: Session = Depends(get_db)):
         core_concept=data.get("core_concept", {}),
         status="generated",
     )
-    db.add(setup)
 
+    if existing:
+        db.delete(existing)
+
+    db.add(setup)
     project.status = "setup_approved"
     project.current_phase = "setup"
-    db.commit()
-    db.refresh(setup)
+
+    try:
+        db.commit()
+        db.refresh(setup)
+    except Exception:
+        db.rollback()
+        raise
+
     return setup
 
 

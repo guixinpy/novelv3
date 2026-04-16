@@ -1,3 +1,5 @@
+import json
+import re
 import time
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -8,6 +10,14 @@ from app.core.ai_service import AIService
 from app.core.prompt_manager import PromptManager
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/chapters", tags=["chapters"])
+
+ai_service = AIService()
+
+
+def _count_words(content: str) -> int:
+    ascii_words = len([w for w in re.split(r"\s+", content) if w])
+    cjk_chars = len(re.findall(r"[\u4e00-\u9fff]", content))
+    return ascii_words + cjk_chars
 
 
 @router.post("/{chapter_index}/generate", response_model=ChapterOut)
@@ -27,23 +37,20 @@ async def generate_chapter(project_id: str, chapter_index: int, db: Session = De
         ChapterContent.project_id == project_id,
         ChapterContent.chapter_index == chapter_index,
     ).first()
-    if existing:
-        db.delete(existing)
 
     pm = PromptManager()
     prompt = pm.load(
         "generate_chapter",
         {
-            "world_building": str(setup.world_building),
-            "characters": str(setup.characters),
-            "core_concept": str(setup.core_concept),
+            "world_building": json.dumps(setup.world_building, ensure_ascii=False),
+            "characters": json.dumps(setup.characters, ensure_ascii=False),
+            "core_concept": json.dumps(setup.core_concept, ensure_ascii=False),
             "language": project.language,
         },
     )
 
-    ai = AIService()
     start = time.time()
-    result = await ai.complete(
+    result = await ai_service.complete(
         [{"role": "user", "content": prompt}],
         temperature=0.7,
         max_tokens=4000,
@@ -55,7 +62,7 @@ async def generate_chapter(project_id: str, chapter_index: int, db: Session = De
         chapter_index=chapter_index,
         title=f"第{chapter_index}章",
         content=result.content,
-        word_count=len(result.content),
+        word_count=_count_words(result.content),
         status="generated",
         model=result.model,
         prompt_tokens=result.prompt_tokens,
@@ -63,12 +70,21 @@ async def generate_chapter(project_id: str, chapter_index: int, db: Session = De
         generation_time=elapsed,
         temperature=0.7,
     )
-    db.add(chapter)
 
+    if existing:
+        db.delete(existing)
+
+    db.add(chapter)
     project.current_word_count = chapter.word_count
     project.status = "writing"
-    db.commit()
-    db.refresh(chapter)
+
+    try:
+        db.commit()
+        db.refresh(chapter)
+    except Exception:
+        db.rollback()
+        raise
+
     return chapter
 
 

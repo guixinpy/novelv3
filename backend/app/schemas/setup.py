@@ -30,9 +30,9 @@ class CoreConcept(BaseModel):
 class SetupOut(BaseModel):
     id: str
     project_id: str
-    world_building: WorldBuilding
-    characters: list[CharacterProfile]
-    core_concept: CoreConcept
+    world_building: WorldBuilding = WorldBuilding()
+    characters: list[CharacterProfile] = []
+    core_concept: CoreConcept = CoreConcept()
     status: str
     created_at: datetime
     updated_at: datetime

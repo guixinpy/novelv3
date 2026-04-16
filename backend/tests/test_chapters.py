@@ -1,13 +1,13 @@
 from unittest.mock import AsyncMock, patch
 
 
-@patch("app.api.chapters.AIService.complete", new_callable=AsyncMock)
+@patch("app.api.chapters.ai_service.complete", new_callable=AsyncMock)
 def test_generate_chapter(mock_complete, client):
     r = client.post("/api/v1/projects", json={"name": "Test"})
     pid = r.json()["id"]
 
-    with patch("app.api.setups.AIService.complete", new_callable=AsyncMock) as ms, \
-         patch("app.api.setups.AIService.parse_json") as mp:
+    with patch("app.api.setups.ai_service.complete", new_callable=AsyncMock) as ms, \
+         patch("app.api.setups.ai_service.parse_json") as mp:
         ms.return_value.content = '{"world_building": {}, "characters": [], "core_concept": {}}'
         mp.return_value = {"world_building": {}, "characters": [], "core_concept": {}}
         client.post(f"/api/v1/projects/{pid}/setup/generate")
@@ -21,3 +21,24 @@ def test_generate_chapter(mock_complete, client):
     assert r2.status_code == 200
     assert r2.json()["content"] == "第一章正文内容"
     assert r2.json()["status"] == "generated"
+
+
+def test_generate_chapter_project_not_found(client):
+    r = client.post("/api/v1/projects/nonexistent/chapters/1/generate")
+    assert r.status_code == 404
+
+
+def test_generate_chapter_without_setup(client):
+    r = client.post("/api/v1/projects", json={"name": "Test"})
+    pid = r.json()["id"]
+
+    r2 = client.post(f"/api/v1/projects/{pid}/chapters/1/generate")
+    assert r2.status_code == 400
+
+
+def test_generate_chapter_invalid_index(client):
+    r = client.post("/api/v1/projects", json={"name": "Test"})
+    pid = r.json()["id"]
+
+    r2 = client.post(f"/api/v1/projects/{pid}/chapters/2/generate")
+    assert r2.status_code == 400
