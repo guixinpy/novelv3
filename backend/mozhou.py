@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import uvicorn
 from app.main import app
 

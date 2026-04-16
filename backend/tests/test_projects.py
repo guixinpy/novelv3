@@ -18,7 +18,9 @@ def test_list_projects(client):
     assert r.status_code == 200
     data = r.json()
     assert len(data) == 2
-    assert data[0]["name"] in ("Novel A", "Novel B")
+    names = {p["name"] for p in data}
+    assert names == {"Novel A", "Novel B"}
+    assert data[0]["created_at"] >= data[1]["created_at"]
 
 
 def test_update_project(client):

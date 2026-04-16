@@ -23,8 +23,14 @@ class ProjectUpdate(BaseModel):
     current_word_count: int | None = None
 
 
-class ProjectOut(ProjectCreate):
+class ProjectOut(BaseModel):
     id: str
+    name: str
+    description: str
+    genre: str
+    target_word_count: int
+    style: str
+    complexity: int
     status: str
     current_phase: str
     current_word_count: int
