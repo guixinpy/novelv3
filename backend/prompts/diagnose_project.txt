@@ -1,0 +1,12 @@
+分析以下小说项目的状态，指出已完成和缺失的环节，并给出下一步建议。
+
+项目阶段：{{ current_phase }}
+设定是否已生成：{{ has_setup }}
+故事线是否已生成：{{ has_storyline }}
+大纲是否已生成：{{ has_outline }}
+章节内容是否已生成：{{ has_chapters }}
+
+请以 JSON 返回：
+- missing_items: 字符串数组
+- completed_items: 字符串数组
+- suggested_next_step: 字符串（如 preview_setup / preview_storyline / preview_outline）
