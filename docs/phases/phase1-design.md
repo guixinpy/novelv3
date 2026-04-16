@@ -99,6 +99,22 @@ Phase 1 只建立三张核心表，其余表推迟到 Phase 2。
 | created_at | DateTime | 创建时间 |
 | updated_at | DateTime | 更新时间 |
 
+#### CharacterProfile 结构
+
+```json
+{
+  "name": "李明",
+  "age": 28,
+  "gender": "男",
+  "personality": "谨慎、内心善良",
+  "background": "前程序员，末世爆发后失去家人",
+  "goals": "找到失散的妹妹并建立安全据点",
+  "character_status": "alive"
+}
+```
+
+`character_status` 枚举：`alive` / `dead` / `missing` / `injured`。该字段作为一致性检查的"官方状态"来源。
+
 ### 3.3 chapter_contents
 
 | 字段 | 类型 | 说明 |

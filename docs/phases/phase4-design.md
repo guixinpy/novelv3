@@ -67,7 +67,7 @@ class BackgroundAnalyzer:
 | 描写密度 | 滑块 1-5 | 1=极简，5=极繁 |
 | 对话比例 | 滑块 1-5 | 1=叙述为主，5=对话为主 |
 | 节奏快慢 | 滑块 1-5 | 1=慢热铺垫，5=快节奏推进 |
-| 基调偏好 | 多选 | 黑暗 / 现实 / 轻松 / 悬疑 |
+| 基调偏好 | 多选 | 枚举值：`dark` / `realistic` / `light` / `suspense`（中文界面做 i18n 映射展示） |
 
 ### 2.2 快捷反馈入口
 
@@ -262,14 +262,13 @@ BackgroundAnalyzer 优先实现 3 类核心检查器，`RelationshipChecker` 作
 
 ## 6. 数据模型扩展
 
-### 6.1 project_configs（扩展）
+### 6.1 `projects` 表扩展
 
-扩展 `projects` 表，增加用户显式偏好字段（个人本地场景数据量可控，单表查询更简单）：
+在 `projects` 表中直接增加 `style_config` JSON 字段，存储用户显式偏好（个人本地场景数据量可控，单表查询更简单）：
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| project_id | String(FK) | 关联项目 |
-| style_config | JSON | 用户显式偏好配置 |
+| style_config | JSON | 用户显式偏好配置（扁平键结构） |
 | updated_at | DateTime | 更新时间 |
 
 ### 6.2 few_shot_examples（新增）

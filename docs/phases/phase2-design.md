@@ -301,7 +301,7 @@ Phase 2 在 Phase 1 基础上新增/扩展以下表。
 | project_id | String(FK) | 关联项目 |
 | chapter_index | Integer | 来源章节 |
 | type | String | FactType |
-| source | String | `l1_rule` |
+| source | String | `l1_rule` / `l2_llm` |
 | confidence | Float | 置信度 |
 | data | JSON | {subject, attribute, old_value, new_value} |
 | evidence | JSON | {text, position, summary} |
@@ -619,7 +619,7 @@ POST /api/v1/projects/{project_id}/writing/chapters/{chapter_index}/retry
 }
 ```
 
-`type` 白名单：`preview_setup`、`preview_storyline`、`preview_outline`、`generate_setup`、`generate_storyline`、`generate_outline`、`query_diagnosis`。
+`type` 白名单：`preview_setup`、`preview_storyline`、`preview_outline`、`generate_setup`、`generate_storyline`、`generate_outline`、`revise_setup`、`revise_storyline`、`revise_outline`、`query_diagnosis`。
 
 ### A.2 ProjectDiagnosis
 
@@ -726,8 +726,8 @@ class DomainEvent:
   "id": "edge_xxx",
   "source": "node_char_001",
   "target": "node_char_002",
-  "type": "friendship",
-  "meta": { "strength": 3 }
+  "type": "relationship",
+  "meta": { "relation_subtype": "friendship", "strength": 3 }
 }
 ```
 

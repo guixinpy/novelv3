@@ -99,7 +99,7 @@ class VersionManager:
 |------|------|------|
 | id | String(PK) | UUID |
 | project_id | String(FK) | 关联项目 |
-| node_type | String | `setup` / `storyline` / `outline` / `chapter` |
+| node_type | String | `setup` / `storyline` / `outline` / `chapter`（DB 与 API 查询参数统一使用小写） |
 | node_id | String | 对应节点 ID |
 | version_number | Integer | 自增版本号 |
 | content | Text | 全量快照（JSON） |
