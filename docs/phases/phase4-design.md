@@ -112,7 +112,7 @@ class PreferenceConfig:
 
 ### 3.1 动态 Prompt 注入
 
-用户显式配置的偏好由 `PreferenceConfig` 保存，BackgroundAnalyzer 将其转换为 prompt 规则写入 `prompt_rules` 表，PromptManager 在生成前读取并注入。
+用户显式配置的偏好由 `PreferenceConfig` 保存到 `projects.style_config`。`PromptOptimizer` 在生成前**直接读取 `style_config` 实时构建规则并注入**，不经过 `prompt_rules` 表，避免异步链路竞态。`prompt_rules` 表作为后续阶段（Phase 5+）复杂规则学习的预留结构，Phase 4 暂不使用。
 
 ```python
 class PromptOptimizer:

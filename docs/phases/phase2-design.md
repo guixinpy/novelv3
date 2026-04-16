@@ -151,6 +151,24 @@ POST /api/v1/dialog/resolve-action
 }
 ```
 
+**`resolve-action` 响应体**：
+```json
+{
+  "action_result": {
+    "type": "generate_setup",
+    "status": "success" | "cancelled" | "failure",
+    "data": { "setup_id": "xxx" } | null
+  },
+  "dialog_state": "CHATTING" | "GENERATING" | "ERROR",
+  "message": "AI 的自然语言回复"
+}
+```
+
+> 状态跳转规则：
+> - `decision=confirm` 且执行成功：`dialog_state` 返回 `CHATTING`（若执行是同步且瞬时的）或 `GENERATING`（若执行需要异步生成）
+> - `decision=cancel`：`dialog_state` 返回 `CHATTING`
+> - `decision=revise`：`dialog_state` 返回 `CHATTING`，`action_result.status` 固定为 `cancelled`，用户 `comment` 作为下一条用户消息进入对话上下文
+
 > **执行映射规则**：`resolve-action` 接收到的 `pending_action.type` 若为 `preview_*`，则内部映射为对应的 `generate_*` 实际执行。映射表如下：
 
 | pending_action.type | 实际执行 |
@@ -158,6 +176,8 @@ POST /api/v1/dialog/resolve-action
 | `preview_setup` | `generate_setup` |
 | `preview_storyline` | `generate_storyline` |
 | `preview_outline` | `generate_outline` |
+
+> 非 `preview_*` 类型（如 `query_diagnosis`、`revise_*`）无需映射，直接按自身 `type` 执行。
 
 `ACTION_RESULT` 中的 `type` 字段规则：
 - `confirm + success`：记录实际执行类型（如 `generate_setup`）
@@ -476,6 +496,11 @@ class TaskQueue:
         # 写入 background_tasks 表，并放入内存队列
         ...
 
+    async def recover_on_startup(self):
+        # 将 DB 中 status='pending' 的任务重新入队
+        # 将 status='running' 且超时（如 >10min）的任务标记为 failed，可选重入队或丢弃
+        ...
+
     async def _worker_loop(self):
         while True:
             task = await self.queue.get()
@@ -484,6 +509,8 @@ class TaskQueue:
             except Exception as e:
                 logger.error("Background task failed", error=str(e))
 ```
+
+> **恢复语义**：服务启动时调用 `recover_on_startup()`，确保未完成的 `pending` 任务不会变成僵尸。`running` 任务因服务中断而失联，按超时失败处理。
 
 ---
 

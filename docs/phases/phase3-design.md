@@ -86,12 +86,16 @@ class VersionManager:
         project_id: str,
         node_type: "setup" | "storyline" | "outline" | "chapter",
         node_id: str,
-        content: str,  # JSON 序列化后的全量内容
+        content: str,
         description: str,
         author: "ai_system" | "user",
     ) -> Version:
         ...
 ```
+
+> `content` 存储策略：
+> - `setup` / `storyline` / `outline`：结构化对象序列化后的 **JSON 字符串**
+> - `chapter`：章节正文，直接存 **Markdown 字符串**（无需再包 JSON）
 
 ### 4.2 数据表：versions
 
@@ -102,7 +106,7 @@ class VersionManager:
 | node_type | String | `setup` / `storyline` / `outline` / `chapter`（DB 与 API 查询参数统一使用小写） |
 | node_id | String | 对应节点 ID |
 | version_number | Integer | 自增版本号 |
-| content | Text | 全量快照（JSON） |
+| content | Text | 全量快照：setup/storyline/outline 存 JSON 字符串；chapter 存 Markdown 字符串 |
 | description | String | 版本说明 |
 | author | String | `ai_system` / `user` |
 | created_at | DateTime | 创建时间 |
@@ -110,8 +114,8 @@ class VersionManager:
 ### 4.3 版本对比
 
 前端做轻量级文本对比：
-- 设定/故事线/大纲：用 `diff` 对比 JSON 的文本化表示
-- 章节：用行级 diff 对比 Markdown 正文
+- 设定/故事线/大纲：`content` 是 JSON 字符串，先格式化为 `key: value\n` 的平铺文本（或按字段拆成数组），再逐字段 diff
+- 章节：`content` 是 Markdown 字符串，直接用 `diff-match-patch` 的行级模式做 diff
 
 引入轻量级 diff 库（如 `diff-match-patch`）处理文本差异，**不自研分句 diff 算法**。
 
@@ -155,6 +159,7 @@ CHATTING --(API 错误/超时)--> ERROR
 CHATTING --(用户主动结束对话/切换项目)--> IDLE
 PENDING_ACTION --(用户确认)--> GENERATING
 PENDING_ACTION --(用户取消)--> CHATTING
+PENDING_ACTION --(用户 revise 并补充说明)--> CHATTING
 GENERATING --(完成)--> CHATTING
 GENERATING --(失败)--> ERROR
 GENERATING --(用户点击暂停)--> PAUSED
