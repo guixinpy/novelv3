@@ -344,7 +344,35 @@ GET /api/v1/projects/{project_id}/background-tasks
 GET /api/v1/background-tasks/{task_id}
 ```
 
-返回 BackgroundAnalyzer 任务的执行状态和结果摘要。
+**列表响应示例**：
+```json
+{
+  "tasks": [
+    {
+      "id": "task_xxx",
+      "task_type": "consistency_check",
+      "status": "completed",
+      "created_at": "2026-04-16T10:00:00Z",
+      "started_at": "2026-04-16T10:00:05Z",
+      "finished_at": "2026-04-16T10:00:35Z"
+    }
+  ]
+}
+```
+
+**详情响应示例**：
+```json
+{
+  "id": "task_xxx",
+  "task_type": "consistency_check",
+  "status": "completed",
+  "result": { "issues_found": 2 },
+  "error": null,
+  "created_at": "2026-04-16T10:00:00Z",
+  "started_at": "2026-04-16T10:00:05Z",
+  "finished_at": "2026-04-16T10:00:35Z"
+}
+```
 
 ### 7.3 深度一致性检查 API
 

@@ -267,17 +267,23 @@ interface ProjectDiagnosis {
 }
 ```
 
-### 8.3 异步导出
+### 8.3 导出实现
 
-导出任务放入后台执行（对于长篇小说可能需要几秒）：
+Phase 3 数据量小，采用**同步返回文件流**，简化实现：
 
 ```
 POST /api/v1/projects/{project_id}/export
-GET  /api/v1/export/{task_id}/status
-GET  /api/v1/export/{task_id}/download
+Content-Type: application/json
+
+{
+  "format": "markdown",
+  "include_setup": true,
+  "include_outline": true,
+  "chapter_range": [1, 10]
+}
 ```
 
-Phase 3 数据量小，也可以直接同步返回文件流，简化实现。
+响应直接返回文件流（`Content-Disposition: attachment; filename="xxx.md"`）。
 
 ---
 
@@ -288,17 +294,38 @@ Phase 3 数据量小，也可以直接同步返回文件流，简化实现。
 ```
 GET    /api/v1/projects/{project_id}/versions
 GET    /api/v1/projects/{project_id}/versions?node_type=setup&node_id=xxx
+POST   /api/v1/projects/{project_id}/versions
 POST   /api/v1/projects/{project_id}/versions/{version_id}/rollback
 DELETE /api/v1/projects/{project_id}/versions/{version_id}
+```
+
+**POST /versions 请求体**（工作区"提交为正式版"时调用）：
+```json
+{
+  "node_type": "setup",
+  "node_id": "xxx",
+  "content": "{...}",
+  "description": "用户手动保存",
+  "author": "user"
+}
+```
+
+**POST /versions 响应**：
+```json
+{
+  "version_saved": true,
+  "version_id": "ver_xxx",
+  "version_number": 3
+}
 ```
 
 ### 9.2 导出 API
 
 ```
 POST /api/v1/projects/{project_id}/export
-GET  /api/v1/export/{task_id}/status
-GET  /api/v1/export/{task_id}/download
 ```
+
+同步返回文件流，详见 8.3 节。
 
 ### 9.3 工作区数据 API
 
