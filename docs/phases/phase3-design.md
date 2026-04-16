@@ -60,7 +60,7 @@ Phase 3 延续 Phase 2 的 **Action Proposal + 对话确认** 机制，不引入
 
 工作区中的编辑是**本地草稿式**的：
 - 用户修改内容后点击"保存草稿"
-- 点击"提交为正式版"时，前端直接调用 `POST /api/v1/projects/{project_id}/versions` 创建新版本（不经过 Action Proposal）
+- 点击"提交为正式版"时，前端直接调用 `POST /api/v1/projects/{project_id}/versions` 创建新版本；后端在创建版本的同时将 `content` 覆盖写入对应主数据表（`setups` / `storylines` / `outlines` / `chapter_contents`），不经过 Action Proposal
 - 点击"让 AI 基于修改重生成"时，触发 `revise_xxx` Action，走对话确认流程
 
 ### 3.3 与对话的联动
@@ -311,7 +311,7 @@ DELETE /api/v1/projects/{project_id}/versions/{version_id}
 }
 ```
 
-> `node_id` 来源：`setup` 对应 `setups.id`，`storyline` 对应 `storylines.id`，`outline` 对应 `outlines.id`，`chapter` 对应 `chapter_contents.id`。
+> `node_id` 来源：`setup` 对应 `setups.id`，`storyline` 对应 `storylines.id`，`outline` 对应 `outlines.id`，`chapter` 对应 `chapter_contents.id`。后端在创建版本的同时，将 `content` 覆盖写入对应主数据表节点。
 
 **POST /versions 响应**：
 ```json
@@ -400,7 +400,7 @@ POST /api/v1/projects/{project_id}/state
 }
 ```
 
-> **item 命名空间约定**：`missing_items` 与 `completed_items` 统一使用标准节点类型键：`setup` / `storyline` / `outline` / `content`（与 `projects.current_phase` 对齐）。
+> **item 命名空间约定**：`missing_items` 与 `completed_items` 统一使用标准节点类型键：`setup` / `storyline` / `outline` / `content` / `revision`（与 `projects.current_phase` 对齐）。
 
 后端将 `current_view` 直接写入 `dialogs.current_view` 字段，供后续 `Intent Router` 和前端渲染使用。
 

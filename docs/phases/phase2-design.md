@@ -207,7 +207,7 @@ Intent Router 仅处理以下两类输入：
 ```json
 {
   "role": "system",
-  "content": "[ACTION_RESULT] type=generate_setup, decision=cancel, reason=用户想先修改主角背景"
+  "content": "[ACTION_RESULT] type=preview_setup, decision=cancel, result=cancelled, reason=用户想先修改主角背景"
 }
 ```
 
@@ -679,7 +679,7 @@ POST /api/v1/projects/{project_id}/writing/chapters/{chapter_index}/retry
 }
 ```
 
-> **item 命名空间约定**：`missing_items` 与 `completed_items` 使用标准节点类型键：`setup` / `storyline` / `outline` / `content`（与 `projects.current_phase` 对齐）。
+> **item 命名空间约定**：`missing_items` 与 `completed_items` 使用标准节点类型键：`setup` / `storyline` / `outline` / `content` / `revision`（与 `projects.current_phase` 对齐）。
 
 ### A.3 DomainEvent
 
