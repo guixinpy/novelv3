@@ -1,9 +1,10 @@
 from unittest.mock import AsyncMock, patch
 
 
+@patch("app.api.setups.load_api_key", return_value="sk-test")
 @patch("app.api.setups.ai_service.complete", new_callable=AsyncMock)
 @patch("app.api.setups.ai_service.parse_json")
-def test_generate_setup(mock_parse, mock_complete, client):
+def test_generate_setup(mock_parse, mock_complete, mock_key, client):
     r = client.post("/api/v1/projects", json={"name": "Test"})
     pid = r.json()["id"]
 
@@ -15,6 +16,7 @@ def test_generate_setup(mock_parse, mock_complete, client):
     assert r2.json()["status"] == "generated"
 
 
-def test_generate_setup_project_not_found(client):
+@patch("app.api.setups.load_api_key", return_value="sk-test")
+def test_generate_setup_project_not_found(mock_key, client):
     r = client.post("/api/v1/projects/nonexistent/setup/generate")
     assert r.status_code == 404

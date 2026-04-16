@@ -1,12 +1,14 @@
 from unittest.mock import AsyncMock, patch
 
 
+@patch("app.api.chapters.load_api_key", return_value="sk-test")
 @patch("app.api.chapters.ai_service.complete", new_callable=AsyncMock)
-def test_generate_chapter(mock_complete, client):
+def test_generate_chapter(mock_complete, mock_key, client):
     r = client.post("/api/v1/projects", json={"name": "Test"})
     pid = r.json()["id"]
 
-    with patch("app.api.setups.ai_service.complete", new_callable=AsyncMock) as ms, \
+    with patch("app.api.setups.load_api_key", return_value="sk-test"), \
+         patch("app.api.setups.ai_service.complete", new_callable=AsyncMock) as ms, \
          patch("app.api.setups.ai_service.parse_json") as mp:
         ms.return_value.content = '{"world_building": {}, "characters": [], "core_concept": {}}'
         mp.return_value = {"world_building": {}, "characters": [], "core_concept": {}}
@@ -23,12 +25,14 @@ def test_generate_chapter(mock_complete, client):
     assert r2.json()["status"] == "generated"
 
 
-def test_generate_chapter_project_not_found(client):
+@patch("app.api.chapters.load_api_key", return_value="sk-test")
+def test_generate_chapter_project_not_found(mock_key, client):
     r = client.post("/api/v1/projects/nonexistent/chapters/1/generate")
     assert r.status_code == 404
 
 
-def test_generate_chapter_without_setup(client):
+@patch("app.api.chapters.load_api_key", return_value="sk-test")
+def test_generate_chapter_without_setup(mock_key, client):
     r = client.post("/api/v1/projects", json={"name": "Test"})
     pid = r.json()["id"]
 
@@ -36,7 +40,8 @@ def test_generate_chapter_without_setup(client):
     assert r2.status_code == 400
 
 
-def test_generate_chapter_invalid_index(client):
+@patch("app.api.chapters.load_api_key", return_value="sk-test")
+def test_generate_chapter_invalid_index(mock_key, client):
     r = client.post("/api/v1/projects", json={"name": "Test"})
     pid = r.json()["id"]
 

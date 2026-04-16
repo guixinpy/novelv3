@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models import Project, Setup
 from app.schemas import SetupOut
+from app.config import load_api_key
 from app.core.ai_service import AIService
 from app.core.prompt_manager import PromptManager
 
@@ -14,6 +15,9 @@ ai_service = AIService()
 
 @router.post("/generate", response_model=SetupOut)
 async def generate_setup(project_id: str, db: Session = Depends(get_db)):
+    if not load_api_key():
+        raise HTTPException(status_code=400, detail="API key not configured")
+
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")

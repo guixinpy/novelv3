@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models import Project, Setup, ChapterContent
 from app.schemas import ChapterOut
+from app.config import load_api_key
 from app.core.ai_service import AIService
 from app.core.prompt_manager import PromptManager
 
@@ -22,6 +23,9 @@ def _count_words(content: str) -> int:
 
 @router.post("/{chapter_index}/generate", response_model=ChapterOut)
 async def generate_chapter(project_id: str, chapter_index: int, db: Session = Depends(get_db)):
+    if not load_api_key():
+        raise HTTPException(status_code=400, detail="API key not configured")
+
     if chapter_index != 1:
         raise HTTPException(status_code=400, detail="Phase 1 only supports chapter 1")
 
