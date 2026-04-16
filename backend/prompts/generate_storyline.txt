@@ -1,0 +1,11 @@
+基于以下小说设定，生成结构化故事线（主线+支线+伏笔+里程碑）。
+
+项目名称：{{ name }}
+类型：{{ genre }}
+世界观：{{ world_building }}
+主要角色：{{ characters }}
+核心概念：{{ core_concept }}
+
+请以 JSON 格式返回，包含以下字段：
+- plotlines: Plotline[]，每个包含 name, type(main/sub/romance), milestones[]
+- foreshadowing: Foreshadowing[]，每个包含 hint, planted_chapter, resolved_chapter, status
