@@ -1,2 +1,5 @@
 .worktrees/
 backend/.venv/
+__pycache__/
+*.pyc
+data/
