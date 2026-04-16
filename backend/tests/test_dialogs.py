@@ -1,5 +1,8 @@
 from unittest.mock import AsyncMock, patch
 
+from app.core.intent_router import IntentRouter
+from app.schemas import ProjectDiagnosisOut
+
 
 def test_state_diagnosis_empty_project(client):
     r = client.post("/api/v1/projects", json={"name": "Test"})
@@ -10,3 +13,33 @@ def test_state_diagnosis_empty_project(client):
     data = r2.json()
     assert "setup" in data["missing_items"]
     assert data["suggested_next_step"] == "preview_setup"
+
+
+def test_intent_router_confirmation():
+    router = IntentRouter()
+    diag = ProjectDiagnosisOut(missing_items=["setup"], completed_items=[], suggested_next_step="preview_setup")
+
+    assert router.resolve("好的", "chatting", "act_1", diag).type == "confirm"
+    assert router.resolve("算了", "chatting", "act_1", diag).type == "cancel"
+    assert router.resolve("改一下主角", "chatting", "act_1", diag).type == "revise"
+
+
+def test_intent_router_action_candidate():
+    router = IntentRouter()
+    diag = ProjectDiagnosisOut(missing_items=["setup"], completed_items=[], suggested_next_step="preview_setup")
+
+    assert router.resolve("创建主角设定", "chatting", None, diag).type == "preview_setup"
+
+    diag2 = ProjectDiagnosisOut(missing_items=["storyline"], completed_items=["setup"], suggested_next_step="preview_storyline")
+    assert router.resolve("生成故事线", "chatting", None, diag2).type == "preview_storyline"
+
+    diag3 = ProjectDiagnosisOut(missing_items=["outline"], completed_items=["setup", "storyline"], suggested_next_step="preview_outline")
+    assert router.resolve("写第1章大纲", "chatting", None, diag3).type == "preview_outline"
+
+    assert router.resolve("还有什么要设定的", "chatting", None, diag3).type == "query_diagnosis"
+
+
+def test_intent_router_no_match():
+    router = IntentRouter()
+    diag = ProjectDiagnosisOut(missing_items=["setup"], completed_items=[], suggested_next_step="preview_setup")
+    assert router.resolve("随便聊聊", "chatting", None, diag) is None
