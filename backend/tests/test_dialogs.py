@@ -43,3 +43,45 @@ def test_intent_router_no_match():
     router = IntentRouter()
     diag = ProjectDiagnosisOut(missing_items=["setup"], completed_items=[], suggested_next_step="preview_setup")
     assert router.resolve("随便聊聊", "chatting", None, diag) is None
+
+
+def test_chat_creates_dialog(client):
+    r = client.post("/api/v1/projects", json={"name": "Test"})
+    pid = r.json()["id"]
+
+    r2 = client.post("/api/v1/dialog/chat", json={"project_id": pid, "text": "你好"})
+    assert r2.status_code == 200
+    assert "project_diagnosis" in r2.json()
+
+
+def test_chat_button_action(client):
+    r = client.post("/api/v1/projects", json={"name": "Test"})
+    pid = r.json()["id"]
+
+    r2 = client.post("/api/v1/dialog/chat", json={
+        "project_id": pid,
+        "input_type": "button",
+        "action_type": "preview_setup",
+        "params": {"project_id": pid},
+    })
+    assert r2.status_code == 200
+    assert r2.json()["pending_action"]["type"] == "preview_setup"
+
+
+def test_resolve_action_confirm(client):
+    r = client.post("/api/v1/projects", json={"name": "Test"})
+    pid = r.json()["id"]
+
+    r2 = client.post("/api/v1/dialog/chat", json={
+        "project_id": pid,
+        "input_type": "button",
+        "action_type": "preview_setup",
+    })
+    action_id = r2.json()["pending_action"]["id"]
+
+    r3 = client.post("/api/v1/dialog/resolve-action", json={
+        "action_id": action_id,
+        "decision": "confirm",
+    })
+    assert r3.status_code == 200
+    assert r3.json()["action_result"]["status"] == "success"
