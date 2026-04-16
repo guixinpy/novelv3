@@ -71,7 +71,9 @@ class BackgroundAnalyzer:
 
 ### 2.2 快捷反馈入口
 
-在章节生成结果页面增加一键反馈按钮（如"对话太多"、"节奏太慢"、"描写太少"），点击后自动将对应滑块调整一档并重新生成，降低用户操作成本：
+在章节生成结果页面增加一键反馈按钮（如"对话太多"、"节奏太慢"、"描写太少"），点击后执行以下两步：
+1. 自动调用 `PUT /api/v1/projects/{project_id}/preferences` 将对应滑块调整一档
+2. 自动调用 `POST /api/v1/projects/{project_id}/writing/chapters/{current_chapter}/retry` 重新生成当前章
 
 ```python
 QUICK_FEEDBACK_MAP = {
@@ -168,7 +170,7 @@ class FewShotExampleLibrary:
 
 ## 4. L2 LLM 提取器 + L1/L2 交叉验证
 
-### 4.1 L2 提取器（Reviewer Agent）
+### 4.1 L2 LLM 提取器
 
 用 LLM 从章节内容中深度提取事实，输出结构化 JSON：
 
@@ -285,7 +287,7 @@ BackgroundAnalyzer 优先实现 3 类核心检查器，`RelationshipChecker` 作
 
 ### 6.3 prompt_rules（新增）
 
-Optimizer Agent 生成的动态规则表。
+PromptOptimizer 生成的动态规则表。
 
 | 字段 | 类型 | 说明 |
 |------|------|------|

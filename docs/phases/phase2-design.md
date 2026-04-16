@@ -625,11 +625,13 @@ POST /api/v1/projects/{project_id}/writing/chapters/{chapter_index}/retry
 
 ```json
 {
-  "missing_items": ["world_building", "plotlines"],
-  "completed_items": ["setup_characters"],
+  "missing_items": ["storyline"],
+  "completed_items": ["setup"],
   "suggested_next_step": "preview_storyline"
 }
 ```
+
+> **item 命名空间约定**：`missing_items` 与 `completed_items` 使用标准节点类型键：`setup` / `storyline` / `outline` / `chapters`。
 
 ### A.3 DomainEvent
 

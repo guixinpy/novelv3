@@ -84,7 +84,7 @@ class VersionManager:
     async def create_version(
         self,
         project_id: str,
-        node_type: "SETUP" | "STORYLINE" | "OUTLINE" | "CHAPTER",
+        node_type: "setup" | "storyline" | "outline" | "chapter",
         node_id: str,
         content: str,  # JSON 序列化后的全量内容
         description: str,
@@ -337,6 +337,8 @@ POST /api/v1/projects/{project_id}/state
 }
 ```
 
+> **item 命名空间约定**：`missing_items` 与 `completed_items` 统一使用标准节点类型键：`setup` / `storyline` / `outline` / `chapters`。
+
 后端将 `current_view` 直接写入 `dialogs.current_view` 字段，供后续 `Intent Router` 和前端渲染使用。
 
 ### 9.5 ChapterSummary 结构
@@ -394,7 +396,7 @@ logger.info("export_completed", latency_ms=latency_ms, project_id=pid, format=fm
 
 | 风险 | 应对 |
 |------|------|
-| 版本历史过多导致数据库膨胀 | 只保留最近 50 个版本，更旧的自动归档为文件 |
+| 版本历史过多导致数据库膨胀 | 个人本地场景单项目版本数通常可控；必要时后续通过导出归档或 vacuum 处理 |
 | 工作区编辑与对话修订逻辑冲突 | 统一走 `revise_xxx` Action，工作区编辑只是触发 Action 的另一种入口 |
 | 拓扑图可视化性能差 | 节点数超过 200 时启用聚合/简化渲染 |
 | 富响应格式增加前后端耦合 | 改为前端状态驱动渲染，不依赖后端返回附件结构 |
