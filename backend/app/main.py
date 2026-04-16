@@ -11,6 +11,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from app.api import projects
+
+app.include_router(projects.router)
+
 @app.get("/api/v1/health")
 def health():
     return {"status": "ok"}
