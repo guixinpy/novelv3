@@ -366,11 +366,14 @@ POST /api/v1/projects/{project_id}/export
 ### 9.3 工作区数据 API
 
 复用现有 API，工作区是前端组合页面：
-- `GET /api/v1/projects/{project_id}/setup`
-- `GET /api/v1/projects/{project_id}/storyline`
-- `GET /api/v1/projects/{project_id}/outline`
+- `GET /api/v1/projects/{project_id}/setup` → 返回完整 setup 对象（含 `id`）
+- `GET /api/v1/projects/{project_id}/storyline` → 返回完整 storyline 对象（含 `id`）
+- `GET /api/v1/projects/{project_id}/outline` → 返回完整 outline 对象（含 `id`）
 - `GET /api/v1/projects/{project_id}/chapters`（章节列表，返回 `{ chapters: ChapterSummary[] }`）
+- `GET /api/v1/projects/{project_id}/chapters/{chapter_index}`（单章详情，返回完整 chapter 对象，含 `id`）
 - `GET /api/v1/projects/{project_id}/topology`
+
+> 所有节点对象均包含 `id` 字段，供前端在调用 `POST /versions` 时作为 `node_id` 使用。
 
 ### 9.4 UI 状态 API
 
@@ -412,6 +415,7 @@ POST /api/v1/projects/{project_id}/state
 {
   "chapters": [
     {
+      "id": "chap_xxx",
       "chapter_index": 1,
       "title": "第一章 初入末世",
       "word_count": 3200,
@@ -423,6 +427,7 @@ POST /api/v1/projects/{project_id}/state
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
+| id | String | 对应 `chapter_contents.id`，前端创建版本时作为 `node_id` 使用 |
 | chapter_index | Integer | 章节序号 |
 | title | String | 章节标题 |
 | word_count | Integer | 字数 |
