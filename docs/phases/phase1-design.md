@@ -93,7 +93,7 @@ Phase 1 只建立三张核心表，其余表推迟到 Phase 2。
 | id | String(PK) | UUID |
 | project_id | String(FK) | 关联项目 |
 | world_building | JSON | 世界观（background, geography, society, rules, atmosphere） |
-| characters | JSON | 角色列表 |
+| characters | JSON | 角色列表 `CharacterProfile[]`（含 name, age, gender, personality, background, goals, character_status 等） |
 | core_concept | JSON | 核心概念（theme, premise, hook, unique_selling_point） |
 | status | String | `pending` / `generating` / `generated` / `approved` / `rejected` |
 | created_at | DateTime | 创建时间 |

@@ -313,7 +313,7 @@ Phase 2 在 Phase 1 基础上新增/扩展以下表。
 |------|------|------|
 | id | String(PK) | UUID |
 | project_id | String(FK) | 关联项目 |
-| state | String | `idle` / `chatting` / `pending_action` / `generating` / `revision` / `paused` / `error` |
+| state | String | `idle` / `chatting` / `pending_action` / `generating` / `revision` / `paused` / `error`（DB 层统一小写；API/UI 层使用大写，序列化时互相转换） |
 | pending_action_id | String | 当前未决 action ID（可为空） |
 | current_view | String | 用户当前工作区视图，如 `setup` / `outline` / `content` |
 | created_at | DateTime | 创建时间 |
@@ -660,3 +660,91 @@ class DomainEvent:
 ```
 
 对话中的 system 消息文本表示为：`[ACTION_RESULT] type=generate_setup, decision=confirm, result=success, setup_id=xxx`。
+
+---
+
+## 附录 B：核心 JSON 领域结构定义
+
+### B.1 ChapterOutline
+
+```json
+{
+  "chapter_index": 1,
+  "title": "第一章 初入末世",
+  "summary": "主角在废墟中醒来，发现城市已沦陷...",
+  "scenes": ["废墟醒来", "遭遇第一只变异体", "逃入地铁站"],
+  "characters": ["李明", "王阿姨"],
+  "purpose": "引入世界观，建立主角初始状态"
+}
+```
+
+### B.2 Plotline
+
+```json
+{
+  "name": "主线：生存逃亡",
+  "type": "main",
+  "milestones": [
+    { "chapter_index": 1, "event": "主角醒来" },
+    { "chapter_index": 5, "event": "找到避难所" }
+  ]
+}
+```
+
+`type` 枚举：`main` / `sub` / `romance`。
+
+### B.3 Foreshadowing
+
+```json
+{
+  "hint": "实验室泄露的病毒样本编号",
+  "planted_chapter": 2,
+  "resolved_chapter": 15,
+  "status": "planted"
+}
+```
+
+`status` 枚举：`planted` / `resolved` / `abandoned`。
+
+### B.4 TopologyNode
+
+```json
+{
+  "id": "node_xxx",
+  "type": "CHARACTER",
+  "label": "李明",
+  "meta": { "appearance_count": 12, "last_chapter": 8 }
+}
+```
+
+`type` 枚举：`CHARACTER` / `LOCATION` / `EVENT` / `ITEM`。
+
+### B.5 TopologyEdge
+
+```json
+{
+  "id": "edge_xxx",
+  "source": "node_char_001",
+  "target": "node_char_002",
+  "type": "friendship",
+  "meta": { "strength": 3 }
+}
+```
+
+`type` 枚举：`relationship` / `appearance` / `causality` / `possession`。
+
+### B.6 ExtractedFact
+
+```json
+{
+  "type": "character_state_change",
+  "subject": "李明",
+  "attribute": "身体状况",
+  "old_value": null,
+  "new_value": "左腿骨折",
+  "confidence": 0.95,
+  "evidence": "李明一瘸一拐地走出废墟，左腿传来的剧痛让他冷汗直冒。"
+}
+```
+
+`type` 枚举：`character_state_change` / `location_presence` / `time_reference` / `relationship_change`。

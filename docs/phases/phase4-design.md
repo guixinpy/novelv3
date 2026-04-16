@@ -93,14 +93,14 @@ class PreferenceConfig:
 
 ### 2.4 偏好画像结构
 
+存储、API 和 Prompt 注入均使用同一套扁平键：
+
 ```json
 {
-  "style_preferences": {
-    "description_density": 3,
-    "dialogue_ratio": 2,
-    "pacing_speed": 4,
-    "tone_preferences": ["dark", "realistic"]
-  }
+  "description_density": 3,
+  "dialogue_ratio": 2,
+  "pacing_speed": 4,
+  "tone_preferences": ["dark", "realistic"]
 }
 ```
 
@@ -264,7 +264,7 @@ BackgroundAnalyzer 优先实现 3 类核心检查器，`RelationshipChecker` 作
 
 ### 6.1 project_configs（扩展）
 
-在 `projects` 表或独立配置表中增加用户显式偏好字段：
+扩展 `projects` 表，增加用户显式偏好字段（个人本地场景数据量可控，单表查询更简单）：
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
@@ -311,6 +311,29 @@ PUT  /api/v1/projects/{project_id}/preferences
 POST /api/v1/projects/{project_id}/preferences/reset
 ```
 
+**PUT 请求体示例**：
+```json
+{
+  "description_density": 4,
+  "dialogue_ratio": 2,
+  "pacing_speed": 3,
+  "tone_preferences": ["dark", "suspense"]
+}
+```
+
+**GET 响应示例**：
+```json
+{
+  "config": {
+    "description_density": 4,
+    "dialogue_ratio": 2,
+    "pacing_speed": 3,
+    "tone_preferences": ["dark", "suspense"]
+  },
+  "updated_at": "2026-04-16T10:00:00Z"
+}
+```
+
 ### 7.2 后台任务状态 API（调试/监控用）
 
 ```
@@ -319,6 +342,22 @@ GET /api/v1/background-tasks/{task_id}
 ```
 
 返回 BackgroundAnalyzer 任务的执行状态和结果摘要。
+
+### 7.3 深度一致性检查 API
+
+复用 Phase 2 的一致性检查接口，增加 `depth` 参数以支持 L2 深度分析：
+
+```
+POST /api/v1/projects/{project_id}/chapters/{chapter_index}/consistency-check
+{
+  "depth": "l1" | "l2"
+}
+```
+
+- `depth=l1`（默认）：仅运行 L1 规则提取器和基础检查器
+- `depth=l2`：额外触发 LLM 深度事实提取和 L1/L2 交叉验证，异步执行，结果通过 `background_tasks` 和 `consistency_checks` 回写
+
+用户在工作区点击"深度检查"时，前端自动发送 `depth=l2` 请求。
 
 ---
 
