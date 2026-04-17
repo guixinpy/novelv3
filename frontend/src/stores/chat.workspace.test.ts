@@ -196,4 +196,131 @@ describe('chat workspace polling', () => {
       suggested_next_step: 'preview_outline',
     })
   })
+
+  it('项目 A 的 sendText 响应慢，切到 B 后不能把 A 的响应写回当前 store', async () => {
+    const store = useChatStore()
+
+    vi.mocked(api.getMessages).mockImplementation((projectId: string) => {
+      if (projectId === 'B') {
+        return Promise.resolve([
+          {
+            role: 'assistant',
+            content: 'B 的历史消息',
+            action_result: null,
+            created_at: '2026-04-17T11:00:00Z',
+          },
+        ])
+      }
+      return Promise.resolve([])
+    })
+    vi.mocked(api.getDiagnosis).mockImplementation((projectId: string) => {
+      if (projectId === 'B') {
+        return Promise.resolve({
+          missing_items: ['content'],
+          completed_items: ['setup'],
+          suggested_next_step: 'preview_outline',
+        })
+      }
+      return Promise.resolve({
+        missing_items: [],
+        completed_items: [],
+        suggested_next_step: null,
+      })
+    })
+
+    let resolveSendA!: (value: any) => void
+    vi.mocked(api.sendChat).mockImplementation(({ project_id }: { project_id: string }) => new Promise((resolve) => {
+      if (project_id === 'A') {
+        resolveSendA = resolve
+      }
+    }))
+
+    store.init('A')
+    await Promise.resolve()
+    await Promise.resolve()
+
+    const sendPromise = store.sendText('A 项目的问题')
+    store.init('B')
+    await Promise.resolve()
+    await Promise.resolve()
+
+    resolveSendA({
+      message: 'A 的迟到回复',
+      pending_action: null,
+      ui_hint: null,
+      refresh_targets: [],
+      project_diagnosis: {
+        missing_items: [],
+        completed_items: ['setup', 'storyline'],
+        suggested_next_step: null,
+      },
+    })
+
+    await expect(sendPromise).resolves.toBe(null)
+    expect(store.projectId).toBe('B')
+    expect(store.messages).toEqual([
+      { role: 'assistant', content: 'B 的历史消息', pending_action: null, diagnosis: null, action_result: null },
+    ])
+    expect(store.diagnosis).toEqual({
+      missing_items: ['content'],
+      completed_items: ['setup'],
+      suggested_next_step: 'preview_outline',
+    })
+  })
+
+  it('项目 A 的 resolveAction(confirm) 响应慢，切到 B 后不能在 B 上写回或启动错误轮询', async () => {
+    const store = useChatStore()
+
+    vi.mocked(api.getMessages).mockResolvedValue([])
+    vi.mocked(api.getDiagnosis).mockResolvedValue({
+      missing_items: [],
+      completed_items: [],
+      suggested_next_step: null,
+    })
+
+    store.init('A')
+    await Promise.resolve()
+    await Promise.resolve()
+
+    store.pendingAction = {
+      id: 'action-A',
+      type: 'preview_setup',
+      description: '生成设定',
+      params: { project_id: 'A' },
+      requires_confirmation: true,
+    }
+
+    let resolveActionA!: (value: any) => void
+    vi.mocked(api.resolveAction).mockImplementation(({ action_id }: { action_id: string }) => new Promise((resolve) => {
+      if (action_id === 'action-A') {
+        resolveActionA = resolve
+      }
+    }))
+
+    const resolvePromise = store.resolveAction('confirm')
+    store.init('B')
+    await Promise.resolve()
+    await Promise.resolve()
+
+    resolveActionA({
+      dialog_state: 'RUNNING',
+      message: '操作已确认，正在生成中...',
+      action_result: {
+        type: 'generate_setup',
+        status: 'generating',
+        data: { status: 'generating' },
+      },
+      ui_hint: null,
+      refresh_targets: [],
+    })
+
+    await expect(resolvePromise).resolves.toBe(null)
+    expect(store.projectId).toBe('B')
+    expect(store.messages).toEqual([
+      { role: 'assistant', content: '你好，我是墨舟，你的长篇写作助手。有什么想聊的？' },
+    ])
+
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(api.getMessages).toHaveBeenCalledTimes(2)
+  })
 })

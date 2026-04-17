@@ -44,6 +44,13 @@ export const useChatStore = defineStore('chat', () => {
   const historyCursor = ref(0)
   const initVersion = ref(0)
 
+  function captureSnapshot() {
+    return {
+      pidSnapshot: projectId.value,
+      versionSnapshot: initVersion.value,
+    }
+  }
+
   function isActiveSnapshot(pidSnapshot: string, versionSnapshot: number) {
     return projectId.value === pidSnapshot && initVersion.value === versionSnapshot
   }
@@ -57,6 +64,7 @@ export const useChatStore = defineStore('chat', () => {
     ]
     diagnosis.value = null
     pendingAction.value = null
+    loading.value = false
     historyCursor.value = 0
     void loadHistory(pid, versionSnapshot)
     void loadDiagnosis(pid, versionSnapshot)
@@ -85,14 +93,16 @@ export const useChatStore = defineStore('chat', () => {
 
   async function sendText(text: string): Promise<ChatResponse | null> {
     if (loading.value || !text.trim()) return null
+    const { pidSnapshot, versionSnapshot } = captureSnapshot()
     messages.value.push({ role: 'user', content: text })
     loading.value = true
     try {
       const res = await api.sendChat({
-        project_id: projectId.value,
+        project_id: pidSnapshot,
         input_type: 'text',
         text,
       })
+      if (!isActiveSnapshot(pidSnapshot, versionSnapshot)) return null
       const msg: ChatMessage = {
         role: 'assistant',
         content: res.message,
@@ -105,23 +115,28 @@ export const useChatStore = defineStore('chat', () => {
       if (res.project_diagnosis) diagnosis.value = res.project_diagnosis
       return res
     } catch (e: any) {
+      if (!isActiveSnapshot(pidSnapshot, versionSnapshot)) return null
       messages.value.push({ role: 'assistant', content: `出错了：${e.message}` })
       return null
     } finally {
-      loading.value = false
+      if (isActiveSnapshot(pidSnapshot, versionSnapshot)) {
+        loading.value = false
+      }
     }
   }
 
   async function sendButtonAction(actionType: string): Promise<ChatResponse | null> {
     if (loading.value) return null
+    const { pidSnapshot, versionSnapshot } = captureSnapshot()
     loading.value = true
     try {
       const res = await api.sendChat({
-        project_id: projectId.value,
+        project_id: pidSnapshot,
         input_type: 'button',
         action_type: actionType,
-        params: { project_id: projectId.value },
+        params: { project_id: pidSnapshot },
       })
+      if (!isActiveSnapshot(pidSnapshot, versionSnapshot)) return null
       const msg: ChatMessage = {
         role: 'assistant',
         content: res.message,
@@ -134,19 +149,24 @@ export const useChatStore = defineStore('chat', () => {
       if (res.project_diagnosis) diagnosis.value = res.project_diagnosis
       return res
     } catch (e: any) {
+      if (!isActiveSnapshot(pidSnapshot, versionSnapshot)) return null
       messages.value.push({ role: 'assistant', content: `出错了：${e.message}` })
       return null
     } finally {
-      loading.value = false
+      if (isActiveSnapshot(pidSnapshot, versionSnapshot)) {
+        loading.value = false
+      }
     }
   }
 
   async function resolveAction(decision: 'confirm' | 'cancel' | 'revise', comment = ''): Promise<ResolveActionResponse | null> {
     if (!pendingAction.value || loading.value) return null
+    const { pidSnapshot, versionSnapshot } = captureSnapshot()
     loading.value = true
     const actionId = pendingAction.value.id
     try {
       const res = await api.resolveAction({ action_id: actionId, decision, comment })
+      if (!isActiveSnapshot(pidSnapshot, versionSnapshot)) return null
       pendingAction.value = null
       const msg: ChatMessage = {
         role: 'system',
@@ -156,15 +176,18 @@ export const useChatStore = defineStore('chat', () => {
       messages.value.push(msg)
       historyCursor.value += 1
       if (decision === 'confirm') {
-        void pollForCompletion(String(res.action_result?.type || ''), projectId.value, initVersion.value)
+        void pollForCompletion(String(res.action_result?.type || ''), pidSnapshot, versionSnapshot)
       }
-      await loadDiagnosis()
+      await loadDiagnosis(pidSnapshot, versionSnapshot)
       return res
     } catch (e: any) {
+      if (!isActiveSnapshot(pidSnapshot, versionSnapshot)) return null
       messages.value.push({ role: 'assistant', content: `操作失败：${e.message}` })
       return null
     } finally {
-      loading.value = false
+      if (isActiveSnapshot(pidSnapshot, versionSnapshot)) {
+        loading.value = false
+      }
     }
   }
 
