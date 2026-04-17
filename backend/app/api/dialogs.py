@@ -197,6 +197,8 @@ def _free_reply(text: str, diagnosis: ProjectDiagnosisOut) -> str:
     return "项目基础已就绪，随时可以开始创作。"
 
 
+import asyncio
+
 async def _execute_action(action_type: str, project_id: str, db: Session) -> dict:
     if not project_id:
         return {"status": "failed", "error": "缺少项目 ID"}
@@ -219,6 +221,26 @@ async def _execute_action(action_type: str, project_id: str, db: Session) -> dic
         return {"status": "failed", "error": e.detail}
     except Exception as e:
         return {"status": "failed", "error": str(e)}
+
+
+def _execute_action_background(action_type: str, project_id: str, dialog_id: str):
+    """Fire-and-forget: run generation in background, update dialog message when done."""
+    from app.db import SessionLocal
+
+    async def _run():
+        db = SessionLocal()
+        try:
+            result = await _execute_action(action_type, project_id, db)
+            label_map = {"generate_setup": "设定", "generate_storyline": "故事线", "generate_outline": "大纲"}
+            label = label_map.get(action_type, action_type)
+            if result["status"] == "success":
+                _save_message(db, dialog_id, "system", f"{label}生成完成。", {"type": action_type, "status": "success"})
+            else:
+                _save_message(db, dialog_id, "system", f"{label}生成失败：{result.get('error', '未知错误')}", {"type": action_type, "status": "failed"})
+        finally:
+            db.close()
+
+    asyncio.ensure_future(_run())
 
 
 @router.post("/api/v1/dialog/resolve-action")
@@ -245,10 +267,9 @@ async def resolve_action(payload: ResolveActionIn, db: Session = Depends(get_db)
     result_data = None
     if payload.decision == "confirm":
         project_id = (pending.params or {}).get("project_id", "")
-        exec_result = await _execute_action(action_type, project_id, db)
-        result_data = {"status": exec_result["status"]}
-        if exec_result.get("error"):
-            result_data["error"] = exec_result["error"]
+        if dialog:
+            _execute_action_background(action_type, project_id, dialog.id)
+        result_data = {"status": "generating"}
     elif payload.decision == "cancel":
         result_data = {"status": "cancelled"}
     elif payload.decision == "revise":
@@ -271,7 +292,7 @@ async def resolve_action(payload: ResolveActionIn, db: Session = Depends(get_db)
 
 def _resolve_message(decision: str) -> str:
     if decision == "confirm":
-        return "操作已确认。"
+        return "操作已确认，正在生成中..."
     if decision == "cancel":
         return "操作已取消。"
     if decision == "revise":

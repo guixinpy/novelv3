@@ -127,11 +127,34 @@ export const useChatStore = defineStore('chat', () => {
         action_result: res.action_result || null,
       }
       messages.value.push(msg)
+      if (decision === 'confirm') {
+        pollForCompletion()
+      }
       await loadDiagnosis()
     } catch (e: any) {
       messages.value.push({ role: 'assistant', content: `操作失败：${e.message}` })
     } finally {
       loading.value = false
+    }
+  }
+
+  async function pollForCompletion() {
+    if (!projectId.value) return
+    const currentCount = messages.value.length
+    const maxAttempts = 30
+    for (let i = 0; i < maxAttempts; i++) {
+      await new Promise(r => setTimeout(r, 3000))
+      try {
+        const history = await api.getMessages(projectId.value)
+        if (history && history.length > currentCount) {
+          const newMsgs = history.slice(currentCount)
+          for (const m of newMsgs) {
+            messages.value.push({ role: m.role, content: m.content, action_result: m.action_result || null })
+          }
+          await loadDiagnosis()
+          break
+        }
+      } catch { /* retry */ }
     }
   }
 

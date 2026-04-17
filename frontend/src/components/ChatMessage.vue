@@ -62,6 +62,8 @@ const resultText = computed(() => {
   const label = TYPE_LABELS[r.type] || r.type
   if (r.status === 'success') return `✓ ${label}执行成功`
   if (r.status === 'cancelled') return `✗ 操作已取消`
+  if (r.status === 'generating') return `⏳ ${label}生成中...`
+  if (r.status === 'failed') return `✗ ${label}失败`
   return `${label}: ${r.status}`
 })
 

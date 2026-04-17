@@ -90,4 +90,4 @@ def test_resolve_action_confirm(mock_parse, mock_complete, mock_key, client):
         "decision": "confirm",
     })
     assert r3.status_code == 200
-    assert r3.json()["action_result"]["status"] == "success"
+    assert r3.json()["action_result"]["status"] == "generating"
