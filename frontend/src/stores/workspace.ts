@@ -43,6 +43,14 @@ export function applyUserPanel(state: WorkspaceState, panel: WorkspacePanel, rea
   }
 }
 
+export function recordUserReason(state: WorkspaceState, reason: string): WorkspaceState {
+  return {
+    ...state,
+    source: 'user',
+    reason,
+  }
+}
+
 export function settleUiAction(state: WorkspaceState, status: ActionStatus): WorkspaceState {
   if (state.mode === 'locked' && shouldReturnToLockedPanel(status) && state.lockedPanel) {
     return {
@@ -128,6 +136,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     toggleLock,
     reset,
     applyUserPanel: (panel: WorkspacePanel, reason: string) => Object.assign(state, applyUserPanel(state, panel, reason)),
+    recordUserReason: (reason: string) => Object.assign(state, recordUserReason(state, reason)),
     applyUiHint: (uiHint: UiHint | null | undefined) => Object.assign(state, applyUiHint(state, uiHint)),
     settleUiAction: (status: ActionStatus) => Object.assign(state, settleUiAction(state, status)),
   }
