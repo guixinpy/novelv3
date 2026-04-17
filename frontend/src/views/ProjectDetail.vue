@@ -198,6 +198,7 @@ async function handleResponse(res: UiAwareResponse | null) {
 
 async function send(text: string) {
   if (chat.pendingAction) return
+  workspace.applyUserPanel(workspace.panel, '你发送了一条消息')
   const res = await chat.sendText(text)
   await handleResponse(res)
 }
@@ -213,6 +214,12 @@ async function onQuickAction(type: string) {
 }
 
 async function onDecide(decision: string, comment?: string) {
+  const reason = decision === 'confirm'
+    ? '你确认执行当前动作'
+    : decision === 'cancel'
+      ? '你取消了当前动作'
+      : `你提交了修改意见${comment?.trim() ? `：${comment.trim()}` : ''}`
+  workspace.applyUserPanel(workspace.panel, reason)
   const res = await chat.resolveAction(decision as 'confirm' | 'cancel' | 'revise', comment)
   await handleResponse(res)
 }
@@ -228,6 +235,7 @@ async function loadChapter(index: number) {
 }
 
 async function onExport(format: string) {
+  workspace.applyUserPanel('overview', `你导出了 ${format.toUpperCase()} 文件`)
   await project.exportProject(pid.value, format)
 }
 
