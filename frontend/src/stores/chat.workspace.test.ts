@@ -116,4 +116,84 @@ describe('chat workspace polling', () => {
       store.messages.some((message) => (message.action_result as { status?: string } | null)?.status === 'success'),
     ).toBe(true)
   })
+
+  it('init(A) 后快速 init(B)，A 的迟到历史和诊断不能覆盖 B', async () => {
+    const store = useChatStore()
+
+    let resolveHistoryA!: (value: any[]) => void
+    let resolveHistoryB!: (value: any[]) => void
+    let resolveDiagnosisA!: (value: any) => void
+    let resolveDiagnosisB!: (value: any) => void
+
+    vi.mocked(api.getMessages).mockImplementation((projectId: string) => new Promise((resolve) => {
+      if (projectId === 'A') {
+        resolveHistoryA = resolve
+      } else {
+        resolveHistoryB = resolve
+      }
+    }))
+
+    vi.mocked(api.getDiagnosis).mockImplementation((projectId: string) => new Promise((resolve) => {
+      if (projectId === 'A') {
+        resolveDiagnosisA = resolve
+      } else {
+        resolveDiagnosisB = resolve
+      }
+    }))
+
+    store.init('A')
+    store.init('B')
+
+    resolveHistoryB([
+      {
+        role: 'assistant',
+        content: 'B 的历史消息',
+        action_result: null,
+        created_at: '2026-04-17T10:01:00Z',
+      },
+    ])
+    resolveDiagnosisB({
+      missing_items: ['content'],
+      completed_items: ['setup'],
+      suggested_next_step: 'preview_outline',
+    })
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(store.projectId).toBe('B')
+    expect(store.messages).toEqual([
+      { role: 'assistant', content: 'B 的历史消息', pending_action: null, diagnosis: null, action_result: null },
+    ])
+    expect(store.diagnosis).toEqual({
+      missing_items: ['content'],
+      completed_items: ['setup'],
+      suggested_next_step: 'preview_outline',
+    })
+
+    resolveHistoryA([
+      {
+        role: 'assistant',
+        content: 'A 的迟到消息',
+        action_result: null,
+        created_at: '2026-04-17T10:00:00Z',
+      },
+    ])
+    resolveDiagnosisA({
+      missing_items: [],
+      completed_items: ['setup', 'storyline'],
+      suggested_next_step: null,
+    })
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(store.projectId).toBe('B')
+    expect(store.messages).toEqual([
+      { role: 'assistant', content: 'B 的历史消息', pending_action: null, diagnosis: null, action_result: null },
+    ])
+    expect(store.diagnosis).toEqual({
+      missing_items: ['content'],
+      completed_items: ['setup'],
+      suggested_next_step: 'preview_outline',
+    })
+  })
 })

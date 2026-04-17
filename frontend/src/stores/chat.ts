@@ -42,22 +42,31 @@ export const useChatStore = defineStore('chat', () => {
   const pendingAction = ref<PendingAction | null>(null)
   const loading = ref(false)
   const historyCursor = ref(0)
+  const initVersion = ref(0)
+
+  function isActiveSnapshot(pidSnapshot: string, versionSnapshot: number) {
+    return projectId.value === pidSnapshot && initVersion.value === versionSnapshot
+  }
 
   function init(pid: string) {
+    initVersion.value += 1
+    const versionSnapshot = initVersion.value
     projectId.value = pid
     messages.value = [
       { role: 'assistant', content: '你好，我是墨舟，你的长篇写作助手。有什么想聊的？' },
     ]
+    diagnosis.value = null
     pendingAction.value = null
     historyCursor.value = 0
-    loadHistory()
-    loadDiagnosis()
+    void loadHistory(pid, versionSnapshot)
+    void loadDiagnosis(pid, versionSnapshot)
   }
 
-  async function loadHistory() {
-    if (!projectId.value) return
+  async function loadHistory(pidSnapshot = projectId.value, versionSnapshot = initVersion.value) {
+    if (!pidSnapshot) return
     try {
-      const history = await api.getMessages(projectId.value)
+      const history = await api.getMessages(pidSnapshot)
+      if (!isActiveSnapshot(pidSnapshot, versionSnapshot)) return
       if (history && history.length > 0) {
         messages.value = history.map((message) => toChatMessage(message))
       }
@@ -65,10 +74,12 @@ export const useChatStore = defineStore('chat', () => {
     } catch { /* first visit, no history */ }
   }
 
-  async function loadDiagnosis() {
-    if (!projectId.value) return
+  async function loadDiagnosis(pidSnapshot = projectId.value, versionSnapshot = initVersion.value) {
+    if (!pidSnapshot) return
     try {
-      diagnosis.value = await api.getDiagnosis(projectId.value)
+      const nextDiagnosis = await api.getDiagnosis(pidSnapshot)
+      if (!isActiveSnapshot(pidSnapshot, versionSnapshot)) return
+      diagnosis.value = nextDiagnosis
     } catch { /* ignore */ }
   }
 
@@ -145,7 +156,7 @@ export const useChatStore = defineStore('chat', () => {
       messages.value.push(msg)
       historyCursor.value += 1
       if (decision === 'confirm') {
-        void pollForCompletion(String(res.action_result?.type || ''))
+        void pollForCompletion(String(res.action_result?.type || ''), projectId.value, initVersion.value)
       }
       await loadDiagnosis()
       return res
@@ -157,20 +168,27 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  async function pollForCompletion(actionType: string) {
-    if (!projectId.value || !actionType) return
+  async function pollForCompletion(
+    actionType: string,
+    pidSnapshot = projectId.value,
+    versionSnapshot = initVersion.value,
+  ) {
+    if (!pidSnapshot || !actionType) return
     const maxAttempts = 30
     for (let i = 0; i < maxAttempts; i++) {
+      if (!isActiveSnapshot(pidSnapshot, versionSnapshot)) break
       await new Promise(r => setTimeout(r, 3000))
       try {
-        const history = await api.getMessages(projectId.value)
+        if (!isActiveSnapshot(pidSnapshot, versionSnapshot)) break
+        const history = await api.getMessages(pidSnapshot)
+        if (!isActiveSnapshot(pidSnapshot, versionSnapshot)) break
         if (history && history.length > historyCursor.value) {
           const newMessages = history.slice(historyCursor.value)
           for (const message of newMessages) {
             messages.value.push(toChatMessage(message))
           }
           historyCursor.value = history.length
-          await loadDiagnosis()
+          await loadDiagnosis(pidSnapshot, versionSnapshot)
           if (newMessages.some((message) => isTerminalActionResult(message.action_result || null, actionType))) {
             break
           }
