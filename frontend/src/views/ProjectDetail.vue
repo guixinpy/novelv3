@@ -34,7 +34,8 @@
       <StorylineTab v-else-if="activeTab === 'storyline'" :storyline="project.storyline" />
       <OutlineTab v-else-if="activeTab === 'outline'" :outline="project.outline" />
       <ContentTab v-else-if="activeTab === 'content'" :chapters="project.chapters" :selected-chapter="project.chapter"
-        @select-chapter="loadChapter" />
+        :project-id="pid" @select-chapter="loadChapter" />
+      <TopologyTab v-else-if="activeTab === 'topology'" :topology="project.topology" />
       <VersionsTab v-else-if="activeTab === 'versions'" :versions="project.versions"
         @filter="onFilterVersions" @rollback="onRollback" @delete-version="onDeleteVersion" />
       <PreferencesTab v-else-if="activeTab === 'preferences'" :project-id="pid" />
@@ -58,6 +59,7 @@ import OutlineTab from '../components/tabs/OutlineTab.vue'
 import ContentTab from '../components/tabs/ContentTab.vue'
 import VersionsTab from '../components/tabs/VersionsTab.vue'
 import PreferencesTab from '../components/tabs/PreferencesTab.vue'
+import TopologyTab from '../components/tabs/TopologyTab.vue'
 
 const route = useRoute()
 const project = useProjectStore()
@@ -73,6 +75,7 @@ const tabs = [
   { id: 'storyline', label: '故事线' },
   { id: 'outline', label: '大纲' },
   { id: 'content', label: '正文' },
+  { id: 'topology', label: '拓扑图' },
   { id: 'versions', label: '版本历史' },
   { id: 'preferences', label: '偏好设置' },
 ]
@@ -93,6 +96,7 @@ async function loadAllData() {
   await project.loadOutline(pid).catch(() => {})
   await project.loadChapters(pid).catch(() => {})
   await project.loadVersions(pid).catch(() => {})
+  await project.loadTopology(pid).catch(() => {})
 }
 
 async function send() {
