@@ -41,6 +41,7 @@ async def generate_storyline(project_id: str, db: Session = Depends(get_db)):
         [{"role": "user", "content": prompt}],
         temperature=0.7,
         max_tokens=4000,
+        response_format={"type": "json_object"},
     )
     data = ai_service.parse_json(result.content)
 

@@ -37,15 +37,19 @@ class DeepSeekAdapter:
         temperature: float = 0.7,
         max_tokens: int = 4000,
         model: str = "deepseek-chat",
+        response_format: dict | None = None,
     ) -> CompletionResult:
+        payload = {
+            "model": model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
+        if response_format:
+            payload["response_format"] = response_format
         resp = await self.client.post(
             "/v1/chat/completions",
-            json={
-                "model": model,
-                "messages": messages,
-                "temperature": temperature,
-                "max_tokens": max_tokens,
-            },
+            json=payload,
         )
         resp.raise_for_status()
         data = resp.json()
