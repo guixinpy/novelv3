@@ -1,66 +1,133 @@
 <template>
-  <div>
-    <div class="flex items-center justify-between mb-4">
-      <h2 class="text-xl font-semibold text-gray-900">项目列表</h2>
-      <button
-        @click="showForm = true"
-        class="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700"
-      >
-        新建项目
-      </button>
-    </div>
+  <div class="project-list-view">
+    <ProjectMatrixHero
+      :summary="heroSummary"
+      :total-projects="summary.totalProjects"
+      :total-words="summary.totalWords"
+      :focus-project-name="focusProject?.name"
+      :submitting="creating"
+      @create="create"
+    />
 
-    <div v-if="showForm" class="bg-white rounded-lg shadow p-4 mb-4">
-      <div class="flex flex-col sm:flex-row gap-3">
-        <input
-          v-model="form.name"
-          placeholder="项目名称"
-          class="flex-1 border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-        />
-        <input
-          v-model="form.genre"
-          placeholder="类型"
-          class="flex-1 border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-        />
-        <div class="flex gap-2">
-          <button
-            @click="create"
-            class="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700"
-          >
-            创建
-          </button>
-          <button
-            @click="showForm = false"
-            class="inline-flex items-center rounded-md bg-white border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-          >
-            取消
-          </button>
+    <div class="project-list-view__grid">
+      <section class="project-list-view__main">
+        <div v-if="projects.length === 0" class="project-list-view__empty">
+          <p class="project-list-view__empty-title">矩阵还是空的。</p>
+          <p class="project-list-view__empty-copy">
+            先创建一个项目，把设定、故事线和大纲放进同一条创作链路里。
+          </p>
         </div>
-      </div>
-    </div>
 
-    <div v-if="store.projects.length === 0" class="text-center text-gray-500 py-12">
-      暂无项目，点击上方按钮创建第一个项目
-    </div>
+        <div v-else class="project-list-view__matrix">
+          <ProjectCard v-for="project in projects" :key="project.id" :project="project" />
+        </div>
+      </section>
 
-    <ProjectCard v-for="p in store.projects" :key="p.id" :project="p" />
+      <ProjectFocusRail
+        :summary="summary"
+        :focus-project="focusProject"
+        :focus-insight="focusInsight"
+      />
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { useProjectStore } from '../stores/project'
+import { computed, onMounted, ref } from 'vue'
 import ProjectCard from '../components/ProjectCard.vue'
+import ProjectFocusRail from '../components/list/ProjectFocusRail.vue'
+import ProjectMatrixHero from '../components/list/ProjectMatrixHero.vue'
+import {
+  buildProjectInsight,
+  buildProjectPortfolioSummary,
+  pickFocusProject,
+  type ProjectListProject,
+} from '../components/list/projectListMeta'
+import { useProjectStore } from '../stores/project'
 
 const store = useProjectStore()
-const showForm = ref(false)
-const form = ref({ name: '', genre: '' })
+const creating = ref(false)
+
+const projects = computed<ProjectListProject[]>(() => store.projects)
+const summary = computed(() => buildProjectPortfolioSummary(projects.value))
+const focusProject = computed(() => pickFocusProject(projects.value))
+const focusInsight = computed(() => (
+  focusProject.value ? buildProjectInsight(focusProject.value) : undefined
+))
+
+const heroSummary = computed(() => {
+  if (!focusProject.value || !focusInsight.value) {
+    return '这里不做项目仓库清单，只帮你决定下一步要不要开工。先新建一个项目，系统会从设定开始把链路铺好。'
+  }
+
+  return `当前共 ${summary.value.totalProjects} 个项目，${summary.value.pendingLabel}。最值得继续的是「${focusProject.value.name}」，建议下一步：${focusInsight.value.nextStepLabel}。`
+})
 
 onMounted(() => store.loadProjects())
 
-async function create() {
-  await store.createProject(form.value)
-  showForm.value = false
-  form.value = { name: '', genre: '' }
+async function create(payload: { name: string; genre: string }) {
+  creating.value = true
+  try {
+    await store.createProject(payload)
+  } finally {
+    creating.value = false
+  }
 }
 </script>
+
+<style scoped>
+.project-list-view {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.project-list-view__grid {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.project-list-view__main {
+  min-width: 0;
+}
+
+.project-list-view__matrix {
+  display: grid;
+  gap: 1rem;
+}
+
+.project-list-view__empty {
+  border: 1px dashed rgba(111, 69, 31, 0.24);
+  border-radius: 1.8rem;
+  padding: 2.25rem 1.5rem;
+  background: rgba(252, 248, 239, 0.7);
+  text-align: center;
+}
+
+.project-list-view__empty-title {
+  color: var(--ink-strong);
+  font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", serif;
+  font-size: 1.8rem;
+  line-height: 1.1;
+}
+
+.project-list-view__empty-copy {
+  margin: 0.75rem auto 0;
+  max-width: 28rem;
+  color: var(--ink-muted);
+  font-size: 0.96rem;
+  line-height: 1.7;
+}
+
+@media (min-width: 900px) {
+  .project-list-view__matrix {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1280px) {
+  .project-list-view__grid {
+    grid-template-columns: minmax(0, 1fr) 21rem;
+    align-items: start;
+  }
+}
+</style>
