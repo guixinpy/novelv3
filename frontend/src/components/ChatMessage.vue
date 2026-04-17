@@ -47,12 +47,22 @@ const bubbleClass = computed(() => {
   return 'bg-gray-100 text-gray-900'
 })
 
+const TYPE_LABELS: Record<string, string> = {
+  generate_setup: '生成设定',
+  generate_storyline: '生成故事线',
+  generate_outline: '生成大纲',
+  preview_setup: '生成设定',
+  preview_storyline: '生成故事线',
+  preview_outline: '生成大纲',
+}
+
 const resultText = computed(() => {
   const r = props.msg.action_result
   if (!r) return ''
-  if (r.status === 'success') return `✓ ${r.type} 执行成功`
+  const label = TYPE_LABELS[r.type] || r.type
+  if (r.status === 'success') return `✓ ${label}执行成功`
   if (r.status === 'cancelled') return `✗ 操作已取消`
-  return `${r.type}: ${r.status}`
+  return `${label}: ${r.status}`
 })
 
 function onDecide(decision: string, comment?: string) {

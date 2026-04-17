@@ -68,7 +68,10 @@ def test_chat_button_action(client):
     assert r2.json()["pending_action"]["type"] == "preview_setup"
 
 
-def test_resolve_action_confirm(client):
+@patch("app.api.setups.load_api_key", return_value="sk-test")
+@patch("app.api.setups.ai_service.complete", new_callable=AsyncMock)
+@patch("app.api.setups.ai_service.parse_json")
+def test_resolve_action_confirm(mock_parse, mock_complete, mock_key, client):
     r = client.post("/api/v1/projects", json={"name": "Test"})
     pid = r.json()["id"]
 
@@ -78,6 +81,9 @@ def test_resolve_action_confirm(client):
         "action_type": "preview_setup",
     })
     action_id = r2.json()["pending_action"]["id"]
+
+    mock_complete.return_value.content = '{"world_building": {}, "characters": [], "core_concept": {}}'
+    mock_parse.return_value = {"world_building": {}, "characters": [], "core_concept": {}}
 
     r3 = client.post("/api/v1/dialog/resolve-action", json={
         "action_id": action_id,

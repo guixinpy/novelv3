@@ -190,13 +190,39 @@ def _action_description(action_type: str) -> str:
 
 
 def _free_reply(text: str, diagnosis: ProjectDiagnosisOut) -> str:
+    label_map = {"setup": "设定", "storyline": "故事线", "outline": "大纲", "content": "正文"}
     if diagnosis.missing_items:
-        return f"目前项目还缺少：{', '.join(diagnosis.missing_items)}。建议先补全这些环节。"
+        names = [label_map.get(i, i) for i in diagnosis.missing_items]
+        return f"目前项目还缺少：{'、'.join(names)}。建议先补全这些环节。"
     return "项目基础已就绪，随时可以开始创作。"
 
 
+async def _execute_action(action_type: str, project_id: str, db: Session) -> dict:
+    if not project_id:
+        return {"status": "failed", "error": "缺少项目 ID"}
+    try:
+        if action_type == "generate_setup":
+            from app.api.setups import generate_setup
+            await generate_setup(project_id, db)
+            return {"status": "success"}
+        elif action_type == "generate_storyline":
+            from app.api.storylines import generate_storyline
+            await generate_storyline(project_id, db)
+            return {"status": "success"}
+        elif action_type == "generate_outline":
+            from app.api.outlines import generate_outline
+            await generate_outline(project_id, db)
+            return {"status": "success"}
+        else:
+            return {"status": "success"}
+    except HTTPException as e:
+        return {"status": "failed", "error": e.detail}
+    except Exception as e:
+        return {"status": "failed", "error": str(e)}
+
+
 @router.post("/api/v1/dialog/resolve-action")
-def resolve_action(payload: ResolveActionIn, db: Session = Depends(get_db)):
+async def resolve_action(payload: ResolveActionIn, db: Session = Depends(get_db)):
     pending = db.query(PendingAction).filter(PendingAction.id == payload.action_id).first()
     if not pending:
         raise HTTPException(status_code=404, detail="Pending action not found")
@@ -218,7 +244,11 @@ def resolve_action(payload: ResolveActionIn, db: Session = Depends(get_db)):
 
     result_data = None
     if payload.decision == "confirm":
-        result_data = {"status": "success"}
+        project_id = (pending.params or {}).get("project_id", "")
+        exec_result = await _execute_action(action_type, project_id, db)
+        result_data = {"status": exec_result["status"]}
+        if exec_result.get("error"):
+            result_data["error"] = exec_result["error"]
     elif payload.decision == "cancel":
         result_data = {"status": "cancelled"}
     elif payload.decision == "revise":
