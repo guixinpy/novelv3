@@ -132,6 +132,11 @@ export function buildProjectPortfolioSummary(projects: ProjectListProject[]): Pr
   const totalWords = projects.reduce((sum, project) => sum + toNumber(project.current_word_count), 0)
   const activeProjects = projects.filter((project) => (project.status || '') !== 'archived').length
   const pendingProjects = projects.filter((project) => (project.status || '') !== 'writing').length
+  const pendingLabel = totalProjects === 0
+    ? '还没有项目，先创建一个进入创作链路'
+    : pendingProjects > 0
+      ? `${pendingProjects} 个项目待推进`
+      : '全部项目都在正文推进中'
 
   return {
     totalProjects,
@@ -139,6 +144,6 @@ export function buildProjectPortfolioSummary(projects: ProjectListProject[]): Pr
     writingProjects,
     totalWords,
     pendingProjects,
-    pendingLabel: pendingProjects > 0 ? `${pendingProjects} 个项目待推进` : '全部项目都在正文推进中',
+    pendingLabel,
   }
 }

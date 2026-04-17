@@ -52,6 +52,8 @@
         >
           {{ submitting ? '创建中...' : '创建并加入矩阵' }}
         </button>
+
+        <p v-if="submitError" class="matrix-hero__error">{{ submitError }}</p>
       </form>
     </div>
   </section>
@@ -59,26 +61,39 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import {
+  normalizeCreateProjectResult,
+  type CreateProjectHandler,
+} from './projectMatrixHeroSubmit'
 
 const props = defineProps<{
   summary: string
   totalProjects: number
   totalWords: number
   focusProjectName?: string
+  createProject: CreateProjectHandler
   submitting?: boolean
-}>()
-
-const emit = defineEmits<{
-  create: [payload: { name: string; genre: string }]
 }>()
 
 const composerOpen = ref(false)
 const name = ref('')
 const genre = ref('')
+const submitError = ref('')
 
-function submit() {
+async function submit() {
   if (!name.value || props.submitting) return
-  emit('create', { name: name.value, genre: genre.value })
+  submitError.value = ''
+
+  const created = await normalizeCreateProjectResult(props.createProject, {
+    name: name.value,
+    genre: genre.value,
+  })
+
+  if (!created) {
+    submitError.value = '创建失败，输入已保留。'
+    return
+  }
+
   name.value = ''
   genre.value = ''
   composerOpen.value = false
@@ -220,6 +235,12 @@ function submit() {
 .matrix-hero__input:focus {
   border-color: rgba(111, 69, 31, 0.34);
   box-shadow: 0 0 0 3px rgba(141, 93, 49, 0.12);
+}
+
+.matrix-hero__error {
+  color: #8b3f2f;
+  font-size: 0.88rem;
+  line-height: 1.5;
 }
 
 @media (min-width: 960px) {

@@ -4,6 +4,7 @@ import {
   buildProjectPortfolioSummary,
   pickFocusProject,
 } from './projectListMeta'
+import { normalizeCreateProjectResult } from './projectMatrixHeroSubmit'
 
 function makeProject(overrides: Record<string, unknown> = {}) {
   return {
@@ -88,5 +89,20 @@ describe('project list meta', () => {
     expect(summary.writingProjects).toBe(1)
     expect(summary.totalWords).toBe(30000)
     expect(summary.pendingLabel).toBe('2 个项目待推进')
+  })
+
+  it('空矩阵时返回专用概况文案', () => {
+    const summary = buildProjectPortfolioSummary([])
+
+    expect(summary.totalProjects).toBe(0)
+    expect(summary.pendingLabel).toBe('还没有项目，先创建一个进入创作链路')
+  })
+
+  it('只有父层确认创建成功后才算创建成功', async () => {
+    await expect(normalizeCreateProjectResult(async () => true, { name: '雾港档案', genre: '悬疑' })).resolves.toBe(true)
+    await expect(normalizeCreateProjectResult(async () => false, { name: '雾港档案', genre: '悬疑' })).resolves.toBe(false)
+    await expect(normalizeCreateProjectResult(async () => {
+      throw new Error('boom')
+    }, { name: '雾港档案', genre: '悬疑' })).resolves.toBe(false)
   })
 })

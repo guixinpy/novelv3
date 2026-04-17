@@ -5,8 +5,8 @@
       :total-projects="summary.totalProjects"
       :total-words="summary.totalWords"
       :focus-project-name="focusProject?.name"
+      :create-project="create"
       :submitting="creating"
-      @create="create"
     />
 
     <div class="project-list-view__grid">
@@ -69,6 +69,9 @@ async function create(payload: { name: string; genre: string }) {
   creating.value = true
   try {
     await store.createProject(payload)
+    return true
+  } catch {
+    return false
   } finally {
     creating.value = false
   }
