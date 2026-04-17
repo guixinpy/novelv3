@@ -32,11 +32,8 @@ const input = ref('')
 
 function send() {
   if (!input.value.trim()) return
-  chat.sendUserMessage(input.value)
-  // Phase 1: echo a simple assistant reply
-  setTimeout(() => {
-    chat.appendAssistantMessage('收到。你可以在项目详情页中生成设定和章节。')
-  }, 300)
+  const text = input.value
   input.value = ''
+  chat.sendText(text)
 }
 </script>
