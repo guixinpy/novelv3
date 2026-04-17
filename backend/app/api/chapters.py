@@ -132,6 +132,18 @@ async def generate_chapter(project_id: str, chapter_index: int, db: Session = De
         db.rollback()
         raise
 
+    # Auto-run L1 consistency check
+    try:
+        from app.core.consistency_checker import ConsistencyChecker
+        from app.models import ConsistencyCheck
+        checker = ConsistencyChecker()
+        issues = checker.check(project_id, chapter, setup)
+        for issue in issues:
+            db.add(ConsistencyCheck(**issue))
+        db.commit()
+    except Exception:
+        pass  # Don't fail chapter generation if check fails
+
     return chapter
 
 

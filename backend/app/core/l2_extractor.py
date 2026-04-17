@@ -2,7 +2,7 @@ import json
 from app.core.ai_service import AIService
 from app.config import load_api_key
 
-EXTRACTION_PROMPT = """分析以下章节内容，提取所有事实变化。以 JSON 数组格式返回，每个元素包含：
+EXTRACTION_PROMPT = """分析以下章节内容，提取所有事实变化。以 JSON 格式返回，包含一个 "facts" 数组，每个元素包含：
 - type: character_state_change / location_presence / time_reference / relationship_change
 - subject: 涉及的角色或实体名
 - attribute: 变化的属性
@@ -13,7 +13,7 @@ EXTRACTION_PROMPT = """分析以下章节内容，提取所有事实变化。以
 章节内容：
 {content}
 
-只返回 JSON 数组，不要其他文字。"""
+返回格式：{{"facts": [...]}}"""
 
 
 class L2LLMExtractor:
