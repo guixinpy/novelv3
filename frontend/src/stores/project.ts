@@ -20,6 +20,19 @@ export const useProjectStore = defineStore('project', () => {
     projects.value = await api.listProjects()
   }
 
+  function resetProjectScopedState() {
+    currentProject.value = null
+    setup.value = null
+    chapter.value = null
+    storyline.value = null
+    outline.value = null
+    topology.value = null
+    chapters.value = []
+    versions.value = []
+    preferences.value = null
+    versionsNodeType.value = undefined
+  }
+
   async function createProject(data: any) {
     const p = await api.createProject(data)
     projects.value.unshift(p)
@@ -158,6 +171,7 @@ export const useProjectStore = defineStore('project', () => {
 
   return {
     projects, currentProject, setup, chapter, storyline, outline, topology, chapters, versions, preferences, versionsNodeType,
+    resetProjectScopedState,
     loadProjects, createProject, loadProject,
     generateSetup, loadSetup, generateChapter, loadChapter,
     generateStoryline, loadStoryline, generateOutline, loadOutline, loadTopology,

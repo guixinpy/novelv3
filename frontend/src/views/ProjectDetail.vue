@@ -133,6 +133,7 @@ watch(latestActionFingerprint, async (fingerprint) => {
 async function initialize(projectId: string) {
   ready.value = false
   hydratedTargets.clear()
+  project.resetProjectScopedState()
   workspace.reset()
   chat.init(projectId)
   await project.loadProject(projectId)

@@ -19,12 +19,29 @@ export interface ChatMessage {
   action_result?: Record<string, unknown> | null
 }
 
+function toChatMessage(message: any): ChatMessage {
+  return {
+    role: message.role,
+    content: message.content,
+    pending_action: message.pending_action || null,
+    diagnosis: message.diagnosis || null,
+    action_result: message.action_result || null,
+  }
+}
+
+function isTerminalActionResult(actionResult: Record<string, unknown> | null | undefined, actionType: string) {
+  if (!actionResult) return false
+  return actionResult.type === actionType
+    && ['completed', 'success', 'failed', 'cancelled', 'revised'].includes(String(actionResult.status || ''))
+}
+
 export const useChatStore = defineStore('chat', () => {
   const messages = ref<ChatMessage[]>([])
   const projectId = ref<string>('')
   const diagnosis = ref<Diagnosis | null>(null)
   const pendingAction = ref<PendingAction | null>(null)
   const loading = ref(false)
+  const historyCursor = ref(0)
 
   function init(pid: string) {
     projectId.value = pid
@@ -32,6 +49,7 @@ export const useChatStore = defineStore('chat', () => {
       { role: 'assistant', content: '你好，我是墨舟，你的长篇写作助手。有什么想聊的？' },
     ]
     pendingAction.value = null
+    historyCursor.value = 0
     loadHistory()
     loadDiagnosis()
   }
@@ -41,12 +59,9 @@ export const useChatStore = defineStore('chat', () => {
     try {
       const history = await api.getMessages(projectId.value)
       if (history && history.length > 0) {
-        messages.value = history.map((m: any) => ({
-          role: m.role,
-          content: m.content,
-          action_result: m.action_result || null,
-        }))
+        messages.value = history.map((message) => toChatMessage(message))
       }
+      historyCursor.value = history?.length || 0
     } catch { /* first visit, no history */ }
   }
 
@@ -74,6 +89,7 @@ export const useChatStore = defineStore('chat', () => {
         diagnosis: res.project_diagnosis || null,
       }
       messages.value.push(msg)
+      historyCursor.value += 2
       if (res.pending_action) pendingAction.value = res.pending_action
       if (res.project_diagnosis) diagnosis.value = res.project_diagnosis
       return res
@@ -102,6 +118,7 @@ export const useChatStore = defineStore('chat', () => {
         diagnosis: res.project_diagnosis || null,
       }
       messages.value.push(msg)
+      historyCursor.value += 1
       if (res.pending_action) pendingAction.value = res.pending_action
       if (res.project_diagnosis) diagnosis.value = res.project_diagnosis
       return res
@@ -126,8 +143,9 @@ export const useChatStore = defineStore('chat', () => {
         action_result: res.action_result || null,
       }
       messages.value.push(msg)
+      historyCursor.value += 1
       if (decision === 'confirm') {
-        pollForCompletion()
+        void pollForCompletion(String(res.action_result?.type || ''))
       }
       await loadDiagnosis()
       return res
@@ -139,21 +157,23 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  async function pollForCompletion() {
-    if (!projectId.value) return
-    const currentCount = messages.value.length
+  async function pollForCompletion(actionType: string) {
+    if (!projectId.value || !actionType) return
     const maxAttempts = 30
     for (let i = 0; i < maxAttempts; i++) {
       await new Promise(r => setTimeout(r, 3000))
       try {
         const history = await api.getMessages(projectId.value)
-        if (history && history.length > currentCount) {
-          const newMsgs = history.slice(currentCount)
-          for (const m of newMsgs) {
-            messages.value.push({ role: m.role, content: m.content, action_result: m.action_result || null })
+        if (history && history.length > historyCursor.value) {
+          const newMessages = history.slice(historyCursor.value)
+          for (const message of newMessages) {
+            messages.value.push(toChatMessage(message))
           }
+          historyCursor.value = history.length
           await loadDiagnosis()
-          break
+          if (newMessages.some((message) => isTerminalActionResult(message.action_result || null, actionType))) {
+            break
+          }
         }
       } catch { /* retry */ }
     }
