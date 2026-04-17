@@ -28,9 +28,23 @@ def action_to_refresh_targets(action_type: str | None, status: str | None = None
     return ACTION_TO_REFRESH_TARGETS.get(action_type, [])
 
 
-def build_ui_hint(action_type: str | None, dialog_state: str, status: str) -> dict:
+def task_status_to_dialog_state(status: str | None) -> str:
+    status_value = (status or "").lower()
+    if status_value in {"completed", "failed", "cancelled"}:
+        return "CHATTING"
+    if status_value in {"running", "pending"}:
+        return "RUNNING"
+    return "CHATTING"
+
+
+def build_ui_hint(action_type: str | None, dialog_state: str, status: str, reason: str = "") -> dict:
+    active_action_type = action_type or "chat"
     return {
         "dialog_state": (dialog_state or "IDLE").upper(),
-        "target_panel": action_to_panel(action_type),
-        "status": (status or "").lower(),
+        "active_action": {
+            "type": active_action_type,
+            "status": (status or "").lower(),
+            "target_panel": action_to_panel(action_type),
+            "reason": reason,
+        },
     }

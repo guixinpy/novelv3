@@ -35,6 +35,8 @@ class PendingActionOut(BaseModel):
 class ActiveActionOut(BaseModel):
     type: str
     status: str
+    target_panel: str
+    reason: str = ""
 
 
 class ProjectDiagnosisOut(BaseModel):
@@ -45,14 +47,12 @@ class ProjectDiagnosisOut(BaseModel):
 
 class UiHintOut(BaseModel):
     dialog_state: str
-    target_panel: str
-    status: str
+    active_action: ActiveActionOut
 
 
 class ChatOut(BaseModel):
     message: str
     pending_action: PendingActionOut | None = None
-    active_action: ActiveActionOut | None = None
     ui_hint: UiHintOut | None = None
     refresh_targets: list[str] = Field(default_factory=list)
     project_diagnosis: ProjectDiagnosisOut

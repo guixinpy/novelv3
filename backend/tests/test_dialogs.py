@@ -51,7 +51,12 @@ def test_chat_creates_dialog(client):
 
     r2 = client.post("/api/v1/dialog/chat", json={"project_id": pid, "text": "你好"})
     assert r2.status_code == 200
-    assert "project_diagnosis" in r2.json()
+    data = r2.json()
+    assert "project_diagnosis" in data
+    assert data["ui_hint"]["dialog_state"] == "CHATTING"
+    assert data["ui_hint"]["active_action"]["type"] == "chat"
+    assert data["ui_hint"]["active_action"]["status"] == "idle"
+    assert data["refresh_targets"] == []
 
 
 def test_chat_button_action(client):
@@ -68,8 +73,12 @@ def test_chat_button_action(client):
     assert r2.json()["pending_action"]["type"] == "preview_setup"
     assert r2.json()["ui_hint"] == {
         "dialog_state": "PENDING_ACTION",
-        "target_panel": "setup",
-        "status": "pending",
+        "active_action": {
+            "type": "preview_setup",
+            "status": "pending",
+            "target_panel": "setup",
+            "reason": "等待用户确认",
+        },
     }
     assert r2.json()["refresh_targets"] == []
 
@@ -99,7 +108,11 @@ def test_resolve_action_confirm(mock_parse, mock_complete, mock_key, client):
     assert r3.json()["action_result"]["status"] == "generating"
     assert r3.json()["ui_hint"] == {
         "dialog_state": "RUNNING",
-        "target_panel": "setup",
-        "status": "running",
+        "active_action": {
+            "type": "generate_setup",
+            "status": "running",
+            "target_panel": "setup",
+            "reason": "用户确认执行",
+        },
     }
     assert r3.json()["refresh_targets"] == []

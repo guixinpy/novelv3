@@ -25,11 +25,9 @@ def test_get_background_task_with_ui_hint(client, db_session):
 
     r2 = client.get(f"/api/v1/background-tasks/{task.id}")
     assert r2.status_code == 200
-    assert r2.json()["ui_hint"] == {
-        "dialog_state": "COMPLETED",
-        "target_panel": "outline",
-        "status": "completed",
-    }
+    assert r2.json()["ui_hint"]["dialog_state"] == "CHATTING"
+    assert r2.json()["ui_hint"]["active_action"]["target_panel"] == "outline"
+    assert r2.json()["ui_hint"]["active_action"]["status"] == "completed"
     assert r2.json()["refresh_targets"] == ["outline", "versions"]
 
 

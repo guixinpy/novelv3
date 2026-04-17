@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models import Project, BackgroundTask
-from app.core.ui_hints import build_ui_hint, action_to_refresh_targets
+from app.core.ui_hints import build_ui_hint, action_to_refresh_targets, task_status_to_dialog_state
 
 router = APIRouter(tags=["background-tasks"])
 
@@ -29,8 +29,9 @@ def get_background_task(task_id: str, db: Session = Depends(get_db)):
         "error": task.error,
         "ui_hint": build_ui_hint(
             action_type=task.task_type,
-            dialog_state=(task.status or "idle").upper(),
+            dialog_state=task_status_to_dialog_state(task.status),
             status=task.status or "pending",
+            reason="后台任务状态更新",
         ),
         "refresh_targets": action_to_refresh_targets(task.task_type, task.status),
         "created_at": task.created_at.isoformat() if task.created_at else None,

@@ -130,6 +130,7 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
                 action_type=pending.type,
                 dialog_state="PENDING_ACTION",
                 status="pending",
+                reason="等待用户确认",
             ),
             refresh_targets=action_to_refresh_targets(pending.type, "pending"),
             project_diagnosis=diagnosis,
@@ -146,9 +147,20 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
     if candidate and candidate.type in ("confirm", "cancel", "revise"):
         reply = "请通过 resolve-action 接口提交决策。"
         _save_message(db, dialog.id, "assistant", reply)
+        pending = None
+        if dialog.pending_action_id:
+            pending = db.query(PendingAction).filter(PendingAction.id == dialog.pending_action_id).first()
+        pending_type = pending.type if pending else candidate.type
         return ChatOut(
             message=reply,
             pending_action=None,
+            ui_hint=build_ui_hint(
+                action_type=pending_type,
+                dialog_state="PENDING_ACTION",
+                status="pending",
+                reason="等待用户通过 resolve-action 决策",
+            ),
+            refresh_targets=[],
             project_diagnosis=diagnosis,
         )
 
@@ -178,6 +190,7 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
                 action_type=pending.type,
                 dialog_state="PENDING_ACTION",
                 status="pending",
+                reason="等待用户确认",
             ),
             refresh_targets=action_to_refresh_targets(pending.type, "pending"),
             project_diagnosis=diagnosis,
@@ -188,6 +201,13 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
     return ChatOut(
         message=reply,
         pending_action=None,
+        ui_hint=build_ui_hint(
+            action_type="chat",
+            dialog_state="CHATTING",
+            status="idle",
+            reason="常规对话",
+        ),
+        refresh_targets=[],
         project_diagnosis=diagnosis,
     )
 
@@ -304,6 +324,7 @@ async def resolve_action(payload: ResolveActionIn, db: Session = Depends(get_db)
             action_type=action_type,
             dialog_state="RUNNING" if payload.decision == "confirm" else "CHATTING",
             status="running" if payload.decision == "confirm" else result_data["status"],
+            reason="用户确认执行" if payload.decision == "confirm" else "操作已结束",
         ),
         "refresh_targets": action_to_refresh_targets(action_type, result_data["status"]),
     }
