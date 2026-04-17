@@ -55,7 +55,7 @@ export const useChatStore = defineStore('chat', () => {
     return projectId.value === pidSnapshot && initVersion.value === versionSnapshot
   }
 
-  function init(pid: string) {
+  async function init(pid: string) {
     initVersion.value += 1
     const versionSnapshot = initVersion.value
     projectId.value = pid
@@ -66,8 +66,10 @@ export const useChatStore = defineStore('chat', () => {
     pendingAction.value = null
     loading.value = false
     historyCursor.value = 0
-    void loadHistory(pid, versionSnapshot)
-    void loadDiagnosis(pid, versionSnapshot)
+    await Promise.all([
+      loadHistory(pid, versionSnapshot),
+      loadDiagnosis(pid, versionSnapshot),
+    ])
   }
 
   async function loadHistory(pidSnapshot = projectId.value, versionSnapshot = initVersion.value) {
@@ -78,6 +80,13 @@ export const useChatStore = defineStore('chat', () => {
       if (history && history.length > 0) {
         messages.value = history.map((message) => toChatMessage(message))
       }
+      const restoredPendingAction = history
+        ? [...history]
+          .reverse()
+          .map((message) => message.pending_action || null)
+          .find((pending) => Boolean(pending)) || null
+        : null
+      pendingAction.value = restoredPendingAction
       historyCursor.value = history?.length || 0
     } catch { /* first visit, no history */ }
   }

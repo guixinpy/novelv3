@@ -81,7 +81,36 @@ def get_messages(project_id: str, db: Session = Depends(get_db)):
     if not dialog:
         return []
     msgs = db.query(DialogMessage).filter(DialogMessage.dialog_id == dialog.id).order_by(DialogMessage.created_at).all()
-    return [{"role": m.role, "content": m.content, "action_result": m.action_result, "created_at": m.created_at.isoformat() if m.created_at else None} for m in msgs]
+    pending_action = None
+    if dialog.pending_action_id:
+        pending = db.query(PendingAction).filter(PendingAction.id == dialog.pending_action_id).first()
+        if pending:
+            pending_action = PendingActionOut(
+                id=pending.id,
+                type=pending.type,
+                description=_action_description(pending.type),
+                params=pending.params,
+            ).model_dump()
+
+    last_assistant_message_id = None
+    if pending_action:
+        for message in reversed(msgs):
+            if message.role == "assistant":
+                last_assistant_message_id = message.id
+                break
+
+    payload = []
+    for message in msgs:
+        item = {
+            "role": message.role,
+            "content": message.content,
+            "action_result": message.action_result,
+            "created_at": message.created_at.isoformat() if message.created_at else None,
+        }
+        if pending_action and message.id == last_assistant_message_id:
+            item["pending_action"] = pending_action
+        payload.append(item)
+    return payload
 
 
 @router.get("/api/v1/projects/{project_id}/state-diagnosis")

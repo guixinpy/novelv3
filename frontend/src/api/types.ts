@@ -97,6 +97,7 @@ export interface BackgroundTaskResponse {
 export interface ChatHistoryMessage {
   role: 'user' | 'assistant' | 'system'
   content: string
+  pending_action?: PendingAction | null
   action_result?: Record<string, unknown> | null
   created_at?: string | null
 }

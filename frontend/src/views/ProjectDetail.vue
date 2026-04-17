@@ -144,8 +144,10 @@ async function initialize(projectId: string) {
   const snapshot = beginHydration(hydrationTracker, projectId)
   project.resetProjectScopedState(projectId)
   workspace.reset()
-  chat.init(projectId)
-  await project.loadProject(projectId)
+  await Promise.all([
+    chat.init(projectId),
+    project.loadProject(projectId),
+  ])
   if (!markHydratedTarget(hydrationTracker, snapshot, 'project')) return
   await ensurePanelData(workspace.panel, projectId, false, snapshot)
   if (!isActiveHydrationSnapshot(hydrationTracker, snapshot)) return

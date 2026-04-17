@@ -84,6 +84,25 @@ def test_chat_button_action(client):
     assert r2.json()["refresh_targets"] == []
 
 
+def test_get_messages_includes_current_pending_action(client):
+    r = client.post("/api/v1/projects", json={"name": "Test"})
+    pid = r.json()["id"]
+
+    r2 = client.post("/api/v1/dialog/chat", json={
+        "project_id": pid,
+        "input_type": "button",
+        "action_type": "preview_setup",
+        "params": {"project_id": pid},
+    })
+    pending = r2.json()["pending_action"]
+
+    r3 = client.get(f"/api/v1/dialog/projects/{pid}/messages")
+    assert r3.status_code == 200
+    messages = r3.json()
+    assert messages[-1]["role"] == "assistant"
+    assert messages[-1]["pending_action"] == pending
+
+
 @patch("app.api.setups.load_api_key", return_value="sk-test")
 @patch("app.api.setups.ai_service.complete", new_callable=AsyncMock)
 @patch("app.api.setups.ai_service.parse_json")

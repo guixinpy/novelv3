@@ -42,6 +42,7 @@
           <button class="settings-view__primary" @click="save">
             保存配置
           </button>
+          <span v-if="hasStoredKey" class="settings-view__status">已配置</span>
           <span v-if="saved" class="settings-view__saved">已保存</span>
         </div>
       </div>
@@ -65,14 +66,25 @@ import { api } from '../api/client'
 
 const apiKey = ref('')
 const saved = ref(false)
+const hasStoredKey = ref(false)
 
 onMounted(async () => {
   const cfg = await api.getConfig()
-  if (cfg.has_api_key) apiKey.value = '********'
+  hasStoredKey.value = cfg.has_api_key
 })
 
 async function save() {
-  await api.updateConfig(apiKey.value)
+  const nextKey = apiKey.value.trim()
+  if (!nextKey) {
+    saved.value = true
+    setTimeout(() => {
+      saved.value = false
+    }, 2000)
+    return
+  }
+  await api.updateConfig(nextKey)
+  hasStoredKey.value = true
+  apiKey.value = ''
   saved.value = true
   setTimeout(() => {
     saved.value = false
@@ -213,6 +225,12 @@ async function save() {
 
 .settings-view__saved {
   color: #2f6b3a;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.settings-view__status {
+  color: var(--ink-muted);
   font-size: 0.9rem;
   font-weight: 700;
 }

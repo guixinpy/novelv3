@@ -449,4 +449,75 @@ describe('chat workspace polling', () => {
       store.messages.some((message) => message.content.includes('后台任务状态获取超时')),
     ).toBe(true)
   })
+
+  it('init() 会等待 history/diagnosis 收口，并恢复待确认 pendingAction', async () => {
+    const store = useChatStore()
+
+    let resolveHistory!: (value: any[]) => void
+    let resolveDiagnosis!: (value: any) => void
+
+    vi.mocked(api.getMessages).mockImplementation(() => new Promise((resolve) => {
+      resolveHistory = resolve
+    }))
+    vi.mocked(api.getDiagnosis).mockImplementation(() => new Promise((resolve) => {
+      resolveDiagnosis = resolve
+    }))
+
+    let settled = false
+    const initPromise = store.init('project-1').then(() => {
+      settled = true
+    })
+
+    await Promise.resolve()
+    expect(settled).toBe(false)
+
+    resolveHistory([
+      {
+        role: 'assistant',
+        content: '已收到你的请求。确认要执行吗？',
+        pending_action: {
+          id: 'pending-1',
+          type: 'preview_setup',
+          description: '生成设定',
+          params: { project_id: 'project-1' },
+          requires_confirmation: true,
+        },
+        action_result: null,
+        created_at: '2026-04-18T00:00:00Z',
+      },
+    ])
+    await Promise.resolve()
+    expect(settled).toBe(false)
+
+    resolveDiagnosis({
+      missing_items: ['setup'],
+      completed_items: [],
+      suggested_next_step: 'preview_setup',
+    })
+    await initPromise
+
+    expect(settled).toBe(true)
+    expect(store.messages).toEqual([
+      {
+        role: 'assistant',
+        content: '已收到你的请求。确认要执行吗？',
+        pending_action: {
+          id: 'pending-1',
+          type: 'preview_setup',
+          description: '生成设定',
+          params: { project_id: 'project-1' },
+          requires_confirmation: true,
+        },
+        diagnosis: null,
+        action_result: null,
+      },
+    ])
+    expect(store.pendingAction).toEqual({
+      id: 'pending-1',
+      type: 'preview_setup',
+      description: '生成设定',
+      params: { project_id: 'project-1' },
+      requires_confirmation: true,
+    })
+  })
 })
