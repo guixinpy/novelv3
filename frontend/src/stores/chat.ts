@@ -164,6 +164,7 @@ export const useChatStore = defineStore('chat', () => {
     const { pidSnapshot, versionSnapshot } = captureSnapshot()
     loading.value = true
     const actionId = pendingAction.value.id
+    let keepLoadingUntilTerminal = false
     try {
       const res = await api.resolveAction({ action_id: actionId, decision, comment })
       if (!isActiveSnapshot(pidSnapshot, versionSnapshot)) return null
@@ -176,6 +177,7 @@ export const useChatStore = defineStore('chat', () => {
       messages.value.push(msg)
       historyCursor.value += 1
       if (decision === 'confirm') {
+        keepLoadingUntilTerminal = true
         void pollForCompletion(String(res.action_result?.type || ''), pidSnapshot, versionSnapshot)
       }
       await loadDiagnosis(pidSnapshot, versionSnapshot)
@@ -185,7 +187,7 @@ export const useChatStore = defineStore('chat', () => {
       messages.value.push({ role: 'assistant', content: `操作失败：${e.message}` })
       return null
     } finally {
-      if (isActiveSnapshot(pidSnapshot, versionSnapshot)) {
+      if (isActiveSnapshot(pidSnapshot, versionSnapshot) && !keepLoadingUntilTerminal) {
         loading.value = false
       }
     }
@@ -213,6 +215,9 @@ export const useChatStore = defineStore('chat', () => {
           historyCursor.value = history.length
           await loadDiagnosis(pidSnapshot, versionSnapshot)
           if (newMessages.some((message) => isTerminalActionResult(message.action_result || null, actionType))) {
+            if (isActiveSnapshot(pidSnapshot, versionSnapshot)) {
+              loading.value = false
+            }
             break
           }
         }

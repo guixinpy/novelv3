@@ -117,6 +117,46 @@ describe('chat workspace polling', () => {
     ).toBe(true)
   })
 
+  it('后台任务 running 期间 send/quick action 会被 guard 拒绝', async () => {
+    const store = useChatStore()
+    store.projectId = 'project-1'
+    store.pendingAction = {
+      id: 'action-1',
+      type: 'preview_setup',
+      description: '生成设定',
+      params: { project_id: 'project-1' },
+      requires_confirmation: true,
+    }
+    store.messages = [
+      { role: 'assistant', content: '准备开始。' },
+    ]
+
+    vi.mocked(api.resolveAction).mockResolvedValue({
+      dialog_state: 'RUNNING',
+      message: '操作已确认，正在生成中...',
+      action_result: {
+        type: 'generate_setup',
+        status: 'generating',
+        data: { status: 'generating' },
+      },
+      ui_hint: null,
+      refresh_targets: [],
+    })
+    vi.mocked(api.getDiagnosis).mockResolvedValue({
+      missing_items: [],
+      completed_items: [],
+      suggested_next_step: null,
+    })
+    vi.mocked(api.getMessages).mockResolvedValue([])
+
+    await store.resolveAction('confirm')
+
+    expect(store.loading).toBe(true)
+    await expect(store.sendText('继续补充')).resolves.toBe(null)
+    await expect(store.sendButtonAction('preview_outline')).resolves.toBe(null)
+    expect(api.sendChat).not.toHaveBeenCalled()
+  })
+
   it('init(A) 后快速 init(B)，A 的迟到历史和诊断不能覆盖 B', async () => {
     const store = useChatStore()
 

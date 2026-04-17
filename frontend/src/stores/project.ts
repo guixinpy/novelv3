@@ -15,12 +15,30 @@ export const useProjectStore = defineStore('project', () => {
   const versions = ref<any[]>([])
   const preferences = ref<any>(null)
   const versionsNodeType = ref<string | undefined>(undefined)
+  const currentProjectScope = ref<string>('')
+  const scopeVersion = ref(0)
+
+  function captureProjectSnapshot(requestProjectId: string) {
+    if (!currentProjectScope.value) {
+      currentProjectScope.value = requestProjectId
+    }
+    return {
+      requestProjectId,
+      versionSnapshot: scopeVersion.value,
+    }
+  }
+
+  function isActiveProjectSnapshot(requestProjectId: string, versionSnapshot: number) {
+    return currentProjectScope.value === requestProjectId && scopeVersion.value === versionSnapshot
+  }
 
   async function loadProjects() {
     projects.value = await api.listProjects()
   }
 
-  function resetProjectScopedState() {
+  function resetProjectScopedState(nextProjectId = '') {
+    scopeVersion.value += 1
+    currentProjectScope.value = nextProjectId
     currentProject.value = null
     setup.value = null
     chapter.value = null
@@ -40,7 +58,10 @@ export const useProjectStore = defineStore('project', () => {
   }
 
   async function loadProject(id: string) {
-    currentProject.value = await api.getProject(id)
+    const { requestProjectId, versionSnapshot } = captureProjectSnapshot(id)
+    const nextProject = await api.getProject(id)
+    if (!isActiveProjectSnapshot(requestProjectId, versionSnapshot)) return
+    currentProject.value = nextProject
   }
 
   async function generateSetup(id: string) {
@@ -49,7 +70,10 @@ export const useProjectStore = defineStore('project', () => {
   }
 
   async function loadSetup(id: string) {
-    setup.value = await api.getSetup(id)
+    const { requestProjectId, versionSnapshot } = captureProjectSnapshot(id)
+    const nextSetup = await api.getSetup(id)
+    if (!isActiveProjectSnapshot(requestProjectId, versionSnapshot)) return
+    setup.value = nextSetup
   }
 
   async function generateChapter(id: string, index: number) {
@@ -58,7 +82,10 @@ export const useProjectStore = defineStore('project', () => {
   }
 
   async function loadChapter(id: string, index: number) {
-    chapter.value = await api.getChapter(id, index)
+    const { requestProjectId, versionSnapshot } = captureProjectSnapshot(id)
+    const nextChapter = await api.getChapter(id, index)
+    if (!isActiveProjectSnapshot(requestProjectId, versionSnapshot)) return
+    chapter.value = nextChapter
   }
 
   async function generateStoryline(id: string) {
@@ -67,7 +94,10 @@ export const useProjectStore = defineStore('project', () => {
   }
 
   async function loadStoryline(id: string) {
-    storyline.value = await api.getStoryline(id)
+    const { requestProjectId, versionSnapshot } = captureProjectSnapshot(id)
+    const nextStoryline = await api.getStoryline(id)
+    if (!isActiveProjectSnapshot(requestProjectId, versionSnapshot)) return
+    storyline.value = nextStoryline
   }
 
   async function generateOutline(id: string) {
@@ -76,25 +106,39 @@ export const useProjectStore = defineStore('project', () => {
   }
 
   async function loadOutline(id: string) {
-    outline.value = await api.getOutline(id)
+    const { requestProjectId, versionSnapshot } = captureProjectSnapshot(id)
+    const nextOutline = await api.getOutline(id)
+    if (!isActiveProjectSnapshot(requestProjectId, versionSnapshot)) return
+    outline.value = nextOutline
   }
 
   async function loadTopology(id: string) {
-    topology.value = await api.getTopology(id)
+    const { requestProjectId, versionSnapshot } = captureProjectSnapshot(id)
+    const nextTopology = await api.getTopology(id)
+    if (!isActiveProjectSnapshot(requestProjectId, versionSnapshot)) return
+    topology.value = nextTopology
   }
 
   async function loadChapters(id: string) {
+    const { requestProjectId, versionSnapshot } = captureProjectSnapshot(id)
     const res = await api.listChapters(id)
+    if (!isActiveProjectSnapshot(requestProjectId, versionSnapshot)) return
     chapters.value = res.chapters || []
   }
 
   async function loadVersions(id: string, nodeType?: string) {
+    const { requestProjectId, versionSnapshot } = captureProjectSnapshot(id)
+    const nextVersions = await api.listVersions(id, nodeType)
+    if (!isActiveProjectSnapshot(requestProjectId, versionSnapshot)) return
     versionsNodeType.value = nodeType
-    versions.value = await api.listVersions(id, nodeType)
+    versions.value = nextVersions
   }
 
   async function loadPreferences(id: string) {
-    preferences.value = await api.getPreferences(id)
+    const { requestProjectId, versionSnapshot } = captureProjectSnapshot(id)
+    const nextPreferences = await api.getPreferences(id)
+    if (!isActiveProjectSnapshot(requestProjectId, versionSnapshot)) return
+    preferences.value = nextPreferences
   }
 
   async function updatePreferences(id: string, data: any) {
