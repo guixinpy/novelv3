@@ -200,28 +200,38 @@ export const useChatStore = defineStore('chat', () => {
   ) {
     if (!pidSnapshot || !actionType) return
     const maxAttempts = 30
-    for (let i = 0; i < maxAttempts; i++) {
-      if (!isActiveSnapshot(pidSnapshot, versionSnapshot)) break
-      await new Promise(r => setTimeout(r, 3000))
-      try {
+    let reachedTerminal = false
+    try {
+      for (let i = 0; i < maxAttempts; i++) {
         if (!isActiveSnapshot(pidSnapshot, versionSnapshot)) break
-        const history = await api.getMessages(pidSnapshot)
-        if (!isActiveSnapshot(pidSnapshot, versionSnapshot)) break
-        if (history && history.length > historyCursor.value) {
-          const newMessages = history.slice(historyCursor.value)
-          for (const message of newMessages) {
-            messages.value.push(toChatMessage(message))
-          }
-          historyCursor.value = history.length
-          await loadDiagnosis(pidSnapshot, versionSnapshot)
-          if (newMessages.some((message) => isTerminalActionResult(message.action_result || null, actionType))) {
-            if (isActiveSnapshot(pidSnapshot, versionSnapshot)) {
-              loading.value = false
+        await new Promise(r => setTimeout(r, 3000))
+        try {
+          if (!isActiveSnapshot(pidSnapshot, versionSnapshot)) break
+          const history = await api.getMessages(pidSnapshot)
+          if (!isActiveSnapshot(pidSnapshot, versionSnapshot)) break
+          if (history && history.length > historyCursor.value) {
+            const newMessages = history.slice(historyCursor.value)
+            for (const message of newMessages) {
+              messages.value.push(toChatMessage(message))
             }
-            break
+            historyCursor.value = history.length
+            await loadDiagnosis(pidSnapshot, versionSnapshot)
+            if (newMessages.some((message) => isTerminalActionResult(message.action_result || null, actionType))) {
+              reachedTerminal = true
+              break
+            }
           }
-        }
-      } catch { /* retry */ }
+        } catch { /* retry */ }
+      }
+    } finally {
+      if (!isActiveSnapshot(pidSnapshot, versionSnapshot)) return
+      loading.value = false
+      if (!reachedTerminal) {
+        messages.value.push({
+          role: 'system',
+          content: '后台任务状态获取超时，请稍后刷新重试。',
+        })
+      }
     }
   }
 

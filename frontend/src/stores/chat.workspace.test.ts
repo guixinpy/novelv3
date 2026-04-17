@@ -363,4 +363,90 @@ describe('chat workspace polling', () => {
     await vi.advanceTimersByTimeAsync(3000)
     expect(api.getMessages).toHaveBeenCalledTimes(2)
   })
+
+  it('轮询超时后会恢复可交互状态，不会永久锁死聊天区', async () => {
+    const store = useChatStore()
+    store.projectId = 'project-1'
+    store.pendingAction = {
+      id: 'action-timeout',
+      type: 'preview_outline',
+      description: '生成大纲',
+      params: { project_id: 'project-1' },
+      requires_confirmation: true,
+    }
+    store.messages = [
+      { role: 'assistant', content: '准备开始。' },
+    ]
+
+    vi.mocked(api.resolveAction).mockResolvedValue({
+      dialog_state: 'RUNNING',
+      message: '操作已确认，正在生成中...',
+      action_result: {
+        type: 'generate_outline',
+        status: 'generating',
+        data: { status: 'generating' },
+      },
+      ui_hint: null,
+      refresh_targets: [],
+    })
+    vi.mocked(api.getDiagnosis).mockResolvedValue({
+      missing_items: [],
+      completed_items: [],
+      suggested_next_step: null,
+    })
+    vi.mocked(api.getMessages).mockResolvedValue([])
+
+    await store.resolveAction('confirm')
+    expect(store.loading).toBe(true)
+
+    await vi.advanceTimersByTimeAsync(3000 * 30)
+
+    expect(store.loading).toBe(false)
+    expect(
+      store.messages.some((message) => message.content.includes('后台任务状态获取超时')),
+    ).toBe(true)
+  })
+
+  it('轮询持续异常后也会恢复可交互状态', async () => {
+    const store = useChatStore()
+    store.projectId = 'project-1'
+    store.pendingAction = {
+      id: 'action-error',
+      type: 'preview_setup',
+      description: '生成设定',
+      params: { project_id: 'project-1' },
+      requires_confirmation: true,
+    }
+    store.messages = [
+      { role: 'assistant', content: '准备开始。' },
+    ]
+
+    vi.mocked(api.resolveAction).mockResolvedValue({
+      dialog_state: 'RUNNING',
+      message: '操作已确认，正在生成中...',
+      action_result: {
+        type: 'generate_setup',
+        status: 'generating',
+        data: { status: 'generating' },
+      },
+      ui_hint: null,
+      refresh_targets: [],
+    })
+    vi.mocked(api.getDiagnosis).mockResolvedValue({
+      missing_items: [],
+      completed_items: [],
+      suggested_next_step: null,
+    })
+    vi.mocked(api.getMessages).mockRejectedValue(new Error('network down'))
+
+    await store.resolveAction('confirm')
+    expect(store.loading).toBe(true)
+
+    await vi.advanceTimersByTimeAsync(3000 * 30)
+
+    expect(store.loading).toBe(false)
+    expect(
+      store.messages.some((message) => message.content.includes('后台任务状态获取超时')),
+    ).toBe(true)
+  })
 })
