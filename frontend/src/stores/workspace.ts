@@ -35,9 +35,11 @@ export function applyUserPanel(state: WorkspaceState, panel: WorkspacePanel, rea
   return {
     ...state,
     panel,
+    lockedPanel: state.mode === 'locked' ? panel : state.lockedPanel,
     source: 'user',
     reason,
     lastUserPanel: panel,
+    returnPanel: state.mode === 'locked' ? null : state.returnPanel,
   }
 }
 
@@ -47,6 +49,12 @@ export function settleUiAction(state: WorkspaceState, status: ActionStatus): Wor
       ...state,
       panel: state.lockedPanel,
       source: 'system',
+      returnPanel: null,
+    }
+  }
+  if (state.mode === 'locked' && status === 'failed') {
+    return {
+      ...state,
       returnPanel: null,
     }
   }
@@ -72,7 +80,9 @@ export function applyUiHint(state: WorkspaceState, uiHint: UiHint | null | undef
     } else {
       next = {
         ...next,
-        returnPanel: action.target_panel,
+        panel: action.target_panel,
+        lockedPanel: state.lockedPanel ?? state.panel,
+        returnPanel: state.lockedPanel ?? state.returnPanel ?? state.panel,
         source: 'ai',
       }
     }
@@ -87,6 +97,7 @@ function toggleLockState(state: WorkspaceState): WorkspaceState {
       ...state,
       mode: 'locked',
       lockedPanel: state.panel,
+      returnPanel: null,
       source: 'user',
       reason: 'toggle-lock',
     }
@@ -94,6 +105,8 @@ function toggleLockState(state: WorkspaceState): WorkspaceState {
   return {
     ...state,
     mode: 'auto',
+    lockedPanel: null,
+    returnPanel: null,
     source: 'user',
     reason: 'toggle-lock',
   }

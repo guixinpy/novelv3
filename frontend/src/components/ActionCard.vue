@@ -1,40 +1,40 @@
 <template>
-  <div class="border border-indigo-200 bg-indigo-50 rounded-lg p-4 mt-2">
-    <p class="text-sm text-gray-800 mb-3">{{ action.description }}</p>
-    <div class="flex gap-2">
+  <div class="action-card">
+    <p class="action-card__copy">{{ action.description }}</p>
+    <div class="action-card__actions">
       <button
         @click="$emit('decide', 'confirm')"
         :disabled="disabled"
-        class="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+        class="action-card__button action-card__button--primary"
       >
         同意执行
       </button>
       <button
         @click="$emit('decide', 'cancel')"
         :disabled="disabled"
-        class="rounded-md bg-white border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+        class="action-card__button"
       >
         取消
       </button>
       <button
         @click="showRevise = !showRevise"
         :disabled="disabled"
-        class="rounded-md bg-white border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+        class="action-card__button"
       >
         修改后再执行
       </button>
     </div>
-    <div v-if="showRevise" class="mt-2 flex gap-2">
+    <div v-if="showRevise" class="action-card__revise">
       <input
         v-model="reviseComment"
-        class="flex-1 border border-gray-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        class="action-card__input"
         placeholder="补充修改说明..."
         @keyup.enter="submitRevise"
       />
       <button
         @click="submitRevise"
         :disabled="disabled || !reviseComment.trim()"
-        class="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+        class="action-card__button action-card__button--primary"
       >
         提交
       </button>
@@ -58,3 +58,76 @@ function submitRevise() {
   showRevise.value = false
 }
 </script>
+
+<style scoped>
+.action-card {
+  margin-top: 0.85rem;
+  border: 1px solid rgba(111, 69, 31, 0.16);
+  background:
+    linear-gradient(180deg, rgba(248, 239, 221, 0.96) 0%, rgba(241, 230, 209, 0.94) 100%);
+  border-radius: 1rem;
+  padding: 1rem;
+}
+
+.action-card__copy {
+  margin-bottom: 0.8rem;
+  color: var(--ink-strong);
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.action-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.action-card__button {
+  border: 1px solid rgba(111, 69, 31, 0.16);
+  background: rgba(255, 251, 242, 0.92);
+  color: var(--ink-muted);
+  border-radius: 0.85rem;
+  padding: 0.55rem 0.9rem;
+  font-size: 0.86rem;
+  font-weight: 700;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+}
+
+.action-card__button--primary {
+  background: linear-gradient(180deg, #8d5d31 0%, #6f451f 100%);
+  color: #fff8ef;
+}
+
+.action-card__button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 18px rgba(79, 55, 27, 0.12);
+}
+
+.action-card__button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.action-card__revise {
+  display: flex;
+  gap: 0.65rem;
+  margin-top: 0.8rem;
+}
+
+.action-card__input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid rgba(111, 69, 31, 0.16);
+  background: rgba(255, 251, 242, 0.96);
+  color: var(--ink-strong);
+  border-radius: 0.85rem;
+  padding: 0.65rem 0.85rem;
+  font-size: 0.88rem;
+  outline: none;
+}
+
+.action-card__input:focus {
+  border-color: rgba(111, 69, 31, 0.34);
+  box-shadow: 0 0 0 3px rgba(141, 93, 49, 0.12);
+}
+</style>

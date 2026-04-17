@@ -61,6 +61,64 @@ describe('workspace orchestration', () => {
     expect(next.source).toBe('system')
   })
 
+  it('locked 模式下 action failed -> 停留失败面板 content，不回 lockedPanel', () => {
+    const state = createWorkspaceState()
+
+    const lockedState: WorkspaceState = {
+      ...state,
+      mode: 'locked',
+      panel: 'versions',
+      lockedPanel: 'versions',
+      source: 'user',
+      reason: '保持查看版本历史',
+      returnPanel: null,
+    }
+
+    const next = applyUiHint(lockedState, {
+      dialog_state: 'RUNNING',
+      active_action: {
+        type: 'generate_chapter',
+        status: 'failed',
+        target_panel: 'content',
+        reason: '正文生成失败',
+      },
+    })
+
+    expect(next).not.toBe(lockedState)
+    expect(next.panel).toBe('content')
+    expect(next.lockedPanel).toBe('versions')
+    expect(next.mode).toBe('locked')
+    expect(next.source).toBe('ai')
+    expect(next.reason).toBe('正文生成失败')
+    expect(next.returnPanel).toBe(null)
+  })
+
+  it('toggleLock() 解锁时清理 stale lockedPanel 和 returnPanel，但保留当前 panel', () => {
+    setActivePinia(createPinia())
+    const store = useWorkspaceStore()
+
+    store.applyUserPanel('versions', 'user-open-versions')
+    store.toggleLock()
+    store.applyUiHint({
+      dialog_state: 'RUNNING',
+      active_action: {
+        type: 'generate_chapter',
+        status: 'running',
+        target_panel: 'content',
+        reason: '正在生成正文',
+      },
+    })
+
+    store.toggleLock()
+
+    expect(store.mode).toBe('auto')
+    expect(store.panel).toBe('content')
+    expect(store.lockedPanel).toBe(null)
+    expect(store.returnPanel).toBe(null)
+    expect(store.source).toBe('user')
+    expect(store.reason).toBe('toggle-lock')
+  })
+
   it('store reset() 会清理跨项目残留状态', () => {
     setActivePinia(createPinia())
     const store = useWorkspaceStore()

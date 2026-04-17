@@ -1,16 +1,16 @@
 <template>
   <div
-    class="flex"
+    class="message-row"
     :class="msg.role === 'user' ? 'justify-end' : 'justify-start'"
   >
     <div
-      class="max-w-[85%] rounded-lg px-4 py-2"
+      class="message-bubble"
       :class="bubbleClass"
     >
-      <div class="text-xs mb-1" :class="msg.role === 'user' ? 'text-indigo-400' : 'text-gray-400'">
+      <div class="message-role" :class="msg.role === 'user' ? 'message-role--user' : ''">
         {{ roleName }}
       </div>
-      <div class="text-sm whitespace-pre-wrap">{{ msg.content }}</div>
+      <div class="message-copy">{{ msg.content }}</div>
       <ActionCard
         v-if="msg.pending_action && isLatest"
         :action="msg.pending_action"
@@ -19,8 +19,8 @@
       />
       <div
         v-if="msg.action_result"
-        class="mt-2 text-xs px-2 py-1 rounded"
-        :class="msg.action_result.status === 'success' ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-600'"
+        class="message-result"
+        :class="resultClass"
       >
         {{ resultText }}
       </div>
@@ -42,9 +42,9 @@ const roleName = computed(() => {
 })
 
 const bubbleClass = computed(() => {
-  if (props.msg.role === 'user') return 'bg-indigo-100 text-gray-900'
-  if (props.msg.role === 'system') return 'bg-amber-50 text-gray-800 border border-amber-200'
-  return 'bg-gray-100 text-gray-900'
+  if (props.msg.role === 'user') return 'message-bubble--user'
+  if (props.msg.role === 'system') return 'message-bubble--system'
+  return 'message-bubble--assistant'
 })
 
 const TYPE_LABELS: Record<string, string> = {
@@ -67,7 +67,89 @@ const resultText = computed(() => {
   return `${label}: ${r.status}`
 })
 
+const resultClass = computed(() => {
+  const status = props.msg.action_result?.status
+  if (status === 'success') return 'message-result--success'
+  if (status === 'failed') return 'message-result--failed'
+  return 'message-result--neutral'
+})
+
 function onDecide(decision: string, comment?: string) {
   emit('decide', decision, comment)
 }
 </script>
+
+<style scoped>
+.message-row {
+  display: flex;
+}
+
+.message-bubble {
+  max-width: 85%;
+  border-radius: 1.35rem;
+  padding: 0.95rem 1rem;
+  border: 1px solid rgba(111, 69, 31, 0.14);
+  box-shadow: 0 14px 28px rgba(78, 53, 26, 0.08);
+}
+
+.message-bubble--assistant {
+  background:
+    linear-gradient(180deg, rgba(255, 250, 242, 0.97) 0%, rgba(245, 236, 220, 0.94) 100%);
+  color: var(--ink-strong);
+}
+
+.message-bubble--system {
+  background:
+    linear-gradient(180deg, rgba(245, 232, 201, 0.95) 0%, rgba(237, 223, 194, 0.92) 100%);
+  color: var(--ink-strong);
+}
+
+.message-bubble--user {
+  background:
+    linear-gradient(180deg, rgba(130, 85, 45, 0.94) 0%, rgba(98, 62, 31, 0.98) 100%);
+  color: #fff8ef;
+  border-color: rgba(88, 55, 25, 0.36);
+}
+
+.message-role {
+  margin-bottom: 0.4rem;
+  color: var(--ink-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.message-role--user {
+  color: rgba(255, 242, 220, 0.78);
+}
+
+.message-copy {
+  white-space: pre-wrap;
+  font-size: 0.94rem;
+  line-height: 1.65;
+}
+
+.message-result {
+  margin-top: 0.75rem;
+  border-radius: 0.9rem;
+  padding: 0.5rem 0.7rem;
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+
+.message-result--success {
+  background: rgba(108, 134, 93, 0.14);
+  color: #4b5f3f;
+}
+
+.message-result--failed {
+  background: rgba(154, 95, 69, 0.14);
+  color: #8d4c34;
+}
+
+.message-result--neutral {
+  background: rgba(111, 69, 31, 0.08);
+  color: var(--ink-muted);
+}
+</style>
