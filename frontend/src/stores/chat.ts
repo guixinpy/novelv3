@@ -37,7 +37,22 @@ export const useChatStore = defineStore('chat', () => {
       { role: 'assistant', content: '你好，我是墨舟，你的长篇写作助手。有什么想聊的？' },
     ]
     pendingAction.value = null
+    loadHistory()
     loadDiagnosis()
+  }
+
+  async function loadHistory() {
+    if (!projectId.value) return
+    try {
+      const history = await api.getMessages(projectId.value)
+      if (history && history.length > 0) {
+        messages.value = history.map((m: any) => ({
+          role: m.role,
+          content: m.content,
+          action_result: m.action_result || null,
+        }))
+      }
+    } catch { /* first visit, no history */ }
   }
 
   async function loadDiagnosis() {

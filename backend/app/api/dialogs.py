@@ -68,6 +68,21 @@ def _build_diagnosis(db: Session, project_id: str) -> ProjectDiagnosisOut:
     )
 
 
+def _save_message(db: Session, dialog_id: str, role: str, content: str, action_result: dict | None = None):
+    msg = DialogMessage(dialog_id=dialog_id, role=role, content=content, action_result=action_result)
+    db.add(msg)
+    db.commit()
+
+
+@router.get("/api/v1/dialog/projects/{project_id}/messages")
+def get_messages(project_id: str, db: Session = Depends(get_db)):
+    dialog = db.query(Dialog).filter(Dialog.project_id == project_id).first()
+    if not dialog:
+        return []
+    msgs = db.query(DialogMessage).filter(DialogMessage.dialog_id == dialog.id).order_by(DialogMessage.created_at).all()
+    return [{"role": m.role, "content": m.content, "action_result": m.action_result, "created_at": m.created_at.isoformat() if m.created_at else None} for m in msgs]
+
+
 @router.get("/api/v1/projects/{project_id}/state-diagnosis")
 def state_diagnosis(project_id: str, db: Session = Depends(get_db)):
     project = db.query(Project).filter(Project.id == project_id).first()
@@ -85,6 +100,9 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
     dialog = _get_or_create_dialog(db, payload.project_id)
     diagnosis = _build_diagnosis(db, payload.project_id)
 
+    if payload.input_type == "text" and payload.text:
+        _save_message(db, dialog.id, "user", payload.text)
+
     if payload.input_type == "button" and payload.action_type:
         pending = PendingAction(
             dialog_id=dialog.id,
@@ -97,8 +115,10 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
         dialog.pending_action_id = pending.id
         dialog.state = "pending_action"
         db.commit()
+        reply = "已收到你的请求。确认要执行吗？"
+        _save_message(db, dialog.id, "assistant", reply)
         return ChatOut(
-            message="已收到你的请求。确认要执行吗？",
+            message=reply,
             pending_action=PendingActionOut(
                 id=pending.id,
                 type=pending.type,
@@ -117,8 +137,10 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
     )
 
     if candidate and candidate.type in ("confirm", "cancel", "revise"):
+        reply = "请通过 resolve-action 接口提交决策。"
+        _save_message(db, dialog.id, "assistant", reply)
         return ChatOut(
-            message="请通过 resolve-action 接口提交决策。",
+            message=reply,
             pending_action=None,
             project_diagnosis=diagnosis,
         )
@@ -135,8 +157,10 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
         dialog.pending_action_id = pending.id
         dialog.state = "pending_action"
         db.commit()
+        reply = _action_description(candidate.type)
+        _save_message(db, dialog.id, "assistant", reply)
         return ChatOut(
-            message=_action_description(candidate.type),
+            message=reply,
             pending_action=PendingActionOut(
                 id=pending.id,
                 type=pending.type,
@@ -146,8 +170,10 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
             project_diagnosis=diagnosis,
         )
 
+    reply = _free_reply(payload.text, diagnosis)
+    _save_message(db, dialog.id, "assistant", reply)
     return ChatOut(
-        message=_free_reply(payload.text, diagnosis),
+        message=reply,
         pending_action=None,
         project_diagnosis=diagnosis,
     )
@@ -198,6 +224,10 @@ def resolve_action(payload: ResolveActionIn, db: Session = Depends(get_db)):
     elif payload.decision == "revise":
         result_data = {"status": "revised", "comment": payload.comment}
 
+    resolve_msg = _resolve_message(payload.decision)
+    if dialog:
+        _save_message(db, dialog.id, "system", resolve_msg, {"type": action_type, "status": result_data["status"]})
+
     return {
         "action_result": {
             "type": action_type,
@@ -205,7 +235,7 @@ def resolve_action(payload: ResolveActionIn, db: Session = Depends(get_db)):
             "data": result_data,
         },
         "dialog_state": dialog.state if dialog else "chatting",
-        "message": _resolve_message(payload.decision),
+        "message": resolve_msg,
     }
 
 

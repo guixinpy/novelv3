@@ -29,6 +29,7 @@ export const api = {
   getOutline: (id: string) => request(`/projects/${id}/outline`),
   getTopology: (id: string) => request(`/projects/${id}/topology`),
   getDiagnosis: (id: string) => request(`/projects/${id}/state-diagnosis`),
+  getMessages: (id: string) => request(`/dialog/projects/${id}/messages`),
   sendChat: (data: any) => request('/dialog/chat', { method: 'POST', body: JSON.stringify(data) }),
   resolveAction: (data: any) => request('/dialog/resolve-action', { method: 'POST', body: JSON.stringify(data) }),
   startWriting: (id: string) => request(`/projects/${id}/writing/start`, { method: 'POST' }),
