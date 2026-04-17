@@ -313,12 +313,12 @@ async def resolve_action(payload: ResolveActionIn, db: Session = Depends(get_db)
         _save_message(db, dialog.id, "system", resolve_msg, {"type": action_type, "status": result_data["status"]})
 
     return {
+        "dialog_state": "RUNNING" if payload.decision == "confirm" else "CHATTING",
         "action_result": {
             "type": action_type,
             "status": result_data["status"],
             "data": result_data,
         },
-        "dialog_state": dialog.state if dialog else "chatting",
         "message": resolve_msg,
         "ui_hint": build_ui_hint(
             action_type=action_type,

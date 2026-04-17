@@ -56,6 +56,7 @@ def test_chat_creates_dialog(client):
     assert data["ui_hint"]["dialog_state"] == "CHATTING"
     assert data["ui_hint"]["active_action"]["type"] == "chat"
     assert data["ui_hint"]["active_action"]["status"] == "idle"
+    assert data["ui_hint"]["active_action"]["target_panel"] is None
     assert data["refresh_targets"] == []
 
 
@@ -105,6 +106,7 @@ def test_resolve_action_confirm(mock_parse, mock_complete, mock_key, client):
         "decision": "confirm",
     })
     assert r3.status_code == 200
+    assert r3.json()["dialog_state"] == "RUNNING"
     assert r3.json()["action_result"]["status"] == "generating"
     assert r3.json()["ui_hint"] == {
         "dialog_state": "RUNNING",

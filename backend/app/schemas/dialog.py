@@ -35,7 +35,7 @@ class PendingActionOut(BaseModel):
 class ActiveActionOut(BaseModel):
     type: str
     status: str
-    target_panel: str
+    target_panel: str | None = None
     reason: str = ""
 
 

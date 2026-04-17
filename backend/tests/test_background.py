@@ -31,6 +31,28 @@ def test_get_background_task_with_ui_hint(client, db_session):
     assert r2.json()["refresh_targets"] == ["outline", "versions"]
 
 
+def test_get_background_task_consistency_deep_check_ui_hint(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Test"})
+    pid = r.json()["id"]
+
+    task = BackgroundTask(
+        project_id=pid,
+        task_type="consistency_deep_check",
+        status="completed",
+        result={"ok": True},
+    )
+    db_session.add(task)
+    db_session.commit()
+    db_session.refresh(task)
+
+    r2 = client.get(f"/api/v1/background-tasks/{task.id}")
+    assert r2.status_code == 200
+    assert r2.json()["ui_hint"]["dialog_state"] == "CHATTING"
+    assert r2.json()["ui_hint"]["active_action"]["target_panel"] == "content"
+    assert r2.json()["ui_hint"]["active_action"]["status"] == "completed"
+    assert r2.json()["refresh_targets"] == ["content"]
+
+
 def test_cross_validator():
     from app.core.cross_validator import CrossValidator
     cv = CrossValidator()

@@ -5,19 +5,21 @@ ACTION_TO_PANEL = {
     "generate_storyline": "storyline",
     "preview_outline": "outline",
     "generate_outline": "outline",
+    "consistency_deep_check": "content",
 }
 
 ACTION_TO_REFRESH_TARGETS = {
     "generate_setup": ["setup", "versions"],
     "generate_storyline": ["storyline", "versions"],
     "generate_outline": ["outline", "versions"],
+    "consistency_deep_check": ["content"],
 }
 
 
-def action_to_panel(action_type: str | None) -> str:
+def action_to_panel(action_type: str | None) -> str | None:
     if not action_type:
-        return "setup"
-    return ACTION_TO_PANEL.get(action_type, "setup")
+        return None
+    return ACTION_TO_PANEL.get(action_type)
 
 
 def action_to_refresh_targets(action_type: str | None, status: str | None = None) -> list[str]:
