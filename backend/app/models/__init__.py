@@ -10,3 +10,4 @@ from .dialog import Dialog
 from .dialog_message import DialogMessage
 from .pending_action import PendingAction
 from .background_task import BackgroundTask
+from .version import Version

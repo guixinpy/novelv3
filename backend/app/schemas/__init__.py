@@ -7,3 +7,4 @@ from .topology import TopologyOut, TopologyNode, TopologyEdge
 from .consistency_check import ConsistencyIssueOut
 from .dialog import ChatMessageOut, ChatIn, ResolveActionIn, PendingActionOut, ProjectDiagnosisOut, ChatOut
 from .writing import WritingStateOut
+from .version import VersionCreate, VersionOut, VersionSummary
