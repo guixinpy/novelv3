@@ -66,6 +66,12 @@ def test_chat_button_action(client):
     })
     assert r2.status_code == 200
     assert r2.json()["pending_action"]["type"] == "preview_setup"
+    assert r2.json()["ui_hint"] == {
+        "dialog_state": "PENDING_ACTION",
+        "target_panel": "setup",
+        "status": "pending",
+    }
+    assert r2.json()["refresh_targets"] == []
 
 
 @patch("app.api.setups.load_api_key", return_value="sk-test")
@@ -91,3 +97,9 @@ def test_resolve_action_confirm(mock_parse, mock_complete, mock_key, client):
     })
     assert r3.status_code == 200
     assert r3.json()["action_result"]["status"] == "generating"
+    assert r3.json()["ui_hint"] == {
+        "dialog_state": "RUNNING",
+        "target_panel": "setup",
+        "status": "running",
+    }
+    assert r3.json()["refresh_targets"] == []

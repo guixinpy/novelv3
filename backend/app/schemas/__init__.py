@@ -5,6 +5,15 @@ from .storyline import StorylineOut
 from .outline import OutlineOut
 from .topology import TopologyOut, TopologyNode, TopologyEdge
 from .consistency_check import ConsistencyIssueOut
-from .dialog import ChatMessageOut, ChatIn, ResolveActionIn, PendingActionOut, ProjectDiagnosisOut, ChatOut
+from .dialog import (
+    ChatMessageOut,
+    ChatIn,
+    ResolveActionIn,
+    PendingActionOut,
+    ActiveActionOut,
+    ProjectDiagnosisOut,
+    UiHintOut,
+    ChatOut,
+)
 from .writing import WritingStateOut
 from .version import VersionCreate, VersionOut, VersionSummary

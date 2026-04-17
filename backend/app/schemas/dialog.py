@@ -1,5 +1,5 @@
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ChatMessageOut(BaseModel):
@@ -15,7 +15,7 @@ class ChatIn(BaseModel):
     input_type: str = "text"
     text: str = ""
     action_type: str | None = None
-    params: dict = {}
+    params: dict = Field(default_factory=dict)
 
 
 class ResolveActionIn(BaseModel):
@@ -32,13 +32,27 @@ class PendingActionOut(BaseModel):
     requires_confirmation: bool = True
 
 
+class ActiveActionOut(BaseModel):
+    type: str
+    status: str
+
+
 class ProjectDiagnosisOut(BaseModel):
-    missing_items: list[str] = []
-    completed_items: list[str] = []
+    missing_items: list[str] = Field(default_factory=list)
+    completed_items: list[str] = Field(default_factory=list)
     suggested_next_step: str | None = None
+
+
+class UiHintOut(BaseModel):
+    dialog_state: str
+    target_panel: str
+    status: str
 
 
 class ChatOut(BaseModel):
     message: str
     pending_action: PendingActionOut | None = None
+    active_action: ActiveActionOut | None = None
+    ui_hint: UiHintOut | None = None
+    refresh_targets: list[str] = Field(default_factory=list)
     project_diagnosis: ProjectDiagnosisOut

@@ -9,6 +9,7 @@ from app.core.prompt_manager import PromptManager
 from app.config import load_api_key
 from datetime import datetime, timezone
 from app.core.intent_router import IntentRouter
+from app.core.ui_hints import build_ui_hint, action_to_refresh_targets
 
 router = APIRouter(tags=["dialogs"])
 ai_service = AIService()
@@ -125,6 +126,12 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
                 description=_action_description(pending.type),
                 params=pending.params,
             ),
+            ui_hint=build_ui_hint(
+                action_type=pending.type,
+                dialog_state="PENDING_ACTION",
+                status="pending",
+            ),
+            refresh_targets=action_to_refresh_targets(pending.type, "pending"),
             project_diagnosis=diagnosis,
         )
 
@@ -167,6 +174,12 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
                 description=_action_description(candidate.type),
                 params=pending.params,
             ),
+            ui_hint=build_ui_hint(
+                action_type=pending.type,
+                dialog_state="PENDING_ACTION",
+                status="pending",
+            ),
+            refresh_targets=action_to_refresh_targets(pending.type, "pending"),
             project_diagnosis=diagnosis,
         )
 
@@ -287,6 +300,12 @@ async def resolve_action(payload: ResolveActionIn, db: Session = Depends(get_db)
         },
         "dialog_state": dialog.state if dialog else "chatting",
         "message": resolve_msg,
+        "ui_hint": build_ui_hint(
+            action_type=action_type,
+            dialog_state="RUNNING" if payload.decision == "confirm" else "CHATTING",
+            status="running" if payload.decision == "confirm" else result_data["status"],
+        ),
+        "refresh_targets": action_to_refresh_targets(action_type, result_data["status"]),
     }
 
 

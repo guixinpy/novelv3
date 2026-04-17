@@ -1,9 +1,36 @@
+from app.models import BackgroundTask
+
+
 def test_list_background_tasks(client):
     r = client.post("/api/v1/projects", json={"name": "Test"})
     pid = r.json()["id"]
     r2 = client.get(f"/api/v1/projects/{pid}/background-tasks")
     assert r2.status_code == 200
     assert "tasks" in r2.json()
+
+
+def test_get_background_task_with_ui_hint(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Test"})
+    pid = r.json()["id"]
+
+    task = BackgroundTask(
+        project_id=pid,
+        task_type="generate_outline",
+        status="completed",
+        result={"ok": True},
+    )
+    db_session.add(task)
+    db_session.commit()
+    db_session.refresh(task)
+
+    r2 = client.get(f"/api/v1/background-tasks/{task.id}")
+    assert r2.status_code == 200
+    assert r2.json()["ui_hint"] == {
+        "dialog_state": "COMPLETED",
+        "target_panel": "outline",
+        "status": "completed",
+    }
+    assert r2.json()["refresh_targets"] == ["outline", "versions"]
 
 
 def test_cross_validator():
