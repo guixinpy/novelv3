@@ -219,7 +219,10 @@ async function onDecide(decision: string, comment?: string) {
     : decision === 'cancel'
       ? '你取消了当前动作'
       : `你提交了修改意见${comment?.trim() ? `：${comment.trim()}` : ''}`
-  workspace.recordUserReason(reason)
+  const decisionPanel = workspace.mode === 'locked' && workspace.lockedPanel
+    ? workspace.lockedPanel
+    : workspace.panel
+  workspace.applyUserPanel(decisionPanel, reason)
   const res = await chat.resolveAction(decision as 'confirm' | 'cancel' | 'revise', comment)
   await handleResponse(res)
 }

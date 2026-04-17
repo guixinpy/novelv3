@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
-import { applyUiHint, applyUserPanel, createWorkspaceState, settleUiAction, useWorkspaceStore, recordUserReason } from './workspace'
+import { applyUiHint, applyUserPanel, createWorkspaceState, settleUiAction, useWorkspaceStore } from './workspace'
 import type { WorkspaceState } from './workspace'
 
 describe('workspace orchestration', () => {
@@ -86,7 +86,7 @@ describe('workspace orchestration', () => {
     }
   })
 
-  it('locked 模式下 AI 借道到 outline 后，仅记录用户 confirm reason 不应覆盖 lockedPanel', () => {
+  it('locked 模式下 AI 借道到 outline 后，onDecide 以 lockedPanel 调 applyUserPanel 仍应回原锁定面板', () => {
     const state = createWorkspaceState()
 
     const aiRoutedState = applyUiHint(
@@ -110,13 +110,14 @@ describe('workspace orchestration', () => {
       },
     )
 
-    const afterConfirmIntent = recordUserReason(aiRoutedState, '你确认执行当前动作')
+    const afterConfirmIntent = applyUserPanel(aiRoutedState, aiRoutedState.lockedPanel ?? aiRoutedState.panel, '你确认执行当前动作')
     const settled = settleUiAction(afterConfirmIntent, 'success')
 
-    expect(afterConfirmIntent.panel).toBe('outline')
+    expect(afterConfirmIntent.panel).toBe('versions')
     expect(afterConfirmIntent.lockedPanel).toBe('versions')
     expect(afterConfirmIntent.source).toBe('user')
     expect(afterConfirmIntent.reason).toBe('你确认执行当前动作')
+    expect(afterConfirmIntent.lastUserPanel).toBe('versions')
     expect(settled.panel).toBe('versions')
     expect(settled.lockedPanel).toBe('versions')
   })
