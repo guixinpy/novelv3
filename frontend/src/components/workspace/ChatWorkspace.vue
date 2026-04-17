@@ -42,7 +42,7 @@
 
     <QuickActions
       :diagnosis="diagnosis"
-      :disabled="loading"
+      :disabled="loading || !!pendingAction"
       @action="emit('action', $event)"
     />
 
@@ -50,13 +50,13 @@
       <div class="chat-workspace__composer-inner">
         <input
           v-model="input"
-          :disabled="loading"
+          :disabled="loading || !!pendingAction"
           class="chat-workspace__input"
           placeholder="继续描述你的设想，或直接让墨舟推进下一步..."
           @keyup.enter="submit"
         />
         <button
-          :disabled="loading || !input.trim()"
+          :disabled="loading || !!pendingAction || !input.trim()"
           class="chat-workspace__send"
           @click="submit"
         >
@@ -70,15 +70,11 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import type { WorkspacePanel } from '../../api/types'
-import type { Diagnosis, ChatMessage as ChatMessageItem } from '../../stores/chat'
+import type { Diagnosis, ChatMessage as ChatMessageItem, PendingAction } from '../../stores/chat'
 import type { WorkspaceMode, WorkspaceSource } from '../../stores/workspace'
 import ChatMessage from '../ChatMessage.vue'
 import QuickActions from '../QuickActions.vue'
-
-type WorkspaceTab = {
-  id: WorkspacePanel
-  label: string
-}
+import type { WorkspaceTab } from './workspaceMeta'
 
 const props = defineProps<{
   project: any
@@ -89,6 +85,7 @@ const props = defineProps<{
   reason: string
   messages: ChatMessageItem[]
   diagnosis: Diagnosis | null
+  pendingAction: PendingAction | null
   loading: boolean
 }>()
 
@@ -128,7 +125,7 @@ function scrollToBottom() {
 
 function submit() {
   const text = input.value.trim()
-  if (!text || props.loading) return
+  if (!text || props.loading || props.pendingAction) return
   emit('send', text)
   input.value = ''
 }

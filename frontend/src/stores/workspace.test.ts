@@ -61,6 +61,31 @@ describe('workspace orchestration', () => {
     expect(next.source).toBe('system')
   })
 
+  it('locked 模式下 cancelled/revised -> 回 lockedPanel=versions，避免借道悬挂', () => {
+    const state = createWorkspaceState()
+
+    for (const status of ['cancelled', 'revised'] as const) {
+      const lockedState: WorkspaceState = {
+        ...state,
+        mode: 'locked',
+        panel: 'outline',
+        lockedPanel: 'versions',
+        source: 'ai',
+        reason: '待确认动作结束',
+        returnPanel: 'outline',
+      }
+
+      const next = settleUiAction(lockedState, status)
+
+      expect(next).not.toBe(lockedState)
+      expect(next.panel).toBe('versions')
+      expect(next.lockedPanel).toBe('versions')
+      expect(next.mode).toBe('locked')
+      expect(next.source).toBe('system')
+      expect(next.returnPanel).toBe(null)
+    }
+  })
+
   it('locked 模式下 action failed -> 停留失败面板 content，不回 lockedPanel', () => {
     const state = createWorkspaceState()
 

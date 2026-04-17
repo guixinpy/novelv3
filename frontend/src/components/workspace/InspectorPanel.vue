@@ -19,15 +19,14 @@
     </header>
 
     <nav class="inspector-panel__tabs" aria-label="Workspace tabs">
-      <button
-        v-for="tab in tabs"
-        :key="tab.id"
-        class="inspector-panel__tab"
-        :class="{ 'is-active': tab.id === panel }"
-        @click="emit('select-panel', tab.id)"
-      >
-        {{ tab.label }}
-      </button>
+      <WorkspaceTabs
+        :active="panel"
+        :tabs="tabs"
+        variant="inspector"
+        orientation="horizontal"
+        wrap="desktop"
+        @select="forwardSelectPanel"
+      />
     </nav>
 
     <div class="inspector-panel__body">
@@ -67,6 +66,7 @@ import { computed } from 'vue'
 import type { WorkspacePanel } from '../../api/types'
 import type { Diagnosis } from '../../stores/chat'
 import type { WorkspaceMode, WorkspaceSource } from '../../stores/workspace'
+import WorkspaceTabs from '../WorkspaceTabs.vue'
 import ContentTab from '../tabs/ContentTab.vue'
 import OutlineTab from '../tabs/OutlineTab.vue'
 import OverviewTab from '../tabs/OverviewTab.vue'
@@ -75,11 +75,7 @@ import SetupTab from '../tabs/SetupTab.vue'
 import StorylineTab from '../tabs/StorylineTab.vue'
 import TopologyTab from '../tabs/TopologyTab.vue'
 import VersionsTab from '../tabs/VersionsTab.vue'
-
-type WorkspaceTab = {
-  id: WorkspacePanel
-  label: string
-}
+import type { WorkspaceTab } from './workspaceMeta'
 
 const props = defineProps<{
   project: any
@@ -129,6 +125,10 @@ const reasonCopy = computed(() => {
   if (props.mode === 'locked') return `锁定在 ${lockedPanelLabel.value}，关键动作会临时借道。`
   return '右侧会根据你的操作和 AI 状态自动切换。'
 })
+
+function forwardSelectPanel(panelId: string) {
+  emit('select-panel', panelId as WorkspacePanel)
+}
 </script>
 
 <style scoped>
@@ -207,40 +207,8 @@ const reasonCopy = computed(() => {
 }
 
 .inspector-panel__tabs {
-  display: flex;
-  gap: 0.55rem;
-  overflow-x: auto;
   padding: 0.9rem 1.15rem 1rem;
   border-bottom: 1px solid rgba(111, 69, 31, 0.12);
-  scrollbar-width: none;
-}
-
-.inspector-panel__tabs::-webkit-scrollbar {
-  display: none;
-}
-
-.inspector-panel__tab {
-  border: 1px solid rgba(111, 69, 31, 0.12);
-  background: rgba(255, 251, 243, 0.88);
-  color: var(--ink-muted);
-  border-radius: 999px;
-  padding: 0.45rem 0.8rem;
-  font-size: 0.82rem;
-  font-weight: 600;
-  white-space: nowrap;
-  transition: transform 0.2s ease, border-color 0.2s ease, background-color 0.2s ease, color 0.2s ease;
-}
-
-.inspector-panel__tab:hover {
-  transform: translateY(-1px);
-  border-color: rgba(111, 69, 31, 0.22);
-  color: var(--accent-strong);
-}
-
-.inspector-panel__tab.is-active {
-  border-color: rgba(111, 69, 31, 0.24);
-  background: linear-gradient(180deg, rgba(147, 96, 49, 0.12) 0%, rgba(111, 69, 31, 0.2) 100%);
-  color: var(--accent-strong);
 }
 
 .inspector-panel__body {
@@ -261,13 +229,6 @@ const reasonCopy = computed(() => {
 
   .inspector-panel__body {
     padding: 1rem 1.25rem 1.25rem;
-  }
-}
-
-@media (min-width: 1024px) {
-  .inspector-panel__tabs {
-    flex-wrap: wrap;
-    overflow: visible;
   }
 }
 

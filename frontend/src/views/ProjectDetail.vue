@@ -11,6 +11,7 @@
           :reason="workspace.reason"
           :messages="chat.messages"
           :diagnosis="chat.diagnosis"
+          :pending-action="chat.pendingAction"
           :loading="chat.loading"
           @send="send"
           @action="onQuickAction"
@@ -58,74 +59,31 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { api } from '../api/client'
-import type { ActionStatus, ChatResponse, RefreshTarget, ResolveActionResponse, WorkspacePanel } from '../api/types'
+import type { ChatResponse, RefreshTarget, ResolveActionResponse, WorkspacePanel } from '../api/types'
 import ChatWorkspace from '../components/workspace/ChatWorkspace.vue'
 import InspectorPanel from '../components/workspace/InspectorPanel.vue'
 import ProjectWorkspaceShell from '../components/workspace/ProjectWorkspaceShell.vue'
+import {
+  getActionLabel,
+  getActionPanel,
+  getActionRefreshTargets,
+  getPanelRefreshTargets,
+  getVersionRefreshTarget,
+  getVersionTypeLabel,
+  getWorkspaceTabLabel,
+  getWorkspaceTabs,
+  isFinishedActionStatus,
+  normalizeActionStatus,
+} from '../components/workspace/workspaceMeta'
 import { useChatStore } from '../stores/chat'
 import { useProjectStore } from '../stores/project'
 import { useWorkspaceStore } from '../stores/workspace'
-
-type WorkspaceTab = {
-  id: WorkspacePanel
-  label: string
-}
 
 type UiAwareResponse =
   | Pick<ChatResponse, 'ui_hint' | 'refresh_targets'>
   | Pick<ResolveActionResponse, 'ui_hint' | 'refresh_targets'>
 
-const tabs: WorkspaceTab[] = [
-  { id: 'overview', label: '概览' },
-  { id: 'setup', label: '设定' },
-  { id: 'storyline', label: '故事线' },
-  { id: 'outline', label: '大纲' },
-  { id: 'content', label: '正文' },
-  { id: 'topology', label: '拓扑图' },
-  { id: 'versions', label: '版本历史' },
-  { id: 'preferences', label: '偏好设置' },
-]
-
-const PANEL_TARGETS: Record<WorkspacePanel, RefreshTarget[]> = {
-  overview: ['project'],
-  setup: ['setup'],
-  storyline: ['storyline'],
-  outline: ['outline'],
-  content: ['content'],
-  topology: ['topology'],
-  versions: ['versions'],
-  preferences: ['preferences'],
-}
-
-const ACTION_TO_PANEL: Record<string, WorkspacePanel> = {
-  preview_setup: 'setup',
-  generate_setup: 'setup',
-  preview_storyline: 'storyline',
-  generate_storyline: 'storyline',
-  preview_outline: 'outline',
-  generate_outline: 'outline',
-  consistency_deep_check: 'content',
-}
-
-const ACTION_TO_REFRESH_TARGETS: Record<string, RefreshTarget[]> = {
-  generate_setup: ['setup', 'versions'],
-  generate_storyline: ['storyline', 'versions'],
-  generate_outline: ['outline', 'versions'],
-  consistency_deep_check: ['content'],
-}
-
-const ACTION_LABELS: Record<string, string> = {
-  preview_setup: '生成设定',
-  preview_storyline: '生成故事线',
-  preview_outline: '生成大纲',
-}
-
-const VERSION_TYPE_LABELS: Record<string, string> = {
-  setup: '设定',
-  storyline: '故事线',
-  outline: '大纲',
-  chapter: '章节',
-}
+const tabs = getWorkspaceTabs()
 
 const route = useRoute()
 const project = useProjectStore()
@@ -167,9 +125,9 @@ watch(latestActionFingerprint, async (fingerprint) => {
     | undefined
   const status = normalizeActionStatus(latest?.status)
   const actionType = typeof latest?.type === 'string' ? latest.type : ''
-  if (!status || !['completed', 'success', 'failed', 'cancelled', 'revised'].includes(status)) return
+  if (!isFinishedActionStatus(status)) return
   workspace.settleUiAction(status)
-  await refreshProjectTargets(getRefreshTargetsByAction(actionType, status))
+  await refreshProjectTargets(getActionRefreshTargets(actionType, status))
 })
 
 async function initialize(projectId: string) {
@@ -213,7 +171,7 @@ async function loadTarget(projectId: string, target: RefreshTarget) {
 }
 
 async function ensurePanelData(panel: WorkspacePanel, projectId = pid.value, force = false) {
-  for (const target of PANEL_TARGETS[panel]) {
+  for (const target of getPanelRefreshTargets(panel)) {
     if (!force && hydratedTargets.has(target)) continue
     await loadTarget(projectId, target)
     hydratedTargets.add(target)
@@ -238,14 +196,16 @@ async function handleResponse(res: UiAwareResponse | null) {
 }
 
 async function send(text: string) {
+  if (chat.pendingAction) return
   const res = await chat.sendText(text)
   await handleResponse(res)
 }
 
 async function onQuickAction(type: string) {
-  const panel = ACTION_TO_PANEL[type]
+  if (chat.pendingAction) return
+  const panel = getActionPanel(type)
   if (panel) {
-    workspace.applyUserPanel(panel, `你选择了${ACTION_LABELS[type] || '快捷动作'}`)
+    workspace.applyUserPanel(panel, `你选择了${getActionLabel(type)}`)
   }
   const res = await chat.sendButtonAction(type)
   await handleResponse(res)
@@ -257,7 +217,7 @@ async function onDecide(decision: string, comment?: string) {
 }
 
 function onSelectPanel(panel: WorkspacePanel) {
-  workspace.applyUserPanel(panel, `你切换到${tabs.find((tab) => tab.id === panel)?.label || '面板'}`)
+  workspace.applyUserPanel(panel, `你切换到${getWorkspaceTabLabel(panel)}`)
 }
 
 async function loadChapter(index: number) {
@@ -272,7 +232,7 @@ async function onExport(format: string) {
 
 async function onFilterVersions(type: string) {
   const reason = type
-    ? `你筛选了${VERSION_TYPE_LABELS[type] || type}版本`
+    ? `你筛选了${getVersionTypeLabel(type)}版本`
     : '你查看全部版本记录'
   workspace.applyUserPanel('versions', reason)
   await project.loadVersions(pid.value, type || undefined)
@@ -284,7 +244,7 @@ async function onRollback(versionId: string) {
   const version = project.versions.find((item) => item.id === versionId)
   await project.rollbackVersion(pid.value, versionId)
   const targets: RefreshTarget[] = ['versions']
-  const relatedTarget = versionTarget(version?.node_type)
+  const relatedTarget = getVersionRefreshTarget(version?.node_type)
   if (relatedTarget) targets.push(relatedTarget)
   await refreshProjectTargets(targets)
 }
@@ -293,26 +253,5 @@ async function onDeleteVersion(versionId: string) {
   workspace.applyUserPanel('versions', '你删除了一条版本记录')
   await api.deleteVersion(pid.value, versionId)
   await refreshProjectTargets(['versions'])
-}
-
-function versionTarget(nodeType?: string): RefreshTarget | null {
-  if (nodeType === 'setup') return 'setup'
-  if (nodeType === 'storyline') return 'storyline'
-  if (nodeType === 'outline') return 'outline'
-  if (nodeType === 'chapter') return 'content'
-  return null
-}
-
-function getRefreshTargetsByAction(actionType: string, status: ActionStatus): RefreshTarget[] {
-  if (status !== 'completed' && status !== 'success') return []
-  return ACTION_TO_REFRESH_TARGETS[actionType] || []
-}
-
-function normalizeActionStatus(status: unknown): ActionStatus | null {
-  if (typeof status !== 'string') return null
-  if (status === 'completed' || status === 'success' || status === 'failed' || status === 'cancelled' || status === 'revised') {
-    return status
-  }
-  return null
 }
 </script>

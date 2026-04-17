@@ -27,8 +27,8 @@ export function createWorkspaceState(): WorkspaceState {
   }
 }
 
-function isCompletedStatus(status: string) {
-  return status === 'completed' || status === 'success'
+function shouldReturnToLockedPanel(status: ActionStatus) {
+  return status === 'completed' || status === 'success' || status === 'cancelled' || status === 'revised'
 }
 
 export function applyUserPanel(state: WorkspaceState, panel: WorkspacePanel, reason: string): WorkspaceState {
@@ -44,7 +44,7 @@ export function applyUserPanel(state: WorkspaceState, panel: WorkspacePanel, rea
 }
 
 export function settleUiAction(state: WorkspaceState, status: ActionStatus): WorkspaceState {
-  if (state.mode === 'locked' && isCompletedStatus(status) && state.lockedPanel) {
+  if (state.mode === 'locked' && shouldReturnToLockedPanel(status) && state.lockedPanel) {
     return {
       ...state,
       panel: state.lockedPanel,
