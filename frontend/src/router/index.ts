@@ -1,12 +1,46 @@
-import { createRouter, createWebHistory } from 'vue-router'
+import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import ProjectList from '../views/ProjectList.vue'
 import ProjectDetail from '../views/ProjectDetail.vue'
 import SettingsView from '../views/SettingsView.vue'
 
-const routes = [
-  { path: '/', component: ProjectList },
-  { path: '/projects/:id', component: ProjectDetail },
-  { path: '/settings', component: SettingsView },
+type ShellMode = 'default' | 'workspace'
+type ShellSurface = 'panel' | 'none'
+type NavSection = 'projects' | 'settings'
+
+type AppRouteMeta = {
+  shellMode: ShellMode
+  shellSurface: ShellSurface
+  navSection: NavSection
+}
+
+const routes: RouteRecordRaw[] = [
+  {
+    path: '/',
+    component: ProjectList,
+    meta: {
+      shellMode: 'default',
+      shellSurface: 'panel',
+      navSection: 'projects',
+    } satisfies AppRouteMeta,
+  },
+  {
+    path: '/projects/:id',
+    component: ProjectDetail,
+    meta: {
+      shellMode: 'workspace',
+      shellSurface: 'none',
+      navSection: 'projects',
+    } satisfies AppRouteMeta,
+  },
+  {
+    path: '/settings',
+    component: SettingsView,
+    meta: {
+      shellMode: 'default',
+      shellSurface: 'panel',
+      navSection: 'settings',
+    } satisfies AppRouteMeta,
+  },
 ]
 
 export default createRouter({

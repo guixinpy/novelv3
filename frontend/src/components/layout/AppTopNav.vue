@@ -4,7 +4,8 @@ import { useRoute } from 'vue-router'
 
 const route = useRoute()
 
-const projectsActive = computed(() => route.path === '/' || route.path.startsWith('/projects/'))
+const pageMeta = computed(() => route.matched[route.matched.length - 1]?.meta ?? {})
+const navSection = computed(() => (pageMeta.value.navSection === 'settings' ? 'settings' : 'projects'))
 </script>
 
 <template>
@@ -15,10 +16,14 @@ const projectsActive = computed(() => route.path === '/' || route.path.startsWit
         <span class="app-top-nav__brand-text">创作中枢</span>
       </router-link>
       <nav class="app-top-nav__links" aria-label="主导航">
-        <router-link to="/" class="app-top-nav__link" :class="{ 'is-active': projectsActive }">
+        <router-link to="/" class="app-top-nav__link" :class="{ 'is-active': navSection === 'projects' }">
           项目
         </router-link>
-        <router-link to="/settings" class="app-top-nav__link" active-class="is-active">
+        <router-link
+          to="/settings"
+          class="app-top-nav__link"
+          :class="{ 'is-active': navSection === 'settings' }"
+        >
           设置
         </router-link>
       </nav>

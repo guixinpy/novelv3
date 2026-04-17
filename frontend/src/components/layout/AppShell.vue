@@ -3,13 +3,16 @@ import { computed } from 'vue'
 import AppTopNav from './AppTopNav.vue'
 
 type ShellMode = 'default' | 'workspace'
+type ShellSurface = 'panel' | 'none'
 
 const props = withDefaults(
   defineProps<{
     mode?: ShellMode
+    surface?: ShellSurface
   }>(),
   {
     mode: 'default',
+    surface: 'panel',
   },
 )
 
@@ -25,9 +28,10 @@ const containerClass = computed(() =>
     <AppTopNav />
     <main class="app-shell__viewport">
       <div :class="containerClass">
-        <section class="app-shell__surface">
+        <section v-if="surface === 'panel'" class="app-shell__surface">
           <slot />
         </section>
+        <slot v-else />
       </div>
     </main>
   </div>
