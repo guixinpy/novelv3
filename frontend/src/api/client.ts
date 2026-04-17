@@ -42,4 +42,9 @@ export const api = {
   deleteVersion: (id: string, versionId: string) => request(`/projects/${id}/versions/${versionId}`, { method: 'DELETE' }),
   exportProject: (id: string, data: any) => fetch(`/api/v1/projects/${id}/export`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }),
   listChapters: (id: string) => request(`/projects/${id}/chapters`),
+  getPreferences: (id: string) => request(`/projects/${id}/preferences`),
+  updatePreferences: (id: string, data: any) => request(`/projects/${id}/preferences`, { method: 'PUT', body: JSON.stringify(data) }),
+  resetPreferences: (id: string) => request(`/projects/${id}/preferences/reset`, { method: 'POST' }),
+  deepCheck: (id: string, chapterIndex: number) => request(`/projects/${id}/consistency/chapters/${chapterIndex}/check?depth=l2`, { method: 'POST' }),
+  getBackgroundTask: (taskId: string) => request(`/background-tasks/${taskId}`),
 }

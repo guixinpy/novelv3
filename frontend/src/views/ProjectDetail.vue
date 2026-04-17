@@ -37,6 +37,7 @@
         @select-chapter="loadChapter" />
       <VersionsTab v-else-if="activeTab === 'versions'" :versions="project.versions"
         @filter="onFilterVersions" @rollback="onRollback" @delete-version="onDeleteVersion" />
+      <PreferencesTab v-else-if="activeTab === 'preferences'" :project-id="pid" />
     </div>
   </div>
   <div v-else class="text-center text-gray-500 py-12">加载中...</div>
@@ -56,6 +57,7 @@ import StorylineTab from '../components/tabs/StorylineTab.vue'
 import OutlineTab from '../components/tabs/OutlineTab.vue'
 import ContentTab from '../components/tabs/ContentTab.vue'
 import VersionsTab from '../components/tabs/VersionsTab.vue'
+import PreferencesTab from '../components/tabs/PreferencesTab.vue'
 
 const route = useRoute()
 const project = useProjectStore()
@@ -72,6 +74,7 @@ const tabs = [
   { id: 'outline', label: '大纲' },
   { id: 'content', label: '正文' },
   { id: 'versions', label: '版本历史' },
+  { id: 'preferences', label: '偏好设置' },
 ]
 
 onMounted(async () => {
