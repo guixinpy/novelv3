@@ -36,7 +36,7 @@
       <ContentTab v-else-if="activeTab === 'content'" :chapters="project.chapters" :selected-chapter="project.chapter"
         :project-id="pid" @select-chapter="loadChapter" />
       <TopologyTab v-else-if="activeTab === 'topology'" :topology="project.topology" />
-      <VersionsTab v-else-if="activeTab === 'versions'" :versions="project.versions"
+      <VersionsTab v-else-if="activeTab === 'versions'" :versions="project.versions" :project-id="pid"
         @filter="onFilterVersions" @rollback="onRollback" @delete-version="onDeleteVersion" />
       <PreferencesTab v-else-if="activeTab === 'preferences'" :project-id="pid" />
     </div>

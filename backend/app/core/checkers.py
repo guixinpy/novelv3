@@ -52,3 +52,54 @@ class TimelineChecker:
 
     def _is_time_reversal(self, prev: dict, curr: dict) -> bool:
         return False
+
+
+class RelationshipChecker:
+    def check(self, chapter: ChapterContent, facts: list[dict], setup_characters: list[dict]) -> list[dict]:
+        issues = []
+        relationships = {}
+        for char in setup_characters:
+            for rel in char.get("relationships", []):
+                key = f"{char.get('name')}-{rel.get('target')}"
+                relationships[key] = rel.get("type", "unknown")
+
+        for fact in facts:
+            if fact.get("type") == "relationship_change":
+                subject = fact.get("subject", "")
+                target = fact.get("new_value", "")
+                key = f"{subject}-{target}"
+                if key in relationships and relationships[key] != fact.get("attribute", ""):
+                    issues.append({
+                        "project_id": chapter.project_id,
+                        "chapter_index": chapter.chapter_index,
+                        "checker_name": "RelationshipChecker",
+                        "severity": "warn",
+                        "subject": subject,
+                        "description": f"{subject}与{target}的关系发生未铺垫的变化",
+                        "evidence": fact.get("evidence", ""),
+                        "suggested_fix": "添加关系转变的铺垫或调整设定",
+                        "status": "pending",
+                    })
+        return issues
+
+
+class ForeshadowingChecker:
+    def check(self, project_id: str, chapter_index: int, storyline_foreshadowing: list[dict]) -> list[dict]:
+        issues = []
+        for fs in storyline_foreshadowing:
+            planted = fs.get("planted_chapter")
+            resolved = fs.get("resolved_chapter")
+            status = fs.get("status", "planted")
+            if status == "planted" and resolved and chapter_index > resolved + 2:
+                issues.append({
+                    "project_id": project_id,
+                    "chapter_index": chapter_index,
+                    "checker_name": "ForeshadowingChecker",
+                    "severity": "info",
+                    "subject": fs.get("hint", ""),
+                    "description": f"伏笔'{fs.get('hint', '')}'（第{planted}章埋下）预计在第{resolved}章揭示，但当前已到第{chapter_index}章仍未处理",
+                    "evidence": f"planted_chapter={planted}, resolved_chapter={resolved}",
+                    "suggested_fix": "在后续章节中揭示该伏笔或标记为已放弃",
+                    "status": "pending",
+                })
+        return issues

@@ -5,7 +5,8 @@ from app.core.l1_extractor import L1RuleExtractor
 from app.core.l2_extractor import L2LLMExtractor
 from app.core.cross_validator import CrossValidator
 from app.core.consistency_checker import ConsistencyChecker
-from app.core.checkers import LocationChecker, TimelineChecker
+from app.core.checkers import LocationChecker, TimelineChecker, RelationshipChecker, ForeshadowingChecker
+from app.models import Storyline
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +19,8 @@ class BackgroundAnalyzer:
         self.char_checker = ConsistencyChecker()
         self.loc_checker = LocationChecker()
         self.time_checker = TimelineChecker()
+        self.rel_checker = RelationshipChecker()
+        self.fs_checker = ForeshadowingChecker()
 
     async def run_deep_check(self, project_id: str, chapter_index: int) -> dict:
         db = SessionLocal()
@@ -43,6 +46,11 @@ class BackgroundAnalyzer:
             issues.extend(self.char_checker.check(project_id, chapter, setup))
             issues.extend(self.loc_checker.check(chapter, all_facts))
             issues.extend(self.time_checker.check(chapter, all_facts))
+            issues.extend(self.rel_checker.check(chapter, all_facts, characters))
+
+            storyline = db.query(Storyline).filter(Storyline.project_id == project_id).first()
+            if storyline and storyline.foreshadowing:
+                issues.extend(self.fs_checker.check(project_id, chapter_index, storyline.foreshadowing))
 
             for conflict in cross_result["conflicts"]:
                 issues.append({
