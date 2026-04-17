@@ -76,3 +76,46 @@ def get_outline(project_id: str, db: Session = Depends(get_db)):
     if not outline:
         raise HTTPException(status_code=404, detail="Outline not found")
     return outline
+
+
+from pydantic import BaseModel
+
+class ChapterOutlineUpdate(BaseModel):
+    title: str | None = None
+    summary: str | None = None
+    scenes: list[str] | None = None
+    characters: list[str] | None = None
+    purpose: str | None = None
+
+
+@router.patch("/chapters/{chapter_index}")
+def update_chapter_outline(project_id: str, chapter_index: int, payload: ChapterOutlineUpdate, db: Session = Depends(get_db)):
+    outline = db.query(Outline).filter(Outline.project_id == project_id).first()
+    if not outline:
+        raise HTTPException(status_code=404, detail="Outline not found")
+
+    chapters = outline.chapters or []
+    found = False
+    for ch in chapters:
+        if ch.get("chapter_index") == chapter_index:
+            if payload.title is not None:
+                ch["title"] = payload.title
+            if payload.summary is not None:
+                ch["summary"] = payload.summary
+            if payload.scenes is not None:
+                ch["scenes"] = payload.scenes
+            if payload.characters is not None:
+                ch["characters"] = payload.characters
+            if payload.purpose is not None:
+                ch["purpose"] = payload.purpose
+            found = True
+            break
+
+    if not found:
+        raise HTTPException(status_code=404, detail="Chapter not found in outline")
+
+    from sqlalchemy.orm.attributes import flag_modified
+    outline.chapters = chapters
+    flag_modified(outline, "chapters")
+    db.commit()
+    return {"updated": True, "chapter_index": chapter_index}

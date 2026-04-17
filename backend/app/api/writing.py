@@ -34,8 +34,24 @@ def resume_writing(project_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("/chapters/{chapter_index}/retry", response_model=WritingStateOut)
-def retry_chapter(project_id: str, chapter_index: int, db: Session = Depends(get_db)):
+async def retry_chapter(project_id: str, chapter_index: int, db: Session = Depends(get_db)):
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
+
+    # Trigger chapter regeneration in background
+    import asyncio
+    from app.api.chapters import generate_chapter as _gen_chapter
+    from app.db import SessionLocal
+
+    async def _regen():
+        rdb = SessionLocal()
+        try:
+            await _gen_chapter(project_id, chapter_index, rdb)
+        except Exception:
+            pass
+        finally:
+            rdb.close()
+
+    asyncio.ensure_future(_regen())
     return scheduler.state(project_id)

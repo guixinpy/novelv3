@@ -298,3 +298,29 @@ def _resolve_message(decision: str) -> str:
     if decision == "revise":
         return "已收到修改意见。"
     return "未知决策。"
+
+
+from pydantic import BaseModel as PydanticBaseModel
+
+class StateUpdate(PydanticBaseModel):
+    current_view: str = "overview"
+
+
+@router.post("/api/v1/projects/{project_id}/state")
+def update_state(project_id: str, payload: StateUpdate, db: Session = Depends(get_db)):
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    dialog = _get_or_create_dialog(db, project_id)
+    dialog.current_view = payload.current_view
+    db.commit()
+
+    diagnosis = _build_diagnosis(db, project_id)
+    return {
+        "ui_state": {
+            "dialog_state": dialog.state.upper() if dialog.state else "IDLE",
+            "current_view": dialog.current_view,
+        },
+        "project_diagnosis": diagnosis.model_dump(),
+    }

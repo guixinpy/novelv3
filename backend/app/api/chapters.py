@@ -84,6 +84,12 @@ async def generate_chapter(project_id: str, chapter_index: int, db: Session = De
     prompt = f"{prompt}\n\n【章节上下文】\n{context}"
     prompt = prompt_optimizer.optimize(prompt, project.style_config)
 
+    from app.core.few_shot_library import FewShotExampleLibrary
+    fsl = FewShotExampleLibrary()
+    examples = fsl.select_examples("chapter", project.genre)
+    if examples:
+        prompt += "\n\n" + fsl.format_for_prompt(examples)
+
     start = time.time()
     result = await ai_service.complete(
         [{"role": "user", "content": prompt}],
@@ -143,6 +149,16 @@ async def generate_chapter(project_id: str, chapter_index: int, db: Session = De
         db.commit()
     except Exception:
         pass  # Don't fail chapter generation if check fails
+
+    # Emit event for background processing
+    try:
+        from app.core.event_bus import event_bus
+        await event_bus.emit("CHAPTER_GENERATED", {
+            "project_id": project_id,
+            "chapter_index": chapter_index,
+        })
+    except Exception:
+        pass
 
     return chapter
 

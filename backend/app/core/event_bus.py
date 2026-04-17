@@ -20,3 +20,6 @@ class SimpleEventBus:
                     handler(payload)
             except Exception as e:
                 logger.error("Event handler error for %s: %s", event_type, e)
+
+
+event_bus = SimpleEventBus()
