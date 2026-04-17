@@ -16,14 +16,7 @@
             >
               项目列表
             </router-link>
-            <router-link
-              to="/chat"
-              class="text-sm font-medium text-gray-700 hover:text-indigo-600"
-              active-class="text-indigo-600"
-            >
-              对话
-            </router-link>
-            <router-link
+<router-link
               to="/settings"
               class="text-sm font-medium text-gray-700 hover:text-indigo-600"
               active-class="text-indigo-600"
