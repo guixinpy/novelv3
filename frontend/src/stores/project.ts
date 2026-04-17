@@ -100,6 +100,9 @@ export const useProjectStore = defineStore('project', () => {
         case 'setup':
           jobs.push(loadSetup(id))
           break
+        case 'project':
+          jobs.push(loadProject(id))
+          break
         case 'storyline':
           jobs.push(loadStoryline(id))
           break
@@ -109,8 +112,14 @@ export const useProjectStore = defineStore('project', () => {
         case 'content':
           jobs.push(loadChapters(id))
           break
+        case 'topology':
+          jobs.push(loadTopology(id))
+          break
         case 'versions':
           jobs.push(loadVersions(id))
+          break
+        case 'preferences':
+          jobs.push(loadPreferences(id))
           break
         default:
           break

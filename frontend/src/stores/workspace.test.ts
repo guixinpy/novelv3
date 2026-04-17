@@ -1,11 +1,26 @@
 import { describe, expect, it } from 'vitest'
-import { applyUiHint, createWorkspaceState, settleUiAction } from './workspace'
+import { applyUiHint, applyUserPanel, createWorkspaceState, settleUiAction } from './workspace'
 
 describe('workspace orchestration', () => {
+  it('applyUserPanel(state, panel, reason) 仅更新用户选择和原因，不自动锁定，且返回新对象', () => {
+    const state = createWorkspaceState()
+
+    const next = applyUserPanel(state, 'outline', 'user-click-tab')
+
+    expect(next).not.toBe(state)
+    expect(next.panel).toBe('outline')
+    expect(next.lastUserPanel).toBe('outline')
+    expect(next.reason).toBe('user-click-tab')
+    expect(next.source).toBe('user')
+    expect(next.mode).toBe('auto')
+    expect(next.lockedPanel).toBe(null)
+    expect(state.panel).toBe('overview')
+  })
+
   it('auto 模式下 ai target -> panel 跳转到 outline，source=ai', () => {
     const state = createWorkspaceState()
 
-    applyUiHint(state, {
+    const next = applyUiHint(state, {
       dialog_state: 'PENDING_ACTION',
       active_action: {
         type: 'generate_outline',
@@ -15,28 +30,32 @@ describe('workspace orchestration', () => {
       },
     })
 
-    expect(state.panel).toBe('outline')
-    expect(state.source).toBe('ai')
-    expect(state.mode).toBe('auto')
+    expect(next).not.toBe(state)
+    expect(next.panel).toBe('outline')
+    expect(next.source).toBe('ai')
+    expect(next.mode).toBe('auto')
+    expect(next.reason).toBe('等待用户确认')
   })
 
   it('locked 模式下 task completed -> 回 lockedPanel=versions', () => {
     const state = createWorkspaceState()
 
-    state.mode = 'locked'
-    state.panel = 'outline'
-    state.lockedPanel = 'versions'
-    state.source = 'user'
+    const lockedState = {
+      ...state,
+      mode: 'locked' as const,
+      panel: 'outline',
+      lockedPanel: 'versions',
+      source: 'ai' as const,
+      reason: '后台任务运行中',
+      returnPanel: 'outline',
+    }
 
-    settleUiAction(state, {
-      type: 'generate_outline',
-      status: 'completed',
-      target_panel: 'outline',
-      reason: '后台任务状态更新',
-    })
+    const next = settleUiAction(lockedState, 'completed')
 
-    expect(state.panel).toBe('versions')
-    expect(state.mode).toBe('locked')
-    expect(state.source).toBe('user')
+    expect(next).not.toBe(lockedState)
+    expect(next.panel).toBe('versions')
+    expect(next.lockedPanel).toBe('versions')
+    expect(next.mode).toBe('locked')
+    expect(next.source).toBe('system')
   })
 })

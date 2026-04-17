@@ -1,6 +1,15 @@
 export type DialogState = 'IDLE' | 'CHATTING' | 'PENDING_ACTION' | 'RUNNING' | string
 export type ActionStatus = 'idle' | 'pending' | 'running' | 'completed' | 'success' | 'failed' | 'cancelled' | string
-export type RefreshTarget = 'setup' | 'storyline' | 'outline' | 'content' | 'versions' | string
+export type RefreshTarget =
+  | 'project'
+  | 'setup'
+  | 'storyline'
+  | 'outline'
+  | 'content'
+  | 'topology'
+  | 'versions'
+  | 'preferences'
+  | string
 
 export interface PendingAction {
   id: string

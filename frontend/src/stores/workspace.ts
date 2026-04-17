@@ -1,86 +1,117 @@
 import { defineStore } from 'pinia'
 import { reactive, toRefs } from 'vue'
-import type { ActiveAction, UiHint } from '../api/types'
+import type { ActionStatus, UiHint } from '../api/types'
 
 export type WorkspaceMode = 'auto' | 'locked'
-export type WorkspaceSource = 'ai' | 'user'
+export type WorkspaceSource = 'ai' | 'user' | 'system'
 export type WorkspacePanel = string
 
 export interface WorkspaceState {
   mode: WorkspaceMode
   panel: WorkspacePanel
-  source: WorkspaceSource
   lockedPanel: WorkspacePanel | null
-  dialogState: string
-  activeAction: ActiveAction | null
+  source: WorkspaceSource
+  reason: string
+  lastUserPanel: WorkspacePanel | null
+  returnPanel: WorkspacePanel | null
 }
 
 export function createWorkspaceState(): WorkspaceState {
   return {
     mode: 'auto',
-    panel: 'setup',
-    source: 'user',
+    panel: 'overview',
     lockedPanel: null,
-    dialogState: 'IDLE',
-    activeAction: null,
+    source: 'system',
+    reason: '',
+    lastUserPanel: null,
+    returnPanel: null,
   }
-}
-
-export function applyUserPanel(state: WorkspaceState, panel: WorkspacePanel) {
-  state.mode = 'locked'
-  state.panel = panel
-  state.lockedPanel = panel
-  state.source = 'user'
 }
 
 function isCompletedStatus(status: string) {
   return status === 'completed' || status === 'success'
 }
 
-export function settleUiAction(state: WorkspaceState, action: ActiveAction) {
-  state.activeAction = action
-  if (state.mode === 'locked' && isCompletedStatus(action.status) && state.lockedPanel) {
-    state.panel = state.lockedPanel
-    state.source = 'user'
-    return
-  }
-
-  if (state.mode === 'auto' && action.target_panel) {
-    state.panel = action.target_panel
-    state.source = 'ai'
+export function applyUserPanel(state: WorkspaceState, panel: WorkspacePanel, reason: string): WorkspaceState {
+  return {
+    ...state,
+    panel,
+    source: 'user',
+    reason,
+    lastUserPanel: panel,
   }
 }
 
-export function applyUiHint(state: WorkspaceState, uiHint: UiHint | null | undefined) {
-  if (!uiHint) return
-  state.dialogState = uiHint.dialog_state
-  state.activeAction = uiHint.active_action
+export function settleUiAction(state: WorkspaceState, status: ActionStatus): WorkspaceState {
+  if (state.mode === 'locked' && isCompletedStatus(status) && state.lockedPanel) {
+    return {
+      ...state,
+      panel: state.lockedPanel,
+      source: 'system',
+      returnPanel: null,
+    }
+  }
+  return { ...state }
+}
 
-  const action = uiHint.active_action
-  if (isCompletedStatus(action.status)) {
-    settleUiAction(state, action)
-    return
+export function applyUiHint(state: WorkspaceState, uiHint: UiHint | null | undefined): WorkspaceState {
+  if (!uiHint) return { ...state }
+
+  const { active_action: action } = uiHint
+  let next: WorkspaceState = {
+    ...state,
+    reason: action.reason || state.reason,
   }
 
-  if (state.mode === 'auto' && action.target_panel) {
-    state.panel = action.target_panel
-    state.source = 'ai'
+  if (action.target_panel) {
+    if (state.mode === 'auto') {
+      next = {
+        ...next,
+        panel: action.target_panel,
+        source: 'ai',
+      }
+    } else {
+      next = {
+        ...next,
+        returnPanel: action.target_panel,
+        source: 'ai',
+      }
+    }
+  }
+
+  return settleUiAction(next, action.status)
+}
+
+function toggleLockState(state: WorkspaceState): WorkspaceState {
+  if (state.mode === 'auto') {
+    return {
+      ...state,
+      mode: 'locked',
+      lockedPanel: state.panel,
+      source: 'user',
+      reason: 'toggle-lock',
+    }
+  }
+  return {
+    ...state,
+    mode: 'auto',
+    source: 'user',
+    reason: 'toggle-lock',
   }
 }
 
 export const useWorkspaceStore = defineStore('workspace', () => {
   const state = reactive(createWorkspaceState())
 
-  function setAutoMode() {
-    state.mode = 'auto'
-    state.lockedPanel = null
+  function toggleLock() {
+    Object.assign(state, toggleLockState(state))
   }
 
   return {
     ...toRefs(state),
-    setAutoMode,
-    applyUserPanel: (panel: WorkspacePanel) => applyUserPanel(state, panel),
-    applyUiHint: (uiHint: UiHint | null | undefined) => applyUiHint(state, uiHint),
-    settleUiAction: (action: ActiveAction) => settleUiAction(state, action),
+    toggleLock,
+    applyUserPanel: (panel: WorkspacePanel, reason: string) => Object.assign(state, applyUserPanel(state, panel, reason)),
+    applyUiHint: (uiHint: UiHint | null | undefined) => Object.assign(state, applyUiHint(state, uiHint)),
+    settleUiAction: (status: ActionStatus) => Object.assign(state, settleUiAction(state, status)),
   }
 })
