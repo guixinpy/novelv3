@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Column, String, Integer, DateTime
+from sqlalchemy import Column, String, Integer, DateTime, JSON
 from app.db import Base
 
 
@@ -19,5 +19,6 @@ class Project(Base):
     language = Column(String, default="zh-CN")
     style = Column(String, default="")
     complexity = Column(Integer, default=3)
+    style_config = Column(JSON, default=dict)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
