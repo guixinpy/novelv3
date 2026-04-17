@@ -63,12 +63,14 @@ def export_project(project_id: str, payload: ExportRequest, db: Session = Depend
         text = text.replace("# ", "").replace("## ", "").replace("### ", "").replace("**", "").replace("- ", "")
 
     media = "text/markdown" if payload.format == "markdown" else "text/plain"
-    filename = f"{project.name}.{'md' if payload.format == 'markdown' else 'txt'}"
+    ext = "md" if payload.format == "markdown" else "txt"
+    from urllib.parse import quote
+    filename_encoded = quote(f"{project.name}.{ext}")
 
     return PlainTextResponse(
         content=text,
         media_type=media,
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename_encoded}"},
     )
 
 
