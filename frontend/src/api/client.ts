@@ -1,6 +1,15 @@
+import type {
+  BackgroundTaskResponse,
+  ChatHistoryMessage,
+  ChatRequest,
+  ChatResponse,
+  ResolveActionRequest,
+  ResolveActionResponse,
+} from './types'
+
 const API_BASE = '/api/v1'
 
-async function request(path: string, options: RequestInit = {}) {
+async function request<T = any>(path: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     headers: { 'Content-Type': 'application/json' },
     ...options,
@@ -9,7 +18,7 @@ async function request(path: string, options: RequestInit = {}) {
     const err = await res.json().catch(() => ({ detail: 'Unknown error' }))
     throw new Error(err.detail || 'Request failed')
   }
-  return res.json()
+  return res.json() as Promise<T>
 }
 
 export const api = {
@@ -29,9 +38,9 @@ export const api = {
   getOutline: (id: string) => request(`/projects/${id}/outline`),
   getTopology: (id: string) => request(`/projects/${id}/topology`),
   getDiagnosis: (id: string) => request(`/projects/${id}/state-diagnosis`),
-  getMessages: (id: string) => request(`/dialog/projects/${id}/messages`),
-  sendChat: (data: any) => request('/dialog/chat', { method: 'POST', body: JSON.stringify(data) }),
-  resolveAction: (data: any) => request('/dialog/resolve-action', { method: 'POST', body: JSON.stringify(data) }),
+  getMessages: (id: string) => request<ChatHistoryMessage[]>(`/dialog/projects/${id}/messages`),
+  sendChat: (data: ChatRequest) => request<ChatResponse>('/dialog/chat', { method: 'POST', body: JSON.stringify(data) }),
+  resolveAction: (data: ResolveActionRequest) => request<ResolveActionResponse>('/dialog/resolve-action', { method: 'POST', body: JSON.stringify(data) }),
   startWriting: (id: string) => request(`/projects/${id}/writing/start`, { method: 'POST' }),
   pauseWriting: (id: string) => request(`/projects/${id}/writing/pause`, { method: 'POST' }),
   resumeWriting: (id: string) => request(`/projects/${id}/writing/resume`, { method: 'POST' }),
@@ -46,5 +55,5 @@ export const api = {
   updatePreferences: (id: string, data: any) => request(`/projects/${id}/preferences`, { method: 'PUT', body: JSON.stringify(data) }),
   resetPreferences: (id: string) => request(`/projects/${id}/preferences/reset`, { method: 'POST' }),
   deepCheck: (id: string, chapterIndex: number) => request(`/projects/${id}/consistency/chapters/${chapterIndex}/check?depth=l2`, { method: 'POST' }),
-  getBackgroundTask: (taskId: string) => request(`/background-tasks/${taskId}`),
+  getBackgroundTask: (taskId: string) => request<BackgroundTaskResponse>(`/background-tasks/${taskId}`),
 }

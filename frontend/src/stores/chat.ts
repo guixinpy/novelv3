@@ -1,27 +1,22 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { api } from '../api/client'
+import type {
+  ChatResponse,
+  PendingAction as ApiPendingAction,
+  ProjectDiagnosis,
+  ResolveActionResponse,
+} from '../api/types'
 
-export interface PendingAction {
-  id: string
-  type: string
-  description: string
-  params: Record<string, any>
-  requires_confirmation: boolean
-}
-
-export interface Diagnosis {
-  missing_items: string[]
-  completed_items: string[]
-  suggested_next_step: string | null
-}
+export type PendingAction = ApiPendingAction
+export type Diagnosis = ProjectDiagnosis
 
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'system'
   content: string
   pending_action?: PendingAction | null
   diagnosis?: Diagnosis | null
-  action_result?: Record<string, any> | null
+  action_result?: Record<string, unknown> | null
 }
 
 export const useChatStore = defineStore('chat', () => {
@@ -62,8 +57,8 @@ export const useChatStore = defineStore('chat', () => {
     } catch { /* ignore */ }
   }
 
-  async function sendText(text: string) {
-    if (loading.value || !text.trim()) return
+  async function sendText(text: string): Promise<ChatResponse | null> {
+    if (loading.value || !text.trim()) return null
     messages.value.push({ role: 'user', content: text })
     loading.value = true
     try {
@@ -81,15 +76,17 @@ export const useChatStore = defineStore('chat', () => {
       messages.value.push(msg)
       if (res.pending_action) pendingAction.value = res.pending_action
       if (res.project_diagnosis) diagnosis.value = res.project_diagnosis
+      return res
     } catch (e: any) {
       messages.value.push({ role: 'assistant', content: `出错了：${e.message}` })
+      return null
     } finally {
       loading.value = false
     }
   }
 
-  async function sendButtonAction(actionType: string) {
-    if (loading.value) return
+  async function sendButtonAction(actionType: string): Promise<ChatResponse | null> {
+    if (loading.value) return null
     loading.value = true
     try {
       const res = await api.sendChat({
@@ -107,15 +104,17 @@ export const useChatStore = defineStore('chat', () => {
       messages.value.push(msg)
       if (res.pending_action) pendingAction.value = res.pending_action
       if (res.project_diagnosis) diagnosis.value = res.project_diagnosis
+      return res
     } catch (e: any) {
       messages.value.push({ role: 'assistant', content: `出错了：${e.message}` })
+      return null
     } finally {
       loading.value = false
     }
   }
 
-  async function resolveAction(decision: 'confirm' | 'cancel' | 'revise', comment = '') {
-    if (!pendingAction.value || loading.value) return
+  async function resolveAction(decision: 'confirm' | 'cancel' | 'revise', comment = ''): Promise<ResolveActionResponse | null> {
+    if (!pendingAction.value || loading.value) return null
     loading.value = true
     const actionId = pendingAction.value.id
     try {
@@ -131,8 +130,10 @@ export const useChatStore = defineStore('chat', () => {
         pollForCompletion()
       }
       await loadDiagnosis()
+      return res
     } catch (e: any) {
       messages.value.push({ role: 'assistant', content: `操作失败：${e.message}` })
+      return null
     } finally {
       loading.value = false
     }

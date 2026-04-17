@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { api } from '../api/client'
+import type { RefreshTarget } from '../api/types'
 
 export const useProjectStore = defineStore('project', () => {
   const projects = ref<any[]>([])
@@ -12,6 +13,7 @@ export const useProjectStore = defineStore('project', () => {
   const topology = ref<any>(null)
   const chapters = ref<any[]>([])
   const versions = ref<any[]>([])
+  const preferences = ref<any>(null)
 
   async function loadProjects() {
     projects.value = await api.listProjects()
@@ -76,6 +78,47 @@ export const useProjectStore = defineStore('project', () => {
     versions.value = await api.listVersions(id, nodeType)
   }
 
+  async function loadPreferences(id: string) {
+    preferences.value = await api.getPreferences(id)
+  }
+
+  async function updatePreferences(id: string, data: any) {
+    preferences.value = await api.updatePreferences(id, data)
+    return preferences.value
+  }
+
+  async function resetPreferences(id: string) {
+    preferences.value = await api.resetPreferences(id)
+    return preferences.value
+  }
+
+  async function refreshTargets(id: string, targets: RefreshTarget[]) {
+    const jobs: Promise<unknown>[] = []
+    const uniqueTargets = [...new Set(targets)]
+    for (const target of uniqueTargets) {
+      switch (target) {
+        case 'setup':
+          jobs.push(loadSetup(id))
+          break
+        case 'storyline':
+          jobs.push(loadStoryline(id))
+          break
+        case 'outline':
+          jobs.push(loadOutline(id))
+          break
+        case 'content':
+          jobs.push(loadChapters(id))
+          break
+        case 'versions':
+          jobs.push(loadVersions(id))
+          break
+        default:
+          break
+      }
+    }
+    await Promise.all(jobs)
+  }
+
   async function createVersion(id: string, data: any) {
     return await api.createVersion(id, data)
   }
@@ -96,10 +139,11 @@ export const useProjectStore = defineStore('project', () => {
   }
 
   return {
-    projects, currentProject, setup, chapter, storyline, outline, topology, chapters, versions,
+    projects, currentProject, setup, chapter, storyline, outline, topology, chapters, versions, preferences,
     loadProjects, createProject, loadProject,
     generateSetup, loadSetup, generateChapter, loadChapter,
     generateStoryline, loadStoryline, generateOutline, loadOutline, loadTopology,
-    loadChapters, loadVersions, createVersion, rollbackVersion, exportProject,
+    loadChapters, loadVersions, loadPreferences, updatePreferences, resetPreferences, refreshTargets,
+    createVersion, rollbackVersion, exportProject,
   }
 })
