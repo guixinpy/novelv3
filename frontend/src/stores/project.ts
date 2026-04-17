@@ -10,6 +10,8 @@ export const useProjectStore = defineStore('project', () => {
   const storyline = ref<any>(null)
   const outline = ref<any>(null)
   const topology = ref<any>(null)
+  const chapters = ref<any[]>([])
+  const versions = ref<any[]>([])
 
   async function loadProjects() {
     projects.value = await api.listProjects()
@@ -65,10 +67,39 @@ export const useProjectStore = defineStore('project', () => {
     topology.value = await api.getTopology(id)
   }
 
+  async function loadChapters(id: string) {
+    const res = await api.listChapters(id)
+    chapters.value = res.chapters || []
+  }
+
+  async function loadVersions(id: string, nodeType?: string) {
+    versions.value = await api.listVersions(id, nodeType)
+  }
+
+  async function createVersion(id: string, data: any) {
+    return await api.createVersion(id, data)
+  }
+
+  async function rollbackVersion(id: string, versionId: string) {
+    return await api.rollbackVersion(id, versionId)
+  }
+
+  async function exportProject(id: string, format: string) {
+    const res = await api.exportProject(id, { format, include_setup: true, include_outline: true })
+    const blob = await res.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `export.${format === 'markdown' ? 'md' : 'txt'}`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   return {
-    projects, currentProject, setup, chapter, storyline, outline, topology,
+    projects, currentProject, setup, chapter, storyline, outline, topology, chapters, versions,
     loadProjects, createProject, loadProject,
     generateSetup, loadSetup, generateChapter, loadChapter,
     generateStoryline, loadStoryline, generateOutline, loadOutline, loadTopology,
+    loadChapters, loadVersions, createVersion, rollbackVersion, exportProject,
   }
 })

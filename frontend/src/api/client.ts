@@ -35,4 +35,11 @@ export const api = {
   startWriting: (id: string) => request(`/projects/${id}/writing/start`, { method: 'POST' }),
   pauseWriting: (id: string) => request(`/projects/${id}/writing/pause`, { method: 'POST' }),
   resumeWriting: (id: string) => request(`/projects/${id}/writing/resume`, { method: 'POST' }),
+  listVersions: (id: string, nodeType?: string) => request(`/projects/${id}/versions${nodeType ? `?node_type=${nodeType}` : ''}`),
+  getVersion: (id: string, versionId: string) => request(`/projects/${id}/versions/${versionId}`),
+  createVersion: (id: string, data: any) => request(`/projects/${id}/versions`, { method: 'POST', body: JSON.stringify(data) }),
+  rollbackVersion: (id: string, versionId: string) => request(`/projects/${id}/versions/${versionId}/rollback`, { method: 'POST' }),
+  deleteVersion: (id: string, versionId: string) => request(`/projects/${id}/versions/${versionId}`, { method: 'DELETE' }),
+  exportProject: (id: string, data: any) => fetch(`/api/v1/projects/${id}/export`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }),
+  listChapters: (id: string) => request(`/projects/${id}/chapters`),
 }
