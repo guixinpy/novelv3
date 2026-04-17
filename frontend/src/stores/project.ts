@@ -151,12 +151,14 @@ export const useProjectStore = defineStore('project', () => {
     return preferences.value
   }
 
-  async function refreshTargets(id: string, targets: RefreshTarget[]) {
+  async function refreshTargets(id: string, targets: RefreshTarget[]): Promise<RefreshTarget[]> {
     const uniqueTargets = [...new Set(targets)]
+    const successTargets: RefreshTarget[] = []
 
-    async function runSafe(task: () => Promise<unknown>) {
+    async function runSafe(target: RefreshTarget, task: () => Promise<unknown>) {
       try {
         await task()
+        successTargets.push(target)
       } catch {
         // Keep refreshing remaining targets even if one target fails.
       }
@@ -165,33 +167,35 @@ export const useProjectStore = defineStore('project', () => {
     for (const target of uniqueTargets) {
       switch (target) {
         case 'setup':
-          await runSafe(() => loadSetup(id))
+          await runSafe(target, () => loadSetup(id))
           break
         case 'project':
-          await runSafe(() => loadProject(id))
+          await runSafe(target, () => loadProject(id))
           break
         case 'storyline':
-          await runSafe(() => loadStoryline(id))
+          await runSafe(target, () => loadStoryline(id))
           break
         case 'outline':
-          await runSafe(() => loadOutline(id))
+          await runSafe(target, () => loadOutline(id))
           break
         case 'content':
-          await runSafe(() => loadChapters(id))
+          await runSafe(target, () => loadChapters(id))
           break
         case 'topology':
-          await runSafe(() => loadTopology(id))
+          await runSafe(target, () => loadTopology(id))
           break
         case 'versions':
-          await runSafe(() => loadVersions(id, versionsNodeType.value))
+          await runSafe(target, () => loadVersions(id, versionsNodeType.value))
           break
         case 'preferences':
-          await runSafe(() => loadPreferences(id))
+          await runSafe(target, () => loadPreferences(id))
           break
         default:
           break
       }
     }
+
+    return successTargets
   }
 
   async function createVersion(id: string, data: any) {

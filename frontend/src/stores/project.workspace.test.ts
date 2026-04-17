@@ -2,6 +2,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useProjectStore } from './project'
 import { api } from '../api/client'
+import {
+  beginHydration,
+  createHydrationTracker,
+  markHydratedTarget,
+} from '../views/projectDetailHydration'
 
 vi.mock('../api/client', () => ({
   api: {
@@ -104,5 +109,32 @@ describe('project workspace state', () => {
     expect(store.setup).toEqual({ id: 'setup-b', title: 'B 设定' })
     expect(store.versions).toEqual([{ id: 'version-b-all', node_type: 'all' }])
     expect(store.versionsNodeType).toBe(undefined)
+  })
+
+  it('refreshTargets() 只返回成功刷新的 targets，失败的不应回传', async () => {
+    const store = useProjectStore()
+
+    vi.mocked(api.getSetup).mockResolvedValue({ id: 'setup-a', title: 'A 设定' })
+    vi.mocked(api.listVersions).mockRejectedValue(new Error('boom'))
+
+    const successTargets = await store.refreshTargets('A', ['setup', 'versions'])
+
+    expect(successTargets).toEqual(['setup'])
+    expect(store.setup).toEqual({ id: 'setup-a', title: 'A 设定' })
+    expect(store.versions).toEqual([])
+    expect(store.versionsNodeType).toBe(undefined)
+  })
+
+  it('旧 hydration snapshot 不能再把 target 写进当前项目集合', () => {
+    const tracker = createHydrationTracker()
+
+    const snapshotA = beginHydration(tracker, 'A')
+    expect(markHydratedTarget(tracker, snapshotA, 'project')).toBe(true)
+    expect([...tracker.targets]).toEqual(['project'])
+
+    const snapshotB = beginHydration(tracker, 'B')
+    expect(markHydratedTarget(tracker, snapshotA, 'setup')).toBe(false)
+    expect(markHydratedTarget(tracker, snapshotB, 'versions')).toBe(true)
+    expect([...tracker.targets]).toEqual(['versions'])
   })
 })

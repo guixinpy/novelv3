@@ -75,6 +75,14 @@ import {
   isFinishedActionStatus,
   normalizeActionStatus,
 } from '../components/workspace/workspaceMeta'
+import {
+  beginHydration,
+  createHydrationTracker,
+  isActiveHydrationSnapshot,
+  markHydratedTarget,
+  markHydratedTargets,
+  type HydrationSnapshot,
+} from './projectDetailHydration'
 import { useChatStore } from '../stores/chat'
 import { useProjectStore } from '../stores/project'
 import { useWorkspaceStore } from '../stores/workspace'
@@ -91,7 +99,8 @@ const chat = useChatStore()
 const workspace = useWorkspaceStore()
 const pid = computed(() => route.params.id as string)
 const ready = ref(false)
-const hydratedTargets = new Set<RefreshTarget>()
+const hydrationTracker = createHydrationTracker()
+const hydratedTargets = hydrationTracker.targets
 
 const latestActionFingerprint = computed(() => {
   const latest = chat.messages[chat.messages.length - 1]?.action_result as
@@ -132,14 +141,22 @@ watch(latestActionFingerprint, async (fingerprint) => {
 
 async function initialize(projectId: string) {
   ready.value = false
-  hydratedTargets.clear()
+  const snapshot = beginHydration(hydrationTracker, projectId)
   project.resetProjectScopedState(projectId)
   workspace.reset()
   chat.init(projectId)
   await project.loadProject(projectId)
-  hydratedTargets.add('project')
-  await ensurePanelData(workspace.panel, projectId)
+  if (!markHydratedTarget(hydrationTracker, snapshot, 'project')) return
+  await ensurePanelData(workspace.panel, projectId, false, snapshot)
+  if (!isActiveHydrationSnapshot(hydrationTracker, snapshot)) return
   ready.value = true
+}
+
+function currentHydrationSnapshot(projectId = pid.value): HydrationSnapshot {
+  return {
+    projectId,
+    version: hydrationTracker.version,
+  }
 }
 
 async function loadTarget(projectId: string, target: RefreshTarget) {
@@ -171,23 +188,29 @@ async function loadTarget(projectId: string, target: RefreshTarget) {
   }
 }
 
-async function ensurePanelData(panel: WorkspacePanel, projectId = pid.value, force = false) {
+async function ensurePanelData(
+  panel: WorkspacePanel,
+  projectId = pid.value,
+  force = false,
+  snapshot = currentHydrationSnapshot(projectId),
+) {
   for (const target of getPanelRefreshTargets(panel)) {
+    if (!isActiveHydrationSnapshot(hydrationTracker, snapshot)) return
     if (!force && hydratedTargets.has(target)) continue
     await loadTarget(projectId, target)
-    hydratedTargets.add(target)
+    markHydratedTarget(hydrationTracker, snapshot, target)
   }
 }
 
-async function refreshProjectTargets(targets: RefreshTarget[]) {
-  if (!targets.length) return
-  await project.refreshTargets(pid.value, targets)
-  for (const target of targets) {
-    hydratedTargets.add(target)
-  }
-  if (targets.includes('content') && project.chapter?.chapter_index != null) {
+async function refreshProjectTargets(targets: RefreshTarget[], snapshot = currentHydrationSnapshot()) {
+  if (!targets.length) return []
+  const successTargets = await project.refreshTargets(pid.value, targets)
+  if (!isActiveHydrationSnapshot(hydrationTracker, snapshot)) return []
+  markHydratedTargets(hydrationTracker, snapshot, successTargets)
+  if (successTargets.includes('content') && project.chapter?.chapter_index != null) {
     await project.loadChapter(pid.value, project.chapter.chapter_index)
   }
+  return successTargets
 }
 
 async function handleResponse(res: UiAwareResponse | null) {
@@ -232,9 +255,10 @@ function onSelectPanel(panel: WorkspacePanel) {
 }
 
 async function loadChapter(index: number) {
+  const snapshot = currentHydrationSnapshot()
   workspace.applyUserPanel('content', `你刚点了第 ${index} 章`)
   await project.loadChapter(pid.value, index)
-  hydratedTargets.add('content')
+  markHydratedTarget(hydrationTracker, snapshot, 'content')
 }
 
 async function onExport(format: string) {
@@ -243,12 +267,13 @@ async function onExport(format: string) {
 }
 
 async function onFilterVersions(type: string) {
+  const snapshot = currentHydrationSnapshot()
   const reason = type
     ? `你筛选了${getVersionTypeLabel(type)}版本`
     : '你查看全部版本记录'
   workspace.applyUserPanel('versions', reason)
   await project.loadVersions(pid.value, type || undefined)
-  hydratedTargets.add('versions')
+  markHydratedTarget(hydrationTracker, snapshot, 'versions')
 }
 
 async function onRollback(versionId: string) {
