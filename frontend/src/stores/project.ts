@@ -14,6 +14,7 @@ export const useProjectStore = defineStore('project', () => {
   const chapters = ref<any[]>([])
   const versions = ref<any[]>([])
   const preferences = ref<any>(null)
+  const versionsNodeType = ref<string | undefined>(undefined)
 
   async function loadProjects() {
     projects.value = await api.listProjects()
@@ -75,6 +76,7 @@ export const useProjectStore = defineStore('project', () => {
   }
 
   async function loadVersions(id: string, nodeType?: string) {
+    versionsNodeType.value = nodeType
     versions.value = await api.listVersions(id, nodeType)
   }
 
@@ -93,39 +95,46 @@ export const useProjectStore = defineStore('project', () => {
   }
 
   async function refreshTargets(id: string, targets: RefreshTarget[]) {
-    const jobs: Promise<unknown>[] = []
     const uniqueTargets = [...new Set(targets)]
+
+    async function runSafe(task: () => Promise<unknown>) {
+      try {
+        await task()
+      } catch {
+        // Keep refreshing remaining targets even if one target fails.
+      }
+    }
+
     for (const target of uniqueTargets) {
       switch (target) {
         case 'setup':
-          jobs.push(loadSetup(id))
+          await runSafe(() => loadSetup(id))
           break
         case 'project':
-          jobs.push(loadProject(id))
+          await runSafe(() => loadProject(id))
           break
         case 'storyline':
-          jobs.push(loadStoryline(id))
+          await runSafe(() => loadStoryline(id))
           break
         case 'outline':
-          jobs.push(loadOutline(id))
+          await runSafe(() => loadOutline(id))
           break
         case 'content':
-          jobs.push(loadChapters(id))
+          await runSafe(() => loadChapters(id))
           break
         case 'topology':
-          jobs.push(loadTopology(id))
+          await runSafe(() => loadTopology(id))
           break
         case 'versions':
-          jobs.push(loadVersions(id))
+          await runSafe(() => loadVersions(id, versionsNodeType.value))
           break
         case 'preferences':
-          jobs.push(loadPreferences(id))
+          await runSafe(() => loadPreferences(id))
           break
         default:
           break
       }
     }
-    await Promise.all(jobs)
   }
 
   async function createVersion(id: string, data: any) {
@@ -148,7 +157,7 @@ export const useProjectStore = defineStore('project', () => {
   }
 
   return {
-    projects, currentProject, setup, chapter, storyline, outline, topology, chapters, versions, preferences,
+    projects, currentProject, setup, chapter, storyline, outline, topology, chapters, versions, preferences, versionsNodeType,
     loadProjects, createProject, loadProject,
     generateSetup, loadSetup, generateChapter, loadChapter,
     generateStoryline, loadStoryline, generateOutline, loadOutline, loadTopology,

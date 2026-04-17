@@ -1,5 +1,14 @@
-export type DialogState = 'IDLE' | 'CHATTING' | 'PENDING_ACTION' | 'RUNNING' | string
-export type ActionStatus = 'idle' | 'pending' | 'running' | 'completed' | 'success' | 'failed' | 'cancelled' | string
+export type DialogState = 'IDLE' | 'CHATTING' | 'PENDING_ACTION' | 'RUNNING'
+export type ActionStatus = 'idle' | 'pending' | 'running' | 'completed' | 'success' | 'failed' | 'cancelled' | 'revised'
+export type WorkspacePanel =
+  | 'overview'
+  | 'setup'
+  | 'storyline'
+  | 'outline'
+  | 'content'
+  | 'topology'
+  | 'versions'
+  | 'preferences'
 export type RefreshTarget =
   | 'project'
   | 'setup'
@@ -9,7 +18,6 @@ export type RefreshTarget =
   | 'topology'
   | 'versions'
   | 'preferences'
-  | string
 
 export interface PendingAction {
   id: string
@@ -22,7 +30,7 @@ export interface PendingAction {
 export interface ActiveAction {
   type: string
   status: ActionStatus
-  target_panel: string | null
+  target_panel: WorkspacePanel | null
   reason: string
 }
 

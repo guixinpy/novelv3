@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { applyUiHint, applyUserPanel, createWorkspaceState, settleUiAction } from './workspace'
+import { createPinia, setActivePinia } from 'pinia'
+import { applyUiHint, applyUserPanel, createWorkspaceState, settleUiAction, useWorkspaceStore } from './workspace'
+import type { WorkspaceState } from './workspace'
 
 describe('workspace orchestration', () => {
   it('applyUserPanel(state, panel, reason) 仅更新用户选择和原因，不自动锁定，且返回新对象', () => {
@@ -40,12 +42,12 @@ describe('workspace orchestration', () => {
   it('locked 模式下 task completed -> 回 lockedPanel=versions', () => {
     const state = createWorkspaceState()
 
-    const lockedState = {
+    const lockedState: WorkspaceState = {
       ...state,
-      mode: 'locked' as const,
+      mode: 'locked',
       panel: 'outline',
       lockedPanel: 'versions',
-      source: 'ai' as const,
+      source: 'ai',
       reason: '后台任务运行中',
       returnPanel: 'outline',
     }
@@ -57,5 +59,32 @@ describe('workspace orchestration', () => {
     expect(next.lockedPanel).toBe('versions')
     expect(next.mode).toBe('locked')
     expect(next.source).toBe('system')
+  })
+
+  it('store reset() 会清理跨项目残留状态', () => {
+    setActivePinia(createPinia())
+    const store = useWorkspaceStore()
+
+    store.applyUserPanel('outline', 'user-click-tab')
+    store.toggleLock()
+    store.applyUiHint({
+      dialog_state: 'PENDING_ACTION',
+      active_action: {
+        type: 'generate_outline',
+        status: 'pending',
+        target_panel: 'outline',
+        reason: '等待用户确认',
+      },
+    })
+
+    store.reset()
+
+    expect(store.mode).toBe('auto')
+    expect(store.panel).toBe('overview')
+    expect(store.lockedPanel).toBe(null)
+    expect(store.source).toBe('system')
+    expect(store.reason).toBe('')
+    expect(store.lastUserPanel).toBe(null)
+    expect(store.returnPanel).toBe(null)
   })
 })

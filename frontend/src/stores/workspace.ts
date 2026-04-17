@@ -1,10 +1,9 @@
 import { defineStore } from 'pinia'
 import { reactive, toRefs } from 'vue'
-import type { ActionStatus, UiHint } from '../api/types'
+import type { ActionStatus, UiHint, WorkspacePanel } from '../api/types'
 
 export type WorkspaceMode = 'auto' | 'locked'
 export type WorkspaceSource = 'ai' | 'user' | 'system'
-export type WorkspacePanel = string
 
 export interface WorkspaceState {
   mode: WorkspaceMode
@@ -107,9 +106,14 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     Object.assign(state, toggleLockState(state))
   }
 
+  function reset() {
+    Object.assign(state, createWorkspaceState())
+  }
+
   return {
     ...toRefs(state),
     toggleLock,
+    reset,
     applyUserPanel: (panel: WorkspacePanel, reason: string) => Object.assign(state, applyUserPanel(state, panel, reason)),
     applyUiHint: (uiHint: UiHint | null | undefined) => Object.assign(state, applyUiHint(state, uiHint)),
     settleUiAction: (status: ActionStatus) => Object.assign(state, settleUiAction(state, status)),
