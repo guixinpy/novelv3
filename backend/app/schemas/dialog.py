@@ -17,7 +17,7 @@ class ChatIn(BaseModel):
     input_type: str = "text"
     text: str = ""
     command_name: str | None = None
-    command_args: dict = Field(default_factory=dict)
+    command_args: str | None = None
     action_type: str | None = None
     params: dict = Field(default_factory=dict)
 

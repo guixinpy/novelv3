@@ -175,7 +175,7 @@ def test_command_input_round_trips_as_command_message(client):
         "input_type": "command",
         "text": "/clear",
         "command_name": "clear",
-        "command_args": {"scope": "history"},
+        "command_args": "--scope history",
     }
     r2 = client.post("/api/v1/dialog/chat", json=command_payload)
     assert r2.status_code == 200
@@ -189,7 +189,7 @@ def test_command_input_round_trips_as_command_message(client):
     assert user_command["message_type"] == "command"
     assert user_command["meta"] == {
         "command_name": "clear",
-        "command_args": {"scope": "history"},
+        "command_args": "--scope history",
     }
 
 @patch("app.api.setups.load_api_key", return_value="sk-test")

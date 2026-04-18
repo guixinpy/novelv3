@@ -248,7 +248,7 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
             message_type="command",
             meta={
                 "command_name": payload.command_name,
-                "command_args": payload.command_args or {},
+                "command_args": payload.command_args,
             },
         )
 
