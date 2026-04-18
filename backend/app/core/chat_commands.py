@@ -51,7 +51,7 @@ def parse_command(command_name: str | None, text: str | None, command_args: str 
     return ParsedCommand(name=normalized_name, args=normalized_args)
 
 
-def build_command_text(parsed: ParsedCommand, raw_text: str | None = None) -> str:
+def build_command_text(parsed: ParsedCommand) -> str:
     if parsed.args:
         return f"/{parsed.name} {parsed.args}"
     return f"/{parsed.name}"

@@ -1,3 +1,5 @@
+from concurrent.futures import ThreadPoolExecutor
+import threading
 import pytest
 from unittest.mock import AsyncMock, patch
 
@@ -519,3 +521,66 @@ def test_resolve_action_confirm(mock_parse, mock_complete, mock_key, client):
         },
     }
     assert r3.json()["refresh_targets"] == []
+
+
+def test_resolve_action_double_confirm_only_one_effective(client):
+    r = client.post("/api/v1/projects", json={"name": "Test"})
+    pid = r.json()["id"]
+
+    r2 = client.post("/api/v1/dialog/chat", json={
+        "project_id": pid,
+        "input_type": "button",
+        "action_type": "preview_setup",
+    })
+    action_id = r2.json()["pending_action"]["id"]
+
+    barrier = threading.Barrier(2)
+
+    class _SyncDateTime:
+        @staticmethod
+        def now(tz=None):
+            try:
+                barrier.wait(timeout=1)
+            except threading.BrokenBarrierError:
+                pass
+            from datetime import datetime as _RealDateTime
+            return _RealDateTime.now(tz)
+
+    with patch("app.api.dialogs.datetime", _SyncDateTime), patch("app.api.dialogs._execute_action_background") as mock_background:
+        def _confirm_once():
+            return client.post("/api/v1/dialog/resolve-action", json={
+                "action_id": action_id,
+                "decision": "confirm",
+            })
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            responses = [f.result() for f in [pool.submit(_confirm_once), pool.submit(_confirm_once)]]
+
+    statuses = sorted(resp.status_code for resp in responses)
+    assert statuses == [200, 409]
+    assert mock_background.call_count == 1
+
+
+def test_resolve_action_confirm_passes_command_args_to_background(client):
+    r = client.post("/api/v1/projects", json={"name": "Test"})
+    pid = r.json()["id"]
+
+    r2 = client.post("/api/v1/dialog/chat", json={
+        "project_id": pid,
+        "input_type": "command",
+        "command_name": "setup",
+        "command_args": "主角是植物学家",
+    })
+    assert r2.status_code == 200
+    action_id = r2.json()["pending_action"]["id"]
+
+    with patch("app.api.dialogs._execute_action_background") as mock_background:
+        r3 = client.post("/api/v1/dialog/resolve-action", json={
+            "action_id": action_id,
+            "decision": "confirm",
+        })
+
+    assert r3.status_code == 200
+    mock_background.assert_called_once()
+    assert mock_background.call_args.args[0] == "generate_setup"
+    assert mock_background.call_args.kwargs["command_args"] == "主角是植物学家"

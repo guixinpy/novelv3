@@ -391,7 +391,7 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
                 db,
                 dialog.id,
                 "user",
-                build_command_text(parsed_command, payload.text),
+                build_command_text(parsed_command),
                 message_type="command",
                 meta={
                     "command_name": parsed_command.name,
@@ -633,20 +633,37 @@ def _execute_action_background(action_type: str, project_id: str, dialog_id: str
 
 @router.post("/api/v1/dialog/resolve-action")
 async def resolve_action(payload: ResolveActionIn, db: Session = Depends(get_db)):
+    claimed = db.query(PendingAction).filter(
+        PendingAction.id == payload.action_id,
+        PendingAction.status == "pending",
+        PendingAction.resolved_at.is_(None),
+    ).update(
+        {
+            "status": payload.decision,
+            "decision_comment": payload.comment,
+            "resolved_at": datetime.now(timezone.utc),
+        },
+        synchronize_session=False,
+    )
+    if claimed != 1:
+        existing = db.query(PendingAction.id).filter(PendingAction.id == payload.action_id).first()
+        db.rollback()
+        if not existing:
+            raise HTTPException(status_code=404, detail="Pending action not found")
+        raise HTTPException(status_code=409, detail="Pending action is no longer active")
+
     pending = db.query(PendingAction).filter(PendingAction.id == payload.action_id).first()
     if not pending:
+        db.rollback()
         raise HTTPException(status_code=404, detail="Pending action not found")
-    if pending.status != "pending" or pending.resolved_at is not None:
-        raise HTTPException(status_code=409, detail="Pending action is no longer active")
 
-    dialog = db.query(Dialog).filter(Dialog.id == pending.dialog_id).first()
-    if not dialog or dialog.pending_action_id != pending.id:
+    dialog = db.query(Dialog).filter(
+        Dialog.id == pending.dialog_id,
+        Dialog.pending_action_id == pending.id,
+    ).first()
+    if not dialog:
+        db.rollback()
         raise HTTPException(status_code=409, detail="Pending action is no longer active")
-
-    pending.status = payload.decision
-    pending.decision_comment = payload.comment
-    pending.resolved_at = datetime.now(timezone.utc)
-    db.commit()
 
     dialog.pending_action_id = None
     dialog.state = "chatting"
