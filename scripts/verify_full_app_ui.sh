@@ -230,6 +230,7 @@ wait_for_eval_true "pending 状态执行 /clear 后待处理动作被清除" "((
 run agent-browser --session "${AB_SESSION}" fill ".chat-workspace__input" "请回复：已收到，用于 compact smoke。"
 run agent-browser --session "${AB_SESSION}" press Enter
 wait_for_eval_true "普通会话消息产生" "(() => document.querySelectorAll('.message-row').length >= 2)()" 90 1
+wait_for_eval_true "普通会话完成后输入框重新可用" "(() => { const input = document.querySelector('.chat-workspace__input'); const loading = document.querySelector('.chat-workspace__loading'); return Boolean(input) && !input.disabled && !loading; })()" 90 1
 
 run agent-browser --session "${AB_SESSION}" fill ".chat-workspace__input" "/co"
 wait_for_eval_true "slash 菜单过滤后可选 /compact" "(() => Array.from(document.querySelectorAll('.chat-command-menu__name')).some((el) => (el.textContent || '').trim() === '/compact'))()"
