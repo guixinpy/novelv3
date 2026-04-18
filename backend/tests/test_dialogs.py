@@ -264,8 +264,9 @@ def test_command_with_args_enters_preview_pending_action_and_message(command_nam
     assert f"附加要求：{args}" in body["message"]
 
 
+@patch("app.api.dialogs.load_api_key", return_value=None)
 @patch("app.api.dialogs.ai_service.complete", new_callable=AsyncMock)
-def test_compact_replaces_previous_plain_messages_with_summary(mock_compact_complete, client):
+def test_compact_replaces_previous_plain_messages_with_summary(mock_compact_complete, mock_key, client):
     r = client.post("/api/v1/projects", json={"name": "Test"})
     pid = r.json()["id"]
     mock_compact_complete.return_value.content = "压缩摘要：用户问候并要求继续。"
@@ -431,8 +432,9 @@ def test_compact_failure_does_not_drop_history(client):
     assert all(m["message_type"] != "summary" for m in messages)
 
 
+@patch("app.api.dialogs.load_api_key", return_value=None)
 @patch("app.api.dialogs.ai_service.complete", new_callable=AsyncMock)
-def test_command_text_conflict_prefers_raw_text_as_single_source(mock_compact_complete, client):
+def test_command_text_conflict_prefers_raw_text_as_single_source(mock_compact_complete, mock_key, client):
     r = client.post("/api/v1/projects", json={"name": "Test"})
     pid = r.json()["id"]
     mock_compact_complete.return_value.content = "冲突输入时采用 text 源。"
@@ -462,8 +464,9 @@ def test_command_text_conflict_prefers_raw_text_as_single_source(mock_compact_co
     assert mock_compact_complete.await_count == 1
 
 
+@patch("app.api.dialogs.load_api_key", return_value=None)
 @patch("app.api.dialogs.ai_service.complete", new_callable=AsyncMock)
-def test_compact_only_compresses_messages_after_last_summary(mock_compact_complete, client):
+def test_compact_only_compresses_messages_after_last_summary(mock_compact_complete, mock_key, client):
     r = client.post("/api/v1/projects", json={"name": "Test"})
     pid = r.json()["id"]
 
