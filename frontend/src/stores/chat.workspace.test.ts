@@ -202,7 +202,15 @@ describe('chat workspace polling', () => {
 
     expect(store.projectId).toBe('B')
     expect(store.messages).toEqual([
-      { role: 'assistant', content: 'B 的历史消息', pending_action: null, diagnosis: null, action_result: null },
+      {
+        role: 'assistant',
+        content: 'B 的历史消息',
+        message_type: null,
+        meta: null,
+        pending_action: null,
+        diagnosis: null,
+        action_result: null,
+      },
     ])
     expect(store.diagnosis).toEqual({
       missing_items: ['content'],
@@ -228,7 +236,15 @@ describe('chat workspace polling', () => {
 
     expect(store.projectId).toBe('B')
     expect(store.messages).toEqual([
-      { role: 'assistant', content: 'B 的历史消息', pending_action: null, diagnosis: null, action_result: null },
+      {
+        role: 'assistant',
+        content: 'B 的历史消息',
+        message_type: null,
+        meta: null,
+        pending_action: null,
+        diagnosis: null,
+        action_result: null,
+      },
     ])
     expect(store.diagnosis).toEqual({
       missing_items: ['content'],
@@ -299,7 +315,15 @@ describe('chat workspace polling', () => {
     await expect(sendPromise).resolves.toBe(null)
     expect(store.projectId).toBe('B')
     expect(store.messages).toEqual([
-      { role: 'assistant', content: 'B 的历史消息', pending_action: null, diagnosis: null, action_result: null },
+      {
+        role: 'assistant',
+        content: 'B 的历史消息',
+        message_type: null,
+        meta: null,
+        pending_action: null,
+        diagnosis: null,
+        action_result: null,
+      },
     ])
     expect(store.diagnosis).toEqual({
       missing_items: ['content'],
@@ -501,6 +525,8 @@ describe('chat workspace polling', () => {
       {
         role: 'assistant',
         content: '已收到你的请求。确认要执行吗？',
+        message_type: null,
+        meta: null,
         pending_action: {
           id: 'pending-1',
           type: 'preview_setup',
@@ -519,5 +545,117 @@ describe('chat workspace polling', () => {
       params: { project_id: 'project-1' },
       requires_confirmation: true,
     })
+  })
+
+  it('sendCommand(compact) 成功后会重新 loadHistory，而不是只 append 一条消息', async () => {
+    const store = useChatStore()
+    store.projectId = 'project-1'
+    store.messages = [
+      { role: 'assistant', content: '旧消息' },
+    ]
+
+    vi.mocked(api.sendChat).mockResolvedValue({
+      message: '已压缩历史',
+      pending_action: null,
+      ui_hint: null,
+      refresh_targets: [],
+      project_diagnosis: {
+        missing_items: [],
+        completed_items: ['setup'],
+        suggested_next_step: null,
+      },
+    })
+    vi.mocked(api.getMessages).mockResolvedValue([
+      {
+        role: 'assistant',
+        content: '压缩后的历史',
+        message_type: 'command_result',
+        meta: { command: 'compact' },
+        created_at: '2026-04-18T01:00:00Z',
+      },
+    ])
+
+    await store.sendCommand('compact', '', '/compact')
+
+    expect(api.sendChat).toHaveBeenCalledWith({
+      project_id: 'project-1',
+      input_type: 'command',
+      command_name: 'compact',
+      command_args: '',
+    })
+    expect(api.getMessages).toHaveBeenCalledWith('project-1')
+    expect(store.messages).toEqual([
+      {
+        role: 'assistant',
+        content: '压缩后的历史',
+        message_type: 'command_result',
+        meta: { command: 'compact' },
+        pending_action: null,
+        diagnosis: null,
+        action_result: null,
+      },
+    ])
+  })
+
+  it('sendCommand(setup) 会追加 assistant 回执并恢复 pendingAction', async () => {
+    const store = useChatStore()
+    store.projectId = 'project-1'
+
+    vi.mocked(api.sendChat).mockResolvedValue({
+      message: '收到，先给你一版人物与世界设定。',
+      pending_action: {
+        id: 'pending-setup-1',
+        type: 'preview_setup',
+        description: '生成设定',
+        params: { project_id: 'project-1' },
+        requires_confirmation: true,
+      },
+      ui_hint: null,
+      refresh_targets: [],
+      project_diagnosis: {
+        missing_items: ['storyline'],
+        completed_items: ['setup'],
+        suggested_next_step: 'preview_storyline',
+      },
+    })
+
+    await store.sendCommand('setup', '主角是植物学家', '/setup 主角是植物学家')
+
+    expect(api.sendChat).toHaveBeenCalledWith({
+      project_id: 'project-1',
+      input_type: 'command',
+      command_name: 'setup',
+      command_args: '主角是植物学家',
+    })
+    expect(api.getMessages).not.toHaveBeenCalled()
+    expect(store.pendingAction).toEqual({
+      id: 'pending-setup-1',
+      type: 'preview_setup',
+      description: '生成设定',
+      params: { project_id: 'project-1' },
+      requires_confirmation: true,
+    })
+    expect(store.messages.slice(-2)).toEqual([
+      { role: 'user', content: '/setup 主角是植物学家' },
+      {
+        role: 'assistant',
+        content: '收到，先给你一版人物与世界设定。',
+        message_type: null,
+        meta: null,
+        pending_action: {
+          id: 'pending-setup-1',
+          type: 'preview_setup',
+          description: '生成设定',
+          params: { project_id: 'project-1' },
+          requires_confirmation: true,
+        },
+        diagnosis: {
+          missing_items: ['storyline'],
+          completed_items: ['setup'],
+          suggested_next_step: 'preview_storyline',
+        },
+      },
+    ])
+    expect(store.loading).toBe(false)
   })
 })

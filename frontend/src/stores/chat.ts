@@ -2,11 +2,13 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { api } from '../api/client'
 import type {
+  ChatHistoryMessage,
   ChatResponse,
   PendingAction as ApiPendingAction,
   ProjectDiagnosis,
   ResolveActionResponse,
 } from '../api/types'
+import type { ChatCommandName } from '../components/workspace/chatCommands'
 
 export type PendingAction = ApiPendingAction
 export type Diagnosis = ProjectDiagnosis
@@ -14,15 +16,19 @@ export type Diagnosis = ProjectDiagnosis
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'system'
   content: string
+  message_type?: string | null
+  meta?: Record<string, unknown> | null
   pending_action?: PendingAction | null
   diagnosis?: Diagnosis | null
   action_result?: Record<string, unknown> | null
 }
 
-function toChatMessage(message: any): ChatMessage {
+function toChatMessage(message: ChatHistoryMessage): ChatMessage {
   return {
     role: message.role,
     content: message.content,
+    message_type: message.message_type || null,
+    meta: message.meta || null,
     pending_action: message.pending_action || null,
     diagnosis: message.diagnosis || null,
     action_result: message.action_result || null,
@@ -115,6 +121,8 @@ export const useChatStore = defineStore('chat', () => {
       const msg: ChatMessage = {
         role: 'assistant',
         content: res.message,
+        message_type: res.message_type || null,
+        meta: res.meta || null,
         pending_action: res.pending_action || null,
         diagnosis: res.project_diagnosis || null,
       }
@@ -149,6 +157,8 @@ export const useChatStore = defineStore('chat', () => {
       const msg: ChatMessage = {
         role: 'assistant',
         content: res.message,
+        message_type: res.message_type || null,
+        meta: res.meta || null,
         pending_action: res.pending_action || null,
         diagnosis: res.project_diagnosis || null,
       }
@@ -202,6 +212,47 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  async function sendCommand(name: ChatCommandName, args: string, rawInput: string): Promise<ChatResponse | null> {
+    if (loading.value || !name) return null
+    const { pidSnapshot, versionSnapshot } = captureSnapshot()
+    messages.value.push({ role: 'user', content: rawInput })
+    loading.value = true
+    try {
+      const res = await api.sendChat({
+        project_id: pidSnapshot,
+        input_type: 'command',
+        command_name: name,
+        command_args: args,
+      })
+      if (!isActiveSnapshot(pidSnapshot, versionSnapshot)) return null
+      if (name === 'compact' || name === 'clear') {
+        await loadHistory(pidSnapshot, versionSnapshot)
+      } else {
+        const msg: ChatMessage = {
+          role: 'assistant',
+          content: res.message,
+          message_type: res.message_type || null,
+          meta: res.meta || null,
+          pending_action: res.pending_action || null,
+          diagnosis: res.project_diagnosis || null,
+        }
+        messages.value.push(msg)
+        historyCursor.value += 2
+      }
+      pendingAction.value = res.pending_action || null
+      if (res.project_diagnosis) diagnosis.value = res.project_diagnosis
+      return res
+    } catch (e: any) {
+      if (!isActiveSnapshot(pidSnapshot, versionSnapshot)) return null
+      messages.value.push({ role: 'assistant', content: `出错了：${e.message}` })
+      return null
+    } finally {
+      if (isActiveSnapshot(pidSnapshot, versionSnapshot)) {
+        loading.value = false
+      }
+    }
+  }
+
   async function pollForCompletion(
     actionType: string,
     pidSnapshot = projectId.value,
@@ -246,6 +297,6 @@ export const useChatStore = defineStore('chat', () => {
 
   return {
     messages, projectId, diagnosis, pendingAction, loading,
-    init, loadDiagnosis, sendText, sendButtonAction, resolveAction,
+    init, loadDiagnosis, sendText, sendCommand, sendButtonAction, resolveAction,
   }
 })

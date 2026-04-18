@@ -63,6 +63,7 @@ import type { ChatResponse, RefreshTarget, ResolveActionResponse, WorkspacePanel
 import ChatWorkspace from '../components/workspace/ChatWorkspace.vue'
 import InspectorPanel from '../components/workspace/InspectorPanel.vue'
 import ProjectWorkspaceShell from '../components/workspace/ProjectWorkspaceShell.vue'
+import { parseSlashCommand } from '../components/workspace/chatCommands'
 import {
   getActionLabel,
   getActionPanel,
@@ -224,7 +225,10 @@ async function handleResponse(res: UiAwareResponse | null) {
 async function send(text: string) {
   if (chat.pendingAction) return
   workspace.applyUserPanel(workspace.panel, '你发送了一条消息')
-  const res = await chat.sendText(text)
+  const parsed = parseSlashCommand(text)
+  const res = parsed.kind === 'command'
+    ? await chat.sendCommand(parsed.name, parsed.args, parsed.rawInput)
+    : await chat.sendText(parsed.text)
   await handleResponse(res)
 }
 

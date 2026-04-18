@@ -47,10 +47,12 @@ export interface ProjectDiagnosis {
 
 export interface ChatRequest {
   project_id: string
-  input_type: 'text' | 'button'
+  input_type: 'text' | 'button' | 'command'
   text?: string
   action_type?: string
   params?: Record<string, unknown>
+  command_name?: string
+  command_args?: string
 }
 
 export interface ChatResponse {
@@ -59,6 +61,8 @@ export interface ChatResponse {
   ui_hint: UiHint | null
   refresh_targets: RefreshTarget[]
   project_diagnosis: ProjectDiagnosis
+  message_type?: string | null
+  meta?: Record<string, unknown> | null
 }
 
 export interface ResolveActionRequest {
@@ -97,7 +101,10 @@ export interface BackgroundTaskResponse {
 export interface ChatHistoryMessage {
   role: 'user' | 'assistant' | 'system'
   content: string
+  message_type?: string | null
+  meta?: Record<string, unknown> | null
   pending_action?: PendingAction | null
+  diagnosis?: ProjectDiagnosis | null
   action_result?: Record<string, unknown> | null
   created_at?: string | null
 }
