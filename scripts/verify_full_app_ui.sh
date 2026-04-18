@@ -7,30 +7,23 @@ FRONTEND_DIR="$ROOT_DIR/frontend"
 BACKEND_VENV="/home/guixin/project_workspace/novelv3/backend/.venv"
 BACKEND_PYTEST="$BACKEND_VENV/bin/pytest"
 BACKEND_PYTHON="$BACKEND_VENV/bin/python"
+BACKEND_ALEMBIC="$BACKEND_VENV/bin/alembic"
 
 BACKEND_HOST="127.0.0.1"
-BACKEND_PORT="8000"
-FRONTEND_HOST="127.0.0.1"
-FRONTEND_PORT="5173"
-BACKEND_BASE_URL="http://${BACKEND_HOST}:${BACKEND_PORT}"
-FRONTEND_BASE_URL="http://${FRONTEND_HOST}:${FRONTEND_PORT}"
+BACKEND_PORT=""
+BACKEND_BASE_URL=""
+FRONTEND_BASE_URL=""
 AB_SESSION="verify-full-app-ui-$$"
 
 LOG_DIR="$(mktemp -d "${TMPDIR:-/tmp}/verify-full-app-ui.XXXXXX")"
 BACKEND_LOG="$LOG_DIR/backend.log"
-FRONTEND_LOG="$LOG_DIR/frontend.log"
 AGENT_BROWSER_ERRORS_JSON="$LOG_DIR/agent-browser-errors.json"
 AGENT_BROWSER_CONSOLE_JSON="$LOG_DIR/agent-browser-console.json"
 
 BACKEND_PID=""
-FRONTEND_PID=""
 
 cleanup() {
   set +e
-  if [[ -n "${FRONTEND_PID}" ]] && kill -0 "${FRONTEND_PID}" 2>/dev/null; then
-    kill "${FRONTEND_PID}" 2>/dev/null
-    wait "${FRONTEND_PID}" 2>/dev/null || true
-  fi
   if [[ -n "${BACKEND_PID}" ]] && kill -0 "${BACKEND_PID}" 2>/dev/null; then
     kill "${BACKEND_PID}" 2>/dev/null
     wait "${BACKEND_PID}" 2>/dev/null || true
@@ -64,45 +57,76 @@ wait_for_http() {
   return 1
 }
 
-get_or_create_project_id() {
-  local projects_json
-  local project_id
+pick_free_port() {
+  python3 - <<'PY'
+import socket
 
-  projects_json="$(curl -fsS "${BACKEND_BASE_URL}/api/v1/projects")"
-  project_id="$(python3 - "${projects_json}" <<'PY'
+sock = socket.socket()
+sock.bind(("127.0.0.1", 0))
+print(sock.getsockname()[1])
+sock.close()
+PY
+}
+
+create_temp_project() {
+  local payload
+  local ts
+  local project_json
+
+  ts="$(date +%s)"
+  payload="$(python3 - <<'PY' "${ts}"
 import json
 import sys
 
-data = json.loads(sys.argv[1] if len(sys.argv) > 1 else "[]")
-if isinstance(data, list) and data:
-    first = data[0]
-    pid = first.get("id") if isinstance(first, dict) else None
-    if pid:
-        print(pid)
+ts = sys.argv[1]
+print(json.dumps({"name": f"UI Slash Smoke {ts}"}))
 PY
 )"
 
-  if [[ -n "${project_id}" ]]; then
-    echo "${project_id}"
-    return 0
-  fi
-
-  project_id="$(curl -fsS \
+  project_json="$(curl -fsS \
     -H 'Content-Type: application/json' \
     -X POST \
-    -d '{"name":"UI Regression Auto Project"}' \
-    "${BACKEND_BASE_URL}/api/v1/projects" | python3 -c '
+    -d "${payload}" \
+    "${BACKEND_BASE_URL}/api/v1/projects")"
+
+  python3 - <<'PY' "${project_json}"
 import json
 import sys
 
-data = json.loads(sys.stdin.read())
+data = json.loads(sys.argv[1])
 pid = data.get("id")
-if not pid:
-    raise SystemExit("创建项目失败：返回中没有 id")
-print(pid)
-')"
+name = data.get("name")
+if not pid or not name:
+    raise SystemExit("创建临时项目失败：返回中缺少 id 或 name")
+print(f"{pid}\t{name}")
+PY
+}
 
-  echo "${project_id}"
+assert_eval() {
+  local description="$1"
+  local js="$2"
+  echo "==> 断言: ${description}"
+  run agent-browser --session "${AB_SESSION}" eval "${js}"
+}
+
+wait_for_eval_true() {
+  local description="$1"
+  local expression="$2"
+  local attempts="${3:-60}"
+  local sleep_seconds="${4:-1}"
+
+  echo "==> 等待: ${description}"
+  for ((i = 1; i <= attempts; i++)); do
+    local result
+    result="$(agent-browser --session "${AB_SESSION}" eval "${expression}" 2>/dev/null || true)"
+    if [[ "${result}" == "true" ]]; then
+      return 0
+    fi
+    sleep "${sleep_seconds}"
+  done
+
+  echo "等待超时: ${description}" >&2
+  return 1
 }
 
 run() {
@@ -115,6 +139,10 @@ require_command python3
 require_command npm
 require_command agent-browser
 
+BACKEND_PORT="${VERIFY_BACKEND_PORT:-$(pick_free_port)}"
+BACKEND_BASE_URL="http://${BACKEND_HOST}:${BACKEND_PORT}"
+FRONTEND_BASE_URL="${BACKEND_BASE_URL}"
+
 if [[ ! -x "${BACKEND_PYTEST}" ]]; then
   echo "找不到可执行 pytest: ${BACKEND_PYTEST}" >&2
   exit 1
@@ -123,40 +151,69 @@ if [[ ! -x "${BACKEND_PYTHON}" ]]; then
   echo "找不到可执行 python: ${BACKEND_PYTHON}" >&2
   exit 1
 fi
+if [[ ! -x "${BACKEND_ALEMBIC}" ]]; then
+  echo "找不到可执行 alembic: ${BACKEND_ALEMBIC}" >&2
+  exit 1
+fi
 
 echo "日志目录: ${LOG_DIR}"
 
 run bash -lc "cd '${BACKEND_DIR}' && '${BACKEND_PYTEST}' tests/test_dialogs.py tests/test_background.py tests/test_projects.py"
+run bash -lc "cd '${BACKEND_DIR}' && '${BACKEND_ALEMBIC}' upgrade head"
 run bash -lc "cd '${FRONTEND_DIR}' && npm run test:unit -- src/stores/workspace.test.ts src/stores/chat.workspace.test.ts src/stores/project.workspace.test.ts src/components/list/projectListMeta.test.ts"
 run bash -lc "cd '${FRONTEND_DIR}' && npm run build"
 
 echo "==> 启动 backend 服务"
 bash -lc "cd '${BACKEND_DIR}' && '${BACKEND_PYTHON}' -m uvicorn app.main:app --host '${BACKEND_HOST}' --port '${BACKEND_PORT}'" >"${BACKEND_LOG}" 2>&1 &
 BACKEND_PID="$!"
-wait_for_http "${BACKEND_BASE_URL}/api/v1/projects" "backend"
-
-echo "==> 启动 frontend 服务"
-bash -lc "cd '${FRONTEND_DIR}' && npm run dev -- --host '${FRONTEND_HOST}' --port '${FRONTEND_PORT}' --strictPort" >"${FRONTEND_LOG}" 2>&1 &
-FRONTEND_PID="$!"
-wait_for_http "${FRONTEND_BASE_URL}/" "frontend"
-
-PROJECT_ID="$(get_or_create_project_id)"
-if [[ -z "${PROJECT_ID}" ]]; then
-  echo "无法获取项目 ID" >&2
+sleep 1
+if ! kill -0 "${BACKEND_PID}" 2>/dev/null; then
+  echo "backend 进程启动失败，日志: ${BACKEND_LOG}" >&2
+  cat "${BACKEND_LOG}" >&2
   exit 1
 fi
-echo "使用项目 ID: ${PROJECT_ID}"
+wait_for_http "${BACKEND_BASE_URL}/api/v1/projects" "backend"
+
+PROJECT_RECORD="$(create_temp_project)"
+PROJECT_ID="${PROJECT_RECORD%%$'\t'*}"
+PROJECT_NAME="${PROJECT_RECORD#*$'\t'}"
+if [[ -z "${PROJECT_ID}" || -z "${PROJECT_NAME}" ]]; then
+  echo "无法创建临时项目" >&2
+  exit 1
+fi
+echo "临时项目: ${PROJECT_NAME} (${PROJECT_ID})"
 
 run bash -lc "agent-browser skills get core >/dev/null"
 run agent-browser --session "${AB_SESSION}" errors --clear
 run agent-browser --session "${AB_SESSION}" console --clear
 
-run agent-browser --session "${AB_SESSION}" open "${FRONTEND_BASE_URL}/"
-run agent-browser --session "${AB_SESSION}" wait 1500
 run agent-browser --session "${AB_SESSION}" open "${FRONTEND_BASE_URL}/projects/${PROJECT_ID}"
-run agent-browser --session "${AB_SESSION}" wait 1500
-run agent-browser --session "${AB_SESSION}" open "${FRONTEND_BASE_URL}/settings"
-run agent-browser --session "${AB_SESSION}" wait 1500
+run agent-browser --session "${AB_SESSION}" wait ".chat-workspace__input"
+
+assert_eval "新建临时项目详情页已打开" "(() => { const title = document.querySelector('.chat-workspace__title')?.textContent?.trim() || ''; const expected = ${PROJECT_NAME@Q}; if (title !== expected) { throw new Error('项目标题不匹配: ' + title + ' != ' + expected); } if (!location.pathname.endsWith('/projects/' + ${PROJECT_ID@Q})) { throw new Error('项目详情页路径不正确: ' + location.pathname); } return true; })()"
+
+run agent-browser --session "${AB_SESSION}" fill ".chat-workspace__input" "/"
+wait_for_eval_true "输入 / 后出现 slash 菜单" "(() => Boolean(document.querySelector('[data-testid=\"chat-command-menu\"]')))()"
+assert_eval "slash 菜单至少包含 /compact" "(() => { const names = Array.from(document.querySelectorAll('.chat-command-menu__name')).map((el) => (el.textContent || '').trim()); if (!names.includes('/compact')) { throw new Error('slash 菜单不包含 /compact，当前: ' + names.join(',')); } return true; })()"
+
+assert_eval "页面不再出现旧 QuickActions 文案" "(() => { const text = document.body?.innerText || ''; const legacy = ['生成设定', '生成故事线', '生成大纲']; const hits = legacy.filter((word) => text.includes(word)); if (hits.length > 0) { throw new Error('发现旧文案: ' + hits.join(',')); } return true; })()"
+
+run agent-browser --session "${AB_SESSION}" fill ".chat-workspace__input" "请回复：已收到，用于 compact smoke。"
+run agent-browser --session "${AB_SESSION}" press Enter
+wait_for_eval_true "普通会话消息产生" "(() => document.querySelectorAll('.message-row').length >= 2)()" 90 1
+
+run agent-browser --session "${AB_SESSION}" fill ".chat-workspace__input" "/co"
+wait_for_eval_true "slash 菜单过滤后可选 /compact" "(() => Array.from(document.querySelectorAll('.chat-command-menu__name')).some((el) => (el.textContent || '').trim() === '/compact'))()"
+run agent-browser --session "${AB_SESSION}" press Enter
+assert_eval "已在输入框选中 /compact 命令" "(() => { const input = document.querySelector('.chat-workspace__input'); const value = input && 'value' in input ? String(input.value || '') : ''; if (!value.startsWith('/compact')) { throw new Error('输入框不是 /compact 命令: ' + value); } return true; })()"
+run agent-browser --session "${AB_SESSION}" click ".chat-workspace__send"
+
+wait_for_eval_true "执行 /compact 后出现 summary card" "(() => Boolean(document.querySelector('[data-testid=\"chat-summary-toggle\"]')))()" 120 1
+assert_eval "summary card 文案为会话摘要" "(() => { const text = document.querySelector('[data-testid=\"chat-summary-toggle\"]')?.textContent || ''; if (!text.includes('会话摘要')) { throw new Error('summary card 文案不正确: ' + text); } return true; })()"
+
+run agent-browser --session "${AB_SESSION}" reload
+run agent-browser --session "${AB_SESSION}" wait ".chat-workspace__input"
+wait_for_eval_true "刷新后 summary card 仍存在" "(() => Boolean(document.querySelector('[data-testid=\"chat-summary-toggle\"]')))()" 30 1
 
 agent-browser --session "${AB_SESSION}" errors --json >"${AGENT_BROWSER_ERRORS_JSON}"
 agent-browser --session "${AB_SESSION}" console --json >"${AGENT_BROWSER_CONSOLE_JSON}"
