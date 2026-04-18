@@ -35,6 +35,7 @@
       <div class="setup-panel__header">
         <h4 class="setup-panel__title">时代背景</h4>
       </div>
+      <SetupWorldPanel :world="setup.world_building" />
     </section>
 
     <section
@@ -50,6 +51,7 @@
       <div class="setup-panel__header">
         <h4 class="setup-panel__title">主题</h4>
       </div>
+      <SetupConceptPanel :concept="setup.core_concept" />
     </section>
   </div>
   <p v-else class="setup-tab__empty">暂无设定数据。</p>
@@ -59,7 +61,9 @@
 import { computed, ref, watch } from 'vue'
 import type { SetupCharacter, SetupData } from '../../api/types'
 import SetupCharactersPanel from './SetupCharactersPanel.vue'
+import SetupConceptPanel from './SetupConceptPanel.vue'
 import SetupSectionTabs from './SetupSectionTabs.vue'
+import SetupWorldPanel from './SetupWorldPanel.vue'
 
 type SetupSection = 'characters' | 'world' | 'concept'
 type SetupCharacterItem = {
