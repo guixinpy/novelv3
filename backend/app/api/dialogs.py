@@ -83,8 +83,23 @@ def _build_diagnosis(db: Session, project_id: str) -> ProjectDiagnosisOut:
     )
 
 
-def _save_message(db: Session, dialog_id: str, role: str, content: str, action_result: dict | None = None):
-    msg = DialogMessage(dialog_id=dialog_id, role=role, content=content, action_result=action_result)
+def _save_message(
+    db: Session,
+    dialog_id: str,
+    role: str,
+    content: str,
+    action_result: dict | None = None,
+    message_type: str = "text",
+    meta: dict | None = None,
+):
+    msg = DialogMessage(
+        dialog_id=dialog_id,
+        role=role,
+        content=content,
+        action_result=action_result,
+        message_type=message_type,
+        meta=meta,
+    )
     db.add(msg)
     db.commit()
 
@@ -193,7 +208,9 @@ def get_messages(project_id: str, db: Session = Depends(get_db)):
     for message in msgs:
         item = {
             "role": message.role,
+            "message_type": message.message_type,
             "content": message.content,
+            "meta": message.meta,
             "action_result": message.action_result,
             "created_at": message.created_at.isoformat() if message.created_at else None,
         }
@@ -222,6 +239,18 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
 
     if payload.input_type == "text" and payload.text:
         _save_message(db, dialog.id, "user", payload.text)
+    if payload.input_type == "command" and payload.text:
+        _save_message(
+            db,
+            dialog.id,
+            "user",
+            payload.text,
+            message_type="command",
+            meta={
+                "command_name": payload.command_name,
+                "command_args": payload.command_args or {},
+            },
+        )
 
     if payload.input_type == "button" and payload.action_type:
         pending = PendingAction(

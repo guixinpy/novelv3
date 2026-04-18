@@ -141,6 +141,57 @@ def test_get_messages_includes_current_pending_action(client):
     assert messages[-1]["pending_action"] == pending
 
 
+def test_get_messages_exposes_message_type_and_meta(client):
+    r = client.post("/api/v1/projects", json={"name": "Test"})
+    pid = r.json()["id"]
+
+    r2 = client.post("/api/v1/dialog/chat", json={"project_id": pid, "input_type": "text", "text": "你好"})
+    assert r2.status_code == 200
+
+    r3 = client.get(f"/api/v1/dialog/projects/{pid}/messages")
+    assert r3.status_code == 200
+    messages = r3.json()
+    assert len(messages) >= 2
+
+    user_message = messages[0]
+    assert user_message["role"] == "user"
+    assert user_message["message_type"] == "text"
+    assert "meta" in user_message
+    assert user_message["meta"] is None
+
+    assistant_message = messages[1]
+    assert assistant_message["role"] == "assistant"
+    assert assistant_message["message_type"] == "text"
+    assert "meta" in assistant_message
+    assert assistant_message["meta"] is None
+
+
+def test_command_input_round_trips_as_command_message(client):
+    r = client.post("/api/v1/projects", json={"name": "Test"})
+    pid = r.json()["id"]
+
+    command_payload = {
+        "project_id": pid,
+        "input_type": "command",
+        "text": "/clear",
+        "command_name": "clear",
+        "command_args": {"scope": "history"},
+    }
+    r2 = client.post("/api/v1/dialog/chat", json=command_payload)
+    assert r2.status_code == 200
+
+    r3 = client.get(f"/api/v1/dialog/projects/{pid}/messages")
+    assert r3.status_code == 200
+    messages = r3.json()
+
+    user_command = next(m for m in messages if m["role"] == "user")
+    assert user_command["content"] == "/clear"
+    assert user_command["message_type"] == "command"
+    assert user_command["meta"] == {
+        "command_name": "clear",
+        "command_args": {"scope": "history"},
+    }
+
 @patch("app.api.setups.load_api_key", return_value="sk-test")
 @patch("app.api.setups.ai_service.complete", new_callable=AsyncMock)
 @patch("app.api.setups.ai_service.parse_json")

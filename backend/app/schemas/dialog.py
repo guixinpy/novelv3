@@ -5,7 +5,9 @@ from pydantic import BaseModel, Field
 class ChatMessageOut(BaseModel):
     id: str
     role: str
+    message_type: str = "text"
     content: str
+    meta: dict | None = None
     action_result: dict | None = None
     created_at: datetime
 
@@ -14,6 +16,8 @@ class ChatIn(BaseModel):
     project_id: str
     input_type: str = "text"
     text: str = ""
+    command_name: str | None = None
+    command_args: dict = Field(default_factory=dict)
     action_type: str | None = None
     params: dict = Field(default_factory=dict)
 
