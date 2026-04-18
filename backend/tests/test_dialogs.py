@@ -1,13 +1,17 @@
 from unittest.mock import AsyncMock, patch
 
+from sqlalchemy.orm.session import Session as OrmSession
+
 from app.core.chat_commands import (
     command_mutates_history,
     command_to_action_type,
     is_supported_chat_command,
 )
 from app.core.intent_router import IntentRouter
-from app.models import Dialog
+from app.models import Dialog, PendingAction
 from app.schemas import ProjectDiagnosisOut
+
+ORIGINAL_SESSION_COMMIT = OrmSession.commit
 
 
 def test_state_diagnosis_empty_project(client):
@@ -222,9 +226,11 @@ def test_unknown_command_input_round_trips_as_command_message(client):
     }
 
 
-def test_compact_replaces_previous_plain_messages_with_summary(client):
+@patch("app.api.dialogs.ai_service.complete", new_callable=AsyncMock)
+def test_compact_replaces_previous_plain_messages_with_summary(mock_compact_complete, client):
     r = client.post("/api/v1/projects", json={"name": "Test"})
     pid = r.json()["id"]
+    mock_compact_complete.return_value.content = "压缩摘要：用户问候并要求继续。"
 
     client.post("/api/v1/dialog/chat", json={"project_id": pid, "input_type": "text", "text": "你好"})
     client.post("/api/v1/dialog/chat", json={"project_id": pid, "input_type": "text", "text": "请继续"})
@@ -247,11 +253,13 @@ def test_compact_replaces_previous_plain_messages_with_summary(client):
     assert summary["role"] == "system"
     assert summary["meta"]["command_name"] == "compact"
     assert summary["meta"]["compacted_count"] == 4
+    assert summary["meta"]["summary_text"] == "压缩摘要：用户问候并要求继续。"
     assert "title" in summary["meta"]
     assert "summary_text" in summary["meta"]
 
     plain_messages = [m for m in messages if m["message_type"] == "text"]
     assert plain_messages == []
+    mock_compact_complete.assert_awaited_once()
 
 
 def test_clear_removes_old_messages_and_pending_action(client, db_session):
@@ -319,6 +327,132 @@ def test_compact_is_blocked_while_pending_action_exists(client, db_session):
     dialog_after = db_session.query(Dialog).filter(Dialog.project_id == pid).first()
     assert dialog_after is not None
     assert dialog_after.pending_action_id == pending_action_id
+
+
+def test_clear_invalidates_old_pending_action_and_resolve_rejects_it(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Test"})
+    pid = r.json()["id"]
+
+    r2 = client.post("/api/v1/dialog/chat", json={
+        "project_id": pid,
+        "input_type": "button",
+        "action_type": "preview_setup",
+    })
+    pending_action_id = r2.json()["pending_action"]["id"]
+
+    r3 = client.post("/api/v1/dialog/chat", json={
+        "project_id": pid,
+        "input_type": "command",
+        "command_name": "clear",
+    })
+    assert r3.status_code == 200
+
+    pending = db_session.query(PendingAction).filter(PendingAction.id == pending_action_id).first()
+    assert pending is not None
+    assert pending.status == "cancelled"
+    assert pending.resolved_at is not None
+
+    r4 = client.post("/api/v1/dialog/resolve-action", json={
+        "action_id": pending_action_id,
+        "decision": "confirm",
+    })
+    assert r4.status_code == 409
+    assert "no longer active" in r4.json()["detail"]
+
+
+def test_compact_failure_does_not_drop_history(client):
+    commit_counter = {"count": 0}
+
+    def flaky_commit(session, *args, **kwargs):
+        commit_counter["count"] += 1
+        if commit_counter["count"] == 2:
+            raise RuntimeError("forced commit failure")
+        return ORIGINAL_SESSION_COMMIT(session, *args, **kwargs)
+
+    r = client.post("/api/v1/projects", json={"name": "Test"})
+    pid = r.json()["id"]
+
+    client.post("/api/v1/dialog/chat", json={"project_id": pid, "input_type": "text", "text": "A"})
+    client.post("/api/v1/dialog/chat", json={"project_id": pid, "input_type": "text", "text": "B"})
+
+    with patch("sqlalchemy.orm.session.Session.commit", autospec=True, side_effect=flaky_commit):
+        r2 = client.post("/api/v1/dialog/chat", json={
+            "project_id": pid,
+            "input_type": "command",
+            "command_name": "compact",
+        })
+
+    assert r2.status_code == 200
+    assert "未变更" in r2.json()["message"]
+
+    r3 = client.get(f"/api/v1/dialog/projects/{pid}/messages")
+    assert r3.status_code == 200
+    messages = r3.json()
+    assert any(m["message_type"] == "text" and m["content"] == "A" for m in messages)
+    assert any(m["message_type"] == "text" and m["content"] == "B" for m in messages)
+    assert all(m["message_type"] != "summary" for m in messages)
+
+
+@patch("app.api.dialogs.ai_service.complete", new_callable=AsyncMock)
+def test_command_text_conflict_prefers_raw_text_as_single_source(mock_compact_complete, client):
+    r = client.post("/api/v1/projects", json={"name": "Test"})
+    pid = r.json()["id"]
+    mock_compact_complete.return_value.content = "冲突输入时采用 text 源。"
+
+    client.post("/api/v1/dialog/chat", json={"project_id": pid, "input_type": "text", "text": "你好"})
+
+    r2 = client.post("/api/v1/dialog/chat", json={
+        "project_id": pid,
+        "input_type": "command",
+        "text": "/compact from-text",
+        "command_name": "clear",
+        "command_args": "--from-name",
+    })
+    assert r2.status_code == 200
+    assert "压缩" in r2.json()["message"]
+
+    r3 = client.get(f"/api/v1/dialog/projects/{pid}/messages")
+    assert r3.status_code == 200
+    messages = r3.json()
+    assert any(
+        m["role"] == "user"
+        and m["message_type"] == "command"
+        and m["content"] == "/compact from-text"
+        and m["meta"] == {"command_name": "compact", "command_args": "from-text"}
+        for m in messages
+    )
+    assert mock_compact_complete.await_count == 1
+
+
+@patch("app.api.dialogs.ai_service.complete", new_callable=AsyncMock)
+def test_compact_only_compresses_messages_after_last_summary(mock_compact_complete, client):
+    r = client.post("/api/v1/projects", json={"name": "Test"})
+    pid = r.json()["id"]
+
+    mock_compact_complete.side_effect = [
+        type("R", (), {"content": "第一段摘要"})(),
+        type("R", (), {"content": "第二段摘要"})(),
+    ]
+
+    client.post("/api/v1/dialog/chat", json={"project_id": pid, "input_type": "text", "text": "第一轮1"})
+    client.post("/api/v1/dialog/chat", json={"project_id": pid, "input_type": "text", "text": "第一轮2"})
+    r1 = client.post("/api/v1/dialog/chat", json={"project_id": pid, "input_type": "command", "command_name": "compact"})
+    assert r1.status_code == 200
+
+    client.post("/api/v1/dialog/chat", json={"project_id": pid, "input_type": "text", "text": "第二轮1"})
+    r2 = client.post("/api/v1/dialog/chat", json={"project_id": pid, "input_type": "command", "command_name": "compact"})
+    assert r2.status_code == 200
+
+    r3 = client.get(f"/api/v1/dialog/projects/{pid}/messages")
+    assert r3.status_code == 200
+    messages = r3.json()
+
+    summary_messages = [m for m in messages if m["message_type"] == "summary"]
+    assert len(summary_messages) == 2
+    assert summary_messages[0]["meta"]["summary_text"] == "第一段摘要"
+    assert summary_messages[1]["meta"]["summary_text"] == "第二段摘要"
+    assert all(m["message_type"] != "text" for m in messages)
+    assert mock_compact_complete.await_count == 2
 
 @patch("app.api.setups.load_api_key", return_value="sk-test")
 @patch("app.api.setups.ai_service.complete", new_callable=AsyncMock)

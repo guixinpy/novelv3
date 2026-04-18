@@ -137,6 +137,17 @@ def _save_command_feedback(
 
 def _handle_clear_command(db: Session, dialog: Dialog, diagnosis: ProjectDiagnosisOut) -> ChatOut:
     db.query(DialogMessage).filter(DialogMessage.dialog_id == dialog.id).delete()
+    db.query(PendingAction).filter(
+        PendingAction.dialog_id == dialog.id,
+        PendingAction.status == "pending",
+    ).update(
+        {
+            "status": "cancelled",
+            "decision_comment": "invalidated by /clear",
+            "resolved_at": datetime.now(timezone.utc),
+        },
+        synchronize_session=False,
+    )
     dialog.pending_action_id = None
     dialog.state = "chatting"
     db.commit()
@@ -194,23 +205,41 @@ async def _handle_compact_command(db: Session, dialog: Dialog, project: Project,
         project_name=project.name or "未命名项目",
     )
 
-    message_ids = [item.id for item in plain_messages]
-    db.query(DialogMessage).filter(DialogMessage.id.in_(message_ids)).delete(synchronize_session=False)
-    db.commit()
-
-    _save_message(
-        db,
-        dialog.id,
-        "system",
-        summary.summary_text,
-        message_type="summary",
-        meta={
-            "title": summary.title,
-            "summary_text": summary.summary_text,
-            "compacted_count": summary.compacted_count,
-            "command_name": "compact",
-        },
-    )
+    try:
+        message_ids = [item.id for item in plain_messages]
+        db.query(DialogMessage).filter(DialogMessage.id.in_(message_ids)).delete(synchronize_session=False)
+        db.add(
+            DialogMessage(
+                dialog_id=dialog.id,
+                role="system",
+                content=summary.summary_text,
+                message_type="summary",
+                meta={
+                    "title": summary.title,
+                    "summary_text": summary.summary_text,
+                    "compacted_count": summary.compacted_count,
+                    "command_name": "compact",
+                },
+            )
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        reply = "压缩失败，历史未变更。"
+        _save_command_feedback(
+            db,
+            dialog.id,
+            "compact",
+            reply,
+            extra_meta={"compaction_failed": True},
+        )
+        return ChatOut(
+            message=reply,
+            pending_action=None,
+            ui_hint=_build_chat_idle_hint("压缩失败"),
+            refresh_targets=[],
+            project_diagnosis=diagnosis,
+        )
 
     reply = f"已压缩 {summary.compacted_count} 条消息。"
     return ChatOut(
@@ -568,17 +597,21 @@ async def resolve_action(payload: ResolveActionIn, db: Session = Depends(get_db)
     pending = db.query(PendingAction).filter(PendingAction.id == payload.action_id).first()
     if not pending:
         raise HTTPException(status_code=404, detail="Pending action not found")
+    if pending.status != "pending" or pending.resolved_at is not None:
+        raise HTTPException(status_code=409, detail="Pending action is no longer active")
+
+    dialog = db.query(Dialog).filter(Dialog.id == pending.dialog_id).first()
+    if not dialog or dialog.pending_action_id != pending.id:
+        raise HTTPException(status_code=409, detail="Pending action is no longer active")
 
     pending.status = payload.decision
     pending.decision_comment = payload.comment
     pending.resolved_at = datetime.now(timezone.utc)
     db.commit()
 
-    dialog = db.query(Dialog).filter(Dialog.id == pending.dialog_id).first()
-    if dialog:
-        dialog.pending_action_id = None
-        dialog.state = "chatting"
-        db.commit()
+    dialog.pending_action_id = None
+    dialog.state = "chatting"
+    db.commit()
 
     action_type = pending.type
     if action_type.startswith("preview_"):
@@ -587,8 +620,7 @@ async def resolve_action(payload: ResolveActionIn, db: Session = Depends(get_db)
     result_data = None
     if payload.decision == "confirm":
         project_id = (pending.params or {}).get("project_id", "")
-        if dialog:
-            _execute_action_background(action_type, project_id, dialog.id)
+        _execute_action_background(action_type, project_id, dialog.id)
         result_data = {"status": "generating"}
     elif payload.decision == "cancel":
         result_data = {"status": "cancelled"}
@@ -596,8 +628,7 @@ async def resolve_action(payload: ResolveActionIn, db: Session = Depends(get_db)
         result_data = {"status": "revised", "comment": payload.comment}
 
     resolve_msg = _resolve_message(payload.decision)
-    if dialog:
-        _save_message(db, dialog.id, "system", resolve_msg, {"type": action_type, "status": result_data["status"]})
+    _save_message(db, dialog.id, "system", resolve_msg, {"type": action_type, "status": result_data["status"]})
 
     return {
         "dialog_state": "RUNNING" if payload.decision == "confirm" else "CHATTING",

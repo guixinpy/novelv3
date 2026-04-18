@@ -39,29 +39,34 @@ CHAT_COMMAND_REGISTRY: dict[str, ChatCommandSpec] = {
 
 
 def parse_command(command_name: str | None, text: str | None, command_args: str | None) -> ParsedCommand | None:
-    normalized_name = (command_name or "").strip().lower()
-    if not normalized_name:
-        normalized_name = _parse_command_name_from_text(text)
+    parsed_from_text = _parse_command_from_text(text)
+    if parsed_from_text:
+        normalized_name, normalized_args = parsed_from_text
+    else:
+        normalized_name = (command_name or "").strip().lower()
+        normalized_args = (command_args or "").strip() or None
 
     if not normalized_name or not is_supported_chat_command(normalized_name):
         return None
-    return ParsedCommand(name=normalized_name, args=(command_args or "").strip() or None)
+    return ParsedCommand(name=normalized_name, args=normalized_args)
 
 
 def build_command_text(parsed: ParsedCommand, raw_text: str | None = None) -> str:
-    if raw_text and raw_text.strip():
-        return raw_text.strip()
     if parsed.args:
         return f"/{parsed.name} {parsed.args}"
     return f"/{parsed.name}"
 
 
-def _parse_command_name_from_text(text: str | None) -> str | None:
+def _parse_command_from_text(text: str | None) -> tuple[str, str | None] | None:
     raw = (text or "").strip()
     if not raw.startswith("/"):
         return None
-    token = raw.split(maxsplit=1)[0].lstrip("/").lower()
-    return token or None
+    command_part, _, args_part = raw.partition(" ")
+    name = command_part.lstrip("/").lower()
+    args = args_part.strip() or None
+    if not name:
+        return None
+    return name, args
 
 
 def is_supported_chat_command(command_name: str | None) -> bool:
