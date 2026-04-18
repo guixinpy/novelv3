@@ -18,7 +18,7 @@
       <SetupCharactersPanel
         :items="characterItems"
         :active-character-token="activeCharacterToken"
-        @select="activeCharacterToken = $event"
+        @select="handleCharacterSelect"
       />
     </section>
 
@@ -73,22 +73,32 @@ type SetupCharacterItem = {
   character: SetupCharacter
 }
 
+type CharacterSelectionSnapshot = {
+  name: string
+  background: string
+  personality: string
+  goals: string
+  age: string
+  gender: string
+  characterStatus: string
+}
+
 const props = defineProps<{
   setup: SetupData | null
 }>()
 
 const activeSection = ref<SetupSection>('characters')
 const activeCharacterToken = ref<string | null>(null)
+const activeCharacterSnapshot = ref<CharacterSelectionSnapshot | null>(null)
 
 const characterItems = computed<SetupCharacterItem[]>(() => {
-  const signatureCount = new Map<string, number>()
+  const nameCount = new Map<string, number>()
 
   return (props.setup?.characters ?? []).map((character) => {
-    const signature = buildCharacterSignature(character)
-    const occurrence = signatureCount.get(signature) ?? 0
-    signatureCount.set(signature, occurrence + 1)
-
-    const token = `${signature}::${occurrence + 1}`
+    const name = normalizeCharacterField(character.name)
+    const occurrence = (nameCount.get(name) ?? 0) + 1
+    nameCount.set(name, occurrence)
+    const token = buildCharacterToken(name, occurrence)
 
     return {
       key: token,
@@ -100,40 +110,34 @@ const characterItems = computed<SetupCharacterItem[]>(() => {
 })
 
 activeCharacterToken.value = characterItems.value[0]?.token ?? null
+activeCharacterSnapshot.value = buildCharacterSnapshot(characterItems.value[0]?.character ?? null)
 
 watch(() => props.setup?.id, () => {
   activeSection.value = 'characters'
   activeCharacterToken.value = characterItems.value[0]?.token ?? null
+  activeCharacterSnapshot.value = buildCharacterSnapshot(characterItems.value[0]?.character ?? null)
 })
 
 watch(characterItems, (items) => {
   if (!items.length) {
     activeCharacterToken.value = null
+    activeCharacterSnapshot.value = null
     return
   }
 
-  const hasActiveCharacter = activeCharacterToken.value !== null
-    && items.some((item) => item.token === activeCharacterToken.value)
-
-  if (!hasActiveCharacter) {
-    activeCharacterToken.value = items[0].token
-  }
+  const nextActiveCharacter = resolveActiveCharacter(items)
+  activeCharacterToken.value = nextActiveCharacter.token
+  activeCharacterSnapshot.value = buildCharacterSnapshot(nextActiveCharacter.character)
 })
 
 function isSectionActive(section: SetupSection): boolean {
   return activeSection.value === section
 }
 
-function buildCharacterSignature(character: SetupCharacter): string {
-  return [
-    normalizeCharacterField(character.name),
-    normalizeCharacterField(character.age),
-    normalizeCharacterField(character.gender),
-    normalizeCharacterField(character.personality),
-    normalizeCharacterField(character.background),
-    normalizeCharacterField(character.goals),
-    normalizeCharacterField(character.character_status),
-  ].join('|')
+function handleCharacterSelect(token: string): void {
+  const matchedItem = characterItems.value.find((item) => item.token === token)
+  activeCharacterToken.value = token
+  activeCharacterSnapshot.value = buildCharacterSnapshot(matchedItem?.character ?? null)
 }
 
 function normalizeCharacterField(value: string | number | null | undefined): string {
@@ -148,12 +152,147 @@ function normalizeCharacterField(value: string | number | null | undefined): str
   return ''
 }
 
+function buildCharacterToken(name: string, occurrence: number): string {
+  if (occurrence === 1) {
+    return name
+  }
+
+  return `${name}::${occurrence}`
+}
+
 function buildCharacterTestId(name: string, occurrence: number): string {
-  if (occurrence === 0) {
+  if (occurrence === 1) {
     return `setup-character-item-${name}`
   }
 
-  return `setup-character-item-${name}-${occurrence + 1}`
+  return `setup-character-item-${name}-${occurrence}`
+}
+
+function buildCharacterSnapshot(character: SetupCharacter | null): CharacterSelectionSnapshot | null {
+  if (!character) {
+    return null
+  }
+
+  return {
+    name: normalizeCharacterField(character.name),
+    background: normalizeCharacterField(character.background),
+    personality: normalizeCharacterField(character.personality),
+    goals: normalizeCharacterField(character.goals),
+    age: normalizeCharacterField(character.age),
+    gender: normalizeCharacterField(character.gender),
+    characterStatus: normalizeCharacterField(character.character_status),
+  }
+}
+
+function resolveActiveCharacter(items: SetupCharacterItem[]): SetupCharacterItem {
+  const snapshot = activeCharacterSnapshot.value
+
+  if (snapshot) {
+    const matchedItem = findSnapshotMatchedCharacter(items, snapshot)
+
+    if (matchedItem) {
+      return matchedItem
+    }
+
+    return items[0]
+  }
+
+  const token = activeCharacterToken.value
+
+  if (token) {
+    const tokenMatchedItem = items.find((item) => item.token === token)
+
+    if (tokenMatchedItem) {
+      return tokenMatchedItem
+    }
+  }
+
+  return items[0]
+}
+
+function findSnapshotMatchedCharacter(
+  items: SetupCharacterItem[],
+  snapshot: CharacterSelectionSnapshot,
+): SetupCharacterItem | null {
+  const sameNameItems = items.filter(
+    (item) => normalizeCharacterField(item.character.name) === snapshot.name,
+  )
+
+  if (!sameNameItems.length) {
+    return null
+  }
+
+  if (sameNameItems.length === 1) {
+    return sameNameItems[0]
+  }
+
+  const exactMatches = sameNameItems.filter((item) => isExactSnapshotMatch(item.character, snapshot))
+
+  if (exactMatches.length === 1) {
+    return exactMatches[0]
+  }
+
+  const scoredCandidates = sameNameItems
+    .map((item) => ({
+      item,
+      score: countSnapshotMatchScore(item.character, snapshot),
+    }))
+    .filter((candidate) => candidate.score > 0)
+    .sort((left, right) => right.score - left.score)
+
+  if (!scoredCandidates.length) {
+    return null
+  }
+
+  if (scoredCandidates.length === 1 || scoredCandidates[0].score > scoredCandidates[1].score) {
+    return scoredCandidates[0].item
+  }
+
+  return null
+}
+
+function isExactSnapshotMatch(
+  character: SetupCharacter,
+  snapshot: CharacterSelectionSnapshot,
+): boolean {
+  const currentSnapshot = buildCharacterSnapshot(character)
+
+  return currentSnapshot !== null
+    && currentSnapshot.name === snapshot.name
+    && currentSnapshot.background === snapshot.background
+    && currentSnapshot.personality === snapshot.personality
+    && currentSnapshot.goals === snapshot.goals
+    && currentSnapshot.age === snapshot.age
+    && currentSnapshot.gender === snapshot.gender
+    && currentSnapshot.characterStatus === snapshot.characterStatus
+}
+
+function countSnapshotMatchScore(
+  character: SetupCharacter,
+  snapshot: CharacterSelectionSnapshot,
+): number {
+  const currentSnapshot = buildCharacterSnapshot(character)
+
+  if (!currentSnapshot) {
+    return 0
+  }
+
+  const comparableFields = [
+    ['background', currentSnapshot.background, snapshot.background],
+    ['personality', currentSnapshot.personality, snapshot.personality],
+    ['goals', currentSnapshot.goals, snapshot.goals],
+    ['age', currentSnapshot.age, snapshot.age],
+    ['gender', currentSnapshot.gender, snapshot.gender],
+    ['characterStatus', currentSnapshot.characterStatus, snapshot.characterStatus],
+  ] as const
+
+  return comparableFields.reduce((score, [, currentValue, snapshotValue]) => {
+    if (!snapshotValue) {
+      return score
+    }
+
+    return currentValue === snapshotValue ? score + 1 : score
+  }, 0)
 }
 </script>
 

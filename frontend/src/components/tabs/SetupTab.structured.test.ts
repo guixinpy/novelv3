@@ -334,7 +334,64 @@ describe('SetupTab structured sections', () => {
     expect(detail().text()).not.toContain('周岚')
   })
 
-  it('重名角色场景下可以稳定选中目标项，不会双高亮', async () => {
+  it('characters 更新但当前选中角色仍存在时，保持原选中项', async () => {
+    const wrapper = mountSetupTab({
+      ...setupFixture,
+      id: 'setup-stable-selection',
+      characters: [
+        {
+          name: '沈砚',
+          background: '旧城档案馆的修复员',
+          personality: '克制',
+          goals: '找回失落档案',
+        },
+        {
+          name: '周岚',
+          background: '边境调查员',
+          personality: '直接',
+          goals: '封锁裂隙',
+        },
+      ],
+    })
+
+    const firstCharacter = () => wrapper.get('[data-testid="setup-character-item-沈砚"]')
+    const secondCharacter = () => wrapper.get('[data-testid="setup-character-item-周岚"]')
+    const detail = () => wrapper.get('[data-testid="setup-character-detail"]')
+
+    await secondCharacter().trigger('click')
+    expect(secondCharacter().attributes('aria-pressed')).toBe('true')
+    expect(detail().text()).toContain('边境调查员')
+
+    await wrapper.setProps({
+      setup: {
+        ...setupFixture,
+        id: 'setup-stable-selection',
+        characters: [
+          {
+            name: '沈砚',
+            background: '旧城档案馆的修复员',
+            personality: '克制',
+            goals: '找回失落档案',
+          },
+          {
+            name: '周岚',
+            background: '裂隙勘测队队长',
+            personality: '更强硬直接',
+            goals: '找到裂隙源头',
+          },
+        ],
+      },
+    })
+
+    expect(secondCharacter().attributes('aria-pressed')).toBe('true')
+    expect(firstCharacter().attributes('aria-pressed')).toBe('false')
+    expect(detail().text()).toContain('周岚')
+    expect(detail().text()).toContain('裂隙勘测队队长')
+    expect(detail().text()).toContain('更强硬直接')
+    expect(detail().text()).not.toContain('沈砚')
+  })
+
+  it('重名角色场景下使用稳定且可区分的 test id', async () => {
     const wrapper = mountSetupTab({
       ...setupFixture,
       id: 'setup-duplicate-names',
@@ -354,19 +411,82 @@ describe('SetupTab structured sections', () => {
       ],
     })
 
-    const characterItems = () => wrapper.findAll('[data-testid^="setup-character-item-沈砚"]')
+    const firstCharacter = () => wrapper.get('[data-testid="setup-character-item-沈砚"]')
+    const secondCharacter = () => wrapper.get('[data-testid="setup-character-item-沈砚-2"]')
     const detail = () => wrapper.get('[data-testid="setup-character-detail"]')
 
-    expect(characterItems()).toHaveLength(2)
-    expect(characterItems()[0].attributes('aria-pressed')).toBe('true')
-    expect(characterItems()[1].attributes('aria-pressed')).toBe('false')
+    expect(firstCharacter().attributes('aria-pressed')).toBe('true')
+    expect(secondCharacter().attributes('aria-pressed')).toBe('false')
     expect(detail().text()).toContain('旧城档案馆的修复员')
 
-    await characterItems()[1].trigger('click')
+    await secondCharacter().trigger('click')
 
-    expect(characterItems()[0].attributes('aria-pressed')).toBe('false')
-    expect(characterItems()[1].attributes('aria-pressed')).toBe('true')
+    expect(firstCharacter().attributes('aria-pressed')).toBe('false')
+    expect(secondCharacter().attributes('aria-pressed')).toBe('true')
     expect(detail().text()).toContain('北境巡夜人')
+    expect(detail().text()).not.toContain('旧城档案馆的修复员')
+  })
+
+  it('重名角色重排后，仍保持原先选中的那个角色', async () => {
+    const wrapper = mountSetupTab({
+      ...setupFixture,
+      id: 'setup-duplicate-reordered',
+      characters: [
+        {
+          name: '沈砚',
+          background: '旧城档案馆的修复员',
+          personality: '克制',
+          goals: '找回失落档案',
+          age: 28,
+        },
+        {
+          name: '沈砚',
+          background: '北境巡夜人',
+          personality: '冷硬',
+          goals: '追查边哨失踪案',
+          age: 32,
+        },
+      ],
+    })
+
+    const firstCharacter = () => wrapper.get('[data-testid="setup-character-item-沈砚"]')
+    const secondCharacter = () => wrapper.get('[data-testid="setup-character-item-沈砚-2"]')
+    const detail = () => wrapper.get('[data-testid="setup-character-detail"]')
+
+    await secondCharacter().trigger('click')
+
+    expect(secondCharacter().attributes('aria-pressed')).toBe('true')
+    expect(detail().text()).toContain('北境巡夜人')
+    expect(detail().text()).toContain('32 岁')
+    expect(detail().text()).not.toContain('旧城档案馆的修复员')
+
+    await wrapper.setProps({
+      setup: {
+        ...setupFixture,
+        id: 'setup-duplicate-reordered',
+        characters: [
+          {
+            name: '沈砚',
+            background: '北境巡夜人',
+            personality: '冷硬',
+            goals: '追查边哨失踪案',
+            age: 32,
+          },
+          {
+            name: '沈砚',
+            background: '旧城档案馆的修复员',
+            personality: '克制',
+            goals: '找回失落档案',
+            age: 28,
+          },
+        ],
+      },
+    })
+
+    expect(firstCharacter().attributes('aria-pressed')).toBe('true')
+    expect(secondCharacter().attributes('aria-pressed')).toBe('false')
+    expect(detail().text()).toContain('北境巡夜人')
+    expect(detail().text()).toContain('32 岁')
     expect(detail().text()).not.toContain('旧城档案馆的修复员')
   })
 })
