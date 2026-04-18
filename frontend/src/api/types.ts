@@ -109,3 +109,39 @@ export interface ChatHistoryMessage {
   action_result?: Record<string, unknown> | null
   created_at?: string | null
 }
+
+export interface SetupCharacter {
+  name: string
+  age?: number | null
+  gender?: string | null
+  personality?: string | null
+  background?: string | null
+  goals?: string | null
+  character_status?: string | null
+}
+
+export interface SetupWorldBuilding {
+  background?: string | null
+  geography?: string | null
+  society?: string | null
+  rules?: string | null
+  atmosphere?: string | null
+}
+
+export interface SetupCoreConcept {
+  theme?: string | null
+  premise?: string | null
+  hook?: string | null
+  unique_selling_point?: string | null
+}
+
+export interface SetupData {
+  id: string
+  project_id: string
+  world_building: SetupWorldBuilding
+  characters: SetupCharacter[]
+  core_concept: SetupCoreConcept
+  status: string
+  created_at: string
+  updated_at: string
+}
