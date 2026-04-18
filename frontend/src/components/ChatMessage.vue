@@ -6,6 +6,8 @@
     <ChatSummaryCard
       v-if="msg.message_type === 'summary'"
       :content="msg.content"
+      :title="summaryTitle"
+      :compacted-count="summaryCompactedCount"
     />
     <div
       v-else
@@ -78,6 +80,16 @@ const resultClass = computed(() => {
   if (status === 'success') return 'message-result--success'
   if (status === 'failed') return 'message-result--failed'
   return 'message-result--neutral'
+})
+
+const summaryTitle = computed(() => {
+  const title = props.msg.meta?.title
+  return typeof title === 'string' && title.trim() ? title : '会话摘要'
+})
+
+const summaryCompactedCount = computed(() => {
+  const compactedCount = props.msg.meta?.compacted_count
+  return typeof compactedCount === 'number' ? compactedCount : 0
 })
 
 function onDecide(decision: string, comment?: string) {

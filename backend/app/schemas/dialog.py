@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 class ChatMessageOut(BaseModel):
     id: str
     role: str
-    message_type: str = "text"
+    message_type: str = "plain"
     content: str
     meta: dict | None = None
     action_result: dict | None = None

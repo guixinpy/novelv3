@@ -1,10 +1,13 @@
+import asyncio
 from concurrent.futures import ThreadPoolExecutor
 import threading
 import pytest
 from unittest.mock import AsyncMock, patch
 
+from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm.session import Session as OrmSession
 
+from app.api import dialogs as dialogs_api
 from app.core.chat_commands import (
     command_mutates_history,
     command_to_action_type,
@@ -185,18 +188,19 @@ def test_get_messages_exposes_message_type_and_meta(client):
 
     user_message = messages[0]
     assert user_message["role"] == "user"
-    assert user_message["message_type"] == "text"
+    assert user_message["message_type"] == "plain"
     assert "meta" in user_message
     assert user_message["meta"] is None
 
     assistant_message = messages[1]
     assert assistant_message["role"] == "assistant"
-    assert assistant_message["message_type"] == "text"
+    assert assistant_message["message_type"] == "plain"
     assert "meta" in assistant_message
     assert assistant_message["meta"] is None
 
 
-def test_unknown_command_input_round_trips_as_command_message(client):
+@patch("app.api.dialogs.load_api_key", return_value=None)
+def test_unknown_command_input_falls_back_to_plain_chat(mock_key, client):
     r = client.post("/api/v1/projects", json={"name": "Test"})
     pid = r.json()["id"]
 
@@ -214,19 +218,20 @@ def test_unknown_command_input_round_trips_as_command_message(client):
     assert body["refresh_targets"] == []
     assert body["ui_hint"]["dialog_state"] == "CHATTING"
     assert body["ui_hint"]["active_action"]["type"] == "chat"
+    assert "暂不执行" not in body["message"]
 
     r3 = client.get(f"/api/v1/dialog/projects/{pid}/messages")
     assert r3.status_code == 200
     messages = r3.json()
     assert all("pending_action" not in m for m in messages)
 
-    user_command = next(m for m in messages if m["role"] == "user")
-    assert user_command["content"] == "/unknown_cmd"
-    assert user_command["message_type"] == "command"
-    assert user_command["meta"] == {
-        "command_name": "unknown_cmd",
-        "command_args": "--scope history",
-    }
+    user_message = next(m for m in messages if m["role"] == "user")
+    assert user_message["content"] == "/unknown_cmd --scope history"
+    assert user_message["message_type"] == "plain"
+    assert user_message["meta"] is None
+
+    assistant_message = next(m for m in messages if m["role"] == "assistant")
+    assert assistant_message["message_type"] == "plain"
 
 
 @pytest.mark.parametrize(
@@ -290,7 +295,7 @@ def test_compact_replaces_previous_plain_messages_with_summary(mock_compact_comp
     assert "title" in summary["meta"]
     assert "summary_text" in summary["meta"]
 
-    plain_messages = [m for m in messages if m["message_type"] == "text"]
+    plain_messages = [m for m in messages if m["message_type"] == "plain"]
     assert plain_messages == []
     mock_compact_complete.assert_awaited_once()
 
@@ -421,8 +426,8 @@ def test_compact_failure_does_not_drop_history(client):
     r3 = client.get(f"/api/v1/dialog/projects/{pid}/messages")
     assert r3.status_code == 200
     messages = r3.json()
-    assert any(m["message_type"] == "text" and m["content"] == "A" for m in messages)
-    assert any(m["message_type"] == "text" and m["content"] == "B" for m in messages)
+    assert any(m["message_type"] == "plain" and m["content"] == "A" for m in messages)
+    assert any(m["message_type"] == "plain" and m["content"] == "B" for m in messages)
     assert all(m["message_type"] != "summary" for m in messages)
 
 
@@ -484,13 +489,10 @@ def test_compact_only_compresses_messages_after_last_summary(mock_compact_comple
     assert len(summary_messages) == 2
     assert summary_messages[0]["meta"]["summary_text"] == "第一段摘要"
     assert summary_messages[1]["meta"]["summary_text"] == "第二段摘要"
-    assert all(m["message_type"] != "text" for m in messages)
+    assert all(m["message_type"] != "plain" for m in messages)
     assert mock_compact_complete.await_count == 2
 
-@patch("app.api.setups.load_api_key", return_value="sk-test")
-@patch("app.api.setups.ai_service.complete", new_callable=AsyncMock)
-@patch("app.api.setups.ai_service.parse_json")
-def test_resolve_action_confirm(mock_parse, mock_complete, mock_key, client):
+def test_resolve_action_confirm_sets_dialog_state_running(client, db_session):
     r = client.post("/api/v1/projects", json={"name": "Test"})
     pid = r.json()["id"]
 
@@ -501,13 +503,11 @@ def test_resolve_action_confirm(mock_parse, mock_complete, mock_key, client):
     })
     action_id = r2.json()["pending_action"]["id"]
 
-    mock_complete.return_value.content = '{"world_building": {}, "characters": [], "core_concept": {}}'
-    mock_parse.return_value = {"world_building": {}, "characters": [], "core_concept": {}}
-
-    r3 = client.post("/api/v1/dialog/resolve-action", json={
-        "action_id": action_id,
-        "decision": "confirm",
-    })
+    with patch("app.api.dialogs._execute_action_background") as mock_background:
+        r3 = client.post("/api/v1/dialog/resolve-action", json={
+            "action_id": action_id,
+            "decision": "confirm",
+        })
     assert r3.status_code == 200
     assert r3.json()["dialog_state"] == "RUNNING"
     assert r3.json()["action_result"]["status"] == "generating"
@@ -521,6 +521,90 @@ def test_resolve_action_confirm(mock_parse, mock_complete, mock_key, client):
         },
     }
     assert r3.json()["refresh_targets"] == []
+    mock_background.assert_called_once()
+
+    dialog = db_session.query(Dialog).filter(Dialog.project_id == pid).first()
+    assert dialog is not None
+    assert dialog.pending_action_id is None
+    assert dialog.state == "running"
+
+
+@pytest.mark.parametrize("result_payload", [
+    {"status": "success"},
+    {"status": "failed", "error": "boom"},
+])
+def test_background_completion_restores_dialog_state_to_chatting(result_payload, client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Test"})
+    pid = r.json()["id"]
+
+    client.post("/api/v1/dialog/chat", json={
+        "project_id": pid,
+        "input_type": "button",
+        "action_type": "preview_setup",
+    })
+    dialog = db_session.query(Dialog).filter(Dialog.project_id == pid).first()
+    assert dialog is not None
+    dialog.state = "running"
+    db_session.commit()
+    background_session_factory = sessionmaker(
+        autocommit=False,
+        autoflush=False,
+        bind=db_session.get_bind(),
+    )
+
+    with patch("app.db.SessionLocal", background_session_factory), \
+            patch("app.api.dialogs._execute_action", new=AsyncMock(return_value=result_payload)), \
+            patch("app.api.dialogs.asyncio.ensure_future", side_effect=lambda coro: asyncio.run(coro)):
+        dialogs_api._execute_action_background("generate_setup", pid, dialog.id)
+
+    db_session.expire_all()
+    refreshed_dialog = db_session.query(Dialog).filter(Dialog.project_id == pid).first()
+    assert refreshed_dialog is not None
+    assert refreshed_dialog.state == "chatting"
+
+    latest_message = (
+        db_session.query(dialogs_api.DialogMessage)
+        .filter(dialogs_api.DialogMessage.dialog_id == dialog.id)
+        .order_by(dialogs_api.DialogMessage.created_at.desc())
+        .first()
+    )
+    assert latest_message is not None
+    assert latest_message.action_result["type"] == "generate_setup"
+    assert latest_message.action_result["status"] == result_payload["status"]
+
+
+@pytest.mark.parametrize("command_name", ["clear", "compact", "setup"])
+def test_running_dialog_blocks_mutating_commands(command_name, client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Test"})
+    pid = r.json()["id"]
+
+    r2 = client.post("/api/v1/dialog/chat", json={
+        "project_id": pid,
+        "input_type": "button",
+        "action_type": "preview_setup",
+    })
+    action_id = r2.json()["pending_action"]["id"]
+
+    with patch("app.api.dialogs._execute_action_background"):
+        r3 = client.post("/api/v1/dialog/resolve-action", json={
+            "action_id": action_id,
+            "decision": "confirm",
+        })
+    assert r3.status_code == 200
+
+    r4 = client.post("/api/v1/dialog/chat", json={
+        "project_id": pid,
+        "input_type": "command",
+        "command_name": command_name,
+    })
+    assert r4.status_code == 200
+    assert "正在执行" in r4.json()["message"]
+    assert r4.json()["ui_hint"]["dialog_state"] == "RUNNING"
+
+    dialog = db_session.query(Dialog).filter(Dialog.project_id == pid).first()
+    assert dialog is not None
+    assert dialog.state == "running"
+    assert dialog.pending_action_id is None
 
 
 def test_resolve_action_double_confirm_only_one_effective(client):

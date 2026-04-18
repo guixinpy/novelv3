@@ -8,8 +8,11 @@
       :class="{ 'chat-command-menu__item--active': index === activeIndex }"
       @click="emit('pick', command)"
     >
-      <span class="chat-command-menu__name">/{{ command.name }}</span>
-      <span class="chat-command-menu__description">{{ command.description }}</span>
+      <span class="chat-command-menu__main">
+        <span class="chat-command-menu__name">{{ command.label }}</span>
+        <span class="chat-command-menu__description">{{ command.description }}</span>
+      </span>
+      <span class="chat-command-menu__example">{{ command.example }}</span>
     </button>
   </div>
 </template>
@@ -41,9 +44,9 @@ const emit = defineEmits<{
   border: 0;
   border-radius: 0.7rem;
   background: transparent;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
   gap: 0.75rem;
   text-align: left;
   padding: 0.58rem 0.68rem;
@@ -52,6 +55,11 @@ const emit = defineEmits<{
 
 .chat-command-menu__item--active {
   background: rgba(111, 69, 31, 0.1);
+}
+
+.chat-command-menu__main {
+  display: grid;
+  gap: 0.14rem;
 }
 
 .chat-command-menu__name {
@@ -63,5 +71,21 @@ const emit = defineEmits<{
 .chat-command-menu__description {
   font-size: 0.75rem;
   color: var(--ink-muted);
+}
+
+.chat-command-menu__example {
+  font-size: 0.73rem;
+  color: rgba(111, 69, 31, 0.72);
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .chat-command-menu__item {
+    grid-template-columns: 1fr;
+  }
+
+  .chat-command-menu__example {
+    white-space: normal;
+  }
 }
 </style>

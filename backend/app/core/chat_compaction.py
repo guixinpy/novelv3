@@ -26,7 +26,7 @@ def select_compactable_plain_messages(db: Session, dialog_id: str) -> list[Dialo
         if message.message_type == "summary":
             last_summary_index = index
 
-    return [message for message in messages[last_summary_index + 1 :] if message.message_type == "text"]
+    return [message for message in messages[last_summary_index + 1 :] if message.message_type == "plain"]
 
 
 async def build_compaction_summary(

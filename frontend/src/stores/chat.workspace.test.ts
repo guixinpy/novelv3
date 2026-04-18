@@ -16,7 +16,7 @@ describe('chat workspace polling', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.useFakeTimers()
-    vi.clearAllMocks()
+    vi.resetAllMocks()
   })
 
   afterEach(() => {
@@ -547,6 +547,55 @@ describe('chat workspace polling', () => {
     })
   })
 
+  it('init() 遇到 generating action_result 时会恢复 loading 和轮询', async () => {
+    const store = useChatStore()
+
+    vi.mocked(api.getMessages)
+      .mockResolvedValueOnce([
+        {
+          role: 'system',
+          content: '操作已确认，正在生成中...',
+          action_result: { type: 'generate_setup', status: 'generating' },
+          created_at: '2026-04-18T02:00:00Z',
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          role: 'system',
+          content: '操作已确认，正在生成中...',
+          action_result: { type: 'generate_setup', status: 'generating' },
+          created_at: '2026-04-18T02:00:00Z',
+        },
+        {
+          role: 'system',
+          content: '设定生成完成。',
+          action_result: { type: 'generate_setup', status: 'success' },
+          created_at: '2026-04-18T02:00:03Z',
+        },
+      ])
+    vi.mocked(api.getDiagnosis).mockResolvedValue({
+      missing_items: [],
+      completed_items: ['setup'],
+      suggested_next_step: 'preview_storyline',
+    })
+
+    await store.init('project-1')
+
+    expect(store.loading).toBe(true)
+    expect(store.pendingAction).toBe(null)
+    expect(
+      store.messages.some((message) => (message.action_result as { status?: string } | null)?.status === 'generating'),
+    ).toBe(true)
+
+    await vi.advanceTimersByTimeAsync(3000)
+
+    expect(api.getMessages).toHaveBeenCalledTimes(2)
+    expect(store.loading).toBe(false)
+    expect(
+      store.messages.some((message) => (message.action_result as { status?: string } | null)?.status === 'success'),
+    ).toBe(true)
+  })
+
   it('sendCommand(compact) 成功后会重新 loadHistory，而不是只 append 一条消息', async () => {
     const store = useChatStore()
     store.projectId = 'project-1'
@@ -567,10 +616,10 @@ describe('chat workspace polling', () => {
     })
     vi.mocked(api.getMessages).mockResolvedValue([
       {
-        role: 'assistant',
+        role: 'system',
         content: '压缩后的历史',
-        message_type: 'command_result',
-        meta: { command: 'compact' },
+        message_type: 'summary',
+        meta: { title: '会话摘要（4条）', compacted_count: 4 },
         created_at: '2026-04-18T01:00:00Z',
       },
     ])
@@ -586,10 +635,10 @@ describe('chat workspace polling', () => {
     expect(api.getMessages).toHaveBeenCalledWith('project-1')
     expect(store.messages).toEqual([
       {
-        role: 'assistant',
+        role: 'system',
         content: '压缩后的历史',
-        message_type: 'command_result',
-        meta: { command: 'compact' },
+        message_type: 'summary',
+        meta: { title: '会话摘要（4条）', compacted_count: 4 },
         pending_action: null,
         diagnosis: null,
         action_result: null,

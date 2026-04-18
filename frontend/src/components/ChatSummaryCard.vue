@@ -6,7 +6,10 @@
       data-testid="chat-summary-toggle"
       @click="expanded = !expanded"
     >
-      <span>会话摘要</span>
+      <span class="summary-card__headline">
+        <span class="summary-card__title">{{ title }}</span>
+        <span v-if="compactedCount > 0" class="summary-card__meta">已压缩 {{ compactedCount }} 条消息</span>
+      </span>
       <span class="summary-card__arrow">{{ expanded ? '收起' : '展开' }}</span>
     </button>
     <div v-if="expanded" class="summary-card__body" data-testid="chat-summary-body">
@@ -18,7 +21,14 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 
-defineProps<{ content: string }>()
+withDefaults(defineProps<{
+  content: string
+  title?: string
+  compactedCount?: number
+}>(), {
+  title: '会话摘要',
+  compactedCount: 0,
+})
 
 const expanded = ref(false)
 </script>
@@ -40,10 +50,27 @@ const expanded = ref(false)
   color: var(--ink-strong);
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
+  gap: 0.8rem;
   padding: 0.7rem 0.85rem;
   font-size: 0.84rem;
   font-weight: 700;
+}
+
+.summary-card__headline {
+  display: grid;
+  gap: 0.15rem;
+  text-align: left;
+}
+
+.summary-card__title {
+  font-size: 0.84rem;
+}
+
+.summary-card__meta {
+  font-size: 0.74rem;
+  color: var(--ink-muted);
+  font-weight: 600;
 }
 
 .summary-card__arrow {

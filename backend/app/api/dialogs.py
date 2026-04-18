@@ -29,6 +29,9 @@ STATUS_LABELS = {
     "storyline_generated": "故事线已生成",
     "setup_approved": "设定已确认",
 }
+TERMINAL_ACTION_STATUSES = {"completed", "success", "failed", "cancelled", "revised"}
+RUNNING_ACTION_STATUSES = {"running", "generating"}
+RUNNING_BLOCKED_COMMANDS = {"clear", "compact", "setup", "storyline", "outline"}
 
 
 def _get_or_create_dialog(db: Session, project_id: str) -> Dialog:
@@ -91,7 +94,7 @@ def _save_message(
     role: str,
     content: str,
     action_result: dict | None = None,
-    message_type: str = "text",
+    message_type: str = "plain",
     meta: dict | None = None,
 ):
     msg = DialogMessage(
@@ -112,6 +115,70 @@ def _build_chat_idle_hint(reason: str):
         dialog_state="CHATTING",
         status="idle",
         reason=reason,
+    )
+
+
+def _build_command_fallback_text(payload: ChatIn) -> str:
+    raw_text = (payload.text or "").strip()
+    if raw_text:
+        return raw_text
+    command_name = (payload.command_name or "").strip().lower()
+    command_args = (payload.command_args or "").strip()
+    if not command_name:
+        return ""
+    return f"/{command_name} {command_args}".strip()
+
+
+def _latest_unfinished_action_type(db: Session, dialog_id: str) -> str | None:
+    messages = (
+        db.query(DialogMessage)
+        .filter(DialogMessage.dialog_id == dialog_id)
+        .order_by(DialogMessage.created_at.desc(), DialogMessage.id.desc())
+        .all()
+    )
+    finished_types: set[str] = set()
+    for message in messages:
+        action_result = message.action_result or {}
+        action_type = str(action_result.get("type") or "").strip()
+        action_status = str(action_result.get("status") or "").strip().lower()
+        if not action_type or not action_status:
+            continue
+        if action_status in TERMINAL_ACTION_STATUSES:
+            finished_types.add(action_type)
+            continue
+        if action_status in RUNNING_ACTION_STATUSES and action_type not in finished_types:
+            return action_type
+    return None
+
+
+def _build_running_guard_response(
+    db: Session,
+    dialog: Dialog,
+    diagnosis: ProjectDiagnosisOut,
+    command_name: str | None = None,
+    action_type: str | None = None,
+) -> ChatOut:
+    running_action_type = _latest_unfinished_action_type(db, dialog.id) or action_type or "chat"
+    reply = "当前有生成任务正在执行，请等待完成后再试。"
+    if command_name:
+        _save_command_feedback(
+            db,
+            dialog.id,
+            command_name,
+            reply,
+            extra_meta={"blocked_by_running": True},
+        )
+    return ChatOut(
+        message=reply,
+        pending_action=None,
+        ui_hint=build_ui_hint(
+            action_type=running_action_type,
+            dialog_state="RUNNING",
+            status="running",
+            reason="后台生成中",
+        ),
+        refresh_targets=[],
+        project_diagnosis=diagnosis,
     )
 
 
@@ -383,6 +450,7 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
 
     dialog = _get_or_create_dialog(db, payload.project_id)
     diagnosis = _build_diagnosis(db, payload.project_id)
+    effective_text = payload.text
 
     if payload.input_type == "command":
         parsed_command = parse_command(payload.command_name, payload.text, payload.command_args)
@@ -398,6 +466,14 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
                     "command_args": parsed_command.args,
                 },
             )
+
+            if dialog.state == "running" and parsed_command.name in RUNNING_BLOCKED_COMMANDS:
+                return _build_running_guard_response(
+                    db,
+                    dialog,
+                    diagnosis,
+                    command_name=parsed_command.name,
+                )
 
             if parsed_command.name == "clear":
                 return _handle_clear_command(db, dialog, diagnosis)
@@ -442,32 +518,19 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
                     refresh_targets=action_to_refresh_targets(pending.type, "pending"),
                     project_diagnosis=diagnosis,
                 )
+        effective_text = _build_command_fallback_text(payload)
 
-        command_content = payload.text or (f"/{payload.command_name}" if payload.command_name else "")
-        if command_content:
-            _save_message(
-                db,
-                dialog.id,
-                "user",
-                command_content,
-                message_type="command",
-                meta={
-                    "command_name": payload.command_name,
-                    "command_args": payload.command_args,
-                },
-            )
-        return ChatOut(
-            message="已记录命令输入，当前版本暂不执行该命令。",
-            pending_action=None,
-            ui_hint=_build_chat_idle_hint("命令输入仅持久化，不进入动作流"),
-            refresh_targets=[],
-            project_diagnosis=diagnosis,
-        )
-
-    if payload.input_type == "text" and payload.text:
-        _save_message(db, dialog.id, "user", payload.text)
+    if (payload.input_type == "text" and payload.text) or (payload.input_type == "command" and effective_text):
+        _save_message(db, dialog.id, "user", effective_text)
 
     if payload.input_type == "button" and payload.action_type:
+        if dialog.state == "running":
+            return _build_running_guard_response(
+                db,
+                dialog,
+                diagnosis,
+                action_type=payload.action_type,
+            )
         pending = PendingAction(
             dialog_id=dialog.id,
             type=payload.action_type,
@@ -501,7 +564,7 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
 
     router = IntentRouter()
     candidate = router.resolve(
-        payload.text,
+        effective_text,
         dialog.state,
         dialog.pending_action_id,
         diagnosis,
@@ -621,10 +684,28 @@ def _execute_action_background(action_type: str, project_id: str, dialog_id: str
             result = await _execute_action(action_type, project_id, db, command_args=command_args)
             label_map = {"generate_setup": "设定", "generate_storyline": "故事线", "generate_outline": "大纲"}
             label = label_map.get(action_type, action_type)
+            dialog = db.query(Dialog).filter(Dialog.id == dialog_id).first()
+            if dialog:
+                dialog.state = "chatting"
             if result["status"] == "success":
-                _save_message(db, dialog_id, "system", f"{label}生成完成。", {"type": action_type, "status": "success"})
+                db.add(
+                    DialogMessage(
+                        dialog_id=dialog_id,
+                        role="system",
+                        content=f"{label}生成完成。",
+                        action_result={"type": action_type, "status": "success"},
+                    )
+                )
             else:
-                _save_message(db, dialog_id, "system", f"{label}生成失败：{result.get('error', '未知错误')}", {"type": action_type, "status": "failed"})
+                db.add(
+                    DialogMessage(
+                        dialog_id=dialog_id,
+                        role="system",
+                        content=f"{label}生成失败：{result.get('error', '未知错误')}",
+                        action_result={"type": action_type, "status": "failed"},
+                    )
+                )
+            db.commit()
         finally:
             db.close()
 
@@ -666,7 +747,7 @@ async def resolve_action(payload: ResolveActionIn, db: Session = Depends(get_db)
         raise HTTPException(status_code=409, detail="Pending action is no longer active")
 
     dialog.pending_action_id = None
-    dialog.state = "chatting"
+    dialog.state = "running" if payload.decision == "confirm" else "chatting"
     db.commit()
 
     action_type = pending.type

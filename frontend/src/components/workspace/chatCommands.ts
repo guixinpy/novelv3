@@ -2,7 +2,10 @@ export type ChatCommandName = 'clear' | 'compact' | 'setup' | 'storyline' | 'out
 
 export interface ChatCommandDefinition {
   name: ChatCommandName
+  label: string
   description: string
+  example: string
+  supportsArgs: boolean
 }
 
 export type ParsedSlashCommand =
@@ -18,11 +21,11 @@ export type ParsedSlashCommand =
   }
 
 export const chatCommandRegistry: ChatCommandDefinition[] = [
-  { name: 'clear', description: '清空聊天上下文并重置会话' },
-  { name: 'compact', description: '压缩会话历史为摘要' },
-  { name: 'setup', description: '生成或更新世界设定' },
-  { name: 'storyline', description: '生成或更新剧情线' },
-  { name: 'outline', description: '生成或更新章节大纲' },
+  { name: 'clear', label: '/clear', description: '清空聊天上下文并重置会话', example: '/clear', supportsArgs: false },
+  { name: 'compact', label: '/compact', description: '压缩会话历史为摘要', example: '/compact', supportsArgs: false },
+  { name: 'setup', label: '/setup', description: '生成或更新世界设定', example: '/setup 主角是植物学家', supportsArgs: true },
+  { name: 'storyline', label: '/storyline', description: '生成或更新剧情线', example: '/storyline 主线走悬疑反转', supportsArgs: true },
+  { name: 'outline', label: '/outline', description: '生成或更新章节大纲', example: '/outline 第 1 章结尾必须反转', supportsArgs: true },
 ]
 
 const registeredCommandNames = new Set(chatCommandRegistry.map((command) => command.name))

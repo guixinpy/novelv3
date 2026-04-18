@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { api } from '../api/client'
 import type {
   ChatHistoryMessage,
+  ChatMessageType,
   ChatResponse,
   PendingAction as ApiPendingAction,
   ProjectDiagnosis,
@@ -16,7 +17,7 @@ export type Diagnosis = ProjectDiagnosis
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'system'
   content: string
-  message_type?: string | null
+  message_type?: ChatMessageType | null
   meta?: Record<string, unknown> | null
   pending_action?: PendingAction | null
   diagnosis?: Diagnosis | null
@@ -39,6 +40,25 @@ function isTerminalActionResult(actionResult: Record<string, unknown> | null | u
   if (!actionResult) return false
   return actionResult.type === actionType
     && ['completed', 'success', 'failed', 'cancelled', 'revised'].includes(String(actionResult.status || ''))
+}
+
+function findRecoverableRunningActionType(history: ChatHistoryMessage[] | null | undefined) {
+  if (!history?.length) return null
+  const finishedActionTypes = new Set<string>()
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    const actionResult = history[index]?.action_result
+    const actionType = typeof actionResult?.type === 'string' ? actionResult.type : ''
+    const actionStatus = String(actionResult?.status || '')
+    if (!actionType || !actionStatus) continue
+    if (['completed', 'success', 'failed', 'cancelled', 'revised'].includes(actionStatus)) {
+      finishedActionTypes.add(actionType)
+      continue
+    }
+    if (['running', 'generating'].includes(actionStatus) && !finishedActionTypes.has(actionType)) {
+      return actionType
+    }
+  }
+  return null
 }
 
 export const useChatStore = defineStore('chat', () => {
@@ -94,6 +114,11 @@ export const useChatStore = defineStore('chat', () => {
         : null
       pendingAction.value = restoredPendingAction
       historyCursor.value = history?.length || 0
+      const runningActionType = restoredPendingAction ? null : findRecoverableRunningActionType(history)
+      if (runningActionType) {
+        loading.value = true
+        void pollForCompletion(runningActionType, pidSnapshot, versionSnapshot)
+      }
       return true
     } catch { /* first visit, no history */ }
     return false

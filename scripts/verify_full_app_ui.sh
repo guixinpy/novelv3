@@ -179,9 +179,9 @@ fi
 
 echo "日志目录: ${LOG_DIR}"
 
-run bash -lc "cd '${BACKEND_DIR}' && '${BACKEND_PYTEST}' tests/test_dialogs.py tests/test_background.py tests/test_projects.py"
+run bash -lc "cd '${BACKEND_DIR}' && '${BACKEND_PYTEST}' tests/test_dialogs.py tests/test_background.py tests/test_projects.py tests/test_setups.py tests/test_storylines.py tests/test_outlines.py"
 run bash -lc "cd '${BACKEND_DIR}' && '${BACKEND_ALEMBIC}' upgrade head"
-run bash -lc "cd '${FRONTEND_DIR}' && npm run test:unit -- src/stores/workspace.test.ts src/stores/chat.workspace.test.ts src/stores/project.workspace.test.ts src/components/list/projectListMeta.test.ts"
+run bash -lc "cd '${FRONTEND_DIR}' && npm run test:unit -- src/stores/workspace.test.ts src/stores/chat.workspace.test.ts src/stores/project.workspace.test.ts src/components/list/projectListMeta.test.ts src/components/workspace/chatCommands.test.ts src/components/workspace/ChatWorkspace.commands.test.ts"
 run bash -lc "cd '${FRONTEND_DIR}' && npm run build"
 
 echo "==> 启动 backend 服务"
@@ -219,6 +219,14 @@ assert_eval "slash 菜单至少包含 /compact" "(() => { const names = Array.fr
 
 assert_eval "页面不再出现旧 QuickActions 文案" "(() => { const text = document.body?.innerText || ''; const legacy = ['生成设定', '生成故事线', '生成大纲']; const hits = legacy.filter((word) => text.includes(word)); if (hits.length > 0) { throw new Error('发现旧文案: ' + hits.join(',')); } return true; })()"
 
+run agent-browser --session "${AB_SESSION}" fill ".chat-workspace__input" "/setup 主角是植物学家"
+run agent-browser --session "${AB_SESSION}" click ".chat-workspace__send"
+wait_for_eval_true "执行 /setup 后进入 pending action" "(() => { const text = document.body?.innerText || ''; return text.includes('同意执行') && text.includes('附加要求：主角是植物学家'); })()" 60 1
+
+run agent-browser --session "${AB_SESSION}" fill ".chat-workspace__input" "/clear"
+run agent-browser --session "${AB_SESSION}" click ".chat-workspace__send"
+wait_for_eval_true "pending 状态执行 /clear 后待处理动作被清除" "(() => { const text = document.body?.innerText || ''; const hasPending = text.includes('同意执行') || text.includes('取消') || text.includes('修改后再执行'); return text.includes('已清空当前对话上下文。') && !hasPending; })()" 60 1
+
 run agent-browser --session "${AB_SESSION}" fill ".chat-workspace__input" "请回复：已收到，用于 compact smoke。"
 run agent-browser --session "${AB_SESSION}" press Enter
 wait_for_eval_true "普通会话消息产生" "(() => document.querySelectorAll('.message-row').length >= 2)()" 90 1
@@ -230,7 +238,7 @@ assert_eval "已在输入框选中 /compact 命令" "(() => { const input = docu
 run agent-browser --session "${AB_SESSION}" click ".chat-workspace__send"
 
 wait_for_eval_true "执行 /compact 后出现 summary card" "(() => Boolean(document.querySelector('[data-testid=\"chat-summary-toggle\"]')))()" 120 1
-assert_eval "summary card 文案为会话摘要" "(() => { const text = document.querySelector('[data-testid=\"chat-summary-toggle\"]')?.textContent || ''; if (!text.includes('会话摘要')) { throw new Error('summary card 文案不正确: ' + text); } return true; })()"
+assert_eval "summary card 文案使用标题与压缩条数" "(() => { const text = document.querySelector('[data-testid=\"chat-summary-toggle\"]')?.textContent || ''; if (!text.includes('摘要（') || !text.includes('已压缩')) { throw new Error('summary card 文案不正确: ' + text); } return true; })()"
 
 run agent-browser --session "${AB_SESSION}" reload
 run agent-browser --session "${AB_SESSION}" wait ".chat-workspace__input"

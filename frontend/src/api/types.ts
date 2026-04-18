@@ -1,5 +1,6 @@
 export type DialogState = 'IDLE' | 'CHATTING' | 'PENDING_ACTION' | 'RUNNING'
 export type ActionStatus = 'idle' | 'pending' | 'running' | 'completed' | 'success' | 'failed' | 'cancelled' | 'revised'
+export type ChatMessageType = 'plain' | 'summary' | 'command'
 export type WorkspacePanel =
   | 'overview'
   | 'setup'
@@ -61,7 +62,7 @@ export interface ChatResponse {
   ui_hint: UiHint | null
   refresh_targets: RefreshTarget[]
   project_diagnosis: ProjectDiagnosis
-  message_type?: string | null
+  message_type?: ChatMessageType | null
   meta?: Record<string, unknown> | null
 }
 
@@ -101,7 +102,7 @@ export interface BackgroundTaskResponse {
 export interface ChatHistoryMessage {
   role: 'user' | 'assistant' | 'system'
   content: string
-  message_type?: string | null
+  message_type?: ChatMessageType | null
   meta?: Record<string, unknown> | null
   pending_action?: PendingAction | null
   diagnosis?: ProjectDiagnosis | null

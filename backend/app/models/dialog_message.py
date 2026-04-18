@@ -10,7 +10,7 @@ class DialogMessage(Base):
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     dialog_id = Column(String, ForeignKey("dialogs.id"), nullable=False)
     role = Column(String, nullable=False)
-    message_type = Column(String, nullable=False, default="text")
+    message_type = Column(String, nullable=False, default="plain")
     content = Column(Text, default="")
     meta = Column(JSON, nullable=True)
     action_result = Column(JSON, nullable=True)

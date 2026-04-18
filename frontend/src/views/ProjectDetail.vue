@@ -162,32 +162,45 @@ function currentHydrationSnapshot(projectId = pid.value): HydrationSnapshot {
   }
 }
 
+function shouldIgnoreMissingTarget(target: RefreshTarget, error: unknown) {
+  if (target === 'project') return false
+  const message = error instanceof Error ? error.message : String(error || '')
+  return /not found/i.test(message)
+}
+
 async function loadTarget(projectId: string, target: RefreshTarget) {
-  switch (target) {
-    case 'project':
-      await project.loadProject(projectId)
-      break
-    case 'setup':
-      await project.loadSetup(projectId)
-      break
-    case 'storyline':
-      await project.loadStoryline(projectId)
-      break
-    case 'outline':
-      await project.loadOutline(projectId)
-      break
-    case 'content':
-      await project.loadChapters(projectId)
-      break
-    case 'topology':
-      await project.loadTopology(projectId)
-      break
-    case 'versions':
-      await project.loadVersions(projectId, project.versionsNodeType)
-      break
-    case 'preferences':
-      await project.loadPreferences(projectId)
-      break
+  try {
+    switch (target) {
+      case 'project':
+        await project.loadProject(projectId)
+        break
+      case 'setup':
+        await project.loadSetup(projectId)
+        break
+      case 'storyline':
+        await project.loadStoryline(projectId)
+        break
+      case 'outline':
+        await project.loadOutline(projectId)
+        break
+      case 'content':
+        await project.loadChapters(projectId)
+        break
+      case 'topology':
+        await project.loadTopology(projectId)
+        break
+      case 'versions':
+        await project.loadVersions(projectId, project.versionsNodeType)
+        break
+      case 'preferences':
+        await project.loadPreferences(projectId)
+        break
+    }
+  } catch (error) {
+    if (shouldIgnoreMissingTarget(target, error)) {
+      return
+    }
+    throw error
   }
 }
 
@@ -223,9 +236,9 @@ async function handleResponse(res: UiAwareResponse | null) {
 }
 
 async function send(text: string) {
-  if (chat.pendingAction) return
-  workspace.applyUserPanel(workspace.panel, '你发送了一条消息')
   const parsed = parseSlashCommand(text)
+  if (chat.pendingAction && !(parsed.kind === 'command' && parsed.name === 'clear')) return
+  workspace.applyUserPanel(workspace.panel, '你发送了一条消息')
   const res = parsed.kind === 'command'
     ? await chat.sendCommand(parsed.name, parsed.args, parsed.rawInput)
     : await chat.sendText(parsed.text)

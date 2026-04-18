@@ -21,7 +21,7 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     op.add_column(
         "dialog_messages",
-        sa.Column("message_type", sa.String(), nullable=False, server_default="text"),
+        sa.Column("message_type", sa.String(), nullable=False, server_default="plain"),
     )
     op.add_column("dialog_messages", sa.Column("meta", sa.JSON(), nullable=True))
 

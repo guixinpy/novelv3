@@ -40,13 +40,13 @@
         <input
           ref="inputEl"
           v-model="input"
-          :disabled="loading || !!pendingAction"
+          :disabled="loading"
           class="chat-workspace__input"
           placeholder="输入消息，或键入 / 查看命令"
           @keydown="onInputKeydown"
         />
         <button
-          :disabled="loading || !!pendingAction || !input.trim()"
+          :disabled="!canSubmit"
           class="chat-workspace__send"
           @click="submit"
         >
@@ -64,7 +64,7 @@ import type { Diagnosis, ChatMessage as ChatMessageItem, PendingAction } from '.
 import type { WorkspaceMode, WorkspaceSource } from '../../stores/workspace'
 import ChatMessage from '../ChatMessage.vue'
 import ChatCommandMenu from './ChatCommandMenu.vue'
-import { filterChatCommands, type ChatCommandDefinition } from './chatCommands'
+import { filterChatCommands, parseSlashCommand, type ChatCommandDefinition } from './chatCommands'
 import type { WorkspaceTab } from './workspaceMeta'
 
 const props = defineProps<{
@@ -93,11 +93,22 @@ const activeCommandIndex = ref(0)
 const commandMenuDismissed = ref(false)
 
 const modeLabel = computed(() => (props.mode === 'locked' ? '锁定观察' : '自动联动'))
-const commandCandidates = computed(() => filterChatCommands(input.value))
+const commandCandidates = computed(() => {
+  const candidates = filterChatCommands(input.value)
+  if (!props.pendingAction) return candidates
+  return candidates.filter((command) => command.name === 'clear')
+})
 const showCommandMenu = computed(() => {
   if (commandMenuDismissed.value) return false
   if (!input.value.startsWith('/')) return false
   return commandCandidates.value.length > 0
+})
+const canSubmit = computed(() => {
+  const text = input.value.trim()
+  if (!text || props.loading) return false
+  if (!props.pendingAction) return true
+  const parsed = parseSlashCommand(text)
+  return parsed.kind === 'command' && parsed.name === 'clear'
 })
 
 const projectStatusLabel = computed(() => {
@@ -125,7 +136,7 @@ function scrollToBottom() {
 
 function submit() {
   const text = input.value.trim()
-  if (!text || props.loading || props.pendingAction) return
+  if (!text || !canSubmit.value) return
   emit('send', text)
   input.value = ''
   activeCommandIndex.value = 0
@@ -176,6 +187,10 @@ function onInputKeydown(event: KeyboardEvent) {
 
   if (event.key === 'Enter') {
     event.preventDefault()
+    if (props.pendingAction && canSubmit.value) {
+      submit()
+      return
+    }
     const command = commandCandidates.value[activeCommandIndex.value]
     if (command) {
       pickCommand(command)
