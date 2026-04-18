@@ -5,7 +5,7 @@ from app.db import get_db
 from app.models import Project, Setup, Storyline, Outline, ChapterContent, Dialog, DialogMessage, PendingAction
 from app.schemas import ChatOut, ChatIn, ResolveActionIn, ProjectDiagnosisOut, PendingActionOut, ChatMessageOut
 from app.core.ai_service import AIService
-from app.core.chat_commands import build_command_text, parse_command
+from app.core.chat_commands import build_command_text, command_to_action_type, parse_command
 from app.core.chat_compaction import build_compaction_summary, select_compactable_plain_messages
 from app.core.prompt_manager import PromptManager
 from app.config import load_api_key
@@ -403,6 +403,45 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
                 return _handle_clear_command(db, dialog, diagnosis)
             if parsed_command.name == "compact":
                 return await _handle_compact_command(db, dialog, project, diagnosis)
+            action_type = command_to_action_type(parsed_command.name)
+            if action_type:
+                params = {"project_id": payload.project_id}
+                if parsed_command.args:
+                    params["command_args"] = parsed_command.args
+
+                pending = PendingAction(
+                    dialog_id=dialog.id,
+                    type=action_type,
+                    params=params,
+                )
+                db.add(pending)
+                db.commit()
+                db.refresh(pending)
+                dialog.pending_action_id = pending.id
+                dialog.state = "pending_action"
+                db.commit()
+
+                reply = _action_description(action_type)
+                if parsed_command.args:
+                    reply = f"{reply}\n附加要求：{parsed_command.args}"
+                _save_message(db, dialog.id, "assistant", reply)
+                return ChatOut(
+                    message=reply,
+                    pending_action=PendingActionOut(
+                        id=pending.id,
+                        type=pending.type,
+                        description=_action_description(action_type),
+                        params=pending.params,
+                    ),
+                    ui_hint=build_ui_hint(
+                        action_type=pending.type,
+                        dialog_state="PENDING_ACTION",
+                        status="pending",
+                        reason="等待用户确认",
+                    ),
+                    refresh_targets=action_to_refresh_targets(pending.type, "pending"),
+                    project_diagnosis=diagnosis,
+                )
 
         command_content = payload.text or (f"/{payload.command_name}" if payload.command_name else "")
         if command_content:
@@ -548,21 +587,21 @@ def _action_description(action_type: str) -> str:
 
 import asyncio
 
-async def _execute_action(action_type: str, project_id: str, db: Session) -> dict:
+async def _execute_action(action_type: str, project_id: str, db: Session, command_args: str | None = None) -> dict:
     if not project_id:
         return {"status": "failed", "error": "缺少项目 ID"}
     try:
         if action_type == "generate_setup":
             from app.api.setups import generate_setup
-            await generate_setup(project_id, db)
+            await generate_setup(project_id, db, command_args=command_args)
             return {"status": "success"}
         elif action_type == "generate_storyline":
             from app.api.storylines import generate_storyline
-            await generate_storyline(project_id, db)
+            await generate_storyline(project_id, db, command_args=command_args)
             return {"status": "success"}
         elif action_type == "generate_outline":
             from app.api.outlines import generate_outline
-            await generate_outline(project_id, db)
+            await generate_outline(project_id, db, command_args=command_args)
             return {"status": "success"}
         else:
             return {"status": "success"}
@@ -572,14 +611,14 @@ async def _execute_action(action_type: str, project_id: str, db: Session) -> dic
         return {"status": "failed", "error": str(e)}
 
 
-def _execute_action_background(action_type: str, project_id: str, dialog_id: str):
+def _execute_action_background(action_type: str, project_id: str, dialog_id: str, command_args: str | None = None):
     """Fire-and-forget: run generation in background, update dialog message when done."""
     from app.db import SessionLocal
 
     async def _run():
         db = SessionLocal()
         try:
-            result = await _execute_action(action_type, project_id, db)
+            result = await _execute_action(action_type, project_id, db, command_args=command_args)
             label_map = {"generate_setup": "设定", "generate_storyline": "故事线", "generate_outline": "大纲"}
             label = label_map.get(action_type, action_type)
             if result["status"] == "success":
@@ -620,7 +659,8 @@ async def resolve_action(payload: ResolveActionIn, db: Session = Depends(get_db)
     result_data = None
     if payload.decision == "confirm":
         project_id = (pending.params or {}).get("project_id", "")
-        _execute_action_background(action_type, project_id, dialog.id)
+        command_args = (pending.params or {}).get("command_args")
+        _execute_action_background(action_type, project_id, dialog.id, command_args=command_args)
         result_data = {"status": "generating"}
     elif payload.decision == "cancel":
         result_data = {"status": "cancelled"}

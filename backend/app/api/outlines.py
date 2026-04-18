@@ -13,7 +13,7 @@ ai_service = AIService()
 
 
 @router.post("/generate", response_model=OutlineOut)
-async def generate_outline(project_id: str, db: Session = Depends(get_db)):
+async def generate_outline(project_id: str, db: Session = Depends(get_db), command_args: str | None = None):
     if not load_api_key():
         raise HTTPException(status_code=400, detail="API key not configured")
 
@@ -34,6 +34,8 @@ async def generate_outline(project_id: str, db: Session = Depends(get_db)):
             "total_chapters": project.target_word_count // 3000 or 10,
         },
     )
+    if command_args and command_args.strip():
+        prompt = f"{prompt}\n\n附加要求：{command_args.strip()}"
 
     result = await ai_service.complete(
         [{"role": "user", "content": prompt}],

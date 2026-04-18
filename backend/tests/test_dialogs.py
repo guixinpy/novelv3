@@ -1,3 +1,4 @@
+import pytest
 from unittest.mock import AsyncMock, patch
 
 from sqlalchemy.orm.session import Session as OrmSession
@@ -224,6 +225,36 @@ def test_unknown_command_input_round_trips_as_command_message(client):
         "command_name": "unknown_cmd",
         "command_args": "--scope history",
     }
+
+
+@pytest.mark.parametrize(
+    ("command_name", "expected_action_type"),
+    [
+        ("setup", "preview_setup"),
+        ("storyline", "preview_storyline"),
+        ("outline", "preview_outline"),
+    ],
+)
+def test_command_with_args_enters_preview_pending_action_and_message(command_name, expected_action_type, client):
+    r = client.post("/api/v1/projects", json={"name": "Test"})
+    pid = r.json()["id"]
+    args = "主角是植物学家"
+
+    r2 = client.post(
+        "/api/v1/dialog/chat",
+        json={
+            "project_id": pid,
+            "input_type": "command",
+            "command_name": command_name,
+            "command_args": args,
+        },
+    )
+
+    assert r2.status_code == 200
+    body = r2.json()
+    assert body["pending_action"]["type"] == expected_action_type
+    assert body["pending_action"]["params"]["command_args"] == args
+    assert f"附加要求：{args}" in body["message"]
 
 
 @patch("app.api.dialogs.ai_service.complete", new_callable=AsyncMock)
