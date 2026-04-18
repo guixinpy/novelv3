@@ -1,6 +1,7 @@
 from unittest.mock import AsyncMock, patch
 
 from app.core.intent_router import IntentRouter
+from app.models import Dialog
 from app.schemas import ProjectDiagnosisOut
 
 
@@ -166,7 +167,7 @@ def test_get_messages_exposes_message_type_and_meta(client):
     assert assistant_message["meta"] is None
 
 
-def test_command_input_round_trips_as_command_message(client):
+def test_unknown_command_input_round_trips_as_command_message(client):
     r = client.post("/api/v1/projects", json={"name": "Test"})
     pid = r.json()["id"]
 
@@ -174,7 +175,7 @@ def test_command_input_round_trips_as_command_message(client):
         "project_id": pid,
         "input_type": "command",
         "text": "",
-        "command_name": "clear",
+        "command_name": "unknown_cmd",
         "command_args": "--scope history",
     }
     r2 = client.post("/api/v1/dialog/chat", json=command_payload)
@@ -191,12 +192,111 @@ def test_command_input_round_trips_as_command_message(client):
     assert all("pending_action" not in m for m in messages)
 
     user_command = next(m for m in messages if m["role"] == "user")
-    assert user_command["content"] == "/clear"
+    assert user_command["content"] == "/unknown_cmd"
     assert user_command["message_type"] == "command"
     assert user_command["meta"] == {
-        "command_name": "clear",
+        "command_name": "unknown_cmd",
         "command_args": "--scope history",
     }
+
+
+def test_compact_replaces_previous_plain_messages_with_summary(client):
+    r = client.post("/api/v1/projects", json={"name": "Test"})
+    pid = r.json()["id"]
+
+    client.post("/api/v1/dialog/chat", json={"project_id": pid, "input_type": "text", "text": "你好"})
+    client.post("/api/v1/dialog/chat", json={"project_id": pid, "input_type": "text", "text": "请继续"})
+
+    r2 = client.post("/api/v1/dialog/chat", json={
+        "project_id": pid,
+        "input_type": "command",
+        "command_name": "compact",
+    })
+    assert r2.status_code == 200
+    assert "压缩" in r2.json()["message"]
+
+    r3 = client.get(f"/api/v1/dialog/projects/{pid}/messages")
+    assert r3.status_code == 200
+    messages = r3.json()
+
+    summary_messages = [m for m in messages if m["message_type"] == "summary"]
+    assert len(summary_messages) == 1
+    summary = summary_messages[0]
+    assert summary["role"] == "system"
+    assert summary["meta"]["command_name"] == "compact"
+    assert summary["meta"]["compacted_count"] == 4
+    assert "title" in summary["meta"]
+    assert "summary_text" in summary["meta"]
+
+    plain_messages = [m for m in messages if m["message_type"] == "text"]
+    assert plain_messages == []
+
+
+def test_clear_removes_old_messages_and_pending_action(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Test"})
+    pid = r.json()["id"]
+
+    client.post("/api/v1/dialog/chat", json={"project_id": pid, "input_type": "text", "text": "先聊一点"})
+    client.post("/api/v1/dialog/chat", json={
+        "project_id": pid,
+        "input_type": "button",
+        "action_type": "preview_setup",
+    })
+
+    r2 = client.post("/api/v1/dialog/chat", json={
+        "project_id": pid,
+        "input_type": "command",
+        "command_name": "clear",
+    })
+    assert r2.status_code == 200
+    assert "清空" in r2.json()["message"]
+
+    r3 = client.get(f"/api/v1/dialog/projects/{pid}/messages")
+    assert r3.status_code == 200
+    messages = r3.json()
+    assert len(messages) == 1
+    assert messages[0]["role"] == "system"
+    assert messages[0]["message_type"] == "command"
+    assert messages[0]["meta"]["command_name"] == "clear"
+
+    dialog = db_session.query(Dialog).filter(Dialog.project_id == pid).first()
+    assert dialog is not None
+    assert dialog.pending_action_id is None
+    assert dialog.state == "chatting"
+
+
+def test_compact_is_blocked_while_pending_action_exists(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Test"})
+    pid = r.json()["id"]
+
+    client.post("/api/v1/dialog/chat", json={
+        "project_id": pid,
+        "input_type": "button",
+        "action_type": "preview_setup",
+    })
+
+    dialog_before = db_session.query(Dialog).filter(Dialog.project_id == pid).first()
+    assert dialog_before is not None
+    pending_action_id = dialog_before.pending_action_id
+    assert pending_action_id is not None
+
+    r2 = client.post("/api/v1/dialog/chat", json={
+        "project_id": pid,
+        "input_type": "command",
+        "command_name": "compact",
+    })
+    assert r2.status_code == 200
+    assert "待处理" in r2.json()["message"]
+
+    r3 = client.get(f"/api/v1/dialog/projects/{pid}/messages")
+    assert r3.status_code == 200
+    messages = r3.json()
+    assert all(m["message_type"] != "summary" for m in messages)
+    assert any(m["role"] == "system" and m["message_type"] == "command" for m in messages)
+
+    dialog_after = db_session.query(Dialog).filter(Dialog.project_id == pid).first()
+    assert dialog_after is not None
+    assert dialog_after.pending_action_id == pending_action_id
 
 @patch("app.api.setups.load_api_key", return_value="sk-test")
 @patch("app.api.setups.ai_service.complete", new_callable=AsyncMock)

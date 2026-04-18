@@ -5,6 +5,8 @@ from app.db import get_db
 from app.models import Project, Setup, Storyline, Outline, ChapterContent, Dialog, DialogMessage, PendingAction
 from app.schemas import ChatOut, ChatIn, ResolveActionIn, ProjectDiagnosisOut, PendingActionOut, ChatMessageOut
 from app.core.ai_service import AIService
+from app.core.chat_commands import build_command_text, parse_command
+from app.core.chat_compaction import build_compaction_summary, select_compactable_plain_messages
 from app.core.prompt_manager import PromptManager
 from app.config import load_api_key
 from datetime import datetime, timezone
@@ -102,6 +104,122 @@ def _save_message(
     )
     db.add(msg)
     db.commit()
+
+
+def _build_chat_idle_hint(reason: str):
+    return build_ui_hint(
+        action_type="chat",
+        dialog_state="CHATTING",
+        status="idle",
+        reason=reason,
+    )
+
+
+def _save_command_feedback(
+    db: Session,
+    dialog_id: str,
+    command_name: str,
+    content: str,
+    extra_meta: dict | None = None,
+) -> None:
+    meta = {"command_name": command_name}
+    if extra_meta:
+        meta.update(extra_meta)
+    _save_message(
+        db,
+        dialog_id,
+        "system",
+        content,
+        message_type="command",
+        meta=meta,
+    )
+
+
+def _handle_clear_command(db: Session, dialog: Dialog, diagnosis: ProjectDiagnosisOut) -> ChatOut:
+    db.query(DialogMessage).filter(DialogMessage.dialog_id == dialog.id).delete()
+    dialog.pending_action_id = None
+    dialog.state = "chatting"
+    db.commit()
+
+    reply = "已清空当前对话上下文。"
+    _save_command_feedback(db, dialog.id, "clear", reply)
+    return ChatOut(
+        message=reply,
+        pending_action=None,
+        ui_hint=_build_chat_idle_hint("对话已清空"),
+        refresh_targets=[],
+        project_diagnosis=diagnosis,
+    )
+
+
+async def _handle_compact_command(db: Session, dialog: Dialog, project: Project, diagnosis: ProjectDiagnosisOut) -> ChatOut:
+    if dialog.pending_action_id:
+        reply = "当前存在待处理操作，请先确认或取消后再执行 /compact。"
+        _save_command_feedback(
+            db,
+            dialog.id,
+            "compact",
+            reply,
+            extra_meta={"blocked_by_pending_action": True},
+        )
+        return ChatOut(
+            message=reply,
+            pending_action=None,
+            ui_hint=build_ui_hint(
+                action_type="chat",
+                dialog_state="PENDING_ACTION",
+                status="pending",
+                reason="存在待处理操作",
+            ),
+            refresh_targets=[],
+            project_diagnosis=diagnosis,
+        )
+
+    plain_messages = select_compactable_plain_messages(db, dialog.id)
+    if not plain_messages:
+        reply = "没有可压缩的普通消息。"
+        _save_command_feedback(db, dialog.id, "compact", reply, extra_meta={"compacted_count": 0})
+        return ChatOut(
+            message=reply,
+            pending_action=None,
+            ui_hint=_build_chat_idle_hint("无可压缩消息"),
+            refresh_targets=[],
+            project_diagnosis=diagnosis,
+        )
+
+    summary = await build_compaction_summary(
+        plain_messages,
+        ai_service=ai_service,
+        model=project.ai_model or "deepseek-chat",
+        project_name=project.name or "未命名项目",
+    )
+
+    message_ids = [item.id for item in plain_messages]
+    db.query(DialogMessage).filter(DialogMessage.id.in_(message_ids)).delete(synchronize_session=False)
+    db.commit()
+
+    _save_message(
+        db,
+        dialog.id,
+        "system",
+        summary.summary_text,
+        message_type="summary",
+        meta={
+            "title": summary.title,
+            "summary_text": summary.summary_text,
+            "compacted_count": summary.compacted_count,
+            "command_name": "compact",
+        },
+    )
+
+    reply = f"已压缩 {summary.compacted_count} 条消息。"
+    return ChatOut(
+        message=reply,
+        pending_action=None,
+        ui_hint=_build_chat_idle_hint("对话已压缩"),
+        refresh_targets=[],
+        project_diagnosis=diagnosis,
+    )
 
 
 def _diagnosis_summary(diagnosis: ProjectDiagnosisOut) -> str:
@@ -238,6 +356,25 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
     diagnosis = _build_diagnosis(db, payload.project_id)
 
     if payload.input_type == "command":
+        parsed_command = parse_command(payload.command_name, payload.text, payload.command_args)
+        if parsed_command:
+            _save_message(
+                db,
+                dialog.id,
+                "user",
+                build_command_text(parsed_command, payload.text),
+                message_type="command",
+                meta={
+                    "command_name": parsed_command.name,
+                    "command_args": parsed_command.args,
+                },
+            )
+
+            if parsed_command.name == "clear":
+                return _handle_clear_command(db, dialog, diagnosis)
+            if parsed_command.name == "compact":
+                return await _handle_compact_command(db, dialog, project, diagnosis)
+
         command_content = payload.text or (f"/{payload.command_name}" if payload.command_name else "")
         if command_content:
             _save_message(
@@ -254,12 +391,7 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
         return ChatOut(
             message="已记录命令输入，当前版本暂不执行该命令。",
             pending_action=None,
-            ui_hint=build_ui_hint(
-                action_type="chat",
-                dialog_state="CHATTING",
-                status="idle",
-                reason="命令输入仅持久化，不进入动作流",
-            ),
+            ui_hint=_build_chat_idle_hint("命令输入仅持久化，不进入动作流"),
             refresh_targets=[],
             project_diagnosis=diagnosis,
         )
