@@ -3,11 +3,13 @@ from concurrent.futures import ThreadPoolExecutor
 import threading
 import pytest
 from unittest.mock import AsyncMock, patch
+from types import SimpleNamespace
 
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm.session import Session as OrmSession
 
 from app.api import dialogs as dialogs_api
+from app.core.chat_compaction import build_compaction_summary
 from app.core.chat_commands import (
     command_mutates_history,
     command_to_action_type,
@@ -91,6 +93,56 @@ def test_chat_creates_dialog(client):
     assert data["ui_hint"]["active_action"]["status"] == "idle"
     assert data["ui_hint"]["active_action"]["target_panel"] is None
     assert data["refresh_targets"] == []
+
+
+@pytest.mark.asyncio
+async def test_compaction_fallback_summary_keeps_goal_action_diagnosis_and_command_args():
+    class BrokenAIService:
+        async def complete(self, *args, **kwargs):
+            raise RuntimeError("boom")
+
+    messages = [
+        SimpleNamespace(
+            role="user",
+            content="我想先把这个项目做成硬科幻世界观。",
+            action_result=None,
+            meta=None,
+        ),
+        SimpleNamespace(
+            role="assistant",
+            content="已收到你的请求。确认要执行吗？\n附加要求：主角是植物学家。",
+            action_result=None,
+            meta=None,
+        ),
+        SimpleNamespace(
+            role="system",
+            content="操作已确认，正在生成中...",
+            action_result={"type": "generate_setup", "status": "generating"},
+            meta=None,
+        ),
+    ]
+    diagnosis = ProjectDiagnosisOut(
+        missing_items=["storyline", "outline", "content"],
+        completed_items=["setup"],
+        suggested_next_step="preview_storyline",
+    )
+
+    summary = await build_compaction_summary(
+        messages,
+        ai_service=BrokenAIService(),
+        model="deepseek-chat",
+        project_name="测试项目",
+        diagnosis=diagnosis,
+    )
+
+    assert "用户目标：" in summary.summary_text
+    assert "硬科幻世界观" in summary.summary_text
+    assert "最近动作：" in summary.summary_text
+    assert "generate_setup" in summary.summary_text
+    assert "项目诊断：" in summary.summary_text
+    assert "缺失 故事线、大纲、正文" in summary.summary_text
+    assert "最近补充要求：" in summary.summary_text
+    assert "主角是植物学家" in summary.summary_text
 
 
 @patch("app.api.dialogs.load_api_key", return_value="sk-test")

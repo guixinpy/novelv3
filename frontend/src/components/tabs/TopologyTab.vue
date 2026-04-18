@@ -11,16 +11,21 @@
 
 <script setup lang="ts">
 import { ref, watch, onMounted, nextTick } from 'vue'
-import * as echarts from 'echarts'
+import { init, use, type EChartsType } from 'echarts/core'
+import { GraphChart, ScatterChart } from 'echarts/charts'
+import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components'
+import { CanvasRenderer } from 'echarts/renderers'
+
+use([GraphChart, ScatterChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer])
 
 const props = defineProps<{ topology: any }>()
 const chartRef = ref<HTMLElement>()
 const mode = ref('graph')
-let chart: echarts.ECharts | null = null
+let chart: EChartsType | null = null
 
 function renderGraph() {
   if (!chartRef.value || !props.topology) return
-  if (!chart) chart = echarts.init(chartRef.value)
+  if (!chart) chart = init(chartRef.value)
 
   const nodes = (props.topology.nodes || []).map((n: any) => ({
     id: n.id,
@@ -55,7 +60,7 @@ function renderGraph() {
 
 function renderTimeline() {
   if (!chartRef.value || !props.topology) return
-  if (!chart) chart = echarts.init(chartRef.value)
+  if (!chart) chart = init(chartRef.value)
 
   const events = (props.topology.nodes || [])
     .filter((n: any) => n.type === 'EVENT')
