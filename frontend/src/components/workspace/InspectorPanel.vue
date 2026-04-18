@@ -1,32 +1,72 @@
 <template>
   <section class="inspector-panel">
-    <header class="inspector-panel__toolbar">
-      <div class="space-y-2">
-        <p class="inspector-panel__eyebrow">Inspector</p>
-        <div class="flex flex-wrap items-center gap-3">
-          <h2 class="inspector-panel__title">{{ activeTabLabel }}</h2>
-          <span class="inspector-panel__source">{{ sourceLabel }}</span>
-        </div>
-        <p class="inspector-panel__reason">{{ reasonCopy }}</p>
-      </div>
+    <header class="inspector-panel__toolbar" data-testid="inspector-toolbar">
+      <h2 class="inspector-panel__title">{{ activeTabLabel }}</h2>
       <button
         class="inspector-panel__lock"
         :class="{ 'is-locked': mode === 'locked' }"
+        :title="lockTitle"
         @click="emit('toggle-lock')"
       >
-        {{ mode === 'locked' ? `已锁定 · ${lockedPanelLabel}` : '自动联动' }}
+        {{ mode === 'locked' ? `锁定：${lockedPanelLabel}` : '自动联动' }}
       </button>
     </header>
 
     <nav class="inspector-panel__tabs" aria-label="Workspace tabs">
-      <WorkspaceTabs
-        :active="panel"
-        :tabs="tabs"
-        variant="inspector"
-        orientation="horizontal"
-        wrap="desktop"
-        @select="forwardSelectPanel"
-      />
+      <div class="inspector-panel__tabs-row">
+        <div class="inspector-panel__primary-tabs" data-testid="inspector-primary-tabs">
+          <WorkspaceTabs
+            :active="panel"
+            :tabs="primaryTabs"
+            variant="inspector"
+            orientation="horizontal"
+            wrap="never"
+            @select="forwardSelectPanel"
+          />
+        </div>
+
+        <div
+          v-if="overflowTabs.length"
+          ref="overflowRef"
+          class="inspector-panel__overflow"
+        >
+          <button
+            ref="overflowToggleRef"
+            type="button"
+            class="inspector-panel__overflow-toggle"
+            :class="{ 'is-active': overflowOpen || isOverflowActive }"
+            aria-haspopup="menu"
+            :aria-expanded="overflowOpen ? 'true' : 'false'"
+            data-testid="inspector-more-toggle"
+            @click="toggleOverflowMenu"
+            @keydown="onOverflowToggleKeydown"
+          >
+            更多
+          </button>
+
+          <div
+            v-if="overflowOpen"
+            class="inspector-panel__overflow-menu"
+            data-testid="inspector-overflow-menu"
+            role="menu"
+            @focusout="handleOverflowFocusOut"
+          >
+            <button
+              v-for="(tab, index) in overflowTabs"
+              :key="tab.id"
+              ref="overflowItemRefs"
+              type="button"
+              class="inspector-panel__overflow-item"
+              :class="{ 'is-active': panel === tab.id }"
+              role="menuitem"
+              @click="selectOverflowPanel(tab.id)"
+              @keydown="onOverflowItemKeydown($event, index, tab.id)"
+            >
+              {{ tab.label }}
+            </button>
+          </div>
+        </div>
+      </div>
     </nav>
 
     <div class="inspector-panel__body">
@@ -62,7 +102,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import type { WorkspacePanel } from '../../api/types'
 import type { Diagnosis } from '../../stores/chat'
 import type { WorkspaceMode, WorkspaceSource } from '../../stores/workspace'
@@ -76,6 +116,14 @@ import StorylineTab from '../tabs/StorylineTab.vue'
 import TopologyTab from '../tabs/TopologyTab.vue'
 import VersionsTab from '../tabs/VersionsTab.vue'
 import type { WorkspaceTab } from './workspaceMeta'
+
+const PRIMARY_PANEL_IDS = new Set<WorkspacePanel>([
+  'overview',
+  'setup',
+  'storyline',
+  'outline',
+  'content',
+])
 
 const props = defineProps<{
   project: any
@@ -106,29 +154,166 @@ const emit = defineEmits<{
   'delete-version': [id: string]
 }>()
 
+const overflowOpen = ref(false)
+const overflowRef = ref<HTMLElement | null>(null)
+const overflowToggleRef = ref<HTMLButtonElement | null>(null)
+const overflowItemRefs = ref<HTMLButtonElement[]>([])
+
 const activeTabLabel = computed(() =>
   props.tabs.find((tab) => tab.id === props.panel)?.label ?? '概览',
+)
+
+const primaryTabs = computed(() =>
+  props.tabs.filter((tab) => PRIMARY_PANEL_IDS.has(tab.id)),
+)
+
+const overflowTabs = computed(() =>
+  props.tabs.filter((tab) => !PRIMARY_PANEL_IDS.has(tab.id)),
 )
 
 const lockedPanelLabel = computed(() =>
   props.tabs.find((tab) => tab.id === props.lockedPanel)?.label ?? activeTabLabel.value,
 )
 
-const sourceLabel = computed(() => {
-  if (props.source === 'user') return '来自你的焦点'
-  if (props.source === 'ai') return '来自 AI 动作'
-  return '系统状态'
-})
+const isOverflowActive = computed(() =>
+  overflowTabs.value.some((tab) => tab.id === props.panel),
+)
 
-const reasonCopy = computed(() => {
-  if (props.reason) return props.reason
-  if (props.mode === 'locked') return `锁定在 ${lockedPanelLabel.value}，关键动作会临时借道。`
-  return '右侧会根据你的操作和 AI 状态自动切换。'
-})
+const lockTitle = computed(() =>
+  props.mode === 'locked'
+    ? `当前锁定在 ${lockedPanelLabel.value}`
+    : '右侧会根据上下文自动联动',
+)
 
 function forwardSelectPanel(panelId: string) {
+  closeOverflowMenu()
   emit('select-panel', panelId as WorkspacePanel)
 }
+
+function toggleOverflowMenu() {
+  if (overflowOpen.value) {
+    closeOverflowMenu()
+    return
+  }
+  openOverflowMenu()
+}
+
+function selectOverflowPanel(panelId: WorkspacePanel) {
+  closeOverflowMenu()
+  emit('select-panel', panelId)
+}
+
+function openOverflowMenu(focusIndex?: number) {
+  overflowOpen.value = true
+  if (focusIndex == null) return
+  focusOverflowItem(focusIndex)
+}
+
+function closeOverflowMenu({ restoreFocus = false }: { restoreFocus?: boolean } = {}) {
+  overflowOpen.value = false
+  if (!restoreFocus) return
+  nextTick(() => {
+    overflowToggleRef.value?.focus()
+  })
+}
+
+function focusOverflowItem(index: number) {
+  const total = overflowTabs.value.length
+  if (!total) return
+  const normalizedIndex = ((index % total) + total) % total
+  nextTick(() => {
+    overflowItemRefs.value[normalizedIndex]?.focus()
+  })
+}
+
+function onOverflowToggleKeydown(event: KeyboardEvent) {
+  if (event.key === 'ArrowDown') {
+    event.preventDefault()
+    openOverflowMenu(0)
+    return
+  }
+
+  if (event.key === 'ArrowUp') {
+    event.preventDefault()
+    openOverflowMenu(overflowTabs.value.length - 1)
+    return
+  }
+
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault()
+    if (overflowOpen.value) {
+      closeOverflowMenu()
+      return
+    }
+    openOverflowMenu(0)
+  }
+}
+
+function onOverflowItemKeydown(event: KeyboardEvent, index: number, panelId: WorkspacePanel) {
+  if (event.key === 'ArrowDown') {
+    event.preventDefault()
+    focusOverflowItem(index + 1)
+    return
+  }
+
+  if (event.key === 'ArrowUp') {
+    event.preventDefault()
+    focusOverflowItem(index - 1)
+    return
+  }
+
+  if (event.key === 'Home') {
+    event.preventDefault()
+    focusOverflowItem(0)
+    return
+  }
+
+  if (event.key === 'End') {
+    event.preventDefault()
+    focusOverflowItem(overflowTabs.value.length - 1)
+    return
+  }
+
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    closeOverflowMenu({ restoreFocus: true })
+    return
+  }
+
+  if (event.key === 'Tab') {
+    window.setTimeout(() => {
+      closeOverflowMenu()
+    }, 0)
+    return
+  }
+
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault()
+    selectOverflowPanel(panelId)
+  }
+}
+
+function handleDocumentPointerDown(event: PointerEvent) {
+  if (!overflowOpen.value || !overflowRef.value) return
+  if (!(event.target instanceof Node)) return
+  if (overflowRef.value.contains(event.target)) return
+  closeOverflowMenu()
+}
+
+function handleOverflowFocusOut(event: FocusEvent) {
+  if (!overflowOpen.value || !overflowRef.value) return
+  const nextTarget = event.relatedTarget
+  if (nextTarget instanceof Node && overflowRef.value.contains(nextTarget)) return
+  closeOverflowMenu()
+}
+
+onMounted(() => {
+  document.addEventListener('pointerdown', handleDocumentPointerDown)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('pointerdown', handleDocumentPointerDown)
+})
 </script>
 
 <style scoped>
@@ -149,54 +334,32 @@ function forwardSelectPanel(panelId: string) {
 
 .inspector-panel__toolbar {
   display: flex;
-  flex-direction: column;
-  gap: 0.9rem;
-  padding: 1.15rem 1.15rem 1rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.95rem 1rem 0.75rem;
   border-bottom: 1px solid rgba(111, 69, 31, 0.16);
   background:
     linear-gradient(180deg, rgba(255, 250, 239, 0.95) 0%, rgba(243, 234, 217, 0.86) 100%);
 }
 
-.inspector-panel__eyebrow {
-  color: var(--ink-muted);
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-}
-
 .inspector-panel__title {
   color: var(--ink-strong);
   font-family: "Palatino Linotype", "Book Antiqua", serif;
-  font-size: 1.5rem;
+  font-size: 1.18rem;
   font-weight: 700;
-}
-
-.inspector-panel__source {
-  border: 1px solid rgba(111, 69, 31, 0.15);
-  background: rgba(255, 248, 233, 0.82);
-  color: var(--accent-strong);
-  border-radius: 999px;
-  padding: 0.2rem 0.65rem;
-  font-size: 0.74rem;
-  font-weight: 600;
-}
-
-.inspector-panel__reason {
-  color: var(--ink-muted);
-  font-size: 0.92rem;
-  line-height: 1.5;
+  line-height: 1.1;
 }
 
 .inspector-panel__lock {
-  align-self: flex-start;
   border: 1px solid rgba(111, 69, 31, 0.18);
   background: rgba(255, 250, 242, 0.82);
   color: var(--ink-muted);
   border-radius: 999px;
-  padding: 0.45rem 0.85rem;
-  font-size: 0.82rem;
+  padding: 0.35rem 0.72rem;
+  font-size: 0.76rem;
   font-weight: 700;
+  line-height: 1.2;
   transition: border-color 0.2s ease, background-color 0.2s ease, color 0.2s ease;
 }
 
@@ -207,40 +370,85 @@ function forwardSelectPanel(panelId: string) {
 }
 
 .inspector-panel__tabs {
-  padding: 0.9rem 1.15rem 1rem;
+  padding: 0.65rem 1rem 0.75rem;
   border-bottom: 1px solid rgba(111, 69, 31, 0.12);
+}
+
+.inspector-panel__tabs-row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.inspector-panel__primary-tabs {
+  min-width: 0;
+  flex: 1;
+}
+
+.inspector-panel__overflow {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.inspector-panel__overflow-toggle,
+.inspector-panel__overflow-item {
+  border: 1px solid rgba(111, 69, 31, 0.12);
+  background: rgba(255, 251, 243, 0.9);
+  color: var(--ink-muted);
+  border-radius: 0.8rem;
+  padding: 0.35rem 0.72rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.2;
+  transition: border-color 0.2s ease, background-color 0.2s ease, color 0.2s ease;
+}
+
+.inspector-panel__overflow-toggle:hover,
+.inspector-panel__overflow-item:hover,
+.inspector-panel__overflow-toggle.is-active,
+.inspector-panel__overflow-item.is-active {
+  border-color: rgba(111, 69, 31, 0.24);
+  background: linear-gradient(180deg, rgba(147, 96, 49, 0.12) 0%, rgba(111, 69, 31, 0.2) 100%);
+  color: var(--accent-strong);
+}
+
+.inspector-panel__overflow-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.45rem);
+  z-index: 20;
+  display: grid;
+  gap: 0.35rem;
+  min-width: 9rem;
+  padding: 0.45rem;
+  border: 1px solid rgba(111, 69, 31, 0.16);
+  border-radius: 1rem;
+  background:
+    linear-gradient(180deg, rgba(255, 250, 241, 0.98) 0%, rgba(246, 239, 228, 0.98) 100%);
+  box-shadow:
+    0 18px 28px rgba(70, 47, 23, 0.14),
+    inset 0 1px 0 rgba(255, 252, 246, 0.8);
 }
 
 .inspector-panel__body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 1rem 1.15rem 1.15rem;
+  padding: 0.95rem 1rem 1rem;
 }
 
 @media (min-width: 768px) {
   .inspector-panel__toolbar {
-    padding: 1.25rem 1.25rem 1rem;
+    padding: 1rem 1.1rem 0.8rem;
   }
 
   .inspector-panel__tabs {
-    padding: 1rem 1.25rem 1rem;
+    padding: 0.7rem 1.1rem 0.8rem;
   }
 
   .inspector-panel__body {
-    padding: 1rem 1.25rem 1.25rem;
-  }
-}
-
-@media (min-width: 1280px) {
-  .inspector-panel__toolbar {
-    flex-direction: row;
-    align-items: flex-start;
-    justify-content: space-between;
-  }
-
-  .inspector-panel__lock {
-    align-self: center;
+    padding: 1rem 1.1rem 1.1rem;
   }
 }
 </style>

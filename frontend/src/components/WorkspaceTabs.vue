@@ -3,6 +3,7 @@
     <button
       v-for="tab in tabs"
       :key="tab.id"
+      type="button"
       @click="$emit('select', tab.id)"
       class="workspace-tabs__button"
       :class="buttonClass(tab.id)"
@@ -99,7 +100,7 @@ function buttonClass(tabId: string) {
 }
 
 .workspace-tabs--inspector {
-  gap: 0.55rem;
+  gap: 0.42rem;
 }
 
 .workspace-tabs--inspector .workspace-tabs__button {
@@ -107,10 +108,11 @@ function buttonClass(tabId: string) {
   border: 1px solid rgba(111, 69, 31, 0.12);
   background: rgba(255, 251, 243, 0.88);
   color: var(--ink-muted);
-  padding: 0.45rem 0.8rem;
+  padding: 0.36rem 0.72rem;
   white-space: nowrap;
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   font-weight: 600;
+  line-height: 1.2;
 }
 
 .workspace-tabs--inspector .workspace-tabs__button.is-idle:hover {
