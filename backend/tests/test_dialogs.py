@@ -1,5 +1,10 @@
 from unittest.mock import AsyncMock, patch
 
+from app.core.chat_commands import (
+    command_mutates_history,
+    command_to_action_type,
+    is_supported_chat_command,
+)
 from app.core.intent_router import IntentRouter
 from app.models import Dialog
 from app.schemas import ProjectDiagnosisOut
@@ -44,6 +49,23 @@ def test_intent_router_no_match():
     router = IntentRouter()
     diag = ProjectDiagnosisOut(missing_items=["setup"], completed_items=[], suggested_next_step="preview_setup")
     assert router.resolve("随便聊聊", "chatting", None, diag) is None
+
+
+def test_chat_command_registry_helpers_cover_expected_commands():
+    for command_name in ("clear", "compact", "setup", "storyline", "outline"):
+        assert is_supported_chat_command(command_name) is True
+
+    assert command_mutates_history("clear") is True
+    assert command_mutates_history("compact") is True
+    assert command_mutates_history("setup") is False
+    assert command_mutates_history("storyline") is False
+    assert command_mutates_history("outline") is False
+
+    assert command_to_action_type("setup") == "preview_setup"
+    assert command_to_action_type("storyline") == "preview_storyline"
+    assert command_to_action_type("outline") == "preview_outline"
+    assert command_to_action_type("clear") is None
+    assert command_to_action_type("compact") is None
 
 
 def test_chat_creates_dialog(client):
