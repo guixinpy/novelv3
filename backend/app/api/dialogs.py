@@ -237,20 +237,35 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
     dialog = _get_or_create_dialog(db, payload.project_id)
     diagnosis = _build_diagnosis(db, payload.project_id)
 
+    if payload.input_type == "command":
+        command_content = payload.text or (f"/{payload.command_name}" if payload.command_name else "")
+        if command_content:
+            _save_message(
+                db,
+                dialog.id,
+                "user",
+                command_content,
+                message_type="command",
+                meta={
+                    "command_name": payload.command_name,
+                    "command_args": payload.command_args,
+                },
+            )
+        return ChatOut(
+            message="已记录命令输入，当前版本暂不执行该命令。",
+            pending_action=None,
+            ui_hint=build_ui_hint(
+                action_type="chat",
+                dialog_state="CHATTING",
+                status="idle",
+                reason="命令输入仅持久化，不进入动作流",
+            ),
+            refresh_targets=[],
+            project_diagnosis=diagnosis,
+        )
+
     if payload.input_type == "text" and payload.text:
         _save_message(db, dialog.id, "user", payload.text)
-    if payload.input_type == "command" and payload.text:
-        _save_message(
-            db,
-            dialog.id,
-            "user",
-            payload.text,
-            message_type="command",
-            meta={
-                "command_name": payload.command_name,
-                "command_args": payload.command_args,
-            },
-        )
 
     if payload.input_type == "button" and payload.action_type:
         pending = PendingAction(

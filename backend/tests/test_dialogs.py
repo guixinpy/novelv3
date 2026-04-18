@@ -173,16 +173,22 @@ def test_command_input_round_trips_as_command_message(client):
     command_payload = {
         "project_id": pid,
         "input_type": "command",
-        "text": "/clear",
+        "text": "",
         "command_name": "clear",
         "command_args": "--scope history",
     }
     r2 = client.post("/api/v1/dialog/chat", json=command_payload)
     assert r2.status_code == 200
+    body = r2.json()
+    assert body["pending_action"] is None
+    assert body["refresh_targets"] == []
+    assert body["ui_hint"]["dialog_state"] == "CHATTING"
+    assert body["ui_hint"]["active_action"]["type"] == "chat"
 
     r3 = client.get(f"/api/v1/dialog/projects/{pid}/messages")
     assert r3.status_code == 200
     messages = r3.json()
+    assert all("pending_action" not in m for m in messages)
 
     user_command = next(m for m in messages if m["role"] == "user")
     assert user_command["content"] == "/clear"
