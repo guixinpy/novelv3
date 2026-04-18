@@ -48,7 +48,9 @@ export function parseSlashCommand(input: string): ParsedSlashCommand {
 
 export function filterChatCommands(query: string): ChatCommandDefinition[] {
   if (!query.startsWith('/')) return []
-  const prefix = query.slice(1).trim().toLowerCase()
-  if (!prefix) return chatCommandRegistry
+  const match = query.match(/^\/([a-zA-Z]*)$/)
+  if (!match) return []
+  const prefix = match[1].toLowerCase()
+  if (prefix.length === 0) return chatCommandRegistry
   return chatCommandRegistry.filter((command) => command.name.startsWith(prefix))
 }

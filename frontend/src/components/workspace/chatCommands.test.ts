@@ -28,4 +28,12 @@ describe('chatCommands', () => {
       }),
     ])
   })
+
+  it('/ setup 不应出现在候选中，且 parser 仍按普通文本处理', () => {
+    expect(filterChatCommands('/ setup')).toEqual([])
+    expect(parseSlashCommand('/ setup')).toEqual({
+      kind: 'text',
+      text: '/ setup',
+    })
+  })
 })

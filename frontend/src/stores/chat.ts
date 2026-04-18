@@ -78,11 +78,11 @@ export const useChatStore = defineStore('chat', () => {
     ])
   }
 
-  async function loadHistory(pidSnapshot = projectId.value, versionSnapshot = initVersion.value) {
-    if (!pidSnapshot) return
+  async function loadHistory(pidSnapshot = projectId.value, versionSnapshot = initVersion.value): Promise<boolean> {
+    if (!pidSnapshot) return false
     try {
       const history = await api.getMessages(pidSnapshot)
-      if (!isActiveSnapshot(pidSnapshot, versionSnapshot)) return
+      if (!isActiveSnapshot(pidSnapshot, versionSnapshot)) return false
       if (history && history.length > 0) {
         messages.value = history.map((message) => toChatMessage(message))
       }
@@ -94,7 +94,9 @@ export const useChatStore = defineStore('chat', () => {
         : null
       pendingAction.value = restoredPendingAction
       historyCursor.value = history?.length || 0
+      return true
     } catch { /* first visit, no history */ }
+    return false
   }
 
   async function loadDiagnosis(pidSnapshot = projectId.value, versionSnapshot = initVersion.value) {
@@ -226,7 +228,14 @@ export const useChatStore = defineStore('chat', () => {
       })
       if (!isActiveSnapshot(pidSnapshot, versionSnapshot)) return null
       if (name === 'compact' || name === 'clear') {
-        await loadHistory(pidSnapshot, versionSnapshot)
+        const historyLoaded = await loadHistory(pidSnapshot, versionSnapshot)
+        if (!isActiveSnapshot(pidSnapshot, versionSnapshot)) return null
+        if (!historyLoaded) {
+          messages.value.push({
+            role: 'system',
+            content: '命令已执行，但历史刷新失败，请手动刷新。',
+          })
+        }
       } else {
         const msg: ChatMessage = {
           role: 'assistant',

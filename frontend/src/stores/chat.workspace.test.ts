@@ -658,4 +658,64 @@ describe('chat workspace polling', () => {
     ])
     expect(store.loading).toBe(false)
   })
+
+  it('sendCommand(compact) 执行成功但历史刷新失败时，会显式提示刷新失败', async () => {
+    const store = useChatStore()
+    store.projectId = 'project-1'
+    store.messages = [
+      { role: 'assistant', content: '旧上下文消息' },
+    ]
+
+    vi.mocked(api.sendChat).mockResolvedValue({
+      message: '已压缩历史',
+      pending_action: null,
+      ui_hint: null,
+      refresh_targets: [],
+      project_diagnosis: {
+        missing_items: [],
+        completed_items: ['setup'],
+        suggested_next_step: null,
+      },
+    })
+    vi.mocked(api.getMessages).mockRejectedValue(new Error('history unavailable'))
+
+    await store.sendCommand('compact', '', '/compact')
+
+    expect(store.messages.slice(-1)).toEqual([
+      {
+        role: 'system',
+        content: '命令已执行，但历史刷新失败，请手动刷新。',
+      },
+    ])
+  })
+
+  it('sendCommand(clear) 执行成功但历史刷新失败时，会显式提示刷新失败', async () => {
+    const store = useChatStore()
+    store.projectId = 'project-1'
+    store.messages = [
+      { role: 'assistant', content: '旧上下文消息' },
+    ]
+
+    vi.mocked(api.sendChat).mockResolvedValue({
+      message: '已清空会话',
+      pending_action: null,
+      ui_hint: null,
+      refresh_targets: [],
+      project_diagnosis: {
+        missing_items: [],
+        completed_items: ['setup'],
+        suggested_next_step: null,
+      },
+    })
+    vi.mocked(api.getMessages).mockRejectedValue(new Error('history unavailable'))
+
+    await store.sendCommand('clear', '', '/clear')
+
+    expect(store.messages.slice(-1)).toEqual([
+      {
+        role: 'system',
+        content: '命令已执行，但历史刷新失败，请手动刷新。',
+      },
+    ])
+  })
 })
