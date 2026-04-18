@@ -26,7 +26,7 @@ import { nextTick } from 'vue'
 
 type SetupSection = 'characters' | 'world' | 'concept'
 
-const props = defineProps<{
+defineProps<{
   active: SetupSection
 }>()
 

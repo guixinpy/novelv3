@@ -23,6 +23,7 @@ AGENT_BROWSER_CONSOLE_JSON="$LOG_DIR/agent-browser-console.json"
 BACKEND_PID=""
 PROJECT_ID=""
 PROJECT_NAME=""
+SETUP_ID=""
 
 cleanup() {
   set +e
@@ -105,6 +106,100 @@ if not pid or not name:
     raise SystemExit("创建临时项目失败：返回中缺少 id 或 name")
 print(f"{pid}\t{name}")
 PY
+}
+
+create_temp_setup() {
+  local project_id="$1"
+  local setup_payload
+  local setup_record
+
+  setup_payload="$(python3 - <<'PY'
+import json
+
+print(json.dumps({
+    "world_building": {
+        "background": "灾后第三纪元，旧城废墟与档案机关并存。",
+        "geography": "群岛与雾海之间由浮桥和旧航道连接。",
+        "society": "档案机关垄断记忆修复，民间巡夜人维持边境秩序。",
+        "rules": "记忆碎片可以被交易，但篡改会引发城市级回响。",
+        "atmosphere": "潮湿、肃静、带着持续失真的钟声。"
+    },
+    "characters": [
+        {
+            "name": "沈砚",
+            "age": 28,
+            "gender": "男",
+            "personality": "冷静克制，但对真相近乎偏执。",
+            "background": "旧城档案馆的修复员。",
+            "goals": "查清师父失踪与记忆税黑市的关联。",
+            "character_status": "alive"
+        },
+        {
+            "name": "周岚",
+            "age": 31,
+            "gender": "女",
+            "personality": "果断直接，擅长在混乱中做交易。",
+            "background": "边境调查员。",
+            "goals": "在秩序崩坏前找出雾海异动源头。",
+            "character_status": "alive"
+        }
+    ],
+    "core_concept": {
+        "theme": "记忆决定身份，篡改记忆是否等于篡改人生。",
+        "premise": "记忆能被征税和买卖。",
+        "hook": "主角修复的档案会反过来改写现实。",
+        "unique_selling_point": "档案修复决定现实。"
+    }
+}, ensure_ascii=False))
+PY
+)"
+
+  setup_record="$(
+    cd "${BACKEND_DIR}" && "${BACKEND_PYTHON}" - <<'PY' "${project_id}" "${setup_payload}"
+import json
+import sys
+
+from app.db import SessionLocal
+from app.models import Project, Setup
+
+project_id = sys.argv[1]
+payload = json.loads(sys.argv[2])
+
+db = SessionLocal()
+try:
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise SystemExit(f"项目不存在: {project_id}")
+
+    existing = db.query(Setup).filter(Setup.project_id == project_id).first()
+    if existing:
+        db.delete(existing)
+        db.flush()
+
+    setup = Setup(
+        project_id=project_id,
+        world_building=payload["world_building"],
+        characters=payload["characters"],
+        core_concept=payload["core_concept"],
+        status="generated",
+    )
+    db.add(setup)
+    project.status = "setup_approved"
+    project.current_phase = "setup"
+    db.commit()
+    db.refresh(setup)
+    print(setup.id)
+finally:
+    db.close()
+PY
+)"
+
+  if [[ -z "${setup_record}" ]]; then
+    echo "无法创建临时设定" >&2
+    exit 1
+  fi
+
+  echo "${setup_record}"
 }
 
 assert_eval() {
@@ -204,6 +299,13 @@ if [[ -z "${PROJECT_ID}" || -z "${PROJECT_NAME}" ]]; then
 fi
 echo "临时项目: ${PROJECT_NAME} (${PROJECT_ID})"
 
+SETUP_ID="$(create_temp_setup "${PROJECT_ID}")"
+if [[ -z "${SETUP_ID}" ]]; then
+  echo "无法创建临时设定记录" >&2
+  exit 1
+fi
+echo "临时设定: ${SETUP_ID}"
+
 run bash -lc "agent-browser skills get core >/dev/null"
 run agent-browser --session "${AB_SESSION}" errors --clear
 run agent-browser --session "${AB_SESSION}" console --clear
@@ -212,6 +314,18 @@ run agent-browser --session "${AB_SESSION}" open "${FRONTEND_BASE_URL}/projects/
 run agent-browser --session "${AB_SESSION}" wait ".chat-workspace__input"
 
 assert_eval "新建临时项目详情页已打开" "(() => { const title = document.querySelector('.chat-workspace__title')?.textContent?.trim() || ''; const expected = ${PROJECT_NAME@Q}; if (title !== expected) { throw new Error('项目标题不匹配: ' + title + ' != ' + expected); } if (!location.pathname.endsWith('/projects/' + ${PROJECT_ID@Q})) { throw new Error('项目详情页路径不正确: ' + location.pathname); } return true; })()"
+
+assert_eval "点击右侧设定 tab" "(() => { const tabs = Array.from(document.querySelectorAll('[data-testid=\"inspector-primary-tabs\"] .workspace-tabs__button')); const setupTab = tabs.find((tab) => (tab.textContent || '').trim() === '设定'); if (!setupTab) { throw new Error('未找到右侧设定 tab'); } setupTab.click(); return true; })()"
+wait_for_eval_true "切到设定后出现二级 tabs" "(() => { const tablist = document.querySelector('[data-testid=\"setup-section-tabs\"]'); if (!tablist) { return false; } const labels = ['角色', '世界观', '核心概念']; return labels.every((label) => Array.from(tablist.querySelectorAll('button')).some((button) => (button.textContent || '').trim() === label)); })()"
+assert_eval "默认显示角色详情且包含第一名角色信息" "(() => { const detail = document.querySelector('[data-testid=\"setup-character-detail\"]'); if (!detail) { throw new Error('未找到角色详情区域'); } const firstCharacter = document.querySelector('[data-testid=\"setup-character-item-沈砚\"]'); if (!firstCharacter) { throw new Error('未找到首个角色条目'); } const pressed = firstCharacter.getAttribute('aria-pressed'); if (pressed !== 'true') { throw new Error('首个角色未默认选中: ' + pressed); } const detailText = detail.textContent || ''; const expected = ['沈砚', '冷静克制，但对真相近乎偏执。', '旧城档案馆的修复员。', '查清师父失踪与记忆税黑市的关联。']; for (const text of expected) { if (!detailText.includes(text)) { throw new Error('角色详情缺少文本: ' + text + '; 当前: ' + detailText); } } return true; })()"
+
+assert_eval "切到世界观 tab" "(() => { const tab = document.querySelector('[data-testid=\"setup-section-tab-world\"]'); if (!tab) { throw new Error('未找到世界观 tab'); } tab.click(); return true; })()"
+wait_for_eval_true "世界观展示 5 张字段卡且不暴露 JSON key" "(() => { const panel = document.querySelector('[data-testid=\"setup-section-panel-world\"]'); if (!panel || panel.getAttribute('aria-hidden') !== 'false') { return false; } const cards = panel.querySelectorAll('[data-testid=\"setup-world-card\"]'); if (cards.length !== 5) { return false; } const text = panel.textContent || ''; return !text.includes('background') && !text.includes('unique_selling_point'); })()"
+
+assert_eval "切到核心概念 tab" "(() => { const tab = document.querySelector('[data-testid=\"setup-section-tab-concept\"]'); if (!tab) { throw new Error('未找到核心概念 tab'); } tab.click(); return true; })()"
+wait_for_eval_true "核心概念展示 4 张字段卡且不暴露 JSON key" "(() => { const panel = document.querySelector('[data-testid=\"setup-section-panel-concept\"]'); if (!panel || panel.getAttribute('aria-hidden') !== 'false') { return false; } const cards = panel.querySelectorAll('[data-testid=\"setup-concept-card\"]'); if (cards.length !== 4) { return false; } const text = panel.textContent || ''; return !text.includes('background') && !text.includes('unique_selling_point'); })()"
+
+assert_eval "设定面板页面文本不出现 setup JSON key" "(() => { const text = document.body?.innerText || ''; const forbidden = ['background', 'unique_selling_point']; const hits = forbidden.filter((key) => text.includes(key)); if (hits.length > 0) { throw new Error('页面暴露 setup JSON key: ' + hits.join(',')); } return true; })()"
 
 run agent-browser --session "${AB_SESSION}" fill ".chat-workspace__input" "/"
 wait_for_eval_true "输入 / 后出现 slash 菜单" "(() => Boolean(document.querySelector('[data-testid=\"chat-command-menu\"]')))()"
