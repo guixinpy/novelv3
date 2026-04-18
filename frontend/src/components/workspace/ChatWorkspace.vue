@@ -28,20 +28,21 @@
       </div>
     </div>
 
-    <QuickActions
-      :diagnosis="diagnosis"
-      :disabled="loading || !!pendingAction"
-      @action="emit('action', $event)"
-    />
-
     <footer class="chat-workspace__composer">
+      <ChatCommandMenu
+        v-if="showCommandMenu"
+        :commands="commandCandidates"
+        :active-index="activeCommandIndex"
+        class="chat-workspace__command-menu"
+        @pick="pickCommand"
+      />
       <div class="chat-workspace__composer-inner">
         <input
           v-model="input"
           :disabled="loading || !!pendingAction"
           class="chat-workspace__input"
-          placeholder="继续描述你的设想，或直接让墨舟推进下一步..."
-          @keyup.enter="submit"
+          placeholder="输入消息，或键入 / 查看命令"
+          @keydown="onInputKeydown"
         />
         <button
           :disabled="loading || !!pendingAction || !input.trim()"
@@ -61,7 +62,8 @@ import type { WorkspacePanel } from '../../api/types'
 import type { Diagnosis, ChatMessage as ChatMessageItem, PendingAction } from '../../stores/chat'
 import type { WorkspaceMode, WorkspaceSource } from '../../stores/workspace'
 import ChatMessage from '../ChatMessage.vue'
-import QuickActions from '../QuickActions.vue'
+import ChatCommandMenu from './ChatCommandMenu.vue'
+import { filterChatCommands, type ChatCommandDefinition } from './chatCommands'
 import type { WorkspaceTab } from './workspaceMeta'
 
 const props = defineProps<{
@@ -85,8 +87,16 @@ const emit = defineEmits<{
 
 const input = ref('')
 const messageContainer = ref<HTMLElement | null>(null)
+const activeCommandIndex = ref(0)
+const commandMenuDismissed = ref(false)
 
 const modeLabel = computed(() => (props.mode === 'locked' ? '锁定观察' : '自动联动'))
+const commandCandidates = computed(() => filterChatCommands(input.value))
+const showCommandMenu = computed(() => {
+  if (commandMenuDismissed.value) return false
+  if (!input.value.startsWith('/')) return false
+  return commandCandidates.value.length > 0
+})
 
 const projectStatusLabel = computed(() => {
   const status = String(props.project?.status || '').trim()
@@ -116,6 +126,50 @@ function submit() {
   if (!text || props.loading || props.pendingAction) return
   emit('send', text)
   input.value = ''
+  activeCommandIndex.value = 0
+  commandMenuDismissed.value = false
+}
+
+function pickCommand(command: ChatCommandDefinition) {
+  input.value = `/${command.name} `
+  activeCommandIndex.value = 0
+  commandMenuDismissed.value = true
+}
+
+function onInputKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape' && showCommandMenu.value) {
+    commandMenuDismissed.value = true
+    return
+  }
+
+  if (!showCommandMenu.value) {
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      submit()
+    }
+    return
+  }
+
+  if (event.key === 'ArrowDown') {
+    event.preventDefault()
+    activeCommandIndex.value = (activeCommandIndex.value + 1) % commandCandidates.value.length
+    return
+  }
+
+  if (event.key === 'ArrowUp') {
+    event.preventDefault()
+    const total = commandCandidates.value.length
+    activeCommandIndex.value = (activeCommandIndex.value - 1 + total) % total
+    return
+  }
+
+  if (event.key === 'Enter') {
+    event.preventDefault()
+    const command = commandCandidates.value[activeCommandIndex.value]
+    if (command) {
+      pickCommand(command)
+    }
+  }
 }
 
 function forwardDecision(decision: string, comment?: string) {
@@ -124,6 +178,18 @@ function forwardDecision(decision: string, comment?: string) {
 
 watch(() => props.messages.length, scrollToBottom)
 watch(() => props.loading, scrollToBottom)
+watch(input, () => {
+  commandMenuDismissed.value = false
+})
+watch(commandCandidates, (nextCommands) => {
+  if (!nextCommands.length) {
+    activeCommandIndex.value = 0
+    return
+  }
+  if (activeCommandIndex.value >= nextCommands.length) {
+    activeCommandIndex.value = 0
+  }
+})
 </script>
 
 <style scoped>
@@ -223,6 +289,10 @@ watch(() => props.loading, scrollToBottom)
   border-top: 1px solid rgba(111, 69, 31, 0.16);
   padding: 1rem 1.25rem 1.25rem;
   background: linear-gradient(180deg, rgba(247, 240, 228, 0.86) 0%, rgba(242, 233, 218, 0.94) 100%);
+}
+
+.chat-workspace__command-menu {
+  margin-bottom: 0.65rem;
 }
 
 .chat-workspace__composer-inner {

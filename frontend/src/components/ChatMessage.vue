@@ -3,7 +3,12 @@
     class="message-row"
     :class="msg.role === 'user' ? 'justify-end' : 'justify-start'"
   >
+    <ChatSummaryCard
+      v-if="msg.message_type === 'summary'"
+      :content="msg.content"
+    />
     <div
+      v-else
       class="message-bubble"
       :class="bubbleClass"
     >
@@ -31,6 +36,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import ActionCard from './ActionCard.vue'
+import ChatSummaryCard from './ChatSummaryCard.vue'
 
 const props = defineProps<{ msg: any; isLatest: boolean; loading: boolean }>()
 const emit = defineEmits<{ decide: [decision: string, comment?: string] }>()
