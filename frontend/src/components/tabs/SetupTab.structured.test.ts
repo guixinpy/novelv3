@@ -145,15 +145,22 @@ describe('SetupTab structured sections', () => {
     const worldTab = () => wrapper.get('[data-testid="setup-section-tab-world"]')
     const charactersPanel = () => wrapper.get('#setup-section-panel-characters')
     const worldPanel = () => wrapper.get('#setup-section-panel-world')
+    const secondCharacter = () => wrapper.get('[data-testid="setup-character-item-周岚"]')
+    const detail = () => wrapper.get('[data-testid="setup-character-detail"]')
 
     await worldTab().trigger('click')
+    await secondCharacter().trigger('click')
     expect(worldTab().attributes('aria-selected')).toBe('true')
+    expect(detail().text()).toContain('周岚')
 
     await wrapper.setProps({
       setup: {
         ...setupFixture,
         id: 'setup-2',
-        characters: [{ name: '林雾' }],
+        characters: [
+          { name: '林雾', background: '雾港信使' },
+          { name: '赵衡', background: '盐场护卫' },
+        ],
       },
     })
 
@@ -162,5 +169,142 @@ describe('SetupTab structured sections', () => {
     expect(worldTab().attributes('aria-selected')).toBe('false')
     expect(charactersPanel().attributes('hidden')).toBeUndefined()
     expect(worldPanel().attributes('hidden')).toBe('')
+    expect(wrapper.get('[data-testid="setup-character-item-林雾"]').attributes('aria-pressed')).toBe('true')
+    expect(detail().text()).toContain('林雾')
+    expect(detail().text()).toContain('雾港信使')
+    expect(detail().text()).not.toContain('周岚')
+  })
+
+  it('默认详情区展示第一名角色', () => {
+    const wrapper = mountSetupTab()
+
+    const firstCharacter = wrapper.get('[data-testid="setup-character-item-沈砚"]')
+    const detail = wrapper.get('[data-testid="setup-character-detail"]')
+
+    expect(firstCharacter.attributes('aria-pressed')).toBe('true')
+    expect(detail.text()).toContain('沈砚')
+    expect(detail.text()).toContain('旧城档案馆的修复员')
+    expect(detail.text()).toContain('28 岁')
+    expect(detail.text()).toContain('男')
+    expect(detail.text()).toContain('存活')
+  })
+
+  it('点击角色列表项后，详情区切换到目标角色', async () => {
+    const wrapper = mountSetupTab()
+
+    const firstCharacter = () => wrapper.get('[data-testid="setup-character-item-沈砚"]')
+    const secondCharacter = () => wrapper.get('[data-testid="setup-character-item-周岚"]')
+    const detail = () => wrapper.get('[data-testid="setup-character-detail"]')
+
+    await secondCharacter().trigger('click')
+
+    expect(secondCharacter().attributes('aria-pressed')).toBe('true')
+    expect(firstCharacter().attributes('aria-pressed')).toBe('false')
+    expect(detail().text()).toContain('周岚')
+    expect(detail().text()).toContain('边境调查员')
+    expect(detail().text()).not.toContain('沈砚')
+  })
+
+  it('空字段显示待补充', () => {
+    const wrapper = mountSetupTab({
+      ...setupFixture,
+      id: 'setup-empty-fields',
+      characters: [
+        {
+          name: '顾迟',
+          background: '  ',
+          personality: '',
+          goals: null,
+          age: null,
+          gender: null,
+          character_status: null,
+        },
+      ],
+    })
+
+    const detail = wrapper.get('[data-testid="setup-character-detail"]')
+    const text = detail.text()
+
+    expect(text).toContain('顾迟')
+    expect(text).toContain('待补充')
+  })
+
+  it('character_status: alive 显示为存活', () => {
+    const wrapper = mountSetupTab()
+
+    const detail = wrapper.get('[data-testid="setup-character-detail"]')
+
+    expect(detail.text()).toContain('存活')
+  })
+
+  it('characters 更新且当前选中角色不存在时，会回退到第一名角色', async () => {
+    const wrapper = mountSetupTab()
+    const secondCharacter = () => wrapper.get('[data-testid="setup-character-item-周岚"]')
+    const detail = () => wrapper.get('[data-testid="setup-character-detail"]')
+
+    await secondCharacter().trigger('click')
+    expect(secondCharacter().attributes('aria-pressed')).toBe('true')
+    expect(detail().text()).toContain('周岚')
+
+    await wrapper.setProps({
+      setup: {
+        ...setupFixture,
+        characters: [
+          {
+            name: '顾迟',
+            background: '残塔守夜人',
+            personality: '寡言',
+            goals: '守住最后灯火',
+          },
+          {
+            name: '苏遥',
+            background: '流亡测绘师',
+            personality: '敏锐',
+            goals: '重绘航线',
+          },
+        ],
+      },
+    })
+
+    expect(wrapper.get('[data-testid="setup-character-item-顾迟"]').attributes('aria-pressed')).toBe('true')
+    expect(detail().text()).toContain('顾迟')
+    expect(detail().text()).toContain('残塔守夜人')
+    expect(detail().text()).not.toContain('周岚')
+  })
+
+  it('重名角色场景下可以稳定选中目标项，不会双高亮', async () => {
+    const wrapper = mountSetupTab({
+      ...setupFixture,
+      id: 'setup-duplicate-names',
+      characters: [
+        {
+          name: '沈砚',
+          background: '旧城档案馆的修复员',
+          personality: '克制',
+          goals: '找回失落档案',
+        },
+        {
+          name: '沈砚',
+          background: '北境巡夜人',
+          personality: '冷硬',
+          goals: '追查边哨失踪案',
+        },
+      ],
+    })
+
+    const characterItems = () => wrapper.findAll('[data-testid^="setup-character-item-沈砚"]')
+    const detail = () => wrapper.get('[data-testid="setup-character-detail"]')
+
+    expect(characterItems()).toHaveLength(2)
+    expect(characterItems()[0].attributes('aria-pressed')).toBe('true')
+    expect(characterItems()[1].attributes('aria-pressed')).toBe('false')
+    expect(detail().text()).toContain('旧城档案馆的修复员')
+
+    await characterItems()[1].trigger('click')
+
+    expect(characterItems()[0].attributes('aria-pressed')).toBe('false')
+    expect(characterItems()[1].attributes('aria-pressed')).toBe('true')
+    expect(detail().text()).toContain('北境巡夜人')
+    expect(detail().text()).not.toContain('旧城档案馆的修复员')
   })
 })

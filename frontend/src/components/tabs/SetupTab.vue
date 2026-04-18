@@ -15,15 +15,11 @@
       <div class="setup-panel__header">
         <h4 class="setup-panel__title">角色</h4>
       </div>
-      <div class="setup-character-list">
-        <div
-          v-for="(character, index) in setup.characters"
-          :key="`${character.name}-${index}`"
-          class="setup-character-list__item"
-        >
-          {{ character.name }}
-        </div>
-      </div>
+      <SetupCharactersPanel
+        :items="characterItems"
+        :active-character-token="activeCharacterToken"
+        @select="activeCharacterToken = $event"
+      />
     </section>
 
     <section
@@ -60,24 +56,100 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
-import type { SetupData } from '../../api/types'
+import { computed, ref, watch } from 'vue'
+import type { SetupCharacter, SetupData } from '../../api/types'
+import SetupCharactersPanel from './SetupCharactersPanel.vue'
 import SetupSectionTabs from './SetupSectionTabs.vue'
 
 type SetupSection = 'characters' | 'world' | 'concept'
+type SetupCharacterItem = {
+  key: string
+  token: string
+  testId: string
+  character: SetupCharacter
+}
 
 const props = defineProps<{
   setup: SetupData | null
 }>()
 
 const activeSection = ref<SetupSection>('characters')
+const activeCharacterToken = ref<string | null>(null)
+
+const characterItems = computed<SetupCharacterItem[]>(() => {
+  const signatureCount = new Map<string, number>()
+
+  return (props.setup?.characters ?? []).map((character) => {
+    const signature = buildCharacterSignature(character)
+    const occurrence = signatureCount.get(signature) ?? 0
+    signatureCount.set(signature, occurrence + 1)
+
+    const token = `${signature}::${occurrence + 1}`
+
+    return {
+      key: token,
+      token,
+      testId: buildCharacterTestId(character.name, occurrence),
+      character,
+    }
+  })
+})
+
+activeCharacterToken.value = characterItems.value[0]?.token ?? null
 
 watch(() => props.setup?.id, () => {
   activeSection.value = 'characters'
+  activeCharacterToken.value = characterItems.value[0]?.token ?? null
+})
+
+watch(characterItems, (items) => {
+  if (!items.length) {
+    activeCharacterToken.value = null
+    return
+  }
+
+  const hasActiveCharacter = activeCharacterToken.value !== null
+    && items.some((item) => item.token === activeCharacterToken.value)
+
+  if (!hasActiveCharacter) {
+    activeCharacterToken.value = items[0].token
+  }
 })
 
 function isSectionActive(section: SetupSection): boolean {
   return activeSection.value === section
+}
+
+function buildCharacterSignature(character: SetupCharacter): string {
+  return [
+    normalizeCharacterField(character.name),
+    normalizeCharacterField(character.age),
+    normalizeCharacterField(character.gender),
+    normalizeCharacterField(character.personality),
+    normalizeCharacterField(character.background),
+    normalizeCharacterField(character.goals),
+    normalizeCharacterField(character.character_status),
+  ].join('|')
+}
+
+function normalizeCharacterField(value: string | number | null | undefined): string {
+  if (typeof value === 'string') {
+    return value.trim()
+  }
+
+  if (typeof value === 'number') {
+    return String(value)
+  }
+
+  return ''
+}
+
+function buildCharacterTestId(name: string, occurrence: number): string {
+  if (occurrence === 0) {
+    return `setup-character-item-${name}`
+  }
+
+  return `setup-character-item-${name}-${occurrence + 1}`
 }
 </script>
 
@@ -108,23 +180,6 @@ function isSectionActive(section: SetupSection): boolean {
   font-size: 0.95rem;
   font-weight: 700;
   line-height: 1.3;
-}
-
-.setup-character-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.55rem;
-}
-
-.setup-character-list__item {
-  border: 1px solid rgba(111, 69, 31, 0.12);
-  border-radius: 0.8rem;
-  padding: 0.72rem 0.82rem;
-  background: rgba(255, 251, 243, 0.72);
-  color: var(--ink-strong);
-  font-size: 0.92rem;
-  font-weight: 600;
-  line-height: 1.35;
 }
 
 .setup-tab__empty {
