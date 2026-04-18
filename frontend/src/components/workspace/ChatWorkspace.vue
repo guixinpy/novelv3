@@ -38,6 +38,7 @@
       />
       <div class="chat-workspace__composer-inner">
         <input
+          ref="inputEl"
           v-model="input"
           :disabled="loading || !!pendingAction"
           class="chat-workspace__input"
@@ -86,6 +87,7 @@ const emit = defineEmits<{
 }>()
 
 const input = ref('')
+const inputEl = ref<HTMLInputElement | null>(null)
 const messageContainer = ref<HTMLElement | null>(null)
 const activeCommandIndex = ref(0)
 const commandMenuDismissed = ref(false)
@@ -134,9 +136,18 @@ function pickCommand(command: ChatCommandDefinition) {
   input.value = `/${command.name} `
   activeCommandIndex.value = 0
   commandMenuDismissed.value = true
+  nextTick(() => {
+    inputEl.value?.focus()
+  })
+}
+
+function isImeComposing(event: KeyboardEvent) {
+  return event.isComposing || event.keyCode === 229
 }
 
 function onInputKeydown(event: KeyboardEvent) {
+  if (isImeComposing(event)) return
+
   if (event.key === 'Escape' && showCommandMenu.value) {
     commandMenuDismissed.value = true
     return
