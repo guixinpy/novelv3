@@ -21,9 +21,14 @@ AGENT_BROWSER_ERRORS_JSON="$LOG_DIR/agent-browser-errors.json"
 AGENT_BROWSER_CONSOLE_JSON="$LOG_DIR/agent-browser-console.json"
 
 BACKEND_PID=""
+PROJECT_ID=""
+PROJECT_NAME=""
 
 cleanup() {
   set +e
+  if [[ -n "${PROJECT_ID:-}" && -n "${BACKEND_BASE_URL:-}" ]]; then
+    curl -fsS -X DELETE "${BACKEND_BASE_URL}/api/v1/projects/${PROJECT_ID}" >/dev/null 2>&1 || true
+  fi
   if [[ -n "${BACKEND_PID}" ]] && kill -0 "${BACKEND_PID}" 2>/dev/null; then
     kill "${BACKEND_PID}" 2>/dev/null
     wait "${BACKEND_PID}" 2>/dev/null || true
@@ -114,18 +119,34 @@ wait_for_eval_true() {
   local expression="$2"
   local attempts="${3:-60}"
   local sleep_seconds="${4:-1}"
+  local last_result=""
+  local last_status=0
 
   echo "==> 等待: ${description}"
   for ((i = 1; i <= attempts; i++)); do
     local result
-    result="$(agent-browser --session "${AB_SESSION}" eval "${expression}" 2>/dev/null || true)"
-    if [[ "${result}" == "true" ]]; then
+    local status
+    set +e
+    result="$(agent-browser --session "${AB_SESSION}" eval "${expression}" 2>&1)"
+    status=$?
+    set -e
+
+    last_result="${result}"
+    last_status="${status}"
+
+    if [[ "${status}" -eq 0 && "${result}" == "true" ]]; then
       return 0
     fi
     sleep "${sleep_seconds}"
   done
 
   echo "等待超时: ${description}" >&2
+  echo "最后一次 eval 退出码: ${last_status}" >&2
+  if [[ -n "${last_result}" ]]; then
+    echo "最后一次 eval 输出: ${last_result}" >&2
+  else
+    echo "最后一次 eval 输出: <empty>" >&2
+  fi
   return 1
 }
 
