@@ -270,6 +270,7 @@ async def _handle_compact_command(db: Session, dialog: Dialog, project: Project,
         ai_service=ai_service,
         model=project.ai_model or "deepseek-chat",
         project_name=project.name or "未命名项目",
+        diagnosis=diagnosis,
     )
 
     try:
