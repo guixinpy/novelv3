@@ -1,29 +1,17 @@
 <template>
   <section class="chat-workspace">
     <header class="chat-workspace__header">
-      <div class="space-y-3">
-        <div class="flex flex-wrap items-center gap-3">
-          <p class="chat-workspace__eyebrow">Project Workspace</p>
-          <span class="chat-workspace__mode">{{ modeLabel }}</span>
-        </div>
-        <div class="space-y-2">
-          <h1 class="chat-workspace__title">{{ project.name }}</h1>
-          <p class="chat-workspace__meta">
-            {{ project.genre || '未分类题材' }}
-            <span class="chat-workspace__dot" />
-            {{ project.current_word_count || 0 }} 字
-            <span class="chat-workspace__dot" />
-            {{ project.status || '进行中' }}
-          </p>
-        </div>
+      <div class="chat-workspace__headline">
+        <h1 class="chat-workspace__title">{{ project.name }}</h1>
+        <p class="chat-workspace__meta">
+          <span>{{ project.genre || '未分类题材' }}</span>
+          <span class="chat-workspace__dot" />
+          <span>{{ project.current_word_count || 0 }} 字</span>
+          <span class="chat-workspace__dot" />
+          <span>{{ projectStatusLabel }}</span>
+        </p>
       </div>
-      <div class="chat-workspace__context">
-        <div class="chat-workspace__context-head">
-          <span class="chat-workspace__context-label">当前 Inspector</span>
-          <span class="chat-workspace__context-panel">{{ currentPanelLabel }}</span>
-        </div>
-        <p class="chat-workspace__context-copy">{{ contextCopy }}</p>
-      </div>
+      <span class="chat-workspace__mode">{{ modeLabel }}</span>
     </header>
 
     <div ref="messageContainer" class="chat-workspace__messages">
@@ -98,22 +86,22 @@ const emit = defineEmits<{
 const input = ref('')
 const messageContainer = ref<HTMLElement | null>(null)
 
-const currentPanelLabel = computed(() =>
-  props.tabs.find((tab) => tab.id === props.panel)?.label ?? '概览',
-)
-
 const modeLabel = computed(() => (props.mode === 'locked' ? '锁定观察' : '自动联动'))
 
-const sourceLabel = computed(() => {
-  if (props.source === 'user') return '你'
-  if (props.source === 'ai') return '墨舟'
-  return '系统'
-})
+const projectStatusLabel = computed(() => {
+  const status = String(props.project?.status || '').trim()
+  const phase = String(props.project?.current_phase || '').trim()
 
-const contextCopy = computed(() => {
-  if (props.reason) return `${sourceLabel.value}：${props.reason}`
-  if (props.mode === 'locked') return 'Inspector 已锁定，关键动作仍会临时跳转。'
-  return '聊天会驱动右侧 Inspector 自动联动。'
+  if (status === 'writing') return '正文写作中'
+  if (status === 'outline_generated') return '大纲已生成'
+  if (status === 'storyline_generated') return '故事线已生成'
+  if (status === 'draft') return '待补全'
+
+  if (phase === 'outline') return '大纲阶段'
+  if (phase === 'storyline') return '故事线阶段'
+  if (phase === 'setup') return '设定阶段'
+
+  return '进行中'
 })
 
 function scrollToBottom() {
@@ -156,21 +144,22 @@ watch(() => props.loading, scrollToBottom)
 
 .chat-workspace__header {
   display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  padding: 1.25rem 1.25rem 1rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.82rem 1.25rem 0.82rem;
   border-bottom: 1px solid rgba(111, 69, 31, 0.16);
   background:
     linear-gradient(135deg, rgba(255, 249, 236, 0.94) 0%, rgba(240, 230, 209, 0.88) 100%);
 }
 
-.chat-workspace__eyebrow {
-  color: var(--accent-strong);
-  font-family: "Palatino Linotype", "Book Antiqua", serif;
-  font-size: 0.74rem;
-  font-weight: 700;
-  letter-spacing: 0.24em;
-  text-transform: uppercase;
+.chat-workspace__headline {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.85rem;
 }
 
 .chat-workspace__mode {
@@ -178,67 +167,36 @@ watch(() => props.loading, scrollToBottom)
   background: rgba(255, 248, 233, 0.8);
   color: var(--ink-muted);
   border-radius: 999px;
-  padding: 0.25rem 0.75rem;
-  font-size: 0.72rem;
+  padding: 0.28rem 0.72rem;
+  font-size: 0.7rem;
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .chat-workspace__title {
   color: var(--ink-strong);
   font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", serif;
-  font-size: clamp(1.85rem, 3vw, 2.5rem);
-  line-height: 1.05;
+  font-size: clamp(1.22rem, 1.9vw, 1.62rem);
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .chat-workspace__meta {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.35rem;
   color: var(--ink-muted);
-  font-size: 0.92rem;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  min-width: 0;
 }
 
 .chat-workspace__dot {
-  width: 0.3rem;
-  height: 0.3rem;
+  width: 0.24rem;
+  height: 0.24rem;
   border-radius: 999px;
   background: rgba(111, 69, 31, 0.26);
-}
-
-.chat-workspace__context {
-  border: 1px solid rgba(111, 69, 31, 0.14);
-  background: rgba(255, 249, 237, 0.74);
-  border-radius: 1.25rem;
-  padding: 0.9rem 1rem;
-}
-
-.chat-workspace__context-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.65rem;
-}
-
-.chat-workspace__context-label {
-  color: var(--ink-muted);
-  font-size: 0.76rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.chat-workspace__context-panel {
-  color: var(--accent-strong);
-  font-family: "Palatino Linotype", "Book Antiqua", serif;
-  font-size: 1rem;
-  font-weight: 700;
-}
-
-.chat-workspace__context-copy {
-  margin-top: 0.35rem;
-  color: var(--ink-muted);
-  font-size: 0.94rem;
-  line-height: 1.5;
 }
 
 .chat-workspace__messages {
@@ -329,7 +287,7 @@ watch(() => props.loading, scrollToBottom)
 
 @media (min-width: 768px) {
   .chat-workspace__header {
-    padding: 1.5rem 1.5rem 1.15rem;
+    padding: 0.9rem 1.5rem 0.88rem;
   }
 
   .chat-workspace__messages {
@@ -338,6 +296,20 @@ watch(() => props.loading, scrollToBottom)
 
   .chat-workspace__composer {
     padding: 1rem 1.5rem 1.5rem;
+  }
+}
+
+@media (max-width: 767px) {
+  .chat-workspace__header {
+    align-items: flex-start;
+  }
+
+  .chat-workspace__mode {
+    align-self: flex-start;
+  }
+
+  .chat-workspace__title {
+    white-space: normal;
   }
 }
 </style>

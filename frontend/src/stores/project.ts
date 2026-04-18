@@ -57,6 +57,14 @@ export const useProjectStore = defineStore('project', () => {
     return p
   }
 
+  async function deleteProject(id: string) {
+    await api.deleteProject(id)
+    projects.value = projects.value.filter((project) => project.id !== id)
+    if (currentProject.value?.id === id) {
+      resetProjectScopedState()
+    }
+  }
+
   async function loadProject(id: string) {
     const { requestProjectId, versionSnapshot } = captureProjectSnapshot(id)
     const nextProject = await api.getProject(id)
@@ -220,7 +228,7 @@ export const useProjectStore = defineStore('project', () => {
   return {
     projects, currentProject, setup, chapter, storyline, outline, topology, chapters, versions, preferences, versionsNodeType,
     resetProjectScopedState,
-    loadProjects, createProject, loadProject,
+    loadProjects, createProject, deleteProject, loadProject,
     generateSetup, loadSetup, generateChapter, loadChapter,
     generateStoryline, loadStoryline, generateOutline, loadOutline, loadTopology,
     loadChapters, loadVersions, loadPreferences, updatePreferences, resetPreferences, refreshTargets,

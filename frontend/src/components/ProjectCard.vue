@@ -17,9 +17,19 @@
         </div>
       </div>
 
-      <router-link :to="`/projects/${project.id}`" class="project-card__link">
-        进入工作区
-      </router-link>
+      <div class="project-card__actions">
+        <router-link :to="`/projects/${project.id}`" class="project-card__link">
+          进入工作区
+        </router-link>
+        <button
+          type="button"
+          class="project-card__link project-card__link--danger"
+          :disabled="deleting"
+          @click="$emit('requestDelete', project.id)"
+        >
+          {{ deleting ? '删除中...' : '删除项目' }}
+        </button>
+      </div>
     </div>
 
     <p class="project-card__caption">{{ insight.phaseCaption }}</p>
@@ -39,6 +49,7 @@
       <p class="project-card__next-label">{{ insight.nextStepLabel }}</p>
       <p class="project-card__next-copy">{{ insight.nextStepDetail }}</p>
     </div>
+
   </article>
 </template>
 
@@ -48,6 +59,11 @@ import { buildProjectInsight, type ProjectListProject } from './list/projectList
 
 const props = defineProps<{
   project: ProjectListProject
+  deleting?: boolean
+}>()
+
+defineEmits<{
+  requestDelete: [projectId: string]
 }>()
 
 const insight = computed(() => buildProjectInsight(props.project))
@@ -175,6 +191,24 @@ const updatedLabel = computed(() => {
   font-size: 0.92rem;
   font-weight: 700;
   text-decoration: none;
+  cursor: pointer;
+}
+
+.project-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.project-card__link--danger {
+  border-color: rgba(137, 65, 48, 0.2);
+  background: rgba(252, 241, 237, 0.92);
+  color: #8d4c34;
+}
+
+.project-card__link:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .project-card__progress-track {

@@ -19,7 +19,13 @@
         </div>
 
         <div v-else class="project-list-view__matrix">
-          <ProjectCard v-for="project in projects" :key="project.id" :project="project" />
+          <ProjectCard
+            v-for="project in projects"
+            :key="project.id"
+            :project="project"
+            :deleting="activeDeletingProjectId === project.id"
+            @request-delete="requestProjectDelete(project)"
+          />
         </div>
       </section>
 
@@ -29,11 +35,26 @@
         :focus-insight="focusInsight"
       />
     </div>
+
+    <ConfirmDialog
+      :show="isDeleteDialogOpen"
+      eyebrow="删除项目"
+      :title="deleteDialogTitle"
+      :description="deleteDialogDescription"
+      confirm-text="确认删除"
+      cancel-text="再想想"
+      pending-text="删除中..."
+      :confirming="activeDeletingProjectId !== null"
+      :error-message="deleteDialogErrorMessage"
+      @close="deleteDialog.close"
+      @confirm="confirmProjectDelete"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import ConfirmDialog from '../components/ConfirmDialog.vue'
 import ProjectCard from '../components/ProjectCard.vue'
 import ProjectFocusRail from '../components/list/ProjectFocusRail.vue'
 import ProjectMatrixHero from '../components/list/ProjectMatrixHero.vue'
@@ -44,9 +65,11 @@ import {
   type ProjectListProject,
 } from '../components/list/projectListMeta'
 import { useProjectStore } from '../stores/project'
+import { createProjectDeleteDialog } from './projectListDeleteDialog'
 
 const store = useProjectStore()
 const creating = ref(false)
+const deleteDialog = createProjectDeleteDialog()
 
 const projects = computed<ProjectListProject[]>(() => store.projects)
 const summary = computed(() => buildProjectPortfolioSummary(projects.value))
@@ -63,6 +86,22 @@ const heroSummary = computed(() => {
   return `当前共 ${summary.value.totalProjects} 个项目，${summary.value.pendingLabel}。最值得继续的是「${focusProject.value.name}」，建议下一步：${focusInsight.value.nextStepLabel}。`
 })
 
+const activeDeletingProjectId = computed(() => deleteDialog.deletingProjectId.value)
+const isDeleteDialogOpen = computed(() => deleteDialog.isOpen.value)
+const deleteDialogErrorMessage = computed(() => deleteDialog.errorMessage.value)
+
+const deleteDialogTitle = computed(() => {
+  const name = deleteDialog.targetProject.value?.name
+  return name ? `删除「${name}」？` : '删除这个项目？'
+})
+
+const deleteDialogDescription = computed(() => {
+  const project = deleteDialog.targetProject.value
+  if (!project) return ''
+  const phase = buildProjectInsight(project).phaseLabel
+  return `这会永久清空「${project.name}」的设定、大纲、对话、版本和后台任务记录。当前处于${phase}，删除后无法恢复。`
+})
+
 onMounted(() => store.loadProjects())
 
 async function create(payload: { name: string; genre: string }) {
@@ -75,6 +114,14 @@ async function create(payload: { name: string; genre: string }) {
   } finally {
     creating.value = false
   }
+}
+
+function requestProjectDelete(project: ProjectListProject) {
+  deleteDialog.open(project)
+}
+
+async function confirmProjectDelete() {
+  await deleteDialog.confirm((projectId) => store.deleteProject(projectId))
 }
 </script>
 

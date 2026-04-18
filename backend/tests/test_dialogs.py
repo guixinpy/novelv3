@@ -60,6 +60,44 @@ def test_chat_creates_dialog(client):
     assert data["refresh_targets"] == []
 
 
+@patch("app.api.dialogs.load_api_key", return_value="sk-test")
+@patch("app.api.dialogs.ai_service.complete", new_callable=AsyncMock)
+def test_chat_uses_ai_service_for_free_text_when_model_available(mock_complete, mock_key, client):
+    r = client.post("/api/v1/projects", json={"name": "Test", "genre": "科幻"})
+    pid = r.json()["id"]
+
+    mock_complete.return_value.content = "你好，我可以先帮你梳理设定缺口，再决定是否生成故事线。"
+
+    r2 = client.post("/api/v1/dialog/chat", json={
+        "project_id": pid,
+        "input_type": "text",
+        "text": "hello",
+    })
+
+    assert r2.status_code == 200
+    assert r2.json()["message"] == "你好，我可以先帮你梳理设定缺口，再决定是否生成故事线。"
+    mock_complete.assert_awaited_once()
+    sent_messages = mock_complete.await_args.args[0]
+    assert "当前阶段：设定阶段" in sent_messages[0]["content"]
+    assert "当前状态：待补全" in sent_messages[0]["content"]
+
+
+@patch("app.api.dialogs.load_api_key", return_value=None)
+def test_chat_reports_model_unavailable_instead_of_faking_ai_reply(mock_key, client):
+    r = client.post("/api/v1/projects", json={"name": "Test"})
+    pid = r.json()["id"]
+
+    r2 = client.post("/api/v1/dialog/chat", json={
+        "project_id": pid,
+        "input_type": "text",
+        "text": "hello",
+    })
+
+    assert r2.status_code == 200
+    assert "未配置模型 API Key" in r2.json()["message"]
+    assert "建议先补全这些环节" not in r2.json()["message"]
+
+
 def test_chat_button_action(client):
     r = client.post("/api/v1/projects", json={"name": "Test"})
     pid = r.json()["id"]

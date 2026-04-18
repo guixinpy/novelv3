@@ -13,6 +13,20 @@ from app.core.ui_hints import build_ui_hint, action_to_refresh_targets
 
 router = APIRouter(tags=["dialogs"])
 ai_service = AIService()
+CHAT_HISTORY_LIMIT = 8
+PHASE_LABELS = {
+    "setup": "设定阶段",
+    "storyline": "故事线阶段",
+    "outline": "大纲阶段",
+    "content": "正文阶段",
+}
+STATUS_LABELS = {
+    "draft": "待补全",
+    "writing": "正文写作中",
+    "outline_generated": "大纲已生成",
+    "storyline_generated": "故事线已生成",
+    "setup_approved": "设定已确认",
+}
 
 
 def _get_or_create_dialog(db: Session, project_id: str) -> Dialog:
@@ -73,6 +87,82 @@ def _save_message(db: Session, dialog_id: str, role: str, content: str, action_r
     msg = DialogMessage(dialog_id=dialog_id, role=role, content=content, action_result=action_result)
     db.add(msg)
     db.commit()
+
+
+def _diagnosis_summary(diagnosis: ProjectDiagnosisOut) -> str:
+    label_map = {"setup": "设定", "storyline": "故事线", "outline": "大纲", "content": "正文"}
+    if diagnosis.missing_items:
+        names = [label_map.get(item, item) for item in diagnosis.missing_items]
+        return f"目前项目还缺少：{'、'.join(names)}。"
+    return "项目基础已就绪，随时可以开始创作。"
+
+
+def _chat_unavailable_reply(diagnosis: ProjectDiagnosisOut, reason: str) -> str:
+    return f"{reason}。我现在只能做流程诊断：{_diagnosis_summary(diagnosis)}"
+
+
+def _phase_label(phase: str | None) -> str:
+    return PHASE_LABELS.get(phase or "", phase or "未开始")
+
+
+def _status_label(status: str | None) -> str:
+    return STATUS_LABELS.get(status or "", status or "待补全")
+
+
+def _build_chat_messages(db: Session, dialog_id: str, project: Project, diagnosis: ProjectDiagnosisOut) -> list[dict]:
+    pm = PromptManager()
+    history = db.query(DialogMessage) \
+        .filter(DialogMessage.dialog_id == dialog_id) \
+        .order_by(DialogMessage.created_at.desc()) \
+        .limit(CHAT_HISTORY_LIMIT) \
+        .all()
+
+    history.reverse()
+    system_prompt = pm.load(
+        "chat_project_assistant",
+        {
+            "project_name": project.name or "未命名项目",
+            "project_genre": project.genre or "未分类题材",
+            "project_description": project.description or "暂无项目描述",
+            "project_phase": _phase_label(project.current_phase),
+            "project_status": _status_label(project.status),
+            "current_words": str(project.current_word_count or 0),
+            "target_words": str(project.target_word_count or 0),
+            "completed_items": "、".join(diagnosis.completed_items) if diagnosis.completed_items else "无",
+            "missing_items": "、".join(diagnosis.missing_items) if diagnosis.missing_items else "无",
+            "suggested_next_step": diagnosis.suggested_next_step or "无",
+        },
+    )
+    messages = [{"role": "system", "content": system_prompt}]
+
+    for item in history:
+        if item.role in ("user", "assistant"):
+            messages.append({"role": item.role, "content": item.content})
+        elif item.role == "system":
+            messages.append({"role": "assistant", "content": f"[系统消息] {item.content}"})
+
+    return messages
+
+
+async def _free_chat_reply(db: Session, dialog: Dialog, project: Project, diagnosis: ProjectDiagnosisOut) -> str:
+    if not load_api_key():
+        return _chat_unavailable_reply(diagnosis, "当前未配置模型 API Key，聊天还没有真实接入 AI")
+
+    try:
+        messages = _build_chat_messages(db, dialog.id, project, diagnosis)
+        result = await ai_service.complete(
+            messages,
+            temperature=0.7,
+            max_tokens=900,
+            model=project.ai_model or "deepseek-chat",
+        )
+        content = (result.content or "").strip()
+        if content:
+            return content
+    except Exception as exc:
+        return _chat_unavailable_reply(diagnosis, f"模型调用失败：{str(exc)}")
+
+    return _chat_unavailable_reply(diagnosis, "模型返回了空内容")
 
 
 @router.get("/api/v1/dialog/projects/{project_id}/messages")
@@ -225,7 +315,7 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
             project_diagnosis=diagnosis,
         )
 
-    reply = _free_reply(payload.text, diagnosis)
+    reply = await _free_chat_reply(db, dialog, project, diagnosis)
     _save_message(db, dialog.id, "assistant", reply)
     return ChatOut(
         message=reply,
@@ -249,14 +339,6 @@ def _action_description(action_type: str) -> str:
         "query_diagnosis": "让我看看项目当前状态...",
     }
     return mapping.get(action_type, "已准备好执行操作。")
-
-
-def _free_reply(text: str, diagnosis: ProjectDiagnosisOut) -> str:
-    label_map = {"setup": "设定", "storyline": "故事线", "outline": "大纲", "content": "正文"}
-    if diagnosis.missing_items:
-        names = [label_map.get(i, i) for i in diagnosis.missing_items]
-        return f"目前项目还缺少：{'、'.join(names)}。建议先补全这些环节。"
-    return "项目基础已就绪，随时可以开始创作。"
 
 
 import asyncio
