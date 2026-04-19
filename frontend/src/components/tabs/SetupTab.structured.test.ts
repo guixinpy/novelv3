@@ -176,7 +176,7 @@ describe('SetupTab structured sections', () => {
       characters: [],
     })
 
-    expect(wrapper.get('[data-testid="setup-summary-card-characters-body"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="setup-summary-card-characters-body"]').exists()).toBe(true)
     expect(wrapper.get('[data-testid="setup-summary-card-characters-empty"]').text()).toContain('暂无角色概览')
   })
 
