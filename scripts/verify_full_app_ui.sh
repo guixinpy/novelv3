@@ -119,7 +119,7 @@ import json
 print(json.dumps({
     "world_building": {
         "background": "灾后第三纪元，旧城废墟与档案机关并存。",
-        "geography": "群岛与雾海之间由浮桥和旧航道连接。",
+        "geography": "新陆与浮岛群",
         "society": "档案机关垄断记忆修复，民间巡夜人维持边境秩序。",
         "rules": "记忆碎片可以被交易，但篡改会引发城市级回响。",
         "atmosphere": "潮湿、肃静、带着持续失真的钟声。"
@@ -146,7 +146,7 @@ print(json.dumps({
     ],
     "core_concept": {
         "theme": "记忆决定身份，篡改记忆是否等于篡改人生。",
-        "premise": "记忆能被征税和买卖。",
+        "premise": "记忆可被征税和交易",
         "hook": "主角修复的档案会反过来改写现实。",
         "unique_selling_point": "档案修复决定现实。"
     }
@@ -326,12 +326,12 @@ assert_eval "关闭设定详情弹窗" "(() => { const button = document.querySe
 wait_for_eval_true "设定详情弹窗已关闭" "(() => !document.querySelector('[data-testid=\"setup-detail-modal\"]'))()"
 
 assert_eval "点击世界观卡查看完整" "(() => { const button = document.querySelector('[data-testid=\"setup-summary-card-world\"] [data-testid=\"setup-summary-open\"]'); if (!button) { throw new Error('未找到世界观卡查看完整按钮'); } button.click(); return true; })()"
-wait_for_eval_true "世界观卡打开 modal 并定位到世界观" "(() => { const modal = document.querySelector('[data-testid=\"setup-detail-modal\"]'); const panel = document.querySelector('[data-testid=\"setup-detail-panel-world\"]'); const tab = document.querySelector('[data-testid=\"setup-detail-tab-world\"]'); if (!modal || !panel || !tab) { return false; } if (panel.getAttribute('aria-hidden') !== 'false') { return false; } if (tab.getAttribute('aria-selected') !== 'true') { return false; } const cards = panel.querySelectorAll('[data-testid=\"setup-world-card\"]'); if (cards.length !== 5) { return false; } const text = panel.textContent || ''; const forbidden = ['background', 'geography', 'society', 'rules', 'atmosphere']; return forbidden.every((key) => !text.includes(key)); })()"
+wait_for_eval_true "世界观卡打开 modal 并定位到世界观" "(() => { const modal = document.querySelector('[data-testid=\"setup-detail-modal\"]'); const panel = document.querySelector('[data-testid=\"setup-detail-panel-world\"]'); const tab = document.querySelector('[data-testid=\"setup-detail-tab-world\"]'); if (!modal || !panel || !tab) { return false; } if (panel.getAttribute('aria-hidden') !== 'false') { return false; } if (tab.getAttribute('aria-selected') !== 'true') { return false; } const cards = Array.from(panel.querySelectorAll('[data-testid=\"setup-world-card\"]')); if (cards.length !== 5) { return false; } const text = panel.textContent || ''; const forbidden = ['background', 'geography', 'society', 'rules', 'atmosphere']; if (!forbidden.every((key) => !text.includes(key))) { return false; } const labels = cards.map((card) => card.querySelector('[data-testid=\"setup-world-label\"]')?.textContent?.trim() || ''); const expectedLabels = ['时代背景', '地理格局', '社会结构', '规则体系', '氛围基调']; if (labels.length !== expectedLabels.length || labels.some((label, index) => label !== expectedLabels[index])) { return false; } return cards.some((card) => { const label = card.querySelector('[data-testid=\"setup-world-label\"]')?.textContent?.trim() || ''; const value = card.querySelector('[data-testid=\"setup-world-value\"]')?.textContent?.trim() || ''; return label === '地理格局' && value === '新陆与浮岛群'; }); })()"
 assert_eval "关闭设定详情弹窗" "(() => { const button = document.querySelector('[data-testid=\"inspector-detail-modal-close\"]'); if (!button) { throw new Error('未找到设定详情弹窗关闭按钮'); } button.click(); return true; })()"
 wait_for_eval_true "设定详情弹窗已关闭" "(() => !document.querySelector('[data-testid=\"setup-detail-modal\"]'))()"
 
 assert_eval "点击核心概念卡查看完整" "(() => { const button = document.querySelector('[data-testid=\"setup-summary-card-concept\"] [data-testid=\"setup-summary-open\"]'); if (!button) { throw new Error('未找到核心概念卡查看完整按钮'); } button.click(); return true; })()"
-wait_for_eval_true "核心概念卡打开 modal 并定位到核心概念" "(() => { const modal = document.querySelector('[data-testid=\"setup-detail-modal\"]'); const panel = document.querySelector('[data-testid=\"setup-detail-panel-concept\"]'); const tab = document.querySelector('[data-testid=\"setup-detail-tab-concept\"]'); if (!modal || !panel || !tab) { return false; } if (panel.getAttribute('aria-hidden') !== 'false') { return false; } if (tab.getAttribute('aria-selected') !== 'true') { return false; } const cards = panel.querySelectorAll('[data-testid=\"setup-concept-card\"]'); if (cards.length !== 4) { return false; } const text = panel.textContent || ''; const forbidden = ['theme', 'premise', 'hook', 'unique_selling_point']; return forbidden.every((key) => !text.includes(key)); })()"
+wait_for_eval_true "核心概念卡打开 modal 并定位到核心概念" "(() => { const modal = document.querySelector('[data-testid=\"setup-detail-modal\"]'); const panel = document.querySelector('[data-testid=\"setup-detail-panel-concept\"]'); const tab = document.querySelector('[data-testid=\"setup-detail-tab-concept\"]'); if (!modal || !panel || !tab) { return false; } if (panel.getAttribute('aria-hidden') !== 'false') { return false; } if (tab.getAttribute('aria-selected') !== 'true') { return false; } const cards = Array.from(panel.querySelectorAll('[data-testid=\"setup-concept-card\"]')); if (cards.length !== 4) { return false; } const text = panel.textContent || ''; const forbidden = ['theme', 'premise', 'hook', 'unique_selling_point']; if (!forbidden.every((key) => !text.includes(key))) { return false; } const labels = cards.map((card) => card.querySelector('[data-testid=\"setup-concept-label\"]')?.textContent?.trim() || ''); const expectedLabels = ['主题', '前提设定', '核心钩子', '独特卖点']; if (labels.length !== expectedLabels.length || labels.some((label, index) => label !== expectedLabels[index])) { return false; } return cards.some((card) => { const label = card.querySelector('[data-testid=\"setup-concept-label\"]')?.textContent?.trim() || ''; const value = card.querySelector('[data-testid=\"setup-concept-value\"]')?.textContent?.trim() || ''; return label === '前提设定' && value === '记忆可被征税和交易'; }); })()"
 assert_eval "关闭设定详情弹窗" "(() => { const button = document.querySelector('[data-testid=\"inspector-detail-modal-close\"]'); if (!button) { throw new Error('未找到设定详情弹窗关闭按钮'); } button.click(); return true; })()"
 wait_for_eval_true "设定详情弹窗已关闭" "(() => !document.querySelector('[data-testid=\"setup-detail-modal\"]'))()"
 
