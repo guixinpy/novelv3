@@ -76,10 +76,14 @@ describe('SetupDetailModal', () => {
 
     const panel = document.body.querySelector('[data-testid="setup-detail-panel-world"]')
     const tab = document.body.querySelector('[data-testid="setup-detail-tab-world"]')
+    const charactersPanel = document.body.querySelector('[data-testid="setup-detail-panel-characters"]')
+    const conceptPanel = document.body.querySelector('[data-testid="setup-detail-panel-concept"]')
 
     expect(panel?.getAttribute('aria-hidden')).toBe('false')
     expect(panel?.hasAttribute('hidden')).toBe(false)
     expect(tab?.getAttribute('aria-selected')).toBe('true')
+    expect((charactersPanel as HTMLElement | null)?.style.display).toBe('none')
+    expect((conceptPanel as HTMLElement | null)?.style.display).toBe('none')
   })
 
   it('切换到 concept 时会激活真实 concept panel', async () => {
@@ -100,6 +104,8 @@ describe('SetupDetailModal', () => {
     expect(worldPanel?.getAttribute('aria-hidden')).toBe('true')
     expect(conceptPanel?.getAttribute('aria-hidden')).toBe('false')
     expect(conceptPanel?.hasAttribute('hidden')).toBe(false)
+    expect((worldPanel as HTMLElement | null)?.style.display).toBe('none')
+    expect((conceptPanel as HTMLElement | null)?.style.display).toBe('')
   })
 
   it('点击关闭按钮或按 Escape 会发出 close 事件', async () => {

@@ -9,11 +9,12 @@
         id="setup-detail-panel-characters"
         class="setup-detail-modal__panel"
         data-testid="setup-detail-panel-characters"
-        role="tabpanel"
-        aria-labelledby="setup-detail-tab-characters"
-        :aria-hidden="activeSection !== 'characters'"
-        :hidden="activeSection !== 'characters'"
-      >
+      role="tabpanel"
+      aria-labelledby="setup-detail-tab-characters"
+      :aria-hidden="activeSection !== 'characters'"
+      :hidden="activeSection !== 'characters'"
+      v-show="activeSection === 'characters'"
+    >
         <div class="setup-detail-modal__panel-head">
           <h3 class="setup-detail-modal__panel-title">角色</h3>
         </div>
@@ -28,11 +29,12 @@
         id="setup-detail-panel-world"
         class="setup-detail-modal__panel"
         data-testid="setup-detail-panel-world"
-        role="tabpanel"
-        aria-labelledby="setup-detail-tab-world"
-        :aria-hidden="activeSection !== 'world'"
-        :hidden="activeSection !== 'world'"
-      >
+      role="tabpanel"
+      aria-labelledby="setup-detail-tab-world"
+      :aria-hidden="activeSection !== 'world'"
+      :hidden="activeSection !== 'world'"
+      v-show="activeSection === 'world'"
+    >
         <div class="setup-detail-modal__panel-head">
           <h3 class="setup-detail-modal__panel-title">世界观</h3>
         </div>
@@ -43,11 +45,12 @@
         id="setup-detail-panel-concept"
         class="setup-detail-modal__panel"
         data-testid="setup-detail-panel-concept"
-        role="tabpanel"
-        aria-labelledby="setup-detail-tab-concept"
-        :aria-hidden="activeSection !== 'concept'"
-        :hidden="activeSection !== 'concept'"
-      >
+      role="tabpanel"
+      aria-labelledby="setup-detail-tab-concept"
+      :aria-hidden="activeSection !== 'concept'"
+      :hidden="activeSection !== 'concept'"
+      v-show="activeSection === 'concept'"
+    >
         <div class="setup-detail-modal__panel-head">
           <h3 class="setup-detail-modal__panel-title">核心概念</h3>
         </div>
