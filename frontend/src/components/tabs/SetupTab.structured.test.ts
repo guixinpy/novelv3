@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest'
 import { mount, type VueWrapper } from '@vue/test-utils'
-import { nextTick } from 'vue'
+import { defineComponent, nextTick, ref } from 'vue'
 import type { SetupData } from '../../api/types'
 import SetupTab from './SetupTab.vue'
+import SetupDetailModal from './SetupDetailModal.vue'
 
 const mountedWrappers: VueWrapper[] = []
 
@@ -57,6 +58,55 @@ function mountSetupTab(setup: SetupData | null = setupFixture) {
   return wrapper
 }
 
+const SetupDetailModalHarness = defineComponent({
+  components: {
+    SetupDetailModal,
+  },
+  props: {
+    setup: {
+      type: Object as () => SetupData,
+      required: true,
+    },
+  },
+  setup(props) {
+    const show = ref(false)
+    const section = ref<'characters' | 'world' | 'concept'>('characters')
+
+    function open(nextSection: 'characters' | 'world') {
+      section.value = nextSection
+      show.value = true
+    }
+
+    return {
+      props,
+      show,
+      section,
+      open,
+    }
+  },
+  template: `
+    <div>
+      <button type="button" data-testid="open-characters-detail" @click="open('characters')">角色查看完整</button>
+      <button type="button" data-testid="open-world-detail" @click="open('world')">世界观查看完整</button>
+      <SetupDetailModal
+        :show="show"
+        :setup="props.setup"
+        :initial-section="section"
+        @close="show = false"
+      />
+    </div>
+  `,
+})
+
+function mountSetupDetailHarness(setup: SetupData = setupFixture) {
+  const wrapper = mount(SetupDetailModalHarness, {
+    attachTo: document.body,
+    props: { setup },
+  })
+  mountedWrappers.push(wrapper)
+  return wrapper
+}
+
 afterEach(() => {
   while (mountedWrappers.length) {
     mountedWrappers.pop()?.unmount()
@@ -65,6 +115,61 @@ afterEach(() => {
 })
 
 describe('SetupTab structured sections', () => {
+  it('点击“角色查看完整”会打开详情弹窗并定位到角色 section', async () => {
+    const wrapper = mountSetupDetailHarness()
+
+    await wrapper.get('[data-testid="open-characters-detail"]').trigger('click')
+
+    const modal = document.body.querySelector('[data-testid="setup-detail-modal"]')
+    const charactersTab = document.body.querySelector('[data-testid="setup-detail-tab-characters"]')
+    const worldTab = document.body.querySelector('[data-testid="setup-detail-tab-world"]')
+    const conceptTab = document.body.querySelector('[data-testid="setup-detail-tab-concept"]')
+    const charactersPanel = document.body.querySelector('[data-testid="setup-detail-panel-characters"]')
+    const worldPanel = document.body.querySelector('[data-testid="setup-detail-panel-world"]')
+    const conceptPanel = document.body.querySelector('[data-testid="setup-detail-panel-concept"]')
+
+    expect(modal).not.toBeNull()
+    expect(charactersTab?.getAttribute('aria-selected')).toBe('true')
+    expect(worldTab?.getAttribute('aria-selected')).toBe('false')
+    expect(conceptTab?.getAttribute('aria-selected')).toBe('false')
+    expect(charactersPanel?.hasAttribute('hidden')).toBe(false)
+    expect(worldPanel?.getAttribute('hidden')).toBe('')
+    expect(conceptPanel?.getAttribute('hidden')).toBe('')
+  })
+
+  it('点击“世界观查看完整”会打开详情弹窗并定位到世界观 section', async () => {
+    const wrapper = mountSetupDetailHarness()
+
+    await wrapper.get('[data-testid="open-world-detail"]').trigger('click')
+
+    const charactersTab = document.body.querySelector('[data-testid="setup-detail-tab-characters"]')
+    const worldTab = document.body.querySelector('[data-testid="setup-detail-tab-world"]')
+    const conceptTab = document.body.querySelector('[data-testid="setup-detail-tab-concept"]')
+    const charactersPanel = document.body.querySelector('[data-testid="setup-detail-panel-characters"]')
+    const worldPanel = document.body.querySelector('[data-testid="setup-detail-panel-world"]')
+    const conceptPanel = document.body.querySelector('[data-testid="setup-detail-panel-concept"]')
+
+    expect(charactersTab?.getAttribute('aria-selected')).toBe('false')
+    expect(worldTab?.getAttribute('aria-selected')).toBe('true')
+    expect(conceptTab?.getAttribute('aria-selected')).toBe('false')
+    expect(charactersPanel?.getAttribute('hidden')).toBe('')
+    expect(worldPanel?.hasAttribute('hidden')).toBe(false)
+    expect(conceptPanel?.getAttribute('hidden')).toBe('')
+  })
+
+  it('弹窗可关闭，关闭后弹窗不存在', async () => {
+    const wrapper = mountSetupDetailHarness()
+
+    await wrapper.get('[data-testid="open-characters-detail"]').trigger('click')
+    expect(document.body.querySelector('[data-testid="setup-detail-modal"]')).not.toBeNull()
+
+    const closeButton = document.body.querySelector('[data-testid="inspector-detail-modal-close"]')
+    closeButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+
+    expect(document.body.querySelector('[data-testid="setup-detail-modal"]')).toBeNull()
+  })
+
   it('渲染二级 tabs，并默认激活 characters', () => {
     const wrapper = mountSetupTab()
 
