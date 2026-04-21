@@ -3,6 +3,23 @@ import { ref } from 'vue'
 import { api } from '../api/client'
 import type { RefreshTarget } from '../api/types'
 
+type ProjectRequestLane =
+  | 'project'
+  | 'setup'
+  | 'chapter'
+  | 'storyline'
+  | 'outline'
+  | 'topology'
+  | 'chapters'
+  | 'versions'
+  | 'preferences'
+
+interface ProjectRequestSnapshot {
+  projectId: string
+  version: number
+  requestId: number
+}
+
 export const useProjectStore = defineStore('project', () => {
   const projects = ref<any[]>([])
   const currentProject = ref<any>(null)
@@ -17,19 +34,47 @@ export const useProjectStore = defineStore('project', () => {
   const versionsNodeType = ref<string | undefined>(undefined)
   const currentProjectScope = ref<string>('')
   const scopeVersion = ref(0)
+  const nextRequestId = ref(0)
+  const latestLaneRequest = ref<Record<ProjectRequestLane, number>>({
+    project: 0,
+    setup: 0,
+    chapter: 0,
+    storyline: 0,
+    outline: 0,
+    topology: 0,
+    chapters: 0,
+    versions: 0,
+    preferences: 0,
+  })
 
-  function captureProjectSnapshot(requestProjectId: string) {
+  function ensureProjectScope(projectId: string) {
     if (!currentProjectScope.value) {
-      currentProjectScope.value = requestProjectId
+      currentProjectScope.value = projectId
+      return
     }
-    return {
-      requestProjectId,
-      versionSnapshot: scopeVersion.value,
+    if (currentProjectScope.value !== projectId) {
+      resetProjectScopedState(projectId)
     }
   }
 
-  function isActiveProjectSnapshot(requestProjectId: string, versionSnapshot: number) {
-    return currentProjectScope.value === requestProjectId && scopeVersion.value === versionSnapshot
+  function captureProjectRequest(projectId: string, lanes: ProjectRequestLane[]): ProjectRequestSnapshot {
+    ensureProjectScope(projectId)
+    const requestId = nextRequestId.value + 1
+    nextRequestId.value = requestId
+    for (const lane of lanes) {
+      latestLaneRequest.value[lane] = requestId
+    }
+    return {
+      projectId,
+      version: scopeVersion.value,
+      requestId,
+    }
+  }
+
+  function isLatestProjectRequest(snapshot: ProjectRequestSnapshot, lane: ProjectRequestLane) {
+    return currentProjectScope.value === snapshot.projectId
+      && scopeVersion.value === snapshot.version
+      && latestLaneRequest.value[lane] === snapshot.requestId
   }
 
   async function loadProjects() {
@@ -39,6 +84,17 @@ export const useProjectStore = defineStore('project', () => {
   function resetProjectScopedState(nextProjectId = '') {
     scopeVersion.value += 1
     currentProjectScope.value = nextProjectId
+    latestLaneRequest.value = {
+      project: 0,
+      setup: 0,
+      chapter: 0,
+      storyline: 0,
+      outline: 0,
+      topology: 0,
+      chapters: 0,
+      versions: 0,
+      preferences: 0,
+    }
     currentProject.value = null
     setup.value = null
     chapter.value = null
@@ -66,9 +122,9 @@ export const useProjectStore = defineStore('project', () => {
   }
 
   async function loadProject(id: string) {
-    const { requestProjectId, versionSnapshot } = captureProjectSnapshot(id)
+    const snapshot = captureProjectRequest(id, ['project'])
     const nextProject = await api.getProject(id)
-    if (!isActiveProjectSnapshot(requestProjectId, versionSnapshot)) return
+    if (!isLatestProjectRequest(snapshot, 'project')) return
     currentProject.value = nextProject
   }
 
@@ -78,9 +134,9 @@ export const useProjectStore = defineStore('project', () => {
   }
 
   async function loadSetup(id: string) {
-    const { requestProjectId, versionSnapshot } = captureProjectSnapshot(id)
+    const snapshot = captureProjectRequest(id, ['setup'])
     const nextSetup = await api.getSetup(id)
-    if (!isActiveProjectSnapshot(requestProjectId, versionSnapshot)) return
+    if (!isLatestProjectRequest(snapshot, 'setup')) return
     setup.value = nextSetup
   }
 
@@ -90,9 +146,9 @@ export const useProjectStore = defineStore('project', () => {
   }
 
   async function loadChapter(id: string, index: number) {
-    const { requestProjectId, versionSnapshot } = captureProjectSnapshot(id)
+    const snapshot = captureProjectRequest(id, ['chapter'])
     const nextChapter = await api.getChapter(id, index)
-    if (!isActiveProjectSnapshot(requestProjectId, versionSnapshot)) return
+    if (!isLatestProjectRequest(snapshot, 'chapter')) return
     chapter.value = nextChapter
   }
 
@@ -102,9 +158,9 @@ export const useProjectStore = defineStore('project', () => {
   }
 
   async function loadStoryline(id: string) {
-    const { requestProjectId, versionSnapshot } = captureProjectSnapshot(id)
+    const snapshot = captureProjectRequest(id, ['storyline'])
     const nextStoryline = await api.getStoryline(id)
-    if (!isActiveProjectSnapshot(requestProjectId, versionSnapshot)) return
+    if (!isLatestProjectRequest(snapshot, 'storyline')) return
     storyline.value = nextStoryline
   }
 
@@ -114,38 +170,38 @@ export const useProjectStore = defineStore('project', () => {
   }
 
   async function loadOutline(id: string) {
-    const { requestProjectId, versionSnapshot } = captureProjectSnapshot(id)
+    const snapshot = captureProjectRequest(id, ['outline'])
     const nextOutline = await api.getOutline(id)
-    if (!isActiveProjectSnapshot(requestProjectId, versionSnapshot)) return
+    if (!isLatestProjectRequest(snapshot, 'outline')) return
     outline.value = nextOutline
   }
 
   async function loadTopology(id: string) {
-    const { requestProjectId, versionSnapshot } = captureProjectSnapshot(id)
+    const snapshot = captureProjectRequest(id, ['topology'])
     const nextTopology = await api.getTopology(id)
-    if (!isActiveProjectSnapshot(requestProjectId, versionSnapshot)) return
+    if (!isLatestProjectRequest(snapshot, 'topology')) return
     topology.value = nextTopology
   }
 
   async function loadChapters(id: string) {
-    const { requestProjectId, versionSnapshot } = captureProjectSnapshot(id)
+    const snapshot = captureProjectRequest(id, ['chapters'])
     const res = await api.listChapters(id)
-    if (!isActiveProjectSnapshot(requestProjectId, versionSnapshot)) return
+    if (!isLatestProjectRequest(snapshot, 'chapters')) return
     chapters.value = res.chapters || []
   }
 
   async function loadVersions(id: string, nodeType?: string) {
-    const { requestProjectId, versionSnapshot } = captureProjectSnapshot(id)
+    const snapshot = captureProjectRequest(id, ['versions'])
     const nextVersions = await api.listVersions(id, nodeType)
-    if (!isActiveProjectSnapshot(requestProjectId, versionSnapshot)) return
+    if (!isLatestProjectRequest(snapshot, 'versions')) return
     versionsNodeType.value = nodeType
     versions.value = nextVersions
   }
 
   async function loadPreferences(id: string) {
-    const { requestProjectId, versionSnapshot } = captureProjectSnapshot(id)
+    const snapshot = captureProjectRequest(id, ['preferences'])
     const nextPreferences = await api.getPreferences(id)
-    if (!isActiveProjectSnapshot(requestProjectId, versionSnapshot)) return
+    if (!isLatestProjectRequest(snapshot, 'preferences')) return
     preferences.value = nextPreferences
   }
 

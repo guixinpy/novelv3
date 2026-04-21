@@ -145,3 +145,125 @@ export interface SetupData {
   created_at: string
   updated_at: string
 }
+
+export interface ProjectProfileVersion {
+  id: string
+  project_id: string
+  genre_profile_id: string
+  version: number
+  contract_version: string
+  profile_payload: Record<string, unknown>
+  created_at: string
+}
+
+export interface WorldProjectionEntity {
+  entity_type: string
+  attributes: Record<string, unknown>
+}
+
+export interface WorldProjectionPresence {
+  location_ref?: string
+  presence_status?: string
+  [key: string]: unknown
+}
+
+export interface WorldProjection {
+  view_type: string
+  entities: Record<string, WorldProjectionEntity>
+  relations: Record<string, unknown>
+  presence: Record<string, WorldProjectionPresence>
+  occurred_events: Record<string, unknown>
+  event_links: Record<string, unknown>
+  facts: Record<string, Record<string, unknown>>
+}
+
+export interface WorldModelOverview {
+  project_profile: ProjectProfileVersion | null
+  projection: WorldProjection | null
+}
+
+export interface ProposalBundle {
+  id: string
+  project_id: string
+  project_profile_version_id: string
+  profile_version: number
+  parent_bundle_id: string | null
+  bundle_status: string
+  title: string
+  summary: string
+  created_by: string
+  created_at: string
+  updated_at: string
+}
+
+export interface ProposalItem {
+  id: string
+  bundle_id: string
+  parent_item_id: string | null
+  item_status: string
+  claim_id: string
+  subject_ref: string
+  predicate: string
+  object_ref_or_value: unknown
+  claim_layer: string
+  evidence_refs: string[]
+  authority_type: string
+  confidence: number
+  contract_version: string
+  approved_claim_id: string | null
+  created_by: string
+  created_at: string
+}
+
+export interface ProposalReview {
+  id: string
+  bundle_id: string
+  proposal_item_id: string | null
+  review_action: string
+  reviewer_ref: string
+  reason: string
+  evidence_refs: string[]
+  edited_fields: Record<string, unknown>
+  created_truth_claim_id: string | null
+  rollback_to_review_id: string | null
+  created_at: string
+}
+
+export interface ProposalImpactSnapshot {
+  id: string
+  bundle_id: string
+  affected_subject_refs: string[]
+  affected_predicates: string[]
+  affected_truth_claim_ids: string[]
+  candidate_item_ids: string[]
+  summary: Record<string, unknown>
+  created_at: string
+}
+
+export interface ProposalBundleDetail {
+  bundle: ProposalBundle
+  items: ProposalItem[]
+  reviews: ProposalReview[]
+  impact_snapshots: ProposalImpactSnapshot[]
+}
+
+export interface ProposalReviewRequest {
+  reviewer_ref: string
+  action: 'approve' | 'approve_with_edits' | 'reject' | 'mark_uncertain'
+  reason: string
+  evidence_refs: string[]
+  edited_fields: Record<string, unknown>
+}
+
+export interface ProposalSplitRequest {
+  reviewer_ref: string
+  reason: string
+  evidence_refs: string[]
+  item_ids: string[]
+}
+
+export interface ProposalRollbackRequest {
+  reviewer_ref: string
+  reason: string
+  evidence_refs: string[]
+}

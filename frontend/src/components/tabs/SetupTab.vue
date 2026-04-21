@@ -1,5 +1,59 @@
 <template>
-  <div v-if="setup" class="setup-tab">
+  <p
+    v-if="worldModelError"
+    class="setup-tab__error"
+    data-testid="world-model-error"
+  >
+    {{ worldModelError }}
+  </p>
+  <div v-else-if="showWorldModel" class="setup-tab setup-tab--world" data-testid="world-model-view">
+    <WorldProfileBanner v-if="worldModel.projectProfile" :profile="worldModel.projectProfile" />
+    <WorldProjectionViewer v-if="worldModel.projection" :projection="worldModel.projection" />
+
+    <div class="setup-tab__world-grid">
+      <WorldProposalBundleList
+        :bundles="worldModel.proposalBundles"
+        :selected-bundle-id="worldModel.selectedBundleId"
+        @select="selectBundle"
+      />
+
+      <section class="setup-tab__world-detail">
+        <WorldProposalImpactList
+          :snapshots="worldModel.selectedBundleDetail?.impact_snapshots ?? []"
+        />
+
+        <article
+          v-if="worldModel.selectedBundleDetail"
+          class="setup-tab__proposal-items"
+        >
+          <header class="setup-tab__proposal-header">
+            <div>
+              <p class="setup-tab__proposal-eyebrow">Proposal Review</p>
+              <h3 class="setup-tab__proposal-title">
+                {{ worldModel.selectedBundleDetail.bundle.title }}
+              </h3>
+            </div>
+            <span class="setup-tab__proposal-status">
+              {{ worldModel.selectedBundleDetail.bundle.bundle_status }}
+            </span>
+          </header>
+
+          <WorldProposalItemCard
+            v-for="item in worldModel.selectedBundleDetail.items"
+            :key="item.id"
+            :item="item"
+            :busy="worldModel.isActionPending(item.id)"
+            :approval-review-id="approvalReviewIdMap[item.id] ?? null"
+            @review="reviewItem"
+            @split="splitItem"
+            @rollback="rollbackReview"
+          />
+        </article>
+        <p v-else class="setup-tab__world-empty">当前没有待审条目。</p>
+      </section>
+    </div>
+  </div>
+  <div v-else-if="shouldShowFallback && setup" class="setup-tab">
     <SetupSummaryCard
       title="角色"
       :description="characterDescription"
@@ -90,12 +144,19 @@
       @close="isDetailModalOpen = false"
     />
   </div>
+  <p v-else-if="isWaitingForWorldModel" class="setup-tab__empty">加载世界模型视图...</p>
   <p v-else class="setup-tab__empty">暂无设定数据。</p>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import type { SetupData } from '../../api/types'
+import type { ProposalReviewRequest, SetupData } from '../../api/types'
+import { useWorldModelStore } from '../../stores/worldModel'
+import WorldProfileBanner from '../world/WorldProfileBanner.vue'
+import WorldProjectionViewer from '../world/WorldProjectionViewer.vue'
+import WorldProposalBundleList from '../world/WorldProposalBundleList.vue'
+import WorldProposalImpactList from '../world/WorldProposalImpactList.vue'
+import WorldProposalItemCard from '../world/WorldProposalItemCard.vue'
 import SetupDetailModal from './SetupDetailModal.vue'
 import SetupSummaryCard from './SetupSummaryCard.vue'
 import {
@@ -107,9 +168,11 @@ import {
 type SetupSection = 'characters' | 'world' | 'concept'
 
 const props = defineProps<{
+  projectId?: string
   setup: SetupData | null
 }>()
 
+const worldModel = useWorldModelStore()
 const isDetailModalOpen = ref(false)
 const detailModalSection = ref<SetupSection>('characters')
 
@@ -138,14 +201,88 @@ const characterDescription = computed(() => {
   return `共 ${count} 名角色`
 })
 
+const worldModelError = computed(() => worldModel.error.trim())
+const showWorldModel = computed(() => worldModel.hasWorldData && !worldModelError.value)
+const isWaitingForWorldModel = computed(() =>
+  Boolean(props.projectId)
+    && !worldModelError.value
+    && !worldModel.loaded
+    && worldModel.loading
+    && !showWorldModel.value,
+)
+const shouldShowFallback = computed(() =>
+  !showWorldModel.value && (!props.projectId || worldModel.loaded || !worldModel.loading),
+)
+const approvalReviewIdMap = computed<Record<string, string>>(() => {
+  const reviews = worldModel.selectedBundleDetail?.reviews ?? []
+  return reviews.reduce<Record<string, string>>((acc, review) => {
+    if (
+      review.proposal_item_id &&
+      (review.review_action === 'approve' || review.review_action === 'approve_with_edits')
+    ) {
+      acc[review.proposal_item_id] = review.id
+    }
+    return acc
+  }, {})
+})
+
 watch(() => props.setup?.id, () => {
   isDetailModalOpen.value = false
   detailModalSection.value = 'characters'
 })
 
+watch(
+  () => props.projectId,
+  (projectId, previousProjectId) => {
+    if (!projectId) return
+    if (projectId !== previousProjectId) {
+      worldModel.resetProjectScopedState(projectId)
+    }
+    void worldModel.loadSetupPanelData(projectId)
+  },
+  { immediate: true },
+)
+
+watch(
+  () => props.setup,
+  (setup, previousSetup) => {
+    if (!props.projectId || !setup || setup === previousSetup) return
+    void worldModel.loadSetupPanelData(props.projectId)
+  },
+)
+
 function openDetail(section: SetupSection): void {
   detailModalSection.value = section
   isDetailModalOpen.value = true
+}
+
+function selectBundle(bundleId: string) {
+  if (!props.projectId) return
+  void worldModel.selectBundle(props.projectId, bundleId)
+}
+
+function reviewItem(itemId: string, payload: ProposalReviewRequest) {
+  if (!props.projectId) return
+  void worldModel.reviewProposalItem(props.projectId, itemId, payload)
+}
+
+function splitItem(bundleId: string, itemId: string, reason: string) {
+  if (!props.projectId) return
+  void worldModel.splitProposalBundle(props.projectId, bundleId, {
+    reviewer_ref: 'frontend.reviewer',
+    reason,
+    evidence_refs: [],
+    item_ids: [itemId],
+  })
+}
+
+function rollbackReview(reviewId: string, reason: string, itemId: string) {
+  if (!props.projectId) return
+  void worldModel.rollbackProposalReview(props.projectId, reviewId, {
+    reviewer_ref: 'frontend.reviewer',
+    reason,
+    evidence_refs: [],
+  }, itemId)
 }
 </script>
 
@@ -153,6 +290,65 @@ function openDetail(section: SetupSection): void {
 .setup-tab {
   display: grid;
   gap: 0.85rem;
+}
+
+.setup-tab--world {
+  gap: 1rem;
+}
+
+.setup-tab__world-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.setup-tab__world-detail,
+.setup-tab__proposal-items {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.setup-tab__proposal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+
+.setup-tab__proposal-eyebrow {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: 0.72rem;
+}
+
+.setup-tab__proposal-title {
+  margin: 0.12rem 0 0;
+  color: var(--accent-strong);
+  font-size: 0.96rem;
+}
+
+.setup-tab__proposal-status {
+  border-radius: 999px;
+  padding: 0.3rem 0.72rem;
+  background: rgba(118, 74, 27, 0.08);
+  color: var(--accent-strong);
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.setup-tab__world-empty {
+  color: var(--ink-muted);
+  font-size: 0.84rem;
+}
+
+.setup-tab__error {
+  margin: 0;
+  border: 1px solid rgba(163, 62, 38, 0.22);
+  border-radius: 0.9rem;
+  padding: 0.9rem 1rem;
+  background: rgba(170, 78, 51, 0.08);
+  color: #8a311c;
+  font-size: 0.84rem;
+  line-height: 1.5;
 }
 
 .setup-summary-list {
@@ -208,5 +404,12 @@ function openDetail(section: SetupSection): void {
   padding: 1rem;
   color: var(--ink-muted);
   font-size: 0.875rem;
+}
+
+@media (min-width: 960px) {
+  .setup-tab__world-grid {
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+    align-items: start;
+  }
 }
 </style>

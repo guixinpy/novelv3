@@ -3,7 +3,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, pool
 from sqlalchemy.orm import sessionmaker
 
-from app.db import Base, get_db
+from app.db import Base, enable_sqlite_foreign_keys, get_db
 from app.main import app
 
 TEST_DATABASE_URL = "sqlite:///:memory:"
@@ -12,6 +12,7 @@ engine = create_engine(
     connect_args={"check_same_thread": False},
     poolclass=pool.StaticPool,
 )
+enable_sqlite_foreign_keys(engine)
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 

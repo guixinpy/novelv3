@@ -111,6 +111,51 @@ describe('project workspace state', () => {
     expect(store.versionsNodeType).toBe(undefined)
   })
 
+  it('同项目并发 loadSetup/loadVersions 时，新请求结果必须赢，旧响应不能回写覆盖', async () => {
+    const store = useProjectStore()
+
+    let resolveOldSetup!: (value: any) => void
+    let resolveNewSetup!: (value: any) => void
+    let resolveOldVersions!: (value: any[]) => void
+    let resolveNewVersions!: (value: any[]) => void
+
+    vi.mocked(api.getSetup).mockImplementation(() => new Promise((resolve) => {
+      if (!resolveOldSetup) {
+        resolveOldSetup = resolve
+      } else {
+        resolveNewSetup = resolve
+      }
+    }))
+
+    vi.mocked(api.listVersions).mockImplementation((_projectId: string, nodeType?: string) => new Promise((resolve) => {
+      if (nodeType === 'outline') {
+        resolveOldVersions = resolve
+      } else {
+        resolveNewVersions = resolve
+      }
+    }))
+
+    store.resetProjectScopedState('A')
+    const oldSetupPromise = store.loadSetup('A')
+    const newSetupPromise = store.loadSetup('A')
+    const oldVersionsPromise = store.loadVersions('A', 'outline')
+    const newVersionsPromise = store.loadVersions('A')
+
+    resolveNewSetup({ id: 'setup-new', title: '新设定' })
+    resolveNewVersions([{ id: 'version-new-all', node_type: 'all' }])
+    await newSetupPromise
+    await newVersionsPromise
+
+    resolveOldSetup({ id: 'setup-old', title: '旧设定' })
+    resolveOldVersions([{ id: 'version-old-outline', node_type: 'outline' }])
+    await oldSetupPromise
+    await oldVersionsPromise
+
+    expect(store.setup).toEqual({ id: 'setup-new', title: '新设定' })
+    expect(store.versions).toEqual([{ id: 'version-new-all', node_type: 'all' }])
+    expect(store.versionsNodeType).toBe(undefined)
+  })
+
   it('refreshTargets() 只返回成功刷新的 targets，失败的不应回传', async () => {
     const store = useProjectStore()
 

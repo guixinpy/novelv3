@@ -77,7 +77,7 @@
         :missing="diagnosis?.missing_items || []"
         @export="emit('export', $event)"
       />
-      <SetupTab v-else-if="panel === 'setup'" :setup="setup" />
+      <SetupTab v-else-if="panel === 'setup'" :project-id="projectId" :setup="setup" />
       <StorylineTab v-else-if="panel === 'storyline'" :storyline="storyline" />
       <OutlineTab v-else-if="panel === 'outline'" :outline="outline" />
       <ContentTab

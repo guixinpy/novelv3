@@ -3,8 +3,15 @@ import type {
   ChatHistoryMessage,
   ChatRequest,
   ChatResponse,
+  ProposalBundle,
+  ProposalBundleDetail,
+  ProposalReview,
+  ProposalReviewRequest,
+  ProposalRollbackRequest,
+  ProposalSplitRequest,
   ResolveActionRequest,
   ResolveActionResponse,
+  WorldModelOverview,
 } from './types'
 
 const API_BASE = '/api/v1'
@@ -28,6 +35,24 @@ export const api = {
   deleteProject: (id: string) => request(`/projects/${id}`, { method: 'DELETE' }),
   generateSetup: (id: string) => request(`/projects/${id}/setup/generate`, { method: 'POST' }),
   getSetup: (id: string) => request(`/projects/${id}/setup`),
+  getWorldModelOverview: (id: string) => request<WorldModelOverview>(`/projects/${id}/world-model`),
+  listWorldProposalBundles: (id: string) => request<ProposalBundle[]>(`/projects/${id}/world-model/proposal-bundles`),
+  getWorldProposalBundle: (id: string, bundleId: string) => request<ProposalBundleDetail>(`/projects/${id}/world-model/proposal-bundles/${bundleId}`),
+  reviewWorldProposalItem: (id: string, itemId: string, data: ProposalReviewRequest) =>
+    request<ProposalReview>(`/projects/${id}/world-model/proposal-items/${itemId}/review`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  splitWorldProposalBundle: (id: string, bundleId: string, data: ProposalSplitRequest) =>
+    request<ProposalBundleDetail>(`/projects/${id}/world-model/proposal-bundles/${bundleId}/split`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  rollbackWorldProposalReview: (id: string, reviewId: string, data: ProposalRollbackRequest) =>
+    request<ProposalReview>(`/projects/${id}/world-model/reviews/${reviewId}/rollback`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
   generateChapter: (id: string, index: number) => request(`/projects/${id}/chapters/${index}/generate`, { method: 'POST' }),
   getChapter: (id: string, index: number) => request(`/projects/${id}/chapters/${index}`),
   getConfig: () => request('/config'),
