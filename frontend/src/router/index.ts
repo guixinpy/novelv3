@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import ProjectList from '../views/ProjectList.vue'
 import ProjectDetail from '../views/ProjectDetail.vue'
+import AthenaView from '../views/AthenaView.vue'
 import SettingsView from '../views/SettingsView.vue'
 
 type ShellMode = 'default' | 'workspace'
@@ -28,6 +29,15 @@ const routes: RouteRecordRaw[] = [
     component: ProjectDetail,
     meta: {
       shellMode: 'workspace',
+      shellSurface: 'none',
+      navSection: 'projects',
+    } satisfies AppRouteMeta,
+  },
+  {
+    path: '/projects/:id/athena',
+    component: AthenaView,
+    meta: {
+      shellMode: 'default',
       shellSurface: 'none',
       navSection: 'projects',
     } satisfies AppRouteMeta,
