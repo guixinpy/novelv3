@@ -632,7 +632,7 @@ describe('chat workspace polling', () => {
       command_name: 'compact',
       command_args: '',
     })
-    expect(api.getMessages).toHaveBeenCalledWith('project-1')
+    expect(api.getMessages).toHaveBeenCalledWith('project-1', expect.any(String))
     expect(store.messages).toEqual([
       {
         role: 'system',
