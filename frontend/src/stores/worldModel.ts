@@ -35,6 +35,15 @@ export const useWorldModelStore = defineStore('worldModel', () => {
   const proposalBundles = ref<ProposalBundle[]>([])
   const selectedBundleId = ref<string | null>(null)
   const selectedBundleDetail = ref<ProposalBundleDetail | null>(null)
+  const subjectKnowledge = ref<WorldProjection | null>(null)
+  const selectedSubjectRef = ref<string | null>(null)
+  const chapterSnapshot = ref<WorldProjection | null>(null)
+  const selectedChapterIndex = ref<number | null>(null)
+  const reviewerName = ref('editor')
+  const bundlesTotal = ref(0)
+  const bundlesOffset = ref(0)
+  const bundlesLimit = ref(20)
+  const bundleFilters = ref<{ bundle_status?: string; item_status?: string; profile_version?: number }>({})
   const loading = ref(false)
   const loaded = ref(false)
   const error = ref('')
@@ -151,6 +160,33 @@ export const useWorldModelStore = defineStore('worldModel', () => {
     }
   }
 
+  async function loadSubjectKnowledge(projectId: string, subjectRef: string) {
+    ensureProjectScope(projectId)
+    selectedSubjectRef.value = subjectRef
+    try {
+      const overview = await api.getSubjectKnowledge(projectId, subjectRef)
+      subjectKnowledge.value = overview.projection
+    } catch (err) {
+      error.value = toErrorMessage(err)
+    }
+  }
+
+  async function loadChapterSnapshot(projectId: string, chapterIndex: number) {
+    ensureProjectScope(projectId)
+    selectedChapterIndex.value = chapterIndex
+    try {
+      const overview = await api.getChapterSnapshot(projectId, chapterIndex)
+      chapterSnapshot.value = overview.projection
+    } catch (err) {
+      error.value = toErrorMessage(err)
+    }
+  }
+
+  function setReviewerName(projectId: string, name: string) {
+    reviewerName.value = name
+    localStorage.setItem(`mozhou_reviewer_${projectId}`, name)
+  }
+
   function resetProjectScopedState(nextProjectId = '') {
     scopeVersion.value += 1
     currentProjectScope.value = nextProjectId
@@ -169,6 +205,13 @@ export const useWorldModelStore = defineStore('worldModel', () => {
     error.value = ''
     activeSubmissionCount.value = 0
     pendingActionCounts.value = {}
+    subjectKnowledge.value = null
+    selectedSubjectRef.value = null
+    chapterSnapshot.value = null
+    selectedChapterIndex.value = null
+    bundlesTotal.value = 0
+    bundlesOffset.value = 0
+    bundleFilters.value = {}
   }
 
   async function loadSetupPanelData(projectId: string) {
@@ -177,21 +220,26 @@ export const useWorldModelStore = defineStore('worldModel', () => {
     error.value = ''
 
     try {
-      const [overview, bundles] = await Promise.all([
+      const [overview, bundlesPage] = await Promise.all([
         api.getWorldModelOverview(projectId),
-        api.listWorldProposalBundles(projectId),
+        api.listWorldProposalBundles(projectId, {
+          offset: bundlesOffset.value,
+          limit: bundlesLimit.value,
+          ...bundleFilters.value,
+        }),
       ])
       if (!isLatestRequest(snapshot, 'overview') || !isLatestRequest(snapshot, 'bundles')) return
 
       projectProfile.value = overview.project_profile
       projection.value = overview.projection
-      proposalBundles.value = bundles
+      proposalBundles.value = bundlesPage.items
+      bundlesTotal.value = bundlesPage.total
       loaded.value = true
 
       const nextSelectedBundleId =
-        (selectedBundleId.value && bundles.some((bundle) => bundle.id === selectedBundleId.value))
+        (selectedBundleId.value && bundlesPage.items.some((bundle) => bundle.id === selectedBundleId.value))
           ? selectedBundleId.value
-          : bundles[0]?.id ?? null
+          : bundlesPage.items[0]?.id ?? null
       selectedBundleId.value = nextSelectedBundleId
 
       if (nextSelectedBundleId) {
@@ -250,12 +298,41 @@ export const useWorldModelStore = defineStore('worldModel', () => {
 
   async function refreshBundles(projectId: string, requestSnapshot?: RequestSnapshot) {
     const snapshot = requestSnapshot ?? captureRequest(projectId, ['bundles'])
-    const bundles = await api.listWorldProposalBundles(projectId)
+    const page = await api.listWorldProposalBundles(projectId, {
+      offset: 0,
+      limit: bundlesOffset.value + bundlesLimit.value,
+      ...bundleFilters.value,
+    })
     if (!isLatestRequest(snapshot, 'bundles')) return
-    proposalBundles.value = bundles
-    if (selectedBundleId.value && !bundles.some((bundle) => bundle.id === selectedBundleId.value)) {
-      selectedBundleId.value = bundles[0]?.id ?? null
+    proposalBundles.value = page.items
+    bundlesTotal.value = page.total
+    bundlesOffset.value = Math.max(0, page.items.length - bundlesLimit.value)
+    if (selectedBundleId.value && !page.items.some((bundle) => bundle.id === selectedBundleId.value)) {
+      selectedBundleId.value = page.items[0]?.id ?? null
     }
+  }
+
+  async function loadMoreBundles(projectId: string) {
+    ensureProjectScope(projectId)
+    const nextOffset = bundlesOffset.value + bundlesLimit.value
+    try {
+      const page = await api.listWorldProposalBundles(projectId, {
+        offset: nextOffset,
+        limit: bundlesLimit.value,
+        ...bundleFilters.value,
+      })
+      proposalBundles.value = [...proposalBundles.value, ...page.items]
+      bundlesOffset.value = nextOffset
+      bundlesTotal.value = page.total
+    } catch (err) {
+      error.value = toErrorMessage(err)
+    }
+  }
+
+  async function applyBundleFilters(projectId: string, filters: typeof bundleFilters.value) {
+    bundleFilters.value = filters
+    bundlesOffset.value = 0
+    await loadSetupPanelData(projectId)
   }
 
   async function refreshOverview(projectId: string, requestSnapshot?: RequestSnapshot) {
@@ -366,6 +443,15 @@ export const useWorldModelStore = defineStore('worldModel', () => {
     proposalBundles,
     selectedBundleId,
     selectedBundleDetail,
+    subjectKnowledge,
+    selectedSubjectRef,
+    chapterSnapshot,
+    selectedChapterIndex,
+    reviewerName,
+    bundlesTotal,
+    bundlesOffset,
+    bundlesLimit,
+    bundleFilters,
     loading,
     loaded,
     error,
@@ -377,6 +463,11 @@ export const useWorldModelStore = defineStore('worldModel', () => {
     resetProjectScopedState,
     loadSetupPanelData,
     selectBundle,
+    loadSubjectKnowledge,
+    loadChapterSnapshot,
+    loadMoreBundles,
+    applyBundleFilters,
+    setReviewerName,
     reviewProposalItem,
     splitProposalBundle,
     rollbackProposalReview,
