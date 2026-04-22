@@ -245,6 +245,7 @@ export interface ProposalBundleDetail {
   items: ProposalItem[]
   reviews: ProposalReview[]
   impact_snapshots: ProposalImpactSnapshot[]
+  conflicts: ProposalItemConflict[]
 }
 
 export interface ProposalReviewRequest {
@@ -266,4 +267,18 @@ export interface ProposalRollbackRequest {
   reviewer_ref: string
   reason: string
   evidence_refs: string[]
+}
+
+export interface PaginatedProposalBundles {
+  items: ProposalBundle[]
+  total: number
+  offset: number
+  limit: number
+}
+
+export interface ProposalItemConflict {
+  item_id: string
+  conflict_type: 'truth_conflict' | 'high_impact'
+  detail: string
+  existing_claim_id: string | null
 }

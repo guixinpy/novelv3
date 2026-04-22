@@ -3,7 +3,7 @@ import type {
   ChatHistoryMessage,
   ChatRequest,
   ChatResponse,
-  ProposalBundle,
+  PaginatedProposalBundles,
   ProposalBundleDetail,
   ProposalReview,
   ProposalReviewRequest,
@@ -36,7 +36,16 @@ export const api = {
   generateSetup: (id: string) => request(`/projects/${id}/setup/generate`, { method: 'POST' }),
   getSetup: (id: string) => request(`/projects/${id}/setup`),
   getWorldModelOverview: (id: string) => request<WorldModelOverview>(`/projects/${id}/world-model`),
-  listWorldProposalBundles: (id: string) => request<ProposalBundle[]>(`/projects/${id}/world-model/proposal-bundles`),
+  listWorldProposalBundles: (id: string, params?: { offset?: number; limit?: number; bundle_status?: string; item_status?: string; profile_version?: number }) => {
+    const query = new URLSearchParams()
+    if (params?.offset !== undefined) query.set('offset', String(params.offset))
+    if (params?.limit !== undefined) query.set('limit', String(params.limit))
+    if (params?.bundle_status) query.set('bundle_status', params.bundle_status)
+    if (params?.item_status) query.set('item_status', params.item_status)
+    if (params?.profile_version !== undefined) query.set('profile_version', String(params.profile_version))
+    const qs = query.toString()
+    return request<PaginatedProposalBundles>(`/projects/${id}/world-model/proposal-bundles${qs ? `?${qs}` : ''}`)
+  },
   getWorldProposalBundle: (id: string, bundleId: string) => request<ProposalBundleDetail>(`/projects/${id}/world-model/proposal-bundles/${bundleId}`),
   reviewWorldProposalItem: (id: string, itemId: string, data: ProposalReviewRequest) =>
     request<ProposalReview>(`/projects/${id}/world-model/proposal-items/${itemId}/review`, {
@@ -53,6 +62,10 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+  getSubjectKnowledge: (id: string, subjectRef: string) =>
+    request<WorldModelOverview>(`/projects/${id}/world-model/subject-knowledge?subject_ref=${encodeURIComponent(subjectRef)}`),
+  getChapterSnapshot: (id: string, chapterIndex: number) =>
+    request<WorldModelOverview>(`/projects/${id}/world-model/snapshot?chapter_index=${chapterIndex}`),
   generateChapter: (id: string, index: number) => request(`/projects/${id}/chapters/${index}/generate`, { method: 'POST' }),
   getChapter: (id: string, index: number) => request(`/projects/${id}/chapters/${index}`),
   getConfig: () => request('/config'),
