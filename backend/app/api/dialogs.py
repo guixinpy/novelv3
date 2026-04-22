@@ -8,6 +8,7 @@ from app.core.ai_service import AIService
 from app.core.chat_commands import build_command_text, command_to_action_type, parse_command
 from app.core.chat_compaction import build_compaction_summary, select_compactable_plain_messages
 from app.core.intent_router import IntentRouter
+from app.core.context_injection import build_athena_world_context, build_hermes_world_context
 from app.core.prompt_manager import PromptManager
 from app.core.ui_hints import action_to_refresh_targets, build_ui_hint
 from app.db import get_db
@@ -343,7 +344,13 @@ def _status_label(status: str | None) -> str:
     return STATUS_LABELS.get(status or "", status or "待补全")
 
 
-def _build_chat_messages(db: Session, dialog_id: str, project: Project, diagnosis: ProjectDiagnosisOut) -> list[dict]:
+def _build_chat_messages(
+    db: Session,
+    dialog_id: str,
+    project: Project,
+    diagnosis: ProjectDiagnosisOut,
+    dialog_type: str = "hermes",
+) -> list[dict]:
     pm = PromptManager()
     history = db.query(DialogMessage) \
         .filter(DialogMessage.dialog_id == dialog_id) \
@@ -352,21 +359,46 @@ def _build_chat_messages(db: Session, dialog_id: str, project: Project, diagnosi
         .all()
 
     history.reverse()
-    system_prompt = pm.load(
-        "chat_project_assistant",
-        {
-            "project_name": project.name or "未命名项目",
-            "project_genre": project.genre or "未分类题材",
-            "project_description": project.description or "暂无项目描述",
-            "project_phase": _phase_label(project.current_phase),
-            "project_status": _status_label(project.status),
-            "current_words": str(project.current_word_count or 0),
-            "target_words": str(project.target_word_count or 0),
-            "completed_items": "、".join(diagnosis.completed_items) if diagnosis.completed_items else "无",
-            "missing_items": "、".join(diagnosis.missing_items) if diagnosis.missing_items else "无",
-            "suggested_next_step": diagnosis.suggested_next_step or "无",
-        },
-    )
+
+    if dialog_type == "athena":
+        from app.models import ProjectProfileVersion
+        profile = (
+            db.query(ProjectProfileVersion)
+            .filter(ProjectProfileVersion.project_id == project.id)
+            .order_by(ProjectProfileVersion.version.desc())
+            .first()
+        )
+        world_context = build_athena_world_context(db, project.id)
+        system_prompt = pm.load(
+            "chat_athena",
+            {
+                "project_name": project.name or "未命名项目",
+                "project_genre": project.genre or "未分类题材",
+                "project_description": project.description or "暂无项目描述",
+                "project_phase": _phase_label(project.current_phase),
+                "profile_version": str(profile.version) if profile else "未建立",
+                "world_context": world_context,
+            },
+        )
+    else:
+        world_context = build_hermes_world_context(db, project.id)
+        system_prompt = pm.load(
+            "chat_hermes",
+            {
+                "project_name": project.name or "未命名项目",
+                "project_genre": project.genre or "未分类题材",
+                "project_description": project.description or "暂无项目描述",
+                "project_phase": _phase_label(project.current_phase),
+                "project_status": _status_label(project.status),
+                "current_words": str(project.current_word_count or 0),
+                "target_words": str(project.target_word_count or 0),
+                "completed_items": "、".join(diagnosis.completed_items) if diagnosis.completed_items else "无",
+                "missing_items": "、".join(diagnosis.missing_items) if diagnosis.missing_items else "无",
+                "suggested_next_step": diagnosis.suggested_next_step or "无",
+                "world_context": world_context,
+            },
+        )
+
     messages = [{"role": "system", "content": system_prompt}]
 
     for item in history:
@@ -378,12 +410,18 @@ def _build_chat_messages(db: Session, dialog_id: str, project: Project, diagnosi
     return messages
 
 
-async def _free_chat_reply(db: Session, dialog: Dialog, project: Project, diagnosis: ProjectDiagnosisOut) -> str:
+async def _free_chat_reply(
+    db: Session,
+    dialog: Dialog,
+    project: Project,
+    diagnosis: ProjectDiagnosisOut,
+    dialog_type: str = "hermes",
+) -> str:
     if not load_api_key():
         return _chat_unavailable_reply(diagnosis, "当前未配置模型 API Key，聊天还没有真实接入 AI")
 
     try:
-        messages = _build_chat_messages(db, dialog.id, project, diagnosis)
+        messages = _build_chat_messages(db, dialog.id, project, diagnosis, dialog_type=dialog_type)
         result = await ai_service.complete(
             messages,
             temperature=0.7,
@@ -630,7 +668,7 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
             project_diagnosis=diagnosis,
         )
 
-    reply = await _free_chat_reply(db, dialog, project, diagnosis)
+    reply = await _free_chat_reply(db, dialog, project, diagnosis, dialog_type="hermes")
     _save_message(db, dialog.id, "assistant", reply)
     return ChatOut(
         message=reply,
