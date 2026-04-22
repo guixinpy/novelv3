@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.core.world_projection import FactRecord, project_subject_knowledge, project_world_truth
+from app.core.world_projection import FactRecord, project_snapshot, project_subject_knowledge, project_world_truth
 from app.core.world_proposal_service import (
     calculate_bundle_impact_scope,
     review_proposal_item,
@@ -169,6 +169,77 @@ def get_subject_knowledge(
         project_profile=profile,
         projection=WorldProjectionOut(
             view_type="subject_knowledge",
+            **projection,
+        ),
+    )
+
+
+@router.get("/snapshot", response_model=ProjectWorldOverviewOut)
+def get_chapter_snapshot(
+    project_id: str,
+    chapter_index: int,
+    db: Session = Depends(get_db),
+):
+    _require_project(db=db, project_id=project_id)
+    profile = _get_current_profile(db=db, project_id=project_id)
+    if profile is None:
+        return ProjectWorldOverviewOut(project_profile=None, projection=None)
+
+    anchors = (
+        db.query(WorldTimelineAnchor)
+        .filter(
+            WorldTimelineAnchor.project_id == project_id,
+            WorldTimelineAnchor.profile_version == profile.version,
+        )
+        .order_by(
+            WorldTimelineAnchor.chapter_index.asc(),
+            WorldTimelineAnchor.intra_chapter_seq.asc(),
+            WorldTimelineAnchor.anchor_id.asc(),
+        )
+        .all()
+    )
+    events = (
+        db.query(WorldEvent)
+        .filter(
+            WorldEvent.project_id == project_id,
+            WorldEvent.project_profile_version_id == profile.id,
+            WorldEvent.profile_version == profile.version,
+        )
+        .order_by(
+            WorldEvent.chapter_index.asc(),
+            WorldEvent.intra_chapter_seq.asc(),
+            WorldEvent.event_id.asc(),
+        )
+        .all()
+    )
+    facts = (
+        db.query(WorldFactClaim)
+        .filter(
+            WorldFactClaim.project_id == project_id,
+            WorldFactClaim.project_profile_version_id == profile.id,
+            WorldFactClaim.profile_version == profile.version,
+        )
+        .order_by(
+            WorldFactClaim.chapter_index.asc(),
+            WorldFactClaim.intra_chapter_seq.asc(),
+            WorldFactClaim.claim_id.asc(),
+        )
+        .all()
+    )
+    try:
+        anchor_index = build_anchor_time_index(anchors)
+        projection = project_snapshot(
+            events=[ledger_event_from_world_event(event, anchor_index=anchor_index) for event in events],
+            facts=[_fact_record_from_model(fact) for fact in facts],
+            chapter_index=chapter_index,
+            anchors=anchors,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return ProjectWorldOverviewOut(
+        project_profile=profile,
+        projection=WorldProjectionOut(
+            view_type="chapter_snapshot",
             **projection,
         ),
     )
