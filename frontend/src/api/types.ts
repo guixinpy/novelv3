@@ -282,3 +282,25 @@ export interface ProposalItemConflict {
   detail: string
   existing_claim_id: string | null
 }
+
+export interface AthenaOntology {
+  entities: Record<string, { id: string; name: string }[]>
+  relations: { id: string; source_ref: string; target_ref: string; relation_type: string }[]
+  rules: { id: string; rule_id: string; description: string }[]
+  setup_summary: {
+    characters: unknown
+    world_building: unknown
+    core_concept: unknown
+  } | null
+  profile_version: number | null
+}
+
+export interface AthenaTimeline {
+  anchors: { id: string; anchor_id: string; chapter_index: number; intra_chapter_seq: number; label: string }[]
+  events: { id: string; event_id: string; chapter_index: number; intra_chapter_seq: number; event_type: string; description: string }[]
+}
+
+export interface AthenaEvolutionPlan {
+  outline: { id: string; status: string; total_chapters: number; chapters: unknown; plotlines: unknown } | null
+  storyline: { id: string; status: string; plotlines: unknown; foreshadowing: unknown } | null
+}

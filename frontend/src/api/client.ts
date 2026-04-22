@@ -1,4 +1,7 @@
 import type {
+  AthenaEvolutionPlan,
+  AthenaOntology,
+  AthenaTimeline,
   BackgroundTaskResponse,
   ChatHistoryMessage,
   ChatRequest,
@@ -66,6 +69,29 @@ export const api = {
     request<WorldModelOverview>(`/projects/${id}/world-model/subject-knowledge?subject_ref=${encodeURIComponent(subjectRef)}`),
   getChapterSnapshot: (id: string, chapterIndex: number) =>
     request<WorldModelOverview>(`/projects/${id}/world-model/snapshot?chapter_index=${chapterIndex}`),
+  getAthenaOntology: (id: string) =>
+    request<AthenaOntology>(`/projects/${id}/athena/ontology`),
+  getAthenaState: (id: string) =>
+    request<WorldModelOverview>(`/projects/${id}/athena/state`),
+  getAthenaTimeline: (id: string) =>
+    request<AthenaTimeline>(`/projects/${id}/athena/state/timeline`),
+  getAthenaEvolutionPlan: (id: string) =>
+    request<AthenaEvolutionPlan>(`/projects/${id}/athena/evolution/plan`),
+  getAthenaEvolutionProposals: (id: string, params?: { offset?: number; limit?: number; bundle_status?: string }) => {
+    const query = new URLSearchParams()
+    if (params?.offset !== undefined) query.set('offset', String(params.offset))
+    if (params?.limit !== undefined) query.set('limit', String(params.limit))
+    if (params?.bundle_status) query.set('bundle_status', params.bundle_status)
+    const qs = query.toString()
+    return request<PaginatedProposalBundles>(`/projects/${id}/athena/evolution/proposals${qs ? `?${qs}` : ''}`)
+  },
+  sendAthenaChat: (id: string, text: string) =>
+    request<ChatResponse>(`/projects/${id}/athena/dialog/chat`, {
+      method: 'POST',
+      body: JSON.stringify({ project_id: id, input_type: 'text', text }),
+    }),
+  getAthenaMessages: (id: string) =>
+    request<ChatHistoryMessage[]>(`/projects/${id}/athena/dialog/messages`),
   generateChapter: (id: string, index: number) => request(`/projects/${id}/chapters/${index}/generate`, { method: 'POST' }),
   getChapter: (id: string, index: number) => request(`/projects/${id}/chapters/${index}`),
   getConfig: () => request('/config'),
