@@ -6,15 +6,51 @@
   >
     {{ worldModelError }}
   </p>
-  <div v-else-if="showWorldModel" class="setup-tab setup-tab--world" data-testid="world-model-view">
-    <WorldProfileBanner v-if="worldModel.projectProfile" :profile="worldModel.projectProfile" />
-    <WorldProjectionViewer v-if="worldModel.projection" :projection="worldModel.projection" />
+  <div
+    v-else-if="showWorldModel"
+    class="setup-tab setup-tab--world"
+    data-testid="world-model-view"
+  >
+    <WorldProfileBanner
+      v-if="worldModel.projectProfile"
+      :profile="worldModel.projectProfile"
+    />
+    <div class="setup-tab__reviewer-setting">
+      <button
+        type="button"
+        class="setup-tab__reviewer-toggle"
+        @click="showReviewerInput = !showReviewerInput"
+      >
+        ⚙ 审阅者: {{ worldModel.reviewerName }}
+      </button>
+      <input
+        v-if="showReviewerInput"
+        class="setup-tab__reviewer-input"
+        :value="worldModel.reviewerName"
+        placeholder="输入审阅者名称"
+        @change="onReviewerChange"
+      >
+    </div>
+    <WorldProjectionViewer
+      v-if="worldModel.projection"
+      :projection="worldModel.projection"
+      :subject-knowledge="worldModel.subjectKnowledge"
+      :chapter-snapshot="worldModel.chapterSnapshot"
+      :selected-chapter="worldModel.selectedChapterIndex ?? 1"
+      :max-chapter="maxChapterIndex"
+      @load-subject-knowledge="loadSubjectKnowledge"
+      @load-chapter-snapshot="loadChapterSnapshot"
+    />
 
     <div class="setup-tab__world-grid">
       <WorldProposalBundleList
         :bundles="worldModel.proposalBundles"
         :selected-bundle-id="worldModel.selectedBundleId"
+        :total="worldModel.bundlesTotal"
+        :filters="worldModel.bundleFilters"
         @select="selectBundle"
+        @load-more="loadMoreBundles"
+        @update-filters="updateFilters"
       />
 
       <section class="setup-tab__world-detail">
@@ -28,7 +64,9 @@
         >
           <header class="setup-tab__proposal-header">
             <div>
-              <p class="setup-tab__proposal-eyebrow">Proposal Review</p>
+              <p class="setup-tab__proposal-eyebrow">
+                Proposal Review
+              </p>
               <h3 class="setup-tab__proposal-title">
                 {{ worldModel.selectedBundleDetail.bundle.title }}
               </h3>
@@ -44,16 +82,27 @@
             :item="item"
             :busy="worldModel.isActionPending(item.id)"
             :approval-review-id="approvalReviewIdMap[item.id] ?? null"
+            :reviewer-ref="worldModel.reviewerName"
+            :anchor-options="anchorOptions"
+            :conflicts="worldModel.selectedBundleDetail?.conflicts ?? []"
             @review="reviewItem"
             @split="splitItem"
             @rollback="rollbackReview"
           />
         </article>
-        <p v-else class="setup-tab__world-empty">当前没有待审条目。</p>
+        <p
+          v-else
+          class="setup-tab__world-empty"
+        >
+          当前没有待审条目。
+        </p>
       </section>
     </div>
   </div>
-  <div v-else-if="shouldShowFallback && setup" class="setup-tab">
+  <div
+    v-else-if="shouldShowFallback && setup"
+    class="setup-tab"
+  >
     <SetupSummaryCard
       title="角色"
       :description="characterDescription"
@@ -61,7 +110,11 @@
       body-test-id="setup-summary-card-characters-body"
       @open="openDetail('characters')"
     >
-      <ul v-if="characterSummary.entries.length > 0" class="setup-summary-list" aria-label="角色概览">
+      <ul
+        v-if="characterSummary.entries.length > 0"
+        class="setup-summary-list"
+        aria-label="角色概览"
+      >
         <li
           v-for="(entry, index) in characterSummary.entries"
           :key="`${entry.name}-${index}`"
@@ -69,9 +122,14 @@
         >
           <div class="setup-summary-list__headline">
             <span class="setup-summary-list__label">{{ entry.name }}</span>
-            <span v-if="entry.meta?.length" class="setup-summary-list__meta">{{ entry.meta.join(' / ') }}</span>
+            <span
+              v-if="entry.meta?.length"
+              class="setup-summary-list__meta"
+            >{{ entry.meta.join(' / ') }}</span>
           </div>
-          <p class="setup-summary-list__value">{{ entry.summary }}</p>
+          <p class="setup-summary-list__value">
+            {{ entry.summary }}
+          </p>
         </li>
       </ul>
       <p
@@ -89,7 +147,11 @@
       body-test-id="setup-summary-card-world-body"
       @open="openDetail('world')"
     >
-      <ul v-if="worldSummary.length > 0" class="setup-summary-list" aria-label="世界观概览">
+      <ul
+        v-if="worldSummary.length > 0"
+        class="setup-summary-list"
+        aria-label="世界观概览"
+      >
         <li
           v-for="(item, index) in worldSummary"
           :key="`${item.label}-${index}`"
@@ -98,7 +160,9 @@
           <div class="setup-summary-list__headline">
             <span class="setup-summary-list__label">{{ item.label }}</span>
           </div>
-          <p class="setup-summary-list__value">{{ item.value }}</p>
+          <p class="setup-summary-list__value">
+            {{ item.value }}
+          </p>
         </li>
       </ul>
       <p
@@ -116,7 +180,11 @@
       body-test-id="setup-summary-card-concept-body"
       @open="openDetail('concept')"
     >
-      <ul v-if="conceptSummary.length > 0" class="setup-summary-list" aria-label="核心概念概览">
+      <ul
+        v-if="conceptSummary.length > 0"
+        class="setup-summary-list"
+        aria-label="核心概念概览"
+      >
         <li
           v-for="(item, index) in conceptSummary"
           :key="`${item.label}-${index}`"
@@ -125,7 +193,9 @@
           <div class="setup-summary-list__headline">
             <span class="setup-summary-list__label">{{ item.label }}</span>
           </div>
-          <p class="setup-summary-list__value">{{ item.value }}</p>
+          <p class="setup-summary-list__value">
+            {{ item.value }}
+          </p>
         </li>
       </ul>
       <p
@@ -144,8 +214,18 @@
       @close="isDetailModalOpen = false"
     />
   </div>
-  <p v-else-if="isWaitingForWorldModel" class="setup-tab__empty">加载世界模型视图...</p>
-  <p v-else class="setup-tab__empty">暂无设定数据。</p>
+  <p
+    v-else-if="isWaitingForWorldModel"
+    class="setup-tab__empty"
+  >
+    加载世界模型视图...
+  </p>
+  <p
+    v-else
+    class="setup-tab__empty"
+  >
+    暂无设定数据。
+  </p>
 </template>
 
 <script setup lang="ts">
@@ -175,6 +255,9 @@ const props = defineProps<{
 const worldModel = useWorldModelStore()
 const isDetailModalOpen = ref(false)
 const detailModalSection = ref<SetupSection>('characters')
+const showReviewerInput = ref(false)
+const maxChapterIndex = ref(12) // will be updated when chapters are loaded
+const anchorOptions = computed<string[]>(() => [])
 
 const characterSummary = computed(() => buildCharacterSummaryItems(props.setup?.characters ?? []))
 const worldSummary = computed(() => {
@@ -269,7 +352,7 @@ function reviewItem(itemId: string, payload: ProposalReviewRequest) {
 function splitItem(bundleId: string, itemId: string, reason: string) {
   if (!props.projectId) return
   void worldModel.splitProposalBundle(props.projectId, bundleId, {
-    reviewer_ref: 'frontend.reviewer',
+    reviewer_ref: worldModel.reviewerName,
     reason,
     evidence_refs: [],
     item_ids: [itemId],
@@ -279,10 +362,39 @@ function splitItem(bundleId: string, itemId: string, reason: string) {
 function rollbackReview(reviewId: string, reason: string, itemId: string) {
   if (!props.projectId) return
   void worldModel.rollbackProposalReview(props.projectId, reviewId, {
-    reviewer_ref: 'frontend.reviewer',
+    reviewer_ref: worldModel.reviewerName,
     reason,
     evidence_refs: [],
   }, itemId)
+}
+
+function loadSubjectKnowledge(subjectRef: string) {
+  if (!props.projectId) return
+  void worldModel.loadSubjectKnowledge(props.projectId, subjectRef)
+}
+
+function loadChapterSnapshot(chapterIndex: number) {
+  if (!props.projectId) return
+  void worldModel.loadChapterSnapshot(props.projectId, chapterIndex)
+}
+
+function loadMoreBundles() {
+  if (!props.projectId) return
+  void worldModel.loadMoreBundles(props.projectId)
+}
+
+function updateFilters(filters: { bundle_status?: string; item_status?: string; profile_version?: number }) {
+  if (!props.projectId) return
+  void worldModel.applyBundleFilters(props.projectId, filters)
+}
+
+function onReviewerChange(event: Event) {
+  if (!props.projectId) return
+  const value = (event.target as HTMLInputElement).value.trim()
+  if (value) {
+    worldModel.setReviewerName(props.projectId, value)
+    showReviewerInput.value = false
+  }
 }
 </script>
 
@@ -411,5 +523,30 @@ function rollbackReview(reviewId: string, reason: string, itemId: string) {
     grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
     align-items: start;
   }
+}
+
+.setup-tab__reviewer-setting {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.setup-tab__reviewer-toggle {
+  background: none;
+  border: 1px solid rgba(111, 69, 31, 0.14);
+  border-radius: 999px;
+  padding: 0.3rem 0.7rem;
+  color: var(--ink-muted);
+  font-size: 0.74rem;
+  cursor: pointer;
+}
+
+.setup-tab__reviewer-input {
+  border: 1px solid rgba(111, 69, 31, 0.14);
+  border-radius: 0.6rem;
+  padding: 0.35rem 0.55rem;
+  background: rgba(255, 252, 246, 0.92);
+  color: var(--ink-strong);
+  font-size: 0.78rem;
 }
 </style>
