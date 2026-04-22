@@ -20,9 +20,12 @@ from app.models import (
     WorldTimelineAnchor,
 )
 from app.schemas import (
+    ChatIn,
+    ChatOut,
     ProposalBundleSplitCreate,
     ProposalReviewCreate,
     ProposalReviewRollbackCreate,
+    ResolveActionIn,
 )
 
 router = APIRouter(
@@ -298,3 +301,47 @@ def rollback_evolution_review(
 def get_evolution_consistency(project_id: str, db: Session = Depends(get_db)):
     from app.api.consistency import list_issues
     return list_issues(project_id, db)
+
+
+# ── Athena Dialog ──
+
+
+@router.get("/dialog/messages")
+def get_athena_messages(project_id: str, db: Session = Depends(get_db)):
+    from app.api.dialogs import get_messages
+    return get_messages(project_id, dialog_type="athena", db=db)
+
+
+@router.post("/dialog/chat")
+async def athena_chat(project_id: str, payload: ChatIn, db: Session = Depends(get_db)):
+    from app.api.dialogs import (
+        _get_or_create_dialog,
+        _build_diagnosis,
+        _save_message,
+        _build_chat_idle_hint,
+        _free_chat_reply,
+    )
+    project = _require_project(db, project_id)
+    payload.project_id = project_id
+    dialog = _get_or_create_dialog(db, project_id, dialog_type="athena")
+    diagnosis = _build_diagnosis(db, project_id)
+
+    user_text = (payload.text or "").strip()
+    if user_text:
+        _save_message(db, dialog.id, "user", user_text)
+
+    reply = await _free_chat_reply(db, dialog, project, diagnosis)
+    _save_message(db, dialog.id, "assistant", reply)
+    return ChatOut(
+        message=reply,
+        pending_action=None,
+        ui_hint=_build_chat_idle_hint("Athena 对话"),
+        refresh_targets=[],
+        project_diagnosis=diagnosis,
+    )
+
+
+@router.post("/dialog/resolve-action")
+async def athena_resolve_action(project_id: str, payload: ResolveActionIn, db: Session = Depends(get_db)):
+    from app.api.dialogs import resolve_action
+    return await resolve_action(payload, db)
