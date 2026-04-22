@@ -24,6 +24,7 @@ from app.models import (
     WorldTimelineAnchor,
 )
 from app.schemas import (
+    PaginatedProposalBundlesOut,
     ProjectWorldOverviewOut,
     ProposalBundleDetailOut,
     ProposalBundleOut,
@@ -245,22 +246,44 @@ def get_chapter_snapshot(
     )
 
 
-@router.get("/proposal-bundles", response_model=list[ProposalBundleOut])
-def list_world_proposal_bundles(project_id: str, db: Session = Depends(get_db)):
+@router.get("/proposal-bundles", response_model=PaginatedProposalBundlesOut)
+def list_world_proposal_bundles(
+    project_id: str,
+    offset: int = 0,
+    limit: int = 20,
+    bundle_status: str | None = None,
+    item_status: str | None = None,
+    profile_version: int | None = None,
+    db: Session = Depends(get_db),
+):
     _require_project(db=db, project_id=project_id)
-    profile = _get_current_profile(db=db, project_id=project_id)
-    if profile is None:
-        return []
-    return (
-        db.query(WorldProposalBundle)
-        .filter(
-            WorldProposalBundle.project_id == project_id,
-            WorldProposalBundle.project_profile_version_id == profile.id,
-            WorldProposalBundle.profile_version == profile.version,
+    current_profile = _get_current_profile(db=db, project_id=project_id)
+    if current_profile is None:
+        return PaginatedProposalBundlesOut(items=[], total=0, offset=offset, limit=limit)
+    query = db.query(WorldProposalBundle).filter(
+        WorldProposalBundle.project_id == project_id,
+        WorldProposalBundle.project_profile_version_id == current_profile.id,
+        WorldProposalBundle.profile_version == current_profile.version,
+    )
+    if bundle_status is not None:
+        query = query.filter(WorldProposalBundle.bundle_status == bundle_status)
+    if profile_version is not None:
+        query = query.filter(WorldProposalBundle.profile_version == profile_version)
+    if item_status is not None:
+        subq = (
+            db.query(WorldProposalItem.bundle_id)
+            .filter(WorldProposalItem.item_status == item_status)
+            .subquery()
         )
-        .order_by(WorldProposalBundle.updated_at.desc(), WorldProposalBundle.created_at.desc())
+        query = query.filter(WorldProposalBundle.id.in_(subq))
+    total = query.count()
+    items = (
+        query.order_by(WorldProposalBundle.updated_at.desc(), WorldProposalBundle.created_at.desc())
+        .offset(offset)
+        .limit(limit)
         .all()
     )
+    return PaginatedProposalBundlesOut(items=items, total=total, offset=offset, limit=limit)
 
 
 @router.get("/proposal-bundles/{bundle_id}", response_model=ProposalBundleDetailOut)

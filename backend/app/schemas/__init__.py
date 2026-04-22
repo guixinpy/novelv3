@@ -1,30 +1,21 @@
-from .project import ProjectCreate, ProjectUpdate, ProjectOut
-from .setup import SetupOut, CharacterProfile, WorldBuilding, CoreConcept
 from .chapter import ChapterOut
-from .storyline import StorylineOut
-from .outline import OutlineOut
-from .topology import TopologyOut, TopologyNode, TopologyEdge
 from .consistency_check import ConsistencyIssueOut
 from .dialog import (
-    ChatMessageOut,
-    ChatIn,
-    ResolveActionIn,
-    PendingActionOut,
     ActiveActionOut,
-    ProjectDiagnosisOut,
-    UiHintOut,
+    ChatIn,
+    ChatMessageOut,
     ChatOut,
+    PendingActionOut,
+    ProjectDiagnosisOut,
+    ResolveActionIn,
+    UiHintOut,
 )
-from .writing import WritingStateOut
+from .outline import OutlineOut
+from .project import ProjectCreate, ProjectOut, ProjectUpdate
+from .setup import CharacterProfile, CoreConcept, SetupOut, WorldBuilding
+from .storyline import StorylineOut
+from .topology import TopologyEdge, TopologyNode, TopologyOut
 from .version import VersionCreate, VersionOut, VersionSummary
-from .world_profiles import (
-    GenreProfileCreate,
-    GenreProfileOut,
-    ProjectProfileVersionAppend,
-    ProjectProfileVersionOut,
-    ProjectWorldOverviewOut,
-    WorldProjectionOut,
-)
 from .world_entities import (
     WorldArtifactOut,
     WorldCharacterOut,
@@ -35,8 +26,24 @@ from .world_entities import (
     WorldRuleOut,
     WorldTimelineAnchorOut,
 )
-from .world_events import WorldEventCreate, WorldEventOut, WorldFactClaimCreate, WorldFactClaimOut, WorldEvidenceCreate, WorldEvidenceOut
+from .world_events import (
+    WorldEventCreate,
+    WorldEventOut,
+    WorldEvidenceCreate,
+    WorldEvidenceOut,
+    WorldFactClaimCreate,
+    WorldFactClaimOut,
+)
+from .world_profiles import (
+    GenreProfileCreate,
+    GenreProfileOut,
+    ProjectProfileVersionAppend,
+    ProjectProfileVersionOut,
+    ProjectWorldOverviewOut,
+    WorldProjectionOut,
+)
 from .world_proposals import (
+    PaginatedProposalBundlesOut,
     ProposalBundleCreate,
     ProposalBundleDetailOut,
     ProposalBundleOut,
@@ -45,6 +52,7 @@ from .world_proposals import (
     ProposalImpactScopeSnapshotOut,
     ProposalItemOut,
     ProposalReviewCreate,
-    ProposalReviewRollbackCreate,
     ProposalReviewOut,
+    ProposalReviewRollbackCreate,
 )
+from .writing import WritingStateOut

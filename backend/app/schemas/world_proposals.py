@@ -157,6 +157,15 @@ class ProposalReviewRollbackCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class PaginatedProposalBundlesOut(BaseModel):
+    items: list[ProposalBundleOut] = Field(default_factory=list)
+    total: int = 0
+    offset: int = 0
+    limit: int = 20
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class ProposalBundleDetailOut(BaseModel):
     bundle: ProposalBundleOut
     items: list[ProposalItemOut] = Field(default_factory=list)
