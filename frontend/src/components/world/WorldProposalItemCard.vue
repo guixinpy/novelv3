@@ -1,6 +1,7 @@
 <template>
   <article
     class="proposal-item-card"
+    :class="conflictClass"
     data-testid="world-proposal-item-card"
   >
     <header class="proposal-item-card__header">
@@ -17,6 +18,19 @@
         <span>置信度 {{ item.confidence.toFixed(2) }}</span>
       </div>
     </header>
+
+    <div v-if="itemConflicts.length" class="proposal-item-card__conflicts">
+      <div
+        v-for="conflict in itemConflicts"
+        :key="conflict.conflict_type"
+        class="proposal-item-card__conflict"
+        :class="`is-${conflict.conflict_type}`"
+      >
+        <span v-if="conflict.conflict_type === 'truth_conflict'">⚠</span>
+        <span v-else>⚡</span>
+        {{ conflict.detail }}
+      </div>
+    </div>
 
     <p class="proposal-item-card__submeta">
       {{ item.claim_id }} / {{ item.authority_type }}
@@ -37,8 +51,9 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import WorldProposalActionPanel from './WorldProposalActionPanel.vue'
-import type { ProposalItem, ProposalReviewRequest } from '../../api/types'
+import type { ProposalItem, ProposalReviewRequest, ProposalItemConflict } from '../../api/types'
 
 const props = defineProps<{
   item: ProposalItem
@@ -46,7 +61,18 @@ const props = defineProps<{
   approvalReviewId: string | null
   reviewerRef: string
   anchorOptions: string[]
+  conflicts: ProposalItemConflict[]
 }>()
+
+const itemConflicts = computed(() =>
+  props.conflicts.filter((c) => c.item_id === props.item.id),
+)
+
+const conflictClass = computed(() => {
+  if (itemConflicts.value.some((c) => c.conflict_type === 'truth_conflict')) return 'has-conflict'
+  if (itemConflicts.value.some((c) => c.conflict_type === 'high_impact')) return 'has-risk'
+  return ''
+})
 
 const emit = defineEmits<{
   review: [itemId: string, payload: ProposalReviewRequest]
@@ -110,4 +136,11 @@ function forwardRollback(reviewId: string, reason: string) {
   font-size: 0.75rem;
   font-weight: 700;
 }
+
+.proposal-item-card.has-conflict { border-left: 3px solid #dc2626; }
+.proposal-item-card.has-risk { border-left: 3px solid #d97706; }
+.proposal-item-card__conflicts { display: grid; gap: 0.3rem; }
+.proposal-item-card__conflict { font-size: 0.72rem; line-height: 1.4; }
+.proposal-item-card__conflict.is-truth_conflict { color: #dc2626; }
+.proposal-item-card__conflict.is-high_impact { color: #d97706; }
 </style>
