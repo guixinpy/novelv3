@@ -76,7 +76,7 @@ export const api = {
   getOutline: (id: string) => request(`/projects/${id}/outline`),
   getTopology: (id: string) => request(`/projects/${id}/topology`),
   getDiagnosis: (id: string) => request(`/projects/${id}/state-diagnosis`),
-  getMessages: (id: string) => request<ChatHistoryMessage[]>(`/dialog/projects/${id}/messages`),
+  getMessages: (id: string, dialogType: string = 'hermes') => request<ChatHistoryMessage[]>(`/dialog/projects/${id}/messages?dialog_type=${dialogType}`),
   sendChat: (data: ChatRequest) => request<ChatResponse>('/dialog/chat', { method: 'POST', body: JSON.stringify(data) }),
   resolveAction: (data: ResolveActionRequest) => request<ResolveActionResponse>('/dialog/resolve-action', { method: 'POST', body: JSON.stringify(data) }),
   startWriting: (id: string) => request(`/projects/${id}/writing/start`, { method: 'POST' }),

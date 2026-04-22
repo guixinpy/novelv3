@@ -63,6 +63,7 @@ function findRecoverableRunningActionType(history: ChatHistoryMessage[] | null |
 
 export const useChatStore = defineStore('chat', () => {
   const messages = ref<ChatMessage[]>([])
+  const dialogType = ref<'hermes' | 'athena'>('hermes')
   const projectId = ref<string>('')
   const diagnosis = ref<Diagnosis | null>(null)
   const pendingAction = ref<PendingAction | null>(null)
@@ -79,6 +80,10 @@ export const useChatStore = defineStore('chat', () => {
 
   function isActiveSnapshot(pidSnapshot: string, versionSnapshot: number) {
     return projectId.value === pidSnapshot && initVersion.value === versionSnapshot
+  }
+
+  function setDialogType(type: 'hermes' | 'athena') {
+    dialogType.value = type
   }
 
   async function init(pid: string) {
@@ -101,7 +106,7 @@ export const useChatStore = defineStore('chat', () => {
   async function loadHistory(pidSnapshot = projectId.value, versionSnapshot = initVersion.value): Promise<boolean> {
     if (!pidSnapshot) return false
     try {
-      const history = await api.getMessages(pidSnapshot)
+      const history = await api.getMessages(pidSnapshot, dialogType.value)
       if (!isActiveSnapshot(pidSnapshot, versionSnapshot)) return false
       if (history && history.length > 0) {
         messages.value = history.map((message) => toChatMessage(message))
@@ -301,7 +306,7 @@ export const useChatStore = defineStore('chat', () => {
         await new Promise(r => setTimeout(r, 3000))
         try {
           if (!isActiveSnapshot(pidSnapshot, versionSnapshot)) break
-          const history = await api.getMessages(pidSnapshot)
+          const history = await api.getMessages(pidSnapshot, dialogType.value)
           if (!isActiveSnapshot(pidSnapshot, versionSnapshot)) break
           if (history && history.length > historyCursor.value) {
             const newMessages = history.slice(historyCursor.value)
@@ -318,7 +323,7 @@ export const useChatStore = defineStore('chat', () => {
         } catch { /* retry */ }
       }
     } finally {
-      if (!isActiveSnapshot(pidSnapshot, versionSnapshot)) return
+      if (!isActiveSnapshot(pidSnapshot, versionSnapshot)) return // eslint-disable-line no-unsafe-finally
       loading.value = false
       if (!reachedTerminal) {
         messages.value.push({
@@ -330,7 +335,7 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   return {
-    messages, projectId, diagnosis, pendingAction, loading,
-    init, loadDiagnosis, sendText, sendCommand, sendButtonAction, resolveAction,
+    messages, projectId, dialogType, diagnosis, pendingAction, loading,
+    init, loadDiagnosis, setDialogType, sendText, sendCommand, sendButtonAction, resolveAction,
   }
 })
