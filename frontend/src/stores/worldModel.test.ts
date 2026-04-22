@@ -123,6 +123,7 @@ function createBundleDetail(
         ]
       : [],
     impact_snapshots: [],
+    conflicts: [],
   }
 }
 
@@ -171,6 +172,7 @@ function createBundleDetailWithItems(
         created_at: `2026-04-20T00:00:1${index + 1}Z`,
       })),
     impact_snapshots: [],
+    conflicts: [],
   }
 }
 
@@ -210,21 +212,26 @@ describe('worldModel store', () => {
         },
       },
     })
-    vi.mocked(api.listWorldProposalBundles).mockResolvedValue([
-      {
-        id: 'bundle-1',
-        project_id: 'project-1',
-        project_profile_version_id: 'profile-1',
-        profile_version: 3,
-        parent_bundle_id: null,
-        bundle_status: 'pending',
-        title: '候选设定',
-        summary: '',
-        created_by: 'writer.alpha',
-        created_at: '2026-04-20T00:00:00Z',
-        updated_at: '2026-04-20T00:00:00Z',
-      },
-    ])
+    vi.mocked(api.listWorldProposalBundles).mockResolvedValue({
+      items: [
+        {
+          id: 'bundle-1',
+          project_id: 'project-1',
+          project_profile_version_id: 'profile-1',
+          profile_version: 3,
+          parent_bundle_id: null,
+          bundle_status: 'pending',
+          title: '候选设定',
+          summary: '',
+          created_by: 'writer.alpha',
+          created_at: '2026-04-20T00:00:00Z',
+          updated_at: '2026-04-20T00:00:00Z',
+        },
+      ],
+      total: 1,
+      offset: 0,
+      limit: 20,
+    })
     vi.mocked(api.getWorldProposalBundle).mockResolvedValue({
       bundle: {
         id: 'bundle-1',
@@ -242,6 +249,7 @@ describe('worldModel store', () => {
       items: [],
       reviews: [],
       impact_snapshots: [],
+      conflicts: [],
     })
 
     const store = useWorldModelStore()
@@ -275,7 +283,7 @@ describe('worldModel store', () => {
       created_at: '2026-04-20T00:00:01Z',
     })
     vi.mocked(api.getWorldModelOverview).mockResolvedValue(createOverview('captain'))
-    vi.mocked(api.listWorldProposalBundles).mockResolvedValue([createBundle('approved')])
+    vi.mocked(api.listWorldProposalBundles).mockResolvedValue({ items: [createBundle('approved')], total: 1, offset: 0, limit: 20 })
     vi.mocked(api.getWorldProposalBundle).mockResolvedValue(
       createBundleDetail('approved', 'approve', 'claim.hero.rank'),
     )
@@ -338,7 +346,7 @@ describe('worldModel store', () => {
     const newerDetail = createDeferred<ReturnType<typeof createBundleDetail>>()
     const olderDetail = createDeferred<ReturnType<typeof createBundleDetail>>()
 
-    vi.mocked(api.listWorldProposalBundles).mockResolvedValue([createBundle('approved', 2)])
+    vi.mocked(api.listWorldProposalBundles).mockResolvedValue({ items: [createBundle('approved', 2)], total: 1, offset: 0, limit: 20 })
     vi.mocked(api.getWorldModelOverview)
       .mockReturnValueOnce(firstOverview.promise)
       .mockReturnValueOnce(secondOverview.promise)
@@ -424,7 +432,7 @@ describe('worldModel store', () => {
       created_at: '2026-04-20T00:00:01Z',
     })
     vi.mocked(api.getWorldModelOverview).mockRejectedValue(new Error('overview refresh failed'))
-    vi.mocked(api.listWorldProposalBundles).mockResolvedValue([createBundle('approved')])
+    vi.mocked(api.listWorldProposalBundles).mockResolvedValue({ items: [createBundle('approved')], total: 1, offset: 0, limit: 20 })
     vi.mocked(api.getWorldProposalBundle).mockResolvedValue(
       createBundleDetail('approved', 'approve', 'claim.hero.rank'),
     )
@@ -510,7 +518,7 @@ describe('worldModel store', () => {
       created_at: '2026-04-20T00:00:01Z',
     })
     vi.mocked(api.getWorldModelOverview).mockResolvedValue(createOverview('captain'))
-    vi.mocked(api.listWorldProposalBundles).mockResolvedValue([createBundle('approved')])
+    vi.mocked(api.listWorldProposalBundles).mockResolvedValue({ items: [createBundle('approved')], total: 1, offset: 0, limit: 20 })
     vi.mocked(api.getWorldProposalBundle).mockRejectedValue(new Error('detail refresh failed'))
 
     await expect(
@@ -551,7 +559,7 @@ describe('worldModel store', () => {
       created_at: '2026-04-20T00:00:02Z',
     })
     vi.mocked(api.getWorldModelOverview).mockResolvedValue(createOverview('lieutenant'))
-    vi.mocked(api.listWorldProposalBundles).mockResolvedValue([createBundle('rolled_back')])
+    vi.mocked(api.listWorldProposalBundles).mockResolvedValue({ items: [createBundle('rolled_back')], total: 1, offset: 0, limit: 20 })
     vi.mocked(api.getWorldProposalBundle).mockResolvedValue({
       ...createBundleDetail('rolled_back', 'rollback', 'claim.hero.rank'),
       bundle: createBundle('rolled_back'),
@@ -597,7 +605,7 @@ describe('worldModel store', () => {
       created_at: '2026-04-20T00:00:02Z',
     })
     vi.mocked(api.getWorldModelOverview).mockRejectedValue(new Error('overview refresh failed'))
-    vi.mocked(api.listWorldProposalBundles).mockResolvedValue([createBundle('rolled_back')])
+    vi.mocked(api.listWorldProposalBundles).mockResolvedValue({ items: [createBundle('rolled_back')], total: 1, offset: 0, limit: 20 })
     vi.mocked(api.getWorldProposalBundle).mockResolvedValue({
       ...createBundleDetail('rolled_back', 'rollback', 'claim.hero.rank'),
       bundle: createBundle('rolled_back'),
@@ -639,7 +647,7 @@ describe('worldModel store', () => {
       created_at: '2026-04-20T00:00:02Z',
     })
     vi.mocked(api.getWorldModelOverview).mockResolvedValue(createOverview('lieutenant'))
-    vi.mocked(api.listWorldProposalBundles).mockResolvedValue([createBundle('rolled_back')])
+    vi.mocked(api.listWorldProposalBundles).mockResolvedValue({ items: [createBundle('rolled_back')], total: 1, offset: 0, limit: 20 })
     vi.mocked(api.getWorldProposalBundle).mockRejectedValue(new Error('detail refresh failed'))
 
     await expect(
@@ -702,6 +710,7 @@ describe('worldModel store', () => {
       ],
       reviews: [],
       impact_snapshots: [],
+      conflicts: [],
     })
     vi.mocked(api.listWorldProposalBundles).mockRejectedValue(new Error('bundles refresh failed'))
 
@@ -832,7 +841,7 @@ describe('worldModel store', () => {
     vi.mocked(api.reviewWorldProposalItem).mockReturnValue(reviewRequest.promise)
     vi.mocked(api.rollbackWorldProposalReview).mockReturnValue(rollbackRequest.promise)
     vi.mocked(api.getWorldModelOverview).mockResolvedValue(createOverview('lieutenant'))
-    vi.mocked(api.listWorldProposalBundles).mockResolvedValue([createBundle('rolled_back')])
+    vi.mocked(api.listWorldProposalBundles).mockResolvedValue({ items: [createBundle('rolled_back')], total: 1, offset: 0, limit: 20 })
     vi.mocked(api.getWorldProposalBundle).mockResolvedValue(
       createBundleDetailWithItems([
         {
