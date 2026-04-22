@@ -6,18 +6,49 @@
       rows="2"
       placeholder="审阅理由，可留空走默认值"
     />
-    <textarea
-      v-model="editNotes"
-      class="proposal-actions__field"
-      rows="2"
-      placeholder="approve_with_edits 用的编辑备注"
+    <ProposalClaimDiffEditor
+      v-if="showDiffEditor"
+      :item="item"
+      :anchor-options="anchorOptions"
+      @submit="onDiffSubmit"
+      @cancel="showDiffEditor = false"
     />
     <div class="proposal-actions__buttons">
-      <button type="button" :disabled="busy" @click="emitReview('approve', '通过')">通过</button>
-      <button type="button" :disabled="busy" @click="emitReview('approve_with_edits', '编辑后通过')">编辑后通过</button>
-      <button type="button" :disabled="busy" @click="emitReview('reject', '驳回')">驳回</button>
-      <button type="button" :disabled="busy" @click="emitReview('mark_uncertain', '标记不确定')">不确定</button>
-      <button type="button" :disabled="busy" @click="$emit('split', buildReason('拆分审阅'))">拆分</button>
+      <button
+        type="button"
+        :disabled="busy"
+        @click="emitReview('approve', '通过')"
+      >
+        通过
+      </button>
+      <button
+        type="button"
+        :disabled="busy"
+        @click="emitReview('approve_with_edits', '编辑后通过')"
+      >
+        编辑后通过
+      </button>
+      <button
+        type="button"
+        :disabled="busy"
+        @click="emitReview('reject', '驳回')"
+      >
+        驳回
+      </button>
+      <button
+        type="button"
+        :disabled="busy"
+        @click="emitReview('mark_uncertain', '标记不确定')"
+      >
+        不确定
+      </button>
+      <button
+        type="button"
+        :disabled="busy"
+        @click="$emit('split', buildReason('拆分审阅'))"
+      >
+        拆分
+      </button>
       <button
         v-if="canRollback && approvalReviewId"
         type="button"
@@ -32,12 +63,16 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import type { ProposalReviewRequest } from '../../api/types'
+import ProposalClaimDiffEditor from './ProposalClaimDiffEditor.vue'
+import type { ProposalItem, ProposalReviewRequest } from '../../api/types'
 
-defineProps<{
+const props = defineProps<{
   busy: boolean
   approvalReviewId: string | null
   canRollback: boolean
+  item: ProposalItem
+  reviewerRef: string
+  anchorOptions: string[]
 }>()
 
 const emit = defineEmits<{
@@ -47,23 +82,31 @@ const emit = defineEmits<{
 }>()
 
 const reason = ref('')
-const editNotes = ref('')
+const showDiffEditor = ref(false)
+const pendingEditedFields = ref<Record<string, unknown>>({})
 
 function buildReason(fallback: string) {
   return reason.value.trim() || fallback
 }
 
 function emitReview(action: ProposalReviewRequest['action'], fallbackReason: string) {
+  if (action === 'approve_with_edits' && !showDiffEditor.value) {
+    showDiffEditor.value = true
+    return
+  }
   emit('review', {
-    reviewer_ref: 'frontend.reviewer',
+    reviewer_ref: props.reviewerRef,
     action,
     reason: buildReason(fallbackReason),
     evidence_refs: [],
-    edited_fields:
-      action === 'approve_with_edits' && editNotes.value.trim()
-        ? { notes: editNotes.value.trim() }
-        : {},
+    edited_fields: action === 'approve_with_edits' ? pendingEditedFields.value : {},
   })
+  showDiffEditor.value = false
+}
+
+function onDiffSubmit(editedFields: Record<string, unknown>) {
+  pendingEditedFields.value = editedFields
+  emitReview('approve_with_edits', '编辑后通过')
 }
 </script>
 

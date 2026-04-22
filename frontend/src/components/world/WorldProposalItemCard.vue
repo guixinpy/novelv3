@@ -1,9 +1,16 @@
 <template>
-  <article class="proposal-item-card" data-testid="world-proposal-item-card">
+  <article
+    class="proposal-item-card"
+    data-testid="world-proposal-item-card"
+  >
     <header class="proposal-item-card__header">
       <div>
-        <p class="proposal-item-card__claim">{{ item.subject_ref }}.{{ item.predicate }}</p>
-        <h4 class="proposal-item-card__value">{{ renderValue(item.object_ref_or_value) }}</h4>
+        <p class="proposal-item-card__claim">
+          {{ item.subject_ref }}.{{ item.predicate }}
+        </p>
+        <h4 class="proposal-item-card__value">
+          {{ renderValue(item.object_ref_or_value) }}
+        </h4>
       </div>
       <div class="proposal-item-card__meta">
         <span>{{ item.item_status }}</span>
@@ -19,6 +26,9 @@
       :busy="busy"
       :approval-review-id="approvalReviewId"
       :can-rollback="item.item_status !== 'rolled_back'"
+      :item="item"
+      :reviewer-ref="reviewerRef"
+      :anchor-options="anchorOptions"
       @review="forwardReview"
       @split="forwardSplit"
       @rollback="forwardRollback"
@@ -34,6 +44,8 @@ const props = defineProps<{
   item: ProposalItem
   busy: boolean
   approvalReviewId: string | null
+  reviewerRef: string
+  anchorOptions: string[]
 }>()
 
 const emit = defineEmits<{
