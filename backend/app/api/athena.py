@@ -222,12 +222,15 @@ def get_evolution_plan(project_id: str, db: Session = Depends(get_db)):
         "outline": {
             "id": outline.id,
             "status": outline.status,
-            "content": outline.content,
+            "total_chapters": outline.total_chapters,
+            "chapters": outline.chapters,
+            "plotlines": outline.plotlines,
         } if outline else None,
         "storyline": {
             "id": storyline.id,
             "status": storyline.status,
-            "content": storyline.content,
+            "plotlines": storyline.plotlines,
+            "foreshadowing": storyline.foreshadowing,
         } if storyline else None,
     }
 
