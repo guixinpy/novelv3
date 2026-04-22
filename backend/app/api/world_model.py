@@ -482,6 +482,51 @@ def _fact_record_from_model(fact: WorldFactClaim) -> FactRecord:
     )
 
 
+def _detect_item_conflicts(
+    *,
+    db: Session,
+    project_id: str,
+    items: list,
+    impact_snapshots: list,
+) -> list[dict]:
+    conflicts: list[dict] = []
+    for item in items:
+        if item.item_status in ("approved", "approved_with_edits", "rejected", "rolled_back"):
+            continue
+        existing = (
+            db.query(WorldFactClaim)
+            .filter(
+                WorldFactClaim.project_id == project_id,
+                WorldFactClaim.subject_ref == item.subject_ref,
+                WorldFactClaim.predicate == item.predicate,
+                WorldFactClaim.claim_status == "confirmed",
+                WorldFactClaim.claim_layer == "truth",
+            )
+            .first()
+        )
+        if existing is not None:
+            existing_val = existing.object_ref_or_value
+            proposed_val = item.object_ref_or_value
+            if existing_val != proposed_val:
+                conflicts.append({
+                    "item_id": item.id,
+                    "conflict_type": "truth_conflict",
+                    "detail": f"与现有真相冲突：{item.subject_ref}.{item.predicate} = {existing_val}",
+                    "existing_claim_id": existing.id,
+                })
+    for snapshot in impact_snapshots:
+        if len(snapshot.affected_truth_claim_ids) >= 3:
+            for candidate_id in snapshot.candidate_item_ids:
+                if not any(c["item_id"] == candidate_id and c["conflict_type"] == "high_impact" for c in conflicts):
+                    conflicts.append({
+                        "item_id": candidate_id,
+                        "conflict_type": "high_impact",
+                        "detail": f"高影响：涉及 {len(snapshot.affected_truth_claim_ids)} 条关联事实",
+                        "existing_claim_id": None,
+                    })
+    return conflicts
+
+
 def _build_bundle_detail(*, db: Session, project_id: str, bundle_id: str) -> ProposalBundleDetailOut:
     bundle = _get_project_bundle_or_404(db=db, project_id=project_id, bundle_id=bundle_id)
     items = (
@@ -522,9 +567,13 @@ def _build_bundle_detail(*, db: Session, project_id: str, bundle_id: str) -> Pro
     )
     if not impact_snapshots and items:
         impact_snapshots = [calculate_bundle_impact_scope(db=db, bundle_id=bundle_id)]
+    conflicts = _detect_item_conflicts(
+        db=db, project_id=project_id, items=items, impact_snapshots=impact_snapshots,
+    )
     return ProposalBundleDetailOut(
         bundle=bundle,
         items=items,
         reviews=reviews,
         impact_snapshots=impact_snapshots,
+        conflicts=conflicts,
     )

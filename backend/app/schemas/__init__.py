@@ -50,6 +50,7 @@ from .world_proposals import (
     ProposalBundleSplitCreate,
     ProposalCandidateFactCreate,
     ProposalImpactScopeSnapshotOut,
+    ProposalItemConflictOut,
     ProposalItemOut,
     ProposalReviewCreate,
     ProposalReviewOut,

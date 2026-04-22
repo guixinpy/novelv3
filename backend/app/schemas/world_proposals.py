@@ -157,6 +157,15 @@ class ProposalReviewRollbackCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class ProposalItemConflictOut(BaseModel):
+    item_id: str
+    conflict_type: str  # "truth_conflict" | "high_impact"
+    detail: str
+    existing_claim_id: str | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class PaginatedProposalBundlesOut(BaseModel):
     items: list[ProposalBundleOut] = Field(default_factory=list)
     total: int = 0
@@ -171,5 +180,6 @@ class ProposalBundleDetailOut(BaseModel):
     items: list[ProposalItemOut] = Field(default_factory=list)
     reviews: list[ProposalReviewOut] = Field(default_factory=list)
     impact_snapshots: list[ProposalImpactScopeSnapshotOut] = Field(default_factory=list)
+    conflicts: list[ProposalItemConflictOut] = Field(default_factory=list)
 
     model_config = ConfigDict(extra="forbid")
