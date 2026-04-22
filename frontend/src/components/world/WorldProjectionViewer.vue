@@ -1,14 +1,22 @@
 <template>
   <section class="world-panel" data-testid="world-projection-viewer">
     <header class="world-panel__header">
-      <div>
-        <p class="world-panel__eyebrow">当前真相</p>
-        <h3 class="world-panel__title">Current Truth</h3>
+      <div class="world-panel__tabs">
+        <button
+          v-for="tab in tabs"
+          :key="tab.key"
+          type="button"
+          class="world-panel__tab"
+          :class="{ 'is-active': activeTab === tab.key }"
+          @click="activeTab = tab.key"
+        >
+          {{ tab.label }}
+        </button>
       </div>
       <span class="world-panel__pill">{{ entityEntries.length }} 个实体</span>
     </header>
 
-    <div class="world-panel__grid">
+    <div v-if="activeTab === 'current'" class="world-panel__grid">
       <article class="world-panel__block">
         <h4>实体状态</h4>
         <ul v-if="entityEntries.length" class="world-panel__list">
@@ -19,7 +27,6 @@
         </ul>
         <p v-else class="world-panel__empty">当前没有结构化实体。</p>
       </article>
-
       <article class="world-panel__block">
         <h4>关键事实</h4>
         <ul v-if="factEntries.length" class="world-panel__list">
@@ -30,7 +37,6 @@
         </ul>
         <p v-else class="world-panel__empty">当前没有确认事实。</p>
       </article>
-
       <article class="world-panel__block">
         <h4>在场信息</h4>
         <ul v-if="presenceEntries.length" class="world-panel__list">
@@ -42,25 +48,58 @@
         <p v-else class="world-panel__empty">当前没有在场投影。</p>
       </article>
     </div>
+
+    <WorldSubjectKnowledge
+      v-else-if="activeTab === 'subject'"
+      :subject-refs="subjectRefs"
+      :projection="subjectKnowledge"
+      @select="$emit('loadSubjectKnowledge', $event)"
+    />
+
+    <WorldChapterSnapshot
+      v-else-if="activeTab === 'snapshot'"
+      :projection="chapterSnapshot"
+      :selected-chapter="selectedChapter"
+      :max-chapter="maxChapter"
+      @update:selected-chapter="$emit('loadChapterSnapshot', $event)"
+    />
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import type { WorldProjection } from '../../api/types'
+import WorldSubjectKnowledge from './WorldSubjectKnowledge.vue'
+import WorldChapterSnapshot from './WorldChapterSnapshot.vue'
 
 const props = defineProps<{
   projection: WorldProjection
+  subjectKnowledge: WorldProjection | null
+  chapterSnapshot: WorldProjection | null
+  selectedChapter: number
+  maxChapter: number
 }>()
+
+defineEmits<{
+  loadSubjectKnowledge: [subjectRef: string]
+  loadChapterSnapshot: [chapterIndex: number]
+}>()
+
+const tabs = [
+  { key: 'current', label: '当前真相' },
+  { key: 'subject', label: '主体认知' },
+  { key: 'snapshot', label: '章节快照' },
+] as const
+
+const activeTab = ref<'current' | 'subject' | 'snapshot'>('current')
 
 const entityEntries = computed(() => Object.entries(props.projection.entities).slice(0, 6))
 const factEntries = computed(() => Object.entries(props.projection.facts).slice(0, 6))
 const presenceEntries = computed(() => Object.entries(props.projection.presence).slice(0, 6))
+const subjectRefs = computed(() => Object.keys(props.projection.entities))
 
 function formatAttributes(value: Record<string, unknown>) {
-  return Object.entries(value)
-    .map(([key, entry]) => `${key}: ${String(entry)}`)
-    .join(' / ')
+  return Object.entries(value).map(([key, entry]) => `${key}: ${String(entry)}`).join(' / ')
 }
 </script>
 
@@ -142,5 +181,26 @@ function formatAttributes(value: Record<string, unknown>) {
   color: var(--ink-muted);
   font-size: 0.8rem;
   line-height: 1.5;
+}
+
+.world-panel__tabs {
+  display: flex;
+  gap: 0;
+}
+
+.world-panel__tab {
+  padding: 0.45rem 0.85rem;
+  border: none;
+  background: none;
+  color: var(--ink-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+
+.world-panel__tab.is-active {
+  color: var(--accent-strong);
+  border-bottom-color: var(--accent-strong);
 }
 </style>
