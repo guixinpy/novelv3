@@ -333,7 +333,7 @@ async def athena_chat(project_id: str, payload: ChatIn, db: Session = Depends(ge
     if user_text:
         _save_message(db, dialog.id, "user", user_text)
 
-    reply = await _free_chat_reply(db, dialog, project, diagnosis)
+    reply = await _free_chat_reply(db, dialog, project, diagnosis, dialog_type="athena")
     _save_message(db, dialog.id, "assistant", reply)
     return ChatOut(
         message=reply,
