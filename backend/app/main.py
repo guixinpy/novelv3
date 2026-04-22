@@ -1,8 +1,9 @@
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-import os
+from fastapi.staticfiles import StaticFiles
 
 app = FastAPI(title="Mozhou AI Writer")
 
@@ -15,6 +16,7 @@ app.add_middleware(
 )
 
 from app.api import (
+    athena,
     background_tasks_api,
     chapters,
     config,
@@ -47,6 +49,7 @@ app.include_router(export.router)
 app.include_router(preferences.router)
 app.include_router(background_tasks_api.router)
 app.include_router(world_model.router)
+app.include_router(athena.router)
 
 @app.get("/api/v1/health")
 def health():
