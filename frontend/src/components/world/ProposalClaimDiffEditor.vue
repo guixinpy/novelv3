@@ -40,7 +40,7 @@
           <template v-else-if="field.type === 'textarea'">
             <div v-if="isChanged(field.key)" class="diff-editor__original">{{ field.original }}</div>
             <textarea
-              :value="editedValues[field.key] ?? field.original ?? ''"
+              :value="String(editedValues[field.key] ?? field.original ?? '')"
               class="diff-editor__textarea"
               rows="2"
               @input="onInput(field.key, ($event.target as HTMLTextAreaElement).value, 'string')"

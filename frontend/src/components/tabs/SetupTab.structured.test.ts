@@ -173,6 +173,7 @@ function seedWorldModelForProposalItems(itemOverrides: Array<Record<string, unkn
       created_at: `2026-04-20T00:00:0${index + 1}Z`,
     })),
     impact_snapshots: [],
+    conflicts: [],
   }
   return worldModel
 }

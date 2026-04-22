@@ -304,7 +304,7 @@ describe('worldModel store', () => {
       edited_fields: {},
     })
     expect(api.getWorldModelOverview).toHaveBeenCalledWith('project-1')
-    expect(api.listWorldProposalBundles).toHaveBeenCalledWith('project-1')
+    expect(api.listWorldProposalBundles).toHaveBeenCalledWith('project-1', expect.any(Object))
     expect(api.getWorldProposalBundle).toHaveBeenCalledWith('project-1', 'bundle-1')
     expect(store.projection?.facts['char.hero'].rank).toBe('captain')
     expect(store.proposalBundles[0].bundle_status).toBe('approved')
