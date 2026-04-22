@@ -1,17 +1,18 @@
-import json
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from app.db import get_db
-from app.models import Project, Setup, Storyline, Outline, ChapterContent, Dialog, DialogMessage, PendingAction
-from app.schemas import ChatOut, ChatIn, ResolveActionIn, ProjectDiagnosisOut, PendingActionOut, ChatMessageOut
+
+from app.config import load_api_key
 from app.core.ai_service import AIService
 from app.core.chat_commands import build_command_text, command_to_action_type, parse_command
 from app.core.chat_compaction import build_compaction_summary, select_compactable_plain_messages
-from app.core.prompt_manager import PromptManager
-from app.config import load_api_key
-from datetime import datetime, timezone
 from app.core.intent_router import IntentRouter
-from app.core.ui_hints import build_ui_hint, action_to_refresh_targets
+from app.core.prompt_manager import PromptManager
+from app.core.ui_hints import action_to_refresh_targets, build_ui_hint
+from app.db import get_db
+from app.models import ChapterContent, Dialog, DialogMessage, Outline, PendingAction, Project, Setup, Storyline
+from app.schemas import ChatIn, ChatOut, PendingActionOut, ProjectDiagnosisOut, ResolveActionIn
 
 router = APIRouter(tags=["dialogs"])
 ai_service = AIService()
@@ -34,10 +35,13 @@ RUNNING_ACTION_STATUSES = {"running", "generating"}
 RUNNING_BLOCKED_COMMANDS = {"clear", "compact", "setup", "storyline", "outline"}
 
 
-def _get_or_create_dialog(db: Session, project_id: str) -> Dialog:
-    dialog = db.query(Dialog).filter(Dialog.project_id == project_id).first()
+def _get_or_create_dialog(db: Session, project_id: str, dialog_type: str = "hermes") -> Dialog:
+    dialog = db.query(Dialog).filter(
+        Dialog.project_id == project_id,
+        Dialog.dialog_type == dialog_type,
+    ).first()
     if not dialog:
-        dialog = Dialog(project_id=project_id)
+        dialog = Dialog(project_id=project_id, dialog_type=dialog_type)
         db.add(dialog)
         db.commit()
         db.refresh(dialog)
@@ -211,7 +215,7 @@ def _handle_clear_command(db: Session, dialog: Dialog, diagnosis: ProjectDiagnos
         {
             "status": "cancelled",
             "decision_comment": "invalidated by /clear",
-            "resolved_at": datetime.now(timezone.utc),
+            "resolved_at": datetime.now(UTC),
         },
         synchronize_session=False,
     )
@@ -396,8 +400,11 @@ async def _free_chat_reply(db: Session, dialog: Dialog, project: Project, diagno
 
 
 @router.get("/api/v1/dialog/projects/{project_id}/messages")
-def get_messages(project_id: str, db: Session = Depends(get_db)):
-    dialog = db.query(Dialog).filter(Dialog.project_id == project_id).first()
+def get_messages(project_id: str, dialog_type: str = "hermes", db: Session = Depends(get_db)):
+    dialog = db.query(Dialog).filter(
+        Dialog.project_id == project_id,
+        Dialog.dialog_type == dialog_type,
+    ).first()
     if not dialog:
         return []
     msgs = db.query(DialogMessage).filter(DialogMessage.dialog_id == dialog.id).order_by(DialogMessage.created_at).all()
@@ -651,6 +658,7 @@ def _action_description(action_type: str) -> str:
 
 import asyncio
 
+
 async def _execute_action(action_type: str, project_id: str, db: Session, command_args: str | None = None) -> dict:
     if not project_id:
         return {"status": "failed", "error": "缺少项目 ID"}
@@ -723,7 +731,7 @@ async def resolve_action(payload: ResolveActionIn, db: Session = Depends(get_db)
         {
             "status": payload.decision,
             "decision_comment": payload.comment,
-            "resolved_at": datetime.now(timezone.utc),
+            "resolved_at": datetime.now(UTC),
         },
         synchronize_session=False,
     )
@@ -798,6 +806,7 @@ def _resolve_message(decision: str) -> str:
 
 
 from pydantic import BaseModel as PydanticBaseModel
+
 
 class StateUpdate(PydanticBaseModel):
     current_view: str = "overview"
