@@ -1,5 +1,7 @@
-@import './styles/reset.css';
 @import './styles/tokens.css';
+@import './styles/reset.css';
 @import './styles/base.css';
 
+@tailwind base;
+@tailwind components;
 @tailwind utilities;
