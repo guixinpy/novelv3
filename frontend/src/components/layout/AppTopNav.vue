@@ -13,6 +13,8 @@ const projectId = computed(() => {
 })
 
 const isAthenaRoute = computed(() => route.path.endsWith('/athena'))
+const isManuscriptRoute = computed(() => route.path.endsWith('/manuscript'))
+const isHermesRoute = computed(() => !!projectId.value && !isAthenaRoute.value && !isManuscriptRoute.value)
 </script>
 
 <template>
@@ -40,7 +42,7 @@ const isAthenaRoute = computed(() => route.path.endsWith('/athena'))
           <router-link
             :to="`/projects/${projectId}`"
             class="app-top-nav__link app-top-nav__link--hermes"
-            :class="{ 'is-active': !!projectId && !isAthenaRoute }"
+            :class="{ 'is-active': isHermesRoute }"
           >
             ☿ Hermes
           </router-link>
@@ -51,6 +53,12 @@ const isAthenaRoute = computed(() => route.path.endsWith('/athena'))
           >
             ⏣ Athena
           </router-link>
+          <span
+            class="app-top-nav__link app-top-nav__link--manuscript"
+            title="即将推出"
+          >
+            📜 Manuscript
+          </span>
         </template>
         <router-link
           to="/settings"
@@ -66,10 +74,21 @@ const isAthenaRoute = computed(() => route.path.endsWith('/athena'))
 
 <style scoped>
 .app-top-nav__link--hermes.is-active {
-  color: var(--accent-strong);
+  color: var(--hermes-accent);
+  border-color: rgba(196, 85, 58, 0.24);
+  background: rgba(196, 85, 58, 0.08);
 }
 
 .app-top-nav__link--athena.is-active {
-  color: var(--accent-strong);
+  color: var(--athena-accent);
+  border-color: rgba(212, 168, 83, 0.24);
+  background: rgba(212, 168, 83, 0.08);
+}
+
+.app-top-nav__link--manuscript {
+  opacity: 0.4;
+  cursor: default;
+  pointer-events: none;
+  user-select: none;
 }
 </style>
