@@ -1,40 +1,45 @@
 <template>
   <div class="action-card">
-    <p class="action-card__copy">{{ action.description }}</p>
+    <p class="action-card__copy">
+      {{ action.description }}
+    </p>
     <div class="action-card__actions">
       <button
-        @click="$emit('decide', 'confirm')"
         :disabled="disabled"
         class="action-card__button action-card__button--primary"
+        @click="$emit('decide', 'confirm')"
       >
         同意执行
       </button>
       <button
-        @click="$emit('decide', 'cancel')"
         :disabled="disabled"
         class="action-card__button"
+        @click="$emit('decide', 'cancel')"
       >
         取消
       </button>
       <button
-        @click="showRevise = !showRevise"
         :disabled="disabled"
         class="action-card__button"
+        @click="showRevise = !showRevise"
       >
         修改后再执行
       </button>
     </div>
-    <div v-if="showRevise" class="action-card__revise">
+    <div
+      v-if="showRevise"
+      class="action-card__revise"
+    >
       <input
         v-model="reviseComment"
         class="action-card__input"
         placeholder="补充修改说明..."
         @keyup.enter="submitRevise"
-      />
+      >
       <button
-        @click="submitRevise"
         :disabled="disabled || !reviseComment.trim()"
         class="action-card__button action-card__button--primary"
+        @click="submitRevise"
       >
         提交
       </button>

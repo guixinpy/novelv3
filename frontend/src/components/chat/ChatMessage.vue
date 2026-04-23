@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import ActionCard from '../ActionCard.vue'
-import ChatSummaryCard from '../ChatSummaryCard.vue'
+import ActionCard from './ActionCard.vue'
+import ChatSummaryCard from './ChatSummaryCard.vue'
 
 const props = defineProps<{
   msg: any

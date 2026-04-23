@@ -8,11 +8,18 @@
     >
       <span class="summary-card__headline">
         <span class="summary-card__title">{{ title }}</span>
-        <span v-if="compactedCount > 0" class="summary-card__meta">已压缩 {{ compactedCount }} 条消息</span>
+        <span
+          v-if="compactedCount > 0"
+          class="summary-card__meta"
+        >已压缩 {{ compactedCount }} 条消息</span>
       </span>
       <span class="summary-card__arrow">{{ expanded ? '收起' : '展开' }}</span>
     </button>
-    <div v-if="expanded" class="summary-card__body" data-testid="chat-summary-body">
+    <div
+      v-if="expanded"
+      class="summary-card__body"
+      data-testid="chat-summary-body"
+    >
       {{ content }}
     </div>
   </article>
