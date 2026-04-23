@@ -81,13 +81,15 @@ const entitySections = new Set(['characters', 'locations', 'factions', 'items'])
 const entities = computed(() => {
   if (!entitySections.has(activeSection.value)) return []
   const type = entityTypeMap[activeSection.value]
-  const allEntities = athena.ontology?.entities || []
-  return allEntities.filter((e: any) => !type || e.type === type || e.entity_type === type)
+  const entitiesMap = athena.ontology?.entities
+  if (!entitiesMap || typeof entitiesMap !== 'object') return []
+  const list = entitiesMap[type] || entitiesMap[activeSection.value] || []
+  return Array.isArray(list) ? list : []
 })
 
 const relations = computed(() => athena.ontology?.relations || [])
 const rules = computed(() => athena.ontology?.rules || [])
-const timelineEvents = computed(() => athena.timeline?.events || athena.timeline?.entries || [])
+const timelineEvents = computed(() => athena.timeline?.events || [])
 const timelineAnchors = computed(() => athena.timeline?.anchors || [])
 const consistencyIssues = computed<any[]>(() => [])
 

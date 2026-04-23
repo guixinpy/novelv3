@@ -13,8 +13,6 @@ import ChatInput from '../components/chat/ChatInput.vue'
 import BaseButton from '../components/base/BaseButton.vue'
 import { parseSlashCommand } from '../components/workspace/chatCommands'
 import {
-  getActionLabel,
-  getActionPanel,
   getActionRefreshTargets,
   getPanelRefreshTargets,
   getVersionRefreshTarget,
