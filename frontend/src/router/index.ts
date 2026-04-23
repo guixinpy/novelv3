@@ -1,55 +1,54 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
+
 import ProjectList from '../views/ProjectList.vue'
 import ProjectDetail from '../views/ProjectDetail.vue'
 import AthenaView from '../views/AthenaView.vue'
+import ManuscriptPlaceholder from '../views/ManuscriptPlaceholder.vue'
 import SettingsView from '../views/SettingsView.vue'
 
-type ShellMode = 'default' | 'workspace'
-type ShellSurface = 'panel' | 'none'
-type NavSection = 'projects' | 'settings'
+export interface AppRouteMeta {
+  showSidebar: boolean
+  workspace: 'hermes' | 'athena' | 'manuscript' | null
+}
 
-type AppRouteMeta = {
-  shellMode: ShellMode
-  shellSurface: ShellSurface
-  navSection: NavSection
+declare module 'vue-router' {
+  interface RouteMeta extends Partial<AppRouteMeta> {}
 }
 
 const routes: RouteRecordRaw[] = [
   {
     path: '/',
     component: ProjectList,
-    meta: {
-      shellMode: 'default',
-      shellSurface: 'panel',
-      navSection: 'projects',
-    } satisfies AppRouteMeta,
+    meta: { showSidebar: false, workspace: null } satisfies AppRouteMeta,
   },
   {
     path: '/projects/:id',
+    redirect: (to) => `/projects/${to.params.id}/hermes`,
+  },
+  {
+    path: '/projects/:id/hermes',
     component: ProjectDetail,
-    meta: {
-      shellMode: 'workspace',
-      shellSurface: 'none',
-      navSection: 'projects',
-    } satisfies AppRouteMeta,
+    meta: { showSidebar: true, workspace: 'hermes' } satisfies AppRouteMeta,
   },
   {
     path: '/projects/:id/athena',
     component: AthenaView,
-    meta: {
-      shellMode: 'default',
-      shellSurface: 'none',
-      navSection: 'projects',
-    } satisfies AppRouteMeta,
+    meta: { showSidebar: true, workspace: 'athena' } satisfies AppRouteMeta,
+  },
+  {
+    path: '/projects/:id/athena/:section',
+    component: AthenaView,
+    meta: { showSidebar: true, workspace: 'athena' } satisfies AppRouteMeta,
+  },
+  {
+    path: '/projects/:id/manuscript',
+    component: ManuscriptPlaceholder,
+    meta: { showSidebar: true, workspace: 'manuscript' } satisfies AppRouteMeta,
   },
   {
     path: '/settings',
     component: SettingsView,
-    meta: {
-      shellMode: 'default',
-      shellSurface: 'panel',
-      navSection: 'settings',
-    } satisfies AppRouteMeta,
+    meta: { showSidebar: false, workspace: null } satisfies AppRouteMeta,
   },
 ]
 
