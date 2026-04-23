@@ -3,7 +3,7 @@ import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import ProjectListView from '../views/ProjectListView.vue'
 import HermesView from '../views/HermesView.vue'
 import AthenaView from '../views/AthenaView.vue'
-import ManuscriptPlaceholder from '../views/ManuscriptPlaceholder.vue'
+import ManuscriptView from '../views/ManuscriptView.vue'
 import SettingsView from '../views/SettingsView.vue'
 
 export interface AppRouteMeta {
@@ -42,7 +42,7 @@ const routes: RouteRecordRaw[] = [
   },
   {
     path: '/projects/:id/manuscript',
-    component: ManuscriptPlaceholder,
+    component: ManuscriptView,
     meta: { showSidebar: true, workspace: 'manuscript' } satisfies AppRouteMeta,
   },
   {
