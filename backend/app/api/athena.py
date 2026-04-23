@@ -19,6 +19,7 @@ from app.models import (
     WorldRule,
     WorldTimelineAnchor,
 )
+from app.api.outlines import ChapterOutlineUpdate
 from app.schemas import (
     ChatIn,
     ChatOut,
@@ -304,6 +305,46 @@ def rollback_evolution_review(
 def get_evolution_consistency(project_id: str, db: Session = Depends(get_db)):
     from app.api.consistency import list_issues
     return list_issues(project_id, db)
+
+
+@router.get("/ontology/setup")
+def get_ontology_setup(project_id: str, db: Session = Depends(get_db)):
+    from app.api.setups import get_setup
+    return get_setup(project_id, db)
+
+
+@router.get("/ontology/character-graph")
+def get_ontology_character_graph(project_id: str, db: Session = Depends(get_db)):
+    from app.api.topologies import character_graph
+    return character_graph(project_id, db)
+
+
+@router.get("/ontology/topology-timeline")
+def get_ontology_topology_timeline(project_id: str, db: Session = Depends(get_db)):
+    from app.api.topologies import timeline
+    return timeline(project_id, db)
+
+
+@router.post("/evolution/consistency/chapters/{chapter_index}/check")
+async def check_evolution_consistency(
+    project_id: str,
+    chapter_index: int,
+    depth: str = "l1",
+    db: Session = Depends(get_db),
+):
+    from app.api.consistency import run_check
+    return await run_check(project_id, chapter_index, depth, db)
+
+
+@router.patch("/evolution/plan/outline/chapters/{chapter_index}")
+def update_evolution_chapter_outline(
+    project_id: str,
+    chapter_index: int,
+    payload: ChapterOutlineUpdate,
+    db: Session = Depends(get_db),
+):
+    from app.api.outlines import update_chapter_outline
+    return update_chapter_outline(project_id, chapter_index, payload, db)
 
 
 # ── Athena Dialog ──
