@@ -75,6 +75,13 @@ def get_ontology(project_id: str, db: Session = Depends(get_db)):
                 for item in items
             ]
 
+    if not any(entities.get(k) for k in entities) and setup and setup.characters:
+        entities["characters"] = [
+            {"id": f"setup-char-{i}", "name": c.get("name", f"角色{i+1}")}
+            for i, c in enumerate(setup.characters)
+            if isinstance(c, dict)
+        ]
+
     relations = []
     if profile:
         rels = db.query(WorldRelation).filter(WorldRelation.project_id == project_id).all()
@@ -88,10 +95,16 @@ def get_ontology(project_id: str, db: Session = Depends(get_db)):
         rule_rows = db.query(WorldRule).filter(WorldRule.project_id == project_id).all()
         rules = [{"id": r.id, "rule_id": r.rule_id, "description": r.description} for r in rule_rows]
 
+    world_rules_from_setup = []
+    if not rules and setup and setup.world_building:
+        wb = setup.world_building
+        if isinstance(wb, dict) and wb.get("rules"):
+            world_rules_from_setup = [{"id": "setup-rule-0", "rule_id": "setup-rules", "description": wb["rules"]}]
+
     return {
         "entities": entities,
         "relations": relations,
-        "rules": rules,
+        "rules": rules or world_rules_from_setup,
         "setup_summary": {
             "characters": setup.characters if setup else None,
             "world_building": setup.world_building if setup else None,
