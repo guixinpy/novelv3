@@ -92,6 +92,12 @@ export const api = {
     }),
   getAthenaMessages: (id: string) =>
     request<ChatHistoryMessage[]>(`/projects/${id}/athena/dialog/messages`),
+  getAthenaSetup: (id: string) =>
+    request(`/projects/${id}/athena/ontology/setup`),
+  getAthenaCharacterGraph: (id: string) =>
+    request(`/projects/${id}/athena/ontology/character-graph`),
+  runAthenaConsistencyCheck: (id: string, chapterIndex: number, depth: string = 'l1') =>
+    request(`/projects/${id}/athena/evolution/consistency/chapters/${chapterIndex}/check?depth=${depth}`, { method: 'POST' }),
   generateChapter: (id: string, index: number) => request(`/projects/${id}/chapters/${index}/generate`, { method: 'POST' }),
   getChapter: (id: string, index: number) => request(`/projects/${id}/chapters/${index}`),
   getConfig: () => request('/config'),

@@ -24,6 +24,8 @@ export const useAthenaStore = defineStore('athena', () => {
   const evolutionPlan = ref<AthenaEvolutionPlan | null>(null)
   const proposals = ref<PaginatedProposalBundles | null>(null)
 
+  const setup = ref<unknown>(null)
+
   const messages = ref<ChatHistoryMessage[]>([])
   const chatLoading = ref(false)
 
@@ -76,6 +78,22 @@ export const useAthenaStore = defineStore('athena', () => {
     }
   }
 
+  async function loadSetup(projectId: string) {
+    try {
+      setup.value = await api.getAthenaSetup(projectId)
+    } catch (err) {
+      error.value = toErrorMessage(err)
+    }
+  }
+
+  async function runConsistencyCheck(projectId: string, chapterIndex: number, depth: string = 'l1') {
+    try {
+      await api.runAthenaConsistencyCheck(projectId, chapterIndex, depth)
+    } catch (err) {
+      error.value = toErrorMessage(err)
+    }
+  }
+
   async function sendChat(projectId: string, text: string) {
     chatLoading.value = true
     try {
@@ -94,6 +112,7 @@ export const useAthenaStore = defineStore('athena', () => {
     timeline.value = null
     evolutionPlan.value = null
     proposals.value = null
+    setup.value = null
     messages.value = []
     error.value = null
   }
@@ -106,6 +125,7 @@ export const useAthenaStore = defineStore('athena', () => {
     timeline,
     evolutionPlan,
     proposals,
+    setup,
     messages,
     chatLoading,
     loadOntology,
@@ -113,6 +133,8 @@ export const useAthenaStore = defineStore('athena', () => {
     loadTimeline,
     loadEvolutionPlan,
     loadProposals,
+    loadSetup,
+    runConsistencyCheck,
     loadMessages,
     sendChat,
     reset,
