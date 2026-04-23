@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 
 import ProjectList from '../views/ProjectList.vue'
+import ProjectListView from '../views/ProjectListView.vue'
 import ProjectDetail from '../views/ProjectDetail.vue'
 import AthenaView from '../views/AthenaView.vue'
 import ManuscriptPlaceholder from '../views/ManuscriptPlaceholder.vue'
@@ -18,7 +19,7 @@ declare module 'vue-router' {
 const routes: RouteRecordRaw[] = [
   {
     path: '/',
-    component: ProjectList,
+    component: ProjectListView,
     meta: { showSidebar: false, workspace: null } satisfies AppRouteMeta,
   },
   {
