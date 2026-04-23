@@ -1,19 +1,24 @@
 import json
-from fastapi import APIRouter, Depends, HTTPException
+
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
-from app.db import get_db
-from app.models import Project, Storyline, Outline
-from app.schemas import OutlineOut
+
+from app.api.deprecation import add_deprecation_header
+from app.config import load_api_key
 from app.core.ai_service import AIService
 from app.core.prompt_manager import PromptManager
-from app.config import load_api_key
+from app.db import get_db
+from app.models import Outline, Project, Storyline
+from app.schemas import OutlineOut
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/outline", tags=["outlines"])
 ai_service = AIService()
 
 
 @router.post("/generate", response_model=OutlineOut)
-async def generate_outline(project_id: str, db: Session = Depends(get_db), command_args: str | None = None):
+async def generate_outline(project_id: str, db: Session = Depends(get_db), command_args: str | None = None, response: Response = None):
+    if response:
+        add_deprecation_header(response, f"/api/v1/projects/{project_id}/athena/evolution/plan/generate?target=outline")
     if not load_api_key():
         raise HTTPException(status_code=400, detail="API key not configured")
 
@@ -73,7 +78,9 @@ async def generate_outline(project_id: str, db: Session = Depends(get_db), comma
 
 
 @router.get("", response_model=OutlineOut)
-def get_outline(project_id: str, db: Session = Depends(get_db)):
+def get_outline(project_id: str, db: Session = Depends(get_db), response: Response = None):
+    if response:
+        add_deprecation_header(response, f"/api/v1/projects/{project_id}/athena/evolution/plan")
     outline = db.query(Outline).filter(Outline.project_id == project_id).first()
     if not outline:
         raise HTTPException(status_code=404, detail="Outline not found")
@@ -81,6 +88,7 @@ def get_outline(project_id: str, db: Session = Depends(get_db)):
 
 
 from pydantic import BaseModel
+
 
 class ChapterOutlineUpdate(BaseModel):
     title: str | None = None
@@ -91,7 +99,9 @@ class ChapterOutlineUpdate(BaseModel):
 
 
 @router.patch("/chapters/{chapter_index}")
-def update_chapter_outline(project_id: str, chapter_index: int, payload: ChapterOutlineUpdate, db: Session = Depends(get_db)):
+def update_chapter_outline(project_id: str, chapter_index: int, payload: ChapterOutlineUpdate, db: Session = Depends(get_db), response: Response = None):
+    if response:
+        add_deprecation_header(response, f"/api/v1/projects/{project_id}/athena/evolution/plan/outline/chapters/{chapter_index}")
     outline = db.query(Outline).filter(Outline.project_id == project_id).first()
     if not outline:
         raise HTTPException(status_code=404, detail="Outline not found")

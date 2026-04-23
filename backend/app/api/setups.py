@@ -1,12 +1,13 @@
-import json
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
-from app.db import get_db
-from app.models import Project, Setup
-from app.schemas import SetupOut
+
+from app.api.deprecation import add_deprecation_header
 from app.config import load_api_key
 from app.core.ai_service import AIService
 from app.core.prompt_manager import PromptManager
+from app.db import get_db
+from app.models import Project, Setup
+from app.schemas import SetupOut
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/setup", tags=["setups"])
 
@@ -14,7 +15,9 @@ ai_service = AIService()
 
 
 @router.post("/generate", response_model=SetupOut)
-async def generate_setup(project_id: str, db: Session = Depends(get_db), command_args: str | None = None):
+async def generate_setup(project_id: str, db: Session = Depends(get_db), command_args: str | None = None, response: Response = None):
+    if response:
+        add_deprecation_header(response, f"/api/v1/projects/{project_id}/athena/ontology/generate")
     if not load_api_key():
         raise HTTPException(status_code=400, detail="API key not configured")
 
@@ -72,7 +75,9 @@ async def generate_setup(project_id: str, db: Session = Depends(get_db), command
 
 
 @router.get("", response_model=SetupOut)
-def get_setup(project_id: str, db: Session = Depends(get_db)):
+def get_setup(project_id: str, db: Session = Depends(get_db), response: Response = None):
+    if response:
+        add_deprecation_header(response, f"/api/v1/projects/{project_id}/athena/ontology")
     setup = db.query(Setup).filter(Setup.project_id == project_id).first()
     if not setup:
         raise HTTPException(status_code=404, detail="Setup not found")

@@ -1,19 +1,24 @@
 import json
-from fastapi import APIRouter, Depends, HTTPException
+
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
+
+from app.api.deprecation import add_deprecation_header
+from app.config import load_api_key
+from app.core.ai_service import AIService
+from app.core.prompt_manager import PromptManager
 from app.db import get_db
 from app.models import Project, Setup, Storyline
 from app.schemas import StorylineOut
-from app.core.ai_service import AIService
-from app.core.prompt_manager import PromptManager
-from app.config import load_api_key
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/storyline", tags=["storylines"])
 ai_service = AIService()
 
 
 @router.post("/generate", response_model=StorylineOut)
-async def generate_storyline(project_id: str, db: Session = Depends(get_db), command_args: str | None = None):
+async def generate_storyline(project_id: str, db: Session = Depends(get_db), command_args: str | None = None, response: Response = None):
+    if response:
+        add_deprecation_header(response, f"/api/v1/projects/{project_id}/athena/evolution/plan/generate?target=storyline")
     if not load_api_key():
         raise HTTPException(status_code=400, detail="API key not configured")
 
@@ -73,7 +78,9 @@ async def generate_storyline(project_id: str, db: Session = Depends(get_db), com
 
 
 @router.get("", response_model=StorylineOut)
-def get_storyline(project_id: str, db: Session = Depends(get_db)):
+def get_storyline(project_id: str, db: Session = Depends(get_db), response: Response = None):
+    if response:
+        add_deprecation_header(response, f"/api/v1/projects/{project_id}/athena/evolution/plan")
     storyline = db.query(Storyline).filter(Storyline.project_id == project_id).first()
     if not storyline:
         raise HTTPException(status_code=404, detail="Storyline not found")

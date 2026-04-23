@@ -1,17 +1,22 @@
 import asyncio
-from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException
+from datetime import UTC, datetime
+
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
-from app.db import get_db
-from app.models import Project, ChapterContent, Setup, ConsistencyCheck, BackgroundTask
-from app.schemas import ConsistencyIssueOut
+
+from app.api.deprecation import add_deprecation_header
 from app.core.consistency_checker import ConsistencyChecker
+from app.db import get_db
+from app.models import BackgroundTask, ChapterContent, ConsistencyCheck, Project, Setup
+from app.schemas import ConsistencyIssueOut
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/consistency", tags=["consistency"])
 
 
 @router.post("/chapters/{chapter_index}/check")
-async def run_check(project_id: str, chapter_index: int, depth: str = "l1", db: Session = Depends(get_db)):
+async def run_check(project_id: str, chapter_index: int, depth: str = "l1", db: Session = Depends(get_db), response: Response = None):
+    if response:
+        add_deprecation_header(response, f"/api/v1/projects/{project_id}/athena/evolution/consistency/chapters/{chapter_index}/check")
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -41,7 +46,7 @@ async def run_check(project_id: str, chapter_index: int, depth: str = "l1", db: 
             try:
                 t = dbs.query(BackgroundTask).filter(BackgroundTask.id == task.id).first()
                 t.status = "running"
-                t.started_at = datetime.now(timezone.utc)
+                t.started_at = datetime.now(UTC)
                 dbs.commit()
 
                 analyzer = BackgroundAnalyzer()
@@ -50,13 +55,13 @@ async def run_check(project_id: str, chapter_index: int, depth: str = "l1", db: 
                 t = dbs.query(BackgroundTask).filter(BackgroundTask.id == task.id).first()
                 t.status = "completed"
                 t.result = result
-                t.finished_at = datetime.now(timezone.utc)
+                t.finished_at = datetime.now(UTC)
                 dbs.commit()
             except Exception as e:
                 t = dbs.query(BackgroundTask).filter(BackgroundTask.id == task.id).first()
                 t.status = "failed"
                 t.error = str(e)
-                t.finished_at = datetime.now(timezone.utc)
+                t.finished_at = datetime.now(UTC)
                 dbs.commit()
             finally:
                 dbs.close()
@@ -81,7 +86,9 @@ async def run_check(project_id: str, chapter_index: int, depth: str = "l1", db: 
 
 
 @router.get("/issues", response_model=list[ConsistencyIssueOut])
-def list_issues(project_id: str, db: Session = Depends(get_db)):
+def list_issues(project_id: str, db: Session = Depends(get_db), response: Response = None):
+    if response:
+        add_deprecation_header(response, f"/api/v1/projects/{project_id}/athena/evolution/consistency")
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")

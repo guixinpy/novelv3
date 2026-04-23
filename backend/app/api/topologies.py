@@ -1,15 +1,19 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
-from app.db import get_db
-from app.models import Project, Setup, Outline, Topology
-from app.schemas import TopologyOut
+
+from app.api.deprecation import add_deprecation_header
 from app.core.topology_builder import TopologyBuilder
+from app.db import get_db
+from app.models import Outline, Project, Setup, Topology
+from app.schemas import TopologyOut
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/topology", tags=["topologies"])
 
 
 @router.get("", response_model=TopologyOut)
-def get_topology(project_id: str, db: Session = Depends(get_db)):
+def get_topology(project_id: str, db: Session = Depends(get_db), response: Response = None):
+    if response:
+        add_deprecation_header(response, f"/api/v1/projects/{project_id}/athena/ontology/relations")
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -34,7 +38,9 @@ def get_topology(project_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/character-graph")
-def character_graph(project_id: str, db: Session = Depends(get_db)):
+def character_graph(project_id: str, db: Session = Depends(get_db), response: Response = None):
+    if response:
+        add_deprecation_header(response, f"/api/v1/projects/{project_id}/athena/ontology/character-graph")
     topology = get_topology(project_id, db)
     nodes = [n for n in topology.nodes if n.get("type") == "CHARACTER"]
     edges = [e for e in topology.edges if e.get("type") in ("relationship", "appearance")]
@@ -42,7 +48,9 @@ def character_graph(project_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/timeline")
-def timeline(project_id: str, db: Session = Depends(get_db)):
+def timeline(project_id: str, db: Session = Depends(get_db), response: Response = None):
+    if response:
+        add_deprecation_header(response, f"/api/v1/projects/{project_id}/athena/ontology/timeline")
     topology = get_topology(project_id, db)
     nodes = [n for n in topology.nodes if n.get("type") == "EVENT"]
     nodes.sort(key=lambda x: x.get("meta", {}).get("chapter_index", 0))
