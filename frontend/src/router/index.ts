@@ -1,7 +1,7 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 
 import ProjectListView from '../views/ProjectListView.vue'
-import ProjectDetail from '../views/ProjectDetail.vue'
+import HermesView from '../views/HermesView.vue'
 import AthenaView from '../views/AthenaView.vue'
 import ManuscriptPlaceholder from '../views/ManuscriptPlaceholder.vue'
 import SettingsView from '../views/SettingsView.vue'
@@ -27,7 +27,7 @@ const routes: RouteRecordRaw[] = [
   },
   {
     path: '/projects/:id/hermes',
-    component: ProjectDetail,
+    component: HermesView,
     meta: { showSidebar: true, workspace: 'hermes' } satisfies AppRouteMeta,
   },
   {

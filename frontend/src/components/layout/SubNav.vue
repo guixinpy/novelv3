@@ -5,7 +5,7 @@ const emit = defineEmits<{ 'toggle-collapse': [] }>()
 
 <template>
   <aside class="subnav" :class="{ 'subnav--collapsed': collapsed }">
-    <div class="subnav__content"><slot /></div>
+    <div class="subnav__content" data-subnav-content><slot /></div>
     <button class="subnav__toggle" :aria-label="collapsed ? '展开侧栏' : '收起侧栏'" @click="emit('toggle-collapse')">
       {{ collapsed ? '›' : '‹' }}
     </button>
