@@ -9,6 +9,7 @@ vi.mock('../api/client', () => ({
     getDiagnosis: vi.fn(),
     resolveAction: vi.fn(),
     sendChat: vi.fn(),
+    regenerateRevision: vi.fn(),
   },
 }))
 
@@ -767,4 +768,73 @@ describe('chat workspace polling', () => {
       },
     ])
   })
+
+  it('regenerateRevision 会追加修订消息、调用再生成并刷新诊断', async () => {
+    const store = useChatStore()
+    store.projectId = 'project-1'
+
+    vi.mocked(api.regenerateRevision).mockResolvedValue({
+      id: 'chapter-1',
+      project_id: 'project-1',
+      chapter_index: 1,
+      title: '第一章',
+      content: '重写后的正文',
+      word_count: 6,
+      status: 'generated',
+      model: 'deepseek-chat',
+      prompt_tokens: 10,
+      completion_tokens: 20,
+      generation_time: 1000,
+      temperature: 0.7,
+      created_at: '2026-04-24T00:00:00Z',
+      updated_at: '2026-04-24T00:00:00Z',
+    })
+    vi.mocked(api.getDiagnosis).mockResolvedValue({
+      missing_items: [],
+      completed_items: ['content'],
+      suggested_next_step: null,
+    })
+    vi.mocked(api.getMessages).mockResolvedValue([
+      {
+        role: 'user',
+        content: '提交修订 revision-1，请根据批注和修正重新生成章节。',
+        created_at: '2026-04-24T00:00:00Z',
+      },
+      {
+        role: 'assistant',
+        content: '已根据修订反馈重新生成第 1 章。',
+        action_result: { type: 'regenerate_revision', status: 'success' },
+        created_at: '2026-04-24T00:00:01Z',
+      },
+    ])
+
+    const chapter = await store.regenerateRevision('revision-1')
+
+    expect(api.regenerateRevision).toHaveBeenCalledWith('project-1', 'revision-1')
+    expect(api.getMessages).toHaveBeenCalledWith('project-1', 'hermes')
+    expect(chapter?.content).toBe('重写后的正文')
+    expect(store.messages).toEqual([
+      {
+        role: 'user',
+        content: '提交修订 revision-1，请根据批注和修正重新生成章节。',
+        message_type: null,
+        meta: null,
+        pending_action: null,
+        diagnosis: null,
+        action_result: null,
+      },
+      {
+        role: 'assistant',
+        content: '已根据修订反馈重新生成第 1 章。',
+        message_type: null,
+        meta: null,
+        pending_action: null,
+        diagnosis: null,
+        action_result: { type: 'regenerate_revision', status: 'success' },
+      },
+    ])
+    expect(store.diagnosis?.completed_items).toEqual(['content'])
+    expect(store.loading).toBe(false)
+  })
+
 })

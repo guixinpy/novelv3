@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api/client'
 import type { ChatResponse, RefreshTarget, ResolveActionResponse, WorkspacePanel } from '../api/types'
-import PhaseProgress from '../components/shared/PhaseProgress.vue'
-import type { PhaseItem } from '../components/shared/PhaseProgress.vue'
+import ProjectDashboard from '../components/shared/ProjectDashboard.vue'
 import ChapterList from '../components/shared/ChapterList.vue'
 import ExportModal from '../components/shared/ExportModal.vue'
 import VersionsModal from '../components/shared/VersionsModal.vue'
@@ -37,6 +36,7 @@ type UiAwareResponse =
   | Pick<ResolveActionResponse, 'ui_hint' | 'refresh_targets'>
 
 const route = useRoute()
+const router = useRouter()
 const project = useProjectStore()
 const chat = useChatStore()
 const workspace = useWorkspaceStore()
@@ -48,30 +48,11 @@ const hydratedTargets = hydrationTracker.targets
 // Modal state
 const showExportModal = ref(false)
 const showVersionsModal = ref(false)
+const handledRevisionIds = ref(new Set<string>())
 
-// Phase progress
-const currentPhase = computed(() => {
-  const p = project.currentProject
-  if (!p) return 'setup'
-  if (p.status === 'writing') return 'writing'
-  if (p.status === 'outline_generated') return 'writing'
-  if (p.status === 'storyline_generated') return 'outline'
-  const phase = String(p.current_phase || '')
-  if (phase === 'outline') return 'outline'
-  if (phase === 'storyline') return 'storyline'
-  return 'setup'
-})
-
-const phases = computed<PhaseItem[]>(() => {
-  const phase = currentPhase.value
-  const phaseOrder = ['setup', 'storyline', 'outline', 'writing']
-  const currentIdx = phaseOrder.indexOf(phase)
-  return [
-    { key: 'setup', label: '设定', status: currentIdx > 0 ? 'done' : currentIdx === 0 ? 'current' : 'pending' },
-    { key: 'storyline', label: '故事线', status: currentIdx > 1 ? 'done' : currentIdx === 1 ? 'current' : 'pending' },
-    { key: 'outline', label: '大纲', status: currentIdx > 2 ? 'done' : currentIdx === 2 ? 'current' : 'pending' },
-    { key: 'writing', label: '正文', status: currentIdx >= 3 ? 'current' : 'pending' },
-  ] as PhaseItem[]
+// Project stats
+const totalWords = computed(() => {
+  return (project.chapters || []).reduce((sum: number, c: any) => sum + (c.word_count || 0), 0)
 })
 
 // Chapters
@@ -132,9 +113,29 @@ async function initialize(projectId: string) {
     project.loadProject(projectId),
   ])
   if (!markHydratedTarget(hydrationTracker, snapshot, 'project')) return
-  await ensurePanelData(workspace.panel, projectId, false, snapshot)
+  await Promise.all([
+    ensurePanelData(workspace.panel, projectId, false, snapshot),
+    project.loadSetup(projectId).catch(() => {}),
+    project.loadStoryline(projectId).catch(() => {}),
+    project.loadOutline(projectId).catch(() => {}),
+    project.loadChapters(projectId).catch(() => {}),
+  ])
   if (!isActiveHydrationSnapshot(hydrationTracker, snapshot)) return
   ready.value = true
+  await handleRevisionQuery(projectId)
+}
+
+async function handleRevisionQuery(projectId = pid.value) {
+  const revisionId = typeof route.query.revision_id === 'string' ? route.query.revision_id : ''
+  if (!revisionId || handledRevisionIds.value.has(revisionId)) return
+  handledRevisionIds.value.add(revisionId)
+  const { revision_id: _revisionId, ...restQuery } = route.query
+  void router.replace({ query: restQuery })
+  workspace.applyUserPanel('content', '你提交了章节修订，Hermes 正在重新生成')
+  const chapter = await chat.regenerateRevision(revisionId)
+  if (!chapter) return
+  await refreshProjectTargets(['content'], currentHydrationSnapshot(projectId))
+  await project.loadChapter(projectId, chapter.chapter_index)
 }
 
 function currentHydrationSnapshot(projectId = pid.value): HydrationSnapshot {
@@ -220,6 +221,10 @@ async function onDecide(decision: string, comment?: string) {
   await handleResponse(res)
 }
 
+function onDashboardAction(command: string) {
+  void onSend(command)
+}
+
 async function loadChapter(index: number) {
   const snapshot = currentHydrationSnapshot()
   workspace.applyUserPanel('content', `你刚点了第 ${index} 章`)
@@ -269,8 +274,15 @@ function openVersionsModal() {
     <!-- Sub-nav content: rendered into AppShell SubNav slot via teleport -->
     <Teleport to="[data-subnav-content]">
       <div class="hermes-subnav">
-        <div class="hermes-subnav__section-label">创作阶段</div>
-        <PhaseProgress :phases="phases" />
+        <div class="hermes-subnav__section-label">项目概览</div>
+        <ProjectDashboard
+          :setup="project.setup"
+          :storyline="project.storyline"
+          :outline="project.outline"
+          :chapters="project.chapters || []"
+          :total-words="totalWords"
+          @action="onDashboardAction"
+        />
         <div class="hermes-subnav__divider" />
         <div class="hermes-subnav__section-label">章节</div>
         <ChapterList

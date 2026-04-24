@@ -8,6 +8,7 @@ import type {
   PendingAction as ApiPendingAction,
   ProjectDiagnosis,
   ResolveActionResponse,
+  ChapterContent,
 } from '../api/types'
 import type { ChatCommandName } from '../components/workspace/chatCommands'
 
@@ -292,6 +293,27 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  async function regenerateRevision(revisionId: string): Promise<ChapterContent | null> {
+    if (loading.value || !revisionId) return null
+    const { pidSnapshot, versionSnapshot } = captureSnapshot()
+    loading.value = true
+    try {
+      const chapter = await api.regenerateRevision(pidSnapshot, revisionId)
+      if (!isActiveSnapshot(pidSnapshot, versionSnapshot)) return null
+      await loadHistory(pidSnapshot, versionSnapshot)
+      await loadDiagnosis(pidSnapshot, versionSnapshot)
+      return chapter
+    } catch (e: any) {
+      if (!isActiveSnapshot(pidSnapshot, versionSnapshot)) return null
+      messages.value.push({ role: 'assistant', content: `修订重生成失败：${e.message}` })
+      return null
+    } finally {
+      if (isActiveSnapshot(pidSnapshot, versionSnapshot)) {
+        loading.value = false
+      }
+    }
+  }
+
   async function pollForCompletion(
     actionType: string,
     pidSnapshot = projectId.value,
@@ -336,6 +358,6 @@ export const useChatStore = defineStore('chat', () => {
 
   return {
     messages, projectId, diagnosis, pendingAction, loading,
-    init, loadDiagnosis, setDialogType, sendText, sendCommand, sendButtonAction, resolveAction,
+    init, loadDiagnosis, setDialogType, sendText, sendCommand, sendButtonAction, resolveAction, regenerateRevision,
   }
 })
