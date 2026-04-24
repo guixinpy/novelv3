@@ -5,14 +5,14 @@ export type Workspace = 'hermes' | 'athena' | 'manuscript'
 export type AthenaSection =
   | 'characters' | 'locations' | 'factions' | 'items' | 'relations' | 'rules'
   | 'projection' | 'timeline' | 'knowledge'
-  | 'outline' | 'storyline' | 'proposals' | 'consistency'
+  | 'outline' | 'storyline' | 'proposals' | 'consistency' | 'optimization'
 
 export const useUiStore = defineStore('ui', () => {
   const activeWorkspace = ref<Workspace>('hermes')
   const subNavCollapsed = ref(false)
   const activeAthenaSection = ref<AthenaSection>('characters')
   const modals = ref<string[]>([])
-
+  const lastProjectRoute = ref<string | null>(null)
   function toggleSubNav() {
     subNavCollapsed.value = !subNavCollapsed.value
   }
@@ -42,6 +42,7 @@ export const useUiStore = defineStore('ui', () => {
     subNavCollapsed,
     activeAthenaSection,
     modals,
+    lastProjectRoute,
     toggleSubNav,
     openModal,
     closeModal,

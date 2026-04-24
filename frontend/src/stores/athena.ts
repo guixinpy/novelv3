@@ -4,6 +4,7 @@ import { api } from '../api/client'
 import type {
   AthenaEvolutionPlan,
   AthenaOntology,
+  AthenaOptimization,
   AthenaTimeline,
   ChatHistoryMessage,
   PaginatedProposalBundles,
@@ -23,6 +24,8 @@ export const useAthenaStore = defineStore('athena', () => {
   const timeline = ref<AthenaTimeline | null>(null)
   const evolutionPlan = ref<AthenaEvolutionPlan | null>(null)
   const proposals = ref<PaginatedProposalBundles | null>(null)
+  const consistencyIssues = ref<any[]>([])
+  const optimization = ref<AthenaOptimization | null>(null)
 
   const setup = ref<unknown>(null)
 
@@ -89,6 +92,23 @@ export const useAthenaStore = defineStore('athena', () => {
   async function runConsistencyCheck(projectId: string, chapterIndex: number, depth: string = 'l1') {
     try {
       await api.runAthenaConsistencyCheck(projectId, chapterIndex, depth)
+      await loadConsistencyIssues(projectId)
+    } catch (err) {
+      error.value = toErrorMessage(err)
+    }
+  }
+
+  async function loadConsistencyIssues(projectId: string) {
+    try {
+      consistencyIssues.value = await api.getConsistencyIssues(projectId)
+    } catch (err) {
+      error.value = toErrorMessage(err)
+    }
+  }
+
+  async function loadOptimization(projectId: string) {
+    try {
+      optimization.value = await api.getAthenaOptimization(projectId)
     } catch (err) {
       error.value = toErrorMessage(err)
     }
@@ -112,6 +132,8 @@ export const useAthenaStore = defineStore('athena', () => {
     timeline.value = null
     evolutionPlan.value = null
     proposals.value = null
+    consistencyIssues.value = []
+    optimization.value = null
     setup.value = null
     messages.value = []
     error.value = null
@@ -125,6 +147,8 @@ export const useAthenaStore = defineStore('athena', () => {
     timeline,
     evolutionPlan,
     proposals,
+    consistencyIssues,
+    optimization,
     setup,
     messages,
     chatLoading,
@@ -135,6 +159,8 @@ export const useAthenaStore = defineStore('athena', () => {
     loadProposals,
     loadSetup,
     runConsistencyCheck,
+    loadConsistencyIssues,
+    loadOptimization,
     loadMessages,
     sendChat,
     reset,

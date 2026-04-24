@@ -13,6 +13,7 @@ import ProjectionViewer from '../components/athena/ProjectionViewer.vue'
 import KnowledgeViewer from '../components/athena/KnowledgeViewer.vue'
 import ProposalList from '../components/athena/ProposalList.vue'
 import ConsistencyList from '../components/athena/ConsistencyList.vue'
+import OptimizationPanel from '../components/athena/OptimizationPanel.vue'
 import AthenaChatPanel from '../components/athena/AthenaChatPanel.vue'
 
 interface NavSection {
@@ -47,6 +48,7 @@ const sections: NavSection[] = [
       { key: 'storyline', label: '故事线' },
       { key: 'proposals', label: '提案' },
       { key: 'consistency', label: '一致性检查' },
+      { key: 'optimization', label: '自优化' },
     ],
   },
 ]
@@ -91,7 +93,7 @@ const relations = computed(() => athena.ontology?.relations || [])
 const rules = computed(() => athena.ontology?.rules || [])
 const timelineEvents = computed(() => athena.timeline?.events || [])
 const timelineAnchors = computed(() => athena.timeline?.anchors || [])
-const consistencyIssues = computed<any[]>(() => [])
+const consistencyIssues = computed<any[]>(() => athena.consistencyIssues || [])
 
 onMounted(() => void initialize(pid.value))
 
@@ -130,6 +132,12 @@ async function loadSectionData(section: AthenaSection) {
   }
   if (section === 'proposals') {
     if (!athena.proposals) await athena.loadProposals(id)
+  }
+  if (section === 'consistency') {
+    await athena.loadConsistencyIssues(id)
+  }
+  if (section === 'optimization') {
+    await athena.loadOptimization(id)
   }
   if (section === 'outline' || section === 'storyline') {
     if (!athena.evolutionPlan) await athena.loadEvolutionPlan(id)
@@ -185,6 +193,7 @@ function navigateSection(section: AthenaSection) {
       <KnowledgeViewer v-else-if="activeSection === 'knowledge'" :knowledge="athena.projection" />
       <ProposalList v-else-if="activeSection === 'proposals'" :proposals="athena.proposals" />
       <ConsistencyList v-else-if="activeSection === 'consistency'" :issues="consistencyIssues" />
+      <OptimizationPanel v-else-if="activeSection === 'optimization'" :optimization="athena.optimization" />
       <div v-else-if="activeSection === 'outline' || activeSection === 'storyline'" class="athena-view__placeholder">
         {{ activeSection === 'outline' ? '大纲' : '故事线' }}数据加载中...
       </div>
