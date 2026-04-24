@@ -1,8 +1,12 @@
 import type {
   AthenaEvolutionPlan,
   AthenaOntology,
+  AthenaOptimization,
   AthenaTimeline,
   BackgroundTaskResponse,
+  ChapterContent,
+  ChapterRevision,
+  ChapterRevisionPayload,
   ChatHistoryMessage,
   ChatRequest,
   ChatResponse,
@@ -77,6 +81,8 @@ export const api = {
     request<AthenaTimeline>(`/projects/${id}/athena/state/timeline`),
   getAthenaEvolutionPlan: (id: string) =>
     request<AthenaEvolutionPlan>(`/projects/${id}/athena/evolution/plan`),
+  getAthenaOptimization: (id: string) =>
+    request<AthenaOptimization>(`/projects/${id}/athena/optimization`),
   getAthenaEvolutionProposals: (id: string, params?: { offset?: number; limit?: number; bundle_status?: string }) => {
     const query = new URLSearchParams()
     if (params?.offset !== undefined) query.set('offset', String(params.offset))
@@ -98,8 +104,16 @@ export const api = {
     request(`/projects/${id}/athena/ontology/character-graph`),
   runAthenaConsistencyCheck: (id: string, chapterIndex: number, depth: string = 'l1') =>
     request(`/projects/${id}/athena/evolution/consistency/chapters/${chapterIndex}/check?depth=${depth}`, { method: 'POST' }),
-  generateChapter: (id: string, index: number) => request(`/projects/${id}/chapters/${index}/generate`, { method: 'POST' }),
-  getChapter: (id: string, index: number) => request(`/projects/${id}/chapters/${index}`),
+  getConsistencyIssues: (id: string) =>
+    request(`/projects/${id}/consistency/issues`),
+  generateChapter: (id: string, index: number) => request<ChapterContent>(`/projects/${id}/chapters/${index}/generate`, { method: 'POST' }),
+  getChapter: (id: string, index: number) => request<ChapterContent>(`/projects/${id}/chapters/${index}`),
+  submitRevision: (id: string, data: ChapterRevisionPayload) =>
+    request<ChapterRevision>(`/projects/${id}/revisions`, { method: 'POST', body: JSON.stringify(data) }),
+  listRevisions: (id: string) => request<ChapterRevision[]>(`/projects/${id}/revisions`),
+  getRevision: (id: string, revisionId: string) => request<ChapterRevision>(`/projects/${id}/revisions/${revisionId}`),
+  regenerateRevision: (id: string, revisionId: string) =>
+    request<ChapterContent>(`/projects/${id}/revisions/${revisionId}/regenerate`, { method: 'POST' }),
   getConfig: () => request('/config'),
   updateConfig: (apiKey: string) => request('/config', { method: 'PUT', body: JSON.stringify({ api_key: apiKey }) }),
   generateStoryline: (id: string) => request(`/projects/${id}/athena/evolution/plan/generate?target=storyline`, { method: 'POST' }),

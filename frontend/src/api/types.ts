@@ -304,3 +304,82 @@ export interface AthenaEvolutionPlan {
   outline: { id: string; status: string; total_chapters: number; chapters: unknown; plotlines: unknown } | null
   storyline: { id: string; status: string; plotlines: unknown; foreshadowing: unknown } | null
 }
+
+export interface ChapterContent {
+  id: string
+  project_id: string
+  chapter_index: number
+  title: string
+  content: string
+  word_count: number
+  status: string
+  model: string
+  prompt_tokens: number
+  completion_tokens: number
+  generation_time: number
+  temperature: number
+  created_at: string
+  updated_at: string
+}
+
+export interface RevisionAnnotationPayload {
+  paragraph_index: number
+  start_offset: number
+  end_offset: number
+  selected_text: string
+  comment: string
+}
+
+export interface RevisionCorrectionPayload {
+  paragraph_index: number
+  original_text: string
+  corrected_text: string
+}
+
+export interface ChapterRevisionPayload {
+  chapter_index: number
+  annotations: RevisionAnnotationPayload[]
+  corrections: RevisionCorrectionPayload[]
+}
+
+export interface RevisionAnnotation extends RevisionAnnotationPayload {
+  id: string
+  revision_id: string
+}
+
+export interface RevisionCorrection extends RevisionCorrectionPayload {
+  id: string
+  revision_id: string
+}
+
+export interface ChapterRevision {
+  id: string
+  project_id: string
+  chapter_id: string
+  chapter_index: number
+  revision_index: number
+  status: string
+  submitted_at: string
+  completed_at: string | null
+  annotations: RevisionAnnotation[]
+  corrections: RevisionCorrection[]
+}
+
+export interface AthenaOptimization {
+  rules: {
+    id: string
+    rule_type: string
+    condition: string
+    action: string
+    priority: number
+    hit_count: number
+    created_at: string
+  }[]
+  style_config: Record<string, unknown>
+  learning_logs: {
+    rule_id: string
+    event_type: string
+    summary: string
+    created_at: string
+  }[]
+}
