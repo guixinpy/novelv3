@@ -7,6 +7,7 @@ from app.models import (
     Outline,
     Project,
     ProjectProfileVersion,
+    PromptRule,
     Setup,
     Storyline,
     WorldArtifact,
@@ -49,6 +50,41 @@ def _get_current_profile(db: Session, project_id: str) -> ProjectProfileVersion 
         .order_by(ProjectProfileVersion.version.desc())
         .first()
     )
+
+
+@router.get("/optimization")
+def get_optimization(project_id: str, db: Session = Depends(get_db)):
+    project = _require_project(db, project_id)
+    rules = db.query(PromptRule).filter(
+        PromptRule.project_id == project_id,
+        PromptRule.rule_type == "learned",
+    ).order_by(PromptRule.created_at.desc()).all()
+
+    rule_items = [
+        {
+            "id": rule.id,
+            "rule_type": rule.rule_type,
+            "condition": rule.condition,
+            "action": rule.action,
+            "priority": rule.priority,
+            "hit_count": rule.hit_count,
+            "created_at": rule.created_at,
+        }
+        for rule in rules
+    ]
+    return {
+        "rules": rule_items,
+        "style_config": project.style_config or {},
+        "learning_logs": [
+            {
+                "rule_id": rule["id"],
+                "event_type": "rule_learned",
+                "summary": f"学到规则：{rule['condition']} → {rule['action']}",
+                "created_at": rule["created_at"],
+            }
+            for rule in rule_items
+        ],
+    }
 
 
 # ── Layer 1: Ontology ──
