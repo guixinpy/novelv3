@@ -18,6 +18,7 @@ app.add_middleware(
 from app.api import (
     athena,
     background_tasks_api,
+    chapter_revisions,
     chapters,
     config,
     consistency,
@@ -37,6 +38,7 @@ from app.api import (
 app.include_router(projects.router)
 app.include_router(setups.router)
 app.include_router(chapters.router)
+app.include_router(chapter_revisions.router)
 app.include_router(config.router)
 app.include_router(storylines.router)
 app.include_router(outlines.router)

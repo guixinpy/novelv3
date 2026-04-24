@@ -1,4 +1,12 @@
 from .chapter import ChapterOut
+from .chapter_revision import (
+    ChapterRevisionCreate,
+    ChapterRevisionOut,
+    RevisionAnnotationIn,
+    RevisionAnnotationOut,
+    RevisionCorrectionIn,
+    RevisionCorrectionOut,
+)
 from .consistency_check import ConsistencyIssueOut
 from .dialog import (
     ActiveActionOut,

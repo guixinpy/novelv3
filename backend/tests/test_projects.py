@@ -1,6 +1,7 @@
 from app.models import (
     BackgroundTask,
     ChapterContent,
+    ChapterRevision,
     ConsistencyCheck,
     Dialog,
     DialogMessage,
@@ -8,6 +9,8 @@ from app.models import (
     Outline,
     PendingAction,
     PromptRule,
+    RevisionAnnotation,
+    RevisionCorrection,
     Setup,
     Storyline,
     Topology,
@@ -79,8 +82,18 @@ def test_delete_project_cleans_related_records(client, db_session):
 
     db_session.add_all([setup, storyline, outline, topology, chapter, check, fact, task, version, rule, dialog])
     db_session.commit()
+    db_session.refresh(chapter)
     db_session.refresh(dialog)
+    revision = ChapterRevision(project_id=pid, chapter_id=chapter.id, chapter_index=1, revision_index=1, status="submitted")
+    db_session.add(revision)
+    db_session.commit()
+    db_session.refresh(revision)
+    annotation = RevisionAnnotation(revision_id=revision.id, paragraph_index=0, start_offset=0, end_offset=1, selected_text="内", comment="改")
+    correction = RevisionCorrection(revision_id=revision.id, paragraph_index=0, original_text="旧", corrected_text="新")
+    db_session.add_all([annotation, correction])
+    db_session.commit()
     dialog_id = dialog.id
+    revision_id = revision.id
 
     pending = PendingAction(dialog_id=dialog_id, type="preview_outline")
     message = DialogMessage(dialog_id=dialog_id, role="assistant", content="确认要执行吗？")
@@ -101,6 +114,9 @@ def test_delete_project_cleans_related_records(client, db_session):
     assert db_session.query(BackgroundTask).filter(BackgroundTask.project_id == pid).count() == 0
     assert db_session.query(Version).filter(Version.project_id == pid).count() == 0
     assert db_session.query(PromptRule).filter(PromptRule.project_id == pid).count() == 0
+    assert db_session.query(ChapterRevision).filter(ChapterRevision.project_id == pid).count() == 0
+    assert db_session.query(RevisionAnnotation).filter(RevisionAnnotation.revision_id == revision_id).count() == 0
+    assert db_session.query(RevisionCorrection).filter(RevisionCorrection.revision_id == revision_id).count() == 0
     assert db_session.query(Dialog).filter(Dialog.project_id == pid).count() == 0
     assert db_session.query(PendingAction).filter(PendingAction.dialog_id == dialog_id).count() == 0
     assert db_session.query(DialogMessage).filter(DialogMessage.dialog_id == dialog_id).count() == 0

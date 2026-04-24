@@ -1,15 +1,17 @@
 import json
 import re
 import time
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from app.db import get_db
-from app.models import Project, Setup, Outline, ChapterContent
-from app.schemas import ChapterOut
+
 from app.config import load_api_key
 from app.core.ai_service import AIService
 from app.core.prompt_manager import PromptManager
 from app.core.prompt_optimizer import PromptOptimizer
+from app.db import get_db
+from app.models import ChapterContent, Outline, Project, Setup
+from app.schemas import ChapterOut
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/chapters", tags=["chapters"])
 
@@ -53,6 +55,15 @@ def _build_chapter_context(db: Session, project_id: str, chapter_index: int, set
 
 @router.post("/{chapter_index}/generate", response_model=ChapterOut)
 async def generate_chapter(project_id: str, chapter_index: int, db: Session = Depends(get_db)):
+    return await create_or_replace_chapter(db, project_id, chapter_index)
+
+
+async def create_or_replace_chapter(
+    db: Session,
+    project_id: str,
+    chapter_index: int,
+    extra_feedback: str = "",
+) -> ChapterContent:
     if not load_api_key():
         raise HTTPException(status_code=400, detail="API key not configured")
 
@@ -82,6 +93,8 @@ async def generate_chapter(project_id: str, chapter_index: int, db: Session = De
         },
     )
     prompt = f"{prompt}\n\n【章节上下文】\n{context}"
+    if extra_feedback:
+        prompt = f"{prompt}\n\n【用户修订反馈】\n{extra_feedback}"
     prompt = prompt_optimizer.optimize(prompt, project.style_config)
 
     from app.core.few_shot_library import FewShotExampleLibrary
@@ -106,28 +119,38 @@ async def generate_chapter(project_id: str, chapter_index: int, db: Session = De
                 title = ch.get("title", title)
                 break
 
-    chapter = ChapterContent(
-        project_id=project_id,
-        chapter_index=chapter_index,
-        title=title,
-        content=result.content,
-        word_count=_count_words(result.content),
-        status="generated",
-        model=result.model,
-        prompt_tokens=result.prompt_tokens,
-        completion_tokens=result.completion_tokens,
-        generation_time=elapsed,
-        temperature=0.7,
-    )
-
+    word_count = _count_words(result.content)
     if existing:
-        db.delete(existing)
-
-    db.add(chapter)
+        chapter = existing
+        chapter.title = title
+        chapter.content = result.content
+        chapter.word_count = word_count
+        chapter.status = "generated"
+        chapter.model = result.model
+        chapter.prompt_tokens = result.prompt_tokens
+        chapter.completion_tokens = result.completion_tokens
+        chapter.generation_time = elapsed
+        chapter.temperature = 0.7
+    else:
+        chapter = ChapterContent(
+            project_id=project_id,
+            chapter_index=chapter_index,
+            title=title,
+            content=result.content,
+            word_count=word_count,
+            status="generated",
+            model=result.model,
+            prompt_tokens=result.prompt_tokens,
+            completion_tokens=result.completion_tokens,
+            generation_time=elapsed,
+            temperature=0.7,
+        )
+        db.add(chapter)
 
     total_words = sum(
-        c.word_count or 0 for c in db.query(ChapterContent).filter(ChapterContent.project_id == project_id).all()
-    ) + chapter.word_count
+        word_count if c.id == chapter.id else (c.word_count or 0)
+        for c in db.query(ChapterContent).filter(ChapterContent.project_id == project_id).all()
+    )
     project.current_word_count = total_words
     project.status = "writing"
 

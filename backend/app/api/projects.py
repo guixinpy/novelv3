@@ -1,10 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
 from sqlalchemy import delete, inspect
+from sqlalchemy.orm import Session
+
 from app.db import get_db
 from app.models import (
     BackgroundTask,
     ChapterContent,
+    ChapterRevision,
     ConsistencyCheck,
     Dialog,
     DialogMessage,
@@ -13,12 +15,14 @@ from app.models import (
     PendingAction,
     Project,
     PromptRule,
+    RevisionAnnotation,
+    RevisionCorrection,
     Setup,
     Storyline,
     Topology,
     Version,
 )
-from app.schemas import ProjectCreate, ProjectUpdate, ProjectOut
+from app.schemas import ProjectCreate, ProjectOut, ProjectUpdate
 
 router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
 
@@ -91,6 +95,17 @@ def delete_project(project_id: str, db: Session = Depends(get_db)):
             db.execute(delete(PendingAction).where(PendingAction.dialog_id.in_(dialog_ids)))
         if Dialog.__tablename__ in existing_tables:
             db.execute(delete(Dialog).where(Dialog.id.in_(dialog_ids)))
+
+    revision_ids = [
+        revision_id
+        for (revision_id,) in db.query(ChapterRevision.id).filter(ChapterRevision.project_id == project_id).all()
+    ] if ChapterRevision.__tablename__ in existing_tables else []
+    if revision_ids:
+        if RevisionAnnotation.__tablename__ in existing_tables:
+            db.execute(delete(RevisionAnnotation).where(RevisionAnnotation.revision_id.in_(revision_ids)))
+        if RevisionCorrection.__tablename__ in existing_tables:
+            db.execute(delete(RevisionCorrection).where(RevisionCorrection.revision_id.in_(revision_ids)))
+        db.execute(delete(ChapterRevision).where(ChapterRevision.id.in_(revision_ids)))
 
     for model in PROJECT_SCOPED_MODELS:
         if model.__tablename__ not in existing_tables:
