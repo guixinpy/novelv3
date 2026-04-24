@@ -1,6 +1,8 @@
 import uuid
-from datetime import datetime, timezone
-from sqlalchemy import Column, String, Integer, JSON, DateTime, ForeignKey
+from datetime import UTC, datetime
+
+from sqlalchemy import JSON, Column, DateTime, ForeignKey, Integer, String
+
 from app.db import Base
 
 
@@ -13,4 +15,4 @@ class Topology(Base):
     nodes = Column(JSON, default=list)
     edges = Column(JSON, default=list)
     indexes = Column(JSON, default=dict)
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))

@@ -1,5 +1,5 @@
-from app.models import Setup, Outline
-from app.schemas import TopologyNode, TopologyEdge
+from app.models import Outline, Setup
+from app.schemas import TopologyEdge, TopologyNode
 
 
 class TopologyBuilder:

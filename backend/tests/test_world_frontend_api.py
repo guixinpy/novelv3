@@ -165,7 +165,7 @@ def test_world_model_bundle_endpoints_support_review_split_and_rollback(client, 
     list_response = client.get(f"/api/v1/projects/{project.id}/world-model/proposal-bundles")
     assert list_response.status_code == 200
     listed_bundles = list_response.json()
-    assert [item["id"] for item in listed_bundles] == [bundle.id]
+    assert [item["id"] for item in listed_bundles["items"]] == [bundle.id]
 
     detail_response = client.get(f"/api/v1/projects/{project.id}/world-model/proposal-bundles/{bundle.id}")
     assert detail_response.status_code == 200
@@ -438,7 +438,7 @@ def test_world_model_routes_lock_to_current_profile_and_reject_cross_profile_acc
 
     list_response = client.get(f"/api/v1/projects/{project.id}/world-model/proposal-bundles")
     assert list_response.status_code == 200
-    assert [bundle["id"] for bundle in list_response.json()] == [current_bundle.id]
+    assert [bundle["id"] for bundle in list_response.json()["items"]] == [current_bundle.id]
 
     current_detail_response = client.get(
         f"/api/v1/projects/{project.id}/world-model/proposal-bundles/{current_bundle.id}"

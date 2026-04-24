@@ -1,5 +1,6 @@
 from unittest.mock import MagicMock
-from app.core.checkers import RelationshipChecker, ForeshadowingChecker
+
+from app.core.checkers import ForeshadowingChecker, RelationshipChecker
 
 
 def test_foreshadowing_checker_detects_unresolved():

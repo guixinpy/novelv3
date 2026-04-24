@@ -63,8 +63,9 @@ def test_cross_validator():
 
 
 def test_location_checker():
-    from app.core.checkers import LocationChecker
     from unittest.mock import MagicMock
+
+    from app.core.checkers import LocationChecker
     chapter = MagicMock()
     chapter.project_id = "test"
     chapter.chapter_index = 1

@@ -1,6 +1,5 @@
-import json
-from app.core.ai_service import AIService
 from app.config import load_api_key
+from app.core.ai_service import AIService
 
 EXTRACTION_PROMPT = """分析以下章节内容，提取所有事实变化。以 JSON 格式返回，包含一个 "facts" 数组，每个元素包含：
 - type: character_state_change / location_presence / time_reference / relationship_change

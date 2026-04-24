@@ -1,6 +1,8 @@
 import uuid
-from datetime import datetime, timezone
-from sqlalchemy import Column, String, JSON, Text, DateTime, ForeignKey
+from datetime import UTC, datetime
+
+from sqlalchemy import JSON, Column, DateTime, ForeignKey, String, Text
+
 from app.db import Base
 
 
@@ -13,5 +15,5 @@ class PendingAction(Base):
     params = Column(JSON, default=dict)
     status = Column(String, default="pending")
     decision_comment = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
     resolved_at = Column(DateTime, nullable=True)

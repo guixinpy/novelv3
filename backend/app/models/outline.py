@@ -1,6 +1,8 @@
 import uuid
-from datetime import datetime, timezone
-from sqlalchemy import Column, String, Integer, JSON, DateTime, ForeignKey
+from datetime import UTC, datetime
+
+from sqlalchemy import JSON, Column, DateTime, ForeignKey, Integer, String
+
 from app.db import Base
 
 
@@ -14,5 +16,5 @@ class Outline(Base):
     plotlines = Column(JSON, default=list)
     foreshadowing = Column(JSON, default=list)
     status = Column(String, default="pending")
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
+    updated_at = Column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))

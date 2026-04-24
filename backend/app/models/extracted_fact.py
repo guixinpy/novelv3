@@ -1,6 +1,8 @@
 import uuid
-from datetime import datetime, timezone
-from sqlalchemy import Column, String, Integer, Float, JSON, DateTime, ForeignKey
+from datetime import UTC, datetime
+
+from sqlalchemy import JSON, Column, DateTime, Float, ForeignKey, Integer, String
+
 from app.db import Base
 
 
@@ -16,4 +18,4 @@ class ExtractedFact(Base):
     data = Column(JSON, default=dict)
     evidence = Column(JSON, default=dict)
     validation = Column(JSON, nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC))

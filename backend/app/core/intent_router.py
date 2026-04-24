@@ -1,4 +1,5 @@
 import re
+
 from app.schemas import ProjectDiagnosisOut
 
 
@@ -48,9 +49,8 @@ class IntentRouter:
             if "storyline" in diagnosis.missing_items:
                 return ActionCandidate("preview_storyline", {"project_id": ""})
 
-        if re.search(r"写第.*章大纲|生成章节大纲|生成.*大纲", text):
-            if "outline" in diagnosis.missing_items:
-                return ActionCandidate("preview_outline", {"project_id": ""})
+        if re.search(r"写第.*章大纲|生成章节大纲|生成.*大纲", text) and "outline" in diagnosis.missing_items:
+            return ActionCandidate("preview_outline", {"project_id": ""})
 
         if re.search(r"还有什么要设定的|接下来做什么|然后呢", text):
             return ActionCandidate("query_diagnosis", {"project_id": ""})

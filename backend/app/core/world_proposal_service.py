@@ -1,5 +1,5 @@
 from collections.abc import Iterable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import select, update
@@ -16,7 +16,6 @@ from app.models import (
     WorldProposalReview,
 )
 from app.schemas.world_proposals import ProposalCandidateFactCreate, ProposalClaimEditPatch
-
 
 APPROVE_ACTIONS = {"approve", "approve_with_edits"}
 NON_MERGE_ACTIONS = {"reject", "mark_uncertain"}
@@ -248,7 +247,7 @@ def review_proposal_item(
         )
         .values(
             item_status=next_item_status,
-            updated_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(UTC),
         )
     ).rowcount
     if rowcount != 1:
@@ -292,7 +291,7 @@ def review_proposal_item(
                 )
                 .values(
                     approved_claim_id=claim.claim_id,
-                    updated_at=datetime.now(timezone.utc),
+                    updated_at=datetime.now(UTC),
                 )
             )
             review.created_truth_claim_id = claim.claim_id

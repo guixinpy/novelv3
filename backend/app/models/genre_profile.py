@@ -1,10 +1,10 @@
 import uuid
 from copy import deepcopy
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import Column, DateTime, Index, JSON, String, UniqueConstraint
+from sqlalchemy import JSON, Column, DateTime, Index, String, UniqueConstraint
 
 from app.db import Base
 
@@ -27,11 +27,11 @@ class GenreProfile(Base):
     module_payload = Column(JSON, default=dict)
     event_types = Column(JSON, default=list)
     checker_config = Column(JSON, default=dict)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
     updated_at = Column(
         DateTime,
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
     )
 
 

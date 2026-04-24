@@ -1,6 +1,7 @@
 from collections import defaultdict
+from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
-from typing import Any, Iterable
+from typing import Any
 
 from app.core.world_time_normalizer import StoryTimePoint, build_anchor_time_index, normalize_story_time
 

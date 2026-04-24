@@ -1,6 +1,8 @@
 import uuid
-from datetime import datetime, timezone
-from sqlalchemy import Column, String, Text, JSON, DateTime, ForeignKey
+from datetime import UTC, datetime
+
+from sqlalchemy import JSON, Column, DateTime, ForeignKey, String, Text
+
 from app.db import Base
 
 
@@ -14,4 +16,4 @@ class DialogMessage(Base):
     content = Column(Text, default="")
     meta = Column(JSON, nullable=True)
     action_result = Column(JSON, nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC))

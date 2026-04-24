@@ -1,6 +1,6 @@
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any, Iterable
-
+from typing import Any
 
 _CHINESE_DAY_OFFSETS = {
     "一": 1,
@@ -67,10 +67,7 @@ def normalize_story_time(
         )
     if normalized_expression.endswith("天后"):
         raw_days = normalized_expression[:-2]
-        if raw_days.isdigit():
-            day_offset = int(raw_days)
-        else:
-            day_offset = _CHINESE_DAY_OFFSETS.get(raw_days, 0)
+        day_offset = int(raw_days) if raw_days.isdigit() else _CHINESE_DAY_OFFSETS.get(raw_days, 0)
         if day_offset <= 0:
             raise ValueError(f"unsupported time expression: {expression}")
         return StoryTimePoint(
@@ -139,8 +136,8 @@ def _coerce_anchor_record(anchor: AnchorRecord | Any) -> AnchorRecord:
     if isinstance(anchor, AnchorRecord):
         return anchor
     return AnchorRecord(
-        anchor_id=getattr(anchor, "anchor_id"),
-        chapter_index=getattr(anchor, "chapter_index"),
+        anchor_id=anchor.anchor_id,
+        chapter_index=anchor.chapter_index,
         intra_chapter_seq=getattr(anchor, "intra_chapter_seq", 0),
         world_time_label=getattr(anchor, "world_time_label", "") or "",
         relative_to_anchor_ref=getattr(anchor, "relative_to_anchor_ref", None),

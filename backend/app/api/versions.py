@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
 from sqlalchemy import func
+from sqlalchemy.orm import Session
+
 from app.db import get_db
-from app.models import Project, Version, Setup, Storyline, Outline, ChapterContent
+from app.models import ChapterContent, Outline, Project, Setup, Storyline, Version
 from app.schemas import VersionCreate, VersionOut, VersionSummary
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/versions", tags=["versions"])

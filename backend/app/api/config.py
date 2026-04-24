@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
+
 from app.config import load_api_key, save_api_key
 
 router = APIRouter(prefix="/api/v1/config", tags=["config"])

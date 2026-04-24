@@ -1,6 +1,8 @@
 import uuid
-from datetime import datetime, timezone
-from sqlalchemy import Column, String, Integer, Text, DateTime, ForeignKey
+from datetime import UTC, datetime
+
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text
+
 from app.db import Base
 
 
@@ -17,4 +19,4 @@ class ConsistencyCheck(Base):
     evidence = Column(Text, default="")
     suggested_fix = Column(Text, default="")
     status = Column(String, default="pending")
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC))

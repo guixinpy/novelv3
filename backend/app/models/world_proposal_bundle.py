@@ -1,7 +1,19 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from sqlalchemy import Column, DateTime, Float, ForeignKey, ForeignKeyConstraint, Index, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    Column,
+    DateTime,
+    Float,
+    ForeignKey,
+    ForeignKeyConstraint,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 
 from app.db import Base
 from app.models.world_constraints import (
@@ -50,11 +62,11 @@ class WorldProposalBundle(Base):
     title = Column(String, nullable=False)
     summary = Column(Text, default="")
     created_by = Column(String, nullable=False)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
     updated_at = Column(
         DateTime,
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
     )
 
 
@@ -115,11 +127,11 @@ class WorldProposalItem(Base):
     contract_version = Column(String, nullable=False)
     created_by = Column(String, nullable=False)
     approved_claim_id = Column(String, nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
     updated_at = Column(
         DateTime,
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
     )
 
 
@@ -190,7 +202,7 @@ class WorldProposalReview(Base):
     created_truth_claim_id = Column(String, nullable=True)
     rollback_to_review_id = Column(String, ForeignKey("world_proposal_reviews.id"), nullable=True)
     metadata_snapshot = Column(JSON, default=dict)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
 
 
 class WorldProposalImpactScopeSnapshot(Base):
@@ -217,7 +229,7 @@ class WorldProposalImpactScopeSnapshot(Base):
     affected_truth_claim_ids = Column(JSON, default=list)
     candidate_item_ids = Column(JSON, default=list)
     summary = Column(JSON, default=dict)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
 
 
 attach_profile_binding_consistency_triggers(WorldProposalBundle.__table__, WorldProposalBundle.__tablename__)

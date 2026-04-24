@@ -1,6 +1,8 @@
 import uuid
-from datetime import datetime, timezone
-from sqlalchemy import Column, String, Integer, DateTime, ForeignKey
+from datetime import UTC, datetime
+
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String
+
 from app.db import Base
 
 
@@ -14,4 +16,4 @@ class PromptRule(Base):
     action = Column(String, default="")
     priority = Column(Integer, default=0)
     hit_count = Column(Integer, default=0)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC))

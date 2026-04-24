@@ -3,10 +3,10 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass, field, replace
-from typing import Any, Iterable
+from typing import Any
 
 from sqlalchemy.orm import Session
 
@@ -254,7 +254,7 @@ class WorldCheckerRegistry:
         checker_config = _validate_checker_config(profile_spec)
         profile_spec = replace(profile_spec, checker_config=checker_config)
         layers = checker_config.get("layers", {})
-        unknown_layers = [layer_name for layer_name in layers.keys() if layer_name not in LAYER_ORDER]
+        unknown_layers = [layer_name for layer_name in layers if layer_name not in LAYER_ORDER]
         if unknown_layers:
             raise CheckerPackConfigurationError(
                 f"unknown checker layer for {profile_spec.canonical_id}: {', '.join(sorted(unknown_layers))}"
@@ -1162,7 +1162,7 @@ def _normalize_name_sequence(value: Any) -> tuple[str, ...]:
         return ()
     if isinstance(value, (str, bytes)):
         return ()
-    if isinstance(value, Sequence) or isinstance(value, set):
+    if isinstance(value, (Sequence, set)):
         normalized: list[str] = []
         for item in value:
             if item is None:

@@ -1,20 +1,21 @@
 import asyncio
-from concurrent.futures import ThreadPoolExecutor
+import contextlib
 import threading
-import pytest
-from unittest.mock import AsyncMock, patch
+from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 
+import pytest
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm.session import Session as OrmSession
 
 from app.api import dialogs as dialogs_api
-from app.core.chat_compaction import build_compaction_summary
 from app.core.chat_commands import (
     command_mutates_history,
     command_to_action_type,
     is_supported_chat_command,
 )
+from app.core.chat_compaction import build_compaction_summary
 from app.core.intent_router import IntentRouter
 from app.models import Dialog, PendingAction
 from app.schemas import ProjectDiagnosisOut
@@ -678,10 +679,8 @@ def test_resolve_action_double_confirm_only_one_effective(client):
     class _SyncDateTime:
         @staticmethod
         def now(tz=None):
-            try:
+            with contextlib.suppress(threading.BrokenBarrierError):
                 barrier.wait(timeout=1)
-            except threading.BrokenBarrierError:
-                pass
             from datetime import datetime as _RealDateTime
             return _RealDateTime.now(tz)
 

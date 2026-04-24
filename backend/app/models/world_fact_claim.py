@@ -1,12 +1,24 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from sqlalchemy import CheckConstraint, Column, DateTime, Float, ForeignKey, ForeignKeyConstraint, Index, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    CheckConstraint,
+    Column,
+    DateTime,
+    Float,
+    ForeignKey,
+    ForeignKeyConstraint,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 
-from app.db import Base
 from app.core.world_contracts import AUTHORITY_TYPES
+from app.db import Base
 from app.models.world_constraints import attach_profile_binding_consistency_triggers
-
 
 _authority_types_sql = ", ".join(f"'{value}'" for value in AUTHORITY_TYPES)
 
@@ -63,7 +75,7 @@ class WorldFactClaim(Base):
     confidence = Column(Float, nullable=False)
     notes = Column(Text, default="")
     contract_version = Column(String, nullable=False)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
 
 
 attach_profile_binding_consistency_triggers(WorldFactClaim.__table__, WorldFactClaim.__tablename__)

@@ -1,6 +1,8 @@
 import uuid
-from datetime import datetime, timezone
-from sqlalchemy import Column, String, Integer, DateTime, JSON
+from datetime import UTC, datetime
+
+from sqlalchemy import JSON, Column, DateTime, Integer, String
+
 from app.db import Base
 
 
@@ -20,5 +22,5 @@ class Project(Base):
     style = Column(String, default="")
     complexity = Column(Integer, default=3)
     style_config = Column(JSON, default=dict)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
+    updated_at = Column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))

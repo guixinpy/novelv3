@@ -1,6 +1,8 @@
 import uuid
-from datetime import datetime, timezone
-from sqlalchemy import Column, String, Integer, Text, Float, DateTime, ForeignKey
+from datetime import UTC, datetime
+
+from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, Text
+
 from app.db import Base
 
 
@@ -19,5 +21,5 @@ class ChapterContent(Base):
     completion_tokens = Column(Integer, default=0)
     generation_time = Column(Integer, default=0)
     temperature = Column(Float, default=0.7)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
+    updated_at = Column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))

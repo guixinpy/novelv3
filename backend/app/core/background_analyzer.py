@@ -1,12 +1,12 @@
 import logging
-from app.db import SessionLocal
-from app.models import ChapterContent, Setup, ConsistencyCheck, ExtractedFact
+
+from app.core.checkers import ForeshadowingChecker, LocationChecker, RelationshipChecker, TimelineChecker
+from app.core.consistency_checker import ConsistencyChecker
+from app.core.cross_validator import CrossValidator
 from app.core.l1_extractor import L1RuleExtractor
 from app.core.l2_extractor import L2LLMExtractor
-from app.core.cross_validator import CrossValidator
-from app.core.consistency_checker import ConsistencyChecker
-from app.core.checkers import LocationChecker, TimelineChecker, RelationshipChecker, ForeshadowingChecker
-from app.models import Storyline
+from app.db import SessionLocal
+from app.models import ChapterContent, ConsistencyCheck, ExtractedFact, Setup, Storyline
 
 logger = logging.getLogger(__name__)
 

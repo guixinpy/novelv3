@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+
+from app.core.writing_scheduler import WritingScheduler
 from app.db import get_db
 from app.models import Project
 from app.schemas import WritingStateOut
-from app.core.writing_scheduler import WritingScheduler
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/writing", tags=["writing"])
 scheduler = WritingScheduler()
@@ -41,6 +42,7 @@ async def retry_chapter(project_id: str, chapter_index: int, db: Session = Depen
 
     # Trigger chapter regeneration in background
     import asyncio
+
     from app.api.chapters import generate_chapter as _gen_chapter
     from app.db import SessionLocal
 

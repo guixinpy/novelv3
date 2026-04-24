@@ -1,5 +1,5 @@
-from app.models import Setup, ChapterContent
 from app.core.l1_extractor import L1RuleExtractor
+from app.models import ChapterContent, Setup
 
 
 class ConsistencyChecker:

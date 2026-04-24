@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+
+from app.core.ui_hints import action_to_refresh_targets, build_ui_hint, task_status_to_dialog_state
 from app.db import get_db
-from app.models import Project, BackgroundTask
-from app.core.ui_hints import build_ui_hint, action_to_refresh_targets, task_status_to_dialog_state
+from app.models import BackgroundTask, Project
 
 router = APIRouter(tags=["background-tasks"])
 

@@ -1,7 +1,20 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from sqlalchemy import CheckConstraint, Column, DDL, DateTime, ForeignKey, Index, Integer, JSON, String, UniqueConstraint, event, select
+from sqlalchemy import (
+    DDL,
+    JSON,
+    CheckConstraint,
+    Column,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    UniqueConstraint,
+    event,
+    select,
+)
 
 from app.db import Base
 from app.models.genre_profile import GenreProfile
@@ -22,7 +35,7 @@ class ProjectProfileVersion(Base):
     version = Column(Integer, nullable=False)
     contract_version = Column(String, nullable=False)
     profile_payload = Column(JSON, default=dict)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
 
 
 @event.listens_for(ProjectProfileVersion, "before_insert")

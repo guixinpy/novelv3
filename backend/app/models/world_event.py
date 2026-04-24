@@ -1,7 +1,19 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from sqlalchemy import CheckConstraint, Column, DateTime, ForeignKey, ForeignKeyConstraint, Index, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    CheckConstraint,
+    Column,
+    DateTime,
+    ForeignKey,
+    ForeignKeyConstraint,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 
 from app.db import Base
 from app.models.world_constraints import attach_profile_binding_consistency_triggers
@@ -59,7 +71,7 @@ class WorldEvent(Base):
     supersedes_event_ref = Column(String, nullable=True)
     notes = Column(Text, default="")
     contract_version = Column(String, nullable=False)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
 
 
 attach_profile_binding_consistency_triggers(WorldEvent.__table__, WorldEvent.__tablename__)

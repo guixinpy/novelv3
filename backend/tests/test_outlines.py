@@ -1,5 +1,6 @@
 import asyncio
 from unittest.mock import AsyncMock, patch
+
 from app.api.outlines import generate_outline
 
 

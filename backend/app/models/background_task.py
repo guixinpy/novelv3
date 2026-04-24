@@ -1,6 +1,8 @@
 import uuid
-from datetime import datetime, timezone
-from sqlalchemy import Column, String, JSON, Text, DateTime, ForeignKey
+from datetime import UTC, datetime
+
+from sqlalchemy import JSON, Column, DateTime, ForeignKey, String, Text
+
 from app.db import Base
 
 
@@ -14,6 +16,6 @@ class BackgroundTask(Base):
     status = Column(String, default="pending")
     result = Column(JSON, nullable=True)
     error = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
     started_at = Column(DateTime, nullable=True)
     finished_at = Column(DateTime, nullable=True)

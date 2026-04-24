@@ -1,4 +1,4 @@
-from app.models import Setup, ChapterContent
+from app.models import ChapterContent
 
 
 class LocationChecker:

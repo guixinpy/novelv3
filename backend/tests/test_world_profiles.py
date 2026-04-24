@@ -1,13 +1,14 @@
-import pytest
 import sqlite3
 import subprocess
 from pathlib import Path
+
+import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import DatabaseError, IntegrityError, StatementError
 
 from app.core.world_contracts import (
-    AUTHORITATIVE_STRUCTURED,
     ANNOTATION,
+    AUTHORITATIVE_STRUCTURED,
     DERIVED,
     EXPLANATION_CONTRACT_VERSION_FIELD,
     OPAQUE_BLOB,
@@ -20,18 +21,18 @@ from app.models import (
     ProjectProfileVersion,
     WorldArtifact,
     WorldCharacter,
-    WorldEvidence,
     WorldEvent,
+    WorldEvidence,
     WorldFactClaim,
     WorldFaction,
     WorldLocation,
-    WorldResource,
     WorldRelation,
+    WorldResource,
     WorldRule,
     WorldTimelineAnchor,
 )
-from app.schemas.world_profiles import ProjectProfileVersionAppend
 from app.schemas.world_events import WorldFactClaimCreate
+from app.schemas.world_profiles import ProjectProfileVersionAppend
 
 
 def test_genre_profile_model_can_be_created(db_session):

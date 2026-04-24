@@ -1,8 +1,14 @@
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Any, Iterable
+from typing import Any
 
 from app.core.world_replay import LedgerEvent, bind_event_story_times, replay_events
-from app.core.world_time_normalizer import StoryTimePoint, build_anchor_time_index, compare_story_time, normalize_story_time
+from app.core.world_time_normalizer import (
+    StoryTimePoint,
+    build_anchor_time_index,
+    compare_story_time,
+    normalize_story_time,
+)
 
 
 @dataclass(frozen=True)
@@ -214,9 +220,7 @@ def _fact_is_active_at(
     if start_time is not None and compare_story_time(start_time, as_of_time) > 0:
         return False
     end_time = _fact_end_time(fact, anchor_index)
-    if end_time is not None and compare_story_time(end_time, as_of_time) <= 0:
-        return False
-    return True
+    return not (end_time is not None and compare_story_time(end_time, as_of_time) <= 0)
 
 
 def _fact_precedence_key(

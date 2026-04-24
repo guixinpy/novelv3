@@ -1,7 +1,8 @@
 import os
 import sqlite3
+
 from sqlalchemy import create_engine, event
-from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.orm import declarative_base, sessionmaker
 
 DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "data"))
 os.makedirs(DATA_DIR, exist_ok=True)
