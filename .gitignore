@@ -6,4 +6,11 @@ data/
 .env
 backend/static/
 .superpowers/
+.agents/
+.claude/
+.codex
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+skills-lock.json
 .tmp-*.png
