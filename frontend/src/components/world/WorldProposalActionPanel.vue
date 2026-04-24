@@ -122,7 +122,7 @@ function onDiffSubmit(editedFields: Record<string, unknown>) {
   border-radius: 0.8rem;
   padding: 0.65rem 0.75rem;
   background: rgba(255, 252, 246, 0.92);
-  color: var(--ink-strong);
+  color: var(--color-text-primary);
   font-size: 0.78rem;
   resize: vertical;
 }

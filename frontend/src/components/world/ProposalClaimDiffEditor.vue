@@ -147,27 +147,27 @@ function submit() {
 <style scoped>
 .diff-editor { display: grid; gap: 0; border: 1px solid rgba(111, 69, 31, 0.14); border-radius: 0.8rem; overflow: hidden; }
 .diff-editor__header { display: flex; align-items: center; gap: 0.6rem; padding: 0.7rem 0.85rem; border-bottom: 1px solid rgba(111, 69, 31, 0.1); }
-.diff-editor__title { color: var(--ink-strong); font-size: 0.84rem; font-weight: 700; }
-.diff-editor__claim { color: var(--ink-muted); font-size: 0.76rem; }
+.diff-editor__title { color: var(--color-text-primary); font-size: 0.84rem; font-weight: 700; }
+.diff-editor__claim { color: var(--color-text-secondary); font-size: 0.76rem; }
 .diff-editor__badge { margin-left: auto; border-radius: 0.4rem; padding: 0.15rem 0.5rem; background: rgba(245, 158, 11, 0.12); color: #d97706; font-size: 0.7rem; font-weight: 700; }
 .diff-editor__fields { display: grid; }
 .diff-editor__row { display: flex; align-items: center; gap: 0.6rem; padding: 0.55rem 0.85rem; border-bottom: 1px solid rgba(111, 69, 31, 0.06); }
 .diff-editor__row.is-changed { background: rgba(245, 158, 11, 0.06); }
-.diff-editor__field-name { width: 10rem; color: var(--ink-muted); font-size: 0.76rem; flex-shrink: 0; }
+.diff-editor__field-name { width: 10rem; color: var(--color-text-secondary); font-size: 0.76rem; flex-shrink: 0; }
 .diff-editor__row.is-changed .diff-editor__field-name { color: #d97706; font-weight: 700; }
 .diff-editor__field-value { flex: 1; display: flex; align-items: center; gap: 0.5rem; }
-.diff-editor__original { color: var(--ink-muted); font-size: 0.76rem; text-decoration: line-through; opacity: 0.7; }
-.diff-editor__arrow { color: var(--ink-muted); font-size: 0.76rem; }
+.diff-editor__original { color: var(--color-text-secondary); font-size: 0.76rem; text-decoration: line-through; opacity: 0.7; }
+.diff-editor__arrow { color: var(--color-text-secondary); font-size: 0.76rem; }
 .diff-editor__input, .diff-editor__textarea {
   border: 1px solid rgba(111, 69, 31, 0.14); border-radius: 0.4rem;
   padding: 0.3rem 0.5rem; background: rgba(255, 252, 246, 0.92);
-  color: var(--ink-strong); font-size: 0.78rem; flex: 1;
+  color: var(--color-text-primary); font-size: 0.78rem; flex: 1;
 }
 .diff-editor__textarea { resize: vertical; width: 100%; }
-.diff-editor__reset { background: none; border: none; color: var(--ink-muted); font-size: 0.7rem; cursor: pointer; }
+.diff-editor__reset { background: none; border: none; color: var(--color-text-secondary); font-size: 0.7rem; cursor: pointer; }
 .diff-editor__footer { display: flex; align-items: center; justify-content: space-between; padding: 0.65rem 0.85rem; border-top: 1px solid rgba(111, 69, 31, 0.1); }
-.diff-editor__hint { color: var(--ink-muted); font-size: 0.72rem; }
+.diff-editor__hint { color: var(--color-text-secondary); font-size: 0.72rem; }
 .diff-editor__actions { display: flex; gap: 0.45rem; }
-.diff-editor__btn { border: 1px solid rgba(111, 69, 31, 0.18); border-radius: 999px; padding: 0.35rem 0.7rem; background: rgba(255, 252, 246, 0.92); color: var(--ink-muted); font-size: 0.76rem; cursor: pointer; }
+.diff-editor__btn { border: 1px solid rgba(111, 69, 31, 0.18); border-radius: 999px; padding: 0.35rem 0.7rem; background: rgba(255, 252, 246, 0.92); color: var(--color-text-secondary); font-size: 0.76rem; cursor: pointer; }
 .diff-editor__btn--primary { background: var(--accent-strong); color: #fff; border-color: var(--accent-strong); font-weight: 700; }
 </style>

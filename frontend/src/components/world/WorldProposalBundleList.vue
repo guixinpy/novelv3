@@ -120,7 +120,7 @@ function clearFilters() {
 
 .bundle-list__eyebrow {
   margin: 0;
-  color: var(--ink-muted);
+  color: var(--color-text-secondary);
   font-size: 0.72rem;
 }
 
@@ -131,7 +131,7 @@ function clearFilters() {
 }
 
 .bundle-list__count {
-  color: var(--ink-muted);
+  color: var(--color-text-secondary);
   font-size: 0.76rem;
 }
 
@@ -147,7 +147,7 @@ function clearFilters() {
   border-radius: 0.6rem;
   padding: 0.35rem 0.55rem;
   background: rgba(255, 252, 246, 0.92);
-  color: var(--ink-strong);
+  color: var(--color-text-primary);
   font-size: 0.74rem;
 }
 
@@ -180,13 +180,13 @@ function clearFilters() {
 }
 
 .bundle-list__item strong {
-  color: var(--ink-strong);
+  color: var(--color-text-primary);
   font-size: 0.82rem;
 }
 
 .bundle-list__item span,
 .bundle-list__empty {
-  color: var(--ink-muted);
+  color: var(--color-text-secondary);
   font-size: 0.76rem;
 }
 

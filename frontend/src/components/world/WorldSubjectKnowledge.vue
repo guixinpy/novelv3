@@ -78,21 +78,21 @@ function onSelect() {
   gap: 0.6rem;
   margin-bottom: 0.8rem;
 }
-.subject-knowledge__label { color: var(--ink-muted); font-size: 0.8rem; }
+.subject-knowledge__label { color: var(--color-text-secondary); font-size: 0.8rem; }
 .subject-knowledge__select {
   border: 1px solid rgba(111, 69, 31, 0.14);
   border-radius: 0.6rem;
   padding: 0.4rem 0.6rem;
   background: rgba(255, 252, 246, 0.92);
-  color: var(--ink-strong);
+  color: var(--color-text-primary);
   font-size: 0.8rem;
 }
 .subject-knowledge__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem; }
 .subject-knowledge__block { display: grid; gap: 0.4rem; }
-.subject-knowledge__block h4 { margin: 0; color: var(--ink-strong); font-size: 0.84rem; }
+.subject-knowledge__block h4 { margin: 0; color: var(--color-text-primary); font-size: 0.84rem; }
 .subject-knowledge__list { display: grid; gap: 0.35rem; margin: 0; padding: 0; list-style: none; }
 .subject-knowledge__list li { display: grid; gap: 0.1rem; }
-.subject-knowledge__list strong { color: var(--ink-strong); font-size: 0.78rem; }
+.subject-knowledge__list strong { color: var(--color-text-primary); font-size: 0.78rem; }
 .subject-knowledge__list span,
-.subject-knowledge__empty { color: var(--ink-muted); font-size: 0.78rem; }
+.subject-knowledge__empty { color: var(--color-text-secondary); font-size: 0.78rem; }
 </style>

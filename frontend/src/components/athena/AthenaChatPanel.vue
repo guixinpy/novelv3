@@ -67,7 +67,7 @@ async function onSend(text: string) {
   background: var(--color-bg-white);
   border-left: 1px solid var(--color-border);
   box-shadow: var(--shadow-md);
-  z-index: 30;
+  z-index: var(--z-panel);
   display: flex;
   flex-direction: column;
 }
@@ -101,7 +101,7 @@ async function onSend(text: string) {
 .athena-chat-panel__backdrop {
   position: fixed;
   inset: 0;
-  z-index: 29;
+  z-index: calc(var(--z-panel) - 1);
 }
 
 /* Transitions */

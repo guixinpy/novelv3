@@ -75,28 +75,28 @@ function next() { if (canNext.value) emit('update:selectedChapter', props.select
 .chapter-snapshot__selector {
   display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.8rem;
 }
-.chapter-snapshot__label { color: var(--ink-muted); font-size: 0.8rem; }
+.chapter-snapshot__label { color: var(--color-text-secondary); font-size: 0.8rem; }
 .chapter-snapshot__nav {
   border: 1px solid rgba(111, 69, 31, 0.14); border-radius: 0.4rem;
   padding: 0.2rem 0.5rem; background: rgba(255, 252, 246, 0.92);
-  color: var(--ink-muted); font-size: 0.78rem; cursor: pointer;
+  color: var(--color-text-secondary); font-size: 0.78rem; cursor: pointer;
 }
 .chapter-snapshot__nav:disabled { opacity: 0.4; cursor: default; }
 .chapter-snapshot__current {
   font-weight: 700; color: var(--accent-strong); font-size: 0.88rem;
   min-width: 4rem; text-align: center;
 }
-.chapter-snapshot__total { color: var(--ink-muted); font-size: 0.76rem; }
+.chapter-snapshot__total { color: var(--color-text-secondary); font-size: 0.76rem; }
 .chapter-snapshot__badge {
   margin-left: auto; border-radius: 999px; padding: 0.2rem 0.6rem;
   background: rgba(245, 158, 11, 0.12); color: #d97706; font-size: 0.7rem; font-weight: 700;
 }
 .chapter-snapshot__grid { display: grid; gap: 0.8rem; }
 .chapter-snapshot__block { display: grid; gap: 0.4rem; border: 1px dashed rgba(111, 69, 31, 0.14); border-radius: 0.8rem; padding: 0.8rem; }
-.chapter-snapshot__block h4 { margin: 0; color: var(--ink-strong); font-size: 0.84rem; }
+.chapter-snapshot__block h4 { margin: 0; color: var(--color-text-primary); font-size: 0.84rem; }
 .chapter-snapshot__list { display: grid; gap: 0.35rem; margin: 0; padding: 0; list-style: none; }
 .chapter-snapshot__list li { display: grid; gap: 0.1rem; }
-.chapter-snapshot__list strong { color: var(--ink-strong); font-size: 0.78rem; }
+.chapter-snapshot__list strong { color: var(--color-text-primary); font-size: 0.78rem; }
 .chapter-snapshot__list span,
-.chapter-snapshot__empty { color: var(--ink-muted); font-size: 0.78rem; }
+.chapter-snapshot__empty { color: var(--color-text-secondary); font-size: 0.78rem; }
 </style>

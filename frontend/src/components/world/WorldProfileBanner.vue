@@ -1,8 +1,15 @@
 <template>
-  <section class="world-profile-banner" data-testid="world-profile-banner">
+  <section
+    class="world-profile-banner"
+    data-testid="world-profile-banner"
+  >
     <div>
-      <p class="world-profile-banner__eyebrow">世界模型</p>
-      <h3 class="world-profile-banner__title">Profile v{{ profile.version }}</h3>
+      <p class="world-profile-banner__eyebrow">
+        世界模型
+      </p>
+      <h3 class="world-profile-banner__title">
+        Profile v{{ profile.version }}
+      </h3>
     </div>
     <dl class="world-profile-banner__meta">
       <div>
@@ -49,7 +56,7 @@ const genreLabel = computed(() => {
 
 .world-profile-banner__eyebrow {
   margin: 0;
-  color: var(--ink-muted);
+  color: var(--color-text-secondary);
   font-size: 0.75rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -70,13 +77,13 @@ const genreLabel = computed(() => {
 }
 
 .world-profile-banner__meta dt {
-  color: var(--ink-muted);
+  color: var(--color-text-secondary);
   font-size: 0.74rem;
 }
 
 .world-profile-banner__meta dd {
   margin: 0.1rem 0 0;
-  color: var(--ink-strong);
+  color: var(--color-text-primary);
   font-size: 0.82rem;
   font-weight: 600;
 }

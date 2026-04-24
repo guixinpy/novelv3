@@ -22,9 +22,9 @@ const statusVariant: Record<string, 'success' | 'warning' | 'error' | 'neutral'>
 
 <template>
   <div class="proposal-list">
-    <div v-if="!proposals?.bundles?.length" class="proposal-list__empty">暂无提案</div>
+    <div v-if="!proposals?.items?.length" class="proposal-list__empty">暂无提案</div>
     <div
-      v-for="bundle in (proposals?.bundles || [])"
+      v-for="bundle in (proposals?.items || [])"
       :key="bundle.id"
       class="proposal-list__item"
     >

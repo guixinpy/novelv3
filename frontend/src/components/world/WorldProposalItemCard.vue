@@ -118,13 +118,13 @@ function forwardRollback(reviewId: string, reason: string) {
 .proposal-item-card__claim,
 .proposal-item-card__submeta {
   margin: 0;
-  color: var(--ink-muted);
+  color: var(--color-text-secondary);
   font-size: 0.76rem;
 }
 
 .proposal-item-card__value {
   margin: 0.12rem 0 0;
-  color: var(--ink-strong);
+  color: var(--color-text-primary);
   font-size: 0.92rem;
 }
 

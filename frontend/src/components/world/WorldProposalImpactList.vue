@@ -1,20 +1,38 @@
 <template>
-  <section class="impact-list" data-testid="world-proposal-impact-list">
+  <section
+    class="impact-list"
+    data-testid="world-proposal-impact-list"
+  >
     <header class="impact-list__header">
       <div>
-        <p class="impact-list__eyebrow">Impact Snapshot</p>
-        <h3 class="impact-list__title">影响范围</h3>
+        <p class="impact-list__eyebrow">
+          Impact Snapshot
+        </p>
+        <h3 class="impact-list__title">
+          影响范围
+        </h3>
       </div>
-      <span v-if="isHighRisk" class="impact-list__risk">高风险变更</span>
+      <span
+        v-if="isHighRisk"
+        class="impact-list__risk"
+      >高风险变更</span>
     </header>
 
-    <div v-if="latestSnapshot" class="impact-list__body">
+    <div
+      v-if="latestSnapshot"
+      class="impact-list__body"
+    >
       <p>候选数：{{ candidateCount }}</p>
       <p>覆盖现有 truth：{{ existingTruthCount }}</p>
       <p>主体：{{ latestSnapshot.affected_subject_refs.join(' / ') || '无' }}</p>
       <p>谓词：{{ latestSnapshot.affected_predicates.join(' / ') || '无' }}</p>
     </div>
-    <p v-else class="impact-list__empty">尚未生成 impact snapshot。</p>
+    <p
+      v-else
+      class="impact-list__empty"
+    >
+      尚未生成 impact snapshot。
+    </p>
   </section>
 </template>
 
@@ -51,7 +69,7 @@ const isHighRisk = computed(() => candidateCount.value > 1 || existingTruthCount
 
 .impact-list__eyebrow {
   margin: 0;
-  color: var(--ink-muted);
+  color: var(--color-text-secondary);
   font-size: 0.72rem;
 }
 
@@ -72,7 +90,7 @@ const isHighRisk = computed(() => candidateCount.value > 1 || existingTruthCount
 
 .impact-list__body,
 .impact-list__empty {
-  color: var(--ink-muted);
+  color: var(--color-text-secondary);
   font-size: 0.8rem;
   line-height: 1.55;
 }

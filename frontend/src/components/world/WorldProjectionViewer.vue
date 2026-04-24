@@ -123,7 +123,7 @@ function formatAttributes(value: Record<string, unknown>) {
 
 .world-panel__eyebrow {
   margin: 0;
-  color: var(--ink-muted);
+  color: var(--color-text-secondary);
   font-size: 0.74rem;
 }
 
@@ -154,7 +154,7 @@ function formatAttributes(value: Record<string, unknown>) {
 
 .world-panel__block h4 {
   margin: 0;
-  color: var(--ink-strong);
+  color: var(--color-text-primary);
   font-size: 0.86rem;
 }
 
@@ -172,13 +172,13 @@ function formatAttributes(value: Record<string, unknown>) {
 }
 
 .world-panel__list strong {
-  color: var(--ink-strong);
+  color: var(--color-text-primary);
   font-size: 0.8rem;
 }
 
 .world-panel__list span,
 .world-panel__empty {
-  color: var(--ink-muted);
+  color: var(--color-text-secondary);
   font-size: 0.8rem;
   line-height: 1.5;
 }
@@ -192,7 +192,7 @@ function formatAttributes(value: Record<string, unknown>) {
   padding: 0.45rem 0.85rem;
   border: none;
   background: none;
-  color: var(--ink-muted);
+  color: var(--color-text-secondary);
   font-size: 0.8rem;
   font-weight: 600;
   cursor: pointer;
