@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, watch } from 'vue'
+import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 
 const props = withDefaults(
   defineProps<{
@@ -11,17 +11,37 @@ const props = withDefaults(
 )
 
 const emit = defineEmits<{ close: [] }>()
+const panelRef = ref<HTMLElement | null>(null)
 
 function onKeydown(e: KeyboardEvent) {
   if (e.key === 'Escape') emit('close')
+  if (e.key === 'Tab' && panelRef.value) {
+    const focusable = panelRef.value.querySelectorAll<HTMLElement>(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+    )
+    if (!focusable.length) return
+    const first = focusable[0]
+    const last = focusable[focusable.length - 1]
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault()
+      last.focus()
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault()
+      first.focus()
+    }
+  }
 }
 
 function onBackdropClick(e: MouseEvent) {
   if (e.target === e.currentTarget) emit('close')
 }
 
-watch(() => props.open, (val) => {
+watch(() => props.open, async (val) => {
   document.body.style.overflow = val ? 'hidden' : ''
+  if (val) {
+    await nextTick()
+    panelRef.value?.focus()
+  }
 })
 
 onMounted(() => { document.addEventListener('keydown', onKeydown) })
@@ -32,7 +52,7 @@ onUnmounted(() => { document.removeEventListener('keydown', onKeydown); document
   <Teleport to="body">
     <Transition name="modal">
       <div v-if="open" class="base-modal__backdrop" @click="onBackdropClick">
-        <div class="base-modal__panel" :style="{ width }" role="dialog" aria-modal="true">
+        <div ref="panelRef" class="base-modal__panel" :style="{ width }" role="dialog" aria-modal="true" tabindex="-1">
           <header v-if="title || $slots.header" class="base-modal__header">
             <slot name="header">
               <h3 class="base-modal__title">{{ title }}</h3>
@@ -48,8 +68,8 @@ onUnmounted(() => { document.removeEventListener('keydown', onKeydown); document
 </template>
 
 <style scoped>
-.base-modal__backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.3); z-index: 50; display: flex; align-items: center; justify-content: center; }
-.base-modal__panel { background: var(--color-bg-white); border-radius: var(--radius-lg); box-shadow: var(--shadow-md); max-height: 85vh; overflow-y: auto; display: flex; flex-direction: column; }
+.base-modal__backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.3); z-index: var(--z-modal); display: flex; align-items: center; justify-content: center; }
+.base-modal__panel { background: var(--color-bg-white); border-radius: var(--radius-lg); box-shadow: var(--shadow-md); max-height: 85vh; overflow-y: auto; display: flex; flex-direction: column; outline: none; }
 .base-modal__header { padding: var(--space-4); border-bottom: 1px solid var(--color-border); display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
 .base-modal__title { font-size: var(--text-lg); font-weight: var(--font-semibold); color: var(--color-text-primary); }
 .base-modal__close { font-size: var(--text-xl); color: var(--color-text-tertiary); line-height: 1; padding: var(--space-1); }

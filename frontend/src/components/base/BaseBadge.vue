@@ -16,8 +16,8 @@ withDefaults(
 
 <style scoped>
 .base-badge { display: inline-flex; align-items: center; border-radius: var(--radius-full); font-size: var(--text-xs); font-weight: var(--font-medium); white-space: nowrap; }
-.base-badge--sm { padding: 2px 8px; }
-.base-badge--md { padding: 4px 10px; }
+.base-badge--sm { padding: 2px var(--space-2); }
+.base-badge--md { padding: var(--space-1) var(--space-3); }
 .base-badge--success { background: var(--color-success-light); color: var(--color-success); }
 .base-badge--warning { background: var(--color-warning-light); color: var(--color-warning); }
 .base-badge--error { background: var(--color-error-light); color: var(--color-error); }

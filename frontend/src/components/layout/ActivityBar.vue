@@ -1,12 +1,23 @@
 <script setup lang="ts">
 import type { Workspace } from '../../stores/ui'
 
-defineProps<{
+const { activeWorkspace, projectId } = defineProps<{
   activeWorkspace: Workspace | null
   projectId: string
 }>()
 
-const emit = defineEmits<{ navigate: [target: string] }>()
+const emit = defineEmits<{
+  navigate: [target: string]
+  'toggle-subnav': []
+}>()
+
+function onItemClick(item: typeof workspaceItems[number]) {
+  if (activeWorkspace === item.key) {
+    emit('toggle-subnav')
+  } else {
+    emit('navigate', item.route(projectId))
+  }
+}
 
 const workspaceItems: { key: Workspace; icon: string; label: string; route: (id: string) => string }[] = [
   { key: 'hermes', icon: '☿', label: 'Hermes', route: (id) => `/projects/${id}/hermes` },
@@ -25,7 +36,7 @@ const workspaceItems: { key: Workspace; icon: string; label: string; route: (id:
         :class="{ 'activity-bar__item--active': activeWorkspace === item.key }"
         :title="item.label"
         :aria-label="item.label"
-        @click="emit('navigate', item.route(projectId))"
+        @click="onItemClick(item)"
       >
         <span class="activity-bar__icon">{{ item.icon }}</span>
       </button>

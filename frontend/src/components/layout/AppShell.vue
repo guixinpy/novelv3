@@ -27,15 +27,32 @@ const projectList = computed(() =>
   projectStore.projects.map((p: any) => ({ id: String(p.id), title: p.name })),
 )
 
+const isSettingsPage = computed(() => route.path === '/settings')
+
+const backLabel = computed(() => {
+  if (!isSettingsPage.value) return undefined
+  return ui.lastProjectRoute ? '返回项目' : '返回首页'
+})
+
+function onBack() {
+  router.push(ui.lastProjectRoute || '/')
+}
+
 function onSelectProject(id: string) {
   router.push(`/projects/${id}/hermes`)
 }
 
 function onNavigateSettings() {
+  if (route.meta.workspace) {
+    ui.lastProjectRoute = route.fullPath
+  }
   router.push('/settings')
 }
 
 function onActivityNavigate(target: string) {
+  if (target === '/settings' && route.meta.workspace) {
+    ui.lastProjectRoute = route.fullPath
+  }
   router.push(target)
 }
 </script>
@@ -51,14 +68,17 @@ function onActivityNavigate(target: string) {
     <TopBar
       :project-name="showSidebar ? projectName : undefined"
       :projects="projectList"
+      :back-label="backLabel"
       @select-project="onSelectProject"
       @navigate-settings="onNavigateSettings"
+      @back="onBack"
     />
     <template v-if="showSidebar && projectId">
       <ActivityBar
         :active-workspace="(workspace as any)"
         :project-id="projectId"
         @navigate="onActivityNavigate"
+        @toggle-subnav="ui.toggleSubNav()"
       />
       <SubNav
         :collapsed="ui.subNavCollapsed"

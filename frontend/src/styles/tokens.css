@@ -89,4 +89,12 @@
   --subnav-width: 220px;
   --content-padding: var(--space-6);
   --athena-chat-width: 400px;
+
+  /* Z-Index Scale */
+  --z-base: 0;
+  --z-subnav: 10;
+  --z-panel: 20;
+  --z-topbar: 30;
+  --z-overlay: 40;
+  --z-modal: 50;
 }

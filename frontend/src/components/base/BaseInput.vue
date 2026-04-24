@@ -1,5 +1,7 @@
 <script setup lang="ts">
-defineProps<{
+import { computed } from 'vue'
+
+const props = defineProps<{
   modelValue: string
   label?: string
   placeholder?: string
@@ -12,6 +14,9 @@ const emit = defineEmits<{
   'update:modelValue': [value: string]
 }>()
 
+const inputId = `input-${Math.random().toString(36).slice(2, 9)}`
+const errorId = computed(() => props.error ? `${inputId}-error` : undefined)
+
 function onInput(e: Event) {
   emit('update:modelValue', (e.target as HTMLInputElement).value)
 }
@@ -19,17 +24,20 @@ function onInput(e: Event) {
 
 <template>
   <div class="base-input">
-    <label v-if="label" class="base-input__label">{{ label }}</label>
+    <label v-if="label" class="base-input__label" :for="inputId">{{ label }}</label>
     <input
+      :id="inputId"
       class="base-input__field"
       :class="{ 'base-input__field--error': error }"
       :type="type ?? 'text'"
       :value="modelValue"
       :placeholder="placeholder"
       :disabled="disabled"
+      :aria-invalid="!!error"
+      :aria-describedby="errorId"
       @input="onInput"
     />
-    <p v-if="error" class="base-input__error">{{ error }}</p>
+    <p v-if="error" :id="errorId" class="base-input__error" role="alert">{{ error }}</p>
   </div>
 </template>
 

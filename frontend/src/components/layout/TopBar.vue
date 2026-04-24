@@ -4,11 +4,13 @@ import { ref } from 'vue'
 defineProps<{
   projectName?: string
   projects?: { id: string; title: string }[]
+  backLabel?: string
 }>()
 
 const emit = defineEmits<{
   'select-project': [id: string]
   'navigate-settings': []
+  'back': []
 }>()
 
 const dropdownOpen = ref(false)
@@ -18,7 +20,10 @@ const dropdownOpen = ref(false)
   <header class="topbar">
     <div class="topbar__left">
       <router-link to="/" class="topbar__brand">墨舟</router-link>
-      <div v-if="projectName" class="topbar__project-selector">
+      <button v-if="backLabel" class="topbar__back" @click="emit('back')">
+        ← {{ backLabel }}
+      </button>
+      <div v-else-if="projectName" class="topbar__project-selector">
         <button class="topbar__project-btn" @click="dropdownOpen = !dropdownOpen">
           {{ projectName }}
           <span class="topbar__chevron">&#9662;</span>
@@ -53,10 +58,16 @@ const dropdownOpen = ref(false)
   align-items: center;
   justify-content: space-between;
   padding: 0 var(--space-4);
-  z-index: 40;
+  z-index: var(--z-topbar);
 }
 .topbar__left { display: flex; align-items: center; gap: var(--space-4); }
 .topbar__brand { font-size: var(--text-lg); font-weight: var(--font-semibold); color: var(--color-brand); }
+.topbar__back {
+  font-size: var(--text-sm); color: var(--color-text-secondary);
+  padding: var(--space-1) var(--space-2); border-radius: var(--radius-md);
+  transition: all var(--transition-fast);
+}
+.topbar__back:hover { color: var(--color-brand); background: var(--color-bg-secondary); }
 .topbar__project-selector { position: relative; }
 .topbar__project-btn {
   display: flex; align-items: center; gap: var(--space-1);
@@ -70,7 +81,7 @@ const dropdownOpen = ref(false)
   position: absolute; top: 100%; left: 0; margin-top: var(--space-1);
   background: var(--color-bg-white); border: 1px solid var(--color-border);
   border-radius: var(--radius-md); box-shadow: var(--shadow-md);
-  min-width: 200px; z-index: 50; padding: var(--space-1) 0;
+  min-width: 200px; z-index: var(--z-modal); padding: var(--space-1) 0;
 }
 .topbar__dropdown-item {
   display: block; width: 100%; text-align: left;

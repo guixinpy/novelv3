@@ -76,7 +76,7 @@ function submitRevise() {
 
 .action-card__copy {
   margin-bottom: 0.8rem;
-  color: var(--ink-strong);
+  color: var(--color-text-primary);
   font-size: 0.92rem;
   line-height: 1.55;
 }
@@ -90,7 +90,7 @@ function submitRevise() {
 .action-card__button {
   border: 1px solid rgba(111, 69, 31, 0.16);
   background: rgba(255, 251, 242, 0.92);
-  color: var(--ink-muted);
+  color: var(--color-text-secondary);
   border-radius: 0.85rem;
   padding: 0.55rem 0.9rem;
   font-size: 0.86rem;
@@ -124,7 +124,7 @@ function submitRevise() {
   min-width: 0;
   border: 1px solid rgba(111, 69, 31, 0.16);
   background: rgba(255, 251, 242, 0.96);
-  color: var(--ink-strong);
+  color: var(--color-text-primary);
   border-radius: 0.85rem;
   padding: 0.65rem 0.85rem;
   font-size: 0.88rem;

@@ -54,7 +54,7 @@ const expanded = ref(false)
   width: 100%;
   border: 0;
   background: transparent;
-  color: var(--ink-strong);
+  color: var(--color-text-primary);
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
@@ -76,12 +76,12 @@ const expanded = ref(false)
 
 .summary-card__meta {
   font-size: 0.74rem;
-  color: var(--ink-muted);
+  color: var(--color-text-secondary);
   font-weight: 600;
 }
 
 .summary-card__arrow {
-  color: var(--ink-muted);
+  color: var(--color-text-secondary);
   font-size: 0.76rem;
 }
 
@@ -91,6 +91,6 @@ const expanded = ref(false)
   white-space: pre-wrap;
   font-size: 0.9rem;
   line-height: 1.6;
-  color: var(--ink-strong);
+  color: var(--color-text-primary);
 }
 </style>
