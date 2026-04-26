@@ -4,14 +4,13 @@ import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api/client'
 import type { ChatResponse, RefreshTarget, ResolveActionResponse, WorkspacePanel } from '../api/types'
 import ProjectDashboard from '../components/shared/ProjectDashboard.vue'
-import ChapterList from '../components/shared/ChapterList.vue'
 import ExportModal from '../components/shared/ExportModal.vue'
 import VersionsModal from '../components/shared/VersionsModal.vue'
 import ChatMessageList from '../components/chat/ChatMessageList.vue'
 import ChatInput from '../components/chat/ChatInput.vue'
-import BaseButton from '../components/base/BaseButton.vue'
 import { parseSlashCommand } from '../components/workspace/chatCommands'
 import {
+  getActionLabel,
   getActionRefreshTargets,
   getPanelRefreshTargets,
   getVersionRefreshTarget,
@@ -55,16 +54,6 @@ const totalWords = computed(() => {
   return (project.chapters || []).reduce((sum: number, c: any) => sum + (c.word_count || 0), 0)
 })
 
-// Chapters
-const chapterItems = computed(() =>
-  (project.chapters || []).map((c: any) => ({
-    index: c.chapter_index,
-    wordCount: c.word_count || 0,
-  })),
-)
-
-const activeChapterIndex = computed(() => project.chapter?.chapter_index ?? null)
-
 // Action fingerprint watcher (from ProjectDetail.vue)
 const latestActionFingerprint = computed(() => {
   const latest = chat.messages[chat.messages.length - 1]?.action_result as
@@ -73,6 +62,26 @@ const latestActionFingerprint = computed(() => {
   if (!latest) return ''
   return `${chat.messages.length}:${String(latest.type)}:${String(latest.status)}`
 })
+
+const latestActionResult = computed(() => {
+  for (let index = chat.messages.length - 1; index >= 0; index -= 1) {
+    const actionResult = chat.messages[index]?.action_result as { type?: unknown; status?: unknown } | undefined
+    if (typeof actionResult?.type === 'string' || typeof actionResult?.status === 'string') return actionResult
+  }
+  return null
+})
+
+const latestActionLabel = computed(() => {
+  const actionType = typeof latestActionResult.value?.type === 'string' ? latestActionResult.value.type : ''
+  return actionType ? getActionLabel(actionType) : ''
+})
+
+const latestActionStatus = computed(() => {
+  const status = latestActionResult.value?.status
+  return typeof status === 'string' ? status : null
+})
+
+const suggestedNextStep = computed(() => chat.diagnosis?.suggested_next_step || null)
 
 onMounted(async () => {
   await initialize(pid.value)
@@ -134,7 +143,7 @@ async function handleRevisionQuery(projectId = pid.value) {
   workspace.applyUserPanel('content', '你提交了章节修订，Hermes 正在重新生成')
   const chapter = await chat.regenerateRevision(revisionId)
   if (!chapter) return
-  await refreshProjectTargets(['content'], currentHydrationSnapshot(projectId))
+  await refreshProjectTargets(['content', 'versions'], currentHydrationSnapshot(projectId))
   await project.loadChapter(projectId, chapter.chapter_index)
 }
 
@@ -221,20 +230,21 @@ async function onDecide(decision: string, comment?: string) {
   await handleResponse(res)
 }
 
-function onDashboardAction(command: string) {
-  void onSend(command)
-}
-
-async function loadChapter(index: number) {
-  const snapshot = currentHydrationSnapshot()
-  workspace.applyUserPanel('content', `你刚点了第 ${index} 章`)
-  await project.loadChapter(pid.value, index)
-  markHydratedTarget(hydrationTracker, snapshot, 'content')
-}
-
 async function onExport(format: string) {
   showExportModal.value = false
   await project.exportProject(pid.value, format)
+}
+
+async function onDashboardTool(tool: 'manuscript' | 'versions' | 'export') {
+  if (tool === 'manuscript') {
+    await router.push(`/projects/${pid.value}/manuscript`)
+    return
+  }
+  if (tool === 'versions') {
+    openVersionsModal()
+    return
+  }
+  showExportModal.value = true
 }
 
 async function onFilterVersions(type: string) {
@@ -274,31 +284,19 @@ function openVersionsModal() {
     <!-- Sub-nav content: rendered into AppShell SubNav slot via teleport -->
     <Teleport to="[data-subnav-content]">
       <div class="hermes-subnav">
-        <div class="hermes-subnav__section-label">项目概览</div>
         <ProjectDashboard
           :setup="project.setup"
           :storyline="project.storyline"
           :outline="project.outline"
           :chapters="project.chapters || []"
           :total-words="totalWords"
-          @action="onDashboardAction"
+          :pending-action="chat.pendingAction"
+          :ai-loading="chat.loading"
+          :latest-action-label="latestActionLabel"
+          :latest-action-status="latestActionStatus"
+          :suggested-next-step="suggestedNextStep"
+          @tool="onDashboardTool"
         />
-        <div class="hermes-subnav__divider" />
-        <div class="hermes-subnav__section-label">章节</div>
-        <ChapterList
-          :chapters="chapterItems"
-          :active-index="activeChapterIndex"
-          @select="loadChapter"
-        />
-        <div class="hermes-subnav__divider" />
-        <div class="hermes-subnav__actions">
-          <BaseButton variant="ghost" size="sm" @click="showExportModal = true">
-            导出
-          </BaseButton>
-          <BaseButton variant="ghost" size="sm" @click="openVersionsModal">
-            版本历史
-          </BaseButton>
-        </div>
       </div>
     </Teleport>
 
@@ -364,31 +362,8 @@ function openVersionsModal() {
   font-size: var(--text-sm);
 }
 
-/* Sub-nav styles */
 .hermes-subnav {
   display: flex;
   flex-direction: column;
-}
-
-.hermes-subnav__section-label {
-  font-size: var(--text-xs);
-  font-weight: var(--font-semibold);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--color-text-tertiary);
-  padding: var(--space-3) var(--space-3) var(--space-1);
-}
-
-.hermes-subnav__divider {
-  height: 1px;
-  background: var(--color-border);
-  margin: var(--space-2) 0;
-}
-
-.hermes-subnav__actions {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  padding: var(--space-2) var(--space-3);
 }
 </style>
