@@ -24,6 +24,32 @@ describe('getSelectionOffsetsWithin', () => {
     paragraph.remove()
   })
 
+  it('counts visual text block boundaries as hard paragraph breaks', () => {
+    const paragraph = document.createElement('p')
+    const firstBlock = document.createElement('span')
+    firstBlock.className = 'manuscript-editor__text-block'
+    firstBlock.textContent = '第一段'
+    const secondBlock = document.createElement('span')
+    secondBlock.className = 'manuscript-editor__text-block'
+    secondBlock.textContent = '第二段'
+    paragraph.append(firstBlock, secondBlock)
+    document.body.appendChild(paragraph)
+
+    const textNode = secondBlock.firstChild as Text
+    const range = document.createRange()
+    range.setStart(textNode, 0)
+    range.setEnd(textNode, 2)
+    const selection = window.getSelection()!
+    selection.removeAllRanges()
+    selection.addRange(range)
+
+    const offsets = getSelectionOffsetsWithin(paragraph, selection)
+
+    expect(offsets).toEqual({ startOffset: 5, endOffset: 7, selectedText: '第二' })
+    selection.removeAllRanges()
+    paragraph.remove()
+  })
+
   it('returns null when selection is outside the paragraph', () => {
     const paragraph = document.createElement('p')
     paragraph.textContent = '正文'

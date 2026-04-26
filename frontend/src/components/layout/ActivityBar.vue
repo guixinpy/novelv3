@@ -22,7 +22,7 @@ function onItemClick(item: typeof workspaceItems[number]) {
 const workspaceItems: { key: Workspace; icon: string; label: string; route: (id: string) => string }[] = [
   { key: 'hermes', icon: '☿', label: 'Hermes', route: (id) => `/projects/${id}/hermes` },
   { key: 'athena', icon: '⏣', label: 'Athena', route: (id) => `/projects/${id}/athena` },
-  { key: 'manuscript', icon: '📜', label: 'Manuscript', route: (id) => `/projects/${id}/manuscript` },
+  { key: 'manuscript', icon: '📜', label: 'Calliope', route: (id) => `/projects/${id}/manuscript` },
 ]
 </script>
 

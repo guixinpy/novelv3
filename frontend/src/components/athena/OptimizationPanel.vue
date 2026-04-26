@@ -31,7 +31,7 @@ function formatConfigValue(value: unknown) {
         <span class="optimization-panel__count">{{ optimization?.rules.length || 0 }}</span>
       </header>
       <div v-if="!optimization || optimization.rules.length === 0" class="optimization-panel__empty">
-        暂无自优化规则。提交 Manuscript 修订后会在这里看到学习结果。
+        暂无自优化规则。提交 Calliope 修订后会在这里看到学习结果。
       </div>
       <article v-for="rule in optimization?.rules || []" :key="rule.id" class="optimization-panel__rule">
         <div class="optimization-panel__rule-condition">{{ rule.condition }}</div>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildParagraphSegments, diffCorrection } from './revisionRender'
+import { buildCorrectionRenderSegments, buildParagraphSegments, diffCorrection } from './revisionRender'
 import type { LocalAnnotation, LocalCorrection } from '../../stores/manuscript'
 
 describe('revisionRender', () => {
@@ -45,5 +45,40 @@ describe('revisionRender', () => {
       correctedMiddle: '夜风微凉',
       suffix: '。',
     })
+  })
+
+  it('diffCorrection treats paragraph breaks around unchanged text as structural layout', () => {
+    const correction: LocalCorrection = {
+      id: 'c1',
+      paragraphIndex: 0,
+      originalText: '地平线外，未改造的荒野',
+      correctedText: '地平线外，\n\n未改\n\n造的荒野',
+    }
+
+    expect(diffCorrection(correction)).toEqual({
+      prefix: '地平线外，',
+      originalMiddle: '',
+      correctedMiddle: '',
+      suffix: '造的荒野',
+      layoutMiddle: '\n\n未改\n\n',
+      kind: 'paragraph_split',
+    })
+  })
+
+  it('buildCorrectionRenderSegments renders unchanged split text as layout and real inserted text as correction', () => {
+    const correction: LocalCorrection = {
+      id: 'c1',
+      paragraphIndex: 0,
+      originalText: '稀薄的大气中蒸腾着红色的热浪',
+      correctedText: '稀薄的\n\n大气中蒸腾\n\n着着\n\n红色的热浪',
+    }
+
+    expect(buildCorrectionRenderSegments(correction)).toEqual([
+      { type: 'text', text: '稀薄的' },
+      { type: 'layout', text: '\n\n大气中蒸腾\n\n着' },
+      { type: 'correction', text: '着' },
+      { type: 'layout', text: '\n\n' },
+      { type: 'text', text: '红色的热浪' },
+    ])
   })
 })

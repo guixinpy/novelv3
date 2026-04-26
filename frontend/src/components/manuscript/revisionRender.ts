@@ -9,6 +9,61 @@ export interface CorrectionDiff {
   originalMiddle: string
   correctedMiddle: string
   suffix: string
+  layoutMiddle?: string
+  kind?: 'paragraph_split'
+}
+
+function withoutLineBreaks(text: string) {
+  return text.replace(/\n/g, '')
+}
+
+export type CorrectionRenderSegment =
+  | { type: 'text'; text: string }
+  | { type: 'original'; text: string }
+  | { type: 'correction'; text: string }
+  | { type: 'layout'; text: string }
+
+function pushCorrectionSegment(segments: CorrectionRenderSegment[], segment: CorrectionRenderSegment) {
+  if (!segment.text) return
+  const last = segments[segments.length - 1]
+  if (last?.type === segment.type) {
+    last.text += segment.text
+  } else {
+    segments.push(segment)
+  }
+}
+
+function buildLayoutAwareMiddleSegments(originalMiddle: string, correctedMiddle: string): CorrectionRenderSegment[] {
+  const segments: CorrectionRenderSegment[] = []
+  let originalIndex = 0
+  let correctedIndex = 0
+
+  while (correctedIndex < correctedMiddle.length) {
+    if (correctedMiddle[correctedIndex] === '\n') {
+      let breakEnd = correctedIndex
+      while (breakEnd < correctedMiddle.length && correctedMiddle[breakEnd] === '\n') {
+        breakEnd += 1
+      }
+      pushCorrectionSegment(segments, { type: 'layout', text: correctedMiddle.slice(correctedIndex, breakEnd) })
+      correctedIndex = breakEnd
+      continue
+    }
+
+    const character = correctedMiddle[correctedIndex]
+    if (originalIndex < originalMiddle.length && character === originalMiddle[originalIndex]) {
+      pushCorrectionSegment(segments, { type: 'layout', text: character })
+      originalIndex += 1
+    } else {
+      pushCorrectionSegment(segments, { type: 'correction', text: character })
+    }
+    correctedIndex += 1
+  }
+
+  if (originalIndex < originalMiddle.length) {
+    pushCorrectionSegment(segments, { type: 'original', text: originalMiddle.slice(originalIndex) })
+  }
+
+  return segments
 }
 
 export function buildParagraphSegments(text: string, annotations: LocalAnnotation[]): ParagraphSegment[] {
@@ -49,10 +104,47 @@ export function diffCorrection(correction: LocalCorrection): CorrectionDiff {
 
   const originalEnd = suffixLength ? originalText.length - suffixLength : originalText.length
   const correctedEnd = suffixLength ? correctedText.length - suffixLength : correctedText.length
+  const originalMiddle = originalText.slice(prefixLength, originalEnd)
+  const correctedMiddle = correctedText.slice(prefixLength, correctedEnd)
+
+  if (correctedMiddle.includes('\n') && withoutLineBreaks(correctedMiddle) === originalMiddle) {
+    return {
+      prefix: originalText.slice(0, prefixLength),
+      originalMiddle: '',
+      correctedMiddle: '',
+      suffix: originalText.slice(originalEnd),
+      layoutMiddle: correctedMiddle,
+      kind: 'paragraph_split',
+    }
+  }
+
   return {
     prefix: originalText.slice(0, prefixLength),
-    originalMiddle: originalText.slice(prefixLength, originalEnd),
-    correctedMiddle: correctedText.slice(prefixLength, correctedEnd),
+    originalMiddle,
+    correctedMiddle,
     suffix: originalText.slice(originalEnd),
   }
+}
+
+export function buildCorrectionRenderSegments(correction: LocalCorrection): CorrectionRenderSegment[] {
+  const diff = diffCorrection(correction)
+  const segments: CorrectionRenderSegment[] = []
+
+  pushCorrectionSegment(segments, { type: 'text', text: diff.prefix })
+
+  if (diff.layoutMiddle !== undefined) {
+    pushCorrectionSegment(segments, { type: 'layout', text: diff.layoutMiddle })
+  } else if (diff.correctedMiddle.includes('\n')) {
+    buildLayoutAwareMiddleSegments(diff.originalMiddle, diff.correctedMiddle).forEach((segment) => {
+      pushCorrectionSegment(segments, segment)
+    })
+  } else {
+    pushCorrectionSegment(segments, { type: 'original', text: diff.originalMiddle })
+    if (diff.originalMiddle || diff.correctedMiddle) {
+      segments.push({ type: 'correction', text: diff.correctedMiddle })
+    }
+  }
+
+  pushCorrectionSegment(segments, { type: 'text', text: diff.suffix })
+  return segments.length ? segments : [{ type: 'text', text: correction.correctedText }]
 }
