@@ -35,6 +35,11 @@ class ChapterRevisionCreate(BaseModel):
         return self
 
 
+class ChapterRevisionDraftUpdate(BaseModel):
+    annotations: list[RevisionAnnotationIn] = Field(default_factory=list)
+    corrections: list[RevisionCorrectionIn] = Field(default_factory=list)
+
+
 class RevisionAnnotationOut(BaseModel):
     id: str
     revision_id: str
@@ -64,8 +69,10 @@ class ChapterRevisionOut(BaseModel):
     chapter_index: int
     revision_index: int
     status: str
-    submitted_at: datetime
+    submitted_at: datetime | None
     completed_at: datetime | None
+    base_version_id: str | None
+    result_version_id: str | None
     annotations: list[RevisionAnnotationOut]
     corrections: list[RevisionCorrectionOut]
 

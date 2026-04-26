@@ -342,6 +342,11 @@ export interface ChapterRevisionPayload {
   corrections: RevisionCorrectionPayload[]
 }
 
+export interface ChapterRevisionDraftPayload {
+  annotations: RevisionAnnotationPayload[]
+  corrections: RevisionCorrectionPayload[]
+}
+
 export interface RevisionAnnotation extends RevisionAnnotationPayload {
   id: string
   revision_id: string
@@ -359,8 +364,10 @@ export interface ChapterRevision {
   chapter_index: number
   revision_index: number
   status: string
-  submitted_at: string
+  submitted_at: string | null
   completed_at: string | null
+  base_version_id: string | null
+  result_version_id: string | null
   annotations: RevisionAnnotation[]
   corrections: RevisionCorrection[]
 }

@@ -1,7 +1,7 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { api } from '../api/client'
-import type { ChapterContent, ChapterRevision } from '../api/types'
+import type { ChapterContent, ChapterRevision, RevisionAnnotationPayload, RevisionCorrectionPayload } from '../api/types'
 
 export interface LocalAnnotation {
   id: string
@@ -30,9 +30,49 @@ function toErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
 
+function toLocalAnnotation(item: ChapterRevision['annotations'][number]): LocalAnnotation {
+  return {
+    id: item.id,
+    paragraphIndex: item.paragraph_index,
+    startOffset: item.start_offset,
+    endOffset: item.end_offset,
+    selectedText: item.selected_text,
+    comment: item.comment,
+  }
+}
+
+function toLocalCorrection(item: ChapterRevision['corrections'][number]): LocalCorrection {
+  return {
+    id: item.id,
+    paragraphIndex: item.paragraph_index,
+    originalText: item.original_text,
+    correctedText: item.corrected_text,
+  }
+}
+
+function toAnnotationPayload(item: LocalAnnotation): RevisionAnnotationPayload {
+  return {
+    paragraph_index: item.paragraphIndex,
+    start_offset: item.startOffset,
+    end_offset: item.endOffset,
+    selected_text: item.selectedText,
+    comment: item.comment,
+  }
+}
+
+function toCorrectionPayload(item: LocalCorrection): RevisionCorrectionPayload {
+  return {
+    paragraph_index: item.paragraphIndex,
+    original_text: item.originalText,
+    corrected_text: item.correctedText,
+  }
+}
+
 export const useManuscriptStore = defineStore('manuscript', () => {
   const chapter = ref<ChapterContent | null>(null)
+  const selectedProjectId = ref<string | null>(null)
   const selectedChapterIndex = ref<number | null>(null)
+  const activeRevision = ref<ChapterRevision | null>(null)
   const annotations = ref<LocalAnnotation[]>([])
   const corrections = ref<LocalCorrection[]>([])
   const loading = ref(false)
@@ -45,14 +85,41 @@ export const useManuscriptStore = defineStore('manuscript', () => {
   })
   const hasPendingFeedback = computed(() => annotations.value.length > 0 || corrections.value.length > 0)
 
+  function buildDraftPayload() {
+    return {
+      annotations: annotations.value.map(toAnnotationPayload),
+      corrections: corrections.value.map(toCorrectionPayload),
+    }
+  }
+
+  function applyRevisionFeedback(revision: ChapterRevision | null) {
+    activeRevision.value = revision
+    annotations.value = revision ? revision.annotations.map(toLocalAnnotation) : []
+    corrections.value = revision ? revision.corrections.map(toLocalCorrection) : []
+  }
+
+  async function persistCurrentDraft() {
+    if (!selectedProjectId.value || selectedChapterIndex.value === null) return
+    try {
+      const revision = await api.updateRevisionDraft(selectedProjectId.value, selectedChapterIndex.value, buildDraftPayload())
+      applyRevisionFeedback(revision)
+    } catch (err) {
+      error.value = toErrorMessage(err)
+    }
+  }
+
   async function loadChapter(projectId: string, chapterIndex: number) {
     loading.value = true
     error.value = null
     try {
-      chapter.value = await api.getChapter(projectId, chapterIndex)
+      const [nextChapter, revision] = await Promise.all([
+        api.getChapter(projectId, chapterIndex),
+        api.getActiveRevision(projectId, chapterIndex),
+      ])
+      chapter.value = nextChapter
+      selectedProjectId.value = projectId
       selectedChapterIndex.value = chapterIndex
-      annotations.value = []
-      corrections.value = []
+      applyRevisionFeedback(revision)
     } catch (err) {
       error.value = toErrorMessage(err)
     } finally {
@@ -60,55 +127,61 @@ export const useManuscriptStore = defineStore('manuscript', () => {
     }
   }
 
-  function addAnnotation(draft: AnnotationDraft) {
+  async function addAnnotation(draft: AnnotationDraft) {
     annotations.value.push({ id: createLocalId('annotation'), ...draft })
+    await persistCurrentDraft()
   }
 
-  function updateAnnotation(id: string, comment: string) {
+  async function updateAnnotation(id: string, comment: string) {
     const item = annotations.value.find((annotation) => annotation.id === id)
     if (item) item.comment = comment
+    await persistCurrentDraft()
   }
 
-  function removeAnnotation(id: string) {
+  async function removeAnnotation(id: string) {
     annotations.value = annotations.value.filter((annotation) => annotation.id !== id)
+    await persistCurrentDraft()
   }
 
-  function addCorrection(draft: CorrectionDraft) {
-    corrections.value = [
-      ...corrections.value.filter((correction) => correction.paragraphIndex !== draft.paragraphIndex),
-      { id: createLocalId('correction'), ...draft },
-    ]
+  async function addCorrection(draft: CorrectionDraft) {
+    if (draft.correctedText === draft.originalText) {
+      corrections.value = corrections.value.filter((correction) => correction.paragraphIndex !== draft.paragraphIndex)
+    } else {
+      corrections.value = [
+        ...corrections.value.filter((correction) => correction.paragraphIndex !== draft.paragraphIndex),
+        { id: createLocalId('correction'), ...draft },
+      ]
+    }
+    await persistCurrentDraft()
   }
 
-  function removeCorrection(id: string) {
+  async function removeCorrection(id: string) {
     corrections.value = corrections.value.filter((correction) => correction.id !== id)
+    await persistCurrentDraft()
   }
 
-  function clearFeedback() {
+  async function clearFeedback() {
     annotations.value = []
     corrections.value = []
+    await persistCurrentDraft()
   }
 
   async function submitRevision(projectId: string, chapterIndex: number): Promise<ChapterRevision> {
     submitting.value = true
     error.value = null
     try {
-      const revision = await api.submitRevision(projectId, {
-        chapter_index: chapterIndex,
-        annotations: annotations.value.map((item) => ({
-          paragraph_index: item.paragraphIndex,
-          start_offset: item.startOffset,
-          end_offset: item.endOffset,
-          selected_text: item.selectedText,
-          comment: item.comment,
-        })),
-        corrections: corrections.value.map((item) => ({
-          paragraph_index: item.paragraphIndex,
-          original_text: item.originalText,
-          corrected_text: item.correctedText,
-        })),
-      })
-      clearFeedback()
+      let revision = activeRevision.value
+      if (!revision) {
+        revision = await api.submitRevision(projectId, {
+          chapter_index: chapterIndex,
+          ...buildDraftPayload(),
+        })
+      } else {
+        revision = await api.updateRevisionDraft(projectId, chapterIndex, buildDraftPayload())
+        if (!revision) throw new Error('revision feedback cannot be empty')
+        revision = await api.submitRevisionDraft(projectId, revision.id)
+      }
+      applyRevisionFeedback(revision)
       return revision
     } catch (err) {
       error.value = toErrorMessage(err)
@@ -120,8 +193,11 @@ export const useManuscriptStore = defineStore('manuscript', () => {
 
   function reset() {
     chapter.value = null
+    selectedProjectId.value = null
     selectedChapterIndex.value = null
-    clearFeedback()
+    activeRevision.value = null
+    annotations.value = []
+    corrections.value = []
     loading.value = false
     submitting.value = false
     error.value = null
@@ -129,7 +205,9 @@ export const useManuscriptStore = defineStore('manuscript', () => {
 
   return {
     chapter,
+    selectedProjectId,
     selectedChapterIndex,
+    activeRevision,
     annotations,
     corrections,
     loading,

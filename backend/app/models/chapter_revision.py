@@ -18,9 +18,11 @@ class ChapterRevision(Base):
     chapter_id = Column(String, ForeignKey("chapter_contents.id"), nullable=False)
     chapter_index = Column(Integer, nullable=False)
     revision_index = Column(Integer, nullable=False)
-    status = Column(String, default="submitted")
-    submitted_at = Column(DateTime, default=lambda: datetime.now(UTC))
+    status = Column(String, default="draft")
+    submitted_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
+    base_version_id = Column(String, ForeignKey("versions.id"), nullable=True)
+    result_version_id = Column(String, ForeignKey("versions.id"), nullable=True)
 
 
 class RevisionAnnotation(Base):

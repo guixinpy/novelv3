@@ -6,6 +6,7 @@ import type {
   BackgroundTaskResponse,
   ChapterContent,
   ChapterRevision,
+  ChapterRevisionDraftPayload,
   ChapterRevisionPayload,
   ChatHistoryMessage,
   ChatRequest,
@@ -108,8 +109,14 @@ export const api = {
     request(`/projects/${id}/consistency/issues`),
   generateChapter: (id: string, index: number) => request<ChapterContent>(`/projects/${id}/chapters/${index}/generate`, { method: 'POST' }),
   getChapter: (id: string, index: number) => request<ChapterContent>(`/projects/${id}/chapters/${index}`),
+  getActiveRevision: (id: string, index: number) =>
+    request<ChapterRevision | null>(`/projects/${id}/revisions/chapters/${index}/active`),
+  updateRevisionDraft: (id: string, index: number, data: ChapterRevisionDraftPayload) =>
+    request<ChapterRevision | null>(`/projects/${id}/revisions/chapters/${index}/draft`, { method: 'PUT', body: JSON.stringify(data) }),
   submitRevision: (id: string, data: ChapterRevisionPayload) =>
     request<ChapterRevision>(`/projects/${id}/revisions`, { method: 'POST', body: JSON.stringify(data) }),
+  submitRevisionDraft: (id: string, revisionId: string) =>
+    request<ChapterRevision>(`/projects/${id}/revisions/${revisionId}/submit`, { method: 'POST' }),
   listRevisions: (id: string) => request<ChapterRevision[]>(`/projects/${id}/revisions`),
   getRevision: (id: string, revisionId: string) => request<ChapterRevision>(`/projects/${id}/revisions/${revisionId}`),
   regenerateRevision: (id: string, revisionId: string) =>
