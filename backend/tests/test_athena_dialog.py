@@ -3,6 +3,7 @@ import pytest
 from app.api import dialogs
 from app.core.context_injection import build_athena_world_context, build_athena_world_context_blocks
 from app.models import (
+    AIModelCallTrace,
     Dialog,
     DialogMessage,
     GenreProfile,
@@ -18,6 +19,8 @@ from app.models import (
 
 class _FakeAiResult:
     content = "世界模型已更新。"
+    prompt_tokens = 222
+    completion_tokens = 33
 
 
 async def _fake_complete(*args, **kwargs):
@@ -88,6 +91,8 @@ def test_athena_chat_update_request_without_profile_does_not_claim_success(clien
     assert "世界模型已更新" not in payload["message"]
     assert "还没有建立正式 world-model profile" in payload["message"]
     assert payload["refresh_targets"] == []
+    assert payload["trace_id"] is None
+    assert db_session.query(AIModelCallTrace).count() == 0
     assert db_session.query(WorldProposalBundle).count() == 0
     assert db_session.query(WorldProposalItem).count() == 0
 
@@ -107,6 +112,8 @@ def test_athena_chat_update_request_with_profile_creates_reviewable_proposal(cli
     assert "世界模型已更新" not in payload["message"]
     assert "待审提案" in payload["message"]
     assert payload["refresh_targets"] == ["proposals"]
+    assert payload["trace_id"] is None
+    assert db_session.query(AIModelCallTrace).count() == 0
 
     bundle = db_session.query(WorldProposalBundle).one()
     item = db_session.query(WorldProposalItem).one()
@@ -276,3 +283,45 @@ def test_build_chat_call_payload_returns_messages_and_context_blocks_without_cha
     assert hermes_payload["context_blocks"][-1]["kind"] == "dialog_history"
     assert hermes_payload["context_blocks"][-1]["sources"][0]["source_type"] == "Dialog"
     assert hermes_payload["context_blocks"][-1]["sources"][0]["source_id"] == hermes_dialog.id
+
+
+def test_athena_chat_success_records_model_call_trace(client, db_session, monkeypatch):
+    _enable_fake_ai(monkeypatch)
+    project, profile_version = _seed_project(db_session, with_profile=True)
+    db_session.add(
+        WorldFactClaim(
+            project_id=project.id,
+            project_profile_version_id=profile_version.id,
+            profile_version=profile_version.version,
+            claim_id="fact.trace.role",
+            subject_ref="character.linzhou",
+            predicate="role",
+            object_ref_or_value="雾港城守夜人",
+            claim_layer="truth",
+            claim_status="confirmed",
+            authority_type="authoritative_structured",
+            confidence=1.0,
+            contract_version=profile_version.contract_version,
+        )
+    )
+    db_session.commit()
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/athena/dialog/chat",
+        json={"project_id": project.id, "text": "请分析林舟当前世界模型状态。"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["trace_id"]
+
+    detail_response = client.get(f"/api/v1/projects/{project.id}/model-call-traces/{payload['trace_id']}")
+    assert detail_response.status_code == 200
+    detail = detail_response.json()
+    assert detail["trace_type"] == "athena_chat"
+    assert detail["status"] == "success"
+    assert detail["prompt_tokens"] == 222
+    assert any(
+        block["kind"] in {"setup", "world_fact", "world_entity"}
+        for block in detail["context_blocks"]
+    )

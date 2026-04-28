@@ -35,6 +35,7 @@ from app.core.athena_retrieval import (
     reindex_project_retrieval,
     search_retrieval,
 )
+from app.core.model_call_trace import attach_trace_response
 from app.core.world_proposal_service import calculate_bundle_impact_scope, create_bundle, write_candidate_fact
 from app.schemas import (
     ChatIn,
@@ -612,8 +613,9 @@ async def athena_chat(project_id: str, payload: ChatIn, db: Session = Depends(ge
     if payload.input_type == "text" and not user_text:
         raise HTTPException(status_code=422, detail="Athena chat text cannot be empty")
 
+    request_message = None
     if user_text:
-        _save_message(db, dialog.id, "user", user_text)
+        request_message = _save_message(db, dialog.id, "user", user_text)
 
     if user_text and _looks_like_world_update_request(user_text):
         profile = _get_current_profile(db, project_id)
@@ -651,10 +653,21 @@ async def athena_chat(project_id: str, payload: ChatIn, db: Session = Depends(ge
             project_diagnosis=diagnosis,
         )
 
-    reply = await _free_chat_reply(db, dialog, project, diagnosis, dialog_type="athena")
-    _save_message(db, dialog.id, "assistant", reply)
+    reply, trace = await _free_chat_reply(
+        db,
+        dialog,
+        project,
+        diagnosis,
+        dialog_type="athena",
+        request_message_id=request_message.id if request_message else None,
+    )
+    assistant_message = _save_message(db, dialog.id, "assistant", reply)
+    if trace is not None:
+        attach_trace_response(db, trace, response_message_id=assistant_message.id)
+        db.commit()
     return ChatOut(
         message=reply,
+        trace_id=trace.id if trace else None,
         pending_action=None,
         ui_hint=_build_chat_idle_hint("Athena 对话"),
         refresh_targets=[],

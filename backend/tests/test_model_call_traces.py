@@ -1,6 +1,26 @@
+from app.api import dialogs
 from app.core.model_call_trace import build_context_block, create_trace, sanitize_model_messages, truncate_text
 from app.models import AIModelCallTrace, Dialog, DialogMessage, Project
 from app.schemas.model_call_trace import ModelCallTraceDetail, PaginatedModelCallTraces
+
+
+class _FakeAiResult:
+    content = "灯塔还能继续作为主线隐喻。"
+    prompt_tokens = 321
+    completion_tokens = 45
+
+
+async def _fake_complete(*args, **kwargs):
+    return _FakeAiResult()
+
+
+async def _fake_complete_failure(*args, **kwargs):
+    raise RuntimeError("fake model outage")
+
+
+def _enable_fake_ai(monkeypatch, complete=_fake_complete):
+    monkeypatch.setattr(dialogs, "load_api_key", lambda: True)
+    monkeypatch.setattr(dialogs.ai_service, "complete", complete)
 
 
 def test_sanitize_model_messages_redacts_authorization_bearer_and_api_keys():
@@ -312,3 +332,60 @@ def test_delete_project_removes_traces_before_dialog_messages(client, db_session
     assert db_session.get(AIModelCallTrace, trace_id) is None
     assert db_session.get(DialogMessage, message_id) is None
     assert db_session.get(Dialog, dialog_id) is None
+
+
+def test_hermes_chat_success_records_model_call_trace_and_message_trace_id(client, db_session, monkeypatch):
+    _enable_fake_ai(monkeypatch)
+    project = Project(name="Hermes Trace", genre="东方奇幻悬疑")
+    db_session.add(project)
+    db_session.commit()
+
+    response = client.post(
+        "/api/v1/dialog/chat",
+        json={"project_id": project.id, "text": "聊聊灯塔主线。"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["trace_id"]
+
+    detail_response = client.get(f"/api/v1/projects/{project.id}/model-call-traces/{payload['trace_id']}")
+    assert detail_response.status_code == 200
+    detail = detail_response.json()
+    assert detail["trace_type"] == "hermes_chat"
+    assert detail["status"] == "success"
+    assert detail["prompt_tokens"] == 321
+    assert detail["messages"][0]["role"] == "system"
+    assert detail["context_blocks"]
+
+    messages_response = client.get(
+        f"/api/v1/dialog/projects/{project.id}/messages",
+        params={"dialog_type": "hermes"},
+    )
+    assert messages_response.status_code == 200
+    assistant_messages = [item for item in messages_response.json() if item["role"] == "assistant"]
+    assert assistant_messages[-1]["id"] == detail["response_message_id"]
+    assert assistant_messages[-1]["trace_id"] == payload["trace_id"]
+
+
+def test_hermes_chat_failure_records_failed_trace_and_returns_fallback(client, db_session, monkeypatch):
+    _enable_fake_ai(monkeypatch, complete=_fake_complete_failure)
+    project = Project(name="Hermes Failed Trace", genre="东方奇幻悬疑")
+    db_session.add(project)
+    db_session.commit()
+
+    response = client.post(
+        "/api/v1/dialog/chat",
+        json={"project_id": project.id, "text": "聊聊失败场景。"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert "模型调用失败" in payload["message"]
+    assert payload["trace_id"]
+
+    trace = db_session.query(AIModelCallTrace).filter(AIModelCallTrace.id == payload["trace_id"]).one()
+    assert trace.trace_type == "hermes_chat"
+    assert trace.status == "failed"
+    assert "fake model outage" in trace.error_message
+    assert trace.response_message_id is not None

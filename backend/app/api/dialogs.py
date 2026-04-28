@@ -14,11 +14,18 @@ from app.core.context_injection import (
     build_hermes_world_context,
     build_hermes_world_context_blocks,
 )
-from app.core.model_call_trace import build_context_block
+from app.core.model_call_trace import (
+    attach_trace_response,
+    build_context_block,
+    create_trace,
+    mark_trace_failed,
+    mark_trace_success,
+    now_ms,
+)
 from app.core.prompt_manager import PromptManager
 from app.core.ui_hints import action_to_refresh_targets, build_ui_hint
 from app.db import get_db
-from app.models import ChapterContent, Dialog, DialogMessage, Outline, PendingAction, Project, Setup, Storyline
+from app.models import AIModelCallTrace, ChapterContent, Dialog, DialogMessage, Outline, PendingAction, Project, Setup, Storyline
 from app.schemas import ChatIn, ChatOut, PendingActionOut, ProjectDiagnosisOut, ResolveActionIn
 
 router = APIRouter(tags=["dialogs"])
@@ -107,7 +114,7 @@ def _save_message(
     action_result: dict | None = None,
     message_type: str = "plain",
     meta: dict | None = None,
-):
+) -> DialogMessage:
     msg = DialogMessage(
         dialog_id=dialog_id,
         role=role,
@@ -118,6 +125,8 @@ def _save_message(
     )
     db.add(msg)
     db.commit()
+    db.refresh(msg)
+    return msg
 
 
 def _build_chat_idle_hint(reason: str):
@@ -477,26 +486,65 @@ async def _free_chat_reply(
     project: Project,
     diagnosis: ProjectDiagnosisOut,
     dialog_type: str = "hermes",
-) -> str:
+    request_message_id: str | None = None,
+) -> tuple[str, AIModelCallTrace | None]:
     if not load_api_key():
-        return _chat_unavailable_reply(diagnosis, "当前未配置模型 API Key，聊天还没有真实接入 AI")
+        return _chat_unavailable_reply(diagnosis, "当前未配置模型 API Key，聊天还没有真实接入 AI"), None
 
+    trace = None
+    started_at = now_ms()
+    model = project.ai_model or "deepseek-chat"
+    temperature = 0.7
+    max_tokens = 900
     try:
         payload = _build_chat_call_payload(db, dialog.id, project, diagnosis, dialog_type=dialog_type)
         messages = payload["messages"]
+        trace = create_trace(
+            db,
+            project_id=project.id,
+            trace_type=f"{dialog_type}_chat",
+            messages=messages,
+            context_blocks=payload["context_blocks"],
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            dialog_id=dialog.id,
+            request_message_id=request_message_id,
+            trace_metadata={"dialog_type": dialog_type},
+        )
         result = await ai_service.complete(
             messages,
-            temperature=0.7,
-            max_tokens=900,
-            model=project.ai_model or "deepseek-chat",
+            temperature=temperature,
+            max_tokens=max_tokens,
+            model=model,
         )
         content = (result.content or "").strip()
         if content:
-            return content
+            mark_trace_success(
+                db,
+                trace,
+                prompt_tokens=getattr(result, "prompt_tokens", 0),
+                completion_tokens=getattr(result, "completion_tokens", 0),
+                latency_ms=now_ms() - started_at,
+            )
+            return content, trace
+        mark_trace_failed(
+            db,
+            trace,
+            error_message="模型返回了空内容",
+            latency_ms=now_ms() - started_at,
+        )
     except Exception as exc:
-        return _chat_unavailable_reply(diagnosis, f"模型调用失败：{str(exc)}")
+        if trace is not None:
+            mark_trace_failed(
+                db,
+                trace,
+                error_message=str(exc),
+                latency_ms=now_ms() - started_at,
+            )
+        return _chat_unavailable_reply(diagnosis, f"模型调用失败：{str(exc)}"), trace
 
-    return _chat_unavailable_reply(diagnosis, "模型返回了空内容")
+    return _chat_unavailable_reply(diagnosis, "模型返回了空内容"), trace
 
 
 @router.get("/api/v1/dialog/projects/{project_id}/messages")
@@ -527,13 +575,31 @@ def get_messages(project_id: str, dialog_type: str = "hermes", db: Session = Dep
                 break
 
     payload = []
+    message_ids = [message.id for message in msgs]
+    trace_by_response_id = {}
+    if message_ids:
+        traces = (
+            db.query(AIModelCallTrace)
+            .filter(
+                AIModelCallTrace.dialog_id == dialog.id,
+                AIModelCallTrace.response_message_id.in_(message_ids),
+            )
+            .all()
+        )
+        trace_by_response_id = {
+            trace.response_message_id: trace.id
+            for trace in traces
+            if trace.response_message_id
+        }
     for message in msgs:
         item = {
+            "id": message.id,
             "role": message.role,
             "message_type": message.message_type,
             "content": message.content,
             "meta": message.meta,
             "action_result": message.action_result,
+            "trace_id": trace_by_response_id.get(message.id),
             "created_at": message.created_at.isoformat() if message.created_at else None,
         }
         if pending_action and message.id == last_assistant_message_id:
@@ -559,6 +625,7 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
     dialog = _get_or_create_dialog(db, payload.project_id)
     diagnosis = _build_diagnosis(db, payload.project_id)
     effective_text = payload.text
+    request_message = None
 
     if payload.input_type == "command":
         parsed_command = parse_command(payload.command_name, payload.text, payload.command_args)
@@ -631,7 +698,7 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
         effective_text = _build_command_fallback_text(payload)
 
     if (payload.input_type == "text" and payload.text) or (payload.input_type == "command" and effective_text):
-        _save_message(db, dialog.id, "user", effective_text)
+        request_message = _save_message(db, dialog.id, "user", effective_text)
 
     if payload.input_type == "button" and payload.action_type:
         if dialog.state == "running":
@@ -735,10 +802,21 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
             project_diagnosis=diagnosis,
         )
 
-    reply = await _free_chat_reply(db, dialog, project, diagnosis, dialog_type="hermes")
-    _save_message(db, dialog.id, "assistant", reply)
+    reply, trace = await _free_chat_reply(
+        db,
+        dialog,
+        project,
+        diagnosis,
+        dialog_type="hermes",
+        request_message_id=request_message.id if request_message else None,
+    )
+    assistant_message = _save_message(db, dialog.id, "assistant", reply)
+    if trace is not None:
+        attach_trace_response(db, trace, response_message_id=assistant_message.id)
+        db.commit()
     return ChatOut(
         message=reply,
+        trace_id=trace.id if trace else None,
         pending_action=None,
         ui_hint=build_ui_hint(
             action_type="chat",
