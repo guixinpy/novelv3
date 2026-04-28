@@ -68,6 +68,7 @@ export interface ChatResponse {
   project_diagnosis: ProjectDiagnosis
   message_type?: ChatMessageType | null
   meta?: Record<string, unknown> | null
+  trace_id?: string | null
 }
 
 export interface ResolveActionRequest {
@@ -104,6 +105,7 @@ export interface BackgroundTaskResponse {
 }
 
 export interface ChatHistoryMessage {
+  id?: string
   role: 'user' | 'assistant' | 'system'
   content: string
   message_type?: ChatMessageType | null
@@ -111,7 +113,72 @@ export interface ChatHistoryMessage {
   pending_action?: PendingAction | null
   diagnosis?: ProjectDiagnosis | null
   action_result?: Record<string, unknown> | null
+  trace_id?: string | null
   created_at?: string | null
+}
+
+export type ModelTraceStatus = 'running' | 'success' | 'failed' | string
+
+export interface TraceSource {
+  source_type: string
+  source_id?: string | null
+  label?: string | null
+  chapter_index?: number | null
+  source_ref?: string | null
+  title?: string | null
+  metadata: Record<string, unknown>
+}
+
+export interface ContextBlock {
+  key: string
+  kind: string
+  title: string
+  content: string
+  sources: TraceSource[]
+  char_count: number
+  token_estimate: number
+  original_char_count?: number | null
+  truncated: boolean
+}
+
+export interface ModelCallTraceListItem {
+  id: string
+  project_id: string
+  trace_type: string
+  status: ModelTraceStatus
+  model?: string | null
+  prompt_tokens?: number | null
+  completion_tokens?: number | null
+  latency_ms?: number | null
+  error_message?: string | null
+  dialog_id?: string | null
+  request_message_id?: string | null
+  response_message_id?: string | null
+  chapter_id?: string | null
+  chapter_index?: number | null
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export interface ModelCallTraceDetail extends ModelCallTraceListItem {
+  temperature?: number | null
+  max_tokens?: number | null
+  messages: Array<Record<string, unknown>>
+  context_blocks: ContextBlock[]
+  trace_metadata: Record<string, unknown>
+}
+
+export interface ModelCallTraceListResponse {
+  total: number
+  items: ModelCallTraceListItem[]
+}
+
+export interface ModelCallTraceListParams {
+  trace_type?: string
+  chapter_index?: number
+  dialog_id?: string
+  limit?: number
+  offset?: number
 }
 
 export interface SetupCharacter {
@@ -399,6 +466,7 @@ export interface ChapterContent {
   completion_tokens: number
   generation_time: number
   temperature: number
+  last_generation_trace_id?: string | null
   created_at: string
   updated_at: string
 }

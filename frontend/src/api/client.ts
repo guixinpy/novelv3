@@ -17,6 +17,9 @@ import type {
   ChatHistoryMessage,
   ChatRequest,
   ChatResponse,
+  ModelCallTraceDetail,
+  ModelCallTraceListParams,
+  ModelCallTraceListResponse,
   PaginatedProposalBundles,
   ProposalBundleDetail,
   ProposalReview,
@@ -153,6 +156,18 @@ export const api = {
     request(`/projects/${id}/consistency/issues`),
   generateChapter: (id: string, index: number) => request<ChapterContent>(`/projects/${id}/chapters/${index}/generate`, { method: 'POST' }),
   getChapter: (id: string, index: number) => request<ChapterContent>(`/projects/${id}/chapters/${index}`),
+  listModelCallTraces: (id: string, params?: ModelCallTraceListParams) => {
+    const query = new URLSearchParams()
+    if (params?.trace_type) query.set('trace_type', params.trace_type)
+    if (params?.chapter_index !== undefined) query.set('chapter_index', String(params.chapter_index))
+    if (params?.dialog_id) query.set('dialog_id', params.dialog_id)
+    if (params?.limit !== undefined) query.set('limit', String(params.limit))
+    if (params?.offset !== undefined) query.set('offset', String(params.offset))
+    const qs = query.toString()
+    return request<ModelCallTraceListResponse>(`/projects/${id}/model-call-traces${qs ? `?${qs}` : ''}`)
+  },
+  getModelCallTrace: (id: string, traceId: string) =>
+    request<ModelCallTraceDetail>(`/projects/${id}/model-call-traces/${traceId}`),
   getActiveRevision: (id: string, index: number) =>
     request<ChapterRevision | null>(`/projects/${id}/revisions/chapters/${index}/active`),
   updateRevisionDraft: (id: string, index: number, data: ChapterRevisionDraftPayload) =>
