@@ -1,3 +1,4 @@
+from .ai_model_call_trace import AIModelCallTrace
 from .background_task import BackgroundTask
 from .chapter_content import ChapterContent
 from .chapter_revision import ChapterRevision, RevisionAnnotation, RevisionCorrection
