@@ -154,6 +154,8 @@ export const useModelTraceStore = defineStore('modelTraces', () => {
   }
 
   function closeTrace() {
+    latestLaneRequest.value.detail = nextRequestId.value + 1
+    nextRequestId.value = latestLaneRequest.value.detail
     selectedTraceId.value = null
     selectedTrace.value = null
     loadingDetail.value = false

@@ -168,7 +168,7 @@ export interface ModelCallTraceDetail extends ModelCallTraceListItem {
   trace_metadata: Record<string, unknown>
 }
 
-export interface ModelCallTraceListResponse {
+export interface PaginatedModelCallTraces {
   total: number
   items: ModelCallTraceListItem[]
 }

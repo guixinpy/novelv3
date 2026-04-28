@@ -145,6 +145,29 @@ describe('modelTraces store', () => {
     expect(store.offset).toBe(0)
   })
 
+  it('closeTrace() 会让 pending detail 请求失效，迟到结果不能重新写回详情', async () => {
+    const pendingDetail = createDeferred<ReturnType<typeof createTraceDetail>>()
+    vi.mocked(api.getModelCallTrace).mockReturnValue(pendingDetail.promise)
+
+    const store = useModelTraceStore()
+    const detailPromise = store.selectTrace('project-1', 'trace-pending')
+
+    expect(store.selectedTraceId).toBe('trace-pending')
+    expect(store.loadingDetail).toBe(true)
+
+    store.closeTrace()
+    expect(store.selectedTraceId).toBeNull()
+    expect(store.selectedTrace).toBeNull()
+    expect(store.loadingDetail).toBe(false)
+
+    pendingDetail.resolve(createTraceDetail('trace-pending'))
+    await detailPromise
+
+    expect(store.selectedTraceId).toBeNull()
+    expect(store.selectedTrace).toBeNull()
+    expect(store.loadingDetail).toBe(false)
+  })
+
   it('迟到的旧项目列表和详情请求不能覆盖当前项目状态', async () => {
     const oldList = createDeferred<{ total: number; items: ReturnType<typeof createTrace>[] }>()
     const newList = createDeferred<{ total: number; items: ReturnType<typeof createTrace>[] }>()

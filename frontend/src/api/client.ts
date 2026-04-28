@@ -19,7 +19,7 @@ import type {
   ChatResponse,
   ModelCallTraceDetail,
   ModelCallTraceListParams,
-  ModelCallTraceListResponse,
+  PaginatedModelCallTraces,
   PaginatedProposalBundles,
   ProposalBundleDetail,
   ProposalReview,
@@ -164,7 +164,7 @@ export const api = {
     if (params?.limit !== undefined) query.set('limit', String(params.limit))
     if (params?.offset !== undefined) query.set('offset', String(params.offset))
     const qs = query.toString()
-    return request<ModelCallTraceListResponse>(`/projects/${id}/model-call-traces${qs ? `?${qs}` : ''}`)
+    return request<PaginatedModelCallTraces>(`/projects/${id}/model-call-traces${qs ? `?${qs}` : ''}`)
   },
   getModelCallTrace: (id: string, traceId: string) =>
     request<ModelCallTraceDetail>(`/projects/${id}/model-call-traces/${traceId}`),
