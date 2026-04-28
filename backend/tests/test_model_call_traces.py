@@ -251,6 +251,7 @@ def test_get_model_call_trace_detail_normalizes_loose_context_blocks(client, db_
     assert block["kind"] == "unknown"
     assert block["content"] == "loose block"
     assert block["char_count"] == len("loose block")
+    assert block["token_estimate"] == 0
     assert block["sources"][0]["source_type"] == "Unknown"
     assert block["sources"][0]["label"] == "orphan"
 
