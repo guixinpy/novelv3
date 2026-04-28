@@ -1,13 +1,16 @@
 import pytest
 
 from app.api import dialogs
-from app.core.context_injection import build_athena_world_context
+from app.core.context_injection import build_athena_world_context, build_athena_world_context_blocks
 from app.models import (
+    Dialog,
     DialogMessage,
     GenreProfile,
     Project,
     ProjectProfileVersion,
     Setup,
+    WorldCharacter,
+    WorldFactClaim,
     WorldProposalBundle,
     WorldProposalItem,
 )
@@ -132,3 +135,98 @@ def test_athena_world_context_labels_setup_fallback_when_profile_is_missing(db_s
     assert "Setup 草稿" in context
     assert "林舟" in context
     assert "雾港城" in context
+
+
+def test_athena_world_context_blocks_include_record_sources(db_session):
+    project, profile_version = _seed_project(db_session, with_profile=True)
+    character = WorldCharacter(
+        project_id=project.id,
+        profile_version=profile_version.version,
+        character_id="character.linzhou",
+        canonical_id="character.linzhou",
+        primary_alias="林舟",
+        name="林舟",
+        aliases=["守夜人"],
+        role_type="protagonist",
+        identity_anchor="雾港城守夜人",
+        contract_version=profile_version.contract_version,
+    )
+    fact = WorldFactClaim(
+        project_id=project.id,
+        project_profile_version_id=profile_version.id,
+        profile_version=profile_version.version,
+        claim_id="fact.linzhou.role",
+        chapter_index=3,
+        subject_ref="character.linzhou",
+        predicate="role",
+        object_ref_or_value="雾港城守夜人",
+        claim_layer="truth",
+        claim_status="confirmed",
+        authority_type="authoritative_structured",
+        confidence=1.0,
+        contract_version=profile_version.contract_version,
+    )
+    db_session.add_all([character, fact])
+    db_session.commit()
+
+    blocks = build_athena_world_context_blocks(db_session, project.id)
+
+    assert any(block["kind"] == "world_entity" for block in blocks)
+    fact_block = next(block for block in blocks if block["kind"] == "world_fact")
+    assert fact_block["sources"][0]["source_type"] == "WorldFactClaim"
+    assert fact_block["sources"][0]["source_id"] == fact.id
+    assert fact_block["sources"][0]["chapter_index"] == 3
+
+
+def test_build_chat_call_payload_returns_messages_and_context_blocks_without_changing_messages(db_session):
+    project, _ = _seed_project(db_session, with_profile=True)
+    diagnosis = dialogs._build_diagnosis(db_session, project.id)
+    hermes_dialog = Dialog(project_id=project.id, dialog_type="hermes")
+    athena_dialog = Dialog(project_id=project.id, dialog_type="athena")
+    db_session.add_all([hermes_dialog, athena_dialog])
+    db_session.commit()
+    db_session.add_all(
+        [
+            DialogMessage(dialog_id=hermes_dialog.id, role="user", content="Hermes 问题"),
+            DialogMessage(dialog_id=athena_dialog.id, role="user", content="Athena 问题"),
+        ]
+    )
+    db_session.commit()
+
+    hermes_messages = dialogs._build_chat_messages(
+        db_session,
+        hermes_dialog.id,
+        project,
+        diagnosis,
+        dialog_type="hermes",
+    )
+    athena_messages = dialogs._build_chat_messages(
+        db_session,
+        athena_dialog.id,
+        project,
+        diagnosis,
+        dialog_type="athena",
+    )
+
+    hermes_payload = dialogs._build_chat_call_payload(
+        db_session,
+        hermes_dialog.id,
+        project,
+        diagnosis,
+        dialog_type="hermes",
+    )
+    athena_payload = dialogs._build_chat_call_payload(
+        db_session,
+        athena_dialog.id,
+        project,
+        diagnosis,
+        dialog_type="athena",
+    )
+
+    assert hermes_payload["messages"] == hermes_messages
+    assert athena_payload["messages"] == athena_messages
+    assert isinstance(hermes_payload["context_blocks"], list)
+    assert isinstance(athena_payload["context_blocks"], list)
+    assert hermes_payload["context_blocks"][-1]["kind"] == "dialog_history"
+    assert hermes_payload["context_blocks"][-1]["sources"][0]["source_type"] == "Dialog"
+    assert hermes_payload["context_blocks"][-1]["sources"][0]["source_id"] == hermes_dialog.id

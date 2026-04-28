@@ -8,7 +8,13 @@ from app.core.ai_service import AIService
 from app.core.chat_commands import build_command_text, command_to_action_type, parse_command
 from app.core.chat_compaction import build_compaction_summary, select_compactable_plain_messages
 from app.core.intent_router import IntentRouter, parse_chapter_index
-from app.core.context_injection import build_athena_world_context, build_hermes_world_context
+from app.core.context_injection import (
+    build_athena_world_context,
+    build_athena_world_context_blocks,
+    build_hermes_world_context,
+    build_hermes_world_context_blocks,
+)
+from app.core.model_call_trace import build_context_block
 from app.core.prompt_manager import PromptManager
 from app.core.ui_hints import action_to_refresh_targets, build_ui_hint
 from app.db import get_db
@@ -417,6 +423,54 @@ def _build_chat_messages(
     return messages
 
 
+def _build_dialog_history_block(db: Session, dialog_id: str) -> dict:
+    history = db.query(DialogMessage) \
+        .filter(DialogMessage.dialog_id == dialog_id) \
+        .order_by(DialogMessage.created_at.desc()) \
+        .limit(CHAT_HISTORY_LIMIT) \
+        .all()
+    history.reverse()
+
+    lines = []
+    for item in history:
+        if item.role in ("user", "assistant"):
+            lines.append(f"{item.role}: {item.content}")
+        elif item.role == "system":
+            lines.append(f"assistant: [系统消息] {item.content}")
+
+    return build_context_block(
+        key="dialog.history",
+        kind="dialog_history",
+        title="对话历史",
+        content="\n".join(lines) if lines else "当前对话暂无可用历史。",
+        sources=[
+            {
+                "source_type": "Dialog",
+                "source_id": dialog_id,
+            }
+        ],
+    )
+
+
+def _build_chat_call_payload(
+    db: Session,
+    dialog_id: str,
+    project: Project,
+    diagnosis: ProjectDiagnosisOut,
+    dialog_type: str = "hermes",
+) -> dict:
+    messages = _build_chat_messages(db, dialog_id, project, diagnosis, dialog_type=dialog_type)
+    if dialog_type == "athena":
+        context_blocks = build_athena_world_context_blocks(db, project.id)
+    else:
+        context_blocks = build_hermes_world_context_blocks(db, project.id)
+    context_blocks.append(_build_dialog_history_block(db, dialog_id))
+    return {
+        "messages": messages,
+        "context_blocks": context_blocks,
+    }
+
+
 async def _free_chat_reply(
     db: Session,
     dialog: Dialog,
@@ -428,7 +482,8 @@ async def _free_chat_reply(
         return _chat_unavailable_reply(diagnosis, "当前未配置模型 API Key，聊天还没有真实接入 AI")
 
     try:
-        messages = _build_chat_messages(db, dialog.id, project, diagnosis, dialog_type=dialog_type)
+        payload = _build_chat_call_payload(db, dialog.id, project, diagnosis, dialog_type=dialog_type)
+        messages = payload["messages"]
         result = await ai_service.complete(
             messages,
             temperature=0.7,
