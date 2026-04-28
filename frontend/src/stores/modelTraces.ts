@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { api } from '../api/client'
 import type {
   ModelCallTraceDetail,
@@ -36,7 +36,9 @@ export const useModelTraceStore = defineStore('modelTraces', () => {
   const total = ref(0)
   const loadingList = ref(false)
   const loadingDetail = ref(false)
-  const error = ref('')
+  const listError = ref('')
+  const detailError = ref('')
+  const error = computed(() => detailError.value || listError.value)
   const selectedTrace = ref<ModelCallTraceDetail | null>(null)
   const selectedTraceId = ref<string | null>(null)
   const filters = ref<ModelTraceFilters>({})
@@ -62,7 +64,8 @@ export const useModelTraceStore = defineStore('modelTraces', () => {
     total.value = 0
     loadingList.value = false
     loadingDetail.value = false
-    error.value = ''
+    listError.value = ''
+    detailError.value = ''
     selectedTrace.value = null
     selectedTraceId.value = null
     filters.value = {}
@@ -103,7 +106,7 @@ export const useModelTraceStore = defineStore('modelTraces', () => {
     const snapshot = captureRequest(projectId, 'list')
     if (nextFilters) filters.value = normalizeFilters(nextFilters)
     loadingList.value = true
-    error.value = ''
+    listError.value = ''
 
     try {
       const result = await api.listModelCallTraces(projectId, {
@@ -116,7 +119,7 @@ export const useModelTraceStore = defineStore('modelTraces', () => {
       total.value = result.total
     } catch (err) {
       if (isLatestRequest(snapshot, 'list')) {
-        error.value = toErrorMessage(err)
+        listError.value = toErrorMessage(err)
       }
     } finally {
       if (isLatestRequest(snapshot, 'list')) {
@@ -130,7 +133,7 @@ export const useModelTraceStore = defineStore('modelTraces', () => {
     selectedTraceId.value = traceId
     selectedTrace.value = null
     loadingDetail.value = true
-    error.value = ''
+    detailError.value = ''
 
     try {
       const detail = await api.getModelCallTrace(projectId, traceId)
@@ -140,7 +143,7 @@ export const useModelTraceStore = defineStore('modelTraces', () => {
     } catch (err) {
       if (isLatestRequest(snapshot, 'detail')) {
         selectedTrace.value = null
-        error.value = toErrorMessage(err)
+        detailError.value = toErrorMessage(err)
       }
     } finally {
       if (isLatestRequest(snapshot, 'detail')) {
@@ -159,7 +162,7 @@ export const useModelTraceStore = defineStore('modelTraces', () => {
     selectedTraceId.value = null
     selectedTrace.value = null
     loadingDetail.value = false
-    error.value = ''
+    detailError.value = ''
   }
 
   function reset() {
@@ -171,6 +174,8 @@ export const useModelTraceStore = defineStore('modelTraces', () => {
     total,
     loadingList,
     loadingDetail,
+    listError,
+    detailError,
     error,
     selectedTrace,
     selectedTraceId,

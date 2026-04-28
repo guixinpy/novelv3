@@ -168,6 +168,23 @@ describe('modelTraces store', () => {
     expect(store.loadingDetail).toBe(false)
   })
 
+  it('list 和 detail 错误状态相互隔离', async () => {
+    vi.mocked(api.listModelCallTraces).mockRejectedValueOnce(new Error('list failed'))
+    vi.mocked(api.getModelCallTrace).mockRejectedValueOnce(new Error('detail failed'))
+
+    const store = useModelTraceStore()
+    await store.loadList('project-1')
+
+    expect(store.listError).toBe('list failed')
+    expect(store.detailError).toBe('')
+
+    await store.selectTrace('project-1', 'trace-failed')
+
+    expect(store.listError).toBe('list failed')
+    expect(store.detailError).toBe('detail failed')
+    expect(store.error).toBe('detail failed')
+  })
+
   it('迟到的旧项目列表和详情请求不能覆盖当前项目状态', async () => {
     const oldList = createDeferred<{ total: number; items: ReturnType<typeof createTrace>[] }>()
     const newList = createDeferred<{ total: number; items: ReturnType<typeof createTrace>[] }>()

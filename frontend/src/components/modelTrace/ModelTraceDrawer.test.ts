@@ -4,6 +4,7 @@ import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import ModelTraceDrawer from './ModelTraceDrawer.vue'
 import { api } from '../../api/client'
+import { useModelTraceStore } from '../../stores/modelTraces'
 
 vi.mock('../../api/client', () => ({
   api: {
@@ -130,6 +131,76 @@ describe('ModelTraceDrawer', () => {
 
     await wrapper.setProps({ traceId: null })
     expect(document.body.textContent).not.toContain('detail failed')
+
+    wrapper.unmount()
+  })
+
+  it('只显示详情错误，不显示列表加载错误', async () => {
+    vi.mocked(api.listModelCallTraces).mockRejectedValueOnce(new Error('list failed'))
+    vi.mocked(api.getModelCallTrace).mockResolvedValue(createTraceDetail())
+
+    const store = useModelTraceStore()
+    await store.loadList('project-1')
+
+    const wrapper = mount(ModelTraceDrawer, {
+      props: {
+        projectId: 'project-1',
+        traceId: 'trace-1',
+        open: true,
+      },
+      attachTo: document.body,
+    })
+
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    expect(document.body.textContent).not.toContain('list failed')
+    expect(document.body.textContent).toContain('前三章摘要')
+
+    wrapper.unmount()
+  })
+
+  it('context block content 缺失或非字符串时不崩', async () => {
+    vi.mocked(api.getModelCallTrace).mockResolvedValue({
+      ...createTraceDetail(),
+      context_blocks: [
+        {
+          key: 'missing-content',
+          kind: 'debug',
+          title: '缺失内容',
+          sources: [],
+          char_count: 0,
+          token_estimate: 0,
+          truncated: false,
+        },
+        {
+          key: 'object-content',
+          kind: 'debug',
+          title: '对象内容',
+          content: { nested: 'value' },
+          sources: [],
+          char_count: 1,
+          token_estimate: 1,
+          truncated: false,
+        },
+      ],
+    } as any)
+
+    const wrapper = mount(ModelTraceDrawer, {
+      props: {
+        projectId: 'project-1',
+        traceId: 'trace-malformed',
+        open: true,
+      },
+      attachTo: document.body,
+    })
+
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    expect(document.body.textContent).toContain('缺失内容')
+    expect(document.body.textContent).toContain('对象内容')
+    expect(document.body.textContent).toContain('"nested": "value"')
 
     wrapper.unmount()
   })

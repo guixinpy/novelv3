@@ -14,13 +14,19 @@ function blockKey(block: ContextBlock, index: number) {
   return `${block.key || 'block'}-${index}`
 }
 
-function blockContent(block: ContextBlock) {
-  if (typeof block.content === 'string') return block.content
+function formatUnknownContent(value: unknown) {
+  if (typeof value === 'string') return value
+  if (value === null || value === undefined) return ''
   try {
-    return JSON.stringify(block.content, null, 2)
+    const serialized = JSON.stringify(value, null, 2)
+    return typeof serialized === 'string' ? serialized : ''
   } catch {
-    return String(block.content || '')
+    return String(value)
   }
+}
+
+function blockContent(block: ContextBlock) {
+  return formatUnknownContent(block.content)
 }
 
 function isLong(block: ContextBlock) {

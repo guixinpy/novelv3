@@ -51,7 +51,7 @@ function handleClose() {
   <BaseModal :open="open" title="模型调用详情" width="760px" @close="handleClose">
     <div class="model-trace-drawer">
       <p v-if="store.loadingDetail" class="model-trace-drawer__state">加载模型调用详情...</p>
-      <p v-if="store.error" class="model-trace-drawer__error">{{ store.error }}</p>
+      <p v-if="store.detailError" class="model-trace-drawer__error">{{ store.detailError }}</p>
 
       <template v-if="detail">
         <TraceSummary :trace="detail" />
@@ -72,7 +72,7 @@ function handleClose() {
         </section>
       </template>
 
-      <p v-else-if="!store.loadingDetail && !store.error" class="model-trace-drawer__state">
+      <p v-else-if="!store.loadingDetail && !store.detailError" class="model-trace-drawer__state">
         未选择模型调用记录
       </p>
     </div>
