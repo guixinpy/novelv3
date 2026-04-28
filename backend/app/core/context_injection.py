@@ -88,18 +88,36 @@ def build_athena_world_context_blocks(db: Session, project_id: str) -> list[dict
 
     blocks = []
 
-    characters = db.query(WorldCharacter).filter(WorldCharacter.project_id == project_id).all()
-    locations = db.query(WorldLocation).filter(WorldLocation.project_id == project_id).all()
-    factions = db.query(WorldFaction).filter(WorldFaction.project_id == project_id).all()
+    characters = (
+        db.query(WorldCharacter)
+        .filter(WorldCharacter.project_id == project_id)
+        .order_by(WorldCharacter.name.asc(), WorldCharacter.canonical_id.asc(), WorldCharacter.id.asc())
+        .limit(20)
+        .all()
+    )
+    locations = (
+        db.query(WorldLocation)
+        .filter(WorldLocation.project_id == project_id)
+        .order_by(WorldLocation.name.asc(), WorldLocation.canonical_id.asc(), WorldLocation.id.asc())
+        .limit(10)
+        .all()
+    )
+    factions = (
+        db.query(WorldFaction)
+        .filter(WorldFaction.project_id == project_id)
+        .order_by(WorldFaction.name.asc(), WorldFaction.canonical_id.asc(), WorldFaction.id.asc())
+        .limit(10)
+        .all()
+    )
     entity_lines = []
     entity_sources = []
-    for character in characters[:20]:
+    for character in characters:
         entity_lines.append(f"- 角色：{character.name}（{getattr(character, 'role_type', '未知')}）")
         entity_sources.append(_source_for_record(character, label=character.name))
-    for location in locations[:10]:
+    for location in locations:
         entity_lines.append(f"- 地点：{location.name}")
         entity_sources.append(_source_for_record(location, label=location.name))
-    for faction in factions[:10]:
+    for faction in factions:
         entity_lines.append(f"- 阵营：{faction.name}")
         entity_sources.append(_source_for_record(faction, label=faction.name))
     if entity_lines:
@@ -113,7 +131,18 @@ def build_athena_world_context_blocks(db: Session, project_id: str) -> list[dict
             )
         )
 
-    relations = db.query(WorldRelation).filter(WorldRelation.project_id == project_id).limit(30).all()
+    relations = (
+        db.query(WorldRelation)
+        .filter(WorldRelation.project_id == project_id)
+        .order_by(
+            WorldRelation.source_entity_ref.asc(),
+            WorldRelation.relation_type.asc(),
+            WorldRelation.target_entity_ref.asc(),
+            WorldRelation.id.asc(),
+        )
+        .limit(30)
+        .all()
+    )
     if relations:
         blocks.append(
             build_context_block(
@@ -128,7 +157,13 @@ def build_athena_world_context_blocks(db: Session, project_id: str) -> list[dict
             )
         )
 
-    rules = db.query(WorldRule).filter(WorldRule.project_id == project_id).limit(20).all()
+    rules = (
+        db.query(WorldRule)
+        .filter(WorldRule.project_id == project_id)
+        .order_by(WorldRule.primary_alias.asc(), WorldRule.canonical_id.asc(), WorldRule.id.asc())
+        .limit(20)
+        .all()
+    )
     if rules:
         blocks.append(
             build_context_block(
@@ -146,6 +181,12 @@ def build_athena_world_context_blocks(db: Session, project_id: str) -> list[dict
             WorldFactClaim.project_id == project_id,
             WorldFactClaim.claim_status == "confirmed",
             WorldFactClaim.claim_layer == "truth",
+        )
+        .order_by(
+            WorldFactClaim.chapter_index.asc(),
+            WorldFactClaim.intra_chapter_seq.asc(),
+            WorldFactClaim.claim_id.asc(),
+            WorldFactClaim.id.asc(),
         )
         .limit(50)
         .all()
@@ -177,7 +218,12 @@ def build_athena_world_context_blocks(db: Session, project_id: str) -> list[dict
             WorldEvent.project_id == project_id,
             WorldEvent.project_profile_version_id == profile.id,
         )
-        .order_by(WorldEvent.chapter_index.asc())
+        .order_by(
+            WorldEvent.chapter_index.asc(),
+            WorldEvent.intra_chapter_seq.asc(),
+            WorldEvent.event_id.asc(),
+            WorldEvent.id.asc(),
+        )
         .limit(30)
         .all()
     )
@@ -228,7 +274,13 @@ def build_hermes_world_context_blocks(
 
     blocks = []
 
-    characters = db.query(WorldCharacter).filter(WorldCharacter.project_id == project_id).limit(10).all()
+    characters = (
+        db.query(WorldCharacter)
+        .filter(WorldCharacter.project_id == project_id)
+        .order_by(WorldCharacter.name.asc(), WorldCharacter.canonical_id.asc(), WorldCharacter.id.asc())
+        .limit(10)
+        .all()
+    )
     if characters:
         blocks.append(
             build_context_block(
@@ -250,7 +302,17 @@ def build_hermes_world_context_blocks(
     )
     if chapter_index is not None:
         fact_query = fact_query.filter(WorldFactClaim.chapter_index <= chapter_index)
-    facts = fact_query.limit(20).all()
+    facts = (
+        fact_query
+        .order_by(
+            WorldFactClaim.chapter_index.asc(),
+            WorldFactClaim.intra_chapter_seq.asc(),
+            WorldFactClaim.claim_id.asc(),
+            WorldFactClaim.id.asc(),
+        )
+        .limit(20)
+        .all()
+    )
     if facts:
         blocks.append(
             build_context_block(
@@ -272,7 +334,18 @@ def build_hermes_world_context_blocks(
             )
         )
 
-    relations = db.query(WorldRelation).filter(WorldRelation.project_id == project_id).limit(15).all()
+    relations = (
+        db.query(WorldRelation)
+        .filter(WorldRelation.project_id == project_id)
+        .order_by(
+            WorldRelation.source_entity_ref.asc(),
+            WorldRelation.relation_type.asc(),
+            WorldRelation.target_entity_ref.asc(),
+            WorldRelation.id.asc(),
+        )
+        .limit(15)
+        .all()
+    )
     if relations:
         blocks.append(
             build_context_block(

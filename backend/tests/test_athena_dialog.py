@@ -178,6 +178,52 @@ def test_athena_world_context_blocks_include_record_sources(db_session):
     assert fact_block["sources"][0]["chapter_index"] == 3
 
 
+def test_athena_world_fact_context_block_sources_are_stably_ordered(db_session):
+    project, profile_version = _seed_project(db_session, with_profile=True)
+    later_fact = WorldFactClaim(
+        project_id=project.id,
+        project_profile_version_id=profile_version.id,
+        profile_version=profile_version.version,
+        claim_id="fact.b",
+        chapter_index=2,
+        intra_chapter_seq=2,
+        subject_ref="character.b",
+        predicate="role",
+        object_ref_or_value="后出现",
+        claim_layer="truth",
+        claim_status="confirmed",
+        authority_type="authoritative_structured",
+        confidence=1.0,
+        contract_version=profile_version.contract_version,
+    )
+    earlier_fact = WorldFactClaim(
+        project_id=project.id,
+        project_profile_version_id=profile_version.id,
+        profile_version=profile_version.version,
+        claim_id="fact.a",
+        chapter_index=1,
+        intra_chapter_seq=1,
+        subject_ref="character.a",
+        predicate="role",
+        object_ref_or_value="先出现",
+        claim_layer="truth",
+        claim_status="confirmed",
+        authority_type="authoritative_structured",
+        confidence=1.0,
+        contract_version=profile_version.contract_version,
+    )
+    db_session.add_all([later_fact, earlier_fact])
+    db_session.commit()
+
+    blocks = build_athena_world_context_blocks(db_session, project.id)
+
+    fact_block = next(block for block in blocks if block["kind"] == "world_fact")
+    assert [source["source_id"] for source in fact_block["sources"]] == [
+        earlier_fact.id,
+        later_fact.id,
+    ]
+
+
 def test_build_chat_call_payload_returns_messages_and_context_blocks_without_changing_messages(db_session):
     project, _ = _seed_project(db_session, with_profile=True)
     diagnosis = dialogs._build_diagnosis(db_session, project.id)
