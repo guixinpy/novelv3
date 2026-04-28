@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import delete, inspect
+from sqlalchemy import delete, inspect, text, update
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -11,22 +11,71 @@ from app.models import (
     Dialog,
     DialogMessage,
     ExtractedFact,
+    GenreProfile,
     Outline,
     PendingAction,
     Project,
+    ProjectProfileVersion,
     PromptRule,
+    RetrievalChunk,
+    RetrievalDocument,
+    RetrievalEmbedding,
     RevisionAnnotation,
     RevisionCorrection,
     Setup,
     Storyline,
     Topology,
     Version,
+    WorldArtifact,
+    WorldCharacter,
+    WorldEvent,
+    WorldEvidence,
+    WorldFactClaim,
+    WorldFaction,
+    WorldLocation,
+    WorldProposalBundle,
+    WorldProposalImpactScopeSnapshot,
+    WorldProposalItem,
+    WorldProposalReview,
+    WorldRelation,
+    WorldResource,
+    WorldRule,
+    WorldTimelineAnchor,
 )
 from app.schemas import ProjectCreate, ProjectOut, ProjectUpdate
 
 router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
 
+SETUP_IMPORT_PROFILE_PREFIX = "project-setup-import"
+PROJECT_PROFILE_VERSION_DELETE_TRIGGER = "trg_project_profile_versions_append_only_delete"
+PROJECT_PROFILE_VERSION_DELETE_TRIGGER_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_project_profile_versions_append_only_delete
+BEFORE DELETE ON project_profile_versions
+BEGIN
+    SELECT RAISE(ABORT, 'project_profile_versions is append-only');
+END;
+"""
+
 PROJECT_SCOPED_MODELS = (
+    RetrievalEmbedding,
+    RetrievalChunk,
+    RetrievalDocument,
+    WorldProposalReview,
+    WorldProposalImpactScopeSnapshot,
+    WorldProposalItem,
+    WorldProposalBundle,
+    WorldFactClaim,
+    WorldEvidence,
+    WorldEvent,
+    WorldTimelineAnchor,
+    WorldRelation,
+    WorldCharacter,
+    WorldLocation,
+    WorldFaction,
+    WorldArtifact,
+    WorldResource,
+    WorldRule,
+    ProjectProfileVersion,
     Setup,
     Storyline,
     Outline,
@@ -107,11 +156,70 @@ def delete_project(project_id: str, db: Session = Depends(get_db)):
             db.execute(delete(RevisionCorrection).where(RevisionCorrection.revision_id.in_(revision_ids)))
         db.execute(delete(ChapterRevision).where(ChapterRevision.id.in_(revision_ids)))
 
-    for model in PROJECT_SCOPED_MODELS:
-        if model.__tablename__ not in existing_tables:
-            continue
-        db.execute(delete(model).where(model.project_id == project_id))
-
-    db.delete(project)
-    db.commit()
+    profile_delete_guard_dropped = _drop_project_profile_version_delete_guard(db, existing_tables)
+    try:
+        _clear_world_model_self_references(db, project_id, existing_tables)
+        for model in PROJECT_SCOPED_MODELS:
+            if model.__tablename__ not in existing_tables:
+                continue
+            db.execute(delete(model).where(model.project_id == project_id))
+        if GenreProfile.__tablename__ in existing_tables:
+            db.execute(
+                delete(GenreProfile).where(
+                    GenreProfile.canonical_id == f"{SETUP_IMPORT_PROFILE_PREFIX}.{project_id}"
+                )
+            )
+        db.delete(project)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        if profile_delete_guard_dropped:
+            _restore_project_profile_version_delete_guard(db)
     return {"deleted": True}
+
+
+def _clear_world_model_self_references(db: Session, project_id: str, existing_tables: set[str]) -> None:
+    if WorldProposalReview.__tablename__ in existing_tables:
+        db.execute(
+            update(WorldProposalReview)
+            .where(WorldProposalReview.project_id == project_id)
+            .values(rollback_to_review_id=None)
+        )
+    if WorldProposalItem.__tablename__ in existing_tables:
+        db.execute(
+            update(WorldProposalItem)
+            .where(WorldProposalItem.project_id == project_id)
+            .values(parent_item_id=None)
+        )
+    if WorldProposalBundle.__tablename__ in existing_tables:
+        db.execute(
+            update(WorldProposalBundle)
+            .where(WorldProposalBundle.project_id == project_id)
+            .values(parent_bundle_id=None)
+        )
+    if WorldEvent.__tablename__ in existing_tables:
+        db.execute(
+            update(WorldEvent)
+            .where(WorldEvent.project_id == project_id)
+            .values(supersedes_event_ref=None)
+        )
+
+
+def _drop_project_profile_version_delete_guard(db: Session, existing_tables: set[str]) -> bool:
+    if ProjectProfileVersion.__tablename__ not in existing_tables:
+        return False
+    if db.bind is None or db.bind.dialect.name != "sqlite":
+        return False
+    db.execute(text(f"DROP TRIGGER IF EXISTS {PROJECT_PROFILE_VERSION_DELETE_TRIGGER}"))
+    return True
+
+
+def _restore_project_profile_version_delete_guard(db: Session) -> None:
+    try:
+        db.execute(text(PROJECT_PROFILE_VERSION_DELETE_TRIGGER_SQL))
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise

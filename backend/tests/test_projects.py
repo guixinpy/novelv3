@@ -6,15 +6,22 @@ from app.models import (
     Dialog,
     DialogMessage,
     ExtractedFact,
+    GenreProfile,
     Outline,
     PendingAction,
     PromptRule,
+    ProjectProfileVersion,
+    RetrievalChunk,
+    RetrievalDocument,
+    RetrievalEmbedding,
     RevisionAnnotation,
     RevisionCorrection,
     Setup,
     Storyline,
     Topology,
     Version,
+    WorldCharacter,
+    WorldRule,
 )
 
 
@@ -120,6 +127,89 @@ def test_delete_project_cleans_related_records(client, db_session):
     assert db_session.query(Dialog).filter(Dialog.project_id == pid).count() == 0
     assert db_session.query(PendingAction).filter(PendingAction.dialog_id == dialog_id).count() == 0
     assert db_session.query(DialogMessage).filter(DialogMessage.dialog_id == dialog_id).count() == 0
+
+
+def test_delete_project_cleans_retrieval_index_records(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Delete Indexed Project"})
+    pid = r.json()["id"]
+
+    document = RetrievalDocument(
+        project_id=pid,
+        source_type="chapter",
+        source_id="chapter-1",
+        source_ref="chapter:1",
+        title="第1章",
+        chapter_index=1,
+        content_hash="hash-1",
+        document_metadata={},
+    )
+    db_session.add(document)
+    db_session.commit()
+    db_session.refresh(document)
+
+    chunk = RetrievalChunk(
+        project_id=pid,
+        document_id=document.id,
+        chunk_index=0,
+        text="旧灯塔熄灭时，亡者不能被直接召回。",
+        token_count=12,
+        start_offset=0,
+        end_offset=18,
+        chunk_metadata={},
+    )
+    db_session.add(chunk)
+    db_session.commit()
+    db_session.refresh(chunk)
+
+    embedding = RetrievalEmbedding(
+        project_id=pid,
+        chunk_id=chunk.id,
+        provider="local",
+        model="hash-bigram-v1",
+        dimensions=3,
+        vector=[1.0, 0.0, 0.0],
+        vector_hash="vector-hash-1",
+    )
+    db_session.add(embedding)
+    db_session.commit()
+
+    r2 = client.delete(f"/api/v1/projects/{pid}")
+    assert r2.status_code == 200
+    assert r2.json()["deleted"] is True
+
+    assert db_session.query(RetrievalEmbedding).filter(RetrievalEmbedding.project_id == pid).count() == 0
+    assert db_session.query(RetrievalChunk).filter(RetrievalChunk.project_id == pid).count() == 0
+    assert db_session.query(RetrievalDocument).filter(RetrievalDocument.project_id == pid).count() == 0
+
+
+def test_delete_project_cleans_imported_world_model_records(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Delete Athena Profile"})
+    pid = r.json()["id"]
+    db_session.add(
+        Setup(
+            project_id=pid,
+            status="generated",
+            world_building={"rules": "旧灯塔熄灭时，亡者不能被直接召回。"},
+            characters=[{"name": "林舟", "personality": "谨慎"}],
+            core_concept={"theme": "记忆与真相"},
+        )
+    )
+    db_session.commit()
+
+    imported = client.post(f"/api/v1/projects/{pid}/athena/ontology/import-setup")
+    assert imported.status_code == 200
+    assert db_session.query(ProjectProfileVersion).filter(ProjectProfileVersion.project_id == pid).count() == 1
+    assert db_session.query(WorldCharacter).filter(WorldCharacter.project_id == pid).count() == 1
+    assert db_session.query(WorldRule).filter(WorldRule.project_id == pid).count() == 1
+
+    r2 = client.delete(f"/api/v1/projects/{pid}")
+    assert r2.status_code == 200
+    assert r2.json()["deleted"] is True
+
+    assert db_session.query(ProjectProfileVersion).filter(ProjectProfileVersion.project_id == pid).count() == 0
+    assert db_session.query(WorldCharacter).filter(WorldCharacter.project_id == pid).count() == 0
+    assert db_session.query(WorldRule).filter(WorldRule.project_id == pid).count() == 0
+    assert db_session.query(GenreProfile).filter(GenreProfile.canonical_id == f"project-setup-import.{pid}").count() == 0
 
 
 def test_get_project_404(client):
