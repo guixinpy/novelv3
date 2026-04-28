@@ -7,7 +7,7 @@ from app.config import load_api_key
 from app.core.ai_service import AIService
 from app.core.chat_commands import build_command_text, command_to_action_type, parse_command
 from app.core.chat_compaction import build_compaction_summary, select_compactable_plain_messages
-from app.core.intent_router import IntentRouter
+from app.core.intent_router import IntentRouter, parse_chapter_index
 from app.core.context_injection import build_athena_world_context, build_hermes_world_context
 from app.core.prompt_manager import PromptManager
 from app.core.ui_hints import action_to_refresh_targets, build_ui_hint
@@ -33,7 +33,7 @@ STATUS_LABELS = {
 }
 TERMINAL_ACTION_STATUSES = {"completed", "success", "failed", "cancelled", "revised"}
 RUNNING_ACTION_STATUSES = {"running", "generating"}
-RUNNING_BLOCKED_COMMANDS = {"clear", "compact", "setup", "storyline", "outline"}
+RUNNING_BLOCKED_COMMANDS = {"clear", "compact", "setup", "storyline", "outline", "chapter"}
 
 
 def _get_or_create_dialog(db: Session, project_id: str, dialog_type: str = "hermes") -> Dialog:
@@ -185,6 +185,13 @@ def _build_running_guard_response(
         refresh_targets=[],
         project_diagnosis=diagnosis,
     )
+
+
+def _chapter_action_params(command_args: str | None = None, candidate_params: dict | None = None) -> dict:
+    params = dict(candidate_params or {})
+    chapter_index = params.get("chapter_index") or parse_chapter_index(command_args) or 1
+    params["chapter_index"] = int(chapter_index)
+    return params
 
 
 def _save_command_feedback(
@@ -530,6 +537,8 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
                 params = {"project_id": payload.project_id}
                 if parsed_command.args:
                     params["command_args"] = parsed_command.args
+                if action_type == "preview_chapter":
+                    params.update(_chapter_action_params(parsed_command.args))
 
                 pending = PendingAction(
                     dialog_id=dialog.id,
@@ -543,7 +552,7 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
                 dialog.state = "pending_action"
                 db.commit()
 
-                reply = _action_description(action_type)
+                reply = _action_description(action_type, params)
                 if parsed_command.args:
                     reply = f"{reply}\n附加要求：{parsed_command.args}"
                 _save_message(db, dialog.id, "assistant", reply)
@@ -552,7 +561,7 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
                     pending_action=PendingActionOut(
                         id=pending.id,
                         type=pending.type,
-                        description=_action_description(action_type),
+                        description=_action_description(action_type, params),
                         params=pending.params,
                     ),
                     ui_hint=build_ui_hint(
@@ -595,7 +604,7 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
             pending_action=PendingActionOut(
                 id=pending.id,
                 type=pending.type,
-                description=_action_description(pending.type),
+                description=_action_description(pending.type, pending.params),
                 params=pending.params,
             ),
             ui_hint=build_ui_hint(
@@ -637,10 +646,13 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
         )
 
     if candidate and candidate.type != "confirm":
+        params = {"project_id": payload.project_id, **candidate.params}
+        if candidate.type == "preview_chapter":
+            params.update(_chapter_action_params(effective_text, candidate.params))
         pending = PendingAction(
             dialog_id=dialog.id,
             type=candidate.type,
-            params={"project_id": payload.project_id},
+            params=params,
         )
         db.add(pending)
         db.commit()
@@ -648,14 +660,14 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
         dialog.pending_action_id = pending.id
         dialog.state = "pending_action"
         db.commit()
-        reply = _action_description(candidate.type)
+        reply = _action_description(candidate.type, params)
         _save_message(db, dialog.id, "assistant", reply)
         return ChatOut(
             message=reply,
             pending_action=PendingActionOut(
                 id=pending.id,
                 type=pending.type,
-                description=_action_description(candidate.type),
+                description=_action_description(candidate.type, params),
                 params=pending.params,
             ),
             ui_hint=build_ui_hint(
@@ -684,7 +696,12 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
     )
 
 
-def _action_description(action_type: str) -> str:
+def _action_description(action_type: str, params: dict | None = None) -> str:
+    if action_type == "preview_chapter":
+        chapter_index = (params or {}).get("chapter_index")
+        if chapter_index:
+            return f"我可以生成第{chapter_index}章正文，完成后会进入 Calliope 和正文进度。"
+        return "我可以生成下一章正文，完成后会进入 Calliope 和正文进度。"
     mapping = {
         "preview_setup": "我建议先为项目生成设定，这样后续创作更有基础。",
         "preview_storyline": "基于已有设定，我可以生成故事线。",
@@ -697,7 +714,13 @@ def _action_description(action_type: str) -> str:
 import asyncio
 
 
-async def _execute_action(action_type: str, project_id: str, db: Session, command_args: str | None = None) -> dict:
+async def _execute_action(
+    action_type: str,
+    project_id: str,
+    db: Session,
+    command_args: str | None = None,
+    action_params: dict | None = None,
+) -> dict:
     if not project_id:
         return {"status": "failed", "error": "缺少项目 ID"}
     try:
@@ -713,6 +736,16 @@ async def _execute_action(action_type: str, project_id: str, db: Session, comman
             from app.api.outlines import generate_outline
             await generate_outline(project_id, db, command_args=command_args)
             return {"status": "success"}
+        elif action_type == "generate_chapter":
+            from app.api.chapters import create_or_replace_chapter
+            chapter_index = _chapter_action_params(command_args, action_params).get("chapter_index", 1)
+            await create_or_replace_chapter(
+                db,
+                project_id,
+                int(chapter_index),
+                extra_feedback=(command_args or "").strip(),
+            )
+            return {"status": "success", "chapter_index": int(chapter_index)}
         else:
             return {"status": "success"}
     except HTTPException as e:
@@ -721,16 +754,25 @@ async def _execute_action(action_type: str, project_id: str, db: Session, comman
         return {"status": "failed", "error": str(e)}
 
 
-def _execute_action_background(action_type: str, project_id: str, dialog_id: str, command_args: str | None = None):
+def _execute_action_background(
+    action_type: str,
+    project_id: str,
+    dialog_id: str,
+    command_args: str | None = None,
+    action_params: dict | None = None,
+):
     """Fire-and-forget: run generation in background, update dialog message when done."""
     from app.db import SessionLocal
 
     async def _run():
         db = SessionLocal()
         try:
-            result = await _execute_action(action_type, project_id, db, command_args=command_args)
+            result = await _execute_action(action_type, project_id, db, command_args=command_args, action_params=action_params)
             label_map = {"generate_setup": "设定", "generate_storyline": "故事线", "generate_outline": "大纲"}
-            label = label_map.get(action_type, action_type)
+            if action_type == "generate_chapter":
+                label = f"第{result.get('chapter_index') or _chapter_action_params(command_args, action_params).get('chapter_index', 1)}章正文"
+            else:
+                label = label_map.get(action_type, action_type)
             dialog = db.query(Dialog).filter(Dialog.id == dialog_id).first()
             if dialog:
                 dialog.state = "chatting"
@@ -740,7 +782,7 @@ def _execute_action_background(action_type: str, project_id: str, dialog_id: str
                         dialog_id=dialog_id,
                         role="system",
                         content=f"{label}生成完成。",
-                        action_result={"type": action_type, "status": "success"},
+                        action_result={"type": action_type, "status": "success", "data": result},
                     )
                 )
             else:
@@ -805,7 +847,7 @@ async def resolve_action(payload: ResolveActionIn, db: Session = Depends(get_db)
     if payload.decision == "confirm":
         project_id = (pending.params or {}).get("project_id", "")
         command_args = (pending.params or {}).get("command_args")
-        _execute_action_background(action_type, project_id, dialog.id, command_args=command_args)
+        _execute_action_background(action_type, project_id, dialog.id, command_args=command_args, action_params=pending.params)
         result_data = {"status": "generating"}
     elif payload.decision == "cancel":
         result_data = {"status": "cancelled"}

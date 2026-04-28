@@ -35,6 +35,10 @@ CHAT_COMMAND_REGISTRY: dict[str, ChatCommandSpec] = {
         description="触发大纲生成预览动作",
         action_type="preview_outline",
     ),
+    "chapter": ChatCommandSpec(
+        description="触发章节正文生成预览动作",
+        action_type="preview_chapter",
+    ),
 }
 
 

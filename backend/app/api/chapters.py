@@ -25,6 +25,23 @@ def _count_words(content: str) -> int:
     return ascii_words + cjk_chars
 
 
+def _extract_word_range(text: str) -> tuple[int, int] | None:
+    match = re.search(r"(\d{3,5})\s*(?:-|~|至|到|—|－)\s*(\d{3,5})\s*字", text or "")
+    if not match:
+        return None
+    low, high = int(match.group(1)), int(match.group(2))
+    if low <= 0 or high < low:
+        return None
+    return low, high
+
+
+def _chapter_max_tokens(extra_feedback: str) -> int:
+    word_range = _extract_word_range(extra_feedback)
+    if not word_range:
+        return 4000
+    return min(4000, max(word_range[1] + 800, 1200))
+
+
 def _build_chapter_context(db: Session, project_id: str, chapter_index: int, setup: Setup) -> str:
     parts = []
     parts.append(f"世界观：{json.dumps(setup.world_building, ensure_ascii=False)[:500]}")
@@ -95,6 +112,13 @@ async def create_or_replace_chapter(
     prompt = f"{prompt}\n\n【章节上下文】\n{context}"
     if extra_feedback:
         prompt = f"{prompt}\n\n【用户修订反馈】\n{extra_feedback}"
+        word_range = _extract_word_range(extra_feedback)
+        if word_range:
+            prompt = (
+                f"{prompt}\n\n【长度约束】\n"
+                f"正文长度控制在{word_range[0]}-{word_range[1]}字，"
+                "不要为了解释设定而扩写，优先保证剧情推进和章节钩子。"
+            )
     prompt = prompt_optimizer.optimize(prompt, project.style_config)
 
     from app.core.few_shot_library import FewShotExampleLibrary
@@ -107,7 +131,7 @@ async def create_or_replace_chapter(
     result = await ai_service.complete(
         [{"role": "user", "content": prompt}],
         temperature=0.7,
-        max_tokens=4000,
+        max_tokens=_chapter_max_tokens(extra_feedback),
     )
     elapsed = int((time.time() - start) * 1000)
 
@@ -147,8 +171,9 @@ async def create_or_replace_chapter(
         )
         db.add(chapter)
 
+    db.flush()
     total_words = sum(
-        word_count if c.id == chapter.id else (c.word_count or 0)
+        c.word_count or 0
         for c in db.query(ChapterContent).filter(ChapterContent.project_id == project_id).all()
     )
     project.current_word_count = total_words

@@ -92,7 +92,7 @@ def list_chapters(project_id: str, db: Session = Depends(get_db)):
                 "id": ch.id,
                 "chapter_index": ch.chapter_index,
                 "title": ch.title or f"第{ch.chapter_index}章",
-                "word_count": len(ch.content or ""),
+                "word_count": ch.word_count or 0,
                 "status": "generated",
             }
             for ch in chapters

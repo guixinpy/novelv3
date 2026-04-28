@@ -1,4 +1,4 @@
-export type ChatCommandName = 'clear' | 'compact' | 'setup' | 'storyline' | 'outline'
+export type ChatCommandName = 'clear' | 'compact' | 'setup' | 'storyline' | 'outline' | 'chapter'
 
 export interface ChatCommandDefinition {
   name: ChatCommandName
@@ -26,6 +26,7 @@ export const chatCommandRegistry: ChatCommandDefinition[] = [
   { name: 'setup', label: '/setup', description: '生成或更新世界设定', example: '/setup 主角是植物学家', supportsArgs: true },
   { name: 'storyline', label: '/storyline', description: '生成或更新剧情线', example: '/storyline 主线走悬疑反转', supportsArgs: true },
   { name: 'outline', label: '/outline', description: '生成或更新章节大纲', example: '/outline 第 1 章结尾必须反转', supportsArgs: true },
+  { name: 'chapter', label: '/chapter', description: '生成章节正文', example: '/chapter 1 强化灯塔悬疑', supportsArgs: true },
 ]
 
 const registeredCommandNames = new Set(chatCommandRegistry.map((command) => command.name))

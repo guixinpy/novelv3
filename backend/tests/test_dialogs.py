@@ -17,7 +17,7 @@ from app.core.chat_commands import (
 )
 from app.core.chat_compaction import build_compaction_summary
 from app.core.intent_router import IntentRouter
-from app.models import Dialog, PendingAction
+from app.models import Dialog, Outline, PendingAction, Setup, Storyline
 from app.schemas import ProjectDiagnosisOut
 
 ORIGINAL_SESSION_COMMIT = OrmSession.commit
@@ -57,6 +57,12 @@ def test_intent_router_action_candidate():
 
     assert router.resolve("还有什么要设定的", "chatting", None, diag3).type == "query_diagnosis"
 
+    diag4 = ProjectDiagnosisOut(missing_items=["content"], completed_items=["setup", "storyline", "outline"], suggested_next_step="preview_chapter")
+    chapter_candidate = router.resolve("请开始写正文，从第1章开始生成", "chatting", None, diag4)
+    assert chapter_candidate is not None
+    assert chapter_candidate.type == "preview_chapter"
+    assert chapter_candidate.params["chapter_index"] == 1
+
 
 def test_intent_router_no_match():
     router = IntentRouter()
@@ -65,7 +71,7 @@ def test_intent_router_no_match():
 
 
 def test_chat_command_registry_helpers_cover_expected_commands():
-    for command_name in ("clear", "compact", "setup", "storyline", "outline"):
+    for command_name in ("clear", "compact", "setup", "storyline", "outline", "chapter"):
         assert is_supported_chat_command(command_name) is True
 
     assert command_mutates_history("clear") is True
@@ -73,12 +79,36 @@ def test_chat_command_registry_helpers_cover_expected_commands():
     assert command_mutates_history("setup") is False
     assert command_mutates_history("storyline") is False
     assert command_mutates_history("outline") is False
+    assert command_mutates_history("chapter") is False
 
     assert command_to_action_type("setup") == "preview_setup"
     assert command_to_action_type("storyline") == "preview_storyline"
     assert command_to_action_type("outline") == "preview_outline"
+    assert command_to_action_type("chapter") == "preview_chapter"
     assert command_to_action_type("clear") is None
     assert command_to_action_type("compact") is None
+
+
+@pytest.mark.asyncio
+@patch("app.api.chapters.create_or_replace_chapter", new_callable=AsyncMock)
+async def test_execute_chapter_action_passes_command_args_as_generation_feedback(mock_create_chapter, db_session):
+    mock_create_chapter.return_value = SimpleNamespace()
+
+    result = await dialogs_api._execute_action(
+        "generate_chapter",
+        "project-1",
+        db_session,
+        command_args="2 每章约1800-2200字，结尾有钩子",
+        action_params={"chapter_index": 2},
+    )
+
+    assert result == {"status": "success", "chapter_index": 2}
+    mock_create_chapter.assert_awaited_once_with(
+        db_session,
+        "project-1",
+        2,
+        extra_feedback="2 每章约1800-2200字，结尾有钩子",
+    )
 
 
 def test_chat_creates_dialog(client):
@@ -206,6 +236,36 @@ def test_chat_button_action(client):
         },
     }
     assert r2.json()["refresh_targets"] == []
+
+
+def test_chat_text_start_writing_creates_chapter_pending_action(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Test"})
+    pid = r.json()["id"]
+    db_session.add(Setup(project_id=pid, status="generated", world_building={}, characters=[], core_concept={}))
+    db_session.add(Storyline(project_id=pid, status="generated", plotlines=[], foreshadowing=[]))
+    db_session.add(
+        Outline(
+            project_id=pid,
+            status="generated",
+            total_chapters=20,
+            chapters=[{"chapter_index": 1, "title": "旧灯塔", "summary": "林舟开始调查。"}],
+        )
+    )
+    db_session.commit()
+
+    r2 = client.post("/api/v1/dialog/chat", json={
+        "project_id": pid,
+        "input_type": "text",
+        "text": "请开始写正文，从第1章开始生成。",
+    })
+
+    assert r2.status_code == 200
+    body = r2.json()
+    assert body["pending_action"]["type"] == "preview_chapter"
+    assert body["pending_action"]["params"]["chapter_index"] == 1
+    assert body["ui_hint"]["dialog_state"] == "PENDING_ACTION"
+    assert body["ui_hint"]["active_action"]["target_panel"] == "content"
+    assert "第1章" in body["message"]
 
 
 def test_get_messages_includes_current_pending_action(client):

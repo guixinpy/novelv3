@@ -44,7 +44,8 @@ function getStatusInfo(status: string) {
 
 function formatRelativeTime(dateStr: string) {
   if (!dateStr) return ''
-  const date = new Date(dateStr)
+  const normalized = /(?:Z|[+-]\d{2}:\d{2})$/i.test(dateStr) ? dateStr : `${dateStr}Z`
+  const date = new Date(normalized)
   const now = new Date()
   const diffMs = now.getTime() - date.getTime()
   const diffMin = Math.floor(diffMs / 60000)
@@ -81,11 +82,13 @@ async function confirmDelete() {
 async function createProject() {
   const name = newProject.value.name.trim()
   if (!name) return
+  const targetWordCount = Number(newProject.value.targetWords)
   creating.value = true
   try {
     await store.createProject({
       name,
       genre: newProject.value.genre.trim() || undefined,
+      ...(Number.isFinite(targetWordCount) && targetWordCount > 0 ? { target_word_count: targetWordCount } : {}),
     })
     showCreateDialog.value = false
     newProject.value = { name: '', genre: '', targetChapters: '', targetWords: '' }

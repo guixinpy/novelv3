@@ -34,6 +34,8 @@ const ACTION_PANEL_MAP: Record<string, WorkspacePanel> = {
   generate_storyline: 'storyline',
   preview_outline: 'outline',
   generate_outline: 'outline',
+  preview_chapter: 'content',
+  generate_chapter: 'content',
   consistency_deep_check: 'content',
 }
 
@@ -41,6 +43,7 @@ const ACTION_REFRESH_TARGETS: Record<string, RefreshTarget[]> = {
   generate_setup: ['setup', 'versions'],
   generate_storyline: ['storyline', 'versions'],
   generate_outline: ['outline', 'versions'],
+  generate_chapter: ['project', 'content', 'versions'],
   consistency_deep_check: ['content'],
 }
 
@@ -48,6 +51,7 @@ const ACTION_LABELS: Record<string, string> = {
   preview_setup: '生成设定',
   preview_storyline: '生成故事线',
   preview_outline: '生成大纲',
+  preview_chapter: '生成正文',
 }
 
 const VERSION_TYPE_LABELS: Record<string, string> = {

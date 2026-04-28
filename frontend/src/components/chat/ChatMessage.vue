@@ -23,9 +23,11 @@ const TYPE_LABELS: Record<string, string> = {
   generate_setup: '生成设定',
   generate_storyline: '生成故事线',
   generate_outline: '生成大纲',
+  generate_chapter: '生成正文',
   preview_setup: '生成设定',
   preview_storyline: '生成故事线',
   preview_outline: '生成大纲',
+  preview_chapter: '生成正文',
 }
 
 const resultText = computed(() => {

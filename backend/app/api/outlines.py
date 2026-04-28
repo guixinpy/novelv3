@@ -8,7 +8,7 @@ from app.config import load_api_key
 from app.core.ai_service import AIService
 from app.core.prompt_manager import PromptManager
 from app.db import get_db
-from app.models import Outline, Project, Storyline
+from app.models import Outline, Project, Setup, Storyline
 from app.schemas import OutlineOut
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/outline", tags=["outlines"])
@@ -29,12 +29,18 @@ async def generate_outline(project_id: str, db: Session = Depends(get_db), comma
     storyline = db.query(Storyline).filter(Storyline.project_id == project_id).first()
     if not storyline:
         raise HTTPException(status_code=400, detail="Storyline not generated yet")
+    setup = db.query(Setup).filter(Setup.project_id == project_id).first()
+    if not setup:
+        raise HTTPException(status_code=400, detail="Setup not generated yet")
 
     pm = PromptManager()
     prompt = pm.load(
         "generate_outline",
         {
             "name": project.name,
+            "world_building": json.dumps(setup.world_building, ensure_ascii=False),
+            "characters": json.dumps(setup.characters, ensure_ascii=False),
+            "core_concept": json.dumps(setup.core_concept, ensure_ascii=False),
             "storyline": json.dumps({"plotlines": storyline.plotlines, "foreshadowing": storyline.foreshadowing}, ensure_ascii=False),
             "total_chapters": project.target_word_count // 3000 or 10,
         },

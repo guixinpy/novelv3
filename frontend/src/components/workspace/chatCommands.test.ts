@@ -12,6 +12,16 @@ describe('chatCommands', () => {
     })
   })
 
+  it('/chapter 会被解析为章节生成命令', () => {
+    const parsed = parseSlashCommand('/chapter 1 强化灯塔悬疑')
+    expect(parsed).toEqual({
+      kind: 'command',
+      name: 'chapter',
+      args: '1 强化灯塔悬疑',
+      rawInput: '/chapter 1 强化灯塔悬疑',
+    })
+  })
+
   it('未知 slash 会回退为 text', () => {
     const parsed = parseSlashCommand('/foo bar')
     expect(parsed).toEqual({

@@ -1,8 +1,13 @@
 基于以下故事线，生成完整的小说大纲。
 
 项目：{{ name }}
+世界观：{{ world_building }}
+主要角色：{{ characters }}
+核心概念：{{ core_concept }}
 故事线：{{ storyline }}
 总章节数：{{ total_chapters }}
+
+硬性要求：章节大纲必须沿用“主要角色”和“核心概念”里的角色姓名、身份、能力与核心悬念，不得擅自更换主角或新增替代主角。
 
 请以 JSON 格式返回：
 - total_chapters: 整数
