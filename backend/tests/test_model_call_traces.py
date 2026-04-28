@@ -1,4 +1,4 @@
-from app.api import dialogs
+from app.api import chapters, dialogs
 from app.core.model_call_trace import build_context_block, create_trace, sanitize_model_messages, truncate_text
 from app.models import AIModelCallTrace, Dialog, DialogMessage, Project
 from app.schemas.model_call_trace import ModelCallTraceDetail, PaginatedModelCallTraces
@@ -44,6 +44,74 @@ def test_sanitize_model_messages_redacts_authorization_bearer_and_api_keys():
     assert "sk-nested-secret" not in serialized
     assert "Authorization: Bearer [REDACTED]" in sanitized[0]["content"]
     assert sanitized[1]["metadata"]["api_key"] == "[REDACTED]"
+
+
+def test_sanitize_model_messages_redacts_common_secret_key_variants_without_redacting_token_counts():
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "apiKey=plain-api-key accessToken: plain-access "
+                "refresh_token=plain-refresh secretKey=plain-secret "
+                "clientSecret: plain-client password=plain-password token=plain-token"
+            ),
+            "metadata": {
+                "accessToken": "plain-access-token",
+                "AccessToken": "plain-pascal-access-token",
+                "refresh-token": "plain-refresh-token",
+                "secret key": "plain-secret-key",
+                "clientSecret": "plain-client-secret",
+                "password": "plain-password",
+                "token": "plain-token",
+                "idToken": "plain-id-token",
+                "session_token": "plain-session-token",
+                "max_tokens": 900,
+                "prompt_tokens": 12,
+                "completion_tokens": 34,
+            },
+        },
+    ]
+
+    sanitized = sanitize_model_messages(messages)
+
+    serialized = str(sanitized)
+    for secret in [
+        "plain-api-key",
+        "plain-access",
+        "plain-refresh",
+        "plain-secret",
+        "plain-client",
+        "plain-password",
+        "plain-token",
+        "plain-access-token",
+        "plain-pascal-access-token",
+        "plain-refresh-token",
+        "plain-secret-key",
+        "plain-client-secret",
+        "plain-id-token",
+        "plain-session-token",
+    ]:
+        assert secret not in serialized
+    content = sanitized[0]["content"]
+    assert "apiKey=[REDACTED]" in content
+    assert "accessToken: [REDACTED]" in content
+    assert "refresh_token=[REDACTED]" in content
+    assert "secretKey=[REDACTED]" in content
+    assert "clientSecret: [REDACTED]" in content
+    assert "password=[REDACTED]" in content
+    assert "token=[REDACTED]" in content
+    assert sanitized[0]["metadata"]["accessToken"] == "[REDACTED]"
+    assert sanitized[0]["metadata"]["AccessToken"] == "[REDACTED]"
+    assert sanitized[0]["metadata"]["refresh-token"] == "[REDACTED]"
+    assert sanitized[0]["metadata"]["secret key"] == "[REDACTED]"
+    assert sanitized[0]["metadata"]["clientSecret"] == "[REDACTED]"
+    assert sanitized[0]["metadata"]["password"] == "[REDACTED]"
+    assert sanitized[0]["metadata"]["token"] == "[REDACTED]"
+    assert sanitized[0]["metadata"]["idToken"] == "[REDACTED]"
+    assert sanitized[0]["metadata"]["session_token"] == "[REDACTED]"
+    assert sanitized[0]["metadata"]["max_tokens"] == 900
+    assert sanitized[0]["metadata"]["prompt_tokens"] == 12
+    assert sanitized[0]["metadata"]["completion_tokens"] == 34
 
 
 def test_truncate_text_reports_original_count_and_appends_truncation_notice():
@@ -139,6 +207,52 @@ def test_create_trace_defaults_to_running_status(db_session):
     trace = create_trace(db_session, project_id=project.id, trace_type="chat")
 
     assert trace.status == "running"
+
+
+def test_safe_create_chat_trace_commits_before_model_call(db_session):
+    project = Project(id="trace-chat-project", name="Trace Chat Commit", genre="东方奇幻悬疑")
+    db_session.add(project)
+    db_session.commit()
+    dialog = Dialog(id="trace-chat-dialog", project_id=project.id, dialog_type="hermes")
+    db_session.add(dialog)
+    db_session.commit()
+
+    trace = dialogs._safe_create_chat_trace(
+        db_session,
+        project_id=project.id,
+        trace_type="hermes_chat",
+        messages=[{"role": "user", "content": "测试 trace 事务"}],
+        context_blocks=[],
+        model="deepseek-chat",
+        temperature=0.7,
+        max_tokens=900,
+        dialog_id=dialog.id,
+        request_message_id=None,
+        trace_metadata={"dialog_type": "hermes"},
+    )
+
+    assert trace is not None
+    assert db_session.in_transaction() is False
+
+
+def test_safe_create_chapter_trace_commits_before_model_call(db_session):
+    project = Project(id="trace-chapter-project", name="Trace Chapter Commit", genre="东方奇幻悬疑")
+    db_session.add(project)
+    db_session.commit()
+
+    trace = chapters._safe_create_chapter_trace(
+        db_session,
+        project=project,
+        chapter_index=1,
+        payload={
+            "messages": [{"role": "user", "content": "生成第一章"}],
+            "context_blocks": [],
+            "max_tokens": 1200,
+        },
+    )
+
+    assert trace is not None
+    assert db_session.in_transaction() is False
 
 
 def test_model_call_trace_detail_normalizes_null_json_fields_from_orm():

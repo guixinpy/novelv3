@@ -228,7 +228,7 @@ def _safe_create_chapter_trace(
     payload: dict,
 ) -> AIModelCallTrace | None:
     try:
-        return create_trace(
+        trace = create_trace(
             db,
             project_id=project.id,
             trace_type="chapter_generation",
@@ -239,6 +239,8 @@ def _safe_create_chapter_trace(
             max_tokens=payload["max_tokens"],
             chapter_index=chapter_index,
         )
+        db.commit()
+        return trace
     except Exception:
         db.rollback()
         return None

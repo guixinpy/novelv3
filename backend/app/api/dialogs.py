@@ -575,6 +575,41 @@ def _safe_attach_trace_response(
         return None
 
 
+def _safe_create_chat_trace(
+    db: Session,
+    *,
+    project_id: str,
+    trace_type: str,
+    messages: list[dict],
+    context_blocks: list[dict],
+    model: str,
+    temperature: float,
+    max_tokens: int,
+    dialog_id: str,
+    request_message_id: str | None,
+    trace_metadata: dict,
+) -> AIModelCallTrace | None:
+    try:
+        trace = create_trace(
+            db,
+            project_id=project_id,
+            trace_type=trace_type,
+            messages=messages,
+            context_blocks=context_blocks,
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            dialog_id=dialog_id,
+            request_message_id=request_message_id,
+            trace_metadata=trace_metadata,
+        )
+        db.commit()
+        return trace
+    except Exception:
+        db.rollback()
+        return None
+
+
 async def _free_chat_reply(
     db: Session,
     dialog: Dialog,
@@ -597,23 +632,19 @@ async def _free_chat_reply(
     except Exception as exc:
         return _chat_unavailable_reply(diagnosis, f"模型调用失败：{str(exc)}"), None
 
-    try:
-        trace = create_trace(
-            db,
-            project_id=project.id,
-            trace_type=f"{dialog_type}_chat",
-            messages=messages,
-            context_blocks=payload["context_blocks"],
-            model=model,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            dialog_id=dialog.id,
-            request_message_id=request_message_id,
-            trace_metadata={"dialog_type": dialog_type},
-        )
-    except Exception:
-        db.rollback()
-        trace = None
+    trace = _safe_create_chat_trace(
+        db,
+        project_id=project.id,
+        trace_type=f"{dialog_type}_chat",
+        messages=messages,
+        context_blocks=payload["context_blocks"],
+        model=model,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        dialog_id=dialog.id,
+        request_message_id=request_message_id,
+        trace_metadata={"dialog_type": dialog_type},
+    )
 
     try:
         result = await ai_service.complete(

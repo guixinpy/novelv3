@@ -13,8 +13,21 @@ from app.models import AIModelCallTrace
 TRUNCATION_NOTICE = "\n\n[truncated: original content exceeded trace limit]"
 BEARER_PATTERN = re.compile(r"(Authorization\s*:\s*Bearer\s+)([^\s,;]+)", re.IGNORECASE)
 SK_TOKEN_PATTERN = re.compile(r"sk-[A-Za-z0-9][A-Za-z0-9_\-]{8,}")
-API_KEY_PATTERN = re.compile(r"(\bapi[_-]?key\b\s*[:=]\s*)([^\s,;&]+)", re.IGNORECASE)
-SENSITIVE_KEYS = {"api_key", "apikey", "authorization", "access_token", "secret_key"}
+KEY_VALUE_PATTERN = re.compile(r"\b([A-Za-z][A-Za-z0-9_-]*)\b(\s*[:=]\s*)([^\s,;&]+)")
+SENSITIVE_KEYS = {
+    "api_key",
+    "apikey",
+    "authorization",
+    "access_token",
+    "refresh_token",
+    "secret_key",
+    "client_secret",
+    "password",
+    "token",
+    "id_token",
+    "session_token",
+}
+STRING_ASSIGNMENT_KEYS = SENSITIVE_KEYS - {"authorization"}
 
 
 def now_ms() -> int:
@@ -29,9 +42,31 @@ def estimate_tokens(text: str | None) -> int:
     return max(1, (ascii_chars + (non_ascii_chars * 2) + 3) // 4)
 
 
+def _normalize_key(key: str) -> str:
+    normalized = re.sub(r"(.)([A-Z][a-z]+)", r"\1_\2", str(key))
+    normalized = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", normalized)
+    normalized = re.sub(r"[\s-]+", "_", normalized)
+    return normalized.lower()
+
+
+def _is_sensitive_key(key: str, *, include_authorization: bool = True) -> bool:
+    normalized_key = _normalize_key(key)
+    if normalized_key in {"prompt_tokens", "completion_tokens", "max_tokens"}:
+        return False
+    denylist = SENSITIVE_KEYS if include_authorization else STRING_ASSIGNMENT_KEYS
+    return normalized_key in denylist
+
+
 def sanitize_text(text: str) -> str:
     sanitized = BEARER_PATTERN.sub(r"\1[REDACTED]", text)
-    sanitized = API_KEY_PATTERN.sub(r"\1[REDACTED]", sanitized)
+    sanitized = KEY_VALUE_PATTERN.sub(
+        lambda match: (
+            f"{match.group(1)}{match.group(2)}[REDACTED]"
+            if _is_sensitive_key(match.group(1), include_authorization=False)
+            else match.group(0)
+        ),
+        sanitized,
+    )
     return SK_TOKEN_PATTERN.sub("[REDACTED]", sanitized)
 
 
@@ -174,8 +209,7 @@ def _sanitize_value(value: Any) -> Any:
     if isinstance(value, dict):
         sanitized = {}
         for key, item in value.items():
-            normalized_key = str(key).lower().replace("-", "_")
-            if normalized_key in SENSITIVE_KEYS:
+            if _is_sensitive_key(str(key)):
                 sanitized[key] = "[REDACTED]"
             else:
                 sanitized[key] = _sanitize_value(item)
