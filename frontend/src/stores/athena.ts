@@ -44,20 +44,41 @@ export const useAthenaStore = defineStore('athena', () => {
 
   const messages = ref<ChatHistoryMessage[]>([])
   const chatLoading = ref(false)
-  let chatScopeProjectId: string | null = null
-  let chatScopeRequestId = 0
+  let activeChatProjectId: string | null = null
+  let messageLoadRequestId = 0
+  let sendRequestId = 0
+  let sendProjectId: string | null = null
 
-  function beginChatScope(projectId: string) {
-    chatScopeProjectId = projectId
-    chatScopeRequestId += 1
+  function beginMessageLoad(projectId: string) {
+    activeChatProjectId = projectId
+    messageLoadRequestId += 1
     return {
       projectId,
-      requestId: chatScopeRequestId,
+      requestId: messageLoadRequestId,
     }
   }
 
-  function isCurrentChatScope(scope: { projectId: string; requestId: number }) {
-    return chatScopeProjectId === scope.projectId && chatScopeRequestId === scope.requestId
+  function beginSend(projectId: string) {
+    activeChatProjectId = projectId
+    sendProjectId = projectId
+    sendRequestId += 1
+    messageLoadRequestId += 1
+    return {
+      projectId,
+      requestId: sendRequestId,
+    }
+  }
+
+  function isCurrentMessageLoad(scope: { projectId: string; requestId: number }) {
+    return activeChatProjectId === scope.projectId && messageLoadRequestId === scope.requestId
+  }
+
+  function isCurrentSend(scope: { projectId: string; requestId: number }) {
+    return sendProjectId === scope.projectId && sendRequestId === scope.requestId
+  }
+
+  function isActiveChatProject(projectId: string) {
+    return activeChatProjectId === projectId
   }
 
   async function loadOntology(projectId: string) {
@@ -192,14 +213,14 @@ export const useAthenaStore = defineStore('athena', () => {
   }
 
   async function loadMessages(projectId: string) {
-    const scope = beginChatScope(projectId)
+    const scope = beginMessageLoad(projectId)
     try {
       const loadedMessages = await api.getAthenaMessages(projectId)
-      if (isCurrentChatScope(scope)) {
+      if (isCurrentMessageLoad(scope)) {
         messages.value = loadedMessages
       }
     } catch (err) {
-      if (isCurrentChatScope(scope)) {
+      if (isCurrentMessageLoad(scope)) {
         error.value = toErrorMessage(err)
       }
     }
@@ -292,46 +313,48 @@ export const useAthenaStore = defineStore('athena', () => {
   }
 
   async function sendChat(projectId: string, text: string) {
-    const scope = beginChatScope(projectId)
+    const scope = beginSend(projectId)
     chatLoading.value = true
     try {
       const response = await api.sendAthenaChat(projectId, text)
-      if (!isCurrentChatScope(scope)) return
+      if (!isCurrentSend(scope) || !isActiveChatProject(projectId)) return
 
       const loadedMessages = await api.getAthenaMessages(projectId)
-      if (!isCurrentChatScope(scope)) return
+      if (!isCurrentSend(scope) || !isActiveChatProject(projectId)) return
       messages.value = loadedMessages
 
       const targets = new Set(response.refresh_targets || [])
       if (targets.has('proposals')) {
         const loadedProposals = await api.getAthenaEvolutionProposals(projectId, undefined)
-        if (!isCurrentChatScope(scope)) return
+        if (!isCurrentSend(scope) || !isActiveChatProject(projectId)) return
         proposals.value = loadedProposals
       }
       if (targets.has('ontology')) {
         const loadedOntology = await api.getAthenaOntology(projectId)
-        if (!isCurrentChatScope(scope)) return
+        if (!isCurrentSend(scope) || !isActiveChatProject(projectId)) return
         ontology.value = loadedOntology
       }
       if (targets.has('state') || targets.has('projection')) {
         const overview = await api.getAthenaState(projectId)
-        if (!isCurrentChatScope(scope)) return
+        if (!isCurrentSend(scope) || !isActiveChatProject(projectId)) return
         projection.value = overview.projection
       }
     } catch (err) {
-      if (isCurrentChatScope(scope)) {
+      if (isCurrentSend(scope) && isActiveChatProject(projectId)) {
         error.value = toErrorMessage(err)
       }
     } finally {
-      if (isCurrentChatScope(scope)) {
+      if (isCurrentSend(scope)) {
         chatLoading.value = false
       }
     }
   }
 
   function reset() {
-    chatScopeProjectId = null
-    chatScopeRequestId += 1
+    activeChatProjectId = null
+    sendProjectId = null
+    messageLoadRequestId += 1
+    sendRequestId += 1
     ontology.value = null
     projection.value = null
     timeline.value = null

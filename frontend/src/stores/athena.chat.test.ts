@@ -38,6 +38,22 @@ function message(content: string) {
   }
 }
 
+function proposalBundle(projectId: string, id: string) {
+  return {
+    id,
+    project_id: projectId,
+    project_profile_version_id: `profile-${projectId}`,
+    profile_version: 1,
+    parent_bundle_id: null,
+    bundle_status: 'pending',
+    title: id,
+    summary: '',
+    created_by: 'athena.dialog',
+    created_at: '2026-04-26T00:00:00Z',
+    updated_at: '2026-04-26T00:00:00Z',
+  }
+}
+
 describe('athena chat store', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -149,6 +165,88 @@ describe('athena chat store', () => {
 
     expect(store.messages).toEqual([message('B history')])
     expect(store.proposals).toBeNull()
+    expect(store.chatLoading).toBe(false)
+  })
+
+  it('keeps loaded project messages when loadMessages switches projects during sendChat', async () => {
+    const sendA = createDeferred<any>()
+    const messagesB = createDeferred<any[]>()
+    const messagesA = createDeferred<any[]>()
+    const proposalsA = createDeferred<any>()
+    vi.mocked(api.sendAthenaChat).mockReturnValueOnce(sendA.promise)
+    vi.mocked(api.getAthenaMessages)
+      .mockReturnValueOnce(messagesB.promise)
+      .mockReturnValueOnce(messagesA.promise)
+    vi.mocked(api.getAthenaEvolutionProposals).mockReturnValueOnce(proposalsA.promise)
+    const store = useAthenaStore()
+
+    const sendAPromise = store.sendChat('A', 'A text')
+    const loadBPromise = store.loadMessages('B')
+
+    messagesB.resolve([message('B history')])
+    await loadBPromise
+    expect(store.messages).toEqual([message('B history')])
+    expect(store.chatLoading).toBe(true)
+
+    sendA.resolve({
+      message: 'A done',
+      pending_action: null,
+      ui_hint: null,
+      refresh_targets: ['proposals'],
+      project_diagnosis: { missing_items: [], completed_items: [], suggested_next_step: null },
+    })
+    messagesA.resolve([message('A stale history')])
+    proposalsA.resolve({
+      items: [proposalBundle('A', 'bundle-A')],
+      total: 1,
+      offset: 0,
+      limit: 20,
+    })
+    await sendAPromise
+
+    expect(store.messages).toEqual([message('B history')])
+    expect(store.proposals).toBeNull()
+    expect(store.chatLoading).toBe(false)
+  })
+
+  it('keeps same-project sendChat refresh active when loadMessages runs during sendChat', async () => {
+    const sendA = createDeferred<any>()
+    const loadMessagesA = createDeferred<any[]>()
+    const sendMessagesA = createDeferred<any[]>()
+    const proposalsA = createDeferred<any>()
+    vi.mocked(api.sendAthenaChat).mockReturnValueOnce(sendA.promise)
+    vi.mocked(api.getAthenaMessages)
+      .mockReturnValueOnce(loadMessagesA.promise)
+      .mockReturnValueOnce(sendMessagesA.promise)
+    vi.mocked(api.getAthenaEvolutionProposals).mockReturnValueOnce(proposalsA.promise)
+    const store = useAthenaStore()
+
+    const sendAPromise = store.sendChat('A', 'A text')
+    const loadAPromise = store.loadMessages('A')
+
+    loadMessagesA.resolve([message('A interim history')])
+    await loadAPromise
+    expect(store.messages).toEqual([message('A interim history')])
+    expect(store.chatLoading).toBe(true)
+
+    sendA.resolve({
+      message: 'A done',
+      pending_action: null,
+      ui_hint: null,
+      refresh_targets: ['proposals'],
+      project_diagnosis: { missing_items: [], completed_items: [], suggested_next_step: null },
+    })
+    sendMessagesA.resolve([message('A send history')])
+    proposalsA.resolve({
+      items: [proposalBundle('A', 'bundle-A')],
+      total: 1,
+      offset: 0,
+      limit: 20,
+    })
+    await sendAPromise
+
+    expect(store.messages).toEqual([message('A send history')])
+    expect(store.proposals?.items).toEqual([proposalBundle('A', 'bundle-A')])
     expect(store.chatLoading).toBe(false)
   })
 
