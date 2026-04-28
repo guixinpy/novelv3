@@ -1,5 +1,5 @@
 from app.core.model_call_trace import build_context_block, create_trace, sanitize_model_messages, truncate_text
-from app.models import AIModelCallTrace, Project
+from app.models import AIModelCallTrace, Dialog, DialogMessage, Project
 from app.schemas.model_call_trace import ModelCallTraceDetail, PaginatedModelCallTraces
 
 
@@ -144,3 +144,138 @@ def test_paginated_model_call_traces_accepts_total_and_items_only():
 
     assert payload.total == 0
     assert payload.items == []
+
+
+def test_list_model_call_traces_filters_by_trace_type(client, db_session):
+    project = Project(name="Trace API", genre="东方奇幻悬疑")
+    db_session.add(project)
+    db_session.commit()
+
+    matching_trace = create_trace(
+        db_session,
+        project_id=project.id,
+        trace_type="hermes_chat",
+        status="success",
+    )
+    create_trace(
+        db_session,
+        project_id=project.id,
+        trace_type="athena_retrieval",
+        status="success",
+    )
+    db_session.commit()
+
+    response = client.get(
+        f"/api/v1/projects/{project.id}/model-call-traces",
+        params={"trace_type": "hermes_chat"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 1
+    assert [item["id"] for item in payload["items"]] == [matching_trace.id]
+
+
+def test_get_model_call_trace_detail_returns_messages_and_context_sources(client, db_session):
+    project = Project(name="Trace Detail API", genre="东方奇幻悬疑")
+    db_session.add(project)
+    db_session.commit()
+    trace = create_trace(
+        db_session,
+        project_id=project.id,
+        trace_type="hermes_chat",
+        messages=[{"role": "user", "content": "讲讲灯塔。"}],
+        context_blocks=[
+            build_context_block(
+                key="retrieval",
+                kind="athena_retrieval",
+                title="检索证据",
+                content="旧灯塔熄灭时，亡者不能被直接召回。",
+                sources=[
+                    {
+                        "source_type": "chapter",
+                        "source_id": "chapter-2",
+                        "label": "第2章",
+                    }
+                ],
+            )
+        ],
+        status="success",
+    )
+    db_session.commit()
+
+    response = client.get(f"/api/v1/projects/{project.id}/model-call-traces/{trace.id}")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["id"] == trace.id
+    assert payload["messages"] == [{"role": "user", "content": "讲讲灯塔。"}]
+    assert payload["context_blocks"][0]["sources"] == [
+        {
+            "source_type": "chapter",
+            "source_id": "chapter-2",
+            "label": "第2章",
+            "chapter_index": None,
+            "source_ref": None,
+            "title": None,
+            "metadata": {},
+        }
+    ]
+
+
+def test_get_model_call_trace_detail_rejects_cross_project_access(client, db_session):
+    project = Project(name="Trace Owner", genre="东方奇幻悬疑")
+    other_project = Project(name="Trace Intruder", genre="东方奇幻悬疑")
+    db_session.add_all([project, other_project])
+    db_session.commit()
+    trace = create_trace(
+        db_session,
+        project_id=project.id,
+        trace_type="hermes_chat",
+        status="success",
+    )
+    db_session.commit()
+
+    response = client.get(f"/api/v1/projects/{other_project.id}/model-call-traces/{trace.id}")
+
+    assert response.status_code == 404
+
+
+def test_delete_project_removes_traces_before_dialog_messages(client, db_session):
+    project = Project(name="Trace Delete", genre="东方奇幻悬疑")
+    db_session.add(project)
+    db_session.flush()
+    dialog = Dialog(project_id=project.id, dialog_type="hermes")
+    db_session.add(dialog)
+    db_session.flush()
+    message = DialogMessage(
+        dialog_id=dialog.id,
+        role="assistant",
+        message_type="plain",
+        content="灯塔重新亮起。",
+    )
+    db_session.add(message)
+    db_session.flush()
+    trace = AIModelCallTrace(
+        project_id=project.id,
+        trace_type="hermes_chat",
+        status="success",
+        dialog_id=dialog.id,
+        response_message_id=message.id,
+        messages=[],
+        context_blocks=[],
+        trace_metadata={},
+    )
+    db_session.add(trace)
+    db_session.commit()
+    trace_id = trace.id
+    message_id = message.id
+    dialog_id = dialog.id
+
+    response = client.delete(f"/api/v1/projects/{project.id}")
+
+    assert response.status_code == 200
+    db_session.expire_all()
+    assert db_session.get(AIModelCallTrace, trace_id) is None
+    assert db_session.get(DialogMessage, message_id) is None
+    assert db_session.get(Dialog, dialog_id) is None

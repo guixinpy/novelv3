@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import (
+    AIModelCallTrace,
     BackgroundTask,
     ChapterContent,
     ChapterRevision,
@@ -136,6 +137,9 @@ def delete_project(project_id: str, db: Session = Depends(get_db)):
         dialog_id
         for (dialog_id,) in db.query(Dialog.id).filter(Dialog.project_id == project_id).all()
     ]
+
+    if AIModelCallTrace.__tablename__ in existing_tables:
+        db.execute(delete(AIModelCallTrace).where(AIModelCallTrace.project_id == project_id))
 
     if dialog_ids:
         if DialogMessage.__tablename__ in existing_tables:

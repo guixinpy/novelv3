@@ -24,6 +24,7 @@ from app.api import (
     consistency,
     dialogs,
     export,
+    model_call_traces,
     outlines,
     preferences,
     projects,
@@ -48,6 +49,7 @@ app.include_router(consistency.router)
 app.include_router(writing.router)
 app.include_router(versions.router)
 app.include_router(export.router)
+app.include_router(model_call_traces.router)
 app.include_router(preferences.router)
 app.include_router(background_tasks_api.router)
 app.include_router(world_model.router)
