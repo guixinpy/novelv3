@@ -44,6 +44,21 @@ export const useAthenaStore = defineStore('athena', () => {
 
   const messages = ref<ChatHistoryMessage[]>([])
   const chatLoading = ref(false)
+  let chatScopeProjectId: string | null = null
+  let chatScopeRequestId = 0
+
+  function beginChatScope(projectId: string) {
+    chatScopeProjectId = projectId
+    chatScopeRequestId += 1
+    return {
+      projectId,
+      requestId: chatScopeRequestId,
+    }
+  }
+
+  function isCurrentChatScope(scope: { projectId: string; requestId: number }) {
+    return chatScopeProjectId === scope.projectId && chatScopeRequestId === scope.requestId
+  }
 
   async function loadOntology(projectId: string) {
     try {
@@ -177,10 +192,16 @@ export const useAthenaStore = defineStore('athena', () => {
   }
 
   async function loadMessages(projectId: string) {
+    const scope = beginChatScope(projectId)
     try {
-      messages.value = await api.getAthenaMessages(projectId)
+      const loadedMessages = await api.getAthenaMessages(projectId)
+      if (isCurrentChatScope(scope)) {
+        messages.value = loadedMessages
+      }
     } catch (err) {
-      error.value = toErrorMessage(err)
+      if (isCurrentChatScope(scope)) {
+        error.value = toErrorMessage(err)
+      }
     }
   }
 
@@ -271,28 +292,46 @@ export const useAthenaStore = defineStore('athena', () => {
   }
 
   async function sendChat(projectId: string, text: string) {
+    const scope = beginChatScope(projectId)
     chatLoading.value = true
     try {
       const response = await api.sendAthenaChat(projectId, text)
-      await loadMessages(projectId)
+      if (!isCurrentChatScope(scope)) return
+
+      const loadedMessages = await api.getAthenaMessages(projectId)
+      if (!isCurrentChatScope(scope)) return
+      messages.value = loadedMessages
+
       const targets = new Set(response.refresh_targets || [])
       if (targets.has('proposals')) {
-        await loadProposals(projectId)
+        const loadedProposals = await api.getAthenaEvolutionProposals(projectId, undefined)
+        if (!isCurrentChatScope(scope)) return
+        proposals.value = loadedProposals
       }
       if (targets.has('ontology')) {
-        await loadOntology(projectId)
+        const loadedOntology = await api.getAthenaOntology(projectId)
+        if (!isCurrentChatScope(scope)) return
+        ontology.value = loadedOntology
       }
       if (targets.has('state') || targets.has('projection')) {
-        await loadState(projectId)
+        const overview = await api.getAthenaState(projectId)
+        if (!isCurrentChatScope(scope)) return
+        projection.value = overview.projection
       }
     } catch (err) {
-      error.value = toErrorMessage(err)
+      if (isCurrentChatScope(scope)) {
+        error.value = toErrorMessage(err)
+      }
     } finally {
-      chatLoading.value = false
+      if (isCurrentChatScope(scope)) {
+        chatLoading.value = false
+      }
     }
   }
 
   function reset() {
+    chatScopeProjectId = null
+    chatScopeRequestId += 1
     ontology.value = null
     projection.value = null
     timeline.value = null
@@ -308,6 +347,7 @@ export const useAthenaStore = defineStore('athena', () => {
     retrievalLoading.value = false
     setup.value = null
     messages.value = []
+    chatLoading.value = false
     error.value = null
   }
 

@@ -1,7 +1,12 @@
 import pytest
 
 from app.api import dialogs
-from app.core.context_injection import build_athena_world_context, build_athena_world_context_blocks
+from app.core.context_injection import (
+    build_athena_world_context,
+    build_athena_world_context_blocks,
+    build_hermes_world_context,
+    build_hermes_world_context_blocks,
+)
 from app.models import (
     AIModelCallTrace,
     Dialog,
@@ -11,7 +16,10 @@ from app.models import (
     ProjectProfileVersion,
     Setup,
     WorldCharacter,
+    WorldEvent,
     WorldFactClaim,
+    WorldRelation,
+    WorldRule,
     WorldProposalBundle,
     WorldProposalItem,
 )
@@ -229,6 +237,249 @@ def test_athena_world_fact_context_block_sources_are_stably_ordered(db_session):
         earlier_fact.id,
         later_fact.id,
     ]
+
+
+def test_world_context_builders_use_current_world_model_field_names(db_session):
+    project, profile_version = _seed_project(db_session, with_profile=True)
+    db_session.add_all(
+        [
+            WorldCharacter(
+                project_id=project.id,
+                profile_version=profile_version.version,
+                character_id="character.linzhou",
+                canonical_id="character.linzhou",
+                primary_alias="林舟",
+                name="林舟",
+                aliases=[],
+                role_type="protagonist",
+                identity_anchor="雾港城守夜人",
+                contract_version=profile_version.contract_version,
+            ),
+            WorldRelation(
+                project_id=project.id,
+                profile_version=profile_version.version,
+                relation_id="relation.linzhou-yunyao",
+                source_entity_ref="character.linzhou",
+                target_entity_ref="character.yunyao",
+                relation_type="ally",
+                directionality="directed",
+                status="active",
+                visibility_layer="public",
+                contract_version=profile_version.contract_version,
+            ),
+            WorldRule(
+                project_id=project.id,
+                profile_version=profile_version.version,
+                rule_id="rule.fog",
+                canonical_id="rule.fog",
+                primary_alias="雾港潮汐",
+                name="雾港潮汐",
+                rule_type="environment",
+                statement="雾潮会吞噬未点灯的街区",
+                contract_version=profile_version.contract_version,
+            ),
+            WorldEvent(
+                project_id=project.id,
+                project_profile_version_id=profile_version.id,
+                profile_version=profile_version.version,
+                event_id="event.fog.arrives",
+                idempotency_key="event.fog.arrives",
+                timeline_anchor_id="anchor.ch1",
+                chapter_index=1,
+                intra_chapter_seq=1,
+                event_type="world_state_changed",
+                primitive_payload={"summary": "雾潮抵达旧港"},
+                truth_layer="truth",
+                disclosure_layer="public",
+                contract_version=profile_version.contract_version,
+            ),
+        ]
+    )
+    db_session.commit()
+
+    athena_context = build_athena_world_context(db_session, project.id)
+    hermes_context = build_hermes_world_context(db_session, project.id)
+    athena_blocks = build_athena_world_context_blocks(db_session, project.id)
+    hermes_blocks = build_hermes_world_context_blocks(db_session, project.id)
+
+    assert "protagonist" in athena_context
+    assert "character.linzhou → ally → character.yunyao" in athena_context
+    assert "雾港潮汐：雾潮会吞噬未点灯的街区" in athena_context
+    assert '{"summary": "雾潮抵达旧港"}' in athena_context
+    assert "character.linzhou → ally → character.yunyao" in hermes_context
+    assert any("character.linzhou → ally → character.yunyao" in block["content"] for block in athena_blocks)
+    assert any("character.linzhou → ally → character.yunyao" in block["content"] for block in hermes_blocks)
+
+
+def test_world_context_builders_do_not_leak_previous_profile_version(db_session):
+    project, profile_v1 = _seed_project(db_session, with_profile=True)
+    profile_v2 = ProjectProfileVersion(
+        project_id=project.id,
+        genre_profile_id=profile_v1.genre_profile_id,
+        version=2,
+        contract_version=profile_v1.contract_version,
+        profile_payload={},
+    )
+    db_session.add(profile_v2)
+    db_session.commit()
+
+    db_session.add_all(
+        [
+            WorldCharacter(
+                project_id=project.id,
+                profile_version=profile_v1.version,
+                character_id="character.old",
+                canonical_id="character.old",
+                primary_alias="旧角色",
+                name="旧角色",
+                aliases=[],
+                role_type="deprecated",
+                identity_anchor="旧档案",
+                contract_version=profile_v1.contract_version,
+            ),
+            WorldCharacter(
+                project_id=project.id,
+                profile_version=profile_v2.version,
+                character_id="character.new",
+                canonical_id="character.new",
+                primary_alias="新角色",
+                name="新角色",
+                aliases=[],
+                role_type="lead",
+                identity_anchor="新档案",
+                contract_version=profile_v2.contract_version,
+            ),
+            WorldRelation(
+                project_id=project.id,
+                profile_version=profile_v1.version,
+                relation_id="relation.old",
+                source_entity_ref="character.old",
+                target_entity_ref="character.leak",
+                relation_type="leaked_relation",
+                directionality="directed",
+                status="active",
+                visibility_layer="public",
+                contract_version=profile_v1.contract_version,
+            ),
+            WorldRelation(
+                project_id=project.id,
+                profile_version=profile_v2.version,
+                relation_id="relation.new",
+                source_entity_ref="character.new",
+                target_entity_ref="character.current",
+                relation_type="current_relation",
+                directionality="directed",
+                status="active",
+                visibility_layer="public",
+                contract_version=profile_v2.contract_version,
+            ),
+            WorldRule(
+                project_id=project.id,
+                profile_version=profile_v1.version,
+                rule_id="rule.old",
+                canonical_id="rule.old",
+                primary_alias="旧规则",
+                name="旧规则",
+                rule_type="setting",
+                statement="旧规则不应出现",
+                contract_version=profile_v1.contract_version,
+            ),
+            WorldRule(
+                project_id=project.id,
+                profile_version=profile_v2.version,
+                rule_id="rule.new",
+                canonical_id="rule.new",
+                primary_alias="新规则",
+                name="新规则",
+                rule_type="setting",
+                statement="新规则应出现",
+                contract_version=profile_v2.contract_version,
+            ),
+            WorldFactClaim(
+                project_id=project.id,
+                project_profile_version_id=profile_v1.id,
+                profile_version=profile_v1.version,
+                claim_id="fact.old",
+                chapter_index=1,
+                intra_chapter_seq=1,
+                subject_ref="character.old",
+                predicate="status",
+                object_ref_or_value="旧事实不应出现",
+                claim_layer="truth",
+                claim_status="confirmed",
+                authority_type="authoritative_structured",
+                confidence=1.0,
+                contract_version=profile_v1.contract_version,
+            ),
+            WorldFactClaim(
+                project_id=project.id,
+                project_profile_version_id=profile_v2.id,
+                profile_version=profile_v2.version,
+                claim_id="fact.new",
+                chapter_index=1,
+                intra_chapter_seq=1,
+                subject_ref="character.new",
+                predicate="status",
+                object_ref_or_value={"value": "新事实应出现"},
+                claim_layer="truth",
+                claim_status="confirmed",
+                authority_type="authoritative_structured",
+                confidence=1.0,
+                contract_version=profile_v2.contract_version,
+            ),
+            WorldEvent(
+                project_id=project.id,
+                project_profile_version_id=profile_v1.id,
+                profile_version=profile_v1.version,
+                event_id="event.old",
+                idempotency_key="event.old",
+                timeline_anchor_id="anchor.old",
+                chapter_index=1,
+                intra_chapter_seq=1,
+                event_type="old_event",
+                primitive_payload={"summary": "旧事件不应出现"},
+                truth_layer="truth",
+                disclosure_layer="public",
+                contract_version=profile_v1.contract_version,
+            ),
+            WorldEvent(
+                project_id=project.id,
+                project_profile_version_id=profile_v2.id,
+                profile_version=profile_v2.version,
+                event_id="event.new",
+                idempotency_key="event.new",
+                timeline_anchor_id="anchor.new",
+                chapter_index=1,
+                intra_chapter_seq=1,
+                event_type="new_event",
+                primitive_payload={"summary": "新事件应出现"},
+                truth_layer="truth",
+                disclosure_layer="public",
+                contract_version=profile_v2.contract_version,
+            ),
+        ]
+    )
+    db_session.commit()
+
+    outputs = [
+        build_athena_world_context(db_session, project.id),
+        build_hermes_world_context(db_session, project.id),
+        "\n".join(block["content"] for block in build_athena_world_context_blocks(db_session, project.id)),
+        "\n".join(block["content"] for block in build_hermes_world_context_blocks(db_session, project.id)),
+    ]
+
+    for output in outputs:
+        assert "新角色" in output
+        assert "character.new.status = {\"value\": \"新事实应出现\"}" in output
+        assert "character.new → current_relation → character.current" in output
+        assert "旧角色" not in output
+        assert "旧事实不应出现" not in output
+        assert "leaked_relation" not in output
+    athena_outputs = "\n".join(outputs[0::2])
+    assert "新规则：新规则应出现" in athena_outputs
+    assert "new_event {\"summary\": \"新事件应出现\"}" in athena_outputs
+    assert "旧规则不应出现" not in athena_outputs
+    assert "旧事件不应出现" not in athena_outputs
 
 
 def test_build_chat_call_payload_returns_messages_and_context_blocks_without_changing_messages(db_session):

@@ -91,7 +91,7 @@ function closeTrace() {
   top: 0;
   right: 0;
   bottom: 0;
-  width: var(--athena-chat-width, 400px);
+  width: min(var(--athena-chat-width, 400px), 100vw);
   background: var(--color-bg-white);
   border-left: 1px solid var(--color-border);
   box-shadow: var(--shadow-md);
