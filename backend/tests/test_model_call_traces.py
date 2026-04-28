@@ -223,6 +223,38 @@ def test_get_model_call_trace_detail_returns_messages_and_context_sources(client
     ]
 
 
+def test_get_model_call_trace_detail_normalizes_loose_context_blocks(client, db_session):
+    project = Project(name="Trace Loose Detail API", genre="东方奇幻悬疑")
+    db_session.add(project)
+    db_session.flush()
+    trace = AIModelCallTrace(
+        project_id=project.id,
+        trace_type="hermes_chat",
+        status="success",
+        messages=[],
+        context_blocks=[
+            {
+                "content": "loose block",
+                "sources": [{"label": "orphan"}],
+            }
+        ],
+        trace_metadata={},
+    )
+    db_session.add(trace)
+    db_session.commit()
+
+    response = client.get(f"/api/v1/projects/{project.id}/model-call-traces/{trace.id}")
+
+    assert response.status_code == 200
+    block = response.json()["context_blocks"][0]
+    assert block["key"] == "block-0"
+    assert block["kind"] == "unknown"
+    assert block["content"] == "loose block"
+    assert block["char_count"] == len("loose block")
+    assert block["sources"][0]["source_type"] == "Unknown"
+    assert block["sources"][0]["label"] == "orphan"
+
+
 def test_get_model_call_trace_detail_rejects_cross_project_access(client, db_session):
     project = Project(name="Trace Owner", genre="东方奇幻悬疑")
     other_project = Project(name="Trace Intruder", genre="东方奇幻悬疑")
