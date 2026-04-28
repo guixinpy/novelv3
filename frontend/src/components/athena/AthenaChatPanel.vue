@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import ChatMessageList from '../chat/ChatMessageList.vue'
 import ChatInput from '../chat/ChatInput.vue'
+import ModelTraceDrawer from '../modelTrace/ModelTraceDrawer.vue'
 import { useAthenaStore } from '../../stores/athena'
 
 const props = defineProps<{
@@ -14,20 +15,36 @@ const emit = defineEmits<{
 }>()
 
 const athena = useAthenaStore()
+const activeTraceId = ref<string | null>(null)
 
 const messages = computed(() =>
   (athena.messages || []).map((m: any) => ({
+    id: m.id,
     role: m.role,
     content: m.content,
     message_type: m.message_type || null,
     meta: m.meta || null,
     pending_action: null,
     action_result: null,
+    trace_id: m.trace_id || null,
   })),
 )
 
+watch(() => props.open, (open) => {
+  if (!open) closeTrace()
+})
+
 async function onSend(text: string) {
   await athena.sendChat(props.projectId, text)
+}
+
+function openTrace(traceId: string) {
+  if (!traceId) return
+  activeTraceId.value = traceId
+}
+
+function closeTrace() {
+  activeTraceId.value = null
 }
 </script>
 
@@ -42,6 +59,7 @@ async function onSend(text: string) {
         <ChatMessageList
           :messages="messages"
           :loading="athena.chatLoading"
+          @open-trace="openTrace"
         />
         <ChatInput
           :loading="athena.chatLoading"
@@ -54,6 +72,12 @@ async function onSend(text: string) {
     <Transition name="fade">
       <div v-if="open" class="athena-chat-panel__backdrop" @click="emit('close')" />
     </Transition>
+    <ModelTraceDrawer
+      :project-id="projectId"
+      :trace-id="activeTraceId"
+      :open="!!activeTraceId"
+      @close="closeTrace"
+    />
   </Teleport>
 </template>
 

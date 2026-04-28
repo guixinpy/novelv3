@@ -11,6 +11,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   decide: [decision: string, comment?: string]
+  openTrace: [traceId: string]
 }>()
 
 const roleName = computed(() => {
@@ -58,8 +59,19 @@ const summaryCompactedCount = computed(() => {
   return typeof compactedCount === 'number' ? compactedCount : 0
 })
 
+const canOpenTrace = computed(() => (
+  props.msg.role === 'assistant'
+  && typeof props.msg.trace_id === 'string'
+  && props.msg.trace_id.trim().length > 0
+))
+
 function onDecide(decision: string, comment?: string) {
   emit('decide', decision, comment)
+}
+
+function openTrace() {
+  if (!canOpenTrace.value) return
+  emit('openTrace', props.msg.trace_id)
 }
 </script>
 
@@ -79,7 +91,18 @@ function onDecide(decision: string, comment?: string) {
       class="chat-msg__bubble"
       :class="`chat-msg__bubble--${msg.role}`"
     >
-      <div class="chat-msg__role">{{ roleName }}</div>
+      <div class="chat-msg__header">
+        <div class="chat-msg__role">{{ roleName }}</div>
+        <button
+          v-if="canOpenTrace"
+          type="button"
+          class="chat-msg__trace"
+          data-testid="open-trace"
+          @click="openTrace"
+        >
+          上下文
+        </button>
+      </div>
       <div class="chat-msg__content">{{ msg.content }}</div>
       <ActionCard
         v-if="msg.pending_action && isLatest"
@@ -132,13 +155,44 @@ function onDecide(decision: string, comment?: string) {
   max-width: 80%;
 }
 
+.chat-msg__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-width: 0;
+  margin-bottom: var(--space-1);
+}
+
 .chat-msg__role {
+  min-width: 0;
   font-size: var(--text-xs);
   font-weight: var(--font-semibold);
   color: var(--color-text-tertiary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  margin-bottom: var(--space-1);
+}
+
+.chat-msg__trace {
+  flex: 0 0 auto;
+  max-width: 4.5rem;
+  height: 24px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  background: transparent;
+  font-size: var(--text-xs);
+  font-weight: var(--font-medium);
+  line-height: 22px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-msg__trace:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-secondary);
 }
 
 .chat-msg__content {

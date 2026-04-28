@@ -16,6 +16,7 @@ export type PendingAction = ApiPendingAction
 export type Diagnosis = ProjectDiagnosis
 
 export interface ChatMessage {
+  id?: string
   role: 'user' | 'assistant' | 'system'
   content: string
   message_type?: ChatMessageType | null
@@ -23,10 +24,12 @@ export interface ChatMessage {
   pending_action?: PendingAction | null
   diagnosis?: Diagnosis | null
   action_result?: Record<string, unknown> | null
+  trace_id?: string | null
 }
 
 function toChatMessage(message: ChatHistoryMessage): ChatMessage {
   return {
+    ...(message.id ? { id: message.id } : {}),
     role: message.role,
     content: message.content,
     message_type: message.message_type || null,
@@ -34,6 +37,7 @@ function toChatMessage(message: ChatHistoryMessage): ChatMessage {
     pending_action: message.pending_action || null,
     diagnosis: message.diagnosis || null,
     action_result: message.action_result || null,
+    ...('trace_id' in message ? { trace_id: message.trace_id || null } : {}),
   }
 }
 
@@ -158,6 +162,7 @@ export const useChatStore = defineStore('chat', () => {
         meta: res.meta || null,
         pending_action: res.pending_action || null,
         diagnosis: res.project_diagnosis || null,
+        trace_id: res.trace_id || null,
       }
       messages.value.push(msg)
       historyCursor.value += 2
@@ -194,6 +199,7 @@ export const useChatStore = defineStore('chat', () => {
         meta: res.meta || null,
         pending_action: res.pending_action || null,
         diagnosis: res.project_diagnosis || null,
+        trace_id: res.trace_id || null,
       }
       messages.value.push(msg)
       historyCursor.value += 1
@@ -275,6 +281,7 @@ export const useChatStore = defineStore('chat', () => {
           meta: res.meta || null,
           pending_action: res.pending_action || null,
           diagnosis: res.project_diagnosis || null,
+          trace_id: res.trace_id || null,
         }
         messages.value.push(msg)
         historyCursor.value += 2

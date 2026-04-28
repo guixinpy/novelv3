@@ -9,6 +9,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   decide: [decision: string, comment?: string]
+  openTrace: [traceId: string]
 }>()
 
 const container = ref<HTMLElement | null>(null)
@@ -33,6 +34,7 @@ watch(() => props.loading, scrollToBottom)
       :is-latest="index === messages.length - 1"
       :loading="loading"
       @decide="(d, c) => emit('decide', d, c)"
+      @open-trace="(traceId) => emit('openTrace', traceId)"
     />
     <div v-if="loading" class="chat-message-list__loading">
       <span class="chat-message-list__dots">

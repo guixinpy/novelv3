@@ -8,6 +8,7 @@ import ExportModal from '../components/shared/ExportModal.vue'
 import VersionsModal from '../components/shared/VersionsModal.vue'
 import ChatMessageList from '../components/chat/ChatMessageList.vue'
 import ChatInput from '../components/chat/ChatInput.vue'
+import ModelTraceDrawer from '../components/modelTrace/ModelTraceDrawer.vue'
 import { parseSlashCommand } from '../components/workspace/chatCommands'
 import {
   getActionLabel,
@@ -28,6 +29,7 @@ import {
   type HydrationSnapshot,
 } from './projectDetailHydration'
 import { useChatStore } from '../stores/chat'
+import { useModelTraceStore } from '../stores/modelTraces'
 import { useProjectStore } from '../stores/project'
 import { useWorkspaceStore } from '../stores/workspace'
 
@@ -39,6 +41,7 @@ const route = useRoute()
 const router = useRouter()
 const project = useProjectStore()
 const chat = useChatStore()
+const modelTrace = useModelTraceStore()
 const workspace = useWorkspaceStore()
 const pid = computed(() => route.params.id as string)
 const ready = ref(false)
@@ -49,11 +52,14 @@ const hydratedTargets = hydrationTracker.targets
 const showExportModal = ref(false)
 const showVersionsModal = ref(false)
 const handledRevisionIds = ref(new Set<string>())
+const activeTraceId = ref<string | null>(null)
 
 // Project stats
 const totalWords = computed(() => {
   return (project.chapters || []).reduce((sum: number, c: any) => sum + (c.word_count || 0), 0)
 })
+
+const selectedChapterTraceId = computed(() => project.chapter?.last_generation_trace_id || null)
 
 // Action fingerprint watcher (from ProjectDetail.vue)
 const latestActionFingerprint = computed(() => {
@@ -115,6 +121,7 @@ watch(latestActionFingerprint, async (fingerprint) => {
 
 async function initialize(projectId: string) {
   ready.value = false
+  closeTrace()
   const snapshot = beginHydration(hydrationTracker, projectId)
   project.resetProjectScopedState(projectId)
   workspace.reset()
@@ -279,6 +286,16 @@ function openVersionsModal() {
   showVersionsModal.value = true
   void refreshProjectTargets(['versions'])
 }
+
+function openTrace(traceId: string) {
+  if (!traceId) return
+  activeTraceId.value = traceId
+}
+
+function closeTrace() {
+  activeTraceId.value = null
+  modelTrace.closeTrace()
+}
 </script>
 
 <template>
@@ -299,6 +316,14 @@ function openVersionsModal() {
           :suggested-next-step="suggestedNextStep"
           @tool="onDashboardTool"
         />
+        <button
+          v-if="selectedChapterTraceId"
+          type="button"
+          class="hermes-subnav__trace"
+          @click="openTrace(selectedChapterTraceId)"
+        >
+          生成上下文
+        </button>
       </div>
     </Teleport>
 
@@ -308,6 +333,7 @@ function openVersionsModal() {
         :messages="chat.messages"
         :loading="chat.loading"
         @decide="onDecide"
+        @open-trace="openTrace"
       />
       <ChatInput
         :loading="chat.loading"
@@ -331,6 +357,12 @@ function openVersionsModal() {
       @filter="onFilterVersions"
       @rollback="onRollback"
       @delete-version="onDeleteVersion"
+    />
+    <ModelTraceDrawer
+      :project-id="pid"
+      :trace-id="activeTraceId"
+      :open="!!activeTraceId"
+      @close="closeTrace"
     />
   </div>
   <div v-else class="hermes-view__loading">
@@ -367,5 +399,30 @@ function openVersionsModal() {
 .hermes-subnav {
   display: flex;
   flex-direction: column;
+}
+
+.hermes-subnav__trace {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  max-width: calc(100% - var(--space-6));
+  margin: var(--space-3);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hermes-subnav__trace:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-secondary);
 }
 </style>

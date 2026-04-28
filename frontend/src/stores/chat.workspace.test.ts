@@ -548,6 +548,113 @@ describe('chat workspace polling', () => {
     })
   })
 
+  it('init() 会保留历史消息的 id 和 trace_id', async () => {
+    const store = useChatStore()
+
+    vi.mocked(api.getMessages).mockResolvedValue([
+      {
+        id: 'message-1',
+        role: 'assistant',
+        content: '历史里的模型回复',
+        trace_id: 'trace-history-1',
+        created_at: '2026-04-28T00:00:00Z',
+      },
+    ])
+    vi.mocked(api.getDiagnosis).mockResolvedValue({
+      missing_items: [],
+      completed_items: [],
+      suggested_next_step: null,
+    })
+
+    await store.init('project-1')
+
+    expect(store.messages).toEqual([
+      {
+        id: 'message-1',
+        role: 'assistant',
+        content: '历史里的模型回复',
+        message_type: null,
+        meta: null,
+        pending_action: null,
+        diagnosis: null,
+        action_result: null,
+        trace_id: 'trace-history-1',
+      },
+    ])
+  })
+
+  it('sendText 会把响应 trace_id 写入 assistant 消息', async () => {
+    const store = useChatStore()
+    store.projectId = 'project-1'
+
+    vi.mocked(api.sendChat).mockResolvedValue({
+      message: '这是一次带上下文的回复。',
+      pending_action: null,
+      ui_hint: null,
+      refresh_targets: [],
+      project_diagnosis: {
+        missing_items: [],
+        completed_items: [],
+        suggested_next_step: null,
+      },
+      trace_id: 'trace-send-1',
+    })
+
+    await store.sendText('看一下上下文')
+
+    expect(store.messages.slice(-1)).toEqual([
+      {
+        role: 'assistant',
+        content: '这是一次带上下文的回复。',
+        message_type: null,
+        meta: null,
+        pending_action: null,
+        diagnosis: {
+          missing_items: [],
+          completed_items: [],
+          suggested_next_step: null,
+        },
+        trace_id: 'trace-send-1',
+      },
+    ])
+  })
+
+  it('sendButtonAction 会把响应 trace_id 写入 assistant 消息', async () => {
+    const store = useChatStore()
+    store.projectId = 'project-1'
+
+    vi.mocked(api.sendChat).mockResolvedValue({
+      message: '按钮动作返回了模型上下文。',
+      pending_action: null,
+      ui_hint: null,
+      refresh_targets: [],
+      project_diagnosis: {
+        missing_items: [],
+        completed_items: [],
+        suggested_next_step: null,
+      },
+      trace_id: 'trace-button-1',
+    })
+
+    await store.sendButtonAction('preview_outline')
+
+    expect(store.messages.slice(-1)).toEqual([
+      {
+        role: 'assistant',
+        content: '按钮动作返回了模型上下文。',
+        message_type: null,
+        meta: null,
+        pending_action: null,
+        diagnosis: {
+          missing_items: [],
+          completed_items: [],
+          suggested_next_step: null,
+        },
+        trace_id: 'trace-button-1',
+      },
+    ])
+  })
+
   it('init() 遇到 generating action_result 时会恢复 loading 和轮询', async () => {
     const store = useChatStore()
 
@@ -704,6 +811,7 @@ describe('chat workspace polling', () => {
           completed_items: ['setup'],
           suggested_next_step: 'preview_storyline',
         },
+        trace_id: null,
       },
     ])
     expect(store.loading).toBe(false)
