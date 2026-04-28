@@ -81,6 +81,10 @@ export const useAthenaStore = defineStore('athena', () => {
     return activeChatProjectId === projectId
   }
 
+  function invalidateMessageLoads() {
+    messageLoadRequestId += 1
+  }
+
   async function loadOntology(projectId: string) {
     try {
       ontology.value = await api.getAthenaOntology(projectId)
@@ -321,6 +325,7 @@ export const useAthenaStore = defineStore('athena', () => {
 
       const loadedMessages = await api.getAthenaMessages(projectId)
       if (!isCurrentSend(scope) || !isActiveChatProject(projectId)) return
+      invalidateMessageLoads()
       messages.value = loadedMessages
 
       const targets = new Set(response.refresh_targets || [])

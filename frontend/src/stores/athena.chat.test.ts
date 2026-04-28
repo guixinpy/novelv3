@@ -250,6 +250,37 @@ describe('athena chat store', () => {
     expect(store.chatLoading).toBe(false)
   })
 
+  it('prevents same-project loadMessages from overwriting a completed sendChat refresh', async () => {
+    const sendA = createDeferred<any>()
+    const loadMessagesA = createDeferred<any[]>()
+    const sendMessagesA = createDeferred<any[]>()
+    vi.mocked(api.sendAthenaChat).mockReturnValueOnce(sendA.promise)
+    vi.mocked(api.getAthenaMessages)
+      .mockReturnValueOnce(loadMessagesA.promise)
+      .mockReturnValueOnce(sendMessagesA.promise)
+    const store = useAthenaStore()
+
+    const sendAPromise = store.sendChat('A', 'A text')
+    const loadAPromise = store.loadMessages('A')
+
+    sendA.resolve({
+      message: 'A done',
+      pending_action: null,
+      ui_hint: null,
+      refresh_targets: [],
+      project_diagnosis: { missing_items: [], completed_items: [], suggested_next_step: null },
+    })
+    sendMessagesA.resolve([message('A send history')])
+    await sendAPromise
+    expect(store.messages).toEqual([message('A send history')])
+
+    loadMessagesA.resolve([message('A stale load history')])
+    await loadAPromise
+
+    expect(store.messages).toEqual([message('A send history')])
+    expect(store.chatLoading).toBe(false)
+  })
+
   it('keeps newer project messages when an older loadMessages resolves later', async () => {
     const messagesA = createDeferred<any[]>()
     const messagesB = createDeferred<any[]>()
