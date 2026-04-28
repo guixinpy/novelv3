@@ -874,12 +874,14 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
         )
 
     router = IntentRouter()
-    candidate = router.resolve(
-        effective_text,
-        dialog.state,
-        dialog.pending_action_id,
-        diagnosis,
-    )
+    candidate = None
+    if payload.input_type != "text":
+        candidate = router.resolve(
+            effective_text,
+            dialog.state,
+            dialog.pending_action_id,
+            diagnosis,
+        )
 
     if candidate and candidate.type in ("confirm", "cancel", "revise"):
         reply = "请通过 resolve-action 接口提交决策。"

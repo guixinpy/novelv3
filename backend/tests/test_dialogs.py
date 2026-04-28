@@ -198,6 +198,31 @@ def test_chat_uses_ai_service_for_free_text_when_model_available(mock_complete, 
     assert "当前状态：待补全" in sent_messages[0]["content"]
 
 
+@patch("app.api.dialogs.load_api_key", return_value="sk-test")
+@patch("app.api.dialogs.ai_service.complete", new_callable=AsyncMock)
+def test_chat_text_that_matches_action_intent_still_uses_ai_and_records_trace(mock_complete, mock_key, client):
+    r = client.post("/api/v1/projects", json={"name": "Test", "genre": "科幻"})
+    pid = r.json()["id"]
+    mock_complete.return_value = SimpleNamespace(
+        content="可以，我会先帮你梳理主角设定需要的信息。",
+        prompt_tokens=123,
+        completion_tokens=45,
+    )
+
+    r2 = client.post("/api/v1/dialog/chat", json={
+        "project_id": pid,
+        "input_type": "text",
+        "text": "创建主角设定",
+    })
+
+    assert r2.status_code == 200
+    body = r2.json()
+    assert body["message"] == "可以，我会先帮你梳理主角设定需要的信息。"
+    assert body["pending_action"] is None
+    assert body["trace_id"]
+    mock_complete.assert_awaited_once()
+
+
 @patch("app.api.dialogs.load_api_key", return_value=None)
 def test_chat_reports_model_unavailable_instead_of_faking_ai_reply(mock_key, client):
     r = client.post("/api/v1/projects", json={"name": "Test"})
@@ -238,7 +263,9 @@ def test_chat_button_action(client):
     assert r2.json()["refresh_targets"] == []
 
 
-def test_chat_text_start_writing_creates_chapter_pending_action(client, db_session):
+@patch("app.api.dialogs.load_api_key", return_value="sk-test")
+@patch("app.api.dialogs.ai_service.complete", new_callable=AsyncMock)
+def test_chat_text_start_writing_uses_ai_instead_of_local_pending_action(mock_complete, mock_key, client, db_session):
     r = client.post("/api/v1/projects", json={"name": "Test"})
     pid = r.json()["id"]
     db_session.add(Setup(project_id=pid, status="generated", world_building={}, characters=[], core_concept={}))
@@ -252,6 +279,11 @@ def test_chat_text_start_writing_creates_chapter_pending_action(client, db_sessi
         )
     )
     db_session.commit()
+    mock_complete.return_value = SimpleNamespace(
+        content="我会先确认第1章的写作约束，再推进正文生成。",
+        prompt_tokens=123,
+        completion_tokens=45,
+    )
 
     r2 = client.post("/api/v1/dialog/chat", json={
         "project_id": pid,
@@ -261,11 +293,12 @@ def test_chat_text_start_writing_creates_chapter_pending_action(client, db_sessi
 
     assert r2.status_code == 200
     body = r2.json()
-    assert body["pending_action"]["type"] == "preview_chapter"
-    assert body["pending_action"]["params"]["chapter_index"] == 1
-    assert body["ui_hint"]["dialog_state"] == "PENDING_ACTION"
-    assert body["ui_hint"]["active_action"]["target_panel"] == "content"
-    assert "第1章" in body["message"]
+    assert body["message"] == "我会先确认第1章的写作约束，再推进正文生成。"
+    assert body["pending_action"] is None
+    assert body["ui_hint"]["dialog_state"] == "CHATTING"
+    assert body["ui_hint"]["active_action"]["type"] == "chat"
+    assert body["trace_id"]
+    mock_complete.assert_awaited_once()
 
 
 def test_get_messages_includes_current_pending_action(client):
