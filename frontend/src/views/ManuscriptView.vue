@@ -3,17 +3,21 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useProjectStore } from '../stores/project'
 import { useManuscriptStore } from '../stores/manuscript'
+import { useModelTraceStore } from '../stores/modelTraces'
 import ChapterList from '../components/shared/ChapterList.vue'
 import ManuscriptEditor from '../components/manuscript/ManuscriptEditor.vue'
 import RevisionSummaryPanel from '../components/manuscript/RevisionSummaryPanel.vue'
 import RevisionSubmitModal from '../components/manuscript/RevisionSubmitModal.vue'
+import ModelTraceDrawer from '../components/modelTrace/ModelTraceDrawer.vue'
 
 const route = useRoute()
 const router = useRouter()
 const project = useProjectStore()
 const manuscript = useManuscriptStore()
+const modelTrace = useModelTraceStore()
 const pid = computed(() => route.params.id as string)
 const submitOpen = ref(false)
+const activeTraceId = ref<string | null>(null)
 
 const chapterItems = computed(() =>
   (project.chapters || []).map((c: any) => ({
@@ -24,8 +28,10 @@ const chapterItems = computed(() =>
 
 const activeIndex = computed(() => manuscript.selectedChapterIndex)
 const canSubmit = computed(() => manuscript.hasPendingFeedback && activeIndex.value !== null)
+const selectedChapterTraceId = computed(() => manuscript.chapter?.last_generation_trace_id || null)
 
 async function onSelectChapter(index: number) {
+  closeTrace()
   await manuscript.loadChapter(pid.value, index)
 }
 
@@ -36,6 +42,16 @@ async function submitRevision() {
   await router.push({ path: `/projects/${pid.value}/hermes`, query: { revision_id: revision.id } })
 }
 
+function openTrace(traceId: string) {
+  if (!traceId) return
+  activeTraceId.value = traceId
+}
+
+function closeTrace() {
+  activeTraceId.value = null
+  modelTrace.closeTrace()
+}
+
 onMounted(async () => {
   await project.loadProject(pid.value)
   await project.loadChapters(pid.value)
@@ -44,6 +60,7 @@ onMounted(async () => {
 })
 
 watch(pid, () => {
+  closeTrace()
   manuscript.reset()
 })
 </script>
@@ -58,7 +75,15 @@ watch(pid, () => {
           <span>批注 {{ manuscript.annotations.length }}</span>
           <span>修正 {{ manuscript.corrections.length }}</span>
         </div>
-        <button class="manuscript-subnav__submit" :disabled="!canSubmit" @click="submitOpen = true">
+        <button
+          v-if="selectedChapterTraceId"
+          type="button"
+          class="manuscript-subnav__trace"
+          @click="openTrace(selectedChapterTraceId)"
+        >
+          生成上下文
+        </button>
+        <button type="button" class="manuscript-subnav__submit" :disabled="!canSubmit" @click="submitOpen = true">
           提交修订
         </button>
       </div>
@@ -93,6 +118,13 @@ watch(pid, () => {
       :submitting="manuscript.submitting"
       @close="submitOpen = false"
       @confirm="submitRevision"
+    />
+
+    <ModelTraceDrawer
+      :project-id="pid"
+      :trace-id="activeTraceId"
+      :open="!!activeTraceId"
+      @close="closeTrace"
     />
   </div>
 </template>
@@ -158,5 +190,30 @@ watch(pid, () => {
   background: var(--color-bg-secondary);
   color: var(--color-text-tertiary);
   cursor: not-allowed;
+}
+
+.manuscript-subnav__trace {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(100% - var(--space-6));
+  height: 32px;
+  margin: var(--space-3) var(--space-3) var(--space-2);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.manuscript-subnav__trace:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-secondary);
 }
 </style>
