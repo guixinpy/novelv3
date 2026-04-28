@@ -13,7 +13,11 @@ from app.models import AIModelCallTrace
 TRUNCATION_NOTICE = "\n\n[truncated: original content exceeded trace limit]"
 BEARER_PATTERN = re.compile(r"(Authorization\s*:\s*Bearer\s+)([^\s,;]+)", re.IGNORECASE)
 SK_TOKEN_PATTERN = re.compile(r"sk-[A-Za-z0-9][A-Za-z0-9_\-]{8,}")
-KEY_VALUE_PATTERN = re.compile(r"\b([A-Za-z][A-Za-z0-9_-]*)\b(\s*[:=]\s*)([^\s,;&]+)")
+KEY_VALUE_PATTERN = re.compile(
+    r"(?P<key_quote>['\"]?)(?P<key>[A-Za-z][A-Za-z0-9_-]*)(?P=key_quote)"
+    r"(?P<separator>\s*[:=]\s*)"
+    r"(?P<value_quote>['\"]?)(?P<value>[^\s,;&'\"]+)(?P=value_quote)"
+)
 SENSITIVE_KEYS = {
     "api_key",
     "apikey",
@@ -61,8 +65,9 @@ def sanitize_text(text: str) -> str:
     sanitized = BEARER_PATTERN.sub(r"\1[REDACTED]", text)
     sanitized = KEY_VALUE_PATTERN.sub(
         lambda match: (
-            f"{match.group(1)}{match.group(2)}[REDACTED]"
-            if _is_sensitive_key(match.group(1), include_authorization=False)
+            f"{match.group('key_quote')}{match.group('key')}{match.group('key_quote')}"
+            f"{match.group('separator')}{match.group('value_quote')}[REDACTED]{match.group('value_quote')}"
+            if _is_sensitive_key(match.group("key"), include_authorization=False)
             else match.group(0)
         ),
         sanitized,

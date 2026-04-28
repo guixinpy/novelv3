@@ -114,6 +114,35 @@ def test_sanitize_model_messages_redacts_common_secret_key_variants_without_reda
     assert sanitized[0]["metadata"]["completion_tokens"] == 34
 
 
+def test_sanitize_model_messages_redacts_quoted_json_style_secret_assignments():
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                '{"accessToken": "plain-json-access", "clientSecret": "plain-json-client", '
+                "'secretKey': 'plain-single-secret', 'password': 'plain-single-password', "
+                '"max_tokens": 900}'
+            ),
+        }
+    ]
+
+    sanitized = sanitize_model_messages(messages)
+
+    content = sanitized[0]["content"]
+    for secret in [
+        "plain-json-access",
+        "plain-json-client",
+        "plain-single-secret",
+        "plain-single-password",
+    ]:
+        assert secret not in content
+    assert '"accessToken": "[REDACTED]"' in content
+    assert '"clientSecret": "[REDACTED]"' in content
+    assert "'secretKey': '[REDACTED]'" in content
+    assert "'password': '[REDACTED]'" in content
+    assert '"max_tokens": 900' in content
+
+
 def test_truncate_text_reports_original_count_and_appends_truncation_notice():
     text = "0123456789" * 5
 
