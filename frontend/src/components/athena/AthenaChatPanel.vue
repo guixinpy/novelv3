@@ -34,6 +34,10 @@ watch(() => props.open, (open) => {
   if (!open) closeTrace()
 })
 
+watch(() => props.projectId, () => {
+  closeTrace()
+})
+
 async function onSend(text: string) {
   await athena.sendChat(props.projectId, text)
 }
@@ -75,7 +79,7 @@ function closeTrace() {
     <ModelTraceDrawer
       :project-id="projectId"
       :trace-id="activeTraceId"
-      :open="!!activeTraceId"
+      :open="open && !!activeTraceId"
       @close="closeTrace"
     />
   </Teleport>
