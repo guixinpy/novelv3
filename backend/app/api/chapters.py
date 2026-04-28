@@ -7,10 +7,11 @@ from sqlalchemy.orm import Session
 
 from app.config import load_api_key
 from app.core.ai_service import AIService
+from app.core.model_call_trace import build_context_block, create_trace, mark_trace_failed, mark_trace_success, now_ms
 from app.core.prompt_manager import PromptManager
 from app.core.prompt_optimizer import PromptOptimizer
 from app.db import get_db
-from app.models import ChapterContent, Outline, Project, Setup
+from app.models import AIModelCallTrace, ChapterContent, Outline, Project, Setup
 from app.schemas import ChapterOut
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/chapters", tags=["chapters"])
@@ -78,9 +79,210 @@ def _build_chapter_context(db: Session, project_id: str, chapter_index: int, set
     return "\n".join(parts)
 
 
+def _latest_chapter_generation_trace_id(db: Session, chapter: ChapterContent) -> str | None:
+    trace = (
+        db.query(AIModelCallTrace)
+        .filter(
+            AIModelCallTrace.project_id == chapter.project_id,
+            AIModelCallTrace.trace_type == "chapter_generation",
+            AIModelCallTrace.chapter_index == chapter.chapter_index,
+            AIModelCallTrace.chapter_id == chapter.id,
+            AIModelCallTrace.status == "success",
+        )
+        .order_by(AIModelCallTrace.created_at.desc(), AIModelCallTrace.id.desc())
+        .first()
+    )
+    return trace.id if trace else None
+
+
+def _chapter_out(db: Session, chapter: ChapterContent) -> dict:
+    payload = ChapterOut.model_validate(chapter).model_dump()
+    payload["last_generation_trace_id"] = _latest_chapter_generation_trace_id(db, chapter)
+    return payload
+
+
+def _build_chapter_call_payload(
+    db: Session,
+    project: Project,
+    setup: Setup,
+    chapter_index: int,
+    extra_feedback: str,
+) -> dict:
+    context = _build_chapter_context(db, project.id, chapter_index, setup)
+
+    pm = PromptManager()
+    prompt_template = pm.load(
+        "generate_chapter",
+        {
+            "world_building": json.dumps(setup.world_building, ensure_ascii=False),
+            "characters": json.dumps(setup.characters, ensure_ascii=False),
+            "core_concept": json.dumps(setup.core_concept, ensure_ascii=False),
+            "language": project.language,
+        },
+    )
+    prompt = f"{prompt_template}\n\n【章节上下文】\n{context}"
+    context_blocks = [
+        build_context_block(
+            key="setup_world_building",
+            kind="setup",
+            title="世界观",
+            content=json.dumps(setup.world_building, ensure_ascii=False),
+        ),
+        build_context_block(
+            key="setup_characters",
+            kind="setup",
+            title="角色",
+            content=json.dumps(setup.characters, ensure_ascii=False),
+        ),
+        build_context_block(
+            key="chapter_context",
+            kind="chapter_context",
+            title=f"第{chapter_index}章上下文",
+            content=context,
+        ),
+        build_context_block(
+            key="generate_chapter_template",
+            kind="prompt_template",
+            title="章节生成模板",
+            content=prompt_template,
+        ),
+    ]
+    if extra_feedback:
+        prompt = f"{prompt}\n\n【用户修订反馈】\n{extra_feedback}"
+        context_blocks.append(
+            build_context_block(
+                key="extra_feedback",
+                kind="user_feedback",
+                title="用户修订反馈",
+                content=extra_feedback,
+            )
+        )
+        word_range = _extract_word_range(extra_feedback)
+        if word_range:
+            length_constraint = (
+                f"正文长度控制在{word_range[0]}-{word_range[1]}字，"
+                "不要为了解释设定而扩写，优先保证剧情推进和章节钩子。"
+            )
+            prompt = f"{prompt}\n\n【长度约束】\n{length_constraint}"
+            context_blocks.append(
+                build_context_block(
+                    key="length_constraint",
+                    kind="generation_constraint",
+                    title="长度约束",
+                    content=length_constraint,
+                )
+            )
+    if project.style_config:
+        context_blocks.append(
+            build_context_block(
+                key="style_config",
+                kind="style",
+                title="风格配置",
+                content=json.dumps(project.style_config, ensure_ascii=False),
+            )
+        )
+    prompt = prompt_optimizer.optimize(prompt, project.style_config)
+
+    from app.core.few_shot_library import FewShotExampleLibrary
+    fsl = FewShotExampleLibrary()
+    examples = fsl.select_examples("chapter", project.genre)
+    if examples:
+        few_shot_prompt = fsl.format_for_prompt(examples)
+        prompt += "\n\n" + few_shot_prompt
+        context_blocks.append(
+            build_context_block(
+                key="few_shot_examples",
+                kind="few_shot",
+                title="章节示例",
+                content=few_shot_prompt,
+            )
+        )
+
+    return {
+        "messages": [{"role": "user", "content": prompt}],
+        "context_blocks": context_blocks,
+        "max_tokens": _chapter_max_tokens(extra_feedback),
+    }
+
+
+def _safe_create_chapter_trace(
+    db: Session,
+    *,
+    project: Project,
+    chapter_index: int,
+    payload: dict,
+) -> AIModelCallTrace | None:
+    try:
+        return create_trace(
+            db,
+            project_id=project.id,
+            trace_type="chapter_generation",
+            messages=payload["messages"],
+            context_blocks=payload["context_blocks"],
+            model=project.ai_model or "deepseek-chat",
+            temperature=0.7,
+            max_tokens=payload["max_tokens"],
+            chapter_index=chapter_index,
+        )
+    except Exception:
+        db.rollback()
+        return None
+
+
+def _safe_mark_chapter_trace_success(
+    db: Session,
+    trace: AIModelCallTrace | None,
+    *,
+    chapter: ChapterContent,
+    prompt_tokens: int | None,
+    completion_tokens: int | None,
+    latency_ms: int | None,
+) -> AIModelCallTrace | None:
+    if trace is None:
+        return None
+    try:
+        trace.chapter_id = chapter.id
+        mark_trace_success(
+            db,
+            trace,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            latency_ms=latency_ms,
+        )
+        db.commit()
+        return trace
+    except Exception:
+        db.rollback()
+        return None
+
+
+def _safe_mark_chapter_trace_failed(
+    db: Session,
+    trace: AIModelCallTrace | None,
+    *,
+    error_message: str,
+    latency_ms: int | None,
+) -> AIModelCallTrace | None:
+    if trace is None:
+        return None
+    try:
+        mark_trace_failed(
+            db,
+            trace,
+            error_message=error_message,
+            latency_ms=latency_ms,
+        )
+        db.commit()
+        return trace
+    except Exception:
+        db.rollback()
+        return None
+
+
 @router.post("/{chapter_index}/generate", response_model=ChapterOut)
 async def generate_chapter(project_id: str, chapter_index: int, db: Session = Depends(get_db)):
-    return await create_or_replace_chapter(db, project_id, chapter_index)
+    chapter = await create_or_replace_chapter(db, project_id, chapter_index)
+    return _chapter_out(db, chapter)
 
 
 async def create_or_replace_chapter(
@@ -105,42 +307,24 @@ async def create_or_replace_chapter(
         ChapterContent.chapter_index == chapter_index,
     ).first()
 
-    context = _build_chapter_context(db, project_id, chapter_index, setup)
-
-    pm = PromptManager()
-    prompt = pm.load(
-        "generate_chapter",
-        {
-            "world_building": json.dumps(setup.world_building, ensure_ascii=False),
-            "characters": json.dumps(setup.characters, ensure_ascii=False),
-            "core_concept": json.dumps(setup.core_concept, ensure_ascii=False),
-            "language": project.language,
-        },
-    )
-    prompt = f"{prompt}\n\n【章节上下文】\n{context}"
-    if extra_feedback:
-        prompt = f"{prompt}\n\n【用户修订反馈】\n{extra_feedback}"
-        word_range = _extract_word_range(extra_feedback)
-        if word_range:
-            prompt = (
-                f"{prompt}\n\n【长度约束】\n"
-                f"正文长度控制在{word_range[0]}-{word_range[1]}字，"
-                "不要为了解释设定而扩写，优先保证剧情推进和章节钩子。"
-            )
-    prompt = prompt_optimizer.optimize(prompt, project.style_config)
-
-    from app.core.few_shot_library import FewShotExampleLibrary
-    fsl = FewShotExampleLibrary()
-    examples = fsl.select_examples("chapter", project.genre)
-    if examples:
-        prompt += "\n\n" + fsl.format_for_prompt(examples)
-
+    payload = _build_chapter_call_payload(db, project, setup, chapter_index, extra_feedback)
+    trace = _safe_create_chapter_trace(db, project=project, chapter_index=chapter_index, payload=payload)
+    started_at = now_ms()
     start = time.time()
-    result = await ai_service.complete(
-        [{"role": "user", "content": prompt}],
-        temperature=0.7,
-        max_tokens=_chapter_max_tokens(extra_feedback),
-    )
+    try:
+        result = await ai_service.complete(
+            payload["messages"],
+            temperature=0.7,
+            max_tokens=payload["max_tokens"],
+        )
+    except Exception as exc:
+        _safe_mark_chapter_trace_failed(
+            db,
+            trace,
+            error_message=str(exc),
+            latency_ms=now_ms() - started_at,
+        )
+        raise
     elapsed = int((time.time() - start) * 1000)
 
     outline = db.query(Outline).filter(Outline.project_id == project_id).first()
@@ -194,6 +378,15 @@ async def create_or_replace_chapter(
         db.rollback()
         raise
 
+    _safe_mark_chapter_trace_success(
+        db,
+        trace,
+        chapter=chapter,
+        prompt_tokens=getattr(result, "prompt_tokens", 0),
+        completion_tokens=getattr(result, "completion_tokens", 0),
+        latency_ms=now_ms() - started_at,
+    )
+
     # Auto-run L1 consistency check
     try:
         from app.core.consistency_checker import ConsistencyChecker
@@ -239,4 +432,4 @@ def get_chapter(project_id: str, chapter_index: int, db: Session = Depends(get_d
     ).first()
     if not chapter:
         raise HTTPException(status_code=404, detail="Chapter not found")
-    return chapter
+    return _chapter_out(db, chapter)

@@ -18,5 +18,6 @@ class ChapterOut(BaseModel):
     temperature: float
     created_at: datetime
     updated_at: datetime
+    last_generation_trace_id: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
