@@ -229,7 +229,39 @@ def _save_command_feedback(
     )
 
 
+def _detach_model_call_traces_from_messages(db: Session, message_ids: list[str]) -> None:
+    if not message_ids:
+        return
+    detached_at = datetime.now(UTC)
+    db.query(AIModelCallTrace).filter(
+        AIModelCallTrace.request_message_id.in_(message_ids)
+    ).update(
+        {"request_message_id": None, "updated_at": detached_at},
+        synchronize_session=False,
+    )
+    db.query(AIModelCallTrace).filter(
+        AIModelCallTrace.response_message_id.in_(message_ids)
+    ).update(
+        {"response_message_id": None, "updated_at": detached_at},
+        synchronize_session=False,
+    )
+
+
+def _clear_dialog_model_call_traces(db: Session, dialog_id: str) -> None:
+    message_id_rows = (
+        db.query(DialogMessage.id)
+        .filter(DialogMessage.dialog_id == dialog_id)
+        .all()
+    )
+    message_ids = [message_id for (message_id,) in message_id_rows]
+    db.query(AIModelCallTrace).filter(AIModelCallTrace.dialog_id == dialog_id).delete(
+        synchronize_session=False,
+    )
+    _detach_model_call_traces_from_messages(db, message_ids)
+
+
 def _handle_clear_command(db: Session, dialog: Dialog, diagnosis: ProjectDiagnosisOut) -> ChatOut:
+    _clear_dialog_model_call_traces(db, dialog.id)
     db.query(DialogMessage).filter(DialogMessage.dialog_id == dialog.id).delete()
     db.query(PendingAction).filter(
         PendingAction.dialog_id == dialog.id,
@@ -302,6 +334,7 @@ async def _handle_compact_command(db: Session, dialog: Dialog, project: Project,
 
     try:
         message_ids = [item.id for item in plain_messages]
+        _detach_model_call_traces_from_messages(db, message_ids)
         db.query(DialogMessage).filter(DialogMessage.id.in_(message_ids)).delete(synchronize_session=False)
         db.add(
             DialogMessage(

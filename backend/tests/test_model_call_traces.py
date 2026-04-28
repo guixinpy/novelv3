@@ -334,6 +334,106 @@ def test_delete_project_removes_traces_before_dialog_messages(client, db_session
     assert db_session.get(Dialog, dialog_id) is None
 
 
+def test_clear_deletes_dialog_traces_before_removing_messages(client, db_session, monkeypatch):
+    _enable_fake_ai(monkeypatch)
+    project = Project(name="Trace Clear", genre="东方奇幻悬疑")
+    db_session.add(project)
+    db_session.commit()
+    project_id = project.id
+
+    response = client.post(
+        "/api/v1/dialog/chat",
+        json={"project_id": project_id, "text": "清空前先聊一句。"},
+    )
+
+    assert response.status_code == 200
+    trace_id = response.json()["trace_id"]
+    db_session.expire_all()
+    trace = db_session.get(AIModelCallTrace, trace_id)
+    assert trace is not None
+    assert trace.request_message_id is not None
+    assert trace.response_message_id is not None
+    dialog_id = trace.dialog_id
+
+    clear_response = client.post(
+        "/api/v1/dialog/chat",
+        json={"project_id": project_id, "input_type": "command", "command_name": "clear"},
+    )
+
+    assert clear_response.status_code == 200
+    assert "清空" in clear_response.json()["message"]
+    db_session.expire_all()
+    assert db_session.get(AIModelCallTrace, trace_id) is None
+    assert (
+        db_session.query(AIModelCallTrace)
+        .filter(AIModelCallTrace.dialog_id == dialog_id)
+        .count()
+        == 0
+    )
+
+
+def test_compact_detaches_traces_from_deleted_plain_messages(client, db_session, monkeypatch):
+    _enable_fake_ai(monkeypatch)
+    project = Project(name="Trace Compact", genre="东方奇幻悬疑")
+    db_session.add(project)
+    db_session.commit()
+    project_id = project.id
+
+    trace_ids = []
+    for text in ("第一段普通对话。", "第二段普通对话。"):
+        response = client.post(
+            "/api/v1/dialog/chat",
+            json={"project_id": project_id, "text": text},
+        )
+        assert response.status_code == 200
+        trace_ids.append(response.json()["trace_id"])
+
+    db_session.expire_all()
+    dialog = db_session.query(Dialog).filter(Dialog.project_id == project_id).one()
+    plain_message_ids = {
+        message_id
+        for (message_id,) in (
+            db_session.query(DialogMessage.id)
+            .filter(
+                DialogMessage.dialog_id == dialog.id,
+                DialogMessage.message_type == "plain",
+            )
+            .all()
+        )
+    }
+    assert len(plain_message_ids) == 4
+    traces_before = (
+        db_session.query(AIModelCallTrace)
+        .filter(AIModelCallTrace.id.in_(trace_ids))
+        .all()
+    )
+    assert {trace.id for trace in traces_before} == set(trace_ids)
+    assert all(trace.request_message_id in plain_message_ids for trace in traces_before)
+    assert all(trace.response_message_id in plain_message_ids for trace in traces_before)
+
+    compact_response = client.post(
+        "/api/v1/dialog/chat",
+        json={"project_id": project_id, "input_type": "command", "command_name": "compact"},
+    )
+
+    assert compact_response.status_code == 200
+    assert compact_response.json()["message"].startswith("已压缩")
+    db_session.expire_all()
+    remaining_message_ids = {
+        message_id for (message_id,) in db_session.query(DialogMessage.id).all()
+    }
+    assert plain_message_ids.isdisjoint(remaining_message_ids)
+    traces_after = (
+        db_session.query(AIModelCallTrace)
+        .filter(AIModelCallTrace.id.in_(trace_ids))
+        .all()
+    )
+    assert {trace.id for trace in traces_after} == set(trace_ids)
+    for trace in traces_after:
+        assert trace.request_message_id is None
+        assert trace.response_message_id is None
+
+
 def test_hermes_chat_success_records_model_call_trace_and_message_trace_id(client, db_session, monkeypatch):
     _enable_fake_ai(monkeypatch)
     project = Project(name="Hermes Trace", genre="东方奇幻悬疑")
