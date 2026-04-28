@@ -5,6 +5,9 @@ import type {
   AthenaEvolutionPlan,
   AthenaOntology,
   AthenaOptimization,
+  AthenaRetrievalDiagnostics,
+  AthenaRetrievalIndexResult,
+  AthenaRetrievalSearchResponse,
   AthenaTimeline,
   ChatHistoryMessage,
   PaginatedProposalBundles,
@@ -32,6 +35,10 @@ export const useAthenaStore = defineStore('athena', () => {
   const proposalBusy = ref<Record<string, boolean>>({})
   const consistencyIssues = ref<any[]>([])
   const optimization = ref<AthenaOptimization | null>(null)
+  const retrievalDiagnostics = ref<AthenaRetrievalDiagnostics | null>(null)
+  const retrievalSearch = ref<AthenaRetrievalSearchResponse | null>(null)
+  const retrievalLastIndexResult = ref<AthenaRetrievalIndexResult | null>(null)
+  const retrievalLoading = ref(false)
 
   const setup = ref<unknown>(null)
 
@@ -228,6 +235,41 @@ export const useAthenaStore = defineStore('athena', () => {
     }
   }
 
+  async function loadRetrievalDiagnostics(projectId: string) {
+    try {
+      retrievalDiagnostics.value = await api.getAthenaRetrievalDiagnostics(projectId)
+    } catch (err) {
+      error.value = toErrorMessage(err)
+    }
+  }
+
+  async function searchRetrieval(projectId: string, q: string, params?: { limit?: number; source_type?: string; chapter_index?: number }) {
+    if (!q.trim()) {
+      retrievalSearch.value = null
+      return
+    }
+    retrievalLoading.value = true
+    try {
+      retrievalSearch.value = await api.searchAthenaRetrieval(projectId, { q: q.trim(), ...params })
+    } catch (err) {
+      error.value = toErrorMessage(err)
+    } finally {
+      retrievalLoading.value = false
+    }
+  }
+
+  async function reindexRetrieval(projectId: string) {
+    retrievalLoading.value = true
+    try {
+      retrievalLastIndexResult.value = await api.reindexAthenaRetrieval(projectId)
+      await loadRetrievalDiagnostics(projectId)
+    } catch (err) {
+      error.value = toErrorMessage(err)
+    } finally {
+      retrievalLoading.value = false
+    }
+  }
+
   async function sendChat(projectId: string, text: string) {
     chatLoading.value = true
     try {
@@ -260,6 +302,10 @@ export const useAthenaStore = defineStore('athena', () => {
     proposalBusy.value = {}
     consistencyIssues.value = []
     optimization.value = null
+    retrievalDiagnostics.value = null
+    retrievalSearch.value = null
+    retrievalLastIndexResult.value = null
+    retrievalLoading.value = false
     setup.value = null
     messages.value = []
     error.value = null
@@ -277,6 +323,10 @@ export const useAthenaStore = defineStore('athena', () => {
     proposalBusy,
     consistencyIssues,
     optimization,
+    retrievalDiagnostics,
+    retrievalSearch,
+    retrievalLastIndexResult,
+    retrievalLoading,
     setup,
     messages,
     chatLoading,
@@ -296,6 +346,9 @@ export const useAthenaStore = defineStore('athena', () => {
     loadOptimization,
     importSetup,
     analyzeChapter,
+    loadRetrievalDiagnostics,
+    searchRetrieval,
+    reindexRetrieval,
     loadMessages,
     sendChat,
     reset,

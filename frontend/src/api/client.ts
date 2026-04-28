@@ -5,6 +5,9 @@ import type {
   AthenaImportSetupResult,
   AthenaOntology,
   AthenaOptimization,
+  AthenaRetrievalDiagnostics,
+  AthenaRetrievalIndexResult,
+  AthenaRetrievalSearchResponse,
   AthenaTimeline,
   BackgroundTaskResponse,
   ChapterContent,
@@ -119,6 +122,20 @@ export const api = {
     request<AthenaAnalyzeChapterResult>(`/projects/${id}/athena/evolution/chapters/${chapterIndex}/analyze`, { method: 'POST' }),
   getAthenaChapterContext: (id: string, chapterIndex: number) =>
     request<AthenaChapterContext>(`/projects/${id}/athena/context/chapter/${chapterIndex}`),
+  getAthenaRetrievalDiagnostics: (id: string) =>
+    request<AthenaRetrievalDiagnostics>(`/projects/${id}/athena/retrieval/diagnostics`),
+  searchAthenaRetrieval: (id: string, params: { q: string; limit?: number; source_type?: string; chapter_index?: number }) => {
+    const query = new URLSearchParams()
+    query.set('q', params.q)
+    if (params.limit !== undefined) query.set('limit', String(params.limit))
+    if (params.source_type) query.set('source_type', params.source_type)
+    if (params.chapter_index !== undefined) query.set('chapter_index', String(params.chapter_index))
+    return request<AthenaRetrievalSearchResponse>(`/projects/${id}/athena/retrieval/search?${query.toString()}`)
+  },
+  reindexAthenaRetrieval: (id: string) =>
+    request<AthenaRetrievalIndexResult>(`/projects/${id}/athena/retrieval/reindex`, { method: 'POST' }),
+  indexAthenaRetrievalChapter: (id: string, chapterIndex: number) =>
+    request<AthenaRetrievalIndexResult>(`/projects/${id}/athena/retrieval/chapters/${chapterIndex}/index`, { method: 'POST' }),
   sendAthenaChat: (id: string, text: string) =>
     request<ChatResponse>(`/projects/${id}/athena/dialog/chat`, {
       method: 'POST',

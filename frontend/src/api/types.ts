@@ -344,6 +344,48 @@ export interface AthenaChapterContext {
   prompt_context: string
 }
 
+export interface AthenaRetrievalIndexResult {
+  status: string
+  project_id: string
+  chapter_index: number | null
+  indexed: {
+    documents: number
+    chunks: number
+    embeddings: number
+  }
+}
+
+export interface AthenaRetrievalDiagnostics {
+  project_id: string
+  embedding_provider: string
+  embedding_model: string
+  vector_dimension: number
+  total_documents: number
+  total_chunks: number
+  total_embeddings: number
+  documents_by_source_type: Record<string, number>
+}
+
+export interface AthenaRetrievalSearchItem {
+  chunk_id: string
+  document_id: string
+  source_type: string
+  source_ref: string
+  title: string
+  chapter_index: number | null
+  score: number
+  lexical_score: number
+  vector_score: number
+  snippet: string
+  metadata: Record<string, unknown>
+}
+
+export interface AthenaRetrievalSearchResponse {
+  query: string
+  total: number
+  items: AthenaRetrievalSearchItem[]
+}
+
 export interface ChapterContent {
   id: string
   project_id: string

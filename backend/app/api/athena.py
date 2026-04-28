@@ -29,6 +29,12 @@ from app.core.athena_longform import (
     build_chapter_context_package,
     import_setup_to_world_model,
 )
+from app.core.athena_retrieval import (
+    get_retrieval_diagnostics,
+    index_chapter_retrieval,
+    reindex_project_retrieval,
+    search_retrieval,
+)
 from app.core.world_proposal_service import calculate_bundle_impact_scope, create_bundle, write_candidate_fact
 from app.schemas import (
     ChatIn,
@@ -37,6 +43,11 @@ from app.schemas import (
     ProposalReviewCreate,
     ProposalReviewRollbackCreate,
     ResolveActionIn,
+)
+from app.schemas.athena_retrieval import (
+    AthenaRetrievalDiagnostics,
+    AthenaRetrievalIndexResult,
+    AthenaRetrievalSearchResponse,
 )
 from app.schemas.world_proposals import ProposalCandidateFactCreate
 
@@ -535,6 +546,43 @@ def update_evolution_chapter_outline(
 @router.get("/context/chapter/{chapter_index}")
 def get_chapter_context(project_id: str, chapter_index: int, db: Session = Depends(get_db)):
     return build_chapter_context_package(db=db, project_id=project_id, chapter_index=chapter_index)
+
+
+# ── Retrieval / Embedding ──
+
+
+@router.post("/retrieval/reindex", response_model=AthenaRetrievalIndexResult)
+def reindex_athena_retrieval(project_id: str, db: Session = Depends(get_db)):
+    return reindex_project_retrieval(db=db, project_id=project_id)
+
+
+@router.post("/retrieval/chapters/{chapter_index}/index", response_model=AthenaRetrievalIndexResult)
+def index_athena_retrieval_chapter(project_id: str, chapter_index: int, db: Session = Depends(get_db)):
+    return index_chapter_retrieval(db=db, project_id=project_id, chapter_index=chapter_index)
+
+
+@router.get("/retrieval/search", response_model=AthenaRetrievalSearchResponse)
+def search_athena_retrieval(
+    project_id: str,
+    q: str = Query(..., min_length=1),
+    limit: int = Query(8, ge=1, le=30),
+    source_type: str | None = None,
+    chapter_index: int | None = Query(None, ge=1),
+    db: Session = Depends(get_db),
+):
+    return search_retrieval(
+        db=db,
+        project_id=project_id,
+        query=q,
+        limit=limit,
+        source_type=source_type,
+        max_chapter_index=chapter_index,
+    )
+
+
+@router.get("/retrieval/diagnostics", response_model=AthenaRetrievalDiagnostics)
+def get_athena_retrieval_diagnostics(project_id: str, db: Session = Depends(get_db)):
+    return get_retrieval_diagnostics(db=db, project_id=project_id)
 
 
 # ── Athena Dialog ──

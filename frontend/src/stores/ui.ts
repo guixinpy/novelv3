@@ -4,7 +4,7 @@ import { ref } from 'vue'
 export type Workspace = 'hermes' | 'athena' | 'manuscript'
 export type AthenaSection =
   | 'characters' | 'locations' | 'factions' | 'items' | 'relations' | 'rules'
-  | 'projection' | 'timeline' | 'knowledge'
+  | 'projection' | 'timeline' | 'knowledge' | 'retrieval'
   | 'outline' | 'storyline' | 'proposals' | 'consistency' | 'optimization'
 
 export const useUiStore = defineStore('ui', () => {

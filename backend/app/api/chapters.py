@@ -212,6 +212,12 @@ async def create_or_replace_chapter(
     except Exception:
         pass  # Don't fail chapter generation if Athena analysis fails
 
+    try:
+        from app.core.athena_retrieval import index_chapter_retrieval
+        index_chapter_retrieval(db=db, project_id=project_id, chapter_index=chapter_index)
+    except Exception:
+        pass  # Don't fail chapter generation if retrieval indexing fails
+
     # Emit event for background processing
     try:
         from app.core.event_bus import event_bus

@@ -221,6 +221,7 @@ def build_chapter_context_package(db: Session, project_id: str, chapter_index: i
         if setup:
             lines.append("【世界模型】尚未导入正式 world-model，以下仅为 Setup 草稿。")
             _append_setup_context(lines, setup)
+            _append_retrieval_context(db=db, project_id=project_id, chapter_index=chapter_index, lines=lines, sections=sections)
         return {
             "chapter_index": chapter_index,
             "profile_version": None,
@@ -237,6 +238,8 @@ def build_chapter_context_package(db: Session, project_id: str, chapter_index: i
                 lines.append(f"【本章大纲】{summary}")
                 sections.append({"key": "outline", "title": "本章大纲", "items": [chapter_outline]})
                 break
+
+    _append_retrieval_context(db=db, project_id=project_id, chapter_index=chapter_index, lines=lines, sections=sections)
 
     characters = (
         db.query(WorldCharacter)
@@ -440,6 +443,26 @@ def _append_setup_context(lines: list[str], setup: Setup) -> None:
             lines.append("【Setup 角色】" + "、".join(names[:20]))
     if setup.core_concept:
         lines.append(f"【Setup 核心概念】{_json_value(setup.core_concept)[:500]}")
+
+
+def _append_retrieval_context(
+    *,
+    db: Session,
+    project_id: str,
+    chapter_index: int,
+    lines: list[str],
+    sections: list[dict[str, Any]],
+) -> None:
+    try:
+        from app.core.athena_retrieval import build_chapter_retrieval_context
+
+        retrieval_context = build_chapter_retrieval_context(db=db, project_id=project_id, chapter_index=chapter_index)
+    except Exception:
+        return
+    if not retrieval_context:
+        return
+    sections.append(retrieval_context["section"])
+    lines.extend(retrieval_context["prompt_lines"])
 
 
 def _require_project(db: Session, project_id: str) -> Project:

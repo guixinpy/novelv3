@@ -15,6 +15,7 @@ import ProposalList from '../components/athena/ProposalList.vue'
 import ConsistencyList from '../components/athena/ConsistencyList.vue'
 import OptimizationPanel from '../components/athena/OptimizationPanel.vue'
 import AthenaChatPanel from '../components/athena/AthenaChatPanel.vue'
+import RetrievalPanel from '../components/athena/RetrievalPanel.vue'
 
 interface NavSection {
   label: string
@@ -39,6 +40,7 @@ const sections: NavSection[] = [
       { key: 'projection', label: '真相投影' },
       { key: 'timeline', label: '时间线' },
       { key: 'knowledge', label: '主体认知' },
+      { key: 'retrieval', label: '检索' },
     ],
   },
   {
@@ -143,6 +145,9 @@ async function loadSectionData(section: AthenaSection) {
   if (section === 'knowledge') {
     if (!athena.projection) await athena.loadState(id)
   }
+  if (section === 'retrieval') {
+    await athena.loadRetrievalDiagnostics(id)
+  }
   if (section === 'proposals') {
     if (!athena.proposals) await athena.loadProposals(id)
   }
@@ -170,6 +175,14 @@ async function analyzeLatestChapter() {
   if (!latestChapterIndex.value) return
   await athena.analyzeChapter(pid.value, latestChapterIndex.value)
   navigateSection('proposals')
+}
+
+async function reindexRetrieval() {
+  await athena.reindexRetrieval(pid.value)
+}
+
+async function searchRetrieval(query: string) {
+  await athena.searchRetrieval(pid.value, query)
 }
 </script>
 
@@ -232,6 +245,15 @@ async function analyzeLatestChapter() {
         :anchors="timelineAnchors"
       />
       <KnowledgeViewer v-else-if="activeSection === 'knowledge'" :knowledge="athena.projection" />
+      <RetrievalPanel
+        v-else-if="activeSection === 'retrieval'"
+        :diagnostics="athena.retrievalDiagnostics"
+        :search="athena.retrievalSearch"
+        :last-index-result="athena.retrievalLastIndexResult"
+        :loading="athena.retrievalLoading"
+        @reindex="reindexRetrieval"
+        @search="searchRetrieval"
+      />
       <ProposalList v-else-if="activeSection === 'proposals'" :project-id="pid" :proposals="athena.proposals" />
       <ConsistencyList v-else-if="activeSection === 'consistency'" :issues="consistencyIssues" />
       <OptimizationPanel v-else-if="activeSection === 'optimization'" :optimization="athena.optimization" />
