@@ -61,6 +61,7 @@ def build_context_block(
     *,
     key: str,
     kind: str,
+    title: str,
     content: str,
     sources: list[dict[str, Any]] | None = None,
     max_chars: int = 12000,
@@ -70,6 +71,7 @@ def build_context_block(
     return {
         "key": key,
         "kind": kind,
+        "title": sanitize_text(title),
         "content": block_content,
         "sources": _sanitize_value(sources or []),
         "char_count": len(block_content),
@@ -94,7 +96,7 @@ def create_trace(
     chapter_id: str | None = None,
     chapter_index: int | None = None,
     trace_metadata: dict[str, Any] | None = None,
-    status: str = "started",
+    status: str = "running",
 ) -> AIModelCallTrace:
     trace = AIModelCallTrace(
         project_id=project_id,

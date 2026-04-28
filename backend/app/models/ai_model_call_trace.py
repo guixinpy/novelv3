@@ -17,15 +17,15 @@ def _now() -> datetime:
 class AIModelCallTrace(Base):
     __tablename__ = "ai_model_call_traces"
     __table_args__ = (
-        Index("ix_ai_model_call_traces_project_created", "project_id", "created_at"),
-        Index("ix_ai_model_call_traces_project_type", "project_id", "trace_type"),
-        Index("ix_ai_model_call_traces_dialog", "dialog_id"),
+        Index("ix_ai_model_call_traces_project_type_created", "project_id", "trace_type", "created_at"),
+        Index("ix_ai_model_call_traces_dialog_response", "dialog_id", "response_message_id"),
+        Index("ix_ai_model_call_traces_project_chapter", "project_id", "chapter_index"),
     )
 
     id = Column(String, primary_key=True, default=_uuid)
     project_id = Column(String, ForeignKey("projects.id"), nullable=False)
     trace_type = Column(String, nullable=False)
-    status = Column(String, nullable=False, default="started")
+    status = Column(String, nullable=False, default="running")
     model = Column(String, nullable=True)
     temperature = Column(Float, nullable=True)
     max_tokens = Column(Integer, nullable=True)

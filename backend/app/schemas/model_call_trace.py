@@ -7,6 +7,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 class TraceSourceOut(BaseModel):
     source_type: str
     source_id: str | None = None
+    label: str | None = None
+    chapter_index: int | None = None
     source_ref: str | None = None
     title: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
@@ -15,6 +17,7 @@ class TraceSourceOut(BaseModel):
 class ContextBlockOut(BaseModel):
     key: str
     kind: str
+    title: str = ""
     content: str
     sources: list[TraceSourceOut] = Field(default_factory=list)
     char_count: int
@@ -64,6 +67,4 @@ class ModelCallTraceDetail(ModelCallTraceListItem):
 
 class PaginatedModelCallTraces(BaseModel):
     total: int
-    limit: int
-    offset: int
     items: list[ModelCallTraceListItem]

@@ -23,7 +23,7 @@ def upgrade() -> None:
         sa.Column("id", sa.String(), nullable=False),
         sa.Column("project_id", sa.String(), nullable=False),
         sa.Column("trace_type", sa.String(), nullable=False),
-        sa.Column("status", sa.String(), nullable=False),
+        sa.Column("status", sa.String(), server_default="running", nullable=False),
         sa.Column("model", sa.String(), nullable=True),
         sa.Column("temperature", sa.Float(), nullable=True),
         sa.Column("max_tokens", sa.Integer(), nullable=True),
@@ -49,20 +49,24 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index(
-        "ix_ai_model_call_traces_project_created",
+        "ix_ai_model_call_traces_project_type_created",
         "ai_model_call_traces",
-        ["project_id", "created_at"],
+        ["project_id", "trace_type", "created_at"],
     )
     op.create_index(
-        "ix_ai_model_call_traces_project_type",
+        "ix_ai_model_call_traces_dialog_response",
         "ai_model_call_traces",
-        ["project_id", "trace_type"],
+        ["dialog_id", "response_message_id"],
     )
-    op.create_index("ix_ai_model_call_traces_dialog", "ai_model_call_traces", ["dialog_id"])
+    op.create_index(
+        "ix_ai_model_call_traces_project_chapter",
+        "ai_model_call_traces",
+        ["project_id", "chapter_index"],
+    )
 
 
 def downgrade() -> None:
-    op.drop_index("ix_ai_model_call_traces_dialog", table_name="ai_model_call_traces")
-    op.drop_index("ix_ai_model_call_traces_project_type", table_name="ai_model_call_traces")
-    op.drop_index("ix_ai_model_call_traces_project_created", table_name="ai_model_call_traces")
+    op.drop_index("ix_ai_model_call_traces_project_chapter", table_name="ai_model_call_traces")
+    op.drop_index("ix_ai_model_call_traces_dialog_response", table_name="ai_model_call_traces")
+    op.drop_index("ix_ai_model_call_traces_project_type_created", table_name="ai_model_call_traces")
     op.drop_table("ai_model_call_traces")

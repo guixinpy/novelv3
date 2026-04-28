@@ -1,6 +1,6 @@
 from app.core.model_call_trace import build_context_block, create_trace, sanitize_model_messages, truncate_text
 from app.models import AIModelCallTrace, Project
-from app.schemas.model_call_trace import ModelCallTraceDetail
+from app.schemas.model_call_trace import ModelCallTraceDetail, PaginatedModelCallTraces
 
 
 def test_sanitize_model_messages_redacts_authorization_bearer_and_api_keys():
@@ -41,11 +41,14 @@ def test_build_context_block_populates_trace_context_shape():
     block = build_context_block(
         key="retrieval",
         kind="athena_retrieval",
+        title="检索证据",
         content="旧灯塔熄灭时，亡者不能被直接召回。",
         sources=[
             {
                 "source_type": "chapter",
                 "source_id": "chapter-2",
+                "label": "第2章",
+                "chapter_index": 2,
                 "source_ref": "chapter:2",
                 "title": "亡者契约",
             }
@@ -54,11 +57,14 @@ def test_build_context_block_populates_trace_context_shape():
 
     assert block["key"] == "retrieval"
     assert block["kind"] == "athena_retrieval"
+    assert block["title"] == "检索证据"
     assert block["content"] == "旧灯塔熄灭时，亡者不能被直接召回。"
     assert block["sources"] == [
         {
             "source_type": "chapter",
             "source_id": "chapter-2",
+            "label": "第2章",
+            "chapter_index": 2,
             "source_ref": "chapter:2",
             "title": "亡者契约",
         }
@@ -80,6 +86,7 @@ def test_create_trace_sanitizes_context_blocks_and_trace_metadata(db_session):
             build_context_block(
                 key="retrieval",
                 kind="manual",
+                title="检索证据",
                 content="api_key=sk-context-secret",
                 sources=[
                     {
@@ -104,6 +111,16 @@ def test_create_trace_sanitizes_context_blocks_and_trace_metadata(db_session):
     assert trace.trace_metadata["nested"]["api_key"] == "[REDACTED]"
 
 
+def test_create_trace_defaults_to_running_status(db_session):
+    project = Project(name="Trace Status", genre="东方奇幻悬疑")
+    db_session.add(project)
+    db_session.commit()
+
+    trace = create_trace(db_session, project_id=project.id, trace_type="chat")
+
+    assert trace.status == "running"
+
+
 def test_model_call_trace_detail_normalizes_null_json_fields_from_orm():
     trace = AIModelCallTrace(
         id="trace-1",
@@ -120,3 +137,10 @@ def test_model_call_trace_detail_normalizes_null_json_fields_from_orm():
     assert detail.messages == []
     assert detail.context_blocks == []
     assert detail.trace_metadata == {}
+
+
+def test_paginated_model_call_traces_accepts_total_and_items_only():
+    payload = PaginatedModelCallTraces.model_validate({"total": 0, "items": []})
+
+    assert payload.total == 0
+    assert payload.items == []
