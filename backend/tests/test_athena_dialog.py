@@ -325,3 +325,32 @@ def test_athena_chat_success_records_model_call_trace(client, db_session, monkey
         block["kind"] in {"setup", "world_fact", "world_entity"}
         for block in detail["context_blocks"]
     )
+
+
+def test_athena_chat_keeps_model_content_when_trace_attach_fails(client, db_session, monkeypatch):
+    _enable_fake_ai(monkeypatch)
+    monkeypatch.setattr(
+        dialogs,
+        "attach_trace_response",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("trace attach failed")),
+    )
+    project, _ = _seed_project(db_session, with_profile=True)
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/athena/dialog/chat",
+        json={"project_id": project.id, "text": "请分析当前世界模型。"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["message"] == _FakeAiResult.content
+    assert payload["trace_id"] is None
+
+    assistant_message = (
+        db_session.query(DialogMessage)
+        .filter(DialogMessage.role == "assistant")
+        .order_by(DialogMessage.created_at.desc())
+        .first()
+    )
+    assert assistant_message is not None
+    assert assistant_message.content == _FakeAiResult.content

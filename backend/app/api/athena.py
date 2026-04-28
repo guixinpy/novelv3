@@ -35,7 +35,6 @@ from app.core.athena_retrieval import (
     reindex_project_retrieval,
     search_retrieval,
 )
-from app.core.model_call_trace import attach_trace_response
 from app.core.world_proposal_service import calculate_bundle_impact_scope, create_bundle, write_candidate_fact
 from app.schemas import (
     ChatIn,
@@ -603,6 +602,7 @@ async def athena_chat(project_id: str, payload: ChatIn, db: Session = Depends(ge
         _save_message,
         _build_chat_idle_hint,
         _free_chat_reply,
+        _safe_attach_trace_response,
     )
     project = _require_project(db, project_id)
     payload.project_id = project_id
@@ -662,12 +662,10 @@ async def athena_chat(project_id: str, payload: ChatIn, db: Session = Depends(ge
         request_message_id=request_message.id if request_message else None,
     )
     assistant_message = _save_message(db, dialog.id, "assistant", reply)
-    if trace is not None:
-        attach_trace_response(db, trace, response_message_id=assistant_message.id)
-        db.commit()
+    trace_id = _safe_attach_trace_response(db, trace, assistant_message.id)
     return ChatOut(
         message=reply,
-        trace_id=trace.id if trace else None,
+        trace_id=trace_id,
         pending_action=None,
         ui_hint=_build_chat_idle_hint("Athena 对话"),
         refresh_targets=[],

@@ -389,3 +389,65 @@ def test_hermes_chat_failure_records_failed_trace_and_returns_fallback(client, d
     assert trace.status == "failed"
     assert "fake model outage" in trace.error_message
     assert trace.response_message_id is not None
+
+
+def test_hermes_chat_keeps_model_content_when_trace_success_mark_fails(client, db_session, monkeypatch):
+    _enable_fake_ai(monkeypatch)
+    monkeypatch.setattr(
+        dialogs,
+        "mark_trace_success",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("trace mark failed")),
+    )
+    project = Project(name="Hermes Trace Mark Failure", genre="东方奇幻悬疑")
+    db_session.add(project)
+    db_session.commit()
+
+    response = client.post(
+        "/api/v1/dialog/chat",
+        json={"project_id": project.id, "text": "聊聊 trace 写入失败。"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["message"] == _FakeAiResult.content
+    assert "模型调用失败" not in payload["message"]
+
+    assistant_message = (
+        db_session.query(DialogMessage)
+        .filter(DialogMessage.role == "assistant")
+        .order_by(DialogMessage.created_at.desc())
+        .first()
+    )
+    assert assistant_message is not None
+    assert assistant_message.content == _FakeAiResult.content
+
+
+def test_hermes_chat_keeps_model_content_when_trace_attach_fails(client, db_session, monkeypatch):
+    _enable_fake_ai(monkeypatch)
+    monkeypatch.setattr(
+        dialogs,
+        "attach_trace_response",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("trace attach failed")),
+    )
+    project = Project(name="Hermes Trace Attach Failure", genre="东方奇幻悬疑")
+    db_session.add(project)
+    db_session.commit()
+
+    response = client.post(
+        "/api/v1/dialog/chat",
+        json={"project_id": project.id, "text": "聊聊 trace attach 失败。"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["message"] == _FakeAiResult.content
+    assert payload["trace_id"] is None
+
+    assistant_message = (
+        db_session.query(DialogMessage)
+        .filter(DialogMessage.role == "assistant")
+        .order_by(DialogMessage.created_at.desc())
+        .first()
+    )
+    assert assistant_message is not None
+    assert assistant_message.content == _FakeAiResult.content

@@ -480,6 +480,68 @@ def _build_chat_call_payload(
     }
 
 
+def _safe_mark_trace_success(
+    db: Session,
+    trace: AIModelCallTrace | None,
+    *,
+    prompt_tokens: int | None,
+    completion_tokens: int | None,
+    latency_ms: int | None,
+) -> AIModelCallTrace | None:
+    if trace is None:
+        return None
+    try:
+        mark_trace_success(
+            db,
+            trace,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            latency_ms=latency_ms,
+        )
+        return trace
+    except Exception:
+        db.rollback()
+        return None
+
+
+def _safe_mark_trace_failed(
+    db: Session,
+    trace: AIModelCallTrace | None,
+    *,
+    error_message: str,
+    latency_ms: int | None,
+) -> AIModelCallTrace | None:
+    if trace is None:
+        return None
+    try:
+        mark_trace_failed(
+            db,
+            trace,
+            error_message=error_message,
+            latency_ms=latency_ms,
+        )
+        return trace
+    except Exception:
+        db.rollback()
+        return None
+
+
+def _safe_attach_trace_response(
+    db: Session,
+    trace: AIModelCallTrace | None,
+    response_message_id: str,
+) -> str | None:
+    if trace is None:
+        return None
+    try:
+        attach_trace_response(db, trace, response_message_id=response_message_id)
+        db.commit()
+        return trace.id
+    except Exception:
+        db.rollback()
+        return None
+
+
 async def _free_chat_reply(
     db: Session,
     dialog: Dialog,
@@ -499,6 +561,10 @@ async def _free_chat_reply(
     try:
         payload = _build_chat_call_payload(db, dialog.id, project, diagnosis, dialog_type=dialog_type)
         messages = payload["messages"]
+    except Exception as exc:
+        return _chat_unavailable_reply(diagnosis, f"模型调用失败：{str(exc)}"), None
+
+    try:
         trace = create_trace(
             db,
             project_id=project.id,
@@ -512,6 +578,11 @@ async def _free_chat_reply(
             request_message_id=request_message_id,
             trace_metadata={"dialog_type": dialog_type},
         )
+    except Exception:
+        db.rollback()
+        trace = None
+
+    try:
         result = await ai_service.complete(
             messages,
             temperature=temperature,
@@ -520,7 +591,7 @@ async def _free_chat_reply(
         )
         content = (result.content or "").strip()
         if content:
-            mark_trace_success(
+            trace = _safe_mark_trace_success(
                 db,
                 trace,
                 prompt_tokens=getattr(result, "prompt_tokens", 0),
@@ -528,20 +599,19 @@ async def _free_chat_reply(
                 latency_ms=now_ms() - started_at,
             )
             return content, trace
-        mark_trace_failed(
+        trace = _safe_mark_trace_failed(
             db,
             trace,
             error_message="模型返回了空内容",
             latency_ms=now_ms() - started_at,
         )
     except Exception as exc:
-        if trace is not None:
-            mark_trace_failed(
-                db,
-                trace,
-                error_message=str(exc),
-                latency_ms=now_ms() - started_at,
-            )
+        trace = _safe_mark_trace_failed(
+            db,
+            trace,
+            error_message=str(exc),
+            latency_ms=now_ms() - started_at,
+        )
         return _chat_unavailable_reply(diagnosis, f"模型调用失败：{str(exc)}"), trace
 
     return _chat_unavailable_reply(diagnosis, "模型返回了空内容"), trace
@@ -811,12 +881,10 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
         request_message_id=request_message.id if request_message else None,
     )
     assistant_message = _save_message(db, dialog.id, "assistant", reply)
-    if trace is not None:
-        attach_trace_response(db, trace, response_message_id=assistant_message.id)
-        db.commit()
+    trace_id = _safe_attach_trace_response(db, trace, assistant_message.id)
     return ChatOut(
         message=reply,
-        trace_id=trace.id if trace else None,
+        trace_id=trace_id,
         pending_action=None,
         ui_hint=build_ui_hint(
             action_type="chat",
