@@ -67,6 +67,14 @@ def _build_chapter_context(db: Session, project_id: str, chapter_index: int, set
             summary = prev.content[:300] + "..." if len(prev.content) > 300 else prev.content
             parts.append(f"上一章摘要：{summary}")
 
+    try:
+        from app.core.athena_longform import build_chapter_context_package
+        athena_context = build_chapter_context_package(db=db, project_id=project_id, chapter_index=chapter_index)
+        if athena_context.get("profile_version") is not None and athena_context.get("prompt_context"):
+            parts.append(f"【Athena 世界上下文】\n{athena_context['prompt_context']}")
+    except Exception:
+        pass
+
     return "\n".join(parts)
 
 
@@ -197,6 +205,12 @@ async def create_or_replace_chapter(
         db.commit()
     except Exception:
         pass  # Don't fail chapter generation if check fails
+
+    try:
+        from app.core.athena_longform import analyze_chapter_to_world_proposals
+        analyze_chapter_to_world_proposals(db=db, project_id=project_id, chapter_index=chapter_index)
+    except Exception:
+        pass  # Don't fail chapter generation if Athena analysis fails
 
     # Emit event for background processing
     try:

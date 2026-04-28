@@ -100,6 +100,12 @@ const entityNotice = computed(() => {
   if (!entities.value.length) return ''
   return 'Setup 草稿，尚未导入 world-model'
 })
+const latestChapterIndex = computed(() => {
+  const indexes = (project.chapters || [])
+    .map((chapter: any) => Number(chapter.chapter_index))
+    .filter((index: number) => Number.isFinite(index))
+  return indexes.length ? Math.max(...indexes) : null
+})
 
 onMounted(() => void initialize(pid.value))
 
@@ -115,6 +121,7 @@ watch(activeSection, (section) => {
 async function initialize(projectId: string) {
   athena.reset()
   await project.loadProject(projectId)
+  await project.loadChapters(projectId).catch(() => undefined)
   await Promise.all([
     athena.loadOntology(projectId),
     athena.loadMessages(projectId),
@@ -153,6 +160,17 @@ async function loadSectionData(section: AthenaSection) {
 function navigateSection(section: AthenaSection) {
   router.push(`/projects/${pid.value}/athena/${section}`)
 }
+
+async function importSetup() {
+  await athena.importSetup(pid.value)
+  await loadSectionData(activeSection.value)
+}
+
+async function analyzeLatestChapter() {
+  if (!latestChapterIndex.value) return
+  await athena.analyzeChapter(pid.value, latestChapterIndex.value)
+  navigateSection('proposals')
+}
 </script>
 
 <template>
@@ -174,6 +192,22 @@ function navigateSection(section: AthenaSection) {
         </div>
         <div class="athena-subnav__divider" />
         <div class="athena-subnav__actions">
+          <BaseButton
+            v-if="athena.ontology?.profile_version === null"
+            variant="ghost"
+            size="sm"
+            @click="importSetup"
+          >
+            导入 Setup
+          </BaseButton>
+          <BaseButton
+            v-if="latestChapterIndex"
+            variant="ghost"
+            size="sm"
+            @click="analyzeLatestChapter"
+          >
+            分析最新章节
+          </BaseButton>
           <BaseButton variant="ghost" size="sm" @click="chatOpen = true">
             Athena 对话
           </BaseButton>
@@ -198,7 +232,7 @@ function navigateSection(section: AthenaSection) {
         :anchors="timelineAnchors"
       />
       <KnowledgeViewer v-else-if="activeSection === 'knowledge'" :knowledge="athena.projection" />
-      <ProposalList v-else-if="activeSection === 'proposals'" :proposals="athena.proposals" />
+      <ProposalList v-else-if="activeSection === 'proposals'" :project-id="pid" :proposals="athena.proposals" />
       <ConsistencyList v-else-if="activeSection === 'consistency'" :issues="consistencyIssues" />
       <OptimizationPanel v-else-if="activeSection === 'optimization'" :optimization="athena.optimization" />
       <div v-else-if="activeSection === 'outline' || activeSection === 'storyline'" class="athena-view__placeholder">

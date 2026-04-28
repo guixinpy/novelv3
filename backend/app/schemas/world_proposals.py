@@ -96,13 +96,19 @@ class ProposalItemOut(BaseModel):
     parent_item_id: str | None
     item_status: str
     claim_id: str
+    chapter_index: int | None
+    intra_chapter_seq: int
     subject_ref: str
     predicate: str
     object_ref_or_value: Any
     claim_layer: str
+    valid_from_anchor_id: str | None
+    valid_to_anchor_id: str | None
+    source_event_ref: str | None
     evidence_refs: list[str]
     authority_type: str
     confidence: float
+    notes: str
     contract_version: str
     approved_claim_id: str | None
     created_by: str

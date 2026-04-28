@@ -1,15 +1,24 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import BaseBadge from '../base/BaseBadge.vue'
+import WorldProposalImpactList from '../world/WorldProposalImpactList.vue'
+import WorldProposalItemCard from '../world/WorldProposalItemCard.vue'
+import { useAthenaStore } from '../../stores/athena'
+import type { ProposalItem, ProposalReviewRequest } from '../../api/types'
 
-defineProps<{
+const props = defineProps<{
   proposals: any
+  projectId?: string
 }>()
 
+const athena = useAthenaStore()
 const expandedId = ref<string | null>(null)
 
-function toggle(id: string) {
+async function toggle(id: string) {
   expandedId.value = expandedId.value === id ? null : id
+  if (expandedId.value && props.projectId && !athena.proposalDetails[id]) {
+    await athena.loadProposalDetail(props.projectId, id)
+  }
 }
 
 function bundleStatus(bundle: any) {
@@ -17,7 +26,45 @@ function bundleStatus(bundle: any) {
 }
 
 function bundleItemCount(bundle: any) {
+  const detail = athena.proposalDetails[bundle.id]
+  if (detail) return `${detail.items.length} 项`
   return Array.isArray(bundle.items) ? `${bundle.items.length} 项` : ''
+}
+
+const activeDetail = computed(() => {
+  if (!expandedId.value) return null
+  return athena.proposalDetails[expandedId.value] || null
+})
+
+function approvalReviewId(item: ProposalItem) {
+  const review = activeDetail.value?.reviews.find((entry) =>
+    entry.proposal_item_id === item.id && Boolean(entry.created_truth_claim_id),
+  )
+  return review?.id || null
+}
+
+function itemBusy(itemId: string) {
+  return Boolean(athena.proposalBusy[itemId])
+}
+
+async function reviewItem(itemId: string, payload: ProposalReviewRequest) {
+  if (!props.projectId || !activeDetail.value) return
+  await athena.reviewProposalItem(props.projectId, activeDetail.value.bundle.id, itemId, payload)
+}
+
+async function splitItem(bundleId: string, itemId: string, reason: string) {
+  if (!props.projectId) return
+  await athena.splitProposalItem(props.projectId, bundleId, itemId, reason)
+}
+
+async function rollbackItem(reviewId: string, reason: string, itemId: string) {
+  if (!props.projectId || !activeDetail.value) return
+  await athena.rollbackProposalReview(props.projectId, activeDetail.value.bundle.id, itemId, reviewId, reason)
+}
+
+async function batchApprove(bundleId: string) {
+  if (!props.projectId) return
+  await athena.batchApproveLowRiskItems(props.projectId, bundleId)
 }
 
 const statusVariant: Record<string, 'success' | 'warning' | 'error' | 'neutral'> = {
@@ -45,9 +92,33 @@ const statusVariant: Record<string, 'success' | 'warning' | 'error' | 'neutral'>
         <span class="proposal-list__chevron">{{ expandedId === bundle.id ? '▾' : '▸' }}</span>
       </button>
       <div v-if="expandedId === bundle.id" class="proposal-list__detail">
-        <div v-for="(item, i) in (bundle.items || [])" :key="i" class="proposal-list__detail-item">
-          {{ item.description || item.content || JSON.stringify(item) }}
-        </div>
+        <template v-if="athena.proposalDetails[bundle.id]">
+          <div class="proposal-list__detail-toolbar">
+            <button
+              type="button"
+              class="proposal-list__batch"
+              data-testid="batch-approve-low-risk"
+              @click="batchApprove(bundle.id)"
+            >
+              批量通过低风险项
+            </button>
+          </div>
+          <WorldProposalImpactList :snapshots="athena.proposalDetails[bundle.id].impact_snapshots" />
+          <WorldProposalItemCard
+            v-for="item in athena.proposalDetails[bundle.id].items"
+            :key="item.id"
+            :item="item"
+            :busy="itemBusy(item.id)"
+            :approval-review-id="approvalReviewId(item)"
+            reviewer-ref="athena.user"
+            :anchor-options="[]"
+            :conflicts="athena.proposalDetails[bundle.id].conflicts"
+            @review="reviewItem"
+            @split="splitItem"
+            @rollback="rollbackItem"
+          />
+        </template>
+        <div v-else class="proposal-list__detail-item">加载提案详情...</div>
       </div>
     </div>
   </div>
@@ -87,7 +158,24 @@ const statusVariant: Record<string, 'success' | 'warning' | 'error' | 'neutral'>
 }
 
 .proposal-list__detail {
+  display: grid;
+  gap: var(--space-3);
   padding: 0 0 var(--space-3) var(--space-4);
+}
+
+.proposal-list__detail-toolbar {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.proposal-list__batch {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-3);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+  font-size: var(--text-xs);
+  cursor: pointer;
 }
 
 .proposal-list__detail-item {

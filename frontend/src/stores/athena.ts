@@ -8,6 +8,10 @@ import type {
   AthenaTimeline,
   ChatHistoryMessage,
   PaginatedProposalBundles,
+  ProposalBundleDetail,
+  ProposalReviewRequest,
+  ProposalRollbackRequest,
+  ProposalSplitRequest,
   WorldProjection,
 } from '../api/types'
 
@@ -24,6 +28,8 @@ export const useAthenaStore = defineStore('athena', () => {
   const timeline = ref<AthenaTimeline | null>(null)
   const evolutionPlan = ref<AthenaEvolutionPlan | null>(null)
   const proposals = ref<PaginatedProposalBundles | null>(null)
+  const proposalDetails = ref<Record<string, ProposalBundleDetail>>({})
+  const proposalBusy = ref<Record<string, boolean>>({})
   const consistencyIssues = ref<any[]>([])
   const optimization = ref<AthenaOptimization | null>(null)
 
@@ -65,11 +71,101 @@ export const useAthenaStore = defineStore('athena', () => {
     }
   }
 
-  async function loadProposals(projectId: string, params?: { offset?: number; limit?: number; bundle_status?: string }) {
+  async function loadProposals(projectId: string, params?: { offset?: number; limit?: number; bundle_status?: string; item_status?: string }) {
     try {
       proposals.value = await api.getAthenaEvolutionProposals(projectId, params)
     } catch (err) {
       error.value = toErrorMessage(err)
+    }
+  }
+
+  async function loadProposalDetail(projectId: string, bundleId: string) {
+    try {
+      proposalDetails.value[bundleId] = await api.getAthenaProposalDetail(projectId, bundleId)
+    } catch (err) {
+      error.value = toErrorMessage(err)
+    }
+  }
+
+  async function reviewProposalItem(projectId: string, bundleId: string, itemId: string, payload: ProposalReviewRequest) {
+    proposalBusy.value[itemId] = true
+    try {
+      await api.reviewAthenaProposalItem(projectId, itemId, payload)
+      await loadProposalDetail(projectId, bundleId)
+      await loadProposals(projectId)
+    } catch (err) {
+      error.value = toErrorMessage(err)
+    } finally {
+      proposalBusy.value[itemId] = false
+    }
+  }
+
+  async function splitProposalItem(projectId: string, bundleId: string, itemId: string, reason: string) {
+    proposalBusy.value[itemId] = true
+    const payload: ProposalSplitRequest = {
+      reviewer_ref: 'athena.user',
+      reason,
+      evidence_refs: [],
+      item_ids: [itemId],
+    }
+    try {
+      proposalDetails.value[bundleId] = await api.splitAthenaProposalBundle(projectId, bundleId, payload)
+      await loadProposals(projectId)
+    } catch (err) {
+      error.value = toErrorMessage(err)
+    } finally {
+      proposalBusy.value[itemId] = false
+    }
+  }
+
+  async function rollbackProposalReview(projectId: string, bundleId: string, itemId: string, reviewId: string, reason: string) {
+    proposalBusy.value[itemId] = true
+    const payload: ProposalRollbackRequest = {
+      reviewer_ref: 'athena.user',
+      reason,
+      evidence_refs: [],
+    }
+    try {
+      await api.rollbackAthenaProposalReview(projectId, reviewId, payload)
+      await loadProposalDetail(projectId, bundleId)
+      await loadProposals(projectId)
+    } catch (err) {
+      error.value = toErrorMessage(err)
+    } finally {
+      proposalBusy.value[itemId] = false
+    }
+  }
+
+  async function batchApproveLowRiskItems(projectId: string, bundleId: string) {
+    if (!proposalDetails.value[bundleId]) {
+      await loadProposalDetail(projectId, bundleId)
+    }
+    const detail = proposalDetails.value[bundleId]
+    if (!detail) return
+    const conflictedItemIds = new Set(detail.conflicts.map((conflict) => conflict.item_id))
+    const items = detail.items.filter((item) =>
+      ['pending', 'needs_edit'].includes(item.item_status) && !conflictedItemIds.has(item.id),
+    )
+    try {
+      for (const item of items) {
+        proposalBusy.value[item.id] = true
+        await api.reviewAthenaProposalItem(projectId, item.id, {
+          reviewer_ref: 'athena.batch',
+          action: 'approve',
+          reason: '批量通过低风险候选',
+          evidence_refs: [],
+          edited_fields: {},
+        })
+        proposalBusy.value[item.id] = false
+      }
+      await loadProposalDetail(projectId, bundleId)
+      await loadProposals(projectId)
+    } catch (err) {
+      error.value = toErrorMessage(err)
+    } finally {
+      for (const item of items) {
+        proposalBusy.value[item.id] = false
+      }
     }
   }
 
@@ -114,6 +210,24 @@ export const useAthenaStore = defineStore('athena', () => {
     }
   }
 
+  async function importSetup(projectId: string) {
+    try {
+      await api.importAthenaSetup(projectId)
+      await loadOntology(projectId)
+    } catch (err) {
+      error.value = toErrorMessage(err)
+    }
+  }
+
+  async function analyzeChapter(projectId: string, chapterIndex: number) {
+    try {
+      await api.analyzeAthenaChapter(projectId, chapterIndex)
+      await loadProposals(projectId)
+    } catch (err) {
+      error.value = toErrorMessage(err)
+    }
+  }
+
   async function sendChat(projectId: string, text: string) {
     chatLoading.value = true
     try {
@@ -142,6 +256,8 @@ export const useAthenaStore = defineStore('athena', () => {
     timeline.value = null
     evolutionPlan.value = null
     proposals.value = null
+    proposalDetails.value = {}
+    proposalBusy.value = {}
     consistencyIssues.value = []
     optimization.value = null
     setup.value = null
@@ -157,6 +273,8 @@ export const useAthenaStore = defineStore('athena', () => {
     timeline,
     evolutionPlan,
     proposals,
+    proposalDetails,
+    proposalBusy,
     consistencyIssues,
     optimization,
     setup,
@@ -167,10 +285,17 @@ export const useAthenaStore = defineStore('athena', () => {
     loadTimeline,
     loadEvolutionPlan,
     loadProposals,
+    loadProposalDetail,
+    reviewProposalItem,
+    splitProposalItem,
+    rollbackProposalReview,
+    batchApproveLowRiskItems,
     loadSetup,
     runConsistencyCheck,
     loadConsistencyIssues,
     loadOptimization,
+    importSetup,
+    analyzeChapter,
     loadMessages,
     sendChat,
     reset,

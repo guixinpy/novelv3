@@ -1,5 +1,8 @@
 import type {
   AthenaEvolutionPlan,
+  AthenaAnalyzeChapterResult,
+  AthenaChapterContext,
+  AthenaImportSetupResult,
   AthenaOntology,
   AthenaOptimization,
   AthenaTimeline,
@@ -84,14 +87,38 @@ export const api = {
     request<AthenaEvolutionPlan>(`/projects/${id}/athena/evolution/plan`),
   getAthenaOptimization: (id: string) =>
     request<AthenaOptimization>(`/projects/${id}/athena/optimization`),
-  getAthenaEvolutionProposals: (id: string, params?: { offset?: number; limit?: number; bundle_status?: string }) => {
+  getAthenaEvolutionProposals: (id: string, params?: { offset?: number; limit?: number; bundle_status?: string; item_status?: string }) => {
     const query = new URLSearchParams()
     if (params?.offset !== undefined) query.set('offset', String(params.offset))
     if (params?.limit !== undefined) query.set('limit', String(params.limit))
     if (params?.bundle_status) query.set('bundle_status', params.bundle_status)
+    if (params?.item_status) query.set('item_status', params.item_status)
     const qs = query.toString()
     return request<PaginatedProposalBundles>(`/projects/${id}/athena/evolution/proposals${qs ? `?${qs}` : ''}`)
   },
+  getAthenaProposalDetail: (id: string, bundleId: string) =>
+    request<ProposalBundleDetail>(`/projects/${id}/athena/evolution/proposals/${bundleId}`),
+  reviewAthenaProposalItem: (id: string, itemId: string, data: ProposalReviewRequest) =>
+    request<ProposalReview>(`/projects/${id}/athena/evolution/proposals/${itemId}/review`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  splitAthenaProposalBundle: (id: string, bundleId: string, data: ProposalSplitRequest) =>
+    request<ProposalBundleDetail>(`/projects/${id}/athena/evolution/proposals/${bundleId}/split`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  rollbackAthenaProposalReview: (id: string, reviewId: string, data: ProposalRollbackRequest) =>
+    request<ProposalReview>(`/projects/${id}/athena/evolution/reviews/${reviewId}/rollback`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  importAthenaSetup: (id: string) =>
+    request<AthenaImportSetupResult>(`/projects/${id}/athena/ontology/import-setup`, { method: 'POST' }),
+  analyzeAthenaChapter: (id: string, chapterIndex: number) =>
+    request<AthenaAnalyzeChapterResult>(`/projects/${id}/athena/evolution/chapters/${chapterIndex}/analyze`, { method: 'POST' }),
+  getAthenaChapterContext: (id: string, chapterIndex: number) =>
+    request<AthenaChapterContext>(`/projects/${id}/athena/context/chapter/${chapterIndex}`),
   sendAthenaChat: (id: string, text: string) =>
     request<ChatResponse>(`/projects/${id}/athena/dialog/chat`, {
       method: 'POST',

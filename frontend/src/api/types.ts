@@ -206,13 +206,19 @@ export interface ProposalItem {
   parent_item_id: string | null
   item_status: string
   claim_id: string
+  chapter_index?: number | null
+  intra_chapter_seq?: number
   subject_ref: string
   predicate: string
   object_ref_or_value: unknown
   claim_layer: string
+  valid_from_anchor_id?: string | null
+  valid_to_anchor_id?: string | null
+  source_event_ref?: string | null
   evidence_refs: string[]
   authority_type: string
   confidence: number
+  notes?: string
   contract_version: string
   approved_claim_id: string | null
   created_by: string
@@ -307,6 +313,35 @@ export interface AthenaTimeline {
 export interface AthenaEvolutionPlan {
   outline: { id: string; status: string; total_chapters: number; chapters: unknown; plotlines: unknown } | null
   storyline: { id: string; status: string; plotlines: unknown; foreshadowing: unknown } | null
+}
+
+export interface AthenaImportSetupResult {
+  status: string
+  profile_version: number
+  project_profile_version_id: string
+  created: {
+    profile: number
+    characters: number
+    rules: number
+  }
+}
+
+export interface AthenaAnalyzeChapterResult {
+  status: string
+  reason?: string | null
+  chapter_index: number
+  task_id: string | null
+  proposal_bundle_id: string | null
+  created: { proposal_items: number }
+  skipped: { duplicates: number }
+}
+
+export interface AthenaChapterContext {
+  chapter_index: number
+  profile_version: number | null
+  project_profile_version_id: string | null
+  sections: { key: string; title: string; items: unknown[] }[]
+  prompt_context: string
 }
 
 export interface ChapterContent {

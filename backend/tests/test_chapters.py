@@ -2,6 +2,7 @@ import asyncio
 from unittest.mock import AsyncMock, patch
 
 from app.api.chapters import create_or_replace_chapter
+from app.models import GenreProfile, ProjectProfileVersion, WorldFactClaim
 
 
 @patch("app.api.chapters.load_api_key", return_value="sk-test")
@@ -80,6 +81,67 @@ def test_create_chapter_applies_user_word_range_to_prompt_and_token_limit(mock_c
     sent_messages = mock_complete.await_args.args[0]
     assert "正文长度控制在1800-2200字" in sent_messages[0]["content"]
     assert mock_complete.await_args.kwargs["max_tokens"] == 3000
+
+
+@patch("app.api.chapters.load_api_key", return_value="sk-test")
+@patch("app.api.chapters.ai_service.complete", new_callable=AsyncMock)
+def test_create_chapter_injects_athena_context_when_profile_exists(mock_complete, mock_key, client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Test"})
+    pid = r.json()["id"]
+
+    with patch("app.api.setups.load_api_key", return_value="sk-test"), \
+         patch("app.api.setups.ai_service.complete", new_callable=AsyncMock) as ms, \
+         patch("app.api.setups.ai_service.parse_json") as mp:
+        ms.return_value.content = '{"world_building": {}, "characters": [{"name": "林舟"}], "core_concept": {}}'
+        mp.return_value = {"world_building": {}, "characters": [{"name": "林舟"}], "core_concept": {}}
+        client.post(f"/api/v1/projects/{pid}/setup/generate")
+
+    genre_profile = GenreProfile(
+        canonical_id=f"chapter-athena-context-{pid}",
+        display_name="通用",
+        contract_version="world.contract.v1",
+    )
+    db_session.add(genre_profile)
+    db_session.commit()
+    profile = ProjectProfileVersion(
+        project_id=pid,
+        genre_profile_id=genre_profile.id,
+        version=1,
+        contract_version="world.contract.v1",
+        profile_payload={},
+    )
+    db_session.add(profile)
+    db_session.commit()
+    db_session.add(
+        WorldFactClaim(
+            project_id=pid,
+            project_profile_version_id=profile.id,
+            profile_version=profile.version,
+            claim_id="claim.chapter.1.char.林舟.presence_count",
+            chapter_index=1,
+            intra_chapter_seq=0,
+            subject_ref="char.林舟",
+            predicate="presence_count",
+            object_ref_or_value={"count": 2, "chapter_index": 1},
+            claim_layer="truth",
+            claim_status="confirmed",
+            authority_type="derived",
+            confidence=0.9,
+            contract_version="world.contract.v1",
+        )
+    )
+    db_session.commit()
+
+    mock_complete.return_value.content = "第二章正文内容"
+    mock_complete.return_value.model = "deepseek-chat"
+    mock_complete.return_value.prompt_tokens = 100
+    mock_complete.return_value.completion_tokens = 200
+
+    asyncio.run(create_or_replace_chapter(db_session, pid, 2))
+
+    sent_messages = mock_complete.await_args.args[0]
+    assert "【Athena 世界上下文】" in sent_messages[0]["content"]
+    assert "presence_count" in sent_messages[0]["content"]
 
 
 @patch("app.api.chapters.load_api_key", return_value="sk-test")
