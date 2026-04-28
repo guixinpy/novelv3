@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class TraceSourceOut(BaseModel):
@@ -50,6 +50,16 @@ class ModelCallTraceDetail(ModelCallTraceListItem):
     messages: list[dict[str, Any]] = Field(default_factory=list)
     context_blocks: list[ContextBlockOut] = Field(default_factory=list)
     trace_metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("messages", "context_blocks", mode="before")
+    @classmethod
+    def normalize_nullable_lists(cls, value):
+        return [] if value is None else value
+
+    @field_validator("trace_metadata", mode="before")
+    @classmethod
+    def normalize_nullable_dict(cls, value):
+        return {} if value is None else value
 
 
 class PaginatedModelCallTraces(BaseModel):

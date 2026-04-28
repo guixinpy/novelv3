@@ -71,7 +71,7 @@ def build_context_block(
         "key": key,
         "kind": kind,
         "content": block_content,
-        "sources": sources or [],
+        "sources": _sanitize_value(sources or []),
         "char_count": len(block_content),
         "token_estimate": estimate_tokens(block_content),
         "original_char_count": truncated["original_char_count"],
@@ -108,8 +108,8 @@ def create_trace(
         chapter_id=chapter_id,
         chapter_index=chapter_index,
         messages=sanitize_model_messages(messages or []),
-        context_blocks=context_blocks or [],
-        trace_metadata=trace_metadata or {},
+        context_blocks=_sanitize_value(context_blocks or []),
+        trace_metadata=_sanitize_value(trace_metadata or {}),
     )
     db.add(trace)
     db.flush()
