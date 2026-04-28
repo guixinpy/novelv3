@@ -172,16 +172,31 @@ def _build_chapter_call_payload(
                     content=length_constraint,
                 )
             )
-    if project.style_config:
+    original_prompt = prompt
+    prompt = prompt_optimizer.optimize(prompt, project.style_config)
+    if prompt != original_prompt:
+        style_rule_content = (
+            prompt[len(original_prompt):].strip()
+            if prompt.startswith(original_prompt)
+            else prompt
+        )
         context_blocks.append(
             build_context_block(
-                key="style_config",
-                kind="style",
-                title="风格配置",
-                content=json.dumps(project.style_config, ensure_ascii=False),
+                key="style_rule",
+                kind="style_rule",
+                title="风格偏好规则",
+                content=style_rule_content,
+                sources=[
+                    {
+                        "source_type": "Project",
+                        "source_id": project.id,
+                        "label": "Project/style_config",
+                        "source_ref": "Project/style_config",
+                        "metadata": {"style_config": project.style_config},
+                    }
+                ],
             )
         )
-    prompt = prompt_optimizer.optimize(prompt, project.style_config)
 
     from app.core.few_shot_library import FewShotExampleLibrary
     fsl = FewShotExampleLibrary()

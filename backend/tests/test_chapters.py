@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.api.chapters import create_or_replace_chapter
-from app.models import AIModelCallTrace, GenreProfile, ProjectProfileVersion, WorldFactClaim
+from app.models import AIModelCallTrace, GenreProfile, Project, ProjectProfileVersion, WorldFactClaim
 
 
 def _create_project_with_setup(client):
@@ -76,6 +76,34 @@ def test_generate_chapter_records_model_call_trace(mock_complete, mock_key, clie
     assert "chapter_context" in context_kinds
     sent_messages = mock_complete.await_args.args[0]
     assert trace["messages"][0]["content"] == sent_messages[0]["content"]
+
+
+@patch("app.api.chapters.load_api_key", return_value="sk-test")
+@patch("app.api.chapters.ai_service.complete", new_callable=AsyncMock)
+def test_generate_chapter_trace_records_rendered_style_rules(mock_complete, mock_key, client, db_session):
+    pid = _create_project_with_setup(client)
+    project = db_session.get(Project, pid)
+    project.style_config = {"description_density": 4}
+    db_session.commit()
+    mock_complete.return_value.content = "第一章正文内容"
+    mock_complete.return_value.model = "deepseek-chat"
+    mock_complete.return_value.prompt_tokens = 123
+    mock_complete.return_value.completion_tokens = 456
+
+    response = client.post(f"/api/v1/projects/{pid}/chapters/1/generate")
+
+    assert response.status_code == 200
+    trace_id = response.json()["last_generation_trace_id"]
+    trace = client.get(f"/api/v1/projects/{pid}/model-call-traces/{trace_id}").json()
+    assert "【用户偏好规则】" in trace["messages"][0]["content"]
+    assert "增加环境描写和感官细节" in trace["messages"][0]["content"]
+    style_rule_blocks = [
+        block for block in trace["context_blocks"]
+        if block["kind"] == "style_rule"
+    ]
+    assert style_rule_blocks
+    assert "【用户偏好规则】" in style_rule_blocks[0]["content"]
+    assert "增加环境描写和感官细节" in style_rule_blocks[0]["content"]
 
 
 @patch("app.api.chapters.load_api_key", return_value="sk-test")
