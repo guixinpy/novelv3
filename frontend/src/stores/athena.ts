@@ -117,8 +117,18 @@ export const useAthenaStore = defineStore('athena', () => {
   async function sendChat(projectId: string, text: string) {
     chatLoading.value = true
     try {
-      await api.sendAthenaChat(projectId, text)
+      const response = await api.sendAthenaChat(projectId, text)
       await loadMessages(projectId)
+      const targets = new Set(response.refresh_targets || [])
+      if (targets.has('proposals')) {
+        await loadProposals(projectId)
+      }
+      if (targets.has('ontology')) {
+        await loadOntology(projectId)
+      }
+      if (targets.has('state') || targets.has('projection')) {
+        await loadState(projectId)
+      }
     } catch (err) {
       error.value = toErrorMessage(err)
     } finally {

@@ -94,6 +94,12 @@ const rules = computed(() => athena.ontology?.rules || [])
 const timelineEvents = computed(() => athena.timeline?.events || [])
 const timelineAnchors = computed(() => athena.timeline?.anchors || [])
 const consistencyIssues = computed<any[]>(() => athena.consistencyIssues || [])
+const entityNotice = computed(() => {
+  if (!entitySections.has(activeSection.value)) return ''
+  if (athena.ontology?.profile_version !== null) return ''
+  if (!entities.value.length) return ''
+  return 'Setup 草稿，尚未导入 world-model'
+})
 
 onMounted(() => void initialize(pid.value))
 
@@ -181,6 +187,7 @@ function navigateSection(section: AthenaSection) {
         v-if="entitySections.has(activeSection)"
         :entities="entities"
         :entity-type="entityTypeMap[activeSection]"
+        :notice="entityNotice"
       />
       <RelationTable v-else-if="activeSection === 'relations'" :relations="relations" />
       <RuleList v-else-if="activeSection === 'rules'" :rules="rules" />
@@ -231,6 +238,7 @@ function navigateSection(section: AthenaSection) {
 .athena-subnav {
   display: flex;
   flex-direction: column;
+  min-height: 100%;
 }
 
 .athena-subnav__section {
@@ -277,6 +285,11 @@ function navigateSection(section: AthenaSection) {
 }
 
 .athena-subnav__actions {
+  position: sticky;
+  bottom: 0;
+  margin-top: auto;
   padding: var(--space-2) var(--space-3);
+  background: var(--color-bg-primary);
+  border-top: 1px solid var(--color-border);
 }
 </style>

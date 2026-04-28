@@ -12,6 +12,14 @@ function toggle(id: string) {
   expandedId.value = expandedId.value === id ? null : id
 }
 
+function bundleStatus(bundle: any) {
+  return bundle.bundle_status || bundle.status || 'unknown'
+}
+
+function bundleItemCount(bundle: any) {
+  return Array.isArray(bundle.items) ? `${bundle.items.length} 项` : ''
+}
+
 const statusVariant: Record<string, 'success' | 'warning' | 'error' | 'neutral'> = {
   draft: 'neutral',
   pending: 'warning',
@@ -30,10 +38,10 @@ const statusVariant: Record<string, 'success' | 'warning' | 'error' | 'neutral'>
     >
       <button class="proposal-list__header" @click="toggle(bundle.id)">
         <span class="proposal-list__title">{{ bundle.title || bundle.id }}</span>
-        <BaseBadge :variant="statusVariant[bundle.status] || 'neutral'" size="sm">
-          {{ bundle.status }}
+        <BaseBadge :variant="statusVariant[bundleStatus(bundle)] || 'neutral'" size="sm">
+          {{ bundleStatus(bundle) }}
         </BaseBadge>
-        <span class="proposal-list__meta">{{ bundle.items?.length || 0 }} 项</span>
+        <span v-if="bundleItemCount(bundle)" class="proposal-list__meta">{{ bundleItemCount(bundle) }}</span>
         <span class="proposal-list__chevron">{{ expandedId === bundle.id ? '▾' : '▸' }}</span>
       </button>
       <div v-if="expandedId === bundle.id" class="proposal-list__detail">

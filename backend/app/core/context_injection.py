@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.models import (
     ProjectProfileVersion,
+    Setup,
     WorldCharacter,
     WorldEvent,
     WorldFactClaim,
@@ -27,7 +28,26 @@ def build_athena_world_context(db: Session, project_id: str) -> str:
     """Full world knowledge for Athena dialog — entities, relations, rules, facts, timeline."""
     profile = _get_current_profile(db, project_id)
     if profile is None:
-        return "当前项目尚未建立世界档案。"
+        setup = db.query(Setup).filter(Setup.project_id == project_id).first()
+        if setup is None:
+            return "当前项目尚未建立正式 world-model profile，也没有可参考的 Setup 草稿。"
+
+        lines = [
+            "当前项目尚未建立正式 world-model profile；以下内容来自 Setup 草稿，尚未导入 canonical world-model。",
+        ]
+        if setup.characters:
+            names = [
+                item.get("name")
+                for item in setup.characters
+                if isinstance(item, dict) and item.get("name")
+            ]
+            if names:
+                lines.append("Setup 草稿角色：" + "、".join(names[:20]))
+        if isinstance(setup.world_building, dict) and setup.world_building:
+            lines.append(f"Setup 草稿世界设定：{setup.world_building}")
+        if isinstance(setup.core_concept, dict) and setup.core_concept:
+            lines.append(f"Setup 草稿核心概念：{setup.core_concept}")
+        return "\n".join(lines)
 
     sections = []
 

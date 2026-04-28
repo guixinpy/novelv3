@@ -21,6 +21,7 @@ import {
 import {
   beginHydration,
   createHydrationTracker,
+  getInitialProjectHydrationTargets,
   isActiveHydrationSnapshot,
   markHydratedTarget,
   markHydratedTargets,
@@ -122,11 +123,12 @@ async function initialize(projectId: string) {
     project.loadProject(projectId),
   ])
   if (!markHydratedTarget(hydrationTracker, snapshot, 'project')) return
+  const initialTargets = getInitialProjectHydrationTargets(chat.diagnosis)
   await Promise.all([
     ensurePanelData(workspace.panel, projectId, false, snapshot),
-    project.loadSetup(projectId).catch(() => {}),
-    project.loadStoryline(projectId).catch(() => {}),
-    project.loadOutline(projectId).catch(() => {}),
+    ...initialTargets.map((target) => loadTarget(projectId, target).then(() => {
+      markHydratedTarget(hydrationTracker, snapshot, target)
+    }).catch(() => {})),
     project.loadChapters(projectId).catch(() => {}),
   ])
   if (!isActiveHydrationSnapshot(hydrationTracker, snapshot)) return

@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException
+from uuid import uuid4
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -21,6 +23,8 @@ from app.models import (
     WorldTimelineAnchor,
 )
 from app.api.outlines import ChapterOutlineUpdate
+from app.core.world_contracts import ANNOTATION
+from app.core.world_proposal_service import calculate_bundle_impact_scope, create_bundle, write_candidate_fact
 from app.schemas import (
     ChatIn,
     ChatOut,
@@ -29,6 +33,7 @@ from app.schemas import (
     ProposalReviewRollbackCreate,
     ResolveActionIn,
 )
+from app.schemas.world_proposals import ProposalCandidateFactCreate
 
 router = APIRouter(
     prefix="/api/v1/projects/{project_id}/athena",
@@ -50,6 +55,67 @@ def _get_current_profile(db: Session, project_id: str) -> ProjectProfileVersion 
         .order_by(ProjectProfileVersion.version.desc())
         .first()
     )
+
+
+WORLD_UPDATE_KEYWORDS = (
+    "更新世界模型",
+    "写入世界模型",
+    "修改世界模型",
+    "加入世界模型",
+    "记录到世界模型",
+    "新增",
+    "设定为",
+    "记住",
+    "写入",
+    "修正",
+)
+
+
+def _looks_like_world_update_request(text: str) -> bool:
+    return any(keyword in text for keyword in WORLD_UPDATE_KEYWORDS)
+
+
+def _create_dialog_world_update_proposal(
+    *,
+    db: Session,
+    project_id: str,
+    profile: ProjectProfileVersion,
+    dialog_id: str,
+    text: str,
+):
+    title = "Athena 对话待审世界更新"
+    summary = text[:500]
+    bundle = create_bundle(
+        db=db,
+        project_id=project_id,
+        project_profile_version_id=profile.id,
+        profile_version=profile.version,
+        created_by="athena.dialog",
+        title=title,
+        summary=summary,
+    )
+    item = write_candidate_fact(
+        db=db,
+        bundle_id=bundle.id,
+        created_by="athena.dialog",
+        candidate=ProposalCandidateFactCreate(
+            project_id=project_id,
+            project_profile_version_id=profile.id,
+            profile_version=profile.version,
+            contract_version=profile.contract_version,
+            claim_id=f"athena.dialog.{uuid4()}",
+            subject_ref="project.world_intake",
+            predicate="user_proposed_update",
+            object_ref_or_value=text,
+            claim_layer="truth",
+            evidence_refs=[f"dialog:{dialog_id}"],
+            authority_type=ANNOTATION,
+            confidence=0.5,
+            notes="Athena 对话输入生成的待拆分世界模型提案，需人工审阅后才可进入真相层。",
+        ),
+    )
+    calculate_bundle_impact_scope(db=db, bundle_id=bundle.id)
+    return bundle, item
 
 
 @router.get("/optimization")
@@ -205,7 +271,7 @@ def get_state_subject_knowledge(project_id: str, subject_ref: str, db: Session =
 
 
 @router.get("/state/snapshot")
-def get_state_snapshot(project_id: str, chapter_index: int, db: Session = Depends(get_db)):
+def get_state_snapshot(project_id: str, chapter_index: int = Query(..., ge=1), db: Session = Depends(get_db)):
     from app.api.world_model import get_chapter_snapshot
     return get_chapter_snapshot(project_id, chapter_index, db)
 
@@ -420,8 +486,47 @@ async def athena_chat(project_id: str, payload: ChatIn, db: Session = Depends(ge
     diagnosis = _build_diagnosis(db, project_id)
 
     user_text = (payload.text or "").strip()
+    if payload.input_type == "text" and not user_text:
+        raise HTTPException(status_code=422, detail="Athena chat text cannot be empty")
+
     if user_text:
         _save_message(db, dialog.id, "user", user_text)
+
+    if user_text and _looks_like_world_update_request(user_text):
+        profile = _get_current_profile(db, project_id)
+        if profile is None:
+            reply = (
+                "我不能把这次内容标记为世界模型更新：当前项目还没有建立正式 world-model profile。"
+                "请先在 Athena 建立或导入世界档案；在此之前，我只能把 setup 草稿作为参考，不能声称已经写入真相层。"
+            )
+            _save_message(db, dialog.id, "assistant", reply)
+            return ChatOut(
+                message=reply,
+                pending_action=None,
+                ui_hint=_build_chat_idle_hint("Athena 对话"),
+                refresh_targets=[],
+                project_diagnosis=diagnosis,
+            )
+
+        bundle, item = _create_dialog_world_update_proposal(
+            db=db,
+            project_id=project_id,
+            profile=profile,
+            dialog_id=dialog.id,
+            text=user_text,
+        )
+        reply = (
+            "我已把这次世界模型修改记录为待审提案，而不是直接写入真相层。"
+            f"请到 Athena > 提案 审阅：{bundle.title}（1 项，条目 {item.id}）。"
+        )
+        _save_message(db, dialog.id, "assistant", reply)
+        return ChatOut(
+            message=reply,
+            pending_action=None,
+            ui_hint=_build_chat_idle_hint("Athena 对话"),
+            refresh_targets=["proposals"],
+            project_diagnosis=diagnosis,
+        )
 
     reply = await _free_chat_reply(db, dialog, project, diagnosis, dialog_type="athena")
     _save_message(db, dialog.id, "assistant", reply)

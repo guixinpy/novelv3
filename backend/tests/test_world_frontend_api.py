@@ -5,6 +5,7 @@ from app.core.world_proposal_service import (
     write_candidate_fact,
 )
 from app.models import (
+    ChapterContent,
     GenreProfile,
     Project,
     ProjectProfileVersion,
@@ -126,6 +127,37 @@ def test_world_model_overview_returns_nulls_when_project_has_no_world_data(clien
         "project_profile": None,
         "projection": None,
     }
+
+
+def test_world_model_snapshot_validates_chapter_index_before_empty_projection(client, db_session):
+    project = Project(name="World Snapshot Boundary")
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    db_session.add(
+        ChapterContent(
+            project_id=project.id,
+            chapter_index=1,
+            title="第一章",
+            content="雾港城入夜。",
+        )
+    )
+    db_session.commit()
+
+    valid_response = client.get(f"/api/v1/projects/{project.id}/world-model/snapshot?chapter_index=1")
+    negative_response = client.get(f"/api/v1/projects/{project.id}/world-model/snapshot?chapter_index=-1")
+    zero_response = client.get(f"/api/v1/projects/{project.id}/world-model/snapshot?chapter_index=0")
+    missing_response = client.get(f"/api/v1/projects/{project.id}/world-model/snapshot?chapter_index=999")
+    athena_negative_response = client.get(f"/api/v1/projects/{project.id}/athena/state/snapshot?chapter_index=-1")
+    athena_zero_response = client.get(f"/api/v1/projects/{project.id}/athena/state/snapshot?chapter_index=0")
+
+    assert valid_response.status_code == 200
+    assert valid_response.json() == {"project_profile": None, "projection": None}
+    assert negative_response.status_code == 422
+    assert zero_response.status_code == 422
+    assert missing_response.status_code == 404
+    assert athena_negative_response.status_code == 422
+    assert athena_zero_response.status_code == 422
 
 
 def test_world_model_bundle_endpoints_support_review_split_and_rollback(client, db_session):

@@ -1,4 +1,4 @@
-import type { RefreshTarget } from '../api/types'
+import type { ProjectDiagnosis, RefreshTarget } from '../api/types'
 
 export type HydrationSnapshot = {
   projectId: string
@@ -10,6 +10,8 @@ export type HydrationTracker = {
   version: number
   targets: Set<RefreshTarget>
 }
+
+const INITIAL_OPTIONAL_TARGETS: RefreshTarget[] = ['setup', 'storyline', 'outline']
 
 export function createHydrationTracker(): HydrationTracker {
   return {
@@ -53,4 +55,9 @@ export function markHydratedTargets(
     tracker.targets.add(target)
   }
   return targets
+}
+
+export function getInitialProjectHydrationTargets(diagnosis: ProjectDiagnosis | null | undefined): RefreshTarget[] {
+  const completed = new Set(diagnosis?.completed_items || [])
+  return INITIAL_OPTIONAL_TARGETS.filter((target) => completed.has(target))
 }

@@ -2,9 +2,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useProjectStore } from './project'
 import { api } from '../api/client'
+import type { ProjectDiagnosis } from '../api/types'
 import {
   beginHydration,
   createHydrationTracker,
+  getInitialProjectHydrationTargets,
   markHydratedTarget,
 } from '../views/projectDetailHydration'
 
@@ -168,6 +170,22 @@ describe('project workspace state', () => {
     expect(store.setup).toEqual({ id: 'setup-a', title: 'A 设定' })
     expect(store.versions).toEqual([])
     expect(store.versionsNodeType).toBe(undefined)
+  })
+
+  it('Hermes 初始水合只加载诊断中已完成的可选资源，避免新项目刷新打出 404', () => {
+    const diagnosis = (completedItems: string[]): ProjectDiagnosis => ({
+      completed_items: completedItems,
+      missing_items: [],
+      suggested_next_step: null,
+    })
+
+    expect(getInitialProjectHydrationTargets(diagnosis([]))).toEqual([])
+    expect(getInitialProjectHydrationTargets(diagnosis(['setup']))).toEqual(['setup'])
+    expect(getInitialProjectHydrationTargets(diagnosis(['setup', 'storyline', 'outline']))).toEqual([
+      'setup',
+      'storyline',
+      'outline',
+    ])
   })
 
   it('旧 hydration snapshot 不能再把 target 写进当前项目集合', () => {

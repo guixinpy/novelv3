@@ -19,6 +19,10 @@ export type RefreshTarget =
   | 'topology'
   | 'versions'
   | 'preferences'
+  | 'ontology'
+  | 'state'
+  | 'projection'
+  | 'proposals'
 
 export interface PendingAction {
   id: string

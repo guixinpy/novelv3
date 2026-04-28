@@ -1,5 +1,5 @@
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.world_projection import FactRecord, project_snapshot, project_subject_knowledge, project_world_truth
@@ -14,6 +14,7 @@ from app.core.world_time_normalizer import build_anchor_time_index
 from app.db import get_db
 from app.models import (
     Project,
+    ChapterContent,
     ProjectProfileVersion,
     WorldEvent,
     WorldFactClaim,
@@ -178,10 +179,11 @@ def get_subject_knowledge(
 @router.get("/snapshot", response_model=ProjectWorldOverviewOut)
 def get_chapter_snapshot(
     project_id: str,
-    chapter_index: int,
+    chapter_index: int = Query(..., ge=1),
     db: Session = Depends(get_db),
 ):
     _require_project(db=db, project_id=project_id)
+    _require_chapter(db=db, project_id=project_id, chapter_index=chapter_index)
     profile = _get_current_profile(db=db, project_id=project_id)
     if profile is None:
         return ProjectWorldOverviewOut(project_profile=None, projection=None)
@@ -417,6 +419,20 @@ def _require_project(*, db: Session, project_id: str) -> Project:
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
     return project
+
+
+def _require_chapter(*, db: Session, project_id: str, chapter_index: int) -> ChapterContent:
+    chapter = (
+        db.query(ChapterContent)
+        .filter(
+            ChapterContent.project_id == project_id,
+            ChapterContent.chapter_index == chapter_index,
+        )
+        .first()
+    )
+    if chapter is None:
+        raise HTTPException(status_code=404, detail="Chapter not found")
+    return chapter
 
 
 def _get_current_profile(*, db: Session, project_id: str) -> ProjectProfileVersion | None:
