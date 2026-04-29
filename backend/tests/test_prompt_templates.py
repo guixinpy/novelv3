@@ -19,6 +19,7 @@ SAMPLE_PROMPT_VARS = {
     "has_outline": "false",
     "has_setup": "true",
     "has_storyline": "false",
+    "language": "zh-CN",
     "missing_items": "故事线、大纲、正文",
     "name": "潮汐门",
     "profile_version": "1",

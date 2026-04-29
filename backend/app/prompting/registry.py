@@ -35,7 +35,7 @@ PROMPT_REGISTRY: dict[str, PromptSpec] = {
         version="1",
         template_name="generate_chapter",
         output_type="plain_text",
-        required_vars=("chapter_index", "world_building", "characters", "core_concept"),
+        required_vars=("chapter_index", "language"),
     ),
     "dialog.hermes": PromptSpec(
         prompt_id="dialog.hermes",

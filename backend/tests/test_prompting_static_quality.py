@@ -34,6 +34,7 @@ SAMPLE_PROMPT_VARS = {
     "has_outline": "false",
     "has_setup": "true",
     "has_storyline": "false",
+    "language": "zh-CN",
     "missing_items": "故事线、大纲、正文",
     "name": "潮汐门",
     "profile_version": "1",
@@ -57,6 +58,13 @@ JSON_PROMPT_CALL_SITE_FILES = {
     "storyline.generate": {"backend/app/api/storylines.py"},
     "outline.generate": {"backend/app/api/outlines.py"},
     "athena.extract_l2": {"backend/app/core/l2_extractor.py"},
+}
+
+JSON_PROMPT_CALL_SITE_CONTRACTS = {
+    "setup.generate": {("backend/app/api/setups.py", "_build_setup_call_payload", "generate_setup")},
+    "storyline.generate": {("backend/app/api/storylines.py", "_build_storyline_call_payload", "generate_storyline")},
+    "outline.generate": {("backend/app/api/outlines.py", "_build_outline_call_payload", "generate_outline")},
+    "athena.extract_l2": {("backend/app/core/l2_extractor.py", "extract", "extract")},
 }
 
 REGISTRY_ONLY_JSON_PROMPTS = {"project.diagnose"}
@@ -138,7 +146,6 @@ def test_registered_prompt_templates_render_with_sample_variables():
 def test_all_prompt_templates_render_with_sample_variables():
     renderer = PromptRenderer()
     failures = []
-    rendered_template_names = set()
 
     for path in sorted(default_prompts_dir().glob("*.txt")):
         template_name = path.stem
@@ -156,7 +163,6 @@ def test_all_prompt_templates_render_with_sample_variables():
 
         variables = {name: SAMPLE_PROMPT_VARS[name] for name in required_vars}
         rendered = renderer.render(template_name, variables)
-        rendered_template_names.add(template_name)
         unresolved_template_vars, unresolved_braces = _unresolved_placeholders(rendered.content)
         if unresolved_template_vars or unresolved_braces:
             failures.append(
@@ -167,8 +173,14 @@ def test_all_prompt_templates_render_with_sample_variables():
                 }
             )
 
-    assert "chat_project_assistant" in rendered_template_names
     assert failures == []
+
+
+def test_all_active_prompt_templates_are_registered():
+    prompt_templates = {path.stem for path in default_prompts_dir().glob("*.txt")}
+    registered_templates = {spec.template_name for spec in PROMPT_REGISTRY.values()}
+
+    assert prompt_templates == registered_templates
 
 
 def test_registered_prompts_have_static_metadata():
@@ -192,9 +204,13 @@ def test_json_prompts_have_parser_or_response_format_expectation():
     for prompt_id, expected_files in JSON_PROMPT_CALL_SITE_FILES.items():
         actual_files = _production_call_site_files(prompt_id)
         assert actual_files == expected_files
-        for relative_file in actual_files:
-            tree = ast.parse(_backend_file(relative_file).read_text(encoding="utf-8"))
-            assert _has_json_response_or_parser(tree)
+        actual_contracts = _production_json_prompt_call_contracts(prompt_id)
+        assert actual_contracts == JSON_PROMPT_CALL_SITE_CONTRACTS[prompt_id]
+        for relative_file, _builder_name, consumer_name in actual_contracts:
+            consumer = _function_node(_backend_file(relative_file), consumer_name)
+            assert consumer is not None
+            assert _has_json_response_format(consumer)
+            assert _has_parse_json_call(consumer)
 
     for prompt_id in REGISTRY_ONLY_JSON_PROMPTS:
         assert _production_call_site_files(prompt_id) == set()
@@ -277,6 +293,30 @@ def test_static_prompt_guards_detect_real_imports_calls_and_json_handling():
     assert _has_json_response_or_parser(
         ast.parse("await ai_service.complete([], response_format={'type': 'json_object'})\n")
     ) is True
+    assert _production_json_prompt_call_contracts_from_tree(
+        ast.parse(
+            "def build_payload():\n"
+            "    return build_generation_payload('setup.generate', {})\n\n"
+            "async def endpoint():\n"
+            "    payload = build_payload()\n"
+            "    await ai_service.complete([], response_format={'type': 'json_object'})\n"
+            "    return ai_service.parse_json('{}')\n"
+        ),
+        "setup.generate",
+        "backend/app/api/demo.py",
+    ) == {("backend/app/api/demo.py", "build_payload", "endpoint")}
+
+    assert _production_json_prompt_call_contracts_from_tree(
+        ast.parse(
+            "def build_payload():\n"
+            "    return build_generation_payload('setup.generate', {})\n\n"
+            "async def unprotected():\n"
+            "    payload = build_payload()\n"
+            "    await ai_service.complete([])\n"
+        ),
+        "setup.generate",
+        "backend/app/api/demo.py",
+    ) == {("backend/app/api/demo.py", "build_payload", "<missing_json_consumer>")}
 
 
 def _uses_prompt_manager(tree: ast.AST) -> bool:
@@ -315,12 +355,33 @@ def _has_json_response_or_parser(tree: ast.AST) -> bool:
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
-        if _call_name(node.func) == "parse_json":
+        if _is_parse_json_call(node):
             return True
         for keyword in node.keywords:
             if keyword.arg == "response_format" and _is_json_object_response_format(keyword.value):
                 return True
     return False
+
+
+def _has_json_response_format(tree: ast.AST) -> bool:
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        for keyword in node.keywords:
+            if keyword.arg == "response_format" and _is_json_object_response_format(keyword.value):
+                return True
+    return False
+
+
+def _has_parse_json_call(tree: ast.AST) -> bool:
+    return any(
+        isinstance(node, ast.Call) and _is_parse_json_call(node)
+        for node in ast.walk(tree)
+    )
+
+
+def _is_parse_json_call(node: ast.Call) -> bool:
+    return _call_name(node.func) == "parse_json"
 
 
 def _call_name(func: ast.AST) -> str | None:
@@ -356,6 +417,76 @@ def _production_call_site_files(prompt_id: str) -> set[str]:
         if _calls_prompt_id(tree, prompt_id):
             files.add(relative_path)
     return files
+
+
+def _production_json_prompt_call_contracts(prompt_id: str) -> set[tuple[str, str, str]]:
+    contracts: set[tuple[str, str, str]] = set()
+    for path in APP_ROOT.rglob("*.py"):
+        relative_path = _relative_backend_path(path)
+        if relative_path == "backend/app/prompting/registry.py":
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        contracts.update(
+            _production_json_prompt_call_contracts_from_tree(
+                tree,
+                prompt_id,
+                relative_path,
+            )
+        )
+    return contracts
+
+
+def _production_json_prompt_call_contracts_from_tree(
+    tree: ast.AST,
+    prompt_id: str,
+    relative_path: str,
+) -> set[tuple[str, str, str]]:
+    functions = _function_nodes_by_name(tree)
+    builders = {
+        name
+        for name, node in functions.items()
+        if _calls_prompt_id(node, prompt_id)
+    }
+    if not builders:
+        return set()
+
+    contracts = set()
+    for builder_name in builders:
+        json_consumers = {
+            name
+            for name, node in functions.items()
+            if (name == builder_name or _calls_function(node, builder_name))
+            and _has_json_response_format(node)
+            and _has_parse_json_call(node)
+        }
+        consumer_name = sorted(json_consumers)[0] if json_consumers else "<missing_json_consumer>"
+        contracts.add((relative_path, builder_name, consumer_name))
+    return contracts
+
+
+def _calls_function(tree: ast.AST, function_name: str) -> bool:
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if isinstance(func, ast.Name) and func.id == function_name:
+            return True
+        if isinstance(func, ast.Attribute) and func.attr == function_name:
+            return True
+    return False
+
+
+def _function_node(path: Path, function_name: str) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    return _function_nodes_by_name(tree).get(function_name)
+
+
+def _function_nodes_by_name(tree: ast.AST) -> dict[str, ast.FunctionDef | ast.AsyncFunctionDef]:
+    return {
+        node.name: node
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
 
 
 def _scan_large_inline_prompt_constants(app_root: Path, backend_parent: Path) -> list[str]:

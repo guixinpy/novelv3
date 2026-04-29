@@ -18,17 +18,24 @@ class PromptRenderer:
         return self.prompts_dir / f"{template_name}.txt"
 
     def render(self, template_name: str, variables: dict | None = None) -> RenderedTemplate:
+        raw = self.load_raw_template(template_name)
+        try:
+            content = Template(raw.content).substitute(variables or {})
+        except KeyError as exc:
+            raise KeyError(f"Missing prompt variable '{exc.args[0]}'") from exc
+
+        return RenderedTemplate(
+            template_name=template_name,
+            content=content,
+            template_hash=raw.template_hash,
+        )
+
+    def load_raw_template(self, template_name: str) -> RenderedTemplate:
         path = self.template_path(template_name)
         if not path.exists():
             raise FileNotFoundError(f"Prompt not found: {path}")
 
         content = path.read_text(encoding="utf-8")
-        if variables:
-            try:
-                content = Template(content).substitute(variables)
-            except KeyError as exc:
-                raise KeyError(f"Missing prompt variable '{exc.args[0]}'") from exc
-
         return RenderedTemplate(
             template_name=template_name,
             content=content,

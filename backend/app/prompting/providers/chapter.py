@@ -20,14 +20,12 @@ PRIORITY_PREVIOUS_CHAPTER = 40
 PRIORITY_STYLE_RULE = 50
 PRIORITY_FEW_SHOT = 60
 PRIORITY_SETUP_WORLD = 80
+PRIORITY_SETUP_CORE_CONCEPT = 82
 PRIORITY_SETUP_CHARACTERS = 85
 
 
 def build_chapter_prompt_variables(project: Project, setup: Setup, chapter_index: int) -> dict:
     return {
-        "world_building": json.dumps(setup.world_building, ensure_ascii=False),
-        "characters": json.dumps(setup.characters, ensure_ascii=False),
-        "core_concept": json.dumps(setup.core_concept, ensure_ascii=False),
         "chapter_index": chapter_index,
         "language": project.language,
     }
@@ -58,6 +56,15 @@ def build_chapter_prompt_context_blocks(
                 content=json.dumps(setup.characters, ensure_ascii=False),
             ),
             PRIORITY_SETUP_CHARACTERS,
+        ),
+        _prioritized(
+            build_context_block(
+                key="setup_core_concept",
+                kind="setup",
+                title="核心概念",
+                content=json.dumps(setup.core_concept, ensure_ascii=False),
+            ),
+            PRIORITY_SETUP_CORE_CONCEPT,
         ),
     ]
     trace_only_blocks: list[dict] = []

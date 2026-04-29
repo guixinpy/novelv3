@@ -1,5 +1,4 @@
 import pytest
-from pathlib import Path
 
 from app.prompting.assembler import PromptAssembler, build_generation_payload
 from app.prompting.budget import PromptBudgeter
@@ -58,11 +57,23 @@ def test_renderer_rejects_template_path_escape(template_name):
         renderer.render(template_name)
 
 
-def test_renderer_does_not_substitute_when_variables_are_none_or_empty():
+def test_renderer_load_raw_template_returns_unrendered_content():
     renderer = PromptRenderer()
 
-    assert "${name}" in renderer.render("generate_setup").content
-    assert "${name}" in renderer.render("generate_setup", {}).content
+    raw = renderer.load_raw_template("generate_setup")
+
+    assert "${name}" in raw.content
+    assert raw.template_hash == renderer.template_hash("generate_setup")
+
+
+def test_renderer_missing_variables_raise_when_variables_are_none_or_empty():
+    renderer = PromptRenderer()
+
+    with pytest.raises(KeyError, match="Missing prompt variable"):
+        renderer.render("generate_setup")
+
+    with pytest.raises(KeyError, match="Missing prompt variable"):
+        renderer.render("generate_setup", {})
 
 
 def test_renderer_missing_variable_names_variable():
@@ -133,9 +144,7 @@ def test_assembler_builds_prompt_result_with_budgeted_context():
         "chapter.generate",
         variables={
             "chapter_index": 3,
-            "world_building": "潮汐每七十二小时重置。",
-            "characters": '[{"name":"林深"}]',
-            "core_concept": '{"hook":"潮汐门"}',
+            "language": "zh-CN",
         },
         context_blocks=[
             {"key": "later", "content": "later", "priority": 20},
@@ -155,6 +164,32 @@ def test_assembler_builds_prompt_result_with_budgeted_context():
     assert [block["key"] for block in result.context_blocks] == ["first"]
     assert result.budget_report.omitted_block_keys == ["later"]
     assert "第 3 章正文" in result.content
+
+
+def test_chapter_prompt_large_setup_must_be_budgeted_context_not_template_variables():
+    result = PromptAssembler().build(
+        "chapter.generate",
+        variables={
+            "chapter_index": 1,
+            "language": "zh-CN",
+        },
+        context_blocks=[
+            {
+                "key": "setup_world_building",
+                "title": "世界观",
+                "content": "世界观噪音" * 5000,
+                "priority": 1,
+            }
+        ],
+        max_context_chars=10,
+    )
+
+    message_content = result.messages[0]["content"]
+
+    assert len(message_content) < 1000
+    assert ("世界观噪音" * 100) not in message_content
+    assert result.budget_report.max_context_chars == 10
+    assert result.budget_report.truncated_blocks == ["setup_world_building"]
 
 
 def test_assembler_appends_kept_context_blocks_to_default_message_content():
@@ -338,16 +373,10 @@ def test_project_diagnose_prompt_stays_registry_renderable():
     assert "${" not in result.content
 
 
-def test_chat_project_assistant_is_unregistered_legacy_template_without_backend_call_site():
-    assert "chat_project_assistant" not in {
-        spec.template_name for spec in PROMPT_REGISTRY.values()
-    }
+def test_active_prompt_templates_are_all_registered():
+    prompts_dir = default_prompts_dir()
 
-    app_dir = Path(__file__).resolve().parents[1] / "app"
-    references = []
-    for path in app_dir.rglob("*.py"):
-        text = path.read_text(encoding="utf-8")
-        if "chat_project_assistant" in text:
-            references.append(path.relative_to(app_dir.parent).as_posix())
+    active_templates = {path.stem for path in prompts_dir.glob("*.txt")}
+    registered_templates = {spec.template_name for spec in PROMPT_REGISTRY.values()}
 
-    assert references == []
+    assert active_templates == registered_templates
