@@ -2,6 +2,15 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# Legacy script. New browser regression coverage belongs in Playwright E2E.
+# Keep the old body available only for manual archaeology:
+#   ALLOW_LEGACY_FULL_APP_UI=1 scripts/verify_full_app_ui.sh
+if [[ "${ALLOW_LEGACY_FULL_APP_UI:-0}" != "1" ]]; then
+  echo "scripts/verify_full_app_ui.sh is legacy; running scripts/verify_frontend_e2e.sh instead."
+  exec "$ROOT_DIR/scripts/verify_frontend_e2e.sh"
+fi
+
 BACKEND_DIR="$ROOT_DIR/backend"
 FRONTEND_DIR="$ROOT_DIR/frontend"
 BACKEND_VENV="/home/guixin/project_workspace/novelv3/backend/.venv"
