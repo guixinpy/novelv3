@@ -25,6 +25,7 @@ describe('athena retrieval store', () => {
       vector_dimension: 96,
       total_documents: 3,
       total_chunks: 4,
+      total_terms: 27,
       total_embeddings: 4,
       documents_by_source_type: { chapter: 2, world_fact: 1 },
     })
@@ -69,7 +70,7 @@ describe('athena retrieval store', () => {
       status: 'completed',
       project_id: 'project-1',
       chapter_index: null,
-      indexed: { documents: 3, chunks: 4, embeddings: 4 },
+      indexed: { documents: 3, chunks: 4, terms: 27, embeddings: 4 },
     })
     vi.mocked(api.getAthenaRetrievalDiagnostics).mockResolvedValue({
       project_id: 'project-1',
@@ -78,6 +79,7 @@ describe('athena retrieval store', () => {
       vector_dimension: 96,
       total_documents: 3,
       total_chunks: 4,
+      total_terms: 27,
       total_embeddings: 4,
       documents_by_source_type: { chapter: 2, world_fact: 1 },
     })

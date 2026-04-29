@@ -1,6 +1,13 @@
 <script setup lang="ts">
+export interface AthenaRuleRow {
+  id?: string
+  rule_id?: string
+  content?: string
+  description?: string
+}
+
 defineProps<{
-  rules: any[]
+  rules: Array<AthenaRuleRow | string>
 }>()
 </script>
 

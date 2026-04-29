@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import BaseBadge from '../base/BaseBadge.vue'
+import type { AthenaConsistencyIssue } from '../../api/types'
 
 defineProps<{
-  issues: any[]
+  issues: AthenaConsistencyIssue[]
 }>()
 
 const expandedIdx = ref<number | null>(null)
@@ -18,6 +19,14 @@ const severityVariant: Record<string, 'success' | 'warning' | 'error' | 'neutral
   error: 'error',
   info: 'neutral',
 }
+
+function issueSeverity(issue: AthenaConsistencyIssue) {
+  return issue.severity || issue.status || 'info'
+}
+
+function issueVariant(issue: AthenaConsistencyIssue) {
+  return severityVariant[issueSeverity(issue)] || 'neutral'
+}
 </script>
 
 <template>
@@ -29,8 +38,8 @@ const severityVariant: Record<string, 'success' | 'warning' | 'error' | 'neutral
       class="consistency-list__item"
     >
       <button class="consistency-list__header" @click="toggle(idx)">
-        <BaseBadge :variant="severityVariant[issue.severity || issue.status] || 'neutral'" size="sm">
-          {{ issue.severity || issue.status || 'info' }}
+        <BaseBadge :variant="issueVariant(issue)" size="sm">
+          {{ issueSeverity(issue) }}
         </BaseBadge>
         <span class="consistency-list__type">{{ issue.check_type || issue.type || '' }}</span>
         <span class="consistency-list__desc">{{ issue.description || issue.message || '' }}</span>

@@ -26,10 +26,21 @@ describe('ProposalList', () => {
           items: [
             {
               id: 'bundle-1',
+              project_id: 'project-1',
+              project_profile_version_id: 'profile-1',
+              profile_version: 1,
+              parent_bundle_id: null,
               title: 'Athena 对话待审世界更新',
+              summary: '',
               bundle_status: 'pending',
+              created_by: 'athena.chapter_analyzer',
+              created_at: '2026-04-28T00:00:00Z',
+              updated_at: '2026-04-28T00:00:00Z',
             },
           ],
+          total: 1,
+          offset: 0,
+          limit: 20,
         },
       },
     })
@@ -96,7 +107,22 @@ describe('ProposalList', () => {
       props: {
         projectId: 'project-1',
         proposals: {
-          items: [{ id: 'bundle-1', title: '第1章世界事实候选', bundle_status: 'pending' }],
+          items: [{
+            id: 'bundle-1',
+            project_id: 'project-1',
+            project_profile_version_id: 'profile-1',
+            profile_version: 1,
+            parent_bundle_id: null,
+            title: '第1章世界事实候选',
+            summary: '',
+            bundle_status: 'pending',
+            created_by: 'athena.chapter_analyzer',
+            created_at: '2026-04-28T00:00:00Z',
+            updated_at: '2026-04-28T00:00:00Z',
+          }],
+          total: 1,
+          offset: 0,
+          limit: 20,
         },
       },
     })

@@ -19,6 +19,7 @@ import AthenaChatPanel from '../components/athena/AthenaChatPanel.vue'
 import RetrievalPanel from '../components/athena/RetrievalPanel.vue'
 import AthenaSubnav from '../components/athena/AthenaSubnav.vue'
 import { createAthenaSectionLoader } from './athenaSectionLoader'
+import type { AthenaConsistencyIssue } from '../api/types'
 
 interface NavSection {
   label: string
@@ -118,7 +119,7 @@ const relations = computed(() => athena.ontology?.relations || [])
 const rules = computed(() => athena.ontology?.rules || [])
 const timelineEvents = computed(() => athena.timeline?.events || [])
 const timelineAnchors = computed(() => athena.timeline?.anchors || [])
-const consistencyIssues = computed<any[]>(() => athena.consistencyIssues || [])
+const consistencyIssues = computed<AthenaConsistencyIssue[]>(() => athena.consistencyIssues || [])
 const activeError = computed(() => athena.error || worldModel.error || '')
 const canImportSetup = computed(() => athena.ontology?.profile_version === null && Boolean(athena.ontology?.setup_summary))
 const entityNotice = computed(() => {
@@ -129,7 +130,7 @@ const entityNotice = computed(() => {
 })
 const latestChapterIndex = computed(() => {
   const indexes = (project.chapters || [])
-    .map((chapter: any) => Number(chapter.chapter_index))
+    .map((chapter) => Number(chapter.chapter_index))
     .filter((index: number) => Number.isFinite(index))
   return indexes.length ? Math.max(...indexes) : null
 })

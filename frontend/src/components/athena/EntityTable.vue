@@ -2,8 +2,15 @@
 import BaseTable from '../base/BaseTable.vue'
 import type { BaseTableColumn } from '../base/BaseTable.vue'
 
+export interface AthenaEntityRow extends Record<string, unknown> {
+  id?: string
+  name?: string
+  type?: string
+  description?: string
+}
+
 defineProps<{
-  entities: any[]
+  entities: AthenaEntityRow[]
   entityType?: string
   notice?: string
 }>()

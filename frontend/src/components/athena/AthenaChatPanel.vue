@@ -4,6 +4,7 @@ import ChatMessageList from '../chat/ChatMessageList.vue'
 import ChatInput from '../chat/ChatInput.vue'
 import ModelTraceDrawer from '../modelTrace/ModelTraceDrawer.vue'
 import { useAthenaStore } from '../../stores/athena'
+import type { ChatHistoryMessage } from '../../api/types'
 
 const props = defineProps<{
   open: boolean
@@ -18,7 +19,7 @@ const athena = useAthenaStore()
 const activeTraceId = ref<string | null>(null)
 
 const messages = computed(() =>
-  (athena.messages || []).map((m: any) => ({
+  (athena.messages || []).map((m: ChatHistoryMessage) => ({
     id: m.id,
     role: m.role,
     content: m.content,

@@ -366,6 +366,23 @@ export interface ProposalBundle {
   updated_at: string
 }
 
+export interface ProposalEvidenceSpan {
+  ref?: string
+  text?: string
+  matched_names?: string[]
+}
+
+export interface ProposalQuality {
+  signal?: string
+  confidence_band?: string
+  review_priority?: string
+}
+
+export interface ProposalObjectValue extends Record<string, unknown> {
+  evidence_span?: ProposalEvidenceSpan
+  quality?: ProposalQuality
+}
+
 export interface ProposalItem {
   id: string
   bundle_id: string
@@ -376,7 +393,7 @@ export interface ProposalItem {
   intra_chapter_seq?: number
   subject_ref: string
   predicate: string
-  object_ref_or_value: unknown
+  object_ref_or_value: ProposalObjectValue | string | number | boolean | null
   claim_layer: string
   perspective_ref?: string | null
   disclosed_to_refs?: string[]
@@ -543,6 +560,16 @@ export interface AthenaChapterContext {
   prompt_context: string
 }
 
+export interface AthenaConsistencyIssue {
+  severity?: string
+  status?: string
+  check_type?: string
+  type?: string
+  description?: string
+  message?: string
+  evidence?: string | Record<string, unknown>
+}
+
 export interface AthenaRetrievalIndexResult {
   status: string
   project_id: string
@@ -550,6 +577,7 @@ export interface AthenaRetrievalIndexResult {
   indexed: {
     documents: number
     chunks: number
+    terms: number
     embeddings: number
   }
 }
@@ -561,6 +589,7 @@ export interface AthenaRetrievalDiagnostics {
   vector_dimension: number
   total_documents: number
   total_chunks: number
+  total_terms: number
   total_embeddings: number
   documents_by_source_type: Record<string, number>
 }

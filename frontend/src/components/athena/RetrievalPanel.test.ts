@@ -14,6 +14,7 @@ describe('RetrievalPanel', () => {
           vector_dimension: 96,
           total_documents: 3,
           total_chunks: 4,
+          total_terms: 27,
           total_embeddings: 4,
           documents_by_source_type: { chapter: 2, world_fact: 1 },
         },
@@ -61,6 +62,7 @@ describe('RetrievalPanel', () => {
 
     expect(wrapper.text()).toContain('世界事实')
     expect(wrapper.text()).toContain('章节原文')
+    expect(wrapper.text()).toContain('27')
     expect(wrapper.text()).toContain('可用于核对设定')
 
     await wrapper.findAll('button').find((button) => button.text().includes('世界事实'))!.trigger('click')

@@ -4,10 +4,10 @@ import BaseBadge from '../base/BaseBadge.vue'
 import WorldProposalImpactList from '../world/WorldProposalImpactList.vue'
 import WorldProposalItemCard from '../world/WorldProposalItemCard.vue'
 import { useAthenaStore } from '../../stores/athena'
-import type { ProposalItem, ProposalReviewRequest } from '../../api/types'
+import type { PaginatedProposalBundles, ProposalBundle, ProposalItem, ProposalReviewRequest } from '../../api/types'
 
 const props = defineProps<{
-  proposals: any
+  proposals: PaginatedProposalBundles | null
   projectId?: string
 }>()
 
@@ -21,11 +21,11 @@ async function toggle(id: string) {
   }
 }
 
-function bundleStatus(bundle: any) {
-  return bundle.bundle_status || bundle.status || 'unknown'
+function bundleStatus(bundle: ProposalBundle) {
+  return bundle.bundle_status || 'unknown'
 }
 
-function bundleItemCount(bundle: any) {
+function bundleItemCount(bundle: ProposalBundle & { items?: ProposalItem[] }) {
   const detail = athena.proposalDetails[bundle.id]
   if (detail) return `${detail.items.length} 项`
   return Array.isArray(bundle.items) ? `${bundle.items.length} 项` : ''

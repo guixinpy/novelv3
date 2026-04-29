@@ -1,7 +1,15 @@
 <script setup lang="ts">
+import type { AthenaTimeline } from '../../api/types'
+
+type AthenaTimelineEvent = AthenaTimeline['events'][number] & {
+  event?: string
+  timestamp?: string
+  chapter_ref?: string | number
+}
+
 defineProps<{
-  events: any[]
-  anchors?: any[]
+  events: AthenaTimelineEvent[]
+  anchors?: AthenaTimeline['anchors']
 }>()
 </script>
 

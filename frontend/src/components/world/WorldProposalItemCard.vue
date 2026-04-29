@@ -36,6 +36,20 @@
       {{ item.claim_id }} / {{ item.authority_type }}
     </p>
 
+    <div v-if="evidenceSpan || quality" class="proposal-item-card__evidence">
+      <div v-if="evidenceSpan" class="proposal-item-card__evidence-block">
+        <span class="proposal-item-card__evidence-label">证据</span>
+        <strong v-if="evidenceSpan.ref">{{ evidenceSpan.ref }}</strong>
+        <p v-if="evidenceSpan.text">{{ evidenceSpan.text }}</p>
+        <p v-else-if="evidenceSpan.matched_names?.length">{{ evidenceSpan.matched_names.join(' / ') }}</p>
+      </div>
+      <div v-if="quality" class="proposal-item-card__evidence-block">
+        <span class="proposal-item-card__evidence-label">质量</span>
+        <strong>{{ quality.signal || 'unknown' }} / {{ quality.confidence_band || 'unknown' }}</strong>
+        <p>{{ priorityText }}</p>
+      </div>
+    </div>
+
     <WorldProposalActionPanel
       :busy="busy"
       :approval-review-id="approvalReviewId"
@@ -53,7 +67,14 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import WorldProposalActionPanel from './WorldProposalActionPanel.vue'
-import type { ProposalItem, ProposalReviewRequest, ProposalItemConflict } from '../../api/types'
+import type {
+  ProposalEvidenceSpan,
+  ProposalItem,
+  ProposalItemConflict,
+  ProposalObjectValue,
+  ProposalQuality,
+  ProposalReviewRequest,
+} from '../../api/types'
 
 const props = defineProps<{
   item: ProposalItem
@@ -72,6 +93,29 @@ const conflictClass = computed(() => {
   if (itemConflicts.value.some((c) => c.conflict_type === 'truth_conflict')) return 'has-conflict'
   if (itemConflicts.value.some((c) => c.conflict_type === 'high_impact')) return 'has-risk'
   return ''
+})
+
+const objectPayload = computed<ProposalObjectValue | null>(() => {
+  const value = props.item.object_ref_or_value
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  return value as ProposalObjectValue
+})
+
+const evidenceSpan = computed<ProposalEvidenceSpan | null>(() => {
+  const span = objectPayload.value?.evidence_span
+  return span && typeof span === 'object' ? span : null
+})
+
+const quality = computed<ProposalQuality | null>(() => {
+  const itemQuality = objectPayload.value?.quality
+  return itemQuality && typeof itemQuality === 'object' ? itemQuality : null
+})
+
+const priorityText = computed(() => {
+  const priority = quality.value?.review_priority || 'normal'
+  if (priority === 'high') return '优先人工复核'
+  if (priority === 'low') return '可低优先级处理'
+  return '常规复核'
 })
 
 const emit = defineEmits<{
@@ -149,10 +193,52 @@ function forwardRollback(reviewId: string, reason: string) {
   font-weight: 700;
 }
 
+.proposal-item-card__evidence {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.proposal-item-card__evidence-block {
+  min-width: 0;
+  border: 1px solid rgba(111, 69, 31, 0.12);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  background: rgba(255, 252, 244, 0.72);
+}
+
+.proposal-item-card__evidence-label {
+  display: block;
+  color: var(--color-text-tertiary);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.proposal-item-card__evidence-block strong {
+  display: block;
+  color: var(--color-text-primary);
+  font-size: 0.76rem;
+  overflow-wrap: anywhere;
+}
+
+.proposal-item-card__evidence-block p {
+  margin: 0.18rem 0 0;
+  color: var(--color-text-secondary);
+  font-size: 0.74rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 .proposal-item-card.has-conflict { border-left: 3px solid #dc2626; }
 .proposal-item-card.has-risk { border-left: 3px solid #d97706; }
 .proposal-item-card__conflicts { display: grid; gap: 0.3rem; }
 .proposal-item-card__conflict { font-size: 0.72rem; line-height: 1.4; }
 .proposal-item-card__conflict.is-truth_conflict { color: #dc2626; }
 .proposal-item-card__conflict.is-high_impact { color: #d97706; }
+
+@media (max-width: 720px) {
+  .proposal-item-card__evidence {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 </style>

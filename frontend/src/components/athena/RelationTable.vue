@@ -2,8 +2,17 @@
 import BaseTable from '../base/BaseTable.vue'
 import type { BaseTableColumn } from '../base/BaseTable.vue'
 
+export interface AthenaRelationRow extends Record<string, unknown> {
+  id?: string
+  source?: string
+  target?: string
+  source_ref?: string
+  target_ref?: string
+  relation_type?: string
+}
+
 defineProps<{
-  relations: any[]
+  relations: AthenaRelationRow[]
 }>()
 
 const columns: BaseTableColumn[] = [

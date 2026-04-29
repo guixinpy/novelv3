@@ -7,6 +7,7 @@ import { createAthenaRetrievalActions } from './athenaModules/retrieval'
 import { toErrorMessage } from './athenaModules/errors'
 import type {
   AthenaEvolutionPlan,
+  AthenaConsistencyIssue,
   AthenaOntology,
   AthenaOptimization,
   AthenaRetrievalDiagnostics,
@@ -36,7 +37,7 @@ export const useAthenaStore = defineStore('athena', () => {
   const proposals = ref<PaginatedProposalBundles | null>(null)
   const proposalDetails = ref<Record<string, ProposalBundleDetail>>({})
   const proposalBusy = ref<Record<string, boolean>>({})
-  const consistencyIssues = ref<any[]>([])
+  const consistencyIssues = ref<AthenaConsistencyIssue[]>([])
   const optimization = ref<AthenaOptimization | null>(null)
   const retrievalDiagnostics = ref<AthenaRetrievalDiagnostics | null>(null)
   const retrievalSearch = ref<AthenaRetrievalSearchResponse | null>(null)

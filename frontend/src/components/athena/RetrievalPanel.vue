@@ -110,6 +110,10 @@ function sourceHint(item: AthenaRetrievalSearchItem) {
         <strong>{{ props.diagnostics?.total_embeddings ?? 0 }}</strong>
       </div>
       <div class="retrieval-panel__metric">
+        <span class="retrieval-panel__metric-label">词项</span>
+        <strong>{{ props.diagnostics?.total_terms ?? 0 }}</strong>
+      </div>
+      <div class="retrieval-panel__metric">
         <span class="retrieval-panel__metric-label">章节/事实</span>
         <strong>{{ sourceCounts.chapter ?? 0 }} / {{ sourceCounts.world_fact ?? 0 }}</strong>
       </div>
@@ -117,7 +121,8 @@ function sourceHint(item: AthenaRetrievalSearchItem) {
 
     <div v-if="props.lastIndexResult" class="retrieval-panel__notice">
       已索引 {{ props.lastIndexResult.indexed.documents }} 个文档、
-      {{ props.lastIndexResult.indexed.chunks }} 个分块。
+      {{ props.lastIndexResult.indexed.chunks }} 个分块、
+      {{ props.lastIndexResult.indexed.terms ?? 0 }} 个词项。
     </div>
 
     <div v-if="props.search" class="retrieval-panel__results">
