@@ -229,6 +229,42 @@ async def test_compaction_summary_uses_registry_backed_prompt(monkeypatch):
     assert summary.summary_text == "模型生成的压缩摘要"
 
 
+@pytest.mark.asyncio
+async def test_compaction_summary_returns_fallback_when_prompt_build_fails(monkeypatch):
+    class BrokenAssembler:
+        def build(self, prompt_id, variables):
+            raise RuntimeError("template unavailable")
+
+    class UnusedAIService:
+        async def complete(self, messages, **kwargs):
+            raise AssertionError("AI complete should not be called when prompt build fails")
+
+    monkeypatch.setattr("app.core.chat_compaction.PromptAssembler", BrokenAssembler)
+
+    messages = [
+        SimpleNamespace(role="user", content="我要把项目推进到大纲阶段。", action_result=None, meta=None),
+        SimpleNamespace(role="assistant", content="准备生成故事线。", action_result=None, meta=None),
+    ]
+    diagnosis = ProjectDiagnosisOut(
+        missing_items=["outline", "content"],
+        completed_items=["setup", "storyline"],
+        suggested_next_step="preview_outline",
+    )
+
+    summary = await build_compaction_summary(
+        messages,
+        ai_service=UnusedAIService(),
+        model="deepseek-chat",
+        project_name="潮汐门",
+        diagnosis=diagnosis,
+    )
+
+    assert "用户目标：我要把项目推进到大纲阶段。" in summary.summary_text
+    assert "项目诊断：" in summary.summary_text
+    assert "已完成 设定、故事线" in summary.summary_text
+    assert "缺失 大纲、正文" in summary.summary_text
+
+
 @patch("app.api.dialogs.load_api_key", return_value="sk-test")
 @patch("app.api.dialogs.ai_service.complete", new_callable=AsyncMock)
 def test_chat_uses_ai_service_for_free_text_when_model_available(mock_complete, mock_key, client):

@@ -57,3 +57,17 @@ async def test_l2_extractor_uses_registered_prompt_and_parses_facts(monkeypatch)
     assert "TAIL_SHOULD_BE_TRUNCATED" not in fake_ai.messages[0]["content"]
     assert fake_ai.kwargs["response_format"] == {"type": "json_object"}
     assert facts == parsed_facts
+
+
+@pytest.mark.asyncio
+async def test_l2_extractor_returns_empty_when_prompt_build_fails(monkeypatch):
+    class BrokenAssembler:
+        def build(self, prompt_id, variables):
+            raise RuntimeError("template unavailable")
+
+    monkeypatch.setattr(l2_module, "load_api_key", lambda: "sk-test")
+    monkeypatch.setattr(l2_module, "PromptAssembler", BrokenAssembler)
+
+    extractor = L2LLMExtractor()
+
+    assert await extractor.extract("任意章节内容") == []

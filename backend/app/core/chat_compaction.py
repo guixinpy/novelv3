@@ -42,15 +42,14 @@ async def build_compaction_summary(
     fallback_summary = _build_deterministic_fallback(messages, diagnosis)
     summary_text = fallback_summary
 
-    prompt = PromptAssembler().build(
-        "dialog.compact",
-        {
-            "project_name": project_name or "未命名项目",
-            "dialog_lines": _build_dialog_lines(messages),
-        },
-    ).content
-
     try:
+        prompt = PromptAssembler().build(
+            "dialog.compact",
+            {
+                "project_name": project_name or "未命名项目",
+                "dialog_lines": _build_dialog_lines(messages),
+            },
+        ).content
         result = await ai_service.complete(
             [{"role": "system", "content": prompt}],
             temperature=0.2,

@@ -10,11 +10,11 @@ class L2LLMExtractor:
     async def extract(self, chapter_content: str) -> list[dict]:
         if not load_api_key():
             return []
-        prompt = PromptAssembler().build(
-            "athena.extract_l2",
-            {"content": chapter_content[:3000]},
-        ).content
         try:
+            prompt = PromptAssembler().build(
+                "athena.extract_l2",
+                {"content": chapter_content[:3000]},
+            ).content
             result = await self.ai_service.complete(
                 [{"role": "user", "content": prompt}],
                 temperature=0.3,
