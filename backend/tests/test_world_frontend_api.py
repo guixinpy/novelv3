@@ -9,6 +9,7 @@ from app.models import (
     GenreProfile,
     Project,
     ProjectProfileVersion,
+    Setup,
     WorldEvent,
     WorldFactClaim,
     WorldTimelineAnchor,
@@ -251,6 +252,38 @@ def test_world_model_snapshot_validates_chapter_index_before_empty_projection(cl
     assert missing_response.status_code == 404
     assert athena_negative_response.status_code == 422
     assert athena_zero_response.status_code == 422
+
+
+def test_athena_facade_routes_remain_compatible_after_router_split(client, db_session):
+    project = Project(name="Athena Facade Routes")
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    db_session.add(
+        Setup(
+            project_id=project.id,
+            status="generated",
+            characters=[{"name": "林舟"}],
+            world_building={"rules": "旧灯塔熄灭时，亡者不能被直接召回。"},
+            core_concept={"theme": "记忆与真相"},
+        )
+    )
+    db_session.commit()
+
+    checks = [
+        client.get(f"/api/v1/projects/{project.id}/athena/optimization"),
+        client.get(f"/api/v1/projects/{project.id}/athena/ontology"),
+        client.get(f"/api/v1/projects/{project.id}/athena/ontology/import-setup/preview"),
+        client.get(f"/api/v1/projects/{project.id}/athena/state"),
+        client.get(f"/api/v1/projects/{project.id}/athena/evolution/proposals"),
+        client.get(f"/api/v1/projects/{project.id}/athena/retrieval/diagnostics"),
+        client.get(f"/api/v1/projects/{project.id}/athena/dialog/messages"),
+        client.get(f"/api/v1/projects/{project.id}/athena/context/chapter/1"),
+    ]
+
+    assert [response.status_code for response in checks] == [200] * len(checks)
+    assert checks[2].json()["status"] == "preview"
+    assert "rules" in checks[1].json()
 
 
 def test_world_model_bundle_endpoints_support_review_split_and_rollback(client, db_session):
