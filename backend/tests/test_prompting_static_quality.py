@@ -90,8 +90,7 @@ def test_registered_prompt_templates_render_with_sample_variables():
     for prompt_id, spec in PROMPT_REGISTRY.items():
         variables = {name: SAMPLE_PROMPT_VARS[name] for name in spec.required_vars}
         rendered = renderer.render(spec.template_name, variables)
-        unresolved_template_vars = Template(rendered.content).get_identifiers()
-        unresolved_braces = re.findall(r"{{[^{}]+}}", rendered.content)
+        unresolved_template_vars, unresolved_braces = _unresolved_placeholders(rendered.content)
         if unresolved_template_vars or unresolved_braces:
             failures.append(
                 {
@@ -102,6 +101,42 @@ def test_registered_prompt_templates_render_with_sample_variables():
                 }
             )
 
+    assert failures == []
+
+
+def test_all_prompt_templates_render_with_sample_variables():
+    renderer = PromptRenderer()
+    failures = []
+    rendered_template_names = set()
+
+    for path in sorted(default_prompts_dir().glob("*.txt")):
+        template_name = path.stem
+        source = path.read_text(encoding="utf-8")
+        required_vars = Template(source).get_identifiers()
+        missing_sample_vars = sorted(set(required_vars) - set(SAMPLE_PROMPT_VARS))
+        if missing_sample_vars:
+            failures.append(
+                {
+                    "template": template_name,
+                    "missing_sample_vars": missing_sample_vars,
+                }
+            )
+            continue
+
+        variables = {name: SAMPLE_PROMPT_VARS[name] for name in required_vars}
+        rendered = renderer.render(template_name, variables)
+        rendered_template_names.add(template_name)
+        unresolved_template_vars, unresolved_braces = _unresolved_placeholders(rendered.content)
+        if unresolved_template_vars or unresolved_braces:
+            failures.append(
+                {
+                    "template": template_name,
+                    "dollar_vars": unresolved_template_vars,
+                    "brace_vars": unresolved_braces,
+                }
+            )
+
+    assert "chat_project_assistant" in rendered_template_names
     assert failures == []
 
 
@@ -191,6 +226,13 @@ def _production_call_site_files(prompt_id: str) -> set[str]:
         if prompt_id in path.read_text(encoding="utf-8"):
             files.add(relative_path)
     return files
+
+
+def _unresolved_placeholders(content: str) -> tuple[list[str], list[str]]:
+    return (
+        Template(content).get_identifiers(),
+        re.findall(r"{{[^{}]+}}", content),
+    )
 
 
 def _backend_file(relative_path: str) -> Path:
