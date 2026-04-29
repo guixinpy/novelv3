@@ -101,13 +101,56 @@ def test_analyze_chapter_creates_reviewable_candidates_without_duplicates(client
     assert response.status_code == 200
     payload = response.json()
     assert payload["status"] == "completed"
-    assert payload["created"]["proposal_items"] == 2
+    assert payload["created"]["proposal_items"] == 4
     assert payload["skipped"]["duplicates"] == 0
     assert rerun.status_code == 200
     assert rerun.json()["created"]["proposal_items"] == 0
-    assert rerun.json()["skipped"]["duplicates"] == 2
+    assert rerun.json()["skipped"]["duplicates"] == 4
     assert db_session.query(WorldProposalBundle).filter_by(project_id=project.id).count() == 1
-    assert db_session.query(WorldProposalItem).filter_by(project_id=project.id).count() == 2
+    assert db_session.query(WorldProposalItem).filter_by(project_id=project.id).count() == 4
+    assert db_session.query(WorldFactClaim).filter_by(project_id=project.id).count() == 0
+
+
+def test_analyze_chapter_creates_non_character_entity_mentions(client, db_session):
+    project = _seed_project_with_setup(db_session)
+    client.post(f"/api/v1/projects/{project.id}/athena/ontology/import-setup")
+    db_session.add(
+        ChapterContent(
+            project_id=project.id,
+            chapter_index=1,
+            title="第一章 灯塔",
+            content="雾港城入夜，旧灯塔重新点亮。档案局封锁街区，黑潮门在旧灯塔地下低鸣。",
+            word_count=34,
+            status="generated",
+        )
+    )
+    db_session.commit()
+
+    response = client.post(f"/api/v1/projects/{project.id}/athena/evolution/chapters/1/analyze")
+    rerun = client.post(f"/api/v1/projects/{project.id}/athena/evolution/chapters/1/analyze")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["created"]["proposal_items"] == 4
+    assert payload["skipped"]["duplicates"] == 0
+    assert rerun.status_code == 200
+    assert rerun.json()["created"]["proposal_items"] == 0
+    assert rerun.json()["skipped"]["duplicates"] == 4
+
+    items = (
+        db_session.query(WorldProposalItem)
+        .filter_by(project_id=project.id, predicate="mentioned_in_chapter")
+        .all()
+    )
+    assert {item.subject_ref for item in items} == {
+        "loc.雾港城",
+        "loc.旧灯塔",
+        "faction.档案局",
+        "artifact.黑潮门",
+    }
+    lighthouse = next(item for item in items if item.subject_ref == "loc.旧灯塔")
+    assert lighthouse.object_ref_or_value["mention_count"] == 2
+    assert lighthouse.object_ref_or_value["entity_type"] == "location"
     assert db_session.query(WorldFactClaim).filter_by(project_id=project.id).count() == 0
 
 

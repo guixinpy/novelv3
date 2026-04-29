@@ -187,6 +187,14 @@ def analyze_chapter_to_world_proposals(db: Session, project_id: str, chapter_ind
         for fact in facts
         if fact.get("type") == "character_presence"
     ]
+    candidates.extend(
+        _extract_non_character_entity_mentions(
+            db=db,
+            project_id=project_id,
+            profile=profile,
+            chapter=chapter,
+        )
+    )
 
     duplicate_count = 0
     new_candidates = []
@@ -512,6 +520,69 @@ def _candidate_from_l1_fact(
     )
 
 
+def _extract_non_character_entity_mentions(
+    *,
+    db: Session,
+    project_id: str,
+    profile: ProjectProfileVersion,
+    chapter: ChapterContent,
+) -> list[ProposalCandidateFactCreate]:
+    text = chapter.content or ""
+    candidates: list[ProposalCandidateFactCreate] = []
+    for entity in _non_character_entities_from_world_model(db, project_id, profile.version):
+        mention_count = _count_entity_mentions(text=text, names=entity["names"])
+        if mention_count <= 0:
+            continue
+        candidates.append(
+            _candidate_from_entity_mention(
+                project_id=project_id,
+                profile=profile,
+                chapter=chapter,
+                entity_ref=entity["ref"],
+                entity_name=entity["name"],
+                entity_type=entity["entity_type"],
+                mention_count=mention_count,
+            )
+        )
+    return candidates
+
+
+def _candidate_from_entity_mention(
+    *,
+    project_id: str,
+    profile: ProjectProfileVersion,
+    chapter: ChapterContent,
+    entity_ref: str,
+    entity_name: str,
+    entity_type: str,
+    mention_count: int,
+) -> ProposalCandidateFactCreate:
+    claim_id = f"claim.chapter.{chapter.chapter_index}.{_slug(entity_ref)}.mentioned_in_chapter"
+    return ProposalCandidateFactCreate(
+        project_id=project_id,
+        project_profile_version_id=profile.id,
+        profile_version=profile.version,
+        contract_version=profile.contract_version,
+        claim_id=claim_id,
+        chapter_index=chapter.chapter_index,
+        intra_chapter_seq=0,
+        subject_ref=entity_ref,
+        predicate="mentioned_in_chapter",
+        object_ref_or_value={
+            "chapter_index": chapter.chapter_index,
+            "entity_name": entity_name,
+            "entity_type": entity_type,
+            "mention_count": mention_count,
+            "source": "deterministic_mention",
+        },
+        claim_layer="truth",
+        evidence_refs=[f"chapter:{chapter.chapter_index}"],
+        authority_type=DERIVED,
+        confidence=0.75,
+        notes=f"自动抽取：{entity_name} 在第{chapter.chapter_index}章被提及 {mention_count} 次。",
+    )
+
+
 def _characters_from_world_model(db: Session, project_id: str, profile_version: int) -> list[dict[str, Any]]:
     characters = (
         db.query(WorldCharacter)
@@ -519,6 +590,64 @@ def _characters_from_world_model(db: Session, project_id: str, profile_version: 
         .all()
     )
     return [{"name": character.name, "character_status": "alive"} for character in characters]
+
+
+def _non_character_entities_from_world_model(db: Session, project_id: str, profile_version: int) -> list[dict[str, Any]]:
+    entities: list[dict[str, Any]] = []
+    locations = (
+        db.query(WorldLocation)
+        .filter(WorldLocation.project_id == project_id, WorldLocation.profile_version == profile_version)
+        .order_by(WorldLocation.name.asc(), WorldLocation.canonical_id.asc())
+        .all()
+    )
+    for location in locations:
+        entities.append(_entity_mention_descriptor(location, "location"))
+
+    factions = (
+        db.query(WorldFaction)
+        .filter(WorldFaction.project_id == project_id, WorldFaction.profile_version == profile_version)
+        .order_by(WorldFaction.name.asc(), WorldFaction.canonical_id.asc())
+        .all()
+    )
+    for faction in factions:
+        entities.append(_entity_mention_descriptor(faction, "faction"))
+
+    artifacts = (
+        db.query(WorldArtifact)
+        .filter(WorldArtifact.project_id == project_id, WorldArtifact.profile_version == profile_version)
+        .order_by(WorldArtifact.name.asc(), WorldArtifact.canonical_id.asc())
+        .all()
+    )
+    for artifact in artifacts:
+        entities.append(_entity_mention_descriptor(artifact, "artifact"))
+    return entities
+
+
+def _entity_mention_descriptor(entity: Any, entity_type: str) -> dict[str, Any]:
+    names = _entity_mention_names(entity)
+    return {
+        "ref": entity.canonical_id,
+        "name": entity.name,
+        "entity_type": entity_type,
+        "names": names,
+    }
+
+
+def _entity_mention_names(entity: Any) -> list[str]:
+    raw_names = [entity.name, entity.primary_alias, *(entity.aliases or [])]
+    names: list[str] = []
+    seen: set[str] = set()
+    for raw_name in raw_names:
+        name = str(raw_name or "").strip()
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        names.append(name)
+    return names
+
+
+def _count_entity_mentions(*, text: str, names: list[str]) -> int:
+    return sum(text.count(name) for name in names if name)
 
 
 def _extract_setup_world_terms(setup: Setup) -> dict[str, list[dict[str, str]]]:
