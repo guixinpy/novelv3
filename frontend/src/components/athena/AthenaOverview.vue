@@ -23,12 +23,12 @@ const metrics = computed(() => props.dashboard?.metrics ?? {
 })
 
 const metricItems = computed(() => [
-  { label: '实体', value: metrics.value.entity_count },
-  { label: '事实', value: metrics.value.fact_count },
-  { label: '在场', value: metrics.value.presence_count },
-  { label: '事件', value: metrics.value.event_count },
-  { label: '待审包', value: metrics.value.pending_bundle_count },
-  { label: '待审条目', value: metrics.value.pending_item_count },
+  { key: 'entity_count', label: '实体', value: metrics.value.entity_count },
+  { key: 'fact_count', label: '事实', value: metrics.value.fact_count },
+  { key: 'presence_count', label: '在场', value: metrics.value.presence_count },
+  { key: 'event_count', label: '事件', value: metrics.value.event_count },
+  { key: 'pending_bundle_count', label: '待审包', value: metrics.value.pending_bundle_count },
+  { key: 'pending_item_count', label: '待审条目', value: metrics.value.pending_item_count },
 ])
 
 const profileLabel = computed(() => {
@@ -51,7 +51,7 @@ function goNext() {
 </script>
 
 <template>
-  <section class="athena-overview">
+  <section class="athena-overview" data-testid="athena-overview">
     <header class="athena-overview__header">
       <div>
         <p class="athena-overview__eyebrow">{{ profileLabel }}</p>
@@ -68,7 +68,12 @@ function goNext() {
     </header>
 
     <div class="athena-overview__metrics">
-      <div v-for="item in metricItems" :key="item.label" class="athena-overview__metric">
+      <div
+        v-for="item in metricItems"
+        :key="item.key"
+        class="athena-overview__metric"
+        :data-testid="`athena-overview-metric-${item.key}`"
+      >
         <span>{{ item.label }}</span>
         <strong>{{ item.value }}</strong>
       </div>

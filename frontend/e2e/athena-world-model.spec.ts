@@ -44,24 +44,35 @@ test('renders Athena projection and proposal workbench from local world-model da
     const detailResponse = await page.request.get(`/api/v1/projects/${projectId}/world-model/proposal-bundles/${bundle.id}`)
     expect(detailResponse.status()).toBe(200)
     const detail = await detailResponse.json()
+    const pendingBeforeReview = detail.items.filter((item: any) =>
+      ['pending', 'needs_edit'].includes(item.item_status),
+    ).length
     const lighthouseMention = detail.items.find((item: any) =>
       item.subject_ref === 'loc.旧灯塔' && item.predicate === 'mentioned_in_chapter',
     )
     expect(lighthouseMention?.id).toBeTruthy()
 
-    const reviewResponse = await page.request.post(
-      `/api/v1/projects/${projectId}/world-model/proposal-items/${lighthouseMention.id}/review`,
-      {
-        data: {
-          reviewer_ref: 'e2e',
-          action: 'approve',
-          reason: 'E2E 确认旧灯塔章节提及',
-          evidence_refs: ['e2e'],
-          edited_fields: {},
-        },
-      },
-    )
-    expect(reviewResponse.status()).toBe(200)
+    await page.goto(`/projects/${projectId}/athena`)
+    await expect(page.getByTestId('workspace-athena')).toBeVisible()
+    await expect(page.getByTestId('athena-overview')).toBeVisible()
+    await expect(page.getByTestId('athena-overview-metric-pending_item_count')).toContainText(String(pendingBeforeReview))
+    await expect(page.getByTestId('athena-overview-next-action')).toContainText('处理待审世界模型提案')
+
+    await page.getByTestId('athena-overview-next-action').click()
+    await expect(page).toHaveURL(new RegExp(`/projects/${projectId}/athena/proposals$`))
+    await expect(page.getByTestId('world-proposal-bundle-list')).toBeVisible()
+
+    const lighthouseCard = page
+      .getByTestId('world-proposal-item-card')
+      .filter({ hasText: 'loc.旧灯塔.mentioned_in_chapter' })
+      .first()
+    await expect(lighthouseCard).toBeVisible()
+    await lighthouseCard.getByRole('button', { name: '通过', exact: true }).click()
+    await expect(lighthouseCard).toContainText('approved')
+
+    await page.goto(`/projects/${projectId}/athena`)
+    await expect(page.getByTestId('athena-overview')).toBeVisible()
+    await expect(page.getByTestId('athena-overview-metric-pending_item_count')).toContainText(String(pendingBeforeReview - 1))
 
     await page.goto(`/projects/${projectId}/athena/projection`)
     await expect(page.getByTestId('workspace-athena')).toBeVisible()

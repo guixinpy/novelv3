@@ -363,9 +363,11 @@ describe('worldModel store', () => {
       evidence_refs: ['chapter.01'],
       edited_fields: {},
     })
+    expect(api.getWorldModelDashboard).toHaveBeenCalledWith('project-1')
     expect(api.getWorldModelOverview).toHaveBeenCalledWith('project-1')
     expect(api.listWorldProposalBundles).toHaveBeenCalledWith('project-1', expect.any(Object))
     expect(api.getWorldProposalBundle).toHaveBeenCalledWith('project-1', 'bundle-1')
+    expect(store.dashboard?.next_action.action).toBe('inspect_projection')
     expect(store.projection?.facts['char.hero'].rank).toBe('captain')
     expect(store.proposalBundles[0].bundle_status).toBe('approved')
     expect(store.selectedBundleDetail?.items[0].item_status).toBe('approved')
