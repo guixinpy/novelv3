@@ -1,5 +1,14 @@
 from unittest.mock import patch
 
+from app.config import load_api_key
+
+
+def test_load_api_key_can_be_disabled_for_local_e2e(monkeypatch):
+    monkeypatch.setenv("MOZHOU_DISABLE_API_KEY", "1")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test")
+
+    assert load_api_key() is None
+
 
 def test_get_config_no_key(client):
     with patch("app.api.config.load_api_key", return_value=None):

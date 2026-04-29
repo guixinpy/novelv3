@@ -5,6 +5,8 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent
 
 
 def load_api_key() -> str | None:
+    if os.getenv("MOZHOU_DISABLE_API_KEY") == "1":
+        return None
     if os.getenv("DEEPSEEK_API_KEY"):
         return os.getenv("DEEPSEEK_API_KEY")
     try:

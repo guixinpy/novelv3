@@ -12,6 +12,7 @@ TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/novelv3-e2e.XXXXXX")"
 BACKEND_LOG="$TEMP_DIR/backend.log"
 DB_PATH="$TEMP_DIR/mozhou.db"
 export MOZHOU_DATABASE_URL="sqlite:///$DB_PATH"
+export MOZHOU_DISABLE_API_KEY=1
 
 cleanup() {
   set +e
