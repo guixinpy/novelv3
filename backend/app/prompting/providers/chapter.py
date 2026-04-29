@@ -11,6 +11,16 @@ from app.prompting.providers.retrieval import build_chapter_retrieval_block
 from app.prompting.providers.style import build_style_rule_block
 
 CHAPTER_CONTEXT_CHAR_BUDGET = 24000
+PRIORITY_USER_FEEDBACK = 0
+PRIORITY_LENGTH_CONSTRAINT = 1
+PRIORITY_CHAPTER_TARGET = 10
+PRIORITY_ATHENA_CONTEXT = 20
+PRIORITY_RETRIEVAL_EVIDENCE = 30
+PRIORITY_PREVIOUS_CHAPTER = 40
+PRIORITY_SETUP_WORLD = 50
+PRIORITY_SETUP_CHARACTERS = 55
+PRIORITY_STYLE_RULE = 60
+PRIORITY_FEW_SHOT = 70
 
 
 def build_chapter_prompt_variables(project: Project, setup: Setup, chapter_index: int) -> dict:
@@ -38,7 +48,7 @@ def build_chapter_prompt_context_blocks(
                 title="世界观",
                 content=json.dumps(setup.world_building, ensure_ascii=False),
             ),
-            10,
+            PRIORITY_SETUP_WORLD,
         ),
         _prioritized(
             build_context_block(
@@ -47,18 +57,18 @@ def build_chapter_prompt_context_blocks(
                 title="角色",
                 content=json.dumps(setup.characters, ensure_ascii=False),
             ),
-            20,
+            PRIORITY_SETUP_CHARACTERS,
         ),
     ]
     trace_only_blocks: list[dict] = []
 
     outline_block = _build_outline_chapter_target_block(db, project.id, chapter_index)
     if outline_block:
-        model_blocks.append(_prioritized(outline_block, 30))
+        model_blocks.append(_prioritized(outline_block, PRIORITY_CHAPTER_TARGET))
 
     previous_block = _build_previous_chapter_summary_block(db, project.id, chapter_index)
     if previous_block:
-        model_blocks.append(_prioritized(previous_block, 40))
+        model_blocks.append(_prioritized(previous_block, PRIORITY_PREVIOUS_CHAPTER))
 
     athena_block, athena_package = build_athena_chapter_context_block(
         db,
@@ -66,7 +76,7 @@ def build_chapter_prompt_context_blocks(
         chapter_index=chapter_index,
     )
     if athena_block:
-        model_blocks.append(_prioritized(athena_block, 50))
+        model_blocks.append(_prioritized(athena_block, PRIORITY_ATHENA_CONTEXT))
 
     retrieval_block, _retrieval_context = build_chapter_retrieval_block(
         db,
@@ -75,7 +85,7 @@ def build_chapter_prompt_context_blocks(
     )
     if retrieval_block:
         if athena_context_has_retrieval(athena_package):
-            retrieval_block = _prioritized(retrieval_block, 55)
+            retrieval_block = _prioritized(retrieval_block, PRIORITY_RETRIEVAL_EVIDENCE)
             retrieval_block["metadata"] = {
                 **retrieval_block.get("metadata", {}),
                 "trace_only": True,
@@ -83,15 +93,15 @@ def build_chapter_prompt_context_blocks(
             }
             trace_only_blocks.append(retrieval_block)
         else:
-            model_blocks.append(_prioritized(retrieval_block, 55))
+            model_blocks.append(_prioritized(retrieval_block, PRIORITY_RETRIEVAL_EVIDENCE))
 
     style_block = build_style_rule_block(project)
     if style_block:
-        model_blocks.append(_prioritized(style_block, 70))
+        model_blocks.append(_prioritized(style_block, PRIORITY_STYLE_RULE))
 
     few_shot_block = build_few_shot_examples_block(project)
     if few_shot_block:
-        model_blocks.append(_prioritized(few_shot_block, 80))
+        model_blocks.append(_prioritized(few_shot_block, PRIORITY_FEW_SHOT))
 
     if extra_feedback:
         model_blocks.append(
@@ -102,7 +112,7 @@ def build_chapter_prompt_context_blocks(
                     title="用户修订反馈",
                     content=extra_feedback,
                 ),
-                60,
+                PRIORITY_USER_FEEDBACK,
             )
         )
         length_constraint = build_length_constraint(extra_feedback)
@@ -115,7 +125,7 @@ def build_chapter_prompt_context_blocks(
                         title="长度约束",
                         content=length_constraint,
                     ),
-                    65,
+                    PRIORITY_LENGTH_CONSTRAINT,
                 )
             )
 
