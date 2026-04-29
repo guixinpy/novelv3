@@ -6,7 +6,6 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm.session import Session as OrmSession
 
 from app.api import dialogs as dialogs_api
@@ -17,8 +16,9 @@ from app.core.chat_commands import (
 )
 from app.core.chat_compaction import build_compaction_summary
 from app.core.intent_router import IntentRouter, parse_chapter_index
-from app.models import AIModelCallTrace, Dialog, Outline, PendingAction, Setup, Storyline
+from app.models import AIModelCallTrace, BackgroundTask, Dialog, Outline, PendingAction, Setup, Storyline
 from app.schemas import ProjectDiagnosisOut
+from app.services.actions.action_result_service import ActionResultService
 
 ORIGINAL_SESSION_COMMIT = OrmSession.commit
 
@@ -809,6 +809,34 @@ def test_resolve_action_confirm_sets_dialog_state_running(client, db_session):
     assert dialog.state == "running"
 
 
+def test_resolve_action_confirm_creates_background_task(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Test"})
+    pid = r.json()["id"]
+
+    r2 = client.post("/api/v1/dialog/chat", json={
+        "project_id": pid,
+        "input_type": "button",
+        "action_type": "preview_setup",
+    })
+    action_id = r2.json()["pending_action"]["id"]
+
+    with patch("app.api.dialogs.LocalTaskRunner.start") as start:
+        r3 = client.post("/api/v1/dialog/resolve-action", json={
+            "action_id": action_id,
+            "decision": "confirm",
+        })
+
+    assert r3.status_code == 200
+    task_id = r3.json()["action_result"]["data"]["task_id"]
+    task = db_session.query(BackgroundTask).filter(BackgroundTask.id == task_id).one()
+    assert task.project_id == pid
+    assert task.task_type == "generate_setup"
+    assert task.payload["dialog_id"]
+    assert task.payload["action_params"]["project_id"] == pid
+    assert task.status == "pending"
+    start.assert_called_once()
+
+
 @pytest.mark.parametrize("result_payload", [
     {"status": "success"},
     {"status": "failed", "error": "boom"},
@@ -826,16 +854,12 @@ def test_background_completion_restores_dialog_state_to_chatting(result_payload,
     assert dialog is not None
     dialog.state = "running"
     db_session.commit()
-    background_session_factory = sessionmaker(
-        autocommit=False,
-        autoflush=False,
-        bind=db_session.get_bind(),
+    ActionResultService(db_session).record_completion(
+        action_type="generate_setup",
+        project_id=pid,
+        dialog_id=dialog.id,
+        result=result_payload,
     )
-
-    with patch("app.db.SessionLocal", background_session_factory), \
-            patch("app.api.dialogs._execute_action", new=AsyncMock(return_value=result_payload)), \
-            patch("app.api.dialogs.asyncio.ensure_future", side_effect=lambda coro: asyncio.run(coro)):
-        dialogs_api._execute_action_background("generate_setup", pid, dialog.id)
 
     db_session.expire_all()
     refreshed_dialog = db_session.query(Dialog).filter(Dialog.project_id == pid).first()
@@ -872,16 +896,12 @@ def test_background_completion_attaches_generation_trace_to_system_message(clien
     )
     db_session.add(trace)
     db_session.commit()
-    background_session_factory = sessionmaker(
-        autocommit=False,
-        autoflush=False,
-        bind=db_session.get_bind(),
+    ActionResultService(db_session).record_completion(
+        action_type="generate_setup",
+        project_id=pid,
+        dialog_id=dialog.id,
+        result={"status": "success", "trace_id": trace.id},
     )
-
-    with patch("app.db.SessionLocal", background_session_factory), \
-            patch("app.api.dialogs._execute_action", new=AsyncMock(return_value={"status": "success", "trace_id": trace.id})), \
-            patch("app.api.dialogs.asyncio.ensure_future", side_effect=lambda coro: asyncio.run(coro)):
-        dialogs_api._execute_action_background("generate_setup", pid, dialog.id)
 
     db_session.expire_all()
     latest_message = (

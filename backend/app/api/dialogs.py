@@ -24,7 +24,12 @@ from app.prompting.providers.dialog import (
     build_dialog_history_block,
 )
 from app.schemas import ChatIn, ChatOut, PendingActionOut, ProjectDiagnosisOut, ResolveActionIn
+from app.services.actions.action_execution_service import ActionExecutionService, chapter_action_params
+from app.services.actions.action_proposal_service import preview_action_to_execution
+from app.services.actions.action_result_service import ActionResultService
 from app.services.dialog.messages import DialogMessageService
+from app.services.tasks.background_task_service import BackgroundTaskService
+from app.services.tasks.local_task_runner import LocalTaskRunner
 from app.services.workspace.bootstrap import build_project_diagnosis
 
 router = APIRouter(tags=["dialogs"])
@@ -149,10 +154,7 @@ def _build_running_guard_response(
 
 
 def _chapter_action_params(command_args: str | None = None, candidate_params: dict | None = None) -> dict:
-    params = dict(candidate_params or {})
-    chapter_index = params.get("chapter_index") or parse_chapter_index(command_args) or 1
-    params["chapter_index"] = int(chapter_index)
-    return params
+    return chapter_action_params(command_args, candidate_params)
 
 
 def _save_command_feedback(
@@ -794,9 +796,6 @@ def _action_description(action_type: str, params: dict | None = None) -> str:
     return mapping.get(action_type, "已准备好执行操作。")
 
 
-import asyncio
-
-
 def _latest_action_trace_id(
     db: Session,
     *,
@@ -804,14 +803,11 @@ def _latest_action_trace_id(
     trace_type: str,
     chapter_index: int | None = None,
 ) -> str | None:
-    query = db.query(AIModelCallTrace).filter(
-        AIModelCallTrace.project_id == project_id,
-        AIModelCallTrace.trace_type == trace_type,
+    return ActionExecutionService(db).latest_trace_id(
+        project_id=project_id,
+        trace_type=trace_type,
+        chapter_index=chapter_index,
     )
-    if chapter_index is not None:
-        query = query.filter(AIModelCallTrace.chapter_index == chapter_index)
-    trace = query.order_by(AIModelCallTrace.created_at.desc(), AIModelCallTrace.id.desc()).first()
-    return trace.id if trace else None
 
 
 async def _execute_action(
@@ -821,55 +817,12 @@ async def _execute_action(
     command_args: str | None = None,
     action_params: dict | None = None,
 ) -> dict:
-    if not project_id:
-        return {"status": "failed", "error": "缺少项目 ID"}
-    try:
-        if action_type == "generate_setup":
-            from app.api.setups import generate_setup
-            await generate_setup(project_id, db, command_args=command_args)
-            result = {"status": "success"}
-            if trace_id := _latest_action_trace_id(db, project_id=project_id, trace_type="setup_generation"):
-                result["trace_id"] = trace_id
-            return result
-        elif action_type == "generate_storyline":
-            from app.api.storylines import generate_storyline
-            await generate_storyline(project_id, db, command_args=command_args)
-            result = {"status": "success"}
-            if trace_id := _latest_action_trace_id(db, project_id=project_id, trace_type="storyline_generation"):
-                result["trace_id"] = trace_id
-            return result
-        elif action_type == "generate_outline":
-            from app.api.outlines import generate_outline
-            await generate_outline(project_id, db, command_args=command_args)
-            result = {"status": "success"}
-            if trace_id := _latest_action_trace_id(db, project_id=project_id, trace_type="outline_generation"):
-                result["trace_id"] = trace_id
-            return result
-        elif action_type == "generate_chapter":
-            from app.api.chapters import create_or_replace_chapter
-            chapter_index = _chapter_action_params(command_args, action_params).get("chapter_index", 1)
-            await create_or_replace_chapter(
-                db,
-                project_id,
-                int(chapter_index),
-                extra_feedback=(command_args or "").strip(),
-            )
-            result = {"status": "success", "chapter_index": int(chapter_index)}
-            trace_id = _latest_action_trace_id(
-                db,
-                project_id=project_id,
-                trace_type="chapter_generation",
-                chapter_index=int(chapter_index),
-            )
-            if trace_id:
-                result["trace_id"] = trace_id
-            return result
-        else:
-            return {"status": "success"}
-    except HTTPException as e:
-        return {"status": "failed", "error": e.detail}
-    except Exception as e:
-        return {"status": "failed", "error": str(e)}
+    return await ActionExecutionService(db).execute(
+        action_type,
+        project_id,
+        command_args=command_args,
+        action_params=action_params,
+    )
 
 
 def _execute_action_background(
@@ -878,56 +831,48 @@ def _execute_action_background(
     dialog_id: str,
     command_args: str | None = None,
     action_params: dict | None = None,
+    db: Session | None = None,
 ):
-    """Fire-and-forget: run generation in background, update dialog message when done."""
+    """Fire-and-forget: run generation as a tracked local background task."""
     from app.db import SessionLocal
 
-    async def _run():
-        db = SessionLocal()
-        try:
-            result = await _execute_action(action_type, project_id, db, command_args=command_args, action_params=action_params)
-            label_map = {"generate_setup": "设定", "generate_storyline": "故事线", "generate_outline": "大纲"}
-            if action_type == "generate_chapter":
-                label = f"第{result.get('chapter_index') or _chapter_action_params(command_args, action_params).get('chapter_index', 1)}章正文"
-            else:
-                label = label_map.get(action_type, action_type)
-            dialog = db.query(Dialog).filter(Dialog.id == dialog_id).first()
-            if dialog:
-                dialog.state = "chatting"
-            if result["status"] == "success":
-                message = DialogMessage(
-                    dialog_id=dialog_id,
-                    role="system",
-                    content=f"{label}生成完成。",
-                    action_result={"type": action_type, "status": "success", "data": result},
-                )
-                db.add(
-                    message
-                )
-                db.flush()
-                trace_id = result.get("trace_id")
-                if trace_id:
-                    trace = db.query(AIModelCallTrace).filter(
-                        AIModelCallTrace.id == trace_id,
-                        AIModelCallTrace.project_id == project_id,
-                    ).first()
-                    if trace:
-                        trace.dialog_id = dialog_id
-                        trace.response_message_id = message.id
-            else:
-                db.add(
-                    DialogMessage(
-                        dialog_id=dialog_id,
-                        role="system",
-                        content=f"{label}生成失败：{result.get('error', '未知错误')}",
-                        action_result={"type": action_type, "status": "failed"},
-                    )
-                )
-            db.commit()
-        finally:
-            db.close()
+    task_db = db or SessionLocal()
+    try:
+        task = BackgroundTaskService(task_db).create(
+            project_id=project_id,
+            task_type=action_type,
+            payload={
+                "dialog_id": dialog_id,
+                "command_args": command_args,
+                "action_params": action_params or {},
+            },
+        )
+    finally:
+        if db is None:
+            task_db.close()
 
-    asyncio.ensure_future(_run())
+    async def _run(db: Session, running_task):
+        result = await _execute_action(
+            action_type,
+            project_id,
+            db,
+            command_args=command_args,
+            action_params=action_params,
+        )
+        ActionResultService(db).record_completion(
+            action_type=action_type,
+            project_id=project_id,
+            dialog_id=dialog_id,
+            result=result,
+            command_args=command_args,
+            action_params=action_params,
+        )
+        if result.get("status") != "success":
+            raise RuntimeError(str(result.get("error") or "Action failed"))
+        return result
+
+    LocalTaskRunner().start(task.id, _run)
+    return task
 
 
 @router.post("/api/v1/dialog/resolve-action")
@@ -969,15 +914,17 @@ async def resolve_action(payload: ResolveActionIn, db: Session = Depends(get_db)
     db.commit()
 
     action_type = pending.type
-    if action_type.startswith("preview_"):
-        action_type = action_type.replace("preview_", "generate_")
+    action_type = preview_action_to_execution(action_type)
 
     result_data = None
     if payload.decision == "confirm":
         project_id = (pending.params or {}).get("project_id", "")
         command_args = (pending.params or {}).get("command_args")
-        _execute_action_background(action_type, project_id, dialog.id, command_args=command_args, action_params=pending.params)
+        task = _execute_action_background(action_type, project_id, dialog.id, command_args=command_args, action_params=pending.params, db=db)
         result_data = {"status": "generating"}
+        task_id = getattr(task, "id", None)
+        if isinstance(task_id, str):
+            result_data["task_id"] = task_id
     elif payload.decision == "cancel":
         result_data = {"status": "cancelled"}
     elif payload.decision == "revise":
