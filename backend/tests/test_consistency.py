@@ -1,5 +1,7 @@
 from unittest.mock import AsyncMock, patch
 
+from app.models import BackgroundTask, ChapterContent, Project
+
 
 def test_consistency_check_detects_dead_character(client):
     r = client.post("/api/v1/projects", json={"name": "Test"})
@@ -33,3 +35,31 @@ def test_list_issues(client):
     r2 = client.get(f"/api/v1/projects/{pid}/consistency/issues")
     assert r2.status_code == 200
     assert isinstance(r2.json(), list)
+
+
+def test_deep_check_creates_background_task(client, db_session):
+    project = Project(name="Deep Check")
+    db_session.add(project)
+    db_session.flush()
+    db_session.add(
+        ChapterContent(
+            project_id=project.id,
+            chapter_index=1,
+            title="第一章",
+            content="内容",
+            status="generated",
+        )
+    )
+    db_session.commit()
+
+    with patch("app.api.consistency.LocalTaskRunner.start") as start:
+        response = client.post(f"/api/v1/projects/{project.id}/consistency/chapters/1/check?depth=l2")
+
+    assert response.status_code == 200
+    payload = response.json()
+    task = db_session.query(BackgroundTask).filter(BackgroundTask.id == payload["task_id"]).one()
+    assert payload == {"task_id": task.id, "status": "pending"}
+    assert task.task_type == "consistency_deep_check"
+    assert task.payload == {"chapter_index": 1}
+    assert task.status == "pending"
+    start.assert_called_once()
