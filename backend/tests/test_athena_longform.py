@@ -321,6 +321,8 @@ def test_analyze_chapter_creates_event_and_character_location_candidates(client,
     event_item = db_session.query(WorldProposalItem).filter_by(project_id=project.id, predicate="event_summary").one()
     assert event_item.subject_ref == "chapter.1"
     assert event_item.object_ref_or_value["title"] == "第一章 雾港"
+    assert event_item.object_ref_or_value["evidence_span"]["ref"] == "chapter:1"
+    assert event_item.object_ref_or_value["quality"]["confidence_band"] == "low"
     locations = (
         db_session.query(WorldProposalItem)
         .filter_by(project_id=project.id, predicate="present_at_location")
@@ -330,6 +332,9 @@ def test_analyze_chapter_creates_event_and_character_location_candidates(client,
         ("char.林舟", "loc.雾港城"),
         ("char.沈聆", "loc.旧灯塔"),
     }
+    for item in locations:
+        assert item.object_ref_or_value["evidence_span"]["text"]
+        assert item.object_ref_or_value["quality"]["review_priority"] == "normal"
 
 
 def test_analyze_chapter_creates_non_character_entity_mentions(client, db_session):
@@ -372,6 +377,8 @@ def test_analyze_chapter_creates_non_character_entity_mentions(client, db_sessio
     lighthouse = next(item for item in items if item.subject_ref == "loc.旧灯塔")
     assert lighthouse.object_ref_or_value["mention_count"] == 2
     assert lighthouse.object_ref_or_value["entity_type"] == "location"
+    assert lighthouse.object_ref_or_value["evidence_span"]["ref"] == "chapter:1"
+    assert lighthouse.object_ref_or_value["quality"]["signal"] == "entity_mention"
     assert db_session.query(WorldFactClaim).filter_by(project_id=project.id).count() == 0
 
 
