@@ -71,6 +71,35 @@ INLINE_PROMPT_KEYWORDS = (
 )
 
 
+def test_allowed_inline_prompt_files_matches_phase_7_plan():
+    assert ALLOWED_INLINE_PROMPT_FILES == {
+        "backend/app/prompting/registry.py",
+        "backend/app/prompting/providers/style.py",
+        "backend/app/prompting/providers/few_shot.py",
+    }
+
+
+def test_inline_prompt_scanner_does_not_skip_allowed_files(tmp_path):
+    app_root = tmp_path / "backend" / "app"
+    allowed_file = app_root / "prompting" / "providers" / "style.py"
+    allowed_file.parent.mkdir(parents=True)
+    allowed_file.write_text(
+        'INLINE_PROMPT = """你是一个写作助手。\n'
+        "请严格分析以下章节内容，并按 JSON 返回。\n"
+        "输出要求：列出人物、事件、冲突、伏笔、世界规则。\n"
+        "回答要求：不要闲聊，不要解释过程。\n"
+        "章节内容：" + ("这是一段测试文本。" * 80) + '"""\n',
+        encoding="utf-8",
+    )
+
+    suspicious = _scan_large_inline_prompt_constants(
+        app_root=app_root,
+        backend_parent=tmp_path,
+    )
+
+    assert suspicious == ["backend/app/prompting/providers/style.py:1"]
+
+
 def test_registered_prompt_templates_exist():
     prompts_dir = default_prompts_dir()
 
@@ -200,20 +229,10 @@ def test_no_prompt_template_contains_todo_or_tbd():
 
 
 def test_backend_app_has_no_large_inline_prompt_constants():
-    suspicious = []
-
-    for path in sorted(APP_ROOT.rglob("*.py")):
-        relative_path = _relative_backend_path(path)
-        if relative_path in ALLOWED_INLINE_PROMPT_FILES:
-            continue
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        docstring_node_ids = _docstring_constant_node_ids(tree)
-        for value, lineno, node_id in _string_literals(tree):
-            if node_id in docstring_node_ids:
-                continue
-            if _looks_like_inline_prompt(value):
-                suspicious.append(f"{relative_path}:{lineno}")
-
+    suspicious = _scan_large_inline_prompt_constants(
+        app_root=APP_ROOT,
+        backend_parent=BACKEND_ROOT.parent,
+    )
     assert suspicious == []
 
 
@@ -228,6 +247,22 @@ def _production_call_site_files(prompt_id: str) -> set[str]:
     return files
 
 
+def _scan_large_inline_prompt_constants(app_root: Path, backend_parent: Path) -> list[str]:
+    suspicious = []
+
+    for path in sorted(app_root.rglob("*.py")):
+        relative_path = _relative_backend_path(path, backend_parent)
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        docstring_node_ids = _docstring_constant_node_ids(tree)
+        for value, lineno, node_id in _string_literals(tree):
+            if node_id in docstring_node_ids:
+                continue
+            if _looks_like_inline_prompt(value):
+                suspicious.append(f"{relative_path}:{lineno}")
+
+    return suspicious
+
+
 def _unresolved_placeholders(content: str) -> tuple[list[str], list[str]]:
     return (
         Template(content).get_identifiers(),
@@ -239,8 +274,8 @@ def _backend_file(relative_path: str) -> Path:
     return BACKEND_ROOT.parent / relative_path
 
 
-def _relative_backend_path(path: Path) -> str:
-    return path.relative_to(BACKEND_ROOT.parent).as_posix()
+def _relative_backend_path(path: Path, backend_parent: Path = BACKEND_ROOT.parent) -> str:
+    return path.relative_to(backend_parent).as_posix()
 
 
 def _docstring_constant_node_ids(tree: ast.AST) -> set[int]:
