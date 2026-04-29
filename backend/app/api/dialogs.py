@@ -8,42 +8,25 @@ from app.core.ai_service import AIService
 from app.core.chat_commands import build_command_text, command_to_action_type, parse_command
 from app.core.chat_compaction import build_compaction_summary, select_compactable_plain_messages
 from app.core.intent_router import IntentRouter, parse_chapter_index
-from app.core.context_injection import (
-    build_athena_world_context,
-    build_athena_world_context_blocks,
-    build_hermes_world_context,
-    build_hermes_world_context_blocks,
-)
 from app.core.model_call_trace import (
     attach_trace_response,
-    build_context_block,
     create_trace,
     mark_trace_failed,
     mark_trace_success,
     now_ms,
 )
-from app.core.prompt_manager import PromptManager
 from app.core.ui_hints import action_to_refresh_targets, build_ui_hint
 from app.db import get_db
 from app.models import AIModelCallTrace, ChapterContent, Dialog, DialogMessage, Outline, PendingAction, Project, Setup, Storyline
+from app.prompting.providers.dialog import (
+    build_dialog_call_payload,
+    build_dialog_history_block,
+)
 from app.schemas import ChatIn, ChatOut, PendingActionOut, ProjectDiagnosisOut, ResolveActionIn
 
 router = APIRouter(tags=["dialogs"])
 ai_service = AIService()
 CHAT_HISTORY_LIMIT = 8
-PHASE_LABELS = {
-    "setup": "设定阶段",
-    "storyline": "故事线阶段",
-    "outline": "大纲阶段",
-    "content": "正文阶段",
-}
-STATUS_LABELS = {
-    "draft": "待补全",
-    "writing": "正文写作中",
-    "outline_generated": "大纲已生成",
-    "storyline_generated": "故事线已生成",
-    "setup_approved": "设定已确认",
-}
 TERMINAL_ACTION_STATUSES = {"completed", "success", "failed", "cancelled", "revised"}
 RUNNING_ACTION_STATUSES = {"running", "generating"}
 RUNNING_BLOCKED_COMMANDS = {"clear", "compact", "setup", "storyline", "outline", "chapter"}
@@ -391,14 +374,6 @@ def _chat_unavailable_reply(diagnosis: ProjectDiagnosisOut, reason: str) -> str:
     return f"{reason}。我现在只能做流程诊断：{_diagnosis_summary(diagnosis)}"
 
 
-def _phase_label(phase: str | None) -> str:
-    return PHASE_LABELS.get(phase or "", phase or "未开始")
-
-
-def _status_label(status: str | None) -> str:
-    return STATUS_LABELS.get(status or "", status or "待补全")
-
-
 def _build_chat_messages(
     db: Session,
     dialog_id: str,
@@ -406,93 +381,17 @@ def _build_chat_messages(
     diagnosis: ProjectDiagnosisOut,
     dialog_type: str = "hermes",
 ) -> list[dict]:
-    pm = PromptManager()
-    history = db.query(DialogMessage) \
-        .filter(DialogMessage.dialog_id == dialog_id) \
-        .order_by(DialogMessage.created_at.desc()) \
-        .limit(CHAT_HISTORY_LIMIT) \
-        .all()
-
-    history.reverse()
-
-    if dialog_type == "athena":
-        from app.models import ProjectProfileVersion
-        profile = (
-            db.query(ProjectProfileVersion)
-            .filter(ProjectProfileVersion.project_id == project.id)
-            .order_by(ProjectProfileVersion.version.desc())
-            .first()
-        )
-        world_context = build_athena_world_context(db, project.id)
-        system_prompt = pm.load(
-            "chat_athena",
-            {
-                "project_name": project.name or "未命名项目",
-                "project_genre": project.genre or "未分类题材",
-                "project_description": project.description or "暂无项目描述",
-                "project_phase": _phase_label(project.current_phase),
-                "profile_version": str(profile.version) if profile else "未建立",
-                "world_context": world_context,
-            },
-        )
-    else:
-        world_context = build_hermes_world_context(db, project.id)
-        system_prompt = pm.load(
-            "chat_hermes",
-            {
-                "project_name": project.name or "未命名项目",
-                "project_genre": project.genre or "未分类题材",
-                "project_description": project.description or "暂无项目描述",
-                "project_phase": _phase_label(project.current_phase),
-                "project_status": _status_label(project.status),
-                "current_words": str(project.current_word_count or 0),
-                "target_chapters": str(project.target_chapter_count or 0),
-                "target_words": str(project.target_word_count or 0),
-                "completed_items": "、".join(diagnosis.completed_items) if diagnosis.completed_items else "无",
-                "missing_items": "、".join(diagnosis.missing_items) if diagnosis.missing_items else "无",
-                "suggested_next_step": diagnosis.suggested_next_step or "无",
-                "world_context": world_context,
-            },
-        )
-
-    messages = [{"role": "system", "content": system_prompt}]
-
-    for item in history:
-        if item.role in ("user", "assistant"):
-            messages.append({"role": item.role, "content": item.content})
-        elif item.role == "system":
-            messages.append({"role": "assistant", "content": f"[系统消息] {item.content}"})
-
-    return messages
+    return _build_chat_call_payload(
+        db,
+        dialog_id,
+        project,
+        diagnosis,
+        dialog_type=dialog_type,
+    )["messages"]
 
 
 def _build_dialog_history_block(db: Session, dialog_id: str) -> dict:
-    history = db.query(DialogMessage) \
-        .filter(DialogMessage.dialog_id == dialog_id) \
-        .order_by(DialogMessage.created_at.desc()) \
-        .limit(CHAT_HISTORY_LIMIT) \
-        .all()
-    history.reverse()
-
-    lines = []
-    for item in history:
-        if item.role in ("user", "assistant"):
-            lines.append(f"{item.role}: {item.content}")
-        elif item.role == "system":
-            lines.append(f"assistant: [系统消息] {item.content}")
-
-    return build_context_block(
-        key="dialog.history",
-        kind="dialog_history",
-        title="对话历史",
-        content="\n".join(lines) if lines else "当前对话暂无可用历史。",
-        sources=[
-            {
-                "source_type": "Dialog",
-                "source_id": dialog_id,
-            }
-        ],
-    )
+    return build_dialog_history_block(db, dialog_id, limit=CHAT_HISTORY_LIMIT)
 
 
 def _build_chat_call_payload(
@@ -502,16 +401,14 @@ def _build_chat_call_payload(
     diagnosis: ProjectDiagnosisOut,
     dialog_type: str = "hermes",
 ) -> dict:
-    messages = _build_chat_messages(db, dialog_id, project, diagnosis, dialog_type=dialog_type)
-    if dialog_type == "athena":
-        context_blocks = build_athena_world_context_blocks(db, project.id)
-    else:
-        context_blocks = build_hermes_world_context_blocks(db, project.id)
-    context_blocks.append(_build_dialog_history_block(db, dialog_id))
-    return {
-        "messages": messages,
-        "context_blocks": context_blocks,
-    }
+    return build_dialog_call_payload(
+        db,
+        dialog_id,
+        project,
+        diagnosis,
+        dialog_type=dialog_type,
+        history_limit=CHAT_HISTORY_LIMIT,
+    )
 
 
 def _safe_mark_trace_success(
@@ -644,7 +541,7 @@ async def _free_chat_reply(
         max_tokens=max_tokens,
         dialog_id=dialog.id,
         request_message_id=request_message_id,
-        trace_metadata={"dialog_type": dialog_type},
+        trace_metadata={**payload.get("trace_metadata", {}), "dialog_type": dialog_type},
     )
 
     try:
