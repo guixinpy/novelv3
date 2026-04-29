@@ -29,6 +29,7 @@ from app.schemas import (
     ProposalReviewCreate,
     ProposalReviewOut,
     ProposalReviewRollbackCreate,
+    WorldModelDashboardOut,
 )
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/world-model", tags=["world-model"])
@@ -47,6 +48,73 @@ def get_world_model_overview(project_id: str, db: Session = Depends(get_db)):
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/dashboard", response_model=WorldModelDashboardOut)
+def get_world_model_dashboard(project_id: str, db: Session = Depends(get_db)):
+    _require_project(db=db, project_id=project_id)
+    profile = _get_current_profile(db=db, project_id=project_id)
+    if profile is None:
+        return WorldModelDashboardOut(
+            project_profile=None,
+            metrics={},
+            next_action={
+                "action": "import_setup",
+                "label": "导入 Setup，建立正式世界模型",
+            },
+        )
+
+    try:
+        overview = build_world_projection_overview(
+            db=db,
+            project_id=project_id,
+            profile=profile,
+            view_type="current_truth",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    projection = overview.projection
+    pending_item_count = (
+        db.query(WorldProposalItem)
+        .filter(
+            WorldProposalItem.project_id == project_id,
+            WorldProposalItem.project_profile_version_id == profile.id,
+            WorldProposalItem.profile_version == profile.version,
+            WorldProposalItem.item_status.in_(("pending", "needs_edit")),
+        )
+        .count()
+    )
+    pending_bundle_count = (
+        db.query(WorldProposalBundle.id)
+        .filter(
+            WorldProposalBundle.project_id == project_id,
+            WorldProposalBundle.project_profile_version_id == profile.id,
+            WorldProposalBundle.profile_version == profile.version,
+            WorldProposalBundle.bundle_status.in_(("pending", "partially_approved")),
+        )
+        .count()
+    )
+    fact_count = sum(len(group) for group in (projection.facts if projection else {}).values())
+    event_count = len(projection.occurred_events if projection else {})
+    if pending_item_count:
+        next_action = {"action": "review_proposals", "label": "处理待审世界模型提案"}
+    elif fact_count == 0 and event_count == 0:
+        next_action = {"action": "analyze_chapter", "label": "分析章节，生成候选事实"}
+    else:
+        next_action = {"action": "inspect_projection", "label": "检查真相投影"}
+    return WorldModelDashboardOut(
+        project_profile=profile,
+        metrics={
+            "entity_count": len(projection.entities if projection else {}),
+            "fact_count": fact_count,
+            "presence_count": len(projection.presence if projection else {}),
+            "event_count": event_count,
+            "pending_bundle_count": pending_bundle_count,
+            "pending_item_count": pending_item_count,
+        },
+        next_action=next_action,
+    )
 
 
 @router.get("/subject-knowledge", response_model=ProjectWorldOverviewOut)

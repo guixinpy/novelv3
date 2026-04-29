@@ -8,10 +8,11 @@ import type {
   ProposalReviewRequest,
   ProposalRollbackRequest,
   ProposalSplitRequest,
+  WorldModelDashboard,
   WorldProjection,
 } from '../api/types'
 
-type RequestLane = 'overview' | 'bundles' | 'detail'
+type RequestLane = 'dashboard' | 'overview' | 'bundles' | 'detail'
 
 interface RequestSnapshot {
   projectId: string
@@ -32,6 +33,7 @@ interface PendingActionCounts {
 export const useWorldModelStore = defineStore('worldModel', () => {
   const projectProfile = ref<ProjectProfileVersion | null>(null)
   const projection = ref<WorldProjection | null>(null)
+  const dashboard = ref<WorldModelDashboard | null>(null)
   const proposalBundles = ref<ProposalBundle[]>([])
   const selectedBundleId = ref<string | null>(null)
   const selectedBundleDetail = ref<ProposalBundleDetail | null>(null)
@@ -53,6 +55,7 @@ export const useWorldModelStore = defineStore('worldModel', () => {
   const scopeVersion = ref(0)
   const nextRequestId = ref(0)
   const latestLaneRequest = ref<Record<RequestLane, number>>({
+    dashboard: 0,
     overview: 0,
     bundles: 0,
     detail: 0,
@@ -191,12 +194,14 @@ export const useWorldModelStore = defineStore('worldModel', () => {
     scopeVersion.value += 1
     currentProjectScope.value = nextProjectId
     latestLaneRequest.value = {
+      dashboard: 0,
       overview: 0,
       bundles: 0,
       detail: 0,
     }
     projectProfile.value = null
     projection.value = null
+    dashboard.value = null
     proposalBundles.value = []
     selectedBundleId.value = null
     selectedBundleDetail.value = null
@@ -282,6 +287,25 @@ export const useWorldModelStore = defineStore('worldModel', () => {
     }
   }
 
+  async function loadDashboard(projectId: string) {
+    const snapshot = captureRequest(projectId, ['dashboard'])
+    loading.value = true
+    error.value = ''
+
+    try {
+      const nextDashboard = await api.getWorldModelDashboard(projectId)
+      if (!isLatestRequest(snapshot, 'dashboard')) return
+      dashboard.value = nextDashboard
+      projectProfile.value = nextDashboard.project_profile
+    } catch (err) {
+      assignErrorForSnapshot(snapshot, ['dashboard'], toErrorMessage(err))
+    } finally {
+      if (isLatestRequest(snapshot, 'dashboard')) {
+        loading.value = false
+      }
+    }
+  }
+
   async function loadBundleDetail(projectId: string, bundleId: string, options: BundleDetailLoadOptions = {}) {
     const snapshot = options.requestSnapshot ?? captureRequest(projectId, ['detail'])
 
@@ -360,9 +384,23 @@ export const useWorldModelStore = defineStore('worldModel', () => {
     projection.value = overview.projection
   }
 
+  async function refreshDashboard(projectId: string, requestSnapshot?: RequestSnapshot) {
+    const snapshot = requestSnapshot ?? captureRequest(projectId, ['dashboard'])
+    const nextDashboard = await api.getWorldModelDashboard(projectId)
+    if (!isLatestRequest(snapshot, 'dashboard')) return
+    dashboard.value = nextDashboard
+    projectProfile.value = nextDashboard.project_profile
+  }
+
   async function refreshAfterReviewAction(projectId: string) {
-    const snapshot = captureRequest(projectId, ['overview', 'bundles', 'detail'])
+    const snapshot = captureRequest(projectId, ['dashboard', 'overview', 'bundles', 'detail'])
     let refreshError = ''
+
+    try {
+      await refreshDashboard(projectId, snapshot)
+    } catch (err) {
+      refreshError = captureRefreshError(refreshError, err)
+    }
 
     try {
       await refreshOverview(projectId, snapshot)
@@ -388,7 +426,7 @@ export const useWorldModelStore = defineStore('worldModel', () => {
       selectedBundleDetail.value = null
     }
 
-    assignErrorForSnapshot(snapshot, ['overview', 'bundles', 'detail'], refreshError)
+    assignErrorForSnapshot(snapshot, ['dashboard', 'overview', 'bundles', 'detail'], refreshError)
   }
 
   async function reviewProposalItem(projectId: string, itemId: string, payload: ProposalReviewRequest) {
@@ -457,6 +495,7 @@ export const useWorldModelStore = defineStore('worldModel', () => {
   return {
     projectProfile,
     projection,
+    dashboard,
     proposalBundles,
     selectedBundleId,
     selectedBundleDetail,
@@ -478,6 +517,7 @@ export const useWorldModelStore = defineStore('worldModel', () => {
     hasWorldData,
     isActionPending,
     resetProjectScopedState,
+    loadDashboard,
     loadOverview,
     loadSetupPanelData,
     selectBundle,

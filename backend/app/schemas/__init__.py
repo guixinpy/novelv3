@@ -49,6 +49,7 @@ from .world_profiles import (
     ProjectProfileVersionAppend,
     ProjectProfileVersionOut,
     ProjectWorldOverviewOut,
+    WorldModelDashboardOut,
     WorldProjectionOut,
 )
 from .world_proposals import (

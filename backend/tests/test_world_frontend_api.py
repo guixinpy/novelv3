@@ -190,6 +190,38 @@ def test_world_model_overview_returns_nulls_when_project_has_no_world_data(clien
     }
 
 
+def test_world_model_dashboard_returns_operational_counts_and_next_action(client, db_session):
+    project, profile_version = _seed_profile(db_session)
+    bundle = create_bundle(
+        db=db_session,
+        project_id=project.id,
+        project_profile_version_id=profile_version.id,
+        profile_version=profile_version.version,
+        created_by="writer.alpha",
+        title="Dashboard candidates",
+    )
+    write_candidate_fact(
+        db=db_session,
+        bundle_id=bundle.id,
+        created_by="writer.alpha",
+        candidate=_candidate_payload(
+            claim_id="claim.hero.rank.dashboard",
+            subject_ref="char.hero",
+            predicate="rank",
+            value="captain",
+        ),
+    )
+
+    response = client.get(f"/api/v1/projects/{project.id}/world-model/dashboard")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["project_profile"]["id"] == profile_version.id
+    assert payload["metrics"]["pending_bundle_count"] == 1
+    assert payload["metrics"]["pending_item_count"] == 1
+    assert payload["next_action"]["action"] == "review_proposals"
+
+
 def test_world_model_snapshot_validates_chapter_index_before_empty_projection(client, db_session):
     project = Project(name="World Snapshot Boundary")
     db_session.add(project)

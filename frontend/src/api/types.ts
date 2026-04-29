@@ -332,6 +332,26 @@ export interface WorldModelOverview {
   projection: WorldProjection | null
 }
 
+export interface WorldModelDashboardMetrics {
+  entity_count: number
+  fact_count: number
+  presence_count: number
+  event_count: number
+  pending_bundle_count: number
+  pending_item_count: number
+}
+
+export interface WorldModelNextAction {
+  action: string
+  label: string
+}
+
+export interface WorldModelDashboard {
+  project_profile: ProjectProfileVersion | null
+  metrics: WorldModelDashboardMetrics
+  next_action: WorldModelNextAction
+}
+
 export interface ProposalBundle {
   id: string
   project_id: string

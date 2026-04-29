@@ -29,6 +29,7 @@ import type {
   ProposalSplitRequest,
   ResolveActionRequest,
   ResolveActionResponse,
+  WorldModelDashboard,
   WorldModelOverview,
   WorkspaceBootstrap,
 } from './types'
@@ -63,6 +64,7 @@ export const api = {
   generateSetup: (id: string) => request(`/projects/${id}/athena/ontology/generate`, { method: 'POST' }),
   getSetup: (id: string) => request(`/projects/${id}/setup`),
   getWorldModelOverview: (id: string) => request<WorldModelOverview>(`/projects/${id}/world-model`),
+  getWorldModelDashboard: (id: string) => request<WorldModelDashboard>(`/projects/${id}/world-model/dashboard`),
   listWorldProposalBundles: (id: string, params?: { offset?: number; limit?: number; bundle_status?: string; item_status?: string; profile_version?: number }) => {
     const query = new URLSearchParams()
     if (params?.offset !== undefined) query.set('offset', String(params.offset))

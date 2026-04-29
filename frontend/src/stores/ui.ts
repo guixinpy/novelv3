@@ -3,6 +3,7 @@ import { ref } from 'vue'
 
 export type Workspace = 'hermes' | 'athena' | 'manuscript'
 export type AthenaSection =
+  | 'overview'
   | 'characters' | 'locations' | 'factions' | 'items' | 'relations' | 'rules'
   | 'projection' | 'timeline' | 'knowledge' | 'retrieval'
   | 'outline' | 'storyline' | 'proposals' | 'consistency' | 'optimization'
@@ -10,7 +11,7 @@ export type AthenaSection =
 export const useUiStore = defineStore('ui', () => {
   const activeWorkspace = ref<Workspace>('hermes')
   const subNavCollapsed = ref(false)
-  const activeAthenaSection = ref<AthenaSection>('characters')
+  const activeAthenaSection = ref<AthenaSection>('overview')
   const modals = ref<string[]>([])
   const lastProjectRoute = ref<string | null>(null)
   function toggleSubNav() {

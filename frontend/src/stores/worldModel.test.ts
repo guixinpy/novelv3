@@ -6,6 +6,7 @@ import { api } from '../api/client'
 vi.mock('../api/client', () => ({
   api: {
     getWorldModelOverview: vi.fn(),
+    getWorldModelDashboard: vi.fn(),
     listWorldProposalBundles: vi.fn(),
     getWorldProposalBundle: vi.fn(),
     reviewWorldProposalItem: vi.fn(),
@@ -52,6 +53,24 @@ function createOverview(rank: string, version = 1) {
           rank,
         },
       },
+    },
+  }
+}
+
+function createDashboard(rank = 'captain', pendingItemCount = 0) {
+  return {
+    project_profile: createOverview(rank).project_profile,
+    metrics: {
+      entity_count: 1,
+      fact_count: 1,
+      presence_count: 0,
+      event_count: 0,
+      pending_bundle_count: pendingItemCount > 0 ? 1 : 0,
+      pending_item_count: pendingItemCount,
+    },
+    next_action: {
+      action: pendingItemCount > 0 ? 'review_proposals' : 'inspect_projection',
+      label: pendingItemCount > 0 ? '处理待审世界模型提案' : '检查真相投影',
     },
   }
 }
@@ -180,6 +199,7 @@ describe('worldModel store', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.resetAllMocks()
+    vi.mocked(api.getWorldModelDashboard).mockResolvedValue(createDashboard())
   })
 
   it('loadOverview() 只加载 profile 和投影，不触发 proposal 列表请求', async () => {
@@ -193,6 +213,32 @@ describe('worldModel store', () => {
     expect(store.loaded).toBe(true)
     expect(api.getWorldModelOverview).toHaveBeenCalledWith('project-1')
     expect(api.listWorldProposalBundles).not.toHaveBeenCalled()
+    expect(api.getWorldProposalBundle).not.toHaveBeenCalled()
+  })
+
+  it('loadDashboard() 只加载 Athena Overview 指标，不触发 proposal 详情请求', async () => {
+    vi.mocked(api.getWorldModelDashboard).mockResolvedValue({
+      project_profile: createOverview('captain').project_profile,
+      metrics: {
+        entity_count: 1,
+        fact_count: 1,
+        presence_count: 0,
+        event_count: 0,
+        pending_bundle_count: 1,
+        pending_item_count: 2,
+      },
+      next_action: {
+        action: 'review_proposals',
+        label: '处理待审世界模型提案',
+      },
+    })
+    const store = useWorldModelStore()
+
+    await store.loadDashboard('project-1')
+
+    expect(store.dashboard?.metrics.pending_item_count).toBe(2)
+    expect(store.dashboard?.next_action.action).toBe('review_proposals')
+    expect(api.getWorldModelDashboard).toHaveBeenCalledWith('project-1')
     expect(api.getWorldProposalBundle).not.toHaveBeenCalled()
   })
 

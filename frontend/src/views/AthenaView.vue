@@ -13,6 +13,7 @@ import TimelineView from '../components/athena/TimelineView.vue'
 import ProjectionViewer from '../components/athena/ProjectionViewer.vue'
 import SubjectKnowledgePanel from '../components/athena/SubjectKnowledgePanel.vue'
 import ProposalWorkbench from '../components/athena/ProposalWorkbench.vue'
+import AthenaOverview from '../components/athena/AthenaOverview.vue'
 import ConsistencyList from '../components/athena/ConsistencyList.vue'
 import OptimizationPanel from '../components/athena/OptimizationPanel.vue'
 import AthenaChatPanel from '../components/athena/AthenaChatPanel.vue'
@@ -24,6 +25,12 @@ interface NavSection {
 }
 
 const sections: NavSection[] = [
+  {
+    label: '总览',
+    items: [
+      { key: 'overview', label: '总览' },
+    ],
+  },
   {
     label: '本体',
     items: [
@@ -143,6 +150,9 @@ async function initialize(projectId: string) {
 
 async function loadSectionData(section: AthenaSection) {
   const id = pid.value
+  if (section === 'overview') {
+    await worldModel.loadDashboard(id)
+  }
   if (entitySections.has(section) || section === 'relations' || section === 'rules') {
     if (!athena.ontology) await athena.loadOntology(id)
   }
@@ -179,11 +189,15 @@ function navigateSection(section: AthenaSection) {
 async function importSetup() {
   await athena.importSetup(pid.value)
   await loadSectionData(activeSection.value)
+  if (activeSection.value !== 'overview') {
+    await worldModel.loadDashboard(pid.value).catch(() => undefined)
+  }
 }
 
 async function analyzeLatestChapter() {
   if (!latestChapterIndex.value) return
   await athena.analyzeChapter(pid.value, latestChapterIndex.value)
+  await worldModel.loadDashboard(pid.value).catch(() => undefined)
   navigateSection('proposals')
 }
 
@@ -246,8 +260,14 @@ async function selectSubject(subjectRef: string) {
     <!-- Main content: detail view based on active section -->
     <div class="athena-view__content">
       <div v-if="activeError" class="athena-view__error">{{ activeError }}</div>
+      <AthenaOverview
+        v-if="activeSection === 'overview'"
+        :dashboard="worldModel.dashboard"
+        :loading="worldModel.loading"
+        @navigate="navigateSection"
+      />
       <EntityTable
-        v-if="entitySections.has(activeSection)"
+        v-else-if="entitySections.has(activeSection)"
         :entities="entities"
         :entity-type="entityTypeMap[activeSection]"
         :notice="entityNotice"

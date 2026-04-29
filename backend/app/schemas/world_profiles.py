@@ -60,3 +60,29 @@ class ProjectWorldOverviewOut(BaseModel):
     projection: WorldProjectionOut | None
 
     model_config = ConfigDict(extra="forbid")
+
+
+class WorldModelDashboardMetricsOut(BaseModel):
+    entity_count: int = 0
+    fact_count: int = 0
+    presence_count: int = 0
+    event_count: int = 0
+    pending_bundle_count: int = 0
+    pending_item_count: int = 0
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class WorldModelNextActionOut(BaseModel):
+    action: str
+    label: str
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class WorldModelDashboardOut(BaseModel):
+    project_profile: ProjectProfileVersionOut | None
+    metrics: WorldModelDashboardMetricsOut
+    next_action: WorldModelNextActionOut
+
+    model_config = ConfigDict(extra="forbid")
