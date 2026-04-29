@@ -7,8 +7,10 @@ from app.core.context_injection import (
     build_hermes_world_context,
     build_hermes_world_context_blocks,
 )
+from app.core.athena_longform import build_chapter_context_package
 from app.models import (
     AIModelCallTrace,
+    ChapterContent,
     Dialog,
     DialogMessage,
     GenreProfile,
@@ -259,6 +261,50 @@ def test_athena_world_fact_context_block_sources_are_stably_ordered(db_session):
         earlier_fact.id,
         later_fact.id,
     ]
+
+
+def test_world_context_assembler_is_shared_by_dialog_and_chapter_context(db_session):
+    from app.core.world_context_assembler import WorldContextAssembler
+
+    project, profile_version = _seed_project(db_session, with_profile=True)
+    chapter = ChapterContent(
+        project_id=project.id,
+        chapter_index=3,
+        title="旧灯塔",
+        content="林舟抵达旧灯塔。",
+        status="draft",
+    )
+    fact = WorldFactClaim(
+        project_id=project.id,
+        project_profile_version_id=profile_version.id,
+        profile_version=profile_version.version,
+        claim_id="fact.linzhou.role.shared",
+        chapter_index=2,
+        intra_chapter_seq=1,
+        subject_ref="character.linzhou",
+        predicate="role",
+        object_ref_or_value="雾港城守夜人",
+        claim_layer="truth",
+        claim_status="confirmed",
+        authority_type="authoritative_structured",
+        confidence=1.0,
+        contract_version=profile_version.contract_version,
+    )
+    db_session.add_all([chapter, fact])
+    db_session.commit()
+
+    assembler = WorldContextAssembler(db_session, project.id)
+    assembler_text = assembler.dialog_context_text("athena")
+    dialog_text = build_athena_world_context(db_session, project.id)
+    block_text = "\n".join(block["content"] for block in build_athena_world_context_blocks(db_session, project.id))
+    chapter_package = build_chapter_context_package(db_session, project.id, 3)
+
+    expected_fact = "character.linzhou.role = 雾港城守夜人"
+    assert expected_fact in assembler_text
+    assert expected_fact in dialog_text
+    assert expected_fact in block_text
+    assert expected_fact in chapter_package["prompt_context"]
+    assert any(section["key"] == "facts" for section in chapter_package["sections"])
 
 
 def test_world_context_builders_use_current_world_model_field_names(db_session):
