@@ -1,8 +1,10 @@
 import ast
+import inspect
 import re
 from pathlib import Path
 from string import Template
 
+from app.core.prompt_manager import PromptManager
 from app.prompting.registry import PROMPT_REGISTRY
 from app.prompting.renderer import PromptRenderer, default_prompts_dir
 
@@ -191,11 +193,8 @@ def test_json_prompts_have_parser_or_response_format_expectation():
         actual_files = _production_call_site_files(prompt_id)
         assert actual_files == expected_files
         for relative_file in actual_files:
-            source = _backend_file(relative_file).read_text(encoding="utf-8")
-            assert (
-                'response_format={"type": "json_object"}' in source
-                or "parse_json(" in source
-            )
+            tree = ast.parse(_backend_file(relative_file).read_text(encoding="utf-8"))
+            assert _has_json_response_or_parser(tree)
 
     for prompt_id in REGISTRY_ONLY_JSON_PROMPTS:
         assert _production_call_site_files(prompt_id) == set()
@@ -236,13 +235,125 @@ def test_backend_app_has_no_large_inline_prompt_constants():
     assert suspicious == []
 
 
+def test_prompt_manager_is_legacy_and_not_used_by_production_code():
+    doc = (inspect.getdoc(PromptManager) or "").lower()
+    assert "legacy compatibility wrapper" in doc
+    assert "promptassembler" in doc
+
+    offenders = []
+    for path in sorted(APP_ROOT.rglob("*.py")):
+        relative_path = _relative_backend_path(path)
+        if relative_path == "backend/app/core/prompt_manager.py":
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        if _uses_prompt_manager(tree):
+            offenders.append(relative_path)
+
+    assert offenders == []
+
+
+def test_static_prompt_guards_ignore_comments_and_docstrings():
+    tree = ast.parse(
+        '"""PromptManager setup.generate parse_json( response_format={\\"type\\": \\"json_object\\"}"""\n'
+        "# from app.core.prompt_manager import PromptManager\n"
+        "# build_generation_payload('setup.generate', {})\n"
+    )
+
+    assert _uses_prompt_manager(tree) is False
+    assert _calls_prompt_id(tree, "setup.generate") is False
+    assert _has_json_response_or_parser(tree) is False
+
+
+def test_static_prompt_guards_detect_real_imports_calls_and_json_handling():
+    assert _uses_prompt_manager(ast.parse("from app.core import prompt_manager\n")) is True
+    assert _uses_prompt_manager(ast.parse("from app.core.prompt_manager import PromptManager\n")) is True
+    assert _uses_prompt_manager(ast.parse("from app.core.prompt_manager import *\n")) is True
+    assert _uses_prompt_manager(ast.parse("PromptManager().load('generate_setup')\n")) is True
+
+    assert _calls_prompt_id(ast.parse("build_generation_payload('setup.generate', {})\n"), "setup.generate") is True
+    assert _calls_prompt_id(ast.parse("PromptAssembler().build(prompt_id='setup.generate')\n"), "setup.generate") is True
+
+    assert _has_json_response_or_parser(ast.parse("ai_service.parse_json(result.content)\n")) is True
+    assert _has_json_response_or_parser(
+        ast.parse("await ai_service.complete([], response_format={'type': 'json_object'})\n")
+    ) is True
+
+
+def _uses_prompt_manager(tree: ast.AST) -> bool:
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module == "app.core":
+            if any(alias.name == "prompt_manager" for alias in node.names):
+                return True
+        if isinstance(node, ast.ImportFrom) and node.module == "app.core.prompt_manager":
+            if any(alias.name in {"PromptManager", "*"} for alias in node.names):
+                return True
+        if isinstance(node, ast.Import):
+            if any(alias.name == "app.core.prompt_manager" for alias in node.names):
+                return True
+        if isinstance(node, ast.Call):
+            func = node.func
+            if isinstance(func, ast.Name) and func.id == "PromptManager":
+                return True
+            if isinstance(func, ast.Attribute) and func.attr == "PromptManager":
+                return True
+    return False
+
+
+def _calls_prompt_id(tree: ast.AST, prompt_id: str) -> bool:
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if node.args and _string_constant_value(node.args[0]) == prompt_id:
+            return True
+        for keyword in node.keywords:
+            if keyword.arg == "prompt_id" and _string_constant_value(keyword.value) == prompt_id:
+                return True
+    return False
+
+
+def _has_json_response_or_parser(tree: ast.AST) -> bool:
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if _call_name(node.func) == "parse_json":
+            return True
+        for keyword in node.keywords:
+            if keyword.arg == "response_format" and _is_json_object_response_format(keyword.value):
+                return True
+    return False
+
+
+def _call_name(func: ast.AST) -> str | None:
+    if isinstance(func, ast.Name):
+        return func.id
+    if isinstance(func, ast.Attribute):
+        return func.attr
+    return None
+
+
+def _is_json_object_response_format(value: ast.AST) -> bool:
+    if not isinstance(value, ast.Dict):
+        return False
+    for key, item in zip(value.keys, value.values, strict=True):
+        if _string_constant_value(key) == "type" and _string_constant_value(item) == "json_object":
+            return True
+    return False
+
+
+def _string_constant_value(value: ast.AST | None) -> str | None:
+    if isinstance(value, ast.Constant) and isinstance(value.value, str):
+        return value.value
+    return None
+
+
 def _production_call_site_files(prompt_id: str) -> set[str]:
     files = set()
     for path in APP_ROOT.rglob("*.py"):
         relative_path = _relative_backend_path(path)
         if relative_path == "backend/app/prompting/registry.py":
             continue
-        if prompt_id in path.read_text(encoding="utf-8"):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        if _calls_prompt_id(tree, prompt_id):
             files.add(relative_path)
     return files
 
