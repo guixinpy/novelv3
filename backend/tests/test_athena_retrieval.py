@@ -8,6 +8,7 @@ from app.models import (
     Project,
     ProjectProfileVersion,
     RetrievalDocument,
+    RetrievalTerm,
     Setup,
     WorldFactClaim,
 )
@@ -165,6 +166,21 @@ def test_reindex_builds_searchable_chunks_for_chapters_and_confirmed_facts(clien
     assert any("亡者不能被直接召回" in item["snippet"] for item in results["items"])
 
 
+def test_reindex_builds_indexed_lexical_terms_for_local_search(client, db_session):
+    project = _seed_retrieval_project(db_session)
+    client.post(f"/api/v1/projects/{project.id}/athena/ontology/import-setup")
+    _seed_confirmed_fact(db_session, project.id)
+
+    response = client.post(f"/api/v1/projects/{project.id}/athena/retrieval/reindex")
+    diagnostics = client.get(f"/api/v1/projects/{project.id}/athena/retrieval/diagnostics")
+
+    term_count = db_session.query(RetrievalTerm).filter_by(project_id=project.id).count()
+    assert response.status_code == 200
+    assert term_count > 0
+    assert diagnostics.status_code == 200
+    assert diagnostics.json()["total_terms"] == term_count
+
+
 def test_search_retrieval_uses_lexical_shortlist_for_late_relevant_chunks(client, db_session):
     project = Project(name="Late Retrieval", genre="东方奇幻悬疑")
     db_session.add(project)
@@ -233,6 +249,7 @@ def test_retrieval_diagnostics_and_single_chapter_index_endpoint(client, db_sess
     payload = diagnostics.json()
     assert payload["total_documents"] == 1
     assert payload["total_chunks"] >= 1
+    assert payload["total_terms"] >= payload["total_chunks"]
     assert payload["embedding_provider"] == "local"
 
 

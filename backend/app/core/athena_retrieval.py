@@ -17,6 +17,7 @@ from app.models import (
     RetrievalChunk,
     RetrievalDocument,
     RetrievalEmbedding,
+    RetrievalTerm,
     WorldFactClaim,
 )
 
@@ -76,6 +77,7 @@ def get_retrieval_diagnostics(db: Session, project_id: str) -> dict[str, Any]:
         "vector_dimension": provider.dimensions,
         "total_documents": db.query(RetrievalDocument).filter(RetrievalDocument.project_id == project_id).count(),
         "total_chunks": db.query(RetrievalChunk).filter(RetrievalChunk.project_id == project_id).count(),
+        "total_terms": db.query(RetrievalTerm).filter(RetrievalTerm.project_id == project_id).count(),
         "total_embeddings": db.query(RetrievalEmbedding).filter(RetrievalEmbedding.project_id == project_id).count(),
         "documents_by_source_type": {source_type: count for source_type, count in source_rows},
     }
@@ -107,10 +109,14 @@ def search_retrieval(
 
     scored = []
     for chunk, document, embedding in _candidate_rows(
+        db,
         rows_query,
+        project_id=project_id,
         cleaned_query=cleaned_query,
         limit=limit,
         candidate_limit=candidate_limit,
+        source_type=source_type,
+        max_chapter_index=max_chapter_index,
     ):
         vector_score = max(0.0, cosine_similarity(query_vector, _vector_from_json(embedding.vector)))
         lexical_score = _lexical_score(cleaned_query, chunk.text)
@@ -170,7 +176,17 @@ def _stable_candidate_order(rows_query):
     )
 
 
-def _candidate_rows(rows_query, *, cleaned_query: str, limit: int, candidate_limit: int | None) -> list[tuple[Any, Any, Any]]:
+def _candidate_rows(
+    db: Session,
+    rows_query,
+    *,
+    project_id: str,
+    cleaned_query: str,
+    limit: int,
+    candidate_limit: int | None,
+    source_type: str | None,
+    max_chapter_index: int | None,
+) -> list[tuple[Any, Any, Any]]:
     fallback_limit = candidate_limit or max(limit * 80, 400)
     lexical_limit = candidate_limit or max(limit * 160, 800)
     tokens = _candidate_query_tokens(cleaned_query)
@@ -178,25 +194,17 @@ def _candidate_rows(rows_query, *, cleaned_query: str, limit: int, candidate_lim
     seen_chunk_ids: set[str] = set()
 
     if tokens:
-        match_expr = None
-        conditions = []
-        for token in tokens:
-            condition = RetrievalChunk.text.contains(token, autoescape=True)
-            conditions.append(condition)
-            token_expr = case((condition, 1), else_=0)
-            match_expr = token_expr if match_expr is None else match_expr + token_expr
-        lexical_rows = (
-            rows_query.filter(or_(*conditions))
-            .order_by(
-                match_expr.desc(),
-                RetrievalDocument.source_type.asc(),
-                RetrievalDocument.chapter_index.asc().nullsfirst(),
-                RetrievalChunk.chunk_index.asc(),
-                RetrievalChunk.id.asc(),
-            )
-            .limit(lexical_limit)
-            .all()
+        lexical_rows = _indexed_lexical_candidate_rows(
+            db,
+            rows_query,
+            project_id=project_id,
+            tokens=tokens,
+            lexical_limit=lexical_limit,
+            source_type=source_type,
+            max_chapter_index=max_chapter_index,
         )
+        if not lexical_rows:
+            lexical_rows = _legacy_like_candidate_rows(rows_query, tokens=tokens, lexical_limit=lexical_limit)
         for row in lexical_rows:
             chunk = row[0]
             if chunk.id in seen_chunk_ids:
@@ -211,6 +219,73 @@ def _candidate_rows(rows_query, *, cleaned_query: str, limit: int, candidate_lim
         seen_chunk_ids.add(chunk.id)
         rows.append(row)
     return rows
+
+
+def _indexed_lexical_candidate_rows(
+    db: Session,
+    rows_query,
+    *,
+    project_id: str,
+    tokens: list[str],
+    lexical_limit: int,
+    source_type: str | None,
+    max_chapter_index: int | None,
+) -> list[tuple[Any, Any, Any]]:
+    match_count = func.count(RetrievalTerm.token)
+    token_query = (
+        db.query(RetrievalTerm.chunk_id, match_count.label("match_count"))
+        .join(RetrievalChunk, RetrievalChunk.id == RetrievalTerm.chunk_id)
+        .join(RetrievalDocument, RetrievalChunk.document_id == RetrievalDocument.id)
+        .filter(
+            RetrievalTerm.project_id == project_id,
+            RetrievalTerm.token.in_(tokens),
+        )
+    )
+    if source_type:
+        token_query = token_query.filter(RetrievalDocument.source_type == source_type)
+    if max_chapter_index is not None:
+        token_query = token_query.filter(
+            (RetrievalDocument.chapter_index.is_(None)) | (RetrievalDocument.chapter_index <= max_chapter_index)
+        )
+    token_rows = (
+        token_query.group_by(RetrievalTerm.chunk_id)
+        .order_by(
+            match_count.desc(),
+            RetrievalDocument.source_type.asc(),
+            RetrievalDocument.chapter_index.asc().nullsfirst(),
+            RetrievalChunk.chunk_index.asc(),
+            RetrievalChunk.id.asc(),
+        )
+        .limit(lexical_limit)
+        .all()
+    )
+    chunk_ids = [row[0] for row in token_rows]
+    if not chunk_ids:
+        return []
+    rows_by_chunk_id = {row[0].id: row for row in rows_query.filter(RetrievalChunk.id.in_(chunk_ids)).all()}
+    return [rows_by_chunk_id[chunk_id] for chunk_id in chunk_ids if chunk_id in rows_by_chunk_id]
+
+
+def _legacy_like_candidate_rows(rows_query, *, tokens: list[str], lexical_limit: int) -> list[tuple[Any, Any, Any]]:
+    match_expr = None
+    conditions = []
+    for token in tokens:
+        condition = RetrievalChunk.text.contains(token, autoescape=True)
+        conditions.append(condition)
+        token_expr = case((condition, 1), else_=0)
+        match_expr = token_expr if match_expr is None else match_expr + token_expr
+    return (
+        rows_query.filter(or_(*conditions))
+        .order_by(
+            match_expr.desc(),
+            RetrievalDocument.source_type.asc(),
+            RetrievalDocument.chapter_index.asc().nullsfirst(),
+            RetrievalChunk.chunk_index.asc(),
+            RetrievalChunk.id.asc(),
+        )
+        .limit(lexical_limit)
+        .all()
+    )
 
 
 def _candidate_query_tokens(query: str) -> list[str]:
@@ -311,7 +386,7 @@ def _fact_source(fact: WorldFactClaim) -> RetrievalSource:
 
 def _index_sources(db: Session, project_id: str, sources: list[RetrievalSource]) -> dict[str, int]:
     provider = get_embedding_provider()
-    indexed = {"documents": 0, "chunks": 0, "embeddings": 0}
+    indexed = {"documents": 0, "chunks": 0, "terms": 0, "embeddings": 0}
     for source in sources:
         chunks = _chunk_text(source.text)
         if not chunks:
@@ -344,6 +419,10 @@ def _index_sources(db: Session, project_id: str, sources: list[RetrievalSource])
             )
             db.add(chunk)
             db.flush()
+            terms = sorted(set(tokenize_for_retrieval(chunk_data["text"])))
+            for token in terms:
+                db.add(RetrievalTerm(project_id=project_id, chunk_id=chunk.id, token=token))
+            indexed["terms"] += len(terms)
             db.add(
                 RetrievalEmbedding(
                     project_id=project_id,
@@ -382,7 +461,9 @@ def _chunk_text(text: str) -> list[dict[str, Any]]:
 def _delete_project_index(db: Session, project_id: str) -> None:
     chunk_ids = [row[0] for row in db.query(RetrievalChunk.id).filter(RetrievalChunk.project_id == project_id).all()]
     if chunk_ids:
+        db.query(RetrievalTerm).filter(RetrievalTerm.chunk_id.in_(chunk_ids)).delete(synchronize_session=False)
         db.query(RetrievalEmbedding).filter(RetrievalEmbedding.chunk_id.in_(chunk_ids)).delete(synchronize_session=False)
+    db.query(RetrievalTerm).filter(RetrievalTerm.project_id == project_id).delete(synchronize_session=False)
     db.query(RetrievalChunk).filter(RetrievalChunk.project_id == project_id).delete(synchronize_session=False)
     db.query(RetrievalDocument).filter(RetrievalDocument.project_id == project_id).delete(synchronize_session=False)
     db.flush()
@@ -402,6 +483,7 @@ def _delete_document(db: Session, *, project_id: str, source_type: str, source_i
         return
     chunk_ids = [row[0] for row in db.query(RetrievalChunk.id).filter(RetrievalChunk.document_id == document.id).all()]
     if chunk_ids:
+        db.query(RetrievalTerm).filter(RetrievalTerm.chunk_id.in_(chunk_ids)).delete(synchronize_session=False)
         db.query(RetrievalEmbedding).filter(RetrievalEmbedding.chunk_id.in_(chunk_ids)).delete(synchronize_session=False)
     db.query(RetrievalChunk).filter(RetrievalChunk.document_id == document.id).delete(synchronize_session=False)
     db.delete(document)

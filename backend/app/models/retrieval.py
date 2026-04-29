@@ -47,6 +47,21 @@ class RetrievalChunk(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(UTC))
 
 
+class RetrievalTerm(Base):
+    __tablename__ = "retrieval_terms"
+    __table_args__ = (
+        UniqueConstraint("project_id", "chunk_id", "token", name="uq_retrieval_terms_project_chunk_token"),
+        Index("ix_retrieval_terms_project_token", "project_id", "token"),
+        Index("ix_retrieval_terms_chunk", "chunk_id"),
+    )
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    project_id = Column(String, ForeignKey("projects.id"), nullable=False)
+    chunk_id = Column(String, ForeignKey("retrieval_chunks.id"), nullable=False)
+    token = Column(String, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
+
+
 class RetrievalEmbedding(Base):
     __tablename__ = "retrieval_embeddings"
     __table_args__ = (
