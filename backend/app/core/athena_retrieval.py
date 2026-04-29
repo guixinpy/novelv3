@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from fastapi import HTTPException
-from sqlalchemy import func
+from sqlalchemy import case, func, or_
 from sqlalchemy.orm import Session
 
 from app.core.embedding_service import cosine_similarity, get_embedding_provider, tokenize_for_retrieval, vector_hash
@@ -98,28 +98,20 @@ def search_retrieval(
 
     provider = get_embedding_provider()
     query_vector = provider.embed_texts([cleaned_query])[0]
-    rows_query = (
-        db.query(RetrievalChunk, RetrievalDocument, RetrievalEmbedding)
-        .join(RetrievalDocument, RetrievalChunk.document_id == RetrievalDocument.id)
-        .join(RetrievalEmbedding, RetrievalEmbedding.chunk_id == RetrievalChunk.id)
-        .filter(RetrievalChunk.project_id == project_id)
+    rows_query = _search_rows_query(
+        db,
+        project_id,
+        source_type=source_type,
+        max_chapter_index=max_chapter_index,
     )
-    if source_type:
-        rows_query = rows_query.filter(RetrievalDocument.source_type == source_type)
-    if max_chapter_index is not None:
-        rows_query = rows_query.filter(
-            (RetrievalDocument.chapter_index.is_(None)) | (RetrievalDocument.chapter_index <= max_chapter_index)
-        )
-    rows_query = rows_query.order_by(
-        RetrievalDocument.source_type.asc(),
-        RetrievalDocument.chapter_index.asc().nullsfirst(),
-        RetrievalChunk.chunk_index.asc(),
-        RetrievalChunk.id.asc(),
-    )
-    rows_query = rows_query.limit(candidate_limit or max(limit * 80, 400))
 
     scored = []
-    for chunk, document, embedding in rows_query.all():
+    for chunk, document, embedding in _candidate_rows(
+        rows_query,
+        cleaned_query=cleaned_query,
+        limit=limit,
+        candidate_limit=candidate_limit,
+    ):
         vector_score = max(0.0, cosine_similarity(query_vector, _vector_from_json(embedding.vector)))
         lexical_score = _lexical_score(cleaned_query, chunk.text)
         score = (lexical_score * 0.58) + (vector_score * 0.42)
@@ -145,6 +137,85 @@ def search_retrieval(
     scored.sort(key=lambda item: item["score"], reverse=True)
     items = scored[:limit]
     return {"query": cleaned_query, "total": len(scored), "items": items}
+
+
+def _search_rows_query(
+    db: Session,
+    project_id: str,
+    *,
+    source_type: str | None,
+    max_chapter_index: int | None,
+):
+    rows_query = (
+        db.query(RetrievalChunk, RetrievalDocument, RetrievalEmbedding)
+        .join(RetrievalDocument, RetrievalChunk.document_id == RetrievalDocument.id)
+        .join(RetrievalEmbedding, RetrievalEmbedding.chunk_id == RetrievalChunk.id)
+        .filter(RetrievalChunk.project_id == project_id)
+    )
+    if source_type:
+        rows_query = rows_query.filter(RetrievalDocument.source_type == source_type)
+    if max_chapter_index is not None:
+        rows_query = rows_query.filter(
+            (RetrievalDocument.chapter_index.is_(None)) | (RetrievalDocument.chapter_index <= max_chapter_index)
+        )
+    return rows_query
+
+
+def _stable_candidate_order(rows_query):
+    return rows_query.order_by(
+        RetrievalDocument.source_type.asc(),
+        RetrievalDocument.chapter_index.asc().nullsfirst(),
+        RetrievalChunk.chunk_index.asc(),
+        RetrievalChunk.id.asc(),
+    )
+
+
+def _candidate_rows(rows_query, *, cleaned_query: str, limit: int, candidate_limit: int | None) -> list[tuple[Any, Any, Any]]:
+    fallback_limit = candidate_limit or max(limit * 80, 400)
+    lexical_limit = candidate_limit or max(limit * 160, 800)
+    tokens = _candidate_query_tokens(cleaned_query)
+    rows: list[tuple[Any, Any, Any]] = []
+    seen_chunk_ids: set[str] = set()
+
+    if tokens:
+        match_expr = None
+        conditions = []
+        for token in tokens:
+            condition = RetrievalChunk.text.contains(token, autoescape=True)
+            conditions.append(condition)
+            token_expr = case((condition, 1), else_=0)
+            match_expr = token_expr if match_expr is None else match_expr + token_expr
+        lexical_rows = (
+            rows_query.filter(or_(*conditions))
+            .order_by(
+                match_expr.desc(),
+                RetrievalDocument.source_type.asc(),
+                RetrievalDocument.chapter_index.asc().nullsfirst(),
+                RetrievalChunk.chunk_index.asc(),
+                RetrievalChunk.id.asc(),
+            )
+            .limit(lexical_limit)
+            .all()
+        )
+        for row in lexical_rows:
+            chunk = row[0]
+            if chunk.id in seen_chunk_ids:
+                continue
+            seen_chunk_ids.add(chunk.id)
+            rows.append(row)
+
+    for row in _stable_candidate_order(rows_query).limit(fallback_limit).all():
+        chunk = row[0]
+        if chunk.id in seen_chunk_ids:
+            continue
+        seen_chunk_ids.add(chunk.id)
+        rows.append(row)
+    return rows
+
+
+def _candidate_query_tokens(query: str) -> list[str]:
+    tokens = {token for token in tokenize_for_retrieval(query) if len(token) >= 2}
+    return sorted(tokens, key=lambda token: (-len(token), token))[:12]
 
 
 def build_chapter_retrieval_context(db: Session, project_id: str, chapter_index: int, *, limit: int = 6) -> dict[str, Any] | None:

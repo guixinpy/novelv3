@@ -165,6 +165,44 @@ def test_reindex_builds_searchable_chunks_for_chapters_and_confirmed_facts(clien
     assert any("亡者不能被直接召回" in item["snippet"] for item in results["items"])
 
 
+def test_search_retrieval_uses_lexical_shortlist_for_late_relevant_chunks(client, db_session):
+    project = Project(name="Late Retrieval", genre="东方奇幻悬疑")
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    db_session.add_all(
+        [
+            ChapterContent(
+                project_id=project.id,
+                chapter_index=index,
+                title=f"无关章节 {index}",
+                content=f"第{index}章只有普通街巷和潮声，没有目标线索。",
+                word_count=20,
+                status="generated",
+            )
+            for index in range(1, 421)
+        ]
+        + [
+            ChapterContent(
+                project_id=project.id,
+                chapter_index=421,
+                title="迟到的钥匙",
+                content="档案最深处写着：秘银钥匙沉睡在旧灯塔底层，只有潮汐归零时才会苏醒。",
+                word_count=32,
+                status="generated",
+            )
+        ]
+    )
+    db_session.commit()
+
+    response = client.post(f"/api/v1/projects/{project.id}/athena/retrieval/reindex")
+    results = search_retrieval(db_session, project.id, "秘银钥匙沉睡旧灯塔", limit=3)
+
+    assert response.status_code == 200
+    assert response.json()["indexed"]["documents"] == 421
+    assert any("秘银钥匙沉睡" in item["snippet"] for item in results["items"])
+
+
 def test_chapter_context_includes_retrieved_evidence(client, db_session):
     project = _seed_retrieval_project(db_session)
     client.post(f"/api/v1/projects/{project.id}/athena/ontology/import-setup")

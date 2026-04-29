@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any, Literal
 
 from sqlalchemy.orm import Session
@@ -24,6 +25,7 @@ from app.models import (
 )
 
 DialogTarget = Literal["athena", "hermes"]
+logger = logging.getLogger(__name__)
 
 
 def source_for_record(record: Any, *, label: str | None = None, chapter_index: int | None = None) -> dict:
@@ -394,7 +396,22 @@ class WorldContextAssembler:
                 project_id=self.project_id,
                 chapter_index=chapter_index,
             )
-        except Exception:
+        except Exception as exc:
+            logger.exception("Failed to build Athena retrieval context for project %s chapter %s", self.project_id, chapter_index)
+            sections.append(
+                {
+                    "key": "retrieval_warning",
+                    "title": "检索诊断",
+                    "items": [
+                        {
+                            "code": "retrieval_context_failed",
+                            "message": "检索证据暂不可用，已跳过本次证据注入。",
+                            "error_type": exc.__class__.__name__,
+                        }
+                    ],
+                }
+            )
+            lines.append("【检索证据】检索证据暂不可用，已跳过本次证据注入。")
             return
         if not retrieval_context:
             return

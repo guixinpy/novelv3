@@ -307,6 +307,34 @@ def test_world_context_assembler_is_shared_by_dialog_and_chapter_context(db_sess
     assert any(section["key"] == "facts" for section in chapter_package["sections"])
 
 
+def test_chapter_context_exposes_retrieval_warning_when_retrieval_fails(db_session, monkeypatch):
+    import app.core.athena_retrieval as athena_retrieval
+
+    project, profile_version = _seed_project(db_session, with_profile=True)
+    db_session.add(
+        ChapterContent(
+            project_id=project.id,
+            chapter_index=2,
+            title="旧灯塔",
+            content="林舟抵达旧灯塔。",
+            status="draft",
+        )
+    )
+    db_session.commit()
+
+    def raise_retrieval_error(*args, **kwargs):
+        raise RuntimeError("retrieval index offline")
+
+    monkeypatch.setattr(athena_retrieval, "build_chapter_retrieval_context", raise_retrieval_error)
+
+    package = build_chapter_context_package(db_session, project.id, 2)
+
+    warning_section = next(section for section in package["sections"] if section["key"] == "retrieval_warning")
+    assert warning_section["items"][0]["code"] == "retrieval_context_failed"
+    assert "检索证据暂不可用" in package["prompt_context"]
+    assert profile_version.id == package["project_profile_version_id"]
+
+
 def test_world_context_builders_use_current_world_model_field_names(db_session):
     project, profile_version = _seed_project(db_session, with_profile=True)
     db_session.add_all(
