@@ -32,6 +32,7 @@ import { createActionReplayGuard } from './hermesActionReplay'
 import { useChatStore } from '../stores/chat'
 import { useModelTraceStore } from '../stores/modelTraces'
 import { useProjectStore } from '../stores/project'
+import { useProjectWorkspaceStore } from '../stores/projectWorkspace'
 import { useWorkspaceStore } from '../stores/workspace'
 
 type UiAwareResponse =
@@ -44,6 +45,7 @@ const project = useProjectStore()
 const chat = useChatStore()
 const modelTrace = useModelTraceStore()
 const workspace = useWorkspaceStore()
+const projectWorkspace = useProjectWorkspaceStore()
 const pid = computed(() => route.params.id as string)
 const ready = ref(false)
 const hydrationTracker = createHydrationTracker()
@@ -125,8 +127,10 @@ async function initialize(projectId: string) {
   ready.value = false
   closeTrace()
   const snapshot = beginHydration(hydrationTracker, projectId)
-  project.resetProjectScopedState(projectId)
-  workspace.reset()
+  if (projectWorkspace.enterProject(projectId)) {
+    project.resetProjectScopedState(projectId)
+    workspace.reset()
+  }
   await Promise.all([
     chat.init(projectId),
     project.loadProject(projectId),

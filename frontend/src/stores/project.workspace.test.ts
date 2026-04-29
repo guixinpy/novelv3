@@ -113,20 +113,15 @@ describe('project workspace state', () => {
     expect(store.versionsNodeType).toBe(undefined)
   })
 
-  it('同项目并发 loadSetup/loadVersions 时，新请求结果必须赢，旧响应不能回写覆盖', async () => {
+  it('同项目并发 loadSetup 会去重，loadVersions 不同筛选仍由新请求结果赢', async () => {
     const store = useProjectStore()
 
-    let resolveOldSetup!: (value: any) => void
-    let resolveNewSetup!: (value: any) => void
+    let resolveSetup!: (value: any) => void
     let resolveOldVersions!: (value: any[]) => void
     let resolveNewVersions!: (value: any[]) => void
 
     vi.mocked(api.getSetup).mockImplementation(() => new Promise((resolve) => {
-      if (!resolveOldSetup) {
-        resolveOldSetup = resolve
-      } else {
-        resolveNewSetup = resolve
-      }
+      resolveSetup = resolve
     }))
 
     vi.mocked(api.listVersions).mockImplementation((_projectId: string, nodeType?: string) => new Promise((resolve) => {
@@ -143,19 +138,55 @@ describe('project workspace state', () => {
     const oldVersionsPromise = store.loadVersions('A', 'outline')
     const newVersionsPromise = store.loadVersions('A')
 
-    resolveNewSetup({ id: 'setup-new', title: '新设定' })
+    expect(api.getSetup).toHaveBeenCalledTimes(1)
+    resolveSetup({ id: 'setup-deduped', title: '去重设定' })
     resolveNewVersions([{ id: 'version-new-all', node_type: 'all' }])
     await newSetupPromise
     await newVersionsPromise
 
-    resolveOldSetup({ id: 'setup-old', title: '旧设定' })
     resolveOldVersions([{ id: 'version-old-outline', node_type: 'outline' }])
     await oldSetupPromise
     await oldVersionsPromise
 
-    expect(store.setup).toEqual({ id: 'setup-new', title: '新设定' })
+    expect(store.setup).toEqual({ id: 'setup-deduped', title: '去重设定' })
     expect(store.versions).toEqual([{ id: 'version-new-all', node_type: 'all' }])
     expect(store.versionsNodeType).toBe(undefined)
+  })
+
+  it('同项目并发 loadProject 会复用同一个 in-flight 请求', async () => {
+    const store = useProjectStore()
+
+    let resolveProject!: (value: any) => void
+    vi.mocked(api.getProject).mockImplementation(() => new Promise((resolve) => {
+      resolveProject = resolve
+    }))
+
+    const first = store.loadProject('A')
+    const second = store.loadProject('A')
+
+    expect(api.getProject).toHaveBeenCalledTimes(1)
+    resolveProject({ id: 'A', name: '项目 A' })
+    await first
+    await second
+
+    expect(store.currentProject).toEqual({ id: 'A', name: '项目 A' })
+  })
+
+  it('同项目 fresh 数据再次 loadProject/loadChapters 不重复请求', async () => {
+    const store = useProjectStore()
+
+    vi.mocked(api.getProject).mockResolvedValue({ id: 'A', name: '项目 A' })
+    vi.mocked(api.listChapters).mockResolvedValue({ chapters: [{ id: 'chapter-1', chapter_index: 1 }] })
+
+    await store.loadProject('A')
+    await store.loadChapters('A')
+    await store.loadProject('A')
+    await store.loadChapters('A')
+
+    expect(api.getProject).toHaveBeenCalledTimes(1)
+    expect(api.listChapters).toHaveBeenCalledTimes(1)
+    expect(store.currentProject).toEqual({ id: 'A', name: '项目 A' })
+    expect(store.chapters).toEqual([{ id: 'chapter-1', chapter_index: 1 }])
   })
 
   it('refreshTargets() 只返回成功刷新的 targets，失败的不应回传', async () => {

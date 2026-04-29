@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { api } from '../api/client'
 import type { RefreshTarget } from '../api/types'
+import { useRequestCacheStore } from './requestCache'
 
 type ProjectRequestLane =
   | 'project'
@@ -21,6 +22,8 @@ interface ProjectRequestSnapshot {
 }
 
 export const useProjectStore = defineStore('project', () => {
+  const requestCache = useRequestCacheStore()
+  const PROJECT_CACHE_TTL_MS = 5 * 60 * 1000
   const projects = ref<any[]>([])
   const currentProject = ref<any>(null)
   const setup = ref<any>(null)
@@ -82,6 +85,7 @@ export const useProjectStore = defineStore('project', () => {
   }
 
   function resetProjectScopedState(nextProjectId = '') {
+    if (currentProjectScope.value) requestCache.invalidate(`project:${currentProjectScope.value}`)
     scopeVersion.value += 1
     currentProjectScope.value = nextProjectId
     latestLaneRequest.value = {
@@ -122,8 +126,10 @@ export const useProjectStore = defineStore('project', () => {
   }
 
   async function loadProject(id: string) {
+    const key = `project:${id}:project`
+    if (currentProject.value?.id === id && requestCache.isFresh(key, PROJECT_CACHE_TTL_MS)) return
     const snapshot = captureProjectRequest(id, ['project'])
-    const nextProject = await api.getProject(id)
+    const nextProject = await requestCache.dedupe(key, () => api.getProject(id))
     if (!isLatestProjectRequest(snapshot, 'project')) return
     currentProject.value = nextProject
   }
@@ -134,8 +140,10 @@ export const useProjectStore = defineStore('project', () => {
   }
 
   async function loadSetup(id: string) {
+    const key = `project:${id}:setup`
+    if (setup.value && requestCache.isFresh(key, PROJECT_CACHE_TTL_MS)) return
     const snapshot = captureProjectRequest(id, ['setup'])
-    const nextSetup = await api.getSetup(id)
+    const nextSetup = await requestCache.dedupe(key, () => api.getSetup(id))
     if (!isLatestProjectRequest(snapshot, 'setup')) return
     setup.value = nextSetup
   }
@@ -146,8 +154,10 @@ export const useProjectStore = defineStore('project', () => {
   }
 
   async function loadChapter(id: string, index: number) {
+    const key = `project:${id}:chapter:${index}`
+    if (chapter.value?.chapter_index === index && requestCache.isFresh(key, PROJECT_CACHE_TTL_MS)) return
     const snapshot = captureProjectRequest(id, ['chapter'])
-    const nextChapter = await api.getChapter(id, index)
+    const nextChapter = await requestCache.dedupe(key, () => api.getChapter(id, index))
     if (!isLatestProjectRequest(snapshot, 'chapter')) return
     chapter.value = nextChapter
   }
@@ -158,8 +168,10 @@ export const useProjectStore = defineStore('project', () => {
   }
 
   async function loadStoryline(id: string) {
+    const key = `project:${id}:storyline`
+    if (storyline.value && requestCache.isFresh(key, PROJECT_CACHE_TTL_MS)) return
     const snapshot = captureProjectRequest(id, ['storyline'])
-    const nextStoryline = await api.getStoryline(id)
+    const nextStoryline = await requestCache.dedupe(key, () => api.getStoryline(id))
     if (!isLatestProjectRequest(snapshot, 'storyline')) return
     storyline.value = nextStoryline
   }
@@ -170,37 +182,47 @@ export const useProjectStore = defineStore('project', () => {
   }
 
   async function loadOutline(id: string) {
+    const key = `project:${id}:outline`
+    if (outline.value && requestCache.isFresh(key, PROJECT_CACHE_TTL_MS)) return
     const snapshot = captureProjectRequest(id, ['outline'])
-    const nextOutline = await api.getOutline(id)
+    const nextOutline = await requestCache.dedupe(key, () => api.getOutline(id))
     if (!isLatestProjectRequest(snapshot, 'outline')) return
     outline.value = nextOutline
   }
 
   async function loadTopology(id: string) {
+    const key = `project:${id}:topology`
+    if (topology.value && requestCache.isFresh(key, PROJECT_CACHE_TTL_MS)) return
     const snapshot = captureProjectRequest(id, ['topology'])
-    const nextTopology = await api.getTopology(id)
+    const nextTopology = await requestCache.dedupe(key, () => api.getTopology(id))
     if (!isLatestProjectRequest(snapshot, 'topology')) return
     topology.value = nextTopology
   }
 
   async function loadChapters(id: string) {
+    const key = `project:${id}:chapters`
+    if (requestCache.isFresh(key, PROJECT_CACHE_TTL_MS)) return
     const snapshot = captureProjectRequest(id, ['chapters'])
-    const res = await api.listChapters(id)
+    const res = await requestCache.dedupe(key, () => api.listChapters(id))
     if (!isLatestProjectRequest(snapshot, 'chapters')) return
     chapters.value = res.chapters || []
   }
 
   async function loadVersions(id: string, nodeType?: string) {
+    const key = `project:${id}:versions:${nodeType || 'all'}`
+    if (versionsNodeType.value === nodeType && requestCache.isFresh(key, PROJECT_CACHE_TTL_MS)) return
     const snapshot = captureProjectRequest(id, ['versions'])
-    const nextVersions = await api.listVersions(id, nodeType)
+    const nextVersions = await requestCache.dedupe(key, () => api.listVersions(id, nodeType))
     if (!isLatestProjectRequest(snapshot, 'versions')) return
     versionsNodeType.value = nodeType
     versions.value = nextVersions
   }
 
   async function loadPreferences(id: string) {
+    const key = `project:${id}:preferences`
+    if (preferences.value && requestCache.isFresh(key, PROJECT_CACHE_TTL_MS)) return
     const snapshot = captureProjectRequest(id, ['preferences'])
-    const nextPreferences = await api.getPreferences(id)
+    const nextPreferences = await requestCache.dedupe(key, () => api.getPreferences(id))
     if (!isLatestProjectRequest(snapshot, 'preferences')) return
     preferences.value = nextPreferences
   }
