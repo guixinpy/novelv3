@@ -240,12 +240,24 @@ def analyze_chapter_to_world_proposals(db: Session, project_id: str, chapter_ind
         for fact in facts
         if fact.get("type") == "character_presence"
     ]
+    event_candidate = _extract_chapter_event_candidate(project_id=project_id, profile=profile, chapter=chapter)
+    if event_candidate:
+        candidates.append(event_candidate)
     candidates.extend(
         _extract_non_character_entity_mentions(
             db=db,
             project_id=project_id,
             profile=profile,
             chapter=chapter,
+        )
+    )
+    candidates.extend(
+        _extract_character_location_candidates(
+            db=db,
+            project_id=project_id,
+            profile=profile,
+            chapter=chapter,
+            characters=characters,
         )
     )
 
@@ -509,6 +521,120 @@ def _extract_non_character_entity_mentions(
     return candidates
 
 
+def _extract_chapter_event_candidate(
+    *,
+    project_id: str,
+    profile: ProjectProfileVersion,
+    chapter: ChapterContent,
+) -> ProposalCandidateFactCreate | None:
+    summary = _chapter_event_summary(chapter)
+    if not summary:
+        return None
+    return ProposalCandidateFactCreate(
+        project_id=project_id,
+        project_profile_version_id=profile.id,
+        profile_version=profile.version,
+        contract_version=profile.contract_version,
+        claim_id=f"claim.chapter.{chapter.chapter_index}.event.summary",
+        chapter_index=chapter.chapter_index,
+        intra_chapter_seq=0,
+        subject_ref=f"chapter.{chapter.chapter_index}",
+        predicate="event_summary",
+        object_ref_or_value={
+            "chapter_index": chapter.chapter_index,
+            "title": chapter.title or f"第{chapter.chapter_index}章",
+            "summary": summary,
+            "source": "deterministic_chapter_summary",
+        },
+        claim_layer="truth",
+        evidence_refs=[f"chapter:{chapter.chapter_index}"],
+        authority_type=DERIVED,
+        confidence=0.7,
+        notes=f"自动抽取：第{chapter.chapter_index}章事件摘要，需人工确认。",
+    )
+
+
+def _extract_character_location_candidates(
+    *,
+    db: Session,
+    project_id: str,
+    profile: ProjectProfileVersion,
+    chapter: ChapterContent,
+    characters: list[dict[str, Any]],
+) -> list[ProposalCandidateFactCreate]:
+    text = chapter.content or ""
+    if not text:
+        return []
+    character_descriptors = _character_descriptors(characters)
+    location_descriptors = _location_descriptors_from_world_model(db, project_id, profile.version)
+    candidates: list[ProposalCandidateFactCreate] = []
+    seen: set[tuple[str, str]] = set()
+    for sentence in _chapter_sentences(text):
+        for character in character_descriptors:
+            if _count_entity_mentions(text=sentence, names=character["names"]) <= 0:
+                continue
+            for location in location_descriptors:
+                if _count_entity_mentions(text=sentence, names=location["names"]) <= 0:
+                    continue
+                key = (character["ref"], location["ref"])
+                if key in seen:
+                    continue
+                seen.add(key)
+                candidates.append(
+                    _candidate_from_character_location(
+                        project_id=project_id,
+                        profile=profile,
+                        chapter=chapter,
+                        character_ref=character["ref"],
+                        character_name=character["name"],
+                        location_ref=location["ref"],
+                        location_name=location["name"],
+                        evidence=sentence,
+                    )
+                )
+                if len(candidates) >= 12:
+                    return candidates
+    return candidates
+
+
+def _candidate_from_character_location(
+    *,
+    project_id: str,
+    profile: ProjectProfileVersion,
+    chapter: ChapterContent,
+    character_ref: str,
+    character_name: str,
+    location_ref: str,
+    location_name: str,
+    evidence: str,
+) -> ProposalCandidateFactCreate:
+    claim_id = f"claim.chapter.{chapter.chapter_index}.{_slug(character_ref)}.{_slug(location_ref)}.present_at_location"
+    return ProposalCandidateFactCreate(
+        project_id=project_id,
+        project_profile_version_id=profile.id,
+        profile_version=profile.version,
+        contract_version=profile.contract_version,
+        claim_id=claim_id,
+        chapter_index=chapter.chapter_index,
+        intra_chapter_seq=0,
+        subject_ref=character_ref,
+        predicate="present_at_location",
+        object_ref_or_value={
+            "chapter_index": chapter.chapter_index,
+            "character_name": character_name,
+            "location_ref": location_ref,
+            "location_name": location_name,
+            "evidence": evidence[:180],
+            "source": "deterministic_cooccurrence",
+        },
+        claim_layer="truth",
+        evidence_refs=[f"chapter:{chapter.chapter_index}"],
+        authority_type=DERIVED,
+        confidence=0.78,
+        notes=f"自动抽取：{character_name} 与 {location_name} 在同一句场景中共现。",
+    )
+
+
 def _candidate_from_entity_mention(
     *,
     project_id: str,
@@ -554,6 +680,35 @@ def _characters_from_world_model(db: Session, project_id: str, profile_version: 
     return [{"name": character.name, "character_status": "alive"} for character in characters]
 
 
+def _character_descriptors(characters: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    descriptors = []
+    seen_refs: set[str] = set()
+    for raw_character in characters:
+        if not isinstance(raw_character, dict):
+            continue
+        name = str(raw_character.get("name") or "").strip()
+        if not name:
+            continue
+        ref = _entity_ref("char", name)
+        if ref in seen_refs:
+            continue
+        seen_refs.add(ref)
+        aliases = raw_character.get("aliases") if isinstance(raw_character.get("aliases"), list) else []
+        names = _unique_non_empty([name, *aliases])
+        descriptors.append({"ref": ref, "name": name, "names": names})
+    return descriptors
+
+
+def _location_descriptors_from_world_model(db: Session, project_id: str, profile_version: int) -> list[dict[str, Any]]:
+    locations = (
+        db.query(WorldLocation)
+        .filter(WorldLocation.project_id == project_id, WorldLocation.profile_version == profile_version)
+        .order_by(WorldLocation.name.asc(), WorldLocation.canonical_id.asc())
+        .all()
+    )
+    return [_entity_mention_descriptor(location, "location") for location in locations]
+
+
 def _non_character_entities_from_world_model(db: Session, project_id: str, profile_version: int) -> list[dict[str, Any]]:
     entities: list[dict[str, Any]] = []
     locations = (
@@ -597,6 +752,10 @@ def _entity_mention_descriptor(entity: Any, entity_type: str) -> dict[str, Any]:
 
 def _entity_mention_names(entity: Any) -> list[str]:
     raw_names = [entity.name, entity.primary_alias, *(entity.aliases or [])]
+    return _unique_non_empty(raw_names)
+
+
+def _unique_non_empty(raw_names: list[Any]) -> list[str]:
     names: list[str] = []
     seen: set[str] = set()
     for raw_name in raw_names:
@@ -610,6 +769,17 @@ def _entity_mention_names(entity: Any) -> list[str]:
 
 def _count_entity_mentions(*, text: str, names: list[str]) -> int:
     return sum(text.count(name) for name in names if name)
+
+
+def _chapter_sentences(text: str) -> list[str]:
+    return [sentence.strip() for sentence in re.split(r"[。！？!?；;\n]+", text or "") if sentence.strip()]
+
+
+def _chapter_event_summary(chapter: ChapterContent) -> str:
+    sentences = _chapter_sentences(chapter.content or "")
+    if not sentences:
+        return ""
+    return "。".join(sentences[:2])[:220]
 
 
 def _extract_setup_world_terms(setup: Setup) -> dict[str, list[dict[str, str]]]:
@@ -630,16 +800,39 @@ def _extract_setup_world_terms(setup: Setup) -> dict[str, list[dict[str, str]]]:
     for source_name, text in sources:
         for term, context in _quoted_terms_with_context(text):
             bucket = _classify_setup_term(term, context, source_name)
-            if not bucket or term in seen[bucket]:
+            if not bucket:
                 continue
-            seen[bucket].add(term)
-            buckets[bucket].append(
-                {
-                    "name": term,
-                    "notes": f"来源：Setup 世界设定（{source_name}）。相关片段：{context[:220]}",
-                }
-            )
+            _append_setup_term(buckets=buckets, seen=seen, bucket=bucket, term=term, context=context, source_name=source_name)
+        for term, context in _unquoted_terms_with_context(text):
+            bucket = _classify_setup_term(term, context, source_name)
+            if not bucket:
+                continue
+            _append_setup_term(buckets=buckets, seen=seen, bucket=bucket, term=term, context=context, source_name=source_name)
     return buckets
+
+
+def _append_setup_term(
+    *,
+    buckets: dict[str, list[dict[str, str]]],
+    seen: dict[str, set[str]],
+    bucket: str,
+    term: str,
+    context: str,
+    source_name: str,
+) -> None:
+    if term in seen[bucket] or any(term != existing and term in existing for existing in seen[bucket]):
+        return
+    shorter_existing = [existing for existing in seen[bucket] if existing != term and existing in term]
+    if shorter_existing:
+        seen[bucket].difference_update(shorter_existing)
+        buckets[bucket] = [item for item in buckets[bucket] if item["name"] not in shorter_existing]
+    seen[bucket].add(term)
+    buckets[bucket].append(
+        {
+            "name": term,
+            "notes": f"来源：Setup 世界设定（{source_name}）。相关片段：{context[:220]}",
+        }
+    )
 
 
 def _quoted_terms_with_context(text: str) -> list[tuple[str, str]]:
@@ -652,6 +845,85 @@ def _quoted_terms_with_context(text: str) -> list[tuple[str, str]]:
         end = min(len(text), match.end() + 45)
         results.append((term, text[start:end].strip()))
     return results
+
+
+def _unquoted_terms_with_context(text: str) -> list[tuple[str, str]]:
+    normalized = (text or "").strip()
+    if not normalized:
+        return []
+    suffixes = (
+        "稳定区",
+        "守夜人联盟",
+        "联盟",
+        "学院",
+        "教会",
+        "公司",
+        "政府",
+        "军方",
+        "阵线",
+        "基地",
+        "空间",
+        "区域",
+        "海域",
+        "城市",
+        "星球",
+        "钥匙",
+        "密钥",
+        "装置",
+        "系统",
+        "协议",
+        "档案",
+        "计划",
+        "城",
+        "港",
+        "岛",
+        "塔",
+        "局",
+        "门",
+    )
+    results: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    segments = re.split(
+        r"[，。；、\s]+|旁|里|内|外|中|由|被|与|和|及|到|从|在|负责|控制|存放|开启|隐瞒|看守|矗立|封锁|必须|保持",
+        normalized,
+    )
+    for segment in segments:
+        segment = segment.strip()
+        if len(segment) < 2:
+            continue
+        for suffix in suffixes:
+            for match in re.finditer(rf"[\u4e00-\u9fffA-Za-z0-9]{{1,18}}{re.escape(suffix)}", segment):
+                term = _clean_unquoted_setup_term(match.group(0))
+                if not term or term in seen:
+                    continue
+                seen.add(term)
+                start = max(0, normalized.find(segment) - 35)
+                end = min(len(normalized), normalized.find(segment) + len(segment) + 35)
+                results.append((term, normalized[start:end].strip()))
+    return _prefer_longer_setup_terms(results)
+
+
+def _prefer_longer_setup_terms(results: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    preferred: list[tuple[str, str]] = []
+    for term, context in sorted(results, key=lambda item: (-len(item[0]), item[0])):
+        if any(term != kept_term and term in kept_term for kept_term, _ in preferred):
+            continue
+        preferred.append((term, context))
+    return preferred
+
+
+def _clean_unquoted_setup_term(term: str) -> str:
+    cleaned = re.sub(
+        r"^(?:(故事|世界|这个|一种|一个|负责|控制|存放|开启|隐瞒|巡查|矗立|封锁|必须|保持|真实用途))+",
+        "",
+        term.strip(),
+    )
+    for delimiter in ("发生在", "位于", "藏有", "藏在", "存放", "控制", "负责", "看守", "矗立", "开启"):
+        if delimiter in cleaned:
+            cleaned = cleaned.split(delimiter)[-1].strip()
+    if len(cleaned) < 2 or len(cleaned) > 12:
+        return ""
+    return cleaned
 
 
 def _classify_setup_term(term: str, context: str, source_name: str) -> str | None:
