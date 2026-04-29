@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import type { ContextBlock } from '../../api/types'
+import type { ContextBlock, PromptBudget } from '../../api/types'
 import ContextSourceList from './ContextSourceList.vue'
 
 const props = defineProps<{
   blocks: ContextBlock[]
+  budget?: PromptBudget | null
 }>()
 
 const expanded = ref<Record<string, boolean>>({})
@@ -51,10 +52,34 @@ function formatOriginalCount(block: ContextBlock) {
   if (block.original_char_count === null || block.original_char_count === undefined) return ''
   return ` / 原始 ${block.original_char_count}`
 }
+
+function formatKeyList(keys: string[] | undefined) {
+  return keys?.length ? keys.join(', ') : '-'
+}
 </script>
 
 <template>
   <div class="context-blocks">
+    <section v-if="props.budget" class="context-blocks__budget" aria-label="Prompt budget">
+      <div class="context-blocks__budget-metrics">
+        <span>Included {{ props.budget.included_blocks }}</span>
+        <span>Omitted {{ props.budget.omitted_blocks }}</span>
+        <span v-if="props.budget.max_context_chars !== null && props.budget.max_context_chars !== undefined">
+          Max {{ props.budget.max_context_chars }} chars
+        </span>
+      </div>
+      <div class="context-blocks__budget-details">
+        <div>
+          <span>Omitted keys</span>
+          <strong>{{ formatKeyList(props.budget.omitted_block_keys) }}</strong>
+        </div>
+        <div>
+          <span>Truncated</span>
+          <strong>{{ formatKeyList(props.budget.truncated_blocks) }}</strong>
+        </div>
+      </div>
+    </section>
+
     <p v-if="!props.blocks.length" class="context-blocks__empty">无上下文块</p>
     <template v-else>
       <section v-for="(block, index) in props.blocks" :key="blockKey(block, index)" class="context-blocks__item">
@@ -89,6 +114,59 @@ function formatOriginalCount(block: ContextBlock) {
   display: flex;
   flex-direction: column;
   min-width: 0;
+}
+
+.context-blocks__budget {
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+  min-width: 0;
+  padding: var(--space-3);
+}
+
+.context-blocks__budget-metrics {
+  color: var(--color-text-primary);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  gap: var(--space-2);
+}
+
+.context-blocks__budget-metrics span {
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+}
+
+.context-blocks__budget-details {
+  display: grid;
+  gap: var(--space-2);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.context-blocks__budget-details div {
+  min-width: 0;
+}
+
+.context-blocks__budget-details span {
+  color: var(--color-text-tertiary);
+  display: block;
+  font-size: var(--text-xs);
+  margin-bottom: var(--space-1);
+}
+
+.context-blocks__budget-details strong {
+  color: var(--color-text-primary);
+  display: block;
+  font-size: var(--text-xs);
+  font-weight: var(--font-medium);
+  overflow-wrap: anywhere;
 }
 
 .context-blocks__empty {
@@ -202,6 +280,10 @@ function formatOriginalCount(block: ContextBlock) {
   .context-blocks__metrics {
     align-items: flex-start;
     text-align: left;
+  }
+
+  .context-blocks__budget-details {
+    grid-template-columns: 1fr;
   }
 }
 </style>

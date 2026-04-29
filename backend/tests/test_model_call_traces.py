@@ -309,6 +309,44 @@ def test_model_call_trace_detail_normalizes_null_json_fields_from_orm():
     assert detail.trace_metadata == {}
 
 
+def test_model_call_trace_detail_derives_prompt_metadata_and_budget_from_trace_metadata():
+    trace = AIModelCallTrace(
+        id="trace-prompt",
+        project_id="project-1",
+        trace_type="chapter.generate",
+        status="success",
+        messages=[],
+        context_blocks=[],
+        trace_metadata={
+            "prompt_id": "chapter.generate",
+            "prompt_version": "v1",
+            "template_name": "generate_chapter",
+            "template_hash": "sha256:abcdef1234567890",
+            "budget": {
+                "max_context_chars": 24000,
+                "included_blocks": 3,
+                "omitted_blocks": 2,
+                "omitted_block_keys": ["world-history", "old-outline"],
+                "truncated_blocks": ["chapter-target"],
+            },
+        },
+    )
+
+    detail = ModelCallTraceDetail.model_validate(trace)
+
+    assert detail.prompt_metadata is not None
+    assert detail.prompt_metadata.prompt_id == "chapter.generate"
+    assert detail.prompt_metadata.prompt_version == "v1"
+    assert detail.prompt_metadata.template_name == "generate_chapter"
+    assert detail.prompt_metadata.template_hash == "sha256:abcdef1234567890"
+    assert detail.prompt_budget is not None
+    assert detail.prompt_budget.included_blocks == 3
+    assert detail.prompt_budget.omitted_blocks == 2
+    assert detail.prompt_budget.omitted_block_keys == ["world-history", "old-outline"]
+    assert detail.prompt_budget.truncated_blocks == ["chapter-target"]
+    assert detail.model_dump()["trace_metadata"]["prompt_id"] == "chapter.generate"
+
+
 def test_paginated_model_call_traces_accepts_total_and_items_only():
     payload = PaginatedModelCallTraces.model_validate({"total": 0, "items": []})
 

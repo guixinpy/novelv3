@@ -69,6 +69,52 @@ function createTraceDetail() {
   }
 }
 
+function createPromptTraceDetail() {
+  return {
+    ...createTraceDetail(),
+    prompt_metadata: {
+      prompt_id: 'chapter.generate',
+      prompt_version: 'v1',
+      template_name: 'generate_chapter',
+      template_hash: 'sha256:abcdef1234567890fedcba',
+    },
+    prompt_budget: {
+      max_context_chars: 24000,
+      included_blocks: 1,
+      omitted_blocks: 2,
+      omitted_block_keys: ['world-history', 'old-outline'],
+      truncated_blocks: ['chapter-summary'],
+    },
+    context_blocks: [
+      {
+        key: 'chapter-summary',
+        kind: 'summary',
+        title: '前三章摘要',
+        content: '主角抵达雾港，遇见旧友。',
+        sources: [],
+        char_count: 13,
+        token_estimate: 9,
+        original_char_count: 5000,
+        truncated: true,
+      },
+    ],
+    trace_metadata: {
+      provider: 'deepseek',
+      prompt_id: 'chapter.generate',
+      prompt_version: 'v1',
+      template_name: 'generate_chapter',
+      template_hash: 'sha256:abcdef1234567890fedcba',
+      budget: {
+        max_context_chars: 24000,
+        included_blocks: 1,
+        omitted_blocks: 2,
+        omitted_block_keys: ['world-history', 'old-outline'],
+        truncated_blocks: ['chapter-summary'],
+      },
+    },
+  }
+}
+
 describe('ModelTraceDrawer', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -99,6 +145,106 @@ describe('ModelTraceDrawer', () => {
     expect(document.body.textContent).toContain('前三章摘要')
     expect(document.body.textContent).toContain('主角抵达雾港')
     expect(document.body.textContent).toContain('第二章')
+    expect(document.body.textContent).toContain('你是写作助手')
+    expect(document.body.textContent).toContain('雾港钟声响起')
+
+    wrapper.unmount()
+  })
+
+  it('渲染 typed prompt metadata，不需要用户读取 raw JSON', async () => {
+    vi.mocked(api.getModelCallTrace).mockResolvedValue(createPromptTraceDetail())
+
+    const wrapper = mount(ModelTraceDrawer, {
+      props: {
+        projectId: 'project-1',
+        traceId: 'trace-1',
+        open: true,
+      },
+      attachTo: document.body,
+    })
+
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    expect(document.body.textContent).toContain('Prompt')
+    expect(document.body.textContent).toContain('chapter.generate')
+    expect(document.body.textContent).toContain('v1')
+    expect(document.body.textContent).toContain('generate_chapter')
+    expect(document.body.textContent).toContain('sha256:abcdef12')
+
+    wrapper.unmount()
+  })
+
+  it('渲染 omitted/truncated budget 和上下文块截断状态', async () => {
+    vi.mocked(api.getModelCallTrace).mockResolvedValue(createPromptTraceDetail())
+
+    const wrapper = mount(ModelTraceDrawer, {
+      props: {
+        projectId: 'project-1',
+        traceId: 'trace-1',
+        open: true,
+      },
+      attachTo: document.body,
+    })
+
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    expect(document.body.textContent).toContain('Included')
+    expect(document.body.textContent).toContain('1')
+    expect(document.body.textContent).toContain('Omitted')
+    expect(document.body.textContent).toContain('2')
+    expect(document.body.textContent).toContain('world-history')
+    expect(document.body.textContent).toContain('old-outline')
+    expect(document.body.textContent).toContain('chapter-summary')
+    expect(document.body.textContent).toContain('已截断')
+    expect(document.body.textContent).toContain('原始 5000')
+
+    wrapper.unmount()
+  })
+
+  it('typed 字段缺失时从 trace_metadata fallback 渲染 prompt 信息', async () => {
+    const detail = createPromptTraceDetail()
+    delete (detail as any).prompt_metadata
+    delete (detail as any).prompt_budget
+    vi.mocked(api.getModelCallTrace).mockResolvedValue(detail)
+
+    const wrapper = mount(ModelTraceDrawer, {
+      props: {
+        projectId: 'project-1',
+        traceId: 'trace-legacy',
+        open: true,
+      },
+      attachTo: document.body,
+    })
+
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    expect(document.body.textContent).toContain('chapter.generate')
+    expect(document.body.textContent).toContain('generate_chapter')
+    expect(document.body.textContent).toContain('world-history')
+    expect(document.body.textContent).toContain('chapter-summary')
+
+    wrapper.unmount()
+  })
+
+  it('prompt metadata 增强后 raw messages viewer 仍渲染', async () => {
+    vi.mocked(api.getModelCallTrace).mockResolvedValue(createPromptTraceDetail())
+
+    const wrapper = mount(ModelTraceDrawer, {
+      props: {
+        projectId: 'project-1',
+        traceId: 'trace-1',
+        open: true,
+      },
+      attachTo: document.body,
+    })
+
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    expect(document.body.textContent).toContain('Raw Messages')
     expect(document.body.textContent).toContain('你是写作助手')
     expect(document.body.textContent).toContain('雾港钟声响起')
 

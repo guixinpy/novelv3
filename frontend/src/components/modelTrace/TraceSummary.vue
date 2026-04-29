@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { ModelCallTraceListItem } from '../../api/types'
+import type { ModelCallTraceListItem, PromptMetadata } from '../../api/types'
 
 const props = defineProps<{
   trace: ModelCallTraceListItem
+  promptMetadata?: PromptMetadata | null
 }>()
 
 const statusMeta = computed(() => {
@@ -43,6 +44,12 @@ function formatTime(value: string | null | undefined) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
   return date.toLocaleString('zh-CN', { hour12: false })
+}
+
+function formatHash(value: string | null | undefined) {
+  if (!value) return '-'
+  if (value.length <= 22) return value
+  return `${value.slice(0, 19)}...`
 }
 </script>
 
@@ -85,6 +92,22 @@ function formatTime(value: string | null | undefined) {
       <div>
         <dt>时间</dt>
         <dd>{{ formatTime(trace.created_at) }}</dd>
+      </div>
+      <div v-if="promptMetadata">
+        <dt>Prompt</dt>
+        <dd>{{ formatValue(promptMetadata.prompt_id) }}</dd>
+      </div>
+      <div v-if="promptMetadata">
+        <dt>版本</dt>
+        <dd>{{ formatValue(promptMetadata.prompt_version) }}</dd>
+      </div>
+      <div v-if="promptMetadata">
+        <dt>Template</dt>
+        <dd>{{ formatValue(promptMetadata.template_name) }}</dd>
+      </div>
+      <div v-if="promptMetadata">
+        <dt>Hash</dt>
+        <dd :title="promptMetadata.template_hash || undefined">{{ formatHash(promptMetadata.template_hash) }}</dd>
       </div>
     </dl>
 

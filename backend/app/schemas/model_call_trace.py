@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class TraceSourceOut(BaseModel):
@@ -24,6 +24,33 @@ class ContextBlockOut(BaseModel):
     token_estimate: int
     original_char_count: int | None = None
     truncated: bool = False
+
+
+class PromptMetadataOut(BaseModel):
+    prompt_id: str | None = None
+    prompt_version: str | None = None
+    template_name: str | None = None
+    template_hash: str | None = None
+
+
+class PromptBudgetOut(BaseModel):
+    max_context_chars: int | None = None
+    included_blocks: int = 0
+    omitted_blocks: int = 0
+    omitted_block_keys: list[str] = Field(default_factory=list)
+    truncated_blocks: list[str] = Field(default_factory=list)
+    has_omitted_blocks: bool = False
+    has_truncated_blocks: bool = False
+
+    @model_validator(mode="after")
+    def derive_flags(self):
+        self.has_omitted_blocks = (
+            self.has_omitted_blocks
+            or self.omitted_blocks > 0
+            or bool(self.omitted_block_keys)
+        )
+        self.has_truncated_blocks = self.has_truncated_blocks or bool(self.truncated_blocks)
+        return self
 
 
 class ModelCallTraceListItem(BaseModel):
@@ -53,6 +80,8 @@ class ModelCallTraceDetail(ModelCallTraceListItem):
     messages: list[dict[str, Any]] = Field(default_factory=list)
     context_blocks: list[ContextBlockOut] = Field(default_factory=list)
     trace_metadata: dict[str, Any] = Field(default_factory=dict)
+    prompt_metadata: PromptMetadataOut | None = None
+    prompt_budget: PromptBudgetOut | None = None
 
     @field_validator("messages", mode="before")
     @classmethod
@@ -112,6 +141,14 @@ class ModelCallTraceDetail(ModelCallTraceListItem):
     def normalize_nullable_dict(cls, value):
         return {} if value is None else value
 
+    @model_validator(mode="after")
+    def derive_prompt_fields(self):
+        if self.prompt_metadata is None:
+            self.prompt_metadata = _derive_prompt_metadata(self.trace_metadata)
+        if self.prompt_budget is None:
+            self.prompt_budget = _derive_prompt_budget(self.trace_metadata)
+        return self
+
 
 def _normalize_trace_source(source: Any) -> dict[str, Any]:
     if isinstance(source, dict):
@@ -122,6 +159,64 @@ def _normalize_trace_source(source: Any) -> dict[str, Any]:
         "source_type": "Unknown",
         "label": str(source),
     }
+
+
+def _derive_prompt_metadata(trace_metadata: dict[str, Any]) -> PromptMetadataOut | None:
+    fields = {
+        "prompt_id": _string_or_none(trace_metadata.get("prompt_id")),
+        "prompt_version": _string_or_none(trace_metadata.get("prompt_version")),
+        "template_name": _string_or_none(trace_metadata.get("template_name")),
+        "template_hash": _string_or_none(trace_metadata.get("template_hash")),
+    }
+    if not any(fields.values()):
+        return None
+    return PromptMetadataOut(**fields)
+
+
+def _derive_prompt_budget(trace_metadata: dict[str, Any]) -> PromptBudgetOut | None:
+    budget = trace_metadata.get("budget")
+    if not isinstance(budget, dict):
+        return None
+
+    omitted_block_keys = _string_list(budget.get("omitted_block_keys"))
+    truncated_blocks = _string_list(budget.get("truncated_blocks"))
+    omitted_blocks = _int_or_zero(budget.get("omitted_blocks"))
+
+    return PromptBudgetOut(
+        max_context_chars=_int_or_none(budget.get("max_context_chars")),
+        included_blocks=_int_or_zero(budget.get("included_blocks")),
+        omitted_blocks=omitted_blocks,
+        omitted_block_keys=omitted_block_keys,
+        truncated_blocks=truncated_blocks,
+        has_omitted_blocks=omitted_blocks > 0 or bool(omitted_block_keys),
+        has_truncated_blocks=bool(truncated_blocks),
+    )
+
+
+def _string_or_none(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value)
+    return text if text else None
+
+
+def _string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value if item is not None and str(item)]
+
+
+def _int_or_none(value: Any) -> int | None:
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _int_or_zero(value: Any) -> int:
+    return _int_or_none(value) or 0
 
 
 class PaginatedModelCallTraces(BaseModel):

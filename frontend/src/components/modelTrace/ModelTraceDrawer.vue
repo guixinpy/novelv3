@@ -2,6 +2,7 @@
 import { computed, watch } from 'vue'
 import BaseModal from '../base/BaseModal.vue'
 import { useModelTraceStore } from '../../stores/modelTraces'
+import type { ModelCallTraceDetail, PromptBudget, PromptMetadata } from '../../api/types'
 import TraceSummary from './TraceSummary.vue'
 import ContextBlockList from './ContextBlockList.vue'
 import RawMessagesViewer from './RawMessagesViewer.vue'
@@ -16,6 +17,8 @@ const emit = defineEmits<{ close: [] }>()
 const store = useModelTraceStore()
 
 const detail = computed(() => store.selectedTrace)
+const promptMetadata = computed(() => detail.value ? resolvePromptMetadata(detail.value) : null)
+const promptBudget = computed(() => detail.value ? resolvePromptBudget(detail.value) : null)
 const hasMetadata = computed(() => {
   const metadata = detail.value?.trace_metadata
   return Boolean(metadata && Object.keys(metadata).length > 0)
@@ -45,6 +48,67 @@ function handleClose() {
   store.closeTrace()
   emit('close')
 }
+
+function resolvePromptMetadata(trace: ModelCallTraceDetail): PromptMetadata | null {
+  if (trace.prompt_metadata) return trace.prompt_metadata
+
+  const metadata = trace.trace_metadata || {}
+  const promptMetadata: PromptMetadata = {
+    prompt_id: stringFromUnknown(metadata.prompt_id),
+    prompt_version: stringFromUnknown(metadata.prompt_version),
+    template_name: stringFromUnknown(metadata.template_name),
+    template_hash: stringFromUnknown(metadata.template_hash),
+  }
+
+  return Object.values(promptMetadata).some(Boolean) ? promptMetadata : null
+}
+
+function resolvePromptBudget(trace: ModelCallTraceDetail): PromptBudget | null {
+  if (trace.prompt_budget) return trace.prompt_budget
+
+  const budget = trace.trace_metadata?.budget
+  if (!isRecord(budget)) return null
+
+  const omittedBlockKeys = stringListFromUnknown(budget.omitted_block_keys)
+  const truncatedBlocks = stringListFromUnknown(budget.truncated_blocks)
+  const omittedBlocks = numberFromUnknown(budget.omitted_blocks) || 0
+
+  return {
+    max_context_chars: numberFromUnknown(budget.max_context_chars),
+    included_blocks: numberFromUnknown(budget.included_blocks) || 0,
+    omitted_blocks: omittedBlocks,
+    omitted_block_keys: omittedBlockKeys,
+    truncated_blocks: truncatedBlocks,
+    has_omitted_blocks: omittedBlocks > 0 || omittedBlockKeys.length > 0,
+    has_truncated_blocks: truncatedBlocks.length > 0,
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function stringFromUnknown(value: unknown) {
+  if (value === null || value === undefined) return null
+  const text = String(value)
+  return text || null
+}
+
+function numberFromUnknown(value: unknown) {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return null
+}
+
+function stringListFromUnknown(value: unknown) {
+  if (!Array.isArray(value)) return []
+  return value
+    .map((item) => stringFromUnknown(item))
+    .filter((item): item is string => Boolean(item))
+}
 </script>
 
 <template>
@@ -54,11 +118,11 @@ function handleClose() {
       <p v-if="store.detailError" class="model-trace-drawer__error">{{ store.detailError }}</p>
 
       <template v-if="detail">
-        <TraceSummary :trace="detail" />
+        <TraceSummary :trace="detail" :prompt-metadata="promptMetadata" />
 
         <section class="model-trace-drawer__section" aria-label="上下文块">
           <h4>上下文块</h4>
-          <ContextBlockList :blocks="detail.context_blocks || []" />
+          <ContextBlockList :blocks="detail.context_blocks || []" :budget="promptBudget" />
         </section>
 
         <section class="model-trace-drawer__section" aria-label="Raw messages">

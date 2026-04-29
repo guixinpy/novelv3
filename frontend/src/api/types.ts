@@ -141,6 +141,23 @@ export interface ContextBlock {
   truncated: boolean
 }
 
+export interface PromptMetadata {
+  prompt_id?: string | null
+  prompt_version?: string | null
+  template_name?: string | null
+  template_hash?: string | null
+}
+
+export interface PromptBudget {
+  max_context_chars?: number | null
+  included_blocks: number
+  omitted_blocks: number
+  omitted_block_keys: string[]
+  truncated_blocks: string[]
+  has_omitted_blocks?: boolean
+  has_truncated_blocks?: boolean
+}
+
 export interface ModelCallTraceListItem {
   id: string
   project_id: string
@@ -166,6 +183,8 @@ export interface ModelCallTraceDetail extends ModelCallTraceListItem {
   messages: Array<Record<string, unknown>>
   context_blocks: ContextBlock[]
   trace_metadata: Record<string, unknown>
+  prompt_metadata?: PromptMetadata | null
+  prompt_budget?: PromptBudget | null
 }
 
 export interface PaginatedModelCallTraces {
