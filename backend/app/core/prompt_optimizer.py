@@ -27,10 +27,15 @@ class PromptOptimizer:
         "suspense": "悬疑氛围，适当设置悬念",
     }
 
+    def build_rules(self, config: dict | None) -> list[str]:
+        if not config:
+            return []
+        return self._build_rules(config)
+
     def optimize(self, base_prompt: str, config: dict | None) -> str:
         if not config:
             return base_prompt
-        rules = self._build_rules(config)
+        rules = self.build_rules(config)
         if rules:
             base_prompt += "\n\n【用户偏好规则】\n" + "\n".join(f"- {r}" for r in rules)
         return base_prompt

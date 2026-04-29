@@ -277,6 +277,13 @@ def test_safe_create_chapter_trace_commits_before_model_call(db_session):
             "messages": [{"role": "user", "content": "生成第一章"}],
             "context_blocks": [],
             "max_tokens": 1200,
+            "trace_metadata": {
+                "prompt_id": "chapter.generate",
+                "prompt_version": "1",
+                "template_name": "generate_chapter",
+                "template_hash": "sha256:test",
+                "budget": None,
+            },
         },
     )
 

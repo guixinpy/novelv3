@@ -1,4 +1,3 @@
-import json
 import re
 import time
 
@@ -7,76 +6,30 @@ from sqlalchemy.orm import Session
 
 from app.config import load_api_key
 from app.core.ai_service import AIService
-from app.core.model_call_trace import build_context_block, create_trace, mark_trace_failed, mark_trace_success, now_ms
-from app.core.prompt_manager import PromptManager
-from app.core.prompt_optimizer import PromptOptimizer
+from app.core.model_call_trace import create_trace, mark_trace_failed, mark_trace_success, now_ms
 from app.db import get_db
 from app.models import AIModelCallTrace, ChapterContent, Outline, Project, Setup
+from app.prompting.assembler import PromptAssembler
+from app.prompting.providers.chapter import (
+    CHAPTER_CONTEXT_CHAR_BUDGET,
+    build_chapter_prompt_context_blocks,
+    build_chapter_prompt_variables,
+    build_chapter_trace_context_blocks,
+    chapter_max_tokens,
+)
+from app.prompting.tracing import build_prompt_trace_metadata
 from app.schemas import ChapterOut
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/chapters", tags=["chapters"])
 
 ai_service = AIService()
-prompt_optimizer = PromptOptimizer()
+prompt_assembler = PromptAssembler()
 
 
 def _count_words(content: str) -> int:
     ascii_words = len([w for w in re.split(r"\s+", content) if w])
     cjk_chars = len(re.findall(r"[\u4e00-\u9fff]", content))
     return ascii_words + cjk_chars
-
-
-def _extract_word_range(text: str) -> tuple[int, int] | None:
-    match = re.search(r"(\d{3,5})\s*(?:-|~|至|到|—|－)\s*(\d{3,5})\s*字", text or "")
-    if not match:
-        return None
-    low, high = int(match.group(1)), int(match.group(2))
-    if low <= 0 or high < low:
-        return None
-    return low, high
-
-
-def _chapter_max_tokens(extra_feedback: str) -> int:
-    word_range = _extract_word_range(extra_feedback)
-    if not word_range:
-        return 4000
-    return min(4000, max(word_range[1] + 800, 1200))
-
-
-def _build_chapter_context(db: Session, project_id: str, chapter_index: int, setup: Setup) -> str:
-    parts = []
-    parts.append(f"世界观：{json.dumps(setup.world_building, ensure_ascii=False)[:500]}")
-    parts.append(f"角色：{json.dumps(setup.characters, ensure_ascii=False)[:500]}")
-
-    outline = db.query(Outline).filter(Outline.project_id == project_id).first()
-    if outline and outline.chapters:
-        for ch in outline.chapters:
-            if ch.get("chapter_index") == chapter_index:
-                parts.append(f"本章大纲：{ch.get('title', '')} - {ch.get('summary', '')}")
-                if ch.get("scenes"):
-                    parts.append(f"场景：{'、'.join(ch['scenes'])}")
-                if ch.get("characters"):
-                    parts.append(f"出场角色：{'、'.join(ch['characters'])}")
-                break
-
-    if chapter_index > 1:
-        prev = db.query(ChapterContent).filter(
-            ChapterContent.project_id == project_id,
-            ChapterContent.chapter_index == chapter_index - 1,
-        ).first()
-        if prev and prev.content:
-            summary = prev.content[:300] + "..." if len(prev.content) > 300 else prev.content
-            parts.append(f"上一章摘要：{summary}")
-
-    try:
-        from app.core.athena_longform import build_chapter_context_package
-        athena_context = build_chapter_context_package(db=db, project_id=project_id, chapter_index=chapter_index)
-        if athena_context.get("profile_version") is not None and athena_context.get("prompt_context"):
-            parts.append(f"【Athena 世界上下文】\n{athena_context['prompt_context']}")
-    except Exception:
-        pass
-
-    return "\n".join(parts)
 
 
 def _latest_chapter_generation_trace_id(db: Session, chapter: ChapterContent) -> str | None:
@@ -108,116 +61,30 @@ def _build_chapter_call_payload(
     chapter_index: int,
     extra_feedback: str,
 ) -> dict:
-    context = _build_chapter_context(db, project.id, chapter_index, setup)
-
-    pm = PromptManager()
-    prompt_template = pm.load(
-        "generate_chapter",
-        {
-            "world_building": json.dumps(setup.world_building, ensure_ascii=False),
-            "characters": json.dumps(setup.characters, ensure_ascii=False),
-            "core_concept": json.dumps(setup.core_concept, ensure_ascii=False),
-            "chapter_index": chapter_index,
-            "language": project.language,
-        },
+    prompt_context_blocks, trace_only_context_blocks = build_chapter_prompt_context_blocks(
+        db,
+        project,
+        setup,
+        chapter_index,
+        extra_feedback,
     )
-    prompt = f"{prompt_template}\n\n【章节上下文】\n{context}"
-    context_blocks = [
-        build_context_block(
-            key="setup_world_building",
-            kind="setup",
-            title="世界观",
-            content=json.dumps(setup.world_building, ensure_ascii=False),
-        ),
-        build_context_block(
-            key="setup_characters",
-            kind="setup",
-            title="角色",
-            content=json.dumps(setup.characters, ensure_ascii=False),
-        ),
-        build_context_block(
-            key="chapter_context",
-            kind="chapter_context",
-            title=f"第{chapter_index}章上下文",
-            content=context,
-        ),
-        build_context_block(
-            key="generate_chapter_template",
-            kind="prompt_template",
-            title="章节生成模板",
-            content=prompt_template,
-        ),
-    ]
-    if extra_feedback:
-        prompt = f"{prompt}\n\n【用户修订反馈】\n{extra_feedback}"
-        context_blocks.append(
-            build_context_block(
-                key="extra_feedback",
-                kind="user_feedback",
-                title="用户修订反馈",
-                content=extra_feedback,
-            )
-        )
-        word_range = _extract_word_range(extra_feedback)
-        if word_range:
-            length_constraint = (
-                f"正文长度控制在{word_range[0]}-{word_range[1]}字，"
-                "不要为了解释设定而扩写，优先保证剧情推进和章节钩子。"
-            )
-            prompt = f"{prompt}\n\n【长度约束】\n{length_constraint}"
-            context_blocks.append(
-                build_context_block(
-                    key="length_constraint",
-                    kind="generation_constraint",
-                    title="长度约束",
-                    content=length_constraint,
-                )
-            )
-    original_prompt = prompt
-    prompt = prompt_optimizer.optimize(prompt, project.style_config)
-    if prompt != original_prompt:
-        style_rule_content = (
-            prompt[len(original_prompt):].strip()
-            if prompt.startswith(original_prompt)
-            else prompt
-        )
-        context_blocks.append(
-            build_context_block(
-                key="style_rule",
-                kind="style_rule",
-                title="风格偏好规则",
-                content=style_rule_content,
-                sources=[
-                    {
-                        "source_type": "Project",
-                        "source_id": project.id,
-                        "label": "Project/style_config",
-                        "source_ref": "Project/style_config",
-                        "metadata": {"style_config": project.style_config},
-                    }
-                ],
-            )
-        )
-
-    from app.core.few_shot_library import FewShotExampleLibrary
-    fsl = FewShotExampleLibrary()
-    examples = fsl.select_examples("chapter", project.genre)
-    if examples:
-        few_shot_prompt = fsl.format_for_prompt(examples)
-        prompt += "\n\n" + few_shot_prompt
-        context_blocks.append(
-            build_context_block(
-                key="few_shot_examples",
-                kind="few_shot",
-                title="章节示例",
-                content=few_shot_prompt,
-            )
-        )
+    build_result = prompt_assembler.build(
+        "chapter.generate",
+        build_chapter_prompt_variables(project, setup, chapter_index),
+        context_blocks=prompt_context_blocks,
+        max_context_chars=CHAPTER_CONTEXT_CHAR_BUDGET,
+    )
 
     return {
-        "messages": [{"role": "user", "content": prompt}],
-        "context_blocks": context_blocks,
-        "max_tokens": _chapter_max_tokens(extra_feedback),
+        "messages": build_result.messages,
+        "context_blocks": build_chapter_trace_context_blocks(
+            build_result.content,
+            build_result.context_blocks,
+            trace_only_context_blocks,
+        ),
+        "max_tokens": chapter_max_tokens(extra_feedback),
+        "trace_metadata": build_prompt_trace_metadata(build_result),
+        "rendered_prompt": build_result.content,
     }
 
 
@@ -239,6 +106,7 @@ def _safe_create_chapter_trace(
             temperature=0.7,
             max_tokens=payload["max_tokens"],
             chapter_index=chapter_index,
+            trace_metadata=payload["trace_metadata"],
         )
         db.commit()
         return trace

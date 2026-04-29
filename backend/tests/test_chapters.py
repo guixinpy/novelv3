@@ -71,9 +71,11 @@ def test_generate_chapter_records_model_call_trace(mock_complete, mock_key, clie
     assert trace["chapter_index"] == 1
     assert trace["status"] == "success"
     assert trace["prompt_tokens"] == 123
+    assert trace["trace_metadata"]["prompt_id"] == "chapter.generate"
     context_kinds = {block["kind"] for block in trace["context_blocks"]}
     assert "setup" in context_kinds
-    assert "chapter_context" in context_kinds
+    assert "athena_context" in context_kinds
+    assert "prompt_template" in context_kinds
     sent_messages = mock_complete.await_args.args[0]
     assert trace["messages"][0]["content"] == sent_messages[0]["content"]
 
