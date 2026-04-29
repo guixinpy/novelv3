@@ -89,6 +89,7 @@ def search_retrieval(
     limit: int = 8,
     source_type: str | None = None,
     max_chapter_index: int | None = None,
+    candidate_limit: int | None = None,
 ) -> dict[str, Any]:
     _require_project(db, project_id)
     cleaned_query = query.strip()
@@ -109,6 +110,13 @@ def search_retrieval(
         rows_query = rows_query.filter(
             (RetrievalDocument.chapter_index.is_(None)) | (RetrievalDocument.chapter_index <= max_chapter_index)
         )
+    rows_query = rows_query.order_by(
+        RetrievalDocument.source_type.asc(),
+        RetrievalDocument.chapter_index.asc().nullsfirst(),
+        RetrievalChunk.chunk_index.asc(),
+        RetrievalChunk.id.asc(),
+    )
+    rows_query = rows_query.limit(candidate_limit or max(limit * 80, 400))
 
     scored = []
     for chunk, document, embedding in rows_query.all():
@@ -182,6 +190,17 @@ def _project_sources(db: Session, project_id: str) -> list[RetrievalSource]:
         .all()
     )
     return [*[_chapter_source(chapter) for chapter in chapters], *[_fact_source(fact) for fact in facts]]
+
+
+def sync_fact_retrieval_document(db: Session, *, fact: WorldFactClaim) -> dict[str, int]:
+    _delete_document(db, project_id=fact.project_id, source_type="world_fact", source_id=fact.id)
+    if fact.claim_layer != "truth" or fact.claim_status != "confirmed":
+        return {"documents": 0, "chunks": 0, "embeddings": 0}
+    return _index_sources(db, fact.project_id, [_fact_source(fact)])
+
+
+def delete_fact_retrieval_document(db: Session, *, fact: WorldFactClaim) -> None:
+    _delete_document(db, project_id=fact.project_id, source_type="world_fact", source_id=fact.id)
 
 
 def _chapter_source(chapter: ChapterContent) -> RetrievalSource:

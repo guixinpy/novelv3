@@ -6,6 +6,7 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.athena_retrieval import delete_fact_retrieval_document, sync_fact_retrieval_document
 from app.core.world_projection_service import invalidate_world_projection_cache
 from app.models import (
     GenreProfile,
@@ -302,6 +303,7 @@ def review_proposal_item(
                 )
             )
             review.created_truth_claim_id = claim.claim_id
+            sync_fact_retrieval_document(db=db, fact=claim)
 
         db.add(review)
         _refresh_bundle_status(db=db, bundle=bundle)
@@ -478,6 +480,7 @@ def rollback_review(
         raise ValueError(f"approval review {review.id} has already been rolled back")
     claim.claim_status = "rolled_back"
     item.item_status = "rolled_back"
+    delete_fact_retrieval_document(db=db, fact=claim)
 
     rollback = WorldProposalReview(
         project_id=item.project_id,

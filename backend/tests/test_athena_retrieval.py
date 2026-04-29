@@ -1,6 +1,17 @@
 from app.core.world_contracts import DERIVED
 from app.core.embedding_service import get_embedding_provider
-from app.models import ChapterContent, Outline, Project, ProjectProfileVersion, Setup, WorldFactClaim
+from app.core.athena_retrieval import search_retrieval
+from app.core.world_proposal_service import create_bundle, review_proposal_item, rollback_review, write_candidate_fact
+from app.models import (
+    ChapterContent,
+    Outline,
+    Project,
+    ProjectProfileVersion,
+    RetrievalDocument,
+    Setup,
+    WorldFactClaim,
+)
+from app.schemas.world_proposals import ProposalCandidateFactCreate
 
 
 def test_embedding_provider_defaults_to_local_without_explicit_remote_mode(monkeypatch):
@@ -99,6 +110,39 @@ def _seed_confirmed_fact(db_session, project_id: str):
     return claim
 
 
+def _write_reviewable_fact_candidate(db_session, project_id: str):
+    profile = db_session.query(ProjectProfileVersion).filter_by(project_id=project_id).one()
+    bundle = create_bundle(
+        db=db_session,
+        project_id=project_id,
+        project_profile_version_id=profile.id,
+        profile_version=profile.version,
+        created_by="athena.test",
+        title="增量检索候选",
+    )
+    return write_candidate_fact(
+        db=db_session,
+        bundle_id=bundle.id,
+        created_by="athena.test",
+        candidate=ProposalCandidateFactCreate(
+            project_id=project_id,
+            project_profile_version_id=profile.id,
+            profile_version=profile.version,
+            claim_id="claim.linzhou.role.incremental",
+            chapter_index=2,
+            subject_ref="char.林舟",
+            predicate="role",
+            object_ref_or_value="雾港城守夜人",
+            claim_layer="truth",
+            evidence_refs=["chapter:2"],
+            authority_type=DERIVED,
+            confidence=0.93,
+            notes="林舟在雾港城承担守夜职责。",
+            contract_version=profile.contract_version,
+        ),
+    )
+
+
 def test_reindex_builds_searchable_chunks_for_chapters_and_confirmed_facts(client, db_session):
     project = _seed_retrieval_project(db_session)
     client.post(f"/api/v1/projects/{project.id}/athena/ontology/import-setup")
@@ -152,3 +196,51 @@ def test_retrieval_diagnostics_and_single_chapter_index_endpoint(client, db_sess
     assert payload["total_documents"] == 1
     assert payload["total_chunks"] >= 1
     assert payload["embedding_provider"] == "local"
+
+
+def test_approval_incrementally_indexes_world_fact_without_full_reindex(client, db_session):
+    project = _seed_retrieval_project(db_session)
+    client.post(f"/api/v1/projects/{project.id}/athena/ontology/import-setup")
+    item = _write_reviewable_fact_candidate(db_session, project.id)
+
+    review = review_proposal_item(
+        db=db_session,
+        proposal_item_id=item.id,
+        reviewer_ref="tester",
+        action="approve",
+        reason="确认进入世界模型",
+        evidence_refs=["chapter:2"],
+    )
+
+    documents = db_session.query(RetrievalDocument).filter_by(project_id=project.id, source_type="world_fact").all()
+    search = search_retrieval(db_session, project.id, "雾港城守夜人", source_type="world_fact")
+
+    assert review.created_truth_claim_id == "claim.linzhou.role.incremental"
+    assert [document.source_ref for document in documents] == ["claim:claim.linzhou.role.incremental"]
+    assert search["items"]
+    assert "雾港城守夜人" in search["items"][0]["snippet"]
+
+
+def test_rollback_removes_incremental_world_fact_retrieval_document(client, db_session):
+    project = _seed_retrieval_project(db_session)
+    client.post(f"/api/v1/projects/{project.id}/athena/ontology/import-setup")
+    item = _write_reviewable_fact_candidate(db_session, project.id)
+    approval = review_proposal_item(
+        db=db_session,
+        proposal_item_id=item.id,
+        reviewer_ref="tester",
+        action="approve",
+        reason="先并入世界模型",
+        evidence_refs=["chapter:2"],
+    )
+    assert db_session.query(RetrievalDocument).filter_by(project_id=project.id, source_type="world_fact").count() == 1
+
+    rollback_review(
+        db=db_session,
+        review_id=approval.id,
+        reviewer_ref="tester",
+        reason="证据撤回",
+        evidence_refs=["chapter:3"],
+    )
+
+    assert db_session.query(RetrievalDocument).filter_by(project_id=project.id, source_type="world_fact").count() == 0
