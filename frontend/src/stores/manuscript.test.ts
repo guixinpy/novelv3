@@ -85,6 +85,20 @@ describe('manuscript store', () => {
     expect(store.paragraphs).toEqual(['第一段。', '第二段。'])
   })
 
+  it('ensureChapter 复用同项目同章节的 fresh 正文和修订', async () => {
+    mockChapter()
+    vi.mocked(api.getActiveRevision).mockResolvedValue(mockRevision())
+    const store = useManuscriptStore()
+
+    await store.ensureChapter('project-1', 1)
+    await store.ensureChapter('project-1', 1)
+
+    expect(api.getChapter).toHaveBeenCalledTimes(1)
+    expect(api.getActiveRevision).toHaveBeenCalledTimes(1)
+    expect(store.selectedChapterIndex).toBe(1)
+    expect(store.annotations).toHaveLength(1)
+  })
+
   it('tracks local annotations and corrections as dirty state', () => {
     const store = useManuscriptStore()
 

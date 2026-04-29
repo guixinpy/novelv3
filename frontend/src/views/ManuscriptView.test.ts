@@ -7,6 +7,7 @@ import { defineComponent } from 'vue'
 import ManuscriptView from './ManuscriptView.vue'
 import { api } from '../api/client'
 import type { ChapterContent } from '../api/types'
+import { useManuscriptStore } from '../stores/manuscript'
 
 vi.mock('../api/client', () => ({
   api: {
@@ -169,6 +170,19 @@ describe('ManuscriptView', () => {
       traceId: null,
       open: false,
     })
+  })
+
+  it('remounting the same project restores the last selected chapter', async () => {
+    const { wrapper } = await mountView()
+    const manuscript = useManuscriptStore()
+    await wrapper.findAll('[data-testid="chapter-option"]')[1].trigger('click')
+    await flushPromises()
+    expect(manuscript.selectedChapterIndex).toBe(2)
+
+    wrapper.unmount()
+    await mountView()
+
+    expect(manuscript.selectedChapterIndex).toBe(2)
   })
 
   it('closes old trace drawer when switching project route', async () => {

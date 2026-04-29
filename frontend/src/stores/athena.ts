@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { api } from '../api/client'
+import { useRequestCacheStore } from './requestCache'
 import type {
   AthenaEvolutionPlan,
   AthenaOntology,
@@ -22,7 +23,11 @@ function toErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
 
+const ATHENA_CACHE_TTL_MS = 5 * 60 * 1000
+
 export const useAthenaStore = defineStore('athena', () => {
+  const requestCache = useRequestCacheStore()
+  const activeProjectId = ref<string | null>(null)
   const loading = ref(false)
   const error = ref<string | null>(null)
 
@@ -48,6 +53,70 @@ export const useAthenaStore = defineStore('athena', () => {
   let messageLoadRequestId = 0
   let sendRequestId = 0
   let sendProjectId: string | null = null
+
+  function cacheKey(projectId: string, resource: string) {
+    return `athena:${projectId}:${resource}`
+  }
+
+  function isActiveProject(projectId: string) {
+    return activeProjectId.value === projectId
+  }
+
+  function clearProjectState() {
+    ontology.value = null
+    projection.value = null
+    timeline.value = null
+    evolutionPlan.value = null
+    proposals.value = null
+    proposalDetails.value = {}
+    proposalBusy.value = {}
+    consistencyIssues.value = []
+    optimization.value = null
+    retrievalDiagnostics.value = null
+    retrievalSearch.value = null
+    retrievalLastIndexResult.value = null
+    retrievalLoading.value = false
+    setup.value = null
+    messages.value = []
+    error.value = null
+  }
+
+  function reset(projectId: string | null = null) {
+    if (projectId) requestCache.invalidate(cacheKey(projectId, ''))
+    activeProjectId.value = projectId
+    activeChatProjectId = projectId
+    messageLoadRequestId += 1
+    if (!projectId) {
+      sendProjectId = null
+      sendRequestId += 1
+      chatLoading.value = false
+    }
+    clearProjectState()
+  }
+
+  function ensureProject(projectId: string) {
+    const changed = activeProjectId.value !== projectId
+    if (changed) reset(projectId)
+    return changed
+  }
+
+  async function loadCached<T>(
+    projectId: string,
+    resource: string,
+    isLoaded: () => boolean,
+    loader: () => Promise<T>,
+    apply: (value: T) => void,
+  ) {
+    ensureProject(projectId)
+    const key = cacheKey(projectId, resource)
+    if (isLoaded() && requestCache.isFresh(key, ATHENA_CACHE_TTL_MS)) return
+    try {
+      const value = await requestCache.dedupe(key, loader)
+      if (isActiveProject(projectId)) apply(value)
+    } catch (err) {
+      if (isActiveProject(projectId)) error.value = toErrorMessage(err)
+    }
+  }
 
   function beginMessageLoad(projectId: string) {
     activeChatProjectId = projectId
@@ -86,39 +155,55 @@ export const useAthenaStore = defineStore('athena', () => {
   }
 
   async function loadOntology(projectId: string) {
-    try {
-      ontology.value = await api.getAthenaOntology(projectId)
-    } catch (err) {
-      error.value = toErrorMessage(err)
-    }
+    await loadCached(
+      projectId,
+      'ontology',
+      () => !!ontology.value,
+      () => api.getAthenaOntology(projectId),
+      (value) => {
+        ontology.value = value
+      },
+    )
   }
 
   async function loadState(projectId: string) {
-    try {
-      const overview = await api.getAthenaState(projectId)
-      projection.value = overview.projection
-    } catch (err) {
-      error.value = toErrorMessage(err)
-    }
+    await loadCached(
+      projectId,
+      'state',
+      () => !!projection.value,
+      () => api.getAthenaState(projectId),
+      (overview) => {
+        projection.value = overview.projection
+      },
+    )
   }
 
   async function loadTimeline(projectId: string) {
-    try {
-      timeline.value = await api.getAthenaTimeline(projectId)
-    } catch (err) {
-      error.value = toErrorMessage(err)
-    }
+    await loadCached(
+      projectId,
+      'timeline',
+      () => !!timeline.value,
+      () => api.getAthenaTimeline(projectId),
+      (value) => {
+        timeline.value = value
+      },
+    )
   }
 
   async function loadEvolutionPlan(projectId: string) {
-    try {
-      evolutionPlan.value = await api.getAthenaEvolutionPlan(projectId)
-    } catch (err) {
-      error.value = toErrorMessage(err)
-    }
+    await loadCached(
+      projectId,
+      'evolution-plan',
+      () => !!evolutionPlan.value,
+      () => api.getAthenaEvolutionPlan(projectId),
+      (value) => {
+        evolutionPlan.value = value
+      },
+    )
   }
 
   async function loadProposals(projectId: string, params?: { offset?: number; limit?: number; bundle_status?: string; item_status?: string }) {
+    ensureProject(projectId)
     try {
       proposals.value = await api.getAthenaEvolutionProposals(projectId, params)
     } catch (err) {
@@ -127,6 +212,7 @@ export const useAthenaStore = defineStore('athena', () => {
   }
 
   async function loadProposalDetail(projectId: string, bundleId: string) {
+    ensureProject(projectId)
     try {
       proposalDetails.value[bundleId] = await api.getAthenaProposalDetail(projectId, bundleId)
     } catch (err) {
@@ -135,9 +221,12 @@ export const useAthenaStore = defineStore('athena', () => {
   }
 
   async function reviewProposalItem(projectId: string, bundleId: string, itemId: string, payload: ProposalReviewRequest) {
+    ensureProject(projectId)
     proposalBusy.value[itemId] = true
     try {
       await api.reviewAthenaProposalItem(projectId, itemId, payload)
+      requestCache.invalidate(cacheKey(projectId, 'proposals'))
+      requestCache.invalidate(cacheKey(projectId, `proposal-detail:${bundleId}`))
       await loadProposalDetail(projectId, bundleId)
       await loadProposals(projectId)
     } catch (err) {
@@ -148,6 +237,7 @@ export const useAthenaStore = defineStore('athena', () => {
   }
 
   async function splitProposalItem(projectId: string, bundleId: string, itemId: string, reason: string) {
+    ensureProject(projectId)
     proposalBusy.value[itemId] = true
     const payload: ProposalSplitRequest = {
       reviewer_ref: 'athena.user',
@@ -157,6 +247,7 @@ export const useAthenaStore = defineStore('athena', () => {
     }
     try {
       proposalDetails.value[bundleId] = await api.splitAthenaProposalBundle(projectId, bundleId, payload)
+      requestCache.invalidate(cacheKey(projectId, 'proposals'))
       await loadProposals(projectId)
     } catch (err) {
       error.value = toErrorMessage(err)
@@ -166,6 +257,7 @@ export const useAthenaStore = defineStore('athena', () => {
   }
 
   async function rollbackProposalReview(projectId: string, bundleId: string, itemId: string, reviewId: string, reason: string) {
+    ensureProject(projectId)
     proposalBusy.value[itemId] = true
     const payload: ProposalRollbackRequest = {
       reviewer_ref: 'athena.user',
@@ -174,6 +266,8 @@ export const useAthenaStore = defineStore('athena', () => {
     }
     try {
       await api.rollbackAthenaProposalReview(projectId, reviewId, payload)
+      requestCache.invalidate(cacheKey(projectId, 'proposals'))
+      requestCache.invalidate(cacheKey(projectId, `proposal-detail:${bundleId}`))
       await loadProposalDetail(projectId, bundleId)
       await loadProposals(projectId)
     } catch (err) {
@@ -184,6 +278,7 @@ export const useAthenaStore = defineStore('athena', () => {
   }
 
   async function batchApproveLowRiskItems(projectId: string, bundleId: string) {
+    ensureProject(projectId)
     if (!proposalDetails.value[bundleId]) {
       await loadProposalDetail(projectId, bundleId)
     }
@@ -205,6 +300,8 @@ export const useAthenaStore = defineStore('athena', () => {
         })
         proposalBusy.value[item.id] = false
       }
+      requestCache.invalidate(cacheKey(projectId, 'proposals'))
+      requestCache.invalidate(cacheKey(projectId, `proposal-detail:${bundleId}`))
       await loadProposalDetail(projectId, bundleId)
       await loadProposals(projectId)
     } catch (err) {
@@ -217,30 +314,42 @@ export const useAthenaStore = defineStore('athena', () => {
   }
 
   async function loadMessages(projectId: string) {
+    ensureProject(projectId)
+    const key = cacheKey(projectId, 'messages')
+    if (requestCache.isFresh(key, ATHENA_CACHE_TTL_MS)) {
+      activeChatProjectId = projectId
+      return
+    }
     const scope = beginMessageLoad(projectId)
     try {
-      const loadedMessages = await api.getAthenaMessages(projectId)
-      if (isCurrentMessageLoad(scope)) {
+      const loadedMessages = await requestCache.dedupe(key, () => api.getAthenaMessages(projectId))
+      if (isCurrentMessageLoad(scope) && isActiveProject(projectId)) {
         messages.value = loadedMessages
       }
     } catch (err) {
-      if (isCurrentMessageLoad(scope)) {
+      if (isCurrentMessageLoad(scope) && isActiveProject(projectId)) {
         error.value = toErrorMessage(err)
       }
     }
   }
 
   async function loadSetup(projectId: string) {
-    try {
-      setup.value = await api.getAthenaSetup(projectId)
-    } catch (err) {
-      error.value = toErrorMessage(err)
-    }
+    await loadCached(
+      projectId,
+      'setup',
+      () => !!setup.value,
+      () => api.getAthenaSetup(projectId),
+      (value) => {
+        setup.value = value
+      },
+    )
   }
 
   async function runConsistencyCheck(projectId: string, chapterIndex: number, depth: string = 'l1') {
+    ensureProject(projectId)
     try {
       await api.runAthenaConsistencyCheck(projectId, chapterIndex, depth)
+      requestCache.invalidate(cacheKey(projectId, 'consistency-issues'))
       await loadConsistencyIssues(projectId)
     } catch (err) {
       error.value = toErrorMessage(err)
@@ -248,24 +357,34 @@ export const useAthenaStore = defineStore('athena', () => {
   }
 
   async function loadConsistencyIssues(projectId: string) {
-    try {
-      consistencyIssues.value = await api.getConsistencyIssues(projectId)
-    } catch (err) {
-      error.value = toErrorMessage(err)
-    }
+    await loadCached(
+      projectId,
+      'consistency-issues',
+      () => true,
+      () => api.getConsistencyIssues(projectId),
+      (value) => {
+        consistencyIssues.value = value
+      },
+    )
   }
 
   async function loadOptimization(projectId: string) {
-    try {
-      optimization.value = await api.getAthenaOptimization(projectId)
-    } catch (err) {
-      error.value = toErrorMessage(err)
-    }
+    await loadCached(
+      projectId,
+      'optimization',
+      () => !!optimization.value,
+      () => api.getAthenaOptimization(projectId),
+      (value) => {
+        optimization.value = value
+      },
+    )
   }
 
   async function importSetup(projectId: string) {
+    ensureProject(projectId)
     try {
       await api.importAthenaSetup(projectId)
+      requestCache.invalidate(cacheKey(projectId, 'ontology'))
       await loadOntology(projectId)
     } catch (err) {
       error.value = toErrorMessage(err)
@@ -273,8 +392,10 @@ export const useAthenaStore = defineStore('athena', () => {
   }
 
   async function analyzeChapter(projectId: string, chapterIndex: number) {
+    ensureProject(projectId)
     try {
       await api.analyzeAthenaChapter(projectId, chapterIndex)
+      requestCache.invalidate(cacheKey(projectId, 'proposals'))
       await loadProposals(projectId)
     } catch (err) {
       error.value = toErrorMessage(err)
@@ -282,14 +403,19 @@ export const useAthenaStore = defineStore('athena', () => {
   }
 
   async function loadRetrievalDiagnostics(projectId: string) {
-    try {
-      retrievalDiagnostics.value = await api.getAthenaRetrievalDiagnostics(projectId)
-    } catch (err) {
-      error.value = toErrorMessage(err)
-    }
+    await loadCached(
+      projectId,
+      'retrieval-diagnostics',
+      () => !!retrievalDiagnostics.value,
+      () => api.getAthenaRetrievalDiagnostics(projectId),
+      (value) => {
+        retrievalDiagnostics.value = value
+      },
+    )
   }
 
   async function searchRetrieval(projectId: string, q: string, params?: { limit?: number; source_type?: string; chapter_index?: number }) {
+    ensureProject(projectId)
     if (!q.trim()) {
       retrievalSearch.value = null
       return
@@ -305,9 +431,11 @@ export const useAthenaStore = defineStore('athena', () => {
   }
 
   async function reindexRetrieval(projectId: string) {
+    ensureProject(projectId)
     retrievalLoading.value = true
     try {
       retrievalLastIndexResult.value = await api.reindexAthenaRetrieval(projectId)
+      requestCache.invalidate(cacheKey(projectId, 'retrieval-diagnostics'))
       await loadRetrievalDiagnostics(projectId)
     } catch (err) {
       error.value = toErrorMessage(err)
@@ -317,6 +445,7 @@ export const useAthenaStore = defineStore('athena', () => {
   }
 
   async function sendChat(projectId: string, text: string) {
+    ensureProject(projectId)
     const scope = beginSend(projectId)
     chatLoading.value = true
     try {
@@ -327,22 +456,26 @@ export const useAthenaStore = defineStore('athena', () => {
       if (!isCurrentSend(scope) || !isActiveChatProject(projectId)) return
       invalidateMessageLoads()
       messages.value = loadedMessages
+      requestCache.markFresh(cacheKey(projectId, 'messages'))
 
       const targets = new Set(response.refresh_targets || [])
       if (targets.has('proposals')) {
         const loadedProposals = await api.getAthenaEvolutionProposals(projectId, undefined)
         if (!isCurrentSend(scope) || !isActiveChatProject(projectId)) return
         proposals.value = loadedProposals
+        requestCache.markFresh(cacheKey(projectId, 'proposals'))
       }
       if (targets.has('ontology')) {
         const loadedOntology = await api.getAthenaOntology(projectId)
         if (!isCurrentSend(scope) || !isActiveChatProject(projectId)) return
         ontology.value = loadedOntology
+        requestCache.markFresh(cacheKey(projectId, 'ontology'))
       }
       if (targets.has('state') || targets.has('projection')) {
         const overview = await api.getAthenaState(projectId)
         if (!isCurrentSend(scope) || !isActiveChatProject(projectId)) return
         projection.value = overview.projection
+        requestCache.markFresh(cacheKey(projectId, 'state'))
       }
     } catch (err) {
       if (isCurrentSend(scope) && isActiveChatProject(projectId)) {
@@ -355,31 +488,8 @@ export const useAthenaStore = defineStore('athena', () => {
     }
   }
 
-  function reset() {
-    activeChatProjectId = null
-    sendProjectId = null
-    messageLoadRequestId += 1
-    sendRequestId += 1
-    ontology.value = null
-    projection.value = null
-    timeline.value = null
-    evolutionPlan.value = null
-    proposals.value = null
-    proposalDetails.value = {}
-    proposalBusy.value = {}
-    consistencyIssues.value = []
-    optimization.value = null
-    retrievalDiagnostics.value = null
-    retrievalSearch.value = null
-    retrievalLastIndexResult.value = null
-    retrievalLoading.value = false
-    setup.value = null
-    messages.value = []
-    chatLoading.value = false
-    error.value = null
-  }
-
   return {
+    activeProjectId,
     loading,
     error,
     ontology,
@@ -419,6 +529,7 @@ export const useAthenaStore = defineStore('athena', () => {
     reindexRetrieval,
     loadMessages,
     sendChat,
+    ensureProject,
     reset,
   }
 })

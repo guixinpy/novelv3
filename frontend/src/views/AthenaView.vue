@@ -128,7 +128,7 @@ watch(activeSection, (section) => {
 })
 
 async function initialize(projectId: string) {
-  athena.reset()
+  athena.ensureProject(projectId)
   await project.loadProject(projectId)
   await project.loadChapters(projectId).catch(() => undefined)
   await Promise.all([

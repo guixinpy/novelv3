@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { api } from '../api/client'
+import { useRequestCacheStore } from './requestCache'
 import type { ChapterContent, ChapterRevision, RevisionAnnotationPayload, RevisionCorrectionPayload } from '../api/types'
 
 export interface LocalAnnotation {
@@ -29,6 +30,8 @@ function createLocalId(prefix: string) {
 function toErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
+
+const MANUSCRIPT_CACHE_TTL_MS = 5 * 60 * 1000
 
 function toLocalAnnotation(item: ChapterRevision['annotations'][number]): LocalAnnotation {
   return {
@@ -69,6 +72,7 @@ function toCorrectionPayload(item: LocalCorrection): RevisionCorrectionPayload {
 }
 
 export const useManuscriptStore = defineStore('manuscript', () => {
+  const requestCache = useRequestCacheStore()
   const chapter = ref<ChapterContent | null>(null)
   const selectedProjectId = ref<string | null>(null)
   const selectedChapterIndex = ref<number | null>(null)
@@ -78,6 +82,7 @@ export const useManuscriptStore = defineStore('manuscript', () => {
   const loading = ref(false)
   const submitting = ref(false)
   const error = ref<string | null>(null)
+  let chapterLoadRequestId = 0
 
   const paragraphs = computed(() => {
     if (!chapter.value?.content) return []
@@ -90,6 +95,27 @@ export const useManuscriptStore = defineStore('manuscript', () => {
       annotations: annotations.value.map(toAnnotationPayload),
       corrections: corrections.value.map(toCorrectionPayload),
     }
+  }
+
+  function chapterCacheKey(projectId: string, chapterIndex: number) {
+    return `manuscript:${projectId}:chapter:${chapterIndex}`
+  }
+
+  function beginChapterLoad(projectId: string, chapterIndex: number) {
+    chapterLoadRequestId += 1
+    return {
+      projectId,
+      chapterIndex,
+      requestId: chapterLoadRequestId,
+    }
+  }
+
+  function isCurrentChapterLoad(scope: { projectId: string; chapterIndex: number; requestId: number }) {
+    return (
+      chapterLoadRequestId === scope.requestId &&
+      selectedProjectId.value === scope.projectId &&
+      selectedChapterIndex.value === scope.chapterIndex
+    )
   }
 
   function applyRevisionFeedback(revision: ChapterRevision | null) {
@@ -109,22 +135,37 @@ export const useManuscriptStore = defineStore('manuscript', () => {
   }
 
   async function loadChapter(projectId: string, chapterIndex: number) {
+    const scope = beginChapterLoad(projectId, chapterIndex)
+    selectedProjectId.value = projectId
+    selectedChapterIndex.value = chapterIndex
     loading.value = true
     error.value = null
     try {
-      const [nextChapter, revision] = await Promise.all([
+      const [nextChapter, revision] = await requestCache.dedupe(chapterCacheKey(projectId, chapterIndex), () => Promise.all([
         api.getChapter(projectId, chapterIndex),
         api.getActiveRevision(projectId, chapterIndex),
-      ])
-      chapter.value = nextChapter
-      selectedProjectId.value = projectId
-      selectedChapterIndex.value = chapterIndex
-      applyRevisionFeedback(revision)
+      ]))
+      if (isCurrentChapterLoad(scope)) {
+        chapter.value = nextChapter
+        applyRevisionFeedback(revision)
+      }
     } catch (err) {
-      error.value = toErrorMessage(err)
+      if (isCurrentChapterLoad(scope)) error.value = toErrorMessage(err)
     } finally {
-      loading.value = false
+      if (isCurrentChapterLoad(scope)) loading.value = false
     }
+  }
+
+  async function ensureChapter(projectId: string, chapterIndex: number) {
+    const key = chapterCacheKey(projectId, chapterIndex)
+    if (
+      selectedProjectId.value === projectId &&
+      selectedChapterIndex.value === chapterIndex &&
+      requestCache.isFresh(key, MANUSCRIPT_CACHE_TTL_MS)
+    ) {
+      return
+    }
+    await loadChapter(projectId, chapterIndex)
   }
 
   async function addAnnotation(draft: AnnotationDraft) {
@@ -192,6 +233,8 @@ export const useManuscriptStore = defineStore('manuscript', () => {
   }
 
   function reset() {
+    if (selectedProjectId.value) requestCache.invalidate(`manuscript:${selectedProjectId.value}:`)
+    chapterLoadRequestId += 1
     chapter.value = null
     selectedProjectId.value = null
     selectedChapterIndex.value = null
@@ -216,6 +259,7 @@ export const useManuscriptStore = defineStore('manuscript', () => {
     paragraphs,
     hasPendingFeedback,
     loadChapter,
+    ensureChapter,
     addAnnotation,
     updateAnnotation,
     removeAnnotation,

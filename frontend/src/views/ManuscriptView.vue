@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useProjectStore } from '../stores/project'
 import { useManuscriptStore } from '../stores/manuscript'
 import { useModelTraceStore } from '../stores/modelTraces'
+import { useProjectWorkspaceStore } from '../stores/projectWorkspace'
 import ChapterList from '../components/shared/ChapterList.vue'
 import ManuscriptEditor from '../components/manuscript/ManuscriptEditor.vue'
 import RevisionSummaryPanel from '../components/manuscript/RevisionSummaryPanel.vue'
@@ -15,6 +16,7 @@ const router = useRouter()
 const project = useProjectStore()
 const manuscript = useManuscriptStore()
 const modelTrace = useModelTraceStore()
+const projectWorkspace = useProjectWorkspaceStore()
 const pid = computed(() => route.params.id as string)
 const submitOpen = ref(false)
 const activeTraceId = ref<string | null>(null)
@@ -31,8 +33,13 @@ const canSubmit = computed(() => manuscript.hasPendingFeedback && activeIndex.va
 const selectedChapterTraceId = computed(() => manuscript.chapter?.last_generation_trace_id || null)
 
 async function onSelectChapter(index: number) {
+  await selectChapter(pid.value, index)
+}
+
+async function selectChapter(projectId: string, index: number) {
   closeTrace()
-  await manuscript.loadChapter(pid.value, index)
+  await manuscript.ensureChapter(projectId, index)
+  projectWorkspace.rememberManuscriptChapter(projectId, index)
 }
 
 async function submitRevision() {
@@ -52,16 +59,23 @@ function closeTrace() {
   modelTrace.closeTrace()
 }
 
-onMounted(async () => {
-  await project.loadProject(pid.value)
-  await project.loadChapters(pid.value)
-  const firstChapter = chapterItems.value[0]
-  if (firstChapter) await onSelectChapter(firstChapter.index)
-})
+async function initialize(projectId: string) {
+  await project.loadProject(projectId)
+  await project.loadChapters(projectId)
+  const rememberedIndex = projectWorkspace.lastManuscriptChapterByProject[projectId]
+  const initialChapter =
+    chapterItems.value.find((chapter) => chapter.index === rememberedIndex) ||
+    chapterItems.value[0]
+  if (initialChapter) await selectChapter(projectId, initialChapter.index)
+}
 
-watch(pid, () => {
+onMounted(() => void initialize(pid.value))
+
+watch(pid, (next, prev) => {
+  if (!next || next === prev) return
   closeTrace()
   manuscript.reset()
+  void initialize(next)
 })
 </script>
 
