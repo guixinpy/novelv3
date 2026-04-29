@@ -583,6 +583,41 @@ describe('chat workspace polling', () => {
     ])
   })
 
+  it('workspace bootstrap 可以初始化 Hermes 历史和诊断且不触发额外请求', () => {
+    const store = useChatStore()
+
+    store.initFromWorkspaceBootstrap('A', {
+      project: { id: 'A', name: '项目 A' },
+      diagnosis: { missing_items: [], completed_items: ['content'], suggested_next_step: null },
+      chapters: [],
+      versions: [],
+      dialogs: {
+        hermes: {
+          messages: [
+            {
+              id: 'message-1',
+              role: 'assistant',
+              content: '历史消息',
+              message_type: 'plain',
+              meta: null,
+              pending_action: null,
+              diagnosis: null,
+              action_result: null,
+              trace_id: null,
+              created_at: '2026-04-29T00:00:00Z',
+            },
+          ],
+        },
+      },
+    } as any)
+
+    expect(api.getMessages).not.toHaveBeenCalled()
+    expect(api.getDiagnosis).not.toHaveBeenCalled()
+    expect(store.projectId).toBe('A')
+    expect(store.messages).toMatchObject([{ id: 'message-1', content: '历史消息' }])
+    expect(store.diagnosis).toEqual({ missing_items: [], completed_items: ['content'], suggested_next_step: null })
+  })
+
   it('sendText 会把响应 trace_id 写入 assistant 消息', async () => {
     const store = useChatStore()
     store.projectId = 'project-1'

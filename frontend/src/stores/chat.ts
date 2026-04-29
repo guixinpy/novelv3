@@ -9,6 +9,7 @@ import type {
   ProjectDiagnosis,
   ResolveActionResponse,
   ChapterContent,
+  WorkspaceBootstrap,
 } from '../api/types'
 import type { ChatCommandName } from '../components/workspace/chatCommands'
 
@@ -91,9 +92,7 @@ export const useChatStore = defineStore('chat', () => {
     // Kept as no-op stub for backward compatibility during transition.
   }
 
-  async function init(pid: string) {
-    initVersion.value += 1
-    const versionSnapshot = initVersion.value
+  function resetForProject(pid: string) {
     projectId.value = pid
     messages.value = [
       { role: 'assistant', content: '你好，我是墨舟，你的长篇写作助手。有什么想聊的？' },
@@ -102,34 +101,56 @@ export const useChatStore = defineStore('chat', () => {
     pendingAction.value = null
     loading.value = false
     historyCursor.value = 0
+  }
+
+  function applyHistorySnapshot(
+    history: ChatHistoryMessage[] | null | undefined,
+    pidSnapshot: string,
+    versionSnapshot: number,
+  ): boolean {
+    if (!isActiveSnapshot(pidSnapshot, versionSnapshot)) return false
+    if (history && history.length > 0) {
+      messages.value = history.map((message) => toChatMessage(message))
+    }
+    const restoredPendingAction = history
+      ? [...history]
+        .reverse()
+        .map((message) => message.pending_action || null)
+        .find((pending) => Boolean(pending)) || null
+      : null
+    pendingAction.value = restoredPendingAction
+    historyCursor.value = history?.length || 0
+    const runningActionType = restoredPendingAction ? null : findRecoverableRunningActionType(history)
+    if (runningActionType) {
+      loading.value = true
+      void pollForCompletion(runningActionType, pidSnapshot, versionSnapshot)
+    }
+    return true
+  }
+
+  async function init(pid: string) {
+    initVersion.value += 1
+    const versionSnapshot = initVersion.value
+    resetForProject(pid)
     await Promise.all([
       loadHistory(pid, versionSnapshot),
       loadDiagnosis(pid, versionSnapshot),
     ])
   }
 
+  function initFromWorkspaceBootstrap(pid: string, bootstrap: WorkspaceBootstrap) {
+    initVersion.value += 1
+    const versionSnapshot = initVersion.value
+    resetForProject(pid)
+    diagnosis.value = bootstrap.diagnosis
+    applyHistorySnapshot(bootstrap.dialogs.hermes?.messages || [], pid, versionSnapshot)
+  }
+
   async function loadHistory(pidSnapshot = projectId.value, versionSnapshot = initVersion.value): Promise<boolean> {
     if (!pidSnapshot) return false
     try {
       const history = await api.getMessages(pidSnapshot, 'hermes')
-      if (!isActiveSnapshot(pidSnapshot, versionSnapshot)) return false
-      if (history && history.length > 0) {
-        messages.value = history.map((message) => toChatMessage(message))
-      }
-      const restoredPendingAction = history
-        ? [...history]
-          .reverse()
-          .map((message) => message.pending_action || null)
-          .find((pending) => Boolean(pending)) || null
-        : null
-      pendingAction.value = restoredPendingAction
-      historyCursor.value = history?.length || 0
-      const runningActionType = restoredPendingAction ? null : findRecoverableRunningActionType(history)
-      if (runningActionType) {
-        loading.value = true
-        void pollForCompletion(runningActionType, pidSnapshot, versionSnapshot)
-      }
-      return true
+      return applyHistorySnapshot(history, pidSnapshot, versionSnapshot)
     } catch { /* first visit, no history */ }
     return false
   }
@@ -365,6 +386,6 @@ export const useChatStore = defineStore('chat', () => {
 
   return {
     messages, projectId, diagnosis, pendingAction, loading,
-    init, loadDiagnosis, setDialogType, sendText, sendCommand, sendButtonAction, resolveAction, regenerateRevision,
+    init, initFromWorkspaceBootstrap, loadDiagnosis, setDialogType, sendText, sendCommand, sendButtonAction, resolveAction, regenerateRevision,
   }
 })

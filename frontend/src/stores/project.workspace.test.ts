@@ -189,6 +189,41 @@ describe('project workspace state', () => {
     expect(store.chapters).toEqual([{ id: 'chapter-1', chapter_index: 1 }])
   })
 
+  it('workspace bootstrap 会填充项目冷启动数据并标记为 fresh', async () => {
+    const store = useProjectStore()
+
+    store.applyWorkspaceBootstrap({
+      project: { id: 'A', name: '项目 A' },
+      diagnosis: { missing_items: [], completed_items: ['content'], suggested_next_step: null },
+      setup: { id: 'setup-1', project_id: 'A', status: 'generated' },
+      storyline: { id: 'storyline-1', project_id: 'A', status: 'generated' },
+      outline: { id: 'outline-1', project_id: 'A', status: 'generated' },
+      chapters: [{ id: 'chapter-1', chapter_index: 1, title: '第一章', word_count: 120, status: 'generated' }],
+      versions: [{ id: 'version-1', node_type: 'chapter', node_id: 'chapter-1', version_number: 1 }],
+      dialogs: { hermes: { messages: [] }, athena: { messages: [] } },
+    } as any)
+
+    await store.loadProject('A')
+    await store.loadSetup('A')
+    await store.loadStoryline('A')
+    await store.loadOutline('A')
+    await store.loadChapters('A')
+    await store.loadVersions('A')
+
+    expect(api.getProject).not.toHaveBeenCalled()
+    expect(api.getSetup).not.toHaveBeenCalled()
+    expect(api.getStoryline).not.toHaveBeenCalled()
+    expect(api.getOutline).not.toHaveBeenCalled()
+    expect(api.listChapters).not.toHaveBeenCalled()
+    expect(api.listVersions).not.toHaveBeenCalled()
+    expect(store.currentProject).toEqual({ id: 'A', name: '项目 A' })
+    expect(store.setup).toEqual({ id: 'setup-1', project_id: 'A', status: 'generated' })
+    expect(store.storyline).toEqual({ id: 'storyline-1', project_id: 'A', status: 'generated' })
+    expect(store.outline).toEqual({ id: 'outline-1', project_id: 'A', status: 'generated' })
+    expect(store.chapters).toEqual([{ id: 'chapter-1', chapter_index: 1, title: '第一章', word_count: 120, status: 'generated' }])
+    expect(store.versions).toEqual([{ id: 'version-1', node_type: 'chapter', node_id: 'chapter-1', version_number: 1 }])
+  })
+
   it('refreshTargets() 只返回成功刷新的 targets，失败的不应回传', async () => {
     const store = useProjectStore()
 

@@ -29,6 +29,7 @@ import type {
   ResolveActionRequest,
   ResolveActionResponse,
   WorldModelOverview,
+  WorkspaceBootstrap,
 } from './types'
 
 const API_BASE = '/api/v1'
@@ -49,6 +50,7 @@ export const api = {
   listProjects: () => request('/projects'),
   createProject: (data: any) => request('/projects', { method: 'POST', body: JSON.stringify(data) }),
   getProject: (id: string) => request(`/projects/${id}`),
+  getWorkspaceBootstrap: (id: string) => request<WorkspaceBootstrap>(`/projects/${id}/workspace-bootstrap`),
   deleteProject: (id: string) => request(`/projects/${id}`, { method: 'DELETE' }),
   generateSetup: (id: string) => request(`/projects/${id}/athena/ontology/generate`, { method: 'POST' }),
   getSetup: (id: string) => request(`/projects/${id}/setup`),

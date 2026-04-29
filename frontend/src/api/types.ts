@@ -50,6 +50,61 @@ export interface ProjectDiagnosis {
   suggested_next_step: string | null
 }
 
+export interface ProjectSummary {
+  id: string
+  name: string
+  description?: string
+  genre?: string
+  target_chapter_count?: number
+  target_word_count?: number
+  style?: string
+  complexity?: number
+  status?: string
+  current_phase?: string
+  current_word_count?: number
+  ai_model?: string
+  language?: string
+  created_at?: string
+  updated_at?: string
+}
+
+export interface ChapterSummary {
+  id: string
+  chapter_index: number
+  title: string
+  word_count: number
+  status: string
+}
+
+export interface VersionSummary {
+  id: string
+  version_number: number
+  node_type: string
+  node_id: string
+  description?: string
+  author?: string
+  created_at?: string
+}
+
+export interface DialogBootstrap {
+  messages: ChatHistoryMessage[]
+}
+
+export interface WorkspaceBootstrap {
+  project: ProjectSummary
+  diagnosis: ProjectDiagnosis
+  setup?: SetupData | null
+  storyline?: Record<string, unknown> | null
+  outline?: Record<string, unknown> | null
+  chapters: ChapterSummary[]
+  versions: VersionSummary[]
+  dialogs: {
+    hermes?: DialogBootstrap
+    athena?: DialogBootstrap
+    [key: string]: DialogBootstrap | undefined
+  }
+}
+
 export interface ChatRequest {
   project_id: string
   input_type: 'text' | 'button' | 'command'

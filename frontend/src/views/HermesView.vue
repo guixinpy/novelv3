@@ -131,11 +131,19 @@ async function initialize(projectId: string) {
     project.resetProjectScopedState(projectId)
     workspace.reset()
   }
-  await Promise.all([
-    chat.init(projectId),
-    project.loadProject(projectId),
-  ])
-  if (!markHydratedTarget(hydrationTracker, snapshot, 'project')) return
+  try {
+    const bootstrap = await api.getWorkspaceBootstrap(projectId)
+    if (!isActiveHydrationSnapshot(hydrationTracker, snapshot)) return
+    project.applyWorkspaceBootstrap(bootstrap)
+    chat.initFromWorkspaceBootstrap(projectId, bootstrap)
+    markHydratedTargets(hydrationTracker, snapshot, ['project', 'content', 'versions'])
+  } catch {
+    await Promise.all([
+      chat.init(projectId),
+      project.loadProject(projectId),
+    ])
+    if (!markHydratedTarget(hydrationTracker, snapshot, 'project')) return
+  }
   actionReplayGuard.markInitial(latestActionFingerprint.value)
   const initialTargets = new Set<RefreshTarget>(getInitialProjectHydrationTargets(chat.diagnosis))
   for (const target of getPanelRefreshTargets(workspace.panel)) {

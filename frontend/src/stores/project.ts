@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { api } from '../api/client'
-import type { RefreshTarget } from '../api/types'
+import type { RefreshTarget, WorkspaceBootstrap } from '../api/types'
 import { useRequestCacheStore } from './requestCache'
 
 type ProjectRequestLane =
@@ -82,6 +82,28 @@ export const useProjectStore = defineStore('project', () => {
 
   async function loadProjects() {
     projects.value = await api.listProjects()
+  }
+
+  function applyWorkspaceBootstrap(bootstrap: WorkspaceBootstrap) {
+    const id = bootstrap.project.id
+    if (currentProjectScope.value !== id) {
+      resetProjectScopedState(id)
+    } else {
+      ensureProjectScope(id)
+    }
+    currentProject.value = bootstrap.project
+    setup.value = bootstrap.setup || null
+    storyline.value = bootstrap.storyline || null
+    outline.value = bootstrap.outline || null
+    chapters.value = bootstrap.chapters || []
+    versions.value = bootstrap.versions || []
+    versionsNodeType.value = undefined
+    requestCache.markFresh(`project:${id}:project`)
+    if (bootstrap.setup) requestCache.markFresh(`project:${id}:setup`)
+    if (bootstrap.storyline) requestCache.markFresh(`project:${id}:storyline`)
+    if (bootstrap.outline) requestCache.markFresh(`project:${id}:outline`)
+    requestCache.markFresh(`project:${id}:chapters`)
+    requestCache.markFresh(`project:${id}:versions:all`)
   }
 
   function resetProjectScopedState(nextProjectId = '') {
@@ -306,6 +328,7 @@ export const useProjectStore = defineStore('project', () => {
   return {
     projects, currentProject, setup, chapter, storyline, outline, topology, chapters, versions, preferences, versionsNodeType,
     resetProjectScopedState,
+    applyWorkspaceBootstrap,
     loadProjects, createProject, deleteProject, loadProject,
     generateSetup, loadSetup, generateChapter, loadChapter,
     generateStoryline, loadStoryline, generateOutline, loadOutline, loadTopology,

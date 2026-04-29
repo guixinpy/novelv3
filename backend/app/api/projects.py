@@ -43,7 +43,7 @@ from app.models import (
     WorldRule,
     WorldTimelineAnchor,
 )
-from app.schemas import ProjectCreate, ProjectOut, ProjectUpdate
+from app.schemas import ProjectCreate, ProjectOut, ProjectUpdate, WorkspaceBootstrapOut
 
 router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
 
@@ -102,6 +102,54 @@ def create_project(payload: ProjectCreate, db: Session = Depends(get_db)):
 @router.get("", response_model=list[ProjectOut])
 def list_projects(db: Session = Depends(get_db)):
     return db.query(Project).order_by(Project.created_at.desc()).all()
+
+
+@router.get("/{project_id}/workspace-bootstrap", response_model=WorkspaceBootstrapOut)
+def workspace_bootstrap(project_id: str, db: Session = Depends(get_db)):
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    from app.api.dialogs import _build_diagnosis, get_messages
+
+    chapters = (
+        db.query(ChapterContent)
+        .filter(ChapterContent.project_id == project_id)
+        .order_by(ChapterContent.chapter_index)
+        .all()
+    )
+    setup = db.query(Setup).filter(Setup.project_id == project_id).first()
+    storyline = db.query(Storyline).filter(Storyline.project_id == project_id).first()
+    outline = db.query(Outline).filter(Outline.project_id == project_id).first()
+    versions = (
+        db.query(Version)
+        .filter(Version.project_id == project_id)
+        .order_by(Version.created_at.desc())
+        .limit(20)
+        .all()
+    )
+    return {
+        "project": project,
+        "diagnosis": _build_diagnosis(db, project_id),
+        "setup": setup,
+        "storyline": storyline,
+        "outline": outline,
+        "chapters": [
+            {
+                "id": chapter.id,
+                "chapter_index": chapter.chapter_index,
+                "title": chapter.title or f"第{chapter.chapter_index}章",
+                "word_count": chapter.word_count or 0,
+                "status": chapter.status or "generated",
+            }
+            for chapter in chapters
+        ],
+        "versions": versions,
+        "dialogs": {
+            "hermes": {"messages": get_messages(project_id, dialog_type="hermes", db=db)},
+            "athena": {"messages": get_messages(project_id, dialog_type="athena", db=db)},
+        },
+    }
 
 
 @router.get("/{project_id}", response_model=ProjectOut)
