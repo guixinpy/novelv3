@@ -1,5 +1,6 @@
 from collections.abc import Iterable
 from datetime import UTC, datetime
+import logging
 from typing import Any
 
 from sqlalchemy import select, update
@@ -27,6 +28,8 @@ from app.models import (
     WorldProposalReview,
 )
 from app.schemas.world_proposals import ProposalCandidateFactCreate
+
+logger = logging.getLogger(__name__)
 
 
 def create_bundle(
@@ -235,6 +238,7 @@ def review_proposal_item(
         evidence_refs=list(evidence_refs),
         edited_fields=edited_fields,
     )
+    approved_fact_id: str | None = None
 
     rowcount = db.execute(
         update(WorldProposalItem)
@@ -274,7 +278,7 @@ def review_proposal_item(
                 )
             )
             review.created_truth_claim_id = claim.claim_id
-            sync_fact_retrieval_document(db=db, fact=claim)
+            approved_fact_id = claim.id
 
         db.add(review)
         _refresh_bundle_status(db=db, bundle=bundle)
@@ -286,10 +290,28 @@ def review_proposal_item(
             proposal_item_id=proposal_item_id,
             claim_id=item_snapshot["claim_id"],
         ) from exc
+    if approved_fact_id:
+        _sync_approved_fact_retrieval_document(
+            db=db,
+            fact_id=approved_fact_id,
+            project_id=item_snapshot["project_id"],
+        )
     invalidate_world_projection_cache(project_id=item_snapshot["project_id"])
     db.refresh(review)
     db.refresh(bundle)
     return review
+
+
+def _sync_approved_fact_retrieval_document(*, db: Session, fact_id: str, project_id: str) -> None:
+    fact = db.query(WorldFactClaim).filter(WorldFactClaim.id == fact_id).one_or_none()
+    if fact is None:
+        return
+    try:
+        sync_fact_retrieval_document(db=db, fact=fact)
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception("Failed to sync retrieval document for approved world fact %s in project %s", fact_id, project_id)
 
 
 def split_bundle(

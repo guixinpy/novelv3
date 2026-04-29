@@ -877,6 +877,52 @@ def test_approved_item_cannot_be_split(db_session):
         )
 
 
+def test_approval_persists_claim_when_retrieval_sync_fails(db_session, monkeypatch):
+    import app.core.world_proposal_service as proposal_service
+
+    project, profile_version = _seed_project_profile(db_session)
+    bundle = create_bundle(
+        db=db_session,
+        project_id=project.id,
+        project_profile_version_id=profile_version.id,
+        profile_version=profile_version.version,
+        created_by="writer.alpha",
+        title="Retrieval sync isolation",
+    )
+    item = write_candidate_fact(
+        db=db_session,
+        bundle_id=bundle.id,
+        created_by="writer.alpha",
+        candidate=_candidate_payload(
+            claim_id="claim.hero.rank.sync-failure",
+            subject_ref="char.hero",
+            predicate="rank",
+            value="captain",
+        ),
+    )
+
+    def raise_sync_error(*args, **kwargs):
+        raise RuntimeError("retrieval sync failed")
+
+    monkeypatch.setattr(proposal_service, "sync_fact_retrieval_document", raise_sync_error)
+
+    review = review_proposal_item(
+        db=db_session,
+        proposal_item_id=item.id,
+        reviewer_ref="editor.alpha",
+        action="approve",
+        reason="事实审批不能被索引副作用阻断",
+        evidence_refs=["chapter.34"],
+    )
+
+    stored_item = db_session.query(WorldProposalItem).filter_by(id=item.id).one()
+    stored_claim = db_session.query(WorldFactClaim).filter_by(claim_id="claim.hero.rank.sync-failure").one()
+    assert review.created_truth_claim_id == "claim.hero.rank.sync-failure"
+    assert stored_item.item_status == "approved"
+    assert stored_claim.claim_status == "confirmed"
+    assert db_session.query(WorldProposalReview).filter_by(proposal_item_id=item.id).count() == 1
+
+
 def test_approve_preserves_candidate_claim_layer_for_subject_knowledge(db_session):
     project, profile_version = _seed_project_profile(db_session)
     bundle = create_bundle(
