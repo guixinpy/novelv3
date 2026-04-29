@@ -86,4 +86,17 @@ describe('ProjectListView', () => {
       target_word_count: 40000,
     })
   })
+
+  it('exposes stable selectors for e2e project creation', async () => {
+    const wrapper = mount(ProjectListView, { attachTo: document.body })
+    await Promise.resolve()
+
+    expect(wrapper.find('[data-testid="project-create-button"]').exists()).toBe(true)
+    await wrapper.get('[data-testid="project-create-button"]').trigger('click')
+    await nextTick()
+
+    expect(document.querySelector('[data-testid="project-create-modal"]')).toBeTruthy()
+    expect(document.querySelector('[data-testid="project-name-input"] input')).toBeTruthy()
+    expect(document.querySelector('[data-testid="project-create-submit"]')).toBeTruthy()
+  })
 })

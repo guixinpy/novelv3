@@ -324,7 +324,7 @@ function closeTrace() {
 </script>
 
 <template>
-  <div v-if="project.currentProject && ready" class="hermes-view">
+  <div v-if="project.currentProject && ready" class="hermes-view" data-testid="workspace-hermes">
     <!-- Sub-nav content: rendered into AppShell SubNav slot via teleport -->
     <Teleport to="[data-subnav-content]">
       <div class="hermes-subnav">

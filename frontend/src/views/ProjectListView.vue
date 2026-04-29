@@ -104,14 +104,14 @@ async function createProject() {
   <div class="project-list-view">
     <div class="project-list-view__header">
       <h1 class="project-list-view__title">项目</h1>
-      <BaseButton variant="primary" size="sm" @click="showCreateDialog = true">
+      <BaseButton data-testid="project-create-button" variant="primary" size="sm" @click="showCreateDialog = true">
         新建项目
       </BaseButton>
     </div>
 
     <div v-if="projects.length === 0" class="project-list-view__empty">
       <p class="project-list-view__empty-text">还没有项目</p>
-      <BaseButton variant="primary" size="sm" @click="showCreateDialog = true">
+      <BaseButton data-testid="project-create-button" variant="primary" size="sm" @click="showCreateDialog = true">
         新建项目
       </BaseButton>
     </div>
@@ -154,10 +154,12 @@ async function createProject() {
       :open="showCreateDialog"
       title="新建项目"
       width="420px"
+      test-id="project-create-modal"
       @close="showCreateDialog = false"
     >
       <div class="project-list-view__form">
         <BaseInput
+          data-testid="project-name-input"
           v-model="newProject.name"
           label="项目名称"
           placeholder="输入项目名称"
@@ -183,6 +185,7 @@ async function createProject() {
           取消
         </BaseButton>
         <BaseButton
+          data-testid="project-create-submit"
           variant="primary"
           size="sm"
           :loading="creating"

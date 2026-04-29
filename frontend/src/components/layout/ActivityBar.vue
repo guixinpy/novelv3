@@ -34,6 +34,7 @@ const workspaceItems: { key: Workspace; icon: string; label: string; route: (id:
         :key="item.key"
         class="activity-bar__item"
         :class="{ 'activity-bar__item--active': activeWorkspace === item.key }"
+        :data-testid="`workspace-nav-${item.key}`"
         :title="item.label"
         :aria-label="item.label"
         @click="onItemClick(item)"

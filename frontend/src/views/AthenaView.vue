@@ -194,7 +194,7 @@ async function searchRetrieval(query: string) {
 </script>
 
 <template>
-  <div v-if="project.currentProject" class="athena-view">
+  <div v-if="project.currentProject" class="athena-view" data-testid="workspace-athena">
     <!-- Sub-nav content -->
     <Teleport to="[data-subnav-content]">
       <div class="athena-subnav">

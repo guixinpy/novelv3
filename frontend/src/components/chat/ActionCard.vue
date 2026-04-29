@@ -1,5 +1,5 @@
 <template>
-  <div class="action-card">
+  <div class="action-card" data-testid="pending-action-card">
     <p class="action-card__copy">
       {{ action.description }}
     </p>
@@ -7,6 +7,7 @@
       <button
         :disabled="disabled"
         class="action-card__button action-card__button--primary"
+        data-testid="pending-action-confirm"
         @click="$emit('decide', 'confirm')"
       >
         同意执行

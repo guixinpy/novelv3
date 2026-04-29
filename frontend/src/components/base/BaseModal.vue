@@ -6,6 +6,7 @@ const props = withDefaults(
     open: boolean
     title?: string
     width?: string
+    testId?: string
   }>(),
   { width: '480px' },
 )
@@ -54,7 +55,7 @@ onUnmounted(() => { document.removeEventListener('keydown', onKeydown); document
   <Teleport to="body">
     <Transition name="modal">
       <div v-if="open" class="base-modal__backdrop" @click="onBackdropClick">
-        <div ref="panelRef" class="base-modal__panel" :style="{ width }" role="dialog" aria-modal="true" tabindex="-1">
+        <div ref="panelRef" class="base-modal__panel" :data-testid="testId" :style="{ width }" role="dialog" aria-modal="true" tabindex="-1">
           <header v-if="title || $slots.header" class="base-modal__header">
             <slot name="header">
               <h3 class="base-modal__title">{{ title }}</h3>

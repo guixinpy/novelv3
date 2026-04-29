@@ -80,7 +80,7 @@ watch(pid, (next, prev) => {
 </script>
 
 <template>
-  <div class="manuscript-view">
+  <div class="manuscript-view" data-testid="workspace-manuscript">
     <Teleport to="[data-subnav-content]">
       <div class="manuscript-subnav">
         <div class="manuscript-subnav__label">章节</div>

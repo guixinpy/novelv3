@@ -124,12 +124,14 @@ watch(commandCandidates, (next) => {
       <input
         ref="inputEl"
         v-model="input"
+        data-testid="chat-input"
         :disabled="loading || disabled"
         class="chat-input__field"
         placeholder="输入消息，或键入 / 查看命令"
         @keydown="onInputKeydown"
       />
       <BaseButton
+        data-testid="chat-send"
         variant="primary"
         size="sm"
         :disabled="!canSubmit"
