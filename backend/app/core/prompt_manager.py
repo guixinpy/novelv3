@@ -1,22 +1,12 @@
-import os
-from string import Template
+from pathlib import Path
+
+from app.prompting.renderer import PromptRenderer, default_prompts_dir
 
 
 class PromptManager:
-    def __init__(self, prompts_dir: str | None = None):
-        if prompts_dir is None:
-            self.prompts_dir = os.path.join(
-                os.path.dirname(__file__), "..", "..", "prompts"
-            )
-        else:
-            self.prompts_dir = prompts_dir
+    def __init__(self, prompts_dir: str | Path | None = None):
+        self.prompts_dir = Path(prompts_dir) if prompts_dir is not None else default_prompts_dir()
+        self.renderer = PromptRenderer(self.prompts_dir)
 
     def load(self, name: str, variables: dict | None = None) -> str:
-        path = os.path.join(self.prompts_dir, f"{name}.txt")
-        if not os.path.exists(path):
-            raise FileNotFoundError(f"Prompt not found: {path}")
-        with open(path, encoding="utf-8") as f:
-            content = f.read()
-        if variables:
-            content = Template(content).substitute(variables)
-        return content
+        return self.renderer.render(name, variables).content
