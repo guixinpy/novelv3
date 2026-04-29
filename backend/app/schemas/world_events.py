@@ -58,6 +58,8 @@ class WorldFactClaimCreate(_VersionBoundModel):
     object_ref_or_value: Any
     claim_layer: str
     claim_status: str
+    perspective_ref: str | None = None
+    disclosed_to_refs: list[str] = Field(default_factory=list)
     valid_from_anchor_id: str | None = None
     valid_to_anchor_id: str | None = None
     source_event_ref: str | None = None

@@ -116,6 +116,62 @@ def test_get_world_model_overview_returns_current_profile_and_truth_projection(c
     assert payload["projection"]["facts"]["char.hero"]["rank"] == "captain"
 
 
+def test_subject_knowledge_persists_belief_claims_approved_from_proposals(client, db_session):
+    project, profile_version = _seed_profile(db_session)
+    bundle = create_bundle(
+        db=db_session,
+        project_id=project.id,
+        project_profile_version_id=profile_version.id,
+        profile_version=profile_version.version,
+        created_by="writer.alpha",
+        title="Subject belief candidates",
+    )
+    item = write_candidate_fact(
+        db=db_session,
+        bundle_id=bundle.id,
+        created_by="writer.alpha",
+        candidate=ProposalCandidateFactCreate(
+            project_id=project.id,
+            project_profile_version_id=profile_version.id,
+            profile_version=profile_version.version,
+            contract_version=profile_version.contract_version,
+            claim_id="claim.detective.hero.rank.belief",
+            chapter_index=1,
+            intra_chapter_seq=1,
+            subject_ref="char.hero",
+            predicate="rank",
+            object_ref_or_value="smuggler",
+            claim_layer="belief",
+            perspective_ref="char.detective",
+            disclosed_to_refs=[],
+            authority_type="authoritative_structured",
+            confidence=0.85,
+            evidence_refs=["chapter.01"],
+        ),
+    )
+
+    approve_response = client.post(
+        f"/api/v1/projects/{project.id}/world-model/proposal-items/{item.id}/review",
+        json={
+            "reviewer_ref": "editor.alpha",
+            "action": "approve",
+            "reason": "侦探视角确认",
+            "evidence_refs": ["chapter.01"],
+            "edited_fields": {},
+        },
+    )
+    truth_response = client.get(f"/api/v1/projects/{project.id}/world-model")
+    subject_response = client.get(
+        f"/api/v1/projects/{project.id}/world-model/subject-knowledge?subject_ref=char.detective"
+    )
+
+    assert approve_response.status_code == 200
+    assert truth_response.status_code == 200
+    assert truth_response.json()["projection"]["facts"] == {}
+    assert subject_response.status_code == 200
+    assert subject_response.json()["projection"]["facts"]["char.hero"]["rank"] == "smuggler"
+
+
 def test_world_model_overview_returns_nulls_when_project_has_no_world_data(client):
     create_response = client.post("/api/v1/projects", json={"name": "No World Data"})
     project_id = create_response.json()["id"]

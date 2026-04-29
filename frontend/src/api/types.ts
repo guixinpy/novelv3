@@ -358,6 +358,8 @@ export interface ProposalItem {
   predicate: string
   object_ref_or_value: unknown
   claim_layer: string
+  perspective_ref?: string | null
+  disclosed_to_refs?: string[]
   valid_from_anchor_id?: string | null
   valid_to_anchor_id?: string | null
   source_event_ref?: string | null

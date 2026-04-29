@@ -67,6 +67,8 @@ class WorldFactClaim(Base):
     object_ref_or_value = Column(JSON, nullable=False)
     claim_layer = Column(String, nullable=False)
     claim_status = Column(String, nullable=False)
+    perspective_ref = Column(String, nullable=True)
+    disclosed_to_refs = Column(JSON, default=list, nullable=False)
     valid_from_anchor_id = Column(String, nullable=True)
     valid_to_anchor_id = Column(String, nullable=True)
     source_event_ref = Column(String, nullable=True)

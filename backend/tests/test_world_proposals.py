@@ -877,7 +877,7 @@ def test_approved_item_cannot_be_split(db_session):
         )
 
 
-def test_approve_always_persists_truth_confirmed_claim_even_if_candidate_layer_is_not_truth(db_session):
+def test_approve_preserves_candidate_claim_layer_for_subject_knowledge(db_session):
     project, profile_version = _seed_project_profile(db_session)
     bundle = create_bundle(
         db=db_session,
@@ -885,14 +885,14 @@ def test_approve_always_persists_truth_confirmed_claim_even_if_candidate_layer_i
         project_profile_version_id=profile_version.id,
         profile_version=profile_version.version,
         created_by="writer.alpha",
-        title="Forced truth approval",
+        title="Subject belief approval",
     )
     candidate = _candidate_payload(
         claim_id="claim.hero.cover-story",
         subject_ref="char.hero",
         predicate="cover_story",
         value="dock-worker",
-    ).model_copy(update={"claim_layer": "belief"})
+    ).model_copy(update={"claim_layer": "belief", "perspective_ref": "char.detective"})
     item = write_candidate_fact(
         db=db_session,
         bundle_id=bundle.id,
@@ -905,14 +905,15 @@ def test_approve_always_persists_truth_confirmed_claim_even_if_candidate_layer_i
         proposal_item_id=item.id,
         reviewer_ref="editor.alpha",
         action="approve",
-        reason="虽然候选层标错，但审批入真相层",
+        reason="保留主体认知层",
         evidence_refs=["chapter.36"],
     )
 
     saved_claim = db_session.query(WorldFactClaim).filter_by(claim_id="claim.hero.cover-story").one()
 
     assert item.claim_layer == "belief"
-    assert saved_claim.claim_layer == "truth"
+    assert saved_claim.claim_layer == "belief"
+    assert saved_claim.perspective_ref == "char.detective"
     assert saved_claim.claim_status == "confirmed"
 
 

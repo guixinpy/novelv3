@@ -29,6 +29,8 @@ EDITABLE_CLAIM_FIELDS = {
     "valid_from_anchor_id",
     "valid_to_anchor_id",
     "source_event_ref",
+    "perspective_ref",
+    "disclosed_to_refs",
     "evidence_refs",
     "notes",
 }
@@ -132,6 +134,8 @@ def write_candidate_fact(
         predicate=candidate.predicate,
         object_ref_or_value=candidate.object_ref_or_value,
         claim_layer=candidate.claim_layer,
+        perspective_ref=candidate.perspective_ref,
+        disclosed_to_refs=candidate.disclosed_to_refs,
         valid_from_anchor_id=candidate.valid_from_anchor_id,
         valid_to_anchor_id=candidate.valid_to_anchor_id,
         source_event_ref=candidate.source_event_ref,
@@ -263,7 +267,9 @@ def review_proposal_item(
                 "subject_ref": item_snapshot["subject_ref"],
                 "predicate": item_snapshot["predicate"],
                 "object_ref_or_value": item_snapshot["object_ref_or_value"],
-                "claim_layer": "truth",
+                "claim_layer": item_snapshot["claim_layer"],
+                "perspective_ref": item_snapshot["perspective_ref"],
+                "disclosed_to_refs": item_snapshot["disclosed_to_refs"],
                 "valid_from_anchor_id": item_snapshot["valid_from_anchor_id"],
                 "valid_to_anchor_id": item_snapshot["valid_to_anchor_id"],
                 "source_event_ref": item_snapshot["source_event_ref"],
@@ -381,6 +387,8 @@ def split_bundle(
             predicate=item.predicate,
             object_ref_or_value=item.object_ref_or_value,
             claim_layer=item.claim_layer,
+            perspective_ref=item.perspective_ref,
+            disclosed_to_refs=item.disclosed_to_refs,
             valid_from_anchor_id=item.valid_from_anchor_id,
             valid_to_anchor_id=item.valid_to_anchor_id,
             source_event_ref=item.source_event_ref,
@@ -554,6 +562,9 @@ def _get_item_snapshot(*, db: Session, proposal_item_id: str) -> dict[str, Any]:
             WorldProposalItem.subject_ref,
             WorldProposalItem.predicate,
             WorldProposalItem.object_ref_or_value,
+            WorldProposalItem.claim_layer,
+            WorldProposalItem.perspective_ref,
+            WorldProposalItem.disclosed_to_refs,
             WorldProposalItem.valid_from_anchor_id,
             WorldProposalItem.valid_to_anchor_id,
             WorldProposalItem.source_event_ref,
@@ -660,7 +671,7 @@ def _resolve_rollback_truth_claim(
         claim.project_profile_version_id != item.project_profile_version_id
         or claim.profile_version != item.profile_version
         or claim.claim_id != item.claim_id
-        or claim.claim_layer != "truth"
+        or claim.claim_layer != item.claim_layer
         or claim.project_id != review.project_id
         or claim.project_id != bundle.project_id
     ):

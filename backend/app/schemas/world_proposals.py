@@ -36,6 +36,8 @@ class ProposalCandidateFactCreate(_VersionBoundModel):
     predicate: str
     object_ref_or_value: Any
     claim_layer: str
+    perspective_ref: str | None = None
+    disclosed_to_refs: list[str] = Field(default_factory=list)
     valid_from_anchor_id: str | None = None
     valid_to_anchor_id: str | None = None
     source_event_ref: str | None = None
@@ -65,6 +67,8 @@ class ProposalReviewCreate(BaseModel):
 class ProposalClaimEditPatch(BaseModel):
     chapter_index: int | None = Field(default=None, ge=0)
     intra_chapter_seq: int | None = Field(default=None, ge=0)
+    perspective_ref: str | None = None
+    disclosed_to_refs: list[str] | None = None
     valid_from_anchor_id: str | None = None
     valid_to_anchor_id: str | None = None
     source_event_ref: str | None = None
@@ -102,6 +106,8 @@ class ProposalItemOut(BaseModel):
     predicate: str
     object_ref_or_value: Any
     claim_layer: str
+    perspective_ref: str | None
+    disclosed_to_refs: list[str]
     valid_from_anchor_id: str | None
     valid_to_anchor_id: str | None
     source_event_ref: str | None
