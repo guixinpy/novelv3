@@ -62,8 +62,7 @@ def test_get_outline_not_found(client):
 @patch("app.api.outlines.load_api_key", return_value="sk-test")
 @patch("app.api.outlines.ai_service.complete", new_callable=AsyncMock)
 @patch("app.api.outlines.ai_service.parse_json")
-@patch("app.api.outlines.PromptManager.load", return_value="BASE_PROMPT")
-def test_generate_outline_appends_command_args_to_prompt(mock_pm_load, mock_parse, mock_complete, mock_key, client, db_session):
+def test_generate_outline_appends_command_args_to_prompt(mock_parse, mock_complete, mock_key, client, db_session):
     r = client.post("/api/v1/projects", json={"name": "Test"})
     pid = r.json()["id"]
 
@@ -88,15 +87,19 @@ def test_generate_outline_appends_command_args_to_prompt(mock_pm_load, mock_pars
 
     sent_messages = mock_complete.await_args.args[0]
     prompt = sent_messages[0]["content"]
-    assert "BASE_PROMPT" in prompt
+    assert "Test" in prompt
     assert "附加要求：每章结尾留悬念" in prompt
+    traces = client.get(f"/api/v1/projects/{pid}/model-call-traces?trace_type=outline_generation").json()
+    trace = client.get(f"/api/v1/projects/{pid}/model-call-traces/{traces['items'][0]['id']}").json()
+    assert {block["key"] for block in trace["context_blocks"]} >= {"command_args"}
+    command_args_block = next(block for block in trace["context_blocks"] if block["key"] == "command_args")
+    assert command_args_block["kind"] == "user_feedback"
 
 
 @patch("app.api.outlines.load_api_key", return_value="sk-test")
 @patch("app.api.outlines.ai_service.complete", new_callable=AsyncMock)
 @patch("app.api.outlines.ai_service.parse_json")
-@patch("app.api.outlines.PromptManager.load", return_value="BASE_PROMPT")
-def test_generate_outline_passes_setup_context_to_prompt(mock_pm_load, mock_parse, mock_complete, mock_key, client, db_session):
+def test_generate_outline_passes_setup_context_to_prompt(mock_parse, mock_complete, mock_key, client, db_session):
     r = client.post("/api/v1/projects", json={"name": "雾港二十夜"})
     pid = r.json()["id"]
 
@@ -123,17 +126,17 @@ def test_generate_outline_passes_setup_context_to_prompt(mock_pm_load, mock_pars
 
     asyncio.run(generate_outline(pid, db_session))
 
-    prompt_vars = mock_pm_load.call_args.args[1]
-    assert "林舟" in prompt_vars["characters"]
-    assert "沈聆" in prompt_vars["characters"]
-    assert "旧灯塔" in prompt_vars["core_concept"]
+    sent_messages = mock_complete.await_args.args[0]
+    prompt = sent_messages[0]["content"]
+    assert "林舟" in prompt
+    assert "沈聆" in prompt
+    assert "旧灯塔" in prompt
 
 
 @patch("app.api.outlines.load_api_key", return_value="sk-test")
 @patch("app.api.outlines.ai_service.complete", new_callable=AsyncMock)
 @patch("app.api.outlines.ai_service.parse_json")
-@patch("app.api.outlines.PromptManager.load", return_value="BASE_PROMPT")
-def test_generate_outline_prefers_project_target_chapter_count(mock_pm_load, mock_parse, mock_complete, mock_key, client):
+def test_generate_outline_prefers_project_target_chapter_count(mock_parse, mock_complete, mock_key, client):
     r = client.post(
         "/api/v1/projects",
         json={"name": "十章项目", "target_chapter_count": 10, "target_word_count": 60000},
@@ -160,5 +163,7 @@ def test_generate_outline_prefers_project_target_chapter_count(mock_pm_load, moc
     response = client.post(f"/api/v1/projects/{pid}/outline/generate")
 
     assert response.status_code == 200
-    prompt_vars = mock_pm_load.call_args.args[1]
-    assert prompt_vars["total_chapters"] == 10
+    sent_messages = mock_complete.await_args.args[0]
+    prompt = sent_messages[0]["content"]
+    assert "十章项目" in prompt
+    assert "10" in prompt

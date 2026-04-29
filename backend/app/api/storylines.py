@@ -1,4 +1,3 @@
-import json
 import time
 
 from fastapi import APIRouter, Depends, HTTPException, Response
@@ -7,10 +6,11 @@ from sqlalchemy.orm import Session
 from app.api.deprecation import add_deprecation_header
 from app.config import load_api_key
 from app.core.ai_service import AIService
-from app.core.model_call_trace import build_context_block, create_trace, mark_trace_failed, mark_trace_success, now_ms
-from app.core.prompt_manager import PromptManager
+from app.core.model_call_trace import create_trace, mark_trace_failed, mark_trace_success, now_ms
 from app.db import get_db
 from app.models import Project, Setup, Storyline
+from app.prompting.assembler import build_generation_payload
+from app.prompting.providers.storyline import build_storyline_context_blocks, build_storyline_variables
 from app.schemas import StorylineOut
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/storyline", tags=["storylines"])
@@ -18,48 +18,17 @@ ai_service = AIService()
 
 
 def _build_storyline_call_payload(project: Project, setup: Setup, command_args: str | None = None) -> dict:
-    world_building = json.dumps(setup.world_building, ensure_ascii=False)
-    characters = json.dumps(setup.characters, ensure_ascii=False)
-    core_concept = json.dumps(setup.core_concept, ensure_ascii=False)
-    pm = PromptManager()
-    prompt_template = pm.load(
-        "generate_storyline",
-        {
-            "name": project.name,
-            "genre": project.genre,
-            "world_building": world_building,
-            "characters": characters,
-            "core_concept": core_concept,
-        },
-    )
-    prompt = prompt_template
-    context_blocks = [
-        build_context_block(key="setup_world_building", kind="setup", title="世界观", content=world_building),
-        build_context_block(key="setup_characters", kind="setup", title="角色", content=characters),
-        build_context_block(key="setup_core_concept", kind="setup", title="核心概念", content=core_concept),
-        build_context_block(
-            key="generate_storyline_template",
-            kind="prompt_template",
-            title="故事线生成模板",
-            content=prompt_template,
+    variables = build_storyline_variables(project, setup)
+    return build_generation_payload(
+        "storyline.generate",
+        variables,
+        trace_context_blocks=lambda rendered_prompt: build_storyline_context_blocks(
+            setup,
+            rendered_prompt=rendered_prompt,
+            command_args=command_args,
         ),
-    ]
-    if command_args and command_args.strip():
-        extra = command_args.strip()
-        prompt = f"{prompt}\n\n附加要求：{extra}"
-        context_blocks.append(
-            build_context_block(
-                key="command_args",
-                kind="user_feedback",
-                title="用户附加要求",
-                content=extra,
-            )
-        )
-    return {
-        "messages": [{"role": "user", "content": prompt}],
-        "context_blocks": context_blocks,
-        "max_tokens": 4000,
-    }
+        command_args=command_args,
+    )
 
 
 @router.post("/generate", response_model=StorylineOut)
@@ -84,6 +53,7 @@ async def generate_storyline(project_id: str, db: Session = Depends(get_db), com
         trace_type="storyline_generation",
         messages=payload["messages"],
         context_blocks=payload["context_blocks"],
+        trace_metadata=payload["trace_metadata"],
         model=project.ai_model or "deepseek-chat",
         temperature=0.7,
         max_tokens=payload["max_tokens"],

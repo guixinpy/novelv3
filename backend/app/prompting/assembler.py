@@ -1,10 +1,12 @@
 from copy import deepcopy
+from collections.abc import Callable
 from typing import Any
 
 from app.prompting.budget import PromptBudgeter
 from app.prompting.contracts import PromptBuildResult
 from app.prompting.registry import PROMPT_REGISTRY
 from app.prompting.renderer import PromptRenderer
+from app.prompting.tracing import build_prompt_trace_metadata
 
 
 class PromptAssembler:
@@ -90,3 +92,29 @@ class PromptAssembler:
             block_content = str(block.get("content", ""))
             parts.append(f"【{title}】\n{block_content}")
         return "\n\n".join(parts)
+
+
+def build_generation_payload(
+    prompt_id: str,
+    variables: dict | None,
+    *,
+    trace_context_blocks: list[dict[str, Any]] | Callable[[str], list[dict[str, Any]]] | None = None,
+    command_args: str | None = None,
+    max_tokens: int = 4000,
+) -> dict[str, Any]:
+    build_result = PromptAssembler().build(prompt_id, variables)
+    prompt = build_result.content
+    if command_args and command_args.strip():
+        prompt = f"{prompt}\n\n附加要求：{command_args.strip()}"
+    if callable(trace_context_blocks):
+        context_blocks = trace_context_blocks(build_result.content)
+    else:
+        context_blocks = list(trace_context_blocks or [])
+
+    return {
+        "messages": [{"role": "user", "content": prompt}],
+        "context_blocks": context_blocks,
+        "max_tokens": max_tokens,
+        "trace_metadata": build_prompt_trace_metadata(build_result),
+        "rendered_prompt": build_result.content,
+    }

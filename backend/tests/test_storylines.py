@@ -53,8 +53,7 @@ def test_get_storyline_not_found(client):
 @patch("app.api.storylines.load_api_key", return_value="sk-test")
 @patch("app.api.storylines.ai_service.complete", new_callable=AsyncMock)
 @patch("app.api.storylines.ai_service.parse_json")
-@patch("app.api.storylines.PromptManager.load", return_value="BASE_PROMPT")
-def test_generate_storyline_appends_command_args_to_prompt(mock_pm_load, mock_parse, mock_complete, mock_key, client, db_session):
+def test_generate_storyline_appends_command_args_to_prompt(mock_parse, mock_complete, mock_key, client, db_session):
     r = client.post("/api/v1/projects", json={"name": "Test"})
     pid = r.json()["id"]
 
@@ -72,5 +71,10 @@ def test_generate_storyline_appends_command_args_to_prompt(mock_pm_load, mock_pa
 
     sent_messages = mock_complete.await_args.args[0]
     prompt = sent_messages[0]["content"]
-    assert "BASE_PROMPT" in prompt
+    assert "Test" in prompt
     assert "附加要求：冲突更强烈" in prompt
+    traces = client.get(f"/api/v1/projects/{pid}/model-call-traces?trace_type=storyline_generation").json()
+    trace = client.get(f"/api/v1/projects/{pid}/model-call-traces/{traces['items'][0]['id']}").json()
+    assert {block["key"] for block in trace["context_blocks"]} >= {"command_args"}
+    command_args_block = next(block for block in trace["context_blocks"] if block["key"] == "command_args")
+    assert command_args_block["kind"] == "user_feedback"

@@ -1,6 +1,6 @@
 import pytest
 
-from app.prompting.assembler import PromptAssembler
+from app.prompting.assembler import PromptAssembler, build_generation_payload
 from app.prompting.budget import PromptBudgeter
 from app.prompting.registry import PROMPT_REGISTRY
 from app.prompting.renderer import PromptRenderer, default_prompts_dir
@@ -191,6 +191,60 @@ def test_assembler_uses_provided_messages():
     )
 
     assert result.messages is messages
+
+
+def test_build_generation_payload_keeps_trace_blocks_out_of_message_content():
+    trace_context_blocks = [
+        {
+            "key": "audit_only",
+            "kind": "audit",
+            "title": "审计块",
+            "content": "TRACE_ONLY_SECRET",
+            "sources": [],
+            "char_count": 17,
+            "token_estimate": 9,
+            "original_char_count": 17,
+            "truncated": False,
+        }
+    ]
+
+    payload = build_generation_payload(
+        "setup.generate",
+        {
+            "name": "潮汐门",
+            "genre": "科幻悬疑",
+            "description": "记忆潮汐每72小时发生。",
+            "style": "冷峻",
+            "complexity": "中等",
+        },
+        trace_context_blocks=trace_context_blocks,
+        command_args="主角是植物学家",
+    )
+
+    message_content = payload["messages"][0]["content"]
+
+    assert "附加要求：主角是植物学家" in message_content
+    assert payload["context_blocks"] == trace_context_blocks
+    assert "TRACE_ONLY_SECRET" not in message_content
+    assert payload["trace_metadata"]["prompt_id"] == "setup.generate"
+    assert payload["trace_metadata"]["template_hash"].startswith("sha256:")
+    assert payload["rendered_prompt"] in message_content
+
+
+def test_build_generation_payload_can_build_trace_blocks_from_rendered_prompt():
+    payload = build_generation_payload(
+        "setup.generate",
+        {
+            "name": "潮汐门",
+            "genre": "科幻悬疑",
+            "description": "记忆潮汐每72小时发生。",
+            "style": "冷峻",
+            "complexity": "中等",
+        },
+        trace_context_blocks=lambda rendered_prompt: [{"key": "prompt_snapshot", "content": rendered_prompt}],
+    )
+
+    assert payload["context_blocks"] == [{"key": "prompt_snapshot", "content": payload["rendered_prompt"]}]
 
 
 def test_assembler_unknown_prompt_id_raises_key_error():

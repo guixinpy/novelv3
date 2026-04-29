@@ -57,8 +57,7 @@ def test_get_setup_not_found(client):
 @patch("app.api.setups.load_api_key", return_value="sk-test")
 @patch("app.api.setups.ai_service.complete", new_callable=AsyncMock)
 @patch("app.api.setups.ai_service.parse_json")
-@patch("app.api.setups.PromptManager.load", return_value="BASE_PROMPT")
-def test_generate_setup_appends_command_args_to_prompt(mock_pm_load, mock_parse, mock_complete, mock_key, client, db_session):
+def test_generate_setup_appends_command_args_to_prompt(mock_parse, mock_complete, mock_key, client, db_session):
     r = client.post("/api/v1/projects", json={"name": "Test"})
     pid = r.json()["id"]
     mock_complete.return_value.content = '{"world_building": {}, "characters": [], "core_concept": {}}'
@@ -68,5 +67,10 @@ def test_generate_setup_appends_command_args_to_prompt(mock_pm_load, mock_parse,
 
     sent_messages = mock_complete.await_args.args[0]
     prompt = sent_messages[0]["content"]
-    assert "BASE_PROMPT" in prompt
+    assert "Test" in prompt
     assert "附加要求：主角是植物学家" in prompt
+    traces = client.get(f"/api/v1/projects/{pid}/model-call-traces?trace_type=setup_generation").json()
+    trace = client.get(f"/api/v1/projects/{pid}/model-call-traces/{traces['items'][0]['id']}").json()
+    assert {block["key"] for block in trace["context_blocks"]} >= {"command_args"}
+    command_args_block = next(block for block in trace["context_blocks"] if block["key"] == "command_args")
+    assert command_args_block["kind"] == "user_feedback"
