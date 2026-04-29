@@ -46,7 +46,12 @@ export const useWorldModelStore = defineStore('worldModel', () => {
   const bundlesOffset = ref(0)
   const bundlesLimit = ref(20)
   const bundleFilters = ref<{ bundle_status?: string; item_status?: string; profile_version?: number }>({})
-  const loading = ref(false)
+  const laneLoading = ref<Record<RequestLane, boolean>>({
+    dashboard: false,
+    overview: false,
+    bundles: false,
+    detail: false,
+  })
   const loaded = ref(false)
   const error = ref('')
   const activeSubmissionCount = ref(0)
@@ -64,6 +69,7 @@ export const useWorldModelStore = defineStore('worldModel', () => {
   const hasWorldData = computed(() =>
     projectProfile.value !== null || projection.value !== null || proposalBundles.value.length > 0,
   )
+  const loading = computed(() => Object.values(laneLoading.value).some(Boolean))
   const submitting = computed(() => activeSubmissionCount.value > 0)
   const activeActionItemId = computed(() => Object.keys(pendingActionCounts.value)[0] ?? null)
 
@@ -97,6 +103,35 @@ export const useWorldModelStore = defineStore('worldModel', () => {
   function isLatestRequest(snapshot: RequestSnapshot, lane: RequestLane) {
     return isActiveScope(snapshot.projectId, snapshot.version)
       && latestLaneRequest.value[lane] === snapshot.requestId
+  }
+
+  function setLaneLoading(lane: RequestLane, value: boolean) {
+    laneLoading.value = {
+      ...laneLoading.value,
+      [lane]: value,
+    }
+  }
+
+  function setLanesLoading(lanes: RequestLane[], value: boolean) {
+    laneLoading.value = {
+      ...laneLoading.value,
+      ...Object.fromEntries(lanes.map((lane) => [lane, value])),
+    } as Record<RequestLane, boolean>
+  }
+
+  function finishLatestLanes(snapshot: RequestSnapshot, lanes: RequestLane[]) {
+    const next = { ...laneLoading.value }
+    let changed = false
+    for (const lane of lanes) {
+      if (!isLatestRequest(snapshot, lane)) continue
+      next[lane] = false
+      changed = true
+    }
+    if (changed) laneLoading.value = next
+  }
+
+  function isLaneLoading(lane: RequestLane) {
+    return laneLoading.value[lane]
   }
 
   function toErrorMessage(err: unknown) {
@@ -205,7 +240,7 @@ export const useWorldModelStore = defineStore('worldModel', () => {
     proposalBundles.value = []
     selectedBundleId.value = null
     selectedBundleDetail.value = null
-    loading.value = false
+    setLanesLoading(['dashboard', 'overview', 'bundles', 'detail'], false)
     loaded.value = false
     error.value = ''
     activeSubmissionCount.value = 0
@@ -221,7 +256,7 @@ export const useWorldModelStore = defineStore('worldModel', () => {
 
   async function loadSetupPanelData(projectId: string) {
     const snapshot = captureRequest(projectId, ['overview', 'bundles', 'detail'])
-    loading.value = true
+    setLanesLoading(['overview', 'bundles', 'detail'], true)
     error.value = ''
 
     try {
@@ -264,15 +299,14 @@ export const useWorldModelStore = defineStore('worldModel', () => {
       error.value = toErrorMessage(err)
       loaded.value = true
     } finally {
-      if (isLatestRequest(snapshot, 'overview')) {
-        loading.value = false
-      }
+      finishLatestLanes(snapshot, ['overview', 'bundles', 'detail'])
     }
   }
 
   async function loadOverview(projectId: string) {
     ensureProjectScope(projectId)
     const snapshot = captureRequest(projectId, ['overview'])
+    setLaneLoading('overview', true)
     error.value = ''
 
     try {
@@ -284,12 +318,14 @@ export const useWorldModelStore = defineStore('worldModel', () => {
     } catch (err) {
       assignErrorForSnapshot(snapshot, ['overview'], toErrorMessage(err))
       loaded.value = true
+    } finally {
+      finishLatestLanes(snapshot, ['overview'])
     }
   }
 
   async function loadDashboard(projectId: string) {
     const snapshot = captureRequest(projectId, ['dashboard'])
-    loading.value = true
+    setLaneLoading('dashboard', true)
     error.value = ''
 
     try {
@@ -300,14 +336,14 @@ export const useWorldModelStore = defineStore('worldModel', () => {
     } catch (err) {
       assignErrorForSnapshot(snapshot, ['dashboard'], toErrorMessage(err))
     } finally {
-      if (isLatestRequest(snapshot, 'dashboard')) {
-        loading.value = false
-      }
+      finishLatestLanes(snapshot, ['dashboard'])
     }
   }
 
   async function loadBundleDetail(projectId: string, bundleId: string, options: BundleDetailLoadOptions = {}) {
     const snapshot = options.requestSnapshot ?? captureRequest(projectId, ['detail'])
+    const ownsDetailLane = !options.requestSnapshot
+    if (ownsDetailLane) setLaneLoading('detail', true)
 
     try {
       const detail = await api.getWorldProposalBundle(projectId, bundleId)
@@ -329,6 +365,8 @@ export const useWorldModelStore = defineStore('worldModel', () => {
         error.value = nextError
       }
       return nextError
+    } finally {
+      if (ownsDetailLane) finishLatestLanes(snapshot, ['detail'])
     }
   }
 
@@ -394,6 +432,7 @@ export const useWorldModelStore = defineStore('worldModel', () => {
 
   async function refreshAfterReviewAction(projectId: string) {
     const snapshot = captureRequest(projectId, ['dashboard', 'overview', 'bundles', 'detail'])
+    setLanesLoading(['dashboard', 'overview', 'bundles', 'detail'], true)
     let refreshError = ''
 
     try {
@@ -427,6 +466,7 @@ export const useWorldModelStore = defineStore('worldModel', () => {
     }
 
     assignErrorForSnapshot(snapshot, ['dashboard', 'overview', 'bundles', 'detail'], refreshError)
+    finishLatestLanes(snapshot, ['dashboard', 'overview', 'bundles', 'detail'])
   }
 
   async function reviewProposalItem(projectId: string, itemId: string, payload: ProposalReviewRequest) {
@@ -508,6 +548,7 @@ export const useWorldModelStore = defineStore('worldModel', () => {
     bundlesOffset,
     bundlesLimit,
     bundleFilters,
+    laneLoading,
     loading,
     loaded,
     error,
@@ -515,6 +556,7 @@ export const useWorldModelStore = defineStore('worldModel', () => {
     pendingActionCounts,
     activeActionItemId,
     hasWorldData,
+    isLaneLoading,
     isActionPending,
     resetProjectScopedState,
     loadDashboard,

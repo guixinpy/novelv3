@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import WorldProposalBundleList from '../world/WorldProposalBundleList.vue'
 import WorldProposalImpactList from '../world/WorldProposalImpactList.vue'
 import WorldProposalItemCard from '../world/WorldProposalItemCard.vue'
@@ -10,6 +11,10 @@ const props = defineProps<{
 }>()
 
 const worldModel = useWorldModelStore()
+
+const proposalLoading = computed(() =>
+  worldModel.isLaneLoading('bundles') || worldModel.isLaneLoading('detail'),
+)
 
 function approvalReviewId(item: ProposalItem) {
   const review = worldModel.selectedBundleDetail?.reviews.find((entry) =>
@@ -66,7 +71,7 @@ async function rollbackItem(reviewId: string, reason: string, itemId: string) {
 
     <section class="proposal-workbench__detail">
       <div v-if="worldModel.error" class="proposal-workbench__error">{{ worldModel.error }}</div>
-      <div v-if="worldModel.loading" class="proposal-workbench__empty">加载提案...</div>
+      <div v-if="proposalLoading" class="proposal-workbench__empty">加载提案...</div>
       <template v-else-if="worldModel.selectedBundleDetail">
         <header class="proposal-workbench__header">
           <div>

@@ -68,4 +68,52 @@ describe('AthenaOverview', () => {
 
     expect(wrapper.emitted('navigate')).toEqual([['proposals']])
   })
+
+  it('renders setup import preview counts before profile exists', () => {
+    const wrapper = mount(AthenaOverview, {
+      props: {
+        dashboard: {
+          project_profile: null,
+          metrics: {
+            entity_count: 0,
+            fact_count: 0,
+            presence_count: 0,
+            event_count: 0,
+            pending_bundle_count: 0,
+            pending_item_count: 0,
+          },
+          next_action: {
+            action: 'import_setup',
+            label: '导入 Setup',
+          },
+        },
+        setupPreview: {
+          status: 'preview',
+          project_profile_exists: false,
+          profile_version: null,
+          would_create: {
+            profile: 1,
+            characters: 2,
+            locations: 2,
+            factions: 2,
+            artifacts: 1,
+            rules: 1,
+          },
+          candidates: {
+            characters: [],
+            locations: [],
+            factions: [],
+            artifacts: [],
+            rules: [],
+          },
+        },
+        loading: false,
+      },
+    })
+
+    expect(wrapper.text()).toContain('导入预览')
+    expect(wrapper.text()).toContain('角色 2')
+    expect(wrapper.text()).toContain('地点 2')
+    expect(wrapper.text()).toContain('规则 1')
+  })
 })

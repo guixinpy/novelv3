@@ -8,6 +8,7 @@ import type {
   AthenaRetrievalDiagnostics,
   AthenaRetrievalIndexResult,
   AthenaRetrievalSearchResponse,
+  AthenaSetupImportPreview,
   AthenaTimeline,
   BackgroundTaskResponse,
   ChapterContent,
@@ -131,6 +132,8 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+  getAthenaSetupImportPreview: (id: string) =>
+    request<AthenaSetupImportPreview>(`/projects/${id}/athena/ontology/import-setup/preview`),
   importAthenaSetup: (id: string) =>
     request<AthenaImportSetupResult>(`/projects/${id}/athena/ontology/import-setup`, { method: 'POST' }),
   analyzeAthenaChapter: (id: string, chapterIndex: number) =>

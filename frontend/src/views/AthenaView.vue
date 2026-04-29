@@ -5,7 +5,6 @@ import { useProjectStore } from '../stores/project'
 import { useAthenaStore } from '../stores/athena'
 import { useWorldModelStore } from '../stores/worldModel'
 import { useUiStore, type AthenaSection } from '../stores/ui'
-import BaseButton from '../components/base/BaseButton.vue'
 import EntityTable from '../components/athena/EntityTable.vue'
 import RelationTable from '../components/athena/RelationTable.vue'
 import RuleList from '../components/athena/RuleList.vue'
@@ -18,6 +17,8 @@ import ConsistencyList from '../components/athena/ConsistencyList.vue'
 import OptimizationPanel from '../components/athena/OptimizationPanel.vue'
 import AthenaChatPanel from '../components/athena/AthenaChatPanel.vue'
 import RetrievalPanel from '../components/athena/RetrievalPanel.vue'
+import AthenaSubnav from '../components/athena/AthenaSubnav.vue'
+import { createAthenaSectionLoader } from './athenaSectionLoader'
 
 interface NavSection {
   label: string
@@ -97,6 +98,12 @@ const entityDataKeyMap: Record<string, string> = {
 }
 
 const entitySections = new Set(['characters', 'locations', 'factions', 'items'])
+const { loadSectionData } = createAthenaSectionLoader({
+  getProjectId: () => pid.value,
+  athena,
+  worldModel,
+  entitySections,
+})
 
 const entities = computed(() => {
   if (!entitySections.has(activeSection.value)) return []
@@ -148,40 +155,6 @@ async function initialize(projectId: string) {
   await loadSectionData(activeSection.value)
 }
 
-async function loadSectionData(section: AthenaSection) {
-  const id = pid.value
-  if (section === 'overview') {
-    await worldModel.loadDashboard(id)
-  }
-  if (entitySections.has(section) || section === 'relations' || section === 'rules') {
-    if (!athena.ontology) await athena.loadOntology(id)
-  }
-  if (section === 'projection') {
-    if (!worldModel.projection) await worldModel.loadOverview(id)
-  }
-  if (section === 'timeline') {
-    if (!athena.timeline) await athena.loadTimeline(id)
-  }
-  if (section === 'knowledge') {
-    if (!worldModel.projection) await worldModel.loadOverview(id)
-  }
-  if (section === 'retrieval') {
-    await athena.loadRetrievalDiagnostics(id)
-  }
-  if (section === 'proposals') {
-    if (!worldModel.loaded || !worldModel.proposalBundles.length) await worldModel.loadSetupPanelData(id)
-  }
-  if (section === 'consistency') {
-    await athena.loadConsistencyIssues(id)
-  }
-  if (section === 'optimization') {
-    await athena.loadOptimization(id)
-  }
-  if (section === 'outline' || section === 'storyline') {
-    if (!athena.evolutionPlan) await athena.loadEvolutionPlan(id)
-  }
-}
-
 function navigateSection(section: AthenaSection) {
   router.push(`/projects/${pid.value}/athena/${section}`)
 }
@@ -219,42 +192,16 @@ async function selectSubject(subjectRef: string) {
   <div v-if="project.currentProject" class="athena-view" data-testid="workspace-athena">
     <!-- Sub-nav content -->
     <Teleport to="[data-subnav-content]">
-      <div class="athena-subnav">
-        <div v-for="sec in sections" :key="sec.label" class="athena-subnav__section">
-          <div class="athena-subnav__section-label">{{ sec.label }}</div>
-          <button
-            v-for="item in sec.items"
-            :key="item.key"
-            class="athena-subnav__item"
-            :class="{ 'athena-subnav__item--active': activeSection === item.key }"
-            @click="navigateSection(item.key)"
-          >
-            {{ item.label }}
-          </button>
-        </div>
-        <div class="athena-subnav__divider" />
-        <div class="athena-subnav__actions">
-          <BaseButton
-            v-if="athena.ontology?.profile_version === null"
-            variant="ghost"
-            size="sm"
-            @click="importSetup"
-          >
-            导入 Setup
-          </BaseButton>
-          <BaseButton
-            v-if="latestChapterIndex"
-            variant="ghost"
-            size="sm"
-            @click="analyzeLatestChapter"
-          >
-            分析最新章节
-          </BaseButton>
-          <BaseButton variant="ghost" size="sm" @click="chatOpen = true">
-            Athena 对话
-          </BaseButton>
-        </div>
-      </div>
+      <AthenaSubnav
+        :sections="sections"
+        :active-section="activeSection"
+        :can-import-setup="athena.ontology?.profile_version === null"
+        :has-latest-chapter="Boolean(latestChapterIndex)"
+        @navigate="navigateSection"
+        @import-setup="importSetup"
+        @analyze-latest-chapter="analyzeLatestChapter"
+        @open-chat="chatOpen = true"
+      />
     </Teleport>
 
     <!-- Main content: detail view based on active section -->
@@ -263,7 +210,8 @@ async function selectSubject(subjectRef: string) {
       <AthenaOverview
         v-if="activeSection === 'overview'"
         :dashboard="worldModel.dashboard"
-        :loading="worldModel.loading"
+        :setup-preview="athena.setupImportPreview"
+        :loading="worldModel.isLaneLoading('dashboard')"
         @navigate="navigateSection"
       />
       <EntityTable
@@ -344,62 +292,4 @@ async function selectSubject(subjectRef: string) {
   font-size: var(--text-sm);
 }
 
-/* Sub-nav styles */
-.athena-subnav {
-  display: flex;
-  flex-direction: column;
-  min-height: 100%;
-}
-
-.athena-subnav__section {
-  margin-bottom: var(--space-1);
-}
-
-.athena-subnav__section-label {
-  font-size: var(--text-xs);
-  font-weight: var(--font-semibold);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--color-text-tertiary);
-  padding: var(--space-3) var(--space-3) var(--space-1);
-}
-
-.athena-subnav__item {
-  display: block;
-  width: 100%;
-  text-align: left;
-  font-size: var(--text-sm);
-  padding: var(--space-1) var(--space-3) var(--space-1) var(--space-5);
-  color: var(--color-text-secondary);
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.athena-subnav__item:hover {
-  color: var(--color-text-primary);
-  background: var(--color-bg-secondary);
-}
-
-.athena-subnav__item--active {
-  color: var(--color-brand);
-  font-weight: var(--font-medium);
-  background: var(--color-brand-light);
-}
-
-.athena-subnav__divider {
-  height: 1px;
-  background: var(--color-border);
-  margin: var(--space-2) 0;
-}
-
-.athena-subnav__actions {
-  position: sticky;
-  bottom: 0;
-  margin-top: auto;
-  padding: var(--space-2) var(--space-3);
-  background: var(--color-bg-primary);
-  border-top: 1px solid var(--color-border);
-}
 </style>

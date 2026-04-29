@@ -490,7 +490,38 @@ export interface AthenaImportSetupResult {
   created: {
     profile: number
     characters: number
+    locations: number
+    factions: number
+    artifacts: number
     rules: number
+  }
+}
+
+export interface AthenaSetupImportPreviewCandidate {
+  name: string
+  canonical_id: string
+  source: string
+  description: string
+}
+
+export interface AthenaSetupImportPreview {
+  status: string
+  project_profile_exists: boolean
+  profile_version: number | null
+  would_create: {
+    profile: number
+    characters: number
+    locations: number
+    factions: number
+    artifacts: number
+    rules: number
+  }
+  candidates: {
+    characters: AthenaSetupImportPreviewCandidate[]
+    locations: AthenaSetupImportPreviewCandidate[]
+    factions: AthenaSetupImportPreviewCandidate[]
+    artifacts: AthenaSetupImportPreviewCandidate[]
+    rules: AthenaSetupImportPreviewCandidate[]
   }
 }
 

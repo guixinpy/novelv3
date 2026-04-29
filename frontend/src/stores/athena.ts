@@ -9,6 +9,7 @@ import type {
   AthenaRetrievalDiagnostics,
   AthenaRetrievalIndexResult,
   AthenaRetrievalSearchResponse,
+  AthenaSetupImportPreview,
   AthenaTimeline,
   ChatHistoryMessage,
   PaginatedProposalBundles,
@@ -45,6 +46,7 @@ export const useAthenaStore = defineStore('athena', () => {
   const retrievalSearch = ref<AthenaRetrievalSearchResponse | null>(null)
   const retrievalLastIndexResult = ref<AthenaRetrievalIndexResult | null>(null)
   const retrievalLoading = ref(false)
+  const setupImportPreview = ref<AthenaSetupImportPreview | null>(null)
 
   const setup = ref<unknown>(null)
 
@@ -77,6 +79,7 @@ export const useAthenaStore = defineStore('athena', () => {
     retrievalSearch.value = null
     retrievalLastIndexResult.value = null
     retrievalLoading.value = false
+    setupImportPreview.value = null
     setup.value = null
     messages.value = []
     error.value = null
@@ -386,10 +389,24 @@ export const useAthenaStore = defineStore('athena', () => {
     try {
       await api.importAthenaSetup(projectId)
       requestCache.invalidate(cacheKey(projectId, 'ontology'))
+      requestCache.invalidate(cacheKey(projectId, 'setup-import-preview'))
+      setupImportPreview.value = null
       await loadOntology(projectId)
     } catch (err) {
       error.value = toErrorMessage(err)
     }
+  }
+
+  async function loadSetupImportPreview(projectId: string) {
+    await loadCached(
+      projectId,
+      'setup-import-preview',
+      () => !!setupImportPreview.value,
+      () => api.getAthenaSetupImportPreview(projectId),
+      (value) => {
+        setupImportPreview.value = value
+      },
+    )
   }
 
   async function analyzeChapter(projectId: string, chapterIndex: number) {
@@ -506,6 +523,7 @@ export const useAthenaStore = defineStore('athena', () => {
     retrievalSearch,
     retrievalLastIndexResult,
     retrievalLoading,
+    setupImportPreview,
     setup,
     messages,
     chatLoading,
@@ -523,6 +541,7 @@ export const useAthenaStore = defineStore('athena', () => {
     runConsistencyCheck,
     loadConsistencyIssues,
     loadOptimization,
+    loadSetupImportPreview,
     importSetup,
     analyzeChapter,
     loadRetrievalDiagnostics,

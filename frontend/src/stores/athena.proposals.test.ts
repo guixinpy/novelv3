@@ -9,6 +9,7 @@ vi.mock('../api/client', () => ({
     reviewAthenaProposalItem: vi.fn(),
     getAthenaEvolutionProposals: vi.fn(),
     importAthenaSetup: vi.fn(),
+    getAthenaSetupImportPreview: vi.fn(),
     analyzeAthenaChapter: vi.fn(),
     getAthenaOntology: vi.fn(),
   },
@@ -96,7 +97,7 @@ describe('athena proposal workflow store', () => {
       status: 'completed',
       profile_version: 1,
       project_profile_version_id: 'profile-1',
-      created: { profile: 1, characters: 2, rules: 1 },
+      created: { profile: 1, characters: 2, locations: 2, factions: 1, artifacts: 1, rules: 1 },
     })
     vi.mocked(api.getAthenaOntology).mockResolvedValue({
       entities: {},
@@ -111,6 +112,36 @@ describe('athena proposal workflow store', () => {
 
     expect(api.importAthenaSetup).toHaveBeenCalledWith('project-1')
     expect(api.getAthenaOntology).toHaveBeenCalledWith('project-1')
+  })
+
+  it('loads setup import preview without importing setup', async () => {
+    vi.mocked(api.getAthenaSetupImportPreview).mockResolvedValue({
+      status: 'preview',
+      project_profile_exists: false,
+      profile_version: null,
+      would_create: {
+        profile: 1,
+        characters: 2,
+        locations: 2,
+        factions: 1,
+        artifacts: 1,
+        rules: 1,
+      },
+      candidates: {
+        characters: [{ name: '林舟', canonical_id: 'char.林舟', source: 'setup.characters', description: '' }],
+        locations: [],
+        factions: [],
+        artifacts: [],
+        rules: [],
+      },
+    })
+    const store = useAthenaStore()
+
+    await store.loadSetupImportPreview('project-1')
+
+    expect(store.setupImportPreview?.would_create.characters).toBe(2)
+    expect(api.getAthenaSetupImportPreview).toHaveBeenCalledWith('project-1')
+    expect(api.importAthenaSetup).not.toHaveBeenCalled()
   })
 
   it('analyzes a chapter and refreshes proposals', async () => {

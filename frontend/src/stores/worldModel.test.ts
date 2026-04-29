@@ -242,6 +242,23 @@ describe('worldModel store', () => {
     expect(api.getWorldProposalBundle).not.toHaveBeenCalled()
   })
 
+  it('tracks loading state per request lane', async () => {
+    const dashboardRequest = createDeferred<ReturnType<typeof createDashboard>>()
+    vi.mocked(api.getWorldModelDashboard).mockReturnValue(dashboardRequest.promise)
+    const store = useWorldModelStore()
+
+    const pending = store.loadDashboard('project-1')
+
+    expect(store.isLaneLoading('dashboard')).toBe(true)
+    expect(store.isLaneLoading('bundles')).toBe(false)
+    expect(store.isLaneLoading('detail')).toBe(false)
+
+    dashboardRequest.resolve(createDashboard())
+    await pending
+
+    expect(store.isLaneLoading('dashboard')).toBe(false)
+  })
+
   it('loadSetupPanelData() 会加载当前 profile、投影和 bundles，并默认选中首个 bundle', async () => {
     vi.mocked(api.getWorldModelOverview).mockResolvedValue({
       project_profile: {
