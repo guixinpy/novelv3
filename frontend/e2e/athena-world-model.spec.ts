@@ -28,12 +28,19 @@ test('renders Athena projection and proposal workbench from local world-model da
     projectId = await createProjectFromHome(page, `E2E Athena ${Date.now()}`)
     seedAthenaWorldModel(projectId)
 
+    await page.goto(`/projects/${projectId}/athena`)
+    await expect(page.getByTestId('workspace-athena')).toBeVisible()
+    await expect(page.getByTestId('athena-overview-import-preview')).toBeVisible()
+
     const importResponse = await page.request.post(`/api/v1/projects/${projectId}/athena/ontology/import-setup`)
     expect(importResponse.status()).toBe(200)
 
     const analyzeResponse = await page.request.post(`/api/v1/projects/${projectId}/athena/evolution/chapters/1/analyze`)
     expect(analyzeResponse.status()).toBe(200)
     expect((await analyzeResponse.json()).created.proposal_items).toBeGreaterThanOrEqual(4)
+
+    const reindexResponse = await page.request.post(`/api/v1/projects/${projectId}/athena/retrieval/reindex`)
+    expect(reindexResponse.status()).toBe(200)
 
     const bundlesResponse = await page.request.get(`/api/v1/projects/${projectId}/world-model/proposal-bundles`)
     expect(bundlesResponse.status()).toBe(200)
@@ -74,8 +81,15 @@ test('renders Athena projection and proposal workbench from local world-model da
     await expect(page.getByTestId('athena-overview')).toBeVisible()
     await expect(page.getByTestId('athena-overview-metric-pending_item_count')).toContainText(String(pendingBeforeReview - 1))
 
+    await page.goto(`/projects/${projectId}/athena/retrieval`)
+    await page.getByPlaceholder('搜索角色、规则、伏笔、章节事实').fill('旧灯塔')
+    await page.getByRole('button', { name: '搜索' }).click()
+    await expect(page.getByText('章节原文').first()).toBeVisible()
+    await expect(page.getByText('可用于核对设定').first()).toBeVisible()
+
     await page.goto(`/projects/${projectId}/athena/projection`)
     await expect(page.getByTestId('workspace-athena')).toBeVisible()
+    await expect(page.getByText('地点').first()).toBeVisible()
     await expect(page.getByText('loc.旧灯塔')).toBeVisible()
     await expect(page.getByText('mentioned_in_chapter')).toBeVisible()
 
