@@ -60,7 +60,7 @@ const summaryCompactedCount = computed(() => {
 })
 
 const canOpenTrace = computed(() => (
-  props.msg.role === 'assistant'
+  props.msg.role !== 'user'
   && typeof props.msg.trace_id === 'string'
   && props.msg.trace_id.trim().length > 0
 ))

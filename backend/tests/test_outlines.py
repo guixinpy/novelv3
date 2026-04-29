@@ -31,6 +31,18 @@ def test_generate_outline(mock_parse, mock_complete, mock_key, client):
     r2 = client.post(f"/api/v1/projects/{pid}/outline/generate")
     assert r2.status_code == 200
     assert r2.json()["status"] == "generated"
+    traces = client.get(f"/api/v1/projects/{pid}/model-call-traces?trace_type=outline_generation").json()
+    assert traces["total"] == 1
+    trace = client.get(f"/api/v1/projects/{pid}/model-call-traces/{traces['items'][0]['id']}").json()
+    assert trace["status"] == "success"
+    assert {block["key"] for block in trace["context_blocks"]} >= {
+        "setup_world_building",
+        "setup_characters",
+        "setup_core_concept",
+        "storyline_context",
+        "outline_target",
+        "generate_outline_template",
+    }
 
 
 @patch("app.api.outlines.load_api_key", return_value="sk-test")
@@ -115,3 +127,38 @@ def test_generate_outline_passes_setup_context_to_prompt(mock_pm_load, mock_pars
     assert "林舟" in prompt_vars["characters"]
     assert "沈聆" in prompt_vars["characters"]
     assert "旧灯塔" in prompt_vars["core_concept"]
+
+
+@patch("app.api.outlines.load_api_key", return_value="sk-test")
+@patch("app.api.outlines.ai_service.complete", new_callable=AsyncMock)
+@patch("app.api.outlines.ai_service.parse_json")
+@patch("app.api.outlines.PromptManager.load", return_value="BASE_PROMPT")
+def test_generate_outline_prefers_project_target_chapter_count(mock_pm_load, mock_parse, mock_complete, mock_key, client):
+    r = client.post(
+        "/api/v1/projects",
+        json={"name": "十章项目", "target_chapter_count": 10, "target_word_count": 60000},
+    )
+    pid = r.json()["id"]
+
+    with patch("app.api.setups.load_api_key", return_value="sk-test"), \
+         patch("app.api.setups.ai_service.complete", new_callable=AsyncMock) as setup_complete, \
+         patch("app.api.setups.ai_service.parse_json") as setup_parse:
+        setup_complete.return_value.content = '{"world_building": {}, "characters": [], "core_concept": {}}'
+        setup_parse.return_value = {"world_building": {}, "characters": [], "core_concept": {}}
+        client.post(f"/api/v1/projects/{pid}/setup/generate")
+
+    with patch("app.api.storylines.load_api_key", return_value="sk-test"), \
+         patch("app.api.storylines.ai_service.complete", new_callable=AsyncMock) as storyline_complete, \
+         patch("app.api.storylines.ai_service.parse_json") as storyline_parse:
+        storyline_complete.return_value.content = '{"plotlines": [], "foreshadowing": []}'
+        storyline_parse.return_value = {"plotlines": [], "foreshadowing": []}
+        client.post(f"/api/v1/projects/{pid}/storyline/generate")
+
+    mock_complete.return_value.content = '{"total_chapters": 10, "chapters": [], "plotlines": [], "foreshadowing": []}'
+    mock_parse.return_value = {"total_chapters": 10, "chapters": [], "plotlines": [], "foreshadowing": []}
+
+    response = client.post(f"/api/v1/projects/{pid}/outline/generate")
+
+    assert response.status_code == 200
+    prompt_vars = mock_pm_load.call_args.args[1]
+    assert prompt_vars["total_chapters"] == 10

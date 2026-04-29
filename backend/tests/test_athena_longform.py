@@ -3,8 +3,11 @@ from app.models import (
     Project,
     ProjectProfileVersion,
     Setup,
+    WorldArtifact,
     WorldCharacter,
+    WorldFaction,
     WorldFactClaim,
+    WorldLocation,
     WorldProposalBundle,
     WorldProposalItem,
     WorldRule,
@@ -22,6 +25,8 @@ def _seed_project_with_setup(db_session):
         status="generated",
         world_building={
             "background": "雾港城被潮雾和旧神契约笼罩。",
+            "geography": "故事发生在‘旧灯塔’和‘雾港城’，旧灯塔地下藏有‘黑潮门’。",
+            "society": "‘档案局’封存证词，‘守夜人联盟’负责巡查雾港。",
             "rules": "旧灯塔熄灭时，亡者不能被直接召回。",
         },
         characters=[
@@ -56,14 +61,23 @@ def test_import_setup_creates_formal_profile_entities_and_rules(client, db_sessi
     payload = response.json()
     assert payload["profile_version"] == 1
     assert payload["created"]["characters"] == 2
+    assert payload["created"]["locations"] == 2
+    assert payload["created"]["factions"] == 2
+    assert payload["created"]["artifacts"] == 1
     assert payload["created"]["rules"] == 1
     assert db_session.query(ProjectProfileVersion).filter_by(project_id=project.id).count() == 1
     assert db_session.query(WorldCharacter).filter_by(project_id=project.id).count() == 2
+    assert db_session.query(WorldLocation).filter_by(project_id=project.id).count() == 2
+    assert db_session.query(WorldFaction).filter_by(project_id=project.id).count() == 2
+    assert db_session.query(WorldArtifact).filter_by(project_id=project.id).count() == 1
     assert db_session.query(WorldRule).filter_by(project_id=project.id).count() == 1
 
     ontology = client.get(f"/api/v1/projects/{project.id}/athena/ontology").json()
     assert ontology["profile_version"] == 1
     assert {item["name"] for item in ontology["entities"]["characters"]} == {"林舟", "沈聆"}
+    assert {item["name"] for item in ontology["entities"]["locations"]} == {"旧灯塔", "雾港城"}
+    assert {item["name"] for item in ontology["entities"]["factions"]} == {"档案局", "守夜人联盟"}
+    assert {item["name"] for item in ontology["entities"]["artifacts"]} == {"黑潮门"}
 
 
 def test_analyze_chapter_creates_reviewable_candidates_without_duplicates(client, db_session):
@@ -132,4 +146,8 @@ def test_approved_candidate_is_injected_into_chapter_context(client, db_session)
     assert payload["chapter_index"] == 2
     assert payload["profile_version"] == 1
     assert "林舟" in payload["prompt_context"]
+    assert "旧灯塔" in payload["prompt_context"]
+    assert "档案局" in payload["prompt_context"]
+    assert "黑潮门" in payload["prompt_context"]
+    assert "旧灯塔熄灭时" in payload["prompt_context"]
     assert "presence_count" in payload["prompt_context"]

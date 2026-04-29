@@ -117,6 +117,7 @@ def _build_chapter_call_payload(
             "world_building": json.dumps(setup.world_building, ensure_ascii=False),
             "characters": json.dumps(setup.characters, ensure_ascii=False),
             "core_concept": json.dumps(setup.core_concept, ensure_ascii=False),
+            "chapter_index": chapter_index,
             "language": project.language,
         },
     )

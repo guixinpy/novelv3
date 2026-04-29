@@ -72,22 +72,29 @@ function isValidSection(s: string): boolean {
   return sections.some((sec) => sec.items.some((item) => item.key === s))
 }
 
-// Entity type mapping for ontology sections
+// Entity display labels and backend ontology keys for ontology sections.
 const entityTypeMap: Record<string, string> = {
-  characters: 'character',
-  locations: 'location',
-  factions: 'faction',
-  items: 'item',
+  characters: '角色',
+  locations: '地点',
+  factions: '势力',
+  items: '物品',
+}
+
+const entityDataKeyMap: Record<string, string> = {
+  characters: 'characters',
+  locations: 'locations',
+  factions: 'factions',
+  items: 'artifacts',
 }
 
 const entitySections = new Set(['characters', 'locations', 'factions', 'items'])
 
 const entities = computed(() => {
   if (!entitySections.has(activeSection.value)) return []
-  const type = entityTypeMap[activeSection.value]
+  const dataKey = entityDataKeyMap[activeSection.value]
   const entitiesMap = athena.ontology?.entities
   if (!entitiesMap || typeof entitiesMap !== 'object') return []
-  const list = entitiesMap[type] || entitiesMap[activeSection.value] || []
+  const list = entitiesMap[dataKey] || entitiesMap[activeSection.value] || []
   return Array.isArray(list) ? list : []
 })
 

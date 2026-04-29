@@ -10,7 +10,7 @@
           {{ item.subject_ref }}.{{ item.predicate }}
         </p>
         <h4 class="proposal-item-card__value">
-          {{ renderValue(item.object_ref_or_value) }}
+          {{ renderItemSummary(item) }}
         </h4>
       </div>
       <div class="proposal-item-card__meta">
@@ -82,6 +82,18 @@ const emit = defineEmits<{
 
 function renderValue(value: unknown) {
   return typeof value === 'string' ? value : JSON.stringify(value)
+}
+
+function renderItemSummary(item: ProposalItem) {
+  if (item.notes) return item.notes
+  const value = item.object_ref_or_value
+  if (item.predicate === 'presence_count' && value && typeof value === 'object' && 'count' in value) {
+    const data = value as { count?: unknown; chapter_index?: unknown }
+    const count = typeof data.count === 'number' ? data.count : String(data.count || '')
+    const chapter = typeof data.chapter_index === 'number' ? `第${data.chapter_index}章` : '本章'
+    return `${item.subject_ref} 在${chapter}出现 ${count} 次`
+  }
+  return renderValue(value)
 }
 
 function forwardReview(payload: ProposalReviewRequest) {

@@ -24,6 +24,16 @@ def test_generate_storyline(mock_parse, mock_complete, mock_key, client):
     r2 = client.post(f"/api/v1/projects/{pid}/storyline/generate")
     assert r2.status_code == 200
     assert r2.json()["status"] == "generated"
+    traces = client.get(f"/api/v1/projects/{pid}/model-call-traces?trace_type=storyline_generation").json()
+    assert traces["total"] == 1
+    trace = client.get(f"/api/v1/projects/{pid}/model-call-traces/{traces['items'][0]['id']}").json()
+    assert trace["status"] == "success"
+    assert {block["key"] for block in trace["context_blocks"]} >= {
+        "setup_world_building",
+        "setup_characters",
+        "setup_core_concept",
+        "generate_storyline_template",
+    }
 
 
 @patch("app.api.storylines.load_api_key", return_value="sk-test")

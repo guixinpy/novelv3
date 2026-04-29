@@ -13,6 +13,7 @@ class Project(Base):
     name = Column(String, nullable=False)
     description = Column(String, default="")
     genre = Column(String, default="")
+    target_chapter_count = Column(Integer, default=0)
     target_word_count = Column(Integer, default=0)
     current_word_count = Column(Integer, default=0)
     status = Column(String, default="draft")

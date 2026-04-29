@@ -80,6 +80,23 @@ def test_generate_chapter_records_model_call_trace(mock_complete, mock_key, clie
 
 @patch("app.api.chapters.load_api_key", return_value="sk-test")
 @patch("app.api.chapters.ai_service.complete", new_callable=AsyncMock)
+def test_generate_chapter_prompt_uses_requested_chapter_index(mock_complete, mock_key, client):
+    pid = _create_project_with_setup(client)
+    mock_complete.return_value.content = "第三章正文内容"
+    mock_complete.return_value.model = "deepseek-chat"
+    mock_complete.return_value.prompt_tokens = 123
+    mock_complete.return_value.completion_tokens = 456
+
+    response = client.post(f"/api/v1/projects/{pid}/chapters/3/generate")
+
+    assert response.status_code == 200
+    sent_messages = mock_complete.await_args.args[0]
+    assert "创作第 3 章正文" in sent_messages[0]["content"]
+    assert "创作第 1 章正文" not in sent_messages[0]["content"]
+
+
+@patch("app.api.chapters.load_api_key", return_value="sk-test")
+@patch("app.api.chapters.ai_service.complete", new_callable=AsyncMock)
 def test_generate_chapter_trace_records_rendered_style_rules(mock_complete, mock_key, client, db_session):
     pid = _create_project_with_setup(client)
     project = db_session.get(Project, pid)

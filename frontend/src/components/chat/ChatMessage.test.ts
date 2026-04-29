@@ -37,7 +37,7 @@ describe('ChatMessage', () => {
     expect(wrapper.find('[data-testid="open-trace"]').exists()).toBe(false)
   })
 
-  it('does not render trace button for non-assistant messages', () => {
+  it('does not render trace button for user messages', () => {
     const wrapper = mount(ChatMessage, {
       props: {
         msg: {
@@ -51,6 +51,25 @@ describe('ChatMessage', () => {
     })
 
     expect(wrapper.find('[data-testid="open-trace"]').exists()).toBe(false)
+  })
+
+  it('emits openTrace for system action messages with trace id', async () => {
+    const wrapper = mount(ChatMessage, {
+      props: {
+        msg: {
+          role: 'system',
+          content: '设定生成完成。',
+          trace_id: 'trace-system',
+          action_result: { type: 'generate_setup', status: 'success' },
+        },
+        isLatest: false,
+        loading: false,
+      },
+    })
+
+    await wrapper.get('[data-testid="open-trace"]').trigger('click')
+
+    expect(wrapper.emitted('openTrace')).toEqual([['trace-system']])
   })
 
   it('renders chapter generation action results with a user-facing label', () => {

@@ -86,9 +86,35 @@ WORLD_UPDATE_KEYWORDS = (
     "修正",
 )
 
+WORLD_UPDATE_NEGATION_MARKERS = (
+    "不要",
+    "别",
+    "无需",
+    "不需要",
+    "不要直接",
+    "先不要",
+    "不要写入",
+    "不要更新",
+    "不要修改",
+    "不要加入",
+    "不要记录",
+    "不要标记",
+    "不要把",
+    "不要将",
+)
+
 
 def _looks_like_world_update_request(text: str) -> bool:
-    return any(keyword in text for keyword in WORLD_UPDATE_KEYWORDS)
+    normalized = "".join(text.split())
+    for keyword in WORLD_UPDATE_KEYWORDS:
+        index = normalized.find(keyword)
+        if index < 0:
+            continue
+        prefix = normalized[max(0, index - 8):index]
+        if any(marker in prefix for marker in WORLD_UPDATE_NEGATION_MARKERS):
+            continue
+        return True
+    return False
 
 
 def _create_dialog_world_update_proposal(
@@ -132,6 +158,50 @@ def _create_dialog_world_update_proposal(
     )
     calculate_bundle_impact_scope(db=db, bundle_id=bundle.id)
     return bundle, item
+
+
+def _world_entity_type(item, fallback: str) -> str:
+    raw_type = (
+        getattr(item, "role_type", None)
+        or getattr(item, "location_type", None)
+        or getattr(item, "faction_type", None)
+        or getattr(item, "artifact_type", None)
+        or getattr(item, "resource_type", None)
+        or fallback
+    )
+    labels = {
+        "character": "角色",
+        "setup_location": "地点",
+        "setup_group": "势力",
+        "setup_artifact": "物品",
+        "characters": "角色",
+        "locations": "地点",
+        "factions": "势力",
+        "artifacts": "物品",
+        "resources": "资源",
+    }
+    return labels.get(raw_type, raw_type)
+
+
+def _world_entity_description(item) -> str:
+    candidates = [
+        getattr(item, "origin_background", None),
+        getattr(item, "spatial_scope", None),
+        getattr(item, "mission_or_doctrine", None),
+        getattr(item, "function_summary", None),
+        getattr(item, "notes", None),
+    ]
+    for value in candidates:
+        text = str(value or "").strip()
+        if not text:
+            continue
+        if text == "Imported from Setup world building":
+            continue
+        if text.startswith("Setup import from world_building."):
+            _, _, fragment = text.partition(":")
+            text = f"来源：Setup 世界设定。相关片段：{fragment.strip()}"
+        return text
+    return ""
 
 
 @router.get("/optimization")
@@ -199,8 +269,8 @@ def get_ontology(project_id: str, db: Session = Depends(get_db)):
                 {
                     "id": item.id,
                     "name": getattr(item, "name", getattr(item, "entity_ref", item.id)),
-                    "type": getattr(item, "role_type", getattr(item, "location_type", key)),
-                    "description": getattr(item, "origin_background", getattr(item, "notes", "")),
+                    "type": _world_entity_type(item, key),
+                    "description": _world_entity_description(item),
                 }
                 for item in items
             ]
@@ -284,8 +354,8 @@ def get_ontology_entities(project_id: str, db: Session = Depends(get_db)):
             {
                 "id": item.id,
                 "name": getattr(item, "name", getattr(item, "entity_ref", item.id)),
-                "type": getattr(item, "role_type", getattr(item, "location_type", key)),
-                "description": getattr(item, "origin_background", getattr(item, "notes", "")),
+                "type": _world_entity_type(item, key),
+                "description": _world_entity_description(item),
             }
             for item in items
         ]

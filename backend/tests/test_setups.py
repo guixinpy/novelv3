@@ -17,6 +17,14 @@ def test_generate_setup(mock_parse, mock_complete, mock_key, client):
     r2 = client.post(f"/api/v1/projects/{pid}/setup/generate")
     assert r2.status_code == 200
     assert r2.json()["status"] == "generated"
+    traces = client.get(f"/api/v1/projects/{pid}/model-call-traces?trace_type=setup_generation").json()
+    assert traces["total"] == 1
+    trace = client.get(f"/api/v1/projects/{pid}/model-call-traces/{traces['items'][0]['id']}").json()
+    assert trace["status"] == "success"
+    assert {block["key"] for block in trace["context_blocks"]} >= {
+        "project_profile",
+        "generate_setup_template",
+    }
 
 
 @patch("app.api.setups.load_api_key", return_value="sk-test")

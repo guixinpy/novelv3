@@ -37,6 +37,25 @@ def test_create_and_get_project(client):
     assert r2.json()["id"] == pid
 
 
+def test_project_persists_target_chapter_count(client):
+    r = client.post(
+        "/api/v1/projects",
+        json={"name": "Chapter Target Novel", "target_chapter_count": 10, "target_word_count": 30000},
+    )
+    assert r.status_code == 200
+    data = r.json()
+    assert data["target_chapter_count"] == 10
+
+    pid = data["id"]
+    updated = client.patch(f"/api/v1/projects/{pid}", json={"target_chapter_count": 12})
+    assert updated.status_code == 200
+    assert updated.json()["target_chapter_count"] == 12
+
+    fetched = client.get(f"/api/v1/projects/{pid}")
+    assert fetched.status_code == 200
+    assert fetched.json()["target_chapter_count"] == 12
+
+
 def test_list_projects(client):
     client.post("/api/v1/projects", json={"name": "Novel A"})
     client.post("/api/v1/projects", json={"name": "Novel B"})

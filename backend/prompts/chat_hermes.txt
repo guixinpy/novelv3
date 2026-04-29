@@ -9,6 +9,7 @@
 - 当前阶段：$project_phase
 - 当前状态：$project_status
 - 当前字数：$current_words
+- 目标章节数：$target_chapters
 - 目标字数：$target_words
 - 已完成环节：$completed_items
 - 缺失环节：$missing_items

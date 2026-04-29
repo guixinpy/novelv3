@@ -105,6 +105,28 @@ def test_athena_chat_update_request_without_profile_does_not_claim_success(clien
     assert db_session.query(WorldProposalItem).count() == 0
 
 
+def test_athena_chat_negated_update_wording_still_uses_ai_trace(client, db_session, monkeypatch):
+    _enable_fake_ai(monkeypatch)
+    project, _ = _seed_project(db_session)
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/athena/dialog/chat",
+        json={
+            "project_id": project.id,
+            "text": "请先不要写入世界模型，只规划10章故事的世界规则。",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["message"] == "世界模型已更新。"
+    assert payload["trace_id"]
+    assert payload["refresh_targets"] == []
+    assert db_session.query(AIModelCallTrace).count() == 1
+    assert db_session.query(WorldProposalBundle).count() == 0
+    assert db_session.query(WorldProposalItem).count() == 0
+
+
 def test_athena_chat_update_request_with_profile_creates_reviewable_proposal(client, db_session, monkeypatch):
     _enable_fake_ai(monkeypatch)
     project, profile_version = _seed_project(db_session, with_profile=True)

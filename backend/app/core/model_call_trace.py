@@ -167,14 +167,24 @@ def mark_trace_success(
     latency_ms: int | None = None,
 ) -> AIModelCallTrace:
     trace.status = "success"
-    trace.prompt_tokens = prompt_tokens
-    trace.completion_tokens = completion_tokens
+    trace.prompt_tokens = _optional_int(prompt_tokens)
+    trace.completion_tokens = _optional_int(completion_tokens)
     trace.latency_ms = latency_ms
     trace.error_message = None
     trace.updated_at = datetime.now(UTC)
     db.add(trace)
     db.flush()
     return trace
+
+
+def _optional_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.isdigit():
+        return int(value)
+    return None
 
 
 def mark_trace_failed(

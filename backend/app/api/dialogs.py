@@ -446,6 +446,7 @@ def _build_chat_messages(
                 "project_phase": _phase_label(project.current_phase),
                 "project_status": _status_label(project.status),
                 "current_words": str(project.current_word_count or 0),
+                "target_chapters": str(project.target_chapter_count or 0),
                 "target_words": str(project.target_word_count or 0),
                 "completed_items": "、".join(diagnosis.completed_items) if diagnosis.completed_items else "无",
                 "missing_items": "、".join(diagnosis.missing_items) if diagnosis.missing_items else "无",
@@ -845,7 +846,7 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
         pending = PendingAction(
             dialog_id=dialog.id,
             type=payload.action_type,
-            params=payload.params or {"project_id": payload.project_id},
+            params={"project_id": payload.project_id, **(payload.params or {})},
         )
         db.add(pending)
         db.commit()
@@ -981,6 +982,23 @@ def _action_description(action_type: str, params: dict | None = None) -> str:
 import asyncio
 
 
+def _latest_action_trace_id(
+    db: Session,
+    *,
+    project_id: str,
+    trace_type: str,
+    chapter_index: int | None = None,
+) -> str | None:
+    query = db.query(AIModelCallTrace).filter(
+        AIModelCallTrace.project_id == project_id,
+        AIModelCallTrace.trace_type == trace_type,
+    )
+    if chapter_index is not None:
+        query = query.filter(AIModelCallTrace.chapter_index == chapter_index)
+    trace = query.order_by(AIModelCallTrace.created_at.desc(), AIModelCallTrace.id.desc()).first()
+    return trace.id if trace else None
+
+
 async def _execute_action(
     action_type: str,
     project_id: str,
@@ -994,15 +1012,24 @@ async def _execute_action(
         if action_type == "generate_setup":
             from app.api.setups import generate_setup
             await generate_setup(project_id, db, command_args=command_args)
-            return {"status": "success"}
+            result = {"status": "success"}
+            if trace_id := _latest_action_trace_id(db, project_id=project_id, trace_type="setup_generation"):
+                result["trace_id"] = trace_id
+            return result
         elif action_type == "generate_storyline":
             from app.api.storylines import generate_storyline
             await generate_storyline(project_id, db, command_args=command_args)
-            return {"status": "success"}
+            result = {"status": "success"}
+            if trace_id := _latest_action_trace_id(db, project_id=project_id, trace_type="storyline_generation"):
+                result["trace_id"] = trace_id
+            return result
         elif action_type == "generate_outline":
             from app.api.outlines import generate_outline
             await generate_outline(project_id, db, command_args=command_args)
-            return {"status": "success"}
+            result = {"status": "success"}
+            if trace_id := _latest_action_trace_id(db, project_id=project_id, trace_type="outline_generation"):
+                result["trace_id"] = trace_id
+            return result
         elif action_type == "generate_chapter":
             from app.api.chapters import create_or_replace_chapter
             chapter_index = _chapter_action_params(command_args, action_params).get("chapter_index", 1)
@@ -1012,7 +1039,16 @@ async def _execute_action(
                 int(chapter_index),
                 extra_feedback=(command_args or "").strip(),
             )
-            return {"status": "success", "chapter_index": int(chapter_index)}
+            result = {"status": "success", "chapter_index": int(chapter_index)}
+            trace_id = _latest_action_trace_id(
+                db,
+                project_id=project_id,
+                trace_type="chapter_generation",
+                chapter_index=int(chapter_index),
+            )
+            if trace_id:
+                result["trace_id"] = trace_id
+            return result
         else:
             return {"status": "success"}
     except HTTPException as e:
@@ -1044,14 +1080,25 @@ def _execute_action_background(
             if dialog:
                 dialog.state = "chatting"
             if result["status"] == "success":
-                db.add(
-                    DialogMessage(
-                        dialog_id=dialog_id,
-                        role="system",
-                        content=f"{label}生成完成。",
-                        action_result={"type": action_type, "status": "success", "data": result},
-                    )
+                message = DialogMessage(
+                    dialog_id=dialog_id,
+                    role="system",
+                    content=f"{label}生成完成。",
+                    action_result={"type": action_type, "status": "success", "data": result},
                 )
+                db.add(
+                    message
+                )
+                db.flush()
+                trace_id = result.get("trace_id")
+                if trace_id:
+                    trace = db.query(AIModelCallTrace).filter(
+                        AIModelCallTrace.id == trace_id,
+                        AIModelCallTrace.project_id == project_id,
+                    ).first()
+                    if trace:
+                        trace.dialog_id = dialog_id
+                        trace.response_message_id = message.id
             else:
                 db.add(
                     DialogMessage(

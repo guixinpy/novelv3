@@ -82,6 +82,7 @@ describe('ProjectListView', () => {
     expect(api.createProject).toHaveBeenCalledWith({
       name: '雾港二十夜',
       genre: '都市奇幻悬疑',
+      target_chapter_count: 20,
       target_word_count: 40000,
     })
   })

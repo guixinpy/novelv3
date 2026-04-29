@@ -82,12 +82,14 @@ async function confirmDelete() {
 async function createProject() {
   const name = newProject.value.name.trim()
   if (!name) return
+  const targetChapterCount = Number(newProject.value.targetChapters)
   const targetWordCount = Number(newProject.value.targetWords)
   creating.value = true
   try {
     await store.createProject({
       name,
       genre: newProject.value.genre.trim() || undefined,
+      ...(Number.isFinite(targetChapterCount) && targetChapterCount > 0 ? { target_chapter_count: targetChapterCount } : {}),
       ...(Number.isFinite(targetWordCount) && targetWordCount > 0 ? { target_word_count: targetWordCount } : {}),
     })
     showCreateDialog.value = false

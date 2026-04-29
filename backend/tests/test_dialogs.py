@@ -17,7 +17,7 @@ from app.core.chat_commands import (
 )
 from app.core.chat_compaction import build_compaction_summary
 from app.core.intent_router import IntentRouter
-from app.models import Dialog, Outline, PendingAction, Setup, Storyline
+from app.models import AIModelCallTrace, Dialog, Outline, PendingAction, Setup, Storyline
 from app.schemas import ProjectDiagnosisOut
 
 ORIGINAL_SESSION_COMMIT = OrmSession.commit
@@ -251,6 +251,7 @@ def test_chat_button_action(client):
     })
     assert r2.status_code == 200
     assert r2.json()["pending_action"]["type"] == "preview_setup"
+    assert r2.json()["pending_action"]["params"]["project_id"] == pid
     assert r2.json()["ui_hint"] == {
         "dialog_state": "PENDING_ACTION",
         "active_action": {
@@ -261,6 +262,24 @@ def test_chat_button_action(client):
         },
     }
     assert r2.json()["refresh_targets"] == []
+
+
+def test_chat_button_action_merges_project_id_with_extra_params(client):
+    r = client.post("/api/v1/projects", json={"name": "Test"})
+    pid = r.json()["id"]
+
+    r2 = client.post("/api/v1/dialog/chat", json={
+        "project_id": pid,
+        "input_type": "button",
+        "action_type": "preview_setup",
+        "params": {"command_args": "设定保持简洁"},
+    })
+
+    assert r2.status_code == 200
+    assert r2.json()["pending_action"]["params"] == {
+        "project_id": pid,
+        "command_args": "设定保持简洁",
+    }
 
 
 @patch("app.api.dialogs.load_api_key", return_value="sk-test")
@@ -720,6 +739,49 @@ def test_background_completion_restores_dialog_state_to_chatting(result_payload,
     assert latest_message is not None
     assert latest_message.action_result["type"] == "generate_setup"
     assert latest_message.action_result["status"] == result_payload["status"]
+
+
+def test_background_completion_attaches_generation_trace_to_system_message(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Test"})
+    pid = r.json()["id"]
+
+    client.post("/api/v1/dialog/chat", json={
+        "project_id": pid,
+        "input_type": "button",
+        "action_type": "preview_setup",
+    })
+    dialog = db_session.query(Dialog).filter(Dialog.project_id == pid).first()
+    trace = AIModelCallTrace(
+        project_id=pid,
+        trace_type="setup_generation",
+        status="success",
+        messages=[{"role": "user", "content": "生成设定"}],
+        context_blocks=[],
+    )
+    db_session.add(trace)
+    db_session.commit()
+    background_session_factory = sessionmaker(
+        autocommit=False,
+        autoflush=False,
+        bind=db_session.get_bind(),
+    )
+
+    with patch("app.db.SessionLocal", background_session_factory), \
+            patch("app.api.dialogs._execute_action", new=AsyncMock(return_value={"status": "success", "trace_id": trace.id})), \
+            patch("app.api.dialogs.asyncio.ensure_future", side_effect=lambda coro: asyncio.run(coro)):
+        dialogs_api._execute_action_background("generate_setup", pid, dialog.id)
+
+    db_session.expire_all()
+    latest_message = (
+        db_session.query(dialogs_api.DialogMessage)
+        .filter(dialogs_api.DialogMessage.dialog_id == dialog.id)
+        .order_by(dialogs_api.DialogMessage.created_at.desc())
+        .first()
+    )
+    db_session.refresh(trace)
+    assert latest_message is not None
+    assert trace.dialog_id == dialog.id
+    assert trace.response_message_id == latest_message.id
 
 
 @pytest.mark.parametrize("command_name", ["clear", "compact", "setup"])

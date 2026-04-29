@@ -7,6 +7,7 @@ class ProjectCreate(BaseModel):
     name: str
     description: str = ""
     genre: str = ""
+    target_chapter_count: int = 0
     target_word_count: int = 0
     style: str = ""
     complexity: int = 3
@@ -16,6 +17,7 @@ class ProjectUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
     genre: str | None = None
+    target_chapter_count: int | None = None
     target_word_count: int | None = None
     style: str | None = None
     complexity: int | None = None
@@ -29,6 +31,7 @@ class ProjectOut(BaseModel):
     name: str
     description: str
     genre: str
+    target_chapter_count: int
     target_word_count: int
     style: str
     complexity: int

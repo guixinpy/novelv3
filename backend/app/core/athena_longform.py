@@ -20,8 +20,11 @@ from app.models import (
     Project,
     ProjectProfileVersion,
     Setup,
+    WorldArtifact,
     WorldCharacter,
+    WorldFaction,
     WorldFactClaim,
+    WorldLocation,
     WorldProposalItem,
     WorldRule,
 )
@@ -50,7 +53,14 @@ def import_setup_to_world_model(db: Session, project_id: str) -> dict[str, Any]:
         profile = _create_setup_profile(db, project=project, setup=setup)
         created_profile = True
 
-    created = {"profile": 1 if created_profile else 0, "characters": 0, "rules": 0}
+    created = {
+        "profile": 1 if created_profile else 0,
+        "characters": 0,
+        "locations": 0,
+        "factions": 0,
+        "artifacts": 0,
+        "rules": 0,
+    }
     for index, raw_character in enumerate(setup.characters or [], start=1):
         if not isinstance(raw_character, dict):
             continue
@@ -95,6 +105,17 @@ def import_setup_to_world_model(db: Session, project_id: str) -> dict[str, Any]:
             )
         )
         created["characters"] += 1
+
+    imported_terms = _extract_setup_world_terms(setup)
+    for index, term in enumerate(imported_terms["locations"], start=1):
+        if _create_setup_location(db, project_id=project_id, profile=profile, name=term["name"], notes=term["notes"], index=index):
+            created["locations"] += 1
+    for index, term in enumerate(imported_terms["factions"], start=1):
+        if _create_setup_faction(db, project_id=project_id, profile=profile, name=term["name"], notes=term["notes"], index=index):
+            created["factions"] += 1
+    for index, term in enumerate(imported_terms["artifacts"], start=1):
+        if _create_setup_artifact(db, project_id=project_id, profile=profile, name=term["name"], notes=term["notes"], index=index):
+            created["artifacts"] += 1
 
     rules_text = ""
     if isinstance(setup.world_building, dict):
@@ -261,6 +282,89 @@ def build_chapter_context_package(db: Session, project_id: str, chapter_index: i
         sections.append({"key": "characters", "title": "相关角色", "items": items})
         lines.append("【相关角色】" + "、".join(f"{item['name']}({item['ref']})" for item in items[:12]))
 
+    locations = (
+        db.query(WorldLocation)
+        .filter(WorldLocation.project_id == project_id, WorldLocation.profile_version == profile.version)
+        .order_by(WorldLocation.name.asc())
+        .limit(20)
+        .all()
+    )
+    if locations:
+        items = [
+            {
+                "ref": location.canonical_id,
+                "name": location.name,
+                "location_type": location.location_type,
+                "notes": location.notes,
+            }
+            for location in locations
+        ]
+        sections.append({"key": "locations", "title": "关键地点", "items": items})
+        lines.append("【关键地点】" + "、".join(f"{item['name']}({item['ref']})" for item in items[:12]))
+
+    factions = (
+        db.query(WorldFaction)
+        .filter(WorldFaction.project_id == project_id, WorldFaction.profile_version == profile.version)
+        .order_by(WorldFaction.name.asc())
+        .limit(20)
+        .all()
+    )
+    if factions:
+        items = [
+            {
+                "ref": faction.canonical_id,
+                "name": faction.name,
+                "faction_type": faction.faction_type,
+                "notes": faction.notes,
+            }
+            for faction in factions
+        ]
+        sections.append({"key": "factions", "title": "关键势力", "items": items})
+        lines.append("【关键势力】" + "、".join(f"{item['name']}({item['ref']})" for item in items[:12]))
+
+    artifacts = (
+        db.query(WorldArtifact)
+        .filter(WorldArtifact.project_id == project_id, WorldArtifact.profile_version == profile.version)
+        .order_by(WorldArtifact.name.asc())
+        .limit(20)
+        .all()
+    )
+    if artifacts:
+        items = [
+            {
+                "ref": artifact.canonical_id,
+                "name": artifact.name,
+                "artifact_type": artifact.artifact_type,
+                "notes": artifact.notes,
+            }
+            for artifact in artifacts
+        ]
+        sections.append({"key": "artifacts", "title": "关键物件", "items": items})
+        lines.append("【关键物件】" + "、".join(f"{item['name']}({item['ref']})" for item in items[:12]))
+
+    rules = (
+        db.query(WorldRule)
+        .filter(WorldRule.project_id == project_id, WorldRule.profile_version == profile.version)
+        .order_by(WorldRule.name.asc())
+        .limit(12)
+        .all()
+    )
+    if rules:
+        items = [
+            {
+                "ref": rule.canonical_id,
+                "name": rule.name,
+                "rule_type": rule.rule_type,
+                "statement": rule.statement,
+            }
+            for rule in rules
+        ]
+        sections.append({"key": "rules", "title": "世界规则", "items": items})
+        lines.append("【世界规则】")
+        for rule in items[:8]:
+            statement = str(rule["statement"]).replace("\n", " ")[:300]
+            lines.append(f"- {rule['name']}({rule['ref']}): {statement}")
+
     facts = (
         db.query(WorldFactClaim)
         .filter(
@@ -415,6 +519,200 @@ def _characters_from_world_model(db: Session, project_id: str, profile_version: 
         .all()
     )
     return [{"name": character.name, "character_status": "alive"} for character in characters]
+
+
+def _extract_setup_world_terms(setup: Setup) -> dict[str, list[dict[str, str]]]:
+    buckets: dict[str, list[dict[str, str]]] = {"locations": [], "factions": [], "artifacts": []}
+    seen: dict[str, set[str]] = {key: set() for key in buckets}
+    world_building = setup.world_building if isinstance(setup.world_building, dict) else {}
+    core_concept = setup.core_concept if isinstance(setup.core_concept, dict) else {}
+    sources = [
+        ("background", str(world_building.get("background") or "")),
+        ("geography", str(world_building.get("geography") or "")),
+        ("society", str(world_building.get("society") or "")),
+        ("rules", str(world_building.get("rules") or "")),
+        ("atmosphere", str(world_building.get("atmosphere") or "")),
+        ("premise", str(core_concept.get("premise") or "")),
+        ("hook", str(core_concept.get("hook") or "")),
+        ("unique_selling_point", str(core_concept.get("unique_selling_point") or "")),
+    ]
+    for source_name, text in sources:
+        for term, context in _quoted_terms_with_context(text):
+            bucket = _classify_setup_term(term, context, source_name)
+            if not bucket or term in seen[bucket]:
+                continue
+            seen[bucket].add(term)
+            buckets[bucket].append(
+                {
+                    "name": term,
+                    "notes": f"来源：Setup 世界设定（{source_name}）。相关片段：{context[:220]}",
+                }
+            )
+    return buckets
+
+
+def _quoted_terms_with_context(text: str) -> list[tuple[str, str]]:
+    results: list[tuple[str, str]] = []
+    for match in re.finditer(r"[‘'“\"]([^’'”\"]{2,30})[’'”\"]", text or ""):
+        term = match.group(1).strip()
+        if not term:
+            continue
+        start = max(0, match.start() - 45)
+        end = min(len(text), match.end() + 45)
+        results.append((term, text[start:end].strip()))
+    return results
+
+
+def _classify_setup_term(term: str, context: str, source_name: str) -> str | None:
+    location_hints = ("站", "基地", "空间", "稳定区", "区域", "海域", "室", "维度", "城市", "城", "港", "岛", "塔", "星球")
+    faction_hints = ("局", "阵线", "政府", "军方", "组织", "联盟", "公司", "学院", "教会", "计划")
+    artifact_hints = ("门", "装置", "锚点", "档案", "系统", "协议", "钥", "密钥", "芯片")
+    if any(hint in term for hint in location_hints):
+        return "locations"
+    if any(hint in term for hint in faction_hints):
+        return "factions"
+    if source_name == "society" and term.endswith("者"):
+        return "factions"
+    if any(hint in term for hint in artifact_hints) or "AI" in context or "人工智能" in context:
+        return "artifacts"
+    return None
+
+
+def _create_setup_location(
+    db: Session,
+    *,
+    project_id: str,
+    profile: ProjectProfileVersion,
+    name: str,
+    notes: str,
+    index: int,
+) -> bool:
+    canonical_id = _entity_ref("loc", name)
+    existing = (
+        db.query(WorldLocation)
+        .filter(
+            WorldLocation.project_id == project_id,
+            WorldLocation.profile_version == profile.version,
+            WorldLocation.canonical_id == canonical_id,
+        )
+        .first()
+    )
+    if existing:
+        return False
+    db.add(
+        WorldLocation(
+            project_id=project_id,
+            profile_version=profile.version,
+            location_id=f"setup-location-{index}",
+            canonical_id=canonical_id,
+            primary_alias=name,
+            name=name,
+            aliases=[],
+            location_type="setup_location",
+            spatial_scope="Imported from Setup world building",
+            access_constraints=[],
+            functional_tags=[],
+            hazards=[],
+            resource_tags=[],
+            surveillance_or_visibility_level="unknown",
+            notes=notes,
+            contract_version=profile.contract_version,
+        )
+    )
+    return True
+
+
+def _create_setup_faction(
+    db: Session,
+    *,
+    project_id: str,
+    profile: ProjectProfileVersion,
+    name: str,
+    notes: str,
+    index: int,
+) -> bool:
+    canonical_id = _entity_ref("faction", name)
+    existing = (
+        db.query(WorldFaction)
+        .filter(
+            WorldFaction.project_id == project_id,
+            WorldFaction.profile_version == profile.version,
+            WorldFaction.canonical_id == canonical_id,
+        )
+        .first()
+    )
+    if existing:
+        return False
+    db.add(
+        WorldFaction(
+            project_id=project_id,
+            profile_version=profile.version,
+            faction_id=f"setup-faction-{index}",
+            canonical_id=canonical_id,
+            primary_alias=name,
+            name=name,
+            aliases=[],
+            faction_type="setup_group",
+            mission_or_doctrine="Imported from Setup world building",
+            structure_model="unknown",
+            authority_rules=[],
+            membership_rules=[],
+            taboos=[],
+            resource_domains=[],
+            territorial_scope="",
+            public_image="",
+            hidden_agenda="",
+            notes=notes,
+            contract_version=profile.contract_version,
+        )
+    )
+    return True
+
+
+def _create_setup_artifact(
+    db: Session,
+    *,
+    project_id: str,
+    profile: ProjectProfileVersion,
+    name: str,
+    notes: str,
+    index: int,
+) -> bool:
+    canonical_id = _entity_ref("artifact", name)
+    existing = (
+        db.query(WorldArtifact)
+        .filter(
+            WorldArtifact.project_id == project_id,
+            WorldArtifact.profile_version == profile.version,
+            WorldArtifact.canonical_id == canonical_id,
+        )
+        .first()
+    )
+    if existing:
+        return False
+    db.add(
+        WorldArtifact(
+            project_id=project_id,
+            profile_version=profile.version,
+            artifact_id=f"setup-artifact-{index}",
+            canonical_id=canonical_id,
+            primary_alias=name,
+            name=name,
+            aliases=[],
+            artifact_type="setup_artifact",
+            origin="Imported from Setup world building",
+            function_summary=notes,
+            activation_conditions=[],
+            usage_constraints=[],
+            risk_or_side_effects=[],
+            identity_or_auth_requirements=[],
+            uniqueness="unknown",
+            traceability="setup_import",
+            notes=notes,
+            contract_version=profile.contract_version,
+        )
+    )
+    return True
 
 
 def _claim_or_candidate_exists(db: Session, *, project_id: str, claim_id: str) -> bool:
