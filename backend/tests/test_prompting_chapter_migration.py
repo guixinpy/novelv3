@@ -1,5 +1,8 @@
+import json
+
 from app.api import chapters
 from app.models import ChapterContent, Outline, Project, Setup
+from app.prompting.providers.errors import build_provider_error_block
 
 
 def _project(db_session, **kwargs) -> Project:
@@ -311,3 +314,23 @@ def test_chapter_provider_failures_are_trace_only_context_blocks(monkeypatch, db
     assert "retrieval index failed" in error_blocks["retrieval_context_error"]["content"]
     assert error_blocks["athena_context_error"]["metadata"]["trace_only"] is True
     assert error_blocks["retrieval_context_error"]["metadata"]["trace_only"] is True
+
+
+def test_provider_error_block_uses_brief_sanitized_single_line_message():
+    long_noise = " ".join(["SQL_ROW_PAYLOAD"] * 80)
+    exc = RuntimeError(
+        "first line with api_key=sk-provider-secret-1234567890\n"
+        f"second line {long_noise} LONG_TAIL_NOISE_SHOULD_NOT_SURVIVE"
+    )
+
+    block = build_provider_error_block(key="athena_context_error", provider="Athena", exc=exc)
+
+    content = block["content"]
+    serialized = json.dumps(block, ensure_ascii=False)
+    assert "\n" not in content
+    assert len(content) <= 380
+    assert content.endswith("...")
+    assert "first line" in content
+    assert "RuntimeError" in content
+    assert "LONG_TAIL_NOISE_SHOULD_NOT_SURVIVE" not in content
+    assert "sk-provider-secret-1234567890" not in serialized
