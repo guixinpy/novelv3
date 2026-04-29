@@ -28,6 +28,7 @@ import {
   markHydratedTargets,
   type HydrationSnapshot,
 } from './projectDetailHydration'
+import { createActionReplayGuard } from './hermesActionReplay'
 import { useChatStore } from '../stores/chat'
 import { useModelTraceStore } from '../stores/modelTraces'
 import { useProjectStore } from '../stores/project'
@@ -47,6 +48,7 @@ const pid = computed(() => route.params.id as string)
 const ready = ref(false)
 const hydrationTracker = createHydrationTracker()
 const hydratedTargets = hydrationTracker.targets
+const actionReplayGuard = createActionReplayGuard()
 
 // Modal state
 const showExportModal = ref(false)
@@ -108,7 +110,7 @@ watch(
 )
 
 watch(latestActionFingerprint, async (fingerprint) => {
-  if (!fingerprint) return
+  if (!actionReplayGuard.shouldProcess(fingerprint)) return
   const latest = chat.messages[chat.messages.length - 1]?.action_result as
     | { type?: unknown; status?: unknown }
     | undefined
@@ -130,13 +132,16 @@ async function initialize(projectId: string) {
     project.loadProject(projectId),
   ])
   if (!markHydratedTarget(hydrationTracker, snapshot, 'project')) return
-  const initialTargets = getInitialProjectHydrationTargets(chat.diagnosis)
+  actionReplayGuard.markInitial(latestActionFingerprint.value)
+  const initialTargets = new Set<RefreshTarget>(getInitialProjectHydrationTargets(chat.diagnosis))
+  for (const target of getPanelRefreshTargets(workspace.panel)) {
+    if (target !== 'project') initialTargets.add(target)
+  }
+  initialTargets.add('content')
   await Promise.all([
-    ensurePanelData(workspace.panel, projectId, false, snapshot),
-    ...initialTargets.map((target) => loadTarget(projectId, target).then(() => {
+    ...[...initialTargets].map((target) => loadTarget(projectId, target).then(() => {
       markHydratedTarget(hydrationTracker, snapshot, target)
     }).catch(() => {})),
-    project.loadChapters(projectId).catch(() => {}),
   ])
   if (!isActiveHydrationSnapshot(hydrationTracker, snapshot)) return
   ready.value = true
