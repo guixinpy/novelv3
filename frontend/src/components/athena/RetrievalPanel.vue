@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import BaseButton from '../base/BaseButton.vue'
 import type {
   AthenaRetrievalDiagnostics,
   AthenaRetrievalIndexResult,
   AthenaRetrievalSearchResponse,
+  AthenaRetrievalSearchItem,
 } from '../../api/types'
 
 const props = defineProps<{
@@ -16,13 +17,48 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   reindex: []
-  search: [query: string]
+  search: [query: string, params?: { source_type?: string }]
 }>()
 
 const query = ref('')
+const sourceFilter = ref<'all' | 'chapter' | 'world_fact'>('all')
+
+const sourceOptions = [
+  { key: 'all', label: '全部证据' },
+  { key: 'chapter', label: '章节原文' },
+  { key: 'world_fact', label: '世界事实' },
+] as const
+
+const sourceCounts = computed(() => props.diagnostics?.documents_by_source_type || {})
+
+const resultGroups = computed(() => {
+  const groups: Record<string, AthenaRetrievalSearchItem[]> = {}
+  for (const item of props.search?.items || []) {
+    const key = item.source_type || 'other'
+    groups[key] = groups[key] || []
+    groups[key].push(item)
+  }
+  return Object.entries(groups).map(([sourceType, items]) => ({
+    sourceType,
+    label: sourceLabel(sourceType),
+    items,
+  }))
+})
 
 function runSearch() {
-  emit('search', query.value)
+  const params = sourceFilter.value === 'all' ? undefined : { source_type: sourceFilter.value }
+  emit('search', query.value, params)
+}
+
+function sourceLabel(sourceType: string) {
+  if (sourceType === 'chapter') return '章节原文'
+  if (sourceType === 'world_fact') return '世界事实'
+  return '其他证据'
+}
+
+function sourceHint(item: AthenaRetrievalSearchItem) {
+  const chapter = item.chapter_index ? `第${item.chapter_index}章` : '全局'
+  return `${sourceLabel(item.source_type)} · ${chapter} · ${item.source_ref}`
 }
 </script>
 
@@ -46,6 +82,20 @@ function runSearch() {
       </BaseButton>
     </div>
 
+    <div class="retrieval-panel__filters" aria-label="检索范围">
+      <button
+        v-for="option in sourceOptions"
+        :key="option.key"
+        class="retrieval-panel__filter"
+        :class="{ 'retrieval-panel__filter--active': sourceFilter === option.key }"
+        type="button"
+        @click="sourceFilter = option.key"
+      >
+        <span>{{ option.label }}</span>
+        <strong v-if="option.key !== 'all'">{{ sourceCounts[option.key] ?? 0 }}</strong>
+      </button>
+    </div>
+
     <div class="retrieval-panel__metrics">
       <div class="retrieval-panel__metric">
         <span class="retrieval-panel__metric-label">文档</span>
@@ -60,8 +110,8 @@ function runSearch() {
         <strong>{{ props.diagnostics?.total_embeddings ?? 0 }}</strong>
       </div>
       <div class="retrieval-panel__metric">
-        <span class="retrieval-panel__metric-label">模型</span>
-        <strong>{{ props.diagnostics?.embedding_model ?? '未索引' }}</strong>
+        <span class="retrieval-panel__metric-label">章节/事实</span>
+        <strong>{{ sourceCounts.chapter ?? 0 }} / {{ sourceCounts.world_fact ?? 0 }}</strong>
       </div>
     </div>
 
@@ -74,22 +124,28 @@ function runSearch() {
       <div class="retrieval-panel__summary">
         “{{ props.search.query }}” 命中 {{ props.search.total }} 条
       </div>
-      <div
-        v-for="item in props.search.items"
-        :key="item.chunk_id"
-        class="retrieval-panel__result"
+      <section
+        v-for="group in resultGroups"
+        :key="group.sourceType"
+        class="retrieval-panel__group"
       >
-        <div class="retrieval-panel__result-head">
-          <span class="retrieval-panel__source">{{ item.source_type === 'chapter' ? '章节' : '世界事实' }}</span>
-          <span class="retrieval-panel__title">{{ item.title }}</span>
-          <span class="retrieval-panel__score">{{ Math.round(item.score * 100) }}%</span>
+        <h3 class="retrieval-panel__group-title">{{ group.label }}</h3>
+        <div
+          v-for="item in group.items"
+          :key="item.chunk_id"
+          class="retrieval-panel__result"
+        >
+          <div class="retrieval-panel__result-head">
+            <span class="retrieval-panel__source">{{ sourceHint(item) }}</span>
+            <span class="retrieval-panel__title">{{ item.title }}</span>
+            <span class="retrieval-panel__score">相关度 {{ Math.round(item.score * 100) }}%</span>
+          </div>
+          <p class="retrieval-panel__snippet">{{ item.snippet }}</p>
+          <div class="retrieval-panel__meta">
+            可用于核对设定、补充提案证据或定位章节原文
+          </div>
         </div>
-        <p class="retrieval-panel__snippet">{{ item.snippet }}</p>
-        <div class="retrieval-panel__meta">
-          {{ item.source_ref }}
-          <span v-if="item.chapter_index"> · 第{{ item.chapter_index }}章</span>
-        </div>
-      </div>
+      </section>
     </div>
     <div v-else class="retrieval-panel__empty">暂无检索结果</div>
   </div>
@@ -135,6 +191,36 @@ function runSearch() {
   margin-bottom: var(--space-4);
 }
 
+.retrieval-panel__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.retrieval-panel__filter {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-1) var(--space-2);
+  color: var(--color-text-secondary);
+  background: var(--color-bg-primary);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.retrieval-panel__filter--active {
+  border-color: var(--color-brand);
+  color: var(--color-brand);
+  background: var(--color-brand-light);
+}
+
+.retrieval-panel__filter strong {
+  font-weight: var(--font-semibold);
+}
+
 .retrieval-panel__metric {
   border-bottom: 1px solid var(--color-border);
   padding-bottom: var(--space-2);
@@ -164,6 +250,17 @@ function runSearch() {
 .retrieval-panel__result {
   border-bottom: 1px solid var(--color-border);
   padding: var(--space-3) 0;
+}
+
+.retrieval-panel__group {
+  margin-bottom: var(--space-4);
+}
+
+.retrieval-panel__group-title {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
 }
 
 .retrieval-panel__result-head {

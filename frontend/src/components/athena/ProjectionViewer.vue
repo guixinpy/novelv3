@@ -13,6 +13,16 @@ const entityEntries = computed(() => {
   return Object.entries(props.projection.entities || {})
 })
 
+const entityGroups = computed(() => {
+  const groups: Record<string, Array<[string, WorldProjection['entities'][string]]>> = {}
+  for (const entry of entityEntries.value) {
+    const label = entityTypeLabel(entry[1].entity_type)
+    groups[label] = groups[label] || []
+    groups[label].push(entry)
+  }
+  return Object.entries(groups).map(([label, items]) => ({ label, items }))
+})
+
 const factGroups = computed(() => {
   if (!props.projection) return []
   return Object.entries(props.projection.facts || {}).map(([entity, facts]) => ({
@@ -50,6 +60,15 @@ function formatAttributes(value: Record<string, unknown>) {
   if (!entries.length) return '无结构化属性'
   return entries.map(([key, entry]) => `${key}: ${formatValue(entry)}`).join(' / ')
 }
+
+function entityTypeLabel(type: string) {
+  if (type === 'character') return '人物'
+  if (type === 'location') return '地点'
+  if (type === 'faction') return '势力'
+  if (type === 'artifact') return '物件'
+  if (type === 'resource') return '资源'
+  return '其他'
+}
 </script>
 
 <template>
@@ -75,18 +94,21 @@ function formatAttributes(value: Record<string, unknown>) {
         </div>
       </div>
 
-      <section v-if="entityEntries.length" class="projection-viewer__section">
+      <section v-if="entityGroups.length" class="projection-viewer__section">
         <h3 class="projection-viewer__section-title">实体状态</h3>
-        <div v-for="[entityRef, entity] in entityEntries" :key="entityRef" class="projection-viewer__group">
-          <button class="projection-viewer__header" @click="toggle(entityRef)">
-            <span class="projection-viewer__entity">{{ entityRef }}</span>
-            <span class="projection-viewer__type">{{ entity.entity_type }}</span>
-            <span class="projection-viewer__chevron">{{ expandedEntities.has(entityRef) ? '▾' : '▸' }}</span>
-          </button>
-          <div v-if="expandedEntities.has(entityRef)" class="projection-viewer__facts">
-            <div class="projection-viewer__fact">
-              <span class="projection-viewer__predicate">attributes</span>
-              <span class="projection-viewer__value">{{ formatAttributes(entity.attributes) }}</span>
+        <div v-for="group in entityGroups" :key="group.label" class="projection-viewer__entity-group">
+          <div class="projection-viewer__group-label">{{ group.label }}</div>
+          <div v-for="[entityRef, entity] in group.items" :key="entityRef" class="projection-viewer__group">
+            <button class="projection-viewer__header" @click="toggle(entityRef)">
+              <span class="projection-viewer__entity">{{ entityRef }}</span>
+              <span class="projection-viewer__type">{{ entityTypeLabel(entity.entity_type) }}</span>
+              <span class="projection-viewer__chevron">{{ expandedEntities.has(entityRef) ? '▾' : '▸' }}</span>
+            </button>
+            <div v-if="expandedEntities.has(entityRef)" class="projection-viewer__facts">
+              <div class="projection-viewer__fact">
+                <span class="projection-viewer__predicate">属性</span>
+                <span class="projection-viewer__value">{{ formatAttributes(entity.attributes) }}</span>
+              </div>
             </div>
           </div>
         </div>
@@ -98,7 +120,7 @@ function formatAttributes(value: Record<string, unknown>) {
         <div v-for="group in factGroups" :key="group.entity" class="projection-viewer__group">
           <div class="projection-viewer__header projection-viewer__header--static">
             <span class="projection-viewer__entity">{{ group.entity }}</span>
-            <span class="projection-viewer__count">{{ group.items.length }}</span>
+            <span class="projection-viewer__count">{{ group.items.length }} 条</span>
           </div>
           <div class="projection-viewer__facts">
             <div v-for="fact in group.items" :key="fact.predicate" class="projection-viewer__fact">
@@ -163,6 +185,17 @@ function formatAttributes(value: Record<string, unknown>) {
 
 .projection-viewer__group {
   border-bottom: 1px solid var(--color-border);
+}
+
+.projection-viewer__entity-group {
+  margin-bottom: var(--space-3);
+}
+
+.projection-viewer__group-label {
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  margin-bottom: var(--space-1);
 }
 
 .projection-viewer__header {

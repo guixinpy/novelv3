@@ -2,6 +2,9 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { api } from '../api/client'
 import { useRequestCacheStore } from './requestCache'
+import { createAthenaProposalActions } from './athenaModules/proposals'
+import { createAthenaRetrievalActions } from './athenaModules/retrieval'
+import { toErrorMessage } from './athenaModules/errors'
 import type {
   AthenaEvolutionPlan,
   AthenaOntology,
@@ -14,15 +17,8 @@ import type {
   ChatHistoryMessage,
   PaginatedProposalBundles,
   ProposalBundleDetail,
-  ProposalReviewRequest,
-  ProposalRollbackRequest,
-  ProposalSplitRequest,
   WorldProjection,
 } from '../api/types'
-
-function toErrorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err)
-}
 
 const ATHENA_CACHE_TTL_MS = 5 * 60 * 1000
 const ATHENA_CHAT_HISTORY_PAGE_SIZE = 80
@@ -122,6 +118,39 @@ export const useAthenaStore = defineStore('athena', () => {
     }
   }
 
+  const {
+    loadProposals,
+    loadProposalDetail,
+    reviewProposalItem,
+    splitProposalItem,
+    rollbackProposalReview,
+    batchApproveLowRiskItems,
+  } = createAthenaProposalActions({
+    ensureProject,
+    cacheKey,
+    requestCache,
+    error,
+    proposals,
+    proposalDetails,
+    proposalBusy,
+  })
+
+  const {
+    loadRetrievalDiagnostics,
+    searchRetrieval,
+    reindexRetrieval,
+  } = createAthenaRetrievalActions({
+    ensureProject,
+    cacheKey,
+    loadCached,
+    requestCache,
+    error,
+    retrievalDiagnostics,
+    retrievalSearch,
+    retrievalLastIndexResult,
+    retrievalLoading,
+  })
+
   function beginMessageLoad(projectId: string) {
     activeChatProjectId = projectId
     messageLoadRequestId += 1
@@ -204,117 +233,6 @@ export const useAthenaStore = defineStore('athena', () => {
         evolutionPlan.value = value
       },
     )
-  }
-
-  async function loadProposals(projectId: string, params?: { offset?: number; limit?: number; bundle_status?: string; item_status?: string }) {
-    ensureProject(projectId)
-    try {
-      proposals.value = await api.getAthenaEvolutionProposals(projectId, params)
-    } catch (err) {
-      error.value = toErrorMessage(err)
-    }
-  }
-
-  async function loadProposalDetail(projectId: string, bundleId: string) {
-    ensureProject(projectId)
-    try {
-      proposalDetails.value[bundleId] = await api.getAthenaProposalDetail(projectId, bundleId)
-    } catch (err) {
-      error.value = toErrorMessage(err)
-    }
-  }
-
-  async function reviewProposalItem(projectId: string, bundleId: string, itemId: string, payload: ProposalReviewRequest) {
-    ensureProject(projectId)
-    proposalBusy.value[itemId] = true
-    try {
-      await api.reviewAthenaProposalItem(projectId, itemId, payload)
-      requestCache.invalidate(cacheKey(projectId, 'proposals'))
-      requestCache.invalidate(cacheKey(projectId, `proposal-detail:${bundleId}`))
-      await loadProposalDetail(projectId, bundleId)
-      await loadProposals(projectId)
-    } catch (err) {
-      error.value = toErrorMessage(err)
-    } finally {
-      proposalBusy.value[itemId] = false
-    }
-  }
-
-  async function splitProposalItem(projectId: string, bundleId: string, itemId: string, reason: string) {
-    ensureProject(projectId)
-    proposalBusy.value[itemId] = true
-    const payload: ProposalSplitRequest = {
-      reviewer_ref: 'athena.user',
-      reason,
-      evidence_refs: [],
-      item_ids: [itemId],
-    }
-    try {
-      proposalDetails.value[bundleId] = await api.splitAthenaProposalBundle(projectId, bundleId, payload)
-      requestCache.invalidate(cacheKey(projectId, 'proposals'))
-      await loadProposals(projectId)
-    } catch (err) {
-      error.value = toErrorMessage(err)
-    } finally {
-      proposalBusy.value[itemId] = false
-    }
-  }
-
-  async function rollbackProposalReview(projectId: string, bundleId: string, itemId: string, reviewId: string, reason: string) {
-    ensureProject(projectId)
-    proposalBusy.value[itemId] = true
-    const payload: ProposalRollbackRequest = {
-      reviewer_ref: 'athena.user',
-      reason,
-      evidence_refs: [],
-    }
-    try {
-      await api.rollbackAthenaProposalReview(projectId, reviewId, payload)
-      requestCache.invalidate(cacheKey(projectId, 'proposals'))
-      requestCache.invalidate(cacheKey(projectId, `proposal-detail:${bundleId}`))
-      await loadProposalDetail(projectId, bundleId)
-      await loadProposals(projectId)
-    } catch (err) {
-      error.value = toErrorMessage(err)
-    } finally {
-      proposalBusy.value[itemId] = false
-    }
-  }
-
-  async function batchApproveLowRiskItems(projectId: string, bundleId: string) {
-    ensureProject(projectId)
-    if (!proposalDetails.value[bundleId]) {
-      await loadProposalDetail(projectId, bundleId)
-    }
-    const detail = proposalDetails.value[bundleId]
-    if (!detail) return
-    const conflictedItemIds = new Set(detail.conflicts.map((conflict) => conflict.item_id))
-    const items = detail.items.filter((item) =>
-      ['pending', 'needs_edit'].includes(item.item_status) && !conflictedItemIds.has(item.id),
-    )
-    try {
-      for (const item of items) {
-        proposalBusy.value[item.id] = true
-        await api.reviewAthenaProposalItem(projectId, item.id, {
-          reviewer_ref: 'athena.batch',
-          action: 'approve',
-          reason: '批量通过低风险候选',
-          evidence_refs: [],
-          edited_fields: {},
-        })
-        proposalBusy.value[item.id] = false
-      }
-      requestCache.invalidate(cacheKey(projectId, 'proposals'))
-      requestCache.invalidate(cacheKey(projectId, `proposal-detail:${bundleId}`))
-      await loadProposalDetail(projectId, bundleId)
-      await loadProposals(projectId)
-    } catch (err) {
-      error.value = toErrorMessage(err)
-    } finally {
-      for (const item of items) {
-        proposalBusy.value[item.id] = false
-      }
-    }
   }
 
   async function loadMessages(projectId: string) {
@@ -417,48 +335,6 @@ export const useAthenaStore = defineStore('athena', () => {
       await loadProposals(projectId)
     } catch (err) {
       error.value = toErrorMessage(err)
-    }
-  }
-
-  async function loadRetrievalDiagnostics(projectId: string) {
-    await loadCached(
-      projectId,
-      'retrieval-diagnostics',
-      () => !!retrievalDiagnostics.value,
-      () => api.getAthenaRetrievalDiagnostics(projectId),
-      (value) => {
-        retrievalDiagnostics.value = value
-      },
-    )
-  }
-
-  async function searchRetrieval(projectId: string, q: string, params?: { limit?: number; source_type?: string; chapter_index?: number }) {
-    ensureProject(projectId)
-    if (!q.trim()) {
-      retrievalSearch.value = null
-      return
-    }
-    retrievalLoading.value = true
-    try {
-      retrievalSearch.value = await api.searchAthenaRetrieval(projectId, { q: q.trim(), ...params })
-    } catch (err) {
-      error.value = toErrorMessage(err)
-    } finally {
-      retrievalLoading.value = false
-    }
-  }
-
-  async function reindexRetrieval(projectId: string) {
-    ensureProject(projectId)
-    retrievalLoading.value = true
-    try {
-      retrievalLastIndexResult.value = await api.reindexAthenaRetrieval(projectId)
-      requestCache.invalidate(cacheKey(projectId, 'retrieval-diagnostics'))
-      await loadRetrievalDiagnostics(projectId)
-    } catch (err) {
-      error.value = toErrorMessage(err)
-    } finally {
-      retrievalLoading.value = false
     }
   }
 

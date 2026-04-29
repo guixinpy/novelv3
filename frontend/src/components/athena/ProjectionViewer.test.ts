@@ -14,6 +14,10 @@ describe('ProjectionViewer', () => {
               entity_type: 'character',
               attributes: { name: '林舟', status: 'alive' },
             },
+            'loc.tower': {
+              entity_type: 'location',
+              attributes: { name: '旧灯塔' },
+            },
           },
           relations: {},
           presence: {
@@ -32,6 +36,8 @@ describe('ProjectionViewer', () => {
     })
 
     expect(wrapper.text()).toContain('char.lin')
+    expect(wrapper.text()).toContain('人物')
+    expect(wrapper.text()).toContain('地点')
     expect(wrapper.text()).toContain('rank')
     expect(wrapper.text()).toContain('守夜人')
     expect(wrapper.text()).toContain('loc.tower')

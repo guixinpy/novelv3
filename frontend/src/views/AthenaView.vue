@@ -179,8 +179,8 @@ async function reindexRetrieval() {
   await athena.reindexRetrieval(pid.value)
 }
 
-async function searchRetrieval(query: string) {
-  await athena.searchRetrieval(pid.value, query)
+async function searchRetrieval(query: string, params?: { source_type?: string }) {
+  await athena.searchRetrieval(pid.value, query, params)
 }
 
 async function selectSubject(subjectRef: string) {
