@@ -139,7 +139,7 @@ class ModelCallTraceDetail(ModelCallTraceListItem):
     @field_validator("trace_metadata", mode="before")
     @classmethod
     def normalize_nullable_dict(cls, value):
-        return {} if value is None else value
+        return value if isinstance(value, dict) else {}
 
     @model_validator(mode="after")
     def derive_prompt_fields(self):

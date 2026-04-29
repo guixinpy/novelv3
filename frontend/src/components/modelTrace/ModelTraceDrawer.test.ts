@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import ModelTraceDrawer from './ModelTraceDrawer.vue'
+import TraceSummary from './TraceSummary.vue'
 import { api } from '../../api/client'
 import { useModelTraceStore } from '../../stores/modelTraces'
 
@@ -115,6 +116,12 @@ function createPromptTraceDetail() {
   }
 }
 
+function sectionText(selector: string) {
+  const section = document.body.querySelector(selector)
+  expect(section).not.toBeNull()
+  return section?.textContent || ''
+}
+
 describe('ModelTraceDrawer', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -166,11 +173,12 @@ describe('ModelTraceDrawer', () => {
     await flushPromises()
     await wrapper.vm.$nextTick()
 
-    expect(document.body.textContent).toContain('Prompt')
-    expect(document.body.textContent).toContain('chapter.generate')
-    expect(document.body.textContent).toContain('v1')
-    expect(document.body.textContent).toContain('generate_chapter')
-    expect(document.body.textContent).toContain('sha256:abcdef12')
+    const summaryText = wrapper.findComponent(TraceSummary).text()
+    expect(summaryText).toContain('Prompt')
+    expect(summaryText).toContain('chapter.generate')
+    expect(summaryText).toContain('v1')
+    expect(summaryText).toContain('generate_chapter')
+    expect(summaryText).toContain('sha256:abcdef12')
 
     wrapper.unmount()
   })
@@ -190,15 +198,15 @@ describe('ModelTraceDrawer', () => {
     await flushPromises()
     await wrapper.vm.$nextTick()
 
-    expect(document.body.textContent).toContain('Included')
-    expect(document.body.textContent).toContain('1')
-    expect(document.body.textContent).toContain('Omitted')
-    expect(document.body.textContent).toContain('2')
-    expect(document.body.textContent).toContain('world-history')
-    expect(document.body.textContent).toContain('old-outline')
-    expect(document.body.textContent).toContain('chapter-summary')
-    expect(document.body.textContent).toContain('已截断')
-    expect(document.body.textContent).toContain('原始 5000')
+    const budgetText = sectionText('[aria-label="Prompt budget"]')
+    expect(budgetText).toContain('Included 1')
+    expect(budgetText).toContain('Omitted 2')
+    expect(budgetText).toContain('world-history')
+    expect(budgetText).toContain('old-outline')
+    expect(budgetText).toContain('chapter-summary')
+    const contextText = sectionText('[aria-label="上下文块"]')
+    expect(contextText).toContain('已截断')
+    expect(contextText).toContain('原始 5000')
 
     wrapper.unmount()
   })
@@ -221,10 +229,12 @@ describe('ModelTraceDrawer', () => {
     await flushPromises()
     await wrapper.vm.$nextTick()
 
-    expect(document.body.textContent).toContain('chapter.generate')
-    expect(document.body.textContent).toContain('generate_chapter')
-    expect(document.body.textContent).toContain('world-history')
-    expect(document.body.textContent).toContain('chapter-summary')
+    const summaryText = wrapper.findComponent(TraceSummary).text()
+    expect(summaryText).toContain('chapter.generate')
+    expect(summaryText).toContain('generate_chapter')
+    const budgetText = sectionText('[aria-label="Prompt budget"]')
+    expect(budgetText).toContain('world-history')
+    expect(budgetText).toContain('chapter-summary')
 
     wrapper.unmount()
   })
@@ -244,9 +254,10 @@ describe('ModelTraceDrawer', () => {
     await flushPromises()
     await wrapper.vm.$nextTick()
 
-    expect(document.body.textContent).toContain('Raw Messages')
-    expect(document.body.textContent).toContain('你是写作助手')
-    expect(document.body.textContent).toContain('雾港钟声响起')
+    const rawMessagesText = sectionText('[aria-label="Raw messages"]')
+    expect(rawMessagesText).toContain('Raw Messages')
+    expect(rawMessagesText).toContain('你是写作助手')
+    expect(rawMessagesText).toContain('雾港钟声响起')
 
     wrapper.unmount()
   })

@@ -309,6 +309,25 @@ def test_model_call_trace_detail_normalizes_null_json_fields_from_orm():
     assert detail.trace_metadata == {}
 
 
+def test_model_call_trace_detail_normalizes_malformed_trace_metadata_from_orm():
+    for malformed_metadata in ([], "bad"):
+        trace = AIModelCallTrace(
+            id=f"trace-malformed-{type(malformed_metadata).__name__}",
+            project_id="project-1",
+            trace_type="chat",
+            status="success",
+            messages=[],
+            context_blocks=[],
+            trace_metadata=malformed_metadata,
+        )
+
+        detail = ModelCallTraceDetail.model_validate(trace)
+
+        assert detail.trace_metadata == {}
+        assert detail.prompt_metadata is None
+        assert detail.prompt_budget is None
+
+
 def test_model_call_trace_detail_derives_prompt_metadata_and_budget_from_trace_metadata():
     trace = AIModelCallTrace(
         id="trace-prompt",
