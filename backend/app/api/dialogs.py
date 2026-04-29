@@ -27,7 +27,9 @@ from app.schemas import ChatIn, ChatOut, PendingActionOut, ProjectDiagnosisOut, 
 from app.services.actions.action_execution_service import ActionExecutionService, chapter_action_params
 from app.services.actions.action_proposal_service import preview_action_to_execution
 from app.services.actions.action_result_service import ActionResultService
+from app.services.actions.descriptions import action_description
 from app.services.dialog.messages import DialogMessageService
+from app.services.dialog.session import DialogSessionService
 from app.services.tasks.background_task_service import BackgroundTaskService
 from app.services.tasks.local_task_runner import LocalTaskRunner
 from app.services.workspace.bootstrap import build_project_diagnosis
@@ -41,16 +43,7 @@ RUNNING_BLOCKED_COMMANDS = {"clear", "compact", "setup", "storyline", "outline",
 
 
 def _get_or_create_dialog(db: Session, project_id: str, dialog_type: str = "hermes") -> Dialog:
-    dialog = db.query(Dialog).filter(
-        Dialog.project_id == project_id,
-        Dialog.dialog_type == dialog_type,
-    ).first()
-    if not dialog:
-        dialog = Dialog(project_id=project_id, dialog_type=dialog_type)
-        db.add(dialog)
-        db.commit()
-        db.refresh(dialog)
-    return dialog
+    return DialogSessionService(db).get_or_create(project_id, dialog_type)
 
 
 def _build_diagnosis(db: Session, project_id: str) -> ProjectDiagnosisOut:
@@ -66,18 +59,14 @@ def _save_message(
     message_type: str = "plain",
     meta: dict | None = None,
 ) -> DialogMessage:
-    msg = DialogMessage(
-        dialog_id=dialog_id,
-        role=role,
-        content=content,
+    return DialogSessionService(db).save_message(
+        dialog_id,
+        role,
+        content,
         action_result=action_result,
         message_type=message_type,
         meta=meta,
     )
-    db.add(msg)
-    db.commit()
-    db.refresh(msg)
-    return msg
 
 
 def _build_chat_idle_hint(reason: str):
@@ -782,18 +771,7 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
 
 
 def _action_description(action_type: str, params: dict | None = None) -> str:
-    if action_type == "preview_chapter":
-        chapter_index = (params or {}).get("chapter_index")
-        if chapter_index:
-            return f"我可以生成第{chapter_index}章正文，完成后会进入 Calliope 和正文进度。"
-        return "我可以生成下一章正文，完成后会进入 Calliope 和正文进度。"
-    mapping = {
-        "preview_setup": "我建议先为项目生成设定，这样后续创作更有基础。",
-        "preview_storyline": "基于已有设定，我可以生成故事线。",
-        "preview_outline": "故事线已就绪，接下来可以生成完整大纲。",
-        "query_diagnosis": "让我看看项目当前状态...",
-    }
-    return mapping.get(action_type, "已准备好执行操作。")
+    return action_description(action_type, params)
 
 
 def _latest_action_trace_id(
