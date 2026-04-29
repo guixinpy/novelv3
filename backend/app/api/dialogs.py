@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.config import load_api_key
@@ -580,14 +581,32 @@ async def _free_chat_reply(
 
 
 @router.get("/api/v1/dialog/projects/{project_id}/messages")
-def get_messages(project_id: str, dialog_type: str = "hermes", db: Session = Depends(get_db)):
+def get_messages(
+    project_id: str,
+    dialog_type: str = "hermes",
+    limit: Annotated[int | None, Query(ge=1, le=200)] = None,
+    after_id: str | None = None,
+    db: Session = Depends(get_db),
+):
     dialog = db.query(Dialog).filter(
         Dialog.project_id == project_id,
         Dialog.dialog_type == dialog_type,
     ).first()
     if not dialog:
         return []
-    msgs = db.query(DialogMessage).filter(DialogMessage.dialog_id == dialog.id).order_by(DialogMessage.created_at).all()
+    query = db.query(DialogMessage).filter(DialogMessage.dialog_id == dialog.id)
+    if after_id:
+        cursor = db.query(DialogMessage).filter(
+            DialogMessage.dialog_id == dialog.id,
+            DialogMessage.id == after_id,
+        ).first()
+        if not cursor:
+            return []
+        query = query.filter(DialogMessage.created_at > cursor.created_at)
+    if limit:
+        msgs = list(reversed(query.order_by(DialogMessage.created_at.desc()).limit(limit).all()))
+    else:
+        msgs = query.order_by(DialogMessage.created_at).all()
     pending_action = None
     if dialog.pending_action_id:
         pending = db.query(PendingAction).filter(PendingAction.id == dialog.pending_action_id).first()

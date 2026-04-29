@@ -172,6 +172,11 @@ export interface ChatHistoryMessage {
   created_at?: string | null
 }
 
+export interface MessageQuery {
+  limit?: number
+  after_id?: string
+}
+
 export type ModelTraceStatus = 'running' | 'success' | 'failed' | string
 
 export interface TraceSource {

@@ -583,6 +583,56 @@ describe('chat workspace polling', () => {
     ])
   })
 
+  it('init() 只请求最新一页 Hermes 历史', async () => {
+    const store = useChatStore()
+
+    vi.mocked(api.getMessages).mockResolvedValue([])
+    vi.mocked(api.getDiagnosis).mockResolvedValue({
+      missing_items: [],
+      completed_items: [],
+      suggested_next_step: null,
+    })
+
+    await store.init('project-1')
+
+    expect(api.getMessages).toHaveBeenCalledWith('project-1', 'hermes', { limit: 80 })
+  })
+
+  it('轮询有历史 message id 时只请求 after_id 之后的新消息', async () => {
+    const store = useChatStore()
+
+    vi.mocked(api.getMessages)
+      .mockResolvedValueOnce([
+        {
+          id: 'message-running',
+          role: 'system',
+          content: '操作已确认，正在生成中...',
+          action_result: { type: 'generate_setup', status: 'generating' },
+          created_at: '2026-04-18T02:00:00Z',
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: 'message-success',
+          role: 'system',
+          content: '设定生成完成。',
+          action_result: { type: 'generate_setup', status: 'success' },
+          created_at: '2026-04-18T02:00:03Z',
+        },
+      ])
+    vi.mocked(api.getDiagnosis).mockResolvedValue({
+      missing_items: [],
+      completed_items: ['setup'],
+      suggested_next_step: 'preview_storyline',
+    })
+
+    await store.init('project-1')
+    await vi.advanceTimersByTimeAsync(3000)
+
+    expect(api.getMessages).toHaveBeenNthCalledWith(1, 'project-1', 'hermes', { limit: 80 })
+    expect(api.getMessages).toHaveBeenNthCalledWith(2, 'project-1', 'hermes', { after_id: 'message-running' })
+  })
+
   it('workspace bootstrap 可以初始化 Hermes 历史和诊断且不触发额外请求', () => {
     const store = useChatStore()
 
@@ -775,7 +825,7 @@ describe('chat workspace polling', () => {
       command_name: 'compact',
       command_args: '',
     })
-    expect(api.getMessages).toHaveBeenCalledWith('project-1', expect.any(String))
+    expect(api.getMessages).toHaveBeenCalledWith('project-1', 'hermes', { limit: 80 })
     expect(store.messages).toEqual([
       {
         role: 'system',
@@ -954,7 +1004,7 @@ describe('chat workspace polling', () => {
     const chapter = await store.regenerateRevision('revision-1')
 
     expect(api.regenerateRevision).toHaveBeenCalledWith('project-1', 'revision-1')
-    expect(api.getMessages).toHaveBeenCalledWith('project-1', 'hermes')
+    expect(api.getMessages).toHaveBeenCalledWith('project-1', 'hermes', { limit: 80 })
     expect(chapter?.content).toBe('重写后的正文')
     expect(store.messages).toEqual([
       {

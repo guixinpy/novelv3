@@ -98,7 +98,7 @@ describe('athena chat store', () => {
     await store.sendChat('project-1', '请更新世界模型')
 
     expect(api.sendAthenaChat).toHaveBeenCalledWith('project-1', '请更新世界模型')
-    expect(api.getAthenaMessages).toHaveBeenCalledWith('project-1')
+    expect(api.getAthenaMessages).toHaveBeenCalledWith('project-1', { limit: 80 })
     expect(api.getAthenaEvolutionProposals).toHaveBeenCalledWith('project-1', undefined)
     expect(store.proposals?.total).toBe(1)
   })

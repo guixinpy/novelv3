@@ -81,6 +81,7 @@ describe('athena project scope', () => {
 
     expect(api.getAthenaOntology).toHaveBeenCalledTimes(1)
     expect(api.getAthenaMessages).toHaveBeenCalledTimes(1)
+    expect(api.getAthenaMessages).toHaveBeenCalledWith('project-1', { limit: 80 })
     expect(store.ontology).toEqual(ontology())
     expect(store.messages).toEqual([message('history')])
   })

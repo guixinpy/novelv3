@@ -67,6 +67,8 @@ function findRecoverableRunningActionType(history: ChatHistoryMessage[] | null |
   return null
 }
 
+const CHAT_HISTORY_PAGE_SIZE = 80
+
 export const useChatStore = defineStore('chat', () => {
   const messages = ref<ChatMessage[]>([])
   const projectId = ref<string>('')
@@ -74,6 +76,7 @@ export const useChatStore = defineStore('chat', () => {
   const pendingAction = ref<PendingAction | null>(null)
   const loading = ref(false)
   const historyCursor = ref(0)
+  const lastHistoryMessageId = ref<string | null>(null)
   const initVersion = ref(0)
 
   function captureSnapshot() {
@@ -101,6 +104,7 @@ export const useChatStore = defineStore('chat', () => {
     pendingAction.value = null
     loading.value = false
     historyCursor.value = 0
+    lastHistoryMessageId.value = null
   }
 
   function applyHistorySnapshot(
@@ -120,6 +124,7 @@ export const useChatStore = defineStore('chat', () => {
       : null
     pendingAction.value = restoredPendingAction
     historyCursor.value = history?.length || 0
+    lastHistoryMessageId.value = history?.length ? history[history.length - 1]?.id || null : null
     const runningActionType = restoredPendingAction ? null : findRecoverableRunningActionType(history)
     if (runningActionType) {
       loading.value = true
@@ -149,7 +154,7 @@ export const useChatStore = defineStore('chat', () => {
   async function loadHistory(pidSnapshot = projectId.value, versionSnapshot = initVersion.value): Promise<boolean> {
     if (!pidSnapshot) return false
     try {
-      const history = await api.getMessages(pidSnapshot, 'hermes')
+      const history = await api.getMessages(pidSnapshot, 'hermes', { limit: CHAT_HISTORY_PAGE_SIZE })
       return applyHistorySnapshot(history, pidSnapshot, versionSnapshot)
     } catch { /* first visit, no history */ }
     return false
@@ -356,14 +361,26 @@ export const useChatStore = defineStore('chat', () => {
         await new Promise(r => setTimeout(r, 3000))
         try {
           if (!isActiveSnapshot(pidSnapshot, versionSnapshot)) break
-          const history = await api.getMessages(pidSnapshot, 'hermes')
+          const canLoadIncrementally = Boolean(lastHistoryMessageId.value)
+          const history = await api.getMessages(
+            pidSnapshot,
+            'hermes',
+            canLoadIncrementally
+              ? { after_id: lastHistoryMessageId.value as string }
+              : { limit: CHAT_HISTORY_PAGE_SIZE },
+          )
           if (!isActiveSnapshot(pidSnapshot, versionSnapshot)) break
-          if (history && history.length > historyCursor.value) {
-            const newMessages = history.slice(historyCursor.value)
+          const newMessages = canLoadIncrementally
+            ? history || []
+            : (history || []).slice(historyCursor.value)
+          if (newMessages.length) {
             for (const message of newMessages) {
               messages.value.push(toChatMessage(message))
             }
-            historyCursor.value = history.length
+            historyCursor.value = canLoadIncrementally
+              ? historyCursor.value + newMessages.length
+              : (history || []).length
+            lastHistoryMessageId.value = newMessages[newMessages.length - 1]?.id || lastHistoryMessageId.value
             await loadDiagnosis(pidSnapshot, versionSnapshot)
             if (newMessages.some((message) => isTerminalActionResult(message.action_result || null, actionType))) {
               reachedTerminal = true

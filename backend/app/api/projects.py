@@ -146,8 +146,8 @@ def workspace_bootstrap(project_id: str, db: Session = Depends(get_db)):
         ],
         "versions": versions,
         "dialogs": {
-            "hermes": {"messages": get_messages(project_id, dialog_type="hermes", db=db)},
-            "athena": {"messages": get_messages(project_id, dialog_type="athena", db=db)},
+            "hermes": {"messages": get_messages(project_id, dialog_type="hermes", limit=80, db=db)},
+            "athena": {"messages": get_messages(project_id, dialog_type="athena", limit=80, db=db)},
         },
     }
 

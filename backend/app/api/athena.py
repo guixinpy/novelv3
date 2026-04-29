@@ -1,4 +1,5 @@
 from uuid import uuid4
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -659,9 +660,14 @@ def get_athena_retrieval_diagnostics(project_id: str, db: Session = Depends(get_
 
 
 @router.get("/dialog/messages")
-def get_athena_messages(project_id: str, db: Session = Depends(get_db)):
+def get_athena_messages(
+    project_id: str,
+    limit: Annotated[int | None, Query(ge=1, le=200)] = None,
+    after_id: str | None = None,
+    db: Session = Depends(get_db),
+):
     from app.api.dialogs import get_messages
-    return get_messages(project_id, dialog_type="athena", db=db)
+    return get_messages(project_id, dialog_type="athena", limit=limit, after_id=after_id, db=db)
 
 
 @router.post("/dialog/chat")

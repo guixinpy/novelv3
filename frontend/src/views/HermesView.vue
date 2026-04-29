@@ -127,11 +127,19 @@ async function initialize(projectId: string) {
   ready.value = false
   closeTrace()
   const snapshot = beginHydration(hydrationTracker, projectId)
-  if (projectWorkspace.enterProject(projectId)) {
+  const projectChanged = projectWorkspace.enterProject(projectId)
+  if (projectChanged) {
     project.resetProjectScopedState(projectId)
     workspace.reset()
   }
-  try {
+  const hasWarmWorkspace =
+    !projectChanged &&
+    project.currentProject?.id === projectId &&
+    chat.projectId === projectId &&
+    !!chat.diagnosis
+  if (hasWarmWorkspace) {
+    markHydratedTargets(hydrationTracker, snapshot, ['project', 'setup', 'storyline', 'outline', 'content', 'versions'])
+  } else try {
     const bootstrap = await api.getWorkspaceBootstrap(projectId)
     if (!isActiveHydrationSnapshot(hydrationTracker, snapshot)) return
     project.applyWorkspaceBootstrap(bootstrap)
@@ -151,7 +159,7 @@ async function initialize(projectId: string) {
   }
   initialTargets.add('content')
   await Promise.all([
-    ...[...initialTargets].map((target) => loadTarget(projectId, target).then(() => {
+    ...[...initialTargets].filter((target) => !hydratedTargets.has(target)).map((target) => loadTarget(projectId, target).then(() => {
       markHydratedTarget(hydrationTracker, snapshot, target)
     }).catch(() => {})),
   ])

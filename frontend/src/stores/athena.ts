@@ -24,6 +24,7 @@ function toErrorMessage(err: unknown): string {
 }
 
 const ATHENA_CACHE_TTL_MS = 5 * 60 * 1000
+const ATHENA_CHAT_HISTORY_PAGE_SIZE = 80
 
 export const useAthenaStore = defineStore('athena', () => {
   const requestCache = useRequestCacheStore()
@@ -322,7 +323,7 @@ export const useAthenaStore = defineStore('athena', () => {
     }
     const scope = beginMessageLoad(projectId)
     try {
-      const loadedMessages = await requestCache.dedupe(key, () => api.getAthenaMessages(projectId))
+      const loadedMessages = await requestCache.dedupe(key, () => api.getAthenaMessages(projectId, { limit: ATHENA_CHAT_HISTORY_PAGE_SIZE }))
       if (isCurrentMessageLoad(scope) && isActiveProject(projectId)) {
         messages.value = loadedMessages
       }
@@ -452,7 +453,7 @@ export const useAthenaStore = defineStore('athena', () => {
       const response = await api.sendAthenaChat(projectId, text)
       if (!isCurrentSend(scope) || !isActiveChatProject(projectId)) return
 
-      const loadedMessages = await api.getAthenaMessages(projectId)
+      const loadedMessages = await api.getAthenaMessages(projectId, { limit: ATHENA_CHAT_HISTORY_PAGE_SIZE })
       if (!isCurrentSend(scope) || !isActiveChatProject(projectId)) return
       invalidateMessageLoads()
       messages.value = loadedMessages

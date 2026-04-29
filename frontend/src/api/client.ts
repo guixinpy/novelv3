@@ -17,6 +17,7 @@ import type {
   ChatHistoryMessage,
   ChatRequest,
   ChatResponse,
+  MessageQuery,
   ModelCallTraceDetail,
   ModelCallTraceListParams,
   PaginatedModelCallTraces,
@@ -33,6 +34,13 @@ import type {
 } from './types'
 
 const API_BASE = '/api/v1'
+
+function messageQuery(params?: MessageQuery) {
+  const query = new URLSearchParams()
+  if (params?.limit !== undefined) query.set('limit', String(params.limit))
+  if (params?.after_id) query.set('after_id', params.after_id)
+  return query
+}
 
 async function request<T = any>(path: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
@@ -146,8 +154,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ project_id: id, input_type: 'text', text }),
     }),
-  getAthenaMessages: (id: string) =>
-    request<ChatHistoryMessage[]>(`/projects/${id}/athena/dialog/messages`),
+  getAthenaMessages: (id: string, params?: MessageQuery) => {
+    const query = messageQuery(params)
+    const qs = query.toString()
+    return request<ChatHistoryMessage[]>(`/projects/${id}/athena/dialog/messages${qs ? `?${qs}` : ''}`)
+  },
   getAthenaSetup: (id: string) =>
     request(`/projects/${id}/athena/ontology/setup`),
   getAthenaCharacterGraph: (id: string) =>
@@ -190,7 +201,11 @@ export const api = {
   getOutline: (id: string) => request(`/projects/${id}/outline`),
   getTopology: (id: string) => request(`/projects/${id}/athena/ontology/relations`),
   getDiagnosis: (id: string) => request(`/projects/${id}/state-diagnosis`),
-  getMessages: (id: string, dialogType: string = 'hermes') => request<ChatHistoryMessage[]>(`/dialog/projects/${id}/messages?dialog_type=${dialogType}`),
+  getMessages: (id: string, dialogType: string = 'hermes', params?: MessageQuery) => {
+    const query = messageQuery(params)
+    query.set('dialog_type', dialogType)
+    return request<ChatHistoryMessage[]>(`/dialog/projects/${id}/messages?${query.toString()}`)
+  },
   sendChat: (data: ChatRequest) => request<ChatResponse>('/dialog/chat', { method: 'POST', body: JSON.stringify(data) }),
   resolveAction: (data: ResolveActionRequest) => request<ResolveActionResponse>('/dialog/resolve-action', { method: 'POST', body: JSON.stringify(data) }),
   startWriting: (id: string) => request(`/projects/${id}/writing/start`, { method: 'POST' }),
