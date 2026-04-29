@@ -35,3 +35,4 @@ from .world_relation import WorldRelation
 from .world_resource import WorldResource
 from .world_rule import WorldRule
 from .world_timeline_anchor import WorldTimelineAnchor
+from .writing_state import WritingState
