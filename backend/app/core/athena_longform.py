@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.core.l1_extractor import L1RuleExtractor
 from app.core.world_contracts import DERIVED
+from app.core.world_projection_service import invalidate_world_projection_cache
 from app.core.world_proposal_service import calculate_bundle_impact_scope, create_bundle, write_candidate_fact
 from app.models import (
     ChapterContent,
@@ -157,6 +158,7 @@ def import_setup_to_world_model(db: Session, project_id: str) -> dict[str, Any]:
             created["rules"] += 1
 
     db.commit()
+    invalidate_world_projection_cache(project_id=project_id)
     return {
         "status": "completed",
         "profile_version": profile.version,
@@ -225,6 +227,7 @@ def analyze_chapter_to_world_proposals(db: Session, project_id: str, chapter_ind
             )
         calculate_bundle_impact_scope(db=db, bundle_id=bundle.id)
     db.commit()
+    invalidate_world_projection_cache(project_id=project_id)
 
     return {
         "status": "completed",

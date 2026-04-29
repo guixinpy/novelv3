@@ -15,6 +15,8 @@ from app.models import ProjectProfileVersion, WorldEvent, WorldFactClaim, WorldT
 from app.schemas import ProjectWorldOverviewOut, WorldProjectionOut
 
 WorldProjectionViewType = Literal["current_truth", "subject_knowledge", "chapter_snapshot"]
+WorldProjectionCacheKey = tuple[str, str, int, WorldProjectionViewType, str | None, int | None]
+_projection_cache: dict[WorldProjectionCacheKey, ProjectWorldOverviewOut] = {}
 
 
 @dataclass(frozen=True)
@@ -36,12 +38,49 @@ def build_world_projection_overview(
     if profile is None:
         return ProjectWorldOverviewOut(project_profile=None, projection=None)
 
+    cache_key = _projection_cache_key(
+        project_id=project_id,
+        profile=profile,
+        view_type=view_type,
+        subject_ref=subject_ref,
+        chapter_index=chapter_index,
+    )
+    cached = _projection_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     source = load_world_projection_source(db=db, project_id=project_id, profile=profile)
     projection = build_world_projection(source=source, view_type=view_type, subject_ref=subject_ref, chapter_index=chapter_index)
-    return ProjectWorldOverviewOut(
+    overview = ProjectWorldOverviewOut(
         project_profile=profile,
         projection=WorldProjectionOut(view_type=view_type, **projection),
     )
+    _projection_cache[cache_key] = overview
+    return overview
+
+
+def invalidate_world_projection_cache(project_id: str | None = None) -> None:
+    if project_id is None:
+        _projection_cache.clear()
+        return
+    stale_keys = [key for key in _projection_cache if key[0] == project_id]
+    for key in stale_keys:
+        _projection_cache.pop(key, None)
+
+
+def clear_world_projection_cache() -> None:
+    invalidate_world_projection_cache()
+
+
+def _projection_cache_key(
+    *,
+    project_id: str,
+    profile: ProjectProfileVersion,
+    view_type: WorldProjectionViewType,
+    subject_ref: str | None,
+    chapter_index: int | None,
+) -> WorldProjectionCacheKey:
+    return (project_id, profile.id, profile.version, view_type, subject_ref, chapter_index)
 
 
 def load_world_projection_source(

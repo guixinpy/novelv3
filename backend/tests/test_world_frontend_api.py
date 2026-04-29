@@ -149,6 +149,9 @@ def test_subject_knowledge_persists_belief_claims_approved_from_proposals(client
             evidence_refs=["chapter.01"],
         ),
     )
+    cached_empty_subject_response = client.get(
+        f"/api/v1/projects/{project.id}/world-model/subject-knowledge?subject_ref=char.detective"
+    )
 
     approve_response = client.post(
         f"/api/v1/projects/{project.id}/world-model/proposal-items/{item.id}/review",
@@ -165,6 +168,8 @@ def test_subject_knowledge_persists_belief_claims_approved_from_proposals(client
         f"/api/v1/projects/{project.id}/world-model/subject-knowledge?subject_ref=char.detective"
     )
 
+    assert cached_empty_subject_response.status_code == 200
+    assert cached_empty_subject_response.json()["projection"]["facts"] == {}
     assert approve_response.status_code == 200
     assert truth_response.status_code == 200
     assert truth_response.json()["projection"]["facts"] == {}

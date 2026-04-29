@@ -6,6 +6,7 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.world_projection_service import invalidate_world_projection_cache
 from app.models import (
     GenreProfile,
     ProjectProfileVersion,
@@ -312,6 +313,7 @@ def review_proposal_item(
             proposal_item_id=proposal_item_id,
             claim_id=item_snapshot["claim_id"],
         ) from exc
+    invalidate_world_projection_cache(project_id=item_snapshot["project_id"])
     db.refresh(review)
     db.refresh(bundle)
     return review
@@ -500,6 +502,7 @@ def rollback_review(
         if _is_duplicate_rollback_integrity_error(exc):
             raise ValueError(f"approval review {review.id} has already been rolled back") from exc
         raise ValueError(f"rollback review {review.id} failed to commit: {_describe_integrity_error(exc)}") from exc
+    invalidate_world_projection_cache(project_id=item.project_id)
     db.refresh(rollback)
     return rollback
 
