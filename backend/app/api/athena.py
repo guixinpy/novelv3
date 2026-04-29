@@ -45,6 +45,7 @@ from app.schemas import (
     ProposalReviewRollbackCreate,
     ResolveActionIn,
 )
+from app.services.dialog.messages import DialogMessageService
 from app.schemas.athena_retrieval import (
     AthenaRetrievalDiagnostics,
     AthenaRetrievalIndexResult,
@@ -666,8 +667,12 @@ def get_athena_messages(
     after_id: str | None = None,
     db: Session = Depends(get_db),
 ):
-    from app.api.dialogs import get_messages
-    return get_messages(project_id, dialog_type="athena", limit=limit, after_id=after_id, db=db)
+    return DialogMessageService(db).list_messages(
+        project_id,
+        dialog_type="athena",
+        limit=limit,
+        after_id=after_id,
+    )
 
 
 @router.post("/dialog/chat")

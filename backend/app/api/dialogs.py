@@ -24,6 +24,8 @@ from app.prompting.providers.dialog import (
     build_dialog_history_block,
 )
 from app.schemas import ChatIn, ChatOut, PendingActionOut, ProjectDiagnosisOut, ResolveActionIn
+from app.services.dialog.messages import DialogMessageService
+from app.services.workspace.bootstrap import build_project_diagnosis
 
 router = APIRouter(tags=["dialogs"])
 ai_service = AIService()
@@ -47,47 +49,7 @@ def _get_or_create_dialog(db: Session, project_id: str, dialog_type: str = "herm
 
 
 def _build_diagnosis(db: Session, project_id: str) -> ProjectDiagnosisOut:
-    setup = db.query(Setup).filter(Setup.project_id == project_id).first()
-    storyline = db.query(Storyline).filter(Storyline.project_id == project_id).first()
-    outline = db.query(Outline).filter(Outline.project_id == project_id).first()
-    chapters = db.query(ChapterContent).filter(ChapterContent.project_id == project_id).count()
-
-    completed = []
-    missing = []
-    next_step = None
-
-    if setup and setup.status == "generated":
-        completed.append("setup")
-    else:
-        missing.append("setup")
-        next_step = "preview_setup"
-
-    if storyline and storyline.status == "generated":
-        completed.append("storyline")
-    else:
-        missing.append("storyline")
-        if not next_step:
-            next_step = "preview_storyline"
-
-    if outline and outline.status == "generated":
-        completed.append("outline")
-    else:
-        missing.append("outline")
-        if not next_step:
-            next_step = "preview_outline"
-
-    if chapters > 0:
-        completed.append("content")
-    else:
-        missing.append("content")
-        if not next_step:
-            next_step = "preview_outline"
-
-    return ProjectDiagnosisOut(
-        missing_items=missing,
-        completed_items=completed,
-        suggested_next_step=next_step,
-    )
+    return build_project_diagnosis(db, project_id)
 
 
 def _save_message(
@@ -588,75 +550,12 @@ def get_messages(
     after_id: str | None = None,
     db: Session = Depends(get_db),
 ):
-    dialog = db.query(Dialog).filter(
-        Dialog.project_id == project_id,
-        Dialog.dialog_type == dialog_type,
-    ).first()
-    if not dialog:
-        return []
-    query = db.query(DialogMessage).filter(DialogMessage.dialog_id == dialog.id)
-    if after_id:
-        cursor = db.query(DialogMessage).filter(
-            DialogMessage.dialog_id == dialog.id,
-            DialogMessage.id == after_id,
-        ).first()
-        if not cursor:
-            return []
-        query = query.filter(DialogMessage.created_at > cursor.created_at)
-    if limit:
-        msgs = list(reversed(query.order_by(DialogMessage.created_at.desc()).limit(limit).all()))
-    else:
-        msgs = query.order_by(DialogMessage.created_at).all()
-    pending_action = None
-    if dialog.pending_action_id:
-        pending = db.query(PendingAction).filter(PendingAction.id == dialog.pending_action_id).first()
-        if pending:
-            pending_action = PendingActionOut(
-                id=pending.id,
-                type=pending.type,
-                description=_action_description(pending.type),
-                params=pending.params,
-            ).model_dump()
-
-    last_assistant_message_id = None
-    if pending_action:
-        for message in reversed(msgs):
-            if message.role == "assistant":
-                last_assistant_message_id = message.id
-                break
-
-    payload = []
-    message_ids = [message.id for message in msgs]
-    trace_by_response_id = {}
-    if message_ids:
-        traces = (
-            db.query(AIModelCallTrace)
-            .filter(
-                AIModelCallTrace.dialog_id == dialog.id,
-                AIModelCallTrace.response_message_id.in_(message_ids),
-            )
-            .all()
-        )
-        trace_by_response_id = {
-            trace.response_message_id: trace.id
-            for trace in traces
-            if trace.response_message_id
-        }
-    for message in msgs:
-        item = {
-            "id": message.id,
-            "role": message.role,
-            "message_type": message.message_type,
-            "content": message.content,
-            "meta": message.meta,
-            "action_result": message.action_result,
-            "trace_id": trace_by_response_id.get(message.id),
-            "created_at": message.created_at.isoformat() if message.created_at else None,
-        }
-        if pending_action and message.id == last_assistant_message_id:
-            item["pending_action"] = pending_action
-        payload.append(item)
-    return payload
+    return DialogMessageService(db).list_messages(
+        project_id,
+        dialog_type=dialog_type,
+        limit=limit,
+        after_id=after_id,
+    )
 
 
 @router.get("/api/v1/projects/{project_id}/state-diagnosis")
