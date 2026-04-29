@@ -1,9 +1,12 @@
 import os
+import time
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+
+from app.core.local_diagnostics import log_event, new_request_id
 
 app = FastAPI(title="Mozhou AI Writer")
 
@@ -14,6 +17,35 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def local_request_diagnostics(request, call_next):
+    request_id = new_request_id()
+    started = time.perf_counter()
+    try:
+        response = await call_next(request)
+    except Exception as exc:
+        log_event(
+            "request_done",
+            request_id=request_id,
+            method=request.method,
+            path=request.url.path,
+            status=500,
+            duration_ms=int((time.perf_counter() - started) * 1000),
+            error=str(exc),
+        )
+        raise
+    response.headers["X-Request-ID"] = request_id
+    log_event(
+        "request_done",
+        request_id=request_id,
+        method=request.method,
+        path=request.url.path,
+        status=response.status_code,
+        duration_ms=int((time.perf_counter() - started) * 1000),
+    )
+    return response
 
 from app.api import (
     athena,

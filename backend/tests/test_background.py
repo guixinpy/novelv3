@@ -1,6 +1,7 @@
 import pytest
 from sqlalchemy.orm import sessionmaker
 
+from app.core.local_diagnostics import format_kv_event
 from app.models import BackgroundTask
 from app.services.tasks.background_task_service import BackgroundTaskService
 from app.services.tasks.local_task_runner import LocalTaskRunner
@@ -95,8 +96,20 @@ def test_background_task_service_marks_interrupted_running_tasks_failed(client, 
     assert saved.error == "Task interrupted by local process restart"
 
 
+def test_local_diagnostics_formats_key_value_event():
+    line = format_kv_event(
+        "task_done",
+        task_id="task-1",
+        status="completed",
+        duration_ms=12,
+        error="has space",
+    )
+
+    assert line == 'event=task_done task_id=task-1 status=completed duration_ms=12 error="has space"'
+
+
 @pytest.mark.asyncio
-async def test_local_task_runner_marks_completed(client, db_session):
+async def test_local_task_runner_marks_completed(client, db_session, capsys):
     r = client.post("/api/v1/projects", json={"name": "Test"})
     pid = r.json()["id"]
     service = BackgroundTaskService(db_session)
@@ -114,10 +127,11 @@ async def test_local_task_runner_marks_completed(client, db_session):
     assert result == {"task_id": task.id}
     assert saved.status == "completed"
     assert saved.result == {"task_id": task.id}
+    assert "event=task_done" in capsys.readouterr().out
 
 
 @pytest.mark.asyncio
-async def test_local_task_runner_marks_failed(client, db_session):
+async def test_local_task_runner_marks_failed(client, db_session, capsys):
     r = client.post("/api/v1/projects", json={"name": "Test"})
     pid = r.json()["id"]
     service = BackgroundTaskService(db_session)
@@ -135,6 +149,7 @@ async def test_local_task_runner_marks_failed(client, db_session):
     saved = service.get(task.id)
     assert saved.status == "failed"
     assert saved.error == "deep check failed"
+    assert "event=task_failed" in capsys.readouterr().out
 
 
 def test_cross_validator():
