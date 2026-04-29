@@ -217,3 +217,61 @@ def test_chapter_budget_preserves_user_request_length_and_target_under_pressure(
     assert "预算章：必须保留本章目标" in message
     budget = payload["trace_metadata"]["budget"]
     assert budget["omitted_blocks"] > 0 or budget["omitted_block_keys"]
+
+
+def test_chapter_budget_keeps_style_and_few_shot_ahead_of_large_setup(monkeypatch, db_session):
+    project = _project(
+        db_session,
+        id="chapter-prompt-style-budget",
+        genre="仙侠",
+        style_config={"description_density": 4},
+    )
+    setup = Setup(
+        project_id=project.id,
+        world_building={"lore": "世界观噪音" * 5000},
+        characters=[{"name": "林舟", "bio": "角色噪音" * 5000}],
+        core_concept={"hook": "预算压力"},
+    )
+    db_session.add(setup)
+    db_session.add(
+        Outline(
+            project_id=project.id,
+            total_chapters=5,
+            chapters=[
+                {"chapter_index": 4, "title": "风格预算章", "summary": "保留风格和示例"},
+            ],
+            plotlines=[],
+            foreshadowing=[],
+        )
+    )
+    db_session.commit()
+    monkeypatch.setattr("app.api.chapters.CHAPTER_CONTEXT_CHAR_BUDGET", 260)
+    monkeypatch.setattr(
+        "app.prompting.providers.athena.build_chapter_context_package",
+        lambda **kwargs: {
+            "chapter_index": kwargs["chapter_index"],
+            "profile_version": None,
+            "project_profile_version_id": None,
+            "sections": [],
+            "prompt_context": "",
+        },
+    )
+    monkeypatch.setattr(
+        "app.prompting.providers.retrieval.build_chapter_retrieval_context",
+        lambda **kwargs: None,
+    )
+
+    payload = chapters._build_chapter_call_payload(
+        db_session,
+        project,
+        setup,
+        4,
+        "每章约1800-2200字，保留风格规则和示例",
+    )
+
+    message = payload["messages"][0]["content"]
+    assert "增加环境描写和感官细节" in message
+    assert "【参考示例】" in message
+    assert "青云宗" in message
+    budget = payload["trace_metadata"]["budget"]
+    assert budget["omitted_blocks"] > 0 or budget["omitted_block_keys"]
