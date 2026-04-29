@@ -26,6 +26,7 @@ import {
   isActiveHydrationSnapshot,
   markHydratedTarget,
   markHydratedTargets,
+  shouldHydratePanelTarget,
   type HydrationSnapshot,
 } from './projectDetailHydration'
 import { createActionReplayGuard } from './hermesActionReplay'
@@ -217,6 +218,7 @@ async function ensurePanelData(
 ) {
   for (const target of getPanelRefreshTargets(panel)) {
     if (!isActiveHydrationSnapshot(hydrationTracker, snapshot)) return
+    if (!force && !shouldHydratePanelTarget(target, chat.diagnosis)) continue
     if (!force && hydratedTargets.has(target)) continue
     await loadTarget(projectId, target)
     markHydratedTarget(hydrationTracker, snapshot, target)

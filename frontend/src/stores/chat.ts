@@ -54,6 +54,10 @@ function isTerminalStatus(status: string) {
   return ['completed', 'success', 'failed', 'cancelled', 'revised'].includes(status)
 }
 
+function shouldConsumeTaskRefreshTargets(status: string) {
+  return ['completed', 'success'].includes(status)
+}
+
 function getActionTaskId(actionResult: Record<string, unknown> | null | undefined) {
   const data = actionResult?.data
   if (!data || typeof data !== 'object') return ''
@@ -479,7 +483,9 @@ export const useChatStore = defineStore('chat', () => {
         if (!isActiveSnapshot(pidSnapshot, versionSnapshot)) break
         if (!isTerminalStatus(String(task.status || ''))) continue
         reachedTerminal = true
-        workspace.markDirty(task.refresh_targets || [])
+        if (shouldConsumeTaskRefreshTargets(String(task.status || ''))) {
+          workspace.markDirty(task.refresh_targets || [])
+        }
         const newMessages = await appendNewMessages(pidSnapshot, versionSnapshot)
         if (!newMessages.some((message) => isTerminalActionResult(message.action_result || null, actionType))) {
           await loadHistory(pidSnapshot, versionSnapshot)

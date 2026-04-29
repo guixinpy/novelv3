@@ -120,7 +120,7 @@ describe('chat workspace polling', () => {
     ).toBe(true)
   })
 
-  it('confirm 返回 task_id 时轮询后台任务并消费 refresh targets', async () => {
+  it('confirm 返回 task_id 后失败任务不消费 refresh targets', async () => {
     const store = useChatStore()
     const workspace = useProjectWorkspaceStore()
     store.projectId = 'project-1'
@@ -193,7 +193,7 @@ describe('chat workspace polling', () => {
     await vi.advanceTimersByTimeAsync(1000)
     expect(api.getBackgroundTask).toHaveBeenCalledTimes(2)
     expect(api.getMessages).toHaveBeenCalledWith('project-1', 'hermes', { after_id: 'm1' })
-    expect([...workspace.dirtyTargets]).toEqual(['setup'])
+    expect([...workspace.dirtyTargets]).toEqual([])
     expect(store.loading).toBe(false)
     expect(store.messages.some((message) => message.content.includes('API key'))).toBe(true)
   })

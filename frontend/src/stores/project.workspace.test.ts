@@ -8,6 +8,7 @@ import {
   createHydrationTracker,
   getInitialProjectHydrationTargets,
   markHydratedTarget,
+  shouldHydratePanelTarget,
 } from '../views/projectDetailHydration'
 
 vi.mock('../api/client', () => ({
@@ -252,6 +253,19 @@ describe('project workspace state', () => {
       'storyline',
       'outline',
     ])
+  })
+
+  it('Hermes 面板切换不加载诊断中未完成的可选资源', () => {
+    const diagnosis = (completedItems: string[]): ProjectDiagnosis => ({
+      completed_items: completedItems,
+      missing_items: [],
+      suggested_next_step: null,
+    })
+
+    expect(shouldHydratePanelTarget('setup', diagnosis([]))).toBe(false)
+    expect(shouldHydratePanelTarget('storyline', diagnosis(['setup']))).toBe(false)
+    expect(shouldHydratePanelTarget('setup', diagnosis(['setup']))).toBe(true)
+    expect(shouldHydratePanelTarget('content', diagnosis([]))).toBe(true)
   })
 
   it('旧 hydration snapshot 不能再把 target 写进当前项目集合', () => {

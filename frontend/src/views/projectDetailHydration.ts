@@ -12,6 +12,7 @@ export type HydrationTracker = {
 }
 
 const INITIAL_OPTIONAL_TARGETS: RefreshTarget[] = ['setup', 'storyline', 'outline']
+const OPTIONAL_PANEL_TARGETS = new Set<RefreshTarget>(INITIAL_OPTIONAL_TARGETS)
 
 export function createHydrationTracker(): HydrationTracker {
   return {
@@ -60,4 +61,9 @@ export function markHydratedTargets(
 export function getInitialProjectHydrationTargets(diagnosis: ProjectDiagnosis | null | undefined): RefreshTarget[] {
   const completed = new Set(diagnosis?.completed_items || [])
   return INITIAL_OPTIONAL_TARGETS.filter((target) => completed.has(target))
+}
+
+export function shouldHydratePanelTarget(target: RefreshTarget, diagnosis: ProjectDiagnosis | null | undefined): boolean {
+  if (!OPTIONAL_PANEL_TARGETS.has(target)) return true
+  return new Set(diagnosis?.completed_items || []).has(target)
 }
