@@ -1,5 +1,6 @@
 from app.models import (
     ChapterContent,
+    GenreProfile,
     Project,
     ProjectProfileVersion,
     Setup,
@@ -12,6 +13,7 @@ from app.models import (
     WorldProposalItem,
     WorldRule,
 )
+from app.core.athena_longform import analyze_chapter_to_world_proposals
 
 
 def _seed_project_with_setup(db_session):
@@ -173,6 +175,129 @@ def test_analyze_chapter_creates_reviewable_candidates_without_duplicates(client
     assert db_session.query(WorldProposalBundle).filter_by(project_id=project.id).count() == 1
     assert db_session.query(WorldProposalItem).filter_by(project_id=project.id).count() == 7
     assert db_session.query(WorldFactClaim).filter_by(project_id=project.id).count() == 0
+
+
+def test_analyze_chapter_uses_world_model_canonical_character_refs_over_stale_setup(client, db_session):
+    project = Project(name="Canonical Analyzer", genre="东方奇幻悬疑")
+    genre_profile = GenreProfile(
+        canonical_id="canonical-analyzer-profile",
+        display_name="Canonical Analyzer",
+        contract_version="world.contract.v1",
+    )
+    db_session.add_all([project, genre_profile])
+    db_session.commit()
+    db_session.refresh(project)
+    profile = ProjectProfileVersion(
+        project_id=project.id,
+        genre_profile_id=genre_profile.id,
+        version=1,
+        contract_version="world.contract.v1",
+        profile_payload={},
+    )
+    db_session.add(profile)
+    db_session.commit()
+    db_session.add(
+        Setup(
+            project_id=project.id,
+            status="generated",
+            world_building={},
+            characters=[{"name": "旧名", "character_status": "alive"}],
+            core_concept={},
+        )
+    )
+    db_session.add(
+        WorldCharacter(
+            project_id=project.id,
+            profile_version=profile.version,
+            character_id="hero",
+            canonical_id="char.hero",
+            primary_alias="林舟",
+            name="林舟",
+            aliases=["旧名"],
+            role_type="character",
+            identity_anchor="林舟",
+            contract_version=profile.contract_version,
+        )
+    )
+    db_session.add(
+        WorldLocation(
+            project_id=project.id,
+            profile_version=profile.version,
+            location_id="fog-harbor",
+            canonical_id="loc.fog-harbor",
+            primary_alias="雾港城",
+            name="雾港城",
+            aliases=[],
+            location_type="city",
+            contract_version=profile.contract_version,
+        )
+    )
+    db_session.add(
+        ChapterContent(
+            project_id=project.id,
+            chapter_index=1,
+            title="第一章 归港",
+            content="林舟走进雾港城。旧名这个称呼已经无人再用。",
+            word_count=30,
+            status="generated",
+        )
+    )
+    db_session.commit()
+
+    response = client.post(f"/api/v1/projects/{project.id}/athena/evolution/chapters/1/analyze")
+
+    assert response.status_code == 200
+    assert (
+        db_session.query(WorldProposalItem)
+        .filter_by(project_id=project.id, subject_ref="char.hero", predicate="presence_count")
+        .count()
+        == 1
+    )
+    location_item = (
+        db_session.query(WorldProposalItem)
+        .filter_by(project_id=project.id, subject_ref="char.hero", predicate="present_at_location")
+        .one()
+    )
+    assert location_item.object_ref_or_value["location_ref"] == "loc.fog-harbor"
+    assert (
+        db_session.query(WorldProposalItem)
+        .filter_by(project_id=project.id, subject_ref="char.旧名")
+        .count()
+        == 0
+    )
+
+
+def test_analyze_chapter_rolls_back_partial_bundle_when_candidate_write_fails(client, db_session, monkeypatch):
+    import app.core.athena_longform as athena_longform
+
+    project = _seed_project_with_setup(db_session)
+    client.post(f"/api/v1/projects/{project.id}/athena/ontology/import-setup")
+    db_session.add(
+        ChapterContent(
+            project_id=project.id,
+            chapter_index=1,
+            title="第一章 雾港",
+            content="林舟走进雾港城。沈聆在旧灯塔旁翻开档案。",
+            word_count=24,
+            status="generated",
+        )
+    )
+    db_session.commit()
+
+    def fail_candidate_write(*args, **kwargs):
+        raise RuntimeError("candidate write failed")
+
+    monkeypatch.setattr(athena_longform, "write_candidate_fact", fail_candidate_write)
+
+    try:
+        analyze_chapter_to_world_proposals(db_session, project.id, 1)
+    except RuntimeError as exc:
+        assert str(exc) == "candidate write failed"
+    else:
+        raise AssertionError("analysis should fail when candidate writing fails")
+
+    assert db_session.query(WorldProposalBundle).filter_by(project_id=project.id).count() == 0
+    assert db_session.query(WorldProposalItem).filter_by(project_id=project.id).count() == 0
 
 
 def test_analyze_chapter_creates_event_and_character_location_candidates(client, db_session):

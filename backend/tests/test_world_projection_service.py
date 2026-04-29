@@ -139,7 +139,7 @@ def test_projection_service_builds_all_frontend_views_from_shared_source(db_sess
     assert truth.projection.facts["char.hero"]["rank"] == "captain"
 
     assert subject.projection.view_type == "subject_knowledge"
-    assert subject.projection.facts == {}
+    assert subject.projection.facts["char.hero"]["rank"] == "captain"
     assert subject.projection.presence["char.hero"]["location_ref"] == "loc.safehouse"
 
     assert snapshot.projection.view_type == "chapter_snapshot"

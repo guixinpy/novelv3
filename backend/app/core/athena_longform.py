@@ -233,7 +233,8 @@ def analyze_chapter_to_world_proposals(db: Session, project_id: str, chapter_ind
         }
     chapter = _require_chapter(db, project_id, chapter_index)
     setup = db.query(Setup).filter(Setup.project_id == project_id).first()
-    characters = setup.characters if setup and setup.characters else _characters_from_world_model(db, project_id, profile.version)
+    world_model_characters = _characters_from_world_model(db, project_id, profile.version)
+    characters = world_model_characters or (setup.characters if setup and setup.characters else [])
     facts = L1RuleExtractor().extract(chapter, characters)
     candidates = [
         _candidate_from_l1_fact(project_id=project_id, profile=profile, chapter=chapter, fact=fact)
@@ -271,25 +272,31 @@ def analyze_chapter_to_world_proposals(db: Session, project_id: str, chapter_ind
 
     bundle_id = None
     if new_candidates:
-        bundle = create_bundle(
-            db=db,
-            project_id=project_id,
-            project_profile_version_id=profile.id,
-            profile_version=profile.version,
-            created_by=ATHENA_ANALYZER,
-            title=f"第{chapter_index}章世界事实候选",
-            summary=f"从《{chapter.title}》自动抽取 {len(new_candidates)} 条低风险世界事实候选。",
-        )
-        bundle_id = bundle.id
-        for candidate in new_candidates:
-            write_candidate_fact(
+        try:
+            bundle = create_bundle(
                 db=db,
-                bundle_id=bundle.id,
+                project_id=project_id,
+                project_profile_version_id=profile.id,
+                profile_version=profile.version,
                 created_by=ATHENA_ANALYZER,
-                candidate=candidate,
+                title=f"第{chapter_index}章世界事实候选",
+                summary=f"从《{chapter.title}》自动抽取 {len(new_candidates)} 条低风险世界事实候选。",
+                commit=False,
             )
-        calculate_bundle_impact_scope(db=db, bundle_id=bundle.id)
-    db.commit()
+            bundle_id = bundle.id
+            for candidate in new_candidates:
+                write_candidate_fact(
+                    db=db,
+                    bundle_id=bundle.id,
+                    created_by=ATHENA_ANALYZER,
+                    candidate=candidate,
+                    commit=False,
+                )
+            calculate_bundle_impact_scope(db=db, bundle_id=bundle.id, commit=False)
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
     invalidate_world_projection_cache(project_id=project_id)
 
     return {
@@ -469,7 +476,7 @@ def _candidate_from_l1_fact(
     fact: dict[str, Any],
 ) -> ProposalCandidateFactCreate:
     name = str(fact.get("subject") or "").strip()
-    subject_ref = _entity_ref("char", name)
+    subject_ref = str(fact.get("subject_ref") or "").strip() or _entity_ref("char", name)
     claim_id = f"claim.chapter.{chapter.chapter_index}.{_slug(subject_ref)}.presence_count"
     return ProposalCandidateFactCreate(
         project_id=project_id,
@@ -485,6 +492,7 @@ def _candidate_from_l1_fact(
             "count": int(fact.get("new_value") or 1),
             "chapter_index": chapter.chapter_index,
             "source": "l1_rule",
+            "matched_names": fact.get("matched_names") or [name],
         },
         claim_layer="truth",
         evidence_refs=[f"chapter:{chapter.chapter_index}"],
@@ -677,7 +685,15 @@ def _characters_from_world_model(db: Session, project_id: str, profile_version: 
         .filter(WorldCharacter.project_id == project_id, WorldCharacter.profile_version == profile_version)
         .all()
     )
-    return [{"name": character.name, "character_status": "alive"} for character in characters]
+    return [
+        {
+            "ref": character.canonical_id,
+            "name": character.name,
+            "aliases": character.aliases or [],
+            "character_status": "alive",
+        }
+        for character in characters
+    ]
 
 
 def _character_descriptors(characters: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -689,7 +705,7 @@ def _character_descriptors(characters: list[dict[str, Any]]) -> list[dict[str, A
         name = str(raw_character.get("name") or "").strip()
         if not name:
             continue
-        ref = _entity_ref("char", name)
+        ref = str(raw_character.get("ref") or "").strip() or _entity_ref("char", name)
         if ref in seen_refs:
             continue
         seen_refs.add(ref)

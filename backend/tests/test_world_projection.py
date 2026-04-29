@@ -105,6 +105,51 @@ def test_projection_returns_truth_subject_knowledge_and_chapter_snapshot():
     assert chapter_one_snapshot["facts"] == {}
 
 
+def test_subject_knowledge_includes_public_truth_when_disclosure_list_is_empty():
+    facts = [
+        FactRecord(
+            claim_id="claim.hero.rank.public",
+            subject_ref="char.hero",
+            predicate="rank",
+            object_ref_or_value="captain",
+            claim_layer="truth",
+            claim_status="confirmed",
+            chapter_index=1,
+            intra_chapter_seq=1,
+        ),
+        FactRecord(
+            claim_id="claim.hero.safehouse.secret",
+            subject_ref="char.hero",
+            predicate="safehouse",
+            object_ref_or_value="loc.hidden",
+            claim_layer="truth",
+            claim_status="confirmed",
+            disclosed_to_refs=("char.handler",),
+            chapter_index=1,
+            intra_chapter_seq=2,
+        ),
+        FactRecord(
+            claim_id="claim.hero.rank.detective-belief",
+            subject_ref="char.hero",
+            predicate="rank",
+            object_ref_or_value="smuggler",
+            claim_layer="belief",
+            claim_status="confirmed",
+            perspective_ref="char.detective",
+            chapter_index=1,
+            intra_chapter_seq=3,
+        ),
+    ]
+
+    detective_view = project_subject_knowledge(subject_ref="char.detective", events=[], facts=facts)
+    handler_view = project_subject_knowledge(subject_ref="char.handler", events=[], facts=facts)
+
+    assert detective_view["facts"]["char.hero"]["rank"] == "smuggler"
+    assert "safehouse" not in detective_view["facts"]["char.hero"]
+    assert handler_view["facts"]["char.hero"]["rank"] == "captain"
+    assert handler_view["facts"]["char.hero"]["safehouse"] == "loc.hidden"
+
+
 def test_projection_uses_validity_windows_and_order_invariant_fact_priority():
     anchors = [
         AnchorRecord(anchor_id="anchor.ch2.s1", chapter_index=2, intra_chapter_seq=1),

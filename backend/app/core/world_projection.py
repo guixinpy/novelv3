@@ -188,7 +188,9 @@ def _materialize_fact_map(facts: Iterable[FactRecord]) -> dict[str, dict[str, An
 def _fact_is_visible_to_subject(*, fact: FactRecord, subject_ref: str) -> bool:
     if fact.perspective_ref == subject_ref:
         return True
-    return fact.claim_layer == "truth" and subject_ref in fact.disclosed_to_refs
+    if fact.claim_layer != "truth":
+        return False
+    return not fact.disclosed_to_refs or subject_ref in fact.disclosed_to_refs
 
 
 def _event_is_visible_to_subject(*, event: LedgerEvent, subject_ref: str) -> bool:

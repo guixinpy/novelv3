@@ -42,6 +42,7 @@ def create_bundle(
     title: str,
     summary: str = "",
     parent_bundle_id: str | None = None,
+    commit: bool = True,
 ) -> WorldProposalBundle:
     _resolve_project_profile_binding_or_error(
         db=db,
@@ -68,8 +69,11 @@ def create_bundle(
         created_by=created_by,
     )
     db.add(bundle)
-    db.commit()
-    db.refresh(bundle)
+    if commit:
+        db.commit()
+        db.refresh(bundle)
+    else:
+        db.flush()
     return bundle
 
 
@@ -102,6 +106,7 @@ def write_candidate_fact(
     bundle_id: str,
     created_by: str,
     candidate: ProposalCandidateFactCreate,
+    commit: bool = True,
 ) -> WorldProposalItem:
     bundle = _get_bundle_or_error(db=db, bundle_id=bundle_id)
     expected_contract_version = _resolve_bundle_contract_version(db=db, bundle=bundle)
@@ -143,12 +148,15 @@ def write_candidate_fact(
         created_by=created_by,
     )
     db.add(item)
-    db.commit()
-    db.refresh(item)
+    if commit:
+        db.commit()
+        db.refresh(item)
+    else:
+        db.flush()
     return item
 
 
-def calculate_bundle_impact_scope(*, db: Session, bundle_id: str) -> WorldProposalImpactScopeSnapshot:
+def calculate_bundle_impact_scope(*, db: Session, bundle_id: str, commit: bool = True) -> WorldProposalImpactScopeSnapshot:
     bundle = _get_bundle_or_error(db=db, bundle_id=bundle_id)
     items = db.query(WorldProposalItem).filter(WorldProposalItem.bundle_id == bundle_id).all()
     affected_subject_refs = sorted({item.subject_ref for item in items})
@@ -184,8 +192,11 @@ def calculate_bundle_impact_scope(*, db: Session, bundle_id: str) -> WorldPropos
         },
     )
     db.add(snapshot)
-    db.commit()
-    db.refresh(snapshot)
+    if commit:
+        db.commit()
+        db.refresh(snapshot)
+    else:
+        db.flush()
     return snapshot
 
 
@@ -312,6 +323,18 @@ def _sync_approved_fact_retrieval_document(*, db: Session, fact_id: str, project
     except Exception:
         db.rollback()
         logger.exception("Failed to sync retrieval document for approved world fact %s in project %s", fact_id, project_id)
+
+
+def _delete_rolled_back_fact_retrieval_document(*, db: Session, fact_id: str, project_id: str) -> None:
+    fact = db.query(WorldFactClaim).filter(WorldFactClaim.id == fact_id).one_or_none()
+    if fact is None:
+        return
+    try:
+        delete_fact_retrieval_document(db=db, fact=fact)
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception("Failed to delete retrieval document for rolled back world fact %s in project %s", fact_id, project_id)
 
 
 def split_bundle(
@@ -446,9 +469,9 @@ def rollback_review(
     )
     if item.item_status == "rolled_back" or claim.claim_status == "rolled_back":
         raise ValueError(f"approval review {review.id} has already been rolled back")
+    rolled_back_fact_id = claim.id
     claim.claim_status = "rolled_back"
     item.item_status = "rolled_back"
-    delete_fact_retrieval_document(db=db, fact=claim)
 
     rollback = WorldProposalReview(
         project_id=item.project_id,
@@ -473,6 +496,7 @@ def rollback_review(
         if _is_duplicate_rollback_integrity_error(exc):
             raise ValueError(f"approval review {review.id} has already been rolled back") from exc
         raise ValueError(f"rollback review {review.id} failed to commit: {_describe_integrity_error(exc)}") from exc
+    _delete_rolled_back_fact_retrieval_document(db=db, fact_id=rolled_back_fact_id, project_id=item.project_id)
     invalidate_world_projection_cache(project_id=item.project_id)
     db.refresh(rollback)
     return rollback
