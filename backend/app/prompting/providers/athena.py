@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.core.athena_longform import build_chapter_context_package
 from app.core.model_call_trace import build_context_block
+from app.prompting.providers.errors import build_provider_error_block
 
 
 def build_athena_chapter_context_block(
@@ -11,15 +12,19 @@ def build_athena_chapter_context_block(
     *,
     project_id: str,
     chapter_index: int,
-) -> tuple[dict | None, dict[str, Any] | None]:
+) -> tuple[dict | None, dict[str, Any] | None, dict | None]:
     try:
         package = build_chapter_context_package(db=db, project_id=project_id, chapter_index=chapter_index)
-    except Exception:
-        return None, None
+    except Exception as exc:
+        return None, None, build_provider_error_block(
+            key="athena_context_error",
+            provider="Athena",
+            exc=exc,
+        )
 
     prompt_context = package.get("prompt_context")
     if not prompt_context:
-        return None, package
+        return None, package, None
 
     profile_version = package.get("profile_version")
     block = build_context_block(
@@ -49,7 +54,7 @@ def build_athena_chapter_context_block(
         "profile_version": profile_version,
         "project_profile_version_id": package.get("project_profile_version_id"),
     }
-    return block, package
+    return block, package, None
 
 
 def athena_context_has_retrieval(package: dict[str, Any] | None) -> bool:

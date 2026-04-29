@@ -275,3 +275,39 @@ def test_chapter_budget_keeps_style_and_few_shot_ahead_of_large_setup(monkeypatc
     assert "青云宗" in message
     budget = payload["trace_metadata"]["budget"]
     assert budget["omitted_blocks"] > 0 or budget["omitted_block_keys"]
+
+
+def test_chapter_provider_failures_are_trace_only_context_blocks(monkeypatch, db_session):
+    project = _project(db_session, id="chapter-prompt-provider-errors", style_config=None)
+    setup = _setup(db_session, project.id)
+
+    def raise_athena(**kwargs):
+        raise RuntimeError("athena package failed")
+
+    def raise_retrieval(**kwargs):
+        raise ValueError("retrieval index failed")
+
+    monkeypatch.setattr("app.prompting.providers.athena.build_chapter_context_package", raise_athena)
+    monkeypatch.setattr("app.prompting.providers.retrieval.build_chapter_retrieval_context", raise_retrieval)
+
+    payload = chapters._build_chapter_call_payload(db_session, project, setup, 1, "")
+
+    assert payload["messages"]
+    message = payload["messages"][0]["content"]
+    assert "athena package failed" not in message
+    assert "retrieval index failed" not in message
+
+    error_blocks = {
+        block["key"]: block
+        for block in payload["context_blocks"]
+        if block["kind"] == "provider_error"
+    }
+    assert {"athena_context_error", "retrieval_context_error"} <= set(error_blocks)
+    assert "Athena" in error_blocks["athena_context_error"]["content"]
+    assert "RuntimeError" in error_blocks["athena_context_error"]["content"]
+    assert "athena package failed" in error_blocks["athena_context_error"]["content"]
+    assert "retrieval" in error_blocks["retrieval_context_error"]["content"]
+    assert "ValueError" in error_blocks["retrieval_context_error"]["content"]
+    assert "retrieval index failed" in error_blocks["retrieval_context_error"]["content"]
+    assert error_blocks["athena_context_error"]["metadata"]["trace_only"] is True
+    assert error_blocks["retrieval_context_error"]["metadata"]["trace_only"] is True

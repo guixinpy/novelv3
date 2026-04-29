@@ -70,19 +70,23 @@ def build_chapter_prompt_context_blocks(
     if previous_block:
         model_blocks.append(_prioritized(previous_block, PRIORITY_PREVIOUS_CHAPTER))
 
-    athena_block, athena_package = build_athena_chapter_context_block(
+    athena_block, athena_package, athena_error_block = build_athena_chapter_context_block(
         db,
         project_id=project.id,
         chapter_index=chapter_index,
     )
     if athena_block:
         model_blocks.append(_prioritized(athena_block, PRIORITY_ATHENA_CONTEXT))
+    if athena_error_block:
+        trace_only_blocks.append(athena_error_block)
 
-    retrieval_block, _retrieval_context = build_chapter_retrieval_block(
+    retrieval_block, _retrieval_context, retrieval_error_block = build_chapter_retrieval_block(
         db,
         project_id=project.id,
         chapter_index=chapter_index,
     )
+    if retrieval_error_block:
+        trace_only_blocks.append(retrieval_error_block)
     if retrieval_block:
         if athena_context_has_retrieval(athena_package):
             retrieval_block = _prioritized(retrieval_block, PRIORITY_RETRIEVAL_EVIDENCE)

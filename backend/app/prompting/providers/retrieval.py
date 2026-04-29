@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.core.athena_retrieval import build_chapter_retrieval_context
 from app.core.model_call_trace import build_context_block
+from app.prompting.providers.errors import build_provider_error_block
 
 
 def build_chapter_retrieval_block(
@@ -11,17 +12,21 @@ def build_chapter_retrieval_block(
     *,
     project_id: str,
     chapter_index: int,
-) -> tuple[dict | None, dict[str, Any] | None]:
+) -> tuple[dict | None, dict[str, Any] | None, dict | None]:
     try:
         retrieval_context = build_chapter_retrieval_context(
             db=db,
             project_id=project_id,
             chapter_index=chapter_index,
         )
-    except Exception:
-        return None, None
+    except Exception as exc:
+        return None, None, build_provider_error_block(
+            key="retrieval_context_error",
+            provider="retrieval",
+            exc=exc,
+        )
     if not retrieval_context:
-        return None, None
+        return None, None, None
 
     section = retrieval_context.get("section") or {}
     items = section.get("items") or []
@@ -46,4 +51,4 @@ def build_chapter_retrieval_block(
         ],
     )
     block["metadata"] = {"result_count": len(items)}
-    return block, retrieval_context
+    return block, retrieval_context, None
