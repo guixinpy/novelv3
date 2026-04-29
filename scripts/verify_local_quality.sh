@@ -43,3 +43,10 @@ if [[ -n "${PERF_SMOKE_BASE_URL:-}" && -n "${PERF_SMOKE_PROJECT_ID:-}" && -n "${
 else
   echo "Skipped: set PERF_SMOKE_BASE_URL, PERF_SMOKE_PROJECT_ID, and PERF_SMOKE_SESSION to enable."
 fi
+
+section "Frontend E2E"
+if [[ "${RUN_E2E:-0}" == "1" ]]; then
+  "$ROOT_DIR/scripts/verify_frontend_e2e.sh"
+else
+  echo "Skipped: set RUN_E2E=1 to enable."
+fi

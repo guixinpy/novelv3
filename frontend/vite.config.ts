@@ -1,3 +1,4 @@
+/// <reference types="vitest" />
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
@@ -29,5 +30,8 @@ export default defineConfig({
         },
       },
     },
+  },
+  test: {
+    exclude: ['e2e/**', '**/node_modules/**', '**/dist/**'],
   },
 })
