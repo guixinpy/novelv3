@@ -27,14 +27,24 @@ _CHINESE_DIGITS = {
 
 def parse_chapter_index(text: str | None) -> int | None:
     value = (text or "").strip().lower()
-    digit_match = re.search(r"第\s*(\d{1,3})\s*章", value) or re.search(r"^\s*(\d{1,3})(?:\s|$)", value)
-    if digit_match:
-        return int(digit_match.group(1))
+    leading_digit_match = re.search(r"^\s*(?:第\s*)?(\d{1,3})(?:\s*章|\s|$)", value)
+    if leading_digit_match:
+        return int(leading_digit_match.group(1))
 
-    chinese_match = re.search(r"第\s*([零〇一二两三四五六七八九十]{1,4})\s*章", value)
-    if not chinese_match:
+    leading_chinese_match = re.search(r"^\s*(?:第\s*)?([零〇一二两三四五六七八九十]{1,4})\s*章", value)
+    if leading_chinese_match:
+        return _parse_chinese_chapter_number(leading_chinese_match.group(1))
+
+    matches: list[tuple[int, int]] = []
+    for match in re.finditer(r"第\s*(\d{1,3})\s*章", value):
+        matches.append((match.start(), int(match.group(1))))
+    for match in re.finditer(r"第\s*([零〇一二两三四五六七八九十]{1,4})\s*章", value):
+        parsed = _parse_chinese_chapter_number(match.group(1))
+        if parsed is not None:
+            matches.append((match.start(), parsed))
+    if not matches:
         return None
-    return _parse_chinese_chapter_number(chinese_match.group(1))
+    return min(matches, key=lambda item: item[0])[1]
 
 
 def _parse_chinese_chapter_number(value: str) -> int | None:

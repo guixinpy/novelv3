@@ -16,7 +16,7 @@ from app.core.chat_commands import (
     is_supported_chat_command,
 )
 from app.core.chat_compaction import build_compaction_summary
-from app.core.intent_router import IntentRouter
+from app.core.intent_router import IntentRouter, parse_chapter_index
 from app.models import AIModelCallTrace, Dialog, Outline, PendingAction, Setup, Storyline
 from app.schemas import ProjectDiagnosisOut
 
@@ -87,6 +87,29 @@ def test_chat_command_registry_helpers_cover_expected_commands():
     assert command_to_action_type("chapter") == "preview_chapter"
     assert command_to_action_type("clear") is None
     assert command_to_action_type("compact") is None
+
+
+def test_chapter_command_leading_index_wins_over_context_mentions(client):
+    r = client.post("/api/v1/projects", json={"name": "Test"})
+    pid = r.json()["id"]
+
+    r2 = client.post("/api/v1/dialog/chat", json={
+        "project_id": pid,
+        "input_type": "command",
+        "command_name": "chapter",
+        "command_args": "2 第二章承接第1章的原始记忆芯片",
+    })
+
+    assert r2.status_code == 200
+    body = r2.json()
+    assert body["pending_action"]["params"]["chapter_index"] == 2
+    assert "第2章正文" in body["pending_action"]["description"]
+
+
+def test_parse_chapter_index_uses_earliest_chapter_mention():
+    assert parse_chapter_index("继续写第二章，承接第1章") == 2
+    assert parse_chapter_index("写第二章承接第1章的原始记忆芯片") == 2
+    assert parse_chapter_index("生成第2章，呼应第一章") == 2
 
 
 @pytest.mark.asyncio
