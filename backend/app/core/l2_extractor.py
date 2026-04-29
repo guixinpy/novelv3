@@ -1,18 +1,6 @@
 from app.config import load_api_key
 from app.core.ai_service import AIService
-
-EXTRACTION_PROMPT = """分析以下章节内容，提取所有事实变化。以 JSON 格式返回，包含一个 "facts" 数组，每个元素包含：
-- type: character_state_change / location_presence / time_reference / relationship_change
-- subject: 涉及的角色或实体名
-- attribute: 变化的属性
-- new_value: 新状态值
-- evidence: 原文证据（引用原文）
-- confidence: 置信度 0-1
-
-章节内容：
-{content}
-
-返回格式：{{"facts": [...]}}"""
+from app.prompting.assembler import PromptAssembler
 
 
 class L2LLMExtractor:
@@ -22,7 +10,10 @@ class L2LLMExtractor:
     async def extract(self, chapter_content: str) -> list[dict]:
         if not load_api_key():
             return []
-        prompt = EXTRACTION_PROMPT.format(content=chapter_content[:3000])
+        prompt = PromptAssembler().build(
+            "athena.extract_l2",
+            {"content": chapter_content[:3000]},
+        ).content
         try:
             result = await self.ai_service.complete(
                 [{"role": "user", "content": prompt}],

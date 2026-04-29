@@ -1,4 +1,5 @@
 import pytest
+from pathlib import Path
 
 from app.prompting.assembler import PromptAssembler, build_generation_payload
 from app.prompting.budget import PromptBudgeter
@@ -24,10 +25,12 @@ def test_registry_contains_expected_production_prompts():
         "dialog.athena",
         "dialog.compact",
         "project.diagnose",
+        "athena.extract_l2",
     }
     assert PROMPT_REGISTRY["setup.generate"].template_name == "generate_setup"
     assert PROMPT_REGISTRY["chapter.generate"].output_type == "plain_text"
-    assert "athena.extract_l2" not in PROMPT_REGISTRY
+    assert PROMPT_REGISTRY["athena.extract_l2"].template_name == "athena_extract_l2"
+    assert PROMPT_REGISTRY["athena.extract_l2"].output_type == "json"
 
 
 def test_renderer_returns_stable_template_hash():
@@ -302,3 +305,49 @@ def test_trace_metadata_contains_prompt_and_budget_data():
     assert metadata["template_name"] == "diagnose_project"
     assert metadata["template_hash"] == result.template_hash
     assert metadata["budget"]["truncated_blocks"] == ["diagnosis"]
+
+
+def test_athena_extract_l2_prompt_renders_without_unresolved_placeholders():
+    result = PromptAssembler().build(
+        "athena.extract_l2",
+        {"content": "林深在灯塔发现记忆潮汐将在午夜回卷。"},
+    )
+
+    assert result.prompt_id == "athena.extract_l2"
+    assert result.template_name == "athena_extract_l2"
+    assert result.output_type == "json"
+    assert "林深在灯塔发现记忆潮汐将在午夜回卷。" in result.content
+    assert "${" not in result.content
+    assert "{{" not in result.content
+
+
+def test_project_diagnose_prompt_stays_registry_renderable():
+    result = PromptAssembler().build(
+        "project.diagnose",
+        {
+            "current_phase": "setup",
+            "has_setup": "true",
+            "has_storyline": "false",
+            "has_outline": "false",
+            "has_chapters": "false",
+        },
+    )
+
+    assert result.prompt_id == "project.diagnose"
+    assert result.template_name == "diagnose_project"
+    assert "${" not in result.content
+
+
+def test_chat_project_assistant_is_unregistered_legacy_template_without_backend_call_site():
+    assert "chat_project_assistant" not in {
+        spec.template_name for spec in PROMPT_REGISTRY.values()
+    }
+
+    app_dir = Path(__file__).resolve().parents[1] / "app"
+    references = []
+    for path in app_dir.rglob("*.py"):
+        text = path.read_text(encoding="utf-8")
+        if "chat_project_assistant" in text:
+            references.append(path.relative_to(app_dir.parent).as_posix())
+
+    assert references == []

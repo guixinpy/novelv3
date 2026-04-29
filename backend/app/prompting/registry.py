@@ -91,4 +91,11 @@ PROMPT_REGISTRY: dict[str, PromptSpec] = {
             "has_chapters",
         ),
     ),
+    "athena.extract_l2": PromptSpec(
+        prompt_id="athena.extract_l2",
+        version="1",
+        template_name="athena_extract_l2",
+        output_type="json",
+        required_vars=("content",),
+    ),
 }

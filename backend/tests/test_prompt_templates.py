@@ -8,6 +8,7 @@ SAMPLE_PROMPT_VARS = {
     "characters": '[{"name":"林深"}]',
     "completed_items": "设定",
     "complexity": "中等",
+    "content": "林深在灯塔发现记忆潮汐将在午夜回卷。",
     "core_concept": '{"hook":"潮汐门"}',
     "current_phase": "setup",
     "current_words": "0",

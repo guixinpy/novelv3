@@ -2,8 +2,8 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
-from app.core.prompt_manager import PromptManager
 from app.models import DialogMessage
+from app.prompting.assembler import PromptAssembler
 from app.schemas import ProjectDiagnosisOut
 
 
@@ -42,13 +42,13 @@ async def build_compaction_summary(
     fallback_summary = _build_deterministic_fallback(messages, diagnosis)
     summary_text = fallback_summary
 
-    prompt = PromptManager().load(
-        "compact_dialog_context",
+    prompt = PromptAssembler().build(
+        "dialog.compact",
         {
             "project_name": project_name or "未命名项目",
             "dialog_lines": _build_dialog_lines(messages),
         },
-    )
+    ).content
 
     try:
         result = await ai_service.complete(

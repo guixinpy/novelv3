@@ -176,6 +176,59 @@ async def test_compaction_fallback_summary_keeps_goal_action_diagnosis_and_comma
     assert "主角是植物学家" in summary.summary_text
 
 
+@pytest.mark.asyncio
+async def test_compaction_summary_uses_registry_backed_prompt(monkeypatch):
+    build_calls = []
+
+    class FakeAssembler:
+        def build(self, prompt_id, variables):
+            build_calls.append((prompt_id, variables))
+            return SimpleNamespace(content="REGISTRY_COMPACT_PROMPT")
+
+    class CapturingAIService:
+        def __init__(self):
+            self.messages = None
+
+        async def complete(self, messages, **kwargs):
+            self.messages = messages
+            return SimpleNamespace(content="模型生成的压缩摘要")
+
+    monkeypatch.setattr("app.core.chat_compaction.PromptAssembler", FakeAssembler)
+
+    ai_service = CapturingAIService()
+    messages = [
+        SimpleNamespace(role="user", content="请继续生成故事线。", action_result=None, meta=None),
+        SimpleNamespace(role="assistant", content="我会参考现有设定。", action_result=None, meta=None),
+    ]
+    diagnosis = ProjectDiagnosisOut(
+        missing_items=["outline", "content"],
+        completed_items=["setup", "storyline"],
+        suggested_next_step="preview_outline",
+    )
+
+    summary = await build_compaction_summary(
+        messages,
+        ai_service=ai_service,
+        model="deepseek-chat",
+        project_name="潮汐门",
+        diagnosis=diagnosis,
+    )
+
+    assert build_calls == [
+        (
+            "dialog.compact",
+            {
+                "project_name": "潮汐门",
+                "dialog_lines": "1. [user] 请继续生成故事线。\n2. [assistant] 我会参考现有设定。",
+            },
+        )
+    ]
+    assert ai_service.messages == [
+        {"role": "system", "content": "REGISTRY_COMPACT_PROMPT"}
+    ]
+    assert summary.summary_text == "模型生成的压缩摘要"
+
+
 @patch("app.api.dialogs.load_api_key", return_value="sk-test")
 @patch("app.api.dialogs.ai_service.complete", new_callable=AsyncMock)
 def test_chat_uses_ai_service_for_free_text_when_model_available(mock_complete, mock_key, client):
