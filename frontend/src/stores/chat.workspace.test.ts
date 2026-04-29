@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useChatStore } from './chat'
+import { useProjectWorkspaceStore } from './projectWorkspace'
 import { api } from '../api/client'
 
 vi.mock('../api/client', () => ({
@@ -10,6 +11,7 @@ vi.mock('../api/client', () => ({
     resolveAction: vi.fn(),
     sendChat: vi.fn(),
     regenerateRevision: vi.fn(),
+    getBackgroundTask: vi.fn(),
   },
 }))
 
@@ -116,6 +118,84 @@ describe('chat workspace polling', () => {
     expect(
       store.messages.some((message) => (message.action_result as { status?: string } | null)?.status === 'success'),
     ).toBe(true)
+  })
+
+  it('confirm 返回 task_id 时轮询后台任务并消费 refresh targets', async () => {
+    const store = useChatStore()
+    const workspace = useProjectWorkspaceStore()
+    store.projectId = 'project-1'
+    store.pendingAction = {
+      id: 'action-1',
+      type: 'preview_setup',
+      description: '生成设定',
+      params: { project_id: 'project-1' },
+      requires_confirmation: true,
+    }
+    store.messages = [
+      { id: 'm1', role: 'assistant', content: '准备开始。' },
+    ]
+
+    vi.mocked(api.resolveAction).mockResolvedValue({
+      dialog_state: 'RUNNING',
+      message: '操作已确认，正在生成中...',
+      action_result: {
+        type: 'generate_setup',
+        status: 'generating',
+        data: { status: 'generating', task_id: 'task-1' },
+      },
+      ui_hint: null,
+      refresh_targets: [],
+    })
+    vi.mocked(api.getDiagnosis).mockResolvedValue({
+      missing_items: [],
+      completed_items: ['setup'],
+      suggested_next_step: null,
+    })
+    vi.mocked(api.getBackgroundTask)
+      .mockResolvedValueOnce({
+        task_id: 'task-1',
+        task_type: 'generate_setup',
+        status: 'running',
+        result: null,
+        error: null,
+        ui_hint: null as any,
+        refresh_targets: [],
+        created_at: null,
+        started_at: null,
+        finished_at: null,
+      })
+      .mockResolvedValueOnce({
+        task_id: 'task-1',
+        task_type: 'generate_setup',
+        status: 'failed',
+        result: null,
+        error: 'API key not configured',
+        ui_hint: null as any,
+        refresh_targets: ['setup'],
+        created_at: null,
+        started_at: null,
+        finished_at: null,
+      })
+    vi.mocked(api.getMessages).mockResolvedValue([
+      {
+        id: 'm2',
+        role: 'system',
+        content: '设定生成失败：API key not configured',
+        action_result: { type: 'generate_setup', status: 'failed' },
+      },
+    ])
+
+    await store.resolveAction('confirm')
+    await Promise.resolve()
+    expect(api.getBackgroundTask).toHaveBeenCalledWith('task-1')
+    expect(api.getMessages).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(api.getBackgroundTask).toHaveBeenCalledTimes(2)
+    expect(api.getMessages).toHaveBeenCalledWith('project-1', 'hermes', { after_id: 'm1' })
+    expect([...workspace.dirtyTargets]).toEqual(['setup'])
+    expect(store.loading).toBe(false)
+    expect(store.messages.some((message) => message.content.includes('API key'))).toBe(true)
   })
 
   it('后台任务 running 期间 send/quick action 会被 guard 拒绝', async () => {

@@ -5,6 +5,7 @@ import type {
   ChatHistoryMessage,
   ChatMessageType,
   ChatResponse,
+  BackgroundTaskResponse,
   PendingAction as ApiPendingAction,
   ProjectDiagnosis,
   ResolveActionResponse,
@@ -12,6 +13,7 @@ import type {
   WorkspaceBootstrap,
 } from '../api/types'
 import type { ChatCommandName } from '../components/workspace/chatCommands'
+import { useProjectWorkspaceStore } from './projectWorkspace'
 
 export type PendingAction = ApiPendingAction
 export type Diagnosis = ProjectDiagnosis
@@ -45,7 +47,18 @@ function toChatMessage(message: ChatHistoryMessage): ChatMessage {
 function isTerminalActionResult(actionResult: Record<string, unknown> | null | undefined, actionType: string) {
   if (!actionResult) return false
   return actionResult.type === actionType
-    && ['completed', 'success', 'failed', 'cancelled', 'revised'].includes(String(actionResult.status || ''))
+    && isTerminalStatus(String(actionResult.status || ''))
+}
+
+function isTerminalStatus(status: string) {
+  return ['completed', 'success', 'failed', 'cancelled', 'revised'].includes(status)
+}
+
+function getActionTaskId(actionResult: Record<string, unknown> | null | undefined) {
+  const data = actionResult?.data
+  if (!data || typeof data !== 'object') return ''
+  const taskId = (data as Record<string, unknown>).task_id
+  return typeof taskId === 'string' ? taskId : ''
 }
 
 function findRecoverableRunningActionType(history: ChatHistoryMessage[] | null | undefined) {
@@ -262,7 +275,13 @@ export const useChatStore = defineStore('chat', () => {
       historyCursor.value += 1
       if (decision === 'confirm') {
         keepLoadingUntilTerminal = true
-        void pollForCompletion(String(res.action_result?.type || ''), pidSnapshot, versionSnapshot)
+        const actionType = String(res.action_result?.type || '')
+        const taskId = getActionTaskId(res.action_result)
+        if (taskId) {
+          void pollTaskCompletion(taskId, actionType, pidSnapshot, versionSnapshot)
+        } else {
+          void pollForCompletion(actionType, pidSnapshot, versionSnapshot)
+        }
       }
       await loadDiagnosis(pidSnapshot, versionSnapshot)
       return res
@@ -361,12 +380,13 @@ export const useChatStore = defineStore('chat', () => {
         await new Promise(r => setTimeout(r, 3000))
         try {
           if (!isActiveSnapshot(pidSnapshot, versionSnapshot)) break
-          const canLoadIncrementally = Boolean(lastHistoryMessageId.value)
+          const currentLastMessageId = getCurrentLastMessageId()
+          const canLoadIncrementally = Boolean(currentLastMessageId)
           const history = await api.getMessages(
             pidSnapshot,
             'hermes',
             canLoadIncrementally
-              ? { after_id: lastHistoryMessageId.value as string }
+              ? { after_id: currentLastMessageId as string }
               : { limit: CHAT_HISTORY_PAGE_SIZE },
           )
           if (!isActiveSnapshot(pidSnapshot, versionSnapshot)) break
@@ -388,6 +408,84 @@ export const useChatStore = defineStore('chat', () => {
             }
           }
         } catch { /* retry */ }
+      }
+    } finally {
+      if (!isActiveSnapshot(pidSnapshot, versionSnapshot)) return // eslint-disable-line no-unsafe-finally
+      loading.value = false
+      if (!reachedTerminal) {
+        messages.value.push({
+          role: 'system',
+          content: '后台任务状态获取超时，请稍后刷新重试。',
+        })
+      }
+    }
+  }
+
+  function getCurrentLastMessageId() {
+    if (lastHistoryMessageId.value) return lastHistoryMessageId.value
+    for (let index = messages.value.length - 1; index >= 0; index -= 1) {
+      const id = messages.value[index]?.id
+      if (id) return id
+    }
+    return null
+  }
+
+  async function appendNewMessages(pidSnapshot: string, versionSnapshot: number) {
+    const currentLastMessageId = getCurrentLastMessageId()
+    const canLoadIncrementally = Boolean(currentLastMessageId)
+    const history = await api.getMessages(
+      pidSnapshot,
+      'hermes',
+      canLoadIncrementally
+        ? { after_id: currentLastMessageId as string }
+        : { limit: CHAT_HISTORY_PAGE_SIZE },
+    )
+    if (!isActiveSnapshot(pidSnapshot, versionSnapshot)) return []
+    const newMessages = canLoadIncrementally
+      ? history || []
+      : (history || []).slice(historyCursor.value)
+    if (newMessages.length) {
+      for (const message of newMessages) {
+        messages.value.push(toChatMessage(message))
+      }
+      historyCursor.value = canLoadIncrementally
+        ? historyCursor.value + newMessages.length
+        : (history || []).length
+      lastHistoryMessageId.value = newMessages[newMessages.length - 1]?.id || lastHistoryMessageId.value
+    }
+    return newMessages
+  }
+
+  async function pollTaskCompletion(
+    taskId: string,
+    actionType: string,
+    pidSnapshot = projectId.value,
+    versionSnapshot = initVersion.value,
+  ) {
+    if (!pidSnapshot || !taskId) return
+    const workspace = useProjectWorkspaceStore()
+    const maxAttempts = 60
+    let reachedTerminal = false
+    try {
+      for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        if (!isActiveSnapshot(pidSnapshot, versionSnapshot)) break
+        if (attempt > 0) await new Promise(r => setTimeout(r, 1000))
+        let task: BackgroundTaskResponse | null = null
+        try {
+          task = await api.getBackgroundTask(taskId)
+        } catch {
+          continue
+        }
+        if (!isActiveSnapshot(pidSnapshot, versionSnapshot)) break
+        if (!isTerminalStatus(String(task.status || ''))) continue
+        reachedTerminal = true
+        workspace.markDirty(task.refresh_targets || [])
+        const newMessages = await appendNewMessages(pidSnapshot, versionSnapshot)
+        if (!newMessages.some((message) => isTerminalActionResult(message.action_result || null, actionType))) {
+          await loadHistory(pidSnapshot, versionSnapshot)
+        }
+        await loadDiagnosis(pidSnapshot, versionSnapshot)
+        break
       }
     } finally {
       if (!isActiveSnapshot(pidSnapshot, versionSnapshot)) return // eslint-disable-line no-unsafe-finally
