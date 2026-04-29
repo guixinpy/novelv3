@@ -265,6 +265,23 @@ export const useWorldModelStore = defineStore('worldModel', () => {
     }
   }
 
+  async function loadOverview(projectId: string) {
+    ensureProjectScope(projectId)
+    const snapshot = captureRequest(projectId, ['overview'])
+    error.value = ''
+
+    try {
+      const overview = await api.getWorldModelOverview(projectId)
+      if (!isLatestRequest(snapshot, 'overview')) return
+      projectProfile.value = overview.project_profile
+      projection.value = overview.projection
+      loaded.value = true
+    } catch (err) {
+      assignErrorForSnapshot(snapshot, ['overview'], toErrorMessage(err))
+      loaded.value = true
+    }
+  }
+
   async function loadBundleDetail(projectId: string, bundleId: string, options: BundleDetailLoadOptions = {}) {
     const snapshot = options.requestSnapshot ?? captureRequest(projectId, ['detail'])
 
@@ -461,6 +478,7 @@ export const useWorldModelStore = defineStore('worldModel', () => {
     hasWorldData,
     isActionPending,
     resetProjectScopedState,
+    loadOverview,
     loadSetupPanelData,
     selectBundle,
     loadSubjectKnowledge,

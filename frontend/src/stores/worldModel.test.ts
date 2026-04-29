@@ -182,6 +182,20 @@ describe('worldModel store', () => {
     vi.resetAllMocks()
   })
 
+  it('loadOverview() 只加载 profile 和投影，不触发 proposal 列表请求', async () => {
+    vi.mocked(api.getWorldModelOverview).mockResolvedValue(createOverview('captain'))
+    const store = useWorldModelStore()
+
+    await store.loadOverview('project-1')
+
+    expect(store.projectProfile?.id).toBe('profile-1')
+    expect(store.projection?.facts['char.hero'].rank).toBe('captain')
+    expect(store.loaded).toBe(true)
+    expect(api.getWorldModelOverview).toHaveBeenCalledWith('project-1')
+    expect(api.listWorldProposalBundles).not.toHaveBeenCalled()
+    expect(api.getWorldProposalBundle).not.toHaveBeenCalled()
+  })
+
   it('loadSetupPanelData() 会加载当前 profile、投影和 bundles，并默认选中首个 bundle', async () => {
     vi.mocked(api.getWorldModelOverview).mockResolvedValue({
       project_profile: {

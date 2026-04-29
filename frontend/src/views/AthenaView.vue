@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useProjectStore } from '../stores/project'
 import { useAthenaStore } from '../stores/athena'
+import { useWorldModelStore } from '../stores/worldModel'
 import { useUiStore, type AthenaSection } from '../stores/ui'
 import BaseButton from '../components/base/BaseButton.vue'
 import EntityTable from '../components/athena/EntityTable.vue'
@@ -10,8 +11,8 @@ import RelationTable from '../components/athena/RelationTable.vue'
 import RuleList from '../components/athena/RuleList.vue'
 import TimelineView from '../components/athena/TimelineView.vue'
 import ProjectionViewer from '../components/athena/ProjectionViewer.vue'
-import KnowledgeViewer from '../components/athena/KnowledgeViewer.vue'
-import ProposalList from '../components/athena/ProposalList.vue'
+import SubjectKnowledgePanel from '../components/athena/SubjectKnowledgePanel.vue'
+import ProposalWorkbench from '../components/athena/ProposalWorkbench.vue'
 import ConsistencyList from '../components/athena/ConsistencyList.vue'
 import OptimizationPanel from '../components/athena/OptimizationPanel.vue'
 import AthenaChatPanel from '../components/athena/AthenaChatPanel.vue'
@@ -58,6 +59,7 @@ const route = useRoute()
 const router = useRouter()
 const project = useProjectStore()
 const athena = useAthenaStore()
+const worldModel = useWorldModelStore()
 const ui = useUiStore()
 const pid = computed(() => route.params.id as string)
 const chatOpen = ref(false)
@@ -103,6 +105,7 @@ const rules = computed(() => athena.ontology?.rules || [])
 const timelineEvents = computed(() => athena.timeline?.events || [])
 const timelineAnchors = computed(() => athena.timeline?.anchors || [])
 const consistencyIssues = computed<any[]>(() => athena.consistencyIssues || [])
+const activeError = computed(() => athena.error || worldModel.error || '')
 const entityNotice = computed(() => {
   if (!entitySections.has(activeSection.value)) return ''
   if (athena.ontology?.profile_version !== null) return ''
@@ -144,19 +147,19 @@ async function loadSectionData(section: AthenaSection) {
     if (!athena.ontology) await athena.loadOntology(id)
   }
   if (section === 'projection') {
-    if (!athena.projection) await athena.loadState(id)
+    if (!worldModel.projection) await worldModel.loadOverview(id)
   }
   if (section === 'timeline') {
     if (!athena.timeline) await athena.loadTimeline(id)
   }
   if (section === 'knowledge') {
-    if (!athena.projection) await athena.loadState(id)
+    if (!worldModel.projection) await worldModel.loadOverview(id)
   }
   if (section === 'retrieval') {
     await athena.loadRetrievalDiagnostics(id)
   }
   if (section === 'proposals') {
-    if (!athena.proposals) await athena.loadProposals(id)
+    if (!worldModel.loaded || !worldModel.proposalBundles.length) await worldModel.loadSetupPanelData(id)
   }
   if (section === 'consistency') {
     await athena.loadConsistencyIssues(id)
@@ -190,6 +193,11 @@ async function reindexRetrieval() {
 
 async function searchRetrieval(query: string) {
   await athena.searchRetrieval(pid.value, query)
+}
+
+async function selectSubject(subjectRef: string) {
+  if (!subjectRef) return
+  await worldModel.loadSubjectKnowledge(pid.value, subjectRef)
 }
 </script>
 
@@ -237,6 +245,7 @@ async function searchRetrieval(query: string) {
 
     <!-- Main content: detail view based on active section -->
     <div class="athena-view__content">
+      <div v-if="activeError" class="athena-view__error">{{ activeError }}</div>
       <EntityTable
         v-if="entitySections.has(activeSection)"
         :entities="entities"
@@ -245,13 +254,19 @@ async function searchRetrieval(query: string) {
       />
       <RelationTable v-else-if="activeSection === 'relations'" :relations="relations" />
       <RuleList v-else-if="activeSection === 'rules'" :rules="rules" />
-      <ProjectionViewer v-else-if="activeSection === 'projection'" :projection="athena.projection" />
+      <ProjectionViewer v-else-if="activeSection === 'projection'" :projection="worldModel.projection" />
       <TimelineView
         v-else-if="activeSection === 'timeline'"
         :events="timelineEvents"
         :anchors="timelineAnchors"
       />
-      <KnowledgeViewer v-else-if="activeSection === 'knowledge'" :knowledge="athena.projection" />
+      <SubjectKnowledgePanel
+        v-else-if="activeSection === 'knowledge'"
+        :projection="worldModel.projection"
+        :subject-knowledge="worldModel.subjectKnowledge"
+        :selected-subject-ref="worldModel.selectedSubjectRef"
+        @select-subject="selectSubject"
+      />
       <RetrievalPanel
         v-else-if="activeSection === 'retrieval'"
         :diagnostics="athena.retrievalDiagnostics"
@@ -261,7 +276,7 @@ async function searchRetrieval(query: string) {
         @reindex="reindexRetrieval"
         @search="searchRetrieval"
       />
-      <ProposalList v-else-if="activeSection === 'proposals'" :project-id="pid" :proposals="athena.proposals" />
+      <ProposalWorkbench v-else-if="activeSection === 'proposals'" :project-id="pid" />
       <ConsistencyList v-else-if="activeSection === 'consistency'" :issues="consistencyIssues" />
       <OptimizationPanel v-else-if="activeSection === 'optimization'" :optimization="athena.optimization" />
       <div v-else-if="activeSection === 'outline' || activeSection === 'storyline'" class="athena-view__placeholder">
@@ -285,6 +300,18 @@ async function searchRetrieval(query: string) {
 
 .athena-view__content {
   height: 100%;
+  position: relative;
+}
+
+.athena-view__error {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-error);
+  color: var(--color-error);
+  background: var(--color-error-light);
+  font-size: var(--text-sm);
 }
 
 .athena-view__loading,
