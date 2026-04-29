@@ -17,7 +17,7 @@ export function createAthenaSectionLoader(options: AthenaSectionLoaderOptions) {
     const id = options.getProjectId()
     if (section === 'overview') {
       await options.worldModel.loadDashboard(id)
-      if (!options.worldModel.dashboard?.project_profile) {
+      if (!options.worldModel.dashboard?.project_profile && options.athena.ontology?.setup_summary) {
         await options.athena.loadSetupImportPreview(id).catch(() => undefined)
       }
     }

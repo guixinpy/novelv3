@@ -120,6 +120,7 @@ const timelineEvents = computed(() => athena.timeline?.events || [])
 const timelineAnchors = computed(() => athena.timeline?.anchors || [])
 const consistencyIssues = computed<any[]>(() => athena.consistencyIssues || [])
 const activeError = computed(() => athena.error || worldModel.error || '')
+const canImportSetup = computed(() => athena.ontology?.profile_version === null && Boolean(athena.ontology?.setup_summary))
 const entityNotice = computed(() => {
   if (!entitySections.has(activeSection.value)) return ''
   if (athena.ontology?.profile_version !== null) return ''
@@ -195,7 +196,7 @@ async function selectSubject(subjectRef: string) {
       <AthenaSubnav
         :sections="sections"
         :active-section="activeSection"
-        :can-import-setup="athena.ontology?.profile_version === null"
+        :can-import-setup="canImportSetup"
         :has-latest-chapter="Boolean(latestChapterIndex)"
         @navigate="navigateSection"
         @import-setup="importSetup"
