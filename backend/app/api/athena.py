@@ -29,6 +29,7 @@ from app.core.athena_longform import (
     analyze_chapter_to_world_proposals,
     build_chapter_context_package,
     import_setup_to_world_model,
+    preview_setup_import_to_world_model,
 )
 from app.core.athena_retrieval import (
     get_retrieval_diagnostics,
@@ -397,6 +398,11 @@ async def generate_ontology(project_id: str, db: Session = Depends(get_db)):
 @router.post("/ontology/import-setup")
 def import_ontology_setup(project_id: str, db: Session = Depends(get_db)):
     return import_setup_to_world_model(db=db, project_id=project_id)
+
+
+@router.get("/ontology/import-setup/preview")
+def preview_ontology_setup_import(project_id: str, db: Session = Depends(get_db)):
+    return preview_setup_import_to_world_model(db=db, project_id=project_id)
 
 
 # ── Layer 2: State ──

@@ -168,6 +168,56 @@ def import_setup_to_world_model(db: Session, project_id: str) -> dict[str, Any]:
     }
 
 
+def preview_setup_import_to_world_model(db: Session, project_id: str) -> dict[str, Any]:
+    _require_project(db, project_id)
+    setup = _require_setup(db, project_id)
+    profile = get_current_profile(db, project_id)
+    profile_version = profile.version if profile else None
+    imported_terms = _extract_setup_world_terms(setup)
+
+    candidates = {
+        "characters": _preview_setup_characters(setup, profile=profile, db=db, project_id=project_id),
+        "locations": _preview_setup_terms(
+            db=db,
+            project_id=project_id,
+            profile=profile,
+            prefix="loc",
+            terms=imported_terms["locations"],
+            source="setup.world_building",
+            model=WorldLocation,
+        ),
+        "factions": _preview_setup_terms(
+            db=db,
+            project_id=project_id,
+            profile=profile,
+            prefix="faction",
+            terms=imported_terms["factions"],
+            source="setup.world_building",
+            model=WorldFaction,
+        ),
+        "artifacts": _preview_setup_terms(
+            db=db,
+            project_id=project_id,
+            profile=profile,
+            prefix="artifact",
+            terms=imported_terms["artifacts"],
+            source="setup.world_building",
+            model=WorldArtifact,
+        ),
+        "rules": _preview_setup_rules(db=db, project_id=project_id, profile=profile, setup=setup),
+    }
+    return {
+        "status": "preview",
+        "project_profile_exists": profile is not None,
+        "profile_version": profile_version,
+        "would_create": {
+            "profile": 0 if profile else 1,
+            **{key: len(value) for key, value in candidates.items()},
+        },
+        "candidates": candidates,
+    }
+
+
 def analyze_chapter_to_world_proposals(db: Session, project_id: str, chapter_index: int) -> dict[str, Any]:
     _require_project(db, project_id)
     profile = get_current_profile(db, project_id)
@@ -293,6 +343,110 @@ def _create_setup_profile(db: Session, *, project: Project, setup: Setup) -> Pro
     db.add(profile)
     db.flush()
     return profile
+
+
+def _preview_setup_characters(
+    setup: Setup,
+    *,
+    profile: ProjectProfileVersion | None,
+    db: Session,
+    project_id: str,
+) -> list[dict[str, Any]]:
+    candidates = []
+    for raw_character in setup.characters or []:
+        if not isinstance(raw_character, dict):
+            continue
+        name = str(raw_character.get("name") or "").strip()
+        if not name:
+            continue
+        canonical_id = _entity_ref("char", name)
+        if _setup_entity_exists(db, model=WorldCharacter, project_id=project_id, profile=profile, canonical_id=canonical_id):
+            continue
+        candidates.append(
+            {
+                "name": name,
+                "canonical_id": canonical_id,
+                "source": "setup.characters",
+                "description": str(raw_character.get("background") or raw_character.get("personality") or ""),
+            }
+        )
+    return candidates
+
+
+def _preview_setup_terms(
+    *,
+    db: Session,
+    project_id: str,
+    profile: ProjectProfileVersion | None,
+    prefix: str,
+    terms: list[dict[str, str]],
+    source: str,
+    model,
+) -> list[dict[str, Any]]:
+    candidates = []
+    for term in terms:
+        name = str(term.get("name") or "").strip()
+        if not name:
+            continue
+        canonical_id = _entity_ref(prefix, name)
+        if _setup_entity_exists(db, model=model, project_id=project_id, profile=profile, canonical_id=canonical_id):
+            continue
+        candidates.append(
+            {
+                "name": name,
+                "canonical_id": canonical_id,
+                "source": source,
+                "description": str(term.get("notes") or ""),
+            }
+        )
+    return candidates
+
+
+def _preview_setup_rules(
+    *,
+    db: Session,
+    project_id: str,
+    profile: ProjectProfileVersion | None,
+    setup: Setup,
+) -> list[dict[str, Any]]:
+    rules_text = ""
+    if isinstance(setup.world_building, dict):
+        rules_text = str(setup.world_building.get("rules") or "").strip()
+    if not rules_text:
+        return []
+    canonical_id = "rule.setup.world-rules"
+    if _setup_entity_exists(db, model=WorldRule, project_id=project_id, profile=profile, canonical_id=canonical_id):
+        return []
+    return [
+        {
+            "name": "Setup 世界规则",
+            "canonical_id": canonical_id,
+            "source": "setup.world_building.rules",
+            "description": rules_text,
+        }
+    ]
+
+
+def _setup_entity_exists(
+    db: Session,
+    *,
+    model,
+    project_id: str,
+    profile: ProjectProfileVersion | None,
+    canonical_id: str,
+) -> bool:
+    if profile is None:
+        return False
+    return (
+        db.query(model)
+        .filter(
+            model.project_id == project_id,
+            model.profile_version == profile.version,
+            model.canonical_id == canonical_id,
+        )
+        .first()
+        is not None
+    )
 
 
 def _candidate_from_l1_fact(

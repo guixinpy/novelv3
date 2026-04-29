@@ -8,6 +8,15 @@ from sqlalchemy.orm import Session
 
 from app.core.athena_retrieval import delete_fact_retrieval_document, sync_fact_retrieval_document
 from app.core.world_projection_service import invalidate_world_projection_cache
+from app.core.world_proposal_records import child_item_from_parent, claim_payload_from_item_snapshot
+from app.core.world_proposal_state import (
+    ACTIONABLE_REVIEW_ITEM_STATUSES,
+    APPROVE_ACTIONS,
+    NON_MERGE_ACTIONS,
+    SPLITTABLE_ITEM_STATUSES,
+    ensure_item_allows_review,
+    validate_edited_fields,
+)
 from app.models import (
     GenreProfile,
     ProjectProfileVersion,
@@ -17,25 +26,7 @@ from app.models import (
     WorldProposalItem,
     WorldProposalReview,
 )
-from app.schemas.world_proposals import ProposalCandidateFactCreate, ProposalClaimEditPatch
-
-APPROVE_ACTIONS = {"approve", "approve_with_edits"}
-NON_MERGE_ACTIONS = {"reject", "mark_uncertain"}
-ACTIONABLE_REVIEW_ITEM_STATUSES = {"pending", "needs_edit"}
-APPROVED_ITEM_STATUSES = {"approved", "approved_with_edits"}
-TERMINAL_ITEM_STATUSES = APPROVED_ITEM_STATUSES | {"rejected", "uncertain", "split", "rolled_back"}
-SPLITTABLE_ITEM_STATUSES = {"pending", "needs_edit"}
-EDITABLE_CLAIM_FIELDS = {
-    "chapter_index",
-    "intra_chapter_seq",
-    "valid_from_anchor_id",
-    "valid_to_anchor_id",
-    "source_event_ref",
-    "perspective_ref",
-    "disclosed_to_refs",
-    "evidence_refs",
-    "notes",
-}
+from app.schemas.world_proposals import ProposalCandidateFactCreate
 
 
 def create_bundle(
@@ -211,7 +202,7 @@ def review_proposal_item(
         raise ValueError("approve does not accept edited_fields; use approve_with_edits instead")
 
     item_snapshot = _get_item_snapshot(db=db, proposal_item_id=proposal_item_id)
-    _ensure_item_allows_review(status=item_snapshot["item_status"], item_id=proposal_item_id, action=action)
+    ensure_item_allows_review(status=item_snapshot["item_status"], item_id=proposal_item_id, action=action)
     bundle = _get_bundle_or_error(
         db=db,
         bundle_id=item_snapshot["bundle_id"],
@@ -221,7 +212,7 @@ def review_proposal_item(
     )
     _validate_item_bundle_profile_binding(item_snapshot=item_snapshot, bundle=bundle)
     expected_contract_version = _resolve_bundle_contract_version(db=db, bundle=bundle)
-    edited_fields = _validate_edited_fields(edited_fields or {})
+    edited_fields = validate_edited_fields(edited_fields or {})
     next_item_status = "approved" if action == "approve" else "approved_with_edits"
     if action == "reject":
         next_item_status = "rejected"
@@ -262,32 +253,12 @@ def review_proposal_item(
 
     try:
         if action in APPROVE_ACTIONS:
-            claim_payload = {
-                "claim_id": item_snapshot["claim_id"],
-                "chapter_index": item_snapshot["chapter_index"],
-                "intra_chapter_seq": item_snapshot["intra_chapter_seq"],
-                "subject_ref": item_snapshot["subject_ref"],
-                "predicate": item_snapshot["predicate"],
-                "object_ref_or_value": item_snapshot["object_ref_or_value"],
-                "claim_layer": item_snapshot["claim_layer"],
-                "perspective_ref": item_snapshot["perspective_ref"],
-                "disclosed_to_refs": item_snapshot["disclosed_to_refs"],
-                "valid_from_anchor_id": item_snapshot["valid_from_anchor_id"],
-                "valid_to_anchor_id": item_snapshot["valid_to_anchor_id"],
-                "source_event_ref": item_snapshot["source_event_ref"],
-                "evidence_refs": item_snapshot["evidence_refs"],
-                "authority_type": item_snapshot["authority_type"],
-                "confidence": item_snapshot["confidence"],
-                "notes": item_snapshot["notes"],
-                "contract_version": item_snapshot["contract_version"],
-            }
-            claim_payload.update(edited_fields)
             claim = WorldFactClaim(
                 project_id=item_snapshot["project_id"],
                 project_profile_version_id=item_snapshot["project_profile_version_id"],
                 profile_version=item_snapshot["profile_version"],
                 claim_status="confirmed",
-                **claim_payload,
+                **claim_payload_from_item_snapshot(item_snapshot, edited_fields),
             )
             db.add(claim)
             db.flush()
@@ -377,32 +348,7 @@ def split_bundle(
     db.flush()
 
     for item in items:
-        child_item = WorldProposalItem(
-            project_id=item.project_id,
-            project_profile_version_id=item.project_profile_version_id,
-            profile_version=item.profile_version,
-            bundle_id=child_bundle.id,
-            parent_item_id=item.id,
-            item_status="pending",
-            claim_id=item.claim_id,
-            chapter_index=item.chapter_index,
-            intra_chapter_seq=item.intra_chapter_seq,
-            subject_ref=item.subject_ref,
-            predicate=item.predicate,
-            object_ref_or_value=item.object_ref_or_value,
-            claim_layer=item.claim_layer,
-            perspective_ref=item.perspective_ref,
-            disclosed_to_refs=item.disclosed_to_refs,
-            valid_from_anchor_id=item.valid_from_anchor_id,
-            valid_to_anchor_id=item.valid_to_anchor_id,
-            source_event_ref=item.source_event_ref,
-            evidence_refs=item.evidence_refs,
-            authority_type=item.authority_type,
-            confidence=item.confidence,
-            notes=item.notes,
-            contract_version=item.contract_version,
-            created_by=reviewer_ref,
-        )
+        child_item = child_item_from_parent(item, child_bundle_id=child_bundle.id, created_by=reviewer_ref)
         item.item_status = "split"
         db.add(child_item)
         db.add(
@@ -584,32 +530,6 @@ def _get_item_snapshot(*, db: Session, proposal_item_id: str) -> dict[str, Any]:
     if row is None:
         raise ValueError(f"proposal item {proposal_item_id} does not exist")
     return dict(row)
-
-
-def _ensure_item_allows_review(*, status: str, item_id: str, action: str) -> None:
-    if status in ACTIONABLE_REVIEW_ITEM_STATUSES:
-        return
-    if status in APPROVED_ITEM_STATUSES:
-        raise ValueError(
-            f"item {item_id} is already {status}; use explicit rollback before action {action}"
-        )
-    if status in TERMINAL_ITEM_STATUSES:
-        raise ValueError(f"item {item_id} is in terminal status {status} and cannot accept action {action}")
-    raise ValueError(f"item {item_id} is in unsupported status {status}")
-
-
-def _validate_edited_fields(edited_fields: dict[str, Any]) -> None:
-    invalid_fields = sorted(set(edited_fields) - EDITABLE_CLAIM_FIELDS)
-    if invalid_fields:
-        raise ValueError(
-            "edited_fields contains forbidden keys; allowed keys are "
-            f"{sorted(EDITABLE_CLAIM_FIELDS)}. Got invalid keys: {invalid_fields}"
-        )
-    try:
-        patch = ProposalClaimEditPatch(**edited_fields)
-    except Exception as exc:  # pydantic normalizes all supported value checks here
-        raise ValueError(f"edited_fields contains invalid values: {exc}") from exc
-    return patch.model_dump(exclude_unset=True)
 
 
 def _validate_item_bundle_profile_binding(*, item_snapshot: dict[str, Any], bundle: WorldProposalBundle) -> None:

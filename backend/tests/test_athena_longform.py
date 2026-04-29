@@ -80,6 +80,26 @@ def test_import_setup_creates_formal_profile_entities_and_rules(client, db_sessi
     assert {item["name"] for item in ontology["entities"]["artifacts"]} == {"黑潮门"}
 
 
+def test_import_setup_preview_reports_candidates_without_writing_world_model(client, db_session):
+    project = _seed_project_with_setup(db_session)
+
+    response = client.get(f"/api/v1/projects/{project.id}/athena/ontology/import-setup/preview")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "preview"
+    assert payload["project_profile_exists"] is False
+    assert payload["would_create"]["profile"] == 1
+    assert payload["would_create"]["characters"] == 2
+    assert payload["would_create"]["locations"] == 2
+    assert payload["would_create"]["factions"] == 2
+    assert payload["would_create"]["artifacts"] == 1
+    assert payload["would_create"]["rules"] == 1
+    assert {item["name"] for item in payload["candidates"]["characters"]} == {"林舟", "沈聆"}
+    assert db_session.query(ProjectProfileVersion).filter_by(project_id=project.id).count() == 0
+    assert db_session.query(WorldCharacter).filter_by(project_id=project.id).count() == 0
+
+
 def test_analyze_chapter_creates_reviewable_candidates_without_duplicates(client, db_session):
     project = _seed_project_with_setup(db_session)
     client.post(f"/api/v1/projects/{project.id}/athena/ontology/import-setup")
