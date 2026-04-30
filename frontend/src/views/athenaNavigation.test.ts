@@ -60,6 +60,21 @@ describe('athenaNavigation', () => {
     })
   })
 
+  it('does not leak node type filters outside catalog nodes', () => {
+    expect(resolveAthenaRoute('truth', { view: 'projection', type: 'characters' })).toMatchObject({
+      section: 'truth',
+      view: 'projection',
+      nodeType: 'all',
+      isLegacy: false,
+    })
+    expect(resolveAthenaRoute('catalog', { view: 'rules', type: 'characters' })).toMatchObject({
+      section: 'catalog',
+      view: 'rules',
+      nodeType: 'all',
+      isLegacy: false,
+    })
+  })
+
   it('normalizes invalid canonical route query values', () => {
     expect(resolveAthenaRoute('truth', { view: 'rules', type: 'bad', tool: ['inspect'], panel: '' })).toEqual({
       section: 'truth',
@@ -84,6 +99,54 @@ describe('athenaNavigation', () => {
     expect(buildAthenaRoute('project-1', state)).toEqual({
       path: '/projects/project-1/athena/catalog',
       query: { view: 'nodes', type: 'characters' },
+    })
+  })
+
+  it('canonicalizes route state before building locations', () => {
+    const state: AthenaRouteState = {
+      section: 'truth',
+      view: 'rules',
+      nodeType: 'characters',
+      tool: null,
+      panel: null,
+      isLegacy: false,
+    }
+
+    expect(buildAthenaRoute('project-1', state)).toEqual({
+      path: '/projects/project-1/athena/truth',
+      query: { view: 'projection' },
+    })
+  })
+
+  it('does not include view for overview routes', () => {
+    const state: AthenaRouteState = {
+      section: 'overview',
+      view: 'rules',
+      nodeType: 'characters',
+      tool: null,
+      panel: null,
+      isLegacy: false,
+    }
+
+    expect(buildAthenaRoute('project-1', state)).toEqual({
+      path: '/projects/project-1/athena/overview',
+      query: {},
+    })
+  })
+
+  it('preserves tool and panel while building routes', () => {
+    const state: AthenaRouteState = {
+      section: 'review',
+      view: 'history',
+      nodeType: 'characters',
+      tool: 'diff',
+      panel: 'optimization',
+      isLegacy: false,
+    }
+
+    expect(buildAthenaRoute('project-1', state)).toEqual({
+      path: '/projects/project-1/athena/review',
+      query: { view: 'history', tool: 'diff', panel: 'optimization' },
     })
   })
 })

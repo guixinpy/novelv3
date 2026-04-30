@@ -102,6 +102,15 @@ function resolveNodeType(queryType: string | null): AthenaNodeTypeFilter {
   return isOneOf(queryType, nodeTypes) ? queryType : 'all'
 }
 
+function resolveScopedNodeType(
+  section: AthenaPrimarySection,
+  view: AthenaSubview,
+  queryType: string | null,
+): AthenaNodeTypeFilter {
+  if (section !== 'catalog' || view !== 'nodes') return 'all'
+  return resolveNodeType(queryType)
+}
+
 export function resolveAthenaRoute(rawSection: string | undefined, query: QueryLike): AthenaRouteState {
   const tool = firstQueryValue(query.tool)
   const panel = firstQueryValue(query.panel)
@@ -119,11 +128,12 @@ export function resolveAthenaRoute(rawSection: string | undefined, query: QueryL
   }
 
   const section = isPrimarySection(rawSection) ? rawSection : 'overview'
+  const view = resolveCanonicalView(section, firstQueryValue(query.view))
 
   return {
     section,
-    view: resolveCanonicalView(section, firstQueryValue(query.view)),
-    nodeType: resolveNodeType(firstQueryValue(query.type)),
+    view,
+    nodeType: resolveScopedNodeType(section, view, firstQueryValue(query.type)),
     tool,
     panel,
     isLegacy: false,
@@ -132,12 +142,14 @@ export function resolveAthenaRoute(rawSection: string | undefined, query: QueryL
 
 export function buildAthenaRoute(projectId: string, state: AthenaRouteState): { path: string; query: Record<string, string> } {
   const query: Record<string, string> = {}
+  const view = resolveCanonicalView(state.section, state.view)
+  const nodeType = resolveScopedNodeType(state.section, view, state.nodeType)
 
   if (state.section !== 'overview') {
-    query.view = state.view
+    query.view = view
   }
-  if (state.section === 'catalog' && state.view === 'nodes' && state.nodeType !== 'all') {
-    query.type = state.nodeType
+  if (state.section === 'catalog' && view === 'nodes' && nodeType !== 'all') {
+    query.type = nodeType
   }
   if (state.tool) {
     query.tool = state.tool
