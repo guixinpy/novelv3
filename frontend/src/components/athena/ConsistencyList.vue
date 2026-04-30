@@ -6,6 +6,7 @@ import type { AthenaConsistencyIssue } from '../../api/types'
 const props = defineProps<{
   issues: AthenaConsistencyIssue[]
   latestChapterIndex?: number | null
+  lastCheckedChapterIndex?: number | null
   loading?: boolean
 }>()
 
@@ -15,6 +16,10 @@ const emit = defineEmits<{
 
 const expandedIdx = ref<number | null>(null)
 const canRunLatestCheck = computed(() => Number.isFinite(props.latestChapterIndex))
+const hasCleanLatestCheck = computed(() =>
+  props.issues.length === 0 &&
+  Number.isFinite(props.lastCheckedChapterIndex),
+)
 
 function toggle(idx: number) {
   expandedIdx.value = expandedIdx.value === idx ? null : idx
@@ -57,7 +62,10 @@ function issueVariant(issue: AthenaConsistencyIssue) {
         检查最新章节
       </button>
     </div>
-    <div v-if="issues.length === 0" class="consistency-list__empty">暂无一致性检查结果</div>
+    <div v-if="hasCleanLatestCheck" class="consistency-list__empty consistency-list__empty--success">
+      最近检查：第{{ lastCheckedChapterIndex }}章，未发现一致性问题
+    </div>
+    <div v-else-if="issues.length === 0" class="consistency-list__empty">暂无一致性检查结果</div>
     <div
       v-for="(issue, idx) in issues"
       :key="idx"
@@ -147,5 +155,9 @@ function issueVariant(issue: AthenaConsistencyIssue) {
   text-align: center;
   color: var(--color-text-tertiary);
   font-size: var(--text-sm);
+}
+
+.consistency-list__empty--success {
+  color: var(--color-success);
 }
 </style>

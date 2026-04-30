@@ -10,12 +10,22 @@ type AthenaTimelineEvent = AthenaTimeline['events'][number] & {
 defineProps<{
   events: AthenaTimelineEvent[]
   anchors?: AthenaTimeline['anchors']
+  fallbackSummary?: {
+    chapters: number
+    plotlines: number
+    foreshadowing: number
+  }
 }>()
 </script>
 
 <template>
   <div class="timeline-view">
-    <div v-if="events.length === 0" class="timeline-view__empty">暂无时间线数据</div>
+    <div v-if="events.length === 0" class="timeline-view__empty">
+      <strong>暂无时间线数据</strong>
+      <span v-if="fallbackSummary && (fallbackSummary.chapters || fallbackSummary.plotlines || fallbackSummary.foreshadowing)">
+        已生成 {{ fallbackSummary.chapters }} 章规划、{{ fallbackSummary.plotlines }} 条故事线、{{ fallbackSummary.foreshadowing }} 条伏笔，可切换到对应标签查看。
+      </span>
+    </div>
     <div
       v-for="(event, index) in events"
       :key="index"
@@ -96,9 +106,16 @@ defineProps<{
 }
 
 .timeline-view__empty {
+  display: grid;
+  gap: var(--space-2);
   padding: var(--space-8) 0;
   text-align: center;
   color: var(--color-text-tertiary);
   font-size: var(--text-sm);
+}
+
+.timeline-view__empty strong {
+  color: var(--color-text-secondary);
+  font-weight: var(--font-medium);
 }
 </style>

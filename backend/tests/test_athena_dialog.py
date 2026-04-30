@@ -632,6 +632,46 @@ def test_build_chat_call_payload_returns_messages_and_context_blocks_without_cha
     assert hermes_payload["context_blocks"][-1]["sources"][0]["source_id"] == hermes_dialog.id
 
 
+def test_athena_chat_payload_includes_manuscript_progress_context(db_session):
+    project, _ = _seed_project(db_session, with_profile=True)
+    project.target_chapter_count = 20
+    project.current_word_count = 78127
+    project.current_phase = "content"
+    dialog = Dialog(project_id=project.id, dialog_type="athena")
+    db_session.add(dialog)
+    for index in range(1, 21):
+        db_session.add(
+            ChapterContent(
+                project_id=project.id,
+                chapter_index=index,
+                title=f"第{index}章标题",
+                content=f"第{index}章正文内容。" * 20,
+                word_count=3000 + index,
+                status="draft",
+            )
+        )
+    db_session.commit()
+
+    payload = dialogs._build_chat_call_payload(
+        db_session,
+        dialog.id,
+        project,
+        dialogs._build_diagnosis(db_session, project.id),
+        dialog_type="athena",
+    )
+
+    manuscript_block = next(
+        block for block in payload["context_blocks"]
+        if block["kind"] == "manuscript_summary"
+    )
+    assert "已生成章节：20 / 目标 20" in manuscript_block["content"]
+    assert "当前总字数：78127" in manuscript_block["content"]
+    assert "第20章《第20章标题》" in manuscript_block["content"]
+    assert "已生成章节：20 / 目标 20" in payload["messages"][0]["content"]
+    assert "正文进度是章节数量、总字数和最近章节的权威来源" in payload["messages"][0]["content"]
+    assert manuscript_block["sources"][0]["source_type"] == "ChapterContent"
+
+
 def test_athena_chat_success_records_model_call_trace(client, db_session, monkeypatch):
     _enable_fake_ai(monkeypatch)
     project, profile_version = _seed_project(db_session, with_profile=True)

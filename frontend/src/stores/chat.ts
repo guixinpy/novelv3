@@ -94,6 +94,7 @@ export const useChatStore = defineStore('chat', () => {
   const loading = ref(false)
   const historyCursor = ref(0)
   const lastHistoryMessageId = ref<string | null>(null)
+  const hasLocalUnsyncedMessages = ref(false)
   const initVersion = ref(0)
 
   function captureSnapshot() {
@@ -105,6 +106,11 @@ export const useChatStore = defineStore('chat', () => {
 
   function isActiveSnapshot(pidSnapshot: string, versionSnapshot: number) {
     return projectId.value === pidSnapshot && initVersion.value === versionSnapshot
+  }
+
+  function clearStaleHistoryAnchorAfterLocalAppend() {
+    lastHistoryMessageId.value = null
+    hasLocalUnsyncedMessages.value = true
   }
 
   function setDialogType(_type: 'hermes' | 'athena') {
@@ -122,6 +128,7 @@ export const useChatStore = defineStore('chat', () => {
     loading.value = false
     historyCursor.value = 0
     lastHistoryMessageId.value = null
+    hasLocalUnsyncedMessages.value = false
   }
 
   function applyHistorySnapshot(
@@ -142,6 +149,7 @@ export const useChatStore = defineStore('chat', () => {
     pendingAction.value = restoredPendingAction
     historyCursor.value = history?.length || 0
     lastHistoryMessageId.value = history?.length ? history[history.length - 1]?.id || null : null
+    hasLocalUnsyncedMessages.value = false
     const runningActionType = restoredPendingAction ? null : findRecoverableRunningActionType(history)
     if (runningActionType) {
       loading.value = true
@@ -209,6 +217,7 @@ export const useChatStore = defineStore('chat', () => {
       }
       messages.value.push(msg)
       historyCursor.value += 2
+      clearStaleHistoryAnchorAfterLocalAppend()
       if (res.pending_action) pendingAction.value = res.pending_action
       if (res.project_diagnosis) diagnosis.value = res.project_diagnosis
       return res
@@ -246,6 +255,7 @@ export const useChatStore = defineStore('chat', () => {
       }
       messages.value.push(msg)
       historyCursor.value += 1
+      clearStaleHistoryAnchorAfterLocalAppend()
       if (res.pending_action) pendingAction.value = res.pending_action
       if (res.project_diagnosis) diagnosis.value = res.project_diagnosis
       return res
@@ -277,6 +287,7 @@ export const useChatStore = defineStore('chat', () => {
       }
       messages.value.push(msg)
       historyCursor.value += 1
+      clearStaleHistoryAnchorAfterLocalAppend()
       if (decision === 'confirm') {
         keepLoadingUntilTerminal = true
         const actionType = String(res.action_result?.type || '')
@@ -334,6 +345,7 @@ export const useChatStore = defineStore('chat', () => {
         }
         messages.value.push(msg)
         historyCursor.value += 2
+        clearStaleHistoryAnchorAfterLocalAppend()
       }
       pendingAction.value = res.pending_action || null
       if (res.project_diagnosis) diagnosis.value = res.project_diagnosis
@@ -394,22 +406,28 @@ export const useChatStore = defineStore('chat', () => {
               : { limit: CHAT_HISTORY_PAGE_SIZE },
           )
           if (!isActiveSnapshot(pidSnapshot, versionSnapshot)) break
+          const historyList = history || []
           const newMessages = canLoadIncrementally
-            ? history || []
-            : (history || []).slice(historyCursor.value)
+            ? historyList
+            : historyList.slice(historyCursor.value)
           if (newMessages.length) {
             for (const message of newMessages) {
               messages.value.push(toChatMessage(message))
             }
             historyCursor.value = canLoadIncrementally
               ? historyCursor.value + newMessages.length
-              : (history || []).length
+              : historyList.length
             lastHistoryMessageId.value = newMessages[newMessages.length - 1]?.id || lastHistoryMessageId.value
+            if (!canLoadIncrementally) hasLocalUnsyncedMessages.value = false
             await loadDiagnosis(pidSnapshot, versionSnapshot)
             if (newMessages.some((message) => isTerminalActionResult(message.action_result || null, actionType))) {
               reachedTerminal = true
               break
             }
+          } else if (!canLoadIncrementally) {
+            historyCursor.value = historyList.length
+            lastHistoryMessageId.value = historyList.length ? historyList[historyList.length - 1]?.id || null : null
+            hasLocalUnsyncedMessages.value = false
           }
         } catch { /* retry */ }
       }
@@ -426,6 +444,7 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   function getCurrentLastMessageId() {
+    if (hasLocalUnsyncedMessages.value) return null
     if (lastHistoryMessageId.value) return lastHistoryMessageId.value
     for (let index = messages.value.length - 1; index >= 0; index -= 1) {
       const id = messages.value[index]?.id
@@ -445,17 +464,23 @@ export const useChatStore = defineStore('chat', () => {
         : { limit: CHAT_HISTORY_PAGE_SIZE },
     )
     if (!isActiveSnapshot(pidSnapshot, versionSnapshot)) return []
+    const historyList = history || []
     const newMessages = canLoadIncrementally
-      ? history || []
-      : (history || []).slice(historyCursor.value)
+      ? historyList
+      : historyList.slice(historyCursor.value)
     if (newMessages.length) {
       for (const message of newMessages) {
         messages.value.push(toChatMessage(message))
       }
       historyCursor.value = canLoadIncrementally
         ? historyCursor.value + newMessages.length
-        : (history || []).length
+        : historyList.length
       lastHistoryMessageId.value = newMessages[newMessages.length - 1]?.id || lastHistoryMessageId.value
+      if (!canLoadIncrementally) hasLocalUnsyncedMessages.value = false
+    } else if (!canLoadIncrementally) {
+      historyCursor.value = historyList.length
+      lastHistoryMessageId.value = historyList.length ? historyList[historyList.length - 1]?.id || null : null
+      hasLocalUnsyncedMessages.value = false
     }
     return newMessages
   }

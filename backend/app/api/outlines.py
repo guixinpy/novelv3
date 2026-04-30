@@ -10,7 +10,12 @@ from app.core.model_call_trace import create_trace, mark_trace_failed, mark_trac
 from app.db import get_db
 from app.models import Outline, Project, Setup, Storyline
 from app.prompting.assembler import build_generation_payload
-from app.prompting.providers.outline import build_outline_context_blocks, build_outline_variables, target_total_chapters
+from app.prompting.providers.outline import (
+    build_outline_context_blocks,
+    build_outline_variables,
+    outline_max_tokens,
+    target_total_chapters,
+)
 from app.schemas import OutlineOut
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/outline", tags=["outlines"])
@@ -34,6 +39,7 @@ def _build_outline_call_payload(project: Project, setup: Setup, storyline: Story
             command_args=command_args,
         ),
         command_args=command_args,
+        max_tokens=outline_max_tokens(project),
     )
 
 

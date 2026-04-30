@@ -9,7 +9,7 @@ from app.core.context_injection import (
     build_hermes_world_context_blocks,
 )
 from app.core.model_call_trace import build_context_block
-from app.models import DialogMessage, Project, ProjectProfileVersion
+from app.models import ChapterContent, DialogMessage, Project, ProjectProfileVersion
 from app.prompting.assembler import PromptAssembler
 from app.prompting.tracing import build_prompt_trace_metadata
 
@@ -107,6 +107,53 @@ def build_athena_prompt_variables(db: Session, project: Project, world_context: 
     }
 
 
+def build_athena_manuscript_context_block(db: Session, project: Project) -> dict[str, Any] | None:
+    chapters = (
+        db.query(ChapterContent)
+        .filter(ChapterContent.project_id == project.id, ChapterContent.content != "")
+        .order_by(ChapterContent.chapter_index.asc())
+        .all()
+    )
+    if not chapters:
+        return None
+
+    total_words = project.current_word_count or sum(int(chapter.word_count or 0) for chapter in chapters)
+    target_chapters = project.target_chapter_count or len(chapters)
+    lines = [
+        f"已生成章节：{len(chapters)} / 目标 {target_chapters}",
+        f"当前总字数：{total_words}",
+        f"章节范围：第{chapters[0].chapter_index}章 至 第{chapters[-1].chapter_index}章",
+        "章节清单：",
+    ]
+    for chapter in chapters:
+        title = chapter.title or "未命名章节"
+        lines.append(f"- 第{chapter.chapter_index}章《{title}》：{chapter.word_count or 0}字，{chapter.status or 'unknown'}")
+
+    recent = chapters[-3:]
+    if recent:
+        lines.append("最近章节摘录：")
+        for chapter in recent:
+            excerpt = " ".join((chapter.content or "").split())[:220]
+            if excerpt:
+                lines.append(f"- 第{chapter.chapter_index}章：{excerpt}")
+
+    return build_context_block(
+        key="athena.manuscript_summary",
+        kind="manuscript_summary",
+        title="正文进度",
+        content="\n".join(lines),
+        sources=[
+            {
+                "source_type": "ChapterContent",
+                "source_id": chapter.id,
+                "chapter_index": chapter.chapter_index,
+                "label": chapter.title or f"第{chapter.chapter_index}章",
+            }
+            for chapter in chapters
+        ],
+    )
+
+
 def build_dialog_call_payload(
     db: Session,
     dialog_id: str,
@@ -120,6 +167,16 @@ def build_dialog_call_payload(
         prompt_id = "dialog.athena"
         world_context = build_athena_world_context(db, project.id)
         context_blocks = build_athena_world_context_blocks(db, project.id)
+        manuscript_block = build_athena_manuscript_context_block(db, project)
+        if manuscript_block:
+            context_blocks.append(manuscript_block)
+            world_context = "\n\n".join(
+                part for part in [
+                    world_context,
+                    f"## {manuscript_block['title']}\n{manuscript_block['content']}",
+                ]
+                if part
+            )
         variables = build_athena_prompt_variables(db, project, world_context)
     else:
         prompt_id = "dialog.hermes"

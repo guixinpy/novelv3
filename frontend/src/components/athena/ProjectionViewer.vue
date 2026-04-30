@@ -76,6 +76,18 @@ function formatValue(value: unknown) {
   return JSON.stringify(value)
 }
 
+function formatFactValue(predicate: string, value: unknown) {
+  if (predicate === 'presence_count' && value && typeof value === 'object') {
+    const data = value as Record<string, unknown>
+    const count = Number(data.count)
+    const chapterIndex = Number(data.chapter_index)
+    if (Number.isFinite(count) && Number.isFinite(chapterIndex)) {
+      return `第${chapterIndex}章出现 ${count} 次`
+    }
+  }
+  return formatValue(value)
+}
+
 function formatAttributes(value: Record<string, unknown>) {
   const entries = Object.entries(value || {})
   if (!entries.length) return '无结构化属性'
@@ -132,7 +144,7 @@ function entityTypeLabel(type: string) {
               </div>
               <div v-for="fact in row.facts" :key="fact.predicate" class="projection-viewer__fact">
                 <span class="projection-viewer__predicate">{{ fact.predicate }}</span>
-                <span class="projection-viewer__value">{{ formatValue(fact.value) }}</span>
+                <span class="projection-viewer__value">{{ formatFactValue(fact.predicate, fact.value) }}</span>
               </div>
             </div>
           </div>
@@ -150,7 +162,7 @@ function entityTypeLabel(type: string) {
           <div class="projection-viewer__facts">
             <div v-for="fact in group.items" :key="fact.predicate" class="projection-viewer__fact">
               <span class="projection-viewer__predicate">{{ fact.predicate }}</span>
-              <span class="projection-viewer__value">{{ formatValue(fact.value) }}</span>
+              <span class="projection-viewer__value">{{ formatFactValue(fact.predicate, fact.value) }}</span>
             </div>
           </div>
         </div>

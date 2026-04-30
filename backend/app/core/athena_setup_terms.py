@@ -45,9 +45,16 @@ def append_setup_term(
     context: str,
     source_name: str,
 ) -> None:
-    if term in seen[bucket] or any(term != existing and term in existing for existing in seen[bucket]):
+    if term in seen[bucket] or any(
+        term != existing and term in existing and not is_distinct_setup_term(term, existing)
+        for existing in seen[bucket]
+    ):
         return
-    shorter_existing = [existing for existing in seen[bucket] if existing != term and existing in term]
+    shorter_existing = [
+        existing
+        for existing in seen[bucket]
+        if existing != term and existing in term and not is_distinct_setup_term(existing, term)
+    ]
     if shorter_existing:
         seen[bucket].difference_update(shorter_existing)
         buckets[bucket] = [item for item in buckets[bucket] if item["name"] not in shorter_existing]
@@ -90,6 +97,10 @@ def unquoted_terms_with_context(text: str) -> list[tuple[str, str]]:
         "空间",
         "区域",
         "海域",
+        "城区",
+        "开发区",
+        "灯塔区",
+        "区",
         "城市",
         "星球",
         "钥匙",
@@ -109,7 +120,7 @@ def unquoted_terms_with_context(text: str) -> list[tuple[str, str]]:
     results: list[tuple[str, str]] = []
     seen: set[str] = set()
     segments = re.split(
-        r"[，。；、\s]+|旁|里|内|外|中|由|被|与|和|及|到|从|在|负责|控制|存放|开启|隐瞒|看守|矗立|封锁|必须|保持",
+        r"[，。；、\s]+|旁|里|内|外|中|由|被|与|和|及|到|从|在|分为|设立|负责|控制|存放|开启|隐瞒|看守|矗立|笼罩|封锁|必须|保持|为中心|为核心|周围是|关于",
         normalized,
     )
     for segment in segments:
@@ -131,28 +142,41 @@ def unquoted_terms_with_context(text: str) -> list[tuple[str, str]]:
 def prefer_longer_setup_terms(results: list[tuple[str, str]]) -> list[tuple[str, str]]:
     preferred: list[tuple[str, str]] = []
     for term, context in sorted(results, key=lambda item: (-len(item[0]), item[0])):
-        if any(term != kept_term and term in kept_term for kept_term, _ in preferred):
+        if any(
+            term != kept_term and term in kept_term and not is_distinct_setup_term(term, kept_term)
+            for kept_term, _ in preferred
+        ):
             continue
         preferred.append((term, context))
     return preferred
 
 
+def is_distinct_setup_term(term: str, kept_term: str) -> bool:
+    return term.endswith("塔") and kept_term.endswith("区")
+
+
 def clean_unquoted_setup_term(term: str) -> str:
     cleaned = re.sub(
-        r"^(?:(故事|世界|这个|一种|一个|负责|控制|存放|开启|隐瞒|巡查|矗立|封锁|必须|保持|真实用途))+",
+        r"^(?:(故事|世界|这个|一种|一个|一座|以|其|负责|控制|存放|开启|隐瞒|巡查|矗立|封锁|必须|保持|真实用途|废弃的|百年|城市))+",
         "",
         term.strip(),
     )
-    for delimiter in ("发生在", "位于", "藏有", "藏在", "存放", "控制", "负责", "看守", "矗立", "开启"):
+    for delimiter in ("发生在", "位于", "藏有", "藏在", "存放", "控制", "负责", "看守", "矗立", "开启", "分为", "设立", "笼罩", "周围是", "关于"):
         if delimiter in cleaned:
             cleaned = cleaned.split(delimiter)[-1].strip()
+    for delimiter in ("改造的", "改造"):
+        if delimiter in cleaned:
+            cleaned = cleaned.split(delimiter)[0].strip()
+    cleaned = re.sub(r"^(?:一座|废弃的|百年|古老的|城市|其)+", "", cleaned)
+    if cleaned in {"沿海城市", "沿海城", "城市", "区域", "空间"}:
+        return ""
     if len(cleaned) < 2 or len(cleaned) > 12:
         return ""
     return cleaned
 
 
 def classify_setup_term(term: str, context: str, source_name: str) -> str | None:
-    location_hints = ("站", "基地", "空间", "稳定区", "区域", "海域", "室", "维度", "城市", "城", "港", "岛", "塔", "星球")
+    location_hints = ("站", "基地", "空间", "稳定区", "区域", "海域", "室", "维度", "城市", "城", "区", "港", "岛", "塔", "星球", "半岛")
     faction_hints = ("局", "阵线", "政府", "军方", "组织", "联盟", "公司", "学院", "教会", "计划")
     artifact_hints = ("门", "装置", "锚点", "档案", "系统", "协议", "钥", "密钥", "芯片")
     if any(hint in term for hint in location_hints):

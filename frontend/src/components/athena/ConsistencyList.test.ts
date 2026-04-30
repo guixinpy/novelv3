@@ -44,4 +44,17 @@ describe('ConsistencyList', () => {
     expect(wrapper.text()).toContain('schema_gate')
     expect(wrapper.text()).toContain('timeline_consistency')
   })
+
+  it('shows successful no-issue feedback after a completed check', () => {
+    const wrapper = mount(ConsistencyList, {
+      props: {
+        issues: [],
+        latestChapterIndex: 20,
+        lastCheckedChapterIndex: 20,
+      },
+    })
+
+    expect(wrapper.text()).toContain('最近检查：第20章，未发现一致性问题')
+    expect(wrapper.text()).not.toContain('暂无一致性检查结果')
+  })
 })

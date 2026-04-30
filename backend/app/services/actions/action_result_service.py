@@ -27,7 +27,7 @@ class ActionResultService:
             message = DialogMessage(
                 dialog_id=dialog_id,
                 role="system",
-                content=f"{label}生成完成。",
+                content=f"{label}生成完成。{_athena_analysis_notice(result)}",
                 action_result={"type": action_type, "status": "success", "data": result},
             )
             self.db.add(message)
@@ -57,3 +57,11 @@ class ActionResultService:
             trace.dialog_id = dialog_id
             trace.response_message_id = message_id
 
+
+def _athena_analysis_notice(result: dict) -> str:
+    analysis = result.get("athena_analysis")
+    if not isinstance(analysis, dict):
+        return ""
+    if analysis.get("status") == "skipped" and analysis.get("reason") == "missing_world_model_profile":
+        return "Athena 世界模型尚未导入，已跳过本章世界事实分析；请先在雅典娜导入 Setup 后重新分析章节。"
+    return ""

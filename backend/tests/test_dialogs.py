@@ -134,6 +134,32 @@ async def test_execute_chapter_action_passes_command_args_as_generation_feedback
     )
 
 
+@pytest.mark.asyncio
+@patch("app.api.chapters.create_or_replace_chapter", new_callable=AsyncMock)
+async def test_execute_chapter_action_returns_athena_analysis_skip_notice(mock_create_chapter, db_session):
+    mock_create_chapter.return_value = SimpleNamespace(
+        athena_analysis_result={
+            "status": "skipped",
+            "reason": "missing_world_model_profile",
+            "chapter_index": 1,
+            "proposal_bundle_id": None,
+            "created": {"proposal_items": 0},
+            "skipped": {"duplicates": 0},
+        }
+    )
+
+    result = await dialogs_api._execute_action(
+        "generate_chapter",
+        "project-1",
+        db_session,
+        action_params={"chapter_index": 1},
+    )
+
+    assert result["status"] == "success"
+    assert result["athena_analysis"]["status"] == "skipped"
+    assert result["athena_analysis"]["reason"] == "missing_world_model_profile"
+
+
 def test_chat_creates_dialog(client):
     r = client.post("/api/v1/projects", json={"name": "Test"})
     pid = r.json()["id"]
@@ -914,6 +940,38 @@ def test_background_completion_attaches_generation_trace_to_system_message(clien
     assert latest_message is not None
     assert trace.dialog_id == dialog.id
     assert trace.response_message_id == latest_message.id
+
+
+def test_chapter_completion_mentions_skipped_athena_analysis(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Test"})
+    pid = r.json()["id"]
+
+    dialog = Dialog(project_id=pid, dialog_type="hermes", state="running")
+    db_session.add(dialog)
+    db_session.commit()
+
+    message = ActionResultService(db_session).record_completion(
+        action_type="generate_chapter",
+        project_id=pid,
+        dialog_id=dialog.id,
+        result={
+            "status": "success",
+            "chapter_index": 1,
+            "athena_analysis": {
+                "status": "skipped",
+                "reason": "missing_world_model_profile",
+                "chapter_index": 1,
+                "proposal_bundle_id": None,
+                "created": {"proposal_items": 0},
+                "skipped": {"duplicates": 0},
+            },
+        },
+    )
+
+    assert message is not None
+    assert "第1章正文生成完成" in message.content
+    assert "Athena 世界模型尚未导入" in message.content
+    assert message.action_result["data"]["athena_analysis"]["reason"] == "missing_world_model_profile"
 
 
 @pytest.mark.parametrize("command_name", ["clear", "compact", "setup"])

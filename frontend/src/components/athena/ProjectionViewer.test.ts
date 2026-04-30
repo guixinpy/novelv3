@@ -100,4 +100,37 @@ describe('ProjectionViewer', () => {
     expect(wrapper.text()).toContain('event.chapter.1.summary')
     expect(wrapper.text()).toContain('旧灯塔重新点亮')
   })
+
+  it('formats structured presence_count facts for creator review', () => {
+    const wrapper = mount(ProjectionViewer, {
+      props: {
+        projection: {
+          view_type: 'current_truth',
+          entities: {
+            'char.lu': {
+              entity_type: 'character',
+              attributes: { name: '陆辞' },
+            },
+          },
+          relations: {},
+          presence: {},
+          occurred_events: {},
+          event_links: {},
+          facts: {
+            'char.lu': {
+              presence_count: {
+                count: 51,
+                chapter_index: 1,
+                source: 'l1_rule',
+                matched_names: ['陆辞'],
+              },
+            },
+          },
+        },
+      },
+    })
+
+    expect(wrapper.text()).toContain('第1章出现 51 次')
+    expect(wrapper.text()).not.toContain('"matched_names"')
+  })
 })

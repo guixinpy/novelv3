@@ -192,10 +192,130 @@ describe('chat workspace polling', () => {
 
     await vi.advanceTimersByTimeAsync(1000)
     expect(api.getBackgroundTask).toHaveBeenCalledTimes(2)
-    expect(api.getMessages).toHaveBeenCalledWith('project-1', 'hermes', { after_id: 'm1' })
+    expect(api.getMessages).toHaveBeenCalledWith('project-1', 'hermes', { limit: 80 })
     expect([...workspace.dirtyTargets]).toEqual([])
     expect(store.loading).toBe(false)
     expect(store.messages.some((message) => message.content.includes('API key'))).toBe(true)
+  })
+
+  it('有历史 id 时命令确认后的任务轮询不会重复追加已乐观显示的命令消息', async () => {
+    const store = useChatStore()
+    store.initFromWorkspaceBootstrap('project-1', {
+      project: { id: 'project-1', name: '项目' },
+      diagnosis: { missing_items: ['storyline'], completed_items: ['setup'], suggested_next_step: 'preview_storyline' },
+      chapters: [],
+      versions: [],
+      dialogs: {
+        hermes: {
+          messages: [
+            {
+              id: 'm0',
+              role: 'assistant',
+              content: '历史消息',
+              message_type: 'plain',
+              meta: null,
+              pending_action: null,
+              diagnosis: null,
+              action_result: null,
+              trace_id: null,
+              created_at: '2026-04-29T00:00:00Z',
+            },
+          ],
+        },
+      },
+    } as any)
+
+    vi.mocked(api.sendChat).mockResolvedValue({
+      message: '准备生成故事线。',
+      pending_action: {
+        id: 'action-storyline',
+        type: 'preview_storyline',
+        description: '生成故事线',
+        params: { project_id: 'project-1' },
+        requires_confirmation: true,
+      },
+      ui_hint: null,
+      refresh_targets: [],
+      project_diagnosis: {
+        missing_items: ['outline'],
+        completed_items: ['setup'],
+        suggested_next_step: 'preview_outline',
+      },
+    })
+    vi.mocked(api.resolveAction).mockResolvedValue({
+      dialog_state: 'RUNNING',
+      message: '操作已确认，正在生成中...',
+      action_result: {
+        type: 'generate_storyline',
+        status: 'generating',
+        data: { status: 'generating', task_id: 'task-storyline' },
+      },
+      ui_hint: null,
+      refresh_targets: [],
+    })
+    vi.mocked(api.getDiagnosis).mockResolvedValue({
+      missing_items: ['outline'],
+      completed_items: ['setup', 'storyline'],
+      suggested_next_step: 'preview_outline',
+    })
+    vi.mocked(api.getBackgroundTask).mockResolvedValue({
+      task_id: 'task-storyline',
+      task_type: 'generate_storyline',
+      status: 'success',
+      result: null,
+      error: null,
+      ui_hint: null as any,
+      refresh_targets: ['storyline'],
+      created_at: null,
+      started_at: null,
+      finished_at: null,
+    })
+    vi.mocked(api.getMessages).mockResolvedValue([
+      {
+        id: 'm0',
+        role: 'assistant',
+        content: '历史消息',
+        created_at: '2026-04-29T00:00:00Z',
+      },
+      {
+        id: 'm1',
+        role: 'user',
+        content: '/storyline',
+        message_type: 'command',
+        created_at: '2026-04-29T00:00:01Z',
+      },
+      {
+        id: 'm2',
+        role: 'assistant',
+        content: '准备生成故事线。',
+        created_at: '2026-04-29T00:00:02Z',
+      },
+      {
+        id: 'm3',
+        role: 'system',
+        content: '操作已确认，正在生成中...',
+        action_result: { type: 'generate_storyline', status: 'generating' },
+        created_at: '2026-04-29T00:00:03Z',
+      },
+      {
+        id: 'm4',
+        role: 'system',
+        content: '故事线生成完成。',
+        action_result: { type: 'generate_storyline', status: 'success' },
+        created_at: '2026-04-29T00:00:04Z',
+      },
+    ])
+
+    await store.sendCommand('storyline', '', '/storyline')
+    await store.resolveAction('confirm')
+    await Promise.resolve()
+
+    expect(api.getMessages).toHaveBeenCalledWith('project-1', 'hermes', { limit: 80 })
+    expect(api.getMessages).not.toHaveBeenCalledWith('project-1', 'hermes', { after_id: 'm0' })
+    expect(store.messages.filter((message) => message.content === '/storyline')).toHaveLength(1)
+    expect(store.messages.filter((message) => message.content === '准备生成故事线。')).toHaveLength(1)
+    expect(store.messages.filter((message) => message.content === '操作已确认，正在生成中...')).toHaveLength(1)
+    expect(store.messages.some((message) => message.content === '故事线生成完成。')).toBe(true)
   })
 
   it('后台任务 running 期间 send/quick action 会被 guard 拒绝', async () => {

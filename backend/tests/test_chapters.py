@@ -210,6 +210,8 @@ def test_generate_chapter_updates_project_and_list_chapter_word_counts(mock_comp
 
     project = client.get(f"/api/v1/projects/{pid}").json()
     assert project["current_word_count"] == 6
+    assert project["current_phase"] == "content"
+    assert project["status"] == "writing"
 
     chapters = client.get(f"/api/v1/projects/{pid}/chapters").json()["chapters"]
     assert chapters[0]["word_count"] == 6

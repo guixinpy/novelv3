@@ -63,13 +63,16 @@ class ActionExecutionService:
                 from app.api.chapters import create_or_replace_chapter
 
                 chapter_index = chapter_action_params(command_args, action_params).get("chapter_index", 1)
-                await create_or_replace_chapter(
+                chapter = await create_or_replace_chapter(
                     self.db,
                     project_id,
                     int(chapter_index),
                     extra_feedback=(command_args or "").strip(),
                 )
                 result = {"status": "success", "chapter_index": int(chapter_index)}
+                athena_analysis = getattr(chapter, "athena_analysis_result", None)
+                if isinstance(athena_analysis, dict):
+                    result["athena_analysis"] = athena_analysis
                 trace_id = self.latest_trace_id(
                     project_id=project_id,
                     trace_type="chapter_generation",
@@ -99,4 +102,3 @@ class ActionExecutionService:
             query = query.filter(AIModelCallTrace.chapter_index == chapter_index)
         trace = query.order_by(AIModelCallTrace.created_at.desc(), AIModelCallTrace.id.desc()).first()
         return trace.id if trace else None
-

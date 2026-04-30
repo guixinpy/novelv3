@@ -72,8 +72,22 @@ const { loadRouteData } = createAthenaSectionLoader({
 
 const timelineEvents = computed(() => athena.timeline?.events || [])
 const timelineAnchors = computed(() => athena.timeline?.anchors || [])
+const narrativeFallbackSummary = computed(() => ({
+  chapters: arrayCount(athena.evolutionPlan?.outline?.chapters),
+  plotlines: arrayCount(athena.evolutionPlan?.storyline?.plotlines || athena.evolutionPlan?.outline?.plotlines),
+  foreshadowing: arrayCount(athena.evolutionPlan?.storyline?.foreshadowing),
+}))
 const consistencyIssues = computed<AthenaConsistencyIssue[]>(() => athena.consistencyIssues || [])
 const activeError = computed(() => athena.error || worldModel.error || '')
+const activeNotice = computed(() => {
+  const result = athena.lastAnalyzeChapterResult
+  if (!result) return ''
+  const created = Number(result.created?.proposal_items || 0)
+  const duplicates = Number(result.skipped?.duplicates || 0)
+  if (created > 0) return `第${result.chapter_index}章已生成 ${created} 条待审世界事实候选`
+  if (duplicates > 0) return `第${result.chapter_index}章已有待审提案，未重复创建`
+  return `第${result.chapter_index}章分析完成，未发现新的候选事实`
+})
 const canImportSetup = computed(() => athena.ontology?.profile_version === null && Boolean(athena.ontology?.setup_summary))
 const latestChapterIndex = computed(() => {
   const indexes = (project.chapters || [])
@@ -170,6 +184,10 @@ async function initialize(projectId: string) {
 
 function isCurrentInitialize(requestId: number, projectId: string) {
   return requestId === initializeRequestId && projectId === pid.value
+}
+
+function arrayCount(value: unknown) {
+  return Array.isArray(value) ? value.length : 0
 }
 
 async function syncRouteState(state: AthenaRouteState) {
@@ -320,6 +338,7 @@ async function runConsistencyCheck(chapterIndex: number) {
 
     <div class="athena-view__content">
       <div v-if="activeError" class="athena-view__error">{{ activeError }}</div>
+      <div v-if="activeNotice" class="athena-view__notice">{{ activeNotice }}</div>
 
       <nav class="athena-view__section-tabs" aria-label="Athena 当前分类视图">
         <button
@@ -398,6 +417,7 @@ async function runConsistencyCheck(chapterIndex: number) {
             v-if="routeState.view === 'timeline'"
             :events="timelineEvents"
             :anchors="timelineAnchors"
+            :fallback-summary="narrativeFallbackSummary"
           />
           <NarrativeWorkbench
             v-else
@@ -413,6 +433,7 @@ async function runConsistencyCheck(chapterIndex: number) {
             v-else-if="routeState.view === 'conflicts'"
             :issues="consistencyIssues"
             :latest-chapter-index="latestChapterIndex"
+            :last-checked-chapter-index="athena.lastConsistencyCheck?.chapterIndex || null"
             :loading="athena.loading"
             @run-check="runConsistencyCheck"
           />
@@ -461,6 +482,17 @@ async function runConsistencyCheck(chapterIndex: number) {
   border-bottom: 1px solid var(--color-error);
   color: var(--color-error);
   background: var(--color-error-light);
+  font-size: var(--text-sm);
+}
+
+.athena-view__notice {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-success);
+  color: var(--color-success);
+  background: var(--color-success-light);
   font-size: var(--text-sm);
 }
 

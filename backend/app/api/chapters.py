@@ -256,6 +256,7 @@ async def create_or_replace_chapter(
     )
     project.current_word_count = total_words
     project.status = "writing"
+    project.current_phase = "content"
 
     try:
         db.commit()
@@ -285,11 +286,13 @@ async def create_or_replace_chapter(
     except Exception:
         pass  # Don't fail chapter generation if check fails
 
+    athena_analysis_result = None
     try:
         from app.core.athena_longform import analyze_chapter_to_world_proposals
-        analyze_chapter_to_world_proposals(db=db, project_id=project_id, chapter_index=chapter_index)
+        athena_analysis_result = analyze_chapter_to_world_proposals(db=db, project_id=project_id, chapter_index=chapter_index)
     except Exception:
         pass  # Don't fail chapter generation if Athena analysis fails
+    setattr(chapter, "athena_analysis_result", athena_analysis_result)
 
     try:
         from app.core.athena_retrieval import index_chapter_retrieval

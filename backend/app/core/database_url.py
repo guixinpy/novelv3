@@ -2,7 +2,13 @@ import os
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_DATABASE_URL = f"sqlite:///{PROJECT_ROOT / 'data' / 'mozhou.db'}"
+
+
+def sqlite_file_url(path: Path) -> str:
+    return f"sqlite:///{path.as_posix()}"
+
+
+DEFAULT_DATABASE_URL = sqlite_file_url(PROJECT_ROOT / "data" / "mozhou.db")
 
 
 def database_url() -> str:

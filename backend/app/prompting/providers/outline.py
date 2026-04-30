@@ -14,6 +14,10 @@ def target_total_chapters(project: Project) -> int:
     return 10
 
 
+def outline_max_tokens(project: Project) -> int:
+    return min(max(4000, target_total_chapters(project) * 400), 12000)
+
+
 def build_storyline_context_value(storyline: Storyline) -> str:
     return json.dumps(
         {"plotlines": storyline.plotlines, "foreshadowing": storyline.foreshadowing},

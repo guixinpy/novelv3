@@ -9,6 +9,7 @@ import { toErrorMessage } from './athenaModules/errors'
 import type {
   AthenaEvolutionPlan,
   AthenaConsistencyIssue,
+  AthenaAnalyzeChapterResult,
   AthenaOntology,
   AthenaOptimization,
   AthenaRetrievalDiagnostics,
@@ -41,6 +42,7 @@ export const useAthenaStore = defineStore('athena', () => {
   const proposalDetails = ref<Record<string, ProposalBundleDetail>>({})
   const proposalBusy = ref<Record<string, boolean>>({})
   const consistencyIssues = ref<AthenaConsistencyIssue[]>([])
+  const lastConsistencyCheck = ref<{ chapterIndex: number; issueCount: number } | null>(null)
   const optimization = ref<AthenaOptimization | null>(null)
   const retrievalDiagnostics = ref<AthenaRetrievalDiagnostics | null>(null)
   const retrievalSearch = ref<AthenaRetrievalSearchResponse | null>(null)
@@ -49,6 +51,7 @@ export const useAthenaStore = defineStore('athena', () => {
   const setupImportPreview = ref<AthenaSetupImportPreview | null>(null)
 
   const setup = ref<unknown>(null)
+  const lastAnalyzeChapterResult = ref<AthenaAnalyzeChapterResult | null>(null)
 
   const messages = ref<ChatHistoryMessage[]>([])
   const chatLoading = ref(false)
@@ -76,6 +79,7 @@ export const useAthenaStore = defineStore('athena', () => {
     proposalDetails.value = {}
     proposalBusy.value = {}
     consistencyIssues.value = []
+    lastConsistencyCheck.value = null
     optimization.value = null
     retrievalDiagnostics.value = null
     retrievalSearch.value = null
@@ -83,6 +87,7 @@ export const useAthenaStore = defineStore('athena', () => {
     retrievalLoading.value = false
     setupImportPreview.value = null
     setup.value = null
+    lastAnalyzeChapterResult.value = null
     messages.value = []
     loading.value = false
     error.value = null
@@ -285,10 +290,13 @@ export const useAthenaStore = defineStore('athena', () => {
     const requestId = ++consistencyCheckRequestId
     loading.value = true
     try {
-      await api.runAthenaConsistencyCheck(projectId, chapterIndex, depth)
+      const result = await api.runAthenaConsistencyCheck(projectId, chapterIndex, depth)
       if (!isActiveProject(projectId) || requestVersion.value !== version || consistencyCheckRequestId !== requestId) return
       requestCache.invalidate(cacheKey(projectId, 'consistency-issues'))
       await loadConsistencyIssues(projectId)
+      const resultIssues = normalizeConsistencyIssues(result)
+      const issueCount = consistencyIssues.value.length || resultIssues.length
+      lastConsistencyCheck.value = { chapterIndex, issueCount }
     } catch (err) {
       if (isActiveProject(projectId) && requestVersion.value === version && consistencyCheckRequestId === requestId) {
         error.value = toErrorMessage(err)
@@ -307,9 +315,17 @@ export const useAthenaStore = defineStore('athena', () => {
       () => true,
       () => api.getConsistencyIssues(projectId),
       (value) => {
-        consistencyIssues.value = value
+        consistencyIssues.value = normalizeConsistencyIssues(value)
       },
     )
+  }
+
+  function normalizeConsistencyIssues(value: unknown): AthenaConsistencyIssue[] {
+    if (Array.isArray(value)) return value as AthenaConsistencyIssue[]
+    if (value && typeof value === 'object' && Array.isArray((value as { issues?: unknown }).issues)) {
+      return (value as { issues: AthenaConsistencyIssue[] }).issues
+    }
+    return []
   }
 
   async function loadOptimization(projectId: string) {
@@ -355,8 +371,9 @@ export const useAthenaStore = defineStore('athena', () => {
     const version = requestVersion.value
     const requestId = ++analyzeChapterRequestId
     try {
-      await api.analyzeAthenaChapter(projectId, chapterIndex)
+      const result = await api.analyzeAthenaChapter(projectId, chapterIndex)
       if (!isActiveProject(projectId) || requestVersion.value !== version || analyzeChapterRequestId !== requestId) return
+      lastAnalyzeChapterResult.value = result
       requestCache.invalidate(cacheKey(projectId, 'proposals'))
       await loadProposals(projectId)
       if (!isActiveProject(projectId) || requestVersion.value !== version || analyzeChapterRequestId !== requestId) return
@@ -425,6 +442,7 @@ export const useAthenaStore = defineStore('athena', () => {
     proposalDetails,
     proposalBusy,
     consistencyIssues,
+    lastConsistencyCheck,
     optimization,
     retrievalDiagnostics,
     retrievalSearch,
@@ -432,6 +450,7 @@ export const useAthenaStore = defineStore('athena', () => {
     retrievalLoading,
     setupImportPreview,
     setup,
+    lastAnalyzeChapterResult,
     messages,
     chatLoading,
     loadOntology,

@@ -89,4 +89,22 @@ describe('ChatMessage', () => {
     expect(wrapper.text()).toContain('生成正文执行成功')
     expect(wrapper.text()).not.toContain('generate_chapter')
   })
+
+  it('renders generating action progress without repeating the action verb', () => {
+    const wrapper = mount(ChatMessage, {
+      props: {
+        msg: {
+          role: 'system',
+          message_type: 'plain',
+          content: '操作已确认，正在生成中...',
+          action_result: { type: 'generate_setup', status: 'generating' },
+        },
+        isLatest: false,
+        loading: false,
+      },
+    })
+
+    expect(wrapper.text()).toContain('设定生成中...')
+    expect(wrapper.text()).not.toContain('生成设定生成中')
+  })
 })

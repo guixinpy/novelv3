@@ -13,9 +13,9 @@
         </h3>
       </div>
       <span
-        v-if="isHighRisk"
+        v-if="riskLabel"
         class="impact-list__risk"
-      >高风险变更</span>
+      >{{ riskLabel }}</span>
     </header>
 
     <div
@@ -47,7 +47,11 @@ const props = defineProps<{
 const latestSnapshot = computed(() => props.snapshots[0] ?? null)
 const candidateCount = computed(() => Number(latestSnapshot.value?.summary.candidate_count ?? 0))
 const existingTruthCount = computed(() => Number(latestSnapshot.value?.summary.existing_truth_count ?? 0))
-const isHighRisk = computed(() => existingTruthCount.value > 0 || candidateCount.value >= 5)
+const riskLabel = computed(() => {
+  if (existingTruthCount.value > 0) return '覆盖既有真相'
+  if (candidateCount.value >= 5) return '批量候选'
+  return ''
+})
 </script>
 
 <style scoped>

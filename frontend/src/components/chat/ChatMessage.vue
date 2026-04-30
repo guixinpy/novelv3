@@ -31,13 +31,24 @@ const TYPE_LABELS: Record<string, string> = {
   preview_chapter: '生成正文',
 }
 
+const GENERATING_LABELS: Record<string, string> = {
+  generate_setup: '设定',
+  generate_storyline: '故事线',
+  generate_outline: '大纲',
+  generate_chapter: '正文',
+  preview_setup: '设定',
+  preview_storyline: '故事线',
+  preview_outline: '大纲',
+  preview_chapter: '正文',
+}
+
 const resultText = computed(() => {
   const r = props.msg.action_result
   if (!r) return ''
   const label = TYPE_LABELS[r.type] || r.type
   if (r.status === 'success') return `✓ ${label}执行成功`
   if (r.status === 'cancelled') return `✗ 操作已取消`
-  if (r.status === 'generating') return `⏳ ${label}生成中...`
+  if (r.status === 'generating') return `⏳ ${GENERATING_LABELS[r.type] || label}生成中...`
   if (r.status === 'failed') return `✗ ${label}失败`
   return `${label}: ${r.status}`
 })

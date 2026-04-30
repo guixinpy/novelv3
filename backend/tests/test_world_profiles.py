@@ -1,5 +1,6 @@
 import sqlite3
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -927,7 +928,7 @@ def test_migration_upgrade_enforces_trigger_and_foreign_keys(tmp_path):
     )
 
     result = subprocess.run(
-        [str(backend_dir / ".venv/bin/alembic"), "-c", str(ini_path), "upgrade", "head"],
+        [sys.executable, "-m", "alembic", "-c", str(ini_path), "upgrade", "head"],
         cwd=backend_dir,
         check=False,
         capture_output=True,

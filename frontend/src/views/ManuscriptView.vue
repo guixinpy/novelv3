@@ -61,7 +61,7 @@ function closeTrace() {
 
 async function initialize(projectId: string) {
   await project.loadProject(projectId)
-  await project.loadChapters(projectId)
+  await project.loadChapters(projectId, true)
   const rememberedIndex = projectWorkspace.lastManuscriptChapterByProject[projectId]
   const initialChapter =
     chapterItems.value.find((chapter) => chapter.index === rememberedIndex) ||

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -85,6 +85,25 @@ describe('ProjectListView', () => {
       target_chapter_count: 20,
       target_word_count: 40000,
     })
+  })
+
+  it('closes the create modal after creating a project successfully', async () => {
+    const wrapper = mount(ProjectListView, { attachTo: document.body })
+    await Promise.resolve()
+
+    await wrapper.get('[data-testid="project-create-button"]').trigger('click')
+    await nextTick()
+    await wrapper.findAllComponents({ name: 'BaseInput' })[0].vm.$emit('update:modelValue', '雾港二十夜')
+    await nextTick()
+
+    const createButton = document.querySelector('[data-testid="project-create-submit"]')
+    expect(createButton).toBeTruthy()
+    createButton!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+    await flushPromises()
+    await nextTick()
+
+    expect(document.querySelector('[data-testid="project-create-modal"]')).toBeNull()
   })
 
   it('exposes stable selectors for e2e project creation', async () => {

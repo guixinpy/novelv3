@@ -221,9 +221,9 @@ export const useProjectStore = defineStore('project', () => {
     topology.value = nextTopology
   }
 
-  async function loadChapters(id: string) {
+  async function loadChapters(id: string, force = false) {
     const key = `project:${id}:chapters`
-    if (requestCache.isFresh(key, PROJECT_CACHE_TTL_MS)) return
+    if (!force && requestCache.isFresh(key, PROJECT_CACHE_TTL_MS)) return
     const snapshot = captureProjectRequest(id, ['chapters'])
     const res = await requestCache.dedupe(key, () => api.listChapters(id))
     if (!isLatestProjectRequest(snapshot, 'chapters')) return
@@ -287,7 +287,7 @@ export const useProjectStore = defineStore('project', () => {
           await runSafe(target, () => loadOutline(id))
           break
         case 'content':
-          await runSafe(target, () => loadChapters(id))
+          await runSafe(target, () => loadChapters(id, true))
           break
         case 'topology':
           await runSafe(target, () => loadTopology(id))

@@ -190,6 +190,47 @@ describe('project workspace state', () => {
     expect(store.chapters).toEqual([{ id: 'chapter-1', chapter_index: 1 }])
   })
 
+  it('loadChapters(force) 会绕过 fresh 缓存刷新章节列表', async () => {
+    const store = useProjectStore()
+
+    store.applyWorkspaceBootstrap({
+      project: { id: 'A', name: '项目 A' },
+      diagnosis: { missing_items: [], completed_items: [], suggested_next_step: null },
+      chapters: [],
+      versions: [],
+      dialogs: { hermes: { messages: [] }, athena: { messages: [] } },
+    } as any)
+    vi.mocked(api.listChapters).mockResolvedValue({
+      chapters: [{ id: 'chapter-1', chapter_index: 1, title: '第一章' }],
+    })
+
+    await store.loadChapters('A', true)
+
+    expect(api.listChapters).toHaveBeenCalledTimes(1)
+    expect(store.chapters).toEqual([{ id: 'chapter-1', chapter_index: 1, title: '第一章' }])
+  })
+
+  it('refreshTargets(content) 会强制刷新章节，避免任务完成后沿用旧列表', async () => {
+    const store = useProjectStore()
+
+    store.applyWorkspaceBootstrap({
+      project: { id: 'A', name: '项目 A' },
+      diagnosis: { missing_items: [], completed_items: [], suggested_next_step: null },
+      chapters: [],
+      versions: [],
+      dialogs: { hermes: { messages: [] }, athena: { messages: [] } },
+    } as any)
+    vi.mocked(api.listChapters).mockResolvedValue({
+      chapters: [{ id: 'chapter-1', chapter_index: 1, title: '第一章' }],
+    })
+
+    const successTargets = await store.refreshTargets('A', ['content'])
+
+    expect(successTargets).toEqual(['content'])
+    expect(api.listChapters).toHaveBeenCalledTimes(1)
+    expect(store.chapters).toEqual([{ id: 'chapter-1', chapter_index: 1, title: '第一章' }])
+  })
+
   it('workspace bootstrap 会填充项目冷启动数据并标记为 fresh', async () => {
     const store = useProjectStore()
 

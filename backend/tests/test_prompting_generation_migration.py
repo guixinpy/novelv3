@@ -98,3 +98,30 @@ def test_outline_generation_trace_metadata_and_context_blocks(mock_parse, mock_c
         "outline_target",
         "generate_outline_template",
     }
+
+
+@patch("app.api.outlines.load_api_key", return_value="sk-test")
+@patch("app.api.outlines.ai_service.complete", new_callable=AsyncMock)
+@patch("app.api.outlines.ai_service.parse_json")
+def test_twenty_chapter_outline_generation_uses_larger_token_budget(mock_parse, mock_complete, mock_key, client):
+    response = client.post("/api/v1/projects", json={"name": "二十章项目", "target_chapter_count": 20})
+    project_id = response.json()["id"]
+    with patch("app.api.setups.load_api_key", return_value="sk-test"), \
+         patch("app.api.setups.ai_service.complete", new_callable=AsyncMock) as setup_complete, \
+         patch("app.api.setups.ai_service.parse_json") as setup_parse:
+        setup_complete.return_value.content = '{"world_building": {}, "characters": [], "core_concept": {}}'
+        setup_parse.return_value = {"world_building": {}, "characters": [], "core_concept": {}}
+        client.post(f"/api/v1/projects/{project_id}/setup/generate")
+    with patch("app.api.storylines.load_api_key", return_value="sk-test"), \
+         patch("app.api.storylines.ai_service.complete", new_callable=AsyncMock) as storyline_complete, \
+         patch("app.api.storylines.ai_service.parse_json") as storyline_parse:
+        storyline_complete.return_value.content = '{"plotlines": [], "foreshadowing": []}'
+        storyline_parse.return_value = {"plotlines": [], "foreshadowing": []}
+        client.post(f"/api/v1/projects/{project_id}/storyline/generate")
+    mock_complete.return_value.content = '{"total_chapters": 20, "chapters": [], "plotlines": [], "foreshadowing": []}'
+    mock_parse.return_value = {"total_chapters": 20, "chapters": [], "plotlines": [], "foreshadowing": []}
+
+    generated = client.post(f"/api/v1/projects/{project_id}/outline/generate")
+
+    assert generated.status_code == 200
+    assert mock_complete.await_args.kwargs["max_tokens"] >= 8000

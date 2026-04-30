@@ -5,7 +5,10 @@ import { createProjectFromHome, deleteProject, trackBrowserErrors } from './help
 
 function seedAthenaWorldModel(projectId: string) {
   const rootDir = path.resolve(process.cwd(), '..')
-  const backendPython = path.join(rootDir, 'backend', '.venv', 'bin', 'python')
+  const backendPython =
+    process.platform === 'win32'
+      ? path.join(rootDir, 'backend', '.venv', 'Scripts', 'python.exe')
+      : path.join(rootDir, 'backend', '.venv', 'bin', 'python')
   execFileSync(
     process.env.PYTHON || backendPython,
     [path.join(rootDir, 'scripts', 'seed_athena_e2e.py'), projectId],

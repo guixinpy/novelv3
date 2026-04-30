@@ -15,6 +15,7 @@ CLAUDE.md
 GEMINI.md
 skills-lock.json
 .tmp-*.png
+.tmp/
 .AGENTS.md.bkup
 .omx/
 .codex/*

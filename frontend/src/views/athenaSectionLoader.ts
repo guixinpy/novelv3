@@ -39,6 +39,7 @@ export function createAthenaSectionLoader(options: AthenaSectionLoaderOptions) {
     }
     if (routeState.section === 'narrative' && routeState.view === 'timeline') {
       if (!options.athena.timeline) await options.athena.loadTimeline(id)
+      if (!options.athena.evolutionPlan) await options.athena.loadEvolutionPlan(id)
     }
     if (
       routeState.section === 'narrative'

@@ -10,6 +10,7 @@ vi.mock('../api/client', () => ({
     getAthenaMessages: vi.fn(),
     runAthenaConsistencyCheck: vi.fn(),
     getConsistencyIssues: vi.fn(),
+    analyzeAthenaChapter: vi.fn(),
   },
 }))
 
@@ -198,5 +199,41 @@ describe('athena project scope', () => {
     await pending
 
     expect(store.loading).toBe(false)
+  })
+
+  it('records the latest successful consistency check when no issues are found', async () => {
+    vi.mocked(api.runAthenaConsistencyCheck).mockResolvedValue({ issues: [] })
+    vi.mocked(api.getConsistencyIssues).mockResolvedValue([])
+    const store = useAthenaStore()
+
+    await store.runConsistencyCheck('project-1', 20)
+
+    expect(store.lastConsistencyCheck).toEqual({ chapterIndex: 20, issueCount: 0 })
+  })
+
+  it('records analyze-chapter results so the UI can explain no-op analysis', async () => {
+    vi.mocked(api.analyzeAthenaChapter).mockResolvedValue({
+      status: 'skipped',
+      reason: 'duplicates',
+      chapter_index: 20,
+      task_id: null,
+      proposal_bundle_id: 'bundle-20',
+      created: { proposal_items: 0 },
+      skipped: { duplicates: 7 },
+    })
+    vi.mocked(api.getAthenaOntology).mockResolvedValue(ontology())
+    const store = useAthenaStore()
+
+    await store.analyzeChapter('project-1', 20)
+
+    expect(store.lastAnalyzeChapterResult).toEqual({
+      status: 'skipped',
+      reason: 'duplicates',
+      chapter_index: 20,
+      task_id: null,
+      proposal_bundle_id: 'bundle-20',
+      created: { proposal_items: 0 },
+      skipped: { duplicates: 7 },
+    })
   })
 })
