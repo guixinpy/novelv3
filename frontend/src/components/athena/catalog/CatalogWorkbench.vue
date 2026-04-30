@@ -7,6 +7,7 @@ import CatalogNodeList from './CatalogNodeList.vue'
 import { buildCatalogNodes, filterCatalogNodes, normalizeRelations } from './catalogNodeModel'
 import type { AthenaOntology, ProposalItem, WorldProjection } from '../../../api/types'
 import type { AthenaCatalogView, AthenaNodeTypeFilter } from '../../../views/athenaNavigation'
+import type { CatalogRelation } from './catalogNodeModel'
 
 const props = defineProps<{
   ontology: AthenaOntology | null
@@ -21,6 +22,7 @@ const emit = defineEmits<{
 }>()
 
 const selectedRef = ref<string | null>(null)
+const search = ref('')
 
 const nodes = computed(() => buildCatalogNodes({
   ontology: props.ontology,
@@ -30,13 +32,13 @@ const nodes = computed(() => buildCatalogNodes({
 
 const visibleNodes = computed(() => filterCatalogNodes(nodes.value, {
   nodeType: props.nodeType,
-  search: '',
+  search: search.value,
 }))
 
-const relations = computed(() => normalizeRelations([
+const relations = computed(() => dedupeRelations(normalizeRelations([
   ...(props.ontology?.relations || []),
   ...Object.values(props.projection?.relations || {}),
-]))
+])))
 
 const selectedNode = computed(() =>
   visibleNodes.value.find((node) => node.ref === selectedRef.value) || null,
@@ -56,6 +58,30 @@ function filterType(nodeType: AthenaNodeTypeFilter) {
   emit('filterType', nodeType)
 }
 
+function updateSearch(value: string) {
+  search.value = value
+}
+
+function dedupeRelations(relations: CatalogRelation[]): CatalogRelation[] {
+  const seen = new Set<string>()
+  const deduped: CatalogRelation[] = []
+
+  relations.forEach((relation) => {
+    const edgeKey = `edge:${relation.source_ref ?? ''}|${relation.target_ref ?? ''}|${relation.relation_type ?? ''}`
+    const keys = [
+      typeof relation.id === 'string' && relation.id.length > 0 ? `id:${relation.id}` : null,
+      edgeKey,
+    ].filter((key): key is string => key !== null)
+
+    if (keys.some((key) => seen.has(key))) return
+
+    keys.forEach((key) => seen.add(key))
+    deduped.push(relation)
+  })
+
+  return deduped
+}
+
 function formatRuleValue(value: unknown) {
   if (value === null || value === undefined) return '无'
   if (typeof value === 'string') return value
@@ -73,11 +99,13 @@ function formatRuleValue(value: unknown) {
   <div class="catalog-workbench">
     <template v-if="view === 'nodes'">
       <CatalogNodeList
-        :nodes="nodes"
+        :nodes="visibleNodes"
         :node-type="nodeType"
         :selected-ref="selectedRef"
+        :search="search"
         @select="selectNode"
         @filter-type="filterType"
+        @update-search="updateSearch"
       />
       <CatalogNodeDetail :node="selectedNode" />
       <CatalogContextRail :node="selectedNode" :relations="relations" />
@@ -114,6 +142,10 @@ function formatRuleValue(value: unknown) {
   height: 100%;
   overflow: hidden;
   background: var(--color-surface, var(--color-bg-white));
+}
+
+.catalog-workbench :deep(.catalog-graph-panel) {
+  grid-column: 1 / -1;
 }
 
 .catalog-workbench__rules {
@@ -191,11 +223,23 @@ function formatRuleValue(value: unknown) {
     grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
     overflow: auto;
   }
+
+  .catalog-workbench :deep(.catalog-context-rail) {
+    grid-column: 1 / -1;
+    border-top: 1px solid var(--color-border);
+    border-left: 0;
+  }
 }
 
 @media (max-width: 760px) {
   .catalog-workbench {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .catalog-workbench :deep(.catalog-node-list),
+  .catalog-workbench :deep(.catalog-context-rail) {
+    border-right: 0;
+    border-left: 0;
   }
 }
 </style>

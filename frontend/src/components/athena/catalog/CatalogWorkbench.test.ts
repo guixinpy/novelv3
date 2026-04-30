@@ -25,6 +25,14 @@ const projection = {
   facts: { 'char.linche': { hidden_truth: '父亲失踪与潮汐门有关' } },
 } as WorldProjection
 
+const duplicateProjection = {
+  ...projection,
+  relations: {
+    duplicateById: { id: 'rel-1', source_entity_ref: 'char.linche', target_entity_ref: 'loc.lighthouse', relation_type: '常驻' },
+    duplicateByFields: { source_ref: 'char.linche', target_ref: 'loc.lighthouse', relation_type: '常驻' },
+  },
+} as unknown as WorldProjection
+
 describe('CatalogWorkbench', () => {
   it('renders nodes and selects the first matching node', () => {
     const wrapper = mount(CatalogWorkbench, {
@@ -56,5 +64,59 @@ describe('CatalogWorkbench', () => {
 
     expect(wrapper.text()).toContain('规则约束')
     expect(wrapper.text()).toContain('潮汐会吞没记忆')
+  })
+
+  it('keeps detail selection aligned with search results and empty state', async () => {
+    const wrapper = mount(CatalogWorkbench, {
+      props: {
+        ontology,
+        projection,
+        pendingProposalItems: [],
+        nodeType: 'all',
+        view: 'nodes',
+      },
+    })
+
+    await wrapper.find('input[type="search"]').setValue('旧灯塔')
+
+    expect(wrapper.text()).toContain('旧灯塔')
+    expect(wrapper.text()).toContain('地标')
+    expect(wrapper.text()).not.toContain('父亲失踪与潮汐门有关')
+
+    await wrapper.find('input[type="search"]').setValue('不存在')
+
+    expect(wrapper.text()).toContain('暂无匹配节点')
+    expect(wrapper.text()).toContain('选择一个节点查看完整信息')
+  })
+
+  it('emits filter type changes from the node list', async () => {
+    const wrapper = mount(CatalogWorkbench, {
+      props: {
+        ontology,
+        projection,
+        pendingProposalItems: [],
+        nodeType: 'all',
+        view: 'nodes',
+      },
+    })
+
+    await wrapper.findAll('button').find((button) => button.text() === '地点')?.trigger('click')
+
+    expect(wrapper.emitted('filterType')).toEqual([['locations']])
+  })
+
+  it('deduplicates graph relations before rendering', () => {
+    const wrapper = mount(CatalogWorkbench, {
+      props: {
+        ontology,
+        projection: duplicateProjection,
+        pendingProposalItems: [],
+        nodeType: 'all',
+        view: 'graph',
+      },
+    })
+
+    expect(wrapper.findAll('.catalog-graph-panel__row')).toHaveLength(1)
+    expect(wrapper.text()).toContain('1 条关系')
   })
 })

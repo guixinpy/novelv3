@@ -1,21 +1,19 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { filterCatalogNodes } from './catalogNodeModel'
 import type { AthenaNodeTypeFilter } from '../../../views/athenaNavigation'
 import type { CatalogNode } from './catalogNodeModel'
 
-const props = defineProps<{
+defineProps<{
   nodes: CatalogNode[]
   nodeType: AthenaNodeTypeFilter
   selectedRef: string | null
+  search: string
 }>()
 
 const emit = defineEmits<{
   select: [nodeRef: string]
   filterType: [nodeType: AthenaNodeTypeFilter]
+  updateSearch: [search: string]
 }>()
-
-const search = ref('')
 
 const typeFilters: Array<{ value: AthenaNodeTypeFilter; label: string }> = [
   { value: 'all', label: '全部' },
@@ -27,17 +25,16 @@ const typeFilters: Array<{ value: AthenaNodeTypeFilter; label: string }> = [
   { value: 'concepts', label: '概念' },
 ]
 
-const visibleNodes = computed(() => filterCatalogNodes(props.nodes, {
-  nodeType: props.nodeType,
-  search: search.value,
-}))
-
 function selectNode(nodeRef: string) {
   emit('select', nodeRef)
 }
 
 function updateFilter(nodeType: AthenaNodeTypeFilter) {
   emit('filterType', nodeType)
+}
+
+function updateSearch(event: Event) {
+  emit('updateSearch', (event.target as HTMLInputElement).value)
 }
 </script>
 
@@ -50,6 +47,7 @@ function updateFilter(nodeType: AthenaNodeTypeFilter) {
         type="button"
         class="catalog-node-list__filter"
         :class="{ 'catalog-node-list__filter--active': filter.value === nodeType }"
+        :aria-pressed="filter.value === nodeType"
         @click="updateFilter(filter.value)"
       >
         {{ filter.label }}
@@ -58,16 +56,17 @@ function updateFilter(nodeType: AthenaNodeTypeFilter) {
 
     <label class="catalog-node-list__search">
       <span>搜索</span>
-      <input v-model="search" type="search" placeholder="名称 / ref / 事实" />
+      <input :value="search" type="search" placeholder="名称 / ref / 事实" @input="updateSearch" />
     </label>
 
-    <div v-if="visibleNodes.length === 0" class="catalog-node-list__empty">暂无匹配节点</div>
+    <div v-if="nodes.length === 0" class="catalog-node-list__empty">暂无匹配节点</div>
     <button
-      v-for="node in visibleNodes"
+      v-for="node in nodes"
       :key="node.ref"
       type="button"
       class="catalog-node-list__item"
       :class="{ 'catalog-node-list__item--active': node.ref === selectedRef }"
+      :aria-current="node.ref === selectedRef ? 'true' : undefined"
       @click="selectNode(node.ref)"
     >
       <span class="catalog-node-list__label">{{ node.label }}</span>
