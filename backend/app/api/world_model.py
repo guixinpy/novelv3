@@ -29,6 +29,7 @@ from app.schemas import (
     ProposalReviewCreate,
     ProposalReviewOut,
     ProposalReviewRollbackCreate,
+    WorldFactClaimOut,
     WorldModelDashboardOut,
 )
 
@@ -158,6 +159,43 @@ def get_chapter_snapshot(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/facts", response_model=list[WorldFactClaimOut])
+def list_world_fact_claims(
+    project_id: str,
+    claim_status: str | None = "confirmed",
+    claim_layer: str | None = None,
+    subject_ref: str | None = None,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(200, ge=1, le=500),
+    db: Session = Depends(get_db),
+):
+    _require_project(db=db, project_id=project_id)
+    current_profile = _get_current_profile(db=db, project_id=project_id)
+    if current_profile is None:
+        return []
+    query = db.query(WorldFactClaim).filter(
+        WorldFactClaim.project_id == project_id,
+        WorldFactClaim.project_profile_version_id == current_profile.id,
+        WorldFactClaim.profile_version == current_profile.version,
+    )
+    if claim_status and claim_status != "all":
+        query = query.filter(WorldFactClaim.claim_status == claim_status)
+    if claim_layer:
+        query = query.filter(WorldFactClaim.claim_layer == claim_layer)
+    if subject_ref:
+        query = query.filter(WorldFactClaim.subject_ref == subject_ref)
+    return (
+        query.order_by(
+            WorldFactClaim.chapter_index.asc(),
+            WorldFactClaim.intra_chapter_seq.asc(),
+            WorldFactClaim.claim_id.asc(),
+        )
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
 
 
 @router.get("/proposal-bundles", response_model=PaginatedProposalBundlesOut)

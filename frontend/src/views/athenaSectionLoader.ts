@@ -30,6 +30,12 @@ export function createAthenaSectionLoader(options: AthenaSectionLoaderOptions) {
     }
     if (routeState.section === 'truth') {
       if (!options.worldModel.projection) await options.worldModel.loadOverview(id)
+      if (
+        (routeState.view === 'facts' || routeState.view === 'disclosure')
+        && !options.worldModel.factClaimsLoaded
+      ) {
+        await options.worldModel.loadFactClaims(id)
+      }
     }
     if (routeState.section === 'narrative' && routeState.view === 'timeline') {
       if (!options.athena.timeline) await options.athena.loadTimeline(id)
@@ -44,7 +50,7 @@ export function createAthenaSectionLoader(options: AthenaSectionLoaderOptions) {
       routeState.section === 'review'
       && (routeState.view === 'proposals' || routeState.view === 'impact' || routeState.view === 'history')
     ) {
-      if (!options.worldModel.loaded) {
+      if (!options.worldModel.proposalBundlesLoaded) {
         await options.worldModel.loadSetupPanelData(id)
       }
     }

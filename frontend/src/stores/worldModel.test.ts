@@ -7,6 +7,7 @@ vi.mock('../api/client', () => ({
   api: {
     getWorldModelOverview: vi.fn(),
     getWorldModelDashboard: vi.fn(),
+    listWorldFactClaims: vi.fn(),
     getSubjectKnowledge: vi.fn(),
     getChapterSnapshot: vi.fn(),
     listWorldProposalBundles: vi.fn(),
@@ -74,6 +75,34 @@ function createDashboard(rank = 'captain', pendingItemCount = 0) {
       action: pendingItemCount > 0 ? 'review_proposals' : 'inspect_projection',
       label: pendingItemCount > 0 ? '处理待审世界模型提案' : '检查真相投影',
     },
+  }
+}
+
+function createFactClaim() {
+  return {
+    id: 'fact-1',
+    project_id: 'project-1',
+    project_profile_version_id: 'profile-1',
+    profile_version: 1,
+    contract_version: 'world.contract.v1',
+    claim_id: 'claim.hero.rank',
+    chapter_index: 1,
+    intra_chapter_seq: 1,
+    subject_ref: 'char.hero',
+    predicate: 'rank',
+    object_ref_or_value: 'captain',
+    claim_layer: 'truth',
+    claim_status: 'confirmed',
+    perspective_ref: null,
+    disclosed_to_refs: ['char.hero'],
+    valid_from_anchor_id: 'anchor.1',
+    valid_to_anchor_id: null,
+    source_event_ref: 'event.hero.rank',
+    evidence_refs: ['chapter.01'],
+    authority_type: 'authoritative_structured',
+    confidence: 0.9,
+    notes: '',
+    created_at: '2026-04-20T00:00:00Z',
   }
 }
 
@@ -202,6 +231,7 @@ describe('worldModel store', () => {
     setActivePinia(createPinia())
     vi.resetAllMocks()
     vi.mocked(api.getWorldModelDashboard).mockResolvedValue(createDashboard())
+    vi.mocked(api.listWorldFactClaims).mockResolvedValue([])
   })
 
   it('loadOverview() 只加载 profile 和投影，不触发 proposal 列表请求', async () => {
@@ -213,6 +243,7 @@ describe('worldModel store', () => {
     expect(store.projectProfile?.id).toBe('profile-1')
     expect(store.projection?.facts['char.hero'].rank).toBe('captain')
     expect(store.loaded).toBe(true)
+    expect(store.proposalBundlesLoaded).toBe(false)
     expect(api.getWorldModelOverview).toHaveBeenCalledWith('project-1')
     expect(api.listWorldProposalBundles).not.toHaveBeenCalled()
     expect(api.getWorldProposalBundle).not.toHaveBeenCalled()
@@ -242,6 +273,23 @@ describe('worldModel store', () => {
     expect(store.dashboard?.next_action.action).toBe('review_proposals')
     expect(api.getWorldModelDashboard).toHaveBeenCalledWith('project-1')
     expect(api.getWorldProposalBundle).not.toHaveBeenCalled()
+  })
+
+  it('loadFactClaims() 加载完整事实声明元数据', async () => {
+    vi.mocked(api.getWorldModelOverview).mockRejectedValue(new Error('overview failed'))
+    vi.mocked(api.listWorldFactClaims).mockResolvedValue([createFactClaim()])
+    const store = useWorldModelStore()
+
+    await store.loadOverview('project-1')
+    expect(store.error).toBe('overview failed')
+
+    await store.loadFactClaims('project-1')
+
+    expect(store.factClaimsLoaded).toBe(true)
+    expect(store.factClaims[0].claim_id).toBe('claim.hero.rank')
+    expect(store.factClaims[0].disclosed_to_refs).toEqual(['char.hero'])
+    expect(store.error).toBe('overview failed')
+    expect(api.listWorldFactClaims).toHaveBeenCalledWith('project-1', { limit: 500 })
   })
 
   it('tracks loading state per request lane', async () => {
@@ -412,6 +460,7 @@ describe('worldModel store', () => {
 
     expect(store.projectProfile?.version).toBe(3)
     expect(store.projection?.facts['char.hero'].rank).toBe('captain')
+    expect(store.proposalBundlesLoaded).toBe(true)
     expect(store.proposalBundles).toHaveLength(1)
     expect(store.selectedBundleId).toBe('bundle-1')
     expect(store.selectedBundleDetail?.bundle.id).toBe('bundle-1')
@@ -424,6 +473,8 @@ describe('worldModel store', () => {
     store.proposalBundles = [createBundle()]
     store.selectedBundleId = 'bundle-1'
     store.selectedBundleDetail = createBundleDetail()
+    store.factClaims = [createFactClaim()]
+    store.factClaimsLoaded = true
     vi.mocked(api.reviewWorldProposalItem).mockResolvedValue({
       id: 'review-1',
       bundle_id: 'bundle-1',
@@ -464,6 +515,8 @@ describe('worldModel store', () => {
     expect(api.getWorldProposalBundle).toHaveBeenCalledWith('project-1', 'bundle-1')
     expect(store.dashboard?.next_action.action).toBe('inspect_projection')
     expect(store.projection?.facts['char.hero'].rank).toBe('captain')
+    expect(store.factClaimsLoaded).toBe(false)
+    expect(store.factClaims).toEqual([])
     expect(store.proposalBundles[0].bundle_status).toBe('approved')
     expect(store.selectedBundleDetail?.items[0].item_status).toBe('approved')
     expect(store.selectedBundleDetail?.reviews[0].review_action).toBe('approve')
@@ -701,6 +754,8 @@ describe('worldModel store', () => {
     store.proposalBundles = [createBundle('approved')]
     store.selectedBundleId = 'bundle-1'
     store.selectedBundleDetail = createBundleDetail('approved', 'approve', 'claim.hero.rank')
+    store.factClaims = [createFactClaim()]
+    store.factClaimsLoaded = true
 
     vi.mocked(api.rollbackWorldProposalReview).mockResolvedValue({
       id: 'review-rollback-1',
@@ -735,6 +790,8 @@ describe('worldModel store', () => {
     })
     expect(api.getWorldModelOverview).toHaveBeenCalledWith('project-1')
     expect(store.projection?.facts['char.hero'].rank).toBe('lieutenant')
+    expect(store.factClaimsLoaded).toBe(false)
+    expect(store.factClaims).toEqual([])
     expect(store.proposalBundles[0].bundle_status).toBe('rolled_back')
     expect(store.selectedBundleDetail?.items[0].item_status).toBe('rolled_back')
     expect(store.selectedBundleDetail?.reviews[0].review_action).toBe('rollback')

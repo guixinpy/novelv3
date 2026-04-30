@@ -30,6 +30,8 @@ function createLoaderMocks(setupSummary: unknown) {
   const worldModel = {
     dashboard: null as any,
     projection: null as any,
+    factClaimsLoaded: false,
+    proposalBundlesLoaded: false,
     loaded: false,
     loadDashboard: vi.fn(async () => {
       worldModel.dashboard = {
@@ -48,8 +50,12 @@ function createLoaderMocks(setupSummary: unknown) {
     loadOverview: vi.fn(async () => {
       worldModel.projection = { entities: {}, relations: {}, presence: {}, occurred_events: {}, event_links: {}, facts: {} }
     }),
+    loadFactClaims: vi.fn(async () => {
+      worldModel.factClaimsLoaded = true
+    }),
     loadSetupPanelData: vi.fn(async () => {
       worldModel.loaded = true
+      worldModel.proposalBundlesLoaded = true
     }),
   }
   return {
@@ -113,7 +119,7 @@ describe('createAthenaSectionLoader', () => {
     expect(athena.loadRetrievalDiagnostics).toHaveBeenCalledWith('project-1')
   })
 
-  it('loads truth projection data when projection is missing', async () => {
+  it('loads truth projection data without loading fact claims for projection and knowledge views', async () => {
     const { worldModel, loader } = createLoaderMocks(null)
 
     await loader.loadRouteData(routeState({ section: 'truth', view: 'projection' }))
@@ -121,6 +127,18 @@ describe('createAthenaSectionLoader', () => {
 
     expect(worldModel.loadOverview).toHaveBeenCalledTimes(1)
     expect(worldModel.loadOverview).toHaveBeenCalledWith('project-1')
+    expect(worldModel.loadFactClaims).not.toHaveBeenCalled()
+  })
+
+  it('loads fact claims for fact and disclosure truth views', async () => {
+    const { worldModel, loader } = createLoaderMocks(null)
+    worldModel.projection = { entities: {}, relations: {}, presence: {}, occurred_events: {}, event_links: {}, facts: {} }
+
+    await loader.loadRouteData(routeState({ section: 'truth', view: 'facts' }))
+    await loader.loadRouteData(routeState({ section: 'truth', view: 'disclosure' }))
+
+    expect(worldModel.loadOverview).not.toHaveBeenCalled()
+    expect(worldModel.loadFactClaims).toHaveBeenCalledTimes(1)
   })
 
   it('loads narrative data by active view family', async () => {
@@ -155,7 +173,9 @@ describe('createAthenaSectionLoader', () => {
     const athena = {}
     const worldModel = {
       loaded: true,
+      proposalBundlesLoaded: true,
       proposalBundles: [],
+      factClaimsLoaded: true,
       loadSetupPanelData: vi.fn(async () => undefined),
     }
     const loader = createAthenaSectionLoader({
@@ -167,5 +187,22 @@ describe('createAthenaSectionLoader', () => {
     await loader.loadRouteData(routeState({ section: 'review', view: 'proposals' }))
 
     expect(worldModel.loadSetupPanelData).not.toHaveBeenCalled()
+  })
+
+  it('loads proposal data for review views even when overview was already loaded', async () => {
+    const worldModel = {
+      loaded: true,
+      proposalBundlesLoaded: false,
+      loadSetupPanelData: vi.fn(async () => undefined),
+    }
+    const loader = createAthenaSectionLoader({
+      getProjectId: () => 'project-1',
+      athena: {} as any,
+      worldModel: worldModel as any,
+    })
+
+    await loader.loadRouteData(routeState({ section: 'review', view: 'impact' }))
+
+    expect(worldModel.loadSetupPanelData).toHaveBeenCalledWith('project-1')
   })
 })

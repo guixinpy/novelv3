@@ -119,6 +119,70 @@ def test_get_world_model_overview_returns_current_profile_and_truth_projection(c
     assert payload["projection"]["facts"]["char.hero"]["rank"] == "captain"
 
 
+def test_list_world_fact_claims_returns_current_profile_metadata(client, db_session):
+    project, older_profile = _seed_profile(db_session)
+    current_profile = ProjectProfileVersion(
+        project_id=project.id,
+        genre_profile_id=older_profile.genre_profile_id,
+        version=2,
+        contract_version="world.contract.v1",
+        profile_payload={},
+    )
+    db_session.add(current_profile)
+    db_session.commit()
+    db_session.add_all([
+        WorldFactClaim(
+            project_id=project.id,
+            project_profile_version_id=current_profile.id,
+            profile_version=current_profile.version,
+            claim_id="claim.hero.secret.current",
+            chapter_index=2,
+            intra_chapter_seq=1,
+            subject_ref="char.hero",
+            predicate="secret",
+            object_ref_or_value={"value": "潮汐门钥匙"},
+            claim_layer="truth",
+            claim_status="confirmed",
+            perspective_ref="char.hero",
+            disclosed_to_refs=["char.hero", "char.mentor"],
+            valid_from_anchor_id="anchor.ch2.s1",
+            source_event_ref="event.hero.secret",
+            evidence_refs=["chapter.02"],
+            authority_type="authoritative_structured",
+            confidence=0.8,
+            notes="披露测试",
+            contract_version="world.contract.v1",
+        ),
+        WorldFactClaim(
+            project_id=project.id,
+            project_profile_version_id=older_profile.id,
+            profile_version=older_profile.version,
+            claim_id="claim.hero.secret.old",
+            chapter_index=1,
+            intra_chapter_seq=1,
+            subject_ref="char.hero",
+            predicate="secret",
+            object_ref_or_value="旧版本",
+            claim_layer="truth",
+            claim_status="confirmed",
+            authority_type="authoritative_structured",
+            confidence=1.0,
+            contract_version="world.contract.v1",
+        ),
+    ])
+    db_session.commit()
+
+    response = client.get(f"/api/v1/projects/{project.id}/world-model/facts")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [item["claim_id"] for item in payload] == ["claim.hero.secret.current"]
+    assert payload[0]["object_ref_or_value"] == {"value": "潮汐门钥匙"}
+    assert payload[0]["perspective_ref"] == "char.hero"
+    assert payload[0]["disclosed_to_refs"] == ["char.hero", "char.mentor"]
+    assert payload[0]["evidence_refs"] == ["chapter.02"]
+
+
 def test_athena_timeline_endpoint_uses_current_world_event_fields(client, db_session):
     project, profile_version = _seed_profile(db_session)
     db_session.add_all([

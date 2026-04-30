@@ -66,7 +66,7 @@ test('renders Athena projection and proposal workbench from local world-model da
     await expect(page.getByTestId('athena-overview-next-action')).toContainText('处理待审世界模型提案')
 
     await page.getByTestId('athena-overview-next-action').click()
-    await expect(page).toHaveURL(new RegExp(`/projects/${projectId}/athena/proposals$`))
+    await expect(page).toHaveURL(new RegExp(`/projects/${projectId}/athena/review\\?view=proposals$`))
     await expect(page.getByTestId('world-proposal-bundle-list')).toBeVisible()
 
     const lighthouseCard = page
@@ -81,19 +81,19 @@ test('renders Athena projection and proposal workbench from local world-model da
     await expect(page.getByTestId('athena-overview')).toBeVisible()
     await expect(page.getByTestId('athena-overview-metric-pending_item_count')).toContainText(String(pendingBeforeReview - 1))
 
-    await page.goto(`/projects/${projectId}/athena/retrieval`)
+    await page.goto(`/projects/${projectId}/athena/catalog?view=nodes&tool=retrieval`)
     await page.getByPlaceholder('搜索角色、规则、伏笔、章节事实').fill('旧灯塔')
     await page.getByRole('button', { name: '搜索' }).click()
     await expect(page.getByText('章节原文').first()).toBeVisible()
     await expect(page.getByText('可用于核对设定').first()).toBeVisible()
 
-    await page.goto(`/projects/${projectId}/athena/projection`)
+    await page.goto(`/projects/${projectId}/athena/truth?view=projection`)
     await expect(page.getByTestId('workspace-athena')).toBeVisible()
     await expect(page.getByText('地点').first()).toBeVisible()
     await expect(page.getByText('loc.旧灯塔')).toBeVisible()
     await expect(page.getByText('mentioned_in_chapter')).toBeVisible()
 
-    await page.goto(`/projects/${projectId}/athena/proposals`)
+    await page.goto(`/projects/${projectId}/athena/review?view=proposals`)
     await expect(page.getByTestId('world-proposal-bundle-list')).toBeVisible()
     await expect(
       page.getByTestId('world-proposal-item-card').filter({ hasText: 'mentioned_in_chapter' }).first(),
@@ -101,7 +101,7 @@ test('renders Athena projection and proposal workbench from local world-model da
 
     await page.goto(`/projects/${projectId}/hermes`)
     await expect(page.getByTestId('workspace-hermes')).toBeVisible()
-    await page.goto(`/projects/${projectId}/athena/projection`)
+    await page.goto(`/projects/${projectId}/athena/truth?view=projection`)
     await expect(page.getByText('loc.旧灯塔')).toBeVisible()
 
     browserErrors.expectClean()

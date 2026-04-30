@@ -327,6 +327,32 @@ export interface WorldProjection {
   facts: Record<string, Record<string, unknown>>
 }
 
+export interface WorldFactClaim {
+  id: string
+  project_id: string
+  project_profile_version_id?: string | null
+  profile_version?: number | null
+  contract_version: string
+  claim_id: string
+  chapter_index?: number | null
+  intra_chapter_seq: number
+  subject_ref: string
+  predicate: string
+  object_ref_or_value: unknown
+  claim_layer: string
+  claim_status: string
+  perspective_ref?: string | null
+  disclosed_to_refs: string[]
+  valid_from_anchor_id?: string | null
+  valid_to_anchor_id?: string | null
+  source_event_ref?: string | null
+  evidence_refs: string[]
+  authority_type: string
+  confidence: number
+  notes: string
+  created_at: string
+}
+
 export interface WorldModelOverview {
   project_profile: ProjectProfileVersion | null
   projection: WorldProjection | null

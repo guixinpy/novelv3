@@ -78,7 +78,7 @@ function formatValue(value: unknown) {
         <span>待审</span>
         <strong>{{ node.pendingCount }}</strong>
       </div>
-      <div v-else-if="node" class="catalog-context-rail__empty">计数待接入</div>
+      <div v-else-if="node" class="catalog-context-rail__empty">候选变更请在待审变更中查看</div>
       <div v-else class="catalog-context-rail__empty">未选择节点</div>
     </section>
   </aside>

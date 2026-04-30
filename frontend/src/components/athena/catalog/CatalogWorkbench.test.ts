@@ -133,5 +133,7 @@ describe('CatalogWorkbench', () => {
     })
 
     expect(wrapper.text()).not.toContain('待审 0')
+    expect(wrapper.text()).not.toContain('计数待接入')
+    expect(wrapper.text()).toContain('候选变更请在待审变更中查看')
   })
 })

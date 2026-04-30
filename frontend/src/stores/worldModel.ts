@@ -8,11 +8,12 @@ import type {
   ProposalReviewRequest,
   ProposalRollbackRequest,
   ProposalSplitRequest,
+  WorldFactClaim,
   WorldModelDashboard,
   WorldProjection,
 } from '../api/types'
 
-type RequestLane = 'dashboard' | 'overview' | 'bundles' | 'detail'
+type RequestLane = 'dashboard' | 'overview' | 'facts' | 'bundles' | 'detail'
 
 interface RequestSnapshot {
   projectId: string
@@ -33,8 +34,11 @@ interface PendingActionCounts {
 export const useWorldModelStore = defineStore('worldModel', () => {
   const projectProfile = ref<ProjectProfileVersion | null>(null)
   const projection = ref<WorldProjection | null>(null)
+  const factClaims = ref<WorldFactClaim[]>([])
+  const factClaimsLoaded = ref(false)
   const dashboard = ref<WorldModelDashboard | null>(null)
   const proposalBundles = ref<ProposalBundle[]>([])
+  const proposalBundlesLoaded = ref(false)
   const selectedBundleId = ref<string | null>(null)
   const selectedBundleDetail = ref<ProposalBundleDetail | null>(null)
   const subjectKnowledge = ref<WorldProjection | null>(null)
@@ -49,12 +53,14 @@ export const useWorldModelStore = defineStore('worldModel', () => {
   const laneLoading = ref<Record<RequestLane, boolean>>({
     dashboard: false,
     overview: false,
+    facts: false,
     bundles: false,
     detail: false,
   })
   const loadingMoreBundles = ref(false)
   const loaded = ref(false)
   const error = ref('')
+  const lastFactClaimsError = ref('')
   const activeSubmissionCount = ref(0)
   const pendingActionCounts = ref<PendingActionCounts>({})
   const currentProjectScope = ref('')
@@ -65,12 +71,13 @@ export const useWorldModelStore = defineStore('worldModel', () => {
   const latestLaneRequest = ref<Record<RequestLane, number>>({
     dashboard: 0,
     overview: 0,
+    facts: 0,
     bundles: 0,
     detail: 0,
   })
 
   const hasWorldData = computed(() =>
-    projectProfile.value !== null || projection.value !== null || proposalBundles.value.length > 0,
+    projectProfile.value !== null || projection.value !== null || factClaims.value.length > 0 || proposalBundles.value.length > 0,
   )
   const loading = computed(() => Object.values(laneLoading.value).some(Boolean))
   const submitting = computed(() => activeSubmissionCount.value > 0)
@@ -252,19 +259,24 @@ export const useWorldModelStore = defineStore('worldModel', () => {
     latestLaneRequest.value = {
       dashboard: 0,
       overview: 0,
+      facts: 0,
       bundles: 0,
       detail: 0,
     }
     projectProfile.value = null
     projection.value = null
+    factClaims.value = []
+    factClaimsLoaded.value = false
     dashboard.value = null
     proposalBundles.value = []
+    proposalBundlesLoaded.value = false
     selectedBundleId.value = null
     selectedBundleDetail.value = null
-    setLanesLoading(['dashboard', 'overview', 'bundles', 'detail'], false)
+    setLanesLoading(['dashboard', 'overview', 'facts', 'bundles', 'detail'], false)
     loadingMoreBundles.value = false
     loaded.value = false
     error.value = ''
+    lastFactClaimsError.value = ''
     activeSubmissionCount.value = 0
     pendingActionCounts.value = {}
     subjectKnowledgeRequestId += 1
@@ -276,6 +288,11 @@ export const useWorldModelStore = defineStore('worldModel', () => {
     bundlesTotal.value = 0
     bundlesOffset.value = 0
     bundleFilters.value = {}
+  }
+
+  function invalidateFactClaims() {
+    factClaims.value = []
+    factClaimsLoaded.value = false
   }
 
   async function loadSetupPanelData(projectId: string) {
@@ -298,6 +315,7 @@ export const useWorldModelStore = defineStore('worldModel', () => {
       projection.value = overview.projection
       proposalBundles.value = bundlesPage.items
       bundlesTotal.value = bundlesPage.total
+      proposalBundlesLoaded.value = true
       loaded.value = true
 
       const nextSelectedBundleId =
@@ -322,6 +340,7 @@ export const useWorldModelStore = defineStore('worldModel', () => {
       if (!isLatestRequest(snapshot, 'overview') && !isLatestRequest(snapshot, 'bundles')) return
       error.value = toErrorMessage(err)
       loaded.value = true
+      proposalBundlesLoaded.value = false
     } finally {
       finishLatestLanes(snapshot, ['overview', 'bundles', 'detail'])
     }
@@ -344,6 +363,30 @@ export const useWorldModelStore = defineStore('worldModel', () => {
       loaded.value = true
     } finally {
       finishLatestLanes(snapshot, ['overview'])
+    }
+  }
+
+  async function loadFactClaims(projectId: string) {
+    const snapshot = captureRequest(projectId, ['facts'])
+    setLaneLoading('facts', true)
+
+    try {
+      const claims = await api.listWorldFactClaims(projectId, { limit: 500 })
+      if (!isLatestRequest(snapshot, 'facts')) return
+      factClaims.value = claims
+      factClaimsLoaded.value = true
+      if (lastFactClaimsError.value && error.value === lastFactClaimsError.value) {
+        error.value = ''
+      }
+      lastFactClaimsError.value = ''
+    } catch (err) {
+      if (!isLatestRequest(snapshot, 'facts')) return
+      factClaimsLoaded.value = false
+      const nextError = toErrorMessage(err)
+      lastFactClaimsError.value = nextError
+      error.value = nextError
+    } finally {
+      finishLatestLanes(snapshot, ['facts'])
     }
   }
 
@@ -408,6 +451,7 @@ export const useWorldModelStore = defineStore('worldModel', () => {
     })
     if (!isLatestRequest(snapshot, 'bundles')) return
     proposalBundles.value = page.items
+    proposalBundlesLoaded.value = true
     bundlesTotal.value = page.total
     bundlesOffset.value = Math.max(0, page.items.length - bundlesLimit.value)
     if (selectedBundleId.value && !page.items.some((bundle) => bundle.id === selectedBundleId.value)) {
@@ -428,6 +472,7 @@ export const useWorldModelStore = defineStore('worldModel', () => {
       })
       if (!isActiveScope(scope.projectId, scope.version)) return
       proposalBundles.value = [...proposalBundles.value, ...page.items]
+      proposalBundlesLoaded.value = true
       bundlesOffset.value = nextOffset
       bundlesTotal.value = page.total
     } catch (err) {
@@ -466,6 +511,7 @@ export const useWorldModelStore = defineStore('worldModel', () => {
   async function refreshAfterReviewAction(projectId: string) {
     const snapshot = captureRequest(projectId, ['dashboard', 'overview', 'bundles', 'detail'])
     setLanesLoading(['dashboard', 'overview', 'bundles', 'detail'], true)
+    invalidateFactClaims()
     let refreshError = ''
 
     try {
@@ -568,8 +614,11 @@ export const useWorldModelStore = defineStore('worldModel', () => {
   return {
     projectProfile,
     projection,
+    factClaims,
+    factClaimsLoaded,
     dashboard,
     proposalBundles,
+    proposalBundlesLoaded,
     selectedBundleId,
     selectedBundleDetail,
     subjectKnowledge,
@@ -595,6 +644,7 @@ export const useWorldModelStore = defineStore('worldModel', () => {
     resetProjectScopedState,
     loadDashboard,
     loadOverview,
+    loadFactClaims,
     loadSetupPanelData,
     selectBundle,
     loadSubjectKnowledge,

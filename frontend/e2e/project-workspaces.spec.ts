@@ -17,7 +17,7 @@ test('creates a project and switches between core workspaces', async ({ page }) 
     projectId = await createProjectFromHome(page, `E2E 工作区 ${Date.now()}`)
 
     await page.getByTestId('workspace-nav-athena').click()
-    await expect(page).toHaveURL(new RegExp(`/projects/${projectId}/athena$`))
+    await expect(page).toHaveURL(new RegExp(`/projects/${projectId}/athena/overview$`))
     await expect(page.getByTestId('workspace-athena')).toBeVisible()
 
     await page.getByTestId('workspace-nav-manuscript').click()
@@ -107,4 +107,3 @@ test('refreshes Hermes and Athena without optional-resource 404 noise', async ({
     if (projectId) await deleteProject(page, projectId)
   }
 })
-

@@ -30,6 +30,7 @@ import type {
   ProposalSplitRequest,
   ResolveActionRequest,
   ResolveActionResponse,
+  WorldFactClaim,
   WorldModelDashboard,
   WorldModelOverview,
   WorkspaceBootstrap,
@@ -66,6 +67,16 @@ export const api = {
   getSetup: (id: string) => request(`/projects/${id}/setup`),
   getWorldModelOverview: (id: string) => request<WorldModelOverview>(`/projects/${id}/world-model`),
   getWorldModelDashboard: (id: string) => request<WorldModelDashboard>(`/projects/${id}/world-model/dashboard`),
+  listWorldFactClaims: (id: string, params?: { claim_status?: string; claim_layer?: string; subject_ref?: string; offset?: number; limit?: number }) => {
+    const query = new URLSearchParams()
+    if (params?.claim_status) query.set('claim_status', params.claim_status)
+    if (params?.claim_layer) query.set('claim_layer', params.claim_layer)
+    if (params?.subject_ref) query.set('subject_ref', params.subject_ref)
+    if (params?.offset !== undefined) query.set('offset', String(params.offset))
+    if (params?.limit !== undefined) query.set('limit', String(params.limit))
+    const qs = query.toString()
+    return request<WorldFactClaim[]>(`/projects/${id}/world-model/facts${qs ? `?${qs}` : ''}`)
+  },
   listWorldProposalBundles: (id: string, params?: { offset?: number; limit?: number; bundle_status?: string; item_status?: string; profile_version?: number }) => {
     const query = new URLSearchParams()
     if (params?.offset !== undefined) query.set('offset', String(params.offset))

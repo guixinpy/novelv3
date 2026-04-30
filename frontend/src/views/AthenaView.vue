@@ -15,6 +15,9 @@ import OptimizationPanel from '../components/athena/OptimizationPanel.vue'
 import AthenaChatPanel from '../components/athena/AthenaChatPanel.vue'
 import RetrievalPanel from '../components/athena/RetrievalPanel.vue'
 import AthenaSubnav from '../components/athena/AthenaSubnav.vue'
+import NarrativeWorkbench from '../components/athena/NarrativeWorkbench.vue'
+import ReviewInsightPanel from '../components/athena/ReviewInsightPanel.vue'
+import TruthLedger from '../components/athena/TruthLedger.vue'
 import CatalogWorkbench from '../components/athena/catalog/CatalogWorkbench.vue'
 import { createAthenaSectionLoader } from './athenaSectionLoader'
 import {
@@ -23,6 +26,7 @@ import {
   isCanonicalAthenaRoute,
   resolveAthenaRoute,
   type AthenaCatalogView,
+  type AthenaNarrativeView,
   type AthenaNodeTypeFilter,
   type AthenaPanel,
   type AthenaPrimarySection,
@@ -78,13 +82,18 @@ const latestChapterIndex = computed(() => {
   return indexes.length ? Math.max(...indexes) : null
 })
 const catalogPendingProposalItems = computed<ProposalItem[]>(() => {
-  // Phase 1 has no full proposal item source; selected bundle items would show incomplete pending counts.
+  // Catalog hides pending counts unless a complete proposal item source is supplied.
   return []
 })
 const catalogView = computed<AthenaCatalogView>(() => {
   const view = routeState.value.view
   if (view === 'graph' || view === 'rules') return view
   return 'nodes'
+})
+const narrativeView = computed<AthenaNarrativeView>(() => {
+  const view = routeState.value.view
+  if (view === 'storyline' || view === 'chapters' || view === 'foreshadowing') return view
+  return 'timeline'
 })
 const sectionViewOptions = computed<AthenaSectionViewOption[]>(() => {
   const current = routeState.value
@@ -164,6 +173,8 @@ function isCurrentInitialize(requestId: number, projectId: string) {
 }
 
 async function syncRouteState(state: AthenaRouteState) {
+  if (route.meta.workspace !== 'athena') return
+
   ui.setAthenaState(pid.value, {
     section: state.section,
     view: state.view,
@@ -374,7 +385,12 @@ async function runConsistencyCheck(chapterIndex: number) {
             :selected-subject-ref="worldModel.selectedSubjectRef"
             @select-subject="selectSubject"
           />
-          <div v-else class="athena-view__placeholder">truth / {{ routeState.view }} 正在接入现有数据视图</div>
+          <TruthLedger
+            v-else-if="routeState.view === 'facts' || routeState.view === 'disclosure'"
+            :projection="worldModel.projection"
+            :fact-claims="worldModel.factClaims"
+            :view="routeState.view"
+          />
         </template>
 
         <template v-else-if="routeState.section === 'narrative'">
@@ -383,9 +399,12 @@ async function runConsistencyCheck(chapterIndex: number) {
             :events="timelineEvents"
             :anchors="timelineAnchors"
           />
-          <div v-else class="athena-view__placeholder">
-            narrative / {{ routeState.view }} 正在接入现有数据视图
-          </div>
+          <NarrativeWorkbench
+            v-else
+            :plan="athena.evolutionPlan"
+            :chapters="project.chapters"
+            :view="narrativeView"
+          />
         </template>
 
         <template v-else-if="routeState.section === 'review'">
@@ -397,7 +416,12 @@ async function runConsistencyCheck(chapterIndex: number) {
             :loading="athena.loading"
             @run-check="runConsistencyCheck"
           />
-          <div v-else class="athena-view__placeholder">review / {{ routeState.view }} 正在接入现有数据视图</div>
+          <ReviewInsightPanel
+            v-else-if="routeState.view === 'impact' || routeState.view === 'history'"
+            :detail="worldModel.selectedBundleDetail"
+            :bundles="worldModel.proposalBundles"
+            :view="routeState.view"
+          />
         </template>
       </div>
     </div>
@@ -482,8 +506,7 @@ async function runConsistencyCheck(chapterIndex: number) {
   border-bottom: 1px solid var(--color-border);
 }
 
-.athena-view__loading,
-.athena-view__placeholder {
+.athena-view__loading {
   display: flex;
   align-items: center;
   justify-content: center;
