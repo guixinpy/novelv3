@@ -1,21 +1,16 @@
 <script setup lang="ts">
 import BaseButton from '../base/BaseButton.vue'
-import type { AthenaSection } from '../../stores/ui'
-
-interface NavSection {
-  label: string
-  items: { key: AthenaSection; label: string }[]
-}
+import type { AthenaNavItem, AthenaPrimarySection } from '../../views/athenaNavigation'
 
 defineProps<{
-  sections: NavSection[]
-  activeSection: AthenaSection
+  items: AthenaNavItem[]
+  activeSection: AthenaPrimarySection
   canImportSetup: boolean
   hasLatestChapter: boolean
 }>()
 
 const emit = defineEmits<{
-  navigate: [section: AthenaSection]
+  navigate: [section: AthenaPrimarySection]
   importSetup: []
   analyzeLatestChapter: []
   openChat: []
@@ -24,14 +19,14 @@ const emit = defineEmits<{
 
 <template>
   <div class="athena-subnav">
-    <div v-for="sec in sections" :key="sec.label" class="athena-subnav__section">
-      <div class="athena-subnav__section-label">{{ sec.label }}</div>
+    <div class="athena-subnav__section">
+      <div class="athena-subnav__section-label">Athena</div>
       <button
-        v-for="item in sec.items"
-        :key="item.key"
+        v-for="item in items"
+        :key="item.section"
         class="athena-subnav__item"
-        :class="{ 'athena-subnav__item--active': activeSection === item.key }"
-        @click="emit('navigate', item.key)"
+        :class="{ 'athena-subnav__item--active': activeSection === item.section }"
+        @click="emit('navigate', item.section)"
       >
         {{ item.label }}
       </button>

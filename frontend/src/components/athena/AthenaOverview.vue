@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import BaseButton from '../base/BaseButton.vue'
 import type { AthenaSetupImportPreview, WorldModelDashboard } from '../../api/types'
-import type { AthenaSection } from '../../stores/ui'
+import type { AthenaPrimarySection } from '../../views/athenaNavigation'
 
 const props = defineProps<{
   dashboard: WorldModelDashboard | null
@@ -11,7 +11,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  navigate: [section: AthenaSection]
+  navigate: [section: AthenaPrimarySection]
   runAction: [action: string]
 }>()
 
@@ -40,11 +40,11 @@ const profileLabel = computed(() => {
 
 const nextActionLabel = computed(() => props.dashboard?.next_action.label ?? '等待世界模型初始化')
 
-const nextActionSection = computed<AthenaSection>(() => {
+const nextActionSection = computed<AthenaPrimarySection>(() => {
   const action = props.dashboard?.next_action.action
-  if (action === 'review_proposals') return 'proposals'
-  if (action === 'inspect_projection') return 'projection'
-  return 'characters'
+  if (action === 'review_proposals') return 'review'
+  if (action === 'inspect_projection') return 'truth'
+  return 'catalog'
 })
 
 const executableActions = new Set(['import_setup', 'analyze_chapter'])

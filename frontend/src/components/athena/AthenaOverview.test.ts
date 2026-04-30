@@ -66,7 +66,34 @@ describe('AthenaOverview', () => {
 
     await wrapper.get('[data-testid="athena-overview-next-action"]').trigger('click')
 
-    expect(wrapper.emitted('navigate')).toEqual([['proposals']])
+    expect(wrapper.emitted('navigate')).toEqual([['review']])
+  })
+
+  it('maps projection inspection to the truth section', async () => {
+    const wrapper = mount(AthenaOverview, {
+      props: {
+        dashboard: {
+          project_profile: null,
+          metrics: {
+            entity_count: 1,
+            fact_count: 2,
+            presence_count: 0,
+            event_count: 0,
+            pending_bundle_count: 0,
+            pending_item_count: 0,
+          },
+          next_action: {
+            action: 'inspect_projection',
+            label: '检查真相投影',
+          },
+        },
+        loading: false,
+      },
+    })
+
+    await wrapper.get('[data-testid="athena-overview-next-action"]').trigger('click')
+
+    expect(wrapper.emitted('navigate')).toEqual([['truth']])
   })
 
   it('emits executable next actions instead of navigating to an unrelated section', async () => {

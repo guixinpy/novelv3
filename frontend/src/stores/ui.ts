@@ -1,17 +1,19 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import type { AthenaNodeTypeFilter, AthenaPrimarySection, AthenaSubview } from '../views/athenaNavigation'
 
 export type Workspace = 'hermes' | 'athena' | 'manuscript'
-export type AthenaSection =
-  | 'overview'
-  | 'characters' | 'locations' | 'factions' | 'items' | 'relations' | 'rules'
-  | 'projection' | 'timeline' | 'knowledge' | 'retrieval'
-  | 'outline' | 'storyline' | 'proposals' | 'consistency' | 'optimization'
+
+export interface AthenaUiState {
+  section: AthenaPrimarySection
+  view: AthenaSubview
+  nodeType: AthenaNodeTypeFilter
+}
 
 export const useUiStore = defineStore('ui', () => {
   const activeWorkspace = ref<Workspace>('hermes')
   const subNavCollapsed = ref(false)
-  const activeAthenaSection = ref<AthenaSection>('overview')
+  const activeAthenaState = ref<AthenaUiState>({ section: 'overview', view: 'dashboard', nodeType: 'all' })
   const modals = ref<string[]>([])
   const lastProjectRoute = ref<string | null>(null)
   function toggleSubNav() {
@@ -34,20 +36,20 @@ export const useUiStore = defineStore('ui', () => {
     activeWorkspace.value = ws
   }
 
-  function setAthenaSection(section: AthenaSection) {
-    activeAthenaSection.value = section
+  function setAthenaState(state: AthenaUiState) {
+    activeAthenaState.value = state
   }
 
   return {
     activeWorkspace,
     subNavCollapsed,
-    activeAthenaSection,
+    activeAthenaState,
     modals,
     lastProjectRoute,
     toggleSubNav,
     openModal,
     closeModal,
     setWorkspace,
-    setAthenaSection,
+    setAthenaState,
   }
 })
