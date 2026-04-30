@@ -44,6 +44,9 @@ const entityTypeMap: Record<string, CatalogNodeType | undefined> = {
 }
 
 const refKeys = [
+  'canonical_id',
+  'ref',
+  'entity_ref',
   'id',
   'character_id',
   'location_id',
@@ -197,7 +200,7 @@ export function buildCatalogNodes(input: BuildCatalogNodesInput): CatalogNode[] 
 
       nodes.push({
         ref,
-        id: ref,
+        id: readString(ontologyItem, 'id') ?? ref,
         type,
         label: resolveLabel(ontologyItem, ref),
         aliases: resolveAliases(ontologyItem),

@@ -479,7 +479,14 @@ export interface ProposalItemConflict {
 }
 
 export interface AthenaOntology {
-  entities: Record<string, { id: string; name: string }[]>
+  entities: Record<string, {
+    id: string
+    canonical_id?: string
+    primary_alias?: string
+    aliases?: unknown[]
+    name: string
+    [key: string]: unknown
+  }[]>
   relations: { id: string; source_ref: string; target_ref: string; relation_type: string }[]
   rules: { id: string; rule_id: string; description: string }[]
   setup_summary: {

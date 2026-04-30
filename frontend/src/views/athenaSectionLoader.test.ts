@@ -92,8 +92,8 @@ describe('createAthenaSectionLoader', () => {
     expect(athena.loadSetupImportPreview).toHaveBeenCalledWith('project-1')
   })
 
-  it('loads catalog ontology only when it is missing', async () => {
-    const { athena, loader } = createLoaderMocks(null)
+  it('loads catalog ontology and projection only when they are missing', async () => {
+    const { athena, worldModel, loader } = createLoaderMocks(null)
     athena.ontology = null as any
 
     await loader.loadRouteData(routeState({ section: 'catalog', view: 'nodes' }))
@@ -101,6 +101,8 @@ describe('createAthenaSectionLoader', () => {
 
     expect(athena.loadOntology).toHaveBeenCalledTimes(1)
     expect(athena.loadOntology).toHaveBeenCalledWith('project-1')
+    expect(worldModel.loadOverview).toHaveBeenCalledTimes(1)
+    expect(worldModel.loadOverview).toHaveBeenCalledWith('project-1')
   })
 
   it('loads retrieval diagnostics for the catalog retrieval tool', async () => {

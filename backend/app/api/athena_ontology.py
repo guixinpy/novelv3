@@ -44,7 +44,10 @@ def get_ontology(project_id: str, db: Session = Depends(get_db)):
             entities[key] = [
                 {
                     "id": item.id,
+                    "canonical_id": item.canonical_id,
                     "name": getattr(item, "name", getattr(item, "entity_ref", item.id)),
+                    "primary_alias": getattr(item, "primary_alias", ""),
+                    "aliases": getattr(item, "aliases", []),
                     "type": world_entity_type(item, key),
                     "description": world_entity_description(item),
                 }
@@ -134,7 +137,10 @@ def get_ontology_entities(project_id: str, db: Session = Depends(get_db)):
         result[key] = [
             {
                 "id": item.id,
+                "canonical_id": item.canonical_id,
                 "name": getattr(item, "name", getattr(item, "entity_ref", item.id)),
+                "primary_alias": getattr(item, "primary_alias", ""),
+                "aliases": getattr(item, "aliases", []),
                 "type": world_entity_type(item, key),
                 "description": world_entity_description(item),
             }

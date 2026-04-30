@@ -10,6 +10,7 @@ from app.models import (
     Project,
     ProjectProfileVersion,
     Setup,
+    WorldCharacter,
     WorldEvent,
     WorldFactClaim,
     WorldRelation,
@@ -163,7 +164,17 @@ def test_athena_timeline_endpoint_uses_current_world_event_fields(client, db_ses
 
 def test_athena_ontology_endpoint_uses_relation_entity_refs(client, db_session):
     project, profile_version = _seed_profile(db_session)
-    db_session.add(
+    db_session.add_all([
+        WorldCharacter(
+            project_id=project.id,
+            profile_version=profile_version.version,
+            character_id="hero",
+            canonical_id="char.hero",
+            name="主角",
+            role_type="character",
+            identity_anchor="主角",
+            contract_version=profile_version.contract_version,
+        ),
         WorldRelation(
             project_id=project.id,
             profile_version=profile_version.version,
@@ -175,13 +186,14 @@ def test_athena_ontology_endpoint_uses_relation_entity_refs(client, db_session):
             status="active",
             visibility_layer="public",
             contract_version=profile_version.contract_version,
-        )
-    )
+        ),
+    ])
     db_session.commit()
 
     response = client.get(f"/api/v1/projects/{project.id}/athena/ontology")
 
     assert response.status_code == 200
+    assert response.json()["entities"]["characters"][0]["canonical_id"] == "char.hero"
     assert response.json()["relations"] == [
         {
             "id": db_session.query(WorldRelation).one().id,

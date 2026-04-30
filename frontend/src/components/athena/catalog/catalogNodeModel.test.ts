@@ -47,6 +47,30 @@ describe('catalogNodeModel', () => {
     expect(character?.presence?.location_ref).toBe('loc.lighthouse')
   })
 
+  it('uses canonical refs to connect database-backed ontology rows to projection state', () => {
+    const nodes = buildCatalogNodes({
+      ontology: {
+        ...ontology,
+        entities: {
+          characters: [{ id: 'db-row-1', canonical_id: 'char.linche', name: '林澈' } as any],
+        },
+        relations: [
+          { id: 'rel-db-1', source_ref: 'char.linche', target_ref: 'loc.lighthouse', relation_type: 'guards' },
+        ],
+      },
+      projection,
+      pendingProposalItems: [],
+    })
+
+    expect(nodes[0]).toMatchObject({
+      ref: 'char.linche',
+      id: 'db-row-1',
+      factCount: 1,
+      relationCount: 1,
+    })
+    expect(nodes[0].presence?.location_ref).toBe('loc.lighthouse')
+  })
+
   it('filters by node type and search text', () => {
     const nodes = buildCatalogNodes({ ontology, projection, pendingProposalItems: [] })
 

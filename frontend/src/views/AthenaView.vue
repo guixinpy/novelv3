@@ -25,8 +25,19 @@ import {
   type AthenaNodeTypeFilter,
   type AthenaPrimarySection,
   type AthenaRouteState,
+  type AthenaSubview,
 } from './athenaNavigation'
 import type { AthenaConsistencyIssue, ProposalItem } from '../api/types'
+
+interface AthenaSectionViewOption {
+  key: string
+  label: string
+  section: AthenaPrimarySection
+  view: AthenaSubview
+  nodeType: AthenaNodeTypeFilter
+  tool: string | null
+  panel: string | null
+}
 
 const route = useRoute()
 const router = useRouter()
@@ -71,6 +82,48 @@ const catalogView = computed<AthenaCatalogView>(() => {
   const view = routeState.value.view
   if (view === 'graph' || view === 'rules') return view
   return 'nodes'
+})
+const sectionViewOptions = computed<AthenaSectionViewOption[]>(() => {
+  const current = routeState.value
+  const catalogNodeType = current.section === 'catalog' ? current.nodeType : 'all'
+
+  if (current.section === 'overview') {
+    return [
+      viewOption('overview-dashboard', '总览', 'overview', 'dashboard'),
+      viewOption('overview-optimization', '自优化', 'overview', 'dashboard', { panel: 'optimization' }),
+    ]
+  }
+  if (current.section === 'catalog') {
+    return [
+      viewOption('catalog-nodes', '节点', 'catalog', 'nodes', { nodeType: catalogNodeType }),
+      viewOption('catalog-graph', '图谱', 'catalog', 'graph'),
+      viewOption('catalog-rules', '规则', 'catalog', 'rules'),
+      viewOption('catalog-retrieval', '检索', 'catalog', 'nodes', { nodeType: catalogNodeType, tool: 'retrieval' }),
+    ]
+  }
+  if (current.section === 'narrative') {
+    return [
+      viewOption('narrative-timeline', '时间线', 'narrative', 'timeline'),
+      viewOption('narrative-storyline', '故事线', 'narrative', 'storyline'),
+      viewOption('narrative-chapters', '章节', 'narrative', 'chapters'),
+      viewOption('narrative-foreshadowing', '伏笔', 'narrative', 'foreshadowing'),
+    ]
+  }
+  if (current.section === 'truth') {
+    return [
+      viewOption('truth-projection', '真相投影', 'truth', 'projection'),
+      viewOption('truth-knowledge', '主体认知', 'truth', 'knowledge'),
+      viewOption('truth-facts', '事实', 'truth', 'facts'),
+      viewOption('truth-disclosure', '披露', 'truth', 'disclosure'),
+    ]
+  }
+
+  return [
+    viewOption('review-proposals', '提案', 'review', 'proposals'),
+    viewOption('review-conflicts', '一致性', 'review', 'conflicts'),
+    viewOption('review-impact', '影响', 'review', 'impact'),
+    viewOption('review-history', '历史', 'review', 'history'),
+  ]
 })
 
 onMounted(() => void initialize(pid.value))
@@ -146,6 +199,43 @@ function updateCatalogType(nodeType: AthenaNodeTypeFilter) {
   }))
 }
 
+function viewOption(
+  key: string,
+  label: string,
+  section: AthenaPrimarySection,
+  view: AthenaSubview,
+  overrides: Partial<Pick<AthenaSectionViewOption, 'nodeType' | 'tool' | 'panel'>> = {},
+): AthenaSectionViewOption {
+  return {
+    key,
+    label,
+    section,
+    view,
+    nodeType: overrides.nodeType ?? 'all',
+    tool: overrides.tool ?? null,
+    panel: overrides.panel ?? null,
+  }
+}
+
+function isSectionViewActive(option: AthenaSectionViewOption) {
+  const current = routeState.value
+  return current.section === option.section
+    && current.view === option.view
+    && current.tool === option.tool
+    && current.panel === option.panel
+}
+
+function navigateSectionView(option: AthenaSectionViewOption) {
+  router.push(buildAthenaRoute(pid.value, {
+    section: option.section,
+    view: option.view,
+    nodeType: option.nodeType,
+    tool: option.tool,
+    panel: option.panel,
+    isLegacy: false,
+  }))
+}
+
 async function importSetup() {
   await athena.importSetup(pid.value)
   await worldModel.loadDashboard(pid.value).catch(() => undefined)
@@ -205,80 +295,96 @@ async function runConsistencyCheck(chapterIndex: number) {
     <div class="athena-view__content">
       <div v-if="activeError" class="athena-view__error">{{ activeError }}</div>
 
-      <template v-if="routeState.section === 'overview'">
-        <OptimizationPanel
-          v-if="routeState.panel === 'optimization'"
-          :optimization="athena.optimization"
-        />
-        <AthenaOverview
-          v-else
-          :dashboard="worldModel.dashboard"
-          :setup-preview="athena.setupImportPreview"
-          :loading="worldModel.isLaneLoading('dashboard')"
-          @navigate="navigateSection"
-          @run-action="runOverviewAction"
-        />
-      </template>
+      <nav class="athena-view__section-tabs" aria-label="Athena 当前分类视图">
+        <button
+          v-for="option in sectionViewOptions"
+          :key="option.key"
+          type="button"
+          class="athena-view__section-tab"
+          :class="{ 'athena-view__section-tab--active': isSectionViewActive(option) }"
+          :aria-pressed="isSectionViewActive(option)"
+          @click="navigateSectionView(option)"
+        >
+          {{ option.label }}
+        </button>
+      </nav>
 
-      <div
-        v-else-if="routeState.section === 'catalog'"
-        class="athena-view__catalog"
-        :class="{ 'athena-view__catalog--with-tool': routeState.tool === 'retrieval' }"
-      >
-        <RetrievalPanel
-          v-if="routeState.tool === 'retrieval'"
-          :diagnostics="athena.retrievalDiagnostics"
-          :search="athena.retrievalSearch"
-          :last-index-result="athena.retrievalLastIndexResult"
-          :loading="athena.retrievalLoading"
-          @reindex="reindexRetrieval"
-          @search="searchRetrieval"
-        />
-        <CatalogWorkbench
-          :ontology="athena.ontology"
-          :projection="worldModel.projection"
-          :pending-proposal-items="catalogPendingProposalItems"
-          :pending-counts-available="false"
-          :node-type="routeState.nodeType"
-          :view="catalogView"
-          @filter-type="updateCatalogType"
-        />
-      </div>
+      <div class="athena-view__body">
+        <template v-if="routeState.section === 'overview'">
+          <OptimizationPanel
+            v-if="routeState.panel === 'optimization'"
+            :optimization="athena.optimization"
+          />
+          <AthenaOverview
+            v-else
+            :dashboard="worldModel.dashboard"
+            :setup-preview="athena.setupImportPreview"
+            :loading="worldModel.isLaneLoading('dashboard')"
+            @navigate="navigateSection"
+            @run-action="runOverviewAction"
+          />
+        </template>
 
-      <template v-else-if="routeState.section === 'truth'">
-        <ProjectionViewer v-if="routeState.view === 'projection'" :projection="worldModel.projection" />
-        <SubjectKnowledgePanel
-          v-else-if="routeState.view === 'knowledge'"
-          :projection="worldModel.projection"
-          :subject-knowledge="worldModel.subjectKnowledge"
-          :selected-subject-ref="worldModel.selectedSubjectRef"
-          @select-subject="selectSubject"
-        />
-        <div v-else class="athena-view__placeholder">truth / {{ routeState.view }} 正在接入现有数据视图</div>
-      </template>
-
-      <template v-else-if="routeState.section === 'narrative'">
-        <TimelineView
-          v-if="routeState.view === 'timeline'"
-          :events="timelineEvents"
-          :anchors="timelineAnchors"
-        />
-        <div v-else class="athena-view__placeholder">
-          narrative / {{ routeState.view }} 正在接入现有数据视图
+        <div
+          v-else-if="routeState.section === 'catalog'"
+          class="athena-view__catalog"
+          :class="{ 'athena-view__catalog--with-tool': routeState.tool === 'retrieval' }"
+        >
+          <RetrievalPanel
+            v-if="routeState.tool === 'retrieval'"
+            :diagnostics="athena.retrievalDiagnostics"
+            :search="athena.retrievalSearch"
+            :last-index-result="athena.retrievalLastIndexResult"
+            :loading="athena.retrievalLoading"
+            @reindex="reindexRetrieval"
+            @search="searchRetrieval"
+          />
+          <CatalogWorkbench
+            :ontology="athena.ontology"
+            :projection="worldModel.projection"
+            :pending-proposal-items="catalogPendingProposalItems"
+            :pending-counts-available="false"
+            :node-type="routeState.nodeType"
+            :view="catalogView"
+            @filter-type="updateCatalogType"
+          />
         </div>
-      </template>
 
-      <template v-else-if="routeState.section === 'review'">
-        <ProposalWorkbench v-if="routeState.view === 'proposals'" :project-id="pid" />
-        <ConsistencyList
-          v-else-if="routeState.view === 'conflicts'"
-          :issues="consistencyIssues"
-          :latest-chapter-index="latestChapterIndex"
-          :loading="athena.loading"
-          @run-check="runConsistencyCheck"
-        />
-        <div v-else class="athena-view__placeholder">review / {{ routeState.view }} 正在接入现有数据视图</div>
-      </template>
+        <template v-else-if="routeState.section === 'truth'">
+          <ProjectionViewer v-if="routeState.view === 'projection'" :projection="worldModel.projection" />
+          <SubjectKnowledgePanel
+            v-else-if="routeState.view === 'knowledge'"
+            :projection="worldModel.projection"
+            :subject-knowledge="worldModel.subjectKnowledge"
+            :selected-subject-ref="worldModel.selectedSubjectRef"
+            @select-subject="selectSubject"
+          />
+          <div v-else class="athena-view__placeholder">truth / {{ routeState.view }} 正在接入现有数据视图</div>
+        </template>
+
+        <template v-else-if="routeState.section === 'narrative'">
+          <TimelineView
+            v-if="routeState.view === 'timeline'"
+            :events="timelineEvents"
+            :anchors="timelineAnchors"
+          />
+          <div v-else class="athena-view__placeholder">
+            narrative / {{ routeState.view }} 正在接入现有数据视图
+          </div>
+        </template>
+
+        <template v-else-if="routeState.section === 'review'">
+          <ProposalWorkbench v-if="routeState.view === 'proposals'" :project-id="pid" />
+          <ConsistencyList
+            v-else-if="routeState.view === 'conflicts'"
+            :issues="consistencyIssues"
+            :latest-chapter-index="latestChapterIndex"
+            :loading="athena.loading"
+            @run-check="runConsistencyCheck"
+          />
+          <div v-else class="athena-view__placeholder">review / {{ routeState.view }} 正在接入现有数据视图</div>
+        </template>
+      </div>
     </div>
 
     <AthenaChatPanel
@@ -296,7 +402,15 @@ async function runConsistencyCheck(chapterIndex: number) {
 }
 
 .athena-view__content {
+  display: flex;
+  flex-direction: column;
   height: 100%;
+  position: relative;
+}
+
+.athena-view__body {
+  flex: 1;
+  min-height: 0;
   position: relative;
 }
 
@@ -309,6 +423,33 @@ async function runConsistencyCheck(chapterIndex: number) {
   color: var(--color-error);
   background: var(--color-error-light);
   font-size: var(--text-sm);
+}
+
+.athena-view__section-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg-primary);
+}
+
+.athena-view__section-tab {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-3);
+  background: var(--color-bg-white);
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  cursor: pointer;
+}
+
+.athena-view__section-tab--active {
+  border-color: var(--color-brand);
+  background: var(--color-brand-light);
+  color: var(--color-brand-active);
+  font-weight: var(--font-semibold);
 }
 
 .athena-view__catalog {
