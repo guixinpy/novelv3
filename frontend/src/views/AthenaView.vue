@@ -26,7 +26,7 @@ import {
   type AthenaPrimarySection,
   type AthenaRouteState,
 } from './athenaNavigation'
-import type { AthenaConsistencyIssue } from '../api/types'
+import type { AthenaConsistencyIssue, ProposalItem } from '../api/types'
 
 const route = useRoute()
 const router = useRouter()
@@ -37,6 +37,7 @@ const ui = useUiStore()
 const pid = computed(() => route.params.id as string)
 const chatOpen = ref(false)
 const initializedProjectId = ref<string | null>(null)
+let initializeRequestId = 0
 
 const routeState = computed(() =>
   resolveAthenaRoute(
@@ -62,7 +63,10 @@ const latestChapterIndex = computed(() => {
     .filter((index: number) => Number.isFinite(index))
   return indexes.length ? Math.max(...indexes) : null
 })
-const pendingProposalItems = computed(() => worldModel.selectedBundleDetail?.items || [])
+const catalogPendingProposalItems = computed<ProposalItem[]>(() => {
+  // Phase 1 has no full proposal item source; selected bundle items would show incomplete pending counts.
+  return []
+})
 const catalogView = computed<AthenaCatalogView>(() => {
   const view = routeState.value.view
   if (view === 'graph' || view === 'rules') return view
@@ -80,6 +84,7 @@ watch(routeState, (state) => {
 })
 
 async function initialize(projectId: string) {
+  const requestId = ++initializeRequestId
   athena.ensureProject(projectId)
   await project.loadProject(projectId)
   await project.loadChapters(projectId).catch(() => undefined)
@@ -87,6 +92,9 @@ async function initialize(projectId: string) {
     athena.loadOntology(projectId),
     athena.loadMessages(projectId),
   ])
+
+  if (requestId !== initializeRequestId || projectId !== pid.value) return
+
   initializedProjectId.value = projectId
   await syncRouteState(routeState.value)
 }
@@ -221,7 +229,7 @@ async function runConsistencyCheck(chapterIndex: number) {
         <CatalogWorkbench
           :ontology="athena.ontology"
           :projection="worldModel.projection"
-          :pending-proposal-items="pendingProposalItems"
+          :pending-proposal-items="catalogPendingProposalItems"
           :node-type="routeState.nodeType"
           :view="catalogView"
           @filter-type="updateCatalogType"
