@@ -225,4 +225,21 @@ describe('athenaNavigation', () => {
       { view: 'rules', type: 'characters' },
     )).toBe(false)
   })
+
+  it('treats repeated and empty query values as non-canonical', () => {
+    const state = resolveAthenaRoute('catalog', { view: 'nodes', tool: 'retrieval' })
+
+    expect(isCanonicalAthenaRoute(
+      'project-1',
+      state,
+      '/projects/project-1/athena/catalog',
+      { view: 'nodes', tool: ['retrieval', 'bad'] },
+    )).toBe(false)
+    expect(isCanonicalAthenaRoute(
+      'project-1',
+      state,
+      '/projects/project-1/athena/catalog',
+      { view: 'nodes', tool: '' },
+    )).toBe(false)
+  })
 })

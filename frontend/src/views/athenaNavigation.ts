@@ -176,13 +176,19 @@ export function defaultAthenaRouteState(section: AthenaPrimarySection = 'overvie
 function comparableQuery(query: QueryLike) {
   const comparable: Record<string, string> = {}
   for (const [key, value] of Object.entries(query)) {
-    const singleValue = firstQueryValue(value)
-    if (singleValue) comparable[key] = singleValue
+    if (Array.isArray(value)) {
+      if (value.length !== 1 || !value[0]) return null
+      comparable[key] = value[0]
+      continue
+    }
+    if (!value) return null
+    comparable[key] = value
   }
   return comparable
 }
 
-function queriesEqual(left: Record<string, string>, right: Record<string, string>) {
+function queriesEqual(left: Record<string, string> | null, right: Record<string, string>) {
+  if (!left) return false
   const leftKeys = Object.keys(left)
   const rightKeys = Object.keys(right)
   return leftKeys.length === rightKeys.length && leftKeys.every((key) => left[key] === right[key])
