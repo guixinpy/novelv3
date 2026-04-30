@@ -2,10 +2,13 @@
 import { computed } from 'vue'
 import type { CatalogNode, CatalogRelation } from './catalogNodeModel'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   node: CatalogNode | null
   relations: CatalogRelation[]
-}>()
+  pendingCountsAvailable?: boolean
+}>(), {
+  pendingCountsAvailable: true,
+})
 
 const relatedRelations = computed(() => {
   if (!props.node) return []
@@ -71,10 +74,11 @@ function formatValue(value: unknown) {
 
     <section class="catalog-context-rail__section">
       <h3>待审变更</h3>
-      <div v-if="node" class="catalog-context-rail__meta">
+      <div v-if="node && props.pendingCountsAvailable" class="catalog-context-rail__meta">
         <span>待审</span>
         <strong>{{ node.pendingCount }}</strong>
       </div>
+      <div v-else-if="node" class="catalog-context-rail__empty">计数待接入</div>
       <div v-else class="catalog-context-rail__empty">未选择节点</div>
     </section>
   </aside>

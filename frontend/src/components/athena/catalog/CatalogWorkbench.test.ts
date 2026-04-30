@@ -119,4 +119,19 @@ describe('CatalogWorkbench', () => {
     expect(wrapper.findAll('.catalog-graph-panel__row')).toHaveLength(1)
     expect(wrapper.text()).toContain('1 条关系')
   })
+
+  it('does not show zero pending counts when pending counts are unavailable', () => {
+    const wrapper = mount(CatalogWorkbench, {
+      props: {
+        ontology,
+        projection,
+        pendingProposalItems: [],
+        pendingCountsAvailable: false,
+        nodeType: 'characters',
+        view: 'nodes',
+      },
+    })
+
+    expect(wrapper.text()).not.toContain('待审 0')
+  })
 })

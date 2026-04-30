@@ -2,12 +2,15 @@
 import type { AthenaNodeTypeFilter } from '../../../views/athenaNavigation'
 import type { CatalogNode } from './catalogNodeModel'
 
-defineProps<{
+const props = withDefaults(defineProps<{
   nodes: CatalogNode[]
   nodeType: AthenaNodeTypeFilter
   selectedRef: string | null
   search: string
-}>()
+  pendingCountsAvailable?: boolean
+}>(), {
+  pendingCountsAvailable: true,
+})
 
 const emit = defineEmits<{
   select: [nodeRef: string]
@@ -72,7 +75,8 @@ function updateSearch(event: Event) {
       <span class="catalog-node-list__label">{{ node.label }}</span>
       <span class="catalog-node-list__ref">{{ node.ref }}</span>
       <span class="catalog-node-list__stats">
-        事实 {{ node.factCount }} / 关系 {{ node.relationCount }} / 待审 {{ node.pendingCount }}
+        事实 {{ node.factCount }} / 关系 {{ node.relationCount }}
+        <template v-if="props.pendingCountsAvailable"> / 待审 {{ node.pendingCount }}</template>
       </span>
     </button>
   </aside>

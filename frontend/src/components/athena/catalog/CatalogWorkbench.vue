@@ -9,13 +9,16 @@ import type { AthenaOntology, ProposalItem, WorldProjection } from '../../../api
 import type { AthenaCatalogView, AthenaNodeTypeFilter } from '../../../views/athenaNavigation'
 import type { CatalogRelation } from './catalogNodeModel'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   ontology: AthenaOntology | null
   projection: WorldProjection | null
   pendingProposalItems: ProposalItem[]
+  pendingCountsAvailable?: boolean
   nodeType: AthenaNodeTypeFilter
   view: AthenaCatalogView
-}>()
+}>(), {
+  pendingCountsAvailable: true,
+})
 
 const emit = defineEmits<{
   filterType: [nodeType: AthenaNodeTypeFilter]
@@ -103,12 +106,17 @@ function formatRuleValue(value: unknown) {
         :node-type="nodeType"
         :selected-ref="selectedRef"
         :search="search"
+        :pending-counts-available="props.pendingCountsAvailable"
         @select="selectNode"
         @filter-type="filterType"
         @update-search="updateSearch"
       />
-      <CatalogNodeDetail :node="selectedNode" />
-      <CatalogContextRail :node="selectedNode" :relations="relations" />
+      <CatalogNodeDetail :node="selectedNode" :pending-counts-available="props.pendingCountsAvailable" />
+      <CatalogContextRail
+        :node="selectedNode"
+        :relations="relations"
+        :pending-counts-available="props.pendingCountsAvailable"
+      />
     </template>
 
     <CatalogGraphPanel v-else-if="view === 'graph'" :relations="relations" />

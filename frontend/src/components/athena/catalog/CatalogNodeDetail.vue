@@ -2,9 +2,12 @@
 import { computed } from 'vue'
 import type { CatalogNode } from './catalogNodeModel'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   node: CatalogNode | null
-}>()
+  pendingCountsAvailable?: boolean
+}>(), {
+  pendingCountsAvailable: true,
+})
 
 const typeLabels: Record<CatalogNode['type'], string> = {
   characters: '角色',
@@ -72,7 +75,7 @@ function formatValue(value: unknown, seen = new WeakSet<object>()): string {
         <div class="catalog-node-detail__badges">
           <span>事实 {{ node.factCount }}</span>
           <span>关系 {{ node.relationCount }}</span>
-          <span>待审 {{ node.pendingCount }}</span>
+          <span v-if="props.pendingCountsAvailable">待审 {{ node.pendingCount }}</span>
         </div>
       </header>
 

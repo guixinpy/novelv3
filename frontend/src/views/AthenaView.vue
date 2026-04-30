@@ -86,17 +86,25 @@ watch(routeState, (state) => {
 async function initialize(projectId: string) {
   const requestId = ++initializeRequestId
   athena.ensureProject(projectId)
+
   await project.loadProject(projectId)
+  if (!isCurrentInitialize(requestId, projectId)) return
+
   await project.loadChapters(projectId).catch(() => undefined)
+  if (!isCurrentInitialize(requestId, projectId)) return
+
   await Promise.all([
     athena.loadOntology(projectId),
     athena.loadMessages(projectId),
   ])
-
-  if (requestId !== initializeRequestId || projectId !== pid.value) return
+  if (!isCurrentInitialize(requestId, projectId)) return
 
   initializedProjectId.value = projectId
   await syncRouteState(routeState.value)
+}
+
+function isCurrentInitialize(requestId: number, projectId: string) {
+  return requestId === initializeRequestId && projectId === pid.value
 }
 
 async function syncRouteState(state: AthenaRouteState) {
@@ -230,6 +238,7 @@ async function runConsistencyCheck(chapterIndex: number) {
           :ontology="athena.ontology"
           :projection="worldModel.projection"
           :pending-proposal-items="catalogPendingProposalItems"
+          :pending-counts-available="false"
           :node-type="routeState.nodeType"
           :view="catalogView"
           @filter-type="updateCatalogType"

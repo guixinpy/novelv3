@@ -36,4 +36,16 @@ describe('CatalogNodeDetail', () => {
     expect(wrapper.text()).toContain('identity')
     expect(wrapper.text()).toContain('待审 1')
   })
+
+  it('hides pending badges when pending counts are unavailable', () => {
+    const wrapper = mount(CatalogNodeDetail, {
+      props: {
+        node: { ...node, pendingCount: 0 },
+        pendingCountsAvailable: false,
+      },
+    })
+
+    expect(wrapper.text()).not.toContain('待审 0')
+    expect(wrapper.text()).not.toContain('待审 1')
+  })
 })
