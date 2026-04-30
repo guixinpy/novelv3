@@ -1,0 +1,153 @@
+export type AthenaPrimarySection = 'overview' | 'catalog' | 'narrative' | 'truth' | 'review'
+export type AthenaCatalogView = 'nodes' | 'graph' | 'rules'
+export type AthenaNarrativeView = 'timeline' | 'storyline' | 'chapters' | 'foreshadowing'
+export type AthenaTruthView = 'facts' | 'projection' | 'knowledge' | 'disclosure'
+export type AthenaReviewView = 'proposals' | 'impact' | 'conflicts' | 'history'
+export type AthenaOverviewView = 'dashboard'
+export type AthenaSubview =
+  | AthenaOverviewView
+  | AthenaCatalogView
+  | AthenaNarrativeView
+  | AthenaTruthView
+  | AthenaReviewView
+
+export type AthenaNodeTypeFilter =
+  | 'all'
+  | 'characters'
+  | 'locations'
+  | 'factions'
+  | 'items'
+  | 'resources'
+  | 'concepts'
+
+export interface AthenaNavItem {
+  section: AthenaPrimarySection
+  label: string
+  defaultView: AthenaSubview
+}
+
+export interface AthenaRouteState {
+  section: AthenaPrimarySection
+  view: AthenaSubview
+  nodeType: AthenaNodeTypeFilter
+  tool: string | null
+  panel: string | null
+  isLegacy: boolean
+}
+
+type QueryLike = Record<string, string | string[] | null | undefined>
+
+const catalogViews = ['nodes', 'graph', 'rules'] as const
+const narrativeViews = ['timeline', 'storyline', 'chapters', 'foreshadowing'] as const
+const truthViews = ['facts', 'projection', 'knowledge', 'disclosure'] as const
+const reviewViews = ['proposals', 'impact', 'conflicts', 'history'] as const
+const nodeTypes = ['all', 'characters', 'locations', 'factions', 'items', 'resources', 'concepts'] as const
+
+export const athenaPrimaryNav: AthenaNavItem[] = [
+  { section: 'overview', label: '总览', defaultView: 'dashboard' },
+  { section: 'catalog', label: '设定库', defaultView: 'nodes' },
+  { section: 'narrative', label: '叙事脉络', defaultView: 'timeline' },
+  { section: 'truth', label: '真相认知', defaultView: 'projection' },
+  { section: 'review', label: '待审变更', defaultView: 'proposals' },
+]
+
+const canonicalDefaults: Record<AthenaPrimarySection, AthenaSubview> = {
+  overview: 'dashboard',
+  catalog: 'nodes',
+  narrative: 'timeline',
+  truth: 'projection',
+  review: 'proposals',
+}
+
+const legacyRoutes: Record<string, Partial<AthenaRouteState> & Pick<AthenaRouteState, 'section' | 'view'>> = {
+  characters: { section: 'catalog', view: 'nodes', nodeType: 'characters' },
+  locations: { section: 'catalog', view: 'nodes', nodeType: 'locations' },
+  factions: { section: 'catalog', view: 'nodes', nodeType: 'factions' },
+  items: { section: 'catalog', view: 'nodes', nodeType: 'items' },
+  relations: { section: 'catalog', view: 'graph' },
+  rules: { section: 'catalog', view: 'rules' },
+  timeline: { section: 'narrative', view: 'timeline' },
+  storyline: { section: 'narrative', view: 'storyline' },
+  outline: { section: 'narrative', view: 'chapters' },
+  projection: { section: 'truth', view: 'projection' },
+  knowledge: { section: 'truth', view: 'knowledge' },
+  proposals: { section: 'review', view: 'proposals' },
+  consistency: { section: 'review', view: 'conflicts' },
+  retrieval: { section: 'catalog', view: 'nodes', tool: 'retrieval' },
+  optimization: { section: 'overview', view: 'dashboard', panel: 'optimization' },
+}
+
+function firstQueryValue(value: string | string[] | null | undefined) {
+  const singleValue = Array.isArray(value) ? value[0] : value
+  return singleValue || null
+}
+
+function isPrimarySection(value: string | undefined): value is AthenaPrimarySection {
+  return value === 'overview' || value === 'catalog' || value === 'narrative' || value === 'truth' || value === 'review'
+}
+
+function isOneOf<T extends string>(value: string | null, allowed: readonly T[]): value is T {
+  return value !== null && allowed.includes(value as T)
+}
+
+function resolveCanonicalView(section: AthenaPrimarySection, queryView: string | null): AthenaSubview {
+  if (section === 'overview') return 'dashboard'
+  if (section === 'catalog') return isOneOf(queryView, catalogViews) ? queryView : canonicalDefaults.catalog
+  if (section === 'narrative') return isOneOf(queryView, narrativeViews) ? queryView : canonicalDefaults.narrative
+  if (section === 'truth') return isOneOf(queryView, truthViews) ? queryView : canonicalDefaults.truth
+  return isOneOf(queryView, reviewViews) ? queryView : canonicalDefaults.review
+}
+
+function resolveNodeType(queryType: string | null): AthenaNodeTypeFilter {
+  return isOneOf(queryType, nodeTypes) ? queryType : 'all'
+}
+
+export function resolveAthenaRoute(rawSection: string | undefined, query: QueryLike): AthenaRouteState {
+  const tool = firstQueryValue(query.tool)
+  const panel = firstQueryValue(query.panel)
+  const legacyRoute = rawSection ? legacyRoutes[rawSection] : undefined
+
+  if (legacyRoute) {
+    return {
+      section: legacyRoute.section,
+      view: legacyRoute.view,
+      nodeType: legacyRoute.nodeType ?? 'all',
+      tool: legacyRoute.tool ?? tool,
+      panel: legacyRoute.panel ?? panel,
+      isLegacy: true,
+    }
+  }
+
+  const section = isPrimarySection(rawSection) ? rawSection : 'overview'
+
+  return {
+    section,
+    view: resolveCanonicalView(section, firstQueryValue(query.view)),
+    nodeType: resolveNodeType(firstQueryValue(query.type)),
+    tool,
+    panel,
+    isLegacy: false,
+  }
+}
+
+export function buildAthenaRoute(projectId: string, state: AthenaRouteState): { path: string; query: Record<string, string> } {
+  const query: Record<string, string> = {}
+
+  if (state.section !== 'overview') {
+    query.view = state.view
+  }
+  if (state.section === 'catalog' && state.view === 'nodes' && state.nodeType !== 'all') {
+    query.type = state.nodeType
+  }
+  if (state.tool) {
+    query.tool = state.tool
+  }
+  if (state.panel) {
+    query.panel = state.panel
+  }
+
+  return {
+    path: `/projects/${projectId}/athena/${state.section}`,
+    query,
+  }
+}
