@@ -91,4 +91,68 @@ describe('catalogNodeModel', () => {
     expect(character?.raw.name).toBe('林澈')
     expect(filterCatalogNodes(nodes, { nodeType: 'all', search: '父亲失踪' }).map((node) => node.ref)).toEqual(['char.linche'])
   })
+
+  it('skips malformed entity buckets and tolerates partial world data', () => {
+    const partialOntology = {
+      entities: {
+        characters: [{ id: 'char.partial', name: '残缺角色' }],
+        locations: { id: 'loc.invalid', name: '错误桶' },
+      },
+    } as unknown as AthenaOntology
+    const partialProjection = {
+      relations: null,
+      entities: null,
+      facts: null,
+      presence: null,
+    } as unknown as WorldProjection
+
+    const nodes = buildCatalogNodes({
+      ontology: partialOntology,
+      projection: partialProjection,
+      pendingProposalItems: [],
+    })
+
+    expect(nodes).toHaveLength(1)
+    expect(nodes[0]).toMatchObject({
+      ref: 'char.partial',
+      label: '残缺角色',
+      relationCount: 0,
+      factCount: 0,
+      presence: null,
+    })
+  })
+
+  it('deduplicates ontology and projection relations before counting', () => {
+    const duplicateProjection = {
+      ...projection,
+      relations: {
+        duplicateById: { id: 'rel-1', source_entity_ref: 'char.linche', target_entity_ref: 'loc.lighthouse', relation_type: 'guards' },
+        duplicateByFields: { source_ref: 'char.linche', target_ref: 'loc.lighthouse', relation_type: 'guards' },
+        duplicateByFieldsAgain: { source_entity_ref: 'char.linche', target_entity_ref: 'loc.lighthouse', relation_type: 'guards' },
+      },
+    }
+
+    const nodes = buildCatalogNodes({ ontology, projection: duplicateProjection, pendingProposalItems: [] })
+
+    expect(nodes.find((node) => node.ref === 'char.linche')?.relationCount).toBe(1)
+  })
+
+  it('searches without throwing on cyclic values or BigInt', () => {
+    const cyclic: Record<string, unknown> = { marker: '循环线索' }
+    cyclic.self = cyclic
+    const unsafeProjection: WorldProjection = {
+      ...projection,
+      entities: {
+        'char.linche': { entity_type: 'character', attributes: { cyclic, count: 1n } },
+      },
+      facts: {
+        'char.linche': { impossibleCount: 2n },
+      },
+    }
+    const nodes = buildCatalogNodes({ ontology, projection: unsafeProjection, pendingProposalItems: [] })
+
+    expect(() => filterCatalogNodes(nodes, { nodeType: 'all', search: '循环线索' })).not.toThrow()
+    expect(filterCatalogNodes(nodes, { nodeType: 'all', search: '循环线索' }).map((node) => node.ref)).toEqual(['char.linche'])
+    expect(filterCatalogNodes(nodes, { nodeType: 'all', search: '2' }).map((node) => node.ref)).toEqual(['char.linche'])
+  })
 })

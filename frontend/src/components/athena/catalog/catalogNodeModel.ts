@@ -83,8 +83,33 @@ function resolveAliases(record: Record<string, unknown>): string[] {
 }
 
 function collectProjectionRelations(projection: WorldProjection | null): unknown[] {
-  if (!projection) return []
-  return Object.values(projection.relations)
+  const relations = projection?.relations
+  if (Array.isArray(relations)) return relations
+  if (!isRecord(relations)) return []
+
+  return Object.values(relations)
+}
+
+function collectOntologyRelations(ontology: AthenaOntology): unknown[] {
+  return Array.isArray(ontology.relations) ? ontology.relations : []
+}
+
+function dedupeRelations(relations: CatalogRelation[]): CatalogRelation[] {
+  const seen = new Set<string>()
+  const deduped: CatalogRelation[] = []
+
+  relations.forEach((relation) => {
+    const keys = [
+      typeof relation.id === 'string' && relation.id.length > 0 ? `id:${relation.id}` : null,
+      `edge:${relation.source_ref ?? ''}|${relation.target_ref ?? ''}|${relation.relation_type ?? ''}`,
+    ].filter((key): key is string => key !== null)
+    if (keys.some((key) => seen.has(key))) return
+
+    keys.forEach((key) => seen.add(key))
+    deduped.push(relation)
+  })
+
+  return deduped
 }
 
 function countRelations(ref: string, relations: CatalogRelation[]): number {
@@ -95,13 +120,34 @@ function countPendingItems(ref: string, pendingProposalItems: ProposalItem[]): n
   return pendingProposalItems.filter((item) => item.item_status === 'pending' && item.subject_ref === ref).length
 }
 
+function projectionRecord(value: unknown): Record<string, unknown> {
+  return isRecord(value) ? value : {}
+}
+
+function valueToSearchText(value: unknown, seen = new WeakSet<object>()): string {
+  if (value === null || value === undefined) return ''
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') return String(value)
+  if (typeof value === 'symbol') return value.description ?? ''
+  if (typeof value === 'function') return ''
+  if (Array.isArray(value)) return value.map((item) => valueToSearchText(item, seen)).join(' ')
+  if (typeof value === 'object') {
+    if (seen.has(value)) return ''
+
+    seen.add(value)
+    return Object.values(value).map((item) => valueToSearchText(item, seen)).join(' ')
+  }
+
+  return ''
+}
+
 function searchableText(node: CatalogNode): string {
   return [
     node.ref,
     node.label,
     ...node.aliases,
-    JSON.stringify(node.raw),
-    JSON.stringify(node.facts),
+    valueToSearchText(node.raw),
+    valueToSearchText(node.facts),
   ].join(' ')
 }
 
@@ -122,23 +168,32 @@ export function buildCatalogNodes(input: BuildCatalogNodesInput): CatalogNode[] 
   const { ontology, projection, pendingProposalItems } = input
   if (!ontology) return []
 
-  const relations = normalizeRelations([
-    ...ontology.relations,
+  const relations = dedupeRelations(normalizeRelations([
+    ...collectOntologyRelations(ontology),
     ...collectProjectionRelations(projection),
-  ])
+  ]))
+  const ontologyEntities = projectionRecord(ontology.entities)
+  const projectionEntities = projectionRecord(projection?.entities)
+  const projectionFacts = projectionRecord(projection?.facts)
+  const projectionPresence = projectionRecord(projection?.presence)
   const nodes: CatalogNode[] = []
 
-  Object.entries(ontology.entities).forEach(([entityKey, entities]) => {
+  Object.entries(ontologyEntities).forEach(([entityKey, entities]) => {
     const type = entityTypeMap[entityKey]
     if (!type) return
+    if (!Array.isArray(entities)) return
 
     entities.forEach((entity) => {
-      const ontologyItem = entity as unknown as Record<string, unknown>
+      if (!isRecord(entity)) return
+
+      const ontologyItem = entity
       const ref = resolveRef(ontologyItem)
       if (!ref) return
 
-      const projectionAttributes = projection?.entities[ref]?.attributes ?? {}
-      const facts = projection?.facts[ref] ?? {}
+      const projectionEntity = projectionEntities[ref]
+      const projectionAttributes = isRecord(projectionEntity) ? projectionRecord(projectionEntity.attributes) : {}
+      const facts = projectionRecord(projectionFacts[ref])
+      const presence = projectionPresence[ref]
 
       nodes.push({
         ref,
@@ -148,7 +203,7 @@ export function buildCatalogNodes(input: BuildCatalogNodesInput): CatalogNode[] 
         aliases: resolveAliases(ontologyItem),
         raw: { ...projectionAttributes, ...ontologyItem },
         facts,
-        presence: projection?.presence[ref] ?? null,
+        presence: isRecord(presence) ? presence : null,
         relationCount: countRelations(ref, relations),
         factCount: Object.keys(facts).length,
         pendingCount: countPendingItems(ref, pendingProposalItems),
