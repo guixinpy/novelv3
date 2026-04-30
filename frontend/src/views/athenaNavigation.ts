@@ -26,12 +26,15 @@ export interface AthenaNavItem {
   defaultView: AthenaSubview
 }
 
-export interface AthenaRouteState {
+export interface AthenaRouteIntent {
   section: AthenaPrimarySection
   view: AthenaSubview
   nodeType: AthenaNodeTypeFilter
   tool: string | null
   panel: string | null
+}
+
+export interface AthenaRouteState extends AthenaRouteIntent {
   isLegacy: boolean
 }
 
@@ -143,7 +146,42 @@ export function resolveAthenaRoute(rawSection: string | undefined, query: QueryL
   }
 }
 
-export function buildAthenaRoute(projectId: string, state: AthenaRouteState): { path: string; query: Record<string, string> } {
+export function defaultAthenaRouteState(section: AthenaPrimarySection = 'overview'): AthenaRouteIntent {
+  return {
+    section,
+    view: canonicalDefaults[section],
+    nodeType: 'all',
+    tool: null,
+    panel: null,
+  }
+}
+
+function comparableQuery(query: QueryLike) {
+  const comparable: Record<string, string> = {}
+  for (const [key, value] of Object.entries(query)) {
+    const singleValue = firstQueryValue(value)
+    if (singleValue) comparable[key] = singleValue
+  }
+  return comparable
+}
+
+function queriesEqual(left: Record<string, string>, right: Record<string, string>) {
+  const leftKeys = Object.keys(left)
+  const rightKeys = Object.keys(right)
+  return leftKeys.length === rightKeys.length && leftKeys.every((key) => left[key] === right[key])
+}
+
+export function isCanonicalAthenaRoute(
+  projectId: string,
+  state: AthenaRouteIntent,
+  currentPath: string,
+  currentQuery: QueryLike,
+) {
+  const target = buildAthenaRoute(projectId, state)
+  return currentPath === target.path && queriesEqual(comparableQuery(currentQuery), target.query)
+}
+
+export function buildAthenaRoute(projectId: string, state: AthenaRouteIntent): { path: string; query: Record<string, string> } {
   const query: Record<string, string> = {}
   const view = resolveCanonicalView(state.section, state.view)
   const nodeType = resolveScopedNodeType(state.section, view, state.nodeType)

@@ -20,6 +20,7 @@ import { createAthenaSectionLoader } from './athenaSectionLoader'
 import {
   athenaPrimaryNav,
   buildAthenaRoute,
+  isCanonicalAthenaRoute,
   resolveAthenaRoute,
   type AthenaCatalogView,
   type AthenaNodeTypeFilter,
@@ -161,10 +162,24 @@ function isCurrentInitialize(requestId: number, projectId: string) {
 }
 
 async function syncRouteState(state: AthenaRouteState) {
-  ui.setAthenaState({ section: state.section, view: state.view, nodeType: state.nodeType })
+  ui.setAthenaState({
+    section: state.section,
+    view: state.view,
+    nodeType: state.nodeType,
+    tool: state.tool,
+    panel: state.panel,
+  })
   if (!pid.value) return
 
-  if (state.isLegacy) {
+  if (
+    state.isLegacy
+    || !isCanonicalAthenaRoute(
+      pid.value,
+      state,
+      route.path,
+      route.query as unknown as Parameters<typeof isCanonicalAthenaRoute>[3],
+    )
+  ) {
     await router.replace(buildAthenaRoute(pid.value, state))
     return
   }
@@ -177,14 +192,14 @@ async function syncRouteState(state: AthenaRouteState) {
 function navigateSection(section: AthenaPrimarySection) {
   const target = athenaPrimaryNav.find((item) => item.section === section)
   if (!target) return
+  const lastState = ui.getAthenaSectionState(section)
 
   router.push(buildAthenaRoute(pid.value, {
     section,
-    view: target.defaultView,
-    nodeType: 'all',
-    tool: null,
-    panel: null,
-    isLegacy: false,
+    view: lastState.view || target.defaultView,
+    nodeType: lastState.nodeType,
+    tool: lastState.tool,
+    panel: lastState.panel,
   }))
 }
 
@@ -195,7 +210,6 @@ function updateCatalogType(nodeType: AthenaNodeTypeFilter) {
     nodeType,
     tool: null,
     panel: null,
-    isLegacy: false,
   }))
 }
 
@@ -232,7 +246,6 @@ function navigateSectionView(option: AthenaSectionViewOption) {
     nodeType: option.nodeType,
     tool: option.tool,
     panel: option.panel,
-    isLegacy: false,
   }))
 }
 

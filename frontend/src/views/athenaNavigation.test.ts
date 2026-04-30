@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildAthenaRoute,
+  isCanonicalAthenaRoute,
   resolveAthenaRoute,
   type AthenaRouteState,
 } from './athenaNavigation'
@@ -159,5 +160,34 @@ describe('athenaNavigation', () => {
       path: '/projects/project-1/athena/review',
       query: { view: 'history', tool: 'diff', panel: 'optimization' },
     })
+  })
+
+  it('detects canonical route locations', () => {
+    const state = resolveAthenaRoute('catalog', { view: 'nodes', type: 'locations' })
+
+    expect(isCanonicalAthenaRoute(
+      'project-1',
+      state,
+      '/projects/project-1/athena/catalog',
+      { view: 'nodes', type: 'locations' },
+    )).toBe(true)
+  })
+
+  it('detects dirty canonicalized route locations', () => {
+    const defaultState = resolveAthenaRoute(undefined, {})
+    const invalidState = resolveAthenaRoute('bad', { view: 'rules', type: 'characters' })
+
+    expect(isCanonicalAthenaRoute(
+      'project-1',
+      defaultState,
+      '/projects/project-1/athena',
+      {},
+    )).toBe(false)
+    expect(isCanonicalAthenaRoute(
+      'project-1',
+      invalidState,
+      '/projects/project-1/athena/bad',
+      { view: 'rules', type: 'characters' },
+    )).toBe(false)
   })
 })

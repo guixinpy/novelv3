@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute, useRouter, type RouteLocationRaw } from 'vue-router'
 import { useUiStore } from '../../stores/ui'
 import { useProjectStore } from '../../stores/project'
 import TopBar from './TopBar.vue'
@@ -49,7 +49,7 @@ function onNavigateSettings() {
   router.push('/settings')
 }
 
-function onActivityNavigate(target: string) {
+function onActivityNavigate(target: RouteLocationRaw) {
   if (target === '/settings' && route.meta.workspace) {
     ui.lastProjectRoute = route.fullPath
   }

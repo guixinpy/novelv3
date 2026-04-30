@@ -1,19 +1,35 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import type { AthenaNodeTypeFilter, AthenaPrimarySection, AthenaSubview } from '../views/athenaNavigation'
+import {
+  defaultAthenaRouteState,
+  type AthenaPrimarySection,
+  type AthenaRouteIntent,
+} from '../views/athenaNavigation'
 
 export type Workspace = 'hermes' | 'athena' | 'manuscript'
 
-export interface AthenaUiState {
-  section: AthenaPrimarySection
-  view: AthenaSubview
-  nodeType: AthenaNodeTypeFilter
+export type AthenaUiState = AthenaRouteIntent
+
+function cloneAthenaState(state: AthenaUiState): AthenaUiState {
+  return { ...state }
+}
+
+function defaultAthenaSectionStates(): Record<AthenaPrimarySection, AthenaUiState> {
+  return {
+    overview: defaultAthenaRouteState('overview'),
+    catalog: defaultAthenaRouteState('catalog'),
+    narrative: defaultAthenaRouteState('narrative'),
+    truth: defaultAthenaRouteState('truth'),
+    review: defaultAthenaRouteState('review'),
+  }
 }
 
 export const useUiStore = defineStore('ui', () => {
   const activeWorkspace = ref<Workspace>('hermes')
   const subNavCollapsed = ref(false)
-  const activeAthenaState = ref<AthenaUiState>({ section: 'overview', view: 'dashboard', nodeType: 'all' })
+  const initialAthenaStates = defaultAthenaSectionStates()
+  const activeAthenaState = ref<AthenaUiState>(cloneAthenaState(initialAthenaStates.overview))
+  const athenaSectionStates = ref<Record<AthenaPrimarySection, AthenaUiState>>(initialAthenaStates)
   const modals = ref<string[]>([])
   const lastProjectRoute = ref<string | null>(null)
   function toggleSubNav() {
@@ -37,13 +53,23 @@ export const useUiStore = defineStore('ui', () => {
   }
 
   function setAthenaState(state: AthenaUiState) {
-    activeAthenaState.value = state
+    const normalizedState = cloneAthenaState(state)
+    activeAthenaState.value = normalizedState
+    athenaSectionStates.value = {
+      ...athenaSectionStates.value,
+      [normalizedState.section]: normalizedState,
+    }
+  }
+
+  function getAthenaSectionState(section: AthenaPrimarySection) {
+    return cloneAthenaState(athenaSectionStates.value[section] ?? defaultAthenaRouteState(section))
   }
 
   return {
     activeWorkspace,
     subNavCollapsed,
     activeAthenaState,
+    athenaSectionStates,
     modals,
     lastProjectRoute,
     toggleSubNav,
@@ -51,5 +77,6 @@ export const useUiStore = defineStore('ui', () => {
     closeModal,
     setWorkspace,
     setAthenaState,
+    getAthenaSectionState,
   }
 })

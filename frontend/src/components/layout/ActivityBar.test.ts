@@ -1,9 +1,15 @@
 // @vitest-environment jsdom
 import { mount } from '@vue/test-utils'
-import { describe, expect, it } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
+import { beforeEach, describe, expect, it } from 'vitest'
+import { useUiStore } from '../../stores/ui'
 import ActivityBar from './ActivityBar.vue'
 
 describe('ActivityBar', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
   it('labels the manuscript workspace as Calliope for users', () => {
     const wrapper = mount(ActivityBar, {
       props: {
@@ -29,5 +35,29 @@ describe('ActivityBar', () => {
     expect(wrapper.get('[data-testid="workspace-nav-hermes"]').attributes('aria-label')).toBe('Hermes')
     expect(wrapper.get('[data-testid="workspace-nav-athena"]').attributes('aria-label')).toBe('Athena')
     expect(wrapper.get('[data-testid="workspace-nav-manuscript"]').attributes('aria-label')).toBe('Calliope')
+  })
+
+  it('returns users to the last Athena section state', async () => {
+    const ui = useUiStore()
+    ui.setAthenaState({
+      section: 'catalog',
+      view: 'nodes',
+      nodeType: 'locations',
+      tool: null,
+      panel: null,
+    })
+    const wrapper = mount(ActivityBar, {
+      props: {
+        activeWorkspace: 'hermes',
+        projectId: 'project-1',
+      },
+    })
+
+    await wrapper.get('[data-testid="workspace-nav-athena"]').trigger('click')
+
+    expect(wrapper.emitted('navigate')?.[0]).toEqual([{
+      path: '/projects/project-1/athena/catalog',
+      query: { view: 'nodes', type: 'locations' },
+    }])
   })
 })

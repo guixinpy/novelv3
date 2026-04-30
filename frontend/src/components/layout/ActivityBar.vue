@@ -1,5 +1,8 @@
 <script setup lang="ts">
+import type { RouteLocationRaw } from 'vue-router'
 import type { Workspace } from '../../stores/ui'
+import { useUiStore } from '../../stores/ui'
+import { buildAthenaRoute } from '../../views/athenaNavigation'
 
 const { activeWorkspace, projectId } = defineProps<{
   activeWorkspace: Workspace | null
@@ -7,11 +10,15 @@ const { activeWorkspace, projectId } = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  navigate: [target: string]
+  navigate: [target: RouteLocationRaw]
   'toggle-subnav': []
 }>()
 
-function onItemClick(item: typeof workspaceItems[number]) {
+const ui = useUiStore()
+
+type WorkspaceItem = { key: Workspace; icon: string; label: string; route: (id: string) => RouteLocationRaw }
+
+function onItemClick(item: WorkspaceItem) {
   if (activeWorkspace === item.key) {
     emit('toggle-subnav')
   } else {
@@ -19,9 +26,9 @@ function onItemClick(item: typeof workspaceItems[number]) {
   }
 }
 
-const workspaceItems: { key: Workspace; icon: string; label: string; route: (id: string) => string }[] = [
+const workspaceItems: WorkspaceItem[] = [
   { key: 'hermes', icon: '☿', label: 'Hermes', route: (id) => `/projects/${id}/hermes` },
-  { key: 'athena', icon: '⏣', label: 'Athena', route: (id) => `/projects/${id}/athena` },
+  { key: 'athena', icon: '⏣', label: 'Athena', route: (id) => buildAthenaRoute(id, ui.activeAthenaState) },
   { key: 'manuscript', icon: '📜', label: 'Calliope', route: (id) => `/projects/${id}/manuscript` },
 ]
 </script>
