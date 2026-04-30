@@ -117,10 +117,13 @@ export function resolveAthenaRoute(rawSection: string | undefined, query: QueryL
   const legacyRoute = rawSection ? legacyRoutes[rawSection] : undefined
 
   if (legacyRoute) {
+    const section = legacyRoute.section
+    const view = resolveCanonicalView(section, legacyRoute.view)
+
     return {
-      section: legacyRoute.section,
-      view: legacyRoute.view,
-      nodeType: legacyRoute.nodeType ?? 'all',
+      section,
+      view,
+      nodeType: resolveScopedNodeType(section, view, legacyRoute.nodeType ?? null),
       tool: legacyRoute.tool ?? tool,
       panel: legacyRoute.panel ?? panel,
       isLegacy: true,

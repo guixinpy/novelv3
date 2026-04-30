@@ -36,11 +36,22 @@ describe('athenaNavigation', () => {
     expect(resolveAthenaRoute('projection', {})).toMatchObject({
       section: 'truth',
       view: 'projection',
+      nodeType: 'all',
       isLegacy: true,
     })
     expect(resolveAthenaRoute('consistency', {})).toMatchObject({
       section: 'review',
       view: 'conflicts',
+      nodeType: 'all',
+      isLegacy: true,
+    })
+  })
+
+  it('scopes legacy node filters to catalog nodes', () => {
+    expect(resolveAthenaRoute('relations', {})).toMatchObject({
+      section: 'catalog',
+      view: 'graph',
+      nodeType: 'all',
       isLegacy: true,
     })
   })
