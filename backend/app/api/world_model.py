@@ -33,6 +33,7 @@ from app.schemas import (
 )
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/world-model", tags=["world-model"])
+ACTIONABLE_PROPOSAL_ITEM_STATUSES = ("pending", "needs_edit")
 
 
 @router.get("", response_model=ProjectWorldOverviewOut)
@@ -86,13 +87,14 @@ def get_world_model_dashboard(project_id: str, db: Session = Depends(get_db)):
         .count()
     )
     pending_bundle_count = (
-        db.query(WorldProposalBundle.id)
+        db.query(WorldProposalItem.bundle_id)
         .filter(
-            WorldProposalBundle.project_id == project_id,
-            WorldProposalBundle.project_profile_version_id == profile.id,
-            WorldProposalBundle.profile_version == profile.version,
-            WorldProposalBundle.bundle_status.in_(("pending", "partially_approved")),
+            WorldProposalItem.project_id == project_id,
+            WorldProposalItem.project_profile_version_id == profile.id,
+            WorldProposalItem.profile_version == profile.version,
+            WorldProposalItem.item_status.in_(("pending", "needs_edit")),
         )
+        .distinct()
         .count()
     )
     fact_count = sum(len(group) for group in (projection.facts if projection else {}).values())
@@ -161,8 +163,8 @@ def get_chapter_snapshot(
 @router.get("/proposal-bundles", response_model=PaginatedProposalBundlesOut)
 def list_world_proposal_bundles(
     project_id: str,
-    offset: int = 0,
-    limit: int = 20,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
     bundle_status: str | None = None,
     item_status: str | None = None,
     profile_version: int | None = None,
@@ -417,8 +419,13 @@ def _detect_item_conflicts(
             view_type="current_truth",
         )
         projection_facts = overview.projection.facts if overview.projection else {}
+    actionable_item_ids = {
+        item.id
+        for item in items
+        if item.item_status in ACTIONABLE_PROPOSAL_ITEM_STATUSES
+    }
     for item in items:
-        if item.item_status in ("approved", "approved_with_edits", "rejected", "rolled_back"):
+        if item.id not in actionable_item_ids:
             continue
         if item.claim_layer != "truth":
             continue
@@ -443,6 +450,8 @@ def _detect_item_conflicts(
     for snapshot in impact_snapshots:
         if len(snapshot.affected_truth_claim_ids) >= 3:
             for candidate_id in snapshot.candidate_item_ids:
+                if candidate_id not in actionable_item_ids:
+                    continue
                 if not any(c["item_id"] == candidate_id and c["conflict_type"] == "high_impact" for c in conflicts):
                     conflicts.append({
                         "item_id": candidate_id,

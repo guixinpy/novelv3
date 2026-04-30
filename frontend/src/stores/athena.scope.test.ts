@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useAthenaStore } from './athena'
+import { useWorldModelStore } from './worldModel'
 import { api } from '../api/client'
 
 vi.mock('../api/client', () => ({
@@ -81,6 +82,46 @@ describe('athena project scope', () => {
     expect(store.projection).toBeNull()
   })
 
+  it('切换 Athena 项目会同步清掉 worldModel 旧错误和提案状态', () => {
+    const store = useAthenaStore()
+    const worldModel = useWorldModelStore()
+
+    store.ensureProject('project-1')
+    worldModel.resetProjectScopedState('project-1')
+    worldModel.error = 'old world error'
+    worldModel.proposalBundles = [{
+      id: 'bundle-old',
+      project_id: 'project-1',
+      project_profile_version_id: 'profile-1',
+      profile_version: 1,
+      parent_bundle_id: null,
+      bundle_status: 'pending',
+      title: '旧项目提案',
+      summary: '',
+      created_by: 'athena',
+      created_at: '2026-04-29T00:00:00Z',
+      updated_at: '2026-04-29T00:00:00Z',
+    }]
+    worldModel.dashboard = {
+      project_profile: null,
+      metrics: {
+        entity_count: 0,
+        fact_count: 0,
+        presence_count: 0,
+        event_count: 0,
+        pending_bundle_count: 1,
+        pending_item_count: 1,
+      },
+      next_action: { action: 'review_proposals', label: '处理待审世界模型提案' },
+    }
+
+    expect(store.ensureProject('project-2')).toBe(true)
+
+    expect(worldModel.error).toBe('')
+    expect(worldModel.proposalBundles).toEqual([])
+    expect(worldModel.dashboard).toBeNull()
+  })
+
   it('同项目 fresh 的 ontology 和 messages 再次加载不会重复请求', async () => {
     vi.mocked(api.getAthenaOntology).mockResolvedValue(ontology())
     vi.mocked(api.getAthenaMessages).mockResolvedValue([message('history')])
@@ -141,5 +182,21 @@ describe('athena project scope', () => {
     oldCheck.resolve({})
     await oldRun
     expect(store.consistencyIssues).toEqual([{ severity: 'error', description: 'new issue' }])
+  })
+
+  it('tracks loading while a consistency check is running', async () => {
+    const check = createDeferred<unknown>()
+    vi.mocked(api.runAthenaConsistencyCheck).mockReturnValue(check.promise)
+    vi.mocked(api.getConsistencyIssues).mockResolvedValue([])
+    const store = useAthenaStore()
+
+    const pending = store.runConsistencyCheck('project-1', 1)
+
+    expect(store.loading).toBe(true)
+
+    check.resolve({})
+    await pending
+
+    expect(store.loading).toBe(false)
   })
 })

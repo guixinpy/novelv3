@@ -19,15 +19,23 @@
       <select :value="filters.bundle_status || ''" @change="onFilterChange('bundle_status', $event)">
         <option value="">提案包状态：全部</option>
         <option value="pending">待审</option>
+        <option value="partially_approved">部分通过</option>
         <option value="approved">已通过</option>
         <option value="rejected">已驳回</option>
+        <option value="uncertain">不确定</option>
+        <option value="rolled_back">已回滚</option>
+        <option value="split">已拆分</option>
       </select>
       <select :value="filters.item_status || ''" @change="onFilterChange('item_status', $event)">
         <option value="">条目状态：全部</option>
         <option value="pending">待审</option>
         <option value="needs_edit">需编辑</option>
         <option value="approved">已通过</option>
+        <option value="approved_with_edits">编辑后通过</option>
         <option value="rejected">已驳回</option>
+        <option value="uncertain">不确定</option>
+        <option value="rolled_back">已回滚</option>
+        <option value="split">已拆分</option>
       </select>
       <button v-if="hasActiveFilters" type="button" class="bundle-list__clear" @click="clearFilters">清除筛选</button>
     </div>
@@ -62,9 +70,10 @@
       v-if="bundles.length < total"
       type="button"
       class="bundle-list__load-more"
+      :disabled="loadingMore"
       @click="$emit('loadMore')"
     >
-      加载更多 ({{ bundles.length }}/{{ total }})
+      {{ loadingMore ? '加载中...' : `加载更多 (${bundles.length}/${total})` }}
     </button>
   </section>
 </template>
@@ -78,6 +87,7 @@ const props = defineProps<{
   selectedBundleId: string | null
   total: number
   filters: { bundle_status?: string; item_status?: string; profile_version?: number }
+  loadingMore?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -103,8 +113,12 @@ function clearFilters() {
 function statusLabel(status: string) {
   const labels: Record<string, string> = {
     pending: '待审',
+    partially_approved: '部分通过',
     approved: '已通过',
     rejected: '已驳回',
+    uncertain: '不确定',
+    rolled_back: '已回滚',
+    split: '已拆分',
   }
   return labels[status] || status
 }

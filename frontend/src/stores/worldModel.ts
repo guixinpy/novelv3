@@ -52,6 +52,7 @@ export const useWorldModelStore = defineStore('worldModel', () => {
     bundles: false,
     detail: false,
   })
+  const loadingMoreBundles = ref(false)
   const loaded = ref(false)
   const error = ref('')
   const activeSubmissionCount = ref(0)
@@ -261,6 +262,7 @@ export const useWorldModelStore = defineStore('worldModel', () => {
     selectedBundleId.value = null
     selectedBundleDetail.value = null
     setLanesLoading(['dashboard', 'overview', 'bundles', 'detail'], false)
+    loadingMoreBundles.value = false
     loaded.value = false
     error.value = ''
     activeSubmissionCount.value = 0
@@ -414,8 +416,10 @@ export const useWorldModelStore = defineStore('worldModel', () => {
   }
 
   async function loadMoreBundles(projectId: string) {
+    if (loadingMoreBundles.value) return
     const scope = captureScope(projectId)
     const nextOffset = bundlesOffset.value + bundlesLimit.value
+    loadingMoreBundles.value = true
     try {
       const page = await api.listWorldProposalBundles(projectId, {
         offset: nextOffset,
@@ -427,7 +431,13 @@ export const useWorldModelStore = defineStore('worldModel', () => {
       bundlesOffset.value = nextOffset
       bundlesTotal.value = page.total
     } catch (err) {
-      error.value = toErrorMessage(err)
+      if (isActiveScope(scope.projectId, scope.version)) {
+        error.value = toErrorMessage(err)
+      }
+    } finally {
+      if (isActiveScope(scope.projectId, scope.version)) {
+        loadingMoreBundles.value = false
+      }
     }
   }
 
@@ -572,6 +582,7 @@ export const useWorldModelStore = defineStore('worldModel', () => {
     bundlesLimit,
     bundleFilters,
     laneLoading,
+    loadingMoreBundles,
     loading,
     loaded,
     error,

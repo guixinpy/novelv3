@@ -239,6 +239,37 @@ describe('project workspace state', () => {
     expect(store.versionsNodeType).toBe(undefined)
   })
 
+  it('exportProject() 遇到失败响应时抛出后端错误且不下载错误内容', async () => {
+    const store = useProjectStore()
+    const originalCreateObjectURL = URL.createObjectURL
+    const originalRevokeObjectURL = URL.revokeObjectURL
+    const originalDocument = globalThis.document
+    const createObjectURL = vi.fn(() => 'blob:failed-export')
+    const revokeObjectURL = vi.fn()
+    const click = vi.fn()
+    Object.defineProperty(URL, 'createObjectURL', { value: createObjectURL, configurable: true })
+    Object.defineProperty(URL, 'revokeObjectURL', { value: revokeObjectURL, configurable: true })
+    Object.defineProperty(globalThis, 'document', {
+      value: { createElement: vi.fn(() => ({ href: '', download: '', click })) },
+      configurable: true,
+    })
+    vi.mocked(api.exportProject).mockResolvedValue({
+      ok: false,
+      json: async () => ({ detail: 'export failed' }),
+      blob: async () => new Blob(['{"detail":"export failed"}'], { type: 'application/json' }),
+    } as Response)
+
+    try {
+      await expect(store.exportProject('A', 'markdown')).rejects.toThrow('export failed')
+      expect(createObjectURL).not.toHaveBeenCalled()
+      expect(revokeObjectURL).not.toHaveBeenCalled()
+    } finally {
+      Object.defineProperty(URL, 'createObjectURL', { value: originalCreateObjectURL, configurable: true })
+      Object.defineProperty(URL, 'revokeObjectURL', { value: originalRevokeObjectURL, configurable: true })
+      Object.defineProperty(globalThis, 'document', { value: originalDocument, configurable: true })
+    }
+  })
+
   it('Hermes 初始水合只加载诊断中已完成的可选资源，避免新项目刷新打出 404', () => {
     const diagnosis = (completedItems: string[]): ProjectDiagnosis => ({
       completed_items: completedItems,

@@ -699,6 +699,9 @@ def _refresh_bundle_status(*, db: Session, bundle: WorldProposalBundle) -> None:
     if "approved" in statuses or "approved_with_edits" in statuses:
         bundle.bundle_status = "partially_approved"
         return
+    if statuses & ACTIONABLE_REVIEW_ITEM_STATUSES:
+        bundle.bundle_status = "pending"
+        return
     if statuses == {"rolled_back"}:
         bundle.bundle_status = "rolled_back"
         return
@@ -707,6 +710,18 @@ def _refresh_bundle_status(*, db: Session, bundle: WorldProposalBundle) -> None:
         return
     if statuses == {"uncertain"}:
         bundle.bundle_status = "uncertain"
+        return
+    if statuses <= {"rejected", "uncertain", "split", "rolled_back"}:
+        if "rejected" in statuses:
+            bundle.bundle_status = "rejected"
+            return
+        if "uncertain" in statuses:
+            bundle.bundle_status = "uncertain"
+            return
+        if "split" in statuses:
+            bundle.bundle_status = "split"
+            return
+        bundle.bundle_status = "rolled_back"
         return
     bundle.bundle_status = "pending"
 

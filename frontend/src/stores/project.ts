@@ -316,6 +316,10 @@ export const useProjectStore = defineStore('project', () => {
 
   async function exportProject(id: string, format: string) {
     const res = await api.exportProject(id, { format, include_setup: true, include_outline: true })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: '导出失败' }))
+      throw new Error(err.detail || '导出失败')
+    }
     const blob = await res.blob()
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')

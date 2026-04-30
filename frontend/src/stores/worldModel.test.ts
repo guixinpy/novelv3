@@ -1064,6 +1064,7 @@ describe('worldModel store', () => {
     }>()
     vi.mocked(api.listWorldProposalBundles).mockReturnValue(pageRequest.promise)
     const store = useWorldModelStore()
+    store.resetProjectScopedState('project-1')
     store.proposalBundles = [createBundle()]
     store.bundlesOffset = 0
 
@@ -1080,5 +1081,54 @@ describe('worldModel store', () => {
     expect(store.proposalBundles).toEqual([])
     expect(store.bundlesOffset).toBe(0)
     expect(store.bundlesTotal).toBe(0)
+  })
+
+  it('ignores stale loadMoreBundles errors after the project scope changes', async () => {
+    const pageRequest = createDeferred<{
+      items: ReturnType<typeof createBundle>[]
+      total: number
+      offset: number
+      limit: number
+    }>()
+    vi.mocked(api.listWorldProposalBundles).mockReturnValue(pageRequest.promise)
+    const store = useWorldModelStore()
+
+    const pending = store.loadMoreBundles('project-1')
+    store.resetProjectScopedState('project-2')
+    pageRequest.reject(new Error('old project failed'))
+    await pending
+
+    expect(store.error).toBe('')
+  })
+
+  it('ignores overlapping loadMoreBundles calls while one page is already loading', async () => {
+    const pageRequest = createDeferred<{
+      items: ReturnType<typeof createBundle>[]
+      total: number
+      offset: number
+      limit: number
+    }>()
+    vi.mocked(api.listWorldProposalBundles).mockReturnValue(pageRequest.promise)
+    const store = useWorldModelStore()
+    store.resetProjectScopedState('project-1')
+    store.proposalBundles = [createBundle()]
+    store.bundlesOffset = 0
+
+    const first = store.loadMoreBundles('project-1')
+    const second = store.loadMoreBundles('project-1')
+
+    expect(api.listWorldProposalBundles).toHaveBeenCalledTimes(1)
+    expect(store.loadingMoreBundles).toBe(true)
+
+    pageRequest.resolve({
+      items: [{ ...createBundle(), id: 'bundle-2' }],
+      total: 2,
+      offset: 20,
+      limit: 20,
+    })
+    await Promise.all([first, second])
+
+    expect(store.loadingMoreBundles).toBe(false)
+    expect(store.proposalBundles.map((bundle) => bundle.id)).toEqual(['bundle-1', 'bundle-2'])
   })
 })

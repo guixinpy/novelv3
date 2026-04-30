@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.api.athena_shared import require_project
@@ -49,8 +49,8 @@ async def generate_evolution_plan(
 @router.get("/evolution/proposals")
 def get_evolution_proposals(
     project_id: str,
-    offset: int = 0,
-    limit: int = 20,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
     bundle_status: str | None = None,
     item_status: str | None = None,
     db: Session = Depends(get_db),

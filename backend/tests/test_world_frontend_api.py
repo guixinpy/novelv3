@@ -337,6 +337,63 @@ def test_proposal_conflicts_use_current_truth_projection_not_expired_history(cli
     assert response.json()["conflicts"] == []
 
 
+def test_proposal_detail_conflicts_only_include_actionable_items(client, db_session):
+    project, profile_version = _seed_profile(db_session)
+    for index, value in enumerate(["captain", "lieutenant", "commander"], start=1):
+        db_session.add(
+            WorldFactClaim(
+                project_id=project.id,
+                project_profile_version_id=profile_version.id,
+                profile_version=profile_version.version,
+                claim_id=f"claim.hero.rank.existing.{index}",
+                chapter_index=index,
+                intra_chapter_seq=1,
+                subject_ref="char.hero",
+                predicate="rank",
+                object_ref_or_value=value,
+                claim_layer="truth",
+                claim_status="confirmed",
+                authority_type="authoritative_structured",
+                confidence=1.0,
+                contract_version=profile_version.contract_version,
+            )
+        )
+    db_session.commit()
+    bundle = create_bundle(
+        db=db_session,
+        project_id=project.id,
+        project_profile_version_id=profile_version.id,
+        profile_version=profile_version.version,
+        created_by="writer.alpha",
+        title="Terminal conflict candidate",
+    )
+    item = write_candidate_fact(
+        db=db_session,
+        bundle_id=bundle.id,
+        created_by="writer.alpha",
+        candidate=_candidate_payload(
+            claim_id="claim.hero.rank.terminal-candidate",
+            subject_ref="char.hero",
+            predicate="rank",
+            value="admiral",
+        ),
+    )
+    calculate_bundle_impact_scope(db=db_session, bundle_id=bundle.id)
+    review_proposal_item(
+        db=db_session,
+        proposal_item_id=item.id,
+        reviewer_ref="editor.alpha",
+        action="mark_uncertain",
+        reason="证据冲突，暂不采纳",
+        evidence_refs=["chapter.03"],
+    )
+
+    response = client.get(f"/api/v1/projects/{project.id}/world-model/proposal-bundles/{bundle.id}")
+
+    assert response.status_code == 200
+    assert response.json()["conflicts"] == []
+
+
 def test_world_model_overview_returns_nulls_when_project_has_no_world_data(client):
     create_response = client.post("/api/v1/projects", json={"name": "No World Data"})
     project_id = create_response.json()["id"]
@@ -380,6 +437,64 @@ def test_world_model_dashboard_returns_operational_counts_and_next_action(client
     assert payload["metrics"]["pending_bundle_count"] == 1
     assert payload["metrics"]["pending_item_count"] == 1
     assert payload["next_action"]["action"] == "review_proposals"
+
+
+def test_world_model_dashboard_counts_only_bundles_with_actionable_items(client, db_session):
+    project, profile_version = _seed_profile(db_session)
+    bundle = create_bundle(
+        db=db_session,
+        project_id=project.id,
+        project_profile_version_id=profile_version.id,
+        profile_version=profile_version.version,
+        created_by="writer.alpha",
+        title="Closed partial bundle",
+    )
+    approved_item = write_candidate_fact(
+        db=db_session,
+        bundle_id=bundle.id,
+        created_by="writer.alpha",
+        candidate=_candidate_payload(
+            claim_id="claim.hero.rank.closed-partial",
+            subject_ref="char.hero",
+            predicate="rank",
+            value="captain",
+        ),
+    )
+    rejected_item = write_candidate_fact(
+        db=db_session,
+        bundle_id=bundle.id,
+        created_by="writer.alpha",
+        candidate=_candidate_payload(
+            claim_id="claim.hero.home.closed-partial",
+            subject_ref="char.hero",
+            predicate="home",
+            value="dock-7",
+        ),
+    )
+    review_proposal_item(
+        db=db_session,
+        proposal_item_id=approved_item.id,
+        reviewer_ref="editor.alpha",
+        action="approve",
+        reason="确认角色军衔",
+        evidence_refs=["chapter.01"],
+    )
+    review_proposal_item(
+        db=db_session,
+        proposal_item_id=rejected_item.id,
+        reviewer_ref="editor.alpha",
+        action="reject",
+        reason="地点证据不足",
+        evidence_refs=["chapter.01"],
+    )
+
+    response = client.get(f"/api/v1/projects/{project.id}/world-model/dashboard")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["metrics"]["pending_bundle_count"] == 0
+    assert payload["metrics"]["pending_item_count"] == 0
+    assert payload["next_action"]["action"] == "inspect_projection"
 
 
 def test_world_model_snapshot_validates_chapter_index_before_empty_projection(client, db_session):
@@ -585,6 +700,20 @@ def test_world_model_bundle_endpoints_support_review_split_and_rollback(client, 
     rollback_payload = bundle_detail_after_rollback.json()
     rolled_back_item = next(item for item in rollback_payload["items"] if item["id"] == first_item.id)
     assert rolled_back_item["item_status"] == "rolled_back"
+
+
+def test_world_model_proposal_bundle_pagination_rejects_invalid_bounds(client, db_session):
+    project, _profile_version = _seed_profile(db_session)
+
+    negative_offset_response = client.get(
+        f"/api/v1/projects/{project.id}/world-model/proposal-bundles?offset=-1"
+    )
+    assert negative_offset_response.status_code == 422
+
+    excessive_limit_response = client.get(
+        f"/api/v1/projects/{project.id}/world-model/proposal-bundles?limit=101"
+    )
+    assert excessive_limit_response.status_code == 422
 
 
 def test_world_model_routes_lock_to_current_profile_and_reject_cross_profile_access(client, db_session):

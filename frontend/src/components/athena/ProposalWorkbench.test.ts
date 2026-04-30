@@ -30,7 +30,7 @@ describe('ProposalWorkbench', () => {
       project_profile_version_id: 'profile-1',
       profile_version: 1,
       parent_bundle_id: null,
-      bundle_status: 'pending',
+      bundle_status: 'partially_approved',
       title: '第1章世界事实候选',
       summary: 'summary',
       created_by: 'athena.chapter_analyzer',
@@ -67,5 +67,7 @@ describe('ProposalWorkbench', () => {
 
     expect(wrapper.text()).toContain('第1章世界事实候选')
     expect(wrapper.text()).toContain('loc.tower.mentioned_in_chapter')
+    expect(wrapper.text()).toContain('部分通过')
+    expect(wrapper.text()).not.toContain('partially_approved')
   })
 })

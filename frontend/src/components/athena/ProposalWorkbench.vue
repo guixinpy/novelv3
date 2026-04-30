@@ -55,6 +55,19 @@ async function rollbackItem(reviewId: string, reason: string, itemId: string) {
     evidence_refs: [],
   }, itemId)
 }
+
+function bundleStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    pending: '待审',
+    partially_approved: '部分通过',
+    approved: '已通过',
+    rejected: '已驳回',
+    uncertain: '不确定',
+    rolled_back: '已回滚',
+    split: '已拆分',
+  }
+  return labels[status] || status
+}
 </script>
 
 <template>
@@ -64,6 +77,7 @@ async function rollbackItem(reviewId: string, reason: string, itemId: string) {
       :selected-bundle-id="worldModel.selectedBundleId"
       :total="worldModel.bundlesTotal"
       :filters="worldModel.bundleFilters"
+      :loading-more="worldModel.loadingMoreBundles"
       @select="selectBundle"
       @load-more="loadMore"
       @update-filters="updateFilters"
@@ -78,7 +92,7 @@ async function rollbackItem(reviewId: string, reason: string, itemId: string) {
             <h3 class="proposal-workbench__title">{{ worldModel.selectedBundleDetail.bundle.title }}</h3>
             <p class="proposal-workbench__summary">{{ worldModel.selectedBundleDetail.bundle.summary || '无摘要' }}</p>
           </div>
-          <span class="proposal-workbench__status">{{ worldModel.selectedBundleDetail.bundle.bundle_status }}</span>
+          <span class="proposal-workbench__status">{{ bundleStatusLabel(worldModel.selectedBundleDetail.bundle.bundle_status) }}</span>
         </header>
 
         <WorldProposalImpactList :snapshots="worldModel.selectedBundleDetail.impact_snapshots" />

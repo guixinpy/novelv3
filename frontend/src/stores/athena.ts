@@ -84,12 +84,14 @@ export const useAthenaStore = defineStore('athena', () => {
     setupImportPreview.value = null
     setup.value = null
     messages.value = []
+    loading.value = false
     error.value = null
   }
 
   function reset(projectId: string | null = null) {
     requestVersion.value += 1
     if (projectId) requestCache.invalidate(cacheKey(projectId, ''))
+    worldModel.resetProjectScopedState(projectId || '')
     activeProjectId.value = projectId
     activeChatProjectId = projectId
     messageLoadRequestId += 1
@@ -281,6 +283,7 @@ export const useAthenaStore = defineStore('athena', () => {
     ensureProject(projectId)
     const version = requestVersion.value
     const requestId = ++consistencyCheckRequestId
+    loading.value = true
     try {
       await api.runAthenaConsistencyCheck(projectId, chapterIndex, depth)
       if (!isActiveProject(projectId) || requestVersion.value !== version || consistencyCheckRequestId !== requestId) return
@@ -289,6 +292,10 @@ export const useAthenaStore = defineStore('athena', () => {
     } catch (err) {
       if (isActiveProject(projectId) && requestVersion.value === version && consistencyCheckRequestId === requestId) {
         error.value = toErrorMessage(err)
+      }
+    } finally {
+      if (isActiveProject(projectId) && requestVersion.value === version && consistencyCheckRequestId === requestId) {
+        loading.value = false
       }
     }
   }

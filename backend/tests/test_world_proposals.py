@@ -640,6 +640,61 @@ def test_unconfirmed_candidates_cannot_enter_truth_layer_or_projection(db_sessio
     assert projection["facts"] == {}
 
 
+def test_bundle_mixed_terminal_rejections_do_not_fall_back_to_pending(db_session):
+    project, profile_version = _seed_project_profile(db_session)
+    bundle = create_bundle(
+        db=db_session,
+        project_id=project.id,
+        project_profile_version_id=profile_version.id,
+        profile_version=profile_version.version,
+        created_by="writer.alpha",
+        title="Mixed terminal candidate decisions",
+    )
+    rejected_item = write_candidate_fact(
+        db=db_session,
+        bundle_id=bundle.id,
+        created_by="writer.alpha",
+        candidate=_candidate_payload(
+            claim_id="claim.hero.rank.rejected-terminal",
+            subject_ref="char.hero",
+            predicate="rank",
+            value="captain",
+        ),
+    )
+    uncertain_item = write_candidate_fact(
+        db=db_session,
+        bundle_id=bundle.id,
+        created_by="writer.alpha",
+        candidate=_candidate_payload(
+            claim_id="claim.hero.home.uncertain-terminal",
+            subject_ref="char.hero",
+            predicate="home",
+            value="dock-7",
+        ),
+    )
+
+    review_proposal_item(
+        db=db_session,
+        proposal_item_id=rejected_item.id,
+        reviewer_ref="editor.alpha",
+        action="reject",
+        reason="证据不足，驳回",
+        evidence_refs=["chapter.18"],
+    )
+    review_proposal_item(
+        db=db_session,
+        proposal_item_id=uncertain_item.id,
+        reviewer_ref="editor.alpha",
+        action="mark_uncertain",
+        reason="证据互相冲突，暂不进入真相层",
+        evidence_refs=["chapter.18"],
+    )
+
+    db_session.refresh(bundle)
+
+    assert bundle.bundle_status == "rejected"
+
+
 def test_review_records_include_reviewer_time_reason_evidence_and_rollback_point(db_session):
     project, profile_version = _seed_project_profile(db_session)
     bundle = create_bundle(
