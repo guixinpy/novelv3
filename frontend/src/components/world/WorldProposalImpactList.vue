@@ -6,7 +6,7 @@
     <header class="impact-list__header">
       <div>
         <p class="impact-list__eyebrow">
-          Impact Snapshot
+          影响快照
         </p>
         <h3 class="impact-list__title">
           影响范围
@@ -23,7 +23,7 @@
       class="impact-list__body"
     >
       <p>候选数：{{ candidateCount }}</p>
-      <p>覆盖现有 truth：{{ existingTruthCount }}</p>
+      <p>覆盖有效真相：{{ existingTruthCount }}</p>
       <p>主体：{{ latestSnapshot.affected_subject_refs.join(' / ') || '无' }}</p>
       <p>谓词：{{ latestSnapshot.affected_predicates.join(' / ') || '无' }}</p>
     </div>
@@ -31,7 +31,7 @@
       v-else
       class="impact-list__empty"
     >
-      尚未生成 impact snapshot。
+      尚未生成影响快照。
     </p>
   </section>
 </template>
@@ -47,7 +47,7 @@ const props = defineProps<{
 const latestSnapshot = computed(() => props.snapshots[0] ?? null)
 const candidateCount = computed(() => Number(latestSnapshot.value?.summary.candidate_count ?? 0))
 const existingTruthCount = computed(() => Number(latestSnapshot.value?.summary.existing_truth_count ?? 0))
-const isHighRisk = computed(() => candidateCount.value > 1 || existingTruthCount.value > 0)
+const isHighRisk = computed(() => existingTruthCount.value > 0 || candidateCount.value >= 5)
 </script>
 
 <style scoped>

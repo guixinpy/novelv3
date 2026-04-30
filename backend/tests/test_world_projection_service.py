@@ -4,8 +4,10 @@ from app.models import (
     GenreProfile,
     Project,
     ProjectProfileVersion,
+    WorldCharacter,
     WorldEvent,
     WorldFactClaim,
+    WorldLocation,
     WorldTimelineAnchor,
 )
 
@@ -161,6 +163,79 @@ def test_projection_service_returns_empty_overview_without_profile(db_session):
 
     assert overview.project_profile is None
     assert overview.projection is None
+
+
+def test_projection_service_includes_profile_entity_catalog_without_intro_events(db_session):
+    project = Project(name="Catalog Projection")
+    genre_profile = GenreProfile(
+        canonical_id="catalog-projection",
+        display_name="Catalog Projection",
+        contract_version="world.contract.v1",
+    )
+    db_session.add_all([project, genre_profile])
+    db_session.commit()
+    profile = ProjectProfileVersion(
+        project_id=project.id,
+        genre_profile_id=genre_profile.id,
+        version=1,
+        contract_version="world.contract.v1",
+        profile_payload={},
+    )
+    db_session.add(profile)
+    db_session.commit()
+    db_session.add_all([
+        WorldCharacter(
+            project_id=project.id,
+            profile_version=profile.version,
+            character_id="hero",
+            canonical_id="char.hero",
+            primary_alias="林舟",
+            name="林舟",
+            aliases=["守夜人"],
+            role_type="character",
+            identity_anchor="林舟",
+            origin_background="雾港守夜人",
+            core_traits=["谨慎"],
+            core_drives=["查清真相"],
+            contract_version=profile.contract_version,
+        ),
+        WorldLocation(
+            project_id=project.id,
+            profile_version=profile.version,
+            location_id="fog-harbor",
+            canonical_id="loc.fog-harbor",
+            primary_alias="雾港城",
+            name="雾港城",
+            aliases=[],
+            location_type="city",
+            spatial_scope="主舞台",
+            contract_version=profile.contract_version,
+        ),
+    ])
+    db_session.commit()
+
+    overview = build_world_projection_overview(
+        db=db_session,
+        project_id=project.id,
+        profile=profile,
+        view_type="current_truth",
+    )
+
+    assert overview.projection.entities["char.hero"]["entity_type"] == "character"
+    assert overview.projection.entities["char.hero"]["attributes"]["name"] == "林舟"
+    assert overview.projection.entities["loc.fog-harbor"]["entity_type"] == "location"
+    assert overview.projection.entities["loc.fog-harbor"]["attributes"]["spatial_scope"] == "主舞台"
+
+    subject = build_world_projection_overview(
+        db=db_session,
+        project_id=project.id,
+        profile=profile,
+        view_type="subject_knowledge",
+        subject_ref="char.hero",
+    )
+
+    assert "char.hero" in subject.projection.entities
+    assert "loc.fog-harbor" not in subject.projection.entities
 
 
 def test_projection_service_reuses_local_projection_cache(monkeypatch, db_session):

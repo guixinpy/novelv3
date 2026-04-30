@@ -561,6 +561,7 @@ export interface AthenaChapterContext {
 }
 
 export interface AthenaConsistencyIssue {
+  checker_name?: string
   severity?: string
   status?: string
   check_type?: string

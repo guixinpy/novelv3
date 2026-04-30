@@ -75,7 +75,7 @@ test('renders Athena projection and proposal workbench from local world-model da
       .first()
     await expect(lighthouseCard).toBeVisible()
     await lighthouseCard.getByRole('button', { name: '通过', exact: true }).click()
-    await expect(lighthouseCard).toContainText('approved')
+    await expect(lighthouseCard).toHaveAttribute('data-item-status', 'approved')
 
     await page.goto(`/projects/${projectId}/athena`)
     await expect(page.getByTestId('athena-overview')).toBeVisible()

@@ -46,6 +46,16 @@
               @input="onInput(field.key, ($event.target as HTMLTextAreaElement).value, 'string')"
             />
           </template>
+          <template v-else-if="field.type === 'json'">
+            <div v-if="isChanged(field.key)" class="diff-editor__original">{{ field.original }}</div>
+            <textarea
+              :value="String(editedValues[field.key] ?? field.original ?? '')"
+              class="diff-editor__textarea diff-editor__textarea--json"
+              data-testid="proposal-object-value-editor"
+              rows="4"
+              @input="onInput(field.key, ($event.target as HTMLTextAreaElement).value, 'string')"
+            />
+          </template>
           <template v-else>
             <span v-if="isChanged(field.key)" class="diff-editor__original">{{ field.original || '—' }}</span>
             <span v-if="isChanged(field.key)" class="diff-editor__arrow">→</span>
@@ -69,17 +79,24 @@
     </div>
 
     <footer class="diff-editor__footer">
-      <span class="diff-editor__hint">只有修改过的字段会提交</span>
+      <span class="diff-editor__hint">{{ validationError || '只有修改过的字段会提交' }}</span>
       <div class="diff-editor__actions">
         <button type="button" class="diff-editor__btn" @click="$emit('cancel')">取消</button>
-        <button type="button" class="diff-editor__btn diff-editor__btn--primary" @click="submit">确认编辑并通过</button>
+        <button
+          type="button"
+          class="diff-editor__btn diff-editor__btn--primary"
+          data-testid="proposal-diff-submit"
+          @click="submit"
+        >
+          确认编辑并通过
+        </button>
       </div>
     </footer>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, reactive } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import type { ProposalItem } from '../../api/types'
 
 const props = defineProps<{
@@ -94,12 +111,13 @@ const emit = defineEmits<{
 
 interface FieldDef {
   key: string
-  type: 'number' | 'text' | 'select' | 'textarea'
+  type: 'number' | 'text' | 'select' | 'textarea' | 'json'
   original: unknown
   options?: string[]
 }
 
 const fields = computed<FieldDef[]>(() => [
+  { key: 'object_ref_or_value', type: 'json', original: formatJson(props.item.object_ref_or_value) },
   { key: 'chapter_index', type: 'number', original: (props.item as any).chapter_index ?? null },
   { key: 'intra_chapter_seq', type: 'number', original: (props.item as any).intra_chapter_seq ?? 0 },
   { key: 'valid_from_anchor_id', type: 'select', original: (props.item as any).valid_from_anchor_id ?? null, options: props.anchorOptions },
@@ -110,6 +128,7 @@ const fields = computed<FieldDef[]>(() => [
 ])
 
 const editedValues = reactive<Record<string, unknown>>({})
+const validationError = ref('')
 
 const changedCount = computed(() =>
   fields.value.filter((f) => isChanged(f.key)).length,
@@ -122,6 +141,7 @@ function isChanged(key: string): boolean {
 }
 
 function onInput(key: string, value: string, type: 'number' | 'string') {
+  validationError.value = ''
   editedValues[key] = type === 'number' ? (value === '' ? null : Number(value)) : value
 }
 
@@ -134,6 +154,14 @@ function submit() {
   for (const field of fields.value) {
     if (isChanged(field.key)) {
       let val = editedValues[field.key]
+      if (field.key === 'object_ref_or_value' && typeof val === 'string') {
+        try {
+          val = JSON.parse(val)
+        } catch {
+          validationError.value = 'object_ref_or_value 必须是合法 JSON'
+          return
+        }
+      }
       if (field.key === 'evidence_refs' && typeof val === 'string') {
         val = val.split(',').map((s: string) => s.trim()).filter(Boolean)
       }
@@ -141,6 +169,11 @@ function submit() {
     }
   }
   emit('submit', result)
+}
+
+function formatJson(value: unknown) {
+  if (typeof value === 'string') return JSON.stringify(value)
+  return JSON.stringify(value, null, 2)
 }
 </script>
 
@@ -164,6 +197,7 @@ function submit() {
   color: var(--color-text-primary); font-size: 0.78rem; flex: 1;
 }
 .diff-editor__textarea { resize: vertical; width: 100%; }
+.diff-editor__textarea--json { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
 .diff-editor__reset { background: none; border: none; color: var(--color-text-secondary); font-size: 0.7rem; cursor: pointer; }
 .diff-editor__footer { display: flex; align-items: center; justify-content: space-between; padding: 0.65rem 0.85rem; border-top: 1px solid rgba(111, 69, 31, 0.1); }
 .diff-editor__hint { color: var(--color-text-secondary); font-size: 0.72rem; }

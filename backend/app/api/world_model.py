@@ -184,7 +184,12 @@ def list_world_proposal_bundles(
     if item_status is not None:
         subq = (
             db.query(WorldProposalItem.bundle_id)
-            .filter(WorldProposalItem.item_status == item_status)
+            .filter(
+                WorldProposalItem.project_id == project_id,
+                WorldProposalItem.project_profile_version_id == current_profile.id,
+                WorldProposalItem.profile_version == current_profile.version,
+                WorldProposalItem.item_status == item_status,
+            )
             .subquery()
         )
         query = query.filter(WorldProposalBundle.id.in_(subq))
@@ -397,33 +402,43 @@ def _detect_item_conflicts(
     *,
     db: Session,
     project_id: str,
+    bundle: WorldProposalBundle,
     items: list,
     impact_snapshots: list,
 ) -> list[dict]:
     conflicts: list[dict] = []
+    profile = _get_current_profile(db=db, project_id=project_id)
+    projection_facts = {}
+    if profile is not None:
+        overview = build_world_projection_overview(
+            db=db,
+            project_id=project_id,
+            profile=profile,
+            view_type="current_truth",
+        )
+        projection_facts = overview.projection.facts if overview.projection else {}
     for item in items:
         if item.item_status in ("approved", "approved_with_edits", "rejected", "rolled_back"):
             continue
-        existing = (
-            db.query(WorldFactClaim)
-            .filter(
-                WorldFactClaim.project_id == project_id,
-                WorldFactClaim.subject_ref == item.subject_ref,
-                WorldFactClaim.predicate == item.predicate,
-                WorldFactClaim.claim_status == "confirmed",
-                WorldFactClaim.claim_layer == "truth",
-            )
-            .first()
-        )
-        if existing is not None:
-            existing_val = existing.object_ref_or_value
+        if item.claim_layer != "truth":
+            continue
+        subject_facts = projection_facts.get(item.subject_ref, {})
+        if item.predicate in subject_facts:
+            existing_val = subject_facts[item.predicate]
             proposed_val = item.object_ref_or_value
             if existing_val != proposed_val:
                 conflicts.append({
                     "item_id": item.id,
                     "conflict_type": "truth_conflict",
                     "detail": f"与现有真相冲突：{item.subject_ref}.{item.predicate} = {existing_val}",
-                    "existing_claim_id": existing.id,
+                    "existing_claim_id": _find_current_truth_claim_id(
+                        db=db,
+                        project_id=project_id,
+                        bundle=bundle,
+                        subject_ref=item.subject_ref,
+                        predicate=item.predicate,
+                        value=existing_val,
+                    ),
                 })
     for snapshot in impact_snapshots:
         if len(snapshot.affected_truth_claim_ids) >= 3:
@@ -479,7 +494,7 @@ def _build_bundle_detail(*, db: Session, project_id: str, bundle_id: str) -> Pro
     if not impact_snapshots and items:
         impact_snapshots = [calculate_bundle_impact_scope(db=db, bundle_id=bundle_id)]
     conflicts = _detect_item_conflicts(
-        db=db, project_id=project_id, items=items, impact_snapshots=impact_snapshots,
+        db=db, project_id=project_id, bundle=bundle, items=items, impact_snapshots=impact_snapshots,
     )
     return ProposalBundleDetailOut(
         bundle=bundle,
@@ -488,3 +503,36 @@ def _build_bundle_detail(*, db: Session, project_id: str, bundle_id: str) -> Pro
         impact_snapshots=impact_snapshots,
         conflicts=conflicts,
     )
+
+
+def _find_current_truth_claim_id(
+    *,
+    db: Session,
+    project_id: str,
+    bundle: WorldProposalBundle,
+    subject_ref: str,
+    predicate: str,
+    value,
+) -> str | None:
+    candidates = (
+        db.query(WorldFactClaim)
+        .filter(
+            WorldFactClaim.project_id == project_id,
+            WorldFactClaim.project_profile_version_id == bundle.project_profile_version_id,
+            WorldFactClaim.profile_version == bundle.profile_version,
+            WorldFactClaim.subject_ref == subject_ref,
+            WorldFactClaim.predicate == predicate,
+            WorldFactClaim.claim_status == "confirmed",
+            WorldFactClaim.claim_layer == "truth",
+        )
+        .order_by(
+            WorldFactClaim.chapter_index.desc().nullslast(),
+            WorldFactClaim.intra_chapter_seq.desc(),
+            WorldFactClaim.claim_id.desc(),
+        )
+        .all()
+    )
+    for claim in candidates:
+        if claim.object_ref_or_value == value:
+            return claim.id
+    return None

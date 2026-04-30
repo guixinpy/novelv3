@@ -13,22 +13,35 @@ const entityEntries = computed(() => {
   return Object.entries(props.projection.entities || {})
 })
 
+const entityRows = computed(() => {
+  if (!props.projection) return []
+  const factsBySubject = props.projection.facts || {}
+  return entityEntries.value.map(([entityRef, entity]) => ({
+    entityRef,
+    entity,
+    facts: Object.entries(factsBySubject[entityRef] || {}).map(([predicate, value]) => ({ predicate, value })),
+  }))
+})
+
 const entityGroups = computed(() => {
-  const groups: Record<string, Array<[string, WorldProjection['entities'][string]]>> = {}
-  for (const entry of entityEntries.value) {
-    const label = entityTypeLabel(entry[1].entity_type)
+  const groups: Record<string, Array<(typeof entityRows.value)[number]>> = {}
+  for (const row of entityRows.value) {
+    const label = entityTypeLabel(row.entity.entity_type)
     groups[label] = groups[label] || []
-    groups[label].push(entry)
+    groups[label].push(row)
   }
   return Object.entries(groups).map(([label, items]) => ({ label, items }))
 })
 
 const factGroups = computed(() => {
   if (!props.projection) return []
-  return Object.entries(props.projection.facts || {}).map(([entity, facts]) => ({
-    entity,
-    items: Object.entries(facts || {}).map(([predicate, value]) => ({ predicate, value })),
-  }))
+  const entityRefs = new Set(Object.keys(props.projection.entities || {}))
+  return Object.entries(props.projection.facts || {})
+    .filter(([entity]) => !entityRefs.has(entity))
+    .map(([entity, facts]) => ({
+      entity,
+      items: Object.entries(facts || {}).map(([predicate, value]) => ({ predicate, value })),
+    }))
 })
 
 const presenceEntries = computed(() => {
@@ -39,6 +52,14 @@ const presenceEntries = computed(() => {
 const eventCount = computed(() => {
   if (!props.projection) return 0
   return Object.keys(props.projection.occurred_events || {}).length
+})
+
+const eventEntries = computed(() => {
+  if (!props.projection) return []
+  return Object.entries(props.projection.occurred_events || {}).map(([eventRef, event]) => ({
+    eventRef,
+    event: event as Record<string, unknown>,
+  }))
 })
 
 function toggle(entity: string) {
@@ -98,16 +119,20 @@ function entityTypeLabel(type: string) {
         <h3 class="projection-viewer__section-title">实体状态</h3>
         <div v-for="group in entityGroups" :key="group.label" class="projection-viewer__entity-group">
           <div class="projection-viewer__group-label">{{ group.label }}</div>
-          <div v-for="[entityRef, entity] in group.items" :key="entityRef" class="projection-viewer__group">
-            <button class="projection-viewer__header" @click="toggle(entityRef)">
-              <span class="projection-viewer__entity">{{ entityRef }}</span>
-              <span class="projection-viewer__type">{{ entityTypeLabel(entity.entity_type) }}</span>
-              <span class="projection-viewer__chevron">{{ expandedEntities.has(entityRef) ? '▾' : '▸' }}</span>
+          <div v-for="row in group.items" :key="row.entityRef" class="projection-viewer__group">
+            <button class="projection-viewer__header" @click="toggle(row.entityRef)">
+              <span class="projection-viewer__entity">{{ row.entityRef }}</span>
+              <span class="projection-viewer__type">{{ entityTypeLabel(row.entity.entity_type) }}</span>
+              <span class="projection-viewer__chevron">{{ expandedEntities.has(row.entityRef) ? '▾' : '▸' }}</span>
             </button>
-            <div v-if="expandedEntities.has(entityRef)" class="projection-viewer__facts">
-              <div class="projection-viewer__fact">
+            <div v-if="expandedEntities.has(row.entityRef) || row.facts.length" class="projection-viewer__facts">
+              <div v-if="expandedEntities.has(row.entityRef)" class="projection-viewer__fact">
                 <span class="projection-viewer__predicate">属性</span>
-                <span class="projection-viewer__value">{{ formatAttributes(entity.attributes) }}</span>
+                <span class="projection-viewer__value">{{ formatAttributes(row.entity.attributes) }}</span>
+              </div>
+              <div v-for="fact in row.facts" :key="fact.predicate" class="projection-viewer__fact">
+                <span class="projection-viewer__predicate">{{ fact.predicate }}</span>
+                <span class="projection-viewer__value">{{ formatValue(fact.value) }}</span>
               </div>
             </div>
           </div>
@@ -136,6 +161,15 @@ function entityTypeLabel(type: string) {
         <div v-for="[entityRef, presence] in presenceEntries" :key="entityRef" class="projection-viewer__presence">
           <strong>{{ entityRef }}</strong>
           <span>{{ presence.location_ref || '未知位置' }} / {{ presence.presence_status || '未标注' }}</span>
+        </div>
+      </section>
+
+      <section v-if="eventEntries.length" class="projection-viewer__section">
+        <h3 class="projection-viewer__section-title">事件记录</h3>
+        <div v-for="entry in eventEntries" :key="entry.eventRef" class="projection-viewer__event">
+          <strong>{{ entry.eventRef }}</strong>
+          <span>{{ entry.event.title || `第${entry.event.chapter_index || '?'}章事件` }}</span>
+          <p>{{ entry.event.summary || formatValue(entry.event) }}</p>
         </div>
       </section>
     </template>
@@ -276,6 +310,26 @@ function entityTypeLabel(type: string) {
 
 .projection-viewer__presence span {
   color: var(--color-text-secondary);
+}
+
+.projection-viewer__event {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-border);
+  font-size: var(--text-sm);
+}
+
+.projection-viewer__event strong {
+  color: var(--color-text-primary);
+  overflow-wrap: anywhere;
+}
+
+.projection-viewer__event span,
+.projection-viewer__event p {
+  margin: 0;
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
 }
 
 .projection-viewer__empty {

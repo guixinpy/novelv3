@@ -3,6 +3,7 @@
     class="proposal-item-card"
     :class="conflictClass"
     data-testid="world-proposal-item-card"
+    :data-item-status="item.item_status"
   >
     <header class="proposal-item-card__header">
       <div>
@@ -14,7 +15,7 @@
         </h4>
       </div>
       <div class="proposal-item-card__meta">
-        <span>{{ item.item_status }}</span>
+        <span>{{ statusLabel(item.item_status) }}</span>
         <span>置信度 {{ item.confidence.toFixed(2) }}</span>
       </div>
     </header>
@@ -138,6 +139,20 @@ function renderItemSummary(item: ProposalItem) {
     return `${item.subject_ref} 在${chapter}出现 ${count} 次`
   }
   return renderValue(value)
+}
+
+function statusLabel(status: string) {
+  const labels: Record<string, string> = {
+    pending: '待审',
+    needs_edit: '需编辑',
+    approved: '已通过',
+    approved_with_edits: '编辑后通过',
+    rejected: '已驳回',
+    uncertain: '不确定',
+    split: '已拆分',
+    rolled_back: '已回滚',
+  }
+  return labels[status] || status
 }
 
 function forwardReview(payload: ProposalReviewRequest) {

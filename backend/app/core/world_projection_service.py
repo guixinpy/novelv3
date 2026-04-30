@@ -11,7 +11,17 @@ from app.core.world_projection import (
 )
 from app.core.world_replay import LedgerEvent, ledger_event_from_world_event
 from app.core.world_time_normalizer import build_anchor_time_index
-from app.models import ProjectProfileVersion, WorldEvent, WorldFactClaim, WorldTimelineAnchor
+from app.models import (
+    ProjectProfileVersion,
+    WorldArtifact,
+    WorldCharacter,
+    WorldEvent,
+    WorldFactClaim,
+    WorldFaction,
+    WorldLocation,
+    WorldResource,
+    WorldTimelineAnchor,
+)
 from app.schemas import ProjectWorldOverviewOut, WorldProjectionOut
 
 WorldProjectionViewType = Literal["current_truth", "subject_knowledge", "chapter_snapshot"]
@@ -102,6 +112,7 @@ def load_world_projection_source(
         )
         .all()
     )
+    catalog_events = _catalog_entity_events(db=db, project_id=project_id, profile=profile)
     events = (
         db.query(WorldEvent)
         .filter(
@@ -133,7 +144,10 @@ def load_world_projection_source(
     anchor_index = build_anchor_time_index(anchors)
     return WorldProjectionSource(
         anchors=anchors,
-        events=[ledger_event_from_world_event(event, anchor_index=anchor_index) for event in events],
+        events=[
+            *catalog_events,
+            *[ledger_event_from_world_event(event, anchor_index=anchor_index) for event in events],
+        ],
         facts=[fact_record_from_model(fact) for fact in facts],
     )
 
@@ -187,3 +201,117 @@ def fact_record_from_model(fact: WorldFactClaim) -> FactRecord:
         valid_from_anchor_id=fact.valid_from_anchor_id,
         valid_to_anchor_id=fact.valid_to_anchor_id,
     )
+
+
+def _catalog_entity_events(
+    *,
+    db: Session,
+    project_id: str,
+    profile: ProjectProfileVersion,
+) -> list[LedgerEvent]:
+    events: list[LedgerEvent] = []
+    for model, entity_type, fields in [
+        (
+            WorldCharacter,
+            "character",
+            [
+                "name",
+                "primary_alias",
+                "aliases",
+                "role_type",
+                "identity_anchor",
+                "origin_background",
+                "core_traits",
+                "core_drives",
+                "public_persona",
+                "notes",
+            ],
+        ),
+        (
+            WorldLocation,
+            "location",
+            [
+                "name",
+                "primary_alias",
+                "aliases",
+                "location_type",
+                "parent_location_id",
+                "spatial_scope",
+                "functional_tags",
+                "notes",
+            ],
+        ),
+        (
+            WorldFaction,
+            "faction",
+            [
+                "name",
+                "primary_alias",
+                "aliases",
+                "faction_type",
+                "mission_or_doctrine",
+                "territorial_scope",
+                "public_image",
+                "notes",
+            ],
+        ),
+        (
+            WorldArtifact,
+            "artifact",
+            [
+                "name",
+                "primary_alias",
+                "aliases",
+                "artifact_type",
+                "origin",
+                "function_summary",
+                "uniqueness",
+                "notes",
+            ],
+        ),
+        (
+            WorldResource,
+            "resource",
+            [
+                "name",
+                "primary_alias",
+                "resource_type",
+                "unit_or_scale",
+                "holder_type",
+                "scarcity_level",
+                "visibility",
+                "notes",
+            ],
+        ),
+    ]:
+        rows = (
+            db.query(model)
+            .filter(
+                model.project_id == project_id,
+                model.profile_version == profile.version,
+            )
+            .order_by(model.canonical_id.asc(), model.id.asc())
+            .all()
+        )
+        for row in rows:
+            attributes = {
+                field: getattr(row, field)
+                for field in fields
+                if getattr(row, field, None) not in (None, "", [], {})
+            }
+            events.append(
+                LedgerEvent(
+                    event_id=f"__catalog_entity__.{row.canonical_id}",
+                    event_type="entity_introduced",
+                    chapter_index=0,
+                    intra_chapter_seq=0,
+                    payload={
+                        "entity_ref": row.canonical_id,
+                        "entity_type": entity_type,
+                        "attributes": attributes,
+                        "known_by_refs": [row.canonical_id],
+                    },
+                    storage_id=row.id,
+                )
+            )
+    return events

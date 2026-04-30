@@ -12,7 +12,17 @@ const emit = defineEmits<{
   selectSubject: [subjectRef: string]
 }>()
 
-const subjectRefs = computed(() => Object.keys(props.projection?.entities || {}))
+const subjectRefs = computed(() => {
+  const refs = new Set<string>()
+  const entities = props.projection?.entities || {}
+  for (const [ref, entity] of Object.entries(entities)) {
+    if (entity.entity_type === 'character') refs.add(ref)
+  }
+  for (const ref of Object.keys(props.projection?.facts || {})) {
+    if (!entities[ref] && ref.startsWith('char.')) refs.add(ref)
+  }
+  return [...refs].sort()
+})
 const selectedFacts = computed(() => {
   const subjectRef = props.selectedSubjectRef
   if (!subjectRef || !props.subjectKnowledge) return []

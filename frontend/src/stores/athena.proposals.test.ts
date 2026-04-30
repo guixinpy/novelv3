@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useAthenaStore } from './athena'
+import { useWorldModelStore } from './worldModel'
 import { api } from '../api/client'
 
 vi.mock('../api/client', () => ({
@@ -12,6 +13,9 @@ vi.mock('../api/client', () => ({
     getAthenaSetupImportPreview: vi.fn(),
     analyzeAthenaChapter: vi.fn(),
     getAthenaOntology: vi.fn(),
+    getWorldModelOverview: vi.fn(),
+    listWorldProposalBundles: vi.fn(),
+    getWorldProposalBundle: vi.fn(),
   },
 }))
 
@@ -154,11 +158,25 @@ describe('athena proposal workflow store', () => {
       skipped: { duplicates: 0 },
     })
     vi.mocked(api.getAthenaEvolutionProposals).mockResolvedValue({ items: [], total: 0, offset: 0, limit: 20 })
+    vi.mocked(api.getWorldModelOverview).mockResolvedValue({
+      project_profile: null,
+      projection: null,
+    })
+    vi.mocked(api.listWorldProposalBundles).mockResolvedValue({
+      items: [detail.bundle],
+      total: 1,
+      offset: 0,
+      limit: 20,
+    })
+    vi.mocked(api.getWorldProposalBundle).mockResolvedValue(detail)
     const store = useAthenaStore()
+    const worldModel = useWorldModelStore()
 
     await store.analyzeChapter('project-1', 1)
 
     expect(api.analyzeAthenaChapter).toHaveBeenCalledWith('project-1', 1)
     expect(api.getAthenaEvolutionProposals).toHaveBeenCalledWith('project-1', undefined)
+    expect(api.listWorldProposalBundles).toHaveBeenCalledWith('project-1', expect.any(Object))
+    expect(worldModel.proposalBundles).toEqual([detail.bundle])
   })
 })

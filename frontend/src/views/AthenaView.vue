@@ -176,6 +176,16 @@ async function analyzeLatestChapter() {
   navigateSection('proposals')
 }
 
+async function runOverviewAction(action: string) {
+  if (action === 'import_setup') {
+    await importSetup()
+    return
+  }
+  if (action === 'analyze_chapter') {
+    await analyzeLatestChapter()
+  }
+}
+
 async function reindexRetrieval() {
   await athena.reindexRetrieval(pid.value)
 }
@@ -187,6 +197,10 @@ async function searchRetrieval(query: string, params?: { source_type?: string })
 async function selectSubject(subjectRef: string) {
   if (!subjectRef) return
   await worldModel.loadSubjectKnowledge(pid.value, subjectRef)
+}
+
+async function runConsistencyCheck(chapterIndex: number) {
+  await athena.runConsistencyCheck(pid.value, chapterIndex)
 }
 </script>
 
@@ -215,6 +229,7 @@ async function selectSubject(subjectRef: string) {
         :setup-preview="athena.setupImportPreview"
         :loading="worldModel.isLaneLoading('dashboard')"
         @navigate="navigateSection"
+        @run-action="runOverviewAction"
       />
       <EntityTable
         v-else-if="entitySections.has(activeSection)"
@@ -247,7 +262,13 @@ async function selectSubject(subjectRef: string) {
         @search="searchRetrieval"
       />
       <ProposalWorkbench v-else-if="activeSection === 'proposals'" :project-id="pid" />
-      <ConsistencyList v-else-if="activeSection === 'consistency'" :issues="consistencyIssues" />
+      <ConsistencyList
+        v-else-if="activeSection === 'consistency'"
+        :issues="consistencyIssues"
+        :latest-chapter-index="latestChapterIndex"
+        :loading="athena.loading"
+        @run-check="runConsistencyCheck"
+      />
       <OptimizationPanel v-else-if="activeSection === 'optimization'" :optimization="athena.optimization" />
       <div v-else-if="activeSection === 'outline' || activeSection === 'storyline'" class="athena-view__placeholder">
         {{ activeSection === 'outline' ? '大纲' : '故事线' }}数据加载中...

@@ -7,6 +7,8 @@ vi.mock('../api/client', () => ({
   api: {
     getAthenaOntology: vi.fn(),
     getAthenaMessages: vi.fn(),
+    runAthenaConsistencyCheck: vi.fn(),
+    getConsistencyIssues: vi.fn(),
   },
 }))
 
@@ -33,6 +35,16 @@ function message(id: string) {
     trace_id: null,
     created_at: '2026-04-29T00:00:00Z',
   }
+}
+
+function createDeferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
 }
 
 describe('athena project scope', () => {
@@ -84,5 +96,50 @@ describe('athena project scope', () => {
     expect(api.getAthenaMessages).toHaveBeenCalledWith('project-1', { limit: 80 })
     expect(store.ontology).toEqual(ontology())
     expect(store.messages).toEqual([message('history')])
+  })
+
+  it('prevents stale same-project cached loads from overwriting state after reset', async () => {
+    let resolveOld!: (value: ReturnType<typeof ontology>) => void
+    let resolveNew!: (value: ReturnType<typeof ontology>) => void
+    vi.mocked(api.getAthenaOntology)
+      .mockReturnValueOnce(new Promise((resolve) => { resolveOld = resolve }))
+      .mockReturnValueOnce(new Promise((resolve) => { resolveNew = resolve }))
+    const store = useAthenaStore()
+
+    const oldLoad = store.loadOntology('project-1')
+    store.reset('project-1')
+    const newLoad = store.loadOntology('project-1')
+
+    resolveNew(ontology(2))
+    await newLoad
+    expect(store.ontology).toEqual(ontology(2))
+
+    resolveOld(ontology(1))
+    await oldLoad
+    expect(store.ontology).toEqual(ontology(2))
+  })
+
+  it('prevents stale same-project consistency checks from overwriting issues after reset', async () => {
+    const oldCheck = createDeferred<unknown>()
+    const newCheck = createDeferred<unknown>()
+    vi.mocked(api.runAthenaConsistencyCheck)
+      .mockReturnValueOnce(oldCheck.promise)
+      .mockReturnValueOnce(newCheck.promise)
+    vi.mocked(api.getConsistencyIssues)
+      .mockResolvedValueOnce([{ severity: 'error', description: 'new issue' }])
+      .mockResolvedValueOnce([{ severity: 'error', description: 'old issue' }])
+    const store = useAthenaStore()
+
+    const oldRun = store.runConsistencyCheck('project-1', 1)
+    store.reset('project-1')
+    const newRun = store.runConsistencyCheck('project-1', 2)
+
+    newCheck.resolve({})
+    await newRun
+    expect(store.consistencyIssues).toEqual([{ severity: 'error', description: 'new issue' }])
+
+    oldCheck.resolve({})
+    await oldRun
+    expect(store.consistencyIssues).toEqual([{ severity: 'error', description: 'new issue' }])
   })
 })

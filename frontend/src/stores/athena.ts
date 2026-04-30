@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { api } from '../api/client'
 import { useRequestCacheStore } from './requestCache'
+import { useWorldModelStore } from './worldModel'
 import { createAthenaProposalActions } from './athenaModules/proposals'
 import { createAthenaRetrievalActions } from './athenaModules/retrieval'
 import { toErrorMessage } from './athenaModules/errors'
@@ -26,7 +27,9 @@ const ATHENA_CHAT_HISTORY_PAGE_SIZE = 80
 
 export const useAthenaStore = defineStore('athena', () => {
   const requestCache = useRequestCacheStore()
+  const worldModel = useWorldModelStore()
   const activeProjectId = ref<string | null>(null)
+  const requestVersion = ref(0)
   const loading = ref(false)
   const error = ref<string | null>(null)
 
@@ -53,6 +56,8 @@ export const useAthenaStore = defineStore('athena', () => {
   let messageLoadRequestId = 0
   let sendRequestId = 0
   let sendProjectId: string | null = null
+  let consistencyCheckRequestId = 0
+  let analyzeChapterRequestId = 0
 
   function cacheKey(projectId: string, resource: string) {
     return `athena:${projectId}:${resource}`
@@ -83,10 +88,13 @@ export const useAthenaStore = defineStore('athena', () => {
   }
 
   function reset(projectId: string | null = null) {
+    requestVersion.value += 1
     if (projectId) requestCache.invalidate(cacheKey(projectId, ''))
     activeProjectId.value = projectId
     activeChatProjectId = projectId
     messageLoadRequestId += 1
+    consistencyCheckRequestId += 1
+    analyzeChapterRequestId += 1
     if (!projectId) {
       sendProjectId = null
       sendRequestId += 1
@@ -110,12 +118,13 @@ export const useAthenaStore = defineStore('athena', () => {
   ) {
     ensureProject(projectId)
     const key = cacheKey(projectId, resource)
+    const version = requestVersion.value
     if (isLoaded() && requestCache.isFresh(key, ATHENA_CACHE_TTL_MS)) return
     try {
       const value = await requestCache.dedupe(key, loader)
-      if (isActiveProject(projectId)) apply(value)
+      if (isActiveProject(projectId) && requestVersion.value === version) apply(value)
     } catch (err) {
-      if (isActiveProject(projectId)) error.value = toErrorMessage(err)
+      if (isActiveProject(projectId) && requestVersion.value === version) error.value = toErrorMessage(err)
     }
   }
 
@@ -270,12 +279,17 @@ export const useAthenaStore = defineStore('athena', () => {
 
   async function runConsistencyCheck(projectId: string, chapterIndex: number, depth: string = 'l1') {
     ensureProject(projectId)
+    const version = requestVersion.value
+    const requestId = ++consistencyCheckRequestId
     try {
       await api.runAthenaConsistencyCheck(projectId, chapterIndex, depth)
+      if (!isActiveProject(projectId) || requestVersion.value !== version || consistencyCheckRequestId !== requestId) return
       requestCache.invalidate(cacheKey(projectId, 'consistency-issues'))
       await loadConsistencyIssues(projectId)
     } catch (err) {
-      error.value = toErrorMessage(err)
+      if (isActiveProject(projectId) && requestVersion.value === version && consistencyCheckRequestId === requestId) {
+        error.value = toErrorMessage(err)
+      }
     }
   }
 
@@ -306,6 +320,7 @@ export const useAthenaStore = defineStore('athena', () => {
   async function importSetup(projectId: string) {
     ensureProject(projectId)
     try {
+      requestVersion.value += 1
       await api.importAthenaSetup(projectId)
       requestCache.invalidate(cacheKey(projectId, 'ontology'))
       requestCache.invalidate(cacheKey(projectId, 'setup-import-preview'))
@@ -330,12 +345,19 @@ export const useAthenaStore = defineStore('athena', () => {
 
   async function analyzeChapter(projectId: string, chapterIndex: number) {
     ensureProject(projectId)
+    const version = requestVersion.value
+    const requestId = ++analyzeChapterRequestId
     try {
       await api.analyzeAthenaChapter(projectId, chapterIndex)
+      if (!isActiveProject(projectId) || requestVersion.value !== version || analyzeChapterRequestId !== requestId) return
       requestCache.invalidate(cacheKey(projectId, 'proposals'))
       await loadProposals(projectId)
+      if (!isActiveProject(projectId) || requestVersion.value !== version || analyzeChapterRequestId !== requestId) return
+      await worldModel.loadSetupPanelData(projectId)
     } catch (err) {
-      error.value = toErrorMessage(err)
+      if (isActiveProject(projectId) && requestVersion.value === version && analyzeChapterRequestId === requestId) {
+        error.value = toErrorMessage(err)
+      }
     }
   }
 
@@ -359,6 +381,7 @@ export const useAthenaStore = defineStore('athena', () => {
         if (!isCurrentSend(scope) || !isActiveChatProject(projectId)) return
         proposals.value = loadedProposals
         requestCache.markFresh(cacheKey(projectId, 'proposals'))
+        await worldModel.loadSetupPanelData(projectId)
       }
       if (targets.has('ontology')) {
         const loadedOntology = await api.getAthenaOntology(projectId)

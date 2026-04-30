@@ -680,7 +680,7 @@ def test_review_records_include_reviewer_time_reason_evidence_and_rollback_point
         evidence_refs=["chapter.21"],
     )
 
-    saved_impact = db_session.query(WorldProposalImpactScopeSnapshot).filter_by(bundle_id=bundle.id).one()
+    saved_impact = db_session.query(WorldProposalImpactScopeSnapshot).filter_by(id=impact.id).one()
     saved_approval = db_session.query(WorldProposalReview).filter_by(id=approval.id).one()
     saved_rollback = db_session.query(WorldProposalReview).filter_by(id=rollback.id).one()
 
@@ -692,6 +692,113 @@ def test_review_records_include_reviewer_time_reason_evidence_and_rollback_point
     assert saved_approval.created_at is not None
     assert saved_rollback.rollback_to_review_id == approval.id
     assert saved_rollback.reason == "新证据显示只是轻伤"
+
+
+def test_impact_scope_ignores_rolled_back_truth_claims(db_session):
+    project, profile_version = _seed_project_profile(db_session)
+    db_session.add(
+        WorldFactClaim(
+            project_id=project.id,
+            project_profile_version_id=profile_version.id,
+            profile_version=profile_version.version,
+            claim_id="claim.hero.status.rolled-back",
+            chapter_index=1,
+            intra_chapter_seq=0,
+            subject_ref="char.hero",
+            predicate="status",
+            object_ref_or_value="wounded",
+            claim_layer="truth",
+            claim_status="rolled_back",
+            evidence_refs=["chapter.01"],
+            authority_type="authoritative_structured",
+            confidence=0.8,
+            notes="rolled back truth",
+            contract_version="world.contract.v1",
+        )
+    )
+    db_session.commit()
+    bundle = create_bundle(
+        db=db_session,
+        project_id=project.id,
+        project_profile_version_id=profile_version.id,
+        profile_version=profile_version.version,
+        created_by="writer.alpha",
+        title="Impact should ignore rolled back truth",
+    )
+    write_candidate_fact(
+        db=db_session,
+        bundle_id=bundle.id,
+        created_by="writer.alpha",
+        candidate=_candidate_payload(
+            claim_id="claim.hero.status.new",
+            subject_ref="char.hero",
+            predicate="status",
+            value="recovered",
+        ),
+    )
+
+    impact = calculate_bundle_impact_scope(db=db_session, bundle_id=bundle.id)
+
+    assert impact.affected_truth_claim_ids == []
+    assert impact.summary["existing_truth_count"] == 0
+
+
+def test_review_and_rollback_create_fresh_impact_snapshots(db_session):
+    project, profile_version = _seed_project_profile(db_session)
+    bundle = create_bundle(
+        db=db_session,
+        project_id=project.id,
+        project_profile_version_id=profile_version.id,
+        profile_version=profile_version.version,
+        created_by="writer.alpha",
+        title="Impact refresh",
+    )
+    item = write_candidate_fact(
+        db=db_session,
+        bundle_id=bundle.id,
+        created_by="writer.alpha",
+        candidate=_candidate_payload(
+            claim_id="claim.hero.status.refresh",
+            subject_ref="char.hero",
+            predicate="status",
+            value="wounded",
+        ),
+    )
+    initial = calculate_bundle_impact_scope(db=db_session, bundle_id=bundle.id)
+
+    approval = review_proposal_item(
+        db=db_session,
+        proposal_item_id=item.id,
+        reviewer_ref="editor.alpha",
+        action="approve",
+        reason="确认",
+        evidence_refs=["chapter.20"],
+    )
+    after_approval = (
+        db_session.query(WorldProposalImpactScopeSnapshot)
+        .filter_by(bundle_id=bundle.id)
+        .order_by(WorldProposalImpactScopeSnapshot.created_at.desc(), WorldProposalImpactScopeSnapshot.id.desc())
+        .first()
+    )
+    rollback_review(
+        db=db_session,
+        review_id=approval.id,
+        reviewer_ref="editor.beta",
+        reason="撤回",
+        evidence_refs=["chapter.21"],
+    )
+    snapshots = db_session.query(WorldProposalImpactScopeSnapshot).filter_by(bundle_id=bundle.id).all()
+
+    assert after_approval is not None
+    assert after_approval.id != initial.id
+    assert after_approval.summary["existing_truth_count"] == 1
+    assert len(snapshots) == 3
+    assert any(snapshot.id != initial.id and snapshot.summary["existing_truth_count"] == 1 for snapshot in snapshots)
+    assert any(
+        snapshot.id not in {initial.id, after_approval.id}
+        and snapshot.summary["existing_truth_count"] == 0
+        for snapshot in snapshots
+    )
 
 
 def test_approved_item_cannot_be_rejected_or_marked_uncertain_without_explicit_rollback(db_session):
@@ -779,12 +886,50 @@ def test_edited_fields_cannot_override_guarded_protocol_fields(db_session):
             evidence_refs=["chapter.32"],
             edited_fields={
                 "claim_layer": "belief",
-                "object_ref_or_value": "dead",
                 "project_id": "other-project",
             },
         )
 
     assert db_session.query(WorldFactClaim).count() == 0
+
+
+def test_approve_with_edits_can_update_claim_object_value(db_session):
+    project, profile_version = _seed_project_profile(db_session)
+    bundle = create_bundle(
+        db=db_session,
+        project_id=project.id,
+        project_profile_version_id=profile_version.id,
+        profile_version=profile_version.version,
+        created_by="writer.alpha",
+        title="Editable object value",
+    )
+    item = write_candidate_fact(
+        db=db_session,
+        bundle_id=bundle.id,
+        created_by="writer.alpha",
+        candidate=_candidate_payload(
+            claim_id="claim.hero.status.edited-object",
+            subject_ref="char.hero",
+            predicate="status",
+            value="unknown",
+        ),
+    )
+
+    review_proposal_item(
+        db=db_session,
+        proposal_item_id=item.id,
+        reviewer_ref="editor.alpha",
+        action="approve_with_edits",
+        reason="候选值需要按证据修正",
+        evidence_refs=["chapter.32"],
+        edited_fields={"object_ref_or_value": {"status": "wounded", "severity": "minor"}},
+    )
+
+    saved_claim = db_session.query(WorldFactClaim).filter_by(claim_id="claim.hero.status.edited-object").one()
+    saved_review = db_session.query(WorldProposalReview).filter_by(proposal_item_id=item.id).one()
+
+    assert saved_claim.object_ref_or_value == {"status": "wounded", "severity": "minor"}
+    assert saved_review.edited_fields == {"object_ref_or_value": {"status": "wounded", "severity": "minor"}}
 
 
 def test_split_bundle_rejects_invalid_item_ids(db_session):

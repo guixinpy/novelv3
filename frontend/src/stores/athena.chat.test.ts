@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useAthenaStore } from './athena'
+import { useWorldModelStore } from './worldModel'
 import { api } from '../api/client'
 
 vi.mock('../api/client', () => ({
@@ -10,6 +11,10 @@ vi.mock('../api/client', () => ({
     getAthenaEvolutionProposals: vi.fn(),
     getAthenaOntology: vi.fn(),
     getAthenaState: vi.fn(),
+    getWorldModelOverview: vi.fn(),
+    getWorldModelDashboard: vi.fn(),
+    listWorldProposalBundles: vi.fn(),
+    getWorldProposalBundle: vi.fn(),
   },
 }))
 
@@ -58,6 +63,59 @@ describe('athena chat store', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.resetAllMocks()
+    vi.mocked(api.getWorldModelOverview).mockResolvedValue({
+      project_profile: {
+        id: 'profile-1',
+        project_id: 'project-1',
+        genre_profile_id: 'genre-1',
+        version: 1,
+        contract_version: 'world.contract.v1',
+        profile_payload: {},
+        created_at: '2026-04-26T00:00:00Z',
+      },
+      projection: {
+        view_type: 'current_truth',
+        entities: {},
+        relations: {},
+        presence: {},
+        occurred_events: {},
+        event_links: {},
+        facts: {},
+      },
+    })
+    vi.mocked(api.getWorldModelDashboard).mockResolvedValue({
+      project_profile: {
+        id: 'profile-1',
+        project_id: 'project-1',
+        genre_profile_id: 'genre-1',
+        version: 1,
+        contract_version: 'world.contract.v1',
+        profile_payload: {},
+        created_at: '2026-04-26T00:00:00Z',
+      },
+      metrics: {
+        entity_count: 0,
+        fact_count: 0,
+        presence_count: 0,
+        event_count: 0,
+        pending_bundle_count: 1,
+        pending_item_count: 1,
+      },
+      next_action: { action: 'review_proposals', label: '处理待审世界模型提案' },
+    })
+    vi.mocked(api.listWorldProposalBundles).mockResolvedValue({
+      items: [proposalBundle('project-1', 'bundle-1')],
+      total: 1,
+      offset: 0,
+      limit: 20,
+    })
+    vi.mocked(api.getWorldProposalBundle).mockResolvedValue({
+      bundle: proposalBundle('project-1', 'bundle-1'),
+      items: [],
+      reviews: [],
+      impact_snapshots: [],
+      conflicts: [],
+    })
   })
 
   it('refreshes proposals after Athena chat creates a proposal', async () => {
@@ -94,6 +152,7 @@ describe('athena chat store', () => {
       limit: 20,
     })
     const store = useAthenaStore()
+    const worldModel = useWorldModelStore()
 
     await store.sendChat('project-1', '请更新世界模型')
 
@@ -101,6 +160,8 @@ describe('athena chat store', () => {
     expect(api.getAthenaMessages).toHaveBeenCalledWith('project-1', { limit: 80 })
     expect(api.getAthenaEvolutionProposals).toHaveBeenCalledWith('project-1', undefined)
     expect(store.proposals?.total).toBe(1)
+    expect(api.listWorldProposalBundles).toHaveBeenCalledWith('project-1', expect.any(Object))
+    expect(worldModel.proposalBundles).toEqual([proposalBundle('project-1', 'bundle-1')])
   })
 
   it('keeps newer project chat state when an older sendChat resolves later', async () => {

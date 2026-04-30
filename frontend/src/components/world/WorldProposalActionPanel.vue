@@ -1,6 +1,7 @@
 <template>
   <div class="proposal-actions">
     <textarea
+      v-if="isActionable || canShowRollback"
       v-model="reason"
       class="proposal-actions__field"
       rows="2"
@@ -13,8 +14,9 @@
       @submit="onDiffSubmit"
       @cancel="showDiffEditor = false"
     />
-    <div class="proposal-actions__buttons">
+    <div v-if="isActionable || canShowRollback" class="proposal-actions__buttons">
       <button
+        v-if="isActionable"
         type="button"
         :disabled="busy"
         @click="emitReview('approve', '通过')"
@@ -22,6 +24,7 @@
         通过
       </button>
       <button
+        v-if="isActionable"
         type="button"
         :disabled="busy"
         @click="emitReview('approve_with_edits', '编辑后通过')"
@@ -29,6 +32,7 @@
         编辑后通过
       </button>
       <button
+        v-if="isActionable"
         type="button"
         :disabled="busy"
         @click="emitReview('reject', '驳回')"
@@ -36,6 +40,7 @@
         驳回
       </button>
       <button
+        v-if="isActionable"
         type="button"
         :disabled="busy"
         @click="emitReview('mark_uncertain', '标记不确定')"
@@ -43,6 +48,7 @@
         不确定
       </button>
       <button
+        v-if="isActionable"
         type="button"
         :disabled="busy"
         @click="$emit('split', buildReason('拆分审阅'))"
@@ -50,19 +56,22 @@
         拆分
       </button>
       <button
-        v-if="canRollback && approvalReviewId"
+        v-if="canShowRollback"
         type="button"
         :disabled="busy"
-        @click="$emit('rollback', approvalReviewId, buildReason('回滚审批'))"
+        @click="emitRollback"
       >
         回滚
       </button>
+    </div>
+    <div v-else class="proposal-actions__readonly">
+      当前状态不可继续审阅。
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import ProposalClaimDiffEditor from './ProposalClaimDiffEditor.vue'
 import type { ProposalItem, ProposalReviewRequest } from '../../api/types'
 
@@ -84,6 +93,13 @@ const emit = defineEmits<{
 const reason = ref('')
 const showDiffEditor = ref(false)
 const pendingEditedFields = ref<Record<string, unknown>>({})
+
+const isActionable = computed(() => ['pending', 'needs_edit'].includes(props.item.item_status))
+const canShowRollback = computed(() =>
+  props.canRollback
+  && Boolean(props.approvalReviewId)
+  && ['approved', 'approved_with_edits'].includes(props.item.item_status),
+)
 
 function buildReason(fallback: string) {
   return reason.value.trim() || fallback
@@ -107,6 +123,11 @@ function emitReview(action: ProposalReviewRequest['action'], fallbackReason: str
 function onDiffSubmit(editedFields: Record<string, unknown>) {
   pendingEditedFields.value = editedFields
   emitReview('approve_with_edits', '编辑后通过')
+}
+
+function emitRollback() {
+  if (!props.approvalReviewId) return
+  emit('rollback', props.approvalReviewId, buildReason('回滚审批'))
 }
 </script>
 
@@ -145,5 +166,10 @@ function onDiffSubmit(editedFields: Record<string, unknown>) {
 
 .proposal-actions__buttons button:disabled {
   opacity: 0.5;
+}
+
+.proposal-actions__readonly {
+  color: var(--color-text-tertiary);
+  font-size: 0.76rem;
 }
 </style>

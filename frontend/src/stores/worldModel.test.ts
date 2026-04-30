@@ -7,6 +7,8 @@ vi.mock('../api/client', () => ({
   api: {
     getWorldModelOverview: vi.fn(),
     getWorldModelDashboard: vi.fn(),
+    getSubjectKnowledge: vi.fn(),
+    getChapterSnapshot: vi.fn(),
     listWorldProposalBundles: vi.fn(),
     getWorldProposalBundle: vi.fn(),
     reviewWorldProposalItem: vi.fn(),
@@ -257,6 +259,50 @@ describe('worldModel store', () => {
     await pending
 
     expect(store.isLaneLoading('dashboard')).toBe(false)
+  })
+
+  it('prevents stale subject knowledge responses from overwriting the selected subject', async () => {
+    const firstRequest = createDeferred<ReturnType<typeof createOverview>>()
+    const secondRequest = createDeferred<ReturnType<typeof createOverview>>()
+    vi.mocked(api.getSubjectKnowledge)
+      .mockReturnValueOnce(firstRequest.promise)
+      .mockReturnValueOnce(secondRequest.promise)
+    const store = useWorldModelStore()
+
+    const firstLoad = store.loadSubjectKnowledge('project-1', 'char.old')
+    const secondLoad = store.loadSubjectKnowledge('project-1', 'char.new')
+
+    secondRequest.resolve(createOverview('new-rank'))
+    await secondLoad
+    expect(store.selectedSubjectRef).toBe('char.new')
+    expect(store.subjectKnowledge?.facts['char.hero'].rank).toBe('new-rank')
+
+    firstRequest.resolve(createOverview('old-rank'))
+    await firstLoad
+    expect(store.selectedSubjectRef).toBe('char.new')
+    expect(store.subjectKnowledge?.facts['char.hero'].rank).toBe('new-rank')
+  })
+
+  it('prevents stale chapter snapshots from overwriting the selected chapter', async () => {
+    const firstRequest = createDeferred<ReturnType<typeof createOverview>>()
+    const secondRequest = createDeferred<ReturnType<typeof createOverview>>()
+    vi.mocked(api.getChapterSnapshot)
+      .mockReturnValueOnce(firstRequest.promise)
+      .mockReturnValueOnce(secondRequest.promise)
+    const store = useWorldModelStore()
+
+    const firstLoad = store.loadChapterSnapshot('project-1', 1)
+    const secondLoad = store.loadChapterSnapshot('project-1', 2)
+
+    secondRequest.resolve(createOverview('chapter-two'))
+    await secondLoad
+    expect(store.selectedChapterIndex).toBe(2)
+    expect(store.chapterSnapshot?.facts['char.hero'].rank).toBe('chapter-two')
+
+    firstRequest.resolve(createOverview('chapter-one'))
+    await firstLoad
+    expect(store.selectedChapterIndex).toBe(2)
+    expect(store.chapterSnapshot?.facts['char.hero'].rank).toBe('chapter-two')
   })
 
   it('loadSetupPanelData() 会加载当前 profile、投影和 bundles，并默认选中首个 bundle', async () => {

@@ -12,6 +12,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   navigate: [section: AthenaSection]
+  runAction: [action: string]
 }>()
 
 const metrics = computed(() => props.dashboard?.metrics ?? {
@@ -46,6 +47,8 @@ const nextActionSection = computed<AthenaSection>(() => {
   return 'characters'
 })
 
+const executableActions = new Set(['import_setup', 'analyze_chapter'])
+
 const previewItems = computed(() => {
   const counts = props.setupPreview?.would_create
   if (!counts || props.dashboard?.project_profile) return []
@@ -59,6 +62,11 @@ const previewItems = computed(() => {
 })
 
 function goNext() {
+  const action = props.dashboard?.next_action.action
+  if (action && executableActions.has(action)) {
+    emit('runAction', action)
+    return
+  }
   emit('navigate', nextActionSection.value)
 }
 </script>

@@ -9,11 +9,15 @@ from app.models import (
     WorldFaction,
     WorldFactClaim,
     WorldLocation,
+    WorldEvent,
     WorldProposalBundle,
     WorldProposalItem,
     WorldRule,
+    WorldTimelineAnchor,
 )
 from app.core.athena_longform import analyze_chapter_to_world_proposals
+from app.core.athena_entity_resolver import count_entity_mentions
+from app.core.l1_extractor import L1RuleExtractor
 
 
 def _seed_project_with_setup(db_session):
@@ -54,6 +58,22 @@ def _seed_project_with_setup(db_session):
     return project
 
 
+def test_l1_and_entity_mentions_do_not_double_count_overlapping_aliases():
+    chapter = ChapterContent(
+        project_id="project-alias",
+        chapter_index=1,
+        title="第一章",
+        content="林舟走进雾港城。",
+        status="generated",
+    )
+    characters = [{"name": "林舟", "aliases": ["林"]}]
+
+    facts = L1RuleExtractor().extract(chapter, characters)
+
+    assert facts[0]["new_value"] == 1
+    assert count_entity_mentions(text=chapter.content, names=["林舟", "林"]) == 1
+
+
 def test_import_setup_creates_formal_profile_entities_and_rules(client, db_session):
     project = _seed_project_with_setup(db_session)
 
@@ -68,6 +88,9 @@ def test_import_setup_creates_formal_profile_entities_and_rules(client, db_sessi
     assert payload["created"]["artifacts"] == 1
     assert payload["created"]["rules"] == 1
     assert db_session.query(ProjectProfileVersion).filter_by(project_id=project.id).count() == 1
+    profile = db_session.query(ProjectProfileVersion).filter_by(project_id=project.id).one()
+    genre_profile = db_session.query(GenreProfile).filter_by(id=profile.genre_profile_id).one()
+    assert "event_occurred" in genre_profile.event_types
     assert db_session.query(WorldCharacter).filter_by(project_id=project.id).count() == 2
     assert db_session.query(WorldLocation).filter_by(project_id=project.id).count() == 2
     assert db_session.query(WorldFaction).filter_by(project_id=project.id).count() == 2
@@ -426,3 +449,104 @@ def test_approved_candidate_is_injected_into_chapter_context(client, db_session)
     assert "黑潮门" in payload["prompt_context"]
     assert "旧灯塔熄灭时" in payload["prompt_context"]
     assert "presence_count" in payload["prompt_context"]
+
+
+def test_approved_event_summary_materializes_world_event_ledger(client, db_session):
+    project = _seed_project_with_setup(db_session)
+    client.post(f"/api/v1/projects/{project.id}/athena/ontology/import-setup")
+    db_session.add(
+        ChapterContent(
+            project_id=project.id,
+            chapter_index=1,
+            title="第一章 雾港",
+            content="林舟走进雾港城。旧灯塔重新点亮。",
+            word_count=18,
+            status="generated",
+        )
+    )
+    db_session.commit()
+    client.post(f"/api/v1/projects/{project.id}/athena/evolution/chapters/1/analyze")
+    item = (
+        db_session.query(WorldProposalItem)
+        .filter_by(project_id=project.id, subject_ref="chapter.1", predicate="event_summary")
+        .one()
+    )
+
+    review = client.post(
+        f"/api/v1/projects/{project.id}/athena/evolution/proposals/{item.id}/review",
+        json={
+            "reviewer_ref": "tester",
+            "action": "approve",
+            "reason": "确认章节事件",
+            "evidence_refs": ["chapter:1"],
+            "edited_fields": {},
+        },
+    )
+    overview = client.get(f"/api/v1/projects/{project.id}/world-model")
+
+    assert review.status_code == 200
+    anchor = db_session.query(WorldTimelineAnchor).filter_by(project_id=project.id, anchor_id="anchor.chapter.1.summary").one()
+    event = db_session.query(WorldEvent).filter_by(project_id=project.id, event_id="event.chapter.1.summary").one()
+    assert anchor.chapter_index == 1
+    assert event.timeline_anchor_id == anchor.anchor_id
+    assert event.event_type == "event_occurred"
+    assert event.primitive_payload["event_ref"] == "event.chapter.1.summary"
+    assert "旧灯塔重新点亮" in event.primitive_payload["summary"]
+    assert overview.status_code == 200
+    assert overview.json()["projection"]["occurred_events"]["event.chapter.1.summary"]["summary"]
+
+
+def test_rollback_event_summary_approval_retcons_world_event_projection(client, db_session):
+    project = _seed_project_with_setup(db_session)
+    client.post(f"/api/v1/projects/{project.id}/athena/ontology/import-setup")
+    db_session.add(
+        ChapterContent(
+            project_id=project.id,
+            chapter_index=1,
+            title="第一章 雾港",
+            content="林舟走进雾港城。旧灯塔重新点亮。",
+            word_count=18,
+            status="generated",
+        )
+    )
+    db_session.commit()
+    client.post(f"/api/v1/projects/{project.id}/athena/evolution/chapters/1/analyze")
+    item = (
+        db_session.query(WorldProposalItem)
+        .filter_by(project_id=project.id, subject_ref="chapter.1", predicate="event_summary")
+        .one()
+    )
+    approval = client.post(
+        f"/api/v1/projects/{project.id}/athena/evolution/proposals/{item.id}/review",
+        json={
+            "reviewer_ref": "tester",
+            "action": "approve",
+            "reason": "确认章节事件",
+            "evidence_refs": ["chapter:1"],
+            "edited_fields": {},
+        },
+    )
+
+    rollback = client.post(
+        f"/api/v1/projects/{project.id}/world-model/reviews/{approval.json()['id']}/rollback",
+        json={
+            "reviewer_ref": "tester",
+            "reason": "撤回章节事件",
+            "evidence_refs": ["chapter:1"],
+        },
+    )
+    overview = client.get(f"/api/v1/projects/{project.id}/world-model")
+
+    assert approval.status_code == 200
+    assert rollback.status_code == 200
+    original = db_session.query(WorldEvent).filter_by(project_id=project.id, event_id="event.chapter.1.summary").one()
+    retcon = (
+        db_session.query(WorldEvent)
+        .filter_by(project_id=project.id, supersedes_event_ref="event.chapter.1.summary")
+        .one()
+    )
+    assert original.event_type == "event_occurred"
+    assert retcon.event_type == "retcon_applied"
+    assert retcon.primitive_payload["replacement_event_type"] == "fact_reviewed"
+    assert overview.status_code == 200
+    assert "event.chapter.1.summary" not in overview.json()["projection"]["occurred_events"]

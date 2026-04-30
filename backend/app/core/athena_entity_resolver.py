@@ -7,6 +7,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.core.text_mentions import count_non_overlapping_mentions, unique_non_empty as unique_non_empty_mentions
 from app.models import WorldArtifact, WorldCharacter, WorldFaction, WorldLocation
 
 
@@ -110,19 +111,11 @@ def entity_mention_names(entity: Any) -> list[str]:
 
 
 def unique_non_empty(raw_names: list[Any]) -> list[str]:
-    names: list[str] = []
-    seen: set[str] = set()
-    for raw_name in raw_names:
-        name = str(raw_name or "").strip()
-        if not name or name in seen:
-            continue
-        seen.add(name)
-        names.append(name)
-    return names
+    return unique_non_empty_mentions(raw_names)
 
 
 def count_entity_mentions(*, text: str, names: list[str]) -> int:
-    return sum(text.count(name) for name in names if name)
+    return count_non_overlapping_mentions(text=text, names=names)
 
 
 def chapter_sentences(text: str) -> list[str]:

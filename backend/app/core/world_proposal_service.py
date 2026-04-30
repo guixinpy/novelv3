@@ -22,10 +22,12 @@ from app.models import (
     GenreProfile,
     ProjectProfileVersion,
     WorldFactClaim,
+    WorldEvent,
     WorldProposalBundle,
     WorldProposalImpactScopeSnapshot,
     WorldProposalItem,
     WorldProposalReview,
+    WorldTimelineAnchor,
 )
 from app.schemas.world_proposals import ProposalCandidateFactCreate
 
@@ -169,10 +171,12 @@ def calculate_bundle_impact_scope(*, db: Session, bundle_id: str, commit: bool =
             db.query(WorldFactClaim)
             .filter(
                 WorldFactClaim.project_id == bundle.project_id,
+                WorldFactClaim.project_profile_version_id == bundle.project_profile_version_id,
                 WorldFactClaim.profile_version == bundle.profile_version,
                 WorldFactClaim.subject_ref == item.subject_ref,
                 WorldFactClaim.predicate == item.predicate,
                 WorldFactClaim.claim_layer == "truth",
+                WorldFactClaim.claim_status == "confirmed",
             )
             .all()
         )
@@ -268,12 +272,13 @@ def review_proposal_item(
 
     try:
         if action in APPROVE_ACTIONS:
+            claim_payload = claim_payload_from_item_snapshot(item_snapshot, edited_fields)
             claim = WorldFactClaim(
                 project_id=item_snapshot["project_id"],
                 project_profile_version_id=item_snapshot["project_profile_version_id"],
                 profile_version=item_snapshot["profile_version"],
                 claim_status="confirmed",
-                **claim_payload_from_item_snapshot(item_snapshot, edited_fields),
+                **claim_payload,
             )
             db.add(claim)
             db.flush()
@@ -290,9 +295,11 @@ def review_proposal_item(
             )
             review.created_truth_claim_id = claim.claim_id
             approved_fact_id = claim.id
+            _materialize_event_from_approved_item(db=db, item_snapshot={**item_snapshot, **claim_payload})
 
         db.add(review)
         _refresh_bundle_status(db=db, bundle=bundle)
+        calculate_bundle_impact_scope(db=db, bundle_id=bundle.id, commit=False)
         db.commit()
     except IntegrityError as exc:
         db.rollback()
@@ -323,6 +330,79 @@ def _sync_approved_fact_retrieval_document(*, db: Session, fact_id: str, project
     except Exception:
         db.rollback()
         logger.exception("Failed to sync retrieval document for approved world fact %s in project %s", fact_id, project_id)
+
+
+def _materialize_event_from_approved_item(*, db: Session, item_snapshot: dict[str, Any]) -> None:
+    if item_snapshot["predicate"] != "event_summary":
+        return
+    chapter_index = item_snapshot.get("chapter_index")
+    if chapter_index is None:
+        return
+    value = item_snapshot.get("object_ref_or_value")
+    if not isinstance(value, dict):
+        return
+    event_id = f"event.chapter.{chapter_index}.summary"
+    if db.query(WorldEvent).filter_by(project_id=item_snapshot["project_id"], event_id=event_id).first():
+        return
+
+    anchor_id = f"anchor.chapter.{chapter_index}.summary"
+    anchor = (
+        db.query(WorldTimelineAnchor)
+        .filter_by(
+            project_id=item_snapshot["project_id"],
+            profile_version=item_snapshot["profile_version"],
+            anchor_id=anchor_id,
+        )
+        .first()
+    )
+    if anchor is None:
+        anchor = WorldTimelineAnchor(
+            project_id=item_snapshot["project_id"],
+            profile_version=item_snapshot["profile_version"],
+            anchor_id=anchor_id,
+            chapter_index=chapter_index,
+            intra_chapter_seq=item_snapshot.get("intra_chapter_seq") or 0,
+            world_time_label=f"第{chapter_index}章摘要事件",
+            normalized_tick_or_range=f"chapter:{chapter_index}",
+            precision="chapter",
+            ordering_key=f"{chapter_index:06d}.{(item_snapshot.get('intra_chapter_seq') or 0):06d}",
+            notes="Materialized from approved Athena event_summary proposal.",
+            contract_version=item_snapshot["contract_version"],
+        )
+        db.add(anchor)
+        db.flush()
+
+    db.add(
+        WorldEvent(
+            project_id=item_snapshot["project_id"],
+            project_profile_version_id=item_snapshot["project_profile_version_id"],
+            profile_version=item_snapshot["profile_version"],
+            event_id=event_id,
+            idempotency_key=f"approved-proposal:{item_snapshot['id']}:event",
+            timeline_anchor_id=anchor_id,
+            chapter_index=chapter_index,
+            intra_chapter_seq=item_snapshot.get("intra_chapter_seq") or 0,
+            event_type="event_occurred",
+            participant_refs=[],
+            location_refs=[],
+            precondition_event_refs=[],
+            caused_event_refs=[],
+            primitive_payload={
+                "event_ref": event_id,
+                "chapter_index": chapter_index,
+                "title": value.get("title") or f"第{chapter_index}章",
+                "summary": value.get("summary") or "",
+                "source": "approved_event_summary",
+            },
+            state_diffs=[],
+            truth_layer=item_snapshot["claim_layer"],
+            disclosure_layer="public",
+            evidence_refs=list(item_snapshot.get("evidence_refs") or []),
+            contract_version_refs=[item_snapshot["contract_version"]],
+            notes=item_snapshot.get("notes") or "",
+            contract_version=item_snapshot["contract_version"],
+        )
+    )
 
 
 def _delete_rolled_back_fact_retrieval_document(*, db: Session, fact_id: str, project_id: str) -> None:
@@ -488,7 +568,16 @@ def rollback_review(
         metadata_snapshot={"rollback_point": review.id},
     )
     db.add(rollback)
+    _materialize_event_rollback_from_approved_item(
+        db=db,
+        item=item,
+        approval_review=review,
+        rollback_review=rollback,
+        claim=claim,
+    )
     _refresh_bundle_status(db=db, bundle=bundle)
+    db.flush()
+    calculate_bundle_impact_scope(db=db, bundle_id=bundle.id, commit=False)
     try:
         db.commit()
     except IntegrityError as exc:
@@ -500,6 +589,77 @@ def rollback_review(
     invalidate_world_projection_cache(project_id=item.project_id)
     db.refresh(rollback)
     return rollback
+
+
+def _materialize_event_rollback_from_approved_item(
+    *,
+    db: Session,
+    item: WorldProposalItem,
+    approval_review: WorldProposalReview,
+    rollback_review: WorldProposalReview,
+    claim: WorldFactClaim,
+) -> None:
+    if item.predicate != "event_summary" or item.chapter_index is None:
+        return
+    original_event_id = f"event.chapter.{item.chapter_index}.summary"
+    original_event = (
+        db.query(WorldEvent)
+        .filter(
+            WorldEvent.project_id == item.project_id,
+            WorldEvent.project_profile_version_id == item.project_profile_version_id,
+            WorldEvent.profile_version == item.profile_version,
+            WorldEvent.event_id == original_event_id,
+        )
+        .one_or_none()
+    )
+    if original_event is None:
+        return
+
+    retcon_event_id = f"retcon.{original_event_id}.rollback"
+    existing_retcon = (
+        db.query(WorldEvent)
+        .filter(
+            WorldEvent.project_id == item.project_id,
+            WorldEvent.project_profile_version_id == item.project_profile_version_id,
+            WorldEvent.profile_version == item.profile_version,
+            WorldEvent.event_id == retcon_event_id,
+        )
+        .first()
+    )
+    if existing_retcon is not None:
+        return
+
+    db.add(
+        WorldEvent(
+            project_id=item.project_id,
+            project_profile_version_id=item.project_profile_version_id,
+            profile_version=item.profile_version,
+            event_id=retcon_event_id,
+            idempotency_key=f"rollback-review:{approval_review.id}:event-retcon",
+            timeline_anchor_id=original_event.timeline_anchor_id,
+            chapter_index=original_event.chapter_index,
+            intra_chapter_seq=original_event.intra_chapter_seq + 1,
+            event_type="retcon_applied",
+            participant_refs=[],
+            location_refs=[],
+            precondition_event_refs=[],
+            caused_event_refs=[],
+            primitive_payload={
+                "replacement_event_type": "fact_reviewed",
+                "claim_id": claim.claim_id,
+                "review_status": "rolled_back",
+                "reviewer_ref": rollback_review.reviewer_ref,
+            },
+            state_diffs=[],
+            truth_layer=claim.claim_layer,
+            disclosure_layer="public",
+            evidence_refs=list(rollback_review.evidence_refs or []),
+            contract_version_refs=[item.contract_version],
+            supersedes_event_ref=original_event_id,
+            notes=rollback_review.reason,
+            contract_version=item.contract_version,
+        )
+    )
 
 
 def list_authoritative_truth_claims(

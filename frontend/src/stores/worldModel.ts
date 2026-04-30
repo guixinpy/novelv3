@@ -59,6 +59,8 @@ export const useWorldModelStore = defineStore('worldModel', () => {
   const currentProjectScope = ref('')
   const scopeVersion = ref(0)
   const nextRequestId = ref(0)
+  let subjectKnowledgeRequestId = 0
+  let chapterSnapshotRequestId = 0
   const latestLaneRequest = ref<Record<RequestLane, number>>({
     dashboard: 0,
     overview: 0,
@@ -199,24 +201,40 @@ export const useWorldModelStore = defineStore('worldModel', () => {
   }
 
   async function loadSubjectKnowledge(projectId: string, subjectRef: string) {
-    ensureProjectScope(projectId)
+    const scope = captureScope(projectId)
+    const requestId = ++subjectKnowledgeRequestId
     selectedSubjectRef.value = subjectRef
     try {
       const overview = await api.getSubjectKnowledge(projectId, subjectRef)
+      if (
+        !isActiveScope(scope.projectId, scope.version)
+        || subjectKnowledgeRequestId !== requestId
+        || selectedSubjectRef.value !== subjectRef
+      ) return
       subjectKnowledge.value = overview.projection
     } catch (err) {
-      error.value = toErrorMessage(err)
+      if (isActiveScope(scope.projectId, scope.version) && subjectKnowledgeRequestId === requestId) {
+        error.value = toErrorMessage(err)
+      }
     }
   }
 
   async function loadChapterSnapshot(projectId: string, chapterIndex: number) {
-    ensureProjectScope(projectId)
+    const scope = captureScope(projectId)
+    const requestId = ++chapterSnapshotRequestId
     selectedChapterIndex.value = chapterIndex
     try {
       const overview = await api.getChapterSnapshot(projectId, chapterIndex)
+      if (
+        !isActiveScope(scope.projectId, scope.version)
+        || chapterSnapshotRequestId !== requestId
+        || selectedChapterIndex.value !== chapterIndex
+      ) return
       chapterSnapshot.value = overview.projection
     } catch (err) {
-      error.value = toErrorMessage(err)
+      if (isActiveScope(scope.projectId, scope.version) && chapterSnapshotRequestId === requestId) {
+        error.value = toErrorMessage(err)
+      }
     }
   }
 
@@ -245,6 +263,8 @@ export const useWorldModelStore = defineStore('worldModel', () => {
     error.value = ''
     activeSubmissionCount.value = 0
     pendingActionCounts.value = {}
+    subjectKnowledgeRequestId += 1
+    chapterSnapshotRequestId += 1
     subjectKnowledge.value = null
     selectedSubjectRef.value = null
     chapterSnapshot.value = null

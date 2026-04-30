@@ -5,8 +5,8 @@ import WorldProposalItemCard from './WorldProposalItemCard.vue'
 import type { ProposalItem } from '../../api/types'
 
 describe('WorldProposalItemCard', () => {
-  it('renders deterministic evidence and quality metadata for review', () => {
-    const item: ProposalItem = {
+  function createItem(overrides: Partial<ProposalItem> = {}): ProposalItem {
+    return {
       id: 'item-1',
       bundle_id: 'bundle-1',
       parent_item_id: null,
@@ -34,7 +34,12 @@ describe('WorldProposalItemCard', () => {
       approved_claim_id: null,
       created_by: 'athena.chapter_analyzer',
       created_at: '2026-04-29T00:00:00Z',
+      ...overrides,
     }
+  }
+
+  it('renders deterministic evidence and quality metadata for review', () => {
+    const item = createItem()
 
     const wrapper = mount(WorldProposalItemCard, {
       props: {
@@ -51,5 +56,25 @@ describe('WorldProposalItemCard', () => {
     expect(wrapper.text()).toContain('林舟走进雾港城')
     expect(wrapper.text()).toContain('cooccurrence')
     expect(wrapper.text()).toContain('medium')
+  })
+
+  it('does not show review actions after an item is already approved', () => {
+    const wrapper = mount(WorldProposalItemCard, {
+      props: {
+        item: createItem({ item_status: 'approved', approved_claim_id: 'claim.1' }),
+        busy: false,
+        approvalReviewId: 'review-1',
+        reviewerRef: 'athena.user',
+        anchorOptions: [],
+        conflicts: [],
+      },
+    })
+
+    const buttonLabels = wrapper.findAll('button').map((button) => button.text())
+
+    expect(buttonLabels).toEqual(['回滚'])
+    expect(wrapper.text()).not.toContain('编辑后通过')
+    expect(wrapper.text()).not.toContain('驳回')
+    expect(wrapper.text()).not.toContain('拆分')
   })
 })

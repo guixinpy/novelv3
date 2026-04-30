@@ -1,21 +1,35 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import BaseBadge from '../base/BaseBadge.vue'
 import type { AthenaConsistencyIssue } from '../../api/types'
 
-defineProps<{
+const props = defineProps<{
   issues: AthenaConsistencyIssue[]
+  latestChapterIndex?: number | null
+  loading?: boolean
+}>()
+
+const emit = defineEmits<{
+  runCheck: [chapterIndex: number]
 }>()
 
 const expandedIdx = ref<number | null>(null)
+const canRunLatestCheck = computed(() => Number.isFinite(props.latestChapterIndex))
 
 function toggle(idx: number) {
   expandedIdx.value = expandedIdx.value === idx ? null : idx
 }
 
+function runLatestCheck() {
+  if (!canRunLatestCheck.value || props.loading) return
+  emit('runCheck', Number(props.latestChapterIndex))
+}
+
 const severityVariant: Record<string, 'success' | 'warning' | 'error' | 'neutral'> = {
   pass: 'success',
+  warn: 'warning',
   warning: 'warning',
+  fatal: 'error',
   error: 'error',
   info: 'neutral',
 }
@@ -31,6 +45,18 @@ function issueVariant(issue: AthenaConsistencyIssue) {
 
 <template>
   <div class="consistency-list">
+    <div class="consistency-list__toolbar">
+      <button
+        v-if="canRunLatestCheck"
+        class="consistency-list__run-button"
+        data-testid="athena-consistency-run-latest"
+        type="button"
+        :disabled="loading"
+        @click="runLatestCheck"
+      >
+        检查最新章节
+      </button>
+    </div>
     <div v-if="issues.length === 0" class="consistency-list__empty">暂无一致性检查结果</div>
     <div
       v-for="(issue, idx) in issues"
@@ -41,7 +67,7 @@ function issueVariant(issue: AthenaConsistencyIssue) {
         <BaseBadge :variant="issueVariant(issue)" size="sm">
           {{ issueSeverity(issue) }}
         </BaseBadge>
-        <span class="consistency-list__type">{{ issue.check_type || issue.type || '' }}</span>
+        <span class="consistency-list__type">{{ issue.checker_name || issue.check_type || issue.type || '' }}</span>
         <span class="consistency-list__desc">{{ issue.description || issue.message || '' }}</span>
         <span class="consistency-list__chevron">{{ expandedIdx === idx ? '▾' : '▸' }}</span>
       </button>
@@ -52,6 +78,28 @@ function issueVariant(issue: AthenaConsistencyIssue) {
   </div>
 </template>
 <style scoped>
+.consistency-list__toolbar {
+  display: flex;
+  justify-content: flex-end;
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.consistency-list__run-button {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-primary);
+  background: var(--color-bg-primary);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.consistency-list__run-button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
 .consistency-list__item {
   border-bottom: 1px solid var(--color-border);
 }

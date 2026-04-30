@@ -1,6 +1,14 @@
 from unittest.mock import AsyncMock, patch
 
-from app.models import BackgroundTask, ChapterContent, Project
+from app.models import (
+    BackgroundTask,
+    ChapterContent,
+    GenreProfile,
+    Project,
+    ProjectProfileVersion,
+    WorldEvent,
+    WorldTimelineAnchor,
+)
 
 
 def test_consistency_check_detects_dead_character(client):
@@ -35,6 +43,174 @@ def test_list_issues(client):
     r2 = client.get(f"/api/v1/projects/{pid}/consistency/issues")
     assert r2.status_code == 200
     assert isinstance(r2.json(), list)
+
+
+def test_consistency_check_uses_current_world_model_checker_pack(client, db_session):
+    project = Project(name="World Checker Consistency")
+    genre_profile = GenreProfile(
+        canonical_id="world-checker-consistency",
+        display_name="World Checker Consistency",
+        contract_version="world.contract.v1",
+        checker_config={
+            "pack_version": "world.contract.v1",
+            "layers": {
+                "L0 Schema Gate": ["schema_gate"],
+                "L1 Event Ledger Gate": ["event_ledger_gate"],
+                "L2 Deterministic Replay": ["deterministic_replay"],
+                "L3 Cross-Entity Rules": ["entity_uniqueness"],
+                "L4 Profile Rules": ["profile_event_type_guard"],
+            },
+        },
+        event_types=["event_occurred"],
+        schema_payload={
+            "event_schemas": {
+                "event_occurred": {
+                    "required_payload_fields": ["event_ref"],
+                },
+            },
+        },
+    )
+    db_session.add_all([project, genre_profile])
+    db_session.commit()
+    profile = ProjectProfileVersion(
+        project_id=project.id,
+        genre_profile_id=genre_profile.id,
+        version=1,
+        contract_version="world.contract.v1",
+        profile_payload={},
+    )
+    db_session.add(profile)
+    db_session.add(
+        ChapterContent(
+            project_id=project.id,
+            chapter_index=1,
+            title="第一章",
+            content="事件记录缺少必要字段。",
+            status="generated",
+        )
+    )
+    db_session.commit()
+    db_session.add(
+        WorldTimelineAnchor(
+            project_id=project.id,
+            profile_version=profile.version,
+            anchor_id="anchor.ch1.s1",
+            chapter_index=1,
+            intra_chapter_seq=1,
+            ordering_key="001:001",
+            contract_version=profile.contract_version,
+        )
+    )
+    db_session.add(
+        WorldEvent(
+            project_id=project.id,
+            project_profile_version_id=profile.id,
+            profile_version=profile.version,
+            event_id="evt.missing.payload",
+            idempotency_key="idem.missing.payload",
+            timeline_anchor_id="anchor.ch1.s1",
+            chapter_index=1,
+            intra_chapter_seq=1,
+            event_type="event_occurred",
+            primitive_payload={},
+            truth_layer="truth",
+            disclosure_layer="public",
+            contract_version=profile.contract_version,
+        )
+    )
+    db_session.commit()
+
+    response = client.post(f"/api/v1/projects/{project.id}/consistency/chapters/1/check")
+
+    assert response.status_code == 200
+    issues = response.json()["issues"]
+    assert any(
+        issue["checker_name"] == "schema_gate"
+        and issue["subject"] == "missing_payload_fields"
+        and "event_ref" in issue["description"]
+        for issue in issues
+    )
+    saved_issues = client.get(f"/api/v1/projects/{project.id}/consistency/issues").json()
+    assert any(issue["checker_name"] == "schema_gate" for issue in saved_issues)
+
+
+def test_world_model_consistency_check_scopes_issues_to_requested_chapter(client, db_session):
+    project = Project(name="World Checker Chapter Scope")
+    genre_profile = GenreProfile(
+        canonical_id="world-checker-chapter-scope",
+        display_name="World Checker Chapter Scope",
+        contract_version="world.contract.v1",
+        checker_config={
+            "pack_version": "world.contract.v1",
+            "layers": {
+                "L0 Schema Gate": ["schema_gate"],
+                "L1 Event Ledger Gate": ["event_ledger_gate"],
+                "L2 Deterministic Replay": ["deterministic_replay"],
+                "L3 Cross-Entity Rules": ["entity_uniqueness"],
+                "L4 Profile Rules": ["profile_event_type_guard"],
+            },
+        },
+        event_types=["event_occurred"],
+        schema_payload={
+            "event_schemas": {
+                "event_occurred": {
+                    "required_payload_fields": ["event_ref"],
+                },
+            },
+        },
+    )
+    db_session.add_all([project, genre_profile])
+    db_session.commit()
+    profile = ProjectProfileVersion(
+        project_id=project.id,
+        genre_profile_id=genre_profile.id,
+        version=1,
+        contract_version="world.contract.v1",
+        profile_payload={},
+    )
+    db_session.add(profile)
+    db_session.add_all([
+        ChapterContent(project_id=project.id, chapter_index=1, title="第一章", content="旧问题。", status="generated"),
+        ChapterContent(project_id=project.id, chapter_index=2, title="第二章", content="新章节。", status="generated"),
+    ])
+    db_session.commit()
+    db_session.add(
+        WorldTimelineAnchor(
+            project_id=project.id,
+            profile_version=profile.version,
+            anchor_id="anchor.ch1.s1",
+            chapter_index=1,
+            intra_chapter_seq=1,
+            ordering_key="001:001",
+            contract_version=profile.contract_version,
+        )
+    )
+    db_session.add(
+        WorldEvent(
+            project_id=project.id,
+            project_profile_version_id=profile.id,
+            profile_version=profile.version,
+            event_id="evt.chapter1.missing.payload",
+            idempotency_key="idem.chapter1.missing.payload",
+            timeline_anchor_id="anchor.ch1.s1",
+            chapter_index=1,
+            intra_chapter_seq=1,
+            event_type="event_occurred",
+            primitive_payload={},
+            truth_layer="truth",
+            disclosure_layer="public",
+            contract_version=profile.contract_version,
+        )
+    )
+    db_session.commit()
+
+    chapter_two = client.post(f"/api/v1/projects/{project.id}/consistency/chapters/2/check")
+    chapter_one = client.post(f"/api/v1/projects/{project.id}/consistency/chapters/1/check")
+
+    assert chapter_two.status_code == 200
+    assert chapter_two.json()["issues"] == []
+    assert chapter_one.status_code == 200
+    assert any(issue["subject"] == "missing_payload_fields" for issue in chapter_one.json()["issues"])
 
 
 def test_deep_check_creates_background_task(client, db_session):

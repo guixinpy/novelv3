@@ -13,6 +13,7 @@ SPLITTABLE_ITEM_STATUSES = {"pending", "needs_edit"}
 EDITABLE_CLAIM_FIELDS = {
     "chapter_index",
     "intra_chapter_seq",
+    "object_ref_or_value",
     "valid_from_anchor_id",
     "valid_to_anchor_id",
     "source_event_ref",

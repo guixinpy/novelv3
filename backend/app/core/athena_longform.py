@@ -38,6 +38,7 @@ from app.models import (
     WorldProposalItem,
     WorldRule,
 )
+from app.models.genre_profile import CORE_WORLD_EVENT_TYPES
 
 
 SETUP_IMPORT_PROFILE_PREFIX = "project-setup-import"
@@ -334,7 +335,7 @@ def _create_setup_profile(db: Session, *, project: Project, setup: Setup) -> Pro
             field_authority={},
             schema_payload={},
             module_payload={"source": "setup_import"},
-            event_types=[],
+            event_types=list(CORE_WORLD_EVENT_TYPES),
             checker_config={
                 "pack_version": "world.contract.v1",
                 "layers": {

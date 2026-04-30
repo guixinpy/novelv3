@@ -69,6 +69,42 @@ describe('AthenaOverview', () => {
     expect(wrapper.emitted('navigate')).toEqual([['proposals']])
   })
 
+  it('emits executable next actions instead of navigating to an unrelated section', async () => {
+    const wrapper = mount(AthenaOverview, {
+      props: {
+        dashboard: {
+          project_profile: {
+            id: 'profile-1',
+            project_id: 'project-1',
+            genre_profile_id: 'genre-1',
+            version: 1,
+            contract_version: 'world.contract.v1',
+            profile_payload: {},
+            created_at: '2026-04-29T00:00:00Z',
+          },
+          metrics: {
+            entity_count: 5,
+            fact_count: 0,
+            presence_count: 0,
+            event_count: 0,
+            pending_bundle_count: 0,
+            pending_item_count: 0,
+          },
+          next_action: {
+            action: 'analyze_chapter',
+            label: '分析章节，生成候选事实',
+          },
+        },
+        loading: false,
+      },
+    })
+
+    await wrapper.get('[data-testid="athena-overview-next-action"]').trigger('click')
+
+    expect(wrapper.emitted('runAction')).toEqual([['analyze_chapter']])
+    expect(wrapper.emitted('navigate')).toBeUndefined()
+  })
+
   it('renders setup import preview counts before profile exists', () => {
     const wrapper = mount(AthenaOverview, {
       props: {

@@ -6,7 +6,7 @@
     <header class="bundle-list__header">
       <div>
         <p class="bundle-list__eyebrow">
-          Proposal Bundles
+          提案包
         </p>
         <h3 class="bundle-list__title">
           待审变更
@@ -17,17 +17,17 @@
 
     <div class="bundle-list__filters">
       <select :value="filters.bundle_status || ''" @change="onFilterChange('bundle_status', $event)">
-        <option value="">Bundle 状态: 全部</option>
-        <option value="pending">pending</option>
-        <option value="approved">approved</option>
-        <option value="rejected">rejected</option>
+        <option value="">提案包状态：全部</option>
+        <option value="pending">待审</option>
+        <option value="approved">已通过</option>
+        <option value="rejected">已驳回</option>
       </select>
       <select :value="filters.item_status || ''" @change="onFilterChange('item_status', $event)">
-        <option value="">Item 状态: 全部</option>
-        <option value="pending">pending</option>
-        <option value="needs_edit">needs_edit</option>
-        <option value="approved">approved</option>
-        <option value="rejected">rejected</option>
+        <option value="">条目状态：全部</option>
+        <option value="pending">待审</option>
+        <option value="needs_edit">需编辑</option>
+        <option value="approved">已通过</option>
+        <option value="rejected">已驳回</option>
       </select>
       <button v-if="hasActiveFilters" type="button" class="bundle-list__clear" @click="clearFilters">清除筛选</button>
     </div>
@@ -47,7 +47,7 @@
           @click="$emit('select', bundle.id)"
         >
           <strong>{{ bundle.title }}</strong>
-          <span>{{ bundle.bundle_status }}</span>
+          <span>{{ statusLabel(bundle.bundle_status) }}</span>
         </button>
       </li>
     </ul>
@@ -55,7 +55,7 @@
       v-else
       class="bundle-list__empty"
     >
-      暂无待审 proposal bundle。
+      暂无待审提案包。
     </p>
 
     <button
@@ -98,6 +98,15 @@ function onFilterChange(key: string, event: Event) {
 
 function clearFilters() {
   emit('updateFilters', {})
+}
+
+function statusLabel(status: string) {
+  const labels: Record<string, string> = {
+    pending: '待审',
+    approved: '已通过',
+    rejected: '已驳回',
+  }
+  return labels[status] || status
 }
 </script>
 

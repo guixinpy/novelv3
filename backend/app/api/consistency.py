@@ -1,10 +1,23 @@
+import json
+
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
+from app.api.athena_shared import get_current_profile
 from app.api.deprecation import add_deprecation_header
 from app.core.consistency_checker import ConsistencyChecker
+from app.core.world_checker_registry import CheckerIssue, run_checks_for_project_profile
 from app.db import get_db
-from app.models import BackgroundTask, ChapterContent, ConsistencyCheck, Project, Setup
+from app.models import (
+    BackgroundTask,
+    ChapterContent,
+    ConsistencyCheck,
+    Project,
+    Setup,
+    WorldEvent,
+    WorldEvidence,
+    WorldFactClaim,
+)
 from app.schemas import ConsistencyIssueOut
 from app.services.tasks.background_task_service import BackgroundTaskService
 from app.services.tasks.local_task_runner import LocalTaskRunner
@@ -43,9 +56,22 @@ async def run_check(project_id: str, chapter_index: int, depth: str = "l1", db: 
         LocalTaskRunner().start(task.id, _run_deep)
         return {"task_id": task.id, "status": "pending"}
 
-    setup = db.query(Setup).filter(Setup.project_id == project_id).first()
-    checker = ConsistencyChecker()
-    issues = checker.check(project_id, chapter, setup)
+    profile = get_current_profile(db, project_id)
+    if profile is not None:
+        try:
+            issues = _check_world_model_profile(
+                db=db,
+                project_id=project_id,
+                chapter_index=chapter_index,
+                profile_id=profile.id,
+                profile_version=profile.version,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    else:
+        setup = db.query(Setup).filter(Setup.project_id == project_id).first()
+        checker = ConsistencyChecker()
+        issues = checker.check(project_id, chapter, setup)
 
     db.query(ConsistencyCheck).filter(
         ConsistencyCheck.project_id == project_id,
@@ -68,3 +94,80 @@ def list_issues(project_id: str, db: Session = Depends(get_db), response: Respon
         raise HTTPException(status_code=404, detail="Project not found")
 
     return db.query(ConsistencyCheck).filter(ConsistencyCheck.project_id == project_id).all()
+
+
+def _check_world_model_profile(
+    *,
+    db: Session,
+    project_id: str,
+    chapter_index: int,
+    profile_id: str,
+    profile_version: int,
+) -> list[dict]:
+    events = (
+        db.query(WorldEvent)
+        .filter(
+            WorldEvent.project_id == project_id,
+            WorldEvent.project_profile_version_id == profile_id,
+            WorldEvent.profile_version == profile_version,
+            WorldEvent.chapter_index == chapter_index,
+        )
+        .order_by(WorldEvent.chapter_index.asc(), WorldEvent.intra_chapter_seq.asc(), WorldEvent.event_id.asc())
+        .all()
+    )
+    facts = (
+        db.query(WorldFactClaim)
+        .filter(
+            WorldFactClaim.project_id == project_id,
+            WorldFactClaim.project_profile_version_id == profile_id,
+            WorldFactClaim.profile_version == profile_version,
+            WorldFactClaim.chapter_index == chapter_index,
+        )
+        .order_by(WorldFactClaim.chapter_index.asc(), WorldFactClaim.intra_chapter_seq.asc(), WorldFactClaim.claim_id.asc())
+        .all()
+    )
+    evidence = (
+        db.query(WorldEvidence)
+        .filter(
+            WorldEvidence.project_id == project_id,
+            WorldEvidence.project_profile_version_id == profile_id,
+            WorldEvidence.profile_version == profile_version,
+            WorldEvidence.chapter_index == chapter_index,
+        )
+        .order_by(WorldEvidence.chapter_index.asc(), WorldEvidence.intra_chapter_seq.asc(), WorldEvidence.evidence_id.asc())
+        .all()
+    )
+    result = run_checks_for_project_profile(
+        db=db,
+        project_profile_version_id=profile_id,
+        events=events,
+        facts=facts,
+        evidence=evidence,
+    )
+    return [
+        _checker_issue_to_consistency_issue(
+            issue=issue,
+            project_id=project_id,
+            chapter_index=chapter_index,
+        )
+        for issue in result.issues
+    ]
+
+
+def _checker_issue_to_consistency_issue(
+    *,
+    issue: CheckerIssue,
+    project_id: str,
+    chapter_index: int,
+) -> dict:
+    return {
+        "project_id": project_id,
+        "chapter_index": chapter_index,
+        "checker_name": issue.checker_name,
+        "severity": issue.severity,
+        "subject": issue.code,
+        "description": issue.message,
+        "evidence": json.dumps(issue.refs, ensure_ascii=False, sort_keys=True) if issue.refs else "",
+        "suggested_fix": f"按 {issue.layer} / {issue.checker_name} 修正 world-model 事件、事实或证据。",
+        "status": "pending",
+    }
