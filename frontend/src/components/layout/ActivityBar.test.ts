@@ -39,7 +39,7 @@ describe('ActivityBar', () => {
 
   it('returns users to the last Athena section state', async () => {
     const ui = useUiStore()
-    ui.setAthenaState({
+    ui.setAthenaState('project-1', {
       section: 'catalog',
       view: 'nodes',
       nodeType: 'locations',
@@ -58,6 +58,30 @@ describe('ActivityBar', () => {
     expect(wrapper.emitted('navigate')?.[0]).toEqual([{
       path: '/projects/project-1/athena/catalog',
       query: { view: 'nodes', type: 'locations' },
+    }])
+  })
+
+  it('does not reuse another project Athena section state', async () => {
+    const ui = useUiStore()
+    ui.setAthenaState('other-project', {
+      section: 'catalog',
+      view: 'nodes',
+      nodeType: 'locations',
+      tool: null,
+      panel: null,
+    })
+    const wrapper = mount(ActivityBar, {
+      props: {
+        activeWorkspace: 'hermes',
+        projectId: 'project-1',
+      },
+    })
+
+    await wrapper.get('[data-testid="workspace-nav-athena"]').trigger('click')
+
+    expect(wrapper.emitted('navigate')?.[0]).toEqual([{
+      path: '/projects/project-1/athena/overview',
+      query: {},
     }])
   })
 })

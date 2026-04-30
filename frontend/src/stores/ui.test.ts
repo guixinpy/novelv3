@@ -10,14 +10,14 @@ describe('ui store', () => {
   it('remembers Athena state per primary section', () => {
     const ui = useUiStore()
 
-    ui.setAthenaState({
+    ui.setAthenaState('project-1', {
       section: 'catalog',
       view: 'nodes',
       nodeType: 'locations',
       tool: null,
       panel: null,
     })
-    ui.setAthenaState({
+    ui.setAthenaState('project-1', {
       section: 'truth',
       view: 'knowledge',
       nodeType: 'all',
@@ -26,7 +26,7 @@ describe('ui store', () => {
     })
 
     expect(ui.activeAthenaState).toMatchObject({ section: 'truth', view: 'knowledge' })
-    expect(ui.getAthenaSectionState('catalog')).toEqual({
+    expect(ui.getAthenaSectionState('project-1', 'catalog')).toEqual({
       section: 'catalog',
       view: 'nodes',
       nodeType: 'locations',
@@ -38,9 +38,43 @@ describe('ui store', () => {
   it('returns default Athena state for untouched sections', () => {
     const ui = useUiStore()
 
-    expect(ui.getAthenaSectionState('review')).toEqual({
+    expect(ui.getAthenaSectionState('project-1', 'review')).toEqual({
       section: 'review',
       view: 'proposals',
+      nodeType: 'all',
+      tool: null,
+      panel: null,
+    })
+  })
+
+  it('isolates Athena navigation state per project', () => {
+    const ui = useUiStore()
+
+    ui.setAthenaState('project-1', {
+      section: 'catalog',
+      view: 'nodes',
+      nodeType: 'locations',
+      tool: null,
+      panel: null,
+    })
+    ui.setAthenaState('project-2', {
+      section: 'truth',
+      view: 'projection',
+      nodeType: 'all',
+      tool: null,
+      panel: null,
+    })
+
+    expect(ui.getActiveAthenaState('project-1')).toEqual({
+      section: 'catalog',
+      view: 'nodes',
+      nodeType: 'locations',
+      tool: null,
+      panel: null,
+    })
+    expect(ui.getActiveAthenaState('project-2')).toEqual({
+      section: 'truth',
+      view: 'projection',
       nodeType: 'all',
       tool: null,
       panel: null,

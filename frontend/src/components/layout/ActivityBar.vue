@@ -28,7 +28,7 @@ function onItemClick(item: WorkspaceItem) {
 
 const workspaceItems: WorkspaceItem[] = [
   { key: 'hermes', icon: '☿', label: 'Hermes', route: (id) => `/projects/${id}/hermes` },
-  { key: 'athena', icon: '⏣', label: 'Athena', route: (id) => buildAthenaRoute(id, ui.activeAthenaState) },
+  { key: 'athena', icon: '⏣', label: 'Athena', route: (id) => buildAthenaRoute(id, ui.getActiveAthenaState(id)) },
   { key: 'manuscript', icon: '📜', label: 'Calliope', route: (id) => `/projects/${id}/manuscript` },
 ]
 </script>

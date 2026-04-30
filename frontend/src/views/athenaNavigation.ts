@@ -20,6 +20,9 @@ export type AthenaNodeTypeFilter =
   | 'resources'
   | 'concepts'
 
+export type AthenaTool = 'retrieval'
+export type AthenaPanel = 'optimization'
+
 export interface AthenaNavItem {
   section: AthenaPrimarySection
   label: string
@@ -30,8 +33,8 @@ export interface AthenaRouteIntent {
   section: AthenaPrimarySection
   view: AthenaSubview
   nodeType: AthenaNodeTypeFilter
-  tool: string | null
-  panel: string | null
+  tool: AthenaTool | null
+  panel: AthenaPanel | null
 }
 
 export interface AthenaRouteState extends AthenaRouteIntent {
@@ -45,6 +48,8 @@ const narrativeViews = ['timeline', 'storyline', 'chapters', 'foreshadowing'] as
 const truthViews = ['facts', 'projection', 'knowledge', 'disclosure'] as const
 const reviewViews = ['proposals', 'impact', 'conflicts', 'history'] as const
 const nodeTypes = ['all', 'characters', 'locations', 'factions', 'items', 'resources', 'concepts'] as const
+const tools = ['retrieval'] as const
+const panels = ['optimization'] as const
 
 export const athenaPrimaryNav: AthenaNavItem[] = [
   { section: 'overview', label: '总览', defaultView: 'dashboard' },
@@ -114,27 +119,39 @@ function resolveScopedNodeType(
   return resolveNodeType(queryType)
 }
 
+function resolveScopedTool(section: AthenaPrimarySection, view: AthenaSubview, queryTool: string | null): AthenaTool | null {
+  if (section !== 'catalog' || view !== 'nodes') return null
+  return isOneOf(queryTool, tools) ? queryTool : null
+}
+
+function resolveScopedPanel(section: AthenaPrimarySection, view: AthenaSubview, queryPanel: string | null): AthenaPanel | null {
+  if (section !== 'overview' || view !== 'dashboard') return null
+  return isOneOf(queryPanel, panels) ? queryPanel : null
+}
+
 export function resolveAthenaRoute(rawSection: string | undefined, query: QueryLike): AthenaRouteState {
-  const tool = firstQueryValue(query.tool)
-  const panel = firstQueryValue(query.panel)
   const legacyRoute = rawSection ? legacyRoutes[rawSection] : undefined
 
   if (legacyRoute) {
     const section = legacyRoute.section
     const view = resolveCanonicalView(section, legacyRoute.view)
+    const tool = resolveScopedTool(section, view, legacyRoute.tool ?? firstQueryValue(query.tool))
+    const panel = resolveScopedPanel(section, view, legacyRoute.panel ?? firstQueryValue(query.panel))
 
     return {
       section,
       view,
       nodeType: resolveScopedNodeType(section, view, legacyRoute.nodeType ?? null),
-      tool: legacyRoute.tool ?? tool,
-      panel: legacyRoute.panel ?? panel,
+      tool,
+      panel,
       isLegacy: true,
     }
   }
 
   const section = isPrimarySection(rawSection) ? rawSection : 'overview'
   const view = resolveCanonicalView(section, firstQueryValue(query.view))
+  const tool = resolveScopedTool(section, view, firstQueryValue(query.tool))
+  const panel = resolveScopedPanel(section, view, firstQueryValue(query.panel))
 
   return {
     section,
@@ -185,6 +202,8 @@ export function buildAthenaRoute(projectId: string, state: AthenaRouteIntent): {
   const query: Record<string, string> = {}
   const view = resolveCanonicalView(state.section, state.view)
   const nodeType = resolveScopedNodeType(state.section, view, state.nodeType)
+  const tool = resolveScopedTool(state.section, view, state.tool)
+  const panel = resolveScopedPanel(state.section, view, state.panel)
 
   if (state.section !== 'overview') {
     query.view = view
@@ -192,11 +211,11 @@ export function buildAthenaRoute(projectId: string, state: AthenaRouteIntent): {
   if (state.section === 'catalog' && view === 'nodes' && nodeType !== 'all') {
     query.type = nodeType
   }
-  if (state.tool) {
-    query.tool = state.tool
+  if (tool) {
+    query.tool = tool
   }
-  if (state.panel) {
-    query.panel = state.panel
+  if (panel) {
+    query.panel = panel
   }
 
   return {

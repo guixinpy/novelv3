@@ -92,9 +92,24 @@ describe('athenaNavigation', () => {
       section: 'truth',
       view: 'projection',
       nodeType: 'all',
-      tool: 'inspect',
+      tool: null,
       panel: null,
       isLegacy: false,
+    })
+  })
+
+  it('scopes tool and panel query values to their real surfaces', () => {
+    expect(resolveAthenaRoute('catalog', { view: 'nodes', tool: 'retrieval', panel: 'optimization' })).toMatchObject({
+      section: 'catalog',
+      view: 'nodes',
+      tool: 'retrieval',
+      panel: null,
+    })
+    expect(resolveAthenaRoute('overview', { tool: 'retrieval', panel: 'optimization' })).toMatchObject({
+      section: 'overview',
+      view: 'dashboard',
+      tool: null,
+      panel: 'optimization',
     })
   })
 
@@ -146,19 +161,39 @@ describe('athenaNavigation', () => {
     })
   })
 
-  it('preserves tool and panel while building routes', () => {
-    const state: AthenaRouteState = {
+  it('preserves scoped tool and panel while building routes', () => {
+    expect(buildAthenaRoute('project-1', {
+      section: 'catalog',
+      view: 'nodes',
+      nodeType: 'all',
+      tool: 'retrieval',
+      panel: null,
+    })).toEqual({
+      path: '/projects/project-1/athena/catalog',
+      query: { view: 'nodes', tool: 'retrieval' },
+    })
+    expect(buildAthenaRoute('project-1', {
+      section: 'overview',
+      view: 'dashboard',
+      nodeType: 'all',
+      tool: null,
+      panel: 'optimization',
+    })).toEqual({
+      path: '/projects/project-1/athena/overview',
+      query: { panel: 'optimization' },
+    })
+  })
+
+  it('drops valid tool and panel values outside their scoped surfaces', () => {
+    expect(buildAthenaRoute('project-1', {
       section: 'review',
       view: 'history',
       nodeType: 'characters',
-      tool: 'diff',
+      tool: 'retrieval',
       panel: 'optimization',
-      isLegacy: false,
-    }
-
-    expect(buildAthenaRoute('project-1', state)).toEqual({
+    })).toEqual({
       path: '/projects/project-1/athena/review',
-      query: { view: 'history', tool: 'diff', panel: 'optimization' },
+      query: { view: 'history' },
     })
   })
 

@@ -24,9 +24,11 @@ import {
   resolveAthenaRoute,
   type AthenaCatalogView,
   type AthenaNodeTypeFilter,
+  type AthenaPanel,
   type AthenaPrimarySection,
   type AthenaRouteState,
   type AthenaSubview,
+  type AthenaTool,
 } from './athenaNavigation'
 import type { AthenaConsistencyIssue, ProposalItem } from '../api/types'
 
@@ -36,8 +38,8 @@ interface AthenaSectionViewOption {
   section: AthenaPrimarySection
   view: AthenaSubview
   nodeType: AthenaNodeTypeFilter
-  tool: string | null
-  panel: string | null
+  tool: AthenaTool | null
+  panel: AthenaPanel | null
 }
 
 const route = useRoute()
@@ -162,7 +164,7 @@ function isCurrentInitialize(requestId: number, projectId: string) {
 }
 
 async function syncRouteState(state: AthenaRouteState) {
-  ui.setAthenaState({
+  ui.setAthenaState(pid.value, {
     section: state.section,
     view: state.view,
     nodeType: state.nodeType,
@@ -192,7 +194,7 @@ async function syncRouteState(state: AthenaRouteState) {
 function navigateSection(section: AthenaPrimarySection) {
   const target = athenaPrimaryNav.find((item) => item.section === section)
   if (!target) return
-  const lastState = ui.getAthenaSectionState(section)
+  const lastState = ui.getAthenaSectionState(pid.value, section)
 
   router.push(buildAthenaRoute(pid.value, {
     section,
