@@ -283,6 +283,22 @@ describe('worldModel store', () => {
     expect(store.subjectKnowledge?.facts['char.hero'].rank).toBe('new-rank')
   })
 
+  it('clears old subject knowledge while a new subject is loading', async () => {
+    const nextRequest = createDeferred<ReturnType<typeof createOverview>>()
+    vi.mocked(api.getSubjectKnowledge).mockReturnValue(nextRequest.promise)
+    const store = useWorldModelStore()
+    store.subjectKnowledge = createOverview('old-rank').projection
+
+    const pending = store.loadSubjectKnowledge('project-1', 'char.new')
+
+    expect(store.selectedSubjectRef).toBe('char.new')
+    expect(store.subjectKnowledge).toBeNull()
+
+    nextRequest.resolve(createOverview('new-rank'))
+    await pending
+    expect(store.subjectKnowledge?.facts['char.hero'].rank).toBe('new-rank')
+  })
+
   it('prevents stale chapter snapshots from overwriting the selected chapter', async () => {
     const firstRequest = createDeferred<ReturnType<typeof createOverview>>()
     const secondRequest = createDeferred<ReturnType<typeof createOverview>>()
@@ -302,6 +318,22 @@ describe('worldModel store', () => {
     firstRequest.resolve(createOverview('chapter-one'))
     await firstLoad
     expect(store.selectedChapterIndex).toBe(2)
+    expect(store.chapterSnapshot?.facts['char.hero'].rank).toBe('chapter-two')
+  })
+
+  it('clears old chapter snapshot while a new chapter snapshot is loading', async () => {
+    const nextRequest = createDeferred<ReturnType<typeof createOverview>>()
+    vi.mocked(api.getChapterSnapshot).mockReturnValue(nextRequest.promise)
+    const store = useWorldModelStore()
+    store.chapterSnapshot = createOverview('chapter-one').projection
+
+    const pending = store.loadChapterSnapshot('project-1', 2)
+
+    expect(store.selectedChapterIndex).toBe(2)
+    expect(store.chapterSnapshot).toBeNull()
+
+    nextRequest.resolve(createOverview('chapter-two'))
+    await pending
     expect(store.chapterSnapshot?.facts['char.hero'].rank).toBe('chapter-two')
   })
 
@@ -1021,5 +1053,32 @@ describe('worldModel store', () => {
     expect(store.submitting).toBe(false)
     expect(store.isActionPending('item-1')).toBe(false)
     expect(store.isActionPending('item-2')).toBe(false)
+  })
+
+  it('ignores stale loadMoreBundles responses after the project scope changes', async () => {
+    const pageRequest = createDeferred<{
+      items: ReturnType<typeof createBundle>[]
+      total: number
+      offset: number
+      limit: number
+    }>()
+    vi.mocked(api.listWorldProposalBundles).mockReturnValue(pageRequest.promise)
+    const store = useWorldModelStore()
+    store.proposalBundles = [createBundle()]
+    store.bundlesOffset = 0
+
+    const pending = store.loadMoreBundles('project-1')
+    store.resetProjectScopedState('project-2')
+    pageRequest.resolve({
+      items: [{ ...createBundle(), id: 'stale-bundle' }],
+      total: 2,
+      offset: 20,
+      limit: 20,
+    })
+    await pending
+
+    expect(store.proposalBundles).toEqual([])
+    expect(store.bundlesOffset).toBe(0)
+    expect(store.bundlesTotal).toBe(0)
   })
 })

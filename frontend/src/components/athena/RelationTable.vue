@@ -16,10 +16,10 @@ defineProps<{
 }>()
 
 const columns: BaseTableColumn[] = [
-  { key: 'source', label: '源实体', width: '160px' },
+  { key: 'source_ref', label: '源实体', width: '160px' },
   { key: 'arrow', label: '', width: '40px', align: 'center' },
   { key: 'relation_type', label: '关系类型', width: '120px' },
-  { key: 'target', label: '目标实体', width: '160px' },
+  { key: 'target_ref', label: '目标实体', width: '160px' },
 ]
 </script>
 

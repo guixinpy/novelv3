@@ -932,6 +932,106 @@ def test_approve_with_edits_can_update_claim_object_value(db_session):
     assert saved_review.edited_fields == {"object_ref_or_value": {"status": "wounded", "severity": "minor"}}
 
 
+def test_world_intake_candidate_cannot_be_directly_approved(db_session):
+    project, profile_version = _seed_project_profile(db_session)
+    bundle = create_bundle(
+        db=db_session,
+        project_id=project.id,
+        project_profile_version_id=profile_version.id,
+        profile_version=profile_version.version,
+        created_by="athena.dialog",
+        title="Dialog intake",
+    )
+    item = write_candidate_fact(
+        db=db_session,
+        bundle_id=bundle.id,
+        created_by="athena.dialog",
+        candidate=ProposalCandidateFactCreate(
+            project_id=project.id,
+            project_profile_version_id=profile_version.id,
+            profile_version=profile_version.version,
+            contract_version=profile_version.contract_version,
+            claim_id="athena.dialog.raw-intake",
+            subject_ref="project.world_intake",
+            predicate="user_proposed_update",
+            object_ref_or_value="把林舟设定为旧灯塔守夜人",
+            claim_layer="truth",
+            authority_type="annotation",
+            confidence=0.5,
+            evidence_refs=["dialog:athena"],
+        ),
+    )
+
+    with pytest.raises(ValueError, match="atomic"):
+        review_proposal_item(
+            db=db_session,
+            proposal_item_id=item.id,
+            reviewer_ref="editor.alpha",
+            action="approve",
+            reason="不能直接通过原始自然语言 intake",
+            evidence_refs=["dialog:athena"],
+        )
+
+    assert db_session.query(WorldFactClaim).count() == 0
+
+
+def test_world_intake_candidate_can_be_approved_after_atomizing_fields(db_session):
+    project, profile_version = _seed_project_profile(db_session)
+    bundle = create_bundle(
+        db=db_session,
+        project_id=project.id,
+        project_profile_version_id=profile_version.id,
+        profile_version=profile_version.version,
+        created_by="athena.dialog",
+        title="Dialog intake",
+    )
+    item = write_candidate_fact(
+        db=db_session,
+        bundle_id=bundle.id,
+        created_by="athena.dialog",
+        candidate=ProposalCandidateFactCreate(
+            project_id=project.id,
+            project_profile_version_id=profile_version.id,
+            profile_version=profile_version.version,
+            contract_version=profile_version.contract_version,
+            claim_id="athena.dialog.atomized-intake",
+            subject_ref="project.world_intake",
+            predicate="user_proposed_update",
+            object_ref_or_value="把林舟设定为旧灯塔守夜人",
+            claim_layer="truth",
+            authority_type="annotation",
+            confidence=0.5,
+            evidence_refs=["dialog:athena"],
+        ),
+    )
+
+    review_proposal_item(
+        db=db_session,
+        proposal_item_id=item.id,
+        reviewer_ref="editor.alpha",
+        action="approve_with_edits",
+        reason="编辑为原子事实后通过",
+        evidence_refs=["dialog:athena"],
+        edited_fields={
+            "subject_ref": "char.林舟",
+            "predicate": "role",
+            "object_ref_or_value": "旧灯塔守夜人",
+        },
+    )
+
+    saved_claim = db_session.query(WorldFactClaim).filter_by(claim_id="athena.dialog.atomized-intake").one()
+    saved_review = db_session.query(WorldProposalReview).filter_by(proposal_item_id=item.id).one()
+
+    assert saved_claim.subject_ref == "char.林舟"
+    assert saved_claim.predicate == "role"
+    assert saved_claim.object_ref_or_value == "旧灯塔守夜人"
+    assert saved_review.edited_fields == {
+        "subject_ref": "char.林舟",
+        "predicate": "role",
+        "object_ref_or_value": "旧灯塔守夜人",
+    }
+
+
 def test_split_bundle_rejects_invalid_item_ids(db_session):
     project, profile_version = _seed_project_profile(db_session)
     bundle = create_bundle(

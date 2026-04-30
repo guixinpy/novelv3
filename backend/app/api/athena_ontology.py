@@ -69,7 +69,12 @@ def get_ontology(project_id: str, db: Session = Depends(get_db)):
             .all()
         )
         relations = [
-            {"id": r.id, "source_ref": r.source_ref, "target_ref": r.target_ref, "relation_type": r.relation_type}
+            {
+                "id": r.id,
+                "source_ref": r.source_entity_ref,
+                "target_ref": r.target_entity_ref,
+                "relation_type": r.relation_type,
+            }
             for r in rels
         ]
 

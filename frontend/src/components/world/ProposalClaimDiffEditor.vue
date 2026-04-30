@@ -22,6 +22,7 @@
               type="number"
               :value="editedValues[field.key] ?? field.original"
               class="diff-editor__input"
+              :data-testid="fieldTestId(field.key)"
               @input="onInput(field.key, ($event.target as HTMLInputElement).value, 'number')"
             >
           </template>
@@ -31,6 +32,7 @@
             <select
               :value="editedValues[field.key] ?? field.original ?? ''"
               class="diff-editor__input"
+              :data-testid="fieldTestId(field.key)"
               @change="onInput(field.key, ($event.target as HTMLSelectElement).value, 'string')"
             >
               <option value="">—</option>
@@ -42,6 +44,7 @@
             <textarea
               :value="String(editedValues[field.key] ?? field.original ?? '')"
               class="diff-editor__textarea"
+              :data-testid="fieldTestId(field.key)"
               rows="2"
               @input="onInput(field.key, ($event.target as HTMLTextAreaElement).value, 'string')"
             />
@@ -51,7 +54,7 @@
             <textarea
               :value="String(editedValues[field.key] ?? field.original ?? '')"
               class="diff-editor__textarea diff-editor__textarea--json"
-              data-testid="proposal-object-value-editor"
+              :data-testid="fieldTestId(field.key)"
               rows="4"
               @input="onInput(field.key, ($event.target as HTMLTextAreaElement).value, 'string')"
             />
@@ -63,6 +66,7 @@
               type="text"
               :value="editedValues[field.key] ?? field.original ?? ''"
               class="diff-editor__input"
+              :data-testid="fieldTestId(field.key)"
               @input="onInput(field.key, ($event.target as HTMLInputElement).value, 'string')"
             >
           </template>
@@ -117,6 +121,8 @@ interface FieldDef {
 }
 
 const fields = computed<FieldDef[]>(() => [
+  { key: 'subject_ref', type: 'text', original: props.item.subject_ref },
+  { key: 'predicate', type: 'text', original: props.item.predicate },
   { key: 'object_ref_or_value', type: 'json', original: formatJson(props.item.object_ref_or_value) },
   { key: 'chapter_index', type: 'number', original: (props.item as any).chapter_index ?? null },
   { key: 'intra_chapter_seq', type: 'number', original: (props.item as any).intra_chapter_seq ?? 0 },
@@ -169,6 +175,11 @@ function submit() {
     }
   }
   emit('submit', result)
+}
+
+function fieldTestId(key: string) {
+  if (key === 'object_ref_or_value') return 'proposal-object-value-editor'
+  return `proposal-field-${key}`
 }
 
 function formatJson(value: unknown) {

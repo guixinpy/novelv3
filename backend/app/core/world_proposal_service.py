@@ -16,6 +16,7 @@ from app.core.world_proposal_state import (
     NON_MERGE_ACTIONS,
     SPLITTABLE_ITEM_STATUSES,
     ensure_item_allows_review,
+    ensure_world_intake_review_is_atomized,
     validate_edited_fields,
 )
 from app.models import (
@@ -231,6 +232,11 @@ def review_proposal_item(
     _validate_item_bundle_profile_binding(item_snapshot=item_snapshot, bundle=bundle)
     expected_contract_version = _resolve_bundle_contract_version(db=db, bundle=bundle)
     edited_fields = validate_edited_fields(edited_fields or {})
+    ensure_world_intake_review_is_atomized(
+        item_snapshot=item_snapshot,
+        action=action,
+        edited_fields=edited_fields,
+    )
     next_item_status = "approved" if action == "approve" else "approved_with_edits"
     if action == "reject":
         next_item_status = "rejected"

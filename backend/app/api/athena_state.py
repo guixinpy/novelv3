@@ -47,6 +47,7 @@ def get_state_timeline(project_id: str, db: Session = Depends(get_db)):
         .filter(
             WorldEvent.project_id == project_id,
             WorldEvent.project_profile_version_id == profile.id,
+            WorldEvent.profile_version == profile.version,
         )
         .order_by(WorldEvent.chapter_index.asc(), WorldEvent.intra_chapter_seq.asc())
         .all()
@@ -58,7 +59,7 @@ def get_state_timeline(project_id: str, db: Session = Depends(get_db)):
                 "anchor_id": a.anchor_id,
                 "chapter_index": a.chapter_index,
                 "intra_chapter_seq": a.intra_chapter_seq,
-                "label": a.label,
+                "label": a.world_time_label or a.anchor_id,
             }
             for a in anchors
         ],
@@ -69,8 +70,21 @@ def get_state_timeline(project_id: str, db: Session = Depends(get_db)):
                 "chapter_index": e.chapter_index,
                 "intra_chapter_seq": e.intra_chapter_seq,
                 "event_type": e.event_type,
-                "description": e.description,
+                "description": _event_description(e),
             }
             for e in events
         ],
     }
+
+
+def _event_description(event: WorldEvent) -> str:
+    payload = event.primitive_payload or {}
+    title = str(payload.get("title") or payload.get("event_ref") or "").strip()
+    summary = str(payload.get("summary") or "").strip()
+    if title and summary:
+        return f"{title}：{summary}"
+    if title:
+        return title
+    if summary:
+        return summary
+    return event.notes or event.event_type

@@ -16,7 +16,7 @@
     />
     <div v-if="isActionable || canShowRollback" class="proposal-actions__buttons">
       <button
-        v-if="isActionable"
+        v-if="canDirectApprove"
         type="button"
         :disabled="busy"
         @click="emitReview('approve', '通过')"
@@ -48,7 +48,7 @@
         不确定
       </button>
       <button
-        v-if="isActionable"
+        v-if="canSplit"
         type="button"
         :disabled="busy"
         @click="$emit('split', buildReason('拆分审阅'))"
@@ -95,6 +95,11 @@ const showDiffEditor = ref(false)
 const pendingEditedFields = ref<Record<string, unknown>>({})
 
 const isActionable = computed(() => ['pending', 'needs_edit'].includes(props.item.item_status))
+const isWorldIntakeItem = computed(() =>
+  props.item.subject_ref === 'project.world_intake' && props.item.predicate === 'user_proposed_update',
+)
+const canDirectApprove = computed(() => isActionable.value && !isWorldIntakeItem.value)
+const canSplit = computed(() => isActionable.value && !isWorldIntakeItem.value)
 const canShowRollback = computed(() =>
   props.canRollback
   && Boolean(props.approvalReviewId)

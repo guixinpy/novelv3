@@ -204,6 +204,7 @@ export const useWorldModelStore = defineStore('worldModel', () => {
     const scope = captureScope(projectId)
     const requestId = ++subjectKnowledgeRequestId
     selectedSubjectRef.value = subjectRef
+    subjectKnowledge.value = null
     try {
       const overview = await api.getSubjectKnowledge(projectId, subjectRef)
       if (
@@ -223,6 +224,7 @@ export const useWorldModelStore = defineStore('worldModel', () => {
     const scope = captureScope(projectId)
     const requestId = ++chapterSnapshotRequestId
     selectedChapterIndex.value = chapterIndex
+    chapterSnapshot.value = null
     try {
       const overview = await api.getChapterSnapshot(projectId, chapterIndex)
       if (
@@ -412,7 +414,7 @@ export const useWorldModelStore = defineStore('worldModel', () => {
   }
 
   async function loadMoreBundles(projectId: string) {
-    ensureProjectScope(projectId)
+    const scope = captureScope(projectId)
     const nextOffset = bundlesOffset.value + bundlesLimit.value
     try {
       const page = await api.listWorldProposalBundles(projectId, {
@@ -420,6 +422,7 @@ export const useWorldModelStore = defineStore('worldModel', () => {
         limit: bundlesLimit.value,
         ...bundleFilters.value,
       })
+      if (!isActiveScope(scope.projectId, scope.version)) return
       proposalBundles.value = [...proposalBundles.value, ...page.items]
       bundlesOffset.value = nextOffset
       bundlesTotal.value = page.total

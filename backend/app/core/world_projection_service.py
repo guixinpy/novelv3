@@ -1,3 +1,4 @@
+from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Literal
 
@@ -26,7 +27,8 @@ from app.schemas import ProjectWorldOverviewOut, WorldProjectionOut
 
 WorldProjectionViewType = Literal["current_truth", "subject_knowledge", "chapter_snapshot"]
 WorldProjectionCacheKey = tuple[str, str, int, WorldProjectionViewType, str | None, int | None]
-_projection_cache: dict[WorldProjectionCacheKey, ProjectWorldOverviewOut] = {}
+WORLD_PROJECTION_CACHE_MAX_ENTRIES = 128
+_projection_cache: OrderedDict[WorldProjectionCacheKey, ProjectWorldOverviewOut] = OrderedDict()
 
 
 @dataclass(frozen=True)
@@ -57,6 +59,7 @@ def build_world_projection_overview(
     )
     cached = _projection_cache.get(cache_key)
     if cached is not None:
+        _projection_cache.move_to_end(cache_key)
         return cached
 
     source = load_world_projection_source(db=db, project_id=project_id, profile=profile)
@@ -66,6 +69,9 @@ def build_world_projection_overview(
         projection=WorldProjectionOut(view_type=view_type, **projection),
     )
     _projection_cache[cache_key] = overview
+    _projection_cache.move_to_end(cache_key)
+    while len(_projection_cache) > WORLD_PROJECTION_CACHE_MAX_ENTRIES:
+        _projection_cache.popitem(last=False)
     return overview
 
 

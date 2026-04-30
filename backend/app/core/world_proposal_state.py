@@ -11,6 +11,8 @@ APPROVED_ITEM_STATUSES = {"approved", "approved_with_edits"}
 TERMINAL_ITEM_STATUSES = APPROVED_ITEM_STATUSES | {"rejected", "uncertain", "split", "rolled_back"}
 SPLITTABLE_ITEM_STATUSES = {"pending", "needs_edit"}
 EDITABLE_CLAIM_FIELDS = {
+    "subject_ref",
+    "predicate",
     "chapter_index",
     "intra_chapter_seq",
     "object_ref_or_value",
@@ -22,6 +24,8 @@ EDITABLE_CLAIM_FIELDS = {
     "evidence_refs",
     "notes",
 }
+WORLD_INTAKE_SUBJECT_REF = "project.world_intake"
+WORLD_INTAKE_PREDICATE = "user_proposed_update"
 
 
 def ensure_item_allows_review(*, status: str, item_id: str, action: str) -> None:
@@ -48,3 +52,29 @@ def validate_edited_fields(edited_fields: dict[str, Any]) -> dict[str, Any]:
     except Exception as exc:  # pydantic normalizes all supported value checks here
         raise ValueError(f"edited_fields contains invalid values: {exc}") from exc
     return patch.model_dump(exclude_unset=True)
+
+
+def ensure_world_intake_review_is_atomized(
+    *,
+    item_snapshot: dict[str, Any],
+    action: str,
+    edited_fields: dict[str, Any],
+) -> None:
+    if not is_world_intake_item(item_snapshot):
+        return
+    if action == "approve":
+        raise ValueError("world intake proposals must be converted to atomic facts with approve_with_edits before approval")
+    if action != "approve_with_edits":
+        return
+
+    next_subject_ref = edited_fields.get("subject_ref", item_snapshot["subject_ref"])
+    next_predicate = edited_fields.get("predicate", item_snapshot["predicate"])
+    if next_subject_ref == WORLD_INTAKE_SUBJECT_REF or next_predicate == WORLD_INTAKE_PREDICATE:
+        raise ValueError("world intake proposals must be converted to atomic facts with concrete subject_ref and predicate")
+
+
+def is_world_intake_item(item_snapshot: dict[str, Any]) -> bool:
+    return (
+        item_snapshot.get("subject_ref") == WORLD_INTAKE_SUBJECT_REF
+        and item_snapshot.get("predicate") == WORLD_INTAKE_PREDICATE
+    )

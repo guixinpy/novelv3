@@ -57,4 +57,23 @@ describe('createAthenaSectionLoader', () => {
 
     expect(athena.loadSetupImportPreview).toHaveBeenCalledWith('project-1')
   })
+
+  it('does not reload proposal workbench when an empty proposal page is already loaded', async () => {
+    const athena = {}
+    const worldModel = {
+      loaded: true,
+      proposalBundles: [],
+      loadSetupPanelData: vi.fn(async () => undefined),
+    }
+    const loader = createAthenaSectionLoader({
+      getProjectId: () => 'project-1',
+      athena: athena as any,
+      worldModel: worldModel as any,
+      entitySections: new Set(['characters']),
+    })
+
+    await loader.loadSectionData('proposals')
+
+    expect(worldModel.loadSetupPanelData).not.toHaveBeenCalled()
+  })
 })

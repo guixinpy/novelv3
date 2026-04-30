@@ -12,6 +12,7 @@ from app.models import (
     Setup,
     WorldEvent,
     WorldFactClaim,
+    WorldRelation,
     WorldTimelineAnchor,
 )
 from app.schemas.world_proposals import ProposalCandidateFactCreate
@@ -115,6 +116,80 @@ def test_get_world_model_overview_returns_current_profile_and_truth_projection(c
     assert payload["projection"]["view_type"] == "current_truth"
     assert payload["projection"]["entities"]["char.hero"]["attributes"]["title"] == "档案修复员"
     assert payload["projection"]["facts"]["char.hero"]["rank"] == "captain"
+
+
+def test_athena_timeline_endpoint_uses_current_world_event_fields(client, db_session):
+    project, profile_version = _seed_profile(db_session)
+    db_session.add_all([
+        WorldTimelineAnchor(
+            project_id=project.id,
+            profile_version=profile_version.version,
+            anchor_id="anchor.ch1.scene1",
+            chapter_index=1,
+            intra_chapter_seq=1,
+            world_time_label="第一章第一幕",
+            ordering_key="001:001",
+            contract_version=profile_version.contract_version,
+        ),
+        WorldEvent(
+            project_id=project.id,
+            project_profile_version_id=profile_version.id,
+            profile_version=profile_version.version,
+            event_id="event.chapter.1.summary",
+            idempotency_key="event.chapter.1.summary",
+            timeline_anchor_id="anchor.ch1.scene1",
+            chapter_index=1,
+            intra_chapter_seq=1,
+            event_type="event_occurred",
+            primitive_payload={
+                "event_ref": "event.chapter.1.summary",
+                "title": "旧灯塔重新点亮",
+                "summary": "主角第一次看见旧灯塔的信号。",
+            },
+            truth_layer="truth",
+            disclosure_layer="public",
+            contract_version=profile_version.contract_version,
+        ),
+    ])
+    db_session.commit()
+
+    response = client.get(f"/api/v1/projects/{project.id}/athena/state/timeline")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["anchors"][0]["label"] == "第一章第一幕"
+    assert payload["events"][0]["description"] == "旧灯塔重新点亮：主角第一次看见旧灯塔的信号。"
+
+
+def test_athena_ontology_endpoint_uses_relation_entity_refs(client, db_session):
+    project, profile_version = _seed_profile(db_session)
+    db_session.add(
+        WorldRelation(
+            project_id=project.id,
+            profile_version=profile_version.version,
+            relation_id="rel.hero.tower",
+            source_entity_ref="char.hero",
+            target_entity_ref="loc.tower",
+            relation_type="located_at",
+            directionality="directed",
+            status="active",
+            visibility_layer="public",
+            contract_version=profile_version.contract_version,
+        )
+    )
+    db_session.commit()
+
+    response = client.get(f"/api/v1/projects/{project.id}/athena/ontology")
+
+    assert response.status_code == 200
+    assert response.json()["relations"] == [
+        {
+            "id": db_session.query(WorldRelation).one().id,
+            "source_ref": "char.hero",
+            "target_ref": "loc.tower",
+            "relation_type": "located_at",
+        }
+    ]
 
 
 def test_subject_knowledge_persists_belief_claims_approved_from_proposals(client, db_session):

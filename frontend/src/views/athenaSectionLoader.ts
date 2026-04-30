@@ -37,7 +37,7 @@ export function createAthenaSectionLoader(options: AthenaSectionLoaderOptions) {
       await options.athena.loadRetrievalDiagnostics(id)
     }
     if (section === 'proposals') {
-      if (!options.worldModel.loaded || !options.worldModel.proposalBundles.length) {
+      if (!options.worldModel.loaded) {
         await options.worldModel.loadSetupPanelData(id)
       }
     }

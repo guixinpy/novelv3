@@ -5,7 +5,7 @@ import ProposalClaimDiffEditor from './ProposalClaimDiffEditor.vue'
 import type { ProposalItem } from '../../api/types'
 
 describe('ProposalClaimDiffEditor', () => {
-  function createItem(): ProposalItem {
+  function createItem(overrides: Partial<ProposalItem> = {}): ProposalItem {
     return {
       id: 'item-1',
       bundle_id: 'bundle-1',
@@ -23,6 +23,7 @@ describe('ProposalClaimDiffEditor', () => {
       approved_claim_id: null,
       created_by: 'athena.chapter_analyzer',
       created_at: '2026-04-29T00:00:00Z',
+      ...overrides,
     }
   }
 
@@ -46,6 +47,35 @@ describe('ProposalClaimDiffEditor', () => {
             status: 'wounded',
             severity: 'minor',
           },
+        },
+      ],
+    ])
+  })
+
+  it('submits atomized subject and predicate edits for dialog intake items', async () => {
+    const wrapper = mount(ProposalClaimDiffEditor, {
+      props: {
+        item: createItem({
+          subject_ref: 'project.world_intake',
+          predicate: 'user_proposed_update',
+          object_ref_or_value: '把林舟设定为旧灯塔守夜人',
+          created_by: 'athena.dialog',
+        }),
+        anchorOptions: [],
+      },
+    })
+
+    await wrapper.get('[data-testid="proposal-field-subject_ref"]').setValue('char.林舟')
+    await wrapper.get('[data-testid="proposal-field-predicate"]').setValue('role')
+    await wrapper.get('[data-testid="proposal-object-value-editor"]').setValue('"旧灯塔守夜人"')
+    await wrapper.get('[data-testid="proposal-diff-submit"]').trigger('click')
+
+    expect(wrapper.emitted('submit')).toEqual([
+      [
+        {
+          subject_ref: 'char.林舟',
+          predicate: 'role',
+          object_ref_or_value: '旧灯塔守夜人',
         },
       ],
     ])

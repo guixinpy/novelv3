@@ -77,4 +77,26 @@ describe('WorldProposalItemCard', () => {
     expect(wrapper.text()).not.toContain('驳回')
     expect(wrapper.text()).not.toContain('拆分')
   })
+
+  it('does not offer direct approve or split for raw dialog intake items', () => {
+    const wrapper = mount(WorldProposalItemCard, {
+      props: {
+        item: createItem({
+          subject_ref: 'project.world_intake',
+          predicate: 'user_proposed_update',
+          object_ref_or_value: '把林舟设定为旧灯塔守夜人',
+          created_by: 'athena.dialog',
+        }),
+        busy: false,
+        approvalReviewId: null,
+        reviewerRef: 'athena.user',
+        anchorOptions: [],
+        conflicts: [],
+      },
+    })
+
+    const buttonLabels = wrapper.findAll('button').map((button) => button.text())
+
+    expect(buttonLabels).toEqual(['编辑后通过', '驳回', '不确定'])
+  })
 })
