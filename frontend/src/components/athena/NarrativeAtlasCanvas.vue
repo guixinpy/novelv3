@@ -34,10 +34,16 @@ const emit = defineEmits<{
   select: [selection: AtlasSelection]
 }>()
 
-const viewBox = '0 0 1040 560'
-const canvasWidth = 1040
-const leftPadding = 88
-const rightPadding = 88
+const canvasWidth = 1180
+const minimumCanvasHeight = 560
+const canvasTopPadding = 96
+const chapterSpacing = 92
+const nodePadding = 72
+const chapterSpineX = 420
+const foreshadowingTrackX = 300
+const plotlineTrackX = 650
+const milestoneTrackX = 760
+const eventTrackX = 1040
 
 const chapterNodes = computed(() =>
   props.graph.nodes
@@ -46,23 +52,26 @@ const chapterNodes = computed(() =>
     .sort((left, right) => Number(left.chapterIndex ?? 0) - Number(right.chapterIndex ?? 0)),
 )
 
+const canvasHeight = computed(() =>
+  Math.max(minimumCanvasHeight, 120 + Math.max(chapterNodes.value.length, 1) * chapterSpacing),
+)
+
+const viewBox = computed(() => `0 0 ${canvasWidth} ${canvasHeight.value}`)
+
 const positions = computed(() => {
   const map = new Map<string, AtlasNodePosition>()
-  const chapterXByIndex = new Map<number, number>()
-  const chapterSpacing = chapterNodes.value.length > 1
-    ? (canvasWidth - leftPadding - rightPadding) / (chapterNodes.value.length - 1)
-    : 0
+  const chapterYByIndex = new Map<number, number>()
 
   chapterNodes.value.forEach((node, index) => {
-    const x = chapterNodes.value.length > 1 ? leftPadding + index * chapterSpacing : canvasWidth / 2
-    if (node.chapterIndex !== undefined) chapterXByIndex.set(node.chapterIndex, x)
-    map.set(node.id, { node, x, y: 270, layer: 'trunk' })
+    const y = canvasTopPadding + index * chapterSpacing
+    if (node.chapterIndex !== undefined) chapterYByIndex.set(node.chapterIndex, y)
+    map.set(node.id, { node, x: chapterSpineX, y, layer: 'trunk' })
   })
 
-  placeLayer('plotline', 92, 'branches', map, chapterXByIndex)
-  placeLayer('milestone', 170, 'branches', map, chapterXByIndex)
-  placeLayer('foreshadowing', 382, 'foreshadowing', map, chapterXByIndex)
-  placeLayer('event', 470, 'events', map, chapterXByIndex)
+  placeLayer('plotline', plotlineTrackX, 'branches', map, chapterYByIndex)
+  placeLayer('milestone', milestoneTrackX, 'branches', map, chapterYByIndex)
+  placeLayer('foreshadowing', foreshadowingTrackX, 'foreshadowing', map, chapterYByIndex)
+  placeLayer('event', eventTrackX, 'events', map, chapterYByIndex)
 
   return map
 })
@@ -94,28 +103,33 @@ const visibleEdges = computed(() =>
 
 function placeLayer(
   type: NarrativeAtlasNode['type'],
-  y: number,
+  x: number,
   layer: AtlasLayer,
   map: Map<string, AtlasNodePosition>,
-  chapterXByIndex: Map<number, number>,
+  chapterYByIndex: Map<number, number>,
 ) {
   const nodes = props.graph.nodes.filter((node) => node.type === type)
   const perChapterCount = new Map<number, number>()
   const fallbackSpacing = nodes.length > 1
-    ? (canvasWidth - leftPadding - rightPadding) / (nodes.length - 1)
+    ? (canvasHeight.value - canvasTopPadding * 2) / (nodes.length - 1)
     : 0
 
   nodes.forEach((node, index) => {
-    const baseX = node.chapterIndex !== undefined && chapterXByIndex.has(node.chapterIndex)
-      ? Number(chapterXByIndex.get(node.chapterIndex))
+    const baseY = node.chapterIndex !== undefined && chapterYByIndex.has(node.chapterIndex)
+      ? Number(chapterYByIndex.get(node.chapterIndex))
       : nodes.length > 1
-        ? leftPadding + index * fallbackSpacing
-        : canvasWidth / 2
+        ? canvasTopPadding + index * fallbackSpacing
+        : Math.min(canvasTopPadding + chapterSpacing, canvasHeight.value / 2)
     const chapterKey = node.chapterIndex ?? -index - 1
     const slot = perChapterCount.get(chapterKey) ?? 0
     perChapterCount.set(chapterKey, slot + 1)
-    const offset = type === 'plotline' ? 0 : (slot % 3 - 1) * 34 + Math.floor(slot / 3) * 18
-    map.set(node.id, { node, x: clamp(baseX + offset, 56, canvasWidth - 56), y, layer })
+    const offset = slotOffset(type, slot)
+    map.set(node.id, {
+      node,
+      x: clamp(x + offset.x, nodePadding, canvasWidth - nodePadding),
+      y: clamp(baseY + offset.y, 48, canvasHeight.value - 48),
+      layer,
+    })
   })
 }
 
@@ -135,9 +149,13 @@ function nodeLayer(node: NarrativeAtlasNode): AtlasLayer {
 function edgePath(edge: NarrativeAtlasEdge, source: AtlasNodePosition, target: AtlasNodePosition) {
   if (edge.type === 'trunk') return `M ${source.x} ${source.y} L ${target.x} ${target.y}`
 
-  const middleY = source.y + (target.y - source.y) / 2
-  const curveBias = edge.type === 'foreshadowing' ? 26 : 0
-  return `M ${source.x} ${source.y} C ${source.x} ${middleY + curveBias}, ${target.x} ${middleY + curveBias}, ${target.x} ${target.y}`
+  const middleX = source.x + (target.x - source.x) / 2
+  const curveBias = edge.type === 'foreshadowing'
+    ? target.x < source.x ? -28 : 28
+    : edge.type === 'event_anchor'
+      ? 36
+      : 20
+  return `M ${source.x} ${source.y} C ${middleX + curveBias} ${source.y}, ${middleX + curveBias} ${target.y}, ${target.x} ${target.y}`
 }
 
 function selectNode(node: NarrativeAtlasNode) {
@@ -191,11 +209,24 @@ function edgeTitle(edge: NarrativeAtlasEdge) {
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max)
 }
+
+function slotOffset(type: NarrativeAtlasNode['type'], slot: number) {
+  const lane = slot % 3
+  const row = Math.floor(slot / 3)
+  const y = (lane - 1) * 14 + row * 42
+
+  if (type === 'foreshadowing') return { x: -lane * 112, y }
+  if (type === 'event') return { x: (slot % 2) * 88, y: (slot % 2 === 0 ? -12 : 12) + Math.floor(slot / 2) * 36 }
+  if (type === 'milestone') return { x: lane * 126, y }
+  if (type === 'plotline') return { x: (slot % 2) * 126, y: Math.floor(slot / 2) * 42 }
+
+  return { x: 0, y: 0 }
+}
 </script>
 
 <template>
   <section class="narrative-atlas-canvas" data-testid="narrative-atlas-canvas" aria-label="叙事图谱画布">
-    <svg :viewBox="viewBox" role="img" aria-label="Athena Narrative Atlas">
+    <svg :viewBox="viewBox" :width="canvasWidth" :height="canvasHeight" role="img" aria-label="Athena Narrative Atlas">
       <defs>
         <marker
           v-for="layer in ['trunk', 'branches', 'foreshadowing', 'events']"
@@ -212,11 +243,11 @@ function clamp(value: number, min: number, max: number) {
       </defs>
 
       <g class="narrative-atlas-canvas__grid" aria-hidden="true">
-        <line x1="64" y1="270" x2="976" y2="270" />
-        <text x="72" y="72">故事线</text>
-        <text x="72" y="250">章节</text>
-        <text x="72" y="358">伏笔</text>
-        <text x="72" y="448">事件</text>
+        <line :x1="chapterSpineX" y1="56" :x2="chapterSpineX" :y2="canvasHeight - 56" />
+        <text :x="foreshadowingTrackX - 40" y="52">伏笔</text>
+        <text :x="chapterSpineX - 34" y="52">章节</text>
+        <text :x="plotlineTrackX - 34" y="52">故事线</text>
+        <text :x="eventTrackX - 24" y="52">事件</text>
       </g>
 
       <g class="narrative-atlas-canvas__edges">
@@ -279,8 +310,9 @@ function clamp(value: number, min: number, max: number) {
 .narrative-atlas-canvas svg {
   display: block;
   min-width: 720px;
-  width: 100%;
-  height: 100%;
+  width: auto;
+  height: auto;
+  max-width: none;
 }
 
 .narrative-atlas-canvas__grid line {
