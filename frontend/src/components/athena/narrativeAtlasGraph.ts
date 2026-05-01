@@ -14,6 +14,7 @@ export type NarrativeAtlasWarningType =
   | 'timeline_missing'
   | 'unresolved_foreshadowing'
   | 'incomplete_foreshadowing'
+  | 'missing_chapter_anchor'
 
 export interface NarrativeAtlasNode {
   id: string
@@ -37,6 +38,7 @@ export interface NarrativeAtlasWarning {
   id: string
   type: NarrativeAtlasWarningType
   message: string
+  sourceId?: string
   targetId?: string
 }
 
@@ -93,7 +95,7 @@ export function buildNarrativeAtlasGraph(input: BuildNarrativeAtlasGraphInput): 
     })
   }
 
-  addPlotlines(input.plan, nodes, edges, knownNodeIds, knownEdgeIds)
+  addPlotlines(input.plan, nodes, edges, warnings, knownNodeIds, knownEdgeIds)
   addForeshadowing(input.plan, chapters, nodes, edges, warnings, knownNodeIds, knownEdgeIds)
   addTimeline(input.timeline, nodes, edges, warnings, knownNodeIds, knownEdgeIds)
 
@@ -138,6 +140,7 @@ function addPlotlines(
   plan: AthenaEvolutionPlan | null,
   nodes: NarrativeAtlasNode[],
   edges: NarrativeAtlasEdge[],
+  warnings: NarrativeAtlasWarning[],
   knownNodeIds: Set<string>,
   knownEdgeIds: Set<string>,
 ) {
@@ -181,10 +184,11 @@ function addPlotlines(
       })
 
       if (chapterIndex !== null) {
+        const chapterNodeId = ensureChapterAnchor(chapterIndex, nodes, warnings, knownNodeIds, milestoneId)
         addEdge(edges, knownEdgeIds, {
-          id: `branch:${chapterId(chapterIndex)}->${milestoneId}`,
+          id: `branch:${chapterNodeId}->${milestoneId}`,
           type: 'branch',
-          source: chapterId(chapterIndex),
+          source: chapterNodeId,
           target: milestoneId,
         })
       }
@@ -222,36 +226,40 @@ function addForeshadowing(
 
     if (plantedChapter === null) {
       addWarning(warnings, {
-        id: `warning:incomplete_foreshadowing:${itemKey}`,
+        id: uniqueWarningId(`warning:incomplete_foreshadowing:${itemKey}`, warnings),
         type: 'incomplete_foreshadowing',
         message: `伏笔「${hint}」缺少埋设章节。`,
+        sourceId: foreshadowingId,
         targetId: foreshadowingId,
       })
       continue
     }
 
+    const plantedChapterId = ensureChapterAnchor(plantedChapter, nodes, warnings, knownNodeIds, foreshadowingId)
     addEdge(edges, knownEdgeIds, {
-      id: `foreshadowing:${chapterId(plantedChapter)}->${foreshadowingId}`,
+      id: `foreshadowing:${plantedChapterId}->${foreshadowingId}`,
       type: 'foreshadowing',
-      source: chapterId(plantedChapter),
+      source: plantedChapterId,
       target: foreshadowingId,
     })
 
     if (status === 'resolved' && resolvedChapter !== null) {
+      const resolvedChapterId = ensureChapterAnchor(resolvedChapter, nodes, warnings, knownNodeIds, foreshadowingId)
       addEdge(edges, knownEdgeIds, {
-        id: `foreshadowing:${foreshadowingId}->${chapterId(resolvedChapter)}`,
+        id: `foreshadowing:${foreshadowingId}->${resolvedChapterId}`,
         type: 'foreshadowing',
         source: foreshadowingId,
-        target: chapterId(resolvedChapter),
+        target: resolvedChapterId,
       })
       continue
     }
 
     if (status === 'resolved' && resolvedChapter === null) {
       addWarning(warnings, {
-        id: `warning:incomplete_foreshadowing:${itemKey}`,
+        id: uniqueWarningId(`warning:incomplete_foreshadowing:${itemKey}`, warnings),
         type: 'incomplete_foreshadowing',
         message: `伏笔「${hint}」标记为已回收但缺少回收章节。`,
+        sourceId: foreshadowingId,
         targetId: foreshadowingId,
       })
       continue
@@ -267,9 +275,10 @@ function addForeshadowing(
     }
 
     addWarning(warnings, {
-      id: `warning:unresolved_foreshadowing:${itemKey}`,
+      id: uniqueWarningId(`warning:unresolved_foreshadowing:${itemKey}`, warnings),
       type: 'unresolved_foreshadowing',
       message: `伏笔「${hint}」尚未回收。`,
+      sourceId: foreshadowingId,
       targetId: foreshadowingId,
     })
   }
@@ -311,14 +320,45 @@ function addTimeline(
     })
 
     if (chapterIndex !== null) {
+      const chapterNodeId = ensureChapterAnchor(chapterIndex, nodes, warnings, knownNodeIds, eventId)
       addEdge(edges, knownEdgeIds, {
-        id: `event_anchor:${chapterId(chapterIndex)}->${eventId}`,
+        id: `event_anchor:${chapterNodeId}->${eventId}`,
         type: 'event_anchor',
-        source: chapterId(chapterIndex),
+        source: chapterNodeId,
         target: eventId,
       })
     }
   }
+}
+
+function ensureChapterAnchor(
+  chapterIndex: number,
+  nodes: NarrativeAtlasNode[],
+  warnings: NarrativeAtlasWarning[],
+  knownNodeIds: Set<string>,
+  sourceId: string,
+): string {
+  const id = chapterId(chapterIndex)
+  const isMissing = !knownNodeIds.has(id)
+  if (isMissing) {
+    addNode(nodes, knownNodeIds, {
+      id,
+      type: 'chapter',
+      label: `第${chapterIndex}章`,
+      chapterIndex,
+      status: 'incomplete',
+    })
+
+    addWarning(warnings, {
+      id: `warning:missing_chapter_anchor:${sourceId}->${id}`,
+      type: 'missing_chapter_anchor',
+      message: `章节锚点「${id}」缺少章节规划，已创建占位节点。`,
+      sourceId,
+      targetId: id,
+    })
+  }
+
+  return id
 }
 
 function addNode(nodes: NarrativeAtlasNode[], knownNodeIds: Set<string>, node: NarrativeAtlasNode) {
@@ -347,6 +387,18 @@ function uniqueNodeId(baseId: string, knownIds: Set<string>): string {
   let suffix = 2
   let candidate = `${baseId}:${suffix}`
   while (knownIds.has(candidate)) {
+    suffix += 1
+    candidate = `${baseId}:${suffix}`
+  }
+  return candidate
+}
+
+function uniqueWarningId(baseId: string, warnings: NarrativeAtlasWarning[]): string {
+  if (!warnings.some((warning) => warning.id === baseId)) return baseId
+
+  let suffix = 2
+  let candidate = `${baseId}:${suffix}`
+  while (warnings.some((warning) => warning.id === candidate)) {
     suffix += 1
     candidate = `${baseId}:${suffix}`
   }

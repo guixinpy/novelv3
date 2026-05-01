@@ -142,4 +142,103 @@ describe('narrativeAtlasGraph', () => {
     ]))
     expect(graph.warnings.some((warning) => warning.type === 'timeline_missing')).toBe(false)
   })
+
+  it('creates placeholder chapters for missing anchors so edges never dangle', () => {
+    const sparsePlan = {
+      outline: {
+        id: 'outline-sparse',
+        status: 'generated',
+        total_chapters: 1,
+        chapters: [
+          { chapter_index: 1, title: '唯一章节' },
+        ],
+        plotlines: [],
+      },
+      storyline: {
+        id: 'storyline-sparse',
+        status: 'generated',
+        plotlines: [
+          {
+            name: '远端线索',
+            milestones: [
+              { chapter_index: 5, title: '第五章节点' },
+            ],
+          },
+        ],
+        foreshadowing: [
+          {
+            hint: '第五章埋设',
+            planted_chapter: 5,
+            resolved_chapter: 5,
+            status: 'resolved',
+          },
+        ],
+      },
+    } as unknown as AthenaEvolutionPlan
+    const timeline: AthenaTimeline = {
+      anchors: [],
+      events: [
+        {
+          id: 'event-row-5',
+          event_id: 'event.chapter.five',
+          chapter_index: 5,
+          intra_chapter_seq: 1,
+          event_type: 'reveal',
+          description: '第五章事件。',
+        },
+      ],
+    }
+
+    const graph = buildNarrativeAtlasGraph({
+      plan: sparsePlan,
+      chapters: [{ id: 'chapter-1', chapter_index: 1, title: '唯一章节', word_count: 1000, status: 'draft' }],
+      timeline,
+    })
+    const nodeIds = new Set(graph.nodes.map((node) => node.id))
+
+    expect(graph.edges.every((edge) => nodeIds.has(edge.source) && nodeIds.has(edge.target))).toBe(true)
+    expect(graph.nodes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'chapter:5', type: 'chapter', label: '第5章', chapterIndex: 5, status: 'incomplete' }),
+    ]))
+    expect(graph.warnings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'missing_chapter_anchor', targetId: 'chapter:5' }),
+    ]))
+  })
+
+  it('keeps duplicate foreshadowing warnings attached to their unique nodes', () => {
+    const duplicatePlan = {
+      outline: {
+        id: 'outline-duplicate',
+        status: 'generated',
+        total_chapters: 2,
+        chapters: [
+          { chapter_index: 1, title: '开端' },
+          { chapter_index: 2, title: '追踪' },
+        ],
+        plotlines: [],
+      },
+      storyline: {
+        id: 'storyline-duplicate',
+        status: 'generated',
+        plotlines: [],
+        foreshadowing: [
+          { hint: '同一枚钥匙', planted_chapter: 1, status: 'pending' },
+          { hint: '同一枚钥匙', planted_chapter: 2, status: 'pending' },
+        ],
+      },
+    } as unknown as AthenaEvolutionPlan
+
+    const graph = buildNarrativeAtlasGraph({ plan: duplicatePlan, chapters: [], timeline: null })
+    const foreshadowingIds = new Set(
+      graph.nodes.filter((node) => node.type === 'foreshadowing').map((node) => node.id),
+    )
+    const unresolvedWarnings = graph.warnings.filter((warning) => warning.type === 'unresolved_foreshadowing')
+
+    expect(unresolvedWarnings).toHaveLength(2)
+    expect(new Set(unresolvedWarnings.map((warning) => warning.sourceId))).toEqual(new Set([
+      'foreshadowing:同一枚钥匙',
+      'foreshadowing:同一枚钥匙:2',
+    ]))
+    expect(unresolvedWarnings.every((warning) => foreshadowingIds.has(String(warning.sourceId)))).toBe(true)
+  })
 })
