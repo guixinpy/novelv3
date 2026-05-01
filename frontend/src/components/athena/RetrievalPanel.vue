@@ -30,6 +30,7 @@ const sourceOptions = [
 ] as const
 
 const sourceCounts = computed(() => props.diagnostics?.documents_by_source_type || {})
+const diagnosticsLoading = computed(() => props.loading && !props.diagnostics)
 
 const resultGroups = computed(() => {
   const groups: Record<string, AthenaRetrievalSearchItem[]> = {}
@@ -70,11 +71,11 @@ function sourceHint(item: AthenaRetrievalSearchItem) {
           v-model="query"
           class="retrieval-panel__input"
           type="search"
-          placeholder="搜索角色、规则、伏笔、章节事实"
+          placeholder="全文检索角色、规则、伏笔、章节事实"
           @keydown.enter="runSearch"
         >
         <BaseButton size="sm" :disabled="props.loading || !query.trim()" @click="runSearch">
-          搜索
+          全文检索
         </BaseButton>
       </div>
       <BaseButton variant="ghost" size="sm" :disabled="props.loading" @click="emit('reindex')">
@@ -82,7 +83,11 @@ function sourceHint(item: AthenaRetrievalSearchItem) {
       </BaseButton>
     </div>
 
-    <div class="retrieval-panel__filters" aria-label="检索范围">
+    <div v-if="diagnosticsLoading" class="retrieval-panel__loading">
+      正在读取索引状态...
+    </div>
+
+    <div v-else class="retrieval-panel__filters" aria-label="检索范围">
       <button
         v-for="option in sourceOptions"
         :key="option.key"
@@ -96,7 +101,7 @@ function sourceHint(item: AthenaRetrievalSearchItem) {
       </button>
     </div>
 
-    <div class="retrieval-panel__metrics">
+    <div v-if="!diagnosticsLoading" class="retrieval-panel__metrics">
       <div class="retrieval-panel__metric">
         <span class="retrieval-panel__metric-label">文档</span>
         <strong>{{ props.diagnostics?.total_documents ?? 0 }}</strong>
@@ -152,7 +157,7 @@ function sourceHint(item: AthenaRetrievalSearchItem) {
         </div>
       </section>
     </div>
-    <div v-else class="retrieval-panel__empty">暂无检索结果</div>
+    <div v-else-if="!diagnosticsLoading" class="retrieval-panel__empty">暂无检索结果</div>
   </div>
 </template>
 
@@ -246,7 +251,8 @@ function sourceHint(item: AthenaRetrievalSearchItem) {
 
 .retrieval-panel__notice,
 .retrieval-panel__summary,
-.retrieval-panel__empty {
+.retrieval-panel__empty,
+.retrieval-panel__loading {
   margin-bottom: var(--space-3);
   color: var(--color-text-secondary);
   font-size: var(--text-sm);

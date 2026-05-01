@@ -1,3 +1,4 @@
+import json
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -9,7 +10,19 @@ from app.core.context_injection import (
     build_hermes_world_context_blocks,
 )
 from app.core.model_call_trace import build_context_block
-from app.models import ChapterContent, DialogMessage, Project, ProjectProfileVersion
+from app.models import (
+    ChapterContent,
+    DialogMessage,
+    Outline,
+    Project,
+    ProjectProfileVersion,
+    RetrievalDocument,
+    Setup,
+    Storyline,
+    WorldFactClaim,
+    WorldProposalBundle,
+    WorldProposalItem,
+)
 from app.prompting.assembler import PromptAssembler
 from app.prompting.tracing import build_prompt_trace_metadata
 
@@ -154,6 +167,121 @@ def build_athena_manuscript_context_block(db: Session, project: Project) -> dict
     )
 
 
+def build_athena_context_boundary_block(db: Session, project: Project) -> dict[str, Any]:
+    chapters = (
+        db.query(ChapterContent)
+        .filter(ChapterContent.project_id == project.id, ChapterContent.content != "")
+        .order_by(ChapterContent.chapter_index.asc())
+        .all()
+    )
+    profile = _current_profile(db, project.id)
+    target_chapters = project.target_chapter_count or len(chapters)
+    if chapters:
+        chapter_line = (
+            f"正文：已生成 {len(chapters)} / 目标 {target_chapters}，"
+            f"范围第{chapters[0].chapter_index}章至第{chapters[-1].chapter_index}章"
+        )
+    else:
+        chapter_line = f"正文：已生成 0 / 目标 {target_chapters}"
+
+    truth_query = db.query(WorldFactClaim).filter(
+        WorldFactClaim.project_id == project.id,
+        WorldFactClaim.claim_layer == "truth",
+        WorldFactClaim.claim_status == "confirmed",
+    )
+    bundle_query = db.query(WorldProposalBundle).filter(
+        WorldProposalBundle.project_id == project.id,
+        WorldProposalBundle.bundle_status == "pending",
+    )
+    item_query = db.query(WorldProposalItem).filter(
+        WorldProposalItem.project_id == project.id,
+        WorldProposalItem.item_status == "pending",
+    )
+    if profile is not None:
+        truth_query = truth_query.filter(
+            WorldFactClaim.project_profile_version_id == profile.id,
+            WorldFactClaim.profile_version == profile.version,
+        )
+        bundle_query = bundle_query.filter(
+            WorldProposalBundle.project_profile_version_id == profile.id,
+            WorldProposalBundle.profile_version == profile.version,
+        )
+        item_query = item_query.filter(
+            WorldProposalItem.project_profile_version_id == profile.id,
+            WorldProposalItem.profile_version == profile.version,
+        )
+
+    retrieval_count = db.query(RetrievalDocument).filter(RetrievalDocument.project_id == project.id).count()
+    lines = [
+        "已读取范围：",
+        f"- {chapter_line}",
+        f"- 检索索引：{retrieval_count} 个文档",
+        f"- 世界事实：{truth_query.count()} 条确认真相",
+        f"- 待审提案：{bundle_query.count()} 个批次 / {item_query.count()} 条候选",
+        "回答边界：",
+        "- 回答全局质量、伏笔闭合、秘密回收、一致性判断时，必须说明依据范围。",
+        "- 最近章节摘录只代表局部证据；不能据此替代全书进度、叙事规划、世界事实和待审提案。",
+    ]
+    return build_context_block(
+        key="athena.context_boundary",
+        kind="context_boundary",
+        title="上下文边界",
+        content="\n".join(lines),
+    )
+
+
+def build_athena_narrative_planning_context_block(db: Session, project: Project) -> dict[str, Any] | None:
+    setup = db.query(Setup).filter(Setup.project_id == project.id).order_by(Setup.updated_at.desc()).first()
+    storyline = (
+        db.query(Storyline)
+        .filter(Storyline.project_id == project.id)
+        .order_by(Storyline.updated_at.desc())
+        .first()
+    )
+    outline = (
+        db.query(Outline)
+        .filter(Outline.project_id == project.id)
+        .order_by(Outline.updated_at.desc())
+        .first()
+    )
+    if setup is None and storyline is None and outline is None:
+        return None
+
+    lines = ["叙事规划摘要："]
+    sources: list[dict[str, Any]] = []
+    total_foreshadowing = 0
+    if setup is not None:
+        sources.append({"source_type": "Setup", "source_id": setup.id, "label": "Setup"})
+        if setup.core_concept:
+            lines.append(f"- 核心概念：{_compact_json(setup.core_concept)}")
+    if outline is not None:
+        chapters = outline.chapters or []
+        foreshadowing = outline.foreshadowing or []
+        total_foreshadowing += len(foreshadowing)
+        total = outline.total_chapters or len(chapters)
+        sources.append({"source_type": "Outline", "source_id": outline.id, "label": "Outline"})
+        lines.append(f"- 大纲：{total} 章规划，已记录章节 {len(chapters)} 条")
+    if storyline is not None:
+        plotlines = storyline.plotlines or []
+        foreshadowing = storyline.foreshadowing or []
+        total_foreshadowing += len(foreshadowing)
+        sources.append({"source_type": "Storyline", "source_id": storyline.id, "label": "Storyline"})
+        lines.append(f"- 故事线：{len(plotlines)} 条")
+        for item in plotlines[:5]:
+            summary = _planning_item_summary(item)
+            if summary:
+                lines.append(f"  - {summary}")
+    lines.append(f"- 伏笔：{total_foreshadowing} 条")
+    return build_context_block(
+        key="athena.narrative_planning_summary",
+        kind="narrative_planning_summary",
+        title="叙事规划摘要",
+        content="\n".join(lines),
+        sources=sources,
+        max_chars=6000,
+    )
+
+
 def build_dialog_call_payload(
     db: Session,
     dialog_id: str,
@@ -167,16 +295,21 @@ def build_dialog_call_payload(
         prompt_id = "dialog.athena"
         world_context = build_athena_world_context(db, project.id)
         context_blocks = build_athena_world_context_blocks(db, project.id)
+        extra_blocks = [build_athena_context_boundary_block(db, project)]
+        planning_block = build_athena_narrative_planning_context_block(db, project)
+        if planning_block:
+            extra_blocks.append(planning_block)
         manuscript_block = build_athena_manuscript_context_block(db, project)
         if manuscript_block:
-            context_blocks.append(manuscript_block)
-            world_context = "\n\n".join(
-                part for part in [
-                    world_context,
-                    f"## {manuscript_block['title']}\n{manuscript_block['content']}",
-                ]
-                if part
-            )
+            extra_blocks.append(manuscript_block)
+        context_blocks.extend(extra_blocks)
+        world_context = "\n\n".join(
+            part for part in [
+                world_context,
+                *[f"## {block['title']}\n{block['content']}" for block in extra_blocks],
+            ]
+            if part
+        )
         variables = build_athena_prompt_variables(db, project, world_context)
     else:
         prompt_id = "dialog.hermes"
@@ -225,6 +358,30 @@ def _latest_dialog_history(db: Session, dialog_id: str, limit: int) -> list[Dial
     )
     history.reverse()
     return history
+
+
+def _current_profile(db: Session, project_id: str) -> ProjectProfileVersion | None:
+    return (
+        db.query(ProjectProfileVersion)
+        .filter(ProjectProfileVersion.project_id == project_id)
+        .order_by(ProjectProfileVersion.version.desc())
+        .first()
+    )
+
+
+def _compact_json(value: Any, *, limit: int = 320) -> str:
+    text = json.dumps(value, ensure_ascii=False)
+    return text if len(text) <= limit else f"{text[:limit]}..."
+
+
+def _planning_item_summary(item: Any) -> str:
+    if not isinstance(item, dict):
+        return str(item)[:180]
+    title = item.get("title") or item.get("name") or item.get("plotline") or item.get("id")
+    summary = item.get("summary") or item.get("description") or item.get("theme")
+    if title and summary:
+        return f"{title}：{summary}"[:180]
+    return str(title or summary or "")[:180]
 
 
 def _phase_label(phase: str | None) -> str:

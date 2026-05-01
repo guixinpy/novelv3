@@ -23,6 +23,12 @@ const subjectRefs = computed(() => {
   }
   return [...refs].sort()
 })
+const subjectOptions = computed(() =>
+  subjectRefs.value.map((subjectRef) => ({
+    ref: subjectRef,
+    label: subjectLabel(subjectRef),
+  })),
+)
 const selectedFacts = computed(() => {
   const subjectRef = props.selectedSubjectRef
   if (!subjectRef || !props.subjectKnowledge) return []
@@ -34,6 +40,14 @@ function formatValue(value: unknown) {
   if (value == null) return ''
   if (typeof value === 'string') return value
   return JSON.stringify(value)
+}
+
+function subjectLabel(subjectRef: string) {
+  const entity = props.projection?.entities?.[subjectRef]
+  const name = entity?.attributes?.name
+  return typeof name === 'string' && name.trim()
+    ? `${name}（${subjectRef}）`
+    : subjectRef
 }
 </script>
 
@@ -50,8 +64,8 @@ function formatValue(value: unknown) {
           @change="emit('selectSubject', ($event.target as HTMLSelectElement).value)"
         >
           <option value="" disabled>选择主体</option>
-          <option v-for="subjectRef in subjectRefs" :key="subjectRef" :value="subjectRef">
-            {{ subjectRef }}
+          <option v-for="option in subjectOptions" :key="option.ref" :value="option.ref">
+            {{ option.label }}
           </option>
         </select>
       </div>

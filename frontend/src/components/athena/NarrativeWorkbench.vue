@@ -36,9 +36,12 @@ const plotlines = computed(() =>
       milestones: asRecords(plotline.milestones)
         .map((milestone, milestoneIndex) => ({
           key: `${index}-${milestoneIndex}`,
-          chapterIndex: toNumber(milestone.chapter_index),
+          chapterIndex: toNumber(milestone.chapter_index ?? milestone.chapter),
           title: toText(milestone.title || milestone.summary || milestone.event, '未命名节点'),
-          summary: toText(milestone.summary || milestone.description || milestone.event),
+          summary: uniqueSummary(
+            toText(milestone.summary || milestone.description || milestone.event),
+            toText(milestone.title || milestone.summary || milestone.event, '未命名节点'),
+          ),
         })),
     })),
 )
@@ -91,6 +94,10 @@ function toNumber(value: unknown): number | null {
 function toTextArray(value: unknown): string[] {
   if (!Array.isArray(value)) return []
   return value.map((item) => toText(item)).filter(Boolean)
+}
+
+function uniqueSummary(summary: string, title: string) {
+  return summary && summary !== title ? summary : ''
 }
 
 function chapterStatus(chapterIndex: number | null) {

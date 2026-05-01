@@ -53,7 +53,33 @@ describe('NarrativeWorkbench', () => {
     const wrapper = mount(NarrativeWorkbench, { props: { plan, chapters, view: 'storyline' } })
 
     expect(wrapper.text()).toContain('主线：潮汐根源')
+    expect(wrapper.text()).toContain('第1章')
     expect(wrapper.text()).toContain('发现异常')
+  })
+
+  it('accepts chapter field and avoids duplicate milestone copy', () => {
+    const wrapper = mount(NarrativeWorkbench, {
+      props: {
+        plan: {
+          storyline: {
+            plotlines: [
+              {
+                name: '副线',
+                type: 'subplot',
+                milestones: [
+                  { chapter: 5, event: '第一次看到灯塔' },
+                ],
+              },
+            ],
+          },
+        } as unknown as AthenaEvolutionPlan,
+        chapters,
+        view: 'storyline',
+      },
+    })
+
+    expect(wrapper.text()).toContain('第5章')
+    expect(wrapper.findAll('.narrative-workbench__milestone p')).toHaveLength(0)
   })
 
   it('renders chapter planning against actual chapter status', () => {

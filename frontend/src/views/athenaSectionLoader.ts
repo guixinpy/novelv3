@@ -51,7 +51,14 @@ export function createAthenaSectionLoader(options: AthenaSectionLoaderOptions) {
       routeState.section === 'review'
       && (routeState.view === 'proposals' || routeState.view === 'impact' || routeState.view === 'history')
     ) {
-      if (!options.worldModel.proposalBundlesLoaded) {
+      if (
+        !options.worldModel.proposalBundlesLoaded
+        || (
+          (routeState.view === 'impact' || routeState.view === 'history')
+          && options.worldModel.proposalBundles.length > 0
+          && !options.worldModel.selectedBundleDetail
+        )
+      ) {
         await options.worldModel.loadSetupPanelData(id)
       }
     }

@@ -34,6 +34,38 @@ const duplicateProjection = {
 } as unknown as WorldProjection
 
 describe('CatalogWorkbench', () => {
+  it('shows a loading state before ontology and projection are available', () => {
+    const wrapper = mount(CatalogWorkbench, {
+      props: {
+        ontology: null,
+        projection: null,
+        pendingProposalItems: [],
+        nodeType: 'all',
+        view: 'nodes',
+      },
+    })
+
+    expect(wrapper.text()).toContain('正在读取设定库')
+    expect(wrapper.text()).not.toContain('暂无匹配节点')
+    expect(wrapper.text()).not.toContain('选择一个节点查看完整信息')
+  })
+
+  it('shows a rule loading state before ontology is available', () => {
+    const wrapper = mount(CatalogWorkbench, {
+      props: {
+        ontology: null,
+        projection: null,
+        pendingProposalItems: [],
+        nodeType: 'all',
+        view: 'rules',
+      },
+    })
+
+    expect(wrapper.text()).toContain('正在读取规则约束')
+    expect(wrapper.text()).not.toContain('暂无规则')
+    expect(wrapper.text()).not.toContain('0 条')
+  })
+
   it('renders nodes and selects the first matching node', () => {
     const wrapper = mount(CatalogWorkbench, {
       props: {
@@ -89,6 +121,21 @@ describe('CatalogWorkbench', () => {
     expect(wrapper.text()).toContain('选择一个节点查看完整信息')
   })
 
+  it('labels catalog search as node filtering', () => {
+    const wrapper = mount(CatalogWorkbench, {
+      props: {
+        ontology,
+        projection,
+        pendingProposalItems: [],
+        nodeType: 'all',
+        view: 'nodes',
+      },
+    })
+
+    expect(wrapper.text()).toContain('过滤节点')
+    expect(wrapper.find('input[type="search"]').attributes('placeholder')).toContain('按名称')
+  })
+
   it('emits filter type changes from the node list', async () => {
     const wrapper = mount(CatalogWorkbench, {
       props: {
@@ -118,6 +165,28 @@ describe('CatalogWorkbench', () => {
 
     expect(wrapper.findAll('.catalog-graph-panel__row')).toHaveLength(1)
     expect(wrapper.text()).toContain('1 条关系')
+  })
+
+  it('shows isolated entities when graph has no relations yet', () => {
+    const wrapper = mount(CatalogWorkbench, {
+      props: {
+        ontology: {
+          ...ontology,
+          relations: [],
+        },
+        projection: {
+          ...projection,
+          relations: {},
+        },
+        pendingProposalItems: [],
+        nodeType: 'all',
+        view: 'graph',
+      },
+    })
+
+    expect(wrapper.text()).toContain('当前有 2 个实体，但尚未生成关系')
+    expect(wrapper.text()).toContain('林澈')
+    expect(wrapper.text()).toContain('旧灯塔')
   })
 
   it('does not show zero pending counts when pending counts are unavailable', () => {

@@ -75,6 +75,35 @@ describe('ProjectionViewer', () => {
     expect(wrapper.text()).toContain('mentioned_in_chapter')
   })
 
+  it('counts fact subjects even when facts are merged into entity rows', () => {
+    const wrapper = mount(ProjectionViewer, {
+      props: {
+        projection: {
+          view_type: 'current_truth',
+          entities: {
+            'char.lu': {
+              entity_type: 'character',
+              attributes: { name: '陆辞' },
+            },
+          },
+          relations: {},
+          presence: {},
+          occurred_events: {},
+          event_links: {},
+          facts: {
+            'char.lu': {
+              presence_count: { count: 51, chapter_index: 1 },
+            },
+          },
+        },
+      },
+    })
+
+    const metricTexts = wrapper.findAll('.projection-viewer__metric').map((metric) => metric.text())
+
+    expect(metricTexts).toContain('事实主体1')
+  })
+
   it('renders occurred event details for ledger review', () => {
     const wrapper = mount(ProjectionViewer, {
       props: {

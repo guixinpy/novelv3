@@ -70,4 +70,31 @@ describe('TruthLedger', () => {
     expect(wrapper.text()).toContain('关闭潮汐门')
     expect(wrapper.text()).toContain('当前投影未携带披露元数据')
   })
+
+  it('renders presence count facts as readable summaries', () => {
+    const wrapper = mount(TruthLedger, {
+      props: {
+        projection,
+        factClaims: [
+          {
+            ...factClaims[0],
+            id: 'fact-presence',
+            subject_ref: 'char.luci',
+            predicate: 'presence_count',
+            object_ref_or_value: {
+              count: 51,
+              chapter_index: 1,
+              source: 'l1_rule',
+              matched_names: ['陆辞'],
+              quality: { confidence_band: 'medium' },
+            },
+          },
+        ],
+        view: 'disclosure',
+      },
+    })
+
+    expect(wrapper.text()).toContain('第1章：陆辞出现 51 次（自动抽取，中置信）')
+    expect(wrapper.text()).not.toContain('"count":51')
+  })
 })

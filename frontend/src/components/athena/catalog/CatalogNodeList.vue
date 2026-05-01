@@ -58,8 +58,8 @@ function updateSearch(event: Event) {
     </div>
 
     <label class="catalog-node-list__search">
-      <span>搜索</span>
-      <input :value="search" type="search" placeholder="名称 / ref / 事实" @input="updateSearch" />
+      <span>过滤节点</span>
+      <input :value="search" type="search" placeholder="按名称 / ref / 事实过滤" @input="updateSearch" />
     </label>
 
     <div v-if="nodes.length === 0" class="catalog-node-list__empty">暂无匹配节点</div>

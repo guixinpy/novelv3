@@ -37,6 +37,8 @@ const visibleNodes = computed(() => filterCatalogNodes(nodes.value, {
   nodeType: props.nodeType,
   search: search.value,
 }))
+const loadingNodes = computed(() => props.view === 'nodes' && !props.ontology && !props.projection)
+const loadingRules = computed(() => props.view === 'rules' && !props.ontology)
 
 const relations = computed(() => dedupeRelations(normalizeRelations([
   ...(props.ontology?.relations || []),
@@ -100,7 +102,11 @@ function formatRuleValue(value: unknown) {
 
 <template>
   <div class="catalog-workbench">
-    <template v-if="view === 'nodes'">
+    <section v-if="loadingNodes" class="catalog-workbench__loading">
+      正在读取设定库...
+    </section>
+
+    <template v-else-if="view === 'nodes'">
       <CatalogNodeList
         :nodes="visibleNodes"
         :node-type="nodeType"
@@ -119,14 +125,15 @@ function formatRuleValue(value: unknown) {
       />
     </template>
 
-    <CatalogGraphPanel v-else-if="view === 'graph'" :relations="relations" />
+    <CatalogGraphPanel v-else-if="view === 'graph'" :relations="relations" :nodes="nodes" />
 
     <section v-else class="catalog-workbench__rules">
       <header class="catalog-workbench__rules-header">
         <h2>规则约束</h2>
-        <span>{{ ontology?.rules.length || 0 }} 条</span>
+        <span v-if="!loadingRules">{{ ontology?.rules.length || 0 }} 条</span>
       </header>
-      <div v-if="!ontology?.rules.length" class="catalog-workbench__empty">暂无规则</div>
+      <div v-if="loadingRules" class="catalog-workbench__empty">正在读取规则约束...</div>
+      <div v-else-if="!ontology?.rules.length" class="catalog-workbench__empty">暂无规则</div>
       <div v-else class="catalog-workbench__rule-list">
         <article v-for="rule in ontology.rules" :key="rule.id || rule.rule_id" class="catalog-workbench__rule">
           <h3>{{ rule.rule_id || rule.id }}</h3>
@@ -179,14 +186,20 @@ function formatRuleValue(value: unknown) {
 }
 
 .catalog-workbench__rules-header span,
-.catalog-workbench__empty {
+.catalog-workbench__empty,
+.catalog-workbench__loading {
   color: var(--color-text-tertiary);
   font-size: var(--text-sm);
 }
 
-.catalog-workbench__empty {
+.catalog-workbench__empty,
+.catalog-workbench__loading {
   padding: var(--space-8) 0;
   text-align: center;
+}
+
+.catalog-workbench__loading {
+  grid-column: 1 / -1;
 }
 
 .catalog-workbench__rule-list {

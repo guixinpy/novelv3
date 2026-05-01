@@ -12,7 +12,7 @@
           待审变更
         </h3>
       </div>
-      <span class="bundle-list__count">{{ total }} 个</span>
+      <span class="bundle-list__count">{{ loading ? '读取中' : `${total} 个` }}</span>
     </header>
 
     <div class="bundle-list__filters">
@@ -40,8 +40,14 @@
       <button v-if="hasActiveFilters" type="button" class="bundle-list__clear" @click="clearFilters">清除筛选</button>
     </div>
 
+    <p
+      v-if="loading && bundles.length === 0"
+      class="bundle-list__empty"
+    >
+      正在加载提案包...
+    </p>
     <ul
-      v-if="bundles.length"
+      v-else-if="bundles.length"
       class="bundle-list__items"
     >
       <li
@@ -87,6 +93,7 @@ const props = defineProps<{
   selectedBundleId: string | null
   total: number
   filters: { bundle_status?: string; item_status?: string; profile_version?: number }
+  loading?: boolean
   loadingMore?: boolean
 }>()
 

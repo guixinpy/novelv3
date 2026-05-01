@@ -4,6 +4,55 @@ import { describe, expect, it } from 'vitest'
 import RetrievalPanel from './RetrievalPanel.vue'
 
 describe('RetrievalPanel', () => {
+  it('shows index loading state instead of zero diagnostics before diagnostics arrive', () => {
+    const wrapper = mount(RetrievalPanel, {
+      props: {
+        diagnostics: null,
+        search: null,
+        lastIndexResult: null,
+        loading: true,
+      },
+      global: {
+        stubs: {
+          BaseButton: { template: '<button><slot /></button>' },
+        },
+      },
+    })
+
+    expect(wrapper.text()).toContain('正在读取索引状态')
+    expect(wrapper.text()).not.toContain('文档0')
+    expect(wrapper.text()).not.toContain('章节/事实0 / 0')
+  })
+
+  it('labels full-text retrieval separately from node filtering', () => {
+    const wrapper = mount(RetrievalPanel, {
+      props: {
+        diagnostics: {
+          project_id: 'project-1',
+          embedding_provider: 'local',
+          embedding_model: 'hash-bigram-v1',
+          vector_dimension: 96,
+          total_documents: 0,
+          total_chunks: 0,
+          total_terms: 0,
+          total_embeddings: 0,
+          documents_by_source_type: {},
+        },
+        search: null,
+        lastIndexResult: null,
+        loading: false,
+      },
+      global: {
+        stubs: {
+          BaseButton: { template: '<button><slot /></button>' },
+        },
+      },
+    })
+
+    expect(wrapper.find('input[type="search"]').attributes('placeholder')).toContain('全文检索')
+    expect(wrapper.findAll('button').some((button) => button.text() === '全文检索')).toBe(true)
+  })
+
   it('groups retrieval evidence and emits creator-facing source filters', async () => {
     const wrapper = mount(RetrievalPanel, {
       props: {
@@ -67,7 +116,7 @@ describe('RetrievalPanel', () => {
 
     await wrapper.findAll('button').find((button) => button.text().includes('世界事实'))!.trigger('click')
     await wrapper.find('input').setValue('旧灯塔')
-    await wrapper.findAll('button').find((button) => button.text().includes('搜索'))!.trigger('click')
+    await wrapper.findAll('button').find((button) => button.text().includes('全文检索'))!.trigger('click')
 
     expect(wrapper.emitted('search')?.[0]).toEqual(['旧灯塔', { source_type: 'world_fact' }])
   })

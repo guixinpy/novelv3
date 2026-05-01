@@ -21,7 +21,7 @@ export type AthenaNodeTypeFilter =
   | 'concepts'
 
 export type AthenaTool = 'retrieval'
-export type AthenaPanel = 'optimization'
+export type AthenaPanel = 'optimization' | 'chat'
 
 export interface AthenaNavItem {
   section: AthenaPrimarySection
@@ -49,7 +49,7 @@ const truthViews = ['facts', 'projection', 'knowledge', 'disclosure'] as const
 const reviewViews = ['proposals', 'impact', 'conflicts', 'history'] as const
 const nodeTypes = ['all', 'characters', 'locations', 'factions', 'items', 'resources', 'concepts'] as const
 const tools = ['retrieval'] as const
-const panels = ['optimization'] as const
+const panels = ['optimization', 'chat'] as const
 
 export const athenaPrimaryNav: AthenaNavItem[] = [
   { section: 'overview', label: '总览', defaultView: 'dashboard' },
@@ -83,6 +83,7 @@ const legacyRoutes: Record<string, Partial<AthenaRouteState> & Pick<AthenaRouteS
   consistency: { section: 'review', view: 'conflicts' },
   retrieval: { section: 'catalog', view: 'nodes', tool: 'retrieval' },
   optimization: { section: 'overview', view: 'dashboard', panel: 'optimization' },
+  chat: { section: 'overview', view: 'dashboard', panel: 'chat' },
 }
 
 function firstQueryValue(value: string | string[] | null | undefined) {
@@ -125,6 +126,7 @@ function resolveScopedTool(section: AthenaPrimarySection, view: AthenaSubview, q
 }
 
 function resolveScopedPanel(section: AthenaPrimarySection, view: AthenaSubview, queryPanel: string | null): AthenaPanel | null {
+  if (queryPanel === 'chat') return 'chat'
   if (section !== 'overview' || view !== 'dashboard') return null
   return isOneOf(queryPanel, panels) ? queryPanel : null
 }

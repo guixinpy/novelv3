@@ -33,7 +33,7 @@ const factRows = computed<TruthRow[]>(() => {
       id: claim.id,
       subjectRef: claim.subject_ref,
       predicate: claim.predicate,
-      displayValue: formatValue(claim.object_ref_or_value),
+      displayValue: formatFactValue(claim.predicate, claim.object_ref_or_value),
       claimLayer: claim.claim_layer,
       claimStatus: claim.claim_status,
       perspectiveRef: claim.perspective_ref || '',
@@ -55,7 +55,7 @@ const factRows = computed<TruthRow[]>(() => {
         id: `${subjectRef}:${predicate}`,
         subjectRef,
         predicate,
-        displayValue: formatValue(value),
+        displayValue: formatFactValue(predicate, value),
         claimLayer: 'truth',
         claimStatus: 'projection',
         perspectiveRef: '',
@@ -93,12 +93,58 @@ function formatValue(value: unknown): string {
   return formatObject(value)
 }
 
+function formatFactValue(predicate: string, value: unknown): string {
+  const record = asRecord(value)
+  if (predicate === 'presence_count' && record) {
+    const count = toNumber(record.count)
+    const chapterIndex = toNumber(record.chapter_index)
+    const names = Array.isArray(record.matched_names)
+      ? record.matched_names.map((item) => formatValue(item)).filter(Boolean)
+      : []
+    const quality = asRecord(record.quality)
+    const confidence = quality ? confidenceLabel(formatValue(quality.confidence_band)) : ''
+    const source = formatValue(record.source)
+    const scope = chapterIndex !== null ? `第${chapterIndex}章` : ''
+    const summary = `${names.join(' / ') || '该主体'}出现${count !== null ? ` ${count} 次` : ''}`
+    const meta = [sourceLabel(source), confidence].filter(Boolean).join('，')
+    return `${scope ? `${scope}：` : ''}${summary}${meta ? `（${meta}）` : ''}`
+  }
+  return formatValue(value)
+}
+
 function formatObject(value: unknown): string {
   try {
     return JSON.stringify(value, (_key, entry) => typeof entry === 'bigint' ? String(entry) : entry)
   } catch (_error) {
     return String(value)
   }
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null
+}
+
+function toNumber(value: unknown): number | null {
+  const numberValue = Number(value)
+  return Number.isFinite(numberValue) ? numberValue : null
+}
+
+function confidenceLabel(value: string) {
+  const labels: Record<string, string> = {
+    high: '高置信',
+    medium: '中置信',
+    low: '低置信',
+  }
+  return labels[value] || value
+}
+
+function sourceLabel(value: string) {
+  const labels: Record<string, string> = {
+    l1_rule: '自动抽取',
+  }
+  return labels[value] || value
 }
 </script>
 

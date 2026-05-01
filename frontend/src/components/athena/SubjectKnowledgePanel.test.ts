@@ -4,6 +4,31 @@ import { describe, expect, it } from 'vitest'
 import SubjectKnowledgePanel from './SubjectKnowledgePanel.vue'
 
 describe('SubjectKnowledgePanel', () => {
+  it('shows readable subject names with refs in the selector', () => {
+    const wrapper = mount(SubjectKnowledgePanel, {
+      props: {
+        projection: {
+          view_type: 'current_truth',
+          entities: {
+            'char.lin': {
+              entity_type: 'character',
+              attributes: { name: '林舟' },
+            },
+          },
+          relations: {},
+          presence: {},
+          occurred_events: {},
+          event_links: {},
+          facts: {},
+        },
+        subjectKnowledge: null,
+        selectedSubjectRef: null,
+      },
+    })
+
+    expect(wrapper.find('option[value="char.lin"]').text()).toBe('林舟（char.lin）')
+  })
+
   it('offers subjects from fact groups when projection entity catalog is incomplete', () => {
     const wrapper = mount(SubjectKnowledgePanel, {
       props: {

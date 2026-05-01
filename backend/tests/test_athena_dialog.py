@@ -14,9 +14,12 @@ from app.models import (
     Dialog,
     DialogMessage,
     GenreProfile,
+    Outline,
     Project,
     ProjectProfileVersion,
+    RetrievalDocument,
     Setup,
+    Storyline,
     WorldCharacter,
     WorldEvent,
     WorldFactClaim,
@@ -670,6 +673,116 @@ def test_athena_chat_payload_includes_manuscript_progress_context(db_session):
     assert "已生成章节：20 / 目标 20" in payload["messages"][0]["content"]
     assert "正文进度是章节数量、总字数和最近章节的权威来源" in payload["messages"][0]["content"]
     assert manuscript_block["sources"][0]["source_type"] == "ChapterContent"
+
+
+def test_athena_chat_payload_includes_context_boundary_for_global_answers(db_session):
+    project, profile_version = _seed_project(db_session, with_profile=True)
+    project.target_chapter_count = 20
+    project.current_word_count = 78127
+    dialog = Dialog(project_id=project.id, dialog_type="athena")
+    db_session.add_all([
+        dialog,
+        Setup(
+            project_id=project.id,
+            core_concept={"core_secret": "灯塔记录了第一场失踪。"},
+        ),
+        Storyline(
+            project_id=project.id,
+            plotlines=[{"title": "主线", "summary": "调查灯塔秘密"}],
+            foreshadowing=[{"title": "灯塔旧账", "resolution": "第20章闭合"}],
+            status="approved",
+        ),
+        Outline(
+            project_id=project.id,
+            total_chapters=20,
+            chapters=[{"chapter": 1, "title": "雾港"}],
+            foreshadowing=[{"title": "旧钥匙", "resolution": "第18章回收"}],
+            status="approved",
+        ),
+        RetrievalDocument(
+            project_id=project.id,
+            source_type="chapter",
+            source_id="chapter.1",
+            source_ref="chapter:1",
+            title="第1章",
+            chapter_index=1,
+            content_hash="hash-1",
+        ),
+        WorldFactClaim(
+            project_id=project.id,
+            project_profile_version_id=profile_version.id,
+            profile_version=profile_version.version,
+            claim_id="fact.lighthouse.secret",
+            chapter_index=1,
+            subject_ref="place.lighthouse",
+            predicate="secret",
+            object_ref_or_value="旧档案室",
+            claim_layer="truth",
+            claim_status="confirmed",
+            authority_type="authoritative_structured",
+            confidence=1.0,
+            contract_version=profile_version.contract_version,
+        ),
+    ])
+    for index in range(1, 3):
+        db_session.add(
+            ChapterContent(
+                project_id=project.id,
+                chapter_index=index,
+                title=f"第{index}章标题",
+                content=f"第{index}章正文内容。",
+                word_count=3000,
+                status="draft",
+            )
+        )
+    db_session.commit()
+    bundle = WorldProposalBundle(
+        project_id=project.id,
+        project_profile_version_id=profile_version.id,
+        profile_version=profile_version.version,
+        created_by="athena.chapter_analyzer",
+        title="第2章世界模型候选",
+    )
+    db_session.add(bundle)
+    db_session.commit()
+    db_session.add(
+        WorldProposalItem(
+            project_id=project.id,
+            project_profile_version_id=profile_version.id,
+            profile_version=profile_version.version,
+            bundle_id=bundle.id,
+            claim_id="claim.chapter.2.place.lighthouse.mentioned",
+            chapter_index=2,
+            subject_ref="place.lighthouse",
+            predicate="mentioned_in_chapter",
+            object_ref_or_value={"chapter_index": 2, "mention_count": 3},
+            claim_layer="truth",
+            authority_type="derived",
+            confidence=0.75,
+            contract_version=profile_version.contract_version,
+            created_by="athena.chapter_analyzer",
+        )
+    )
+    db_session.commit()
+
+    payload = dialogs._build_chat_call_payload(
+        db_session,
+        dialog.id,
+        project,
+        dialogs._build_diagnosis(db_session, project.id),
+        dialog_type="athena",
+    )
+
+    boundary_block = next(block for block in payload["context_blocks"] if block["kind"] == "context_boundary")
+    assert "正文：已生成 2 / 目标 20" in boundary_block["content"]
+    assert "检索索引：1 个文档" in boundary_block["content"]
+    assert "世界事实：1 条确认真相" in boundary_block["content"]
+    assert "待审提案：1 个批次 / 1 条候选" in boundary_block["content"]
+    planning_block = next(block for block in payload["context_blocks"] if block["kind"] == "narrative_planning_summary")
+    assert "大纲：20 章规划" in planning_block["content"]
+    assert "故事线：1 条" in planning_block["content"]
+    assert "伏笔：2 条" in planning_block["content"]
+    assert "每次回答开头用“依据范围：”" in payload["messages"][0]["content"]
 
 
 def test_athena_chat_success_records_model_call_trace(client, db_session, monkeypatch):

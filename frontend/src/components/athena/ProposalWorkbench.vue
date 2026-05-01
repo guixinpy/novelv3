@@ -77,6 +77,7 @@ function bundleStatusLabel(status: string) {
       :selected-bundle-id="worldModel.selectedBundleId"
       :total="worldModel.bundlesTotal"
       :filters="worldModel.bundleFilters"
+      :loading="proposalLoading && worldModel.proposalBundles.length === 0"
       :loading-more="worldModel.loadingMoreBundles"
       @select="selectBundle"
       @load-more="loadMore"

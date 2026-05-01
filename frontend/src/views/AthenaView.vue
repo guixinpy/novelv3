@@ -53,7 +53,7 @@ const athena = useAthenaStore()
 const worldModel = useWorldModelStore()
 const ui = useUiStore()
 const pid = computed(() => route.params.id as string)
-const chatOpen = ref(false)
+const chatOpen = computed(() => routeState.value.panel === 'chat')
 const initializedProjectId = ref<string | null>(null)
 let initializeRequestId = 0
 
@@ -169,7 +169,7 @@ async function initialize(projectId: string) {
   await project.loadProject(projectId)
   if (!isCurrentInitialize(requestId, projectId)) return
 
-  await project.loadChapters(projectId).catch(() => undefined)
+  await project.loadChapters(projectId, true).catch(() => undefined)
   if (!isCurrentInitialize(requestId, projectId)) return
 
   await Promise.all([
@@ -198,7 +198,7 @@ async function syncRouteState(state: AthenaRouteState) {
     view: state.view,
     nodeType: state.nodeType,
     tool: state.tool,
-    panel: state.panel,
+    panel: state.panel === 'chat' ? null : state.panel,
   })
   if (!pid.value) return
 
@@ -264,10 +264,11 @@ function viewOption(
 
 function isSectionViewActive(option: AthenaSectionViewOption) {
   const current = routeState.value
+  const currentPanel = current.panel === 'chat' ? null : current.panel
   return current.section === option.section
     && current.view === option.view
     && current.tool === option.tool
-    && current.panel === option.panel
+    && currentPanel === option.panel
 }
 
 function navigateSectionView(option: AthenaSectionViewOption) {
@@ -319,6 +320,20 @@ async function selectSubject(subjectRef: string) {
 async function runConsistencyCheck(chapterIndex: number) {
   await athena.runConsistencyCheck(pid.value, chapterIndex)
 }
+
+function openChat() {
+  router.push(buildAthenaRoute(pid.value, {
+    ...routeState.value,
+    panel: 'chat',
+  }))
+}
+
+function closeChat() {
+  router.push(buildAthenaRoute(pid.value, {
+    ...routeState.value,
+    panel: null,
+  }))
+}
 </script>
 
 <template>
@@ -332,7 +347,7 @@ async function runConsistencyCheck(chapterIndex: number) {
         @navigate="navigateSection"
         @import-setup="importSetup"
         @analyze-latest-chapter="analyzeLatestChapter"
-        @open-chat="chatOpen = true"
+        @open-chat="openChat"
       />
     </Teleport>
 
@@ -450,7 +465,7 @@ async function runConsistencyCheck(chapterIndex: number) {
     <AthenaChatPanel
       :open="chatOpen"
       :project-id="pid"
-      @close="chatOpen = false"
+      @close="closeChat"
     />
   </div>
   <div v-else class="athena-view__loading">加载中...</div>

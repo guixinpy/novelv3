@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.athena_retrieval import delete_fact_retrieval_document, sync_fact_retrieval_document
+from app.core.world_fact_scope import is_chapter_scoped_truth_predicate
 from app.core.world_projection_service import invalidate_world_projection_cache
 from app.core.world_proposal_records import child_item_from_parent, claim_payload_from_item_snapshot
 from app.core.world_proposal_state import (
@@ -168,19 +169,18 @@ def calculate_bundle_impact_scope(*, db: Session, bundle_id: str, commit: bool =
 
     truth_claims = []
     for item in items:
-        truth_claims.extend(
-            db.query(WorldFactClaim)
-            .filter(
-                WorldFactClaim.project_id == bundle.project_id,
-                WorldFactClaim.project_profile_version_id == bundle.project_profile_version_id,
-                WorldFactClaim.profile_version == bundle.profile_version,
-                WorldFactClaim.subject_ref == item.subject_ref,
-                WorldFactClaim.predicate == item.predicate,
-                WorldFactClaim.claim_layer == "truth",
-                WorldFactClaim.claim_status == "confirmed",
-            )
-            .all()
+        query = db.query(WorldFactClaim).filter(
+            WorldFactClaim.project_id == bundle.project_id,
+            WorldFactClaim.project_profile_version_id == bundle.project_profile_version_id,
+            WorldFactClaim.profile_version == bundle.profile_version,
+            WorldFactClaim.subject_ref == item.subject_ref,
+            WorldFactClaim.predicate == item.predicate,
+            WorldFactClaim.claim_layer == "truth",
+            WorldFactClaim.claim_status == "confirmed",
         )
+        if is_chapter_scoped_truth_predicate(item.predicate) and item.chapter_index is not None:
+            query = query.filter(WorldFactClaim.chapter_index == item.chapter_index)
+        truth_claims.extend(query.all())
 
     snapshot = WorldProposalImpactScopeSnapshot(
         project_id=bundle.project_id,

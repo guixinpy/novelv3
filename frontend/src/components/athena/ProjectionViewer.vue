@@ -43,6 +43,7 @@ const factGroups = computed(() => {
       items: Object.entries(facts || {}).map(([predicate, value]) => ({ predicate, value })),
     }))
 })
+const factSubjectCount = computed(() => Object.keys(props.projection?.facts || {}).length)
 
 const presenceEntries = computed(() => {
   if (!props.projection) return []
@@ -115,7 +116,7 @@ function entityTypeLabel(type: string) {
         </div>
         <div class="projection-viewer__metric">
           <span>事实主体</span>
-          <strong>{{ factGroups.length }}</strong>
+          <strong>{{ factSubjectCount }}</strong>
         </div>
         <div class="projection-viewer__metric">
           <span>在场</span>

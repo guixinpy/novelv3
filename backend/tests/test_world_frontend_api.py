@@ -41,11 +41,19 @@ def _seed_profile(db_session):
     return project, profile_version
 
 
-def _candidate_payload(*, claim_id: str, subject_ref: str, predicate: str, value: str) -> ProposalCandidateFactCreate:
+def _candidate_payload(
+    *,
+    claim_id: str,
+    subject_ref: str,
+    predicate: str,
+    value: object,
+    chapter_index: int | None = None,
+) -> ProposalCandidateFactCreate:
     return ProposalCandidateFactCreate(
         project_id="ignored-by-service",
         profile_version=1,
         claim_id=claim_id,
+        chapter_index=chapter_index,
         subject_ref=subject_ref,
         predicate=predicate,
         object_ref_or_value=value,
@@ -406,6 +414,55 @@ def test_proposal_conflicts_use_current_truth_projection_not_expired_history(cli
             value="captain",
         ),
     )
+
+    response = client.get(f"/api/v1/projects/{project.id}/world-model/proposal-bundles/{bundle.id}")
+
+    assert response.status_code == 200
+    assert response.json()["conflicts"] == []
+
+
+def test_proposal_detail_does_not_conflict_presence_count_across_chapters(client, db_session):
+    project, profile_version = _seed_profile(db_session)
+    db_session.add(
+        WorldFactClaim(
+            project_id=project.id,
+            project_profile_version_id=profile_version.id,
+            profile_version=profile_version.version,
+            claim_id="claim.chapter.1.char.hero.presence_count",
+            chapter_index=1,
+            intra_chapter_seq=0,
+            subject_ref="char.hero",
+            predicate="presence_count",
+            object_ref_or_value={"count": 51, "chapter_index": 1},
+            claim_layer="truth",
+            claim_status="confirmed",
+            authority_type="derived",
+            confidence=0.85,
+            contract_version=profile_version.contract_version,
+        )
+    )
+    db_session.commit()
+    bundle = create_bundle(
+        db=db_session,
+        project_id=project.id,
+        project_profile_version_id=profile_version.id,
+        profile_version=profile_version.version,
+        created_by="writer.alpha",
+        title="Chapter 20 presence candidate",
+    )
+    write_candidate_fact(
+        db=db_session,
+        bundle_id=bundle.id,
+        created_by="writer.alpha",
+        candidate=_candidate_payload(
+            claim_id="claim.chapter.20.char.hero.presence_count",
+            subject_ref="char.hero",
+            predicate="presence_count",
+            chapter_index=20,
+            value={"count": 48, "chapter_index": 20},
+        ),
+    )
+    calculate_bundle_impact_scope(db=db_session, bundle_id=bundle.id)
 
     response = client.get(f"/api/v1/projects/{project.id}/world-model/proposal-bundles/{bundle.id}")
 

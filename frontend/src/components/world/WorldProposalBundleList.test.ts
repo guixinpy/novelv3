@@ -22,6 +22,22 @@ describe('WorldProposalBundleList', () => {
     }
   }
 
+  it('shows loading state instead of empty proposal conclusions while bundles are loading', () => {
+    const wrapper = mount(WorldProposalBundleList, {
+      props: {
+        bundles: [],
+        selectedBundleId: null,
+        total: 0,
+        filters: {},
+        loading: true,
+      },
+    })
+
+    expect(wrapper.text()).toContain('正在加载提案包')
+    expect(wrapper.text()).not.toContain('0 个')
+    expect(wrapper.text()).not.toContain('暂无待审提案包')
+  })
+
   it('uses localized labels for proposal filters and statuses', () => {
     const wrapper = mount(WorldProposalBundleList, {
       props: {

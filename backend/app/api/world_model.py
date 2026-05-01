@@ -2,6 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from app.core.world_fact_scope import is_chapter_scoped_truth_predicate
 from app.core.world_projection_service import build_world_projection_overview
 from app.core.world_proposal_service import (
     calculate_bundle_impact_scope,
@@ -467,6 +468,26 @@ def _detect_item_conflicts(
             continue
         if item.claim_layer != "truth":
             continue
+        if is_chapter_scoped_truth_predicate(item.predicate):
+            existing_claim = _find_current_scoped_truth_claim(
+                db=db,
+                project_id=project_id,
+                bundle=bundle,
+                subject_ref=item.subject_ref,
+                predicate=item.predicate,
+                chapter_index=item.chapter_index,
+            )
+            if existing_claim is not None and existing_claim.object_ref_or_value != item.object_ref_or_value:
+                conflicts.append({
+                    "item_id": item.id,
+                    "conflict_type": "truth_conflict",
+                    "detail": (
+                        f"与第{item.chapter_index}章现有真相冲突："
+                        f"{item.subject_ref}.{item.predicate} = {existing_claim.object_ref_or_value}"
+                    ),
+                    "existing_claim_id": existing_claim.id,
+                })
+            continue
         subject_facts = projection_facts.get(item.subject_ref, {})
         if item.predicate in subject_facts:
             existing_val = subject_facts[item.predicate]
@@ -583,3 +604,33 @@ def _find_current_truth_claim_id(
         if claim.object_ref_or_value == value:
             return claim.id
     return None
+
+
+def _find_current_scoped_truth_claim(
+    *,
+    db: Session,
+    project_id: str,
+    bundle: WorldProposalBundle,
+    subject_ref: str,
+    predicate: str,
+    chapter_index: int | None,
+) -> WorldFactClaim | None:
+    query = db.query(WorldFactClaim).filter(
+        WorldFactClaim.project_id == project_id,
+        WorldFactClaim.project_profile_version_id == bundle.project_profile_version_id,
+        WorldFactClaim.profile_version == bundle.profile_version,
+        WorldFactClaim.subject_ref == subject_ref,
+        WorldFactClaim.predicate == predicate,
+        WorldFactClaim.claim_status == "confirmed",
+        WorldFactClaim.claim_layer == "truth",
+    )
+    if chapter_index is not None:
+        query = query.filter(WorldFactClaim.chapter_index == chapter_index)
+    return (
+        query.order_by(
+            WorldFactClaim.chapter_index.desc().nullslast(),
+            WorldFactClaim.intra_chapter_seq.desc(),
+            WorldFactClaim.claim_id.desc(),
+        )
+        .first()
+    )

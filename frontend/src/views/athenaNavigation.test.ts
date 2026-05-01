@@ -48,6 +48,15 @@ describe('athenaNavigation', () => {
     })
   })
 
+  it('maps legacy chat route to overview with the chat panel open', () => {
+    expect(resolveAthenaRoute('chat', {})).toMatchObject({
+      section: 'overview',
+      view: 'dashboard',
+      panel: 'chat',
+      isLegacy: true,
+    })
+  })
+
   it('scopes legacy node filters to catalog nodes', () => {
     expect(resolveAthenaRoute('relations', {})).toMatchObject({
       section: 'catalog',
@@ -110,6 +119,11 @@ describe('athenaNavigation', () => {
       view: 'dashboard',
       tool: null,
       panel: 'optimization',
+    })
+    expect(resolveAthenaRoute('review', { view: 'history', panel: 'chat' })).toMatchObject({
+      section: 'review',
+      view: 'history',
+      panel: 'chat',
     })
   })
 
@@ -181,6 +195,16 @@ describe('athenaNavigation', () => {
     })).toEqual({
       path: '/projects/project-1/athena/overview',
       query: { panel: 'optimization' },
+    })
+    expect(buildAthenaRoute('project-1', {
+      section: 'truth',
+      view: 'projection',
+      nodeType: 'all',
+      tool: null,
+      panel: 'chat',
+    })).toEqual({
+      path: '/projects/project-1/athena/truth',
+      query: { view: 'projection', panel: 'chat' },
     })
   })
 

@@ -73,44 +73,49 @@ function goNext() {
 
 <template>
   <section class="athena-overview" data-testid="athena-overview">
-    <header class="athena-overview__header">
-      <div>
-        <p class="athena-overview__eyebrow">{{ profileLabel }}</p>
-        <h2 class="athena-overview__title">世界模型总览</h2>
-      </div>
-      <BaseButton
-        data-testid="athena-overview-next-action"
-        size="sm"
-        :loading="loading"
-        @click="goNext"
-      >
-        {{ nextActionLabel }}
-      </BaseButton>
-    </header>
-
-    <div class="athena-overview__metrics">
-      <div
-        v-for="item in metricItems"
-        :key="item.key"
-        class="athena-overview__metric"
-        :data-testid="`athena-overview-metric-${item.key}`"
-      >
-        <span>{{ item.label }}</span>
-        <strong>{{ item.value }}</strong>
-      </div>
+    <div v-if="loading && !dashboard" class="athena-overview__loading">
+      正在读取世界模型...
     </div>
+    <template v-else>
+      <header class="athena-overview__header">
+        <div>
+          <p class="athena-overview__eyebrow">{{ profileLabel }}</p>
+          <h2 class="athena-overview__title">世界模型总览</h2>
+        </div>
+        <BaseButton
+          data-testid="athena-overview-next-action"
+          size="sm"
+          :loading="loading"
+          @click="goNext"
+        >
+          {{ nextActionLabel }}
+        </BaseButton>
+      </header>
 
-    <section v-if="previewItems.length" class="athena-overview__preview" data-testid="athena-overview-import-preview">
-      <h3>导入预览</h3>
-      <div class="athena-overview__preview-items">
-        <span v-for="item in previewItems" :key="item.key">{{ item.label }} {{ item.value }}</span>
+      <div class="athena-overview__metrics">
+        <div
+          v-for="item in metricItems"
+          :key="item.key"
+          class="athena-overview__metric"
+          :data-testid="`athena-overview-metric-${item.key}`"
+        >
+          <span>{{ item.label }}</span>
+          <strong>{{ item.value }}</strong>
+        </div>
       </div>
-    </section>
 
-    <div class="athena-overview__status">
-      <span>下一步</span>
-      <strong>{{ nextActionLabel }}</strong>
-    </div>
+      <section v-if="previewItems.length" class="athena-overview__preview" data-testid="athena-overview-import-preview">
+        <h3>导入预览</h3>
+        <div class="athena-overview__preview-items">
+          <span v-for="item in previewItems" :key="item.key">{{ item.label }} {{ item.value }}</span>
+        </div>
+      </section>
+
+      <div class="athena-overview__status">
+        <span>下一步</span>
+        <strong>{{ nextActionLabel }}</strong>
+      </div>
+    </template>
   </section>
 </template>
 
@@ -162,6 +167,13 @@ function goNext() {
   margin-bottom: var(--space-1);
   color: var(--color-text-tertiary);
   font-size: var(--text-xs);
+}
+
+.athena-overview__loading {
+  padding: var(--space-8) 0;
+  color: var(--color-text-tertiary);
+  font-size: var(--text-sm);
+  text-align: center;
 }
 
 .athena-overview__metric strong {

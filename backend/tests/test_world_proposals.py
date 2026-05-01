@@ -51,11 +51,19 @@ def _seed_project_profile(db_session):
     return project, profile_version
 
 
-def _candidate_payload(*, claim_id: str, subject_ref: str, predicate: str, value: str) -> ProposalCandidateFactCreate:
+def _candidate_payload(
+    *,
+    claim_id: str,
+    subject_ref: str,
+    predicate: str,
+    value: object,
+    chapter_index: int | None = None,
+) -> ProposalCandidateFactCreate:
     return ProposalCandidateFactCreate(
         project_id="ignored-by-service",
         profile_version=1,
         claim_id=claim_id,
+        chapter_index=chapter_index,
         subject_ref=subject_ref,
         predicate=predicate,
         object_ref_or_value=value,
@@ -796,6 +804,106 @@ def test_impact_scope_ignores_rolled_back_truth_claims(db_session):
 
     assert impact.affected_truth_claim_ids == []
     assert impact.summary["existing_truth_count"] == 0
+
+
+def test_impact_scope_treats_presence_count_as_chapter_scoped(db_session):
+    project, profile_version = _seed_project_profile(db_session)
+    db_session.add(
+        WorldFactClaim(
+            project_id=project.id,
+            project_profile_version_id=profile_version.id,
+            profile_version=profile_version.version,
+            claim_id="claim.chapter.1.char.hero.presence_count",
+            chapter_index=1,
+            intra_chapter_seq=0,
+            subject_ref="char.hero",
+            predicate="presence_count",
+            object_ref_or_value={"count": 51, "chapter_index": 1},
+            claim_layer="truth",
+            claim_status="confirmed",
+            evidence_refs=["chapter:1"],
+            authority_type="derived",
+            confidence=0.85,
+            notes="chapter 1 presence",
+            contract_version="world.contract.v1",
+        )
+    )
+    db_session.commit()
+    bundle = create_bundle(
+        db=db_session,
+        project_id=project.id,
+        project_profile_version_id=profile_version.id,
+        profile_version=profile_version.version,
+        created_by="writer.alpha",
+        title="Chapter scoped presence",
+    )
+    write_candidate_fact(
+        db=db_session,
+        bundle_id=bundle.id,
+        created_by="writer.alpha",
+        candidate=_candidate_payload(
+            claim_id="claim.chapter.20.char.hero.presence_count",
+            subject_ref="char.hero",
+            predicate="presence_count",
+            chapter_index=20,
+            value={"count": 48, "chapter_index": 20},
+        ),
+    )
+
+    impact = calculate_bundle_impact_scope(db=db_session, bundle_id=bundle.id)
+
+    assert impact.affected_truth_claim_ids == []
+    assert impact.summary["existing_truth_count"] == 0
+
+
+def test_impact_scope_keeps_presence_count_conflicts_within_same_chapter(db_session):
+    project, profile_version = _seed_project_profile(db_session)
+    db_session.add(
+        WorldFactClaim(
+            project_id=project.id,
+            project_profile_version_id=profile_version.id,
+            profile_version=profile_version.version,
+            claim_id="claim.chapter.1.char.hero.presence_count",
+            chapter_index=1,
+            intra_chapter_seq=0,
+            subject_ref="char.hero",
+            predicate="presence_count",
+            object_ref_or_value={"count": 51, "chapter_index": 1},
+            claim_layer="truth",
+            claim_status="confirmed",
+            evidence_refs=["chapter:1"],
+            authority_type="derived",
+            confidence=0.85,
+            notes="chapter 1 presence",
+            contract_version="world.contract.v1",
+        )
+    )
+    db_session.commit()
+    bundle = create_bundle(
+        db=db_session,
+        project_id=project.id,
+        project_profile_version_id=profile_version.id,
+        profile_version=profile_version.version,
+        created_by="writer.alpha",
+        title="Same chapter presence",
+    )
+    write_candidate_fact(
+        db=db_session,
+        bundle_id=bundle.id,
+        created_by="writer.alpha",
+        candidate=_candidate_payload(
+            claim_id="claim.chapter.1.char.hero.presence_count.recount",
+            subject_ref="char.hero",
+            predicate="presence_count",
+            chapter_index=1,
+            value={"count": 52, "chapter_index": 1},
+        ),
+    )
+
+    impact = calculate_bundle_impact_scope(db=db_session, bundle_id=bundle.id)
+
+    assert impact.affected_truth_claim_ids == ["claim.chapter.1.char.hero.presence_count"]
+    assert impact.summary["existing_truth_count"] == 1
 
 
 def test_review_and_rollback_create_fresh_impact_snapshots(db_session):

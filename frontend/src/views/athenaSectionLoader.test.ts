@@ -32,6 +32,8 @@ function createLoaderMocks(setupSummary: unknown) {
     projection: null as any,
     factClaimsLoaded: false,
     proposalBundlesLoaded: false,
+    proposalBundles: [] as any[],
+    selectedBundleDetail: null as any,
     loaded: false,
     loadDashboard: vi.fn(async () => {
       worldModel.dashboard = {
@@ -187,6 +189,26 @@ describe('createAthenaSectionLoader', () => {
     await loader.loadRouteData(routeState({ section: 'review', view: 'proposals' }))
 
     expect(worldModel.loadSetupPanelData).not.toHaveBeenCalled()
+  })
+
+  it('reloads review insight views when bundle list exists but selected detail is missing', async () => {
+    const worldModel = {
+      loaded: true,
+      proposalBundlesLoaded: true,
+      proposalBundles: [{ id: 'bundle-1' }],
+      selectedBundleDetail: null,
+      factClaimsLoaded: true,
+      loadSetupPanelData: vi.fn(async () => undefined),
+    }
+    const loader = createAthenaSectionLoader({
+      getProjectId: () => 'project-1',
+      athena: {} as any,
+      worldModel: worldModel as any,
+    })
+
+    await loader.loadRouteData(routeState({ section: 'review', view: 'impact' }))
+
+    expect(worldModel.loadSetupPanelData).toHaveBeenCalledWith('project-1')
   })
 
   it('loads proposal data for review views even when overview was already loaded', async () => {

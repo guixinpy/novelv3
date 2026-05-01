@@ -4,6 +4,19 @@ import { describe, expect, it } from 'vitest'
 import AthenaOverview from './AthenaOverview.vue'
 
 describe('AthenaOverview', () => {
+  it('shows loading state instead of empty world-model conclusions while dashboard is loading', () => {
+    const wrapper = mount(AthenaOverview, {
+      props: {
+        dashboard: null,
+        loading: true,
+      },
+    })
+
+    expect(wrapper.text()).toContain('正在读取世界模型')
+    expect(wrapper.text()).not.toContain('未导入 world-model')
+    expect(wrapper.text()).not.toContain('等待世界模型初始化')
+  })
+
   it('renders dashboard metrics and next action', () => {
     const wrapper = mount(AthenaOverview, {
       props: {
