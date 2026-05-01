@@ -53,32 +53,48 @@ const chapterNodes = computed(() =>
     .sort((left, right) => Number(left.chapterIndex ?? 0) - Number(right.chapterIndex ?? 0)),
 )
 
-const eventStackExtraHeight = computed(() => {
+const eventCountsByChapter = computed(() => {
   const counts = new Map<number, number>()
   props.graph.nodes
     .filter((node) => node.type === 'event' && node.chapterIndex !== undefined)
     .forEach((node) => counts.set(Number(node.chapterIndex), (counts.get(Number(node.chapterIndex)) ?? 0) + 1))
 
-  const maxSameChapterEvents = Math.max(1, ...counts.values())
-  return (maxSameChapterEvents - 1) * eventNodeSpacing
+  return counts
 })
 
-const canvasHeight = computed(() =>
-  Math.max(
-    minimumCanvasHeight,
-    120 + Math.max(chapterNodes.value.length, 1) * chapterSpacing + eventStackExtraHeight.value,
-  ),
-)
+const chapterLayout = computed(() => {
+  const yByIndex = new Map<number, number>()
+  let nextChapterY = canvasTopPadding
+
+  chapterNodes.value.forEach((node) => {
+    if (node.chapterIndex !== undefined) {
+      const chapterIndex = Number(node.chapterIndex)
+      yByIndex.set(chapterIndex, nextChapterY)
+      nextChapterY += chapterRowHeight(eventCountsByChapter.value.get(chapterIndex) ?? 0)
+      return
+    }
+
+    nextChapterY += chapterSpacing
+  })
+
+  return {
+    height: Math.max(minimumCanvasHeight, nextChapterY + nodePadding),
+    yByIndex,
+  }
+})
+
+const canvasHeight = computed(() => chapterLayout.value.height)
 
 const viewBox = computed(() => `0 0 ${canvasWidth} ${canvasHeight.value}`)
 
 const positions = computed(() => {
   const map = new Map<string, AtlasNodePosition>()
-  const chapterYByIndex = new Map<number, number>()
+  const chapterYByIndex = chapterLayout.value.yByIndex
 
   chapterNodes.value.forEach((node, index) => {
-    const y = canvasTopPadding + index * chapterSpacing
-    if (node.chapterIndex !== undefined) chapterYByIndex.set(node.chapterIndex, y)
+    const y = node.chapterIndex !== undefined
+      ? chapterYByIndex.get(Number(node.chapterIndex)) ?? canvasTopPadding + index * chapterSpacing
+      : canvasTopPadding + index * chapterSpacing
     map.set(node.id, { node, x: chapterSpineX, y, layer: 'trunk' })
   })
 
@@ -222,6 +238,10 @@ function edgeTitle(edge: NarrativeAtlasEdge) {
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max)
+}
+
+function chapterRowHeight(eventCount: number) {
+  return Math.max(chapterSpacing, Math.max(1, eventCount) * eventNodeSpacing + 36)
 }
 
 function slotOffset(type: NarrativeAtlasNode['type'], slot: number) {

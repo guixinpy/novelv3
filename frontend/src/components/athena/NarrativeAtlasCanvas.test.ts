@@ -44,10 +44,51 @@ function sameChapterEventGraph(eventCount: number, chapterCount = 1): NarrativeA
   return { nodes: [...graph.nodes, ...events], edges: [...graph.edges, ...edges], warnings: [] }
 }
 
+function adjacentChapterEventGraph(): NarrativeAtlasGraph {
+  const graph = longChapterGraph(2)
+  const eventCounts = new Map([
+    [1, 3],
+    [2, 1],
+  ])
+  const events = graph.nodes.flatMap((chapter) => {
+    const chapterIndex = Number(chapter.chapterIndex)
+    return Array.from({ length: eventCounts.get(chapterIndex) ?? 0 }, (_, index) => ({
+      id: `event:chapter-${chapterIndex}-${index + 1}`,
+      type: 'event' as const,
+      label: `第${chapterIndex}章事件${index + 1}`,
+      chapterIndex,
+    }))
+  })
+  const edges = events.map((event) => ({
+    id: `event_anchor:chapter:${event.chapterIndex}->${event.id}`,
+    type: 'event_anchor' as const,
+    source: `chapter:${event.chapterIndex}`,
+    target: event.id,
+  }))
+
+  return { nodes: [...graph.nodes, ...events], edges: [...graph.edges, ...edges], warnings: [] }
+}
+
 function transformPoint(transform: string) {
   const match = /translate\(([-\d.]+),\s*([-\d.]+)\)/.exec(transform)
   if (!match) throw new Error(`Unexpected transform: ${transform}`)
   return { x: Number(match[1]), y: Number(match[2]) }
+}
+
+function eventBox(point: { x: number; y: number }) {
+  return {
+    left: point.x - 56,
+    right: point.x + 56,
+    top: point.y - 20,
+    bottom: point.y + 20,
+  }
+}
+
+function boxesOverlap(left: ReturnType<typeof eventBox>, right: ReturnType<typeof eventBox>) {
+  return left.left < right.right
+    && left.right > right.left
+    && left.top < right.bottom
+    && left.bottom > right.top
 }
 
 describe('NarrativeAtlasCanvas', () => {
@@ -95,5 +136,29 @@ describe('NarrativeAtlasCanvas', () => {
       expect(eventYs[index] - eventYs[index - 1]).toBeGreaterThanOrEqual(52)
     }
     expect(Math.max(...eventYs)).toBeLessThanOrEqual(height - 48)
+  })
+
+  it('keeps adjacent chapter event stacks from overlapping', () => {
+    const wrapper = mount(NarrativeAtlasCanvas, {
+      props: {
+        graph: adjacentChapterEventGraph(),
+        layers: { trunk: true, branches: true, foreshadowing: true, events: true },
+        selected: null,
+      },
+    })
+    const boxes = [
+      'event:chapter-1-1',
+      'event:chapter-1-2',
+      'event:chapter-1-3',
+      'event:chapter-2-1',
+    ].map((nodeId) => eventBox(transformPoint(
+      wrapper.get(`[data-atlas-node-id="${nodeId}"]`).attributes('transform') ?? '',
+    )))
+
+    for (let leftIndex = 0; leftIndex < boxes.length; leftIndex += 1) {
+      for (let rightIndex = leftIndex + 1; rightIndex < boxes.length; rightIndex += 1) {
+        expect(boxesOverlap(boxes[leftIndex], boxes[rightIndex])).toBe(false)
+      }
+    }
   })
 })
