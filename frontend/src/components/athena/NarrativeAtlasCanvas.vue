@@ -38,6 +38,7 @@ const canvasWidth = 1180
 const minimumCanvasHeight = 560
 const canvasTopPadding = 96
 const chapterSpacing = 92
+const eventNodeSpacing = 56
 const nodePadding = 72
 const chapterSpineX = 420
 const foreshadowingTrackX = 300
@@ -52,8 +53,21 @@ const chapterNodes = computed(() =>
     .sort((left, right) => Number(left.chapterIndex ?? 0) - Number(right.chapterIndex ?? 0)),
 )
 
+const eventStackExtraHeight = computed(() => {
+  const counts = new Map<number, number>()
+  props.graph.nodes
+    .filter((node) => node.type === 'event' && node.chapterIndex !== undefined)
+    .forEach((node) => counts.set(Number(node.chapterIndex), (counts.get(Number(node.chapterIndex)) ?? 0) + 1))
+
+  const maxSameChapterEvents = Math.max(1, ...counts.values())
+  return (maxSameChapterEvents - 1) * eventNodeSpacing
+})
+
 const canvasHeight = computed(() =>
-  Math.max(minimumCanvasHeight, 120 + Math.max(chapterNodes.value.length, 1) * chapterSpacing),
+  Math.max(
+    minimumCanvasHeight,
+    120 + Math.max(chapterNodes.value.length, 1) * chapterSpacing + eventStackExtraHeight.value,
+  ),
 )
 
 const viewBox = computed(() => `0 0 ${canvasWidth} ${canvasHeight.value}`)
@@ -216,7 +230,7 @@ function slotOffset(type: NarrativeAtlasNode['type'], slot: number) {
   const y = (lane - 1) * 14 + row * 42
 
   if (type === 'foreshadowing') return { x: -lane * 112, y }
-  if (type === 'event') return { x: (slot % 2) * 88, y: (slot % 2 === 0 ? -12 : 12) + Math.floor(slot / 2) * 36 }
+  if (type === 'event') return { x: 0, y: slot * eventNodeSpacing }
   if (type === 'milestone') return { x: lane * 126, y }
   if (type === 'plotline') return { x: (slot % 2) * 126, y: Math.floor(slot / 2) * 42 }
 
