@@ -81,6 +81,15 @@ describe('athenaNavigation', () => {
     })
   })
 
+  it('supports the narrative graph route', () => {
+    expect(resolveAthenaRoute('narrative', { view: 'graph' })).toMatchObject({
+      section: 'narrative',
+      view: 'graph',
+      nodeType: 'all',
+      isLegacy: false,
+    })
+  })
+
   it('does not leak node type filters outside catalog nodes', () => {
     expect(resolveAthenaRoute('truth', { view: 'projection', type: 'characters' })).toMatchObject({
       section: 'truth',
@@ -140,6 +149,22 @@ describe('athenaNavigation', () => {
     expect(buildAthenaRoute('project-1', state)).toEqual({
       path: '/projects/project-1/athena/catalog',
       query: { view: 'nodes', type: 'characters' },
+    })
+  })
+
+  it('builds the narrative graph route location', () => {
+    const state: AthenaRouteState = {
+      section: 'narrative',
+      view: 'graph',
+      nodeType: 'all',
+      tool: null,
+      panel: null,
+      isLegacy: false,
+    }
+
+    expect(buildAthenaRoute('project-1', state)).toEqual({
+      path: '/projects/project-1/athena/narrative',
+      query: { view: 'graph' },
     })
   })
 

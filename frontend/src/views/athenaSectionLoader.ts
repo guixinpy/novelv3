@@ -37,7 +37,7 @@ export function createAthenaSectionLoader(options: AthenaSectionLoaderOptions) {
         await options.worldModel.loadFactClaims(id)
       }
     }
-    if (routeState.section === 'narrative' && routeState.view === 'timeline') {
+    if (routeState.section === 'narrative' && (routeState.view === 'timeline' || routeState.view === 'graph')) {
       if (!options.athena.timeline) await options.athena.loadTimeline(id)
       if (!options.athena.evolutionPlan) await options.athena.loadEvolutionPlan(id)
     }

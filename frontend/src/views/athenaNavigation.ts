@@ -1,6 +1,6 @@
 export type AthenaPrimarySection = 'overview' | 'catalog' | 'narrative' | 'truth' | 'review'
 export type AthenaCatalogView = 'nodes' | 'graph' | 'rules'
-export type AthenaNarrativeView = 'timeline' | 'storyline' | 'chapters' | 'foreshadowing'
+export type AthenaNarrativeView = 'timeline' | 'storyline' | 'chapters' | 'foreshadowing' | 'graph'
 export type AthenaTruthView = 'facts' | 'projection' | 'knowledge' | 'disclosure'
 export type AthenaReviewView = 'proposals' | 'impact' | 'conflicts' | 'history'
 export type AthenaOverviewView = 'dashboard'
@@ -44,7 +44,7 @@ export interface AthenaRouteState extends AthenaRouteIntent {
 type QueryLike = Record<string, string | string[] | null | undefined>
 
 const catalogViews = ['nodes', 'graph', 'rules'] as const
-const narrativeViews = ['timeline', 'storyline', 'chapters', 'foreshadowing'] as const
+const narrativeViews = ['timeline', 'storyline', 'chapters', 'foreshadowing', 'graph'] as const
 const truthViews = ['facts', 'projection', 'knowledge', 'disclosure'] as const
 const reviewViews = ['proposals', 'impact', 'conflicts', 'history'] as const
 const nodeTypes = ['all', 'characters', 'locations', 'factions', 'items', 'resources', 'concepts'] as const

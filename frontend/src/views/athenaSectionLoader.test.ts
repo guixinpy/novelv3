@@ -153,6 +153,15 @@ describe('createAthenaSectionLoader', () => {
     expect(athena.loadEvolutionPlan).toHaveBeenCalledWith('project-1')
   })
 
+  it('loads timeline and evolution plan for the narrative graph view', async () => {
+    const { athena, loader } = createLoaderMocks(null)
+
+    await loader.loadRouteData(routeState({ section: 'narrative', view: 'graph' }))
+
+    expect(athena.loadTimeline).toHaveBeenCalledWith('project-1')
+    expect(athena.loadEvolutionPlan).toHaveBeenCalledWith('project-1')
+  })
+
   it('loads review data by active view family', async () => {
     const { athena, worldModel, loader } = createLoaderMocks(null)
 
