@@ -16,6 +16,7 @@ import AthenaChatPanel from '../components/athena/AthenaChatPanel.vue'
 import RetrievalPanel from '../components/athena/RetrievalPanel.vue'
 import AthenaSubnav from '../components/athena/AthenaSubnav.vue'
 import NarrativeWorkbench from '../components/athena/NarrativeWorkbench.vue'
+import NarrativeAtlasView from '../components/athena/NarrativeAtlasView.vue'
 import ReviewInsightPanel from '../components/athena/ReviewInsightPanel.vue'
 import TruthLedger from '../components/athena/TruthLedger.vue'
 import CatalogWorkbench from '../components/athena/catalog/CatalogWorkbench.vue'
@@ -35,6 +36,8 @@ import {
   type AthenaTool,
 } from './athenaNavigation'
 import type { AthenaConsistencyIssue, ProposalItem } from '../api/types'
+
+type AthenaNarrativeWorkbenchView = Exclude<AthenaNarrativeView, 'timeline' | 'graph'>
 
 interface AthenaSectionViewOption {
   key: string
@@ -104,10 +107,10 @@ const catalogView = computed<AthenaCatalogView>(() => {
   if (view === 'graph' || view === 'rules') return view
   return 'nodes'
 })
-const narrativeView = computed<AthenaNarrativeView>(() => {
+const narrativeView = computed<AthenaNarrativeWorkbenchView>(() => {
   const view = routeState.value.view
   if (view === 'storyline' || view === 'chapters' || view === 'foreshadowing') return view
-  return 'timeline'
+  return 'storyline'
 })
 const sectionViewOptions = computed<AthenaSectionViewOption[]>(() => {
   const current = routeState.value
@@ -130,6 +133,7 @@ const sectionViewOptions = computed<AthenaSectionViewOption[]>(() => {
   if (current.section === 'narrative') {
     return [
       viewOption('narrative-timeline', '时间线', 'narrative', 'timeline'),
+      viewOption('narrative-graph', '图谱', 'narrative', 'graph'),
       viewOption('narrative-storyline', '故事线', 'narrative', 'storyline'),
       viewOption('narrative-chapters', '章节', 'narrative', 'chapters'),
       viewOption('narrative-foreshadowing', '伏笔', 'narrative', 'foreshadowing'),
@@ -278,6 +282,17 @@ function navigateSectionView(option: AthenaSectionViewOption) {
     nodeType: option.nodeType,
     tool: option.tool,
     panel: option.panel,
+  }))
+}
+
+function navigateNarrativeAtlas(payload: { view: AthenaNarrativeView; sourceKey: string }) {
+  if (payload.view === 'graph') return
+  router.push(buildAthenaRoute(pid.value, {
+    section: 'narrative',
+    view: payload.view,
+    nodeType: 'all',
+    tool: null,
+    panel: null,
   }))
 }
 
@@ -433,6 +448,13 @@ function closeChat() {
             :events="timelineEvents"
             :anchors="timelineAnchors"
             :fallback-summary="narrativeFallbackSummary"
+          />
+          <NarrativeAtlasView
+            v-else-if="routeState.view === 'graph'"
+            :plan="athena.evolutionPlan"
+            :chapters="project.chapters"
+            :timeline="athena.timeline"
+            @navigate="navigateNarrativeAtlas"
           />
           <NarrativeWorkbench
             v-else
