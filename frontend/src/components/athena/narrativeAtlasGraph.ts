@@ -106,32 +106,32 @@ function collectChapters(
   chapterStatusByIndex: Map<number, ChapterSummary>,
 ): ChapterAtlasRecord[] {
   const outlineChapters = asRecords(plan?.outline?.chapters)
-  const source = outlineChapters.length > 0
+  const source: RecordValue[] = outlineChapters.length > 0
     ? outlineChapters
     : chapters.map((chapter) => ({
         chapter_index: chapter.chapter_index,
         title: chapter.title,
         status: chapter.status,
-        rawId: chapter.id,
+        id: chapter.id,
       }))
 
-  return source
-    .map((chapter) => {
-      const chapterIndex = toNumber(chapter.chapter_index ?? chapter.chapter)
-      if (chapterIndex === null) return null
+  const atlasChapters: ChapterAtlasRecord[] = []
+  for (const chapter of source) {
+    const chapterIndex = toNumber(chapter.chapter_index ?? chapter.chapter)
+    if (chapterIndex === null) continue
 
-      const liveChapter = chapterStatusByIndex.get(chapterIndex)
-      return {
-        id: chapterId(chapterIndex),
-        chapterIndex,
-        title: toText(chapter.title, liveChapter?.title || `第${chapterIndex}章`),
-        summary: toOptionalText(chapter.summary),
-        status: liveChapter?.status ?? toOptionalText(chapter.status),
-        raw: chapter,
-      } satisfies ChapterAtlasRecord
+    const liveChapter = chapterStatusByIndex.get(chapterIndex)
+    atlasChapters.push({
+      id: chapterId(chapterIndex),
+      chapterIndex,
+      title: toText(chapter.title, liveChapter?.title || `第${chapterIndex}章`),
+      summary: toOptionalText(chapter.summary),
+      status: liveChapter?.status ?? toOptionalText(chapter.status),
+      raw: chapter,
     })
-    .filter((chapter): chapter is ChapterAtlasRecord => chapter !== null)
-    .sort((left, right) => left.chapterIndex - right.chapterIndex)
+  }
+
+  return atlasChapters.sort((left, right) => left.chapterIndex - right.chapterIndex)
 }
 
 function addPlotlines(
@@ -201,7 +201,7 @@ function addForeshadowing(
   knownNodeIds: Set<string>,
   knownEdgeIds: Set<string>,
 ) {
-  const latestChapter = chapters.at(-1)
+  const latestChapter = chapters.length > 0 ? chapters[chapters.length - 1] : undefined
 
   for (const item of asRecords(plan?.storyline?.foreshadowing)) {
     const hint = toText(item.hint ?? item.title ?? item.description, '未命名伏笔')
@@ -367,7 +367,7 @@ function isRecord(value: unknown): value is RecordValue {
 
 function readIdentity(record: RecordValue): string | null {
   const identity = record.id ?? record.plotline_id ?? record.milestone_id ?? record.foreshadowing_id
-  return toOptionalText(identity)
+  return toOptionalText(identity) ?? null
 }
 
 function toText(value: unknown, fallback = ''): string {
