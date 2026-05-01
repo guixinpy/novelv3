@@ -90,6 +90,14 @@ describe('athenaNavigation', () => {
     })
   })
 
+  it('keeps timeline as the narrative default view', () => {
+    expect(resolveAthenaRoute('narrative', {})).toMatchObject({
+      section: 'narrative',
+      view: 'timeline',
+      isLegacy: false,
+    })
+  })
+
   it('does not leak node type filters outside catalog nodes', () => {
     expect(resolveAthenaRoute('truth', { view: 'projection', type: 'characters' })).toMatchObject({
       section: 'truth',
