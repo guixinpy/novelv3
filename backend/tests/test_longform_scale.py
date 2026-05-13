@@ -800,6 +800,58 @@ def test_longform_maintenance_diagnostics_does_not_select_chapter_content(db_ses
     assert all("chapter_contents.content" not in clause for clause in chapter_select_clauses)
 
 
+def test_longform_maintenance_diagnostics_projects_memory_and_retrieval_columns(db_session):
+    from app.core.athena_retrieval import reindex_project_retrieval
+    from app.core.longform_memory import get_longform_maintenance_diagnostics, rebuild_longform_memory
+
+    project = Project(name="Maintenance Projection Narrow")
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    for index in range(1, 4):
+        db_session.add(
+            ChapterContent(
+                project_id=project.id,
+                chapter_index=index,
+                title=f"第{index}章",
+                content="诊断不应读取宽字段。" * 100,
+                word_count=1000,
+                status="generated",
+            )
+        )
+    db_session.commit()
+    rebuild_longform_memory(db_session, project.id)
+    reindex_project_retrieval(db_session, project.id)
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(statement.lower())
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        payload = get_longform_maintenance_diagnostics(db_session, project.id)
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert payload["status"] == "current"
+    memory_select_clauses = [
+        statement.split("from longform_memories", 1)[0]
+        for statement in statements
+        if "from longform_memories" in statement
+    ]
+    retrieval_select_clauses = [
+        statement.split("from retrieval_documents", 1)[0]
+        for statement in statements
+        if "from retrieval_documents" in statement
+    ]
+    assert memory_select_clauses
+    assert retrieval_select_clauses
+    for column in ["title", "summary", "memory_metadata", "created_at", "start_chapter_index", "end_chapter_index"]:
+        assert all(f"longform_memories.{column}" not in clause for clause in memory_select_clauses)
+    for column in ["title", "content_hash", "document_metadata", "created_at", "chapter_index", "profile_version"]:
+        assert all(f"retrieval_documents.{column}" not in clause for clause in retrieval_select_clauses)
+
+
 def test_longform_maintenance_diagnostics_reports_stale_memory_after_chapter_edit(client, db_session):
     from app.core.longform_memory import rebuild_longform_memory
 

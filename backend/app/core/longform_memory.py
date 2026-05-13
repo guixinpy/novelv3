@@ -141,7 +141,7 @@ def _collect_longform_maintenance_state(db: Session, project_id: str) -> Longfor
     chapters = _maintained_chapters(db, project_id)
     chapter_memories = {
         memory.scope_key: memory
-        for memory in db.query(LongformMemory)
+        for memory in db.query(LongformMemory.id, LongformMemory.scope_key, LongformMemory.updated_at)
         .filter(LongformMemory.project_id == project_id, LongformMemory.memory_type == "chapter")
         .all()
     }
@@ -536,10 +536,15 @@ def _memory_type_counts(db: Session, project_id: str) -> Counter:
     return Counter({memory_type: count for memory_type, count in rows})
 
 
-def _latest_longform_retrieval_documents(db: Session, project_id: str) -> dict[str, RetrievalDocument]:
-    documents: dict[str, RetrievalDocument] = {}
+def _latest_longform_retrieval_documents(db: Session, project_id: str) -> dict[str, Any]:
+    documents: dict[str, Any] = {}
     rows = (
-        db.query(RetrievalDocument)
+        db.query(
+            RetrievalDocument.id,
+            RetrievalDocument.source_ref,
+            RetrievalDocument.source_id,
+            RetrievalDocument.updated_at,
+        )
         .filter(
             RetrievalDocument.project_id == project_id,
             RetrievalDocument.source_type == "longform_memory",
