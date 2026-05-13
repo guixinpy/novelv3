@@ -7,10 +7,14 @@ export interface ChapterItem {
 defineProps<{
   chapters: ChapterItem[]
   activeIndex: number | null
+  total?: number
+  hasMore?: boolean
+  loadingMore?: boolean
 }>()
 
 const emit = defineEmits<{
   select: [index: number]
+  loadMore: []
 }>()
 </script>
 
@@ -28,6 +32,18 @@ const emit = defineEmits<{
     </button>
     <div v-if="chapters.length === 0" class="chapter-list__empty">
       暂无章节
+    </div>
+    <div v-else class="chapter-list__footer">
+      <span>已加载 {{ chapters.length }} / {{ total || chapters.length }} 章</span>
+      <button
+        v-if="hasMore"
+        type="button"
+        class="chapter-list__load-more"
+        :disabled="loadingMore"
+        @click="emit('loadMore')"
+      >
+        {{ loadingMore ? '加载中...' : '加载更多章节' }}
+      </button>
     </div>
   </div>
 </template>
@@ -83,5 +99,34 @@ const emit = defineEmits<{
   color: var(--color-text-tertiary);
   font-size: var(--text-sm);
   text-align: center;
+}
+
+.chapter-list__footer {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-top: 1px solid var(--color-border);
+  color: var(--color-text-tertiary);
+  font-size: var(--text-xs);
+}
+
+.chapter-list__load-more {
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2);
+  background: var(--color-bg-white);
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.chapter-list__load-more:hover {
+  background: var(--color-bg-secondary);
+}
+
+.chapter-list__load-more:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 </style>

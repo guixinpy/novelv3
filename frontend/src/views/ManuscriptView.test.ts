@@ -29,10 +29,23 @@ const ChapterListStub = defineComponent({
       type: Number,
       default: null,
     },
+    total: {
+      type: Number,
+      default: 0,
+    },
+    hasMore: {
+      type: Boolean,
+      default: false,
+    },
+    loadingMore: {
+      type: Boolean,
+      default: false,
+    },
   },
-  emits: ['select'],
+  emits: ['select', 'load-more'],
   template: `
     <div>
+      <div data-testid="chapter-list-progress">已加载 {{ chapters.length }} / {{ total }} 章</div>
       <button
         v-for="chapter in chapters"
         :key="chapter.index"
@@ -40,6 +53,14 @@ const ChapterListStub = defineComponent({
         @click="$emit('select', chapter.index)"
       >
         第{{ chapter.index }}章
+      </button>
+      <button
+        v-if="hasMore"
+        type="button"
+        data-testid="load-more-chapters"
+        @click="$emit('load-more')"
+      >
+        {{ loadingMore ? '加载中...' : '加载更多章节' }}
       </button>
     </div>
   `,
@@ -183,6 +204,51 @@ describe('ManuscriptView', () => {
     await mountView()
 
     expect(manuscript.selectedChapterIndex).toBe(2)
+  })
+
+  it('loads the next chapter summary page from the manuscript sidebar', async () => {
+    const firstPage = Array.from({ length: 200 }, (_, index) => ({
+      id: `chapter-${index + 1}`,
+      chapter_index: index + 1,
+      title: `第${index + 1}章`,
+      word_count: 1000,
+      status: 'generated',
+    }))
+    const secondPage = Array.from({ length: 50 }, (_, index) => ({
+      id: `chapter-${index + 201}`,
+      chapter_index: index + 201,
+      title: `第${index + 201}章`,
+      word_count: 1000,
+      status: 'generated',
+    }))
+    vi.mocked(api.listChapters)
+      .mockResolvedValueOnce({
+        chapters: firstPage,
+        total: 250,
+        offset: 0,
+        limit: 200,
+        has_more: true,
+      })
+      .mockResolvedValueOnce({
+        chapters: secondPage,
+        total: 250,
+        offset: 200,
+        limit: 200,
+        has_more: false,
+      })
+
+    const { wrapper } = await mountView()
+
+    expect(wrapper.get('[data-testid="chapter-list-progress"]').text()).toBe('已加载 200 / 250 章')
+    expect(wrapper.findAll('[data-testid="chapter-option"]')).toHaveLength(200)
+
+    await wrapper.get('[data-testid="load-more-chapters"]').trigger('click')
+    await flushPromises()
+
+    expect(api.listChapters).toHaveBeenNthCalledWith(2, 'project-1', { offset: 200, limit: 200 })
+    expect(wrapper.get('[data-testid="chapter-list-progress"]').text()).toBe('已加载 250 / 250 章')
+    expect(wrapper.findAll('[data-testid="chapter-option"]')).toHaveLength(250)
+    expect(wrapper.find('[data-testid="load-more-chapters"]').exists()).toBe(false)
   })
 
   it('closes old trace drawer when switching project route', async () => {

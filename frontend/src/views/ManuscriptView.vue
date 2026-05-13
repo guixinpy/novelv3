@@ -20,6 +20,7 @@ const projectWorkspace = useProjectWorkspaceStore()
 const pid = computed(() => route.params.id as string)
 const submitOpen = ref(false)
 const activeTraceId = ref<string | null>(null)
+const loadingMoreChapters = ref(false)
 
 const chapterItems = computed(() =>
   (project.chapters || []).map((c: any) => ({
@@ -31,6 +32,7 @@ const chapterItems = computed(() =>
 const activeIndex = computed(() => manuscript.selectedChapterIndex)
 const canSubmit = computed(() => manuscript.hasPendingFeedback && activeIndex.value !== null)
 const selectedChapterTraceId = computed(() => manuscript.chapter?.last_generation_trace_id || null)
+const chapterTotal = computed(() => project.chaptersTotal || chapterItems.value.length)
 
 async function onSelectChapter(index: number) {
   await selectChapter(pid.value, index)
@@ -47,6 +49,16 @@ async function submitRevision() {
   const revision = await manuscript.submitRevision(pid.value, activeIndex.value)
   submitOpen.value = false
   await router.push({ path: `/projects/${pid.value}/hermes`, query: { revision_id: revision.id } })
+}
+
+async function loadMoreChapters() {
+  if (loadingMoreChapters.value || !project.chaptersHasMore) return
+  loadingMoreChapters.value = true
+  try {
+    await project.loadMoreChapters(pid.value)
+  } finally {
+    loadingMoreChapters.value = false
+  }
 }
 
 function openTrace(traceId: string) {
@@ -84,7 +96,15 @@ watch(pid, (next, prev) => {
     <Teleport to="[data-subnav-content]">
       <div class="manuscript-subnav">
         <div class="manuscript-subnav__label">章节</div>
-        <ChapterList :chapters="chapterItems" :active-index="activeIndex" @select="onSelectChapter" />
+        <ChapterList
+          :chapters="chapterItems"
+          :active-index="activeIndex"
+          :total="chapterTotal"
+          :has-more="project.chaptersHasMore"
+          :loading-more="loadingMoreChapters"
+          @select="onSelectChapter"
+          @load-more="loadMoreChapters"
+        />
         <div class="manuscript-subnav__stats">
           <span>批注 {{ manuscript.annotations.length }}</span>
           <span>修正 {{ manuscript.corrections.length }}</span>

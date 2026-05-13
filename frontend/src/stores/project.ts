@@ -253,6 +253,22 @@ export const useProjectStore = defineStore('project', () => {
     chaptersHasMore.value = res.has_more ?? false
   }
 
+  async function loadMoreChapters(id: string) {
+    if (!chaptersHasMore.value) return
+    const offset = chapters.value.length
+    const limit = chaptersLimit.value || 200
+    const params = { offset, limit }
+    const key = chaptersCacheKey(id, params)
+    const snapshot = captureProjectRequest(id, ['chapters'])
+    const res = await requestCache.dedupe(key, () => api.listChapters(id, params))
+    if (!isLatestProjectRequest(snapshot, 'chapters')) return
+    chapters.value = [...chapters.value, ...(res.chapters || [])]
+    chaptersTotal.value = res.total ?? chaptersTotal.value
+    chaptersOffset.value = res.offset ?? offset
+    chaptersLimit.value = res.limit ?? limit
+    chaptersHasMore.value = res.has_more ?? false
+  }
+
   async function loadVersions(id: string, nodeType?: string) {
     const key = `project:${id}:versions:${nodeType || 'all'}`
     if (versionsNodeType.value === nodeType && requestCache.isFresh(key, PROJECT_CACHE_TTL_MS)) return
@@ -361,7 +377,7 @@ export const useProjectStore = defineStore('project', () => {
     loadProjects, createProject, deleteProject, loadProject,
     generateSetup, loadSetup, generateChapter, loadChapter,
     generateStoryline, loadStoryline, generateOutline, loadOutline, loadTopology,
-    loadChapters, loadVersions, loadPreferences, updatePreferences, resetPreferences, refreshTargets,
+    loadChapters, loadMoreChapters, loadVersions, loadPreferences, updatePreferences, resetPreferences, refreshTargets,
     createVersion, rollbackVersion, exportProject,
   }
 })
