@@ -307,6 +307,41 @@ def test_longform_context_package_rollups_do_not_load_all_memory_rows(db_session
     assert full_memory_selects == []
 
 
+def test_longform_context_rollups_include_recent_memory_summaries(db_session):
+    from app.core.longform_memory import build_longform_context_package, rebuild_longform_memory
+
+    project = Project(name="Context Rollup Summary")
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    for index in range(1, 121):
+        detail = "普通推进。"
+        if index == 120:
+            detail = "星环钥匙第九形态在塔底亮起，陆辞确认记忆潮汐进入终局。"
+        db_session.add(
+            ChapterContent(
+                project_id=project.id,
+                chapter_index=index,
+                title=f"第{index}章",
+                content=f"第{index}章正文。{detail}",
+                word_count=1000,
+                status="generated",
+            )
+        )
+    db_session.commit()
+    rebuild_longform_memory(db_session, project.id)
+
+    payload = build_longform_context_package(db_session, project.id, 120)
+
+    rollup_summaries = {
+        section["key"]: section["items"][0]["summary"]
+        for section in payload["sections"]
+        if section["key"] in {"global", "volume", "arc"}
+    }
+    assert rollup_summaries.keys() == {"global", "volume", "arc"}
+    assert all("星环钥匙第九形态" in summary for summary in rollup_summaries.values())
+
+
 def test_reindex_includes_longform_memory_sources(client, db_session):
     project = Project(name="Longform Retrieval Sources")
     db_session.add(project)

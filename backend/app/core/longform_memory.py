@@ -638,17 +638,25 @@ def _safe_range_context_items(
     chapter_count = int(chapter_count or 0)
     if chapter_count == 0:
         return []
-    latest_titles = [
-        row[0]
+    latest_rows = [
+        {"title": row.title, "summary": row.summary}
         for row in (
-            db.query(LongformMemory.title)
+            db.query(LongformMemory.title, LongformMemory.summary)
             .filter(*filters)
             .order_by(LongformMemory.start_chapter_index.desc(), LongformMemory.id.desc())
             .limit(5)
             .all()
         )
     ]
-    recent_titles = "、".join(reversed([title for title in latest_titles if title]))
+    recent_summaries = "；".join(
+        reversed(
+            [
+                _format_recent_memory_summary(row["title"], row["summary"])
+                for row in latest_rows
+                if row["title"] or row["summary"]
+            ]
+        )
+    )
     return [
         {
             "id": None,
@@ -657,14 +665,22 @@ def _safe_range_context_items(
             "start_chapter_index": first_chapter,
             "end_chapter_index": last_chapter,
             "title": title,
-            "summary": f"截至第{last_chapter}章，已纳入{chapter_count}章，约{int(word_count or 0)}字；近期章节：{recent_titles}",
+            "summary": f"截至第{last_chapter}章，已纳入{chapter_count}章，约{int(word_count or 0)}字；近期记忆：{recent_summaries}",
             "metadata": {
                 "chapter_count": chapter_count,
                 "word_count": int(word_count or 0),
                 "source": "safe_chapter_memory_rollup",
+                "recent_memory_count": len(latest_rows),
             },
         }
     ]
+
+
+def _format_recent_memory_summary(title: str | None, summary: str | None) -> str:
+    cleaned_summary = _preview(summary or "", 80)
+    if title and cleaned_summary:
+        return f"{title}：{cleaned_summary}"
+    return title or cleaned_summary
 
 
 def _recent_chapter_memory_items(db: Session, project_id: str, chapter_index: int) -> list[dict[str, Any]]:
