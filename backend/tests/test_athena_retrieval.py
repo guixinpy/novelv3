@@ -584,6 +584,36 @@ def test_reindex_caps_embedding_provider_batch_size(db_session, monkeypatch):
     assert provider.batch_sizes == [2, 1]
 
 
+def test_reindex_reuses_token_batches_for_local_embedding_provider(db_session, monkeypatch):
+    import app.core.athena_retrieval as athena_retrieval
+
+    project = _seed_retrieval_project(db_session)
+
+    class TokenBatchEmbeddingProvider:
+        provider_name = "local"
+        model_name = "token-batch-test"
+        dimensions = 3
+
+        def __init__(self):
+            self.token_batch_sizes: list[int] = []
+
+        def embed_texts(self, _texts: list[str]) -> list[list[float]]:
+            raise AssertionError("local provider should receive token batches")
+
+        def embed_token_batches(self, token_batches: list[list[str]]) -> list[list[float]]:
+            self.token_batch_sizes.extend(len(tokens) for tokens in token_batches)
+            return [[1.0, 0.0, 0.0] for _tokens in token_batches]
+
+    provider = TokenBatchEmbeddingProvider()
+    monkeypatch.setattr(athena_retrieval, "get_embedding_provider", lambda: provider)
+
+    result = reindex_project_retrieval(db_session, project.id)
+
+    assert result["indexed"]["chunks"] == 2
+    assert len(provider.token_batch_sizes) == 2
+    assert all(size > 0 for size in provider.token_batch_sizes)
+
+
 def test_query_aware_results_skip_context_search_when_user_query_fills_limit(db_session, monkeypatch):
     import app.core.athena_retrieval as athena_retrieval
 

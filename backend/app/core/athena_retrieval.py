@@ -54,6 +54,7 @@ class _PendingEmbedding:
     project_id: str
     chunk_id: str
     text: str
+    tokens: list[str]
 
 
 def reindex_project_retrieval(db: Session, project_id: str) -> dict[str, Any]:
@@ -734,6 +735,7 @@ def _index_sources(db: Session, project_id: str, sources: Iterable[RetrievalSour
                     project_id=project_id,
                     chunk_id=chunk_id,
                     text=chunk_data["text"],
+                    tokens=tokens,
                 )
             )
             indexed["terms"] += len(terms)
@@ -827,7 +829,11 @@ def _embed_pending_embeddings(
     batch_size = max(1, RETRIEVAL_EMBEDDING_BATCH_SIZE)
     for start in range(0, len(embeddings), batch_size):
         batch = embeddings[start : start + batch_size]
-        vectors.extend(provider.embed_texts([embedding.text for embedding in batch]))
+        embed_token_batches = getattr(provider, "embed_token_batches", None)
+        if callable(embed_token_batches):
+            vectors.extend(embed_token_batches([embedding.tokens for embedding in batch]))
+        else:
+            vectors.extend(provider.embed_texts([embedding.text for embedding in batch]))
     return vectors
 
 

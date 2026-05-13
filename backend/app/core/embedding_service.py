@@ -31,9 +31,15 @@ class LocalHashEmbeddingProvider:
     def embed_texts(self, texts: list[str]) -> list[list[float]]:
         return [self._embed(text) for text in texts]
 
+    def embed_token_batches(self, token_batches: list[list[str]]) -> list[list[float]]:
+        return [self._embed_tokens(tokens) for tokens in token_batches]
+
     def _embed(self, text: str) -> list[float]:
+        return self._embed_tokens(tokenize_for_retrieval(text))
+
+    def _embed_tokens(self, tokens: list[str]) -> list[float]:
         vector = [0.0] * self.dimensions
-        for token in tokenize_for_retrieval(text):
+        for token in tokens:
             digest = hashlib.sha256(token.encode("utf-8")).digest()
             index = int.from_bytes(digest[:4], "big") % self.dimensions
             sign = 1.0 if digest[4] % 2 else -1.0
