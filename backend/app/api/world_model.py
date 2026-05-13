@@ -662,6 +662,7 @@ def _build_bundle_detail(*, db: Session, project_id: str, bundle_id: str) -> Pro
             WorldProposalImpactScopeSnapshot.created_at.desc(),
             WorldProposalImpactScopeSnapshot.id.desc(),
         )
+        .limit(1)
         .all()
     )
     if not impact_snapshots and items:

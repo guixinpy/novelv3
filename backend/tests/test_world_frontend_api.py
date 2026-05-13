@@ -590,6 +590,36 @@ def test_proposal_detail_conflicts_only_include_actionable_items(client, db_sess
     assert response.json()["conflicts"] == []
 
 
+def test_proposal_detail_returns_only_latest_impact_snapshot(client, db_session):
+    project, profile_version = _seed_profile(db_session)
+    bundle = create_bundle(
+        db=db_session,
+        project_id=project.id,
+        project_profile_version_id=profile_version.id,
+        profile_version=profile_version.version,
+        created_by="writer.alpha",
+        title="Repeated impact snapshots",
+    )
+    write_candidate_fact(
+        db=db_session,
+        bundle_id=bundle.id,
+        created_by="writer.alpha",
+        candidate=_candidate_payload(
+            claim_id="claim.hero.rank.pending",
+            subject_ref="char.hero",
+            predicate="rank",
+            value="captain",
+        ),
+    )
+    for _index in range(3):
+        calculate_bundle_impact_scope(db=db_session, bundle_id=bundle.id)
+
+    response = client.get(f"/api/v1/projects/{project.id}/world-model/proposal-bundles/{bundle.id}")
+
+    assert response.status_code == 200
+    assert len(response.json()["impact_snapshots"]) == 1
+
+
 def test_world_model_overview_returns_nulls_when_project_has_no_world_data(client):
     create_response = client.post("/api/v1/projects", json={"name": "No World Data"})
     project_id = create_response.json()["id"]
