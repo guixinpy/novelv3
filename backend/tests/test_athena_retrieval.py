@@ -415,6 +415,31 @@ def test_reindex_avoids_flush_per_new_document_and_chunk(db_session, monkeypatch
     assert flush_count["calls"] == 0
 
 
+def test_reindex_batches_multiple_sources_per_write(db_session, monkeypatch):
+    project = _seed_retrieval_project(db_session)
+    bulk_calls: list[tuple[str, int]] = []
+    original_bulk_save = db_session.bulk_save_objects
+
+    def count_bulk_save(objects, *args, **kwargs):
+        object_list = list(objects)
+        if object_list:
+            bulk_calls.append((type(object_list[0]).__name__, len(object_list)))
+        return original_bulk_save(object_list, *args, **kwargs)
+
+    monkeypatch.setattr(db_session, "bulk_save_objects", count_bulk_save)
+
+    result = reindex_project_retrieval(db_session, project.id)
+
+    assert result["indexed"]["documents"] == 2
+    assert ("RetrievalDocument", 2) in bulk_calls
+    assert ("RetrievalChunk", 2) in bulk_calls
+    assert ("RetrievalEmbedding", 2) in bulk_calls
+    assert sum(1 for class_name, _count in bulk_calls if class_name == "RetrievalDocument") == 1
+    assert sum(1 for class_name, _count in bulk_calls if class_name == "RetrievalChunk") == 1
+    assert sum(1 for class_name, _count in bulk_calls if class_name == "RetrievalTerm") == 1
+    assert sum(1 for class_name, _count in bulk_calls if class_name == "RetrievalEmbedding") == 1
+
+
 def test_search_retrieval_uses_lexical_shortlist_for_late_relevant_chunks(client, db_session):
     project = Project(name="Late Retrieval", genre="东方奇幻悬疑")
     db_session.add(project)

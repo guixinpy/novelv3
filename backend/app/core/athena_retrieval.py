@@ -27,6 +27,7 @@ from app.models import (
 
 MAX_CHUNK_CHARS = 900
 CHUNK_OVERLAP_CHARS = 120
+INDEX_WRITE_BATCH_SOURCES = 50
 
 
 @dataclass(frozen=True)
@@ -661,6 +662,11 @@ def _fact_source(fact: WorldFactClaim) -> RetrievalSource:
 def _index_sources(db: Session, project_id: str, sources: Iterable[RetrievalSource]) -> dict[str, int]:
     provider = get_embedding_provider()
     indexed = {"documents": 0, "chunks": 0, "terms": 0, "embeddings": 0}
+    document_objects: list[RetrievalDocument] = []
+    chunk_objects: list[RetrievalChunk] = []
+    term_objects: list[RetrievalTerm] = []
+    embedding_objects: list[RetrievalEmbedding] = []
+    batched_sources = 0
     for source in sources:
         chunks = _chunk_text(source.text)
         if not chunks:
@@ -678,12 +684,9 @@ def _index_sources(db: Session, project_id: str, sources: Iterable[RetrievalSour
             content_hash=_content_hash(source.text),
             document_metadata=source.metadata,
         )
-        db.bulk_save_objects([document])
+        document_objects.append(document)
         vectors = provider.embed_texts([chunk["text"] for chunk in chunks])
         indexed["documents"] += 1
-        chunk_objects: list[RetrievalChunk] = []
-        term_objects: list[RetrievalTerm] = []
-        embedding_objects: list[RetrievalEmbedding] = []
         for chunk_data, vector in zip(chunks, vectors, strict=True):
             chunk_id = str(uuid.uuid4())
             tokens = tokenize_for_retrieval(chunk_data["text"])
@@ -719,11 +722,34 @@ def _index_sources(db: Session, project_id: str, sources: Iterable[RetrievalSour
             indexed["terms"] += len(terms)
             indexed["chunks"] += 1
             indexed["embeddings"] += 1
-        db.bulk_save_objects(chunk_objects)
-        if term_objects:
-            db.bulk_save_objects(term_objects)
-        db.bulk_save_objects(embedding_objects)
+        batched_sources += 1
+        if batched_sources >= INDEX_WRITE_BATCH_SOURCES:
+            _flush_index_write_batch(db, document_objects, chunk_objects, term_objects, embedding_objects)
+            batched_sources = 0
+    _flush_index_write_batch(db, document_objects, chunk_objects, term_objects, embedding_objects)
     return indexed
+
+
+def _flush_index_write_batch(
+    db: Session,
+    documents: list[RetrievalDocument],
+    chunks: list[RetrievalChunk],
+    terms: list[RetrievalTerm],
+    embeddings: list[RetrievalEmbedding],
+) -> None:
+    if not documents:
+        return
+    db.bulk_save_objects(documents)
+    if chunks:
+        db.bulk_save_objects(chunks)
+    if terms:
+        db.bulk_save_objects(terms)
+    if embeddings:
+        db.bulk_save_objects(embeddings)
+    documents.clear()
+    chunks.clear()
+    terms.clear()
+    embeddings.clear()
 
 
 def _chunk_text(text: str) -> list[dict[str, Any]]:
