@@ -648,6 +648,24 @@ export interface AthenaRetrievalDiagnostics {
   documents_by_source_type: Record<string, number>
 }
 
+export interface LongformMaintenanceDiagnostics {
+  project_id: string
+  status: string
+  chapter_count: number
+  stale_memory_count: number
+  missing_memory_count: number
+  stale_retrieval_count: number
+  missing_retrieval_count: number
+  stale_chapter_indexes: number[]
+  missing_memory_chapter_indexes: number[]
+  stale_retrieval_chapter_indexes: number[]
+  missing_retrieval_chapter_indexes: number[]
+  latest_chapter_updated_at: string | null
+  latest_memory_updated_at: string | null
+  latest_retrieval_updated_at: string | null
+  latest_synced_chapter_index: number | null
+}
+
 export interface AthenaRetrievalSearchItem {
   chunk_id: string
   document_id: string

@@ -19,6 +19,7 @@
 - Modify `frontend/src/views/AthenaView.vue`: pass diagnostics into overview.
 - Modify `frontend/src/components/athena/AthenaOverview.vue`: render maintenance health.
 - Modify tests under `frontend/src/**`: cover API/store loading, route loader, and UI rendering.
+- Modify `frontend/src/stores/athena.chat.test.ts` and `frontend/src/stores/athena.proposals.test.ts`: keep proposal refresh tests aligned with review-queue loading.
 - Update this plan as tasks are executed.
 
 ## Success Criteria
@@ -37,26 +38,26 @@
 - Modify: `frontend/src/stores/athena.ts`
 - Test: `frontend/src/stores/athena.maintenance.test.ts`
 
-- [ ] **Step 1: Write failing store test**
+- [x] **Step 1: Write failing store test**
 
 Add a test that mocks `fetch`, calls `athena.loadLongformMaintenanceDiagnostics('project-1')`, and expects `athena.longformMaintenanceDiagnostics.status === 'stale'`.
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 ```powershell
-npm --prefix frontend run test:unit -- frontend/src/stores/athena.maintenance.test.ts
+npm --prefix frontend run test:unit -- src/stores/athena.maintenance.test.ts
 ```
 
 Expected: FAIL because the store action and type do not exist.
 
-- [ ] **Step 3: Implement typed API and store state**
+- [x] **Step 3: Implement typed API and store state**
 
 Add `LongformMaintenanceDiagnostics`, API client method, `longformMaintenanceDiagnostics` ref, and `loadLongformMaintenanceDiagnostics` action. Reset the diagnostics when project state is cleared.
 
-- [ ] **Step 4: Verify GREEN**
+- [x] **Step 4: Verify GREEN**
 
 ```powershell
-npm --prefix frontend run test:unit -- frontend/src/stores/athena.maintenance.test.ts
+npm --prefix frontend run test:unit -- src/stores/athena.maintenance.test.ts
 ```
 
 Expected: PASS.
@@ -70,46 +71,46 @@ Expected: PASS.
 - Test: `frontend/src/views/athenaSectionLoader.test.ts`
 - Test: `frontend/src/components/athena/AthenaOverview.test.ts`
 
-- [ ] **Step 1: Write failing loader/UI tests**
+- [x] **Step 1: Write failing loader/UI tests**
 
 Add route-loader coverage that overview calls `loadLongformMaintenanceDiagnostics`. Add overview component coverage for stale diagnostics showing Chinese status and chapter indexes.
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 ```powershell
-npm --prefix frontend run test:unit -- frontend/src/views/athenaSectionLoader.test.ts frontend/src/components/athena/AthenaOverview.test.ts
+npm --prefix frontend run test:unit -- src/views/athenaSectionLoader.test.ts src/components/athena/AthenaOverview.test.ts
 ```
 
 Expected: FAIL because loader and overview do not consume diagnostics yet.
 
-- [ ] **Step 3: Implement overview health section**
+- [x] **Step 3: Implement overview health section**
 
 Pass diagnostics from `AthenaView` into `AthenaOverview`. Render a compact `长篇维护` section with counts and chapter lists. Keep copy Chinese and use existing overview spacing/border patterns.
 
-- [ ] **Step 4: Verify GREEN**
+- [x] **Step 4: Verify GREEN**
 
 ```powershell
-npm --prefix frontend run test:unit -- frontend/src/views/athenaSectionLoader.test.ts frontend/src/components/athena/AthenaOverview.test.ts
+npm --prefix frontend run test:unit -- src/views/athenaSectionLoader.test.ts src/components/athena/AthenaOverview.test.ts
 ```
 
 Expected: PASS.
 
 ## Task 3: Verification and Commit
 
-- [ ] **Step 1: Run focused tests**
+- [x] **Step 1: Run focused tests**
 
 ```powershell
-npm --prefix frontend run test:unit -- frontend/src/stores/athena.maintenance.test.ts frontend/src/views/athenaSectionLoader.test.ts frontend/src/components/athena/AthenaOverview.test.ts
+npm --prefix frontend run test:unit -- src/stores/athena.maintenance.test.ts src/views/athenaSectionLoader.test.ts src/components/athena/AthenaOverview.test.ts
 ```
 
-- [ ] **Step 2: Run frontend unit tests and build**
+- [x] **Step 2: Run frontend unit tests and build**
 
 ```powershell
 npm --prefix frontend run test:unit
 npm --prefix frontend run build
 ```
 
-- [ ] **Step 3: Hygiene checks**
+- [x] **Step 3: Hygiene checks**
 
 ```powershell
 git diff --check
@@ -119,9 +120,9 @@ git status --short
 
 Expected: diff check passes and exact sensitive-key scan returns no matches.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```powershell
-git add frontend/src/api/types.ts frontend/src/api/client.ts frontend/src/stores/athena.ts frontend/src/stores/athena.maintenance.test.ts frontend/src/views/athenaSectionLoader.ts frontend/src/views/athenaSectionLoader.test.ts frontend/src/views/AthenaView.vue frontend/src/components/athena/AthenaOverview.vue frontend/src/components/athena/AthenaOverview.test.ts docs/superpowers/plans/2026-05-13-longform-scale-phase10.md
+git add frontend/src/api/types.ts frontend/src/api/client.ts frontend/src/stores/athena.ts frontend/src/stores/athena.maintenance.test.ts frontend/src/stores/athena.chat.test.ts frontend/src/stores/athena.proposals.test.ts frontend/src/views/athenaSectionLoader.ts frontend/src/views/athenaSectionLoader.test.ts frontend/src/views/AthenaView.vue frontend/src/components/athena/AthenaOverview.vue frontend/src/components/athena/AthenaOverview.test.ts docs/superpowers/plans/2026-05-13-longform-scale-phase10.md
 git commit -m "feat: surface longform maintenance health"
 ```

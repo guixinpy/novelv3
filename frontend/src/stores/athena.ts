@@ -18,6 +18,7 @@ import type {
   AthenaSetupImportPreview,
   AthenaTimeline,
   ChatHistoryMessage,
+  LongformMaintenanceDiagnostics,
   PaginatedProposalBundles,
   ProposalBundleDetail,
   WorldProjection,
@@ -48,6 +49,7 @@ export const useAthenaStore = defineStore('athena', () => {
   const retrievalSearch = ref<AthenaRetrievalSearchResponse | null>(null)
   const retrievalLastIndexResult = ref<AthenaRetrievalIndexResult | null>(null)
   const retrievalLoading = ref(false)
+  const longformMaintenanceDiagnostics = ref<LongformMaintenanceDiagnostics | null>(null)
   const setupImportPreview = ref<AthenaSetupImportPreview | null>(null)
 
   const setup = ref<unknown>(null)
@@ -85,6 +87,7 @@ export const useAthenaStore = defineStore('athena', () => {
     retrievalSearch.value = null
     retrievalLastIndexResult.value = null
     retrievalLoading.value = false
+    longformMaintenanceDiagnostics.value = null
     setupImportPreview.value = null
     setup.value = null
     lastAnalyzeChapterResult.value = null
@@ -340,6 +343,18 @@ export const useAthenaStore = defineStore('athena', () => {
     )
   }
 
+  async function loadLongformMaintenanceDiagnostics(projectId: string) {
+    await loadCached(
+      projectId,
+      'longform-maintenance-diagnostics',
+      () => !!longformMaintenanceDiagnostics.value,
+      () => api.getAthenaLongformMaintenanceDiagnostics(projectId),
+      (value) => {
+        longformMaintenanceDiagnostics.value = value
+      },
+    )
+  }
+
   async function importSetup(projectId: string) {
     ensureProject(projectId)
     try {
@@ -448,6 +463,7 @@ export const useAthenaStore = defineStore('athena', () => {
     retrievalSearch,
     retrievalLastIndexResult,
     retrievalLoading,
+    longformMaintenanceDiagnostics,
     setupImportPreview,
     setup,
     lastAnalyzeChapterResult,
@@ -467,6 +483,7 @@ export const useAthenaStore = defineStore('athena', () => {
     runConsistencyCheck,
     loadConsistencyIssues,
     loadOptimization,
+    loadLongformMaintenanceDiagnostics,
     loadSetupImportPreview,
     importSetup,
     analyzeChapter,

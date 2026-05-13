@@ -26,6 +26,7 @@ function createLoaderMocks(setupSummary: unknown) {
     loadEvolutionPlan: vi.fn(async () => undefined),
     loadConsistencyIssues: vi.fn(async () => undefined),
     loadOptimization: vi.fn(async () => undefined),
+    loadLongformMaintenanceDiagnostics: vi.fn(async () => undefined),
   }
   const worldModel = {
     dashboard: null as any,
@@ -98,6 +99,14 @@ describe('createAthenaSectionLoader', () => {
     await loader.loadRouteData(routeState({ section: 'overview', view: 'dashboard' }))
 
     expect(athena.loadSetupImportPreview).toHaveBeenCalledWith('project-1')
+  })
+
+  it('loads longform maintenance diagnostics with the overview dashboard', async () => {
+    const { athena, loader } = createLoaderMocks(null)
+
+    await loader.loadRouteData(routeState({ section: 'overview', view: 'dashboard' }))
+
+    expect(athena.loadLongformMaintenanceDiagnostics).toHaveBeenCalledWith('project-1')
   })
 
   it('loads catalog ontology and projection only when they are missing', async () => {

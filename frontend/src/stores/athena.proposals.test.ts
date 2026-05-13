@@ -15,6 +15,7 @@ vi.mock('../api/client', () => ({
     getAthenaOntology: vi.fn(),
     getWorldModelOverview: vi.fn(),
     listWorldProposalBundles: vi.fn(),
+    getWorldProposalReviewQueue: vi.fn(),
     getWorldProposalBundle: vi.fn(),
   },
 }))
@@ -167,6 +168,12 @@ describe('athena proposal workflow store', () => {
       total: 1,
       offset: 0,
       limit: 20,
+    })
+    vi.mocked(api.getWorldProposalReviewQueue).mockResolvedValue({
+      project_id: 'project-1',
+      profile_version: null,
+      total_items: 0,
+      clusters: [],
     })
     vi.mocked(api.getWorldProposalBundle).mockResolvedValue(detail)
     const store = useAthenaStore()

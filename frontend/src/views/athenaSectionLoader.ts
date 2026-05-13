@@ -16,6 +16,7 @@ export function createAthenaSectionLoader(options: AthenaSectionLoaderOptions) {
     const id = options.getProjectId()
     if (routeState.section === 'overview') {
       await options.worldModel.loadDashboard(id)
+      await options.athena.loadLongformMaintenanceDiagnostics(id).catch(() => undefined)
       if (!options.worldModel.dashboard?.project_profile && options.athena.ontology?.setup_summary) {
         await options.athena.loadSetupImportPreview(id).catch(() => undefined)
       }

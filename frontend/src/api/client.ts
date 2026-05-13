@@ -18,6 +18,7 @@ import type {
   ChatHistoryMessage,
   ChatRequest,
   ChatResponse,
+  LongformMaintenanceDiagnostics,
   MessageQuery,
   ModelCallTraceDetail,
   ModelCallTraceListParams,
@@ -156,6 +157,8 @@ export const api = {
     request<AthenaChapterContext>(`/projects/${id}/athena/context/chapter/${chapterIndex}`),
   getAthenaRetrievalDiagnostics: (id: string) =>
     request<AthenaRetrievalDiagnostics>(`/projects/${id}/athena/retrieval/diagnostics`),
+  getAthenaLongformMaintenanceDiagnostics: (id: string) =>
+    request<LongformMaintenanceDiagnostics>(`/projects/${id}/athena/longform/maintenance/diagnostics`),
   searchAthenaRetrieval: (id: string, params: { q: string; limit?: number; source_type?: string; chapter_index?: number }) => {
     const query = new URLSearchParams()
     query.set('q', params.q)

@@ -14,6 +14,7 @@ vi.mock('../api/client', () => ({
     getWorldModelOverview: vi.fn(),
     getWorldModelDashboard: vi.fn(),
     listWorldProposalBundles: vi.fn(),
+    getWorldProposalReviewQueue: vi.fn(),
     getWorldProposalBundle: vi.fn(),
   },
 }))
@@ -108,6 +109,12 @@ describe('athena chat store', () => {
       total: 1,
       offset: 0,
       limit: 20,
+    })
+    vi.mocked(api.getWorldProposalReviewQueue).mockResolvedValue({
+      project_id: 'project-1',
+      profile_version: null,
+      total_items: 0,
+      clusters: [],
     })
     vi.mocked(api.getWorldProposalBundle).mockResolvedValue({
       bundle: proposalBundle('project-1', 'bundle-1'),

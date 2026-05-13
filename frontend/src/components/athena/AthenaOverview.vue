@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import BaseButton from '../base/BaseButton.vue'
-import type { AthenaSetupImportPreview, WorldModelDashboard } from '../../api/types'
+import type { AthenaSetupImportPreview, LongformMaintenanceDiagnostics, WorldModelDashboard } from '../../api/types'
 import type { AthenaPrimarySection } from '../../views/athenaNavigation'
 
 const props = defineProps<{
   dashboard: WorldModelDashboard | null
   setupPreview?: AthenaSetupImportPreview | null
+  maintenanceDiagnostics?: LongformMaintenanceDiagnostics | null
   loading?: boolean
 }>()
 
@@ -61,6 +62,35 @@ const previewItems = computed(() => {
   ].filter((item) => item.value > 0)
 })
 
+const maintenanceStatusLabel = computed(() => {
+  if (!props.maintenanceDiagnostics) return '未读取'
+  return props.maintenanceDiagnostics.status === 'current' ? '已同步' : '需要维护'
+})
+
+const maintenanceItems = computed(() => {
+  const diagnostics = props.maintenanceDiagnostics
+  return [
+    { key: 'chapters', label: '章节', value: diagnostics?.chapter_count ?? 0 },
+    { key: 'stale-memory', label: '过期记忆', value: diagnostics?.stale_memory_count ?? 0 },
+    { key: 'missing-memory', label: '缺失记忆', value: diagnostics?.missing_memory_count ?? 0 },
+    { key: 'stale-retrieval', label: '过期检索', value: diagnostics?.stale_retrieval_count ?? 0 },
+    { key: 'missing-retrieval', label: '缺失检索', value: diagnostics?.missing_retrieval_count ?? 0 },
+  ]
+})
+
+const maintenanceIssueLines = computed(() => {
+  const diagnostics = props.maintenanceDiagnostics
+  if (!diagnostics) return []
+  return [
+    { label: '过期记忆章节', indexes: diagnostics.stale_chapter_indexes },
+    { label: '缺失记忆章节', indexes: diagnostics.missing_memory_chapter_indexes },
+    { label: '过期检索章节', indexes: diagnostics.stale_retrieval_chapter_indexes },
+    { label: '缺失检索章节', indexes: diagnostics.missing_retrieval_chapter_indexes },
+  ]
+    .filter((item) => item.indexes.length > 0)
+    .map((item) => `${item.label}：${item.indexes.join('、')}`)
+})
+
 function goNext() {
   const action = props.dashboard?.next_action.action
   if (action && executableActions.has(action)) {
@@ -109,6 +139,24 @@ function goNext() {
         <div class="athena-overview__preview-items">
           <span v-for="item in previewItems" :key="item.key">{{ item.label }} {{ item.value }}</span>
         </div>
+      </section>
+
+      <section class="athena-overview__maintenance" data-testid="athena-overview-maintenance">
+        <header>
+          <h3>长篇维护</h3>
+          <strong :class="{ 'athena-overview__maintenance-status--stale': maintenanceDiagnostics?.status === 'stale' }">
+            {{ maintenanceStatusLabel }}
+          </strong>
+        </header>
+        <div class="athena-overview__maintenance-items">
+          <span v-for="item in maintenanceItems" :key="item.key">{{ item.label }} {{ item.value }}</span>
+        </div>
+        <div v-if="maintenanceIssueLines.length" class="athena-overview__maintenance-issues">
+          <p v-for="line in maintenanceIssueLines" :key="line">{{ line }}</p>
+        </div>
+        <p v-else-if="maintenanceDiagnostics?.status === 'current'" class="athena-overview__maintenance-ok">
+          章节记忆与检索索引已对齐
+        </p>
       </section>
 
       <div class="athena-overview__status">
@@ -194,10 +242,40 @@ function goNext() {
   border-bottom: 1px solid var(--color-border);
 }
 
+.athena-overview__maintenance {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.athena-overview__maintenance header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
 .athena-overview__preview h3 {
   color: var(--color-text-primary);
   font-size: var(--text-sm);
   font-weight: var(--font-semibold);
+}
+
+.athena-overview__maintenance h3 {
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+}
+
+.athena-overview__maintenance header strong {
+  color: var(--color-success);
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+}
+
+.athena-overview__maintenance header .athena-overview__maintenance-status--stale {
+  color: var(--color-warning, #a15c00);
 }
 
 .athena-overview__preview-items {
@@ -206,6 +284,22 @@ function goNext() {
   gap: var(--space-2);
   color: var(--color-text-secondary);
   font-size: var(--text-sm);
+}
+
+.athena-overview__maintenance-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.athena-overview__maintenance-issues,
+.athena-overview__maintenance-ok {
+  display: grid;
+  gap: var(--space-1);
+  color: var(--color-text-tertiary);
+  font-size: var(--text-xs);
 }
 
 .athena-overview__status strong {

@@ -455,6 +455,7 @@ function closeChat() {
             v-else
             :dashboard="worldModel.dashboard"
             :setup-preview="athena.setupImportPreview"
+            :maintenance-diagnostics="athena.longformMaintenanceDiagnostics"
             :loading="worldModel.isLaneLoading('dashboard')"
             @navigate="navigateSection"
             @run-action="runOverviewAction"
