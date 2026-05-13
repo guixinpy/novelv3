@@ -14,6 +14,7 @@ from app.models import (
     RetrievalChunk,
     RetrievalDocument,
     RetrievalEmbedding,
+    RetrievalTerm,
     RevisionAnnotation,
     RevisionCorrection,
     Setup,
@@ -189,7 +190,8 @@ def test_delete_project_cleans_retrieval_index_records(client, db_session):
         vector=[1.0, 0.0, 0.0],
         vector_hash="vector-hash-1",
     )
-    db_session.add(embedding)
+    term = RetrievalTerm(project_id=pid, chunk_id=chunk.id, token="灯塔")
+    db_session.add_all([embedding, term])
     db_session.commit()
 
     r2 = client.delete(f"/api/v1/projects/{pid}")
@@ -197,6 +199,7 @@ def test_delete_project_cleans_retrieval_index_records(client, db_session):
     assert r2.json()["deleted"] is True
 
     assert db_session.query(RetrievalEmbedding).filter(RetrievalEmbedding.project_id == pid).count() == 0
+    assert db_session.query(RetrievalTerm).filter(RetrievalTerm.project_id == pid).count() == 0
     assert db_session.query(RetrievalChunk).filter(RetrievalChunk.project_id == pid).count() == 0
     assert db_session.query(RetrievalDocument).filter(RetrievalDocument.project_id == pid).count() == 0
 

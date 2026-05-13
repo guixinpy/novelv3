@@ -23,6 +23,7 @@ from app.models import (
     RetrievalChunk,
     RetrievalDocument,
     RetrievalEmbedding,
+    RetrievalTerm,
     RevisionAnnotation,
     RevisionCorrection,
     Setup,
@@ -62,6 +63,7 @@ END;
 
 PROJECT_SCOPED_MODELS = (
     RetrievalEmbedding,
+    RetrievalTerm,
     RetrievalChunk,
     RetrievalDocument,
     WorldProposalReview,

@@ -1,3 +1,6 @@
+import importlib.util
+from pathlib import Path
+
 from app.api import dialogs
 from app.models import ChapterContent, Dialog, LongformMemory, Project
 
@@ -240,3 +243,40 @@ def test_dialog_payloads_include_longform_evidence_range_block(db_session):
         assert "当前总字数：5000" in block["content"]
         assert "chapter: 5" in block["content"]
         assert "global: 1" in block["content"]
+
+
+def test_longform_scale_smoke_reports_memory_retrieval_and_resume_progress(db_session):
+    from app.core.longform_scale_smoke import run_longform_scale_smoke
+
+    report = run_longform_scale_smoke(
+        db_session,
+        chapter_count=120,
+        words_per_chapter=1000,
+        target_chapter_index=120,
+        query="星环钥匙",
+    )
+
+    assert report["chapter_count"] == 120
+    assert report["target_chapter_index"] == 120
+    assert report["total_words"] == 120000
+    assert report["memory"]["counts_by_type"] == {"chapter": 120, "arc": 6, "volume": 2, "global": 1}
+    assert report["retrieval"]["documents_by_source_type"]["chapter"] == 120
+    assert report["retrieval"]["documents_by_source_type"]["longform_memory"] == 129
+    assert "query_aware_retrieval" in report["context"]["section_keys"]
+    assert report["task"]["status"] == "completed"
+    assert report["task"]["progress"]["completed_count"] == 120
+    assert report["task"]["progress"]["last_completed_chapter_index"] == 120
+    assert report["task"]["progress"]["can_resume"] is False
+    assert "completed_chapter_indexes" not in report["task"]["progress"]
+
+
+def test_longform_scale_smoke_cli_exposes_main():
+    script_path = Path(__file__).resolve().parents[2] / "scripts" / "longform_scale_smoke.py"
+    spec = importlib.util.spec_from_file_location("longform_scale_smoke_cli", script_path)
+
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    assert callable(module.main)
