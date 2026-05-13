@@ -130,6 +130,33 @@ def test_background_task_service_tracks_chapter_range_progress(client, db_sessio
     }
 
 
+def test_background_task_service_compacts_large_sequential_range_progress(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Test"})
+    pid = r.json()["id"]
+    service = BackgroundTaskService(db_session)
+    task = service.create_chapter_range(
+        project_id=pid,
+        task_type="athena_reindex_range",
+        start_chapter_index=1,
+        end_chapter_index=250,
+    )
+
+    progressed = task
+    for chapter_index in range(1, 251):
+        progressed = service.mark_range_progress(progressed.id, completed_chapter_index=chapter_index)
+
+    progress = progressed.result["progress"]
+    assert progress["chapter_range"] == {"start": 1, "end": 250}
+    assert progress["completed_until_chapter_index"] == 250
+    assert progress["first_completed_chapter_index"] == 1
+    assert progress["last_completed_chapter_index"] == 250
+    assert progress["next_chapter_index"] == 251
+    assert progress["completed_count"] == 250
+    assert progress["total_count"] == 250
+    assert progress["can_resume"] is False
+    assert "completed_chapter_indexes" not in progress
+
+
 def test_background_task_service_retries_failed_range_from_checkpoint(client, db_session):
     r = client.post("/api/v1/projects", json={"name": "Test"})
     pid = r.json()["id"]
