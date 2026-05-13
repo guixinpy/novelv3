@@ -245,8 +245,8 @@ def test_reindex_chapter_source_query_projects_only_index_fields(db_session):
         assert f"chapter_contents.{column}" not in select_clause
 
 
-def test_reindex_cleanup_deletes_by_project_without_loading_chunk_ids(db_session):
-    project = Project(name="Bulk Delete Retrieval Cleanup")
+def test_reindex_preserves_unchanged_documents_without_loading_chunk_ids(db_session):
+    project = Project(name="Stable Retrieval Reindex")
     db_session.add(project)
     db_session.commit()
     db_session.refresh(project)
@@ -264,6 +264,12 @@ def test_reindex_cleanup_deletes_by_project_without_loading_chunk_ids(db_session
     db_session.commit()
     first_result = reindex_project_retrieval(db_session, project.id)
     assert first_result["indexed"]["documents"] == 10
+    before_doc_ids = {
+        document.source_ref: document.id
+        for document in db_session.query(RetrievalDocument)
+        .filter(RetrievalDocument.project_id == project.id)
+        .all()
+    }
     statements: list[str] = []
 
     def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
@@ -275,12 +281,67 @@ def test_reindex_cleanup_deletes_by_project_without_loading_chunk_ids(db_session
     finally:
         event.remove(db_session.bind, "before_cursor_execute", capture_sql)
 
-    assert second_result["indexed"]["documents"] == 10
+    after_doc_ids = {
+        document.source_ref: document.id
+        for document in db_session.query(RetrievalDocument)
+        .filter(RetrievalDocument.project_id == project.id)
+        .all()
+    }
+    assert second_result["indexed"]["documents"] == 0
+    assert second_result["preserved_documents"] == 10
+    assert after_doc_ids == before_doc_ids
     chunk_id_selects = [
         statement for statement in statements
         if "select retrieval_chunks.id" in statement and "from retrieval_chunks" in statement
     ]
     assert not chunk_id_selects
+
+
+def test_reindex_rebuilds_only_changed_chapter_document(db_session):
+    project = Project(name="Changed Chapter Retrieval Reindex")
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    for index in range(1, 4):
+        db_session.add(
+            ChapterContent(
+                project_id=project.id,
+                chapter_index=index,
+                title=f"第{index}章",
+                content=f"第{index}章原始正文。",
+                word_count=1000,
+                status="generated",
+            )
+        )
+    db_session.commit()
+    reindex_project_retrieval(db_session, project.id)
+    before_doc_ids = {
+        document.source_ref: document.id
+        for document in db_session.query(RetrievalDocument)
+        .filter(RetrievalDocument.project_id == project.id)
+        .all()
+    }
+
+    chapter = (
+        db_session.query(ChapterContent)
+        .filter(ChapterContent.project_id == project.id, ChapterContent.chapter_index == 2)
+        .one()
+    )
+    chapter.content = "第2章更新正文，新增秘银钥匙线索。"
+    db_session.commit()
+    result = reindex_project_retrieval(db_session, project.id)
+    after_doc_ids = {
+        document.source_ref: document.id
+        for document in db_session.query(RetrievalDocument)
+        .filter(RetrievalDocument.project_id == project.id)
+        .all()
+    }
+
+    assert result["indexed"]["documents"] == 1
+    assert result["preserved_documents"] == 2
+    assert after_doc_ids["chapter:1"] == before_doc_ids["chapter:1"]
+    assert after_doc_ids["chapter:2"] != before_doc_ids["chapter:2"]
+    assert after_doc_ids["chapter:3"] == before_doc_ids["chapter:3"]
 
 
 def test_reindex_builds_indexed_lexical_terms_for_local_search(client, db_session):

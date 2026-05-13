@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from fastapi import HTTPException
-from sqlalchemy import case, func, or_
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.embedding_service import cosine_similarity, get_embedding_provider, tokenize_for_retrieval, vector_hash
@@ -42,10 +42,53 @@ class RetrievalSource:
 
 def reindex_project_retrieval(db: Session, project_id: str) -> dict[str, Any]:
     _require_project(db, project_id)
-    _delete_project_index(db, project_id)
-    indexed = _index_sources(db, project_id, _project_sources(db, project_id))
+    provider = get_embedding_provider()
+    existing_documents = _existing_retrieval_documents(db, project_id)
+    embedding_ready_document_ids = _documents_with_current_embeddings(
+        db,
+        project_id=project_id,
+        provider=provider.provider_name,
+        model=provider.model_name,
+    )
+    seen_sources: set[tuple[str, str]] = set()
+    stale_document_ids: list[str] = []
+    sources_to_index: list[RetrievalSource] = []
+    preserved_documents = 0
+
+    for source in _project_sources(db, project_id):
+        source_key = (source.source_type, source.source_id)
+        seen_sources.add(source_key)
+        existing = existing_documents.get(source_key)
+        content_hash = _content_hash(source.text)
+        if (
+            existing is not None
+            and source.text.strip()
+            and existing.content_hash == content_hash
+            and existing.id in embedding_ready_document_ids
+        ):
+            _refresh_retrieval_document_metadata(existing, source=source, content_hash=content_hash)
+            preserved_documents += 1
+            continue
+        if existing is not None:
+            stale_document_ids.append(existing.id)
+        sources_to_index.append(source)
+
+    stale_document_ids.extend(
+        document.id
+        for source_key, document in existing_documents.items()
+        if source_key not in seen_sources
+    )
+    _delete_documents_by_ids(db, stale_document_ids)
+    indexed = _index_sources(db, project_id, sources_to_index)
     db.commit()
-    return {"status": "completed", "project_id": project_id, "chapter_index": None, "indexed": indexed}
+    return {
+        "status": "completed",
+        "project_id": project_id,
+        "chapter_index": None,
+        "indexed": indexed,
+        "preserved_documents": preserved_documents,
+        "removed_documents": len(stale_document_ids),
+    }
 
 
 def index_chapter_retrieval(db: Session, project_id: str, chapter_index: int) -> dict[str, Any]:
@@ -694,6 +737,75 @@ def _delete_project_index(db: Session, project_id: str) -> None:
     db.query(RetrievalEmbedding).filter(RetrievalEmbedding.project_id == project_id).delete(synchronize_session=False)
     db.query(RetrievalChunk).filter(RetrievalChunk.project_id == project_id).delete(synchronize_session=False)
     db.query(RetrievalDocument).filter(RetrievalDocument.project_id == project_id).delete(synchronize_session=False)
+    db.flush()
+
+
+def _existing_retrieval_documents(db: Session, project_id: str) -> dict[tuple[str, str], RetrievalDocument]:
+    return {
+        (document.source_type, document.source_id): document
+        for document in db.query(RetrievalDocument).filter(RetrievalDocument.project_id == project_id).all()
+    }
+
+
+def _documents_with_current_embeddings(
+    db: Session,
+    *,
+    project_id: str,
+    provider: str,
+    model: str,
+) -> set[str]:
+    chunk_counts = {
+        document_id: count
+        for document_id, count in (
+            db.query(RetrievalChunk.document_id, func.count(RetrievalChunk.id))
+            .filter(RetrievalChunk.project_id == project_id)
+            .group_by(RetrievalChunk.document_id)
+            .all()
+        )
+    }
+    embedding_counts = {
+        document_id: count
+        for document_id, count in (
+            db.query(RetrievalChunk.document_id, func.count(RetrievalEmbedding.id))
+            .join(RetrievalEmbedding, RetrievalEmbedding.chunk_id == RetrievalChunk.id)
+            .filter(
+                RetrievalChunk.project_id == project_id,
+                RetrievalEmbedding.provider == provider,
+                RetrievalEmbedding.model == model,
+            )
+            .group_by(RetrievalChunk.document_id)
+            .all()
+        )
+    }
+    return {
+        document_id
+        for document_id, chunk_count in chunk_counts.items()
+        if chunk_count > 0 and embedding_counts.get(document_id) == chunk_count
+    }
+
+
+def _refresh_retrieval_document_metadata(
+    document: RetrievalDocument,
+    *,
+    source: RetrievalSource,
+    content_hash: str,
+) -> None:
+    document.source_ref = source.source_ref
+    document.title = source.title
+    document.chapter_index = source.chapter_index
+    document.profile_version = source.profile_version
+    document.content_hash = content_hash
+    document.document_metadata = source.metadata
+
+
+def _delete_documents_by_ids(db: Session, document_ids: list[str]) -> None:
+    if not document_ids:
+        return
+    chunk_ids = select(RetrievalChunk.id).where(RetrievalChunk.document_id.in_(document_ids))
+    db.query(RetrievalTerm).filter(RetrievalTerm.chunk_id.in_(chunk_ids)).delete(synchronize_session=False)
+    db.query(RetrievalEmbedding).filter(RetrievalEmbedding.chunk_id.in_(chunk_ids)).delete(synchronize_session=False)
+    db.query(RetrievalChunk).filter(RetrievalChunk.document_id.in_(document_ids)).delete(synchronize_session=False)
+    db.query(RetrievalDocument).filter(RetrievalDocument.id.in_(document_ids)).delete(synchronize_session=False)
     db.flush()
 
 
