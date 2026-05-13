@@ -4,6 +4,7 @@ import hashlib
 import math
 import os
 import re
+from collections import Counter
 from typing import Protocol
 
 import httpx
@@ -39,11 +40,11 @@ class LocalHashEmbeddingProvider:
 
     def _embed_tokens(self, tokens: list[str]) -> list[float]:
         vector = [0.0] * self.dimensions
-        for token in tokens:
+        for token, count in Counter(tokens).items():
             digest = hashlib.sha256(token.encode("utf-8")).digest()
             index = int.from_bytes(digest[:4], "big") % self.dimensions
             sign = 1.0 if digest[4] % 2 else -1.0
-            vector[index] += sign * (1.0 + min(len(token), 6) * 0.08)
+            vector[index] += count * sign * (1.0 + min(len(token), 6) * 0.08)
         return normalize_vector(vector)
 
 

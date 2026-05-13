@@ -1,7 +1,7 @@
 from sqlalchemy import event
 
 from app.core.world_contracts import DERIVED
-from app.core.embedding_service import get_embedding_provider
+from app.core.embedding_service import LocalHashEmbeddingProvider, get_embedding_provider
 from app.core.athena_retrieval import _project_sources, reindex_project_retrieval, search_retrieval
 from app.core.world_proposal_service import create_bundle, review_proposal_item, rollback_review, write_candidate_fact
 from app.models import (
@@ -25,6 +25,25 @@ def test_embedding_provider_defaults_to_local_without_explicit_remote_mode(monke
     provider = get_embedding_provider()
 
     assert provider.provider_name == "local"
+
+
+def test_local_hash_embedding_hashes_repeated_tokens_once(monkeypatch):
+    import app.core.embedding_service as embedding_service
+
+    original_sha256 = embedding_service.hashlib.sha256
+    calls: list[bytes] = []
+
+    def count_sha256(data: bytes):
+        calls.append(data)
+        return original_sha256(data)
+
+    monkeypatch.setattr(embedding_service.hashlib, "sha256", count_sha256)
+
+    provider = LocalHashEmbeddingProvider(dimensions=8)
+    vector = provider.embed_token_batches([["星环钥"] * 20 + ["灯塔区"] * 10])[0]
+
+    assert calls == ["星环钥".encode("utf-8"), "灯塔区".encode("utf-8")]
+    assert any(value != 0 for value in vector)
 
 
 def _seed_retrieval_project(db_session):
