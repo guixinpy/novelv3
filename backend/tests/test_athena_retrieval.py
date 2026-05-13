@@ -378,6 +378,25 @@ def test_reindex_bulk_inserts_lexical_terms(db_session, monkeypatch):
     assert add_counts["terms"] == 0
 
 
+def test_reindex_tokenizes_each_chunk_once_for_lexical_index(db_session, monkeypatch):
+    import app.core.athena_retrieval as athena_retrieval
+
+    project = _seed_retrieval_project(db_session)
+    tokenize_count = {"calls": 0}
+    original_tokenize = athena_retrieval.tokenize_for_retrieval
+
+    def count_tokenize(text: str):
+        tokenize_count["calls"] += 1
+        return original_tokenize(text)
+
+    monkeypatch.setattr(athena_retrieval, "tokenize_for_retrieval", count_tokenize)
+
+    result = reindex_project_retrieval(db_session, project.id)
+
+    assert result["indexed"]["chunks"] > 0
+    assert tokenize_count["calls"] == result["indexed"]["chunks"]
+
+
 def test_search_retrieval_uses_lexical_shortlist_for_late_relevant_chunks(client, db_session):
     project = Project(name="Late Retrieval", genre="东方奇幻悬疑")
     db_session.add(project)

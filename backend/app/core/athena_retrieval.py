@@ -680,19 +680,20 @@ def _index_sources(db: Session, project_id: str, sources: Iterable[RetrievalSour
         vectors = provider.embed_texts([chunk["text"] for chunk in chunks])
         indexed["documents"] += 1
         for chunk_data, vector in zip(chunks, vectors, strict=True):
+            tokens = tokenize_for_retrieval(chunk_data["text"])
             chunk = RetrievalChunk(
                 project_id=project_id,
                 document_id=document.id,
                 chunk_index=chunk_data["chunk_index"],
                 text=chunk_data["text"],
-                token_count=len(tokenize_for_retrieval(chunk_data["text"])),
+                token_count=len(tokens),
                 start_offset=chunk_data["start_offset"],
                 end_offset=chunk_data["end_offset"],
                 chunk_metadata={},
             )
             db.add(chunk)
             db.flush()
-            terms = sorted(set(tokenize_for_retrieval(chunk_data["text"])))
+            terms = sorted(set(tokens))
             if terms:
                 db.bulk_save_objects(
                     [RetrievalTerm(project_id=project_id, chunk_id=chunk.id, token=token) for token in terms]
