@@ -15,6 +15,7 @@ import type {
 } from '../api/types'
 
 type RequestLane = 'dashboard' | 'overview' | 'facts' | 'bundles' | 'detail' | 'queue'
+const FACT_CLAIMS_PAGE_SIZE = 200
 
 interface RequestSnapshot {
   projectId: string
@@ -37,6 +38,7 @@ export const useWorldModelStore = defineStore('worldModel', () => {
   const projection = ref<WorldProjection | null>(null)
   const factClaims = ref<WorldFactClaim[]>([])
   const factClaimsLoaded = ref(false)
+  const factClaimsHasMore = ref(false)
   const dashboard = ref<WorldModelDashboard | null>(null)
   const proposalBundles = ref<ProposalBundle[]>([])
   const proposalBundlesLoaded = ref(false)
@@ -61,6 +63,7 @@ export const useWorldModelStore = defineStore('worldModel', () => {
     queue: false,
   })
   const loadingMoreBundles = ref(false)
+  const loadingMoreFactClaims = ref(false)
   const loaded = ref(false)
   const error = ref('')
   const lastFactClaimsError = ref('')
@@ -272,6 +275,7 @@ export const useWorldModelStore = defineStore('worldModel', () => {
     projection.value = null
     factClaims.value = []
     factClaimsLoaded.value = false
+    factClaimsHasMore.value = false
     dashboard.value = null
     proposalBundles.value = []
     proposalBundlesLoaded.value = false
@@ -280,6 +284,7 @@ export const useWorldModelStore = defineStore('worldModel', () => {
     selectedBundleDetail.value = null
     setLanesLoading(['dashboard', 'overview', 'facts', 'bundles', 'detail', 'queue'], false)
     loadingMoreBundles.value = false
+    loadingMoreFactClaims.value = false
     loaded.value = false
     error.value = ''
     lastFactClaimsError.value = ''
@@ -299,6 +304,7 @@ export const useWorldModelStore = defineStore('worldModel', () => {
   function invalidateFactClaims() {
     factClaims.value = []
     factClaimsLoaded.value = false
+    factClaimsHasMore.value = false
   }
 
   async function loadSetupPanelData(projectId: string) {
@@ -379,9 +385,10 @@ export const useWorldModelStore = defineStore('worldModel', () => {
     setLaneLoading('facts', true)
 
     try {
-      const claims = await api.listWorldFactClaims(projectId, { limit: 500 })
+      const claims = await api.listWorldFactClaims(projectId, { offset: 0, limit: FACT_CLAIMS_PAGE_SIZE })
       if (!isLatestRequest(snapshot, 'facts')) return
       factClaims.value = claims
+      factClaimsHasMore.value = claims.length === FACT_CLAIMS_PAGE_SIZE
       factClaimsLoaded.value = true
       if (lastFactClaimsError.value && error.value === lastFactClaimsError.value) {
         error.value = ''
@@ -390,11 +397,43 @@ export const useWorldModelStore = defineStore('worldModel', () => {
     } catch (err) {
       if (!isLatestRequest(snapshot, 'facts')) return
       factClaimsLoaded.value = false
+      factClaimsHasMore.value = false
       const nextError = toErrorMessage(err)
       lastFactClaimsError.value = nextError
       error.value = nextError
     } finally {
       finishLatestLanes(snapshot, ['facts'])
+    }
+  }
+
+  async function loadMoreFactClaims(projectId: string) {
+    if (loadingMoreFactClaims.value || !factClaimsHasMore.value) return
+    const scope = captureScope(projectId)
+    loadingMoreFactClaims.value = true
+
+    try {
+      const claims = await api.listWorldFactClaims(projectId, {
+        offset: factClaims.value.length,
+        limit: FACT_CLAIMS_PAGE_SIZE,
+      })
+      if (!isActiveScope(scope.projectId, scope.version)) return
+      factClaims.value = [...factClaims.value, ...claims]
+      factClaimsHasMore.value = claims.length === FACT_CLAIMS_PAGE_SIZE
+      factClaimsLoaded.value = true
+      if (lastFactClaimsError.value && error.value === lastFactClaimsError.value) {
+        error.value = ''
+      }
+      lastFactClaimsError.value = ''
+    } catch (err) {
+      if (isActiveScope(scope.projectId, scope.version)) {
+        const nextError = toErrorMessage(err)
+        lastFactClaimsError.value = nextError
+        error.value = nextError
+      }
+    } finally {
+      if (isActiveScope(scope.projectId, scope.version)) {
+        loadingMoreFactClaims.value = false
+      }
     }
   }
 
@@ -642,6 +681,7 @@ export const useWorldModelStore = defineStore('worldModel', () => {
     projection,
     factClaims,
     factClaimsLoaded,
+    factClaimsHasMore,
     dashboard,
     proposalBundles,
     proposalBundlesLoaded,
@@ -659,6 +699,7 @@ export const useWorldModelStore = defineStore('worldModel', () => {
     bundleFilters,
     laneLoading,
     loadingMoreBundles,
+    loadingMoreFactClaims,
     loading,
     loaded,
     error,
@@ -672,6 +713,7 @@ export const useWorldModelStore = defineStore('worldModel', () => {
     loadDashboard,
     loadOverview,
     loadFactClaims,
+    loadMoreFactClaims,
     loadSetupPanelData,
     selectBundle,
     loadSubjectKnowledge,

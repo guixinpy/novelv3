@@ -508,6 +508,9 @@ function closeChat() {
             :projection="worldModel.projection"
             :fact-claims="worldModel.factClaims"
             :view="routeState.view"
+            :has-more="worldModel.factClaimsHasMore"
+            :loading-more="worldModel.loadingMoreFactClaims"
+            @load-more="worldModel.loadMoreFactClaims(pid)"
           />
         </template>
 

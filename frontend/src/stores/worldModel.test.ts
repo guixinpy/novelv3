@@ -316,7 +316,7 @@ describe('worldModel store', () => {
     expect(api.getWorldProposalBundle).not.toHaveBeenCalled()
   })
 
-  it('loadFactClaims() 加载完整事实声明元数据', async () => {
+  it('loadFactClaims() 分页加载事实声明元数据', async () => {
     vi.mocked(api.getWorldModelOverview).mockRejectedValue(new Error('overview failed'))
     vi.mocked(api.listWorldFactClaims).mockResolvedValue([createFactClaim()])
     const store = useWorldModelStore()
@@ -330,7 +330,39 @@ describe('worldModel store', () => {
     expect(store.factClaims[0].claim_id).toBe('claim.hero.rank')
     expect(store.factClaims[0].disclosed_to_refs).toEqual(['char.hero'])
     expect(store.error).toBe('overview failed')
-    expect(api.listWorldFactClaims).toHaveBeenCalledWith('project-1', { limit: 500 })
+    expect(store.factClaimsHasMore).toBe(false)
+    expect(api.listWorldFactClaims).toHaveBeenCalledWith('project-1', { offset: 0, limit: 200 })
+  })
+
+  it('loadMoreFactClaims() appends the next facts page', async () => {
+    const firstPage = Array.from({ length: 200 }, (_item, index) => ({
+      ...createFactClaim(),
+      id: `fact-${index + 1}`,
+      claim_id: `claim.hero.rank.${index + 1}`,
+    }))
+    const secondPage = [
+      {
+        ...createFactClaim(),
+        id: 'fact-201',
+        claim_id: 'claim.hero.rank.201',
+      },
+    ]
+    vi.mocked(api.listWorldFactClaims)
+      .mockResolvedValueOnce(firstPage)
+      .mockResolvedValueOnce(secondPage)
+    const store = useWorldModelStore()
+
+    await store.loadFactClaims('project-1')
+    expect(store.factClaims).toHaveLength(200)
+    expect(store.factClaimsHasMore).toBe(true)
+
+    await store.loadMoreFactClaims('project-1')
+
+    expect(store.factClaims).toHaveLength(201)
+    expect(store.factClaims[200].claim_id).toBe('claim.hero.rank.201')
+    expect(store.factClaimsHasMore).toBe(false)
+    expect(api.listWorldFactClaims).toHaveBeenNthCalledWith(1, 'project-1', { offset: 0, limit: 200 })
+    expect(api.listWorldFactClaims).toHaveBeenNthCalledWith(2, 'project-1', { offset: 200, limit: 200 })
   })
 
   it('tracks loading state per request lane', async () => {

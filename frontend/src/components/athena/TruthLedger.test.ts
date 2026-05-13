@@ -97,4 +97,20 @@ describe('TruthLedger', () => {
     expect(wrapper.text()).toContain('第1章：陆辞出现 51 次（自动抽取，中置信）')
     expect(wrapper.text()).not.toContain('"count":51')
   })
+
+  it('emits load-more when more fact claims are available', async () => {
+    const wrapper = mount(TruthLedger, {
+      props: {
+        projection,
+        factClaims,
+        view: 'facts',
+        hasMore: true,
+        loadingMore: false,
+      },
+    })
+
+    await wrapper.get('[data-test="truth-ledger-load-more"]').trigger('click')
+
+    expect(wrapper.emitted('load-more')).toHaveLength(1)
+  })
 })

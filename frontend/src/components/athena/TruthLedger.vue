@@ -25,6 +25,12 @@ const props = defineProps<{
   projection: WorldProjection | null
   factClaims: WorldFactClaim[]
   view: TruthLedgerView
+  hasMore?: boolean
+  loadingMore?: boolean
+}>()
+
+const emit = defineEmits<{
+  'load-more': []
 }>()
 
 const factRows = computed<TruthRow[]>(() => {
@@ -176,6 +182,16 @@ function sourceLabel(value: string) {
           </footer>
         </article>
         <div v-if="factRows.length === 0" class="truth-ledger__empty">暂无确认事实</div>
+        <button
+          v-if="props.hasMore"
+          class="truth-ledger__load-more"
+          type="button"
+          :disabled="props.loadingMore"
+          data-test="truth-ledger-load-more"
+          @click="emit('load-more')"
+        >
+          {{ props.loadingMore ? '加载中...' : '加载更多事实' }}
+        </button>
       </div>
 
       <div v-else class="truth-ledger__list">
@@ -206,6 +222,16 @@ function sourceLabel(value: string) {
           </dl>
         </article>
         <div v-if="disclosureRows.length === 0" class="truth-ledger__empty">暂无披露记录</div>
+        <button
+          v-if="props.hasMore"
+          class="truth-ledger__load-more"
+          type="button"
+          :disabled="props.loadingMore"
+          data-test="truth-ledger-load-more"
+          @click="emit('load-more')"
+        >
+          {{ props.loadingMore ? '加载中...' : '加载更多事实' }}
+        </button>
       </div>
     </template>
   </section>
@@ -293,6 +319,23 @@ function sourceLabel(value: string) {
   text-align: center;
   color: var(--color-text-tertiary);
   font-size: var(--text-sm);
+}
+
+.truth-ledger__load-more {
+  justify-self: center;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-primary);
+  cursor: pointer;
+  font-weight: var(--font-semibold);
+  min-width: 128px;
+  padding: 8px 14px;
+}
+
+.truth-ledger__load-more:disabled {
+  cursor: default;
+  opacity: 0.65;
 }
 
 @media (max-width: 760px) {
