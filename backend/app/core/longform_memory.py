@@ -404,7 +404,9 @@ def _outline_lookup(db: Session, project_id: str) -> dict[int, dict[str, Any]]:
 def _chapter_memory(project_id: str, chapter: Any, outline: dict[str, Any] | None) -> LongformMemory:
     title = chapter.title or f"第{chapter.chapter_index}章"
     outline_summary = str((outline or {}).get("summary") or "").strip()
-    summary = outline_summary or _preview(chapter.content or "", 180) or title
+    content_summary = _preview(chapter.content or "", 180)
+    summary = content_summary or outline_summary or title
+    source = "chapter_content" if content_summary else "outline" if outline_summary else "title"
     return LongformMemory(
         project_id=project_id,
         memory_type="chapter",
@@ -418,7 +420,7 @@ def _chapter_memory(project_id: str, chapter: Any, outline: dict[str, Any] | Non
             "chapter_index": chapter.chapter_index,
             "word_count": chapter.word_count or 0,
             "status": chapter.status,
-            "source": "outline" if outline_summary else "chapter_content",
+            "source": source,
         },
     )
 

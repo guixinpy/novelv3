@@ -4,7 +4,7 @@ from pathlib import Path
 from sqlalchemy import event, text
 
 from app.api import dialogs
-from app.models import ChapterContent, Dialog, LongformMemory, Project, RetrievalDocument
+from app.models import ChapterContent, Dialog, LongformMemory, Outline, Project, RetrievalDocument
 
 
 def test_longform_hot_tables_have_query_indexes(db_session):
@@ -130,6 +130,47 @@ def test_rebuild_longform_memory_creates_chapter_arc_volume_and_global_layers(cl
     assert diagnostics.status_code == 200
     assert diagnostics.json()["counts_by_type"]["chapter"] == 100
     assert diagnostics.json()["current_word_count"] == sum(1000 + index for index in range(1, 101))
+
+
+def test_chapter_memory_prefers_generated_content_over_stale_outline_summary(db_session):
+    from app.core.longform_memory import rebuild_longform_memory
+
+    project = Project(name="Memory Source Priority")
+    db_session.add(project)
+    db_session.flush()
+    outline = Outline(
+        project_id=project.id,
+        status="generated",
+        total_chapters=1,
+        chapters=[
+            {
+                "chapter_index": 1,
+                "title": "第一章",
+                "summary": "旧大纲只提到普通线索。",
+            }
+        ],
+    )
+    chapter = ChapterContent(
+        project_id=project.id,
+        chapter_index=1,
+        title="第一章",
+        content="真实正文。星环钥匙第八形态在灯塔底层启动。",
+        word_count=1000,
+        status="generated",
+    )
+    db_session.add_all([outline, chapter])
+    db_session.commit()
+
+    rebuild_longform_memory(db_session, project.id)
+
+    memory = (
+        db_session.query(LongformMemory)
+        .filter(LongformMemory.project_id == project.id, LongformMemory.scope_key == "chapter:1")
+        .one()
+    )
+    assert "星环钥匙第八形态" in memory.summary
+    assert "旧大纲" not in memory.summary
+    assert memory.memory_metadata["source"] == "chapter_content"
 
 
 def test_rebuild_longform_memory_projects_only_memory_fields(db_session):
