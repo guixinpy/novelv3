@@ -19,7 +19,7 @@ class ExportRequest(BaseModel):
     format: str = "markdown"
     include_setup: bool = True
     include_outline: bool = True
-    chapter_range: list[int] = [1, 100]
+    chapter_range: list[int] | None = None
 
 
 @router.post("/export")
@@ -50,12 +50,14 @@ def export_project(project_id: str, payload: ExportRequest, db: Session = Depend
                 lines.append(f"### {ch_title}\n")
                 lines.append(f"{ch.get('summary', '')}\n")
 
-    start, end = payload.chapter_range
-    chapters = db.query(ChapterContent).filter(
-        ChapterContent.project_id == project_id,
-        ChapterContent.chapter_index >= start,
-        ChapterContent.chapter_index <= end,
-    ).order_by(ChapterContent.chapter_index).all()
+    chapters_query = db.query(ChapterContent).filter(ChapterContent.project_id == project_id)
+    if payload.chapter_range and len(payload.chapter_range) >= 2:
+        start, end = payload.chapter_range[:2]
+        chapters_query = chapters_query.filter(
+            ChapterContent.chapter_index >= start,
+            ChapterContent.chapter_index <= end,
+        )
+    chapters = chapters_query.order_by(ChapterContent.chapter_index).all()
 
     if chapters:
         lines.append("## 正文\n")

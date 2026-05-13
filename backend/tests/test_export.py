@@ -11,6 +11,61 @@ def test_export_markdown(client):
     assert r2.headers["content-type"].startswith("text/markdown")
 
 
+def test_export_markdown_defaults_to_all_chapters(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Long Export"})
+    pid = r.json()["id"]
+    db_session.add_all(
+        [
+            ChapterContent(
+                project_id=pid,
+                chapter_index=index,
+                title=f"第{index}章",
+                content=f"第{index}章正文",
+                word_count=1000,
+                status="generated",
+            )
+            for index in (1, 100, 150)
+        ]
+    )
+    db_session.commit()
+
+    response = client.post(f"/api/v1/projects/{pid}/export", json={"format": "markdown"})
+
+    assert response.status_code == 200
+    assert "第1章正文" in response.text
+    assert "第100章正文" in response.text
+    assert "第150章正文" in response.text
+
+
+def test_export_markdown_honors_explicit_chapter_range(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Range Export"})
+    pid = r.json()["id"]
+    db_session.add_all(
+        [
+            ChapterContent(
+                project_id=pid,
+                chapter_index=index,
+                title=f"第{index}章",
+                content=f"第{index}章正文",
+                word_count=1000,
+                status="generated",
+            )
+            for index in (1, 100, 150)
+        ]
+    )
+    db_session.commit()
+
+    response = client.post(
+        f"/api/v1/projects/{pid}/export",
+        json={"format": "markdown", "chapter_range": [1, 100]},
+    )
+
+    assert response.status_code == 200
+    assert "第1章正文" in response.text
+    assert "第100章正文" in response.text
+    assert "第150章正文" not in response.text
+
+
 def test_export_txt(client):
     r = client.post("/api/v1/projects", json={"name": "Test Novel"})
     pid = r.json()["id"]
