@@ -954,6 +954,21 @@ def test_migration_upgrade_enforces_trigger_and_foreign_keys(tmp_path):
         assert contract_insert_trigger is not None
         assert "contract_version" in contract_insert_trigger[0]
 
+        expected_indexes = {
+            "versions": {
+                "ix_versions_project_node_created",
+                "ix_versions_project_node_version",
+            },
+            "background_tasks": {
+                "ix_background_tasks_project_created",
+                "ix_background_tasks_status",
+            },
+        }
+        for table_name, index_names in expected_indexes.items():
+            rows = conn.execute(f"PRAGMA index_list('{table_name}')").fetchall()
+            actual_names = {row[1] for row in rows}
+            assert index_names <= actual_names
+
         conn.execute(
             "INSERT INTO projects (id, name, description, genre, target_word_count, current_word_count, "
             "status, current_phase, ai_model, language, style, complexity, style_config, created_at, updated_at) "

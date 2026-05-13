@@ -41,6 +41,26 @@ def upgrade() -> None:
         sqlite_where=sa.text("action_result IS NOT NULL"),
     )
     op.create_index(
+        "ix_versions_project_node_created",
+        "versions",
+        ["project_id", "node_type", "node_id", "created_at", "id"],
+    )
+    op.create_index(
+        "ix_versions_project_node_version",
+        "versions",
+        ["project_id", "node_type", "node_id", "version_number"],
+    )
+    op.create_index(
+        "ix_background_tasks_project_created",
+        "background_tasks",
+        ["project_id", "created_at", "id"],
+    )
+    op.create_index(
+        "ix_background_tasks_status",
+        "background_tasks",
+        ["status"],
+    )
+    op.create_index(
         "ix_consistency_checks_project_chapter",
         "consistency_checks",
         ["project_id", "chapter_index"],
@@ -55,6 +75,10 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_index("ix_consistency_checks_project_status", table_name="consistency_checks")
     op.drop_index("ix_consistency_checks_project_chapter", table_name="consistency_checks")
+    op.drop_index("ix_background_tasks_status", table_name="background_tasks")
+    op.drop_index("ix_background_tasks_project_created", table_name="background_tasks")
+    op.drop_index("ix_versions_project_node_version", table_name="versions")
+    op.drop_index("ix_versions_project_node_created", table_name="versions")
     op.drop_index("ix_dialog_messages_dialog_action_created", table_name="dialog_messages")
     op.drop_index("ix_dialog_messages_dialog_type_created", table_name="dialog_messages")
     op.drop_index("ix_chapter_contents_project_status", table_name="chapter_contents")
