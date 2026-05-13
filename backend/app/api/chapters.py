@@ -2,6 +2,7 @@ import re
 import time
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.config import load_api_key
@@ -264,11 +265,12 @@ async def create_or_replace_chapter(
         db.add(chapter)
 
     db.flush()
-    total_words = sum(
-        c.word_count or 0
-        for c in db.query(ChapterContent).filter(ChapterContent.project_id == project_id).all()
+    total_words = (
+        db.query(func.coalesce(func.sum(ChapterContent.word_count), 0))
+        .filter(ChapterContent.project_id == project_id)
+        .scalar()
     )
-    project.current_word_count = total_words
+    project.current_word_count = int(total_words or 0)
     project.status = "writing"
     project.current_phase = "content"
 

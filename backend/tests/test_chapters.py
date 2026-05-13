@@ -2,6 +2,7 @@ import asyncio
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from sqlalchemy import event
 
 from app.api.chapters import create_or_replace_chapter
 from app.models import (
@@ -224,6 +225,52 @@ def test_generate_chapter_updates_project_and_list_chapter_word_counts(mock_comp
 
     chapters = client.get(f"/api/v1/projects/{pid}/chapters").json()["chapters"]
     assert chapters[0]["word_count"] == 6
+
+
+@patch("app.api.chapters.load_api_key", return_value="sk-test")
+@patch("app.api.chapters.ai_service.complete", new_callable=AsyncMock)
+def test_generate_chapter_reconciles_word_count_with_aggregate_query(mock_complete, mock_key, client, db_session):
+    pid = _create_project_with_setup(client)
+    project = db_session.get(Project, pid)
+    for index in range(1, 121):
+        db_session.add(
+            ChapterContent(
+                project_id=pid,
+                chapter_index=index,
+                title=f"第{index}章",
+                content="已有正文。",
+                word_count=1000,
+                status="generated",
+            )
+        )
+    db_session.commit()
+    mock_complete.return_value.content = "新增章节正文"
+    mock_complete.return_value.model = "deepseek-chat"
+    mock_complete.return_value.prompt_tokens = 100
+    mock_complete.return_value.completion_tokens = 200
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(statement.lower())
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        chapter = asyncio.run(create_or_replace_chapter(db_session, pid, 121))
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    db_session.refresh(project)
+    assert chapter.chapter_index == 121
+    assert project.current_word_count == 120000 + chapter.word_count
+    unbounded_chapter_row_selects = []
+    for statement in statements:
+        if "select chapter_contents.id" not in statement or "from chapter_contents" not in statement:
+            continue
+        where_index = statement.find("where")
+        where_clause = statement[where_index:] if where_index >= 0 else ""
+        if "chapter_contents.project_id" in where_clause and "chapter_contents.chapter_index =" not in where_clause:
+            unbounded_chapter_row_selects.append(statement)
+    assert not unbounded_chapter_row_selects
 
 
 @patch("app.api.chapters.load_api_key", return_value="sk-test")
