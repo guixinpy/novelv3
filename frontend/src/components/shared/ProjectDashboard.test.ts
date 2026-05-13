@@ -92,4 +92,21 @@ describe('ProjectDashboard', () => {
 
     expect(wrapper.emitted('tool')).toEqual([['manuscript'], ['versions'], ['export']])
   })
+
+  it('uses backend chapter totals when only the first chapter page is loaded', () => {
+    const wrapper = mount(ProjectDashboard, {
+      props: {
+        setup: null,
+        storyline: null,
+        outline: { total_chapters: 1000, chapters: [] },
+        chapters: Array.from({ length: 200 }, (_, index) => ({ chapter_index: index + 1, word_count: 1000 })),
+        chaptersTotal: 1000,
+        totalWords: 1000000,
+      },
+    })
+
+    expect(wrapper.text()).toContain('正文 1000/1000')
+    expect(wrapper.text()).toContain('100%')
+    expect(wrapper.find('.dashboard__stat-value').text()).toBe('1000')
+  })
 })

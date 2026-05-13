@@ -7,6 +7,7 @@ const props = defineProps<{
   storyline: any
   outline: any
   chapters: any[]
+  chaptersTotal?: number
   totalWords: number
   pendingAction?: PendingAction | null
   aiLoading?: boolean
@@ -75,10 +76,15 @@ const storylineCard = computed<StageCard>(() => {
   }
 })
 
+const displayedChapterCount = computed(() => {
+  const total = Number(props.chaptersTotal || 0)
+  return total > 0 ? total : props.chapters.length
+})
+
 const outlineCard = computed<StageCard>(() => {
   const outlineChapters = asArray(props.outline?.chapters)
   const plannedChapters = Number(props.outline?.total_chapters || outlineChapters.length || 0)
-  const writtenChapters = props.chapters.length
+  const writtenChapters = displayedChapterCount.value
   const progress = plannedChapters > 0 ? Math.min(100, Math.round((writtenChapters / plannedChapters) * 100)) : 0
   return {
     key: 'outline',
@@ -148,7 +154,7 @@ const totalWordsLabel = computed(() => props.totalWords >= 10000 ? `${(props.tot
       </article>
       <div class="dashboard__stats">
         <div class="dashboard__stat">
-          <span class="dashboard__stat-value">{{ chapters.length }}</span>
+          <span class="dashboard__stat-value">{{ displayedChapterCount }}</span>
           <span class="dashboard__stat-label">章节</span>
         </div>
         <div class="dashboard__stat">

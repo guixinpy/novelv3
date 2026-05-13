@@ -61,6 +61,8 @@ const activeTraceId = ref<string | null>(null)
 
 // Project stats
 const totalWords = computed(() => {
+  const projectWordCount = Number(project.currentProject?.current_word_count || 0)
+  if (projectWordCount > 0) return projectWordCount
   return (project.chapters || []).reduce((sum: number, c: any) => sum + (c.word_count || 0), 0)
 })
 
@@ -335,6 +337,7 @@ function closeTrace() {
           :storyline="project.storyline"
           :outline="project.outline"
           :chapters="project.chapters || []"
+          :chapters-total="project.chaptersTotal"
           :total-words="totalWords"
           :pending-action="chat.pendingAction"
           :ai-loading="chat.loading"

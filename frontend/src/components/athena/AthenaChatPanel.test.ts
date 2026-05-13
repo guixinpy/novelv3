@@ -101,6 +101,26 @@ describe('AthenaChatPanel', () => {
     expect(wrapper.text()).toContain('历史回答基于当时上下文')
   })
 
+  it('uses the paginated chapter total instead of the loaded page length', () => {
+    const project = useProjectStore()
+    project.currentProject = {
+      id: 'project-1',
+      name: '霜灯档案',
+      current_word_count: 750000,
+    }
+    project.chapters = Array.from({ length: 200 }, (_, index) => ({
+      id: `chapter-${index + 1}`,
+      chapter_index: index + 1,
+      title: `第${index + 1}章`,
+    }))
+    project.chaptersTotal = 1000
+
+    const wrapper = mountPanel('project-1')
+
+    expect(wrapper.text()).toContain('章节 1000')
+    expect(wrapper.text()).not.toContain('章节 200')
+  })
+
   it('marks retrieval index metric as unread when diagnostics are not loaded', () => {
     const project = useProjectStore()
     const athena = useAthenaStore()

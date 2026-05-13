@@ -35,7 +35,9 @@ const messages = computed(() =>
 )
 
 const contextSnapshot = computed(() => {
-  const chapterCount = Array.isArray(project.chapters) ? project.chapters.length : 0
+  const loadedChapterCount = Array.isArray(project.chapters) ? project.chapters.length : 0
+  const totalChapterCount = Number(project.chaptersTotal || 0)
+  const chapterCount = totalChapterCount > 0 ? totalChapterCount : loadedChapterCount
   const wordCount = Number(project.currentProject?.current_word_count || 0)
   const profileVersion = athena.ontology?.profile_version
   const indexedDocuments = athena.retrievalDiagnostics?.total_documents
