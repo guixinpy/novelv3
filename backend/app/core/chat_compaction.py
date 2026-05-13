@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from app.models import DialogMessage
@@ -15,19 +16,30 @@ class CompactionSummary:
 
 
 def select_compactable_plain_messages(db: Session, dialog_id: str) -> list[DialogMessage]:
-    messages = (
-        db.query(DialogMessage)
-        .filter(DialogMessage.dialog_id == dialog_id)
-        .order_by(DialogMessage.created_at.asc(), DialogMessage.id.asc())
-        .all()
+    last_summary = (
+        db.query(DialogMessage.created_at, DialogMessage.id)
+        .filter(
+            DialogMessage.dialog_id == dialog_id,
+            DialogMessage.message_type == "summary",
+        )
+        .order_by(DialogMessage.created_at.desc(), DialogMessage.id.desc())
+        .first()
     )
-
-    last_summary_index = -1
-    for index, message in enumerate(messages):
-        if message.message_type == "summary":
-            last_summary_index = index
-
-    return [message for message in messages[last_summary_index + 1 :] if message.message_type == "plain"]
+    query = db.query(DialogMessage).filter(
+        DialogMessage.dialog_id == dialog_id,
+        DialogMessage.message_type == "plain",
+    )
+    if last_summary is not None:
+        query = query.filter(
+            or_(
+                DialogMessage.created_at > last_summary.created_at,
+                and_(
+                    DialogMessage.created_at == last_summary.created_at,
+                    DialogMessage.id > last_summary.id,
+                ),
+            )
+        )
+    return query.order_by(DialogMessage.created_at.asc(), DialogMessage.id.asc()).all()
 
 
 async def build_compaction_summary(

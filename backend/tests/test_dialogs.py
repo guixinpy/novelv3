@@ -2,10 +2,12 @@ import asyncio
 import contextlib
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from sqlalchemy import event
 from sqlalchemy.orm.session import Session as OrmSession
 
 from app.api import dialogs as dialogs_api
@@ -14,9 +16,9 @@ from app.core.chat_commands import (
     command_to_action_type,
     is_supported_chat_command,
 )
-from app.core.chat_compaction import build_compaction_summary
+from app.core.chat_compaction import build_compaction_summary, select_compactable_plain_messages
 from app.core.intent_router import IntentRouter, parse_chapter_index
-from app.models import AIModelCallTrace, BackgroundTask, Dialog, Outline, PendingAction, Setup, Storyline
+from app.models import AIModelCallTrace, BackgroundTask, Dialog, DialogMessage, Outline, PendingAction, Setup, Storyline
 from app.schemas import ProjectDiagnosisOut
 from app.services.actions.action_result_service import ActionResultService
 
@@ -797,6 +799,74 @@ def test_compact_only_compresses_messages_after_last_summary(mock_compact_comple
     assert summary_messages[1]["meta"]["summary_text"] == "第二段摘要"
     assert all(m["message_type"] != "plain" for m in messages)
     assert mock_compact_complete.await_count == 2
+
+
+def test_select_compactable_plain_messages_filters_after_last_summary_without_full_history_scan(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Compact Scale"})
+    pid = r.json()["id"]
+    dialog = Dialog(project_id=pid, dialog_type="hermes", state="chatting")
+    db_session.add(dialog)
+    db_session.commit()
+
+    base_time = datetime(2026, 1, 1, tzinfo=UTC)
+    old_messages = [
+        DialogMessage(
+            dialog_id=dialog.id,
+            role="user",
+            message_type="plain",
+            content=f"old-{index}",
+            created_at=base_time + timedelta(seconds=index),
+        )
+        for index in range(200)
+    ]
+    summary = DialogMessage(
+        dialog_id=dialog.id,
+        role="system",
+        message_type="summary",
+        content="历史摘要",
+        created_at=base_time + timedelta(seconds=300),
+    )
+    recent_messages = [
+        DialogMessage(
+            dialog_id=dialog.id,
+            role="user",
+            message_type="plain",
+            content="new-1",
+            created_at=base_time + timedelta(seconds=301),
+        ),
+        DialogMessage(
+            dialog_id=dialog.id,
+            role="assistant",
+            message_type="plain",
+            content="new-2",
+            created_at=base_time + timedelta(seconds=302),
+        ),
+    ]
+    db_session.add_all([*old_messages, summary, *recent_messages])
+    db_session.commit()
+
+    statements: list[str] = []
+
+    def capture_statement(conn, cursor, statement, parameters, context, executemany):  # noqa: ARG001
+        statements.append(" ".join(statement.lower().split()))
+
+    bind = db_session.get_bind()
+    event.listen(bind, "before_cursor_execute", capture_statement)
+    try:
+        compactable = select_compactable_plain_messages(db_session, dialog.id)
+    finally:
+        event.remove(bind, "before_cursor_execute", capture_statement)
+
+    assert [message.content for message in compactable] == ["new-1", "new-2"]
+    full_history_selects = [
+        statement
+        for statement in statements
+        if "from dialog_messages" in statement
+        and "where dialog_messages.dialog_id" in statement
+        and "message_type =" not in statement
+    ]
+    assert full_history_selects == []
+
 
 def test_resolve_action_confirm_sets_dialog_state_running(client, db_session):
     r = client.post("/api/v1/projects", json={"name": "Test"})
