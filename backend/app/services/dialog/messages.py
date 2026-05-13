@@ -1,3 +1,4 @@
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from app.models import AIModelCallTrace, Dialog, DialogMessage, PendingAction
@@ -28,6 +29,7 @@ class DialogMessageService:
             return []
 
         query = self.db.query(DialogMessage).filter(DialogMessage.dialog_id == dialog.id)
+        effective_limit = limit if limit is not None else DEFAULT_DIALOG_MESSAGE_LIMIT
         if after_id:
             cursor = self.db.query(DialogMessage).filter(
                 DialogMessage.dialog_id == dialog.id,
@@ -35,10 +37,24 @@ class DialogMessageService:
             ).first()
             if not cursor:
                 return []
-            query = query.filter(DialogMessage.created_at > cursor.created_at)
-
-        effective_limit = limit if limit is not None else DEFAULT_DIALOG_MESSAGE_LIMIT
-        messages = list(reversed(query.order_by(DialogMessage.created_at.desc()).limit(effective_limit).all()))
+            query = query.filter(
+                or_(
+                    DialogMessage.created_at > cursor.created_at,
+                    and_(
+                        DialogMessage.created_at == cursor.created_at,
+                        DialogMessage.id > cursor.id,
+                    ),
+                )
+            )
+            messages = query.order_by(DialogMessage.created_at.asc(), DialogMessage.id.asc()).limit(effective_limit).all()
+        else:
+            messages = list(
+                reversed(
+                    query.order_by(DialogMessage.created_at.desc(), DialogMessage.id.desc())
+                    .limit(effective_limit)
+                    .all()
+                )
+            )
 
         pending_action = self._pending_action_payload(dialog)
         last_assistant_message_id = self._last_assistant_message_id(messages) if pending_action else None
