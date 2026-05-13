@@ -19,6 +19,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--target-chapter", type=int, default=None)
     parser.add_argument("--query", type=str, default="星环钥匙")
     parser.add_argument("--max-elapsed-ms", type=int, default=None)
+    parser.add_argument("--cleanup", action="store_true", help="Delete the synthetic smoke project after reporting.")
     parser.add_argument(
         "--max-stage-ms",
         action="append",
@@ -33,17 +34,21 @@ def main(argv: list[str] | None = None) -> int:
         parser.error(str(exc))
 
     report = _run_smoke_report(args)
-    print(json.dumps(report, ensure_ascii=False, indent=2))
-    failures = _threshold_failures(
-        report,
-        max_elapsed_ms=args.max_elapsed_ms,
-        max_stage_ms=max_stage_ms,
-    )
-    if failures:
-        for failure in failures:
-            print(failure, file=sys.stderr)
-        return 1
-    return 0
+    try:
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+        failures = _threshold_failures(
+            report,
+            max_elapsed_ms=args.max_elapsed_ms,
+            max_stage_ms=max_stage_ms,
+        )
+        if failures:
+            for failure in failures:
+                print(failure, file=sys.stderr)
+            return 1
+        return 0
+    finally:
+        if args.cleanup:
+            _cleanup_smoke_project(str(report["project_id"]))
 
 
 def _run_smoke_report(args: argparse.Namespace) -> dict:
@@ -60,6 +65,17 @@ def _run_smoke_report(args: argparse.Namespace) -> dict:
             target_chapter_index=args.target_chapter,
             query=args.query,
         )
+    finally:
+        db.close()
+
+
+def _cleanup_smoke_project(project_id: str) -> None:
+    from app.api.projects import delete_project
+    from app.db import SessionLocal
+
+    db = SessionLocal()
+    try:
+        delete_project(project_id, db)
     finally:
         db.close()
 

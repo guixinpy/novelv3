@@ -627,6 +627,29 @@ def test_longform_scale_smoke_cli_rejects_invalid_stage_threshold_before_running
         module.main(["--max-stage-ms", "retrieval_reindex"])
 
 
+def test_longform_scale_smoke_cli_cleans_up_generated_project(monkeypatch):
+    script_path = Path(__file__).resolve().parents[2] / "scripts" / "longform_scale_smoke.py"
+    spec = importlib.util.spec_from_file_location("longform_scale_smoke_cli", script_path)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    cleaned_project_ids: list[str] = []
+
+    monkeypatch.setattr(
+        module,
+        "_run_smoke_report",
+        lambda _args: {"project_id": "project-smoke-1", "elapsed_ms": 10, "timings_ms": {}},
+        raising=False,
+    )
+    monkeypatch.setattr(module, "_cleanup_smoke_project", cleaned_project_ids.append, raising=False)
+
+    exit_code = module.main(["--cleanup"])
+
+    assert exit_code == 0
+    assert cleaned_project_ids == ["project-smoke-1"]
+
+
 def test_refresh_longform_memory_for_chapter_updates_only_affected_scopes(db_session):
     from app.core.longform_memory import rebuild_longform_memory, refresh_longform_memory_for_chapter
 
