@@ -703,7 +703,7 @@ def _index_sources(db: Session, project_id: str, sources: Iterable[RetrievalSour
                     chunk_metadata={},
                 )
             )
-            terms = sorted(set(tokens))
+            terms = _indexable_retrieval_terms(tokens)
             term_objects.extend(
                 RetrievalTerm(project_id=project_id, chunk_id=chunk_id, token=token)
                 for token in terms
@@ -728,6 +728,25 @@ def _index_sources(db: Session, project_id: str, sources: Iterable[RetrievalSour
             batched_sources = 0
     _flush_index_write_batch(db, document_objects, chunk_objects, term_objects, embedding_objects)
     return indexed
+
+
+def _indexable_retrieval_terms(tokens: list[str]) -> list[str]:
+    unique_tokens = sorted(set(tokens))
+    has_cjk_trigrams = any(
+        _is_cjk_token(token) and len(token) >= 3
+        for token in unique_tokens
+    )
+    if not has_cjk_trigrams:
+        return unique_tokens
+    return [
+        token
+        for token in unique_tokens
+        if not (_is_cjk_token(token) and len(token) == 2)
+    ]
+
+
+def _is_cjk_token(token: str) -> bool:
+    return bool(token) and all("\u4e00" <= char <= "\u9fff" for char in token)
 
 
 def _flush_index_write_batch(

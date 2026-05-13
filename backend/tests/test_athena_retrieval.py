@@ -359,6 +359,43 @@ def test_reindex_builds_indexed_lexical_terms_for_local_search(client, db_sessio
     assert diagnostics.json()["total_terms"] == term_count
 
 
+def test_reindex_prefers_cjk_trigrams_over_bigrams_for_lexical_terms(db_session):
+    project = Project(name="Retrieval Term Compaction")
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    db_session.add(
+        ChapterContent(
+            project_id=project.id,
+            chapter_index=1,
+            title="星环钥匙",
+            content="星环钥匙沉睡旧灯塔，潮汐归零时才会苏醒。",
+            word_count=24,
+            status="generated",
+        )
+    )
+    db_session.commit()
+
+    reindex_project_retrieval(db_session, project.id)
+
+    indexed_terms = {
+        row[0]
+        for row in db_session.query(RetrievalTerm.token)
+        .filter(RetrievalTerm.project_id == project.id)
+        .all()
+    }
+    assert "星环钥" in indexed_terms
+    assert "环钥匙" in indexed_terms
+    assert "旧灯塔" in indexed_terms
+    assert "星环" not in indexed_terms
+    assert "钥匙" not in indexed_terms
+    assert "灯塔" not in indexed_terms
+    result = search_retrieval(db_session, project.id, "星环钥匙", limit=1)
+    assert result["items"][0]["source_ref"] == "chapter:1"
+    short_query_result = search_retrieval(db_session, project.id, "灯塔", limit=1)
+    assert short_query_result["items"][0]["source_ref"] == "chapter:1"
+
+
 def test_reindex_bulk_inserts_lexical_terms(db_session, monkeypatch):
     project = _seed_retrieval_project(db_session)
     add_counts = {"terms": 0}
