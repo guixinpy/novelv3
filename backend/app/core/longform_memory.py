@@ -615,20 +615,38 @@ def _safe_range_context_items(
     end_chapter_index: int,
     title: str,
 ) -> list[dict[str, Any]]:
-    query = db.query(LongformMemory).filter(
+    filters = [
         LongformMemory.project_id == project_id,
         LongformMemory.memory_type == "chapter",
         LongformMemory.end_chapter_index <= end_chapter_index,
-    )
+    ]
     if start_chapter_index is not None:
-        query = query.filter(LongformMemory.start_chapter_index >= start_chapter_index)
-    chapters = query.order_by(LongformMemory.start_chapter_index.asc()).all()
-    if not chapters:
+        filters.append(LongformMemory.start_chapter_index >= start_chapter_index)
+    word_count_expr = LongformMemory.memory_metadata["word_count"].as_integer()
+    chapter_count, word_count, first_chapter, last_chapter = (
+        db.query(
+            func.count(LongformMemory.id),
+            func.coalesce(func.sum(word_count_expr), 0),
+            func.min(LongformMemory.start_chapter_index),
+            func.max(LongformMemory.end_chapter_index),
+        )
+        .filter(*filters)
+        .one()
+    )
+    chapter_count = int(chapter_count or 0)
+    if chapter_count == 0:
         return []
-    word_count = sum((memory.memory_metadata or {}).get("word_count", 0) for memory in chapters)
-    recent_titles = "、".join(memory.title for memory in chapters[-5:])
-    first_chapter = chapters[0].start_chapter_index
-    last_chapter = chapters[-1].end_chapter_index
+    latest_titles = [
+        row[0]
+        for row in (
+            db.query(LongformMemory.title)
+            .filter(*filters)
+            .order_by(LongformMemory.start_chapter_index.desc(), LongformMemory.id.desc())
+            .limit(5)
+            .all()
+        )
+    ]
+    recent_titles = "、".join(reversed([title for title in latest_titles if title]))
     return [
         {
             "id": None,
@@ -637,8 +655,12 @@ def _safe_range_context_items(
             "start_chapter_index": first_chapter,
             "end_chapter_index": last_chapter,
             "title": title,
-            "summary": f"截至第{last_chapter}章，已纳入{len(chapters)}章，约{word_count}字；近期章节：{recent_titles}",
-            "metadata": {"chapter_count": len(chapters), "word_count": word_count, "source": "safe_chapter_memory_rollup"},
+            "summary": f"截至第{last_chapter}章，已纳入{chapter_count}章，约{int(word_count or 0)}字；近期章节：{recent_titles}",
+            "metadata": {
+                "chapter_count": chapter_count,
+                "word_count": int(word_count or 0),
+                "source": "safe_chapter_memory_rollup",
+            },
         }
     ]
 

@@ -212,6 +212,52 @@ def test_longform_context_for_chapter_excludes_future_chapters(client, db_sessio
     )
 
 
+def test_longform_context_package_rollups_do_not_load_all_memory_rows(db_session):
+    from app.core.longform_memory import build_longform_context_package, rebuild_longform_memory
+
+    project = Project(name="Context Rollup Projection")
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    for index in range(1, 121):
+        db_session.add(
+            ChapterContent(
+                project_id=project.id,
+                chapter_index=index,
+                title=f"第{index}章",
+                content=f"第{index}章正文。星环钥匙推进。",
+                word_count=1000 + index,
+                status="generated",
+            )
+        )
+    db_session.commit()
+    rebuild_longform_memory(db_session, project.id)
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        payload = build_longform_context_package(db_session, project.id, 120)
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    section_keys = [section["key"] for section in payload["sections"]]
+    assert "global" in section_keys
+    assert "volume" in section_keys
+    assert "arc" in section_keys
+    full_memory_selects = [
+        statement
+        for statement in statements
+        if "select longform_memories.id" in statement
+        and "from longform_memories" in statement
+        and "order by longform_memories.start_chapter_index asc" in statement
+        and "limit" not in statement
+    ]
+    assert full_memory_selects == []
+
+
 def test_reindex_includes_longform_memory_sources(client, db_session):
     project = Project(name="Longform Retrieval Sources")
     db_session.add(project)
