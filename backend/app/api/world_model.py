@@ -16,11 +16,17 @@ from app.models import (
     Project,
     ChapterContent,
     ProjectProfileVersion,
+    WorldArtifact,
+    WorldCharacter,
+    WorldEvent,
     WorldFactClaim,
+    WorldFaction,
+    WorldLocation,
     WorldProposalBundle,
     WorldProposalImpactScopeSnapshot,
     WorldProposalItem,
     WorldProposalReview,
+    WorldResource,
 )
 from app.schemas import (
     PaginatedProposalBundlesOut,
@@ -69,17 +75,6 @@ def get_world_model_dashboard(project_id: str, db: Session = Depends(get_db)):
             },
         )
 
-    try:
-        overview = build_world_projection_overview(
-            db=db,
-            project_id=project_id,
-            profile=profile,
-            view_type="current_truth",
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    projection = overview.projection
     pending_item_count = (
         db.query(WorldProposalItem)
         .filter(
@@ -101,8 +96,9 @@ def get_world_model_dashboard(project_id: str, db: Session = Depends(get_db)):
         .distinct()
         .count()
     )
-    fact_count = sum(len(group) for group in (projection.facts if projection else {}).values())
-    event_count = len(projection.occurred_events if projection else {})
+    metrics = _dashboard_projection_metrics(db=db, project_id=project_id, profile=profile)
+    fact_count = metrics["fact_count"]
+    event_count = metrics["event_count"]
     if pending_item_count:
         next_action = {"action": "review_proposals", "label": "处理待审世界模型提案"}
     elif fact_count == 0 and event_count == 0:
@@ -112,10 +108,7 @@ def get_world_model_dashboard(project_id: str, db: Session = Depends(get_db)):
     return WorldModelDashboardOut(
         project_profile=profile,
         metrics={
-            "entity_count": len(projection.entities if projection else {}),
-            "fact_count": fact_count,
-            "presence_count": len(projection.presence if projection else {}),
-            "event_count": event_count,
+            **metrics,
             "pending_bundle_count": pending_bundle_count,
             "pending_item_count": pending_item_count,
         },
@@ -406,6 +399,97 @@ def _get_current_profile(*, db: Session, project_id: str) -> ProjectProfileVersi
         .filter(ProjectProfileVersion.project_id == project_id)
         .order_by(ProjectProfileVersion.version.desc(), ProjectProfileVersion.created_at.desc())
         .first()
+    )
+
+
+def _dashboard_projection_metrics(
+    *,
+    db: Session,
+    project_id: str,
+    profile: ProjectProfileVersion,
+) -> dict[str, int]:
+    catalog_entity_count = sum(
+        db.query(model.id)
+        .filter(
+            model.project_id == project_id,
+            model.profile_version == profile.version,
+        )
+        .count()
+        for model in (
+            WorldCharacter,
+            WorldLocation,
+            WorldFaction,
+            WorldArtifact,
+            WorldResource,
+        )
+    )
+    introduced_entity_count = _count_distinct_event_payload_ref(
+        db=db,
+        project_id=project_id,
+        profile=profile,
+        event_type="entity_introduced",
+        payload_key="entity_ref",
+    )
+    return {
+        "entity_count": catalog_entity_count + introduced_entity_count,
+        "fact_count": _dashboard_fact_count(db=db, project_id=project_id, profile=profile),
+        "presence_count": _count_distinct_event_payload_ref(
+            db=db,
+            project_id=project_id,
+            profile=profile,
+            event_type="presence_shifted",
+            payload_key="entity_ref",
+        ),
+        "event_count": _count_distinct_event_payload_ref(
+            db=db,
+            project_id=project_id,
+            profile=profile,
+            event_type="event_occurred",
+            payload_key="event_ref",
+        ),
+    }
+
+
+def _dashboard_fact_count(
+    *,
+    db: Session,
+    project_id: str,
+    profile: ProjectProfileVersion,
+) -> int:
+    return (
+        db.query(WorldFactClaim.subject_ref, WorldFactClaim.predicate)
+        .filter(
+            WorldFactClaim.project_id == project_id,
+            WorldFactClaim.project_profile_version_id == profile.id,
+            WorldFactClaim.profile_version == profile.version,
+            WorldFactClaim.claim_layer == "truth",
+            WorldFactClaim.claim_status == "confirmed",
+        )
+        .distinct()
+        .count()
+    )
+
+
+def _count_distinct_event_payload_ref(
+    *,
+    db: Session,
+    project_id: str,
+    profile: ProjectProfileVersion,
+    event_type: str,
+    payload_key: str,
+) -> int:
+    payload_ref = WorldEvent.primitive_payload[payload_key].as_string()
+    return (
+        db.query(payload_ref)
+        .filter(
+            WorldEvent.project_id == project_id,
+            WorldEvent.project_profile_version_id == profile.id,
+            WorldEvent.profile_version == profile.version,
+            WorldEvent.event_type == event_type,
+            payload_ref.isnot(None),
+        )
+        .distinct()
+        .count()
     )
 
 

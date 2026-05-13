@@ -1,3 +1,5 @@
+from sqlalchemy import event
+
 from app.core.world_proposal_service import (
     calculate_bundle_impact_scope,
     create_bundle,
@@ -629,6 +631,55 @@ def test_world_model_dashboard_counts_only_bundles_with_actionable_items(client,
     assert payload["metrics"]["pending_bundle_count"] == 0
     assert payload["metrics"]["pending_item_count"] == 0
     assert payload["next_action"]["action"] == "inspect_projection"
+
+
+def test_world_model_dashboard_uses_aggregate_metrics_without_loading_projection_rows(client, db_session):
+    project, profile_version = _seed_profile(db_session)
+    facts = [
+        WorldFactClaim(
+            project_id=project.id,
+            project_profile_version_id=profile_version.id,
+            profile_version=profile_version.version,
+            claim_id=f"claim.dashboard.metric.{index}",
+            chapter_index=index,
+            intra_chapter_seq=1,
+            subject_ref=f"char.dashboard.{index}",
+            predicate="status",
+            object_ref_or_value="active",
+            claim_layer="truth",
+            claim_status="confirmed",
+            authority_type="authoritative_structured",
+            confidence=0.95,
+            contract_version="world.contract.v1",
+            evidence_refs=[f"chapter.{index:03d}"],
+        )
+        for index in range(1, 251)
+    ]
+    db_session.add_all(facts)
+    db_session.commit()
+
+    statements: list[str] = []
+
+    def capture_statement(conn, cursor, statement, parameters, context, executemany):  # noqa: ARG001
+        statements.append(" ".join(statement.lower().split()))
+
+    bind = db_session.get_bind()
+    event.listen(bind, "before_cursor_execute", capture_statement)
+    try:
+        response = client.get(f"/api/v1/projects/{project.id}/world-model/dashboard")
+    finally:
+        event.remove(bind, "before_cursor_execute", capture_statement)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["metrics"]["fact_count"] == 250
+    assert payload["next_action"]["action"] == "inspect_projection"
+    full_fact_selects = [
+        statement
+        for statement in statements
+        if "select world_fact_claims.id" in statement and "from world_fact_claims" in statement
+    ]
+    assert full_fact_selects == []
 
 
 def test_world_model_snapshot_validates_chapter_index_before_empty_projection(client, db_session):
