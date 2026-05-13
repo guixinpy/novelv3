@@ -359,6 +359,25 @@ def test_reindex_builds_indexed_lexical_terms_for_local_search(client, db_sessio
     assert diagnostics.json()["total_terms"] == term_count
 
 
+def test_reindex_bulk_inserts_lexical_terms(db_session, monkeypatch):
+    project = _seed_retrieval_project(db_session)
+    add_counts = {"terms": 0}
+    original_add = db_session.add
+
+    def count_add(instance, *args, **kwargs):
+        if isinstance(instance, RetrievalTerm):
+            add_counts["terms"] += 1
+        return original_add(instance, *args, **kwargs)
+
+    monkeypatch.setattr(db_session, "add", count_add)
+
+    result = reindex_project_retrieval(db_session, project.id)
+
+    assert result["indexed"]["terms"] > 0
+    assert db_session.query(RetrievalTerm).filter_by(project_id=project.id).count() == result["indexed"]["terms"]
+    assert add_counts["terms"] == 0
+
+
 def test_search_retrieval_uses_lexical_shortlist_for_late_relevant_chunks(client, db_session):
     project = Project(name="Late Retrieval", genre="东方奇幻悬疑")
     db_session.add(project)

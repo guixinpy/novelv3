@@ -693,8 +693,10 @@ def _index_sources(db: Session, project_id: str, sources: Iterable[RetrievalSour
             db.add(chunk)
             db.flush()
             terms = sorted(set(tokenize_for_retrieval(chunk_data["text"])))
-            for token in terms:
-                db.add(RetrievalTerm(project_id=project_id, chunk_id=chunk.id, token=token))
+            if terms:
+                db.bulk_save_objects(
+                    [RetrievalTerm(project_id=project_id, chunk_id=chunk.id, token=token) for token in terms]
+                )
             indexed["terms"] += len(terms)
             db.add(
                 RetrievalEmbedding(
