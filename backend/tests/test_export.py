@@ -1,4 +1,5 @@
 from app.models import ChapterContent
+from sqlalchemy import event
 
 
 def test_export_markdown(client):
@@ -164,3 +165,42 @@ def test_list_chapters_returns_explicit_page(client, db_session):
     assert payload["offset"] == 10
     assert payload["limit"] == 5
     assert payload["has_more"] is True
+
+
+def test_list_chapters_summary_page_does_not_select_chapter_content(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Summary Projection"})
+    pid = r.json()["id"]
+    db_session.add_all(
+        [
+            ChapterContent(
+                project_id=pid,
+                chapter_index=index,
+                title=f"第{index}章",
+                content="摘要列表不应读取的大段正文。" * 1000,
+                word_count=1000,
+                status="generated",
+            )
+            for index in range(1, 4)
+        ]
+    )
+    db_session.commit()
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        response = client.get(f"/api/v1/projects/{pid}/chapters?limit=2")
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert response.status_code == 200
+    assert len(response.json()["chapters"]) == 2
+    chapter_select_clauses = [
+        statement.split("from chapter_contents", 1)[0]
+        for statement in statements
+        if "from chapter_contents" in statement
+    ]
+    assert chapter_select_clauses
+    assert all("chapter_contents.content" not in clause for clause in chapter_select_clauses)

@@ -93,12 +93,23 @@ def list_chapters(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    query = db.query(ChapterContent).filter(
-        ChapterContent.project_id == project_id,
+    filters = [ChapterContent.project_id == project_id]
+    total = db.query(func.count(ChapterContent.id)).filter(*filters).scalar() or 0
+    latest_chapter_index = db.query(func.max(ChapterContent.chapter_index)).filter(*filters).scalar()
+    chapters = (
+        db.query(
+            ChapterContent.id,
+            ChapterContent.chapter_index,
+            ChapterContent.title,
+            ChapterContent.word_count,
+            ChapterContent.status,
+        )
+        .filter(*filters)
+        .order_by(ChapterContent.chapter_index)
+        .offset(offset)
+        .limit(limit)
+        .all()
     )
-    total = query.count()
-    latest_chapter_index = query.with_entities(func.max(ChapterContent.chapter_index)).scalar()
-    chapters = query.order_by(ChapterContent.chapter_index).offset(offset).limit(limit).all()
 
     return {
         "total": total,
