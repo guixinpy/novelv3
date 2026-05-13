@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.core.embedding_service import cosine_similarity, get_embedding_provider, tokenize_for_retrieval, vector_hash
 from app.models import (
     ChapterContent,
+    LongformMemory,
     Outline,
     Project,
     RetrievalChunk,
@@ -318,6 +319,156 @@ def build_chapter_retrieval_context(db: Session, project_id: str, chapter_index:
     }
 
 
+def build_query_aware_retrieval_context(
+    db: Session,
+    project_id: str,
+    chapter_index: int,
+    *,
+    user_query: str | None = None,
+    limit: int = 6,
+) -> dict[str, Any] | None:
+    query = _query_aware_context_query(db, project_id, chapter_index, user_query=user_query)
+    if not query:
+        return None
+    max_chapter_index = max(chapter_index - 1, 0)
+    result_items = _query_aware_result_items(
+        db,
+        project_id=project_id,
+        query=query,
+        user_query=user_query,
+        limit=limit,
+        max_chapter_index=max_chapter_index,
+    )
+    if not result_items:
+        return None
+
+    items = [
+        _with_retrieval_explanation(item, user_query=user_query, max_chapter_index=max_chapter_index)
+        for item in result_items[:limit]
+    ]
+    lines = ["【检索依据】"]
+    lines.append(f"- 查询范围：第{max_chapter_index}章及之前的正文、长篇记忆和世界事实。")
+    if user_query:
+        lines.append(f"- 用户查询：{user_query.strip()}")
+    for item in items:
+        explanation = item["metadata"]["explanation"]
+        lines.append(
+            f"- {explanation['source_label']} {explanation['chapter_range']} "
+            f"{item['title']}（{explanation['reason']}）：{item['snippet']}"
+        )
+    return {
+        "section": {"key": "query_aware_retrieval", "title": "查询感知检索依据", "items": items},
+        "prompt_lines": lines,
+        "query": query,
+    }
+
+
+def _query_aware_result_items(
+    db: Session,
+    *,
+    project_id: str,
+    query: str,
+    user_query: str | None,
+    limit: int,
+    max_chapter_index: int,
+) -> list[dict[str, Any]]:
+    seen: set[str] = set()
+    items: list[dict[str, Any]] = []
+    cleaned_user_query = (user_query or "").strip()
+    if cleaned_user_query:
+        user_results = search_retrieval(
+            db,
+            project_id,
+            cleaned_user_query,
+            limit=limit,
+            max_chapter_index=max_chapter_index,
+        )
+        for item in user_results["items"]:
+            seen.add(item["chunk_id"])
+            items.append(item)
+    context_results = search_retrieval(
+        db,
+        project_id,
+        query,
+        limit=limit,
+        max_chapter_index=max_chapter_index,
+    )
+    for item in context_results["items"]:
+        if item["chunk_id"] in seen:
+            continue
+        seen.add(item["chunk_id"])
+        items.append(item)
+        if len(items) >= limit:
+            break
+    return items
+
+
+def _query_aware_context_query(
+    db: Session,
+    project_id: str,
+    chapter_index: int,
+    *,
+    user_query: str | None,
+) -> str:
+    parts = [_chapter_context_query(db, project_id, chapter_index)]
+    cleaned_user_query = (user_query or "").strip()
+    if cleaned_user_query:
+        parts.append(cleaned_user_query)
+    return "\n".join(part for part in parts if part).strip()
+
+
+def _with_retrieval_explanation(
+    item: dict[str, Any],
+    *,
+    user_query: str | None,
+    max_chapter_index: int,
+) -> dict[str, Any]:
+    metadata = dict(item.get("metadata") or {})
+    source_type = str(item.get("source_type") or "")
+    explanation = {
+        "source_type": source_type,
+        "source_label": _source_type_label(source_type),
+        "chapter_range": _source_chapter_range(item),
+        "score": item.get("score", 0),
+        "reason": _retrieval_reason(item, user_query=user_query, max_chapter_index=max_chapter_index),
+    }
+    metadata["explanation"] = explanation
+    return {**item, "metadata": metadata}
+
+
+def _source_type_label(source_type: str) -> str:
+    return {
+        "chapter": "章节正文",
+        "longform_memory": "长篇记忆",
+        "world_fact": "世界事实",
+    }.get(source_type, source_type or "未知来源")
+
+
+def _source_chapter_range(item: dict[str, Any]) -> str:
+    metadata = item.get("metadata") or {}
+    if item.get("source_type") == "longform_memory":
+        start = metadata.get("start_chapter_index")
+        end = metadata.get("end_chapter_index")
+        if start and end and start != end:
+            return f"第{start}-{end}章"
+        if end:
+            return f"第{end}章"
+    chapter_index = item.get("chapter_index")
+    return f"第{chapter_index}章" if chapter_index else "全局"
+
+
+def _retrieval_reason(item: dict[str, Any], *, user_query: str | None, max_chapter_index: int) -> str:
+    score = item.get("score", 0)
+    lexical_score = item.get("lexical_score", 0)
+    vector_score = item.get("vector_score", 0)
+    query_reason = "用户查询" if (user_query or "").strip() else "目标章节上下文"
+    if lexical_score >= vector_score:
+        match_type = "关键词命中"
+    else:
+        match_type = "语义相似"
+    return f"{query_reason}触发，{match_type}，得分 {score}，范围限制至第{max_chapter_index}章"
+
+
 def _project_sources(db: Session, project_id: str) -> list[RetrievalSource]:
     chapters = (
         db.query(ChapterContent)
@@ -335,7 +486,21 @@ def _project_sources(db: Session, project_id: str) -> list[RetrievalSource]:
         .order_by(WorldFactClaim.chapter_index.asc().nullsfirst(), WorldFactClaim.claim_id.asc())
         .all()
     )
-    return [*[_chapter_source(chapter) for chapter in chapters], *[_fact_source(fact) for fact in facts]]
+    memories = (
+        db.query(LongformMemory)
+        .filter(LongformMemory.project_id == project_id, LongformMemory.summary != "")
+        .order_by(
+            LongformMemory.end_chapter_index.asc().nullsfirst(),
+            LongformMemory.memory_type.asc(),
+            LongformMemory.scope_key.asc(),
+        )
+        .all()
+    )
+    return [
+        *[_chapter_source(chapter) for chapter in chapters],
+        *[_longform_memory_source(memory) for memory in memories],
+        *[_fact_source(fact) for fact in facts],
+    ]
 
 
 def sync_fact_retrieval_document(db: Session, *, fact: WorldFactClaim) -> dict[str, int]:
@@ -359,6 +524,26 @@ def _chapter_source(chapter: ChapterContent) -> RetrievalSource:
         chapter_index=chapter.chapter_index,
         profile_version=None,
         metadata={"chapter_index": chapter.chapter_index, "status": chapter.status},
+    )
+
+
+def _longform_memory_source(memory: LongformMemory) -> RetrievalSource:
+    metadata = memory.memory_metadata or {}
+    return RetrievalSource(
+        source_type="longform_memory",
+        source_id=memory.id,
+        source_ref=f"memory:{memory.scope_key}",
+        title=memory.title or memory.scope_key,
+        text=memory.summary or "",
+        chapter_index=memory.end_chapter_index,
+        profile_version=None,
+        metadata={
+            "memory_type": memory.memory_type,
+            "scope_key": memory.scope_key,
+            "start_chapter_index": memory.start_chapter_index,
+            "end_chapter_index": memory.end_chapter_index,
+            **metadata,
+        },
     )
 
 

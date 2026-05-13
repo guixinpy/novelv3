@@ -1,6 +1,7 @@
 import json
 from typing import Any
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.context_injection import (
@@ -13,6 +14,7 @@ from app.core.model_call_trace import build_context_block
 from app.models import (
     ChapterContent,
     DialogMessage,
+    LongformMemory,
     Outline,
     Project,
     ProjectProfileVersion,
@@ -282,6 +284,40 @@ def build_athena_narrative_planning_context_block(db: Session, project: Project)
     )
 
 
+def build_longform_evidence_range_context_block(db: Session, project: Project) -> dict[str, Any] | None:
+    rows = (
+        db.query(LongformMemory.memory_type, func.count(LongformMemory.id))
+        .filter(LongformMemory.project_id == project.id)
+        .group_by(LongformMemory.memory_type)
+        .all()
+    )
+    counts = {memory_type: int(count) for memory_type, count in rows}
+    total_memories = sum(counts.values())
+    if total_memories <= 0:
+        return None
+    count_line = "、".join(f"{key}: {value}" for key, value in counts.items())
+    chapter_count = db.query(ChapterContent).filter(ChapterContent.project_id == project.id).count()
+    current_word_count = int(
+        db.query(func.coalesce(func.sum(ChapterContent.word_count), 0))
+        .filter(ChapterContent.project_id == project.id)
+        .scalar()
+        or 0
+    )
+    lines = [
+        "长篇依据范围：",
+        f"- 已生成章节：{chapter_count}",
+        f"- 当前总字数：{current_word_count}",
+        f"- 分层记忆：{count_line}",
+        "- 默认回答和创作建议必须基于已生成章节、长篇记忆、世界事实和显式检索命中；不能读取未来章节。",
+    ]
+    return build_context_block(
+        key="longform.evidence_range",
+        kind="longform_evidence_range",
+        title="长篇依据范围",
+        content="\n".join(lines),
+    )
+
+
 def build_dialog_call_payload(
     db: Session,
     dialog_id: str,
@@ -296,6 +332,9 @@ def build_dialog_call_payload(
         world_context = build_athena_world_context(db, project.id)
         context_blocks = build_athena_world_context_blocks(db, project.id)
         extra_blocks = [build_athena_context_boundary_block(db, project)]
+        longform_block = build_longform_evidence_range_context_block(db, project)
+        if longform_block:
+            extra_blocks.append(longform_block)
         planning_block = build_athena_narrative_planning_context_block(db, project)
         if planning_block:
             extra_blocks.append(planning_block)
@@ -315,6 +354,16 @@ def build_dialog_call_payload(
         prompt_id = "dialog.hermes"
         world_context = build_hermes_world_context(db, project.id)
         context_blocks = build_hermes_world_context_blocks(db, project.id)
+        longform_block = build_longform_evidence_range_context_block(db, project)
+        if longform_block:
+            context_blocks.append(longform_block)
+            world_context = "\n\n".join(
+                part for part in [
+                    world_context,
+                    f"## {longform_block['title']}\n{longform_block['content']}",
+                ]
+                if part
+            )
         variables = build_hermes_prompt_variables(project, diagnosis, world_context)
 
     context_blocks = [

@@ -78,7 +78,13 @@ def get_longform_memory_diagnostics(db: Session, project_id: str) -> dict[str, A
     }
 
 
-def build_longform_context_package(db: Session, project_id: str, chapter_index: int) -> dict[str, Any]:
+def build_longform_context_package(
+    db: Session,
+    project_id: str,
+    chapter_index: int,
+    *,
+    user_query: str | None = None,
+) -> dict[str, Any]:
     _require_project(db, project_id)
     sections: list[dict[str, Any]] = []
     lines = [f"【长篇上下文】目标章节：第{chapter_index}章"]
@@ -101,12 +107,13 @@ def build_longform_context_package(db: Session, project_id: str, chapter_index: 
         lines.extend(f"- {item['title']}：{item['summary']}" for item in recent_items)
 
     try:
-        from app.core.athena_retrieval import build_chapter_retrieval_context
+        from app.core.athena_retrieval import build_query_aware_retrieval_context
 
-        retrieval_context = build_chapter_retrieval_context(
+        retrieval_context = build_query_aware_retrieval_context(
             db=db,
             project_id=project_id,
             chapter_index=chapter_index,
+            user_query=user_query,
         )
     except Exception:
         retrieval_context = None

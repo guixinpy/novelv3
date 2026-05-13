@@ -37,5 +37,15 @@ def get_athena_longform_memory_diagnostics(project_id: str, db: Session = Depend
 
 
 @router.get("/longform/context/chapters/{chapter_index}", response_model=LongformContextPackage)
-def get_athena_longform_context(project_id: str, chapter_index: int, db: Session = Depends(get_db)):
-    return build_longform_context_package(db=db, project_id=project_id, chapter_index=chapter_index)
+def get_athena_longform_context(
+    project_id: str,
+    chapter_index: int,
+    q: str | None = Query(None, min_length=1),
+    db: Session = Depends(get_db),
+):
+    return build_longform_context_package(
+        db=db,
+        project_id=project_id,
+        chapter_index=chapter_index,
+        user_query=q,
+    )

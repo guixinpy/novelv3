@@ -1,4 +1,5 @@
-from app.models import ChapterContent, LongformMemory, Project
+from app.api import dialogs
+from app.models import ChapterContent, Dialog, LongformMemory, Project
 
 
 def test_get_project_reconciles_current_word_count_from_chapters(client, db_session):
@@ -121,3 +122,121 @@ def test_longform_context_for_chapter_excludes_future_chapters(client, db_sessio
         for section in payload["sections"]
         for item in section["items"]
     )
+
+
+def test_reindex_includes_longform_memory_sources(client, db_session):
+    project = Project(name="Longform Retrieval Sources")
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    for index in range(1, 41):
+        db_session.add(
+            ChapterContent(
+                project_id=project.id,
+                chapter_index=index,
+                title=f"第{index}章",
+                content=f"第{index}章正文。记忆索引线索。",
+                word_count=1000,
+                status="generated",
+            )
+        )
+    db_session.commit()
+    client.post(f"/api/v1/projects/{project.id}/athena/longform/memory/rebuild")
+
+    response = client.post(f"/api/v1/projects/{project.id}/athena/retrieval/reindex")
+    diagnostics = client.get(f"/api/v1/projects/{project.id}/athena/retrieval/diagnostics")
+
+    assert response.status_code == 200
+    assert diagnostics.status_code == 200
+    assert diagnostics.json()["documents_by_source_type"]["longform_memory"] > 0
+
+
+def test_query_aware_context_uses_user_query_and_explains_sources(client, db_session):
+    project = Project(name="Query Aware Context")
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    for index in range(1, 36):
+        content = "普通支线。"
+        if index == 4:
+            content = "秘银钥匙第一次出现，被林舟藏进旧灯塔底层。"
+        if index == 35:
+            content = "第35章目标章节，主角将调查钥匙后果。"
+        db_session.add(
+            ChapterContent(
+                project_id=project.id,
+                chapter_index=index,
+                title=f"第{index}章",
+                content=content,
+                word_count=1000,
+                status="generated",
+            )
+        )
+    db_session.commit()
+    client.post(f"/api/v1/projects/{project.id}/athena/longform/memory/rebuild")
+    client.post(f"/api/v1/projects/{project.id}/athena/retrieval/reindex")
+
+    response = client.get(f"/api/v1/projects/{project.id}/athena/longform/context/chapters/35?q=秘银钥匙")
+
+    assert response.status_code == 200
+    payload = response.json()
+    retrieval_sections = [
+        section for section in payload["sections"]
+        if section["key"] == "query_aware_retrieval"
+    ]
+    assert retrieval_sections
+    retrieval_items = retrieval_sections[0]["items"]
+    assert any("秘银钥匙" in item["snippet"] for item in retrieval_items)
+    assert all(item.get("chapter_index") is None or item["chapter_index"] <= 34 for item in retrieval_items)
+    assert all(item["metadata"]["explanation"]["reason"] for item in retrieval_items)
+    assert "检索依据" in payload["prompt_context"]
+
+
+def test_dialog_payloads_include_longform_evidence_range_block(db_session):
+    project = Project(name="Dialog Evidence Range", current_word_count=1)
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    for index in range(1, 6):
+        db_session.add(
+            ChapterContent(
+                project_id=project.id,
+                chapter_index=index,
+                title=f"第{index}章",
+                content=f"第{index}章正文。",
+                word_count=1000,
+                status="generated",
+            )
+        )
+    athena_dialog = Dialog(project_id=project.id, dialog_type="athena")
+    hermes_dialog = Dialog(project_id=project.id, dialog_type="hermes")
+    db_session.add_all([athena_dialog, hermes_dialog])
+    db_session.commit()
+    from app.core.longform_memory import rebuild_longform_memory
+
+    rebuild_longform_memory(db_session, project.id)
+
+    diagnosis = dialogs._build_diagnosis(db_session, project.id)
+    athena_payload = dialogs._build_chat_call_payload(
+        db_session,
+        athena_dialog.id,
+        project,
+        diagnosis,
+        dialog_type="athena",
+    )
+    hermes_payload = dialogs._build_chat_call_payload(
+        db_session,
+        hermes_dialog.id,
+        project,
+        diagnosis,
+        dialog_type="hermes",
+    )
+
+    for payload in [athena_payload, hermes_payload]:
+        block = next(
+            block for block in payload["context_blocks"]
+            if block["kind"] == "longform_evidence_range"
+        )
+        assert "当前总字数：5000" in block["content"]
+        assert "chapter: 5" in block["content"]
+        assert "global: 1" in block["content"]
