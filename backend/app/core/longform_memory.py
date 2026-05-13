@@ -331,9 +331,15 @@ def _require_project(db: Session, project_id: str) -> Project:
     return project
 
 
-def _chapters(db: Session, project_id: str) -> list[ChapterContent]:
+def _chapters(db: Session, project_id: str) -> list[Any]:
     return (
-        db.query(ChapterContent)
+        db.query(
+            ChapterContent.chapter_index,
+            ChapterContent.title,
+            ChapterContent.content,
+            ChapterContent.word_count,
+            ChapterContent.status,
+        )
         .filter(ChapterContent.project_id == project_id)
         .order_by(ChapterContent.chapter_index.asc())
         .all()
@@ -367,7 +373,7 @@ def _outline_lookup(db: Session, project_id: str) -> dict[int, dict[str, Any]]:
     return lookup
 
 
-def _chapter_memory(project_id: str, chapter: ChapterContent, outline: dict[str, Any] | None) -> LongformMemory:
+def _chapter_memory(project_id: str, chapter: Any, outline: dict[str, Any] | None) -> LongformMemory:
     title = chapter.title or f"第{chapter.chapter_index}章"
     outline_summary = str((outline or {}).get("summary") or "").strip()
     summary = outline_summary or _preview(chapter.content or "", 180) or title
@@ -389,7 +395,7 @@ def _chapter_memory(project_id: str, chapter: ChapterContent, outline: dict[str,
     )
 
 
-def _range_memory(project_id: str, *, memory_type: str, start: int, chapters: list[ChapterContent]) -> LongformMemory:
+def _range_memory(project_id: str, *, memory_type: str, start: int, chapters: list[Any]) -> LongformMemory:
     end = chapters[-1].chapter_index
     chapter_count = len(chapters)
     word_count = sum(chapter.word_count or 0 for chapter in chapters)
@@ -410,7 +416,7 @@ def _range_memory(project_id: str, *, memory_type: str, start: int, chapters: li
     )
 
 
-def _global_memory(project_id: str, chapters: list[ChapterContent]) -> LongformMemory:
+def _global_memory(project_id: str, chapters: list[Any]) -> LongformMemory:
     chapter_count = len(chapters)
     word_count = sum(chapter.word_count or 0 for chapter in chapters)
     latest = chapters[-1].chapter_index if chapters else None
@@ -427,8 +433,8 @@ def _global_memory(project_id: str, chapters: list[ChapterContent]) -> LongformM
     )
 
 
-def _chapter_groups(chapters: list[ChapterContent], size: int) -> list[tuple[int, list[ChapterContent]]]:
-    groups: list[tuple[int, list[ChapterContent]]] = []
+def _chapter_groups(chapters: list[Any], size: int) -> list[tuple[int, list[Any]]]:
+    groups: list[tuple[int, list[Any]]] = []
     for index in range(0, len(chapters), size):
         group = chapters[index:index + size]
         if group:
@@ -436,7 +442,7 @@ def _chapter_groups(chapters: list[ChapterContent], size: int) -> list[tuple[int
     return groups
 
 
-def _chapter_range(chapters: list[ChapterContent], chapter_index: int, size: int) -> list[ChapterContent]:
+def _chapter_range(chapters: list[Any], chapter_index: int, size: int) -> list[Any]:
     start = ((chapter_index - 1) // size) * size + 1
     end = start + size - 1
     return [chapter for chapter in chapters if start <= chapter.chapter_index <= end]

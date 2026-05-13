@@ -95,6 +95,60 @@ def test_rebuild_longform_memory_creates_chapter_arc_volume_and_global_layers(cl
     assert diagnostics.json()["current_word_count"] == sum(1000 + index for index in range(1, 101))
 
 
+def test_rebuild_longform_memory_projects_only_memory_fields(db_session):
+    from app.core.longform_memory import rebuild_longform_memory
+
+    project = Project(name="Memory Projection")
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    for index in range(1, 26):
+        db_session.add(
+            ChapterContent(
+                project_id=project.id,
+                chapter_index=index,
+                title=f"第{index}章",
+                content="记忆重建需要正文，但不需要生成元数据。",
+                word_count=1000,
+                status="generated",
+                model="deepseek",
+                prompt_tokens=100,
+                completion_tokens=200,
+                generation_time=3,
+                temperature=0.7,
+            )
+        )
+    db_session.commit()
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(statement.lower())
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        result = rebuild_longform_memory(db_session, project.id)
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert result["counts_by_type"] == {"chapter": 25, "arc": 2, "volume": 1, "global": 1}
+    chapter_select_clauses = [
+        statement.split("from chapter_contents", 1)[0]
+        for statement in statements
+        if "from chapter_contents" in statement
+    ]
+    assert chapter_select_clauses
+    for column in [
+        "model",
+        "prompt_tokens",
+        "completion_tokens",
+        "generation_time",
+        "temperature",
+        "created_at",
+        "updated_at",
+    ]:
+        assert all(f"chapter_contents.{column}" not in clause for clause in chapter_select_clauses)
+
+
 def test_longform_context_for_chapter_excludes_future_chapters(client, db_session):
     project = Project(name="Future Boundary")
     db_session.add(project)
