@@ -84,6 +84,41 @@ def get_retrieval_diagnostics(db: Session, project_id: str) -> dict[str, Any]:
     }
 
 
+def sync_longform_memory_retrieval_documents(
+    db: Session,
+    project_id: str,
+    memory_ids: list[str],
+) -> dict[str, Any]:
+    _require_project(db, project_id)
+    if not memory_ids:
+        return {"status": "completed", "project_id": project_id, "synced_scope_keys": [], "indexed": _empty_indexed()}
+    memories = (
+        db.query(LongformMemory)
+        .filter(LongformMemory.project_id == project_id, LongformMemory.id.in_(memory_ids))
+        .order_by(
+            LongformMemory.end_chapter_index.asc().nullsfirst(),
+            LongformMemory.memory_type.asc(),
+            LongformMemory.scope_key.asc(),
+        )
+        .all()
+    )
+    for memory in memories:
+        _delete_document_by_source_ref(
+            db,
+            project_id=project_id,
+            source_type="longform_memory",
+            source_ref=f"memory:{memory.scope_key}",
+        )
+    indexed = _index_sources(db, project_id, [_longform_memory_source(memory) for memory in memories])
+    db.commit()
+    return {
+        "status": "completed",
+        "project_id": project_id,
+        "synced_scope_keys": [memory.scope_key for memory in memories],
+        "indexed": indexed,
+    }
+
+
 def search_retrieval(
     db: Session,
     project_id: str,
@@ -666,6 +701,25 @@ def _delete_document(db: Session, *, project_id: str, source_type: str, source_i
     )
     if document is None:
         return
+    _delete_retrieval_document(db, document)
+
+
+def _delete_document_by_source_ref(db: Session, *, project_id: str, source_type: str, source_ref: str) -> None:
+    document = (
+        db.query(RetrievalDocument)
+        .filter(
+            RetrievalDocument.project_id == project_id,
+            RetrievalDocument.source_type == source_type,
+            RetrievalDocument.source_ref == source_ref,
+        )
+        .first()
+    )
+    if document is None:
+        return
+    _delete_retrieval_document(db, document)
+
+
+def _delete_retrieval_document(db: Session, document: RetrievalDocument) -> None:
     chunk_ids = [row[0] for row in db.query(RetrievalChunk.id).filter(RetrievalChunk.document_id == document.id).all()]
     if chunk_ids:
         db.query(RetrievalTerm).filter(RetrievalTerm.chunk_id.in_(chunk_ids)).delete(synchronize_session=False)
@@ -673,6 +727,10 @@ def _delete_document(db: Session, *, project_id: str, source_type: str, source_i
     db.query(RetrievalChunk).filter(RetrievalChunk.document_id == document.id).delete(synchronize_session=False)
     db.delete(document)
     db.flush()
+
+
+def _empty_indexed() -> dict[str, int]:
+    return {"documents": 0, "chunks": 0, "terms": 0, "embeddings": 0}
 
 
 def _chapter_context_query(db: Session, project_id: str, chapter_index: int) -> str:

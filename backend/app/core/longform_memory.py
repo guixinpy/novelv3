@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any
 
 from fastapi import HTTPException
-from sqlalchemy import func
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
 from app.core.project_stats import reconcile_project_word_count
@@ -75,6 +75,73 @@ def get_longform_memory_diagnostics(db: Session, project_id: str) -> dict[str, A
         "counts_by_type": _ordered_counts(counts),
         "total_memories": sum(counts.values()),
         "latest_updated_at": latest_updated_at,
+    }
+
+
+def refresh_longform_memory_for_chapter(
+    db: Session,
+    project_id: str,
+    chapter_index: int,
+    *,
+    arc_size: int = DEFAULT_ARC_SIZE,
+    volume_size: int = DEFAULT_VOLUME_SIZE,
+) -> dict[str, Any]:
+    project = _require_project(db, project_id)
+    chapter = (
+        db.query(ChapterContent)
+        .filter(ChapterContent.project_id == project_id, ChapterContent.chapter_index == chapter_index)
+        .first()
+    )
+    if chapter is None:
+        raise HTTPException(status_code=404, detail="Chapter not found")
+
+    chapters = _chapters(db, project_id)
+    outline_lookup = _outline_lookup(db, project_id)
+    arc_chapters = _chapter_range(chapters, chapter_index, arc_size)
+    volume_chapters = _chapter_range(chapters, chapter_index, volume_size)
+    delete_filter = or_(
+        LongformMemory.scope_key == f"chapter:{chapter_index}",
+        LongformMemory.memory_type == "global",
+        and_(
+            LongformMemory.memory_type == "arc",
+            LongformMemory.start_chapter_index <= chapter_index,
+            LongformMemory.end_chapter_index >= chapter_index,
+        ),
+        and_(
+            LongformMemory.memory_type == "volume",
+            LongformMemory.start_chapter_index <= chapter_index,
+            LongformMemory.end_chapter_index >= chapter_index,
+        ),
+    )
+    db.query(LongformMemory).filter(LongformMemory.project_id == project_id, delete_filter).delete(
+        synchronize_session=False
+    )
+
+    memories = [_chapter_memory(project_id, chapter, outline_lookup.get(chapter.chapter_index))]
+    if arc_chapters:
+        memories.append(_range_memory(project_id, memory_type="arc", start=arc_chapters[0].chapter_index, chapters=arc_chapters))
+    if volume_chapters:
+        memories.append(
+            _range_memory(project_id, memory_type="volume", start=volume_chapters[0].chapter_index, chapters=volume_chapters)
+        )
+    memories.append(_global_memory(project_id, chapters))
+    db.add_all(memories)
+    db.flush()
+    updated_scope_keys = [memory.scope_key for memory in memories]
+    updated_memory_ids = [memory.id for memory in memories]
+    reconcile_project_word_count(db, project, commit=False)
+    db.commit()
+    db.refresh(project)
+    counts = _memory_type_counts(db, project_id)
+    return {
+        "status": "completed",
+        "project_id": project_id,
+        "chapter_index": chapter_index,
+        "updated_scope_keys": updated_scope_keys,
+        "updated_memory_ids": updated_memory_ids,
+        "counts_by_type": _ordered_counts(counts),
+        "total_memories": sum(counts.values()),
+        "current_word_count": project.current_word_count or 0,
     }
 
 
@@ -227,6 +294,22 @@ def _chapter_groups(chapters: list[ChapterContent], size: int) -> list[tuple[int
         if group:
             groups.append((group[0].chapter_index, group))
     return groups
+
+
+def _chapter_range(chapters: list[ChapterContent], chapter_index: int, size: int) -> list[ChapterContent]:
+    start = ((chapter_index - 1) // size) * size + 1
+    end = start + size - 1
+    return [chapter for chapter in chapters if start <= chapter.chapter_index <= end]
+
+
+def _memory_type_counts(db: Session, project_id: str) -> Counter:
+    rows = (
+        db.query(LongformMemory.memory_type, func.count(LongformMemory.id))
+        .filter(LongformMemory.project_id == project_id)
+        .group_by(LongformMemory.memory_type)
+        .all()
+    )
+    return Counter({memory_type: count for memory_type, count in rows})
 
 
 def _ordered_counts(counts: Counter) -> dict[str, int]:

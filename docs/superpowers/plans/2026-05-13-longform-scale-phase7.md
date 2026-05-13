@@ -24,6 +24,7 @@
 - Memory counts remain `{"chapter": 120, "arc": 6, "volume": 2, "global": 1}` after refresh.
 - Project current word count is reconciled after a single-chapter word count change.
 - Retrieval sync updates only the changed longform memory documents and leaves unrelated memory retrieval documents untouched.
+- On a temporary 1000-chapter smoke project, editing chapter 500 refreshes and syncs 4 affected scopes in a bounded incremental pass.
 - Focused tests, backend tests, diff hygiene, and sensitive-key scan pass before commit.
 
 ## Task 1: Incremental Memory Refresh
@@ -32,7 +33,7 @@
 - Modify: `backend/app/core/longform_memory.py`
 - Modify: `backend/tests/test_longform_scale.py`
 
-- [ ] **Step 1: Write failing test**
+- [x] **Step 1: Write failing test**
 
 Add `test_refresh_longform_memory_for_chapter_updates_only_affected_scopes`:
 
@@ -44,7 +45,7 @@ Add `test_refresh_longform_memory_for_chapter_updates_only_affected_scopes`:
 - Assert updated scopes are exactly `["arc:41-60", "chapter:45", "global", "volume:1-100"]`.
 - Assert `chapter:44` id is unchanged, affected ids changed, counts are unchanged, and project word count reflects the edit.
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 ```powershell
 .\backend\.venv\Scripts\python.exe -m pytest backend\tests\test_longform_scale.py::test_refresh_longform_memory_for_chapter_updates_only_affected_scopes -v
@@ -52,7 +53,7 @@ Add `test_refresh_longform_memory_for_chapter_updates_only_affected_scopes`:
 
 Expected: FAIL because `refresh_longform_memory_for_chapter` does not exist.
 
-- [ ] **Step 3: Implement memory refresh**
+- [x] **Step 3: Implement memory refresh**
 
 Implementation requirements:
 
@@ -63,7 +64,7 @@ Implementation requirements:
 - Reconcile project word count.
 - Return `updated_scope_keys`, `updated_memory_ids`, `counts_by_type`, and `current_word_count`.
 
-- [ ] **Step 4: Verify GREEN**
+- [x] **Step 4: Verify GREEN**
 
 ```powershell
 .\backend\.venv\Scripts\python.exe -m pytest backend\tests\test_longform_scale.py::test_refresh_longform_memory_for_chapter_updates_only_affected_scopes -v
@@ -77,7 +78,7 @@ Expected: PASS.
 - Modify: `backend/app/core/athena_retrieval.py`
 - Modify: `backend/tests/test_longform_scale.py`
 
-- [ ] **Step 1: Write failing test**
+- [x] **Step 1: Write failing test**
 
 Add `test_sync_changed_longform_memory_retrieval_documents_preserves_unrelated_docs`:
 
@@ -87,7 +88,7 @@ Add `test_sync_changed_longform_memory_retrieval_documents_preserves_unrelated_d
 - Assert the `memory:chapter:44` retrieval document id is unchanged.
 - Assert the `memory:chapter:45` retrieval document id changes and search for the unique phrase returns a `longform_memory` hit.
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 ```powershell
 .\backend\.venv\Scripts\python.exe -m pytest backend\tests\test_longform_scale.py::test_sync_changed_longform_memory_retrieval_documents_preserves_unrelated_docs -v
@@ -95,7 +96,7 @@ Add `test_sync_changed_longform_memory_retrieval_documents_preserves_unrelated_d
 
 Expected: FAIL because `sync_longform_memory_retrieval_documents` does not exist.
 
-- [ ] **Step 3: Implement retrieval sync**
+- [x] **Step 3: Implement retrieval sync**
 
 Implementation requirements:
 
@@ -104,7 +105,7 @@ Implementation requirements:
 - Reindex only the changed memory rows by reusing `_longform_memory_source` and `_index_sources`.
 - Commit once and return indexed counts plus synced scope keys.
 
-- [ ] **Step 4: Verify GREEN**
+- [x] **Step 4: Verify GREEN**
 
 ```powershell
 .\backend\.venv\Scripts\python.exe -m pytest backend\tests\test_longform_scale.py::test_sync_changed_longform_memory_retrieval_documents_preserves_unrelated_docs -v
@@ -114,19 +115,19 @@ Expected: PASS.
 
 ## Task 3: Verification and Commit
 
-- [ ] **Step 1: Run focused longform tests**
+- [x] **Step 1: Run focused longform tests**
 
 ```powershell
 .\backend\.venv\Scripts\python.exe -m pytest backend\tests\test_longform_scale.py -v
 ```
 
-- [ ] **Step 2: Run backend tests**
+- [x] **Step 2: Run backend tests**
 
 ```powershell
 .\backend\.venv\Scripts\python.exe -m pytest backend\tests -v
 ```
 
-- [ ] **Step 3: Hygiene checks**
+- [x] **Step 3: Hygiene checks**
 
 ```powershell
 git diff --check
@@ -136,7 +137,7 @@ git status --short
 
 Expected: diff check passes, exact sensitive-key scan returns no matches, broad secret-pattern matches are limited to sanitizer test fixtures.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```powershell
 git add backend/app/core/longform_memory.py backend/app/core/athena_retrieval.py backend/tests/test_longform_scale.py docs/superpowers/plans/2026-05-13-longform-scale-phase7.md

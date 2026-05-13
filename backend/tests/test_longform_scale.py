@@ -2,7 +2,7 @@ import importlib.util
 from pathlib import Path
 
 from app.api import dialogs
-from app.models import ChapterContent, Dialog, LongformMemory, Project
+from app.models import ChapterContent, Dialog, LongformMemory, Project, RetrievalDocument
 
 
 def test_get_project_reconciles_current_word_count_from_chapters(client, db_session):
@@ -280,3 +280,131 @@ def test_longform_scale_smoke_cli_exposes_main():
     spec.loader.exec_module(module)
 
     assert callable(module.main)
+
+
+def test_refresh_longform_memory_for_chapter_updates_only_affected_scopes(db_session):
+    from app.core.longform_memory import rebuild_longform_memory, refresh_longform_memory_for_chapter
+
+    project = Project(name="Incremental Memory Refresh")
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    for index in range(1, 121):
+        db_session.add(
+            ChapterContent(
+                project_id=project.id,
+                chapter_index=index,
+                title=f"第{index}章",
+                content=f"第{index}章正文。星环钥匙维持第一形态。",
+                word_count=1000,
+                status="generated",
+            )
+        )
+    db_session.commit()
+    rebuild_longform_memory(db_session, project.id)
+
+    tracked_scopes = ["chapter:44", "chapter:45", "arc:41-60", "volume:1-100", "global"]
+    before = {
+        memory.scope_key: memory.id
+        for memory in db_session.query(LongformMemory)
+        .filter(LongformMemory.project_id == project.id, LongformMemory.scope_key.in_(tracked_scopes))
+        .all()
+    }
+    chapter = (
+        db_session.query(ChapterContent)
+        .filter(ChapterContent.project_id == project.id, ChapterContent.chapter_index == 45)
+        .one()
+    )
+    chapter.content = "星环钥匙第二形态在本章显现，陆辞确认潮汐钟被改写。"
+    chapter.word_count = 1500
+    db_session.commit()
+
+    result = refresh_longform_memory_for_chapter(db_session, project.id, 45)
+
+    assert sorted(result["updated_scope_keys"]) == ["arc:41-60", "chapter:45", "global", "volume:1-100"]
+    assert result["counts_by_type"] == {"chapter": 120, "arc": 6, "volume": 2, "global": 1}
+    assert result["current_word_count"] == 120500
+    after = {
+        memory.scope_key: memory
+        for memory in db_session.query(LongformMemory)
+        .filter(LongformMemory.project_id == project.id, LongformMemory.scope_key.in_(tracked_scopes))
+        .all()
+    }
+    assert after["chapter:44"].id == before["chapter:44"]
+    for scope_key in ["chapter:45", "arc:41-60", "volume:1-100", "global"]:
+        assert after[scope_key].id != before[scope_key]
+    assert "星环钥匙第二形态" in after["chapter:45"].summary
+    db_session.refresh(project)
+    assert project.current_word_count == 120500
+
+
+def test_sync_changed_longform_memory_retrieval_documents_preserves_unrelated_docs(db_session):
+    from app.core.athena_retrieval import (
+        reindex_project_retrieval,
+        search_retrieval,
+        sync_longform_memory_retrieval_documents,
+    )
+    from app.core.longform_memory import rebuild_longform_memory, refresh_longform_memory_for_chapter
+
+    project = Project(name="Incremental Retrieval Sync")
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    for index in range(1, 81):
+        db_session.add(
+            ChapterContent(
+                project_id=project.id,
+                chapter_index=index,
+                title=f"第{index}章",
+                content=f"第{index}章正文。星环钥匙维持第一形态。",
+                word_count=1000,
+                status="generated",
+            )
+        )
+    db_session.commit()
+    rebuild_longform_memory(db_session, project.id)
+    reindex_project_retrieval(db_session, project.id)
+    chapter_44_doc_id = _longform_memory_doc_id(db_session, project.id, "memory:chapter:44")
+    chapter_45_doc_id = _longform_memory_doc_id(db_session, project.id, "memory:chapter:45")
+
+    chapter = (
+        db_session.query(ChapterContent)
+        .filter(ChapterContent.project_id == project.id, ChapterContent.chapter_index == 45)
+        .one()
+    )
+    chapter.content = "星环钥匙第二形态启动，灯塔区潮汐钟出现反向刻度。"
+    db_session.commit()
+    refresh_result = refresh_longform_memory_for_chapter(db_session, project.id, 45)
+
+    sync_result = sync_longform_memory_retrieval_documents(
+        db_session,
+        project.id,
+        refresh_result["updated_memory_ids"],
+    )
+
+    assert sorted(sync_result["synced_scope_keys"]) == ["arc:41-60", "chapter:45", "global", "volume:1-80"]
+    assert _longform_memory_doc_id(db_session, project.id, "memory:chapter:44") == chapter_44_doc_id
+    assert _longform_memory_doc_id(db_session, project.id, "memory:chapter:45") != chapter_45_doc_id
+    results = search_retrieval(
+        db_session,
+        project.id,
+        "星环钥匙第二形态",
+        source_type="longform_memory",
+        max_chapter_index=80,
+    )
+    assert any(
+        item["source_ref"] == "memory:chapter:45" and "星环钥匙第二形态" in item["snippet"]
+        for item in results["items"]
+    )
+
+
+def _longform_memory_doc_id(db_session, project_id: str, source_ref: str) -> str:
+    return (
+        db_session.query(RetrievalDocument.id)
+        .filter(
+            RetrievalDocument.project_id == project_id,
+            RetrievalDocument.source_type == "longform_memory",
+            RetrievalDocument.source_ref == source_ref,
+        )
+        .scalar()
+    )
