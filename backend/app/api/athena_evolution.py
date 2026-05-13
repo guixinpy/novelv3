@@ -7,6 +7,7 @@ from app.core.athena_longform import analyze_chapter_to_world_proposals, build_c
 from app.db import get_db
 from app.models import Outline, Storyline
 from app.schemas import ProposalBundleSplitCreate, ProposalReviewCreate, ProposalReviewRollbackCreate
+from app.schemas.world_proposals import ProposalReviewQueueOut
 
 router = APIRouter()
 
@@ -57,6 +58,12 @@ def get_evolution_proposals(
 ):
     from app.api.world_model import list_world_proposal_bundles
     return list_world_proposal_bundles(project_id, offset, limit, bundle_status, item_status, None, db)
+
+
+@router.get("/evolution/proposal-review-queue", response_model=ProposalReviewQueueOut)
+def get_evolution_proposal_review_queue(project_id: str, db: Session = Depends(get_db)):
+    from app.api.world_model import get_world_model_proposal_review_queue
+    return get_world_model_proposal_review_queue(project_id, db)
 
 
 @router.get("/evolution/proposals/{bundle_id}")

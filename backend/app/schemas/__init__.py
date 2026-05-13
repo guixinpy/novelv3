@@ -65,6 +65,7 @@ from .world_proposals import (
     ProposalItemOut,
     ProposalReviewCreate,
     ProposalReviewOut,
+    ProposalReviewQueueOut,
     ProposalReviewRollbackCreate,
 )
 from .writing import WritingStateOut

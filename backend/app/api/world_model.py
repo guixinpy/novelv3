@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.core.world_fact_scope import is_chapter_scoped_truth_predicate
 from app.core.world_projection_service import build_world_projection_overview
+from app.core.world_proposal_review_queue import build_proposal_review_queue
 from app.core.world_proposal_service import (
     calculate_bundle_impact_scope,
     review_proposal_item,
@@ -29,6 +30,7 @@ from app.schemas import (
     ProposalBundleSplitCreate,
     ProposalReviewCreate,
     ProposalReviewOut,
+    ProposalReviewQueueOut,
     ProposalReviewRollbackCreate,
     WorldFactClaimOut,
     WorldModelDashboardOut,
@@ -242,6 +244,13 @@ def list_world_proposal_bundles(
         .all()
     )
     return PaginatedProposalBundlesOut(items=items, total=total, offset=offset, limit=limit)
+
+
+@router.get("/proposal-review-queue", response_model=ProposalReviewQueueOut)
+def get_world_model_proposal_review_queue(project_id: str, db: Session = Depends(get_db)):
+    _require_project(db=db, project_id=project_id)
+    profile = _get_current_profile(db=db, project_id=project_id)
+    return build_proposal_review_queue(db=db, project_id=project_id, profile=profile)
 
 
 @router.get("/proposal-bundles/{bundle_id}", response_model=ProposalBundleDetailOut)

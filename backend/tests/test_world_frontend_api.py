@@ -13,6 +13,7 @@ from app.models import (
     WorldCharacter,
     WorldEvent,
     WorldFactClaim,
+    WorldProposalItem,
     WorldRelation,
     WorldTimelineAnchor,
 )
@@ -833,6 +834,76 @@ def test_world_model_bundle_endpoints_support_review_split_and_rollback(client, 
     rollback_payload = bundle_detail_after_rollback.json()
     rolled_back_item = next(item for item in rollback_payload["items"] if item["id"] == first_item.id)
     assert rolled_back_item["item_status"] == "rolled_back"
+
+
+def test_world_model_proposal_review_queue_clusters_low_risk_and_prioritizes_high_risk(client, db_session):
+    project, profile_version = _seed_profile(db_session)
+    bundle = create_bundle(
+        db=db_session,
+        project_id=project.id,
+        project_profile_version_id=profile_version.id,
+        profile_version=profile_version.version,
+        created_by="writer.alpha",
+        title="Review queue candidates",
+    )
+    low_first = write_candidate_fact(
+        db=db_session,
+        bundle_id=bundle.id,
+        created_by="writer.alpha",
+        candidate=_candidate_payload(
+            claim_id="claim.hero.presence.queue",
+            subject_ref="char.hero",
+            predicate="presence_count",
+            value={"chapter_index": 1, "mention_count": 3},
+            chapter_index=1,
+        ),
+    )
+    low_second = write_candidate_fact(
+        db=db_session,
+        bundle_id=bundle.id,
+        created_by="writer.alpha",
+        candidate=_candidate_payload(
+            claim_id="claim.sidekick.presence.queue",
+            subject_ref="char.sidekick",
+            predicate="presence_count",
+            value={"chapter_index": 1, "mention_count": 1},
+            chapter_index=1,
+        ),
+    )
+    high_item = write_candidate_fact(
+        db=db_session,
+        bundle_id=bundle.id,
+        created_by="writer.alpha",
+        candidate=_candidate_payload(
+            claim_id="claim.hero.status.queue",
+            subject_ref="char.hero",
+            predicate="status",
+            value="失踪",
+            chapter_index=1,
+        ),
+    )
+
+    response = client.get(f"/api/v1/projects/{project.id}/world-model/proposal-review-queue")
+    athena_response = client.get(f"/api/v1/projects/{project.id}/athena/evolution/proposal-review-queue")
+
+    assert response.status_code == 200
+    assert athena_response.status_code == 200
+    payload = response.json()
+    assert payload == athena_response.json()
+    assert payload["total_items"] == 3
+    assert payload["clusters"][0]["risk_level"] == "high"
+    assert payload["clusters"][0]["review_mode"] == "individual"
+    assert payload["clusters"][0]["item_ids"] == [high_item.id]
+    low_cluster = next(cluster for cluster in payload["clusters"] if cluster["risk_level"] == "low")
+    assert low_cluster["predicate"] == "presence_count"
+    assert low_cluster["review_mode"] == "batch"
+    assert low_cluster["candidate_count"] == 2
+    assert set(low_cluster["item_ids"]) == {low_first.id, low_second.id}
+    assert low_cluster["chapter_range"] == {"start": 1, "end": 1}
+    assert {
+        item.item_status
+        for item in db_session.query(WorldProposalItem).filter(WorldProposalItem.bundle_id == bundle.id).all()
+    } == {"pending"}
 
 
 def test_world_model_proposal_bundle_pagination_rejects_invalid_bounds(client, db_session):

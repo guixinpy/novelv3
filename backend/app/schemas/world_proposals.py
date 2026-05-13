@@ -198,3 +198,27 @@ class ProposalBundleDetailOut(BaseModel):
     conflicts: list[ProposalItemConflictOut] = Field(default_factory=list)
 
     model_config = ConfigDict(extra="forbid")
+
+
+class ProposalReviewQueueClusterOut(BaseModel):
+    cluster_id: str
+    risk_level: str
+    review_mode: str
+    candidate_count: int
+    item_ids: list[str]
+    bundle_ids: list[str]
+    subject_refs: list[str]
+    predicate: str
+    chapter_range: dict[str, int | None]
+    reason: str
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class ProposalReviewQueueOut(BaseModel):
+    project_id: str
+    profile_version: int | None
+    total_items: int
+    clusters: list[ProposalReviewQueueClusterOut] = Field(default_factory=list)
+
+    model_config = ConfigDict(extra="forbid")

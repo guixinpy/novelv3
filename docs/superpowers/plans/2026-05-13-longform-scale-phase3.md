@@ -42,7 +42,7 @@
 - Modify: `backend/app/schemas/__init__.py`
 - Test: `backend/tests/test_world_frontend_api.py`
 
-- [ ] **Step 1: Write failing test**
+- [x] **Step 1: Write failing test**
 
 Add `test_world_model_proposal_review_queue_clusters_low_risk_and_prioritizes_high_risk`:
 
@@ -55,7 +55,7 @@ Add `test_world_model_proposal_review_queue_clusters_low_risk_and_prioritizes_hi
 - assert low-risk `presence_count` cluster has `candidate_count == 2`, `review_mode == "batch"`;
 - assert item statuses remain `pending`.
 
-- [ ] **Step 2: Run failing test**
+- [x] **Step 2: Run failing test**
 
 ```powershell
 .\backend\.venv\Scripts\python.exe -m pytest backend\tests\test_world_frontend_api.py::test_world_model_proposal_review_queue_clusters_low_risk_and_prioritizes_high_risk -v
@@ -63,7 +63,7 @@ Add `test_world_model_proposal_review_queue_clusters_low_risk_and_prioritizes_hi
 
 Expected: FAIL because the endpoint does not exist.
 
-- [ ] **Step 3: Implement queue builder**
+- [x] **Step 3: Implement queue builder**
 
 `build_proposal_review_queue(db, project_id, profile)` should:
 
@@ -76,7 +76,7 @@ Expected: FAIL because the endpoint does not exist.
 - keep high/medium items as individual clusters;
 - sort high before medium before low, then by chapter.
 
-- [ ] **Step 4: Add schemas and endpoints**
+- [x] **Step 4: Add schemas and endpoints**
 
 Add response shape:
 
@@ -106,25 +106,25 @@ Expose:
 - `GET /api/v1/projects/{project_id}/world-model/proposal-review-queue`
 - `GET /api/v1/projects/{project_id}/athena/evolution/proposal-review-queue`
 
-- [ ] **Step 5: Run focused test**
+- [x] **Step 5: Run focused test**
 
 Run the focused test again. Expected: PASS.
 
 ### Task 2: Verification and Commit
 
-- [ ] **Step 1: Run related suites**
+- [x] **Step 1: Run related suites**
 
 ```powershell
 .\backend\.venv\Scripts\python.exe -m pytest backend\tests\test_world_frontend_api.py backend\tests\test_world_proposals.py -v
 ```
 
-- [ ] **Step 2: Run backend suite**
+- [x] **Step 2: Run backend suite**
 
 ```powershell
 .\backend\.venv\Scripts\python.exe -m pytest backend\tests -v
 ```
 
-- [ ] **Step 3: Check hygiene**
+- [x] **Step 3: Check hygiene**
 
 ```powershell
 git diff --check
@@ -132,7 +132,7 @@ rg -n "sk-[A-Za-z0-9_-]{20,}|api_key|API_KEY" backend docs frontend .agents
 git status --short
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```powershell
 git add backend docs\superpowers\plans\2026-05-13-longform-scale-phase3.md
