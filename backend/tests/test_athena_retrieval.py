@@ -474,29 +474,42 @@ def test_reindex_avoids_flush_per_new_document_and_chunk(db_session, monkeypatch
     assert flush_count["calls"] == 0
 
 
-def test_reindex_batches_multiple_sources_per_write(db_session, monkeypatch):
+def test_reindex_batches_retrieval_rows_as_insert_mappings(db_session, monkeypatch):
     project = _seed_retrieval_project(db_session)
-    bulk_calls: list[tuple[str, int]] = []
+    bulk_save_calls: list[tuple[str, int]] = []
+    mapping_calls: list[tuple[str, int]] = []
     original_bulk_save = db_session.bulk_save_objects
+    original_bulk_insert_mappings = db_session.bulk_insert_mappings
 
     def count_bulk_save(objects, *args, **kwargs):
         object_list = list(objects)
         if object_list:
-            bulk_calls.append((type(object_list[0]).__name__, len(object_list)))
+            bulk_save_calls.append((type(object_list[0]).__name__, len(object_list)))
         return original_bulk_save(object_list, *args, **kwargs)
 
+    def count_bulk_insert_mappings(model, mappings, *args, **kwargs):
+        mapping_list = list(mappings)
+        if mapping_list:
+            mapping_calls.append((model.__name__, len(mapping_list)))
+        return original_bulk_insert_mappings(model, mapping_list, *args, **kwargs)
+
     monkeypatch.setattr(db_session, "bulk_save_objects", count_bulk_save)
+    monkeypatch.setattr(db_session, "bulk_insert_mappings", count_bulk_insert_mappings)
 
     result = reindex_project_retrieval(db_session, project.id)
 
     assert result["indexed"]["documents"] == 2
-    assert ("RetrievalDocument", 2) in bulk_calls
-    assert ("RetrievalChunk", 2) in bulk_calls
-    assert ("RetrievalEmbedding", 2) in bulk_calls
-    assert sum(1 for class_name, _count in bulk_calls if class_name == "RetrievalDocument") == 1
-    assert sum(1 for class_name, _count in bulk_calls if class_name == "RetrievalChunk") == 1
-    assert sum(1 for class_name, _count in bulk_calls if class_name == "RetrievalTerm") == 0
-    assert sum(1 for class_name, _count in bulk_calls if class_name == "RetrievalEmbedding") == 1
+    assert ("RetrievalDocument", 2) in mapping_calls
+    assert ("RetrievalChunk", 2) in mapping_calls
+    assert ("RetrievalEmbedding", 2) in mapping_calls
+    assert sum(1 for class_name, _count in mapping_calls if class_name == "RetrievalDocument") == 1
+    assert sum(1 for class_name, _count in mapping_calls if class_name == "RetrievalChunk") == 1
+    assert sum(1 for class_name, _count in mapping_calls if class_name == "RetrievalTerm") == 1
+    assert sum(1 for class_name, _count in mapping_calls if class_name == "RetrievalEmbedding") == 1
+    assert not any(
+        class_name in {"RetrievalDocument", "RetrievalChunk", "RetrievalEmbedding", "RetrievalTerm"}
+        for class_name, _count in bulk_save_calls
+    )
 
 
 def test_reindex_batches_embedding_provider_calls_across_sources(db_session, monkeypatch):

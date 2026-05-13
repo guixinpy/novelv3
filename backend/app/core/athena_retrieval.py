@@ -51,6 +51,7 @@ class RetrievalSource:
 
 @dataclass(frozen=True)
 class _PendingEmbedding:
+    project_id: str
     chunk_id: str
     text: str
 
@@ -675,8 +676,8 @@ def _fact_source(fact: WorldFactClaim) -> RetrievalSource:
 def _index_sources(db: Session, project_id: str, sources: Iterable[RetrievalSource]) -> dict[str, int]:
     provider = get_embedding_provider()
     indexed = {"documents": 0, "chunks": 0, "terms": 0, "embeddings": 0}
-    document_objects: list[RetrievalDocument] = []
-    chunk_objects: list[RetrievalChunk] = []
+    document_rows: list[dict[str, Any]] = []
+    chunk_rows: list[dict[str, Any]] = []
     term_rows: list[dict[str, Any]] = []
     pending_embeddings: list[_PendingEmbedding] = []
     batched_sources = 0
@@ -685,35 +686,36 @@ def _index_sources(db: Session, project_id: str, sources: Iterable[RetrievalSour
         if not chunks:
             continue
         document_id = str(uuid.uuid4())
-        document = RetrievalDocument(
-            id=document_id,
-            project_id=project_id,
-            source_type=source.source_type,
-            source_id=source.source_id,
-            source_ref=source.source_ref,
-            title=source.title,
-            chapter_index=source.chapter_index,
-            profile_version=source.profile_version,
-            content_hash=_content_hash(source.text),
-            document_metadata=source.metadata,
+        document_rows.append(
+            {
+                "id": document_id,
+                "project_id": project_id,
+                "source_type": source.source_type,
+                "source_id": source.source_id,
+                "source_ref": source.source_ref,
+                "title": source.title,
+                "chapter_index": source.chapter_index,
+                "profile_version": source.profile_version,
+                "content_hash": _content_hash(source.text),
+                "document_metadata": source.metadata,
+            }
         )
-        document_objects.append(document)
         indexed["documents"] += 1
         for chunk_data in chunks:
             chunk_id = str(uuid.uuid4())
             tokens = tokenize_for_retrieval(chunk_data["text"])
-            chunk_objects.append(
-                RetrievalChunk(
-                    id=chunk_id,
-                    project_id=project_id,
-                    document_id=document_id,
-                    chunk_index=chunk_data["chunk_index"],
-                    text=chunk_data["text"],
-                    token_count=len(tokens),
-                    start_offset=chunk_data["start_offset"],
-                    end_offset=chunk_data["end_offset"],
-                    chunk_metadata={},
-                )
+            chunk_rows.append(
+                {
+                    "id": chunk_id,
+                    "project_id": project_id,
+                    "document_id": document_id,
+                    "chunk_index": chunk_data["chunk_index"],
+                    "text": chunk_data["text"],
+                    "token_count": len(tokens),
+                    "start_offset": chunk_data["start_offset"],
+                    "end_offset": chunk_data["end_offset"],
+                    "chunk_metadata": {},
+                }
             )
             terms = _indexable_retrieval_terms(tokens)
             term_rows.extend(
@@ -725,7 +727,13 @@ def _index_sources(db: Session, project_id: str, sources: Iterable[RetrievalSour
                 }
                 for token in terms
             )
-            pending_embeddings.append(_PendingEmbedding(chunk_id=chunk_id, text=chunk_data["text"]))
+            pending_embeddings.append(
+                _PendingEmbedding(
+                    project_id=project_id,
+                    chunk_id=chunk_id,
+                    text=chunk_data["text"],
+                )
+            )
             indexed["terms"] += len(terms)
             indexed["chunks"] += 1
             indexed["embeddings"] += 1
@@ -734,8 +742,8 @@ def _index_sources(db: Session, project_id: str, sources: Iterable[RetrievalSour
             _flush_index_write_batch(
                 db,
                 provider,
-                document_objects,
-                chunk_objects,
+                document_rows,
+                chunk_rows,
                 term_rows,
                 pending_embeddings,
             )
@@ -743,8 +751,8 @@ def _index_sources(db: Session, project_id: str, sources: Iterable[RetrievalSour
     _flush_index_write_batch(
         db,
         provider,
-        document_objects,
-        chunk_objects,
+        document_rows,
+        chunk_rows,
         term_rows,
         pending_embeddings,
     )
@@ -773,35 +781,36 @@ def _is_cjk_token(token: str) -> bool:
 def _flush_index_write_batch(
     db: Session,
     provider: EmbeddingProvider,
-    documents: list[RetrievalDocument],
-    chunks: list[RetrievalChunk],
+    documents: list[dict[str, Any]],
+    chunks: list[dict[str, Any]],
     terms: list[dict[str, Any]],
     embeddings: list[_PendingEmbedding],
 ) -> None:
     if not documents:
         return
-    embedding_objects: list[RetrievalEmbedding] = []
+    embedding_rows: list[dict[str, Any]] = []
     if embeddings:
         vectors = _embed_pending_embeddings(provider, embeddings)
-        embedding_objects = [
-            RetrievalEmbedding(
-                project_id=documents[0].project_id,
-                chunk_id=embedding.chunk_id,
-                provider=provider.provider_name,
-                model=provider.model_name,
-                dimensions=len(vector),
-                vector=vector,
-                vector_hash=vector_hash(vector),
-            )
+        embedding_rows = [
+            {
+                "id": str(uuid.uuid4()),
+                "project_id": embedding.project_id,
+                "chunk_id": embedding.chunk_id,
+                "provider": provider.provider_name,
+                "model": provider.model_name,
+                "dimensions": len(vector),
+                "vector": vector,
+                "vector_hash": vector_hash(vector),
+            }
             for embedding, vector in zip(embeddings, vectors, strict=True)
         ]
-    db.bulk_save_objects(documents)
+    db.bulk_insert_mappings(RetrievalDocument, documents)
     if chunks:
-        db.bulk_save_objects(chunks)
+        db.bulk_insert_mappings(RetrievalChunk, chunks)
     if terms:
         db.bulk_insert_mappings(RetrievalTerm, terms)
-    if embedding_objects:
-        db.bulk_save_objects(embedding_objects)
+    if embedding_rows:
+        db.bulk_insert_mappings(RetrievalEmbedding, embedding_rows)
     documents.clear()
     chunks.clear()
     terms.clear()
