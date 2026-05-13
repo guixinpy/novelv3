@@ -408,3 +408,85 @@ def _longform_memory_doc_id(db_session, project_id: str, source_ref: str) -> str
         )
         .scalar()
     )
+
+
+def test_longform_maintenance_diagnostics_reports_stale_memory_after_chapter_edit(client, db_session):
+    from app.core.longform_memory import rebuild_longform_memory
+
+    project = Project(name="Maintenance Diagnostics")
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    for index in range(1, 4):
+        db_session.add(
+            ChapterContent(
+                project_id=project.id,
+                chapter_index=index,
+                title=f"第{index}章",
+                content=f"第{index}章正文。星环钥匙第一形态。",
+                word_count=1000,
+                status="generated",
+            )
+        )
+    db_session.commit()
+    rebuild_longform_memory(db_session, project.id)
+    chapter = (
+        db_session.query(ChapterContent)
+        .filter(ChapterContent.project_id == project.id, ChapterContent.chapter_index == 2)
+        .one()
+    )
+    chapter.content = "第2章正文已编辑。星环钥匙第六形态。"
+    chapter.word_count = 1200
+    db_session.commit()
+
+    response = client.get(f"/api/v1/projects/{project.id}/athena/longform/maintenance/diagnostics")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "stale"
+    assert payload["chapter_count"] == 3
+    assert payload["stale_memory_count"] == 1
+    assert payload["stale_chapter_indexes"] == [2]
+    assert payload["missing_memory_chapter_indexes"] == []
+
+
+def test_longform_maintenance_diagnostics_reports_stale_retrieval_after_memory_refresh(client, db_session):
+    from app.core.athena_retrieval import reindex_project_retrieval
+    from app.core.longform_memory import rebuild_longform_memory, refresh_longform_memory_for_chapter
+
+    project = Project(name="Maintenance Retrieval Diagnostics")
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    for index in range(1, 4):
+        db_session.add(
+            ChapterContent(
+                project_id=project.id,
+                chapter_index=index,
+                title=f"第{index}章",
+                content=f"第{index}章正文。星环钥匙第一形态。",
+                word_count=1000,
+                status="generated",
+            )
+        )
+    db_session.commit()
+    rebuild_longform_memory(db_session, project.id)
+    reindex_project_retrieval(db_session, project.id)
+    chapter = (
+        db_session.query(ChapterContent)
+        .filter(ChapterContent.project_id == project.id, ChapterContent.chapter_index == 2)
+        .one()
+    )
+    chapter.content = "第2章正文已编辑。星环钥匙第七形态。"
+    db_session.commit()
+    refresh_longform_memory_for_chapter(db_session, project.id, 2)
+
+    response = client.get(f"/api/v1/projects/{project.id}/athena/longform/maintenance/diagnostics")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "stale"
+    assert payload["stale_memory_count"] == 0
+    assert payload["stale_retrieval_count"] == 1
+    assert payload["stale_retrieval_chapter_indexes"] == [2]
+    assert payload["latest_synced_chapter_index"] == 3

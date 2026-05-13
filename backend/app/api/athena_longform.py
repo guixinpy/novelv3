@@ -3,12 +3,14 @@ from sqlalchemy.orm import Session
 
 from app.core.longform_memory import (
     build_longform_context_package,
+    get_longform_maintenance_diagnostics,
     get_longform_memory_diagnostics,
     rebuild_longform_memory,
 )
 from app.db import get_db
 from app.schemas.longform_memory import (
     LongformContextPackage,
+    LongformMaintenanceDiagnostics,
     LongformMemoryDiagnostics,
     LongformMemoryRebuildResult,
 )
@@ -34,6 +36,15 @@ def rebuild_athena_longform_memory(
 @router.get("/longform/memory/diagnostics", response_model=LongformMemoryDiagnostics)
 def get_athena_longform_memory_diagnostics(project_id: str, db: Session = Depends(get_db)):
     return get_longform_memory_diagnostics(db=db, project_id=project_id)
+
+
+@router.get("/longform/maintenance/diagnostics", response_model=LongformMaintenanceDiagnostics)
+def get_athena_longform_maintenance_diagnostics(
+    project_id: str,
+    limit: int = Query(20, ge=1, le=200),
+    db: Session = Depends(get_db),
+):
+    return get_longform_maintenance_diagnostics(db=db, project_id=project_id, limit=limit)
 
 
 @router.get("/longform/context/chapters/{chapter_index}", response_model=LongformContextPackage)

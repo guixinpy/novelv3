@@ -9,7 +9,7 @@ from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
 from app.core.project_stats import reconcile_project_word_count
-from app.models import ChapterContent, LongformMemory, Outline, Project
+from app.models import ChapterContent, LongformMemory, Outline, Project, RetrievalDocument
 
 DEFAULT_ARC_SIZE = 20
 DEFAULT_VOLUME_SIZE = 100
@@ -75,6 +75,70 @@ def get_longform_memory_diagnostics(db: Session, project_id: str) -> dict[str, A
         "counts_by_type": _ordered_counts(counts),
         "total_memories": sum(counts.values()),
         "latest_updated_at": latest_updated_at,
+    }
+
+
+def get_longform_maintenance_diagnostics(db: Session, project_id: str, *, limit: int = 20) -> dict[str, Any]:
+    _require_project(db, project_id)
+    chapters = _maintained_chapters(db, project_id)
+    chapter_memories = {
+        memory.scope_key: memory
+        for memory in db.query(LongformMemory)
+        .filter(LongformMemory.project_id == project_id, LongformMemory.memory_type == "chapter")
+        .all()
+    }
+    missing_memory_chapters: list[int] = []
+    stale_memory_chapters: list[int] = []
+    missing_retrieval_chapters: list[int] = []
+    stale_retrieval_chapters: list[int] = []
+    latest_chapter_updated_at = None
+    latest_memory_updated_at = None
+    latest_retrieval_updated_at = None
+    latest_synced_chapter_index = None
+    retrieval_documents = _latest_longform_retrieval_documents(db, project_id)
+
+    for chapter in chapters:
+        latest_chapter_updated_at = _max_datetime(latest_chapter_updated_at, chapter.updated_at)
+        memory = chapter_memories.get(f"chapter:{chapter.chapter_index}")
+        if memory is None:
+            missing_memory_chapters.append(chapter.chapter_index)
+            missing_retrieval_chapters.append(chapter.chapter_index)
+            continue
+        latest_memory_updated_at = _max_datetime(latest_memory_updated_at, memory.updated_at)
+        if _is_stale(memory.updated_at, chapter.updated_at):
+            stale_memory_chapters.append(chapter.chapter_index)
+        retrieval_document = retrieval_documents.get(f"memory:{memory.scope_key}")
+        if retrieval_document is None:
+            missing_retrieval_chapters.append(chapter.chapter_index)
+            continue
+        latest_retrieval_updated_at = _max_datetime(latest_retrieval_updated_at, retrieval_document.updated_at)
+        latest_synced_chapter_index = max(latest_synced_chapter_index or 0, chapter.chapter_index)
+        if retrieval_document.source_id != memory.id or _is_stale(retrieval_document.updated_at, memory.updated_at):
+            stale_retrieval_chapters.append(chapter.chapter_index)
+
+    stale_total = (
+        len(missing_memory_chapters)
+        + len(stale_memory_chapters)
+        + len(missing_retrieval_chapters)
+        + len(stale_retrieval_chapters)
+    )
+    status = "stale" if stale_total else "current"
+    return {
+        "project_id": project_id,
+        "status": status,
+        "chapter_count": len(chapters),
+        "stale_memory_count": len(stale_memory_chapters),
+        "missing_memory_count": len(missing_memory_chapters),
+        "stale_retrieval_count": len(stale_retrieval_chapters),
+        "missing_retrieval_count": len(missing_retrieval_chapters),
+        "stale_chapter_indexes": stale_memory_chapters[:limit],
+        "missing_memory_chapter_indexes": missing_memory_chapters[:limit],
+        "stale_retrieval_chapter_indexes": stale_retrieval_chapters[:limit],
+        "missing_retrieval_chapter_indexes": missing_retrieval_chapters[:limit],
+        "latest_chapter_updated_at": latest_chapter_updated_at,
+        "latest_memory_updated_at": latest_memory_updated_at,
+        "latest_retrieval_updated_at": latest_retrieval_updated_at,
+        "latest_synced_chapter_index": latest_synced_chapter_index,
     }
 
 
@@ -212,6 +276,18 @@ def _chapters(db: Session, project_id: str) -> list[ChapterContent]:
     )
 
 
+def _maintained_chapters(db: Session, project_id: str) -> list[ChapterContent]:
+    return (
+        db.query(ChapterContent)
+        .filter(
+            ChapterContent.project_id == project_id,
+            ChapterContent.content != "",
+        )
+        .order_by(ChapterContent.chapter_index.asc())
+        .all()
+    )
+
+
 def _outline_lookup(db: Session, project_id: str) -> dict[int, dict[str, Any]]:
     outline = db.query(Outline).filter(Outline.project_id == project_id).first()
     lookup: dict[int, dict[str, Any]] = {}
@@ -312,6 +388,22 @@ def _memory_type_counts(db: Session, project_id: str) -> Counter:
     return Counter({memory_type: count for memory_type, count in rows})
 
 
+def _latest_longform_retrieval_documents(db: Session, project_id: str) -> dict[str, RetrievalDocument]:
+    documents: dict[str, RetrievalDocument] = {}
+    rows = (
+        db.query(RetrievalDocument)
+        .filter(
+            RetrievalDocument.project_id == project_id,
+            RetrievalDocument.source_type == "longform_memory",
+        )
+        .order_by(RetrievalDocument.updated_at.asc(), RetrievalDocument.id.asc())
+        .all()
+    )
+    for document in rows:
+        documents[document.source_ref] = document
+    return documents
+
+
 def _ordered_counts(counts: Counter) -> dict[str, int]:
     return {key: int(counts.get(key, 0)) for key in ["chapter", "arc", "volume", "global"] if counts.get(key, 0)}
 
@@ -319,6 +411,22 @@ def _ordered_counts(counts: Counter) -> dict[str, int]:
 def _preview(text: str, limit: int) -> str:
     cleaned = " ".join((text or "").split())
     return cleaned[:limit]
+
+
+def _is_stale(target_updated_at: datetime | None, source_updated_at: datetime | None) -> bool:
+    if target_updated_at is None:
+        return source_updated_at is not None
+    if source_updated_at is None:
+        return False
+    return target_updated_at < source_updated_at
+
+
+def _max_datetime(left: datetime | None, right: datetime | None) -> datetime | None:
+    if left is None:
+        return right
+    if right is None:
+        return left
+    return max(left, right)
 
 
 def _context_memory_items(db: Session, project_id: str, memory_type: str, chapter_index: int) -> list[dict[str, Any]]:

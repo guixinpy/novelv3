@@ -35,7 +35,7 @@
 - Modify: `backend/app/api/athena_longform.py`
 - Modify: `backend/tests/test_longform_scale.py`
 
-- [ ] **Step 1: Write failing API test**
+- [x] **Step 1: Write failing API test**
 
 Add `test_longform_maintenance_diagnostics_reports_stale_memory_after_chapter_edit`:
 
@@ -45,7 +45,7 @@ Add `test_longform_maintenance_diagnostics_reports_stale_memory_after_chapter_ed
 - Call `GET /api/v1/projects/{project_id}/athena/longform/maintenance/diagnostics`.
 - Assert `status == "stale"`, `stale_chapter_indexes == [2]`, `stale_memory_count == 1`, and `chapter_count == 3`.
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 ```powershell
 .\backend\.venv\Scripts\python.exe -m pytest backend\tests\test_longform_scale.py::test_longform_maintenance_diagnostics_reports_stale_memory_after_chapter_edit -v
@@ -53,7 +53,7 @@ Add `test_longform_maintenance_diagnostics_reports_stale_memory_after_chapter_ed
 
 Expected: FAIL because the endpoint does not exist.
 
-- [ ] **Step 3: Implement memory diagnostics**
+- [x] **Step 3: Implement memory diagnostics**
 
 Implementation requirements:
 
@@ -63,7 +63,7 @@ Implementation requirements:
 - Return bounded lists with default limit 20.
 - Compute `status` as `stale` if any missing/stale count is non-zero.
 
-- [ ] **Step 4: Verify GREEN**
+- [x] **Step 4: Verify GREEN**
 
 ```powershell
 .\backend\.venv\Scripts\python.exe -m pytest backend\tests\test_longform_scale.py::test_longform_maintenance_diagnostics_reports_stale_memory_after_chapter_edit -v
@@ -77,7 +77,7 @@ Expected: PASS.
 - Modify: `backend/app/core/longform_memory.py`
 - Modify: `backend/tests/test_longform_scale.py`
 
-- [ ] **Step 1: Write failing test**
+- [x] **Step 1: Write failing test**
 
 Add `test_longform_maintenance_diagnostics_reports_stale_retrieval_after_memory_refresh`:
 
@@ -87,7 +87,7 @@ Add `test_longform_maintenance_diagnostics_reports_stale_retrieval_after_memory_
 - Call diagnostics.
 - Assert `status == "stale"`, `stale_retrieval_chapter_indexes == [2]`, `stale_retrieval_count == 1`, and `latest_synced_chapter_index == 3`.
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 ```powershell
 .\backend\.venv\Scripts\python.exe -m pytest backend\tests\test_longform_scale.py::test_longform_maintenance_diagnostics_reports_stale_retrieval_after_memory_refresh -v
@@ -95,7 +95,7 @@ Add `test_longform_maintenance_diagnostics_reports_stale_retrieval_after_memory_
 
 Expected: FAIL because retrieval staleness is not reported yet.
 
-- [ ] **Step 3: Implement retrieval diagnostics**
+- [x] **Step 3: Implement retrieval diagnostics**
 
 Implementation requirements:
 
@@ -104,7 +104,7 @@ Implementation requirements:
 - Include `latest_synced_chapter_index` from available chapter-memory retrieval docs.
 - Keep diagnostics read-only.
 
-- [ ] **Step 4: Verify GREEN**
+- [x] **Step 4: Verify GREEN**
 
 ```powershell
 .\backend\.venv\Scripts\python.exe -m pytest backend\tests\test_longform_scale.py::test_longform_maintenance_diagnostics_reports_stale_retrieval_after_memory_refresh -v
@@ -114,19 +114,19 @@ Expected: PASS.
 
 ## Task 3: Verification and Commit
 
-- [ ] **Step 1: Run focused tests**
+- [x] **Step 1: Run focused tests**
 
 ```powershell
 .\backend\.venv\Scripts\python.exe -m pytest backend\tests\test_longform_scale.py -v
 ```
 
-- [ ] **Step 2: Run backend tests**
+- [x] **Step 2: Run backend tests**
 
 ```powershell
 .\backend\.venv\Scripts\python.exe -m pytest backend\tests -v
 ```
 
-- [ ] **Step 3: Hygiene checks**
+- [x] **Step 3: Hygiene checks**
 
 ```powershell
 git diff --check
@@ -136,7 +136,7 @@ git status --short
 
 Expected: diff check passes, exact sensitive-key scan returns no matches, broad secret-pattern matches are limited to sanitizer test fixtures.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```powershell
 git add backend/app/core/longform_memory.py backend/app/schemas/longform_memory.py backend/app/api/athena_longform.py backend/tests/test_longform_scale.py docs/superpowers/plans/2026-05-13-longform-scale-phase9.md

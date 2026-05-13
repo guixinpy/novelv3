@@ -21,6 +21,24 @@ class LongformMemoryDiagnostics(BaseModel):
     latest_updated_at: datetime | None = None
 
 
+class LongformMaintenanceDiagnostics(BaseModel):
+    project_id: str
+    status: str
+    chapter_count: int
+    stale_memory_count: int
+    missing_memory_count: int
+    stale_retrieval_count: int
+    missing_retrieval_count: int
+    stale_chapter_indexes: list[int] = Field(default_factory=list)
+    missing_memory_chapter_indexes: list[int] = Field(default_factory=list)
+    stale_retrieval_chapter_indexes: list[int] = Field(default_factory=list)
+    missing_retrieval_chapter_indexes: list[int] = Field(default_factory=list)
+    latest_chapter_updated_at: datetime | None = None
+    latest_memory_updated_at: datetime | None = None
+    latest_retrieval_updated_at: datetime | None = None
+    latest_synced_chapter_index: int | None = None
+
+
 class LongformContextSection(BaseModel):
     key: str
     title: str
