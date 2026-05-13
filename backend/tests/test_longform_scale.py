@@ -1150,3 +1150,38 @@ def test_longform_maintenance_repair_batches_large_backlog(client, db_session):
     assert second_payload["has_more"] is False
     assert second_payload["remaining_issue_count"] == 0
     assert second_payload["remaining"]["status"] == "current"
+
+
+def test_longform_maintenance_repair_rebuilds_large_missing_memory_backlog(db_session, monkeypatch):
+    import app.core.longform_memory as longform_memory
+
+    project = Project(name="Maintenance Repair Large Missing Backlog")
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    for index in range(1, 61):
+        db_session.add(
+            ChapterContent(
+                project_id=project.id,
+                chapter_index=index,
+                title=f"第{index}章",
+                content=f"第{index}章正文。星环钥匙第一形态。",
+                word_count=1000,
+                status="generated",
+            )
+        )
+    db_session.commit()
+
+    def fail_single_refresh(*_args, **_kwargs):
+        raise AssertionError("large missing backlog should be rebuilt in one pass")
+
+    monkeypatch.setattr(longform_memory, "refresh_longform_memory_for_chapter", fail_single_refresh)
+
+    result = longform_memory.repair_longform_maintenance(db_session, project.id, repair_limit=10)
+
+    assert result["repaired_memory_count"] == 60
+    assert result["has_more"] is False
+    assert result["remaining_issue_count"] == 0
+    assert result["remaining"]["status"] == "current"
+    assert result["remaining"]["missing_memory_count"] == 0
+    assert result["remaining"]["missing_retrieval_count"] == 0
