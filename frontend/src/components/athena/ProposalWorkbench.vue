@@ -15,6 +15,7 @@ const worldModel = useWorldModelStore()
 const proposalLoading = computed(() =>
   worldModel.isLaneLoading('bundles') || worldModel.isLaneLoading('detail'),
 )
+const reviewQueueClusters = computed(() => worldModel.proposalReviewQueue?.clusters ?? [])
 
 function approvalReviewId(item: ProposalItem) {
   const review = worldModel.selectedBundleDetail?.reviews.find((entry) =>
@@ -68,6 +69,29 @@ function bundleStatusLabel(status: string) {
   }
   return labels[status] || status
 }
+
+function riskLabel(level: string) {
+  const labels: Record<string, string> = {
+    high: '高风险',
+    medium: '中风险',
+    low: '低风险',
+  }
+  return labels[level] || level
+}
+
+function reviewModeLabel(mode: string) {
+  const labels: Record<string, string> = {
+    individual: '单独审阅',
+    batch: '批量审阅',
+  }
+  return labels[mode] || mode
+}
+
+function chapterRangeLabel(range: { start: number | null; end: number | null }) {
+  if (range.start === null && range.end === null) return '全书范围'
+  if (range.start === range.end) return `第${range.start}章`
+  return `第${range.start ?? '?'}-${range.end ?? '?'}章`
+}
 </script>
 
 <template>
@@ -85,6 +109,24 @@ function bundleStatusLabel(status: string) {
     />
 
     <section class="proposal-workbench__detail">
+      <section v-if="worldModel.proposalReviewQueue" class="proposal-workbench__queue" aria-label="提案审阅队列">
+        <header class="proposal-workbench__queue-header">
+          <div>
+            <span>审阅队列</span>
+            <strong>{{ worldModel.proposalReviewQueue.total_items }} 个待处理条目</strong>
+          </div>
+          <em>{{ reviewQueueClusters.length }} 组</em>
+        </header>
+        <ol v-if="reviewQueueClusters.length" class="proposal-workbench__queue-list">
+          <li v-for="cluster in reviewQueueClusters.slice(0, 6)" :key="cluster.cluster_id" class="proposal-workbench__queue-item">
+            <span>{{ riskLabel(cluster.risk_level) }}</span>
+            <strong>{{ reviewModeLabel(cluster.review_mode) }} · {{ cluster.candidate_count }} 项</strong>
+            <small>{{ cluster.predicate }} · {{ chapterRangeLabel(cluster.chapter_range) }}</small>
+          </li>
+        </ol>
+        <p v-else class="proposal-workbench__queue-empty">当前没有待审候选事实。</p>
+      </section>
+
       <div v-if="worldModel.error" class="proposal-workbench__error">{{ worldModel.error }}</div>
       <div v-if="proposalLoading" class="proposal-workbench__empty">加载提案...</div>
       <template v-else-if="worldModel.selectedBundleDetail">
@@ -168,6 +210,55 @@ function bundleStatusLabel(status: string) {
   color: var(--color-error);
   background: var(--color-error-light);
   font-size: var(--text-sm);
+}
+
+.proposal-workbench__queue {
+  display: grid;
+  gap: var(--space-3);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.proposal-workbench__queue-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.proposal-workbench__queue-header span,
+.proposal-workbench__queue-header em,
+.proposal-workbench__queue-item span,
+.proposal-workbench__queue-item small,
+.proposal-workbench__queue-empty {
+  color: var(--color-text-tertiary);
+  font-size: var(--text-xs);
+  font-style: normal;
+}
+
+.proposal-workbench__queue-header strong,
+.proposal-workbench__queue-item strong {
+  display: block;
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+}
+
+.proposal-workbench__queue-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.proposal-workbench__queue-item {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-border);
 }
 
 .proposal-workbench__empty {

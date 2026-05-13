@@ -469,6 +469,26 @@ export interface ProposalBundleDetail {
   conflicts: ProposalItemConflict[]
 }
 
+export interface ProposalReviewQueueCluster {
+  cluster_id: string
+  risk_level: 'high' | 'medium' | 'low' | string
+  review_mode: 'individual' | 'batch' | string
+  candidate_count: number
+  item_ids: string[]
+  bundle_ids: string[]
+  subject_refs: string[]
+  predicate: string
+  chapter_range: { start: number | null; end: number | null }
+  reason: string
+}
+
+export interface ProposalReviewQueue {
+  project_id: string
+  profile_version: number | null
+  total_items: number
+  clusters: ProposalReviewQueueCluster[]
+}
+
 export interface ProposalReviewRequest {
   reviewer_ref: string
   action: 'approve' | 'approve_with_edits' | 'reject' | 'mark_uncertain'

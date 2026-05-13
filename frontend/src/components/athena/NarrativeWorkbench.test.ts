@@ -48,6 +48,26 @@ const chapters: ChapterSummary[] = [
   { id: 'chapter-1', chapter_index: 1, title: '异常信号', word_count: 1200, status: 'draft' },
 ]
 
+function largePlan(chapterCount: number) {
+  return {
+    outline: {
+      id: 'outline-large',
+      status: 'generated',
+      total_chapters: chapterCount,
+      chapters: Array.from({ length: chapterCount }, (_, index) => {
+        const chapterIndex = index + 1
+        return {
+          chapter_index: chapterIndex,
+          title: `长篇章节${chapterIndex}`,
+          summary: `第${chapterIndex}章摘要`,
+        }
+      }),
+      plotlines: [],
+    },
+    storyline: null,
+  } as unknown as AthenaEvolutionPlan
+}
+
 describe('NarrativeWorkbench', () => {
   it('shows loading state before narrative plan data resolves', () => {
     const wrapper = mount(NarrativeWorkbench, {
@@ -146,6 +166,24 @@ describe('NarrativeWorkbench', () => {
 
     expect(wrapper.text()).toContain('雾锁灯塔')
     expect(wrapper.get('[data-testid="chapter-1"]').classes()).toContain('narrative-workbench__chapter--active')
+  })
+
+  it('renders long chapter plans through bounded windows and jumps to later chapters', async () => {
+    const wrapper = mount(NarrativeWorkbench, {
+      props: {
+        plan: largePlan(250),
+        chapters: [],
+        view: 'chapters',
+      },
+    })
+
+    expect(wrapper.find('[data-testid="chapter-1"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="chapter-51"]').exists()).toBe(false)
+
+    await wrapper.get('[data-testid="chapter-jump"]').setValue('240')
+
+    expect(wrapper.find('[data-testid="chapter-240"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="chapter-1"]').exists()).toBe(false)
   })
 
   it('renders foreshadowing lifecycle', () => {

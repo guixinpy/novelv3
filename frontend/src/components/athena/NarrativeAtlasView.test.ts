@@ -59,6 +59,31 @@ const timeline: AthenaTimeline = {
   ],
 }
 
+function largePlan(chapterCount: number) {
+  return {
+    outline: {
+      id: 'outline-large',
+      status: 'generated',
+      total_chapters: chapterCount,
+      chapters: Array.from({ length: chapterCount }, (_, index) => {
+        const chapterIndex = index + 1
+        return {
+          chapter_index: chapterIndex,
+          title: `长篇章节${chapterIndex}`,
+          summary: `第${chapterIndex}章摘要`,
+        }
+      }),
+      plotlines: [],
+    },
+    storyline: {
+      id: 'storyline-large',
+      status: 'generated',
+      plotlines: [],
+      foreshadowing: [],
+    },
+  } as unknown as AthenaEvolutionPlan
+}
+
 function mountAtlas(props: { plan?: AthenaEvolutionPlan | null; timeline?: AthenaTimeline | null } = {}) {
   return mount(NarrativeAtlasView, {
     props: {
@@ -134,5 +159,19 @@ describe('NarrativeAtlasView', () => {
     expect(wrapper.emitted('navigate')).toEqual([
       [{ view: 'foreshadowing', sourceKey: 'foreshadowing:潮汐钟慢了三分钟' }],
     ])
+  })
+
+  it('defaults large atlas graphs to a local chapter window', () => {
+    const wrapper = mount(NarrativeAtlasView, {
+      props: {
+        plan: largePlan(250),
+        chapters: [],
+        timeline: { anchors: [], events: [] },
+      },
+    })
+
+    expect(wrapper.text()).toContain('第1-80章')
+    expect(wrapper.find('[data-atlas-node-id="chapter:1"]').exists()).toBe(true)
+    expect(wrapper.find('[data-atlas-node-id="chapter:120"]').exists()).toBe(false)
   })
 })

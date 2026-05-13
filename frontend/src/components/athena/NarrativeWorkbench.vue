@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import type { AthenaEvolutionPlan, ChapterSummary } from '../../api/types'
 import type { AthenaNarrativeView } from '../../views/athenaNavigation'
 
@@ -15,6 +15,10 @@ const props = defineProps<{
 const collapsedPlotlineKeys = ref<Set<string>>(new Set())
 const chapterSearch = ref('')
 const activeChapterIndex = ref<number | null>(null)
+const chapterVolumeStart = ref(1)
+const chapterWindowStart = ref(1)
+const CHAPTERS_PER_VOLUME = 100
+const CHAPTER_WINDOW_SIZE = 50
 
 const outlineChapters = computed(() =>
   asRecords(props.plan?.outline?.chapters)
@@ -92,6 +96,49 @@ const filteredOutlineChapters = computed(() => {
     ].join(' ').toLocaleLowerCase()
     return searchable.includes(query)
   })
+})
+
+const chapterVolumes = computed(() => {
+  if (!outlineChapters.value.length) return []
+  const firstChapter = outlineChapters.value[0].chapterIndex ?? 1
+  const lastChapter = outlineChapters.value[outlineChapters.value.length - 1].chapterIndex ?? firstChapter
+  const firstVolumeStart = volumeStartForChapter(firstChapter)
+  const volumes: Array<{ start: number; end: number; label: string }> = []
+  for (let start = firstVolumeStart; start <= lastChapter; start += CHAPTERS_PER_VOLUME) {
+    const end = Math.min(start + CHAPTERS_PER_VOLUME - 1, lastChapter)
+    volumes.push({ start, end, label: `第${start}-${end}章` })
+  }
+  return volumes
+})
+
+const activeVolume = computed(() =>
+  chapterVolumes.value.find((volume) => volume.start === chapterVolumeStart.value) ?? chapterVolumes.value[0] ?? null,
+)
+
+const visibleOutlineChapters = computed(() => {
+  if (chapterSearch.value.trim()) return filteredOutlineChapters.value
+  const volume = activeVolume.value
+  if (!volume) return []
+  const windowEnd = Math.min(chapterWindowStart.value + CHAPTER_WINDOW_SIZE - 1, volume.end)
+  return outlineChapters.value.filter((chapter) =>
+    chapter.chapterIndex !== null
+    && chapter.chapterIndex >= chapterWindowStart.value
+    && chapter.chapterIndex <= windowEnd,
+  )
+})
+
+const chapterWindowRangeLabel = computed(() => {
+  const volume = activeVolume.value
+  if (!volume) return '暂无章节'
+  if (chapterSearch.value.trim()) return `搜索结果 ${visibleOutlineChapters.value.length} 章`
+  const end = Math.min(chapterWindowStart.value + CHAPTER_WINDOW_SIZE - 1, volume.end)
+  return `当前显示第${chapterWindowStart.value}-${end}章`
+})
+
+const canPagePrevious = computed(() => Boolean(activeVolume.value && chapterWindowStart.value > activeVolume.value.start))
+const canPageNext = computed(() => {
+  const volume = activeVolume.value
+  return Boolean(volume && chapterWindowStart.value + CHAPTER_WINDOW_SIZE <= volume.end)
 })
 
 function asRecord(value: unknown): RecordValue | null {
@@ -175,11 +222,47 @@ function selectChapterJump(value: string) {
   if (chapterIndex === null) return
   chapterSearch.value = ''
   activeChapterIndex.value = chapterIndex
+  setChapterWindowFor(chapterIndex)
   void nextTick(() => {
     const target = document.querySelector(`[data-narrative-chapter-index="${chapterIndex}"]`)
     target?.scrollIntoView({ block: 'center', behavior: 'smooth' })
   })
 }
+
+function selectChapterVolume(value: string) {
+  const start = toNumber(value)
+  if (start === null) return
+  chapterVolumeStart.value = start
+  chapterWindowStart.value = start
+  activeChapterIndex.value = null
+}
+
+function pageChapters(direction: -1 | 1) {
+  const volume = activeVolume.value
+  if (!volume) return
+  chapterWindowStart.value = direction > 0
+    ? Math.min(chapterWindowStart.value + CHAPTER_WINDOW_SIZE, volume.end)
+    : Math.max(chapterWindowStart.value - CHAPTER_WINDOW_SIZE, volume.start)
+}
+
+function setChapterWindowFor(chapterIndex: number) {
+  const volumeStart = volumeStartForChapter(chapterIndex)
+  chapterVolumeStart.value = volumeStart
+  chapterWindowStart.value = volumeStart + Math.floor((chapterIndex - volumeStart) / CHAPTER_WINDOW_SIZE) * CHAPTER_WINDOW_SIZE
+}
+
+function volumeStartForChapter(chapterIndex: number) {
+  return Math.floor((chapterIndex - 1) / CHAPTERS_PER_VOLUME) * CHAPTERS_PER_VOLUME + 1
+}
+
+watch(outlineChapters, (chapters) => {
+  const firstChapter = chapters[0]?.chapterIndex ?? 1
+  const lastChapter = chapters[chapters.length - 1]?.chapterIndex ?? firstChapter
+  if (chapterVolumeStart.value < volumeStartForChapter(firstChapter) || chapterVolumeStart.value > lastChapter) {
+    chapterVolumeStart.value = volumeStartForChapter(firstChapter)
+    chapterWindowStart.value = chapterVolumeStart.value
+  }
+}, { immediate: true })
 </script>
 
 <template>
@@ -231,6 +314,15 @@ function selectChapterJump(value: string) {
             placeholder="搜索章节、摘要、角色、场景"
           >
           <select
+            data-testid="chapter-volume"
+            :value="activeVolume?.start ?? ''"
+            @change="selectChapterVolume(($event.target as HTMLSelectElement).value)"
+          >
+            <option v-for="volume in chapterVolumes" :key="volume.start" :value="volume.start">
+              {{ volume.label }}
+            </option>
+          </select>
+          <select
             data-testid="chapter-jump"
             :value="activeChapterIndex ?? ''"
             @change="selectChapterJump(($event.target as HTMLSelectElement).value)"
@@ -241,8 +333,15 @@ function selectChapterJump(value: string) {
             </option>
           </select>
         </div>
+        <div class="narrative-workbench__chapter-window" aria-label="章节窗口">
+          <span>{{ chapterWindowRangeLabel }}</span>
+          <div>
+            <button type="button" :disabled="!canPagePrevious" @click="pageChapters(-1)">上一组</button>
+            <button type="button" :disabled="!canPageNext" @click="pageChapters(1)">下一组</button>
+          </div>
+        </div>
         <article
-          v-for="chapter in filteredOutlineChapters"
+          v-for="chapter in visibleOutlineChapters"
           :key="chapter.key"
           class="narrative-workbench__chapter"
           :class="{ 'narrative-workbench__chapter--active': chapter.chapterIndex === activeChapterIndex }"
@@ -270,7 +369,7 @@ function selectChapterJump(value: string) {
             </template>
           </dl>
         </article>
-        <div v-if="filteredOutlineChapters.length === 0" class="narrative-workbench__empty">没有匹配的章节</div>
+        <div v-if="visibleOutlineChapters.length === 0" class="narrative-workbench__empty">没有匹配的章节</div>
       </div>
 
       <div v-else-if="view === 'foreshadowing'" class="narrative-workbench__foreshadowing">
@@ -430,7 +529,7 @@ function selectChapterJump(value: string) {
   top: 0;
   z-index: 1;
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(180px, 280px);
+  grid-template-columns: minmax(220px, 1fr) minmax(140px, 180px) minmax(180px, 280px);
   gap: var(--space-2);
   padding-bottom: var(--space-3);
   background: var(--color-bg-primary);
@@ -445,6 +544,36 @@ function selectChapterJump(value: string) {
   background: var(--color-bg-white);
   color: var(--color-text-primary);
   font-size: var(--text-sm);
+}
+
+.narrative-workbench__chapter-window {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+}
+
+.narrative-workbench__chapter-window div {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.narrative-workbench__chapter-window button {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+  background: var(--color-bg-white);
+  color: var(--color-text-primary);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.narrative-workbench__chapter-window button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .narrative-workbench__chapter--active {

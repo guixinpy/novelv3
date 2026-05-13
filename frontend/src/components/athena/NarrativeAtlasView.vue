@@ -35,6 +35,9 @@ const layers = reactive<Record<AtlasLayer, boolean>>({
 })
 
 const selected = ref<AtlasSelection | null>(null)
+const atlasWindowStart = ref(1)
+const ATLAS_LOCAL_THRESHOLD = 120
+const ATLAS_WINDOW_SIZE = 80
 
 const graph = computed<NarrativeAtlasGraph>(() =>
   buildNarrativeAtlasGraph({
@@ -43,6 +46,57 @@ const graph = computed<NarrativeAtlasGraph>(() =>
     timeline: props.timeline,
   }),
 )
+
+const atlasChapterIndexes = computed(() =>
+  graph.value.nodes
+    .filter((node) => node.type === 'chapter' && node.chapterIndex !== undefined)
+    .map((node) => Number(node.chapterIndex))
+    .sort((left, right) => left - right),
+)
+
+const isAtlasWindowed = computed(() => atlasChapterIndexes.value.length > ATLAS_LOCAL_THRESHOLD)
+const lastAtlasChapterIndex = computed(() =>
+  atlasChapterIndexes.value.length
+    ? atlasChapterIndexes.value[atlasChapterIndexes.value.length - 1]
+    : atlasWindowStart.value,
+)
+const atlasWindowEnd = computed(() => Math.min(atlasWindowStart.value + ATLAS_WINDOW_SIZE - 1, lastAtlasChapterIndex.value))
+const atlasScopeLabel = computed(() => `第${atlasWindowStart.value}-${atlasWindowEnd.value}章`)
+const canPageAtlasPrevious = computed(() => atlasWindowStart.value > (atlasChapterIndexes.value[0] ?? 1))
+const canPageAtlasNext = computed(() => atlasWindowEnd.value < lastAtlasChapterIndex.value)
+
+const displayGraph = computed<NarrativeAtlasGraph>(() => {
+  if (!isAtlasWindowed.value) return graph.value
+  const visibleNodeIds = new Set<string>()
+  const nodeById = new Map(graph.value.nodes.map((node) => [node.id, node]))
+
+  for (const node of graph.value.nodes) {
+    if (node.chapterIndex === undefined) continue
+    if (node.chapterIndex >= atlasWindowStart.value && node.chapterIndex <= atlasWindowEnd.value) {
+      visibleNodeIds.add(node.id)
+    }
+  }
+
+  for (const edge of graph.value.edges) {
+    const source = nodeById.get(edge.source)
+    const target = nodeById.get(edge.target)
+    if (visibleNodeIds.has(edge.source) && target && target.chapterIndex === undefined) {
+      visibleNodeIds.add(edge.target)
+    }
+    if (visibleNodeIds.has(edge.target) && source && source.chapterIndex === undefined) {
+      visibleNodeIds.add(edge.source)
+    }
+  }
+
+  return {
+    nodes: graph.value.nodes.filter((node) => visibleNodeIds.has(node.id)),
+    edges: graph.value.edges.filter((edge) => visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target)),
+    warnings: graph.value.warnings.filter((warning) =>
+      (!warning.sourceId || visibleNodeIds.has(warning.sourceId))
+      && (!warning.targetId || visibleNodeIds.has(warning.targetId)),
+    ),
+  }
+})
 
 const metrics = computed(() => ({
   chapters: graph.value.nodes.filter((node) => node.type === 'chapter').length,
@@ -54,13 +108,13 @@ const metrics = computed(() => ({
 const visibleSelectionIds = computed(() => {
   const ids = new Set<string>()
   const visibleNodeIds = new Set(
-    graph.value.nodes
+    displayGraph.value.nodes
       .filter((node) => layers[layerForNode(node)])
       .map((node) => node.id),
   )
 
   visibleNodeIds.forEach((id) => ids.add(`node:${id}`))
-  graph.value.edges
+  displayGraph.value.edges
     .filter((edge) =>
       layers[layerForEdge(edge)]
       && visibleNodeIds.has(edge.source)
@@ -80,6 +134,7 @@ watch(visibleSelectionIds, (ids) => {
 
 watch(() => props.plan, () => {
   selected.value = null
+  atlasWindowStart.value = 1
 })
 
 function updateLayer(layer: AtlasLayer, value: boolean) {
@@ -92,6 +147,14 @@ function select(selection: AtlasSelection) {
 
 function navigate(payload: NavigatePayload) {
   emit('navigate', payload)
+}
+
+function pageAtlas(direction: -1 | 1) {
+  const firstChapter = atlasChapterIndexes.value[0] ?? 1
+  const lastChapter = lastAtlasChapterIndex.value
+  atlasWindowStart.value = direction > 0
+    ? Math.min(atlasWindowStart.value + ATLAS_WINDOW_SIZE, Math.max(firstChapter, lastChapter - ATLAS_WINDOW_SIZE + 1))
+    : Math.max(firstChapter, atlasWindowStart.value - ATLAS_WINDOW_SIZE)
 }
 
 function layerForNode(node: NarrativeAtlasNode): AtlasLayer {
@@ -123,14 +186,23 @@ function layerForEdge(edge: NarrativeAtlasEdge): AtlasLayer {
         :metrics="metrics"
         @update-layer="updateLayer"
       />
-      <NarrativeAtlasCanvas
-        :graph="graph"
-        :layers="layers"
-        :selected="selected"
-        @select="select"
-      />
+      <div class="narrative-atlas-view__canvas-column">
+        <div v-if="isAtlasWindowed" class="narrative-atlas-view__scope" data-testid="atlas-local-scope">
+          <span>当前显示{{ atlasScopeLabel }}</span>
+          <div>
+            <button type="button" :disabled="!canPageAtlasPrevious" @click="pageAtlas(-1)">上一窗</button>
+            <button type="button" :disabled="!canPageAtlasNext" @click="pageAtlas(1)">下一窗</button>
+          </div>
+        </div>
+        <NarrativeAtlasCanvas
+          :graph="displayGraph"
+          :layers="layers"
+          :selected="selected"
+          @select="select"
+        />
+      </div>
       <NarrativeAtlasDetailPanel
-        :graph="graph"
+        :graph="displayGraph"
         :selected="selected"
         @navigate="navigate"
       />
@@ -159,10 +231,53 @@ function layerForEdge(edge: NarrativeAtlasEdge): AtlasLayer {
   text-align: center;
 }
 
+.narrative-atlas-view__canvas-column {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.narrative-atlas-view__scope {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+}
+
+.narrative-atlas-view__scope div {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.narrative-atlas-view__scope button {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+  background: var(--color-bg-white);
+  color: var(--color-text-primary);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.narrative-atlas-view__scope button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
 @media (max-width: 1080px) {
   .narrative-atlas-view {
     grid-template-columns: 220px minmax(0, 1fr);
     overflow: auto;
+  }
+
+  .narrative-atlas-view__canvas-column {
+    min-height: 560px;
   }
 
   .narrative-atlas-view :deep(.narrative-atlas-detail) {
@@ -176,6 +291,10 @@ function layerForEdge(edge: NarrativeAtlasEdge): AtlasLayer {
   .narrative-atlas-view {
     grid-template-columns: minmax(0, 1fr);
     min-height: 0;
+  }
+
+  .narrative-atlas-view__canvas-column {
+    min-height: 520px;
   }
 
   .narrative-atlas-view :deep(.narrative-atlas-controls),

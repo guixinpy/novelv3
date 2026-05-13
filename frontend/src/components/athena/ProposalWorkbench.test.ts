@@ -70,4 +70,50 @@ describe('ProposalWorkbench', () => {
     expect(wrapper.text()).toContain('部分通过')
     expect(wrapper.text()).not.toContain('partially_approved')
   })
+
+  it('renders localized proposal review queue clusters without leaking raw backend labels', () => {
+    const store = useWorldModelStore()
+    store.proposalReviewQueue = {
+      project_id: 'project-1',
+      profile_version: 1,
+      total_items: 3,
+      clusters: [
+        {
+          cluster_id: 'high:status:item-1',
+          risk_level: 'high',
+          review_mode: 'individual',
+          candidate_count: 1,
+          item_ids: ['item-1'],
+          bundle_ids: ['bundle-1'],
+          subject_refs: ['char.hero'],
+          predicate: 'status',
+          chapter_range: { start: 4, end: 4 },
+          reason: '状态变化需要单独审阅。',
+        },
+        {
+          cluster_id: 'low:presence_count:chapter:4',
+          risk_level: 'low',
+          review_mode: 'batch',
+          candidate_count: 2,
+          item_ids: ['item-2', 'item-3'],
+          bundle_ids: ['bundle-1'],
+          subject_refs: ['char.hero', 'char.sidekick'],
+          predicate: 'presence_count',
+          chapter_range: { start: 4, end: 4 },
+          reason: '出场统计可批量审阅。',
+        },
+      ],
+    }
+
+    const wrapper = mount(ProposalWorkbench, { props: { projectId: 'project-1' } })
+
+    expect(wrapper.text()).toContain('审阅队列')
+    expect(wrapper.text()).toContain('高风险')
+    expect(wrapper.text()).toContain('低风险')
+    expect(wrapper.text()).toContain('单独审阅')
+    expect(wrapper.text()).toContain('批量审阅')
+    expect(wrapper.text()).not.toContain('high')
+    expect(wrapper.text()).not.toContain('individual')
+    expect(wrapper.text()).not.toContain('batch')
+  })
 })

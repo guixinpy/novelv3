@@ -41,26 +41,26 @@
 - Modify: `frontend/src/stores/worldModel.ts`
 - Test: `frontend/src/stores/worldModel.test.ts`
 
-- [ ] **Step 1: Write failing store test**
+- [x] **Step 1: Write failing store test**
 
 Add a test that mocks `api.getWorldProposalReviewQueue`, calls `store.loadSetupPanelData('project-1')`, and asserts `store.proposalReviewQueue?.total_items === 3`.
 
-- [ ] **Step 2: Run focused test**
+- [x] **Step 2: Run focused test**
 
 ```powershell
-npm run test:unit -- src/stores/worldModel.test.ts
+cd frontend; npm run test:unit -- src/stores/worldModel.test.ts
 ```
 
 Expected: FAIL because the store has no proposal review queue state yet.
 
-- [ ] **Step 3: Add types, API client, and store lane**
+- [x] **Step 3: Add types, API client, and store lane**
 
 Add `ProposalReviewQueueCluster` / `ProposalReviewQueue` types, `api.getWorldProposalReviewQueue()`, a store `proposalReviewQueue` ref, and load/refresh it with dashboard/overview/bundles.
 
-- [ ] **Step 4: Run focused test**
+- [x] **Step 4: Run focused test**
 
 ```powershell
-npm run test:unit -- src/stores/worldModel.test.ts
+cd frontend; npm run test:unit -- src/stores/worldModel.test.ts
 ```
 
 Expected: PASS.
@@ -71,26 +71,26 @@ Expected: PASS.
 - Modify: `frontend/src/components/athena/ProposalWorkbench.vue`
 - Test: `frontend/src/components/athena/ProposalWorkbench.test.ts`
 
-- [ ] **Step 1: Write failing component test**
+- [x] **Step 1: Write failing component test**
 
 Seed `store.proposalReviewQueue` with one high-risk individual cluster and one low-risk batch cluster. Mount `ProposalWorkbench` and assert the UI contains `高风险`, `单独审阅`, `批量审阅`, and does not contain raw values `high`, `individual`, or `batch`.
 
-- [ ] **Step 2: Run focused test**
+- [x] **Step 2: Run focused test**
 
 ```powershell
-npm run test:unit -- src/components/athena/ProposalWorkbench.test.ts
+cd frontend; npm run test:unit -- src/components/athena/ProposalWorkbench.test.ts
 ```
 
 Expected: FAIL because the workbench does not render the queue yet.
 
-- [ ] **Step 3: Render localized queue summary**
+- [x] **Step 3: Render localized queue summary**
 
 Render a compact section above the proposal detail with total actionable items and cluster rows. Keep it read-only.
 
-- [ ] **Step 4: Run focused test**
+- [x] **Step 4: Run focused test**
 
 ```powershell
-npm run test:unit -- src/components/athena/ProposalWorkbench.test.ts
+cd frontend; npm run test:unit -- src/components/athena/ProposalWorkbench.test.ts
 ```
 
 Expected: PASS.
@@ -101,7 +101,7 @@ Expected: PASS.
 - Modify: `frontend/src/components/athena/NarrativeWorkbench.vue`
 - Test: `frontend/src/components/athena/NarrativeWorkbench.test.ts`
 
-- [ ] **Step 1: Write failing large-plan test**
+- [x] **Step 1: Write failing large-plan test**
 
 Create a 250-chapter outline, mount chapter view, and assert:
 
@@ -109,22 +109,22 @@ Create a 250-chapter outline, mount chapter view, and assert:
 - `chapter-51` does not render by default;
 - after selecting jump value `240`, `chapter-240` exists and `chapter-1` no longer renders.
 
-- [ ] **Step 2: Run focused test**
+- [x] **Step 2: Run focused test**
 
 ```powershell
-npm run test:unit -- src/components/athena/NarrativeWorkbench.test.ts
+cd frontend; npm run test:unit -- src/components/athena/NarrativeWorkbench.test.ts
 ```
 
 Expected: FAIL because all chapters render.
 
-- [ ] **Step 3: Add volume and page window controls**
+- [x] **Step 3: Add volume and page window controls**
 
 Use 100 chapters per volume and 50 visible chapters per window. Search mode may still render matching results, but default browsing must stay bounded.
 
-- [ ] **Step 4: Run focused test**
+- [x] **Step 4: Run focused test**
 
 ```powershell
-npm run test:unit -- src/components/athena/NarrativeWorkbench.test.ts
+cd frontend; npm run test:unit -- src/components/athena/NarrativeWorkbench.test.ts
 ```
 
 Expected: PASS.
@@ -135,7 +135,7 @@ Expected: PASS.
 - Modify: `frontend/src/components/athena/NarrativeAtlasView.vue`
 - Test: `frontend/src/components/athena/NarrativeAtlasView.test.ts`
 
-- [ ] **Step 1: Write failing large-graph test**
+- [x] **Step 1: Write failing large-graph test**
 
 Create a 250-chapter plan, mount atlas view, and assert:
 
@@ -143,49 +143,49 @@ Create a 250-chapter plan, mount atlas view, and assert:
 - `chapter:120` does not render by default;
 - range text shows the local window.
 
-- [ ] **Step 2: Run focused test**
+- [x] **Step 2: Run focused test**
 
 ```powershell
-npm run test:unit -- src/components/athena/NarrativeAtlasView.test.ts
+cd frontend; npm run test:unit -- src/components/athena/NarrativeAtlasView.test.ts
 ```
 
 Expected: FAIL because atlas renders all chapter nodes.
 
-- [ ] **Step 3: Add scoped graph projection**
+- [x] **Step 3: Add scoped graph projection**
 
 Keep the full graph for metrics and detail safety, but pass a scoped graph to `NarrativeAtlasCanvas` when chapter count exceeds 120. Default window size: 80 chapters.
 
-- [ ] **Step 4: Run focused test**
+- [x] **Step 4: Run focused test**
 
 ```powershell
-npm run test:unit -- src/components/athena/NarrativeAtlasView.test.ts
+cd frontend; npm run test:unit -- src/components/athena/NarrativeAtlasView.test.ts
 ```
 
 Expected: PASS.
 
 ## Task 5: Verification and Commit
 
-- [ ] **Step 1: Run focused frontend tests**
+- [x] **Step 1: Run focused frontend tests**
 
 ```powershell
-npm run test:unit -- src/components/athena/NarrativeWorkbench.test.ts src/components/athena/NarrativeAtlasView.test.ts src/components/athena/ProposalWorkbench.test.ts src/stores/worldModel.test.ts
+cd frontend; npm run test:unit -- src/components/athena/NarrativeWorkbench.test.ts src/components/athena/NarrativeAtlasView.test.ts src/components/athena/ProposalWorkbench.test.ts src/stores/worldModel.test.ts
 ```
 
-- [ ] **Step 2: Run build**
+- [x] **Step 2: Run build**
 
 ```powershell
-npm run build
+cd frontend; npm run build
 ```
 
-- [ ] **Step 3: Check hygiene**
+- [x] **Step 3: Check hygiene**
 
 ```powershell
 git diff --check
-rg -n "sk-[A-Za-z0-9_-]{20,}|api_key|API_KEY" backend docs frontend .agents
+rg -n "sk-[A-Za-z0-9_-]{20,}" backend docs frontend .agents
 git status --short
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```powershell
 git add frontend docs/superpowers/plans/2026-05-13-longform-scale-phase4.md

@@ -25,6 +25,7 @@ import type {
   PaginatedProposalBundles,
   ProposalBundleDetail,
   ProposalReview,
+  ProposalReviewQueue,
   ProposalReviewRequest,
   ProposalRollbackRequest,
   ProposalSplitRequest,
@@ -87,6 +88,8 @@ export const api = {
     const qs = query.toString()
     return request<PaginatedProposalBundles>(`/projects/${id}/world-model/proposal-bundles${qs ? `?${qs}` : ''}`)
   },
+  getWorldProposalReviewQueue: (id: string) =>
+    request<ProposalReviewQueue>(`/projects/${id}/world-model/proposal-review-queue`),
   getWorldProposalBundle: (id: string, bundleId: string) => request<ProposalBundleDetail>(`/projects/${id}/world-model/proposal-bundles/${bundleId}`),
   reviewWorldProposalItem: (id: string, itemId: string, data: ProposalReviewRequest) =>
     request<ProposalReview>(`/projects/${id}/world-model/proposal-items/${itemId}/review`, {

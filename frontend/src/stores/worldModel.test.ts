@@ -11,6 +11,7 @@ vi.mock('../api/client', () => ({
     getSubjectKnowledge: vi.fn(),
     getChapterSnapshot: vi.fn(),
     listWorldProposalBundles: vi.fn(),
+    getWorldProposalReviewQueue: vi.fn(),
     getWorldProposalBundle: vi.fn(),
     reviewWorldProposalItem: vi.fn(),
     splitWorldProposalBundle: vi.fn(),
@@ -119,6 +120,40 @@ function createBundle(status = 'pending', version = 1) {
     created_by: 'writer.alpha',
     created_at: '2026-04-20T00:00:00Z',
     updated_at: '2026-04-20T00:00:00Z',
+  }
+}
+
+function createProposalReviewQueue() {
+  return {
+    project_id: 'project-1',
+    profile_version: 1,
+    total_items: 3,
+    clusters: [
+      {
+        cluster_id: 'high:status:item-1',
+        risk_level: 'high',
+        review_mode: 'individual',
+        candidate_count: 1,
+        item_ids: ['item-1'],
+        bundle_ids: ['bundle-1'],
+        subject_refs: ['char.hero'],
+        predicate: 'status',
+        chapter_range: { start: 1, end: 1 },
+        reason: '状态变化需要单独审阅。',
+      },
+      {
+        cluster_id: 'low:presence_count:chapter:1',
+        risk_level: 'low',
+        review_mode: 'batch',
+        candidate_count: 2,
+        item_ids: ['item-2', 'item-3'],
+        bundle_ids: ['bundle-1'],
+        subject_refs: ['char.hero', 'char.sidekick'],
+        predicate: 'presence_count',
+        chapter_range: { start: 1, end: 1 },
+        reason: '局部出场统计可批量审阅。',
+      },
+    ],
   }
 }
 
@@ -232,6 +267,12 @@ describe('worldModel store', () => {
     vi.resetAllMocks()
     vi.mocked(api.getWorldModelDashboard).mockResolvedValue(createDashboard())
     vi.mocked(api.listWorldFactClaims).mockResolvedValue([])
+    vi.mocked(api.getWorldProposalReviewQueue).mockResolvedValue({
+      project_id: 'project-1',
+      profile_version: 1,
+      total_items: 0,
+      clusters: [],
+    })
   })
 
   it('loadOverview() 只加载 profile 和投影，不触发 proposal 列表请求', async () => {
@@ -464,6 +505,25 @@ describe('worldModel store', () => {
     expect(store.proposalBundles).toHaveLength(1)
     expect(store.selectedBundleId).toBe('bundle-1')
     expect(store.selectedBundleDetail?.bundle.id).toBe('bundle-1')
+  })
+
+  it('loadSetupPanelData() 会加载提案审阅队列聚合状态', async () => {
+    vi.mocked(api.getWorldModelOverview).mockResolvedValue(createOverview('captain'))
+    vi.mocked(api.listWorldProposalBundles).mockResolvedValue({
+      items: [createBundle()],
+      total: 1,
+      offset: 0,
+      limit: 20,
+    })
+    vi.mocked(api.getWorldProposalBundle).mockResolvedValue(createBundleDetail())
+    vi.mocked(api.getWorldProposalReviewQueue).mockResolvedValue(createProposalReviewQueue())
+    const store = useWorldModelStore()
+
+    await store.loadSetupPanelData('project-1')
+
+    expect(api.getWorldProposalReviewQueue).toHaveBeenCalledWith('project-1')
+    expect(store.proposalReviewQueue?.total_items).toBe(3)
+    expect(store.proposalReviewQueue?.clusters.map((cluster) => cluster.risk_level)).toEqual(['high', 'low'])
   })
 
   it('reviewProposalItem() 会执行审批并刷新 bundles 和当前 detail', async () => {
