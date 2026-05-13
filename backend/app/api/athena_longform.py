@@ -53,9 +53,10 @@ def get_athena_longform_maintenance_diagnostics(
 def repair_athena_longform_maintenance(
     project_id: str,
     limit: int = Query(20, ge=1, le=200),
+    repair_limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db),
 ):
-    return repair_longform_maintenance(db=db, project_id=project_id, limit=limit)
+    return repair_longform_maintenance(db=db, project_id=project_id, limit=limit, repair_limit=repair_limit)
 
 
 @router.get("/longform/context/chapters/{chapter_index}", response_model=LongformContextPackage)

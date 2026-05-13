@@ -690,6 +690,8 @@ export interface LongformMaintenanceRepairResult {
   repaired_retrieval_count: number
   refreshed_chapter_indexes: number[]
   synced_scope_keys: string[]
+  has_more: boolean
+  remaining_issue_count: number
   remaining: LongformMaintenanceDiagnostics
 }
 

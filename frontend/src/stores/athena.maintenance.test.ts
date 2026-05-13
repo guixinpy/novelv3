@@ -54,6 +54,8 @@ describe('athena longform maintenance store', () => {
       repaired_retrieval_count: 3,
       refreshed_chapter_indexes: [512],
       synced_scope_keys: ['chapter:512', 'arc:501-520', 'global'],
+      has_more: false,
+      remaining_issue_count: 0,
       remaining: {
         project_id: 'project-1',
         status: 'current',

@@ -98,12 +98,18 @@ def get_longform_maintenance_diagnostics(db: Session, project_id: str, *, limit:
     return _maintenance_diagnostics_payload(_collect_longform_maintenance_state(db, project_id), limit=limit)
 
 
-def repair_longform_maintenance(db: Session, project_id: str, *, limit: int = 20) -> dict[str, Any]:
+def repair_longform_maintenance(
+    db: Session,
+    project_id: str,
+    *,
+    limit: int = 20,
+    repair_limit: int = 100,
+) -> dict[str, Any]:
     from app.core.athena_retrieval import sync_longform_memory_retrieval_documents
 
     _require_project(db, project_id)
     before = _collect_longform_maintenance_state(db, project_id)
-    refreshed_chapter_indexes = sorted(set(before.missing_memory_chapters + before.stale_memory_chapters))
+    refreshed_chapter_indexes = sorted(set(before.missing_memory_chapters + before.stale_memory_chapters))[:repair_limit]
     updated_memory_ids: list[str] = []
     for chapter_index in refreshed_chapter_indexes:
         refresh_result = refresh_longform_memory_for_chapter(db, project_id, chapter_index)
@@ -112,11 +118,12 @@ def repair_longform_maintenance(db: Session, project_id: str, *, limit: int = 20
     after_memory = _collect_longform_maintenance_state(db, project_id)
     retrieval_chapter_indexes = sorted(
         set(after_memory.missing_retrieval_chapters + after_memory.stale_retrieval_chapters)
-    )
+    )[:repair_limit]
     updated_memory_ids.extend(_chapter_memory_ids(db, project_id, retrieval_chapter_indexes))
     sync_result = sync_longform_memory_retrieval_documents(db, project_id, sorted(set(updated_memory_ids)))
     remaining = get_longform_maintenance_diagnostics(db, project_id, limit=limit)
     synced_scope_keys = sync_result.get("synced_scope_keys", [])
+    remaining_issue_count = _maintenance_issue_count(remaining)
     return {
         "project_id": project_id,
         "status": "completed",
@@ -124,6 +131,8 @@ def repair_longform_maintenance(db: Session, project_id: str, *, limit: int = 20
         "repaired_retrieval_count": len(synced_scope_keys),
         "refreshed_chapter_indexes": refreshed_chapter_indexes[:limit],
         "synced_scope_keys": synced_scope_keys,
+        "has_more": remaining_issue_count > 0,
+        "remaining_issue_count": remaining_issue_count,
         "remaining": remaining,
     }
 
@@ -204,6 +213,15 @@ def _maintenance_diagnostics_payload(state: LongformMaintenanceState, *, limit: 
         "latest_retrieval_updated_at": state.latest_retrieval_updated_at,
         "latest_synced_chapter_index": state.latest_synced_chapter_index,
     }
+
+
+def _maintenance_issue_count(payload: dict[str, Any]) -> int:
+    return int(
+        payload.get("stale_memory_count", 0)
+        + payload.get("missing_memory_count", 0)
+        + payload.get("stale_retrieval_count", 0)
+        + payload.get("missing_retrieval_count", 0)
+    )
 
 
 def refresh_longform_memory_for_chapter(

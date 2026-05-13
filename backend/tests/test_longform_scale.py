@@ -927,3 +927,44 @@ def test_longform_maintenance_repair_refreshes_memory_and_retrieval(client, db_s
     assert payload["remaining"]["stale_retrieval_count"] == 0
     after = client.get(f"/api/v1/projects/{project.id}/athena/longform/maintenance/diagnostics").json()
     assert after["status"] == "current"
+
+
+def test_longform_maintenance_repair_batches_large_backlog(client, db_session):
+    project = Project(name="Maintenance Repair Batch")
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    for index in range(1, 6):
+        db_session.add(
+            ChapterContent(
+                project_id=project.id,
+                chapter_index=index,
+                title=f"第{index}章",
+                content=f"第{index}章正文。星环钥匙第一形态。",
+                word_count=1000,
+                status="generated",
+            )
+        )
+    db_session.commit()
+
+    response = client.post(f"/api/v1/projects/{project.id}/athena/longform/maintenance/repair?repair_limit=2")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "completed"
+    assert payload["repaired_memory_count"] == 2
+    assert payload["refreshed_chapter_indexes"] == [1, 2]
+    assert payload["has_more"] is True
+    assert payload["remaining_issue_count"] > 0
+    assert payload["remaining"]["status"] == "stale"
+    assert payload["remaining"]["missing_memory_count"] == 3
+    assert "chapter:1" in payload["synced_scope_keys"]
+    assert "chapter:2" in payload["synced_scope_keys"]
+
+    second_response = client.post(f"/api/v1/projects/{project.id}/athena/longform/maintenance/repair?repair_limit=10")
+
+    assert second_response.status_code == 200
+    second_payload = second_response.json()
+    assert second_payload["has_more"] is False
+    assert second_payload["remaining_issue_count"] == 0
+    assert second_payload["remaining"]["status"] == "current"

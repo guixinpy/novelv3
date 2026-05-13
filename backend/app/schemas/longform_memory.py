@@ -46,6 +46,8 @@ class LongformMaintenanceRepairResult(BaseModel):
     repaired_retrieval_count: int
     refreshed_chapter_indexes: list[int] = Field(default_factory=list)
     synced_scope_keys: list[str] = Field(default_factory=list)
+    has_more: bool
+    remaining_issue_count: int
     remaining: LongformMaintenanceDiagnostics
 
 
