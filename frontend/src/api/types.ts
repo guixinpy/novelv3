@@ -76,6 +76,14 @@ export interface ChapterSummary {
   status: string
 }
 
+export interface ChapterListResponse {
+  chapters: ChapterSummary[]
+  total?: number
+  offset?: number
+  limit?: number
+  has_more?: boolean
+}
+
 export interface VersionSummary {
   id: string
   version_number: number
@@ -97,6 +105,10 @@ export interface WorkspaceBootstrap {
   storyline?: Record<string, unknown> | null
   outline?: Record<string, unknown> | null
   chapters: ChapterSummary[]
+  chapters_total?: number
+  chapters_offset?: number
+  chapters_limit?: number
+  chapters_has_more?: boolean
   versions: VersionSummary[]
   dialogs: {
     hermes?: DialogBootstrap

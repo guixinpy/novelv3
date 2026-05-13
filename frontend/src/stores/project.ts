@@ -32,6 +32,10 @@ export const useProjectStore = defineStore('project', () => {
   const outline = ref<any>(null)
   const topology = ref<any>(null)
   const chapters = ref<any[]>([])
+  const chaptersTotal = ref(0)
+  const chaptersOffset = ref(0)
+  const chaptersLimit = ref(0)
+  const chaptersHasMore = ref(false)
   const versions = ref<any[]>([])
   const preferences = ref<any>(null)
   const versionsNodeType = ref<string | undefined>(undefined)
@@ -80,6 +84,12 @@ export const useProjectStore = defineStore('project', () => {
       && latestLaneRequest.value[lane] === snapshot.requestId
   }
 
+  function chaptersCacheKey(projectId: string, params?: { offset?: number; limit?: number }) {
+    const offset = params?.offset ?? 0
+    const limit = params?.limit
+    return `project:${projectId}:chapters:${offset}:${limit ?? 'default'}`
+  }
+
   async function loadProjects() {
     projects.value = await api.listProjects()
   }
@@ -96,13 +106,17 @@ export const useProjectStore = defineStore('project', () => {
     storyline.value = bootstrap.storyline || null
     outline.value = bootstrap.outline || null
     chapters.value = bootstrap.chapters || []
+    chaptersTotal.value = bootstrap.chapters_total ?? chapters.value.length
+    chaptersOffset.value = bootstrap.chapters_offset ?? 0
+    chaptersLimit.value = bootstrap.chapters_limit ?? chapters.value.length
+    chaptersHasMore.value = bootstrap.chapters_has_more ?? false
     versions.value = bootstrap.versions || []
     versionsNodeType.value = undefined
     requestCache.markFresh(`project:${id}:project`)
     if (bootstrap.setup) requestCache.markFresh(`project:${id}:setup`)
     if (bootstrap.storyline) requestCache.markFresh(`project:${id}:storyline`)
     if (bootstrap.outline) requestCache.markFresh(`project:${id}:outline`)
-    requestCache.markFresh(`project:${id}:chapters`)
+    requestCache.markFresh(chaptersCacheKey(id))
     requestCache.markFresh(`project:${id}:versions:all`)
   }
 
@@ -128,6 +142,10 @@ export const useProjectStore = defineStore('project', () => {
     outline.value = null
     topology.value = null
     chapters.value = []
+    chaptersTotal.value = 0
+    chaptersOffset.value = 0
+    chaptersLimit.value = 0
+    chaptersHasMore.value = false
     versions.value = []
     preferences.value = null
     versionsNodeType.value = undefined
@@ -221,13 +239,18 @@ export const useProjectStore = defineStore('project', () => {
     topology.value = nextTopology
   }
 
-  async function loadChapters(id: string, force = false) {
-    const key = `project:${id}:chapters`
+  async function loadChapters(id: string, force = false, params?: { offset?: number; limit?: number }) {
+    const offset = params?.offset ?? 0
+    const key = chaptersCacheKey(id, params)
     if (!force && requestCache.isFresh(key, PROJECT_CACHE_TTL_MS)) return
     const snapshot = captureProjectRequest(id, ['chapters'])
-    const res = await requestCache.dedupe(key, () => api.listChapters(id))
+    const res = await requestCache.dedupe(key, () => api.listChapters(id, params))
     if (!isLatestProjectRequest(snapshot, 'chapters')) return
     chapters.value = res.chapters || []
+    chaptersTotal.value = res.total ?? chapters.value.length
+    chaptersOffset.value = res.offset ?? offset
+    chaptersLimit.value = res.limit ?? chapters.value.length
+    chaptersHasMore.value = res.has_more ?? false
   }
 
   async function loadVersions(id: string, nodeType?: string) {
@@ -330,7 +353,9 @@ export const useProjectStore = defineStore('project', () => {
   }
 
   return {
-    projects, currentProject, setup, chapter, storyline, outline, topology, chapters, versions, preferences, versionsNodeType,
+    projects, currentProject, setup, chapter, storyline, outline, topology,
+    chapters, chaptersTotal, chaptersOffset, chaptersLimit, chaptersHasMore,
+    versions, preferences, versionsNodeType,
     resetProjectScopedState,
     applyWorkspaceBootstrap,
     loadProjects, createProject, deleteProject, loadProject,

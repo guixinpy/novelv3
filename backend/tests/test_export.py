@@ -49,3 +49,62 @@ def test_list_chapters_with_content(client, db_session):
     assert len(r2.json()["chapters"]) == 1
     assert r2.json()["chapters"][0]["chapter_index"] == 1
 
+
+def test_list_chapters_defaults_to_bounded_page_with_total(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Long Test"})
+    pid = r.json()["id"]
+    db_session.add_all(
+        [
+            ChapterContent(
+                project_id=pid,
+                chapter_index=index,
+                title=f"第{index}章",
+                content="测试章节内容",
+                word_count=1000,
+                status="generated",
+            )
+            for index in range(1, 251)
+        ]
+    )
+    db_session.commit()
+
+    response = client.get(f"/api/v1/projects/{pid}/chapters")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload["chapters"]) == 200
+    assert payload["chapters"][0]["chapter_index"] == 1
+    assert payload["chapters"][-1]["chapter_index"] == 200
+    assert payload["total"] == 250
+    assert payload["offset"] == 0
+    assert payload["limit"] == 200
+    assert payload["has_more"] is True
+
+
+def test_list_chapters_returns_explicit_page(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Paged Test"})
+    pid = r.json()["id"]
+    db_session.add_all(
+        [
+            ChapterContent(
+                project_id=pid,
+                chapter_index=index,
+                title=f"第{index}章",
+                content="测试章节内容",
+                word_count=1000,
+                status="generated",
+            )
+            for index in range(1, 31)
+        ]
+    )
+    db_session.commit()
+
+    response = client.get(f"/api/v1/projects/{pid}/chapters?offset=10&limit=5")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [chapter["chapter_index"] for chapter in payload["chapters"]] == [11, 12, 13, 14, 15]
+    assert payload["total"] == 30
+    assert payload["offset"] == 10
+    assert payload["limit"] == 5
+    assert payload["has_more"] is True

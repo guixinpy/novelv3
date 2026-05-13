@@ -129,8 +129,8 @@ describe('ManuscriptView', () => {
     })
     vi.mocked(api.listChapters).mockResolvedValue({
       chapters: [
-        { chapter_index: 1, word_count: 16 },
-        { chapter_index: 2, word_count: 18 },
+        { id: 'chapter-1', chapter_index: 1, title: '第一章', word_count: 16, status: 'generated' },
+        { id: 'chapter-2', chapter_index: 2, title: '第二章', word_count: 18, status: 'generated' },
       ],
     })
     vi.mocked(api.getChapter).mockImplementation(async (_projectId: string, chapterIndex: number) =>

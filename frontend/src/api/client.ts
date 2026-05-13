@@ -12,6 +12,7 @@ import type {
   AthenaTimeline,
   BackgroundTaskResponse,
   ChapterContent,
+  ChapterListResponse,
   ChapterRevision,
   ChapterRevisionDraftPayload,
   ChapterRevisionPayload,
@@ -242,7 +243,13 @@ export const api = {
   rollbackVersion: (id: string, versionId: string) => request(`/projects/${id}/versions/${versionId}/rollback`, { method: 'POST' }),
   deleteVersion: (id: string, versionId: string) => request(`/projects/${id}/versions/${versionId}`, { method: 'DELETE' }),
   exportProject: (id: string, data: any) => fetch(`/api/v1/projects/${id}/export`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }),
-  listChapters: (id: string) => request(`/projects/${id}/chapters`),
+  listChapters: (id: string, params?: { offset?: number; limit?: number }) => {
+    const query = new URLSearchParams()
+    if (params?.offset !== undefined) query.set('offset', String(params.offset))
+    if (params?.limit !== undefined) query.set('limit', String(params.limit))
+    const qs = query.toString()
+    return request<ChapterListResponse>(`/projects/${id}/chapters${qs ? `?${qs}` : ''}`)
+  },
   getPreferences: (id: string) => request(`/projects/${id}/preferences`),
   updatePreferences: (id: string, data: any) => request(`/projects/${id}/preferences`, { method: 'PUT', body: JSON.stringify(data) }),
   resetPreferences: (id: string) => request(`/projects/${id}/preferences/reset`, { method: 'POST' }),

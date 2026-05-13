@@ -27,5 +27,9 @@ class WorkspaceBootstrapOut(BaseModel):
     storyline: StorylineOut | None = None
     outline: OutlineOut | None = None
     chapters: list[ChapterSummaryOut] = Field(default_factory=list)
+    chapters_total: int = 0
+    chapters_offset: int = 0
+    chapters_limit: int = 0
+    chapters_has_more: bool = False
     versions: list[VersionSummary] = Field(default_factory=list)
     dialogs: dict[str, DialogBootstrapOut] = Field(default_factory=dict)

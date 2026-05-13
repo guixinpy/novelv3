@@ -4,6 +4,8 @@ from app.models import ChapterContent, Outline, Project, Setup, Storyline, Versi
 from app.schemas import ProjectDiagnosisOut
 from app.services.dialog.messages import DialogMessageService
 
+CHAPTER_BOOTSTRAP_LIMIT = 200
+
 
 def build_project_diagnosis(db: Session, project_id: str) -> ProjectDiagnosisOut:
     setup = db.query(Setup).filter(Setup.project_id == project_id).first()
@@ -59,10 +61,12 @@ class WorkspaceBootstrapService:
         if not project:
             return None
 
+        chapters_query = self.db.query(ChapterContent).filter(ChapterContent.project_id == project_id)
+        chapters_total = chapters_query.count()
         chapters = (
-            self.db.query(ChapterContent)
-            .filter(ChapterContent.project_id == project_id)
+            chapters_query
             .order_by(ChapterContent.chapter_index)
+            .limit(CHAPTER_BOOTSTRAP_LIMIT)
             .all()
         )
         setup = self.db.query(Setup).filter(Setup.project_id == project_id).first()
@@ -92,6 +96,10 @@ class WorkspaceBootstrapService:
                 }
                 for chapter in chapters
             ],
+            "chapters_total": chapters_total,
+            "chapters_offset": 0,
+            "chapters_limit": CHAPTER_BOOTSTRAP_LIMIT,
+            "chapters_has_more": len(chapters) < chapters_total,
             "versions": versions,
             "dialogs": {
                 "hermes": {"messages": self.messages.list_messages(project_id, dialog_type="hermes", limit=80)},

@@ -1,6 +1,6 @@
 import json
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -9,6 +9,9 @@ from app.db import get_db
 from app.models import ChapterContent, Outline, Project, Setup
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}", tags=["export"])
+
+CHAPTER_SUMMARY_DEFAULT_LIMIT = 200
+CHAPTER_SUMMARY_MAX_LIMIT = 500
 
 
 class ExportRequest(BaseModel):
@@ -77,23 +80,34 @@ def export_project(project_id: str, payload: ExportRequest, db: Session = Depend
 
 
 @router.get("/chapters")
-def list_chapters(project_id: str, db: Session = Depends(get_db)):
+def list_chapters(
+    project_id: str,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(CHAPTER_SUMMARY_DEFAULT_LIMIT, ge=1, le=CHAPTER_SUMMARY_MAX_LIMIT),
+    db: Session = Depends(get_db),
+):
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    chapters = db.query(ChapterContent).filter(
+    query = db.query(ChapterContent).filter(
         ChapterContent.project_id == project_id,
-    ).order_by(ChapterContent.chapter_index).all()
+    )
+    total = query.count()
+    chapters = query.order_by(ChapterContent.chapter_index).offset(offset).limit(limit).all()
 
     return {
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+        "has_more": offset + len(chapters) < total,
         "chapters": [
             {
                 "id": ch.id,
                 "chapter_index": ch.chapter_index,
                 "title": ch.title or f"第{ch.chapter_index}章",
                 "word_count": ch.word_count or 0,
-                "status": "generated",
+                "status": ch.status or "generated",
             }
             for ch in chapters
         ]

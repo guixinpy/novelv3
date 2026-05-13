@@ -52,6 +52,10 @@ describe('project workspace state', () => {
     store.chapter = { id: 'chapter-a' }
     store.topology = { id: 'topology-a' }
     store.chapters = [{ id: 'chapter-a' }]
+    store.chaptersTotal = 10
+    store.chaptersOffset = 2
+    store.chaptersLimit = 5
+    store.chaptersHasMore = true
     store.versions = [{ id: 'version-a' }]
     store.preferences = { id: 'preferences-a' }
     store.versionsNodeType = 'outline'
@@ -65,6 +69,10 @@ describe('project workspace state', () => {
     expect(store.chapter).toBe(null)
     expect(store.topology).toBe(null)
     expect(store.chapters).toEqual([])
+    expect(store.chaptersTotal).toBe(0)
+    expect(store.chaptersOffset).toBe(0)
+    expect(store.chaptersLimit).toBe(0)
+    expect(store.chaptersHasMore).toBe(false)
     expect(store.versions).toEqual([])
     expect(store.preferences).toBe(null)
     expect(store.versionsNodeType).toBe(undefined)
@@ -177,7 +185,9 @@ describe('project workspace state', () => {
     const store = useProjectStore()
 
     vi.mocked(api.getProject).mockResolvedValue({ id: 'A', name: '项目 A' })
-    vi.mocked(api.listChapters).mockResolvedValue({ chapters: [{ id: 'chapter-1', chapter_index: 1 }] })
+    vi.mocked(api.listChapters).mockResolvedValue({
+      chapters: [{ id: 'chapter-1', chapter_index: 1, title: '第一章', word_count: 0, status: 'generated' }],
+    })
 
     await store.loadProject('A')
     await store.loadChapters('A')
@@ -187,7 +197,7 @@ describe('project workspace state', () => {
     expect(api.getProject).toHaveBeenCalledTimes(1)
     expect(api.listChapters).toHaveBeenCalledTimes(1)
     expect(store.currentProject).toEqual({ id: 'A', name: '项目 A' })
-    expect(store.chapters).toEqual([{ id: 'chapter-1', chapter_index: 1 }])
+    expect(store.chapters).toEqual([{ id: 'chapter-1', chapter_index: 1, title: '第一章', word_count: 0, status: 'generated' }])
   })
 
   it('loadChapters(force) 会绕过 fresh 缓存刷新章节列表', async () => {
@@ -201,13 +211,21 @@ describe('project workspace state', () => {
       dialogs: { hermes: { messages: [] }, athena: { messages: [] } },
     } as any)
     vi.mocked(api.listChapters).mockResolvedValue({
-      chapters: [{ id: 'chapter-1', chapter_index: 1, title: '第一章' }],
+      chapters: [{ id: 'chapter-1', chapter_index: 1, title: '第一章', word_count: 0, status: 'generated' }],
+      total: 250,
+      offset: 0,
+      limit: 200,
+      has_more: true,
     })
 
     await store.loadChapters('A', true)
 
     expect(api.listChapters).toHaveBeenCalledTimes(1)
-    expect(store.chapters).toEqual([{ id: 'chapter-1', chapter_index: 1, title: '第一章' }])
+    expect(store.chapters).toEqual([{ id: 'chapter-1', chapter_index: 1, title: '第一章', word_count: 0, status: 'generated' }])
+    expect(store.chaptersTotal).toBe(250)
+    expect(store.chaptersOffset).toBe(0)
+    expect(store.chaptersLimit).toBe(200)
+    expect(store.chaptersHasMore).toBe(true)
   })
 
   it('refreshTargets(content) 会强制刷新章节，避免任务完成后沿用旧列表', async () => {
@@ -221,14 +239,14 @@ describe('project workspace state', () => {
       dialogs: { hermes: { messages: [] }, athena: { messages: [] } },
     } as any)
     vi.mocked(api.listChapters).mockResolvedValue({
-      chapters: [{ id: 'chapter-1', chapter_index: 1, title: '第一章' }],
+      chapters: [{ id: 'chapter-1', chapter_index: 1, title: '第一章', word_count: 0, status: 'generated' }],
     })
 
     const successTargets = await store.refreshTargets('A', ['content'])
 
     expect(successTargets).toEqual(['content'])
     expect(api.listChapters).toHaveBeenCalledTimes(1)
-    expect(store.chapters).toEqual([{ id: 'chapter-1', chapter_index: 1, title: '第一章' }])
+    expect(store.chapters).toEqual([{ id: 'chapter-1', chapter_index: 1, title: '第一章', word_count: 0, status: 'generated' }])
   })
 
   it('workspace bootstrap 会填充项目冷启动数据并标记为 fresh', async () => {
@@ -241,6 +259,10 @@ describe('project workspace state', () => {
       storyline: { id: 'storyline-1', project_id: 'A', status: 'generated' },
       outline: { id: 'outline-1', project_id: 'A', status: 'generated' },
       chapters: [{ id: 'chapter-1', chapter_index: 1, title: '第一章', word_count: 120, status: 'generated' }],
+      chapters_total: 250,
+      chapters_offset: 0,
+      chapters_limit: 200,
+      chapters_has_more: true,
       versions: [{ id: 'version-1', node_type: 'chapter', node_id: 'chapter-1', version_number: 1 }],
       dialogs: { hermes: { messages: [] }, athena: { messages: [] } },
     } as any)
@@ -263,6 +285,9 @@ describe('project workspace state', () => {
     expect(store.storyline).toEqual({ id: 'storyline-1', project_id: 'A', status: 'generated' })
     expect(store.outline).toEqual({ id: 'outline-1', project_id: 'A', status: 'generated' })
     expect(store.chapters).toEqual([{ id: 'chapter-1', chapter_index: 1, title: '第一章', word_count: 120, status: 'generated' }])
+    expect(store.chaptersTotal).toBe(250)
+    expect(store.chaptersLimit).toBe(200)
+    expect(store.chaptersHasMore).toBe(true)
     expect(store.versions).toEqual([{ id: 'version-1', node_type: 'chapter', node_id: 'chapter-1', version_number: 1 }])
   })
 
