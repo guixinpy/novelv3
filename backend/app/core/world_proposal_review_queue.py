@@ -17,10 +17,19 @@ def build_proposal_review_queue(
     db: Session,
     project_id: str,
     profile: ProjectProfileVersion | None,
+    limit: int = 200,
 ) -> dict[str, Any]:
     if profile is None:
-        return {"project_id": project_id, "profile_version": None, "total_items": 0, "clusters": []}
-    items = (
+        return {
+            "project_id": project_id,
+            "profile_version": None,
+            "total_items": 0,
+            "returned_items": 0,
+            "limit": limit,
+            "has_more": False,
+            "clusters": [],
+        }
+    query = (
         db.query(WorldProposalItem)
         .filter(
             WorldProposalItem.project_id == project_id,
@@ -28,12 +37,17 @@ def build_proposal_review_queue(
             WorldProposalItem.profile_version == profile.version,
             WorldProposalItem.item_status.in_(ACTIONABLE_REVIEW_ITEM_STATUSES),
         )
+    )
+    total_items = query.count()
+    items = (
+        query
         .order_by(
             WorldProposalItem.chapter_index.asc().nullsfirst(),
             WorldProposalItem.predicate.asc(),
             WorldProposalItem.subject_ref.asc(),
             WorldProposalItem.id.asc(),
         )
+        .limit(limit)
         .all()
     )
     clusters: dict[str, dict[str, Any]] = {}
@@ -70,7 +84,10 @@ def build_proposal_review_queue(
     return {
         "project_id": project_id,
         "profile_version": profile.version,
-        "total_items": len(items),
+        "total_items": total_items,
+        "returned_items": len(items),
+        "limit": limit,
+        "has_more": total_items > len(items),
         "clusters": ordered_clusters,
     }
 

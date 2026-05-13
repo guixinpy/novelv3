@@ -219,6 +219,9 @@ class ProposalReviewQueueOut(BaseModel):
     project_id: str
     profile_version: int | None
     total_items: int
+    returned_items: int = 0
+    limit: int = 200
+    has_more: bool = False
     clusters: list[ProposalReviewQueueClusterOut] = Field(default_factory=list)
 
     model_config = ConfigDict(extra="forbid")

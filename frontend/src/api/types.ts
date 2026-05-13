@@ -503,6 +503,9 @@ export interface ProposalReviewQueue {
   project_id: string
   profile_version: number | null
   total_items: number
+  returned_items?: number
+  limit?: number
+  has_more?: boolean
   clusters: ProposalReviewQueueCluster[]
 }
 
