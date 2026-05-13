@@ -485,6 +485,29 @@ def test_longform_scale_smoke_reports_memory_retrieval_and_resume_progress(db_se
     assert "completed_chapter_indexes" not in report["task"]["progress"]
 
 
+def test_longform_scale_smoke_reports_stage_timings(db_session):
+    from app.core.longform_scale_smoke import run_longform_scale_smoke
+
+    report = run_longform_scale_smoke(
+        db_session,
+        chapter_count=5,
+        words_per_chapter=200,
+        target_chapter_index=5,
+        query="星环钥匙",
+    )
+
+    assert set(report["timings_ms"]) == {
+        "seed_project",
+        "task_progress",
+        "memory_rebuild",
+        "retrieval_reindex",
+        "context_build",
+        "task_complete",
+    }
+    assert all(isinstance(value, int) and value >= 0 for value in report["timings_ms"].values())
+    assert sum(report["timings_ms"].values()) <= report["elapsed_ms"]
+
+
 def test_longform_scale_smoke_compacts_checkpoint_progress_fields():
     from app.core.longform_scale_smoke import _compact_progress
 

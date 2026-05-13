@@ -28,7 +28,10 @@ def run_longform_scale_smoke(
         raise ValueError("target_chapter_index must be within the seeded chapter range")
 
     started_at = perf_counter()
+    timings_ms: dict[str, int] = {}
+    stage_started_at = started_at
     project = _seed_project(db, chapter_count=chapter_count, words_per_chapter=words_per_chapter)
+    stage_started_at = _record_timing(timings_ms, "seed_project", stage_started_at)
     task_service = BackgroundTaskService(db)
     task = task_service.create_chapter_range(
         project_id=project.id,
@@ -41,16 +44,20 @@ def run_longform_scale_smoke(
     task_service.mark_running(task.id)
     for chapter_index in range(1, chapter_count + 1):
         task = task_service.mark_range_progress(task.id, completed_chapter_index=chapter_index)
+    stage_started_at = _record_timing(timings_ms, "task_progress", stage_started_at)
 
     memory_report = rebuild_longform_memory(db, project.id)
+    stage_started_at = _record_timing(timings_ms, "memory_rebuild", stage_started_at)
     reindex_project_retrieval(db, project.id)
     retrieval_report = get_retrieval_diagnostics(db, project.id)
+    stage_started_at = _record_timing(timings_ms, "retrieval_reindex", stage_started_at)
     context_package = build_longform_context_package(
         db,
         project.id,
         target,
         user_query=query,
     )
+    stage_started_at = _record_timing(timings_ms, "context_build", stage_started_at)
     progress = (task.result or {}).get("progress") or {}
     completed_task = task_service.mark_completed(
         task.id,
@@ -61,6 +68,7 @@ def run_longform_scale_smoke(
             "target_chapter_index": target,
         },
     )
+    _record_timing(timings_ms, "task_complete", stage_started_at)
     elapsed_ms = int((perf_counter() - started_at) * 1000)
     total_words = chapter_count * words_per_chapter
 
@@ -83,6 +91,7 @@ def run_longform_scale_smoke(
             "status": completed_task.status,
             "progress": _compact_progress((completed_task.result or {}).get("progress") or {}),
         },
+        "timings_ms": timings_ms,
         "elapsed_ms": elapsed_ms,
     }
 
@@ -154,3 +163,9 @@ def _compact_progress(progress: dict[str, Any]) -> dict[str, Any]:
         if field in progress:
             compact[field] = progress[field]
     return compact
+
+
+def _record_timing(timings_ms: dict[str, int], key: str, stage_started_at: float) -> float:
+    ended_at = perf_counter()
+    timings_ms[key] = int((ended_at - stage_started_at) * 1000)
+    return ended_at
