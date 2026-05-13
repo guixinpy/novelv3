@@ -126,29 +126,28 @@ def build_athena_prompt_variables(db: Session, project: Project, world_context: 
 
 
 def build_athena_manuscript_context_block(db: Session, project: Project) -> dict[str, Any] | None:
-    chapters = (
+    chapter_count, word_count, first_chapter_index, last_chapter_index = (
         db.query(
-            ChapterContent.id,
-            ChapterContent.chapter_index,
-            ChapterContent.title,
-            ChapterContent.word_count,
-            ChapterContent.status,
+            func.count(ChapterContent.id),
+            func.coalesce(func.sum(ChapterContent.word_count), 0),
+            func.min(ChapterContent.chapter_index),
+            func.max(ChapterContent.chapter_index),
         )
         .filter(ChapterContent.project_id == project.id, ChapterContent.content != "")
-        .order_by(ChapterContent.chapter_index.asc())
-        .all()
+        .one()
     )
-    if not chapters:
+    chapter_count = int(chapter_count or 0)
+    if not chapter_count:
         return None
 
-    total_words = project.current_word_count or sum(int(_chapter_summary_value(chapter, "word_count") or 0) for chapter in chapters)
-    target_chapters = project.target_chapter_count or len(chapters)
+    total_words = project.current_word_count or int(word_count or 0)
+    target_chapters = project.target_chapter_count or chapter_count
     lines = [
-        f"已生成章节：{len(chapters)} / 目标 {target_chapters}",
+        f"已生成章节：{chapter_count} / 目标 {target_chapters}",
         f"当前总字数：{total_words}",
-        f"章节范围：第{_chapter_summary_value(chapters[0], 'chapter_index')}章 至 第{_chapter_summary_value(chapters[-1], 'chapter_index')}章",
+        f"章节范围：第{first_chapter_index}章 至 第{last_chapter_index}章",
     ]
-    listed_chapters = _bounded_manuscript_chapter_list(chapters)
+    listed_chapters = _bounded_manuscript_chapter_list(db, project.id, chapter_count)
     lines.extend(listed_chapters["lines"])
 
     recent = (
@@ -184,16 +183,31 @@ def build_athena_manuscript_context_block(db: Session, project: Project) -> dict
     )
 
 
-def _bounded_manuscript_chapter_list(chapters: list[Any]) -> dict[str, Any]:
-    if len(chapters) <= MANUSCRIPT_FULL_LIST_LIMIT:
+def _bounded_manuscript_chapter_list(db: Session, project_id: str, chapter_count: int) -> dict[str, Any]:
+    if chapter_count <= MANUSCRIPT_FULL_LIST_LIMIT:
+        chapters = _chapter_summary_query(db, project_id).order_by(ChapterContent.chapter_index.asc()).limit(
+            MANUSCRIPT_FULL_LIST_LIMIT
+        ).all()
         return {
             "lines": ["章节清单:", *[_manuscript_chapter_line(chapter) for chapter in chapters]],
             "sources": chapters,
         }
 
-    head = chapters[:MANUSCRIPT_EDGE_CHAPTER_COUNT]
-    tail = chapters[-MANUSCRIPT_EDGE_CHAPTER_COUNT:]
-    folded_count = max(len(chapters) - len(head) - len(tail), 0)
+    head = (
+        _chapter_summary_query(db, project_id)
+        .order_by(ChapterContent.chapter_index.asc())
+        .limit(MANUSCRIPT_EDGE_CHAPTER_COUNT)
+        .all()
+    )
+    tail = list(
+        reversed(
+            _chapter_summary_query(db, project_id)
+            .order_by(ChapterContent.chapter_index.desc())
+            .limit(MANUSCRIPT_EDGE_CHAPTER_COUNT)
+            .all()
+        )
+    )
+    folded_count = max(chapter_count - len(head) - len(tail), 0)
     lines = ["章节清单（长篇折叠）:", "开篇章节:"]
     lines.extend(_manuscript_chapter_line(chapter) for chapter in head)
     if folded_count:
@@ -203,6 +217,16 @@ def _bounded_manuscript_chapter_list(chapters: list[Any]) -> dict[str, Any]:
     lines.append("最新章节:")
     lines.extend(_manuscript_chapter_line(chapter) for chapter in tail)
     return {"lines": lines, "sources": [*head, *tail]}
+
+
+def _chapter_summary_query(db: Session, project_id: str):
+    return db.query(
+        ChapterContent.id,
+        ChapterContent.chapter_index,
+        ChapterContent.title,
+        ChapterContent.word_count,
+        ChapterContent.status,
+    ).filter(ChapterContent.project_id == project_id, ChapterContent.content != "")
 
 
 def _manuscript_chapter_line(chapter: Any) -> str:

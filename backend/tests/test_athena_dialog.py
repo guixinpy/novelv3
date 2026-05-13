@@ -9,7 +9,7 @@ from app.core.context_injection import (
     build_hermes_world_context_blocks,
 )
 from app.core.athena_longform import build_chapter_context_package
-from app.prompting.providers.dialog import build_athena_context_boundary_block
+from app.prompting.providers.dialog import build_athena_context_boundary_block, build_athena_manuscript_context_block
 from app.models import (
     AIModelCallTrace,
     ChapterContent,
@@ -716,6 +716,45 @@ def test_athena_chat_payload_bounds_manuscript_progress_for_long_projects(db_ses
     assert "中间章节已折叠" in content
     assert "第120章《第120章标题》" not in content
     assert len(manuscript_block["sources"]) <= 12
+
+
+def test_athena_manuscript_context_uses_limited_chapter_summary_queries(db_session):
+    project, _ = _seed_project(db_session, with_profile=True)
+    project.target_chapter_count = 300
+    project.current_word_count = 750000
+    for index in range(1, 251):
+        db_session.add(
+            ChapterContent(
+                project_id=project.id,
+                chapter_index=index,
+                title=f"第{index}章标题",
+                content="大段正文内容" * 1000,
+                word_count=3000,
+                status="generated",
+            )
+        )
+    db_session.commit()
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        block = build_athena_manuscript_context_block(db_session, project)
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert block is not None
+    assert "已生成章节：250 / 目标 300" in block["content"]
+    unbounded_summary_selects = [
+        statement
+        for statement in statements
+        if "from chapter_contents" in statement
+        and "order by chapter_contents.chapter_index asc" in statement
+        and "limit" not in statement
+    ]
+    assert unbounded_summary_selects == []
 
 
 def test_athena_chat_payload_includes_context_boundary_for_global_answers(db_session):
