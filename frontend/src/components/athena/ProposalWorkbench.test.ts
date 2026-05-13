@@ -116,4 +116,68 @@ describe('ProposalWorkbench', () => {
     expect(wrapper.text()).not.toContain('individual')
     expect(wrapper.text()).not.toContain('batch')
   })
+
+  it('renders large proposal details in bounded batches', async () => {
+    const store = useWorldModelStore()
+    const bundle = {
+      id: 'bundle-1',
+      project_id: 'project-1',
+      project_profile_version_id: 'profile-1',
+      profile_version: 1,
+      parent_bundle_id: null,
+      bundle_status: 'pending',
+      title: '长篇世界事实候选',
+      summary: '',
+      created_by: 'athena.chapter_analyzer',
+      created_at: '2026-04-29T00:00:00Z',
+      updated_at: '2026-04-29T00:00:00Z',
+    }
+    store.selectedBundleId = bundle.id
+    store.selectedBundleDetail = {
+      bundle,
+      items: Array.from({ length: 150 }, (_, index) => ({
+        id: `item-${index + 1}`,
+        bundle_id: bundle.id,
+        parent_item_id: null,
+        item_status: 'pending',
+        claim_id: `claim.${index + 1}`,
+        subject_ref: `char.${index + 1}`,
+        predicate: 'presence_count',
+        object_ref_or_value: { count: index + 1 },
+        claim_layer: 'truth',
+        evidence_refs: [`chapter:${index + 1}`],
+        authority_type: 'derived',
+        confidence: 0.8,
+        contract_version: 'world.contract.v1',
+        approved_claim_id: null,
+        created_by: 'athena.chapter_analyzer',
+        created_at: '2026-04-29T00:00:00Z',
+      })),
+      reviews: [],
+      impact_snapshots: [],
+      conflicts: [],
+    }
+
+    const wrapper = mount(ProposalWorkbench, {
+      props: { projectId: 'project-1' },
+      global: {
+        stubs: {
+          WorldProposalBundleList: true,
+          WorldProposalImpactList: true,
+          WorldProposalItemCard: {
+            props: ['item'],
+            template: '<article data-testid="proposal-item-card">{{ item.claim_id }}</article>',
+          },
+        },
+      },
+    })
+
+    expect(wrapper.findAll('[data-testid="proposal-item-card"]')).toHaveLength(100)
+    expect(wrapper.text()).toContain('已显示 100/150 项')
+
+    await wrapper.find('[data-testid="show-more-proposal-items"]').trigger('click')
+
+    expect(wrapper.findAll('[data-testid="proposal-item-card"]')).toHaveLength(150)
+    expect(wrapper.text()).toContain('已显示 150/150 项')
+  })
 })

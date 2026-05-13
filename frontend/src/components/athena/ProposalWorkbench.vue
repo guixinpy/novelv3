@@ -1,21 +1,35 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import WorldProposalBundleList from '../world/WorldProposalBundleList.vue'
 import WorldProposalImpactList from '../world/WorldProposalImpactList.vue'
 import WorldProposalItemCard from '../world/WorldProposalItemCard.vue'
 import { useWorldModelStore } from '../../stores/worldModel'
 import type { ProposalItem, ProposalReviewRequest } from '../../api/types'
 
+const PROPOSAL_DETAIL_ITEM_BATCH_SIZE = 100
+
 const props = defineProps<{
   projectId: string
 }>()
 
 const worldModel = useWorldModelStore()
+const visibleDetailItemLimit = ref(PROPOSAL_DETAIL_ITEM_BATCH_SIZE)
 
 const proposalLoading = computed(() =>
   worldModel.isLaneLoading('bundles') || worldModel.isLaneLoading('detail'),
 )
 const reviewQueueClusters = computed(() => worldModel.proposalReviewQueue?.clusters ?? [])
+const selectedBundleDetail = computed(() => worldModel.selectedBundleDetail)
+const selectedBundleDetailId = computed(() => selectedBundleDetail.value?.bundle.id ?? null)
+const detailItemTotal = computed(() => selectedBundleDetail.value?.items.length ?? 0)
+const visibleProposalItems = computed(() =>
+  selectedBundleDetail.value?.items.slice(0, visibleDetailItemLimit.value) ?? [],
+)
+const canShowMoreProposalItems = computed(() => visibleProposalItems.value.length < detailItemTotal.value)
+
+watch(selectedBundleDetailId, () => {
+  visibleDetailItemLimit.value = PROPOSAL_DETAIL_ITEM_BATCH_SIZE
+})
 
 function approvalReviewId(item: ProposalItem) {
   const review = worldModel.selectedBundleDetail?.reviews.find((entry) =>
@@ -30,6 +44,10 @@ async function selectBundle(bundleId: string) {
 
 async function loadMore() {
   await worldModel.loadMoreBundles(props.projectId)
+}
+
+function showMoreProposalItems() {
+  visibleDetailItemLimit.value += PROPOSAL_DETAIL_ITEM_BATCH_SIZE
 }
 
 async function updateFilters(filters: typeof worldModel.bundleFilters) {
@@ -129,25 +147,36 @@ function chapterRangeLabel(range: { start: number | null; end: number | null }) 
 
       <div v-if="worldModel.error" class="proposal-workbench__error">{{ worldModel.error }}</div>
       <div v-if="proposalLoading" class="proposal-workbench__empty">加载提案...</div>
-      <template v-else-if="worldModel.selectedBundleDetail">
+      <template v-else-if="selectedBundleDetail">
         <header class="proposal-workbench__header">
           <div>
-            <h3 class="proposal-workbench__title">{{ worldModel.selectedBundleDetail.bundle.title }}</h3>
-            <p class="proposal-workbench__summary">{{ worldModel.selectedBundleDetail.bundle.summary || '无摘要' }}</p>
+            <h3 class="proposal-workbench__title">{{ selectedBundleDetail.bundle.title }}</h3>
+            <p class="proposal-workbench__summary">{{ selectedBundleDetail.bundle.summary || '无摘要' }}</p>
           </div>
-          <span class="proposal-workbench__status">{{ bundleStatusLabel(worldModel.selectedBundleDetail.bundle.bundle_status) }}</span>
+          <span class="proposal-workbench__status">{{ bundleStatusLabel(selectedBundleDetail.bundle.bundle_status) }}</span>
         </header>
 
-        <WorldProposalImpactList :snapshots="worldModel.selectedBundleDetail.impact_snapshots" />
+        <WorldProposalImpactList :snapshots="selectedBundleDetail.impact_snapshots" />
+        <div v-if="detailItemTotal > PROPOSAL_DETAIL_ITEM_BATCH_SIZE" class="proposal-workbench__item-window">
+          <span>已显示 {{ visibleProposalItems.length }}/{{ detailItemTotal }} 项</span>
+          <button
+            v-if="canShowMoreProposalItems"
+            type="button"
+            data-testid="show-more-proposal-items"
+            @click="showMoreProposalItems"
+          >
+            显示更多
+          </button>
+        </div>
         <WorldProposalItemCard
-          v-for="item in worldModel.selectedBundleDetail.items"
+          v-for="item in visibleProposalItems"
           :key="item.id"
           :item="item"
           :busy="worldModel.isActionPending(item.id)"
           :approval-review-id="approvalReviewId(item)"
           :reviewer-ref="worldModel.reviewerName"
           :anchor-options="[]"
-          :conflicts="worldModel.selectedBundleDetail.conflicts"
+          :conflicts="selectedBundleDetail.conflicts"
           @review="reviewItem"
           @split="splitItem"
           @rollback="rollbackItem"
@@ -201,6 +230,26 @@ function chapterRangeLabel(range: { start: number | null; end: number | null }) 
   color: var(--color-brand);
   font-size: var(--text-sm);
   font-weight: var(--font-semibold);
+}
+
+.proposal-workbench__item-window {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  color: var(--color-text-tertiary);
+  font-size: var(--text-xs);
+}
+
+.proposal-workbench__item-window button {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-3);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+  font-size: var(--text-xs);
+  cursor: pointer;
 }
 
 .proposal-workbench__error {
