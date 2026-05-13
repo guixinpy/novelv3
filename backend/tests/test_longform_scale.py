@@ -1,10 +1,39 @@
 import importlib.util
 from pathlib import Path
 
-from sqlalchemy import event
+from sqlalchemy import event, text
 
 from app.api import dialogs
 from app.models import ChapterContent, Dialog, LongformMemory, Project, RetrievalDocument
+
+
+def test_longform_hot_tables_have_query_indexes(db_session):
+    expected_indexes = {
+        "chapter_contents": {
+            "ix_chapter_contents_project_chapter",
+            "ix_chapter_contents_project_status",
+        },
+        "dialog_messages": {
+            "ix_dialog_messages_dialog_type_created",
+            "ix_dialog_messages_dialog_action_created",
+        },
+        "consistency_checks": {
+            "ix_consistency_checks_project_chapter",
+            "ix_consistency_checks_project_status",
+        },
+    }
+    for table_name, index_names in expected_indexes.items():
+        rows = db_session.execute(text(f"PRAGMA index_list('{table_name}')")).fetchall()
+        actual_names = {row[1] for row in rows}
+        assert index_names <= actual_names
+
+    partial_index_sql = db_session.execute(
+        text(
+            "SELECT sql FROM sqlite_master "
+            "WHERE type = 'index' AND name = 'ix_dialog_messages_dialog_action_created'"
+        )
+    ).scalar_one()
+    assert "where action_result is not null" in partial_index_sql.lower()
 
 
 def test_get_project_reconciles_current_word_count_from_chapters(client, db_session):

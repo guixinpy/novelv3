@@ -1,13 +1,17 @@
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Column, DateTime, Float, ForeignKey, Index, Integer, String, Text
 
 from app.db import Base
 
 
 class ChapterContent(Base):
     __tablename__ = "chapter_contents"
+    __table_args__ = (
+        Index("ix_chapter_contents_project_chapter", "project_id", "chapter_index"),
+        Index("ix_chapter_contents_project_status", "project_id", "status"),
+    )
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     project_id = Column(String, ForeignKey("projects.id"), nullable=False)
