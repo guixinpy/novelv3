@@ -19,6 +19,7 @@ const chapterVolumeStart = ref(1)
 const chapterWindowStart = ref(1)
 const CHAPTERS_PER_VOLUME = 100
 const CHAPTER_WINDOW_SIZE = 50
+const CHAPTER_SEARCH_RESULT_LIMIT = 100
 
 const outlineChapters = computed(() =>
   asRecords(props.plan?.outline?.chapters)
@@ -116,7 +117,7 @@ const activeVolume = computed(() =>
 )
 
 const visibleOutlineChapters = computed(() => {
-  if (chapterSearch.value.trim()) return filteredOutlineChapters.value
+  if (chapterSearch.value.trim()) return filteredOutlineChapters.value.slice(0, CHAPTER_SEARCH_RESULT_LIMIT)
   const volume = activeVolume.value
   if (!volume) return []
   const windowEnd = Math.min(chapterWindowStart.value + CHAPTER_WINDOW_SIZE - 1, volume.end)
@@ -129,8 +130,12 @@ const visibleOutlineChapters = computed(() => {
 
 const chapterWindowRangeLabel = computed(() => {
   const volume = activeVolume.value
+  if (chapterSearch.value.trim()) {
+    const total = filteredOutlineChapters.value.length
+    const visible = visibleOutlineChapters.value.length
+    return total > visible ? `搜索结果 ${visible}/${total} 章，请缩小关键词` : `搜索结果 ${visible} 章`
+  }
   if (!volume) return '暂无章节'
-  if (chapterSearch.value.trim()) return `搜索结果 ${visibleOutlineChapters.value.length} 章`
   const end = Math.min(chapterWindowStart.value + CHAPTER_WINDOW_SIZE - 1, volume.end)
   return `当前显示第${chapterWindowStart.value}-${end}章`
 })

@@ -186,6 +186,22 @@ describe('NarrativeWorkbench', () => {
     expect(wrapper.find('[data-testid="chapter-1"]').exists()).toBe(false)
   })
 
+  it('keeps common chapter searches bounded for long plans', async () => {
+    const wrapper = mount(NarrativeWorkbench, {
+      props: {
+        plan: largePlan(250),
+        chapters: [],
+        view: 'chapters',
+      },
+    })
+
+    await wrapper.get('[data-testid="chapter-search"]').setValue('长篇')
+
+    expect(wrapper.findAll('[data-narrative-chapter-index]')).toHaveLength(100)
+    expect(wrapper.text()).toContain('搜索结果 100/250 章')
+    expect(wrapper.text()).toContain('请缩小关键词')
+  })
+
   it('renders foreshadowing lifecycle', () => {
     const wrapper = mount(NarrativeWorkbench, { props: { plan, chapters, view: 'foreshadowing' } })
 
