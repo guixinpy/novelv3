@@ -215,18 +215,13 @@ def refresh_longform_memory_for_chapter(
     volume_size: int = DEFAULT_VOLUME_SIZE,
 ) -> dict[str, Any]:
     project = _require_project(db, project_id)
-    chapter = (
-        db.query(ChapterContent)
-        .filter(ChapterContent.project_id == project_id, ChapterContent.chapter_index == chapter_index)
-        .first()
-    )
+    chapter = _chapter_for_memory(db, project_id, chapter_index)
     if chapter is None:
         raise HTTPException(status_code=404, detail="Chapter not found")
 
-    chapters = _chapters(db, project_id)
     outline_lookup = _outline_lookup(db, project_id)
-    arc_chapters = _chapter_range(chapters, chapter_index, arc_size)
-    volume_chapters = _chapter_range(chapters, chapter_index, volume_size)
+    arc_chapters = _range_chapters(db, project_id, chapter_index, arc_size)
+    volume_chapters = _range_chapters(db, project_id, chapter_index, volume_size)
     delete_filter = or_(
         LongformMemory.scope_key == f"chapter:{chapter_index}",
         LongformMemory.memory_type == "global",
@@ -252,7 +247,7 @@ def refresh_longform_memory_for_chapter(
         memories.append(
             _range_memory(project_id, memory_type="volume", start=volume_chapters[0].chapter_index, chapters=volume_chapters)
         )
-    memories.append(_global_memory(project_id, chapters))
+    memories.append(_global_memory_from_stats(db, project_id))
     db.add_all(memories)
     db.flush()
     updated_scope_keys = [memory.scope_key for memory in memories]
@@ -346,6 +341,39 @@ def _chapters(db: Session, project_id: str) -> list[Any]:
     )
 
 
+def _chapter_for_memory(db: Session, project_id: str, chapter_index: int) -> Any | None:
+    return (
+        db.query(
+            ChapterContent.chapter_index,
+            ChapterContent.title,
+            ChapterContent.content,
+            ChapterContent.word_count,
+            ChapterContent.status,
+        )
+        .filter(ChapterContent.project_id == project_id, ChapterContent.chapter_index == chapter_index)
+        .first()
+    )
+
+
+def _range_chapters(db: Session, project_id: str, chapter_index: int, size: int) -> list[Any]:
+    start = ((chapter_index - 1) // size) * size + 1
+    end = start + size - 1
+    return (
+        db.query(
+            ChapterContent.chapter_index,
+            ChapterContent.title,
+            ChapterContent.word_count,
+        )
+        .filter(
+            ChapterContent.project_id == project_id,
+            ChapterContent.chapter_index >= start,
+            ChapterContent.chapter_index <= end,
+        )
+        .order_by(ChapterContent.chapter_index.asc())
+        .all()
+    )
+
+
 def _maintained_chapters(db: Session, project_id: str) -> list[Any]:
     return (
         db.query(ChapterContent.chapter_index, ChapterContent.updated_at)
@@ -430,6 +458,36 @@ def _global_memory(project_id: str, chapters: list[Any]) -> LongformMemory:
         summary=f"当前已生成{chapter_count}章，约{word_count}字。" if chapter_count else "尚未生成正文。",
         status="current",
         memory_metadata={"chapter_count": chapter_count, "word_count": word_count, "latest_chapter_index": latest},
+    )
+
+
+def _global_memory_from_stats(db: Session, project_id: str) -> LongformMemory:
+    chapter_count, word_count, first_chapter_index, latest_chapter_index = (
+        db.query(
+            func.count(ChapterContent.id),
+            func.coalesce(func.sum(ChapterContent.word_count), 0),
+            func.min(ChapterContent.chapter_index),
+            func.max(ChapterContent.chapter_index),
+        )
+        .filter(ChapterContent.project_id == project_id)
+        .one()
+    )
+    chapter_count = int(chapter_count or 0)
+    word_count = int(word_count or 0)
+    return LongformMemory(
+        project_id=project_id,
+        memory_type="global",
+        scope_key="global",
+        start_chapter_index=first_chapter_index,
+        end_chapter_index=latest_chapter_index,
+        title="全书记忆",
+        summary=f"当前已生成{chapter_count}章，约{word_count}字。" if chapter_count else "尚未生成正文。",
+        status="current",
+        memory_metadata={
+            "chapter_count": chapter_count,
+            "word_count": word_count,
+            "latest_chapter_index": latest_chapter_index,
+        },
     )
 
 
