@@ -233,18 +233,23 @@ def _unique_manuscript_source_rows(chapters: list[Any]) -> list[Any]:
 
 
 def build_athena_context_boundary_block(db: Session, project: Project) -> dict[str, Any]:
-    chapters = (
+    chapter_count, first_chapter_index, last_chapter_index = (
         db.query(ChapterContent)
+        .with_entities(
+            func.count(ChapterContent.id),
+            func.min(ChapterContent.chapter_index),
+            func.max(ChapterContent.chapter_index),
+        )
         .filter(ChapterContent.project_id == project.id, ChapterContent.content != "")
-        .order_by(ChapterContent.chapter_index.asc())
-        .all()
+        .one()
     )
     profile = _current_profile(db, project.id)
-    target_chapters = project.target_chapter_count or len(chapters)
-    if chapters:
+    chapter_count = int(chapter_count or 0)
+    target_chapters = project.target_chapter_count or chapter_count
+    if chapter_count:
         chapter_line = (
-            f"正文：已生成 {len(chapters)} / 目标 {target_chapters}，"
-            f"范围第{chapters[0].chapter_index}章至第{chapters[-1].chapter_index}章"
+            f"正文：已生成 {chapter_count} / 目标 {target_chapters}，"
+            f"范围第{first_chapter_index}章至第{last_chapter_index}章"
         )
     else:
         chapter_line = f"正文：已生成 0 / 目标 {target_chapters}"

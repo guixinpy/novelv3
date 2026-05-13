@@ -1,4 +1,5 @@
 import pytest
+from sqlalchemy import event
 
 from app.api import dialogs
 from app.core.context_injection import (
@@ -8,6 +9,7 @@ from app.core.context_injection import (
     build_hermes_world_context_blocks,
 )
 from app.core.athena_longform import build_chapter_context_package
+from app.prompting.providers.dialog import build_athena_context_boundary_block
 from app.models import (
     AIModelCallTrace,
     ChapterContent,
@@ -824,6 +826,47 @@ def test_athena_chat_payload_includes_context_boundary_for_global_answers(db_ses
     assert "故事线：1 条" in planning_block["content"]
     assert "伏笔：2 条" in planning_block["content"]
     assert "每次回答开头用“依据范围：”" in payload["messages"][0]["content"]
+
+
+def test_athena_context_boundary_uses_aggregate_chapter_stats(db_session):
+    project, _ = _seed_project(db_session, with_profile=True)
+    project.target_chapter_count = 300
+    db_session.add(Dialog(project_id=project.id, dialog_type="athena"))
+    for index in range(1, 251):
+        db_session.add(
+            ChapterContent(
+                project_id=project.id,
+                chapter_index=index,
+                title=f"第{index}章标题",
+                content="大段正文内容" * 1000,
+                word_count=3000,
+                status="generated",
+            )
+        )
+    db_session.commit()
+
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(statement.lower())
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        block = build_athena_context_boundary_block(db_session, project)
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert "正文：已生成 250 / 目标 300，范围第1章至第250章" in block["content"]
+    chapter_selects = [
+        statement for statement in statements
+        if "from chapter_contents" in statement
+    ]
+    assert chapter_selects
+    select_clauses = [
+        statement.split("from chapter_contents", 1)[0]
+        for statement in chapter_selects
+    ]
+    assert all("chapter_contents.content" not in clause for clause in select_clauses)
 
 
 def test_athena_chat_success_records_model_call_trace(client, db_session, monkeypatch):
