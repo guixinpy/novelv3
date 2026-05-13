@@ -868,6 +868,58 @@ def test_select_compactable_plain_messages_filters_after_last_summary_without_fu
     assert full_history_selects == []
 
 
+def test_latest_unfinished_action_type_scans_only_action_result_messages(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Running Guard Scale"})
+    pid = r.json()["id"]
+    dialog = Dialog(project_id=pid, dialog_type="hermes", state="running")
+    db_session.add(dialog)
+    db_session.commit()
+
+    base_time = datetime(2026, 1, 2, tzinfo=UTC)
+    plain_messages = [
+        DialogMessage(
+            dialog_id=dialog.id,
+            role="user",
+            message_type="plain",
+            content=f"plain-{index}",
+            created_at=base_time + timedelta(seconds=index),
+        )
+        for index in range(300)
+    ]
+    running_message = DialogMessage(
+        dialog_id=dialog.id,
+        role="system",
+        message_type="command",
+        content="正在生成中",
+        action_result={"type": "generate_chapter", "status": "running"},
+        created_at=base_time + timedelta(seconds=400),
+    )
+    db_session.add_all([*plain_messages, running_message])
+    db_session.commit()
+
+    statements: list[str] = []
+
+    def capture_statement(conn, cursor, statement, parameters, context, executemany):  # noqa: ARG001
+        statements.append(" ".join(statement.lower().split()))
+
+    bind = db_session.get_bind()
+    event.listen(bind, "before_cursor_execute", capture_statement)
+    try:
+        running_action_type = dialogs_api._latest_unfinished_action_type(db_session, dialog.id)
+    finally:
+        event.remove(bind, "before_cursor_execute", capture_statement)
+
+    assert running_action_type == "generate_chapter"
+    full_message_selects = [
+        statement
+        for statement in statements
+        if "from dialog_messages" in statement
+        and "where dialog_messages.dialog_id" in statement
+        and "action_result is not null" not in statement
+    ]
+    assert full_message_selects == []
+
+
 def test_resolve_action_confirm_sets_dialog_state_running(client, db_session):
     r = client.post("/api/v1/projects", json={"name": "Test"})
     pid = r.json()["id"]

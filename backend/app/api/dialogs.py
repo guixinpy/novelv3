@@ -92,7 +92,10 @@ def _build_command_fallback_text(payload: ChatIn) -> str:
 def _latest_unfinished_action_type(db: Session, dialog_id: str) -> str | None:
     messages = (
         db.query(DialogMessage)
-        .filter(DialogMessage.dialog_id == dialog_id)
+        .filter(
+            DialogMessage.dialog_id == dialog_id,
+            DialogMessage.action_result.isnot(None),
+        )
         .order_by(DialogMessage.created_at.desc(), DialogMessage.id.desc())
         .all()
     )
