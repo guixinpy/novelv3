@@ -17,12 +17,32 @@ def list_versions(project_id: str, node_type: str | None = None, node_id: str | 
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    q = db.query(Version).filter(Version.project_id == project_id)
+    q = db.query(
+        Version.id,
+        Version.version_number,
+        Version.node_type,
+        Version.node_id,
+        Version.description,
+        Version.author,
+        Version.created_at,
+    ).filter(Version.project_id == project_id)
     if node_type:
         q = q.filter(Version.node_type == node_type)
     if node_id:
         q = q.filter(Version.node_id == node_id)
-    return q.order_by(Version.created_at.desc()).all()
+    rows = q.order_by(Version.created_at.desc()).all()
+    return [
+        {
+            "id": row.id,
+            "version_number": row.version_number,
+            "node_type": row.node_type,
+            "node_id": row.node_id,
+            "description": row.description,
+            "author": row.author,
+            "created_at": row.created_at,
+        }
+        for row in rows
+    ]
 
 
 @router.get("/{version_id}", response_model=VersionOut)

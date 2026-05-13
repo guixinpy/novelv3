@@ -1,6 +1,8 @@
 from app.core.athena_retrieval import reindex_project_retrieval, search_retrieval
 from app.core.longform_memory import rebuild_longform_memory
 from app.models import ChapterContent, LongformMemory, Project
+from app.models import Version
+from sqlalchemy import event
 
 
 def test_create_and_list_versions(client):
@@ -20,6 +22,43 @@ def test_create_and_list_versions(client):
     r3 = client.get(f"/api/v1/projects/{pid}/versions")
     assert r3.status_code == 200
     assert len(r3.json()) == 1
+
+
+def test_list_versions_does_not_select_version_content(client, db_session):
+    project = Project(name="Version Summary Projection")
+    db_session.add(project)
+    db_session.flush()
+    db_session.add(
+        Version(
+            project_id=project.id,
+            node_type="chapter",
+            node_id="chapter-1",
+            version_number=1,
+            content="列表不应读取的大段版本正文。" * 1000,
+            description="initial",
+        )
+    )
+    db_session.commit()
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        response = client.get(f"/api/v1/projects/{project.id}/versions")
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert response.status_code == 200
+    assert response.json()[0]["description"] == "initial"
+    version_select_clauses = [
+        statement.split("from versions", 1)[0]
+        for statement in statements
+        if "from versions" in statement
+    ]
+    assert version_select_clauses
+    assert all("versions.content" not in clause for clause in version_select_clauses)
 
 
 def test_get_version(client):

@@ -1,4 +1,5 @@
 from app.models import ChapterContent, Dialog, DialogMessage, Outline, Project, Setup, Storyline, Version
+from sqlalchemy import event
 
 
 def test_workspace_bootstrap_returns_project_session_bundle(client, db_session):
@@ -96,3 +97,56 @@ def test_workspace_bootstrap_bounds_chapter_summaries_for_large_projects(client,
     assert payload["chapters_limit"] == 200
     assert payload["chapters_has_more"] is True
     assert payload["chapters_latest_index"] == 250
+
+
+def test_workspace_bootstrap_summaries_do_not_select_body_content(client, db_session):
+    project = Project(name="轻量冷启动", genre="都市奇幻")
+    db_session.add(project)
+    db_session.flush()
+    chapter = ChapterContent(
+        project_id=project.id,
+        chapter_index=1,
+        title="第一章",
+        content="冷启动不应读取的大段章节正文。" * 1000,
+        word_count=1000,
+        status="generated",
+    )
+    db_session.add(chapter)
+    db_session.flush()
+    db_session.add(
+        Version(
+            project_id=project.id,
+            node_type="chapter",
+            node_id=chapter.id,
+            version_number=1,
+            content="冷启动不应读取的大段版本正文。" * 1000,
+            description="initial",
+        )
+    )
+    db_session.commit()
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        response = client.get(f"/api/v1/projects/{project.id}/workspace-bootstrap")
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert response.status_code == 200
+    chapter_select_clauses = [
+        statement.split("from chapter_contents", 1)[0]
+        for statement in statements
+        if "from chapter_contents" in statement
+    ]
+    version_select_clauses = [
+        statement.split("from versions", 1)[0]
+        for statement in statements
+        if "from versions" in statement
+    ]
+    assert chapter_select_clauses
+    assert version_select_clauses
+    assert all("chapter_contents.content" not in clause for clause in chapter_select_clauses)
+    assert all("versions.content" not in clause for clause in version_select_clauses)
