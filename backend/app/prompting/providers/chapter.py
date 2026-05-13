@@ -7,6 +7,7 @@ from app.core.model_call_trace import build_context_block
 from app.models import ChapterContent, Outline, Project, Setup
 from app.prompting.providers.athena import athena_context_has_retrieval, build_athena_chapter_context_block
 from app.prompting.providers.few_shot import build_few_shot_examples_block
+from app.prompting.providers.longform import build_longform_context_block
 from app.prompting.providers.retrieval import build_chapter_retrieval_block
 from app.prompting.providers.style import build_style_rule_block
 
@@ -14,6 +15,7 @@ CHAPTER_CONTEXT_CHAR_BUDGET = 24000
 PRIORITY_USER_FEEDBACK = 0
 PRIORITY_LENGTH_CONSTRAINT = 1
 PRIORITY_CHAPTER_TARGET = 10
+PRIORITY_LONGFORM_CONTEXT = 18
 PRIORITY_ATHENA_CONTEXT = 20
 PRIORITY_RETRIEVAL_EVIDENCE = 30
 PRIORITY_PREVIOUS_CHAPTER = 40
@@ -76,6 +78,17 @@ def build_chapter_prompt_context_blocks(
     previous_block = _build_previous_chapter_summary_block(db, project.id, chapter_index)
     if previous_block:
         model_blocks.append(_prioritized(previous_block, PRIORITY_PREVIOUS_CHAPTER))
+
+    longform_block, _longform_package, longform_error_block = build_longform_context_block(
+        db,
+        project_id=project.id,
+        chapter_index=chapter_index,
+        user_query=extra_feedback,
+    )
+    if longform_block:
+        model_blocks.append(_prioritized(longform_block, PRIORITY_LONGFORM_CONTEXT))
+    if longform_error_block:
+        trace_only_blocks.append(longform_error_block)
 
     athena_block, athena_package, athena_error_block = build_athena_chapter_context_block(
         db,

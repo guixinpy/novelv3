@@ -432,6 +432,54 @@ def test_create_chapter_injects_athena_context_when_profile_exists(mock_complete
 
 
 @patch("app.api.chapters.load_api_key", return_value="sk-test")
+@patch("app.api.chapters.ai_service.complete", new_callable=AsyncMock)
+def test_create_chapter_injects_longform_memory_without_future_leak(mock_complete, mock_key, client, db_session):
+    from app.core.longform_memory import rebuild_longform_memory
+
+    pid = _create_project_with_setup(client)
+    for index in range(1, 9):
+        db_session.add(
+            ChapterContent(
+                project_id=pid,
+                chapter_index=index,
+                title=f"第{index}章",
+                content="未来秘密只在第8章揭露。" if index == 8 else f"第{index}章正文。秘银钥匙线索推进。",
+                word_count=1000,
+                status="generated",
+            )
+        )
+    db_session.commit()
+    rebuild_longform_memory(db_session, pid)
+
+    mock_complete.return_value.content = "第6章正文内容"
+    mock_complete.return_value.model = "deepseek-chat"
+    mock_complete.return_value.prompt_tokens = 100
+    mock_complete.return_value.completion_tokens = 200
+
+    asyncio.run(create_or_replace_chapter(db_session, pid, 6))
+
+    sent_messages = mock_complete.await_args.args[0]
+    prompt = sent_messages[0]["content"]
+    assert "【长篇上下文】目标章节：第6章" in prompt
+    assert "【近期章节记忆】" in prompt
+    assert "第5章正文" in prompt
+    assert "未来秘密" not in prompt
+
+    trace = (
+        db_session.query(AIModelCallTrace)
+        .filter(
+            AIModelCallTrace.project_id == pid,
+            AIModelCallTrace.trace_type == "chapter_generation",
+            AIModelCallTrace.chapter_index == 6,
+        )
+        .order_by(AIModelCallTrace.created_at.desc())
+        .first()
+    )
+    assert trace is not None
+    assert any(block.get("kind") == "longform_context" for block in trace.context_blocks)
+
+
+@patch("app.api.chapters.load_api_key", return_value="sk-test")
 def test_generate_chapter_project_not_found(mock_key, client):
     r = client.post("/api/v1/projects/nonexistent/chapters/1/generate")
     assert r.status_code == 404
