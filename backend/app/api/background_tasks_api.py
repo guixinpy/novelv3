@@ -26,6 +26,7 @@ def get_background_task(task_id: str, db: Session = Depends(get_db)):
         "task_id": task.id,
         "task_type": task.task_type,
         "status": task.status,
+        "payload": task.payload or {},
         "result": task.result,
         "error": task.error,
         "ui_hint": build_ui_hint(

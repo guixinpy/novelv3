@@ -29,11 +29,11 @@
 - Modify: `backend/app/services/tasks/background_task_service.py`
 - Test: `backend/tests/test_background.py`
 
-- [ ] **Step 1: Write failing service test**
+- [x] **Step 1: Write failing service test**
 
 Add a test that creates a range task for chapters 1-5, marks chapters 1 and 2 complete, and asserts `next_chapter_index == 3`.
 
-- [ ] **Step 2: Run focused test**
+- [x] **Step 2: Run focused test**
 
 ```powershell
 .\backend\.venv\Scripts\python.exe -m pytest backend\tests\test_background.py -v
@@ -41,7 +41,7 @@ Add a test that creates a range task for chapters 1-5, marks chapters 1 and 2 co
 
 Expected: FAIL because range helpers do not exist.
 
-- [ ] **Step 3: Implement service helpers**
+- [x] **Step 3: Implement service helpers**
 
 Add:
 
@@ -49,7 +49,7 @@ Add:
 - `mark_range_progress(task_id, completed_chapter_index)`
 - internal helpers for range validation and progress assembly.
 
-- [ ] **Step 4: Run focused test**
+- [x] **Step 4: Run focused test**
 
 ```powershell
 .\backend\.venv\Scripts\python.exe -m pytest backend\tests\test_background.py -v
@@ -63,11 +63,11 @@ Expected: PASS.
 - Modify: `backend/app/services/tasks/background_task_service.py`
 - Test: `backend/tests/test_background.py`
 
-- [ ] **Step 1: Write failing retry test**
+- [x] **Step 1: Write failing retry test**
 
 Create a failed range task with progress through chapter 2, call `create_retry_from_failed(task.id)`, and assert the retry task is pending, references `retry_of_task_id`, and has `resume_from_chapter_index == 3`.
 
-- [ ] **Step 2: Run focused test**
+- [x] **Step 2: Run focused test**
 
 ```powershell
 .\backend\.venv\Scripts\python.exe -m pytest backend\tests\test_background.py -v
@@ -75,11 +75,11 @@ Create a failed range task with progress through chapter 2, call `create_retry_f
 
 Expected: FAIL because retry helper does not exist.
 
-- [ ] **Step 3: Implement retry helper**
+- [x] **Step 3: Implement retry helper**
 
 Add `create_retry_from_failed(task_id)` and reject retry for non-failed/non-cancelled tasks.
 
-- [ ] **Step 4: Run focused test**
+- [x] **Step 4: Run focused test**
 
 ```powershell
 .\backend\.venv\Scripts\python.exe -m pytest backend\tests\test_background.py -v
@@ -93,11 +93,11 @@ Expected: PASS.
 - Modify: `backend/app/api/background_tasks_api.py`
 - Test: `backend/tests/test_background.py`
 
-- [ ] **Step 1: Write failing API test**
+- [x] **Step 1: Write failing API test**
 
 Create a range task, call `GET /api/v1/background-tasks/{task_id}`, and assert response contains `payload.chapter_range`.
 
-- [ ] **Step 2: Run focused test**
+- [x] **Step 2: Run focused test**
 
 ```powershell
 .\backend\.venv\Scripts\python.exe -m pytest backend\tests\test_background.py -v
@@ -105,11 +105,11 @@ Create a range task, call `GET /api/v1/background-tasks/{task_id}`, and assert r
 
 Expected: FAIL because task detail omits payload.
 
-- [ ] **Step 3: Include payload in detail response**
+- [x] **Step 3: Include payload in detail response**
 
 Return `payload: task.payload or {}` from the detail endpoint.
 
-- [ ] **Step 4: Run focused test**
+- [x] **Step 4: Run focused test**
 
 ```powershell
 .\backend\.venv\Scripts\python.exe -m pytest backend\tests\test_background.py -v
@@ -119,19 +119,19 @@ Expected: PASS.
 
 ## Task 4: Verification and Commit
 
-- [ ] **Step 1: Run background tests**
+- [x] **Step 1: Run background tests**
 
 ```powershell
 .\backend\.venv\Scripts\python.exe -m pytest backend\tests\test_background.py -v
 ```
 
-- [ ] **Step 2: Run backend tests**
+- [x] **Step 2: Run backend tests**
 
 ```powershell
 .\backend\.venv\Scripts\python.exe -m pytest backend\tests -v
 ```
 
-- [ ] **Step 3: Check hygiene**
+- [x] **Step 3: Check hygiene**
 
 ```powershell
 git diff --check
@@ -139,7 +139,7 @@ rg -n "sk-[A-Za-z0-9_-]{20,}" backend docs frontend .agents
 git status --short
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```powershell
 git add backend docs/superpowers/plans/2026-05-13-longform-scale-phase5.md

@@ -59,6 +59,25 @@ def test_get_background_task_consistency_deep_check_ui_hint(client, db_session):
     assert r2.json()["refresh_targets"] == ["content"]
 
 
+def test_get_background_task_includes_range_payload(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Test"})
+    pid = r.json()["id"]
+    service = BackgroundTaskService(db_session)
+    task = service.create_chapter_range(
+        project_id=pid,
+        task_type="athena_reindex_range",
+        start_chapter_index=10,
+        end_chapter_index=20,
+        idempotency_key="range:10-20",
+    )
+
+    response = client.get(f"/api/v1/background-tasks/{task.id}")
+
+    assert response.status_code == 200
+    assert response.json()["payload"]["chapter_range"] == {"start": 10, "end": 20}
+    assert response.json()["payload"]["idempotency_key"] == "range:10-20"
+
+
 def test_background_task_service_tracks_lifecycle(client, db_session):
     r = client.post("/api/v1/projects", json={"name": "Test"})
     pid = r.json()["id"]
@@ -79,6 +98,59 @@ def test_background_task_service_tracks_lifecycle(client, db_session):
     assert completed.status == "completed"
     assert completed.result == {"chapter_index": 1}
     assert completed.finished_at is not None
+
+
+def test_background_task_service_tracks_chapter_range_progress(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Test"})
+    pid = r.json()["id"]
+    service = BackgroundTaskService(db_session)
+
+    task = service.create_chapter_range(
+        project_id=pid,
+        task_type="athena_reindex_range",
+        start_chapter_index=1,
+        end_chapter_index=5,
+        payload={"source": "longform_scale"},
+        idempotency_key="range:1-5",
+    )
+
+    assert task.payload["chapter_range"] == {"start": 1, "end": 5}
+    assert task.payload["idempotency_key"] == "range:1-5"
+
+    service.mark_range_progress(task.id, completed_chapter_index=1)
+    progressed = service.mark_range_progress(task.id, completed_chapter_index=2)
+
+    assert progressed.result["progress"] == {
+        "chapter_range": {"start": 1, "end": 5},
+        "completed_chapter_indexes": [1, 2],
+        "next_chapter_index": 3,
+        "completed_count": 2,
+        "total_count": 5,
+        "can_resume": True,
+    }
+
+
+def test_background_task_service_retries_failed_range_from_checkpoint(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Test"})
+    pid = r.json()["id"]
+    service = BackgroundTaskService(db_session)
+    task = service.create_chapter_range(
+        project_id=pid,
+        task_type="athena_reindex_range",
+        start_chapter_index=1,
+        end_chapter_index=5,
+    )
+    service.mark_range_progress(task.id, completed_chapter_index=1)
+    service.mark_range_progress(task.id, completed_chapter_index=2)
+    service.mark_failed(task.id, "network error")
+
+    retry = service.create_retry_from_failed(task.id)
+
+    assert retry.status == "pending"
+    assert retry.task_type == "athena_reindex_range"
+    assert retry.payload["chapter_range"] == {"start": 1, "end": 5}
+    assert retry.payload["retry_of_task_id"] == task.id
+    assert retry.payload["resume_from_chapter_index"] == 3
 
 
 def test_background_task_service_marks_interrupted_running_tasks_failed(client, db_session):
