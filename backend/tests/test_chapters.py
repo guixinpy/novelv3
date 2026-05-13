@@ -4,7 +4,16 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.api.chapters import create_or_replace_chapter
-from app.models import AIModelCallTrace, GenreProfile, Project, ProjectProfileVersion, WorldFactClaim
+from app.models import (
+    AIModelCallTrace,
+    ChapterContent,
+    GenreProfile,
+    LongformMemory,
+    Project,
+    ProjectProfileVersion,
+    RetrievalDocument,
+    WorldFactClaim,
+)
 
 
 def _create_project_with_setup(client):
@@ -219,6 +228,78 @@ def test_generate_chapter_updates_project_and_list_chapter_word_counts(mock_comp
 
 @patch("app.api.chapters.load_api_key", return_value="sk-test")
 @patch("app.api.chapters.ai_service.complete", new_callable=AsyncMock)
+def test_generate_chapter_refreshes_longform_memory_and_retrieval(mock_complete, mock_key, client, db_session):
+    from app.core.athena_retrieval import reindex_project_retrieval, search_retrieval
+    from app.core.longform_memory import rebuild_longform_memory
+
+    pid = _create_project_with_setup(client)
+    for index in range(1, 4):
+        db_session.add(
+            ChapterContent(
+                project_id=pid,
+                chapter_index=index,
+                title=f"第{index}章",
+                content=f"第{index}章旧正文。星环钥匙第一形态。",
+                word_count=1000,
+                status="generated",
+            )
+        )
+    db_session.commit()
+    rebuild_longform_memory(db_session, pid)
+    reindex_project_retrieval(db_session, pid)
+    chapter_1_doc_id = _longform_memory_doc_id(db_session, pid, "memory:chapter:1")
+    chapter_2_doc_id = _longform_memory_doc_id(db_session, pid, "memory:chapter:2")
+    mock_complete.return_value.content = "星环钥匙第四形态在第二章启动，陆辞确认雾灯失效。"
+    mock_complete.return_value.model = "deepseek-chat"
+    mock_complete.return_value.prompt_tokens = 100
+    mock_complete.return_value.completion_tokens = 200
+
+    response = client.post(f"/api/v1/projects/{pid}/chapters/2/generate")
+
+    assert response.status_code == 200
+    db_session.expire_all()
+    chapter_memory = (
+        db_session.query(LongformMemory)
+        .filter(LongformMemory.project_id == pid, LongformMemory.scope_key == "chapter:2")
+        .one()
+    )
+    assert "星环钥匙第四形态" in chapter_memory.summary
+    assert _longform_memory_doc_id(db_session, pid, "memory:chapter:1") == chapter_1_doc_id
+    assert _longform_memory_doc_id(db_session, pid, "memory:chapter:2") != chapter_2_doc_id
+    results = search_retrieval(
+        db_session,
+        pid,
+        "星环钥匙第四形态",
+        source_type="longform_memory",
+        max_chapter_index=3,
+    )
+    assert any(
+        item["source_ref"] == "memory:chapter:2" and "星环钥匙第四形态" in item["snippet"]
+        for item in results["items"]
+    )
+
+
+@patch("app.api.chapters.load_api_key", return_value="sk-test")
+@patch("app.api.chapters.ai_service.complete", new_callable=AsyncMock)
+def test_generate_chapter_does_not_fail_when_longform_maintenance_fails(mock_complete, mock_key, client, monkeypatch):
+    pid = _create_project_with_setup(client)
+    mock_complete.return_value.content = "第一章正文内容"
+    mock_complete.return_value.model = "deepseek-chat"
+    mock_complete.return_value.prompt_tokens = 100
+    mock_complete.return_value.completion_tokens = 200
+    monkeypatch.setattr(
+        "app.api.chapters.refresh_longform_memory_for_chapter",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("maintenance failed")),
+    )
+
+    response = client.post(f"/api/v1/projects/{pid}/chapters/1/generate")
+
+    assert response.status_code == 200
+    assert response.json()["content"] == "第一章正文内容"
+
+
+@patch("app.api.chapters.load_api_key", return_value="sk-test")
+@patch("app.api.chapters.ai_service.complete", new_callable=AsyncMock)
 def test_create_chapter_applies_user_word_range_to_prompt_and_token_limit(mock_complete, mock_key, client, db_session):
     r = client.post("/api/v1/projects", json={"name": "Test"})
     pid = r.json()["id"]
@@ -356,3 +437,15 @@ def test_get_chapter(mock_complete, mock_key, client):
 def test_get_chapter_not_found(client):
     r = client.get("/api/v1/projects/nonexistent/chapters/1")
     assert r.status_code == 404
+
+
+def _longform_memory_doc_id(db_session, project_id: str, source_ref: str) -> str:
+    return (
+        db_session.query(RetrievalDocument.id)
+        .filter(
+            RetrievalDocument.project_id == project_id,
+            RetrievalDocument.source_type == "longform_memory",
+            RetrievalDocument.source_ref == source_ref,
+        )
+        .scalar()
+    )

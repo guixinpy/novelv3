@@ -31,7 +31,7 @@
 - Modify: `backend/app/api/chapters.py`
 - Modify: `backend/tests/test_chapters.py`
 
-- [ ] **Step 1: Write failing test**
+- [x] **Step 1: Write failing test**
 
 Add `test_generate_chapter_refreshes_longform_memory_and_retrieval`:
 
@@ -45,7 +45,7 @@ Add `test_generate_chapter_refreshes_longform_memory_and_retrieval`:
 - Assert `memory:chapter:2` retrieval document id changed.
 - Assert `search_retrieval(..., source_type="longform_memory")` returns a `memory:chapter:2` hit for the unique phrase.
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 ```powershell
 .\backend\.venv\Scripts\python.exe -m pytest backend\tests\test_chapters.py::test_generate_chapter_refreshes_longform_memory_and_retrieval -v
@@ -53,7 +53,7 @@ Add `test_generate_chapter_refreshes_longform_memory_and_retrieval`:
 
 Expected: FAIL because generation currently indexes chapter content only and does not refresh longform memory/retrieval.
 
-- [ ] **Step 3: Implement safe maintenance helper**
+- [x] **Step 3: Implement safe maintenance helper**
 
 Implementation requirements:
 
@@ -62,7 +62,7 @@ Implementation requirements:
 - Catch exceptions and roll back without failing generation.
 - Call helper after the main chapter commit and before returning from `create_or_replace_chapter`.
 
-- [ ] **Step 4: Verify GREEN**
+- [x] **Step 4: Verify GREEN**
 
 ```powershell
 .\backend\.venv\Scripts\python.exe -m pytest backend\tests\test_chapters.py::test_generate_chapter_refreshes_longform_memory_and_retrieval -v
@@ -75,7 +75,7 @@ Expected: PASS.
 **Files:**
 - Modify: `backend/tests/test_chapter_revisions.py`
 
-- [ ] **Step 1: Write test**
+- [x] **Step 1: Write test**
 
 Add `test_regenerate_revision_refreshes_longform_memory_and_retrieval`:
 
@@ -86,7 +86,7 @@ Add `test_regenerate_revision_refreshes_longform_memory_and_retrieval`:
 - Assert `chapter:1` memory summary contains the unique phrase.
 - Assert searching longform memory returns a `memory:chapter:1` hit.
 
-- [ ] **Step 2: Run focused test**
+- [x] **Step 2: Run focused test**
 
 ```powershell
 .\backend\.venv\Scripts\python.exe -m pytest backend\tests\test_chapter_revisions.py::test_regenerate_revision_refreshes_longform_memory_and_retrieval -v
@@ -99,7 +99,7 @@ Expected: PASS once Task 1 implementation is present.
 **Files:**
 - Modify: `backend/tests/test_chapters.py`
 
-- [ ] **Step 1: Write test**
+- [x] **Step 1: Write test**
 
 Add `test_generate_chapter_does_not_fail_when_longform_maintenance_fails`:
 
@@ -107,7 +107,7 @@ Add `test_generate_chapter_does_not_fail_when_longform_maintenance_fails`:
 - Generate a chapter.
 - Assert response status is 200 and content is saved.
 
-- [ ] **Step 2: Run focused test**
+- [x] **Step 2: Run focused test**
 
 ```powershell
 .\backend\.venv\Scripts\python.exe -m pytest backend\tests\test_chapters.py::test_generate_chapter_does_not_fail_when_longform_maintenance_fails -v
@@ -117,19 +117,19 @@ Expected: PASS after helper catches maintenance exceptions.
 
 ## Task 4: Verification and Commit
 
-- [ ] **Step 1: Run focused tests**
+- [x] **Step 1: Run focused tests**
 
 ```powershell
 .\backend\.venv\Scripts\python.exe -m pytest backend\tests\test_chapters.py::test_generate_chapter_refreshes_longform_memory_and_retrieval backend\tests\test_chapters.py::test_generate_chapter_does_not_fail_when_longform_maintenance_fails backend\tests\test_chapter_revisions.py::test_regenerate_revision_refreshes_longform_memory_and_retrieval -v
 ```
 
-- [ ] **Step 2: Run backend tests**
+- [x] **Step 2: Run backend tests**
 
 ```powershell
 .\backend\.venv\Scripts\python.exe -m pytest backend\tests -v
 ```
 
-- [ ] **Step 3: Hygiene checks**
+- [x] **Step 3: Hygiene checks**
 
 ```powershell
 git diff --check
@@ -139,7 +139,7 @@ git status --short
 
 Expected: diff check passes, exact sensitive-key scan returns no matches, and broad secret-pattern matches are limited to sanitizer test fixtures.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```powershell
 git add backend/app/api/chapters.py backend/tests/test_chapters.py backend/tests/test_chapter_revisions.py docs/superpowers/plans/2026-05-13-longform-scale-phase8.md

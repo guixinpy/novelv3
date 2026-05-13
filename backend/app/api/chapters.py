@@ -6,6 +6,8 @@ from sqlalchemy.orm import Session
 
 from app.config import load_api_key
 from app.core.ai_service import AIService
+from app.core.athena_retrieval import sync_longform_memory_retrieval_documents
+from app.core.longform_memory import refresh_longform_memory_for_chapter
 from app.core.model_call_trace import create_trace, mark_trace_failed, mark_trace_success, now_ms
 from app.db import get_db
 from app.models import AIModelCallTrace, ChapterContent, Outline, Project, Setup
@@ -165,6 +167,18 @@ def _safe_mark_chapter_trace_failed(
         return None
 
 
+def _safe_refresh_longform_maintenance(db: Session, *, project_id: str, chapter_index: int) -> None:
+    try:
+        refresh_result = refresh_longform_memory_for_chapter(db, project_id, chapter_index)
+        sync_longform_memory_retrieval_documents(
+            db,
+            project_id,
+            refresh_result.get("updated_memory_ids") or [],
+        )
+    except Exception:
+        db.rollback()
+
+
 @router.post("/{chapter_index}/generate", response_model=ChapterOut)
 async def generate_chapter(project_id: str, chapter_index: int, db: Session = Depends(get_db)):
     chapter = await create_or_replace_chapter(db, project_id, chapter_index)
@@ -299,6 +313,8 @@ async def create_or_replace_chapter(
         index_chapter_retrieval(db=db, project_id=project_id, chapter_index=chapter_index)
     except Exception:
         pass  # Don't fail chapter generation if retrieval indexing fails
+
+    _safe_refresh_longform_maintenance(db, project_id=project_id, chapter_index=chapter_index)
 
     # Emit event for background processing
     try:
