@@ -1,6 +1,8 @@
+from sqlalchemy import event
+
 from app.core.world_contracts import DERIVED
 from app.core.embedding_service import get_embedding_provider
-from app.core.athena_retrieval import search_retrieval
+from app.core.athena_retrieval import _project_sources, reindex_project_retrieval, search_retrieval
 from app.core.world_proposal_service import create_bundle, review_proposal_item, rollback_review, write_candidate_fact
 from app.models import (
     ChapterContent,
@@ -164,6 +166,83 @@ def test_reindex_builds_searchable_chunks_for_chapters_and_confirmed_facts(clien
     assert results["items"][0]["score"] >= results["items"][-1]["score"]
     assert {item["source_type"] for item in results["items"]} >= {"chapter", "world_fact"}
     assert any("亡者不能被直接召回" in item["snippet"] for item in results["items"])
+
+
+def test_project_sources_streams_chapters_in_order(db_session):
+    project = Project(name="Streaming Retrieval Sources")
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    for index in range(1, 4):
+        db_session.add(
+            ChapterContent(
+                project_id=project.id,
+                chapter_index=index,
+                title=f"第{index}章",
+                content=f"第{index}章正文。",
+                word_count=1000,
+                status="generated",
+            )
+        )
+    db_session.commit()
+
+    sources = _project_sources(db_session, project.id)
+
+    assert not isinstance(sources, list)
+    assert [source.source_ref for source in sources] == ["chapter:1", "chapter:2", "chapter:3"]
+
+
+def test_reindex_chapter_source_query_projects_only_index_fields(db_session):
+    project = Project(name="Projected Retrieval Reindex")
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    for index in range(1, 6):
+        db_session.add(
+            ChapterContent(
+                project_id=project.id,
+                chapter_index=index,
+                title=f"第{index}章",
+                content="需要索引的正文。" * 30,
+                word_count=1000,
+                status="generated",
+                model="deepseek",
+                prompt_tokens=100,
+                completion_tokens=200,
+                generation_time=3,
+                temperature=0.7,
+            )
+        )
+    db_session.commit()
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(statement.lower())
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        result = reindex_project_retrieval(db_session, project.id)
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert result["indexed"]["documents"] == 5
+    chapter_selects = [
+        statement for statement in statements
+        if "from chapter_contents" in statement
+    ]
+    assert chapter_selects
+    select_clause = chapter_selects[0].split("from chapter_contents", 1)[0]
+    for column in [
+        "word_count",
+        "model",
+        "prompt_tokens",
+        "completion_tokens",
+        "generation_time",
+        "temperature",
+        "created_at",
+        "updated_at",
+    ]:
+        assert f"chapter_contents.{column}" not in select_clause
 
 
 def test_reindex_builds_indexed_lexical_terms_for_local_search(client, db_session):

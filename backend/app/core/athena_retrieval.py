@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from typing import Any
 
@@ -504,23 +505,23 @@ def _retrieval_reason(item: dict[str, Any], *, user_query: str | None, max_chapt
     return f"{query_reason}触发，{match_type}，得分 {score}，范围限制至第{max_chapter_index}章"
 
 
-def _project_sources(db: Session, project_id: str) -> list[RetrievalSource]:
-    chapters = (
+def _project_sources(db: Session, project_id: str) -> Iterator[RetrievalSource]:
+    chapter_rows = (
         db.query(ChapterContent)
+        .with_entities(
+            ChapterContent.id,
+            ChapterContent.chapter_index,
+            ChapterContent.title,
+            ChapterContent.content,
+            ChapterContent.status,
+        )
         .filter(ChapterContent.project_id == project_id, ChapterContent.content != "")
         .order_by(ChapterContent.chapter_index.asc())
-        .all()
+        .yield_per(50)
     )
-    facts = (
-        db.query(WorldFactClaim)
-        .filter(
-            WorldFactClaim.project_id == project_id,
-            WorldFactClaim.claim_status == "confirmed",
-            WorldFactClaim.claim_layer == "truth",
-        )
-        .order_by(WorldFactClaim.chapter_index.asc().nullsfirst(), WorldFactClaim.claim_id.asc())
-        .all()
-    )
+    for chapter in chapter_rows:
+        yield _chapter_source(chapter)
+
     memories = (
         db.query(LongformMemory)
         .filter(LongformMemory.project_id == project_id, LongformMemory.summary != "")
@@ -529,13 +530,23 @@ def _project_sources(db: Session, project_id: str) -> list[RetrievalSource]:
             LongformMemory.memory_type.asc(),
             LongformMemory.scope_key.asc(),
         )
-        .all()
+        .yield_per(50)
     )
-    return [
-        *[_chapter_source(chapter) for chapter in chapters],
-        *[_longform_memory_source(memory) for memory in memories],
-        *[_fact_source(fact) for fact in facts],
-    ]
+    for memory in memories:
+        yield _longform_memory_source(memory)
+
+    facts = (
+        db.query(WorldFactClaim)
+        .filter(
+            WorldFactClaim.project_id == project_id,
+            WorldFactClaim.claim_status == "confirmed",
+            WorldFactClaim.claim_layer == "truth",
+        )
+        .order_by(WorldFactClaim.chapter_index.asc().nullsfirst(), WorldFactClaim.claim_id.asc())
+        .yield_per(50)
+    )
+    for fact in facts:
+        yield _fact_source(fact)
 
 
 def sync_fact_retrieval_document(db: Session, *, fact: WorldFactClaim) -> dict[str, int]:
@@ -604,7 +615,7 @@ def _fact_source(fact: WorldFactClaim) -> RetrievalSource:
     )
 
 
-def _index_sources(db: Session, project_id: str, sources: list[RetrievalSource]) -> dict[str, int]:
+def _index_sources(db: Session, project_id: str, sources: Iterable[RetrievalSource]) -> dict[str, int]:
     provider = get_embedding_provider()
     indexed = {"documents": 0, "chunks": 0, "terms": 0, "embeddings": 0}
     for source in sources:
