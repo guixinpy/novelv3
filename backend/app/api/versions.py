@@ -1,7 +1,11 @@
+import re
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.core.athena_retrieval import sync_longform_memory_retrieval_documents
+from app.core.longform_memory import refresh_longform_memory_for_chapter
 from app.db import get_db
 from app.models import ChapterContent, Outline, Project, Setup, Storyline, Version
 from app.schemas import VersionCreate, VersionOut, VersionSummary
@@ -53,9 +57,11 @@ def create_version(project_id: str, payload: VersionCreate, db: Session = Depend
     )
     db.add(version)
 
-    _apply_content_to_node(db, payload.node_type, payload.node_id, payload.content)
+    changed_chapter_index = _apply_content_to_node(db, payload.node_type, payload.node_id, payload.content)
 
     db.commit()
+    if changed_chapter_index is not None:
+        _safe_refresh_longform_maintenance(db, project_id=project_id, chapter_index=changed_chapter_index)
     db.refresh(version)
     return {"version_saved": True, "version_id": version.id, "version_number": version.version_number}
 
@@ -83,9 +89,11 @@ def rollback_version(project_id: str, version_id: str, db: Session = Depends(get
     )
     db.add(new_version)
 
-    _apply_content_to_node(db, v.node_type, v.node_id, v.content)
+    changed_chapter_index = _apply_content_to_node(db, v.node_type, v.node_id, v.content)
 
     db.commit()
+    if changed_chapter_index is not None:
+        _safe_refresh_longform_maintenance(db, project_id=project_id, chapter_index=changed_chapter_index)
     db.refresh(new_version)
     return {"version_saved": True, "version_id": new_version.id, "version_number": new_version.version_number}
 
@@ -100,7 +108,7 @@ def delete_version(project_id: str, version_id: str, db: Session = Depends(get_d
     return {"deleted": True}
 
 
-def _apply_content_to_node(db: Session, node_type: str, node_id: str, content: str):
+def _apply_content_to_node(db: Session, node_type: str, node_id: str, content: str) -> int | None:
     import json
     if node_type == "setup":
         node = db.query(Setup).filter(Setup.id == node_id).first()
@@ -125,3 +133,24 @@ def _apply_content_to_node(db: Session, node_type: str, node_id: str, content: s
         node = db.query(ChapterContent).filter(ChapterContent.id == node_id).first()
         if node:
             node.content = content
+            node.word_count = _count_words(content)
+            return node.chapter_index
+    return None
+
+
+def _safe_refresh_longform_maintenance(db: Session, *, project_id: str, chapter_index: int) -> None:
+    try:
+        refresh_result = refresh_longform_memory_for_chapter(db, project_id, chapter_index)
+        sync_longform_memory_retrieval_documents(
+            db,
+            project_id,
+            refresh_result.get("updated_memory_ids") or [],
+        )
+    except Exception:
+        db.rollback()
+
+
+def _count_words(content: str) -> int:
+    ascii_words = len([word for word in re.split(r"\s+", content) if word])
+    cjk_chars = len(re.findall(r"[\u4e00-\u9fff]", content))
+    return ascii_words + cjk_chars
