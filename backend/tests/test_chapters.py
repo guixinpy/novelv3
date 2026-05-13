@@ -216,15 +216,15 @@ def test_generate_chapter_updates_project_and_list_chapter_word_counts(mock_comp
 
     r2 = client.post(f"/api/v1/projects/{pid}/chapters/1/generate")
     assert r2.status_code == 200
-    assert r2.json()["word_count"] == 6
+    assert r2.json()["word_count"] == 5
 
     project = client.get(f"/api/v1/projects/{pid}").json()
-    assert project["current_word_count"] == 6
+    assert project["current_word_count"] == 5
     assert project["current_phase"] == "content"
     assert project["status"] == "writing"
 
     chapters = client.get(f"/api/v1/projects/{pid}/chapters").json()["chapters"]
-    assert chapters[0]["word_count"] == 6
+    assert chapters[0]["word_count"] == 5
 
 
 @patch("app.api.chapters.load_api_key", return_value="sk-test")

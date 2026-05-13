@@ -1,11 +1,10 @@
-import re
-
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.athena_retrieval import sync_longform_memory_retrieval_documents
 from app.core.longform_memory import refresh_longform_memory_for_chapter
+from app.core.text_stats import count_words
 from app.db import get_db
 from app.models import ChapterContent, Outline, Project, Setup, Storyline, Version
 from app.schemas import VersionCreate, VersionOut, VersionSummary
@@ -133,7 +132,7 @@ def _apply_content_to_node(db: Session, node_type: str, node_id: str, content: s
         node = db.query(ChapterContent).filter(ChapterContent.id == node_id).first()
         if node:
             node.content = content
-            node.word_count = _count_words(content)
+            node.word_count = count_words(content)
             return node.chapter_index
     return None
 
@@ -148,9 +147,3 @@ def _safe_refresh_longform_maintenance(db: Session, *, project_id: str, chapter_
         )
     except Exception:
         db.rollback()
-
-
-def _count_words(content: str) -> int:
-    ascii_words = len([word for word in re.split(r"\s+", content) if word])
-    cjk_chars = len(re.findall(r"[\u4e00-\u9fff]", content))
-    return ascii_words + cjk_chars

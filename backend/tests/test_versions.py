@@ -120,6 +120,6 @@ def test_chapter_version_apply_refreshes_longform_memory_and_retrieval(client, d
     results = search_retrieval(db_session, project.id, "星环钥匙第二形态", source_type="longform_memory")
 
     assert refreshed_chapter.content == "新正文。星环钥匙第二形态启动。"
-    assert refreshed_chapter.word_count == 14
+    assert refreshed_chapter.word_count == 13
     assert "星环钥匙第二形态" in refreshed_memory.summary
     assert any("星环钥匙第二形态" in item["snippet"] for item in results["items"])

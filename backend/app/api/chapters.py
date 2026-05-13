@@ -1,4 +1,3 @@
-import re
 import time
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -10,6 +9,7 @@ from app.core.ai_service import AIService
 from app.core.athena_retrieval import sync_longform_memory_retrieval_documents
 from app.core.longform_memory import refresh_longform_memory_for_chapter
 from app.core.model_call_trace import create_trace, mark_trace_failed, mark_trace_success, now_ms
+from app.core.text_stats import count_words
 from app.db import get_db
 from app.models import AIModelCallTrace, ChapterContent, Outline, Project, Setup
 from app.prompting.assembler import PromptAssembler
@@ -27,12 +27,6 @@ router = APIRouter(prefix="/api/v1/projects/{project_id}/chapters", tags=["chapt
 
 ai_service = AIService()
 prompt_assembler = PromptAssembler()
-
-
-def _count_words(content: str) -> int:
-    ascii_words = len([w for w in re.split(r"\s+", content) if w])
-    cjk_chars = len(re.findall(r"[\u4e00-\u9fff]", content))
-    return ascii_words + cjk_chars
 
 
 def _latest_chapter_generation_trace_id(db: Session, chapter: ChapterContent) -> str | None:
@@ -236,7 +230,7 @@ async def create_or_replace_chapter(
                 title = ch.get("title", title)
                 break
 
-    word_count = _count_words(result.content)
+    word_count = count_words(result.content)
     if existing:
         chapter = existing
         chapter.title = title
