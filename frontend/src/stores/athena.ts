@@ -27,6 +27,8 @@ import type {
 
 const ATHENA_CACHE_TTL_MS = 5 * 60 * 1000
 const ATHENA_CHAT_HISTORY_PAGE_SIZE = 80
+const LONGFORM_MAINTENANCE_REPAIR_LIMIT = 500
+const LONGFORM_MAINTENANCE_MAX_REPAIR_BATCHES = 10
 
 export const useAthenaStore = defineStore('athena', () => {
   const requestCache = useRequestCacheStore()
@@ -365,10 +367,15 @@ export const useAthenaStore = defineStore('athena', () => {
     const version = requestVersion.value
     longformMaintenanceRepairing.value = true
     try {
-      const result = await api.repairAthenaLongformMaintenance(projectId)
-      if (!isActiveProject(projectId) || requestVersion.value !== version) return
-      longformMaintenanceRepairResult.value = result
-      longformMaintenanceDiagnostics.value = result.remaining
+      for (let batch = 0; batch < LONGFORM_MAINTENANCE_MAX_REPAIR_BATCHES; batch += 1) {
+        const result = await api.repairAthenaLongformMaintenance(projectId, {
+          repair_limit: LONGFORM_MAINTENANCE_REPAIR_LIMIT,
+        })
+        if (!isActiveProject(projectId) || requestVersion.value !== version) return
+        longformMaintenanceRepairResult.value = result
+        longformMaintenanceDiagnostics.value = result.remaining
+        if (!result.has_more || result.remaining_issue_count <= 0) break
+      }
       requestCache.markFresh(cacheKey(projectId, 'longform-maintenance-diagnostics'))
     } catch (err) {
       if (isActiveProject(projectId) && requestVersion.value === version) {

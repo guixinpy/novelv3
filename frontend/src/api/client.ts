@@ -161,8 +161,15 @@ export const api = {
     request<AthenaRetrievalDiagnostics>(`/projects/${id}/athena/retrieval/diagnostics`),
   getAthenaLongformMaintenanceDiagnostics: (id: string) =>
     request<LongformMaintenanceDiagnostics>(`/projects/${id}/athena/longform/maintenance/diagnostics`),
-  repairAthenaLongformMaintenance: (id: string) =>
-    request<LongformMaintenanceRepairResult>(`/projects/${id}/athena/longform/maintenance/repair`, { method: 'POST' }),
+  repairAthenaLongformMaintenance: (id: string, params?: { repair_limit?: number }) => {
+    const query = new URLSearchParams()
+    if (params?.repair_limit !== undefined) query.set('repair_limit', String(params.repair_limit))
+    const qs = query.toString()
+    return request<LongformMaintenanceRepairResult>(
+      `/projects/${id}/athena/longform/maintenance/repair${qs ? `?${qs}` : ''}`,
+      { method: 'POST' },
+    )
+  },
   searchAthenaRetrieval: (id: string, params: { q: string; limit?: number; source_type?: string; chapter_index?: number }) => {
     const query = new URLSearchParams()
     query.set('q', params.q)

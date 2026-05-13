@@ -78,8 +78,74 @@ describe('athena longform maintenance store', () => {
 
     await store.repairLongformMaintenance('project-1')
 
-    expect(api.repairAthenaLongformMaintenance).toHaveBeenCalledWith('project-1')
+    expect(api.repairAthenaLongformMaintenance).toHaveBeenCalledWith('project-1', { repair_limit: 500 })
     expect(store.longformMaintenanceRepairResult?.refreshed_chapter_indexes).toEqual([512])
+    expect(store.longformMaintenanceDiagnostics?.status).toBe('current')
+  })
+
+  it('continues repair batches until longform maintenance is current', async () => {
+    vi.mocked(api.repairAthenaLongformMaintenance)
+      .mockResolvedValueOnce({
+        project_id: 'project-1',
+        status: 'completed',
+        repaired_memory_count: 0,
+        repaired_retrieval_count: 500,
+        refreshed_chapter_indexes: [],
+        synced_scope_keys: ['chapter:1'],
+        has_more: true,
+        remaining_issue_count: 500,
+        remaining: {
+          project_id: 'project-1',
+          status: 'stale',
+          chapter_count: 1000,
+          stale_memory_count: 0,
+          missing_memory_count: 0,
+          stale_retrieval_count: 500,
+          missing_retrieval_count: 0,
+          stale_chapter_indexes: [],
+          missing_memory_chapter_indexes: [],
+          stale_retrieval_chapter_indexes: [501],
+          missing_retrieval_chapter_indexes: [],
+          latest_chapter_updated_at: '2026-05-13T00:00:00Z',
+          latest_memory_updated_at: '2026-05-13T00:00:01Z',
+          latest_retrieval_updated_at: '2026-05-13T00:00:02Z',
+          latest_synced_chapter_index: 500,
+        },
+      })
+      .mockResolvedValueOnce({
+        project_id: 'project-1',
+        status: 'completed',
+        repaired_memory_count: 0,
+        repaired_retrieval_count: 500,
+        refreshed_chapter_indexes: [],
+        synced_scope_keys: ['chapter:501'],
+        has_more: false,
+        remaining_issue_count: 0,
+        remaining: {
+          project_id: 'project-1',
+          status: 'current',
+          chapter_count: 1000,
+          stale_memory_count: 0,
+          missing_memory_count: 0,
+          stale_retrieval_count: 0,
+          missing_retrieval_count: 0,
+          stale_chapter_indexes: [],
+          missing_memory_chapter_indexes: [],
+          stale_retrieval_chapter_indexes: [],
+          missing_retrieval_chapter_indexes: [],
+          latest_chapter_updated_at: '2026-05-13T00:00:00Z',
+          latest_memory_updated_at: '2026-05-13T00:00:01Z',
+          latest_retrieval_updated_at: '2026-05-13T00:00:03Z',
+          latest_synced_chapter_index: 1000,
+        },
+      })
+    const store = useAthenaStore()
+
+    await store.repairLongformMaintenance('project-1')
+
+    expect(api.repairAthenaLongformMaintenance).toHaveBeenNthCalledWith(1, 'project-1', { repair_limit: 500 })
+    expect(api.repairAthenaLongformMaintenance).toHaveBeenNthCalledWith(2, 'project-1', { repair_limit: 500 })
+    expect(store.longformMaintenanceRepairResult?.remaining_issue_count).toBe(0)
     expect(store.longformMaintenanceDiagnostics?.status).toBe('current')
   })
 })
