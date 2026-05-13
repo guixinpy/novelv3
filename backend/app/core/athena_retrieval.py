@@ -34,6 +34,7 @@ from app.models import (
 MAX_CHUNK_CHARS = 900
 CHUNK_OVERLAP_CHARS = 120
 INDEX_WRITE_BATCH_SOURCES = 50
+RETRIEVAL_EMBEDDING_BATCH_SIZE = 64
 
 
 @dataclass(frozen=True)
@@ -781,7 +782,7 @@ def _flush_index_write_batch(
         return
     embedding_objects: list[RetrievalEmbedding] = []
     if embeddings:
-        vectors = provider.embed_texts([embedding.text for embedding in embeddings])
+        vectors = _embed_pending_embeddings(provider, embeddings)
         embedding_objects = [
             RetrievalEmbedding(
                 project_id=documents[0].project_id,
@@ -805,6 +806,18 @@ def _flush_index_write_batch(
     chunks.clear()
     terms.clear()
     embeddings.clear()
+
+
+def _embed_pending_embeddings(
+    provider: EmbeddingProvider,
+    embeddings: list[_PendingEmbedding],
+) -> list[list[float]]:
+    vectors: list[list[float]] = []
+    batch_size = max(1, RETRIEVAL_EMBEDDING_BATCH_SIZE)
+    for start in range(0, len(embeddings), batch_size):
+        batch = embeddings[start : start + batch_size]
+        vectors.extend(provider.embed_texts([embedding.text for embedding in batch]))
+    return vectors
 
 
 def _chunk_text(text: str) -> list[dict[str, Any]]:

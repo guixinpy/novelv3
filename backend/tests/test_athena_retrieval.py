@@ -526,6 +526,51 @@ def test_reindex_batches_embedding_provider_calls_across_sources(db_session, mon
     assert provider.batch_sizes == [2]
 
 
+def test_reindex_caps_embedding_provider_batch_size(db_session, monkeypatch):
+    import app.core.athena_retrieval as athena_retrieval
+
+    project = Project(name="Embedding Batch Cap")
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    db_session.add_all(
+        [
+            ChapterContent(
+                project_id=project.id,
+                chapter_index=index,
+                title=f"第{index}章",
+                content=f"第{index}章，星环钥匙线索推进。",
+                word_count=20,
+                status="generated",
+            )
+            for index in range(1, 4)
+        ]
+    )
+    db_session.commit()
+    base_provider = athena_retrieval.get_embedding_provider()
+
+    class CountingEmbeddingProvider:
+        provider_name = base_provider.provider_name
+        model_name = base_provider.model_name
+        dimensions = base_provider.dimensions
+
+        def __init__(self):
+            self.batch_sizes: list[int] = []
+
+        def embed_texts(self, texts: list[str]) -> list[list[float]]:
+            self.batch_sizes.append(len(texts))
+            return base_provider.embed_texts(texts)
+
+    provider = CountingEmbeddingProvider()
+    monkeypatch.setattr(athena_retrieval, "RETRIEVAL_EMBEDDING_BATCH_SIZE", 2)
+    monkeypatch.setattr(athena_retrieval, "get_embedding_provider", lambda: provider)
+
+    result = reindex_project_retrieval(db_session, project.id)
+
+    assert result["indexed"]["chunks"] == 3
+    assert provider.batch_sizes == [2, 1]
+
+
 def test_search_retrieval_uses_lexical_shortlist_for_late_relevant_chunks(client, db_session):
     project = Project(name="Late Retrieval", genre="东方奇幻悬疑")
     db_session.add(project)
