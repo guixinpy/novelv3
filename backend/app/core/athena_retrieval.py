@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import uuid
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from typing import Any
@@ -664,7 +665,9 @@ def _index_sources(db: Session, project_id: str, sources: Iterable[RetrievalSour
         chunks = _chunk_text(source.text)
         if not chunks:
             continue
+        document_id = str(uuid.uuid4())
         document = RetrievalDocument(
+            id=document_id,
             project_id=project_id,
             source_type=source.source_type,
             source_id=source.source_id,
@@ -675,34 +678,37 @@ def _index_sources(db: Session, project_id: str, sources: Iterable[RetrievalSour
             content_hash=_content_hash(source.text),
             document_metadata=source.metadata,
         )
-        db.add(document)
-        db.flush()
+        db.bulk_save_objects([document])
         vectors = provider.embed_texts([chunk["text"] for chunk in chunks])
         indexed["documents"] += 1
+        chunk_objects: list[RetrievalChunk] = []
+        term_objects: list[RetrievalTerm] = []
+        embedding_objects: list[RetrievalEmbedding] = []
         for chunk_data, vector in zip(chunks, vectors, strict=True):
+            chunk_id = str(uuid.uuid4())
             tokens = tokenize_for_retrieval(chunk_data["text"])
-            chunk = RetrievalChunk(
-                project_id=project_id,
-                document_id=document.id,
-                chunk_index=chunk_data["chunk_index"],
-                text=chunk_data["text"],
-                token_count=len(tokens),
-                start_offset=chunk_data["start_offset"],
-                end_offset=chunk_data["end_offset"],
-                chunk_metadata={},
-            )
-            db.add(chunk)
-            db.flush()
-            terms = sorted(set(tokens))
-            if terms:
-                db.bulk_save_objects(
-                    [RetrievalTerm(project_id=project_id, chunk_id=chunk.id, token=token) for token in terms]
+            chunk_objects.append(
+                RetrievalChunk(
+                    id=chunk_id,
+                    project_id=project_id,
+                    document_id=document_id,
+                    chunk_index=chunk_data["chunk_index"],
+                    text=chunk_data["text"],
+                    token_count=len(tokens),
+                    start_offset=chunk_data["start_offset"],
+                    end_offset=chunk_data["end_offset"],
+                    chunk_metadata={},
                 )
-            indexed["terms"] += len(terms)
-            db.add(
+            )
+            terms = sorted(set(tokens))
+            term_objects.extend(
+                RetrievalTerm(project_id=project_id, chunk_id=chunk_id, token=token)
+                for token in terms
+            )
+            embedding_objects.append(
                 RetrievalEmbedding(
                     project_id=project_id,
-                    chunk_id=chunk.id,
+                    chunk_id=chunk_id,
                     provider=provider.provider_name,
                     model=provider.model_name,
                     dimensions=len(vector),
@@ -710,8 +716,13 @@ def _index_sources(db: Session, project_id: str, sources: Iterable[RetrievalSour
                     vector_hash=vector_hash(vector),
                 )
             )
+            indexed["terms"] += len(terms)
             indexed["chunks"] += 1
             indexed["embeddings"] += 1
+        db.bulk_save_objects(chunk_objects)
+        if term_objects:
+            db.bulk_save_objects(term_objects)
+        db.bulk_save_objects(embedding_objects)
     return indexed
 
 

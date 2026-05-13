@@ -397,6 +397,24 @@ def test_reindex_tokenizes_each_chunk_once_for_lexical_index(db_session, monkeyp
     assert tokenize_count["calls"] == result["indexed"]["chunks"]
 
 
+def test_reindex_avoids_flush_per_new_document_and_chunk(db_session, monkeypatch):
+    project = _seed_retrieval_project(db_session)
+    flush_count = {"calls": 0}
+    original_flush = db_session.flush
+
+    def count_flush(*args, **kwargs):
+        flush_count["calls"] += 1
+        return original_flush(*args, **kwargs)
+
+    monkeypatch.setattr(db_session, "flush", count_flush)
+
+    result = reindex_project_retrieval(db_session, project.id)
+
+    assert result["indexed"]["documents"] > 0
+    assert result["indexed"]["chunks"] > 0
+    assert flush_count["calls"] == 0
+
+
 def test_search_retrieval_uses_lexical_shortlist_for_late_relevant_chunks(client, db_session):
     project = Project(name="Late Retrieval", genre="东方奇幻悬疑")
     db_session.add(project)
