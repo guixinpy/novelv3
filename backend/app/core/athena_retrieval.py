@@ -11,7 +11,13 @@ from fastapi import HTTPException
 from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session
 
-from app.core.embedding_service import cosine_similarity, get_embedding_provider, tokenize_for_retrieval, vector_hash
+from app.core.embedding_service import (
+    EmbeddingProvider,
+    cosine_similarity,
+    get_embedding_provider,
+    tokenize_for_retrieval,
+    vector_hash,
+)
 from app.models import (
     ChapterContent,
     LongformMemory,
@@ -40,6 +46,12 @@ class RetrievalSource:
     chapter_index: int | None
     profile_version: int | None
     metadata: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class _PendingEmbedding:
+    chunk_id: str
+    text: str
 
 
 def reindex_project_retrieval(db: Session, project_id: str) -> dict[str, Any]:
@@ -665,7 +677,7 @@ def _index_sources(db: Session, project_id: str, sources: Iterable[RetrievalSour
     document_objects: list[RetrievalDocument] = []
     chunk_objects: list[RetrievalChunk] = []
     term_rows: list[dict[str, Any]] = []
-    embedding_objects: list[RetrievalEmbedding] = []
+    pending_embeddings: list[_PendingEmbedding] = []
     batched_sources = 0
     for source in sources:
         chunks = _chunk_text(source.text)
@@ -685,9 +697,8 @@ def _index_sources(db: Session, project_id: str, sources: Iterable[RetrievalSour
             document_metadata=source.metadata,
         )
         document_objects.append(document)
-        vectors = provider.embed_texts([chunk["text"] for chunk in chunks])
         indexed["documents"] += 1
-        for chunk_data, vector in zip(chunks, vectors, strict=True):
+        for chunk_data in chunks:
             chunk_id = str(uuid.uuid4())
             tokens = tokenize_for_retrieval(chunk_data["text"])
             chunk_objects.append(
@@ -713,25 +724,29 @@ def _index_sources(db: Session, project_id: str, sources: Iterable[RetrievalSour
                 }
                 for token in terms
             )
-            embedding_objects.append(
-                RetrievalEmbedding(
-                    project_id=project_id,
-                    chunk_id=chunk_id,
-                    provider=provider.provider_name,
-                    model=provider.model_name,
-                    dimensions=len(vector),
-                    vector=vector,
-                    vector_hash=vector_hash(vector),
-                )
-            )
+            pending_embeddings.append(_PendingEmbedding(chunk_id=chunk_id, text=chunk_data["text"]))
             indexed["terms"] += len(terms)
             indexed["chunks"] += 1
             indexed["embeddings"] += 1
         batched_sources += 1
         if batched_sources >= INDEX_WRITE_BATCH_SOURCES:
-            _flush_index_write_batch(db, document_objects, chunk_objects, term_rows, embedding_objects)
+            _flush_index_write_batch(
+                db,
+                provider,
+                document_objects,
+                chunk_objects,
+                term_rows,
+                pending_embeddings,
+            )
             batched_sources = 0
-    _flush_index_write_batch(db, document_objects, chunk_objects, term_rows, embedding_objects)
+    _flush_index_write_batch(
+        db,
+        provider,
+        document_objects,
+        chunk_objects,
+        term_rows,
+        pending_embeddings,
+    )
     return indexed
 
 
@@ -756,20 +771,36 @@ def _is_cjk_token(token: str) -> bool:
 
 def _flush_index_write_batch(
     db: Session,
+    provider: EmbeddingProvider,
     documents: list[RetrievalDocument],
     chunks: list[RetrievalChunk],
     terms: list[dict[str, Any]],
-    embeddings: list[RetrievalEmbedding],
+    embeddings: list[_PendingEmbedding],
 ) -> None:
     if not documents:
         return
+    embedding_objects: list[RetrievalEmbedding] = []
+    if embeddings:
+        vectors = provider.embed_texts([embedding.text for embedding in embeddings])
+        embedding_objects = [
+            RetrievalEmbedding(
+                project_id=documents[0].project_id,
+                chunk_id=embedding.chunk_id,
+                provider=provider.provider_name,
+                model=provider.model_name,
+                dimensions=len(vector),
+                vector=vector,
+                vector_hash=vector_hash(vector),
+            )
+            for embedding, vector in zip(embeddings, vectors, strict=True)
+        ]
     db.bulk_save_objects(documents)
     if chunks:
         db.bulk_save_objects(chunks)
     if terms:
         db.bulk_insert_mappings(RetrievalTerm, terms)
-    if embeddings:
-        db.bulk_save_objects(embeddings)
+    if embedding_objects:
+        db.bulk_save_objects(embedding_objects)
     documents.clear()
     chunks.clear()
     terms.clear()
