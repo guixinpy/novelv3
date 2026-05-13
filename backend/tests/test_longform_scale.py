@@ -485,6 +485,29 @@ def test_longform_scale_smoke_reports_memory_retrieval_and_resume_progress(db_se
     assert "completed_chapter_indexes" not in report["task"]["progress"]
 
 
+def test_longform_scale_smoke_compacts_checkpoint_progress_fields():
+    from app.core.longform_scale_smoke import _compact_progress
+
+    progress = {
+        "chapter_range": {"start": 1, "end": 1000},
+        "next_chapter_index": 1001,
+        "completed_count": 1000,
+        "total_count": 1000,
+        "can_resume": False,
+        "completed_until_chapter_index": 1000,
+        "first_completed_chapter_index": 1,
+        "last_completed_chapter_index": 1000,
+    }
+
+    compact = _compact_progress(progress)
+
+    assert compact["completed_until_chapter_index"] == 1000
+    assert compact["first_completed_chapter_index"] == 1
+    assert compact["last_completed_chapter_index"] == 1000
+    assert compact["checkpoint_count"] == 0
+    assert "completed_chapter_indexes" not in compact
+
+
 def test_longform_scale_smoke_cli_exposes_main():
     script_path = Path(__file__).resolve().parents[2] / "scripts" / "longform_scale_smoke.py"
     spec = importlib.util.spec_from_file_location("longform_scale_smoke_cli", script_path)

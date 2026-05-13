@@ -146,4 +146,11 @@ def _compact_progress(progress: dict[str, Any]) -> dict[str, Any]:
     if completed_indexes:
         compact["first_completed_chapter_index"] = completed_indexes[0]
         compact["last_completed_chapter_index"] = completed_indexes[-1]
+    for field in [
+        "completed_until_chapter_index",
+        "first_completed_chapter_index",
+        "last_completed_chapter_index",
+    ]:
+        if field in progress:
+            compact[field] = progress[field]
     return compact
