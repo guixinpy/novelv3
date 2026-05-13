@@ -584,6 +584,35 @@ def test_reindex_caps_embedding_provider_batch_size(db_session, monkeypatch):
     assert provider.batch_sizes == [2, 1]
 
 
+def test_query_aware_results_skip_context_search_when_user_query_fills_limit(db_session, monkeypatch):
+    import app.core.athena_retrieval as athena_retrieval
+
+    queries: list[str] = []
+
+    def fake_search_retrieval(_db, _project_id, query, *, limit, **_kwargs):
+        queries.append(query)
+        return {
+            "items": [
+                {"chunk_id": f"user:{index}", "snippet": f"用户查询结果 {index}"}
+                for index in range(limit)
+            ]
+        }
+
+    monkeypatch.setattr(athena_retrieval, "search_retrieval", fake_search_retrieval)
+
+    items = athena_retrieval._query_aware_result_items(
+        db_session,
+        project_id="project-1",
+        query="自动上下文查询",
+        user_query="用户查询",
+        limit=3,
+        max_chapter_index=100,
+    )
+
+    assert queries == ["用户查询"]
+    assert [item["chunk_id"] for item in items] == ["user:0", "user:1", "user:2"]
+
+
 def test_search_retrieval_uses_lexical_shortlist_for_late_relevant_chunks(client, db_session):
     project = Project(name="Late Retrieval", genre="东方奇幻悬疑")
     db_session.add(project)

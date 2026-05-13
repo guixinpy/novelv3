@@ -480,6 +480,8 @@ def _query_aware_result_items(
         for item in user_results["items"]:
             seen.add(item["chunk_id"])
             items.append(item)
+        if len(items) >= limit:
+            return items[:limit]
     context_results = search_retrieval(
         db,
         project_id,
