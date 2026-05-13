@@ -532,6 +532,36 @@ def test_longform_scale_smoke_compacts_checkpoint_progress_fields():
     assert "completed_chapter_indexes" not in compact
 
 
+def test_longform_scale_smoke_uses_batched_task_progress(db_session, monkeypatch):
+    from app.core.longform_scale_smoke import run_longform_scale_smoke
+    from app.services.tasks.background_task_service import BackgroundTaskService
+
+    batch_calls: list[list[int]] = []
+    original_many = BackgroundTaskService.mark_range_progress_many
+
+    def count_many(self, task_id, *, completed_chapter_indexes):
+        indexes = list(completed_chapter_indexes)
+        batch_calls.append(indexes)
+        return original_many(self, task_id, completed_chapter_indexes=indexes)
+
+    def fail_single(*_args, **_kwargs):
+        raise AssertionError("longform smoke should batch range progress")
+
+    monkeypatch.setattr(BackgroundTaskService, "mark_range_progress_many", count_many)
+    monkeypatch.setattr(BackgroundTaskService, "mark_range_progress", fail_single)
+
+    report = run_longform_scale_smoke(
+        db_session,
+        chapter_count=3,
+        words_per_chapter=80,
+        target_chapter_index=3,
+    )
+
+    assert batch_calls == [[1, 2, 3]]
+    assert report["task"]["progress"]["completed_count"] == 3
+    assert report["task"]["progress"]["checkpoint_count"] == 3
+
+
 def test_longform_scale_smoke_cli_exposes_main():
     script_path = Path(__file__).resolve().parents[2] / "scripts" / "longform_scale_smoke.py"
     spec = importlib.util.spec_from_file_location("longform_scale_smoke_cli", script_path)

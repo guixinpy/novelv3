@@ -1,3 +1,4 @@
+from collections.abc import Iterable
 from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
@@ -114,6 +115,30 @@ class BackgroundTaskService:
         completed_indexes = sorted({int(index) for index in completed if start <= int(index) <= end})
         progress = _range_progress_payload(start=start, end=end, completed_indexes=completed_indexes)
         result["progress"] = progress
+        task.result = result
+        self.db.commit()
+        self.db.refresh(task)
+        return task
+
+    def mark_range_progress_many(
+        self,
+        task_id: str,
+        *,
+        completed_chapter_indexes: Iterable[int],
+    ) -> BackgroundTask:
+        task = self.get(task_id)
+        start, end = _task_chapter_range(task)
+        incoming_indexes = sorted({int(index) for index in completed_chapter_indexes})
+        out_of_range = [index for index in incoming_indexes if index < start or index > end]
+        if out_of_range:
+            raise ValueError(f"completed chapter {out_of_range[0]} is outside task range {start}-{end}")
+
+        result = dict(task.result or {})
+        progress = dict(result.get("progress") or {})
+        completed = _completed_chapter_index_set(progress, start=start, end=end)
+        completed.update(incoming_indexes)
+        completed_indexes = sorted({int(index) for index in completed if start <= int(index) <= end})
+        result["progress"] = _range_progress_payload(start=start, end=end, completed_indexes=completed_indexes)
         task.result = result
         self.db.commit()
         self.db.refresh(task)

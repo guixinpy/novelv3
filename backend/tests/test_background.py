@@ -196,6 +196,37 @@ def test_background_task_service_extends_compacted_range_without_expanding_check
     assert "completed_chapter_indexes" not in progress
 
 
+def test_background_task_service_marks_many_range_progress_entries_in_one_commit(client, db_session, monkeypatch):
+    r = client.post("/api/v1/projects", json={"name": "Test"})
+    pid = r.json()["id"]
+    service = BackgroundTaskService(db_session)
+    task = service.create_chapter_range(
+        project_id=pid,
+        task_type="athena_reindex_range",
+        start_chapter_index=1,
+        end_chapter_index=1000,
+    )
+    commit_count = {"calls": 0}
+    original_commit = db_session.commit
+
+    def count_commit(*args, **kwargs):
+        commit_count["calls"] += 1
+        return original_commit(*args, **kwargs)
+
+    monkeypatch.setattr(db_session, "commit", count_commit)
+
+    progressed = service.mark_range_progress_many(task.id, completed_chapter_indexes=range(1, 1001))
+
+    progress = progressed.result["progress"]
+    assert progress["completed_until_chapter_index"] == 1000
+    assert progress["completed_count"] == 1000
+    assert progress["total_count"] == 1000
+    assert progress["next_chapter_index"] == 1001
+    assert progress["can_resume"] is False
+    assert "completed_chapter_indexes" not in progress
+    assert commit_count["calls"] == 1
+
+
 def test_background_task_service_retries_failed_range_from_checkpoint(client, db_session):
     r = client.post("/api/v1/projects", json={"name": "Test"})
     pid = r.json()["id"]

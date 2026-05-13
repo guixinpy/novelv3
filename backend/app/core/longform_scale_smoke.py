@@ -42,8 +42,10 @@ def run_longform_scale_smoke(
         idempotency_key=f"longform-scale-smoke:{project.id}:{chapter_count}:{words_per_chapter}",
     )
     task_service.mark_running(task.id)
-    for chapter_index in range(1, chapter_count + 1):
-        task = task_service.mark_range_progress(task.id, completed_chapter_index=chapter_index)
+    task = task_service.mark_range_progress_many(
+        task.id,
+        completed_chapter_indexes=range(1, chapter_count + 1),
+    )
     stage_started_at = _record_timing(timings_ms, "task_progress", stage_started_at)
 
     memory_report = rebuild_longform_memory(db, project.id)
