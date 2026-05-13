@@ -340,9 +340,9 @@ def _chapters(db: Session, project_id: str) -> list[ChapterContent]:
     )
 
 
-def _maintained_chapters(db: Session, project_id: str) -> list[ChapterContent]:
+def _maintained_chapters(db: Session, project_id: str) -> list[Any]:
     return (
-        db.query(ChapterContent)
+        db.query(ChapterContent.chapter_index, ChapterContent.updated_at)
         .filter(
             ChapterContent.project_id == project_id,
             ChapterContent.content != "",

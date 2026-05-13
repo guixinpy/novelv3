@@ -1,6 +1,8 @@
 import importlib.util
 from pathlib import Path
 
+from sqlalchemy import event
+
 from app.api import dialogs
 from app.models import ChapterContent, Dialog, LongformMemory, Project, RetrievalDocument
 
@@ -408,6 +410,46 @@ def _longform_memory_doc_id(db_session, project_id: str, source_ref: str) -> str
         )
         .scalar()
     )
+
+
+def test_longform_maintenance_diagnostics_does_not_select_chapter_content(db_session):
+    from app.core.longform_memory import get_longform_maintenance_diagnostics
+
+    project = Project(name="Maintenance Projection")
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    for index in range(1, 6):
+        db_session.add(
+            ChapterContent(
+                project_id=project.id,
+                chapter_index=index,
+                title=f"第{index}章",
+                content="诊断不应选择的大段正文。" * 1000,
+                word_count=1000,
+                status="generated",
+            )
+        )
+    db_session.commit()
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(statement.lower())
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        payload = get_longform_maintenance_diagnostics(db_session, project.id)
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert payload["chapter_count"] == 5
+    chapter_select_clauses = [
+        statement.split("from chapter_contents", 1)[0]
+        for statement in statements
+        if "from chapter_contents" in statement
+    ]
+    assert chapter_select_clauses
+    assert all("chapter_contents.content" not in clause for clause in chapter_select_clauses)
 
 
 def test_longform_maintenance_diagnostics_reports_stale_memory_after_chapter_edit(client, db_session):
