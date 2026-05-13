@@ -6,6 +6,7 @@ import { api } from '../api/client'
 vi.mock('../api/client', () => ({
   api: {
     getAthenaLongformMaintenanceDiagnostics: vi.fn(),
+    repairAthenaLongformMaintenance: vi.fn(),
   },
 }))
 
@@ -43,5 +44,40 @@ describe('athena longform maintenance store', () => {
 
     store.reset()
     expect(store.longformMaintenanceDiagnostics).toBeNull()
+  })
+
+  it('repairs longform maintenance and applies remaining diagnostics', async () => {
+    vi.mocked(api.repairAthenaLongformMaintenance).mockResolvedValue({
+      project_id: 'project-1',
+      status: 'completed',
+      repaired_memory_count: 1,
+      repaired_retrieval_count: 3,
+      refreshed_chapter_indexes: [512],
+      synced_scope_keys: ['chapter:512', 'arc:501-520', 'global'],
+      remaining: {
+        project_id: 'project-1',
+        status: 'current',
+        chapter_count: 1000,
+        stale_memory_count: 0,
+        missing_memory_count: 0,
+        stale_retrieval_count: 0,
+        missing_retrieval_count: 0,
+        stale_chapter_indexes: [],
+        missing_memory_chapter_indexes: [],
+        stale_retrieval_chapter_indexes: [],
+        missing_retrieval_chapter_indexes: [],
+        latest_chapter_updated_at: '2026-05-13T00:00:00Z',
+        latest_memory_updated_at: '2026-05-13T00:00:01Z',
+        latest_retrieval_updated_at: '2026-05-13T00:00:02Z',
+        latest_synced_chapter_index: 1000,
+      },
+    })
+    const store = useAthenaStore()
+
+    await store.repairLongformMaintenance('project-1')
+
+    expect(api.repairAthenaLongformMaintenance).toHaveBeenCalledWith('project-1')
+    expect(store.longformMaintenanceRepairResult?.refreshed_chapter_indexes).toEqual([512])
+    expect(store.longformMaintenanceDiagnostics?.status).toBe('current')
   })
 })

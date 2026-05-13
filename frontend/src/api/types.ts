@@ -666,6 +666,16 @@ export interface LongformMaintenanceDiagnostics {
   latest_synced_chapter_index: number | null
 }
 
+export interface LongformMaintenanceRepairResult {
+  project_id: string
+  status: string
+  repaired_memory_count: number
+  repaired_retrieval_count: number
+  refreshed_chapter_indexes: number[]
+  synced_scope_keys: string[]
+  remaining: LongformMaintenanceDiagnostics
+}
+
 export interface AthenaRetrievalSearchItem {
   chunk_id: string
   document_id: string

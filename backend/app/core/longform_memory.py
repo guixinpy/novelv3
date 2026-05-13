@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
@@ -14,6 +15,20 @@ from app.models import ChapterContent, LongformMemory, Outline, Project, Retriev
 DEFAULT_ARC_SIZE = 20
 DEFAULT_VOLUME_SIZE = 100
 RECENT_CHAPTER_WINDOW = 3
+
+
+@dataclass
+class LongformMaintenanceState:
+    project_id: str
+    chapter_count: int
+    missing_memory_chapters: list[int]
+    stale_memory_chapters: list[int]
+    missing_retrieval_chapters: list[int]
+    stale_retrieval_chapters: list[int]
+    latest_chapter_updated_at: datetime | None
+    latest_memory_updated_at: datetime | None
+    latest_retrieval_updated_at: datetime | None
+    latest_synced_chapter_index: int | None
 
 
 def rebuild_longform_memory(
@@ -80,6 +95,40 @@ def get_longform_memory_diagnostics(db: Session, project_id: str) -> dict[str, A
 
 def get_longform_maintenance_diagnostics(db: Session, project_id: str, *, limit: int = 20) -> dict[str, Any]:
     _require_project(db, project_id)
+    return _maintenance_diagnostics_payload(_collect_longform_maintenance_state(db, project_id), limit=limit)
+
+
+def repair_longform_maintenance(db: Session, project_id: str, *, limit: int = 20) -> dict[str, Any]:
+    from app.core.athena_retrieval import sync_longform_memory_retrieval_documents
+
+    _require_project(db, project_id)
+    before = _collect_longform_maintenance_state(db, project_id)
+    refreshed_chapter_indexes = sorted(set(before.missing_memory_chapters + before.stale_memory_chapters))
+    updated_memory_ids: list[str] = []
+    for chapter_index in refreshed_chapter_indexes:
+        refresh_result = refresh_longform_memory_for_chapter(db, project_id, chapter_index)
+        updated_memory_ids.extend(refresh_result["updated_memory_ids"])
+
+    after_memory = _collect_longform_maintenance_state(db, project_id)
+    retrieval_chapter_indexes = sorted(
+        set(after_memory.missing_retrieval_chapters + after_memory.stale_retrieval_chapters)
+    )
+    updated_memory_ids.extend(_chapter_memory_ids(db, project_id, retrieval_chapter_indexes))
+    sync_result = sync_longform_memory_retrieval_documents(db, project_id, sorted(set(updated_memory_ids)))
+    remaining = get_longform_maintenance_diagnostics(db, project_id, limit=limit)
+    synced_scope_keys = sync_result.get("synced_scope_keys", [])
+    return {
+        "project_id": project_id,
+        "status": "completed",
+        "repaired_memory_count": len(refreshed_chapter_indexes),
+        "repaired_retrieval_count": len(synced_scope_keys),
+        "refreshed_chapter_indexes": refreshed_chapter_indexes[:limit],
+        "synced_scope_keys": synced_scope_keys,
+        "remaining": remaining,
+    }
+
+
+def _collect_longform_maintenance_state(db: Session, project_id: str) -> LongformMaintenanceState:
     chapters = _maintained_chapters(db, project_id)
     chapter_memories = {
         memory.scope_key: memory
@@ -116,29 +165,44 @@ def get_longform_maintenance_diagnostics(db: Session, project_id: str, *, limit:
         if retrieval_document.source_id != memory.id or _is_stale(retrieval_document.updated_at, memory.updated_at):
             stale_retrieval_chapters.append(chapter.chapter_index)
 
+    return LongformMaintenanceState(
+        project_id=project_id,
+        chapter_count=len(chapters),
+        missing_memory_chapters=missing_memory_chapters,
+        stale_memory_chapters=stale_memory_chapters,
+        missing_retrieval_chapters=missing_retrieval_chapters,
+        stale_retrieval_chapters=stale_retrieval_chapters,
+        latest_chapter_updated_at=latest_chapter_updated_at,
+        latest_memory_updated_at=latest_memory_updated_at,
+        latest_retrieval_updated_at=latest_retrieval_updated_at,
+        latest_synced_chapter_index=latest_synced_chapter_index,
+    )
+
+
+def _maintenance_diagnostics_payload(state: LongformMaintenanceState, *, limit: int) -> dict[str, Any]:
     stale_total = (
-        len(missing_memory_chapters)
-        + len(stale_memory_chapters)
-        + len(missing_retrieval_chapters)
-        + len(stale_retrieval_chapters)
+        len(state.missing_memory_chapters)
+        + len(state.stale_memory_chapters)
+        + len(state.missing_retrieval_chapters)
+        + len(state.stale_retrieval_chapters)
     )
     status = "stale" if stale_total else "current"
     return {
-        "project_id": project_id,
+        "project_id": state.project_id,
         "status": status,
-        "chapter_count": len(chapters),
-        "stale_memory_count": len(stale_memory_chapters),
-        "missing_memory_count": len(missing_memory_chapters),
-        "stale_retrieval_count": len(stale_retrieval_chapters),
-        "missing_retrieval_count": len(missing_retrieval_chapters),
-        "stale_chapter_indexes": stale_memory_chapters[:limit],
-        "missing_memory_chapter_indexes": missing_memory_chapters[:limit],
-        "stale_retrieval_chapter_indexes": stale_retrieval_chapters[:limit],
-        "missing_retrieval_chapter_indexes": missing_retrieval_chapters[:limit],
-        "latest_chapter_updated_at": latest_chapter_updated_at,
-        "latest_memory_updated_at": latest_memory_updated_at,
-        "latest_retrieval_updated_at": latest_retrieval_updated_at,
-        "latest_synced_chapter_index": latest_synced_chapter_index,
+        "chapter_count": state.chapter_count,
+        "stale_memory_count": len(state.stale_memory_chapters),
+        "missing_memory_count": len(state.missing_memory_chapters),
+        "stale_retrieval_count": len(state.stale_retrieval_chapters),
+        "missing_retrieval_count": len(state.missing_retrieval_chapters),
+        "stale_chapter_indexes": state.stale_memory_chapters[:limit],
+        "missing_memory_chapter_indexes": state.missing_memory_chapters[:limit],
+        "stale_retrieval_chapter_indexes": state.stale_retrieval_chapters[:limit],
+        "missing_retrieval_chapter_indexes": state.missing_retrieval_chapters[:limit],
+        "latest_chapter_updated_at": state.latest_chapter_updated_at,
+        "latest_memory_updated_at": state.latest_memory_updated_at,
+        "latest_retrieval_updated_at": state.latest_retrieval_updated_at,
+        "latest_synced_chapter_index": state.latest_synced_chapter_index,
     }
 
 
@@ -402,6 +466,22 @@ def _latest_longform_retrieval_documents(db: Session, project_id: str) -> dict[s
     for document in rows:
         documents[document.source_ref] = document
     return documents
+
+
+def _chapter_memory_ids(db: Session, project_id: str, chapter_indexes: list[int]) -> list[str]:
+    if not chapter_indexes:
+        return []
+    scope_keys = [f"chapter:{chapter_index}" for chapter_index in chapter_indexes]
+    rows = (
+        db.query(LongformMemory.id)
+        .filter(
+            LongformMemory.project_id == project_id,
+            LongformMemory.memory_type == "chapter",
+            LongformMemory.scope_key.in_(scope_keys),
+        )
+        .all()
+    )
+    return [row[0] for row in rows]
 
 
 def _ordered_counts(counts: Counter) -> dict[str, int]:

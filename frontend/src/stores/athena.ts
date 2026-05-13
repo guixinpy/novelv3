@@ -19,6 +19,7 @@ import type {
   AthenaTimeline,
   ChatHistoryMessage,
   LongformMaintenanceDiagnostics,
+  LongformMaintenanceRepairResult,
   PaginatedProposalBundles,
   ProposalBundleDetail,
   WorldProjection,
@@ -50,6 +51,8 @@ export const useAthenaStore = defineStore('athena', () => {
   const retrievalLastIndexResult = ref<AthenaRetrievalIndexResult | null>(null)
   const retrievalLoading = ref(false)
   const longformMaintenanceDiagnostics = ref<LongformMaintenanceDiagnostics | null>(null)
+  const longformMaintenanceRepairResult = ref<LongformMaintenanceRepairResult | null>(null)
+  const longformMaintenanceRepairing = ref(false)
   const setupImportPreview = ref<AthenaSetupImportPreview | null>(null)
 
   const setup = ref<unknown>(null)
@@ -88,6 +91,8 @@ export const useAthenaStore = defineStore('athena', () => {
     retrievalLastIndexResult.value = null
     retrievalLoading.value = false
     longformMaintenanceDiagnostics.value = null
+    longformMaintenanceRepairResult.value = null
+    longformMaintenanceRepairing.value = false
     setupImportPreview.value = null
     setup.value = null
     lastAnalyzeChapterResult.value = null
@@ -355,6 +360,27 @@ export const useAthenaStore = defineStore('athena', () => {
     )
   }
 
+  async function repairLongformMaintenance(projectId: string) {
+    ensureProject(projectId)
+    const version = requestVersion.value
+    longformMaintenanceRepairing.value = true
+    try {
+      const result = await api.repairAthenaLongformMaintenance(projectId)
+      if (!isActiveProject(projectId) || requestVersion.value !== version) return
+      longformMaintenanceRepairResult.value = result
+      longformMaintenanceDiagnostics.value = result.remaining
+      requestCache.markFresh(cacheKey(projectId, 'longform-maintenance-diagnostics'))
+    } catch (err) {
+      if (isActiveProject(projectId) && requestVersion.value === version) {
+        error.value = toErrorMessage(err)
+      }
+    } finally {
+      if (isActiveProject(projectId) && requestVersion.value === version) {
+        longformMaintenanceRepairing.value = false
+      }
+    }
+  }
+
   async function importSetup(projectId: string) {
     ensureProject(projectId)
     try {
@@ -464,6 +490,8 @@ export const useAthenaStore = defineStore('athena', () => {
     retrievalLastIndexResult,
     retrievalLoading,
     longformMaintenanceDiagnostics,
+    longformMaintenanceRepairResult,
+    longformMaintenanceRepairing,
     setupImportPreview,
     setup,
     lastAnalyzeChapterResult,
@@ -484,6 +512,7 @@ export const useAthenaStore = defineStore('athena', () => {
     loadConsistencyIssues,
     loadOptimization,
     loadLongformMaintenanceDiagnostics,
+    repairLongformMaintenance,
     loadSetupImportPreview,
     importSetup,
     analyzeChapter,

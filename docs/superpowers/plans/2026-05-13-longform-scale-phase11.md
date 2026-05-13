@@ -42,11 +42,11 @@
 - Modify: `backend/app/api/athena_longform.py`
 - Test: `backend/tests/test_longform_scale.py`
 
-- [ ] **Step 1: Write failing backend repair test**
+- [x] **Step 1: Write failing backend repair test**
 
 Add a test that creates three chapters, builds memory and retrieval, edits chapter 2, calls `POST /api/v1/projects/{project_id}/athena/longform/maintenance/repair`, and asserts the response repaired chapter 2 and remaining diagnostics are current.
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 ```powershell
 .\backend\.venv\Scripts\python.exe -m pytest backend\tests\test_longform_scale.py::test_longform_maintenance_repair_refreshes_memory_and_retrieval -v
@@ -54,11 +54,11 @@ Add a test that creates three chapters, builds memory and retrieval, edits chapt
 
 Expected: FAIL because the repair endpoint does not exist.
 
-- [ ] **Step 3: Implement backend repair**
+- [x] **Step 3: Implement backend repair**
 
 Refactor diagnostics into a collector that can return full stale/missing chapter lists. Repair stale or missing chapter memory with `refresh_longform_memory_for_chapter`, sync affected longform-memory retrieval documents, then return fresh diagnostics.
 
-- [ ] **Step 4: Verify GREEN**
+- [x] **Step 4: Verify GREEN**
 
 ```powershell
 .\backend\.venv\Scripts\python.exe -m pytest backend\tests\test_longform_scale.py::test_longform_maintenance_repair_refreshes_memory_and_retrieval -v
@@ -77,11 +77,11 @@ Expected: PASS.
 - Modify: `frontend/src/components/athena/AthenaOverview.test.ts`
 - Modify: `frontend/src/views/AthenaView.vue`
 
-- [ ] **Step 1: Write failing frontend repair tests**
+- [x] **Step 1: Write failing frontend repair tests**
 
 Add store coverage for `repairLongformMaintenance` and component coverage that stale diagnostics show a repair button emitting `repairMaintenance`.
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 ```powershell
 npm --prefix frontend run test:unit -- src/stores/athena.maintenance.test.ts src/components/athena/AthenaOverview.test.ts
@@ -89,11 +89,11 @@ npm --prefix frontend run test:unit -- src/stores/athena.maintenance.test.ts src
 
 Expected: FAIL because the repair action and emit do not exist.
 
-- [ ] **Step 3: Implement frontend repair wiring**
+- [x] **Step 3: Implement frontend repair wiring**
 
 Add API/store types and action, pass repair state to `AthenaOverview`, emit repair requests, and refresh diagnostics from the repair response.
 
-- [ ] **Step 4: Verify GREEN**
+- [x] **Step 4: Verify GREEN**
 
 ```powershell
 npm --prefix frontend run test:unit -- src/stores/athena.maintenance.test.ts src/components/athena/AthenaOverview.test.ts
@@ -103,14 +103,14 @@ Expected: PASS.
 
 ## Task 3: Verification and Commit
 
-- [ ] **Step 1: Run focused tests**
+- [x] **Step 1: Run focused tests**
 
 ```powershell
 .\backend\.venv\Scripts\python.exe -m pytest backend\tests\test_longform_scale.py -v
 npm --prefix frontend run test:unit -- src/stores/athena.maintenance.test.ts src/components/athena/AthenaOverview.test.ts src/views/athenaSectionLoader.test.ts
 ```
 
-- [ ] **Step 2: Run full verification slice**
+- [x] **Step 2: Run full verification slice**
 
 ```powershell
 .\backend\.venv\Scripts\python.exe -m pytest backend\tests -v
@@ -118,7 +118,7 @@ npm --prefix frontend run test:unit
 npm --prefix frontend run build
 ```
 
-- [ ] **Step 3: Hygiene checks**
+- [x] **Step 3: Hygiene checks**
 
 ```powershell
 git diff --check
@@ -128,7 +128,7 @@ git status --short
 
 Expected: diff check passes and exact sensitive-key scan returns no matches.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```powershell
 git add backend/app/core/longform_memory.py backend/app/schemas/longform_memory.py backend/app/api/athena_longform.py backend/tests/test_longform_scale.py frontend/src/api/types.ts frontend/src/api/client.ts frontend/src/stores/athena.ts frontend/src/stores/athena.maintenance.test.ts frontend/src/components/athena/AthenaOverview.vue frontend/src/components/athena/AthenaOverview.test.ts frontend/src/views/AthenaView.vue docs/superpowers/plans/2026-05-13-longform-scale-phase11.md

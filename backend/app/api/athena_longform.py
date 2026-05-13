@@ -6,11 +6,13 @@ from app.core.longform_memory import (
     get_longform_maintenance_diagnostics,
     get_longform_memory_diagnostics,
     rebuild_longform_memory,
+    repair_longform_maintenance,
 )
 from app.db import get_db
 from app.schemas.longform_memory import (
     LongformContextPackage,
     LongformMaintenanceDiagnostics,
+    LongformMaintenanceRepairResult,
     LongformMemoryDiagnostics,
     LongformMemoryRebuildResult,
 )
@@ -45,6 +47,15 @@ def get_athena_longform_maintenance_diagnostics(
     db: Session = Depends(get_db),
 ):
     return get_longform_maintenance_diagnostics(db=db, project_id=project_id, limit=limit)
+
+
+@router.post("/longform/maintenance/repair", response_model=LongformMaintenanceRepairResult)
+def repair_athena_longform_maintenance(
+    project_id: str,
+    limit: int = Query(20, ge=1, le=200),
+    db: Session = Depends(get_db),
+):
+    return repair_longform_maintenance(db=db, project_id=project_id, limit=limit)
 
 
 @router.get("/longform/context/chapters/{chapter_index}", response_model=LongformContextPackage)

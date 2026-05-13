@@ -19,6 +19,7 @@ import type {
   ChatRequest,
   ChatResponse,
   LongformMaintenanceDiagnostics,
+  LongformMaintenanceRepairResult,
   MessageQuery,
   ModelCallTraceDetail,
   ModelCallTraceListParams,
@@ -159,6 +160,8 @@ export const api = {
     request<AthenaRetrievalDiagnostics>(`/projects/${id}/athena/retrieval/diagnostics`),
   getAthenaLongformMaintenanceDiagnostics: (id: string) =>
     request<LongformMaintenanceDiagnostics>(`/projects/${id}/athena/longform/maintenance/diagnostics`),
+  repairAthenaLongformMaintenance: (id: string) =>
+    request<LongformMaintenanceRepairResult>(`/projects/${id}/athena/longform/maintenance/repair`, { method: 'POST' }),
   searchAthenaRetrieval: (id: string, params: { q: string; limit?: number; source_type?: string; chapter_index?: number }) => {
     const query = new URLSearchParams()
     query.set('q', params.q)

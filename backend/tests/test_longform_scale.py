@@ -490,3 +490,50 @@ def test_longform_maintenance_diagnostics_reports_stale_retrieval_after_memory_r
     assert payload["stale_retrieval_count"] == 1
     assert payload["stale_retrieval_chapter_indexes"] == [2]
     assert payload["latest_synced_chapter_index"] == 3
+
+
+def test_longform_maintenance_repair_refreshes_memory_and_retrieval(client, db_session):
+    from app.core.athena_retrieval import reindex_project_retrieval
+    from app.core.longform_memory import rebuild_longform_memory
+
+    project = Project(name="Maintenance Repair")
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    for index in range(1, 4):
+        db_session.add(
+            ChapterContent(
+                project_id=project.id,
+                chapter_index=index,
+                title=f"第{index}章",
+                content=f"第{index}章正文。星环钥匙第一形态。",
+                word_count=1000,
+                status="generated",
+            )
+        )
+    db_session.commit()
+    rebuild_longform_memory(db_session, project.id)
+    reindex_project_retrieval(db_session, project.id)
+    chapter = (
+        db_session.query(ChapterContent)
+        .filter(ChapterContent.project_id == project.id, ChapterContent.chapter_index == 2)
+        .one()
+    )
+    chapter.content = "第2章正文已编辑。星环钥匙最终形态。"
+    chapter.word_count = 1200
+    db_session.commit()
+    before = client.get(f"/api/v1/projects/{project.id}/athena/longform/maintenance/diagnostics").json()
+    assert before["status"] == "stale"
+
+    response = client.post(f"/api/v1/projects/{project.id}/athena/longform/maintenance/repair")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "completed"
+    assert payload["refreshed_chapter_indexes"] == [2]
+    assert "chapter:2" in payload["synced_scope_keys"]
+    assert payload["remaining"]["status"] == "current"
+    assert payload["remaining"]["stale_memory_count"] == 0
+    assert payload["remaining"]["stale_retrieval_count"] == 0
+    after = client.get(f"/api/v1/projects/{project.id}/athena/longform/maintenance/diagnostics").json()
+    assert after["status"] == "current"

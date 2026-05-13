@@ -384,6 +384,10 @@ async function reindexRetrieval() {
   await athena.reindexRetrieval(pid.value)
 }
 
+async function repairLongformMaintenance() {
+  await athena.repairLongformMaintenance(pid.value)
+}
+
 async function searchRetrieval(query: string, params?: { source_type?: string }) {
   await athena.searchRetrieval(pid.value, query, params)
 }
@@ -456,9 +460,11 @@ function closeChat() {
             :dashboard="worldModel.dashboard"
             :setup-preview="athena.setupImportPreview"
             :maintenance-diagnostics="athena.longformMaintenanceDiagnostics"
+            :maintenance-repairing="athena.longformMaintenanceRepairing"
             :loading="worldModel.isLaneLoading('dashboard')"
             @navigate="navigateSection"
             @run-action="runOverviewAction"
+            @repair-maintenance="repairLongformMaintenance"
           />
         </template>
 

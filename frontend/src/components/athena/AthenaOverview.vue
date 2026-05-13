@@ -8,12 +8,14 @@ const props = defineProps<{
   dashboard: WorldModelDashboard | null
   setupPreview?: AthenaSetupImportPreview | null
   maintenanceDiagnostics?: LongformMaintenanceDiagnostics | null
+  maintenanceRepairing?: boolean
   loading?: boolean
 }>()
 
 const emit = defineEmits<{
   navigate: [section: AthenaPrimarySection]
   runAction: [action: string]
+  repairMaintenance: []
 }>()
 
 const metrics = computed(() => props.dashboard?.metrics ?? {
@@ -144,9 +146,20 @@ function goNext() {
       <section class="athena-overview__maintenance" data-testid="athena-overview-maintenance">
         <header>
           <h3>长篇维护</h3>
-          <strong :class="{ 'athena-overview__maintenance-status--stale': maintenanceDiagnostics?.status === 'stale' }">
-            {{ maintenanceStatusLabel }}
-          </strong>
+          <div class="athena-overview__maintenance-actions">
+            <strong :class="{ 'athena-overview__maintenance-status--stale': maintenanceDiagnostics?.status === 'stale' }">
+              {{ maintenanceStatusLabel }}
+            </strong>
+            <BaseButton
+              v-if="maintenanceDiagnostics?.status === 'stale'"
+              data-testid="athena-overview-repair-maintenance"
+              size="sm"
+              :loading="maintenanceRepairing"
+              @click="emit('repairMaintenance')"
+            >
+              修复维护状态
+            </BaseButton>
+          </div>
         </header>
         <div class="athena-overview__maintenance-items">
           <span v-for="item in maintenanceItems" :key="item.key">{{ item.label }} {{ item.value }}</span>
@@ -276,6 +289,12 @@ function goNext() {
 
 .athena-overview__maintenance header .athena-overview__maintenance-status--stale {
   color: var(--color-warning, #a15c00);
+}
+
+.athena-overview__maintenance-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 .athena-overview__preview-items {

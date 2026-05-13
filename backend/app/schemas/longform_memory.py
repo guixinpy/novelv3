@@ -39,6 +39,16 @@ class LongformMaintenanceDiagnostics(BaseModel):
     latest_synced_chapter_index: int | None = None
 
 
+class LongformMaintenanceRepairResult(BaseModel):
+    project_id: str
+    status: str
+    repaired_memory_count: int
+    repaired_retrieval_count: int
+    refreshed_chapter_indexes: list[int] = Field(default_factory=list)
+    synced_scope_keys: list[str] = Field(default_factory=list)
+    remaining: LongformMaintenanceDiagnostics
+
+
 class LongformContextSection(BaseModel):
     key: str
     title: str

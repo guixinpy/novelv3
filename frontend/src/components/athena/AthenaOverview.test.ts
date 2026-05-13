@@ -242,4 +242,48 @@ describe('AthenaOverview', () => {
     expect(wrapper.text()).toContain('过期检索章节：512、780')
     expect(wrapper.text()).toContain('缺失检索章节：900')
   })
+
+  it('emits repair request from stale longform maintenance diagnostics', async () => {
+    const wrapper = mount(AthenaOverview, {
+      props: {
+        dashboard: {
+          project_profile: null,
+          metrics: {
+            entity_count: 0,
+            fact_count: 0,
+            presence_count: 0,
+            event_count: 0,
+            pending_bundle_count: 0,
+            pending_item_count: 0,
+          },
+          next_action: {
+            action: 'inspect_projection',
+            label: '检查真相投影',
+          },
+        },
+        maintenanceDiagnostics: {
+          project_id: 'project-1',
+          status: 'stale',
+          chapter_count: 1000,
+          stale_memory_count: 1,
+          missing_memory_count: 0,
+          stale_retrieval_count: 2,
+          missing_retrieval_count: 0,
+          stale_chapter_indexes: [512],
+          missing_memory_chapter_indexes: [],
+          stale_retrieval_chapter_indexes: [512, 780],
+          missing_retrieval_chapter_indexes: [],
+          latest_chapter_updated_at: '2026-05-13T00:00:00Z',
+          latest_memory_updated_at: '2026-05-13T00:00:01Z',
+          latest_retrieval_updated_at: '2026-05-12T23:59:59Z',
+          latest_synced_chapter_index: 1000,
+        },
+        loading: false,
+      },
+    })
+
+    await wrapper.get('[data-testid="athena-overview-repair-maintenance"]').trigger('click')
+
+    expect(wrapper.emitted('repairMaintenance')).toEqual([[]])
+  })
 })
