@@ -1,5 +1,7 @@
-from app.models import ChapterContent
 from sqlalchemy import event
+from sqlalchemy.orm import Query
+
+from app.models import ChapterContent
 
 
 def test_export_markdown(client):
@@ -74,6 +76,39 @@ def test_export_txt(client):
     r2 = client.post(f"/api/v1/projects/{pid}/export", json={"format": "txt"})
     assert r2.status_code == 200
     assert "Test Novel" in r2.text
+
+
+def test_export_streams_chapter_rows_without_query_all(client, db_session, monkeypatch):
+    r = client.post("/api/v1/projects", json={"name": "Streaming Export"})
+    pid = r.json()["id"]
+    db_session.add_all(
+        [
+            ChapterContent(
+                project_id=pid,
+                chapter_index=index,
+                title=f"第{index}章",
+                content=f"第{index}章正文",
+                word_count=1000,
+                status="generated",
+            )
+            for index in range(1, 4)
+        ]
+    )
+    db_session.commit()
+    original_all = Query.all
+
+    def reject_chapter_content_all(query):
+        if any(description.get("entity") is ChapterContent for description in query.column_descriptions):
+            raise AssertionError("chapter export must stream chapter rows instead of loading them all")
+        return original_all(query)
+
+    monkeypatch.setattr(Query, "all", reject_chapter_content_all)
+
+    response = client.post(f"/api/v1/projects/{pid}/export", json={"format": "markdown"})
+
+    assert response.status_code == 200
+    assert "第1章正文" in response.text
+    assert "第3章正文" in response.text
 
 
 def test_list_chapters_empty(client):

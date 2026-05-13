@@ -1,7 +1,8 @@
 import json
+from collections.abc import Iterator
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -13,6 +14,7 @@ router = APIRouter(prefix="/api/v1/projects/{project_id}", tags=["export"])
 
 CHAPTER_SUMMARY_DEFAULT_LIMIT = 200
 CHAPTER_SUMMARY_MAX_LIMIT = 500
+EXPORT_CHAPTER_BATCH_SIZE = 50
 
 
 class ExportRequest(BaseModel):
@@ -28,28 +30,63 @@ def export_project(project_id: str, payload: ExportRequest, db: Session = Depend
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    lines = [f"# {project.name}\n"]
+    media = "text/markdown" if payload.format == "markdown" else "text/plain"
+    ext = "md" if payload.format == "markdown" else "txt"
+    from urllib.parse import quote
+    filename_encoded = quote(f"{project.name}.{ext}")
+
+    return StreamingResponse(
+        _iter_export_lines(db, project_id=project_id, project_name=project.name, payload=payload),
+        media_type=media,
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename_encoded}"},
+    )
+
+
+def _iter_export_lines(
+    db: Session,
+    *,
+    project_id: str,
+    project_name: str,
+    payload: ExportRequest,
+) -> Iterator[str]:
+    yield from _emit_export_line(f"# {project_name}\n", payload.format)
 
     if payload.include_setup:
         setup = db.query(Setup).filter(Setup.project_id == project_id).first()
         if setup:
-            lines.append("## 设定\n")
+            yield from _emit_export_line("## 设定\n", payload.format)
             if setup.characters:
-                lines.append("### 角色\n")
+                yield from _emit_export_line("### 角色\n", payload.format)
                 for c in setup.characters:
-                    lines.append(f"- **{c.get('name', '未命名')}**：{c.get('description', '')}\n")
+                    yield from _emit_export_line(
+                        f"- **{c.get('name', '未命名')}**：{c.get('description', '')}\n",
+                        payload.format,
+                    )
             if setup.world_building:
-                lines.append(f"### 世界观\n\n{json.dumps(setup.world_building, ensure_ascii=False, indent=2)}\n")
+                yield from _emit_export_line(
+                    f"### 世界观\n\n{json.dumps(setup.world_building, ensure_ascii=False, indent=2)}\n",
+                    payload.format,
+                )
 
     if payload.include_outline:
         outline = db.query(Outline).filter(Outline.project_id == project_id).first()
         if outline and outline.chapters:
-            lines.append("## 大纲\n")
+            yield from _emit_export_line("## 大纲\n", payload.format)
             for ch in outline.chapters:
                 ch_title = ch.get('title') or f"第{ch.get('chapter_index')}章"
-                lines.append(f"### {ch_title}\n")
-                lines.append(f"{ch.get('summary', '')}\n")
+                yield from _emit_export_line(f"### {ch_title}\n", payload.format)
+                yield from _emit_export_line(f"{ch.get('summary', '')}\n", payload.format)
 
+    has_chapters = False
+    for ch in _iter_export_chapters(db, project_id=project_id, payload=payload):
+        if not has_chapters:
+            yield from _emit_export_line("## 正文\n", payload.format)
+            has_chapters = True
+        yield from _emit_export_line(f"### {ch.title or f'第{ch.chapter_index}章'}\n", payload.format)
+        yield from _emit_export_line(f"{ch.content or ''}\n", payload.format)
+
+
+def _iter_export_chapters(db: Session, *, project_id: str, payload: ExportRequest):
     chapters_query = db.query(ChapterContent).filter(ChapterContent.project_id == project_id)
     if payload.chapter_range and len(payload.chapter_range) >= 2:
         start, end = payload.chapter_range[:2]
@@ -57,29 +94,26 @@ def export_project(project_id: str, payload: ExportRequest, db: Session = Depend
             ChapterContent.chapter_index >= start,
             ChapterContent.chapter_index <= end,
         )
-    chapters = chapters_query.order_by(ChapterContent.chapter_index).all()
-
-    if chapters:
-        lines.append("## 正文\n")
-        for ch in chapters:
-            lines.append(f"### {ch.title or f'第{ch.chapter_index}章'}\n")
-            lines.append(f"{ch.content or ''}\n")
-
-    text = "\n".join(lines)
-
-    if payload.format == "txt":
-        text = text.replace("# ", "").replace("## ", "").replace("### ", "").replace("**", "").replace("- ", "")
-
-    media = "text/markdown" if payload.format == "markdown" else "text/plain"
-    ext = "md" if payload.format == "markdown" else "txt"
-    from urllib.parse import quote
-    filename_encoded = quote(f"{project.name}.{ext}")
-
-    return PlainTextResponse(
-        content=text,
-        media_type=media,
-        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename_encoded}"},
+    return (
+        chapters_query.with_entities(
+            ChapterContent.chapter_index,
+            ChapterContent.title,
+            ChapterContent.content,
+        )
+        .order_by(ChapterContent.chapter_index)
+        .yield_per(EXPORT_CHAPTER_BATCH_SIZE)
     )
+
+
+def _emit_export_line(line: str, export_format: str) -> Iterator[str]:
+    yield _format_export_line(line, export_format)
+    yield "\n"
+
+
+def _format_export_line(line: str, export_format: str) -> str:
+    if export_format != "txt":
+        return line
+    return line.replace("# ", "").replace("## ", "").replace("### ", "").replace("**", "").replace("- ", "")
 
 
 @router.get("/chapters")
