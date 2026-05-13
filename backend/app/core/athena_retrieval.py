@@ -146,13 +146,12 @@ def sync_longform_memory_retrieval_documents(
         )
         .all()
     )
-    for memory in memories:
-        _delete_document_by_source_ref(
-            db,
-            project_id=project_id,
-            source_type="longform_memory",
-            source_ref=f"memory:{memory.scope_key}",
-        )
+    _delete_documents_by_source_refs(
+        db,
+        project_id=project_id,
+        source_type="longform_memory",
+        source_refs=[f"memory:{memory.scope_key}" for memory in memories],
+    )
     indexed = _index_sources(db, project_id, [_longform_memory_source(memory) for memory in memories])
     db.commit()
     return {
@@ -801,11 +800,34 @@ def _refresh_retrieval_document_metadata(
 def _delete_documents_by_ids(db: Session, document_ids: list[str]) -> None:
     if not document_ids:
         return
-    chunk_ids = select(RetrievalChunk.id).where(RetrievalChunk.document_id.in_(document_ids))
+    document_id_select = select(RetrievalDocument.id).where(RetrievalDocument.id.in_(document_ids))
+    _delete_documents_matching(db, document_id_select)
+
+
+def _delete_documents_by_source_refs(
+    db: Session,
+    *,
+    project_id: str,
+    source_type: str,
+    source_refs: list[str],
+) -> None:
+    unique_refs = sorted(set(source_refs))
+    if not unique_refs:
+        return
+    document_id_select = select(RetrievalDocument.id).where(
+        RetrievalDocument.project_id == project_id,
+        RetrievalDocument.source_type == source_type,
+        RetrievalDocument.source_ref.in_(unique_refs),
+    )
+    _delete_documents_matching(db, document_id_select)
+
+
+def _delete_documents_matching(db: Session, document_id_select) -> None:
+    chunk_ids = select(RetrievalChunk.id).where(RetrievalChunk.document_id.in_(document_id_select))
     db.query(RetrievalTerm).filter(RetrievalTerm.chunk_id.in_(chunk_ids)).delete(synchronize_session=False)
     db.query(RetrievalEmbedding).filter(RetrievalEmbedding.chunk_id.in_(chunk_ids)).delete(synchronize_session=False)
-    db.query(RetrievalChunk).filter(RetrievalChunk.document_id.in_(document_ids)).delete(synchronize_session=False)
-    db.query(RetrievalDocument).filter(RetrievalDocument.id.in_(document_ids)).delete(synchronize_session=False)
+    db.query(RetrievalChunk).filter(RetrievalChunk.document_id.in_(document_id_select)).delete(synchronize_session=False)
+    db.query(RetrievalDocument).filter(RetrievalDocument.id.in_(document_id_select)).delete(synchronize_session=False)
     db.flush()
 
 
@@ -816,21 +838,6 @@ def _delete_document(db: Session, *, project_id: str, source_type: str, source_i
             RetrievalDocument.project_id == project_id,
             RetrievalDocument.source_type == source_type,
             RetrievalDocument.source_id == source_id,
-        )
-        .first()
-    )
-    if document is None:
-        return
-    _delete_retrieval_document(db, document)
-
-
-def _delete_document_by_source_ref(db: Session, *, project_id: str, source_type: str, source_ref: str) -> None:
-    document = (
-        db.query(RetrievalDocument)
-        .filter(
-            RetrievalDocument.project_id == project_id,
-            RetrievalDocument.source_type == source_type,
-            RetrievalDocument.source_ref == source_ref,
         )
         .first()
     )

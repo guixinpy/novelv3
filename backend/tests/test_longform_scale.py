@@ -589,6 +589,58 @@ def test_sync_changed_longform_memory_retrieval_documents_preserves_unrelated_do
     )
 
 
+def test_sync_longform_memory_retrieval_documents_deletes_old_docs_in_bulk(db_session):
+    from app.core.athena_retrieval import reindex_project_retrieval, sync_longform_memory_retrieval_documents
+    from app.core.longform_memory import rebuild_longform_memory
+
+    project = Project(name="Bulk Memory Retrieval Sync")
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    for index in range(1, 31):
+        db_session.add(
+            ChapterContent(
+                project_id=project.id,
+                chapter_index=index,
+                title=f"第{index}章",
+                content=f"第{index}章正文。星环钥匙批量同步。",
+                word_count=1000,
+                status="generated",
+            )
+        )
+    db_session.commit()
+    rebuild_longform_memory(db_session, project.id)
+    reindex_project_retrieval(db_session, project.id)
+    memory_ids = [
+        row[0]
+        for row in (
+            db_session.query(LongformMemory.id)
+            .filter(LongformMemory.project_id == project.id)
+            .order_by(LongformMemory.scope_key.asc())
+            .limit(12)
+            .all()
+        )
+    ]
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        result = sync_longform_memory_retrieval_documents(db_session, project.id, memory_ids)
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert len(result["synced_scope_keys"]) == len(memory_ids)
+    per_ref_selects = [
+        statement
+        for statement in statements
+        if "from retrieval_documents" in statement and "retrieval_documents.source_ref = ?" in statement
+    ]
+    assert per_ref_selects == []
+
+
 def _longform_memory_doc_id(db_session, project_id: str, source_ref: str) -> str:
     return (
         db_session.query(RetrievalDocument.id)
