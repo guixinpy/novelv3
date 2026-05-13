@@ -16,6 +16,7 @@ vi.mock('../api/client', () => ({
     getAthenaMessages: vi.fn(),
     getAthenaTimeline: vi.fn(),
     getAthenaEvolutionPlan: vi.fn(),
+    getConsistencyIssues: vi.fn(),
   },
 }))
 
@@ -80,6 +81,17 @@ const TimelineViewStub = defineComponent({
   template: '<section data-testid="timeline-view-stub">{{ events.map((event) => event.description).join(" | ") }}</section>',
 })
 
+const ConsistencyListStub = defineComponent({
+  name: 'ConsistencyList',
+  props: {
+    latestChapterIndex: {
+      type: Number,
+      default: null,
+    },
+  },
+  template: '<section data-testid="consistency-latest">{{ latestChapterIndex }}</section>',
+})
+
 async function mountAthenaView(initialPath = '/projects/project-1/athena/narrative?view=graph') {
   const router = createRouter({
     history: createMemoryHistory(),
@@ -104,6 +116,7 @@ async function mountAthenaView(initialPath = '/projects/project-1/athena/narrati
         TimelineView: TimelineViewStub,
         NarrativeWorkbench: true,
         NarrativeAtlasView: NarrativeAtlasViewStub,
+        ConsistencyList: ConsistencyListStub,
         AthenaChatPanel: true,
       },
     },
@@ -136,6 +149,7 @@ describe('AthenaView narrative atlas integration', () => {
     vi.mocked(api.getAthenaMessages).mockResolvedValue([])
     vi.mocked(api.getAthenaTimeline).mockResolvedValue(timeline)
     vi.mocked(api.getAthenaEvolutionPlan).mockResolvedValue(evolutionPlan)
+    vi.mocked(api.getConsistencyIssues).mockResolvedValue([])
   })
 
   it('renders the narrative graph tab and atlas view without passing graph to the workbench', async () => {
@@ -177,5 +191,27 @@ describe('AthenaView narrative atlas integration', () => {
         event_type: 'chapter_plan',
       },
     ])
+  })
+
+  it('uses chapter list metadata for latest chapter when summaries are paginated', async () => {
+    const firstPage = Array.from({ length: 200 }, (_, index) => ({
+      id: `chapter-${index + 1}`,
+      chapter_index: index + 1,
+      title: `第${index + 1}章`,
+      word_count: 1000,
+      status: 'generated',
+    }))
+    vi.mocked(api.listChapters).mockResolvedValue({
+      chapters: firstPage,
+      total: 250,
+      offset: 0,
+      limit: 200,
+      has_more: true,
+      latest_chapter_index: 250,
+    })
+
+    const { wrapper } = await mountAthenaView('/projects/project-1/athena/review?view=conflicts')
+
+    expect(wrapper.get('[data-testid="consistency-latest"]').text()).toBe('250')
   })
 })

@@ -3,6 +3,7 @@ import json
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -94,6 +95,7 @@ def list_chapters(
         ChapterContent.project_id == project_id,
     )
     total = query.count()
+    latest_chapter_index = query.with_entities(func.max(ChapterContent.chapter_index)).scalar()
     chapters = query.order_by(ChapterContent.chapter_index).offset(offset).limit(limit).all()
 
     return {
@@ -101,6 +103,7 @@ def list_chapters(
         "offset": offset,
         "limit": limit,
         "has_more": offset + len(chapters) < total,
+        "latest_chapter_index": latest_chapter_index,
         "chapters": [
             {
                 "id": ch.id,

@@ -95,3 +95,4 @@ def test_workspace_bootstrap_bounds_chapter_summaries_for_large_projects(client,
     assert payload["chapters_offset"] == 0
     assert payload["chapters_limit"] == 200
     assert payload["chapters_has_more"] is True
+    assert payload["chapters_latest_index"] == 250

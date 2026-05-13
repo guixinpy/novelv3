@@ -1,3 +1,4 @@
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models import ChapterContent, Outline, Project, Setup, Storyline, Version
@@ -63,6 +64,7 @@ class WorkspaceBootstrapService:
 
         chapters_query = self.db.query(ChapterContent).filter(ChapterContent.project_id == project_id)
         chapters_total = chapters_query.count()
+        chapters_latest_index = chapters_query.with_entities(func.max(ChapterContent.chapter_index)).scalar()
         chapters = (
             chapters_query
             .order_by(ChapterContent.chapter_index)
@@ -100,6 +102,7 @@ class WorkspaceBootstrapService:
             "chapters_offset": 0,
             "chapters_limit": CHAPTER_BOOTSTRAP_LIMIT,
             "chapters_has_more": len(chapters) < chapters_total,
+            "chapters_latest_index": chapters_latest_index,
             "versions": versions,
             "dialogs": {
                 "hermes": {"messages": self.messages.list_messages(project_id, dialog_type="hermes", limit=80)},

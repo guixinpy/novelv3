@@ -82,6 +82,7 @@ export interface ChapterListResponse {
   offset?: number
   limit?: number
   has_more?: boolean
+  latest_chapter_index?: number | null
 }
 
 export interface VersionSummary {
@@ -109,6 +110,7 @@ export interface WorkspaceBootstrap {
   chapters_offset?: number
   chapters_limit?: number
   chapters_has_more?: boolean
+  chapters_latest_index?: number | null
   versions: VersionSummary[]
   dialogs: {
     hermes?: DialogBootstrap

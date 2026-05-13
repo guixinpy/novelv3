@@ -79,6 +79,7 @@ def test_list_chapters_defaults_to_bounded_page_with_total(client, db_session):
     assert payload["offset"] == 0
     assert payload["limit"] == 200
     assert payload["has_more"] is True
+    assert payload["latest_chapter_index"] == 250
 
 
 def test_list_chapters_returns_explicit_page(client, db_session):

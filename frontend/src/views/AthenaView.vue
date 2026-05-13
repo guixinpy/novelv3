@@ -102,12 +102,13 @@ const activeNotice = computed(() => {
   return `第${result.chapter_index}章分析完成，未发现新的候选事实`
 })
 const canImportSetup = computed(() => athena.ontology?.profile_version === null && Boolean(athena.ontology?.setup_summary))
-const latestChapterIndex = computed(() => {
+const latestLoadedChapterIndex = computed(() => {
   const indexes = (project.chapters || [])
     .map((chapter) => Number(chapter.chapter_index))
     .filter((index: number) => Number.isFinite(index))
   return indexes.length ? Math.max(...indexes) : null
 })
+const latestChapterIndex = computed(() => project.chaptersLatestIndex ?? latestLoadedChapterIndex.value)
 const catalogPendingProposalItems = computed<ProposalItem[]>(() => {
   // Catalog hides pending counts unless a complete proposal item source is supplied.
   return []

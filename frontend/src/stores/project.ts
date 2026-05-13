@@ -36,6 +36,7 @@ export const useProjectStore = defineStore('project', () => {
   const chaptersOffset = ref(0)
   const chaptersLimit = ref(0)
   const chaptersHasMore = ref(false)
+  const chaptersLatestIndex = ref<number | null>(null)
   const versions = ref<any[]>([])
   const preferences = ref<any>(null)
   const versionsNodeType = ref<string | undefined>(undefined)
@@ -90,6 +91,19 @@ export const useProjectStore = defineStore('project', () => {
     return `project:${projectId}:chapters:${offset}:${limit ?? 'default'}`
   }
 
+  function maxLoadedChapterIndex() {
+    const indexes = chapters.value
+      .map((chapter) => Number(chapter.chapter_index))
+      .filter((index) => Number.isFinite(index))
+    return indexes.length ? Math.max(...indexes) : null
+  }
+
+  function resolveLatestChapterIndex(value: number | null | undefined) {
+    if (value === null || value === undefined) return maxLoadedChapterIndex()
+    const index = Number(value)
+    return Number.isFinite(index) ? index : maxLoadedChapterIndex()
+  }
+
   async function loadProjects() {
     projects.value = await api.listProjects()
   }
@@ -110,6 +124,7 @@ export const useProjectStore = defineStore('project', () => {
     chaptersOffset.value = bootstrap.chapters_offset ?? 0
     chaptersLimit.value = bootstrap.chapters_limit ?? chapters.value.length
     chaptersHasMore.value = bootstrap.chapters_has_more ?? false
+    chaptersLatestIndex.value = resolveLatestChapterIndex(bootstrap.chapters_latest_index)
     versions.value = bootstrap.versions || []
     versionsNodeType.value = undefined
     requestCache.markFresh(`project:${id}:project`)
@@ -146,6 +161,7 @@ export const useProjectStore = defineStore('project', () => {
     chaptersOffset.value = 0
     chaptersLimit.value = 0
     chaptersHasMore.value = false
+    chaptersLatestIndex.value = null
     versions.value = []
     preferences.value = null
     versionsNodeType.value = undefined
@@ -251,6 +267,7 @@ export const useProjectStore = defineStore('project', () => {
     chaptersOffset.value = res.offset ?? offset
     chaptersLimit.value = res.limit ?? chapters.value.length
     chaptersHasMore.value = res.has_more ?? false
+    chaptersLatestIndex.value = resolveLatestChapterIndex(res.latest_chapter_index)
   }
 
   async function loadMoreChapters(id: string) {
@@ -267,6 +284,7 @@ export const useProjectStore = defineStore('project', () => {
     chaptersOffset.value = res.offset ?? offset
     chaptersLimit.value = res.limit ?? limit
     chaptersHasMore.value = res.has_more ?? false
+    chaptersLatestIndex.value = resolveLatestChapterIndex(res.latest_chapter_index)
   }
 
   async function loadVersions(id: string, nodeType?: string) {
@@ -370,7 +388,7 @@ export const useProjectStore = defineStore('project', () => {
 
   return {
     projects, currentProject, setup, chapter, storyline, outline, topology,
-    chapters, chaptersTotal, chaptersOffset, chaptersLimit, chaptersHasMore,
+    chapters, chaptersTotal, chaptersOffset, chaptersLimit, chaptersHasMore, chaptersLatestIndex,
     versions, preferences, versionsNodeType,
     resetProjectScopedState,
     applyWorkspaceBootstrap,

@@ -73,6 +73,7 @@ describe('project workspace state', () => {
     expect(store.chaptersOffset).toBe(0)
     expect(store.chaptersLimit).toBe(0)
     expect(store.chaptersHasMore).toBe(false)
+    expect(store.chaptersLatestIndex).toBe(null)
     expect(store.versions).toEqual([])
     expect(store.preferences).toBe(null)
     expect(store.versionsNodeType).toBe(undefined)
@@ -216,6 +217,7 @@ describe('project workspace state', () => {
       offset: 0,
       limit: 200,
       has_more: true,
+      latest_chapter_index: 250,
     })
 
     await store.loadChapters('A', true)
@@ -226,6 +228,7 @@ describe('project workspace state', () => {
     expect(store.chaptersOffset).toBe(0)
     expect(store.chaptersLimit).toBe(200)
     expect(store.chaptersHasMore).toBe(true)
+    expect(store.chaptersLatestIndex).toBe(250)
   })
 
   it('loadMoreChapters() 会从已加载数量继续追加下一页章节', async () => {
@@ -262,6 +265,7 @@ describe('project workspace state', () => {
       offset: 200,
       limit: 200,
       has_more: false,
+      latest_chapter_index: 250,
     })
 
     await store.loadMoreChapters('A')
@@ -274,6 +278,7 @@ describe('project workspace state', () => {
     expect(store.chaptersOffset).toBe(200)
     expect(store.chaptersLimit).toBe(200)
     expect(store.chaptersHasMore).toBe(false)
+    expect(store.chaptersLatestIndex).toBe(250)
   })
 
   it('refreshTargets(content) 会强制刷新章节，避免任务完成后沿用旧列表', async () => {
@@ -311,6 +316,7 @@ describe('project workspace state', () => {
       chapters_offset: 0,
       chapters_limit: 200,
       chapters_has_more: true,
+      chapters_latest_index: 250,
       versions: [{ id: 'version-1', node_type: 'chapter', node_id: 'chapter-1', version_number: 1 }],
       dialogs: { hermes: { messages: [] }, athena: { messages: [] } },
     } as any)
@@ -336,6 +342,7 @@ describe('project workspace state', () => {
     expect(store.chaptersTotal).toBe(250)
     expect(store.chaptersLimit).toBe(200)
     expect(store.chaptersHasMore).toBe(true)
+    expect(store.chaptersLatestIndex).toBe(250)
     expect(store.versions).toEqual([{ id: 'version-1', node_type: 'chapter', node_id: 'chapter-1', version_number: 1 }])
   })
 
