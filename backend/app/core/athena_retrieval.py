@@ -690,11 +690,8 @@ def _chunk_text(text: str) -> list[dict[str, Any]]:
 
 
 def _delete_project_index(db: Session, project_id: str) -> None:
-    chunk_ids = [row[0] for row in db.query(RetrievalChunk.id).filter(RetrievalChunk.project_id == project_id).all()]
-    if chunk_ids:
-        db.query(RetrievalTerm).filter(RetrievalTerm.chunk_id.in_(chunk_ids)).delete(synchronize_session=False)
-        db.query(RetrievalEmbedding).filter(RetrievalEmbedding.chunk_id.in_(chunk_ids)).delete(synchronize_session=False)
     db.query(RetrievalTerm).filter(RetrievalTerm.project_id == project_id).delete(synchronize_session=False)
+    db.query(RetrievalEmbedding).filter(RetrievalEmbedding.project_id == project_id).delete(synchronize_session=False)
     db.query(RetrievalChunk).filter(RetrievalChunk.project_id == project_id).delete(synchronize_session=False)
     db.query(RetrievalDocument).filter(RetrievalDocument.project_id == project_id).delete(synchronize_session=False)
     db.flush()

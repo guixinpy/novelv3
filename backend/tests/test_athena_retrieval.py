@@ -245,6 +245,44 @@ def test_reindex_chapter_source_query_projects_only_index_fields(db_session):
         assert f"chapter_contents.{column}" not in select_clause
 
 
+def test_reindex_cleanup_deletes_by_project_without_loading_chunk_ids(db_session):
+    project = Project(name="Bulk Delete Retrieval Cleanup")
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    for index in range(1, 11):
+        db_session.add(
+            ChapterContent(
+                project_id=project.id,
+                chapter_index=index,
+                title=f"第{index}章",
+                content="旧索引清理压力测试正文。" * 40,
+                word_count=1000,
+                status="generated",
+            )
+        )
+    db_session.commit()
+    first_result = reindex_project_retrieval(db_session, project.id)
+    assert first_result["indexed"]["documents"] == 10
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(statement.lower())
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        second_result = reindex_project_retrieval(db_session, project.id)
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert second_result["indexed"]["documents"] == 10
+    chunk_id_selects = [
+        statement for statement in statements
+        if "select retrieval_chunks.id" in statement and "from retrieval_chunks" in statement
+    ]
+    assert not chunk_id_selects
+
+
 def test_reindex_builds_indexed_lexical_terms_for_local_search(client, db_session):
     project = _seed_retrieval_project(db_session)
     client.post(f"/api/v1/projects/{project.id}/athena/ontology/import-setup")
