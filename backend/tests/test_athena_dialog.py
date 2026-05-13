@@ -675,6 +675,47 @@ def test_athena_chat_payload_includes_manuscript_progress_context(db_session):
     assert manuscript_block["sources"][0]["source_type"] == "ChapterContent"
 
 
+def test_athena_chat_payload_bounds_manuscript_progress_for_long_projects(db_session):
+    project, _ = _seed_project(db_session, with_profile=True)
+    project.target_chapter_count = 300
+    project.current_word_count = 750000
+    project.current_phase = "content"
+    dialog = Dialog(project_id=project.id, dialog_type="athena")
+    db_session.add(dialog)
+    for index in range(1, 251):
+        db_session.add(
+            ChapterContent(
+                project_id=project.id,
+                chapter_index=index,
+                title=f"第{index}章标题",
+                content=f"第{index}章正文内容。" * 20,
+                word_count=3000,
+                status="generated",
+            )
+        )
+    db_session.commit()
+
+    payload = dialogs._build_chat_call_payload(
+        db_session,
+        dialog.id,
+        project,
+        dialogs._build_diagnosis(db_session, project.id),
+        dialog_type="athena",
+    )
+
+    manuscript_block = next(
+        block for block in payload["context_blocks"]
+        if block["kind"] == "manuscript_summary"
+    )
+    content = manuscript_block["content"]
+    assert "已生成章节：250 / 目标 300" in content
+    assert "当前总字数：750000" in content
+    assert "第250章《第250章标题》" in content
+    assert "中间章节已折叠" in content
+    assert "第120章《第120章标题》" not in content
+    assert len(manuscript_block["sources"]) <= 12
+
+
 def test_athena_chat_payload_includes_context_boundary_for_global_answers(db_session):
     project, profile_version = _seed_project(db_session, with_profile=True)
     project.target_chapter_count = 20

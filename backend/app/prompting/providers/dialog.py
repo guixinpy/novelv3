@@ -29,6 +29,9 @@ from app.prompting.assembler import PromptAssembler
 from app.prompting.tracing import build_prompt_trace_metadata
 
 CHAT_HISTORY_LIMIT = 8
+MANUSCRIPT_FULL_LIST_LIMIT = 40
+MANUSCRIPT_EDGE_CHAPTER_COUNT = 5
+MANUSCRIPT_RECENT_EXCERPT_COUNT = 3
 PHASE_LABELS = {
     "setup": "设定阶段",
     "storyline": "故事线阶段",
@@ -124,7 +127,13 @@ def build_athena_prompt_variables(db: Session, project: Project, world_context: 
 
 def build_athena_manuscript_context_block(db: Session, project: Project) -> dict[str, Any] | None:
     chapters = (
-        db.query(ChapterContent)
+        db.query(
+            ChapterContent.id,
+            ChapterContent.chapter_index,
+            ChapterContent.title,
+            ChapterContent.word_count,
+            ChapterContent.status,
+        )
         .filter(ChapterContent.project_id == project.id, ChapterContent.content != "")
         .order_by(ChapterContent.chapter_index.asc())
         .all()
@@ -132,19 +141,24 @@ def build_athena_manuscript_context_block(db: Session, project: Project) -> dict
     if not chapters:
         return None
 
-    total_words = project.current_word_count or sum(int(chapter.word_count or 0) for chapter in chapters)
+    total_words = project.current_word_count or sum(int(_chapter_summary_value(chapter, "word_count") or 0) for chapter in chapters)
     target_chapters = project.target_chapter_count or len(chapters)
     lines = [
         f"已生成章节：{len(chapters)} / 目标 {target_chapters}",
         f"当前总字数：{total_words}",
-        f"章节范围：第{chapters[0].chapter_index}章 至 第{chapters[-1].chapter_index}章",
-        "章节清单：",
+        f"章节范围：第{_chapter_summary_value(chapters[0], 'chapter_index')}章 至 第{_chapter_summary_value(chapters[-1], 'chapter_index')}章",
     ]
-    for chapter in chapters:
-        title = chapter.title or "未命名章节"
-        lines.append(f"- 第{chapter.chapter_index}章《{title}》：{chapter.word_count or 0}字，{chapter.status or 'unknown'}")
+    listed_chapters = _bounded_manuscript_chapter_list(chapters)
+    lines.extend(listed_chapters["lines"])
 
-    recent = chapters[-3:]
+    recent = (
+        db.query(ChapterContent)
+        .filter(ChapterContent.project_id == project.id, ChapterContent.content != "")
+        .order_by(ChapterContent.chapter_index.desc())
+        .limit(MANUSCRIPT_RECENT_EXCERPT_COUNT)
+        .all()
+    )
+    recent = list(reversed(recent))
     if recent:
         lines.append("最近章节摘录：")
         for chapter in recent:
@@ -152,6 +166,7 @@ def build_athena_manuscript_context_block(db: Session, project: Project) -> dict
             if excerpt:
                 lines.append(f"- 第{chapter.chapter_index}章：{excerpt}")
 
+    source_rows = _unique_manuscript_source_rows([*listed_chapters["sources"], *recent])
     return build_context_block(
         key="athena.manuscript_summary",
         kind="manuscript_summary",
@@ -160,13 +175,61 @@ def build_athena_manuscript_context_block(db: Session, project: Project) -> dict
         sources=[
             {
                 "source_type": "ChapterContent",
-                "source_id": chapter.id,
-                "chapter_index": chapter.chapter_index,
-                "label": chapter.title or f"第{chapter.chapter_index}章",
+                "source_id": _chapter_summary_value(chapter, "id"),
+                "chapter_index": _chapter_summary_value(chapter, "chapter_index"),
+                "label": _chapter_summary_value(chapter, "title") or f"第{_chapter_summary_value(chapter, 'chapter_index')}章",
             }
-            for chapter in chapters
+            for chapter in source_rows
         ],
     )
+
+
+def _bounded_manuscript_chapter_list(chapters: list[Any]) -> dict[str, Any]:
+    if len(chapters) <= MANUSCRIPT_FULL_LIST_LIMIT:
+        return {
+            "lines": ["章节清单:", *[_manuscript_chapter_line(chapter) for chapter in chapters]],
+            "sources": chapters,
+        }
+
+    head = chapters[:MANUSCRIPT_EDGE_CHAPTER_COUNT]
+    tail = chapters[-MANUSCRIPT_EDGE_CHAPTER_COUNT:]
+    folded_count = max(len(chapters) - len(head) - len(tail), 0)
+    lines = ["章节清单（长篇折叠）:", "开篇章节:"]
+    lines.extend(_manuscript_chapter_line(chapter) for chapter in head)
+    if folded_count:
+        folded_start = _chapter_summary_value(head[-1], "chapter_index") + 1
+        folded_end = _chapter_summary_value(tail[0], "chapter_index") - 1
+        lines.append(f"- 中间章节已折叠：第{folded_start}章至第{folded_end}章，共{folded_count}章。")
+    lines.append("最新章节:")
+    lines.extend(_manuscript_chapter_line(chapter) for chapter in tail)
+    return {"lines": lines, "sources": [*head, *tail]}
+
+
+def _manuscript_chapter_line(chapter: Any) -> str:
+    chapter_index = _chapter_summary_value(chapter, "chapter_index")
+    title = _chapter_summary_value(chapter, "title") or "未命名章节"
+    word_count = _chapter_summary_value(chapter, "word_count") or 0
+    status = _chapter_summary_value(chapter, "status") or "unknown"
+    return f"- 第{chapter_index}章《{title}》：{word_count}字，{status}"
+
+
+def _chapter_summary_value(chapter: Any, key: str) -> Any:
+    mapping = getattr(chapter, "_mapping", None)
+    if mapping is not None and key in mapping:
+        return mapping[key]
+    return getattr(chapter, key, None)
+
+
+def _unique_manuscript_source_rows(chapters: list[Any]) -> list[Any]:
+    seen: set[str] = set()
+    rows: list[Any] = []
+    for chapter in chapters:
+        chapter_id = str(_chapter_summary_value(chapter, "id") or "")
+        if not chapter_id or chapter_id in seen:
+            continue
+        seen.add(chapter_id)
+        rows.append(chapter)
+    return rows
 
 
 def build_athena_context_boundary_block(db: Session, project: Project) -> dict[str, Any]:
