@@ -17,6 +17,14 @@ def test_longform_hot_tables_have_query_indexes(db_session):
             "ix_dialog_messages_dialog_type_created",
             "ix_dialog_messages_dialog_action_created",
         },
+        "versions": {
+            "ix_versions_project_node_created",
+            "ix_versions_project_node_version",
+        },
+        "background_tasks": {
+            "ix_background_tasks_project_created",
+            "ix_background_tasks_status",
+        },
         "consistency_checks": {
             "ix_consistency_checks_project_chapter",
             "ix_consistency_checks_project_status",
