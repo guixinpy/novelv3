@@ -18,6 +18,7 @@ from .dialog import (
     ResolveActionIn,
     UiHintOut,
 )
+from .longform_memory import LongformContextPackage, LongformMemoryDiagnostics, LongformMemoryRebuildResult
 from .outline import OutlineOut
 from .project import ProjectCreate, ProjectOut, ProjectUpdate
 from .setup import CharacterProfile, CoreConcept, SetupOut, WorldBuilding

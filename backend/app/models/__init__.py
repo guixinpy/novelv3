@@ -8,6 +8,7 @@ from .dialog_message import DialogMessage
 from .extracted_fact import ExtractedFact
 from .few_shot_example import FewShotExample
 from .genre_profile import GenreProfile
+from .longform_memory import LongformMemory
 from .outline import Outline
 from .pending_action import PendingAction
 from .project import Project

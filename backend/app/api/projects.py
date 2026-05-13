@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import delete, inspect, text, update
 from sqlalchemy.orm import Session
 
+from app.core.project_stats import reconcile_project_word_count
 from app.db import get_db
 from app.models import (
     AIModelCallTrace,
@@ -13,6 +14,7 @@ from app.models import (
     DialogMessage,
     ExtractedFact,
     GenreProfile,
+    LongformMemory,
     Outline,
     PendingAction,
     Project,
@@ -85,6 +87,7 @@ PROJECT_SCOPED_MODELS = (
     Topology,
     ConsistencyCheck,
     ExtractedFact,
+    LongformMemory,
     BackgroundTask,
     Version,
     PromptRule,
@@ -102,7 +105,15 @@ def create_project(payload: ProjectCreate, db: Session = Depends(get_db)):
 
 @router.get("", response_model=list[ProjectOut])
 def list_projects(db: Session = Depends(get_db)):
-    return db.query(Project).order_by(Project.created_at.desc()).all()
+    projects = db.query(Project).order_by(Project.created_at.desc()).all()
+    changed = False
+    for project in projects:
+        before = project.current_word_count or 0
+        reconcile_project_word_count(db, project, commit=False)
+        changed = changed or (project.current_word_count or 0) != before
+    if changed:
+        db.commit()
+    return projects
 
 
 @router.get("/{project_id}/workspace-bootstrap", response_model=WorkspaceBootstrapOut)
@@ -118,7 +129,7 @@ def get_project(project_id: str, db: Session = Depends(get_db)):
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    return project
+    return reconcile_project_word_count(db, project)
 
 
 @router.patch("/{project_id}", response_model=ProjectOut)
@@ -130,7 +141,7 @@ def update_project(project_id: str, payload: ProjectUpdate, db: Session = Depend
         setattr(project, field, value)
     db.commit()
     db.refresh(project)
-    return project
+    return reconcile_project_word_count(db, project)
 
 
 @router.delete("/{project_id}")
