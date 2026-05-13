@@ -20,6 +20,7 @@ const props = defineProps<{
   plan: AthenaEvolutionPlan | null
   chapters: ChapterSummary[]
   timeline: AthenaTimeline | null
+  loading?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -109,7 +110,10 @@ function layerForEdge(edge: NarrativeAtlasEdge): AtlasLayer {
 
 <template>
   <section class="narrative-atlas-view" data-testid="narrative-atlas-view">
-    <div v-if="!plan" class="narrative-atlas-view__empty">
+    <div v-if="loading && !plan" class="narrative-atlas-view__empty">
+      正在读取叙事规划...
+    </div>
+    <div v-else-if="!plan" class="narrative-atlas-view__empty">
       尚未生成叙事规划
     </div>
 

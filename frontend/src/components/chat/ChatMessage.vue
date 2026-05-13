@@ -76,6 +76,16 @@ const canOpenTrace = computed(() => (
   && props.msg.trace_id.trim().length > 0
 ))
 
+const messageTime = computed(() => {
+  if (props.msg.role === 'user') return ''
+  return formatMessageTime(props.msg.created_at)
+})
+
+function formatMessageTime(value: unknown) {
+  if (typeof value !== 'string' || !value.trim()) return ''
+  return value.trim().replace('T', ' ').slice(0, 16)
+}
+
 function onDecide(decision: string, comment?: string) {
   emit('decide', decision, comment)
 }
@@ -104,6 +114,13 @@ function openTrace() {
     >
       <div class="chat-msg__header">
         <div class="chat-msg__role">{{ roleName }}</div>
+        <time
+          v-if="messageTime"
+          class="chat-msg__time"
+          :datetime="msg.created_at"
+        >
+          {{ messageTime }}
+        </time>
         <button
           v-if="canOpenTrace"
           type="button"
@@ -182,6 +199,13 @@ function openTrace() {
   color: var(--color-text-tertiary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
+}
+
+.chat-msg__time {
+  flex: 0 0 auto;
+  color: var(--color-text-tertiary);
+  font-size: var(--text-xs);
+  line-height: 24px;
 }
 
 .chat-msg__trace {

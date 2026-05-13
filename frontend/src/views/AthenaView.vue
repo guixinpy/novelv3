@@ -35,9 +35,11 @@ import {
   type AthenaSubview,
   type AthenaTool,
 } from './athenaNavigation'
-import type { AthenaConsistencyIssue, ProposalItem } from '../api/types'
+import type { AthenaConsistencyIssue, AthenaEvolutionPlan, AthenaTimeline, ProposalItem } from '../api/types'
 
 type AthenaNarrativeWorkbenchView = Exclude<AthenaNarrativeView, 'timeline' | 'graph'>
+type AthenaTimelineEvent = AthenaTimeline['events'][number]
+type RecordValue = Record<string, unknown>
 
 interface AthenaSectionViewOption {
   key: string
@@ -58,7 +60,9 @@ const ui = useUiStore()
 const pid = computed(() => route.params.id as string)
 const chatOpen = computed(() => routeState.value.panel === 'chat')
 const initializedProjectId = ref<string | null>(null)
+const routeDataLoading = ref(false)
 let initializeRequestId = 0
+let routeDataRequestId = 0
 
 const routeState = computed(() =>
   resolveAthenaRoute(
@@ -73,13 +77,19 @@ const { loadRouteData } = createAthenaSectionLoader({
   worldModel,
 })
 
-const timelineEvents = computed(() => athena.timeline?.events || [])
+const narrativePlanTimelineEvents = computed<AthenaTimelineEvent[]>(() => buildNarrativePlanTimeline(athena.evolutionPlan))
+const timelineEvents = computed<AthenaTimelineEvent[]>(() => {
+  const events = athena.timeline?.events || []
+  return events.length > 0 ? events : narrativePlanTimelineEvents.value
+})
 const timelineAnchors = computed(() => athena.timeline?.anchors || [])
 const narrativeFallbackSummary = computed(() => ({
   chapters: arrayCount(athena.evolutionPlan?.outline?.chapters),
   plotlines: arrayCount(athena.evolutionPlan?.storyline?.plotlines || athena.evolutionPlan?.outline?.plotlines),
   foreshadowing: arrayCount(athena.evolutionPlan?.storyline?.foreshadowing),
 }))
+const narrativePlanLoading = computed(() => routeDataLoading.value && !athena.evolutionPlan)
+const timelineLoading = computed(() => routeDataLoading.value && !athena.timeline)
 const consistencyIssues = computed<AthenaConsistencyIssue[]>(() => athena.consistencyIssues || [])
 const activeError = computed(() => athena.error || worldModel.error || '')
 const activeNotice = computed(() => {
@@ -168,6 +178,7 @@ watch(routeState, (state) => {
 
 async function initialize(projectId: string) {
   const requestId = ++initializeRequestId
+  routeDataLoading.value = true
   athena.ensureProject(projectId)
 
   await project.loadProject(projectId)
@@ -194,6 +205,49 @@ function arrayCount(value: unknown) {
   return Array.isArray(value) ? value.length : 0
 }
 
+function buildNarrativePlanTimeline(plan: AthenaEvolutionPlan | null): AthenaTimelineEvent[] {
+  return asRecords(plan?.outline?.chapters)
+    .map((chapter) => {
+      const chapterIndex = toNumber(chapter.chapter_index ?? chapter.chapter)
+      if (chapterIndex === null) return null
+      const title = toText(chapter.title, `第${chapterIndex}章`)
+      const summary = toOptionalText(chapter.summary)
+
+      return {
+        id: `plan-chapter-${chapterIndex}`,
+        event_id: `plan.chapter.${chapterIndex}`,
+        chapter_index: chapterIndex,
+        intra_chapter_seq: 0,
+        event_type: 'chapter_plan',
+        description: summary ? `${title}：${summary}` : title,
+      }
+    })
+    .filter((event): event is AthenaTimelineEvent => event !== null)
+}
+
+function asRecords(value: unknown): RecordValue[] {
+  return Array.isArray(value) ? value.filter(isRecord) : []
+}
+
+function isRecord(value: unknown): value is RecordValue {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function toText(value: unknown, fallback = '') {
+  return toOptionalText(value) ?? fallback
+}
+
+function toOptionalText(value: unknown) {
+  if (typeof value === 'string' && value.trim()) return value.trim()
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') return String(value)
+  return undefined
+}
+
+function toNumber(value: unknown) {
+  const numberValue = Number(value)
+  return Number.isFinite(numberValue) ? numberValue : null
+}
+
 async function syncRouteState(state: AthenaRouteState) {
   if (route.meta.workspace !== 'athena') return
 
@@ -215,13 +269,20 @@ async function syncRouteState(state: AthenaRouteState) {
       route.query as unknown as Parameters<typeof isCanonicalAthenaRoute>[3],
     )
   ) {
+    routeDataLoading.value = true
     await router.replace(buildAthenaRoute(pid.value, state))
     return
   }
 
   if (initializedProjectId.value !== pid.value) return
 
-  await loadRouteData(state)
+  const requestId = ++routeDataRequestId
+  routeDataLoading.value = true
+  try {
+    await loadRouteData(state)
+  } finally {
+    if (requestId === routeDataRequestId) routeDataLoading.value = false
+  }
 }
 
 function navigateSection(section: AthenaPrimarySection) {
@@ -447,6 +508,7 @@ function closeChat() {
             v-if="routeState.view === 'timeline'"
             :events="timelineEvents"
             :anchors="timelineAnchors"
+            :loading="timelineLoading"
             :fallback-summary="narrativeFallbackSummary"
           />
           <NarrativeAtlasView
@@ -454,6 +516,7 @@ function closeChat() {
             :plan="athena.evolutionPlan"
             :chapters="project.chapters"
             :timeline="athena.timeline"
+            :loading="narrativePlanLoading"
             @navigate="navigateNarrativeAtlas"
           />
           <NarrativeWorkbench
@@ -461,6 +524,7 @@ function closeChat() {
             :plan="athena.evolutionPlan"
             :chapters="project.chapters"
             :view="narrativeView"
+            :loading="narrativePlanLoading"
           />
         </template>
 

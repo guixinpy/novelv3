@@ -188,6 +188,49 @@ function edgePath(edge: NarrativeAtlasEdge, source: AtlasNodePosition, target: A
   return `M ${source.x} ${source.y} C ${middleX + curveBias} ${source.y}, ${middleX + curveBias} ${target.y}, ${target.x} ${target.y}`
 }
 
+function edgeHandlePoint(item: AtlasEdgePosition) {
+  if (item.edge.type === 'trunk') {
+    return {
+      x: item.source.x + (item.target.x - item.source.x) / 2,
+      y: item.source.y + (item.target.y - item.source.y) / 2,
+    }
+  }
+
+  const middleX = item.source.x + (item.target.x - item.source.x) / 2
+  const curveBias = item.edge.type === 'foreshadowing'
+    ? item.target.x < item.source.x ? -28 : 28
+    : item.edge.type === 'event_anchor'
+      ? 36
+      : 20
+
+  return cubicPoint(
+    { x: item.source.x, y: item.source.y },
+    { x: middleX + curveBias, y: item.source.y },
+    { x: middleX + curveBias, y: item.target.y },
+    { x: item.target.x, y: item.target.y },
+    0.5,
+  )
+}
+
+function cubicPoint(
+  start: { x: number; y: number },
+  controlA: { x: number; y: number },
+  controlB: { x: number; y: number },
+  end: { x: number; y: number },
+  t: number,
+) {
+  const inverse = 1 - t
+  const startWeight = inverse ** 3
+  const controlAWeight = 3 * inverse ** 2 * t
+  const controlBWeight = 3 * inverse * t ** 2
+  const endWeight = t ** 3
+
+  return {
+    x: start.x * startWeight + controlA.x * controlAWeight + controlB.x * controlBWeight + end.x * endWeight,
+    y: start.y * startWeight + controlA.y * controlAWeight + controlB.y * controlBWeight + end.y * endWeight,
+  }
+}
+
 function selectNode(node: NarrativeAtlasNode) {
   emit('select', { kind: 'node', id: node.id })
 }
@@ -285,22 +328,24 @@ function slotOffset(type: NarrativeAtlasNode['type'], slot: number) {
       </g>
 
       <g class="narrative-atlas-canvas__edges">
-        <path
+        <template
           v-for="item in visibleEdges"
           :key="item.edge.id"
-          :class="edgeClass(item.edge)"
-          :d="item.path"
-          :data-atlas-layer="item.layer"
-          :data-atlas-edge-id="item.edge.id"
-          :aria-label="edgeTitle(item.edge)"
-          :aria-pressed="isEdgeSelected(item.edge)"
-          role="button"
-          tabindex="0"
-          marker-end="url(#atlas-arrow-trunk)"
-          @click="selectEdge(item.edge)"
-          @keydown.enter.prevent="selectEdge(item.edge)"
-          @keydown.space.prevent="selectEdge(item.edge)"
-        />
+        >
+          <path
+            :class="[edgeClass(item.edge), 'narrative-atlas-canvas__edge-hitbox']"
+            :d="item.path"
+            :data-atlas-edge-hitbox-id="item.edge.id"
+            aria-hidden="true"
+            @click="selectEdge(item.edge)"
+          />
+          <path
+            :class="[edgeClass(item.edge), 'narrative-atlas-canvas__edge-line']"
+            :d="item.path"
+            aria-hidden="true"
+            marker-end="url(#atlas-arrow-trunk)"
+          />
+        </template>
       </g>
 
       <g class="narrative-atlas-canvas__nodes">
@@ -326,6 +371,26 @@ function slotOffset(type: NarrativeAtlasNode['type'], slot: number) {
           </text>
           <title>{{ nodeTitle(item.node) }}</title>
         </g>
+      </g>
+
+      <g class="narrative-atlas-canvas__edge-handles">
+        <circle
+          v-for="item in visibleEdges"
+          :key="`handle:${item.edge.id}`"
+          :class="[edgeClass(item.edge), 'narrative-atlas-canvas__edge-handle']"
+          :cx="edgeHandlePoint(item).x"
+          :cy="edgeHandlePoint(item).y"
+          r="11"
+          :data-atlas-layer="item.layer"
+          :data-atlas-edge-id="item.edge.id"
+          :aria-label="edgeTitle(item.edge)"
+          :aria-pressed="isEdgeSelected(item.edge)"
+          role="button"
+          tabindex="0"
+          @click.stop="selectEdge(item.edge)"
+          @keydown.enter.prevent="selectEdge(item.edge)"
+          @keydown.space.prevent="selectEdge(item.edge)"
+        />
       </g>
     </svg>
   </section>
@@ -362,42 +427,77 @@ function slotOffset(type: NarrativeAtlasNode['type'], slot: number) {
 }
 
 .narrative-atlas-canvas__edge {
-  fill: none;
-  stroke: var(--color-text-tertiary);
-  stroke-width: 2;
   stroke-linecap: round;
   cursor: pointer;
   outline: none;
 }
 
+.narrative-atlas-canvas__edge-hitbox,
+.narrative-atlas-canvas__edge-line {
+  fill: none;
+  stroke-linecap: round;
+}
+
+.narrative-atlas-canvas__edge-hitbox {
+  stroke: rgba(15, 23, 42, 0.01);
+  stroke-width: 18;
+  pointer-events: stroke;
+}
+
+.narrative-atlas-canvas__edge-handle {
+  fill: rgba(15, 23, 42, 0.01);
+  stroke: transparent;
+  stroke-width: 1.5;
+  cursor: pointer;
+  outline: none;
+}
+
+.narrative-atlas-canvas__edge-line {
+  stroke: var(--color-text-tertiary);
+  stroke-width: 2;
+  pointer-events: none;
+}
+
 .narrative-atlas-canvas__edge:focus-visible,
+.narrative-atlas-canvas__edge-handle:focus-visible,
 .narrative-atlas-canvas__node:focus-visible {
   outline: 2px solid var(--color-brand);
   outline-offset: 4px;
 }
 
-.narrative-atlas-canvas__edge--trunk {
+.narrative-atlas-canvas__edge-handle:hover,
+.narrative-atlas-canvas__edge-handle:focus-visible {
+  fill: rgba(79, 70, 229, 0.16);
+  stroke: rgba(79, 70, 229, 0.5);
+}
+
+.narrative-atlas-canvas__edge--trunk.narrative-atlas-canvas__edge-line {
   stroke: #475569;
   stroke-width: 3;
 }
 
-.narrative-atlas-canvas__edge--branch {
+.narrative-atlas-canvas__edge--branch.narrative-atlas-canvas__edge-line {
   stroke: var(--color-brand);
 }
 
-.narrative-atlas-canvas__edge--foreshadowing {
+.narrative-atlas-canvas__edge--foreshadowing.narrative-atlas-canvas__edge-line {
   stroke: var(--color-warning);
   stroke-dasharray: 7 6;
 }
 
-.narrative-atlas-canvas__edge--event_anchor {
+.narrative-atlas-canvas__edge--event_anchor.narrative-atlas-canvas__edge-line {
   stroke: var(--color-success);
   stroke-dasharray: 3 5;
 }
 
-.narrative-atlas-canvas__edge--selected {
+.narrative-atlas-canvas__edge--selected.narrative-atlas-canvas__edge-line {
   stroke-width: 4;
   filter: drop-shadow(0 2px 3px rgba(26, 26, 26, 0.18));
+}
+
+.narrative-atlas-canvas__edge--selected.narrative-atlas-canvas__edge-handle {
+  fill: rgba(79, 70, 229, 0.22);
+  stroke: var(--color-brand);
 }
 
 .narrative-atlas-canvas__marker {

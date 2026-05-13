@@ -92,6 +92,25 @@ function boxesOverlap(left: ReturnType<typeof eventBox>, right: ReturnType<typeo
 }
 
 describe('NarrativeAtlasCanvas', () => {
+  it('renders wide transparent edge hitboxes for reliable selection', async () => {
+    const wrapper = mount(NarrativeAtlasCanvas, {
+      props: {
+        graph: longChapterGraph(2),
+        layers: { trunk: true, branches: true, foreshadowing: true, events: true },
+        selected: null,
+      },
+    })
+    const hitbox = wrapper.get('[data-atlas-edge-hitbox-id="trunk:chapter:1->chapter:2"]')
+    const edge = wrapper.get('[data-atlas-edge-id="trunk:chapter:1->chapter:2"]')
+
+    await edge.trigger('click')
+
+    expect(hitbox.classes()).toContain('narrative-atlas-canvas__edge-hitbox')
+    expect(edge.classes()).toContain('narrative-atlas-canvas__edge-handle')
+    expect(wrapper.find('.narrative-atlas-canvas__edge-line').exists()).toBe(true)
+    expect(wrapper.emitted('select')).toEqual([[{ kind: 'edge', id: 'trunk:chapter:1->chapter:2' }]])
+  })
+
   it('uses vertical chapter spine and dynamic height for long stories', () => {
     const wrapper = mount(NarrativeAtlasCanvas, {
       props: {

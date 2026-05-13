@@ -88,6 +88,21 @@ describe('NarrativeAtlasView', () => {
     expect(wrapper.find('[data-testid="narrative-atlas-canvas"]').exists()).toBe(false)
   })
 
+  it('shows loading state before narrative plan data resolves', () => {
+    const wrapper = mount(NarrativeAtlasView, {
+      props: {
+        plan: null,
+        chapters,
+        timeline: null,
+        loading: true,
+      },
+    })
+
+    expect(wrapper.text()).toContain('正在读取叙事规划')
+    expect(wrapper.text()).not.toContain('尚未生成叙事规划')
+    expect(wrapper.find('[data-testid="narrative-atlas-canvas"]').exists()).toBe(false)
+  })
+
   it('selects a node and renders its details', async () => {
     const wrapper = mountAtlas()
 

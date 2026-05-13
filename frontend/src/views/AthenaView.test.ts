@@ -69,7 +69,18 @@ const NarrativeAtlasViewStub = defineComponent({
   `,
 })
 
-async function mountAthenaView() {
+const TimelineViewStub = defineComponent({
+  name: 'TimelineView',
+  props: {
+    events: { type: Array, required: true },
+    anchors: { type: Array, default: () => [] },
+    loading: { type: Boolean, default: false },
+    fallbackSummary: { type: Object, default: null },
+  },
+  template: '<section data-testid="timeline-view-stub">{{ events.map((event) => event.description).join(" | ") }}</section>',
+})
+
+async function mountAthenaView(initialPath = '/projects/project-1/athena/narrative?view=graph') {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -81,7 +92,7 @@ async function mountAthenaView() {
     ],
   })
 
-  await router.push('/projects/project-1/athena/narrative?view=graph')
+  await router.push(initialPath)
   await router.isReady()
 
   const wrapper = mount(AthenaView, {
@@ -90,7 +101,7 @@ async function mountAthenaView() {
       stubs: {
         Teleport: true,
         AthenaSubnav: true,
-        TimelineView: true,
+        TimelineView: TimelineViewStub,
         NarrativeWorkbench: true,
         NarrativeAtlasView: NarrativeAtlasViewStub,
         AthenaChatPanel: true,
@@ -150,5 +161,21 @@ describe('AthenaView narrative atlas integration', () => {
 
     expect(router.currentRoute.value.path).toBe('/projects/project-1/athena/narrative')
     expect(router.currentRoute.value.query).toEqual({ view: 'storyline' })
+  })
+
+  it('uses narrative plan chapters as timeline fallback when timeline events are missing', async () => {
+    vi.mocked(api.getAthenaTimeline).mockResolvedValue({ anchors: [], events: [] })
+
+    const { wrapper } = await mountAthenaView('/projects/project-1/athena/narrative?view=timeline')
+    const timelineStub = wrapper.getComponent({ name: 'TimelineView' })
+
+    expect(wrapper.get('[data-testid="timeline-view-stub"]').text()).toContain('异常信号：潮汐门出现异常读数。')
+    expect(timelineStub.props('events')).toMatchObject([
+      {
+        event_id: 'plan.chapter.1',
+        chapter_index: 1,
+        event_type: 'chapter_plan',
+      },
+    ])
   })
 })

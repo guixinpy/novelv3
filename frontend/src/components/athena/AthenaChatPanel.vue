@@ -4,6 +4,7 @@ import ChatMessageList from '../chat/ChatMessageList.vue'
 import ChatInput from '../chat/ChatInput.vue'
 import ModelTraceDrawer from '../modelTrace/ModelTraceDrawer.vue'
 import { useAthenaStore } from '../../stores/athena'
+import { useProjectStore } from '../../stores/project'
 import type { ChatHistoryMessage } from '../../api/types'
 
 const props = defineProps<{
@@ -16,6 +17,7 @@ const emit = defineEmits<{
 }>()
 
 const athena = useAthenaStore()
+const project = useProjectStore()
 const activeTraceId = ref<string | null>(null)
 
 const messages = computed(() =>
@@ -28,8 +30,25 @@ const messages = computed(() =>
     pending_action: null,
     action_result: null,
     trace_id: m.trace_id || null,
+    created_at: m.created_at || null,
   })),
 )
+
+const contextSnapshot = computed(() => {
+  const chapterCount = Array.isArray(project.chapters) ? project.chapters.length : 0
+  const wordCount = Number(project.currentProject?.current_word_count || 0)
+  const profileVersion = athena.ontology?.profile_version
+  const indexedDocuments = athena.retrievalDiagnostics?.total_documents
+
+  return {
+    chapterCount,
+    wordCount,
+    profileLabel: profileVersion ? `Profile v${profileVersion}` : 'Profile 未建立',
+    indexLabel: indexedDocuments === undefined || indexedDocuments === null
+      ? '未读取'
+      : String(Number(indexedDocuments)),
+  }
+})
 
 watch(() => props.open, (open) => {
   if (!open) closeTrace()
@@ -61,6 +80,18 @@ function closeTrace() {
           <h3 class="athena-chat-panel__title">Athena</h3>
           <button class="athena-chat-panel__close" @click="emit('close')">&times;</button>
         </header>
+        <section class="athena-chat-panel__context" aria-label="Athena 当前上下文">
+          <div class="athena-chat-panel__context-head">当前上下文</div>
+          <div class="athena-chat-panel__context-metrics">
+            <span>章节 {{ contextSnapshot.chapterCount }}</span>
+            <span>字数 {{ contextSnapshot.wordCount }}</span>
+            <span>{{ contextSnapshot.profileLabel }}</span>
+            <span>索引文档 {{ contextSnapshot.indexLabel }}</span>
+          </div>
+          <p class="athena-chat-panel__context-note">
+            历史回答基于当时上下文；项目状态变化后，请重新提问或清空上下文。
+          </p>
+        </section>
         <ChatMessageList
           :messages="messages"
           :loading="athena.chatLoading"
@@ -125,6 +156,36 @@ function closeTrace() {
 
 .athena-chat-panel__close:hover {
   color: var(--color-text-primary);
+}
+
+.athena-chat-panel__context {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg-secondary);
+}
+
+.athena-chat-panel__context-head {
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  color: var(--color-text-secondary);
+}
+
+.athena-chat-panel__context-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  color: var(--color-text-primary);
+  font-size: var(--text-xs);
+  font-weight: var(--font-medium);
+}
+
+.athena-chat-panel__context-note {
+  margin: 0;
+  color: var(--color-text-tertiary);
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
 }
 
 .athena-chat-panel__backdrop {

@@ -10,17 +10,30 @@ type AthenaTimelineEvent = AthenaTimeline['events'][number] & {
 defineProps<{
   events: AthenaTimelineEvent[]
   anchors?: AthenaTimeline['anchors']
+  loading?: boolean
   fallbackSummary?: {
     chapters: number
     plotlines: number
     foreshadowing: number
   }
 }>()
+
+function chapterLabel(event: AthenaTimelineEvent) {
+  const chapter = event.chapter_ref ?? event.chapter_index
+  return chapter ? `第${chapter}章` : ''
+}
+
+function eventTypeLabel(event: AthenaTimelineEvent) {
+  return event.event_type === 'chapter_plan' ? '章节规划' : ''
+}
 </script>
 
 <template>
   <div class="timeline-view">
-    <div v-if="events.length === 0" class="timeline-view__empty">
+    <div v-if="loading && events.length === 0" class="timeline-view__empty">
+      <strong>正在读取叙事时间线...</strong>
+    </div>
+    <div v-else-if="events.length === 0" class="timeline-view__empty">
       <strong>暂无时间线数据</strong>
       <span v-if="fallbackSummary && (fallbackSummary.chapters || fallbackSummary.plotlines || fallbackSummary.foreshadowing)">
         已生成 {{ fallbackSummary.chapters }} 章规划、{{ fallbackSummary.plotlines }} 条故事线、{{ fallbackSummary.foreshadowing }} 条伏笔，可切换到对应标签查看。
@@ -40,8 +53,9 @@ defineProps<{
       </div>
       <div class="timeline-view__content">
         <div class="timeline-view__desc">{{ event.description || event.event || '' }}</div>
-        <div v-if="event.chapter_ref || event.timestamp" class="timeline-view__meta">
-          <span v-if="event.chapter_ref">第{{ event.chapter_ref }}章</span>
+        <div v-if="chapterLabel(event) || event.timestamp || eventTypeLabel(event)" class="timeline-view__meta">
+          <span v-if="chapterLabel(event)">{{ chapterLabel(event) }}</span>
+          <span v-if="eventTypeLabel(event)">{{ eventTypeLabel(event) }}</span>
           <span v-if="event.timestamp">{{ event.timestamp }}</span>
         </div>
       </div>

@@ -9,6 +9,7 @@ const props = defineProps<{
   plan: AthenaEvolutionPlan | null
   chapters: ChapterSummary[]
   view: AthenaNarrativeView
+  loading?: boolean
 }>()
 
 const outlineChapters = computed(() =>
@@ -118,7 +119,8 @@ function statusLabel(status: string) {
 
 <template>
   <section class="narrative-workbench">
-    <div v-if="!plan" class="narrative-workbench__empty">尚未生成叙事规划</div>
+    <div v-if="loading && !plan" class="narrative-workbench__empty">正在读取叙事规划...</div>
+    <div v-else-if="!plan" class="narrative-workbench__empty">尚未生成叙事规划</div>
     <template v-else>
       <div class="narrative-workbench__metrics">
         <div v-for="metric in metrics" :key="metric.label" class="narrative-workbench__metric">

@@ -49,6 +49,20 @@ const chapters: ChapterSummary[] = [
 ]
 
 describe('NarrativeWorkbench', () => {
+  it('shows loading state before narrative plan data resolves', () => {
+    const wrapper = mount(NarrativeWorkbench, {
+      props: {
+        plan: null,
+        chapters,
+        view: 'storyline',
+        loading: true,
+      },
+    })
+
+    expect(wrapper.text()).toContain('正在读取叙事规划')
+    expect(wrapper.text()).not.toContain('尚未生成叙事规划')
+  })
+
   it('renders storyline milestones', () => {
     const wrapper = mount(NarrativeWorkbench, { props: { plan, chapters, view: 'storyline' } })
 

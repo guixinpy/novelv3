@@ -4,6 +4,22 @@ import { describe, expect, it } from 'vitest'
 import ChatMessage from './ChatMessage.vue'
 
 describe('ChatMessage', () => {
+  it('shows assistant message creation time to separate old answers from current context', () => {
+    const wrapper = mount(ChatMessage, {
+      props: {
+        msg: {
+          role: 'assistant',
+          content: '这是历史回复。',
+          created_at: '2026-05-12T12:34:56Z',
+        },
+        isLatest: false,
+        loading: false,
+      },
+    })
+
+    expect(wrapper.text()).toContain('2026-05-12 12:34')
+  })
+
   it('emits openTrace when clicking assistant trace button', async () => {
     const wrapper = mount(ChatMessage, {
       props: {
