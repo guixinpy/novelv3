@@ -5,6 +5,9 @@ from app.schemas import PendingActionOut
 from app.services.actions.descriptions import action_description
 
 
+DEFAULT_DIALOG_MESSAGE_LIMIT = 80
+
+
 class DialogMessageService:
     def __init__(self, db: Session):
         self.db = db
@@ -34,10 +37,8 @@ class DialogMessageService:
                 return []
             query = query.filter(DialogMessage.created_at > cursor.created_at)
 
-        if limit:
-            messages = list(reversed(query.order_by(DialogMessage.created_at.desc()).limit(limit).all()))
-        else:
-            messages = query.order_by(DialogMessage.created_at).all()
+        effective_limit = limit if limit is not None else DEFAULT_DIALOG_MESSAGE_LIMIT
+        messages = list(reversed(query.order_by(DialogMessage.created_at.desc()).limit(effective_limit).all()))
 
         pending_action = self._pending_action_payload(dialog)
         last_assistant_message_id = self._last_assistant_message_id(messages) if pending_action else None
