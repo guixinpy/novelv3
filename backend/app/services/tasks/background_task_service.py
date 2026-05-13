@@ -96,6 +96,19 @@ class BackgroundTaskService:
 
         result = dict(task.result or {})
         progress = dict(result.get("progress") or {})
+        compacted_progress = _extend_compacted_range_progress(
+            progress,
+            start=start,
+            end=end,
+            completed_chapter_index=completed_chapter_index,
+        )
+        if compacted_progress is not None:
+            result["progress"] = compacted_progress
+            task.result = result
+            self.db.commit()
+            self.db.refresh(task)
+            return task
+
         completed = _completed_chapter_index_set(progress, start=start, end=end)
         completed.add(completed_chapter_index)
         completed_indexes = sorted({int(index) for index in completed if start <= int(index) <= end})
@@ -167,6 +180,45 @@ def _completed_chapter_index_set(progress: dict, *, start: int, end: int) -> set
     return {index for index in completed if start <= index <= end}
 
 
+def _extend_compacted_range_progress(
+    progress: dict,
+    *,
+    start: int,
+    end: int,
+    completed_chapter_index: int,
+) -> dict | None:
+    if progress.get("completed_chapter_indexes"):
+        return None
+    completed_until = progress.get("completed_until_chapter_index")
+    if completed_until is None:
+        return None
+    last_completed = min(max(int(completed_until), start - 1), end)
+    if completed_chapter_index <= last_completed:
+        return _compacted_range_progress_payload(start=start, end=end, last_completed=last_completed)
+    if completed_chapter_index != last_completed + 1:
+        return None
+    return _compacted_range_progress_payload(
+        start=start,
+        end=end,
+        last_completed=completed_chapter_index,
+    )
+
+
+def _compacted_range_progress_payload(*, start: int, end: int, last_completed: int) -> dict:
+    completed_count = max(0, last_completed - start + 1)
+    next_chapter_index = last_completed + 1 if last_completed < end else end + 1
+    return {
+        "chapter_range": {"start": start, "end": end},
+        "next_chapter_index": next_chapter_index,
+        "completed_count": completed_count,
+        "total_count": end - start + 1,
+        "can_resume": next_chapter_index <= end,
+        "completed_until_chapter_index": last_completed,
+        "first_completed_chapter_index": start,
+        "last_completed_chapter_index": last_completed,
+    }
+
+
 def _range_progress_payload(*, start: int, end: int, completed_indexes: list[int]) -> dict:
     completed_set = set(completed_indexes)
     next_chapter_index = next((index for index in range(start, end + 1) if index not in completed_set), end + 1)
@@ -180,14 +232,11 @@ def _range_progress_payload(*, start: int, end: int, completed_indexes: list[int
     if _is_contiguous_from_start(start=start, completed_indexes=completed_indexes):
         last_completed = completed_indexes[-1] if completed_indexes else start - 1
         if len(completed_indexes) > RANGE_PROGRESS_CHECKPOINT_LIMIT:
-            payload.update(
-                {
-                    "completed_until_chapter_index": last_completed,
-                    "first_completed_chapter_index": start,
-                    "last_completed_chapter_index": last_completed,
-                }
+            return _compacted_range_progress_payload(
+                start=start,
+                end=end,
+                last_completed=last_completed,
             )
-            return payload
     payload["completed_chapter_indexes"] = completed_indexes
     return payload
 

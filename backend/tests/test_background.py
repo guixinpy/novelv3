@@ -157,6 +157,45 @@ def test_background_task_service_compacts_large_sequential_range_progress(client
     assert "completed_chapter_indexes" not in progress
 
 
+def test_background_task_service_extends_compacted_range_without_expanding_checkpoints(
+    client,
+    db_session,
+    monkeypatch,
+):
+    import app.services.tasks.background_task_service as task_module
+
+    r = client.post("/api/v1/projects", json={"name": "Test"})
+    pid = r.json()["id"]
+    service = BackgroundTaskService(db_session)
+    task = service.create_chapter_range(
+        project_id=pid,
+        task_type="athena_reindex_range",
+        start_chapter_index=1,
+        end_chapter_index=250,
+    )
+    progressed = task
+    for chapter_index in range(1, 202):
+        progressed = service.mark_range_progress(progressed.id, completed_chapter_index=chapter_index)
+    assert progressed.result["progress"]["completed_until_chapter_index"] == 201
+
+    def fail_if_expanded(*args, **kwargs):
+        raise AssertionError("compacted progress should not be expanded")
+
+    monkeypatch.setattr(task_module, "_completed_chapter_index_set", fail_if_expanded)
+
+    progressed = service.mark_range_progress(progressed.id, completed_chapter_index=202)
+
+    progress = progressed.result["progress"]
+    assert progress["completed_until_chapter_index"] == 202
+    assert progress["first_completed_chapter_index"] == 1
+    assert progress["last_completed_chapter_index"] == 202
+    assert progress["next_chapter_index"] == 203
+    assert progress["completed_count"] == 202
+    assert progress["total_count"] == 250
+    assert progress["can_resume"] is True
+    assert "completed_chapter_indexes" not in progress
+
+
 def test_background_task_service_retries_failed_range_from_checkpoint(client, db_session):
     r = client.post("/api/v1/projects", json={"name": "Test"})
     pid = r.json()["id"]
