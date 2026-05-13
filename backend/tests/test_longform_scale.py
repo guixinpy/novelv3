@@ -1,6 +1,7 @@
 import importlib.util
 from pathlib import Path
 
+import pytest
 from sqlalchemy import event, text
 
 from app.api import dialogs
@@ -541,6 +542,59 @@ def test_longform_scale_smoke_cli_exposes_main():
     spec.loader.exec_module(module)
 
     assert callable(module.main)
+
+
+def test_longform_scale_smoke_cli_fails_when_thresholds_are_exceeded(monkeypatch, capsys):
+    script_path = Path(__file__).resolve().parents[2] / "scripts" / "longform_scale_smoke.py"
+    spec = importlib.util.spec_from_file_location("longform_scale_smoke_cli", script_path)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    def fake_run_smoke_report(_args):
+        return {
+            "elapsed_ms": 1200,
+            "timings_ms": {
+                "retrieval_reindex": 900,
+                "context_build": 150,
+            },
+        }
+
+    monkeypatch.setattr(module, "_run_smoke_report", fake_run_smoke_report, raising=False)
+
+    exit_code = module.main(
+        [
+            "--chapters",
+            "1000",
+            "--max-elapsed-ms",
+            "1000",
+            "--max-stage-ms",
+            "retrieval_reindex=800",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "elapsed_ms 1200 exceeded max 1000" in captured.err
+    assert "retrieval_reindex 900 exceeded max 800" in captured.err
+
+
+def test_longform_scale_smoke_cli_rejects_invalid_stage_threshold_before_running(monkeypatch):
+    script_path = Path(__file__).resolve().parents[2] / "scripts" / "longform_scale_smoke.py"
+    spec = importlib.util.spec_from_file_location("longform_scale_smoke_cli", script_path)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    def fail_if_run(_args):
+        raise AssertionError("smoke should not run when threshold args are invalid")
+
+    monkeypatch.setattr(module, "_run_smoke_report", fail_if_run, raising=False)
+
+    with pytest.raises(SystemExit):
+        module.main(["--max-stage-ms", "retrieval_reindex"])
 
 
 def test_refresh_longform_memory_for_chapter_updates_only_affected_scopes(db_session):
