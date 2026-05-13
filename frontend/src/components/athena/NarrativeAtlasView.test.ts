@@ -109,7 +109,8 @@ describe('NarrativeAtlasView', () => {
     await wrapper.get('[data-atlas-node-id="foreshadowing:潮汐钟慢了三分钟"]').trigger('click')
 
     expect(wrapper.get('[data-testid="atlas-detail-panel"]').text()).toContain('潮汐钟慢了三分钟')
-    expect(wrapper.get('[data-testid="atlas-detail-panel"]').text()).toContain('pending')
+    expect(wrapper.get('[data-testid="atlas-detail-panel"]').text()).toContain('待回收')
+    expect(wrapper.get('[data-testid="atlas-detail-panel"]').text()).not.toContain('pending')
   })
 
   it('can hide and show foreshadowing layer', async () => {

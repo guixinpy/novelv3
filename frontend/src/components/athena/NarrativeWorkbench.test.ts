@@ -71,6 +71,20 @@ describe('NarrativeWorkbench', () => {
     expect(wrapper.text()).toContain('发现异常')
   })
 
+  it('renders storyline as a collapsible tree', async () => {
+    const wrapper = mount(NarrativeWorkbench, { props: { plan, chapters, view: 'storyline' } })
+
+    expect(wrapper.find('[data-testid="storyline-tree"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="storyline-branch"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="storyline-toggle"]').attributes('aria-expanded')).toBe('true')
+    expect(wrapper.text()).toContain('发现异常')
+
+    await wrapper.get('[data-testid="storyline-toggle"]').trigger('click')
+
+    expect(wrapper.get('[data-testid="storyline-toggle"]').attributes('aria-expanded')).toBe('false')
+    expect(wrapper.text()).not.toContain('发现异常')
+  })
+
   it('accepts chapter field and avoids duplicate milestone copy', () => {
     const wrapper = mount(NarrativeWorkbench, {
       props: {
@@ -100,8 +114,38 @@ describe('NarrativeWorkbench', () => {
     const wrapper = mount(NarrativeWorkbench, { props: { plan, chapters, view: 'chapters' } })
 
     expect(wrapper.text()).toContain('异常信号')
-    expect(wrapper.text()).toContain('draft')
+    expect(wrapper.text()).toContain('草稿')
     expect(wrapper.text()).toContain('引入核心谜团')
+  })
+
+  it('filters chapters and supports quick jump selection', async () => {
+    const wrapper = mount(NarrativeWorkbench, {
+      props: {
+        plan: {
+          outline: {
+            chapters: [
+              { chapter_index: 1, title: '雾锁灯塔', summary: '灯塔区集体失忆。' },
+              { chapter_index: 2, title: '黑市交易', summary: '记忆黑市浮出水面。' },
+            ],
+          },
+        } as unknown as AthenaEvolutionPlan,
+        chapters: [
+          { id: 'chapter-1', chapter_index: 1, title: '雾锁灯塔', word_count: 1200, status: 'draft' },
+          { id: 'chapter-2', chapter_index: 2, title: '黑市交易', word_count: 1800, status: 'generated' },
+        ],
+        view: 'chapters',
+      },
+    })
+
+    await wrapper.get('[data-testid="chapter-search"]').setValue('黑市')
+
+    expect(wrapper.find('[data-testid="chapter-2"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="chapter-1"]').exists()).toBe(false)
+
+    await wrapper.get('[data-testid="chapter-jump"]').setValue('1')
+
+    expect(wrapper.text()).toContain('雾锁灯塔')
+    expect(wrapper.get('[data-testid="chapter-1"]').classes()).toContain('narrative-workbench__chapter--active')
   })
 
   it('renders foreshadowing lifecycle', () => {

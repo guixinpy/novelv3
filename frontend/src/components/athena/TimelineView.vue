@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed, ref } from 'vue'
 import type { AthenaTimeline } from '../../api/types'
 
 type AthenaTimelineEvent = AthenaTimeline['events'][number] & {
@@ -7,7 +8,7 @@ type AthenaTimelineEvent = AthenaTimeline['events'][number] & {
   chapter_ref?: string | number
 }
 
-defineProps<{
+const props = defineProps<{
   events: AthenaTimelineEvent[]
   anchors?: AthenaTimeline['anchors']
   loading?: boolean
@@ -18,6 +19,21 @@ defineProps<{
   }
 }>()
 
+const showCompleted = ref(false)
+
+const completedEvents = computed(() => props.events.length > 1 ? props.events.slice(0, -1) : [])
+const visibleEvents = computed(() => {
+  const events = completedEvents.value.length > 0 && !showCompleted.value
+    ? props.events.slice(-1)
+    : props.events
+  const offset = props.events.length - events.length
+
+  return events.map((event, index) => ({
+    event,
+    originalIndex: offset + index,
+  }))
+})
+
 function chapterLabel(event: AthenaTimelineEvent) {
   const chapter = event.chapter_ref ?? event.chapter_index
   return chapter ? `第${chapter}章` : ''
@@ -25,6 +41,10 @@ function chapterLabel(event: AthenaTimelineEvent) {
 
 function eventTypeLabel(event: AthenaTimelineEvent) {
   return event.event_type === 'chapter_plan' ? '章节规划' : ''
+}
+
+function toggleCompleted() {
+  showCompleted.value = !showCompleted.value
 }
 </script>
 
@@ -39,17 +59,28 @@ function eventTypeLabel(event: AthenaTimelineEvent) {
         已生成 {{ fallbackSummary.chapters }} 章规划、{{ fallbackSummary.plotlines }} 条故事线、{{ fallbackSummary.foreshadowing }} 条伏笔，可切换到对应标签查看。
       </span>
     </div>
+    <button
+      v-if="completedEvents.length"
+      type="button"
+      class="timeline-view__completed-toggle"
+      data-testid="timeline-completed-toggle"
+      :aria-expanded="showCompleted"
+      @click="toggleCompleted"
+    >
+      {{ showCompleted ? '收起已完成节点' : `已收起前 ${completedEvents.length} 个已完成节点` }}
+    </button>
     <div
-      v-for="(event, index) in events"
-      :key="index"
+      v-for="{ event, originalIndex } in visibleEvents"
+      :key="event.id || originalIndex"
       class="timeline-view__item"
+      :class="{ 'timeline-view__item--current': originalIndex === events.length - 1 }"
     >
       <div class="timeline-view__track">
         <span
           class="timeline-view__dot"
-          :class="{ 'timeline-view__dot--current': index === events.length - 1 }"
+          :class="{ 'timeline-view__dot--current': originalIndex === events.length - 1 }"
         />
-        <div v-if="index < events.length - 1" class="timeline-view__line" />
+        <div v-if="originalIndex < events.length - 1" class="timeline-view__line" />
       </div>
       <div class="timeline-view__content">
         <div class="timeline-view__desc">{{ event.description || event.event || '' }}</div>
@@ -67,10 +98,32 @@ function eventTypeLabel(event: AthenaTimelineEvent) {
 .timeline-view {
   padding: var(--space-2) 0;
 }
+
+.timeline-view__completed-toggle {
+  margin: 0 0 var(--space-3) 32px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-3);
+  background: var(--color-bg-white);
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.timeline-view__completed-toggle:hover {
+  border-color: var(--color-brand);
+  color: var(--color-brand);
+}
+
 .timeline-view__item {
   display: flex;
   gap: var(--space-4);
   min-height: 48px;
+}
+
+.timeline-view__item--current .timeline-view__content {
+  border-left: 3px solid var(--color-brand);
+  padding-left: var(--space-3);
 }
 
 .timeline-view__track {

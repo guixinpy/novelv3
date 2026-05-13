@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import type {
   NarrativeAtlasEdge,
   NarrativeAtlasGraph,
@@ -34,17 +34,39 @@ const emit = defineEmits<{
   select: [selection: AtlasSelection]
 }>()
 
-const canvasWidth = 1180
+interface PanStart {
+  x: number
+  y: number
+  scrollLeft: number
+  scrollTop: number
+}
+
+const canvasWidth = 1360
 const minimumCanvasHeight = 560
 const canvasTopPadding = 96
 const chapterSpacing = 92
 const eventNodeSpacing = 56
 const nodePadding = 72
+const rectNodeHalfWidth = 56
+const rectNodeHalfHeight = 20
+const rectNodeWidth = rectNodeHalfWidth * 2
+const rectNodeHeight = rectNodeHalfHeight * 2
+const foreshadowingLaneCount = 2
+const foreshadowingLaneSpacing = rectNodeWidth + 32
 const chapterSpineX = 420
 const foreshadowingTrackX = 300
 const plotlineTrackX = 650
-const milestoneTrackX = 760
-const eventTrackX = 1040
+const milestoneTrackX = 900
+const eventTrackX = 1200
+const minZoom = 0.5
+const maxZoom = 1.8
+const zoomStep = 0.1
+
+const canvasRef = ref<HTMLElement | null>(null)
+const zoom = ref(1)
+const isSpacePanning = ref(false)
+const isDraggingCanvas = ref(false)
+const panStart = ref<PanStart | null>(null)
 
 const chapterNodes = computed(() =>
   props.graph.nodes
@@ -53,11 +75,29 @@ const chapterNodes = computed(() =>
     .sort((left, right) => Number(left.chapterIndex ?? 0) - Number(right.chapterIndex ?? 0)),
 )
 
-const eventCountsByChapter = computed(() => {
+const stackRowsByChapter = computed(() => {
+  const rightSideCounts = new Map<number, number>()
+  const foreshadowingCounts = new Map<number, number>()
+
+  props.graph.nodes.forEach((node) => {
+    if (node.chapterIndex === undefined) return
+    const chapterIndex = Number(node.chapterIndex)
+    if (node.type === 'event' || node.type === 'milestone') {
+      rightSideCounts.set(chapterIndex, (rightSideCounts.get(chapterIndex) ?? 0) + 1)
+    }
+    if (node.type === 'foreshadowing') {
+      foreshadowingCounts.set(chapterIndex, (foreshadowingCounts.get(chapterIndex) ?? 0) + 1)
+    }
+  })
+
   const counts = new Map<number, number>()
-  props.graph.nodes
-    .filter((node) => node.type === 'event' && node.chapterIndex !== undefined)
-    .forEach((node) => counts.set(Number(node.chapterIndex), (counts.get(Number(node.chapterIndex)) ?? 0) + 1))
+  const chapterIndexes = new Set([...rightSideCounts.keys(), ...foreshadowingCounts.keys()])
+  chapterIndexes.forEach((chapterIndex) => {
+    counts.set(chapterIndex, Math.max(
+      rightSideCounts.get(chapterIndex) ?? 0,
+      Math.ceil((foreshadowingCounts.get(chapterIndex) ?? 0) / foreshadowingLaneCount),
+    ))
+  })
 
   return counts
 })
@@ -70,7 +110,7 @@ const chapterLayout = computed(() => {
     if (node.chapterIndex !== undefined) {
       const chapterIndex = Number(node.chapterIndex)
       yByIndex.set(chapterIndex, nextChapterY)
-      nextChapterY += chapterRowHeight(eventCountsByChapter.value.get(chapterIndex) ?? 0)
+      nextChapterY += chapterRowHeight(stackRowsByChapter.value.get(chapterIndex) ?? 0)
       return
     }
 
@@ -86,6 +126,9 @@ const chapterLayout = computed(() => {
 const canvasHeight = computed(() => chapterLayout.value.height)
 
 const viewBox = computed(() => `0 0 ${canvasWidth} ${canvasHeight.value}`)
+const scaledCanvasWidth = computed(() => Math.round(canvasWidth * zoom.value))
+const scaledCanvasHeight = computed(() => Math.round(canvasHeight.value * zoom.value))
+const zoomPercent = computed(() => Math.round(zoom.value * 100))
 
 const positions = computed(() => {
   const map = new Map<string, AtlasNodePosition>()
@@ -179,13 +222,10 @@ function nodeLayer(node: NarrativeAtlasNode): AtlasLayer {
 function edgePath(edge: NarrativeAtlasEdge, source: AtlasNodePosition, target: AtlasNodePosition) {
   if (edge.type === 'trunk') return `M ${source.x} ${source.y} L ${target.x} ${target.y}`
 
-  const middleX = source.x + (target.x - source.x) / 2
-  const curveBias = edge.type === 'foreshadowing'
-    ? target.x < source.x ? -28 : 28
-    : edge.type === 'event_anchor'
-      ? 36
-      : 20
-  return `M ${source.x} ${source.y} C ${middleX + curveBias} ${source.y}, ${middleX + curveBias} ${target.y}, ${target.x} ${target.y}`
+  const anchors = edgeAnchorPoints(edge, source, target)
+  const middleX = anchors.source.x + (anchors.target.x - anchors.source.x) / 2
+  const curveBias = edgeCurveBias(edge, anchors.source, anchors.target)
+  return `M ${anchors.source.x} ${anchors.source.y} C ${middleX + curveBias} ${anchors.source.y}, ${middleX + curveBias} ${anchors.target.y}, ${anchors.target.x} ${anchors.target.y}`
 }
 
 function edgeHandlePoint(item: AtlasEdgePosition) {
@@ -196,20 +236,49 @@ function edgeHandlePoint(item: AtlasEdgePosition) {
     }
   }
 
-  const middleX = item.source.x + (item.target.x - item.source.x) / 2
-  const curveBias = item.edge.type === 'foreshadowing'
-    ? item.target.x < item.source.x ? -28 : 28
-    : item.edge.type === 'event_anchor'
-      ? 36
-      : 20
+  const anchors = edgeAnchorPoints(item.edge, item.source, item.target)
+  const middleX = anchors.source.x + (anchors.target.x - anchors.source.x) / 2
+  const curveBias = edgeCurveBias(item.edge, anchors.source, anchors.target)
 
   return cubicPoint(
-    { x: item.source.x, y: item.source.y },
-    { x: middleX + curveBias, y: item.source.y },
-    { x: middleX + curveBias, y: item.target.y },
-    { x: item.target.x, y: item.target.y },
+    { x: anchors.source.x, y: anchors.source.y },
+    { x: middleX + curveBias, y: anchors.source.y },
+    { x: middleX + curveBias, y: anchors.target.y },
+    { x: anchors.target.x, y: anchors.target.y },
     0.5,
   )
+}
+
+function edgeAnchorPoints(edge: NarrativeAtlasEdge, source: AtlasNodePosition, target: AtlasNodePosition) {
+  if (edge.type === 'trunk') return { source, target }
+
+  const direction = Math.sign(target.x - source.x)
+  if (direction === 0) return { source, target }
+
+  return {
+    source: {
+      x: source.x + direction * nodeHorizontalRadius(source.node),
+      y: source.y,
+    },
+    target: {
+      x: target.x - direction * nodeHorizontalRadius(target.node),
+      y: target.y,
+    },
+  }
+}
+
+function nodeHorizontalRadius(node: NarrativeAtlasNode) {
+  return node.type === 'chapter' ? 28 : rectNodeHalfWidth
+}
+
+function edgeCurveBias(
+  edge: NarrativeAtlasEdge,
+  source: { x: number; y: number },
+  target: { x: number; y: number },
+) {
+  if (edge.type === 'foreshadowing') return target.x < source.x ? -28 : 28
+  if (edge.type === 'event_anchor') return 36
+  return 20
 }
 
 function cubicPoint(
@@ -237,6 +306,79 @@ function selectNode(node: NarrativeAtlasNode) {
 
 function selectEdge(edge: NarrativeAtlasEdge) {
   emit('select', { kind: 'edge', id: edge.id })
+}
+
+function handleWheel(event: WheelEvent) {
+  event.preventDefault()
+  const canvas = canvasRef.value
+  const previousZoom = zoom.value
+  const nextZoom = clamp(
+    Number((previousZoom + (event.deltaY < 0 ? zoomStep : -zoomStep)).toFixed(2)),
+    minZoom,
+    maxZoom,
+  )
+  if (nextZoom === previousZoom) return
+
+  const rect = canvas?.getBoundingClientRect()
+  const pointerX = rect ? event.clientX - rect.left : 0
+  const pointerY = rect ? event.clientY - rect.top : 0
+  const contentX = canvas ? (canvas.scrollLeft + pointerX) / previousZoom : 0
+  const contentY = canvas ? (canvas.scrollTop + pointerY) / previousZoom : 0
+
+  zoom.value = nextZoom
+
+  if (!canvas) return
+  void nextTick(() => {
+    canvas.scrollLeft = Math.max(0, contentX * nextZoom - pointerX)
+    canvas.scrollTop = Math.max(0, contentY * nextZoom - pointerY)
+  })
+}
+
+function resetZoom() {
+  zoom.value = 1
+}
+
+function handleCanvasMouseDown(event: MouseEvent) {
+  if (!isSpacePanning.value || event.button !== 0) return
+  const canvas = canvasRef.value
+  if (!canvas) return
+  event.preventDefault()
+  isDraggingCanvas.value = true
+  panStart.value = {
+    x: event.clientX,
+    y: event.clientY,
+    scrollLeft: canvas.scrollLeft,
+    scrollTop: canvas.scrollTop,
+  }
+}
+
+function handleMouseMove(event: MouseEvent) {
+  if (!isDraggingCanvas.value || !panStart.value || !canvasRef.value) return
+  event.preventDefault()
+  canvasRef.value.scrollLeft = panStart.value.scrollLeft - (event.clientX - panStart.value.x)
+  canvasRef.value.scrollTop = panStart.value.scrollTop - (event.clientY - panStart.value.y)
+}
+
+function endCanvasDrag() {
+  isDraggingCanvas.value = false
+  panStart.value = null
+}
+
+function handleKeyDown(event: KeyboardEvent) {
+  if (event.code !== 'Space' || isInteractiveTarget(event.target)) return
+  event.preventDefault()
+  isSpacePanning.value = true
+}
+
+function handleKeyUp(event: KeyboardEvent) {
+  if (event.code !== 'Space') return
+  isSpacePanning.value = false
+  endCanvasDrag()
+}
+
+function isInteractiveTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) return false
+  return Boolean(target.closest('button, input, textarea, select, [role="button"]'))
 }
 
 function isNodeSelected(node: NarrativeAtlasNode) {
@@ -288,34 +430,72 @@ function chapterRowHeight(eventCount: number) {
 }
 
 function slotOffset(type: NarrativeAtlasNode['type'], slot: number) {
-  const lane = slot % 3
-  const row = Math.floor(slot / 3)
-  const y = (lane - 1) * 14 + row * 42
+  if (type === 'foreshadowing') {
+    return {
+      x: -(slot % foreshadowingLaneCount) * foreshadowingLaneSpacing,
+      y: Math.floor(slot / foreshadowingLaneCount) * eventNodeSpacing,
+    }
+  }
 
-  if (type === 'foreshadowing') return { x: -lane * 112, y }
   if (type === 'event') return { x: 0, y: slot * eventNodeSpacing }
-  if (type === 'milestone') return { x: lane * 126, y }
+  if (type === 'milestone') return { x: 0, y: slot * eventNodeSpacing }
   if (type === 'plotline') return { x: (slot % 2) * 126, y: Math.floor(slot / 2) * 42 }
 
   return { x: 0, y: 0 }
 }
+
+onMounted(() => {
+  window.addEventListener('keydown', handleKeyDown)
+  window.addEventListener('keyup', handleKeyUp)
+  window.addEventListener('mousemove', handleMouseMove)
+  window.addEventListener('mouseup', endCanvasDrag)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', handleKeyDown)
+  window.removeEventListener('keyup', handleKeyUp)
+  window.removeEventListener('mousemove', handleMouseMove)
+  window.removeEventListener('mouseup', endCanvasDrag)
+})
 </script>
 
 <template>
-  <section class="narrative-atlas-canvas" data-testid="narrative-atlas-canvas" aria-label="叙事图谱画布">
-    <svg :viewBox="viewBox" :width="canvasWidth" :height="canvasHeight" role="img" aria-label="Athena Narrative Atlas">
+  <section
+    ref="canvasRef"
+    class="narrative-atlas-canvas"
+    :class="{
+      'narrative-atlas-canvas--space-panning': isSpacePanning,
+      'narrative-atlas-canvas--dragging': isDraggingCanvas,
+    }"
+    data-testid="narrative-atlas-canvas"
+    :data-atlas-zoom="zoomPercent"
+    :data-atlas-panning="String(isDraggingCanvas)"
+    aria-label="叙事图谱画布"
+    @wheel="handleWheel"
+    @mousedown="handleCanvasMouseDown"
+  >
+    <div class="narrative-atlas-canvas__toolbar" aria-label="图谱视图控制">
+      <span>{{ zoomPercent }}%</span>
+      <button type="button" @click="resetZoom">重置</button>
+    </div>
+    <svg :viewBox="viewBox" :width="scaledCanvasWidth" :height="scaledCanvasHeight" role="img" aria-label="Athena Narrative Atlas">
       <defs>
         <marker
           v-for="layer in ['trunk', 'branches', 'foreshadowing', 'events']"
           :id="`atlas-arrow-${layer}`"
           :key="layer"
-          markerWidth="8"
-          markerHeight="8"
-          refX="6"
-          refY="4"
+          markerUnits="userSpaceOnUse"
+          markerWidth="6"
+          markerHeight="6"
+          refX="5.2"
+          refY="3"
+          viewBox="0 0 6 6"
           orient="auto"
         >
-          <path d="M 0 0 L 8 4 L 0 8 z" class="narrative-atlas-canvas__marker" />
+          <path
+            d="M 0.8 1.2 L 5.2 3 L 0.8 4.8 z"
+            :class="['narrative-atlas-canvas__marker', `narrative-atlas-canvas__marker--${layer}`]"
+          />
         </marker>
       </defs>
 
@@ -324,6 +504,7 @@ function slotOffset(type: NarrativeAtlasNode['type'], slot: number) {
         <text :x="foreshadowingTrackX - 40" y="52">伏笔</text>
         <text :x="chapterSpineX - 34" y="52">章节</text>
         <text :x="plotlineTrackX - 34" y="52">故事线</text>
+        <text :x="milestoneTrackX - 34" y="52">里程碑</text>
         <text :x="eventTrackX - 24" y="52">事件</text>
       </g>
 
@@ -342,8 +523,9 @@ function slotOffset(type: NarrativeAtlasNode['type'], slot: number) {
           <path
             :class="[edgeClass(item.edge), 'narrative-atlas-canvas__edge-line']"
             :d="item.path"
+            :data-atlas-edge-line-id="item.edge.id"
             aria-hidden="true"
-            marker-end="url(#atlas-arrow-trunk)"
+            :marker-end="`url(#atlas-arrow-${item.layer})`"
           />
         </template>
       </g>
@@ -365,7 +547,14 @@ function slotOffset(type: NarrativeAtlasNode['type'], slot: number) {
           @keydown.space.prevent="selectNode(item.node)"
         >
           <circle v-if="item.node.type === 'chapter'" r="28" />
-          <rect v-else x="-56" y="-20" width="112" height="40" rx="6" />
+          <rect
+            v-else
+            :x="-rectNodeHalfWidth"
+            :y="-rectNodeHalfHeight"
+            :width="rectNodeWidth"
+            :height="rectNodeHeight"
+            rx="6"
+          />
           <text text-anchor="middle" dominant-baseline="middle">
             {{ displayNodeLabel(item.node) }}
           </text>
@@ -398,12 +587,15 @@ function slotOffset(type: NarrativeAtlasNode['type'], slot: number) {
 
 <style scoped>
 .narrative-atlas-canvas {
+  position: relative;
   min-width: 0;
   height: 100%;
   overflow: auto;
   background:
     linear-gradient(180deg, rgba(79, 70, 229, 0.04), transparent 220px),
     var(--color-bg-primary);
+  cursor: default;
+  overscroll-behavior: contain;
 }
 
 .narrative-atlas-canvas svg {
@@ -412,6 +604,42 @@ function slotOffset(type: NarrativeAtlasNode['type'], slot: number) {
   width: auto;
   height: auto;
   max-width: none;
+}
+
+.narrative-atlas-canvas--space-panning {
+  cursor: grab;
+}
+
+.narrative-atlas-canvas--dragging {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.narrative-atlas-canvas__toolbar {
+  position: sticky;
+  top: var(--space-2);
+  left: var(--space-2);
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+  box-shadow: var(--shadow-sm);
+}
+
+.narrative-atlas-canvas__toolbar button {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--color-brand);
+  font: inherit;
+  cursor: pointer;
 }
 
 .narrative-atlas-canvas__grid line {
@@ -478,6 +706,8 @@ function slotOffset(type: NarrativeAtlasNode['type'], slot: number) {
 
 .narrative-atlas-canvas__edge--branch.narrative-atlas-canvas__edge-line {
   stroke: var(--color-brand);
+  stroke-width: 1.5;
+  opacity: 0.62;
 }
 
 .narrative-atlas-canvas__edge--foreshadowing.narrative-atlas-canvas__edge-line {
@@ -492,6 +722,7 @@ function slotOffset(type: NarrativeAtlasNode['type'], slot: number) {
 
 .narrative-atlas-canvas__edge--selected.narrative-atlas-canvas__edge-line {
   stroke-width: 4;
+  opacity: 1;
   filter: drop-shadow(0 2px 3px rgba(26, 26, 26, 0.18));
 }
 
@@ -502,6 +733,24 @@ function slotOffset(type: NarrativeAtlasNode['type'], slot: number) {
 
 .narrative-atlas-canvas__marker {
   fill: currentColor;
+  fill-opacity: 0.7;
+}
+
+.narrative-atlas-canvas__marker--trunk {
+  fill: #475569;
+}
+
+.narrative-atlas-canvas__marker--branches {
+  fill: var(--color-brand);
+  fill-opacity: 0.58;
+}
+
+.narrative-atlas-canvas__marker--foreshadowing {
+  fill: var(--color-warning);
+}
+
+.narrative-atlas-canvas__marker--events {
+  fill: var(--color-success);
 }
 
 .narrative-atlas-canvas__node {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import type { AthenaEvolutionPlan, ChapterSummary } from '../../api/types'
 import type { AthenaNarrativeView } from '../../views/athenaNavigation'
 
@@ -11,6 +11,10 @@ const props = defineProps<{
   view: AthenaNarrativeView
   loading?: boolean
 }>()
+
+const collapsedPlotlineKeys = ref<Set<string>>(new Set())
+const chapterSearch = ref('')
+const activeChapterIndex = ref<number | null>(null)
 
 const outlineChapters = computed(() =>
   asRecords(props.plan?.outline?.chapters)
@@ -73,6 +77,23 @@ const metrics = computed(() => [
   { label: '伏笔', value: foreshadowingItems.value.length },
 ])
 
+const filteredOutlineChapters = computed(() => {
+  const query = chapterSearch.value.trim().toLocaleLowerCase()
+  if (!query) return outlineChapters.value
+
+  return outlineChapters.value.filter((chapter) => {
+    const searchable = [
+      `第${chapter.chapterIndex}章`,
+      chapter.title,
+      chapter.summary,
+      chapter.purpose,
+      ...chapter.characters,
+      ...chapter.scenes,
+    ].join(' ').toLocaleLowerCase()
+    return searchable.includes(query)
+  })
+})
+
 function asRecord(value: unknown): RecordValue | null {
   return typeof value === 'object' && value !== null && !Array.isArray(value) ? value as RecordValue : null
 }
@@ -115,6 +136,50 @@ function statusLabel(status: string) {
   }
   return labels[status] || status
 }
+
+function chapterStatusLabel(status: string | undefined) {
+  const labels: Record<string, string> = {
+    draft: '草稿',
+    generated: '已生成',
+    done: '已完成',
+    completed: '已完成',
+    pending: '待生成',
+  }
+  return status ? labels[status] || status : ''
+}
+
+function plotlineTypeLabel(type: string) {
+  const labels: Record<string, string> = {
+    main: '主线',
+    sub: '支线',
+    subplot: '支线',
+    branch: '支线',
+    parallel: '并行线',
+  }
+  return labels[type] || type
+}
+
+function isPlotlineCollapsed(key: string) {
+  return collapsedPlotlineKeys.value.has(key)
+}
+
+function togglePlotline(key: string) {
+  const next = new Set(collapsedPlotlineKeys.value)
+  if (next.has(key)) next.delete(key)
+  else next.add(key)
+  collapsedPlotlineKeys.value = next
+}
+
+function selectChapterJump(value: string) {
+  const chapterIndex = toNumber(value)
+  if (chapterIndex === null) return
+  chapterSearch.value = ''
+  activeChapterIndex.value = chapterIndex
+  void nextTick(() => {
+    const target = document.querySelector(`[data-narrative-chapter-index="${chapterIndex}"]`)
+    target?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  })
+}
 </script>
 
 <template>
@@ -129,29 +194,65 @@ function statusLabel(status: string) {
         </div>
       </div>
 
-      <div v-if="view === 'storyline'" class="narrative-workbench__plotlines">
-        <article v-for="plotline in plotlines" :key="plotline.key" class="narrative-workbench__plotline">
-          <header>
-            <span>{{ plotline.type }}</span>
-            <h3>{{ plotline.name }}</h3>
+      <div v-if="view === 'storyline'" class="narrative-workbench__plotlines" data-testid="storyline-tree">
+        <article v-for="plotline in plotlines" :key="plotline.key" class="narrative-workbench__plotline" data-testid="storyline-branch">
+          <header class="narrative-workbench__branch-header">
+            <button
+              type="button"
+              class="narrative-workbench__tree-toggle"
+              data-testid="storyline-toggle"
+              :aria-expanded="!isPlotlineCollapsed(plotline.key)"
+              @click="togglePlotline(plotline.key)"
+            >
+              {{ isPlotlineCollapsed(plotline.key) ? '+' : '-' }}
+            </button>
+            <div>
+              <span>{{ plotlineTypeLabel(plotline.type) }} · {{ plotline.milestones.length }} 个节点</span>
+              <h3>{{ plotline.name }}</h3>
+            </div>
           </header>
-          <div v-if="plotline.milestones.length" class="narrative-workbench__milestones">
-            <div v-for="milestone in plotline.milestones" :key="milestone.key" class="narrative-workbench__milestone">
+          <ol v-if="plotline.milestones.length && !isPlotlineCollapsed(plotline.key)" class="narrative-workbench__milestones">
+            <li v-for="milestone in plotline.milestones" :key="milestone.key" class="narrative-workbench__milestone">
               <span>第{{ milestone.chapterIndex ?? '?' }}章</span>
               <strong>{{ milestone.title }}</strong>
               <p v-if="milestone.summary">{{ milestone.summary }}</p>
-            </div>
-          </div>
-          <div v-else class="narrative-workbench__subtle">暂无节点</div>
+            </li>
+          </ol>
+          <div v-else-if="!isPlotlineCollapsed(plotline.key)" class="narrative-workbench__subtle">暂无节点</div>
         </article>
       </div>
 
       <div v-else-if="view === 'chapters'" class="narrative-workbench__chapters">
-        <article v-for="chapter in outlineChapters" :key="chapter.key" class="narrative-workbench__chapter">
+        <div class="narrative-workbench__chapter-tools">
+          <input
+            v-model="chapterSearch"
+            data-testid="chapter-search"
+            type="search"
+            placeholder="搜索章节、摘要、角色、场景"
+          >
+          <select
+            data-testid="chapter-jump"
+            :value="activeChapterIndex ?? ''"
+            @change="selectChapterJump(($event.target as HTMLSelectElement).value)"
+          >
+            <option value="">跳转章节</option>
+            <option v-for="chapter in outlineChapters" :key="chapter.key" :value="chapter.chapterIndex ?? ''">
+              第{{ chapter.chapterIndex }}章 · {{ chapter.title }}
+            </option>
+          </select>
+        </div>
+        <article
+          v-for="chapter in filteredOutlineChapters"
+          :key="chapter.key"
+          class="narrative-workbench__chapter"
+          :class="{ 'narrative-workbench__chapter--active': chapter.chapterIndex === activeChapterIndex }"
+          :data-testid="`chapter-${chapter.chapterIndex}`"
+          :data-narrative-chapter-index="chapter.chapterIndex"
+        >
           <header>
             <span>第{{ chapter.chapterIndex }}章</span>
             <h3>{{ chapter.title }}</h3>
-            <em v-if="chapterStatus(chapter.chapterIndex)">{{ chapterStatus(chapter.chapterIndex)?.status }}</em>
+            <em v-if="chapterStatus(chapter.chapterIndex)">{{ chapterStatusLabel(chapterStatus(chapter.chapterIndex)?.status) }}</em>
           </header>
           <p>{{ chapter.summary || '暂无章节摘要' }}</p>
           <dl>
@@ -169,6 +270,7 @@ function statusLabel(status: string) {
             </template>
           </dl>
         </article>
+        <div v-if="filteredOutlineChapters.length === 0" class="narrative-workbench__empty">没有匹配的章节</div>
       </div>
 
       <div v-else-if="view === 'foreshadowing'" class="narrative-workbench__foreshadowing">
@@ -242,6 +344,23 @@ function statusLabel(status: string) {
   margin-bottom: var(--space-2);
 }
 
+.narrative-workbench__branch-header {
+  align-items: flex-start;
+}
+
+.narrative-workbench__tree-toggle {
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-white);
+  color: var(--color-brand);
+  font-size: var(--text-base);
+  line-height: 1;
+  cursor: pointer;
+}
+
 .narrative-workbench__plotline h3,
 .narrative-workbench__chapter h3 {
   color: var(--color-text-primary);
@@ -265,13 +384,28 @@ function statusLabel(status: string) {
 
 .narrative-workbench__milestones {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: var(--space-3);
+  gap: 0;
+  margin-left: 12px;
+  padding-left: var(--space-4);
+  border-left: 2px solid var(--color-border);
+  list-style: none;
 }
 
 .narrative-workbench__milestone {
-  border-left: 2px solid var(--color-border);
-  padding-left: var(--space-3);
+  position: relative;
+  padding: 0 0 var(--space-3) var(--space-4);
+}
+
+.narrative-workbench__milestone::before {
+  content: '';
+  position: absolute;
+  top: 8px;
+  left: -5px;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--color-brand);
+  box-shadow: 0 0 0 3px var(--color-brand-light);
 }
 
 .narrative-workbench__milestone strong,
@@ -291,6 +425,34 @@ function statusLabel(status: string) {
   font-size: var(--text-xs);
 }
 
+.narrative-workbench__chapter-tools {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(180px, 280px);
+  gap: var(--space-2);
+  padding-bottom: var(--space-3);
+  background: var(--color-bg-primary);
+}
+
+.narrative-workbench__chapter-tools input,
+.narrative-workbench__chapter-tools select {
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-bg-white);
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+}
+
+.narrative-workbench__chapter--active {
+  border-left: 3px solid var(--color-brand);
+  padding-left: var(--space-3);
+  background: var(--color-brand-light);
+}
+
 .narrative-workbench__chapter dd {
   overflow-wrap: anywhere;
   color: var(--color-text-primary);
@@ -305,6 +467,10 @@ function statusLabel(status: string) {
 
 @media (max-width: 760px) {
   .narrative-workbench__metrics {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .narrative-workbench__chapter-tools {
     grid-template-columns: minmax(0, 1fr);
   }
 }

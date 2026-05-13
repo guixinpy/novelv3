@@ -26,6 +26,47 @@ describe('TimelineView', () => {
     expect(wrapper.text()).not.toContain('暂无时间线数据')
   })
 
+  it('collapses completed timeline nodes so the current node is visible first', async () => {
+    const wrapper = mount(TimelineView, {
+      props: {
+        events: [
+          {
+            id: 'plan-chapter-1',
+            event_id: 'plan.chapter.1',
+            chapter_index: 1,
+            intra_chapter_seq: 0,
+            event_type: 'chapter_plan',
+            description: '第1章：已经完成的调查。',
+          },
+          {
+            id: 'plan-chapter-2',
+            event_id: 'plan.chapter.2',
+            chapter_index: 2,
+            intra_chapter_seq: 0,
+            event_type: 'chapter_plan',
+            description: '第2章：已经完成的追踪。',
+          },
+          {
+            id: 'plan-chapter-3',
+            event_id: 'plan.chapter.3',
+            chapter_index: 3,
+            intra_chapter_seq: 0,
+            event_type: 'chapter_plan',
+            description: '第3章：当前推进的节点。',
+          },
+        ],
+      },
+    })
+
+    expect(wrapper.text()).toContain('已收起前 2 个已完成节点')
+    expect(wrapper.text()).toContain('当前推进的节点')
+    expect(wrapper.text()).not.toContain('已经完成的调查')
+
+    await wrapper.get('[data-testid="timeline-completed-toggle"]').trigger('click')
+
+    expect(wrapper.text()).toContain('已经完成的调查')
+  })
+
   it('shows loading before timeline data resolves', () => {
     const wrapper = mount(TimelineView, {
       props: {

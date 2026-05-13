@@ -5,6 +5,8 @@ __pycache__/
 data/
 .env
 docs/.git/
+dogfood-output/
+docs/archive/dogfood/output/
 backend/static/
 .superpowers/
 .agents/

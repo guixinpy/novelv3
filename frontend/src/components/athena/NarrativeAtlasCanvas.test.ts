@@ -69,6 +69,55 @@ function adjacentChapterEventGraph(): NarrativeAtlasGraph {
   return { nodes: [...graph.nodes, ...events], edges: [...graph.edges, ...edges], warnings: [] }
 }
 
+function milestoneAndEventTrackGraph(): NarrativeAtlasGraph {
+  const graph = longChapterGraph(1)
+  const plotline = {
+    id: 'plotline:main',
+    type: 'plotline' as const,
+    label: '主线',
+  }
+  const milestones = [1, 2, 3].map((index) => ({
+    id: `milestone:main:${index}`,
+    type: 'milestone' as const,
+    label: `里程碑${index}`,
+    chapterIndex: 1,
+  }))
+  const event = {
+    id: 'event:chapter-1',
+    type: 'event' as const,
+    label: '真实事件',
+    chapterIndex: 1,
+  }
+  const edges = [
+    ...milestones.map((milestone) => ({
+      id: `branch:${plotline.id}->${milestone.id}`,
+      type: 'branch' as const,
+      source: plotline.id,
+      target: milestone.id,
+    })),
+    {
+      id: `event_anchor:chapter:1->${event.id}`,
+      type: 'event_anchor' as const,
+      source: 'chapter:1',
+      target: event.id,
+    },
+  ]
+
+  return { nodes: [...graph.nodes, plotline, ...milestones, event], edges: [...graph.edges, ...edges], warnings: [] }
+}
+
+function sameChapterForeshadowingGraph(): NarrativeAtlasGraph {
+  const graph = longChapterGraph(1)
+  const foreshadowing = [1, 2].map((index) => ({
+    id: `foreshadowing:chapter-1-${index}`,
+    type: 'foreshadowing' as const,
+    label: `第一章伏笔${index}`,
+    chapterIndex: 1,
+  }))
+
+  return { nodes: [...graph.nodes, ...foreshadowing], edges: graph.edges, warnings: [] }
+}
+
 function transformPoint(transform: string) {
   const match = /translate\(([-\d.]+),\s*([-\d.]+)\)/.exec(transform)
   if (!match) throw new Error(`Unexpected transform: ${transform}`)
@@ -91,7 +140,51 @@ function boxesOverlap(left: ReturnType<typeof eventBox>, right: ReturnType<typeo
     && left.bottom > right.top
 }
 
+function cubicEndpoints(path: string) {
+  const match = /^M\s+([-\d.]+)\s+([-\d.]+)\s+C\s+[-\d.]+\s+[-\d.]+,\s+[-\d.]+\s+[-\d.]+,\s+([-\d.]+)\s+([-\d.]+)$/.exec(path)
+  if (!match) throw new Error(`Unexpected cubic path: ${path}`)
+  return {
+    start: { x: Number(match[1]), y: Number(match[2]) },
+    end: { x: Number(match[3]), y: Number(match[4]) },
+  }
+}
+
 describe('NarrativeAtlasCanvas', () => {
+  it('zooms with mouse wheel and supports space-drag panning', async () => {
+    const wrapper = mount(NarrativeAtlasCanvas, {
+      props: {
+        graph: longChapterGraph(20),
+        layers: { trunk: true, branches: true, foreshadowing: true, events: true },
+        selected: null,
+      },
+      attachTo: document.body,
+    })
+    const canvas = wrapper.get('[data-testid="narrative-atlas-canvas"]')
+    const canvasElement = canvas.element as HTMLElement
+
+    canvasElement.dispatchEvent(new WheelEvent('wheel', { deltaY: -120, clientX: 420, clientY: 220 }))
+    await wrapper.vm.$nextTick()
+    expect(canvas.attributes('data-atlas-zoom')).toBe('110')
+
+    canvasElement.scrollLeft = 80
+    canvasElement.scrollTop = 80
+    window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Space' }))
+    canvasElement.dispatchEvent(new MouseEvent('mousedown', { button: 0, clientX: 320, clientY: 220 }))
+    await wrapper.vm.$nextTick()
+    expect(canvas.attributes('data-atlas-panning')).toBe('true')
+
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 280, clientY: 180 }))
+    expect(canvasElement.scrollLeft).toBeGreaterThan(80)
+    expect(canvasElement.scrollTop).toBeGreaterThan(80)
+
+    window.dispatchEvent(new MouseEvent('mouseup'))
+    window.dispatchEvent(new KeyboardEvent('keyup', { code: 'Space' }))
+    await wrapper.vm.$nextTick()
+    expect(canvas.attributes('data-atlas-panning')).toBe('false')
+
+    wrapper.unmount()
+  })
+
   it('renders wide transparent edge hitboxes for reliable selection', async () => {
     const wrapper = mount(NarrativeAtlasCanvas, {
       props: {
@@ -179,5 +272,81 @@ describe('NarrativeAtlasCanvas', () => {
         expect(boxesOverlap(boxes[leftIndex], boxes[rightIndex])).toBe(false)
       }
     }
+  })
+
+  it('keeps milestones on their own lane instead of spilling into the event lane', () => {
+    const wrapper = mount(NarrativeAtlasCanvas, {
+      props: {
+        graph: milestoneAndEventTrackGraph(),
+        layers: { trunk: true, branches: true, foreshadowing: true, events: true },
+        selected: null,
+      },
+    })
+    const milestoneXs = [1, 2, 3].map((index) => transformPoint(
+      wrapper.get(`[data-atlas-node-id="milestone:main:${index}"]`).attributes('transform') ?? '',
+    ).x)
+    const eventX = transformPoint(wrapper.get('[data-atlas-node-id="event:chapter-1"]').attributes('transform') ?? '').x
+
+    expect(wrapper.text()).toContain('里程碑')
+    expect(Math.max(...milestoneXs)).toBeLessThan(eventX - 160)
+  })
+
+  it('keeps plotline and milestone nodes separated and routes branch edges outside node bodies', () => {
+    const wrapper = mount(NarrativeAtlasCanvas, {
+      props: {
+        graph: milestoneAndEventTrackGraph(),
+        layers: { trunk: true, branches: true, foreshadowing: true, events: true },
+        selected: null,
+      },
+    })
+    const plotlinePoint = transformPoint(wrapper.get('[data-atlas-node-id="plotline:main"]').attributes('transform') ?? '')
+    const milestonePoint = transformPoint(wrapper.get('[data-atlas-node-id="milestone:main:1"]').attributes('transform') ?? '')
+    const plotlineBox = eventBox(plotlinePoint)
+    const milestoneBox = eventBox(milestonePoint)
+    const edgePath = wrapper
+      .get('[data-atlas-edge-hitbox-id="branch:plotline:main->milestone:main:1"]')
+      .attributes('d') ?? ''
+    const endpoints = cubicEndpoints(edgePath)
+
+    expect(milestoneBox.left - plotlineBox.right).toBeGreaterThanOrEqual(72)
+    expect(endpoints.start.x).toBeGreaterThan(plotlinePoint.x)
+    expect(endpoints.end.x).toBeLessThan(milestonePoint.x)
+  })
+
+  it('keeps same-chapter foreshadowing nodes visually separated', () => {
+    const wrapper = mount(NarrativeAtlasCanvas, {
+      props: {
+        graph: sameChapterForeshadowingGraph(),
+        layers: { trunk: true, branches: true, foreshadowing: true, events: true },
+        selected: null,
+      },
+    })
+    const boxes = [1, 2].map((index) => eventBox(transformPoint(
+      wrapper.get(`[data-atlas-node-id="foreshadowing:chapter-1-${index}"]`).attributes('transform') ?? '',
+    )))
+
+    const horizontalGap = boxes[0].left > boxes[1].left
+      ? boxes[0].left - boxes[1].right
+      : boxes[1].left - boxes[0].right
+
+    expect(boxesOverlap(boxes[0], boxes[1])).toBe(false)
+    expect(horizontalGap).toBeGreaterThanOrEqual(24)
+  })
+
+  it('uses compact layer-specific arrow markers for edge lines', () => {
+    const wrapper = mount(NarrativeAtlasCanvas, {
+      props: {
+        graph: milestoneAndEventTrackGraph(),
+        layers: { trunk: true, branches: true, foreshadowing: true, events: true },
+        selected: null,
+      },
+    })
+
+    const branchLine = wrapper.get('[data-atlas-edge-line-id="branch:plotline:main->milestone:main:1"]')
+    const branchMarker = wrapper.get('#atlas-arrow-branches')
+
+    expect(branchLine.attributes('marker-end')).toBe('url(#atlas-arrow-branches)')
+    expect(branchMarker.attributes('markerUnits')).toBe('userSpaceOnUse')
+    expect(Number(branchMarker.attributes('markerWidth'))).toBeLessThanOrEqual(6)
   })
 })

@@ -7,9 +7,10 @@
 - `requirements/`：早期需求文档，原 `requirments/`，保留历史原文但不再作为当前需求入口。
 - `phases/`：阶段性设计稿，已被后续架构与实现计划覆盖。
 - `change-review/`：一次性评审记录。
+- `dogfood/`：用户视角测试、dogfood 记录、问题清单和阶段性压测报告。
 - `others/`：外部摘要、临时材料、非规范文档。
 - `test-screenshots/`：历史手工测试截图。
-- `superpowers/specs/`：被新版覆盖或已完成的设计稿。
+- `superpowers/specs/`：已完成、过期或被新版覆盖的设计稿。
 - `superpowers/plans/`：已完成、过期或被拆分替代的实现计划。
 - `superpowers/notes/`：阶段性说明、一次性记录。
 

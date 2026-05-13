@@ -53,7 +53,7 @@ function nodeDetail(node: NarrativeAtlasNode) {
     sourceKey: node.id,
     title: node.label,
     meta: node.chapterIndex !== undefined ? `第${node.chapterIndex}章` : typeLabel(node.type),
-    status: node.status || '未标注',
+    status: statusLabel(node.status),
     summary: node.summary || rawText(node.raw, ['summary', 'description', 'event', 'hint', 'purpose']) || '暂无摘要',
     view: viewForNode(node),
   }
@@ -66,7 +66,7 @@ function edgeDetail(edge: NarrativeAtlasEdge) {
     sourceKey: edge.id,
     title: `${source?.label ?? edge.source} → ${target?.label ?? edge.target}`,
     meta: edgeLabel(edge.type),
-    status: '连接',
+    status: '叙事链路',
     summary: edge.label || `${edgeLabel(edge.type)}连接了两个叙事节点。`,
     view: viewForEdge(edge),
   }
@@ -121,6 +121,22 @@ function edgeLabel(type: NarrativeAtlasEdge['type']) {
     event_anchor: '事件锚点',
   }
   return labels[type]
+}
+
+function statusLabel(status: string | undefined) {
+  const normalized = status || 'unknown'
+  const labels: Record<string, string> = {
+    resolved: '已回收',
+    planted: '已埋设',
+    pending: '待回收',
+    generated: '已生成',
+    draft: '草稿',
+    done: '已完成',
+    completed: '已完成',
+    active: '进行中',
+    unknown: '未标注',
+  }
+  return labels[normalized] || normalized
 }
 
 function rawText(raw: Record<string, unknown> | undefined, keys: string[]) {
