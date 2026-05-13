@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 from sqlalchemy import event
 
 from app.core.world_proposal_service import (
@@ -471,6 +473,64 @@ def test_proposal_detail_does_not_conflict_presence_count_across_chapters(client
 
     assert response.status_code == 200
     assert response.json()["conflicts"] == []
+
+
+def test_proposal_detail_skips_full_projection_for_chapter_scoped_conflicts(client, db_session, monkeypatch):
+    project, profile_version = _seed_profile(db_session)
+    db_session.add(
+        WorldFactClaim(
+            project_id=project.id,
+            project_profile_version_id=profile_version.id,
+            profile_version=profile_version.version,
+            claim_id="claim.chapter.1.char.hero.presence_count",
+            chapter_index=1,
+            intra_chapter_seq=0,
+            subject_ref="char.hero",
+            predicate="presence_count",
+            object_ref_or_value={"count": 51, "chapter_index": 1},
+            claim_layer="truth",
+            claim_status="confirmed",
+            authority_type="derived",
+            confidence=0.85,
+            contract_version=profile_version.contract_version,
+        )
+    )
+    db_session.commit()
+    bundle = create_bundle(
+        db=db_session,
+        project_id=project.id,
+        project_profile_version_id=profile_version.id,
+        profile_version=profile_version.version,
+        created_by="writer.alpha",
+        title="Chapter 20 presence candidate",
+    )
+    write_candidate_fact(
+        db=db_session,
+        bundle_id=bundle.id,
+        created_by="writer.alpha",
+        candidate=_candidate_payload(
+            claim_id="claim.chapter.20.char.hero.presence_count",
+            subject_ref="char.hero",
+            predicate="presence_count",
+            chapter_index=20,
+            value={"count": 48, "chapter_index": 20},
+        ),
+    )
+
+    projection_calls = 0
+
+    def count_full_projection_calls(**_kwargs):
+        nonlocal projection_calls
+        projection_calls += 1
+        return SimpleNamespace(projection=SimpleNamespace(facts={}))
+
+    monkeypatch.setattr("app.api.world_model.build_world_projection_overview", count_full_projection_calls)
+
+    response = client.get(f"/api/v1/projects/{project.id}/world-model/proposal-bundles/{bundle.id}")
+
+    assert response.status_code == 200
+    assert response.json()["conflicts"] == []
+    assert projection_calls == 0
 
 
 def test_proposal_detail_conflicts_only_include_actionable_items(client, db_session):

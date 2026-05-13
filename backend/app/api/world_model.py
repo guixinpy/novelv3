@@ -545,9 +545,22 @@ def _detect_item_conflicts(
     impact_snapshots: list,
 ) -> list[dict]:
     conflicts: list[dict] = []
-    profile = _get_current_profile(db=db, project_id=project_id)
+    actionable_item_ids = {
+        item.id
+        for item in items
+        if item.item_status in ACTIONABLE_PROPOSAL_ITEM_STATUSES
+    }
+    actionable_truth_items = [
+        item
+        for item in items
+        if item.id in actionable_item_ids and item.claim_layer == "truth"
+    ]
+    needs_full_projection = any(
+        not is_chapter_scoped_truth_predicate(item.predicate)
+        for item in actionable_truth_items
+    )
     projection_facts = {}
-    if profile is not None:
+    if needs_full_projection and (profile := _get_current_profile(db=db, project_id=project_id)) is not None:
         overview = build_world_projection_overview(
             db=db,
             project_id=project_id,
@@ -555,11 +568,6 @@ def _detect_item_conflicts(
             view_type="current_truth",
         )
         projection_facts = overview.projection.facts if overview.projection else {}
-    actionable_item_ids = {
-        item.id
-        for item in items
-        if item.item_status in ACTIONABLE_PROPOSAL_ITEM_STATUSES
-    }
     for item in items:
         if item.id not in actionable_item_ids:
             continue
