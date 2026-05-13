@@ -81,6 +81,9 @@ function createPromptTraceDetail() {
     },
     prompt_budget: {
       max_context_chars: 24000,
+      requested_context_chars: 30000,
+      used_context_chars: 13,
+      remaining_context_chars: 23987,
       included_blocks: 1,
       omitted_blocks: 2,
       omitted_block_keys: ['world-history', 'old-outline'],
@@ -107,6 +110,9 @@ function createPromptTraceDetail() {
       template_hash: 'sha256:abcdef1234567890fedcba',
       budget: {
         max_context_chars: 24000,
+        requested_context_chars: 30000,
+        used_context_chars: 13,
+        remaining_context_chars: 23987,
         included_blocks: 1,
         omitted_blocks: 2,
         omitted_block_keys: ['world-history', 'old-outline'],
@@ -199,8 +205,10 @@ describe('ModelTraceDrawer', () => {
     await wrapper.vm.$nextTick()
 
     const budgetText = sectionText('[aria-label="Prompt budget"]')
-    expect(budgetText).toContain('Included 1')
-    expect(budgetText).toContain('Omitted 2')
+    expect(budgetText).toContain('已注入 13 / 上限 24000 字')
+    expect(budgetText).toContain('剩余 23987 字')
+    expect(budgetText).toContain('保留块 1')
+    expect(budgetText).toContain('省略块 2')
     expect(budgetText).toContain('world-history')
     expect(budgetText).toContain('old-outline')
     expect(budgetText).toContain('chapter-summary')

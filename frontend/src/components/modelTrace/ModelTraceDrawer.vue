@@ -75,6 +75,9 @@ function resolvePromptBudget(trace: ModelCallTraceDetail): PromptBudget | null {
 
   return {
     max_context_chars: numberFromUnknown(budget.max_context_chars),
+    requested_context_chars: numberFromUnknown(budget.requested_context_chars) || 0,
+    used_context_chars: numberFromUnknown(budget.used_context_chars) || 0,
+    remaining_context_chars: numberFromUnknown(budget.remaining_context_chars) || 0,
     included_blocks: numberFromUnknown(budget.included_blocks) || 0,
     omitted_blocks: omittedBlocks,
     omitted_block_keys: omittedBlockKeys,

@@ -56,25 +56,30 @@ function formatOriginalCount(block: ContextBlock) {
 function formatKeyList(keys: string[] | undefined) {
   return keys?.length ? keys.join(', ') : '-'
 }
+
+function formatBudgetUsage(budget: PromptBudget) {
+  const used = budget.used_context_chars ?? 0
+  const max = budget.max_context_chars ?? 0
+  return `已注入 ${used} / 上限 ${max} 字`
+}
 </script>
 
 <template>
   <div class="context-blocks">
     <section v-if="props.budget" class="context-blocks__budget" aria-label="Prompt budget">
       <div class="context-blocks__budget-metrics">
-        <span>Included {{ props.budget.included_blocks }}</span>
-        <span>Omitted {{ props.budget.omitted_blocks }}</span>
-        <span v-if="props.budget.max_context_chars !== null && props.budget.max_context_chars !== undefined">
-          Max {{ props.budget.max_context_chars }} chars
-        </span>
+        <span>{{ formatBudgetUsage(props.budget) }}</span>
+        <span>剩余 {{ props.budget.remaining_context_chars ?? 0 }} 字</span>
+        <span>保留块 {{ props.budget.included_blocks }}</span>
+        <span>省略块 {{ props.budget.omitted_blocks }}</span>
       </div>
       <div class="context-blocks__budget-details">
         <div>
-          <span>Omitted keys</span>
+          <span>省略块 key</span>
           <strong>{{ formatKeyList(props.budget.omitted_block_keys) }}</strong>
         </div>
         <div>
-          <span>Truncated</span>
+          <span>截断块</span>
           <strong>{{ formatKeyList(props.budget.truncated_blocks) }}</strong>
         </div>
       </div>
@@ -89,7 +94,7 @@ function formatKeyList(keys: string[] | undefined) {
             <h5>{{ block.title || block.key }}</h5>
           </div>
           <div class="context-blocks__metrics">
-            <span>{{ block.char_count }} chars{{ formatOriginalCount(block) }}</span>
+            <span>{{ block.char_count }} 字符{{ formatOriginalCount(block) }}</span>
             <span>{{ block.token_estimate }} tokens</span>
             <span v-if="block.truncated" class="context-blocks__truncated">已截断</span>
           </div>
@@ -101,7 +106,7 @@ function formatKeyList(keys: string[] | undefined) {
         </button>
 
         <div class="context-blocks__sources">
-          <div class="context-blocks__source-title">Sources</div>
+          <div class="context-blocks__source-title">来源</div>
           <ContextSourceList :sources="block.sources || []" />
         </div>
       </section>

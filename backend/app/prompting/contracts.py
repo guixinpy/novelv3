@@ -32,6 +32,9 @@ class PromptBudgetReport:
     max_context_chars: int
     included_blocks: int
     omitted_blocks: int
+    requested_context_chars: int = 0
+    used_context_chars: int = 0
+    remaining_context_chars: int = 0
     omitted_block_keys: list[str] = field(default_factory=list)
     truncated_blocks: list[str] = field(default_factory=list)
 

@@ -95,7 +95,14 @@ def test_budgeter_keeps_priority_but_returns_original_order_and_truncates():
     assert [block["key"] for block in kept_blocks] == ["high", "mid"]
     assert kept_blocks[0]["content"] == "HHHHHH"
     assert kept_blocks[1]["content"] == "MM"
+    assert kept_blocks[1]["truncated"] is True
+    assert kept_blocks[1]["char_count"] == 2
+    assert kept_blocks[1]["original_char_count"] == 4
+    assert kept_blocks[1]["token_estimate"] == 1
     assert report.max_context_chars == 8
+    assert report.requested_context_chars == 14
+    assert report.used_context_chars == 8
+    assert report.remaining_context_chars == 0
     assert report.included_blocks == 2
     assert report.omitted_blocks == 1
     assert report.omitted_block_keys == ["low"]

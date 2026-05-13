@@ -35,6 +35,9 @@ class PromptMetadataOut(BaseModel):
 
 class PromptBudgetOut(BaseModel):
     max_context_chars: int | None = None
+    requested_context_chars: int = 0
+    used_context_chars: int = 0
+    remaining_context_chars: int = 0
     included_blocks: int = 0
     omitted_blocks: int = 0
     omitted_block_keys: list[str] = Field(default_factory=list)
@@ -184,6 +187,9 @@ def _derive_prompt_budget(trace_metadata: dict[str, Any]) -> PromptBudgetOut | N
 
     return PromptBudgetOut(
         max_context_chars=_int_or_none(budget.get("max_context_chars")),
+        requested_context_chars=_int_or_zero(budget.get("requested_context_chars")),
+        used_context_chars=_int_or_zero(budget.get("used_context_chars")),
+        remaining_context_chars=_int_or_zero(budget.get("remaining_context_chars")),
         included_blocks=_int_or_zero(budget.get("included_blocks")),
         omitted_blocks=omitted_blocks,
         omitted_block_keys=omitted_block_keys,

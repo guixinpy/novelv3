@@ -343,6 +343,9 @@ def test_model_call_trace_detail_derives_prompt_metadata_and_budget_from_trace_m
             "template_hash": "sha256:abcdef1234567890",
             "budget": {
                 "max_context_chars": 24000,
+                "requested_context_chars": 30000,
+                "used_context_chars": 24000,
+                "remaining_context_chars": 0,
                 "included_blocks": 3,
                 "omitted_blocks": 2,
                 "omitted_block_keys": ["world-history", "old-outline"],
@@ -360,6 +363,9 @@ def test_model_call_trace_detail_derives_prompt_metadata_and_budget_from_trace_m
     assert detail.prompt_metadata.template_hash == "sha256:abcdef1234567890"
     assert detail.prompt_budget is not None
     assert detail.prompt_budget.included_blocks == 3
+    assert detail.prompt_budget.requested_context_chars == 30000
+    assert detail.prompt_budget.used_context_chars == 24000
+    assert detail.prompt_budget.remaining_context_chars == 0
     assert detail.prompt_budget.omitted_blocks == 2
     assert detail.prompt_budget.omitted_block_keys == ["world-history", "old-outline"]
     assert detail.prompt_budget.truncated_blocks == ["chapter-target"]

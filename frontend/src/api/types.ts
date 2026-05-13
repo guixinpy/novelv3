@@ -210,6 +210,9 @@ export interface PromptMetadata {
 
 export interface PromptBudget {
   max_context_chars?: number | null
+  requested_context_chars?: number
+  used_context_chars?: number
+  remaining_context_chars?: number
   included_blocks: number
   omitted_blocks: number
   omitted_block_keys: string[]
