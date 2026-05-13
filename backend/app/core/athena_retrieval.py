@@ -664,7 +664,7 @@ def _index_sources(db: Session, project_id: str, sources: Iterable[RetrievalSour
     indexed = {"documents": 0, "chunks": 0, "terms": 0, "embeddings": 0}
     document_objects: list[RetrievalDocument] = []
     chunk_objects: list[RetrievalChunk] = []
-    term_objects: list[RetrievalTerm] = []
+    term_rows: list[dict[str, Any]] = []
     embedding_objects: list[RetrievalEmbedding] = []
     batched_sources = 0
     for source in sources:
@@ -704,8 +704,13 @@ def _index_sources(db: Session, project_id: str, sources: Iterable[RetrievalSour
                 )
             )
             terms = _indexable_retrieval_terms(tokens)
-            term_objects.extend(
-                RetrievalTerm(project_id=project_id, chunk_id=chunk_id, token=token)
+            term_rows.extend(
+                {
+                    "id": str(uuid.uuid4()),
+                    "project_id": project_id,
+                    "chunk_id": chunk_id,
+                    "token": token,
+                }
                 for token in terms
             )
             embedding_objects.append(
@@ -724,9 +729,9 @@ def _index_sources(db: Session, project_id: str, sources: Iterable[RetrievalSour
             indexed["embeddings"] += 1
         batched_sources += 1
         if batched_sources >= INDEX_WRITE_BATCH_SOURCES:
-            _flush_index_write_batch(db, document_objects, chunk_objects, term_objects, embedding_objects)
+            _flush_index_write_batch(db, document_objects, chunk_objects, term_rows, embedding_objects)
             batched_sources = 0
-    _flush_index_write_batch(db, document_objects, chunk_objects, term_objects, embedding_objects)
+    _flush_index_write_batch(db, document_objects, chunk_objects, term_rows, embedding_objects)
     return indexed
 
 
@@ -753,7 +758,7 @@ def _flush_index_write_batch(
     db: Session,
     documents: list[RetrievalDocument],
     chunks: list[RetrievalChunk],
-    terms: list[RetrievalTerm],
+    terms: list[dict[str, Any]],
     embeddings: list[RetrievalEmbedding],
 ) -> None:
     if not documents:
@@ -762,7 +767,7 @@ def _flush_index_write_batch(
     if chunks:
         db.bulk_save_objects(chunks)
     if terms:
-        db.bulk_save_objects(terms)
+        db.bulk_insert_mappings(RetrievalTerm, terms)
     if embeddings:
         db.bulk_save_objects(embeddings)
     documents.clear()

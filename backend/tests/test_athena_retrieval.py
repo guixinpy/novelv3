@@ -415,6 +415,28 @@ def test_reindex_bulk_inserts_lexical_terms(db_session, monkeypatch):
     assert add_counts["terms"] == 0
 
 
+def test_reindex_bulk_inserts_lexical_term_mappings(db_session, monkeypatch):
+    project = _seed_retrieval_project(db_session)
+    inserted_term_batches: list[list[dict]] = []
+    original_bulk_insert_mappings = db_session.bulk_insert_mappings
+
+    def count_bulk_insert_mappings(model, mappings, *args, **kwargs):
+        mapping_list = list(mappings)
+        if model is RetrievalTerm:
+            inserted_term_batches.append(mapping_list)
+        return original_bulk_insert_mappings(model, mapping_list, *args, **kwargs)
+
+    monkeypatch.setattr(db_session, "bulk_insert_mappings", count_bulk_insert_mappings)
+
+    result = reindex_project_retrieval(db_session, project.id)
+
+    assert result["indexed"]["terms"] > 0
+    assert len(inserted_term_batches) == 1
+    first_mapping = inserted_term_batches[0][0]
+    assert {"id", "project_id", "chunk_id", "token"} <= set(first_mapping)
+    assert db_session.query(RetrievalTerm).filter_by(project_id=project.id).count() == result["indexed"]["terms"]
+
+
 def test_reindex_tokenizes_each_chunk_once_for_lexical_index(db_session, monkeypatch):
     import app.core.athena_retrieval as athena_retrieval
 
@@ -473,7 +495,7 @@ def test_reindex_batches_multiple_sources_per_write(db_session, monkeypatch):
     assert ("RetrievalEmbedding", 2) in bulk_calls
     assert sum(1 for class_name, _count in bulk_calls if class_name == "RetrievalDocument") == 1
     assert sum(1 for class_name, _count in bulk_calls if class_name == "RetrievalChunk") == 1
-    assert sum(1 for class_name, _count in bulk_calls if class_name == "RetrievalTerm") == 1
+    assert sum(1 for class_name, _count in bulk_calls if class_name == "RetrievalTerm") == 0
     assert sum(1 for class_name, _count in bulk_calls if class_name == "RetrievalEmbedding") == 1
 
 
