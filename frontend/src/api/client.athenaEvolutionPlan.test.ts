@@ -18,12 +18,14 @@ describe('athena evolution plan api client', () => {
       chapter_limit: 50,
       plotline_offset: 10,
       plotline_limit: 20,
+      milestone_offset: 40,
+      milestone_limit: 80,
       foreshadowing_offset: 200,
       foreshadowing_limit: 100,
     })
 
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/v1/projects/project-1/athena/evolution/plan?mode=window&chapter_offset=100&chapter_limit=50&plotline_offset=10&plotline_limit=20&foreshadowing_offset=200&foreshadowing_limit=100',
+      '/api/v1/projects/project-1/athena/evolution/plan?mode=window&chapter_offset=100&chapter_limit=50&plotline_offset=10&plotline_limit=20&milestone_offset=40&milestone_limit=80&foreshadowing_offset=200&foreshadowing_limit=100',
       expect.objectContaining({
         headers: { 'Content-Type': 'application/json' },
       }),

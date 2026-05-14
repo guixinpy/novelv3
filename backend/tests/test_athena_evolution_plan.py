@@ -90,3 +90,47 @@ def test_evolution_plan_window_mode_does_not_select_full_plan_json(client, db_se
     assert all("outlines.plotlines as" not in clause for clause in select_clauses)
     assert all("storylines.plotlines as" not in clause for clause in select_clauses)
     assert all("storylines.foreshadowing as" not in clause for clause in select_clauses)
+
+
+def test_evolution_plan_window_mode_slices_plotline_milestones(client, db_session):
+    project = Project(name="Windowed Plotline Milestones")
+    db_session.add(project)
+    db_session.flush()
+    db_session.add(
+        Storyline(
+            project_id=project.id,
+            status="generated",
+            plotlines=[
+                {
+                    "name": "主线：千章谜团",
+                    "type": "main",
+                    "milestones": [
+                        {"chapter_index": index, "title": f"主线节点{index}"}
+                        for index in range(1, 1001)
+                    ],
+                },
+                {
+                    "name": "支线：旧城",
+                    "type": "sub",
+                    "milestones": [{"chapter_index": 1, "title": "支线节点"}],
+                },
+            ],
+            foreshadowing=[],
+        )
+    )
+    db_session.commit()
+
+    response = client.get(
+        f"/api/v1/projects/{project.id}/athena/evolution/plan"
+        "?mode=window&plotline_offset=0&plotline_limit=1"
+        "&milestone_offset=200&milestone_limit=3"
+    )
+
+    assert response.status_code == 200
+    plotline = response.json()["storyline"]["plotlines"][0]
+    assert plotline["name"] == "主线：千章谜团"
+    assert [item["chapter_index"] for item in plotline["milestones"]] == [201, 202, 203]
+    assert plotline["milestones_total"] == 1000
+    assert plotline["milestones_offset"] == 200
+    assert plotline["milestones_limit"] == 3
+    assert plotline["milestones_has_more"] is True

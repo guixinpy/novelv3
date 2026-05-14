@@ -663,6 +663,8 @@ export interface AthenaEvolutionPlanQuery {
   chapter_limit?: number
   plotline_offset?: number
   plotline_limit?: number
+  milestone_offset?: number
+  milestone_limit?: number
   foreshadowing_offset?: number
   foreshadowing_limit?: number
 }

@@ -263,6 +263,8 @@ export const useAthenaStore = defineStore('athena', () => {
     if (params.chapter_limit !== undefined) query.set('chapter_limit', String(params.chapter_limit))
     if (params.plotline_offset !== undefined) query.set('plotline_offset', String(params.plotline_offset))
     if (params.plotline_limit !== undefined) query.set('plotline_limit', String(params.plotline_limit))
+    if (params.milestone_offset !== undefined) query.set('milestone_offset', String(params.milestone_offset))
+    if (params.milestone_limit !== undefined) query.set('milestone_limit', String(params.milestone_limit))
     if (params.foreshadowing_offset !== undefined) query.set('foreshadowing_offset', String(params.foreshadowing_offset))
     if (params.foreshadowing_limit !== undefined) query.set('foreshadowing_limit', String(params.foreshadowing_limit))
     const serialized = query.toString()
@@ -270,6 +272,7 @@ export const useAthenaStore = defineStore('athena', () => {
   }
 
   async function loadEvolutionPlan(projectId: string, params?: AthenaEvolutionPlanQuery) {
+    ensureProject(projectId)
     const resource = evolutionPlanResource(params)
     const requestId = ++evolutionPlanRequestId
     await loadCached(

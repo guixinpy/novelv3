@@ -24,6 +24,8 @@ def get_evolution_plan(
     chapter_limit: int = Query(100, ge=1, le=500),
     plotline_offset: int = Query(0, ge=0),
     plotline_limit: int = Query(100, ge=1, le=500),
+    milestone_offset: int = Query(0, ge=0),
+    milestone_limit: int = Query(500, ge=1, le=500),
     foreshadowing_offset: int = Query(0, ge=0),
     foreshadowing_limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db),
@@ -37,6 +39,8 @@ def get_evolution_plan(
             chapter_limit=chapter_limit,
             plotline_offset=plotline_offset,
             plotline_limit=plotline_limit,
+            milestone_offset=milestone_offset,
+            milestone_limit=milestone_limit,
             foreshadowing_offset=foreshadowing_offset,
             foreshadowing_limit=foreshadowing_limit,
         )
@@ -67,6 +71,8 @@ def _get_evolution_plan_window(
     chapter_limit: int,
     plotline_offset: int,
     plotline_limit: int,
+    milestone_offset: int,
+    milestone_limit: int,
     foreshadowing_offset: int,
     foreshadowing_limit: int,
 ) -> dict:
@@ -107,6 +113,8 @@ def _get_evolution_plan_window(
             storyline=storyline,
             plotline_offset=plotline_offset,
             plotline_limit=plotline_limit,
+            milestone_offset=milestone_offset,
+            milestone_limit=milestone_limit,
             foreshadowing_offset=foreshadowing_offset,
             foreshadowing_limit=foreshadowing_limit,
         ),
@@ -151,6 +159,8 @@ def _windowed_storyline(
     storyline,
     plotline_offset: int,
     plotline_limit: int,
+    milestone_offset: int,
+    milestone_limit: int,
     foreshadowing_offset: int,
     foreshadowing_limit: int,
 ) -> dict | None:
@@ -159,6 +169,7 @@ def _windowed_storyline(
     plotlines_total = int(storyline.plotlines_total or 0)
     foreshadowing_total = int(storyline.foreshadowing_total or 0)
     plotlines = _json_array_window(db, "storylines", "plotlines", storyline.id, plotline_offset, plotline_limit)
+    plotlines = _window_plotline_milestones(plotlines, milestone_offset, milestone_limit)
     foreshadowing = _json_array_window(
         db,
         "storylines",
@@ -181,6 +192,27 @@ def _windowed_storyline(
         "foreshadowing_limit": foreshadowing_limit,
         "foreshadowing_has_more": foreshadowing_offset + len(foreshadowing) < foreshadowing_total,
     }
+
+
+def _window_plotline_milestones(plotlines: list[Any], offset: int, limit: int) -> list[Any]:
+    windowed: list[Any] = []
+    for plotline in plotlines:
+        if not isinstance(plotline, dict):
+            windowed.append(plotline)
+            continue
+        milestones = plotline.get("milestones")
+        if not isinstance(milestones, list):
+            windowed.append(plotline)
+            continue
+        total = len(milestones)
+        next_plotline = dict(plotline)
+        next_plotline["milestones"] = milestones[offset:offset + limit]
+        next_plotline["milestones_total"] = total
+        next_plotline["milestones_offset"] = offset
+        next_plotline["milestones_limit"] = limit
+        next_plotline["milestones_has_more"] = offset + len(next_plotline["milestones"]) < total
+        windowed.append(next_plotline)
+    return windowed
 
 
 def _json_array_window(

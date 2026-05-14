@@ -170,6 +170,52 @@ describe('athena project scope', () => {
     })
   })
 
+  it('首次加载叙事规划后写入当前项目状态', async () => {
+    vi.mocked(api.getAthenaEvolutionPlan).mockResolvedValue({
+      outline: { chapters: [{ chapter_index: 1 }] },
+      storyline: null,
+    } as any)
+    const store = useAthenaStore()
+
+    await store.loadEvolutionPlan('project-1')
+
+    expect(store.evolutionPlan).toEqual({
+      outline: { chapters: [{ chapter_index: 1 }] },
+      storyline: null,
+    })
+  })
+
+  it('区分不同故事线节点窗口缓存', async () => {
+    vi.mocked(api.getAthenaEvolutionPlan)
+      .mockResolvedValueOnce({
+        outline: null,
+        storyline: { plotlines: [{ milestones: [{ chapter_index: 1 }] }] },
+      } as any)
+      .mockResolvedValueOnce({
+        outline: null,
+        storyline: { plotlines: [{ milestones: [{ chapter_index: 81 }] }] },
+      } as any)
+    const store = useAthenaStore()
+    const firstWindow = {
+      mode: 'window' as const,
+      plotline_offset: 0,
+      plotline_limit: 1,
+      milestone_offset: 0,
+      milestone_limit: 80,
+    }
+    const secondWindow = {
+      ...firstWindow,
+      milestone_offset: 80,
+    }
+
+    await store.loadEvolutionPlan('project-1', firstWindow)
+    await store.loadEvolutionPlan('project-1', secondWindow)
+
+    expect(api.getAthenaEvolutionPlan).toHaveBeenCalledTimes(2)
+    expect(api.getAthenaEvolutionPlan).toHaveBeenNthCalledWith(1, 'project-1', firstWindow)
+    expect(api.getAthenaEvolutionPlan).toHaveBeenNthCalledWith(2, 'project-1', secondWindow)
+  })
+
   it('较慢的旧叙事规划请求不会覆盖较新的请求结果', async () => {
     const windowPlan = createDeferred<unknown>()
     const fullPlan = createDeferred<unknown>()
