@@ -725,7 +725,7 @@ def _find_current_truth_claim_id(
     value,
 ) -> str | None:
     candidates = (
-        db.query(WorldFactClaim)
+        db.query(WorldFactClaim.id, WorldFactClaim.object_ref_or_value)
         .filter(
             WorldFactClaim.project_id == project_id,
             WorldFactClaim.project_profile_version_id == bundle.project_profile_version_id,
@@ -742,9 +742,9 @@ def _find_current_truth_claim_id(
         )
         .all()
     )
-    for claim in candidates:
-        if claim.object_ref_or_value == value:
-            return claim.id
+    for claim_id, object_ref_or_value in candidates:
+        if object_ref_or_value == value:
+            return claim_id
     return None
 
 

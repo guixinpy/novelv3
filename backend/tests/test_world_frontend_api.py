@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 from sqlalchemy import event
 
+from app.api import world_model as world_model_api
 from app.core.world_proposal_service import (
     calculate_bundle_impact_scope,
     create_bundle,
@@ -1354,6 +1355,70 @@ def test_world_model_bundle_detail_item_count_does_not_select_heavy_item_fields(
     assert all("world_proposal_items.disclosed_to_refs" not in statement for statement in item_count_statements)
     assert all("world_proposal_items.evidence_refs" not in statement for statement in item_count_statements)
     assert all("world_proposal_items.notes" not in statement for statement in item_count_statements)
+
+
+def test_find_current_truth_claim_id_projects_only_id_and_value(db_session):
+    project, profile = _seed_profile(db_session)
+    bundle = create_bundle(
+        db=db_session,
+        project_id=project.id,
+        project_profile_version_id=profile.id,
+        profile_version=profile.version,
+        created_by="athena",
+        title="Truth conflict projection",
+    )
+    claims = [
+        WorldFactClaim(
+            project_id=project.id,
+            project_profile_version_id=profile.id,
+            profile_version=profile.version,
+            claim_id=f"claim.hero.rank.{index}",
+            chapter_index=index,
+            intra_chapter_seq=0,
+            subject_ref="char.hero",
+            predicate="rank",
+            object_ref_or_value="target" if index == 20 else f"rank-{index}",
+            claim_layer="truth",
+            claim_status="confirmed",
+            evidence_refs=[f"chapter.{index}"],
+            authority_type="authoritative_structured",
+            confidence=0.9,
+            notes="heavy truth notes" * 500,
+            contract_version="world.contract.v1",
+        )
+        for index in range(1, 21)
+    ]
+    db_session.add_all(claims)
+    db_session.commit()
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        claim_id = world_model_api._find_current_truth_claim_id(
+            db=db_session,
+            project_id=project.id,
+            bundle=bundle,
+            subject_ref="char.hero",
+            predicate="rank",
+            value="target",
+        )
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert claim_id == claims[-1].id
+    fact_select_clauses = [
+        statement.split("from world_fact_claims", 1)[0]
+        for statement in statements
+        if "from world_fact_claims" in statement
+    ]
+    assert fact_select_clauses
+    assert all("world_fact_claims.id" in clause for clause in fact_select_clauses)
+    assert all("world_fact_claims.object_ref_or_value" in clause for clause in fact_select_clauses)
+    assert all("world_fact_claims.notes" not in clause for clause in fact_select_clauses)
+    assert all("world_fact_claims.evidence_refs" not in clause for clause in fact_select_clauses)
 
 
 def test_world_model_bundle_endpoints_support_review_split_and_rollback(client, db_session):
