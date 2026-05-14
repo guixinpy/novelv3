@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.api.athena_shared import get_current_profile, require_project
@@ -47,17 +48,19 @@ def get_state_timeline(
             latest=latest,
         )
 
-    anchor_query = db.query(WorldTimelineAnchor).filter(
+    anchor_filters = [
         WorldTimelineAnchor.project_id == project_id,
         WorldTimelineAnchor.profile_version == profile.version,
-    )
-    event_query = db.query(WorldEvent).filter(
+    ]
+    event_filters = [
         WorldEvent.project_id == project_id,
         WorldEvent.project_profile_version_id == profile.id,
         WorldEvent.profile_version == profile.version,
-    )
-    anchors_total = anchor_query.count()
-    events_total = event_query.count()
+    ]
+    anchor_query = db.query(WorldTimelineAnchor).filter(*anchor_filters)
+    event_query = db.query(WorldEvent).filter(*event_filters)
+    anchors_total = db.query(func.count(WorldTimelineAnchor.id)).filter(*anchor_filters).scalar() or 0
+    events_total = db.query(func.count(WorldEvent.id)).filter(*event_filters).scalar() or 0
     if latest:
         anchors = list(reversed(
             anchor_query.order_by(
