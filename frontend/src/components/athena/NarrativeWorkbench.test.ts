@@ -95,6 +95,24 @@ function largeStorylinePlan(mainCount: number, subCount: number) {
   } as unknown as AthenaEvolutionPlan
 }
 
+function largeForeshadowingPlan(count: number) {
+  return {
+    outline: { chapters: [] },
+    storyline: {
+      plotlines: [],
+      foreshadowing: Array.from({ length: count }, (_, index) => {
+        const itemIndex = index + 1
+        return {
+          hint: `伏笔${itemIndex}`,
+          planted_chapter: itemIndex,
+          resolved_chapter: itemIndex + 10,
+          status: itemIndex % 2 === 0 ? 'resolved' : 'pending',
+        }
+      }),
+    },
+  } as unknown as AthenaEvolutionPlan
+}
+
 describe('NarrativeWorkbench', () => {
   it('shows loading state before narrative plan data resolves', () => {
     const wrapper = mount(NarrativeWorkbench, {
@@ -296,5 +314,27 @@ describe('NarrativeWorkbench', () => {
 
     expect(wrapper.text()).toContain('已回收')
     expect(wrapper.text()).toContain('普罗米修斯-意识锚点文件')
+  })
+
+  it('windows large foreshadowing lists instead of rendering every item', async () => {
+    const wrapper = mount(NarrativeWorkbench, {
+      props: {
+        plan: largeForeshadowingPlan(250),
+        chapters: [],
+        view: 'foreshadowing',
+      },
+    })
+
+    expect(wrapper.findAll('.narrative-workbench__hint')).toHaveLength(100)
+    expect(wrapper.text()).toContain('当前显示 1-100 / 250 条伏笔')
+    expect(wrapper.text()).toContain('伏笔100')
+    expect(wrapper.text()).not.toContain('伏笔101')
+
+    await wrapper.get('[data-testid="foreshadowing-next"]').trigger('click')
+
+    expect(wrapper.findAll('.narrative-workbench__hint')).toHaveLength(100)
+    expect(wrapper.text()).toContain('当前显示 101-200 / 250 条伏笔')
+    expect(wrapper.findAll('.narrative-workbench__hint')[0].text()).toContain('伏笔101')
+    expect(wrapper.findAll('.narrative-workbench__hint').some((item) => item.text() === '待回收第1章 → 第11章伏笔1')).toBe(false)
   })
 })

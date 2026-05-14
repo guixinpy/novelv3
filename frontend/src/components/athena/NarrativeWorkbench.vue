@@ -28,6 +28,7 @@ const props = defineProps<{
 
 const collapsedPlotlineKeys = ref<Set<string>>(new Set())
 const plotlineMilestoneWindowStarts = ref<Record<string, number>>({})
+const foreshadowingWindowStart = ref(0)
 const chapterSearch = ref('')
 const activeChapterIndex = ref<number | null>(null)
 const chapterVolumeStart = ref(1)
@@ -37,6 +38,7 @@ const CHAPTER_WINDOW_SIZE = 50
 const CHAPTER_SEARCH_RESULT_LIMIT = 100
 const STORYLINE_AUTO_COLLAPSE_MILESTONE_THRESHOLD = 120
 const STORYLINE_MILESTONE_WINDOW_SIZE = 80
+const FORESHADOWING_WINDOW_SIZE = 100
 let initializedPlotlineCollapseSignature = ''
 
 const outlineChapters = computed(() =>
@@ -84,6 +86,10 @@ const foreshadowingItems = computed(() =>
       status: toText(item.status, 'unknown'),
     }))
     .sort((left, right) => Number(left.plantedChapter ?? 0) - Number(right.plantedChapter ?? 0)),
+)
+
+const visibleForeshadowingItems = computed(() =>
+  foreshadowingItems.value.slice(foreshadowingWindowStart.value, foreshadowingWindowStart.value + FORESHADOWING_WINDOW_SIZE),
 )
 
 const chapterStatusByIndex = computed(() => {
@@ -294,6 +300,24 @@ function pagePlotlineMilestones(plotline: StorylinePlotline, direction: -1 | 1) 
   }
 }
 
+const foreshadowingWindowEnd = computed(() =>
+  Math.min(foreshadowingWindowStart.value + FORESHADOWING_WINDOW_SIZE, foreshadowingItems.value.length),
+)
+
+const foreshadowingWindowLabel = computed(() =>
+  `当前显示 ${foreshadowingWindowStart.value + 1}-${foreshadowingWindowEnd.value} / ${foreshadowingItems.value.length} 条伏笔`,
+)
+
+const canPageForeshadowingPrevious = computed(() => foreshadowingWindowStart.value > 0)
+const canPageForeshadowingNext = computed(() => foreshadowingWindowEnd.value < foreshadowingItems.value.length)
+
+function pageForeshadowing(direction: -1 | 1) {
+  const maxStart = Math.max(0, foreshadowingItems.value.length - FORESHADOWING_WINDOW_SIZE)
+  foreshadowingWindowStart.value = direction > 0
+    ? Math.min(foreshadowingWindowStart.value + FORESHADOWING_WINDOW_SIZE, maxStart)
+    : Math.max(foreshadowingWindowStart.value - FORESHADOWING_WINDOW_SIZE, 0)
+}
+
 function selectChapterJump(value: string) {
   const chapterIndex = toNumber(value)
   if (chapterIndex === null) return
@@ -359,6 +383,13 @@ watch(plotlines, (items) => {
       .filter((plotline) => !isMainPlotlineType(plotline.type))
       .map((plotline) => plotline.key),
   )
+}, { immediate: true })
+
+watch(foreshadowingItems, (items) => {
+  const maxStart = Math.max(0, items.length - FORESHADOWING_WINDOW_SIZE)
+  if (foreshadowingWindowStart.value > maxStart) {
+    foreshadowingWindowStart.value = 0
+  }
 }, { immediate: true })
 </script>
 
@@ -494,7 +525,28 @@ watch(plotlines, (items) => {
       </div>
 
       <div v-else-if="view === 'foreshadowing'" class="narrative-workbench__foreshadowing">
-        <article v-for="item in foreshadowingItems" :key="item.key" class="narrative-workbench__hint">
+        <div v-if="foreshadowingItems.length > FORESHADOWING_WINDOW_SIZE" class="narrative-workbench__foreshadowing-window">
+          <span>{{ foreshadowingWindowLabel }}</span>
+          <div>
+            <button
+              type="button"
+              data-testid="foreshadowing-prev"
+              :disabled="!canPageForeshadowingPrevious"
+              @click="pageForeshadowing(-1)"
+            >
+              上一组
+            </button>
+            <button
+              type="button"
+              data-testid="foreshadowing-next"
+              :disabled="!canPageForeshadowingNext"
+              @click="pageForeshadowing(1)"
+            >
+              下一组
+            </button>
+          </div>
+        </div>
+        <article v-for="item in visibleForeshadowingItems" :key="item.key" class="narrative-workbench__hint">
           <header>
             <span>{{ statusLabel(item.status) }}</span>
             <strong>第{{ item.plantedChapter ?? '?' }}章 → 第{{ item.resolvedChapter ?? '?' }}章</strong>
@@ -687,12 +739,26 @@ watch(plotlines, (items) => {
   font-size: var(--text-xs);
 }
 
+.narrative-workbench__foreshadowing-window {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+}
+
 .narrative-workbench__chapter-window div {
   display: flex;
   gap: var(--space-2);
 }
 
 .narrative-workbench__milestone-window div {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.narrative-workbench__foreshadowing-window div {
   display: flex;
   gap: var(--space-2);
 }
@@ -717,12 +783,27 @@ watch(plotlines, (items) => {
   cursor: pointer;
 }
 
+.narrative-workbench__foreshadowing-window button {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+  background: var(--color-bg-white);
+  color: var(--color-text-primary);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
 .narrative-workbench__chapter-window button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
 }
 
 .narrative-workbench__milestone-window button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.narrative-workbench__foreshadowing-window button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
 }
