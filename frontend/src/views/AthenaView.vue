@@ -415,6 +415,10 @@ async function runConsistencyCheck(chapterIndex: number) {
   await athena.runConsistencyCheck(pid.value, chapterIndex)
 }
 
+async function loadMoreConsistencyIssues() {
+  await athena.loadMoreConsistencyIssues(pid.value)
+}
+
 async function loadNarrativeChapterWindow(payload: { offset: number; limit: number }) {
   const offset = Number(payload.offset)
   const limit = Number(payload.limit)
@@ -617,8 +621,12 @@ function closeChat() {
             :issues="consistencyIssues"
             :latest-chapter-index="latestChapterIndex"
             :last-checked-chapter-index="athena.lastConsistencyCheck?.chapterIndex || null"
+            :total="athena.consistencyIssuesTotal"
+            :has-more="athena.consistencyIssuesHasMore"
+            :loading-more="athena.consistencyIssuesLoadingMore"
             :loading="athena.loading"
             @run-check="runConsistencyCheck"
+            @load-more="loadMoreConsistencyIssues"
           />
           <ReviewInsightPanel
             v-else-if="routeState.view === 'impact' || routeState.view === 'history'"

@@ -57,4 +57,27 @@ describe('ConsistencyList', () => {
     expect(wrapper.text()).toContain('最近检查：第20章，未发现一致性问题')
     expect(wrapper.text()).not.toContain('暂无一致性检查结果')
   })
+
+  it('emits load-more when more issue pages are available', async () => {
+    const wrapper = mount(ConsistencyList, {
+      props: {
+        issues: [
+          {
+            severity: 'error',
+            checker_name: 'timeline_consistency',
+            description: '时间线冲突',
+          },
+        ],
+        total: 3,
+        hasMore: true,
+        loadingMore: false,
+      },
+    })
+
+    expect(wrapper.text()).toContain('已显示 1 / 3')
+
+    await wrapper.get('[data-testid="athena-consistency-load-more"]').trigger('click')
+
+    expect(wrapper.emitted('loadMore')).toEqual([[]])
+  })
 })

@@ -320,6 +320,37 @@ describe('athena project scope', () => {
     expect(store.lastConsistencyCheck).toEqual({ chapterIndex: 20, issueCount: 0 })
   })
 
+  it('loads additional consistency issue pages with backend metadata', async () => {
+    vi.mocked(api.getConsistencyIssues)
+      .mockResolvedValueOnce({
+        issues: [{ severity: 'error', description: 'first issue' }],
+        total: 2,
+        offset: 0,
+        limit: 1,
+        has_more: true,
+      })
+      .mockResolvedValueOnce({
+        issues: [{ severity: 'warn', description: 'second issue' }],
+        total: 2,
+        offset: 1,
+        limit: 1,
+        has_more: false,
+      })
+    const store = useAthenaStore()
+
+    await store.loadConsistencyIssues('project-1', { offset: 0, limit: 1 })
+    await store.loadMoreConsistencyIssues('project-1')
+
+    expect(api.getConsistencyIssues).toHaveBeenNthCalledWith(1, 'project-1', { offset: 0, limit: 1 })
+    expect(api.getConsistencyIssues).toHaveBeenNthCalledWith(2, 'project-1', { offset: 1, limit: 1 })
+    expect(store.consistencyIssues).toEqual([
+      { severity: 'error', description: 'first issue' },
+      { severity: 'warn', description: 'second issue' },
+    ])
+    expect(store.consistencyIssuesTotal).toBe(2)
+    expect(store.consistencyIssuesHasMore).toBe(false)
+  })
+
   it('records analyze-chapter results so the UI can explain no-op analysis', async () => {
     vi.mocked(api.analyzeAthenaChapter).mockResolvedValue({
       status: 'skipped',

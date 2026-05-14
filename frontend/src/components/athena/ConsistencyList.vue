@@ -5,13 +5,17 @@ import type { AthenaConsistencyIssue } from '../../api/types'
 
 const props = defineProps<{
   issues: AthenaConsistencyIssue[]
+  total?: number
+  hasMore?: boolean
   latestChapterIndex?: number | null
   lastCheckedChapterIndex?: number | null
   loading?: boolean
+  loadingMore?: boolean
 }>()
 
 const emit = defineEmits<{
   runCheck: [chapterIndex: number]
+  loadMore: []
 }>()
 
 const expandedIdx = ref<number | null>(null)
@@ -20,6 +24,7 @@ const hasCleanLatestCheck = computed(() =>
   props.issues.length === 0 &&
   Number.isFinite(props.lastCheckedChapterIndex),
 )
+const issueTotal = computed(() => Math.max(props.total ?? props.issues.length, props.issues.length))
 
 function toggle(idx: number) {
   expandedIdx.value = expandedIdx.value === idx ? null : idx
@@ -28,6 +33,11 @@ function toggle(idx: number) {
 function runLatestCheck() {
   if (!canRunLatestCheck.value || props.loading) return
   emit('runCheck', Number(props.latestChapterIndex))
+}
+
+function loadMore() {
+  if (!props.hasMore || props.loadingMore) return
+  emit('loadMore')
 }
 
 const severityVariant: Record<string, 'success' | 'warning' | 'error' | 'neutral'> = {
@@ -83,6 +93,17 @@ function issueVariant(issue: AthenaConsistencyIssue) {
         {{ typeof issue.evidence === 'string' ? issue.evidence : JSON.stringify(issue.evidence) }}
       </div>
     </div>
+    <footer v-if="issues.length > 0 && (hasMore || issueTotal > issues.length)" class="consistency-list__pager">
+      <span>已显示 {{ issues.length }} / {{ issueTotal }}</span>
+      <button
+        type="button"
+        data-testid="athena-consistency-load-more"
+        :disabled="!hasMore || loadingMore"
+        @click="loadMore"
+      >
+        {{ loadingMore ? '加载中...' : '加载更多' }}
+      </button>
+    </footer>
   </div>
 </template>
 <style scoped>
@@ -148,6 +169,31 @@ function issueVariant(issue: AthenaConsistencyIssue) {
   background: var(--color-bg-secondary);
   border-radius: var(--radius-sm);
   margin-bottom: var(--space-2);
+}
+
+.consistency-list__pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  color: var(--color-text-tertiary);
+  font-size: var(--text-xs);
+}
+
+.consistency-list__pager button {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-3);
+  color: var(--color-text-primary);
+  background: var(--color-bg-primary);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.consistency-list__pager button:disabled {
+  cursor: default;
+  opacity: 0.6;
 }
 
 .consistency-list__empty {

@@ -10,6 +10,7 @@ import type {
   AthenaEvolutionPlan,
   AthenaEvolutionPlanQuery,
   AthenaConsistencyIssue,
+  AthenaConsistencyIssueListResponse,
   AthenaAnalyzeChapterResult,
   AthenaOntology,
   AthenaOptimization,
@@ -28,6 +29,7 @@ import type {
 
 const ATHENA_CACHE_TTL_MS = 5 * 60 * 1000
 const ATHENA_CHAT_HISTORY_PAGE_SIZE = 80
+const CONSISTENCY_ISSUES_PAGE_SIZE = 100
 const LONGFORM_MAINTENANCE_REPAIR_LIMIT = 500
 const LONGFORM_MAINTENANCE_MAX_REPAIR_BATCHES = 10
 
@@ -48,6 +50,11 @@ export const useAthenaStore = defineStore('athena', () => {
   const proposalDetails = ref<Record<string, ProposalBundleDetail>>({})
   const proposalBusy = ref<Record<string, boolean>>({})
   const consistencyIssues = ref<AthenaConsistencyIssue[]>([])
+  const consistencyIssuesTotal = ref(0)
+  const consistencyIssuesOffset = ref(0)
+  const consistencyIssuesLimit = ref(CONSISTENCY_ISSUES_PAGE_SIZE)
+  const consistencyIssuesHasMore = ref(false)
+  const consistencyIssuesLoadingMore = ref(false)
   const lastConsistencyCheck = ref<{ chapterIndex: number; issueCount: number } | null>(null)
   const optimization = ref<AthenaOptimization | null>(null)
   const retrievalDiagnostics = ref<AthenaRetrievalDiagnostics | null>(null)
@@ -90,6 +97,11 @@ export const useAthenaStore = defineStore('athena', () => {
     proposalDetails.value = {}
     proposalBusy.value = {}
     consistencyIssues.value = []
+    consistencyIssuesTotal.value = 0
+    consistencyIssuesOffset.value = 0
+    consistencyIssuesLimit.value = CONSISTENCY_ISSUES_PAGE_SIZE
+    consistencyIssuesHasMore.value = false
+    consistencyIssuesLoadingMore.value = false
     lastConsistencyCheck.value = null
     optimization.value = null
     retrievalDiagnostics.value = null
@@ -344,16 +356,38 @@ export const useAthenaStore = defineStore('athena', () => {
     }
   }
 
-  async function loadConsistencyIssues(projectId: string) {
-    await loadCached(
-      projectId,
-      'consistency-issues',
-      () => true,
-      () => api.getConsistencyIssues(projectId),
-      (value) => {
-        consistencyIssues.value = normalizeConsistencyIssues(value)
-      },
-    )
+  async function loadConsistencyIssues(
+    projectId: string,
+    params: { offset?: number; limit?: number } = {},
+  ) {
+    ensureProject(projectId)
+    const offsetValue = Number(params.offset ?? 0)
+    const offset = Math.max(0, Math.floor(Number.isFinite(offsetValue) ? offsetValue : 0))
+    const limitValue = Number(params.limit ?? CONSISTENCY_ISSUES_PAGE_SIZE)
+    const limit = Math.max(1, Math.floor(Number.isFinite(limitValue) ? limitValue : CONSISTENCY_ISSUES_PAGE_SIZE))
+    const key = cacheKey(projectId, `consistency-issues:${offset}:${limit}`)
+    const version = requestVersion.value
+
+    try {
+      const value = await requestCache.dedupe(key, () => api.getConsistencyIssues(projectId, { offset, limit }))
+      if (!isActiveProject(projectId) || requestVersion.value !== version) return
+      applyConsistencyIssuesPage(value, offset, limit)
+    } catch (err) {
+      if (isActiveProject(projectId) && requestVersion.value === version) error.value = toErrorMessage(err)
+    }
+  }
+
+  async function loadMoreConsistencyIssues(projectId: string) {
+    if (!consistencyIssuesHasMore.value || consistencyIssuesLoadingMore.value) return
+    consistencyIssuesLoadingMore.value = true
+    try {
+      await loadConsistencyIssues(projectId, {
+        offset: consistencyIssues.value.length,
+        limit: consistencyIssuesLimit.value || CONSISTENCY_ISSUES_PAGE_SIZE,
+      })
+    } finally {
+      if (isActiveProject(projectId)) consistencyIssuesLoadingMore.value = false
+    }
   }
 
   function normalizeConsistencyIssues(value: unknown): AthenaConsistencyIssue[] {
@@ -362,6 +396,39 @@ export const useAthenaStore = defineStore('athena', () => {
       return (value as { issues: AthenaConsistencyIssue[] }).issues
     }
     return []
+  }
+
+  function applyConsistencyIssuesPage(value: unknown, fallbackOffset: number, fallbackLimit: number) {
+    const issues = normalizeConsistencyIssues(value)
+    const page = isConsistencyIssuePage(value)
+      ? value
+      : {
+          issues,
+          total: issues.length,
+          offset: fallbackOffset,
+          limit: fallbackLimit,
+          has_more: false,
+        }
+
+    consistencyIssues.value = page.offset > 0
+      ? [...consistencyIssues.value, ...issues]
+      : issues
+    consistencyIssuesTotal.value = page.total
+    consistencyIssuesOffset.value = page.offset
+    consistencyIssuesLimit.value = page.limit
+    consistencyIssuesHasMore.value = page.has_more
+  }
+
+  function isConsistencyIssuePage(value: unknown): value is AthenaConsistencyIssueListResponse {
+    return Boolean(
+      value
+      && typeof value === 'object'
+      && Array.isArray((value as { issues?: unknown }).issues)
+      && typeof (value as { total?: unknown }).total === 'number'
+      && typeof (value as { offset?: unknown }).offset === 'number'
+      && typeof (value as { limit?: unknown }).limit === 'number'
+      && typeof (value as { has_more?: unknown }).has_more === 'boolean',
+    )
   }
 
   async function loadOptimization(projectId: string) {
@@ -516,6 +583,11 @@ export const useAthenaStore = defineStore('athena', () => {
     proposalDetails,
     proposalBusy,
     consistencyIssues,
+    consistencyIssuesTotal,
+    consistencyIssuesOffset,
+    consistencyIssuesLimit,
+    consistencyIssuesHasMore,
+    consistencyIssuesLoadingMore,
     lastConsistencyCheck,
     optimization,
     retrievalDiagnostics,
@@ -543,6 +615,7 @@ export const useAthenaStore = defineStore('athena', () => {
     loadSetup,
     runConsistencyCheck,
     loadConsistencyIssues,
+    loadMoreConsistencyIssues,
     loadOptimization,
     loadLongformMaintenanceDiagnostics,
     repairLongformMaintenance,
