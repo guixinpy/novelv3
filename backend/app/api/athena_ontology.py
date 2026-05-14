@@ -156,12 +156,18 @@ def _page_meta(total: int, offset: int, limit: int) -> dict:
 
 
 @router.get("/ontology/entities")
-def get_ontology_entities(project_id: str, db: Session = Depends(get_db)):
+def get_ontology_entities(
+    project_id: str,
+    db: Session = Depends(get_db),
+    entity_offset: int = Query(0, ge=0),
+    entity_limit: int = Query(DEFAULT_ONTOLOGY_ENTITY_LIMIT, ge=1, le=1000),
+):
     require_project(db, project_id)
     profile = get_current_profile(db, project_id)
     if profile is None:
-        return {}
+        return {"pagination": {"entities": {}}}
     result = {}
+    pagination = {"entities": {}}
     for model, key in [
         (WorldCharacter, "characters"),
         (WorldLocation, "locations"),
@@ -169,14 +175,20 @@ def get_ontology_entities(project_id: str, db: Session = Depends(get_db)):
         (WorldArtifact, "artifacts"),
         (WorldResource, "resources"),
     ]:
+        filters = [
+            model.project_id == project_id,
+            model.profile_version == profile.version,
+        ]
+        query = db.query(model).filter(*filters)
+        total = db.query(func.count(model.id)).filter(*filters).scalar() or 0
         items = (
-            db.query(model)
-            .filter(
-                model.project_id == project_id,
-                model.profile_version == profile.version,
-            )
+            query
+            .order_by(model.canonical_id.asc(), model.id.asc())
+            .offset(entity_offset)
+            .limit(entity_limit)
             .all()
         )
+        pagination["entities"][key] = _page_meta(total, entity_offset, entity_limit)
         result[key] = [
             {
                 "id": item.id,
@@ -189,6 +201,7 @@ def get_ontology_entities(project_id: str, db: Session = Depends(get_db)):
             }
             for item in items
         ]
+    result["pagination"] = pagination
     return result
 
 
@@ -200,7 +213,12 @@ def get_ontology_relations(project_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/ontology/rules")
-def get_ontology_rules(project_id: str, db: Session = Depends(get_db)):
+def get_ontology_rules(
+    project_id: str,
+    db: Session = Depends(get_db),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(DEFAULT_ONTOLOGY_RULE_LIMIT, ge=1, le=1000),
+):
     require_project(db, project_id)
     profile = get_current_profile(db, project_id)
     if profile is None:
@@ -211,6 +229,9 @@ def get_ontology_rules(project_id: str, db: Session = Depends(get_db)):
             WorldRule.project_id == project_id,
             WorldRule.profile_version == profile.version,
         )
+        .order_by(WorldRule.rule_id.asc(), WorldRule.id.asc())
+        .offset(offset)
+        .limit(limit)
         .all()
     )
     return [{"id": r.id, "rule_id": r.rule_id, "description": r.statement, "scope": r.scope} for r in rules]

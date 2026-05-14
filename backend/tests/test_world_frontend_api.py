@@ -554,6 +554,65 @@ def test_athena_ontology_endpoint_returns_bounded_world_model_windows(client, db
     }
 
 
+def test_legacy_athena_ontology_auxiliary_endpoints_are_bounded(client, db_session):
+    project, profile_version = _seed_profile(db_session)
+    rows = []
+    for index in range(1, 13):
+        rows.append(
+            WorldCharacter(
+                project_id=project.id,
+                profile_version=profile_version.version,
+                character_id=f"character-{index:02d}",
+                canonical_id=f"char.{index:02d}",
+                name=f"角色{index:02d}",
+                role_type="supporting",
+                identity_anchor=f"角色{index:02d}",
+                contract_version=profile_version.contract_version,
+            )
+        )
+    for index in range(1, 6):
+        rows.append(
+            WorldRule(
+                project_id=project.id,
+                profile_version=profile_version.version,
+                rule_id=f"rule.{index:02d}",
+                canonical_id=f"rule.{index:02d}",
+                name=f"规则{index:02d}",
+                rule_type="world_law",
+                statement=f"第{index:02d}条规则",
+                contract_version=profile_version.contract_version,
+            )
+        )
+    db_session.add_all(rows)
+    db_session.commit()
+
+    entities_response = client.get(
+        f"/api/v1/projects/{project.id}/athena/ontology/entities"
+        "?entity_offset=5&entity_limit=4"
+    )
+    rules_response = client.get(
+        f"/api/v1/projects/{project.id}/athena/ontology/rules"
+        "?offset=2&limit=2"
+    )
+
+    assert entities_response.status_code == 200
+    entities_payload = entities_response.json()
+    assert [item["canonical_id"] for item in entities_payload["characters"]] == [
+        "char.06",
+        "char.07",
+        "char.08",
+        "char.09",
+    ]
+    assert entities_payload["pagination"]["entities"]["characters"] == {
+        "total": 12,
+        "offset": 5,
+        "limit": 4,
+        "has_more": True,
+    }
+    assert rules_response.status_code == 200
+    assert [item["rule_id"] for item in rules_response.json()] == ["rule.03", "rule.04"]
+
+
 def test_athena_ontology_counts_do_not_select_large_json_columns(client, db_session):
     project, profile_version = _seed_profile(db_session)
     db_session.add_all([
