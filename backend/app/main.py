@@ -1,5 +1,6 @@
 import os
 import time
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -7,8 +8,29 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.core.local_diagnostics import log_event, new_request_id
+from app.db import SessionLocal
+from app.services.tasks.background_task_service import BackgroundTaskService
 
-app = FastAPI(title="Mozhou AI Writer")
+
+def fail_interrupted_background_tasks():
+    db = SessionLocal()
+    try:
+        count = BackgroundTaskService(db).fail_interrupted_running_tasks()
+        if count:
+            log_event("background_tasks_interrupted", marked_failed=count)
+    except Exception as exc:
+        log_event("background_tasks_interrupted_scan_failed", error=str(exc))
+    finally:
+        db.close()
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    fail_interrupted_background_tasks()
+    yield
+
+
+app = FastAPI(title="Mozhou AI Writer", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

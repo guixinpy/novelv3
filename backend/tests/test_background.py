@@ -1,7 +1,9 @@
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy.orm import sessionmaker
 
 from app.core.local_diagnostics import format_kv_event
+from app.main import app
 from app.models import BackgroundTask
 from app.services.tasks.background_task_service import BackgroundTaskService
 from app.services.tasks.local_task_runner import LocalTaskRunner
@@ -263,6 +265,30 @@ def test_background_task_service_marks_interrupted_running_tasks_failed(client, 
     assert count == 1
     assert saved.status == "failed"
     assert saved.error == "Task interrupted by local process restart"
+
+
+def test_app_startup_marks_interrupted_running_tasks_failed(monkeypatch):
+    calls: list[str] = []
+
+    class FakeDb:
+        def close(self):
+            calls.append("closed")
+
+    class FakeBackgroundTaskService:
+        def __init__(self, db):
+            assert isinstance(db, FakeDb)
+
+        def fail_interrupted_running_tasks(self):
+            calls.append("failed-interrupted")
+            return 2
+
+    monkeypatch.setattr("app.main.SessionLocal", lambda: FakeDb(), raising=False)
+    monkeypatch.setattr("app.main.BackgroundTaskService", FakeBackgroundTaskService, raising=False)
+
+    with TestClient(app):
+        pass
+
+    assert calls == ["failed-interrupted", "closed"]
 
 
 def test_local_diagnostics_formats_key_value_event():
