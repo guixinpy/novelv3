@@ -2,7 +2,14 @@ from sqlalchemy import event
 
 from app.core.world_contracts import DERIVED
 from app.core.embedding_service import LocalHashEmbeddingProvider, get_embedding_provider
-from app.core.athena_retrieval import _project_sources, index_chapter_retrieval, reindex_project_retrieval, search_retrieval
+from app.core.athena_retrieval import (
+    RetrievalSource,
+    _index_sources,
+    _project_sources,
+    index_chapter_retrieval,
+    reindex_project_retrieval,
+    search_retrieval,
+)
 from app.core.world_proposal_service import create_bundle, review_proposal_item, rollback_review, write_candidate_fact
 from app.models import (
     ChapterContent,
@@ -861,6 +868,47 @@ def test_reindex_uses_configured_write_batches_for_many_sources(db_session, monk
     assert document_insert_calls == expected_batches
     assert len(document_insert_calls) < 250
     assert sum(document_insert_calls) == 250
+
+
+def test_reindex_flushes_write_batch_when_term_rows_reach_guard(db_session, monkeypatch):
+    import app.core.athena_retrieval as athena_retrieval
+
+    project = Project(name="Retrieval Term Guard")
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    sources = [
+        RetrievalSource(
+            source_type="chapter",
+            source_id=f"chapter-{index}",
+            source_ref=f"chapter:{index}",
+            title=f"第{index}章",
+            text=f"第{index}章 星环钥匙 潮汐灯塔 黑匣档案 记忆回潮。",
+            chapter_index=index,
+            profile_version=None,
+            metadata={},
+        )
+        for index in range(1, 4)
+    ]
+    flush_document_counts: list[int] = []
+
+    def capture_flush(_db, _provider, documents, chunks, terms, embeddings):
+        if documents:
+            flush_document_counts.append(len(documents))
+        documents.clear()
+        chunks.clear()
+        terms.clear()
+        embeddings.clear()
+
+    monkeypatch.setattr(athena_retrieval, "INDEX_WRITE_BATCH_SOURCES", 999)
+    monkeypatch.setattr(athena_retrieval, "INDEX_WRITE_BATCH_MAX_TERMS", 1)
+    monkeypatch.setattr(athena_retrieval, "_flush_index_write_batch", capture_flush)
+
+    result = _index_sources(db_session, project.id, sources)
+
+    assert result["documents"] == 3
+    assert result["terms"] > 0
+    assert flush_document_counts == [1, 1, 1]
 
 
 def test_reindex_does_not_generate_uuid_per_retrieval_term(db_session, monkeypatch):

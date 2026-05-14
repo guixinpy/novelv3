@@ -33,7 +33,8 @@ from app.models import (
 
 MAX_CHUNK_CHARS = 900
 CHUNK_OVERLAP_CHARS = 120
-INDEX_WRITE_BATCH_SOURCES = 100
+INDEX_WRITE_BATCH_SOURCES = 500
+INDEX_WRITE_BATCH_MAX_TERMS = 50_000
 RETRIEVAL_EMBEDDING_BATCH_SIZE = 64
 
 
@@ -767,7 +768,7 @@ def _index_sources(db: Session, project_id: str, sources: Iterable[RetrievalSour
             indexed["chunks"] += 1
             indexed["embeddings"] += 1
         batched_sources += 1
-        if batched_sources >= INDEX_WRITE_BATCH_SOURCES:
+        if _should_flush_index_write_batch(batched_sources=batched_sources, term_rows=len(term_rows)):
             _flush_index_write_batch(
                 db,
                 provider,
@@ -786,6 +787,12 @@ def _index_sources(db: Session, project_id: str, sources: Iterable[RetrievalSour
         pending_embeddings,
     )
     return indexed
+
+
+def _should_flush_index_write_batch(*, batched_sources: int, term_rows: int) -> bool:
+    source_limit = max(1, INDEX_WRITE_BATCH_SOURCES)
+    term_limit = max(1, INDEX_WRITE_BATCH_MAX_TERMS)
+    return batched_sources >= source_limit or term_rows >= term_limit
 
 
 def _indexable_retrieval_terms(tokens: list[str]) -> list[str]:
