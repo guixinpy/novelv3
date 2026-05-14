@@ -637,6 +637,34 @@ def test_build_chat_call_payload_returns_messages_and_context_blocks_without_cha
     assert hermes_payload["context_blocks"][-1]["sources"][0]["source_id"] == hermes_dialog.id
 
 
+def test_dialog_chat_payload_bounds_long_history_messages(db_session):
+    project, _ = _seed_project(db_session, with_profile=True)
+    dialog = Dialog(project_id=project.id, dialog_type="athena")
+    db_session.add(dialog)
+    db_session.flush()
+    long_content = "超长历史消息" * 3000
+    db_session.add_all(
+        [
+            DialogMessage(dialog_id=dialog.id, role="user", content=long_content),
+            DialogMessage(dialog_id=dialog.id, role="assistant", content=long_content),
+        ]
+    )
+    db_session.commit()
+
+    payload = dialogs._build_chat_call_payload(
+        db_session,
+        dialog.id,
+        project,
+        dialogs._build_diagnosis(db_session, project.id),
+        dialog_type="athena",
+    )
+
+    history_messages = payload["messages"][1:]
+    assert len(history_messages) == 2
+    assert all(len(message["content"]) <= 2100 for message in history_messages)
+    assert all("[truncated:" in message["content"] for message in history_messages)
+
+
 def test_athena_chat_payload_includes_manuscript_progress_context(db_session):
     project, _ = _seed_project(db_session, with_profile=True)
     project.target_chapter_count = 20

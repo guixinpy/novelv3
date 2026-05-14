@@ -10,7 +10,7 @@ from app.core.context_injection import (
     build_hermes_world_context,
     build_hermes_world_context_blocks,
 )
-from app.core.model_call_trace import build_context_block
+from app.core.model_call_trace import build_context_block, truncate_text
 from app.models import (
     ChapterContent,
     DialogMessage,
@@ -29,6 +29,7 @@ from app.prompting.assembler import PromptAssembler
 from app.prompting.tracing import build_prompt_trace_metadata
 
 CHAT_HISTORY_LIMIT = 8
+DIALOG_HISTORY_MESSAGE_CONTENT_CHARS = 2_000
 MANUSCRIPT_FULL_LIST_LIMIT = 40
 MANUSCRIPT_EDGE_CHAPTER_COUNT = 5
 MANUSCRIPT_RECENT_EXCERPT_COUNT = 3
@@ -56,10 +57,11 @@ def build_dialog_history_messages(
     history = _latest_dialog_history(db, dialog_id, limit)
     messages = []
     for item in history:
+        content = _bounded_history_content(item.content)
         if item.role in ("user", "assistant"):
-            messages.append({"role": item.role, "content": item.content})
+            messages.append({"role": item.role, "content": content})
         elif item.role == "system":
-            messages.append({"role": "assistant", "content": f"[系统消息] {item.content}"})
+            messages.append({"role": "assistant", "content": f"[系统消息] {content}"})
     return messages
 
 
@@ -71,10 +73,11 @@ def build_dialog_history_block(
     history = _latest_dialog_history(db, dialog_id, limit)
     lines = []
     for item in history:
+        content = _bounded_history_content(item.content)
         if item.role in ("user", "assistant"):
-            lines.append(f"{item.role}: {item.content}")
+            lines.append(f"{item.role}: {content}")
         elif item.role == "system":
-            lines.append(f"assistant: [系统消息] {item.content}")
+            lines.append(f"assistant: [系统消息] {content}")
 
     return build_context_block(
         key="dialog.history",
@@ -88,6 +91,10 @@ def build_dialog_history_block(
             }
         ],
     )
+
+
+def _bounded_history_content(content: str | None) -> str:
+    return truncate_text(content or "", max_chars=DIALOG_HISTORY_MESSAGE_CONTENT_CHARS)["content"]
 
 
 def build_hermes_prompt_variables(project: Project, diagnosis, world_context: str) -> dict[str, str]:
