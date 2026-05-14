@@ -8,6 +8,7 @@ vi.mock('../api/client', () => ({
   api: {
     getAthenaOntology: vi.fn(),
     getAthenaMessages: vi.fn(),
+    getAthenaEvolutionPlan: vi.fn(),
     runAthenaConsistencyCheck: vi.fn(),
     getConsistencyIssues: vi.fn(),
     analyzeAthenaChapter: vi.fn(),
@@ -138,6 +139,68 @@ describe('athena project scope', () => {
     expect(api.getAthenaMessages).toHaveBeenCalledWith('project-1', { limit: 80 })
     expect(store.ontology).toEqual(ontology())
     expect(store.messages).toEqual([message('history')])
+  })
+
+  it('区分窗口化和完整叙事规划缓存', async () => {
+    vi.mocked(api.getAthenaEvolutionPlan)
+      .mockResolvedValueOnce({
+        outline: { chapters: [{ index: 101 }], chapters_total: 1000 },
+        storyline: null,
+      } as any)
+      .mockResolvedValueOnce({
+        outline: { chapters: [{ index: 1 }, { index: 2 }] },
+        storyline: null,
+      } as any)
+    const store = useAthenaStore()
+    const windowParams = {
+      mode: 'window' as const,
+      chapter_offset: 100,
+      chapter_limit: 50,
+    }
+
+    await store.loadEvolutionPlan('project-1', windowParams)
+    await store.loadEvolutionPlan('project-1')
+
+    expect(api.getAthenaEvolutionPlan).toHaveBeenCalledTimes(2)
+    expect(api.getAthenaEvolutionPlan).toHaveBeenNthCalledWith(1, 'project-1', windowParams)
+    expect(api.getAthenaEvolutionPlan).toHaveBeenNthCalledWith(2, 'project-1')
+    expect(store.evolutionPlan).toEqual({
+      outline: { chapters: [{ index: 1 }, { index: 2 }] },
+      storyline: null,
+    })
+  })
+
+  it('较慢的旧叙事规划请求不会覆盖较新的请求结果', async () => {
+    const windowPlan = createDeferred<unknown>()
+    const fullPlan = createDeferred<unknown>()
+    vi.mocked(api.getAthenaEvolutionPlan)
+      .mockReturnValueOnce(windowPlan.promise as any)
+      .mockReturnValueOnce(fullPlan.promise as any)
+    const store = useAthenaStore()
+    const windowParams = {
+      mode: 'window' as const,
+      chapter_offset: 100,
+      chapter_limit: 50,
+    }
+    const fullValue = {
+      outline: { chapters: [{ index: 1 }, { index: 2 }] },
+      storyline: null,
+    }
+    const windowValue = {
+      outline: { chapters: [{ index: 101 }], chapters_total: 1000 },
+      storyline: null,
+    }
+
+    const oldLoad = store.loadEvolutionPlan('project-1', windowParams)
+    const newLoad = store.loadEvolutionPlan('project-1')
+
+    fullPlan.resolve(fullValue)
+    await newLoad
+    expect(store.evolutionPlan).toEqual(fullValue)
+
+    windowPlan.resolve(windowValue)
+    await oldLoad
+    expect(store.evolutionPlan).toEqual(fullValue)
   })
 
   it('prevents stale same-project cached loads from overwriting state after reset', async () => {

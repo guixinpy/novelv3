@@ -8,6 +8,7 @@ import { createAthenaRetrievalActions } from './athenaModules/retrieval'
 import { toErrorMessage } from './athenaModules/errors'
 import type {
   AthenaEvolutionPlan,
+  AthenaEvolutionPlanQuery,
   AthenaConsistencyIssue,
   AthenaAnalyzeChapterResult,
   AthenaOntology,
@@ -42,6 +43,7 @@ export const useAthenaStore = defineStore('athena', () => {
   const projection = ref<WorldProjection | null>(null)
   const timeline = ref<AthenaTimeline | null>(null)
   const evolutionPlan = ref<AthenaEvolutionPlan | null>(null)
+  const evolutionPlanCacheResource = ref<string | null>(null)
   const proposals = ref<PaginatedProposalBundles | null>(null)
   const proposalDetails = ref<Record<string, ProposalBundleDetail>>({})
   const proposalBusy = ref<Record<string, boolean>>({})
@@ -68,6 +70,7 @@ export const useAthenaStore = defineStore('athena', () => {
   let sendProjectId: string | null = null
   let consistencyCheckRequestId = 0
   let analyzeChapterRequestId = 0
+  let evolutionPlanRequestId = 0
 
   function cacheKey(projectId: string, resource: string) {
     return `athena:${projectId}:${resource}`
@@ -82,6 +85,7 @@ export const useAthenaStore = defineStore('athena', () => {
     projection.value = null
     timeline.value = null
     evolutionPlan.value = null
+    evolutionPlanCacheResource.value = null
     proposals.value = null
     proposalDetails.value = {}
     proposalBusy.value = {}
@@ -112,6 +116,7 @@ export const useAthenaStore = defineStore('athena', () => {
     messageLoadRequestId += 1
     consistencyCheckRequestId += 1
     analyzeChapterRequestId += 1
+    evolutionPlanRequestId += 1
     if (!projectId) {
       sendProjectId = null
       sendRequestId += 1
@@ -250,14 +255,32 @@ export const useAthenaStore = defineStore('athena', () => {
     )
   }
 
-  async function loadEvolutionPlan(projectId: string) {
+  function evolutionPlanResource(params?: AthenaEvolutionPlanQuery) {
+    if (!params) return 'evolution-plan'
+    const query = new URLSearchParams()
+    if (params.mode !== undefined) query.set('mode', params.mode)
+    if (params.chapter_offset !== undefined) query.set('chapter_offset', String(params.chapter_offset))
+    if (params.chapter_limit !== undefined) query.set('chapter_limit', String(params.chapter_limit))
+    if (params.plotline_offset !== undefined) query.set('plotline_offset', String(params.plotline_offset))
+    if (params.plotline_limit !== undefined) query.set('plotline_limit', String(params.plotline_limit))
+    if (params.foreshadowing_offset !== undefined) query.set('foreshadowing_offset', String(params.foreshadowing_offset))
+    if (params.foreshadowing_limit !== undefined) query.set('foreshadowing_limit', String(params.foreshadowing_limit))
+    const serialized = query.toString()
+    return serialized ? `evolution-plan:${serialized}` : 'evolution-plan'
+  }
+
+  async function loadEvolutionPlan(projectId: string, params?: AthenaEvolutionPlanQuery) {
+    const resource = evolutionPlanResource(params)
+    const requestId = ++evolutionPlanRequestId
     await loadCached(
       projectId,
-      'evolution-plan',
-      () => !!evolutionPlan.value,
-      () => api.getAthenaEvolutionPlan(projectId),
+      resource,
+      () => !!evolutionPlan.value && evolutionPlanCacheResource.value === resource,
+      () => (params === undefined ? api.getAthenaEvolutionPlan(projectId) : api.getAthenaEvolutionPlan(projectId, params)),
       (value) => {
+        if (requestId !== evolutionPlanRequestId) return
         evolutionPlan.value = value
+        evolutionPlanCacheResource.value = resource
       },
     )
   }
