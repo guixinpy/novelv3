@@ -957,28 +957,12 @@ def _delete_documents_matching(db: Session, document_id_select) -> None:
 
 
 def _delete_document(db: Session, *, project_id: str, source_type: str, source_id: str) -> None:
-    document = (
-        db.query(RetrievalDocument)
-        .filter(
-            RetrievalDocument.project_id == project_id,
-            RetrievalDocument.source_type == source_type,
-            RetrievalDocument.source_id == source_id,
-        )
-        .first()
+    document_id_select = select(RetrievalDocument.id).where(
+        RetrievalDocument.project_id == project_id,
+        RetrievalDocument.source_type == source_type,
+        RetrievalDocument.source_id == source_id,
     )
-    if document is None:
-        return
-    _delete_retrieval_document(db, document)
-
-
-def _delete_retrieval_document(db: Session, document: RetrievalDocument) -> None:
-    chunk_ids = [row[0] for row in db.query(RetrievalChunk.id).filter(RetrievalChunk.document_id == document.id).all()]
-    if chunk_ids:
-        db.query(RetrievalTerm).filter(RetrievalTerm.chunk_id.in_(chunk_ids)).delete(synchronize_session=False)
-        db.query(RetrievalEmbedding).filter(RetrievalEmbedding.chunk_id.in_(chunk_ids)).delete(synchronize_session=False)
-    db.query(RetrievalChunk).filter(RetrievalChunk.document_id == document.id).delete(synchronize_session=False)
-    db.delete(document)
-    db.flush()
+    _delete_documents_matching(db, document_id_select)
 
 
 def _empty_indexed() -> dict[str, int]:

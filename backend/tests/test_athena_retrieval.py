@@ -2,7 +2,7 @@ from sqlalchemy import event
 
 from app.core.world_contracts import DERIVED
 from app.core.embedding_service import LocalHashEmbeddingProvider, get_embedding_provider
-from app.core.athena_retrieval import _project_sources, reindex_project_retrieval, search_retrieval
+from app.core.athena_retrieval import _project_sources, index_chapter_retrieval, reindex_project_retrieval, search_retrieval
 from app.core.world_proposal_service import create_bundle, review_proposal_item, rollback_review, write_candidate_fact
 from app.models import (
     ChapterContent,
@@ -361,6 +361,48 @@ def test_reindex_rebuilds_only_changed_chapter_document(db_session):
     assert after_doc_ids["chapter:1"] == before_doc_ids["chapter:1"]
     assert after_doc_ids["chapter:2"] != before_doc_ids["chapter:2"]
     assert after_doc_ids["chapter:3"] == before_doc_ids["chapter:3"]
+
+
+def test_index_chapter_retrieval_deletes_old_chunks_without_materializing_chunk_ids(db_session):
+    project = Project(name="Incremental Chapter Retrieval Cleanup")
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    chapter = ChapterContent(
+        project_id=project.id,
+        chapter_index=1,
+        title="第一章",
+        content=("星环钥匙推进。旧灯塔记录持续增长。" * 80),
+        word_count=2000,
+        status="generated",
+    )
+    db_session.add(chapter)
+    db_session.commit()
+
+    first = index_chapter_retrieval(db_session, project.id, 1)
+    assert first["indexed"]["chunks"] > 1
+    chapter.content = ("秘银钥匙替换旧线索。灯塔区记录重新归档。" * 80)
+    db_session.commit()
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        second = index_chapter_retrieval(db_session, project.id, 1)
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert second["indexed"]["chunks"] > 1
+    chunk_id_selects = [
+        statement
+        for statement in statements
+        if statement.startswith("select retrieval_chunks.id")
+        and "from retrieval_chunks" in statement
+        and "retrieval_chunks.document_id" in statement
+    ]
+    assert chunk_id_selects == []
 
 
 def test_reindex_builds_indexed_lexical_terms_for_local_search(client, db_session):
