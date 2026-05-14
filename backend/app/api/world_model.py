@@ -218,15 +218,15 @@ def list_world_proposal_bundles(
     current_profile = _get_current_profile(db=db, project_id=project_id)
     if current_profile is None:
         return PaginatedProposalBundlesOut(items=[], total=0, offset=offset, limit=limit)
-    query = db.query(WorldProposalBundle).filter(
+    filters = [
         WorldProposalBundle.project_id == project_id,
         WorldProposalBundle.project_profile_version_id == current_profile.id,
         WorldProposalBundle.profile_version == current_profile.version,
-    )
+    ]
     if bundle_status is not None:
-        query = query.filter(WorldProposalBundle.bundle_status == bundle_status)
+        filters.append(WorldProposalBundle.bundle_status == bundle_status)
     if profile_version is not None:
-        query = query.filter(WorldProposalBundle.profile_version == profile_version)
+        filters.append(WorldProposalBundle.profile_version == profile_version)
     if item_status is not None:
         subq = (
             db.query(WorldProposalItem.bundle_id)
@@ -238,8 +238,9 @@ def list_world_proposal_bundles(
             )
             .subquery()
         )
-        query = query.filter(WorldProposalBundle.id.in_(subq))
-    total = query.count()
+        filters.append(WorldProposalBundle.id.in_(subq))
+    query = db.query(WorldProposalBundle).filter(*filters)
+    total = db.query(func.count(WorldProposalBundle.id)).filter(*filters).scalar() or 0
     items = (
         query.order_by(WorldProposalBundle.updated_at.desc(), WorldProposalBundle.created_at.desc())
         .offset(offset)

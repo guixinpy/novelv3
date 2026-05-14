@@ -1203,6 +1203,39 @@ def test_athena_facade_routes_remain_compatible_after_router_split(client, db_se
     assert "rules" in checks[1].json()
 
 
+def test_world_model_proposal_bundle_count_does_not_select_summary(client, db_session):
+    project, profile_version = _seed_profile(db_session)
+    for index in range(1, 4):
+        create_bundle(
+            db=db_session,
+            project_id=project.id,
+            project_profile_version_id=profile_version.id,
+            profile_version=profile_version.version,
+            created_by="writer.alpha",
+            title=f"Heavy bundle {index}",
+            summary="长提案摘要" * 300,
+        )
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        response = client.get(f"/api/v1/projects/{project.id}/world-model/proposal-bundles?limit=1")
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert response.status_code == 200
+    bundle_count_statements = [
+        statement
+        for statement in statements
+        if "count(" in statement and "world_proposal_bundles" in statement
+    ]
+    assert bundle_count_statements
+    assert all("world_proposal_bundles.summary" not in statement for statement in bundle_count_statements)
+
+
 def test_world_model_bundle_endpoints_support_review_split_and_rollback(client, db_session):
     project, profile_version = _seed_profile(db_session)
     bundle = create_bundle(
