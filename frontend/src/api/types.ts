@@ -382,6 +382,14 @@ export interface WorldFactClaim {
   created_at: string
 }
 
+export interface PaginatedWorldFactClaims {
+  claims: WorldFactClaim[]
+  total: number
+  offset: number
+  limit: number
+  has_more: boolean
+}
+
 export interface WorldModelOverview {
   project_profile: ProjectProfileVersion | null
   projection: WorldProjection | null

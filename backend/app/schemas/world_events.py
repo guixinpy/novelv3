@@ -83,6 +83,14 @@ class WorldFactClaimOut(WorldFactClaimCreate):
     model_config = ConfigDict(from_attributes=True)
 
 
+class PaginatedWorldFactClaimsOut(BaseModel):
+    claims: list[WorldFactClaimOut]
+    total: int
+    offset: int
+    limit: int
+    has_more: bool
+
+
 class WorldEvidenceCreate(_VersionBoundModel):
     evidence_id: str
     chapter_index: int | None = Field(default=None, ge=0)

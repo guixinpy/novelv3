@@ -189,11 +189,50 @@ def test_list_world_fact_claims_returns_current_profile_metadata(client, db_sess
 
     assert response.status_code == 200
     payload = response.json()
-    assert [item["claim_id"] for item in payload] == ["claim.hero.secret.current"]
-    assert payload[0]["object_ref_or_value"] == {"value": "潮汐门钥匙"}
-    assert payload[0]["perspective_ref"] == "char.hero"
-    assert payload[0]["disclosed_to_refs"] == ["char.hero", "char.mentor"]
-    assert payload[0]["evidence_refs"] == ["chapter.02"]
+    assert [item["claim_id"] for item in payload["claims"]] == ["claim.hero.secret.current"]
+    assert payload["claims"][0]["object_ref_or_value"] == {"value": "潮汐门钥匙"}
+    assert payload["claims"][0]["perspective_ref"] == "char.hero"
+    assert payload["claims"][0]["disclosed_to_refs"] == ["char.hero", "char.mentor"]
+    assert payload["claims"][0]["evidence_refs"] == ["chapter.02"]
+
+
+def test_list_world_fact_claims_returns_bounded_page_with_total(client, db_session):
+    project, profile_version = _seed_profile(db_session)
+    db_session.add_all([
+        WorldFactClaim(
+            project_id=project.id,
+            project_profile_version_id=profile_version.id,
+            profile_version=profile_version.version,
+            claim_id=f"claim.hero.rank.{index:02d}",
+            chapter_index=index,
+            intra_chapter_seq=1,
+            subject_ref="char.hero",
+            predicate="rank",
+            object_ref_or_value=f"rank-{index}",
+            claim_layer="truth",
+            claim_status="confirmed",
+            authority_type="authoritative_structured",
+            confidence=1.0,
+            contract_version="world.contract.v1",
+        )
+        for index in range(1, 13)
+    ])
+    db_session.commit()
+
+    response = client.get(f"/api/v1/projects/{project.id}/world-model/facts?offset=5&limit=4")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 12
+    assert payload["offset"] == 5
+    assert payload["limit"] == 4
+    assert payload["has_more"] is True
+    assert [item["claim_id"] for item in payload["claims"]] == [
+        "claim.hero.rank.06",
+        "claim.hero.rank.07",
+        "claim.hero.rank.08",
+        "claim.hero.rank.09",
+    ]
 
 
 def test_athena_timeline_endpoint_uses_current_world_event_fields(client, db_session):

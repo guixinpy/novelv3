@@ -209,6 +209,21 @@ export const useWorldModelStore = defineStore('worldModel', () => {
     return (pendingActionCounts.value[itemId] ?? 0) > 0
   }
 
+  function normalizeFactClaimsPage(value: unknown, fallbackLimit: number) {
+    if (Array.isArray(value)) {
+      return {
+        claims: value as WorldFactClaim[],
+        hasMore: value.length === fallbackLimit,
+      }
+    }
+    const payload = value as { claims?: unknown; has_more?: unknown } | null
+    const claims = Array.isArray(payload?.claims) ? payload.claims as WorldFactClaim[] : []
+    return {
+      claims,
+      hasMore: typeof payload?.has_more === 'boolean' ? payload.has_more : claims.length === fallbackLimit,
+    }
+  }
+
   function ensureProjectScope(projectId: string) {
     if (!currentProjectScope.value) {
       currentProjectScope.value = projectId
@@ -390,10 +405,11 @@ export const useWorldModelStore = defineStore('worldModel', () => {
     setLaneLoading('facts', true)
 
     try {
-      const claims = await api.listWorldFactClaims(projectId, { offset: 0, limit: FACT_CLAIMS_PAGE_SIZE })
+      const response = await api.listWorldFactClaims(projectId, { offset: 0, limit: FACT_CLAIMS_PAGE_SIZE })
       if (!isLatestRequest(snapshot, 'facts')) return
-      factClaims.value = claims
-      factClaimsHasMore.value = claims.length === FACT_CLAIMS_PAGE_SIZE
+      const page = normalizeFactClaimsPage(response, FACT_CLAIMS_PAGE_SIZE)
+      factClaims.value = page.claims
+      factClaimsHasMore.value = page.hasMore
       factClaimsLoaded.value = true
       if (lastFactClaimsError.value && error.value === lastFactClaimsError.value) {
         error.value = ''
@@ -417,13 +433,14 @@ export const useWorldModelStore = defineStore('worldModel', () => {
     loadingMoreFactClaims.value = true
 
     try {
-      const claims = await api.listWorldFactClaims(projectId, {
+      const response = await api.listWorldFactClaims(projectId, {
         offset: factClaims.value.length,
         limit: FACT_CLAIMS_PAGE_SIZE,
       })
       if (!isActiveScope(scope.projectId, scope.version)) return
-      factClaims.value = [...factClaims.value, ...claims]
-      factClaimsHasMore.value = claims.length === FACT_CLAIMS_PAGE_SIZE
+      const page = normalizeFactClaimsPage(response, FACT_CLAIMS_PAGE_SIZE)
+      factClaims.value = [...factClaims.value, ...page.claims]
+      factClaimsHasMore.value = page.hasMore
       factClaimsLoaded.value = true
       if (lastFactClaimsError.value && error.value === lastFactClaimsError.value) {
         error.value = ''

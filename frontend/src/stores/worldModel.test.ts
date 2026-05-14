@@ -365,6 +365,27 @@ describe('worldModel store', () => {
     expect(api.listWorldFactClaims).toHaveBeenNthCalledWith(2, 'project-1', { offset: 200, limit: 200 })
   })
 
+  it('loadFactClaims() 使用后端 has_more 元数据避免整页误判', async () => {
+    const page = Array.from({ length: 200 }, (_item, index) => ({
+      ...createFactClaim(),
+      id: `fact-${index + 1}`,
+      claim_id: `claim.hero.rank.${index + 1}`,
+    }))
+    vi.mocked(api.listWorldFactClaims).mockResolvedValue({
+      claims: page,
+      total: 200,
+      offset: 0,
+      limit: 200,
+      has_more: false,
+    })
+    const store = useWorldModelStore()
+
+    await store.loadFactClaims('project-1')
+
+    expect(store.factClaims).toHaveLength(200)
+    expect(store.factClaimsHasMore).toBe(false)
+  })
+
   it('tracks loading state per request lane', async () => {
     const dashboardRequest = createDeferred<ReturnType<typeof createDashboard>>()
     vi.mocked(api.getWorldModelDashboard).mockReturnValue(dashboardRequest.promise)

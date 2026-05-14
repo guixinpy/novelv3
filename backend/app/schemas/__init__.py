@@ -38,6 +38,7 @@ from .world_entities import (
     WorldTimelineAnchorOut,
 )
 from .world_events import (
+    PaginatedWorldFactClaimsOut,
     WorldEventCreate,
     WorldEventOut,
     WorldEvidenceCreate,

@@ -27,6 +27,7 @@ import type {
   MessageQuery,
   ModelCallTraceDetail,
   ModelCallTraceListParams,
+  PaginatedWorldFactClaims,
   PaginatedModelCallTraces,
   PaginatedProposalBundles,
   ProposalBundleDetail,
@@ -83,7 +84,7 @@ export const api = {
     if (params?.offset !== undefined) query.set('offset', String(params.offset))
     if (params?.limit !== undefined) query.set('limit', String(params.limit))
     const qs = query.toString()
-    return request<WorldFactClaim[]>(`/projects/${id}/world-model/facts${qs ? `?${qs}` : ''}`)
+    return request<PaginatedWorldFactClaims | WorldFactClaim[]>(`/projects/${id}/world-model/facts${qs ? `?${qs}` : ''}`)
   },
   listWorldProposalBundles: (id: string, params?: { offset?: number; limit?: number; bundle_status?: string; item_status?: string; profile_version?: number }) => {
     const query = new URLSearchParams()

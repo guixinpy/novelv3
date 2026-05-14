@@ -30,6 +30,7 @@ from app.models import (
 )
 from app.schemas import (
     PaginatedProposalBundlesOut,
+    PaginatedWorldFactClaimsOut,
     ProjectWorldOverviewOut,
     ProposalBundleDetailOut,
     ProposalBundleOut,
@@ -38,7 +39,6 @@ from app.schemas import (
     ProposalReviewOut,
     ProposalReviewQueueOut,
     ProposalReviewRollbackCreate,
-    WorldFactClaimOut,
     WorldModelDashboardOut,
 )
 
@@ -157,7 +157,7 @@ def get_chapter_snapshot(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@router.get("/facts", response_model=list[WorldFactClaimOut])
+@router.get("/facts", response_model=PaginatedWorldFactClaimsOut)
 def list_world_fact_claims(
     project_id: str,
     claim_status: str | None = "confirmed",
@@ -170,7 +170,7 @@ def list_world_fact_claims(
     _require_project(db=db, project_id=project_id)
     current_profile = _get_current_profile(db=db, project_id=project_id)
     if current_profile is None:
-        return []
+        return {"claims": [], "total": 0, "offset": offset, "limit": limit, "has_more": False}
     query = db.query(WorldFactClaim).filter(
         WorldFactClaim.project_id == project_id,
         WorldFactClaim.project_profile_version_id == current_profile.id,
@@ -182,7 +182,8 @@ def list_world_fact_claims(
         query = query.filter(WorldFactClaim.claim_layer == claim_layer)
     if subject_ref:
         query = query.filter(WorldFactClaim.subject_ref == subject_ref)
-    return (
+    total = query.count()
+    claims = (
         query.order_by(
             WorldFactClaim.chapter_index.asc(),
             WorldFactClaim.intra_chapter_seq.asc(),
@@ -192,6 +193,13 @@ def list_world_fact_claims(
         .limit(limit)
         .all()
     )
+    return {
+        "claims": claims,
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+        "has_more": offset + len(claims) < total,
+    }
 
 
 @router.get("/proposal-bundles", response_model=PaginatedProposalBundlesOut)
