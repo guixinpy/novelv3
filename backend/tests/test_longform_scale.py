@@ -509,6 +509,41 @@ def test_longform_context_rollups_include_recent_memory_summaries(db_session):
     assert all("星环钥匙第九形态" in summary for summary in rollup_summaries.values())
 
 
+def test_longform_context_rollups_keep_recent_chapter_ending_clue(db_session):
+    from app.core.longform_memory import build_longform_context_package, rebuild_longform_memory
+
+    project = Project(name="Context Rollup Ending Clue")
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    for index in range(1, 121):
+        detail = "普通推进。"
+        if index == 120:
+            detail = ("中段铺垫。" * 80) + "卷末钩子：星环钥匙第九形态在塔底亮起。"
+        db_session.add(
+            ChapterContent(
+                project_id=project.id,
+                chapter_index=index,
+                title=f"第{index}章",
+                content=f"第{index}章正文。{detail}",
+                word_count=1000,
+                status="generated",
+            )
+        )
+    db_session.commit()
+    rebuild_longform_memory(db_session, project.id)
+
+    payload = build_longform_context_package(db_session, project.id, 120)
+
+    rollup_summaries = {
+        section["key"]: section["items"][0]["summary"]
+        for section in payload["sections"]
+        if section["key"] in {"global", "volume", "arc"}
+    }
+    assert rollup_summaries.keys() == {"global", "volume", "arc"}
+    assert all("卷末钩子" in summary for summary in rollup_summaries.values())
+
+
 def test_longform_context_marks_query_retrieval_failure(db_session, monkeypatch):
     import app.core.athena_retrieval as athena_retrieval
     from app.core.longform_memory import build_longform_context_package

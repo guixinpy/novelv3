@@ -609,8 +609,13 @@ def _chapter_content_preview(text: str, limit: int) -> str:
     cleaned = " ".join((text or "").split())
     if len(cleaned) <= limit:
         return cleaned
-    edge_limit = max(40, (limit - 3) // 2)
-    return f"{cleaned[:edge_limit]}...{cleaned[-edge_limit:]}"
+    separator = "..."
+    if limit <= len(separator) + 2:
+        return cleaned[:limit]
+    available_chars = limit - len(separator)
+    head_chars = available_chars // 2
+    tail_chars = available_chars - head_chars
+    return f"{cleaned[:head_chars]}{separator}{cleaned[-tail_chars:]}"
 
 
 def _is_stale(target_updated_at: datetime | None, source_updated_at: datetime | None) -> bool:
@@ -731,7 +736,7 @@ def _safe_range_context_items(
 
 
 def _format_recent_memory_summary(title: str | None, summary: str | None) -> str:
-    cleaned_summary = _preview(summary or "", 80)
+    cleaned_summary = _chapter_content_preview(summary or "", 80)
     if title and cleaned_summary:
         return f"{title}：{cleaned_summary}"
     return title or cleaned_summary
