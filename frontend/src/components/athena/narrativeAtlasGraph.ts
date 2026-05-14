@@ -126,13 +126,23 @@ export function collectNarrativeAtlasChapterIndexes(
 export function collectNarrativeAtlasMetrics(input: BuildNarrativeAtlasGraphInput): NarrativeAtlasMetrics {
   const storylinePlotlines = asRecords(input.plan?.storyline?.plotlines)
   const plotlines = storylinePlotlines.length > 0 ? storylinePlotlines : asRecords(input.plan?.outline?.plotlines)
+  const chapterTotal = toNonNegativeCount(input.plan?.outline?.chapters_total ?? input.plan?.outline?.total_chapters)
+  const plotlineTotal = toNonNegativeCount(
+    input.plan?.storyline?.plotlines_total ?? input.plan?.outline?.plotlines_total,
+  )
+  const foreshadowingTotal = toNonNegativeCount(input.plan?.storyline?.foreshadowing_total)
 
   return {
-    chapters: collectNarrativeAtlasChapterIndexes(input).length,
-    plotlines: plotlines.length,
-    foreshadowing: asRecords(input.plan?.storyline?.foreshadowing).length,
+    chapters: chapterTotal ?? collectNarrativeAtlasChapterIndexes(input).length,
+    plotlines: plotlineTotal ?? plotlines.length,
+    foreshadowing: foreshadowingTotal ?? asRecords(input.plan?.storyline?.foreshadowing).length,
     events: Array.isArray(input.timeline?.events) ? input.timeline.events.length : 0,
   }
+}
+
+function toNonNegativeCount(value: unknown) {
+  const count = toNumber(value)
+  return count !== null && count >= 0 ? count : null
 }
 
 function collectChapters(

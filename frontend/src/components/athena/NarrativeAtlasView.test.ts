@@ -84,6 +84,38 @@ function largePlan(chapterCount: number) {
   } as unknown as AthenaEvolutionPlan
 }
 
+function windowedLargePlan(totalChapters: number, offset: number, limit: number) {
+  const firstChapter = offset + 1
+  return {
+    outline: {
+      id: 'outline-large-window',
+      status: 'generated',
+      total_chapters: totalChapters,
+      chapters: Array.from({ length: limit }, (_, index) => {
+        const chapterIndex = firstChapter + index
+        return {
+          chapter_index: chapterIndex,
+          title: `窗口章节${chapterIndex}`,
+          summary: `第${chapterIndex}章摘要`,
+        }
+      }),
+      plotlines: [],
+      chapters_total: totalChapters,
+      chapters_offset: offset,
+      chapters_limit: limit,
+      chapters_has_more: offset + limit < totalChapters,
+    },
+    storyline: {
+      id: 'storyline-large-window',
+      status: 'generated',
+      plotlines: [],
+      foreshadowing: [],
+      plotlines_total: 4,
+      foreshadowing_total: 300,
+    },
+  } as unknown as AthenaEvolutionPlan
+}
+
 function mountAtlas(props: { plan?: AthenaEvolutionPlan | null; timeline?: AthenaTimeline | null } = {}) {
   return mount(NarrativeAtlasView, {
     props: {
@@ -174,5 +206,23 @@ describe('NarrativeAtlasView', () => {
     expect(wrapper.get('[data-testid="atlas-metric-chapters"]').text()).toContain('250')
     expect(wrapper.find('[data-atlas-node-id="chapter:1"]').exists()).toBe(true)
     expect(wrapper.find('[data-atlas-node-id="chapter:120"]').exists()).toBe(false)
+  })
+
+  it('requests the next server chapter window for paged graph plans', async () => {
+    const wrapper = mount(NarrativeAtlasView, {
+      props: {
+        plan: windowedLargePlan(250, 0, 80),
+        chapters: [],
+        timeline: { anchors: [], events: [] },
+      },
+    })
+
+    expect(wrapper.text()).toContain('第1-80章')
+    expect(wrapper.get('[data-testid="atlas-metric-chapters"]').text()).toContain('250')
+    expect(wrapper.find('[data-atlas-node-id="chapter:1"]').exists()).toBe(true)
+
+    await wrapper.get('[data-testid="atlas-next-window"]').trigger('click')
+
+    expect(wrapper.emitted('loadChapterWindow')).toEqual([[{ offset: 80, limit: 80 }]])
   })
 })

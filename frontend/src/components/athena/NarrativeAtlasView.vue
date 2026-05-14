@@ -29,6 +29,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   navigate: [payload: NavigatePayload]
+  loadChapterWindow: [payload: { offset: number; limit: number }]
 }>()
 
 const layers = reactive<Record<AtlasLayer, boolean>>({
@@ -50,16 +51,46 @@ const atlasChapterIndexes = computed(() =>
   }),
 )
 
-const isAtlasWindowed = computed(() => atlasChapterIndexes.value.length > ATLAS_LOCAL_THRESHOLD)
+const serverAtlasWindow = computed(() => {
+  const total = toNumber(props.plan?.outline?.chapters_total)
+  const offset = toNumber(props.plan?.outline?.chapters_offset)
+  const limit = toNumber(props.plan?.outline?.chapters_limit)
+  if (total === null || offset === null || limit === null) return null
+  if (total <= 0 || offset < 0 || limit <= 0) return null
+  if (total <= atlasChapterIndexes.value.length) return null
+  return {
+    total,
+    offset,
+    limit,
+    start: offset + 1,
+    end: Math.min(offset + limit, total),
+  }
+})
+const isServerAtlasWindowed = computed(() => serverAtlasWindow.value !== null)
+const isLocalAtlasWindowed = computed(() =>
+  !isServerAtlasWindowed.value && atlasChapterIndexes.value.length > ATLAS_LOCAL_THRESHOLD,
+)
+const isAtlasWindowed = computed(() => isServerAtlasWindowed.value || isLocalAtlasWindowed.value)
 const lastAtlasChapterIndex = computed(() =>
   atlasChapterIndexes.value.length
     ? atlasChapterIndexes.value[atlasChapterIndexes.value.length - 1]
     : atlasWindowStart.value,
 )
-const atlasWindowEnd = computed(() => Math.min(atlasWindowStart.value + ATLAS_WINDOW_SIZE - 1, lastAtlasChapterIndex.value))
-const atlasScopeLabel = computed(() => `第${atlasWindowStart.value}-${atlasWindowEnd.value}章`)
-const canPageAtlasPrevious = computed(() => atlasWindowStart.value > (atlasChapterIndexes.value[0] ?? 1))
-const canPageAtlasNext = computed(() => atlasWindowEnd.value < lastAtlasChapterIndex.value)
+const atlasWindowStartIndex = computed(() => serverAtlasWindow.value?.start ?? atlasWindowStart.value)
+const atlasWindowEnd = computed(() =>
+  serverAtlasWindow.value?.end ?? Math.min(atlasWindowStart.value + ATLAS_WINDOW_SIZE - 1, lastAtlasChapterIndex.value),
+)
+const atlasScopeLabel = computed(() => `第${atlasWindowStartIndex.value}-${atlasWindowEnd.value}章`)
+const canPageAtlasPrevious = computed(() => {
+  if (serverAtlasWindow.value) return serverAtlasWindow.value.offset > 0
+  return atlasWindowStart.value > (atlasChapterIndexes.value[0] ?? 1)
+})
+const canPageAtlasNext = computed(() => {
+  if (serverAtlasWindow.value) {
+    return serverAtlasWindow.value.offset + serverAtlasWindow.value.limit < serverAtlasWindow.value.total
+  }
+  return atlasWindowEnd.value < lastAtlasChapterIndex.value
+})
 
 const graph = computed<NarrativeAtlasGraph>(() =>
   buildNarrativeAtlasGraph({
@@ -67,7 +98,7 @@ const graph = computed<NarrativeAtlasGraph>(() =>
     chapters: props.chapters,
     timeline: props.timeline,
     chapterRange: isAtlasWindowed.value
-      ? { start: atlasWindowStart.value, end: atlasWindowEnd.value }
+      ? { start: atlasWindowStartIndex.value, end: atlasWindowEnd.value }
       : undefined,
   }),
 )
@@ -79,7 +110,7 @@ const displayGraph = computed<NarrativeAtlasGraph>(() => {
 
   for (const node of graph.value.nodes) {
     if (node.chapterIndex === undefined) continue
-    if (node.chapterIndex >= atlasWindowStart.value && node.chapterIndex <= atlasWindowEnd.value) {
+    if (node.chapterIndex >= atlasWindowStartIndex.value && node.chapterIndex <= atlasWindowEnd.value) {
       visibleNodeIds.add(node.id)
     }
   }
@@ -158,6 +189,16 @@ function navigate(payload: NavigatePayload) {
 }
 
 function pageAtlas(direction: -1 | 1) {
+  if (serverAtlasWindow.value) {
+    const window = serverAtlasWindow.value
+    const maxOffset = Math.max(0, window.total - window.limit)
+    const nextOffset = direction > 0
+      ? Math.min(window.offset + window.limit, maxOffset)
+      : Math.max(0, window.offset - window.limit)
+    emit('loadChapterWindow', { offset: nextOffset, limit: window.limit })
+    return
+  }
+
   const firstChapter = atlasChapterIndexes.value[0] ?? 1
   const lastChapter = lastAtlasChapterIndex.value
   atlasWindowStart.value = direction > 0
@@ -176,6 +217,11 @@ function layerForEdge(edge: NarrativeAtlasEdge): AtlasLayer {
   if (edge.type === 'branch') return 'branches'
   if (edge.type === 'event_anchor') return 'events'
   return edge.type
+}
+
+function toNumber(value: unknown) {
+  const numberValue = Number(value)
+  return Number.isFinite(numberValue) ? numberValue : null
 }
 </script>
 
@@ -198,8 +244,22 @@ function layerForEdge(edge: NarrativeAtlasEdge): AtlasLayer {
         <div v-if="isAtlasWindowed" class="narrative-atlas-view__scope" data-testid="atlas-local-scope">
           <span>当前显示{{ atlasScopeLabel }}</span>
           <div>
-            <button type="button" :disabled="!canPageAtlasPrevious" @click="pageAtlas(-1)">上一窗</button>
-            <button type="button" :disabled="!canPageAtlasNext" @click="pageAtlas(1)">下一窗</button>
+            <button
+              type="button"
+              data-testid="atlas-previous-window"
+              :disabled="!canPageAtlasPrevious"
+              @click="pageAtlas(-1)"
+            >
+              上一窗
+            </button>
+            <button
+              type="button"
+              data-testid="atlas-next-window"
+              :disabled="!canPageAtlasNext"
+              @click="pageAtlas(1)"
+            >
+              下一窗
+            </button>
           </div>
         </div>
         <NarrativeAtlasCanvas

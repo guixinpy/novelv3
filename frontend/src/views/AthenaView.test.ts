@@ -57,7 +57,7 @@ const NarrativeAtlasViewStub = defineComponent({
     chapters: { type: Array, required: true },
     timeline: { type: Object, default: null },
   },
-  emits: ['navigate'],
+  emits: ['navigate', 'loadChapterWindow'],
   template: `
     <section data-testid="narrative-atlas-view-stub">
       <button
@@ -65,6 +65,13 @@ const NarrativeAtlasViewStub = defineComponent({
         @click="$emit('navigate', { view: 'storyline', sourceKey: 'plotline:main' })"
       >
         跳转故事线
+      </button>
+      <button
+        type="button"
+        data-testid="atlas-request-chapter-window"
+        @click="$emit('loadChapterWindow', { offset: 80, limit: 80 })"
+      >
+        请求图谱章节窗口
       </button>
     </section>
   `,
@@ -205,6 +212,23 @@ describe('AthenaView narrative atlas integration', () => {
 
     expect(router.currentRoute.value.path).toBe('/projects/project-1/athena/narrative')
     expect(router.currentRoute.value.query).toEqual({ view: 'storyline' })
+  })
+
+  it('loads a bounded graph plan window when atlas requests a chapter window', async () => {
+    const { wrapper } = await mountAthenaView('/projects/project-1/athena/narrative?view=graph')
+    vi.mocked(api.getAthenaEvolutionPlan).mockClear()
+
+    await wrapper.get('[data-testid="atlas-request-chapter-window"]').trigger('click')
+    await flushPromises()
+
+    expect(api.getAthenaEvolutionPlan).toHaveBeenCalledWith('project-1', {
+      mode: 'window',
+      chapter_offset: 80,
+      chapter_limit: 80,
+      plotline_limit: 20,
+      milestone_limit: 500,
+      foreshadowing_limit: 500,
+    })
   })
 
   it('uses narrative plan chapters as timeline fallback when timeline events are missing', async () => {

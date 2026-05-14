@@ -180,13 +180,20 @@ describe('createAthenaSectionLoader', () => {
     expect(athena.loadEvolutionPlan).not.toHaveBeenCalled()
   })
 
-  it('loads timeline and evolution plan for the narrative graph view', async () => {
+  it('loads timeline and a bounded evolution plan window for the narrative graph view', async () => {
     const { athena, loader } = createLoaderMocks(null)
 
     await loader.loadRouteData(routeState({ section: 'narrative', view: 'graph' }))
 
     expect(athena.loadTimeline).toHaveBeenCalledWith('project-1')
-    expect(athena.loadEvolutionPlan).toHaveBeenCalledWith('project-1')
+    expect(athena.loadEvolutionPlan).toHaveBeenCalledWith('project-1', {
+      mode: 'window',
+      chapter_offset: 0,
+      chapter_limit: 80,
+      plotline_limit: 20,
+      milestone_limit: 500,
+      foreshadowing_limit: 500,
+    })
   })
 
   it('loads a bounded chapter plan window for the narrative chapters view', async () => {
@@ -232,7 +239,7 @@ describe('createAthenaSectionLoader', () => {
     })
   })
 
-  it('reloads the full evolution plan for graph view when a windowed plan is already present', async () => {
+  it('keeps graph view on a bounded window when a windowed plan is already present', async () => {
     const { athena, loader } = createLoaderMocks(null)
     athena.evolutionPlan = {
       outline: {
@@ -246,7 +253,14 @@ describe('createAthenaSectionLoader', () => {
 
     await loader.loadRouteData(routeState({ section: 'narrative', view: 'graph' }))
 
-    expect(athena.loadEvolutionPlan).toHaveBeenCalledWith('project-1')
+    expect(athena.loadEvolutionPlan).toHaveBeenCalledWith('project-1', {
+      mode: 'window',
+      chapter_offset: 0,
+      chapter_limit: 80,
+      plotline_limit: 20,
+      milestone_limit: 500,
+      foreshadowing_limit: 500,
+    })
   })
 
   it('loads review data by active view family', async () => {

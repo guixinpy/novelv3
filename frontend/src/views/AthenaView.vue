@@ -40,6 +40,8 @@ import type { AthenaConsistencyIssue, AthenaEvolutionPlan, AthenaTimeline, Propo
 type AthenaNarrativeWorkbenchView = Exclude<AthenaNarrativeView, 'timeline' | 'graph'>
 type AthenaTimelineEvent = AthenaTimeline['events'][number]
 type RecordValue = Record<string, unknown>
+const GRAPH_PLOTLINE_WINDOW_LIMIT = 20
+const GRAPH_RELATION_WINDOW_LIMIT = 500
 
 interface AthenaSectionViewOption {
   key: string
@@ -426,6 +428,20 @@ async function loadNarrativeChapterWindow(payload: { offset: number; limit: numb
   })
 }
 
+async function loadNarrativeGraphWindow(payload: { offset: number; limit: number }) {
+  const offset = Number(payload.offset)
+  const limit = Number(payload.limit)
+  if (!Number.isFinite(offset) || !Number.isFinite(limit) || limit <= 0) return
+  await athena.loadEvolutionPlan(pid.value, {
+    mode: 'window',
+    chapter_offset: Math.max(0, Math.floor(offset)),
+    chapter_limit: Math.max(1, Math.floor(limit)),
+    plotline_limit: GRAPH_PLOTLINE_WINDOW_LIMIT,
+    milestone_limit: GRAPH_RELATION_WINDOW_LIMIT,
+    foreshadowing_limit: GRAPH_RELATION_WINDOW_LIMIT,
+  })
+}
+
 async function loadNarrativeMilestoneWindow(payload: { offset: number; limit: number }) {
   const offset = Number(payload.offset)
   const limit = Number(payload.limit)
@@ -580,6 +596,7 @@ function closeChat() {
             :timeline="athena.timeline"
             :loading="narrativePlanLoading"
             @navigate="navigateNarrativeAtlas"
+            @load-chapter-window="loadNarrativeGraphWindow"
           />
           <NarrativeWorkbench
             v-else
