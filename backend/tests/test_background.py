@@ -159,6 +159,32 @@ def test_background_task_service_tracks_chapter_range_progress(client, db_sessio
     }
 
 
+def test_background_task_service_reuses_active_range_task_by_idempotency_key(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Test"})
+    pid = r.json()["id"]
+    service = BackgroundTaskService(db_session)
+
+    first = service.create_chapter_range(
+        project_id=pid,
+        task_type="athena_reindex_range",
+        start_chapter_index=1,
+        end_chapter_index=1000,
+        idempotency_key="range:1-1000",
+    )
+    service.mark_running(first.id)
+
+    duplicate = service.create_chapter_range(
+        project_id=pid,
+        task_type="athena_reindex_range",
+        start_chapter_index=1,
+        end_chapter_index=1000,
+        idempotency_key="range:1-1000",
+    )
+
+    assert duplicate.id == first.id
+    assert db_session.query(BackgroundTask).filter(BackgroundTask.project_id == pid).count() == 1
+
+
 def test_background_task_service_compacts_large_sequential_range_progress(client, db_session):
     r = client.post("/api/v1/projects", json={"name": "Test"})
     pid = r.json()["id"]

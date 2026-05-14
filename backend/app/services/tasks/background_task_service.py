@@ -10,6 +10,7 @@ TASK_RUNNING = "running"
 TASK_COMPLETED = "completed"
 TASK_FAILED = "failed"
 TASK_CANCELLED = "cancelled"
+ACTIVE_TASK_STATUSES = (TASK_PENDING, TASK_RUNNING)
 
 INTERRUPTED_TASK_ERROR = "Task interrupted by local process restart"
 RANGE_PROGRESS_CHECKPOINT_LIMIT = 200
@@ -53,6 +54,19 @@ class BackgroundTaskService:
         next_payload["chapter_range"] = {"start": start_chapter_index, "end": end_chapter_index}
         if idempotency_key:
             next_payload["idempotency_key"] = idempotency_key
+            active_tasks = (
+                self.db.query(BackgroundTask)
+                .filter(
+                    BackgroundTask.project_id == project_id,
+                    BackgroundTask.task_type == task_type,
+                    BackgroundTask.status.in_(ACTIVE_TASK_STATUSES),
+                )
+                .order_by(BackgroundTask.created_at.desc(), BackgroundTask.id.desc())
+                .all()
+            )
+            for task in active_tasks:
+                if (task.payload or {}).get("idempotency_key") == idempotency_key:
+                    return task
         return self.create(project_id=project_id, task_type=task_type, payload=next_payload)
 
     def get(self, task_id: str) -> BackgroundTask:
