@@ -111,6 +111,7 @@ export interface WorkspaceBootstrap {
   project: ProjectSummary
   diagnosis: ProjectDiagnosis
   setup?: SetupData | null
+  setup_partial?: boolean
   storyline?: Record<string, unknown> | null
   storyline_partial?: boolean
   outline?: Record<string, unknown> | null

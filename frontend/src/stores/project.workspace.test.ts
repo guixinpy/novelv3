@@ -459,6 +459,49 @@ describe('project workspace state', () => {
     })
   })
 
+  it('workspace bootstrap 的 partial setup 不会被标记为完整设定缓存', async () => {
+    const store = useProjectStore()
+    vi.mocked(api.getSetup).mockResolvedValue({
+      id: 'setup-full',
+      project_id: 'A',
+      status: 'generated',
+      world_building: { background: '完整世界观' },
+      characters: [{ name: '主角' }],
+      core_concept: { hook: '完整钩子' },
+    })
+
+    store.applyWorkspaceBootstrap({
+      project: { id: 'A', name: '项目 A' },
+      diagnosis: { missing_items: [], completed_items: ['setup'], suggested_next_step: null },
+      setup: {
+        id: 'setup-1',
+        project_id: 'A',
+        status: 'generated',
+        world_building: {},
+        characters: [],
+        core_concept: {},
+      },
+      setup_partial: true,
+      storyline: null,
+      outline: null,
+      chapters: [],
+      versions: [],
+      dialogs: { hermes: { messages: [] }, athena: { messages: [] } },
+    } as any)
+
+    await store.loadSetup('A')
+
+    expect(api.getSetup).toHaveBeenCalledWith('A')
+    expect(store.setup).toEqual({
+      id: 'setup-full',
+      project_id: 'A',
+      status: 'generated',
+      world_building: { background: '完整世界观' },
+      characters: [{ name: '主角' }],
+      core_concept: { hook: '完整钩子' },
+    })
+  })
+
   it('refreshTargets() 只返回成功刷新的 targets，失败的不应回传', async () => {
     const store = useProjectStore()
 

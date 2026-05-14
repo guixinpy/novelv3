@@ -11,7 +11,7 @@ DIALOG_BOOTSTRAP_MESSAGE_CONTENT_LIMIT = DEFAULT_MESSAGE_CONTENT_PREVIEW_CHARS
 
 
 def build_project_diagnosis(db: Session, project_id: str) -> ProjectDiagnosisOut:
-    setup = db.query(Setup).filter(Setup.project_id == project_id).first()
+    setup_status = db.query(Setup.status).filter(Setup.project_id == project_id).scalar()
     storyline_status = db.query(Storyline.status).filter(Storyline.project_id == project_id).scalar()
     outline_status = db.query(Outline.status).filter(Outline.project_id == project_id).scalar()
     chapters = db.query(func.count(ChapterContent.id)).filter(ChapterContent.project_id == project_id).scalar() or 0
@@ -20,7 +20,7 @@ def build_project_diagnosis(db: Session, project_id: str) -> ProjectDiagnosisOut
     missing = []
     next_step = None
 
-    if setup and setup.status == "generated":
+    if setup_status == "generated":
         completed.append("setup")
     else:
         missing.append("setup")
@@ -80,7 +80,18 @@ class WorkspaceBootstrapService:
             .limit(CHAPTER_BOOTSTRAP_LIMIT)
             .all()
         )
-        setup = self.db.query(Setup).filter(Setup.project_id == project_id).first()
+        setup_row = (
+            self.db.query(
+                Setup.id,
+                Setup.project_id,
+                Setup.status,
+                Setup.created_at,
+                Setup.updated_at,
+            )
+            .filter(Setup.project_id == project_id)
+            .first()
+        )
+        setup = _setup_bootstrap_summary(setup_row) if setup_row else None
         storyline_row = (
             self.db.query(
                 Storyline.id,
@@ -129,6 +140,7 @@ class WorkspaceBootstrapService:
             "project": project,
             "diagnosis": build_project_diagnosis(self.db, project_id),
             "setup": setup,
+            "setup_partial": setup is not None,
             "storyline": storyline,
             "storyline_partial": storyline is not None,
             "outline": outline,
@@ -183,6 +195,19 @@ class WorkspaceBootstrapService:
                 },
             },
         }
+
+
+def _setup_bootstrap_summary(row) -> dict:
+    return {
+        "id": row.id,
+        "project_id": row.project_id,
+        "world_building": {},
+        "characters": [],
+        "core_concept": {},
+        "status": row.status,
+        "created_at": row.created_at,
+        "updated_at": row.updated_at,
+    }
 
 
 def _storyline_bootstrap_summary(row) -> dict:

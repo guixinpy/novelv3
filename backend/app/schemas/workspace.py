@@ -24,6 +24,7 @@ class WorkspaceBootstrapOut(BaseModel):
     project: ProjectOut
     diagnosis: ProjectDiagnosisOut
     setup: SetupOut | None = None
+    setup_partial: bool = False
     storyline: StorylineOut | None = None
     storyline_partial: bool = False
     outline: OutlineOut | None = None

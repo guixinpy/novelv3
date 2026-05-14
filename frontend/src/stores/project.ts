@@ -163,7 +163,7 @@ export const useProjectStore = defineStore('project', () => {
     versionsHasMore.value = bootstrap.versions_has_more ?? false
     versionsNodeType.value = undefined
     requestCache.markFresh(`project:${id}:project`)
-    if (bootstrap.setup) requestCache.markFresh(`project:${id}:setup`)
+    if (bootstrap.setup && !bootstrap.setup_partial) requestCache.markFresh(`project:${id}:setup`)
     if (bootstrap.storyline && !bootstrap.storyline_partial) requestCache.markFresh(`project:${id}:storyline`)
     if (bootstrap.outline && !bootstrap.outline_partial) requestCache.markFresh(`project:${id}:outline`)
     requestCache.markFresh(chaptersCacheKey(id))

@@ -43,7 +43,8 @@ def test_workspace_bootstrap_returns_project_session_bundle(client, db_session):
     payload = response.json()
     assert payload["project"]["id"] == project.id
     assert payload["diagnosis"]["completed_items"] == ["setup", "storyline", "outline", "content"]
-    assert payload["setup"]["core_concept"]["theme"] == "雾"
+    assert payload["setup"]["core_concept"]["theme"] == ""
+    assert payload["setup_partial"] is True
     assert payload["storyline"]["plotlines"] == []
     assert payload["storyline"]["plotlines_count"] == 1
     assert payload["storyline_partial"] is True
@@ -263,3 +264,66 @@ def test_workspace_bootstrap_storyline_summary_does_not_select_storyline_json(cl
     assert storyline_select_clauses
     assert all("storylines.plotlines," not in clause for clause in storyline_select_clauses)
     assert all("storylines.foreshadowing," not in clause for clause in storyline_select_clauses)
+
+
+def test_workspace_bootstrap_setup_summary_does_not_select_setup_json(client, db_session):
+    project = Project(name="长篇设定冷启动", genre="都市奇幻")
+    db_session.add(project)
+    db_session.flush()
+    db_session.add(
+        Setup(
+            project_id=project.id,
+            status="generated",
+            world_building={
+                "background": "冷启动不应读取的大段世界观。" * 1000,
+                "geography": "冷启动不应读取的大段地理。" * 1000,
+            },
+            characters=[
+                {
+                    "name": f"角色{index}",
+                    "background": "冷启动不应读取的大段角色背景。" * 200,
+                }
+                for index in range(100)
+            ],
+            core_concept={"hook": "冷启动不应读取的大段核心概念。" * 1000},
+        )
+    )
+    db_session.commit()
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        response = client.get(f"/api/v1/projects/{project.id}/workspace-bootstrap")
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["setup"]["id"]
+    assert payload["setup"]["world_building"] == {
+        "background": "",
+        "geography": "",
+        "society": "",
+        "rules": "",
+        "atmosphere": "",
+    }
+    assert payload["setup"]["characters"] == []
+    assert payload["setup"]["core_concept"] == {
+        "theme": "",
+        "premise": "",
+        "hook": "",
+        "unique_selling_point": "",
+    }
+    assert payload["setup_partial"] is True
+    setup_select_clauses = [
+        statement.split("from setups", 1)[0]
+        for statement in statements
+        if "from setups" in statement
+    ]
+    assert setup_select_clauses
+    assert all("setups.world_building" not in clause for clause in setup_select_clauses)
+    assert all("setups.characters" not in clause for clause in setup_select_clauses)
+    assert all("setups.core_concept" not in clause for clause in setup_select_clauses)
