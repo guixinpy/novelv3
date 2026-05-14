@@ -33,6 +33,7 @@ FENCED_CHAPTER_RE = re.compile(r"^\s*```(?:[A-Za-z0-9_-]+)?\s*\n(?P<body>.*?)\n?
 CHAPTER_HEADING_RE = re.compile(
     r"^\s{0,3}#{0,6}\s*第\s*[\d零〇一二两三四五六七八九十百千]+\s*章(?:\s|[：:、.．-]|$).*$"
 )
+EMPTY_CHAPTER_CONTENT_ERROR = "Generated chapter content is empty after normalization"
 
 
 def _latest_chapter_generation_trace_id(db: Session, chapter: ChapterContent) -> str | None:
@@ -66,7 +67,7 @@ def _normalize_generated_chapter_content(content: str) -> str:
     lines = text.splitlines()
     while lines and not lines[0].strip():
         lines.pop(0)
-    if len(lines) > 1 and CHAPTER_HEADING_RE.match(lines[0]):
+    if lines and CHAPTER_HEADING_RE.match(lines[0]):
         lines = lines[1:]
         while lines and not lines[0].strip():
             lines.pop(0)
@@ -252,6 +253,15 @@ async def create_or_replace_chapter(
         title = chapter_outline.get("title", title)
 
     generated_content = _normalize_generated_chapter_content(result.content)
+    if not generated_content:
+        _safe_mark_chapter_trace_failed(
+            db,
+            trace,
+            error_message=EMPTY_CHAPTER_CONTENT_ERROR,
+            latency_ms=now_ms() - started_at,
+        )
+        raise HTTPException(status_code=502, detail=EMPTY_CHAPTER_CONTENT_ERROR)
+
     word_count = count_words(generated_content)
     if existing:
         chapter = existing

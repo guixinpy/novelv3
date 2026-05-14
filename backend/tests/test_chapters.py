@@ -247,6 +247,36 @@ def test_generate_chapter_strips_markdown_fence_and_heading_before_saving(mock_c
 
 @patch("app.api.chapters.load_api_key", return_value="sk-test")
 @patch("app.api.chapters.ai_service.complete", new_callable=AsyncMock)
+def test_generate_chapter_rejects_empty_content_after_normalization(mock_complete, mock_key, client, db_session):
+    pid = _create_project_with_setup(client)
+    mock_complete.return_value.content = "```markdown\n# 第1章 雾锁灯塔\n```"
+    mock_complete.return_value.model = "deepseek-chat"
+    mock_complete.return_value.prompt_tokens = 100
+    mock_complete.return_value.completion_tokens = 200
+
+    response = client.post(f"/api/v1/projects/{pid}/chapters/1/generate")
+
+    assert response.status_code == 502
+    assert "empty" in response.json()["detail"]
+    assert db_session.query(ChapterContent).filter(
+        ChapterContent.project_id == pid,
+        ChapterContent.chapter_index == 1,
+    ).first() is None
+    trace = (
+        db_session.query(AIModelCallTrace)
+        .filter(
+            AIModelCallTrace.project_id == pid,
+            AIModelCallTrace.trace_type == "chapter_generation",
+            AIModelCallTrace.chapter_index == 1,
+        )
+        .one()
+    )
+    assert trace.status == "failed"
+    assert "empty" in trace.error_message
+
+
+@patch("app.api.chapters.load_api_key", return_value="sk-test")
+@patch("app.api.chapters.ai_service.complete", new_callable=AsyncMock)
 def test_generate_chapter_reconciles_word_count_with_aggregate_query(mock_complete, mock_key, client, db_session):
     pid = _create_project_with_setup(client)
     project = db_session.get(Project, pid)
