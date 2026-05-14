@@ -11,7 +11,7 @@ from app.api.athena_shared import (
 )
 from app.db import get_db
 from app.schemas import ChatIn, ChatOut, ResolveActionIn
-from app.services.dialog.messages import DialogMessageService
+from app.services.dialog.messages import DEFAULT_MESSAGE_CONTENT_PREVIEW_CHARS, DialogMessageService
 
 router = APIRouter()
 
@@ -21,6 +21,8 @@ def get_athena_messages(
     project_id: str,
     limit: Annotated[int | None, Query(ge=1, le=200)] = None,
     after_id: str | None = None,
+    max_content_chars: Annotated[int, Query(ge=500, le=20000)] = DEFAULT_MESSAGE_CONTENT_PREVIEW_CHARS,
+    full_content: bool = False,
     db: Session = Depends(get_db),
 ):
     return DialogMessageService(db).list_messages(
@@ -28,6 +30,7 @@ def get_athena_messages(
         dialog_type="athena",
         limit=limit,
         after_id=after_id,
+        max_content_chars=None if full_content else max_content_chars,
     )
 
 

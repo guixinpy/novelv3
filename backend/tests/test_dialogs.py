@@ -552,6 +552,33 @@ def test_get_messages_exposes_message_type_and_meta(client):
     assert assistant_message["meta"] is None
 
 
+def test_get_messages_defaults_to_bounded_content_preview(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Long Message Preview"})
+    pid = r.json()["id"]
+    long_content = "长消息正文" * 2000
+    hermes_dialog = Dialog(project_id=pid, dialog_type="hermes", state="chatting")
+    athena_dialog = Dialog(project_id=pid, dialog_type="athena", state="chatting")
+    db_session.add_all([hermes_dialog, athena_dialog])
+    db_session.flush()
+    db_session.add_all(
+        [
+            DialogMessage(dialog_id=hermes_dialog.id, role="assistant", message_type="plain", content=long_content),
+            DialogMessage(dialog_id=athena_dialog.id, role="assistant", message_type="plain", content=long_content),
+        ]
+    )
+    db_session.commit()
+
+    hermes_response = client.get(f"/api/v1/dialog/projects/{pid}/messages")
+    athena_response = client.get(f"/api/v1/projects/{pid}/athena/dialog/messages")
+
+    assert hermes_response.status_code == 200
+    assert athena_response.status_code == 200
+    for message in [hermes_response.json()[0], athena_response.json()[0]]:
+        assert message["content_truncated"] is True
+        assert message["original_content_length"] == len(long_content)
+        assert len(message["content"]) < len(long_content)
+
+
 @patch("app.api.dialogs.load_api_key", return_value=None)
 def test_unknown_command_input_falls_back_to_plain_chat(mock_key, client):
     r = client.post("/api/v1/projects", json={"name": "Test"})

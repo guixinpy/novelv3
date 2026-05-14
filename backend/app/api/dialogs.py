@@ -29,7 +29,7 @@ from app.services.actions.action_execution_service import ActionExecutionService
 from app.services.actions.action_proposal_service import preview_action_to_execution
 from app.services.actions.action_result_service import ActionResultService
 from app.services.actions.descriptions import action_description
-from app.services.dialog.messages import DialogMessageService
+from app.services.dialog.messages import DEFAULT_MESSAGE_CONTENT_PREVIEW_CHARS, DialogMessageService
 from app.services.dialog.session import DialogSessionService
 from app.services.tasks.background_task_service import BackgroundTaskService
 from app.services.tasks.local_task_runner import LocalTaskRunner
@@ -550,6 +550,8 @@ def get_messages(
     dialog_type: str = "hermes",
     limit: Annotated[int | None, Query(ge=1, le=200)] = None,
     after_id: str | None = None,
+    max_content_chars: Annotated[int, Query(ge=500, le=20000)] = DEFAULT_MESSAGE_CONTENT_PREVIEW_CHARS,
+    full_content: bool = False,
     db: Session = Depends(get_db),
 ):
     return DialogMessageService(db).list_messages(
@@ -557,6 +559,7 @@ def get_messages(
         dialog_type=dialog_type,
         limit=limit,
         after_id=after_id,
+        max_content_chars=None if full_content else max_content_chars,
     )
 
 
