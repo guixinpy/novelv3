@@ -223,6 +223,40 @@ def test_chapter_memory_prefers_generated_content_over_stale_outline_summary(db_
     assert memory.memory_metadata["source"] == "chapter_content"
 
 
+def test_chapter_memory_keeps_chapter_ending_clue(db_session):
+    from app.core.longform_memory import rebuild_longform_memory
+
+    project = Project(name="Memory Ending Clue")
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    db_session.add(
+        ChapterContent(
+            project_id=project.id,
+            chapter_index=1,
+            title="第一章",
+            content=(
+                "章首只是日常巡查。" * 80
+                + "章尾揭示：潮汐钟第九次倒转，黑匣子编号终于出现。"
+            ),
+            word_count=1000,
+            status="generated",
+        )
+    )
+    db_session.commit()
+
+    rebuild_longform_memory(db_session, project.id)
+
+    memory = (
+        db_session.query(LongformMemory)
+        .filter(LongformMemory.project_id == project.id, LongformMemory.scope_key == "chapter:1")
+        .one()
+    )
+    assert "章首只是日常巡查" in memory.summary
+    assert "潮汐钟第九次倒转" in memory.summary
+    assert "黑匣子编号终于出现" in memory.summary
+
+
 def test_athena_dialog_planning_summary_does_not_select_large_narrative_json(db_session):
     from app.prompting.providers.dialog import build_athena_narrative_planning_context_block
 

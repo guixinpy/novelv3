@@ -431,7 +431,7 @@ def _outline_lookup(db: Session, project_id: str) -> dict[int, dict[str, Any]]:
 def _chapter_memory(project_id: str, chapter: Any, outline: dict[str, Any] | None) -> LongformMemory:
     title = chapter.title or f"第{chapter.chapter_index}章"
     outline_summary = str((outline or {}).get("summary") or "").strip()
-    content_summary = _preview(chapter.content or "", 180)
+    content_summary = _chapter_content_preview(chapter.content or "", 180)
     summary = content_summary or outline_summary or title
     source = "chapter_content" if content_summary else "outline" if outline_summary else "title"
     return LongformMemory(
@@ -589,6 +589,14 @@ def _ordered_counts(counts: Counter) -> dict[str, int]:
 def _preview(text: str, limit: int) -> str:
     cleaned = " ".join((text or "").split())
     return cleaned[:limit]
+
+
+def _chapter_content_preview(text: str, limit: int) -> str:
+    cleaned = " ".join((text or "").split())
+    if len(cleaned) <= limit:
+        return cleaned
+    edge_limit = max(40, (limit - 3) // 2)
+    return f"{cleaned[:edge_limit]}...{cleaned[-edge_limit:]}"
 
 
 def _is_stale(target_updated_at: datetime | None, source_updated_at: datetime | None) -> bool:
