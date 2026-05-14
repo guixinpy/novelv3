@@ -504,6 +504,60 @@ def test_athena_ontology_endpoint_returns_bounded_world_model_windows(client, db
     }
 
 
+def test_athena_ontology_counts_do_not_select_large_json_columns(client, db_session):
+    project, profile_version = _seed_profile(db_session)
+    db_session.add_all([
+        WorldCharacter(
+            project_id=project.id,
+            profile_version=profile_version.version,
+            character_id="character-heavy",
+            canonical_id="char.heavy",
+            name="重载角色",
+            aliases=["别名"] * 50,
+            role_type="supporting",
+            identity_anchor="重载角色",
+            core_traits=["性格"] * 100,
+            hidden_truths=["秘密"] * 100,
+            contract_version=profile_version.contract_version,
+        ),
+        WorldRule(
+            project_id=project.id,
+            profile_version=profile_version.version,
+            rule_id="rule.heavy",
+            canonical_id="rule.heavy",
+            name="重载规则",
+            rule_type="world_law",
+            statement="规则正文",
+            constraints=["约束"] * 100,
+            exceptions=["例外"] * 100,
+            contract_version=profile_version.contract_version,
+        ),
+    ])
+    db_session.commit()
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        response = client.get(f"/api/v1/projects/{project.id}/athena/ontology?entity_limit=1&rule_limit=1")
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert response.status_code == 200
+    count_statements = [
+        statement
+        for statement in statements
+        if "count(" in statement and ("world_characters" in statement or "world_rules" in statement)
+    ]
+    assert count_statements
+    assert all("world_characters.core_traits" not in statement for statement in count_statements)
+    assert all("world_characters.hidden_truths" not in statement for statement in count_statements)
+    assert all("world_rules.constraints" not in statement for statement in count_statements)
+    assert all("world_rules.exceptions" not in statement for statement in count_statements)
+
+
 def test_subject_knowledge_persists_belief_claims_approved_from_proposals(client, db_session):
     project, profile_version = _seed_profile(db_session)
     bundle = create_bundle(

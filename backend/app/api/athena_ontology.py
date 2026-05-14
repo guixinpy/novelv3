@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.api.athena_shared import get_current_profile, require_project, world_entity_description, world_entity_type
@@ -50,11 +51,12 @@ def get_ontology(
             (WorldArtifact, "artifacts"),
             (WorldResource, "resources"),
         ]:
-            query = db.query(model).filter(
+            filters = [
                 model.project_id == project_id,
                 model.profile_version == profile.version,
-            )
-            total = query.count()
+            ]
+            query = db.query(model).filter(*filters)
+            total = db.query(func.count(model.id)).filter(*filters).scalar() or 0
             items = (
                 query.order_by(model.canonical_id.asc(), model.id.asc())
                 .offset(entity_offset)
@@ -84,11 +86,12 @@ def get_ontology(
 
     relations = []
     if profile:
-        rel_query = db.query(WorldRelation).filter(
+        rel_filters = [
             WorldRelation.project_id == project_id,
             WorldRelation.profile_version == profile.version,
-        )
-        rel_total = rel_query.count()
+        ]
+        rel_query = db.query(WorldRelation).filter(*rel_filters)
+        rel_total = db.query(func.count(WorldRelation.id)).filter(*rel_filters).scalar() or 0
         rels = (
             rel_query.order_by(WorldRelation.relation_id.asc(), WorldRelation.id.asc())
             .offset(relation_offset)
@@ -108,11 +111,12 @@ def get_ontology(
 
     rules = []
     if profile:
-        rule_query = db.query(WorldRule).filter(
+        rule_filters = [
             WorldRule.project_id == project_id,
             WorldRule.profile_version == profile.version,
-        )
-        rule_total = rule_query.count()
+        ]
+        rule_query = db.query(WorldRule).filter(*rule_filters)
+        rule_total = db.query(func.count(WorldRule.id)).filter(*rule_filters).scalar() or 0
         rule_rows = (
             rule_query.order_by(WorldRule.rule_id.asc(), WorldRule.id.asc())
             .offset(rule_offset)
