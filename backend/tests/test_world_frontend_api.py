@@ -1608,6 +1608,66 @@ def test_world_model_proposal_review_queue_limits_large_backlog(client, db_sessi
     assert [cluster["item_ids"][0] for cluster in payload["clusters"]] == item_ids[:2]
 
 
+def test_world_model_proposal_review_queue_count_does_not_select_heavy_item_fields(client, db_session):
+    project, profile_version = _seed_profile(db_session)
+    bundle = create_bundle(
+        db=db_session,
+        project_id=project.id,
+        project_profile_version_id=profile_version.id,
+        profile_version=profile_version.version,
+        created_by="writer.alpha",
+        title="Heavy review queue",
+    )
+    for index in range(1, 4):
+        write_candidate_fact(
+            db=db_session,
+            bundle_id=bundle.id,
+            created_by="writer.alpha",
+            candidate=ProposalCandidateFactCreate(
+                project_id=project.id,
+                project_profile_version_id=profile_version.id,
+                profile_version=profile_version.version,
+                contract_version=profile_version.contract_version,
+                claim_id=f"claim.queue.heavy.{index}",
+                chapter_index=index,
+                subject_ref=f"char.queue.heavy.{index}",
+                predicate="status",
+                object_ref_or_value={"fragments": ["记忆碎片"] * 200},
+                claim_layer="truth",
+                disclosed_to_refs=[f"char.reader.{i}" for i in range(100)],
+                authority_type="authoritative_structured",
+                confidence=0.9,
+                evidence_refs=[f"chapter.{i:03d}" for i in range(100)],
+                notes="长审阅备注" * 300,
+            ),
+        )
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        response = client.get(f"/api/v1/projects/{project.id}/world-model/proposal-review-queue?limit=1")
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total_items"] == 3
+    assert payload["returned_items"] == 1
+    item_count_statements = [
+        statement
+        for statement in statements
+        if "count(" in statement and "world_proposal_items" in statement
+    ]
+    assert item_count_statements
+    assert all("world_proposal_items.object_ref_or_value" not in statement for statement in item_count_statements)
+    assert all("world_proposal_items.disclosed_to_refs" not in statement for statement in item_count_statements)
+    assert all("world_proposal_items.evidence_refs" not in statement for statement in item_count_statements)
+    assert all("world_proposal_items.notes" not in statement for statement in item_count_statements)
+
+
 def test_world_model_proposal_bundle_pagination_rejects_invalid_bounds(client, db_session):
     project, _profile_version = _seed_profile(db_session)
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.world_proposal_state import ACTIONABLE_REVIEW_ITEM_STATUSES
@@ -29,16 +30,14 @@ def build_proposal_review_queue(
             "has_more": False,
             "clusters": [],
         }
-    query = (
-        db.query(WorldProposalItem)
-        .filter(
-            WorldProposalItem.project_id == project_id,
-            WorldProposalItem.project_profile_version_id == profile.id,
-            WorldProposalItem.profile_version == profile.version,
-            WorldProposalItem.item_status.in_(ACTIONABLE_REVIEW_ITEM_STATUSES),
-        )
-    )
-    total_items = query.count()
+    filters = [
+        WorldProposalItem.project_id == project_id,
+        WorldProposalItem.project_profile_version_id == profile.id,
+        WorldProposalItem.profile_version == profile.version,
+        WorldProposalItem.item_status.in_(ACTIONABLE_REVIEW_ITEM_STATUSES),
+    ]
+    query = db.query(WorldProposalItem).filter(*filters)
+    total_items = db.query(func.count(WorldProposalItem.id)).filter(*filters).scalar() or 0
     items = (
         query
         .order_by(
