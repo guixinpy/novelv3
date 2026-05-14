@@ -1,6 +1,7 @@
 import json
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.api.athena_shared import get_current_profile
@@ -100,7 +101,12 @@ def list_issues(
         raise HTTPException(status_code=404, detail="Project not found")
 
     query = db.query(ConsistencyCheck).filter(ConsistencyCheck.project_id == project_id)
-    total = query.count()
+    total = (
+        db.query(func.count(ConsistencyCheck.id))
+        .filter(ConsistencyCheck.project_id == project_id)
+        .scalar()
+        or 0
+    )
     issues = (
         query
         .order_by(ConsistencyCheck.chapter_index.asc(), ConsistencyCheck.created_at.asc(), ConsistencyCheck.id.asc())

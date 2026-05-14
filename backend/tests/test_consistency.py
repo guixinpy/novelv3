@@ -1,5 +1,7 @@
 from unittest.mock import AsyncMock, patch
 
+from sqlalchemy import event
+
 from app.models import (
     BackgroundTask,
     ChapterContent,
@@ -72,6 +74,47 @@ def test_list_issues_returns_bounded_page_with_total(client, db_session):
     assert data["limit"] == 4
     assert data["has_more"] is True
     assert [item["chapter_index"] for item in data["issues"]] == [6, 7, 8, 9]
+
+
+def test_list_issues_total_does_not_select_heavy_text_fields(client, db_session):
+    project = Project(name="Consistency Heavy Text")
+    db_session.add(project)
+    db_session.flush()
+    db_session.add_all([
+        ConsistencyCheck(
+            project_id=project.id,
+            chapter_index=index,
+            checker_name="Checker",
+            subject=f"issue-{index}",
+            description="长问题描述" * 300,
+            evidence="长证据文本" * 300,
+            suggested_fix="长修复建议" * 300,
+            status="pending",
+        )
+        for index in range(1, 4)
+    ])
+    db_session.commit()
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        response = client.get(f"/api/v1/projects/{project.id}/consistency/issues?limit=1")
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 3
+    count_statements = [
+        statement for statement in statements
+        if "count(" in statement and "consistency_checks" in statement
+    ]
+    assert count_statements
+    assert all("consistency_checks.description" not in statement for statement in count_statements)
+    assert all("consistency_checks.evidence" not in statement for statement in count_statements)
+    assert all("consistency_checks.suggested_fix" not in statement for statement in count_statements)
 
 
 def test_consistency_check_uses_current_world_model_checker_pack(client, db_session):
