@@ -190,3 +190,62 @@ def test_chapter_version_apply_refreshes_longform_memory_and_retrieval(client, d
     assert refreshed_chapter.word_count == 13
     assert "星环钥匙第二形态" in refreshed_memory.summary
     assert any("星环钥匙第二形态" in item["snippet"] for item in results["items"])
+
+
+def test_chapter_version_apply_updates_project_word_count_incrementally(client, db_session):
+    project = Project(name="Version Word Count Delta", current_word_count=30)
+    db_session.add(project)
+    db_session.flush()
+    chapter = ChapterContent(
+        project_id=project.id,
+        chapter_index=1,
+        title="第一章",
+        content="旧正文。星环钥匙第一形态。",
+        word_count=12,
+        status="generated",
+    )
+    db_session.add_all(
+        [
+            chapter,
+            ChapterContent(
+                project_id=project.id,
+                chapter_index=2,
+                title="第二章",
+                content="另一章正文。",
+                word_count=18,
+                status="generated",
+            ),
+        ]
+    )
+    db_session.commit()
+    db_session.refresh(chapter)
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(statement.lower())
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        response = client.post(
+            f"/api/v1/projects/{project.id}/versions",
+            json={
+                "node_type": "chapter",
+                "node_id": chapter.id,
+                "content": "新正文。星环钥匙第二形态启动。",
+                "description": "apply edited chapter",
+            },
+        )
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert response.status_code == 200
+    db_session.refresh(project)
+    db_session.refresh(chapter)
+    assert chapter.word_count == 13
+    assert project.current_word_count == 31
+    aggregate_word_count_selects = [
+        statement
+        for statement in statements
+        if "sum(chapter_contents.word_count)" in statement
+    ]
+    assert aggregate_word_count_selects == []

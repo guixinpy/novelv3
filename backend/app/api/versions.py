@@ -170,15 +170,28 @@ def _apply_content_to_node(db: Session, node_type: str, node_id: str, content: s
     elif node_type == "chapter":
         node = db.query(ChapterContent).filter(ChapterContent.id == node_id).first()
         if node:
+            previous_word_count = int(node.word_count or 0)
+            next_word_count = count_words(content)
             node.content = content
-            node.word_count = count_words(content)
+            node.word_count = next_word_count
+            project = db.query(Project).filter(Project.id == node.project_id).first()
+            if project:
+                project.current_word_count = max(
+                    0,
+                    int(project.current_word_count or 0) - previous_word_count + next_word_count,
+                )
             return node.chapter_index
     return None
 
 
 def _safe_refresh_longform_maintenance(db: Session, *, project_id: str, chapter_index: int) -> None:
     try:
-        refresh_result = refresh_longform_memory_for_chapter(db, project_id, chapter_index)
+        refresh_result = refresh_longform_memory_for_chapter(
+            db,
+            project_id,
+            chapter_index,
+            reconcile_word_count=False,
+        )
         sync_longform_memory_retrieval_documents(
             db,
             project_id,
