@@ -383,6 +383,40 @@ describe('project workspace state', () => {
     expect(store.versions).toEqual([{ id: 'version-1', node_type: 'chapter', node_id: 'chapter-1', version_number: 1 }])
   })
 
+  it('workspace bootstrap 的 partial outline 不会被标记为完整大纲缓存', async () => {
+    const store = useProjectStore()
+    vi.mocked(api.getOutline).mockResolvedValue({
+      id: 'outline-full',
+      project_id: 'A',
+      status: 'generated',
+      total_chapters: 1000,
+      chapters: [{ chapter_index: 201, title: '第201章', summary: '继续推进' }],
+    })
+
+    store.applyWorkspaceBootstrap({
+      project: { id: 'A', name: '项目 A' },
+      diagnosis: { missing_items: [], completed_items: ['outline'], suggested_next_step: null },
+      setup: null,
+      storyline: null,
+      outline: { id: 'outline-1', project_id: 'A', status: 'generated', total_chapters: 1000, chapters: [] },
+      outline_partial: true,
+      chapters: [],
+      versions: [],
+      dialogs: { hermes: { messages: [] }, athena: { messages: [] } },
+    } as any)
+
+    await store.loadOutline('A')
+
+    expect(api.getOutline).toHaveBeenCalledWith('A')
+    expect(store.outline).toEqual({
+      id: 'outline-full',
+      project_id: 'A',
+      status: 'generated',
+      total_chapters: 1000,
+      chapters: [{ chapter_index: 201, title: '第201章', summary: '继续推进' }],
+    })
+  })
+
   it('refreshTargets() 只返回成功刷新的 targets，失败的不应回传', async () => {
     const store = useProjectStore()
 

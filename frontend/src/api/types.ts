@@ -113,6 +113,7 @@ export interface WorkspaceBootstrap {
   setup?: SetupData | null
   storyline?: Record<string, unknown> | null
   outline?: Record<string, unknown> | null
+  outline_partial?: boolean
   chapters: ChapterSummary[]
   chapters_total?: number
   chapters_offset?: number

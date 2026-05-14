@@ -154,3 +154,48 @@ def test_workspace_bootstrap_summaries_do_not_select_body_content(client, db_ses
     assert version_select_clauses
     assert all("chapter_contents.content" not in clause for clause in chapter_select_clauses)
     assert all("versions.content" not in clause for clause in version_select_clauses)
+
+
+def test_workspace_bootstrap_outline_summary_does_not_select_outline_json(client, db_session):
+    project = Project(name="千章大纲冷启动", genre="都市奇幻")
+    db_session.add(project)
+    db_session.flush()
+    db_session.add(
+        Outline(
+            project_id=project.id,
+            status="generated",
+            total_chapters=1000,
+            chapters=[
+                {"chapter_index": index, "title": f"第{index}章", "summary": "大纲摘要" * 20}
+                for index in range(1, 1001)
+            ],
+            plotlines=[{"name": f"支线{index}", "summary": "支线摘要" * 20} for index in range(1, 51)],
+            foreshadowing=[{"name": f"伏笔{index}", "summary": "伏笔摘要" * 20} for index in range(1, 51)],
+        )
+    )
+    db_session.commit()
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        response = client.get(f"/api/v1/projects/{project.id}/workspace-bootstrap")
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["outline"]["total_chapters"] == 1000
+    assert payload["outline"]["chapters"] == []
+    assert payload["outline_partial"] is True
+    outline_select_clauses = [
+        statement.split("from outlines", 1)[0]
+        for statement in statements
+        if "from outlines" in statement
+    ]
+    assert outline_select_clauses
+    assert all("outlines.chapters" not in clause for clause in outline_select_clauses)
+    assert all("outlines.plotlines" not in clause for clause in outline_select_clauses)
+    assert all("outlines.foreshadowing" not in clause for clause in outline_select_clauses)

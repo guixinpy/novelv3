@@ -12,7 +12,7 @@ VERSION_BOOTSTRAP_LIMIT = 50
 def build_project_diagnosis(db: Session, project_id: str) -> ProjectDiagnosisOut:
     setup = db.query(Setup).filter(Setup.project_id == project_id).first()
     storyline = db.query(Storyline).filter(Storyline.project_id == project_id).first()
-    outline = db.query(Outline).filter(Outline.project_id == project_id).first()
+    outline_status = db.query(Outline.status).filter(Outline.project_id == project_id).scalar()
     chapters = db.query(func.count(ChapterContent.id)).filter(ChapterContent.project_id == project_id).scalar() or 0
 
     completed = []
@@ -32,7 +32,7 @@ def build_project_diagnosis(db: Session, project_id: str) -> ProjectDiagnosisOut
         if not next_step:
             next_step = "preview_storyline"
 
-    if outline and outline.status == "generated":
+    if outline_status == "generated":
         completed.append("outline")
     else:
         missing.append("outline")
@@ -81,7 +81,19 @@ class WorkspaceBootstrapService:
         )
         setup = self.db.query(Setup).filter(Setup.project_id == project_id).first()
         storyline = self.db.query(Storyline).filter(Storyline.project_id == project_id).first()
-        outline = self.db.query(Outline).filter(Outline.project_id == project_id).first()
+        outline_row = (
+            self.db.query(
+                Outline.id,
+                Outline.project_id,
+                Outline.total_chapters,
+                Outline.status,
+                Outline.created_at,
+                Outline.updated_at,
+            )
+            .filter(Outline.project_id == project_id)
+            .first()
+        )
+        outline = _outline_bootstrap_summary(outline_row) if outline_row else None
         versions_total = self.db.query(func.count(Version.id)).filter(Version.project_id == project_id).scalar() or 0
         versions = (
             self.db.query(
@@ -105,6 +117,7 @@ class WorkspaceBootstrapService:
             "setup": setup,
             "storyline": storyline,
             "outline": outline,
+            "outline_partial": outline is not None,
             "chapters": [
                 {
                     "id": chapter.id,
@@ -141,3 +154,17 @@ class WorkspaceBootstrapService:
                 "athena": {"messages": self.messages.list_messages(project_id, dialog_type="athena", limit=80)},
             },
         }
+
+
+def _outline_bootstrap_summary(row) -> dict:
+    return {
+        "id": row.id,
+        "project_id": row.project_id,
+        "total_chapters": row.total_chapters or 0,
+        "chapters": [],
+        "plotlines": [],
+        "foreshadowing": [],
+        "status": row.status,
+        "created_at": row.created_at,
+        "updated_at": row.updated_at,
+    }

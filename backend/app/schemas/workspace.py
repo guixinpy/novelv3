@@ -26,6 +26,7 @@ class WorkspaceBootstrapOut(BaseModel):
     setup: SetupOut | None = None
     storyline: StorylineOut | None = None
     outline: OutlineOut | None = None
+    outline_partial: bool = False
     chapters: list[ChapterSummaryOut] = Field(default_factory=list)
     chapters_total: int = 0
     chapters_offset: int = 0

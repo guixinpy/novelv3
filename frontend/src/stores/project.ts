@@ -165,7 +165,7 @@ export const useProjectStore = defineStore('project', () => {
     requestCache.markFresh(`project:${id}:project`)
     if (bootstrap.setup) requestCache.markFresh(`project:${id}:setup`)
     if (bootstrap.storyline) requestCache.markFresh(`project:${id}:storyline`)
-    if (bootstrap.outline) requestCache.markFresh(`project:${id}:outline`)
+    if (bootstrap.outline && !bootstrap.outline_partial) requestCache.markFresh(`project:${id}:outline`)
     requestCache.markFresh(chaptersCacheKey(id))
     requestCache.markFresh(versionsCacheKey(id, undefined, { offset: 0, limit: versionsLimit.value || VERSION_PAGE_LIMIT }))
   }
