@@ -509,6 +509,34 @@ def test_longform_context_rollups_include_recent_memory_summaries(db_session):
     assert all("星环钥匙第九形态" in summary for summary in rollup_summaries.values())
 
 
+def test_longform_context_marks_query_retrieval_failure(db_session, monkeypatch):
+    import app.core.athena_retrieval as athena_retrieval
+    from app.core.longform_memory import build_longform_context_package
+
+    project = Project(name="Query Retrieval Failure Visibility")
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+
+    def fail_retrieval(*_args, **_kwargs):
+        raise RuntimeError("vector store offline")
+
+    monkeypatch.setattr(athena_retrieval, "build_query_aware_retrieval_context", fail_retrieval)
+
+    payload = build_longform_context_package(db_session, project.id, 20, user_query="灯塔线索")
+
+    warning_section = next(
+        (section for section in payload["sections"] if section["key"] == "query_aware_retrieval_warning"),
+        None,
+    )
+    assert warning_section is not None
+    assert warning_section["title"] == "检索诊断"
+    assert warning_section["items"][0]["code"] == "query_aware_retrieval_context_failed"
+    assert warning_section["items"][0]["error_type"] == "RuntimeError"
+    assert "【检索证据】检索证据暂不可用" in payload["prompt_context"]
+    assert "vector store offline" not in payload["prompt_context"]
+
+
 def test_reindex_includes_longform_memory_sources(client, db_session):
     project = Project(name="Longform Retrieval Sources")
     db_session.add(project)

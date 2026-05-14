@@ -332,7 +332,21 @@ def build_longform_context_package(
             chapter_index=chapter_index,
             user_query=user_query,
         )
-    except Exception:
+    except Exception as exc:
+        sections.append(
+            {
+                "key": "query_aware_retrieval_warning",
+                "title": "检索诊断",
+                "items": [
+                    {
+                        "code": "query_aware_retrieval_context_failed",
+                        "message": "检索证据暂不可用，已跳过本次相关证据注入。",
+                        "error_type": exc.__class__.__name__,
+                    }
+                ],
+            }
+        )
+        lines.append("【检索证据】检索证据暂不可用，已跳过本次相关证据注入。")
         retrieval_context = None
     if retrieval_context:
         sections.append(retrieval_context["section"])
