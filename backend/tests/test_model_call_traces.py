@@ -1,7 +1,7 @@
 from sqlalchemy import event
 
 from app.api import chapters, dialogs
-from app.core.model_call_trace import build_context_block, create_trace, sanitize_model_messages, truncate_text
+from app.core.model_call_trace import build_context_block, create_trace, mark_trace_failed, sanitize_model_messages, truncate_text
 from app.models import AIModelCallTrace, Dialog, DialogMessage, Project
 from app.schemas.model_call_trace import ModelCallTraceDetail, PaginatedModelCallTraces
 
@@ -248,6 +248,19 @@ def test_create_trace_defaults_to_running_status(db_session):
     trace = create_trace(db_session, project_id=project.id, trace_type="chat")
 
     assert trace.status == "running"
+
+
+def test_mark_trace_failed_truncates_large_error_message(db_session):
+    project = Project(name="Trace Error Limit", genre="东方奇幻悬疑")
+    db_session.add(project)
+    db_session.commit()
+    trace = create_trace(db_session, project_id=project.id, trace_type="chapter_generation")
+    long_error = "provider error " + ("上游响应体" * 5000)
+
+    mark_trace_failed(db_session, trace, error_message=long_error)
+
+    assert len(trace.error_message) < len(long_error)
+    assert "truncated" in trace.error_message
 
 
 def test_safe_create_chat_trace_commits_before_model_call(db_session):

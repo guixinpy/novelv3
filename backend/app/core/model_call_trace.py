@@ -12,6 +12,7 @@ from app.models import AIModelCallTrace
 
 TRUNCATION_NOTICE = "\n\n[truncated: original content exceeded trace limit]"
 MAX_TRACE_MESSAGE_CONTENT_CHARS = 12000
+MAX_TRACE_ERROR_MESSAGE_CHARS = 2000
 BEARER_PATTERN = re.compile(r"(Authorization\s*:\s*Bearer\s+)([^\s,;]+)", re.IGNORECASE)
 SK_TOKEN_PATTERN = re.compile(r"sk-[A-Za-z0-9][A-Za-z0-9_\-]{8,}")
 KEY_VALUE_PATTERN = re.compile(
@@ -208,7 +209,7 @@ def mark_trace_failed(
     latency_ms: int | None = None,
 ) -> AIModelCallTrace:
     trace.status = "failed"
-    trace.error_message = sanitize_text(error_message)
+    trace.error_message = truncate_text(error_message, max_chars=MAX_TRACE_ERROR_MESSAGE_CHARS)["content"]
     trace.latency_ms = latency_ms
     trace.updated_at = datetime.now(UTC)
     db.add(trace)
