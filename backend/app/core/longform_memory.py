@@ -15,7 +15,6 @@ from app.models import ChapterContent, LongformMemory, Outline, Project, Retriev
 DEFAULT_ARC_SIZE = 20
 DEFAULT_VOLUME_SIZE = 100
 RECENT_CHAPTER_WINDOW = 3
-LARGE_MAINTENANCE_REBUILD_THRESHOLD = 50
 
 
 @dataclass
@@ -113,14 +112,9 @@ def repair_longform_maintenance(
     memory_chapter_indexes = sorted(set(before.missing_memory_chapters + before.stale_memory_chapters))
     refreshed_chapter_indexes = memory_chapter_indexes[:repair_limit]
     updated_memory_ids: list[str] = []
-    if len(memory_chapter_indexes) >= LARGE_MAINTENANCE_REBUILD_THRESHOLD:
-        rebuild_longform_memory(db, project_id)
-        refreshed_chapter_indexes = memory_chapter_indexes
-        updated_memory_ids.extend(_longform_memory_ids(db, project_id))
-    else:
-        for chapter_index in refreshed_chapter_indexes:
-            refresh_result = refresh_longform_memory_for_chapter(db, project_id, chapter_index)
-            updated_memory_ids.extend(refresh_result["updated_memory_ids"])
+    for chapter_index in refreshed_chapter_indexes:
+        refresh_result = refresh_longform_memory_for_chapter(db, project_id, chapter_index)
+        updated_memory_ids.extend(refresh_result["updated_memory_ids"])
 
     after_memory = _collect_longform_maintenance_state(db, project_id)
     retrieval_chapter_indexes = sorted(
@@ -577,11 +571,6 @@ def _chapter_memory_ids(db: Session, project_id: str, chapter_indexes: list[int]
         )
         .all()
     )
-    return [row[0] for row in rows]
-
-
-def _longform_memory_ids(db: Session, project_id: str) -> list[str]:
-    rows = db.query(LongformMemory.id).filter(LongformMemory.project_id == project_id).all()
     return [row[0] for row in rows]
 
 

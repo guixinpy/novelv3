@@ -1152,7 +1152,7 @@ def test_longform_maintenance_repair_batches_large_backlog(client, db_session):
     assert second_payload["remaining"]["status"] == "current"
 
 
-def test_longform_maintenance_repair_rebuilds_large_missing_memory_backlog(db_session, monkeypatch):
+def test_longform_maintenance_repair_batches_large_missing_memory_backlog(db_session, monkeypatch):
     import app.core.longform_memory as longform_memory
 
     project = Project(name="Maintenance Repair Large Missing Backlog")
@@ -1172,16 +1172,19 @@ def test_longform_maintenance_repair_rebuilds_large_missing_memory_backlog(db_se
         )
     db_session.commit()
 
-    def fail_single_refresh(*_args, **_kwargs):
-        raise AssertionError("large missing backlog should be rebuilt in one pass")
+    def fail_full_rebuild(*_args, **_kwargs):
+        raise AssertionError("large missing backlog should be repaired in bounded batches")
 
-    monkeypatch.setattr(longform_memory, "refresh_longform_memory_for_chapter", fail_single_refresh)
+    monkeypatch.setattr(longform_memory, "rebuild_longform_memory", fail_full_rebuild)
 
     result = longform_memory.repair_longform_maintenance(db_session, project.id, repair_limit=10)
 
-    assert result["repaired_memory_count"] == 60
-    assert result["has_more"] is False
-    assert result["remaining_issue_count"] == 0
-    assert result["remaining"]["status"] == "current"
-    assert result["remaining"]["missing_memory_count"] == 0
-    assert result["remaining"]["missing_retrieval_count"] == 0
+    assert result["repaired_memory_count"] == 10
+    assert result["refreshed_chapter_indexes"] == list(range(1, 11))
+    assert result["has_more"] is True
+    assert result["remaining_issue_count"] > 0
+    assert result["remaining"]["status"] == "stale"
+    assert result["remaining"]["missing_memory_count"] == 50
+    assert result["remaining"]["missing_retrieval_count"] == 50
+    for chapter_index in range(1, 11):
+        assert f"chapter:{chapter_index}" in result["synced_scope_keys"]
