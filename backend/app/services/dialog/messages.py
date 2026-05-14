@@ -124,7 +124,7 @@ class DialogMessageService:
         if not message_ids:
             return {}
         traces = (
-            self.db.query(AIModelCallTrace)
+            self.db.query(AIModelCallTrace.response_message_id, AIModelCallTrace.id)
             .filter(
                 AIModelCallTrace.dialog_id == dialog.id,
                 AIModelCallTrace.response_message_id.in_(message_ids),

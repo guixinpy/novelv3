@@ -1,6 +1,8 @@
 from datetime import UTC, datetime, timedelta
 
-from app.models import Dialog, DialogMessage, Project
+from sqlalchemy import event
+
+from app.models import AIModelCallTrace, Dialog, DialogMessage, Project
 
 
 def _project_with_messages(db_session, dialog_type="hermes", count: int = 3):
@@ -85,6 +87,45 @@ def test_dialog_messages_after_id_returns_earliest_new_page(client, db_session):
 
     assert response.status_code == 200
     assert [item["content"] for item in response.json()] == [f"消息{index:03d}" for index in range(2, 22)]
+
+
+def test_dialog_messages_trace_lookup_does_not_select_large_trace_json(client, db_session):
+    project, messages = _project_with_messages(db_session)
+    db_session.add(
+        AIModelCallTrace(
+            project_id=project.id,
+            trace_type="hermes_chat",
+            status="success",
+            dialog_id=messages[-1].dialog_id,
+            response_message_id=messages[-1].id,
+            messages=[{"role": "user", "content": "大段提示词" * 1000}],
+            context_blocks=[{"key": "ctx", "content": "大段上下文" * 1000}],
+            trace_metadata={"prompt": "metadata"},
+        )
+    )
+    db_session.commit()
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        response = client.get(f"/api/v1/dialog/projects/{project.id}/messages?limit=3")
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert response.status_code == 200
+    assert response.json()[-1]["trace_id"]
+    trace_select_clauses = [
+        statement.split("from ai_model_call_traces", 1)[0]
+        for statement in statements
+        if "from ai_model_call_traces" in statement
+    ]
+    assert trace_select_clauses
+    assert all("ai_model_call_traces.messages" not in clause for clause in trace_select_clauses)
+    assert all("ai_model_call_traces.context_blocks" not in clause for clause in trace_select_clauses)
+    assert all("ai_model_call_traces.trace_metadata" not in clause for clause in trace_select_clauses)
 
 
 def test_athena_messages_forwards_pagination_params(client, db_session):
