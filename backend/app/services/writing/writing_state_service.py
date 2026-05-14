@@ -50,6 +50,16 @@ class WritingStateService:
         self.db.refresh(state)
         return self._out(state)
 
+    def complete_chapter(self, project_id: str, chapter_index: int) -> WritingStateOut:
+        state = self._get_or_create(project_id)
+        state.status = "idle"
+        state.current_chapter = chapter_index
+        state.last_error = None
+        state.updated_at = datetime.now(UTC)
+        self.db.commit()
+        self.db.refresh(state)
+        return self._out(state)
+
     def state(self, project_id: str) -> WritingStateOut:
         state = self._get(project_id)
         if not state:

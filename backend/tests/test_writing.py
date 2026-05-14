@@ -1,6 +1,9 @@
 from unittest.mock import patch
 
+import pytest
+
 from app.models import BackgroundTask
+from app.services.tasks.background_task_service import BackgroundTaskService
 from app.services.writing.writing_state_service import WritingStateService
 
 
@@ -64,3 +67,55 @@ def test_writing_retry_creates_background_task(client, db_session):
     assert task.payload == {"chapter_index": 2}
     assert task.status == "pending"
     start.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_retry_chapter_work_marks_state_idle_after_success(client, db_session, monkeypatch):
+    r = client.post("/api/v1/projects", json={"name": "Test"})
+    pid = r.json()["id"]
+    WritingStateService(db_session).run_chapter(pid, 2)
+    task = BackgroundTaskService(db_session).create(
+        project_id=pid,
+        task_type="retry_chapter",
+        payload={"chapter_index": 2},
+    )
+
+    async def fake_generate(project_id, chapter_index, db):
+        return {"chapter_index": chapter_index}
+
+    monkeypatch.setattr("app.api.chapters.generate_chapter", fake_generate)
+    from app.api.writing import build_retry_chapter_work
+
+    result = await build_retry_chapter_work(pid, 2)(db_session, task)
+
+    state = WritingStateService(db_session).state(pid)
+    assert result == {"chapter_index": 2}
+    assert state.status == "idle"
+    assert state.current_chapter == 2
+    assert state.last_error is None
+
+
+@pytest.mark.asyncio
+async def test_retry_chapter_work_marks_state_failed_after_error(client, db_session, monkeypatch):
+    r = client.post("/api/v1/projects", json={"name": "Test"})
+    pid = r.json()["id"]
+    WritingStateService(db_session).run_chapter(pid, 2)
+    task = BackgroundTaskService(db_session).create(
+        project_id=pid,
+        task_type="retry_chapter",
+        payload={"chapter_index": 2},
+    )
+
+    async def fake_generate(project_id, chapter_index, db):
+        raise RuntimeError("chapter generation failed")
+
+    monkeypatch.setattr("app.api.chapters.generate_chapter", fake_generate)
+    from app.api.writing import build_retry_chapter_work
+
+    with pytest.raises(RuntimeError, match="chapter generation failed"):
+        await build_retry_chapter_work(pid, 2)(db_session, task)
+
+    state = WritingStateService(db_session).state(pid)
+    assert state.status == "failed"
+    assert state.current_chapter == 2
+    assert state.last_error == "chapter generation failed"
