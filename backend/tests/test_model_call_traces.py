@@ -1,3 +1,5 @@
+from sqlalchemy import event
+
 from app.api import chapters, dialogs
 from app.core.model_call_trace import build_context_block, create_trace, sanitize_model_messages, truncate_text
 from app.models import AIModelCallTrace, Dialog, DialogMessage, Project
@@ -583,6 +585,63 @@ def test_clear_deletes_dialog_traces_before_removing_messages(client, db_session
         .count()
         == 0
     )
+
+
+def test_clear_dialog_traces_detaches_linked_traces_without_materializing_message_ids(db_session):
+    project = Project(name="Trace Clear Scale")
+    db_session.add(project)
+    db_session.commit()
+    dialog = Dialog(project_id=project.id, dialog_type="hermes")
+    db_session.add(dialog)
+    db_session.commit()
+    messages = [
+        DialogMessage(
+            dialog_id=dialog.id,
+            role="user" if index % 2 == 0 else "assistant",
+            message_type="plain",
+            content=f"history-{index}",
+        )
+        for index in range(250)
+    ]
+    db_session.add_all(messages)
+    db_session.flush()
+    external_trace = AIModelCallTrace(
+        project_id=project.id,
+        trace_type="external",
+        status="success",
+        request_message_id=messages[0].id,
+        response_message_id=messages[-1].id,
+        messages=[],
+        context_blocks=[],
+        trace_metadata={},
+    )
+    db_session.add(external_trace)
+    db_session.commit()
+    trace_id = external_trace.id
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        dialogs._clear_dialog_model_call_traces(db_session, dialog.id)
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    db_session.expire_all()
+    trace = db_session.get(AIModelCallTrace, trace_id)
+    assert trace is not None
+    assert trace.request_message_id is None
+    assert trace.response_message_id is None
+    materialized_message_id_selects = [
+        statement
+        for statement in statements
+        if statement.startswith("select dialog_messages.id")
+        and "from dialog_messages" in statement
+        and "dialog_messages.dialog_id" in statement
+    ]
+    assert materialized_message_id_selects == []
 
 
 def test_compact_detaches_traces_from_deleted_plain_messages(client, db_session, monkeypatch):

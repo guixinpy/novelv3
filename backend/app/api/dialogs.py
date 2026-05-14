@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import load_api_key
@@ -188,16 +189,23 @@ def _detach_model_call_traces_from_messages(db: Session, message_ids: list[str])
 
 
 def _clear_dialog_model_call_traces(db: Session, dialog_id: str) -> None:
-    message_id_rows = (
-        db.query(DialogMessage.id)
-        .filter(DialogMessage.dialog_id == dialog_id)
-        .all()
-    )
-    message_ids = [message_id for (message_id,) in message_id_rows]
+    message_ids = select(DialogMessage.id).where(DialogMessage.dialog_id == dialog_id)
     db.query(AIModelCallTrace).filter(AIModelCallTrace.dialog_id == dialog_id).delete(
         synchronize_session=False,
     )
-    _detach_model_call_traces_from_messages(db, message_ids)
+    detached_at = datetime.now(UTC)
+    db.query(AIModelCallTrace).filter(
+        AIModelCallTrace.request_message_id.in_(message_ids)
+    ).update(
+        {"request_message_id": None, "updated_at": detached_at},
+        synchronize_session=False,
+    )
+    db.query(AIModelCallTrace).filter(
+        AIModelCallTrace.response_message_id.in_(message_ids)
+    ).update(
+        {"response_message_id": None, "updated_at": detached_at},
+        synchronize_session=False,
+    )
 
 
 def _handle_clear_command(db: Session, dialog: Dialog, diagnosis: ProjectDiagnosisOut) -> ChatOut:
