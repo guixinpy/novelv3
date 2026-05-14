@@ -771,6 +771,43 @@ def test_search_candidate_rows_project_only_scoring_fields(db_session):
         assert all(column not in select_clause for select_clause in candidate_selects)
 
 
+def test_search_retrieval_bounds_default_candidate_scoring_pool(db_session, monkeypatch):
+    import app.core.athena_retrieval as athena_retrieval
+
+    project = Project(name="Search Candidate Bound")
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    db_session.add_all(
+        [
+            ChapterContent(
+                project_id=project.id,
+                chapter_index=index,
+                title=f"第{index}章",
+                content=f"第{index}章，星环钥匙线索重复出现。",
+                word_count=40,
+                status="generated",
+            )
+            for index in range(1, 502)
+        ]
+    )
+    db_session.commit()
+    reindex_project_retrieval(db_session, project.id)
+    score_calls = {"value": 0}
+    original_lexical_score = athena_retrieval._lexical_score
+
+    def count_lexical_score(*args, **kwargs):
+        score_calls["value"] += 1
+        return original_lexical_score(*args, **kwargs)
+
+    monkeypatch.setattr(athena_retrieval, "_lexical_score", count_lexical_score)
+
+    result = search_retrieval(db_session, project.id, "星环钥匙", limit=6)
+
+    assert result["items"]
+    assert score_calls["value"] <= 480
+
+
 def test_reindex_batches_embedding_provider_calls_across_sources(db_session, monkeypatch):
     import app.core.athena_retrieval as athena_retrieval
 

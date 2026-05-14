@@ -305,8 +305,8 @@ def _candidate_rows(
     source_type: str | None,
     max_chapter_index: int | None,
 ) -> list[tuple[Any, Any, Any]]:
-    fallback_limit = candidate_limit or max(limit * 80, 400)
-    lexical_limit = candidate_limit or max(limit * 160, 800)
+    fallback_limit = candidate_limit or max(limit * 40, 240)
+    lexical_limit = candidate_limit or max(limit * 80, 480)
     tokens = _candidate_query_tokens(query_tokens)
     rows: list[tuple[Any, Any, Any]] = []
     seen_chunk_ids: set[str] = set()
