@@ -111,7 +111,7 @@ describe('createAthenaSectionLoader', () => {
     expect(athena.loadLongformMaintenanceDiagnostics).toHaveBeenCalledWith('project-1')
   })
 
-  it('loads catalog ontology and projection only when they are missing', async () => {
+  it('loads catalog ontology without forcing the full world projection', async () => {
     const { athena, worldModel, loader } = createLoaderMocks(null)
     athena.ontology = null as any
 
@@ -120,8 +120,7 @@ describe('createAthenaSectionLoader', () => {
 
     expect(athena.loadOntology).toHaveBeenCalledTimes(1)
     expect(athena.loadOntology).toHaveBeenCalledWith('project-1')
-    expect(worldModel.loadOverview).toHaveBeenCalledTimes(1)
-    expect(worldModel.loadOverview).toHaveBeenCalledWith('project-1')
+    expect(worldModel.loadOverview).not.toHaveBeenCalled()
   })
 
   it('loads retrieval diagnostics for the catalog retrieval tool', async () => {

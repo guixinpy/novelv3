@@ -78,7 +78,6 @@ export function createAthenaSectionLoader(options: AthenaSectionLoaderOptions) {
     }
     if (routeState.section === 'catalog') {
       if (!options.athena.ontology) await options.athena.loadOntology(id)
-      if (!options.worldModel.projection) await options.worldModel.loadOverview(id)
       if (routeState.tool === 'retrieval') await options.athena.loadRetrievalDiagnostics(id)
     }
     if (routeState.section === 'truth') {
