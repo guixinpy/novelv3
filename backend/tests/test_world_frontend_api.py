@@ -197,6 +197,55 @@ def test_list_world_fact_claims_returns_current_profile_metadata(client, db_sess
     assert payload["claims"][0]["evidence_refs"] == ["chapter.02"]
 
 
+def test_list_world_fact_claims_count_does_not_select_large_json_columns(client, db_session):
+    project, profile_version = _seed_profile(db_session)
+    db_session.add_all([
+        WorldFactClaim(
+            project_id=project.id,
+            project_profile_version_id=profile_version.id,
+            profile_version=profile_version.version,
+            claim_id=f"claim.heavy.{index}",
+            chapter_index=index,
+            intra_chapter_seq=1,
+            subject_ref="char.hero",
+            predicate="memory_payload",
+            object_ref_or_value={"payload": ["长事实"] * 100},
+            claim_layer="truth",
+            claim_status="confirmed",
+            disclosed_to_refs=["char.hero"] * 50,
+            evidence_refs=["evidence.long"] * 50,
+            authority_type="authoritative_structured",
+            confidence=1.0,
+            notes="长备注" * 200,
+            contract_version="world.contract.v1",
+        )
+        for index in range(1, 4)
+    ])
+    db_session.commit()
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        response = client.get(f"/api/v1/projects/{project.id}/world-model/facts?limit=1")
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert response.status_code == 200
+    fact_count_statements = [
+        statement
+        for statement in statements
+        if "count(" in statement and "world_fact_claims" in statement
+    ]
+    assert fact_count_statements
+    assert all("world_fact_claims.object_ref_or_value" not in statement for statement in fact_count_statements)
+    assert all("world_fact_claims.disclosed_to_refs" not in statement for statement in fact_count_statements)
+    assert all("world_fact_claims.evidence_refs" not in statement for statement in fact_count_statements)
+    assert all("world_fact_claims.notes" not in statement for statement in fact_count_statements)
+
+
 def test_list_world_fact_claims_returns_bounded_page_with_total(client, db_session):
     project, profile_version = _seed_profile(db_session)
     db_session.add_all([

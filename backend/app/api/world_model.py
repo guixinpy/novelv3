@@ -1,5 +1,6 @@
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.world_fact_scope import is_chapter_scoped_truth_predicate
@@ -171,18 +172,19 @@ def list_world_fact_claims(
     current_profile = _get_current_profile(db=db, project_id=project_id)
     if current_profile is None:
         return {"claims": [], "total": 0, "offset": offset, "limit": limit, "has_more": False}
-    query = db.query(WorldFactClaim).filter(
+    filters = [
         WorldFactClaim.project_id == project_id,
         WorldFactClaim.project_profile_version_id == current_profile.id,
         WorldFactClaim.profile_version == current_profile.version,
-    )
+    ]
     if claim_status and claim_status != "all":
-        query = query.filter(WorldFactClaim.claim_status == claim_status)
+        filters.append(WorldFactClaim.claim_status == claim_status)
     if claim_layer:
-        query = query.filter(WorldFactClaim.claim_layer == claim_layer)
+        filters.append(WorldFactClaim.claim_layer == claim_layer)
     if subject_ref:
-        query = query.filter(WorldFactClaim.subject_ref == subject_ref)
-    total = query.count()
+        filters.append(WorldFactClaim.subject_ref == subject_ref)
+    query = db.query(WorldFactClaim).filter(*filters)
+    total = db.query(func.count(WorldFactClaim.id)).filter(*filters).scalar() or 0
     claims = (
         query.order_by(
             WorldFactClaim.chapter_index.asc(),
