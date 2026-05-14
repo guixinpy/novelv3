@@ -789,6 +789,14 @@ export interface ChapterRevision {
   corrections: RevisionCorrection[]
 }
 
+export interface ChapterRevisionListResponse {
+  revisions: ChapterRevision[]
+  total: number
+  offset: number
+  limit: number
+  has_more: boolean
+}
+
 export interface AthenaOptimization {
   rules: {
     id: string

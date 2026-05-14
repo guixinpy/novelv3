@@ -77,3 +77,11 @@ class ChapterRevisionOut(BaseModel):
     corrections: list[RevisionCorrectionOut]
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ChapterRevisionListResponse(BaseModel):
+    revisions: list[ChapterRevisionOut]
+    total: int
+    offset: int
+    limit: int
+    has_more: bool

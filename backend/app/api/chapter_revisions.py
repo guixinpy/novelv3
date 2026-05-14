@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -10,7 +10,12 @@ from app.core.self_optimization import apply_revision_optimization
 from app.db import get_db
 from app.models import ChapterContent, ChapterRevision, Dialog, DialogMessage, Project, RevisionAnnotation, RevisionCorrection, Version
 from app.schemas import ChapterOut
-from app.schemas.chapter_revision import ChapterRevisionCreate, ChapterRevisionDraftUpdate, ChapterRevisionOut
+from app.schemas.chapter_revision import (
+    ChapterRevisionCreate,
+    ChapterRevisionDraftUpdate,
+    ChapterRevisionListResponse,
+    ChapterRevisionOut,
+)
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/revisions", tags=["chapter-revisions"])
 
@@ -280,13 +285,26 @@ def submit_revision_draft(project_id: str, revision_id: str, db: Session = Depen
     return _revision_out(db, revision)
 
 
-@router.get("", response_model=list[ChapterRevisionOut])
-def list_revisions(project_id: str, db: Session = Depends(get_db)):
-    revisions = db.query(ChapterRevision).filter(ChapterRevision.project_id == project_id).order_by(
+@router.get("", response_model=ChapterRevisionListResponse)
+def list_revisions(
+    project_id: str,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    db: Session = Depends(get_db),
+):
+    query = db.query(ChapterRevision).filter(ChapterRevision.project_id == project_id)
+    total = query.count()
+    revisions = query.order_by(
         ChapterRevision.chapter_index.asc(),
         ChapterRevision.revision_index.asc(),
-    ).all()
-    return [_revision_out(db, revision) for revision in revisions]
+    ).offset(offset).limit(limit).all()
+    return {
+        "revisions": [_revision_out(db, revision) for revision in revisions],
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+        "has_more": offset + len(revisions) < total,
+    }
 
 
 @router.get("/{revision_id}", response_model=ChapterRevisionOut)

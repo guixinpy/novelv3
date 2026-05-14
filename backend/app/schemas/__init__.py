@@ -1,6 +1,7 @@
 from .chapter import ChapterOut
 from .chapter_revision import (
     ChapterRevisionCreate,
+    ChapterRevisionListResponse,
     ChapterRevisionOut,
     RevisionAnnotationIn,
     RevisionAnnotationOut,

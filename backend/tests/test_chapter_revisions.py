@@ -84,11 +84,48 @@ def test_submit_revision_persists_annotations_and_corrections(client, db_session
 
     list_response = client.get(f"/api/v1/projects/{project.id}/revisions")
     assert list_response.status_code == 200
-    assert list_response.json()[0]["id"] == data["id"]
+    assert list_response.json()["revisions"][0]["id"] == data["id"]
 
     detail_response = client.get(f"/api/v1/projects/{project.id}/revisions/{data['id']}")
     assert detail_response.status_code == 200
     assert detail_response.json()["annotations"][0]["selected_text"] == "开头"
+
+
+def test_list_revisions_returns_bounded_page_with_total(client, db_session):
+    project = Project(name="Revision History Scale")
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    chapter = ChapterContent(
+        project_id=project.id,
+        chapter_index=1,
+        title="第一章",
+        content="正文",
+        status="generated",
+    )
+    db_session.add(chapter)
+    db_session.flush()
+    db_session.add_all([
+        ChapterRevision(
+            project_id=project.id,
+            chapter_id=chapter.id,
+            chapter_index=1,
+            revision_index=index,
+            status="completed",
+        )
+        for index in range(1, 13)
+    ])
+    db_session.commit()
+
+    response = client.get(f"/api/v1/projects/{project.id}/revisions?offset=5&limit=4")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == 12
+    assert data["offset"] == 5
+    assert data["limit"] == 4
+    assert data["has_more"] is True
+    assert [item["revision_index"] for item in data["revisions"]] == [6, 7, 8, 9]
 
 
 def test_submit_revision_rejects_empty_feedback(client, db_session):

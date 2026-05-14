@@ -15,6 +15,7 @@ import type {
   ChapterListResponse,
   ChapterRevision,
   ChapterRevisionDraftPayload,
+  ChapterRevisionListResponse,
   ChapterRevisionPayload,
   ChatHistoryMessage,
   ChatRequest,
@@ -233,7 +234,13 @@ export const api = {
     request<ChapterRevision>(`/projects/${id}/revisions`, { method: 'POST', body: JSON.stringify(data) }),
   submitRevisionDraft: (id: string, revisionId: string) =>
     request<ChapterRevision>(`/projects/${id}/revisions/${revisionId}/submit`, { method: 'POST' }),
-  listRevisions: (id: string) => request<ChapterRevision[]>(`/projects/${id}/revisions`),
+  listRevisions: (id: string, params?: { offset?: number; limit?: number }) => {
+    const query = new URLSearchParams()
+    if (params?.offset !== undefined) query.set('offset', String(params.offset))
+    if (params?.limit !== undefined) query.set('limit', String(params.limit))
+    const qs = query.toString()
+    return request<ChapterRevisionListResponse>(`/projects/${id}/revisions${qs ? `?${qs}` : ''}`)
+  },
   getRevision: (id: string, revisionId: string) => request<ChapterRevision>(`/projects/${id}/revisions/${revisionId}`),
   regenerateRevision: (id: string, revisionId: string) =>
     request<ChapterContent>(`/projects/${id}/revisions/${revisionId}/regenerate`, { method: 'POST' }),
