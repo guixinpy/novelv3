@@ -618,7 +618,7 @@ def test_reindex_batches_retrieval_rows_as_core_inserts(db_session, monkeypatch)
     )
 
 
-def test_reindex_uses_large_write_batches_for_many_sources(db_session, monkeypatch):
+def test_reindex_uses_configured_write_batches_for_many_sources(db_session, monkeypatch):
     import app.core.athena_retrieval as athena_retrieval
 
     project = Project(name="Retrieval Batch Throughput")
@@ -653,7 +653,14 @@ def test_reindex_uses_large_write_batches_for_many_sources(db_session, monkeypat
     result = reindex_project_retrieval(db_session, project.id)
 
     assert result["indexed"]["documents"] == 250
-    assert len(document_insert_calls) <= 2
+    expected_batches: list[int] = []
+    remaining = 250
+    while remaining > 0:
+        batch_size = min(athena_retrieval.INDEX_WRITE_BATCH_SOURCES, remaining)
+        expected_batches.append(batch_size)
+        remaining -= batch_size
+    assert document_insert_calls == expected_batches
+    assert len(document_insert_calls) < 250
     assert sum(document_insert_calls) == 250
 
 
