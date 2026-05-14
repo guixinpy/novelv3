@@ -727,6 +727,50 @@ def test_search_retrieval_tokenizes_query_once(db_session, monkeypatch):
     assert query_tokenize_count["value"] == 1
 
 
+def test_search_candidate_rows_project_only_scoring_fields(db_session):
+    project = _seed_retrieval_project(db_session)
+    reindex_project_retrieval(db_session, project.id)
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        result = search_retrieval(db_session, project.id, "旧灯塔亡者召回", limit=3)
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert result["items"]
+    candidate_selects = [
+        statement.split("from retrieval_chunks", 1)[0]
+        for statement in statements
+        if statement.startswith("select")
+        and "from retrieval_chunks" in statement
+        and "join retrieval_documents" in statement
+        and "join retrieval_embeddings" in statement
+    ]
+    assert candidate_selects
+    excluded_columns = [
+        "retrieval_chunks.token_count",
+        "retrieval_chunks.start_offset",
+        "retrieval_chunks.end_offset",
+        "retrieval_chunks.chunk_metadata",
+        "retrieval_chunks.created_at",
+        "retrieval_documents.content_hash",
+        "retrieval_documents.created_at",
+        "retrieval_documents.updated_at",
+        "retrieval_embeddings.provider",
+        "retrieval_embeddings.model",
+        "retrieval_embeddings.dimensions",
+        "retrieval_embeddings.vector_hash",
+        "retrieval_embeddings.created_at",
+        "retrieval_embeddings.updated_at",
+    ]
+    for column in excluded_columns:
+        assert all(column not in select_clause for select_clause in candidate_selects)
+
+
 def test_reindex_batches_embedding_provider_calls_across_sources(db_session, monkeypatch):
     import app.core.athena_retrieval as athena_retrieval
 

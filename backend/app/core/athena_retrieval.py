@@ -9,7 +9,7 @@ from typing import Any
 
 from fastapi import HTTPException
 from sqlalchemy import case, func, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, load_only
 
 from app.core.embedding_service import (
     EmbeddingProvider,
@@ -260,6 +260,18 @@ def _search_rows_query(
 ):
     rows_query = (
         db.query(RetrievalChunk, RetrievalDocument, RetrievalEmbedding)
+        .options(
+            load_only(RetrievalChunk.id, RetrievalChunk.chunk_index, RetrievalChunk.text),
+            load_only(
+                RetrievalDocument.id,
+                RetrievalDocument.source_type,
+                RetrievalDocument.source_ref,
+                RetrievalDocument.title,
+                RetrievalDocument.chapter_index,
+                RetrievalDocument.document_metadata,
+            ),
+            load_only(RetrievalEmbedding.id, RetrievalEmbedding.vector),
+        )
         .join(RetrievalDocument, RetrievalChunk.document_id == RetrievalDocument.id)
         .join(RetrievalEmbedding, RetrievalEmbedding.chunk_id == RetrievalChunk.id)
         .filter(RetrievalChunk.project_id == project_id)
