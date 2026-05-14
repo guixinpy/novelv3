@@ -17,3 +17,11 @@ class ConsistencyIssueOut(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ConsistencyIssueListResponse(BaseModel):
+    issues: list[ConsistencyIssueOut]
+    total: int
+    offset: int
+    limit: int
+    has_more: bool

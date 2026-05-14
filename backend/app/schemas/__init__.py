@@ -8,7 +8,7 @@ from .chapter_revision import (
     RevisionCorrectionIn,
     RevisionCorrectionOut,
 )
-from .consistency_check import ConsistencyIssueOut
+from .consistency_check import ConsistencyIssueListResponse, ConsistencyIssueOut
 from .dialog import (
     ActiveActionOut,
     ChatIn,

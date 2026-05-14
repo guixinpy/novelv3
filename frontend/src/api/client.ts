@@ -2,6 +2,8 @@ import type {
   AthenaEvolutionPlan,
   AthenaAnalyzeChapterResult,
   AthenaChapterContext,
+  AthenaConsistencyIssue,
+  AthenaConsistencyIssueListResponse,
   AthenaImportSetupResult,
   AthenaOntology,
   AthenaOptimization,
@@ -210,8 +212,13 @@ export const api = {
     request(`/projects/${id}/athena/ontology/character-graph`),
   runAthenaConsistencyCheck: (id: string, chapterIndex: number, depth: string = 'l1') =>
     request(`/projects/${id}/athena/evolution/consistency/chapters/${chapterIndex}/check?depth=${depth}`, { method: 'POST' }),
-  getConsistencyIssues: (id: string) =>
-    request(`/projects/${id}/consistency/issues`),
+  getConsistencyIssues: (id: string, params?: { offset?: number; limit?: number }) => {
+    const query = new URLSearchParams()
+    if (params?.offset !== undefined) query.set('offset', String(params.offset))
+    if (params?.limit !== undefined) query.set('limit', String(params.limit))
+    const qs = query.toString()
+    return request<AthenaConsistencyIssueListResponse | AthenaConsistencyIssue[]>(`/projects/${id}/consistency/issues${qs ? `?${qs}` : ''}`)
+  },
   generateChapter: (id: string, index: number) => request<ChapterContent>(`/projects/${id}/chapters/${index}/generate`, { method: 'POST' }),
   getChapter: (id: string, index: number) => request<ChapterContent>(`/projects/${id}/chapters/${index}`),
   listModelCallTraces: (id: string, params?: ModelCallTraceListParams) => {

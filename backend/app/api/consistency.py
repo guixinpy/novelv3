@@ -1,6 +1,6 @@
 import json
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
 
 from app.api.athena_shared import get_current_profile
@@ -18,7 +18,7 @@ from app.models import (
     WorldEvidence,
     WorldFactClaim,
 )
-from app.schemas import ConsistencyIssueOut
+from app.schemas import ConsistencyIssueListResponse
 from app.services.tasks.background_task_service import BackgroundTaskService
 from app.services.tasks.local_task_runner import LocalTaskRunner
 
@@ -85,15 +85,36 @@ async def run_check(project_id: str, chapter_index: int, depth: str = "l1", db: 
     return {"issues": issues}
 
 
-@router.get("/issues", response_model=list[ConsistencyIssueOut])
-def list_issues(project_id: str, db: Session = Depends(get_db), response: Response = None):
+@router.get("/issues", response_model=ConsistencyIssueListResponse)
+def list_issues(
+    project_id: str,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=200),
+    db: Session = Depends(get_db),
+    response: Response = None,
+):
     if response:
         add_deprecation_header(response, f"/api/v1/projects/{project_id}/athena/evolution/consistency")
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    return db.query(ConsistencyCheck).filter(ConsistencyCheck.project_id == project_id).all()
+    query = db.query(ConsistencyCheck).filter(ConsistencyCheck.project_id == project_id)
+    total = query.count()
+    issues = (
+        query
+        .order_by(ConsistencyCheck.chapter_index.asc(), ConsistencyCheck.created_at.asc(), ConsistencyCheck.id.asc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    return {
+        "issues": issues,
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+        "has_more": offset + len(issues) < total,
+    }
 
 
 def _check_world_model_profile(

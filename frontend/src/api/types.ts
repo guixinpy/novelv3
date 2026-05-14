@@ -637,6 +637,9 @@ export interface AthenaChapterContext {
 }
 
 export interface AthenaConsistencyIssue {
+  id?: string
+  project_id?: string
+  chapter_index?: number
   checker_name?: string
   severity?: string
   status?: string
@@ -645,6 +648,14 @@ export interface AthenaConsistencyIssue {
   description?: string
   message?: string
   evidence?: string | Record<string, unknown>
+}
+
+export interface AthenaConsistencyIssueListResponse {
+  issues: AthenaConsistencyIssue[]
+  total: number
+  offset: number
+  limit: number
+  has_more: boolean
 }
 
 export interface AthenaRetrievalIndexResult {

@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, patch
 from app.models import (
     BackgroundTask,
     ChapterContent,
+    ConsistencyCheck,
     GenreProfile,
     Project,
     ProjectProfileVersion,
@@ -42,7 +43,35 @@ def test_list_issues(client):
 
     r2 = client.get(f"/api/v1/projects/{pid}/consistency/issues")
     assert r2.status_code == 200
-    assert isinstance(r2.json(), list)
+    assert r2.json()["issues"] == []
+
+
+def test_list_issues_returns_bounded_page_with_total(client, db_session):
+    project = Project(name="Consistency History Scale")
+    db_session.add(project)
+    db_session.flush()
+    db_session.add_all([
+        ConsistencyCheck(
+            project_id=project.id,
+            chapter_index=index,
+            checker_name="Checker",
+            subject=f"issue-{index}",
+            description=f"问题 {index}",
+            status="pending",
+        )
+        for index in range(1, 13)
+    ])
+    db_session.commit()
+
+    response = client.get(f"/api/v1/projects/{project.id}/consistency/issues?offset=5&limit=4")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == 12
+    assert data["offset"] == 5
+    assert data["limit"] == 4
+    assert data["has_more"] is True
+    assert [item["chapter_index"] for item in data["issues"]] == [6, 7, 8, 9]
 
 
 def test_consistency_check_uses_current_world_model_checker_pack(client, db_session):
@@ -130,7 +159,7 @@ def test_consistency_check_uses_current_world_model_checker_pack(client, db_sess
         and "event_ref" in issue["description"]
         for issue in issues
     )
-    saved_issues = client.get(f"/api/v1/projects/{project.id}/consistency/issues").json()
+    saved_issues = client.get(f"/api/v1/projects/{project.id}/consistency/issues").json()["issues"]
     assert any(issue["checker_name"] == "schema_gate" for issue in saved_issues)
 
 
