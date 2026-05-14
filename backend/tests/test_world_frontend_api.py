@@ -1033,6 +1033,69 @@ def test_world_model_dashboard_returns_operational_counts_and_next_action(client
     assert payload["next_action"]["action"] == "review_proposals"
 
 
+def test_world_model_dashboard_pending_counts_do_not_select_heavy_item_fields(client, db_session):
+    project, profile_version = _seed_profile(db_session)
+    bundles = [
+        create_bundle(
+            db=db_session,
+            project_id=project.id,
+            project_profile_version_id=profile_version.id,
+            profile_version=profile_version.version,
+            created_by="writer.alpha",
+            title=f"Dashboard heavy bundle {index}",
+        )
+        for index in range(1, 3)
+    ]
+    for index in range(1, 4):
+        write_candidate_fact(
+            db=db_session,
+            bundle_id=bundles[index % 2].id,
+            created_by="writer.alpha",
+            candidate=ProposalCandidateFactCreate(
+                project_id=project.id,
+                project_profile_version_id=profile_version.id,
+                profile_version=profile_version.version,
+                contract_version=profile_version.contract_version,
+                claim_id=f"claim.dashboard.heavy.{index}",
+                chapter_index=index,
+                subject_ref=f"char.dashboard.heavy.{index}",
+                predicate="memory_trace",
+                object_ref_or_value={"fragments": ["记忆碎片"] * 200},
+                claim_layer="truth",
+                disclosed_to_refs=[f"char.reader.{i}" for i in range(100)],
+                authority_type="authoritative_structured",
+                confidence=0.9,
+                evidence_refs=[f"chapter.{i:03d}" for i in range(100)],
+                notes="长审阅备注" * 300,
+            ),
+        )
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        response = client.get(f"/api/v1/projects/{project.id}/world-model/dashboard")
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["metrics"]["pending_bundle_count"] == 2
+    assert payload["metrics"]["pending_item_count"] == 3
+    item_count_statements = [
+        statement
+        for statement in statements
+        if "count(" in statement and "world_proposal_items" in statement
+    ]
+    assert item_count_statements
+    assert all("world_proposal_items.object_ref_or_value" not in statement for statement in item_count_statements)
+    assert all("world_proposal_items.disclosed_to_refs" not in statement for statement in item_count_statements)
+    assert all("world_proposal_items.evidence_refs" not in statement for statement in item_count_statements)
+    assert all("world_proposal_items.notes" not in statement for statement in item_count_statements)
+
+
 def test_world_model_dashboard_counts_only_bundles_with_actionable_items(client, db_session):
     project, profile_version = _seed_profile(db_session)
     bundle = create_bundle(

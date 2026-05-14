@@ -76,26 +76,18 @@ def get_world_model_dashboard(project_id: str, db: Session = Depends(get_db)):
             },
         )
 
-    pending_item_count = (
-        db.query(WorldProposalItem)
-        .filter(
-            WorldProposalItem.project_id == project_id,
-            WorldProposalItem.project_profile_version_id == profile.id,
-            WorldProposalItem.profile_version == profile.version,
-            WorldProposalItem.item_status.in_(("pending", "needs_edit")),
-        )
-        .count()
-    )
+    pending_item_filters = [
+        WorldProposalItem.project_id == project_id,
+        WorldProposalItem.project_profile_version_id == profile.id,
+        WorldProposalItem.profile_version == profile.version,
+        WorldProposalItem.item_status.in_(("pending", "needs_edit")),
+    ]
+    pending_item_count = db.query(func.count(WorldProposalItem.id)).filter(*pending_item_filters).scalar() or 0
     pending_bundle_count = (
-        db.query(WorldProposalItem.bundle_id)
-        .filter(
-            WorldProposalItem.project_id == project_id,
-            WorldProposalItem.project_profile_version_id == profile.id,
-            WorldProposalItem.profile_version == profile.version,
-            WorldProposalItem.item_status.in_(("pending", "needs_edit")),
-        )
-        .distinct()
-        .count()
+        db.query(func.count(func.distinct(WorldProposalItem.bundle_id)))
+        .filter(*pending_item_filters)
+        .scalar()
+        or 0
     )
     metrics = _dashboard_projection_metrics(db=db, project_id=project_id, profile=profile)
     fact_count = metrics["fact_count"]
