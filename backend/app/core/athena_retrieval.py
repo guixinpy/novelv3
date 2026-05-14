@@ -57,6 +57,14 @@ class _PendingEmbedding:
     tokens: list[str]
 
 
+@dataclass(frozen=True)
+class _PreparedLexicalQuery:
+    text: str
+    tokens: tuple[str, ...]
+    token_set: frozenset[str]
+    compact_text: str
+
+
 def reindex_project_retrieval(db: Session, project_id: str) -> dict[str, Any]:
     _require_project(db, project_id)
     provider = get_embedding_provider()
@@ -195,7 +203,9 @@ def search_retrieval(
         return {"query": query, "total": 0, "items": []}
 
     provider = get_embedding_provider()
-    query_vector = provider.embed_texts([cleaned_query])[0]
+    query_tokens = tokenize_for_retrieval(cleaned_query)
+    prepared_query = _prepare_lexical_query(cleaned_query, query_tokens)
+    query_vector = _embed_query(provider, cleaned_query, query_tokens)
     rows_query = _search_rows_query(
         db,
         project_id,
@@ -208,14 +218,14 @@ def search_retrieval(
         db,
         rows_query,
         project_id=project_id,
-        cleaned_query=cleaned_query,
+        query_tokens=query_tokens,
         limit=limit,
         candidate_limit=candidate_limit,
         source_type=source_type,
         max_chapter_index=max_chapter_index,
     ):
         vector_score = max(0.0, cosine_similarity(query_vector, _vector_from_json(embedding.vector)))
-        lexical_score = _lexical_score(cleaned_query, chunk.text)
+        lexical_score = _lexical_score(prepared_query, chunk.text)
         score = (lexical_score * 0.58) + (vector_score * 0.42)
         if document.source_type == "world_fact":
             score += 0.03
@@ -232,7 +242,7 @@ def search_retrieval(
                 "score": round(score, 6),
                 "lexical_score": round(lexical_score, 6),
                 "vector_score": round(vector_score, 6),
-                "snippet": _snippet(chunk.text, cleaned_query),
+                "snippet": _snippet(chunk.text, prepared_query),
                 "metadata": document.document_metadata or {},
             }
         )
@@ -277,7 +287,7 @@ def _candidate_rows(
     rows_query,
     *,
     project_id: str,
-    cleaned_query: str,
+    query_tokens: list[str],
     limit: int,
     candidate_limit: int | None,
     source_type: str | None,
@@ -285,7 +295,7 @@ def _candidate_rows(
 ) -> list[tuple[Any, Any, Any]]:
     fallback_limit = candidate_limit or max(limit * 80, 400)
     lexical_limit = candidate_limit or max(limit * 160, 800)
-    tokens = _candidate_query_tokens(cleaned_query)
+    tokens = _candidate_query_tokens(query_tokens)
     rows: list[tuple[Any, Any, Any]] = []
     seen_chunk_ids: set[str] = set()
 
@@ -384,8 +394,8 @@ def _legacy_like_candidate_rows(rows_query, *, tokens: list[str], lexical_limit:
     )
 
 
-def _candidate_query_tokens(query: str) -> list[str]:
-    tokens = {token for token in tokenize_for_retrieval(query) if len(token) >= 2}
+def _candidate_query_tokens(query_tokens: list[str]) -> list[str]:
+    tokens = {token for token in query_tokens if len(token) >= 2}
     return sorted(tokens, key=lambda token: (-len(token), token))[:12]
 
 
@@ -998,22 +1008,35 @@ def _chapter_context_query(db: Session, project_id: str, chapter_index: int) -> 
     return "\n".join(parts).strip()
 
 
-def _lexical_score(query: str, text: str) -> float:
-    query_tokens = set(tokenize_for_retrieval(query))
-    if not query_tokens:
+def _prepare_lexical_query(query: str, tokens: list[str]) -> _PreparedLexicalQuery:
+    return _PreparedLexicalQuery(
+        text=query,
+        tokens=tuple(tokens),
+        token_set=frozenset(tokens),
+        compact_text="".join(query.split()),
+    )
+
+
+def _embed_query(provider: EmbeddingProvider, query: str, tokens: list[str]) -> list[float]:
+    embed_token_batches = getattr(provider, "embed_token_batches", None)
+    if callable(embed_token_batches):
+        return embed_token_batches([tokens])[0]
+    return provider.embed_texts([query])[0]
+
+
+def _lexical_score(query: _PreparedLexicalQuery, text: str) -> float:
+    if not query.token_set:
         return 0.0
     text_tokens = set(tokenize_for_retrieval(text))
-    overlap = len(query_tokens & text_tokens) / max(len(query_tokens), 1)
-    compact_query = "".join(query.split())
+    overlap = len(query.token_set & text_tokens) / max(len(query.token_set), 1)
     compact_text = "".join(text.split())
-    phrase_bonus = 0.18 if compact_query and compact_query in compact_text else 0.0
+    phrase_bonus = 0.18 if query.compact_text and query.compact_text in compact_text else 0.0
     return min(1.0, overlap + phrase_bonus)
 
 
-def _snippet(text: str, query: str, *, length: int = 180) -> str:
-    compact_tokens = tokenize_for_retrieval(query)
+def _snippet(text: str, query: _PreparedLexicalQuery, *, length: int = 180) -> str:
     first_hit = -1
-    for token in sorted(compact_tokens, key=len, reverse=True):
+    for token in sorted(query.tokens, key=len, reverse=True):
         first_hit = text.find(token)
         if first_hit >= 0:
             break

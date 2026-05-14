@@ -688,6 +688,45 @@ def test_reindex_does_not_generate_uuid_per_retrieval_term(db_session, monkeypat
     assert uuid_call_count["value"] <= expected_non_term_ids
 
 
+def test_search_retrieval_tokenizes_query_once(db_session, monkeypatch):
+    import app.core.athena_retrieval as athena_retrieval
+
+    project = Project(name="Search Query Token Reuse")
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    db_session.add_all(
+        [
+            ChapterContent(
+                project_id=project.id,
+                chapter_index=index,
+                title=f"第{index}章",
+                content=f"第{index}章，星环钥匙线索在旧灯塔推进。",
+                word_count=40,
+                status="generated",
+            )
+            for index in range(1, 16)
+        ]
+    )
+    db_session.commit()
+    reindex_project_retrieval(db_session, project.id)
+
+    original_tokenize = athena_retrieval.tokenize_for_retrieval
+    query_tokenize_count = {"value": 0}
+
+    def count_query_tokenize(text: str):
+        if text == "星环钥匙":
+            query_tokenize_count["value"] += 1
+        return original_tokenize(text)
+
+    monkeypatch.setattr(athena_retrieval, "tokenize_for_retrieval", count_query_tokenize)
+
+    result = search_retrieval(db_session, project.id, "星环钥匙", limit=6)
+
+    assert result["items"]
+    assert query_tokenize_count["value"] == 1
+
+
 def test_reindex_batches_embedding_provider_calls_across_sources(db_session, monkeypatch):
     import app.core.athena_retrieval as athena_retrieval
 
