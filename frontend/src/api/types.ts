@@ -197,6 +197,8 @@ export interface ChatHistoryMessage {
   diagnosis?: ProjectDiagnosis | null
   action_result?: Record<string, unknown> | null
   trace_id?: string | null
+  content_truncated?: boolean
+  original_content_length?: number
   created_at?: string | null
 }
 

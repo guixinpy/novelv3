@@ -158,6 +158,27 @@ def test_workspace_bootstrap_summaries_do_not_select_body_content(client, db_ses
     assert all("versions.content" not in clause for clause in version_select_clauses)
 
 
+def test_workspace_bootstrap_truncates_large_dialog_messages(client, db_session):
+    project = Project(name="长对话冷启动", genre="都市奇幻")
+    db_session.add(project)
+    db_session.flush()
+    dialog = Dialog(project_id=project.id, dialog_type="hermes")
+    db_session.add(dialog)
+    db_session.flush()
+    long_content = "长篇讨论上下文" * 2000
+    db_session.add(DialogMessage(dialog_id=dialog.id, role="assistant", content=long_content))
+    db_session.commit()
+
+    response = client.get(f"/api/v1/projects/{project.id}/workspace-bootstrap")
+
+    assert response.status_code == 200
+    message = response.json()["dialogs"]["hermes"]["messages"][0]
+    assert len(message["content"]) < len(long_content)
+    assert message["content"].startswith("长篇讨论上下文")
+    assert message["content_truncated"] is True
+    assert message["original_content_length"] == len(long_content)
+
+
 def test_workspace_bootstrap_outline_summary_does_not_select_outline_json(client, db_session):
     project = Project(name="千章大纲冷启动", genre="都市奇幻")
     db_session.add(project)

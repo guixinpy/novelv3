@@ -3,10 +3,11 @@ from sqlalchemy.orm import Session
 
 from app.models import ChapterContent, Outline, Project, Setup, Storyline, Version
 from app.schemas import ProjectDiagnosisOut
-from app.services.dialog.messages import DialogMessageService
+from app.services.dialog.messages import DEFAULT_MESSAGE_CONTENT_PREVIEW_CHARS, DialogMessageService
 
 CHAPTER_BOOTSTRAP_LIMIT = 200
 VERSION_BOOTSTRAP_LIMIT = 50
+DIALOG_BOOTSTRAP_MESSAGE_CONTENT_LIMIT = DEFAULT_MESSAGE_CONTENT_PREVIEW_CHARS
 
 
 def build_project_diagnosis(db: Session, project_id: str) -> ProjectDiagnosisOut:
@@ -164,8 +165,22 @@ class WorkspaceBootstrapService:
             "versions_limit": VERSION_BOOTSTRAP_LIMIT,
             "versions_has_more": len(versions) < versions_total,
             "dialogs": {
-                "hermes": {"messages": self.messages.list_messages(project_id, dialog_type="hermes", limit=80)},
-                "athena": {"messages": self.messages.list_messages(project_id, dialog_type="athena", limit=80)},
+                "hermes": {
+                    "messages": self.messages.list_messages(
+                        project_id,
+                        dialog_type="hermes",
+                        limit=80,
+                        max_content_chars=DIALOG_BOOTSTRAP_MESSAGE_CONTENT_LIMIT,
+                    )
+                },
+                "athena": {
+                    "messages": self.messages.list_messages(
+                        project_id,
+                        dialog_type="athena",
+                        limit=80,
+                        max_content_chars=DIALOG_BOOTSTRAP_MESSAGE_CONTENT_LIMIT,
+                    )
+                },
             },
         }
 

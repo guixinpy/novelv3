@@ -2,11 +2,13 @@ from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from app.models import AIModelCallTrace, Dialog, DialogMessage, PendingAction
+from app.core.model_call_trace import truncate_text
 from app.schemas import PendingActionOut
 from app.services.actions.descriptions import action_description
 
 
 DEFAULT_DIALOG_MESSAGE_LIMIT = 80
+DEFAULT_MESSAGE_CONTENT_PREVIEW_CHARS = 6000
 
 
 class DialogMessageService:
@@ -20,6 +22,7 @@ class DialogMessageService:
         dialog_type: str = "hermes",
         limit: int | None = None,
         after_id: str | None = None,
+        max_content_chars: int | None = None,
     ) -> list[dict]:
         dialog = self.db.query(Dialog).filter(
             Dialog.project_id == project_id,
@@ -62,20 +65,39 @@ class DialogMessageService:
 
         payload = []
         for message in messages:
+            content_payload = self._content_payload(message.content, max_content_chars=max_content_chars)
             item = {
                 "id": message.id,
                 "role": message.role,
                 "message_type": message.message_type,
-                "content": message.content,
+                "content": content_payload["content"],
                 "meta": message.meta,
                 "action_result": message.action_result,
                 "trace_id": trace_by_response_id.get(message.id),
                 "created_at": message.created_at.isoformat() if message.created_at else None,
             }
+            if content_payload["content_truncated"]:
+                item["content_truncated"] = True
+                item["original_content_length"] = content_payload["original_content_length"]
             if pending_action and message.id == last_assistant_message_id:
                 item["pending_action"] = pending_action
             payload.append(item)
         return payload
+
+    @staticmethod
+    def _content_payload(content: str, *, max_content_chars: int | None) -> dict:
+        if max_content_chars is None:
+            return {
+                "content": content,
+                "content_truncated": False,
+                "original_content_length": len(content or ""),
+            }
+        truncated = truncate_text(content, max_chars=max_content_chars)
+        return {
+            "content": truncated["content"],
+            "content_truncated": truncated["truncated"],
+            "original_content_length": truncated["original_char_count"],
+        }
 
     def _pending_action_payload(self, dialog: Dialog) -> dict | None:
         if not dialog.pending_action_id:
