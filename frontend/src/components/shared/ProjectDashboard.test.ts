@@ -109,4 +109,27 @@ describe('ProjectDashboard', () => {
     expect(wrapper.text()).toContain('100%')
     expect(wrapper.find('.dashboard__stat-value').text()).toBe('1000')
   })
+
+  it('uses storyline count metadata when bootstrap returns partial storyline arrays', () => {
+    const wrapper = mount(ProjectDashboard, {
+      props: {
+        setup: null,
+        storyline: {
+          id: 'storyline-partial',
+          status: 'generated',
+          plotlines: [],
+          foreshadowing: [],
+          plotlines_count: 24,
+          foreshadowing_count: 120,
+        },
+        outline: null,
+        chapters: [],
+        totalWords: 0,
+      },
+    })
+
+    expect(wrapper.text()).toContain('已生成')
+    expect(wrapper.text()).toContain('主线 24')
+    expect(wrapper.text()).toContain('伏笔 120')
+  })
 })

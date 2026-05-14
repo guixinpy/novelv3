@@ -417,6 +417,48 @@ describe('project workspace state', () => {
     })
   })
 
+  it('workspace bootstrap 的 partial storyline 不会被标记为完整故事线缓存', async () => {
+    const store = useProjectStore()
+    vi.mocked(api.getStoryline).mockResolvedValue({
+      id: 'storyline-full',
+      project_id: 'A',
+      status: 'generated',
+      plotlines: [{ name: '主线' }],
+      foreshadowing: [{ name: '伏笔' }],
+    })
+
+    store.applyWorkspaceBootstrap({
+      project: { id: 'A', name: '项目 A' },
+      diagnosis: { missing_items: [], completed_items: ['storyline'], suggested_next_step: null },
+      setup: null,
+      storyline: {
+        id: 'storyline-1',
+        project_id: 'A',
+        status: 'generated',
+        plotlines: [],
+        foreshadowing: [],
+        plotlines_count: 20,
+        foreshadowing_count: 80,
+      },
+      storyline_partial: true,
+      outline: null,
+      chapters: [],
+      versions: [],
+      dialogs: { hermes: { messages: [] }, athena: { messages: [] } },
+    } as any)
+
+    await store.loadStoryline('A')
+
+    expect(api.getStoryline).toHaveBeenCalledWith('A')
+    expect(store.storyline).toEqual({
+      id: 'storyline-full',
+      project_id: 'A',
+      status: 'generated',
+      plotlines: [{ name: '主线' }],
+      foreshadowing: [{ name: '伏笔' }],
+    })
+  })
+
   it('refreshTargets() 只返回成功刷新的 targets，失败的不应回传', async () => {
     const store = useProjectStore()
 

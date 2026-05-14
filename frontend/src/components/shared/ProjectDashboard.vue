@@ -33,6 +33,12 @@ function asArray(value: unknown): any[] {
   return Array.isArray(value) ? value : []
 }
 
+function countItems(source: Record<string, unknown> | null | undefined, arrayKey: string, countKey: string) {
+  const count = Number(source?.[countKey])
+  if (Number.isFinite(count) && count > 0) return count
+  return asArray(source?.[arrayKey]).length
+}
+
 function countFilledFields(source: Record<string, unknown> | null | undefined, fields: string[]) {
   if (!source) return 0
   return fields.filter((field) => {
@@ -61,16 +67,16 @@ const setupCard = computed<StageCard>(() => {
 })
 
 const storylineCard = computed<StageCard>(() => {
-  const plotlines = asArray(props.storyline?.plotlines)
-  const foreshadowing = asArray(props.storyline?.foreshadowing)
-  const complete = plotlines.length > 0
+  const plotlineCount = countItems(props.storyline, 'plotlines', 'plotlines_count')
+  const foreshadowingCount = countItems(props.storyline, 'foreshadowing', 'foreshadowing_count')
+  const complete = plotlineCount > 0
   return {
     key: 'storyline',
     title: '故事线',
     status: props.storyline ? complete ? '已生成' : '待完善' : '未创建',
     statusTone: props.storyline ? complete ? 'done' : 'warning' : 'empty',
     summary: props.storyline
-      ? `主线 ${plotlines.length} · 伏笔 ${foreshadowing.length}`
+      ? `主线 ${plotlineCount} · 伏笔 ${foreshadowingCount}`
       : '还没有主线和伏笔规划',
     progress: null,
   }

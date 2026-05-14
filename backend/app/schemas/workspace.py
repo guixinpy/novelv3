@@ -25,6 +25,7 @@ class WorkspaceBootstrapOut(BaseModel):
     diagnosis: ProjectDiagnosisOut
     setup: SetupOut | None = None
     storyline: StorylineOut | None = None
+    storyline_partial: bool = False
     outline: OutlineOut | None = None
     outline_partial: bool = False
     chapters: list[ChapterSummaryOut] = Field(default_factory=list)

@@ -11,7 +11,7 @@ VERSION_BOOTSTRAP_LIMIT = 50
 
 def build_project_diagnosis(db: Session, project_id: str) -> ProjectDiagnosisOut:
     setup = db.query(Setup).filter(Setup.project_id == project_id).first()
-    storyline = db.query(Storyline).filter(Storyline.project_id == project_id).first()
+    storyline_status = db.query(Storyline.status).filter(Storyline.project_id == project_id).scalar()
     outline_status = db.query(Outline.status).filter(Outline.project_id == project_id).scalar()
     chapters = db.query(func.count(ChapterContent.id)).filter(ChapterContent.project_id == project_id).scalar() or 0
 
@@ -25,7 +25,7 @@ def build_project_diagnosis(db: Session, project_id: str) -> ProjectDiagnosisOut
         missing.append("setup")
         next_step = "preview_setup"
 
-    if storyline and storyline.status == "generated":
+    if storyline_status == "generated":
         completed.append("storyline")
     else:
         missing.append("storyline")
@@ -80,7 +80,20 @@ class WorkspaceBootstrapService:
             .all()
         )
         setup = self.db.query(Setup).filter(Setup.project_id == project_id).first()
-        storyline = self.db.query(Storyline).filter(Storyline.project_id == project_id).first()
+        storyline_row = (
+            self.db.query(
+                Storyline.id,
+                Storyline.project_id,
+                Storyline.status,
+                Storyline.created_at,
+                Storyline.updated_at,
+                func.coalesce(func.json_array_length(Storyline.plotlines), 0).label("plotlines_count"),
+                func.coalesce(func.json_array_length(Storyline.foreshadowing), 0).label("foreshadowing_count"),
+            )
+            .filter(Storyline.project_id == project_id)
+            .first()
+        )
+        storyline = _storyline_bootstrap_summary(storyline_row) if storyline_row else None
         outline_row = (
             self.db.query(
                 Outline.id,
@@ -116,6 +129,7 @@ class WorkspaceBootstrapService:
             "diagnosis": build_project_diagnosis(self.db, project_id),
             "setup": setup,
             "storyline": storyline,
+            "storyline_partial": storyline is not None,
             "outline": outline,
             "outline_partial": outline is not None,
             "chapters": [
@@ -154,6 +168,20 @@ class WorkspaceBootstrapService:
                 "athena": {"messages": self.messages.list_messages(project_id, dialog_type="athena", limit=80)},
             },
         }
+
+
+def _storyline_bootstrap_summary(row) -> dict:
+    return {
+        "id": row.id,
+        "project_id": row.project_id,
+        "plotlines": [],
+        "foreshadowing": [],
+        "plotlines_count": int(row.plotlines_count or 0),
+        "foreshadowing_count": int(row.foreshadowing_count or 0),
+        "status": row.status,
+        "created_at": row.created_at,
+        "updated_at": row.updated_at,
+    }
 
 
 def _outline_bootstrap_summary(row) -> dict:

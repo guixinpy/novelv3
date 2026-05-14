@@ -44,7 +44,9 @@ def test_workspace_bootstrap_returns_project_session_bundle(client, db_session):
     assert payload["project"]["id"] == project.id
     assert payload["diagnosis"]["completed_items"] == ["setup", "storyline", "outline", "content"]
     assert payload["setup"]["core_concept"]["theme"] == "雾"
-    assert payload["storyline"]["plotlines"] == [{"name": "主线"}]
+    assert payload["storyline"]["plotlines"] == []
+    assert payload["storyline"]["plotlines_count"] == 1
+    assert payload["storyline_partial"] is True
     assert payload["outline"]["total_chapters"] == 1
     assert payload["chapters"] == [
         {
@@ -199,3 +201,44 @@ def test_workspace_bootstrap_outline_summary_does_not_select_outline_json(client
     assert all("outlines.chapters" not in clause for clause in outline_select_clauses)
     assert all("outlines.plotlines" not in clause for clause in outline_select_clauses)
     assert all("outlines.foreshadowing" not in clause for clause in outline_select_clauses)
+
+
+def test_workspace_bootstrap_storyline_summary_does_not_select_storyline_json(client, db_session):
+    project = Project(name="长篇故事线冷启动", genre="都市奇幻")
+    db_session.add(project)
+    db_session.flush()
+    db_session.add(
+        Storyline(
+            project_id=project.id,
+            status="generated",
+            plotlines=[{"name": f"支线{index}", "summary": "支线摘要" * 20} for index in range(1, 201)],
+            foreshadowing=[{"name": f"伏笔{index}", "summary": "伏笔摘要" * 20} for index in range(1, 501)],
+        )
+    )
+    db_session.commit()
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        response = client.get(f"/api/v1/projects/{project.id}/workspace-bootstrap")
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["storyline"]["plotlines"] == []
+    assert payload["storyline"]["foreshadowing"] == []
+    assert payload["storyline"]["plotlines_count"] == 200
+    assert payload["storyline"]["foreshadowing_count"] == 500
+    assert payload["storyline_partial"] is True
+    storyline_select_clauses = [
+        statement.split("from storylines", 1)[0]
+        for statement in statements
+        if "from storylines" in statement
+    ]
+    assert storyline_select_clauses
+    assert all("storylines.plotlines," not in clause for clause in storyline_select_clauses)
+    assert all("storylines.foreshadowing," not in clause for clause in storyline_select_clauses)
