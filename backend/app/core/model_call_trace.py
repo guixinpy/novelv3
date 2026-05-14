@@ -11,6 +11,7 @@ from app.models import AIModelCallTrace
 
 
 TRUNCATION_NOTICE = "\n\n[truncated: original content exceeded trace limit]"
+MAX_TRACE_MESSAGE_CONTENT_CHARS = 12000
 BEARER_PATTERN = re.compile(r"(Authorization\s*:\s*Bearer\s+)([^\s,;]+)", re.IGNORECASE)
 SK_TOKEN_PATTERN = re.compile(r"sk-[A-Za-z0-9][A-Za-z0-9_\-]{8,}")
 KEY_VALUE_PATTERN = re.compile(
@@ -94,7 +95,19 @@ def truncate_text(text: str | None, *, max_chars: int = 12000) -> dict[str, Any]
 
 
 def sanitize_model_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return [_sanitize_value(message) for message in messages]
+    sanitized_messages: list[dict[str, Any]] = []
+    for message in messages:
+        if not isinstance(message, dict):
+            sanitized_messages.append(_sanitize_value(message))
+            continue
+        sanitized_message = {}
+        for key, value in message.items():
+            if key == "content" and isinstance(value, str):
+                sanitized_message[key] = truncate_text(value, max_chars=MAX_TRACE_MESSAGE_CONTENT_CHARS)["content"]
+            else:
+                sanitized_message[key] = _sanitize_value(value)
+        sanitized_messages.append(sanitized_message)
+    return sanitized_messages
 
 
 def build_context_block(

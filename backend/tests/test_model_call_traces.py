@@ -156,6 +156,16 @@ def test_truncate_text_reports_original_count_and_appends_truncation_notice():
     assert "truncated" in result["content"]
 
 
+def test_sanitize_model_messages_truncates_large_message_content():
+    messages = [{"role": "user", "content": "长篇上下文" * 5000}]
+
+    sanitized = sanitize_model_messages(messages)
+
+    assert len(sanitized[0]["content"]) < len(messages[0]["content"])
+    assert sanitized[0]["content"].startswith("长篇上下文")
+    assert "truncated" in sanitized[0]["content"]
+
+
 def test_build_context_block_populates_trace_context_shape():
     block = build_context_block(
         key="retrieval",
