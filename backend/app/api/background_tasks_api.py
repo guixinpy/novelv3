@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.ui_hints import action_to_refresh_targets, build_ui_hint, task_status_to_dialog_state
@@ -9,12 +9,41 @@ router = APIRouter(tags=["background-tasks"])
 
 
 @router.get("/api/v1/projects/{project_id}/background-tasks")
-def list_background_tasks(project_id: str, db: Session = Depends(get_db)):
+def list_background_tasks(
+    project_id: str,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+):
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    tasks = db.query(BackgroundTask).filter(BackgroundTask.project_id == project_id).order_by(BackgroundTask.created_at.desc()).limit(20).all()
-    return {"tasks": [{"task_id": t.id, "task_type": t.task_type, "status": t.status, "created_at": t.created_at.isoformat() if t.created_at else None, "started_at": t.started_at.isoformat() if t.started_at else None, "finished_at": t.finished_at.isoformat() if t.finished_at else None} for t in tasks]}
+    query = db.query(BackgroundTask).filter(BackgroundTask.project_id == project_id)
+    total = query.count()
+    tasks = (
+        query
+        .order_by(BackgroundTask.created_at.desc(), BackgroundTask.id.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    return {
+        "tasks": [
+            {
+                "task_id": t.id,
+                "task_type": t.task_type,
+                "status": t.status,
+                "created_at": t.created_at.isoformat() if t.created_at else None,
+                "started_at": t.started_at.isoformat() if t.started_at else None,
+                "finished_at": t.finished_at.isoformat() if t.finished_at else None,
+            }
+            for t in tasks
+        ],
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+        "has_more": offset + len(tasks) < total,
+    }
 
 
 @router.get("/api/v1/background-tasks/{task_id}")

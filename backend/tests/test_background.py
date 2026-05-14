@@ -17,6 +17,33 @@ def test_list_background_tasks(client):
     assert "tasks" in r2.json()
 
 
+def test_list_background_tasks_paginates_large_project_history(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Task History"})
+    pid = r.json()["id"]
+    db_session.add_all([
+        BackgroundTask(project_id=pid, task_type=f"task-{index}", status="completed")
+        for index in range(30)
+    ])
+    db_session.commit()
+
+    first_page = client.get(f"/api/v1/projects/{pid}/background-tasks?offset=0&limit=10")
+    second_page = client.get(f"/api/v1/projects/{pid}/background-tasks?offset=10&limit=10")
+
+    assert first_page.status_code == 200
+    assert first_page.json()["total"] == 30
+    assert first_page.json()["offset"] == 0
+    assert first_page.json()["limit"] == 10
+    assert first_page.json()["has_more"] is True
+    assert len(first_page.json()["tasks"]) == 10
+
+    assert second_page.status_code == 200
+    assert second_page.json()["total"] == 30
+    assert second_page.json()["offset"] == 10
+    assert second_page.json()["limit"] == 10
+    assert second_page.json()["has_more"] is True
+    assert len(second_page.json()["tasks"]) == 10
+
+
 def test_get_background_task_with_ui_hint(client, db_session):
     r = client.post("/api/v1/projects", json={"name": "Test"})
     pid = r.json()["id"]
