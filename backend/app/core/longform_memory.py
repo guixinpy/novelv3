@@ -84,9 +84,15 @@ def get_longform_memory_diagnostics(db: Session, project_id: str) -> dict[str, A
         db.query(func.max(LongformMemory.updated_at)).filter(LongformMemory.project_id == project_id).scalar()
     )
     counts = Counter({memory_type: count for memory_type, count in rows})
+    chapter_count = (
+        db.query(func.count(ChapterContent.id))
+        .filter(ChapterContent.project_id == project_id)
+        .scalar()
+        or 0
+    )
     return {
         "project_id": project_id,
-        "chapter_count": db.query(ChapterContent).filter(ChapterContent.project_id == project_id).count(),
+        "chapter_count": chapter_count,
         "current_word_count": project.current_word_count or 0,
         "counts_by_type": _ordered_counts(counts),
         "total_memories": sum(counts.values()),

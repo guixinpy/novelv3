@@ -133,6 +133,55 @@ def test_rebuild_longform_memory_creates_chapter_arc_volume_and_global_layers(cl
     assert diagnostics.json()["current_word_count"] == sum(1000 + index for index in range(1, 101))
 
 
+def test_longform_memory_diagnostics_chapter_count_does_not_select_chapter_content(db_session):
+    from app.core.longform_memory import get_longform_memory_diagnostics
+
+    project = Project(name="Heavy Diagnostics")
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    db_session.add(
+        LongformMemory(
+            project_id=project.id,
+            memory_type="global",
+            scope_key="global",
+            title="全局记忆",
+            summary="长篇记忆摘要" * 200,
+            memory_metadata={"tags": ["长期伏笔"] * 100},
+        )
+    )
+    for index in range(1, 4):
+        db_session.add(
+            ChapterContent(
+                project_id=project.id,
+                chapter_index=index,
+                title=f"第{index}章",
+                content="百万字正文片段" * 1000,
+                word_count=3000,
+                status="generated",
+            )
+        )
+    db_session.commit()
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        payload = get_longform_memory_diagnostics(db_session, project.id)
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert payload["chapter_count"] == 3
+    chapter_count_statements = [
+        statement for statement in statements
+        if "count(" in statement and "chapter_contents" in statement
+    ]
+    assert chapter_count_statements
+    assert all("chapter_contents.content" not in statement for statement in chapter_count_statements)
+
+
 def test_chapter_memory_prefers_generated_content_over_stale_outline_summary(db_session):
     from app.core.longform_memory import rebuild_longform_memory
 
