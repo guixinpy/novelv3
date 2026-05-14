@@ -747,6 +747,12 @@ def test_athena_manuscript_context_uses_limited_chapter_summary_queries(db_sessi
 
     assert block is not None
     assert "已生成章节：250 / 目标 300" in block["content"]
+    aggregate_word_count_selects = [
+        statement
+        for statement in statements
+        if "sum(chapter_contents.word_count)" in statement
+    ]
+    assert aggregate_word_count_selects == []
     unbounded_summary_selects = [
         statement
         for statement in statements

@@ -127,10 +127,9 @@ def build_athena_prompt_variables(db: Session, project: Project, world_context: 
 
 
 def build_athena_manuscript_context_block(db: Session, project: Project) -> dict[str, Any] | None:
-    chapter_count, word_count, first_chapter_index, last_chapter_index = (
+    chapter_count, first_chapter_index, last_chapter_index = (
         db.query(
             func.count(ChapterContent.id),
-            func.coalesce(func.sum(ChapterContent.word_count), 0),
             func.min(ChapterContent.chapter_index),
             func.max(ChapterContent.chapter_index),
         )
@@ -141,7 +140,7 @@ def build_athena_manuscript_context_block(db: Session, project: Project) -> dict
     if not chapter_count:
         return None
 
-    total_words = project.current_word_count or int(word_count or 0)
+    total_words = int(project.current_word_count or 0)
     target_chapters = project.target_chapter_count or chapter_count
     lines = [
         f"已生成章节：{chapter_count} / 目标 {target_chapters}",
@@ -456,12 +455,7 @@ def build_longform_evidence_range_context_block(db: Session, project: Project) -
         .scalar()
         or 0
     )
-    current_word_count = int(
-        db.query(func.coalesce(func.sum(ChapterContent.word_count), 0))
-        .filter(ChapterContent.project_id == project.id)
-        .scalar()
-        or 0
-    )
+    current_word_count = int(project.current_word_count or 0)
     lines = [
         "长篇依据范围：",
         f"- 已生成章节：{chapter_count}",

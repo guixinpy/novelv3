@@ -693,7 +693,7 @@ def test_dialog_payloads_include_longform_evidence_range_block(db_session):
 def test_longform_evidence_range_chapter_count_does_not_select_chapter_content(db_session):
     from app.prompting.providers.dialog import build_longform_evidence_range_context_block
 
-    project = Project(name="Evidence Range Heavy Chapters")
+    project = Project(name="Evidence Range Heavy Chapters", current_word_count=9000)
     db_session.add(project)
     db_session.commit()
     db_session.refresh(project)
@@ -732,12 +732,18 @@ def test_longform_evidence_range_chapter_count_does_not_select_chapter_content(d
 
     assert block is not None
     assert "已生成章节：3" in block["content"]
+    assert "当前总字数：9000" in block["content"]
     chapter_count_statements = [
         statement for statement in statements
         if "count(" in statement and "chapter_contents" in statement
     ]
     assert chapter_count_statements
     assert all("chapter_contents.content" not in statement for statement in chapter_count_statements)
+    aggregate_word_count_selects = [
+        statement for statement in statements
+        if "sum(chapter_contents.word_count)" in statement
+    ]
+    assert aggregate_word_count_selects == []
 
 
 def test_longform_scale_smoke_reports_memory_retrieval_and_resume_progress(db_session):
