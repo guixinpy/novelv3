@@ -137,10 +137,10 @@ def get_retrieval_diagnostics(db: Session, project_id: str) -> dict[str, Any]:
         "embedding_provider": provider.provider_name,
         "embedding_model": provider.model_name,
         "vector_dimension": provider.dimensions,
-        "total_documents": db.query(RetrievalDocument).filter(RetrievalDocument.project_id == project_id).count(),
-        "total_chunks": db.query(RetrievalChunk).filter(RetrievalChunk.project_id == project_id).count(),
-        "total_terms": db.query(RetrievalTerm).filter(RetrievalTerm.project_id == project_id).count(),
-        "total_embeddings": db.query(RetrievalEmbedding).filter(RetrievalEmbedding.project_id == project_id).count(),
+        "total_documents": db.query(func.count(RetrievalDocument.id)).filter(RetrievalDocument.project_id == project_id).scalar() or 0,
+        "total_chunks": db.query(func.count(RetrievalChunk.id)).filter(RetrievalChunk.project_id == project_id).scalar() or 0,
+        "total_terms": db.query(func.count(RetrievalTerm.id)).filter(RetrievalTerm.project_id == project_id).scalar() or 0,
+        "total_embeddings": db.query(func.count(RetrievalEmbedding.id)).filter(RetrievalEmbedding.project_id == project_id).scalar() or 0,
         "documents_by_source_type": {source_type: count for source_type, count in source_rows},
     }
 

@@ -420,6 +420,33 @@ def test_reindex_builds_indexed_lexical_terms_for_local_search(client, db_sessio
     assert diagnostics.json()["total_terms"] == term_count
 
 
+def test_retrieval_diagnostics_counts_do_not_select_large_payload_columns(client, db_session):
+    project = _seed_retrieval_project(db_session)
+    reindex_project_retrieval(db_session, project.id)
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        response = client.get(f"/api/v1/projects/{project.id}/athena/retrieval/diagnostics")
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert response.status_code == 200
+    count_statements = [
+        statement
+        for statement in statements
+        if "count(" in statement and "retrieval_" in statement
+    ]
+    assert count_statements
+    assert all("retrieval_documents.document_metadata" not in statement for statement in count_statements)
+    assert all("retrieval_chunks.text" not in statement for statement in count_statements)
+    assert all("retrieval_chunks.chunk_metadata" not in statement for statement in count_statements)
+    assert all("retrieval_embeddings.vector" not in statement for statement in count_statements)
+
+
 def test_reindex_prefers_cjk_trigrams_over_bigrams_for_lexical_terms(db_session):
     project = Project(name="Retrieval Term Compaction")
     db_session.add(project)
