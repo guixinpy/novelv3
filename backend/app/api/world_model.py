@@ -658,16 +658,14 @@ def _build_bundle_detail(
     item_limit: int = 100,
 ) -> ProposalBundleDetailOut:
     bundle = _get_project_bundle_or_404(db=db, project_id=project_id, bundle_id=bundle_id)
-    item_query = (
-        db.query(WorldProposalItem)
-        .filter(
-            WorldProposalItem.project_id == project_id,
-            WorldProposalItem.project_profile_version_id == bundle.project_profile_version_id,
-            WorldProposalItem.profile_version == bundle.profile_version,
-            WorldProposalItem.bundle_id == bundle_id,
-        )
-    )
-    items_total = item_query.count()
+    item_filters = [
+        WorldProposalItem.project_id == project_id,
+        WorldProposalItem.project_profile_version_id == bundle.project_profile_version_id,
+        WorldProposalItem.profile_version == bundle.profile_version,
+        WorldProposalItem.bundle_id == bundle_id,
+    ]
+    item_query = db.query(WorldProposalItem).filter(*item_filters)
+    items_total = db.query(func.count(WorldProposalItem.id)).filter(*item_filters).scalar() or 0
     items = (
         item_query
         .order_by(WorldProposalItem.created_at.asc(), WorldProposalItem.id.asc())
