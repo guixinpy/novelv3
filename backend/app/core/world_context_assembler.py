@@ -9,9 +9,9 @@ from typing import Any, Literal
 from sqlalchemy.orm import Session
 
 from app.core.model_call_trace import build_context_block
+from app.core.outline_lookup import find_outline_chapter
 from app.models import (
     ConsistencyCheck,
-    Outline,
     ProjectProfileVersion,
     Setup,
     WorldArtifact,
@@ -377,15 +377,13 @@ class WorldContextAssembler:
             lines.append(f"Setup 草稿核心概念：{setup.core_concept}")
 
     def _append_outline_context(self, *, chapter_index: int, lines: list[str], sections: list[dict[str, Any]]) -> None:
-        outline = self.db.query(Outline).filter(Outline.project_id == self.project_id).first()
-        if not outline or not outline.chapters:
+        result = find_outline_chapter(self.db, self.project_id, chapter_index)
+        if result is None:
             return
-        for chapter_outline in outline.chapters:
-            if isinstance(chapter_outline, dict) and chapter_outline.get("chapter_index") == chapter_index:
-                summary = f"{chapter_outline.get('title', '')}：{chapter_outline.get('summary', '')}".strip("：")
-                lines.append(f"【本章大纲】{summary}")
-                sections.append({"key": "outline", "title": "本章大纲", "items": [chapter_outline]})
-                return
+        _outline_id, chapter_outline = result
+        summary = f"{chapter_outline.get('title', '')}：{chapter_outline.get('summary', '')}".strip("：")
+        lines.append(f"【本章大纲】{summary}")
+        sections.append({"key": "outline", "title": "本章大纲", "items": [chapter_outline]})
 
     def _append_retrieval_context(self, *, chapter_index: int, lines: list[str], sections: list[dict[str, Any]]) -> None:
         try:

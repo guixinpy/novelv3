@@ -18,10 +18,10 @@ from app.core.embedding_service import (
     tokenize_for_retrieval,
     vector_hash,
 )
+from app.core.outline_lookup import find_outline_chapter
 from app.models import (
     ChapterContent,
     LongformMemory,
-    Outline,
     Project,
     RetrievalChunk,
     RetrievalDocument,
@@ -970,22 +970,20 @@ def _empty_indexed() -> dict[str, int]:
 
 
 def _chapter_context_query(db: Session, project_id: str, chapter_index: int) -> str:
-    outline = db.query(Outline).filter(Outline.project_id == project_id).first()
     parts: list[str] = []
-    if outline and outline.chapters:
-        for chapter in outline.chapters:
-            if isinstance(chapter, dict) and chapter.get("chapter_index") == chapter_index:
-                parts.extend(
-                    str(value)
-                    for value in [
-                        chapter.get("title"),
-                        chapter.get("summary"),
-                        " ".join(chapter.get("characters", []) or []),
-                        " ".join(chapter.get("scenes", []) or []),
-                    ]
-                    if value
-                )
-                break
+    outline_chapter = find_outline_chapter(db, project_id, chapter_index)
+    if outline_chapter is not None:
+        _outline_id, chapter = outline_chapter
+        parts.extend(
+            str(value)
+            for value in [
+                chapter.get("title"),
+                chapter.get("summary"),
+                " ".join(chapter.get("characters", []) or []),
+                " ".join(chapter.get("scenes", []) or []),
+            ]
+            if value
+        )
     if not parts:
         previous = (
             db.query(ChapterContent)

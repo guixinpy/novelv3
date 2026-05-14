@@ -757,6 +757,54 @@ def test_athena_manuscript_context_uses_limited_chapter_summary_queries(db_sessi
     assert unbounded_summary_selects == []
 
 
+def test_chapter_world_context_does_not_select_full_outline_json(db_session):
+    project, _profile = _seed_project(db_session, with_profile=True)
+    db_session.add(
+        Outline(
+            project_id=project.id,
+            status="generated",
+            total_chapters=1000,
+            chapters=[
+                {
+                    "chapter_index": index,
+                    "title": f"第{index}章",
+                    "summary": f"第{index}章目标摘要。",
+                    "characters": [f"角色{index}"],
+                    "scenes": [f"场景{index}"],
+                }
+                for index in range(1, 1001)
+            ],
+            plotlines=[{"name": f"支线{index}", "summary": "支线摘要" * 20} for index in range(1, 101)],
+            foreshadowing=[{"name": f"伏笔{index}", "summary": "伏笔摘要" * 20} for index in range(1, 101)],
+        )
+    )
+    db_session.commit()
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        package = build_chapter_context_package(db_session, project.id, 777)
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert "【本章大纲】第777章：第777章目标摘要。" in package["prompt_context"]
+    outline_section = next(section for section in package["sections"] if section["key"] == "outline")
+    assert outline_section["items"][0]["chapter_index"] == 777
+
+    outline_select_clauses = [
+        statement.split("from outlines", 1)[0]
+        for statement in statements
+        if "from outlines" in statement
+    ]
+    assert outline_select_clauses
+    assert all("outlines.chapters as" not in clause for clause in outline_select_clauses)
+    assert all("outlines.plotlines as" not in clause for clause in outline_select_clauses)
+    assert all("outlines.foreshadowing as" not in clause for clause in outline_select_clauses)
+
+
 def test_athena_chat_payload_includes_context_boundary_for_global_answers(db_session):
     project, profile_version = _seed_project(db_session, with_profile=True)
     project.target_chapter_count = 20
