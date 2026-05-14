@@ -128,6 +128,17 @@ const visibleOutlineChapters = computed(() => {
   )
 })
 
+const jumpableOutlineChapters = computed(() => {
+  if (chapterSearch.value.trim()) return visibleOutlineChapters.value
+  const volume = activeVolume.value
+  if (!volume) return []
+  return outlineChapters.value.filter((chapter) =>
+    chapter.chapterIndex !== null
+    && chapter.chapterIndex >= volume.start
+    && chapter.chapterIndex <= volume.end,
+  )
+})
+
 const chapterWindowRangeLabel = computed(() => {
   const volume = activeVolume.value
   if (chapterSearch.value.trim()) {
@@ -161,6 +172,7 @@ function toText(value: unknown, fallback = '') {
 }
 
 function toNumber(value: unknown): number | null {
+  if (value === '' || value === null || value === undefined) return null
   const numberValue = Number(value)
   return Number.isFinite(numberValue) ? numberValue : null
 }
@@ -333,7 +345,7 @@ watch(outlineChapters, (chapters) => {
             @change="selectChapterJump(($event.target as HTMLSelectElement).value)"
           >
             <option value="">跳转章节</option>
-            <option v-for="chapter in outlineChapters" :key="chapter.key" :value="chapter.chapterIndex ?? ''">
+            <option v-for="chapter in jumpableOutlineChapters" :key="chapter.key" :value="chapter.chapterIndex ?? ''">
               第{{ chapter.chapterIndex }}章 · {{ chapter.title }}
             </option>
           </select>

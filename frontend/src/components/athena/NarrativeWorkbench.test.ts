@@ -162,6 +162,7 @@ describe('NarrativeWorkbench', () => {
     expect(wrapper.find('[data-testid="chapter-2"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="chapter-1"]').exists()).toBe(false)
 
+    await wrapper.get('[data-testid="chapter-search"]').setValue('')
     await wrapper.get('[data-testid="chapter-jump"]').setValue('1')
 
     expect(wrapper.text()).toContain('雾锁灯塔')
@@ -180,6 +181,7 @@ describe('NarrativeWorkbench', () => {
     expect(wrapper.find('[data-testid="chapter-1"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="chapter-51"]').exists()).toBe(false)
 
+    await wrapper.get('[data-testid="chapter-volume"]').setValue('201')
     await wrapper.get('[data-testid="chapter-jump"]').setValue('240')
 
     expect(wrapper.find('[data-testid="chapter-240"]').exists()).toBe(true)
@@ -200,6 +202,28 @@ describe('NarrativeWorkbench', () => {
     expect(wrapper.findAll('[data-narrative-chapter-index]')).toHaveLength(100)
     expect(wrapper.text()).toContain('搜索结果 100/250 章')
     expect(wrapper.text()).toContain('请缩小关键词')
+  })
+
+  it('bounds chapter jump options to the active volume for long plans', async () => {
+    const wrapper = mount(NarrativeWorkbench, {
+      props: {
+        plan: largePlan(250),
+        chapters: [],
+        view: 'chapters',
+      },
+    })
+
+    const initialJumpOptions = wrapper.get('[data-testid="chapter-jump"]').findAll('option')
+    expect(initialJumpOptions).toHaveLength(101)
+    expect(wrapper.get('[data-testid="chapter-jump"]').text()).toContain('第100章')
+    expect(wrapper.get('[data-testid="chapter-jump"]').text()).not.toContain('第101章')
+
+    await wrapper.get('[data-testid="chapter-volume"]').setValue('201')
+
+    const laterJump = wrapper.get('[data-testid="chapter-jump"]')
+    expect(laterJump.findAll('option')).toHaveLength(51)
+    expect(laterJump.text()).toContain('第240章')
+    expect(laterJump.text()).not.toContain('第200章')
   })
 
   it('renders foreshadowing lifecycle', () => {
