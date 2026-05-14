@@ -411,6 +411,51 @@ def test_list_model_call_traces_filters_by_trace_type(client, db_session):
     assert [item["id"] for item in payload["items"]] == [matching_trace.id]
 
 
+def test_list_model_call_traces_does_not_select_payload_json(client, db_session):
+    project = Project(name="Trace List Projection", genre="东方奇幻悬疑")
+    db_session.add(project)
+    db_session.commit()
+    create_trace(
+        db_session,
+        project_id=project.id,
+        trace_type="chapter_generation",
+        messages=[{"role": "system", "content": "列表不应读取的大段提示词。" * 1000}],
+        context_blocks=[
+            build_context_block(
+                key="large",
+                kind="context",
+                title="大上下文",
+                content="列表不应读取的大段上下文。" * 1000,
+            )
+        ],
+        trace_metadata={"large": "列表不应读取的大段元数据。" * 1000},
+        status="success",
+    )
+    db_session.commit()
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        response = client.get(f"/api/v1/projects/{project.id}/model-call-traces")
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 1
+    trace_select_clauses = [
+        statement.split("from ai_model_call_traces", 1)[0]
+        for statement in statements
+        if "from ai_model_call_traces" in statement
+    ]
+    assert trace_select_clauses
+    assert all("ai_model_call_traces.messages" not in clause for clause in trace_select_clauses)
+    assert all("ai_model_call_traces.context_blocks" not in clause for clause in trace_select_clauses)
+    assert all("ai_model_call_traces.trace_metadata" not in clause for clause in trace_select_clauses)
+
+
 def test_get_model_call_trace_detail_returns_messages_and_context_sources(client, db_session):
     project = Project(name="Trace Detail API", genre="东方奇幻悬疑")
     db_session.add(project)

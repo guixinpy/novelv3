@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -8,6 +9,25 @@ from app.schemas.model_call_trace import ModelCallTraceDetail, PaginatedModelCal
 router = APIRouter(
     prefix="/api/v1/projects/{project_id}/model-call-traces",
     tags=["model-call-traces"],
+)
+
+TRACE_LIST_COLUMNS = (
+    AIModelCallTrace.id,
+    AIModelCallTrace.project_id,
+    AIModelCallTrace.trace_type,
+    AIModelCallTrace.status,
+    AIModelCallTrace.model,
+    AIModelCallTrace.prompt_tokens,
+    AIModelCallTrace.completion_tokens,
+    AIModelCallTrace.latency_ms,
+    AIModelCallTrace.error_message,
+    AIModelCallTrace.dialog_id,
+    AIModelCallTrace.request_message_id,
+    AIModelCallTrace.response_message_id,
+    AIModelCallTrace.chapter_id,
+    AIModelCallTrace.chapter_index,
+    AIModelCallTrace.created_at,
+    AIModelCallTrace.updated_at,
 )
 
 
@@ -39,13 +59,15 @@ def list_model_call_traces(
     if dialog_id:
         query = query.filter(AIModelCallTrace.dialog_id == dialog_id)
 
-    total = query.count()
-    items = (
-        query.order_by(AIModelCallTrace.created_at.desc())
+    total = query.with_entities(func.count(AIModelCallTrace.id)).order_by(None).scalar() or 0
+    rows = (
+        query.with_entities(*TRACE_LIST_COLUMNS)
+        .order_by(AIModelCallTrace.created_at.desc(), AIModelCallTrace.id.desc())
         .offset(offset)
         .limit(clamped_limit)
         .all()
     )
+    items = [dict(row._mapping) for row in rows]
     return PaginatedModelCallTraces(total=total, items=items)
 
 
