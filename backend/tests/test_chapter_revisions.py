@@ -1,5 +1,7 @@
 from unittest.mock import AsyncMock, patch
 
+from sqlalchemy import event
+
 from app.models import (
     ChapterRevision,
     Dialog,
@@ -126,6 +128,80 @@ def test_list_revisions_returns_bounded_page_with_total(client, db_session):
     assert data["limit"] == 4
     assert data["has_more"] is True
     assert [item["revision_index"] for item in data["revisions"]] == [6, 7, 8, 9]
+
+
+def test_list_revisions_loads_feedback_in_bulk(client, db_session):
+    project = Project(name="Revision Feedback Bulk")
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    chapter = ChapterContent(
+        project_id=project.id,
+        chapter_index=1,
+        title="第一章",
+        content="正文",
+        status="generated",
+    )
+    db_session.add(chapter)
+    db_session.flush()
+    revisions = [
+        ChapterRevision(
+            project_id=project.id,
+            chapter_id=chapter.id,
+            chapter_index=1,
+            revision_index=index,
+            status="completed",
+        )
+        for index in range(1, 5)
+    ]
+    db_session.add_all(revisions)
+    db_session.flush()
+    for revision in revisions:
+        db_session.add(
+            RevisionAnnotation(
+                revision_id=revision.id,
+                paragraph_index=0,
+                start_offset=0,
+                end_offset=2,
+                selected_text="原文" * 100,
+                comment="批注" * 100,
+            )
+        )
+        db_session.add(
+            RevisionCorrection(
+                revision_id=revision.id,
+                paragraph_index=0,
+                original_text="原句" * 100,
+                corrected_text="新句" * 100,
+            )
+        )
+    db_session.commit()
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        response = client.get(f"/api/v1/projects/{project.id}/revisions?limit=4")
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert response.status_code == 200
+    revisions_payload = response.json()["revisions"]
+    assert len(revisions_payload) == 4
+    assert all(item["annotations"] for item in revisions_payload)
+    assert all(item["corrections"] for item in revisions_payload)
+    annotation_selects = [
+        statement for statement in statements
+        if statement.startswith("select") and "from revision_annotations" in statement
+    ]
+    correction_selects = [
+        statement for statement in statements
+        if statement.startswith("select") and "from revision_corrections" in statement
+    ]
+    assert len(annotation_selects) == 1
+    assert len(correction_selects) == 1
 
 
 def test_submit_revision_rejects_empty_feedback(client, db_session):

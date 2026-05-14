@@ -129,6 +129,15 @@ def _ensure_base_version(db: Session, revision: ChapterRevision) -> None:
 def _revision_out(db: Session, revision: ChapterRevision) -> ChapterRevisionOut:
     annotations = db.query(RevisionAnnotation).filter(RevisionAnnotation.revision_id == revision.id).all()
     corrections = db.query(RevisionCorrection).filter(RevisionCorrection.revision_id == revision.id).all()
+    return _revision_out_from_feedback(revision, annotations=annotations, corrections=corrections)
+
+
+def _revision_out_from_feedback(
+    revision: ChapterRevision,
+    *,
+    annotations: list[RevisionAnnotation],
+    corrections: list[RevisionCorrection],
+) -> ChapterRevisionOut:
     return ChapterRevisionOut.model_validate(
         {
             "id": revision.id,
@@ -145,6 +154,37 @@ def _revision_out(db: Session, revision: ChapterRevision) -> ChapterRevisionOut:
             "corrections": corrections,
         }
     )
+
+
+def _revision_list_out(db: Session, revisions: list[ChapterRevision]) -> list[ChapterRevisionOut]:
+    revision_ids = [revision.id for revision in revisions]
+    annotations_by_revision: dict[str, list[RevisionAnnotation]] = {revision_id: [] for revision_id in revision_ids}
+    corrections_by_revision: dict[str, list[RevisionCorrection]] = {revision_id: [] for revision_id in revision_ids}
+    if revision_ids:
+        annotations = (
+            db.query(RevisionAnnotation)
+            .filter(RevisionAnnotation.revision_id.in_(revision_ids))
+            .order_by(RevisionAnnotation.revision_id.asc(), RevisionAnnotation.paragraph_index.asc())
+            .all()
+        )
+        corrections = (
+            db.query(RevisionCorrection)
+            .filter(RevisionCorrection.revision_id.in_(revision_ids))
+            .order_by(RevisionCorrection.revision_id.asc(), RevisionCorrection.paragraph_index.asc())
+            .all()
+        )
+        for annotation in annotations:
+            annotations_by_revision[annotation.revision_id].append(annotation)
+        for correction in corrections:
+            corrections_by_revision[correction.revision_id].append(correction)
+    return [
+        _revision_out_from_feedback(
+            revision,
+            annotations=annotations_by_revision[revision.id],
+            corrections=corrections_by_revision[revision.id],
+        )
+        for revision in revisions
+    ]
 
 
 @router.post("", response_model=ChapterRevisionOut)
@@ -293,13 +333,18 @@ def list_revisions(
     db: Session = Depends(get_db),
 ):
     query = db.query(ChapterRevision).filter(ChapterRevision.project_id == project_id)
-    total = query.count()
+    total = (
+        db.query(func.count(ChapterRevision.id))
+        .filter(ChapterRevision.project_id == project_id)
+        .scalar()
+        or 0
+    )
     revisions = query.order_by(
         ChapterRevision.chapter_index.asc(),
         ChapterRevision.revision_index.asc(),
     ).offset(offset).limit(limit).all()
     return {
-        "revisions": [_revision_out(db, revision) for revision in revisions],
+        "revisions": _revision_list_out(db, revisions),
         "total": total,
         "offset": offset,
         "limit": limit,
