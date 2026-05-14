@@ -544,6 +544,56 @@ def test_dialog_payloads_include_longform_evidence_range_block(db_session):
         assert "global: 1" in block["content"]
 
 
+def test_longform_evidence_range_chapter_count_does_not_select_chapter_content(db_session):
+    from app.prompting.providers.dialog import build_longform_evidence_range_context_block
+
+    project = Project(name="Evidence Range Heavy Chapters")
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    db_session.add(
+        LongformMemory(
+            project_id=project.id,
+            memory_type="global",
+            scope_key="global",
+            title="全局记忆",
+            summary="长篇记忆摘要" * 200,
+            memory_metadata={"tags": ["长期伏笔"] * 100},
+        )
+    )
+    for index in range(1, 4):
+        db_session.add(
+            ChapterContent(
+                project_id=project.id,
+                chapter_index=index,
+                title=f"第{index}章",
+                content="百万字正文片段" * 1000,
+                word_count=3000,
+                status="generated",
+            )
+        )
+    db_session.commit()
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        block = build_longform_evidence_range_context_block(db_session, project)
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert block is not None
+    assert "已生成章节：3" in block["content"]
+    chapter_count_statements = [
+        statement for statement in statements
+        if "count(" in statement and "chapter_contents" in statement
+    ]
+    assert chapter_count_statements
+    assert all("chapter_contents.content" not in statement for statement in chapter_count_statements)
+
+
 def test_longform_scale_smoke_reports_memory_retrieval_and_resume_progress(db_session):
     from app.core.longform_scale_smoke import run_longform_scale_smoke
 

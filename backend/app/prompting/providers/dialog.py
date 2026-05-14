@@ -450,7 +450,12 @@ def build_longform_evidence_range_context_block(db: Session, project: Project) -
     if total_memories <= 0:
         return None
     count_line = "、".join(f"{key}: {value}" for key, value in counts.items())
-    chapter_count = db.query(ChapterContent).filter(ChapterContent.project_id == project.id).count()
+    chapter_count = (
+        db.query(func.count(ChapterContent.id))
+        .filter(ChapterContent.project_id == project.id)
+        .scalar()
+        or 0
+    )
     current_word_count = int(
         db.query(func.coalesce(func.sum(ChapterContent.word_count), 0))
         .filter(ChapterContent.project_id == project.id)
