@@ -189,7 +189,7 @@ class BackgroundTaskService:
         return self.create(project_id=task.project_id, task_type=task.task_type, payload=payload)
 
     def fail_interrupted_running_tasks(self) -> int:
-        tasks = self.db.query(BackgroundTask).filter(BackgroundTask.status == TASK_RUNNING).all()
+        tasks = self.db.query(BackgroundTask).filter(BackgroundTask.status.in_(ACTIVE_TASK_STATUSES)).all()
         now = datetime.now(UTC)
         for task in tasks:
             task.status = TASK_FAILED

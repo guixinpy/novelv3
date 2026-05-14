@@ -399,6 +399,34 @@ def test_background_task_service_marks_interrupted_running_tasks_failed(client, 
     assert saved.error == "Task interrupted by local process restart"
 
 
+def test_background_task_service_marks_interrupted_pending_tasks_failed(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Test"})
+    pid = r.json()["id"]
+    service = BackgroundTaskService(db_session)
+    task = service.create_chapter_range(
+        project_id=pid,
+        task_type="generate_chapter_range",
+        start_chapter_index=1,
+        end_chapter_index=5,
+        idempotency_key="range-1-5",
+    )
+
+    count = service.fail_interrupted_running_tasks()
+    retry = service.create_chapter_range(
+        project_id=pid,
+        task_type="generate_chapter_range",
+        start_chapter_index=1,
+        end_chapter_index=5,
+        idempotency_key="range-1-5",
+    )
+
+    saved = service.get(task.id)
+    assert count == 1
+    assert saved.status == "failed"
+    assert saved.error == "Task interrupted by local process restart"
+    assert retry.id != task.id
+
+
 def test_app_startup_marks_interrupted_running_tasks_failed(monkeypatch):
     calls: list[str] = []
 
