@@ -37,7 +37,7 @@ class PromptBudgeter:
             if remaining > 0:
                 kept = self._copy_block_with_content(
                     block,
-                    content[:remaining],
+                    self._truncate_content(content, remaining),
                     budget_truncated=True,
                     original_char_count=len(content),
                 )
@@ -70,6 +70,17 @@ class PromptBudgeter:
         if "content" not in block:
             return ""
         return str(block["content"])
+
+    def _truncate_content(self, content: str, max_chars: int) -> str:
+        if len(content) <= max_chars:
+            return content
+        separator = "\n...\n"
+        if max_chars <= len(separator) + 2:
+            return content[:max_chars]
+        available_chars = max_chars - len(separator)
+        head_chars = available_chars // 2
+        tail_chars = available_chars - head_chars
+        return f"{content[:head_chars]}{separator}{content[-tail_chars:]}"
 
     def _copy_block_with_content(
         self,

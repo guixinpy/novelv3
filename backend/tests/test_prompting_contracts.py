@@ -109,6 +109,22 @@ def test_budgeter_keeps_priority_but_returns_original_order_and_truncates():
     assert report.truncated_blocks == ["mid"]
 
 
+def test_budgeter_truncated_block_preserves_ending_context():
+    content = "开头线索：" + ("中段铺垫" * 20) + "末尾钩子：第七扇门打开。"
+
+    kept_blocks, report = PromptBudgeter().apply(
+        [{"key": "longform_context", "content": content, "priority": 1}],
+        max_chars=40,
+    )
+
+    assert len(kept_blocks) == 1
+    assert kept_blocks[0]["truncated"] is True
+    assert len(kept_blocks[0]["content"]) <= 40
+    assert kept_blocks[0]["content"].startswith("开头线索")
+    assert kept_blocks[0]["content"].endswith("末尾钩子：第七扇门打开。")
+    assert report.truncated_blocks == ["longform_context"]
+
+
 def test_budgeter_treats_missing_priority_as_100():
     blocks = [
         {"key": "default", "content": "BBBB"},
