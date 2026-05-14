@@ -162,14 +162,23 @@ def write_candidate_fact(
 
 def calculate_bundle_impact_scope(*, db: Session, bundle_id: str, commit: bool = True) -> WorldProposalImpactScopeSnapshot:
     bundle = _get_bundle_or_error(db=db, bundle_id=bundle_id)
-    items = db.query(WorldProposalItem).filter(WorldProposalItem.bundle_id == bundle_id).all()
+    items = (
+        db.query(
+            WorldProposalItem.id,
+            WorldProposalItem.subject_ref,
+            WorldProposalItem.predicate,
+            WorldProposalItem.chapter_index,
+        )
+        .filter(WorldProposalItem.bundle_id == bundle_id)
+        .all()
+    )
     affected_subject_refs = sorted({item.subject_ref for item in items})
     affected_predicates = sorted({item.predicate for item in items})
     candidate_item_ids = [item.id for item in items]
 
-    truth_claims = []
+    truth_claim_ids: set[str] = set()
     for item in items:
-        query = db.query(WorldFactClaim).filter(
+        query = db.query(WorldFactClaim.claim_id).filter(
             WorldFactClaim.project_id == bundle.project_id,
             WorldFactClaim.project_profile_version_id == bundle.project_profile_version_id,
             WorldFactClaim.profile_version == bundle.profile_version,
@@ -180,7 +189,7 @@ def calculate_bundle_impact_scope(*, db: Session, bundle_id: str, commit: bool =
         )
         if is_chapter_scoped_truth_predicate(item.predicate) and item.chapter_index is not None:
             query = query.filter(WorldFactClaim.chapter_index == item.chapter_index)
-        truth_claims.extend(query.all())
+        truth_claim_ids.update(claim_id for (claim_id,) in query.all())
 
     snapshot = WorldProposalImpactScopeSnapshot(
         project_id=bundle.project_id,
@@ -189,11 +198,11 @@ def calculate_bundle_impact_scope(*, db: Session, bundle_id: str, commit: bool =
         bundle_id=bundle.id,
         affected_subject_refs=affected_subject_refs,
         affected_predicates=affected_predicates,
-        affected_truth_claim_ids=sorted({claim.claim_id for claim in truth_claims}),
+        affected_truth_claim_ids=sorted(truth_claim_ids),
         candidate_item_ids=candidate_item_ids,
         summary={
             "candidate_count": len(items),
-            "existing_truth_count": len({claim.claim_id for claim in truth_claims}),
+            "existing_truth_count": len(truth_claim_ids),
         },
     )
     db.add(snapshot)

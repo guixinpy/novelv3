@@ -1,7 +1,7 @@
 import sqlite3
 
 import pytest
-from sqlalchemy import text
+from sqlalchemy import event, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
@@ -804,6 +804,91 @@ def test_impact_scope_ignores_rolled_back_truth_claims(db_session):
 
     assert impact.affected_truth_claim_ids == []
     assert impact.summary["existing_truth_count"] == 0
+
+
+def test_impact_scope_does_not_select_heavy_candidate_or_truth_fields(db_session):
+    project, profile_version = _seed_project_profile(db_session)
+    db_session.add(
+        WorldFactClaim(
+            project_id=project.id,
+            project_profile_version_id=profile_version.id,
+            profile_version=profile_version.version,
+            claim_id="claim.hero.status.confirmed",
+            chapter_index=1,
+            intra_chapter_seq=0,
+            subject_ref="char.hero",
+            predicate="status",
+            object_ref_or_value={"fragments": ["真相碎片"] * 200},
+            claim_layer="truth",
+            claim_status="confirmed",
+            evidence_refs=[f"chapter.{index:03d}" for index in range(100)],
+            authority_type="authoritative_structured",
+            confidence=0.8,
+            notes="长事实备注" * 300,
+            contract_version="world.contract.v1",
+        )
+    )
+    db_session.commit()
+    bundle = create_bundle(
+        db=db_session,
+        project_id=project.id,
+        project_profile_version_id=profile_version.id,
+        profile_version=profile_version.version,
+        created_by="writer.alpha",
+        title="Heavy impact candidates",
+    )
+    for index in range(1, 4):
+        write_candidate_fact(
+            db=db_session,
+            bundle_id=bundle.id,
+            created_by="writer.alpha",
+            candidate=ProposalCandidateFactCreate(
+                project_id=project.id,
+                project_profile_version_id=profile_version.id,
+                profile_version=profile_version.version,
+                contract_version=profile_version.contract_version,
+                claim_id=f"claim.hero.status.pending.{index}",
+                chapter_index=index,
+                subject_ref="char.hero",
+                predicate="status",
+                object_ref_or_value={"fragments": ["候选碎片"] * 200},
+                claim_layer="truth",
+                disclosed_to_refs=[f"char.reader.{i}" for i in range(100)],
+                authority_type="authoritative_structured",
+                confidence=0.9,
+                evidence_refs=[f"chapter.{i:03d}" for i in range(100)],
+                notes="长候选备注" * 300,
+            ),
+        )
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        impact = calculate_bundle_impact_scope(db=db_session, bundle_id=bundle.id)
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert impact.summary["candidate_count"] == 3
+    assert impact.summary["existing_truth_count"] == 1
+    item_selects = [
+        statement.split("from world_proposal_items", 1)[0]
+        for statement in statements
+        if statement.startswith("select") and "from world_proposal_items" in statement
+    ]
+    truth_selects = [
+        statement.split("from world_fact_claims", 1)[0]
+        for statement in statements
+        if statement.startswith("select") and "from world_fact_claims" in statement
+    ]
+    assert item_selects
+    assert truth_selects
+    for column in ["object_ref_or_value", "disclosed_to_refs", "evidence_refs", "notes"]:
+        assert all(f"world_proposal_items.{column}" not in clause for clause in item_selects)
+    for column in ["object_ref_or_value", "disclosed_to_refs", "evidence_refs", "notes"]:
+        assert all(f"world_fact_claims.{column}" not in clause for clause in truth_selects)
 
 
 def test_impact_scope_treats_presence_count_as_chapter_scoped(db_session):
