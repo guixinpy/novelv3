@@ -95,6 +95,32 @@ function largeStorylinePlan(mainCount: number, subCount: number) {
   } as unknown as AthenaEvolutionPlan
 }
 
+function windowedStorylinePlan(offset: number, limit: number, total: number) {
+  return {
+    outline: { chapters: [] },
+    storyline: {
+      plotlines: [
+        {
+          name: '主线：王朝崩塌',
+          type: 'main',
+          milestones: Array.from({ length: limit }, (_, index) => {
+            const chapterIndex = offset + index + 1
+            return {
+              chapter_index: chapterIndex,
+              title: `主线节点${chapterIndex}`,
+            }
+          }),
+          milestones_total: total,
+          milestones_offset: offset,
+          milestones_limit: limit,
+          milestones_has_more: offset + limit < total,
+        },
+      ],
+      foreshadowing: [],
+    },
+  } as unknown as AthenaEvolutionPlan
+}
+
 function largeForeshadowingPlan(count: number) {
   return {
     outline: { chapters: [] },
@@ -256,6 +282,26 @@ describe('NarrativeWorkbench', () => {
     expect(wrapper.text()).toContain('当前显示 81-160 / 250 个节点')
     expect(wrapper.findAll('.narrative-workbench__milestone')[0].text()).toContain('主线节点81')
     expect(wrapper.findAll('.narrative-workbench__milestone').some((item) => item.text() === '第1章主线节点1')).toBe(false)
+  })
+
+  it('emits milestone window requests for server-windowed storylines', async () => {
+    const wrapper = mount(NarrativeWorkbench, {
+      props: {
+        plan: windowedStorylinePlan(80, 80, 250),
+        chapters: [],
+        view: 'storyline',
+      },
+    })
+
+    expect(wrapper.text()).toContain('当前显示 81-160 / 250 个节点')
+
+    await wrapper.get('[data-testid="storyline-milestone-next"]').trigger('click')
+    await wrapper.get('[data-testid="storyline-milestone-prev"]').trigger('click')
+
+    expect(wrapper.emitted('loadMilestoneWindow')).toEqual([
+      [{ offset: 160, limit: 80 }],
+      [{ offset: 0, limit: 80 }],
+    ])
   })
 
   it('accepts chapter field and avoids duplicate milestone copy', () => {

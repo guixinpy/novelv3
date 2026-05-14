@@ -83,7 +83,7 @@ const TimelineViewStub = defineComponent({
 
 const NarrativeWorkbenchStub = defineComponent({
   name: 'NarrativeWorkbench',
-  emits: ['loadChapterWindow', 'loadForeshadowingWindow'],
+  emits: ['loadChapterWindow', 'loadForeshadowingWindow', 'loadMilestoneWindow'],
   template: `
     <section data-testid="narrative-workbench-stub">
       <button
@@ -99,6 +99,13 @@ const NarrativeWorkbenchStub = defineComponent({
         @click="$emit('loadForeshadowingWindow', { offset: 200, limit: 100 })"
       >
         请求伏笔窗口
+      </button>
+      <button
+        type="button"
+        data-testid="request-milestone-window"
+        @click="$emit('loadMilestoneWindow', { offset: 80, limit: 80 })"
+      >
+        请求节点窗口
       </button>
     </section>
   `,
@@ -282,6 +289,23 @@ describe('AthenaView narrative atlas integration', () => {
       plotline_limit: 1,
       foreshadowing_offset: 200,
       foreshadowing_limit: 100,
+    })
+  })
+
+  it('loads a windowed narrative plan when workbench requests a storyline milestone window', async () => {
+    const { wrapper } = await mountAthenaView('/projects/project-1/athena/narrative?view=storyline')
+    vi.mocked(api.getAthenaEvolutionPlan).mockClear()
+
+    await wrapper.get('[data-testid="request-milestone-window"]').trigger('click')
+    await flushPromises()
+
+    expect(api.getAthenaEvolutionPlan).toHaveBeenCalledWith('project-1', {
+      mode: 'window',
+      chapter_limit: 1,
+      plotline_limit: 20,
+      milestone_offset: 80,
+      milestone_limit: 80,
+      foreshadowing_limit: 1,
     })
   })
 

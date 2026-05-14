@@ -426,6 +426,20 @@ async function loadNarrativeChapterWindow(payload: { offset: number; limit: numb
   })
 }
 
+async function loadNarrativeMilestoneWindow(payload: { offset: number; limit: number }) {
+  const offset = Number(payload.offset)
+  const limit = Number(payload.limit)
+  if (!Number.isFinite(offset) || !Number.isFinite(limit) || limit <= 0) return
+  await athena.loadEvolutionPlan(pid.value, {
+    mode: 'window',
+    chapter_limit: 1,
+    plotline_limit: 20,
+    milestone_offset: Math.max(0, Math.floor(offset)),
+    milestone_limit: Math.max(1, Math.floor(limit)),
+    foreshadowing_limit: 1,
+  })
+}
+
 async function loadNarrativeForeshadowingWindow(payload: { offset: number; limit: number }) {
   const offset = Number(payload.offset)
   const limit = Number(payload.limit)
@@ -574,6 +588,7 @@ function closeChat() {
             :view="narrativeView"
             :loading="narrativePlanLoading"
             @load-chapter-window="loadNarrativeChapterWindow"
+            @load-milestone-window="loadNarrativeMilestoneWindow"
             @load-foreshadowing-window="loadNarrativeForeshadowingWindow"
           />
         </template>

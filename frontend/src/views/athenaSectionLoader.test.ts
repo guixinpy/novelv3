@@ -203,6 +203,21 @@ describe('createAthenaSectionLoader', () => {
     })
   })
 
+  it('loads a bounded storyline milestone window for the narrative storyline view', async () => {
+    const { athena, loader } = createLoaderMocks(null)
+
+    await loader.loadRouteData(routeState({ section: 'narrative', view: 'storyline' }))
+
+    expect(athena.loadEvolutionPlan).toHaveBeenCalledWith('project-1', {
+      mode: 'window',
+      chapter_limit: 1,
+      plotline_limit: 20,
+      milestone_offset: 0,
+      milestone_limit: 80,
+      foreshadowing_limit: 1,
+    })
+  })
+
   it('loads a bounded foreshadowing window for the narrative foreshadowing view', async () => {
     const { athena, loader } = createLoaderMocks(null)
 

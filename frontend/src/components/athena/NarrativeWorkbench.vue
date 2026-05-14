@@ -17,6 +17,10 @@ interface StorylinePlotline {
   name: string
   type: string
   milestones: StorylineMilestone[]
+  milestonesTotal: number | null
+  milestonesOffset: number | null
+  milestonesLimit: number | null
+  milestonesHasMore: boolean
 }
 
 const props = defineProps<{
@@ -28,6 +32,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   loadChapterWindow: [payload: { offset: number; limit: number }]
+  loadMilestoneWindow: [payload: { offset: number; limit: number }]
   loadForeshadowingWindow: [payload: { offset: number; limit: number }]
 }>()
 
@@ -68,6 +73,10 @@ const plotlines = computed<StorylinePlotline[]>(() =>
       key: toText(plotline.name, `plotline-${index}`),
       name: toText(plotline.name, '未命名线索'),
       type: toText(plotline.type, '未分类'),
+      milestonesTotal: toNumber(plotline.milestones_total),
+      milestonesOffset: toNumber(plotline.milestones_offset),
+      milestonesLimit: toNumber(plotline.milestones_limit),
+      milestonesHasMore: plotline.milestones_has_more === true,
       milestones: asRecords(plotline.milestones)
         .map((milestone, milestoneIndex) => ({
           key: `${index}-${milestoneIndex}`,
@@ -317,6 +326,7 @@ function togglePlotline(key: string) {
 }
 
 function visiblePlotlineMilestones(plotline: StorylinePlotline) {
+  if (usesServerMilestoneWindow(plotline)) return plotline.milestones
   const start = plotlineMilestoneWindowStart(plotline.key)
   return plotline.milestones.slice(start, start + STORYLINE_MILESTONE_WINDOW_SIZE)
 }
@@ -326,23 +336,45 @@ function plotlineMilestoneWindowStart(key: string) {
 }
 
 function plotlineMilestoneWindowEnd(plotline: StorylinePlotline) {
+  if (usesServerMilestoneWindow(plotline)) {
+    return Math.min((plotline.milestonesOffset ?? 0) + plotline.milestones.length, plotlineMilestoneTotal(plotline))
+  }
   return Math.min(plotlineMilestoneWindowStart(plotline.key) + STORYLINE_MILESTONE_WINDOW_SIZE, plotline.milestones.length)
 }
 
 function plotlineMilestoneWindowLabel(plotline: StorylinePlotline) {
+  if (usesServerMilestoneWindow(plotline)) {
+    const start = (plotline.milestonesOffset ?? 0) + 1
+    return `当前显示 ${start}-${plotlineMilestoneWindowEnd(plotline)} / ${plotlineMilestoneTotal(plotline)} 个节点`
+  }
   const start = plotlineMilestoneWindowStart(plotline.key)
   return `当前显示 ${start + 1}-${plotlineMilestoneWindowEnd(plotline)} / ${plotline.milestones.length} 个节点`
 }
 
 function canPagePlotlineMilestonesPrevious(plotline: StorylinePlotline) {
+  if (usesServerMilestoneWindow(plotline)) return (plotline.milestonesOffset ?? 0) > 0
   return plotlineMilestoneWindowStart(plotline.key) > 0
 }
 
 function canPagePlotlineMilestonesNext(plotline: StorylinePlotline) {
+  if (usesServerMilestoneWindow(plotline)) {
+    if (plotline.milestonesHasMore) return true
+    return (plotline.milestonesOffset ?? 0) + plotline.milestones.length < plotlineMilestoneTotal(plotline)
+  }
   return plotlineMilestoneWindowEnd(plotline) < plotline.milestones.length
 }
 
 function pagePlotlineMilestones(plotline: StorylinePlotline, direction: -1 | 1) {
+  if (usesServerMilestoneWindow(plotline)) {
+    const currentOffset = plotline.milestonesOffset ?? 0
+    const limit = plotline.milestonesLimit ?? STORYLINE_MILESTONE_WINDOW_SIZE
+    const maxStart = Math.max(0, plotlineMilestoneTotal(plotline) - limit)
+    const nextOffset = direction > 0
+      ? Math.min(currentOffset + limit, maxStart)
+      : Math.max(currentOffset - limit, 0)
+    requestMilestoneWindow(nextOffset, limit)
+    return
+  }
   const current = plotlineMilestoneWindowStart(plotline.key)
   const maxStart = Math.max(0, plotline.milestones.length - STORYLINE_MILESTONE_WINDOW_SIZE)
   const nextStart = direction > 0
@@ -352,6 +384,23 @@ function pagePlotlineMilestones(plotline: StorylinePlotline, direction: -1 | 1) 
     ...plotlineMilestoneWindowStarts.value,
     [plotline.key]: nextStart,
   }
+}
+
+function plotlineMilestoneTotal(plotline: StorylinePlotline) {
+  return plotline.milestonesTotal !== null && plotline.milestonesTotal >= 0
+    ? plotline.milestonesTotal
+    : plotline.milestones.length
+}
+
+function usesServerMilestoneWindow(plotline: StorylinePlotline) {
+  return plotline.milestonesOffset !== null && plotlineMilestoneTotal(plotline) > plotline.milestones.length
+}
+
+function requestMilestoneWindow(offset: number, limit: number) {
+  emit('loadMilestoneWindow', {
+    offset: Math.max(0, offset),
+    limit: Math.max(1, limit),
+  })
 }
 
 const foreshadowingWindowEnd = computed(() =>
@@ -529,12 +578,12 @@ watch(foreshadowingItems, (items) => {
               {{ isPlotlineCollapsed(plotline.key) ? '+' : '-' }}
             </button>
             <div>
-              <span>{{ plotlineTypeLabel(plotline.type) }} · {{ plotline.milestones.length }} 个节点</span>
+              <span>{{ plotlineTypeLabel(plotline.type) }} · {{ plotlineMilestoneTotal(plotline) }} 个节点</span>
               <h3>{{ plotline.name }}</h3>
             </div>
           </header>
           <div
-            v-if="plotline.milestones.length > STORYLINE_MILESTONE_WINDOW_SIZE && !isPlotlineCollapsed(plotline.key)"
+            v-if="(plotline.milestones.length > STORYLINE_MILESTONE_WINDOW_SIZE || usesServerMilestoneWindow(plotline)) && !isPlotlineCollapsed(plotline.key)"
             class="narrative-workbench__milestone-window"
           >
             <span>{{ plotlineMilestoneWindowLabel(plotline) }}</span>
