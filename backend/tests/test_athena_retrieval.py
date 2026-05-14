@@ -600,6 +600,43 @@ def test_reindex_batches_retrieval_rows_as_insert_mappings(db_session, monkeypat
     )
 
 
+def test_reindex_uses_large_write_batches_for_many_sources(db_session, monkeypatch):
+    project = Project(name="Retrieval Batch Throughput")
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    db_session.add_all(
+        [
+            ChapterContent(
+                project_id=project.id,
+                chapter_index=index,
+                title=f"第{index}章",
+                content=f"第{index}章，星环钥匙线索推进。",
+                word_count=20,
+                status="generated",
+            )
+            for index in range(1, 251)
+        ]
+    )
+    db_session.commit()
+    document_mapping_calls: list[int] = []
+    original_bulk_insert_mappings = db_session.bulk_insert_mappings
+
+    def count_bulk_insert_mappings(model, mappings, *args, **kwargs):
+        mapping_list = list(mappings)
+        if model.__name__ == "RetrievalDocument":
+            document_mapping_calls.append(len(mapping_list))
+        return original_bulk_insert_mappings(model, mapping_list, *args, **kwargs)
+
+    monkeypatch.setattr(db_session, "bulk_insert_mappings", count_bulk_insert_mappings)
+
+    result = reindex_project_retrieval(db_session, project.id)
+
+    assert result["indexed"]["documents"] == 250
+    assert len(document_mapping_calls) <= 2
+    assert sum(document_mapping_calls) == 250
+
+
 def test_reindex_batches_embedding_provider_calls_across_sources(db_session, monkeypatch):
     import app.core.athena_retrieval as athena_retrieval
 
