@@ -1069,7 +1069,7 @@ def _source_hash(source: RetrievalSource) -> str:
         "chapter_index": source.chapter_index,
         "profile_version": source.profile_version,
         "metadata": source.metadata,
-        "text": source.text or "",
+        "text_sha256": hashlib.sha256((source.text or "").encode("utf-8")).hexdigest(),
     }
     return hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")).hexdigest()
 

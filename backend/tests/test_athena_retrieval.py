@@ -442,6 +442,38 @@ def test_reindex_rebuilds_chapter_document_when_source_metadata_changes(db_sessi
     assert after_document.title == "新标题"
 
 
+def test_source_hash_does_not_json_serialize_full_text(monkeypatch):
+    import hashlib
+    import app.core.athena_retrieval as athena_retrieval
+
+    captured_payloads: list[dict] = []
+    original_dumps = athena_retrieval.json.dumps
+
+    def capture_dumps(payload, *args, **kwargs):
+        captured_payloads.append(payload)
+        return original_dumps(payload, *args, **kwargs)
+
+    monkeypatch.setattr(athena_retrieval.json, "dumps", capture_dumps)
+    source = athena_retrieval.RetrievalSource(
+        source_type="chapter",
+        source_id="chapter-1",
+        source_ref="chapter:1",
+        title="第一章",
+        text="很长的正文" * 1000,
+        chapter_index=1,
+        profile_version=None,
+        metadata={"status": "generated"},
+    )
+
+    value = athena_retrieval._source_hash(source)
+
+    assert value
+    assert captured_payloads
+    payload = captured_payloads[0]
+    assert "text" not in payload
+    assert payload["text_sha256"] == hashlib.sha256(source.text.encode("utf-8")).hexdigest()
+
+
 def test_reindex_skips_embedding_readiness_scan_without_existing_documents(db_session):
     project = Project(name="First Retrieval Reindex")
     db_session.add(project)
