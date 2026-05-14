@@ -161,7 +161,39 @@ describe('createAthenaSectionLoader', () => {
     await loader.loadRouteData(routeState({ section: 'narrative', view: 'storyline' }))
 
     expect(athena.loadTimeline).toHaveBeenCalledWith('project-1')
-    expect(athena.loadEvolutionPlan).toHaveBeenCalledWith('project-1')
+    expect(athena.loadEvolutionPlan).toHaveBeenCalledWith('project-1', {
+      mode: 'window',
+      chapter_offset: 0,
+      chapter_limit: 50,
+      plotline_limit: 1,
+      foreshadowing_limit: 1,
+    })
+    expect(athena.loadEvolutionPlan).toHaveBeenCalledWith('project-1', {
+      mode: 'window',
+      chapter_limit: 1,
+      plotline_limit: 20,
+      milestone_offset: 0,
+      milestone_limit: 80,
+      foreshadowing_limit: 1,
+    })
+  })
+
+  it('loads only a bounded chapter fallback when timeline events are missing', async () => {
+    const { athena, loader } = createLoaderMocks(null)
+    athena.timeline = null as any
+    athena.loadTimeline = vi.fn(async () => {
+      athena.timeline = { events: [], anchors: [] } as any
+    })
+
+    await loader.loadRouteData(routeState({ section: 'narrative', view: 'timeline' }))
+
+    expect(athena.loadEvolutionPlan).toHaveBeenCalledWith('project-1', {
+      mode: 'window',
+      chapter_offset: 0,
+      chapter_limit: 50,
+      plotline_limit: 1,
+      foreshadowing_limit: 1,
+    })
   })
 
   it('does not load full evolution plan for timeline when timeline events are available', async () => {

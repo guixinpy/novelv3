@@ -92,7 +92,9 @@ export function createAthenaSectionLoader(options: AthenaSectionLoaderOptions) {
     }
     if (routeState.section === 'narrative' && routeState.view === 'timeline') {
       if (!options.athena.timeline) await options.athena.loadTimeline(id)
-      if (!timelineHasEvents() && !options.athena.evolutionPlan) await options.athena.loadEvolutionPlan(id)
+      if (!timelineHasEvents() && !options.athena.evolutionPlan) {
+        await options.athena.loadEvolutionPlan(id, chapterPlanWindowQuery())
+      }
     }
     if (routeState.section === 'narrative' && routeState.view === 'graph') {
       if (!options.athena.timeline) await options.athena.loadTimeline(id)
