@@ -239,6 +239,7 @@ def refresh_longform_memory_for_chapter(
     *,
     arc_size: int = DEFAULT_ARC_SIZE,
     volume_size: int = DEFAULT_VOLUME_SIZE,
+    reconcile_word_count: bool = True,
 ) -> dict[str, Any]:
     project = _require_project(db, project_id)
     chapter = _chapter_for_memory(db, project_id, chapter_index)
@@ -274,12 +275,19 @@ def refresh_longform_memory_for_chapter(
         memories.append(
             _range_memory(project_id, memory_type="volume", start=volume_chapters[0].chapter_index, chapters=volume_chapters)
         )
-    memories.append(_global_memory_from_stats(db, project_id))
+    memories.append(
+        _global_memory_from_stats(
+            db,
+            project_id,
+            current_word_count=None if reconcile_word_count else int(project.current_word_count or 0),
+        )
+    )
     db.add_all(memories)
     db.flush()
     updated_scope_keys = [memory.scope_key for memory in memories]
     updated_memory_ids = [memory.id for memory in memories]
-    reconcile_project_word_count(db, project, commit=False)
+    if reconcile_word_count:
+        reconcile_project_word_count(db, project, commit=False)
     db.commit()
     db.refresh(project)
     counts = _memory_type_counts(db, project_id)
@@ -504,17 +512,34 @@ def _global_memory(project_id: str, chapters: list[Any]) -> LongformMemory:
     )
 
 
-def _global_memory_from_stats(db: Session, project_id: str) -> LongformMemory:
-    chapter_count, word_count, first_chapter_index, latest_chapter_index = (
-        db.query(
-            func.count(ChapterContent.id),
-            func.coalesce(func.sum(ChapterContent.word_count), 0),
-            func.min(ChapterContent.chapter_index),
-            func.max(ChapterContent.chapter_index),
+def _global_memory_from_stats(
+    db: Session,
+    project_id: str,
+    *,
+    current_word_count: int | None = None,
+) -> LongformMemory:
+    if current_word_count is None:
+        chapter_count, word_count, first_chapter_index, latest_chapter_index = (
+            db.query(
+                func.count(ChapterContent.id),
+                func.coalesce(func.sum(ChapterContent.word_count), 0),
+                func.min(ChapterContent.chapter_index),
+                func.max(ChapterContent.chapter_index),
+            )
+            .filter(ChapterContent.project_id == project_id)
+            .one()
         )
-        .filter(ChapterContent.project_id == project_id)
-        .one()
-    )
+    else:
+        chapter_count, first_chapter_index, latest_chapter_index = (
+            db.query(
+                func.count(ChapterContent.id),
+                func.min(ChapterContent.chapter_index),
+                func.max(ChapterContent.chapter_index),
+            )
+            .filter(ChapterContent.project_id == project_id)
+            .one()
+        )
+        word_count = current_word_count
     chapter_count = int(chapter_count or 0)
     word_count = int(word_count or 0)
     return LongformMemory(

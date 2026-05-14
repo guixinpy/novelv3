@@ -277,7 +277,7 @@ def test_generate_chapter_rejects_empty_content_after_normalization(mock_complet
 
 @patch("app.api.chapters.load_api_key", return_value="sk-test")
 @patch("app.api.chapters.ai_service.complete", new_callable=AsyncMock)
-def test_generate_chapter_reconciles_word_count_with_aggregate_query(mock_complete, mock_key, client, db_session):
+def test_generate_chapter_updates_project_word_count_incrementally(mock_complete, mock_key, client, db_session):
     pid = _create_project_with_setup(client)
     project = db_session.get(Project, pid)
     for index in range(1, 121):
@@ -291,6 +291,7 @@ def test_generate_chapter_reconciles_word_count_with_aggregate_query(mock_comple
                 status="generated",
             )
         )
+    project.current_word_count = 120000
     db_session.commit()
     mock_complete.return_value.content = "新增章节正文"
     mock_complete.return_value.model = "deepseek-chat"
@@ -310,6 +311,12 @@ def test_generate_chapter_reconciles_word_count_with_aggregate_query(mock_comple
     db_session.refresh(project)
     assert chapter.chapter_index == 121
     assert project.current_word_count == 120000 + chapter.word_count
+    aggregate_word_count_selects = [
+        statement
+        for statement in statements
+        if "sum(chapter_contents.word_count)" in statement
+    ]
+    assert aggregate_word_count_selects == []
     unbounded_chapter_row_selects = []
     for statement in statements:
         if "select chapter_contents.id" not in statement or "from chapter_contents" not in statement:
@@ -319,6 +326,59 @@ def test_generate_chapter_reconciles_word_count_with_aggregate_query(mock_comple
         if "chapter_contents.project_id" in where_clause and "chapter_contents.chapter_index =" not in where_clause:
             unbounded_chapter_row_selects.append(statement)
     assert not unbounded_chapter_row_selects
+
+
+@patch("app.api.chapters.load_api_key", return_value="sk-test")
+@patch("app.api.chapters.ai_service.complete", new_callable=AsyncMock)
+def test_replace_chapter_updates_project_word_count_incrementally(mock_complete, mock_key, client, db_session):
+    pid = _create_project_with_setup(client)
+    project = db_session.get(Project, pid)
+    db_session.add_all(
+        [
+            ChapterContent(
+                project_id=pid,
+                chapter_index=1,
+                title="第1章",
+                content="旧正文。",
+                word_count=1000,
+                status="generated",
+            ),
+            ChapterContent(
+                project_id=pid,
+                chapter_index=2,
+                title="第2章",
+                content="已有正文。",
+                word_count=2000,
+                status="generated",
+            ),
+        ]
+    )
+    project.current_word_count = 3000
+    db_session.commit()
+    mock_complete.return_value.content = "replacement chapter words"
+    mock_complete.return_value.model = "deepseek-chat"
+    mock_complete.return_value.prompt_tokens = 100
+    mock_complete.return_value.completion_tokens = 200
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(statement.lower())
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        chapter = asyncio.run(create_or_replace_chapter(db_session, pid, 2))
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    db_session.refresh(project)
+    assert chapter.chapter_index == 2
+    assert project.current_word_count == 1000 + chapter.word_count
+    aggregate_word_count_selects = [
+        statement
+        for statement in statements
+        if "sum(chapter_contents.word_count)" in statement
+    ]
+    assert aggregate_word_count_selects == []
 
 
 def test_chapter_prompt_outline_target_does_not_select_full_outline_json(db_session):

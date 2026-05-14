@@ -2,7 +2,6 @@ import re
 import time
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.config import load_api_key
@@ -188,7 +187,12 @@ def _safe_mark_chapter_trace_failed(
 
 def _safe_refresh_longform_maintenance(db: Session, *, project_id: str, chapter_index: int) -> None:
     try:
-        refresh_result = refresh_longform_memory_for_chapter(db, project_id, chapter_index)
+        refresh_result = refresh_longform_memory_for_chapter(
+            db,
+            project_id,
+            chapter_index,
+            reconcile_word_count=False,
+        )
         sync_longform_memory_retrieval_documents(
             db,
             project_id,
@@ -263,6 +267,7 @@ async def create_or_replace_chapter(
         raise HTTPException(status_code=502, detail=EMPTY_CHAPTER_CONTENT_ERROR)
 
     word_count = count_words(generated_content)
+    previous_word_count = int(existing.word_count or 0) if existing else 0
     if existing:
         chapter = existing
         chapter.title = title
@@ -291,12 +296,7 @@ async def create_or_replace_chapter(
         db.add(chapter)
 
     db.flush()
-    total_words = (
-        db.query(func.coalesce(func.sum(ChapterContent.word_count), 0))
-        .filter(ChapterContent.project_id == project_id)
-        .scalar()
-    )
-    project.current_word_count = int(total_words or 0)
+    project.current_word_count = max(0, int(project.current_word_count or 0) - previous_word_count + word_count)
     project.status = "writing"
     project.current_phase = "content"
 
