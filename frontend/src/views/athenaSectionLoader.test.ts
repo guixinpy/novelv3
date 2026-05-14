@@ -27,6 +27,8 @@ function createLoaderMocks(setupSummary: unknown) {
     loadConsistencyIssues: vi.fn(async () => undefined),
     loadOptimization: vi.fn(async () => undefined),
     loadLongformMaintenanceDiagnostics: vi.fn(async () => undefined),
+    timeline: null as any,
+    evolutionPlan: null as any,
   }
   const worldModel = {
     dashboard: null as any,
@@ -160,6 +162,22 @@ describe('createAthenaSectionLoader', () => {
 
     expect(athena.loadTimeline).toHaveBeenCalledWith('project-1')
     expect(athena.loadEvolutionPlan).toHaveBeenCalledWith('project-1')
+  })
+
+  it('does not load full evolution plan for timeline when timeline events are available', async () => {
+    const { athena, loader } = createLoaderMocks(null)
+    athena.timeline = null as any
+    athena.loadTimeline = vi.fn(async () => {
+      athena.timeline = {
+        events: [{ id: 'event-1', chapter_index: 1, description: '已存在时间线事件' }],
+        anchors: [],
+      } as any
+    })
+
+    await loader.loadRouteData(routeState({ section: 'narrative', view: 'timeline' }))
+
+    expect(athena.loadTimeline).toHaveBeenCalledWith('project-1')
+    expect(athena.loadEvolutionPlan).not.toHaveBeenCalled()
   })
 
   it('loads timeline and evolution plan for the narrative graph view', async () => {
