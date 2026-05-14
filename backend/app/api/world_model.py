@@ -251,7 +251,13 @@ def get_world_model_proposal_review_queue(
 
 
 @router.get("/proposal-bundles/{bundle_id}", response_model=ProposalBundleDetailOut)
-def get_world_proposal_bundle(project_id: str, bundle_id: str, db: Session = Depends(get_db)):
+def get_world_proposal_bundle(
+    project_id: str,
+    bundle_id: str,
+    item_offset: int = Query(0, ge=0),
+    item_limit: int = Query(100, ge=1, le=500),
+    db: Session = Depends(get_db),
+):
     _require_project(db=db, project_id=project_id)
     bundle = _get_project_bundle_or_404(db=db, project_id=project_id, bundle_id=bundle_id)
     _require_current_profile_scope(
@@ -261,7 +267,13 @@ def get_world_proposal_bundle(project_id: str, bundle_id: str, db: Session = Dep
         profile_version=bundle.profile_version,
         resource_label="Proposal bundle",
     )
-    return _build_bundle_detail(db=db, project_id=project_id, bundle_id=bundle_id)
+    return _build_bundle_detail(
+        db=db,
+        project_id=project_id,
+        bundle_id=bundle_id,
+        item_offset=item_offset,
+        item_limit=item_limit,
+    )
 
 
 @router.post("/proposal-items/{proposal_item_id}/review", response_model=ProposalReviewOut)
@@ -626,9 +638,16 @@ def _detect_item_conflicts(
     return conflicts
 
 
-def _build_bundle_detail(*, db: Session, project_id: str, bundle_id: str) -> ProposalBundleDetailOut:
+def _build_bundle_detail(
+    *,
+    db: Session,
+    project_id: str,
+    bundle_id: str,
+    item_offset: int = 0,
+    item_limit: int = 100,
+) -> ProposalBundleDetailOut:
     bundle = _get_project_bundle_or_404(db=db, project_id=project_id, bundle_id=bundle_id)
-    items = (
+    item_query = (
         db.query(WorldProposalItem)
         .filter(
             WorldProposalItem.project_id == project_id,
@@ -636,10 +655,17 @@ def _build_bundle_detail(*, db: Session, project_id: str, bundle_id: str) -> Pro
             WorldProposalItem.profile_version == bundle.profile_version,
             WorldProposalItem.bundle_id == bundle_id,
         )
+    )
+    items_total = item_query.count()
+    items = (
+        item_query
         .order_by(WorldProposalItem.created_at.asc(), WorldProposalItem.id.asc())
+        .offset(item_offset)
+        .limit(item_limit)
         .all()
     )
-    reviews = (
+    visible_item_ids = [item.id for item in items]
+    review_query = (
         db.query(WorldProposalReview)
         .filter(
             WorldProposalReview.project_id == project_id,
@@ -647,9 +673,15 @@ def _build_bundle_detail(*, db: Session, project_id: str, bundle_id: str) -> Pro
             WorldProposalReview.profile_version == bundle.profile_version,
             WorldProposalReview.bundle_id == bundle_id,
         )
-        .order_by(WorldProposalReview.created_at.asc(), WorldProposalReview.id.asc())
-        .all()
     )
+    reviews = []
+    if visible_item_ids:
+        reviews = (
+            review_query
+            .filter(WorldProposalReview.proposal_item_id.in_(visible_item_ids))
+            .order_by(WorldProposalReview.created_at.asc(), WorldProposalReview.id.asc())
+            .all()
+        )
     impact_snapshots = (
         db.query(WorldProposalImpactScopeSnapshot)
         .filter(
@@ -673,6 +705,9 @@ def _build_bundle_detail(*, db: Session, project_id: str, bundle_id: str) -> Pro
     return ProposalBundleDetailOut(
         bundle=bundle,
         items=items,
+        items_total=items_total,
+        items_offset=item_offset,
+        items_limit=item_limit,
         reviews=reviews,
         impact_snapshots=impact_snapshots,
         conflicts=conflicts,

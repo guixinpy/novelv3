@@ -620,6 +620,48 @@ def test_proposal_detail_returns_only_latest_impact_snapshot(client, db_session)
     assert len(response.json()["impact_snapshots"]) == 1
 
 
+def test_proposal_detail_paginates_large_item_lists(client, db_session):
+    project, profile_version = _seed_profile(db_session)
+    bundle = create_bundle(
+        db=db_session,
+        project_id=project.id,
+        project_profile_version_id=profile_version.id,
+        profile_version=profile_version.version,
+        created_by="writer.alpha",
+        title="Large proposal bundle",
+    )
+    for index in range(150):
+        write_candidate_fact(
+            db=db_session,
+            bundle_id=bundle.id,
+            created_by="writer.alpha",
+            candidate=_candidate_payload(
+                claim_id=f"claim.hero.rank.{index + 1}",
+                subject_ref=f"char.hero.{index + 1}",
+                predicate="rank",
+                value=f"rank-{index + 1}",
+            ),
+        )
+    calculate_bundle_impact_scope(db=db_session, bundle_id=bundle.id)
+
+    first_page = client.get(f"/api/v1/projects/{project.id}/world-model/proposal-bundles/{bundle.id}")
+    second_page = client.get(
+        f"/api/v1/projects/{project.id}/world-model/proposal-bundles/{bundle.id}?item_offset=100&item_limit=25"
+    )
+
+    assert first_page.status_code == 200
+    assert len(first_page.json()["items"]) == 100
+    assert first_page.json()["items_total"] == 150
+    assert first_page.json()["items_offset"] == 0
+    assert first_page.json()["items_limit"] == 100
+
+    assert second_page.status_code == 200
+    assert len(second_page.json()["items"]) == 25
+    assert second_page.json()["items_total"] == 150
+    assert second_page.json()["items_offset"] == 100
+    assert second_page.json()["items_limit"] == 25
+
+
 def test_world_model_overview_returns_nulls_when_project_has_no_world_data(client):
     create_response = client.post("/api/v1/projects", json={"name": "No World Data"})
     project_id = create_response.json()["id"]

@@ -16,6 +16,8 @@ import type {
 
 type RequestLane = 'dashboard' | 'overview' | 'facts' | 'bundles' | 'detail' | 'queue'
 const FACT_CLAIMS_PAGE_SIZE = 200
+const PROPOSAL_DETAIL_ITEM_PAGE_SIZE = 100
+const PROPOSAL_DETAIL_ITEM_MAX_REFRESH_LIMIT = 500
 
 interface RequestSnapshot {
   projectId: string
@@ -27,6 +29,7 @@ interface BundleDetailLoadOptions {
   clearOnFailure?: boolean
   suppressError?: boolean
   requestSnapshot?: RequestSnapshot
+  itemLimit?: number
 }
 
 interface PendingActionCounts {
@@ -64,6 +67,7 @@ export const useWorldModelStore = defineStore('worldModel', () => {
   })
   const loadingMoreBundles = ref(false)
   const loadingMoreFactClaims = ref(false)
+  const loadingMoreBundleItems = ref(false)
   const loaded = ref(false)
   const error = ref('')
   const lastFactClaimsError = ref('')
@@ -285,6 +289,7 @@ export const useWorldModelStore = defineStore('worldModel', () => {
     setLanesLoading(['dashboard', 'overview', 'facts', 'bundles', 'detail', 'queue'], false)
     loadingMoreBundles.value = false
     loadingMoreFactClaims.value = false
+    loadingMoreBundleItems.value = false
     loaded.value = false
     error.value = ''
     lastFactClaimsError.value = ''
@@ -458,9 +463,16 @@ export const useWorldModelStore = defineStore('worldModel', () => {
     const snapshot = options.requestSnapshot ?? captureRequest(projectId, ['detail'])
     const ownsDetailLane = !options.requestSnapshot
     if (ownsDetailLane) setLaneLoading('detail', true)
+    const itemLimit = Math.min(
+      PROPOSAL_DETAIL_ITEM_MAX_REFRESH_LIMIT,
+      Math.max(PROPOSAL_DETAIL_ITEM_PAGE_SIZE, options.itemLimit ?? PROPOSAL_DETAIL_ITEM_PAGE_SIZE),
+    )
 
     try {
-      const detail = await api.getWorldProposalBundle(projectId, bundleId)
+      const detail = await api.getWorldProposalBundle(projectId, bundleId, {
+        item_offset: 0,
+        item_limit: itemLimit,
+      })
       if (!isLatestRequest(snapshot, 'detail')) return ''
       selectedBundleId.value = bundleId
       selectedBundleDetail.value = detail
@@ -487,6 +499,68 @@ export const useWorldModelStore = defineStore('worldModel', () => {
   async function selectBundle(projectId: string, bundleId: string) {
     ensureProjectScope(projectId)
     await loadBundleDetail(projectId, bundleId, { clearOnFailure: true })
+  }
+
+  function mergeBundleDetailItems(current: ProposalBundleDetail, page: ProposalBundleDetail): ProposalBundleDetail {
+    const seenItemIds = new Set(current.items.map((item) => item.id))
+    const items = [
+      ...current.items,
+      ...page.items.filter((item) => !seenItemIds.has(item.id)),
+    ]
+    const seenReviewIds = new Set(current.reviews.map((review) => review.id))
+    const reviews = [
+      ...current.reviews,
+      ...page.reviews.filter((review) => !seenReviewIds.has(review.id)),
+    ]
+    const conflictKey = (conflict: { item_id: string; conflict_type: string; detail: string }) =>
+      `${conflict.item_id}:${conflict.conflict_type}:${conflict.detail}`
+    const seenConflictKeys = new Set(current.conflicts.map(conflictKey))
+    const conflicts = [
+      ...current.conflicts,
+      ...page.conflicts.filter((conflict) => !seenConflictKeys.has(conflictKey(conflict))),
+    ]
+    return {
+      ...page,
+      items,
+      items_total: page.items_total ?? current.items_total ?? items.length,
+      items_offset: 0,
+      items_limit: items.length,
+      reviews,
+      conflicts,
+    }
+  }
+
+  async function loadMoreBundleDetailItems(projectId: string) {
+    const current = selectedBundleDetail.value
+    const bundleId = selectedBundleId.value ?? current?.bundle.id
+    if (!current || !bundleId || loadingMoreBundleItems.value) return
+    const total = current.items_total ?? current.items.length
+    if (current.items.length >= total) return
+
+    ensureProjectScope(projectId)
+    const scope = {
+      projectId,
+      version: scopeVersion.value,
+    }
+    const nextOffset = current.items.length
+    loadingMoreBundleItems.value = true
+    try {
+      const page = await api.getWorldProposalBundle(projectId, bundleId, {
+        item_offset: nextOffset,
+        item_limit: PROPOSAL_DETAIL_ITEM_PAGE_SIZE,
+      })
+      if (!isActiveScope(scope.projectId, scope.version) || selectedBundleId.value !== bundleId) return
+      selectedBundleDetail.value = mergeBundleDetailItems(current, page)
+      error.value = ''
+    } catch (err) {
+      if (isActiveScope(scope.projectId, scope.version) && selectedBundleId.value === bundleId) {
+        error.value = toErrorMessage(err)
+      }
+    } finally {
+      if (isActiveScope(scope.projectId, scope.version) && selectedBundleId.value === bundleId) {
+        loadingMoreBundleItems.value = false
+      }
+    }
   }
 
   async function refreshBundles(projectId: string, requestSnapshot?: RequestSnapshot) {
@@ -593,9 +667,13 @@ export const useWorldModelStore = defineStore('worldModel', () => {
     }
 
     if (selectedBundleId.value) {
+      const itemLimit = selectedBundleDetail.value
+        ? selectedBundleDetail.value.items.length
+        : PROPOSAL_DETAIL_ITEM_PAGE_SIZE
       const detailError = await loadBundleDetail(projectId, selectedBundleId.value, {
         requestSnapshot: snapshot,
         suppressError: true,
+        itemLimit,
       })
       if (detailError) {
         refreshError = captureRefreshError(refreshError, detailError)
@@ -700,6 +778,7 @@ export const useWorldModelStore = defineStore('worldModel', () => {
     laneLoading,
     loadingMoreBundles,
     loadingMoreFactClaims,
+    loadingMoreBundleItems,
     loading,
     loaded,
     error,
@@ -716,6 +795,7 @@ export const useWorldModelStore = defineStore('worldModel', () => {
     loadMoreFactClaims,
     loadSetupPanelData,
     selectBundle,
+    loadMoreBundleDetailItems,
     loadSubjectKnowledge,
     loadChapterSnapshot,
     loadMoreBundles,

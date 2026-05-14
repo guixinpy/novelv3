@@ -193,6 +193,9 @@ class PaginatedProposalBundlesOut(BaseModel):
 class ProposalBundleDetailOut(BaseModel):
     bundle: ProposalBundleOut
     items: list[ProposalItemOut] = Field(default_factory=list)
+    items_total: int = 0
+    items_offset: int = 0
+    items_limit: int = 100
     reviews: list[ProposalReviewOut] = Field(default_factory=list)
     impact_snapshots: list[ProposalImpactScopeSnapshotOut] = Field(default_factory=list)
     conflicts: list[ProposalItemConflictOut] = Field(default_factory=list)

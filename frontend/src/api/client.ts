@@ -93,7 +93,13 @@ export const api = {
   },
   getWorldProposalReviewQueue: (id: string) =>
     request<ProposalReviewQueue>(`/projects/${id}/world-model/proposal-review-queue`),
-  getWorldProposalBundle: (id: string, bundleId: string) => request<ProposalBundleDetail>(`/projects/${id}/world-model/proposal-bundles/${bundleId}`),
+  getWorldProposalBundle: (id: string, bundleId: string, params?: { item_offset?: number; item_limit?: number }) => {
+    const query = new URLSearchParams()
+    if (params?.item_offset !== undefined) query.set('item_offset', String(params.item_offset))
+    if (params?.item_limit !== undefined) query.set('item_limit', String(params.item_limit))
+    const qs = query.toString()
+    return request<ProposalBundleDetail>(`/projects/${id}/world-model/proposal-bundles/${bundleId}${qs ? `?${qs}` : ''}`)
+  },
   reviewWorldProposalItem: (id: string, itemId: string, data: ProposalReviewRequest) =>
     request<ProposalReview>(`/projects/${id}/world-model/proposal-items/${itemId}/review`, {
       method: 'POST',
@@ -132,8 +138,13 @@ export const api = {
     const qs = query.toString()
     return request<PaginatedProposalBundles>(`/projects/${id}/athena/evolution/proposals${qs ? `?${qs}` : ''}`)
   },
-  getAthenaProposalDetail: (id: string, bundleId: string) =>
-    request<ProposalBundleDetail>(`/projects/${id}/athena/evolution/proposals/${bundleId}`),
+  getAthenaProposalDetail: (id: string, bundleId: string, params?: { item_offset?: number; item_limit?: number }) => {
+    const query = new URLSearchParams()
+    if (params?.item_offset !== undefined) query.set('item_offset', String(params.item_offset))
+    if (params?.item_limit !== undefined) query.set('item_limit', String(params.item_limit))
+    const qs = query.toString()
+    return request<ProposalBundleDetail>(`/projects/${id}/athena/evolution/proposals/${bundleId}${qs ? `?${qs}` : ''}`)
+  },
   reviewAthenaProposalItem: (id: string, itemId: string, data: ProposalReviewRequest) =>
     request<ProposalReview>(`/projects/${id}/athena/evolution/proposals/${itemId}/review`, {
       method: 'POST',

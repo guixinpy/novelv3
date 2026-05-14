@@ -4,6 +4,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ProposalWorkbench from './ProposalWorkbench.vue'
 import { useWorldModelStore } from '../../stores/worldModel'
+import { api } from '../../api/client'
 
 vi.mock('../../api/client', () => ({
   api: {
@@ -133,30 +134,62 @@ describe('ProposalWorkbench', () => {
       updated_at: '2026-04-29T00:00:00Z',
     }
     store.selectedBundleId = bundle.id
+    const firstPageItems = Array.from({ length: 100 }, (_, index) => ({
+      id: `item-${index + 1}`,
+      bundle_id: bundle.id,
+      parent_item_id: null,
+      item_status: 'pending',
+      claim_id: `claim.${index + 1}`,
+      subject_ref: `char.${index + 1}`,
+      predicate: 'presence_count',
+      object_ref_or_value: { count: index + 1 },
+      claim_layer: 'truth',
+      evidence_refs: [`chapter:${index + 1}`],
+      authority_type: 'derived',
+      confidence: 0.8,
+      contract_version: 'world.contract.v1',
+      approved_claim_id: null,
+      created_by: 'athena.chapter_analyzer',
+      created_at: '2026-04-29T00:00:00Z',
+    }))
+    const secondPageItems = Array.from({ length: 50 }, (_, index) => ({
+      id: `item-${index + 101}`,
+      bundle_id: bundle.id,
+      parent_item_id: null,
+      item_status: 'pending',
+      claim_id: `claim.${index + 101}`,
+      subject_ref: `char.${index + 101}`,
+      predicate: 'presence_count',
+      object_ref_or_value: { count: index + 101 },
+      claim_layer: 'truth',
+      evidence_refs: [`chapter:${index + 101}`],
+      authority_type: 'derived',
+      confidence: 0.8,
+      contract_version: 'world.contract.v1',
+      approved_claim_id: null,
+      created_by: 'athena.chapter_analyzer',
+      created_at: '2026-04-29T00:00:00Z',
+    }))
     store.selectedBundleDetail = {
       bundle,
-      items: Array.from({ length: 150 }, (_, index) => ({
-        id: `item-${index + 1}`,
-        bundle_id: bundle.id,
-        parent_item_id: null,
-        item_status: 'pending',
-        claim_id: `claim.${index + 1}`,
-        subject_ref: `char.${index + 1}`,
-        predicate: 'presence_count',
-        object_ref_or_value: { count: index + 1 },
-        claim_layer: 'truth',
-        evidence_refs: [`chapter:${index + 1}`],
-        authority_type: 'derived',
-        confidence: 0.8,
-        contract_version: 'world.contract.v1',
-        approved_claim_id: null,
-        created_by: 'athena.chapter_analyzer',
-        created_at: '2026-04-29T00:00:00Z',
-      })),
+      items: firstPageItems,
+      items_total: 150,
+      items_offset: 0,
+      items_limit: 100,
       reviews: [],
       impact_snapshots: [],
       conflicts: [],
     }
+    vi.mocked(api.getWorldProposalBundle).mockResolvedValue({
+      bundle,
+      items: secondPageItems,
+      items_total: 150,
+      items_offset: 100,
+      items_limit: 100,
+      reviews: [],
+      impact_snapshots: [],
+      conflicts: [],
+    })
 
     const wrapper = mount(ProposalWorkbench, {
       props: { projectId: 'project-1' },
@@ -177,7 +210,13 @@ describe('ProposalWorkbench', () => {
 
     await wrapper.find('[data-testid="show-more-proposal-items"]').trigger('click')
 
-    expect(wrapper.findAll('[data-testid="proposal-item-card"]')).toHaveLength(150)
+    expect(api.getWorldProposalBundle).toHaveBeenCalledWith('project-1', 'bundle-1', {
+      item_offset: 100,
+      item_limit: 100,
+    })
+    await vi.waitFor(() => {
+      expect(wrapper.findAll('[data-testid="proposal-item-card"]')).toHaveLength(150)
+    })
     expect(wrapper.text()).toContain('已显示 150/150 项')
   })
 })

@@ -604,7 +604,10 @@ describe('worldModel store', () => {
     expect(api.getWorldModelDashboard).toHaveBeenCalledWith('project-1')
     expect(api.getWorldModelOverview).toHaveBeenCalledWith('project-1')
     expect(api.listWorldProposalBundles).toHaveBeenCalledWith('project-1', expect.any(Object))
-    expect(api.getWorldProposalBundle).toHaveBeenCalledWith('project-1', 'bundle-1')
+    expect(api.getWorldProposalBundle).toHaveBeenCalledWith('project-1', 'bundle-1', {
+      item_offset: 0,
+      item_limit: 100,
+    })
     expect(store.dashboard?.next_action.action).toBe('inspect_projection')
     expect(store.projection?.facts['char.hero'].rank).toBe('captain')
     expect(store.factClaimsLoaded).toBe(false)

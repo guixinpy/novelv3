@@ -15,7 +15,7 @@ const reviewRows = computed(() => props.detail?.reviews || [])
 const bundleRows = computed(() => props.bundles.slice(0, 20))
 
 const metrics = computed(() => [
-  { label: '候选项', value: props.detail?.items.length ?? 0 },
+  { label: '候选项', value: props.detail?.items_total ?? props.detail?.items.length ?? 0 },
   { label: '影响主体', value: latestImpact.value?.affected_subject_refs.length ?? 0 },
   { label: '审阅记录', value: reviewRows.value.length },
 ])

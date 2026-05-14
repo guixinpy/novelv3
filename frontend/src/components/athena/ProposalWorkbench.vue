@@ -1,35 +1,27 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed } from 'vue'
 import WorldProposalBundleList from '../world/WorldProposalBundleList.vue'
 import WorldProposalImpactList from '../world/WorldProposalImpactList.vue'
 import WorldProposalItemCard from '../world/WorldProposalItemCard.vue'
 import { useWorldModelStore } from '../../stores/worldModel'
 import type { ProposalItem, ProposalReviewRequest } from '../../api/types'
 
-const PROPOSAL_DETAIL_ITEM_BATCH_SIZE = 100
-
 const props = defineProps<{
   projectId: string
 }>()
 
 const worldModel = useWorldModelStore()
-const visibleDetailItemLimit = ref(PROPOSAL_DETAIL_ITEM_BATCH_SIZE)
 
 const proposalLoading = computed(() =>
   worldModel.isLaneLoading('bundles') || worldModel.isLaneLoading('detail'),
 )
 const reviewQueueClusters = computed(() => worldModel.proposalReviewQueue?.clusters ?? [])
 const selectedBundleDetail = computed(() => worldModel.selectedBundleDetail)
-const selectedBundleDetailId = computed(() => selectedBundleDetail.value?.bundle.id ?? null)
-const detailItemTotal = computed(() => selectedBundleDetail.value?.items.length ?? 0)
-const visibleProposalItems = computed(() =>
-  selectedBundleDetail.value?.items.slice(0, visibleDetailItemLimit.value) ?? [],
+const detailItemTotal = computed(() =>
+  selectedBundleDetail.value?.items_total ?? selectedBundleDetail.value?.items.length ?? 0,
 )
+const visibleProposalItems = computed(() => selectedBundleDetail.value?.items ?? [])
 const canShowMoreProposalItems = computed(() => visibleProposalItems.value.length < detailItemTotal.value)
-
-watch(selectedBundleDetailId, () => {
-  visibleDetailItemLimit.value = PROPOSAL_DETAIL_ITEM_BATCH_SIZE
-})
 
 function approvalReviewId(item: ProposalItem) {
   const review = worldModel.selectedBundleDetail?.reviews.find((entry) =>
@@ -46,8 +38,8 @@ async function loadMore() {
   await worldModel.loadMoreBundles(props.projectId)
 }
 
-function showMoreProposalItems() {
-  visibleDetailItemLimit.value += PROPOSAL_DETAIL_ITEM_BATCH_SIZE
+async function showMoreProposalItems() {
+  await worldModel.loadMoreBundleDetailItems(props.projectId)
 }
 
 async function updateFilters(filters: typeof worldModel.bundleFilters) {
@@ -157,15 +149,16 @@ function chapterRangeLabel(range: { start: number | null; end: number | null }) 
         </header>
 
         <WorldProposalImpactList :snapshots="selectedBundleDetail.impact_snapshots" />
-        <div v-if="detailItemTotal > PROPOSAL_DETAIL_ITEM_BATCH_SIZE" class="proposal-workbench__item-window">
+        <div v-if="detailItemTotal > visibleProposalItems.length || detailItemTotal > 100" class="proposal-workbench__item-window">
           <span>已显示 {{ visibleProposalItems.length }}/{{ detailItemTotal }} 项</span>
           <button
             v-if="canShowMoreProposalItems"
             type="button"
             data-testid="show-more-proposal-items"
+            :disabled="worldModel.loadingMoreBundleItems"
             @click="showMoreProposalItems"
           >
-            显示更多
+            {{ worldModel.loadingMoreBundleItems ? '加载中...' : '显示更多' }}
           </button>
         </div>
         <WorldProposalItemCard

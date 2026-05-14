@@ -481,6 +481,9 @@ export interface ProposalImpactSnapshot {
 export interface ProposalBundleDetail {
   bundle: ProposalBundle
   items: ProposalItem[]
+  items_total?: number
+  items_offset?: number
+  items_limit?: number
   reviews: ProposalReview[]
   impact_snapshots: ProposalImpactSnapshot[]
   conflicts: ProposalItemConflict[]
