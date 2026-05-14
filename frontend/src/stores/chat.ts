@@ -501,7 +501,7 @@ export const useChatStore = defineStore('chat', () => {
         if (attempt > 0) await new Promise(r => setTimeout(r, 1000))
         let task: BackgroundTaskResponse | null = null
         try {
-          task = await api.getBackgroundTask(taskId)
+          task = await api.getBackgroundTask(taskId, { compact: true })
         } catch {
           continue
         }

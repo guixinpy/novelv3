@@ -187,7 +187,7 @@ describe('chat workspace polling', () => {
 
     await store.resolveAction('confirm')
     await Promise.resolve()
-    expect(api.getBackgroundTask).toHaveBeenCalledWith('task-1')
+    expect(api.getBackgroundTask).toHaveBeenCalledWith('task-1', { compact: true })
     expect(api.getMessages).not.toHaveBeenCalled()
 
     await vi.advanceTimersByTimeAsync(1000)

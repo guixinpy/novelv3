@@ -54,6 +54,12 @@ function messageQuery(params?: MessageQuery) {
   return query
 }
 
+function backgroundTaskQuery(params?: { compact?: boolean }) {
+  const query = new URLSearchParams()
+  if (params?.compact !== undefined) query.set('compact', String(params.compact))
+  return query
+}
+
 async function request<T = any>(path: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     headers: { 'Content-Type': 'application/json' },
@@ -301,5 +307,9 @@ export const api = {
   updatePreferences: (id: string, data: any) => request(`/projects/${id}/preferences`, { method: 'PUT', body: JSON.stringify(data) }),
   resetPreferences: (id: string) => request(`/projects/${id}/preferences/reset`, { method: 'POST' }),
   deepCheck: (id: string, chapterIndex: number) => request(`/projects/${id}/consistency/chapters/${chapterIndex}/check?depth=l2`, { method: 'POST' }),
-  getBackgroundTask: (taskId: string) => request<BackgroundTaskResponse>(`/background-tasks/${taskId}`),
+  getBackgroundTask: (taskId: string, params?: { compact?: boolean }) => {
+    const query = backgroundTaskQuery(params)
+    const qs = query.toString()
+    return request<BackgroundTaskResponse>(`/background-tasks/${taskId}${qs ? `?${qs}` : ''}`)
+  },
 }

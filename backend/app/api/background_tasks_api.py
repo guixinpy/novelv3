@@ -60,7 +60,45 @@ def list_background_tasks(
 
 
 @router.get("/api/v1/background-tasks/{task_id}")
-def get_background_task(task_id: str, db: Session = Depends(get_db)):
+def get_background_task(
+    task_id: str,
+    compact: bool = Query(False),
+    db: Session = Depends(get_db),
+):
+    if compact:
+        task = (
+            db.query(
+                BackgroundTask.id,
+                BackgroundTask.task_type,
+                BackgroundTask.status,
+                BackgroundTask.created_at,
+                BackgroundTask.started_at,
+                BackgroundTask.finished_at,
+            )
+            .filter(BackgroundTask.id == task_id)
+            .first()
+        )
+        if not task:
+            raise HTTPException(status_code=404, detail="Task not found")
+        return {
+            "task_id": task.id,
+            "task_type": task.task_type,
+            "status": task.status,
+            "payload": None,
+            "result": None,
+            "error": None,
+            "ui_hint": build_ui_hint(
+                action_type=task.task_type,
+                dialog_state=task_status_to_dialog_state(task.status),
+                status=task.status or "pending",
+                reason="后台任务状态更新",
+            ),
+            "refresh_targets": action_to_refresh_targets(task.task_type, task.status),
+            "created_at": task.created_at.isoformat() if task.created_at else None,
+            "started_at": task.started_at.isoformat() if task.started_at else None,
+            "finished_at": task.finished_at.isoformat() if task.finished_at else None,
+        }
+
     task = db.query(BackgroundTask).filter(BackgroundTask.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")

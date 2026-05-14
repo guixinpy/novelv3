@@ -123,6 +123,47 @@ def test_list_background_tasks_rows_do_not_select_heavy_task_fields(client, db_s
     assert all("background_tasks.error" not in statement for statement in row_selects)
 
 
+def test_get_background_task_compact_does_not_select_heavy_task_fields(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Task Detail Compact"})
+    pid = r.json()["id"]
+    task = BackgroundTask(
+        project_id=pid,
+        task_type="generate_outline",
+        status="running",
+        payload={"chapters": list(range(1000))},
+        result={"summary": ["任务结果"] * 500},
+        error="长错误信息" * 300,
+    )
+    db_session.add(task)
+    db_session.commit()
+    db_session.refresh(task)
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        response = client.get(f"/api/v1/background-tasks/{task.id}?compact=true")
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert response.status_code == 200
+    assert response.json()["task_id"] == task.id
+    assert response.json()["status"] == "running"
+    assert response.json()["payload"] is None
+    assert response.json()["result"] is None
+    assert response.json()["error"] is None
+    row_selects = [
+        statement for statement in statements
+        if statement.startswith("select") and "from background_tasks" in statement
+    ]
+    assert row_selects
+    assert all("background_tasks.payload" not in statement for statement in row_selects)
+    assert all("background_tasks.result" not in statement for statement in row_selects)
+    assert all("background_tasks.error" not in statement for statement in row_selects)
+
+
 def test_get_background_task_with_ui_hint(client, db_session):
     r = client.post("/api/v1/projects", json={"name": "Test"})
     pid = r.json()["id"]
