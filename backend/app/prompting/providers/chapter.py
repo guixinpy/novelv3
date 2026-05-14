@@ -13,6 +13,7 @@ from app.prompting.providers.retrieval import build_chapter_retrieval_block
 from app.prompting.providers.style import build_style_rule_block
 
 CHAPTER_CONTEXT_CHAR_BUDGET = 24000
+PREVIOUS_CHAPTER_SUMMARY_CHAR_LIMIT = 300
 PRIORITY_USER_FEEDBACK = 0
 PRIORITY_LENGTH_CONSTRAINT = 1
 PRIORITY_CHAPTER_TARGET = 10
@@ -243,7 +244,7 @@ def _build_previous_chapter_summary_block(db: Session, project_id: str, chapter_
     )
     if not previous or not previous.content:
         return None
-    summary = previous.content[:300] + "..." if len(previous.content) > 300 else previous.content
+    summary = _previous_chapter_preview(previous.content)
     return build_context_block(
         key="previous_chapter_summary",
         kind="chapter_summary",
@@ -264,3 +265,12 @@ def _build_previous_chapter_summary_block(db: Session, project_id: str, chapter_
 def _prioritized(block: dict, priority: int) -> dict:
     block["priority"] = priority
     return block
+
+
+def _previous_chapter_preview(content: str, max_chars: int = PREVIOUS_CHAPTER_SUMMARY_CHAR_LIMIT) -> str:
+    if len(content) <= max_chars:
+        return content
+    separator = "\n...\n"
+    head_chars = max_chars // 2
+    tail_chars = max_chars - head_chars - len(separator)
+    return f"{content[:head_chars]}{separator}{content[-tail_chars:]}"

@@ -639,6 +639,39 @@ def test_create_chapter_injects_longform_memory_without_future_leak(mock_complet
     assert any(block.get("kind") == "longform_context" for block in trace.context_blocks)
 
 
+def test_chapter_prompt_previous_summary_keeps_ending_hook(db_session):
+    from app.prompting.providers.chapter import build_chapter_prompt_context_blocks
+
+    project = Project(name="Previous Ending Hook")
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    setup = Setup(project_id=project.id, world_building={}, characters=[], core_concept={})
+    db_session.add(setup)
+    previous_content = (
+        "上一章开场：陆辞进入灯塔。"
+        + "中段排查与气氛铺垫。" * 80
+        + "上一章末尾钩子：第七扇门后传来苏晚晴父亲的声音。"
+    )
+    db_session.add(
+        ChapterContent(
+            project_id=project.id,
+            chapter_index=1,
+            title="灯塔入口",
+            content=previous_content,
+            word_count=1200,
+            status="generated",
+        )
+    )
+    db_session.commit()
+
+    model_blocks, _trace_only_blocks = build_chapter_prompt_context_blocks(db_session, project, setup, 2, "")
+
+    previous_block = next(block for block in model_blocks if block["key"] == "previous_chapter_summary")
+    assert "上一章开场" in previous_block["content"]
+    assert "上一章末尾钩子" in previous_block["content"]
+
+
 @patch("app.api.chapters.load_api_key", return_value="sk-test")
 def test_generate_chapter_project_not_found(mock_key, client):
     r = client.post("/api/v1/projects/nonexistent/chapters/1/generate")
