@@ -25,7 +25,7 @@ from .project import ProjectCreate, ProjectOut, ProjectUpdate
 from .setup import CharacterProfile, CoreConcept, SetupOut, WorldBuilding
 from .storyline import StorylineOut
 from .topology import TopologyEdge, TopologyNode, TopologyOut
-from .version import VersionCreate, VersionOut, VersionSummary
+from .version import VersionCreate, VersionListResponse, VersionOut, VersionSummary
 from .workspace import ChapterSummaryOut, DialogBootstrapOut, WorkspaceBootstrapOut
 from .world_entities import (
     WorldArtifactOut,

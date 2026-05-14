@@ -8,12 +8,15 @@ import type { BaseTableColumn } from '../base/BaseTable.vue'
 defineProps<{
   open: boolean
   versions: any[]
+  total?: number
+  hasMore?: boolean
   projectId: string
 }>()
 
 const emit = defineEmits<{
   close: []
   filter: [type: string]
+  'load-more': []
   rollback: [versionId: string]
   'delete-version': [versionId: string]
 }>()
@@ -71,6 +74,12 @@ const filterOptions = [
         </div>
       </template>
     </BaseTable>
+    <div class="versions-modal__footer">
+      <span>已显示 {{ versions.length }} / {{ total ?? versions.length }}</span>
+      <BaseButton v-if="hasMore" variant="secondary" size="sm" @click="emit('load-more')">
+        加载更多
+      </BaseButton>
+    </div>
   </BaseModal>
 </template>
 
@@ -86,5 +95,14 @@ const filterOptions = [
   display: flex;
   gap: var(--space-1);
   justify-content: flex-end;
+}
+
+.versions-modal__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: var(--space-4);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
 }
 </style>

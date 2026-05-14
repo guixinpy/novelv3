@@ -6,6 +6,7 @@ from app.schemas import ProjectDiagnosisOut
 from app.services.dialog.messages import DialogMessageService
 
 CHAPTER_BOOTSTRAP_LIMIT = 200
+VERSION_BOOTSTRAP_LIMIT = 50
 
 
 def build_project_diagnosis(db: Session, project_id: str) -> ProjectDiagnosisOut:
@@ -81,6 +82,7 @@ class WorkspaceBootstrapService:
         setup = self.db.query(Setup).filter(Setup.project_id == project_id).first()
         storyline = self.db.query(Storyline).filter(Storyline.project_id == project_id).first()
         outline = self.db.query(Outline).filter(Outline.project_id == project_id).first()
+        versions_total = self.db.query(func.count(Version.id)).filter(Version.project_id == project_id).scalar() or 0
         versions = (
             self.db.query(
                 Version.id,
@@ -92,8 +94,8 @@ class WorkspaceBootstrapService:
                 Version.created_at,
             )
             .filter(Version.project_id == project_id)
-            .order_by(Version.created_at.desc())
-            .limit(20)
+            .order_by(Version.created_at.desc(), Version.version_number.desc(), Version.id.desc())
+            .limit(VERSION_BOOTSTRAP_LIMIT)
             .all()
         )
 
@@ -130,6 +132,10 @@ class WorkspaceBootstrapService:
                 }
                 for version in versions
             ],
+            "versions_total": versions_total,
+            "versions_offset": 0,
+            "versions_limit": VERSION_BOOTSTRAP_LIMIT,
+            "versions_has_more": len(versions) < versions_total,
             "dialogs": {
                 "hermes": {"messages": self.messages.list_messages(project_id, dialog_type="hermes", limit=80)},
                 "athena": {"messages": self.messages.list_messages(project_id, dialog_type="athena", limit=80)},

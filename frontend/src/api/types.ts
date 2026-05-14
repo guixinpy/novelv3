@@ -95,6 +95,14 @@ export interface VersionSummary {
   created_at?: string
 }
 
+export interface VersionListResponse {
+  versions: VersionSummary[]
+  total?: number
+  offset?: number
+  limit?: number
+  has_more?: boolean
+}
+
 export interface DialogBootstrap {
   messages: ChatHistoryMessage[]
 }
@@ -112,6 +120,10 @@ export interface WorkspaceBootstrap {
   chapters_has_more?: boolean
   chapters_latest_index?: number | null
   versions: VersionSummary[]
+  versions_total?: number
+  versions_offset?: number
+  versions_limit?: number
+  versions_has_more?: boolean
   dialogs: {
     hermes?: DialogBootstrap
     athena?: DialogBootstrap

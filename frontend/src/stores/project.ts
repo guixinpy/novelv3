@@ -24,6 +24,7 @@ interface ProjectRequestSnapshot {
 export const useProjectStore = defineStore('project', () => {
   const requestCache = useRequestCacheStore()
   const PROJECT_CACHE_TTL_MS = 5 * 60 * 1000
+  const VERSION_PAGE_LIMIT = 50
   const projects = ref<any[]>([])
   const currentProject = ref<any>(null)
   const setup = ref<any>(null)
@@ -38,6 +39,10 @@ export const useProjectStore = defineStore('project', () => {
   const chaptersHasMore = ref(false)
   const chaptersLatestIndex = ref<number | null>(null)
   const versions = ref<any[]>([])
+  const versionsTotal = ref(0)
+  const versionsOffset = ref(0)
+  const versionsLimit = ref(0)
+  const versionsHasMore = ref(false)
   const preferences = ref<any>(null)
   const versionsNodeType = ref<string | undefined>(undefined)
   const currentProjectScope = ref<string>('')
@@ -91,6 +96,32 @@ export const useProjectStore = defineStore('project', () => {
     return `project:${projectId}:chapters:${offset}:${limit ?? 'default'}`
   }
 
+  function versionsCacheKey(projectId: string, nodeType?: string, params?: { offset?: number; limit?: number }) {
+    const offset = params?.offset ?? 0
+    const limit = params?.limit
+    return `project:${projectId}:versions:${nodeType || 'all'}:${offset}:${limit ?? 'default'}`
+  }
+
+  function normalizeVersionPage(value: any, fallbackOffset: number, fallbackLimit: number) {
+    if (Array.isArray(value)) {
+      return {
+        versions: value,
+        total: value.length,
+        offset: fallbackOffset,
+        limit: fallbackLimit || value.length,
+        hasMore: false,
+      }
+    }
+    const items = Array.isArray(value?.versions) ? value.versions : []
+    return {
+      versions: items,
+      total: value?.total ?? items.length,
+      offset: value?.offset ?? fallbackOffset,
+      limit: value?.limit ?? fallbackLimit,
+      hasMore: value?.has_more ?? false,
+    }
+  }
+
   function maxLoadedChapterIndex() {
     const indexes = chapters.value
       .map((chapter) => Number(chapter.chapter_index))
@@ -126,13 +157,17 @@ export const useProjectStore = defineStore('project', () => {
     chaptersHasMore.value = bootstrap.chapters_has_more ?? false
     chaptersLatestIndex.value = resolveLatestChapterIndex(bootstrap.chapters_latest_index)
     versions.value = bootstrap.versions || []
+    versionsTotal.value = bootstrap.versions_total ?? versions.value.length
+    versionsOffset.value = bootstrap.versions_offset ?? 0
+    versionsLimit.value = bootstrap.versions_limit ?? VERSION_PAGE_LIMIT
+    versionsHasMore.value = bootstrap.versions_has_more ?? false
     versionsNodeType.value = undefined
     requestCache.markFresh(`project:${id}:project`)
     if (bootstrap.setup) requestCache.markFresh(`project:${id}:setup`)
     if (bootstrap.storyline) requestCache.markFresh(`project:${id}:storyline`)
     if (bootstrap.outline) requestCache.markFresh(`project:${id}:outline`)
     requestCache.markFresh(chaptersCacheKey(id))
-    requestCache.markFresh(`project:${id}:versions:all`)
+    requestCache.markFresh(versionsCacheKey(id, undefined, { offset: 0, limit: versionsLimit.value || VERSION_PAGE_LIMIT }))
   }
 
   function resetProjectScopedState(nextProjectId = '') {
@@ -163,6 +198,10 @@ export const useProjectStore = defineStore('project', () => {
     chaptersHasMore.value = false
     chaptersLatestIndex.value = null
     versions.value = []
+    versionsTotal.value = 0
+    versionsOffset.value = 0
+    versionsLimit.value = 0
+    versionsHasMore.value = false
     preferences.value = null
     versionsNodeType.value = undefined
   }
@@ -288,13 +327,37 @@ export const useProjectStore = defineStore('project', () => {
   }
 
   async function loadVersions(id: string, nodeType?: string) {
-    const key = `project:${id}:versions:${nodeType || 'all'}`
+    const params = { offset: 0, limit: VERSION_PAGE_LIMIT }
+    const key = versionsCacheKey(id, nodeType, params)
     if (versionsNodeType.value === nodeType && requestCache.isFresh(key, PROJECT_CACHE_TTL_MS)) return
     const snapshot = captureProjectRequest(id, ['versions'])
-    const nextVersions = await requestCache.dedupe(key, () => api.listVersions(id, nodeType))
+    const response = await requestCache.dedupe(key, () => api.listVersions(id, nodeType, params))
     if (!isLatestProjectRequest(snapshot, 'versions')) return
+    const page = normalizeVersionPage(response, params.offset, params.limit)
     versionsNodeType.value = nodeType
-    versions.value = nextVersions
+    versions.value = page.versions
+    versionsTotal.value = page.total
+    versionsOffset.value = page.offset
+    versionsLimit.value = page.limit
+    versionsHasMore.value = page.hasMore
+  }
+
+  async function loadMoreVersions(id: string) {
+    if (!versionsHasMore.value) return
+    const offset = versions.value.length
+    const limit = versionsLimit.value || VERSION_PAGE_LIMIT
+    const params = { offset, limit }
+    const nodeType = versionsNodeType.value
+    const key = versionsCacheKey(id, nodeType, params)
+    const snapshot = captureProjectRequest(id, ['versions'])
+    const response = await requestCache.dedupe(key, () => api.listVersions(id, nodeType, params))
+    if (!isLatestProjectRequest(snapshot, 'versions')) return
+    const page = normalizeVersionPage(response, offset, limit)
+    versions.value = [...versions.value, ...page.versions]
+    versionsTotal.value = page.total
+    versionsOffset.value = page.offset
+    versionsLimit.value = page.limit
+    versionsHasMore.value = page.hasMore
   }
 
   async function loadPreferences(id: string) {
@@ -389,13 +452,13 @@ export const useProjectStore = defineStore('project', () => {
   return {
     projects, currentProject, setup, chapter, storyline, outline, topology,
     chapters, chaptersTotal, chaptersOffset, chaptersLimit, chaptersHasMore, chaptersLatestIndex,
-    versions, preferences, versionsNodeType,
+    versions, versionsTotal, versionsOffset, versionsLimit, versionsHasMore, preferences, versionsNodeType,
     resetProjectScopedState,
     applyWorkspaceBootstrap,
     loadProjects, createProject, deleteProject, loadProject,
     generateSetup, loadSetup, generateChapter, loadChapter,
     generateStoryline, loadStoryline, generateOutline, loadOutline, loadTopology,
-    loadChapters, loadMoreChapters, loadVersions, loadPreferences, updatePreferences, resetPreferences, refreshTargets,
+    loadChapters, loadMoreChapters, loadVersions, loadMoreVersions, loadPreferences, updatePreferences, resetPreferences, refreshTargets,
     createVersion, rollbackVersion, exportProject,
   }
 })

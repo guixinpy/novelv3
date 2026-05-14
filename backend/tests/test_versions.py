@@ -21,7 +21,35 @@ def test_create_and_list_versions(client):
 
     r3 = client.get(f"/api/v1/projects/{pid}/versions")
     assert r3.status_code == 200
-    assert len(r3.json()) == 1
+    assert len(r3.json()["versions"]) == 1
+
+
+def test_list_versions_returns_bounded_page_with_total(client, db_session):
+    project = Project(name="Version History Scale")
+    db_session.add(project)
+    db_session.flush()
+    db_session.add_all([
+        Version(
+            project_id=project.id,
+            node_type="chapter",
+            node_id="chapter-1",
+            version_number=index,
+            content=f"版本正文 {index}",
+            description=f"v{index}",
+        )
+        for index in range(1, 13)
+    ])
+    db_session.commit()
+
+    response = client.get(f"/api/v1/projects/{project.id}/versions?offset=5&limit=4")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == 12
+    assert data["offset"] == 5
+    assert data["limit"] == 4
+    assert data["has_more"] is True
+    assert [item["version_number"] for item in data["versions"]] == [7, 6, 5, 4]
 
 
 def test_list_versions_does_not_select_version_content(client, db_session):
@@ -51,7 +79,7 @@ def test_list_versions_does_not_select_version_content(client, db_session):
         event.remove(db_session.bind, "before_cursor_execute", capture_sql)
 
     assert response.status_code == 200
-    assert response.json()[0]["description"] == "initial"
+    assert response.json()["versions"][0]["description"] == "initial"
     version_select_clauses = [
         statement.split("from versions", 1)[0]
         for statement in statements

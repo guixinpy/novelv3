@@ -33,4 +33,8 @@ class WorkspaceBootstrapOut(BaseModel):
     chapters_has_more: bool = False
     chapters_latest_index: int | None = None
     versions: list[VersionSummary] = Field(default_factory=list)
+    versions_total: int = 0
+    versions_offset: int = 0
+    versions_limit: int = 0
+    versions_has_more: bool = False
     dialogs: dict[str, DialogBootstrapOut] = Field(default_factory=dict)

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -7,13 +7,20 @@ from app.core.longform_memory import refresh_longform_memory_for_chapter
 from app.core.text_stats import count_words
 from app.db import get_db
 from app.models import ChapterContent, Outline, Project, Setup, Storyline, Version
-from app.schemas import VersionCreate, VersionOut, VersionSummary
+from app.schemas import VersionCreate, VersionListResponse, VersionOut
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/versions", tags=["versions"])
 
 
-@router.get("", response_model=list[VersionSummary])
-def list_versions(project_id: str, node_type: str | None = None, node_id: str | None = None, db: Session = Depends(get_db)):
+@router.get("", response_model=VersionListResponse)
+def list_versions(
+    project_id: str,
+    node_type: str | None = None,
+    node_id: str | None = None,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    db: Session = Depends(get_db),
+):
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -30,19 +37,31 @@ def list_versions(project_id: str, node_type: str | None = None, node_id: str | 
         q = q.filter(Version.node_type == node_type)
     if node_id:
         q = q.filter(Version.node_id == node_id)
-    rows = q.order_by(Version.created_at.desc()).all()
-    return [
-        {
-            "id": row.id,
-            "version_number": row.version_number,
-            "node_type": row.node_type,
-            "node_id": row.node_id,
-            "description": row.description,
-            "author": row.author,
-            "created_at": row.created_at,
-        }
-        for row in rows
-    ]
+    total = q.count()
+    rows = (
+        q.order_by(Version.created_at.desc(), Version.version_number.desc(), Version.id.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    return {
+        "versions": [
+            {
+                "id": row.id,
+                "version_number": row.version_number,
+                "node_type": row.node_type,
+                "node_id": row.node_id,
+                "description": row.description,
+                "author": row.author,
+                "created_at": row.created_at,
+            }
+            for row in rows
+        ],
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+        "has_more": offset + len(rows) < total,
+    }
 
 
 @router.get("/{version_id}", response_model=VersionOut)

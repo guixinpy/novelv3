@@ -35,3 +35,11 @@ class VersionSummary(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class VersionListResponse(BaseModel):
+    versions: list[VersionSummary]
+    total: int
+    offset: int
+    limit: int
+    has_more: bool

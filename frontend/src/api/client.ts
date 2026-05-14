@@ -37,6 +37,7 @@ import type {
   ProposalSplitRequest,
   ResolveActionRequest,
   ResolveActionResponse,
+  VersionListResponse,
   WorldFactClaim,
   WorldModelDashboard,
   WorldModelOverview,
@@ -269,7 +270,14 @@ export const api = {
   startWriting: (id: string) => request(`/projects/${id}/writing/start`, { method: 'POST' }),
   pauseWriting: (id: string) => request(`/projects/${id}/writing/pause`, { method: 'POST' }),
   resumeWriting: (id: string) => request(`/projects/${id}/writing/resume`, { method: 'POST' }),
-  listVersions: (id: string, nodeType?: string) => request(`/projects/${id}/versions${nodeType ? `?node_type=${nodeType}` : ''}`),
+  listVersions: (id: string, nodeType?: string, params?: { offset?: number; limit?: number }) => {
+    const query = new URLSearchParams()
+    if (nodeType) query.set('node_type', nodeType)
+    if (params?.offset !== undefined) query.set('offset', String(params.offset))
+    if (params?.limit !== undefined) query.set('limit', String(params.limit))
+    const qs = query.toString()
+    return request<VersionListResponse | any[]>(`/projects/${id}/versions${qs ? `?${qs}` : ''}`)
+  },
   getVersion: (id: string, versionId: string) => request(`/projects/${id}/versions/${versionId}`),
   createVersion: (id: string, data: any) => request(`/projects/${id}/versions`, { method: 'POST', body: JSON.stringify(data) }),
   rollbackVersion: (id: string, versionId: string) => request(`/projects/${id}/versions/${versionId}/rollback`, { method: 'POST' }),

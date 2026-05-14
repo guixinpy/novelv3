@@ -295,6 +295,10 @@ async function onFilterVersions(type: string) {
   markHydratedTarget(hydrationTracker, snapshot, 'versions')
 }
 
+async function onLoadMoreVersions() {
+  await project.loadMoreVersions(pid.value)
+}
+
 async function onRollback(versionId: string) {
   workspace.applyUserPanel('versions', '你发起了版本回滚')
   const version = project.versions.find((item: any) => item.id === versionId)
@@ -382,9 +386,12 @@ function closeTrace() {
     <VersionsModal
       :open="showVersionsModal"
       :versions="project.versions"
+      :total="project.versionsTotal"
+      :has-more="project.versionsHasMore"
       :project-id="pid"
       @close="showVersionsModal = false"
       @filter="onFilterVersions"
+      @load-more="onLoadMoreVersions"
       @rollback="onRollback"
       @delete-version="onDeleteVersion"
     />

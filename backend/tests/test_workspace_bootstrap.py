@@ -56,6 +56,10 @@ def test_workspace_bootstrap_returns_project_session_bundle(client, db_session):
         }
     ]
     assert payload["versions"][0]["node_type"] == "chapter"
+    assert payload["versions_total"] == 1
+    assert payload["versions_offset"] == 0
+    assert payload["versions_limit"] == 50
+    assert payload["versions_has_more"] is False
     assert payload["dialogs"]["hermes"]["messages"][0]["content"] == "Hermes 历史"
     assert payload["dialogs"]["athena"]["messages"][0]["content"] == "Athena 历史"
 

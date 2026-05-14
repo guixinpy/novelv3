@@ -281,6 +281,43 @@ describe('project workspace state', () => {
     expect(store.chaptersLatestIndex).toBe(250)
   })
 
+  it('loadMoreVersions() 会从已加载数量继续追加下一页版本', async () => {
+    const store = useProjectStore()
+    const firstPage = [
+      { id: 'version-1', node_type: 'chapter', node_id: 'chapter-1', version_number: 3 },
+      { id: 'version-2', node_type: 'chapter', node_id: 'chapter-1', version_number: 2 },
+    ]
+    const secondPage = [
+      { id: 'version-3', node_type: 'chapter', node_id: 'chapter-1', version_number: 1 },
+    ]
+
+    vi.mocked(api.listVersions).mockResolvedValueOnce({
+      versions: firstPage,
+      total: 3,
+      offset: 0,
+      limit: 2,
+      has_more: true,
+    })
+    vi.mocked(api.listVersions).mockResolvedValueOnce({
+      versions: secondPage,
+      total: 3,
+      offset: 2,
+      limit: 2,
+      has_more: false,
+    })
+
+    await store.loadVersions('A', 'chapter')
+    await store.loadMoreVersions('A')
+
+    expect(api.listVersions).toHaveBeenNthCalledWith(1, 'A', 'chapter', { offset: 0, limit: 50 })
+    expect(api.listVersions).toHaveBeenNthCalledWith(2, 'A', 'chapter', { offset: 2, limit: 2 })
+    expect(store.versions).toEqual([...firstPage, ...secondPage])
+    expect(store.versionsTotal).toBe(3)
+    expect(store.versionsOffset).toBe(2)
+    expect(store.versionsLimit).toBe(2)
+    expect(store.versionsHasMore).toBe(false)
+  })
+
   it('refreshTargets(content) 会强制刷新章节，避免任务完成后沿用旧列表', async () => {
     const store = useProjectStore()
 
