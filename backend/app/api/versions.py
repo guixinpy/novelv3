@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.core.athena_retrieval import sync_longform_memory_retrieval_documents
+from app.core.athena_retrieval import index_chapter_retrieval, sync_longform_memory_retrieval_documents
 from app.core.longform_memory import refresh_longform_memory_for_chapter
 from app.core.text_stats import count_words
 from app.db import get_db
@@ -185,6 +185,10 @@ def _apply_content_to_node(db: Session, node_type: str, node_id: str, content: s
 
 
 def _safe_refresh_longform_maintenance(db: Session, *, project_id: str, chapter_index: int) -> None:
+    try:
+        index_chapter_retrieval(db=db, project_id=project_id, chapter_index=chapter_index)
+    except Exception:
+        db.rollback()
     try:
         refresh_result = refresh_longform_memory_for_chapter(
             db,

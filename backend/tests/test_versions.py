@@ -184,12 +184,14 @@ def test_chapter_version_apply_refreshes_longform_memory_and_retrieval(client, d
         .filter(LongformMemory.project_id == project.id, LongformMemory.scope_key == "chapter:1")
         .one()
     )
-    results = search_retrieval(db_session, project.id, "星环钥匙第二形态", source_type="longform_memory")
+    memory_results = search_retrieval(db_session, project.id, "星环钥匙第二形态", source_type="longform_memory")
+    chapter_results = search_retrieval(db_session, project.id, "星环钥匙第二形态", source_type="chapter")
 
     assert refreshed_chapter.content == "新正文。星环钥匙第二形态启动。"
     assert refreshed_chapter.word_count == 13
     assert "星环钥匙第二形态" in refreshed_memory.summary
-    assert any("星环钥匙第二形态" in item["snippet"] for item in results["items"])
+    assert any("星环钥匙第二形态" in item["snippet"] for item in memory_results["items"])
+    assert any("星环钥匙第二形态" in item["snippet"] for item in chapter_results["items"])
 
 
 def test_chapter_version_apply_updates_project_word_count_incrementally(client, db_session):
