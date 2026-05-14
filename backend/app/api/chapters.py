@@ -9,9 +9,10 @@ from app.core.ai_service import AIService
 from app.core.athena_retrieval import sync_longform_memory_retrieval_documents
 from app.core.longform_memory import refresh_longform_memory_for_chapter
 from app.core.model_call_trace import create_trace, mark_trace_failed, mark_trace_success, now_ms
+from app.core.outline_lookup import find_outline_chapter
 from app.core.text_stats import count_words
 from app.db import get_db
-from app.models import AIModelCallTrace, ChapterContent, Outline, Project, Setup
+from app.models import AIModelCallTrace, ChapterContent, Project, Setup
 from app.prompting.assembler import PromptAssembler
 from app.prompting.providers.chapter import (
     CHAPTER_CONTEXT_CHAR_BUDGET,
@@ -222,13 +223,11 @@ async def create_or_replace_chapter(
         raise
     elapsed = int((time.time() - start) * 1000)
 
-    outline = db.query(Outline).filter(Outline.project_id == project_id).first()
     title = f"第{chapter_index}章"
-    if outline and outline.chapters:
-        for ch in outline.chapters:
-            if ch.get("chapter_index") == chapter_index:
-                title = ch.get("title", title)
-                break
+    outline_chapter = find_outline_chapter(db, project_id, chapter_index)
+    if outline_chapter is not None:
+        _outline_id, chapter_outline = outline_chapter
+        title = chapter_outline.get("title", title)
 
     word_count = count_words(result.content)
     if existing:

@@ -9,6 +9,7 @@ from fastapi import HTTPException
 from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
+from app.core.outline_lookup import find_outline_chapter
 from app.core.project_stats import reconcile_project_word_count
 from app.models import ChapterContent, LongformMemory, Outline, Project, RetrievalDocument
 
@@ -238,7 +239,8 @@ def refresh_longform_memory_for_chapter(
     if chapter is None:
         raise HTTPException(status_code=404, detail="Chapter not found")
 
-    outline_lookup = _outline_lookup(db, project_id)
+    outline_chapter = find_outline_chapter(db, project_id, chapter_index)
+    outline = outline_chapter[1] if outline_chapter is not None else None
     arc_chapters = _range_chapters(db, project_id, chapter_index, arc_size)
     volume_chapters = _range_chapters(db, project_id, chapter_index, volume_size)
     delete_filter = or_(
@@ -259,7 +261,7 @@ def refresh_longform_memory_for_chapter(
         synchronize_session=False
     )
 
-    memories = [_chapter_memory(project_id, chapter, outline_lookup.get(chapter.chapter_index))]
+    memories = [_chapter_memory(project_id, chapter, outline)]
     if arc_chapters:
         memories.append(_range_memory(project_id, memory_type="arc", start=arc_chapters[0].chapter_index, chapters=arc_chapters))
     if volume_chapters:

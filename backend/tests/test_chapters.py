@@ -14,6 +14,7 @@ from app.models import (
     Project,
     ProjectProfileVersion,
     RetrievalDocument,
+    Setup,
     WorldFactClaim,
 )
 
@@ -315,6 +316,78 @@ def test_chapter_prompt_outline_target_does_not_select_full_outline_json(db_sess
     assert "第777章：第777章目标摘要。" in block["content"]
     assert "场景777" in block["content"]
     assert "角色777" in block["content"]
+
+    outline_select_clauses = [
+        statement.split("from outlines", 1)[0]
+        for statement in statements
+        if "from outlines" in statement
+    ]
+    assert outline_select_clauses
+    assert all("outlines.chapters as" not in clause for clause in outline_select_clauses)
+    assert all("outlines.plotlines as" not in clause for clause in outline_select_clauses)
+    assert all("outlines.foreshadowing as" not in clause for clause in outline_select_clauses)
+
+
+@patch("app.api.chapters.load_api_key", return_value="sk-test")
+@patch("app.api.chapters.ai_service.complete", new_callable=AsyncMock)
+def test_generate_chapter_does_not_select_full_outline_json_for_title_or_memory(
+    mock_complete,
+    mock_key,
+    db_session,
+):
+    project = Project(name="千章生成维护")
+    db_session.add(project)
+    db_session.flush()
+    db_session.add(
+        Setup(
+            project_id=project.id,
+            status="generated",
+            world_building={},
+            characters=[],
+            core_concept={},
+        )
+    )
+    db_session.add(
+        Outline(
+            project_id=project.id,
+            status="generated",
+            total_chapters=1000,
+            chapters=[
+                {
+                    "chapter_index": index,
+                    "title": f"第{index}章",
+                    "summary": f"第{index}章目标摘要。",
+                    "scenes": [f"场景{index}"],
+                    "characters": [f"角色{index}"],
+                }
+                for index in range(1, 1001)
+            ],
+            plotlines=[{"name": f"支线{index}", "summary": "支线摘要" * 20} for index in range(1, 101)],
+            foreshadowing=[{"name": f"伏笔{index}", "summary": "伏笔摘要" * 20} for index in range(1, 101)],
+        )
+    )
+    db_session.commit()
+    mock_complete.return_value.content = "第777章正文。星环钥匙在本章完成校准。"
+    mock_complete.return_value.model = "deepseek-chat"
+    mock_complete.return_value.prompt_tokens = 100
+    mock_complete.return_value.completion_tokens = 200
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        chapter = asyncio.run(create_or_replace_chapter(db_session, project.id, 777))
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert chapter.title == "第777章"
+    assert (
+        db_session.query(LongformMemory)
+        .filter(LongformMemory.project_id == project.id, LongformMemory.scope_key == "chapter:777")
+        .one()
+    )
 
     outline_select_clauses = [
         statement.split("from outlines", 1)[0]
