@@ -19,12 +19,22 @@ def list_background_tasks(
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    query = db.query(BackgroundTask).filter(BackgroundTask.project_id == project_id)
     total = (
-        db.query(func.count(BackgroundTask.id)).filter(BackgroundTask.project_id == project_id).scalar() or 0
+        db.query(func.count(BackgroundTask.id))
+        .filter(BackgroundTask.project_id == project_id)
+        .scalar()
+        or 0
     )
     tasks = (
-        query
+        db.query(
+            BackgroundTask.id,
+            BackgroundTask.task_type,
+            BackgroundTask.status,
+            BackgroundTask.created_at,
+            BackgroundTask.started_at,
+            BackgroundTask.finished_at,
+        )
+        .filter(BackgroundTask.project_id == project_id)
         .order_by(BackgroundTask.created_at.desc(), BackgroundTask.id.desc())
         .offset(offset)
         .limit(limit)
