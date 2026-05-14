@@ -1,3 +1,5 @@
+from sqlalchemy import event
+
 from app.models import (
     BackgroundTask,
     ChapterContent,
@@ -9,6 +11,7 @@ from app.models import (
     GenreProfile,
     Outline,
     PendingAction,
+    Project,
     PromptRule,
     ProjectProfileVersion,
     RetrievalChunk,
@@ -68,6 +71,43 @@ def test_list_projects(client):
     names = {p["name"] for p in data}
     assert names == {"Novel A", "Novel B"}
     assert data[0]["created_at"] >= data[1]["created_at"]
+
+
+def test_list_projects_does_not_reconcile_chapter_word_counts(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Long Project"})
+    pid = r.json()["id"]
+    project = db_session.query(Project).filter(Project.id == pid).one()
+    project.current_word_count = 123
+    db_session.add_all([
+        ChapterContent(
+            project_id=pid,
+            chapter_index=index,
+            title=f"第{index}章",
+            content="正文" * 100,
+            word_count=1000,
+            status="generated",
+        )
+        for index in range(1, 4)
+    ])
+    db_session.commit()
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        response = client.get("/api/v1/projects")
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert response.status_code == 200
+    listed = next(item for item in response.json() if item["id"] == pid)
+    assert listed["current_word_count"] == 123
+    assert all(
+        "sum(" not in statement or "chapter_contents" not in statement
+        for statement in statements
+    )
 
 
 def test_update_project(client):

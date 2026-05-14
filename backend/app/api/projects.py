@@ -107,15 +107,7 @@ def create_project(payload: ProjectCreate, db: Session = Depends(get_db)):
 
 @router.get("", response_model=list[ProjectOut])
 def list_projects(db: Session = Depends(get_db)):
-    projects = db.query(Project).order_by(Project.created_at.desc()).all()
-    changed = False
-    for project in projects:
-        before = project.current_word_count or 0
-        reconcile_project_word_count(db, project, commit=False)
-        changed = changed or (project.current_word_count or 0) != before
-    if changed:
-        db.commit()
-    return projects
+    return db.query(Project).order_by(Project.created_at.desc()).all()
 
 
 @router.get("/{project_id}/workspace-bootstrap", response_model=WorkspaceBootstrapOut)
