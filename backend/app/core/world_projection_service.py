@@ -2,6 +2,7 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Literal
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.core.world_projection import (
@@ -62,7 +63,12 @@ def build_world_projection_overview(
         _projection_cache.move_to_end(cache_key)
         return cached
 
-    source = load_world_projection_source(db=db, project_id=project_id, profile=profile)
+    source = load_world_projection_source(
+        db=db,
+        project_id=project_id,
+        profile=profile,
+        max_chapter_index=chapter_index if view_type == "chapter_snapshot" else None,
+    )
     projection = build_world_projection(source=source, view_type=view_type, subject_ref=subject_ref, chapter_index=chapter_index)
     overview = ProjectWorldOverviewOut(
         project_profile=profile,
@@ -104,6 +110,7 @@ def load_world_projection_source(
     db: Session,
     project_id: str,
     profile: ProjectProfileVersion,
+    max_chapter_index: int | None = None,
 ) -> WorldProjectionSource:
     anchors = (
         db.query(WorldTimelineAnchor)
@@ -119,14 +126,26 @@ def load_world_projection_source(
         .all()
     )
     catalog_events = _catalog_entity_events(db=db, project_id=project_id, profile=profile)
-    events = (
-        db.query(WorldEvent)
-        .filter(
-            WorldEvent.project_id == project_id,
-            WorldEvent.project_profile_version_id == profile.id,
-            WorldEvent.profile_version == profile.version,
+    event_query = db.query(WorldEvent).filter(
+        WorldEvent.project_id == project_id,
+        WorldEvent.project_profile_version_id == profile.id,
+        WorldEvent.profile_version == profile.version,
+    )
+    fact_query = db.query(WorldFactClaim).filter(
+        WorldFactClaim.project_id == project_id,
+        WorldFactClaim.project_profile_version_id == profile.id,
+        WorldFactClaim.profile_version == profile.version,
+    )
+    if max_chapter_index is not None:
+        event_query = event_query.filter(WorldEvent.chapter_index <= max_chapter_index)
+        fact_query = fact_query.filter(
+            or_(
+                WorldFactClaim.chapter_index.is_(None),
+                WorldFactClaim.chapter_index <= max_chapter_index,
+            )
         )
-        .order_by(
+    events = (
+        event_query.order_by(
             WorldEvent.chapter_index.asc(),
             WorldEvent.intra_chapter_seq.asc(),
             WorldEvent.event_id.asc(),
@@ -134,13 +153,7 @@ def load_world_projection_source(
         .all()
     )
     facts = (
-        db.query(WorldFactClaim)
-        .filter(
-            WorldFactClaim.project_id == project_id,
-            WorldFactClaim.project_profile_version_id == profile.id,
-            WorldFactClaim.profile_version == profile.version,
-        )
-        .order_by(
+        fact_query.order_by(
             WorldFactClaim.chapter_index.asc(),
             WorldFactClaim.intra_chapter_seq.asc(),
             WorldFactClaim.claim_id.asc(),

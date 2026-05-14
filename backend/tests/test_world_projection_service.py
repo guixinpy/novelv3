@@ -1,3 +1,5 @@
+from sqlalchemy import event
+
 from app.core import world_projection_service
 from app.core.world_projection_service import build_world_projection_overview
 from app.models import (
@@ -236,6 +238,90 @@ def test_projection_service_includes_profile_entity_catalog_without_intro_events
 
     assert "char.hero" in subject.projection.entities
     assert "loc.fog-harbor" not in subject.projection.entities
+
+
+def test_chapter_snapshot_projection_source_filters_future_event_and_fact_rows(db_session):
+    project, profile = _seed_world(db_session)
+    world_projection_service.clear_world_projection_cache()
+    db_session.add_all([
+        WorldTimelineAnchor(
+            project_id=project.id,
+            profile_version=profile.version,
+            anchor_id="anchor.ch50.s1",
+            chapter_index=50,
+            intra_chapter_seq=1,
+            ordering_key="050:001",
+            contract_version="world.contract.v1",
+        ),
+        WorldEvent(
+            project_id=project.id,
+            project_profile_version_id=profile.id,
+            profile_version=profile.version,
+            event_id="evt.future",
+            idempotency_key="idem.future",
+            timeline_anchor_id="anchor.ch50.s1",
+            chapter_index=50,
+            intra_chapter_seq=1,
+            event_type="entity_introduced",
+            primitive_payload={
+                "entity_ref": "char.future",
+                "entity_type": "character",
+                "attributes": {"status": "future"},
+            },
+            truth_layer="truth",
+            disclosure_layer="public",
+            contract_version="world.contract.v1",
+        ),
+        WorldFactClaim(
+            project_id=project.id,
+            project_profile_version_id=profile.id,
+            profile_version=profile.version,
+            claim_id="claim.future.rank.truth",
+            chapter_index=50,
+            intra_chapter_seq=2,
+            subject_ref="char.future",
+            predicate="rank",
+            object_ref_or_value="admiral",
+            claim_layer="truth",
+            claim_status="confirmed",
+            valid_from_anchor_id="anchor.ch50.s1",
+            authority_type="authoritative_structured",
+            confidence=1.0,
+            contract_version="world.contract.v1",
+        ),
+    ])
+    db_session.commit()
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        overview = build_world_projection_overview(
+            db=db_session,
+            project_id=project.id,
+            profile=profile,
+            view_type="chapter_snapshot",
+            chapter_index=1,
+        )
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert "char.future" not in overview.projection.entities
+    assert "char.future" not in overview.projection.facts
+    event_selects = [
+        statement
+        for statement in statements
+        if "select world_events.id" in statement and "from world_events" in statement
+    ]
+    fact_selects = [
+        statement
+        for statement in statements
+        if "select world_fact_claims.id" in statement and "from world_fact_claims" in statement
+    ]
+    assert any("world_events.chapter_index <=" in statement for statement in event_selects)
+    assert any("world_fact_claims.chapter_index <=" in statement for statement in fact_selects)
 
 
 def test_projection_service_reuses_local_projection_cache(monkeypatch, db_session):
