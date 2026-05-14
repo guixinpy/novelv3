@@ -474,6 +474,39 @@ def test_generate_chapter_does_not_fail_when_longform_maintenance_fails(mock_com
 
 @patch("app.api.chapters.load_api_key", return_value="sk-test")
 @patch("app.api.chapters.ai_service.complete", new_callable=AsyncMock)
+def test_generate_chapter_rolls_back_when_retrieval_indexing_fails(
+    mock_complete,
+    mock_key,
+    client,
+    db_session,
+    monkeypatch,
+):
+    pid = _create_project_with_setup(client)
+    mock_complete.return_value.content = "第一章正文内容"
+    mock_complete.return_value.model = "deepseek-chat"
+    mock_complete.return_value.prompt_tokens = 100
+    mock_complete.return_value.completion_tokens = 200
+    rollback_calls = {"value": 0}
+    original_rollback = db_session.rollback
+
+    def count_rollback():
+        rollback_calls["value"] += 1
+        return original_rollback()
+
+    def fail_indexing(*_args, **_kwargs):
+        raise RuntimeError("retrieval indexing failed")
+
+    monkeypatch.setattr(db_session, "rollback", count_rollback)
+    monkeypatch.setattr("app.core.athena_retrieval.index_chapter_retrieval", fail_indexing)
+
+    chapter = asyncio.run(create_or_replace_chapter(db_session, pid, 1))
+
+    assert chapter.content == "第一章正文内容"
+    assert rollback_calls["value"] >= 1
+
+
+@patch("app.api.chapters.load_api_key", return_value="sk-test")
+@patch("app.api.chapters.ai_service.complete", new_callable=AsyncMock)
 def test_create_chapter_applies_user_word_range_to_prompt_and_token_limit(mock_complete, mock_key, client, db_session):
     r = client.post("/api/v1/projects", json={"name": "Test"})
     pid = r.json()["id"]

@@ -293,6 +293,7 @@ async def create_or_replace_chapter(
             db.add(ConsistencyCheck(**issue))
         db.commit()
     except Exception:
+        db.rollback()
         pass  # Don't fail chapter generation if check fails
 
     athena_analysis_result = None
@@ -300,6 +301,7 @@ async def create_or_replace_chapter(
         from app.core.athena_longform import analyze_chapter_to_world_proposals
         athena_analysis_result = analyze_chapter_to_world_proposals(db=db, project_id=project_id, chapter_index=chapter_index)
     except Exception:
+        db.rollback()
         pass  # Don't fail chapter generation if Athena analysis fails
     setattr(chapter, "athena_analysis_result", athena_analysis_result)
 
@@ -307,6 +309,7 @@ async def create_or_replace_chapter(
         from app.core.athena_retrieval import index_chapter_retrieval
         index_chapter_retrieval(db=db, project_id=project_id, chapter_index=chapter_index)
     except Exception:
+        db.rollback()
         pass  # Don't fail chapter generation if retrieval indexing fails
 
     _safe_refresh_longform_maintenance(db, project_id=project_id, chapter_index=chapter_index)
