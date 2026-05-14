@@ -637,6 +637,30 @@ def test_reindex_uses_large_write_batches_for_many_sources(db_session, monkeypat
     assert sum(document_mapping_calls) == 250
 
 
+def test_reindex_does_not_generate_uuid_per_retrieval_term(db_session, monkeypatch):
+    import app.core.athena_retrieval as athena_retrieval
+
+    project = _seed_retrieval_project(db_session)
+    original_uuid4 = athena_retrieval.uuid.uuid4
+    uuid_call_count = {"value": 0}
+
+    def count_uuid4():
+        uuid_call_count["value"] += 1
+        return original_uuid4()
+
+    monkeypatch.setattr(athena_retrieval.uuid, "uuid4", count_uuid4)
+
+    result = reindex_project_retrieval(db_session, project.id)
+
+    expected_non_term_ids = (
+        result["indexed"]["documents"]
+        + result["indexed"]["chunks"]
+        + result["indexed"]["embeddings"]
+    )
+    assert result["indexed"]["terms"] > 0
+    assert uuid_call_count["value"] <= expected_non_term_ids
+
+
 def test_reindex_batches_embedding_provider_calls_across_sources(db_session, monkeypatch):
     import app.core.athena_retrieval as athena_retrieval
 

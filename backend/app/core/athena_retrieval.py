@@ -723,12 +723,12 @@ def _index_sources(db: Session, project_id: str, sources: Iterable[RetrievalSour
             terms = _indexable_retrieval_terms(tokens)
             term_rows.extend(
                 {
-                    "id": str(uuid.uuid4()),
+                    "id": f"{chunk_id}:term:{term_index}",
                     "project_id": project_id,
                     "chunk_id": chunk_id,
                     "token": token,
                 }
-                for token in terms
+                for term_index, token in enumerate(terms)
             )
             pending_embeddings.append(
                 _PendingEmbedding(
