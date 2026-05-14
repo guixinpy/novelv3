@@ -956,6 +956,101 @@ def test_athena_context_boundary_uses_aggregate_chapter_stats(db_session):
     assert all("chapter_contents.content" not in clause for clause in select_clauses)
 
 
+def test_athena_context_boundary_count_queries_do_not_select_heavy_world_rows(db_session):
+    project, profile_version = _seed_project(db_session, with_profile=True)
+    assert profile_version is not None
+    db_session.add_all([
+        RetrievalDocument(
+            project_id=project.id,
+            source_type="chapter",
+            source_id="chapter-1",
+            source_ref="chapter:1",
+            title="第1章",
+            chapter_index=1,
+            profile_version=profile_version.version,
+            content_hash="hash-heavy-doc",
+            document_metadata={"keywords": ["检索标签"] * 200},
+        ),
+        WorldFactClaim(
+            project_id=project.id,
+            project_profile_version_id=profile_version.id,
+            profile_version=profile_version.version,
+            claim_id="claim.boundary.heavy",
+            subject_ref="char.boundary",
+            predicate="identity",
+            object_ref_or_value={"fragments": ["真相碎片"] * 200},
+            claim_layer="truth",
+            claim_status="confirmed",
+            disclosed_to_refs=["char.reader"] * 100,
+            authority_type="authoritative_structured",
+            confidence=0.95,
+            evidence_refs=[f"chapter.{i:03d}" for i in range(100)],
+            notes="长事实备注" * 300,
+            contract_version=profile_version.contract_version,
+        ),
+        WorldProposalBundle(
+            id="boundary-heavy-bundle",
+            project_id=project.id,
+            project_profile_version_id=profile_version.id,
+            profile_version=profile_version.version,
+            bundle_status="pending",
+            title="Boundary heavy bundle",
+            summary="长提案摘要" * 300,
+            created_by="athena.dialog",
+        ),
+        WorldProposalItem(
+            project_id=project.id,
+            project_profile_version_id=profile_version.id,
+            profile_version=profile_version.version,
+            bundle_id="boundary-heavy-bundle",
+            item_status="pending",
+            claim_id="claim.boundary.pending",
+            subject_ref="char.boundary",
+            predicate="status",
+            object_ref_or_value={"fragments": ["候选碎片"] * 200},
+            claim_layer="truth",
+            disclosed_to_refs=[f"char.reader.{i}" for i in range(100)],
+            authority_type="authoritative_structured",
+            confidence=0.9,
+            evidence_refs=[f"chapter.{i:03d}" for i in range(100)],
+            notes="长候选备注" * 300,
+            contract_version=profile_version.contract_version,
+            created_by="athena.dialog",
+        ),
+    ])
+    db_session.commit()
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        block = build_athena_context_boundary_block(db_session, project)
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert "检索索引：1 个文档" in block["content"]
+    assert "世界事实：1 条确认真相" in block["content"]
+    assert "待审提案：1 个批次 / 1 条候选" in block["content"]
+    count_statements = [statement for statement in statements if "count(" in statement]
+    assert count_statements
+    forbidden_columns = [
+        "retrieval_documents.document_metadata",
+        "world_fact_claims.object_ref_or_value",
+        "world_fact_claims.disclosed_to_refs",
+        "world_fact_claims.evidence_refs",
+        "world_fact_claims.notes",
+        "world_proposal_bundles.summary",
+        "world_proposal_items.object_ref_or_value",
+        "world_proposal_items.disclosed_to_refs",
+        "world_proposal_items.evidence_refs",
+        "world_proposal_items.notes",
+    ]
+    for column in forbidden_columns:
+        assert all(column not in statement for statement in count_statements)
+
+
 def test_athena_chat_success_records_model_call_trace(client, db_session, monkeypatch):
     _enable_fake_ai(monkeypatch)
     project, profile_version = _seed_project(db_session, with_profile=True)

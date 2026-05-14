@@ -279,40 +279,54 @@ def build_athena_context_boundary_block(db: Session, project: Project) -> dict[s
     else:
         chapter_line = f"正文：已生成 0 / 目标 {target_chapters}"
 
-    truth_query = db.query(WorldFactClaim).filter(
+    truth_filters = [
         WorldFactClaim.project_id == project.id,
         WorldFactClaim.claim_layer == "truth",
         WorldFactClaim.claim_status == "confirmed",
-    )
-    bundle_query = db.query(WorldProposalBundle).filter(
+    ]
+    bundle_filters = [
         WorldProposalBundle.project_id == project.id,
         WorldProposalBundle.bundle_status == "pending",
-    )
-    item_query = db.query(WorldProposalItem).filter(
+    ]
+    item_filters = [
         WorldProposalItem.project_id == project.id,
         WorldProposalItem.item_status == "pending",
-    )
+    ]
     if profile is not None:
-        truth_query = truth_query.filter(
-            WorldFactClaim.project_profile_version_id == profile.id,
-            WorldFactClaim.profile_version == profile.version,
+        truth_filters.extend(
+            [
+                WorldFactClaim.project_profile_version_id == profile.id,
+                WorldFactClaim.profile_version == profile.version,
+            ]
         )
-        bundle_query = bundle_query.filter(
-            WorldProposalBundle.project_profile_version_id == profile.id,
-            WorldProposalBundle.profile_version == profile.version,
+        bundle_filters.extend(
+            [
+                WorldProposalBundle.project_profile_version_id == profile.id,
+                WorldProposalBundle.profile_version == profile.version,
+            ]
         )
-        item_query = item_query.filter(
-            WorldProposalItem.project_profile_version_id == profile.id,
-            WorldProposalItem.profile_version == profile.version,
+        item_filters.extend(
+            [
+                WorldProposalItem.project_profile_version_id == profile.id,
+                WorldProposalItem.profile_version == profile.version,
+            ]
         )
 
-    retrieval_count = db.query(RetrievalDocument).filter(RetrievalDocument.project_id == project.id).count()
+    retrieval_count = (
+        db.query(func.count(RetrievalDocument.id))
+        .filter(RetrievalDocument.project_id == project.id)
+        .scalar()
+        or 0
+    )
+    truth_count = db.query(func.count(WorldFactClaim.id)).filter(*truth_filters).scalar() or 0
+    bundle_count = db.query(func.count(WorldProposalBundle.id)).filter(*bundle_filters).scalar() or 0
+    item_count = db.query(func.count(WorldProposalItem.id)).filter(*item_filters).scalar() or 0
     lines = [
         "已读取范围：",
         f"- {chapter_line}",
         f"- 检索索引：{retrieval_count} 个文档",
-        f"- 世界事实：{truth_query.count()} 条确认真相",
-        f"- 待审提案：{bundle_query.count()} 个批次 / {item_query.count()} 条候选",
+        f"- 世界事实：{truth_count} 条确认真相",
+        f"- 待审提案：{bundle_count} 个批次 / {item_count} 条候选",
         "回答边界：",
         "- 回答全局质量、伏笔闭合、秘密回收、一致性判断时，必须说明依据范围。",
         "- 最近章节摘录只代表局部证据；不能据此替代全书进度、叙事规划、世界事实和待审提案。",
