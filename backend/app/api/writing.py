@@ -55,4 +55,4 @@ async def retry_chapter(project_id: str, chapter_index: int, db: Session = Depen
         return {"chapter_index": chapter.chapter_index}
 
     LocalTaskRunner().start(task.id, _regen)
-    return scheduler.state(project_id, db)
+    return scheduler.run_chapter(project_id, chapter_index, db)

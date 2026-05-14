@@ -51,6 +51,8 @@ def test_writing_retry_creates_background_task(client, db_session):
         response = client.post(f"/api/v1/projects/{pid}/writing/chapters/2/retry")
 
     assert response.status_code == 200
+    assert response.json()["status"] == "running"
+    assert response.json()["current_chapter"] == 2
     task = (
         db_session.query(BackgroundTask)
         .filter(
