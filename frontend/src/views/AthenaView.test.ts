@@ -193,6 +193,43 @@ describe('AthenaView narrative atlas integration', () => {
     ])
   })
 
+  it('uses narrative plan total metadata for timeline fallback summary', async () => {
+    vi.mocked(api.getAthenaTimeline).mockResolvedValue({ anchors: [], events: [] })
+    vi.mocked(api.getAthenaEvolutionPlan).mockResolvedValue({
+      outline: {
+        chapters: Array.from({ length: 50 }, (_, index) => ({
+          chapter_index: index + 101,
+          title: `窗口章节${index + 101}`,
+        })),
+        chapters_total: 1000,
+        plotlines: [],
+      },
+      storyline: {
+        plotlines: [
+          { name: '主线', type: 'main', milestones: [] },
+          { name: '支线', type: 'sub', milestones: [] },
+        ],
+        plotlines_total: 4,
+        foreshadowing: Array.from({ length: 100 }, (_, index) => ({
+          hint: `窗口伏笔${index + 1}`,
+          planted_chapter: index + 1,
+          resolved_chapter: index + 50,
+          status: 'pending',
+        })),
+        foreshadowing_total: 300,
+      },
+    } as unknown as AthenaEvolutionPlan)
+
+    const { wrapper } = await mountAthenaView('/projects/project-1/athena/narrative?view=timeline')
+    const timelineStub = wrapper.getComponent({ name: 'TimelineView' })
+
+    expect(timelineStub.props('fallbackSummary')).toEqual({
+      chapters: 1000,
+      plotlines: 4,
+      foreshadowing: 300,
+    })
+  })
+
   it('uses chapter list metadata for latest chapter when summaries are paginated', async () => {
     const firstPage = Array.from({ length: 200 }, (_, index) => ({
       id: `chapter-${index + 1}`,

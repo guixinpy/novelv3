@@ -84,9 +84,15 @@ const timelineEvents = computed<AthenaTimelineEvent[]>(() => {
 })
 const timelineAnchors = computed(() => athena.timeline?.anchors || [])
 const narrativeFallbackSummary = computed(() => ({
-  chapters: arrayCount(athena.evolutionPlan?.outline?.chapters),
-  plotlines: arrayCount(athena.evolutionPlan?.storyline?.plotlines || athena.evolutionPlan?.outline?.plotlines),
-  foreshadowing: arrayCount(athena.evolutionPlan?.storyline?.foreshadowing),
+  chapters: countWithTotal(athena.evolutionPlan?.outline?.chapters_total, athena.evolutionPlan?.outline?.chapters),
+  plotlines: countWithTotal(
+    athena.evolutionPlan?.storyline?.plotlines_total ?? athena.evolutionPlan?.outline?.plotlines_total,
+    athena.evolutionPlan?.storyline?.plotlines || athena.evolutionPlan?.outline?.plotlines,
+  ),
+  foreshadowing: countWithTotal(
+    athena.evolutionPlan?.storyline?.foreshadowing_total,
+    athena.evolutionPlan?.storyline?.foreshadowing,
+  ),
 }))
 const narrativePlanLoading = computed(() => routeDataLoading.value && !athena.evolutionPlan)
 const timelineLoading = computed(() => routeDataLoading.value && !athena.timeline)
@@ -204,6 +210,11 @@ function isCurrentInitialize(requestId: number, projectId: string) {
 
 function arrayCount(value: unknown) {
   return Array.isArray(value) ? value.length : 0
+}
+
+function countWithTotal(total: unknown, value: unknown) {
+  const totalValue = toNumber(total)
+  return totalValue !== null && totalValue >= 0 ? totalValue : arrayCount(value)
 }
 
 function buildNarrativePlanTimeline(plan: AthenaEvolutionPlan | null): AthenaTimelineEvent[] {

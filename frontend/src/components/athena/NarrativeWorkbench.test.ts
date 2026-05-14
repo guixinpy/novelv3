@@ -113,6 +113,33 @@ function largeForeshadowingPlan(count: number) {
   } as unknown as AthenaEvolutionPlan
 }
 
+function windowedPlanWithTotals() {
+  return {
+    outline: {
+      chapters: Array.from({ length: 50 }, (_, index) => ({
+        chapter_index: index + 101,
+        title: `窗口章节${index + 101}`,
+      })),
+      plotlines: [],
+      chapters_total: 1000,
+    },
+    storyline: {
+      plotlines: [
+        { name: '主线', type: 'main', milestones: [] },
+        { name: '支线', type: 'sub', milestones: [] },
+      ],
+      foreshadowing: Array.from({ length: 100 }, (_, index) => ({
+        hint: `窗口伏笔${index + 1}`,
+        planted_chapter: index + 1,
+        resolved_chapter: index + 50,
+        status: 'pending',
+      })),
+      plotlines_total: 4,
+      foreshadowing_total: 300,
+    },
+  } as unknown as AthenaEvolutionPlan
+}
+
 describe('NarrativeWorkbench', () => {
   it('shows loading state before narrative plan data resolves', () => {
     const wrapper = mount(NarrativeWorkbench, {
@@ -219,6 +246,19 @@ describe('NarrativeWorkbench', () => {
     expect(wrapper.text()).toContain('异常信号')
     expect(wrapper.text()).toContain('草稿')
     expect(wrapper.text()).toContain('引入核心谜团')
+  })
+
+  it('uses narrative plan total metadata for windowed plan metrics', () => {
+    const wrapper = mount(NarrativeWorkbench, {
+      props: {
+        plan: windowedPlanWithTotals(),
+        chapters: [],
+        view: 'chapters',
+      },
+    })
+    const metricValues = wrapper.findAll('.narrative-workbench__metric strong').map((item) => item.text())
+
+    expect(metricValues).toEqual(['1000', '4', '300'])
   })
 
   it('filters chapters and supports quick jump selection', async () => {

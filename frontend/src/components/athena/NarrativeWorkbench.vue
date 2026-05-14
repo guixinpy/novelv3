@@ -101,9 +101,15 @@ const chapterStatusByIndex = computed(() => {
 })
 
 const metrics = computed(() => [
-  { label: '章节规划', value: outlineChapters.value.length },
-  { label: '故事线', value: plotlines.value.length },
-  { label: '伏笔', value: foreshadowingItems.value.length },
+  { label: '章节规划', value: countWithTotal(props.plan?.outline?.chapters_total, outlineChapters.value.length) },
+  {
+    label: '故事线',
+    value: countWithTotal(
+      props.plan?.storyline?.plotlines_total ?? props.plan?.outline?.plotlines_total,
+      plotlines.value.length,
+    ),
+  },
+  { label: '伏笔', value: countWithTotal(props.plan?.storyline?.foreshadowing_total, foreshadowingItems.value.length) },
 ])
 
 const filteredOutlineChapters = computed(() => {
@@ -199,6 +205,11 @@ function toNumber(value: unknown): number | null {
   if (value === '' || value === null || value === undefined) return null
   const numberValue = Number(value)
   return Number.isFinite(numberValue) ? numberValue : null
+}
+
+function countWithTotal(total: unknown, fallback: number) {
+  const totalValue = toNumber(total)
+  return totalValue !== null && totalValue >= 0 ? totalValue : fallback
 }
 
 function toTextArray(value: unknown): string[] {
