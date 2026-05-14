@@ -203,6 +203,20 @@ describe('createAthenaSectionLoader', () => {
     })
   })
 
+  it('loads a bounded foreshadowing window for the narrative foreshadowing view', async () => {
+    const { athena, loader } = createLoaderMocks(null)
+
+    await loader.loadRouteData(routeState({ section: 'narrative', view: 'foreshadowing' }))
+
+    expect(athena.loadEvolutionPlan).toHaveBeenCalledWith('project-1', {
+      mode: 'window',
+      chapter_limit: 1,
+      plotline_limit: 1,
+      foreshadowing_offset: 0,
+      foreshadowing_limit: 100,
+    })
+  })
+
   it('reloads the full evolution plan for graph view when a windowed plan is already present', async () => {
     const { athena, loader } = createLoaderMocks(null)
     athena.evolutionPlan = {

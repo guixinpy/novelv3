@@ -161,6 +161,28 @@ function windowedChapterPlan(offset: number, limit: number, total: number) {
   } as unknown as AthenaEvolutionPlan
 }
 
+function windowedForeshadowingPlan(offset: number, limit: number, total: number) {
+  return {
+    outline: { chapters: [], plotlines: [] },
+    storyline: {
+      plotlines: [],
+      foreshadowing: Array.from({ length: limit }, (_, index) => {
+        const itemIndex = offset + index + 1
+        return {
+          hint: `窗口伏笔${itemIndex}`,
+          planted_chapter: itemIndex,
+          resolved_chapter: itemIndex + 10,
+          status: 'pending',
+        }
+      }),
+      foreshadowing_total: total,
+      foreshadowing_offset: offset,
+      foreshadowing_limit: limit,
+      foreshadowing_has_more: offset + limit < total,
+    },
+  } as unknown as AthenaEvolutionPlan
+}
+
 describe('NarrativeWorkbench', () => {
   it('shows loading state before narrative plan data resolves', () => {
     const wrapper = mount(NarrativeWorkbench, {
@@ -417,5 +439,25 @@ describe('NarrativeWorkbench', () => {
     expect(wrapper.text()).toContain('当前显示 101-200 / 250 条伏笔')
     expect(wrapper.findAll('.narrative-workbench__hint')[0].text()).toContain('伏笔101')
     expect(wrapper.findAll('.narrative-workbench__hint').some((item) => item.text() === '待回收第1章 → 第11章伏笔1')).toBe(false)
+  })
+
+  it('emits foreshadowing window requests for server-windowed foreshadowing plans', async () => {
+    const wrapper = mount(NarrativeWorkbench, {
+      props: {
+        plan: windowedForeshadowingPlan(100, 100, 300),
+        chapters: [],
+        view: 'foreshadowing',
+      },
+    })
+
+    expect(wrapper.text()).toContain('当前显示 101-200 / 300 条伏笔')
+
+    await wrapper.get('[data-testid="foreshadowing-next"]').trigger('click')
+    await wrapper.get('[data-testid="foreshadowing-prev"]').trigger('click')
+
+    expect(wrapper.emitted('loadForeshadowingWindow')).toEqual([
+      [{ offset: 200, limit: 100 }],
+      [{ offset: 0, limit: 100 }],
+    ])
   })
 })

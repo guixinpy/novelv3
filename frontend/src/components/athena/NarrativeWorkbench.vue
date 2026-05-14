@@ -28,6 +28,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   loadChapterWindow: [payload: { offset: number; limit: number }]
+  loadForeshadowingWindow: [payload: { offset: number; limit: number }]
 }>()
 
 const collapsedPlotlineKeys = ref<Set<string>>(new Set())
@@ -92,8 +93,19 @@ const foreshadowingItems = computed(() =>
     .sort((left, right) => Number(left.plantedChapter ?? 0) - Number(right.plantedChapter ?? 0)),
 )
 
+const foreshadowingTotal = computed(() =>
+  countWithTotal(props.plan?.storyline?.foreshadowing_total, foreshadowingItems.value.length),
+)
+const foreshadowingWindowOffset = computed(() => toNumber(props.plan?.storyline?.foreshadowing_offset))
+const foreshadowingWindowLimit = computed(() => toNumber(props.plan?.storyline?.foreshadowing_limit) ?? FORESHADOWING_WINDOW_SIZE)
+const usesServerForeshadowingWindow = computed(() =>
+  foreshadowingWindowOffset.value !== null && foreshadowingTotal.value > foreshadowingItems.value.length,
+)
+
 const visibleForeshadowingItems = computed(() =>
-  foreshadowingItems.value.slice(foreshadowingWindowStart.value, foreshadowingWindowStart.value + FORESHADOWING_WINDOW_SIZE),
+  usesServerForeshadowingWindow.value
+    ? foreshadowingItems.value
+    : foreshadowingItems.value.slice(foreshadowingWindowStart.value, foreshadowingWindowStart.value + FORESHADOWING_WINDOW_SIZE),
 )
 
 const chapterStatusByIndex = computed(() => {
@@ -120,7 +132,7 @@ const metrics = computed(() => [
       plotlines.value.length,
     ),
   },
-  { label: '伏笔', value: countWithTotal(props.plan?.storyline?.foreshadowing_total, foreshadowingItems.value.length) },
+  { label: '伏笔', value: foreshadowingTotal.value },
 ])
 
 const filteredOutlineChapters = computed(() => {
@@ -343,21 +355,54 @@ function pagePlotlineMilestones(plotline: StorylinePlotline, direction: -1 | 1) 
 }
 
 const foreshadowingWindowEnd = computed(() =>
-  Math.min(foreshadowingWindowStart.value + FORESHADOWING_WINDOW_SIZE, foreshadowingItems.value.length),
+  usesServerForeshadowingWindow.value
+    ? Math.min((foreshadowingWindowOffset.value ?? 0) + foreshadowingItems.value.length, foreshadowingTotal.value)
+    : Math.min(foreshadowingWindowStart.value + FORESHADOWING_WINDOW_SIZE, foreshadowingItems.value.length),
 )
 
-const foreshadowingWindowLabel = computed(() =>
-  `当前显示 ${foreshadowingWindowStart.value + 1}-${foreshadowingWindowEnd.value} / ${foreshadowingItems.value.length} 条伏笔`,
-)
+const foreshadowingWindowLabel = computed(() => {
+  if (usesServerForeshadowingWindow.value) {
+    const start = (foreshadowingWindowOffset.value ?? 0) + 1
+    return `当前显示 ${start}-${foreshadowingWindowEnd.value} / ${foreshadowingTotal.value} 条伏笔`
+  }
+  return `当前显示 ${foreshadowingWindowStart.value + 1}-${foreshadowingWindowEnd.value} / ${foreshadowingItems.value.length} 条伏笔`
+})
 
-const canPageForeshadowingPrevious = computed(() => foreshadowingWindowStart.value > 0)
-const canPageForeshadowingNext = computed(() => foreshadowingWindowEnd.value < foreshadowingItems.value.length)
+const canPageForeshadowingPrevious = computed(() =>
+  usesServerForeshadowingWindow.value
+    ? (foreshadowingWindowOffset.value ?? 0) > 0
+    : foreshadowingWindowStart.value > 0,
+)
+const canPageForeshadowingNext = computed(() => {
+  if (usesServerForeshadowingWindow.value) {
+    if (props.plan?.storyline?.foreshadowing_has_more === true) return true
+    return (foreshadowingWindowOffset.value ?? 0) + foreshadowingItems.value.length < foreshadowingTotal.value
+  }
+  return foreshadowingWindowEnd.value < foreshadowingItems.value.length
+})
 
 function pageForeshadowing(direction: -1 | 1) {
+  if (usesServerForeshadowingWindow.value) {
+    const currentOffset = foreshadowingWindowOffset.value ?? 0
+    const limit = foreshadowingWindowLimit.value
+    const maxStart = Math.max(0, foreshadowingTotal.value - limit)
+    const nextOffset = direction > 0
+      ? Math.min(currentOffset + limit, maxStart)
+      : Math.max(currentOffset - limit, 0)
+    requestForeshadowingWindow(nextOffset)
+    return
+  }
   const maxStart = Math.max(0, foreshadowingItems.value.length - FORESHADOWING_WINDOW_SIZE)
   foreshadowingWindowStart.value = direction > 0
     ? Math.min(foreshadowingWindowStart.value + FORESHADOWING_WINDOW_SIZE, maxStart)
     : Math.max(foreshadowingWindowStart.value - FORESHADOWING_WINDOW_SIZE, 0)
+}
+
+function requestForeshadowingWindow(offset: number) {
+  emit('loadForeshadowingWindow', {
+    offset: Math.max(0, offset),
+    limit: foreshadowingWindowLimit.value,
+  })
 }
 
 function selectChapterJump(value: string) {
@@ -591,7 +636,10 @@ watch(foreshadowingItems, (items) => {
       </div>
 
       <div v-else-if="view === 'foreshadowing'" class="narrative-workbench__foreshadowing">
-        <div v-if="foreshadowingItems.length > FORESHADOWING_WINDOW_SIZE" class="narrative-workbench__foreshadowing-window">
+        <div
+          v-if="foreshadowingItems.length > FORESHADOWING_WINDOW_SIZE || usesServerForeshadowingWindow"
+          class="narrative-workbench__foreshadowing-window"
+        >
           <span>{{ foreshadowingWindowLabel }}</span>
           <div>
             <button

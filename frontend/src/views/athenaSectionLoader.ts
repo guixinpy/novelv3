@@ -5,6 +5,7 @@ import type { AthenaRouteState } from './athenaNavigation'
 type AthenaStore = ReturnType<typeof useAthenaStore>
 type WorldModelStore = ReturnType<typeof useWorldModelStore>
 const CHAPTER_PLAN_WINDOW_LIMIT = 50
+const FORESHADOWING_PLAN_WINDOW_LIMIT = 100
 
 interface AthenaSectionLoaderOptions {
   getProjectId: () => string
@@ -20,6 +21,16 @@ export function createAthenaSectionLoader(options: AthenaSectionLoaderOptions) {
       chapter_limit: CHAPTER_PLAN_WINDOW_LIMIT,
       plotline_limit: 1,
       foreshadowing_limit: 1,
+    }
+  }
+
+  function foreshadowingPlanWindowQuery(offset = 0) {
+    return {
+      mode: 'window' as const,
+      chapter_limit: 1,
+      plotline_limit: 1,
+      foreshadowing_offset: offset,
+      foreshadowing_limit: FORESHADOWING_PLAN_WINDOW_LIMIT,
     }
   }
 
@@ -64,9 +75,12 @@ export function createAthenaSectionLoader(options: AthenaSectionLoaderOptions) {
     if (routeState.section === 'narrative' && routeState.view === 'chapters') {
       await options.athena.loadEvolutionPlan(id, chapterPlanWindowQuery())
     }
+    if (routeState.section === 'narrative' && routeState.view === 'foreshadowing') {
+      await options.athena.loadEvolutionPlan(id, foreshadowingPlanWindowQuery())
+    }
     if (
       routeState.section === 'narrative'
-      && (routeState.view === 'storyline' || routeState.view === 'foreshadowing')
+      && routeState.view === 'storyline'
     ) {
       if (!options.athena.evolutionPlan) await options.athena.loadEvolutionPlan(id)
     }
