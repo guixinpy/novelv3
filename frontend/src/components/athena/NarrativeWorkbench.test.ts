@@ -148,6 +148,28 @@ describe('NarrativeWorkbench', () => {
     expect(wrapper.text()).not.toContain('支线节点1')
   })
 
+  it('windows large expanded storyline branches instead of rendering every milestone', async () => {
+    const wrapper = mount(NarrativeWorkbench, {
+      props: {
+        plan: largeStorylinePlan(250, 0),
+        chapters: [],
+        view: 'storyline',
+      },
+    })
+
+    expect(wrapper.findAll('.narrative-workbench__milestone')).toHaveLength(80)
+    expect(wrapper.text()).toContain('当前显示 1-80 / 250 个节点')
+    expect(wrapper.text()).toContain('主线节点80')
+    expect(wrapper.text()).not.toContain('主线节点81')
+
+    await wrapper.get('[data-testid="storyline-milestone-next"]').trigger('click')
+
+    expect(wrapper.findAll('.narrative-workbench__milestone')).toHaveLength(80)
+    expect(wrapper.text()).toContain('当前显示 81-160 / 250 个节点')
+    expect(wrapper.findAll('.narrative-workbench__milestone')[0].text()).toContain('主线节点81')
+    expect(wrapper.findAll('.narrative-workbench__milestone').some((item) => item.text() === '第1章主线节点1')).toBe(false)
+  })
+
   it('accepts chapter field and avoids duplicate milestone copy', () => {
     const wrapper = mount(NarrativeWorkbench, {
       props: {

@@ -5,6 +5,20 @@ import type { AthenaNarrativeView } from '../../views/athenaNavigation'
 
 type RecordValue = Record<string, unknown>
 
+interface StorylineMilestone {
+  key: string
+  chapterIndex: number | null
+  title: string
+  summary: string
+}
+
+interface StorylinePlotline {
+  key: string
+  name: string
+  type: string
+  milestones: StorylineMilestone[]
+}
+
 const props = defineProps<{
   plan: AthenaEvolutionPlan | null
   chapters: ChapterSummary[]
@@ -13,6 +27,7 @@ const props = defineProps<{
 }>()
 
 const collapsedPlotlineKeys = ref<Set<string>>(new Set())
+const plotlineMilestoneWindowStarts = ref<Record<string, number>>({})
 const chapterSearch = ref('')
 const activeChapterIndex = ref<number | null>(null)
 const chapterVolumeStart = ref(1)
@@ -21,6 +36,7 @@ const CHAPTERS_PER_VOLUME = 100
 const CHAPTER_WINDOW_SIZE = 50
 const CHAPTER_SEARCH_RESULT_LIMIT = 100
 const STORYLINE_AUTO_COLLAPSE_MILESTONE_THRESHOLD = 120
+const STORYLINE_MILESTONE_WINDOW_SIZE = 80
 let initializedPlotlineCollapseSignature = ''
 
 const outlineChapters = computed(() =>
@@ -39,9 +55,9 @@ const outlineChapters = computed(() =>
     .sort((left, right) => Number(left.chapterIndex) - Number(right.chapterIndex)),
 )
 
-const plotlines = computed(() =>
+const plotlines = computed<StorylinePlotline[]>(() =>
   asRecords(props.plan?.storyline?.plotlines || props.plan?.outline?.plotlines)
-    .map((plotline, index) => ({
+    .map((plotline, index): StorylinePlotline => ({
       key: toText(plotline.name, `plotline-${index}`),
       name: toText(plotline.name, '未命名线索'),
       type: toText(plotline.type, '未分类'),
@@ -240,6 +256,44 @@ function togglePlotline(key: string) {
   collapsedPlotlineKeys.value = next
 }
 
+function visiblePlotlineMilestones(plotline: StorylinePlotline) {
+  const start = plotlineMilestoneWindowStart(plotline.key)
+  return plotline.milestones.slice(start, start + STORYLINE_MILESTONE_WINDOW_SIZE)
+}
+
+function plotlineMilestoneWindowStart(key: string) {
+  return plotlineMilestoneWindowStarts.value[key] ?? 0
+}
+
+function plotlineMilestoneWindowEnd(plotline: StorylinePlotline) {
+  return Math.min(plotlineMilestoneWindowStart(plotline.key) + STORYLINE_MILESTONE_WINDOW_SIZE, plotline.milestones.length)
+}
+
+function plotlineMilestoneWindowLabel(plotline: StorylinePlotline) {
+  const start = plotlineMilestoneWindowStart(plotline.key)
+  return `当前显示 ${start + 1}-${plotlineMilestoneWindowEnd(plotline)} / ${plotline.milestones.length} 个节点`
+}
+
+function canPagePlotlineMilestonesPrevious(plotline: StorylinePlotline) {
+  return plotlineMilestoneWindowStart(plotline.key) > 0
+}
+
+function canPagePlotlineMilestonesNext(plotline: StorylinePlotline) {
+  return plotlineMilestoneWindowEnd(plotline) < plotline.milestones.length
+}
+
+function pagePlotlineMilestones(plotline: StorylinePlotline, direction: -1 | 1) {
+  const current = plotlineMilestoneWindowStart(plotline.key)
+  const maxStart = Math.max(0, plotline.milestones.length - STORYLINE_MILESTONE_WINDOW_SIZE)
+  const nextStart = direction > 0
+    ? Math.min(current + STORYLINE_MILESTONE_WINDOW_SIZE, maxStart)
+    : Math.max(current - STORYLINE_MILESTONE_WINDOW_SIZE, 0)
+  plotlineMilestoneWindowStarts.value = {
+    ...plotlineMilestoneWindowStarts.value,
+    [plotline.key]: nextStart,
+  }
+}
+
 function selectChapterJump(value: string) {
   const chapterIndex = toNumber(value)
   if (chapterIndex === null) return
@@ -293,6 +347,7 @@ watch(plotlines, (items) => {
     .join('|')
   if (signature === initializedPlotlineCollapseSignature) return
   initializedPlotlineCollapseSignature = signature
+  plotlineMilestoneWindowStarts.value = {}
 
   const totalMilestones = items.reduce((total, plotline) => total + plotline.milestones.length, 0)
   if (totalMilestones < STORYLINE_AUTO_COLLAPSE_MILESTONE_THRESHOLD) {
@@ -336,8 +391,32 @@ watch(plotlines, (items) => {
               <h3>{{ plotline.name }}</h3>
             </div>
           </header>
-          <ol v-if="plotline.milestones.length && !isPlotlineCollapsed(plotline.key)" class="narrative-workbench__milestones">
-            <li v-for="milestone in plotline.milestones" :key="milestone.key" class="narrative-workbench__milestone">
+          <div
+            v-if="plotline.milestones.length > STORYLINE_MILESTONE_WINDOW_SIZE && !isPlotlineCollapsed(plotline.key)"
+            class="narrative-workbench__milestone-window"
+          >
+            <span>{{ plotlineMilestoneWindowLabel(plotline) }}</span>
+            <div>
+              <button
+                type="button"
+                data-testid="storyline-milestone-prev"
+                :disabled="!canPagePlotlineMilestonesPrevious(plotline)"
+                @click="pagePlotlineMilestones(plotline, -1)"
+              >
+                上一组
+              </button>
+              <button
+                type="button"
+                data-testid="storyline-milestone-next"
+                :disabled="!canPagePlotlineMilestonesNext(plotline)"
+                @click="pagePlotlineMilestones(plotline, 1)"
+              >
+                下一组
+              </button>
+            </div>
+          </div>
+          <ol v-if="visiblePlotlineMilestones(plotline).length && !isPlotlineCollapsed(plotline.key)" class="narrative-workbench__milestones">
+            <li v-for="milestone in visiblePlotlineMilestones(plotline)" :key="milestone.key" class="narrative-workbench__milestone">
               <span>第{{ milestone.chapterIndex ?? '?' }}章</span>
               <strong>{{ milestone.title }}</strong>
               <p v-if="milestone.summary">{{ milestone.summary }}</p>
@@ -598,7 +677,22 @@ watch(plotlines, (items) => {
   font-size: var(--text-xs);
 }
 
+.narrative-workbench__milestone-window {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin: var(--space-2) 0 var(--space-3) 36px;
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+}
+
 .narrative-workbench__chapter-window div {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.narrative-workbench__milestone-window div {
   display: flex;
   gap: var(--space-2);
 }
@@ -613,7 +707,22 @@ watch(plotlines, (items) => {
   cursor: pointer;
 }
 
+.narrative-workbench__milestone-window button {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+  background: var(--color-bg-white);
+  color: var(--color-text-primary);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
 .narrative-workbench__chapter-window button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.narrative-workbench__milestone-window button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
 }
