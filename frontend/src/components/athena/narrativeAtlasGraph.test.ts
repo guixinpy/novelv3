@@ -241,4 +241,90 @@ describe('narrativeAtlasGraph', () => {
     ]))
     expect(unresolvedWarnings.every((warning) => foreshadowingIds.has(String(warning.sourceId)))).toBe(true)
   })
+
+  it('builds only local chapter-window nodes when a chapter range is provided', () => {
+    const chapterCount = 1000
+    const largePlan = {
+      outline: {
+        id: 'outline-longform',
+        status: 'generated',
+        total_chapters: chapterCount,
+        chapters: Array.from({ length: chapterCount }, (_, index) => {
+          const chapterIndex = index + 1
+          return {
+            chapter_index: chapterIndex,
+            title: `长篇第${chapterIndex}章`,
+            summary: `第${chapterIndex}章摘要`,
+          }
+        }),
+        plotlines: [],
+      },
+      storyline: {
+        id: 'storyline-longform',
+        status: 'generated',
+        plotlines: [
+          {
+            name: '主线：长篇主干',
+            milestones: [
+              { chapter_index: 12, title: '远端起点' },
+              { chapter_index: 420, title: '窗口内推进' },
+              { chapter_index: 960, title: '远端终局' },
+            ],
+          },
+        ],
+        foreshadowing: [
+          { hint: '窗口外伏笔', planted_chapter: 120, status: 'pending' },
+          { hint: '窗口内伏笔', planted_chapter: 430, status: 'pending' },
+        ],
+      },
+    } as unknown as AthenaEvolutionPlan
+    const largeTimeline: AthenaTimeline = {
+      anchors: [],
+      events: [
+        {
+          id: 'event-outside',
+          event_id: 'event.outside',
+          chapter_index: 300,
+          intra_chapter_seq: 1,
+          event_type: 'outside',
+          description: '窗口外事件',
+        },
+        {
+          id: 'event-inside',
+          event_id: 'event.inside',
+          chapter_index: 440,
+          intra_chapter_seq: 1,
+          event_type: 'inside',
+          description: '窗口内事件',
+        },
+      ],
+    }
+
+    const graph = buildNarrativeAtlasGraph({
+      plan: largePlan,
+      chapters: [],
+      timeline: largeTimeline,
+      chapterRange: { start: 401, end: 480 },
+    })
+
+    const chapterIndexes = graph.nodes
+      .filter((node) => node.type === 'chapter')
+      .map((node) => node.chapterIndex)
+
+    expect(chapterIndexes).toHaveLength(80)
+    expect(chapterIndexes[0]).toBe(401)
+    expect(chapterIndexes[79]).toBe(480)
+    expect(graph.nodes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'milestone', label: '窗口内推进', chapterIndex: 420 }),
+      expect.objectContaining({ type: 'foreshadowing', label: '窗口内伏笔', chapterIndex: 430 }),
+      expect.objectContaining({ type: 'event', label: '窗口内事件', chapterIndex: 440 }),
+    ]))
+    expect(graph.nodes).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: '远端起点' }),
+      expect.objectContaining({ label: '远端终局' }),
+      expect.objectContaining({ label: '窗口外伏笔' }),
+      expect.objectContaining({ label: '窗口外事件' }),
+    ]))
+    expect(graph.edges.filter((edge) => edge.type === 'trunk')).toHaveLength(79)
+  })
 })

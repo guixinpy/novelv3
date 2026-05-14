@@ -171,6 +171,7 @@ describe('NarrativeAtlasView', () => {
     })
 
     expect(wrapper.text()).toContain('第1-80章')
+    expect(wrapper.get('[data-testid="atlas-metric-chapters"]').text()).toContain('250')
     expect(wrapper.find('[data-atlas-node-id="chapter:1"]').exists()).toBe(true)
     expect(wrapper.find('[data-atlas-node-id="chapter:120"]').exists()).toBe(false)
   })

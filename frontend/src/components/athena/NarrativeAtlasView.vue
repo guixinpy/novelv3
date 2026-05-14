@@ -3,7 +3,11 @@ import { computed, reactive, ref, watch } from 'vue'
 import NarrativeAtlasCanvas from './NarrativeAtlasCanvas.vue'
 import NarrativeAtlasControls from './NarrativeAtlasControls.vue'
 import NarrativeAtlasDetailPanel from './NarrativeAtlasDetailPanel.vue'
-import { buildNarrativeAtlasGraph } from './narrativeAtlasGraph'
+import {
+  buildNarrativeAtlasGraph,
+  collectNarrativeAtlasChapterIndexes,
+  collectNarrativeAtlasMetrics,
+} from './narrativeAtlasGraph'
 import type { AthenaEvolutionPlan, AthenaTimeline, ChapterSummary } from '../../api/types'
 import type { AthenaNarrativeView } from '../../views/athenaNavigation'
 import type { NarrativeAtlasEdge, NarrativeAtlasGraph, NarrativeAtlasNode } from './narrativeAtlasGraph'
@@ -39,19 +43,11 @@ const atlasWindowStart = ref(1)
 const ATLAS_LOCAL_THRESHOLD = 120
 const ATLAS_WINDOW_SIZE = 80
 
-const graph = computed<NarrativeAtlasGraph>(() =>
-  buildNarrativeAtlasGraph({
+const atlasChapterIndexes = computed(() =>
+  collectNarrativeAtlasChapterIndexes({
     plan: props.plan,
     chapters: props.chapters,
-    timeline: props.timeline,
   }),
-)
-
-const atlasChapterIndexes = computed(() =>
-  graph.value.nodes
-    .filter((node) => node.type === 'chapter' && node.chapterIndex !== undefined)
-    .map((node) => Number(node.chapterIndex))
-    .sort((left, right) => left - right),
 )
 
 const isAtlasWindowed = computed(() => atlasChapterIndexes.value.length > ATLAS_LOCAL_THRESHOLD)
@@ -64,6 +60,17 @@ const atlasWindowEnd = computed(() => Math.min(atlasWindowStart.value + ATLAS_WI
 const atlasScopeLabel = computed(() => `第${atlasWindowStart.value}-${atlasWindowEnd.value}章`)
 const canPageAtlasPrevious = computed(() => atlasWindowStart.value > (atlasChapterIndexes.value[0] ?? 1))
 const canPageAtlasNext = computed(() => atlasWindowEnd.value < lastAtlasChapterIndex.value)
+
+const graph = computed<NarrativeAtlasGraph>(() =>
+  buildNarrativeAtlasGraph({
+    plan: props.plan,
+    chapters: props.chapters,
+    timeline: props.timeline,
+    chapterRange: isAtlasWindowed.value
+      ? { start: atlasWindowStart.value, end: atlasWindowEnd.value }
+      : undefined,
+  }),
+)
 
 const displayGraph = computed<NarrativeAtlasGraph>(() => {
   if (!isAtlasWindowed.value) return graph.value
@@ -99,10 +106,11 @@ const displayGraph = computed<NarrativeAtlasGraph>(() => {
 })
 
 const metrics = computed(() => ({
-  chapters: graph.value.nodes.filter((node) => node.type === 'chapter').length,
-  plotlines: graph.value.nodes.filter((node) => node.type === 'plotline').length,
-  foreshadowing: graph.value.nodes.filter((node) => node.type === 'foreshadowing').length,
-  events: graph.value.nodes.filter((node) => node.type === 'event').length,
+  ...collectNarrativeAtlasMetrics({
+    plan: props.plan,
+    chapters: props.chapters,
+    timeline: props.timeline,
+  }),
 }))
 
 const visibleSelectionIds = computed(() => {

@@ -48,10 +48,23 @@ export interface NarrativeAtlasGraph {
   warnings: NarrativeAtlasWarning[]
 }
 
+export interface NarrativeAtlasChapterRange {
+  start: number
+  end: number
+}
+
+export interface NarrativeAtlasMetrics {
+  chapters: number
+  plotlines: number
+  foreshadowing: number
+  events: number
+}
+
 export interface BuildNarrativeAtlasGraphInput {
   plan: AthenaEvolutionPlan | null
   chapters: ChapterSummary[]
   timeline: AthenaTimeline | null
+  chapterRange?: NarrativeAtlasChapterRange
 }
 
 type RecordValue = Record<string, unknown>
@@ -70,7 +83,7 @@ export function buildNarrativeAtlasGraph(input: BuildNarrativeAtlasGraphInput): 
   const edges: NarrativeAtlasEdge[] = []
   const warnings: NarrativeAtlasWarning[] = []
   const chapterStatusByIndex = new Map(input.chapters.map((chapter) => [Number(chapter.chapter_index), chapter]))
-  const chapters = collectChapters(input.plan, input.chapters, chapterStatusByIndex)
+  const chapters = collectChapters(input.plan, input.chapters, chapterStatusByIndex, input.chapterRange)
   const knownNodeIds = new Set<string>()
   const knownEdgeIds = new Set<string>()
 
@@ -95,17 +108,38 @@ export function buildNarrativeAtlasGraph(input: BuildNarrativeAtlasGraphInput): 
     })
   }
 
-  addPlotlines(input.plan, nodes, edges, warnings, knownNodeIds, knownEdgeIds)
-  addForeshadowing(input.plan, chapters, nodes, edges, warnings, knownNodeIds, knownEdgeIds)
-  addTimeline(input.timeline, nodes, edges, warnings, knownNodeIds, knownEdgeIds)
+  addPlotlines(input.plan, nodes, edges, warnings, knownNodeIds, knownEdgeIds, input.chapterRange)
+  addForeshadowing(input.plan, chapters, nodes, edges, warnings, knownNodeIds, knownEdgeIds, input.chapterRange)
+  addTimeline(input.timeline, nodes, edges, warnings, knownNodeIds, knownEdgeIds, input.chapterRange)
 
   return { nodes, edges, warnings }
+}
+
+export function collectNarrativeAtlasChapterIndexes(
+  input: Pick<BuildNarrativeAtlasGraphInput, 'plan' | 'chapters'>,
+): number[] {
+  const chapterStatusByIndex = new Map(input.chapters.map((chapter) => [Number(chapter.chapter_index), chapter]))
+  return collectChapters(input.plan, input.chapters, chapterStatusByIndex)
+    .map((chapter) => chapter.chapterIndex)
+}
+
+export function collectNarrativeAtlasMetrics(input: BuildNarrativeAtlasGraphInput): NarrativeAtlasMetrics {
+  const storylinePlotlines = asRecords(input.plan?.storyline?.plotlines)
+  const plotlines = storylinePlotlines.length > 0 ? storylinePlotlines : asRecords(input.plan?.outline?.plotlines)
+
+  return {
+    chapters: collectNarrativeAtlasChapterIndexes(input).length,
+    plotlines: plotlines.length,
+    foreshadowing: asRecords(input.plan?.storyline?.foreshadowing).length,
+    events: Array.isArray(input.timeline?.events) ? input.timeline.events.length : 0,
+  }
 }
 
 function collectChapters(
   plan: AthenaEvolutionPlan | null,
   chapters: ChapterSummary[],
   chapterStatusByIndex: Map<number, ChapterSummary>,
+  chapterRange?: NarrativeAtlasChapterRange,
 ): ChapterAtlasRecord[] {
   const outlineChapters = asRecords(plan?.outline?.chapters)
   const source: RecordValue[] = outlineChapters.length > 0
@@ -121,6 +155,7 @@ function collectChapters(
   for (const chapter of source) {
     const chapterIndex = toNumber(chapter.chapter_index ?? chapter.chapter)
     if (chapterIndex === null) continue
+    if (!isChapterInRange(chapterIndex, chapterRange)) continue
 
     const liveChapter = chapterStatusByIndex.get(chapterIndex)
     atlasChapters.push({
@@ -143,11 +178,18 @@ function addPlotlines(
   warnings: NarrativeAtlasWarning[],
   knownNodeIds: Set<string>,
   knownEdgeIds: Set<string>,
+  chapterRange?: NarrativeAtlasChapterRange,
 ) {
   const storylinePlotlines = asRecords(plan?.storyline?.plotlines)
   const plotlines = storylinePlotlines.length > 0 ? storylinePlotlines : asRecords(plan?.outline?.plotlines)
 
   for (const plotline of plotlines) {
+    const rawMilestones = asRecords(plotline.milestones)
+    const milestones = chapterRange
+      ? rawMilestones.filter((milestone) => isRecordInChapterRange(milestone, chapterRange))
+      : rawMilestones
+    if (chapterRange && milestones.length === 0) continue
+
     const name = toText(plotline.name ?? plotline.title, '未命名故事线')
     const plotlineKey = slugify(readIdentity(plotline) ?? name, 'plotline')
     const plotlineId = uniqueNodeId(`plotline:${plotlineKey}`, knownNodeIds)
@@ -161,7 +203,7 @@ function addPlotlines(
     })
 
     const plotlineNodeKey = plotlineId.startsWith('plotline:') ? plotlineId.slice('plotline:'.length) : plotlineKey
-    for (const milestone of asRecords(plotline.milestones)) {
+    for (const milestone of milestones) {
       const label = toText(milestone.title ?? milestone.event ?? milestone.summary ?? milestone.description, '未命名节点')
       const chapterIndex = toNumber(milestone.chapter_index ?? milestone.chapter)
       const milestoneKey = slugify(readIdentity(milestone) ?? label, 'milestone')
@@ -204,6 +246,7 @@ function addForeshadowing(
   warnings: NarrativeAtlasWarning[],
   knownNodeIds: Set<string>,
   knownEdgeIds: Set<string>,
+  chapterRange?: NarrativeAtlasChapterRange,
 ) {
   const latestChapter = chapters.length > 0 ? chapters[chapters.length - 1] : undefined
 
@@ -213,13 +256,16 @@ function addForeshadowing(
     const foreshadowingId = uniqueNodeId(`foreshadowing:${itemKey}`, knownNodeIds)
     const plantedChapter = toNumber(item.planted_chapter ?? item.plantedChapter)
     const resolvedChapter = toNumber(item.resolved_chapter ?? item.resolvedChapter)
+    if (chapterRange && !isChapterInRange(plantedChapter, chapterRange) && !isChapterInRange(resolvedChapter, chapterRange)) {
+      continue
+    }
     const status = toOptionalText(item.status) ?? 'unknown'
 
     addNode(nodes, knownNodeIds, {
       id: foreshadowingId,
       type: 'foreshadowing',
       label: hint,
-      chapterIndex: plantedChapter ?? undefined,
+      chapterIndex: foreshadowingChapterIndex(plantedChapter, resolvedChapter, chapterRange),
       status,
       raw: item,
     })
@@ -235,15 +281,17 @@ function addForeshadowing(
       continue
     }
 
-    const plantedChapterId = ensureChapterAnchor(plantedChapter, nodes, warnings, knownNodeIds, foreshadowingId)
-    addEdge(edges, knownEdgeIds, {
-      id: `foreshadowing:${plantedChapterId}->${foreshadowingId}`,
-      type: 'foreshadowing',
-      source: plantedChapterId,
-      target: foreshadowingId,
-    })
+    if (isChapterInRange(plantedChapter, chapterRange)) {
+      const plantedChapterId = ensureChapterAnchor(plantedChapter, nodes, warnings, knownNodeIds, foreshadowingId)
+      addEdge(edges, knownEdgeIds, {
+        id: `foreshadowing:${plantedChapterId}->${foreshadowingId}`,
+        type: 'foreshadowing',
+        source: plantedChapterId,
+        target: foreshadowingId,
+      })
+    }
 
-    if (status === 'resolved' && resolvedChapter !== null) {
+    if (status === 'resolved' && resolvedChapter !== null && isChapterInRange(resolvedChapter, chapterRange)) {
       const resolvedChapterId = ensureChapterAnchor(resolvedChapter, nodes, warnings, knownNodeIds, foreshadowingId)
       addEdge(edges, knownEdgeIds, {
         id: `foreshadowing:${foreshadowingId}->${resolvedChapterId}`,
@@ -291,6 +339,7 @@ function addTimeline(
   warnings: NarrativeAtlasWarning[],
   knownNodeIds: Set<string>,
   knownEdgeIds: Set<string>,
+  chapterRange?: NarrativeAtlasChapterRange,
 ) {
   const events = Array.isArray(timeline?.events) ? timeline.events : []
 
@@ -308,6 +357,7 @@ function addTimeline(
     const eventKey = toText(event.event_id ?? event.id, `chapter-${event.chapter_index}-${event.intra_chapter_seq}`)
     const eventId = uniqueNodeId(`event:${eventKey}`, knownNodeIds)
     const chapterIndex = toNumber(event.chapter_index)
+    if (chapterRange && !isChapterInRange(chapterIndex, chapterRange)) continue
     const label = toText(event.description, toText(event.event_type, eventKey))
 
     addNode(nodes, knownNodeIds, {
@@ -436,6 +486,24 @@ function toOptionalText(value: unknown): string | undefined {
 function toNumber(value: unknown): number | null {
   const numberValue = Number(value)
   return Number.isFinite(numberValue) ? numberValue : null
+}
+
+function isChapterInRange(chapterIndex: number | null, chapterRange?: NarrativeAtlasChapterRange): boolean {
+  if (!chapterRange) return chapterIndex !== null
+  return chapterIndex !== null && chapterIndex >= chapterRange.start && chapterIndex <= chapterRange.end
+}
+
+function isRecordInChapterRange(record: RecordValue, chapterRange?: NarrativeAtlasChapterRange): boolean {
+  return isChapterInRange(toNumber(record.chapter_index ?? record.chapter), chapterRange)
+}
+
+function foreshadowingChapterIndex(
+  plantedChapter: number | null,
+  resolvedChapter: number | null,
+  chapterRange?: NarrativeAtlasChapterRange,
+): number | undefined {
+  if (!chapterRange) return plantedChapter ?? undefined
+  return (isChapterInRange(plantedChapter, chapterRange) ? plantedChapter : resolvedChapter) ?? undefined
 }
 
 function slugify(value: string, fallback: string): string {
