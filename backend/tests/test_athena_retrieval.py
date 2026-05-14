@@ -13,6 +13,7 @@ from app.core.athena_retrieval import (
 from app.core.world_proposal_service import create_bundle, review_proposal_item, rollback_review, write_candidate_fact
 from app.models import (
     ChapterContent,
+    LongformMemory,
     Outline,
     Project,
     ProjectProfileVersion,
@@ -323,6 +324,58 @@ def test_reindex_preserves_unchanged_documents_without_loading_chunk_ids(db_sess
     assert not chunk_id_selects
 
 
+def test_reindex_preserves_memory_documents_after_memory_rebuild(db_session):
+    from app.core.longform_memory import rebuild_longform_memory
+
+    project = Project(name="Stable Memory Retrieval Reindex")
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    for index in range(1, 4):
+        db_session.add(
+            ChapterContent(
+                project_id=project.id,
+                chapter_index=index,
+                title=f"第{index}章",
+                content=f"第{index}章正文。星环钥匙线索保持不变。",
+                word_count=1000,
+                status="generated",
+            )
+        )
+    db_session.commit()
+    rebuild_longform_memory(db_session, project.id)
+    first_result = reindex_project_retrieval(db_session, project.id)
+    assert first_result["indexed"]["documents"] == 9
+    before_doc_ids = {
+        document.source_ref: document.id
+        for document in db_session.query(RetrievalDocument)
+        .filter(RetrievalDocument.project_id == project.id)
+        .all()
+    }
+
+    rebuild_longform_memory(db_session, project.id)
+    current_memory_ids = {
+        f"memory:{memory.scope_key}": memory.id
+        for memory in db_session.query(LongformMemory)
+        .filter(LongformMemory.project_id == project.id)
+        .all()
+    }
+    second_result = reindex_project_retrieval(db_session, project.id)
+    after_documents = {
+        document.source_ref: document
+        for document in db_session.query(RetrievalDocument)
+        .filter(RetrievalDocument.project_id == project.id)
+        .all()
+    }
+
+    assert second_result["indexed"]["documents"] == 0
+    assert second_result["preserved_documents"] == 9
+    assert second_result["removed_documents"] == 0
+    assert {source_ref: document.id for source_ref, document in after_documents.items()} == before_doc_ids
+    for source_ref, memory_id in current_memory_ids.items():
+        assert after_documents[source_ref].source_id == memory_id
+
+
 def test_reindex_existing_document_scan_projects_only_preservation_fields(db_session):
     project = Project(name="Existing Retrieval Projection")
     db_session.add(project)
@@ -364,8 +417,8 @@ def test_reindex_existing_document_scan_projects_only_preservation_fields(db_ses
     ]
     assert document_selects
     assert any("retrieval_documents.content_hash" in statement for statement in document_selects)
+    assert any("retrieval_documents.source_ref" in statement for statement in document_selects)
     excluded_columns = [
-        "retrieval_documents.source_ref",
         "retrieval_documents.title",
         "retrieval_documents.chapter_index",
         "retrieval_documents.profile_version",

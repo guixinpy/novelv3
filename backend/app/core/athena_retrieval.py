@@ -80,15 +80,21 @@ def reindex_project_retrieval(db: Session, project_id: str) -> dict[str, Any]:
         if existing_documents
         else set()
     )
-    seen_sources: set[tuple[str, str]] = set()
-    stale_document_ids: list[str] = []
+    existing_documents_by_ref = {
+        (document.source_type, document.source_ref): document
+        for document in existing_documents.values()
+    }
+    seen_document_ids: set[str] = set()
+    stale_document_ids: set[str] = set()
     sources_to_index: list[RetrievalSource] = []
     preserved_documents = 0
 
     for source in _project_sources(db, project_id):
-        source_key = (source.source_type, source.source_id)
-        seen_sources.add(source_key)
-        existing = existing_documents.get(source_key)
+        existing = existing_documents.get((source.source_type, source.source_id))
+        if existing is None:
+            existing = existing_documents_by_ref.get((source.source_type, source.source_ref))
+        if existing is not None:
+            seen_document_ids.add(existing.id)
         content_hash = _source_hash(source)
         if (
             existing is not None
@@ -96,18 +102,20 @@ def reindex_project_retrieval(db: Session, project_id: str) -> dict[str, Any]:
             and existing.content_hash == content_hash
             and existing.id in embedding_ready_document_ids
         ):
+            if existing.source_id != source.source_id:
+                existing.source_id = source.source_id
             preserved_documents += 1
             continue
         if existing is not None:
-            stale_document_ids.append(existing.id)
+            stale_document_ids.add(existing.id)
         sources_to_index.append(source)
 
-    stale_document_ids.extend(
+    stale_document_ids.update(
         document.id
-        for source_key, document in existing_documents.items()
-        if source_key not in seen_sources
+        for _source_key, document in existing_documents.items()
+        if document.id not in seen_document_ids
     )
-    _delete_documents_by_ids(db, stale_document_ids)
+    _delete_documents_by_ids(db, sorted(stale_document_ids))
     indexed = _index_sources(db, project_id, sources_to_index)
     db.commit()
     return {
@@ -909,6 +917,7 @@ def _existing_retrieval_documents(db: Session, project_id: str) -> dict[tuple[st
                     RetrievalDocument.id,
                     RetrievalDocument.source_type,
                     RetrievalDocument.source_id,
+                    RetrievalDocument.source_ref,
                     RetrievalDocument.content_hash,
                 )
             )
