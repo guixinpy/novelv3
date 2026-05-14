@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.ui_hints import action_to_refresh_targets, build_ui_hint, task_status_to_dialog_state
@@ -19,7 +20,9 @@ def list_background_tasks(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     query = db.query(BackgroundTask).filter(BackgroundTask.project_id == project_id)
-    total = query.count()
+    total = (
+        db.query(func.count(BackgroundTask.id)).filter(BackgroundTask.project_id == project_id).scalar() or 0
+    )
     tasks = (
         query
         .order_by(BackgroundTask.created_at.desc(), BackgroundTask.id.desc())

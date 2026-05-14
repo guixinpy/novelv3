@@ -1,5 +1,6 @@
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import event
 from sqlalchemy.orm import sessionmaker
 
 from app.core.local_diagnostics import format_kv_event
@@ -42,6 +43,44 @@ def test_list_background_tasks_paginates_large_project_history(client, db_sessio
     assert second_page.json()["limit"] == 10
     assert second_page.json()["has_more"] is True
     assert len(second_page.json()["tasks"]) == 10
+
+
+def test_list_background_tasks_total_does_not_select_heavy_task_fields(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Task History Heavy"})
+    pid = r.json()["id"]
+    db_session.add_all([
+        BackgroundTask(
+            project_id=pid,
+            task_type=f"task-{index}",
+            status="completed",
+            payload={"chapters": list(range(1000))},
+            result={"summary": ["任务结果"] * 500},
+            error="长错误信息" * 300,
+        )
+        for index in range(3)
+    ])
+    db_session.commit()
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        response = client.get(f"/api/v1/projects/{pid}/background-tasks?limit=1")
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 3
+    count_statements = [
+        statement for statement in statements
+        if "count(" in statement and "background_tasks" in statement
+    ]
+    assert count_statements
+    assert all("background_tasks.payload" not in statement for statement in count_statements)
+    assert all("background_tasks.result" not in statement for statement in count_statements)
+    assert all("background_tasks.error" not in statement for statement in count_statements)
 
 
 def test_get_background_task_with_ui_hint(client, db_session):
