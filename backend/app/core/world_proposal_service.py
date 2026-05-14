@@ -709,8 +709,15 @@ def list_authoritative_truth_claims(
 
 
 def _refresh_bundle_status(*, db: Session, bundle: WorldProposalBundle) -> None:
-    items = db.query(WorldProposalItem).filter(WorldProposalItem.bundle_id == bundle.id).all()
-    statuses = {item.item_status for item in items}
+    statuses = {
+        status
+        for (status,) in (
+            db.query(WorldProposalItem.item_status)
+            .filter(WorldProposalItem.bundle_id == bundle.id)
+            .distinct()
+            .all()
+        )
+    }
     if not statuses:
         bundle.bundle_status = "pending"
         return

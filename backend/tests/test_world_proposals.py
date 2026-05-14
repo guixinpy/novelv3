@@ -15,6 +15,7 @@ from app.core.world_proposal_service import (
     rollback_review,
     split_bundle,
     write_candidate_fact,
+    _refresh_bundle_status,
 )
 from app.models import (
     GenreProfile,
@@ -1680,6 +1681,67 @@ def test_review_proposal_item_rejects_contract_version_drift_before_writing_trut
 
     assert db_session.query(WorldFactClaim).count() == 0
     assert db_session.query(WorldProposalReview).count() == 0
+
+
+def test_refresh_bundle_status_reads_only_item_status_column(db_session):
+    project, profile_version = _seed_project_profile(db_session)
+    bundle = create_bundle(
+        db=db_session,
+        project_id=project.id,
+        project_profile_version_id=profile_version.id,
+        profile_version=profile_version.version,
+        created_by="writer.alpha",
+        title="Large status refresh",
+    )
+    db_session.add_all(
+        [
+            WorldProposalItem(
+                project_id=project.id,
+                project_profile_version_id=profile_version.id,
+                profile_version=profile_version.version,
+                bundle_id=bundle.id,
+                item_status="approved" if index == 0 else "pending",
+                claim_id=f"claim.large.{index}",
+                chapter_index=index,
+                intra_chapter_seq=0,
+                subject_ref=f"char.{index}",
+                predicate="state",
+                object_ref_or_value={"heavy": "value" * 200},
+                claim_layer="truth",
+                evidence_refs=[f"chapter.{index}"],
+                authority_type="authoritative_structured",
+                confidence=0.9,
+                notes="heavy notes" * 500,
+                contract_version="world.contract.v1",
+                created_by="writer.alpha",
+            )
+            for index in range(50)
+        ]
+    )
+    db_session.commit()
+    statements: list[str] = []
+
+    def capture_statement(conn, cursor, statement, parameters, context, executemany):  # noqa: ARG001
+        statements.append(" ".join(statement.lower().split()))
+
+    bind = db_session.get_bind()
+    event.listen(bind, "before_cursor_execute", capture_statement)
+    try:
+        _refresh_bundle_status(db=db_session, bundle=bundle)
+    finally:
+        event.remove(bind, "before_cursor_execute", capture_statement)
+
+    assert bundle.bundle_status == "partially_approved"
+    item_select_clauses = [
+        statement.split("from world_proposal_items", 1)[0]
+        for statement in statements
+        if "from world_proposal_items" in statement
+    ]
+    assert item_select_clauses
+    assert all("world_proposal_items.item_status" in clause for clause in item_select_clauses)
+    assert all("world_proposal_items.notes" not in clause for clause in item_select_clauses)
+    assert all("world_proposal_items.object_ref_or_value" not in clause for clause in item_select_clauses)
+    assert all("world_proposal_items.evidence_refs" not in clause for clause in item_select_clauses)
 
 
 def test_approve_with_edits_rejects_invalid_values_for_editable_fields(db_session):
