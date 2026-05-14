@@ -626,8 +626,45 @@ export interface AthenaTimeline {
 }
 
 export interface AthenaEvolutionPlan {
-  outline: { id: string; status: string; total_chapters: number; chapters: unknown; plotlines: unknown } | null
-  storyline: { id: string; status: string; plotlines: unknown; foreshadowing: unknown } | null
+  outline: {
+    id: string
+    status: string
+    total_chapters: number
+    chapters: unknown
+    plotlines: unknown
+    chapters_total?: number
+    chapters_offset?: number
+    chapters_limit?: number
+    chapters_has_more?: boolean
+    plotlines_total?: number
+    plotlines_offset?: number
+    plotlines_limit?: number
+    plotlines_has_more?: boolean
+  } | null
+  storyline: {
+    id: string
+    status: string
+    plotlines: unknown
+    foreshadowing: unknown
+    plotlines_total?: number
+    plotlines_offset?: number
+    plotlines_limit?: number
+    plotlines_has_more?: boolean
+    foreshadowing_total?: number
+    foreshadowing_offset?: number
+    foreshadowing_limit?: number
+    foreshadowing_has_more?: boolean
+  } | null
+}
+
+export interface AthenaEvolutionPlanQuery {
+  mode?: 'full' | 'window'
+  chapter_offset?: number
+  chapter_limit?: number
+  plotline_offset?: number
+  plotline_limit?: number
+  foreshadowing_offset?: number
+  foreshadowing_limit?: number
 }
 
 export interface AthenaImportSetupResult {

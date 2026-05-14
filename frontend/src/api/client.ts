@@ -1,5 +1,6 @@
 import type {
   AthenaEvolutionPlan,
+  AthenaEvolutionPlanQuery,
   AthenaAnalyzeChapterResult,
   AthenaChapterContext,
   AthenaConsistencyIssue,
@@ -57,6 +58,18 @@ function messageQuery(params?: MessageQuery) {
 function backgroundTaskQuery(params?: { compact?: boolean }) {
   const query = new URLSearchParams()
   if (params?.compact !== undefined) query.set('compact', String(params.compact))
+  return query
+}
+
+function evolutionPlanQuery(params?: AthenaEvolutionPlanQuery) {
+  const query = new URLSearchParams()
+  if (params?.mode) query.set('mode', params.mode)
+  if (params?.chapter_offset !== undefined) query.set('chapter_offset', String(params.chapter_offset))
+  if (params?.chapter_limit !== undefined) query.set('chapter_limit', String(params.chapter_limit))
+  if (params?.plotline_offset !== undefined) query.set('plotline_offset', String(params.plotline_offset))
+  if (params?.plotline_limit !== undefined) query.set('plotline_limit', String(params.plotline_limit))
+  if (params?.foreshadowing_offset !== undefined) query.set('foreshadowing_offset', String(params.foreshadowing_offset))
+  if (params?.foreshadowing_limit !== undefined) query.set('foreshadowing_limit', String(params.foreshadowing_limit))
   return query
 }
 
@@ -142,8 +155,11 @@ export const api = {
     const qs = query.toString()
     return request<AthenaTimeline>(`/projects/${id}/athena/state/timeline${qs ? `?${qs}` : ''}`)
   },
-  getAthenaEvolutionPlan: (id: string) =>
-    request<AthenaEvolutionPlan>(`/projects/${id}/athena/evolution/plan`),
+  getAthenaEvolutionPlan: (id: string, params?: AthenaEvolutionPlanQuery) => {
+    const query = evolutionPlanQuery(params)
+    const qs = query.toString()
+    return request<AthenaEvolutionPlan>(`/projects/${id}/athena/evolution/plan${qs ? `?${qs}` : ''}`)
+  },
   getAthenaOptimization: (id: string) =>
     request<AthenaOptimization>(`/projects/${id}/athena/optimization`),
   getAthenaEvolutionProposals: (id: string, params?: { offset?: number; limit?: number; bundle_status?: string; item_status?: string }) => {
