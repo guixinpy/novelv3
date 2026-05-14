@@ -808,17 +808,20 @@ def _flush_index_write_batch(
             }
             for embedding, vector in zip(embeddings, vectors, strict=True)
         ]
-    db.bulk_insert_mappings(RetrievalDocument, documents)
-    if chunks:
-        db.bulk_insert_mappings(RetrievalChunk, chunks)
-    if terms:
-        db.bulk_insert_mappings(RetrievalTerm, terms)
-    if embedding_rows:
-        db.bulk_insert_mappings(RetrievalEmbedding, embedding_rows)
+    _insert_retrieval_rows(db, RetrievalDocument, documents)
+    _insert_retrieval_rows(db, RetrievalChunk, chunks)
+    _insert_retrieval_rows(db, RetrievalTerm, terms)
+    _insert_retrieval_rows(db, RetrievalEmbedding, embedding_rows)
     documents.clear()
     chunks.clear()
     terms.clear()
     embeddings.clear()
+
+
+def _insert_retrieval_rows(db: Session, model: type[Any], rows: list[dict[str, Any]]) -> None:
+    if not rows:
+        return
+    db.execute(model.__table__.insert(), rows)
 
 
 def _embed_pending_embeddings(

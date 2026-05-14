@@ -503,18 +503,34 @@ def test_reindex_bulk_inserts_lexical_terms(db_session, monkeypatch):
     assert add_counts["terms"] == 0
 
 
-def test_reindex_bulk_inserts_lexical_term_mappings(db_session, monkeypatch):
+def test_reindex_uses_core_insert_path_for_retrieval_rows(db_session, monkeypatch):
+    project = _seed_retrieval_project(db_session)
+
+    def reject_bulk_insert_mappings(*_args, **_kwargs):
+        raise AssertionError("retrieval reindex should use Core executemany inserts")
+
+    monkeypatch.setattr(db_session, "bulk_insert_mappings", reject_bulk_insert_mappings)
+
+    result = reindex_project_retrieval(db_session, project.id)
+
+    assert result["indexed"]["documents"] == 2
+    assert db_session.query(RetrievalTerm).filter_by(project_id=project.id).count() == result["indexed"]["terms"]
+
+
+def test_reindex_core_inserts_lexical_term_rows(db_session, monkeypatch):
+    import app.core.athena_retrieval as athena_retrieval
+
     project = _seed_retrieval_project(db_session)
     inserted_term_batches: list[list[dict]] = []
-    original_bulk_insert_mappings = db_session.bulk_insert_mappings
+    original_insert_rows = athena_retrieval._insert_retrieval_rows
 
-    def count_bulk_insert_mappings(model, mappings, *args, **kwargs):
-        mapping_list = list(mappings)
+    def count_insert_rows(db, model, rows):
+        mapping_list = list(rows)
         if model is RetrievalTerm:
             inserted_term_batches.append(mapping_list)
-        return original_bulk_insert_mappings(model, mapping_list, *args, **kwargs)
+        return original_insert_rows(db, model, mapping_list)
 
-    monkeypatch.setattr(db_session, "bulk_insert_mappings", count_bulk_insert_mappings)
+    monkeypatch.setattr(athena_retrieval, "_insert_retrieval_rows", count_insert_rows)
 
     result = reindex_project_retrieval(db_session, project.id)
 
@@ -562,12 +578,14 @@ def test_reindex_avoids_flush_per_new_document_and_chunk(db_session, monkeypatch
     assert flush_count["calls"] == 0
 
 
-def test_reindex_batches_retrieval_rows_as_insert_mappings(db_session, monkeypatch):
+def test_reindex_batches_retrieval_rows_as_core_inserts(db_session, monkeypatch):
+    import app.core.athena_retrieval as athena_retrieval
+
     project = _seed_retrieval_project(db_session)
     bulk_save_calls: list[tuple[str, int]] = []
-    mapping_calls: list[tuple[str, int]] = []
+    insert_calls: list[tuple[str, int]] = []
     original_bulk_save = db_session.bulk_save_objects
-    original_bulk_insert_mappings = db_session.bulk_insert_mappings
+    original_insert_rows = athena_retrieval._insert_retrieval_rows
 
     def count_bulk_save(objects, *args, **kwargs):
         object_list = list(objects)
@@ -575,25 +593,25 @@ def test_reindex_batches_retrieval_rows_as_insert_mappings(db_session, monkeypat
             bulk_save_calls.append((type(object_list[0]).__name__, len(object_list)))
         return original_bulk_save(object_list, *args, **kwargs)
 
-    def count_bulk_insert_mappings(model, mappings, *args, **kwargs):
-        mapping_list = list(mappings)
+    def count_insert_rows(db, model, rows):
+        mapping_list = list(rows)
         if mapping_list:
-            mapping_calls.append((model.__name__, len(mapping_list)))
-        return original_bulk_insert_mappings(model, mapping_list, *args, **kwargs)
+            insert_calls.append((model.__name__, len(mapping_list)))
+        return original_insert_rows(db, model, mapping_list)
 
     monkeypatch.setattr(db_session, "bulk_save_objects", count_bulk_save)
-    monkeypatch.setattr(db_session, "bulk_insert_mappings", count_bulk_insert_mappings)
+    monkeypatch.setattr(athena_retrieval, "_insert_retrieval_rows", count_insert_rows)
 
     result = reindex_project_retrieval(db_session, project.id)
 
     assert result["indexed"]["documents"] == 2
-    assert ("RetrievalDocument", 2) in mapping_calls
-    assert ("RetrievalChunk", 2) in mapping_calls
-    assert ("RetrievalEmbedding", 2) in mapping_calls
-    assert sum(1 for class_name, _count in mapping_calls if class_name == "RetrievalDocument") == 1
-    assert sum(1 for class_name, _count in mapping_calls if class_name == "RetrievalChunk") == 1
-    assert sum(1 for class_name, _count in mapping_calls if class_name == "RetrievalTerm") == 1
-    assert sum(1 for class_name, _count in mapping_calls if class_name == "RetrievalEmbedding") == 1
+    assert ("RetrievalDocument", 2) in insert_calls
+    assert ("RetrievalChunk", 2) in insert_calls
+    assert ("RetrievalEmbedding", 2) in insert_calls
+    assert sum(1 for class_name, _count in insert_calls if class_name == "RetrievalDocument") == 1
+    assert sum(1 for class_name, _count in insert_calls if class_name == "RetrievalChunk") == 1
+    assert sum(1 for class_name, _count in insert_calls if class_name == "RetrievalTerm") == 1
+    assert sum(1 for class_name, _count in insert_calls if class_name == "RetrievalEmbedding") == 1
     assert not any(
         class_name in {"RetrievalDocument", "RetrievalChunk", "RetrievalEmbedding", "RetrievalTerm"}
         for class_name, _count in bulk_save_calls
@@ -601,6 +619,8 @@ def test_reindex_batches_retrieval_rows_as_insert_mappings(db_session, monkeypat
 
 
 def test_reindex_uses_large_write_batches_for_many_sources(db_session, monkeypatch):
+    import app.core.athena_retrieval as athena_retrieval
+
     project = Project(name="Retrieval Batch Throughput")
     db_session.add(project)
     db_session.commit()
@@ -619,22 +639,22 @@ def test_reindex_uses_large_write_batches_for_many_sources(db_session, monkeypat
         ]
     )
     db_session.commit()
-    document_mapping_calls: list[int] = []
-    original_bulk_insert_mappings = db_session.bulk_insert_mappings
+    document_insert_calls: list[int] = []
+    original_insert_rows = athena_retrieval._insert_retrieval_rows
 
-    def count_bulk_insert_mappings(model, mappings, *args, **kwargs):
-        mapping_list = list(mappings)
+    def count_insert_rows(db, model, rows):
+        mapping_list = list(rows)
         if model.__name__ == "RetrievalDocument":
-            document_mapping_calls.append(len(mapping_list))
-        return original_bulk_insert_mappings(model, mapping_list, *args, **kwargs)
+            document_insert_calls.append(len(mapping_list))
+        return original_insert_rows(db, model, mapping_list)
 
-    monkeypatch.setattr(db_session, "bulk_insert_mappings", count_bulk_insert_mappings)
+    monkeypatch.setattr(athena_retrieval, "_insert_retrieval_rows", count_insert_rows)
 
     result = reindex_project_retrieval(db_session, project.id)
 
     assert result["indexed"]["documents"] == 250
-    assert len(document_mapping_calls) <= 2
-    assert sum(document_mapping_calls) == 250
+    assert len(document_insert_calls) <= 2
+    assert sum(document_insert_calls) == 250
 
 
 def test_reindex_does_not_generate_uuid_per_retrieval_term(db_session, monkeypatch):
