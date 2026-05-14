@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.api.athena_shared import get_current_profile, require_project, world_entity_description, world_entity_type
@@ -16,15 +16,32 @@ from app.models import (
 )
 
 router = APIRouter()
+DEFAULT_ONTOLOGY_ENTITY_LIMIT = 500
+DEFAULT_ONTOLOGY_RELATION_LIMIT = 1000
+DEFAULT_ONTOLOGY_RULE_LIMIT = 500
 
 
 @router.get("/ontology")
-def get_ontology(project_id: str, db: Session = Depends(get_db)):
+def get_ontology(
+    project_id: str,
+    db: Session = Depends(get_db),
+    entity_offset: int = Query(0, ge=0),
+    entity_limit: int = Query(DEFAULT_ONTOLOGY_ENTITY_LIMIT, ge=1, le=1000),
+    relation_offset: int = Query(0, ge=0),
+    relation_limit: int = Query(DEFAULT_ONTOLOGY_RELATION_LIMIT, ge=1, le=2000),
+    rule_offset: int = Query(0, ge=0),
+    rule_limit: int = Query(DEFAULT_ONTOLOGY_RULE_LIMIT, ge=1, le=1000),
+):
     require_project(db, project_id)
     profile = get_current_profile(db, project_id)
     setup = db.query(Setup).filter(Setup.project_id == project_id).first()
 
     entities = {}
+    pagination = {
+        "entities": {},
+        "relations": _page_meta(0, relation_offset, relation_limit),
+        "rules": _page_meta(0, rule_offset, rule_limit),
+    }
     if profile:
         for model, key in [
             (WorldCharacter, "characters"),
@@ -33,14 +50,18 @@ def get_ontology(project_id: str, db: Session = Depends(get_db)):
             (WorldArtifact, "artifacts"),
             (WorldResource, "resources"),
         ]:
+            query = db.query(model).filter(
+                model.project_id == project_id,
+                model.profile_version == profile.version,
+            )
+            total = query.count()
             items = (
-                db.query(model)
-                .filter(
-                    model.project_id == project_id,
-                    model.profile_version == profile.version,
-                )
+                query.order_by(model.canonical_id.asc(), model.id.asc())
+                .offset(entity_offset)
+                .limit(entity_limit)
                 .all()
             )
+            pagination["entities"][key] = _page_meta(total, entity_offset, entity_limit)
             entities[key] = [
                 {
                     "id": item.id,
@@ -63,14 +84,18 @@ def get_ontology(project_id: str, db: Session = Depends(get_db)):
 
     relations = []
     if profile:
+        rel_query = db.query(WorldRelation).filter(
+            WorldRelation.project_id == project_id,
+            WorldRelation.profile_version == profile.version,
+        )
+        rel_total = rel_query.count()
         rels = (
-            db.query(WorldRelation)
-            .filter(
-                WorldRelation.project_id == project_id,
-                WorldRelation.profile_version == profile.version,
-            )
+            rel_query.order_by(WorldRelation.relation_id.asc(), WorldRelation.id.asc())
+            .offset(relation_offset)
+            .limit(relation_limit)
             .all()
         )
+        pagination["relations"] = _page_meta(rel_total, relation_offset, relation_limit)
         relations = [
             {
                 "id": r.id,
@@ -83,14 +108,18 @@ def get_ontology(project_id: str, db: Session = Depends(get_db)):
 
     rules = []
     if profile:
+        rule_query = db.query(WorldRule).filter(
+            WorldRule.project_id == project_id,
+            WorldRule.profile_version == profile.version,
+        )
+        rule_total = rule_query.count()
         rule_rows = (
-            db.query(WorldRule)
-            .filter(
-                WorldRule.project_id == project_id,
-                WorldRule.profile_version == profile.version,
-            )
+            rule_query.order_by(WorldRule.rule_id.asc(), WorldRule.id.asc())
+            .offset(rule_offset)
+            .limit(rule_limit)
             .all()
         )
+        pagination["rules"] = _page_meta(rule_total, rule_offset, rule_limit)
         rules = [{"id": r.id, "rule_id": r.rule_id, "description": r.statement} for r in rule_rows]
 
     world_rules_from_setup = []
@@ -109,6 +138,16 @@ def get_ontology(project_id: str, db: Session = Depends(get_db)):
             "core_concept": setup.core_concept if setup else None,
         } if setup else None,
         "profile_version": profile.version if profile else None,
+        "pagination": pagination,
+    }
+
+
+def _page_meta(total: int, offset: int, limit: int) -> dict:
+    return {
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+        "has_more": offset + limit < total,
     }
 
 

@@ -19,6 +19,7 @@ from app.models import (
     WorldFactClaim,
     WorldProposalItem,
     WorldRelation,
+    WorldRule,
     WorldTimelineAnchor,
 )
 from app.schemas.world_proposals import ProposalCandidateFactCreate
@@ -363,6 +364,89 @@ def test_athena_ontology_endpoint_uses_relation_entity_refs(client, db_session):
             "relation_type": "located_at",
         }
     ]
+
+
+def test_athena_ontology_endpoint_returns_bounded_world_model_windows(client, db_session):
+    project, profile_version = _seed_profile(db_session)
+    rows = []
+    for index in range(1, 13):
+        rows.append(
+            WorldCharacter(
+                project_id=project.id,
+                profile_version=profile_version.version,
+                character_id=f"character-{index:02d}",
+                canonical_id=f"char.{index:02d}",
+                name=f"角色{index:02d}",
+                role_type="supporting",
+                identity_anchor=f"角色{index:02d}",
+                contract_version=profile_version.contract_version,
+            )
+        )
+    for index in range(1, 8):
+        rows.append(
+            WorldRelation(
+                project_id=project.id,
+                profile_version=profile_version.version,
+                relation_id=f"rel.{index:02d}",
+                source_entity_ref=f"char.{index:02d}",
+                target_entity_ref=f"char.{index + 1:02d}",
+                relation_type="knows",
+                directionality="directed",
+                status="active",
+                visibility_layer="public",
+                contract_version=profile_version.contract_version,
+            )
+        )
+    for index in range(1, 5):
+        rows.append(
+            WorldRule(
+                project_id=project.id,
+                profile_version=profile_version.version,
+                rule_id=f"rule.{index:02d}",
+                canonical_id=f"rule.{index:02d}",
+                name=f"规则{index:02d}",
+                rule_type="world_law",
+                statement=f"第{index:02d}条规则",
+                contract_version=profile_version.contract_version,
+            )
+        )
+    db_session.add_all(rows)
+    db_session.commit()
+
+    response = client.get(
+        f"/api/v1/projects/{project.id}/athena/ontology"
+        "?entity_limit=5&relation_limit=3&rule_limit=2"
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [item["canonical_id"] for item in payload["entities"]["characters"]] == [
+        "char.01",
+        "char.02",
+        "char.03",
+        "char.04",
+        "char.05",
+    ]
+    assert [item["source_ref"] for item in payload["relations"]] == ["char.01", "char.02", "char.03"]
+    assert [item["rule_id"] for item in payload["rules"]] == ["rule.01", "rule.02"]
+    assert payload["pagination"]["entities"]["characters"] == {
+        "total": 12,
+        "offset": 0,
+        "limit": 5,
+        "has_more": True,
+    }
+    assert payload["pagination"]["relations"] == {
+        "total": 7,
+        "offset": 0,
+        "limit": 3,
+        "has_more": True,
+    }
+    assert payload["pagination"]["rules"] == {
+        "total": 4,
+        "offset": 0,
+        "limit": 2,
+        "has_more": True,
+    }
 
 
 def test_subject_knowledge_persists_belief_claims_approved_from_proposals(client, db_session):

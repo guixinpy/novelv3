@@ -584,6 +584,26 @@ export interface AthenaOntology {
     core_concept: unknown
   } | null
   profile_version: number | null
+  pagination?: {
+    entities?: Record<string, {
+      total: number
+      offset: number
+      limit: number
+      has_more: boolean
+    }>
+    relations?: {
+      total: number
+      offset: number
+      limit: number
+      has_more: boolean
+    }
+    rules?: {
+      total: number
+      offset: number
+      limit: number
+      has_more: boolean
+    }
+  }
 }
 
 export interface AthenaTimeline {
