@@ -177,18 +177,30 @@ def calculate_bundle_impact_scope(*, db: Session, bundle_id: str, commit: bool =
     candidate_item_ids = [item.id for item in items]
 
     truth_claim_ids: set[str] = set()
-    for item in items:
+    truth_scope_keys = {
+        (
+            item.subject_ref,
+            item.predicate,
+            (
+                item.chapter_index
+                if is_chapter_scoped_truth_predicate(item.predicate) and item.chapter_index is not None
+                else None
+            ),
+        )
+        for item in items
+    }
+    for subject_ref, predicate, chapter_index in truth_scope_keys:
         query = db.query(WorldFactClaim.claim_id).filter(
             WorldFactClaim.project_id == bundle.project_id,
             WorldFactClaim.project_profile_version_id == bundle.project_profile_version_id,
             WorldFactClaim.profile_version == bundle.profile_version,
-            WorldFactClaim.subject_ref == item.subject_ref,
-            WorldFactClaim.predicate == item.predicate,
+            WorldFactClaim.subject_ref == subject_ref,
+            WorldFactClaim.predicate == predicate,
             WorldFactClaim.claim_layer == "truth",
             WorldFactClaim.claim_status == "confirmed",
         )
-        if is_chapter_scoped_truth_predicate(item.predicate) and item.chapter_index is not None:
-            query = query.filter(WorldFactClaim.chapter_index == item.chapter_index)
+        if chapter_index is not None:
+            query = query.filter(WorldFactClaim.chapter_index == chapter_index)
         truth_claim_ids.update(claim_id for (claim_id,) in query.all())
 
     snapshot = WorldProposalImpactScopeSnapshot(
