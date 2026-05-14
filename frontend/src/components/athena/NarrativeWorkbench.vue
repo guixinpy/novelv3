@@ -20,6 +20,8 @@ const chapterWindowStart = ref(1)
 const CHAPTERS_PER_VOLUME = 100
 const CHAPTER_WINDOW_SIZE = 50
 const CHAPTER_SEARCH_RESULT_LIMIT = 100
+const STORYLINE_AUTO_COLLAPSE_MILESTONE_THRESHOLD = 120
+let initializedPlotlineCollapseSignature = ''
 
 const outlineChapters = computed(() =>
   asRecords(props.plan?.outline?.chapters)
@@ -223,6 +225,10 @@ function plotlineTypeLabel(type: string) {
   return labels[type] || type
 }
 
+function isMainPlotlineType(type: string) {
+  return type.toLocaleLowerCase() === 'main' || type === '主线'
+}
+
 function isPlotlineCollapsed(key: string) {
   return collapsedPlotlineKeys.value.has(key)
 }
@@ -279,6 +285,25 @@ watch(outlineChapters, (chapters) => {
     chapterVolumeStart.value = volumeStartForChapter(firstChapter)
     chapterWindowStart.value = chapterVolumeStart.value
   }
+}, { immediate: true })
+
+watch(plotlines, (items) => {
+  const signature = items
+    .map((plotline) => `${plotline.key}:${plotline.type}:${plotline.milestones.length}`)
+    .join('|')
+  if (signature === initializedPlotlineCollapseSignature) return
+  initializedPlotlineCollapseSignature = signature
+
+  const totalMilestones = items.reduce((total, plotline) => total + plotline.milestones.length, 0)
+  if (totalMilestones < STORYLINE_AUTO_COLLAPSE_MILESTONE_THRESHOLD) {
+    collapsedPlotlineKeys.value = new Set()
+    return
+  }
+  collapsedPlotlineKeys.value = new Set(
+    items
+      .filter((plotline) => !isMainPlotlineType(plotline.type))
+      .map((plotline) => plotline.key),
+  )
 }, { immediate: true })
 </script>
 

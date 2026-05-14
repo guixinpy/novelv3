@@ -68,6 +68,33 @@ function largePlan(chapterCount: number) {
   } as unknown as AthenaEvolutionPlan
 }
 
+function largeStorylinePlan(mainCount: number, subCount: number) {
+  return {
+    outline: { chapters: [] },
+    storyline: {
+      plotlines: [
+        {
+          name: '主线：王朝崩塌',
+          type: 'main',
+          milestones: Array.from({ length: mainCount }, (_, index) => ({
+            chapter_index: index + 1,
+            title: `主线节点${index + 1}`,
+          })),
+        },
+        {
+          name: '支线：旧城密约',
+          type: 'sub',
+          milestones: Array.from({ length: subCount }, (_, index) => ({
+            chapter_index: index + 1,
+            title: `支线节点${index + 1}`,
+          })),
+        },
+      ],
+      foreshadowing: [],
+    },
+  } as unknown as AthenaEvolutionPlan
+}
+
 describe('NarrativeWorkbench', () => {
   it('shows loading state before narrative plan data resolves', () => {
     const wrapper = mount(NarrativeWorkbench, {
@@ -103,6 +130,22 @@ describe('NarrativeWorkbench', () => {
 
     expect(wrapper.get('[data-testid="storyline-toggle"]').attributes('aria-expanded')).toBe('false')
     expect(wrapper.text()).not.toContain('发现异常')
+  })
+
+  it('keeps the main branch expanded and collapses side branches by default for large storylines', () => {
+    const wrapper = mount(NarrativeWorkbench, {
+      props: {
+        plan: largeStorylinePlan(80, 80),
+        chapters: [],
+        view: 'storyline',
+      },
+    })
+    const toggles = wrapper.findAll('[data-testid="storyline-toggle"]')
+
+    expect(toggles[0].attributes('aria-expanded')).toBe('true')
+    expect(toggles[1].attributes('aria-expanded')).toBe('false')
+    expect(wrapper.text()).toContain('主线节点80')
+    expect(wrapper.text()).not.toContain('支线节点1')
   })
 
   it('accepts chapter field and avoids duplicate milestone copy', () => {
