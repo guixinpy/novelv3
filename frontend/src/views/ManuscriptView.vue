@@ -21,6 +21,7 @@ const pid = computed(() => route.params.id as string)
 const submitOpen = ref(false)
 const activeTraceId = ref<string | null>(null)
 const loadingMoreChapters = ref(false)
+const CHAPTER_WINDOW_DEFAULT_LIMIT = 200
 
 const chapterItems = computed(() =>
   (project.chapters || []).map((c: any) => ({
@@ -33,6 +34,26 @@ const activeIndex = computed(() => manuscript.selectedChapterIndex)
 const canSubmit = computed(() => manuscript.hasPendingFeedback && activeIndex.value !== null)
 const selectedChapterTraceId = computed(() => manuscript.chapter?.last_generation_trace_id || null)
 const chapterTotal = computed(() => project.chaptersTotal || chapterItems.value.length)
+
+function hasChapterSummary(index: number) {
+  return chapterItems.value.some((chapter) => chapter.index === index)
+}
+
+function chapterWindowOffset(chapterIndex: number, total: number, limit: number) {
+  const safeLimit = Math.max(1, limit || CHAPTER_WINDOW_DEFAULT_LIMIT)
+  const safeTotal = Math.max(total || 0, chapterIndex)
+  const centeredOffset = Math.max(chapterIndex - Math.ceil(safeLimit / 2), 0)
+  const maxOffset = Math.max(safeTotal - safeLimit, 0)
+  return Math.min(centeredOffset, maxOffset)
+}
+
+async function loadRememberedChapterWindow(projectId: string, chapterIndex: number) {
+  if (hasChapterSummary(chapterIndex)) return
+  if (!project.chaptersHasMore && project.chaptersTotal <= chapterItems.value.length) return
+  const limit = project.chaptersLimit || CHAPTER_WINDOW_DEFAULT_LIMIT
+  const offset = chapterWindowOffset(chapterIndex, project.chaptersTotal, limit)
+  await project.loadChapters(projectId, true, { offset, limit })
+}
 
 async function onSelectChapter(index: number) {
   await selectChapter(pid.value, index)
@@ -75,6 +96,7 @@ async function initialize(projectId: string) {
   await project.loadProject(projectId)
   await project.loadChapters(projectId, true)
   const rememberedIndex = projectWorkspace.lastManuscriptChapterByProject[projectId]
+  if (rememberedIndex) await loadRememberedChapterWindow(projectId, rememberedIndex)
   const initialChapter =
     chapterItems.value.find((chapter) => chapter.index === rememberedIndex) ||
     chapterItems.value[0]

@@ -8,6 +8,7 @@ import ManuscriptView from './ManuscriptView.vue'
 import { api } from '../api/client'
 import type { ChapterContent } from '../api/types'
 import { useManuscriptStore } from '../stores/manuscript'
+import { useProjectWorkspaceStore } from '../stores/projectWorkspace'
 
 vi.mock('../api/client', () => ({
   api: {
@@ -139,7 +140,7 @@ function findTraceButton(wrapper: ReturnType<typeof mount>) {
 describe('ManuscriptView', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
-    vi.clearAllMocks()
+    vi.resetAllMocks()
     vi.mocked(api.getProject).mockResolvedValue({
       id: 'project-1',
       name: '雾港二十夜',
@@ -204,6 +205,46 @@ describe('ManuscriptView', () => {
     await mountView()
 
     expect(manuscript.selectedChapterIndex).toBe(2)
+  })
+
+  it('loads the remembered chapter window when it is outside the initial summary page', async () => {
+    const firstPage = Array.from({ length: 200 }, (_, index) => ({
+      id: `chapter-${index + 1}`,
+      chapter_index: index + 1,
+      title: `第${index + 1}章`,
+      word_count: 1000,
+      status: 'generated',
+    }))
+    const rememberedWindow = Array.from({ length: 200 }, (_, index) => ({
+      id: `chapter-${index + 801}`,
+      chapter_index: index + 801,
+      title: `第${index + 801}章`,
+      word_count: 1000,
+      status: 'generated',
+    }))
+    vi.mocked(api.listChapters)
+      .mockResolvedValueOnce({
+        chapters: firstPage,
+        total: 1000,
+        offset: 0,
+        limit: 200,
+        has_more: true,
+      })
+      .mockResolvedValueOnce({
+        chapters: rememberedWindow,
+        total: 1000,
+        offset: 800,
+        limit: 200,
+        has_more: false,
+      })
+    const projectWorkspace = useProjectWorkspaceStore()
+    projectWorkspace.rememberManuscriptChapter('project-1', 900)
+
+    await mountView()
+
+    expect(api.listChapters).toHaveBeenNthCalledWith(2, 'project-1', { offset: 800, limit: 200 })
+    expect(api.getChapter).toHaveBeenCalledWith('project-1', 900)
+    expect(useManuscriptStore().selectedChapterIndex).toBe(900)
   })
 
   it('loads the next chapter summary page from the manuscript sidebar', async () => {
