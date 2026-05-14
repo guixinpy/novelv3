@@ -32,6 +32,7 @@ CHAT_HISTORY_LIMIT = 8
 MANUSCRIPT_FULL_LIST_LIMIT = 40
 MANUSCRIPT_EDGE_CHAPTER_COUNT = 5
 MANUSCRIPT_RECENT_EXCERPT_COUNT = 3
+NARRATIVE_PLANNING_PREVIEW_LIMIT = 5
 PHASE_LABELS = {
     "setup": "设定阶段",
     "storyline": "故事线阶段",
@@ -325,19 +326,14 @@ def build_athena_context_boundary_block(db: Session, project: Project) -> dict[s
 
 
 def build_athena_narrative_planning_context_block(db: Session, project: Project) -> dict[str, Any] | None:
-    setup = db.query(Setup).filter(Setup.project_id == project.id).order_by(Setup.updated_at.desc()).first()
-    storyline = (
-        db.query(Storyline)
-        .filter(Storyline.project_id == project.id)
-        .order_by(Storyline.updated_at.desc())
+    setup = (
+        db.query(Setup.id, Setup.core_concept)
+        .filter(Setup.project_id == project.id)
+        .order_by(Setup.updated_at.desc())
         .first()
     )
-    outline = (
-        db.query(Outline)
-        .filter(Outline.project_id == project.id)
-        .order_by(Outline.updated_at.desc())
-        .first()
-    )
+    storyline = _latest_storyline_planning_row(db, project.id)
+    outline = _latest_outline_planning_row(db, project.id)
     if setup is None and storyline is None and outline is None:
         return None
 
@@ -349,19 +345,19 @@ def build_athena_narrative_planning_context_block(db: Session, project: Project)
         if setup.core_concept:
             lines.append(f"- 核心概念：{_compact_json(setup.core_concept)}")
     if outline is not None:
-        chapters = outline.chapters or []
-        foreshadowing = outline.foreshadowing or []
-        total_foreshadowing += len(foreshadowing)
-        total = outline.total_chapters or len(chapters)
+        chapters_count = int(outline.chapters_count or 0)
+        foreshadowing_count = int(outline.foreshadowing_count or 0)
+        total_foreshadowing += foreshadowing_count
+        total = outline.total_chapters or chapters_count
         sources.append({"source_type": "Outline", "source_id": outline.id, "label": "Outline"})
-        lines.append(f"- 大纲：{total} 章规划，已记录章节 {len(chapters)} 条")
+        lines.append(f"- 大纲：{total} 章规划，已记录章节 {chapters_count} 条")
     if storyline is not None:
-        plotlines = storyline.plotlines or []
-        foreshadowing = storyline.foreshadowing or []
-        total_foreshadowing += len(foreshadowing)
+        plotlines_count = int(storyline.plotlines_count or 0)
+        foreshadowing_count = int(storyline.foreshadowing_count or 0)
+        total_foreshadowing += foreshadowing_count
         sources.append({"source_type": "Storyline", "source_id": storyline.id, "label": "Storyline"})
-        lines.append(f"- 故事线：{len(plotlines)} 条")
-        for item in plotlines[:5]:
+        lines.append(f"- 故事线：{plotlines_count} 条")
+        for item in _storyline_plotline_previews(storyline):
             summary = _planning_item_summary(item)
             if summary:
                 lines.append(f"  - {summary}")
@@ -374,6 +370,58 @@ def build_athena_narrative_planning_context_block(db: Session, project: Project)
         sources=sources,
         max_chars=6000,
     )
+
+
+def _latest_storyline_planning_row(db: Session, project_id: str):
+    preview_columns = [
+        func.json_extract(Storyline.plotlines, f"$[{index}]").label(f"plotline_preview_{index}")
+        for index in range(NARRATIVE_PLANNING_PREVIEW_LIMIT)
+    ]
+    return (
+        db.query(
+            Storyline.id,
+            func.coalesce(func.json_array_length(Storyline.plotlines), 0).label("plotlines_count"),
+            func.coalesce(func.json_array_length(Storyline.foreshadowing), 0).label("foreshadowing_count"),
+            *preview_columns,
+        )
+        .filter(Storyline.project_id == project_id)
+        .order_by(Storyline.updated_at.desc())
+        .first()
+    )
+
+
+def _latest_outline_planning_row(db: Session, project_id: str):
+    return (
+        db.query(
+            Outline.id,
+            Outline.total_chapters,
+            func.coalesce(func.json_array_length(Outline.chapters), 0).label("chapters_count"),
+            func.coalesce(func.json_array_length(Outline.foreshadowing), 0).label("foreshadowing_count"),
+        )
+        .filter(Outline.project_id == project_id)
+        .order_by(Outline.updated_at.desc())
+        .first()
+    )
+
+
+def _storyline_plotline_previews(row: Any) -> list[Any]:
+    previews: list[Any] = []
+    for index in range(NARRATIVE_PLANNING_PREVIEW_LIMIT):
+        item = _decode_json_value(getattr(row, f"plotline_preview_{index}", None))
+        if item is not None:
+            previews.append(item)
+    return previews
+
+
+def _decode_json_value(value: Any) -> Any:
+    if value is None or isinstance(value, (dict, list)):
+        return value
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            return value
+    return value
 
 
 def build_longform_evidence_range_context_block(db: Session, project: Project) -> dict[str, Any] | None:

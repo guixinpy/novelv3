@@ -1,10 +1,11 @@
 import json
 import re
 
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.model_call_trace import build_context_block
-from app.models import ChapterContent, Outline, Project, Setup
+from app.models import ChapterContent, Project, Setup
 from app.prompting.providers.athena import athena_context_has_retrieval, build_athena_chapter_context_block
 from app.prompting.providers.few_shot import build_few_shot_examples_block
 from app.prompting.providers.longform import build_longform_context_block
@@ -201,37 +202,61 @@ def extract_word_range(text: str) -> tuple[int, int] | None:
 
 
 def _build_outline_chapter_target_block(db: Session, project_id: str, chapter_index: int) -> dict | None:
-    outline = db.query(Outline).filter(Outline.project_id == project_id).first()
-    if not outline or not outline.chapters:
-        return None
-    for chapter_outline in outline.chapters:
-        if not isinstance(chapter_outline, dict):
-            continue
-        if chapter_outline.get("chapter_index") != chapter_index:
-            continue
-        title = chapter_outline.get("title", "")
-        summary = chapter_outline.get("summary", "")
-        lines = [f"{title}：{summary}".strip("：")]
-        if chapter_outline.get("scenes"):
-            lines.append(f"场景：{'、'.join(chapter_outline['scenes'])}")
-        if chapter_outline.get("characters"):
-            lines.append(f"出场角色：{'、'.join(chapter_outline['characters'])}")
-        return build_context_block(
-            key="outline_chapter_target",
-            kind="outline",
-            title="本章大纲",
-            content="\n".join(line for line in lines if line),
-            sources=[
-                {
-                    "source_type": "Outline",
-                    "source_id": project_id,
-                    "label": f"第{chapter_index}章大纲",
-                    "source_ref": f"Outline.chapters[{chapter_index}]",
-                    "metadata": {"chapter_index": chapter_index},
-                }
-            ],
+    row = (
+        db.execute(
+            text(
+                """
+                SELECT outlines.id AS outline_id, chapter.value AS chapter_outline
+                FROM outlines, json_each(outlines.chapters) AS chapter
+                WHERE outlines.project_id = :project_id
+                  AND CAST(json_extract(chapter.value, '$.chapter_index') AS INTEGER) = :chapter_index
+                ORDER BY outlines.updated_at DESC
+                LIMIT 1
+                """
+            ),
+            {"project_id": project_id, "chapter_index": chapter_index},
         )
-    return None
+        .mappings()
+        .first()
+    )
+    if row is None:
+        return None
+    chapter_outline = _decode_json_value(row["chapter_outline"])
+    if not isinstance(chapter_outline, dict):
+        return None
+    title = chapter_outline.get("title", "")
+    summary = chapter_outline.get("summary", "")
+    lines = [f"{title}：{summary}".strip("：")]
+    if chapter_outline.get("scenes"):
+        lines.append(f"场景：{'、'.join(chapter_outline['scenes'])}")
+    if chapter_outline.get("characters"):
+        lines.append(f"出场角色：{'、'.join(chapter_outline['characters'])}")
+    return build_context_block(
+        key="outline_chapter_target",
+        kind="outline",
+        title="本章大纲",
+        content="\n".join(line for line in lines if line),
+        sources=[
+            {
+                "source_type": "Outline",
+                "source_id": row["outline_id"],
+                "label": f"第{chapter_index}章大纲",
+                "source_ref": f"Outline.chapters[{chapter_index}]",
+                "metadata": {"chapter_index": chapter_index},
+            }
+        ],
+    )
+
+
+def _decode_json_value(value):
+    if value is None or isinstance(value, (dict, list)):
+        return value
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            return value
+    return value
 
 
 def _build_previous_chapter_summary_block(db: Session, project_id: str, chapter_index: int) -> dict | None:

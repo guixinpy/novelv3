@@ -5,7 +5,7 @@ import pytest
 from sqlalchemy import event, text
 
 from app.api import dialogs
-from app.models import ChapterContent, Dialog, LongformMemory, Outline, Project, RetrievalDocument
+from app.models import ChapterContent, Dialog, LongformMemory, Outline, Project, RetrievalDocument, Setup, Storyline
 
 
 def test_longform_hot_tables_have_query_indexes(db_session):
@@ -172,6 +172,89 @@ def test_chapter_memory_prefers_generated_content_over_stale_outline_summary(db_
     assert "星环钥匙第八形态" in memory.summary
     assert "旧大纲" not in memory.summary
     assert memory.memory_metadata["source"] == "chapter_content"
+
+
+def test_athena_dialog_planning_summary_does_not_select_large_narrative_json(db_session):
+    from app.prompting.providers.dialog import build_athena_narrative_planning_context_block
+
+    project = Project(name="千章提示上下文")
+    db_session.add(project)
+    db_session.flush()
+    db_session.add(
+        Setup(
+            project_id=project.id,
+            status="generated",
+            world_building={"text": "对话规划摘要不应读取的大段世界观。" * 1000},
+            characters=[{"name": f"角色{index}", "bio": "长角色传记" * 100} for index in range(1, 51)],
+            core_concept={"hook": "灯塔记忆"},
+        )
+    )
+    db_session.add(
+        Outline(
+            project_id=project.id,
+            status="generated",
+            total_chapters=1000,
+            chapters=[
+                {"chapter_index": index, "title": f"第{index}章", "summary": "章节摘要" * 20}
+                for index in range(1, 1001)
+            ],
+            plotlines=[{"name": f"大纲支线{index}", "summary": "支线摘要" * 20} for index in range(1, 101)],
+            foreshadowing=[{"name": f"大纲伏笔{index}", "summary": "伏笔摘要" * 20} for index in range(1, 101)],
+        )
+    )
+    db_session.add(
+        Storyline(
+            project_id=project.id,
+            status="generated",
+            plotlines=[{"name": f"故事线{index}", "summary": "故事线摘要" * 20} for index in range(1, 201)],
+            foreshadowing=[{"name": f"故事线伏笔{index}", "summary": "伏笔摘要" * 20} for index in range(1, 501)],
+        )
+    )
+    db_session.commit()
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        block = build_athena_narrative_planning_context_block(db_session, project)
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert block is not None
+    assert "核心概念" in block["content"]
+    assert "大纲：1000 章规划，已记录章节 1000 条" in block["content"]
+    assert "故事线：200 条" in block["content"]
+    assert "伏笔：600 条" in block["content"]
+    assert "故事线1" in block["content"]
+    assert "故事线6" not in block["content"]
+
+    setup_select_clauses = [
+        statement.split("from setups", 1)[0]
+        for statement in statements
+        if "from setups" in statement
+    ]
+    outline_select_clauses = [
+        statement.split("from outlines", 1)[0]
+        for statement in statements
+        if "from outlines" in statement
+    ]
+    storyline_select_clauses = [
+        statement.split("from storylines", 1)[0]
+        for statement in statements
+        if "from storylines" in statement
+    ]
+    assert setup_select_clauses
+    assert outline_select_clauses
+    assert storyline_select_clauses
+    assert all("setups.world_building as" not in clause for clause in setup_select_clauses)
+    assert all("setups.characters as" not in clause for clause in setup_select_clauses)
+    assert all("outlines.chapters as" not in clause for clause in outline_select_clauses)
+    assert all("outlines.plotlines as" not in clause for clause in outline_select_clauses)
+    assert all("outlines.foreshadowing as" not in clause for clause in outline_select_clauses)
+    assert all("storylines.plotlines as" not in clause for clause in storyline_select_clauses)
+    assert all("storylines.foreshadowing as" not in clause for clause in storyline_select_clauses)
 
 
 def test_rebuild_longform_memory_projects_only_memory_fields(db_session):

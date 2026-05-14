@@ -10,6 +10,7 @@ from app.models import (
     ChapterContent,
     GenreProfile,
     LongformMemory,
+    Outline,
     Project,
     ProjectProfileVersion,
     RetrievalDocument,
@@ -271,6 +272,59 @@ def test_generate_chapter_reconciles_word_count_with_aggregate_query(mock_comple
         if "chapter_contents.project_id" in where_clause and "chapter_contents.chapter_index =" not in where_clause:
             unbounded_chapter_row_selects.append(statement)
     assert not unbounded_chapter_row_selects
+
+
+def test_chapter_prompt_outline_target_does_not_select_full_outline_json(db_session):
+    from app.prompting.providers.chapter import _build_outline_chapter_target_block
+
+    project = Project(name="千章生成上下文")
+    db_session.add(project)
+    db_session.flush()
+    db_session.add(
+        Outline(
+            project_id=project.id,
+            status="generated",
+            total_chapters=1000,
+            chapters=[
+                {
+                    "chapter_index": index,
+                    "title": f"第{index}章",
+                    "summary": f"第{index}章目标摘要。",
+                    "scenes": [f"场景{index}"],
+                    "characters": [f"角色{index}"],
+                }
+                for index in range(1, 1001)
+            ],
+            plotlines=[{"name": f"支线{index}", "summary": "支线摘要" * 20} for index in range(1, 101)],
+            foreshadowing=[{"name": f"伏笔{index}", "summary": "伏笔摘要" * 20} for index in range(1, 101)],
+        )
+    )
+    db_session.commit()
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        block = _build_outline_chapter_target_block(db_session, project.id, 777)
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert block is not None
+    assert "第777章：第777章目标摘要。" in block["content"]
+    assert "场景777" in block["content"]
+    assert "角色777" in block["content"]
+
+    outline_select_clauses = [
+        statement.split("from outlines", 1)[0]
+        for statement in statements
+        if "from outlines" in statement
+    ]
+    assert outline_select_clauses
+    assert all("outlines.chapters as" not in clause for clause in outline_select_clauses)
+    assert all("outlines.plotlines as" not in clause for clause in outline_select_clauses)
+    assert all("outlines.foreshadowing as" not in clause for clause in outline_select_clauses)
 
 
 @patch("app.api.chapters.load_api_key", return_value="sk-test")
