@@ -69,11 +69,15 @@ def reindex_project_retrieval(db: Session, project_id: str) -> dict[str, Any]:
     _require_project(db, project_id)
     provider = get_embedding_provider()
     existing_documents = _existing_retrieval_documents(db, project_id)
-    embedding_ready_document_ids = _documents_with_current_embeddings(
-        db,
-        project_id=project_id,
-        provider=provider.provider_name,
-        model=provider.model_name,
+    embedding_ready_document_ids = (
+        _documents_with_current_embeddings(
+            db,
+            project_id=project_id,
+            provider=provider.provider_name,
+            model=provider.model_name,
+        )
+        if existing_documents
+        else set()
     )
     seen_sources: set[tuple[str, str]] = set()
     stale_document_ids: list[str] = []
@@ -84,14 +88,13 @@ def reindex_project_retrieval(db: Session, project_id: str) -> dict[str, Any]:
         source_key = (source.source_type, source.source_id)
         seen_sources.add(source_key)
         existing = existing_documents.get(source_key)
-        content_hash = _content_hash(source.text)
+        content_hash = _source_hash(source)
         if (
             existing is not None
             and source.text.strip()
             and existing.content_hash == content_hash
             and existing.id in embedding_ready_document_ids
         ):
-            _refresh_retrieval_document_metadata(existing, source=source, content_hash=content_hash)
             preserved_documents += 1
             continue
         if existing is not None:
@@ -721,7 +724,7 @@ def _index_sources(db: Session, project_id: str, sources: Iterable[RetrievalSour
                 "title": source.title,
                 "chapter_index": source.chapter_index,
                 "profile_version": source.profile_version,
-                "content_hash": _content_hash(source.text),
+                "content_hash": _source_hash(source),
                 "document_metadata": source.metadata,
             }
         )
@@ -892,7 +895,19 @@ def _delete_project_index(db: Session, project_id: str) -> None:
 def _existing_retrieval_documents(db: Session, project_id: str) -> dict[tuple[str, str], RetrievalDocument]:
     return {
         (document.source_type, document.source_id): document
-        for document in db.query(RetrievalDocument).filter(RetrievalDocument.project_id == project_id).all()
+        for document in (
+            db.query(RetrievalDocument)
+            .options(
+                load_only(
+                    RetrievalDocument.id,
+                    RetrievalDocument.source_type,
+                    RetrievalDocument.source_id,
+                    RetrievalDocument.content_hash,
+                )
+            )
+            .filter(RetrievalDocument.project_id == project_id)
+            .all()
+        )
     }
 
 
@@ -931,20 +946,6 @@ def _documents_with_current_embeddings(
         for document_id, chunk_count in chunk_counts.items()
         if chunk_count > 0 and embedding_counts.get(document_id) == chunk_count
     }
-
-
-def _refresh_retrieval_document_metadata(
-    document: RetrievalDocument,
-    *,
-    source: RetrievalSource,
-    content_hash: str,
-) -> None:
-    document.source_ref = source.source_ref
-    document.title = source.title
-    document.chapter_index = source.chapter_index
-    document.profile_version = source.profile_version
-    document.content_hash = content_hash
-    document.document_metadata = source.metadata
 
 
 def _delete_documents_by_ids(db: Session, document_ids: list[str]) -> None:
@@ -1061,8 +1062,16 @@ def _snippet(text: str, query: _PreparedLexicalQuery, *, length: int = 180) -> s
     return f"{prefix}{text[start:end]}{suffix}"
 
 
-def _content_hash(text: str) -> str:
-    return hashlib.sha256((text or "").encode("utf-8")).hexdigest()
+def _source_hash(source: RetrievalSource) -> str:
+    payload = {
+        "source_ref": source.source_ref,
+        "title": source.title,
+        "chapter_index": source.chapter_index,
+        "profile_version": source.profile_version,
+        "metadata": source.metadata,
+        "text": source.text or "",
+    }
+    return hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")).hexdigest()
 
 
 def _vector_from_json(value: Any) -> list[float]:

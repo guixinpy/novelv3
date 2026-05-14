@@ -316,6 +316,173 @@ def test_reindex_preserves_unchanged_documents_without_loading_chunk_ids(db_sess
     assert not chunk_id_selects
 
 
+def test_reindex_existing_document_scan_projects_only_preservation_fields(db_session):
+    project = Project(name="Existing Retrieval Projection")
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    db_session.add_all(
+        [
+            ChapterContent(
+                project_id=project.id,
+                chapter_index=index,
+                title=f"第{index}章",
+                content=("已有索引投影测试正文。" * 50),
+                word_count=1000,
+                status="generated",
+            )
+            for index in range(1, 6)
+        ]
+    )
+    db_session.commit()
+    reindex_project_retrieval(db_session, project.id)
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        second_result = reindex_project_retrieval(db_session, project.id)
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert second_result["indexed"]["documents"] == 0
+    document_selects = [
+        statement.split("from retrieval_documents", 1)[0]
+        for statement in statements
+        if statement.startswith("select")
+        and "from retrieval_documents" in statement
+        and "retrieval_documents.project_id" in statement
+    ]
+    assert document_selects
+    assert any("retrieval_documents.content_hash" in statement for statement in document_selects)
+    excluded_columns = [
+        "retrieval_documents.source_ref",
+        "retrieval_documents.title",
+        "retrieval_documents.chapter_index",
+        "retrieval_documents.profile_version",
+        "retrieval_documents.document_metadata",
+        "retrieval_documents.created_at",
+        "retrieval_documents.updated_at",
+    ]
+    for column in excluded_columns:
+        assert all(column not in select_clause for select_clause in document_selects)
+
+
+def test_reindex_preserves_unchanged_documents_without_update_statements(db_session):
+    project = Project(name="Stable Retrieval No-op")
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    db_session.add_all(
+        [
+            ChapterContent(
+                project_id=project.id,
+                chapter_index=index,
+                title=f"第{index}章",
+                content=("重复维护不应写回已有检索文档。" * 40),
+                word_count=1000,
+                status="generated",
+            )
+            for index in range(1, 4)
+        ]
+    )
+    db_session.commit()
+    reindex_project_retrieval(db_session, project.id)
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        second_result = reindex_project_retrieval(db_session, project.id)
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert second_result["indexed"]["documents"] == 0
+    document_updates = [
+        statement
+        for statement in statements
+        if statement.startswith("update retrieval_documents")
+    ]
+    assert document_updates == []
+
+
+def test_reindex_rebuilds_chapter_document_when_source_metadata_changes(db_session):
+    project = Project(name="Changed Metadata Retrieval Reindex")
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    db_session.add(
+        ChapterContent(
+            project_id=project.id,
+            chapter_index=1,
+            title="旧标题",
+            content="正文没有变化，只有标题发生变化。",
+            word_count=1000,
+            status="generated",
+        )
+    )
+    db_session.commit()
+    reindex_project_retrieval(db_session, project.id)
+    before_document = db_session.query(RetrievalDocument).filter_by(project_id=project.id).one()
+    before_document_id = before_document.id
+
+    chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=1).one()
+    chapter.title = "新标题"
+    db_session.commit()
+    result = reindex_project_retrieval(db_session, project.id)
+    after_document = db_session.query(RetrievalDocument).filter_by(project_id=project.id).one()
+
+    assert result["indexed"]["documents"] == 1
+    assert result["preserved_documents"] == 0
+    assert after_document.id != before_document_id
+    assert after_document.title == "新标题"
+
+
+def test_reindex_skips_embedding_readiness_scan_without_existing_documents(db_session):
+    project = Project(name="First Retrieval Reindex")
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    db_session.add_all(
+        [
+            ChapterContent(
+                project_id=project.id,
+                chapter_index=index,
+                title=f"第{index}章",
+                content=("首次索引无需检查旧 embedding。" * 40),
+                word_count=1000,
+                status="generated",
+            )
+            for index in range(1, 4)
+        ]
+    )
+    db_session.commit()
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        result = reindex_project_retrieval(db_session, project.id)
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert result["indexed"]["documents"] == 3
+    readiness_selects = [
+        statement
+        for statement in statements
+        if statement.startswith("select")
+        and "from retrieval_chunks" in statement
+        and "count(" in statement
+    ]
+    assert readiness_selects == []
+
+
 def test_reindex_rebuilds_only_changed_chapter_document(db_session):
     project = Project(name="Changed Chapter Retrieval Reindex")
     db_session.add(project)
