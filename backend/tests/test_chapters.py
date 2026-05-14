@@ -231,6 +231,22 @@ def test_generate_chapter_updates_project_and_list_chapter_word_counts(mock_comp
 
 @patch("app.api.chapters.load_api_key", return_value="sk-test")
 @patch("app.api.chapters.ai_service.complete", new_callable=AsyncMock)
+def test_generate_chapter_strips_markdown_fence_and_heading_before_saving(mock_complete, mock_key, client):
+    pid = _create_project_with_setup(client)
+    mock_complete.return_value.content = "```markdown\n# 第1章 雾锁灯塔\n\n陆辞推开灯塔门。\n```"
+    mock_complete.return_value.model = "deepseek-chat"
+    mock_complete.return_value.prompt_tokens = 100
+    mock_complete.return_value.completion_tokens = 200
+
+    response = client.post(f"/api/v1/projects/{pid}/chapters/1/generate")
+
+    assert response.status_code == 200
+    assert response.json()["content"] == "陆辞推开灯塔门。"
+    assert response.json()["word_count"] == 7
+
+
+@patch("app.api.chapters.load_api_key", return_value="sk-test")
+@patch("app.api.chapters.ai_service.complete", new_callable=AsyncMock)
 def test_generate_chapter_reconciles_word_count_with_aggregate_query(mock_complete, mock_key, client, db_session):
     pid = _create_project_with_setup(client)
     project = db_session.get(Project, pid)

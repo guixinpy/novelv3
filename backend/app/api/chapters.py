@@ -1,3 +1,4 @@
+import re
 import time
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -28,6 +29,10 @@ router = APIRouter(prefix="/api/v1/projects/{project_id}/chapters", tags=["chapt
 
 ai_service = AIService()
 prompt_assembler = PromptAssembler()
+FENCED_CHAPTER_RE = re.compile(r"^\s*```(?:[A-Za-z0-9_-]+)?\s*\n(?P<body>.*?)\n?```\s*$", re.DOTALL)
+CHAPTER_HEADING_RE = re.compile(
+    r"^\s{0,3}#{0,6}\s*第\s*[\d零〇一二两三四五六七八九十百千]+\s*章(?:\s|[：:、.．-]|$).*$"
+)
 
 
 def _latest_chapter_generation_trace_id(db: Session, chapter: ChapterContent) -> str | None:
@@ -50,6 +55,23 @@ def _chapter_out(db: Session, chapter: ChapterContent) -> dict:
     payload = ChapterOut.model_validate(chapter).model_dump()
     payload["last_generation_trace_id"] = _latest_chapter_generation_trace_id(db, chapter)
     return payload
+
+
+def _normalize_generated_chapter_content(content: str) -> str:
+    text = (content or "").strip()
+    fenced_match = FENCED_CHAPTER_RE.match(text)
+    if fenced_match:
+        text = fenced_match.group("body").strip()
+
+    lines = text.splitlines()
+    while lines and not lines[0].strip():
+        lines.pop(0)
+    if len(lines) > 1 and CHAPTER_HEADING_RE.match(lines[0]):
+        lines = lines[1:]
+        while lines and not lines[0].strip():
+            lines.pop(0)
+        text = "\n".join(lines).strip()
+    return text
 
 
 def _build_chapter_call_payload(
@@ -229,11 +251,12 @@ async def create_or_replace_chapter(
         _outline_id, chapter_outline = outline_chapter
         title = chapter_outline.get("title", title)
 
-    word_count = count_words(result.content)
+    generated_content = _normalize_generated_chapter_content(result.content)
+    word_count = count_words(generated_content)
     if existing:
         chapter = existing
         chapter.title = title
-        chapter.content = result.content
+        chapter.content = generated_content
         chapter.word_count = word_count
         chapter.status = "generated"
         chapter.model = result.model
@@ -246,7 +269,7 @@ async def create_or_replace_chapter(
             project_id=project_id,
             chapter_index=chapter_index,
             title=title,
-            content=result.content,
+            content=generated_content,
             word_count=word_count,
             status="generated",
             model=result.model,
