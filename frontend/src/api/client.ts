@@ -128,8 +128,14 @@ export const api = {
     request<AthenaOntology>(`/projects/${id}/athena/ontology`),
   getAthenaState: (id: string) =>
     request<WorldModelOverview>(`/projects/${id}/athena/state`),
-  getAthenaTimeline: (id: string) =>
-    request<AthenaTimeline>(`/projects/${id}/athena/state/timeline`),
+  getAthenaTimeline: (id: string, params?: { latest?: boolean; offset?: number; limit?: number }) => {
+    const query = new URLSearchParams()
+    if (params?.latest !== undefined) query.set('latest', String(params.latest))
+    if (params?.offset !== undefined) query.set('offset', String(params.offset))
+    if (params?.limit !== undefined) query.set('limit', String(params.limit))
+    const qs = query.toString()
+    return request<AthenaTimeline>(`/projects/${id}/athena/state/timeline${qs ? `?${qs}` : ''}`)
+  },
   getAthenaEvolutionPlan: (id: string) =>
     request<AthenaEvolutionPlan>(`/projects/${id}/athena/evolution/plan`),
   getAthenaOptimization: (id: string) =>

@@ -589,6 +589,15 @@ export interface AthenaOntology {
 export interface AthenaTimeline {
   anchors: { id: string; anchor_id: string; chapter_index: number; intra_chapter_seq: number; label: string }[]
   events: { id: string; event_id: string; chapter_index: number; intra_chapter_seq: number; event_type: string; description: string }[]
+  anchors_total?: number
+  anchors_offset?: number
+  anchors_limit?: number
+  anchors_has_more?: boolean
+  events_total?: number
+  events_offset?: number
+  events_limit?: number
+  events_has_more?: boolean
+  latest?: boolean
 }
 
 export interface AthenaEvolutionPlan {

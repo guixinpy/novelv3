@@ -243,7 +243,7 @@ export const useAthenaStore = defineStore('athena', () => {
       projectId,
       'timeline',
       () => !!timeline.value,
-      () => api.getAthenaTimeline(projectId),
+      () => api.getAthenaTimeline(projectId, { latest: true, limit: 500 }),
       (value) => {
         timeline.value = value
       },

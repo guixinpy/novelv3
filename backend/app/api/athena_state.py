@@ -27,31 +27,92 @@ def get_state_snapshot(project_id: str, chapter_index: int = Query(..., ge=1), d
 
 
 @router.get("/state/timeline")
-def get_state_timeline(project_id: str, db: Session = Depends(get_db)):
+def get_state_timeline(
+    project_id: str,
+    latest: bool = Query(False),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(500, ge=1, le=1000),
+    db: Session = Depends(get_db),
+):
     require_project(db, project_id)
     profile = get_current_profile(db, project_id)
     if profile is None:
-        return {"anchors": [], "events": []}
+        return _timeline_response(
+            anchors=[],
+            events=[],
+            anchors_total=0,
+            events_total=0,
+            offset=offset,
+            limit=limit,
+            latest=latest,
+        )
 
-    anchors = (
-        db.query(WorldTimelineAnchor)
-        .filter(
-            WorldTimelineAnchor.project_id == project_id,
-            WorldTimelineAnchor.profile_version == profile.version,
-        )
-        .order_by(WorldTimelineAnchor.chapter_index.asc(), WorldTimelineAnchor.intra_chapter_seq.asc())
-        .all()
+    anchor_query = db.query(WorldTimelineAnchor).filter(
+        WorldTimelineAnchor.project_id == project_id,
+        WorldTimelineAnchor.profile_version == profile.version,
     )
-    events = (
-        db.query(WorldEvent)
-        .filter(
-            WorldEvent.project_id == project_id,
-            WorldEvent.project_profile_version_id == profile.id,
-            WorldEvent.profile_version == profile.version,
-        )
-        .order_by(WorldEvent.chapter_index.asc(), WorldEvent.intra_chapter_seq.asc())
-        .all()
+    event_query = db.query(WorldEvent).filter(
+        WorldEvent.project_id == project_id,
+        WorldEvent.project_profile_version_id == profile.id,
+        WorldEvent.profile_version == profile.version,
     )
+    anchors_total = anchor_query.count()
+    events_total = event_query.count()
+    if latest:
+        anchors = list(reversed(
+            anchor_query.order_by(
+                WorldTimelineAnchor.chapter_index.desc(),
+                WorldTimelineAnchor.intra_chapter_seq.desc(),
+                WorldTimelineAnchor.id.desc(),
+            )
+            .offset(offset)
+            .limit(limit)
+            .all()
+        ))
+        events = list(reversed(
+            event_query.order_by(
+                WorldEvent.chapter_index.desc(),
+                WorldEvent.intra_chapter_seq.desc(),
+                WorldEvent.event_id.desc(),
+            )
+            .offset(offset)
+            .limit(limit)
+            .all()
+        ))
+    else:
+        anchors = (
+            anchor_query.order_by(WorldTimelineAnchor.chapter_index.asc(), WorldTimelineAnchor.intra_chapter_seq.asc())
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
+        events = (
+            event_query.order_by(WorldEvent.chapter_index.asc(), WorldEvent.intra_chapter_seq.asc())
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
+    return _timeline_response(
+        anchors=anchors,
+        events=events,
+        anchors_total=anchors_total,
+        events_total=events_total,
+        offset=offset,
+        limit=limit,
+        latest=latest,
+    )
+
+
+def _timeline_response(
+    *,
+    anchors: list[WorldTimelineAnchor],
+    events: list[WorldEvent],
+    anchors_total: int,
+    events_total: int,
+    offset: int,
+    limit: int,
+    latest: bool,
+):
     return {
         "anchors": [
             {
@@ -74,6 +135,15 @@ def get_state_timeline(project_id: str, db: Session = Depends(get_db)):
             }
             for e in events
         ],
+        "anchors_total": anchors_total,
+        "anchors_offset": offset,
+        "anchors_limit": limit,
+        "anchors_has_more": offset + len(anchors) < anchors_total,
+        "events_total": events_total,
+        "events_offset": offset,
+        "events_limit": limit,
+        "events_has_more": offset + len(events) < events_total,
+        "latest": latest,
     }
 
 

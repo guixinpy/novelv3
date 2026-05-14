@@ -278,6 +278,51 @@ def test_athena_timeline_endpoint_uses_current_world_event_fields(client, db_ses
     assert payload["events"][0]["description"] == "旧灯塔重新点亮：主角第一次看见旧灯塔的信号。"
 
 
+def test_athena_timeline_endpoint_returns_latest_bounded_window(client, db_session):
+    project, profile_version = _seed_profile(db_session)
+    for index in range(1, 13):
+        db_session.add(
+            WorldTimelineAnchor(
+                project_id=project.id,
+                profile_version=profile_version.version,
+                anchor_id=f"anchor.ch{index}.scene1",
+                chapter_index=index,
+                intra_chapter_seq=1,
+                world_time_label=f"第{index}章",
+                ordering_key=f"{index:03d}:001",
+                contract_version=profile_version.contract_version,
+            )
+        )
+        db_session.add(
+            WorldEvent(
+                project_id=project.id,
+                project_profile_version_id=profile_version.id,
+                profile_version=profile_version.version,
+                event_id=f"event.chapter.{index}",
+                idempotency_key=f"event.chapter.{index}",
+                timeline_anchor_id=f"anchor.ch{index}.scene1",
+                chapter_index=index,
+                intra_chapter_seq=1,
+                event_type="event_occurred",
+                primitive_payload={"event_ref": f"chapter-{index}", "summary": f"第{index}章事件"},
+                truth_layer="truth",
+                disclosure_layer="public",
+                contract_version=profile_version.contract_version,
+            )
+        )
+    db_session.commit()
+
+    response = client.get(f"/api/v1/projects/{project.id}/athena/state/timeline?latest=true&limit=4")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["events_total"] == 12
+    assert payload["events_limit"] == 4
+    assert payload["events_has_more"] is True
+    assert [event["chapter_index"] for event in payload["events"]] == [9, 10, 11, 12]
+    assert [anchor["chapter_index"] for anchor in payload["anchors"]] == [9, 10, 11, 12]
+
+
 def test_athena_ontology_endpoint_uses_relation_entity_refs(client, db_session):
     project, profile_version = _seed_profile(db_session)
     db_session.add_all([
