@@ -81,6 +81,22 @@ const TimelineViewStub = defineComponent({
   template: '<section data-testid="timeline-view-stub">{{ events.map((event) => event.description).join(" | ") }}</section>',
 })
 
+const NarrativeWorkbenchStub = defineComponent({
+  name: 'NarrativeWorkbench',
+  emits: ['loadChapterWindow'],
+  template: `
+    <section data-testid="narrative-workbench-stub">
+      <button
+        type="button"
+        data-testid="request-chapter-window"
+        @click="$emit('loadChapterWindow', { offset: 200, limit: 50 })"
+      >
+        请求章节窗口
+      </button>
+    </section>
+  `,
+})
+
 const ConsistencyListStub = defineComponent({
   name: 'ConsistencyList',
   props: {
@@ -114,7 +130,7 @@ async function mountAthenaView(initialPath = '/projects/project-1/athena/narrati
         Teleport: true,
         AthenaSubnav: true,
         TimelineView: TimelineViewStub,
-        NarrativeWorkbench: true,
+        NarrativeWorkbench: NarrativeWorkbenchStub,
         NarrativeAtlasView: NarrativeAtlasViewStub,
         ConsistencyList: ConsistencyListStub,
         AthenaChatPanel: true,
@@ -227,6 +243,22 @@ describe('AthenaView narrative atlas integration', () => {
       chapters: 1000,
       plotlines: 4,
       foreshadowing: 300,
+    })
+  })
+
+  it('loads a windowed narrative plan when chapter workbench requests a chapter window', async () => {
+    const { wrapper } = await mountAthenaView('/projects/project-1/athena/narrative?view=chapters')
+    vi.mocked(api.getAthenaEvolutionPlan).mockClear()
+
+    await wrapper.get('[data-testid="request-chapter-window"]').trigger('click')
+    await flushPromises()
+
+    expect(api.getAthenaEvolutionPlan).toHaveBeenCalledWith('project-1', {
+      mode: 'window',
+      chapter_offset: 200,
+      chapter_limit: 50,
+      plotline_limit: 1,
+      foreshadowing_limit: 1,
     })
   })
 

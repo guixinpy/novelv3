@@ -413,6 +413,19 @@ async function runConsistencyCheck(chapterIndex: number) {
   await athena.runConsistencyCheck(pid.value, chapterIndex)
 }
 
+async function loadNarrativeChapterWindow(payload: { offset: number; limit: number }) {
+  const offset = Number(payload.offset)
+  const limit = Number(payload.limit)
+  if (!Number.isFinite(offset) || !Number.isFinite(limit) || limit <= 0) return
+  await athena.loadEvolutionPlan(pid.value, {
+    mode: 'window',
+    chapter_offset: Math.max(0, Math.floor(offset)),
+    chapter_limit: Math.max(1, Math.floor(limit)),
+    plotline_limit: 1,
+    foreshadowing_limit: 1,
+  })
+}
+
 function openChat() {
   router.push(buildAthenaRoute(pid.value, {
     ...routeState.value,
@@ -547,6 +560,7 @@ function closeChat() {
             :chapters="project.chapters"
             :view="narrativeView"
             :loading="narrativePlanLoading"
+            @load-chapter-window="loadNarrativeChapterWindow"
           />
         </template>
 

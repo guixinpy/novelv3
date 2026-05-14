@@ -189,6 +189,37 @@ describe('createAthenaSectionLoader', () => {
     expect(athena.loadEvolutionPlan).toHaveBeenCalledWith('project-1')
   })
 
+  it('loads a bounded chapter plan window for the narrative chapters view', async () => {
+    const { athena, loader } = createLoaderMocks(null)
+
+    await loader.loadRouteData(routeState({ section: 'narrative', view: 'chapters' }))
+
+    expect(athena.loadEvolutionPlan).toHaveBeenCalledWith('project-1', {
+      mode: 'window',
+      chapter_offset: 0,
+      chapter_limit: 50,
+      plotline_limit: 1,
+      foreshadowing_limit: 1,
+    })
+  })
+
+  it('reloads the full evolution plan for graph view when a windowed plan is already present', async () => {
+    const { athena, loader } = createLoaderMocks(null)
+    athena.evolutionPlan = {
+      outline: {
+        chapters: [{ chapter_index: 1 }],
+        chapters_total: 1000,
+        chapters_offset: 0,
+        chapters_limit: 50,
+      },
+      storyline: null,
+    } as any
+
+    await loader.loadRouteData(routeState({ section: 'narrative', view: 'graph' }))
+
+    expect(athena.loadEvolutionPlan).toHaveBeenCalledWith('project-1')
+  })
+
   it('loads review data by active view family', async () => {
     const { athena, worldModel, loader } = createLoaderMocks(null)
 

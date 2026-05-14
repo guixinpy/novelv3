@@ -140,6 +140,27 @@ function windowedPlanWithTotals() {
   } as unknown as AthenaEvolutionPlan
 }
 
+function windowedChapterPlan(offset: number, limit: number, total: number) {
+  return {
+    outline: {
+      chapters: Array.from({ length: limit }, (_, index) => {
+        const chapterIndex = offset + index + 1
+        return {
+          chapter_index: chapterIndex,
+          title: `窗口章节${chapterIndex}`,
+          summary: `第${chapterIndex}章摘要`,
+        }
+      }),
+      chapters_total: total,
+      chapters_offset: offset,
+      chapters_limit: limit,
+      chapters_has_more: offset + limit < total,
+      plotlines: [],
+    },
+    storyline: null,
+  } as unknown as AthenaEvolutionPlan
+}
+
 describe('NarrativeWorkbench', () => {
   it('shows loading state before narrative plan data resolves', () => {
     const wrapper = mount(NarrativeWorkbench, {
@@ -347,6 +368,26 @@ describe('NarrativeWorkbench', () => {
     expect(laterJump.findAll('option')).toHaveLength(51)
     expect(laterJump.text()).toContain('第240章')
     expect(laterJump.text()).not.toContain('第200章')
+  })
+
+  it('emits chapter window requests for server-windowed chapter plans', async () => {
+    const wrapper = mount(NarrativeWorkbench, {
+      props: {
+        plan: windowedChapterPlan(100, 50, 1000),
+        chapters: [],
+        view: 'chapters',
+      },
+    })
+
+    expect(wrapper.text()).toContain('当前显示第101-150章 / 共1000章')
+
+    await wrapper.get('[data-testid="chapter-next"]').trigger('click')
+    await wrapper.get('[data-testid="chapter-prev"]').trigger('click')
+
+    expect(wrapper.emitted('loadChapterWindow')).toEqual([
+      [{ offset: 150, limit: 50 }],
+      [{ offset: 50, limit: 50 }],
+    ])
   })
 
   it('renders foreshadowing lifecycle', () => {

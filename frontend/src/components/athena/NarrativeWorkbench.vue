@@ -26,6 +26,10 @@ const props = defineProps<{
   loading?: boolean
 }>()
 
+const emit = defineEmits<{
+  loadChapterWindow: [payload: { offset: number; limit: number }]
+}>()
+
 const collapsedPlotlineKeys = ref<Set<string>>(new Set())
 const plotlineMilestoneWindowStarts = ref<Record<string, number>>({})
 const foreshadowingWindowStart = ref(0)
@@ -100,8 +104,15 @@ const chapterStatusByIndex = computed(() => {
   return map
 })
 
+const outlineChapterTotal = computed(() => countWithTotal(props.plan?.outline?.chapters_total, outlineChapters.value.length))
+const chapterWindowOffset = computed(() => toNumber(props.plan?.outline?.chapters_offset))
+const chapterWindowLimit = computed(() => toNumber(props.plan?.outline?.chapters_limit) ?? CHAPTER_WINDOW_SIZE)
+const usesServerChapterWindow = computed(() =>
+  chapterWindowOffset.value !== null && outlineChapterTotal.value > outlineChapters.value.length,
+)
+
 const metrics = computed(() => [
-  { label: '章节规划', value: countWithTotal(props.plan?.outline?.chapters_total, outlineChapters.value.length) },
+  { label: '章节规划', value: outlineChapterTotal.value },
   {
     label: '故事线',
     value: countWithTotal(
@@ -131,8 +142,13 @@ const filteredOutlineChapters = computed(() => {
 
 const chapterVolumes = computed(() => {
   if (!outlineChapters.value.length) return []
-  const firstChapter = outlineChapters.value[0].chapterIndex ?? 1
-  const lastChapter = outlineChapters.value[outlineChapters.value.length - 1].chapterIndex ?? firstChapter
+  const metadataTotal = toNumber(props.plan?.outline?.chapters_total)
+  const firstChapter = metadataTotal !== null && metadataTotal > 0
+    ? 1
+    : outlineChapters.value[0].chapterIndex ?? 1
+  const lastChapter = metadataTotal !== null && metadataTotal > 0
+    ? metadataTotal
+    : outlineChapters.value[outlineChapters.value.length - 1].chapterIndex ?? firstChapter
   const firstVolumeStart = volumeStartForChapter(firstChapter)
   const volumes: Array<{ start: number; end: number; label: string }> = []
   for (let start = firstVolumeStart; start <= lastChapter; start += CHAPTERS_PER_VOLUME) {
@@ -148,6 +164,7 @@ const activeVolume = computed(() =>
 
 const visibleOutlineChapters = computed(() => {
   if (chapterSearch.value.trim()) return filteredOutlineChapters.value.slice(0, CHAPTER_SEARCH_RESULT_LIMIT)
+  if (usesServerChapterWindow.value) return outlineChapters.value
   const volume = activeVolume.value
   if (!volume) return []
   const windowEnd = Math.min(chapterWindowStart.value + CHAPTER_WINDOW_SIZE - 1, volume.end)
@@ -159,6 +176,7 @@ const visibleOutlineChapters = computed(() => {
 })
 
 const jumpableOutlineChapters = computed(() => {
+  if (usesServerChapterWindow.value) return outlineChapters.value
   if (chapterSearch.value.trim()) return visibleOutlineChapters.value
   const volume = activeVolume.value
   if (!volume) return []
@@ -176,13 +194,26 @@ const chapterWindowRangeLabel = computed(() => {
     const visible = visibleOutlineChapters.value.length
     return total > visible ? `搜索结果 ${visible}/${total} 章，请缩小关键词` : `搜索结果 ${visible} 章`
   }
+  if (usesServerChapterWindow.value) {
+    const offset = chapterWindowOffset.value ?? 0
+    const start = offset + 1
+    const end = Math.min(offset + outlineChapters.value.length, outlineChapterTotal.value)
+    return `当前显示第${start}-${end}章 / 共${outlineChapterTotal.value}章`
+  }
   if (!volume) return '暂无章节'
   const end = Math.min(chapterWindowStart.value + CHAPTER_WINDOW_SIZE - 1, volume.end)
   return `当前显示第${chapterWindowStart.value}-${end}章`
 })
 
-const canPagePrevious = computed(() => Boolean(activeVolume.value && chapterWindowStart.value > activeVolume.value.start))
+const canPagePrevious = computed(() => {
+  if (usesServerChapterWindow.value) return (chapterWindowOffset.value ?? 0) > 0
+  return Boolean(activeVolume.value && chapterWindowStart.value > activeVolume.value.start)
+})
 const canPageNext = computed(() => {
+  if (usesServerChapterWindow.value) {
+    if (props.plan?.outline?.chapters_has_more === true) return true
+    return (chapterWindowOffset.value ?? 0) + outlineChapters.value.length < outlineChapterTotal.value
+  }
   const volume = activeVolume.value
   return Boolean(volume && chapterWindowStart.value + CHAPTER_WINDOW_SIZE <= volume.end)
 })
@@ -344,17 +375,41 @@ function selectChapterJump(value: string) {
 function selectChapterVolume(value: string) {
   const start = toNumber(value)
   if (start === null) return
+  if (usesServerChapterWindow.value) {
+    chapterVolumeStart.value = start
+    activeChapterIndex.value = null
+    requestChapterWindow(start - 1)
+    return
+  }
   chapterVolumeStart.value = start
   chapterWindowStart.value = start
   activeChapterIndex.value = null
 }
 
 function pageChapters(direction: -1 | 1) {
+  if (usesServerChapterWindow.value) {
+    const currentOffset = chapterWindowOffset.value ?? 0
+    const limit = chapterWindowLimit.value
+    const maxStart = Math.max(0, outlineChapterTotal.value - limit)
+    const nextOffset = direction > 0
+      ? Math.min(currentOffset + limit, maxStart)
+      : Math.max(currentOffset - limit, 0)
+    requestChapterWindow(nextOffset)
+    activeChapterIndex.value = null
+    return
+  }
   const volume = activeVolume.value
   if (!volume) return
   chapterWindowStart.value = direction > 0
     ? Math.min(chapterWindowStart.value + CHAPTER_WINDOW_SIZE, volume.end)
     : Math.max(chapterWindowStart.value - CHAPTER_WINDOW_SIZE, volume.start)
+}
+
+function requestChapterWindow(offset: number) {
+  emit('loadChapterWindow', {
+    offset: Math.max(0, offset),
+    limit: chapterWindowLimit.value,
+  })
 }
 
 function setChapterWindowFor(chapterIndex: number) {
@@ -499,8 +554,8 @@ watch(foreshadowingItems, (items) => {
         <div class="narrative-workbench__chapter-window" aria-label="章节窗口">
           <span>{{ chapterWindowRangeLabel }}</span>
           <div>
-            <button type="button" :disabled="!canPagePrevious" @click="pageChapters(-1)">上一组</button>
-            <button type="button" :disabled="!canPageNext" @click="pageChapters(1)">下一组</button>
+            <button type="button" data-testid="chapter-prev" :disabled="!canPagePrevious" @click="pageChapters(-1)">上一组</button>
+            <button type="button" data-testid="chapter-next" :disabled="!canPageNext" @click="pageChapters(1)">下一组</button>
           </div>
         </div>
         <article

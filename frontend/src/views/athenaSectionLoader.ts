@@ -4,6 +4,7 @@ import type { AthenaRouteState } from './athenaNavigation'
 
 type AthenaStore = ReturnType<typeof useAthenaStore>
 type WorldModelStore = ReturnType<typeof useWorldModelStore>
+const CHAPTER_PLAN_WINDOW_LIMIT = 50
 
 interface AthenaSectionLoaderOptions {
   getProjectId: () => string
@@ -12,6 +13,16 @@ interface AthenaSectionLoaderOptions {
 }
 
 export function createAthenaSectionLoader(options: AthenaSectionLoaderOptions) {
+  function chapterPlanWindowQuery(offset = 0) {
+    return {
+      mode: 'window' as const,
+      chapter_offset: offset,
+      chapter_limit: CHAPTER_PLAN_WINDOW_LIMIT,
+      plotline_limit: 1,
+      foreshadowing_limit: 1,
+    }
+  }
+
   function timelineHasEvents() {
     return Array.isArray(options.athena.timeline?.events) && options.athena.timeline.events.length > 0
   }
@@ -48,11 +59,14 @@ export function createAthenaSectionLoader(options: AthenaSectionLoaderOptions) {
     }
     if (routeState.section === 'narrative' && routeState.view === 'graph') {
       if (!options.athena.timeline) await options.athena.loadTimeline(id)
-      if (!options.athena.evolutionPlan) await options.athena.loadEvolutionPlan(id)
+      await options.athena.loadEvolutionPlan(id)
+    }
+    if (routeState.section === 'narrative' && routeState.view === 'chapters') {
+      await options.athena.loadEvolutionPlan(id, chapterPlanWindowQuery())
     }
     if (
       routeState.section === 'narrative'
-      && (routeState.view === 'storyline' || routeState.view === 'chapters' || routeState.view === 'foreshadowing')
+      && (routeState.view === 'storyline' || routeState.view === 'foreshadowing')
     ) {
       if (!options.athena.evolutionPlan) await options.athena.loadEvolutionPlan(id)
     }
