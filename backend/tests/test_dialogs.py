@@ -281,6 +281,54 @@ async def test_compaction_summary_uses_registry_backed_prompt(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_compaction_summary_bounds_dialog_lines_for_long_history(monkeypatch):
+    build_calls = []
+
+    class FakeAssembler:
+        def build(self, prompt_id, variables):
+            build_calls.append((prompt_id, variables))
+            return SimpleNamespace(content="REGISTRY_COMPACT_PROMPT")
+
+    class CapturingAIService:
+        async def complete(self, messages, **kwargs):
+            return SimpleNamespace(content="长对话压缩摘要")
+
+    monkeypatch.setattr("app.core.chat_compaction.PromptAssembler", FakeAssembler)
+
+    messages = [
+        SimpleNamespace(
+            role="user" if index % 2 else "assistant",
+            content=f"第{index}条 " + ("长对话内容" * 80),
+            action_result=None,
+            meta=None,
+        )
+        for index in range(1, 181)
+    ]
+    diagnosis = ProjectDiagnosisOut(
+        missing_items=[],
+        completed_items=["setup", "storyline", "outline", "content"],
+        suggested_next_step="continue_writing",
+    )
+
+    summary = await build_compaction_summary(
+        messages,
+        ai_service=CapturingAIService(),
+        model="deepseek-chat",
+        project_name="百万字项目",
+        diagnosis=diagnosis,
+    )
+
+    assert build_calls
+    dialog_lines = build_calls[0][1]["dialog_lines"]
+    assert len(dialog_lines) <= 12000
+    assert "已省略" in dialog_lines
+    assert "第180条" in dialog_lines
+    assert "第1条" not in dialog_lines
+    assert summary.compacted_count == 180
+    assert summary.summary_text == "长对话压缩摘要"
+
+
+@pytest.mark.asyncio
 async def test_compaction_summary_returns_fallback_when_prompt_build_fails(monkeypatch):
     class BrokenAssembler:
         def build(self, prompt_id, variables):

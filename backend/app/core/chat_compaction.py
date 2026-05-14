@@ -7,6 +7,8 @@ from app.models import DialogMessage
 from app.prompting.assembler import PromptAssembler
 from app.schemas import ProjectDiagnosisOut
 
+MAX_COMPACTION_DIALOG_LINES_CHARS = 12_000
+
 
 @dataclass(frozen=True)
 class CompactionSummary:
@@ -87,7 +89,57 @@ def _build_dialog_lines(messages: list[DialogMessage]) -> str:
         text = _normalize_text(message.content)
         if text:
             lines.append(f"{index}. [{message.role}] {text}")
-    return "\n".join(lines) if lines else "（无可用对话内容）"
+    if not lines:
+        return "（无可用对话内容）"
+    full_text = "\n".join(lines)
+    if len(full_text) <= MAX_COMPACTION_DIALOG_LINES_CHARS:
+        return full_text
+    return _bounded_recent_dialog_lines(lines)
+
+
+def _bounded_recent_dialog_lines(lines: list[str]) -> str:
+    selected_reversed: list[str] = []
+    selected_chars = 0
+    for line in reversed(lines):
+        selected_count = len(selected_reversed) + 1
+        omitted_count = len(lines) - selected_count
+        notice = _omission_notice(omitted_count, selected_count)
+        separator_chars = len(selected_reversed)
+        candidate_chars = selected_chars + len(line) + separator_chars + len(notice) + 1
+        if candidate_chars <= MAX_COMPACTION_DIALOG_LINES_CHARS:
+            selected_reversed.append(line)
+            selected_chars += len(line)
+            continue
+        if not selected_reversed:
+            budget = max(0, MAX_COMPACTION_DIALOG_LINES_CHARS - len(notice) - 1)
+            selected_reversed.append(_truncate_text(line, budget))
+        break
+
+    selected = list(reversed(selected_reversed))
+    omitted_count = len(lines) - len(selected)
+    notice = _omission_notice(omitted_count, len(selected))
+    result = "\n".join([notice, *selected])
+    while len(result) > MAX_COMPACTION_DIALOG_LINES_CHARS and len(selected) > 1:
+        selected = selected[1:]
+        omitted_count = len(lines) - len(selected)
+        notice = _omission_notice(omitted_count, len(selected))
+        result = "\n".join([notice, *selected])
+    if len(result) > MAX_COMPACTION_DIALOG_LINES_CHARS:
+        budget = max(0, MAX_COMPACTION_DIALOG_LINES_CHARS - len(notice) - 1)
+        result = "\n".join([notice, _truncate_text(selected[-1], budget)])
+    return result
+
+
+def _omission_notice(omitted_count: int, kept_count: int) -> str:
+    return f"（已省略 {omitted_count} 条较早对话；以下保留最近 {kept_count} 条用于压缩。）"
+
+
+def _truncate_text(text: str, limit: int) -> str:
+    if len(text) <= limit:
+        return text
+    if limit <= 3:
+        return text[:limit]
+    return f"{text[:limit - 3].rstrip()}..."
 
 def _build_deterministic_fallback(
     messages: list[DialogMessage],
