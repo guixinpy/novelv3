@@ -222,6 +222,74 @@ def test_chapter_budget_preserves_user_request_length_and_target_under_pressure(
     assert budget["omitted_blocks"] > 0 or budget["omitted_block_keys"]
 
 
+def test_chapter_budget_bounds_oversized_user_feedback(monkeypatch, db_session):
+    project = _project(
+        db_session,
+        id="chapter-prompt-oversized-feedback",
+        genre="硬科幻",
+        style_config=None,
+    )
+    setup = Setup(
+        project_id=project.id,
+        world_building={"city": "雾港"},
+        characters=[{"name": "林舟"}],
+        core_concept={"hook": "预算压力"},
+    )
+    db_session.add(setup)
+    db_session.add(
+        Outline(
+            project_id=project.id,
+            total_chapters=5,
+            chapters=[
+                {"chapter_index": 4, "title": "预算章", "summary": "必须保留本章目标"},
+            ],
+            plotlines=[],
+            foreshadowing=[],
+        )
+    )
+    db_session.commit()
+    monkeypatch.setattr(
+        "app.prompting.providers.athena.build_chapter_context_package",
+        lambda **kwargs: {
+            "chapter_index": kwargs["chapter_index"],
+            "profile_version": None,
+            "project_profile_version_id": None,
+            "sections": [],
+            "prompt_context": "",
+        },
+    )
+    monkeypatch.setattr(
+        "app.prompting.providers.retrieval.build_chapter_retrieval_context",
+        lambda **kwargs: None,
+    )
+    feedback_mid_noise = "MID_FEEDBACK_NOISE_SHOULD_NOT_APPEAR"
+    feedback_tail = "TAIL_FEEDBACK_SHOULD_NOT_APPEAR"
+    oversized_feedback = (
+        "每章约1800-2200字，必须保留用户要求：灯塔压迫感。"
+        + ("无效粘贴噪音" * 700)
+        + feedback_mid_noise
+        + ("更多无效粘贴" * 10_000)
+        + feedback_tail
+    )
+
+    payload = chapters._build_chapter_call_payload(
+        db_session,
+        project,
+        setup,
+        4,
+        oversized_feedback,
+    )
+
+    message = payload["messages"][0]["content"]
+    assert "必须保留用户要求：灯塔压迫感" in message
+    assert "正文长度控制在1800-2200字" in message
+    assert "预算章：必须保留本章目标" in message
+    assert feedback_mid_noise not in message
+    assert feedback_tail not in message
+    assert "truncated: original content exceeded trace limit" not in message
+    assert payload["trace_metadata"]["budget"]["used_context_chars"] <= 24_000
+
+
 def test_chapter_budget_keeps_style_and_few_shot_ahead_of_large_setup(monkeypatch, db_session):
     project = _project(
         db_session,

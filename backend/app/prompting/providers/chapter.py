@@ -14,6 +14,7 @@ from app.prompting.providers.style import build_style_rule_block
 
 CHAPTER_CONTEXT_CHAR_BUDGET = 24000
 PREVIOUS_CHAPTER_SUMMARY_CHAR_LIMIT = 300
+EXTRA_FEEDBACK_CHAR_LIMIT = 3000
 PRIORITY_USER_FEEDBACK = 0
 PRIORITY_LENGTH_CONSTRAINT = 1
 PRIORITY_CHAPTER_TARGET = 10
@@ -130,13 +131,14 @@ def build_chapter_prompt_context_blocks(
         model_blocks.append(_prioritized(few_shot_block, PRIORITY_FEW_SHOT))
 
     if extra_feedback:
+        feedback_for_prompt = _compact_extra_feedback(extra_feedback)
         model_blocks.append(
             _prioritized(
                 build_context_block(
                     key="extra_feedback",
                     kind="user_feedback",
                     title="用户修订反馈",
-                    content=extra_feedback,
+                    content=feedback_for_prompt,
                 ),
                 PRIORITY_USER_FEEDBACK,
             )
@@ -265,6 +267,16 @@ def _build_previous_chapter_summary_block(db: Session, project_id: str, chapter_
 def _prioritized(block: dict, priority: int) -> dict:
     block["priority"] = priority
     return block
+
+
+def _compact_extra_feedback(text: str) -> str:
+    cleaned = (text or "").strip()
+    if len(cleaned) <= EXTRA_FEEDBACK_CHAR_LIMIT:
+        return cleaned
+    return (
+        cleaned[:EXTRA_FEEDBACK_CHAR_LIMIT].rstrip()
+        + "\n\n[已截断超长用户反馈，后续粘贴内容未进入本次生成上下文]"
+    )
 
 
 def _previous_chapter_preview(content: str, max_chars: int = PREVIOUS_CHAPTER_SUMMARY_CHAR_LIMIT) -> str:
