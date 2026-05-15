@@ -19,7 +19,7 @@ router = APIRouter()
 @router.get("/evolution/plan")
 def get_evolution_plan(
     project_id: str,
-    mode: str = Query("full", pattern="^(full|window)$"),
+    mode: str = Query("window", pattern="^(full|window)$"),
     chapter_offset: int = Query(0, ge=0),
     chapter_limit: int = Query(100, ge=1, le=500),
     plotline_offset: int = Query(0, ge=0),
