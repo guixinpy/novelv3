@@ -206,10 +206,25 @@ def get_ontology_entities(
 
 
 @router.get("/ontology/relations")
-def get_ontology_relations(project_id: str, db: Session = Depends(get_db)):
+def get_ontology_relations(
+    project_id: str,
+    db: Session = Depends(get_db),
+    node_offset: int = Query(0, ge=0),
+    node_limit: int = Query(200, ge=1, le=1000),
+    edge_offset: int = Query(0, ge=0),
+    edge_limit: int = Query(500, ge=1, le=2000),
+):
     require_project(db, project_id)
     from app.api.topologies import get_topology
-    return get_topology(project_id, db)
+    return get_topology(
+        project_id,
+        db,
+        None,
+        node_offset,
+        node_limit,
+        edge_offset,
+        edge_limit,
+    )
 
 
 @router.get("/ontology/rules")

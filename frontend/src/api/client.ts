@@ -289,7 +289,15 @@ export const api = {
   getStoryline: (id: string) => request(`/projects/${id}/storyline`),
   generateOutline: (id: string) => request(`/projects/${id}/athena/evolution/plan/generate?target=outline`, { method: 'POST' }),
   getOutline: (id: string) => request(`/projects/${id}/outline`),
-  getTopology: (id: string) => request(`/projects/${id}/athena/ontology/relations`),
+  getTopology: (id: string, params?: { node_offset?: number; node_limit?: number; edge_offset?: number; edge_limit?: number }) => {
+    const query = new URLSearchParams()
+    if (params?.node_offset !== undefined) query.set('node_offset', String(params.node_offset))
+    if (params?.node_limit !== undefined) query.set('node_limit', String(params.node_limit))
+    if (params?.edge_offset !== undefined) query.set('edge_offset', String(params.edge_offset))
+    if (params?.edge_limit !== undefined) query.set('edge_limit', String(params.edge_limit))
+    const qs = query.toString()
+    return request(`/projects/${id}/athena/ontology/relations${qs ? `?${qs}` : ''}`)
+  },
   getDiagnosis: (id: string) => request(`/projects/${id}/state-diagnosis`),
   getMessages: (id: string, dialogType: string = 'hermes', params?: MessageQuery) => {
     const query = messageQuery(params)

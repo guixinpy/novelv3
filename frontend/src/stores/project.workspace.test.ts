@@ -502,6 +502,26 @@ describe('project workspace state', () => {
     })
   })
 
+  it('loadTopology() 请求有界 topology 窗口', async () => {
+    const store = useProjectStore()
+    vi.mocked(api.getTopology).mockResolvedValue({
+      id: 'topology-1',
+      nodes: [],
+      edges: [],
+      nodes_total: 1000,
+      edges_total: 3000,
+    })
+
+    await store.loadTopology('A')
+
+    expect(api.getTopology).toHaveBeenCalledWith('A', {
+      node_offset: 0,
+      node_limit: 200,
+      edge_offset: 0,
+      edge_limit: 500,
+    })
+  })
+
   it('refreshTargets() 只返回成功刷新的 targets，失败的不应回传', async () => {
     const store = useProjectStore()
 

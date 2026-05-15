@@ -25,6 +25,8 @@ export const useProjectStore = defineStore('project', () => {
   const requestCache = useRequestCacheStore()
   const PROJECT_CACHE_TTL_MS = 5 * 60 * 1000
   const VERSION_PAGE_LIMIT = 50
+  const TOPOLOGY_NODE_PAGE_LIMIT = 200
+  const TOPOLOGY_EDGE_PAGE_LIMIT = 500
   const projects = ref<any[]>([])
   const currentProject = ref<any>(null)
   const setup = ref<any>(null)
@@ -286,10 +288,16 @@ export const useProjectStore = defineStore('project', () => {
   }
 
   async function loadTopology(id: string) {
-    const key = `project:${id}:topology`
+    const params = {
+      node_offset: 0,
+      node_limit: TOPOLOGY_NODE_PAGE_LIMIT,
+      edge_offset: 0,
+      edge_limit: TOPOLOGY_EDGE_PAGE_LIMIT,
+    }
+    const key = `project:${id}:topology:${params.node_offset}:${params.node_limit}:${params.edge_offset}:${params.edge_limit}`
     if (topology.value && requestCache.isFresh(key, PROJECT_CACHE_TTL_MS)) return
     const snapshot = captureProjectRequest(id, ['topology'])
-    const nextTopology = await requestCache.dedupe(key, () => api.getTopology(id))
+    const nextTopology = await requestCache.dedupe(key, () => api.getTopology(id, params))
     if (!isLatestProjectRequest(snapshot, 'topology')) return
     topology.value = nextTopology
   }
