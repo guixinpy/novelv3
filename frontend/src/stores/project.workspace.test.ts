@@ -281,6 +281,53 @@ describe('project workspace state', () => {
     expect(store.chaptersLatestIndex).toBe(250)
   })
 
+  it('loadMoreChapters() 会从非零章节窗口的尾部继续请求', async () => {
+    const store = useProjectStore()
+    const windowPage = Array.from({ length: 50 }, (_, index) => ({
+      id: `chapter-${index + 801}`,
+      chapter_index: index + 801,
+      title: `第${index + 801}章`,
+      word_count: 1000,
+      status: 'generated',
+    }))
+    const nextPage = Array.from({ length: 50 }, (_, index) => ({
+      id: `chapter-${index + 851}`,
+      chapter_index: index + 851,
+      title: `第${index + 851}章`,
+      word_count: 1000,
+      status: 'generated',
+    }))
+
+    store.applyWorkspaceBootstrap({
+      project: { id: 'A', name: '项目 A' },
+      diagnosis: { missing_items: [], completed_items: ['content'], suggested_next_step: null },
+      chapters: windowPage,
+      chapters_total: 1000,
+      chapters_offset: 800,
+      chapters_limit: 50,
+      chapters_has_more: true,
+      versions: [],
+      dialogs: { hermes: { messages: [] }, athena: { messages: [] } },
+    } as any)
+    vi.mocked(api.listChapters).mockResolvedValue({
+      chapters: nextPage,
+      total: 1000,
+      offset: 850,
+      limit: 50,
+      has_more: true,
+      latest_chapter_index: 1000,
+    })
+
+    await store.loadMoreChapters('A')
+
+    expect(api.listChapters).toHaveBeenCalledWith('A', { offset: 850, limit: 50 })
+    expect(store.chapters).toHaveLength(100)
+    expect(store.chapters[0].chapter_index).toBe(801)
+    expect(store.chapters[50].chapter_index).toBe(851)
+    expect(store.chaptersOffset).toBe(850)
+    expect(store.chaptersHasMore).toBe(true)
+  })
+
   it('loadMoreVersions() 会从已加载数量继续追加下一页版本', async () => {
     const store = useProjectStore()
     const firstPage = [

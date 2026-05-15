@@ -40,6 +40,7 @@ export const useProjectStore = defineStore('project', () => {
   const chaptersLimit = ref(0)
   const chaptersHasMore = ref(false)
   const chaptersLatestIndex = ref<number | null>(null)
+  const chaptersWindowStartOffset = ref(0)
   const versions = ref<any[]>([])
   const versionsTotal = ref(0)
   const versionsOffset = ref(0)
@@ -155,6 +156,7 @@ export const useProjectStore = defineStore('project', () => {
     chapters.value = bootstrap.chapters || []
     chaptersTotal.value = bootstrap.chapters_total ?? chapters.value.length
     chaptersOffset.value = bootstrap.chapters_offset ?? 0
+    chaptersWindowStartOffset.value = chaptersOffset.value
     chaptersLimit.value = bootstrap.chapters_limit ?? chapters.value.length
     chaptersHasMore.value = bootstrap.chapters_has_more ?? false
     chaptersLatestIndex.value = resolveLatestChapterIndex(bootstrap.chapters_latest_index)
@@ -196,6 +198,7 @@ export const useProjectStore = defineStore('project', () => {
     chapters.value = []
     chaptersTotal.value = 0
     chaptersOffset.value = 0
+    chaptersWindowStartOffset.value = 0
     chaptersLimit.value = 0
     chaptersHasMore.value = false
     chaptersLatestIndex.value = null
@@ -312,6 +315,7 @@ export const useProjectStore = defineStore('project', () => {
     chapters.value = res.chapters || []
     chaptersTotal.value = res.total ?? chapters.value.length
     chaptersOffset.value = res.offset ?? offset
+    chaptersWindowStartOffset.value = chaptersOffset.value
     chaptersLimit.value = res.limit ?? chapters.value.length
     chaptersHasMore.value = res.has_more ?? false
     chaptersLatestIndex.value = resolveLatestChapterIndex(res.latest_chapter_index)
@@ -319,7 +323,7 @@ export const useProjectStore = defineStore('project', () => {
 
   async function loadMoreChapters(id: string) {
     if (!chaptersHasMore.value) return
-    const offset = chapters.value.length
+    const offset = chaptersWindowStartOffset.value + chapters.value.length
     const limit = chaptersLimit.value || 200
     const params = { offset, limit }
     const key = chaptersCacheKey(id, params)
