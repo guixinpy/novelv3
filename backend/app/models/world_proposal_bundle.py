@@ -101,6 +101,17 @@ class WorldProposalItem(Base):
         Index("ix_world_proposal_items_bundle_id", "bundle_id"),
         Index("ix_world_proposal_items_parent_item_id", "parent_item_id"),
         Index("ix_world_proposal_items_project_profile_version", "project_id", "profile_version"),
+        Index(
+            "ix_world_proposal_items_project_profile_status_order",
+            "project_id",
+            "project_profile_version_id",
+            "profile_version",
+            "item_status",
+            "chapter_index",
+            "predicate",
+            "subject_ref",
+            "id",
+        ),
     )
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))

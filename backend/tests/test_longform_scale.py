@@ -39,6 +39,9 @@ def test_longform_hot_tables_have_query_indexes(db_session):
         "world_fact_claims": {
             "ix_world_fact_claims_project_profile_status_order",
         },
+        "world_proposal_items": {
+            "ix_world_proposal_items_project_profile_status_order",
+        },
     }
     for table_name, index_names in expected_indexes.items():
         rows = db_session.execute(text(f"PRAGMA index_list('{table_name}')")).fetchall()
