@@ -15,6 +15,9 @@ from app.prompting.providers.style import build_style_rule_block
 CHAPTER_CONTEXT_CHAR_BUDGET = 24000
 PREVIOUS_CHAPTER_SUMMARY_CHAR_LIMIT = 300
 EXTRA_FEEDBACK_CHAR_LIMIT = 3000
+SETUP_WORLD_BLOCK_CHAR_LIMIT = 2000
+SETUP_CHARACTERS_BLOCK_CHAR_LIMIT = 2000
+SETUP_CORE_CONCEPT_BLOCK_CHAR_LIMIT = 1200
 PRIORITY_USER_FEEDBACK = 0
 PRIORITY_LENGTH_CONSTRAINT = 1
 PRIORITY_CHAPTER_TARGET = 10
@@ -49,7 +52,7 @@ def build_chapter_prompt_context_blocks(
                 key="setup_world_building",
                 kind="setup",
                 title="世界观",
-                content=json.dumps(setup.world_building, ensure_ascii=False),
+                content=_compact_json_context(setup.world_building, max_chars=SETUP_WORLD_BLOCK_CHAR_LIMIT),
             ),
             PRIORITY_SETUP_WORLD,
         ),
@@ -58,7 +61,7 @@ def build_chapter_prompt_context_blocks(
                 key="setup_characters",
                 kind="setup",
                 title="角色",
-                content=json.dumps(setup.characters, ensure_ascii=False),
+                content=_compact_json_context(setup.characters, max_chars=SETUP_CHARACTERS_BLOCK_CHAR_LIMIT),
             ),
             PRIORITY_SETUP_CHARACTERS,
         ),
@@ -67,7 +70,7 @@ def build_chapter_prompt_context_blocks(
                 key="setup_core_concept",
                 kind="setup",
                 title="核心概念",
-                content=json.dumps(setup.core_concept, ensure_ascii=False),
+                content=_compact_json_context(setup.core_concept, max_chars=SETUP_CORE_CONCEPT_BLOCK_CHAR_LIMIT),
             ),
             PRIORITY_SETUP_CORE_CONCEPT,
         ),
@@ -276,6 +279,16 @@ def _compact_extra_feedback(text: str) -> str:
     return (
         cleaned[:EXTRA_FEEDBACK_CHAR_LIMIT].rstrip()
         + "\n\n[已截断超长用户反馈，后续粘贴内容未进入本次生成上下文]"
+    )
+
+
+def _compact_json_context(value: object, *, max_chars: int) -> str:
+    content = json.dumps(value, ensure_ascii=False)
+    if len(content) <= max_chars:
+        return content
+    return (
+        content[:max_chars].rstrip()
+        + "\n\n[已截断超长 Setup 内容，后续内容未进入本次生成上下文]"
     )
 
 
