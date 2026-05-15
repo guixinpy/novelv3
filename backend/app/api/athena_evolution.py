@@ -64,13 +64,20 @@ def get_evolution_plan(
 async def generate_evolution_plan(
     project_id: str,
     target: str = "outline",
+    response_mode: str = Query("window", pattern="^(full|window)$"),
     db: Session = Depends(get_db),
 ):
     if target == "storyline":
         from app.api.storylines import generate_storyline
-        return await generate_storyline(project_id, db)
+        generated = await generate_storyline(project_id, db)
+        if response_mode == "full":
+            return generated
+        return get_evolution_plan_window(db=db, project_id=project_id)["storyline"]
     from app.api.outlines import generate_outline
-    return await generate_outline(project_id, db)
+    generated = await generate_outline(project_id, db)
+    if response_mode == "full":
+        return generated
+    return get_evolution_plan_window(db=db, project_id=project_id)["outline"]
 
 
 @router.get("/evolution/proposals")
