@@ -850,6 +850,9 @@ def test_longform_scale_smoke_reports_memory_retrieval_and_resume_progress(db_se
     assert report["retrieval"]["documents_by_source_type"]["chapter"] == 120
     assert report["retrieval"]["documents_by_source_type"]["longform_memory"] == 129
     assert "query_aware_retrieval" in report["context"]["section_keys"]
+    assert report["dialog_planning_context"]["available"] is True
+    assert report["dialog_planning_context"]["kind"] == "narrative_planning_summary"
+    assert report["dialog_planning_context"]["content_chars"] <= 6000
     assert report["task"]["status"] == "completed"
     assert report["task"]["progress"]["completed_count"] == 120
     assert report["task"]["progress"]["last_completed_chapter_index"] == 120
@@ -901,6 +904,7 @@ def test_longform_scale_smoke_reports_stage_timings(db_session):
         "retrieval_reindex",
         "context_build",
         "narrative_plan_window",
+        "dialog_planning_context",
         "task_complete",
     }
     assert all(isinstance(value, int) and value >= 0 for value in report["timings_ms"].values())

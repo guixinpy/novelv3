@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.athena_retrieval import get_retrieval_diagnostics, reindex_project_retrieval
 from app.core.longform_memory import build_longform_context_package, rebuild_longform_memory
 from app.core.narrative_plan_window import get_evolution_plan_window
+from app.prompting.providers.dialog import build_athena_narrative_planning_context_block
 from app.models import ChapterContent, Outline, Project, Storyline
 from app.services.tasks.background_task_service import BackgroundTaskService
 
@@ -63,6 +64,8 @@ def run_longform_scale_smoke(
     stage_started_at = _record_timing(timings_ms, "context_build", stage_started_at)
     narrative_plan = get_evolution_plan_window(db=db, project_id=project.id)
     stage_started_at = _record_timing(timings_ms, "narrative_plan_window", stage_started_at)
+    dialog_planning_context = build_athena_narrative_planning_context_block(db, project)
+    stage_started_at = _record_timing(timings_ms, "dialog_planning_context", stage_started_at)
     progress = (task.result or {}).get("progress") or {}
     completed_task = task_service.mark_completed(
         task.id,
@@ -71,6 +74,7 @@ def run_longform_scale_smoke(
             "memory": memory_report,
             "retrieval": retrieval_report,
             "narrative_plan": _compact_narrative_plan_window(narrative_plan),
+            "dialog_planning_context": _compact_context_block(dialog_planning_context),
             "target_chapter_index": target,
         },
     )
@@ -93,6 +97,7 @@ def run_longform_scale_smoke(
             "prompt_context_chars": len(context_package["prompt_context"]),
         },
         "narrative_plan": _compact_narrative_plan_window(narrative_plan),
+        "dialog_planning_context": _compact_context_block(dialog_planning_context),
         "task": {
             "id": completed_task.id,
             "status": completed_task.status,
@@ -100,6 +105,25 @@ def run_longform_scale_smoke(
         },
         "timings_ms": timings_ms,
         "elapsed_ms": elapsed_ms,
+    }
+
+
+def _compact_context_block(block: dict[str, Any] | None) -> dict[str, Any]:
+    if not block:
+        return {
+            "available": False,
+            "kind": None,
+            "content_chars": 0,
+            "token_estimate": 0,
+            "truncated": False,
+        }
+    content = str(block.get("content") or "")
+    return {
+        "available": True,
+        "kind": block.get("kind"),
+        "content_chars": len(content),
+        "token_estimate": block.get("token_estimate", 0),
+        "truncated": bool(block.get("truncated", False)),
     }
 
 
