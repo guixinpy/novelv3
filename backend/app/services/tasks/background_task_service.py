@@ -189,14 +189,21 @@ class BackgroundTaskService:
         return self.create(project_id=task.project_id, task_type=task.task_type, payload=payload)
 
     def fail_interrupted_running_tasks(self) -> int:
-        tasks = self.db.query(BackgroundTask).filter(BackgroundTask.status.in_(ACTIVE_TASK_STATUSES)).all()
         now = datetime.now(UTC)
-        for task in tasks:
-            task.status = TASK_FAILED
-            task.error = INTERRUPTED_TASK_ERROR
-            task.finished_at = now
+        count = (
+            self.db.query(BackgroundTask)
+            .filter(BackgroundTask.status.in_(ACTIVE_TASK_STATUSES))
+            .update(
+                {
+                    BackgroundTask.status: TASK_FAILED,
+                    BackgroundTask.error: INTERRUPTED_TASK_ERROR,
+                    BackgroundTask.finished_at: now,
+                },
+                synchronize_session=False,
+            )
+        )
         self.db.commit()
-        return len(tasks)
+        return int(count or 0)
 
 
 def _task_chapter_range(task: BackgroundTask) -> tuple[int, int]:

@@ -468,6 +468,65 @@ def test_background_task_service_marks_interrupted_pending_tasks_failed(client, 
     assert retry.id != task.id
 
 
+def test_background_task_service_fails_interrupted_tasks_without_selecting_rows(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Task Restart Bulk"})
+    pid = r.json()["id"]
+    db_session.add_all([
+        BackgroundTask(
+            project_id=pid,
+            task_type=f"active-{index}",
+            status="running" if index % 2 else "pending",
+            payload={"chapters": list(range(1000))},
+            result={"summary": ["任务结果"] * 500},
+            error="长错误信息" * 300,
+        )
+        for index in range(5)
+    ])
+    db_session.add(
+        BackgroundTask(
+            project_id=pid,
+            task_type="completed",
+            status="completed",
+            payload={"chapters": list(range(1000))},
+        )
+    )
+    db_session.commit()
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        count = BackgroundTaskService(db_session).fail_interrupted_running_tasks()
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert count == 5
+    row_selects = [
+        statement for statement in statements
+        if statement.startswith("select") and "from background_tasks" in statement
+    ]
+    assert row_selects == []
+    update_statements = [
+        statement for statement in statements
+        if statement.startswith("update background_tasks")
+    ]
+    assert update_statements
+    assert (
+        db_session.query(BackgroundTask)
+        .filter(BackgroundTask.project_id == pid, BackgroundTask.status == "failed")
+        .count()
+        == 5
+    )
+    assert (
+        db_session.query(BackgroundTask)
+        .filter(BackgroundTask.project_id == pid, BackgroundTask.status == "completed")
+        .count()
+        == 1
+    )
+
+
 def test_app_startup_marks_interrupted_running_tasks_failed(monkeypatch):
     calls: list[str] = []
 
