@@ -136,7 +136,7 @@ def test_rebuild_longform_memory_creates_chapter_arc_volume_and_global_layers(cl
 def test_longform_memory_diagnostics_chapter_count_does_not_select_chapter_content(db_session):
     from app.core.longform_memory import get_longform_memory_diagnostics
 
-    project = Project(name="Heavy Diagnostics")
+    project = Project(name="Heavy Diagnostics", current_word_count=7777)
     db_session.add(project)
     db_session.commit()
     db_session.refresh(project)
@@ -174,12 +174,17 @@ def test_longform_memory_diagnostics_chapter_count_does_not_select_chapter_conte
         event.remove(db_session.bind, "before_cursor_execute", capture_sql)
 
     assert payload["chapter_count"] == 3
+    assert payload["current_word_count"] == 7777
     chapter_count_statements = [
         statement for statement in statements
         if "count(" in statement and "chapter_contents" in statement
     ]
     assert chapter_count_statements
     assert all("chapter_contents.content" not in statement for statement in chapter_count_statements)
+    assert not [
+        statement for statement in statements
+        if "sum(chapter_contents.word_count)" in statement
+    ]
 
 
 def test_chapter_memory_prefers_generated_content_over_stale_outline_summary(db_session):

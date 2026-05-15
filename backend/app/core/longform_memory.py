@@ -73,7 +73,6 @@ def rebuild_longform_memory(
 
 def get_longform_memory_diagnostics(db: Session, project_id: str) -> dict[str, Any]:
     project = _require_project(db, project_id)
-    reconcile_project_word_count(db, project)
     rows = (
         db.query(LongformMemory.memory_type, func.count(LongformMemory.id))
         .filter(LongformMemory.project_id == project_id)
