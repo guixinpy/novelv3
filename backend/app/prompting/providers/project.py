@@ -2,6 +2,7 @@ import json
 
 from app.core.model_call_trace import build_context_block
 from app.models import Project
+from app.prompting.command_args import compact_command_args
 
 
 def build_project_profile(project: Project) -> dict:
@@ -31,5 +32,5 @@ def build_command_args_block(command_args: str) -> dict:
         key="command_args",
         kind="user_feedback",
         title="用户附加要求",
-        content=command_args,
+        content=compact_command_args(command_args),
     )

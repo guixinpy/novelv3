@@ -2,6 +2,7 @@ from copy import deepcopy
 from collections.abc import Callable
 from typing import Any
 
+from app.prompting.command_args import compact_command_args
 from app.prompting.budget import PromptBudgeter
 from app.prompting.contracts import PromptBuildResult
 from app.prompting.registry import PROMPT_REGISTRY
@@ -104,8 +105,9 @@ def build_generation_payload(
 ) -> dict[str, Any]:
     build_result = PromptAssembler().build(prompt_id, variables)
     prompt = build_result.content
-    if command_args and command_args.strip():
-        prompt = f"{prompt}\n\n附加要求：{command_args.strip()}"
+    compact_args = compact_command_args(command_args)
+    if compact_args:
+        prompt = f"{prompt}\n\n附加要求：{compact_args}"
     if callable(trace_context_blocks):
         context_blocks = trace_context_blocks(build_result.content)
     else:

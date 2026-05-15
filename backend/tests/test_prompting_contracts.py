@@ -2,6 +2,7 @@ import pytest
 
 from app.prompting.assembler import PromptAssembler, build_generation_payload
 from app.prompting.budget import PromptBudgeter
+from app.prompting.providers.project import build_command_args_block
 from app.prompting.registry import PROMPT_REGISTRY
 from app.prompting.renderer import PromptRenderer, default_prompts_dir
 from app.prompting.tracing import build_prompt_trace_metadata
@@ -290,6 +291,39 @@ def test_build_generation_payload_keeps_trace_blocks_out_of_message_content():
     assert payload["trace_metadata"]["prompt_id"] == "setup.generate"
     assert payload["trace_metadata"]["template_hash"].startswith("sha256:")
     assert payload["rendered_prompt"] in message_content
+
+
+def test_build_generation_payload_bounds_oversized_command_args():
+    command_mid_noise = "MID_COMMAND_ARGS_NOISE_SHOULD_NOT_APPEAR"
+    command_tail_noise = "TAIL_COMMAND_ARGS_NOISE_SHOULD_NOT_APPEAR"
+    command_args = (
+        "主角是植物学家，第一幕必须出现温室。"
+        + ("无效附加要求" * 700)
+        + command_mid_noise
+        + ("更多无效附加要求" * 10_000)
+        + command_tail_noise
+    )
+
+    payload = build_generation_payload(
+        "setup.generate",
+        {
+            "name": "潮汐门",
+            "genre": "科幻悬疑",
+            "description": "记忆潮汐每72小时发生。",
+            "style": "冷峻",
+            "complexity": "中等",
+        },
+        command_args=command_args,
+    )
+    command_block = build_command_args_block(command_args)
+
+    message_content = payload["messages"][0]["content"]
+    assert "主角是植物学家，第一幕必须出现温室" in message_content
+    assert "主角是植物学家，第一幕必须出现温室" in command_block["content"]
+    for content in [message_content, command_block["content"]]:
+        assert command_mid_noise not in content
+        assert command_tail_noise not in content
+        assert "truncated: original content exceeded trace limit" not in content
 
 
 def test_build_generation_payload_can_build_trace_blocks_from_rendered_prompt():
