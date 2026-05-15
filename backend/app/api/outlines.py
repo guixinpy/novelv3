@@ -1,12 +1,13 @@
 import time
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
 
 from app.api.deprecation import add_deprecation_header
 from app.config import load_api_key
 from app.core.ai_service import AIService
 from app.core.model_call_trace import create_trace, mark_trace_failed, mark_trace_success, now_ms
+from app.core.narrative_plan_window import get_evolution_plan_window
 from app.db import get_db
 from app.models import Outline, Project, Setup, Storyline
 from app.prompting.assembler import build_generation_payload
@@ -130,9 +131,34 @@ async def generate_outline(project_id: str, db: Session = Depends(get_db), comma
 
 
 @router.get("", response_model=OutlineOut)
-def get_outline(project_id: str, db: Session = Depends(get_db), response: Response = None):
+def get_outline(
+    project_id: str,
+    mode: str = Query("window", pattern="^(full|window)$"),
+    chapter_offset: int = Query(0, ge=0),
+    chapter_limit: int = Query(100, ge=1, le=500),
+    plotline_offset: int = Query(0, ge=0),
+    plotline_limit: int = Query(20, ge=1, le=500),
+    foreshadowing_offset: int = Query(0, ge=0),
+    foreshadowing_limit: int = Query(100, ge=1, le=500),
+    db: Session = Depends(get_db),
+    response: Response = None,
+):
     if response:
         add_deprecation_header(response, f"/api/v1/projects/{project_id}/athena/evolution/plan")
+    if mode == "window":
+        outline = get_evolution_plan_window(
+            db=db,
+            project_id=project_id,
+            chapter_offset=chapter_offset,
+            chapter_limit=chapter_limit,
+            plotline_offset=plotline_offset,
+            plotline_limit=plotline_limit,
+            foreshadowing_offset=foreshadowing_offset,
+            foreshadowing_limit=foreshadowing_limit,
+        )["outline"]
+        if not outline:
+            raise HTTPException(status_code=404, detail="Outline not found")
+        return outline
     outline = db.query(Outline).filter(Outline.project_id == project_id).first()
     if not outline:
         raise HTTPException(status_code=404, detail="Outline not found")

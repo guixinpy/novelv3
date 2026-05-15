@@ -25,10 +25,14 @@ def get_evolution_plan_window(
     outline = (
         db.query(
             Outline.id,
+            Outline.project_id,
             Outline.status,
             Outline.total_chapters,
+            Outline.created_at,
+            Outline.updated_at,
             func.coalesce(func.json_array_length(Outline.chapters), 0).label("chapters_total"),
             func.coalesce(func.json_array_length(Outline.plotlines), 0).label("plotlines_total"),
+            func.coalesce(func.json_array_length(Outline.foreshadowing), 0).label("foreshadowing_total"),
         )
         .filter(Outline.project_id == project_id)
         .order_by(Outline.updated_at.desc())
@@ -37,7 +41,10 @@ def get_evolution_plan_window(
     storyline = (
         db.query(
             Storyline.id,
+            Storyline.project_id,
             Storyline.status,
+            Storyline.created_at,
+            Storyline.updated_at,
             func.coalesce(func.json_array_length(Storyline.plotlines), 0).label("plotlines_total"),
             func.coalesce(func.json_array_length(Storyline.foreshadowing), 0).label("foreshadowing_total"),
         )
@@ -53,6 +60,8 @@ def get_evolution_plan_window(
             chapter_limit=chapter_limit,
             plotline_offset=plotline_offset,
             plotline_limit=plotline_limit,
+            foreshadowing_offset=foreshadowing_offset,
+            foreshadowing_limit=foreshadowing_limit,
         ),
         "storyline": _windowed_storyline(
             db=db,
@@ -75,19 +84,34 @@ def _windowed_outline(
     chapter_limit: int,
     plotline_offset: int,
     plotline_limit: int,
+    foreshadowing_offset: int,
+    foreshadowing_limit: int,
 ) -> dict[str, Any] | None:
     if outline is None:
         return None
     chapters_total = int(outline.chapters_total or 0)
     plotlines_total = int(outline.plotlines_total or 0)
+    foreshadowing_total = int(outline.foreshadowing_total or 0)
     chapters = _json_array_window(db, "outlines", "chapters", outline.id, chapter_offset, chapter_limit)
     plotlines = _json_array_window(db, "outlines", "plotlines", outline.id, plotline_offset, plotline_limit)
+    foreshadowing = _json_array_window(
+        db,
+        "outlines",
+        "foreshadowing",
+        outline.id,
+        foreshadowing_offset,
+        foreshadowing_limit,
+    )
     return {
         "id": outline.id,
+        "project_id": outline.project_id,
         "status": outline.status,
         "total_chapters": outline.total_chapters,
+        "created_at": outline.created_at,
+        "updated_at": outline.updated_at,
         "chapters": chapters,
         "plotlines": plotlines,
+        "foreshadowing": foreshadowing,
         "chapters_total": chapters_total,
         "chapters_offset": chapter_offset,
         "chapters_limit": chapter_limit,
@@ -96,6 +120,10 @@ def _windowed_outline(
         "plotlines_offset": plotline_offset,
         "plotlines_limit": plotline_limit,
         "plotlines_has_more": plotline_offset + len(plotlines) < plotlines_total,
+        "foreshadowing_total": foreshadowing_total,
+        "foreshadowing_offset": foreshadowing_offset,
+        "foreshadowing_limit": foreshadowing_limit,
+        "foreshadowing_has_more": foreshadowing_offset + len(foreshadowing) < foreshadowing_total,
     }
 
 
@@ -126,7 +154,10 @@ def _windowed_storyline(
     )
     return {
         "id": storyline.id,
+        "project_id": storyline.project_id,
         "status": storyline.status,
+        "created_at": storyline.created_at,
+        "updated_at": storyline.updated_at,
         "plotlines": plotlines,
         "foreshadowing": foreshadowing,
         "plotlines_total": plotlines_total,

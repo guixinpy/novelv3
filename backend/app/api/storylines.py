@@ -1,12 +1,13 @@
 import time
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
 
 from app.api.deprecation import add_deprecation_header
 from app.config import load_api_key
 from app.core.ai_service import AIService
 from app.core.model_call_trace import create_trace, mark_trace_failed, mark_trace_success, now_ms
+from app.core.narrative_plan_window import get_evolution_plan_window
 from app.db import get_db
 from app.models import Project, Setup, Storyline
 from app.prompting.assembler import build_generation_payload
@@ -113,9 +114,34 @@ async def generate_storyline(project_id: str, db: Session = Depends(get_db), com
 
 
 @router.get("", response_model=StorylineOut)
-def get_storyline(project_id: str, db: Session = Depends(get_db), response: Response = None):
+def get_storyline(
+    project_id: str,
+    mode: str = Query("window", pattern="^(full|window)$"),
+    plotline_offset: int = Query(0, ge=0),
+    plotline_limit: int = Query(20, ge=1, le=500),
+    milestone_offset: int = Query(0, ge=0),
+    milestone_limit: int = Query(80, ge=1, le=500),
+    foreshadowing_offset: int = Query(0, ge=0),
+    foreshadowing_limit: int = Query(100, ge=1, le=500),
+    db: Session = Depends(get_db),
+    response: Response = None,
+):
     if response:
         add_deprecation_header(response, f"/api/v1/projects/{project_id}/athena/evolution/plan")
+    if mode == "window":
+        storyline = get_evolution_plan_window(
+            db=db,
+            project_id=project_id,
+            plotline_offset=plotline_offset,
+            plotline_limit=plotline_limit,
+            milestone_offset=milestone_offset,
+            milestone_limit=milestone_limit,
+            foreshadowing_offset=foreshadowing_offset,
+            foreshadowing_limit=foreshadowing_limit,
+        )["storyline"]
+        if not storyline:
+            raise HTTPException(status_code=404, detail="Storyline not found")
+        return storyline
     storyline = db.query(Storyline).filter(Storyline.project_id == project_id).first()
     if not storyline:
         raise HTTPException(status_code=404, detail="Storyline not found")
