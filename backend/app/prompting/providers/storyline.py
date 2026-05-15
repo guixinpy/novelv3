@@ -4,12 +4,16 @@ from app.core.model_call_trace import build_context_block
 from app.models import Project, Setup
 from app.prompting.providers.project import build_command_args_block
 
+SETUP_WORLD_CONTEXT_CHARS = 2000
+SETUP_CHARACTERS_CONTEXT_CHARS = 2000
+SETUP_CORE_CONCEPT_CONTEXT_CHARS = 1200
+
 
 def build_setup_context_values(setup: Setup) -> dict[str, str]:
     return {
-        "world_building": json.dumps(setup.world_building, ensure_ascii=False),
-        "characters": json.dumps(setup.characters, ensure_ascii=False),
-        "core_concept": json.dumps(setup.core_concept, ensure_ascii=False),
+        "world_building": _compact_json_context(setup.world_building, max_chars=SETUP_WORLD_CONTEXT_CHARS),
+        "characters": _compact_json_context(setup.characters, max_chars=SETUP_CHARACTERS_CONTEXT_CHARS),
+        "core_concept": _compact_json_context(setup.core_concept, max_chars=SETUP_CORE_CONCEPT_CONTEXT_CHARS),
     }
 
 
@@ -45,3 +49,13 @@ def build_storyline_context_blocks(
     if command_args and command_args.strip():
         blocks.append(build_command_args_block(command_args.strip()))
     return blocks
+
+
+def _compact_json_context(value: object, *, max_chars: int) -> str:
+    content = json.dumps(value, ensure_ascii=False)
+    if len(content) <= max_chars:
+        return content
+    return (
+        content[:max_chars].rstrip()
+        + "\n\n[已截断超长 Setup 内容，后续内容未进入本次生成上下文]"
+    )

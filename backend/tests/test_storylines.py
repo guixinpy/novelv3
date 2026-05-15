@@ -1,7 +1,9 @@
 import asyncio
 from unittest.mock import AsyncMock, patch
 
+from app.api import storylines
 from app.api.storylines import generate_storyline
+from app.models import Project, Setup
 
 
 @patch("app.api.storylines.load_api_key", return_value="sk-test")
@@ -78,3 +80,42 @@ def test_generate_storyline_appends_command_args_to_prompt(mock_parse, mock_comp
     assert {block["key"] for block in trace["context_blocks"]} >= {"command_args"}
     command_args_block = next(block for block in trace["context_blocks"] if block["key"] == "command_args")
     assert command_args_block["kind"] == "user_feedback"
+
+
+def test_storyline_prompt_bounds_oversized_setup_context(db_session):
+    project = Project(name="长篇故事线预算", genre="硬科幻")
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    world_mid_noise = "MID_STORYLINE_WORLD_NOISE_SHOULD_NOT_APPEAR"
+    character_mid_noise = "MID_STORYLINE_CHARACTER_NOISE_SHOULD_NOT_APPEAR"
+    concept_mid_noise = "MID_STORYLINE_CONCEPT_NOISE_SHOULD_NOT_APPEAR"
+    setup = Setup(
+        project_id=project.id,
+        world_building={
+            "city": "雾港",
+            "lore": ("世界观噪音" * 700) + world_mid_noise + ("更多世界观噪音" * 10_000),
+        },
+        characters=[
+            {
+                "name": "林舟",
+                "bio": ("角色噪音" * 700) + character_mid_noise + ("更多角色噪音" * 10_000),
+            }
+        ],
+        core_concept={
+            "hook": "旧灯塔记忆病毒",
+            "long": ("核心概念噪音" * 700) + concept_mid_noise + ("更多核心噪音" * 10_000),
+        },
+    )
+
+    payload = storylines._build_storyline_call_payload(project, setup)
+
+    prompt = payload["messages"][0]["content"]
+    assert "雾港" in prompt
+    assert "林舟" in prompt
+    assert "旧灯塔记忆病毒" in prompt
+    assert world_mid_noise not in prompt
+    assert character_mid_noise not in prompt
+    assert concept_mid_noise not in prompt
+    assert "truncated: original content exceeded trace limit" not in prompt
+    assert len(prompt) <= 8_000
