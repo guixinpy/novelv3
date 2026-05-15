@@ -4,11 +4,11 @@ from collections.abc import Iterator
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from sqlalchemy import func
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import ChapterContent, Outline, Project, Setup
+from app.models import ChapterContent, Project, Setup
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}", tags=["export"])
 
@@ -69,13 +69,14 @@ def _iter_export_lines(
                 )
 
     if payload.include_outline:
-        outline = db.query(Outline).filter(Outline.project_id == project_id).first()
-        if outline and outline.chapters:
-            yield from _emit_export_line("## 大纲\n", payload.format)
-            for ch in outline.chapters:
-                ch_title = ch.get('title') or f"第{ch.get('chapter_index')}章"
-                yield from _emit_export_line(f"### {ch_title}\n", payload.format)
-                yield from _emit_export_line(f"{ch.get('summary', '')}\n", payload.format)
+        outline_started = False
+        for ch in _iter_outline_chapters(db, project_id=project_id):
+            if not outline_started:
+                yield from _emit_export_line("## 大纲\n", payload.format)
+                outline_started = True
+            ch_title = ch.get('title') or f"第{ch.get('chapter_index')}章"
+            yield from _emit_export_line(f"### {ch_title}\n", payload.format)
+            yield from _emit_export_line(f"{ch.get('summary', '')}\n", payload.format)
 
     has_chapters = False
     for ch in _iter_export_chapters(db, project_id=project_id, payload=payload):
@@ -105,6 +106,34 @@ def _iter_export_chapters(db: Session, *, project_id: str, payload: ExportReques
     )
 
 
+def _iter_outline_chapters(db: Session, *, project_id: str) -> Iterator[dict]:
+    rows = (
+        db.execute(
+            text(
+                """
+                SELECT chapter.value AS value
+                FROM outlines, json_each(outlines.chapters) AS chapter
+                WHERE outlines.id = (
+                    SELECT id
+                    FROM outlines
+                    WHERE project_id = :project_id
+                    ORDER BY updated_at DESC
+                    LIMIT 1
+                )
+                ORDER BY CAST(chapter.key AS INTEGER)
+                """
+            ),
+            {"project_id": project_id},
+        )
+        .mappings()
+        .yield_per(EXPORT_CHAPTER_BATCH_SIZE)
+    )
+    for row in rows:
+        value = _decode_json_value(row["value"])
+        if isinstance(value, dict):
+            yield value
+
+
 def _emit_export_line(line: str, export_format: str) -> Iterator[str]:
     yield _format_export_line(line, export_format)
     yield "\n"
@@ -114,6 +143,15 @@ def _format_export_line(line: str, export_format: str) -> str:
     if export_format != "txt":
         return line
     return line.replace("# ", "").replace("## ", "").replace("### ", "").replace("**", "").replace("- ", "")
+
+
+def _decode_json_value(value):
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            return value
+    return value
 
 
 @router.get("/chapters")

@@ -1,7 +1,7 @@
 from sqlalchemy import event
 from sqlalchemy.orm import Query
 
-from app.models import ChapterContent
+from app.models import ChapterContent, Outline
 
 
 def test_export_markdown(client):
@@ -109,6 +109,51 @@ def test_export_streams_chapter_rows_without_query_all(client, db_session, monke
     assert response.status_code == 200
     assert "第1章正文" in response.text
     assert "第3章正文" in response.text
+
+
+def test_export_outline_does_not_select_full_chapter_json(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Outline Streaming Export"})
+    pid = r.json()["id"]
+    db_session.add(
+        Outline(
+            project_id=pid,
+            status="generated",
+            total_chapters=1000,
+            chapters=[
+                {
+                    "chapter_index": index,
+                    "title": f"第{index}章",
+                    "summary": "大纲摘要不应作为整块 JSON 读取。" * 20,
+                }
+                for index in range(1, 1001)
+            ],
+        )
+    )
+    db_session.commit()
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        response = client.post(
+            f"/api/v1/projects/{pid}/export",
+            json={"format": "markdown", "include_setup": False, "include_outline": True},
+        )
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert response.status_code == 200
+    assert "第1章" in response.text
+    assert "第1000章" in response.text
+    outline_select_clauses = [
+        statement.split(" from outlines", 1)[0]
+        for statement in statements
+        if " from outlines" in statement
+    ]
+    assert outline_select_clauses
+    assert all("outlines.chapters" not in clause for clause in outline_select_clauses)
 
 
 def test_list_chapters_empty(client):
