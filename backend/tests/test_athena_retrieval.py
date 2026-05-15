@@ -38,6 +38,7 @@ def test_embedding_provider_defaults_to_local_without_explicit_remote_mode(monke
 def test_local_hash_embedding_hashes_repeated_tokens_once(monkeypatch):
     import app.core.embedding_service as embedding_service
 
+    embedding_service._local_hash_token_features.cache_clear()
     original_sha256 = embedding_service.hashlib.sha256
     calls: list[bytes] = []
 
@@ -52,6 +53,33 @@ def test_local_hash_embedding_hashes_repeated_tokens_once(monkeypatch):
 
     assert calls == ["星环钥".encode("utf-8"), "灯塔区".encode("utf-8")]
     assert any(value != 0 for value in vector)
+
+
+def test_local_hash_embedding_reuses_token_hashes_across_batches(monkeypatch):
+    import app.core.embedding_service as embedding_service
+
+    embedding_service._local_hash_token_features.cache_clear()
+    original_sha256 = embedding_service.hashlib.sha256
+    calls: list[bytes] = []
+
+    def count_sha256(data: bytes):
+        calls.append(data)
+        return original_sha256(data)
+
+    monkeypatch.setattr(embedding_service.hashlib, "sha256", count_sha256)
+
+    provider = LocalHashEmbeddingProvider(dimensions=8)
+    provider.embed_token_batches([
+        ["星环钥", "灯塔区"],
+        ["星环钥", "潮汐钟"],
+        ["灯塔区", "星环钥"],
+    ])
+
+    assert calls == [
+        "星环钥".encode("utf-8"),
+        "灯塔区".encode("utf-8"),
+        "潮汐钟".encode("utf-8"),
+    ]
 
 
 def _seed_retrieval_project(db_session):

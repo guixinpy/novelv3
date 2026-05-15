@@ -5,6 +5,7 @@ import math
 import os
 import re
 from collections import Counter
+from functools import lru_cache
 from typing import Protocol
 
 import httpx
@@ -41,10 +42,8 @@ class LocalHashEmbeddingProvider:
     def _embed_tokens(self, tokens: list[str]) -> list[float]:
         vector = [0.0] * self.dimensions
         for token, count in Counter(tokens).items():
-            digest = hashlib.sha256(token.encode("utf-8")).digest()
-            index = int.from_bytes(digest[:4], "big") % self.dimensions
-            sign = 1.0 if digest[4] % 2 else -1.0
-            vector[index] += count * sign * (1.0 + min(len(token), 6) * 0.08)
+            index, signed_weight = _local_hash_token_features(token, self.dimensions)
+            vector[index] += count * signed_weight
         return normalize_vector(vector)
 
 
@@ -93,6 +92,14 @@ def tokenize_for_retrieval(text: str) -> list[str]:
     cjk_bigrams = ["".join(cjk_chars[index : index + 2]) for index in range(max(len(cjk_chars) - 1, 0))]
     cjk_trigrams = ["".join(cjk_chars[index : index + 3]) for index in range(max(len(cjk_chars) - 2, 0))]
     return [token for token in [*latin_tokens, *cjk_bigrams, *cjk_trigrams] if token]
+
+
+@lru_cache(maxsize=50_000)
+def _local_hash_token_features(token: str, dimensions: int) -> tuple[int, float]:
+    digest = hashlib.sha256(token.encode("utf-8")).digest()
+    index = int.from_bytes(digest[:4], "big") % dimensions
+    sign = 1.0 if digest[4] % 2 else -1.0
+    return index, sign * (1.0 + min(len(token), 6) * 0.08)
 
 
 def normalize_text(text: str) -> str:
