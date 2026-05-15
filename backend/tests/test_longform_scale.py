@@ -788,6 +788,32 @@ def test_longform_scale_smoke_reports_memory_retrieval_and_resume_progress(db_se
     assert "completed_chapter_indexes" not in report["task"]["progress"]
 
 
+def test_longform_scale_smoke_reports_bounded_narrative_plan_window(db_session):
+    from app.core.longform_scale_smoke import run_longform_scale_smoke
+
+    report = run_longform_scale_smoke(
+        db_session,
+        chapter_count=120,
+        words_per_chapter=80,
+        target_chapter_index=120,
+    )
+
+    assert report["narrative_plan"] == {
+        "chapters_total": 120,
+        "chapters_returned": 100,
+        "chapters_has_more": True,
+        "plotlines_total": 60,
+        "plotlines_returned": 20,
+        "plotlines_has_more": True,
+        "milestones_total": 120,
+        "milestones_returned": 80,
+        "milestones_has_more": True,
+        "foreshadowing_total": 300,
+        "foreshadowing_returned": 100,
+        "foreshadowing_has_more": True,
+    }
+
+
 def test_longform_scale_smoke_reports_stage_timings(db_session):
     from app.core.longform_scale_smoke import run_longform_scale_smoke
 
@@ -805,6 +831,7 @@ def test_longform_scale_smoke_reports_stage_timings(db_session):
         "memory_rebuild",
         "retrieval_reindex",
         "context_build",
+        "narrative_plan_window",
         "task_complete",
     }
     assert all(isinstance(value, int) and value >= 0 for value in report["timings_ms"].values())

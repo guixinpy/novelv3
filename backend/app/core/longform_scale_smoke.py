@@ -7,7 +7,8 @@ from sqlalchemy.orm import Session
 
 from app.core.athena_retrieval import get_retrieval_diagnostics, reindex_project_retrieval
 from app.core.longform_memory import build_longform_context_package, rebuild_longform_memory
-from app.models import ChapterContent, Project
+from app.core.narrative_plan_window import get_evolution_plan_window
+from app.models import ChapterContent, Outline, Project, Storyline
 from app.services.tasks.background_task_service import BackgroundTaskService
 
 
@@ -60,6 +61,8 @@ def run_longform_scale_smoke(
         user_query=query,
     )
     stage_started_at = _record_timing(timings_ms, "context_build", stage_started_at)
+    narrative_plan = get_evolution_plan_window(db=db, project_id=project.id)
+    stage_started_at = _record_timing(timings_ms, "narrative_plan_window", stage_started_at)
     progress = (task.result or {}).get("progress") or {}
     completed_task = task_service.mark_completed(
         task.id,
@@ -67,6 +70,7 @@ def run_longform_scale_smoke(
             "progress": progress,
             "memory": memory_report,
             "retrieval": retrieval_report,
+            "narrative_plan": _compact_narrative_plan_window(narrative_plan),
             "target_chapter_index": target,
         },
     )
@@ -88,6 +92,7 @@ def run_longform_scale_smoke(
             "section_count": len(context_package["sections"]),
             "prompt_context_chars": len(context_package["prompt_context"]),
         },
+        "narrative_plan": _compact_narrative_plan_window(narrative_plan),
         "task": {
             "id": completed_task.id,
             "status": completed_task.status,
@@ -124,6 +129,62 @@ def _seed_project(db: Session, *, chapter_count: int, words_per_chapter: int) ->
             )
             for index in range(1, chapter_count + 1)
         ]
+    )
+    db.add(
+        Outline(
+            project_id=project.id,
+            status="generated",
+            total_chapters=chapter_count,
+            chapters=[
+                {
+                    "chapter_index": index,
+                    "title": f"第{index}章：星环档案{index}",
+                    "summary": f"第{index}章推进星环钥匙与灯塔记忆主线。",
+                }
+                for index in range(1, chapter_count + 1)
+            ],
+            plotlines=[
+                {
+                    "name": f"大纲线{index}",
+                    "type": "main" if index == 1 else "sub",
+                    "milestones": [{"chapter_index": index, "title": f"大纲节点{index}"}],
+                }
+                for index in range(1, 61)
+            ],
+        )
+    )
+    db.add(
+        Storyline(
+            project_id=project.id,
+            status="generated",
+            plotlines=[
+                {
+                    "name": "主线：星环钥匙长篇谜团",
+                    "type": "main",
+                    "milestones": [
+                        {"chapter_index": index, "title": f"主线节点{index}"}
+                        for index in range(1, chapter_count + 1)
+                    ],
+                },
+                *[
+                    {
+                        "name": f"支线：灯塔档案{index}",
+                        "type": "sub",
+                        "milestones": [{"chapter_index": index, "title": f"支线节点{index}"}],
+                    }
+                    for index in range(2, 61)
+                ],
+            ],
+            foreshadowing=[
+                {
+                    "hint": f"伏笔{index}",
+                    "planted_chapter": ((index - 1) % chapter_count) + 1,
+                    "resolved_chapter": min(chapter_count, ((index - 1) % chapter_count) + 10),
+                    "status": "pending",
+                }
+                for index in range(1, 301)
+            ],
+        )
     )
     db.commit()
     db.refresh(project)
@@ -165,6 +226,30 @@ def _compact_progress(progress: dict[str, Any]) -> dict[str, Any]:
         if field in progress:
             compact[field] = progress[field]
     return compact
+
+
+def _compact_narrative_plan_window(plan: dict[str, Any]) -> dict[str, Any]:
+    outline = plan.get("outline") or {}
+    storyline = plan.get("storyline") or {}
+    plotlines = storyline.get("plotlines") or []
+    first_plotline = plotlines[0] if plotlines and isinstance(plotlines[0], dict) else {}
+    milestones = first_plotline.get("milestones") or []
+    foreshadowing = storyline.get("foreshadowing") or []
+    chapters = outline.get("chapters") or []
+    return {
+        "chapters_total": outline.get("chapters_total", 0),
+        "chapters_returned": len(chapters),
+        "chapters_has_more": outline.get("chapters_has_more", False),
+        "plotlines_total": storyline.get("plotlines_total", 0),
+        "plotlines_returned": len(plotlines),
+        "plotlines_has_more": storyline.get("plotlines_has_more", False),
+        "milestones_total": first_plotline.get("milestones_total", len(milestones)),
+        "milestones_returned": len(milestones),
+        "milestones_has_more": first_plotline.get("milestones_has_more", False),
+        "foreshadowing_total": storyline.get("foreshadowing_total", 0),
+        "foreshadowing_returned": len(foreshadowing),
+        "foreshadowing_has_more": storyline.get("foreshadowing_has_more", False),
+    }
 
 
 def _record_timing(timings_ms: dict[str, int], key: str, stage_started_at: float) -> float:
