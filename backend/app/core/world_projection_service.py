@@ -135,6 +135,7 @@ def load_world_projection_source(
         WorldFactClaim.project_id == project_id,
         WorldFactClaim.project_profile_version_id == profile.id,
         WorldFactClaim.profile_version == profile.version,
+        WorldFactClaim.claim_status == "confirmed",
     )
     if max_chapter_index is not None:
         event_query = event_query.filter(WorldEvent.chapter_index <= max_chapter_index)

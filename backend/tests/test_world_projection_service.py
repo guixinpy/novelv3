@@ -324,6 +324,54 @@ def test_chapter_snapshot_projection_source_filters_future_event_and_fact_rows(d
     assert any("world_fact_claims.chapter_index <=" in statement for statement in fact_selects)
 
 
+def test_projection_source_filters_unconfirmed_fact_rows_in_sql(db_session):
+    project, profile = _seed_world(db_session)
+    world_projection_service.clear_world_projection_cache()
+    db_session.add(
+        WorldFactClaim(
+            project_id=project.id,
+            project_profile_version_id=profile.id,
+            profile_version=profile.version,
+            claim_id="claim.hero.false-rank.pending",
+            chapter_index=2,
+            intra_chapter_seq=3,
+            subject_ref="char.hero",
+            predicate="false_rank",
+            object_ref_or_value="admiral",
+            claim_layer="truth",
+            claim_status="pending",
+            valid_from_anchor_id="anchor.ch2.s1",
+            authority_type="authoritative_structured",
+            confidence=0.3,
+            contract_version="world.contract.v1",
+        )
+    )
+    db_session.commit()
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        overview = build_world_projection_overview(
+            db=db_session,
+            project_id=project.id,
+            profile=profile,
+            view_type="current_truth",
+        )
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert "false_rank" not in overview.projection.facts["char.hero"]
+    fact_selects = [
+        statement
+        for statement in statements
+        if "select world_fact_claims.id" in statement and "from world_fact_claims" in statement
+    ]
+    assert any("world_fact_claims.claim_status =" in statement for statement in fact_selects)
+
+
 def test_projection_service_reuses_local_projection_cache(monkeypatch, db_session):
     project, profile = _seed_world(db_session)
     load_count = 0
