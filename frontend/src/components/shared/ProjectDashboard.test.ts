@@ -132,4 +132,25 @@ describe('ProjectDashboard', () => {
     expect(wrapper.text()).toContain('主线 24')
     expect(wrapper.text()).toContain('伏笔 120')
   })
+
+  it('uses generated setup status when bootstrap returns partial setup fields', () => {
+    const wrapper = mount(ProjectDashboard, {
+      props: {
+        setup: {
+          id: 'setup-partial',
+          status: 'generated',
+          world_building: {},
+          characters: [],
+          core_concept: {},
+        },
+        storyline: null,
+        outline: null,
+        chapters: [],
+        totalWords: 0,
+      },
+    })
+
+    expect(wrapper.text()).toContain('已生成')
+    expect(wrapper.text()).not.toContain('待完善')
+  })
 })

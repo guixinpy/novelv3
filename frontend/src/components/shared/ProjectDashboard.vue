@@ -53,7 +53,8 @@ const setupCard = computed<StageCard>(() => {
   const coreFields = ['theme', 'premise', 'hook', 'unique_selling_point']
   const worldCount = countFilledFields(props.setup?.world_building, worldFields)
   const coreCount = countFilledFields(props.setup?.core_concept, coreFields)
-  const complete = characters.length > 0 && worldCount === worldFields.length && coreCount === coreFields.length
+  const complete = props.setup?.status === 'generated'
+    || (characters.length > 0 && worldCount === worldFields.length && coreCount === coreFields.length)
   return {
     key: 'setup',
     title: '设定',
