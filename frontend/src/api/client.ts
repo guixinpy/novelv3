@@ -93,6 +93,10 @@ function worldModelOverviewQuery(params?: WorldModelOverviewQuery) {
   return query
 }
 
+async function requestEvolutionPlanWindow(id: string) {
+  return request<AthenaEvolutionPlan>(`/projects/${id}/athena/evolution/plan?mode=window`)
+}
+
 async function request<T = any>(path: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     headers: { 'Content-Type': 'application/json' },
@@ -308,9 +312,9 @@ export const api = {
   getConfig: () => request('/config'),
   updateConfig: (apiKey: string) => request('/config', { method: 'PUT', body: JSON.stringify({ api_key: apiKey }) }),
   generateStoryline: (id: string) => request(`/projects/${id}/athena/evolution/plan/generate?target=storyline`, { method: 'POST' }),
-  getStoryline: (id: string) => request(`/projects/${id}/storyline`),
+  getStoryline: async (id: string) => (await requestEvolutionPlanWindow(id)).storyline,
   generateOutline: (id: string) => request(`/projects/${id}/athena/evolution/plan/generate?target=outline`, { method: 'POST' }),
-  getOutline: (id: string) => request(`/projects/${id}/outline`),
+  getOutline: async (id: string) => (await requestEvolutionPlanWindow(id)).outline,
   getTopology: (id: string, params?: { node_offset?: number; node_limit?: number; edge_offset?: number; edge_limit?: number }) => {
     const query = new URLSearchParams()
     if (params?.node_offset !== undefined) query.set('node_offset', String(params.node_offset))

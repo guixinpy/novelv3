@@ -387,10 +387,10 @@ describe('project workspace state', () => {
     const store = useProjectStore()
     vi.mocked(api.getOutline).mockResolvedValue({
       id: 'outline-full',
-      project_id: 'A',
       status: 'generated',
       total_chapters: 1000,
       chapters: [{ chapter_index: 201, title: '第201章', summary: '继续推进' }],
+      plotlines: [],
     })
 
     store.applyWorkspaceBootstrap({
@@ -410,10 +410,10 @@ describe('project workspace state', () => {
     expect(api.getOutline).toHaveBeenCalledWith('A')
     expect(store.outline).toEqual({
       id: 'outline-full',
-      project_id: 'A',
       status: 'generated',
       total_chapters: 1000,
       chapters: [{ chapter_index: 201, title: '第201章', summary: '继续推进' }],
+      plotlines: [],
     })
   })
 
@@ -421,7 +421,6 @@ describe('project workspace state', () => {
     const store = useProjectStore()
     vi.mocked(api.getStoryline).mockResolvedValue({
       id: 'storyline-full',
-      project_id: 'A',
       status: 'generated',
       plotlines: [{ name: '主线' }],
       foreshadowing: [{ name: '伏笔' }],
@@ -452,7 +451,6 @@ describe('project workspace state', () => {
     expect(api.getStoryline).toHaveBeenCalledWith('A')
     expect(store.storyline).toEqual({
       id: 'storyline-full',
-      project_id: 'A',
       status: 'generated',
       plotlines: [{ name: '主线' }],
       foreshadowing: [{ name: '伏笔' }],
