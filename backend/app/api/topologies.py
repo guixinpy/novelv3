@@ -1,10 +1,15 @@
+import json
+from collections.abc import Iterator
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.api.deprecation import add_deprecation_header
 from app.core.topology_builder import TopologyBuilder
 from app.db import get_db
-from app.models import Outline, Project, Setup, Topology
+from app.models import Project, Setup, Topology
 from app.schemas import TopologyOut
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/topology", tags=["topologies"])
@@ -47,15 +52,53 @@ def _load_or_create_topology(project_id: str, db: Session) -> Topology:
     if not setup:
         raise HTTPException(status_code=404, detail="Setup not found")
 
-    outline = db.query(Outline).filter(Outline.project_id == project_id).first()
     builder = TopologyBuilder()
-    data = builder.build(project_id, setup, outline)
+    data = builder.build(project_id, setup, _iter_outline_chapters(db, project_id))
 
     topology = Topology(**data)
     db.add(topology)
     db.commit()
     db.refresh(topology)
     return topology
+
+
+def _iter_outline_chapters(db: Session, project_id: str) -> Iterator[dict[str, Any]]:
+    rows = (
+        db.execute(
+            text(
+                """
+                SELECT chapter.value AS chapter_outline
+                FROM outlines, json_each(outlines.chapters) AS chapter
+                WHERE outlines.id = (
+                    SELECT id
+                    FROM outlines
+                    WHERE project_id = :project_id
+                    ORDER BY updated_at DESC
+                    LIMIT 1
+                )
+                ORDER BY CAST(chapter.key AS INTEGER)
+                """
+            ),
+            {"project_id": project_id},
+        )
+        .mappings()
+        .yield_per(100)
+    )
+    for row in rows:
+        item = _decode_json_value(row["chapter_outline"])
+        if isinstance(item, dict):
+            yield item
+
+
+def _decode_json_value(value: Any) -> Any:
+    if value is None or isinstance(value, (dict, list)):
+        return value
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            return value
+    return value
 
 
 def _window_topology(

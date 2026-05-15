@@ -1,6 +1,8 @@
 from unittest.mock import AsyncMock, patch
 
-from app.models import Project, Topology
+from sqlalchemy import event
+
+from app.models import Outline, Project, Setup, Topology
 
 
 def test_get_topology_creates_on_demand(client):
@@ -83,3 +85,64 @@ def test_topology_endpoints_return_bounded_windows(client, db_session):
     assert len(window_payload["edges"]) == 50
     assert window_payload["nodes_total"] == 250
     assert window_payload["edges_total"] == 620
+
+
+def test_topology_creation_streams_outline_chapters_without_selecting_full_json(client, db_session):
+    project = Project(name="Large topology from outline")
+    db_session.add(project)
+    db_session.flush()
+    db_session.add(
+        Setup(
+            project_id=project.id,
+            status="generated",
+            characters=[{"name": "李明"}, {"name": "苏晴"}],
+            world_building={},
+            core_concept={},
+        )
+    )
+    db_session.add(
+        Outline(
+            project_id=project.id,
+            status="generated",
+            total_chapters=1000,
+            chapters=[
+                {
+                    "chapter_index": index,
+                    "title": f"第{index}章",
+                    "summary": "章节摘要" * 20,
+                    "characters": ["李明"] if index % 2 == 0 else ["苏晴"],
+                }
+                for index in range(1, 1001)
+            ],
+        )
+    )
+    db_session.commit()
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        response = client.get(f"/api/v1/projects/{project.id}/topology?node_limit=5&edge_limit=5")
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["nodes_total"] == 1002
+    assert payload["edges_total"] == 1000
+    assert payload["nodes_has_more"] is True
+    assert payload["edges_has_more"] is True
+    stored = db_session.query(Topology).filter(Topology.project_id == project.id).one()
+    assert len(stored.nodes) == 1002
+    assert len(stored.edges) == 1000
+
+    select_clauses = [
+        statement.split(" from outlines", 1)[0]
+        for statement in statements
+        if " from outlines" in statement
+    ]
+    assert select_clauses
+    assert any("json_each(outlines.chapters)" in statement for statement in statements)
+    assert all("outlines.chapters as" not in clause for clause in select_clauses)

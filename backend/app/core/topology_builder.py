@@ -1,9 +1,12 @@
-from app.models import Outline, Setup
+from collections.abc import Iterable
+from typing import Any
+
+from app.models import Setup
 from app.schemas import TopologyEdge, TopologyNode
 
 
 class TopologyBuilder:
-    def build(self, project_id: str, setup: Setup, outline: Outline | None) -> dict:
+    def build(self, project_id: str, setup: Setup, outline_chapters: Iterable[dict[str, Any]] | None = None) -> dict:
         nodes = []
         edges = []
         node_map = {}
@@ -16,8 +19,8 @@ class TopologyBuilder:
             nodes.append(TopologyNode(id=nid, type="CHARACTER", label=name, meta={"appearance_count": 0, "last_chapter": 0}).model_dump())
             node_map[nid] = True
 
-        if outline and outline.chapters:
-            for ch in outline.chapters:
+        if outline_chapters:
+            for ch in outline_chapters:
                 title = ch.get("title", f"第{ch.get('chapter_index')}章")
                 nid = f"evt_{ch.get('chapter_index')}"
                 nodes.append(TopologyNode(id=nid, type="EVENT", label=title, meta={"chapter_index": ch.get("chapter_index")}).model_dump())
