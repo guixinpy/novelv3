@@ -70,8 +70,9 @@ def test_evolution_plan_default_mode_is_windowed_for_longform_safety(client, db_
     assert len(data["outline"]["chapters"]) == 100
     assert data["outline"]["chapters_total"] == 1000
     assert data["outline"]["chapters_has_more"] is True
-    assert len(data["storyline"]["plotlines"]) == 60
+    assert len(data["storyline"]["plotlines"]) == 20
     assert data["storyline"]["plotlines_total"] == 60
+    assert data["storyline"]["plotlines_has_more"] is True
     assert len(data["storyline"]["foreshadowing"]) == 100
     assert data["storyline"]["foreshadowing_total"] == 300
 

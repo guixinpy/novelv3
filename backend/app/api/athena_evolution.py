@@ -23,7 +23,7 @@ def get_evolution_plan(
     chapter_offset: int = Query(0, ge=0),
     chapter_limit: int = Query(100, ge=1, le=500),
     plotline_offset: int = Query(0, ge=0),
-    plotline_limit: int = Query(100, ge=1, le=500),
+    plotline_limit: int = Query(20, ge=1, le=500),
     milestone_offset: int = Query(0, ge=0),
     milestone_limit: int = Query(80, ge=1, le=500),
     foreshadowing_offset: int = Query(0, ge=0),
