@@ -29,6 +29,10 @@ logger = logging.getLogger(__name__)
 SETUP_FALLBACK_CHARACTER_LIMIT = 20
 SETUP_FALLBACK_WORLD_BUILDING_CHARS = 1200
 SETUP_FALLBACK_CORE_CONCEPT_CHARS = 800
+WORLD_CONTEXT_RULE_STATEMENT_CHARS = 400
+WORLD_CONTEXT_FACT_VALUE_CHARS = 500
+WORLD_CONTEXT_EVENT_PAYLOAD_CHARS = 500
+CHAPTER_RULE_STATEMENT_CHARS = 300
 
 
 def source_for_record(record: Any, *, label: str | None = None, chapter_index: int | None = None) -> dict:
@@ -49,11 +53,15 @@ def format_context_value(value: Any) -> str:
     return str(value)
 
 
-def _compact_setup_value(value: Any, *, max_chars: int) -> str:
+def _compact_context_value(value: Any, *, max_chars: int) -> str:
     text = " ".join(format_context_value(value).split())
     if len(text) <= max_chars:
         return text
     return text[:max_chars].rstrip() + "..."
+
+
+def _compact_setup_value(value: Any, *, max_chars: int) -> str:
+    return _compact_context_value(value, max_chars=max_chars)
 
 
 class WorldContextAssembler:
@@ -195,7 +203,11 @@ class WorldContextAssembler:
                     kind="world_fact",
                     title="关键事实",
                     content="\n".join(
-                        f"- {item.subject_ref}.{item.predicate} = {format_context_value(item.object_ref_or_value)}"
+                        f"- {item.subject_ref}.{item.predicate} = "
+                        + _compact_context_value(
+                            item.object_ref_or_value,
+                            max_chars=WORLD_CONTEXT_FACT_VALUE_CHARS,
+                        )
                         for item in facts
                     ),
                     sources=[
@@ -274,7 +286,11 @@ class WorldContextAssembler:
             key="athena.world_rules",
             kind="world_rule",
             title="世界规则",
-            content="\n".join(f"- {item.name}：{item.statement}" for item in rules),
+            content="\n".join(
+                f"- {item.name}："
+                + _compact_context_value(item.statement, max_chars=WORLD_CONTEXT_RULE_STATEMENT_CHARS)
+                for item in rules
+            ),
             sources=[source_for_record(item, label=item.name) for item in rules],
         )
 
@@ -287,7 +303,8 @@ class WorldContextAssembler:
             kind="world_fact",
             title=title,
             content="\n".join(
-                f"- {item.subject_ref}.{item.predicate} = {format_context_value(item.object_ref_or_value)}"
+                f"- {item.subject_ref}.{item.predicate} = "
+                + _compact_context_value(item.object_ref_or_value, max_chars=WORLD_CONTEXT_FACT_VALUE_CHARS)
                 for item in facts
             ),
             sources=[source_for_record(item, label=item.claim_id, chapter_index=item.chapter_index) for item in facts],
@@ -317,7 +334,8 @@ class WorldContextAssembler:
             kind="world_timeline",
             title="时间线事件",
             content="\n".join(
-                f"- 第{item.chapter_index}章：{item.event_type} {format_context_value(item.primitive_payload)}"
+                f"- 第{item.chapter_index}章：{item.event_type} "
+                + _compact_context_value(item.primitive_payload, max_chars=WORLD_CONTEXT_EVENT_PAYLOAD_CHARS)
                 for item in events
             ),
             sources=[source_for_record(item, label=item.event_id, chapter_index=item.chapter_index) for item in events],
@@ -495,7 +513,7 @@ class WorldContextAssembler:
         sections.append({"key": "rules", "title": "世界规则", "items": items})
         lines.append("【世界规则】")
         for rule in items[:8]:
-            statement = str(rule["statement"]).replace("\n", " ")[:300]
+            statement = _compact_context_value(rule["statement"], max_chars=CHAPTER_RULE_STATEMENT_CHARS)
             lines.append(f"- {rule['name']}({rule['ref']}): {statement}")
 
     def _append_chapter_facts(self, *, chapter_index: int, lines: list[str], sections: list[dict[str, Any]]) -> None:
@@ -515,7 +533,10 @@ class WorldContextAssembler:
         sections.append({"key": "facts", "title": "已确认事实", "items": items})
         lines.append("【已确认事实】")
         for fact in items[:20]:
-            lines.append(f"- {fact['subject_ref']}.{fact['predicate']} = {format_context_value(fact['value'])}")
+            lines.append(
+                f"- {fact['subject_ref']}.{fact['predicate']} = "
+                + _compact_context_value(fact["value"], max_chars=WORLD_CONTEXT_FACT_VALUE_CHARS)
+            )
 
     def _append_open_issues(self, *, lines: list[str], sections: list[dict[str, Any]]) -> None:
         issues = (

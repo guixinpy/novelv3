@@ -351,6 +351,83 @@ def test_world_context_assembler_is_shared_by_dialog_and_chapter_context(db_sess
     assert any(section["key"] == "facts" for section in chapter_package["sections"])
 
 
+def test_world_context_bounds_large_world_model_values(db_session):
+    project, profile_version = _seed_project(db_session, with_profile=True)
+    rule_tail = "TAIL_RULE_SHOULD_NOT_APPEAR"
+    fact_tail = "TAIL_FACT_SHOULD_NOT_APPEAR"
+    event_tail = "TAIL_EVENT_SHOULD_NOT_APPEAR"
+    db_session.add_all(
+        [
+            WorldRule(
+                project_id=project.id,
+                profile_version=profile_version.version,
+                rule_id="rule.memory-virus",
+                canonical_id="rule.memory-virus",
+                primary_alias="记忆病毒规则",
+                name="记忆病毒规则",
+                rule_type="system",
+                statement="雾港规约：" + ("长规则正文" * 300) + rule_tail,
+                contract_version=profile_version.contract_version,
+            ),
+            WorldFactClaim(
+                project_id=project.id,
+                project_profile_version_id=profile_version.id,
+                profile_version=profile_version.version,
+                claim_id="fact.memory-virus.source",
+                chapter_index=1,
+                intra_chapter_seq=1,
+                subject_ref="rule.memory-virus",
+                predicate="source",
+                object_ref_or_value={
+                    "summary": "记忆病毒来自旧灯塔",
+                    "long": ("长事实正文" * 400) + fact_tail,
+                },
+                claim_layer="truth",
+                claim_status="confirmed",
+                authority_type="authoritative_structured",
+                confidence=1.0,
+                contract_version=profile_version.contract_version,
+            ),
+            WorldEvent(
+                project_id=project.id,
+                project_profile_version_id=profile_version.id,
+                profile_version=profile_version.version,
+                event_id="event.memory-virus",
+                idempotency_key="event.memory-virus",
+                timeline_anchor_id="anchor.ch1",
+                chapter_index=1,
+                intra_chapter_seq=1,
+                event_type="world_state_changed",
+                primitive_payload={
+                    "summary": "钟声倒转",
+                    "long": ("长事件正文" * 400) + event_tail,
+                },
+                truth_layer="truth",
+                disclosure_layer="public",
+                contract_version=profile_version.contract_version,
+            ),
+        ]
+    )
+    db_session.commit()
+
+    athena_context = build_athena_world_context(db_session, project.id)
+    hermes_context = build_hermes_world_context(db_session, project.id)
+    chapter_context = build_chapter_context_package(db_session, project.id, 2)["prompt_context"]
+
+    assert "雾港规约" in athena_context
+    assert "记忆病毒来自旧灯塔" in athena_context
+    assert "钟声倒转" in athena_context
+    assert "记忆病毒来自旧灯塔" in hermes_context
+    assert "记忆病毒来自旧灯塔" in chapter_context
+
+    for context in [athena_context, hermes_context, chapter_context]:
+        assert fact_tail not in context
+        assert len(context) <= 5_000
+    assert rule_tail not in athena_context
+    assert event_tail not in athena_context
+    assert rule_tail not in chapter_context
+
+
 def test_chapter_context_exposes_retrieval_warning_when_retrieval_fails(db_session, monkeypatch):
     import app.core.athena_retrieval as athena_retrieval
 
