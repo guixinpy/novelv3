@@ -26,6 +26,9 @@ from app.models import (
 
 DialogTarget = Literal["athena", "hermes"]
 logger = logging.getLogger(__name__)
+SETUP_FALLBACK_CHARACTER_LIMIT = 20
+SETUP_FALLBACK_WORLD_BUILDING_CHARS = 1200
+SETUP_FALLBACK_CORE_CONCEPT_CHARS = 800
 
 
 def source_for_record(record: Any, *, label: str | None = None, chapter_index: int | None = None) -> dict:
@@ -44,6 +47,13 @@ def format_context_value(value: Any) -> str:
     if isinstance(value, (dict, list)):
         return json.dumps(value, ensure_ascii=False)
     return str(value)
+
+
+def _compact_setup_value(value: Any, *, max_chars: int) -> str:
+    text = " ".join(format_context_value(value).split())
+    if len(text) <= max_chars:
+        return text
+    return text[:max_chars].rstrip() + "..."
 
 
 class WorldContextAssembler:
@@ -370,11 +380,20 @@ class WorldContextAssembler:
         if setup.characters:
             names = [str(item.get("name")) for item in setup.characters if isinstance(item, dict) and item.get("name")]
             if names:
-                lines.append("Setup 草稿角色：" + "、".join(names[:20]))
+                listed_names = names[:SETUP_FALLBACK_CHARACTER_LIMIT]
+                omitted_count = len(names) - len(listed_names)
+                omitted_suffix = f"（另有{omitted_count}名角色未列出）" if omitted_count > 0 else ""
+                lines.append("Setup 草稿角色：" + "、".join(listed_names) + omitted_suffix)
         if isinstance(setup.world_building, dict) and setup.world_building:
-            lines.append(f"Setup 草稿世界设定：{setup.world_building}")
+            lines.append(
+                "Setup 草稿世界设定："
+                + _compact_setup_value(setup.world_building, max_chars=SETUP_FALLBACK_WORLD_BUILDING_CHARS)
+            )
         if isinstance(setup.core_concept, dict) and setup.core_concept:
-            lines.append(f"Setup 草稿核心概念：{setup.core_concept}")
+            lines.append(
+                "Setup 草稿核心概念："
+                + _compact_setup_value(setup.core_concept, max_chars=SETUP_FALLBACK_CORE_CONCEPT_CHARS)
+            )
 
     def _append_outline_context(self, *, chapter_index: int, lines: list[str], sections: list[dict[str, Any]]) -> None:
         result = find_outline_chapter(self.db, self.project_id, chapter_index)

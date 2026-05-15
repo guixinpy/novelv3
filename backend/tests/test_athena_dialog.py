@@ -181,6 +181,45 @@ def test_athena_world_context_labels_setup_fallback_when_profile_is_missing(db_s
     assert "雾港城" in context
 
 
+def test_setup_fallback_context_bounds_large_setup_drafts(db_session):
+    project, _ = _seed_project(db_session)
+    world_tail = "TAIL_WORLD_SHOULD_NOT_APPEAR"
+    concept_tail = "TAIL_CONCEPT_SHOULD_NOT_APPEAR"
+    db_session.add(
+        Setup(
+            project_id=project.id,
+            characters=[
+                {"name": f"角色{index}", "bio": "超长角色传记" * 200}
+                for index in range(1, 101)
+            ],
+            world_building={
+                "background": "雾港城",
+                "long": ("世界观长文本片段" * 500) + world_tail,
+            },
+            core_concept={
+                "theme": "自我修正",
+                "long": ("核心概念长文本片段" * 300) + concept_tail,
+            },
+        )
+    )
+    db_session.commit()
+
+    dialog_context = build_athena_world_context(db_session, project.id)
+    chapter_context = build_chapter_context_package(db_session, project.id, 1)["prompt_context"]
+
+    for context in [dialog_context, chapter_context]:
+        assert "Setup 草稿" in context
+        assert "角色1" in context
+        assert "角色20" in context
+        assert "角色21" not in context
+        assert "另有80名角色未列出" in context
+        assert "雾港城" in context
+        assert "自我修正" in context
+        assert world_tail not in context
+        assert concept_tail not in context
+        assert len(context) <= 3_500
+
+
 def test_athena_world_context_blocks_include_record_sources(db_session):
     project, profile_version = _seed_project(db_session, with_profile=True)
     character = WorldCharacter(
