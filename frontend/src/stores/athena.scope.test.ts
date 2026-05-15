@@ -359,6 +359,7 @@ describe('athena project scope', () => {
       task_id: null,
       proposal_bundle_id: 'bundle-20',
       created: { proposal_items: 0 },
+      updated: { proposal_items: 0 },
       skipped: { duplicates: 7 },
     })
     vi.mocked(api.getAthenaOntology).mockResolvedValue(ontology())
@@ -373,6 +374,7 @@ describe('athena project scope', () => {
       task_id: null,
       proposal_bundle_id: 'bundle-20',
       created: { proposal_items: 0 },
+      updated: { proposal_items: 0 },
       skipped: { duplicates: 7 },
     })
   })

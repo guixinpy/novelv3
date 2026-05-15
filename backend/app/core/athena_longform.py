@@ -21,6 +21,7 @@ from app.core.athena_setup_terms import extract_setup_world_terms as _extract_se
 from app.core.l1_extractor import L1RuleExtractor
 from app.core.world_context_assembler import build_chapter_world_context_package
 from app.core.world_projection_service import invalidate_world_projection_cache
+from app.core.world_proposal_state import ACTIONABLE_REVIEW_ITEM_STATUSES
 from app.core.world_proposal_service import calculate_bundle_impact_scope, create_bundle, write_candidate_fact
 from app.models import (
     ChapterContent,
@@ -43,6 +44,24 @@ from app.models.genre_profile import CORE_WORLD_EVENT_TYPES
 
 SETUP_IMPORT_PROFILE_PREFIX = "project-setup-import"
 ATHENA_ANALYZER = "athena.chapter_analyzer"
+ATHENA_CANDIDATE_REFRESH_FIELDS = (
+    "chapter_index",
+    "intra_chapter_seq",
+    "subject_ref",
+    "predicate",
+    "object_ref_or_value",
+    "claim_layer",
+    "perspective_ref",
+    "disclosed_to_refs",
+    "valid_from_anchor_id",
+    "valid_to_anchor_id",
+    "source_event_ref",
+    "evidence_refs",
+    "authority_type",
+    "confidence",
+    "notes",
+    "contract_version",
+)
 
 
 def get_current_profile(db: Session, project_id: str) -> ProjectProfileVersion | None:
@@ -237,6 +256,7 @@ def analyze_chapter_to_world_proposals(db: Session, project_id: str, chapter_ind
             "task_id": None,
             "proposal_bundle_id": None,
             "created": {"proposal_items": 0},
+            "updated": {"proposal_items": 0},
             "skipped": {"duplicates": 0},
         }
     chapter = _require_chapter(db, project_id, chapter_index)
@@ -271,36 +291,53 @@ def analyze_chapter_to_world_proposals(db: Session, project_id: str, chapter_ind
     )
 
     duplicate_count = 0
+    updated_count = 0
+    updated_bundle_ids: set[str] = set()
     new_candidates = []
     for candidate in candidates:
-        if _claim_or_candidate_exists(db, project_id=project_id, claim_id=candidate.claim_id):
+        if _truth_claim_exists(db, project_id=project_id, claim_id=candidate.claim_id):
             duplicate_count += 1
+            continue
+        existing_candidate = _find_existing_candidate(
+            db,
+            project_id=project_id,
+            profile=profile,
+            claim_id=candidate.claim_id,
+        )
+        if existing_candidate is not None:
+            duplicate_count += 1
+            if _refresh_existing_athena_candidate(existing_candidate, candidate):
+                updated_count += 1
+                updated_bundle_ids.add(existing_candidate.bundle_id)
             continue
         new_candidates.append(candidate)
 
     bundle_id = None
-    if new_candidates:
+    if new_candidates or updated_bundle_ids:
         try:
-            bundle = create_bundle(
-                db=db,
-                project_id=project_id,
-                project_profile_version_id=profile.id,
-                profile_version=profile.version,
-                created_by=ATHENA_ANALYZER,
-                title=f"第{chapter_index}章世界事实候选",
-                summary=f"从《{chapter.title}》自动抽取 {len(new_candidates)} 条低风险世界事实候选。",
-                commit=False,
-            )
-            bundle_id = bundle.id
-            for candidate in new_candidates:
-                write_candidate_fact(
+            if new_candidates:
+                bundle = create_bundle(
                     db=db,
-                    bundle_id=bundle.id,
+                    project_id=project_id,
+                    project_profile_version_id=profile.id,
+                    profile_version=profile.version,
                     created_by=ATHENA_ANALYZER,
-                    candidate=candidate,
+                    title=f"第{chapter_index}章世界事实候选",
+                    summary=f"从《{chapter.title}》自动抽取 {len(new_candidates)} 条低风险世界事实候选。",
                     commit=False,
                 )
-            calculate_bundle_impact_scope(db=db, bundle_id=bundle.id, commit=False)
+                bundle_id = bundle.id
+                for candidate in new_candidates:
+                    write_candidate_fact(
+                        db=db,
+                        bundle_id=bundle.id,
+                        created_by=ATHENA_ANALYZER,
+                        candidate=candidate,
+                        commit=False,
+                    )
+                updated_bundle_ids.add(bundle.id)
+            for impacted_bundle_id in sorted(updated_bundle_ids):
+                calculate_bundle_impact_scope(db=db, bundle_id=impacted_bundle_id, commit=False)
             db.commit()
         except Exception:
             db.rollback()
@@ -314,6 +351,7 @@ def analyze_chapter_to_world_proposals(db: Session, project_id: str, chapter_ind
         "task_id": None,
         "proposal_bundle_id": bundle_id,
         "created": {"proposal_items": len(new_candidates)},
+        "updated": {"proposal_items": updated_count},
         "skipped": {"duplicates": duplicate_count},
     }
 
@@ -613,21 +651,47 @@ def _create_setup_artifact(
     return True
 
 
-def _claim_or_candidate_exists(db: Session, *, project_id: str, claim_id: str) -> bool:
-    truth_exists = (
+def _truth_claim_exists(db: Session, *, project_id: str, claim_id: str) -> bool:
+    return (
         db.query(WorldFactClaim)
         .filter(WorldFactClaim.project_id == project_id, WorldFactClaim.claim_id == claim_id)
         .first()
         is not None
     )
-    if truth_exists:
-        return True
+
+
+def _find_existing_candidate(
+    db: Session,
+    *,
+    project_id: str,
+    profile: ProjectProfileVersion,
+    claim_id: str,
+) -> WorldProposalItem | None:
     return (
         db.query(WorldProposalItem)
-        .filter(WorldProposalItem.project_id == project_id, WorldProposalItem.claim_id == claim_id)
+        .filter(
+            WorldProposalItem.project_id == project_id,
+            WorldProposalItem.project_profile_version_id == profile.id,
+            WorldProposalItem.profile_version == profile.version,
+            WorldProposalItem.claim_id == claim_id,
+        )
+        .order_by(WorldProposalItem.updated_at.desc(), WorldProposalItem.created_at.desc())
         .first()
-        is not None
     )
+
+
+def _refresh_existing_athena_candidate(item: WorldProposalItem, candidate: Any) -> bool:
+    if item.created_by != ATHENA_ANALYZER or item.item_status not in ACTIONABLE_REVIEW_ITEM_STATUSES:
+        return False
+    changed = False
+    for field in ATHENA_CANDIDATE_REFRESH_FIELDS:
+        next_value = getattr(candidate, field)
+        if getattr(item, field) != next_value:
+            setattr(item, field, next_value)
+            changed = True
+    if changed:
+        item.item_status = "needs_edit"
+    return changed
 
 
 def _require_project(db: Session, project_id: str) -> Project:

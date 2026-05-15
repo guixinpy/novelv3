@@ -757,6 +757,7 @@ export interface AthenaAnalyzeChapterResult {
   task_id: string | null
   proposal_bundle_id: string | null
   created: { proposal_items: number }
+  updated: { proposal_items: number }
   skipped: { duplicates: number }
 }
 

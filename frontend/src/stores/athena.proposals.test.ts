@@ -156,6 +156,7 @@ describe('athena proposal workflow store', () => {
       task_id: null,
       proposal_bundle_id: 'bundle-1',
       created: { proposal_items: 2 },
+      updated: { proposal_items: 0 },
       skipped: { duplicates: 0 },
     })
     vi.mocked(api.getAthenaEvolutionProposals).mockResolvedValue({ items: [], total: 0, offset: 0, limit: 20 })

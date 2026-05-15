@@ -200,6 +200,48 @@ def test_analyze_chapter_creates_reviewable_candidates_without_duplicates(client
     assert db_session.query(WorldFactClaim).filter_by(project_id=project.id).count() == 0
 
 
+def test_analyze_chapter_refreshes_stale_pending_candidates_after_chapter_rewrite(client, db_session):
+    project = _seed_project_with_setup(db_session)
+    client.post(f"/api/v1/projects/{project.id}/athena/ontology/import-setup")
+    chapter = ChapterContent(
+        project_id=project.id,
+        chapter_index=1,
+        title="第一章 雾港",
+        content="林舟走进雾港城。",
+        word_count=10,
+        status="generated",
+    )
+    db_session.add(chapter)
+    db_session.commit()
+
+    first = client.post(f"/api/v1/projects/{project.id}/athena/evolution/chapters/1/analyze")
+    item = (
+        db_session.query(WorldProposalItem)
+        .filter_by(project_id=project.id, subject_ref="char.林舟", predicate="presence_count")
+        .one()
+    )
+    assert first.status_code == 200
+    assert item.object_ref_or_value["count"] == 1
+
+    chapter.content = "林舟进入雾港城。林舟查看旧灯塔。林舟听见潮声。"
+    chapter.word_count = 30
+    db_session.commit()
+    second = client.post(f"/api/v1/projects/{project.id}/athena/evolution/chapters/1/analyze")
+
+    db_session.refresh(item)
+    assert second.status_code == 200
+    assert second.json()["updated"]["proposal_items"] >= 1
+    assert item.id == (
+        db_session.query(WorldProposalItem)
+        .filter_by(project_id=project.id, subject_ref="char.林舟", predicate="presence_count")
+        .one()
+        .id
+    )
+    assert item.item_status == "needs_edit"
+    assert item.object_ref_or_value["count"] == 3
+    assert "出现 3 次" in item.notes
+
+
 def test_analyze_chapter_uses_world_model_canonical_character_refs_over_stale_setup(client, db_session):
     project = Project(name="Canonical Analyzer", genre="东方奇幻悬疑")
     genre_profile = GenreProfile(
