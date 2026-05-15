@@ -1,7 +1,7 @@
 import json
 from typing import Any
 
-from sqlalchemy import func
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from app.core.context_injection import (
@@ -377,7 +377,7 @@ def build_athena_narrative_planning_context_block(db: Session, project: Project)
         total_foreshadowing += foreshadowing_count
         sources.append({"source_type": "Storyline", "source_id": storyline.id, "label": "Storyline"})
         lines.append(f"- 故事线：{plotlines_count} 条")
-        for item in _storyline_plotline_previews(storyline):
+        for item in _storyline_plotline_previews(db, storyline.id):
             summary = _planning_item_summary(item)
             if summary:
                 lines.append(f"  - {summary}")
@@ -393,16 +393,11 @@ def build_athena_narrative_planning_context_block(db: Session, project: Project)
 
 
 def _latest_storyline_planning_row(db: Session, project_id: str):
-    preview_columns = [
-        func.json_extract(Storyline.plotlines, f"$[{index}]").label(f"plotline_preview_{index}")
-        for index in range(NARRATIVE_PLANNING_PREVIEW_LIMIT)
-    ]
     return (
         db.query(
             Storyline.id,
             func.coalesce(func.json_array_length(Storyline.plotlines), 0).label("plotlines_count"),
             func.coalesce(func.json_array_length(Storyline.foreshadowing), 0).label("foreshadowing_count"),
-            *preview_columns,
         )
         .filter(Storyline.project_id == project_id)
         .order_by(Storyline.updated_at.desc())
@@ -424,24 +419,38 @@ def _latest_outline_planning_row(db: Session, project_id: str):
     )
 
 
-def _storyline_plotline_previews(row: Any) -> list[Any]:
-    previews: list[Any] = []
-    for index in range(NARRATIVE_PLANNING_PREVIEW_LIMIT):
-        item = _decode_json_value(getattr(row, f"plotline_preview_{index}", None))
-        if item is not None:
-            previews.append(item)
-    return previews
-
-
-def _decode_json_value(value: Any) -> Any:
-    if value is None or isinstance(value, (dict, list)):
-        return value
-    if isinstance(value, str):
-        try:
-            return json.loads(value)
-        except json.JSONDecodeError:
-            return value
-    return value
+def _storyline_plotline_previews(db: Session, storyline_id: str) -> list[dict[str, Any]]:
+    rows = db.execute(
+        text(
+            """
+            SELECT
+                json_extract(item.value, '$.title') AS title,
+                json_extract(item.value, '$.name') AS name,
+                json_extract(item.value, '$.plotline') AS plotline,
+                json_extract(item.value, '$.id') AS id,
+                json_extract(item.value, '$.summary') AS summary,
+                json_extract(item.value, '$.description') AS description,
+                json_extract(item.value, '$.theme') AS theme
+            FROM storylines, json_each(storylines.plotlines) AS item
+            WHERE storylines.id = :storyline_id
+            ORDER BY CAST(item.key AS INTEGER)
+            LIMIT :limit
+            """
+        ),
+        {"storyline_id": storyline_id, "limit": NARRATIVE_PLANNING_PREVIEW_LIMIT},
+    ).mappings()
+    return [
+        {
+            "title": row["title"],
+            "name": row["name"],
+            "plotline": row["plotline"],
+            "id": row["id"],
+            "summary": row["summary"],
+            "description": row["description"],
+            "theme": row["theme"],
+        }
+        for row in rows
+    ]
 
 
 def build_longform_evidence_range_context_block(db: Session, project: Project) -> dict[str, Any] | None:

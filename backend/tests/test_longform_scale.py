@@ -362,7 +362,17 @@ def test_athena_dialog_planning_summary_does_not_select_large_narrative_json(db_
         Storyline(
             project_id=project.id,
             status="generated",
-            plotlines=[{"name": f"故事线{index}", "summary": "故事线摘要" * 20} for index in range(1, 201)],
+            plotlines=[
+                {
+                    "name": f"故事线{index}",
+                    "summary": "故事线摘要" * 20,
+                    "milestones": [
+                        {"chapter_index": chapter, "title": f"节点{chapter}"}
+                        for chapter in range(1, 1001)
+                    ],
+                }
+                for index in range(1, 201)
+            ],
             foreshadowing=[{"name": f"故事线伏笔{index}", "summary": "伏笔摘要" * 20} for index in range(1, 501)],
         )
     )
@@ -385,6 +395,7 @@ def test_athena_dialog_planning_summary_does_not_select_large_narrative_json(db_
     assert "伏笔：600 条" in block["content"]
     assert "故事线1" in block["content"]
     assert "故事线6" not in block["content"]
+    assert "节点999" not in block["content"]
 
     setup_select_clauses = [
         statement.split("from setups", 1)[0]
@@ -411,6 +422,8 @@ def test_athena_dialog_planning_summary_does_not_select_large_narrative_json(db_
     assert all("outlines.foreshadowing as" not in clause for clause in outline_select_clauses)
     assert all("storylines.plotlines as" not in clause for clause in storyline_select_clauses)
     assert all("storylines.foreshadowing as" not in clause for clause in storyline_select_clauses)
+    assert any("json_each(storylines.plotlines)" in statement for statement in statements)
+    assert all("json_extract(storylines.plotlines" not in statement for statement in statements)
 
 
 def test_rebuild_longform_memory_projects_only_memory_fields(db_session):
