@@ -87,6 +87,39 @@ def test_evolution_plan_default_mode_is_windowed_for_longform_safety(client, db_
     assert all("storylines.foreshadowing as" not in clause for clause in select_clauses)
 
 
+def test_evolution_plan_default_mode_bounds_plotline_milestones(client, db_session):
+    project = Project(name="Default Bounded Milestones")
+    db_session.add(project)
+    db_session.flush()
+    db_session.add(
+        Storyline(
+            project_id=project.id,
+            status="generated",
+            plotlines=[
+                {
+                    "name": "主线：百万字主干",
+                    "type": "main",
+                    "milestones": [
+                        {"chapter_index": index, "title": f"主线节点{index}"}
+                        for index in range(1, 1001)
+                    ],
+                },
+            ],
+            foreshadowing=[],
+        )
+    )
+    db_session.commit()
+
+    response = client.get(f"/api/v1/projects/{project.id}/athena/evolution/plan")
+
+    assert response.status_code == 200
+    plotline = response.json()["storyline"]["plotlines"][0]
+    assert [item["chapter_index"] for item in plotline["milestones"]] == list(range(1, 81))
+    assert plotline["milestones_total"] == 1000
+    assert plotline["milestones_limit"] == 80
+    assert plotline["milestones_has_more"] is True
+
+
 def test_evolution_plan_window_mode_does_not_select_full_plan_json(client, db_session):
     project = Project(name="Windowed Narrative Plan")
     db_session.add(project)

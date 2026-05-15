@@ -25,7 +25,7 @@ def get_evolution_plan(
     plotline_offset: int = Query(0, ge=0),
     plotline_limit: int = Query(100, ge=1, le=500),
     milestone_offset: int = Query(0, ge=0),
-    milestone_limit: int = Query(500, ge=1, le=500),
+    milestone_limit: int = Query(80, ge=1, le=500),
     foreshadowing_offset: int = Query(0, ge=0),
     foreshadowing_limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db),
