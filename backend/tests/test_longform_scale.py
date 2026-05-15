@@ -240,6 +240,62 @@ def test_chapter_memory_prefers_generated_content_over_stale_outline_summary(db_
     assert memory.memory_metadata["source"] == "chapter_content"
 
 
+def test_rebuild_longform_memory_does_not_select_full_outline_json(db_session):
+    from app.core.longform_memory import rebuild_longform_memory
+
+    project = Project(name="Memory Outline Projection")
+    db_session.add(project)
+    db_session.flush()
+    db_session.add_all(
+        [
+            ChapterContent(
+                project_id=project.id,
+                chapter_index=index,
+                title=f"第{index}章",
+                content=f"第{index}章正文。星环钥匙持续推进。",
+                word_count=1000,
+                status="generated",
+            )
+            for index in range(1, 4)
+        ]
+    )
+    db_session.add(
+        Outline(
+            project_id=project.id,
+            status="generated",
+            total_chapters=1000,
+            chapters=[
+                {
+                    "chapter_index": index,
+                    "title": f"第{index}章",
+                    "summary": "重建记忆不应整块读取的大纲摘要。" * 20,
+                }
+                for index in range(1, 1001)
+            ],
+        )
+    )
+    db_session.commit()
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        report = rebuild_longform_memory(db_session, project.id)
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert report["counts_by_type"]["chapter"] == 3
+    outline_select_clauses = [
+        statement.split(" from outlines", 1)[0]
+        for statement in statements
+        if " from outlines" in statement
+    ]
+    assert outline_select_clauses
+    assert all("outlines.chapters" not in clause for clause in outline_select_clauses)
+
+
 def test_chapter_memory_keeps_chapter_ending_clue(db_session):
     from app.core.longform_memory import rebuild_longform_memory
 

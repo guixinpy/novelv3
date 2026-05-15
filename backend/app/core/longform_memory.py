@@ -1,17 +1,18 @@
 from __future__ import annotations
 
+import json
 from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
 from fastapi import HTTPException
-from sqlalchemy import and_, func, or_
+from sqlalchemy import and_, func, or_, text
 from sqlalchemy.orm import Session
 
 from app.core.outline_lookup import find_outline_chapter
 from app.core.project_stats import reconcile_project_word_count
-from app.models import ChapterContent, LongformMemory, Outline, Project, RetrievalDocument
+from app.models import ChapterContent, LongformMemory, Project, RetrievalDocument
 
 DEFAULT_ARC_SIZE = 20
 DEFAULT_VOLUME_SIZE = 100
@@ -435,11 +436,30 @@ def _maintained_chapters(db: Session, project_id: str) -> list[Any]:
 
 
 def _outline_lookup(db: Session, project_id: str) -> dict[int, dict[str, Any]]:
-    outline = db.query(Outline).filter(Outline.project_id == project_id).first()
     lookup: dict[int, dict[str, Any]] = {}
-    if not outline or not outline.chapters:
-        return lookup
-    for item in outline.chapters:
+    rows = (
+        db.execute(
+            text(
+                """
+                SELECT chapter.value AS chapter_outline
+                FROM outlines, json_each(outlines.chapters) AS chapter
+                WHERE outlines.id = (
+                    SELECT id
+                    FROM outlines
+                    WHERE project_id = :project_id
+                    ORDER BY updated_at DESC
+                    LIMIT 1
+                )
+                ORDER BY CAST(chapter.key AS INTEGER)
+                """
+            ),
+            {"project_id": project_id},
+        )
+        .mappings()
+        .yield_per(100)
+    )
+    for row in rows:
+        item = _decode_json_value(row["chapter_outline"])
         if not isinstance(item, dict):
             continue
         chapter_index = item.get("chapter_index", item.get("chapter"))
@@ -447,6 +467,17 @@ def _outline_lookup(db: Session, project_id: str) -> dict[int, dict[str, Any]]:
             continue
         lookup[int(chapter_index)] = item
     return lookup
+
+
+def _decode_json_value(value: Any) -> Any:
+    if value is None or isinstance(value, (dict, list)):
+        return value
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            return value
+    return value
 
 
 def _chapter_memory(project_id: str, chapter: Any, outline: dict[str, Any] | None) -> LongformMemory:
