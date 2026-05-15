@@ -567,7 +567,7 @@ describe('project workspace state', () => {
     }
   })
 
-  it('Hermes 初始水合只加载诊断中已完成的可选资源，避免新项目刷新打出 404', () => {
+  it('Hermes 初始水合不自动加载完整可选资源，避免千章项目冷启动读取大 JSON', () => {
     const diagnosis = (completedItems: string[]): ProjectDiagnosis => ({
       completed_items: completedItems,
       missing_items: [],
@@ -575,12 +575,8 @@ describe('project workspace state', () => {
     })
 
     expect(getInitialProjectHydrationTargets(diagnosis([]))).toEqual([])
-    expect(getInitialProjectHydrationTargets(diagnosis(['setup']))).toEqual(['setup'])
-    expect(getInitialProjectHydrationTargets(diagnosis(['setup', 'storyline', 'outline']))).toEqual([
-      'setup',
-      'storyline',
-      'outline',
-    ])
+    expect(getInitialProjectHydrationTargets(diagnosis(['setup']))).toEqual([])
+    expect(getInitialProjectHydrationTargets(diagnosis(['setup', 'storyline', 'outline']))).toEqual([])
   })
 
   it('Hermes 面板切换不加载诊断中未完成的可选资源', () => {

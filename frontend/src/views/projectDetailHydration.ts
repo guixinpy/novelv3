@@ -59,8 +59,8 @@ export function markHydratedTargets(
 }
 
 export function getInitialProjectHydrationTargets(diagnosis: ProjectDiagnosis | null | undefined): RefreshTarget[] {
-  const completed = new Set(diagnosis?.completed_items || [])
-  return INITIAL_OPTIONAL_TARGETS.filter((target) => completed.has(target))
+  void diagnosis
+  return []
 }
 
 export function shouldHydratePanelTarget(target: RefreshTarget, diagnosis: ProjectDiagnosis | null | undefined): boolean {
