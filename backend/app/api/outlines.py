@@ -3,7 +3,7 @@ import time
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from sqlalchemy import text
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from app.api.deprecation import add_deprecation_header
@@ -25,12 +25,109 @@ from app.schemas import OutlineOut
 router = APIRouter(prefix="/api/v1/projects/{project_id}/outline", tags=["outlines"])
 ai_service = AIService()
 
+STORYLINE_CONTEXT_PLOTLINE_LIMIT = 20
+STORYLINE_CONTEXT_FORESHADOWING_LIMIT = 100
+
 
 def _target_total_chapters(project: Project) -> int:
     return target_total_chapters(project)
 
 
-def _build_outline_call_payload(project: Project, setup: Setup, storyline: Storyline, command_args: str | None = None) -> dict:
+def _truncate_context_text(value: object, max_chars: int = 180) -> str:
+    if value is None:
+        return ""
+    text_value = str(value).strip()
+    if len(text_value) <= max_chars:
+        return text_value
+    return text_value[:max_chars].rstrip() + "..."
+
+
+def _build_bounded_storyline_context(
+    db: Session,
+    project_id: str,
+    *,
+    plotline_limit: int = STORYLINE_CONTEXT_PLOTLINE_LIMIT,
+    foreshadowing_limit: int = STORYLINE_CONTEXT_FORESHADOWING_LIMIT,
+) -> str | None:
+    storyline_row = (
+        db.query(
+            Storyline.id,
+            func.coalesce(func.json_array_length(Storyline.plotlines), 0).label("plotline_total"),
+            func.coalesce(func.json_array_length(Storyline.foreshadowing), 0).label("foreshadowing_total"),
+        )
+        .filter(Storyline.project_id == project_id)
+        .first()
+    )
+    if not storyline_row:
+        return None
+
+    plotline_rows = db.execute(
+        text(
+            """
+            SELECT
+                item.key AS item_index,
+                json_extract(item.value, '$.name') AS name,
+                json_extract(item.value, '$.type') AS type,
+                json_extract(item.value, '$.summary') AS summary,
+                COALESCE(json_array_length(item.value, '$.milestones'), 0) AS milestones_total
+            FROM storylines, json_each(storylines.plotlines) AS item
+            WHERE storylines.id = :storyline_id
+            ORDER BY CAST(item.key AS INTEGER)
+            LIMIT :limit
+            """
+        ),
+        {"storyline_id": storyline_row.id, "limit": plotline_limit},
+    ).mappings()
+    foreshadowing_rows = db.execute(
+        text(
+            """
+            SELECT
+                item.key AS item_index,
+                json_extract(item.value, '$.hint') AS hint,
+                json_extract(item.value, '$.planted_chapter') AS planted_chapter,
+                json_extract(item.value, '$.resolved_chapter') AS resolved_chapter,
+                json_extract(item.value, '$.status') AS status
+            FROM storylines, json_each(storylines.foreshadowing) AS item
+            WHERE storylines.id = :storyline_id
+            ORDER BY CAST(item.key AS INTEGER)
+            LIMIT :limit
+            """
+        ),
+        {"storyline_id": storyline_row.id, "limit": foreshadowing_limit},
+    ).mappings()
+
+    plotline_total = int(storyline_row.plotline_total or 0)
+    foreshadowing_total = int(storyline_row.foreshadowing_total or 0)
+    lines = [
+        f"故事线总数：{plotline_total}（仅展示前 {min(plotline_total, plotline_limit)} 条摘要，里程碑只统计数量）",
+        f"伏笔总数：{foreshadowing_total}（仅展示前 {min(foreshadowing_total, foreshadowing_limit)} 条摘要）",
+        "",
+        "故事线预览：",
+    ]
+    for row in plotline_rows:
+        item_number = int(row["item_index"]) + 1
+        name = _truncate_context_text(row["name"], 80) or f"故事线{item_number}"
+        plotline_type = _truncate_context_text(row["type"], 40) or "未标注"
+        summary = _truncate_context_text(row["summary"]) or "暂无摘要"
+        milestones_total = int(row["milestones_total"] or 0)
+        lines.append(f"{item_number}. {name}｜类型：{plotline_type}｜里程碑数：{milestones_total}｜摘要：{summary}")
+    if plotline_total == 0:
+        lines.append("- 暂无")
+
+    lines.extend(["", "伏笔预览："])
+    for row in foreshadowing_rows:
+        item_number = int(row["item_index"]) + 1
+        hint = _truncate_context_text(row["hint"], 120) or f"伏笔{item_number}"
+        status = _truncate_context_text(row["status"], 40) or "未标注"
+        planted = row["planted_chapter"] if row["planted_chapter"] is not None else "未知"
+        resolved = row["resolved_chapter"] if row["resolved_chapter"] is not None else "未定"
+        lines.append(f"{item_number}. {hint}｜状态：{status}｜埋设：第{planted}章｜回收：第{resolved}章")
+    if foreshadowing_total == 0:
+        lines.append("- 暂无")
+    return "\n".join(lines)
+
+
+def _build_outline_call_payload(project: Project, setup: Setup, storyline: Storyline | str, command_args: str | None = None) -> dict:
     variables = build_outline_variables(project, setup, storyline)
     return build_generation_payload(
         "outline.generate",
@@ -58,14 +155,14 @@ async def generate_outline(project_id: str, db: Session = Depends(get_db), comma
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    storyline = db.query(Storyline).filter(Storyline.project_id == project_id).first()
-    if not storyline:
+    storyline_context = _build_bounded_storyline_context(db, project_id)
+    if not storyline_context:
         raise HTTPException(status_code=400, detail="Storyline not generated yet")
     setup = db.query(Setup).filter(Setup.project_id == project_id).first()
     if not setup:
         raise HTTPException(status_code=400, detail="Setup not generated yet")
 
-    payload = _build_outline_call_payload(project, setup, storyline, command_args=command_args)
+    payload = _build_outline_call_payload(project, setup, storyline_context, command_args=command_args)
     trace = create_trace(
         db,
         project_id=project.id,

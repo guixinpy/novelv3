@@ -18,14 +18,16 @@ def outline_max_tokens(project: Project) -> int:
     return min(max(4000, target_total_chapters(project) * 400), 12000)
 
 
-def build_storyline_context_value(storyline: Storyline) -> str:
+def build_storyline_context_value(storyline: Storyline | str) -> str:
+    if isinstance(storyline, str):
+        return storyline
     return json.dumps(
         {"plotlines": storyline.plotlines, "foreshadowing": storyline.foreshadowing},
         ensure_ascii=False,
     )
 
 
-def build_outline_variables(project: Project, setup: Setup, storyline: Storyline) -> dict:
+def build_outline_variables(project: Project, setup: Setup, storyline: Storyline | str) -> dict:
     setup_context = build_setup_context_values(setup)
     return {
         "name": project.name,
@@ -40,7 +42,7 @@ def build_outline_variables(project: Project, setup: Setup, storyline: Storyline
 def build_outline_context_blocks(
     project: Project,
     setup: Setup,
-    storyline: Storyline,
+    storyline: Storyline | str,
     *,
     rendered_prompt: str,
     command_args: str | None = None,

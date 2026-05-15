@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, patch
 from sqlalchemy import event
 
 from app.api.outlines import generate_outline
-from app.models import Outline, Project
+from app.models import Outline, Project, Setup, Storyline
 
 
 @patch("app.api.outlines.load_api_key", return_value="sk-test")
@@ -235,3 +235,91 @@ def test_patch_outline_chapter_updates_json_without_selecting_full_chapters(clie
     assert any("json_each(outlines.chapters)" in statement for statement in statements)
     assert any("json_set" in statement for statement in statements)
     assert all("outlines.chapters as" not in clause for clause in select_clauses)
+
+
+@patch("app.api.outlines.load_api_key", return_value="sk-test")
+@patch("app.api.outlines.ai_service.complete", new_callable=AsyncMock)
+@patch("app.api.outlines.ai_service.parse_json")
+def test_generate_outline_uses_bounded_storyline_context_without_selecting_full_json(
+    mock_parse,
+    mock_complete,
+    mock_key,
+    client,
+    db_session,
+):
+    project = Project(name="Bounded Outline Prompt", target_chapter_count=1000)
+    db_session.add(project)
+    db_session.flush()
+    db_session.add(
+        Setup(
+            project_id=project.id,
+            status="generated",
+            world_building={},
+            characters=[],
+            core_concept={},
+        )
+    )
+    db_session.add(
+        Storyline(
+            project_id=project.id,
+            status="generated",
+            plotlines=[
+                {
+                    "name": f"故事线{index}",
+                    "type": "sub",
+                    "summary": "故事线摘要" * 20,
+                    "milestones": [
+                        {"chapter_index": chapter, "title": f"节点{chapter}"}
+                        for chapter in range(1, 1001)
+                    ],
+                }
+                for index in range(1, 61)
+            ],
+            foreshadowing=[
+                {
+                    "hint": f"伏笔{index}",
+                    "planted_chapter": index,
+                    "resolved_chapter": index + 100,
+                    "status": "planted",
+                }
+                for index in range(1, 501)
+            ],
+        )
+    )
+    db_session.commit()
+    mock_complete.return_value.content = "{}"
+    mock_parse.return_value = {"total_chapters": 1000, "chapters": [], "plotlines": [], "foreshadowing": []}
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        response = client.post(f"/api/v1/projects/{project.id}/outline/generate")
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert response.status_code == 200
+    sent_prompt = mock_complete.await_args.args[0][0]["content"]
+    assert "故事线总数" in sent_prompt
+    assert "伏笔总数" in sent_prompt
+    assert "故事线1" in sent_prompt
+    assert "故事线21" not in sent_prompt
+    assert "伏笔101" not in sent_prompt
+    traces = client.get(f"/api/v1/projects/{project.id}/model-call-traces?trace_type=outline_generation").json()
+    trace = client.get(f"/api/v1/projects/{project.id}/model-call-traces/{traces['items'][0]['id']}").json()
+    storyline_block = next(block for block in trace["context_blocks"] if block["key"] == "storyline_context")
+    assert "故事线总数" in storyline_block["content"]
+    assert "伏笔总数" in storyline_block["content"]
+
+    storyline_select_clauses = [
+        statement.split(" from storylines", 1)[0]
+        for statement in statements
+        if " from storylines" in statement
+    ]
+    assert storyline_select_clauses
+    assert any("json_each(storylines.plotlines)" in statement for statement in statements)
+    assert any("json_each(storylines.foreshadowing)" in statement for statement in statements)
+    assert all("storylines.plotlines as" not in clause for clause in storyline_select_clauses)
+    assert all("storylines.foreshadowing as" not in clause for clause in storyline_select_clauses)
