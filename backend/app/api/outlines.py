@@ -1,6 +1,9 @@
+import json
 import time
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.api.deprecation import add_deprecation_header
@@ -180,32 +183,54 @@ class ChapterOutlineUpdate(BaseModel):
 def update_chapter_outline(project_id: str, chapter_index: int, payload: ChapterOutlineUpdate, db: Session = Depends(get_db), response: Response = None):
     if response:
         add_deprecation_header(response, f"/api/v1/projects/{project_id}/athena/evolution/plan/outline/chapters/{chapter_index}")
-    outline = db.query(Outline).filter(Outline.project_id == project_id).first()
-    if not outline:
+    outline_id = db.query(Outline.id).filter(Outline.project_id == project_id).scalar()
+    if not outline_id:
         raise HTTPException(status_code=404, detail="Outline not found")
 
-    chapters = outline.chapters or []
-    found = False
-    for ch in chapters:
-        if ch.get("chapter_index") == chapter_index:
-            if payload.title is not None:
-                ch["title"] = payload.title
-            if payload.summary is not None:
-                ch["summary"] = payload.summary
-            if payload.scenes is not None:
-                ch["scenes"] = payload.scenes
-            if payload.characters is not None:
-                ch["characters"] = payload.characters
-            if payload.purpose is not None:
-                ch["purpose"] = payload.purpose
-            found = True
-            break
-
-    if not found:
+    chapter_key = db.execute(
+        text(
+            """
+            SELECT item.key AS chapter_key
+            FROM outlines, json_each(outlines.chapters) AS item
+            WHERE outlines.id = :outline_id
+            AND CAST(json_extract(item.value, '$.chapter_index') AS INTEGER) = :chapter_index
+            LIMIT 1
+            """
+        ),
+        {"outline_id": outline_id, "chapter_index": chapter_index},
+    ).scalar()
+    if chapter_key is None:
         raise HTTPException(status_code=404, detail="Chapter not found in outline")
 
-    from sqlalchemy.orm.attributes import flag_modified
-    outline.chapters = chapters
-    flag_modified(outline, "chapters")
+    params = {
+        "outline_id": outline_id,
+        "chapter_key": str(chapter_key),
+        "updated_at": datetime.now(UTC).replace(tzinfo=None).isoformat(sep=" "),
+    }
+    updates: list[str] = []
+    for field in ("title", "summary", "purpose"):
+        value = getattr(payload, field)
+        if value is not None:
+            params[field] = value
+            updates.extend([f"'$[' || :chapter_key || '].{field}'", f":{field}"])
+    for field in ("scenes", "characters"):
+        value = getattr(payload, field)
+        if value is not None:
+            param_name = f"{field}_json"
+            params[param_name] = json.dumps(value, ensure_ascii=False)
+            updates.extend([f"'$[' || :chapter_key || '].{field}'", f"json(:{param_name})"])
+
+    if updates:
+        db.execute(
+            text(
+                f"""
+                UPDATE outlines
+                SET chapters = json_set(chapters, {', '.join(updates)}),
+                    updated_at = :updated_at
+                WHERE id = :outline_id
+                """
+            ),
+            params,
+        )
     db.commit()
     return {"updated": True, "chapter_index": chapter_index}
