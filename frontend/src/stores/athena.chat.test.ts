@@ -171,6 +171,42 @@ describe('athena chat store', () => {
     expect(worldModel.proposalBundles).toEqual([proposalBundle('project-1', 'bundle-1')])
   })
 
+  it('refreshes ontology after Athena chat with a bounded window', async () => {
+    const ontology = {
+      entities: { characters: [] },
+      relations: [],
+      rules: [],
+      setup_summary: null,
+      profile_version: 1,
+    }
+    vi.mocked(api.sendAthenaChat).mockResolvedValue({
+      message: '已更新设定库',
+      pending_action: null,
+      ui_hint: null,
+      refresh_targets: ['ontology'],
+      project_diagnosis: {
+        missing_items: [],
+        completed_items: [],
+        suggested_next_step: null,
+      },
+    })
+    vi.mocked(api.getAthenaMessages).mockResolvedValue([])
+    vi.mocked(api.getAthenaOntology).mockResolvedValue(ontology)
+    const store = useAthenaStore()
+
+    await store.sendChat('project-1', '同步设定库')
+
+    expect(api.getAthenaOntology).toHaveBeenCalledWith('project-1', {
+      entity_offset: 0,
+      entity_limit: 120,
+      relation_offset: 0,
+      relation_limit: 160,
+      rule_offset: 0,
+      rule_limit: 120,
+    })
+    expect(store.ontology).toEqual(ontology)
+  })
+
   it('keeps newer project chat state when an older sendChat resolves later', async () => {
     const sendA = createDeferred<any>()
     const sendB = createDeferred<any>()

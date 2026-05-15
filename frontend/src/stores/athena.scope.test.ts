@@ -135,6 +135,14 @@ describe('athena project scope', () => {
     await store.loadMessages('project-1')
 
     expect(api.getAthenaOntology).toHaveBeenCalledTimes(1)
+    expect(api.getAthenaOntology).toHaveBeenCalledWith('project-1', {
+      entity_offset: 0,
+      entity_limit: 120,
+      relation_offset: 0,
+      relation_limit: 160,
+      rule_offset: 0,
+      rule_limit: 120,
+    })
     expect(api.getAthenaMessages).toHaveBeenCalledTimes(1)
     expect(api.getAthenaMessages).toHaveBeenCalledWith('project-1', { limit: 80 })
     expect(store.ontology).toEqual(ontology())

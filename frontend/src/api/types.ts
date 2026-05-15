@@ -650,6 +650,15 @@ export interface AthenaOntology {
   }
 }
 
+export interface AthenaOntologyQuery {
+  entity_offset?: number
+  entity_limit?: number
+  relation_offset?: number
+  relation_limit?: number
+  rule_offset?: number
+  rule_limit?: number
+}
+
 export interface AthenaTimeline {
   anchors: { id: string; anchor_id: string; chapter_index: number; intra_chapter_seq: number; label: string }[]
   events: { id: string; event_id: string; chapter_index: number; intra_chapter_seq: number; event_type: string; description: string }[]

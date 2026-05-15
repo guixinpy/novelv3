@@ -13,6 +13,7 @@ import type {
   AthenaConsistencyIssueListResponse,
   AthenaAnalyzeChapterResult,
   AthenaOntology,
+  AthenaOntologyQuery,
   AthenaOptimization,
   AthenaRetrievalDiagnostics,
   AthenaRetrievalIndexResult,
@@ -32,6 +33,14 @@ const ATHENA_CHAT_HISTORY_PAGE_SIZE = 80
 const CONSISTENCY_ISSUES_PAGE_SIZE = 100
 const LONGFORM_MAINTENANCE_REPAIR_LIMIT = 500
 const LONGFORM_MAINTENANCE_MAX_REPAIR_BATCHES = 10
+const ATHENA_ONTOLOGY_WINDOW_QUERY: AthenaOntologyQuery = {
+  entity_offset: 0,
+  entity_limit: 120,
+  relation_offset: 0,
+  relation_limit: 160,
+  rule_offset: 0,
+  rule_limit: 120,
+}
 
 export const useAthenaStore = defineStore('athena', () => {
   const requestCache = useRequestCacheStore()
@@ -236,7 +245,7 @@ export const useAthenaStore = defineStore('athena', () => {
       projectId,
       'ontology',
       () => !!ontology.value,
-      () => api.getAthenaOntology(projectId),
+      () => api.getAthenaOntology(projectId, ATHENA_ONTOLOGY_WINDOW_QUERY),
       (value) => {
         ontology.value = value
       },
@@ -549,7 +558,7 @@ export const useAthenaStore = defineStore('athena', () => {
         await worldModel.loadSetupPanelData(projectId)
       }
       if (targets.has('ontology')) {
-        const loadedOntology = await api.getAthenaOntology(projectId)
+        const loadedOntology = await api.getAthenaOntology(projectId, ATHENA_ONTOLOGY_WINDOW_QUERY)
         if (!isCurrentSend(scope) || !isActiveChatProject(projectId)) return
         ontology.value = loadedOntology
         requestCache.markFresh(cacheKey(projectId, 'ontology'))

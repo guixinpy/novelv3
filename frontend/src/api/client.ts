@@ -7,6 +7,7 @@ import type {
   AthenaConsistencyIssueListResponse,
   AthenaImportSetupResult,
   AthenaOntology,
+  AthenaOntologyQuery,
   AthenaOptimization,
   AthenaRetrievalDiagnostics,
   AthenaRetrievalIndexResult,
@@ -93,6 +94,17 @@ function worldModelOverviewQuery(params?: WorldModelOverviewQuery) {
   return query
 }
 
+function athenaOntologyQuery(params?: AthenaOntologyQuery) {
+  const query = new URLSearchParams()
+  if (params?.entity_offset !== undefined) query.set('entity_offset', String(params.entity_offset))
+  if (params?.entity_limit !== undefined) query.set('entity_limit', String(params.entity_limit))
+  if (params?.relation_offset !== undefined) query.set('relation_offset', String(params.relation_offset))
+  if (params?.relation_limit !== undefined) query.set('relation_limit', String(params.relation_limit))
+  if (params?.rule_offset !== undefined) query.set('rule_offset', String(params.rule_offset))
+  if (params?.rule_limit !== undefined) query.set('rule_limit', String(params.rule_limit))
+  return query
+}
+
 async function requestEvolutionPlanWindow(id: string) {
   return request<AthenaEvolutionPlan>(`/projects/${id}/athena/evolution/plan?mode=window`)
 }
@@ -171,8 +183,11 @@ export const api = {
     request<WorldModelOverview>(`/projects/${id}/world-model/subject-knowledge?subject_ref=${encodeURIComponent(subjectRef)}`),
   getChapterSnapshot: (id: string, chapterIndex: number) =>
     request<WorldModelOverview>(`/projects/${id}/world-model/snapshot?chapter_index=${chapterIndex}`),
-  getAthenaOntology: (id: string) =>
-    request<AthenaOntology>(`/projects/${id}/athena/ontology`),
+  getAthenaOntology: (id: string, params?: AthenaOntologyQuery) => {
+    const query = athenaOntologyQuery(params)
+    const qs = query.toString()
+    return request<AthenaOntology>(`/projects/${id}/athena/ontology${qs ? `?${qs}` : ''}`)
+  },
   getAthenaState: (id: string) =>
     request<WorldModelOverview>(`/projects/${id}/athena/state`),
   getAthenaTimeline: (id: string, params?: { latest?: boolean; offset?: number; limit?: number }) => {

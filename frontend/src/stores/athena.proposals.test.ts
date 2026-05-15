@@ -116,7 +116,14 @@ describe('athena proposal workflow store', () => {
     await store.importSetup('project-1')
 
     expect(api.importAthenaSetup).toHaveBeenCalledWith('project-1')
-    expect(api.getAthenaOntology).toHaveBeenCalledWith('project-1')
+    expect(api.getAthenaOntology).toHaveBeenCalledWith('project-1', {
+      entity_offset: 0,
+      entity_limit: 120,
+      relation_offset: 0,
+      relation_limit: 160,
+      rule_offset: 0,
+      rule_limit: 120,
+    })
   })
 
   it('loads setup import preview without importing setup', async () => {

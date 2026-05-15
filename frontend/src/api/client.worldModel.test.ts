@@ -57,4 +57,27 @@ describe('world model api client', () => {
       }),
     )
   })
+
+  it('getAthenaOntology() serializes ontology window params', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ entities: {}, relations: [], rules: [] }),
+    } as Response)
+
+    await api.getAthenaOntology('project-1', {
+      entity_offset: 20,
+      entity_limit: 80,
+      relation_offset: 10,
+      relation_limit: 120,
+      rule_offset: 5,
+      rule_limit: 40,
+    } as any)
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/projects/project-1/athena/ontology?entity_offset=20&entity_limit=80&relation_offset=10&relation_limit=120&rule_offset=5&rule_limit=40',
+      expect.objectContaining({
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+  })
 })
