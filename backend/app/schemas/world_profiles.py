@@ -46,11 +46,35 @@ class ProjectProfileVersionOut(ProjectProfileVersionAppend):
 class WorldProjectionOut(BaseModel):
     view_type: str
     entities: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    entities_total: int | None = None
+    entities_offset: int | None = None
+    entities_limit: int | None = None
+    entities_has_more: bool | None = None
     relations: dict[str, Any] = Field(default_factory=dict)
+    relations_total: int | None = None
+    relations_offset: int | None = None
+    relations_limit: int | None = None
+    relations_has_more: bool | None = None
     presence: dict[str, Any] = Field(default_factory=dict)
+    presence_total: int | None = None
+    presence_offset: int | None = None
+    presence_limit: int | None = None
+    presence_has_more: bool | None = None
     occurred_events: dict[str, Any] = Field(default_factory=dict)
+    occurred_events_total: int | None = None
+    occurred_events_offset: int | None = None
+    occurred_events_limit: int | None = None
+    occurred_events_has_more: bool | None = None
     event_links: dict[str, Any] = Field(default_factory=dict)
+    event_links_total: int | None = None
+    event_links_offset: int | None = None
+    event_links_limit: int | None = None
+    event_links_has_more: bool | None = None
     facts: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    facts_total: int | None = None
+    facts_offset: int | None = None
+    facts_limit: int | None = None
+    facts_has_more: bool | None = None
 
     model_config = ConfigDict(extra="forbid")
 

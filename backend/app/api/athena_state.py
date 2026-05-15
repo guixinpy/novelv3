@@ -11,8 +11,31 @@ router = APIRouter()
 
 @router.get("/state")
 def get_state(project_id: str, db: Session = Depends(get_db)):
-    from app.api.world_model import get_world_model_overview
-    return get_world_model_overview(project_id, db)
+    from app.api.world_model import (
+        DEFAULT_PROJECTION_ENTITY_LIMIT,
+        DEFAULT_PROJECTION_EVENT_LIMIT,
+        DEFAULT_PROJECTION_EVENT_LINK_LIMIT,
+        DEFAULT_PROJECTION_FACT_SUBJECT_LIMIT,
+        DEFAULT_PROJECTION_PRESENCE_LIMIT,
+        DEFAULT_PROJECTION_RELATION_LIMIT,
+        get_world_model_overview,
+    )
+    return get_world_model_overview(
+        project_id,
+        db,
+        entity_offset=0,
+        entity_limit=DEFAULT_PROJECTION_ENTITY_LIMIT,
+        relation_offset=0,
+        relation_limit=DEFAULT_PROJECTION_RELATION_LIMIT,
+        presence_offset=0,
+        presence_limit=DEFAULT_PROJECTION_PRESENCE_LIMIT,
+        event_offset=0,
+        event_limit=DEFAULT_PROJECTION_EVENT_LIMIT,
+        event_link_offset=0,
+        event_link_limit=DEFAULT_PROJECTION_EVENT_LINK_LIMIT,
+        fact_subject_offset=0,
+        fact_subject_limit=DEFAULT_PROJECTION_FACT_SUBJECT_LIMIT,
+    )
 
 
 @router.get("/state/subject-knowledge")

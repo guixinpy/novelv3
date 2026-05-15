@@ -134,6 +134,112 @@ def test_get_world_model_overview_returns_current_profile_and_truth_projection(c
     assert payload["projection"]["facts"]["char.hero"]["rank"] == "captain"
 
 
+def test_get_world_model_overview_returns_bounded_projection_window(client, db_session):
+    project, profile_version = _seed_profile(db_session)
+    anchors = []
+    events = []
+    facts = []
+    for index in range(1, 151):
+        anchor_id = f"anchor.ch{index}.s1"
+        entity_ref = f"char.{index:03d}"
+        event_ref = f"incident.{index:03d}"
+        anchors.append(
+            WorldTimelineAnchor(
+                project_id=project.id,
+                profile_version=profile_version.version,
+                anchor_id=anchor_id,
+                chapter_index=index,
+                intra_chapter_seq=1,
+                ordering_key=f"{index:03d}:001",
+                contract_version="world.contract.v1",
+            )
+        )
+        events.extend([
+            WorldEvent(
+                project_id=project.id,
+                project_profile_version_id=profile_version.id,
+                profile_version=profile_version.version,
+                event_id=f"evt.{entity_ref}.introduced",
+                idempotency_key=f"idem.{entity_ref}.introduced",
+                timeline_anchor_id=anchor_id,
+                chapter_index=index,
+                intra_chapter_seq=1,
+                event_type="entity_introduced",
+                primitive_payload={
+                    "entity_ref": entity_ref,
+                    "entity_type": "character",
+                    "attributes": {"status": "active"},
+                },
+                truth_layer="truth",
+                disclosure_layer="public",
+                contract_version="world.contract.v1",
+            ),
+            WorldEvent(
+                project_id=project.id,
+                project_profile_version_id=profile_version.id,
+                profile_version=profile_version.version,
+                event_id=f"evt.{event_ref}.occurred",
+                idempotency_key=f"idem.{event_ref}.occurred",
+                timeline_anchor_id=anchor_id,
+                chapter_index=index,
+                intra_chapter_seq=2,
+                event_type="event_occurred",
+                primitive_payload={
+                    "event_ref": event_ref,
+                    "title": f"事件 {index:03d}",
+                },
+                truth_layer="truth",
+                disclosure_layer="public",
+                contract_version="world.contract.v1",
+            ),
+        ])
+        facts.append(
+            WorldFactClaim(
+                project_id=project.id,
+                project_profile_version_id=profile_version.id,
+                profile_version=profile_version.version,
+                claim_id=f"claim.{entity_ref}.rank",
+                chapter_index=index,
+                intra_chapter_seq=3,
+                subject_ref=entity_ref,
+                predicate="rank",
+                object_ref_or_value=f"rank-{index:03d}",
+                claim_layer="truth",
+                claim_status="confirmed",
+                authority_type="authoritative_structured",
+                confidence=1.0,
+                contract_version="world.contract.v1",
+            )
+        )
+    db_session.add_all([*anchors, *events, *facts])
+    db_session.commit()
+
+    response = client.get(
+        f"/api/v1/projects/{project.id}/world-model"
+        "?entity_offset=5&entity_limit=10"
+        "&event_offset=3&event_limit=7"
+        "&fact_subject_offset=4&fact_subject_limit=9"
+    )
+
+    assert response.status_code == 200
+    projection = response.json()["projection"]
+    assert list(projection["entities"]) == [f"char.{index:03d}" for index in range(6, 16)]
+    assert projection["entities_total"] == 150
+    assert projection["entities_offset"] == 5
+    assert projection["entities_limit"] == 10
+    assert projection["entities_has_more"] is True
+    assert list(projection["occurred_events"]) == [f"incident.{index:03d}" for index in range(4, 11)]
+    assert projection["occurred_events_total"] == 150
+    assert projection["occurred_events_offset"] == 3
+    assert projection["occurred_events_limit"] == 7
+    assert projection["occurred_events_has_more"] is True
+    assert list(projection["facts"]) == [f"char.{index:03d}" for index in range(5, 14)]
+    assert projection["facts_total"] == 150
+    assert projection["facts_offset"] == 4
+    assert projection["facts_limit"] == 9
+    assert projection["facts_has_more"] is True
+
+
 def test_list_world_fact_claims_returns_current_profile_metadata(client, db_session):
     project, older_profile = _seed_profile(db_session)
     current_profile = ProjectProfileVersion(

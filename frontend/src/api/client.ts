@@ -43,6 +43,7 @@ import type {
   WorldFactClaim,
   WorldModelDashboard,
   WorldModelOverview,
+  WorldModelOverviewQuery,
   WorkspaceBootstrap,
 } from './types'
 
@@ -75,6 +76,23 @@ function evolutionPlanQuery(params?: AthenaEvolutionPlanQuery) {
   return query
 }
 
+function worldModelOverviewQuery(params?: WorldModelOverviewQuery) {
+  const query = new URLSearchParams()
+  if (params?.entity_offset !== undefined) query.set('entity_offset', String(params.entity_offset))
+  if (params?.entity_limit !== undefined) query.set('entity_limit', String(params.entity_limit))
+  if (params?.relation_offset !== undefined) query.set('relation_offset', String(params.relation_offset))
+  if (params?.relation_limit !== undefined) query.set('relation_limit', String(params.relation_limit))
+  if (params?.presence_offset !== undefined) query.set('presence_offset', String(params.presence_offset))
+  if (params?.presence_limit !== undefined) query.set('presence_limit', String(params.presence_limit))
+  if (params?.event_offset !== undefined) query.set('event_offset', String(params.event_offset))
+  if (params?.event_limit !== undefined) query.set('event_limit', String(params.event_limit))
+  if (params?.event_link_offset !== undefined) query.set('event_link_offset', String(params.event_link_offset))
+  if (params?.event_link_limit !== undefined) query.set('event_link_limit', String(params.event_link_limit))
+  if (params?.fact_subject_offset !== undefined) query.set('fact_subject_offset', String(params.fact_subject_offset))
+  if (params?.fact_subject_limit !== undefined) query.set('fact_subject_limit', String(params.fact_subject_limit))
+  return query
+}
+
 async function request<T = any>(path: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     headers: { 'Content-Type': 'application/json' },
@@ -95,7 +113,11 @@ export const api = {
   deleteProject: (id: string) => request(`/projects/${id}`, { method: 'DELETE' }),
   generateSetup: (id: string) => request(`/projects/${id}/athena/ontology/generate`, { method: 'POST' }),
   getSetup: (id: string) => request(`/projects/${id}/setup`),
-  getWorldModelOverview: (id: string) => request<WorldModelOverview>(`/projects/${id}/world-model`),
+  getWorldModelOverview: (id: string, params?: WorldModelOverviewQuery) => {
+    const query = worldModelOverviewQuery(params)
+    const qs = query.toString()
+    return request<WorldModelOverview>(`/projects/${id}/world-model${qs ? `?${qs}` : ''}`)
+  },
   getWorldModelDashboard: (id: string) => request<WorldModelDashboard>(`/projects/${id}/world-model/dashboard`),
   listWorldFactClaims: (id: string, params?: { claim_status?: string; claim_layer?: string; subject_ref?: string; offset?: number; limit?: number }) => {
     const query = new URLSearchParams()

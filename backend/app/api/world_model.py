@@ -40,23 +40,60 @@ from app.schemas import (
     ProposalReviewOut,
     ProposalReviewQueueOut,
     ProposalReviewRollbackCreate,
+    WorldProjectionOut,
     WorldModelDashboardOut,
 )
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/world-model", tags=["world-model"])
 ACTIONABLE_PROPOSAL_ITEM_STATUSES = ("pending", "needs_edit")
+DEFAULT_PROJECTION_ENTITY_LIMIT = 120
+DEFAULT_PROJECTION_RELATION_LIMIT = 160
+DEFAULT_PROJECTION_PRESENCE_LIMIT = 120
+DEFAULT_PROJECTION_EVENT_LIMIT = 120
+DEFAULT_PROJECTION_EVENT_LINK_LIMIT = 120
+DEFAULT_PROJECTION_FACT_SUBJECT_LIMIT = 120
 
 
 @router.get("", response_model=ProjectWorldOverviewOut)
-def get_world_model_overview(project_id: str, db: Session = Depends(get_db)):
+def get_world_model_overview(
+    project_id: str,
+    db: Session = Depends(get_db),
+    entity_offset: int = Query(0, ge=0),
+    entity_limit: int = Query(DEFAULT_PROJECTION_ENTITY_LIMIT, ge=1, le=500),
+    relation_offset: int = Query(0, ge=0),
+    relation_limit: int = Query(DEFAULT_PROJECTION_RELATION_LIMIT, ge=1, le=500),
+    presence_offset: int = Query(0, ge=0),
+    presence_limit: int = Query(DEFAULT_PROJECTION_PRESENCE_LIMIT, ge=1, le=500),
+    event_offset: int = Query(0, ge=0),
+    event_limit: int = Query(DEFAULT_PROJECTION_EVENT_LIMIT, ge=1, le=500),
+    event_link_offset: int = Query(0, ge=0),
+    event_link_limit: int = Query(DEFAULT_PROJECTION_EVENT_LINK_LIMIT, ge=1, le=500),
+    fact_subject_offset: int = Query(0, ge=0),
+    fact_subject_limit: int = Query(DEFAULT_PROJECTION_FACT_SUBJECT_LIMIT, ge=1, le=500),
+):
     _require_project(db=db, project_id=project_id)
     profile = _get_current_profile(db=db, project_id=project_id)
     try:
-        return build_world_projection_overview(
+        overview = build_world_projection_overview(
             db=db,
             project_id=project_id,
             profile=profile,
             view_type="current_truth",
+        )
+        return _window_world_overview(
+            overview,
+            entity_offset=entity_offset,
+            entity_limit=entity_limit,
+            relation_offset=relation_offset,
+            relation_limit=relation_limit,
+            presence_offset=presence_offset,
+            presence_limit=presence_limit,
+            event_offset=event_offset,
+            event_limit=event_limit,
+            event_link_offset=event_link_offset,
+            event_link_limit=event_link_limit,
+            fact_subject_offset=fact_subject_offset,
+            fact_subject_limit=fact_subject_limit,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -419,6 +456,50 @@ def _get_current_profile(*, db: Session, project_id: str) -> ProjectProfileVersi
         .order_by(ProjectProfileVersion.version.desc(), ProjectProfileVersion.created_at.desc())
         .first()
     )
+
+
+def _window_world_overview(
+    overview: ProjectWorldOverviewOut,
+    *,
+    entity_offset: int,
+    entity_limit: int,
+    relation_offset: int,
+    relation_limit: int,
+    presence_offset: int,
+    presence_limit: int,
+    event_offset: int,
+    event_limit: int,
+    event_link_offset: int,
+    event_link_limit: int,
+    fact_subject_offset: int,
+    fact_subject_limit: int,
+) -> ProjectWorldOverviewOut:
+    if overview.projection is None:
+        return overview
+    projection = overview.projection.model_dump()
+    for field_name, meta_prefix, offset, limit in [
+        ("entities", "entities", entity_offset, entity_limit),
+        ("relations", "relations", relation_offset, relation_limit),
+        ("presence", "presence", presence_offset, presence_limit),
+        ("occurred_events", "occurred_events", event_offset, event_limit),
+        ("event_links", "event_links", event_link_offset, event_link_limit),
+        ("facts", "facts", fact_subject_offset, fact_subject_limit),
+    ]:
+        window, total = _window_mapping(projection.get(field_name) or {}, offset=offset, limit=limit)
+        projection[field_name] = window
+        projection[f"{meta_prefix}_total"] = total
+        projection[f"{meta_prefix}_offset"] = offset
+        projection[f"{meta_prefix}_limit"] = limit
+        projection[f"{meta_prefix}_has_more"] = offset + len(window) < total
+    return ProjectWorldOverviewOut(
+        project_profile=overview.project_profile,
+        projection=WorldProjectionOut(**projection),
+    )
+
+
+def _window_mapping(data: dict, *, offset: int, limit: int) -> tuple[dict, int]:
+    items = list(data.items())
+    return dict(items[offset:offset + limit]), len(items)
 
 
 def _dashboard_projection_metrics(

@@ -29,6 +29,19 @@ function createDeferred<T>() {
   return { promise, resolve, reject }
 }
 
+const overviewWindowQuery = {
+  entity_offset: 0,
+  entity_limit: 120,
+  relation_offset: 0,
+  relation_limit: 160,
+  presence_offset: 0,
+  presence_limit: 120,
+  event_offset: 0,
+  event_limit: 120,
+  fact_subject_offset: 0,
+  fact_subject_limit: 120,
+}
+
 function createOverview(rank: string, version = 1) {
   return {
     project_profile: {
@@ -285,9 +298,18 @@ describe('worldModel store', () => {
     expect(store.projection?.facts['char.hero'].rank).toBe('captain')
     expect(store.loaded).toBe(true)
     expect(store.proposalBundlesLoaded).toBe(false)
-    expect(api.getWorldModelOverview).toHaveBeenCalledWith('project-1')
+    expect(api.getWorldModelOverview).toHaveBeenCalledWith('project-1', overviewWindowQuery)
     expect(api.listWorldProposalBundles).not.toHaveBeenCalled()
     expect(api.getWorldProposalBundle).not.toHaveBeenCalled()
+  })
+
+  it('loadOverview() 请求有界 truth projection 窗口', async () => {
+    vi.mocked(api.getWorldModelOverview).mockResolvedValue(createOverview('captain'))
+    const store = useWorldModelStore()
+
+    await store.loadOverview('project-1')
+
+    expect(api.getWorldModelOverview).toHaveBeenCalledWith('project-1', overviewWindowQuery)
   })
 
   it('loadDashboard() 只加载 Athena Overview 指标，不触发 proposal 详情请求', async () => {
@@ -623,7 +645,7 @@ describe('worldModel store', () => {
       edited_fields: {},
     })
     expect(api.getWorldModelDashboard).toHaveBeenCalledWith('project-1')
-    expect(api.getWorldModelOverview).toHaveBeenCalledWith('project-1')
+    expect(api.getWorldModelOverview).toHaveBeenCalledWith('project-1', overviewWindowQuery)
     expect(api.listWorldProposalBundles).toHaveBeenCalledWith('project-1', expect.any(Object))
     expect(api.getWorldProposalBundle).toHaveBeenCalledWith('project-1', 'bundle-1', {
       item_offset: 0,
@@ -904,7 +926,7 @@ describe('worldModel store', () => {
       reason: '新证据推翻旧结论',
       evidence_refs: ['chapter.02'],
     })
-    expect(api.getWorldModelOverview).toHaveBeenCalledWith('project-1')
+    expect(api.getWorldModelOverview).toHaveBeenCalledWith('project-1', overviewWindowQuery)
     expect(store.projection?.facts['char.hero'].rank).toBe('lieutenant')
     expect(store.factClaimsLoaded).toBe(false)
     expect(store.factClaims).toEqual([])

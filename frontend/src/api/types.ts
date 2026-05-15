@@ -354,11 +354,35 @@ export interface WorldProjectionPresence {
 export interface WorldProjection {
   view_type: string
   entities: Record<string, WorldProjectionEntity>
+  entities_total?: number
+  entities_offset?: number
+  entities_limit?: number
+  entities_has_more?: boolean
   relations: Record<string, unknown>
+  relations_total?: number
+  relations_offset?: number
+  relations_limit?: number
+  relations_has_more?: boolean
   presence: Record<string, WorldProjectionPresence>
+  presence_total?: number
+  presence_offset?: number
+  presence_limit?: number
+  presence_has_more?: boolean
   occurred_events: Record<string, unknown>
+  occurred_events_total?: number
+  occurred_events_offset?: number
+  occurred_events_limit?: number
+  occurred_events_has_more?: boolean
   event_links: Record<string, unknown>
+  event_links_total?: number
+  event_links_offset?: number
+  event_links_limit?: number
+  event_links_has_more?: boolean
   facts: Record<string, Record<string, unknown>>
+  facts_total?: number
+  facts_offset?: number
+  facts_limit?: number
+  facts_has_more?: boolean
 }
 
 export interface WorldFactClaim {
@@ -398,6 +422,21 @@ export interface PaginatedWorldFactClaims {
 export interface WorldModelOverview {
   project_profile: ProjectProfileVersion | null
   projection: WorldProjection | null
+}
+
+export interface WorldModelOverviewQuery {
+  entity_offset?: number
+  entity_limit?: number
+  relation_offset?: number
+  relation_limit?: number
+  presence_offset?: number
+  presence_limit?: number
+  event_offset?: number
+  event_limit?: number
+  event_link_offset?: number
+  event_link_limit?: number
+  fact_subject_offset?: number
+  fact_subject_limit?: number
 }
 
 export interface WorldModelDashboardMetrics {

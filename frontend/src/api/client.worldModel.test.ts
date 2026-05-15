@@ -30,4 +30,31 @@ describe('world model api client', () => {
       }),
     )
   })
+
+  it('getWorldModelOverview() serializes projection window params', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ([]),
+    } as Response)
+
+    await api.getWorldModelOverview('project-1', {
+      entity_offset: 20,
+      entity_limit: 40,
+      relation_offset: 10,
+      relation_limit: 30,
+      presence_offset: 5,
+      presence_limit: 25,
+      event_offset: 100,
+      event_limit: 50,
+      fact_subject_offset: 200,
+      fact_subject_limit: 60,
+    })
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/projects/project-1/world-model?entity_offset=20&entity_limit=40&relation_offset=10&relation_limit=30&presence_offset=5&presence_limit=25&event_offset=100&event_limit=50&fact_subject_offset=200&fact_subject_limit=60',
+      expect.objectContaining({
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+  })
 })

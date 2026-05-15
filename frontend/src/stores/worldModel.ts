@@ -11,6 +11,7 @@ import type {
   ProposalSplitRequest,
   WorldFactClaim,
   WorldModelDashboard,
+  WorldModelOverviewQuery,
   WorldProjection,
 } from '../api/types'
 
@@ -18,6 +19,18 @@ type RequestLane = 'dashboard' | 'overview' | 'facts' | 'bundles' | 'detail' | '
 const FACT_CLAIMS_PAGE_SIZE = 200
 const PROPOSAL_DETAIL_ITEM_PAGE_SIZE = 100
 const PROPOSAL_DETAIL_ITEM_MAX_REFRESH_LIMIT = 500
+const WORLD_MODEL_PROJECTION_WINDOW_QUERY: WorldModelOverviewQuery = {
+  entity_offset: 0,
+  entity_limit: 120,
+  relation_offset: 0,
+  relation_limit: 160,
+  presence_offset: 0,
+  presence_limit: 120,
+  event_offset: 0,
+  event_limit: 120,
+  fact_subject_offset: 0,
+  fact_subject_limit: 120,
+}
 
 interface RequestSnapshot {
   projectId: string
@@ -334,7 +347,7 @@ export const useWorldModelStore = defineStore('worldModel', () => {
 
     try {
       const [overview, bundlesPage, reviewQueue] = await Promise.all([
-        api.getWorldModelOverview(projectId),
+        api.getWorldModelOverview(projectId, WORLD_MODEL_PROJECTION_WINDOW_QUERY),
         api.listWorldProposalBundles(projectId, {
           offset: bundlesOffset.value,
           limit: bundlesLimit.value,
@@ -387,7 +400,7 @@ export const useWorldModelStore = defineStore('worldModel', () => {
     error.value = ''
 
     try {
-      const overview = await api.getWorldModelOverview(projectId)
+      const overview = await api.getWorldModelOverview(projectId, WORLD_MODEL_PROJECTION_WINDOW_QUERY)
       if (!isLatestRequest(snapshot, 'overview')) return
       projectProfile.value = overview.project_profile
       projection.value = overview.projection
@@ -639,7 +652,7 @@ export const useWorldModelStore = defineStore('worldModel', () => {
 
   async function refreshOverview(projectId: string, requestSnapshot?: RequestSnapshot) {
     const snapshot = requestSnapshot ?? captureRequest(projectId, ['overview'])
-    const overview = await api.getWorldModelOverview(projectId)
+    const overview = await api.getWorldModelOverview(projectId, WORLD_MODEL_PROJECTION_WINDOW_QUERY)
     if (!isLatestRequest(snapshot, 'overview')) return
     projectProfile.value = overview.project_profile
     projection.value = overview.projection
