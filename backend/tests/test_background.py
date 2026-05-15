@@ -305,6 +305,62 @@ def test_background_task_service_reuses_active_range_task_by_idempotency_key(cli
     assert db_session.query(BackgroundTask).filter(BackgroundTask.project_id == pid).count() == 1
 
 
+def test_background_task_service_filters_idempotency_key_at_source(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Task Idempotency Lookup"})
+    pid = r.json()["id"]
+    db_session.add_all([
+        BackgroundTask(
+            project_id=pid,
+            task_type="athena_reindex_range",
+            status="running",
+            payload={
+                "idempotency_key": f"range:other:{index}",
+                "chapter_range": {"start": index + 1, "end": index + 1},
+                "large": ["任务载荷"] * 500,
+            },
+        )
+        for index in range(6)
+    ])
+    matching = BackgroundTask(
+        project_id=pid,
+        task_type="athena_reindex_range",
+        status="pending",
+        payload={
+            "idempotency_key": "range:target",
+            "chapter_range": {"start": 1, "end": 10},
+            "large": ["目标任务载荷"] * 500,
+        },
+    )
+    db_session.add(matching)
+    db_session.commit()
+    db_session.refresh(matching)
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        duplicate = BackgroundTaskService(db_session).create_chapter_range(
+            project_id=pid,
+            task_type="athena_reindex_range",
+            start_chapter_index=1,
+            end_chapter_index=10,
+            idempotency_key="range:target",
+        )
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert duplicate.id == matching.id
+    assert db_session.query(BackgroundTask).filter(BackgroundTask.project_id == pid).count() == 7
+    row_selects = [
+        statement for statement in statements
+        if statement.startswith("select") and "from background_tasks" in statement
+    ]
+    assert row_selects
+    assert any("json_extract" in statement and "limit" in statement for statement in row_selects)
+
+
 def test_background_task_service_compacts_large_sequential_range_progress(client, db_session):
     r = client.post("/api/v1/projects", json={"name": "Test"})
     pid = r.json()["id"]
