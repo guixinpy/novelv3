@@ -30,6 +30,15 @@ def test_longform_hot_tables_have_query_indexes(db_session):
             "ix_consistency_checks_project_chapter",
             "ix_consistency_checks_project_status",
         },
+        "world_timeline_anchors": {
+            "ix_world_timeline_anchors_project_profile_order",
+        },
+        "world_events": {
+            "ix_world_events_project_profile_order",
+        },
+        "world_fact_claims": {
+            "ix_world_fact_claims_project_profile_status_order",
+        },
     }
     for table_name, index_names in expected_indexes.items():
         rows = db_session.execute(text(f"PRAGMA index_list('{table_name}')")).fetchall()

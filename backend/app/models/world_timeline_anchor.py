@@ -30,6 +30,14 @@ class WorldTimelineAnchor(Base):
             ["project_profile_versions.project_id", "project_profile_versions.version"],
         ),
         Index("ix_world_timeline_anchors_project_profile_version", "project_id", "profile_version"),
+        Index(
+            "ix_world_timeline_anchors_project_profile_order",
+            "project_id",
+            "profile_version",
+            "chapter_index",
+            "intra_chapter_seq",
+            "anchor_id",
+        ),
         Index("ix_world_timeline_anchors_anchor_id", "anchor_id"),
         Index("ix_world_timeline_anchors_chapter_seq", "chapter_index", "intra_chapter_seq"),
     )

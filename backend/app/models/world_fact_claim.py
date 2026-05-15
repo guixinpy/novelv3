@@ -48,6 +48,17 @@ class WorldFactClaim(Base):
         ),
         UniqueConstraint("project_id", "claim_id", name="uq_world_fact_claims_project_claim_id"),
         Index("ix_world_fact_claims_project_profile_version", "project_id", "profile_version"),
+        Index(
+            "ix_world_fact_claims_project_profile_status_order",
+            "project_id",
+            "project_profile_version_id",
+            "profile_version",
+            "claim_status",
+            "claim_layer",
+            "chapter_index",
+            "intra_chapter_seq",
+            "claim_id",
+        ),
         Index("ix_world_fact_claims_chapter_seq", "chapter_index", "intra_chapter_seq"),
     )
 
