@@ -17,6 +17,7 @@ from app.models import ChapterContent, LongformMemory, Project, RetrievalDocumen
 DEFAULT_ARC_SIZE = 20
 DEFAULT_VOLUME_SIZE = 100
 RECENT_CHAPTER_WINDOW = 3
+CHAPTER_MEMORY_CONTENT_QUERY_CHARS = 1200
 
 
 @dataclass
@@ -380,7 +381,7 @@ def _chapters(db: Session, project_id: str) -> list[Any]:
         db.query(
             ChapterContent.chapter_index,
             ChapterContent.title,
-            ChapterContent.content,
+            func.substr(ChapterContent.content, 1, CHAPTER_MEMORY_CONTENT_QUERY_CHARS).label("content"),
             ChapterContent.word_count,
             ChapterContent.status,
         )
@@ -395,7 +396,7 @@ def _chapter_for_memory(db: Session, project_id: str, chapter_index: int) -> Any
         db.query(
             ChapterContent.chapter_index,
             ChapterContent.title,
-            ChapterContent.content,
+            func.substr(ChapterContent.content, 1, CHAPTER_MEMORY_CONTENT_QUERY_CHARS).label("content"),
             ChapterContent.word_count,
             ChapterContent.status,
         )

@@ -480,6 +480,54 @@ def test_rebuild_longform_memory_projects_only_memory_fields(db_session):
         assert all(f"chapter_contents.{column}" not in clause for clause in chapter_select_clauses)
 
 
+def test_rebuild_longform_memory_uses_bounded_content_projection(db_session):
+    from app.core.longform_memory import rebuild_longform_memory
+
+    project = Project(name="Memory Content Projection")
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    db_session.add(
+        ChapterContent(
+            project_id=project.id,
+            chapter_index=1,
+            title="第一章",
+            content="前缀线索：星环钥匙第一次亮起。" + ("后续正文不应被完整投影。" * 1000),
+            word_count=1000,
+            status="generated",
+        )
+    )
+    db_session.commit()
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(statement.lower())
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        rebuild_longform_memory(db_session, project.id)
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    memory = (
+        db_session.query(LongformMemory)
+        .filter(LongformMemory.project_id == project.id, LongformMemory.scope_key == "chapter:1")
+        .one()
+    )
+    assert "前缀线索：星环钥匙第一次亮起" in memory.summary
+    chapter_select_clauses = [
+        statement.split("from chapter_contents", 1)[0]
+        for statement in statements
+        if "from chapter_contents" in statement
+    ]
+    content_select_clauses = [
+        clause for clause in chapter_select_clauses
+        if "chapter_contents.content" in clause
+    ]
+    assert content_select_clauses
+    assert all("substr(" in clause or "substring(" in clause for clause in content_select_clauses)
+
+
 def test_longform_context_for_chapter_excludes_future_chapters(client, db_session):
     project = Project(name="Future Boundary")
     db_session.add(project)
