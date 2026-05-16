@@ -1,6 +1,8 @@
 import asyncio
 from unittest.mock import AsyncMock, patch
 
+from sqlalchemy import event
+
 from app.api import storylines
 from app.api.storylines import generate_storyline
 from app.models import Project, Setup
@@ -119,3 +121,73 @@ def test_storyline_prompt_bounds_oversized_setup_context(db_session):
     assert concept_mid_noise not in prompt
     assert "truncated: original content exceeded trace limit" not in prompt
     assert len(prompt) <= 8_000
+
+
+@patch("app.api.storylines.load_api_key", return_value="sk-test")
+@patch("app.api.storylines.ai_service.complete", new_callable=AsyncMock)
+@patch("app.api.storylines.ai_service.parse_json")
+def test_generate_storyline_uses_bounded_setup_context_without_selecting_full_json(
+    mock_parse,
+    mock_complete,
+    mock_key,
+    client,
+    db_session,
+):
+    project = Project(name="Bounded Storyline Setup", genre="长篇悬疑")
+    db_session.add(project)
+    db_session.flush()
+    world_mid_noise = "MID_STORYLINE_QUERY_WORLD_NOISE_SHOULD_NOT_APPEAR"
+    character_mid_noise = "MID_STORYLINE_QUERY_CHARACTER_NOISE_SHOULD_NOT_APPEAR"
+    concept_mid_noise = "MID_STORYLINE_QUERY_CONCEPT_NOISE_SHOULD_NOT_APPEAR"
+    db_session.add(
+        Setup(
+            project_id=project.id,
+            status="generated",
+            world_building={
+                "city": "雾港",
+                "lore": ("世界观噪音" * 700) + world_mid_noise + ("更多世界观噪音" * 10_000),
+            },
+            characters=[
+                {
+                    "name": "林舟",
+                    "bio": ("角色噪音" * 700) + character_mid_noise + ("更多角色噪音" * 10_000),
+                }
+            ],
+            core_concept={
+                "hook": "旧灯塔记忆病毒",
+                "long": ("核心概念噪音" * 700) + concept_mid_noise + ("更多核心噪音" * 10_000),
+            },
+        )
+    )
+    db_session.commit()
+    mock_complete.return_value.content = '{"plotlines": [], "foreshadowing": []}'
+    mock_parse.return_value = {"plotlines": [], "foreshadowing": []}
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        response = client.post(f"/api/v1/projects/{project.id}/storyline/generate")
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert response.status_code == 200
+    sent_prompt = mock_complete.await_args.args[0][0]["content"]
+    assert "雾港" in sent_prompt
+    assert "林舟" in sent_prompt
+    assert "旧灯塔记忆病毒" in sent_prompt
+    assert world_mid_noise not in sent_prompt
+    assert character_mid_noise not in sent_prompt
+    assert concept_mid_noise not in sent_prompt
+
+    setup_select_clauses = [
+        statement.split(" from setups", 1)[0]
+        for statement in statements
+        if " from setups" in statement
+    ]
+    assert setup_select_clauses
+    assert all("setups.world_building as setups_world_building" not in clause for clause in setup_select_clauses)
+    assert all("setups.characters as setups_characters" not in clause for clause in setup_select_clauses)
+    assert all("setups.core_concept as setups_core_concept" not in clause for clause in setup_select_clauses)

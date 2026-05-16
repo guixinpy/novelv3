@@ -1,6 +1,7 @@
 import time
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from sqlalchemy import String, func
 from sqlalchemy.orm import Session
 
 from app.api.deprecation import add_deprecation_header
@@ -11,14 +12,45 @@ from app.core.narrative_plan_window import get_evolution_plan_window
 from app.db import get_db
 from app.models import Project, Setup, Storyline
 from app.prompting.assembler import build_generation_payload
-from app.prompting.providers.storyline import build_storyline_context_blocks, build_storyline_variables
+from app.prompting.providers.storyline import (
+    SETUP_CHARACTERS_CONTEXT_CHARS,
+    SETUP_CORE_CONCEPT_CONTEXT_CHARS,
+    SETUP_WORLD_CONTEXT_CHARS,
+    SetupContextSnapshot,
+    build_storyline_context_blocks,
+    build_storyline_variables,
+)
 from app.schemas import StorylineOut
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/storyline", tags=["storylines"])
 ai_service = AIService()
 
 
-def _build_storyline_call_payload(project: Project, setup: Setup, command_args: str | None = None) -> dict:
+def _get_storyline_setup_context(db: Session, project_id: str) -> SetupContextSnapshot | None:
+    row = (
+        db.query(
+            Setup.id,
+            func.substr(func.cast(Setup.world_building, String), 1, SETUP_WORLD_CONTEXT_CHARS + 1).label("world_building"),
+            func.substr(func.cast(Setup.characters, String), 1, SETUP_CHARACTERS_CONTEXT_CHARS + 1).label("characters"),
+            func.substr(func.cast(Setup.core_concept, String), 1, SETUP_CORE_CONCEPT_CONTEXT_CHARS + 1).label("core_concept"),
+        )
+        .filter(Setup.project_id == project_id)
+        .first()
+    )
+    if not row:
+        return None
+    return SetupContextSnapshot(
+        world_building=row.world_building or "{}",
+        characters=row.characters or "[]",
+        core_concept=row.core_concept or "{}",
+    )
+
+
+def _build_storyline_call_payload(
+    project: Project,
+    setup: Setup | SetupContextSnapshot,
+    command_args: str | None = None,
+) -> dict:
     variables = build_storyline_variables(project, setup)
     return build_generation_payload(
         "storyline.generate",
@@ -43,7 +75,7 @@ async def generate_storyline(project_id: str, db: Session = Depends(get_db), com
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    setup = db.query(Setup).filter(Setup.project_id == project_id).first()
+    setup = _get_storyline_setup_context(db, project_id)
     if not setup:
         raise HTTPException(status_code=400, detail="Setup not generated yet")
 
