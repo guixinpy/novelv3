@@ -63,6 +63,30 @@ def test_writing_start_creates_generate_chapter_task(client, db_session):
     start.assert_called_once()
 
 
+def test_writing_start_reuses_active_generate_chapter_task(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "No Duplicate Writing Tasks"})
+    pid = r.json()["id"]
+
+    with patch("app.api.writing.LocalTaskRunner.start") as start:
+        first = client.post(f"/api/v1/projects/{pid}/writing/start")
+        second = client.post(f"/api/v1/projects/{pid}/writing/start")
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    tasks = (
+        db_session.query(BackgroundTask)
+        .filter(
+            BackgroundTask.project_id == pid,
+            BackgroundTask.task_type == "generate_chapter",
+        )
+        .all()
+    )
+    assert len(tasks) == 1
+    assert first.json()["task_id"] == tasks[0].id
+    assert second.json()["task_id"] == tasks[0].id
+    start.assert_called_once()
+
+
 def test_writing_state_endpoint_returns_current_state(client, db_session):
     r = client.post("/api/v1/projects", json={"name": "Readable Writing State"})
     pid = r.json()["id"]

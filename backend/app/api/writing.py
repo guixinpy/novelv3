@@ -5,7 +5,7 @@ from app.core.writing_scheduler import WritingScheduler
 from app.db import get_db
 from app.models import BackgroundTask, Project
 from app.schemas import WritingControlOut, WritingStateOut
-from app.services.tasks.background_task_service import BackgroundTaskService
+from app.services.tasks.background_task_service import ACTIVE_TASK_STATUSES, BackgroundTaskService
 from app.services.tasks.local_task_runner import LocalTaskRunner
 from app.services.writing.writing_state_service import WritingStateService
 
@@ -85,6 +85,20 @@ def build_generate_chapter_work(project_id: str, chapter_index: int):
 
 
 def _queue_generate_chapter_task(db: Session, project_id: str, chapter_index: int) -> BackgroundTask:
+    active_task = (
+        db.query(BackgroundTask)
+        .filter(
+            BackgroundTask.project_id == project_id,
+            BackgroundTask.task_type == "generate_chapter",
+            BackgroundTask.status.in_(ACTIVE_TASK_STATUSES),
+            BackgroundTask.payload["chapter_index"].as_integer() == int(chapter_index),
+        )
+        .order_by(BackgroundTask.created_at.desc(), BackgroundTask.id.desc())
+        .first()
+    )
+    if active_task:
+        return active_task
+
     task = BackgroundTaskService(db).create(
         project_id=project_id,
         task_type="generate_chapter",
