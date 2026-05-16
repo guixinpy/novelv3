@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.api.athena_shared import require_project
@@ -6,15 +7,29 @@ from app.db import get_db
 from app.models import PromptRule
 
 router = APIRouter()
+DEFAULT_OPTIMIZATION_RULE_LIMIT = 100
 
 
 @router.get("/optimization")
-def get_optimization(project_id: str, db: Session = Depends(get_db)):
+def get_optimization(
+    project_id: str,
+    rules_offset: int = Query(0, ge=0),
+    rules_limit: int = Query(DEFAULT_OPTIMIZATION_RULE_LIMIT, ge=1, le=500),
+    db: Session = Depends(get_db),
+):
     project = require_project(db, project_id)
-    rules = db.query(PromptRule).filter(
+    query = db.query(PromptRule).filter(
         PromptRule.project_id == project_id,
         PromptRule.rule_type == "learned",
-    ).order_by(PromptRule.created_at.desc()).all()
+    )
+    rules_total = query.with_entities(func.count(PromptRule.id)).order_by(None).scalar() or 0
+    rules = (
+        query
+        .order_by(PromptRule.created_at.desc(), PromptRule.id.desc())
+        .offset(rules_offset)
+        .limit(rules_limit)
+        .all()
+    )
 
     rule_items = [
         {
@@ -40,4 +55,8 @@ def get_optimization(project_id: str, db: Session = Depends(get_db)):
             }
             for rule in rule_items
         ],
+        "rules_total": rules_total,
+        "rules_offset": rules_offset,
+        "rules_limit": rules_limit,
+        "rules_has_more": rules_offset + len(rule_items) < rules_total,
     }

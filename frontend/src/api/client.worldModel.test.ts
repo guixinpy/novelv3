@@ -101,4 +101,23 @@ describe('world model api client', () => {
       }),
     )
   })
+
+  it('getAthenaOptimization() serializes rule window params', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ rules: [], style_config: {}, learning_logs: [] }),
+    } as Response)
+
+    await api.getAthenaOptimization('project-1', {
+      rules_offset: 100,
+      rules_limit: 50,
+    })
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/projects/project-1/athena/optimization?rules_offset=100&rules_limit=50',
+      expect.objectContaining({
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+  })
 })

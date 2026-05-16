@@ -9,6 +9,7 @@ import type {
   AthenaOntology,
   AthenaOntologyQuery,
   AthenaOptimization,
+  AthenaOptimizationQuery,
   AthenaRetrievalDiagnostics,
   AthenaRetrievalIndexResult,
   AthenaRetrievalSearchResponse,
@@ -115,6 +116,13 @@ function topologyWindowQuery(params?: AthenaTopologyWindowQuery) {
   return query
 }
 
+function athenaOptimizationQuery(params?: AthenaOptimizationQuery) {
+  const query = new URLSearchParams()
+  if (params?.rules_offset !== undefined) query.set('rules_offset', String(params.rules_offset))
+  if (params?.rules_limit !== undefined) query.set('rules_limit', String(params.rules_limit))
+  return query
+}
+
 async function requestEvolutionPlanWindow(id: string) {
   return request<AthenaEvolutionPlan>(`/projects/${id}/athena/evolution/plan?mode=window`)
 }
@@ -213,8 +221,11 @@ export const api = {
     const qs = query.toString()
     return request<AthenaEvolutionPlan>(`/projects/${id}/athena/evolution/plan${qs ? `?${qs}` : ''}`)
   },
-  getAthenaOptimization: (id: string) =>
-    request<AthenaOptimization>(`/projects/${id}/athena/optimization`),
+  getAthenaOptimization: (id: string, params?: AthenaOptimizationQuery) => {
+    const query = athenaOptimizationQuery(params)
+    const qs = query.toString()
+    return request<AthenaOptimization>(`/projects/${id}/athena/optimization${qs ? `?${qs}` : ''}`)
+  },
   getAthenaEvolutionProposals: (id: string, params?: { offset?: number; limit?: number; bundle_status?: string; item_status?: string }) => {
     const query = new URLSearchParams()
     if (params?.offset !== undefined) query.set('offset', String(params.offset))

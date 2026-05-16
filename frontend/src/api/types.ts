@@ -974,4 +974,13 @@ export interface AthenaOptimization {
     summary: string
     created_at: string
   }[]
+  rules_total?: number
+  rules_offset?: number
+  rules_limit?: number
+  rules_has_more?: boolean
+}
+
+export interface AthenaOptimizationQuery {
+  rules_offset?: number
+  rules_limit?: number
 }

@@ -1,3 +1,5 @@
+from datetime import UTC, datetime, timedelta
+
 from app.core.self_optimization import apply_revision_optimization
 from app.models import Project, PromptRule
 
@@ -61,3 +63,34 @@ def test_athena_optimization_endpoint_returns_rules_and_learning_logs(client, db
     assert data["style_config"]["description_density"] == 2
     assert data["rules"][0]["condition"] == "用户反馈节奏太慢"
     assert data["learning_logs"][0]["rule_id"] == data["rules"][0]["id"]
+
+
+def test_athena_optimization_endpoint_returns_bounded_rule_window(client, db_session):
+    project = Project(name="Optimization Scale", style_config={})
+    db_session.add(project)
+    db_session.commit()
+    base_time = datetime(2026, 1, 1, tzinfo=UTC)
+    db_session.add_all([
+        PromptRule(
+            project_id=project.id,
+            rule_type="learned",
+            condition=f"规则 {index}",
+            action=f"动作 {index}",
+            priority=index,
+            created_at=base_time + timedelta(minutes=index),
+        )
+        for index in range(130)
+    ])
+    db_session.commit()
+
+    response = client.get(f"/api/v1/projects/{project.id}/athena/optimization")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["rules"]) == 100
+    assert len(data["learning_logs"]) == 100
+    assert data["rules_total"] == 130
+    assert data["rules_offset"] == 0
+    assert data["rules_limit"] == 100
+    assert data["rules_has_more"] is True
+    assert data["rules"][0]["condition"] == "规则 129"
