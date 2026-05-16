@@ -701,6 +701,72 @@ describe('worldModel store', () => {
     expect(store.loadingMoreProposalReviewQueue).toBe(false)
   })
 
+  it('loadMoreProposalReviewQueue() 会合并跨窗口拆开的同一审阅簇', async () => {
+    const firstQueue = {
+      project_id: 'project-1',
+      profile_version: 1,
+      total_items: 2,
+      returned_items: 1,
+      offset: 0,
+      limit: 200,
+      has_more: true,
+      clusters: [
+        {
+          cluster_id: 'low:presence_count:chapter',
+          risk_level: 'low',
+          review_mode: 'batch',
+          candidate_count: 1,
+          item_ids: ['item-1'],
+          bundle_ids: ['bundle-1'],
+          subject_refs: ['char.hero'],
+          predicate: 'presence_count',
+          chapter_range: { start: 1, end: 1 },
+          reason: '出场统计可批量审阅。',
+        },
+      ],
+    }
+    const secondQueue = {
+      project_id: 'project-1',
+      profile_version: 1,
+      total_items: 2,
+      returned_items: 1,
+      offset: 1,
+      limit: 200,
+      has_more: false,
+      clusters: [
+        {
+          cluster_id: 'low:presence_count:chapter',
+          risk_level: 'low',
+          review_mode: 'batch',
+          candidate_count: 1,
+          item_ids: ['item-2'],
+          bundle_ids: ['bundle-2'],
+          subject_refs: ['char.sidekick'],
+          predicate: 'presence_count',
+          chapter_range: { start: 2, end: 2 },
+          reason: '出场统计可批量审阅。',
+        },
+      ],
+    }
+    vi.mocked(api.getWorldProposalReviewQueue).mockResolvedValueOnce(secondQueue)
+    const store = useWorldModelStore()
+    store.resetProjectScopedState('project-1')
+    store.proposalReviewQueue = firstQueue
+
+    await store.loadMoreProposalReviewQueue('project-1')
+
+    expect(api.getWorldProposalReviewQueue).toHaveBeenCalledWith('project-1', { offset: 1, limit: 200 })
+    expect(store.proposalReviewQueue?.clusters).toHaveLength(1)
+    expect(store.proposalReviewQueue?.clusters[0]).toMatchObject({
+      cluster_id: 'low:presence_count:chapter',
+      candidate_count: 2,
+      item_ids: ['item-1', 'item-2'],
+      bundle_ids: ['bundle-1', 'bundle-2'],
+      subject_refs: ['char.hero', 'char.sidekick'],
+      chapter_range: { start: 1, end: 2 },
+    })
+  })
+
   it('reviewProposalItem() 会执行审批并刷新 bundles 和当前 detail', async () => {
     const store = useWorldModelStore()
     store.projectProfile = createOverview('lieutenant').project_profile

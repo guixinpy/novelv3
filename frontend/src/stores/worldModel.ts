@@ -50,6 +50,8 @@ interface PendingActionCounts {
   [itemId: string]: number
 }
 
+type ProposalReviewQueueCluster = ProposalReviewQueue['clusters'][number]
+
 export const useWorldModelStore = defineStore('worldModel', () => {
   const projectProfile = ref<ProjectProfileVersion | null>(null)
   const projection = ref<WorldProjection | null>(null)
@@ -638,6 +640,52 @@ export const useWorldModelStore = defineStore('worldModel', () => {
     }
   }
 
+  function uniqueStrings(values: string[]) {
+    return Array.from(new Set(values))
+  }
+
+  function mergeChapterRange(
+    current: ProposalReviewQueueCluster['chapter_range'],
+    next: ProposalReviewQueueCluster['chapter_range'],
+  ) {
+    const starts = [current.start, next.start].filter((value): value is number => value !== null)
+    const ends = [current.end, next.end].filter((value): value is number => value !== null)
+    return {
+      start: starts.length ? Math.min(...starts) : null,
+      end: ends.length ? Math.max(...ends) : null,
+    }
+  }
+
+  function mergeProposalReviewQueueClusters(clusters: ProposalReviewQueueCluster[]) {
+    const merged: ProposalReviewQueueCluster[] = []
+    const indexByClusterId = new Map<string, number>()
+    for (const cluster of clusters) {
+      const existingIndex = indexByClusterId.get(cluster.cluster_id)
+      if (existingIndex === undefined) {
+        indexByClusterId.set(cluster.cluster_id, merged.length)
+        merged.push({
+          ...cluster,
+          item_ids: uniqueStrings(cluster.item_ids),
+          bundle_ids: uniqueStrings(cluster.bundle_ids),
+          subject_refs: uniqueStrings(cluster.subject_refs),
+        })
+        continue
+      }
+
+      const existing = merged[existingIndex]
+      const itemIds = uniqueStrings([...existing.item_ids, ...cluster.item_ids])
+      merged[existingIndex] = {
+        ...existing,
+        candidate_count: itemIds.length || existing.candidate_count + cluster.candidate_count,
+        item_ids: itemIds,
+        bundle_ids: uniqueStrings([...existing.bundle_ids, ...cluster.bundle_ids]),
+        subject_refs: uniqueStrings([...existing.subject_refs, ...cluster.subject_refs]),
+        chapter_range: mergeChapterRange(existing.chapter_range, cluster.chapter_range),
+      }
+    }
+    return merged
+  }
+
   function mergeProposalReviewQueue(current: ProposalReviewQueue, page: ProposalReviewQueue): ProposalReviewQueue {
     const normalizedCurrent = normalizeProposalReviewQueue(current)
     const normalizedPage = normalizeProposalReviewQueue(page)
@@ -646,10 +694,10 @@ export const useWorldModelStore = defineStore('worldModel', () => {
       offset: normalizedCurrent.offset,
       limit: normalizedPage.limit ?? normalizedCurrent.limit,
       returned_items: proposalReviewQueueReturnedItems(normalizedCurrent) + proposalReviewQueueReturnedItems(normalizedPage),
-      clusters: [
+      clusters: mergeProposalReviewQueueClusters([
         ...normalizedCurrent.clusters,
         ...normalizedPage.clusters,
-      ],
+      ]),
     }
   }
 
