@@ -29,6 +29,7 @@ from app.schemas import ProjectWorldOverviewOut, WorldProjectionOut
 WorldProjectionViewType = Literal["current_truth", "subject_knowledge", "chapter_snapshot"]
 WorldProjectionCacheKey = tuple[str, str, int, WorldProjectionViewType, str | None, int | None]
 WORLD_PROJECTION_CACHE_MAX_ENTRIES = 128
+WORLD_PROJECTION_CACHE_MAX_ITEMS = 5000
 _projection_cache: OrderedDict[WorldProjectionCacheKey, ProjectWorldOverviewOut] = OrderedDict()
 
 
@@ -74,6 +75,8 @@ def build_world_projection_overview(
         project_profile=profile,
         projection=WorldProjectionOut(view_type=view_type, **projection),
     )
+    if _projection_cache_item_count(overview) > WORLD_PROJECTION_CACHE_MAX_ITEMS:
+        return overview
     _projection_cache[cache_key] = overview
     _projection_cache.move_to_end(cache_key)
     while len(_projection_cache) > WORLD_PROJECTION_CACHE_MAX_ENTRIES:
@@ -92,6 +95,27 @@ def invalidate_world_projection_cache(project_id: str | None = None) -> None:
 
 def clear_world_projection_cache() -> None:
     invalidate_world_projection_cache()
+
+
+def _projection_cache_item_count(overview: ProjectWorldOverviewOut) -> int:
+    projection = overview.projection
+    if projection is None:
+        return 0
+    return (
+        len(projection.entities)
+        + len(projection.relations)
+        + len(projection.presence)
+        + len(projection.occurred_events)
+        + len(projection.event_links)
+        + _fact_item_count(projection.facts)
+    )
+
+
+def _fact_item_count(facts: dict) -> int:
+    count = 0
+    for values in facts.values():
+        count += len(values) if isinstance(values, dict) else 1
+    return count
 
 
 def _projection_cache_key(

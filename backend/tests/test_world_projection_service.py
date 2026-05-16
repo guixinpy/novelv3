@@ -401,6 +401,37 @@ def test_projection_service_reuses_local_projection_cache(monkeypatch, db_sessio
     assert load_count == 1
 
 
+def test_projection_service_skips_local_cache_for_oversized_projection(monkeypatch, db_session):
+    project, profile = _seed_world(db_session)
+    world_projection_service.clear_world_projection_cache()
+    monkeypatch.setattr(world_projection_service, "WORLD_PROJECTION_CACHE_MAX_ITEMS", 1)
+    load_count = 0
+    original_loader = world_projection_service.load_world_projection_source
+
+    def counting_loader(**kwargs):
+        nonlocal load_count
+        load_count += 1
+        return original_loader(**kwargs)
+
+    monkeypatch.setattr(world_projection_service, "load_world_projection_source", counting_loader)
+
+    first = build_world_projection_overview(
+        db=db_session,
+        project_id=project.id,
+        profile=profile,
+        view_type="current_truth",
+    )
+    second = build_world_projection_overview(
+        db=db_session,
+        project_id=project.id,
+        profile=profile,
+        view_type="current_truth",
+    )
+
+    assert first.projection.facts == second.projection.facts
+    assert load_count == 2
+
+
 def test_projection_service_evicts_old_entries_when_local_cache_is_full(monkeypatch, db_session):
     project, profile = _seed_world(db_session)
     world_projection_service.clear_world_projection_cache()
