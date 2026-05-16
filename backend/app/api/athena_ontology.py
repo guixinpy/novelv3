@@ -298,6 +298,11 @@ def get_ontology_character_graph(
 
 
 @router.get("/ontology/topology-timeline")
-def get_ontology_topology_timeline(project_id: str, db: Session = Depends(get_db)):
+def get_ontology_topology_timeline(
+    project_id: str,
+    db: Session = Depends(get_db),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(DEFAULT_ONTOLOGY_TOPOLOGY_NODE_LIMIT, ge=1, le=1000),
+):
     from app.api.topologies import timeline
-    return timeline(project_id, db)
+    return timeline(project_id=project_id, db=db, response=None, offset=offset, limit=limit)
