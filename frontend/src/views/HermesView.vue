@@ -40,6 +40,8 @@ type UiAwareResponse =
   | Pick<ChatResponse, 'ui_hint' | 'refresh_targets'>
   | Pick<ResolveActionResponse, 'ui_hint' | 'refresh_targets'>
 
+type WritingControlAction = 'start' | 'pause' | 'resume'
+
 const route = useRoute()
 const router = useRouter()
 const project = useProjectStore()
@@ -58,6 +60,7 @@ const showExportModal = ref(false)
 const showVersionsModal = ref(false)
 const handledRevisionIds = ref(new Set<string>())
 const activeTraceId = ref<string | null>(null)
+const writingControlLoading = ref(false)
 
 // Project stats
 const totalWords = computed(() => {
@@ -285,6 +288,27 @@ async function onDashboardTool(tool: 'manuscript' | 'versions' | 'export') {
   showExportModal.value = true
 }
 
+async function onWritingControl(action: WritingControlAction) {
+  if (writingControlLoading.value) return
+  writingControlLoading.value = true
+  try {
+    if (action === 'pause') {
+      workspace.applyUserPanel('content', '你暂停了连续写作')
+      await project.pauseWriting(pid.value)
+      return
+    }
+    if (action === 'resume') {
+      workspace.applyUserPanel('content', '你继续连续写作')
+      await project.resumeWriting(pid.value)
+      return
+    }
+    workspace.applyUserPanel('content', '你开始连续写作')
+    await project.startWriting(pid.value)
+  } finally {
+    writingControlLoading.value = false
+  }
+}
+
 async function onFilterVersions(type: string) {
   const snapshot = currentHydrationSnapshot()
   const reason = type
@@ -349,7 +373,9 @@ function closeTrace() {
           :latest-action-status="latestActionStatus"
           :suggested-next-step="suggestedNextStep"
           :writing-state="project.writingState"
+          :writing-control-loading="writingControlLoading"
           @tool="onDashboardTool"
+          @writing-control="onWritingControl"
         />
         <button
           v-if="selectedChapterTraceId"

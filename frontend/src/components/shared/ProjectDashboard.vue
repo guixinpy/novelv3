@@ -15,10 +15,12 @@ const props = defineProps<{
   latestActionStatus?: string | null
   suggestedNextStep?: string | null
   writingState?: WritingState | null
+  writingControlLoading?: boolean
 }>()
 
 const emit = defineEmits<{
   tool: [tool: 'manuscript' | 'versions' | 'export']
+  'writing-control': [action: 'start' | 'pause' | 'resume']
 }>()
 
 type StageCard = {
@@ -156,6 +158,19 @@ const writingChapterLabel = computed(() => {
   return chapter > 0 ? `第${chapter}章` : '未开始'
 })
 
+const writingControl = computed(() => {
+  switch (props.writingState?.status) {
+    case 'running':
+      return { action: 'pause' as const, label: '暂停' }
+    case 'paused':
+      return { action: 'resume' as const, label: '继续' }
+    case 'failed':
+      return { action: 'start' as const, label: '重试' }
+    default:
+      return { action: 'start' as const, label: '开始' }
+  }
+})
+
 const totalWordsLabel = computed(() => props.totalWords >= 10000 ? `${(props.totalWords / 10000).toFixed(1)}万` : props.totalWords)
 </script>
 
@@ -211,6 +226,17 @@ const totalWordsLabel = computed(() => props.totalWords >= 10000 ? `${(props.tot
           <span class="dashboard__status" :class="writingStatusClass">{{ writingStatusLabel }}</span>
         </div>
         <p v-if="writingState.last_error" class="dashboard__next">{{ writingState.last_error }}</p>
+        <div class="dashboard__writing-actions">
+          <button
+            type="button"
+            class="dashboard__writing-control"
+            data-testid="dashboard-writing-control"
+            :disabled="writingControlLoading"
+            @click="emit('writing-control', writingControl.action)"
+          >
+            {{ writingControlLoading ? '处理中' : writingControl.label }}
+          </button>
+        </div>
       </div>
     </section>
 
@@ -387,6 +413,33 @@ const totalWordsLabel = computed(() => props.totalWords >= 10000 ? `${(props.tot
   font-size: var(--text-xs);
   color: var(--color-text-secondary);
   line-height: var(--leading-snug);
+}
+
+.dashboard__writing-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--space-2);
+}
+
+.dashboard__writing-control {
+  min-width: 4.25rem;
+  padding: 0.32rem 0.7rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-white);
+  color: var(--color-text-primary);
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+}
+
+.dashboard__writing-control:hover:not(:disabled) {
+  border-color: var(--color-brand);
+  color: var(--color-brand);
+}
+
+.dashboard__writing-control:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
 }
 
 .dashboard__tool {

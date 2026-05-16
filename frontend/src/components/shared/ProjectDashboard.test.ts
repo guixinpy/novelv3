@@ -176,4 +176,65 @@ describe('ProjectDashboard', () => {
     expect(wrapper.text()).toContain('需处理')
     expect(wrapper.text()).toContain('模型调用超时')
   })
+
+  it('emits writing control actions from current writing status', async () => {
+    const wrapper = mount(ProjectDashboard, {
+      props: {
+        setup: null,
+        storyline: null,
+        outline: null,
+        chapters: [],
+        totalWords: 0,
+        writingState: {
+          project_id: 'project-1',
+          current_chapter: 37,
+          status: 'idle',
+          last_error: null,
+        },
+      },
+    })
+
+    expect(wrapper.get('[data-testid="dashboard-writing-control"]').text()).toContain('开始')
+    await wrapper.get('[data-testid="dashboard-writing-control"]').trigger('click')
+
+    await wrapper.setProps({
+      writingState: {
+        project_id: 'project-1',
+        current_chapter: 37,
+        status: 'running',
+        last_error: null,
+      },
+    })
+    expect(wrapper.get('[data-testid="dashboard-writing-control"]').text()).toContain('暂停')
+    await wrapper.get('[data-testid="dashboard-writing-control"]').trigger('click')
+
+    await wrapper.setProps({
+      writingState: {
+        project_id: 'project-1',
+        current_chapter: 37,
+        status: 'paused',
+        last_error: null,
+      },
+    })
+    expect(wrapper.get('[data-testid="dashboard-writing-control"]').text()).toContain('继续')
+    await wrapper.get('[data-testid="dashboard-writing-control"]').trigger('click')
+
+    await wrapper.setProps({
+      writingState: {
+        project_id: 'project-1',
+        current_chapter: 37,
+        status: 'failed',
+        last_error: '模型调用超时',
+      },
+    })
+    expect(wrapper.get('[data-testid="dashboard-writing-control"]').text()).toContain('重试')
+    await wrapper.get('[data-testid="dashboard-writing-control"]').trigger('click')
+
+    expect(wrapper.emitted('writing-control')).toEqual([
+      ['start'],
+      ['pause'],
+      ['resume'],
+      ['start'],
+    ])
+  })
 })
