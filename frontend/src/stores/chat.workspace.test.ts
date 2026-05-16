@@ -254,6 +254,67 @@ describe('chat workspace polling', () => {
     expect(store.messages.some((message) => message.content === '后台任务失败：DeepSeek timeout')).toBe(true)
   })
 
+  it('从历史恢复带 task_id 的运行中操作时直接轮询后台任务状态', async () => {
+    const store = useChatStore()
+    vi.mocked(api.getBackgroundTask).mockResolvedValue({
+      task_id: 'task-recovered',
+      task_type: 'generate_outline',
+      status: 'failed',
+      result: null,
+      error: 'Task interrupted by local process restart',
+      ui_hint: null as any,
+      refresh_targets: ['outline'],
+      created_at: null,
+      started_at: null,
+      finished_at: null,
+    })
+    vi.mocked(api.getMessages)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+    vi.mocked(api.getDiagnosis).mockResolvedValue({
+      missing_items: ['outline'],
+      completed_items: ['setup'],
+      suggested_next_step: 'preview_outline',
+    })
+
+    store.initFromWorkspaceBootstrap('project-1', {
+      project: { id: 'project-1', name: '项目' },
+      diagnosis: { missing_items: ['outline'], completed_items: ['setup'], suggested_next_step: 'preview_outline' },
+      chapters: [],
+      versions: [],
+      dialogs: {
+        hermes: {
+          messages: [
+            {
+              id: 'm-running',
+              role: 'system',
+              content: '操作已确认，正在生成中...',
+              message_type: null,
+              meta: null,
+              pending_action: null,
+              diagnosis: null,
+              action_result: {
+                type: 'generate_outline',
+                status: 'generating',
+                data: { status: 'generating', task_id: 'task-recovered' },
+              },
+              trace_id: null,
+              created_at: '2026-05-16T00:00:00Z',
+            },
+          ],
+        },
+      },
+    } as any)
+    for (let index = 0; index < 20; index += 1) {
+      await Promise.resolve()
+    }
+
+    expect(api.getBackgroundTask).toHaveBeenCalledWith('task-recovered', { compact: true })
+    expect(api.getMessages).toHaveBeenCalledWith('project-1', 'hermes', { after_id: 'm-running' })
+    expect(store.messages.some((message) => message.content.includes('Task interrupted'))).toBe(true)
+    expect(store.loading).toBe(false)
+  })
+
   it('有历史 id 时命令确认后的任务轮询不会重复追加已乐观显示的命令消息', async () => {
     const store = useChatStore()
     store.initFromWorkspaceBootstrap('project-1', {

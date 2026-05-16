@@ -77,7 +77,7 @@ function taskFailureMessage(task: BackgroundTaskResponse) {
   return error ? `后台任务失败：${error}` : '后台任务失败，请稍后刷新重试。'
 }
 
-function findRecoverableRunningActionType(history: ChatHistoryMessage[] | null | undefined) {
+function findRecoverableRunningAction(history: ChatHistoryMessage[] | null | undefined) {
   if (!history?.length) return null
   const finishedActionTypes = new Set<string>()
   for (let index = history.length - 1; index >= 0; index -= 1) {
@@ -90,7 +90,10 @@ function findRecoverableRunningActionType(history: ChatHistoryMessage[] | null |
       continue
     }
     if (['running', 'generating'].includes(actionStatus) && !finishedActionTypes.has(actionType)) {
-      return actionType
+      return {
+        actionType,
+        taskId: getActionTaskId(actionResult),
+      }
     }
   }
   return null
@@ -162,10 +165,14 @@ export const useChatStore = defineStore('chat', () => {
     historyCursor.value = history?.length || 0
     lastHistoryMessageId.value = history?.length ? history[history.length - 1]?.id || null : null
     hasLocalUnsyncedMessages.value = false
-    const runningActionType = restoredPendingAction ? null : findRecoverableRunningActionType(history)
-    if (runningActionType) {
+    const runningAction = restoredPendingAction ? null : findRecoverableRunningAction(history)
+    if (runningAction) {
       loading.value = true
-      void pollForCompletion(runningActionType, pidSnapshot, versionSnapshot)
+      if (runningAction.taskId) {
+        void pollTaskCompletion(runningAction.taskId, runningAction.actionType, pidSnapshot, versionSnapshot)
+      } else {
+        void pollForCompletion(runningAction.actionType, pidSnapshot, versionSnapshot)
+      }
     }
     return true
   }
