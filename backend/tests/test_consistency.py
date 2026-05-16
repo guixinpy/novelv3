@@ -9,6 +9,7 @@ from app.models import (
     GenreProfile,
     Project,
     ProjectProfileVersion,
+    Setup,
     WorldEvent,
     WorldTimelineAnchor,
 )
@@ -37,6 +38,60 @@ def test_consistency_check_detects_dead_character(client):
     assert r2.status_code == 200
     issues = r2.json()["issues"]
     assert any(i["checker_name"] == "CharacterStateChecker" for i in issues)
+
+
+def test_consistency_check_uses_setup_character_projection_without_selecting_full_setup_json(client, db_session):
+    project = Project(name="Consistency Setup Projection")
+    db_session.add(project)
+    db_session.flush()
+    db_session.add(
+        Setup(
+            project_id=project.id,
+            status="generated",
+            world_building={"rules": "长世界规则" * 1000},
+            characters=[
+                {
+                    "name": "林舟",
+                    "character_status": "dead",
+                    "bio": "超长人物背景" * 5000,
+                }
+            ],
+            core_concept={"hook": "旧灯塔" * 1000},
+        )
+    )
+    db_session.add(
+        ChapterContent(
+            project_id=project.id,
+            chapter_index=1,
+            title="第一章",
+            content="林舟在旧灯塔下出现。",
+            status="generated",
+        )
+    )
+    db_session.commit()
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        response = client.post(f"/api/v1/projects/{project.id}/consistency/chapters/1/check")
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert response.status_code == 200
+    assert any(issue["subject"] == "林舟" for issue in response.json()["issues"])
+    setup_select_clauses = [
+        statement.split(" from setups", 1)[0]
+        for statement in statements
+        if " from setups" in statement
+    ]
+    assert setup_select_clauses
+    assert any("json_each(setups.characters)" in statement for statement in statements)
+    assert all("setups.world_building as setups_world_building" not in clause for clause in setup_select_clauses)
+    assert all("setups.characters as setups_characters" not in clause for clause in setup_select_clauses)
+    assert all("setups.core_concept as setups_core_concept" not in clause for clause in setup_select_clauses)
 
 
 def test_list_issues(client):

@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.api.athena_shared import get_current_profile
 from app.api.deprecation import add_deprecation_header
 from app.core.consistency_checker import ConsistencyChecker
+from app.core.setup_projection import get_setup_character_projection
 from app.core.world_checker_registry import CheckerIssue, run_checks_for_project_profile
 from app.db import get_db
 from app.models import (
@@ -14,11 +15,11 @@ from app.models import (
     ChapterContent,
     ConsistencyCheck,
     Project,
-    Setup,
     WorldEvent,
     WorldEvidence,
     WorldFactClaim,
 )
+from app.prompting.providers.storyline import SetupContextSnapshot
 from app.schemas import ConsistencyIssueListResponse
 from app.services.tasks.background_task_service import BackgroundTaskService
 from app.services.tasks.local_task_runner import LocalTaskRunner
@@ -70,8 +71,12 @@ async def run_check(project_id: str, chapter_index: int, depth: str = "l1", db: 
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
     else:
-        setup = db.query(Setup).filter(Setup.project_id == project_id).first()
         checker = ConsistencyChecker()
+        setup = SetupContextSnapshot(
+            world_building={},
+            characters=get_setup_character_projection(db, project_id),
+            core_concept={},
+        )
         issues = checker.check(project_id, chapter, setup)
 
     db.query(ConsistencyCheck).filter(
