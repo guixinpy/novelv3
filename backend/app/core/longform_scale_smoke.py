@@ -95,11 +95,7 @@ def run_longform_scale_smoke(
         "total_words": total_words,
         "memory": memory_report,
         "retrieval": retrieval_report,
-        "context": {
-            "section_keys": [section["key"] for section in context_package["sections"]],
-            "section_count": len(context_package["sections"]),
-            "prompt_context_chars": len(context_package["prompt_context"]),
-        },
+        "context": _compact_context_package(context_package, target_chapter_index=target),
         "narrative_plan": _compact_narrative_plan_window(narrative_plan),
         "dialog_planning_context": _compact_context_block(dialog_planning_context),
         "task": {
@@ -111,6 +107,55 @@ def run_longform_scale_smoke(
         "elapsed_ms": elapsed_ms,
         "repeat_reindex": repeat_reindex_report,
     }
+
+
+def _compact_context_package(context_package: dict[str, Any], *, target_chapter_index: int) -> dict[str, Any]:
+    sections = context_package.get("sections") or []
+    query_section = next(
+        (section for section in sections if section.get("key") == "query_aware_retrieval"),
+        None,
+    )
+    query_items = list((query_section or {}).get("items") or [])
+    chapter_indexes = [
+        int(item["chapter_index"])
+        for item in query_items
+        if item.get("chapter_index") is not None
+    ]
+    source_types = sorted(
+        {
+            str(item.get("source_type"))
+            for item in query_items
+            if str(item.get("source_type") or "").strip()
+        }
+    )
+    out_of_range_count = sum(
+        1
+        for chapter_index in chapter_indexes
+        if chapter_index > max(target_chapter_index - 1, 0)
+    )
+    return {
+        "section_keys": [section["key"] for section in sections],
+        "section_count": len(sections),
+        "prompt_context_chars": len(context_package.get("prompt_context") or ""),
+        "query_aware_retrieval_item_count": len(query_items),
+        "query_aware_retrieval_source_types": source_types,
+        "query_aware_retrieval_max_chapter_index": max(chapter_indexes) if chapter_indexes else None,
+        "query_aware_retrieval_has_explanations": _query_items_have_explanations(query_items),
+        "query_aware_retrieval_out_of_range_count": out_of_range_count,
+    }
+
+
+def _query_items_have_explanations(items: list[dict[str, Any]]) -> bool:
+    if not items:
+        return False
+    for item in items:
+        metadata = item.get("metadata") or {}
+        explanation = metadata.get("explanation") if isinstance(metadata, dict) else None
+        if not isinstance(explanation, dict):
+            return False
+        if not all(explanation.get(field) for field in ["source_label", "chapter_range", "reason"]):
+            return False
+    return True
 
 
 def _compact_context_block(block: dict[str, Any] | None) -> dict[str, Any]:

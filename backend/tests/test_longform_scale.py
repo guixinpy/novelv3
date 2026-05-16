@@ -945,6 +945,10 @@ def test_longform_scale_smoke_reports_memory_retrieval_and_resume_progress(db_se
     assert report["repeat_reindex"]["preserved_documents"] == report["retrieval"]["total_documents"]
     assert report["repeat_reindex"]["removed_documents"] == 0
     assert "query_aware_retrieval" in report["context"]["section_keys"]
+    assert report["context"]["query_aware_retrieval_item_count"] > 0
+    assert set(report["context"]["query_aware_retrieval_source_types"]) <= {"chapter", "longform_memory", "world_fact"}
+    assert report["context"]["query_aware_retrieval_max_chapter_index"] <= 119
+    assert report["context"]["query_aware_retrieval_has_explanations"] is True
     assert report["dialog_planning_context"]["available"] is True
     assert report["dialog_planning_context"]["kind"] == "narrative_planning_summary"
     assert report["dialog_planning_context"]["content_chars"] <= 6000
@@ -1138,6 +1142,36 @@ def test_longform_scale_smoke_cli_fails_when_repeat_reindex_writes_documents(mon
     assert exit_code == 1
     assert "repeat_reindex indexed 1 documents; expected 0" in captured.err
     assert "repeat_reindex preserved 9 documents; expected 10" in captured.err
+
+
+def test_longform_scale_smoke_cli_fails_without_query_aware_retrieval_evidence(monkeypatch, capsys):
+    script_path = Path(__file__).resolve().parents[2] / "scripts" / "longform_scale_smoke.py"
+    spec = importlib.util.spec_from_file_location("longform_scale_smoke_cli", script_path)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    def fake_run_smoke_report(_args):
+        return {
+            "project_id": "project-smoke-context",
+            "elapsed_ms": 100,
+            "timings_ms": {},
+            "context": {
+                "section_keys": ["global", "query_aware_retrieval"],
+                "query_aware_retrieval_item_count": 0,
+                "query_aware_retrieval_has_explanations": False,
+            },
+        }
+
+    monkeypatch.setattr(module, "_run_smoke_report", fake_run_smoke_report, raising=False)
+
+    exit_code = module.main([])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "query_aware_retrieval returned 0 items; expected at least 1" in captured.err
+    assert "query_aware_retrieval explanations missing" in captured.err
 
 
 def test_longform_scale_smoke_cli_rejects_invalid_stage_threshold_before_running(monkeypatch):

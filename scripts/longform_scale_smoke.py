@@ -123,6 +123,20 @@ def _threshold_failures(
             failures.append(
                 f"repeat_reindex preserved {preserved_documents} documents; expected {expected_preserved}"
             )
+    context = report.get("context") or {}
+    if context:
+        retrieval_item_count = int(context.get("query_aware_retrieval_item_count") or 0)
+        if retrieval_item_count < 1:
+            failures.append(
+                f"query_aware_retrieval returned {retrieval_item_count} items; expected at least 1"
+            )
+        if not context.get("query_aware_retrieval_has_explanations"):
+            failures.append("query_aware_retrieval explanations missing")
+        out_of_range_count = int(context.get("query_aware_retrieval_out_of_range_count") or 0)
+        if out_of_range_count:
+            failures.append(
+                f"query_aware_retrieval included {out_of_range_count} future/out-of-range items"
+            )
     return failures
 
 
