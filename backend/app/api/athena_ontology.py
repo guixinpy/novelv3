@@ -35,7 +35,7 @@ def get_ontology(
 ):
     require_project(db, project_id)
     profile = get_current_profile(db, project_id)
-    setup = db.query(Setup).filter(Setup.project_id == project_id).first()
+    setup = None if profile else db.query(Setup).filter(Setup.project_id == project_id).first()
 
     entities = {}
     pagination = {

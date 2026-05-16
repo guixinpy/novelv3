@@ -773,6 +773,48 @@ def test_athena_ontology_counts_do_not_select_large_json_columns(client, db_sess
     assert all("world_rules.exceptions" not in statement for statement in count_statements)
 
 
+def test_athena_ontology_with_profile_does_not_select_setup_json(client, db_session):
+    project, profile_version = _seed_profile(db_session)
+    db_session.add_all([
+        Setup(
+            project_id=project.id,
+            status="generated",
+            characters=[{"name": f"角色{index}", "description": "长角色设定" * 100} for index in range(100)],
+            world_building={"rules": "长世界规则" * 1000},
+            core_concept={"summary": "长核心概念" * 1000},
+        ),
+        WorldCharacter(
+            project_id=project.id,
+            profile_version=profile_version.version,
+            character_id="character-profile",
+            canonical_id="char.profile",
+            name="已入库角色",
+            role_type="supporting",
+            identity_anchor="已入库角色",
+            contract_version=profile_version.contract_version,
+        ),
+    ])
+    db_session.commit()
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        response = client.get(f"/api/v1/projects/{project.id}/athena/ontology?entity_limit=1")
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["profile_version"] == profile_version.version
+    assert payload["setup_summary"] is None
+    assert [item["canonical_id"] for item in payload["entities"]["characters"]] == ["char.profile"]
+    setup_selects = [statement for statement in statements if " from setups" in statement]
+    assert setup_selects == []
+
+
 def test_subject_knowledge_persists_belief_claims_approved_from_proposals(client, db_session):
     project, profile_version = _seed_profile(db_session)
     bundle = create_bundle(
