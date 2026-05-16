@@ -86,7 +86,7 @@ def reindex_project_retrieval(db: Session, project_id: str) -> dict[str, Any]:
     }
     seen_document_ids: set[str] = set()
     stale_document_ids: set[str] = set()
-    sources_to_index: list[RetrievalSource] = []
+    source_keys_to_index: set[tuple[str, str]] = set()
     preserved_documents = 0
 
     for source in _project_sources(db, project_id):
@@ -108,7 +108,7 @@ def reindex_project_retrieval(db: Session, project_id: str) -> dict[str, Any]:
             continue
         if existing is not None:
             stale_document_ids.add(existing.id)
-        sources_to_index.append(source)
+        source_keys_to_index.add((source.source_type, source.source_id))
 
     stale_document_ids.update(
         document.id
@@ -116,7 +116,7 @@ def reindex_project_retrieval(db: Session, project_id: str) -> dict[str, Any]:
         if document.id not in seen_document_ids
     )
     _delete_documents_by_ids(db, sorted(stale_document_ids))
-    indexed = _index_sources(db, project_id, sources_to_index)
+    indexed = _index_sources(db, project_id, _project_sources_by_key(db, project_id, source_keys_to_index))
     db.commit()
     return {
         "status": "completed",
@@ -642,6 +642,18 @@ def _project_sources(db: Session, project_id: str) -> Iterator[RetrievalSource]:
     )
     for fact in facts:
         yield _fact_source(fact)
+
+
+def _project_sources_by_key(
+    db: Session,
+    project_id: str,
+    source_keys: set[tuple[str, str]],
+) -> Iterator[RetrievalSource]:
+    if not source_keys:
+        return
+    for source in _project_sources(db, project_id):
+        if (source.source_type, source.source_id) in source_keys:
+            yield source
 
 
 def sync_fact_retrieval_document(db: Session, *, fact: WorldFactClaim) -> dict[str, int]:

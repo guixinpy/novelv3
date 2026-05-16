@@ -951,6 +951,42 @@ def test_reindex_uses_configured_write_batches_for_many_sources(db_session, monk
     assert sum(document_insert_calls) == 250
 
 
+def test_reindex_streams_pending_sources_to_indexer(db_session, monkeypatch):
+    import app.core.athena_retrieval as athena_retrieval
+
+    project = Project(name="Retrieval Streaming")
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    db_session.add_all(
+        [
+            ChapterContent(
+                project_id=project.id,
+                chapter_index=index,
+                title=f"第{index}章",
+                content=f"第{index}章，星环钥匙线索推进。" * 200,
+                word_count=2000,
+                status="generated",
+            )
+            for index in range(1, 4)
+        ]
+    )
+    db_session.commit()
+    original_index_sources = athena_retrieval._index_sources
+    received_is_list: list[bool] = []
+
+    def assert_streaming_sources(db, project_id, sources):
+        received_is_list.append(isinstance(sources, list))
+        return original_index_sources(db, project_id, sources)
+
+    monkeypatch.setattr(athena_retrieval, "_index_sources", assert_streaming_sources)
+
+    result = reindex_project_retrieval(db_session, project.id)
+
+    assert received_is_list == [False]
+    assert result["indexed"]["documents"] == 3
+
+
 def test_reindex_flushes_write_batch_when_term_rows_reach_guard(db_session, monkeypatch):
     import app.core.athena_retrieval as athena_retrieval
 
