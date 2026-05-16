@@ -5,6 +5,7 @@ from app.core.embedding_service import LocalHashEmbeddingProvider, get_embedding
 from app.core.athena_retrieval import (
     RetrievalSource,
     _index_sources,
+    _chapter_context_query,
     _project_sources,
     index_chapter_retrieval,
     reindex_project_retrieval,
@@ -33,6 +34,44 @@ def test_embedding_provider_defaults_to_local_without_explicit_remote_mode(monke
     provider = get_embedding_provider()
 
     assert provider.provider_name == "local"
+
+
+def test_chapter_context_fallback_projects_previous_chapter_preview(db_session):
+    project = Project(name="Retrieval fallback")
+    db_session.add(project)
+    db_session.flush()
+    previous_content = "上一章正文" * 200
+    db_session.add(
+        ChapterContent(
+            project_id=project.id,
+            chapter_index=4,
+            title="上一章",
+            content=previous_content,
+            word_count=len(previous_content),
+            status="generated",
+        )
+    )
+    db_session.commit()
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        query = _chapter_context_query(db_session, project.id, 5)
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert query == previous_content[:500]
+    chapter_selects = [
+        statement.split(" from chapter_contents", 1)[0]
+        for statement in statements
+        if " from chapter_contents" in statement
+    ]
+    assert chapter_selects
+    assert any("substr(chapter_contents.content" in statement for statement in statements)
+    assert all("chapter_contents.content as" not in clause for clause in chapter_selects)
 
 
 def test_local_hash_embedding_hashes_repeated_tokens_once(monkeypatch):

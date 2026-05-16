@@ -36,6 +36,7 @@ CHUNK_OVERLAP_CHARS = 120
 INDEX_WRITE_BATCH_SOURCES = 500
 INDEX_WRITE_BATCH_MAX_TERMS = 50_000
 RETRIEVAL_EMBEDDING_BATCH_SIZE = 64
+CHAPTER_CONTEXT_PREVIEW_CHARS = 500
 
 
 @dataclass(frozen=True)
@@ -1039,13 +1040,13 @@ def _chapter_context_query(db: Session, project_id: str, chapter_index: int) -> 
             if value
         )
     if not parts:
-        previous = (
-            db.query(ChapterContent)
+        previous_preview = (
+            db.query(func.substr(ChapterContent.content, 1, CHAPTER_CONTEXT_PREVIEW_CHARS).label("content"))
             .filter(ChapterContent.project_id == project_id, ChapterContent.chapter_index == chapter_index - 1)
-            .first()
+            .scalar()
         )
-        if previous:
-            parts.append(previous.content[:500])
+        if previous_preview:
+            parts.append(str(previous_preview)[:CHAPTER_CONTEXT_PREVIEW_CHARS])
     return "\n".join(parts).strip()
 
 
