@@ -511,6 +511,42 @@ def test_background_task_service_retry_keeps_compact_failed_progress_snapshot(cl
     assert "completed_chapter_indexes" not in retry.payload["previous_progress"]
 
 
+def test_background_task_service_pending_chapter_indexes_skip_sparse_completed(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Pending Sparse Range"})
+    pid = r.json()["id"]
+    service = BackgroundTaskService(db_session)
+    task = service.create_chapter_range(
+        project_id=pid,
+        task_type="athena_reindex_range",
+        start_chapter_index=1,
+        end_chapter_index=8,
+    )
+    service.mark_range_progress_many(task.id, completed_chapter_indexes=[1, 2, 5])
+
+    assert service.pending_chapter_indexes(task.id) == [3, 4, 6, 7, 8]
+
+
+def test_background_task_service_pending_chapter_indexes_resume_retry_from_checkpoint(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Pending Retry Range"})
+    pid = r.json()["id"]
+    service = BackgroundTaskService(db_session)
+    task = service.create_chapter_range(
+        project_id=pid,
+        task_type="athena_reindex_range",
+        start_chapter_index=1,
+        end_chapter_index=1000,
+    )
+    service.mark_range_progress_many(task.id, completed_chapter_indexes=range(1, 251))
+    service.mark_failed(task.id, "network error")
+    retry = service.create_retry_from_failed(task.id)
+
+    pending = service.pending_chapter_indexes(retry.id)
+
+    assert pending[:3] == [251, 252, 253]
+    assert pending[-1] == 1000
+    assert len(pending) == 750
+
+
 def test_background_task_service_marks_interrupted_running_tasks_failed(client, db_session):
     r = client.post("/api/v1/projects", json={"name": "Test"})
     pid = r.json()["id"]

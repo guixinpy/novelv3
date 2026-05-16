@@ -189,6 +189,16 @@ class BackgroundTaskService:
         payload["previous_progress"] = _retry_progress_snapshot(progress)
         return self.create(project_id=task.project_id, task_type=task.task_type, payload=payload)
 
+    def pending_chapter_indexes(self, task_id: str) -> list[int]:
+        task = self.get(task_id)
+        start, end = _task_chapter_range(task)
+        progress = (task.result or {}).get("progress") or {}
+        if not progress and (task.payload or {}).get("resume_from_chapter_index") is not None:
+            resume_from = min(max(int(task.payload["resume_from_chapter_index"]), start), end + 1)
+            return list(range(resume_from, end + 1))
+        completed = _completed_chapter_index_set(progress, start=start, end=end)
+        return [index for index in range(start, end + 1) if index not in completed]
+
     def fail_interrupted_running_tasks(self) -> int:
         now = datetime.now(UTC)
         count = (
