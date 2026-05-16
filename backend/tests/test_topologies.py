@@ -219,6 +219,59 @@ def test_character_graph_window_does_not_select_full_topology_json(client, db_se
     assert all("topologies.edges as" not in clause for clause in topology_selects)
 
 
+def test_timeline_window_does_not_select_full_topology_json(client, db_session):
+    project = Project(name="Windowed timeline")
+    db_session.add(project)
+    db_session.commit()
+    topology = Topology(
+        project_id=project.id,
+        nodes=[
+            {
+                "id": f"event-{chapter_index:04d}",
+                "type": "EVENT",
+                "label": f"第{chapter_index}章",
+                "meta": {"chapter_index": chapter_index},
+            }
+            for chapter_index in range(1200, 0, -1)
+        ]
+        + [
+            {"id": f"char-{index:04d}", "type": "CHARACTER", "label": f"角色 {index:04d}", "meta": {}}
+            for index in range(1200)
+        ],
+        edges=[],
+    )
+    db_session.add(topology)
+    db_session.commit()
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        response = client.get(f"/api/v1/projects/{project.id}/topology/timeline?offset=1099&limit=10")
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [node["id"] for node in payload["events"]][:2] == ["event-1100", "event-1101"]
+    assert payload["total"] == 1200
+    assert payload["offset"] == 1099
+    assert payload["limit"] == 10
+    assert payload["has_more"] is True
+
+    topology_selects = [
+        statement.split(" from topologies", 1)[0]
+        for statement in statements
+        if " from topologies" in statement
+    ]
+    assert topology_selects
+    assert any("json_each(topologies.nodes)" in statement for statement in statements)
+    assert all("topologies.nodes as" not in clause for clause in topology_selects)
+    assert all("topologies.edges as" not in clause for clause in topology_selects)
+
+
 def test_topology_creation_streams_outline_chapters_without_selecting_full_json(client, db_session):
     project = Project(name="Large topology from outline")
     db_session.add(project)

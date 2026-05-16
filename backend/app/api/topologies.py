@@ -304,13 +304,25 @@ def timeline(
 ):
     if response:
         add_deprecation_header(response, f"/api/v1/projects/{project_id}/athena/ontology/timeline")
-    topology = _load_or_create_topology(project_id, db)
-    nodes = [n for n in topology.nodes if n.get("type") == "EVENT"]
-    nodes.sort(key=lambda x: x.get("meta", {}).get("chapter_index", 0))
+    _ensure_topology_exists(project_id, db)
+    event_types = ("EVENT",)
+    total = _count_topology_items(db, project_id, column_name="nodes", item_types=event_types)
+    nodes = _window_topology_items(
+        db,
+        project_id,
+        column_name="nodes",
+        offset=offset,
+        limit=limit,
+        item_types=event_types,
+        order_by=(
+            "CAST(COALESCE(json_extract(item.value, '$.meta.chapter_index'), 0) AS INTEGER), "
+            "CAST(item.key AS INTEGER)"
+        ),
+    )
     return {
-        "events": nodes[offset:offset + limit],
-        "total": len(nodes),
+        "events": nodes,
+        "total": total,
         "offset": offset,
         "limit": limit,
-        "has_more": offset + limit < len(nodes),
+        "has_more": offset + limit < total,
     }
