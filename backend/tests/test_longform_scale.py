@@ -608,6 +608,50 @@ def test_longform_context_package_rollups_do_not_load_all_memory_rows(db_session
     assert full_memory_selects == []
 
 
+def test_longform_context_recent_chapters_projects_only_prompt_fields(db_session):
+    from app.core.longform_memory import build_longform_context_package, rebuild_longform_memory
+
+    project = Project(name="Recent Memory Projection")
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    for index in range(1, 8):
+        db_session.add(
+            ChapterContent(
+                project_id=project.id,
+                chapter_index=index,
+                title=f"第{index}章",
+                content=f"第{index}章正文。近期记忆只需要提示字段。",
+                word_count=1000,
+                status="generated",
+            )
+        )
+    db_session.commit()
+    rebuild_longform_memory(db_session, project.id)
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        payload = build_longform_context_package(db_session, project.id, 7)
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    recent_section = next(section for section in payload["sections"] if section["key"] == "recent_chapters")
+    assert [item["scope_key"] for item in recent_section["items"]] == ["chapter:4", "chapter:5", "chapter:6"]
+    recent_select_clauses = [
+        statement.split(" from longform_memories", 1)[0]
+        for statement in statements
+        if "from longform_memories" in statement
+        and "order by longform_memories.end_chapter_index desc" in statement
+    ]
+    assert recent_select_clauses
+    for column in ["project_id", "status", "created_at", "updated_at"]:
+        assert all(f"longform_memories.{column}" not in clause for clause in recent_select_clauses)
+
+
 def test_longform_context_rollups_include_recent_memory_summaries(db_session):
     from app.core.longform_memory import build_longform_context_package, rebuild_longform_memory
 

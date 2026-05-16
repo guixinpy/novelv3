@@ -800,13 +800,22 @@ def _format_recent_memory_summary(title: str | None, summary: str | None) -> str
 
 def _recent_chapter_memory_items(db: Session, project_id: str, chapter_index: int) -> list[dict[str, Any]]:
     memories = (
-        db.query(LongformMemory)
+        db.query(
+            LongformMemory.id,
+            LongformMemory.memory_type,
+            LongformMemory.scope_key,
+            LongformMemory.start_chapter_index,
+            LongformMemory.end_chapter_index,
+            LongformMemory.title,
+            LongformMemory.summary,
+            LongformMemory.memory_metadata,
+        )
         .filter(
             LongformMemory.project_id == project_id,
             LongformMemory.memory_type == "chapter",
             LongformMemory.end_chapter_index < chapter_index,
         )
-        .order_by(LongformMemory.end_chapter_index.desc())
+        .order_by(LongformMemory.end_chapter_index.desc(), LongformMemory.id.desc())
         .limit(RECENT_CHAPTER_WINDOW)
         .all()
     )
