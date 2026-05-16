@@ -139,4 +139,27 @@ describe('world model api client', () => {
       }),
     )
   })
+
+  it('getWritingState() hits the readable writing-state endpoint', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        project_id: 'project-1',
+        current_chapter: 4,
+        status: 'running',
+        last_error: null,
+      }),
+    } as Response)
+
+    const state = await api.getWritingState('project-1')
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/projects/project-1/writing/state',
+      expect.objectContaining({
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    expect(state.current_chapter).toBe(4)
+    expect(state.status).toBe('running')
+  })
 })

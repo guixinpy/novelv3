@@ -103,6 +103,13 @@ export interface VersionListResponse {
   has_more?: boolean
 }
 
+export interface WritingState {
+  project_id: string
+  current_chapter: number
+  status: string
+  last_error?: string | null
+}
+
 export interface DialogBootstrap {
   messages: ChatHistoryMessage[]
 }

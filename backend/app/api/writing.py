@@ -37,6 +37,14 @@ def resume_writing(project_id: str, db: Session = Depends(get_db)):
     return scheduler.resume(project_id, db)
 
 
+@router.get("/state", response_model=WritingStateOut)
+def get_writing_state(project_id: str, db: Session = Depends(get_db)):
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return scheduler.state(project_id, db)
+
+
 def build_retry_chapter_work(project_id: str, chapter_index: int):
     async def _regen(rdb: Session, running_task: BackgroundTask):
         from app.api.chapters import generate_chapter as _gen_chapter

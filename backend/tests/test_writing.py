@@ -39,6 +39,22 @@ def test_writing_start_continues_after_latest_generated_chapter(client, db_sessi
     assert response.json()["current_chapter"] == 4
 
 
+def test_writing_state_endpoint_returns_current_state(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Readable Writing State"})
+    pid = r.json()["id"]
+    WritingStateService(db_session).mark_error(pid, "chapter generation failed")
+
+    response = client.get(f"/api/v1/projects/{pid}/writing/state")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "project_id": pid,
+        "current_chapter": 1,
+        "status": "failed",
+        "last_error": "chapter generation failed",
+    }
+
+
 def test_writing_pause_and_resume(client):
     r = client.post("/api/v1/projects", json={"name": "Test"})
     pid = r.json()["id"]
