@@ -1,8 +1,9 @@
 from datetime import UTC, datetime
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.models import WritingState
+from app.models import ChapterContent, WritingState
 from app.schemas import WritingStateOut
 
 
@@ -11,9 +12,17 @@ class WritingStateService:
         self.db = db
 
     def start(self, project_id: str) -> WritingStateOut:
-        state = self._get_or_create(project_id)
+        state = self._get(project_id)
+        if state is None:
+            state = WritingState(
+                project_id=project_id,
+                current_chapter=self._next_chapter_index(project_id),
+                status="idle",
+            )
+            self.db.add(state)
+            self.db.flush()
         state.status = "running"
-        state.current_chapter = state.current_chapter or 1
+        state.current_chapter = state.current_chapter or self._next_chapter_index(project_id)
         state.last_error = None
         state.updated_at = datetime.now(UTC)
         self.db.commit()
@@ -86,6 +95,14 @@ class WritingStateService:
         self.db.add(state)
         self.db.flush()
         return state
+
+    def _next_chapter_index(self, project_id: str) -> int:
+        latest = (
+            self.db.query(func.max(ChapterContent.chapter_index))
+            .filter(ChapterContent.project_id == project_id, ChapterContent.content != "")
+            .scalar()
+        )
+        return int(latest or 0) + 1
 
     @staticmethod
     def _default(project_id: str) -> WritingStateOut:

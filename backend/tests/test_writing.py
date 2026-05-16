@@ -2,7 +2,7 @@ from unittest.mock import patch
 
 import pytest
 
-from app.models import BackgroundTask
+from app.models import BackgroundTask, ChapterContent
 from app.services.tasks.background_task_service import BackgroundTaskService
 from app.services.writing.writing_state_service import WritingStateService
 
@@ -14,6 +14,29 @@ def test_writing_start(client):
     r2 = client.post(f"/api/v1/projects/{pid}/writing/start")
     assert r2.status_code == 200
     assert r2.json()["status"] == "running"
+
+
+def test_writing_start_continues_after_latest_generated_chapter(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Long Running Novel"})
+    pid = r.json()["id"]
+    db_session.add_all([
+        ChapterContent(
+            project_id=pid,
+            chapter_index=index,
+            title=f"第{index}章",
+            content="正文" * 100,
+            word_count=200,
+            status="generated",
+        )
+        for index in range(1, 4)
+    ])
+    db_session.commit()
+
+    response = client.post(f"/api/v1/projects/{pid}/writing/start")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "running"
+    assert response.json()["current_chapter"] == 4
 
 
 def test_writing_pause_and_resume(client):
