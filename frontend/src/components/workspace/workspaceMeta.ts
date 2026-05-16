@@ -36,6 +36,7 @@ const ACTION_PANEL_MAP: Record<string, WorkspacePanel> = {
   generate_outline: 'outline',
   preview_chapter: 'content',
   generate_chapter: 'content',
+  retry_chapter: 'content',
   consistency_deep_check: 'content',
 }
 
@@ -44,6 +45,7 @@ const ACTION_REFRESH_TARGETS: Record<string, RefreshTarget[]> = {
   generate_storyline: ['storyline', 'versions'],
   generate_outline: ['outline', 'versions'],
   generate_chapter: ['project', 'content', 'versions', 'writing_state'],
+  retry_chapter: ['project', 'content', 'versions', 'writing_state'],
   consistency_deep_check: ['content'],
 }
 

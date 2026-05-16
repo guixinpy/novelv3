@@ -267,6 +267,28 @@ def test_get_background_task_generate_chapter_refreshes_writing_state(client, db
     assert response.json()["refresh_targets"] == ["project", "content", "versions", "writing_state"]
 
 
+def test_get_background_task_retry_chapter_refreshes_content_and_writing_state(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Test"})
+    pid = r.json()["id"]
+
+    task = BackgroundTask(
+        project_id=pid,
+        task_type="retry_chapter",
+        status="completed",
+        result={"chapter_index": 12},
+    )
+    db_session.add(task)
+    db_session.commit()
+    db_session.refresh(task)
+
+    response = client.get(f"/api/v1/background-tasks/{task.id}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ui_hint"]["active_action"]["target_panel"] == "content"
+    assert body["refresh_targets"] == ["project", "content", "versions", "writing_state"]
+
+
 def test_get_background_task_includes_range_payload(client, db_session):
     r = client.post("/api/v1/projects", json={"name": "Test"})
     pid = r.json()["id"]

@@ -7,6 +7,7 @@ ACTION_TO_PANEL = {
     "generate_outline": "outline",
     "preview_chapter": "content",
     "generate_chapter": "content",
+    "retry_chapter": "content",
     "consistency_deep_check": "content",
 }
 
@@ -15,6 +16,7 @@ ACTION_TO_REFRESH_TARGETS = {
     "generate_storyline": ["storyline", "versions"],
     "generate_outline": ["outline", "versions"],
     "generate_chapter": ["project", "content", "versions", "writing_state"],
+    "retry_chapter": ["project", "content", "versions", "writing_state"],
     "consistency_deep_check": ["content"],
 }
 
