@@ -186,6 +186,7 @@ class BackgroundTaskService:
         payload = dict(task.payload or {})
         payload["retry_of_task_id"] = task.id
         payload["resume_from_chapter_index"] = resume_from
+        payload["previous_progress"] = _retry_progress_snapshot(progress)
         return self.create(project_id=task.project_id, task_type=task.task_type, payload=payload)
 
     def fail_interrupted_running_tasks(self) -> int:
@@ -291,3 +292,13 @@ def _is_contiguous_from_start(*, start: int, completed_indexes: list[int]) -> bo
     if not completed_indexes:
         return True
     return completed_indexes == list(range(start, completed_indexes[-1] + 1))
+
+
+def _retry_progress_snapshot(progress: dict) -> dict:
+    snapshot = {
+        key: value
+        for key, value in progress.items()
+        if key != "completed_chapter_indexes"
+    }
+    snapshot["checkpoint_count"] = len(progress.get("completed_chapter_indexes") or [])
+    return snapshot

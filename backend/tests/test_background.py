@@ -481,6 +481,36 @@ def test_background_task_service_retries_failed_range_from_checkpoint(client, db
     assert retry.payload["resume_from_chapter_index"] == 3
 
 
+def test_background_task_service_retry_keeps_compact_failed_progress_snapshot(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Retry Progress Snapshot"})
+    pid = r.json()["id"]
+    service = BackgroundTaskService(db_session)
+    task = service.create_chapter_range(
+        project_id=pid,
+        task_type="athena_reindex_range",
+        start_chapter_index=1,
+        end_chapter_index=1000,
+    )
+    service.mark_range_progress_many(task.id, completed_chapter_indexes=range(1, 251))
+    service.mark_failed(task.id, "network error")
+
+    retry = service.create_retry_from_failed(task.id)
+
+    assert retry.payload["resume_from_chapter_index"] == 251
+    assert retry.payload["previous_progress"] == {
+        "chapter_range": {"start": 1, "end": 1000},
+        "next_chapter_index": 251,
+        "completed_count": 250,
+        "total_count": 1000,
+        "can_resume": True,
+        "completed_until_chapter_index": 250,
+        "first_completed_chapter_index": 1,
+        "last_completed_chapter_index": 250,
+        "checkpoint_count": 0,
+    }
+    assert "completed_chapter_indexes" not in retry.payload["previous_progress"]
+
+
 def test_background_task_service_marks_interrupted_running_tasks_failed(client, db_session):
     r = client.post("/api/v1/projects", json={"name": "Test"})
     pid = r.json()["id"]
