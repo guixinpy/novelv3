@@ -33,6 +33,7 @@ DIALOG_HISTORY_MESSAGE_CONTENT_CHARS = 2_000
 MANUSCRIPT_FULL_LIST_LIMIT = 40
 MANUSCRIPT_EDGE_CHAPTER_COUNT = 5
 MANUSCRIPT_RECENT_EXCERPT_COUNT = 3
+MANUSCRIPT_RECENT_EXCERPT_CHARS = 220
 NARRATIVE_PLANNING_PREVIEW_LIMIT = 5
 PHASE_LABELS = {
     "setup": "设定阶段",
@@ -153,7 +154,16 @@ def build_athena_manuscript_context_block(db: Session, project: Project) -> dict
     lines.extend(listed_chapters["lines"])
 
     recent = (
-        db.query(ChapterContent)
+        db.query(
+            ChapterContent.id,
+            ChapterContent.chapter_index,
+            ChapterContent.title,
+            func.substr(
+                ChapterContent.content,
+                1,
+                MANUSCRIPT_RECENT_EXCERPT_CHARS + 1,
+            ).label("content"),
+        )
         .filter(ChapterContent.project_id == project.id, ChapterContent.content != "")
         .order_by(ChapterContent.chapter_index.desc())
         .limit(MANUSCRIPT_RECENT_EXCERPT_COUNT)
@@ -163,9 +173,11 @@ def build_athena_manuscript_context_block(db: Session, project: Project) -> dict
     if recent:
         lines.append("最近章节摘录：")
         for chapter in recent:
-            excerpt = " ".join((chapter.content or "").split())[:220]
+            excerpt = " ".join((_chapter_summary_value(chapter, "content") or "").split())[
+                :MANUSCRIPT_RECENT_EXCERPT_CHARS
+            ]
             if excerpt:
-                lines.append(f"- 第{chapter.chapter_index}章：{excerpt}")
+                lines.append(f"- 第{_chapter_summary_value(chapter, 'chapter_index')}章：{excerpt}")
 
     source_rows = _unique_manuscript_source_rows([*listed_chapters["sources"], *recent])
     return build_context_block(

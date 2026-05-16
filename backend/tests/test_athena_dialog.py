@@ -1032,6 +1032,45 @@ def test_athena_manuscript_context_uses_limited_chapter_summary_queries(db_sessi
     assert unbounded_summary_selects == []
 
 
+def test_athena_manuscript_context_projects_recent_excerpt_content(db_session):
+    project, _ = _seed_project(db_session, with_profile=True)
+    db_session.add_all(
+        [
+            ChapterContent(
+                project_id=project.id,
+                chapter_index=index,
+                title=f"第{index}章标题",
+                content=f"第{index}章正文" + ("超长正文" * 3000),
+                word_count=3000,
+                status="generated",
+            )
+            for index in range(1, 4)
+        ]
+    )
+    db_session.commit()
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        block = build_athena_manuscript_context_block(db_session, project)
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert block is not None
+    assert "最近章节摘录" in block["content"]
+    chapter_selects = [
+        statement.split(" from chapter_contents", 1)[0]
+        for statement in statements
+        if " from chapter_contents" in statement
+    ]
+    assert chapter_selects
+    assert any("substr(chapter_contents.content" in statement for statement in statements)
+    assert all("chapter_contents.content as chapter_contents_content" not in clause for clause in chapter_selects)
+
+
 def test_chapter_world_context_does_not_select_full_outline_json(db_session):
     project, _profile = _seed_project(db_session, with_profile=True)
     db_session.add(
