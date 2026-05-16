@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from sqlalchemy import String, func, text
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, load_only
 
 from app.core.model_call_trace import build_context_block
 from app.core.outline_lookup import find_outline_chapter
@@ -139,6 +139,14 @@ class WorldContextAssembler:
     def _current_profile(self) -> ProjectProfileVersion | None:
         return (
             self.db.query(ProjectProfileVersion)
+            .options(
+                load_only(
+                    ProjectProfileVersion.id,
+                    ProjectProfileVersion.project_id,
+                    ProjectProfileVersion.version,
+                    ProjectProfileVersion.contract_version,
+                )
+            )
             .filter(ProjectProfileVersion.project_id == self.project_id)
             .order_by(ProjectProfileVersion.version.desc())
             .first()

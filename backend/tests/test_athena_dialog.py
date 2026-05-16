@@ -220,6 +220,45 @@ def test_setup_fallback_context_bounds_large_setup_drafts(db_session):
         assert len(context) <= 3_500
 
 
+def test_chapter_context_profile_lookup_skips_profile_payload(db_session):
+    project = Project(name="Profile Payload Context", genre="玄幻")
+    genre_profile = GenreProfile(
+        canonical_id="profile-payload-context",
+        display_name="通用",
+        contract_version="world.contract.v1",
+    )
+    db_session.add_all([project, genre_profile])
+    db_session.commit()
+    profile = ProjectProfileVersion(
+        project_id=project.id,
+        genre_profile_id=genre_profile.id,
+        version=1,
+        contract_version="world.contract.v1",
+        profile_payload={"large_contract_notes": "长 profile payload" * 1000},
+    )
+    db_session.add(profile)
+    db_session.commit()
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        package = build_chapter_context_package(db_session, project.id, 1)
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert package["profile_version"] == 1
+    profile_selects = [
+        statement.split(" from project_profile_versions", 1)[0]
+        for statement in statements
+        if " from project_profile_versions" in statement
+    ]
+    assert profile_selects
+    assert all("profile_payload" not in clause for clause in profile_selects)
+
+
 def test_athena_world_context_blocks_include_record_sources(db_session):
     project, profile_version = _seed_project(db_session, with_profile=True)
     character = WorldCharacter(
