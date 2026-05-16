@@ -882,7 +882,7 @@ def _should_flush_index_write_batch(*, batched_sources: int, term_rows: int) -> 
 def _indexable_retrieval_terms(tokens: list[str]) -> list[str]:
     unique_tokens = sorted(set(tokens))
     has_cjk_trigrams = any(
-        _is_cjk_token(token) and len(token) >= 3
+        len(token) >= 3 and _is_cjk_retrieval_ngram(token)
         for token in unique_tokens
     )
     if not has_cjk_trigrams:
@@ -890,8 +890,20 @@ def _indexable_retrieval_terms(tokens: list[str]) -> list[str]:
     return [
         token
         for token in unique_tokens
-        if not (_is_cjk_token(token) and len(token) == 2)
+        if not (len(token) == 2 and _is_cjk_retrieval_ngram(token))
     ]
+
+
+def _is_cjk_retrieval_ngram(token: str) -> bool:
+    if not token or not "\u4e00" <= token[0] <= "\u9fff":
+        return False
+    if len(token) == 1:
+        return True
+    if len(token) == 2:
+        return "\u4e00" <= token[1] <= "\u9fff"
+    if len(token) == 3:
+        return "\u4e00" <= token[1] <= "\u9fff" and "\u4e00" <= token[2] <= "\u9fff"
+    return _is_cjk_token(token)
 
 
 def _is_cjk_token(token: str) -> bool:

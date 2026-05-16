@@ -868,6 +868,40 @@ def test_reindex_prefers_cjk_trigrams_over_bigrams_for_lexical_terms(db_session)
     assert short_query_result["items"][0]["source_ref"] == "chapter:1"
 
 
+def test_indexable_retrieval_terms_avoid_repeated_full_cjk_token_checks(monkeypatch):
+    import app.core.athena_retrieval as athena_retrieval
+
+    check_count = {"value": 0}
+    original_is_cjk_token = athena_retrieval._is_cjk_token
+
+    def count_is_cjk_token(token: str) -> bool:
+        check_count["value"] += 1
+        return original_is_cjk_token(token)
+
+    tokens: list[str] = []
+    for index in range(200):
+        tokens.extend(
+            [
+                f"latin_{index}",
+                f"灯塔{index}",
+                "灯塔",
+                "塔影",
+                "灯塔影",
+                "塔影像",
+            ]
+        )
+
+    monkeypatch.setattr(athena_retrieval, "_is_cjk_token", count_is_cjk_token)
+
+    terms = athena_retrieval._indexable_retrieval_terms(tokens)
+
+    assert "灯塔影" in terms
+    assert "塔影像" in terms
+    assert "灯塔" not in terms
+    assert "塔影" not in terms
+    assert check_count["value"] <= 4
+
+
 def test_reindex_bulk_inserts_lexical_terms(db_session, monkeypatch):
     project = _seed_retrieval_project(db_session)
     add_counts = {"terms": 0}
