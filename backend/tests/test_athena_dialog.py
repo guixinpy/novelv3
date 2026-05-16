@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import pytest
 from sqlalchemy import event
 
@@ -9,7 +11,11 @@ from app.core.context_injection import (
     build_hermes_world_context_blocks,
 )
 from app.core.athena_longform import build_chapter_context_package
-from app.prompting.providers.dialog import build_athena_context_boundary_block, build_athena_manuscript_context_block
+from app.prompting.providers.dialog import (
+    build_athena_context_boundary_block,
+    build_athena_manuscript_context_block,
+    build_dialog_history_messages,
+)
 from app.models import (
     AIModelCallTrace,
     ChapterContent,
@@ -818,6 +824,31 @@ def test_dialog_chat_payload_bounds_long_history_messages(db_session):
     assert len(history_messages) == 2
     assert all(len(message["content"]) <= 2100 for message in history_messages)
     assert all("[truncated:" in message["content"] for message in history_messages)
+
+
+def test_dialog_history_messages_use_id_tie_breaker_for_same_timestamp(db_session):
+    project, _ = _seed_project(db_session, with_profile=True)
+    dialog = Dialog(project_id=project.id, dialog_type="athena")
+    created_at = datetime(2026, 1, 1, 12, 0, 0)
+    db_session.add(dialog)
+    db_session.flush()
+    db_session.add_all(
+        [
+            DialogMessage(
+                id=f"msg-{index:02d}",
+                dialog_id=dialog.id,
+                role="user",
+                content=f"消息 {index:02d}",
+                created_at=created_at,
+            )
+            for index in range(1, 11)
+        ]
+    )
+    db_session.commit()
+
+    history = build_dialog_history_messages(db_session, dialog.id, limit=3)
+
+    assert [item["content"] for item in history] == ["消息 08", "消息 09", "消息 10"]
 
 
 def test_dialog_chat_payload_projects_bounded_history_content(db_session):

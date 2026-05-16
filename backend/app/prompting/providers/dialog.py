@@ -584,7 +584,7 @@ def _latest_dialog_history(db: Session, dialog_id: str, limit: int) -> list[Any]
             ).label("content"),
         )
         .filter(DialogMessage.dialog_id == dialog_id)
-        .order_by(DialogMessage.created_at.desc())
+        .order_by(DialogMessage.created_at.desc(), DialogMessage.id.desc())
         .limit(limit)
         .all()
     )
