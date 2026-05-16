@@ -3,7 +3,7 @@ import json
 from app.core.model_call_trace import build_context_block
 from app.models import Project, Setup, Storyline
 from app.prompting.providers.project import build_command_args_block
-from app.prompting.providers.storyline import build_setup_context_values
+from app.prompting.providers.storyline import SetupContextSnapshot, build_setup_context_values
 
 
 def target_total_chapters(project: Project) -> int:
@@ -27,7 +27,7 @@ def build_storyline_context_value(storyline: Storyline | str) -> str:
     )
 
 
-def build_outline_variables(project: Project, setup: Setup, storyline: Storyline | str) -> dict:
+def build_outline_variables(project: Project, setup: Setup | SetupContextSnapshot, storyline: Storyline | str) -> dict:
     setup_context = build_setup_context_values(setup)
     return {
         "name": project.name,
@@ -41,7 +41,7 @@ def build_outline_variables(project: Project, setup: Setup, storyline: Storyline
 
 def build_outline_context_blocks(
     project: Project,
-    setup: Setup,
+    setup: Setup | SetupContextSnapshot,
     storyline: Storyline | str,
     *,
     rendered_prompt: str,

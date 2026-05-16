@@ -3,7 +3,7 @@ import time
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from sqlalchemy import func, text
+from sqlalchemy import String, func, text
 from sqlalchemy.orm import Session
 
 from app.api.deprecation import add_deprecation_header
@@ -19,6 +19,12 @@ from app.prompting.providers.outline import (
     build_outline_variables,
     outline_max_tokens,
     target_total_chapters,
+)
+from app.prompting.providers.storyline import (
+    SETUP_CHARACTERS_CONTEXT_CHARS,
+    SETUP_CORE_CONCEPT_CONTEXT_CHARS,
+    SETUP_WORLD_CONTEXT_CHARS,
+    SetupContextSnapshot,
 )
 from app.schemas import OutlineOut
 
@@ -127,7 +133,44 @@ def _build_bounded_storyline_context(
     return "\n".join(lines)
 
 
-def _build_outline_call_payload(project: Project, setup: Setup, storyline: Storyline | str, command_args: str | None = None) -> dict:
+def _get_outline_setup_context(db: Session, project_id: str) -> SetupContextSnapshot | None:
+    row = (
+        db.query(
+            Setup.id,
+            func.substr(
+                func.cast(Setup.world_building, String),
+                1,
+                SETUP_WORLD_CONTEXT_CHARS + 1,
+            ).label("world_building"),
+            func.substr(
+                func.cast(Setup.characters, String),
+                1,
+                SETUP_CHARACTERS_CONTEXT_CHARS + 1,
+            ).label("characters"),
+            func.substr(
+                func.cast(Setup.core_concept, String),
+                1,
+                SETUP_CORE_CONCEPT_CONTEXT_CHARS + 1,
+            ).label("core_concept"),
+        )
+        .filter(Setup.project_id == project_id)
+        .first()
+    )
+    if not row:
+        return None
+    return SetupContextSnapshot(
+        world_building=row.world_building or "{}",
+        characters=row.characters or "[]",
+        core_concept=row.core_concept or "{}",
+    )
+
+
+def _build_outline_call_payload(
+    project: Project,
+    setup: Setup | SetupContextSnapshot,
+    storyline: Storyline | str,
+    command_args: str | None = None,
+) -> dict:
     variables = build_outline_variables(project, setup, storyline)
     return build_generation_payload(
         "outline.generate",
@@ -158,7 +201,7 @@ async def generate_outline(project_id: str, db: Session = Depends(get_db), comma
     storyline_context = _build_bounded_storyline_context(db, project_id)
     if not storyline_context:
         raise HTTPException(status_code=400, detail="Storyline not generated yet")
-    setup = db.query(Setup).filter(Setup.project_id == project_id).first()
+    setup = _get_outline_setup_context(db, project_id)
     if not setup:
         raise HTTPException(status_code=400, detail="Setup not generated yet")
 

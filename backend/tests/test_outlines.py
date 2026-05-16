@@ -139,6 +139,84 @@ def test_generate_outline_passes_setup_context_to_prompt(mock_parse, mock_comple
 @patch("app.api.outlines.load_api_key", return_value="sk-test")
 @patch("app.api.outlines.ai_service.complete", new_callable=AsyncMock)
 @patch("app.api.outlines.ai_service.parse_json")
+def test_generate_outline_uses_bounded_setup_context_without_selecting_full_json(
+    mock_parse,
+    mock_complete,
+    mock_key,
+    client,
+    db_session,
+):
+    project = Project(name="Bounded Outline Setup", genre="长篇悬疑", target_chapter_count=1000)
+    db_session.add(project)
+    db_session.flush()
+    world_mid_noise = "MID_OUTLINE_QUERY_WORLD_NOISE_SHOULD_NOT_APPEAR"
+    character_mid_noise = "MID_OUTLINE_QUERY_CHARACTER_NOISE_SHOULD_NOT_APPEAR"
+    concept_mid_noise = "MID_OUTLINE_QUERY_CONCEPT_NOISE_SHOULD_NOT_APPEAR"
+    db_session.add(
+        Setup(
+            project_id=project.id,
+            status="generated",
+            world_building={
+                "city": "雾港",
+                "lore": ("世界观噪音" * 700) + world_mid_noise + ("更多世界观噪音" * 10_000),
+            },
+            characters=[
+                {
+                    "name": "林舟",
+                    "bio": ("角色噪音" * 700) + character_mid_noise + ("更多角色噪音" * 10_000),
+                }
+            ],
+            core_concept={
+                "hook": "旧灯塔记忆病毒",
+                "long": ("核心概念噪音" * 700) + concept_mid_noise + ("更多核心噪音" * 10_000),
+            },
+        )
+    )
+    db_session.add(
+        Storyline(
+            project_id=project.id,
+            status="generated",
+            plotlines=[{"name": "主线", "type": "main", "summary": "调查灯塔区失忆案", "milestones": []}],
+            foreshadowing=[],
+        )
+    )
+    db_session.commit()
+    mock_complete.return_value.content = '{"total_chapters": 1000, "chapters": [], "plotlines": [], "foreshadowing": []}'
+    mock_parse.return_value = {"total_chapters": 1000, "chapters": [], "plotlines": [], "foreshadowing": []}
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        response = client.post(f"/api/v1/projects/{project.id}/outline/generate")
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert response.status_code == 200
+    sent_prompt = mock_complete.await_args.args[0][0]["content"]
+    assert "雾港" in sent_prompt
+    assert "林舟" in sent_prompt
+    assert "旧灯塔记忆病毒" in sent_prompt
+    assert world_mid_noise not in sent_prompt
+    assert character_mid_noise not in sent_prompt
+    assert concept_mid_noise not in sent_prompt
+
+    setup_select_clauses = [
+        statement.split(" from setups", 1)[0]
+        for statement in statements
+        if " from setups" in statement
+    ]
+    assert setup_select_clauses
+    assert all("setups.world_building as setups_world_building" not in clause for clause in setup_select_clauses)
+    assert all("setups.characters as setups_characters" not in clause for clause in setup_select_clauses)
+    assert all("setups.core_concept as setups_core_concept" not in clause for clause in setup_select_clauses)
+
+
+@patch("app.api.outlines.load_api_key", return_value="sk-test")
+@patch("app.api.outlines.ai_service.complete", new_callable=AsyncMock)
+@patch("app.api.outlines.ai_service.parse_json")
 def test_generate_outline_prefers_project_target_chapter_count(mock_parse, mock_complete, mock_key, client):
     r = client.post(
         "/api/v1/projects",
