@@ -59,6 +59,7 @@ def test_writing_start_creates_generate_chapter_task(client, db_session):
     )
     assert task.payload == {"chapter_index": 1}
     assert task.status == "pending"
+    assert response.json()["task_id"] == task.id
     start.assert_called_once()
 
 

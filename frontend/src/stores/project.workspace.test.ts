@@ -34,6 +34,7 @@ vi.mock('../api/client', () => ({
     startWriting: vi.fn(),
     pauseWriting: vi.fn(),
     resumeWriting: vi.fn(),
+    getBackgroundTask: vi.fn(),
     createVersion: vi.fn(),
     rollbackVersion: vi.fn(),
     exportProject: vi.fn(),
@@ -661,6 +662,67 @@ describe('project workspace state', () => {
     expect(api.startWriting).toHaveBeenCalledWith('A')
     expect(api.pauseWriting).toHaveBeenCalledWith('A')
     expect(api.resumeWriting).toHaveBeenCalledWith('A')
+  })
+
+  it('startWriting() 收到 task_id 后会在任务完成时刷新正文和写作状态', async () => {
+    const store = useProjectStore()
+    vi.mocked(api.startWriting).mockResolvedValue({
+      project_id: 'A',
+      current_chapter: 8,
+      status: 'running',
+      last_error: null,
+      task_id: 'task-1',
+    })
+    vi.mocked(api.getBackgroundTask).mockResolvedValue({
+      task_id: 'task-1',
+      task_type: 'generate_chapter',
+      status: 'completed',
+      result: { chapter_index: 8 },
+      error: null,
+      ui_hint: {
+        dialog_state: 'CHATTING',
+        active_action: {
+          type: 'generate_chapter',
+          status: 'completed',
+          target_panel: 'content',
+          reason: '',
+        },
+      },
+      refresh_targets: ['content', 'writing_state'],
+      created_at: null,
+      started_at: null,
+      finished_at: null,
+    })
+    vi.mocked(api.listChapters).mockResolvedValue({
+      chapters: [{ id: 'chapter-8', chapter_index: 8, title: '第8章', word_count: 1200, status: 'generated' }],
+      total: 8,
+      offset: 0,
+      limit: 8,
+      has_more: false,
+      latest_chapter_index: 8,
+    })
+    vi.mocked(api.getWritingState).mockResolvedValue({
+      project_id: 'A',
+      current_chapter: 8,
+      status: 'idle',
+      last_error: null,
+    })
+
+    await store.startWriting('A')
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(api.getBackgroundTask).toHaveBeenCalledWith('task-1', { compact: true })
+    expect(api.listChapters).toHaveBeenCalledWith('A', undefined)
+    expect(api.getWritingState).toHaveBeenCalledWith('A')
+    expect(store.chapters).toEqual([
+      { id: 'chapter-8', chapter_index: 8, title: '第8章', word_count: 1200, status: 'generated' },
+    ])
+    expect(store.writingState).toEqual({
+      project_id: 'A',
+      current_chapter: 8,
+      status: 'idle',
+      last_error: null,
+    })
   })
 
   it('迟到的 writing state 响应不会覆盖新项目状态', async () => {

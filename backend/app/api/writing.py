@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.core.writing_scheduler import WritingScheduler
 from app.db import get_db
 from app.models import BackgroundTask, Project
-from app.schemas import WritingStateOut
+from app.schemas import WritingControlOut, WritingStateOut
 from app.services.tasks.background_task_service import BackgroundTaskService
 from app.services.tasks.local_task_runner import LocalTaskRunner
 from app.services.writing.writing_state_service import WritingStateService
@@ -13,14 +13,14 @@ router = APIRouter(prefix="/api/v1/projects/{project_id}/writing", tags=["writin
 scheduler = WritingScheduler()
 
 
-@router.post("/start", response_model=WritingStateOut)
+@router.post("/start", response_model=WritingControlOut, response_model_exclude_none=True)
 async def start_writing(project_id: str, db: Session = Depends(get_db)):
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     state = scheduler.start(project_id, db)
-    _queue_generate_chapter_task(db, project_id, state.current_chapter)
-    return state
+    task = _queue_generate_chapter_task(db, project_id, state.current_chapter)
+    return _control_out(state, task)
 
 
 @router.post("/pause", response_model=WritingStateOut)
@@ -31,14 +31,15 @@ def pause_writing(project_id: str, db: Session = Depends(get_db)):
     return scheduler.pause(project_id, db)
 
 
-@router.post("/resume", response_model=WritingStateOut)
+@router.post("/resume", response_model=WritingControlOut, response_model_exclude_none=True)
 async def resume_writing(project_id: str, db: Session = Depends(get_db)):
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     state = scheduler.resume(project_id, db)
     if state.status == "running":
-        _queue_generate_chapter_task(db, project_id, state.current_chapter)
+        task = _queue_generate_chapter_task(db, project_id, state.current_chapter)
+        return _control_out(state, task)
     return state
 
 
@@ -93,7 +94,11 @@ def _queue_generate_chapter_task(db: Session, project_id: str, chapter_index: in
     return task
 
 
-@router.post("/chapters/{chapter_index}/retry", response_model=WritingStateOut)
+def _control_out(state: WritingStateOut, task: BackgroundTask) -> WritingControlOut:
+    return WritingControlOut(**state.model_dump(), task_id=task.id)
+
+
+@router.post("/chapters/{chapter_index}/retry", response_model=WritingControlOut, response_model_exclude_none=True)
 async def retry_chapter(project_id: str, chapter_index: int, db: Session = Depends(get_db)):
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
@@ -106,4 +111,5 @@ async def retry_chapter(project_id: str, chapter_index: int, db: Session = Depen
     )
 
     LocalTaskRunner().start(task.id, build_retry_chapter_work(project_id, chapter_index))
-    return scheduler.run_chapter(project_id, chapter_index, db)
+    state = scheduler.run_chapter(project_id, chapter_index, db)
+    return _control_out(state, task)

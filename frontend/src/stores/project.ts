@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { api } from '../api/client'
-import type { RefreshTarget, WorkspaceBootstrap, WritingState } from '../api/types'
+import type { BackgroundTaskResponse, RefreshTarget, WorkspaceBootstrap, WritingState } from '../api/types'
 import { useRequestCacheStore } from './requestCache'
 
 type ProjectRequestLane =
@@ -28,6 +28,8 @@ export const useProjectStore = defineStore('project', () => {
   const VERSION_PAGE_LIMIT = 50
   const TOPOLOGY_NODE_PAGE_LIMIT = 200
   const TOPOLOGY_EDGE_PAGE_LIMIT = 500
+  const WRITING_TASK_POLL_LIMIT = 60
+  const WRITING_TASK_POLL_INTERVAL_MS = 1000
   const projects = ref<any[]>([])
   const currentProject = ref<any>(null)
   const setup = ref<any>(null)
@@ -110,6 +112,14 @@ export const useProjectStore = defineStore('project', () => {
 
   function writingStateCacheKey(projectId: string) {
     return `project:${projectId}:writing-state`
+  }
+
+  function isTerminalBackgroundTask(task: BackgroundTaskResponse) {
+    return ['completed', 'success', 'failed', 'cancelled'].includes(String(task.status || ''))
+  }
+
+  function wait(ms: number) {
+    return new Promise((resolve) => setTimeout(resolve, ms))
   }
 
   function normalizeVersionPage(value: any, fallbackOffset: number, fallbackLimit: number) {
@@ -331,6 +341,7 @@ export const useProjectStore = defineStore('project', () => {
     if (!isLatestProjectRequest(snapshot, 'writingState')) return
     writingState.value = nextState
     requestCache.markFresh(writingStateCacheKey(id))
+    watchWritingTask(id, nextState)
   }
 
   async function pauseWriting(id: string) {
@@ -347,6 +358,31 @@ export const useProjectStore = defineStore('project', () => {
     if (!isLatestProjectRequest(snapshot, 'writingState')) return
     writingState.value = nextState
     requestCache.markFresh(writingStateCacheKey(id))
+    watchWritingTask(id, nextState)
+  }
+
+  function watchWritingTask(id: string, state: WritingState) {
+    if (!state.task_id) return
+    void pollWritingTask(id, state.task_id)
+  }
+
+  async function pollWritingTask(id: string, taskId: string) {
+    for (let attempt = 0; attempt < WRITING_TASK_POLL_LIMIT; attempt += 1) {
+      if (currentProjectScope.value !== id) return
+      if (attempt > 0) await wait(WRITING_TASK_POLL_INTERVAL_MS)
+      if (currentProjectScope.value !== id) return
+      let task: BackgroundTaskResponse
+      try {
+        task = await api.getBackgroundTask(taskId, { compact: true })
+      } catch {
+        continue
+      }
+      if (currentProjectScope.value !== id) return
+      if (!isTerminalBackgroundTask(task)) continue
+      const targets = task.refresh_targets?.length ? task.refresh_targets : ['writing_state' as RefreshTarget]
+      await refreshTargets(id, targets)
+      return
+    }
   }
 
   async function loadChapters(id: string, force = false, params?: { offset?: number; limit?: number }) {

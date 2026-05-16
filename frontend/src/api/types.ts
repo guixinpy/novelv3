@@ -109,6 +109,7 @@ export interface WritingState {
   current_chapter: number
   status: string
   last_error?: string | null
+  task_id?: string | null
 }
 
 export interface DialogBootstrap {

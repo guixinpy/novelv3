@@ -70,4 +70,4 @@ from .world_proposals import (
     ProposalReviewQueueOut,
     ProposalReviewRollbackCreate,
 )
-from .writing import WritingStateOut
+from .writing import WritingControlOut, WritingStateOut
