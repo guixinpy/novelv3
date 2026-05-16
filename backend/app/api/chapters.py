@@ -1,7 +1,9 @@
+import json
 import re
 import time
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import String, func, text
 from sqlalchemy.orm import Session
 
 from app.config import load_api_key
@@ -16,11 +18,15 @@ from app.models import AIModelCallTrace, ChapterContent, Project, Setup
 from app.prompting.assembler import PromptAssembler
 from app.prompting.providers.chapter import (
     CHAPTER_CONTEXT_CHAR_BUDGET,
+    SETUP_CHARACTERS_BLOCK_CHAR_LIMIT,
+    SETUP_CORE_CONCEPT_BLOCK_CHAR_LIMIT,
+    SETUP_WORLD_BLOCK_CHAR_LIMIT,
     build_chapter_prompt_context_blocks,
     build_chapter_prompt_variables,
     build_chapter_trace_context_blocks,
     chapter_max_tokens,
 )
+from app.prompting.providers.storyline import SetupContextSnapshot
 from app.prompting.tracing import build_prompt_trace_metadata
 from app.schemas import ChapterOut
 
@@ -74,10 +80,96 @@ def _normalize_generated_chapter_content(content: str) -> str:
     return text
 
 
+def _get_chapter_setup_context(db: Session, project_id: str) -> SetupContextSnapshot | None:
+    row = (
+        db.query(
+            Setup.id,
+            func.substr(
+                func.cast(Setup.world_building, String),
+                1,
+                SETUP_WORLD_BLOCK_CHAR_LIMIT + 1,
+            ).label("world_building"),
+            func.substr(
+                func.cast(Setup.characters, String),
+                1,
+                SETUP_CHARACTERS_BLOCK_CHAR_LIMIT + 1,
+            ).label("characters"),
+            func.substr(
+                func.cast(Setup.core_concept, String),
+                1,
+                SETUP_CORE_CONCEPT_BLOCK_CHAR_LIMIT + 1,
+            ).label("core_concept"),
+        )
+        .filter(Setup.project_id == project_id)
+        .first()
+    )
+    if not row:
+        return None
+    return SetupContextSnapshot(
+        world_building=row.world_building or "{}",
+        characters=row.characters or "[]",
+        core_concept=row.core_concept or "{}",
+    )
+
+
+def _parse_json_list(value: object) -> list:
+    if isinstance(value, list):
+        return value
+    if not isinstance(value, str) or not value.strip():
+        return []
+    try:
+        parsed = json.loads(value)
+    except ValueError:
+        return []
+    return parsed if isinstance(parsed, list) else []
+
+
+def _get_setup_characters_for_consistency(db: Session, project_id: str) -> list[dict]:
+    rows = db.execute(
+        text(
+            """
+            SELECT
+                json_extract(item.value, '$.name') AS name,
+                json_extract(item.value, '$.character_status') AS character_status,
+                json_extract(item.value, '$.ref') AS ref,
+                json_extract(item.value, '$.aliases') AS aliases,
+                json_extract(item.value, '$.names') AS names
+            FROM setups, json_each(setups.characters) AS item
+            WHERE setups.project_id = :project_id
+            ORDER BY CAST(item.key AS INTEGER)
+            """
+        ),
+        {"project_id": project_id},
+    ).mappings()
+    characters = []
+    for row in rows:
+        name = str(row["name"] or "").strip()
+        if not name:
+            continue
+        characters.append(
+            {
+                "name": name,
+                "character_status": row["character_status"] or "alive",
+                "ref": row["ref"],
+                "aliases": _parse_json_list(row["aliases"]),
+                "names": _parse_json_list(row["names"]),
+            }
+        )
+    return characters
+
+
+def _build_consistency_setup(db: Session, project_id: str) -> SetupContextSnapshot:
+    return SetupContextSnapshot(
+        world_building={},
+        characters=_get_setup_characters_for_consistency(db, project_id),
+        core_concept={},
+    )
+
+
 def _build_chapter_call_payload(
     db: Session,
     project: Project,
-    setup: Setup,
+    setup: Setup | SetupContextSnapshot,
     chapter_index: int,
     extra_feedback: str,
 ) -> dict:
@@ -221,7 +313,7 @@ async def create_or_replace_chapter(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    setup = db.query(Setup).filter(Setup.project_id == project_id).first()
+    setup = _get_chapter_setup_context(db, project_id)
     if not setup:
         raise HTTPException(status_code=400, detail="Setup not generated yet")
 
@@ -321,7 +413,7 @@ async def create_or_replace_chapter(
         from app.core.consistency_checker import ConsistencyChecker
         from app.models import ConsistencyCheck
         checker = ConsistencyChecker()
-        issues = checker.check(project_id, chapter, setup)
+        issues = checker.check(project_id, chapter, _build_consistency_setup(db, project_id))
         for issue in issues:
             db.add(ConsistencyCheck(**issue))
         db.commit()

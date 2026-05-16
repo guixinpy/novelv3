@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import json
 import logging
+from dataclasses import dataclass
 from typing import Any, Literal
 
+from sqlalchemy import String, func, text
 from sqlalchemy.orm import Session
 
 from app.core.model_call_trace import build_context_block
@@ -23,6 +25,7 @@ from app.models import (
     WorldRelation,
     WorldRule,
 )
+from app.prompting.providers.storyline import normalise_json_text
 
 DialogTarget = Literal["athena", "hermes"]
 logger = logging.getLogger(__name__)
@@ -33,6 +36,15 @@ WORLD_CONTEXT_RULE_STATEMENT_CHARS = 400
 WORLD_CONTEXT_FACT_VALUE_CHARS = 500
 WORLD_CONTEXT_EVENT_PAYLOAD_CHARS = 500
 CHAPTER_RULE_STATEMENT_CHARS = 300
+
+
+@dataclass(frozen=True)
+class SetupFallbackContext:
+    id: str
+    character_names: list[str]
+    character_total: int
+    world_building: str
+    core_concept: str
 
 
 def source_for_record(record: Any, *, label: str | None = None, chapter_index: int | None = None) -> dict:
@@ -61,6 +73,8 @@ def _compact_context_value(value: Any, *, max_chars: int) -> str:
 
 
 def _compact_setup_value(value: Any, *, max_chars: int) -> str:
+    if isinstance(value, str):
+        value = normalise_json_text(value)
     return _compact_context_value(value, max_chars=max_chars)
 
 
@@ -94,7 +108,7 @@ class WorldContextAssembler:
         lines: list[str] = [f"【目标章节】第{chapter_index}章"]
 
         if self.profile is None:
-            setup = self._setup()
+            setup = self._setup_fallback_context()
             if setup:
                 lines.append("【世界模型】尚未导入正式 world-model，以下仅为 Setup 草稿。")
                 self._append_setup_context(lines, setup)
@@ -130,11 +144,8 @@ class WorldContextAssembler:
             .first()
         )
 
-    def _setup(self) -> Setup | None:
-        return self.db.query(Setup).filter(Setup.project_id == self.project_id).first()
-
     def _setup_fallback_block(self, key_prefix: str) -> dict:
-        setup = self._setup()
+        setup = self._setup_fallback_context()
         if setup is None:
             return build_context_block(
                 key=f"{key_prefix}.setup_fallback",
@@ -152,7 +163,49 @@ class WorldContextAssembler:
             kind="setup_fallback",
             title="Setup 草稿兜底",
             content="\n".join(lines),
-            sources=[source_for_record(setup, label="Setup 草稿")],
+            sources=[{"source_type": "Setup", "source_id": setup.id, "label": "Setup 草稿"}],
+        )
+
+    def _setup_fallback_context(self) -> SetupFallbackContext | None:
+        row = (
+            self.db.query(
+                Setup.id,
+                func.coalesce(func.json_array_length(Setup.characters), 0).label("character_total"),
+                func.substr(
+                    func.cast(Setup.world_building, String),
+                    1,
+                    SETUP_FALLBACK_WORLD_BUILDING_CHARS + 1,
+                ).label("world_building"),
+                func.substr(
+                    func.cast(Setup.core_concept, String),
+                    1,
+                    SETUP_FALLBACK_CORE_CONCEPT_CHARS + 1,
+                ).label("core_concept"),
+            )
+            .filter(Setup.project_id == self.project_id)
+            .first()
+        )
+        if row is None:
+            return None
+        name_rows = self.db.execute(
+            text(
+                """
+                SELECT json_extract(item.value, '$.name') AS name
+                FROM setups, json_each(setups.characters) AS item
+                WHERE setups.id = :setup_id
+                ORDER BY CAST(item.key AS INTEGER)
+                LIMIT :limit
+                """
+            ),
+            {"setup_id": row.id, "limit": SETUP_FALLBACK_CHARACTER_LIMIT},
+        ).mappings()
+        character_names = [str(item["name"]).strip() for item in name_rows if str(item["name"] or "").strip()]
+        return SetupFallbackContext(
+            id=row.id,
+            character_names=character_names,
+            character_total=int(row.character_total or 0),
+            world_building=row.world_building or "",
+            core_concept=row.core_concept or "",
         )
 
     def _athena_blocks(self) -> list[dict]:
@@ -394,7 +447,24 @@ class WorldContextAssembler:
             )
         return query.limit(limit).all()
 
-    def _append_setup_context(self, lines: list[str], setup: Setup) -> None:
+    def _append_setup_context(self, lines: list[str], setup: Setup | SetupFallbackContext) -> None:
+        if isinstance(setup, SetupFallbackContext):
+            if setup.character_names:
+                omitted_count = max(0, setup.character_total - len(setup.character_names))
+                omitted_suffix = f"（另有{omitted_count}名角色未列出）" if omitted_count > 0 else ""
+                lines.append("Setup 草稿角色：" + "、".join(setup.character_names) + omitted_suffix)
+            if setup.world_building:
+                lines.append(
+                    "Setup 草稿世界设定："
+                    + _compact_setup_value(setup.world_building, max_chars=SETUP_FALLBACK_WORLD_BUILDING_CHARS)
+                )
+            if setup.core_concept:
+                lines.append(
+                    "Setup 草稿核心概念："
+                    + _compact_setup_value(setup.core_concept, max_chars=SETUP_FALLBACK_CORE_CONCEPT_CHARS)
+                )
+            return
+
         if setup.characters:
             names = [str(item.get("name")) for item in setup.characters if isinstance(item, dict) and item.get("name")]
             if names:

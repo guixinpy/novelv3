@@ -64,7 +64,7 @@ def build_storyline_context_blocks(
 
 def _compact_json_context(value: object, *, max_chars: int) -> str:
     source_was_bounded = isinstance(value, str) and len(value) > max_chars
-    content = _normalise_json_text(value) if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+    content = normalise_json_text(value) if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
     if len(content) <= max_chars:
         if source_was_bounded:
             return content.rstrip() + TRUNCATED_SETUP_CONTEXT_MARKER
@@ -72,7 +72,7 @@ def _compact_json_context(value: object, *, max_chars: int) -> str:
     return content[:max_chars].rstrip() + TRUNCATED_SETUP_CONTEXT_MARKER
 
 
-def _normalise_json_text(value: str) -> str:
+def normalise_json_text(value: str) -> str:
     try:
         return json.dumps(json.loads(value), ensure_ascii=False)
     except ValueError:

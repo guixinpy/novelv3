@@ -11,6 +11,11 @@ from app.prompting.providers.few_shot import build_few_shot_examples_block
 from app.prompting.providers.longform import build_longform_context_block
 from app.prompting.providers.retrieval import build_chapter_retrieval_block
 from app.prompting.providers.style import build_style_rule_block
+from app.prompting.providers.storyline import (
+    SetupContextSnapshot,
+    TRUNCATED_SETUP_CONTEXT_MARKER,
+    normalise_json_text,
+)
 
 CHAPTER_CONTEXT_CHAR_BUDGET = 24000
 PREVIOUS_CHAPTER_SUMMARY_CHAR_LIMIT = 300
@@ -32,7 +37,7 @@ PRIORITY_SETUP_CORE_CONCEPT = 82
 PRIORITY_SETUP_CHARACTERS = 85
 
 
-def build_chapter_prompt_variables(project: Project, setup: Setup, chapter_index: int) -> dict:
+def build_chapter_prompt_variables(project: Project, setup: Setup | SetupContextSnapshot, chapter_index: int) -> dict:
     return {
         "chapter_index": chapter_index,
         "language": project.language,
@@ -42,7 +47,7 @@ def build_chapter_prompt_variables(project: Project, setup: Setup, chapter_index
 def build_chapter_prompt_context_blocks(
     db: Session,
     project: Project,
-    setup: Setup,
+    setup: Setup | SetupContextSnapshot,
     chapter_index: int,
     extra_feedback: str,
 ) -> tuple[list[dict], list[dict]]:
@@ -283,13 +288,13 @@ def _compact_extra_feedback(text: str) -> str:
 
 
 def _compact_json_context(value: object, *, max_chars: int) -> str:
-    content = json.dumps(value, ensure_ascii=False)
+    source_was_bounded = isinstance(value, str) and len(value) > max_chars
+    content = normalise_json_text(value) if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
     if len(content) <= max_chars:
+        if source_was_bounded:
+            return content.rstrip() + TRUNCATED_SETUP_CONTEXT_MARKER
         return content
-    return (
-        content[:max_chars].rstrip()
-        + "\n\n[已截断超长 Setup 内容，后续内容未进入本次生成上下文]"
-    )
+    return content[:max_chars].rstrip() + TRUNCATED_SETUP_CONTEXT_MARKER
 
 
 def _previous_chapter_preview(content: str, max_chars: int = PREVIOUS_CHAPTER_SUMMARY_CHAR_LIMIT) -> str:

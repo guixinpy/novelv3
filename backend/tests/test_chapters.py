@@ -8,6 +8,7 @@ from app.api.chapters import create_or_replace_chapter
 from app.models import (
     AIModelCallTrace,
     ChapterContent,
+    ConsistencyCheck,
     GenreProfile,
     LongformMemory,
     Outline,
@@ -504,6 +505,93 @@ def test_generate_chapter_does_not_select_full_outline_json_for_title_or_memory(
     assert all("outlines.chapters as" not in clause for clause in outline_select_clauses)
     assert all("outlines.plotlines as" not in clause for clause in outline_select_clauses)
     assert all("outlines.foreshadowing as" not in clause for clause in outline_select_clauses)
+
+
+@patch("app.api.chapters.load_api_key", return_value="sk-test")
+@patch("app.api.chapters.ai_service.complete", new_callable=AsyncMock)
+def test_generate_chapter_uses_bounded_setup_context_without_selecting_full_setup_json(
+    mock_complete,
+    mock_key,
+    db_session,
+):
+    project = Project(name="千章设定加载")
+    db_session.add(project)
+    db_session.flush()
+    world_mid_noise = "MID_CHAPTER_QUERY_WORLD_NOISE_SHOULD_NOT_APPEAR"
+    character_mid_noise = "MID_CHAPTER_QUERY_CHARACTER_NOISE_SHOULD_NOT_APPEAR"
+    concept_mid_noise = "MID_CHAPTER_QUERY_CONCEPT_NOISE_SHOULD_NOT_APPEAR"
+    db_session.add(
+        Setup(
+            project_id=project.id,
+            status="generated",
+            world_building={
+                "city": "雾港",
+                "lore": ("世界观噪音" * 700) + world_mid_noise + ("更多世界观噪音" * 10_000),
+            },
+            characters=[
+                {
+                    "name": "林舟",
+                    "character_status": "dead",
+                    "bio": ("角色噪音" * 700) + character_mid_noise + ("更多角色噪音" * 10_000),
+                }
+            ],
+            core_concept={
+                "hook": "旧灯塔记忆病毒",
+                "long": ("核心概念噪音" * 700) + concept_mid_noise + ("更多核心噪音" * 10_000),
+            },
+        )
+    )
+    db_session.add(
+        Outline(
+            project_id=project.id,
+            status="generated",
+            total_chapters=1,
+            chapters=[{"chapter_index": 1, "title": "雾锁灯塔", "summary": "陆辞调查灯塔区失忆案。"}],
+            plotlines=[],
+            foreshadowing=[],
+        )
+    )
+    db_session.commit()
+    mock_complete.return_value.content = "林舟出现在灯塔诊所，提醒陆辞不要相信旧灯塔。"
+    mock_complete.return_value.model = "deepseek-chat"
+    mock_complete.return_value.prompt_tokens = 100
+    mock_complete.return_value.completion_tokens = 200
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        chapter = asyncio.run(create_or_replace_chapter(db_session, project.id, 1))
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert chapter.title == "雾锁灯塔"
+    sent_prompt = mock_complete.await_args.args[0][0]["content"]
+    assert "雾港" in sent_prompt
+    assert "林舟" in sent_prompt
+    assert "旧灯塔记忆病毒" in sent_prompt
+    assert world_mid_noise not in sent_prompt
+    assert character_mid_noise not in sent_prompt
+    assert concept_mid_noise not in sent_prompt
+    assert (
+        db_session.query(ConsistencyCheck)
+        .filter(ConsistencyCheck.project_id == project.id, ConsistencyCheck.subject == "林舟")
+        .count()
+        == 1
+    )
+
+    setup_select_clauses = [
+        statement.split(" from setups", 1)[0]
+        for statement in statements
+        if " from setups" in statement
+    ]
+    assert setup_select_clauses
+    assert any("json_each(setups.characters)" in statement for statement in statements)
+    assert all("setups.world_building as setups_world_building" not in clause for clause in setup_select_clauses)
+    assert all("setups.characters as setups_characters" not in clause for clause in setup_select_clauses)
+    assert all("setups.core_concept as setups_core_concept" not in clause for clause in setup_select_clauses)
 
 
 @patch("app.api.chapters.load_api_key", return_value="sk-test")
