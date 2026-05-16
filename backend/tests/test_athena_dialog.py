@@ -820,6 +820,46 @@ def test_dialog_chat_payload_bounds_long_history_messages(db_session):
     assert all("[truncated:" in message["content"] for message in history_messages)
 
 
+def test_dialog_chat_payload_projects_bounded_history_content(db_session):
+    project, _ = _seed_project(db_session, with_profile=True)
+    dialog = Dialog(project_id=project.id, dialog_type="athena")
+    db_session.add(dialog)
+    db_session.flush()
+    long_content = "超长历史消息" * 3000
+    db_session.add_all(
+        [
+            DialogMessage(dialog_id=dialog.id, role="user", content=long_content),
+            DialogMessage(dialog_id=dialog.id, role="assistant", content=long_content),
+        ]
+    )
+    db_session.commit()
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        payload = dialogs._build_chat_call_payload(
+            db_session,
+            dialog.id,
+            project,
+            dialogs._build_diagnosis(db_session, project.id),
+            dialog_type="athena",
+        )
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert all("[truncated:" in message["content"] for message in payload["messages"][1:])
+    message_selects = [
+        statement.split(" from dialog_messages", 1)[0]
+        for statement in statements
+        if " from dialog_messages" in statement
+    ]
+    assert message_selects
+    assert all("dialog_messages.content as dialog_messages_content" not in clause for clause in message_selects)
+
+
 def test_athena_chat_payload_includes_manuscript_progress_context(db_session):
     project, _ = _seed_project(db_session, with_profile=True)
     project.target_chapter_count = 20

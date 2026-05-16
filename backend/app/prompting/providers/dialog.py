@@ -566,9 +566,16 @@ def build_dialog_call_payload(
     }
 
 
-def _latest_dialog_history(db: Session, dialog_id: str, limit: int) -> list[DialogMessage]:
+def _latest_dialog_history(db: Session, dialog_id: str, limit: int) -> list[Any]:
     history = (
-        db.query(DialogMessage)
+        db.query(
+            DialogMessage.role,
+            func.substr(
+                DialogMessage.content,
+                1,
+                DIALOG_HISTORY_MESSAGE_CONTENT_CHARS + 1,
+            ).label("content"),
+        )
         .filter(DialogMessage.dialog_id == dialog_id)
         .order_by(DialogMessage.created_at.desc())
         .limit(limit)
