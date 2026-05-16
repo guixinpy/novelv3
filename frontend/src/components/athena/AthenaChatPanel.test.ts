@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent } from 'vue'
 import AthenaChatPanel from './AthenaChatPanel.vue'
 import { useAthenaStore } from '../../stores/athena'
@@ -54,9 +54,14 @@ function setAssistantTraceMessage(traceId: string) {
   ]
 }
 
+function flushPromises() {
+  return new Promise((resolve) => setTimeout(resolve, 0))
+}
+
 describe('AthenaChatPanel', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
+    useAthenaStore().ensureProject('project-1')
   })
 
   it('shows the current Athena context snapshot above historical chat messages', () => {
@@ -175,6 +180,18 @@ describe('AthenaChatPanel', () => {
     const wrapper = mountPanel('project-1')
 
     expect(wrapper.text()).toContain('长篇记忆 待维护 10 项')
+  })
+
+  it('loads retrieval and longform diagnostics when opened with unread context', async () => {
+    const athena = useAthenaStore()
+    athena.loadRetrievalDiagnostics = vi.fn(async () => undefined) as typeof athena.loadRetrievalDiagnostics
+    athena.loadLongformMaintenanceDiagnostics = vi.fn(async () => undefined) as typeof athena.loadLongformMaintenanceDiagnostics
+
+    mountPanel('project-1')
+    await flushPromises()
+
+    expect(athena.loadRetrievalDiagnostics).toHaveBeenCalledWith('project-1')
+    expect(athena.loadLongformMaintenanceDiagnostics).toHaveBeenCalledWith('project-1')
   })
 
   it('opens trace drawer with clicked Athena message trace id', async () => {

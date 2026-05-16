@@ -68,6 +68,10 @@ watch(() => props.open, (open) => {
   if (!open) closeTrace()
 })
 
+watch([() => props.open, () => props.projectId], ([open, projectId]) => {
+  if (open && projectId) void loadContextDiagnostics(projectId)
+}, { immediate: true })
+
 watch(() => props.projectId, () => {
   closeTrace()
 })
@@ -83,6 +87,17 @@ function openTrace(traceId: string) {
 
 function closeTrace() {
   activeTraceId.value = null
+}
+
+async function loadContextDiagnostics(projectId: string) {
+  await Promise.all([
+    athena.retrievalDiagnostics?.project_id === projectId
+      ? Promise.resolve()
+      : athena.loadRetrievalDiagnostics(projectId).catch(() => undefined),
+    athena.longformMaintenanceDiagnostics?.project_id === projectId
+      ? Promise.resolve()
+      : athena.loadLongformMaintenanceDiagnostics(projectId).catch(() => undefined),
+  ])
 }
 </script>
 
