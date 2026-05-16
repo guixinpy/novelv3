@@ -817,6 +817,47 @@ async def _execute_action(
     )
 
 
+def build_action_background_work(
+    action_type: str,
+    project_id: str,
+    dialog_id: str,
+    command_args: str | None = None,
+    action_params: dict | None = None,
+):
+    async def _run(db: Session, running_task):
+        try:
+            result = await _execute_action(
+                action_type,
+                project_id,
+                db,
+                command_args=command_args,
+                action_params=action_params,
+            )
+        except Exception as exc:
+            ActionResultService(db).record_completion(
+                action_type=action_type,
+                project_id=project_id,
+                dialog_id=dialog_id,
+                result={"status": "failed", "error": str(exc)},
+                command_args=command_args,
+                action_params=action_params,
+            )
+            raise
+        ActionResultService(db).record_completion(
+            action_type=action_type,
+            project_id=project_id,
+            dialog_id=dialog_id,
+            result=result,
+            command_args=command_args,
+            action_params=action_params,
+        )
+        if result.get("status") != "success":
+            raise RuntimeError(str(result.get("error") or "Action failed"))
+        return result
+
+    return _run
+
+
 def _execute_action_background(
     action_type: str,
     project_id: str,
@@ -843,27 +884,16 @@ def _execute_action_background(
         if db is None:
             task_db.close()
 
-    async def _run(db: Session, running_task):
-        result = await _execute_action(
+    LocalTaskRunner().start(
+        task.id,
+        build_action_background_work(
             action_type,
             project_id,
-            db,
+            dialog_id,
             command_args=command_args,
             action_params=action_params,
-        )
-        ActionResultService(db).record_completion(
-            action_type=action_type,
-            project_id=project_id,
-            dialog_id=dialog_id,
-            result=result,
-            command_args=command_args,
-            action_params=action_params,
-        )
-        if result.get("status") != "success":
-            raise RuntimeError(str(result.get("error") or "Action failed"))
-        return result
-
-    LocalTaskRunner().start(task.id, _run)
+        ),
+    )
     return task
 
 

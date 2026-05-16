@@ -1106,6 +1106,40 @@ def test_resolve_action_confirm_creates_background_task(client, db_session):
     start.assert_called_once()
 
 
+@pytest.mark.asyncio
+async def test_background_action_work_records_failure_message_on_exception(client, db_session, monkeypatch):
+    r = client.post("/api/v1/projects", json={"name": "Background Failure Message"})
+    pid = r.json()["id"]
+    dialog = Dialog(project_id=pid, dialog_type="hermes", state="running")
+    db_session.add(dialog)
+    db_session.flush()
+    task = BackgroundTask(project_id=pid, task_type="generate_setup", status="running")
+    db_session.add(task)
+    db_session.commit()
+
+    async def fail_action(*_args, **_kwargs):
+        raise RuntimeError("model unavailable")
+
+    monkeypatch.setattr(dialogs_api, "_execute_action", fail_action)
+    work = dialogs_api.build_action_background_work("generate_setup", pid, dialog.id)
+
+    with pytest.raises(RuntimeError, match="model unavailable"):
+        await work(db_session, task)
+
+    db_session.expire_all()
+    refreshed_dialog = db_session.query(Dialog).filter(Dialog.id == dialog.id).one()
+    latest_message = (
+        db_session.query(DialogMessage)
+        .filter(DialogMessage.dialog_id == dialog.id)
+        .order_by(DialogMessage.created_at.desc(), DialogMessage.id.desc())
+        .first()
+    )
+    assert refreshed_dialog.state == "chatting"
+    assert latest_message is not None
+    assert "model unavailable" in latest_message.content
+    assert latest_message.action_result == {"type": "generate_setup", "status": "failed"}
+
+
 @pytest.mark.parametrize("result_payload", [
     {"status": "success"},
     {"status": "failed", "error": "boom"},
