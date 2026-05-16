@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { api } from '../api/client'
-import type { RefreshTarget, WorkspaceBootstrap } from '../api/types'
+import type { RefreshTarget, WorkspaceBootstrap, WritingState } from '../api/types'
 import { useRequestCacheStore } from './requestCache'
 
 type ProjectRequestLane =
@@ -34,6 +34,7 @@ export const useProjectStore = defineStore('project', () => {
   const storyline = ref<any>(null)
   const outline = ref<any>(null)
   const topology = ref<any>(null)
+  const writingState = ref<WritingState | null>(null)
   const chapters = ref<any[]>([])
   const chaptersTotal = ref(0)
   const chaptersOffset = ref(0)
@@ -153,6 +154,7 @@ export const useProjectStore = defineStore('project', () => {
     setup.value = bootstrap.setup || null
     storyline.value = bootstrap.storyline || null
     outline.value = bootstrap.outline || null
+    writingState.value = bootstrap.writing_state || null
     chapters.value = bootstrap.chapters || []
     chaptersTotal.value = bootstrap.chapters_total ?? chapters.value.length
     chaptersOffset.value = bootstrap.chapters_offset ?? 0
@@ -195,6 +197,7 @@ export const useProjectStore = defineStore('project', () => {
     storyline.value = null
     outline.value = null
     topology.value = null
+    writingState.value = null
     chapters.value = []
     chaptersTotal.value = 0
     chaptersOffset.value = 0
@@ -462,7 +465,7 @@ export const useProjectStore = defineStore('project', () => {
   }
 
   return {
-    projects, currentProject, setup, chapter, storyline, outline, topology,
+    projects, currentProject, setup, chapter, storyline, outline, topology, writingState,
     chapters, chaptersTotal, chaptersOffset, chaptersLimit, chaptersHasMore, chaptersLatestIndex,
     versions, versionsTotal, versionsOffset, versionsLimit, versionsHasMore, preferences, versionsNodeType,
     resetProjectScopedState,

@@ -1,4 +1,5 @@
 from app.models import ChapterContent, Dialog, DialogMessage, Outline, Project, Setup, Storyline, Version
+from app.services.writing.writing_state_service import WritingStateService
 from sqlalchemy import event
 
 
@@ -36,6 +37,8 @@ def test_workspace_bootstrap_returns_project_session_bundle(client, db_session):
         ]
     )
     db_session.commit()
+    WritingStateService(db_session).run_chapter(project.id, 7)
+    WritingStateService(db_session).mark_error(project.id, "network down")
 
     response = client.get(f"/api/v1/projects/{project.id}/workspace-bootstrap")
 
@@ -63,6 +66,12 @@ def test_workspace_bootstrap_returns_project_session_bundle(client, db_session):
     assert payload["versions_offset"] == 0
     assert payload["versions_limit"] == 50
     assert payload["versions_has_more"] is False
+    assert payload["writing_state"] == {
+        "project_id": project.id,
+        "current_chapter": 7,
+        "status": "failed",
+        "last_error": "network down",
+    }
     assert payload["dialogs"]["hermes"]["messages"][0]["content"] == "Hermes 历史"
     assert payload["dialogs"]["athena"]["messages"][0]["content"] == "Athena 历史"
 

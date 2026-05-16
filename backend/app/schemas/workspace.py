@@ -6,6 +6,7 @@ from .project import ProjectOut
 from .setup import SetupOut
 from .storyline import StorylineOut
 from .version import VersionSummary
+from .writing import WritingStateOut
 
 
 class ChapterSummaryOut(BaseModel):
@@ -40,4 +41,5 @@ class WorkspaceBootstrapOut(BaseModel):
     versions_offset: int = 0
     versions_limit: int = 0
     versions_has_more: bool = False
+    writing_state: WritingStateOut | None = None
     dialogs: dict[str, DialogBootstrapOut] = Field(default_factory=dict)

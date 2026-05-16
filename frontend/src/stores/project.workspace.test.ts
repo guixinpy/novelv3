@@ -51,6 +51,7 @@ describe('project workspace state', () => {
     store.outline = { id: 'outline-a' }
     store.chapter = { id: 'chapter-a' }
     store.topology = { id: 'topology-a' }
+    store.writingState = { project_id: 'project-a', current_chapter: 12, status: 'running' }
     store.chapters = [{ id: 'chapter-a' }]
     store.chaptersTotal = 10
     store.chaptersOffset = 2
@@ -68,6 +69,7 @@ describe('project workspace state', () => {
     expect(store.outline).toBe(null)
     expect(store.chapter).toBe(null)
     expect(store.topology).toBe(null)
+    expect(store.writingState).toBe(null)
     expect(store.chapters).toEqual([])
     expect(store.chaptersTotal).toBe(0)
     expect(store.chaptersOffset).toBe(0)
@@ -388,10 +390,17 @@ describe('project workspace state', () => {
 
   it('workspace bootstrap 会填充项目冷启动数据并标记为 fresh', async () => {
     const store = useProjectStore()
+    const writingState = {
+      project_id: 'A',
+      current_chapter: 7,
+      status: 'failed',
+      last_error: 'network down',
+    }
 
     store.applyWorkspaceBootstrap({
       project: { id: 'A', name: '项目 A' },
       diagnosis: { missing_items: [], completed_items: ['content'], suggested_next_step: null },
+      writing_state: writingState,
       setup: { id: 'setup-1', project_id: 'A', status: 'generated' },
       storyline: { id: 'storyline-1', project_id: 'A', status: 'generated' },
       outline: { id: 'outline-1', project_id: 'A', status: 'generated' },
@@ -428,6 +437,7 @@ describe('project workspace state', () => {
     expect(store.chaptersHasMore).toBe(true)
     expect(store.chaptersLatestIndex).toBe(250)
     expect(store.versions).toEqual([{ id: 'version-1', node_type: 'chapter', node_id: 'chapter-1', version_number: 1 }])
+    expect(store.writingState).toEqual(writingState)
   })
 
   it('workspace bootstrap 的 partial outline 不会被标记为完整大纲缓存', async () => {

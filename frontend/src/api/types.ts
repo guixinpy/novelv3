@@ -134,6 +134,7 @@ export interface WorkspaceBootstrap {
   versions_offset?: number
   versions_limit?: number
   versions_has_more?: boolean
+  writing_state?: WritingState | null
   dialogs: {
     hermes?: DialogBootstrap
     athena?: DialogBootstrap

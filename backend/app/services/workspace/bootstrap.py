@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.models import ChapterContent, Outline, Project, Setup, Storyline, Version
 from app.schemas import ProjectDiagnosisOut
 from app.services.dialog.messages import DEFAULT_MESSAGE_CONTENT_PREVIEW_CHARS, DialogMessageService
+from app.services.writing.writing_state_service import WritingStateService
 
 CHAPTER_BOOTSTRAP_LIMIT = 200
 VERSION_BOOTSTRAP_LIMIT = 50
@@ -176,6 +177,7 @@ class WorkspaceBootstrapService:
             "versions_offset": 0,
             "versions_limit": VERSION_BOOTSTRAP_LIMIT,
             "versions_has_more": len(versions) < versions_total,
+            "writing_state": WritingStateService(self.db).state(project_id).model_dump(),
             "dialogs": {
                 "hermes": {
                     "messages": self.messages.list_messages(
