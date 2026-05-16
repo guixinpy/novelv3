@@ -1109,6 +1109,37 @@ def test_longform_scale_smoke_cli_fails_when_thresholds_are_exceeded(monkeypatch
     assert "retrieval_reindex 900 exceeded max 800" in captured.err
 
 
+def test_longform_scale_smoke_cli_fails_when_repeat_reindex_writes_documents(monkeypatch, capsys):
+    script_path = Path(__file__).resolve().parents[2] / "scripts" / "longform_scale_smoke.py"
+    spec = importlib.util.spec_from_file_location("longform_scale_smoke_cli", script_path)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    def fake_run_smoke_report(_args):
+        return {
+            "project_id": "project-smoke-repeat",
+            "elapsed_ms": 100,
+            "timings_ms": {},
+            "retrieval": {"total_documents": 10},
+            "repeat_reindex": {
+                "indexed": {"documents": 1, "chunks": 1, "terms": 3, "embeddings": 1},
+                "preserved_documents": 9,
+                "removed_documents": 0,
+            },
+        }
+
+    monkeypatch.setattr(module, "_run_smoke_report", fake_run_smoke_report, raising=False)
+
+    exit_code = module.main([])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "repeat_reindex indexed 1 documents; expected 0" in captured.err
+    assert "repeat_reindex preserved 9 documents; expected 10" in captured.err
+
+
 def test_longform_scale_smoke_cli_rejects_invalid_stage_threshold_before_running(monkeypatch):
     script_path = Path(__file__).resolve().parents[2] / "scripts" / "longform_scale_smoke.py"
     spec = importlib.util.spec_from_file_location("longform_scale_smoke_cli", script_path)

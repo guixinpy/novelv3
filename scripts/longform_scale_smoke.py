@@ -108,6 +108,21 @@ def _threshold_failures(
         actual = int(timings.get(stage) or 0)
         if actual > threshold:
             failures.append(f"{stage} {actual} exceeded max {threshold}")
+    repeat_reindex = report.get("repeat_reindex") or {}
+    if repeat_reindex:
+        repeat_indexed = repeat_reindex.get("indexed") or {}
+        indexed_documents = int(repeat_indexed.get("documents") or 0)
+        removed_documents = int(repeat_reindex.get("removed_documents") or 0)
+        preserved_documents = int(repeat_reindex.get("preserved_documents") or 0)
+        expected_preserved = int((report.get("retrieval") or {}).get("total_documents") or 0)
+        if indexed_documents != 0:
+            failures.append(f"repeat_reindex indexed {indexed_documents} documents; expected 0")
+        if removed_documents != 0:
+            failures.append(f"repeat_reindex removed {removed_documents} documents; expected 0")
+        if expected_preserved and preserved_documents != expected_preserved:
+            failures.append(
+                f"repeat_reindex preserved {preserved_documents} documents; expected {expected_preserved}"
+            )
     return failures
 
 
