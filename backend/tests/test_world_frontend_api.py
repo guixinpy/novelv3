@@ -2115,6 +2115,49 @@ def test_world_model_proposal_review_queue_limits_large_backlog(client, db_sessi
     assert [cluster["item_ids"][0] for cluster in payload["clusters"]] == item_ids[:2]
 
 
+def test_world_model_proposal_review_queue_supports_offset_window(client, db_session):
+    project, profile_version = _seed_profile(db_session)
+    bundle = create_bundle(
+        db=db_session,
+        project_id=project.id,
+        project_profile_version_id=profile_version.id,
+        profile_version=profile_version.version,
+        created_by="writer.alpha",
+        title="Offset review queue",
+    )
+    item_ids = []
+    for index in range(1, 6):
+        item = write_candidate_fact(
+            db=db_session,
+            bundle_id=bundle.id,
+            created_by="writer.alpha",
+            candidate=_candidate_payload(
+                claim_id=f"claim.hero.status.offset.queue.{index}",
+                subject_ref=f"char.hero.offset.{index}",
+                predicate="status",
+                value="失踪",
+                chapter_index=index,
+            ),
+        )
+        item_ids.append(item.id)
+
+    response = client.get(f"/api/v1/projects/{project.id}/world-model/proposal-review-queue?offset=2&limit=2")
+    athena_response = client.get(
+        f"/api/v1/projects/{project.id}/athena/evolution/proposal-review-queue?offset=2&limit=2"
+    )
+
+    assert response.status_code == 200
+    assert athena_response.status_code == 200
+    payload = response.json()
+    assert payload == athena_response.json()
+    assert payload["total_items"] == 5
+    assert payload["returned_items"] == 2
+    assert payload["offset"] == 2
+    assert payload["limit"] == 2
+    assert payload["has_more"] is True
+    assert [cluster["item_ids"][0] for cluster in payload["clusters"]] == item_ids[2:4]
+
+
 def test_world_model_proposal_review_queue_count_does_not_select_heavy_item_fields(client, db_session):
     project, profile_version = _seed_profile(db_session)
     bundle = create_bundle(

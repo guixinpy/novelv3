@@ -96,11 +96,12 @@ def get_evolution_proposals(
 @router.get("/evolution/proposal-review-queue", response_model=ProposalReviewQueueOut)
 def get_evolution_proposal_review_queue(
     project_id: str,
+    offset: int = Query(0, ge=0),
     limit: int = Query(200, ge=1, le=500),
     db: Session = Depends(get_db),
 ):
     from app.api.world_model import get_world_model_proposal_review_queue
-    return get_world_model_proposal_review_queue(project_id, limit, db)
+    return get_world_model_proposal_review_queue(project_id=project_id, offset=offset, limit=limit, db=db)
 
 
 @router.get("/evolution/proposals/{bundle_id}")

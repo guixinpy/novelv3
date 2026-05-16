@@ -18,6 +18,7 @@ def build_proposal_review_queue(
     db: Session,
     project_id: str,
     profile: ProjectProfileVersion | None,
+    offset: int = 0,
     limit: int = 200,
 ) -> dict[str, Any]:
     if profile is None:
@@ -26,6 +27,7 @@ def build_proposal_review_queue(
             "profile_version": None,
             "total_items": 0,
             "returned_items": 0,
+            "offset": offset,
             "limit": limit,
             "has_more": False,
             "clusters": [],
@@ -46,6 +48,7 @@ def build_proposal_review_queue(
             WorldProposalItem.subject_ref.asc(),
             WorldProposalItem.id.asc(),
         )
+        .offset(offset)
         .limit(limit)
         .all()
     )
@@ -85,8 +88,9 @@ def build_proposal_review_queue(
         "profile_version": profile.version,
         "total_items": total_items,
         "returned_items": len(items),
+        "offset": offset,
         "limit": limit,
-        "has_more": total_items > len(items),
+        "has_more": offset + len(items) < total_items,
         "clusters": ordered_clusters,
     }
 

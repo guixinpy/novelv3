@@ -571,9 +571,15 @@ export interface ProposalReviewQueue {
   profile_version: number | null
   total_items: number
   returned_items?: number
+  offset?: number
   limit?: number
   has_more?: boolean
   clusters: ProposalReviewQueueCluster[]
+}
+
+export interface ProposalReviewQueueQuery {
+  offset?: number
+  limit?: number
 }
 
 export interface ProposalReviewRequest {

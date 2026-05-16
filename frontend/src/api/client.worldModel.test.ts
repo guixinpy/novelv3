@@ -120,4 +120,23 @@ describe('world model api client', () => {
       }),
     )
   })
+
+  it('getWorldProposalReviewQueue() serializes queue window params', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ total_items: 0, clusters: [] }),
+    } as Response)
+
+    await api.getWorldProposalReviewQueue('project-1', {
+      offset: 40,
+      limit: 20,
+    })
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/projects/project-1/world-model/proposal-review-queue?offset=40&limit=20',
+      expect.objectContaining({
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+  })
 })

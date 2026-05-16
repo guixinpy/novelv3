@@ -296,12 +296,13 @@ def list_world_proposal_bundles(
 @router.get("/proposal-review-queue", response_model=ProposalReviewQueueOut)
 def get_world_model_proposal_review_queue(
     project_id: str,
+    offset: int = Query(0, ge=0),
     limit: int = Query(200, ge=1, le=500),
     db: Session = Depends(get_db),
 ):
     _require_project(db=db, project_id=project_id)
     profile = _get_current_profile_ref(db=db, project_id=project_id)
-    return build_proposal_review_queue(db=db, project_id=project_id, profile=profile, limit=limit)
+    return build_proposal_review_queue(db=db, project_id=project_id, profile=profile, offset=offset, limit=limit)
 
 
 @router.get("/proposal-bundles/{bundle_id}", response_model=ProposalBundleDetailOut)

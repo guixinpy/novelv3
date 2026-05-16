@@ -223,6 +223,7 @@ class ProposalReviewQueueOut(BaseModel):
     profile_version: int | None
     total_items: int
     returned_items: int = 0
+    offset: int = 0
     limit: int = 200
     has_more: bool = False
     clusters: list[ProposalReviewQueueClusterOut] = Field(default_factory=list)

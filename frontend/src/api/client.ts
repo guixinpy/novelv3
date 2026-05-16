@@ -37,6 +37,7 @@ import type {
   ProposalBundleDetail,
   ProposalReview,
   ProposalReviewQueue,
+  ProposalReviewQueueQuery,
   ProposalReviewRequest,
   ProposalRollbackRequest,
   ProposalSplitRequest,
@@ -123,6 +124,13 @@ function athenaOptimizationQuery(params?: AthenaOptimizationQuery) {
   return query
 }
 
+function proposalReviewQueueQuery(params?: ProposalReviewQueueQuery) {
+  const query = new URLSearchParams()
+  if (params?.offset !== undefined) query.set('offset', String(params.offset))
+  if (params?.limit !== undefined) query.set('limit', String(params.limit))
+  return query
+}
+
 async function requestEvolutionPlanWindow(id: string) {
   return request<AthenaEvolutionPlan>(`/projects/${id}/athena/evolution/plan?mode=window`)
 }
@@ -173,8 +181,11 @@ export const api = {
     const qs = query.toString()
     return request<PaginatedProposalBundles>(`/projects/${id}/world-model/proposal-bundles${qs ? `?${qs}` : ''}`)
   },
-  getWorldProposalReviewQueue: (id: string) =>
-    request<ProposalReviewQueue>(`/projects/${id}/world-model/proposal-review-queue`),
+  getWorldProposalReviewQueue: (id: string, params?: ProposalReviewQueueQuery) => {
+    const query = proposalReviewQueueQuery(params)
+    const qs = query.toString()
+    return request<ProposalReviewQueue>(`/projects/${id}/world-model/proposal-review-queue${qs ? `?${qs}` : ''}`)
+  },
   getWorldProposalBundle: (id: string, bundleId: string, params?: { item_offset?: number; item_limit?: number }) => {
     const query = new URLSearchParams()
     if (params?.item_offset !== undefined) query.set('item_offset', String(params.item_offset))
