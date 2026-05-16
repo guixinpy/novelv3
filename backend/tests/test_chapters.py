@@ -18,6 +18,7 @@ from app.models import (
     Setup,
     WorldFactClaim,
 )
+from app.services.writing.writing_state_service import WritingStateService
 
 
 def _create_project_with_setup(client):
@@ -228,6 +229,39 @@ def test_generate_chapter_updates_project_and_list_chapter_word_counts(mock_comp
 
     chapters = client.get(f"/api/v1/projects/{pid}/chapters").json()["chapters"]
     assert chapters[0]["word_count"] == 5
+
+
+@patch("app.api.chapters.load_api_key", return_value="sk-test")
+@patch("app.api.chapters.ai_service.complete", new_callable=AsyncMock)
+def test_generate_chapter_updates_writing_state_after_success(mock_complete, mock_key, client, db_session):
+    pid = _create_project_with_setup(client)
+    mock_complete.return_value.content = "第二章正文内容"
+    mock_complete.return_value.model = "deepseek-chat"
+    mock_complete.return_value.prompt_tokens = 100
+    mock_complete.return_value.completion_tokens = 200
+
+    response = client.post(f"/api/v1/projects/{pid}/chapters/2/generate")
+
+    assert response.status_code == 200
+    state = WritingStateService(db_session).state(pid)
+    assert state.status == "idle"
+    assert state.current_chapter == 2
+    assert state.last_error is None
+
+
+@patch("app.api.chapters.load_api_key", return_value="sk-test")
+@patch("app.api.chapters.ai_service.complete", new_callable=AsyncMock)
+def test_generate_chapter_marks_writing_state_failed_after_model_error(mock_complete, mock_key, client, db_session):
+    pid = _create_project_with_setup(client)
+    mock_complete.side_effect = RuntimeError("model outage")
+
+    with pytest.raises(RuntimeError, match="model outage"):
+        client.post(f"/api/v1/projects/{pid}/chapters/3/generate")
+
+    state = WritingStateService(db_session).state(pid)
+    assert state.status == "failed"
+    assert state.current_chapter == 3
+    assert state.last_error == "model outage"
 
 
 @patch("app.api.chapters.load_api_key", return_value="sk-test")

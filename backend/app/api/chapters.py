@@ -29,6 +29,7 @@ from app.prompting.providers.chapter import (
 from app.prompting.providers.storyline import SetupContextSnapshot
 from app.prompting.tracing import build_prompt_trace_metadata
 from app.schemas import ChapterOut
+from app.services.writing.writing_state_service import WritingStateService
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/chapters", tags=["chapters"])
 
@@ -280,6 +281,7 @@ async def create_or_replace_chapter(
     trace = _safe_create_chapter_trace(db, project=project, chapter_index=chapter_index, payload=payload)
     started_at = now_ms()
     start = time.time()
+    WritingStateService(db).run_chapter(project_id, chapter_index)
     try:
         result = await ai_service.complete(
             payload["messages"],
@@ -287,6 +289,7 @@ async def create_or_replace_chapter(
             max_tokens=payload["max_tokens"],
         )
     except Exception as exc:
+        WritingStateService(db).mark_error(project_id, str(exc))
         _safe_mark_chapter_trace_failed(
             db,
             trace,
@@ -304,6 +307,7 @@ async def create_or_replace_chapter(
 
     generated_content = _normalize_generated_chapter_content(result.content)
     if not generated_content:
+        WritingStateService(db).mark_error(project_id, EMPTY_CHAPTER_CONTENT_ERROR)
         _safe_mark_chapter_trace_failed(
             db,
             trace,
@@ -349,9 +353,12 @@ async def create_or_replace_chapter(
     try:
         db.commit()
         db.refresh(chapter)
-    except Exception:
+    except Exception as exc:
         db.rollback()
+        WritingStateService(db).mark_error(project_id, str(exc))
         raise
+
+    WritingStateService(db).complete_chapter(project_id, chapter_index)
 
     _safe_mark_chapter_trace_success(
         db,
