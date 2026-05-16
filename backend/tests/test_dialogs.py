@@ -943,6 +943,52 @@ def test_select_compactable_plain_messages_filters_after_last_summary_without_fu
     assert full_history_selects == []
 
 
+def test_select_compactable_plain_messages_projects_bounded_content_preview(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Compact Preview"})
+    pid = r.json()["id"]
+    dialog = Dialog(project_id=pid, dialog_type="hermes", state="chatting")
+    db_session.add(dialog)
+    db_session.commit()
+    full_content = "很长的对话内容" * 1000
+    db_session.add(
+        DialogMessage(
+            dialog_id=dialog.id,
+            role="user",
+            message_type="plain",
+            content=full_content,
+            action_result={"type": "chat", "status": "done"},
+        )
+    )
+    db_session.commit()
+    statements: list[str] = []
+
+    def capture_statement(conn, cursor, statement, parameters, context, executemany):  # noqa: ARG001
+        statements.append(" ".join(statement.lower().split()))
+
+    bind = db_session.get_bind()
+    event.listen(bind, "before_cursor_execute", capture_statement)
+    try:
+        compactable = select_compactable_plain_messages(db_session, dialog.id)
+    finally:
+        event.remove(bind, "before_cursor_execute", capture_statement)
+
+    assert len(compactable) == 1
+    assert compactable[0].id
+    assert compactable[0].role == "user"
+    assert compactable[0].action_result == {"type": "chat", "status": "done"}
+    assert 0 < len(compactable[0].content) <= 2000
+    assert compactable[0].content != full_content
+    plain_message_selects = [
+        statement.split(" from dialog_messages", 1)[0]
+        for statement in statements
+        if " from dialog_messages" in statement
+        and "dialog_messages.message_type" in statement
+        and "content" in statement.split(" from dialog_messages", 1)[0]
+    ]
+    assert plain_message_selects
+    assert all("dialog_messages.content as" not in select_clause for select_clause in plain_message_selects)
+
+
 def test_latest_unfinished_action_type_scans_only_action_result_messages(client, db_session):
     r = client.post("/api/v1/projects", json={"name": "Running Guard Scale"})
     pid = r.json()["id"]

@@ -1,6 +1,7 @@
 from dataclasses import dataclass
+from typing import Any
 
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
 from app.models import DialogMessage
@@ -8,6 +9,7 @@ from app.prompting.assembler import PromptAssembler
 from app.schemas import ProjectDiagnosisOut
 
 MAX_COMPACTION_DIALOG_LINES_CHARS = 12_000
+COMPACTION_MESSAGE_CONTENT_QUERY_CHARS = 2_000
 
 
 @dataclass(frozen=True)
@@ -17,7 +19,7 @@ class CompactionSummary:
     compacted_count: int
 
 
-def select_compactable_plain_messages(db: Session, dialog_id: str) -> list[DialogMessage]:
+def select_compactable_plain_messages(db: Session, dialog_id: str) -> list[Any]:
     last_summary = (
         db.query(DialogMessage.created_at, DialogMessage.id)
         .filter(
@@ -27,7 +29,13 @@ def select_compactable_plain_messages(db: Session, dialog_id: str) -> list[Dialo
         .order_by(DialogMessage.created_at.desc(), DialogMessage.id.desc())
         .first()
     )
-    query = db.query(DialogMessage).filter(
+    query = db.query(
+        DialogMessage.id,
+        DialogMessage.role,
+        DialogMessage.message_type,
+        func.substr(DialogMessage.content, 1, COMPACTION_MESSAGE_CONTENT_QUERY_CHARS).label("content"),
+        DialogMessage.action_result,
+    ).filter(
         DialogMessage.dialog_id == dialog_id,
         DialogMessage.message_type == "plain",
     )
