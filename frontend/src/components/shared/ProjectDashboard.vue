@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { PendingAction } from '../../api/types'
+import type { PendingAction, WritingState } from '../../api/types'
 
 const props = defineProps<{
   setup: any
@@ -14,6 +14,7 @@ const props = defineProps<{
   latestActionLabel?: string
   latestActionStatus?: string | null
   suggestedNextStep?: string | null
+  writingState?: WritingState | null
 }>()
 
 const emit = defineEmits<{
@@ -131,6 +132,30 @@ const aiTaskTitle = computed(() => {
   return '暂无进行中的 AI 任务'
 })
 
+const writingStatusLabel = computed(() => {
+  switch (props.writingState?.status) {
+    case 'running': return '写作中'
+    case 'paused': return '已暂停'
+    case 'failed': return '需处理'
+    case 'idle': return '空闲'
+    default: return props.writingState?.status || ''
+  }
+})
+
+const writingStatusClass = computed(() => {
+  switch (props.writingState?.status) {
+    case 'running': return 'dashboard__status--running'
+    case 'paused': return 'dashboard__status--warning'
+    case 'failed': return 'dashboard__status--danger'
+    default: return 'dashboard__status--idle'
+  }
+})
+
+const writingChapterLabel = computed(() => {
+  const chapter = Number(props.writingState?.current_chapter || 0)
+  return chapter > 0 ? `第${chapter}章` : '未开始'
+})
+
 const totalWordsLabel = computed(() => props.totalWords >= 10000 ? `${(props.totalWords / 10000).toFixed(1)}万` : props.totalWords)
 </script>
 
@@ -179,6 +204,13 @@ const totalWordsLabel = computed(() => props.totalWords >= 10000 ? `${(props.tot
           <span class="dashboard__status" :class="aiStatusClass">{{ aiStatusLabel }}</span>
         </div>
         <p v-if="suggestedNextStep" class="dashboard__next">建议：{{ suggestedNextStep }}</p>
+      </div>
+      <div v-if="writingState" class="dashboard__writing">
+        <div class="dashboard__task-top">
+          <span class="dashboard__task-title">写作进度 · {{ writingChapterLabel }}</span>
+          <span class="dashboard__status" :class="writingStatusClass">{{ writingStatusLabel }}</span>
+        </div>
+        <p v-if="writingState.last_error" class="dashboard__next">{{ writingState.last_error }}</p>
       </div>
     </section>
 
@@ -314,6 +346,13 @@ const totalWordsLabel = computed(() => props.totalWords >= 10000 ? `${(props.tot
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-bg-white);
+}
+
+.dashboard__writing {
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-secondary);
 }
 
 .dashboard__task-top {

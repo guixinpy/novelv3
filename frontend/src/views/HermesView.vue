@@ -348,6 +348,7 @@ function closeTrace() {
           :latest-action-label="latestActionLabel"
           :latest-action-status="latestActionStatus"
           :suggested-next-step="suggestedNextStep"
+          :writing-state="project.writingState"
           @tool="onDashboardTool"
         />
         <button

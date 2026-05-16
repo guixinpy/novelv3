@@ -153,4 +153,27 @@ describe('ProjectDashboard', () => {
     expect(wrapper.text()).toContain('已生成')
     expect(wrapper.text()).not.toContain('待完善')
   })
+
+  it('renders persisted writing progress from workspace bootstrap state', () => {
+    const wrapper = mount(ProjectDashboard, {
+      props: {
+        setup: null,
+        storyline: null,
+        outline: null,
+        chapters: [],
+        totalWords: 0,
+        writingState: {
+          project_id: 'project-1',
+          current_chapter: 37,
+          status: 'failed',
+          last_error: '模型调用超时',
+        },
+      },
+    })
+
+    expect(wrapper.text()).toContain('写作进度')
+    expect(wrapper.text()).toContain('第37章')
+    expect(wrapper.text()).toContain('需处理')
+    expect(wrapper.text()).toContain('模型调用超时')
+  })
 })
