@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from uuid import uuid4
 
 from fastapi import HTTPException
@@ -40,6 +41,14 @@ WORLD_UPDATE_NEGATION_MARKERS = (
 )
 
 
+@dataclass(frozen=True)
+class CurrentProfileRef:
+    id: str
+    project_id: str
+    version: int
+    contract_version: str
+
+
 def require_project(db: Session, project_id: str) -> Project:
     project = db.query(Project).filter(Project.id == project_id).first()
     if project is None:
@@ -47,12 +56,25 @@ def require_project(db: Session, project_id: str) -> Project:
     return project
 
 
-def get_current_profile(db: Session, project_id: str) -> ProjectProfileVersion | None:
-    return (
-        db.query(ProjectProfileVersion)
+def get_current_profile(db: Session, project_id: str) -> CurrentProfileRef | None:
+    row = (
+        db.query(
+            ProjectProfileVersion.id,
+            ProjectProfileVersion.project_id,
+            ProjectProfileVersion.version,
+            ProjectProfileVersion.contract_version,
+        )
         .filter(ProjectProfileVersion.project_id == project_id)
         .order_by(ProjectProfileVersion.version.desc())
         .first()
+    )
+    if row is None:
+        return None
+    return CurrentProfileRef(
+        id=row.id,
+        project_id=row.project_id,
+        version=row.version,
+        contract_version=row.contract_version,
     )
 
 
@@ -117,7 +139,7 @@ def create_dialog_world_update_proposal(
     *,
     db: Session,
     project_id: str,
-    profile: ProjectProfileVersion,
+    profile: CurrentProfileRef,
     dialog_id: str,
     text: str,
 ):
