@@ -39,6 +39,29 @@ def test_writing_start_continues_after_latest_generated_chapter(client, db_sessi
     assert response.json()["current_chapter"] == 4
 
 
+def test_writing_start_creates_generate_chapter_task(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Continuous Writing"})
+    pid = r.json()["id"]
+
+    with patch("app.api.writing.LocalTaskRunner.start") as start:
+        response = client.post(f"/api/v1/projects/{pid}/writing/start")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "running"
+    assert response.json()["current_chapter"] == 1
+    task = (
+        db_session.query(BackgroundTask)
+        .filter(
+            BackgroundTask.project_id == pid,
+            BackgroundTask.task_type == "generate_chapter",
+        )
+        .one()
+    )
+    assert task.payload == {"chapter_index": 1}
+    assert task.status == "pending"
+    start.assert_called_once()
+
+
 def test_writing_state_endpoint_returns_current_state(client, db_session):
     r = client.post("/api/v1/projects", json={"name": "Readable Writing State"})
     pid = r.json()["id"]
@@ -65,6 +88,31 @@ def test_writing_pause_and_resume(client):
 
     r3 = client.post(f"/api/v1/projects/{pid}/writing/resume")
     assert r3.json()["status"] == "running"
+
+
+def test_writing_resume_creates_generate_chapter_task(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Paused Continuous Writing"})
+    pid = r.json()["id"]
+    WritingStateService(db_session).run_chapter(pid, 5)
+    WritingStateService(db_session).pause(pid)
+
+    with patch("app.api.writing.LocalTaskRunner.start") as start:
+        response = client.post(f"/api/v1/projects/{pid}/writing/resume")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "running"
+    assert response.json()["current_chapter"] == 5
+    task = (
+        db_session.query(BackgroundTask)
+        .filter(
+            BackgroundTask.project_id == pid,
+            BackgroundTask.task_type == "generate_chapter",
+        )
+        .one()
+    )
+    assert task.payload == {"chapter_index": 5}
+    assert task.status == "pending"
+    start.assert_called_once()
 
 
 def test_writing_state_survives_service_recreation(client, db_session):

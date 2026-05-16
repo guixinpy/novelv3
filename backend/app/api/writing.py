@@ -14,11 +14,13 @@ scheduler = WritingScheduler()
 
 
 @router.post("/start", response_model=WritingStateOut)
-def start_writing(project_id: str, db: Session = Depends(get_db)):
+async def start_writing(project_id: str, db: Session = Depends(get_db)):
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    return scheduler.start(project_id, db)
+    state = scheduler.start(project_id, db)
+    _queue_generate_chapter_task(db, project_id, state.current_chapter)
+    return state
 
 
 @router.post("/pause", response_model=WritingStateOut)
@@ -30,11 +32,14 @@ def pause_writing(project_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("/resume", response_model=WritingStateOut)
-def resume_writing(project_id: str, db: Session = Depends(get_db)):
+async def resume_writing(project_id: str, db: Session = Depends(get_db)):
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    return scheduler.resume(project_id, db)
+    state = scheduler.resume(project_id, db)
+    if state.status == "running":
+        _queue_generate_chapter_task(db, project_id, state.current_chapter)
+    return state
 
 
 @router.get("/state", response_model=WritingStateOut)
@@ -60,6 +65,32 @@ def build_retry_chapter_work(project_id: str, chapter_index: int):
         return {"chapter_index": generated_index}
 
     return _regen
+
+
+def build_generate_chapter_work(project_id: str, chapter_index: int):
+    async def _generate(rdb: Session, running_task: BackgroundTask):
+        from app.api.chapters import generate_chapter as _gen_chapter
+
+        try:
+            chapter = await _gen_chapter(project_id, chapter_index, rdb)
+        except Exception as exc:
+            WritingStateService(rdb).mark_error(project_id, str(exc))
+            raise
+
+        generated_index = chapter.get("chapter_index") if isinstance(chapter, dict) else chapter.chapter_index
+        return {"chapter_index": generated_index}
+
+    return _generate
+
+
+def _queue_generate_chapter_task(db: Session, project_id: str, chapter_index: int) -> BackgroundTask:
+    task = BackgroundTaskService(db).create(
+        project_id=project_id,
+        task_type="generate_chapter",
+        payload={"chapter_index": chapter_index},
+    )
+    LocalTaskRunner().start(task.id, build_generate_chapter_work(project_id, chapter_index))
+    return task
 
 
 @router.post("/chapters/{chapter_index}/retry", response_model=WritingStateOut)
