@@ -8,8 +8,10 @@ from app.core.consistency_checker import ConsistencyChecker
 from app.core.cross_validator import CrossValidator
 from app.core.l1_extractor import L1RuleExtractor
 from app.core.l2_extractor import L2LLMExtractor
+from app.core.setup_projection import get_setup_character_projection
 from app.db import SessionLocal
-from app.models import ChapterContent, ConsistencyCheck, ExtractedFact, Setup
+from app.models import ChapterContent, ConsistencyCheck, ExtractedFact
+from app.prompting.providers.storyline import SetupContextSnapshot
 
 logger = logging.getLogger(__name__)
 
@@ -35,8 +37,8 @@ class BackgroundAnalyzer:
             if not chapter:
                 return {"issues": [], "error": "Chapter not found"}
 
-            setup = db.query(Setup).filter(Setup.project_id == project_id).first()
-            characters = setup.characters or [] if setup else []
+            characters = get_setup_character_projection(db, project_id)
+            setup = SetupContextSnapshot(world_building={}, characters=characters, core_concept={})
 
             l1_facts = self.l1.extract(chapter, characters)
             l2_facts = await self.l2.extract(chapter.content or "")
