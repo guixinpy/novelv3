@@ -646,24 +646,6 @@ def _detect_item_conflicts(
         for item in items
         if item.item_status in ACTIONABLE_PROPOSAL_ITEM_STATUSES
     }
-    actionable_truth_items = [
-        item
-        for item in items
-        if item.id in actionable_item_ids and item.claim_layer == "truth"
-    ]
-    needs_full_projection = any(
-        not is_chapter_scoped_truth_predicate(item.predicate)
-        for item in actionable_truth_items
-    )
-    projection_facts = {}
-    if needs_full_projection and (profile := _get_current_profile(db=db, project_id=project_id)) is not None:
-        overview = build_world_projection_overview(
-            db=db,
-            project_id=project_id,
-            profile=profile,
-            view_type="current_truth",
-        )
-        projection_facts = overview.projection.facts if overview.projection else {}
     for item in items:
         if item.id not in actionable_item_ids:
             continue
@@ -689,23 +671,22 @@ def _detect_item_conflicts(
                     "existing_claim_id": existing_claim.id,
                 })
             continue
-        subject_facts = projection_facts.get(item.subject_ref, {})
-        if item.predicate in subject_facts:
-            existing_val = subject_facts[item.predicate]
+        existing_claim = _find_current_truth_claim_value(
+            db=db,
+            project_id=project_id,
+            bundle=bundle,
+            subject_ref=item.subject_ref,
+            predicate=item.predicate,
+        )
+        if existing_claim is not None:
+            existing_claim_id, existing_val = existing_claim
             proposed_val = item.object_ref_or_value
             if existing_val != proposed_val:
                 conflicts.append({
                     "item_id": item.id,
                     "conflict_type": "truth_conflict",
                     "detail": f"与现有真相冲突：{item.subject_ref}.{item.predicate} = {existing_val}",
-                    "existing_claim_id": _find_current_truth_claim_id(
-                        db=db,
-                        project_id=project_id,
-                        bundle=bundle,
-                        subject_ref=item.subject_ref,
-                        predicate=item.predicate,
-                        value=existing_val,
-                    ),
+                    "existing_claim_id": existing_claim_id,
                 })
     for snapshot in impact_snapshots:
         if len(snapshot.affected_truth_claim_ids) >= 3:
@@ -793,6 +774,34 @@ def _build_bundle_detail(
         reviews=reviews,
         impact_snapshots=impact_snapshots,
         conflicts=conflicts,
+    )
+
+
+def _find_current_truth_claim_value(
+    *,
+    db: Session,
+    project_id: str,
+    bundle: WorldProposalBundle,
+    subject_ref: str,
+    predicate: str,
+) -> tuple[str, object] | None:
+    return (
+        db.query(WorldFactClaim.id, WorldFactClaim.object_ref_or_value)
+        .filter(
+            WorldFactClaim.project_id == project_id,
+            WorldFactClaim.project_profile_version_id == bundle.project_profile_version_id,
+            WorldFactClaim.profile_version == bundle.profile_version,
+            WorldFactClaim.subject_ref == subject_ref,
+            WorldFactClaim.predicate == predicate,
+            WorldFactClaim.claim_status == "confirmed",
+            WorldFactClaim.claim_layer == "truth",
+        )
+        .order_by(
+            WorldFactClaim.chapter_index.desc().nullslast(),
+            WorldFactClaim.intra_chapter_seq.desc(),
+            WorldFactClaim.claim_id.desc(),
+        )
+        .first()
     )
 
 

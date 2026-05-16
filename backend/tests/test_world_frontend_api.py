@@ -1025,6 +1025,68 @@ def test_proposal_detail_skips_full_projection_for_chapter_scoped_conflicts(clie
     assert projection_calls == 0
 
 
+def test_proposal_detail_skips_full_projection_for_targeted_truth_conflicts(client, db_session, monkeypatch):
+    project, profile_version = _seed_profile(db_session)
+    db_session.add(
+        WorldFactClaim(
+            project_id=project.id,
+            project_profile_version_id=profile_version.id,
+            profile_version=profile_version.version,
+            claim_id="claim.hero.rank.current",
+            chapter_index=12,
+            intra_chapter_seq=1,
+            subject_ref="char.hero",
+            predicate="rank",
+            object_ref_or_value="captain",
+            claim_layer="truth",
+            claim_status="confirmed",
+            authority_type="authoritative_structured",
+            confidence=1.0,
+            notes="长事实备注" * 300,
+            evidence_refs=["chapter.12"] * 100,
+            contract_version=profile_version.contract_version,
+        )
+    )
+    db_session.commit()
+    bundle = create_bundle(
+        db=db_session,
+        project_id=project.id,
+        project_profile_version_id=profile_version.id,
+        profile_version=profile_version.version,
+        created_by="writer.alpha",
+        title="Targeted truth conflict candidate",
+    )
+    item = write_candidate_fact(
+        db=db_session,
+        bundle_id=bundle.id,
+        created_by="writer.alpha",
+        candidate=_candidate_payload(
+            claim_id="claim.hero.rank.pending",
+            subject_ref="char.hero",
+            predicate="rank",
+            value="admiral",
+        ),
+    )
+
+    def fail_full_projection(**_kwargs):
+        raise AssertionError("proposal detail should not build the full truth projection")
+
+    monkeypatch.setattr("app.api.world_model.build_world_projection_overview", fail_full_projection)
+
+    response = client.get(f"/api/v1/projects/{project.id}/world-model/proposal-bundles/{bundle.id}")
+
+    assert response.status_code == 200
+    conflicts = response.json()["conflicts"]
+    assert conflicts == [
+        {
+            "item_id": item.id,
+            "conflict_type": "truth_conflict",
+            "detail": "与现有真相冲突：char.hero.rank = captain",
+            "existing_claim_id": db_session.query(WorldFactClaim.id).filter_by(claim_id="claim.hero.rank.current").scalar(),
+        }
+    ]
+
+
 def test_proposal_detail_conflicts_only_include_actionable_items(client, db_session):
     project, profile_version = _seed_profile(db_session)
     for index, value in enumerate(["captain", "lieutenant", "commander"], start=1):
