@@ -38,7 +38,13 @@ def build_proposal_review_queue(
         WorldProposalItem.profile_version == profile.version,
         WorldProposalItem.item_status.in_(ACTIONABLE_REVIEW_ITEM_STATUSES),
     ]
-    query = db.query(WorldProposalItem).filter(*filters)
+    query = db.query(
+        WorldProposalItem.id,
+        WorldProposalItem.bundle_id,
+        WorldProposalItem.chapter_index,
+        WorldProposalItem.predicate,
+        WorldProposalItem.subject_ref,
+    ).filter(*filters)
     total_items = db.query(func.count(WorldProposalItem.id)).filter(*filters).scalar() or 0
     items = (
         query
