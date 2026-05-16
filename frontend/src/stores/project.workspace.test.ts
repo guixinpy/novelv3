@@ -707,6 +707,27 @@ describe('project workspace state', () => {
     expect(store.versionsNodeType).toBe(undefined)
   })
 
+  it('refreshTargets(writing_state) 会刷新写作状态', async () => {
+    const store = useProjectStore()
+    vi.mocked(api.getWritingState).mockResolvedValue({
+      project_id: 'A',
+      current_chapter: 21,
+      status: 'idle',
+      last_error: null,
+    })
+
+    const successTargets = await store.refreshTargets('A', ['writing_state'] as any)
+
+    expect(successTargets).toEqual(['writing_state'])
+    expect(api.getWritingState).toHaveBeenCalledWith('A')
+    expect(store.writingState).toEqual({
+      project_id: 'A',
+      current_chapter: 21,
+      status: 'idle',
+      last_error: null,
+    })
+  })
+
   it('exportProject() 遇到失败响应时抛出后端错误且不下载错误内容', async () => {
     const store = useProjectStore()
     const originalCreateObjectURL = URL.createObjectURL

@@ -247,6 +247,26 @@ def test_get_background_task_consistency_deep_check_ui_hint(client, db_session):
     assert r2.json()["refresh_targets"] == ["content"]
 
 
+def test_get_background_task_generate_chapter_refreshes_writing_state(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Test"})
+    pid = r.json()["id"]
+
+    task = BackgroundTask(
+        project_id=pid,
+        task_type="generate_chapter",
+        status="completed",
+        result={"chapter_index": 12},
+    )
+    db_session.add(task)
+    db_session.commit()
+    db_session.refresh(task)
+
+    response = client.get(f"/api/v1/background-tasks/{task.id}")
+
+    assert response.status_code == 200
+    assert response.json()["refresh_targets"] == ["project", "content", "versions", "writing_state"]
+
+
 def test_get_background_task_includes_range_payload(client, db_session):
     r = client.post("/api/v1/projects", json={"name": "Test"})
     pid = r.json()["id"]

@@ -474,6 +474,9 @@ export const useProjectStore = defineStore('project', () => {
         case 'preferences':
           await runSafe(target, () => loadPreferences(id))
           break
+        case 'writing_state':
+          await runSafe(target, () => loadWritingState(id, true))
+          break
         default:
           break
       }

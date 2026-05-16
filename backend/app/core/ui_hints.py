@@ -14,7 +14,7 @@ ACTION_TO_REFRESH_TARGETS = {
     "generate_setup": ["setup", "versions"],
     "generate_storyline": ["storyline", "versions"],
     "generate_outline": ["outline", "versions"],
-    "generate_chapter": ["project", "content", "versions"],
+    "generate_chapter": ["project", "content", "versions", "writing_state"],
     "consistency_deep_check": ["content"],
 }
 

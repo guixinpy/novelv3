@@ -19,6 +19,7 @@ export type RefreshTarget =
   | 'topology'
   | 'versions'
   | 'preferences'
+  | 'writing_state'
   | 'ontology'
   | 'state'
   | 'projection'
