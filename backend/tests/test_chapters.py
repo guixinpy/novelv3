@@ -245,7 +245,7 @@ def test_generate_chapter_updates_writing_state_after_success(mock_complete, moc
     assert response.status_code == 200
     state = WritingStateService(db_session).state(pid)
     assert state.status == "idle"
-    assert state.current_chapter == 2
+    assert state.current_chapter == 3
     assert state.last_error is None
 
 

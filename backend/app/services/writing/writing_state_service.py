@@ -62,7 +62,7 @@ class WritingStateService:
     def complete_chapter(self, project_id: str, chapter_index: int) -> WritingStateOut:
         state = self._get_or_create(project_id)
         state.status = "idle"
-        state.current_chapter = chapter_index
+        state.current_chapter = max(int(state.current_chapter or 0), int(chapter_index) + 1)
         state.last_error = None
         state.updated_at = datetime.now(UTC)
         self.db.commit()

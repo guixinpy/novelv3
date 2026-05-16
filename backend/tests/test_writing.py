@@ -87,6 +87,28 @@ def test_writing_start_reuses_active_generate_chapter_task(client, db_session):
     start.assert_called_once()
 
 
+def test_writing_start_after_completed_chapter_queues_next_chapter(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Advance After Completion"})
+    pid = r.json()["id"]
+    WritingStateService(db_session).complete_chapter(pid, 1)
+
+    with patch("app.api.writing.LocalTaskRunner.start") as start:
+        response = client.post(f"/api/v1/projects/{pid}/writing/start")
+
+    assert response.status_code == 200
+    assert response.json()["current_chapter"] == 2
+    task = (
+        db_session.query(BackgroundTask)
+        .filter(
+            BackgroundTask.project_id == pid,
+            BackgroundTask.task_type == "generate_chapter",
+        )
+        .one()
+    )
+    assert task.payload == {"chapter_index": 2}
+    start.assert_called_once()
+
+
 def test_writing_state_endpoint_returns_current_state(client, db_session):
     r = client.post("/api/v1/projects", json={"name": "Readable Writing State"})
     pid = r.json()["id"]
@@ -203,7 +225,7 @@ async def test_retry_chapter_work_marks_state_idle_after_success(client, db_sess
     state = WritingStateService(db_session).state(pid)
     assert result == {"chapter_index": 2}
     assert state.status == "idle"
-    assert state.current_chapter == 2
+    assert state.current_chapter == 3
     assert state.last_error is None
 
 
