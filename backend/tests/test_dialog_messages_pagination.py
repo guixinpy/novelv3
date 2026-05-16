@@ -128,6 +128,48 @@ def test_dialog_messages_trace_lookup_does_not_select_large_trace_json(client, d
     assert all("ai_model_call_traces.trace_metadata" not in clause for clause in trace_select_clauses)
 
 
+def test_dialog_messages_preview_uses_bounded_content_projection(client, db_session):
+    project = Project(name="长消息分页")
+    db_session.add(project)
+    db_session.flush()
+    dialog = Dialog(project_id=project.id, dialog_type="hermes")
+    db_session.add(dialog)
+    db_session.flush()
+    long_content = "长篇对话内容" * 2000
+    db_session.add(DialogMessage(dialog_id=dialog.id, role="assistant", content=long_content))
+    db_session.commit()
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        response = client.get(f"/api/v1/dialog/projects/{project.id}/messages?limit=1&max_content_chars=6000")
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert response.status_code == 200
+    message = response.json()[0]
+    assert message["content_truncated"] is True
+    assert message["original_content_length"] == len(long_content)
+    dialog_message_select_clauses = [
+        statement.split("from dialog_messages", 1)[0]
+        for statement in statements
+        if "from dialog_messages" in statement
+    ]
+    content_select_clauses = [
+        clause for clause in dialog_message_select_clauses
+        if "dialog_messages.content" in clause
+    ]
+    assert content_select_clauses
+    assert all(
+        ("substr(" in clause or "substring(" in clause)
+        and ("length(" in clause or "char_length(" in clause)
+        for clause in content_select_clauses
+    )
+
+
 def test_athena_messages_forwards_pagination_params(client, db_session):
     project, _messages = _project_with_messages(db_session, dialog_type="athena")
 

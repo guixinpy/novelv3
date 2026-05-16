@@ -1,4 +1,4 @@
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
 from app.models import AIModelCallTrace, Dialog, DialogMessage, PendingAction
@@ -31,10 +31,10 @@ class DialogMessageService:
         if not dialog:
             return []
 
-        query = self.db.query(DialogMessage).filter(DialogMessage.dialog_id == dialog.id)
+        query = self._message_query(dialog.id, max_content_chars=max_content_chars)
         effective_limit = limit if limit is not None else DEFAULT_DIALOG_MESSAGE_LIMIT
         if after_id:
-            cursor = self.db.query(DialogMessage).filter(
+            cursor = self.db.query(DialogMessage.created_at, DialogMessage.id).filter(
                 DialogMessage.dialog_id == dialog.id,
                 DialogMessage.id == after_id,
             ).first()
@@ -65,7 +65,11 @@ class DialogMessageService:
 
         payload = []
         for message in messages:
-            content_payload = self._content_payload(message.content, max_content_chars=max_content_chars)
+            content_payload = self._content_payload(
+                message.content,
+                max_content_chars=max_content_chars,
+                original_content_length=getattr(message, "original_content_length", None),
+            )
             item = {
                 "id": message.id,
                 "role": message.role,
@@ -84,8 +88,29 @@ class DialogMessageService:
             payload.append(item)
         return payload
 
+    def _message_query(self, dialog_id: str, *, max_content_chars: int | None):
+        if max_content_chars is None:
+            return self.db.query(DialogMessage).filter(DialogMessage.dialog_id == dialog_id)
+        preview_chars = max(0, int(max_content_chars)) + 1
+        return self.db.query(
+            DialogMessage.id,
+            DialogMessage.dialog_id,
+            DialogMessage.role,
+            DialogMessage.message_type,
+            func.substr(DialogMessage.content, 1, preview_chars).label("content"),
+            func.length(DialogMessage.content).label("original_content_length"),
+            DialogMessage.meta,
+            DialogMessage.action_result,
+            DialogMessage.created_at,
+        ).filter(DialogMessage.dialog_id == dialog_id)
+
     @staticmethod
-    def _content_payload(content: str, *, max_content_chars: int | None) -> dict:
+    def _content_payload(
+        content: str,
+        *,
+        max_content_chars: int | None,
+        original_content_length: int | None = None,
+    ) -> dict:
         if max_content_chars is None:
             return {
                 "content": content,
@@ -93,10 +118,11 @@ class DialogMessageService:
                 "original_content_length": len(content or ""),
             }
         truncated = truncate_text(content, max_chars=max_content_chars)
+        original_length = original_content_length if original_content_length is not None else truncated["original_char_count"]
         return {
             "content": truncated["content"],
-            "content_truncated": truncated["truncated"],
-            "original_content_length": truncated["original_char_count"],
+            "content_truncated": truncated["truncated"] or original_length > max_content_chars,
+            "original_content_length": original_length,
         }
 
     def _pending_action_payload(self, dialog: Dialog) -> dict | None:
