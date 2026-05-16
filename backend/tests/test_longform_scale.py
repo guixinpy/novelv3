@@ -994,6 +994,7 @@ def test_longform_scale_smoke_reports_stage_timings(db_session):
         "task_progress",
         "memory_rebuild",
         "retrieval_reindex",
+        "retrieval_diagnostics",
         "context_build",
         "narrative_plan_window",
         "dialog_planning_context",

@@ -53,8 +53,9 @@ def run_longform_scale_smoke(
     memory_report = rebuild_longform_memory(db, project.id)
     stage_started_at = _record_timing(timings_ms, "memory_rebuild", stage_started_at)
     reindex_project_retrieval(db, project.id)
-    retrieval_report = get_retrieval_diagnostics(db, project.id)
     stage_started_at = _record_timing(timings_ms, "retrieval_reindex", stage_started_at)
+    retrieval_report = get_retrieval_diagnostics(db, project.id)
+    stage_started_at = _record_timing(timings_ms, "retrieval_diagnostics", stage_started_at)
     context_package = build_longform_context_package(
         db,
         project.id,
