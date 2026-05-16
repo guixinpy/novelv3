@@ -860,6 +860,52 @@ def test_dialog_chat_payload_projects_bounded_history_content(db_session):
     assert all("dialog_messages.content as dialog_messages_content" not in clause for clause in message_selects)
 
 
+def test_athena_chat_payload_profile_lookup_skips_profile_payload(db_session):
+    project = Project(name="Athena Chat Profile Payload", genre="玄幻")
+    genre_profile = GenreProfile(
+        canonical_id="athena-chat-profile-payload",
+        display_name="通用",
+        contract_version="world.contract.v1",
+    )
+    db_session.add_all([project, genre_profile])
+    db_session.commit()
+    profile = ProjectProfileVersion(
+        project_id=project.id,
+        genre_profile_id=genre_profile.id,
+        version=1,
+        contract_version="world.contract.v1",
+        profile_payload={"large_contract_notes": "长 profile payload" * 1000},
+    )
+    dialog = Dialog(project_id=project.id, dialog_type="athena")
+    db_session.add_all([profile, dialog])
+    db_session.commit()
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        payload = dialogs._build_chat_call_payload(
+            db_session,
+            dialog.id,
+            project,
+            dialogs._build_diagnosis(db_session, project.id),
+            dialog_type="athena",
+        )
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert payload["messages"]
+    profile_selects = [
+        statement.split(" from project_profile_versions", 1)[0]
+        for statement in statements
+        if " from project_profile_versions" in statement
+    ]
+    assert profile_selects
+    assert all("profile_payload" not in clause for clause in profile_selects)
+
+
 def test_athena_chat_payload_includes_manuscript_progress_context(db_session):
     project, _ = _seed_project(db_session, with_profile=True)
     project.target_chapter_count = 20

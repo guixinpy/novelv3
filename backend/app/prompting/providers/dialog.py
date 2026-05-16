@@ -117,12 +117,7 @@ def build_hermes_prompt_variables(project: Project, diagnosis, world_context: st
 
 
 def build_athena_prompt_variables(db: Session, project: Project, world_context: str) -> dict[str, str]:
-    profile = (
-        db.query(ProjectProfileVersion)
-        .filter(ProjectProfileVersion.project_id == project.id)
-        .order_by(ProjectProfileVersion.version.desc())
-        .first()
-    )
+    profile = _current_profile(db, project.id)
     return {
         "project_name": project.name or "未命名项目",
         "project_genre": project.genre or "未分类题材",
@@ -585,9 +580,9 @@ def _latest_dialog_history(db: Session, dialog_id: str, limit: int) -> list[Any]
     return history
 
 
-def _current_profile(db: Session, project_id: str) -> ProjectProfileVersion | None:
+def _current_profile(db: Session, project_id: str) -> Any | None:
     return (
-        db.query(ProjectProfileVersion)
+        db.query(ProjectProfileVersion.id, ProjectProfileVersion.version)
         .filter(ProjectProfileVersion.project_id == project_id)
         .order_by(ProjectProfileVersion.version.desc())
         .first()
