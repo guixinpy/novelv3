@@ -80,4 +80,25 @@ describe('world model api client', () => {
       }),
     )
   })
+
+  it('getAthenaCharacterGraph() serializes topology window params', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ nodes: [], edges: [] }),
+    } as Response)
+
+    await api.getAthenaCharacterGraph('project-1', {
+      node_offset: 10,
+      node_limit: 20,
+      edge_offset: 30,
+      edge_limit: 40,
+    })
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/projects/project-1/athena/ontology/character-graph?node_offset=10&node_limit=20&edge_offset=30&edge_limit=40',
+      expect.objectContaining({
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+  })
 })

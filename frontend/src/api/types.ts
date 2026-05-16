@@ -659,6 +659,13 @@ export interface AthenaOntologyQuery {
   rule_limit?: number
 }
 
+export interface AthenaTopologyWindowQuery {
+  node_offset?: number
+  node_limit?: number
+  edge_offset?: number
+  edge_limit?: number
+}
+
 export interface AthenaTimeline {
   anchors: { id: string; anchor_id: string; chapter_index: number; intra_chapter_seq: number; label: string }[]
   events: { id: string; event_id: string; chapter_index: number; intra_chapter_seq: number; event_type: string; description: string }[]

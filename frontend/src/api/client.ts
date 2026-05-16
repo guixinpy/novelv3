@@ -14,6 +14,7 @@ import type {
   AthenaRetrievalSearchResponse,
   AthenaSetupImportPreview,
   AthenaTimeline,
+  AthenaTopologyWindowQuery,
   BackgroundTaskResponse,
   ChapterContent,
   ChapterListResponse,
@@ -102,6 +103,15 @@ function athenaOntologyQuery(params?: AthenaOntologyQuery) {
   if (params?.relation_limit !== undefined) query.set('relation_limit', String(params.relation_limit))
   if (params?.rule_offset !== undefined) query.set('rule_offset', String(params.rule_offset))
   if (params?.rule_limit !== undefined) query.set('rule_limit', String(params.rule_limit))
+  return query
+}
+
+function topologyWindowQuery(params?: AthenaTopologyWindowQuery) {
+  const query = new URLSearchParams()
+  if (params?.node_offset !== undefined) query.set('node_offset', String(params.node_offset))
+  if (params?.node_limit !== undefined) query.set('node_limit', String(params.node_limit))
+  if (params?.edge_offset !== undefined) query.set('edge_offset', String(params.edge_offset))
+  if (params?.edge_limit !== undefined) query.set('edge_limit', String(params.edge_limit))
   return query
 }
 
@@ -281,8 +291,11 @@ export const api = {
   },
   getAthenaSetup: (id: string) =>
     request(`/projects/${id}/athena/ontology/setup`),
-  getAthenaCharacterGraph: (id: string) =>
-    request(`/projects/${id}/athena/ontology/character-graph`),
+  getAthenaCharacterGraph: (id: string, params?: AthenaTopologyWindowQuery) => {
+    const query = topologyWindowQuery(params)
+    const qs = query.toString()
+    return request(`/projects/${id}/athena/ontology/character-graph${qs ? `?${qs}` : ''}`)
+  },
   runAthenaConsistencyCheck: (id: string, chapterIndex: number, depth: string = 'l1') =>
     request(`/projects/${id}/athena/evolution/consistency/chapters/${chapterIndex}/check?depth=${depth}`, { method: 'POST' }),
   getConsistencyIssues: (id: string, params?: { offset?: number; limit?: number }) => {

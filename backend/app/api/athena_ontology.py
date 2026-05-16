@@ -20,6 +20,8 @@ router = APIRouter()
 DEFAULT_ONTOLOGY_ENTITY_LIMIT = 500
 DEFAULT_ONTOLOGY_RELATION_LIMIT = 1000
 DEFAULT_ONTOLOGY_RULE_LIMIT = 500
+DEFAULT_ONTOLOGY_TOPOLOGY_NODE_LIMIT = 200
+DEFAULT_ONTOLOGY_TOPOLOGY_EDGE_LIMIT = 500
 
 
 @router.get("/ontology")
@@ -275,9 +277,24 @@ def get_ontology_setup(project_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/ontology/character-graph")
-def get_ontology_character_graph(project_id: str, db: Session = Depends(get_db)):
+def get_ontology_character_graph(
+    project_id: str,
+    db: Session = Depends(get_db),
+    node_offset: int = Query(0, ge=0),
+    node_limit: int = Query(DEFAULT_ONTOLOGY_TOPOLOGY_NODE_LIMIT, ge=1, le=1000),
+    edge_offset: int = Query(0, ge=0),
+    edge_limit: int = Query(DEFAULT_ONTOLOGY_TOPOLOGY_EDGE_LIMIT, ge=1, le=2000),
+):
     from app.api.topologies import character_graph
-    return character_graph(project_id, db)
+    return character_graph(
+        project_id=project_id,
+        db=db,
+        response=None,
+        node_offset=node_offset,
+        node_limit=node_limit,
+        edge_offset=edge_offset,
+        edge_limit=edge_limit,
+    )
 
 
 @router.get("/ontology/topology-timeline")

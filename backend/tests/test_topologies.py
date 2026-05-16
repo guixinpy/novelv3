@@ -219,6 +219,54 @@ def test_character_graph_window_does_not_select_full_topology_json(client, db_se
     assert all("topologies.edges as" not in clause for clause in topology_selects)
 
 
+def test_athena_ontology_character_graph_forwards_window_params(client, db_session):
+    project = Project(name="Windowed athena character graph")
+    db_session.add(project)
+    db_session.commit()
+    topology = Topology(
+        project_id=project.id,
+        nodes=[
+            {"id": f"char-{index:04d}", "type": "CHARACTER", "label": f"角色 {index:04d}", "meta": {}}
+            for index in range(20)
+        ]
+        + [
+            {"id": f"event-{index:04d}", "type": "EVENT", "label": f"事件 {index:04d}", "meta": {}}
+            for index in range(20)
+        ],
+        edges=[
+            {
+                "id": f"appearance-{index:04d}",
+                "source": f"char-{index % 20:04d}",
+                "target": f"event-{index % 20:04d}",
+                "type": "appearance",
+                "meta": {},
+            }
+            for index in range(50)
+        ],
+    )
+    db_session.add(topology)
+    db_session.commit()
+
+    response = client.get(
+        f"/api/v1/projects/{project.id}/athena/ontology/character-graph"
+        "?node_offset=10&node_limit=3&edge_offset=20&edge_limit=4"
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [node["id"] for node in payload["nodes"]] == ["char-0010", "char-0011", "char-0012"]
+    assert [edge["id"] for edge in payload["edges"]] == [
+        "appearance-0020",
+        "appearance-0021",
+        "appearance-0022",
+        "appearance-0023",
+    ]
+    assert payload["nodes_total"] == 20
+    assert payload["edges_total"] == 50
+    assert payload["nodes_has_more"] is True
+    assert payload["edges_has_more"] is True
+
+
 def test_timeline_window_does_not_select_full_topology_json(client, db_session):
     project = Project(name="Windowed timeline")
     db_session.add(project)
