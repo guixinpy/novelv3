@@ -537,6 +537,153 @@ def test_athena_timeline_count_does_not_select_event_payload_json(client, db_ses
     assert all("world_events.notes" not in statement for statement in event_count_statements)
 
 
+def test_athena_timeline_rows_do_not_select_non_display_heavy_fields(client, db_session):
+    project, profile_version = _seed_profile(db_session)
+    for index in range(1, 4):
+        db_session.add(
+            WorldTimelineAnchor(
+                project_id=project.id,
+                profile_version=profile_version.version,
+                anchor_id=f"anchor.heavy.{index}",
+                chapter_index=index,
+                intra_chapter_seq=1,
+                world_time_label=f"第{index}章",
+                normalized_tick_or_range="无关时间精度" * 100,
+                precision="chapter",
+                relative_to_anchor_ref="anchor.previous",
+                ordering_key=f"{index:03d}:001",
+                notes="锚点备注" * 200,
+                contract_version=profile_version.contract_version,
+            )
+        )
+        db_session.add(
+            WorldEvent(
+                project_id=project.id,
+                project_profile_version_id=profile_version.id,
+                profile_version=profile_version.version,
+                event_id=f"event.heavy.{index}",
+                idempotency_key=f"event.heavy.{index}",
+                timeline_anchor_id=f"anchor.heavy.{index}",
+                chapter_index=index,
+                intra_chapter_seq=1,
+                event_type="event_occurred",
+                participant_refs=[f"char.{i}" for i in range(100)],
+                location_refs=[f"loc.{i}" for i in range(100)],
+                precondition_event_refs=[f"event.pre.{i}" for i in range(100)],
+                caused_event_refs=[f"event.caused.{i}" for i in range(100)],
+                primitive_payload={"summary": "长事件摘要" * 200},
+                state_diffs=[{"field": "status", "value": i} for i in range(100)],
+                evidence_refs=[f"chapter.{i:03d}" for i in range(100)],
+                contract_version_refs=[f"world.contract.{i}" for i in range(20)],
+                notes="事件备注" * 200,
+                truth_layer="truth",
+                disclosure_layer="public",
+                contract_version=profile_version.contract_version,
+            )
+        )
+    db_session.commit()
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        response = client.get(f"/api/v1/projects/{project.id}/athena/state/timeline?limit=2")
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert response.status_code == 200
+    assert response.json()["events"][0]["description"].startswith("长事件摘要")
+    anchor_selects = [
+        statement
+        for statement in statements
+        if statement.startswith("select")
+        and "from world_timeline_anchors" in statement
+        and "count(" not in statement
+    ]
+    event_selects = [
+        statement
+        for statement in statements
+        if statement.startswith("select")
+        and "from world_events" in statement
+        and "count(" not in statement
+    ]
+    assert anchor_selects
+    assert event_selects
+    assert all("world_timeline_anchors.normalized_tick_or_range" not in statement for statement in anchor_selects)
+    assert all("world_timeline_anchors.precision" not in statement for statement in anchor_selects)
+    assert all("world_timeline_anchors.relative_to_anchor_ref" not in statement for statement in anchor_selects)
+    assert all("world_timeline_anchors.notes" not in statement for statement in anchor_selects)
+    assert all("world_timeline_anchors.updated_at" not in statement for statement in anchor_selects)
+    assert all("world_events.participant_refs" not in statement for statement in event_selects)
+    assert all("world_events.location_refs" not in statement for statement in event_selects)
+    assert all("world_events.precondition_event_refs" not in statement for statement in event_selects)
+    assert all("world_events.caused_event_refs" not in statement for statement in event_selects)
+    assert all("world_events.state_diffs" not in statement for statement in event_selects)
+    assert all("world_events.evidence_refs" not in statement for statement in event_selects)
+    assert all("world_events.contract_version_refs" not in statement for statement in event_selects)
+
+
+def test_athena_timeline_forward_window_uses_stable_tie_breakers(client, db_session):
+    project, profile_version = _seed_profile(db_session)
+    for suffix in ["b", "a"]:
+        db_session.add(
+            WorldTimelineAnchor(
+                project_id=project.id,
+                profile_version=profile_version.version,
+                anchor_id=f"anchor.same.{suffix}",
+                chapter_index=1,
+                intra_chapter_seq=1,
+                ordering_key=f"001:001:{suffix}",
+                contract_version=profile_version.contract_version,
+            )
+        )
+        db_session.add(
+            WorldEvent(
+                project_id=project.id,
+                project_profile_version_id=profile_version.id,
+                profile_version=profile_version.version,
+                event_id=f"event.same.{suffix}",
+                idempotency_key=f"event.same.{suffix}",
+                timeline_anchor_id=f"anchor.same.{suffix}",
+                chapter_index=1,
+                intra_chapter_seq=1,
+                event_type="event_occurred",
+                primitive_payload={"summary": suffix},
+                truth_layer="truth",
+                disclosure_layer="public",
+                contract_version=profile_version.contract_version,
+            )
+        )
+    db_session.commit()
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        response = client.get(f"/api/v1/projects/{project.id}/athena/state/timeline?limit=2")
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [anchor["anchor_id"] for anchor in payload["anchors"]] == ["anchor.same.a", "anchor.same.b"]
+    assert [event["event_id"] for event in payload["events"]] == ["event.same.a", "event.same.b"]
+    assert any(
+        "order by world_timeline_anchors.chapter_index asc, world_timeline_anchors.intra_chapter_seq asc, world_timeline_anchors.anchor_id asc"
+        in statement
+        for statement in statements
+    )
+    assert any(
+        "order by world_events.chapter_index asc, world_events.intra_chapter_seq asc, world_events.event_id asc"
+        in statement
+        for statement in statements
+    )
+
+
 def test_athena_ontology_endpoint_uses_relation_entity_refs(client, db_session):
     project, profile_version = _seed_profile(db_session)
     db_session.add_all([

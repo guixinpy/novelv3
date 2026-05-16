@@ -80,8 +80,22 @@ def get_state_timeline(
         WorldEvent.project_profile_version_id == profile.id,
         WorldEvent.profile_version == profile.version,
     ]
-    anchor_query = db.query(WorldTimelineAnchor).filter(*anchor_filters)
-    event_query = db.query(WorldEvent).filter(*event_filters)
+    anchor_query = db.query(
+        WorldTimelineAnchor.id,
+        WorldTimelineAnchor.anchor_id,
+        WorldTimelineAnchor.chapter_index,
+        WorldTimelineAnchor.intra_chapter_seq,
+        WorldTimelineAnchor.world_time_label,
+    ).filter(*anchor_filters)
+    event_query = db.query(
+        WorldEvent.id,
+        WorldEvent.event_id,
+        WorldEvent.chapter_index,
+        WorldEvent.intra_chapter_seq,
+        WorldEvent.event_type,
+        WorldEvent.primitive_payload,
+        WorldEvent.notes,
+    ).filter(*event_filters)
     anchors_total = db.query(func.count(WorldTimelineAnchor.id)).filter(*anchor_filters).scalar() or 0
     events_total = db.query(func.count(WorldEvent.id)).filter(*event_filters).scalar() or 0
     if latest:
@@ -89,7 +103,7 @@ def get_state_timeline(
             anchor_query.order_by(
                 WorldTimelineAnchor.chapter_index.desc(),
                 WorldTimelineAnchor.intra_chapter_seq.desc(),
-                WorldTimelineAnchor.id.desc(),
+                WorldTimelineAnchor.anchor_id.desc(),
             )
             .offset(offset)
             .limit(limit)
@@ -107,13 +121,21 @@ def get_state_timeline(
         ))
     else:
         anchors = (
-            anchor_query.order_by(WorldTimelineAnchor.chapter_index.asc(), WorldTimelineAnchor.intra_chapter_seq.asc())
+            anchor_query.order_by(
+                WorldTimelineAnchor.chapter_index.asc(),
+                WorldTimelineAnchor.intra_chapter_seq.asc(),
+                WorldTimelineAnchor.anchor_id.asc(),
+            )
             .offset(offset)
             .limit(limit)
             .all()
         )
         events = (
-            event_query.order_by(WorldEvent.chapter_index.asc(), WorldEvent.intra_chapter_seq.asc())
+            event_query.order_by(
+                WorldEvent.chapter_index.asc(),
+                WorldEvent.intra_chapter_seq.asc(),
+                WorldEvent.event_id.asc(),
+            )
             .offset(offset)
             .limit(limit)
             .all()
