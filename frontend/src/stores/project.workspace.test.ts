@@ -392,6 +392,44 @@ describe('project workspace state', () => {
     expect(store.chapters).toEqual([{ id: 'chapter-1', chapter_index: 1, title: '第一章', word_count: 0, status: 'generated' }])
   })
 
+  it('generateChapter() 成功后会刷新写作状态', async () => {
+    const store = useProjectStore()
+    vi.mocked(api.generateChapter).mockResolvedValue({
+      id: 'chapter-9',
+      project_id: 'A',
+      chapter_index: 9,
+      title: '第九章',
+      content: '正文',
+      word_count: 1200,
+      status: 'generated',
+      model: 'deepseek-chat',
+      prompt_tokens: 100,
+      completion_tokens: 200,
+      generation_time: 1200,
+      temperature: 0.7,
+      created_at: '2026-05-16T00:00:00Z',
+      updated_at: '2026-05-16T00:00:00Z',
+    })
+    vi.mocked(api.getProject).mockResolvedValue({ id: 'A', name: '项目 A' })
+    vi.mocked(api.getWritingState).mockResolvedValue({
+      project_id: 'A',
+      current_chapter: 9,
+      status: 'idle',
+      last_error: null,
+    })
+
+    await store.generateChapter('A', 9)
+
+    expect(api.generateChapter).toHaveBeenCalledWith('A', 9)
+    expect(api.getWritingState).toHaveBeenCalledWith('A')
+    expect(store.writingState).toEqual({
+      project_id: 'A',
+      current_chapter: 9,
+      status: 'idle',
+      last_error: null,
+    })
+  })
+
   it('workspace bootstrap 会填充项目冷启动数据并标记为 fresh', async () => {
     const store = useProjectStore()
     const writingState = {

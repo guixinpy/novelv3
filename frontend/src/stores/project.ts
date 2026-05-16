@@ -261,6 +261,7 @@ export const useProjectStore = defineStore('project', () => {
   async function generateChapter(id: string, index: number) {
     chapter.value = await api.generateChapter(id, index)
     await loadProject(id)
+    await loadWritingState(id, true).catch(() => {})
   }
 
   async function loadChapter(id: string, index: number) {
