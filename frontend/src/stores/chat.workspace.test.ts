@@ -198,6 +198,62 @@ describe('chat workspace polling', () => {
     expect(store.messages.some((message) => message.content.includes('API key'))).toBe(true)
   })
 
+  it('confirm 返回 task_id 后失败但历史缺少终态消息时显示任务失败原因', async () => {
+    const store = useChatStore()
+    const workspace = useProjectWorkspaceStore()
+    store.projectId = 'project-1'
+    store.pendingAction = {
+      id: 'action-1',
+      type: 'preview_outline',
+      description: '生成大纲',
+      params: { project_id: 'project-1' },
+      requires_confirmation: true,
+    }
+    store.messages = [
+      { id: 'm1', role: 'assistant', content: '准备开始。' },
+    ]
+
+    vi.mocked(api.resolveAction).mockResolvedValue({
+      dialog_state: 'RUNNING',
+      message: '操作已确认，正在生成中...',
+      action_result: {
+        type: 'generate_outline',
+        status: 'generating',
+        data: { status: 'generating', task_id: 'task-failed' },
+      },
+      ui_hint: null,
+      refresh_targets: [],
+    })
+    vi.mocked(api.getDiagnosis).mockResolvedValue({
+      missing_items: ['outline'],
+      completed_items: ['setup'],
+      suggested_next_step: 'preview_outline',
+    })
+    vi.mocked(api.getBackgroundTask).mockResolvedValue({
+      task_id: 'task-failed',
+      task_type: 'generate_outline',
+      status: 'failed',
+      result: null,
+      error: 'DeepSeek timeout',
+      ui_hint: null as any,
+      refresh_targets: ['outline'],
+      created_at: null,
+      started_at: null,
+      finished_at: null,
+    })
+    vi.mocked(api.getMessages)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+
+    await store.resolveAction('confirm')
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect([...workspace.dirtyTargets]).toEqual([])
+    expect(store.loading).toBe(false)
+    expect(store.messages.some((message) => message.content === '后台任务失败：DeepSeek timeout')).toBe(true)
+  })
+
   it('有历史 id 时命令确认后的任务轮询不会重复追加已乐观显示的命令消息', async () => {
     const store = useChatStore()
     store.initFromWorkspaceBootstrap('project-1', {

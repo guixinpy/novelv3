@@ -58,11 +58,23 @@ function shouldConsumeTaskRefreshTargets(status: string) {
   return ['completed', 'success'].includes(status)
 }
 
+function isFailedTaskStatus(status: string) {
+  return ['failed', 'cancelled'].includes(status)
+}
+
 function getActionTaskId(actionResult: Record<string, unknown> | null | undefined) {
   const data = actionResult?.data
   if (!data || typeof data !== 'object') return ''
   const taskId = (data as Record<string, unknown>).task_id
   return typeof taskId === 'string' ? taskId : ''
+}
+
+function taskFailureMessage(task: BackgroundTaskResponse) {
+  const error = typeof task.error === 'string' ? task.error.trim() : ''
+  if (String(task.status || '') === 'cancelled') {
+    return error ? `后台任务已取消：${error}` : '后台任务已取消。'
+  }
+  return error ? `后台任务失败：${error}` : '后台任务失败，请稍后刷新重试。'
 }
 
 function findRecoverableRunningActionType(history: ChatHistoryMessage[] | null | undefined) {
@@ -453,6 +465,10 @@ export const useChatStore = defineStore('chat', () => {
     return null
   }
 
+  function hasTerminalActionMessage(actionType: string) {
+    return messages.value.some((message) => isTerminalActionResult(message.action_result || null, actionType))
+  }
+
   async function appendNewMessages(pidSnapshot: string, versionSnapshot: number) {
     const currentLastMessageId = getCurrentLastMessageId()
     const canLoadIncrementally = Boolean(currentLastMessageId)
@@ -514,6 +530,13 @@ export const useChatStore = defineStore('chat', () => {
         const newMessages = await appendNewMessages(pidSnapshot, versionSnapshot)
         if (!newMessages.some((message) => isTerminalActionResult(message.action_result || null, actionType))) {
           await loadHistory(pidSnapshot, versionSnapshot)
+        }
+        if (isFailedTaskStatus(String(task.status || '')) && !hasTerminalActionMessage(actionType)) {
+          messages.value.push({
+            role: 'system',
+            content: taskFailureMessage(task),
+            action_result: { type: actionType, status: String(task.status || 'failed') },
+          })
         }
         await loadDiagnosis(pidSnapshot, versionSnapshot)
         break

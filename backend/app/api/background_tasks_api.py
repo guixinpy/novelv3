@@ -80,13 +80,20 @@ def get_background_task(
         )
         if not task:
             raise HTTPException(status_code=404, detail="Task not found")
+        error_preview = None
+        if task.status in {"failed", "cancelled"}:
+            error_preview = (
+                db.query(func.substr(BackgroundTask.error, 1, 240))
+                .filter(BackgroundTask.id == task_id)
+                .scalar()
+            )
         return {
             "task_id": task.id,
             "task_type": task.task_type,
             "status": task.status,
             "payload": None,
             "result": None,
-            "error": None,
+            "error": error_preview,
             "ui_hint": build_ui_hint(
                 action_type=task.task_type,
                 dialog_state=task_status_to_dialog_state(task.status),

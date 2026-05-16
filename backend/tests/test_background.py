@@ -164,6 +164,45 @@ def test_get_background_task_compact_does_not_select_heavy_task_fields(client, d
     assert all("background_tasks.error" not in statement for statement in row_selects)
 
 
+def test_get_background_task_compact_returns_bounded_failure_error(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Task Detail Compact Error"})
+    pid = r.json()["id"]
+    long_error = "DeepSeek timeout " * 80
+    task = BackgroundTask(
+        project_id=pid,
+        task_type="generate_chapter_range",
+        status="failed",
+        payload={"chapters": list(range(1000))},
+        result={"summary": ["任务结果"] * 500},
+        error=long_error,
+    )
+    db_session.add(task)
+    db_session.commit()
+    db_session.refresh(task)
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        response = client.get(f"/api/v1/background-tasks/{task.id}?compact=true")
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "failed"
+    assert response.json()["error"] == long_error[:240]
+    row_selects = [
+        statement for statement in statements
+        if statement.startswith("select") and "from background_tasks" in statement
+    ]
+    assert row_selects
+    assert all("background_tasks.payload" not in statement for statement in row_selects)
+    assert all("background_tasks.result" not in statement for statement in row_selects)
+    assert any("substr(" in statement and "background_tasks.error" in statement for statement in row_selects)
+
+
 def test_get_background_task_with_ui_hint(client, db_session):
     r = client.post("/api/v1/projects", json={"name": "Test"})
     pid = r.json()["id"]
