@@ -40,6 +40,7 @@ const collapsedPlotlineKeys = ref<Set<string>>(new Set())
 const plotlineMilestoneWindowStarts = ref<Record<string, number>>({})
 const foreshadowingWindowStart = ref(0)
 const chapterSearch = ref('')
+const chapterJumpInput = ref('')
 const activeChapterIndex = ref<number | null>(null)
 const chapterVolumeStart = ref(1)
 const chapterWindowStart = ref(1)
@@ -460,10 +461,24 @@ function selectChapterJump(value: string) {
   chapterSearch.value = ''
   activeChapterIndex.value = chapterIndex
   setChapterWindowFor(chapterIndex)
-  void nextTick(() => {
-    const target = document.querySelector(`[data-narrative-chapter-index="${chapterIndex}"]`)
-    target?.scrollIntoView({ block: 'center', behavior: 'smooth' })
-  })
+  void nextTick(scrollActiveChapterIntoView)
+}
+
+function jumpToChapterInput() {
+  const chapterIndex = toNumber(chapterJumpInput.value)
+  if (chapterIndex === null) return
+  const target = clampChapterIndex(chapterIndex)
+  chapterJumpInput.value = String(target)
+  chapterSearch.value = ''
+  activeChapterIndex.value = target
+  if (usesServerChapterWindow.value) {
+    const limit = chapterWindowLimit.value
+    const maxStart = Math.max(0, outlineChapterTotal.value - limit)
+    requestChapterWindow(Math.min(Math.max(target - 1, 0), maxStart))
+    return
+  }
+  setChapterWindowFor(target)
+  void nextTick(scrollActiveChapterIntoView)
 }
 
 function selectChapterVolume(value: string) {
@@ -512,6 +527,18 @@ function setChapterWindowFor(chapterIndex: number) {
   chapterWindowStart.value = volumeStart + Math.floor((chapterIndex - volumeStart) / CHAPTER_WINDOW_SIZE) * CHAPTER_WINDOW_SIZE
 }
 
+function clampChapterIndex(chapterIndex: number) {
+  const total = outlineChapterTotal.value
+  if (total > 0) return Math.min(Math.max(1, Math.floor(chapterIndex)), total)
+  return Math.max(1, Math.floor(chapterIndex))
+}
+
+function scrollActiveChapterIntoView() {
+  if (activeChapterIndex.value === null) return
+  const target = document.querySelector(`[data-narrative-chapter-index="${activeChapterIndex.value}"]`)
+  target?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+}
+
 function volumeStartForChapter(chapterIndex: number) {
   return Math.floor((chapterIndex - 1) / CHAPTERS_PER_VOLUME) * CHAPTERS_PER_VOLUME + 1
 }
@@ -522,6 +549,9 @@ watch(outlineChapters, (chapters) => {
   if (chapterVolumeStart.value < volumeStartForChapter(firstChapter) || chapterVolumeStart.value > lastChapter) {
     chapterVolumeStart.value = volumeStartForChapter(firstChapter)
     chapterWindowStart.value = chapterVolumeStart.value
+  }
+  if (activeChapterIndex.value !== null && chapters.some((chapter) => chapter.chapterIndex === activeChapterIndex.value)) {
+    void nextTick(scrollActiveChapterIntoView)
   }
 }, { immediate: true })
 
@@ -625,6 +655,22 @@ watch(foreshadowingItems, (items) => {
             type="search"
             placeholder="搜索章节、摘要、角色、场景"
           >
+          <input
+            v-model="chapterJumpInput"
+            data-testid="chapter-direct-jump"
+            type="number"
+            min="1"
+            :max="outlineChapterTotal || undefined"
+            placeholder="章节号"
+            @keyup.enter="jumpToChapterInput"
+          >
+          <button
+            type="button"
+            data-testid="chapter-direct-jump-submit"
+            @click="jumpToChapterInput"
+          >
+            跳转
+          </button>
           <select
             data-testid="chapter-volume"
             :value="activeVolume?.start ?? ''"
@@ -865,7 +911,7 @@ watch(foreshadowingItems, (items) => {
   top: 0;
   z-index: 1;
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(140px, 180px) minmax(180px, 280px);
+  grid-template-columns: minmax(220px, 1fr) minmax(88px, 120px) auto minmax(140px, 180px) minmax(180px, 280px);
   gap: var(--space-2);
   padding-bottom: var(--space-3);
   background: var(--color-bg-primary);
@@ -880,6 +926,17 @@ watch(foreshadowingItems, (items) => {
   background: var(--color-bg-white);
   color: var(--color-text-primary);
   font-size: var(--text-sm);
+}
+
+.narrative-workbench__chapter-tools button {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-bg-white);
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+  cursor: pointer;
 }
 
 .narrative-workbench__chapter-window {

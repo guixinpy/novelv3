@@ -458,6 +458,23 @@ describe('NarrativeWorkbench', () => {
     ])
   })
 
+  it('emits a direct chapter window request for distant server-windowed jumps', async () => {
+    const wrapper = mount(NarrativeWorkbench, {
+      props: {
+        plan: windowedChapterPlan(100, 50, 1000),
+        chapters: [],
+        view: 'chapters',
+      },
+    })
+
+    await wrapper.get('[data-testid="chapter-direct-jump"]').setValue('876')
+    await wrapper.get('[data-testid="chapter-direct-jump-submit"]').trigger('click')
+
+    expect(wrapper.emitted('loadChapterWindow')).toEqual([
+      [{ offset: 875, limit: 50 }],
+    ])
+  })
+
   it('renders foreshadowing lifecycle', () => {
     const wrapper = mount(NarrativeWorkbench, { props: { plan, chapters, view: 'foreshadowing' } })
 
