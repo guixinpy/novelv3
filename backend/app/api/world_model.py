@@ -1,4 +1,6 @@
 
+from dataclasses import dataclass
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -52,6 +54,14 @@ DEFAULT_PROJECTION_PRESENCE_LIMIT = 120
 DEFAULT_PROJECTION_EVENT_LIMIT = 120
 DEFAULT_PROJECTION_EVENT_LINK_LIMIT = 120
 DEFAULT_PROJECTION_FACT_SUBJECT_LIMIT = 120
+
+
+@dataclass(frozen=True)
+class ProjectProfileRef:
+    id: str
+    project_id: str
+    version: int
+    contract_version: str
 
 
 @router.get("", response_model=ProjectWorldOverviewOut)
@@ -198,7 +208,7 @@ def list_world_fact_claims(
     db: Session = Depends(get_db),
 ):
     _require_project(db=db, project_id=project_id)
-    current_profile = _get_current_profile(db=db, project_id=project_id)
+    current_profile = _get_current_profile_ref(db=db, project_id=project_id)
     if current_profile is None:
         return {"claims": [], "total": 0, "offset": offset, "limit": limit, "has_more": False}
     filters = [
@@ -244,7 +254,7 @@ def list_world_proposal_bundles(
     db: Session = Depends(get_db),
 ):
     _require_project(db=db, project_id=project_id)
-    current_profile = _get_current_profile(db=db, project_id=project_id)
+    current_profile = _get_current_profile_ref(db=db, project_id=project_id)
     if current_profile is None:
         return PaginatedProposalBundlesOut(items=[], total=0, offset=offset, limit=limit)
     filters = [
@@ -286,7 +296,7 @@ def get_world_model_proposal_review_queue(
     db: Session = Depends(get_db),
 ):
     _require_project(db=db, project_id=project_id)
-    profile = _get_current_profile(db=db, project_id=project_id)
+    profile = _get_current_profile_ref(db=db, project_id=project_id)
     return build_proposal_review_queue(db=db, project_id=project_id, profile=profile, limit=limit)
 
 
@@ -458,6 +468,28 @@ def _get_current_profile(*, db: Session, project_id: str) -> ProjectProfileVersi
     )
 
 
+def _get_current_profile_ref(*, db: Session, project_id: str) -> ProjectProfileRef | None:
+    row = (
+        db.query(
+            ProjectProfileVersion.id,
+            ProjectProfileVersion.project_id,
+            ProjectProfileVersion.version,
+            ProjectProfileVersion.contract_version,
+        )
+        .filter(ProjectProfileVersion.project_id == project_id)
+        .order_by(ProjectProfileVersion.version.desc(), ProjectProfileVersion.created_at.desc())
+        .first()
+    )
+    if row is None:
+        return None
+    return ProjectProfileRef(
+        id=row.id,
+        project_id=row.project_id,
+        version=row.version,
+        contract_version=row.contract_version,
+    )
+
+
 def _window_world_overview(
     overview: ProjectWorldOverviewOut,
     *,
@@ -614,8 +646,8 @@ def _require_current_profile_scope(
     project_profile_version_id: str,
     profile_version: int,
     resource_label: str,
-) -> ProjectProfileVersion:
-    current_profile = _get_current_profile(db=db, project_id=project_id)
+) -> ProjectProfileRef:
+    current_profile = _get_current_profile_ref(db=db, project_id=project_id)
     if current_profile is None:
         raise HTTPException(status_code=409, detail="Current profile version is not available")
     if (

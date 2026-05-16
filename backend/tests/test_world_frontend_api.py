@@ -868,6 +868,63 @@ def test_athena_ontology_current_profile_lookup_skips_profile_payload(client, db
     assert all("profile_payload" not in select_clause for select_clause in profile_selects)
 
 
+def test_world_fact_list_current_profile_lookup_skips_profile_payload(client, db_session):
+    project = Project(name="World Facts Profile Projection")
+    genre_profile = GenreProfile(
+        canonical_id="facts-profile-payload-projection",
+        display_name="通用",
+        contract_version="world.contract.v1",
+    )
+    db_session.add_all([project, genre_profile])
+    db_session.commit()
+    profile_version = ProjectProfileVersion(
+        project_id=project.id,
+        genre_profile_id=genre_profile.id,
+        version=1,
+        contract_version="world.contract.v1",
+        profile_payload={"large_contract_notes": "长 profile payload" * 1000},
+    )
+    db_session.add(profile_version)
+    db_session.flush()
+    db_session.add(
+        WorldFactClaim(
+            project_id=project.id,
+            project_profile_version_id=profile_version.id,
+            profile_version=profile_version.version,
+            claim_id="claim.profile.payload",
+            subject_ref="char.profile_payload",
+            predicate="status",
+            object_ref_or_value="active",
+            claim_layer="truth",
+            claim_status="confirmed",
+            authority_type="authoritative_structured",
+            confidence=0.8,
+            contract_version=profile_version.contract_version,
+        )
+    )
+    db_session.commit()
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        response = client.get(f"/api/v1/projects/{project.id}/world-model/facts?limit=1")
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert response.status_code == 200
+    assert response.json()["claims"][0]["claim_id"] == "claim.profile.payload"
+    profile_selects = [
+        statement.split(" from project_profile_versions", 1)[0]
+        for statement in statements
+        if " from project_profile_versions" in statement
+    ]
+    assert profile_selects
+    assert all("profile_payload" not in select_clause for select_clause in profile_selects)
+
+
 def test_subject_knowledge_persists_belief_claims_approved_from_proposals(client, db_session):
     project, profile_version = _seed_profile(db_session)
     bundle = create_bundle(
