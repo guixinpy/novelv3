@@ -182,21 +182,25 @@ def _window_topology_items(
     column_name: str,
     offset: int,
     limit: int,
+    item_types: tuple[str, ...] | None = None,
+    order_by: str = "CAST(item.key AS INTEGER)",
 ) -> list[dict[str, Any]]:
     if column_name not in {"nodes", "edges"}:
         raise ValueError(f"Unsupported topology column: {column_name}")
 
+    type_filter, type_params = _topology_item_type_filter(item_types)
+    params = {"project_id": project_id, "offset": offset, "limit": limit, **type_params}
     rows = db.execute(
         text(
             f"""
             SELECT item.value AS item
             FROM topologies, json_each(topologies.{column_name}) AS item
-            WHERE topologies.project_id = :project_id
-            ORDER BY CAST(item.key AS INTEGER)
+            WHERE topologies.project_id = :project_id{type_filter}
+            ORDER BY {order_by}
             LIMIT :limit OFFSET :offset
             """
         ),
-        {"project_id": project_id, "offset": offset, "limit": limit},
+        params,
     ).mappings()
     items: list[dict[str, Any]] = []
     for row in rows:
@@ -204,6 +208,43 @@ def _window_topology_items(
         if isinstance(item, dict):
             items.append(item)
     return items
+
+
+def _count_topology_items(
+    db: Session,
+    project_id: str,
+    *,
+    column_name: str,
+    item_types: tuple[str, ...] | None = None,
+) -> int:
+    if column_name not in {"nodes", "edges"}:
+        raise ValueError(f"Unsupported topology column: {column_name}")
+
+    type_filter, type_params = _topology_item_type_filter(item_types)
+    row = db.execute(
+        text(
+            f"""
+            SELECT COUNT(1) AS total
+            FROM topologies, json_each(topologies.{column_name}) AS item
+            WHERE topologies.project_id = :project_id{type_filter}
+            """
+        ),
+        {"project_id": project_id, **type_params},
+    ).mappings().first()
+    return int((row or {}).get("total") or 0)
+
+
+def _topology_item_type_filter(item_types: tuple[str, ...] | None) -> tuple[str, dict[str, str]]:
+    if not item_types:
+        return "", {}
+
+    params: dict[str, str] = {}
+    placeholders: list[str] = []
+    for index, item_type in enumerate(item_types):
+        key = f"item_type_{index}"
+        placeholders.append(f":{key}")
+        params[key] = item_type
+    return f" AND json_extract(item.value, '$.type') IN ({', '.join(placeholders)})", params
 
 
 @router.get("/character-graph")
@@ -218,20 +259,38 @@ def character_graph(
 ):
     if response:
         add_deprecation_header(response, f"/api/v1/projects/{project_id}/athena/ontology/character-graph")
-    topology = _load_or_create_topology(project_id, db)
-    nodes = [n for n in topology.nodes if n.get("type") == "CHARACTER"]
-    edges = [e for e in topology.edges if e.get("type") in ("relationship", "appearance")]
+    _ensure_topology_exists(project_id, db)
+    character_types = ("CHARACTER",)
+    edge_types = ("relationship", "appearance")
+    nodes_total = _count_topology_items(db, project_id, column_name="nodes", item_types=character_types)
+    edges_total = _count_topology_items(db, project_id, column_name="edges", item_types=edge_types)
+    nodes = _window_topology_items(
+        db,
+        project_id,
+        column_name="nodes",
+        offset=node_offset,
+        limit=node_limit,
+        item_types=character_types,
+    )
+    edges = _window_topology_items(
+        db,
+        project_id,
+        column_name="edges",
+        offset=edge_offset,
+        limit=edge_limit,
+        item_types=edge_types,
+    )
     return {
-        "nodes": nodes[node_offset:node_offset + node_limit],
-        "edges": edges[edge_offset:edge_offset + edge_limit],
-        "nodes_total": len(nodes),
+        "nodes": nodes,
+        "edges": edges,
+        "nodes_total": nodes_total,
         "nodes_offset": node_offset,
         "nodes_limit": node_limit,
-        "nodes_has_more": node_offset + node_limit < len(nodes),
-        "edges_total": len(edges),
+        "nodes_has_more": node_offset + node_limit < nodes_total,
+        "edges_total": edges_total,
         "edges_offset": edge_offset,
         "edges_limit": edge_limit,
-        "edges_has_more": edge_offset + edge_limit < len(edges),
+        "edges_has_more": edge_offset + edge_limit < edges_total,
     }
 
 
