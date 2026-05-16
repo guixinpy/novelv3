@@ -37,6 +37,7 @@ INDEX_WRITE_BATCH_SOURCES = 500
 INDEX_WRITE_BATCH_MAX_TERMS = 50_000
 RETRIEVAL_EMBEDDING_BATCH_SIZE = 64
 CHAPTER_CONTEXT_PREVIEW_CHARS = 500
+SOURCE_KEY_QUERY_BATCH_SIZE = 500
 
 
 @dataclass(frozen=True)
@@ -652,9 +653,71 @@ def _project_sources_by_key(
 ) -> Iterator[RetrievalSource]:
     if not source_keys:
         return
-    for source in _project_sources(db, project_id):
-        if (source.source_type, source.source_id) in source_keys:
-            yield source
+    source_ids_by_type: dict[str, set[str]] = {"chapter": set(), "longform_memory": set(), "world_fact": set()}
+    for source_type, source_id in source_keys:
+        if source_type in source_ids_by_type:
+            source_ids_by_type[source_type].add(source_id)
+
+    for source_ids in _iter_id_batches(source_ids_by_type["chapter"]):
+        rows = (
+            db.query(ChapterContent)
+            .with_entities(
+                ChapterContent.id,
+                ChapterContent.chapter_index,
+                ChapterContent.title,
+                ChapterContent.content,
+                ChapterContent.status,
+            )
+            .filter(
+                ChapterContent.project_id == project_id,
+                ChapterContent.id.in_(source_ids),
+                ChapterContent.content != "",
+            )
+            .order_by(ChapterContent.chapter_index.asc())
+            .yield_per(50)
+        )
+        for chapter in rows:
+            yield _chapter_source(chapter)
+
+    for source_ids in _iter_id_batches(source_ids_by_type["longform_memory"]):
+        memories = (
+            db.query(LongformMemory)
+            .filter(
+                LongformMemory.project_id == project_id,
+                LongformMemory.id.in_(source_ids),
+                LongformMemory.summary != "",
+            )
+            .order_by(
+                LongformMemory.end_chapter_index.asc().nullsfirst(),
+                LongformMemory.memory_type.asc(),
+                LongformMemory.scope_key.asc(),
+            )
+            .yield_per(50)
+        )
+        for memory in memories:
+            yield _longform_memory_source(memory)
+
+    for source_ids in _iter_id_batches(source_ids_by_type["world_fact"]):
+        facts = (
+            db.query(WorldFactClaim)
+            .filter(
+                WorldFactClaim.project_id == project_id,
+                WorldFactClaim.id.in_(source_ids),
+                WorldFactClaim.claim_status == "confirmed",
+                WorldFactClaim.claim_layer == "truth",
+            )
+            .order_by(WorldFactClaim.chapter_index.asc().nullsfirst(), WorldFactClaim.claim_id.asc())
+            .yield_per(50)
+        )
+        for fact in facts:
+            yield _fact_source(fact)
+
+
+def _iter_id_batches(source_ids: set[str]) -> Iterator[list[str]]:
+    ordered_ids = sorted(source_ids)
+    batch_size = max(1, SOURCE_KEY_QUERY_BATCH_SIZE)
+    for start in range(0, len(ordered_ids), batch_size):
+        yield ordered_ids[start:start + batch_size]
 
 
 def sync_fact_retrieval_document(db: Session, *, fact: WorldFactClaim) -> dict[str, int]:

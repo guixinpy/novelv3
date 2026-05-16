@@ -569,6 +569,64 @@ def test_reindex_rebuilds_chapter_document_when_source_metadata_changes(db_sessi
     assert after_document.title == "新标题"
 
 
+def test_reindex_fetches_changed_chapter_sources_by_id(db_session):
+    project = Project(name="Targeted Changed Retrieval Reindex")
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    db_session.add_all(
+        [
+            ChapterContent(
+                project_id=project.id,
+                chapter_index=index,
+                title=f"第{index}章",
+                content=f"第{index}章正文。定向重建检索索引。" * 30,
+                word_count=1000,
+                status="generated",
+            )
+            for index in range(1, 26)
+        ]
+    )
+    db_session.commit()
+    reindex_project_retrieval(db_session, project.id)
+
+    changed = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=17).one()
+    changed.content = "第17章正文发生变化。只应定向重建这一章检索索引。" * 30
+    db_session.commit()
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        result = reindex_project_retrieval(db_session, project.id)
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert result["indexed"]["documents"] == 1
+    assert result["preserved_documents"] == 24
+    chapter_content_selects = [
+        statement
+        for statement in statements
+        if statement.startswith("select")
+        and "from chapter_contents" in statement
+        and "chapter_contents.content" in statement.split(" from chapter_contents", 1)[0]
+    ]
+    broad_content_selects = [
+        statement
+        for statement in chapter_content_selects
+        if "chapter_contents.project_id = ?" in statement and "chapter_contents.id in" not in statement
+    ]
+    targeted_content_selects = [
+        statement
+        for statement in chapter_content_selects
+        if "chapter_contents.id in" in statement
+    ]
+    assert len(broad_content_selects) == 1
+    assert targeted_content_selects
+
+
 def test_source_hash_does_not_json_serialize_full_text(monkeypatch):
     import hashlib
     import app.core.athena_retrieval as athena_retrieval
