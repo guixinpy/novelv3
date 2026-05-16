@@ -445,9 +445,9 @@ def _require_project(*, db: Session, project_id: str) -> Project:
     return project
 
 
-def _require_chapter(*, db: Session, project_id: str, chapter_index: int) -> ChapterContent:
+def _require_chapter(*, db: Session, project_id: str, chapter_index: int) -> None:
     chapter = (
-        db.query(ChapterContent)
+        db.query(ChapterContent.id)
         .filter(
             ChapterContent.project_id == project_id,
             ChapterContent.chapter_index == chapter_index,

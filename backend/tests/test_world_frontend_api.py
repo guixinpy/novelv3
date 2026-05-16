@@ -1614,6 +1614,42 @@ def test_world_model_snapshot_validates_chapter_index_before_empty_projection(cl
     assert athena_zero_response.status_code == 422
 
 
+def test_world_model_snapshot_chapter_existence_check_skips_content(client, db_session):
+    project = Project(name="World Snapshot Existence Projection")
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    db_session.add(
+        ChapterContent(
+            project_id=project.id,
+            chapter_index=1,
+            title="第一章",
+            content="很长的章节正文" * 1000,
+        )
+    )
+    db_session.commit()
+    statements: list[str] = []
+
+    def capture_statement(conn, cursor, statement, parameters, context, executemany):  # noqa: ARG001
+        statements.append(" ".join(statement.lower().split()))
+
+    bind = db_session.get_bind()
+    event.listen(bind, "before_cursor_execute", capture_statement)
+    try:
+        response = client.get(f"/api/v1/projects/{project.id}/world-model/snapshot?chapter_index=1")
+    finally:
+        event.remove(bind, "before_cursor_execute", capture_statement)
+
+    assert response.status_code == 200
+    chapter_selects = [
+        statement.split(" from chapter_contents", 1)[0]
+        for statement in statements
+        if " from chapter_contents" in statement
+    ]
+    assert chapter_selects
+    assert all("chapter_contents.content" not in select_clause for select_clause in chapter_selects)
+
+
 def test_athena_facade_routes_remain_compatible_after_router_split(client, db_session):
     project = Project(name="Athena Facade Routes")
     db_session.add(project)
