@@ -41,6 +41,13 @@ const contextSnapshot = computed(() => {
   const wordCount = Number(project.currentProject?.current_word_count || 0)
   const profileVersion = athena.ontology?.profile_version
   const indexedDocuments = athena.retrievalDiagnostics?.total_documents
+  const maintenance = athena.longformMaintenanceDiagnostics
+  const maintenanceIssueCount = maintenance
+    ? Number(maintenance.stale_memory_count || 0)
+      + Number(maintenance.missing_memory_count || 0)
+      + Number(maintenance.stale_retrieval_count || 0)
+      + Number(maintenance.missing_retrieval_count || 0)
+    : null
 
   return {
     chapterCount,
@@ -49,6 +56,11 @@ const contextSnapshot = computed(() => {
     indexLabel: indexedDocuments === undefined || indexedDocuments === null
       ? '未读取'
       : String(Number(indexedDocuments)),
+    maintenanceLabel: maintenance === null
+      ? '长篇记忆 未读取'
+      : maintenance.status === 'current'
+        ? '长篇记忆 已同步'
+        : `长篇记忆 待维护 ${maintenanceIssueCount} 项`,
   }
 })
 
@@ -89,6 +101,7 @@ function closeTrace() {
             <span>字数 {{ contextSnapshot.wordCount }}</span>
             <span>{{ contextSnapshot.profileLabel }}</span>
             <span>索引文档 {{ contextSnapshot.indexLabel }}</span>
+            <span>{{ contextSnapshot.maintenanceLabel }}</span>
           </div>
           <p class="athena-chat-panel__context-note">
             历史回答基于当时上下文；项目状态变化后，请重新提问或清空上下文。

@@ -145,6 +145,38 @@ describe('AthenaChatPanel', () => {
     expect(wrapper.text()).not.toContain('索引文档 0')
   })
 
+  it('shows stale longform maintenance status in the current context snapshot', () => {
+    const project = useProjectStore()
+    const athena = useAthenaStore()
+    project.currentProject = {
+      id: 'project-1',
+      name: '霜灯档案',
+      current_word_count: 750000,
+    }
+    project.chaptersTotal = 1000
+    athena.longformMaintenanceDiagnostics = {
+      project_id: 'project-1',
+      status: 'stale',
+      chapter_count: 1000,
+      stale_memory_count: 2,
+      missing_memory_count: 1,
+      stale_retrieval_count: 3,
+      missing_retrieval_count: 4,
+      stale_chapter_indexes: [512, 780],
+      missing_memory_chapter_indexes: [910],
+      stale_retrieval_chapter_indexes: [512, 780, 910],
+      missing_retrieval_chapter_indexes: [901, 902, 903, 904],
+      latest_chapter_updated_at: '2026-05-16T10:00:00Z',
+      latest_memory_updated_at: '2026-05-16T09:00:00Z',
+      latest_retrieval_updated_at: '2026-05-16T08:00:00Z',
+      latest_synced_chapter_index: 780,
+    }
+
+    const wrapper = mountPanel('project-1')
+
+    expect(wrapper.text()).toContain('长篇记忆 待维护 10 项')
+  })
+
   it('opens trace drawer with clicked Athena message trace id', async () => {
     setAssistantTraceMessage('trace-athena-1')
     const wrapper = mountPanel('project-1')
