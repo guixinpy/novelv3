@@ -956,6 +956,7 @@ def test_longform_scale_smoke_reports_memory_retrieval_and_resume_progress(db_se
     assert report["task"]["progress"]["completed_count"] == 120
     assert report["task"]["progress"]["last_completed_chapter_index"] == 120
     assert report["task"]["progress"]["can_resume"] is False
+    assert report["task"]["pending_chapter_count"] == 0
     assert "completed_chapter_indexes" not in report["task"]["progress"]
 
 

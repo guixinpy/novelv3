@@ -82,6 +82,7 @@ def run_longform_scale_smoke(
             "target_chapter_index": target,
         },
     )
+    pending_chapter_indexes = task_service.pending_chapter_indexes(completed_task.id)
     _record_timing(timings_ms, "task_complete", stage_started_at)
     elapsed_ms = int((perf_counter() - started_at) * 1000)
     total_words = chapter_count * words_per_chapter
@@ -102,6 +103,8 @@ def run_longform_scale_smoke(
             "id": completed_task.id,
             "status": completed_task.status,
             "progress": _compact_progress((completed_task.result or {}).get("progress") or {}),
+            "pending_chapter_count": len(pending_chapter_indexes),
+            "next_pending_chapter_index": pending_chapter_indexes[0] if pending_chapter_indexes else None,
         },
         "timings_ms": timings_ms,
         "elapsed_ms": elapsed_ms,
