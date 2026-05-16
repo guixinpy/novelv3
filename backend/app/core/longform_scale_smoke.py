@@ -56,6 +56,8 @@ def run_longform_scale_smoke(
     stage_started_at = _record_timing(timings_ms, "retrieval_reindex", stage_started_at)
     retrieval_report = get_retrieval_diagnostics(db, project.id)
     stage_started_at = _record_timing(timings_ms, "retrieval_diagnostics", stage_started_at)
+    repeat_reindex_report = reindex_project_retrieval(db, project.id)
+    stage_started_at = _record_timing(timings_ms, "retrieval_repeat_reindex", stage_started_at)
     context_package = build_longform_context_package(
         db,
         project.id,
@@ -74,6 +76,7 @@ def run_longform_scale_smoke(
             "progress": progress,
             "memory": memory_report,
             "retrieval": retrieval_report,
+            "repeat_reindex": repeat_reindex_report,
             "narrative_plan": _compact_narrative_plan_window(narrative_plan),
             "dialog_planning_context": _compact_context_block(dialog_planning_context),
             "target_chapter_index": target,
@@ -106,6 +109,7 @@ def run_longform_scale_smoke(
         },
         "timings_ms": timings_ms,
         "elapsed_ms": elapsed_ms,
+        "repeat_reindex": repeat_reindex_report,
     }
 
 

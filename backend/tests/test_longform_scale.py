@@ -941,6 +941,9 @@ def test_longform_scale_smoke_reports_memory_retrieval_and_resume_progress(db_se
     assert report["memory"]["counts_by_type"] == {"chapter": 120, "arc": 6, "volume": 2, "global": 1}
     assert report["retrieval"]["documents_by_source_type"]["chapter"] == 120
     assert report["retrieval"]["documents_by_source_type"]["longform_memory"] == 129
+    assert report["repeat_reindex"]["indexed"]["documents"] == 0
+    assert report["repeat_reindex"]["preserved_documents"] == report["retrieval"]["total_documents"]
+    assert report["repeat_reindex"]["removed_documents"] == 0
     assert "query_aware_retrieval" in report["context"]["section_keys"]
     assert report["dialog_planning_context"]["available"] is True
     assert report["dialog_planning_context"]["kind"] == "narrative_planning_summary"
@@ -995,6 +998,7 @@ def test_longform_scale_smoke_reports_stage_timings(db_session):
         "memory_rebuild",
         "retrieval_reindex",
         "retrieval_diagnostics",
+        "retrieval_repeat_reindex",
         "context_build",
         "narrative_plan_window",
         "dialog_planning_context",
