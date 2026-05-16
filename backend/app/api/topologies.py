@@ -3,7 +3,7 @@ from collections.abc import Iterator
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from sqlalchemy import text
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from app.api.deprecation import add_deprecation_header
@@ -29,9 +29,10 @@ def get_topology(
 ):
     if response:
         add_deprecation_header(response, f"/api/v1/projects/{project_id}/athena/ontology/relations")
-    topology = _load_or_create_topology(project_id, db)
-    return _window_topology(
-        topology,
+    _ensure_topology_exists(project_id, db)
+    return _window_topology_from_db(
+        db,
+        project_id,
         node_offset=node_offset,
         node_limit=node_limit,
         edge_offset=edge_offset,
@@ -60,6 +61,18 @@ def _load_or_create_topology(project_id: str, db: Session) -> Topology:
     db.commit()
     db.refresh(topology)
     return topology
+
+
+def _ensure_topology_exists(project_id: str, db: Session) -> None:
+    project = db.query(Project.id).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    topology_ref = db.query(Topology.id).filter(Topology.project_id == project_id).first()
+    if topology_ref:
+        return
+
+    _load_or_create_topology(project_id, db)
 
 
 def _iter_outline_chapters(db: Session, project_id: str) -> Iterator[dict[str, Any]]:
@@ -101,33 +114,96 @@ def _decode_json_value(value: Any) -> Any:
     return value
 
 
-def _window_topology(
-    topology: Topology,
+def _window_topology_from_db(
+    db: Session,
+    project_id: str,
     *,
     node_offset: int,
     node_limit: int,
     edge_offset: int,
     edge_limit: int,
 ) -> dict:
-    nodes = list(topology.nodes or [])
-    edges = list(topology.edges or [])
+    row = (
+        db.query(
+            Topology.id.label("id"),
+            Topology.project_id.label("project_id"),
+            Topology.version.label("version"),
+            Topology.indexes.label("indexes"),
+            Topology.updated_at.label("updated_at"),
+            func.coalesce(func.json_array_length(Topology.nodes), 0).label("nodes_total"),
+            func.coalesce(func.json_array_length(Topology.edges), 0).label("edges_total"),
+        )
+        .filter(Topology.project_id == project_id)
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Topology not found")
+
+    metadata = row._mapping
+    nodes_total = int(metadata["nodes_total"] or 0)
+    edges_total = int(metadata["edges_total"] or 0)
+    nodes = _window_topology_items(
+        db,
+        project_id,
+        column_name="nodes",
+        offset=node_offset,
+        limit=node_limit,
+    )
+    edges = _window_topology_items(
+        db,
+        project_id,
+        column_name="edges",
+        offset=edge_offset,
+        limit=edge_limit,
+    )
     return {
-        "id": topology.id,
-        "project_id": topology.project_id,
-        "version": topology.version,
-        "nodes": nodes[node_offset:node_offset + node_limit],
-        "edges": edges[edge_offset:edge_offset + edge_limit],
-        "indexes": topology.indexes or {},
-        "nodes_total": len(nodes),
+        "id": metadata["id"],
+        "project_id": metadata["project_id"],
+        "version": metadata["version"],
+        "nodes": nodes,
+        "edges": edges,
+        "indexes": _decode_json_value(metadata["indexes"]) or {},
+        "nodes_total": nodes_total,
         "nodes_offset": node_offset,
         "nodes_limit": node_limit,
-        "nodes_has_more": node_offset + node_limit < len(nodes),
-        "edges_total": len(edges),
+        "nodes_has_more": node_offset + node_limit < nodes_total,
+        "edges_total": edges_total,
         "edges_offset": edge_offset,
         "edges_limit": edge_limit,
-        "edges_has_more": edge_offset + edge_limit < len(edges),
-        "updated_at": topology.updated_at,
+        "edges_has_more": edge_offset + edge_limit < edges_total,
+        "updated_at": metadata["updated_at"],
     }
+
+
+def _window_topology_items(
+    db: Session,
+    project_id: str,
+    *,
+    column_name: str,
+    offset: int,
+    limit: int,
+) -> list[dict[str, Any]]:
+    if column_name not in {"nodes", "edges"}:
+        raise ValueError(f"Unsupported topology column: {column_name}")
+
+    rows = db.execute(
+        text(
+            f"""
+            SELECT item.value AS item
+            FROM topologies, json_each(topologies.{column_name}) AS item
+            WHERE topologies.project_id = :project_id
+            ORDER BY CAST(item.key AS INTEGER)
+            LIMIT :limit OFFSET :offset
+            """
+        ),
+        {"project_id": project_id, "offset": offset, "limit": limit},
+    ).mappings()
+    items: list[dict[str, Any]] = []
+    for row in rows:
+        item = _decode_json_value(row["item"])
+        if isinstance(item, dict):
+            items.append(item)
+    return items
 
 
 @router.get("/character-graph")

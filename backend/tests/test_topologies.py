@@ -87,6 +87,66 @@ def test_topology_endpoints_return_bounded_windows(client, db_session):
     assert window_payload["edges_total"] == 620
 
 
+def test_existing_topology_window_does_not_select_full_node_or_edge_json(client, db_session):
+    project = Project(name="Windowed topology")
+    db_session.add(project)
+    db_session.commit()
+    topology = Topology(
+        project_id=project.id,
+        nodes=[
+            {"id": f"node-{index:04d}", "type": "EVENT", "label": f"Node {index:04d}", "meta": {}}
+            for index in range(1200)
+        ],
+        edges=[
+            {
+                "id": f"edge-{index:04d}",
+                "source": f"node-{index % 1200:04d}",
+                "target": f"node-{(index + 1) % 1200:04d}",
+                "type": "sequence",
+                "meta": {},
+            }
+            for index in range(2400)
+        ],
+        indexes={"by_type": {"EVENT": 1200}},
+    )
+    db_session.add(topology)
+    db_session.commit()
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        response = client.get(
+            f"/api/v1/projects/{project.id}/topology"
+            "?node_offset=1100&node_limit=10&edge_offset=2300&edge_limit=20"
+        )
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [node["id"] for node in payload["nodes"]][:2] == ["node-1100", "node-1101"]
+    assert [edge["id"] for edge in payload["edges"]][:2] == ["edge-2300", "edge-2301"]
+    assert payload["nodes_total"] == 1200
+    assert payload["edges_total"] == 2400
+    assert payload["nodes_has_more"] is True
+    assert payload["edges_has_more"] is True
+    assert payload["indexes"] == {"by_type": {"EVENT": 1200}}
+
+    topology_selects = [
+        statement.split(" from topologies", 1)[0]
+        for statement in statements
+        if " from topologies" in statement
+    ]
+    assert topology_selects
+    assert any("json_each(topologies.nodes)" in statement for statement in statements)
+    assert any("json_each(topologies.edges)" in statement for statement in statements)
+    assert all("topologies.nodes as" not in clause for clause in topology_selects)
+    assert all("topologies.edges as" not in clause for clause in topology_selects)
+
+
 def test_topology_creation_streams_outline_chapters_without_selecting_full_json(client, db_session):
     project = Project(name="Large topology from outline")
     db_session.add(project)
