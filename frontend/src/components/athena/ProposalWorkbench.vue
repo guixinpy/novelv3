@@ -16,6 +16,11 @@ const proposalLoading = computed(() =>
   worldModel.isLaneLoading('bundles') || worldModel.isLaneLoading('detail'),
 )
 const reviewQueueClusters = computed(() => worldModel.proposalReviewQueue?.clusters ?? [])
+const reviewQueueLoadedItems = computed(() =>
+  worldModel.proposalReviewQueue?.returned_items
+  ?? reviewQueueClusters.value.reduce((total, cluster) => total + Math.max(0, cluster.candidate_count), 0),
+)
+const canLoadMoreReviewQueue = computed(() => Boolean(worldModel.proposalReviewQueue?.has_more))
 const selectedBundleDetail = computed(() => worldModel.selectedBundleDetail)
 const detailItemTotal = computed(() =>
   selectedBundleDetail.value?.items_total ?? selectedBundleDetail.value?.items.length ?? 0,
@@ -40,6 +45,10 @@ async function loadMore() {
 
 async function showMoreProposalItems() {
   await worldModel.loadMoreBundleDetailItems(props.projectId)
+}
+
+async function loadMoreReviewQueue() {
+  await worldModel.loadMoreProposalReviewQueue(props.projectId)
 }
 
 async function updateFilters(filters: typeof worldModel.bundleFilters) {
@@ -124,11 +133,25 @@ function chapterRangeLabel(range: { start: number | null; end: number | null }) 
           <div>
             <span>审阅队列</span>
             <strong>{{ worldModel.proposalReviewQueue.total_items }} 个待处理条目</strong>
+            <small v-if="worldModel.proposalReviewQueue.total_items > reviewQueueLoadedItems">
+              已显示 {{ reviewQueueLoadedItems }}/{{ worldModel.proposalReviewQueue.total_items }} 项
+            </small>
           </div>
-          <em>{{ reviewQueueClusters.length }} 组</em>
+          <div class="proposal-workbench__queue-actions">
+            <em>{{ reviewQueueClusters.length }} 组</em>
+            <button
+              v-if="canLoadMoreReviewQueue"
+              type="button"
+              data-testid="load-more-proposal-review-queue"
+              :disabled="worldModel.loadingMoreProposalReviewQueue"
+              @click="loadMoreReviewQueue"
+            >
+              {{ worldModel.loadingMoreProposalReviewQueue ? '加载中...' : '加载更多' }}
+            </button>
+          </div>
         </header>
         <ol v-if="reviewQueueClusters.length" class="proposal-workbench__queue-list">
-          <li v-for="cluster in reviewQueueClusters.slice(0, 6)" :key="cluster.cluster_id" class="proposal-workbench__queue-item">
+          <li v-for="cluster in reviewQueueClusters" :key="cluster.cluster_id" class="proposal-workbench__queue-item">
             <span>{{ riskLabel(cluster.risk_level) }}</span>
             <strong>{{ reviewModeLabel(cluster.review_mode) }} · {{ cluster.candidate_count }} 项</strong>
             <small>{{ cluster.predicate }} · {{ chapterRangeLabel(cluster.chapter_range) }}</small>
@@ -269,6 +292,7 @@ function chapterRangeLabel(range: { start: number | null; end: number | null }) 
 }
 
 .proposal-workbench__queue-header span,
+.proposal-workbench__queue-header small,
 .proposal-workbench__queue-header em,
 .proposal-workbench__queue-item span,
 .proposal-workbench__queue-item small,
@@ -276,6 +300,29 @@ function chapterRangeLabel(range: { start: number | null; end: number | null }) 
   color: var(--color-text-tertiary);
   font-size: var(--text-xs);
   font-style: normal;
+}
+
+.proposal-workbench__queue-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.proposal-workbench__queue-actions button {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-3);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.proposal-workbench__queue-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .proposal-workbench__queue-header strong,

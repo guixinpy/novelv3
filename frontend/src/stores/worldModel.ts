@@ -17,6 +17,7 @@ import type {
 
 type RequestLane = 'dashboard' | 'overview' | 'facts' | 'bundles' | 'detail' | 'queue'
 const FACT_CLAIMS_PAGE_SIZE = 200
+const PROPOSAL_REVIEW_QUEUE_PAGE_SIZE = 200
 const PROPOSAL_DETAIL_ITEM_PAGE_SIZE = 100
 const PROPOSAL_DETAIL_ITEM_MAX_REFRESH_LIMIT = 500
 const WORLD_MODEL_PROJECTION_WINDOW_QUERY: WorldModelOverviewQuery = {
@@ -80,6 +81,7 @@ export const useWorldModelStore = defineStore('worldModel', () => {
   })
   const loadingMoreBundles = ref(false)
   const loadingMoreFactClaims = ref(false)
+  const loadingMoreProposalReviewQueue = ref(false)
   const loadingMoreBundleItems = ref(false)
   const loaded = ref(false)
   const error = ref('')
@@ -317,6 +319,7 @@ export const useWorldModelStore = defineStore('worldModel', () => {
     setLanesLoading(['dashboard', 'overview', 'facts', 'bundles', 'detail', 'queue'], false)
     loadingMoreBundles.value = false
     loadingMoreFactClaims.value = false
+    loadingMoreProposalReviewQueue.value = false
     loadingMoreBundleItems.value = false
     loaded.value = false
     error.value = ''
@@ -353,7 +356,7 @@ export const useWorldModelStore = defineStore('worldModel', () => {
           limit: bundlesLimit.value,
           ...bundleFilters.value,
         }),
-        api.getWorldProposalReviewQueue(projectId),
+        api.getWorldProposalReviewQueue(projectId, { offset: 0, limit: PROPOSAL_REVIEW_QUEUE_PAGE_SIZE }),
       ])
       if (!isLatestRequest(snapshot, 'overview') || !isLatestRequest(snapshot, 'bundles') || !isLatestRequest(snapshot, 'queue')) return
 
@@ -361,7 +364,7 @@ export const useWorldModelStore = defineStore('worldModel', () => {
       projection.value = overview.projection
       proposalBundles.value = bundlesPage.items
       bundlesTotal.value = bundlesPage.total
-      proposalReviewQueue.value = reviewQueue
+      proposalReviewQueue.value = normalizeProposalReviewQueue(reviewQueue)
       proposalBundlesLoaded.value = true
       loaded.value = true
 
@@ -612,9 +615,71 @@ export const useWorldModelStore = defineStore('worldModel', () => {
 
   async function refreshProposalReviewQueue(projectId: string, requestSnapshot?: RequestSnapshot) {
     const snapshot = requestSnapshot ?? captureRequest(projectId, ['queue'])
-    const queue = await api.getWorldProposalReviewQueue(projectId)
+    const queue = await api.getWorldProposalReviewQueue(projectId, { offset: 0, limit: PROPOSAL_REVIEW_QUEUE_PAGE_SIZE })
     if (!isLatestRequest(snapshot, 'queue')) return
-    proposalReviewQueue.value = queue
+    proposalReviewQueue.value = normalizeProposalReviewQueue(queue)
+  }
+
+  function proposalReviewQueueReturnedItems(queue: ProposalReviewQueue) {
+    return queue.returned_items
+      ?? queue.clusters.reduce((total, cluster) => total + Math.max(0, cluster.candidate_count), 0)
+  }
+
+  function normalizeProposalReviewQueue(queue: ProposalReviewQueue): ProposalReviewQueue {
+    const offset = queue.offset ?? 0
+    const limit = queue.limit ?? PROPOSAL_REVIEW_QUEUE_PAGE_SIZE
+    const returnedItems = proposalReviewQueueReturnedItems(queue)
+    return {
+      ...queue,
+      offset,
+      limit,
+      returned_items: returnedItems,
+      has_more: queue.has_more ?? offset + returnedItems < queue.total_items,
+    }
+  }
+
+  function mergeProposalReviewQueue(current: ProposalReviewQueue, page: ProposalReviewQueue): ProposalReviewQueue {
+    const normalizedCurrent = normalizeProposalReviewQueue(current)
+    const normalizedPage = normalizeProposalReviewQueue(page)
+    return {
+      ...normalizedPage,
+      offset: normalizedCurrent.offset,
+      limit: normalizedPage.limit ?? normalizedCurrent.limit,
+      returned_items: proposalReviewQueueReturnedItems(normalizedCurrent) + proposalReviewQueueReturnedItems(normalizedPage),
+      clusters: [
+        ...normalizedCurrent.clusters,
+        ...normalizedPage.clusters,
+      ],
+    }
+  }
+
+  async function loadMoreProposalReviewQueue(projectId: string) {
+    const current = proposalReviewQueue.value
+    if (loadingMoreProposalReviewQueue.value || !current) return
+    const normalizedCurrent = normalizeProposalReviewQueue(current)
+    if (!normalizedCurrent.has_more) return
+    const nextOffset = (normalizedCurrent.offset ?? 0) + proposalReviewQueueReturnedItems(normalizedCurrent)
+    if (nextOffset <= (normalizedCurrent.offset ?? 0)) return
+
+    const scope = captureScope(projectId)
+    loadingMoreProposalReviewQueue.value = true
+    try {
+      const page = await api.getWorldProposalReviewQueue(projectId, {
+        offset: nextOffset,
+        limit: normalizedCurrent.limit ?? PROPOSAL_REVIEW_QUEUE_PAGE_SIZE,
+      })
+      if (!isActiveScope(scope.projectId, scope.version)) return
+      proposalReviewQueue.value = mergeProposalReviewQueue(normalizedCurrent, page)
+      error.value = ''
+    } catch (err) {
+      if (isActiveScope(scope.projectId, scope.version)) {
+        error.value = toErrorMessage(err)
+      }
+    } finally {
+      if (isActiveScope(scope.projectId, scope.version)) {
+        loadingMoreProposalReviewQueue.value = false
+      }
+    }
   }
 
   async function loadMoreBundles(projectId: string) {
@@ -808,6 +873,7 @@ export const useWorldModelStore = defineStore('worldModel', () => {
     laneLoading,
     loadingMoreBundles,
     loadingMoreFactClaims,
+    loadingMoreProposalReviewQueue,
     loadingMoreBundleItems,
     loading,
     loaded,
@@ -824,6 +890,7 @@ export const useWorldModelStore = defineStore('worldModel', () => {
     loadFactClaims,
     loadMoreFactClaims,
     loadSetupPanelData,
+    loadMoreProposalReviewQueue,
     selectBundle,
     loadMoreBundleDetailItems,
     loadSubjectKnowledge,

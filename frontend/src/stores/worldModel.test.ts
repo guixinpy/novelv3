@@ -596,9 +596,109 @@ describe('worldModel store', () => {
 
     await store.loadSetupPanelData('project-1')
 
-    expect(api.getWorldProposalReviewQueue).toHaveBeenCalledWith('project-1')
+    expect(api.getWorldProposalReviewQueue).toHaveBeenCalledWith('project-1', { offset: 0, limit: 200 })
     expect(store.proposalReviewQueue?.total_items).toBe(3)
     expect(store.proposalReviewQueue?.clusters.map((cluster) => cluster.risk_level)).toEqual(['high', 'low'])
+  })
+
+  it('loadMoreProposalReviewQueue() 使用 returned_items 追加下一段审阅队列窗口', async () => {
+    const firstQueue = {
+      project_id: 'project-1',
+      profile_version: 1,
+      total_items: 4,
+      returned_items: 2,
+      offset: 0,
+      limit: 200,
+      has_more: true,
+      clusters: [
+        {
+          cluster_id: 'high:status:item-1',
+          risk_level: 'high',
+          review_mode: 'individual',
+          candidate_count: 1,
+          item_ids: ['item-1'],
+          bundle_ids: ['bundle-1'],
+          subject_refs: ['char.hero'],
+          predicate: 'status',
+          chapter_range: { start: 1, end: 1 },
+          reason: '状态变化需要单独审阅。',
+        },
+        {
+          cluster_id: 'medium:rank:item-2',
+          risk_level: 'medium',
+          review_mode: 'individual',
+          candidate_count: 1,
+          item_ids: ['item-2'],
+          bundle_ids: ['bundle-1'],
+          subject_refs: ['char.hero'],
+          predicate: 'rank',
+          chapter_range: { start: 2, end: 2 },
+          reason: '等级变化需要单独审阅。',
+        },
+      ],
+    }
+    const secondQueue = {
+      project_id: 'project-1',
+      profile_version: 1,
+      total_items: 4,
+      returned_items: 2,
+      offset: 2,
+      limit: 200,
+      has_more: false,
+      clusters: [
+        {
+          cluster_id: 'low:presence_count:chapter:3',
+          risk_level: 'low',
+          review_mode: 'batch',
+          candidate_count: 1,
+          item_ids: ['item-3'],
+          bundle_ids: ['bundle-1'],
+          subject_refs: ['char.sidekick'],
+          predicate: 'presence_count',
+          chapter_range: { start: 3, end: 3 },
+          reason: '出场统计可批量审阅。',
+        },
+        {
+          cluster_id: 'low:presence_count:chapter:4',
+          risk_level: 'low',
+          review_mode: 'batch',
+          candidate_count: 1,
+          item_ids: ['item-4'],
+          bundle_ids: ['bundle-1'],
+          subject_refs: ['char.rival'],
+          predicate: 'presence_count',
+          chapter_range: { start: 4, end: 4 },
+          reason: '出场统计可批量审阅。',
+        },
+      ],
+    }
+    vi.mocked(api.getWorldModelOverview).mockResolvedValue(createOverview('captain'))
+    vi.mocked(api.listWorldProposalBundles).mockResolvedValue({
+      items: [createBundle()],
+      total: 1,
+      offset: 0,
+      limit: 20,
+    })
+    vi.mocked(api.getWorldProposalBundle).mockResolvedValue(createBundleDetail())
+    vi.mocked(api.getWorldProposalReviewQueue)
+      .mockResolvedValueOnce(firstQueue)
+      .mockResolvedValueOnce(secondQueue)
+    const store = useWorldModelStore()
+
+    await store.loadSetupPanelData('project-1')
+    await store.loadMoreProposalReviewQueue('project-1')
+
+    expect(api.getWorldProposalReviewQueue).toHaveBeenNthCalledWith(1, 'project-1', { offset: 0, limit: 200 })
+    expect(api.getWorldProposalReviewQueue).toHaveBeenNthCalledWith(2, 'project-1', { offset: 2, limit: 200 })
+    expect(store.proposalReviewQueue?.returned_items).toBe(4)
+    expect(store.proposalReviewQueue?.has_more).toBe(false)
+    expect(store.proposalReviewQueue?.clusters.map((cluster) => cluster.cluster_id)).toEqual([
+      'high:status:item-1',
+      'medium:rank:item-2',
+      'low:presence_count:chapter:3',
+      'low:presence_count:chapter:4',
+    ])
+    expect(store.loadingMoreProposalReviewQueue).toBe(false)
   })
 
   it('reviewProposalItem() 会执行审批并刷新 bundles 和当前 detail', async () => {

@@ -118,6 +118,50 @@ describe('ProposalWorkbench', () => {
     expect(wrapper.text()).not.toContain('batch')
   })
 
+  it('loads more proposal review queue clusters when the backend has another window', async () => {
+    const store = useWorldModelStore()
+    store.proposalReviewQueue = {
+      project_id: 'project-1',
+      profile_version: 1,
+      total_items: 8,
+      returned_items: 6,
+      offset: 0,
+      limit: 200,
+      has_more: true,
+      clusters: Array.from({ length: 6 }, (_, index) => ({
+        cluster_id: `low:presence_count:chapter:${index + 1}`,
+        risk_level: 'low',
+        review_mode: 'batch',
+        candidate_count: 1,
+        item_ids: [`item-${index + 1}`],
+        bundle_ids: ['bundle-1'],
+        subject_refs: [`char.${index + 1}`],
+        predicate: 'presence_count',
+        chapter_range: { start: index + 1, end: index + 1 },
+        reason: '出场统计可批量审阅。',
+      })),
+    }
+    store.loadMoreProposalReviewQueue = vi.fn()
+
+    const wrapper = mount(ProposalWorkbench, {
+      props: { projectId: 'project-1' },
+      global: {
+        stubs: {
+          WorldProposalBundleList: true,
+          WorldProposalImpactList: true,
+          WorldProposalItemCard: true,
+        },
+      },
+    })
+
+    expect(wrapper.text()).toContain('已显示 6/8 项')
+    expect(wrapper.findAll('.proposal-workbench__queue-item')).toHaveLength(6)
+
+    await wrapper.find('[data-testid="load-more-proposal-review-queue"]').trigger('click')
+
+    expect(store.loadMoreProposalReviewQueue).toHaveBeenCalledWith('project-1')
+  })
+
   it('renders large proposal details in bounded batches', async () => {
     const store = useWorldModelStore()
     const bundle = {
