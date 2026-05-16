@@ -383,10 +383,10 @@ export const api = {
   },
   sendChat: (data: ChatRequest) => request<ChatResponse>('/dialog/chat', { method: 'POST', body: JSON.stringify(data) }),
   resolveAction: (data: ResolveActionRequest) => request<ResolveActionResponse>('/dialog/resolve-action', { method: 'POST', body: JSON.stringify(data) }),
-  startWriting: (id: string) => request(`/projects/${id}/writing/start`, { method: 'POST' }),
+  startWriting: (id: string) => request<WritingState>(`/projects/${id}/writing/start`, { method: 'POST' }),
   getWritingState: (id: string) => request<WritingState>(`/projects/${id}/writing/state`),
-  pauseWriting: (id: string) => request(`/projects/${id}/writing/pause`, { method: 'POST' }),
-  resumeWriting: (id: string) => request(`/projects/${id}/writing/resume`, { method: 'POST' }),
+  pauseWriting: (id: string) => request<WritingState>(`/projects/${id}/writing/pause`, { method: 'POST' }),
+  resumeWriting: (id: string) => request<WritingState>(`/projects/${id}/writing/resume`, { method: 'POST' }),
   listVersions: (id: string, nodeType?: string, params?: { offset?: number; limit?: number }) => {
     const query = new URLSearchParams()
     if (nodeType) query.set('node_type', nodeType)

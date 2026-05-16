@@ -30,6 +30,10 @@ vi.mock('../api/client', () => ({
     generateOutline: vi.fn(),
     updatePreferences: vi.fn(),
     resetPreferences: vi.fn(),
+    getWritingState: vi.fn(),
+    startWriting: vi.fn(),
+    pauseWriting: vi.fn(),
+    resumeWriting: vi.fn(),
     createVersion: vi.fn(),
     rollbackVersion: vi.fn(),
     exportProject: vi.fn(),
@@ -574,6 +578,80 @@ describe('project workspace state', () => {
       node_limit: 200,
       edge_offset: 0,
       edge_limit: 500,
+    })
+  })
+
+  it('writing state 控制动作会更新当前项目写作进度', async () => {
+    const store = useProjectStore()
+    vi.mocked(api.getWritingState).mockResolvedValue({
+      project_id: 'A',
+      current_chapter: 8,
+      status: 'idle',
+      last_error: null,
+    })
+    vi.mocked(api.startWriting).mockResolvedValue({
+      project_id: 'A',
+      current_chapter: 8,
+      status: 'running',
+      last_error: null,
+    })
+    vi.mocked(api.pauseWriting).mockResolvedValue({
+      project_id: 'A',
+      current_chapter: 8,
+      status: 'paused',
+      last_error: null,
+    })
+    vi.mocked(api.resumeWriting).mockResolvedValue({
+      project_id: 'A',
+      current_chapter: 8,
+      status: 'running',
+      last_error: null,
+    })
+
+    await store.loadWritingState('A')
+    expect(store.writingState?.status).toBe('idle')
+
+    await store.startWriting('A')
+    expect(store.writingState?.status).toBe('running')
+
+    await store.pauseWriting('A')
+    expect(store.writingState?.status).toBe('paused')
+
+    await store.resumeWriting('A')
+    expect(store.writingState?.status).toBe('running')
+    expect(api.getWritingState).toHaveBeenCalledWith('A')
+    expect(api.startWriting).toHaveBeenCalledWith('A')
+    expect(api.pauseWriting).toHaveBeenCalledWith('A')
+    expect(api.resumeWriting).toHaveBeenCalledWith('A')
+  })
+
+  it('迟到的 writing state 响应不会覆盖新项目状态', async () => {
+    const store = useProjectStore()
+    let resolveA!: (value: any) => void
+    let resolveB!: (value: any) => void
+    vi.mocked(api.getWritingState).mockImplementation((projectId: string) => new Promise((resolve) => {
+      if (projectId === 'A') {
+        resolveA = resolve
+      } else {
+        resolveB = resolve
+      }
+    }))
+
+    store.resetProjectScopedState('A')
+    const oldRequest = store.loadWritingState('A')
+    store.resetProjectScopedState('B')
+    const newRequest = store.loadWritingState('B')
+
+    resolveB({ project_id: 'B', current_chapter: 20, status: 'running', last_error: null })
+    await newRequest
+    resolveA({ project_id: 'A', current_chapter: 5, status: 'failed', last_error: 'old failure' })
+    await oldRequest
+
+    expect(store.writingState).toEqual({
+      project_id: 'B',
+      current_chapter: 20,
+      status: 'running',
+      last_error: null,
     })
   })
 

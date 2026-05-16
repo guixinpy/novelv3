@@ -11,6 +11,7 @@ type ProjectRequestLane =
   | 'storyline'
   | 'outline'
   | 'topology'
+  | 'writingState'
   | 'chapters'
   | 'versions'
   | 'preferences'
@@ -59,6 +60,7 @@ export const useProjectStore = defineStore('project', () => {
     storyline: 0,
     outline: 0,
     topology: 0,
+    writingState: 0,
     chapters: 0,
     versions: 0,
     preferences: 0,
@@ -104,6 +106,10 @@ export const useProjectStore = defineStore('project', () => {
     const offset = params?.offset ?? 0
     const limit = params?.limit
     return `project:${projectId}:versions:${nodeType || 'all'}:${offset}:${limit ?? 'default'}`
+  }
+
+  function writingStateCacheKey(projectId: string) {
+    return `project:${projectId}:writing-state`
   }
 
   function normalizeVersionPage(value: any, fallbackOffset: number, fallbackLimit: number) {
@@ -187,6 +193,7 @@ export const useProjectStore = defineStore('project', () => {
       storyline: 0,
       outline: 0,
       topology: 0,
+      writingState: 0,
       chapters: 0,
       versions: 0,
       preferences: 0,
@@ -306,6 +313,39 @@ export const useProjectStore = defineStore('project', () => {
     const nextTopology = await requestCache.dedupe(key, () => api.getTopology(id, params))
     if (!isLatestProjectRequest(snapshot, 'topology')) return
     topology.value = nextTopology
+  }
+
+  async function loadWritingState(id: string, force = false) {
+    const key = writingStateCacheKey(id)
+    if (!force && writingState.value?.project_id === id && requestCache.isFresh(key, PROJECT_CACHE_TTL_MS)) return
+    const snapshot = captureProjectRequest(id, ['writingState'])
+    const nextState = await requestCache.dedupe(key, () => api.getWritingState(id))
+    if (!isLatestProjectRequest(snapshot, 'writingState')) return
+    writingState.value = nextState
+  }
+
+  async function startWriting(id: string) {
+    const snapshot = captureProjectRequest(id, ['writingState'])
+    const nextState = await api.startWriting(id)
+    if (!isLatestProjectRequest(snapshot, 'writingState')) return
+    writingState.value = nextState
+    requestCache.markFresh(writingStateCacheKey(id))
+  }
+
+  async function pauseWriting(id: string) {
+    const snapshot = captureProjectRequest(id, ['writingState'])
+    const nextState = await api.pauseWriting(id)
+    if (!isLatestProjectRequest(snapshot, 'writingState')) return
+    writingState.value = nextState
+    requestCache.markFresh(writingStateCacheKey(id))
+  }
+
+  async function resumeWriting(id: string) {
+    const snapshot = captureProjectRequest(id, ['writingState'])
+    const nextState = await api.resumeWriting(id)
+    if (!isLatestProjectRequest(snapshot, 'writingState')) return
+    writingState.value = nextState
+    requestCache.markFresh(writingStateCacheKey(id))
   }
 
   async function loadChapters(id: string, force = false, params?: { offset?: number; limit?: number }) {
@@ -473,6 +513,7 @@ export const useProjectStore = defineStore('project', () => {
     loadProjects, createProject, deleteProject, loadProject,
     generateSetup, loadSetup, generateChapter, loadChapter,
     generateStoryline, loadStoryline, generateOutline, loadOutline, loadTopology,
+    loadWritingState, startWriting, pauseWriting, resumeWriting,
     loadChapters, loadMoreChapters, loadVersions, loadMoreVersions, loadPreferences, updatePreferences, resetPreferences, refreshTargets,
     createVersion, rollbackVersion, exportProject,
   }
