@@ -1,9 +1,8 @@
-import json
 import re
 import time
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import String, func, text
+from sqlalchemy import String, func
 from sqlalchemy.orm import Session
 
 from app.config import load_api_key
@@ -12,6 +11,7 @@ from app.core.athena_retrieval import sync_longform_memory_retrieval_documents
 from app.core.longform_memory import refresh_longform_memory_for_chapter
 from app.core.model_call_trace import create_trace, mark_trace_failed, mark_trace_success, now_ms
 from app.core.outline_lookup import find_outline_chapter
+from app.core.setup_projection import get_setup_character_projection
 from app.core.text_stats import count_words
 from app.db import get_db
 from app.models import AIModelCallTrace, ChapterContent, Project, Setup
@@ -112,56 +112,10 @@ def _get_chapter_setup_context(db: Session, project_id: str) -> SetupContextSnap
     )
 
 
-def _parse_json_list(value: object) -> list:
-    if isinstance(value, list):
-        return value
-    if not isinstance(value, str) or not value.strip():
-        return []
-    try:
-        parsed = json.loads(value)
-    except ValueError:
-        return []
-    return parsed if isinstance(parsed, list) else []
-
-
-def _get_setup_characters_for_consistency(db: Session, project_id: str) -> list[dict]:
-    rows = db.execute(
-        text(
-            """
-            SELECT
-                json_extract(item.value, '$.name') AS name,
-                json_extract(item.value, '$.character_status') AS character_status,
-                json_extract(item.value, '$.ref') AS ref,
-                json_extract(item.value, '$.aliases') AS aliases,
-                json_extract(item.value, '$.names') AS names
-            FROM setups, json_each(setups.characters) AS item
-            WHERE setups.project_id = :project_id
-            ORDER BY CAST(item.key AS INTEGER)
-            """
-        ),
-        {"project_id": project_id},
-    ).mappings()
-    characters = []
-    for row in rows:
-        name = str(row["name"] or "").strip()
-        if not name:
-            continue
-        characters.append(
-            {
-                "name": name,
-                "character_status": row["character_status"] or "alive",
-                "ref": row["ref"],
-                "aliases": _parse_json_list(row["aliases"]),
-                "names": _parse_json_list(row["names"]),
-            }
-        )
-    return characters
-
-
 def _build_consistency_setup(db: Session, project_id: str) -> SetupContextSnapshot:
     return SetupContextSnapshot(
         world_building={},
-        characters=_get_setup_characters_for_consistency(db, project_id),
+        characters=get_setup_character_projection(db, project_id),
         core_concept={},
     )
 

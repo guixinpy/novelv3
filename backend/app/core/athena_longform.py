@@ -19,6 +19,7 @@ from app.core.athena_entity_resolver import (
 )
 from app.core.athena_setup_terms import extract_setup_world_terms as _extract_setup_world_terms
 from app.core.l1_extractor import L1RuleExtractor
+from app.core.setup_projection import get_setup_character_projection
 from app.core.world_context_assembler import build_chapter_world_context_package
 from app.core.world_projection_service import invalidate_world_projection_cache
 from app.core.world_proposal_state import ACTIONABLE_REVIEW_ITEM_STATUSES
@@ -260,9 +261,8 @@ def analyze_chapter_to_world_proposals(db: Session, project_id: str, chapter_ind
             "skipped": {"duplicates": 0},
         }
     chapter = _require_chapter(db, project_id, chapter_index)
-    setup = db.query(Setup).filter(Setup.project_id == project_id).first()
     world_model_characters = _characters_from_world_model(db, project_id, profile.version)
-    characters = world_model_characters or (setup.characters if setup and setup.characters else [])
+    characters = world_model_characters or get_setup_character_projection(db, project_id)
     facts = L1RuleExtractor().extract(chapter, characters)
     candidates = [
         _candidate_from_l1_fact(project_id=project_id, profile=profile, chapter=chapter, fact=fact)

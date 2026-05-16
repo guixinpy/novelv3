@@ -18,6 +18,7 @@ from app.models import (
 from app.core.athena_longform import analyze_chapter_to_world_proposals
 from app.core.athena_entity_resolver import count_entity_mentions
 from app.core.l1_extractor import L1RuleExtractor
+from sqlalchemy import event
 
 
 def _seed_project_with_setup(db_session):
@@ -330,6 +331,81 @@ def test_analyze_chapter_uses_world_model_canonical_character_refs_over_stale_se
         .count()
         == 0
     )
+
+
+def test_analyze_chapter_uses_bounded_setup_character_projection_when_world_model_has_no_characters(db_session):
+    project = Project(name="Analyzer Setup Projection", genre="东方奇幻悬疑")
+    genre_profile = GenreProfile(
+        canonical_id="analyzer-setup-projection-profile",
+        display_name="Analyzer Setup Projection",
+        contract_version="world.contract.v1",
+    )
+    db_session.add_all([project, genre_profile])
+    db_session.commit()
+    db_session.refresh(project)
+    profile = ProjectProfileVersion(
+        project_id=project.id,
+        genre_profile_id=genre_profile.id,
+        version=1,
+        contract_version="world.contract.v1",
+        profile_payload={},
+    )
+    db_session.add(profile)
+    db_session.add(
+        Setup(
+            project_id=project.id,
+            status="generated",
+            world_building={"rules": "长世界规则" * 1000},
+            characters=[
+                {
+                    "name": "林舟",
+                    "aliases": ["守夜人"],
+                    "character_status": "alive",
+                    "bio": "超长人物背景" * 5000,
+                }
+            ],
+            core_concept={"hook": "旧灯塔" * 1000},
+        )
+    )
+    db_session.add(
+        ChapterContent(
+            project_id=project.id,
+            chapter_index=1,
+            title="第一章 归港",
+            content="守夜人走进雾港城。林舟再次听见潮声。",
+            word_count=30,
+            status="generated",
+        )
+    )
+    db_session.commit()
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        result = analyze_chapter_to_world_proposals(db_session, project.id, 1)
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert result["status"] == "completed"
+    assert (
+        db_session.query(WorldProposalItem)
+        .filter_by(project_id=project.id, subject_ref="char.林舟", predicate="presence_count")
+        .count()
+        == 1
+    )
+    setup_select_clauses = [
+        statement.split(" from setups", 1)[0]
+        for statement in statements
+        if " from setups" in statement
+    ]
+    assert setup_select_clauses
+    assert any("json_each(setups.characters)" in statement for statement in statements)
+    assert all("setups.world_building as setups_world_building" not in clause for clause in setup_select_clauses)
+    assert all("setups.characters as setups_characters" not in clause for clause in setup_select_clauses)
+    assert all("setups.core_concept as setups_core_concept" not in clause for clause in setup_select_clauses)
 
 
 def test_analyze_chapter_rolls_back_partial_bundle_when_candidate_write_fails(client, db_session, monkeypatch):
