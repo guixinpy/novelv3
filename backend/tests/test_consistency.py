@@ -131,6 +131,34 @@ def test_list_issues_returns_bounded_page_with_total(client, db_session):
     assert [item["chapter_index"] for item in data["issues"]] == [6, 7, 8, 9]
 
 
+def test_athena_evolution_consistency_forwards_issue_window(client, db_session):
+    project = Project(name="Athena Consistency History Scale")
+    db_session.add(project)
+    db_session.flush()
+    db_session.add_all([
+        ConsistencyCheck(
+            project_id=project.id,
+            chapter_index=index,
+            checker_name="Checker",
+            subject=f"issue-{index}",
+            description=f"问题 {index}",
+            status="pending",
+        )
+        for index in range(1, 9)
+    ])
+    db_session.commit()
+
+    response = client.get(f"/api/v1/projects/{project.id}/athena/evolution/consistency?offset=2&limit=3")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == 8
+    assert data["offset"] == 2
+    assert data["limit"] == 3
+    assert data["has_more"] is True
+    assert [item["chapter_index"] for item in data["issues"]] == [3, 4, 5]
+
+
 def test_list_issues_total_does_not_select_heavy_text_fields(client, db_session):
     project = Project(name="Consistency Heavy Text")
     db_session.add(project)

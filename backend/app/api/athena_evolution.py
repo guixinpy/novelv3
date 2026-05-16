@@ -155,9 +155,14 @@ def rollback_evolution_review(
 
 
 @router.get("/evolution/consistency")
-def get_evolution_consistency(project_id: str, db: Session = Depends(get_db)):
+def get_evolution_consistency(
+    project_id: str,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=200),
+    db: Session = Depends(get_db),
+):
     from app.api.consistency import list_issues
-    return list_issues(project_id, db)
+    return list_issues(project_id=project_id, offset=offset, limit=limit, db=db, response=None)
 
 
 @router.post("/evolution/consistency/chapters/{chapter_index}/check")
