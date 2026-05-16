@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from sqlalchemy import or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, load_only
 
 from app.core.world_projection import (
     FactRecord,
@@ -138,6 +138,16 @@ def load_world_projection_source(
 ) -> WorldProjectionSource:
     anchors = (
         db.query(WorldTimelineAnchor)
+        .options(
+            load_only(
+                WorldTimelineAnchor.id,
+                WorldTimelineAnchor.anchor_id,
+                WorldTimelineAnchor.chapter_index,
+                WorldTimelineAnchor.intra_chapter_seq,
+                WorldTimelineAnchor.world_time_label,
+                WorldTimelineAnchor.relative_to_anchor_ref,
+            )
+        )
         .filter(
             WorldTimelineAnchor.project_id == project_id,
             WorldTimelineAnchor.profile_version == profile.version,
@@ -155,11 +165,41 @@ def load_world_projection_source(
         WorldEvent.project_profile_version_id == profile.id,
         WorldEvent.profile_version == profile.version,
     )
+    event_query = event_query.options(
+        load_only(
+            WorldEvent.id,
+            WorldEvent.event_id,
+            WorldEvent.event_type,
+            WorldEvent.chapter_index,
+            WorldEvent.intra_chapter_seq,
+            WorldEvent.primitive_payload,
+            WorldEvent.idempotency_key,
+            WorldEvent.supersedes_event_ref,
+            WorldEvent.timeline_anchor_id,
+        )
+    )
     fact_query = db.query(WorldFactClaim).filter(
         WorldFactClaim.project_id == project_id,
         WorldFactClaim.project_profile_version_id == profile.id,
         WorldFactClaim.profile_version == profile.version,
         WorldFactClaim.claim_status == "confirmed",
+    )
+    fact_query = fact_query.options(
+        load_only(
+            WorldFactClaim.id,
+            WorldFactClaim.claim_id,
+            WorldFactClaim.subject_ref,
+            WorldFactClaim.predicate,
+            WorldFactClaim.object_ref_or_value,
+            WorldFactClaim.claim_layer,
+            WorldFactClaim.claim_status,
+            WorldFactClaim.perspective_ref,
+            WorldFactClaim.disclosed_to_refs,
+            WorldFactClaim.chapter_index,
+            WorldFactClaim.intra_chapter_seq,
+            WorldFactClaim.valid_from_anchor_id,
+            WorldFactClaim.valid_to_anchor_id,
+        )
     )
     if max_chapter_index is not None:
         event_query = event_query.filter(WorldEvent.chapter_index <= max_chapter_index)
@@ -330,6 +370,7 @@ def _catalog_entity_events(
     ]:
         rows = (
             db.query(model)
+            .options(load_only(model.id, model.canonical_id, *[getattr(model, field) for field in fields]))
             .filter(
                 model.project_id == project_id,
                 model.profile_version == profile.version,

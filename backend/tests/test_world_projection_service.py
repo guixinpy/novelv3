@@ -372,6 +372,64 @@ def test_projection_source_filters_unconfirmed_fact_rows_in_sql(db_session):
     assert any("world_fact_claims.claim_status =" in statement for statement in fact_selects)
 
 
+def test_projection_source_projects_only_replay_fields(db_session):
+    project, profile = _seed_world(db_session)
+    world_projection_service.clear_world_projection_cache()
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        overview = build_world_projection_overview(
+            db=db_session,
+            project_id=project.id,
+            profile=profile,
+            view_type="current_truth",
+        )
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert overview.projection.facts["char.hero"]["rank"] == "captain"
+    event_selects = [
+        statement.split(" from world_events", 1)[0]
+        for statement in statements
+        if " from world_events" in statement
+    ]
+    fact_selects = [
+        statement.split(" from world_fact_claims", 1)[0]
+        for statement in statements
+        if " from world_fact_claims" in statement
+    ]
+    anchor_selects = [
+        statement.split(" from world_timeline_anchors", 1)[0]
+        for statement in statements
+        if " from world_timeline_anchors" in statement
+    ]
+    character_selects = [
+        statement.split(" from world_characters", 1)[0]
+        for statement in statements
+        if " from world_characters" in statement
+    ]
+
+    assert event_selects
+    assert fact_selects
+    assert anchor_selects
+    assert character_selects
+    assert all("world_events.state_diffs" not in clause for clause in event_selects)
+    assert all("world_events.evidence_refs" not in clause for clause in event_selects)
+    assert all("world_events.notes" not in clause for clause in event_selects)
+    assert all("world_events.created_at" not in clause for clause in event_selects)
+    assert all("world_fact_claims.evidence_refs" not in clause for clause in fact_selects)
+    assert all("world_fact_claims.notes" not in clause for clause in fact_selects)
+    assert all("world_fact_claims.created_at" not in clause for clause in fact_selects)
+    assert all("world_timeline_anchors.notes" not in clause for clause in anchor_selects)
+    assert all("world_timeline_anchors.updated_at" not in clause for clause in anchor_selects)
+    assert all("world_characters.hidden_truths" not in clause for clause in character_selects)
+    assert all("world_characters.updated_at" not in clause for clause in character_selects)
+
+
 def test_projection_service_reuses_local_projection_cache(monkeypatch, db_session):
     project, profile = _seed_world(db_session)
     load_count = 0
