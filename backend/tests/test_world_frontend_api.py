@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 from sqlalchemy import event
@@ -18,6 +19,7 @@ from app.models import (
     WorldCharacter,
     WorldEvent,
     WorldFactClaim,
+    WorldProposalBundle,
     WorldProposalItem,
     WorldRelation,
     WorldRule,
@@ -1713,6 +1715,31 @@ def test_world_model_proposal_bundle_count_does_not_select_summary(client, db_se
     ]
     assert bundle_count_statements
     assert all("world_proposal_bundles.summary" not in statement for statement in bundle_count_statements)
+
+
+def test_list_world_proposal_bundles_uses_id_tie_breaker_for_stable_pages(client, db_session):
+    project, profile_version = _seed_profile(db_session)
+    created_at = datetime(2026, 1, 1, tzinfo=UTC)
+    db_session.add_all([
+        WorldProposalBundle(
+            id=f"bundle-{index:02d}",
+            project_id=project.id,
+            project_profile_version_id=profile_version.id,
+            profile_version=profile_version.version,
+            created_by="writer.alpha",
+            title=f"Bundle {index:02d}",
+            created_at=created_at,
+            updated_at=created_at,
+        )
+        for index in range(1, 7)
+    ])
+    db_session.commit()
+
+    response = client.get(f"/api/v1/projects/{project.id}/world-model/proposal-bundles?offset=0&limit=3")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [item["id"] for item in payload["items"]] == ["bundle-06", "bundle-05", "bundle-04"]
 
 
 def test_world_model_bundle_detail_item_count_does_not_select_heavy_item_fields(client, db_session):

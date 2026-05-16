@@ -281,7 +281,11 @@ def list_world_proposal_bundles(
     query = db.query(WorldProposalBundle).filter(*filters)
     total = db.query(func.count(WorldProposalBundle.id)).filter(*filters).scalar() or 0
     items = (
-        query.order_by(WorldProposalBundle.updated_at.desc(), WorldProposalBundle.created_at.desc())
+        query.order_by(
+            WorldProposalBundle.updated_at.desc(),
+            WorldProposalBundle.created_at.desc(),
+            WorldProposalBundle.id.desc(),
+        )
         .offset(offset)
         .limit(limit)
         .all()
