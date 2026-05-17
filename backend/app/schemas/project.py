@@ -9,6 +9,7 @@ class ProjectCreate(BaseModel):
     genre: str = ""
     target_chapter_count: int = 0
     target_word_count: int = 0
+    ai_model: str = "deepseek-chat"
     style: str = ""
     complexity: int = 3
 
@@ -19,6 +20,7 @@ class ProjectUpdate(BaseModel):
     genre: str | None = None
     target_chapter_count: int | None = None
     target_word_count: int | None = None
+    ai_model: str | None = None
     style: str | None = None
     complexity: int | None = None
     status: str | None = None

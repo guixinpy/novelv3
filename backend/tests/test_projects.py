@@ -62,6 +62,25 @@ def test_project_persists_target_chapter_count(client):
     assert fetched.json()["target_chapter_count"] == 12
 
 
+def test_project_persists_ai_model(client):
+    r = client.post(
+        "/api/v1/projects",
+        json={"name": "Model Config Novel", "ai_model": "deepseek-reasoner"},
+    )
+    assert r.status_code == 200
+    data = r.json()
+    assert data["ai_model"] == "deepseek-reasoner"
+
+    pid = data["id"]
+    updated = client.patch(f"/api/v1/projects/{pid}", json={"ai_model": "deepseek-chat"})
+    assert updated.status_code == 200
+    assert updated.json()["ai_model"] == "deepseek-chat"
+
+    fetched = client.get(f"/api/v1/projects/{pid}")
+    assert fetched.status_code == 200
+    assert fetched.json()["ai_model"] == "deepseek-chat"
+
+
 def test_update_project_target_marks_writing_completed_when_pointer_is_beyond_target(client, db_session):
     r = client.post("/api/v1/projects", json={"name": "Retarget Short", "target_chapter_count": 10})
     pid = r.json()["id"]

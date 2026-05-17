@@ -15,7 +15,11 @@ const store = useProjectStore()
 
 const showCreateDialog = ref(false)
 const creating = ref(false)
-const newProject = ref({ name: '', genre: '', targetChapters: '', targetWords: '' })
+const newProject = ref({ name: '', genre: '', aiModel: 'deepseek-chat', targetChapters: '', targetWords: '' })
+const aiModelOptions = [
+  { value: 'deepseek-chat', label: 'DeepSeek Chat' },
+  { value: 'deepseek-reasoner', label: 'DeepSeek Reasoner' },
+]
 
 const deleteTarget = ref<any>(null)
 const deleting = ref(false)
@@ -89,11 +93,12 @@ async function createProject() {
     await store.createProject({
       name,
       genre: newProject.value.genre.trim() || undefined,
+      ai_model: newProject.value.aiModel,
       ...(Number.isFinite(targetChapterCount) && targetChapterCount > 0 ? { target_chapter_count: targetChapterCount } : {}),
       ...(Number.isFinite(targetWordCount) && targetWordCount > 0 ? { target_word_count: targetWordCount } : {}),
     })
     showCreateDialog.value = false
-    newProject.value = { name: '', genre: '', targetChapters: '', targetWords: '' }
+    newProject.value = { name: '', genre: '', aiModel: 'deepseek-chat', targetChapters: '', targetWords: '' }
   } finally {
     creating.value = false
   }
@@ -169,6 +174,18 @@ async function createProject() {
           label="题材类型"
           placeholder="如：科幻、悬疑、言情"
         />
+        <label class="project-list-view__field">
+          <span class="project-list-view__field-label">生成模型</span>
+          <select
+            v-model="newProject.aiModel"
+            data-testid="project-ai-model-select"
+            class="project-list-view__select"
+          >
+            <option v-for="option in aiModelOptions" :key="option.value" :value="option.value">
+              {{ option.label }}
+            </option>
+          </select>
+        </label>
         <BaseInput
           v-model="newProject.targetChapters"
           label="目标章节数"
@@ -262,5 +279,27 @@ async function createProject() {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
+}
+
+.project-list-view__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.project-list-view__field-label {
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.project-list-view__select {
+  width: 100%;
+  min-height: 38px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font: inherit;
 }
 </style>

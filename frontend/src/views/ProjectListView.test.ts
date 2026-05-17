@@ -84,6 +84,31 @@ describe('ProjectListView', () => {
       genre: '都市奇幻悬疑',
       target_chapter_count: 20,
       target_word_count: 40000,
+      ai_model: 'deepseek-chat',
+    })
+  })
+
+  it('sends selected AI model when creating a project', async () => {
+    const wrapper = mount(ProjectListView, { attachTo: document.body })
+    await Promise.resolve()
+
+    await wrapper.get('[data-testid="project-create-button"]').trigger('click')
+    await nextTick()
+    await wrapper.findAllComponents({ name: 'BaseInput' })[0].vm.$emit('update:modelValue', '推理模型长篇')
+    const modelSelect = document.querySelector('[data-testid="project-ai-model-select"]') as HTMLSelectElement
+    expect(modelSelect).toBeTruthy()
+    modelSelect.value = 'deepseek-reasoner'
+    modelSelect.dispatchEvent(new Event('change', { bubbles: true }))
+    await nextTick()
+
+    const createButton = document.querySelector('[data-testid="project-create-submit"]')
+    expect(createButton).toBeTruthy()
+    createButton!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+
+    expect(api.createProject).toHaveBeenCalledWith({
+      name: '推理模型长篇',
+      ai_model: 'deepseek-reasoner',
     })
   })
 
