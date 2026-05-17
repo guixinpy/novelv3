@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from time import perf_counter
 from typing import Any
 
@@ -20,6 +21,7 @@ def run_longform_scale_smoke(
     words_per_chapter: int = 1000,
     target_chapter_index: int | None = None,
     query: str = "星环钥匙",
+    include_writing_worker: bool = True,
 ) -> dict[str, Any]:
     if chapter_count < 1:
         raise ValueError("chapter_count must be at least 1")
@@ -69,6 +71,14 @@ def run_longform_scale_smoke(
     stage_started_at = _record_timing(timings_ms, "narrative_plan_window", stage_started_at)
     dialog_planning_context = build_athena_narrative_planning_context_block(db, project)
     stage_started_at = _record_timing(timings_ms, "dialog_planning_context", stage_started_at)
+    writing_worker_report = None
+    if include_writing_worker:
+        writing_worker_report = _run_writing_worker_smoke(
+            db,
+            project=project,
+            chapter_count=chapter_count,
+        )
+        stage_started_at = _record_timing(timings_ms, "writing_worker", stage_started_at)
     progress = (task.result or {}).get("progress") or {}
     completed_task = task_service.mark_completed(
         task.id,
@@ -79,6 +89,7 @@ def run_longform_scale_smoke(
             "repeat_reindex": repeat_reindex_report,
             "narrative_plan": _compact_narrative_plan_window(narrative_plan),
             "dialog_planning_context": _compact_context_block(dialog_planning_context),
+            "writing_worker": writing_worker_report,
             "target_chapter_index": target,
         },
     )
@@ -99,6 +110,7 @@ def run_longform_scale_smoke(
         "context": _compact_context_package(context_package, target_chapter_index=target),
         "narrative_plan": _compact_narrative_plan_window(narrative_plan),
         "dialog_planning_context": _compact_context_block(dialog_planning_context),
+        "writing_worker": writing_worker_report,
         "task": {
             "id": completed_task.id,
             "status": completed_task.status,
@@ -109,6 +121,50 @@ def run_longform_scale_smoke(
         "timings_ms": timings_ms,
         "elapsed_ms": elapsed_ms,
         "repeat_reindex": repeat_reindex_report,
+    }
+
+
+def _run_writing_worker_smoke(db: Session, *, project: Project, chapter_count: int) -> dict[str, Any]:
+    from app.api import chapters as chapters_api
+    from app.api.writing import build_generate_chapter_work
+    from app.services.writing.writing_state_service import WritingStateService
+
+    task_service = BackgroundTaskService(db)
+    task = task_service.create_chapter_range(
+        project_id=project.id,
+        task_type="generate_chapter",
+        start_chapter_index=1,
+        end_chapter_index=chapter_count,
+        payload={"chapter_index": 1},
+        idempotency_key=f"longform-scale-worker-smoke:{project.id}:{chapter_count}",
+    )
+    running_task = task_service.mark_running(task.id)
+
+    async def fake_generate_chapter(project_id: str, chapter_index: int, rdb: Session) -> dict[str, int]:
+        WritingStateService(rdb).complete_chapter(project_id, chapter_index)
+        return {"chapter_index": chapter_index}
+
+    original_generate_chapter = chapters_api.generate_chapter
+    chapters_api.generate_chapter = fake_generate_chapter
+    try:
+        result = asyncio.run(build_generate_chapter_work(project.id, 1)(db, running_task))
+    finally:
+        chapters_api.generate_chapter = original_generate_chapter
+
+    completed_task = task_service.mark_completed(task.id, result)
+    pending_chapter_indexes = task_service.pending_chapter_indexes(completed_task.id)
+    state = WritingStateService(db).state(project.id, include_task_id=False)
+    return {
+        "id": completed_task.id,
+        "status": completed_task.status,
+        "progress": _compact_progress((completed_task.result or {}).get("progress") or {}),
+        "pending_chapter_count": len(pending_chapter_indexes),
+        "next_pending_chapter_index": pending_chapter_indexes[0] if pending_chapter_indexes else None,
+        "state": {
+            "status": state.status,
+            "current_chapter": state.current_chapter,
+            "last_error": state.last_error,
+        },
     }
 
 

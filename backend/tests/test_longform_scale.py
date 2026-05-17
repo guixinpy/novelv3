@@ -1008,10 +1008,29 @@ def test_longform_scale_smoke_reports_stage_timings(db_session):
         "context_build",
         "narrative_plan_window",
         "dialog_planning_context",
+        "writing_worker",
         "task_complete",
     }
     assert all(isinstance(value, int) and value >= 0 for value in report["timings_ms"].values())
     assert sum(report["timings_ms"].values()) <= report["elapsed_ms"]
+
+
+def test_longform_scale_smoke_reports_writing_worker_range(db_session):
+    from app.core.longform_scale_smoke import run_longform_scale_smoke
+
+    report = run_longform_scale_smoke(
+        db_session,
+        chapter_count=5,
+        words_per_chapter=80,
+        target_chapter_index=5,
+    )
+
+    assert report["writing_worker"]["status"] == "completed"
+    assert report["writing_worker"]["progress"]["completed_count"] == 5
+    assert report["writing_worker"]["progress"]["last_completed_chapter_index"] == 5
+    assert report["writing_worker"]["pending_chapter_count"] == 0
+    assert report["writing_worker"]["state"]["status"] == "completed"
+    assert report["writing_worker"]["state"]["current_chapter"] == 6
 
 
 def test_longform_scale_smoke_compacts_checkpoint_progress_fields():
@@ -1060,6 +1079,7 @@ def test_longform_scale_smoke_uses_batched_task_progress(db_session, monkeypatch
         chapter_count=3,
         words_per_chapter=80,
         target_chapter_index=3,
+        include_writing_worker=False,
     )
 
     assert batch_calls == [[1, 2, 3]]
