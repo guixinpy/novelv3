@@ -241,6 +241,9 @@ def test_writing_start_completes_without_task_after_project_target(client, db_se
     assert response.json()["status"] == "completed"
     assert response.json()["current_chapter"] == 2
     assert "task_id" not in response.json()
+    project = client.get(f"/api/v1/projects/{pid}").json()
+    assert project["status"] == "completed"
+    assert project["current_phase"] == "content"
     task_count = (
         db_session.query(BackgroundTask)
         .filter(
@@ -250,6 +253,22 @@ def test_writing_start_completes_without_task_after_project_target(client, db_se
         .count()
     )
     assert task_count == 0
+    start.assert_not_called()
+
+
+def test_writing_start_finish_project_syncs_project_status(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Target Drift", "target_chapter_count": 1})
+    pid = r.json()["id"]
+    WritingStateService(db_session).run_chapter(pid, 2)
+
+    with patch("app.api.writing.LocalTaskRunner.start") as start:
+        response = client.post(f"/api/v1/projects/{pid}/writing/start")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "completed"
+    project = client.get(f"/api/v1/projects/{pid}").json()
+    assert project["status"] == "completed"
+    assert project["current_phase"] == "content"
     start.assert_not_called()
 
 
