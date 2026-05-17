@@ -14,6 +14,7 @@ vi.mock('../api/client', () => ({
   api: {
     listProjects: vi.fn(),
     createProject: vi.fn(),
+    updateProject: vi.fn(),
     deleteProject: vi.fn(),
   },
 }))
@@ -29,6 +30,15 @@ describe('ProjectListView', () => {
       genre: '都市奇幻悬疑',
       current_word_count: 0,
       status: 'draft',
+      updated_at: new Date().toISOString(),
+    })
+    vi.mocked(api.updateProject).mockResolvedValue({
+      id: 'project-1',
+      name: '雾港二十夜',
+      genre: '都市奇幻悬疑',
+      current_word_count: 0,
+      status: 'draft',
+      ai_model: 'deepseek-reasoner',
       updated_at: new Date().toISOString(),
     })
   })
@@ -110,6 +120,28 @@ describe('ProjectListView', () => {
       name: '推理模型长篇',
       ai_model: 'deepseek-reasoner',
     })
+  })
+
+  it('updates a project AI model from the list row', async () => {
+    vi.mocked(api.listProjects).mockResolvedValue([
+      {
+        id: 'project-1',
+        name: '雾港二十夜',
+        genre: '都市奇幻悬疑',
+        current_word_count: 0,
+        status: 'draft',
+        ai_model: 'deepseek-chat',
+        updated_at: '2026-04-28T08:00:00.000000',
+      },
+    ])
+    const wrapper = mount(ProjectListView)
+    await flushPromises()
+    await nextTick()
+
+    const modelSelect = wrapper.get('[data-testid="project-row-ai-model-project-1"]')
+    await modelSelect.setValue('deepseek-reasoner')
+
+    expect(api.updateProject).toHaveBeenCalledWith('project-1', { ai_model: 'deepseek-reasoner' })
   })
 
   it('closes the create modal after creating a project successfully', async () => {

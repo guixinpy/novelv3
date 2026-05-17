@@ -261,6 +261,14 @@ export const useProjectStore = defineStore('project', () => {
     return p
   }
 
+  async function updateProjectModel(id: string, aiModel: string) {
+    const updated = await api.updateProject(id, { ai_model: aiModel })
+    projects.value = projects.value.map((project) => project.id === id ? { ...project, ...updated } : project)
+    if (currentProject.value?.id === id) currentProject.value = { ...currentProject.value, ...updated }
+    requestCache.invalidate(`project:${id}:project`)
+    return updated
+  }
+
   async function deleteProject(id: string) {
     await api.deleteProject(id)
     projects.value = projects.value.filter((project) => project.id !== id)
@@ -578,7 +586,7 @@ export const useProjectStore = defineStore('project', () => {
     versions, versionsTotal, versionsOffset, versionsLimit, versionsHasMore, preferences, versionsNodeType,
     resetProjectScopedState,
     applyWorkspaceBootstrap,
-    loadProjects, createProject, deleteProject, loadProject,
+    loadProjects, createProject, updateProjectModel, deleteProject, loadProject,
     generateSetup, loadSetup, generateChapter, loadChapter,
     generateStoryline, loadStoryline, generateOutline, loadOutline, loadTopology,
     loadWritingState, startWriting, pauseWriting, resumeWriting,

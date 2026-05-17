@@ -23,11 +23,13 @@ const aiModelOptions = [
 
 const deleteTarget = ref<any>(null)
 const deleting = ref(false)
+const updatingModelId = ref('')
 
 const columns: BaseTableColumn[] = [
   { key: 'name', label: '项目名称' },
   { key: 'genre', label: '类型', width: '100px' },
   { key: 'current_word_count', label: '字数', width: '100px', align: 'right' },
+  { key: 'ai_model', label: '模型', width: '170px' },
   { key: 'status', label: '状态', width: '100px' },
   { key: 'updated_at', label: '最后修改', width: '140px' },
   { key: 'actions', label: '操作', width: '60px', align: 'center' },
@@ -70,6 +72,19 @@ function onRowClick(row: Record<string, unknown>) {
 function requestDelete(project: any, event: Event) {
   event.stopPropagation()
   deleteTarget.value = project
+}
+
+async function updateProjectModel(project: any, event: Event) {
+  event.stopPropagation()
+  const aiModel = (event.target as HTMLSelectElement).value
+  const projectId = String(project.id || '')
+  if (!projectId || aiModel === project.ai_model) return
+  updatingModelId.value = projectId
+  try {
+    await store.updateProjectModel(projectId, aiModel)
+  } finally {
+    updatingModelId.value = ''
+  }
 }
 
 async function confirmDelete() {
@@ -134,6 +149,20 @@ async function createProject() {
       </template>
       <template #cell-current_word_count="{ value }">
         {{ Number(value || 0).toLocaleString() }}
+      </template>
+      <template #cell-ai_model="{ row, value }">
+        <select
+          :data-testid="`project-row-ai-model-${row.id}`"
+          class="project-list-view__row-select"
+          :value="String(value || 'deepseek-chat')"
+          :disabled="updatingModelId === String(row.id)"
+          @click.stop
+          @change="updateProjectModel(row, $event)"
+        >
+          <option v-for="option in aiModelOptions" :key="option.value" :value="option.value">
+            {{ option.label }}
+          </option>
+        </select>
       </template>
       <template #cell-status="{ value }">
         <BaseBadge :variant="getStatusInfo(String(value)).variant" size="sm">
@@ -273,6 +302,17 @@ async function createProject() {
 
 .project-list-view__delete:hover {
   opacity: 1;
+}
+
+.project-list-view__row-select {
+  width: 150px;
+  min-height: 30px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
 }
 
 .project-list-view__form {

@@ -151,6 +151,7 @@ async function request<T = any>(path: string, options: RequestInit = {}): Promis
 export const api = {
   listProjects: () => request('/projects'),
   createProject: (data: any) => request('/projects', { method: 'POST', body: JSON.stringify(data) }),
+  updateProject: (id: string, data: any) => request(`/projects/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   getProject: (id: string) => request(`/projects/${id}`),
   getWorkspaceBootstrap: (id: string) => request<WorkspaceBootstrap>(`/projects/${id}/workspace-bootstrap`),
   deleteProject: (id: string) => request(`/projects/${id}`, { method: 'DELETE' }),
