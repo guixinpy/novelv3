@@ -267,6 +267,9 @@ def test_generate_final_project_target_chapter_marks_writing_completed(mock_comp
     state = WritingStateService(db_session).state(pid)
     assert state.status == "completed"
     assert state.current_chapter == 2
+    db_session.refresh(project)
+    assert project.status == "completed"
+    assert project.current_phase == "content"
 
 
 @patch("app.api.chapters.load_api_key", return_value="sk-test")
@@ -286,6 +289,9 @@ def test_generate_final_outline_target_chapter_marks_writing_completed(mock_comp
     state = WritingStateService(db_session).state(pid)
     assert state.status == "completed"
     assert state.current_chapter == 2
+    project = db_session.get(Project, pid)
+    assert project.status == "completed"
+    assert project.current_phase == "content"
 
 
 @patch("app.api.chapters.load_api_key", return_value="sk-test")

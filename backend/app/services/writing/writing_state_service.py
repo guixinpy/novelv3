@@ -64,11 +64,15 @@ class WritingStateService:
         state = self._get_or_create(project_id)
         state.current_chapter = max(int(state.current_chapter or 0), int(chapter_index) + 1)
         project = self.db.query(Project).filter(Project.id == project_id).first()
+        completed = bool(project and chapter_index_exceeds_target(self.db, project, state.current_chapter))
         state.status = (
             "completed"
-            if project and chapter_index_exceeds_target(self.db, project, state.current_chapter)
+            if completed
             else "idle"
         )
+        if project and completed:
+            project.status = "completed"
+            project.current_phase = "content"
         state.last_error = None
         state.updated_at = datetime.now(UTC)
         self.db.commit()
@@ -92,18 +96,26 @@ class WritingStateService:
         if not project:
             return self._out(state)
 
+        previous_status = state.status
         next_status = state.status
         if chapter_index_exceeds_target(self.db, project, state.current_chapter):
             next_status = "completed"
         elif state.status == "completed":
             next_status = "idle"
 
-        if next_status == state.status:
+        changed = False
+        if next_status != state.status:
+            state.status = next_status
+            state.last_error = None
+            state.updated_at = datetime.now(UTC)
+            changed = True
+
+        if self._sync_project_completion(project, previous_status, next_status):
+            changed = True
+
+        if not changed:
             return self._out(state)
 
-        state.status = next_status
-        state.last_error = None
-        state.updated_at = datetime.now(UTC)
         self.db.commit()
         self.db.refresh(state)
         return self._out(state)
@@ -155,3 +167,17 @@ class WritingStateService:
             status=state.status,
             last_error=state.last_error,
         )
+
+    @staticmethod
+    def _sync_project_completion(project: Project, previous_status: str, next_status: str) -> bool:
+        if next_status == "completed":
+            changed = project.status != "completed" or project.current_phase != "content"
+            project.status = "completed"
+            project.current_phase = "content"
+            return changed
+        if previous_status == "completed" and next_status != "completed":
+            changed = project.status != "writing" or project.current_phase != "content"
+            project.status = "writing"
+            project.current_phase = "content"
+            return changed
+        return False

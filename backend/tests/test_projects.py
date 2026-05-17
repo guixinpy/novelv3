@@ -72,6 +72,9 @@ def test_update_project_target_marks_writing_completed_when_pointer_is_beyond_ta
     state = WritingStateService(db_session).state(pid)
     assert state.current_chapter == 6
     assert state.status == "completed"
+    project = db_session.get(Project, pid)
+    assert project.status == "completed"
+    assert project.current_phase == "content"
 
 
 def test_update_project_target_reopens_completed_writing_when_target_extends(client, db_session):
@@ -85,6 +88,9 @@ def test_update_project_target_reopens_completed_writing_when_target_extends(cli
     state = WritingStateService(db_session).state(pid)
     assert state.current_chapter == 2
     assert state.status == "idle"
+    project = db_session.get(Project, pid)
+    assert project.status == "writing"
+    assert project.current_phase == "content"
 
 
 def test_list_projects(client):
