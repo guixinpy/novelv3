@@ -45,6 +45,7 @@ from app.models import (
     WorldResource,
     WorldRule,
     WorldTimelineAnchor,
+    WritingState,
 )
 from app.schemas import ProjectCreate, ProjectOut, ProjectUpdate, WorkspaceBootstrapOut
 from app.services.workspace.bootstrap import WorkspaceBootstrapService
@@ -94,6 +95,7 @@ PROJECT_SCOPED_MODELS = (
     BackgroundTask,
     Version,
     PromptRule,
+    WritingState,
 )
 
 

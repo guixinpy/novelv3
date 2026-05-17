@@ -26,6 +26,7 @@ from app.models import (
     Version,
     WorldCharacter,
     WorldRule,
+    WritingState,
 )
 from app.services.writing.writing_state_service import WritingStateService
 
@@ -179,8 +180,9 @@ def test_delete_project_cleans_related_records(client, db_session):
     version = Version(project_id=pid, node_type="outline", node_id="outline-1", version_number=1, content="{}", description="v1")
     rule = PromptRule(project_id=pid, rule_type="style", condition="always", action="keep concise")
     dialog = Dialog(project_id=pid, state="pending_action")
+    writing_state = WritingState(project_id=pid, current_chapter=12, status="running")
 
-    db_session.add_all([setup, storyline, outline, topology, chapter, check, fact, task, version, rule, dialog])
+    db_session.add_all([setup, storyline, outline, topology, chapter, check, fact, task, version, rule, dialog, writing_state])
     db_session.commit()
     db_session.refresh(chapter)
     db_session.refresh(dialog)
@@ -214,6 +216,7 @@ def test_delete_project_cleans_related_records(client, db_session):
     assert db_session.query(BackgroundTask).filter(BackgroundTask.project_id == pid).count() == 0
     assert db_session.query(Version).filter(Version.project_id == pid).count() == 0
     assert db_session.query(PromptRule).filter(PromptRule.project_id == pid).count() == 0
+    assert db_session.query(WritingState).filter(WritingState.project_id == pid).count() == 0
     assert db_session.query(ChapterRevision).filter(ChapterRevision.project_id == pid).count() == 0
     assert db_session.query(RevisionAnnotation).filter(RevisionAnnotation.revision_id == revision_id).count() == 0
     assert db_session.query(RevisionCorrection).filter(RevisionCorrection.revision_id == revision_id).count() == 0
