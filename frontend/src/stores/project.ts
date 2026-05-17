@@ -155,6 +155,16 @@ export const useProjectStore = defineStore('project', () => {
     return Number.isFinite(index) ? index : maxLoadedChapterIndex()
   }
 
+  function currentChaptersWindowParams() {
+    const offset = chaptersWindowStartOffset.value || chaptersOffset.value || 0
+    const limit = chaptersLimit.value || 0
+    if (offset <= 0 && limit <= 0) return undefined
+    return {
+      offset,
+      ...(limit > 0 ? { limit } : {}),
+    }
+  }
+
   async function loadProjects() {
     projects.value = await api.listProjects()
   }
@@ -499,7 +509,7 @@ export const useProjectStore = defineStore('project', () => {
           await runSafe(target, () => loadOutline(id))
           break
         case 'content':
-          await runSafe(target, () => loadChapters(id, true))
+          await runSafe(target, () => loadChapters(id, true, currentChaptersWindowParams()))
           break
         case 'topology':
           await runSafe(target, () => loadTopology(id))

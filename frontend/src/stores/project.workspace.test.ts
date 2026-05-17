@@ -393,6 +393,49 @@ describe('project workspace state', () => {
     expect(store.chapters).toEqual([{ id: 'chapter-1', chapter_index: 1, title: '第一章', word_count: 0, status: 'generated' }])
   })
 
+  it('refreshTargets(content) 会保留当前非零章节窗口，避免长篇写作刷新跳回开头', async () => {
+    const store = useProjectStore()
+    const currentWindow = Array.from({ length: 50 }, (_, index) => ({
+      id: `chapter-${index + 801}`,
+      chapter_index: index + 801,
+      title: `第${index + 801}章`,
+      word_count: 1000,
+      status: 'generated',
+    }))
+    const refreshedWindow = currentWindow.map((chapter) => ({
+      ...chapter,
+      status: chapter.chapter_index === 850 ? 'generated' : chapter.status,
+    }))
+
+    store.applyWorkspaceBootstrap({
+      project: { id: 'A', name: '项目 A' },
+      diagnosis: { missing_items: [], completed_items: ['content'], suggested_next_step: null },
+      chapters: currentWindow,
+      chapters_total: 1000,
+      chapters_offset: 800,
+      chapters_limit: 50,
+      chapters_has_more: true,
+      versions: [],
+      dialogs: { hermes: { messages: [] }, athena: { messages: [] } },
+    } as any)
+    vi.mocked(api.listChapters).mockResolvedValue({
+      chapters: refreshedWindow,
+      total: 1000,
+      offset: 800,
+      limit: 50,
+      has_more: true,
+      latest_chapter_index: 1000,
+    })
+
+    const successTargets = await store.refreshTargets('A', ['content'])
+
+    expect(successTargets).toEqual(['content'])
+    expect(api.listChapters).toHaveBeenCalledWith('A', { offset: 800, limit: 50 })
+    expect(store.chapters[0].chapter_index).toBe(801)
+    expect(store.chapters).toHaveLength(50)
+    expect(store.chaptersOffset).toBe(800)
+  })
+
   it('generateChapter() 成功后会刷新写作状态', async () => {
     const store = useProjectStore()
     vi.mocked(api.generateChapter).mockResolvedValue({
