@@ -200,11 +200,13 @@ describe('ManuscriptView', () => {
     await wrapper.findAll('[data-testid="chapter-option"]')[1].trigger('click')
     await flushPromises()
     expect(manuscript.selectedChapterIndex).toBe(2)
+    expect(vi.mocked(api.getChapter).mock.calls.filter((call) => call[1] === 2)).toHaveLength(1)
 
     wrapper.unmount()
     await mountView()
 
     expect(manuscript.selectedChapterIndex).toBe(2)
+    expect(vi.mocked(api.getChapter).mock.calls.filter((call) => call[1] === 2)).toHaveLength(2)
   })
 
   it('loads the remembered chapter window when it is outside the initial summary page', async () => {

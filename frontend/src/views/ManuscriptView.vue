@@ -59,9 +59,13 @@ async function onSelectChapter(index: number) {
   await selectChapter(pid.value, index)
 }
 
-async function selectChapter(projectId: string, index: number) {
+async function selectChapter(projectId: string, index: number, force = false) {
   closeTrace()
-  await manuscript.ensureChapter(projectId, index)
+  if (force) {
+    await manuscript.loadChapter(projectId, index)
+  } else {
+    await manuscript.ensureChapter(projectId, index)
+  }
   projectWorkspace.rememberManuscriptChapter(projectId, index)
 }
 
@@ -100,7 +104,7 @@ async function initialize(projectId: string) {
   const initialChapter =
     chapterItems.value.find((chapter) => chapter.index === rememberedIndex) ||
     chapterItems.value[0]
-  if (initialChapter) await selectChapter(projectId, initialChapter.index)
+  if (initialChapter) await selectChapter(projectId, initialChapter.index, true)
 }
 
 onMounted(() => void initialize(pid.value))
