@@ -27,6 +27,7 @@ from app.prompting.providers.storyline import (
     SetupContextSnapshot,
 )
 from app.schemas import OutlineOut
+from app.services.writing.writing_state_service import WritingStateService
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/outline", tags=["outlines"])
 ai_service = AIService()
@@ -270,6 +271,7 @@ async def generate_outline(project_id: str, db: Session = Depends(get_db), comma
         db.rollback()
         raise
 
+    WritingStateService(db).reconcile_target(project_id)
     return outline
 
 

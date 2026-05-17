@@ -5,6 +5,7 @@ from sqlalchemy import event
 
 from app.api.outlines import generate_outline
 from app.models import Outline, Project, Setup, Storyline
+from app.services.writing.writing_state_service import WritingStateService
 
 
 @patch("app.api.outlines.load_api_key", return_value="sk-test")
@@ -248,6 +249,60 @@ def test_generate_outline_prefers_project_target_chapter_count(mock_parse, mock_
     prompt = sent_messages[0]["content"]
     assert "十章项目" in prompt
     assert "10" in prompt
+
+
+@patch("app.api.outlines.load_api_key", return_value="sk-test")
+@patch("app.api.outlines.ai_service.complete", new_callable=AsyncMock)
+@patch("app.api.outlines.ai_service.parse_json")
+def test_generate_outline_reopens_writing_when_outline_target_extends(
+    mock_parse,
+    mock_complete,
+    mock_key,
+    db_session,
+):
+    project = Project(name="Outline Target Extend")
+    db_session.add(project)
+    db_session.flush()
+    db_session.add(Setup(project_id=project.id, status="generated", world_building={}, characters=[], core_concept={}))
+    db_session.add(Storyline(project_id=project.id, status="generated", plotlines=[], foreshadowing=[]))
+    db_session.add(Outline(project_id=project.id, status="generated", total_chapters=1, chapters=[{"chapter_index": 1}]))
+    db_session.commit()
+    WritingStateService(db_session).complete_chapter(project.id, 1)
+    mock_complete.return_value.content = "{}"
+    mock_parse.return_value = {"total_chapters": 3, "chapters": [], "plotlines": [], "foreshadowing": []}
+
+    asyncio.run(generate_outline(project.id, db_session))
+
+    state = WritingStateService(db_session).state(project.id)
+    assert state.current_chapter == 2
+    assert state.status == "idle"
+
+
+@patch("app.api.outlines.load_api_key", return_value="sk-test")
+@patch("app.api.outlines.ai_service.complete", new_callable=AsyncMock)
+@patch("app.api.outlines.ai_service.parse_json")
+def test_generate_outline_completes_writing_when_outline_target_shortens(
+    mock_parse,
+    mock_complete,
+    mock_key,
+    db_session,
+):
+    project = Project(name="Outline Target Shorten")
+    db_session.add(project)
+    db_session.flush()
+    db_session.add(Setup(project_id=project.id, status="generated", world_building={}, characters=[], core_concept={}))
+    db_session.add(Storyline(project_id=project.id, status="generated", plotlines=[], foreshadowing=[]))
+    db_session.add(Outline(project_id=project.id, status="generated", total_chapters=10, chapters=[]))
+    db_session.commit()
+    WritingStateService(db_session).run_chapter(project.id, 6)
+    mock_complete.return_value.content = "{}"
+    mock_parse.return_value = {"total_chapters": 5, "chapters": [], "plotlines": [], "foreshadowing": []}
+
+    asyncio.run(generate_outline(project.id, db_session))
+
+    state = WritingStateService(db_session).state(project.id)
+    assert state.current_chapter == 6
+    assert state.status == "completed"
 
 
 def test_patch_outline_chapter_updates_json_without_selecting_full_chapters(client, db_session):
