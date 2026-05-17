@@ -111,19 +111,19 @@ def build_generate_chapter_work(project_id: str, chapter_index: int):
 
 
 def _queue_generate_chapter_task(db: Session, project_id: str, chapter_index: int) -> BackgroundTask:
-    active_task = (
+    active_tasks = (
         db.query(BackgroundTask)
         .filter(
             BackgroundTask.project_id == project_id,
             BackgroundTask.task_type == "generate_chapter",
             BackgroundTask.status.in_(ACTIVE_TASK_STATUSES),
-            BackgroundTask.payload["chapter_index"].as_integer() == int(chapter_index),
         )
         .order_by(BackgroundTask.created_at.desc(), BackgroundTask.id.desc())
-        .first()
+        .all()
     )
-    if active_task:
-        return active_task
+    for active_task in active_tasks:
+        if _generate_task_covers_chapter(active_task, chapter_index):
+            return active_task
 
     project = db.query(Project).filter(Project.id == project_id).first()
     target = effective_chapter_target(db, project) if project else 0
@@ -143,6 +143,16 @@ def _queue_generate_chapter_task(db: Session, project_id: str, chapter_index: in
         )
     LocalTaskRunner().start(task.id, build_generate_chapter_work(project_id, chapter_index))
     return task
+
+
+def _generate_task_covers_chapter(task: BackgroundTask, chapter_index: int) -> bool:
+    payload = task.payload or {}
+    chapter_range = payload.get("chapter_range")
+    if isinstance(chapter_range, dict):
+        start = int(chapter_range.get("start") or 0)
+        end = int(chapter_range.get("end") or 0)
+        return start <= int(chapter_index) <= end
+    return int(payload.get("chapter_index") or 0) == int(chapter_index)
 
 
 def _queue_retry_chapter_task(db: Session, project_id: str, chapter_index: int) -> BackgroundTask:

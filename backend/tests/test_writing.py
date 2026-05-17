@@ -176,6 +176,37 @@ def test_writing_start_reuses_active_generate_chapter_task(client, db_session):
     start.assert_called_once()
 
 
+def test_writing_start_reuses_active_range_task_covering_current_chapter(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "No Duplicate Range Writing", "target_chapter_count": 10})
+    pid = r.json()["id"]
+    active = BackgroundTaskService(db_session).create_chapter_range(
+        project_id=pid,
+        task_type="generate_chapter",
+        start_chapter_index=1,
+        end_chapter_index=10,
+        payload={"chapter_index": 1},
+    )
+    active.status = "running"
+    db_session.commit()
+    WritingStateService(db_session).run_chapter(pid, 5)
+
+    with patch("app.api.writing.LocalTaskRunner.start") as start:
+        response = client.post(f"/api/v1/projects/{pid}/writing/start")
+
+    assert response.status_code == 200
+    assert response.json()["task_id"] == active.id
+    tasks = (
+        db_session.query(BackgroundTask)
+        .filter(
+            BackgroundTask.project_id == pid,
+            BackgroundTask.task_type == "generate_chapter",
+        )
+        .all()
+    )
+    assert len(tasks) == 1
+    start.assert_not_called()
+
+
 def test_writing_start_after_completed_chapter_queues_next_chapter(client, db_session):
     r = client.post("/api/v1/projects", json={"name": "Advance After Completion"})
     pid = r.json()["id"]
