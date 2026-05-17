@@ -6,6 +6,7 @@ class WritingStateOut(BaseModel):
     current_chapter: int
     status: str
     last_error: str | None = None
+    task_id: str | None = None
 
 
 class WritingControlOut(WritingStateOut):

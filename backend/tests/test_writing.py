@@ -315,6 +315,26 @@ def test_writing_state_endpoint_returns_current_state(client, db_session):
     }
 
 
+def test_writing_state_endpoint_returns_active_task_id(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Recover Running Writing", "target_chapter_count": 10})
+    pid = r.json()["id"]
+    task = BackgroundTaskService(db_session).create_chapter_range(
+        project_id=pid,
+        task_type="generate_chapter",
+        start_chapter_index=1,
+        end_chapter_index=10,
+        payload={"chapter_index": 1},
+    )
+    task.status = "running"
+    db_session.commit()
+    WritingStateService(db_session).run_chapter(pid, 5)
+
+    response = client.get(f"/api/v1/projects/{pid}/writing/state")
+
+    assert response.status_code == 200
+    assert response.json()["task_id"] == task.id
+
+
 def test_writing_pause_and_resume(client):
     r = client.post("/api/v1/projects", json={"name": "Test"})
     pid = r.json()["id"]

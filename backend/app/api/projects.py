@@ -113,7 +113,7 @@ def list_projects(db: Session = Depends(get_db)):
     return db.query(Project).order_by(Project.created_at.desc()).all()
 
 
-@router.get("/{project_id}/workspace-bootstrap", response_model=WorkspaceBootstrapOut)
+@router.get("/{project_id}/workspace-bootstrap", response_model=WorkspaceBootstrapOut, response_model_exclude_none=True)
 def workspace_bootstrap(project_id: str, db: Session = Depends(get_db)):
     payload = WorkspaceBootstrapService(db).build(project_id)
     if not payload:

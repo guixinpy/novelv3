@@ -194,6 +194,7 @@ export const useProjectStore = defineStore('project', () => {
     storyline.value = bootstrap.storyline || null
     outline.value = bootstrap.outline || null
     writingState.value = bootstrap.writing_state || null
+    if (writingState.value?.status === 'running') watchWritingTask(id, writingState.value)
     chapters.value = bootstrap.chapters || []
     chaptersTotal.value = bootstrap.chapters_total ?? chapters.value.length
     chaptersOffset.value = bootstrap.chapters_offset ?? 0

@@ -26,7 +26,7 @@ async def start_writing(project_id: str, db: Session = Depends(get_db)):
     return _control_out(state, task)
 
 
-@router.post("/pause", response_model=WritingStateOut)
+@router.post("/pause", response_model=WritingStateOut, response_model_exclude_none=True)
 def pause_writing(project_id: str, db: Session = Depends(get_db)):
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
@@ -48,7 +48,7 @@ async def resume_writing(project_id: str, db: Session = Depends(get_db)):
     return state
 
 
-@router.get("/state", response_model=WritingStateOut)
+@router.get("/state", response_model=WritingStateOut, response_model_exclude_none=True)
 def get_writing_state(project_id: str, db: Session = Depends(get_db)):
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
@@ -180,7 +180,9 @@ def _queue_retry_chapter_task(db: Session, project_id: str, chapter_index: int) 
 
 
 def _control_out(state: WritingStateOut, task: BackgroundTask) -> WritingControlOut:
-    return WritingControlOut(**state.model_dump(), task_id=task.id)
+    payload = state.model_dump()
+    payload["task_id"] = task.id
+    return WritingControlOut(**payload)
 
 
 @router.post("/chapters/{chapter_index}/retry", response_model=WritingControlOut, response_model_exclude_none=True)

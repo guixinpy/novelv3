@@ -177,7 +177,7 @@ class WorkspaceBootstrapService:
             "versions_offset": 0,
             "versions_limit": VERSION_BOOTSTRAP_LIMIT,
             "versions_has_more": len(versions) < versions_total,
-            "writing_state": WritingStateService(self.db).state(project_id).model_dump(),
+            "writing_state": WritingStateService(self.db).state(project_id).model_dump(exclude_none=True),
             "dialogs": {
                 "hermes": {
                     "messages": self.messages.list_messages(

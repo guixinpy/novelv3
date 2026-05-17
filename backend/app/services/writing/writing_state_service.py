@@ -4,8 +4,11 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.chapter_target import chapter_index_exceeds_target
-from app.models import ChapterContent, Project, WritingState
+from app.models import BackgroundTask, ChapterContent, Project, WritingState
 from app.schemas import WritingStateOut
+
+ACTIVE_WRITING_TASK_STATUSES = ("pending", "running")
+ACTIVE_WRITING_TASK_TYPES = ("generate_chapter", "retry_chapter")
 
 
 class WritingStateService:
@@ -165,14 +168,34 @@ class WritingStateService:
     def _default(project_id: str) -> WritingStateOut:
         return WritingStateOut(project_id=project_id, current_chapter=1, status="idle")
 
-    @staticmethod
-    def _out(state: WritingState) -> WritingStateOut:
+    def _out(self, state: WritingState) -> WritingStateOut:
+        task_id = None
+        if state.status == "running":
+            task_id = self._active_writing_task_id(state.project_id, int(state.current_chapter or 0))
         return WritingStateOut(
             project_id=state.project_id,
             current_chapter=state.current_chapter,
             status=state.status,
             last_error=state.last_error,
+            task_id=task_id,
         )
+
+    def _active_writing_task_id(self, project_id: str, chapter_index: int) -> str | None:
+        tasks = (
+            self.db.query(BackgroundTask)
+            .filter(
+                BackgroundTask.project_id == project_id,
+                BackgroundTask.task_type.in_(ACTIVE_WRITING_TASK_TYPES),
+                BackgroundTask.status.in_(ACTIVE_WRITING_TASK_STATUSES),
+            )
+            .order_by(BackgroundTask.created_at.desc(), BackgroundTask.id.desc())
+            .all()
+        )
+        fallback_id = tasks[0].id if tasks else None
+        for task in tasks:
+            if _task_covers_chapter(task, chapter_index):
+                return task.id
+        return fallback_id
 
     @staticmethod
     def _sync_project_completion(project: Project, previous_status: str, next_status: str) -> bool:
@@ -187,3 +210,16 @@ class WritingStateService:
             project.current_phase = "content"
             return changed
         return False
+
+
+def _task_covers_chapter(task: BackgroundTask, chapter_index: int) -> bool:
+    payload = task.payload or {}
+    chapter_range = payload.get("chapter_range")
+    if isinstance(chapter_range, dict):
+        start = int(chapter_range.get("start") or 0)
+        end = int(chapter_range.get("end") or 0)
+        return start <= chapter_index <= end
+    payload_chapter = payload.get("chapter_index")
+    if payload_chapter is None:
+        return False
+    return int(payload_chapter) == chapter_index

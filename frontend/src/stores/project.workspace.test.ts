@@ -557,6 +557,61 @@ describe('project workspace state', () => {
     expect(store.writingState).toEqual(writingState)
   })
 
+  it('workspace bootstrap 带运行中写作 task_id 时会恢复后台任务轮询', async () => {
+    const store = useProjectStore()
+    vi.mocked(api.getBackgroundTask).mockResolvedValue({
+      task_id: 'recovered-writing-task',
+      task_type: 'generate_chapter',
+      status: 'completed',
+      result: { chapter_index: 12 },
+      error: null,
+      ui_hint: {
+        dialog_state: 'CHATTING',
+        active_action: {
+          type: 'generate_chapter',
+          status: 'completed',
+          target_panel: 'content',
+          reason: '',
+        },
+      },
+      refresh_targets: ['writing_state'],
+      created_at: null,
+      started_at: null,
+      finished_at: null,
+    })
+    vi.mocked(api.getWritingState).mockResolvedValue({
+      project_id: 'A',
+      current_chapter: 13,
+      status: 'idle',
+      last_error: null,
+    })
+
+    store.applyWorkspaceBootstrap({
+      project: { id: 'A', name: '项目 A' },
+      diagnosis: { missing_items: [], completed_items: ['content'], suggested_next_step: null },
+      writing_state: {
+        project_id: 'A',
+        current_chapter: 12,
+        status: 'running',
+        last_error: null,
+        task_id: 'recovered-writing-task',
+      },
+      chapters: [],
+      versions: [],
+      dialogs: { hermes: { messages: [] }, athena: { messages: [] } },
+    } as any)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(api.getBackgroundTask).toHaveBeenCalledWith('recovered-writing-task', { compact: true })
+    expect(api.getWritingState).toHaveBeenCalledWith('A')
+    expect(store.writingState).toEqual({
+      project_id: 'A',
+      current_chapter: 13,
+      status: 'idle',
+      last_error: null,
+    })
+  })
+
   it('workspace bootstrap 的 partial outline 不会被标记为完整大纲缓存', async () => {
     const store = useProjectStore()
     vi.mocked(api.getOutline).mockResolvedValue({
