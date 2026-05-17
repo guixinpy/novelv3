@@ -310,6 +310,7 @@ export const useProjectStore = defineStore('project', () => {
   async function generateOutline(id: string) {
     outline.value = await api.generateOutline(id)
     await loadProject(id)
+    await loadWritingState(id, true).catch(() => {})
   }
 
   async function loadOutline(id: string) {

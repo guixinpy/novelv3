@@ -474,6 +474,37 @@ describe('project workspace state', () => {
     })
   })
 
+  it('generateOutline() 成功后会刷新写作状态，反映大纲目标章数变化', async () => {
+    const store = useProjectStore()
+    vi.mocked(api.generateOutline).mockResolvedValue({
+      id: 'outline-1',
+      project_id: 'A',
+      status: 'generated',
+      total_chapters: 300,
+      chapters: [],
+      plotlines: [],
+      foreshadowing: [],
+    })
+    vi.mocked(api.getProject).mockResolvedValue({ id: 'A', name: '项目 A' })
+    vi.mocked(api.getWritingState).mockResolvedValue({
+      project_id: 'A',
+      current_chapter: 301,
+      status: 'completed',
+      last_error: null,
+    })
+
+    await store.generateOutline('A')
+
+    expect(api.generateOutline).toHaveBeenCalledWith('A')
+    expect(api.getWritingState).toHaveBeenCalledWith('A')
+    expect(store.writingState).toEqual({
+      project_id: 'A',
+      current_chapter: 301,
+      status: 'completed',
+      last_error: null,
+    })
+  })
+
   it('workspace bootstrap 会填充项目冷启动数据并标记为 fresh', async () => {
     const store = useProjectStore()
     const writingState = {
