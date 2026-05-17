@@ -89,11 +89,11 @@ def build_generate_chapter_work(project_id: str, chapter_index: int):
         generated_index = chapter_index
         try:
             for next_chapter_index in chapter_indexes:
-                current_state = WritingStateService(rdb).state(project_id)
+                current_state = WritingStateService(rdb).state(project_id, include_task_id=False)
                 if current_state.status in {"paused", "failed", "completed"}:
                     break
 
-                WritingStateService(rdb).run_chapter(project_id, next_chapter_index)
+                WritingStateService(rdb).run_chapter(project_id, next_chapter_index, include_task_id=False)
                 chapter = await _gen_chapter(project_id, next_chapter_index, rdb)
                 generated_index = chapter.get("chapter_index") if isinstance(chapter, dict) else chapter.chapter_index
 

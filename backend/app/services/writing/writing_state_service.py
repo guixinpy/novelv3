@@ -53,7 +53,7 @@ class WritingStateService:
         self.db.refresh(state)
         return self._out(state)
 
-    def run_chapter(self, project_id: str, chapter_index: int) -> WritingStateOut:
+    def run_chapter(self, project_id: str, chapter_index: int, *, include_task_id: bool = False) -> WritingStateOut:
         state = self._get_or_create(project_id)
         state.status = "running"
         state.current_chapter = max(int(state.current_chapter or 0), int(chapter_index))
@@ -61,7 +61,7 @@ class WritingStateService:
         state.updated_at = datetime.now(UTC)
         self.db.commit()
         self.db.refresh(state)
-        return self._out(state)
+        return self._out(state, include_task_id=include_task_id)
 
     def complete_chapter(self, project_id: str, chapter_index: int) -> WritingStateOut:
         state = self._get_or_create(project_id)
@@ -129,11 +129,11 @@ class WritingStateService:
         self.db.refresh(state)
         return self._out(state)
 
-    def state(self, project_id: str) -> WritingStateOut:
+    def state(self, project_id: str, *, include_task_id: bool = True) -> WritingStateOut:
         state = self._get(project_id)
         if not state:
             return self._default(project_id)
-        return self._out(state)
+        return self._out(state, include_task_id=include_task_id)
 
     def mark_error(self, project_id: str, error: str) -> WritingStateOut:
         state = self._get_or_create(project_id)
@@ -168,9 +168,9 @@ class WritingStateService:
     def _default(project_id: str) -> WritingStateOut:
         return WritingStateOut(project_id=project_id, current_chapter=1, status="idle")
 
-    def _out(self, state: WritingState) -> WritingStateOut:
+    def _out(self, state: WritingState, *, include_task_id: bool = False) -> WritingStateOut:
         task_id = None
-        if state.status == "running":
+        if include_task_id and state.status == "running":
             task_id = self._active_writing_task_id(state.project_id, int(state.current_chapter or 0))
         return WritingStateOut(
             project_id=state.project_id,
