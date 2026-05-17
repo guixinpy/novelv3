@@ -768,6 +768,64 @@ describe('project workspace state', () => {
     })
   })
 
+  it('startWriting() 会持续轮询超过 60 秒的长章生成任务', async () => {
+    vi.useFakeTimers()
+    const store = useProjectStore()
+    let pollCount = 0
+    vi.mocked(api.startWriting).mockResolvedValue({
+      project_id: 'A',
+      current_chapter: 88,
+      status: 'running',
+      last_error: null,
+      task_id: 'long-task',
+    })
+    vi.mocked(api.getBackgroundTask).mockImplementation(async () => {
+      pollCount += 1
+      return {
+        task_id: 'long-task',
+        task_type: 'generate_chapter',
+        status: pollCount <= 60 ? 'running' : 'completed',
+        result: { chapter_index: 88 },
+        error: null,
+        ui_hint: {
+          dialog_state: 'RUNNING',
+          active_action: {
+            type: 'generate_chapter',
+            status: pollCount <= 60 ? 'running' : 'completed',
+            target_panel: 'content',
+            reason: '',
+          },
+        },
+        refresh_targets: ['writing_state'],
+        created_at: null,
+        started_at: null,
+        finished_at: null,
+      }
+    })
+    vi.mocked(api.getWritingState).mockResolvedValue({
+      project_id: 'A',
+      current_chapter: 89,
+      status: 'idle',
+      last_error: null,
+    })
+
+    try {
+      await store.startWriting('A')
+      await vi.advanceTimersByTimeAsync(65_000)
+
+      expect(api.getBackgroundTask).toHaveBeenCalledTimes(61)
+      expect(api.getWritingState).toHaveBeenCalledWith('A')
+      expect(store.writingState).toEqual({
+        project_id: 'A',
+        current_chapter: 89,
+        status: 'idle',
+        last_error: null,
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('迟到的 writing state 响应不会覆盖新项目状态', async () => {
     const store = useProjectStore()
     let resolveA!: (value: any) => void
