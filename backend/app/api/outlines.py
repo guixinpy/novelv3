@@ -227,6 +227,7 @@ async def generate_outline(project_id: str, db: Session = Depends(get_db), comma
             payload["messages"],
             temperature=0.7,
             max_tokens=payload["max_tokens"],
+            model=project.ai_model or "deepseek-chat",
             response_format={"type": "json_object"},
         )
     except Exception as exc:

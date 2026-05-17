@@ -290,6 +290,7 @@ async def create_or_replace_chapter(
             payload["messages"],
             temperature=0.7,
             max_tokens=payload["max_tokens"],
+            model=project.ai_model or "deepseek-chat",
         )
     except Exception as exc:
         WritingStateService(db).mark_error(project_id, str(exc))

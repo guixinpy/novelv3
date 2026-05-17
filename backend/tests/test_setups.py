@@ -2,6 +2,7 @@ import asyncio
 from unittest.mock import AsyncMock, patch
 
 from app.api.setups import generate_setup
+from app.models import Project
 
 
 @patch("app.api.setups.load_api_key", return_value="sk-test")
@@ -25,6 +26,24 @@ def test_generate_setup(mock_parse, mock_complete, mock_key, client):
         "project_profile",
         "generate_setup_template",
     }
+
+
+@patch("app.api.setups.load_api_key", return_value="sk-test")
+@patch("app.api.setups.ai_service.complete", new_callable=AsyncMock)
+@patch("app.api.setups.ai_service.parse_json")
+def test_generate_setup_uses_project_ai_model(mock_parse, mock_complete, mock_key, client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Model Routed Setup"})
+    pid = r.json()["id"]
+    project = db_session.get(Project, pid)
+    project.ai_model = "deepseek-reasoner"
+    db_session.commit()
+    mock_complete.return_value.content = '{"world_building": {}, "characters": [], "core_concept": {}}'
+    mock_parse.return_value = {"world_building": {}, "characters": [], "core_concept": {}}
+
+    r2 = client.post(f"/api/v1/projects/{pid}/setup/generate")
+
+    assert r2.status_code == 200
+    assert mock_complete.await_args.kwargs["model"] == "deepseek-reasoner"
 
 
 @patch("app.api.setups.load_api_key", return_value="sk-test")
