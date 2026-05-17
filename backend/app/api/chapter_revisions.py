@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -230,7 +230,7 @@ def submit_revision(project_id: str, payload: ChapterRevisionCreate, db: Session
 
 
 @router.get("/chapters/{chapter_index}/active", response_model=ChapterRevisionOut | None)
-def get_active_revision(project_id: str, chapter_index: int, db: Session = Depends(get_db)):
+def get_active_revision(project_id: str, chapter_index: int = Path(..., ge=1), db: Session = Depends(get_db)):
     revision = _get_open_revision(db, project_id, chapter_index)
     if not revision:
         return None
@@ -238,7 +238,12 @@ def get_active_revision(project_id: str, chapter_index: int, db: Session = Depen
 
 
 @router.put("/chapters/{chapter_index}/draft", response_model=ChapterRevisionOut | None)
-def save_revision_draft(project_id: str, chapter_index: int, payload: ChapterRevisionDraftUpdate, db: Session = Depends(get_db)):
+def save_revision_draft(
+    project_id: str,
+    chapter_index: int = Path(..., ge=1),
+    payload: ChapterRevisionDraftUpdate = Body(...),
+    db: Session = Depends(get_db),
+):
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")

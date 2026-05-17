@@ -275,6 +275,26 @@ def test_writing_retry_rejects_chapter_after_project_target(client, db_session):
     start.assert_not_called()
 
 
+def test_writing_retry_rejects_non_positive_chapter_index(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Retry Invalid Index"})
+    pid = r.json()["id"]
+
+    with patch("app.api.writing.LocalTaskRunner.start") as start:
+        response = client.post(f"/api/v1/projects/{pid}/writing/chapters/0/retry")
+
+    assert response.status_code == 422
+    task_count = (
+        db_session.query(BackgroundTask)
+        .filter(
+            BackgroundTask.project_id == pid,
+            BackgroundTask.task_type == "retry_chapter",
+        )
+        .count()
+    )
+    assert task_count == 0
+    start.assert_not_called()
+
+
 def test_writing_retry_reuses_active_task_for_same_chapter(client, db_session):
     r = client.post("/api/v1/projects", json={"name": "No Duplicate Retry Tasks"})
     pid = r.json()["id"]

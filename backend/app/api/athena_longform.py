@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Path, Query
 from sqlalchemy.orm import Session
 
 from app.core.longform_memory import (
@@ -62,7 +62,7 @@ def repair_athena_longform_maintenance(
 @router.get("/longform/context/chapters/{chapter_index}", response_model=LongformContextPackage)
 def get_athena_longform_context(
     project_id: str,
-    chapter_index: int,
+    chapter_index: int = Path(..., ge=1),
     q: str | None = Query(None, min_length=1),
     db: Session = Depends(get_db),
 ):

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Path, Query
 from sqlalchemy.orm import Session
 
 from app.api.athena_shared import require_project
@@ -169,7 +169,7 @@ def get_evolution_consistency(
 @router.post("/evolution/consistency/chapters/{chapter_index}/check")
 async def check_evolution_consistency(
     project_id: str,
-    chapter_index: int,
+    chapter_index: int = Path(..., ge=1),
     depth: str = "l1",
     db: Session = Depends(get_db),
 ):
@@ -180,7 +180,7 @@ async def check_evolution_consistency(
 @router.post("/evolution/chapters/{chapter_index}/analyze")
 def analyze_evolution_chapter(
     project_id: str,
-    chapter_index: int,
+    chapter_index: int = Path(..., ge=1),
     db: Session = Depends(get_db),
 ):
     return analyze_chapter_to_world_proposals(db=db, project_id=project_id, chapter_index=chapter_index)
@@ -189,8 +189,8 @@ def analyze_evolution_chapter(
 @router.patch("/evolution/plan/outline/chapters/{chapter_index}")
 def update_evolution_chapter_outline(
     project_id: str,
-    chapter_index: int,
     payload: ChapterOutlineUpdate,
+    chapter_index: int = Path(..., ge=1),
     db: Session = Depends(get_db),
 ):
     from app.api.outlines import update_chapter_outline
@@ -198,5 +198,5 @@ def update_evolution_chapter_outline(
 
 
 @router.get("/context/chapter/{chapter_index}")
-def get_chapter_context(project_id: str, chapter_index: int, db: Session = Depends(get_db)):
+def get_chapter_context(project_id: str, chapter_index: int = Path(..., ge=1), db: Session = Depends(get_db)):
     return build_chapter_context_package(db=db, project_id=project_id, chapter_index=chapter_index)

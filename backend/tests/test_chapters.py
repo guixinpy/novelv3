@@ -333,6 +333,24 @@ def test_generate_chapter_rejects_outline_target_overflow(mock_complete, mock_ke
     mock_complete.assert_not_awaited()
 
 
+def test_generate_chapter_rejects_non_positive_chapter_index(client):
+    r = client.post("/api/v1/projects", json={"name": "Invalid Chapter Index"})
+    pid = r.json()["id"]
+
+    response = client.post(f"/api/v1/projects/{pid}/chapters/0/generate")
+
+    assert response.status_code == 422
+
+
+def test_get_chapter_rejects_non_positive_chapter_index(client):
+    r = client.post("/api/v1/projects", json={"name": "Invalid Chapter Read"})
+    pid = r.json()["id"]
+
+    response = client.get(f"/api/v1/projects/{pid}/chapters/0")
+
+    assert response.status_code == 422
+
+
 @patch("app.api.chapters.load_api_key", return_value="sk-test")
 @patch("app.api.chapters.ai_service.complete", new_callable=AsyncMock)
 def test_generate_chapter_marks_writing_state_failed_after_model_error(mock_complete, mock_key, client, db_session):

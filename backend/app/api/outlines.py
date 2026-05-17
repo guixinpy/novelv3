@@ -2,7 +2,7 @@ import json
 import time
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Response
 from sqlalchemy import String, func, text
 from sqlalchemy.orm import Session
 
@@ -322,7 +322,13 @@ class ChapterOutlineUpdate(BaseModel):
 
 
 @router.patch("/chapters/{chapter_index}")
-def update_chapter_outline(project_id: str, chapter_index: int, payload: ChapterOutlineUpdate, db: Session = Depends(get_db), response: Response = None):
+def update_chapter_outline(
+    project_id: str,
+    chapter_index: int = Path(..., ge=1),
+    payload: ChapterOutlineUpdate = Body(...),
+    db: Session = Depends(get_db),
+    response: Response = None,
+):
     if response:
         add_deprecation_header(response, f"/api/v1/projects/{project_id}/athena/evolution/plan/outline/chapters/{chapter_index}")
     outline_id = db.query(Outline.id).filter(Outline.project_id == project_id).scalar()

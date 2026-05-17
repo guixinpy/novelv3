@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Path
 from sqlalchemy.orm import Session
 
 from app.core.chapter_target import chapter_index_exceeds_target
@@ -142,7 +142,7 @@ def _control_out(state: WritingStateOut, task: BackgroundTask) -> WritingControl
 
 
 @router.post("/chapters/{chapter_index}/retry", response_model=WritingControlOut, response_model_exclude_none=True)
-async def retry_chapter(project_id: str, chapter_index: int, db: Session = Depends(get_db)):
+async def retry_chapter(project_id: str, chapter_index: int = Path(..., ge=1), db: Session = Depends(get_db)):
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")

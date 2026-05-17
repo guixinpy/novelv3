@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Path, Query
 from sqlalchemy.orm import Session
 
 from app.core.athena_retrieval import (
@@ -23,7 +23,7 @@ def reindex_athena_retrieval(project_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("/retrieval/chapters/{chapter_index}/index", response_model=AthenaRetrievalIndexResult)
-def index_athena_retrieval_chapter(project_id: str, chapter_index: int, db: Session = Depends(get_db)):
+def index_athena_retrieval_chapter(project_id: str, chapter_index: int = Path(..., ge=1), db: Session = Depends(get_db)):
     return index_chapter_retrieval(db=db, project_id=project_id, chapter_index=chapter_index)
 
 

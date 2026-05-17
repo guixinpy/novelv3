@@ -1,6 +1,6 @@
 import json
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -28,7 +28,13 @@ router = APIRouter(prefix="/api/v1/projects/{project_id}/consistency", tags=["co
 
 
 @router.post("/chapters/{chapter_index}/check")
-async def run_check(project_id: str, chapter_index: int, depth: str = "l1", db: Session = Depends(get_db), response: Response = None):
+async def run_check(
+    project_id: str,
+    chapter_index: int = Path(..., ge=1),
+    depth: str = "l1",
+    db: Session = Depends(get_db),
+    response: Response = None,
+):
     if response:
         add_deprecation_header(response, f"/api/v1/projects/{project_id}/athena/evolution/consistency/chapters/{chapter_index}/check")
     project = db.query(Project).filter(Project.id == project_id).first()

@@ -26,6 +26,15 @@ from app.models import (
 from app.schemas.world_proposals import ProposalCandidateFactCreate
 
 
+def test_retrieval_chapter_index_rejects_non_positive_chapter_index(client):
+    project_response = client.post("/api/v1/projects", json={"name": "Invalid Retrieval Index"})
+    project_id = project_response.json()["id"]
+
+    response = client.post(f"/api/v1/projects/{project_id}/athena/retrieval/chapters/0/index")
+
+    assert response.status_code == 422
+
+
 def test_embedding_provider_defaults_to_local_without_explicit_remote_mode(monkeypatch):
     monkeypatch.setenv("EMBEDDING_API_KEY", "test-key")
     monkeypatch.setenv("EMBEDDING_MODEL", "remote-model")

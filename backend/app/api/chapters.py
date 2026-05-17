@@ -1,7 +1,7 @@
 import re
 import time
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Path
 from sqlalchemy import String, func
 from sqlalchemy.orm import Session
 
@@ -251,7 +251,7 @@ def _safe_refresh_longform_maintenance(db: Session, *, project_id: str, chapter_
 
 
 @router.post("/{chapter_index}/generate", response_model=ChapterOut)
-async def generate_chapter(project_id: str, chapter_index: int, db: Session = Depends(get_db)):
+async def generate_chapter(project_id: str, chapter_index: int = Path(..., ge=1), db: Session = Depends(get_db)):
     chapter = await create_or_replace_chapter(db, project_id, chapter_index)
     return _chapter_out(db, chapter)
 
@@ -417,7 +417,7 @@ async def create_or_replace_chapter(
 
 
 @router.get("/{chapter_index}", response_model=ChapterOut)
-def get_chapter(project_id: str, chapter_index: int, db: Session = Depends(get_db)):
+def get_chapter(project_id: str, chapter_index: int = Path(..., ge=1), db: Session = Depends(get_db)):
     chapter = db.query(ChapterContent).filter(
         ChapterContent.project_id == project_id,
         ChapterContent.chapter_index == chapter_index,
