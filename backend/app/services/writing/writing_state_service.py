@@ -69,6 +69,15 @@ class WritingStateService:
         self.db.refresh(state)
         return self._out(state)
 
+    def finish_project(self, project_id: str) -> WritingStateOut:
+        state = self._get_or_create(project_id)
+        state.status = "completed"
+        state.last_error = None
+        state.updated_at = datetime.now(UTC)
+        self.db.commit()
+        self.db.refresh(state)
+        return self._out(state)
+
     def state(self, project_id: str) -> WritingStateOut:
         state = self._get(project_id)
         if not state:

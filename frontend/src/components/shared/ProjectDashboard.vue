@@ -139,6 +139,7 @@ const writingStatusLabel = computed(() => {
     case 'running': return '写作中'
     case 'paused': return '已暂停'
     case 'failed': return '需处理'
+    case 'completed': return '已完成'
     case 'idle': return '空闲'
     default: return props.writingState?.status || ''
   }
@@ -149,6 +150,7 @@ const writingStatusClass = computed(() => {
     case 'running': return 'dashboard__status--running'
     case 'paused': return 'dashboard__status--warning'
     case 'failed': return 'dashboard__status--danger'
+    case 'completed': return 'dashboard__status--done'
     default: return 'dashboard__status--idle'
   }
 })
@@ -158,7 +160,7 @@ const writingChapterLabel = computed(() => {
   return chapter > 0 ? `第${chapter}章` : '未开始'
 })
 
-const writingControl = computed(() => {
+const writingControl = computed<{ action: 'start' | 'pause' | 'resume'; label: string; disabled?: boolean }>(() => {
   switch (props.writingState?.status) {
     case 'running':
       return { action: 'pause' as const, label: '暂停' }
@@ -166,6 +168,8 @@ const writingControl = computed(() => {
       return { action: 'resume' as const, label: '继续' }
     case 'failed':
       return { action: 'start' as const, label: '重试' }
+    case 'completed':
+      return { action: 'start' as const, label: '已完成', disabled: true }
     default:
       return { action: 'start' as const, label: '开始' }
   }
@@ -231,7 +235,7 @@ const totalWordsLabel = computed(() => props.totalWords >= 10000 ? `${(props.tot
             type="button"
             class="dashboard__writing-control"
             data-testid="dashboard-writing-control"
-            :disabled="writingControlLoading"
+            :disabled="writingControlLoading || writingControl.disabled"
             @click="emit('writing-control', writingControl.action)"
           >
             {{ writingControlLoading ? '处理中' : writingControl.label }}
@@ -407,6 +411,7 @@ const totalWordsLabel = computed(() => props.totalWords >= 10000 ? `${(props.tot
 .dashboard__status--running { background: rgba(59, 130, 246, 0.12); color: #2563eb; }
 .dashboard__status--warning { background: rgba(245, 158, 11, 0.14); color: #b45309; }
 .dashboard__status--danger { background: rgba(239, 68, 68, 0.12); color: #dc2626; }
+.dashboard__status--done { background: rgba(34, 197, 94, 0.12); color: #16a34a; }
 
 .dashboard__next {
   margin: var(--space-2) 0 0;

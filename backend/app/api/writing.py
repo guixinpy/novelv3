@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.core.writing_scheduler import WritingScheduler
 from app.db import get_db
-from app.models import BackgroundTask, Project
+from app.models import BackgroundTask, Outline, Project
 from app.schemas import WritingControlOut, WritingStateOut
 from app.services.tasks.background_task_service import ACTIVE_TASK_STATUSES, BackgroundTaskService
 from app.services.tasks.local_task_runner import LocalTaskRunner
@@ -19,6 +19,8 @@ async def start_writing(project_id: str, db: Session = Depends(get_db)):
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     state = scheduler.start(project_id, db)
+    if _is_beyond_chapter_target(db, project, state):
+        return WritingStateService(db).finish_project(project_id)
     task = _queue_generate_chapter_task(db, project_id, state.current_chapter)
     return _control_out(state, task)
 
@@ -38,6 +40,8 @@ async def resume_writing(project_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Project not found")
     state = scheduler.resume(project_id, db)
     if state.status == "running":
+        if _is_beyond_chapter_target(db, project, state):
+            return WritingStateService(db).finish_project(project_id)
         task = _queue_generate_chapter_task(db, project_id, state.current_chapter)
         return _control_out(state, task)
     return state
@@ -106,6 +110,20 @@ def _queue_generate_chapter_task(db: Session, project_id: str, chapter_index: in
     )
     LocalTaskRunner().start(task.id, build_generate_chapter_work(project_id, chapter_index))
     return task
+
+
+def _is_beyond_chapter_target(db: Session, project: Project, state: WritingStateOut) -> bool:
+    target = int(project.target_chapter_count or 0)
+    if target <= 0:
+        target = int(
+            db.query(Outline.total_chapters)
+            .filter(Outline.project_id == project.id, Outline.total_chapters > 0)
+            .order_by(Outline.created_at.desc(), Outline.id.desc())
+            .limit(1)
+            .scalar()
+            or 0
+        )
+    return target > 0 and int(state.current_chapter or 0) > target
 
 
 def _control_out(state: WritingStateOut, task: BackgroundTask) -> WritingControlOut:

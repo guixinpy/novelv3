@@ -237,4 +237,31 @@ describe('ProjectDashboard', () => {
       ['start'],
     ])
   })
+
+  it('shows completed writing state without restart control', async () => {
+    const wrapper = mount(ProjectDashboard, {
+      props: {
+        setup: null,
+        storyline: null,
+        outline: null,
+        chapters: [],
+        totalWords: 0,
+        writingState: {
+          project_id: 'project-1',
+          current_chapter: 101,
+          status: 'completed',
+          last_error: null,
+        },
+      },
+    })
+
+    const control = wrapper.get('[data-testid="dashboard-writing-control"]')
+
+    expect(wrapper.text()).toContain('已完成')
+    expect(control.text()).toContain('已完成')
+    expect((control.element as HTMLButtonElement).disabled).toBe(true)
+
+    await control.trigger('click')
+    expect(wrapper.emitted('writing-control')).toBeUndefined()
+  })
 })

@@ -2,7 +2,7 @@ from unittest.mock import patch
 
 import pytest
 
-from app.models import BackgroundTask, ChapterContent
+from app.models import BackgroundTask, ChapterContent, Outline
 from app.services.tasks.background_task_service import BackgroundTaskService
 from app.services.writing.writing_state_service import WritingStateService
 
@@ -107,6 +107,57 @@ def test_writing_start_after_completed_chapter_queues_next_chapter(client, db_se
     )
     assert task.payload == {"chapter_index": 2}
     start.assert_called_once()
+
+
+def test_writing_start_completes_without_task_after_project_target(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Targeted Novel", "target_chapter_count": 1})
+    pid = r.json()["id"]
+    WritingStateService(db_session).complete_chapter(pid, 1)
+
+    with patch("app.api.writing.LocalTaskRunner.start") as start:
+        response = client.post(f"/api/v1/projects/{pid}/writing/start")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "completed"
+    assert response.json()["current_chapter"] == 2
+    assert "task_id" not in response.json()
+    task_count = (
+        db_session.query(BackgroundTask)
+        .filter(
+            BackgroundTask.project_id == pid,
+            BackgroundTask.task_type == "generate_chapter",
+        )
+        .count()
+    )
+    assert task_count == 0
+    start.assert_not_called()
+
+
+def test_writing_resume_completes_without_task_after_outline_target(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Outline Targeted Novel"})
+    pid = r.json()["id"]
+    db_session.add(Outline(project_id=pid, status="generated", total_chapters=1, chapters=[{"chapter_index": 1}]))
+    db_session.commit()
+    WritingStateService(db_session).complete_chapter(pid, 1)
+    WritingStateService(db_session).pause(pid)
+
+    with patch("app.api.writing.LocalTaskRunner.start") as start:
+        response = client.post(f"/api/v1/projects/{pid}/writing/resume")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "completed"
+    assert response.json()["current_chapter"] == 2
+    assert "task_id" not in response.json()
+    task_count = (
+        db_session.query(BackgroundTask)
+        .filter(
+            BackgroundTask.project_id == pid,
+            BackgroundTask.task_type == "generate_chapter",
+        )
+        .count()
+    )
+    assert task_count == 0
+    start.assert_not_called()
 
 
 def test_writing_state_endpoint_returns_current_state(client, db_session):
