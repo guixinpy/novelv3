@@ -113,6 +113,30 @@ def _queue_generate_chapter_task(db: Session, project_id: str, chapter_index: in
     return task
 
 
+def _queue_retry_chapter_task(db: Session, project_id: str, chapter_index: int) -> BackgroundTask:
+    active_task = (
+        db.query(BackgroundTask)
+        .filter(
+            BackgroundTask.project_id == project_id,
+            BackgroundTask.task_type == "retry_chapter",
+            BackgroundTask.status.in_(ACTIVE_TASK_STATUSES),
+            BackgroundTask.payload["chapter_index"].as_integer() == int(chapter_index),
+        )
+        .order_by(BackgroundTask.created_at.desc(), BackgroundTask.id.desc())
+        .first()
+    )
+    if active_task:
+        return active_task
+
+    task = BackgroundTaskService(db).create(
+        project_id=project_id,
+        task_type="retry_chapter",
+        payload={"chapter_index": chapter_index},
+    )
+    LocalTaskRunner().start(task.id, build_retry_chapter_work(project_id, chapter_index))
+    return task
+
+
 def _control_out(state: WritingStateOut, task: BackgroundTask) -> WritingControlOut:
     return WritingControlOut(**state.model_dump(), task_id=task.id)
 
@@ -122,13 +146,9 @@ async def retry_chapter(project_id: str, chapter_index: int, db: Session = Depen
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
+    if chapter_index_exceeds_target(db, project, chapter_index):
+        raise HTTPException(status_code=400, detail="Chapter index exceeds project target chapter count")
 
-    task = BackgroundTaskService(db).create(
-        project_id=project_id,
-        task_type="retry_chapter",
-        payload={"chapter_index": chapter_index},
-    )
-
-    LocalTaskRunner().start(task.id, build_retry_chapter_work(project_id, chapter_index))
+    task = _queue_retry_chapter_task(db, project_id, chapter_index)
     state = scheduler.run_chapter(project_id, chapter_index, db)
     return _control_out(state, task)

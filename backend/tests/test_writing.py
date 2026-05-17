@@ -254,6 +254,51 @@ def test_writing_retry_creates_background_task(client, db_session):
     start.assert_called_once()
 
 
+def test_writing_retry_rejects_chapter_after_project_target(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Retry Target Guard", "target_chapter_count": 1})
+    pid = r.json()["id"]
+
+    with patch("app.api.writing.LocalTaskRunner.start") as start:
+        response = client.post(f"/api/v1/projects/{pid}/writing/chapters/2/retry")
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Chapter index exceeds project target chapter count"
+    task_count = (
+        db_session.query(BackgroundTask)
+        .filter(
+            BackgroundTask.project_id == pid,
+            BackgroundTask.task_type == "retry_chapter",
+        )
+        .count()
+    )
+    assert task_count == 0
+    start.assert_not_called()
+
+
+def test_writing_retry_reuses_active_task_for_same_chapter(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "No Duplicate Retry Tasks"})
+    pid = r.json()["id"]
+
+    with patch("app.api.writing.LocalTaskRunner.start") as start:
+        first = client.post(f"/api/v1/projects/{pid}/writing/chapters/2/retry")
+        second = client.post(f"/api/v1/projects/{pid}/writing/chapters/2/retry")
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    tasks = (
+        db_session.query(BackgroundTask)
+        .filter(
+            BackgroundTask.project_id == pid,
+            BackgroundTask.task_type == "retry_chapter",
+        )
+        .all()
+    )
+    assert len(tasks) == 1
+    assert first.json()["task_id"] == tasks[0].id
+    assert second.json()["task_id"] == tasks[0].id
+    start.assert_called_once()
+
+
 @pytest.mark.asyncio
 async def test_retry_chapter_work_marks_state_idle_after_success(client, db_session, monkeypatch):
     r = client.post("/api/v1/projects", json={"name": "Test"})
