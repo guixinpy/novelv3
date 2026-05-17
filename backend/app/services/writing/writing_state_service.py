@@ -53,7 +53,7 @@ class WritingStateService:
     def run_chapter(self, project_id: str, chapter_index: int) -> WritingStateOut:
         state = self._get_or_create(project_id)
         state.status = "running"
-        state.current_chapter = chapter_index
+        state.current_chapter = max(int(state.current_chapter or 0), int(chapter_index))
         state.last_error = None
         state.updated_at = datetime.now(UTC)
         self.db.commit()

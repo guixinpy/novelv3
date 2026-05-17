@@ -319,6 +319,20 @@ def test_writing_retry_reuses_active_task_for_same_chapter(client, db_session):
     start.assert_called_once()
 
 
+def test_writing_retry_does_not_move_next_chapter_pointer_backward(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Retry Old Chapter Pointer"})
+    pid = r.json()["id"]
+    WritingStateService(db_session).run_chapter(pid, 100)
+
+    with patch("app.api.writing.LocalTaskRunner.start"):
+        response = client.post(f"/api/v1/projects/{pid}/writing/chapters/2/retry")
+
+    assert response.status_code == 200
+    assert response.json()["current_chapter"] == 100
+    state = WritingStateService(db_session).state(pid)
+    assert state.current_chapter == 100
+
+
 @pytest.mark.asyncio
 async def test_retry_chapter_work_marks_state_idle_after_success(client, db_session, monkeypatch):
     r = client.post("/api/v1/projects", json={"name": "Test"})
@@ -342,6 +356,33 @@ async def test_retry_chapter_work_marks_state_idle_after_success(client, db_sess
     assert result == {"chapter_index": 2}
     assert state.status == "idle"
     assert state.current_chapter == 3
+    assert state.last_error is None
+
+
+@pytest.mark.asyncio
+async def test_retry_chapter_work_preserves_forward_pointer_after_old_chapter_success(client, db_session, monkeypatch):
+    r = client.post("/api/v1/projects", json={"name": "Retry Old Chapter Success"})
+    pid = r.json()["id"]
+    WritingStateService(db_session).run_chapter(pid, 100)
+    task = BackgroundTaskService(db_session).create(
+        project_id=pid,
+        task_type="retry_chapter",
+        payload={"chapter_index": 2},
+    )
+
+    async def fake_generate(project_id, chapter_index, db):
+        WritingStateService(db).complete_chapter(project_id, chapter_index)
+        return {"chapter_index": chapter_index}
+
+    monkeypatch.setattr("app.api.chapters.generate_chapter", fake_generate)
+    from app.api.writing import build_retry_chapter_work
+
+    result = await build_retry_chapter_work(pid, 2)(db_session, task)
+
+    state = WritingStateService(db_session).state(pid)
+    assert result == {"chapter_index": 2}
+    assert state.status == "idle"
+    assert state.current_chapter == 100
     assert state.last_error is None
 
 
