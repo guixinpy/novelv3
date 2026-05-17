@@ -8,6 +8,7 @@ from app.main import app
 from app.models import BackgroundTask
 from app.services.tasks.background_task_service import BackgroundTaskService
 from app.services.tasks.local_task_runner import LocalTaskRunner
+from app.services.writing.writing_state_service import WritingStateService
 
 
 def test_list_background_tasks(client):
@@ -669,6 +670,26 @@ def test_background_task_service_marks_interrupted_running_tasks_failed(client, 
     assert count == 1
     assert saved.status == "failed"
     assert saved.error == "Task interrupted by local process restart"
+
+
+def test_background_task_service_marks_interrupted_writing_state_failed(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Interrupted Writing"})
+    pid = r.json()["id"]
+    WritingStateService(db_session).run_chapter(pid, 7)
+    service = BackgroundTaskService(db_session)
+    task = service.create(
+        project_id=pid,
+        task_type="generate_chapter",
+        payload={"chapter_index": 7},
+    )
+    service.mark_running(task.id)
+
+    count = service.fail_interrupted_running_tasks()
+
+    state = WritingStateService(db_session).state(pid)
+    assert count == 1
+    assert state.status == "failed"
+    assert state.last_error == "Task interrupted by local process restart"
 
 
 def test_background_task_service_marks_interrupted_pending_tasks_failed(client, db_session):

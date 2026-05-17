@@ -1,9 +1,10 @@
 from collections.abc import Iterable
 from datetime import UTC, datetime
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import BackgroundTask
+from app.models import BackgroundTask, WritingState
 
 TASK_PENDING = "pending"
 TASK_RUNNING = "running"
@@ -201,6 +202,25 @@ class BackgroundTaskService:
 
     def fail_interrupted_running_tasks(self) -> int:
         now = datetime.now(UTC)
+        writing_project_ids = (
+            select(BackgroundTask.project_id)
+            .where(
+                BackgroundTask.status.in_(ACTIVE_TASK_STATUSES),
+                BackgroundTask.task_type.in_(("generate_chapter", "retry_chapter")),
+            )
+            .distinct()
+        )
+        self.db.query(WritingState).filter(
+            WritingState.project_id.in_(writing_project_ids),
+            WritingState.status == TASK_RUNNING,
+        ).update(
+            {
+                WritingState.status: TASK_FAILED,
+                WritingState.last_error: INTERRUPTED_TASK_ERROR,
+                WritingState.updated_at: now,
+            },
+            synchronize_session=False,
+        )
         count = (
             self.db.query(BackgroundTask)
             .filter(BackgroundTask.status.in_(ACTIVE_TASK_STATUSES))
