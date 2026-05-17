@@ -159,7 +159,7 @@ describe('ProjectDashboard', () => {
       props: {
         setup: null,
         storyline: null,
-        outline: null,
+        outline: { total_chapters: 100, chapters: [] },
         chapters: [],
         totalWords: 0,
         writingState: {
@@ -258,6 +258,8 @@ describe('ProjectDashboard', () => {
     const control = wrapper.get('[data-testid="dashboard-writing-control"]')
 
     expect(wrapper.text()).toContain('已完成')
+    expect(wrapper.get('.dashboard__writing .dashboard__task-title').text()).toContain('全部章节')
+    expect(wrapper.get('.dashboard__writing .dashboard__task-title').text()).not.toContain('第101章')
     expect(control.text()).toContain('已完成')
     expect((control.element as HTMLButtonElement).disabled).toBe(true)
 

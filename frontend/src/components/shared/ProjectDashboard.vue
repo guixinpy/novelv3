@@ -156,6 +156,7 @@ const writingStatusClass = computed(() => {
 })
 
 const writingChapterLabel = computed(() => {
+  if (props.writingState?.status === 'completed') return '全部章节'
   const chapter = Number(props.writingState?.current_chapter || 0)
   return chapter > 0 ? `第${chapter}章` : '未开始'
 })
