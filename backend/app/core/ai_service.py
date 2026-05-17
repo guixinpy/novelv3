@@ -1,11 +1,16 @@
+from weakref import WeakSet
+
 from app.config import load_api_key
 from app.core.deepseek_adapter import DeepSeekAdapter, parse_json_safely
 from app.core.error_handler import with_retry
 
 
 class AIService:
+    _instances = WeakSet()
+
     def __init__(self):
         self._adapter = None
+        self._instances.add(self)
 
     def _get_adapter(self) -> DeepSeekAdapter:
         if self._adapter is None:
@@ -19,6 +24,11 @@ class AIService:
         if self._adapter is not None:
             await self._adapter.close()
             self._adapter = None
+
+    @classmethod
+    async def close_cached_adapters(cls):
+        for service in list(cls._instances):
+            await service.close()
 
     async def complete(self, messages: list[dict], **kwargs):
         adapter = self._get_adapter()

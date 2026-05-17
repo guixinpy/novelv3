@@ -1,6 +1,8 @@
 from unittest.mock import patch
+from unittest.mock import AsyncMock
 
 from app.config import load_api_key
+from app.core.ai_service import AIService
 
 
 def test_load_api_key_can_be_disabled_for_local_e2e(monkeypatch):
@@ -30,3 +32,17 @@ def test_update_config(client):
     assert r.status_code == 200
     assert r.json() == {"has_api_key": True}
     mock_save.assert_called_once_with("sk-new-key")
+
+
+def test_update_config_resets_cached_ai_adapters(client):
+    service = AIService()
+    adapter = AsyncMock()
+    service._adapter = adapter
+
+    with patch("app.api.config.save_api_key") as mock_save:
+        r = client.put("/api/v1/config", json={"api_key": "sk-rotated-key"})
+
+    assert r.status_code == 200
+    mock_save.assert_called_once_with("sk-rotated-key")
+    assert service._adapter is None
+    adapter.close.assert_awaited_once()
