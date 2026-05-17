@@ -183,7 +183,7 @@ async function handleRevisionQuery(projectId = pid.value) {
   workspace.applyUserPanel('content', '你提交了章节修订，Hermes 正在重新生成')
   const chapter = await chat.regenerateRevision(revisionId)
   if (!chapter) return
-  await refreshProjectTargets(['content', 'versions'], currentHydrationSnapshot(projectId))
+  await refreshProjectTargets(['project', 'content', 'versions', 'writing_state'], currentHydrationSnapshot(projectId))
   await project.loadChapter(projectId, chapter.chapter_index)
 }
 

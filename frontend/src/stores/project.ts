@@ -255,9 +255,9 @@ export const useProjectStore = defineStore('project', () => {
     }
   }
 
-  async function loadProject(id: string) {
+  async function loadProject(id: string, force = false) {
     const key = `project:${id}:project`
-    if (currentProject.value?.id === id && requestCache.isFresh(key, PROJECT_CACHE_TTL_MS)) return
+    if (!force && currentProject.value?.id === id && requestCache.isFresh(key, PROJECT_CACHE_TTL_MS)) return
     const snapshot = captureProjectRequest(id, ['project'])
     const nextProject = await requestCache.dedupe(key, () => api.getProject(id))
     if (!isLatestProjectRequest(snapshot, 'project')) return
@@ -266,12 +266,12 @@ export const useProjectStore = defineStore('project', () => {
 
   async function generateSetup(id: string) {
     setup.value = await api.generateSetup(id)
-    await loadProject(id)
+    await loadProject(id, true)
   }
 
-  async function loadSetup(id: string) {
+  async function loadSetup(id: string, force = false) {
     const key = `project:${id}:setup`
-    if (setup.value && requestCache.isFresh(key, PROJECT_CACHE_TTL_MS)) return
+    if (!force && setup.value && requestCache.isFresh(key, PROJECT_CACHE_TTL_MS)) return
     const snapshot = captureProjectRequest(id, ['setup'])
     const nextSetup = await requestCache.dedupe(key, () => api.getSetup(id))
     if (!isLatestProjectRequest(snapshot, 'setup')) return
@@ -280,7 +280,7 @@ export const useProjectStore = defineStore('project', () => {
 
   async function generateChapter(id: string, index: number) {
     chapter.value = await api.generateChapter(id, index)
-    await loadProject(id)
+    await loadProject(id, true)
     await loadWritingState(id, true).catch(() => {})
   }
 
@@ -295,12 +295,12 @@ export const useProjectStore = defineStore('project', () => {
 
   async function generateStoryline(id: string) {
     storyline.value = await api.generateStoryline(id)
-    await loadProject(id)
+    await loadProject(id, true)
   }
 
-  async function loadStoryline(id: string) {
+  async function loadStoryline(id: string, force = false) {
     const key = `project:${id}:storyline`
-    if (storyline.value && requestCache.isFresh(key, PROJECT_CACHE_TTL_MS)) return
+    if (!force && storyline.value && requestCache.isFresh(key, PROJECT_CACHE_TTL_MS)) return
     const snapshot = captureProjectRequest(id, ['storyline'])
     const nextStoryline = await requestCache.dedupe(key, () => api.getStoryline(id))
     if (!isLatestProjectRequest(snapshot, 'storyline')) return
@@ -309,20 +309,20 @@ export const useProjectStore = defineStore('project', () => {
 
   async function generateOutline(id: string) {
     outline.value = await api.generateOutline(id)
-    await loadProject(id)
+    await loadProject(id, true)
     await loadWritingState(id, true).catch(() => {})
   }
 
-  async function loadOutline(id: string) {
+  async function loadOutline(id: string, force = false) {
     const key = `project:${id}:outline`
-    if (outline.value && requestCache.isFresh(key, PROJECT_CACHE_TTL_MS)) return
+    if (!force && outline.value && requestCache.isFresh(key, PROJECT_CACHE_TTL_MS)) return
     const snapshot = captureProjectRequest(id, ['outline'])
     const nextOutline = await requestCache.dedupe(key, () => api.getOutline(id))
     if (!isLatestProjectRequest(snapshot, 'outline')) return
     outline.value = nextOutline
   }
 
-  async function loadTopology(id: string) {
+  async function loadTopology(id: string, force = false) {
     const params = {
       node_offset: 0,
       node_limit: TOPOLOGY_NODE_PAGE_LIMIT,
@@ -330,7 +330,7 @@ export const useProjectStore = defineStore('project', () => {
       edge_limit: TOPOLOGY_EDGE_PAGE_LIMIT,
     }
     const key = `project:${id}:topology:${params.node_offset}:${params.node_limit}:${params.edge_offset}:${params.edge_limit}`
-    if (topology.value && requestCache.isFresh(key, PROJECT_CACHE_TTL_MS)) return
+    if (!force && topology.value && requestCache.isFresh(key, PROJECT_CACHE_TTL_MS)) return
     const snapshot = captureProjectRequest(id, ['topology'])
     const nextTopology = await requestCache.dedupe(key, () => api.getTopology(id, params))
     if (!isLatestProjectRequest(snapshot, 'topology')) return
@@ -429,10 +429,10 @@ export const useProjectStore = defineStore('project', () => {
     chaptersLatestIndex.value = resolveLatestChapterIndex(res.latest_chapter_index)
   }
 
-  async function loadVersions(id: string, nodeType?: string) {
+  async function loadVersions(id: string, nodeType?: string, force = false) {
     const params = { offset: 0, limit: VERSION_PAGE_LIMIT }
     const key = versionsCacheKey(id, nodeType, params)
-    if (versionsNodeType.value === nodeType && requestCache.isFresh(key, PROJECT_CACHE_TTL_MS)) return
+    if (!force && versionsNodeType.value === nodeType && requestCache.isFresh(key, PROJECT_CACHE_TTL_MS)) return
     const snapshot = captureProjectRequest(id, ['versions'])
     const response = await requestCache.dedupe(key, () => api.listVersions(id, nodeType, params))
     if (!isLatestProjectRequest(snapshot, 'versions')) return
@@ -463,9 +463,9 @@ export const useProjectStore = defineStore('project', () => {
     versionsHasMore.value = page.hasMore
   }
 
-  async function loadPreferences(id: string) {
+  async function loadPreferences(id: string, force = false) {
     const key = `project:${id}:preferences`
-    if (preferences.value && requestCache.isFresh(key, PROJECT_CACHE_TTL_MS)) return
+    if (!force && preferences.value && requestCache.isFresh(key, PROJECT_CACHE_TTL_MS)) return
     const snapshot = captureProjectRequest(id, ['preferences'])
     const nextPreferences = await requestCache.dedupe(key, () => api.getPreferences(id))
     if (!isLatestProjectRequest(snapshot, 'preferences')) return
@@ -498,28 +498,28 @@ export const useProjectStore = defineStore('project', () => {
     for (const target of uniqueTargets) {
       switch (target) {
         case 'setup':
-          await runSafe(target, () => loadSetup(id))
+          await runSafe(target, () => loadSetup(id, true))
           break
         case 'project':
-          await runSafe(target, () => loadProject(id))
+          await runSafe(target, () => loadProject(id, true))
           break
         case 'storyline':
-          await runSafe(target, () => loadStoryline(id))
+          await runSafe(target, () => loadStoryline(id, true))
           break
         case 'outline':
-          await runSafe(target, () => loadOutline(id))
+          await runSafe(target, () => loadOutline(id, true))
           break
         case 'content':
           await runSafe(target, () => loadChapters(id, true, currentChaptersWindowParams()))
           break
         case 'topology':
-          await runSafe(target, () => loadTopology(id))
+          await runSafe(target, () => loadTopology(id, true))
           break
         case 'versions':
-          await runSafe(target, () => loadVersions(id, versionsNodeType.value))
+          await runSafe(target, () => loadVersions(id, versionsNodeType.value, true))
           break
         case 'preferences':
-          await runSafe(target, () => loadPreferences(id))
+          await runSafe(target, () => loadPreferences(id, true))
           break
         case 'writing_state':
           await runSafe(target, () => loadWritingState(id, true))
