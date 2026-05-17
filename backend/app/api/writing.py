@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Path
 from sqlalchemy.orm import Session
 
-from app.core.chapter_target import chapter_index_exceeds_target
+from app.core.chapter_target import chapter_index_exceeds_target, effective_chapter_target
 from app.core.writing_scheduler import WritingScheduler
 from app.db import get_db
 from app.models import BackgroundTask, Project
@@ -77,14 +77,35 @@ def build_generate_chapter_work(project_id: str, chapter_index: int):
     async def _generate(rdb: Session, running_task: BackgroundTask):
         from app.api.chapters import generate_chapter as _gen_chapter
 
+        progress_service = BackgroundTaskService(rdb)
+        chapter_range = (running_task.payload or {}).get("chapter_range")
+        if isinstance(chapter_range, dict):
+            start = int(chapter_range.get("start") or chapter_index)
+            end = int(chapter_range.get("end") or chapter_index)
+            chapter_indexes = range(start, end + 1)
+        else:
+            chapter_indexes = range(chapter_index, chapter_index + 1)
+
+        generated_index = chapter_index
         try:
-            chapter = await _gen_chapter(project_id, chapter_index, rdb)
+            for next_chapter_index in chapter_indexes:
+                current_state = WritingStateService(rdb).state(project_id)
+                if current_state.status in {"paused", "failed", "completed"}:
+                    break
+
+                WritingStateService(rdb).run_chapter(project_id, next_chapter_index)
+                chapter = await _gen_chapter(project_id, next_chapter_index, rdb)
+                generated_index = chapter.get("chapter_index") if isinstance(chapter, dict) else chapter.chapter_index
+
+                if isinstance(chapter_range, dict):
+                    progress_service.mark_range_progress(running_task.id, completed_chapter_index=int(generated_index))
         except Exception as exc:
             WritingStateService(rdb).mark_error(project_id, str(exc))
             raise
 
-        generated_index = chapter.get("chapter_index") if isinstance(chapter, dict) else chapter.chapter_index
-        return {"chapter_index": generated_index}
+        result = dict(progress_service.get(running_task.id).result or {})
+        result["chapter_index"] = generated_index
+        return result
 
     return _generate
 
@@ -104,11 +125,22 @@ def _queue_generate_chapter_task(db: Session, project_id: str, chapter_index: in
     if active_task:
         return active_task
 
-    task = BackgroundTaskService(db).create(
-        project_id=project_id,
-        task_type="generate_chapter",
-        payload={"chapter_index": chapter_index},
-    )
+    project = db.query(Project).filter(Project.id == project_id).first()
+    target = effective_chapter_target(db, project) if project else 0
+    if target >= chapter_index > 0:
+        task = BackgroundTaskService(db).create_chapter_range(
+            project_id=project_id,
+            task_type="generate_chapter",
+            start_chapter_index=chapter_index,
+            end_chapter_index=target,
+            payload={"chapter_index": chapter_index},
+        )
+    else:
+        task = BackgroundTaskService(db).create(
+            project_id=project_id,
+            task_type="generate_chapter",
+            payload={"chapter_index": chapter_index},
+        )
     LocalTaskRunner().start(task.id, build_generate_chapter_work(project_id, chapter_index))
     return task
 

@@ -62,14 +62,16 @@ class WritingStateService:
 
     def complete_chapter(self, project_id: str, chapter_index: int) -> WritingStateOut:
         state = self._get_or_create(project_id)
+        previous_status = state.status
         state.current_chapter = max(int(state.current_chapter or 0), int(chapter_index) + 1)
         project = self.db.query(Project).filter(Project.id == project_id).first()
         completed = bool(project and chapter_index_exceeds_target(self.db, project, state.current_chapter))
-        state.status = (
-            "completed"
-            if completed
-            else "idle"
-        )
+        if completed:
+            state.status = "completed"
+        elif previous_status == "paused":
+            state.status = "paused"
+        else:
+            state.status = "idle"
         if project and completed:
             project.status = "completed"
             project.current_phase = "content"

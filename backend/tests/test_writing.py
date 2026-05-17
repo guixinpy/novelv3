@@ -63,6 +63,95 @@ def test_writing_start_creates_generate_chapter_task(client, db_session):
     start.assert_called_once()
 
 
+def test_writing_start_creates_range_task_when_target_is_known(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Targeted Continuous Writing", "target_chapter_count": 3})
+    pid = r.json()["id"]
+
+    with patch("app.api.writing.LocalTaskRunner.start") as start:
+        response = client.post(f"/api/v1/projects/{pid}/writing/start")
+
+    assert response.status_code == 200
+    task = (
+        db_session.query(BackgroundTask)
+        .filter(
+            BackgroundTask.project_id == pid,
+            BackgroundTask.task_type == "generate_chapter",
+        )
+        .one()
+    )
+    assert task.payload == {
+        "chapter_index": 1,
+        "chapter_range": {"start": 1, "end": 3},
+    }
+    assert response.json()["task_id"] == task.id
+    start.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_generate_chapter_work_continues_until_project_target(client, db_session, monkeypatch):
+    r = client.post("/api/v1/projects", json={"name": "Continuous Range Work", "target_chapter_count": 3})
+    pid = r.json()["id"]
+    task = BackgroundTaskService(db_session).create_chapter_range(
+        project_id=pid,
+        task_type="generate_chapter",
+        start_chapter_index=1,
+        end_chapter_index=3,
+        payload={"chapter_index": 1},
+    )
+    WritingStateService(db_session).run_chapter(pid, 1)
+    generated: list[int] = []
+
+    async def fake_generate_chapter(project_id: str, chapter_index: int, db):
+        generated.append(chapter_index)
+        WritingStateService(db).complete_chapter(project_id, chapter_index)
+        return {"chapter_index": chapter_index}
+
+    monkeypatch.setattr("app.api.chapters.generate_chapter", fake_generate_chapter)
+    from app.api.writing import build_generate_chapter_work
+
+    result = await build_generate_chapter_work(pid, 1)(db_session, task)
+
+    assert generated == [1, 2, 3]
+    assert result["chapter_index"] == 3
+    assert result["progress"]["completed_count"] == 3
+    assert result["progress"]["next_chapter_index"] == 4
+    state = WritingStateService(db_session).state(pid)
+    assert state.status == "completed"
+    assert state.current_chapter == 4
+
+
+@pytest.mark.asyncio
+async def test_generate_chapter_work_stops_when_paused_mid_chapter(client, db_session, monkeypatch):
+    r = client.post("/api/v1/projects", json={"name": "Pause Continuous Range", "target_chapter_count": 3})
+    pid = r.json()["id"]
+    task = BackgroundTaskService(db_session).create_chapter_range(
+        project_id=pid,
+        task_type="generate_chapter",
+        start_chapter_index=1,
+        end_chapter_index=3,
+        payload={"chapter_index": 1},
+    )
+    WritingStateService(db_session).run_chapter(pid, 1)
+    generated: list[int] = []
+
+    async def fake_generate_chapter(project_id: str, chapter_index: int, db):
+        generated.append(chapter_index)
+        WritingStateService(db).pause(project_id)
+        WritingStateService(db).complete_chapter(project_id, chapter_index)
+        return {"chapter_index": chapter_index}
+
+    monkeypatch.setattr("app.api.chapters.generate_chapter", fake_generate_chapter)
+    from app.api.writing import build_generate_chapter_work
+
+    result = await build_generate_chapter_work(pid, 1)(db_session, task)
+
+    assert generated == [1]
+    assert result["progress"]["completed_count"] == 1
+    state = WritingStateService(db_session).state(pid)
+    assert state.status == "paused"
+    assert state.current_chapter == 2
+
+
 def test_writing_start_reuses_active_generate_chapter_task(client, db_session):
     r = client.post("/api/v1/projects", json={"name": "No Duplicate Writing Tasks"})
     pid = r.json()["id"]
