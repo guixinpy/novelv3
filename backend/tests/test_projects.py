@@ -27,6 +27,7 @@ from app.models import (
     WorldCharacter,
     WorldRule,
 )
+from app.services.writing.writing_state_service import WritingStateService
 
 
 def test_create_and_get_project(client):
@@ -58,6 +59,32 @@ def test_project_persists_target_chapter_count(client):
     fetched = client.get(f"/api/v1/projects/{pid}")
     assert fetched.status_code == 200
     assert fetched.json()["target_chapter_count"] == 12
+
+
+def test_update_project_target_marks_writing_completed_when_pointer_is_beyond_target(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Retarget Short", "target_chapter_count": 10})
+    pid = r.json()["id"]
+    WritingStateService(db_session).run_chapter(pid, 6)
+
+    response = client.patch(f"/api/v1/projects/{pid}", json={"target_chapter_count": 5})
+
+    assert response.status_code == 200
+    state = WritingStateService(db_session).state(pid)
+    assert state.current_chapter == 6
+    assert state.status == "completed"
+
+
+def test_update_project_target_reopens_completed_writing_when_target_extends(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Retarget Long", "target_chapter_count": 1})
+    pid = r.json()["id"]
+    WritingStateService(db_session).complete_chapter(pid, 1)
+
+    response = client.patch(f"/api/v1/projects/{pid}", json={"target_chapter_count": 3})
+
+    assert response.status_code == 200
+    state = WritingStateService(db_session).state(pid)
+    assert state.current_chapter == 2
+    assert state.status == "idle"
 
 
 def test_list_projects(client):

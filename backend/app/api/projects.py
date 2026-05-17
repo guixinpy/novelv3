@@ -48,6 +48,7 @@ from app.models import (
 )
 from app.schemas import ProjectCreate, ProjectOut, ProjectUpdate, WorkspaceBootstrapOut
 from app.services.workspace.bootstrap import WorkspaceBootstrapService
+from app.services.writing.writing_state_service import WritingStateService
 
 router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
 
@@ -131,10 +132,13 @@ def update_project(project_id: str, payload: ProjectUpdate, db: Session = Depend
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    updates = payload.model_dump(exclude_unset=True)
+    for field, value in updates.items():
         setattr(project, field, value)
     db.commit()
     db.refresh(project)
+    if "target_chapter_count" in updates:
+        WritingStateService(db).reconcile_target(project_id)
     return reconcile_project_word_count(db, project)
 
 

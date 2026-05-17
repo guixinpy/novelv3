@@ -84,6 +84,30 @@ class WritingStateService:
         self.db.refresh(state)
         return self._out(state)
 
+    def reconcile_target(self, project_id: str) -> WritingStateOut:
+        state = self._get(project_id)
+        if not state:
+            return self._default(project_id)
+        project = self.db.query(Project).filter(Project.id == project_id).first()
+        if not project:
+            return self._out(state)
+
+        next_status = state.status
+        if chapter_index_exceeds_target(self.db, project, state.current_chapter):
+            next_status = "completed"
+        elif state.status == "completed":
+            next_status = "idle"
+
+        if next_status == state.status:
+            return self._out(state)
+
+        state.status = next_status
+        state.last_error = None
+        state.updated_at = datetime.now(UTC)
+        self.db.commit()
+        self.db.refresh(state)
+        return self._out(state)
+
     def state(self, project_id: str) -> WritingStateOut:
         state = self._get(project_id)
         if not state:
