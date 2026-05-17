@@ -857,6 +857,64 @@ describe('project workspace state', () => {
     }
   })
 
+  it('startWriting() 不应在 30 分钟后停止跟踪长篇连续写作任务', async () => {
+    vi.useFakeTimers()
+    const store = useProjectStore()
+    let pollCount = 0
+    vi.mocked(api.startWriting).mockResolvedValue({
+      project_id: 'A',
+      current_chapter: 1,
+      status: 'running',
+      last_error: null,
+      task_id: 'very-long-task',
+    })
+    vi.mocked(api.getBackgroundTask).mockImplementation(async () => {
+      pollCount += 1
+      return {
+        task_id: 'very-long-task',
+        task_type: 'generate_chapter',
+        status: pollCount <= 1800 ? 'running' : 'completed',
+        result: { chapter_index: 1000 },
+        error: null,
+        ui_hint: {
+          dialog_state: pollCount <= 1800 ? 'RUNNING' : 'CHATTING',
+          active_action: {
+            type: 'generate_chapter',
+            status: pollCount <= 1800 ? 'running' : 'completed',
+            target_panel: 'content',
+            reason: '',
+          },
+        },
+        refresh_targets: ['writing_state'],
+        created_at: null,
+        started_at: null,
+        finished_at: null,
+      }
+    })
+    vi.mocked(api.getWritingState).mockResolvedValue({
+      project_id: 'A',
+      current_chapter: 1001,
+      status: 'completed',
+      last_error: null,
+    })
+
+    try {
+      await store.startWriting('A')
+      await vi.advanceTimersByTimeAsync(1_805_000)
+
+      expect(api.getBackgroundTask).toHaveBeenCalledTimes(1801)
+      expect(api.getWritingState).toHaveBeenCalledWith('A')
+      expect(store.writingState).toEqual({
+        project_id: 'A',
+        current_chapter: 1001,
+        status: 'completed',
+        last_error: null,
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('startWriting() 轮询到范围任务进度时会更新本地写作指针', async () => {
     vi.useFakeTimers()
     const store = useProjectStore()

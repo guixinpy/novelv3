@@ -28,7 +28,6 @@ export const useProjectStore = defineStore('project', () => {
   const VERSION_PAGE_LIMIT = 50
   const TOPOLOGY_NODE_PAGE_LIMIT = 200
   const TOPOLOGY_EDGE_PAGE_LIMIT = 500
-  const WRITING_TASK_POLL_LIMIT = 30 * 60
   const WRITING_TASK_POLL_INTERVAL_MS = 1000
   const projects = ref<any[]>([])
   const currentProject = ref<any>(null)
@@ -392,7 +391,7 @@ export const useProjectStore = defineStore('project', () => {
   }
 
   async function pollWritingTask(id: string, taskId: string) {
-    for (let attempt = 0; attempt < WRITING_TASK_POLL_LIMIT; attempt += 1) {
+    for (let attempt = 0; currentProjectScope.value === id; attempt += 1) {
       if (currentProjectScope.value !== id) return
       if (attempt > 0) await wait(WRITING_TASK_POLL_INTERVAL_MS)
       if (currentProjectScope.value !== id) return
