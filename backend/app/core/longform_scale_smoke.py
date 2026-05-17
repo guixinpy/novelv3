@@ -7,7 +7,11 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.core.athena_retrieval import get_retrieval_diagnostics, reindex_project_retrieval
-from app.core.longform_memory import build_longform_context_package, rebuild_longform_memory
+from app.core.longform_memory import (
+    build_longform_context_package,
+    rebuild_longform_memory,
+    refresh_longform_memory_for_chapter,
+)
 from app.core.narrative_plan_window import get_evolution_plan_window
 from app.prompting.providers.dialog import build_athena_narrative_planning_context_block
 from app.models import ChapterContent, Outline, Project, Storyline
@@ -60,6 +64,12 @@ def run_longform_scale_smoke(
     stage_started_at = _record_timing(timings_ms, "retrieval_diagnostics", stage_started_at)
     repeat_reindex_report = reindex_project_retrieval(db, project.id)
     stage_started_at = _record_timing(timings_ms, "retrieval_repeat_reindex", stage_started_at)
+    post_generation_maintenance_report = _run_post_generation_maintenance_smoke(
+        db,
+        project=project,
+        chapter_index=target,
+    )
+    stage_started_at = _record_timing(timings_ms, "post_generation_maintenance", stage_started_at)
     context_package = build_longform_context_package(
         db,
         project.id,
@@ -87,6 +97,7 @@ def run_longform_scale_smoke(
             "memory": memory_report,
             "retrieval": retrieval_report,
             "repeat_reindex": repeat_reindex_report,
+            "post_generation_maintenance": post_generation_maintenance_report,
             "narrative_plan": _compact_narrative_plan_window(narrative_plan),
             "dialog_planning_context": _compact_context_block(dialog_planning_context),
             "writing_worker": writing_worker_report,
@@ -107,6 +118,7 @@ def run_longform_scale_smoke(
         "total_words": total_words,
         "memory": memory_report,
         "retrieval": retrieval_report,
+        "post_generation_maintenance": post_generation_maintenance_report,
         "context": _compact_context_package(context_package, target_chapter_index=target),
         "narrative_plan": _compact_narrative_plan_window(narrative_plan),
         "dialog_planning_context": _compact_context_block(dialog_planning_context),
@@ -121,6 +133,52 @@ def run_longform_scale_smoke(
         "timings_ms": timings_ms,
         "elapsed_ms": elapsed_ms,
         "repeat_reindex": repeat_reindex_report,
+    }
+
+
+def _run_post_generation_maintenance_smoke(db: Session, *, project: Project, chapter_index: int) -> dict[str, Any]:
+    from app.core.athena_retrieval import index_chapter_retrieval, sync_longform_memory_retrieval_documents
+
+    chapter = (
+        db.query(ChapterContent)
+        .filter(ChapterContent.project_id == project.id, ChapterContent.chapter_index == chapter_index)
+        .first()
+    )
+    if chapter is None:
+        raise ValueError(f"Seeded chapter not found: {chapter_index}")
+
+    previous_word_count = int(chapter.word_count or 0)
+    chapter.content = f"{chapter.content}\n长篇维护烟测：第{chapter_index}章增量更新。"
+    chapter.word_count = previous_word_count + 1
+    project.current_word_count = max(0, int(project.current_word_count or 0) - previous_word_count + chapter.word_count)
+    db.commit()
+    db.refresh(project)
+
+    before_retrieval = get_retrieval_diagnostics(db, project.id)
+    chapter_index_report = index_chapter_retrieval(db=db, project_id=project.id, chapter_index=chapter_index)
+    memory_report = refresh_longform_memory_for_chapter(
+        db,
+        project.id,
+        chapter_index,
+        reconcile_word_count=False,
+    )
+    sync_report = sync_longform_memory_retrieval_documents(
+        db,
+        project.id,
+        memory_report.get("updated_memory_ids") or [],
+    )
+    after_retrieval = get_retrieval_diagnostics(db, project.id)
+    before_total = int(before_retrieval.get("total_documents") or 0)
+    after_total = int(after_retrieval.get("total_documents") or 0)
+    return {
+        "status": "completed",
+        "chapter_index": chapter_index,
+        "chapter_indexed": chapter_index_report.get("indexed") or {},
+        "memory_updated_scope_count": len(memory_report.get("updated_scope_keys") or []),
+        "memory_synced_scope_count": len(sync_report.get("synced_scope_keys") or []),
+        "retrieval_total_documents_before": before_total,
+        "retrieval_total_documents_after": after_total,
+        "retrieval_total_documents_preserved": before_total == after_total,
     }
 
 

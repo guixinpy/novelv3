@@ -1005,6 +1005,7 @@ def test_longform_scale_smoke_reports_stage_timings(db_session):
         "retrieval_reindex",
         "retrieval_diagnostics",
         "retrieval_repeat_reindex",
+        "post_generation_maintenance",
         "context_build",
         "narrative_plan_window",
         "dialog_planning_context",
@@ -1031,6 +1032,27 @@ def test_longform_scale_smoke_reports_writing_worker_range(db_session):
     assert report["writing_worker"]["pending_chapter_count"] == 0
     assert report["writing_worker"]["state"]["status"] == "completed"
     assert report["writing_worker"]["state"]["current_chapter"] == 6
+
+
+def test_longform_scale_smoke_reports_post_generation_maintenance(db_session):
+    from app.core.longform_scale_smoke import run_longform_scale_smoke
+
+    report = run_longform_scale_smoke(
+        db_session,
+        chapter_count=40,
+        words_per_chapter=120,
+        target_chapter_index=25,
+        include_writing_worker=False,
+    )
+
+    maintenance = report["post_generation_maintenance"]
+    assert maintenance["status"] == "completed"
+    assert maintenance["chapter_index"] == 25
+    assert maintenance["chapter_indexed"]["documents"] == 1
+    assert maintenance["memory_updated_scope_count"] == 4
+    assert maintenance["memory_synced_scope_count"] == 4
+    assert maintenance["retrieval_total_documents_before"] == maintenance["retrieval_total_documents_after"]
+    assert maintenance["retrieval_total_documents_preserved"] is True
 
 
 def test_longform_scale_smoke_compacts_checkpoint_progress_fields():
