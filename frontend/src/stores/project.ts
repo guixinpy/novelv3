@@ -118,6 +118,20 @@ export const useProjectStore = defineStore('project', () => {
     return ['completed', 'success', 'failed', 'cancelled'].includes(String(task.status || ''))
   }
 
+  function applyWritingTaskProgress(id: string, task: BackgroundTaskResponse) {
+    const progress = task.result?.progress
+    const nextChapter = Number(progress?.next_chapter_index)
+    if (!Number.isFinite(nextChapter) || nextChapter < 1) return
+    if (currentProjectScope.value !== id) return
+    writingState.value = {
+      project_id: id,
+      current_chapter: nextChapter,
+      status: 'running',
+      last_error: writingState.value?.last_error ?? null,
+      task_id: task.task_id,
+    }
+  }
+
   function wait(ms: number) {
     return new Promise((resolve) => setTimeout(resolve, ms))
   }
@@ -389,7 +403,10 @@ export const useProjectStore = defineStore('project', () => {
         continue
       }
       if (currentProjectScope.value !== id) return
-      if (!isTerminalBackgroundTask(task)) continue
+      if (!isTerminalBackgroundTask(task)) {
+        applyWritingTaskProgress(id, task)
+        continue
+      }
       const targets = task.refresh_targets?.length ? task.refresh_targets : ['writing_state' as RefreshTarget]
       await refreshTargets(id, targets)
       return

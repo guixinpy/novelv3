@@ -9,6 +9,22 @@ from app.models import BackgroundTask, Project
 router = APIRouter(tags=["background-tasks"])
 
 
+def _compact_result(result: dict | None) -> dict | None:
+    if not isinstance(result, dict):
+        return None
+    progress = result.get("progress")
+    if not isinstance(progress, dict):
+        return None
+    return {"progress": progress}
+
+
+def _compact_progress_result(db: Session, task_id: str, task_type: str, status: str) -> dict | None:
+    if task_type != "generate_chapter" or status not in {"pending", "running"}:
+        return None
+    result = db.query(BackgroundTask.result).filter(BackgroundTask.id == task_id).scalar()
+    return _compact_result(result)
+
+
 @router.get("/api/v1/projects/{project_id}/background-tasks")
 def list_background_tasks(
     project_id: str,
@@ -92,7 +108,7 @@ def get_background_task(
             "task_type": task.task_type,
             "status": task.status,
             "payload": None,
-            "result": None,
+            "result": _compact_progress_result(db, task.id, task.task_type, task.status),
             "error": error_preview,
             "ui_hint": build_ui_hint(
                 action_type=task.task_type,

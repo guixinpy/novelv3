@@ -857,6 +857,103 @@ describe('project workspace state', () => {
     }
   })
 
+  it('startWriting() 轮询到范围任务进度时会更新本地写作指针', async () => {
+    vi.useFakeTimers()
+    const store = useProjectStore()
+    vi.mocked(api.startWriting).mockResolvedValue({
+      project_id: 'A',
+      current_chapter: 1,
+      status: 'running',
+      last_error: null,
+      task_id: 'range-task',
+    })
+    vi.mocked(api.getBackgroundTask)
+      .mockResolvedValueOnce({
+        task_id: 'range-task',
+        task_type: 'generate_chapter',
+        status: 'running',
+        result: {
+          progress: {
+            chapter_range: { start: 1, end: 3 },
+            next_chapter_index: 2,
+            completed_count: 1,
+            total_count: 3,
+            can_resume: true,
+          },
+        },
+        error: null,
+        ui_hint: {
+          dialog_state: 'RUNNING',
+          active_action: {
+            type: 'generate_chapter',
+            status: 'running',
+            target_panel: 'content',
+            reason: '',
+          },
+        },
+        refresh_targets: [],
+        created_at: null,
+        started_at: null,
+        finished_at: null,
+      })
+      .mockResolvedValueOnce({
+        task_id: 'range-task',
+        task_type: 'generate_chapter',
+        status: 'completed',
+        result: {
+          progress: {
+            chapter_range: { start: 1, end: 3 },
+            next_chapter_index: 4,
+            completed_count: 3,
+            total_count: 3,
+            can_resume: false,
+          },
+        },
+        error: null,
+        ui_hint: {
+          dialog_state: 'CHATTING',
+          active_action: {
+            type: 'generate_chapter',
+            status: 'completed',
+            target_panel: 'content',
+            reason: '',
+          },
+        },
+        refresh_targets: ['writing_state'],
+        created_at: null,
+        started_at: null,
+        finished_at: null,
+      })
+    vi.mocked(api.getWritingState).mockResolvedValue({
+      project_id: 'A',
+      current_chapter: 4,
+      status: 'completed',
+      last_error: null,
+    })
+
+    try {
+      await store.startWriting('A')
+      await Promise.resolve()
+
+      expect(store.writingState).toMatchObject({
+        project_id: 'A',
+        current_chapter: 2,
+        status: 'running',
+        task_id: 'range-task',
+      })
+
+      await vi.advanceTimersByTimeAsync(1_000)
+      expect(store.writingState).toEqual({
+        project_id: 'A',
+        current_chapter: 4,
+        status: 'completed',
+        last_error: null,
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('迟到的 writing state 响应不会覆盖新项目状态', async () => {
     const store = useProjectStore()
     let resolveA!: (value: any) => void

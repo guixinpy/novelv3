@@ -308,6 +308,34 @@ def test_get_background_task_includes_range_payload(client, db_session):
     assert response.json()["payload"]["idempotency_key"] == "range:10-20"
 
 
+def test_get_background_task_compact_includes_range_progress(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Compact Progress"})
+    pid = r.json()["id"]
+    service = BackgroundTaskService(db_session)
+    task = service.create_chapter_range(
+        project_id=pid,
+        task_type="generate_chapter",
+        start_chapter_index=1,
+        end_chapter_index=3,
+        payload={"chapter_index": 1},
+    )
+    service.mark_range_progress(task.id, completed_chapter_index=1)
+
+    response = client.get(f"/api/v1/background-tasks/{task.id}?compact=true")
+
+    assert response.status_code == 200
+    assert response.json()["result"] == {
+        "progress": {
+            "chapter_range": {"start": 1, "end": 3},
+            "next_chapter_index": 2,
+            "completed_count": 1,
+            "total_count": 3,
+            "can_resume": True,
+            "completed_chapter_indexes": [1],
+        }
+    }
+
+
 def test_background_task_service_tracks_lifecycle(client, db_session):
     r = client.post("/api/v1/projects", json={"name": "Test"})
     pid = r.json()["id"]
