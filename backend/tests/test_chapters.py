@@ -251,6 +251,45 @@ def test_generate_chapter_updates_writing_state_after_success(mock_complete, moc
 
 @patch("app.api.chapters.load_api_key", return_value="sk-test")
 @patch("app.api.chapters.ai_service.complete", new_callable=AsyncMock)
+def test_generate_final_project_target_chapter_marks_writing_completed(mock_complete, mock_key, client, db_session):
+    pid = _create_project_with_setup(client)
+    project = db_session.get(Project, pid)
+    project.target_chapter_count = 1
+    db_session.commit()
+    mock_complete.return_value.content = "第一章正文内容"
+    mock_complete.return_value.model = "deepseek-chat"
+    mock_complete.return_value.prompt_tokens = 100
+    mock_complete.return_value.completion_tokens = 200
+
+    response = client.post(f"/api/v1/projects/{pid}/chapters/1/generate")
+
+    assert response.status_code == 200
+    state = WritingStateService(db_session).state(pid)
+    assert state.status == "completed"
+    assert state.current_chapter == 2
+
+
+@patch("app.api.chapters.load_api_key", return_value="sk-test")
+@patch("app.api.chapters.ai_service.complete", new_callable=AsyncMock)
+def test_generate_final_outline_target_chapter_marks_writing_completed(mock_complete, mock_key, client, db_session):
+    pid = _create_project_with_setup(client)
+    db_session.add(Outline(project_id=pid, status="generated", total_chapters=1, chapters=[{"chapter_index": 1}]))
+    db_session.commit()
+    mock_complete.return_value.content = "第一章正文内容"
+    mock_complete.return_value.model = "deepseek-chat"
+    mock_complete.return_value.prompt_tokens = 100
+    mock_complete.return_value.completion_tokens = 200
+
+    response = client.post(f"/api/v1/projects/{pid}/chapters/1/generate")
+
+    assert response.status_code == 200
+    state = WritingStateService(db_session).state(pid)
+    assert state.status == "completed"
+    assert state.current_chapter == 2
+
+
+@patch("app.api.chapters.load_api_key", return_value="sk-test")
+@patch("app.api.chapters.ai_service.complete", new_callable=AsyncMock)
 def test_generate_chapter_rejects_project_target_overflow(mock_complete, mock_key, client, db_session):
     pid = _create_project_with_setup(client)
     project = db_session.get(Project, pid)

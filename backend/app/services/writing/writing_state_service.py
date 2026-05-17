@@ -3,7 +3,8 @@ from datetime import UTC, datetime
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.models import ChapterContent, WritingState
+from app.core.chapter_target import chapter_index_exceeds_target
+from app.models import ChapterContent, Project, WritingState
 from app.schemas import WritingStateOut
 
 
@@ -61,8 +62,13 @@ class WritingStateService:
 
     def complete_chapter(self, project_id: str, chapter_index: int) -> WritingStateOut:
         state = self._get_or_create(project_id)
-        state.status = "idle"
         state.current_chapter = max(int(state.current_chapter or 0), int(chapter_index) + 1)
+        project = self.db.query(Project).filter(Project.id == project_id).first()
+        state.status = (
+            "completed"
+            if project and chapter_index_exceeds_target(self.db, project, state.current_chapter)
+            else "idle"
+        )
         state.last_error = None
         state.updated_at = datetime.now(UTC)
         self.db.commit()
