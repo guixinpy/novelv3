@@ -14,7 +14,7 @@ import {
   getActionLabel,
   getActionRefreshTargets,
   getPanelRefreshTargets,
-  getVersionRefreshTarget,
+  getVersionRefreshTargets,
   getVersionTypeLabel,
   isFinishedActionStatus,
   normalizeActionStatus,
@@ -328,8 +328,7 @@ async function onRollback(versionId: string) {
   const version = project.versions.find((item: any) => item.id === versionId)
   await project.rollbackVersion(pid.value, versionId)
   const targets: RefreshTarget[] = ['versions']
-  const relatedTarget = getVersionRefreshTarget(version?.node_type)
-  if (relatedTarget) targets.push(relatedTarget)
+  targets.push(...getVersionRefreshTargets(version?.node_type))
   await refreshProjectTargets(targets)
 }
 

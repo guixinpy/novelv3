@@ -63,6 +63,13 @@ const VERSION_TYPE_LABELS: Record<string, string> = {
   chapter: '章节',
 }
 
+const VERSION_REFRESH_TARGETS: Record<string, RefreshTarget[]> = {
+  setup: ['setup'],
+  storyline: ['storyline'],
+  outline: ['outline'],
+  chapter: ['project', 'content'],
+}
+
 const ALL_ACTION_STATUSES = new Set<ActionStatus>([
   'idle',
   'pending',
@@ -111,12 +118,9 @@ export function getVersionTypeLabel(type: string) {
   return VERSION_TYPE_LABELS[type] ?? type
 }
 
-export function getVersionRefreshTarget(nodeType?: string): RefreshTarget | null {
-  if (nodeType === 'setup') return 'setup'
-  if (nodeType === 'storyline') return 'storyline'
-  if (nodeType === 'outline') return 'outline'
-  if (nodeType === 'chapter') return 'content'
-  return null
+export function getVersionRefreshTargets(nodeType?: string): RefreshTarget[] {
+  if (!nodeType) return []
+  return VERSION_REFRESH_TARGETS[nodeType] || []
 }
 
 export function normalizeActionStatus(status: unknown): ActionStatus | null {

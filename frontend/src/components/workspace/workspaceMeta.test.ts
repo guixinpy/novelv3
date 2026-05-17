@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getActionPanel, getActionRefreshTargets } from './workspaceMeta'
+import { getActionPanel, getActionRefreshTargets, getVersionRefreshTargets } from './workspaceMeta'
 
 describe('workspaceMeta', () => {
   it('generate_chapter completion refreshes writing state with content', () => {
@@ -19,5 +19,9 @@ describe('workspaceMeta', () => {
       'versions',
       'writing_state',
     ])
+  })
+
+  it('chapter version rollback refreshes project totals with content', () => {
+    expect(getVersionRefreshTargets('chapter')).toEqual(['project', 'content'])
   })
 })
