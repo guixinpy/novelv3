@@ -142,6 +142,26 @@ def test_chapter_payload_injects_retrieval_when_athena_context_lacks_it(monkeypa
     assert any(block["key"] == "retrieval_evidence" for block in payload["context_blocks"])
 
 
+def test_chapter_payload_injects_project_word_target_without_user_range(db_session):
+    project = _project(
+        db_session,
+        id="chapter-prompt-project-word-target",
+        target_chapter_count=1000,
+        target_word_count=1_000_000,
+        style_config=None,
+    )
+    setup = _setup(db_session, project.id)
+
+    payload = chapters._build_chapter_call_payload(db_session, project, setup, 88, "")
+
+    message = payload["messages"][0]["content"]
+    assert "项目计划约1000000字 / 1000章" in message
+    assert "本章正文建议控制在850-1150字" in message
+    assert payload["max_tokens"] == 1950
+    blocks_by_key = {block["key"]: block for block in payload["context_blocks"]}
+    assert blocks_by_key["target_chapter_length"]["kind"] == "generation_constraint"
+
+
 def test_safe_create_chapter_trace_persists_prompt_metadata(db_session):
     project = _project(db_session, id="chapter-prompt-trace", style_config=None)
 

@@ -150,7 +150,7 @@ def _build_chapter_call_payload(
             build_result.context_blocks,
             trace_only_context_blocks,
         ),
-        "max_tokens": chapter_max_tokens(extra_feedback),
+        "max_tokens": chapter_max_tokens(extra_feedback, project=project),
         "trace_metadata": build_prompt_trace_metadata(build_result),
         "rendered_prompt": build_result.content,
     }

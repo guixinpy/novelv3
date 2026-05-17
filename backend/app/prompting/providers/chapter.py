@@ -25,6 +25,7 @@ SETUP_CHARACTERS_BLOCK_CHAR_LIMIT = 2000
 SETUP_CORE_CONCEPT_BLOCK_CHAR_LIMIT = 1200
 PRIORITY_USER_FEEDBACK = 0
 PRIORITY_LENGTH_CONSTRAINT = 1
+PRIORITY_PROJECT_LENGTH_CONSTRAINT = 2
 PRIORITY_CHAPTER_TARGET = 10
 PRIORITY_LONGFORM_CONTEXT = 18
 PRIORITY_ATHENA_CONTEXT = 20
@@ -81,6 +82,21 @@ def build_chapter_prompt_context_blocks(
         ),
     ]
     trace_only_blocks: list[dict] = []
+
+    if not extract_word_range(extra_feedback):
+        project_length_constraint = build_project_length_constraint(project)
+        if project_length_constraint:
+            model_blocks.append(
+                _prioritized(
+                    build_context_block(
+                        key="target_chapter_length",
+                        kind="generation_constraint",
+                        title="章节长度目标",
+                        content=project_length_constraint,
+                    ),
+                    PRIORITY_PROJECT_LENGTH_CONSTRAINT,
+                )
+            )
 
     outline_block = _build_outline_chapter_target_block(db, project.id, chapter_index)
     if outline_block:
@@ -185,11 +201,37 @@ def build_chapter_trace_context_blocks(
     ]
 
 
-def chapter_max_tokens(extra_feedback: str) -> int:
+def chapter_max_tokens(extra_feedback: str, *, project: Project | None = None) -> int:
     word_range = extract_word_range(extra_feedback)
-    if not word_range:
-        return 4000
-    return min(4000, max(word_range[1] + 800, 1200))
+    if word_range:
+        return min(4000, max(word_range[1] + 800, 1200))
+    if project is not None:
+        target_range = project_chapter_word_range(project)
+        if target_range:
+            return min(8000, max(target_range[1] + 800, 1200))
+    return 4000
+
+
+def build_project_length_constraint(project: Project) -> str | None:
+    target_range = project_chapter_word_range(project)
+    if not target_range:
+        return None
+    target_words = int(project.target_word_count or 0)
+    target_chapters = int(project.target_chapter_count or 0)
+    return (
+        f"项目计划约{target_words}字 / {target_chapters}章，"
+        f"本章正文建议控制在{target_range[0]}-{target_range[1]}字。"
+        "以剧情推进和章节钩子为先，允许少量浮动，但避免长期偏离目标节奏。"
+    )
+
+
+def project_chapter_word_range(project: Project) -> tuple[int, int] | None:
+    target_words = int(project.target_word_count or 0)
+    target_chapters = int(project.target_chapter_count or 0)
+    if target_words <= 0 or target_chapters <= 0:
+        return None
+    average = max(1, round(target_words / target_chapters))
+    return max(1, round(average * 0.85)), max(1, round(average * 1.15))
 
 
 def build_length_constraint(extra_feedback: str) -> str | None:
