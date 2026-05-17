@@ -24,6 +24,7 @@ def test_longform_hot_tables_have_query_indexes(db_session):
         },
         "background_tasks": {
             "ix_background_tasks_project_created",
+            "ix_background_tasks_project_type_status_created",
             "ix_background_tasks_status",
         },
         "consistency_checks": {

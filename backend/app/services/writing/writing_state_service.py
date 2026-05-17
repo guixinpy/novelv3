@@ -182,7 +182,7 @@ class WritingStateService:
 
     def _active_writing_task_id(self, project_id: str, chapter_index: int) -> str | None:
         tasks = (
-            self.db.query(BackgroundTask)
+            self.db.query(BackgroundTask.id, BackgroundTask.task_type, BackgroundTask.payload)
             .filter(
                 BackgroundTask.project_id == project_id,
                 BackgroundTask.task_type.in_(ACTIVE_WRITING_TASK_TYPES),

@@ -961,6 +961,7 @@ def test_migration_upgrade_enforces_trigger_and_foreign_keys(tmp_path):
             },
             "background_tasks": {
                 "ix_background_tasks_project_created",
+                "ix_background_tasks_project_type_status_created",
                 "ix_background_tasks_status",
             },
         }

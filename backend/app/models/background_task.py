@@ -10,6 +10,7 @@ class BackgroundTask(Base):
     __tablename__ = "background_tasks"
     __table_args__ = (
         Index("ix_background_tasks_project_created", "project_id", "created_at", "id"),
+        Index("ix_background_tasks_project_type_status_created", "project_id", "task_type", "status", "created_at", "id"),
         Index("ix_background_tasks_status", "status"),
     )
 

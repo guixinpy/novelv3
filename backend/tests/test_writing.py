@@ -1,6 +1,7 @@
 from unittest.mock import patch
 
 import pytest
+from sqlalchemy import event
 
 from app.models import BackgroundTask, ChapterContent, Outline
 from app.services.tasks.background_task_service import BackgroundTaskService
@@ -333,6 +334,43 @@ def test_writing_state_endpoint_returns_active_task_id(client, db_session):
 
     assert response.status_code == 200
     assert response.json()["task_id"] == task.id
+
+
+def test_writing_state_active_task_lookup_does_not_select_heavy_task_fields(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Recover Running Writing Heavy", "target_chapter_count": 10})
+    pid = r.json()["id"]
+    task = BackgroundTaskService(db_session).create_chapter_range(
+        project_id=pid,
+        task_type="generate_chapter",
+        start_chapter_index=1,
+        end_chapter_index=10,
+        payload={"chapter_index": 1, "chapter_range": {"start": 1, "end": 10}},
+    )
+    task.status = "running"
+    task.result = {"progress": {"completed_chapter_indexes": list(range(1, 1000))}}
+    task.error = "large error" * 100
+    db_session.commit()
+    WritingStateService(db_session).run_chapter(pid, 5)
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session.bind, "before_cursor_execute", capture_sql)
+    try:
+        response = client.get(f"/api/v1/projects/{pid}/writing/state")
+    finally:
+        event.remove(db_session.bind, "before_cursor_execute", capture_sql)
+
+    assert response.status_code == 200
+    assert response.json()["task_id"] == task.id
+    task_selects = [
+        statement for statement in statements
+        if statement.startswith("select") and "from background_tasks" in statement
+    ]
+    assert task_selects
+    assert all("background_tasks.result" not in statement for statement in task_selects)
+    assert all("background_tasks.error" not in statement for statement in task_selects)
 
 
 def test_writing_pause_and_resume(client):
