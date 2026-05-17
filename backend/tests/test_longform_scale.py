@@ -1114,6 +1114,32 @@ def test_longform_scale_smoke_cli_fails_when_thresholds_are_exceeded(monkeypatch
     assert "retrieval_reindex 900 exceeded max 800" in captured.err
 
 
+def test_longform_scale_smoke_cli_fails_when_stage_threshold_name_is_unknown(monkeypatch, capsys):
+    script_path = Path(__file__).resolve().parents[2] / "scripts" / "longform_scale_smoke.py"
+    spec = importlib.util.spec_from_file_location("longform_scale_smoke_cli", script_path)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    def fake_run_smoke_report(_args):
+        return {
+            "project_id": "project-smoke-threshold-name",
+            "elapsed_ms": 100,
+            "timings_ms": {
+                "retrieval_reindex": 50,
+            },
+        }
+
+    monkeypatch.setattr(module, "_run_smoke_report", fake_run_smoke_report, raising=False)
+
+    exit_code = module.main(["--max-stage-ms", "retrieval=80"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "unknown timing stage retrieval" in captured.err
+
+
 def test_longform_scale_smoke_cli_fails_when_repeat_reindex_writes_documents(monkeypatch, capsys):
     script_path = Path(__file__).resolve().parents[2] / "scripts" / "longform_scale_smoke.py"
     spec = importlib.util.spec_from_file_location("longform_scale_smoke_cli", script_path)

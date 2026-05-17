@@ -105,6 +105,10 @@ def _threshold_failures(
         failures.append(f"elapsed_ms {elapsed_ms} exceeded max {max_elapsed_ms}")
     timings = report.get("timings_ms") or {}
     for stage, threshold in max_stage_ms.items():
+        if stage not in timings:
+            available = ", ".join(sorted(timings)) or "none"
+            failures.append(f"unknown timing stage {stage}; available stages: {available}")
+            continue
         actual = int(timings.get(stage) or 0)
         if actual > threshold:
             failures.append(f"{stage} {actual} exceeded max {threshold}")
