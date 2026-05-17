@@ -251,6 +251,51 @@ def test_generate_chapter_updates_writing_state_after_success(mock_complete, moc
 
 @patch("app.api.chapters.load_api_key", return_value="sk-test")
 @patch("app.api.chapters.ai_service.complete", new_callable=AsyncMock)
+def test_generate_chapter_rejects_project_target_overflow(mock_complete, mock_key, client, db_session):
+    pid = _create_project_with_setup(client)
+    project = db_session.get(Project, pid)
+    project.target_chapter_count = 1
+    db_session.commit()
+    mock_complete.return_value.content = "第二章正文内容"
+    mock_complete.return_value.model = "deepseek-chat"
+    mock_complete.return_value.prompt_tokens = 100
+    mock_complete.return_value.completion_tokens = 200
+
+    response = client.post(f"/api/v1/projects/{pid}/chapters/2/generate")
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Chapter index exceeds project target chapter count"
+    assert db_session.query(ChapterContent).filter(
+        ChapterContent.project_id == pid,
+        ChapterContent.chapter_index == 2,
+    ).first() is None
+    mock_complete.assert_not_awaited()
+
+
+@patch("app.api.chapters.load_api_key", return_value="sk-test")
+@patch("app.api.chapters.ai_service.complete", new_callable=AsyncMock)
+def test_generate_chapter_rejects_outline_target_overflow(mock_complete, mock_key, client, db_session):
+    pid = _create_project_with_setup(client)
+    db_session.add(Outline(project_id=pid, status="generated", total_chapters=1, chapters=[{"chapter_index": 1}]))
+    db_session.commit()
+    mock_complete.return_value.content = "第二章正文内容"
+    mock_complete.return_value.model = "deepseek-chat"
+    mock_complete.return_value.prompt_tokens = 100
+    mock_complete.return_value.completion_tokens = 200
+
+    response = client.post(f"/api/v1/projects/{pid}/chapters/2/generate")
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Chapter index exceeds project target chapter count"
+    assert db_session.query(ChapterContent).filter(
+        ChapterContent.project_id == pid,
+        ChapterContent.chapter_index == 2,
+    ).first() is None
+    mock_complete.assert_not_awaited()
+
+
+@patch("app.api.chapters.load_api_key", return_value="sk-test")
+@patch("app.api.chapters.ai_service.complete", new_callable=AsyncMock)
 def test_generate_chapter_marks_writing_state_failed_after_model_error(mock_complete, mock_key, client, db_session):
     pid = _create_project_with_setup(client)
     mock_complete.side_effect = RuntimeError("model outage")

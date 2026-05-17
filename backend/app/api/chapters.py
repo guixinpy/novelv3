@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.config import load_api_key
 from app.core.ai_service import AIService
 from app.core.athena_retrieval import sync_longform_memory_retrieval_documents
+from app.core.chapter_target import chapter_index_exceeds_target
 from app.core.longform_memory import refresh_longform_memory_for_chapter
 from app.core.model_call_trace import create_trace, mark_trace_failed, mark_trace_success, now_ms
 from app.core.outline_lookup import find_outline_chapter
@@ -267,6 +268,8 @@ async def create_or_replace_chapter(
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
+    if chapter_index_exceeds_target(db, project, chapter_index):
+        raise HTTPException(status_code=400, detail="Chapter index exceeds project target chapter count")
 
     setup = _get_chapter_setup_context(db, project_id)
     if not setup:
