@@ -19,6 +19,7 @@ const store = useModelTraceStore()
 const detail = computed(() => store.selectedTrace)
 const promptMetadata = computed(() => detail.value ? resolvePromptMetadata(detail.value) : null)
 const promptBudget = computed(() => detail.value ? resolvePromptBudget(detail.value) : null)
+const longformDiagnostics = computed(() => detail.value ? resolveLongformDiagnostics(detail.value.trace_metadata) : null)
 const hasMetadata = computed(() => {
   const metadata = detail.value?.trace_metadata
   return Boolean(metadata && Object.keys(metadata).length > 0)
@@ -87,6 +88,75 @@ function resolvePromptBudget(trace: ModelCallTraceDetail): PromptBudget | null {
   }
 }
 
+function resolveLongformDiagnostics(metadata: Record<string, unknown>) {
+  const wordTarget = resolveChapterWordTarget(metadata.chapter_word_target)
+  const warnings = resolvePostGenerationWarnings(metadata.post_generation_warnings)
+  if (!wordTarget && warnings.length === 0) return null
+  return { wordTarget, warnings }
+}
+
+function resolveChapterWordTarget(value: unknown) {
+  if (!isRecord(value)) return null
+  const actual = numberFromUnknown(value.actual_word_count)
+  if (actual === null) return null
+  const average = numberFromUnknown(value.target_average_word_count)
+  const targetMin = numberFromUnknown(value.target_min_word_count)
+  const targetMax = numberFromUnknown(value.target_max_word_count)
+  const deviation = numberFromUnknown(value.deviation_word_count)
+  const status = stringFromUnknown(value.status) || 'untracked'
+  return {
+    actual,
+    average,
+    deviation,
+    range: targetMin !== null && targetMax !== null ? `${formatNumber(targetMin)}-${formatNumber(targetMax)}字` : '',
+    statusClass: `model-trace-diagnostic__status--${status}`,
+    statusLabel: chapterWordTargetStatusLabel(status),
+    summary: average !== null
+      ? `${formatNumber(actual)}字 / 目标${formatNumber(average)}字`
+      : `${formatNumber(actual)}字`,
+  }
+}
+
+function resolvePostGenerationWarnings(value: unknown) {
+  if (!Array.isArray(value)) return []
+  return value
+    .filter(isRecord)
+    .map((item) => ({
+      stage: postGenerationStageLabel(stringFromUnknown(item.stage) || 'unknown'),
+      errorType: stringFromUnknown(item.error_type) || 'Error',
+      message: stringFromUnknown(item.message) || '未提供错误信息',
+    }))
+}
+
+function chapterWordTargetStatusLabel(status: string) {
+  if (status === 'under') return '偏短'
+  if (status === 'within') return '达标'
+  if (status === 'over') return '偏长'
+  return '未跟踪'
+}
+
+function postGenerationStageLabel(stage: string) {
+  const labels: Record<string, string> = {
+    consistency_check: '一致性检查',
+    athena_analysis: '雅典娜分析',
+    chapter_retrieval_index: '章节检索索引',
+    longform_memory_refresh: '长篇记忆刷新',
+    longform_memory_retrieval_sync: '长篇记忆检索同步',
+    chapter_generated_event: '章节生成事件',
+  }
+  return labels[stage] || stage
+}
+
+function formatNumber(value: number) {
+  return value.toLocaleString('zh-CN')
+}
+
+function formatSignedNumber(value: number | null) {
+  if (value === null) return ''
+  if (value > 0) return `+${formatNumber(value)}`
+  return formatNumber(value)
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -126,6 +196,48 @@ function stringListFromUnknown(value: unknown) {
         <section class="model-trace-drawer__section" aria-label="上下文块">
           <h4>上下文块</h4>
           <ContextBlockList :blocks="detail.context_blocks || []" :budget="promptBudget" />
+        </section>
+
+        <section v-if="longformDiagnostics" class="model-trace-drawer__section" aria-label="长篇生成诊断">
+          <h4>长篇生成诊断</h4>
+          <div class="model-trace-diagnostics">
+            <article v-if="longformDiagnostics.wordTarget" class="model-trace-diagnostic">
+              <div class="model-trace-diagnostic__header">
+                <span>章节字数目标</span>
+                <span
+                  class="model-trace-diagnostic__status"
+                  :class="longformDiagnostics.wordTarget.statusClass"
+                >
+                  {{ longformDiagnostics.wordTarget.statusLabel }}
+                </span>
+              </div>
+              <strong>{{ longformDiagnostics.wordTarget.summary }}</strong>
+              <p v-if="longformDiagnostics.wordTarget.range">
+                目标范围 {{ longformDiagnostics.wordTarget.range }}
+                <template v-if="longformDiagnostics.wordTarget.deviation !== null">
+                  · 偏离 {{ formatSignedNumber(longformDiagnostics.wordTarget.deviation) }}字
+                </template>
+              </p>
+            </article>
+
+            <article v-if="longformDiagnostics.warnings.length" class="model-trace-diagnostic">
+              <div class="model-trace-diagnostic__header">
+                <span>生成后维护警告</span>
+                <span class="model-trace-diagnostic__status model-trace-diagnostic__status--warning">
+                  {{ longformDiagnostics.warnings.length }}
+                </span>
+              </div>
+              <ul class="model-trace-diagnostic__warnings">
+                <li v-for="(warning, index) in longformDiagnostics.warnings" :key="`${warning.stage}-${index}`">
+                  <div>
+                    <strong>{{ warning.stage }}</strong>
+                    <span>{{ warning.errorType }}</span>
+                  </div>
+                  <p>{{ warning.message }}</p>
+                </li>
+              </ul>
+            </article>
+          </div>
         </section>
 
         <section class="model-trace-drawer__section" aria-label="Raw messages">
@@ -189,6 +301,112 @@ function stringListFromUnknown(value: unknown) {
   padding: var(--space-3);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.model-trace-diagnostics {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.model-trace-diagnostic {
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-3);
+}
+
+.model-trace-diagnostic__header {
+  align-items: center;
+  color: var(--color-text-secondary);
+  display: flex;
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  gap: var(--space-2);
+  justify-content: space-between;
+  line-height: var(--leading-tight);
+}
+
+.model-trace-diagnostic strong {
+  color: var(--color-text-primary);
+  font-size: var(--text-base);
+  font-weight: var(--font-semibold);
+  line-height: var(--leading-tight);
+}
+
+.model-trace-diagnostic p {
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.model-trace-diagnostic__status {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  flex: 0 0 auto;
+  font-size: var(--text-xs);
+  line-height: var(--leading-tight);
+  padding: 2px var(--space-2);
+}
+
+.model-trace-diagnostic__status--within {
+  background: var(--color-success-light);
+  border-color: var(--color-success);
+  color: var(--color-success);
+}
+
+.model-trace-diagnostic__status--under,
+.model-trace-diagnostic__status--over,
+.model-trace-diagnostic__status--warning {
+  background: var(--color-warning-light);
+  border-color: var(--color-warning);
+  color: var(--color-warning);
+}
+
+.model-trace-diagnostic__warnings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.model-trace-diagnostic__warnings li {
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-top: var(--space-2);
+}
+
+.model-trace-diagnostic__warnings li:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.model-trace-diagnostic__warnings div {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.model-trace-diagnostic__warnings strong {
+  font-size: var(--text-sm);
+}
+
+.model-trace-diagnostic__warnings span {
+  color: var(--color-text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
 }
 
 .model-trace-drawer__metadata {

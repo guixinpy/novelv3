@@ -122,6 +122,33 @@ function createPromptTraceDetail() {
   }
 }
 
+function createLongformTraceDetail() {
+  return {
+    ...createPromptTraceDetail(),
+    trace_metadata: {
+      ...createPromptTraceDetail().trace_metadata,
+      chapter_word_target: {
+        actual_word_count: 13,
+        project_target_word_count: 20,
+        project_target_chapter_count: 2,
+        target_average_word_count: 10,
+        target_min_word_count: 8,
+        target_max_word_count: 12,
+        deviation_word_count: 3,
+        status: 'over',
+      },
+      post_generation_warning_count: 1,
+      post_generation_warnings: [
+        {
+          stage: 'longform_memory_refresh',
+          error_type: 'RuntimeError',
+          message: 'maintenance failed',
+        },
+      ],
+    },
+  }
+}
+
 function sectionText(selector: string) {
   const section = document.body.querySelector(selector)
   expect(section).not.toBeNull()
@@ -243,6 +270,34 @@ describe('ModelTraceDrawer', () => {
     const budgetText = sectionText('[aria-label="Prompt budget"]')
     expect(budgetText).toContain('world-history')
     expect(budgetText).toContain('chapter-summary')
+
+    wrapper.unmount()
+  })
+
+  it('结构化渲染长篇生成诊断', async () => {
+    vi.mocked(api.getModelCallTrace).mockResolvedValue(createLongformTraceDetail())
+
+    const wrapper = mount(ModelTraceDrawer, {
+      props: {
+        projectId: 'project-1',
+        traceId: 'trace-longform',
+        open: true,
+      },
+      attachTo: document.body,
+    })
+
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    const diagnosticsText = sectionText('[aria-label="长篇生成诊断"]')
+    expect(diagnosticsText).toContain('章节字数目标')
+    expect(diagnosticsText).toContain('13字 / 目标10字')
+    expect(diagnosticsText).toContain('8-12字')
+    expect(diagnosticsText).toContain('偏长')
+    expect(diagnosticsText).toContain('生成后维护警告')
+    expect(diagnosticsText).toContain('长篇记忆刷新')
+    expect(diagnosticsText).toContain('RuntimeError')
+    expect(diagnosticsText).toContain('maintenance failed')
 
     wrapper.unmount()
   })
