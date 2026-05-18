@@ -50,6 +50,7 @@ ALLOWED_TOOLS = {
     "analyze_chapter_world_model",
     "expand_outline_window",
     "backfill_outline_gaps",
+    "review_chapter_quality",
 }
 CHAPTER_TOOL_NAME = "generate_chapter"
 INTERNAL_TOOLS = {
@@ -58,6 +59,7 @@ INTERNAL_TOOLS = {
     "analyze_chapter_world_model",
     "expand_outline_window",
     "backfill_outline_gaps",
+    "review_chapter_quality",
 }
 
 
@@ -103,7 +105,7 @@ class WritingAgentRunService:
             result = await self._execute_tool(run.project_id, tool, run_id=run.id)
             if not isinstance(result, dict):
                 result = {"status": "failed", "error": "Tool returned non-dict result"}
-            if result.get("status") == RUN_BLOCKED:
+            if result.get("status") == RUN_BLOCKED and tool.tool_name != "review_chapter_quality":
                 self._block_step_and_run(run, step, _block_message(result), output=result)
                 return run
             if result.get("status") == "failed":
@@ -189,6 +191,11 @@ class WritingAgentRunService:
                 project_id,
                 before_chapter=int(before_chapter) if before_chapter else None,
             )
+        if tool.tool_name == "review_chapter_quality":
+            from app.core.chapter_quality_review import review_chapter_quality
+
+            chapter_index = int(tool.params.get("chapter_index") or 1)
+            return review_chapter_quality(self.db, project_id, chapter_index)
         return {"status": "failed", "error": f"Unsupported writing agent tool: {tool.tool_name}"}
 
     def list_runs(self, project_id: str, *, offset: int = 0, limit: int = 20) -> dict[str, Any]:
@@ -530,6 +537,7 @@ def _target_type_for_tool(tool_name: str) -> str | None:
         "analyze_chapter_world_model": "world_model",
         "expand_outline_window": "outline",
         "backfill_outline_gaps": "outline",
+        "review_chapter_quality": "review",
     }.get(tool_name)
 
 

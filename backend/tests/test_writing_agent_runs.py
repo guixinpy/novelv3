@@ -496,6 +496,57 @@ def test_agent_preflight_blocks_when_repeated_over_target_drift_requires_review(
     assert output["issues"][0]["code"] == "repeated_chapter_length_drift"
 
 
+def test_agent_review_chapter_quality_flags_generic_title_and_length(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1, 2])
+    chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=2).one()
+    chapter.title = "第2章"
+    chapter.word_count = 3200
+    db_session.commit()
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "审稿第2章",
+            "tools": [{"tool_name": "review_chapter_quality", "params": {"chapter_index": 2}}],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    assert output["status"] == "blocked"
+    assert {finding["code"] for finding in output["findings"]} >= {"generic_chapter_title", "chapter_over_target"}
+    assert "revise_chapter" in output["recommended_actions"]
+
+
+def test_agent_review_chapter_quality_flags_future_outline_overlap(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2, 3, 4], generated_chapters=[1, 2, 3])
+    chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=3).one()
+    chapter.title = "雾中童谣"
+    chapter.content = "顾衍出现在地下实验室，警告他们不要靠近黑市雾晶。"
+    chapter.word_count = 2000
+    outline = db_session.query(Outline).filter_by(project_id=project.id).one()
+    chapters = [dict(item) for item in outline.chapters]
+    chapters[3]["title"] = "顾衍的警告"
+    chapters[3]["summary"] = "顾衍现身并警告主角不要继续调查。"
+    outline.chapters = chapters
+    db_session.commit()
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "审稿第3章",
+            "tools": [{"tool_name": "review_chapter_quality", "params": {"chapter_index": 3}}],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    assert output["status"] == "blocked"
+    assert any(finding["code"] == "future_outline_overlap" for finding in output["findings"])
+
+
 @patch("app.api.outlines.load_api_key", return_value="sk-test")
 @patch("app.api.outlines.ai_service.complete", new_callable=AsyncMock)
 @patch("app.api.outlines.ai_service.parse_json")
