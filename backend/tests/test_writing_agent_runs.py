@@ -1031,6 +1031,392 @@ def test_agent_plan_world_model_proposal_resolution_blocks_followup_generation(c
     assert calls == []
 
 
+def test_agent_preview_world_model_proposal_resolution_validates_decisions_without_writes(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1], generated_chapters=[1])
+    import_setup_to_world_model(db_session, project.id)
+    approve_item = _seed_pending_world_proposal(
+        db_session,
+        project_id=project.id,
+        claim_id="claim.phase12.agent.approve",
+        predicate="role",
+        subject_ref="char.林深",
+    )
+    reject_item = _seed_pending_world_proposal(
+        db_session,
+        project_id=project.id,
+        claim_id="claim.phase12.agent.reject",
+        predicate="mentioned_in_chapter",
+        subject_ref="char.苏晚晴",
+    )
+    before_review_count = db_session.query(WorldProposalReview).count()
+    before_fact_count = db_session.query(WorldFactClaim).count()
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "预览世界模型提案解决决策",
+            "tools": [
+                {
+                    "tool_name": "preview_world_model_proposal_resolution",
+                    "params": {
+                        "decisions": [
+                            {
+                                "proposal_item_id": approve_item.id,
+                                "action": "approve",
+                                "reason": "确认角色定位",
+                                "evidence_refs": ["test:phase12"],
+                            },
+                            {
+                                "proposal_item_id": reject_item.id,
+                                "action": "reject",
+                                "reason": "仅作预览拒绝",
+                                "evidence_refs": "test:phase12:string-ref",
+                            },
+                        ]
+                    },
+                }
+            ],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    stored_approve_item = db_session.query(WorldProposalItem).filter_by(id=approve_item.id).one()
+    stored_reject_item = db_session.query(WorldProposalItem).filter_by(id=reject_item.id).one()
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    assert output["status"] == "blocked"
+    assert output["preview_only"] is True
+    assert output["requires_confirmation"] is True
+    assert output["can_auto_apply"] is False
+    assert output["valid_decision_count"] == 2
+    assert output["invalid_decision_count"] == 0
+    assert output["would_create_review_count"] == 2
+    assert output["would_create_fact_count"] == 1
+    assert output["would_resolve_item_count"] == 2
+    assert output["remaining_actionable_item_count_after_preview"] == 0
+    assert output["would_unblock_generation"] is True
+    assert output["should_generate_next_chapter"] is False
+    reject_preview = next(decision for decision in output["valid_decisions"] if decision["proposal_item_id"] == reject_item.id)
+    assert reject_preview["evidence_refs"] == ["test:phase12:string-ref"]
+    assert stored_approve_item.item_status == "pending"
+    assert stored_reject_item.item_status == "pending"
+    assert db_session.query(WorldProposalReview).count() == before_review_count
+    assert db_session.query(WorldFactClaim).count() == before_fact_count
+
+
+def test_agent_preview_world_model_proposal_resolution_reports_missing_profile_for_non_dict_decision(
+    client,
+    db_session,
+):
+    project = _seed_longform_project(db_session, outline_chapters=[1], generated_chapters=[1])
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "缺少世界模型档案时预览异常决策",
+            "tools": [
+                {
+                    "tool_name": "preview_world_model_proposal_resolution",
+                    "params": {"decisions": ["not-a-decision"]},
+                }
+            ],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    assert output["status"] == "missing_profile"
+    assert output["valid_decision_count"] == 0
+    assert output["invalid_decision_count"] == 1
+    assert output["invalid_decisions"][0]["code"] == "missing_profile"
+    assert output["should_generate_next_chapter"] is False
+
+
+def test_agent_preview_world_model_proposal_resolution_reports_invalid_decisions(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1], generated_chapters=[1])
+    import_setup_to_world_model(db_session, project.id)
+    valid_item = _seed_pending_world_proposal(
+        db_session,
+        project_id=project.id,
+        claim_id="claim.phase12.agent.valid",
+        predicate="role",
+        subject_ref="char.林深",
+    )
+    unsupported_item = _seed_pending_world_proposal(
+        db_session,
+        project_id=project.id,
+        claim_id="claim.phase12.agent.unsupported",
+        predicate="status",
+        subject_ref="char.苏晚晴",
+    )
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "预览无效世界模型提案决策",
+            "tools": [
+                {
+                    "tool_name": "preview_world_model_proposal_resolution",
+                    "params": {
+                        "decisions": [
+                            {
+                                "proposal_item_id": valid_item.id,
+                                "action": "reject",
+                                "reason": "有效拒绝预览",
+                            },
+                            {
+                                "proposal_item_id": valid_item.id,
+                                "action": "reject",
+                                "reason": "重复决策",
+                            },
+                            {
+                                "proposal_item_id": "proposal-item.missing.phase12",
+                                "action": "approve",
+                                "reason": "不存在",
+                            },
+                            {
+                                "proposal_item_id": unsupported_item.id,
+                                "action": "split",
+                                "reason": "不支持的动作",
+                            },
+                        ]
+                    },
+                }
+            ],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    invalid_codes = {item["code"] for item in output["invalid_decisions"]}
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    assert output["status"] == "blocked"
+    assert output["valid_decision_count"] == 1
+    assert output["invalid_decision_count"] == 3
+    assert invalid_codes == {"duplicate_decision", "missing_item", "unsupported_action"}
+    assert output["remaining_actionable_item_count_after_preview"] == 1
+    assert output["would_unblock_generation"] is False
+    assert output["should_generate_next_chapter"] is False
+
+
+def test_agent_preview_world_model_proposal_resolution_reports_non_actionable_items(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1], generated_chapters=[1])
+    import_setup_to_world_model(db_session, project.id)
+    item = _seed_pending_world_proposal(
+        db_session,
+        project_id=project.id,
+        claim_id="claim.phase12.agent.non-actionable",
+        predicate="role",
+        subject_ref="char.林深",
+    )
+    item.item_status = "approved"
+    db_session.commit()
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "预览非待审世界模型提案决策",
+            "tools": [
+                {
+                    "tool_name": "preview_world_model_proposal_resolution",
+                    "params": {
+                        "decisions": [
+                            {
+                                "proposal_item_id": item.id,
+                                "action": "reject",
+                                "reason": "已经不是待审项",
+                            }
+                        ]
+                    },
+                }
+            ],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    assert output["status"] == "blocked"
+    assert output["valid_decision_count"] == 0
+    assert output["invalid_decision_count"] == 1
+    assert output["invalid_decisions"][0]["code"] == "non_actionable_item"
+    assert output["should_generate_next_chapter"] is False
+
+
+def test_agent_preview_world_model_proposal_resolution_blocks_generation_for_empty_queue_decisions(
+    client,
+    db_session,
+):
+    project = _seed_longform_project(db_session, outline_chapters=[1], generated_chapters=[1])
+    import_setup_to_world_model(db_session, project.id)
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "空队列下预览无效决策",
+            "tools": [
+                {
+                    "tool_name": "preview_world_model_proposal_resolution",
+                    "params": {
+                        "decisions": [
+                            {
+                                "proposal_item_id": "proposal-item.missing.empty-queue",
+                                "action": "reject",
+                                "reason": "不存在",
+                            }
+                        ]
+                    },
+                }
+            ],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    assert output["status"] == "blocked"
+    assert output["invalid_decision_count"] == 1
+    assert output["should_generate_next_chapter"] is False
+
+
+def test_agent_preview_world_model_proposal_resolution_rejects_non_atomized_world_intake_approve(
+    client,
+    db_session,
+):
+    project = _seed_longform_project(db_session, outline_chapters=[1], generated_chapters=[1])
+    import_setup_to_world_model(db_session, project.id)
+    intake_item = _seed_pending_world_proposal(
+        db_session,
+        project_id=project.id,
+        claim_id="claim.phase12.agent.world-intake",
+        predicate="user_proposed_update",
+        subject_ref="project.world_intake",
+    )
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "预览未原子化世界入口提案",
+            "tools": [
+                {
+                    "tool_name": "preview_world_model_proposal_resolution",
+                    "params": {
+                        "decisions": [
+                            {
+                                "proposal_item_id": intake_item.id,
+                                "action": "approve",
+                                "reason": "直接审批入口提案",
+                            }
+                        ]
+                    },
+                }
+            ],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    assert output["valid_decision_count"] == 0
+    assert output["invalid_decision_count"] == 1
+    assert output["invalid_decisions"][0]["code"] == "world_intake_not_atomized"
+    assert output["should_generate_next_chapter"] is False
+
+
+def test_agent_plan_world_model_proposal_resolution_allows_preview_followup(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1], generated_chapters=[1])
+    import_setup_to_world_model(db_session, project.id)
+    item = _seed_pending_world_proposal(
+        db_session,
+        project_id=project.id,
+        claim_id="claim.phase12.agent.plan-preview",
+        predicate="role",
+        subject_ref="char.林深",
+    )
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "先规划再预览世界模型提案决策",
+            "tools": [
+                {"tool_name": "plan_world_model_proposal_resolution", "params": {"limit": 20}},
+                {
+                    "tool_name": "preview_world_model_proposal_resolution",
+                    "params": {
+                        "decisions": [
+                            {
+                                "proposal_item_id": item.id,
+                                "action": "reject",
+                                "reason": "预览拒绝",
+                            }
+                        ]
+                    },
+                },
+            ],
+        },
+    )
+
+    payload = response.json()
+    assert response.status_code == 200
+    assert payload["status"] == "success"
+    assert [step["tool_name"] for step in payload["steps"]] == [
+        "plan_world_model_proposal_resolution",
+        "preview_world_model_proposal_resolution",
+    ]
+    assert payload["steps"][1]["output"]["valid_decision_count"] == 1
+
+
+def test_agent_preview_world_model_proposal_resolution_blocks_followup_generation(client, db_session, monkeypatch):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1])
+    import_setup_to_world_model(db_session, project.id)
+    item = _seed_pending_world_proposal(
+        db_session,
+        project_id=project.id,
+        claim_id="claim.phase12.agent.blocks-generation",
+        predicate="status",
+        subject_ref="char.苏晚晴",
+    )
+    calls = []
+
+    async def fake_execute(self, action_type, project_id, *, command_args=None, action_params=None):
+        calls.append(action_type)
+        return {"status": "success", "chapter_index": 2}
+
+    monkeypatch.setattr("app.services.actions.action_execution_service.ActionExecutionService.execute", fake_execute)
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "预览提案决策后尝试生成第2章",
+            "tools": [
+                {
+                    "tool_name": "preview_world_model_proposal_resolution",
+                    "params": {
+                        "decisions": [
+                            {
+                                "proposal_item_id": item.id,
+                                "action": "reject",
+                                "reason": "预览拒绝",
+                            }
+                        ]
+                    },
+                },
+                {"tool_name": "generate_chapter", "params": {"chapter_index": 2}},
+            ],
+        },
+    )
+
+    payload = response.json()
+    assert response.status_code == 200
+    assert payload["status"] == "blocked"
+    assert payload["steps"][0]["tool_name"] == "preview_world_model_proposal_resolution"
+    assert payload["steps"][0]["status"] == "success"
+    assert payload["steps"][0]["output"]["should_generate_next_chapter"] is False
+    assert len(payload["steps"]) == 1
+    assert calls == []
+
+
 def test_agent_create_revision_draft_from_plan_is_non_destructive(client, db_session):
     project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1, 2])
     chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=2).one()
