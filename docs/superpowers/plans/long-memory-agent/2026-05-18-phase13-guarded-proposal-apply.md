@@ -63,7 +63,7 @@
 - Create: `backend/app/core/world_proposal_resolution_apply.py`
 - Modify: `backend/tests/test_writing_agent_runs.py`
 
-- [ ] **Step 1: Write failing missing-confirmation test**
+- [x] **Step 1: Write failing missing-confirmation test**
 
 Add `test_agent_apply_world_model_proposal_resolution_requires_confirmation_without_writes`:
 
@@ -114,7 +114,7 @@ def test_agent_apply_world_model_proposal_resolution_requires_confirmation_witho
     assert db_session.query(WorldProposalReview).count() == before_review_count
 ```
 
-- [ ] **Step 2: Run test to verify RED**
+- [x] **Step 2: Run test to verify RED**
 
 Run:
 
@@ -125,7 +125,7 @@ cd backend
 
 Expected: fail because the tool is not supported.
 
-- [ ] **Step 3: Implement minimal apply core**
+- [x] **Step 3: Implement minimal apply core**
 
 Create:
 
@@ -151,7 +151,7 @@ Implementation rules:
 - Count actionable proposal items before and after apply.
 - Return `should_generate_next_chapter=true` only when the after count is zero.
 
-- [ ] **Step 4: Run missing-confirmation test to verify GREEN**
+- [x] **Step 4: Run missing-confirmation test to verify GREEN**
 
 Run:
 
@@ -169,7 +169,7 @@ Expected: pass.
 - Modify: `backend/tests/test_writing_agent_runs.py`
 - Modify: `backend/app/core/world_proposal_resolution_apply.py`
 
-- [ ] **Step 1: Write failing apply behavior tests**
+- [x] **Step 1: Write failing apply behavior tests**
 
 Add tests:
 
@@ -200,7 +200,7 @@ assert stored_valid_item.item_status == "pending"
 assert db_session.query(WorldProposalReview).count() == before_review_count
 ```
 
-- [ ] **Step 2: Run tests to verify RED**
+- [x] **Step 2: Run tests to verify RED**
 
 Run:
 
@@ -211,7 +211,7 @@ cd backend
 
 Expected: fail until validation and apply behavior are complete.
 
-- [ ] **Step 3: Complete apply behavior**
+- [x] **Step 3: Complete apply behavior**
 
 Update the core so it returns:
 
@@ -229,7 +229,7 @@ Update the core so it returns:
 - `should_generate_next_chapter`;
 - `recommended_actions`.
 
-- [ ] **Step 4: Run apply behavior tests to verify GREEN**
+- [x] **Step 4: Run apply behavior tests to verify GREEN**
 
 Run:
 
@@ -247,7 +247,7 @@ Expected: pass.
 - Modify: `backend/app/services/writing_agent/run_service.py`
 - Modify: `backend/tests/test_writing_agent_runs.py`
 
-- [ ] **Step 1: Write failing Agent chaining tests**
+- [x] **Step 1: Write failing Agent chaining tests**
 
 Add tests:
 
@@ -283,7 +283,7 @@ assert [step["tool_name"] for step in payload["steps"]] == [
 assert calls == ["generate_chapter"]
 ```
 
-- [ ] **Step 2: Run chaining tests to verify RED**
+- [x] **Step 2: Run chaining tests to verify RED**
 
 Run:
 
@@ -294,7 +294,7 @@ cd backend
 
 Expected: fail until the Agent tool is wired.
 
-- [ ] **Step 3: Wire the tool**
+- [x] **Step 3: Wire the tool**
 
 Add `apply_world_model_proposal_resolution` to:
 
@@ -307,7 +307,7 @@ Add `apply_world_model_proposal_resolution` to:
 - `_successful_report_block_message`;
 - `_allowed_report_followup` for `preview_world_model_proposal_resolution -> apply_world_model_proposal_resolution`.
 
-- [ ] **Step 4: Run full Phase13 targeted suite**
+- [x] **Step 4: Run full Phase13 targeted suite**
 
 Run:
 
@@ -325,7 +325,7 @@ Expected: pass.
 - Create: `docs/superpowers/notes/long-memory-agent/2026-05-18-phase13-guarded-proposal-apply.md`
 - Modify: `docs/superpowers/plans/long-memory-agent/2026-05-18-phase13-guarded-proposal-apply.md`
 
-- [ ] **Step 1: Run focused verification**
+- [x] **Step 1: Run focused verification**
 
 Run:
 
@@ -338,7 +338,7 @@ rg "sk-[A-Za-z0-9]{20,}" -n docs backend frontend references
 
 Expected: tests pass, no whitespace errors, no committed secrets.
 
-- [ ] **Step 2: Run dogfood guarded apply**
+- [x] **Step 2: Run dogfood guarded apply**
 
 Use dogfood project `25fa2b20-5b9f-473b-918b-f4ea491cbb60` and apply two explicit non-merge decisions only if their current statuses are still `pending`:
 
@@ -368,7 +368,7 @@ Expected:
 - no `WorldFactClaim` is created;
 - Chapter 4 is not generated.
 
-- [ ] **Step 3: Record phase report and next recommendation**
+- [x] **Step 3: Record phase report and next recommendation**
 
 The report must include:
 
@@ -381,4 +381,52 @@ The report must include:
 
 ## Phase Report
 
-To be filled after execution.
+### Implementation
+
+- Added `backend/app/core/world_proposal_resolution_apply.py`.
+- Wired `apply_world_model_proposal_resolution` into the Writing Agent internal/report tool path.
+- Extended `review_proposal_item` with `commit=True` default so existing callers keep behavior, while Phase13 apply can use `commit=False` and commit the batch atomically.
+- Added Agent tests for confirmation gating, missing profile, confirmed non-merge apply, approval refusal, batch rollback, invalid batch blocking, preview-to-apply chaining, and apply-to-generation gating.
+
+### Review Feedback Resolved
+
+- Independent review found that calling `review_proposal_item` one decision at a time would commit each item and could partially apply a batch if a later item failed during review.
+- Fixed by using `review_proposal_item(..., commit=False)` inside `apply_world_model_proposal_resolution`, then one final `db.commit()`.
+- Added regression coverage where preview decisions are valid, but the second item fails during review due to contract drift. The first item remains `pending`, the second remains `pending`, and no review row is created.
+- Added direct `approve_with_edits` rejection coverage.
+
+### Runtime Dogfood
+
+- Dogfood project: `25fa2b20-5b9f-473b-918b-f4ea491cbb60` (`雾港回声`).
+- Novel progress remains 3 generated chapters. Chapter 4 was intentionally not generated.
+- Apply run: `03330a03-1c45-4d4d-9bf2-73ee2a9bdea6`.
+- Before apply:
+  - actionable proposal items: 24;
+  - proposal reviews: 0;
+  - world fact claims: 0;
+  - selected statuses: `pending`, `pending`.
+- Applied decisions:
+  - `b642eaa2-553a-4dff-a77b-1f6f0e89fca4`: `reject`, review `f6db0b3d-d38c-40f9-98c7-48acc20413ae`;
+  - `9a5a799c-d0df-4616-97cd-798bd3f1425f`: `mark_uncertain`, review `fcf2cf2b-03b3-47f2-9bdb-3db8d624fff6`.
+- After apply:
+  - actionable proposal items: 22;
+  - proposal reviews: 2;
+  - world fact claims: 0;
+  - selected statuses: `rejected`, `uncertain`.
+- Tool output status remained `blocked`, with `should_generate_next_chapter=false`, because 22 actionable proposal items remain.
+
+### Verification Evidence
+
+- Missing confirmation RED: tool unsupported before implementation.
+- Missing profile empty decision RED: apply initially returned `ready`; fixed to `missing_profile` with `should_generate_next_chapter=false`.
+- Phase13 targeted suite: `9 passed in 0.80s`.
+- Writing Agent suite: `55 passed in 3.70s`.
+- Independent re-review targeted suite: `4 passed in 0.43s`.
+- Final verification is recorded in the phase note.
+
+### Next Phase Recommendation
+
+Continue resolving the dogfood proposal queue before generating Chapter 4. Next phase should either:
+
+- apply additional explicit `reject` / `mark_uncertain` decisions in small batches; or
+- add an Agent-assisted decision drafting tool that proposes safe non-merge decisions for low-risk/noisy proposal types while still requiring confirmation.
