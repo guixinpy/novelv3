@@ -109,6 +109,82 @@ def test_generate_outline_normalizes_structured_scene_items(mock_parse, mock_com
 @patch("app.api.outlines.load_api_key", return_value="sk-test")
 @patch("app.api.outlines.ai_service.complete", new_callable=AsyncMock)
 @patch("app.api.outlines.ai_service.parse_json")
+def test_expand_outline_window_appends_missing_chapters_without_overwriting_existing(
+    mock_parse,
+    mock_complete,
+    mock_key,
+    client,
+    db_session,
+):
+    project = _seed_outline_window_project(db_session)
+    mock_complete.return_value.content = "{}"
+    mock_parse.return_value = {
+        "total_chapters": 600,
+        "chapters": [
+            {"chapter_index": 1, "title": "不应覆盖", "summary": "旧章"},
+            {
+                "chapter_index": 2,
+                "title": "雾晶余温",
+                "summary": "林深和苏晚晴整理雾晶线索。",
+                "scenes": [{"setting": "废弃厂房", "content": "两人复盘异常记忆。"}],
+                "characters": [{"name": "林深"}],
+                "purpose": "承接第1章",
+            },
+            {
+                "chapter_index": 3,
+                "title": "诊所残影",
+                "summary": "记忆诊所出现新的证词。",
+                "scenes": ["诊所调查"],
+                "characters": ["林深", "苏晚晴"],
+                "purpose": "推进调查",
+            },
+        ],
+    }
+
+    response = client.post(f"/api/v1/projects/{project.id}/outline/expand-window?start_chapter=2&end_chapter=3")
+
+    assert response.status_code == 200
+    chapters = response.json()["chapters"]
+    assert [chapter["chapter_index"] for chapter in chapters] == [1, 2, 3]
+    assert chapters[0]["title"] == "雾中回声"
+    assert chapters[1]["title"] == "雾晶余温"
+    assert chapters[1]["scenes"] == ["废弃厂房：两人复盘异常记忆"]
+    assert chapters[1]["characters"] == ["林深"]
+    trace = client.get(f"/api/v1/projects/{project.id}/model-call-traces?trace_type=outline_expansion").json()
+    assert trace["total"] == 1
+
+
+@patch("app.api.outlines.load_api_key", return_value="sk-test")
+@patch("app.api.outlines.ai_service.complete", new_callable=AsyncMock)
+@patch("app.api.outlines.ai_service.parse_json")
+def test_expand_outline_window_ignores_out_of_window_chapters(
+    mock_parse,
+    mock_complete,
+    mock_key,
+    client,
+    db_session,
+):
+    project = _seed_outline_window_project(db_session)
+    mock_complete.return_value.content = "{}"
+    mock_parse.return_value = {
+        "total_chapters": 600,
+        "chapters": [
+            {"chapter_index": 3, "title": "诊所残影", "summary": "第3章"},
+            {"chapter_index": 99, "title": "远期章节", "summary": "不应加入"},
+        ],
+    }
+
+    response = client.post(f"/api/v1/projects/{project.id}/outline/expand-window?start_chapter=3&end_chapter=3")
+
+    assert response.status_code == 200
+    chapters = response.json()["chapters"]
+    assert [chapter["chapter_index"] for chapter in chapters] == [1, 3]
+    assert all(chapter["chapter_index"] != 99 for chapter in chapters)
+
+
+@patch("app.api.outlines.load_api_key", return_value="sk-test")
+@patch("app.api.outlines.ai_service.complete", new_callable=AsyncMock)
+@patch("app.api.outlines.ai_service.parse_json")
 def test_generate_outline_uses_project_ai_model(mock_parse, mock_complete, mock_key, client, db_session):
     r = client.post("/api/v1/projects", json={"name": "Model Routed Outline"})
     pid = r.json()["id"]
@@ -546,3 +622,48 @@ def test_generate_outline_uses_bounded_storyline_context_without_selecting_full_
     assert any("json_each(storylines.foreshadowing)" in statement for statement in statements)
     assert all("storylines.plotlines as" not in clause for clause in storyline_select_clauses)
     assert all("storylines.foreshadowing as" not in clause for clause in storyline_select_clauses)
+
+
+def _seed_outline_window_project(db_session) -> Project:
+    project = Project(name="Outline Window", genre="都市悬疑", target_chapter_count=600, target_word_count=1200000)
+    db_session.add(project)
+    db_session.flush()
+    db_session.add(
+        Setup(
+            project_id=project.id,
+            status="generated",
+            world_building={"background": "雾港记忆异常"},
+            characters=[{"name": "林深"}],
+            core_concept={"hook": "雾晶回声"},
+        )
+    )
+    db_session.add(
+        Storyline(
+            project_id=project.id,
+            status="generated",
+            plotlines=[{"name": "主线", "type": "main", "summary": "调查记忆异常", "milestones": []}],
+            foreshadowing=[],
+        )
+    )
+    db_session.add(
+        Outline(
+            project_id=project.id,
+            total_chapters=600,
+            status="generated",
+            chapters=[
+                {
+                    "chapter_index": 1,
+                    "title": "雾中回声",
+                    "summary": "林深发现雾晶。",
+                    "scenes": ["废弃公寓"],
+                    "characters": ["林深"],
+                    "purpose": "开篇",
+                }
+            ],
+            plotlines=[],
+            foreshadowing=[],
+        )
+    )
+    db_session.commit()
+    db_session.refresh(project)
+    return project

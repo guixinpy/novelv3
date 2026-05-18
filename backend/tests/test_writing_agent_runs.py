@@ -1,5 +1,17 @@
+from unittest.mock import AsyncMock, patch
+
 from app.core.athena_longform import import_setup_to_world_model
-from app.models import AIModelCallTrace, ChapterContent, Outline, Project, ProjectProfileVersion, Setup, WritingAgentRun, WritingAgentStep
+from app.models import (
+    AIModelCallTrace,
+    ChapterContent,
+    Outline,
+    Project,
+    ProjectProfileVersion,
+    Setup,
+    Storyline,
+    WritingAgentRun,
+    WritingAgentStep,
+)
 
 
 def test_writing_agent_run_and_step_persist(client, db_session):
@@ -294,6 +306,57 @@ def test_agent_analyze_chapter_world_model_records_proposal_output(client, db_se
     assert output["created"]["proposal_items"] >= 1
 
 
+@patch("app.api.outlines.load_api_key", return_value="sk-test")
+@patch("app.api.outlines.ai_service.complete", new_callable=AsyncMock)
+@patch("app.api.outlines.ai_service.parse_json")
+def test_agent_expand_outline_window_adds_missing_outline_then_preflight_ready(
+    mock_parse,
+    mock_complete,
+    mock_key,
+    client,
+    db_session,
+):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1, 2])
+    import_setup_to_world_model(db_session, project.id)
+    mock_complete.return_value.content = "{}"
+    mock_parse.return_value = {
+        "total_chapters": 600,
+        "chapters": [
+            {
+                "chapter_index": 3,
+                "title": "诊所残影",
+                "summary": "林深和苏晚晴追查记忆诊所。",
+                "scenes": ["诊所门口", "档案室"],
+                "characters": ["林深", "苏晚晴"],
+                "purpose": "补齐第3章大纲",
+            }
+        ],
+    }
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "补齐第3章大纲并检查可写性",
+            "tools": [
+                {
+                    "tool_name": "expand_outline_window",
+                    "params": {"start_chapter": 3, "end_chapter": 3, "command_args": "补齐第3章"},
+                },
+                {"tool_name": "preflight_writing", "params": {"chapter_index": 3}},
+            ],
+        },
+    )
+
+    payload = response.json()
+    assert response.status_code == 200
+    assert payload["status"] == "success"
+    assert payload["steps"][0]["tool_name"] == "expand_outline_window"
+    assert payload["steps"][0]["output"]["added_chapter_count"] == 1
+    assert payload["steps"][1]["output"]["status"] == "ready"
+    outline = db_session.query(Outline).filter(Outline.project_id == project.id).one()
+    assert [chapter["chapter_index"] for chapter in outline.chapters] == [1, 2, 3]
+
+
 def _create_project(client, name: str) -> str:
     response = client.post("/api/v1/projects", json={"name": name})
     assert response.status_code == 200
@@ -342,6 +405,14 @@ def _seed_longform_project(db_session, *, outline_chapters: list[int], generated
         core_concept={"theme": "记忆与真相", "hook": "雾港会回放被删除的记忆"},
     )
     db_session.add(setup)
+    db_session.add(
+        Storyline(
+            project_id=project.id,
+            status="generated",
+            plotlines=[{"name": "主线", "type": "main", "summary": "追查雾港记忆异常", "milestones": []}],
+            foreshadowing=[],
+        )
+    )
     outline = Outline(
         project_id=project.id,
         total_chapters=600,

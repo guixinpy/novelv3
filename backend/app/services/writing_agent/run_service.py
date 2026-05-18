@@ -44,9 +44,10 @@ ALLOWED_TOOLS = {
     "preflight_writing",
     "import_setup_world_model",
     "analyze_chapter_world_model",
+    "expand_outline_window",
 }
 CHAPTER_TOOL_NAME = "generate_chapter"
-INTERNAL_TOOLS = {"preflight_writing", "import_setup_world_model", "analyze_chapter_world_model"}
+INTERNAL_TOOLS = {"preflight_writing", "import_setup_world_model", "analyze_chapter_world_model", "expand_outline_window"}
 
 
 class WritingAgentRunService:
@@ -129,6 +130,30 @@ class WritingAgentRunService:
 
             chapter_index = int(tool.params.get("chapter_index") or 1)
             return analyze_chapter_to_world_proposals(db=self.db, project_id=project_id, chapter_index=chapter_index)
+        if tool.tool_name == "expand_outline_window":
+            from app.api.outlines import expand_outline_window
+
+            start_chapter = int(tool.params.get("start_chapter") or tool.params.get("chapter_index") or 1)
+            end_chapter = int(tool.params.get("end_chapter") or start_chapter)
+            command_args = str(tool.params.get("command_args") or tool.command_args or "").strip() or None
+            outline = await expand_outline_window(
+                project_id,
+                start_chapter=start_chapter,
+                end_chapter=end_chapter,
+                db=self.db,
+                command_args=command_args,
+            )
+            merge = getattr(outline, "outline_expansion_result", {}) or {}
+            return {
+                "status": "completed",
+                "start_chapter": start_chapter,
+                "end_chapter": end_chapter,
+                "outline_id": outline.id,
+                "total_chapters": outline.total_chapters,
+                "added_chapter_count": int(merge.get("added_chapter_count") or 0),
+                "merge": merge,
+                "trace_id": getattr(outline, "last_expansion_trace_id", None),
+            }
         return {"status": "failed", "error": f"Unsupported writing agent tool: {tool.tool_name}"}
 
     def list_runs(self, project_id: str, *, offset: int = 0, limit: int = 20) -> dict[str, Any]:
@@ -431,6 +456,7 @@ def _target_type_for_tool(tool_name: str) -> str | None:
         "preflight_writing": "preflight",
         "import_setup_world_model": "world_model",
         "analyze_chapter_world_model": "world_model",
+        "expand_outline_window": "outline",
     }.get(tool_name)
 
 

@@ -54,6 +54,52 @@ def _normalize_outline_chapters(chapters: object) -> list[dict]:
     return normalized
 
 
+def _outline_chapter_index(chapter: dict) -> int | None:
+    try:
+        return int(chapter.get("chapter_index"))
+    except (TypeError, ValueError):
+        return None
+
+
+def _merge_outline_chapter_window(
+    existing_chapters: object,
+    incoming_chapters: object,
+    *,
+    start_chapter: int,
+    end_chapter: int,
+) -> tuple[list[dict], dict]:
+    existing = _normalize_outline_chapters(existing_chapters)
+    incoming = _normalize_outline_chapters(incoming_chapters)
+    existing_indexes = {
+        chapter_index
+        for chapter in existing
+        if (chapter_index := _outline_chapter_index(chapter)) is not None
+    }
+    merged = list(existing)
+    added = 0
+    skipped_existing = 0
+    skipped_out_of_window = 0
+    for chapter in incoming:
+        chapter_index = _outline_chapter_index(chapter)
+        if chapter_index is None or chapter_index < start_chapter or chapter_index > end_chapter:
+            skipped_out_of_window += 1
+            continue
+        if chapter_index in existing_indexes:
+            skipped_existing += 1
+            continue
+        merged.append(chapter)
+        existing_indexes.add(chapter_index)
+        added += 1
+    merged.sort(key=lambda chapter: _outline_chapter_index(chapter) or 10**9)
+    return merged, {
+        "added_chapter_count": added,
+        "skipped_existing_count": skipped_existing,
+        "skipped_out_of_window_count": skipped_out_of_window,
+        "start_chapter": start_chapter,
+        "end_chapter": end_chapter,
+    }
+
+
 def _normalize_text_list(value: object, *, item_kind: str) -> list[str]:
     if value is None:
         return []
@@ -329,6 +375,112 @@ async def generate_outline(project_id: str, db: Session = Depends(get_db), comma
 
     WritingStateService(db).reconcile_target(project_id)
     return outline
+
+
+@router.post("/expand-window", response_model=OutlineOut)
+async def expand_outline_window(
+    project_id: str,
+    start_chapter: int = Query(..., ge=1),
+    end_chapter: int = Query(..., ge=1),
+    db: Session = Depends(get_db),
+    command_args: str | None = None,
+    response: Response = None,
+):
+    if response:
+        add_deprecation_header(response, f"/api/v1/projects/{project_id}/athena/evolution/plan/generate?target=outline-window")
+    if end_chapter < start_chapter:
+        raise HTTPException(status_code=400, detail="end_chapter must be greater than or equal to start_chapter")
+    if not load_api_key():
+        raise HTTPException(status_code=400, detail="API key not configured")
+
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    existing = db.query(Outline).filter(Outline.project_id == project_id).first()
+    if not existing:
+        raise HTTPException(status_code=400, detail="Outline not generated yet")
+
+    storyline_context = _build_bounded_storyline_context(db, project_id)
+    if not storyline_context:
+        raise HTTPException(status_code=400, detail="Storyline not generated yet")
+    setup = _get_outline_setup_context(db, project_id)
+    if not setup:
+        raise HTTPException(status_code=400, detail="Setup not generated yet")
+
+    window_args = (
+        f"请只生成第{start_chapter}章到第{end_chapter}章的滚动章节大纲；"
+        "不要改写已存在章节；返回JSON中的chapters只包含该窗口内章节。"
+    )
+    if command_args:
+        window_args = f"{window_args}\n附加要求：{command_args}"
+    payload = _build_outline_call_payload(project, setup, storyline_context, command_args=window_args)
+    trace = create_trace(
+        db,
+        project_id=project.id,
+        trace_type="outline_expansion",
+        messages=payload["messages"],
+        context_blocks=payload["context_blocks"],
+        trace_metadata={
+            **payload["trace_metadata"],
+            "outline_window": {"start_chapter": start_chapter, "end_chapter": end_chapter},
+        },
+        model=project.ai_model or "deepseek-chat",
+        temperature=0.7,
+        max_tokens=payload["max_tokens"],
+    )
+    db.commit()
+
+    started_at = now_ms()
+    start = time.time()
+    try:
+        result = await ai_service.complete(
+            payload["messages"],
+            temperature=0.7,
+            max_tokens=payload["max_tokens"],
+            model=project.ai_model or "deepseek-chat",
+            response_format={"type": "json_object"},
+        )
+        data = ai_service.parse_json(result.content)
+    except Exception as exc:
+        mark_trace_failed(db, trace, error_message=str(exc), latency_ms=now_ms() - started_at)
+        db.commit()
+        raise
+
+    merged_chapters, merge_result = _merge_outline_chapter_window(
+        existing.chapters,
+        data.get("chapters", []),
+        start_chapter=start_chapter,
+        end_chapter=end_chapter,
+    )
+    existing.chapters = merged_chapters
+    existing.total_chapters = max(
+        int(existing.total_chapters or 0),
+        int(data.get("total_chapters") or 0),
+        _target_total_chapters(project),
+        end_chapter,
+    )
+    existing.status = "generated"
+    project.status = "outline_generated"
+    project.current_phase = "outline"
+    mark_trace_success(
+        db,
+        trace,
+        prompt_tokens=getattr(result, "prompt_tokens", 0),
+        completion_tokens=getattr(result, "completion_tokens", 0),
+        latency_ms=int((time.time() - start) * 1000),
+    )
+
+    try:
+        db.commit()
+        db.refresh(existing)
+    except Exception:
+        db.rollback()
+        raise
+
+    WritingStateService(db).reconcile_target(project_id)
+    setattr(existing, "outline_expansion_result", merge_result)
+    setattr(existing, "last_expansion_trace_id", trace.id)
+    return existing
 
 
 @router.get("", response_model=OutlineOut)
