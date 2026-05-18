@@ -10,6 +10,11 @@
 - `../archive/superpowers/plans/`
 - `../archive/superpowers/notes/`
 
+其中百万字/千章级长篇稳定性目标的设计稿与阶段记录已归档到：
+
+- `../archive/superpowers/specs/longform-scale/`
+- `../archive/superpowers/plans/longform-scale/`
+
 ## 规则
 
 - 新方案先落到 `specs/`，进入执行前落到 `plans/`。
