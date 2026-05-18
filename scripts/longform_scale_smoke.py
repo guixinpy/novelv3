@@ -136,6 +136,10 @@ def _threshold_failures(
             failures.append(
                 f"repeat_reindex preserved {preserved_documents} documents; expected {expected_preserved}"
             )
+    maintenance = report.get("maintenance") or {}
+    if maintenance and maintenance.get("ready_for_writing") is False:
+        issue_count = int(maintenance.get("issue_count") or 0)
+        failures.append(f"longform maintenance is not ready for writing; issue_count={issue_count}")
     context = report.get("context") or {}
     if context:
         retrieval_item_count = int(context.get("query_aware_retrieval_item_count") or 0)

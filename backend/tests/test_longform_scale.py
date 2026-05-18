@@ -942,6 +942,9 @@ def test_longform_scale_smoke_reports_memory_retrieval_and_resume_progress(db_se
     assert report["memory"]["counts_by_type"] == {"chapter": 120, "arc": 6, "volume": 2, "global": 1}
     assert report["retrieval"]["documents_by_source_type"]["chapter"] == 120
     assert report["retrieval"]["documents_by_source_type"]["longform_memory"] == 129
+    assert report["maintenance"]["ready_for_writing"] is True
+    assert report["maintenance"]["issue_count"] == 0
+    assert report["maintenance"]["recommendations"] == []
     assert report["repeat_reindex"]["indexed"]["documents"] == 0
     assert report["repeat_reindex"]["preserved_documents"] == report["retrieval"]["total_documents"]
     assert report["repeat_reindex"]["removed_documents"] == 0
@@ -1006,6 +1009,7 @@ def test_longform_scale_smoke_reports_stage_timings(db_session):
         "retrieval_diagnostics",
         "retrieval_repeat_reindex",
         "post_generation_maintenance",
+        "maintenance_diagnostics",
         "context_build",
         "narrative_plan_window",
         "dialog_planning_context",
@@ -1214,6 +1218,34 @@ def test_longform_scale_smoke_cli_fails_when_repeat_reindex_writes_documents(mon
     assert exit_code == 1
     assert "repeat_reindex indexed 1 documents; expected 0" in captured.err
     assert "repeat_reindex preserved 9 documents; expected 10" in captured.err
+
+
+def test_longform_scale_smoke_cli_fails_when_longform_maintenance_is_not_ready(monkeypatch, capsys):
+    script_path = Path(__file__).resolve().parents[2] / "scripts" / "longform_scale_smoke.py"
+    spec = importlib.util.spec_from_file_location("longform_scale_smoke_cli", script_path)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    def fake_run_smoke_report(_args):
+        return {
+            "project_id": "project-smoke-maintenance",
+            "elapsed_ms": 100,
+            "timings_ms": {},
+            "maintenance": {
+                "ready_for_writing": False,
+                "issue_count": 2,
+            },
+        }
+
+    monkeypatch.setattr(module, "_run_smoke_report", fake_run_smoke_report, raising=False)
+
+    exit_code = module.main([])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "longform maintenance is not ready for writing; issue_count=2" in captured.err
 
 
 def test_longform_scale_smoke_cli_fails_without_query_aware_retrieval_evidence(monkeypatch, capsys):

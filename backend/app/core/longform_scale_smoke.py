@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.core.athena_retrieval import get_retrieval_diagnostics, reindex_project_retrieval
 from app.core.longform_memory import (
     build_longform_context_package,
+    get_longform_maintenance_diagnostics,
     rebuild_longform_memory,
     refresh_longform_memory_for_chapter,
 )
@@ -70,6 +71,8 @@ def run_longform_scale_smoke(
         chapter_index=target,
     )
     stage_started_at = _record_timing(timings_ms, "post_generation_maintenance", stage_started_at)
+    maintenance_report = _compact_maintenance_diagnostics(get_longform_maintenance_diagnostics(db, project.id))
+    stage_started_at = _record_timing(timings_ms, "maintenance_diagnostics", stage_started_at)
     context_package = build_longform_context_package(
         db,
         project.id,
@@ -98,6 +101,7 @@ def run_longform_scale_smoke(
             "retrieval": retrieval_report,
             "repeat_reindex": repeat_reindex_report,
             "post_generation_maintenance": post_generation_maintenance_report,
+            "maintenance": maintenance_report,
             "narrative_plan": _compact_narrative_plan_window(narrative_plan),
             "dialog_planning_context": _compact_context_block(dialog_planning_context),
             "writing_worker": writing_worker_report,
@@ -119,6 +123,7 @@ def run_longform_scale_smoke(
         "memory": memory_report,
         "retrieval": retrieval_report,
         "post_generation_maintenance": post_generation_maintenance_report,
+        "maintenance": maintenance_report,
         "context": _compact_context_package(context_package, target_chapter_index=target),
         "narrative_plan": _compact_narrative_plan_window(narrative_plan),
         "dialog_planning_context": _compact_context_block(dialog_planning_context),
@@ -269,6 +274,20 @@ def _compact_context_package(context_package: dict[str, Any], *, target_chapter_
         "query_aware_retrieval_max_chapter_index": max(chapter_indexes) if chapter_indexes else None,
         "query_aware_retrieval_has_explanations": _query_items_have_explanations(query_items),
         "query_aware_retrieval_out_of_range_count": out_of_range_count,
+    }
+
+
+def _compact_maintenance_diagnostics(diagnostics: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "status": diagnostics.get("status"),
+        "ready_for_writing": bool(diagnostics.get("ready_for_writing")),
+        "issue_count": int(diagnostics.get("issue_count") or 0),
+        "chapter_count": int(diagnostics.get("chapter_count") or 0),
+        "stale_memory_count": int(diagnostics.get("stale_memory_count") or 0),
+        "missing_memory_count": int(diagnostics.get("missing_memory_count") or 0),
+        "stale_retrieval_count": int(diagnostics.get("stale_retrieval_count") or 0),
+        "missing_retrieval_count": int(diagnostics.get("missing_retrieval_count") or 0),
+        "recommendations": list(diagnostics.get("recommendations") or []),
     }
 
 
