@@ -52,6 +52,63 @@ def test_generate_outline(mock_parse, mock_complete, mock_key, client):
 @patch("app.api.outlines.load_api_key", return_value="sk-test")
 @patch("app.api.outlines.ai_service.complete", new_callable=AsyncMock)
 @patch("app.api.outlines.ai_service.parse_json")
+def test_generate_outline_normalizes_structured_scene_items(mock_parse, mock_complete, mock_key, client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Structured Scenes"})
+    pid = r.json()["id"]
+
+    with patch("app.api.setups.load_api_key", return_value="sk-test"), \
+         patch("app.api.setups.ai_service.complete", new_callable=AsyncMock) as setup_complete, \
+         patch("app.api.setups.ai_service.parse_json") as setup_parse:
+        setup_complete.return_value.content = '{"world_building": {}, "characters": [], "core_concept": {}}'
+        setup_parse.return_value = {"world_building": {}, "characters": [], "core_concept": {}}
+        client.post(f"/api/v1/projects/{pid}/setup/generate")
+
+    with patch("app.api.storylines.load_api_key", return_value="sk-test"), \
+         patch("app.api.storylines.ai_service.complete", new_callable=AsyncMock) as storyline_complete, \
+         patch("app.api.storylines.ai_service.parse_json") as storyline_parse:
+        storyline_complete.return_value.content = '{"plotlines": [], "foreshadowing": []}'
+        storyline_parse.return_value = {"plotlines": [], "foreshadowing": []}
+        client.post(f"/api/v1/projects/{pid}/storyline/generate")
+
+    mock_complete.return_value.content = "{}"
+    mock_parse.return_value = {
+        "total_chapters": 1,
+        "chapters": [
+            {
+                "chapter_index": 1,
+                "title": "雾港来信",
+                "summary": "林澈收到来自失踪父亲的旧信。",
+                "scenes": [
+                    {
+                        "scene_index": 1,
+                        "setting": "雾港码头",
+                        "content": "林澈在浓雾里收到旧信。",
+                        "goal": "建立悬疑钩子",
+                        "conflict": "记忆和现实不一致",
+                        "hook": "信件日期来自明天",
+                    }
+                ],
+                "characters": [{"name": "林澈", "role": "主角"}],
+                "purpose": "开启主线",
+            }
+        ],
+        "plotlines": [],
+        "foreshadowing": [],
+    }
+
+    response = client.post(f"/api/v1/projects/{pid}/outline/generate")
+
+    assert response.status_code == 200
+    chapter = response.json()["chapters"][0]
+    assert chapter["scenes"] == [
+        "雾港码头：林澈在浓雾里收到旧信。目标：建立悬疑钩子；冲突：记忆和现实不一致；钩子：信件日期来自明天"
+    ]
+    assert chapter["characters"] == ["林澈"]
+
+
+@patch("app.api.outlines.load_api_key", return_value="sk-test")
+@patch("app.api.outlines.ai_service.complete", new_callable=AsyncMock)
+@patch("app.api.outlines.ai_service.parse_json")
 def test_generate_outline_uses_project_ai_model(mock_parse, mock_complete, mock_key, client, db_session):
     r = client.post("/api/v1/projects", json={"name": "Model Routed Outline"})
     pid = r.json()["id"]

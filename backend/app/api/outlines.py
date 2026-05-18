@@ -40,6 +40,61 @@ def _target_total_chapters(project: Project) -> int:
     return target_total_chapters(project)
 
 
+def _normalize_outline_chapters(chapters: object) -> list[dict]:
+    if not isinstance(chapters, list):
+        return []
+    normalized: list[dict] = []
+    for item in chapters:
+        if not isinstance(item, dict):
+            continue
+        chapter = dict(item)
+        chapter["scenes"] = _normalize_text_list(chapter.get("scenes"), item_kind="scene")
+        chapter["characters"] = _normalize_text_list(chapter.get("characters"), item_kind="character")
+        normalized.append(chapter)
+    return normalized
+
+
+def _normalize_text_list(value: object, *, item_kind: str) -> list[str]:
+    if value is None:
+        return []
+    values = value if isinstance(value, list) else [value]
+    normalized: list[str] = []
+    for item in values:
+        text = _outline_item_to_text(item, item_kind=item_kind)
+        if text:
+            normalized.append(text)
+    return normalized
+
+
+def _outline_item_to_text(item: object, *, item_kind: str) -> str:
+    if item is None:
+        return ""
+    if isinstance(item, str):
+        return item.strip()
+    if isinstance(item, dict):
+        if item_kind == "character":
+            for key in ("name", "character", "title"):
+                text = str(item.get(key) or "").strip()
+                if text:
+                    return text
+        setting = str(item.get("setting") or item.get("name") or item.get("title") or "").strip()
+        content = str(item.get("content") or item.get("summary") or item.get("description") or "").strip()
+        parts = []
+        if setting and content:
+            parts.append(f"{setting}：{content.rstrip('。.!！?？')}")
+        else:
+            parts.append(setting or content)
+        details = []
+        for label, key in (("目标", "goal"), ("冲突", "conflict"), ("钩子", "hook")):
+            text = str(item.get(key) or "").strip()
+            if text:
+                details.append(f"{label}：{text}")
+        if details:
+            parts.append("；".join(details))
+        return "。".join(part for part in parts if part).strip()
+    return str(item).strip()
+
+
 def _truncate_context_text(value: object, max_chars: int = 180) -> str:
     if value is None:
         return ""
@@ -244,7 +299,7 @@ async def generate_outline(project_id: str, db: Session = Depends(get_db), comma
     outline = Outline(
         project_id=project_id,
         total_chapters=data.get("total_chapters", 0),
-        chapters=data.get("chapters", []),
+        chapters=_normalize_outline_chapters(data.get("chapters", [])),
         plotlines=data.get("plotlines", []),
         foreshadowing=data.get("foreshadowing", []),
         status="generated",

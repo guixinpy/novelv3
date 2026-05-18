@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 
 class ChapterOutline(BaseModel):
@@ -10,6 +10,31 @@ class ChapterOutline(BaseModel):
     scenes: list[str] = []
     characters: list[str] = []
     purpose: str = ""
+
+    @field_validator("scenes", "characters", mode="before")
+    @classmethod
+    def normalize_text_items(cls, value):
+        if value is None:
+            return []
+        values = value if isinstance(value, list) else [value]
+        normalized = []
+        for item in values:
+            if isinstance(item, str):
+                text = item.strip()
+            elif isinstance(item, dict):
+                text = str(
+                    item.get("name")
+                    or item.get("title")
+                    or item.get("setting")
+                    or item.get("content")
+                    or item.get("summary")
+                    or ""
+                ).strip()
+            else:
+                text = str(item).strip()
+            if text:
+                normalized.append(text)
+        return normalized
 
 
 class OutlineOut(BaseModel):
