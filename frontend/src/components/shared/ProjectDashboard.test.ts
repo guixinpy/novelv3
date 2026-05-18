@@ -177,6 +177,50 @@ describe('ProjectDashboard', () => {
     expect(wrapper.text()).toContain('模型调用超时')
   })
 
+  it('renders writing task generation diagnostics as a compact Chinese summary', () => {
+    const wrapper = mount(ProjectDashboard, {
+      props: {
+        setup: null,
+        storyline: null,
+        outline: { total_chapters: 100, chapters: [] },
+        chapters: [],
+        totalWords: 0,
+        writingState: {
+          project_id: 'project-1',
+          current_chapter: 4,
+          status: 'running',
+          last_error: null,
+        },
+        writingTaskDiagnostics: {
+          word_target: {
+            under_count: 2,
+            within_count: 1,
+            over_count: 1,
+            untracked_count: 0,
+            under_chapter_indexes: [1, 2],
+            over_chapter_indexes: [4],
+          },
+          post_generation_warning_count: 1,
+          post_generation_warnings: [
+            {
+              chapter_index: 3,
+              stage: 'longform_memory_refresh',
+              error_type: 'RuntimeError',
+              message: 'maintenance failed',
+            },
+          ],
+        },
+      },
+    })
+
+    expect(wrapper.text()).toContain('本轮诊断')
+    expect(wrapper.text()).toContain('偏短 2')
+    expect(wrapper.text()).toContain('偏长 1')
+    expect(wrapper.text()).toContain('维护警告 1')
+    expect(wrapper.text()).toContain('偏短章节：第1章、第2章')
+    expect(wrapper.text()).toContain('偏长章节：第4章')
+  })
+
   it('emits writing control actions from current writing status', async () => {
     const wrapper = mount(ProjectDashboard, {
       props: {

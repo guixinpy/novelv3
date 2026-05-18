@@ -372,6 +372,7 @@ function closeTrace() {
           :latest-action-status="latestActionStatus"
           :suggested-next-step="suggestedNextStep"
           :writing-state="project.writingState"
+          :writing-task-diagnostics="project.writingTaskDiagnostics"
           :writing-control-loading="writingControlLoading"
           @tool="onDashboardTool"
           @writing-control="onWritingControl"

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { PendingAction, WritingState } from '../../api/types'
+import type { GenerationDiagnostics, PendingAction, WritingState } from '../../api/types'
 
 const props = defineProps<{
   setup: any
@@ -15,6 +15,7 @@ const props = defineProps<{
   latestActionStatus?: string | null
   suggestedNextStep?: string | null
   writingState?: WritingState | null
+  writingTaskDiagnostics?: GenerationDiagnostics | null
   writingControlLoading?: boolean
 }>()
 
@@ -176,6 +177,40 @@ const writingControl = computed<{ action: 'start' | 'pause' | 'resume'; label: s
   }
 })
 
+function numeric(value: unknown) {
+  const number = Number(value)
+  return Number.isFinite(number) ? number : 0
+}
+
+function formatChapterIndexes(indexes: number[] | undefined) {
+  const normalized = (indexes || [])
+    .map((index) => Number(index))
+    .filter((index) => Number.isFinite(index) && index > 0)
+  if (!normalized.length) return ''
+  const preview = normalized.slice(0, 8).map((index) => `第${index}章`).join('、')
+  return normalized.length > 8 ? `${preview}等${normalized.length}章` : preview
+}
+
+const writingDiagnostics = computed(() => {
+  const diagnostics = props.writingTaskDiagnostics
+  if (!diagnostics) return null
+  const wordTarget = diagnostics.word_target || {}
+  const underCount = numeric(wordTarget.under_count)
+  const overCount = numeric(wordTarget.over_count)
+  const warningCount = Math.max(
+    numeric(diagnostics.post_generation_warning_count),
+    diagnostics.post_generation_warnings?.length || 0,
+  )
+  if (underCount + overCount + warningCount <= 0) return null
+  return {
+    underCount,
+    overCount,
+    warningCount,
+    underIndexes: formatChapterIndexes(wordTarget.under_chapter_indexes),
+    overIndexes: formatChapterIndexes(wordTarget.over_chapter_indexes),
+  }
+})
+
 const totalWordsLabel = computed(() => props.totalWords >= 10000 ? `${(props.totalWords / 10000).toFixed(1)}万` : props.totalWords)
 </script>
 
@@ -231,6 +266,18 @@ const totalWordsLabel = computed(() => props.totalWords >= 10000 ? `${(props.tot
           <span class="dashboard__status" :class="writingStatusClass">{{ writingStatusLabel }}</span>
         </div>
         <p v-if="writingState.last_error" class="dashboard__next">{{ writingState.last_error }}</p>
+        <div
+          v-if="writingDiagnostics"
+          class="dashboard__writing-diagnostics"
+          aria-label="写作任务诊断"
+        >
+          <div class="dashboard__writing-diagnostics-head">
+            <span>本轮诊断</span>
+            <small>偏短 {{ writingDiagnostics.underCount }} · 偏长 {{ writingDiagnostics.overCount }} · 维护警告 {{ writingDiagnostics.warningCount }}</small>
+          </div>
+          <p v-if="writingDiagnostics.underIndexes">偏短章节：{{ writingDiagnostics.underIndexes }}</p>
+          <p v-if="writingDiagnostics.overIndexes">偏长章节：{{ writingDiagnostics.overIndexes }}</p>
+        </div>
         <div class="dashboard__writing-actions">
           <button
             type="button"
@@ -419,6 +466,38 @@ const totalWordsLabel = computed(() => props.totalWords >= 10000 ? `${(props.tot
   font-size: var(--text-xs);
   color: var(--color-text-secondary);
   line-height: var(--leading-snug);
+}
+
+.dashboard__writing-diagnostics {
+  margin-top: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid rgba(245, 158, 11, 0.22);
+  border-radius: var(--radius-md);
+  background: rgba(255, 251, 235, 0.72);
+}
+
+.dashboard__writing-diagnostics-head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.dashboard__writing-diagnostics-head span {
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  color: var(--color-text-primary);
+}
+
+.dashboard__writing-diagnostics-head small,
+.dashboard__writing-diagnostics p {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: #92400e;
+  line-height: var(--leading-snug);
+}
+
+.dashboard__writing-diagnostics p {
+  margin-top: 0.2rem;
 }
 
 .dashboard__writing-actions {

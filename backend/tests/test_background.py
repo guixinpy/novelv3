@@ -337,6 +337,46 @@ def test_get_background_task_compact_includes_range_progress(client, db_session)
     }
 
 
+def test_get_background_task_compact_includes_generation_diagnostics(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Compact Diagnostics"})
+    pid = r.json()["id"]
+    service = BackgroundTaskService(db_session)
+    task = service.create_chapter_range(
+        project_id=pid,
+        task_type="generate_chapter",
+        start_chapter_index=1,
+        end_chapter_index=3,
+        payload={"chapter_index": 1},
+    )
+    progress_task = service.mark_range_progress_many(task.id, completed_chapter_indexes=[1, 2, 3])
+    result = dict(progress_task.result or {})
+    result["generation_diagnostics"] = {
+        "word_target": {
+            "under_count": 1,
+            "within_count": 1,
+            "over_count": 1,
+            "untracked_count": 0,
+            "under_chapter_indexes": [1],
+            "over_chapter_indexes": [3],
+        },
+        "post_generation_warning_count": 1,
+        "post_generation_warnings": [
+            {
+                "chapter_index": 2,
+                "stage": "longform_memory_refresh",
+                "error_type": "RuntimeError",
+                "message": "maintenance failed",
+            }
+        ],
+    }
+    service.mark_completed(task.id, result)
+
+    response = client.get(f"/api/v1/background-tasks/{task.id}?compact=true")
+
+    assert response.status_code == 200
+    assert response.json()["result"] == result
+
+
 def test_background_task_service_tracks_lifecycle(client, db_session):
     r = client.post("/api/v1/projects", json={"name": "Test"})
     pid = r.json()["id"]

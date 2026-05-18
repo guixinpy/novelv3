@@ -973,6 +973,25 @@ describe('project workspace state', () => {
   it('startWriting() 轮询到范围任务进度时会更新本地写作指针', async () => {
     vi.useFakeTimers()
     const store = useProjectStore()
+    const generationDiagnostics = {
+      word_target: {
+        under_count: 1,
+        within_count: 1,
+        over_count: 0,
+        untracked_count: 0,
+        under_chapter_indexes: [1],
+        over_chapter_indexes: [],
+      },
+      post_generation_warning_count: 1,
+      post_generation_warnings: [
+        {
+          chapter_index: 2,
+          stage: 'longform_memory_refresh',
+          error_type: 'RuntimeError',
+          message: 'maintenance failed',
+        },
+      ],
+    }
     vi.mocked(api.startWriting).mockResolvedValue({
       project_id: 'A',
       current_chapter: 1,
@@ -993,6 +1012,7 @@ describe('project workspace state', () => {
             total_count: 3,
             can_resume: true,
           },
+          generation_diagnostics: generationDiagnostics,
         },
         error: null,
         ui_hint: {
@@ -1054,6 +1074,7 @@ describe('project workspace state', () => {
         status: 'running',
         task_id: 'range-task',
       })
+      expect(store.writingTaskDiagnostics).toEqual(generationDiagnostics)
 
       await vi.advanceTimersByTimeAsync(1_000)
       expect(store.writingState).toEqual({
@@ -1062,6 +1083,7 @@ describe('project workspace state', () => {
         status: 'completed',
         last_error: null,
       })
+      expect(store.writingTaskDiagnostics).toEqual(generationDiagnostics)
     } finally {
       vi.useRealTimers()
     }

@@ -12,14 +12,18 @@ router = APIRouter(tags=["background-tasks"])
 def _compact_result(result: dict | None) -> dict | None:
     if not isinstance(result, dict):
         return None
+    compact: dict = {}
     progress = result.get("progress")
-    if not isinstance(progress, dict):
-        return None
-    return {"progress": progress}
+    if isinstance(progress, dict):
+        compact["progress"] = progress
+    generation_diagnostics = result.get("generation_diagnostics")
+    if isinstance(generation_diagnostics, dict):
+        compact["generation_diagnostics"] = generation_diagnostics
+    return compact or None
 
 
 def _compact_progress_result(db: Session, task_id: str, task_type: str, status: str) -> dict | None:
-    if task_type != "generate_chapter" or status not in {"pending", "running"}:
+    if task_type != "generate_chapter":
         return None
     result = db.query(BackgroundTask.result).filter(BackgroundTask.id == task_id).scalar()
     return _compact_result(result)

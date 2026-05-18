@@ -185,11 +185,38 @@ export interface ResolveActionResponse {
   refresh_targets: RefreshTarget[]
 }
 
+export interface GenerationWordTargetDiagnostics {
+  under_count?: number
+  within_count?: number
+  over_count?: number
+  untracked_count?: number
+  under_chapter_indexes?: number[]
+  over_chapter_indexes?: number[]
+}
+
+export interface GenerationWarningDiagnostics {
+  chapter_index?: number
+  stage?: string
+  error_type?: string
+  message?: string
+}
+
+export interface GenerationDiagnostics {
+  word_target?: GenerationWordTargetDiagnostics
+  post_generation_warning_count?: number
+  post_generation_warnings?: GenerationWarningDiagnostics[]
+}
+
+export interface BackgroundTaskResult extends Record<string, unknown> {
+  progress?: Record<string, unknown>
+  generation_diagnostics?: GenerationDiagnostics
+}
+
 export interface BackgroundTaskResponse {
   task_id: string
   task_type: string
   status: string
-  result: any
+  result: BackgroundTaskResult | null
   error: string | null
   ui_hint: UiHint
   refresh_targets: RefreshTarget[]

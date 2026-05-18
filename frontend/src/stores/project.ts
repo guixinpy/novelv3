@@ -1,7 +1,13 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { api } from '../api/client'
-import type { BackgroundTaskResponse, RefreshTarget, WorkspaceBootstrap, WritingState } from '../api/types'
+import type {
+  BackgroundTaskResponse,
+  GenerationDiagnostics,
+  RefreshTarget,
+  WorkspaceBootstrap,
+  WritingState,
+} from '../api/types'
 import { useRequestCacheStore } from './requestCache'
 
 type ProjectRequestLane =
@@ -51,6 +57,7 @@ export const useProjectStore = defineStore('project', () => {
   const versionsHasMore = ref(false)
   const preferences = ref<any>(null)
   const versionsNodeType = ref<string | undefined>(undefined)
+  const writingTaskDiagnostics = ref<GenerationDiagnostics | null>(null)
   const currentProjectScope = ref<string>('')
   const scopeVersion = ref(0)
   const nextRequestId = ref(0)
@@ -128,6 +135,13 @@ export const useProjectStore = defineStore('project', () => {
       status: 'running',
       last_error: writingState.value?.last_error ?? null,
       task_id: task.task_id,
+    }
+  }
+
+  function applyWritingTaskDiagnostics(task: BackgroundTaskResponse) {
+    const diagnostics = task.result?.generation_diagnostics
+    if (diagnostics && typeof diagnostics === 'object') {
+      writingTaskDiagnostics.value = diagnostics
     }
   }
 
@@ -239,6 +253,7 @@ export const useProjectStore = defineStore('project', () => {
     outline.value = null
     topology.value = null
     writingState.value = null
+    writingTaskDiagnostics.value = null
     chapters.value = []
     chaptersTotal.value = 0
     chaptersOffset.value = 0
@@ -370,6 +385,7 @@ export const useProjectStore = defineStore('project', () => {
 
   async function startWriting(id: string) {
     const snapshot = captureProjectRequest(id, ['writingState'])
+    writingTaskDiagnostics.value = null
     const nextState = await api.startWriting(id)
     if (!isLatestProjectRequest(snapshot, 'writingState')) return
     writingState.value = nextState
@@ -387,6 +403,7 @@ export const useProjectStore = defineStore('project', () => {
 
   async function resumeWriting(id: string) {
     const snapshot = captureProjectRequest(id, ['writingState'])
+    writingTaskDiagnostics.value = null
     const nextState = await api.resumeWriting(id)
     if (!isLatestProjectRequest(snapshot, 'writingState')) return
     writingState.value = nextState
@@ -411,6 +428,7 @@ export const useProjectStore = defineStore('project', () => {
         continue
       }
       if (currentProjectScope.value !== id) return
+      applyWritingTaskDiagnostics(task)
       if (!isTerminalBackgroundTask(task)) {
         applyWritingTaskProgress(id, task)
         continue
@@ -583,7 +601,7 @@ export const useProjectStore = defineStore('project', () => {
   return {
     projects, currentProject, setup, chapter, storyline, outline, topology, writingState,
     chapters, chaptersTotal, chaptersOffset, chaptersLimit, chaptersHasMore, chaptersLatestIndex,
-    versions, versionsTotal, versionsOffset, versionsLimit, versionsHasMore, preferences, versionsNodeType,
+    versions, versionsTotal, versionsOffset, versionsLimit, versionsHasMore, preferences, versionsNodeType, writingTaskDiagnostics,
     resetProjectScopedState,
     applyWorkspaceBootstrap,
     loadProjects, createProject, updateProjectModel, deleteProject, loadProject,
