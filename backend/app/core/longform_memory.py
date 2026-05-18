@@ -24,6 +24,7 @@ CHAPTER_MEMORY_CONTENT_QUERY_CHARS = 1200
 class LongformMaintenanceState:
     project_id: str
     chapter_count: int
+    word_target: dict[str, Any]
     missing_memory_chapters: list[int]
     stale_memory_chapters: list[int]
     missing_retrieval_chapters: list[int]
@@ -147,6 +148,7 @@ def repair_longform_maintenance(
 
 
 def _collect_longform_maintenance_state(db: Session, project_id: str) -> LongformMaintenanceState:
+    project = _require_project(db, project_id)
     chapters = _maintained_chapters(db, project_id)
     chapter_memories = {
         memory.scope_key: memory
@@ -186,6 +188,7 @@ def _collect_longform_maintenance_state(db: Session, project_id: str) -> Longfor
     return LongformMaintenanceState(
         project_id=project_id,
         chapter_count=len(chapters),
+        word_target=_word_target_diagnostics(project, chapters),
         missing_memory_chapters=missing_memory_chapters,
         stale_memory_chapters=stale_memory_chapters,
         missing_retrieval_chapters=missing_retrieval_chapters,
@@ -209,6 +212,7 @@ def _maintenance_diagnostics_payload(state: LongformMaintenanceState, *, limit: 
         "project_id": state.project_id,
         "status": status,
         "chapter_count": state.chapter_count,
+        "word_target": _limited_word_target_diagnostics(state.word_target, limit=limit),
         "stale_memory_count": len(state.stale_memory_chapters),
         "missing_memory_count": len(state.missing_memory_chapters),
         "stale_retrieval_count": len(state.stale_retrieval_chapters),
@@ -231,6 +235,57 @@ def _maintenance_issue_count(payload: dict[str, Any]) -> int:
         + payload.get("stale_retrieval_count", 0)
         + payload.get("missing_retrieval_count", 0)
     )
+
+
+def _word_target_diagnostics(project: Project, chapters: list[Any]) -> dict[str, Any]:
+    target_words = int(project.target_word_count or 0)
+    target_chapters = int(project.target_chapter_count or 0)
+    base = {
+        "status": "untracked",
+        "target_average_word_count": None,
+        "target_min_word_count": None,
+        "target_max_word_count": None,
+        "under_target_count": 0,
+        "within_target_count": 0,
+        "over_target_count": 0,
+        "under_target_chapter_indexes": [],
+        "over_target_chapter_indexes": [],
+    }
+    if target_words <= 0 or target_chapters <= 0:
+        return base
+
+    average = max(1, round(target_words / target_chapters))
+    target_min = max(1, round(average * 0.85))
+    target_max = max(1, round(average * 1.15))
+    under_indexes: list[int] = []
+    over_indexes: list[int] = []
+    within_count = 0
+    for chapter in chapters:
+        word_count = int(chapter.word_count or 0)
+        if word_count < target_min:
+            under_indexes.append(int(chapter.chapter_index))
+        elif word_count > target_max:
+            over_indexes.append(int(chapter.chapter_index))
+        else:
+            within_count += 1
+    return {
+        "status": "drift" if under_indexes or over_indexes else "current",
+        "target_average_word_count": average,
+        "target_min_word_count": target_min,
+        "target_max_word_count": target_max,
+        "under_target_count": len(under_indexes),
+        "within_target_count": within_count,
+        "over_target_count": len(over_indexes),
+        "under_target_chapter_indexes": under_indexes,
+        "over_target_chapter_indexes": over_indexes,
+    }
+
+
+def _limited_word_target_diagnostics(word_target: dict[str, Any], *, limit: int) -> dict[str, Any]:
+    limited = dict(word_target)
+    limited["under_target_chapter_indexes"] = list(limited.get("under_target_chapter_indexes") or [])[:limit]
+    limited["over_target_chapter_indexes"] = list(limited.get("over_target_chapter_indexes") or [])[:limit]
+    return limited
 
 
 def refresh_longform_memory_for_chapter(
@@ -426,7 +481,7 @@ def _range_chapters(db: Session, project_id: str, chapter_index: int, size: int)
 
 def _maintained_chapters(db: Session, project_id: str) -> list[Any]:
     return (
-        db.query(ChapterContent.chapter_index, ChapterContent.updated_at)
+        db.query(ChapterContent.chapter_index, ChapterContent.word_count, ChapterContent.updated_at)
         .filter(
             ChapterContent.project_id == project_id,
             ChapterContent.content != "",

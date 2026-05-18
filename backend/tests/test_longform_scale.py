@@ -1616,6 +1616,44 @@ def test_longform_maintenance_diagnostics_projects_memory_and_retrieval_columns(
         assert all(f"retrieval_documents.{column}" not in clause for clause in retrieval_select_clauses)
 
 
+def test_longform_maintenance_diagnostics_reports_word_target_drift(db_session):
+    from app.core.longform_memory import get_longform_maintenance_diagnostics
+
+    project = Project(
+        name="Word Target Drift",
+        target_word_count=300,
+        target_chapter_count=3,
+    )
+    db_session.add(project)
+    db_session.flush()
+    for index, word_count in [(1, 70), (2, 100), (3, 130)]:
+        db_session.add(
+            ChapterContent(
+                project_id=project.id,
+                chapter_index=index,
+                title=f"第{index}章",
+                content="正文",
+                word_count=word_count,
+                status="generated",
+            )
+        )
+    db_session.commit()
+
+    payload = get_longform_maintenance_diagnostics(db_session, project.id)
+
+    assert payload["word_target"] == {
+        "status": "drift",
+        "target_average_word_count": 100,
+        "target_min_word_count": 85,
+        "target_max_word_count": 115,
+        "under_target_count": 1,
+        "within_target_count": 1,
+        "over_target_count": 1,
+        "under_target_chapter_indexes": [1],
+        "over_target_chapter_indexes": [3],
+    }
+
+
 def test_longform_maintenance_diagnostics_reports_stale_memory_after_chapter_edit(client, db_session):
     from app.core.longform_memory import rebuild_longform_memory
 

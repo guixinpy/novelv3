@@ -851,6 +851,7 @@ export interface LongformMaintenanceDiagnostics {
   project_id: string
   status: string
   chapter_count: number
+  word_target?: LongformWordTargetDiagnostics
   stale_memory_count: number
   missing_memory_count: number
   stale_retrieval_count: number
@@ -863,6 +864,18 @@ export interface LongformMaintenanceDiagnostics {
   latest_memory_updated_at: string | null
   latest_retrieval_updated_at: string | null
   latest_synced_chapter_index: number | null
+}
+
+export interface LongformWordTargetDiagnostics {
+  status: string
+  target_average_word_count?: number | null
+  target_min_word_count?: number | null
+  target_max_word_count?: number | null
+  under_target_count: number
+  within_target_count: number
+  over_target_count: number
+  under_target_chapter_indexes: number[]
+  over_target_chapter_indexes: number[]
 }
 
 export interface LongformMaintenanceRepairResult {

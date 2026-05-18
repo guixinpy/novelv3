@@ -21,10 +21,23 @@ class LongformMemoryDiagnostics(BaseModel):
     latest_updated_at: datetime | None = None
 
 
+class LongformWordTargetDiagnostics(BaseModel):
+    status: str = "untracked"
+    target_average_word_count: int | None = None
+    target_min_word_count: int | None = None
+    target_max_word_count: int | None = None
+    under_target_count: int = 0
+    within_target_count: int = 0
+    over_target_count: int = 0
+    under_target_chapter_indexes: list[int] = Field(default_factory=list)
+    over_target_chapter_indexes: list[int] = Field(default_factory=list)
+
+
 class LongformMaintenanceDiagnostics(BaseModel):
     project_id: str
     status: str
     chapter_count: int
+    word_target: LongformWordTargetDiagnostics = Field(default_factory=LongformWordTargetDiagnostics)
     stale_memory_count: int
     missing_memory_count: int
     stale_retrieval_count: int
