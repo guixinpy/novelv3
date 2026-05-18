@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { GenerationDiagnostics, PendingAction, WritingState } from '../../api/types'
+import type { GenerationDiagnostics, PendingAction, WritingTaskProgress, WritingState } from '../../api/types'
 
 const props = defineProps<{
   setup: any
@@ -16,6 +16,7 @@ const props = defineProps<{
   suggestedNextStep?: string | null
   writingState?: WritingState | null
   writingTaskDiagnostics?: GenerationDiagnostics | null
+  writingTaskProgress?: WritingTaskProgress | null
   writingControlLoading?: boolean
 }>()
 
@@ -211,6 +212,22 @@ const writingDiagnostics = computed(() => {
   }
 })
 
+const writingProgress = computed(() => {
+  const progress = props.writingTaskProgress
+  if (!progress) return null
+  const completed = numeric(progress.completed_count)
+  const total = numeric(progress.total_count)
+  const nextChapter = numeric(progress.next_chapter_index)
+  if (total <= 0 && completed <= 0) return null
+  const percent = total > 0 ? Math.min(100, Math.round((completed / total) * 100)) : 0
+  return {
+    completed,
+    total,
+    percent,
+    nextChapter,
+  }
+})
+
 const totalWordsLabel = computed(() => props.totalWords >= 10000 ? `${(props.totalWords / 10000).toFixed(1)}万` : props.totalWords)
 </script>
 
@@ -266,6 +283,28 @@ const totalWordsLabel = computed(() => props.totalWords >= 10000 ? `${(props.tot
           <span class="dashboard__status" :class="writingStatusClass">{{ writingStatusLabel }}</span>
         </div>
         <p v-if="writingState.last_error" class="dashboard__next">{{ writingState.last_error }}</p>
+        <div
+          v-if="writingProgress"
+          class="dashboard__writing-progress"
+          aria-label="写作任务进度"
+        >
+          <div class="dashboard__writing-progress-head">
+            <span>本轮进度</span>
+            <small>
+              {{ writingProgress.completed }}/{{ writingProgress.total }} · {{ writingProgress.percent }}%
+              <template v-if="writingProgress.nextChapter > 0"> · 下章第{{ writingProgress.nextChapter }}章</template>
+            </small>
+          </div>
+          <div
+            class="dashboard__writing-progress-bar"
+            role="progressbar"
+            :aria-valuenow="writingProgress.percent"
+            aria-valuemin="0"
+            aria-valuemax="100"
+          >
+            <span :style="{ width: `${writingProgress.percent}%` }" />
+          </div>
+        </div>
         <div
           v-if="writingDiagnostics"
           class="dashboard__writing-diagnostics"
@@ -466,6 +505,47 @@ const totalWordsLabel = computed(() => props.totalWords >= 10000 ? `${(props.tot
   font-size: var(--text-xs);
   color: var(--color-text-secondary);
   line-height: var(--leading-snug);
+}
+
+.dashboard__writing-progress {
+  margin-top: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  border-radius: var(--radius-md);
+  background: rgba(239, 246, 255, 0.72);
+}
+
+.dashboard__writing-progress-head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.dashboard__writing-progress-head span {
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  color: var(--color-text-primary);
+}
+
+.dashboard__writing-progress-head small {
+  font-size: var(--text-xs);
+  color: #1d4ed8;
+  line-height: var(--leading-snug);
+}
+
+.dashboard__writing-progress-bar {
+  height: 5px;
+  margin-top: var(--space-2);
+  border-radius: var(--radius-full);
+  background: rgba(59, 130, 246, 0.14);
+  overflow: hidden;
+}
+
+.dashboard__writing-progress-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #2563eb;
 }
 
 .dashboard__writing-diagnostics {

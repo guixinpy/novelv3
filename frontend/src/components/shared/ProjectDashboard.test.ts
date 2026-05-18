@@ -221,6 +221,36 @@ describe('ProjectDashboard', () => {
     expect(wrapper.text()).toContain('偏长章节：第4章')
   })
 
+  it('renders writing task range progress while continuous writing is running', () => {
+    const wrapper = mount(ProjectDashboard, {
+      props: {
+        setup: null,
+        storyline: null,
+        outline: { total_chapters: 100, chapters: [] },
+        chapters: [],
+        totalWords: 0,
+        writingState: {
+          project_id: 'project-1',
+          current_chapter: 12,
+          status: 'running',
+          last_error: null,
+        },
+        writingTaskProgress: {
+          chapter_range: { start: 10, end: 20 },
+          next_chapter_index: 13,
+          completed_count: 3,
+          total_count: 11,
+          can_resume: true,
+        },
+      },
+    })
+
+    expect(wrapper.text()).toContain('本轮进度')
+    expect(wrapper.text()).toContain('3/11')
+    expect(wrapper.text()).toContain('27%')
+    expect(wrapper.text()).toContain('下章第13章')
+  })
+
   it('emits writing control actions from current writing status', async () => {
     const wrapper = mount(ProjectDashboard, {
       props: {

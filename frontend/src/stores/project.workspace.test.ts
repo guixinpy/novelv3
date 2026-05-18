@@ -973,6 +973,20 @@ describe('project workspace state', () => {
   it('startWriting() 轮询到范围任务进度时会更新本地写作指针', async () => {
     vi.useFakeTimers()
     const store = useProjectStore()
+    const runningProgress = {
+      chapter_range: { start: 1, end: 3 },
+      next_chapter_index: 2,
+      completed_count: 1,
+      total_count: 3,
+      can_resume: true,
+    }
+    const completedProgress = {
+      chapter_range: { start: 1, end: 3 },
+      next_chapter_index: 4,
+      completed_count: 3,
+      total_count: 3,
+      can_resume: false,
+    }
     const generationDiagnostics = {
       word_target: {
         under_count: 1,
@@ -1005,13 +1019,7 @@ describe('project workspace state', () => {
         task_type: 'generate_chapter',
         status: 'running',
         result: {
-          progress: {
-            chapter_range: { start: 1, end: 3 },
-            next_chapter_index: 2,
-            completed_count: 1,
-            total_count: 3,
-            can_resume: true,
-          },
+          progress: runningProgress,
           generation_diagnostics: generationDiagnostics,
         },
         error: null,
@@ -1034,13 +1042,8 @@ describe('project workspace state', () => {
         task_type: 'generate_chapter',
         status: 'completed',
         result: {
-          progress: {
-            chapter_range: { start: 1, end: 3 },
-            next_chapter_index: 4,
-            completed_count: 3,
-            total_count: 3,
-            can_resume: false,
-          },
+          progress: completedProgress,
+          generation_diagnostics: generationDiagnostics,
         },
         error: null,
         ui_hint: {
@@ -1074,6 +1077,7 @@ describe('project workspace state', () => {
         status: 'running',
         task_id: 'range-task',
       })
+      expect(store.writingTaskProgress).toEqual(runningProgress)
       expect(store.writingTaskDiagnostics).toEqual(generationDiagnostics)
 
       await vi.advanceTimersByTimeAsync(1_000)
@@ -1083,6 +1087,7 @@ describe('project workspace state', () => {
         status: 'completed',
         last_error: null,
       })
+      expect(store.writingTaskProgress).toEqual(completedProgress)
       expect(store.writingTaskDiagnostics).toEqual(generationDiagnostics)
     } finally {
       vi.useRealTimers()
