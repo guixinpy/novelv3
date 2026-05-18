@@ -235,6 +235,7 @@ def review_proposal_item(
     reason: str,
     evidence_refs: Iterable[str],
     edited_fields: dict[str, Any] | None = None,
+    commit: bool = True,
 ) -> WorldProposalReview:
     if action not in APPROVE_ACTIONS | NON_MERGE_ACTIONS:
         raise ValueError(f"unsupported review action: {action}")
@@ -327,7 +328,10 @@ def review_proposal_item(
         db.add(review)
         _refresh_bundle_status(db=db, bundle=bundle)
         calculate_bundle_impact_scope(db=db, bundle_id=bundle.id, commit=False)
-        db.commit()
+        if commit:
+            db.commit()
+        else:
+            db.flush()
     except IntegrityError as exc:
         db.rollback()
         raise _translate_review_integrity_error(
@@ -335,15 +339,16 @@ def review_proposal_item(
             proposal_item_id=proposal_item_id,
             claim_id=item_snapshot["claim_id"],
         ) from exc
-    if approved_fact_id:
+    if approved_fact_id and commit:
         _sync_approved_fact_retrieval_document(
             db=db,
             fact_id=approved_fact_id,
             project_id=item_snapshot["project_id"],
         )
     invalidate_world_projection_cache(project_id=item_snapshot["project_id"])
-    db.refresh(review)
-    db.refresh(bundle)
+    if commit:
+        db.refresh(review)
+        db.refresh(bundle)
     return review
 
 
