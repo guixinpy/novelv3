@@ -81,7 +81,7 @@
 - Create: `backend/app/core/world_proposal_resolution_draft.py`
 - Modify: `backend/tests/test_writing_agent_runs.py`
 
-- [ ] **Step 1: Write failing report-only draft test**
+- [x] **Step 1: Write failing report-only draft test**
 
 Add `test_agent_draft_world_model_proposal_resolution_decisions_reports_without_writes`:
 
@@ -134,7 +134,7 @@ def test_agent_draft_world_model_proposal_resolution_decisions_reports_without_w
     assert db_session.query(WorldFactClaim).count() == before_fact_count
 ```
 
-- [ ] **Step 2: Run test to verify RED**
+- [x] **Step 2: Run test to verify RED**
 
 Run:
 
@@ -145,7 +145,7 @@ cd backend
 
 Expected: fail because the tool is not supported.
 
-- [ ] **Step 3: Implement draft core**
+- [x] **Step 3: Implement draft core**
 
 Create:
 
@@ -170,7 +170,7 @@ Implementation rules:
 - Draft decisions include `proposal_item_id`, `action`, `reason`, `evidence_refs`, `policy_id`, and `predicate`.
 - Do not write to the database.
 
-- [ ] **Step 4: Run report-only test to verify GREEN**
+- [x] **Step 4: Run report-only test to verify GREEN**
 
 Run:
 
@@ -188,7 +188,7 @@ Expected: pass.
 - Modify: `backend/app/services/writing_agent/run_service.py`
 - Modify: `backend/tests/test_writing_agent_runs.py`
 
-- [ ] **Step 1: Write failing validation/chaining tests**
+- [x] **Step 1: Write failing validation/chaining tests**
 
 Add tests:
 
@@ -223,7 +223,7 @@ assert len(payload["steps"]) == 1
 assert calls == []
 ```
 
-- [ ] **Step 2: Run tests to verify RED**
+- [x] **Step 2: Run tests to verify RED**
 
 Run:
 
@@ -234,7 +234,7 @@ cd backend
 
 Expected: fail until tool is wired and follow-up rules are updated.
 
-- [ ] **Step 3: Wire Writing Agent tool**
+- [x] **Step 3: Wire Writing Agent tool**
 
 Add `draft_world_model_proposal_resolution_decisions` to:
 
@@ -247,7 +247,7 @@ Add `draft_world_model_proposal_resolution_decisions` to:
 - `_successful_report_block_message`;
 - `_allowed_report_followup` for `draft_world_model_proposal_resolution_decisions -> apply_world_model_proposal_resolution`.
 
-- [ ] **Step 4: Run Phase14 targeted suite**
+- [x] **Step 4: Run Phase14 targeted suite**
 
 Run:
 
@@ -265,7 +265,7 @@ Expected: pass.
 - Create: `docs/superpowers/notes/long-memory-agent/2026-05-18-phase14-proposal-decision-draft.md`
 - Modify: `docs/superpowers/plans/long-memory-agent/2026-05-18-phase14-proposal-decision-draft.md`
 
-- [ ] **Step 1: Run focused verification**
+- [x] **Step 1: Run focused verification**
 
 Run:
 
@@ -278,7 +278,7 @@ rg "sk-[A-Za-z0-9]{20,}" -n docs backend frontend references
 
 Expected: tests pass, no whitespace errors, no committed secrets.
 
-- [ ] **Step 2: Dogfood draft current queue**
+- [x] **Step 2: Dogfood draft current queue**
 
 Use Agent run against project `25fa2b20-5b9f-473b-918b-f4ea491cbb60`:
 
@@ -299,7 +299,7 @@ Expected:
 - no proposal status changes;
 - no review/fact rows are created.
 
-- [ ] **Step 3: Dogfood confirm/apply drafted decisions**
+- [x] **Step 3: Dogfood confirm/apply drafted decisions**
 
 If the draft contains only `reject` and `mark_uncertain`, use `apply_world_model_proposal_resolution` with `confirm_apply=true` and the drafted decisions.
 
@@ -309,7 +309,7 @@ Expected:
 - no `WorldFactClaim` is created;
 - if queue clears, `should_generate_next_chapter=true`, but do not generate Chapter 4 in this phase unless explicitly planned after report review.
 
-- [ ] **Step 4: Record phase report and next recommendation**
+- [x] **Step 4: Record phase report and next recommendation**
 
 The report must include:
 
@@ -323,4 +323,50 @@ The report must include:
 
 ## Phase Report
 
-To be filled after execution.
+### Implementation
+
+- Added `backend/app/core/world_proposal_resolution_draft.py`.
+- Wired `draft_world_model_proposal_resolution_decisions` into the Writing Agent internal/report tool path.
+- Added tests for report-only behavior, unclassified item tracking, custom policy approval refusal, draft-to-apply chaining, and draft-to-generation blocking.
+
+### Runtime Dogfood
+
+- Dogfood project: `25fa2b20-5b9f-473b-918b-f4ea491cbb60` (`雾港回声`).
+- Novel progress remains 3 generated chapters. Chapter 4 was intentionally not generated in this phase.
+- Draft run: `b56de21e-123b-415b-b079-0fda6c2ec251`.
+- Draft before/after counts were unchanged:
+  - actionable proposal items: 22;
+  - proposal reviews: 2;
+  - world fact claims: 0.
+- Draft output:
+  - inspected items: 22;
+  - drafted decisions: 22;
+  - unclassified items: 0;
+  - `reject`: 18;
+  - `mark_uncertain`: 4;
+  - predicates covered: `mentioned_in_chapter` 9, `presence_count` 9, `present_at_location` 3, `event_summary` 1.
+- Confirmed apply run: `ffa1058e-4d96-4182-b975-6785ce300b9e`.
+- Apply output:
+  - applied decisions: 22;
+  - invalid decisions: 0;
+  - actionable proposal items went from 22 to 0;
+  - proposal reviews went from 2 to 24;
+  - world fact claims stayed 0;
+  - `should_generate_next_chapter=true`;
+  - recommended next tool: `preflight_writing`.
+
+### Review Feedback Resolved
+
+- Independent review found no Critical or Important issues.
+- Minor test gap fixed: custom `predicate_policies` that attempt `approve_with_edits` are ignored and covered by regression test.
+
+### Verification Evidence
+
+- Initial report-only test failed before tool support.
+- Phase14 targeted suite: `5 passed in 0.53s`.
+- Writing Agent suite: `59 passed in 4.24s`.
+- Final verification is recorded in the phase note.
+
+### Next Phase Recommendation
+
+Run a fresh preflight and generate Chapter 4 in the next phase now that the real world proposal queue is clear. After Chapter 4 generation, immediately run quality review and world-model analysis so the longform loop resumes with evidence rather than unreviewed output.
