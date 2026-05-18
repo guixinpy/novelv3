@@ -337,3 +337,59 @@ git commit -m "docs: record long memory agent phase 4"
 - Spec coverage: This phase strengthens Agent orchestration, world-model readiness, and dogfood-driven blocking.
 - Placeholder scan: No `TBD` markers are left.
 - Scope check: Rolling outline expansion is deliberately deferred because preflight should first make the missing outline problem explicit.
+
+## Phase 4 Completion Notes
+
+Phase 4 completed Agent readiness gates and world-model tools. Chapter 3 generation was intentionally blocked because the current outline contains only Chapter 1 despite claiming `total_chapters=600`.
+
+## Actual Completed Work
+
+- Added `preflight_writing` Agent tool.
+- Added `import_setup_world_model` Agent tool.
+- Added `analyze_chapter_world_model` Agent tool.
+- Added run and step `blocked` state handling.
+- Added `blocked_step_count` to Agent run output.
+- Added preflight checks for setup, outline coverage, profile readiness, previous chapter, longform maintenance, and retrieval.
+- Stopped Agent execution after blocked preflight so later `generate_chapter` tools do not run.
+
+## Novel Progress
+
+- Novel: `《雾港回声》`.
+- Generated chapters remain `2 / 600`.
+- Chapter 3 was not generated.
+- Setup was imported into Athena world model.
+- Chapter 1 and Chapter 2 were analyzed into world-model proposal items.
+- Athena proposal queue now has `15` reviewable items.
+
+## Issues Found
+
+- Current outline has only one concrete chapter entry.
+- Chapter 3 lacks target chapter outline.
+- Further generation should stop until rolling outline expansion exists.
+- The project now needs proposal review or triage before large-scale writing.
+
+## Issues Fixed
+
+- Missing world-model profile no longer blocks analysis once Agent imports Setup.
+- Missing outline coverage now blocks generation instead of being silently ignored.
+- Agent run summary now reports blocked steps.
+
+## Verification
+
+- `.venv\Scripts\python.exe -m pytest tests\test_writing_agent_runs.py -q` -> `11 passed`.
+- `.venv\Scripts\python.exe -m pytest tests\test_writing_agent_runs.py tests\test_athena_longform.py::test_import_setup_creates_formal_profile_entities_and_rules -q` -> `12 passed`.
+- `git diff --check` -> exit code `0`.
+- `rg "sk-[A-Za-z0-9]{20,}" -n docs backend frontend references` -> no matches.
+- Runtime Agent import setup run succeeded.
+- Runtime Agent chapter analysis run succeeded.
+- Runtime Agent Chapter 3 preflight blocked generation.
+- Runtime Chapter 3 fetch returned `404`.
+
+## Next Phase Recommendation
+
+Phase 5 should implement rolling outline expansion and proposal triage before generating Chapter 3:
+
+- Add an Agent tool for expanding outline coverage without overwriting existing entries.
+- Have preflight recommend/call outline expansion when `missing_outline_chapter` is found.
+- Add tests that preserve Chapter 1 outline while adding Chapters 2-10 or 3-12.
+- Only generate Chapter 3 after preflight returns `ready`.
