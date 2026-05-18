@@ -823,7 +823,13 @@ def test_generate_chapter_refreshes_longform_memory_and_retrieval(mock_complete,
 
 @patch("app.api.chapters.load_api_key", return_value="sk-test")
 @patch("app.api.chapters.ai_service.complete", new_callable=AsyncMock)
-def test_generate_chapter_does_not_fail_when_longform_maintenance_fails(mock_complete, mock_key, client, monkeypatch):
+def test_generate_chapter_does_not_fail_when_longform_maintenance_fails(
+    mock_complete,
+    mock_key,
+    client,
+    db_session,
+    monkeypatch,
+):
     pid = _create_project_with_setup(client)
     mock_complete.return_value.content = "第一章正文内容"
     mock_complete.return_value.model = "deepseek-chat"
@@ -838,6 +844,15 @@ def test_generate_chapter_does_not_fail_when_longform_maintenance_fails(mock_com
 
     assert response.status_code == 200
     assert response.json()["content"] == "第一章正文内容"
+    trace = db_session.get(AIModelCallTrace, response.json()["last_generation_trace_id"])
+    assert trace.trace_metadata["post_generation_warning_count"] == 1
+    assert trace.trace_metadata["post_generation_warnings"] == [
+        {
+            "stage": "longform_memory_refresh",
+            "error_type": "RuntimeError",
+            "message": "maintenance failed",
+        }
+    ]
 
 
 @patch("app.api.chapters.load_api_key", return_value="sk-test")

@@ -10,7 +10,7 @@ from app.core.ai_service import AIService
 from app.core.athena_retrieval import sync_longform_memory_retrieval_documents
 from app.core.chapter_target import chapter_index_exceeds_target
 from app.core.longform_memory import refresh_longform_memory_for_chapter
-from app.core.model_call_trace import create_trace, mark_trace_failed, mark_trace_success, now_ms
+from app.core.model_call_trace import create_trace, mark_trace_failed, mark_trace_success, now_ms, truncate_text
 from app.core.outline_lookup import find_outline_chapter
 from app.core.setup_projection import get_setup_character_projection
 from app.core.text_stats import count_words
@@ -42,6 +42,7 @@ CHAPTER_HEADING_RE = re.compile(
     r"^\s{0,3}#{0,6}\s*第\s*[\d零〇一二两三四五六七八九十百千]+\s*章(?:\s|[：:、.．-]|$).*$"
 )
 EMPTY_CHAPTER_CONTENT_ERROR = "Generated chapter content is empty after normalization"
+POST_GENERATION_WARNING_MESSAGE_CHARS = 500
 
 
 def _latest_chapter_generation_trace_id(db: Session, chapter: ChapterContent) -> str | None:
@@ -246,6 +247,35 @@ def _chapter_word_target_trace_metadata(project: Project, actual_word_count: int
     }
 
 
+def _post_generation_warning(stage: str, exc: Exception) -> dict:
+    return {
+        "stage": stage,
+        "error_type": exc.__class__.__name__,
+        "message": truncate_text(str(exc), max_chars=POST_GENERATION_WARNING_MESSAGE_CHARS)["content"],
+    }
+
+
+def _safe_attach_post_generation_warnings(
+    db: Session,
+    trace: AIModelCallTrace | None,
+    warnings: list[dict],
+) -> AIModelCallTrace | None:
+    if trace is None or not warnings:
+        return trace
+    try:
+        trace.trace_metadata = {
+            **(trace.trace_metadata or {}),
+            "post_generation_warning_count": len(warnings),
+            "post_generation_warnings": warnings,
+        }
+        db.add(trace)
+        db.commit()
+        return trace
+    except Exception:
+        db.rollback()
+        return None
+
+
 def _safe_mark_chapter_trace_failed(
     db: Session,
     trace: AIModelCallTrace | None,
@@ -269,7 +299,8 @@ def _safe_mark_chapter_trace_failed(
         return None
 
 
-def _safe_refresh_longform_maintenance(db: Session, *, project_id: str, chapter_index: int) -> None:
+def _safe_refresh_longform_maintenance(db: Session, *, project_id: str, chapter_index: int) -> list[dict]:
+    warnings: list[dict] = []
     try:
         refresh_result = refresh_longform_memory_for_chapter(
             db,
@@ -277,13 +308,21 @@ def _safe_refresh_longform_maintenance(db: Session, *, project_id: str, chapter_
             chapter_index,
             reconcile_word_count=False,
         )
+    except Exception as exc:
+        db.rollback()
+        warnings.append(_post_generation_warning("longform_memory_refresh", exc))
+        return warnings
+
+    try:
         sync_longform_memory_retrieval_documents(
             db,
             project_id,
             refresh_result.get("updated_memory_ids") or [],
         )
-    except Exception:
+    except Exception as exc:
         db.rollback()
+        warnings.append(_post_generation_warning("longform_memory_retrieval_sync", exc))
+    return warnings
 
 
 @router.post("/{chapter_index}/generate", response_model=ChapterOut)
@@ -410,6 +449,8 @@ async def create_or_replace_chapter(
         latency_ms=now_ms() - started_at,
     )
 
+    post_generation_warnings: list[dict] = []
+
     # Auto-run L1 consistency check
     try:
         from app.core.consistency_checker import ConsistencyChecker
@@ -419,27 +460,29 @@ async def create_or_replace_chapter(
         for issue in issues:
             db.add(ConsistencyCheck(**issue))
         db.commit()
-    except Exception:
+    except Exception as exc:
         db.rollback()
-        pass  # Don't fail chapter generation if check fails
+        post_generation_warnings.append(_post_generation_warning("consistency_check", exc))
 
     athena_analysis_result = None
     try:
         from app.core.athena_longform import analyze_chapter_to_world_proposals
         athena_analysis_result = analyze_chapter_to_world_proposals(db=db, project_id=project_id, chapter_index=chapter_index)
-    except Exception:
+    except Exception as exc:
         db.rollback()
-        pass  # Don't fail chapter generation if Athena analysis fails
+        post_generation_warnings.append(_post_generation_warning("athena_analysis", exc))
     setattr(chapter, "athena_analysis_result", athena_analysis_result)
 
     try:
         from app.core.athena_retrieval import index_chapter_retrieval
         index_chapter_retrieval(db=db, project_id=project_id, chapter_index=chapter_index)
-    except Exception:
+    except Exception as exc:
         db.rollback()
-        pass  # Don't fail chapter generation if retrieval indexing fails
+        post_generation_warnings.append(_post_generation_warning("chapter_retrieval_index", exc))
 
-    _safe_refresh_longform_maintenance(db, project_id=project_id, chapter_index=chapter_index)
+    post_generation_warnings.extend(
+        _safe_refresh_longform_maintenance(db, project_id=project_id, chapter_index=chapter_index)
+    )
 
     # Emit event for background processing
     try:
@@ -448,8 +491,10 @@ async def create_or_replace_chapter(
             "project_id": project_id,
             "chapter_index": chapter_index,
         })
-    except Exception:
-        pass
+    except Exception as exc:
+        post_generation_warnings.append(_post_generation_warning("chapter_generated_event", exc))
+
+    _safe_attach_post_generation_warnings(db, trace, post_generation_warnings)
 
     return chapter
 
