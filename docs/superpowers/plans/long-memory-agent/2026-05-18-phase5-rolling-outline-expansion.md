@@ -51,7 +51,7 @@
 - Modify: `backend/app/api/outlines.py`
 - Modify: `backend/tests/test_outlines.py`
 
-- [ ] **Step 1: Write failing merge/API tests**
+- [x] **Step 1: Write failing merge/API tests**
 
 Add tests:
 
@@ -70,7 +70,7 @@ Expected:
 - Returned outline includes chapters 1, 2, 3 in order.
 - A model-returned Chapter 99 is ignored when requested window is 2-3.
 
-- [ ] **Step 2: Add merge helper**
+- [x] **Step 2: Add merge helper**
 
 Add helper:
 
@@ -87,7 +87,7 @@ It must:
 - sort by `chapter_index`.
 - return merge stats: `added`, `skipped_existing`, `skipped_out_of_window`.
 
-- [ ] **Step 3: Add expansion endpoint**
+- [x] **Step 3: Add expansion endpoint**
 
 Add:
 
@@ -101,7 +101,7 @@ Use existing setup/storyline bounded context and outline prompt builder with exp
 
 Trace type: `outline_expansion`.
 
-- [ ] **Step 4: Run outline tests**
+- [x] **Step 4: Run outline tests**
 
 Run:
 
@@ -118,7 +118,7 @@ Expected: pass.
 - Modify: `backend/app/services/writing_agent/run_service.py`
 - Modify: `backend/tests/test_writing_agent_runs.py`
 
-- [ ] **Step 1: Write failing Agent tool test**
+- [x] **Step 1: Write failing Agent tool test**
 
 Add:
 
@@ -135,7 +135,7 @@ Expected:
 - First step `expand_outline_window` adds Chapter 3.
 - Second step `preflight_writing` returns `ready`.
 
-- [ ] **Step 2: Implement `expand_outline_window` Agent tool**
+- [x] **Step 2: Implement `expand_outline_window` Agent tool**
 
 Add tool to `WritingAgentRunService`.
 
@@ -161,7 +161,7 @@ Output should include:
 }
 ```
 
-- [ ] **Step 3: Run Agent tests**
+- [x] **Step 3: Run Agent tests**
 
 Run:
 
@@ -178,7 +178,7 @@ Expected: pass.
 - Create: `docs/superpowers/notes/long-memory-agent/2026-05-18-phase5-rolling-outline-expansion.md`
 - Modify: `docs/superpowers/plans/long-memory-agent/2026-05-18-phase5-rolling-outline-expansion.md`
 
-- [ ] **Step 1: Run focused verification**
+- [x] **Step 1: Run focused verification**
 
 Run:
 
@@ -191,7 +191,7 @@ rg "sk-[A-Za-z0-9]{20,}" -n docs backend frontend references
 
 Expected: tests pass, no whitespace errors, no secrets.
 
-- [ ] **Step 2: Expand dogfood outline**
+- [x] **Step 2: Expand dogfood outline**
 
 Use Agent run:
 
@@ -213,7 +213,7 @@ Use Agent run:
 
 Expected: Chapter 3 outline exists after the run.
 
-- [ ] **Step 3: Generate Chapter 3 through Agent gated path**
+- [x] **Step 3: Generate Chapter 3 through Agent gated path**
 
 Use Agent run:
 
@@ -239,7 +239,7 @@ Expected:
 - Chapter 3 analysis creates or updates proposal items.
 - Agent run records length decision.
 
-- [ ] **Step 4: Write Phase 5 report**
+- [x] **Step 4: Write Phase 5 report**
 
 Create `docs/superpowers/notes/long-memory-agent/2026-05-18-phase5-rolling-outline-expansion.md` with:
 
