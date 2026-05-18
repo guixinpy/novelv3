@@ -57,6 +57,7 @@ ALLOWED_TOOLS = {
     "plan_world_model_proposal_resolution",
     "preview_world_model_proposal_resolution",
     "apply_world_model_proposal_resolution",
+    "draft_world_model_proposal_resolution_decisions",
 }
 CHAPTER_TOOL_NAME = "generate_chapter"
 INTERNAL_TOOLS = {
@@ -72,6 +73,7 @@ INTERNAL_TOOLS = {
     "plan_world_model_proposal_resolution",
     "preview_world_model_proposal_resolution",
     "apply_world_model_proposal_resolution",
+    "draft_world_model_proposal_resolution_decisions",
 }
 NON_BLOCKING_REPORT_TOOLS = {
     "review_chapter_quality",
@@ -80,6 +82,7 @@ NON_BLOCKING_REPORT_TOOLS = {
     "plan_world_model_proposal_resolution",
     "preview_world_model_proposal_resolution",
     "apply_world_model_proposal_resolution",
+    "draft_world_model_proposal_resolution_decisions",
 }
 
 
@@ -269,6 +272,16 @@ class WritingAgentRunService:
                 project_id,
                 decisions if isinstance(decisions, list) else [],
                 confirm_apply=tool.params.get("confirm_apply") is True,
+            )
+        if tool.tool_name == "draft_world_model_proposal_resolution_decisions":
+            from app.core.world_proposal_resolution_draft import draft_world_model_proposal_resolution_decisions
+
+            return draft_world_model_proposal_resolution_decisions(
+                self.db,
+                project_id,
+                limit=_optional_int(tool.params.get("limit")) or 50,
+                predicate_policies=tool.params.get("predicate_policies") if isinstance(tool.params.get("predicate_policies"), dict) else None,
+                include_unclassified=tool.params.get("include_unclassified") is True,
             )
         return {"status": "failed", "error": f"Unsupported writing agent tool: {tool.tool_name}"}
 
@@ -632,6 +645,7 @@ def _target_type_for_tool(tool_name: str) -> str | None:
         "plan_world_model_proposal_resolution": "world_model",
         "preview_world_model_proposal_resolution": "world_model",
         "apply_world_model_proposal_resolution": "world_model",
+        "draft_world_model_proposal_resolution_decisions": "world_model",
     }.get(tool_name)
 
 
@@ -650,6 +664,7 @@ def _should_stop_after_report(
         "plan_world_model_proposal_resolution",
         "preview_world_model_proposal_resolution",
         "apply_world_model_proposal_resolution",
+        "draft_world_model_proposal_resolution_decisions",
     }:
         return False
     if step_index >= total_steps:
@@ -664,6 +679,7 @@ def _allowed_report_followup(tool_name: str, next_tool_name: str | None) -> bool
         ("review_world_model_proposals", "plan_world_model_proposal_resolution"),
         ("plan_world_model_proposal_resolution", "preview_world_model_proposal_resolution"),
         ("preview_world_model_proposal_resolution", "apply_world_model_proposal_resolution"),
+        ("draft_world_model_proposal_resolution_decisions", "apply_world_model_proposal_resolution"),
     }
 
 
@@ -673,6 +689,7 @@ def _successful_report_block_message(tool_name: str) -> str:
         "plan_world_model_proposal_resolution": "世界模型提案尚未解决，已停止后续写作工具。",
         "preview_world_model_proposal_resolution": "世界模型提案解决决策尚未执行，已停止后续写作工具。",
         "apply_world_model_proposal_resolution": "世界模型提案队列仍未清空，已停止后续写作工具。",
+        "draft_world_model_proposal_resolution_decisions": "世界模型提案决策草案尚未确认应用，已停止后续写作工具。",
         "plan_chapter_revision": "修订计划未通过，已停止后续写作工具。",
         "create_revision_draft": "修订草稿未通过，已停止后续写作工具。",
     }.get(tool_name, "报告未通过，已停止后续写作工具。")

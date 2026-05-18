@@ -1913,6 +1913,217 @@ def test_agent_apply_world_model_proposal_resolution_allows_generation_when_queu
     assert calls == ["generate_chapter"]
 
 
+def test_agent_draft_world_model_proposal_resolution_decisions_reports_without_writes(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1], generated_chapters=[1])
+    import_setup_to_world_model(db_session, project.id)
+    presence_item = _seed_pending_world_proposal(
+        db_session,
+        project_id=project.id,
+        claim_id="claim.phase14.agent.presence",
+        predicate="presence_count",
+        subject_ref="char.林深",
+    )
+    location_item = _seed_pending_world_proposal(
+        db_session,
+        project_id=project.id,
+        claim_id="claim.phase14.agent.location",
+        predicate="present_at_location",
+        subject_ref="char.苏晚晴",
+    )
+    before_review_count = db_session.query(WorldProposalReview).count()
+    before_fact_count = db_session.query(WorldFactClaim).count()
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "草拟低风险世界模型提案决策",
+            "tools": [{"tool_name": "draft_world_model_proposal_resolution_decisions", "params": {"limit": 20}}],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    stored_presence = db_session.query(WorldProposalItem).filter_by(id=presence_item.id).one()
+    stored_location = db_session.query(WorldProposalItem).filter_by(id=location_item.id).one()
+    actions = {decision["proposal_item_id"]: decision["action"] for decision in output["draft_decisions"]}
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    assert output["status"] == "blocked"
+    assert output["report_only"] is True
+    assert output["draft_decision_count"] == 2
+    assert actions[presence_item.id] == "reject"
+    assert actions[location_item.id] == "mark_uncertain"
+    assert output["requires_confirmation"] is True
+    assert output["can_auto_apply"] is False
+    assert output["should_generate_next_chapter"] is False
+    assert stored_presence.item_status == "pending"
+    assert stored_location.item_status == "pending"
+    assert db_session.query(WorldProposalReview).count() == before_review_count
+    assert db_session.query(WorldFactClaim).count() == before_fact_count
+
+
+def test_agent_draft_world_model_proposal_resolution_decisions_tracks_unclassified_items(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1], generated_chapters=[1])
+    import_setup_to_world_model(db_session, project.id)
+    _seed_pending_world_proposal(
+        db_session,
+        project_id=project.id,
+        claim_id="claim.phase14.agent.custom",
+        predicate="custom_truth",
+        subject_ref="char.林深",
+    )
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "草拟未知谓词提案决策",
+            "tools": [
+                {
+                    "tool_name": "draft_world_model_proposal_resolution_decisions",
+                    "params": {"limit": 20, "include_unclassified": True},
+                }
+            ],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    assert output["draft_decision_count"] == 0
+    assert output["unclassified_item_count"] == 1
+    assert output["unclassified_items"][0]["predicate"] == "custom_truth"
+    assert output["recommended_next_tools"] == ["plan_world_model_proposal_resolution"]
+
+
+def test_agent_draft_world_model_proposal_resolution_decisions_ignores_approval_policy_overrides(
+    client,
+    db_session,
+):
+    project = _seed_longform_project(db_session, outline_chapters=[1], generated_chapters=[1])
+    import_setup_to_world_model(db_session, project.id)
+    _seed_pending_world_proposal(
+        db_session,
+        project_id=project.id,
+        claim_id="claim.phase14.agent.custom-approval-policy",
+        predicate="custom_truth",
+        subject_ref="char.林深",
+    )
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "忽略自定义审批草案策略",
+            "tools": [
+                {
+                    "tool_name": "draft_world_model_proposal_resolution_decisions",
+                    "params": {
+                        "limit": 20,
+                        "include_unclassified": True,
+                        "predicate_policies": {
+                            "custom_truth": {
+                                "action": "approve_with_edits",
+                                "reason": "不允许草拟审批",
+                            }
+                        },
+                    },
+                }
+            ],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    assert output["draft_decision_count"] == 0
+    assert output["unclassified_item_count"] == 1
+    assert output["unclassified_items"][0]["predicate"] == "custom_truth"
+
+
+def test_agent_draft_world_model_proposal_resolution_decisions_allows_apply_followup(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1], generated_chapters=[1])
+    import_setup_to_world_model(db_session, project.id)
+    item = _seed_pending_world_proposal(
+        db_session,
+        project_id=project.id,
+        claim_id="claim.phase14.agent.chain",
+        predicate="presence_count",
+        subject_ref="char.林深",
+    )
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "先草拟再应用世界模型提案决策",
+            "tools": [
+                {"tool_name": "draft_world_model_proposal_resolution_decisions", "params": {"limit": 20}},
+                {
+                    "tool_name": "apply_world_model_proposal_resolution",
+                    "params": {
+                        "confirm_apply": True,
+                        "decisions": [
+                            {
+                                "proposal_item_id": item.id,
+                                "action": "reject",
+                                "reason": "presence_count 是提取元数据，不进入真相层",
+                            }
+                        ],
+                    },
+                },
+            ],
+        },
+    )
+
+    payload = response.json()
+    assert response.status_code == 200
+    assert payload["status"] == "success"
+    assert [step["tool_name"] for step in payload["steps"]] == [
+        "draft_world_model_proposal_resolution_decisions",
+        "apply_world_model_proposal_resolution",
+    ]
+    assert payload["steps"][1]["output"]["applied_count"] == 1
+
+
+def test_agent_draft_world_model_proposal_resolution_decisions_blocks_followup_generation(
+    client,
+    db_session,
+    monkeypatch,
+):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1])
+    import_setup_to_world_model(db_session, project.id)
+    _seed_pending_world_proposal(
+        db_session,
+        project_id=project.id,
+        claim_id="claim.phase14.agent.blocks-generation",
+        predicate="presence_count",
+        subject_ref="char.林深",
+    )
+    calls = []
+
+    async def fake_execute(self, action_type, project_id, *, command_args=None, action_params=None):
+        calls.append(action_type)
+        return {"status": "success", "chapter_index": 2}
+
+    monkeypatch.setattr("app.services.actions.action_execution_service.ActionExecutionService.execute", fake_execute)
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "草拟提案决策后尝试生成第2章",
+            "tools": [
+                {"tool_name": "draft_world_model_proposal_resolution_decisions", "params": {"limit": 20}},
+                {"tool_name": "generate_chapter", "params": {"chapter_index": 2}},
+            ],
+        },
+    )
+
+    payload = response.json()
+    assert response.status_code == 200
+    assert payload["status"] == "blocked"
+    assert payload["steps"][0]["tool_name"] == "draft_world_model_proposal_resolution_decisions"
+    assert payload["steps"][0]["output"]["should_generate_next_chapter"] is False
+    assert len(payload["steps"]) == 1
+    assert calls == []
+
+
 def test_agent_create_revision_draft_from_plan_is_non_destructive(client, db_session):
     project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1, 2])
     chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=2).one()
