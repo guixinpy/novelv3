@@ -1006,6 +1006,15 @@ describe('project workspace state', () => {
         },
       ],
     }
+    const generationRecommendations = [
+      {
+        kind: 'word_target_under',
+        severity: 'warning',
+        title: '存在偏短章节',
+        message: '1 章低于目标字数，建议补足场景推进、人物反应或悬念细节。',
+        chapter_indexes: [1],
+      },
+    ]
     vi.mocked(api.startWriting).mockResolvedValue({
       project_id: 'A',
       current_chapter: 1,
@@ -1021,6 +1030,7 @@ describe('project workspace state', () => {
         result: {
           progress: runningProgress,
           generation_diagnostics: generationDiagnostics,
+          generation_diagnostic_recommendations: generationRecommendations,
         },
         error: null,
         ui_hint: {
@@ -1044,6 +1054,7 @@ describe('project workspace state', () => {
         result: {
           progress: completedProgress,
           generation_diagnostics: generationDiagnostics,
+          generation_diagnostic_recommendations: generationRecommendations,
         },
         error: null,
         ui_hint: {
@@ -1079,6 +1090,7 @@ describe('project workspace state', () => {
       })
       expect(store.writingTaskProgress).toEqual(runningProgress)
       expect(store.writingTaskDiagnostics).toEqual(generationDiagnostics)
+      expect(store.writingTaskRecommendations).toEqual(generationRecommendations)
 
       await vi.advanceTimersByTimeAsync(1_000)
       expect(store.writingState).toEqual({
@@ -1089,6 +1101,7 @@ describe('project workspace state', () => {
       })
       expect(store.writingTaskProgress).toEqual(completedProgress)
       expect(store.writingTaskDiagnostics).toEqual(generationDiagnostics)
+      expect(store.writingTaskRecommendations).toEqual(generationRecommendations)
     } finally {
       vi.useRealTimers()
     }

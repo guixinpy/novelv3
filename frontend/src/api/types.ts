@@ -207,6 +207,14 @@ export interface GenerationDiagnostics {
   post_generation_warnings?: GenerationWarningDiagnostics[]
 }
 
+export interface GenerationDiagnosticRecommendation {
+  kind?: string
+  severity?: string
+  title?: string
+  message?: string
+  chapter_indexes?: number[]
+}
+
 export interface WritingTaskProgress extends Record<string, unknown> {
   chapter_range?: { start?: number; end?: number }
   next_chapter_index?: number
@@ -218,6 +226,7 @@ export interface WritingTaskProgress extends Record<string, unknown> {
 export interface BackgroundTaskResult extends Record<string, unknown> {
   progress?: WritingTaskProgress
   generation_diagnostics?: GenerationDiagnostics
+  generation_diagnostic_recommendations?: GenerationDiagnosticRecommendation[]
 }
 
 export interface BackgroundTaskResponse {

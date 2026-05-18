@@ -373,6 +373,7 @@ function closeTrace() {
           :suggested-next-step="suggestedNextStep"
           :writing-state="project.writingState"
           :writing-task-diagnostics="project.writingTaskDiagnostics"
+          :writing-task-recommendations="project.writingTaskRecommendations"
           :writing-task-progress="project.writingTaskProgress"
           :writing-control-loading="writingControlLoading"
           @tool="onDashboardTool"

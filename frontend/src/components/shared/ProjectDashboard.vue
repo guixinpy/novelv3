@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { GenerationDiagnostics, PendingAction, WritingTaskProgress, WritingState } from '../../api/types'
+import type {
+  GenerationDiagnosticRecommendation,
+  GenerationDiagnostics,
+  PendingAction,
+  WritingTaskProgress,
+  WritingState,
+} from '../../api/types'
 
 const props = defineProps<{
   setup: any
@@ -16,6 +22,7 @@ const props = defineProps<{
   suggestedNextStep?: string | null
   writingState?: WritingState | null
   writingTaskDiagnostics?: GenerationDiagnostics | null
+  writingTaskRecommendations?: GenerationDiagnosticRecommendation[]
   writingTaskProgress?: WritingTaskProgress | null
   writingControlLoading?: boolean
 }>()
@@ -212,6 +219,15 @@ const writingDiagnostics = computed(() => {
   }
 })
 
+const writingRecommendations = computed(() => (props.writingTaskRecommendations || [])
+  .filter((recommendation) => recommendation && (recommendation.title || recommendation.message))
+  .slice(0, 5)
+  .map((recommendation) => ({
+    title: recommendation.title || '建议处理',
+    message: recommendation.message || '',
+    chapterIndexes: formatChapterIndexes(recommendation.chapter_indexes),
+  })))
+
 const writingProgress = computed(() => {
   const progress = props.writingTaskProgress
   if (!progress) return null
@@ -316,6 +332,23 @@ const totalWordsLabel = computed(() => props.totalWords >= 10000 ? `${(props.tot
           </div>
           <p v-if="writingDiagnostics.underIndexes">偏短章节：{{ writingDiagnostics.underIndexes }}</p>
           <p v-if="writingDiagnostics.overIndexes">偏长章节：{{ writingDiagnostics.overIndexes }}</p>
+        </div>
+        <div
+          v-if="writingRecommendations.length"
+          class="dashboard__writing-recommendations"
+          aria-label="写作任务建议"
+        >
+          <div class="dashboard__writing-recommendations-head">建议处理</div>
+          <ul>
+            <li
+              v-for="recommendation in writingRecommendations"
+              :key="`${recommendation.title}:${recommendation.chapterIndexes}`"
+            >
+              <strong>{{ recommendation.title }}</strong>
+              <span v-if="recommendation.chapterIndexes">{{ recommendation.chapterIndexes }}</span>
+              <p v-if="recommendation.message">{{ recommendation.message }}</p>
+            </li>
+          </ul>
         </div>
         <div class="dashboard__writing-actions">
           <button
@@ -578,6 +611,51 @@ const totalWordsLabel = computed(() => props.totalWords >= 10000 ? `${(props.tot
 
 .dashboard__writing-diagnostics p {
   margin-top: 0.2rem;
+}
+
+.dashboard__writing-recommendations {
+  margin-top: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid rgba(245, 158, 11, 0.24);
+  border-radius: var(--radius-md);
+  background: rgba(255, 247, 237, 0.78);
+}
+
+.dashboard__writing-recommendations-head {
+  margin-bottom: var(--space-1);
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  color: var(--color-text-primary);
+}
+
+.dashboard__writing-recommendations ul {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dashboard__writing-recommendations li {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.dashboard__writing-recommendations strong {
+  font-size: var(--text-xs);
+  color: #9a3412;
+  line-height: var(--leading-snug);
+}
+
+.dashboard__writing-recommendations span,
+.dashboard__writing-recommendations p {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: #9a3412;
+  line-height: var(--leading-snug);
 }
 
 .dashboard__writing-actions {

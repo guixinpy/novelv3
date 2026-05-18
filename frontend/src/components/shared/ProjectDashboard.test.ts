@@ -221,6 +221,46 @@ describe('ProjectDashboard', () => {
     expect(wrapper.text()).toContain('偏长章节：第4章')
   })
 
+  it('renders writing task recommendations as actionable items', () => {
+    const wrapper = mount(ProjectDashboard, {
+      props: {
+        setup: null,
+        storyline: null,
+        outline: { total_chapters: 100, chapters: [] },
+        chapters: [],
+        totalWords: 0,
+        writingState: {
+          project_id: 'project-1',
+          current_chapter: 4,
+          status: 'running',
+          last_error: null,
+        },
+        writingTaskRecommendations: [
+          {
+            kind: 'word_target_under',
+            severity: 'warning',
+            title: '存在偏短章节',
+            message: '1 章低于目标字数，建议补足场景推进、人物反应或悬念细节。',
+            chapter_indexes: [1, 2],
+          },
+          {
+            kind: 'post_generation_warning',
+            severity: 'warning',
+            title: '生成后维护出现警告',
+            message: '1 条生成后维护警告，建议先修复长篇记忆或检索同步后再继续批量写作。',
+            chapter_indexes: [3],
+          },
+        ],
+      },
+    })
+
+    expect(wrapper.text()).toContain('建议处理')
+    expect(wrapper.text()).toContain('存在偏短章节')
+    expect(wrapper.text()).toContain('第1章、第2章')
+    expect(wrapper.text()).toContain('生成后维护出现警告')
+    expect(wrapper.text()).toContain('先修复长篇记忆或检索同步')
+  })
+
   it('renders writing task range progress while continuous writing is running', () => {
     const wrapper = mount(ProjectDashboard, {
       props: {

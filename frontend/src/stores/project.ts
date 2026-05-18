@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { api } from '../api/client'
 import type {
   BackgroundTaskResponse,
+  GenerationDiagnosticRecommendation,
   GenerationDiagnostics,
   RefreshTarget,
   WorkspaceBootstrap,
@@ -59,6 +60,7 @@ export const useProjectStore = defineStore('project', () => {
   const preferences = ref<any>(null)
   const versionsNodeType = ref<string | undefined>(undefined)
   const writingTaskDiagnostics = ref<GenerationDiagnostics | null>(null)
+  const writingTaskRecommendations = ref<GenerationDiagnosticRecommendation[]>([])
   const writingTaskProgress = ref<WritingTaskProgress | null>(null)
   const currentProjectScope = ref<string>('')
   const scopeVersion = ref(0)
@@ -144,6 +146,10 @@ export const useProjectStore = defineStore('project', () => {
     const diagnostics = task.result?.generation_diagnostics
     if (diagnostics && typeof diagnostics === 'object') {
       writingTaskDiagnostics.value = diagnostics
+    }
+    const recommendations = task.result?.generation_diagnostic_recommendations
+    if (Array.isArray(recommendations)) {
+      writingTaskRecommendations.value = recommendations
     }
   }
 
@@ -263,6 +269,7 @@ export const useProjectStore = defineStore('project', () => {
     topology.value = null
     writingState.value = null
     writingTaskDiagnostics.value = null
+    writingTaskRecommendations.value = []
     writingTaskProgress.value = null
     chapters.value = []
     chaptersTotal.value = 0
@@ -396,6 +403,7 @@ export const useProjectStore = defineStore('project', () => {
   async function startWriting(id: string) {
     const snapshot = captureProjectRequest(id, ['writingState'])
     writingTaskDiagnostics.value = null
+    writingTaskRecommendations.value = []
     writingTaskProgress.value = null
     const nextState = await api.startWriting(id)
     if (!isLatestProjectRequest(snapshot, 'writingState')) return
@@ -415,6 +423,7 @@ export const useProjectStore = defineStore('project', () => {
   async function resumeWriting(id: string) {
     const snapshot = captureProjectRequest(id, ['writingState'])
     writingTaskDiagnostics.value = null
+    writingTaskRecommendations.value = []
     writingTaskProgress.value = null
     const nextState = await api.resumeWriting(id)
     if (!isLatestProjectRequest(snapshot, 'writingState')) return
@@ -615,7 +624,7 @@ export const useProjectStore = defineStore('project', () => {
     projects, currentProject, setup, chapter, storyline, outline, topology, writingState,
     chapters, chaptersTotal, chaptersOffset, chaptersLimit, chaptersHasMore, chaptersLatestIndex,
     versions, versionsTotal, versionsOffset, versionsLimit, versionsHasMore, preferences, versionsNodeType,
-    writingTaskDiagnostics, writingTaskProgress,
+    writingTaskDiagnostics, writingTaskRecommendations, writingTaskProgress,
     resetProjectScopedState,
     applyWorkspaceBootstrap,
     loadProjects, createProject, updateProjectModel, deleteProject, loadProject,
