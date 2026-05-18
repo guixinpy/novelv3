@@ -52,6 +52,7 @@ ALLOWED_TOOLS = {
     "backfill_outline_gaps",
     "review_chapter_quality",
     "plan_chapter_revision",
+    "create_revision_draft",
 }
 CHAPTER_TOOL_NAME = "generate_chapter"
 INTERNAL_TOOLS = {
@@ -62,6 +63,7 @@ INTERNAL_TOOLS = {
     "backfill_outline_gaps",
     "review_chapter_quality",
     "plan_chapter_revision",
+    "create_revision_draft",
 }
 NON_BLOCKING_REPORT_TOOLS = {"review_chapter_quality", "plan_chapter_revision"}
 
@@ -208,6 +210,13 @@ class WritingAgentRunService:
 
             chapter_index = int(tool.params.get("chapter_index") or 1)
             return plan_chapter_revision(self.db, project_id, chapter_index)
+        if tool.tool_name == "create_revision_draft":
+            from app.core.chapter_revision_drafts import create_revision_draft_from_plan
+            from app.core.chapter_revision_planner import plan_chapter_revision
+
+            chapter_index = int(tool.params.get("chapter_index") or 1)
+            plan = plan_chapter_revision(self.db, project_id, chapter_index)
+            return create_revision_draft_from_plan(self.db, project_id, chapter_index, plan)
         return {"status": "failed", "error": f"Unsupported writing agent tool: {tool.tool_name}"}
 
     def list_runs(self, project_id: str, *, offset: int = 0, limit: int = 20) -> dict[str, Any]:
@@ -522,6 +531,10 @@ class WritingAgentRunService:
                 .first()
             )
             return row.id if row else None
+        if step.tool_name == "create_revision_draft":
+            output = step.output if isinstance(step.output, dict) else {}
+            revision_id = output.get("revision_id")
+            return str(revision_id) if revision_id else None
         return None
 
     def _run_output(self, run_id: str) -> dict[str, Any]:
@@ -561,6 +574,7 @@ def _target_type_for_tool(tool_name: str) -> str | None:
         "backfill_outline_gaps": "outline",
         "review_chapter_quality": "review",
         "plan_chapter_revision": "revision_plan",
+        "create_revision_draft": "revision",
     }.get(tool_name)
 
 
@@ -571,7 +585,7 @@ def _should_stop_after_report(
     step_index: int,
     total_steps: int,
 ) -> bool:
-    if tool.tool_name != "plan_chapter_revision":
+    if tool.tool_name not in {"plan_chapter_revision", "create_revision_draft"}:
         return False
     if step_index >= total_steps:
         return False
