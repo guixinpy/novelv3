@@ -26,6 +26,7 @@ from app.prompting.providers.chapter import (
     build_chapter_prompt_variables,
     build_chapter_trace_context_blocks,
     chapter_max_tokens,
+    project_chapter_word_range,
 )
 from app.prompting.providers.storyline import SetupContextSnapshot
 from app.prompting.tracing import build_prompt_trace_metadata
@@ -187,6 +188,7 @@ def _safe_mark_chapter_trace_success(
     db: Session,
     trace: AIModelCallTrace | None,
     *,
+    project: Project,
     chapter: ChapterContent,
     prompt_tokens: int | None,
     completion_tokens: int | None,
@@ -196,6 +198,10 @@ def _safe_mark_chapter_trace_success(
         return None
     try:
         trace.chapter_id = chapter.id
+        trace.trace_metadata = {
+            **(trace.trace_metadata or {}),
+            "chapter_word_target": _chapter_word_target_trace_metadata(project, chapter.word_count),
+        }
         mark_trace_success(
             db,
             trace,
@@ -208,6 +214,36 @@ def _safe_mark_chapter_trace_success(
     except Exception:
         db.rollback()
         return None
+
+
+def _chapter_word_target_trace_metadata(project: Project, actual_word_count: int | None) -> dict:
+    actual = int(actual_word_count or 0)
+    target_range = project_chapter_word_range(project)
+    if not target_range:
+        return {
+            "actual_word_count": actual,
+            "status": "untracked",
+        }
+
+    target_words = int(project.target_word_count or 0)
+    target_chapters = int(project.target_chapter_count or 0)
+    target_average = max(1, round(target_words / target_chapters))
+    target_min, target_max = target_range
+    status = "within"
+    if actual < target_min:
+        status = "under"
+    elif actual > target_max:
+        status = "over"
+    return {
+        "actual_word_count": actual,
+        "project_target_word_count": target_words,
+        "project_target_chapter_count": target_chapters,
+        "target_average_word_count": target_average,
+        "target_min_word_count": target_min,
+        "target_max_word_count": target_max,
+        "deviation_word_count": actual - target_average,
+        "status": status,
+    }
 
 
 def _safe_mark_chapter_trace_failed(
@@ -367,6 +403,7 @@ async def create_or_replace_chapter(
     _safe_mark_chapter_trace_success(
         db,
         trace,
+        project=project,
         chapter=chapter,
         prompt_tokens=getattr(result, "prompt_tokens", 0),
         completion_tokens=getattr(result, "completion_tokens", 0),

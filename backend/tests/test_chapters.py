@@ -83,9 +83,13 @@ def test_generate_chapter_uses_project_ai_model(mock_complete, mock_key, client,
 
 @patch("app.api.chapters.load_api_key", return_value="sk-test")
 @patch("app.api.chapters.ai_service.complete", new_callable=AsyncMock)
-def test_generate_chapter_records_model_call_trace(mock_complete, mock_key, client):
+def test_generate_chapter_records_model_call_trace(mock_complete, mock_key, client, db_session):
     pid = _create_project_with_setup(client)
-    mock_complete.return_value.content = "第一章正文内容"
+    project = db_session.get(Project, pid)
+    project.target_word_count = 20
+    project.target_chapter_count = 2
+    db_session.commit()
+    mock_complete.return_value.content = "one two three four five six seven eight nine ten eleven twelve thirteen"
     mock_complete.return_value.model = "deepseek-chat"
     mock_complete.return_value.prompt_tokens = 123
     mock_complete.return_value.completion_tokens = 456
@@ -104,6 +108,16 @@ def test_generate_chapter_records_model_call_trace(mock_complete, mock_key, clie
     assert trace["status"] == "success"
     assert trace["prompt_tokens"] == 123
     assert trace["trace_metadata"]["prompt_id"] == "chapter.generate"
+    assert trace["trace_metadata"]["chapter_word_target"] == {
+        "actual_word_count": 13,
+        "project_target_word_count": 20,
+        "project_target_chapter_count": 2,
+        "target_average_word_count": 10,
+        "target_min_word_count": 8,
+        "target_max_word_count": 12,
+        "deviation_word_count": 3,
+        "status": "over",
+    }
     context_kinds = {block["kind"] for block in trace["context_blocks"]}
     assert "setup" in context_kinds
     assert "athena_context" in context_kinds
