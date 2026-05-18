@@ -6,15 +6,17 @@ from app.core.world_proposal_service import create_bundle, write_candidate_fact
 from app.models import (
     AIModelCallTrace,
     ChapterContent,
+    ChapterRevision,
     Outline,
     Project,
     ProjectProfileVersion,
-    ChapterRevision,
     RevisionAnnotation,
     RevisionCorrection,
     Setup,
     Storyline,
+    WorldFactClaim,
     WorldProposalItem,
+    WorldProposalReview,
     WritingAgentRun,
     WritingAgentStep,
 )
@@ -700,6 +702,108 @@ def test_agent_plan_chapter_revision_reports_world_model_pressure_without_review
     assert stored_item.item_status == "pending"
 
 
+def test_agent_review_world_model_proposals_reports_queue_without_reviewing_items(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1], generated_chapters=[1])
+    import_setup_to_world_model(db_session, project.id)
+    item = _seed_pending_world_proposal(
+        db_session,
+        project_id=project.id,
+        claim_id="claim.phase10.agent.role",
+        predicate="role",
+        subject_ref="char.林深",
+    )
+    before_review_count = db_session.query(WorldProposalReview).count()
+    before_fact_count = db_session.query(WorldFactClaim).count()
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "汇总世界模型待审提案队列",
+            "tools": [{"tool_name": "review_world_model_proposals", "params": {"limit": 20}}],
+        },
+    )
+
+    payload = response.json()
+    output = payload["steps"][0]["output"]
+    stored_item = db_session.query(WorldProposalItem).filter_by(id=item.id).one()
+    assert response.status_code == 200
+    assert payload["status"] == "success"
+    assert payload["steps"][0]["target_type"] == "world_model"
+    assert output["status"] == "blocked"
+    assert output["report_only"] is True
+    assert output["total_items"] == 1
+    assert output["returned_items"] == 1
+    assert output["risk_counts"]["high"] == 1
+    assert output["review_mode_counts"]["individual"] == 1
+    assert output["clusters"][0]["item_ids"] == [item.id]
+    assert output["should_generate_next_chapter"] is False
+    assert stored_item.item_status == "pending"
+    assert db_session.query(WorldProposalReview).count() == before_review_count
+    assert db_session.query(WorldFactClaim).count() == before_fact_count
+
+
+def test_agent_review_world_model_proposals_ready_when_queue_empty(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1], generated_chapters=[1])
+    import_setup_to_world_model(db_session, project.id)
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "确认世界模型待审提案队列为空",
+            "tools": [{"tool_name": "review_world_model_proposals"}],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    assert output["status"] == "ready"
+    assert output["total_items"] == 0
+    assert output["risk_counts"] == {"high": 0, "medium": 0, "low": 0}
+    assert output["review_mode_counts"] == {"individual": 0, "batch": 0}
+    assert output["recommended_actions"] == ["preflight_writing"]
+    assert output["should_generate_next_chapter"] is True
+
+
+def test_agent_review_world_model_proposals_blocks_followup_generation(client, db_session, monkeypatch):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1])
+    import_setup_to_world_model(db_session, project.id)
+    _seed_pending_world_proposal(
+        db_session,
+        project_id=project.id,
+        claim_id="claim.phase10.agent.status",
+        predicate="status",
+        subject_ref="char.苏晚晴",
+    )
+    calls = []
+
+    async def fake_execute(self, action_type, project_id, *, command_args=None, action_params=None):
+        calls.append(action_type)
+        return {"status": "success", "chapter_index": 2}
+
+    monkeypatch.setattr("app.services.actions.action_execution_service.ActionExecutionService.execute", fake_execute)
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "检查提案队列后尝试生成第2章",
+            "tools": [
+                {"tool_name": "review_world_model_proposals", "params": {"limit": 20}},
+                {"tool_name": "generate_chapter", "params": {"chapter_index": 2}},
+            ],
+        },
+    )
+
+    payload = response.json()
+    assert response.status_code == 200
+    assert payload["status"] == "blocked"
+    assert payload["steps"][0]["tool_name"] == "review_world_model_proposals"
+    assert payload["steps"][0]["status"] == "success"
+    assert payload["steps"][0]["output"]["should_generate_next_chapter"] is False
+    assert len(payload["steps"]) == 1
+    assert calls == []
+
+
 def test_agent_create_revision_draft_from_plan_is_non_destructive(client, db_session):
     project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1, 2])
     chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=2).one()
@@ -967,6 +1071,47 @@ def _create_project(client, name: str) -> str:
 def _create_trace(db_session, project_id: str, trace_id: str, trace_type: str) -> None:
     db_session.add(AIModelCallTrace(id=trace_id, project_id=project_id, trace_type=trace_type, status="success"))
     db_session.commit()
+
+
+def _seed_pending_world_proposal(
+    db_session,
+    *,
+    project_id: str,
+    claim_id: str,
+    predicate: str,
+    subject_ref: str,
+) -> WorldProposalItem:
+    profile = db_session.query(ProjectProfileVersion).filter_by(project_id=project_id).one()
+    bundle = create_bundle(
+        db=db_session,
+        project_id=project_id,
+        project_profile_version_id=profile.id,
+        profile_version=profile.version,
+        created_by="athena.test",
+        title="待审事实",
+    )
+    item = write_candidate_fact(
+        db=db_session,
+        bundle_id=bundle.id,
+        created_by="athena.test",
+        candidate=ProposalCandidateFactCreate(
+            project_id=project_id,
+            project_profile_version_id=profile.id,
+            profile_version=profile.version,
+            claim_id=claim_id,
+            chapter_index=1,
+            subject_ref=subject_ref,
+            predicate=predicate,
+            object_ref_or_value="雾港调查者",
+            claim_layer="truth",
+            evidence_refs=["chapter:1"],
+            authority_type=DERIVED,
+            confidence=0.9,
+            contract_version=profile.contract_version,
+        ),
+    )
+    db_session.commit()
+    return item
 
 
 def _seed_longform_project(db_session, *, outline_chapters: list[int], generated_chapters: list[int]) -> Project:
