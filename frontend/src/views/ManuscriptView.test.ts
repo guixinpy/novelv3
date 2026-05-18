@@ -53,7 +53,7 @@ const ChapterListStub = defineComponent({
         data-testid="chapter-option"
         @click="$emit('select', chapter.index)"
       >
-        第{{ chapter.index }}章
+        第{{ chapter.index }}章 {{ chapter.wordTargetLabel || chapter.wordCount + '字' }}
       </button>
       <button
         v-if="hasMore"
@@ -292,6 +292,34 @@ describe('ManuscriptView', () => {
     expect(wrapper.get('[data-testid="chapter-list-progress"]').text()).toBe('已加载 250 / 250 章')
     expect(wrapper.findAll('[data-testid="chapter-option"]')).toHaveLength(250)
     expect(wrapper.find('[data-testid="load-more-chapters"]').exists()).toBe(false)
+  })
+
+  it('marks chapter word counts that drift from the project target range', async () => {
+    vi.mocked(api.getProject).mockResolvedValue({
+      id: 'project-1',
+      name: '雾港二十夜',
+      genre: '都市奇幻悬疑',
+      target_chapter_count: 2,
+      target_word_count: 2000,
+      current_word_count: 0,
+      status: 'draft',
+      updated_at: '2026-04-28T00:00:00Z',
+    })
+    vi.mocked(api.listChapters).mockResolvedValue({
+      chapters: [
+        { id: 'chapter-1', chapter_index: 1, title: '第一章', word_count: 700, status: 'generated' },
+        { id: 'chapter-2', chapter_index: 2, title: '第二章', word_count: 1000, status: 'generated' },
+        { id: 'chapter-3', chapter_index: 3, title: '第三章', word_count: 1300, status: 'generated' },
+      ],
+    })
+
+    const { wrapper } = await mountView()
+
+    const options = wrapper.findAll('[data-testid="chapter-option"]').map((button) => button.text())
+    expect(options[0]).toContain('700字 偏短')
+    expect(options[1]).toContain('1,000字')
+    expect(options[1]).not.toContain('偏')
+    expect(options[2]).toContain('1,300字 偏长')
   })
 
   it('closes old trace drawer when switching project route', async () => {

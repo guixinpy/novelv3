@@ -2,6 +2,8 @@
 export interface ChapterItem {
   index: number
   wordCount: number
+  wordTargetStatus?: 'under' | 'within' | 'over' | 'untracked'
+  wordTargetLabel?: string
 }
 
 defineProps<{
@@ -28,7 +30,12 @@ const emit = defineEmits<{
       @click="emit('select', ch.index)"
     >
       <span class="chapter-list__name">第{{ ch.index }}章</span>
-      <span class="chapter-list__count">{{ ch.wordCount.toLocaleString() }}字</span>
+      <span
+        class="chapter-list__count"
+        :class="ch.wordTargetStatus ? `chapter-list__count--${ch.wordTargetStatus}` : ''"
+      >
+        {{ ch.wordTargetLabel || `${ch.wordCount.toLocaleString()}字` }}
+      </span>
     </button>
     <div v-if="chapters.length === 0" class="chapter-list__empty">
       暂无章节
@@ -92,6 +99,14 @@ const emit = defineEmits<{
 .chapter-list__item--active .chapter-list__count {
   color: var(--color-brand);
   opacity: 0.7;
+}
+
+.chapter-list__count--under {
+  color: var(--color-warning, #a15c00);
+}
+
+.chapter-list__count--over {
+  color: var(--color-error);
 }
 
 .chapter-list__empty {

@@ -22,13 +22,34 @@ const submitOpen = ref(false)
 const activeTraceId = ref<string | null>(null)
 const loadingMoreChapters = ref(false)
 const CHAPTER_WINDOW_DEFAULT_LIMIT = 200
+type WordTargetStatus = 'under' | 'within' | 'over' | 'untracked'
 
-const chapterItems = computed(() =>
-  (project.chapters || []).map((c: any) => ({
+const targetWordRange = computed(() => {
+  const targetWords = Number(project.currentProject?.target_word_count || 0)
+  const targetChapters = Number(project.currentProject?.target_chapter_count || 0)
+  if (!Number.isFinite(targetWords) || !Number.isFinite(targetChapters) || targetWords <= 0 || targetChapters <= 0) {
+    return null
+  }
+  const average = Math.max(1, Math.round(targetWords / targetChapters))
+  return {
+    low: Math.max(1, Math.round(average * 0.85)),
+    high: Math.max(1, Math.round(average * 1.15)),
+  }
+})
+
+const chapterItems = computed(() => {
+  const range = targetWordRange.value
+  return (project.chapters || []).map((c: any) => {
+    const wordCount = Number(c.word_count || 0)
+    const target = chapterWordTarget(wordCount, range)
+    return {
     index: c.chapter_index,
-    wordCount: c.word_count || 0,
-  })),
-)
+    wordCount,
+    wordTargetStatus: target.status,
+    wordTargetLabel: target.label,
+  }
+  })
+})
 
 const activeIndex = computed(() => manuscript.selectedChapterIndex)
 const canSubmit = computed(() => manuscript.hasPendingFeedback && activeIndex.value !== null)
@@ -37,6 +58,14 @@ const chapterTotal = computed(() => project.chaptersTotal || chapterItems.value.
 
 function hasChapterSummary(index: number) {
   return chapterItems.value.some((chapter) => chapter.index === index)
+}
+
+function chapterWordTarget(wordCount: number, range: { low: number; high: number } | null): { status: WordTargetStatus; label: string } {
+  const formatted = wordCount.toLocaleString()
+  if (!range) return { status: 'untracked', label: `${formatted}字` }
+  if (wordCount < range.low) return { status: 'under', label: `${formatted}字 偏短` }
+  if (wordCount > range.high) return { status: 'over', label: `${formatted}字 偏长` }
+  return { status: 'within', label: `${formatted}字` }
 }
 
 function chapterWindowOffset(chapterIndex: number, total: number, limit: number) {
