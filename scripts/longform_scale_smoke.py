@@ -19,6 +19,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--target-chapter", type=int, default=None)
     parser.add_argument("--query", type=str, default="星环钥匙")
     parser.add_argument("--max-elapsed-ms", type=int, default=None)
+    parser.add_argument("--max-writing-under-target", type=int, default=0)
+    parser.add_argument("--max-writing-over-target", type=int, default=0)
+    parser.add_argument("--max-writing-warnings", type=int, default=0)
     parser.add_argument("--cleanup", action="store_true", help="Delete the synthetic smoke project after reporting.")
     parser.add_argument(
         "--max-stage-ms",
@@ -40,6 +43,9 @@ def main(argv: list[str] | None = None) -> int:
             report,
             max_elapsed_ms=args.max_elapsed_ms,
             max_stage_ms=max_stage_ms,
+            max_writing_under_target=args.max_writing_under_target,
+            max_writing_over_target=args.max_writing_over_target,
+            max_writing_warnings=args.max_writing_warnings,
         )
         if failures:
             for failure in failures:
@@ -98,6 +104,9 @@ def _threshold_failures(
     *,
     max_elapsed_ms: int | None,
     max_stage_ms: dict[str, int],
+    max_writing_under_target: int,
+    max_writing_over_target: int,
+    max_writing_warnings: int,
 ) -> list[str]:
     failures: list[str] = []
     elapsed_ms = int(report.get("elapsed_ms") or 0)
@@ -141,6 +150,31 @@ def _threshold_failures(
             failures.append(
                 f"query_aware_retrieval included {out_of_range_count} future/out-of-range items"
             )
+    writing_worker = report.get("writing_worker") or {}
+    if writing_worker:
+        diagnostics = writing_worker.get("generation_diagnostics") or {}
+        if not isinstance(diagnostics, dict) or not diagnostics:
+            failures.append("writing_worker generation diagnostics missing")
+        else:
+            word_target = diagnostics.get("word_target") or {}
+            under_count = int(word_target.get("under_count") or 0)
+            over_count = int(word_target.get("over_count") or 0)
+            warning_count = int(
+                diagnostics.get("post_generation_warning_count")
+                or len(diagnostics.get("post_generation_warnings") or [])
+            )
+            if under_count > max_writing_under_target:
+                failures.append(
+                    f"writing_worker under-target chapters {under_count} exceeded max {max_writing_under_target}"
+                )
+            if over_count > max_writing_over_target:
+                failures.append(
+                    f"writing_worker over-target chapters {over_count} exceeded max {max_writing_over_target}"
+                )
+            if warning_count > max_writing_warnings:
+                failures.append(
+                    f"writing_worker post-generation warnings {warning_count} exceeded max {max_writing_warnings}"
+                )
     return failures
 
 

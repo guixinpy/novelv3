@@ -1246,6 +1246,53 @@ def test_longform_scale_smoke_cli_fails_without_query_aware_retrieval_evidence(m
     assert "query_aware_retrieval explanations missing" in captured.err
 
 
+def test_longform_scale_smoke_cli_fails_when_writing_diagnostics_exceed_limits(monkeypatch, capsys):
+    script_path = Path(__file__).resolve().parents[2] / "scripts" / "longform_scale_smoke.py"
+    spec = importlib.util.spec_from_file_location("longform_scale_smoke_cli", script_path)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    def fake_run_smoke_report(_args):
+        return {
+            "project_id": "project-smoke-writing-diagnostics",
+            "elapsed_ms": 100,
+            "timings_ms": {},
+            "writing_worker": {
+                "generation_diagnostics": {
+                    "word_target": {
+                        "under_count": 2,
+                        "within_count": 7,
+                        "over_count": 1,
+                        "untracked_count": 0,
+                    },
+                    "post_generation_warning_count": 1,
+                    "post_generation_warnings": [],
+                },
+            },
+        }
+
+    monkeypatch.setattr(module, "_run_smoke_report", fake_run_smoke_report, raising=False)
+
+    exit_code = module.main(
+        [
+            "--max-writing-under-target",
+            "1",
+            "--max-writing-over-target",
+            "0",
+            "--max-writing-warnings",
+            "0",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "writing_worker under-target chapters 2 exceeded max 1" in captured.err
+    assert "writing_worker over-target chapters 1 exceeded max 0" in captured.err
+    assert "writing_worker post-generation warnings 1 exceeded max 0" in captured.err
+
+
 def test_longform_scale_smoke_cli_rejects_invalid_stage_threshold_before_running(monkeypatch):
     script_path = Path(__file__).resolve().parents[2] / "scripts" / "longform_scale_smoke.py"
     spec = importlib.util.spec_from_file_location("longform_scale_smoke_cli", script_path)
