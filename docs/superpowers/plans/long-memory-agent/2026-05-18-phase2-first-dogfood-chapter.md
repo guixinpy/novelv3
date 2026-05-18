@@ -154,8 +154,8 @@ Expected: returns project id.
 Run:
 
 ```powershell
-$pid = '<project id>'
-Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/api/v1/projects/$pid/setup/generate?command_args=请为《雾港回声》建立适合600章长篇展开的都市悬疑轻科幻设定，突出雾港、记忆异常、城市地下实验、群像关系和长期伏笔。"
+$projectId = '<project id>'
+Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/api/v1/projects/$projectId/setup/generate?command_args=请为《雾港回声》建立适合600章长篇展开的都市悬疑轻科幻设定，突出雾港、记忆异常、城市地下实验、群像关系和长期伏笔。"
 ```
 
 Expected: setup status is `generated`.
@@ -165,7 +165,7 @@ Expected: setup status is `generated`.
 Run:
 
 ```powershell
-Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/api/v1/projects/$pid/storyline/generate?command_args=请生成可支撑600章的主线、支线和伏笔骨架，先保证前30章有清晰阶段目标。"
+Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/api/v1/projects/$projectId/storyline/generate?command_args=请生成可支撑600章的主线、支线和伏笔骨架，先保证前30章有清晰阶段目标。"
 ```
 
 Expected: storyline status is `generated`.
@@ -175,7 +175,7 @@ Expected: storyline status is `generated`.
 Run:
 
 ```powershell
-Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/api/v1/projects/$pid/outline/generate?command_args=请生成前期章节规划，重点保证第1章具备完整正文场景目标、冲突、悬念和后续钩子。"
+Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/api/v1/projects/$projectId/outline/generate?command_args=请生成前期章节规划，重点保证第1章具备完整正文场景目标、冲突、悬念和后续钩子。"
 ```
 
 Expected: outline status is `generated`, and chapter 1 outline exists.
@@ -185,7 +185,7 @@ Expected: outline status is `generated`, and chapter 1 outline exists.
 Run:
 
 ```powershell
-$chapter = Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/api/v1/projects/$pid/chapters/1/generate"
+$chapter = Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/api/v1/projects/$projectId/chapters/1/generate"
 $chapter | Select-Object chapter_index,title,word_count,status,last_generation_trace_id
 ```
 
@@ -198,7 +198,7 @@ Expected: status is `generated`, `word_count` is at least 2000, and `last_genera
 Run:
 
 ```powershell
-$chapter = Invoke-RestMethod "http://127.0.0.1:8000/api/v1/projects/$pid/chapters/1"
+$chapter = Invoke-RestMethod "http://127.0.0.1:8000/api/v1/projects/$projectId/chapters/1"
 ($chapter.content).Substring(0, [Math]::Min(800, $chapter.content.Length))
 $chapter.word_count
 ```
@@ -210,7 +210,7 @@ Expected: content begins as prose, not outline.
 Run:
 
 ```powershell
-Invoke-RestMethod "http://127.0.0.1:8000/api/v1/projects/$pid/model-traces/$($chapter.last_generation_trace_id)"
+Invoke-RestMethod "http://127.0.0.1:8000/api/v1/projects/$projectId/model-call-traces/$($chapter.last_generation_trace_id)"
 ```
 
 Expected: trace includes context blocks and `chapter_prose_quality`.
@@ -220,7 +220,7 @@ Expected: trace includes context blocks and `chapter_prose_quality`.
 Run:
 
 ```powershell
-Invoke-RestMethod "http://127.0.0.1:8000/api/v1/projects/$pid/athena/retrieval/diagnostics"
+Invoke-RestMethod "http://127.0.0.1:8000/api/v1/projects/$projectId/athena/retrieval/diagnostics"
 ```
 
 Expected: diagnostics show at least chapter document/index presence or explain missing state.
@@ -230,7 +230,7 @@ Expected: diagnostics show at least chapter document/index presence or explain m
 Run:
 
 ```powershell
-Invoke-RestMethod "http://127.0.0.1:8000/api/v1/projects/$pid/athena/longform/memory/diagnostics"
+Invoke-RestMethod "http://127.0.0.1:8000/api/v1/projects/$projectId/athena/longform/memory/diagnostics"
 ```
 
 Expected: diagnostics respond successfully.
@@ -240,10 +240,10 @@ Expected: diagnostics respond successfully.
 Run:
 
 ```powershell
-Invoke-RestMethod "http://127.0.0.1:8000/api/v1/projects/$pid/world/proposals"
+Invoke-RestMethod "http://127.0.0.1:8000/api/v1/projects/$projectId/athena/evolution/proposal-review-queue"
 ```
 
-Expected: either proposal state is visible or endpoint gap is documented.
+Expected: proposal review queue state is visible, or the lack of proposals is documented.
 
 ## Task 6: Write Phase 2 Report
 
@@ -317,3 +317,61 @@ git commit -m "docs: record long memory agent phase 2"
 ```
 
 Expected: commit succeeds.
+
+## Phase 2 Completion Notes
+
+Phase 2 executed on `http://127.0.0.1:8001` because port `8000` already had an unidentified listener. No API key was written to files.
+
+The original plan also contained three execution assumptions that were corrected during execution:
+
+- PowerShell `$PID` is a read-only automatic variable, so plan snippets now use `$projectId`.
+- The trace endpoint is `model-call-traces`, not `model-traces`.
+- The available Athena proposal review inspection endpoint is `athena/evolution/proposal-review-queue`; the earlier guessed `world/proposals` path is not the API route used for this phase.
+
+## Actual Completed Work
+
+- Created dogfood project `雾港回声` with id `25fa2b20-5b9f-473b-918b-f4ea491cbb60`.
+- Generated setup `38532a88-bc20-4b13-8a0c-00ac0f006590`.
+- Generated storyline `63694c94-7dd0-4e0b-be60-697bf87436be`.
+- Generated 600-chapter outline `49229388-f2d6-4bdb-bfa0-f4e8b9aa0beb`.
+- Generated chapter 1 `雾中回声`.
+- Fixed outline structured scene normalization discovered during dogfood.
+- Added regression coverage for structured `scenes` and `characters`.
+- Wrote Phase 2 report: `docs/superpowers/notes/long-memory-agent/2026-05-18-phase2-first-dogfood-chapter.md`.
+
+## Novel Progress
+
+- Novel: `《雾港回声》`.
+- Planned total: 600 chapters.
+- Generated chapters: 1.
+- Chapter 1 title: `雾中回声`.
+- Chapter 1 word count: `3735`.
+- Chapter 1 trace id: `febf0ad4-eadd-4b26-b97a-76f6d54468f9`.
+
+## Issues Found
+
+- Outline generation failed when the model returned structured scene dictionaries instead of strings.
+- Chapter 1 exceeded target average/max length; longform generation needs an Agent-level length-control loop.
+- Athena proposal review queue was empty after chapter generation, with `profile_version=null`.
+
+## Issues Fixed
+
+- Normalized structured outline `scenes` and `characters` before persistence and response serialization.
+- Added defensive schema validation for outline chapter list fields.
+- Added a targeted regression test for structured outline scene output.
+
+## Verification
+
+- T1 targeted regression: `.venv\Scripts\python.exe -m pytest tests\test_outlines.py::test_generate_outline_normalizes_structured_scene_items -q`.
+- T1 outline test file: `.venv\Scripts\python.exe -m pytest tests\test_outlines.py -q`.
+- T2 runtime dogfood: setup, storyline, outline, chapter generation, trace inspection, retrieval diagnostics, longform memory diagnostics, maintenance diagnostics, and Athena proposal queue inspection.
+
+## Next Phase Recommendation
+
+Phase 3 should implement the first thin Writing Agent run model and tool-orchestration trace:
+
+- Record an Agent run goal, steps, selected tools, outputs, and trace links.
+- Wrap existing generation APIs as Agent-callable tools.
+- Add the first chapter-length control policy.
+- Investigate missing Athena proposal queue output.
+- Generate chapter 2 through the Agent run path.
