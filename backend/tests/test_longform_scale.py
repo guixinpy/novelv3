@@ -1035,6 +1035,10 @@ def test_longform_scale_smoke_reports_writing_worker_range(db_session):
     assert report["writing_worker"]["progress"]["last_completed_chapter_index"] == 5
     assert report["writing_worker"]["generation_diagnostics"]["word_target"]["within_count"] == 5
     assert report["writing_worker"]["generation_diagnostics"]["post_generation_warning_count"] == 0
+    assert report["writing_worker"]["generation_diagnostics"]["prose_quality"] == {
+        "outline_like_count": 0,
+        "outline_like_chapter_indexes": [],
+    }
     assert report["writing_worker"]["pending_chapter_count"] == 0
     assert report["writing_worker"]["state"]["status"] == "completed"
     assert report["writing_worker"]["state"]["current_chapter"] == 6
@@ -1301,6 +1305,10 @@ def test_longform_scale_smoke_cli_fails_when_writing_diagnostics_exceed_limits(m
                     },
                     "post_generation_warning_count": 1,
                     "post_generation_warnings": [],
+                    "prose_quality": {
+                        "outline_like_count": 1,
+                        "outline_like_chapter_indexes": [4],
+                    },
                 },
             },
         }
@@ -1315,6 +1323,8 @@ def test_longform_scale_smoke_cli_fails_when_writing_diagnostics_exceed_limits(m
             "0",
             "--max-writing-warnings",
             "0",
+            "--max-writing-outline-like",
+            "0",
         ]
     )
 
@@ -1323,6 +1333,7 @@ def test_longform_scale_smoke_cli_fails_when_writing_diagnostics_exceed_limits(m
     assert "writing_worker under-target chapters 2 exceeded max 1" in captured.err
     assert "writing_worker over-target chapters 1 exceeded max 0" in captured.err
     assert "writing_worker post-generation warnings 1 exceeded max 0" in captured.err
+    assert "writing_worker outline-like chapters 1 exceeded max 0" in captured.err
 
 
 def test_longform_scale_smoke_cli_rejects_invalid_stage_threshold_before_running(monkeypatch):

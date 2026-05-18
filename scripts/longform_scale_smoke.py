@@ -22,6 +22,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-writing-under-target", type=int, default=0)
     parser.add_argument("--max-writing-over-target", type=int, default=0)
     parser.add_argument("--max-writing-warnings", type=int, default=0)
+    parser.add_argument("--max-writing-outline-like", type=int, default=0)
     parser.add_argument("--cleanup", action="store_true", help="Delete the synthetic smoke project after reporting.")
     parser.add_argument(
         "--max-stage-ms",
@@ -46,6 +47,7 @@ def main(argv: list[str] | None = None) -> int:
             max_writing_under_target=args.max_writing_under_target,
             max_writing_over_target=args.max_writing_over_target,
             max_writing_warnings=args.max_writing_warnings,
+            max_writing_outline_like=args.max_writing_outline_like,
         )
         if failures:
             for failure in failures:
@@ -107,6 +109,7 @@ def _threshold_failures(
     max_writing_under_target: int,
     max_writing_over_target: int,
     max_writing_warnings: int,
+    max_writing_outline_like: int,
 ) -> list[str]:
     failures: list[str] = []
     elapsed_ms = int(report.get("elapsed_ms") or 0)
@@ -167,6 +170,8 @@ def _threshold_failures(
                 diagnostics.get("post_generation_warning_count")
                 or len(diagnostics.get("post_generation_warnings") or [])
             )
+            prose_quality = diagnostics.get("prose_quality") or {}
+            outline_like_count = int(prose_quality.get("outline_like_count") or 0)
             if under_count > max_writing_under_target:
                 failures.append(
                     f"writing_worker under-target chapters {under_count} exceeded max {max_writing_under_target}"
@@ -178,6 +183,10 @@ def _threshold_failures(
             if warning_count > max_writing_warnings:
                 failures.append(
                     f"writing_worker post-generation warnings {warning_count} exceeded max {max_writing_warnings}"
+                )
+            if outline_like_count > max_writing_outline_like:
+                failures.append(
+                    f"writing_worker outline-like chapters {outline_like_count} exceeded max {max_writing_outline_like}"
                 )
     return failures
 
