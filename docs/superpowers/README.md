@@ -4,7 +4,11 @@
 
 ## 当前有效文档
 
-当前没有活跃的 `specs/` 或 `plans/` 文件。历史材料已归档到：
+当前活跃的 `specs/` 文件：
+
+- `specs/2026-05-18-long-memory-writing-agent-goal.md`
+
+历史材料已归档到：
 
 - `../archive/superpowers/specs/`
 - `../archive/superpowers/plans/`
