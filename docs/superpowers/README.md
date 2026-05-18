@@ -8,6 +8,14 @@
 
 - `specs/2026-05-18-long-memory-writing-agent-goal.md`
 
+当前活跃的 `plans/` 目录：
+
+- `plans/long-memory-agent/`
+
+当前活跃的 `notes/` 目录：
+
+- `notes/long-memory-agent/`
+
 历史材料已归档到：
 
 - `../archive/superpowers/specs/`
