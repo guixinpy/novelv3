@@ -54,6 +54,7 @@ ALLOWED_TOOLS = {
     "plan_chapter_revision",
     "create_revision_draft",
     "review_world_model_proposals",
+    "plan_world_model_proposal_resolution",
 }
 CHAPTER_TOOL_NAME = "generate_chapter"
 INTERNAL_TOOLS = {
@@ -66,8 +67,14 @@ INTERNAL_TOOLS = {
     "plan_chapter_revision",
     "create_revision_draft",
     "review_world_model_proposals",
+    "plan_world_model_proposal_resolution",
 }
-NON_BLOCKING_REPORT_TOOLS = {"review_chapter_quality", "plan_chapter_revision", "review_world_model_proposals"}
+NON_BLOCKING_REPORT_TOOLS = {
+    "review_chapter_quality",
+    "plan_chapter_revision",
+    "review_world_model_proposals",
+    "plan_world_model_proposal_resolution",
+}
 
 
 class WritingAgentRunService:
@@ -122,7 +129,14 @@ class WritingAgentRunService:
 
             output = self._enrich_step_output(run.project_id, tool=tool, result=result)
             self._complete_step(step, output)
-            if _should_stop_after_report(tool, output, step_index=step_index, total_steps=total_steps):
+            next_tool_name = tools[step_index].tool_name if step_index < total_steps else None
+            if _should_stop_after_report(
+                tool,
+                output,
+                step_index=step_index,
+                total_steps=total_steps,
+                next_tool_name=next_tool_name,
+            ):
                 self._block_run_after_successful_report(run, _successful_report_block_message(tool.tool_name))
                 return run
 
@@ -225,6 +239,12 @@ class WritingAgentRunService:
             offset = _optional_int(tool.params.get("offset")) or 0
             limit = _optional_int(tool.params.get("limit")) or 50
             return build_world_proposal_agent_report(self.db, project_id, offset=offset, limit=limit)
+        if tool.tool_name == "plan_world_model_proposal_resolution":
+            from app.core.world_proposal_resolution_plan import build_world_proposal_resolution_plan
+
+            offset = _optional_int(tool.params.get("offset")) or 0
+            limit = _optional_int(tool.params.get("limit")) or 50
+            return build_world_proposal_resolution_plan(self.db, project_id, offset=offset, limit=limit)
         return {"status": "failed", "error": f"Unsupported writing agent tool: {tool.tool_name}"}
 
     def list_runs(self, project_id: str, *, offset: int = 0, limit: int = 20) -> dict[str, Any]:
@@ -584,6 +604,7 @@ def _target_type_for_tool(tool_name: str) -> str | None:
         "plan_chapter_revision": "revision_plan",
         "create_revision_draft": "revision",
         "review_world_model_proposals": "world_model",
+        "plan_world_model_proposal_resolution": "world_model",
     }.get(tool_name)
 
 
@@ -593,17 +614,32 @@ def _should_stop_after_report(
     *,
     step_index: int,
     total_steps: int,
+    next_tool_name: str | None = None,
 ) -> bool:
-    if tool.tool_name not in {"plan_chapter_revision", "create_revision_draft", "review_world_model_proposals"}:
+    if tool.tool_name not in {
+        "plan_chapter_revision",
+        "create_revision_draft",
+        "review_world_model_proposals",
+        "plan_world_model_proposal_resolution",
+    }:
         return False
     if step_index >= total_steps:
         return False
+    if _allowed_report_followup(tool.tool_name, next_tool_name):
+        return False
     return output.get("should_generate_next_chapter") is False
+
+
+def _allowed_report_followup(tool_name: str, next_tool_name: str | None) -> bool:
+    return (tool_name, next_tool_name) in {
+        ("review_world_model_proposals", "plan_world_model_proposal_resolution"),
+    }
 
 
 def _successful_report_block_message(tool_name: str) -> str:
     return {
         "review_world_model_proposals": "世界模型提案队列仍有待审项，已停止后续写作工具。",
+        "plan_world_model_proposal_resolution": "世界模型提案尚未解决，已停止后续写作工具。",
         "plan_chapter_revision": "修订计划未通过，已停止后续写作工具。",
         "create_revision_draft": "修订草稿未通过，已停止后续写作工具。",
     }.get(tool_name, "报告未通过，已停止后续写作工具。")

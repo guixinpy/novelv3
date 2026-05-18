@@ -17,6 +17,7 @@ def build_world_proposal_agent_report(
     *,
     offset: int = 0,
     limit: int = DEFAULT_LIMIT,
+    compact: bool = True,
 ) -> dict[str, Any]:
     clamped_offset = max(offset, 0)
     clamped_limit = min(max(limit, 1), MAX_LIMIT)
@@ -48,7 +49,7 @@ def build_world_proposal_agent_report(
         "has_more": bool(queue.get("has_more")),
         "risk_counts": _risk_counts(clusters),
         "review_mode_counts": _review_mode_counts(clusters),
-        "clusters": [_compact_cluster(cluster) for cluster in clusters],
+        "clusters": [_compact_cluster(cluster) for cluster in clusters] if compact else [_full_cluster(cluster) for cluster in clusters],
         "recommended_actions": _recommended_actions(status, clusters),
         "should_generate_next_chapter": status == "ready",
         "report_only": True,
@@ -94,6 +95,23 @@ def _compact_cluster(cluster: Any) -> dict[str, Any]:
         "item_ids": _bounded_list(cluster.get("item_ids")),
         "bundle_ids": _bounded_list(cluster.get("bundle_ids")),
         "subject_refs": _bounded_list(cluster.get("subject_refs")),
+        "predicate": cluster.get("predicate"),
+        "chapter_range": cluster.get("chapter_range") or {"start": None, "end": None},
+        "reason": cluster.get("reason"),
+    }
+
+
+def _full_cluster(cluster: Any) -> dict[str, Any]:
+    if not isinstance(cluster, dict):
+        return {}
+    return {
+        "cluster_id": cluster.get("cluster_id"),
+        "risk_level": cluster.get("risk_level"),
+        "review_mode": cluster.get("review_mode"),
+        "candidate_count": int(cluster.get("candidate_count") or 0),
+        "item_ids": list(cluster.get("item_ids") or []),
+        "bundle_ids": list(cluster.get("bundle_ids") or []),
+        "subject_refs": list(cluster.get("subject_refs") or []),
         "predicate": cluster.get("predicate"),
         "chapter_range": cluster.get("chapter_range") or {"start": None, "end": None},
         "reason": cluster.get("reason"),
