@@ -509,3 +509,61 @@ Expected: commits succeed.
 - Spec coverage: This plan advances Agent orchestration, traceability, quality gates, and dogfood-driven generation while preserving existing APIs.
 - Placeholder scan: No `TBD` or unresolved task placeholders are intentionally left.
 - Scope check: Frontend is explicitly deferred because the backend API contract needs to stabilize first.
+
+## Phase 3 Completion Notes
+
+Phase 3 completed the first thin Writing Agent run trace implementation and used it to generate Chapter 2 of `《雾港回声》`.
+
+One local runtime caveat was found: `data/mozhou.db` has stale Alembic revision metadata even though later tables already exist. To avoid risky duplicate migrations against dogfood data, the local runtime created only the two new Agent tables via SQLAlchemy `create(checkfirst=True)`. The committed migration remains available for fresh or correctly stamped databases.
+
+## Actual Completed Work
+
+- Added `WritingAgentRun` and `WritingAgentStep` SQLAlchemy models.
+- Added Alembic migration `20260518_add_writing_agent_runs`.
+- Added `writing_agent` schemas.
+- Added `WritingAgentRunService`.
+- Added `/api/v1/projects/{project_id}/agent-runs` API routes.
+- Registered the new router in FastAPI.
+- Added `backend/tests/test_writing_agent_runs.py`.
+- Reused existing `ActionExecutionService` instead of duplicating generation logic.
+- Recorded tool step output, model trace id, target id, chapter index, length decision, and world-model proposal diagnostics.
+
+## Novel Progress
+
+- Novel: `《雾港回声》`.
+- Dogfood project id: `25fa2b20-5b9f-473b-918b-f4ea491cbb60`.
+- Generated chapters: `2 / 600`.
+- Chapter 2 was generated through Agent run id `78894cc3-d7f3-4d4e-8179-e8e461f38954`.
+- Chapter 2 trace id: `08fd0a3d-6c2c-4d54-993c-094af134be9b`.
+- Chapter 2 word count: `3511`.
+
+## Issues Found
+
+- Both generated chapters exceed the configured target range.
+- Chapter 2 title is generic: `第2章`.
+- Athena proposal review queue remains empty because the project has no current world-model profile.
+- Local dogfood DB migration metadata is stale.
+
+## Issues Fixed
+
+- Agent tool execution is now durable and inspectable.
+- Chapter length drift no longer passes silently through the Agent path.
+- Missing world-model proposal state no longer passes silently through the Agent path.
+- Chapter 2 generation is now tied to an Agent run and ordered tool step.
+
+## Verification
+
+- `.venv\Scripts\python.exe -m pytest tests\test_writing_agent_runs.py -q` -> `7 passed`.
+- `.venv\Scripts\python.exe -m pytest tests\test_writing_agent_runs.py tests\test_writing.py tests\test_chapters.py::test_generate_chapter_records_model_call_trace -q` -> `36 passed`.
+- `git diff --check` -> exit code `0`.
+- Runtime backend health on `http://127.0.0.1:8001/api/v1/health` -> `{"status":"ok"}`.
+- Runtime Agent run generated Chapter 2 successfully.
+
+## Next Phase Recommendation
+
+Phase 4 should make Agent gates actionable before generating Chapter 3:
+
+- Add Agent preflight readiness checks.
+- Initialize/import Athena world-model profile for `《雾港回声》`.
+- Turn length warnings into revise/split/stop decisions.
+- Improve semantic chapter title generation or extraction.
