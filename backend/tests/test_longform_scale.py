@@ -1029,6 +1029,8 @@ def test_longform_scale_smoke_reports_writing_worker_range(db_session):
     assert report["writing_worker"]["status"] == "completed"
     assert report["writing_worker"]["progress"]["completed_count"] == 5
     assert report["writing_worker"]["progress"]["last_completed_chapter_index"] == 5
+    assert report["writing_worker"]["generation_diagnostics"]["word_target"]["within_count"] == 5
+    assert report["writing_worker"]["generation_diagnostics"]["post_generation_warning_count"] == 0
     assert report["writing_worker"]["pending_chapter_count"] == 0
     assert report["writing_worker"]["state"]["status"] == "completed"
     assert report["writing_worker"]["state"]["current_chapter"] == 6

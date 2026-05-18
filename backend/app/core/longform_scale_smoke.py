@@ -14,7 +14,7 @@ from app.core.longform_memory import (
 )
 from app.core.narrative_plan_window import get_evolution_plan_window
 from app.prompting.providers.dialog import build_athena_narrative_planning_context_block
-from app.models import ChapterContent, Outline, Project, Storyline
+from app.models import AIModelCallTrace, ChapterContent, Outline, Project, Storyline
 from app.services.tasks.background_task_service import BackgroundTaskService
 
 
@@ -199,8 +199,17 @@ def _run_writing_worker_smoke(db: Session, *, project: Project, chapter_count: i
     running_task = task_service.mark_running(task.id)
 
     async def fake_generate_chapter(project_id: str, chapter_index: int, rdb: Session) -> dict[str, int]:
+        trace = AIModelCallTrace(
+            project_id=project_id,
+            trace_type="chapter_generation",
+            status="success",
+            chapter_index=chapter_index,
+            trace_metadata={"chapter_word_target": {"status": "within"}},
+        )
+        rdb.add(trace)
+        rdb.flush()
         WritingStateService(rdb).complete_chapter(project_id, chapter_index)
-        return {"chapter_index": chapter_index}
+        return {"chapter_index": chapter_index, "last_generation_trace_id": trace.id}
 
     original_generate_chapter = chapters_api.generate_chapter
     chapters_api.generate_chapter = fake_generate_chapter
@@ -216,6 +225,7 @@ def _run_writing_worker_smoke(db: Session, *, project: Project, chapter_count: i
         "id": completed_task.id,
         "status": completed_task.status,
         "progress": _compact_progress((completed_task.result or {}).get("progress") or {}),
+        "generation_diagnostics": (completed_task.result or {}).get("generation_diagnostics") or {},
         "pending_chapter_count": len(pending_chapter_indexes),
         "next_pending_chapter_index": pending_chapter_indexes[0] if pending_chapter_indexes else None,
         "state": {
