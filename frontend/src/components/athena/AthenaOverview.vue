@@ -71,7 +71,16 @@ const maintenanceStatusLabel = computed(() => {
 
 const maintenanceItems = computed(() => {
   const diagnostics = props.maintenanceDiagnostics
+  const issueCount = diagnostics?.issue_count ?? (
+    (diagnostics?.stale_memory_count ?? 0)
+    + (diagnostics?.missing_memory_count ?? 0)
+    + (diagnostics?.stale_retrieval_count ?? 0)
+    + (diagnostics?.missing_retrieval_count ?? 0)
+  )
+  const ready = diagnostics?.ready_for_writing ?? diagnostics?.status === 'current'
   return [
+    { key: 'ready', label: '写作准备', value: ready ? '可继续' : '需修复' },
+    { key: 'issue-count', label: '问题', value: issueCount },
     { key: 'chapters', label: '章节', value: diagnostics?.chapter_count ?? 0 },
     { key: 'stale-memory', label: '过期记忆', value: diagnostics?.stale_memory_count ?? 0 },
     { key: 'missing-memory', label: '缺失记忆', value: diagnostics?.missing_memory_count ?? 0 },
@@ -114,6 +123,10 @@ const maintenanceIssueLines = computed(() => {
     .filter((item) => item.indexes.length > 0)
     .map((item) => `${item.label}：${item.indexes.join('、')}`)
 })
+
+const maintenanceRecommendations = computed(() => (props.maintenanceDiagnostics?.recommendations || [])
+  .filter((recommendation) => recommendation.title || recommendation.message)
+  .slice(0, 4))
 
 const wordTargetIssueLines = computed(() => {
   const target = wordTarget.value
@@ -214,6 +227,15 @@ function goNext() {
         <div v-if="maintenanceIssueLines.length" class="athena-overview__maintenance-issues">
           <p v-for="line in maintenanceIssueLines" :key="line">{{ line }}</p>
         </div>
+        <section v-if="maintenanceRecommendations.length" class="athena-overview__maintenance-recommendations">
+          <h4>维护建议</h4>
+          <ul>
+            <li v-for="recommendation in maintenanceRecommendations" :key="`${recommendation.kind}:${recommendation.title}`">
+              <strong>{{ recommendation.title }}</strong>
+              <p v-if="recommendation.message">{{ recommendation.message }}</p>
+            </li>
+          </ul>
+        </section>
         <p v-else-if="maintenanceDiagnostics?.status === 'current'" class="athena-overview__maintenance-ok">
           章节记忆与检索索引已对齐
         </p>
@@ -378,6 +400,44 @@ function goNext() {
   gap: var(--space-1);
   color: var(--color-text-tertiary);
   font-size: var(--text-xs);
+}
+
+.athena-overview__maintenance-recommendations {
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid rgba(245, 158, 11, 0.24);
+  border-radius: var(--radius-md);
+  background: rgba(255, 251, 235, 0.72);
+}
+
+.athena-overview__maintenance-recommendations h4 {
+  margin: 0 0 var(--space-2);
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+}
+
+.athena-overview__maintenance-recommendations ul {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.athena-overview__maintenance-recommendations li {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.athena-overview__maintenance-recommendations strong,
+.athena-overview__maintenance-recommendations p {
+  margin: 0;
+  color: #92400e;
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
 }
 
 .athena-overview__status strong {

@@ -1704,6 +1704,7 @@ def test_longform_maintenance_diagnostics_reports_word_target_drift(db_session):
 
 
 def test_longform_maintenance_diagnostics_reports_stale_memory_after_chapter_edit(client, db_session):
+    from app.core.athena_retrieval import reindex_project_retrieval
     from app.core.longform_memory import rebuild_longform_memory
 
     project = Project(name="Maintenance Diagnostics")
@@ -1723,6 +1724,7 @@ def test_longform_maintenance_diagnostics_reports_stale_memory_after_chapter_edi
         )
     db_session.commit()
     rebuild_longform_memory(db_session, project.id)
+    reindex_project_retrieval(db_session, project.id)
     chapter = (
         db_session.query(ChapterContent)
         .filter(ChapterContent.project_id == project.id, ChapterContent.chapter_index == 2)
@@ -1737,10 +1739,21 @@ def test_longform_maintenance_diagnostics_reports_stale_memory_after_chapter_edi
     assert response.status_code == 200
     payload = response.json()
     assert payload["status"] == "stale"
+    assert payload["ready_for_writing"] is False
+    assert payload["issue_count"] == 1
     assert payload["chapter_count"] == 3
     assert payload["stale_memory_count"] == 1
     assert payload["stale_chapter_indexes"] == [2]
     assert payload["missing_memory_chapter_indexes"] == []
+    assert payload["recommendations"] == [
+        {
+            "kind": "stale_memory",
+            "severity": "warning",
+            "title": "刷新过期章节记忆",
+            "message": "1 章长篇记忆落后于正文，建议先执行维护修复再继续长篇写作。",
+            "chapter_indexes": [2],
+        }
+    ]
 
 
 def test_longform_maintenance_diagnostics_reports_stale_retrieval_after_memory_refresh(client, db_session):
@@ -1779,10 +1792,21 @@ def test_longform_maintenance_diagnostics_reports_stale_retrieval_after_memory_r
     assert response.status_code == 200
     payload = response.json()
     assert payload["status"] == "stale"
+    assert payload["ready_for_writing"] is False
+    assert payload["issue_count"] == 1
     assert payload["stale_memory_count"] == 0
     assert payload["stale_retrieval_count"] == 1
     assert payload["stale_retrieval_chapter_indexes"] == [2]
     assert payload["latest_synced_chapter_index"] == 3
+    assert payload["recommendations"] == [
+        {
+            "kind": "stale_retrieval",
+            "severity": "warning",
+            "title": "刷新过期检索索引",
+            "message": "1 章长篇记忆的检索索引已过期，建议同步检索后再依赖 Athena 进行跨章节判断。",
+            "chapter_indexes": [2],
+        }
+    ]
 
 
 def test_longform_maintenance_repair_refreshes_memory_and_retrieval(client, db_session):

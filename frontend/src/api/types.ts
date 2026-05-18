@@ -894,6 +894,9 @@ export interface AthenaRetrievalDiagnostics {
 export interface LongformMaintenanceDiagnostics {
   project_id: string
   status: string
+  ready_for_writing?: boolean
+  issue_count?: number
+  recommendations?: LongformMaintenanceRecommendation[]
   chapter_count: number
   word_target?: LongformWordTargetDiagnostics
   stale_memory_count: number
@@ -908,6 +911,14 @@ export interface LongformMaintenanceDiagnostics {
   latest_memory_updated_at: string | null
   latest_retrieval_updated_at: string | null
   latest_synced_chapter_index: number | null
+}
+
+export interface LongformMaintenanceRecommendation {
+  kind?: string
+  severity?: string
+  title?: string
+  message?: string
+  chapter_indexes?: number[]
 }
 
 export interface LongformWordTargetDiagnostics {

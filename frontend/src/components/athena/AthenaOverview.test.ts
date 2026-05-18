@@ -214,6 +214,24 @@ describe('AthenaOverview', () => {
         maintenanceDiagnostics: {
           project_id: 'project-1',
           status: 'stale',
+          ready_for_writing: false,
+          issue_count: 4,
+          recommendations: [
+            {
+              kind: 'stale_memory',
+              severity: 'warning',
+              title: '刷新过期章节记忆',
+              message: '1 章长篇记忆落后于正文，建议先执行维护修复再继续长篇写作。',
+              chapter_indexes: [512],
+            },
+            {
+              kind: 'missing_retrieval',
+              severity: 'warning',
+              title: '补齐检索索引',
+              message: '1 章长篇记忆尚未进入检索索引，建议补齐后再进行跨章节检索。',
+              chapter_indexes: [900],
+            },
+          ],
           chapter_count: 1000,
           stale_memory_count: 1,
           missing_memory_count: 0,
@@ -234,6 +252,8 @@ describe('AthenaOverview', () => {
 
     expect(wrapper.text()).toContain('长篇维护')
     expect(wrapper.text()).toContain('需要维护')
+    expect(wrapper.text()).toContain('写作准备 需修复')
+    expect(wrapper.text()).toContain('问题 4')
     expect(wrapper.text()).toContain('章节 1000')
     expect(wrapper.text()).toContain('过期记忆 1')
     expect(wrapper.text()).toContain('过期检索 2')
@@ -241,6 +261,9 @@ describe('AthenaOverview', () => {
     expect(wrapper.text()).toContain('过期记忆章节：512')
     expect(wrapper.text()).toContain('过期检索章节：512、780')
     expect(wrapper.text()).toContain('缺失检索章节：900')
+    expect(wrapper.text()).toContain('维护建议')
+    expect(wrapper.text()).toContain('刷新过期章节记忆')
+    expect(wrapper.text()).toContain('补齐检索索引')
   })
 
   it('renders longform word target drift summary', () => {

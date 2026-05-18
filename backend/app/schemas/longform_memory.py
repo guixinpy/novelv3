@@ -33,9 +33,20 @@ class LongformWordTargetDiagnostics(BaseModel):
     over_target_chapter_indexes: list[int] = Field(default_factory=list)
 
 
+class LongformMaintenanceRecommendation(BaseModel):
+    kind: str
+    severity: str
+    title: str
+    message: str
+    chapter_indexes: list[int] = Field(default_factory=list)
+
+
 class LongformMaintenanceDiagnostics(BaseModel):
     project_id: str
     status: str
+    ready_for_writing: bool = True
+    issue_count: int = 0
+    recommendations: list[LongformMaintenanceRecommendation] = Field(default_factory=list)
     chapter_count: int
     word_target: LongformWordTargetDiagnostics = Field(default_factory=LongformWordTargetDiagnostics)
     stale_memory_count: int

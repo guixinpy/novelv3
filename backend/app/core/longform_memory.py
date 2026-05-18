@@ -211,6 +211,9 @@ def _maintenance_diagnostics_payload(state: LongformMaintenanceState, *, limit: 
     return {
         "project_id": state.project_id,
         "status": status,
+        "ready_for_writing": stale_total == 0,
+        "issue_count": stale_total,
+        "recommendations": _maintenance_recommendations(state, limit=limit),
         "chapter_count": state.chapter_count,
         "word_target": _limited_word_target_diagnostics(state.word_target, limit=limit),
         "stale_memory_count": len(state.stale_memory_chapters),
@@ -226,6 +229,51 @@ def _maintenance_diagnostics_payload(state: LongformMaintenanceState, *, limit: 
         "latest_retrieval_updated_at": state.latest_retrieval_updated_at,
         "latest_synced_chapter_index": state.latest_synced_chapter_index,
     }
+
+
+def _maintenance_recommendations(state: LongformMaintenanceState, *, limit: int) -> list[dict[str, Any]]:
+    recommendations: list[dict[str, Any]] = []
+    if state.stale_memory_chapters:
+        recommendations.append(
+            {
+                "kind": "stale_memory",
+                "severity": "warning",
+                "title": "刷新过期章节记忆",
+                "message": f"{len(state.stale_memory_chapters)} 章长篇记忆落后于正文，建议先执行维护修复再继续长篇写作。",
+                "chapter_indexes": state.stale_memory_chapters[:limit],
+            }
+        )
+    if state.missing_memory_chapters:
+        recommendations.append(
+            {
+                "kind": "missing_memory",
+                "severity": "warning",
+                "title": "补齐章节记忆",
+                "message": f"{len(state.missing_memory_chapters)} 章缺少长篇记忆，建议补齐后再依赖 Athena 进行长线判断。",
+                "chapter_indexes": state.missing_memory_chapters[:limit],
+            }
+        )
+    if state.stale_retrieval_chapters:
+        recommendations.append(
+            {
+                "kind": "stale_retrieval",
+                "severity": "warning",
+                "title": "刷新过期检索索引",
+                "message": f"{len(state.stale_retrieval_chapters)} 章长篇记忆的检索索引已过期，建议同步检索后再依赖 Athena 进行跨章节判断。",
+                "chapter_indexes": state.stale_retrieval_chapters[:limit],
+            }
+        )
+    if state.missing_retrieval_chapters:
+        recommendations.append(
+            {
+                "kind": "missing_retrieval",
+                "severity": "warning",
+                "title": "补齐检索索引",
+                "message": f"{len(state.missing_retrieval_chapters)} 章长篇记忆尚未进入检索索引，建议补齐后再进行跨章节检索。",
+                "chapter_indexes": state.missing_retrieval_chapters[:limit],
+            }
+        )
+    return recommendations
 
 
 def _maintenance_issue_count(payload: dict[str, Any]) -> int:
