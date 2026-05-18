@@ -80,6 +80,28 @@ const maintenanceItems = computed(() => {
   ]
 })
 
+const wordTarget = computed(() => props.maintenanceDiagnostics?.word_target || null)
+
+const showWordTarget = computed(() => Boolean(wordTarget.value && wordTarget.value.status !== 'untracked'))
+
+const wordTargetItems = computed(() => {
+  const target = wordTarget.value
+  if (!target) return []
+  return [
+    { key: 'target', label: '目标', value: wordCountLabel(target.target_average_word_count) },
+    {
+      key: 'range',
+      label: '范围',
+      value: target.target_min_word_count && target.target_max_word_count
+        ? `${target.target_min_word_count}-${target.target_max_word_count}字`
+        : '-',
+    },
+    { key: 'under', label: '偏短', value: target.under_target_count },
+    { key: 'within', label: '达标', value: target.within_target_count },
+    { key: 'over', label: '偏长', value: target.over_target_count },
+  ]
+})
+
 const maintenanceIssueLines = computed(() => {
   const diagnostics = props.maintenanceDiagnostics
   if (!diagnostics) return []
@@ -92,6 +114,22 @@ const maintenanceIssueLines = computed(() => {
     .filter((item) => item.indexes.length > 0)
     .map((item) => `${item.label}：${item.indexes.join('、')}`)
 })
+
+const wordTargetIssueLines = computed(() => {
+  const target = wordTarget.value
+  if (!target) return []
+  return [
+    { label: '偏短章节', indexes: target.under_target_chapter_indexes },
+    { label: '偏长章节', indexes: target.over_target_chapter_indexes },
+  ]
+    .filter((item) => item.indexes.length > 0)
+    .map((item) => `${item.label}：${item.indexes.join('、')}`)
+})
+
+function wordCountLabel(value?: number | null) {
+  if (!value) return '-'
+  return `${value}字`
+}
 
 function goNext() {
   const action = props.dashboard?.next_action.action
@@ -164,6 +202,15 @@ function goNext() {
         <div class="athena-overview__maintenance-items">
           <span v-for="item in maintenanceItems" :key="item.key">{{ item.label }} {{ item.value }}</span>
         </div>
+        <section v-if="showWordTarget" class="athena-overview__word-target">
+          <h4>字数节奏</h4>
+          <div class="athena-overview__maintenance-items">
+            <span v-for="item in wordTargetItems" :key="item.key">{{ item.label }} {{ item.value }}</span>
+          </div>
+          <div v-if="wordTargetIssueLines.length" class="athena-overview__maintenance-issues">
+            <p v-for="line in wordTargetIssueLines" :key="line">{{ line }}</p>
+          </div>
+        </section>
         <div v-if="maintenanceIssueLines.length" class="athena-overview__maintenance-issues">
           <p v-for="line in maintenanceIssueLines" :key="line">{{ line }}</p>
         </div>
@@ -278,6 +325,18 @@ function goNext() {
 .athena-overview__maintenance h3 {
   color: var(--color-text-primary);
   font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+}
+
+.athena-overview__word-target {
+  display: grid;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+}
+
+.athena-overview__word-target h4 {
+  color: var(--color-text-primary);
+  font-size: var(--text-xs);
   font-weight: var(--font-semibold);
 }
 

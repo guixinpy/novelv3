@@ -243,6 +243,66 @@ describe('AthenaOverview', () => {
     expect(wrapper.text()).toContain('缺失检索章节：900')
   })
 
+  it('renders longform word target drift summary', () => {
+    const wrapper = mount(AthenaOverview, {
+      props: {
+        dashboard: {
+          project_profile: null,
+          metrics: {
+            entity_count: 0,
+            fact_count: 0,
+            presence_count: 0,
+            event_count: 0,
+            pending_bundle_count: 0,
+            pending_item_count: 0,
+          },
+          next_action: {
+            action: 'inspect_projection',
+            label: '检查真相投影',
+          },
+        },
+        maintenanceDiagnostics: {
+          project_id: 'project-1',
+          status: 'current',
+          chapter_count: 3,
+          word_target: {
+            status: 'drift',
+            target_average_word_count: 100,
+            target_min_word_count: 85,
+            target_max_word_count: 115,
+            under_target_count: 1,
+            within_target_count: 1,
+            over_target_count: 1,
+            under_target_chapter_indexes: [1],
+            over_target_chapter_indexes: [3],
+          },
+          stale_memory_count: 0,
+          missing_memory_count: 0,
+          stale_retrieval_count: 0,
+          missing_retrieval_count: 0,
+          stale_chapter_indexes: [],
+          missing_memory_chapter_indexes: [],
+          stale_retrieval_chapter_indexes: [],
+          missing_retrieval_chapter_indexes: [],
+          latest_chapter_updated_at: '2026-05-13T00:00:00Z',
+          latest_memory_updated_at: '2026-05-13T00:00:01Z',
+          latest_retrieval_updated_at: '2026-05-13T00:00:02Z',
+          latest_synced_chapter_index: 3,
+        },
+        loading: false,
+      },
+    })
+
+    expect(wrapper.text()).toContain('字数节奏')
+    expect(wrapper.text()).toContain('目标 100字')
+    expect(wrapper.text()).toContain('范围 85-115字')
+    expect(wrapper.text()).toContain('偏短 1')
+    expect(wrapper.text()).toContain('达标 1')
+    expect(wrapper.text()).toContain('偏长 1')
+    expect(wrapper.text()).toContain('偏短章节：1')
+    expect(wrapper.text()).toContain('偏长章节：3')
+  })
+
   it('emits repair request from stale longform maintenance diagnostics', async () => {
     const wrapper = mount(AthenaOverview, {
       props: {
