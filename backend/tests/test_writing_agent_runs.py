@@ -1,4 +1,5 @@
-from app.models import AIModelCallTrace, Project, WritingAgentRun, WritingAgentStep
+from app.core.athena_longform import import_setup_to_world_model
+from app.models import AIModelCallTrace, ChapterContent, Outline, Project, ProjectProfileVersion, Setup, WritingAgentRun, WritingAgentStep
 
 
 def test_writing_agent_run_and_step_persist(client, db_session):
@@ -203,6 +204,96 @@ def test_agent_run_records_chapter_length_and_world_model_diagnostics(client, db
     assert output["world_model_proposal_diagnostic"]["reason"] == "missing_profile"
 
 
+def test_agent_preflight_blocks_when_target_outline_is_missing(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1], generated_chapters=[1, 2])
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "检查第3章是否可写",
+            "tools": [
+                {"tool_name": "preflight_writing", "params": {"chapter_index": 3}},
+                {"tool_name": "generate_chapter", "params": {"chapter_index": 3}},
+            ],
+        },
+    )
+
+    payload = response.json()
+    assert response.status_code == 200
+    assert payload["status"] == "blocked"
+    assert payload["error"] == "第3章缺少章节大纲。"
+    assert payload["output"]["blocked_step_count"] == 1
+    assert len(payload["steps"]) == 1
+    step = payload["steps"][0]
+    assert step["tool_name"] == "preflight_writing"
+    assert step["status"] == "blocked"
+    assert step["target_type"] == "preflight"
+    assert step["chapter_index"] == 3
+    assert step["output"]["status"] == "blocked"
+    assert step["output"]["checks"]["outline_chapter"]["status"] == "missing"
+    assert step["output"]["issues"][0]["code"] == "missing_outline_chapter"
+
+
+def test_agent_preflight_ready_when_required_context_exists(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2, 3], generated_chapters=[1, 2])
+    import_setup_to_world_model(db_session, project.id)
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "检查第3章是否可写",
+            "tools": [{"tool_name": "preflight_writing", "params": {"chapter_index": 3}}],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    assert output["status"] == "ready"
+    assert output["checks"]["world_model_profile"]["status"] == "ready"
+    assert output["checks"]["outline_chapter"]["status"] == "ready"
+    assert output["checks"]["previous_chapter"]["status"] == "ready"
+
+
+def test_agent_import_setup_world_model_creates_profile(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1], generated_chapters=[])
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "导入世界模型",
+            "tools": [{"tool_name": "import_setup_world_model"}],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    assert output["status"] == "completed"
+    assert output["profile_version"] == 1
+    assert db_session.query(ProjectProfileVersion).filter_by(project_id=project.id).count() == 1
+
+
+def test_agent_analyze_chapter_world_model_records_proposal_output(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1], generated_chapters=[1])
+    import_setup_to_world_model(db_session, project.id)
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "分析第1章",
+            "tools": [{"tool_name": "analyze_chapter_world_model", "params": {"chapter_index": 1}}],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    assert output["status"] == "completed"
+    assert output["chapter_index"] == 1
+    assert output["created"]["proposal_items"] >= 1
+
+
 def _create_project(client, name: str) -> str:
     response = client.post("/api/v1/projects", json={"name": name})
     assert response.status_code == 200
@@ -212,3 +303,75 @@ def _create_project(client, name: str) -> str:
 def _create_trace(db_session, project_id: str, trace_id: str, trace_type: str) -> None:
     db_session.add(AIModelCallTrace(id=trace_id, project_id=project_id, trace_type=trace_type, status="success"))
     db_session.commit()
+
+
+def _seed_longform_project(db_session, *, outline_chapters: list[int], generated_chapters: list[int]) -> Project:
+    project = Project(
+        name="Preflight Novel",
+        genre="都市悬疑",
+        target_chapter_count=600,
+        target_word_count=1200000,
+    )
+    db_session.add(project)
+    db_session.flush()
+    setup = Setup(
+        project_id=project.id,
+        status="generated",
+        world_building={
+            "background": "雾港被记忆异常和雾晶实验影响。",
+            "geography": "故事发生在‘雾港’和‘旧灯塔’，地下实验室藏有‘雾晶核心’。",
+            "society": "‘雾安局’控制异常档案，‘记忆诊所’收容失忆者。",
+            "rules": "雾晶只能放大记忆回声，不能凭空创造真实记忆。",
+        },
+        characters=[
+            {
+                "name": "林深",
+                "personality": "冷静",
+                "background": "私家侦探",
+                "goals": "查清十年前雾灾真相",
+                "character_status": "alive",
+            },
+            {
+                "name": "苏晚晴",
+                "personality": "敏锐",
+                "background": "失踪者家属",
+                "goals": "找到父亲",
+                "character_status": "alive",
+            },
+        ],
+        core_concept={"theme": "记忆与真相", "hook": "雾港会回放被删除的记忆"},
+    )
+    db_session.add(setup)
+    outline = Outline(
+        project_id=project.id,
+        total_chapters=600,
+        status="generated",
+        chapters=[
+            {
+                "chapter_index": index,
+                "title": f"雾港线索{index}",
+                "summary": f"第{index}章推进雾港记忆异常调查。",
+                "scenes": ["调查现场", "冲突升级"],
+                "characters": ["林深", "苏晚晴"],
+                "purpose": "推进主线",
+            }
+            for index in outline_chapters
+        ],
+        plotlines=[],
+        foreshadowing=[],
+    )
+    db_session.add(outline)
+    for index in generated_chapters:
+        db_session.add(
+            ChapterContent(
+                project_id=project.id,
+                chapter_index=index,
+                title=f"雾港线索{index}",
+                content=f"林深和苏晚晴在雾港旧灯塔调查雾晶核心。第{index}章里，雾安局巡逻队逼近，记忆诊所留下新的证词。",
+                word_count=80,
+                status="generated",
+            )
+        )
+    db_session.commit()
+    db_session.refresh(project)
+    return project

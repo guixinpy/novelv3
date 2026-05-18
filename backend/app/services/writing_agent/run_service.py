@@ -8,6 +8,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.world_proposal_review_queue import build_proposal_review_queue
+from app.core.outline_lookup import find_outline_chapter
 from app.models import (
     AIModelCallTrace,
     ChapterContent,
@@ -27,14 +28,25 @@ RUN_RUNNING = "running"
 RUN_SUCCESS = "success"
 RUN_FAILED = "failed"
 RUN_CANCELLED = "cancelled"
+RUN_BLOCKED = "blocked"
 
 STEP_PENDING = "pending"
 STEP_RUNNING = "running"
 STEP_SUCCESS = "success"
 STEP_FAILED = "failed"
+STEP_BLOCKED = "blocked"
 
-ALLOWED_TOOLS = {"generate_setup", "generate_storyline", "generate_outline", "generate_chapter"}
+ALLOWED_TOOLS = {
+    "generate_setup",
+    "generate_storyline",
+    "generate_outline",
+    "generate_chapter",
+    "preflight_writing",
+    "import_setup_world_model",
+    "analyze_chapter_world_model",
+}
 CHAPTER_TOOL_NAME = "generate_chapter"
+INTERNAL_TOOLS = {"preflight_writing", "import_setup_world_model", "analyze_chapter_world_model"}
 
 
 class WritingAgentRunService:
@@ -76,15 +88,13 @@ class WritingAgentRunService:
                 self._fail_step_and_run(run, step, f"Unsupported writing agent tool: {tool.tool_name}")
                 return run
 
-            result = await ActionExecutionService(self.db).execute(
-                tool.tool_name,
-                run.project_id,
-                command_args=tool.command_args,
-                action_params=tool.params,
-            )
+            result = await self._execute_tool(run.project_id, tool)
             if not isinstance(result, dict):
                 result = {"status": "failed", "error": "Tool returned non-dict result"}
-            if result.get("status") != "success":
+            if result.get("status") == RUN_BLOCKED:
+                self._block_step_and_run(run, step, _block_message(result), output=result)
+                return run
+            if result.get("status") == "failed":
                 self._fail_step_and_run(run, step, str(result.get("error") or "Tool execution failed"), output=result)
                 return run
 
@@ -99,6 +109,27 @@ class WritingAgentRunService:
         self.db.commit()
         self.db.refresh(run)
         return run
+
+    async def _execute_tool(self, project_id: str, tool: WritingAgentToolRequest) -> dict[str, Any]:
+        if tool.tool_name not in INTERNAL_TOOLS:
+            return await ActionExecutionService(self.db).execute(
+                tool.tool_name,
+                project_id,
+                command_args=tool.command_args,
+                action_params=tool.params,
+            )
+        if tool.tool_name == "preflight_writing":
+            return self._preflight_writing(project_id, tool.params)
+        if tool.tool_name == "import_setup_world_model":
+            from app.core.athena_longform import import_setup_to_world_model
+
+            return import_setup_to_world_model(db=self.db, project_id=project_id)
+        if tool.tool_name == "analyze_chapter_world_model":
+            from app.core.athena_longform import analyze_chapter_to_world_proposals
+
+            chapter_index = int(tool.params.get("chapter_index") or 1)
+            return analyze_chapter_to_world_proposals(db=self.db, project_id=project_id, chapter_index=chapter_index)
+        return {"status": "failed", "error": f"Unsupported writing agent tool: {tool.tool_name}"}
 
     def list_runs(self, project_id: str, *, offset: int = 0, limit: int = 20) -> dict[str, Any]:
         self._require_project(project_id)
@@ -207,7 +238,33 @@ class WritingAgentRunService:
         step.error = error
         step.output = output
         step.finished_at = now
+        self.db.flush()
         run.status = RUN_FAILED
+        run.error = error
+        run.output = self._run_output(run.id)
+        run.finished_at = now
+        run.updated_at = now
+        self.db.commit()
+        self.db.refresh(run)
+        self.db.refresh(step)
+
+    def _block_step_and_run(
+        self,
+        run: WritingAgentRun,
+        step: WritingAgentStep,
+        error: str,
+        *,
+        output: dict[str, Any] | None = None,
+    ) -> None:
+        now = _now()
+        step.status = STEP_BLOCKED
+        step.error = error
+        step.output = output
+        step.target_type = _target_type_for_tool(step.tool_name)
+        step.chapter_index = _optional_int((output or {}).get("chapter_index"))
+        step.finished_at = now
+        self.db.flush()
+        run.status = RUN_BLOCKED
         run.error = error
         run.output = self._run_output(run.id)
         run.finished_at = now
@@ -234,6 +291,74 @@ class WritingAgentRunService:
             project_id=project_id,
         )
         return output
+
+    def _preflight_writing(self, project_id: str, params: dict[str, Any]) -> dict[str, Any]:
+        chapter_index = int(params.get("chapter_index") or 1)
+        checks: dict[str, dict[str, Any]] = {}
+        issues: list[dict[str, Any]] = []
+
+        setup = (
+            self.db.query(Setup.id)
+            .filter(Setup.project_id == project_id)
+            .order_by(Setup.created_at.desc(), Setup.id.desc())
+            .first()
+        )
+        checks["setup"] = {"status": "ready", "id": setup.id} if setup else {"status": "missing"}
+        if setup is None:
+            issues.append(_issue("missing_setup", "blocker", "项目缺少已生成设定。"))
+
+        outline_chapter = find_outline_chapter(self.db, project_id, chapter_index)
+        checks["outline_chapter"] = (
+            {"status": "ready", "chapter_index": chapter_index}
+            if outline_chapter is not None
+            else {"status": "missing", "chapter_index": chapter_index}
+        )
+        if outline_chapter is None:
+            issues.append(_issue("missing_outline_chapter", "blocker", f"第{chapter_index}章缺少章节大纲。"))
+
+        profile = (
+            self.db.query(ProjectProfileVersion)
+            .filter(ProjectProfileVersion.project_id == project_id)
+            .order_by(ProjectProfileVersion.version.desc(), ProjectProfileVersion.created_at.desc())
+            .first()
+        )
+        checks["world_model_profile"] = (
+            {"status": "ready", "profile_version": profile.version, "project_profile_version_id": profile.id}
+            if profile
+            else {"status": "missing", "profile_version": None}
+        )
+        if profile is None:
+            issues.append(_issue("missing_world_model_profile", "warning", "项目尚未导入Athena世界模型profile。"))
+
+        if chapter_index <= 1:
+            checks["previous_chapter"] = {"status": "not_required"}
+        else:
+            previous = (
+                self.db.query(ChapterContent.id)
+                .filter(
+                    ChapterContent.project_id == project_id,
+                    ChapterContent.chapter_index == chapter_index - 1,
+                )
+                .first()
+            )
+            checks["previous_chapter"] = (
+                {"status": "ready", "chapter_index": chapter_index - 1, "id": previous.id}
+                if previous
+                else {"status": "missing", "chapter_index": chapter_index - 1}
+            )
+            if previous is None:
+                issues.append(_issue("missing_previous_chapter", "blocker", f"第{chapter_index - 1}章尚未生成。"))
+
+        checks["longform_maintenance"] = _longform_maintenance_check(self.db, project_id)
+        checks["retrieval"] = _retrieval_check(self.db, project_id)
+
+        blocker_count = sum(1 for issue in issues if issue["severity"] == "blocker")
+        return {
+            "status": "blocked" if blocker_count else "ready",
+            "chapter_index": chapter_index,
+            "checks": checks,
+            "issues": issues,
+        }
 
     def _find_target_id(self, step: WritingAgentStep) -> str | None:
         if step.tool_name == "generate_setup":
@@ -280,6 +405,7 @@ class WritingAgentRunService:
             "step_count": len(statuses),
             "successful_step_count": sum(1 for status in statuses if status == STEP_SUCCESS),
             "failed_step_count": sum(1 for status in statuses if status == STEP_FAILED),
+            "blocked_step_count": sum(1 for status in statuses if status == STEP_BLOCKED),
         }
 
 
@@ -302,6 +428,9 @@ def _target_type_for_tool(tool_name: str) -> str | None:
         "generate_storyline": "storyline",
         "generate_outline": "outline",
         "generate_chapter": "chapter",
+        "preflight_writing": "preflight",
+        "import_setup_world_model": "world_model",
+        "analyze_chapter_world_model": "world_model",
     }.get(tool_name)
 
 
@@ -382,6 +511,47 @@ def _world_model_proposal_diagnostic(db: Session, *, project_id: str) -> dict[st
             "reason": "diagnostic_failed",
             "error": str(exc),
         }
+
+
+def _longform_maintenance_check(db: Session, project_id: str) -> dict[str, Any]:
+    try:
+        from app.core.longform_memory import get_longform_maintenance_diagnostics
+
+        diagnostics = get_longform_maintenance_diagnostics(db, project_id, limit=20)
+        return {
+            "status": "ready" if diagnostics.get("ready_for_writing") else "warning",
+            "ready_for_writing": bool(diagnostics.get("ready_for_writing")),
+            "issue_count": int(diagnostics.get("issue_count") or 0),
+        }
+    except Exception as exc:
+        return {"status": "unknown", "error": str(exc)}
+
+
+def _retrieval_check(db: Session, project_id: str) -> dict[str, Any]:
+    try:
+        from app.core.athena_retrieval import get_retrieval_diagnostics
+
+        diagnostics = get_retrieval_diagnostics(db, project_id)
+        return {
+            "status": "ready" if int(diagnostics.get("total_documents") or 0) > 0 else "unknown",
+            "total_documents": int(diagnostics.get("total_documents") or 0),
+            "total_chunks": int(diagnostics.get("total_chunks") or 0),
+        }
+    except Exception as exc:
+        return {"status": "unknown", "error": str(exc)}
+
+
+def _issue(code: str, severity: str, message: str) -> dict[str, Any]:
+    return {"code": code, "severity": severity, "message": message}
+
+
+def _block_message(output: dict[str, Any]) -> str:
+    issues = output.get("issues")
+    if isinstance(issues, list):
+        for issue in issues:
+            if isinstance(issue, dict) and issue.get("severity") == "blocker":
+                return str(issue.get("message") or "Agent run blocked")
+    return str(output.get("error") or "Agent run blocked")
 
 
 def _now() -> datetime:
