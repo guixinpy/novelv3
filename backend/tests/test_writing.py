@@ -143,6 +143,16 @@ async def test_generate_chapter_work_summarizes_generation_diagnostics(client, d
                 "error_type": "RuntimeError",
                 "message": "maintenance failed",
             },
+            "prose_quality": {
+                "status": "outline_like",
+                "warnings": [
+                    {
+                        "kind": "outline_like_output",
+                        "severity": "warning",
+                        "message": "章节内容疑似大纲或摘要格式，建议改写为连续正文场景。",
+                    }
+                ],
+            },
         },
         3: {"status": "over", "warning": None},
     }
@@ -159,6 +169,9 @@ async def test_generate_chapter_work_summarizes_generation_diagnostics(client, d
         if warning:
             metadata["post_generation_warning_count"] = 1
             metadata["post_generation_warnings"] = [warning]
+        prose_quality = statuses[chapter_index].get("prose_quality")
+        if prose_quality:
+            metadata["chapter_prose_quality"] = prose_quality
         trace = AIModelCallTrace(
             project_id=project_id,
             trace_type="chapter_generation",
@@ -194,6 +207,10 @@ async def test_generate_chapter_work_summarizes_generation_diagnostics(client, d
             "message": "maintenance failed",
         }
     ]
+    assert diagnostics["prose_quality"] == {
+        "outline_like_count": 1,
+        "outline_like_chapter_indexes": [2],
+    }
     assert result["generation_diagnostic_recommendations"] == [
         {
             "kind": "word_target_under",
@@ -214,6 +231,13 @@ async def test_generate_chapter_work_summarizes_generation_diagnostics(client, d
             "severity": "warning",
             "title": "生成后维护出现警告",
             "message": "1 条生成后维护警告，建议先修复长篇记忆或检索同步后再继续批量写作。",
+            "chapter_indexes": [2],
+        },
+        {
+            "kind": "outline_like_output",
+            "severity": "warning",
+            "title": "存在大纲式章节",
+            "message": "1 章生成结果疑似大纲或摘要格式，建议改写为连续正文场景后再继续批量写作。",
             "chapter_indexes": [2],
         },
     ]

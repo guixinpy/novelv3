@@ -205,17 +205,21 @@ const writingDiagnostics = computed(() => {
   const wordTarget = diagnostics.word_target || {}
   const underCount = numeric(wordTarget.under_count)
   const overCount = numeric(wordTarget.over_count)
+  const proseQuality = diagnostics.prose_quality || {}
+  const outlineLikeCount = numeric(proseQuality.outline_like_count)
   const warningCount = Math.max(
     numeric(diagnostics.post_generation_warning_count),
     diagnostics.post_generation_warnings?.length || 0,
   )
-  if (underCount + overCount + warningCount <= 0) return null
+  if (underCount + overCount + warningCount + outlineLikeCount <= 0) return null
   return {
     underCount,
     overCount,
     warningCount,
+    outlineLikeCount,
     underIndexes: formatChapterIndexes(wordTarget.under_chapter_indexes),
     overIndexes: formatChapterIndexes(wordTarget.over_chapter_indexes),
+    outlineLikeIndexes: formatChapterIndexes(proseQuality.outline_like_chapter_indexes),
   }
 })
 
@@ -328,10 +332,11 @@ const totalWordsLabel = computed(() => props.totalWords >= 10000 ? `${(props.tot
         >
           <div class="dashboard__writing-diagnostics-head">
             <span>本轮诊断</span>
-            <small>偏短 {{ writingDiagnostics.underCount }} · 偏长 {{ writingDiagnostics.overCount }} · 维护警告 {{ writingDiagnostics.warningCount }}</small>
+            <small>偏短 {{ writingDiagnostics.underCount }} · 偏长 {{ writingDiagnostics.overCount }} · 大纲式 {{ writingDiagnostics.outlineLikeCount }} · 维护警告 {{ writingDiagnostics.warningCount }}</small>
           </div>
           <p v-if="writingDiagnostics.underIndexes">偏短章节：{{ writingDiagnostics.underIndexes }}</p>
           <p v-if="writingDiagnostics.overIndexes">偏长章节：{{ writingDiagnostics.overIndexes }}</p>
+          <p v-if="writingDiagnostics.outlineLikeIndexes">大纲式章节：{{ writingDiagnostics.outlineLikeIndexes }}</p>
         </div>
         <div
           v-if="writingRecommendations.length"

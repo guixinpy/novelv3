@@ -201,10 +201,16 @@ export interface GenerationWarningDiagnostics {
   message?: string
 }
 
+export interface GenerationProseQualityDiagnostics {
+  outline_like_count?: number
+  outline_like_chapter_indexes?: number[]
+}
+
 export interface GenerationDiagnostics {
   word_target?: GenerationWordTargetDiagnostics
   post_generation_warning_count?: number
   post_generation_warnings?: GenerationWarningDiagnostics[]
+  prose_quality?: GenerationProseQualityDiagnostics
 }
 
 export interface GenerationDiagnosticRecommendation {

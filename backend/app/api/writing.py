@@ -181,6 +181,11 @@ def _update_generation_diagnostics(diagnostics: dict, *, chapter_index: int, tra
         ),
         "post_generation_warning_count": int(diagnostics.get("post_generation_warning_count") or 0),
         "post_generation_warnings": list(diagnostics.get("post_generation_warnings") or []),
+        "prose_quality": _update_generation_prose_quality_diagnostics(
+            dict(diagnostics.get("prose_quality") or {}),
+            chapter_index=chapter_index,
+            trace_metadata=trace_metadata,
+        ),
     }
     warnings = trace_metadata.get("post_generation_warnings")
     if isinstance(warnings, list):
@@ -242,6 +247,19 @@ def _generation_diagnostic_recommendations(diagnostics: dict) -> list[dict]:
             }
         )
 
+    prose_quality = diagnostics.get("prose_quality") if isinstance(diagnostics.get("prose_quality"), dict) else {}
+    outline_like_count = int(prose_quality.get("outline_like_count") or 0)
+    if outline_like_count > 0:
+        recommendations.append(
+            {
+                "kind": "outline_like_output",
+                "severity": "warning",
+                "title": "存在大纲式章节",
+                "message": f"{outline_like_count} 章生成结果疑似大纲或摘要格式，建议改写为连续正文场景后再继续批量写作。",
+                "chapter_indexes": list(prose_quality.get("outline_like_chapter_indexes") or []),
+            }
+        )
+
     return recommendations
 
 
@@ -293,6 +311,23 @@ def _update_generation_word_target_diagnostics(
     else:
         next_word_target["untracked_count"] += 1
     return next_word_target
+
+
+def _update_generation_prose_quality_diagnostics(
+    prose_quality: dict,
+    *,
+    chapter_index: int,
+    trace_metadata: dict,
+) -> dict:
+    next_prose_quality = {
+        "outline_like_count": int(prose_quality.get("outline_like_count") or 0),
+        "outline_like_chapter_indexes": list(prose_quality.get("outline_like_chapter_indexes") or []),
+    }
+    chapter_prose_quality = trace_metadata.get("chapter_prose_quality")
+    if isinstance(chapter_prose_quality, dict) and chapter_prose_quality.get("status") == "outline_like":
+        next_prose_quality["outline_like_count"] += 1
+        _append_limited_index(next_prose_quality["outline_like_chapter_indexes"], chapter_index)
+    return next_prose_quality
 
 
 def _append_limited_index(indexes: list[int], chapter_index: int) -> None:

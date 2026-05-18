@@ -209,6 +209,10 @@ describe('ProjectDashboard', () => {
               message: 'maintenance failed',
             },
           ],
+          prose_quality: {
+            outline_like_count: 1,
+            outline_like_chapter_indexes: [2],
+          },
         },
       },
     })
@@ -217,8 +221,10 @@ describe('ProjectDashboard', () => {
     expect(wrapper.text()).toContain('偏短 2')
     expect(wrapper.text()).toContain('偏长 1')
     expect(wrapper.text()).toContain('维护警告 1')
+    expect(wrapper.text()).toContain('大纲式 1')
     expect(wrapper.text()).toContain('偏短章节：第1章、第2章')
     expect(wrapper.text()).toContain('偏长章节：第4章')
+    expect(wrapper.text()).toContain('大纲式章节：第2章')
   })
 
   it('renders writing task recommendations as actionable items', () => {
