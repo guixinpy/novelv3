@@ -90,9 +90,10 @@ function resolvePromptBudget(trace: ModelCallTraceDetail): PromptBudget | null {
 
 function resolveLongformDiagnostics(metadata: Record<string, unknown>) {
   const wordTarget = resolveChapterWordTarget(metadata.chapter_word_target)
+  const proseQuality = resolveChapterProseQuality(metadata.chapter_prose_quality)
   const warnings = resolvePostGenerationWarnings(metadata.post_generation_warnings)
-  if (!wordTarget && warnings.length === 0) return null
-  return { wordTarget, warnings }
+  if (!wordTarget && !proseQuality && warnings.length === 0) return null
+  return { wordTarget, proseQuality, warnings }
 }
 
 function resolveChapterWordTarget(value: unknown) {
@@ -126,6 +127,27 @@ function resolvePostGenerationWarnings(value: unknown) {
       errorType: stringFromUnknown(item.error_type) || 'Error',
       message: stringFromUnknown(item.message) || '未提供错误信息',
     }))
+}
+
+function resolveChapterProseQuality(value: unknown) {
+  if (!isRecord(value)) return null
+  const status = stringFromUnknown(value.status) || 'prose'
+  if (status !== 'outline_like') return null
+  const lineCount = numberFromUnknown(value.line_count)
+  const outlineMarkerCount = numberFromUnknown(value.outline_marker_count)
+  const sentenceEndingCount = numberFromUnknown(value.sentence_ending_count)
+  const warnings = Array.isArray(value.warnings)
+    ? value.warnings.filter(isRecord).map((item) => stringFromUnknown(item.message)).filter((item): item is string => Boolean(item))
+    : []
+  return {
+    statusClass: 'model-trace-diagnostic__status--warning',
+    statusLabel: '大纲式章节',
+    summary: lineCount !== null && outlineMarkerCount !== null
+      ? `${formatNumber(lineCount)} 行中 ${formatNumber(outlineMarkerCount)} 行像大纲标记`
+      : '章节内容疑似大纲或摘要格式',
+    detail: sentenceEndingCount !== null ? `句末标点 ${formatNumber(sentenceEndingCount)} 处` : '',
+    warnings,
+  }
 }
 
 function chapterWordTargetStatusLabel(status: string) {
@@ -218,6 +240,21 @@ function stringListFromUnknown(value: unknown) {
                   · 偏离 {{ formatSignedNumber(longformDiagnostics.wordTarget.deviation) }}字
                 </template>
               </p>
+            </article>
+
+            <article v-if="longformDiagnostics.proseQuality" class="model-trace-diagnostic">
+              <div class="model-trace-diagnostic__header">
+                <span>正文质量</span>
+                <span
+                  class="model-trace-diagnostic__status"
+                  :class="longformDiagnostics.proseQuality.statusClass"
+                >
+                  {{ longformDiagnostics.proseQuality.statusLabel }}
+                </span>
+              </div>
+              <strong>{{ longformDiagnostics.proseQuality.summary }}</strong>
+              <p v-if="longformDiagnostics.proseQuality.detail">{{ longformDiagnostics.proseQuality.detail }}</p>
+              <p v-for="message in longformDiagnostics.proseQuality.warnings" :key="message">{{ message }}</p>
             </article>
 
             <article v-if="longformDiagnostics.warnings.length" class="model-trace-diagnostic">

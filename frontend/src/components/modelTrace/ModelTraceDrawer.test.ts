@@ -145,6 +145,19 @@ function createLongformTraceDetail() {
           message: 'maintenance failed',
         },
       ],
+      chapter_prose_quality: {
+        status: 'outline_like',
+        line_count: 3,
+        outline_marker_count: 3,
+        sentence_ending_count: 1,
+        warnings: [
+          {
+            kind: 'outline_like_output',
+            severity: 'warning',
+            message: '章节内容疑似大纲或摘要格式，建议改写为连续正文场景。',
+          },
+        ],
+      },
     },
   }
 }
@@ -298,6 +311,10 @@ describe('ModelTraceDrawer', () => {
     expect(diagnosticsText).toContain('长篇记忆刷新')
     expect(diagnosticsText).toContain('RuntimeError')
     expect(diagnosticsText).toContain('maintenance failed')
+    expect(diagnosticsText).toContain('正文质量')
+    expect(diagnosticsText).toContain('大纲式章节')
+    expect(diagnosticsText).toContain('3 行中 3 行像大纲标记')
+    expect(diagnosticsText).toContain('建议改写为连续正文场景')
 
     wrapper.unmount()
   })
