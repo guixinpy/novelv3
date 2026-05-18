@@ -41,8 +41,12 @@ FENCED_CHAPTER_RE = re.compile(r"^\s*```(?:[A-Za-z0-9_-]+)?\s*\n(?P<body>.*?)\n?
 CHAPTER_HEADING_RE = re.compile(
     r"^\s{0,3}#{0,6}\s*第\s*[\d零〇一二两三四五六七八九十百千]+\s*章(?:\s|[：:、.．-]|$).*$"
 )
+CHAPTER_OUTLINE_MARKER_RE = re.compile(
+    r"^\s*(?:第\s*[\d零〇一二两三四五六七八九十百千]+\s*章|章节|场景|角色|人物|摘要|梗概|目标|冲突|伏笔|结尾|[-*•]|\d+[.、])(?:\s|[：:、.．-]|$)"
+)
 EMPTY_CHAPTER_CONTENT_ERROR = "Generated chapter content is empty after normalization"
 POST_GENERATION_WARNING_MESSAGE_CHARS = 500
+OUTLINE_LIKE_CHAPTER_WARNING_MESSAGE = "章节内容疑似大纲或摘要格式，建议改写为连续正文场景。"
 
 
 def _latest_chapter_generation_trace_id(db: Session, chapter: ChapterContent) -> str | None:
@@ -202,6 +206,7 @@ def _safe_mark_chapter_trace_success(
         trace.trace_metadata = {
             **(trace.trace_metadata or {}),
             "chapter_word_target": _chapter_word_target_trace_metadata(project, chapter.word_count),
+            "chapter_prose_quality": _chapter_prose_quality_trace_metadata(chapter.content or ""),
         }
         mark_trace_success(
             db,
@@ -244,6 +249,31 @@ def _chapter_word_target_trace_metadata(project: Project, actual_word_count: int
         "target_max_word_count": target_max,
         "deviation_word_count": actual - target_average,
         "status": status,
+    }
+
+
+def _chapter_prose_quality_trace_metadata(content: str) -> dict:
+    lines = [line.strip() for line in content.splitlines() if line.strip()]
+    line_count = len(lines)
+    outline_marker_count = sum(1 for line in lines if CHAPTER_OUTLINE_MARKER_RE.search(line))
+    sentence_ending_count = len(re.findall(r"[。！？.!?]", content))
+    status = "prose"
+    warnings: list[dict] = []
+    if line_count >= 3 and outline_marker_count >= 3 and sentence_ending_count <= max(1, line_count // 2):
+        status = "outline_like"
+        warnings.append(
+            {
+                "kind": "outline_like_output",
+                "severity": "warning",
+                "message": OUTLINE_LIKE_CHAPTER_WARNING_MESSAGE,
+            }
+        )
+    return {
+        "status": status,
+        "line_count": line_count,
+        "outline_marker_count": outline_marker_count,
+        "sentence_ending_count": sentence_ending_count,
+        "warnings": warnings,
     }
 
 

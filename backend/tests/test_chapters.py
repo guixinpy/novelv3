@@ -128,6 +128,40 @@ def test_generate_chapter_records_model_call_trace(mock_complete, mock_key, clie
 
 @patch("app.api.chapters.load_api_key", return_value="sk-test")
 @patch("app.api.chapters.ai_service.complete", new_callable=AsyncMock)
+def test_generate_chapter_records_outline_like_quality_warning(mock_complete, mock_key, client):
+    pid = _create_project_with_setup(client)
+    mock_complete.return_value.content = (
+        "第1章：雾锁灯塔\n"
+        "场景：灯塔区、临时诊所\n"
+        "角色：陆辞、苏晚晴\n"
+        "摘要：陆辞接手集体失忆案并发现灯塔影像。"
+    )
+    mock_complete.return_value.model = "deepseek-chat"
+    mock_complete.return_value.prompt_tokens = 123
+    mock_complete.return_value.completion_tokens = 456
+
+    response = client.post(f"/api/v1/projects/{pid}/chapters/1/generate")
+
+    assert response.status_code == 200
+    trace_id = response.json()["last_generation_trace_id"]
+    trace = client.get(f"/api/v1/projects/{pid}/model-call-traces/{trace_id}").json()
+    assert trace["trace_metadata"]["chapter_prose_quality"] == {
+        "status": "outline_like",
+        "line_count": 3,
+        "outline_marker_count": 3,
+        "sentence_ending_count": 1,
+        "warnings": [
+            {
+                "kind": "outline_like_output",
+                "severity": "warning",
+                "message": "章节内容疑似大纲或摘要格式，建议改写为连续正文场景。",
+            }
+        ],
+    }
+
+
+@patch("app.api.chapters.load_api_key", return_value="sk-test")
+@patch("app.api.chapters.ai_service.complete", new_callable=AsyncMock)
 def test_generate_chapter_prompt_uses_requested_chapter_index(mock_complete, mock_key, client):
     pid = _create_project_with_setup(client)
     mock_complete.return_value.content = "第三章正文内容"
