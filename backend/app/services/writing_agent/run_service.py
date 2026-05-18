@@ -7,8 +7,12 @@ from fastapi import HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.core.outline_lookup import (
+    backfill_missing_outline_chapters_from_content,
+    find_outline_chapter,
+    generated_chapters_missing_outline,
+)
 from app.core.world_proposal_review_queue import build_proposal_review_queue
-from app.core.outline_lookup import find_outline_chapter
 from app.models import (
     AIModelCallTrace,
     ChapterContent,
@@ -45,9 +49,16 @@ ALLOWED_TOOLS = {
     "import_setup_world_model",
     "analyze_chapter_world_model",
     "expand_outline_window",
+    "backfill_outline_gaps",
 }
 CHAPTER_TOOL_NAME = "generate_chapter"
-INTERNAL_TOOLS = {"preflight_writing", "import_setup_world_model", "analyze_chapter_world_model", "expand_outline_window"}
+INTERNAL_TOOLS = {
+    "preflight_writing",
+    "import_setup_world_model",
+    "analyze_chapter_world_model",
+    "expand_outline_window",
+    "backfill_outline_gaps",
+}
 
 
 class WritingAgentRunService:
@@ -89,7 +100,7 @@ class WritingAgentRunService:
                 self._fail_step_and_run(run, step, f"Unsupported writing agent tool: {tool.tool_name}")
                 return run
 
-            result = await self._execute_tool(run.project_id, tool)
+            result = await self._execute_tool(run.project_id, tool, run_id=run.id)
             if not isinstance(result, dict):
                 result = {"status": "failed", "error": "Tool returned non-dict result"}
             if result.get("status") == RUN_BLOCKED:
@@ -111,7 +122,7 @@ class WritingAgentRunService:
         self.db.refresh(run)
         return run
 
-    async def _execute_tool(self, project_id: str, tool: WritingAgentToolRequest) -> dict[str, Any]:
+    async def _execute_tool(self, project_id: str, tool: WritingAgentToolRequest, *, run_id: str) -> dict[str, Any]:
         if tool.tool_name not in INTERNAL_TOOLS:
             return await ActionExecutionService(self.db).execute(
                 tool.tool_name,
@@ -129,6 +140,23 @@ class WritingAgentRunService:
             from app.core.athena_longform import analyze_chapter_to_world_proposals
 
             chapter_index = int(tool.params.get("chapter_index") or 1)
+            existing_analysis = _same_run_completed_chapter_analysis(
+                self.db,
+                run_id=run_id,
+                project_id=project_id,
+                chapter_index=chapter_index,
+            )
+            if existing_analysis is not None:
+                analysis = existing_analysis["analysis"]
+                return {
+                    "status": "skipped",
+                    "reason": "chapter_already_analyzed_in_run",
+                    "chapter_index": chapter_index,
+                    "source_step_id": existing_analysis["source_step_id"],
+                    "proposal_bundle_id": analysis.get("proposal_bundle_id"),
+                    "created": analysis.get("created", {"proposal_items": 0}),
+                    "updated": analysis.get("updated", {"proposal_items": 0}),
+                }
             return analyze_chapter_to_world_proposals(db=self.db, project_id=project_id, chapter_index=chapter_index)
         if tool.tool_name == "expand_outline_window":
             from app.api.outlines import expand_outline_window
@@ -154,6 +182,13 @@ class WritingAgentRunService:
                 "merge": merge,
                 "trace_id": getattr(outline, "last_expansion_trace_id", None),
             }
+        if tool.tool_name == "backfill_outline_gaps":
+            before_chapter = tool.params.get("before_chapter") or tool.params.get("chapter_index")
+            return backfill_missing_outline_chapters_from_content(
+                self.db,
+                project_id,
+                before_chapter=int(before_chapter) if before_chapter else None,
+            )
         return {"status": "failed", "error": f"Unsupported writing agent tool: {tool.tool_name}"}
 
     def list_runs(self, project_id: str, *, offset: int = 0, limit: int = 20) -> dict[str, Any]:
@@ -341,6 +376,30 @@ class WritingAgentRunService:
         if outline_chapter is None:
             issues.append(_issue("missing_outline_chapter", "blocker", f"第{chapter_index}章缺少章节大纲。"))
 
+        historical_outline_gaps = generated_chapters_missing_outline(
+            self.db,
+            project_id,
+            before_chapter=chapter_index,
+        )
+        checks["historical_outline_gaps"] = (
+            {"status": "missing", "chapter_indexes": historical_outline_gaps}
+            if historical_outline_gaps
+            else {"status": "ready", "chapter_indexes": []}
+        )
+        if historical_outline_gaps:
+            issues.append(
+                _issue(
+                    "missing_historical_outline_chapters",
+                    "blocker",
+                    f"已生成章节中第{_chapter_index_list_label(historical_outline_gaps)}章缺少章节大纲，请先回填大纲。",
+                    extra={
+                        "chapter_indexes": historical_outline_gaps,
+                        "suggested_tool": "backfill_outline_gaps",
+                        "suggested_params": {"before_chapter": chapter_index},
+                    },
+                )
+            )
+
         profile = (
             self.db.query(ProjectProfileVersion)
             .filter(ProjectProfileVersion.project_id == project_id)
@@ -375,6 +434,19 @@ class WritingAgentRunService:
                 issues.append(_issue("missing_previous_chapter", "blocker", f"第{chapter_index - 1}章尚未生成。"))
 
         checks["longform_maintenance"] = _longform_maintenance_check(self.db, project_id)
+        checks["length_policy"] = _length_policy_check(self.db, project_id)
+        if checks["length_policy"].get("status") == "blocked":
+            issues.append(
+                _issue(
+                    "repeated_chapter_length_drift",
+                    "blocker",
+                    str(checks["length_policy"].get("message") or "章节字数连续偏离目标，请先复核策略。"),
+                    extra={
+                        "reason": checks["length_policy"].get("reason"),
+                        "recommended_actions": checks["length_policy"].get("recommended_actions", []),
+                    },
+                )
+            )
         checks["retrieval"] = _retrieval_check(self.db, project_id)
 
         blocker_count = sum(1 for issue in issues if issue["severity"] == "blocker")
@@ -457,6 +529,7 @@ def _target_type_for_tool(tool_name: str) -> str | None:
         "import_setup_world_model": "world_model",
         "analyze_chapter_world_model": "world_model",
         "expand_outline_window": "outline",
+        "backfill_outline_gaps": "outline",
     }.get(tool_name)
 
 
@@ -481,6 +554,33 @@ def _optional_int(value: object) -> int | None:
         return None
 
 
+def _same_run_completed_chapter_analysis(
+    db: Session,
+    *,
+    run_id: str,
+    project_id: str,
+    chapter_index: int,
+) -> dict[str, Any] | None:
+    steps = (
+        db.query(WritingAgentStep)
+        .filter(
+            WritingAgentStep.run_id == run_id,
+            WritingAgentStep.project_id == project_id,
+            WritingAgentStep.tool_name == CHAPTER_TOOL_NAME,
+            WritingAgentStep.status == STEP_SUCCESS,
+            WritingAgentStep.chapter_index == chapter_index,
+        )
+        .order_by(WritingAgentStep.step_index.desc(), WritingAgentStep.id.desc())
+        .all()
+    )
+    for step in steps:
+        output = step.output if isinstance(step.output, dict) else {}
+        analysis = output.get("athena_analysis")
+        if isinstance(analysis, dict) and analysis.get("status") == "completed":
+            return {"source_step_id": step.id, "analysis": analysis}
+    return None
+
+
 def _chapter_length_decision(db: Session, *, project_id: str, trace_id: str | None) -> dict[str, Any]:
     metadata = {}
     if trace_id:
@@ -492,14 +592,85 @@ def _chapter_length_decision(db: Session, *, project_id: str, trace_id: str | No
         metadata = row[0] if row and isinstance(row[0], dict) else {}
     word_target = metadata.get("chapter_word_target") if isinstance(metadata.get("chapter_word_target"), dict) else {}
     status = str(word_target.get("status") or "unknown")
-    decision = "accept" if status == "within" else "accept_with_warning" if status in {"under", "over"} else "requires_revision"
+    policy = _length_drift_policy(db, project_id, status=status)
+    if status == "within":
+        decision = "accept"
+        severity = "info"
+    elif status in {"under", "over"} and policy["status"] == "blocked":
+        decision = "requires_policy_review"
+        severity = "warning"
+    elif status in {"under", "over"}:
+        decision = "accept_with_warning"
+        severity = "warning"
+    else:
+        decision = "requires_revision"
+        severity = "warning"
     return {
         "status": status,
         "decision": decision,
+        "severity": severity,
         "actual_word_count": word_target.get("actual_word_count"),
         "target_min_word_count": word_target.get("target_min_word_count"),
         "target_average_word_count": word_target.get("target_average_word_count"),
         "target_max_word_count": word_target.get("target_max_word_count"),
+        "repeated_drift_count": policy["repeated_drift_count"],
+        "policy_reason": policy["reason"],
+        "recommended_actions": policy["recommended_actions"],
+    }
+
+
+def _length_policy_check(db: Session, project_id: str) -> dict[str, Any]:
+    policy = _length_drift_policy(db, project_id, status=None)
+    if policy["status"] != "blocked":
+        return {
+            "status": "ready",
+            "reason": None,
+            "repeated_drift_count": policy["repeated_drift_count"],
+            "recommended_actions": [],
+        }
+    direction = "过长" if policy["reason"] == "repeated_over_target" else "过短"
+    return {
+        "status": "blocked",
+        "reason": policy["reason"],
+        "repeated_drift_count": policy["repeated_drift_count"],
+        "recommended_actions": policy["recommended_actions"],
+        "message": f"已有{policy['repeated_drift_count']}章连续或累计{direction}，请先复核章节长度策略再继续生成。",
+    }
+
+
+def _length_drift_policy(db: Session, project_id: str, *, status: str | None) -> dict[str, Any]:
+    try:
+        from app.core.longform_memory import get_longform_maintenance_diagnostics
+
+        diagnostics = get_longform_maintenance_diagnostics(db, project_id, limit=10)
+        word_target = diagnostics.get("word_target") if isinstance(diagnostics.get("word_target"), dict) else {}
+    except Exception:
+        word_target = {}
+    over_count = int(word_target.get("over_target_count") or 0)
+    under_count = int(word_target.get("under_target_count") or 0)
+    if status == "over" and over_count >= 3:
+        return _blocked_length_policy("repeated_over_target", over_count)
+    if status == "under" and under_count >= 3:
+        return _blocked_length_policy("repeated_under_target", under_count)
+    if status is None:
+        if over_count >= 3:
+            return _blocked_length_policy("repeated_over_target", over_count)
+        if under_count >= 3:
+            return _blocked_length_policy("repeated_under_target", under_count)
+    return {
+        "status": "ready",
+        "reason": None,
+        "repeated_drift_count": over_count if status == "over" else under_count if status == "under" else 0,
+        "recommended_actions": [],
+    }
+
+
+def _blocked_length_policy(reason: str, count: int) -> dict[str, Any]:
+    return {
+        "status": "blocked",
+        "reason": reason,
+        "repeated_drift_count": count,
+        "recommended_actions": ["revise_or_adjust_project_target"],
     }
 
 
@@ -567,8 +738,16 @@ def _retrieval_check(db: Session, project_id: str) -> dict[str, Any]:
         return {"status": "unknown", "error": str(exc)}
 
 
-def _issue(code: str, severity: str, message: str) -> dict[str, Any]:
-    return {"code": code, "severity": severity, "message": message}
+def _issue(code: str, severity: str, message: str, *, extra: dict[str, Any] | None = None) -> dict[str, Any]:
+    return {"code": code, "severity": severity, "message": message, **(extra or {})}
+
+
+def _chapter_index_list_label(chapter_indexes: list[int]) -> str:
+    if not chapter_indexes:
+        return ""
+    if len(chapter_indexes) == 1:
+        return str(chapter_indexes[0])
+    return "、".join(str(index) for index in chapter_indexes)
 
 
 def _block_message(output: dict[str, Any]) -> str:

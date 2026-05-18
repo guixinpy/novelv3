@@ -204,14 +204,16 @@ def test_agent_run_records_chapter_length_and_world_model_diagnostics(client, db
 
     output = response.json()["steps"][0]["output"]
     assert response.status_code == 200
-    assert output["chapter_length_decision"] == {
-        "status": "over",
-        "decision": "accept_with_warning",
-        "actual_word_count": 3735,
-        "target_min_word_count": 1700,
-        "target_average_word_count": 2000,
-        "target_max_word_count": 2300,
-    }
+    length_decision = output["chapter_length_decision"]
+    assert length_decision["status"] == "over"
+    assert length_decision["decision"] == "accept_with_warning"
+    assert length_decision["severity"] == "warning"
+    assert length_decision["actual_word_count"] == 3735
+    assert length_decision["target_min_word_count"] == 1700
+    assert length_decision["target_average_word_count"] == 2000
+    assert length_decision["target_max_word_count"] == 2300
+    assert length_decision["repeated_drift_count"] == 0
+    assert length_decision["recommended_actions"] == []
     assert output["world_model_proposal_diagnostic"]["status"] == "missing"
     assert output["world_model_proposal_diagnostic"]["reason"] == "missing_profile"
 
@@ -267,6 +269,60 @@ def test_agent_preflight_ready_when_required_context_exists(client, db_session):
     assert output["checks"]["previous_chapter"]["status"] == "ready"
 
 
+def test_agent_preflight_blocks_when_generated_chapter_outline_gap_exists(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 3, 4], generated_chapters=[1, 2, 3])
+    for chapter in db_session.query(ChapterContent).filter(ChapterContent.project_id == project.id):
+        chapter.word_count = 2000
+    db_session.commit()
+    import_setup_to_world_model(db_session, project.id)
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "检查第4章是否可写",
+            "tools": [{"tool_name": "preflight_writing", "params": {"chapter_index": 4}}],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    assert response.status_code == 200
+    assert response.json()["status"] == "blocked"
+    assert output["checks"]["historical_outline_gaps"]["status"] == "missing"
+    assert output["checks"]["historical_outline_gaps"]["chapter_indexes"] == [2]
+    assert output["issues"][0]["code"] == "missing_historical_outline_chapters"
+    assert output["issues"][0]["suggested_tool"] == "backfill_outline_gaps"
+
+
+def test_agent_backfill_outline_gaps_uses_existing_chapter_content_then_preflight_ready(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 3, 4], generated_chapters=[1, 2, 3])
+    for chapter in db_session.query(ChapterContent).filter(ChapterContent.project_id == project.id):
+        chapter.word_count = 2000
+    db_session.commit()
+    import_setup_to_world_model(db_session, project.id)
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "回填历史大纲缺口并检查第4章",
+            "tools": [
+                {"tool_name": "backfill_outline_gaps", "params": {"before_chapter": 4}},
+                {"tool_name": "preflight_writing", "params": {"chapter_index": 4}},
+            ],
+        },
+    )
+
+    payload = response.json()
+    assert response.status_code == 200
+    assert payload["status"] == "success"
+    assert payload["steps"][0]["output"]["backfilled_chapter_indexes"] == [2]
+    assert payload["steps"][1]["output"]["status"] == "ready"
+    outline = db_session.query(Outline).filter(Outline.project_id == project.id).one()
+    assert [chapter["chapter_index"] for chapter in outline.chapters] == [1, 2, 3, 4]
+    chapter_two = next(chapter for chapter in outline.chapters if chapter["chapter_index"] == 2)
+    assert chapter_two["title"] == "雾港线索2"
+    assert chapter_two["purpose"] == "根据已生成正文自动回填章节大纲。"
+
+
 def test_agent_import_setup_world_model_creates_profile(client, db_session):
     project = _seed_longform_project(db_session, outline_chapters=[1], generated_chapters=[])
 
@@ -304,6 +360,140 @@ def test_agent_analyze_chapter_world_model_records_proposal_output(client, db_se
     assert output["status"] == "completed"
     assert output["chapter_index"] == 1
     assert output["created"]["proposal_items"] >= 1
+
+
+def test_agent_skips_analyze_when_generate_step_already_auto_analyzed_same_chapter(
+    client,
+    db_session,
+    monkeypatch,
+):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2, 3, 4], generated_chapters=[1, 2, 3])
+    trace = AIModelCallTrace(
+        project_id=project.id,
+        trace_type="chapter_generation",
+        status="success",
+        chapter_index=4,
+        trace_metadata={
+            "chapter_word_target": {
+                "status": "within",
+                "actual_word_count": 2100,
+                "target_min_word_count": 1700,
+                "target_average_word_count": 2000,
+                "target_max_word_count": 2300,
+            }
+        },
+    )
+    db_session.add(trace)
+    db_session.commit()
+
+    async def fake_execute(self, action_type, project_id, *, command_args=None, action_params=None):
+        return {
+            "status": "success",
+            "chapter_index": 4,
+            "trace_id": trace.id,
+            "athena_analysis": {
+                "status": "completed",
+                "chapter_index": 4,
+                "proposal_bundle_id": "bundle-4",
+                "created": {"proposal_items": 3},
+                "updated": {"proposal_items": 0},
+            },
+        }
+
+    def fail_duplicate_analysis(**_kwargs):
+        raise AssertionError("duplicate analyze should have been skipped")
+
+    monkeypatch.setattr("app.services.actions.action_execution_service.ActionExecutionService.execute", fake_execute)
+    monkeypatch.setattr("app.core.athena_longform.analyze_chapter_to_world_proposals", fail_duplicate_analysis)
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "生成第4章并分析世界模型",
+            "tools": [
+                {"tool_name": "generate_chapter", "params": {"chapter_index": 4}},
+                {"tool_name": "analyze_chapter_world_model", "params": {"chapter_index": 4}},
+            ],
+        },
+    )
+
+    payload = response.json()
+    analyze_output = payload["steps"][1]["output"]
+    assert response.status_code == 200
+    assert payload["status"] == "success"
+    assert analyze_output["status"] == "skipped"
+    assert analyze_output["reason"] == "chapter_already_analyzed_in_run"
+    assert analyze_output["chapter_index"] == 4
+    assert analyze_output["source_step_id"] == payload["steps"][0]["id"]
+    assert analyze_output["proposal_bundle_id"] == "bundle-4"
+
+
+def test_agent_chapter_length_decision_flags_repeated_over_target_drift(client, db_session, monkeypatch):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2, 3], generated_chapters=[1, 2, 3])
+    for chapter in db_session.query(ChapterContent).filter(ChapterContent.project_id == project.id):
+        chapter.word_count = 3000
+    trace = AIModelCallTrace(
+        project_id=project.id,
+        trace_type="chapter_generation",
+        status="success",
+        chapter_index=3,
+        trace_metadata={
+            "chapter_word_target": {
+                "status": "over",
+                "actual_word_count": 3000,
+                "target_min_word_count": 1700,
+                "target_average_word_count": 2000,
+                "target_max_word_count": 2300,
+            }
+        },
+    )
+    db_session.add(trace)
+    db_session.commit()
+
+    async def fake_execute(self, action_type, project_id, *, command_args=None, action_params=None):
+        return {"status": "success", "trace_id": trace.id, "chapter_index": 3}
+
+    monkeypatch.setattr("app.services.actions.action_execution_service.ActionExecutionService.execute", fake_execute)
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "生成第3章",
+            "tools": [{"tool_name": "generate_chapter", "params": {"chapter_index": 3}}],
+        },
+    )
+
+    decision = response.json()["steps"][0]["output"]["chapter_length_decision"]
+    assert response.status_code == 200
+    assert decision["status"] == "over"
+    assert decision["decision"] == "requires_policy_review"
+    assert decision["severity"] == "warning"
+    assert decision["repeated_drift_count"] == 3
+    assert decision["policy_reason"] == "repeated_over_target"
+    assert "revise_or_adjust_project_target" in decision["recommended_actions"]
+
+
+def test_agent_preflight_blocks_when_repeated_over_target_drift_requires_review(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2, 3, 4], generated_chapters=[1, 2, 3])
+    for chapter in db_session.query(ChapterContent).filter(ChapterContent.project_id == project.id):
+        chapter.word_count = 3000
+    db_session.commit()
+    import_setup_to_world_model(db_session, project.id)
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "检查第4章是否可写",
+            "tools": [{"tool_name": "preflight_writing", "params": {"chapter_index": 4}}],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    assert response.status_code == 200
+    assert response.json()["status"] == "blocked"
+    assert output["checks"]["length_policy"]["status"] == "blocked"
+    assert output["checks"]["length_policy"]["reason"] == "repeated_over_target"
+    assert output["issues"][0]["code"] == "repeated_chapter_length_drift"
 
 
 @patch("app.api.outlines.load_api_key", return_value="sk-test")
