@@ -77,7 +77,7 @@
 - Create: `backend/app/core/world_proposal_resolution_preview.py`
 - Modify: `backend/tests/test_writing_agent_runs.py`
 
-- [ ] **Step 1: Write failing non-destructive preview test**
+- [x] **Step 1: Write failing non-destructive preview test**
 
 Seed one proposal to approve and one proposal to reject, then call `preview_world_model_proposal_resolution` through the Agent API. Expected assertions:
 
@@ -100,7 +100,7 @@ assert db_session.query(WorldProposalReview).count() == before_review_count
 assert db_session.query(WorldFactClaim).count() == before_fact_count
 ```
 
-- [ ] **Step 2: Run test to verify RED**
+- [x] **Step 2: Run test to verify RED**
 
 Run:
 
@@ -111,7 +111,7 @@ cd backend
 
 Expected: fail because the tool is not yet supported.
 
-- [ ] **Step 3: Implement preview core**
+- [x] **Step 3: Implement preview core**
 
 Create:
 
@@ -129,7 +129,7 @@ Rules:
 - Set `would_unblock_generation=true` only when every current actionable item is covered by valid decisions.
 - Set `should_generate_next_chapter=false` whenever preview decisions exist because the DB is not actually changed.
 
-- [ ] **Step 4: Run targeted test to verify GREEN**
+- [x] **Step 4: Run targeted test to verify GREEN**
 
 Run:
 
@@ -147,7 +147,7 @@ Expected: pass.
 - Modify: `backend/app/services/writing_agent/run_service.py`
 - Modify: `backend/tests/test_writing_agent_runs.py`
 
-- [ ] **Step 1: Add failing wiring and invalid-decision tests**
+- [x] **Step 1: Add failing wiring and invalid-decision tests**
 
 Add tests for:
 
@@ -156,7 +156,7 @@ Add tests for:
 - `plan_world_model_proposal_resolution -> preview_world_model_proposal_resolution` can run in the same Agent run;
 - `preview_world_model_proposal_resolution -> generate_chapter` blocks follow-up generation while real proposals remain pending.
 
-- [ ] **Step 2: Run tests to verify RED**
+- [x] **Step 2: Run tests to verify RED**
 
 Run:
 
@@ -167,7 +167,7 @@ cd backend
 
 Expected: fail because the Agent tool is not yet wired.
 
-- [ ] **Step 3: Add tool wiring**
+- [x] **Step 3: Add tool wiring**
 
 Add `preview_world_model_proposal_resolution` to:
 
@@ -180,7 +180,7 @@ Add `preview_world_model_proposal_resolution` to:
 - `_successful_report_block_message`;
 - `_allowed_report_followup` for `plan_world_model_proposal_resolution -> preview_world_model_proposal_resolution`.
 
-- [ ] **Step 4: Run targeted Agent tests**
+- [x] **Step 4: Run targeted Agent tests**
 
 Run:
 
@@ -198,7 +198,7 @@ Expected: pass.
 - Create: `docs/superpowers/notes/long-memory-agent/2026-05-18-phase12-world-proposal-resolution-preview.md`
 - Modify: `docs/superpowers/plans/long-memory-agent/2026-05-18-phase12-world-proposal-resolution-preview.md`
 
-- [ ] **Step 1: Run focused verification**
+- [x] **Step 1: Run focused verification**
 
 Run:
 
@@ -211,7 +211,7 @@ rg "sk-[A-Za-z0-9]{20,}" -n docs backend frontend references
 
 Expected: tests pass, no whitespace errors, no committed secrets.
 
-- [ ] **Step 2: Run dogfood preview**
+- [x] **Step 2: Run dogfood preview**
 
 Use Agent run against project `25fa2b20-5b9f-473b-918b-f4ea491cbb60` with two explicit decisions from the current queue:
 
@@ -238,7 +238,7 @@ Expected:
 - no proposal item is approved/rejected;
 - no `WorldProposalReview` or `WorldFactClaim` is created by this tool.
 
-- [ ] **Step 3: Record report and next phase recommendation**
+- [x] **Step 3: Record report and next phase recommendation**
 
 The phase report must include:
 
@@ -250,4 +250,45 @@ The phase report must include:
 
 ## Phase Report
 
-To be filled after execution.
+### Implementation
+
+- Added `backend/app/core/world_proposal_resolution_preview.py` as a preview-only proposal resolution evaluator.
+- Wired `preview_world_model_proposal_resolution` into the Writing Agent internal/report tool path.
+- Added Agent tests for non-destructive preview, missing-profile decision validation, invalid decisions, non-actionable items, empty-queue decision blocking, world-intake atomization validation, allowed plan-to-preview chaining, and preview-to-generation blocking.
+
+### Runtime Dogfood
+
+- Dogfood project: `25fa2b20-5b9f-473b-918b-f4ea491cbb60` (`雾港回声`).
+- Novel progress remains 3 generated chapters. Chapter 4 was intentionally not generated.
+- Proposal queue before preview: 24 actionable items, 0 proposal reviews, 0 world fact claims.
+- Preview run `0f918c11-1da9-4e0c-8096-2067cb96ae8a`:
+  - run status: `success`;
+  - tool output status: `blocked`;
+  - valid decisions: 2;
+  - invalid decisions: 0;
+  - would create reviews: 2;
+  - would create facts: 0;
+  - would resolve items: 2;
+  - remaining actionable items after preview: 22;
+  - would unblock generation: `false`;
+  - should generate next chapter: `false`.
+- Counts after preview were unchanged: 24 actionable items, 0 proposal reviews, 0 world fact claims. Selected proposal item statuses stayed `pending`.
+- Chain smoke run `1522e21a-5943-4ca3-a24c-ee3b15182f6e` confirmed `plan_world_model_proposal_resolution -> preview_world_model_proposal_resolution` can execute in one Agent run without mutating proposal state.
+
+### Verification Evidence
+
+- Regression red checks were run for:
+  - empty-queue preview decisions incorrectly allowing generation;
+  - non-atomized world-intake approval being accepted.
+- Targeted Phase12 suite: `8 passed in 0.65s`.
+- Full Writing Agent suite: `46 passed in 3.10s`.
+- Related T1 suite: `116 passed in 7.35s`.
+- Independent review found no Critical issues. Important issues were fixed:
+  - missing-profile preview now handles non-dict decisions without 500;
+  - non-actionable item validation has regression coverage.
+  - string `evidence_refs` is normalized as a single reference instead of being split into characters.
+- Final verification is recorded in the phase note.
+
+### Next Phase Recommendation
+
+Add a guarded apply tool for explicit confirmed proposal decisions. Start with narrow, low-risk actions (`reject`, `mark_uncertain`) or a single confirmed batch, keep generation blocked until the real queue is reduced or deferred, and record before/after counts for every applied run.
