@@ -162,6 +162,18 @@ def test_chapter_payload_injects_project_word_target_without_user_range(db_sessi
     assert blocks_by_key["target_chapter_length"]["kind"] == "generation_constraint"
 
 
+def test_chapter_payload_requires_continuous_prose_not_outline_format(db_session):
+    project = _project(db_session, id="chapter-prompt-prose-format", style_config=None)
+    setup = _setup(db_session, project.id)
+
+    payload = chapters._build_chapter_call_payload(db_session, project, setup, 1, "")
+
+    message = payload["messages"][0]["content"]
+    assert "必须输出连续小说正文场景" in message
+    assert "不要使用章节大纲、场景列表、角色列表、摘要、目标、冲突、伏笔、结尾等条目式格式" in message
+    assert "不要用项目符号或编号列表代替正文叙事" in message
+
+
 def test_safe_create_chapter_trace_persists_prompt_metadata(db_session):
     project = _project(db_session, id="chapter-prompt-trace", style_config=None)
 
