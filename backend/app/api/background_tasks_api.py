@@ -19,6 +19,9 @@ def _compact_result(result: dict | None) -> dict | None:
     generation_diagnostics = result.get("generation_diagnostics")
     if isinstance(generation_diagnostics, dict):
         compact["generation_diagnostics"] = generation_diagnostics
+    recommendations = result.get("generation_diagnostic_recommendations")
+    if isinstance(recommendations, list):
+        compact["generation_diagnostic_recommendations"] = recommendations
     return compact or None
 
 

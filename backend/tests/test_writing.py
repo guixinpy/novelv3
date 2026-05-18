@@ -194,6 +194,29 @@ async def test_generate_chapter_work_summarizes_generation_diagnostics(client, d
             "message": "maintenance failed",
         }
     ]
+    assert result["generation_diagnostic_recommendations"] == [
+        {
+            "kind": "word_target_under",
+            "severity": "warning",
+            "title": "存在偏短章节",
+            "message": "1 章低于目标字数，建议补足场景推进、人物反应或悬念细节。",
+            "chapter_indexes": [1],
+        },
+        {
+            "kind": "word_target_over",
+            "severity": "warning",
+            "title": "存在偏长章节",
+            "message": "1 章高于目标字数，建议压缩重复描写或拆分节奏过重的场景。",
+            "chapter_indexes": [3],
+        },
+        {
+            "kind": "post_generation_warning",
+            "severity": "warning",
+            "title": "生成后维护出现警告",
+            "message": "1 条生成后维护警告，建议先修复长篇记忆或检索同步后再继续批量写作。",
+            "chapter_indexes": [2],
+        },
+    ]
 
 
 @pytest.mark.asyncio

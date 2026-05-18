@@ -369,6 +369,15 @@ def test_get_background_task_compact_includes_generation_diagnostics(client, db_
             }
         ],
     }
+    result["generation_diagnostic_recommendations"] = [
+        {
+            "kind": "word_target_under",
+            "severity": "warning",
+            "title": "存在偏短章节",
+            "message": "1 章低于目标字数，建议补足场景推进、人物反应或悬念细节。",
+            "chapter_indexes": [1],
+        }
+    ]
     service.mark_completed(task.id, result)
 
     response = client.get(f"/api/v1/background-tasks/{task.id}?compact=true")

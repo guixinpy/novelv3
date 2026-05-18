@@ -141,6 +141,7 @@ def _record_generation_diagnostics(
         trace_metadata=trace_metadata,
     )
     result["generation_diagnostics"] = diagnostics
+    result["generation_diagnostic_recommendations"] = _generation_diagnostic_recommendations(diagnostics)
     task.result = result
     db.commit()
 
@@ -198,6 +199,69 @@ def _update_generation_diagnostics(diagnostics: dict, *, chapter_index: int, tra
                 }
             )
     return next_diagnostics
+
+
+def _generation_diagnostic_recommendations(diagnostics: dict) -> list[dict]:
+    recommendations: list[dict] = []
+    word_target = diagnostics.get("word_target") if isinstance(diagnostics.get("word_target"), dict) else {}
+
+    under_count = int(word_target.get("under_count") or 0)
+    if under_count > 0:
+        recommendations.append(
+            {
+                "kind": "word_target_under",
+                "severity": "warning",
+                "title": "存在偏短章节",
+                "message": f"{under_count} 章低于目标字数，建议补足场景推进、人物反应或悬念细节。",
+                "chapter_indexes": list(word_target.get("under_chapter_indexes") or []),
+            }
+        )
+
+    over_count = int(word_target.get("over_count") or 0)
+    if over_count > 0:
+        recommendations.append(
+            {
+                "kind": "word_target_over",
+                "severity": "warning",
+                "title": "存在偏长章节",
+                "message": f"{over_count} 章高于目标字数，建议压缩重复描写或拆分节奏过重的场景。",
+                "chapter_indexes": list(word_target.get("over_chapter_indexes") or []),
+            }
+        )
+
+    warning_count = int(diagnostics.get("post_generation_warning_count") or 0)
+    if warning_count > 0:
+        warning_indexes = _unique_warning_chapter_indexes(diagnostics.get("post_generation_warnings"))
+        recommendations.append(
+            {
+                "kind": "post_generation_warning",
+                "severity": "warning",
+                "title": "生成后维护出现警告",
+                "message": f"{warning_count} 条生成后维护警告，建议先修复长篇记忆或检索同步后再继续批量写作。",
+                "chapter_indexes": warning_indexes,
+            }
+        )
+
+    return recommendations
+
+
+def _unique_warning_chapter_indexes(warnings) -> list[int]:
+    if not isinstance(warnings, list):
+        return []
+    indexes: list[int] = []
+    seen: set[int] = set()
+    for warning in warnings:
+        if not isinstance(warning, dict):
+            continue
+        value = warning.get("chapter_index")
+        if value is None:
+            continue
+        index = int(value)
+        if index in seen:
+            continue
+        seen.add(index)
+        indexes.append(index)
+    return indexes
 
 
 def _update_generation_word_target_diagnostics(
