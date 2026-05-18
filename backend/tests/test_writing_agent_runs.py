@@ -1,6 +1,8 @@
 from unittest.mock import AsyncMock, patch
 
 from app.core.athena_longform import import_setup_to_world_model
+from app.core.world_contracts import DERIVED
+from app.core.world_proposal_service import create_bundle, write_candidate_fact
 from app.models import (
     AIModelCallTrace,
     ChapterContent,
@@ -9,9 +11,11 @@ from app.models import (
     ProjectProfileVersion,
     Setup,
     Storyline,
+    WorldProposalItem,
     WritingAgentRun,
     WritingAgentStep,
 )
+from app.schemas.world_proposals import ProposalCandidateFactCreate
 
 
 def test_writing_agent_run_and_step_persist(client, db_session):
@@ -545,6 +549,152 @@ def test_agent_review_chapter_quality_flags_future_outline_overlap(client, db_se
     assert response.json()["status"] == "success"
     assert output["status"] == "blocked"
     assert any(finding["code"] == "future_outline_overlap" for finding in output["findings"])
+
+
+def test_agent_plan_chapter_revision_maps_review_findings_to_actions(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1, 2])
+    chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=2).one()
+    chapter.title = "第2章"
+    chapter.word_count = 3200
+    original_content = chapter.content
+    db_session.commit()
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "规划第2章修订",
+            "tools": [{"tool_name": "plan_chapter_revision", "params": {"chapter_index": 2}}],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    chapter_after_plan = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=2).one()
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    assert output["status"] == "blocked"
+    assert output["should_generate_next_chapter"] is False
+    assert {action["action"] for action in output["revision_actions"]} >= {
+        "retitle_chapter",
+        "compress_chapter",
+    }
+    assert "revise_chapter" in output["recommended_next_tools"]
+    assert chapter_after_plan.content == original_content
+    assert chapter_after_plan.title == "第2章"
+
+
+def test_agent_plan_chapter_revision_records_revision_plan_target_type(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1], generated_chapters=[1])
+    chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=1).one()
+    chapter.word_count = 2000
+    db_session.commit()
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "规划第1章修订",
+            "tools": [{"tool_name": "plan_chapter_revision", "params": {"chapter_index": 1}}],
+        },
+    )
+
+    step = response.json()["steps"][0]
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    assert step["target_type"] == "revision_plan"
+    assert step["output"]["status"] == "ready"
+    assert step["output"]["should_generate_next_chapter"] is True
+
+
+def test_agent_plan_chapter_revision_blocks_followup_generation_when_plan_is_blocked(
+    client,
+    db_session,
+    monkeypatch,
+):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2, 3], generated_chapters=[1, 2])
+    chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=2).one()
+    chapter.title = "第2章"
+    chapter.word_count = 3200
+    db_session.commit()
+    calls = []
+
+    async def fake_execute(self, action_type, project_id, *, command_args=None, action_params=None):
+        calls.append(action_type)
+        return {"status": "success", "chapter_index": 3}
+
+    monkeypatch.setattr("app.services.actions.action_execution_service.ActionExecutionService.execute", fake_execute)
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "先规划第2章修订，再尝试生成第3章",
+            "tools": [
+                {"tool_name": "plan_chapter_revision", "params": {"chapter_index": 2}},
+                {"tool_name": "generate_chapter", "params": {"chapter_index": 3}},
+            ],
+        },
+    )
+
+    payload = response.json()
+    assert response.status_code == 200
+    assert payload["status"] == "blocked"
+    assert payload["steps"][0]["tool_name"] == "plan_chapter_revision"
+    assert payload["steps"][0]["status"] == "success"
+    assert payload["steps"][0]["output"]["should_generate_next_chapter"] is False
+    assert len(payload["steps"]) == 1
+    assert calls == []
+
+
+def test_agent_plan_chapter_revision_reports_world_model_pressure_without_reviewing_items(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1], generated_chapters=[1])
+    chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=1).one()
+    chapter.word_count = 2000
+    import_setup_to_world_model(db_session, project.id)
+    profile = db_session.query(ProjectProfileVersion).filter_by(project_id=project.id).one()
+    bundle = create_bundle(
+        db=db_session,
+        project_id=project.id,
+        project_profile_version_id=profile.id,
+        profile_version=profile.version,
+        created_by="athena.test",
+        title="待审事实",
+    )
+    item = write_candidate_fact(
+        db=db_session,
+        bundle_id=bundle.id,
+        created_by="athena.test",
+        candidate=ProposalCandidateFactCreate(
+            project_id=project.id,
+            project_profile_version_id=profile.id,
+            profile_version=profile.version,
+            claim_id="claim.phase8.agent.role",
+            chapter_index=1,
+            subject_ref="char.林深",
+            predicate="role",
+            object_ref_or_value="雾港调查者",
+            claim_layer="truth",
+            evidence_refs=["chapter:1"],
+            authority_type=DERIVED,
+            confidence=0.9,
+            contract_version=profile.contract_version,
+        ),
+    )
+    db_session.commit()
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "规划第1章修订并检查世界模型压力",
+            "tools": [{"tool_name": "plan_chapter_revision", "params": {"chapter_index": 1}}],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    stored_item = db_session.query(WorldProposalItem).filter_by(id=item.id).one()
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    assert output["status"] == "warning"
+    assert output["world_model_proposal_pressure"]["total_items"] == 1
+    assert "review_world_model_proposals" in output["recommended_next_tools"]
+    assert stored_item.item_status == "pending"
 
 
 @patch("app.api.outlines.load_api_key", return_value="sk-test")

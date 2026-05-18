@@ -51,6 +51,7 @@ ALLOWED_TOOLS = {
     "expand_outline_window",
     "backfill_outline_gaps",
     "review_chapter_quality",
+    "plan_chapter_revision",
 }
 CHAPTER_TOOL_NAME = "generate_chapter"
 INTERNAL_TOOLS = {
@@ -60,7 +61,9 @@ INTERNAL_TOOLS = {
     "expand_outline_window",
     "backfill_outline_gaps",
     "review_chapter_quality",
+    "plan_chapter_revision",
 }
+NON_BLOCKING_REPORT_TOOLS = {"review_chapter_quality", "plan_chapter_revision"}
 
 
 class WritingAgentRunService:
@@ -96,6 +99,7 @@ class WritingAgentRunService:
         self.db.commit()
         self.db.refresh(run)
 
+        total_steps = len(tools)
         for step_index, tool in enumerate(tools, start=1):
             step = self._start_step(run, step_index, tool)
             if tool.tool_name not in ALLOWED_TOOLS:
@@ -105,7 +109,7 @@ class WritingAgentRunService:
             result = await self._execute_tool(run.project_id, tool, run_id=run.id)
             if not isinstance(result, dict):
                 result = {"status": "failed", "error": "Tool returned non-dict result"}
-            if result.get("status") == RUN_BLOCKED and tool.tool_name != "review_chapter_quality":
+            if result.get("status") == RUN_BLOCKED and tool.tool_name not in NON_BLOCKING_REPORT_TOOLS:
                 self._block_step_and_run(run, step, _block_message(result), output=result)
                 return run
             if result.get("status") == "failed":
@@ -114,6 +118,9 @@ class WritingAgentRunService:
 
             output = self._enrich_step_output(run.project_id, tool=tool, result=result)
             self._complete_step(step, output)
+            if _should_stop_after_report(tool, output, step_index=step_index, total_steps=total_steps):
+                self._block_run_after_successful_report(run, "修订计划未通过，已停止后续写作工具。")
+                return run
 
         run.status = RUN_SUCCESS
         run.error = None
@@ -196,6 +203,11 @@ class WritingAgentRunService:
 
             chapter_index = int(tool.params.get("chapter_index") or 1)
             return review_chapter_quality(self.db, project_id, chapter_index)
+        if tool.tool_name == "plan_chapter_revision":
+            from app.core.chapter_revision_planner import plan_chapter_revision
+
+            chapter_index = int(tool.params.get("chapter_index") or 1)
+            return plan_chapter_revision(self.db, project_id, chapter_index)
         return {"status": "failed", "error": f"Unsupported writing agent tool: {tool.tool_name}"}
 
     def list_runs(self, project_id: str, *, offset: int = 0, limit: int = 20) -> dict[str, Any]:
@@ -339,6 +351,16 @@ class WritingAgentRunService:
         self.db.commit()
         self.db.refresh(run)
         self.db.refresh(step)
+
+    def _block_run_after_successful_report(self, run: WritingAgentRun, error: str) -> None:
+        now = _now()
+        run.status = RUN_BLOCKED
+        run.error = error
+        run.output = self._run_output(run.id)
+        run.finished_at = now
+        run.updated_at = now
+        self.db.commit()
+        self.db.refresh(run)
 
     def _enrich_step_output(
         self,
@@ -538,7 +560,22 @@ def _target_type_for_tool(tool_name: str) -> str | None:
         "expand_outline_window": "outline",
         "backfill_outline_gaps": "outline",
         "review_chapter_quality": "review",
+        "plan_chapter_revision": "revision_plan",
     }.get(tool_name)
+
+
+def _should_stop_after_report(
+    tool: WritingAgentToolRequest,
+    output: dict[str, Any],
+    *,
+    step_index: int,
+    total_steps: int,
+) -> bool:
+    if tool.tool_name != "plan_chapter_revision":
+        return False
+    if step_index >= total_steps:
+        return False
+    return output.get("should_generate_next_chapter") is False
 
 
 def _optional_existing_trace_id(db: Session, project_id: str, trace_id: object) -> str | None:
