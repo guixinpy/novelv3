@@ -78,7 +78,7 @@ These are core blockers for million-word continuity. They should be deterministi
 - Modify: `backend/app/services/writing_agent/run_service.py`
 - Modify: `backend/tests/test_writing_agent_runs.py`
 
-- [ ] **Step 1: Write failing preflight state-card test**
+- [x] **Step 1: Write failing preflight state-card test**
 
 Add this test near existing preflight tests in `backend/tests/test_writing_agent_runs.py`:
 
@@ -111,7 +111,7 @@ def test_agent_preflight_reports_previous_chapter_state_card(client, db_session)
     assert "下城" in card["key_terms"]
 ```
 
-- [ ] **Step 2: Run RED preflight test**
+- [x] **Step 2: Run RED preflight test**
 
 Run:
 
@@ -122,7 +122,7 @@ cd backend
 
 Expected: fail because `previous_chapter_state_card` is not present.
 
-- [ ] **Step 3: Implement minimal state-card helper**
+- [x] **Step 3: Implement minimal state-card helper**
 
 In `backend/app/services/writing_agent/run_service.py`, add a helper:
 
@@ -158,11 +158,11 @@ In `_preflight_writing`, set:
 checks["previous_chapter_state_card"] = _previous_chapter_state_card(self.db, project_id, chapter_index)
 ```
 
-- [ ] **Step 4: Run GREEN preflight test**
+- [x] **Step 4: Run GREEN preflight test**
 
 Run the same test and confirm it passes.
 
-- [ ] **Step 5: Write failing generation context test**
+- [x] **Step 5: Write failing generation context test**
 
 Add this test near the Phase17 length feedback tests:
 
@@ -206,7 +206,7 @@ def test_agent_generate_chapter_appends_previous_state_card(client, db_session, 
     assert "下城" in command_args
 ```
 
-- [ ] **Step 6: Run RED generation context test**
+- [x] **Step 6: Run RED generation context test**
 
 Run:
 
@@ -217,7 +217,7 @@ cd backend
 
 Expected: fail because generation command args do not include the state card.
 
-- [ ] **Step 7: Append state card to effective chapter command args**
+- [x] **Step 7: Append state card to effective chapter command args**
 
 In `run_service.py`, change the chapter tool path to combine user args, continuity feedback, and length feedback. Add:
 
@@ -244,7 +244,7 @@ Update `_effective_chapter_command_args` to accept multiple feedback messages in
 
 Attach `agent_continuity_feedback` to the result when feedback exists.
 
-- [ ] **Step 8: Run GREEN state-card tests**
+- [x] **Step 8: Run GREEN state-card tests**
 
 Run:
 
@@ -262,7 +262,7 @@ Expected: both pass.
 - Modify: `backend/app/core/chapter_quality_review.py`
 - Modify: `backend/tests/test_writing_agent_runs.py`
 
-- [ ] **Step 1: Write failing profile-drift review test**
+- [x] **Step 1: Write failing profile-drift review test**
 
 Add:
 
@@ -292,7 +292,7 @@ def test_agent_review_chapter_quality_flags_character_profile_drift(client, db_s
     assert "失踪者家属" in finding["evidence"]["known_profile"]
 ```
 
-- [ ] **Step 2: Write failing ability-boundary test**
+- [x] **Step 2: Write failing ability-boundary test**
 
 Add:
 
@@ -321,7 +321,7 @@ def test_agent_review_chapter_quality_flags_ability_boundary_drift(client, db_se
     assert "制造幻觉" in finding["evidence"]["matched_terms"]
 ```
 
-- [ ] **Step 3: Write failing convenience review test**
+- [x] **Step 3: Write failing convenience review test**
 
 Add:
 
@@ -350,7 +350,7 @@ def test_agent_review_chapter_quality_warns_on_convenient_key_item_acquisition(c
     assert "记忆雾晶" in finding["evidence"]["matched_terms"]
 ```
 
-- [ ] **Step 4: Run RED review tests**
+- [x] **Step 4: Run RED review tests**
 
 Run:
 
@@ -361,7 +361,7 @@ cd backend
 
 Expected: fail because the new findings do not exist.
 
-- [ ] **Step 5: Implement minimal review helpers**
+- [x] **Step 5: Implement minimal review helpers**
 
 In `backend/app/core/chapter_quality_review.py`, add helpers:
 
@@ -390,11 +390,11 @@ Keep the first version deterministic and conservative:
 
 Add findings to `review_chapter_quality` after word-target checks.
 
-- [ ] **Step 6: Run GREEN review tests**
+- [x] **Step 6: Run GREEN review tests**
 
 Run the same three tests and confirm they pass.
 
-- [ ] **Step 7: Run focused quality review regression**
+- [x] **Step 7: Run focused quality review regression**
 
 Run:
 
@@ -412,7 +412,7 @@ Expected: pass.
 - Create: `docs/superpowers/notes/long-memory-agent/2026-05-19-phase18-continuity-state-card-and-drift-gates.md`
 - Modify: `docs/superpowers/plans/long-memory-agent/2026-05-19-phase18-continuity-state-card-and-drift-gates.md`
 
-- [ ] **Step 1: Run dogfood review for Chapter 6**
+- [x] **Step 1: Run dogfood review for Chapter 6**
 
 Run a Writing Agent run:
 
@@ -427,7 +427,7 @@ Expected:
 - If new gates catch known drift, status may become `blocked`.
 - Record exact finding codes, severity, and messages.
 
-- [ ] **Step 2: Run Chapter 7 preflight**
+- [x] **Step 2: Run Chapter 7 preflight**
 
 Run:
 
@@ -442,7 +442,7 @@ Expected:
 - `previous_chapter_state_card` is present and references Chapter 6.
 - If preflight is blocked for missing outline or unresolved quality gates, record it.
 
-- [ ] **Step 3: Generate Chapter 7 only when safe**
+- [x] **Step 3: Generate Chapter 7 only when safe**
 
 If Chapter 6 review has blocker findings, do not force Chapter 7 generation. Record that Phase18 intentionally stopped at the gate.
 
@@ -463,7 +463,7 @@ Expected:
 - Step output includes `agent_continuity_feedback`.
 - Review blockers are 0 before moving to proposal resolution.
 
-- [ ] **Step 4: Resolve proposal queue if Chapter 7 generated**
+- [x] **Step 4: Resolve proposal queue if Chapter 7 generated**
 
 If Chapter 7 generated proposals:
 
@@ -477,7 +477,7 @@ If Chapter 7 generated proposals:
 
 - Modify: all changed Phase18 files.
 
-- [ ] **Step 1: Run T2 verification**
+- [x] **Step 1: Run T2 verification**
 
 Run:
 
@@ -488,7 +488,7 @@ cd backend
 
 Expected: pass.
 
-- [ ] **Step 2: Write Phase18 report**
+- [x] **Step 2: Write Phase18 report**
 
 Create `docs/superpowers/notes/long-memory-agent/2026-05-19-phase18-continuity-state-card-and-drift-gates.md` with:
 
@@ -499,7 +499,7 @@ Create `docs/superpowers/notes/long-memory-agent/2026-05-19-phase18-continuity-s
 - unresolved issues;
 - next phase recommendation.
 
-- [ ] **Step 3: Hygiene checks**
+- [x] **Step 3: Hygiene checks**
 
 Run:
 
@@ -515,7 +515,7 @@ Expected:
 - secret scan returns no matches;
 - only intended Phase18 files are changed.
 
-- [ ] **Step 4: Commit and push**
+- [x] **Step 4: Commit and push**
 
 Commit plan first:
 

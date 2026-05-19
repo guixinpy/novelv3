@@ -278,6 +278,34 @@ def test_agent_preflight_ready_when_required_context_exists(client, db_session):
     assert output["checks"]["previous_chapter"]["status"] == "ready"
 
 
+def test_agent_preflight_reports_previous_chapter_state_card(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1])
+    chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=1).one()
+    chapter.title = "空白信的秘密"
+    chapter.content = "林深和苏晚晴在灯塔下发现空白信，信纸显出雾晶是钥匙。两人决定前往下城黑市。"
+    chapter.word_count = 2000
+    db_session.commit()
+    import_setup_to_world_model(db_session, project.id)
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "检查第2章是否可写",
+            "tools": [{"tool_name": "preflight_writing", "params": {"chapter_index": 2}}],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    card = output["checks"]["previous_chapter_state_card"]
+    assert response.status_code == 200
+    assert card["status"] == "ready"
+    assert card["chapter_index"] == 1
+    assert card["title"] == "空白信的秘密"
+    assert "雾晶是钥匙" in card["last_excerpt"]
+    assert "空白信" in card["key_terms"]
+    assert "下城" in card["key_terms"]
+
+
 def test_agent_preflight_blocks_when_generated_chapter_outline_gap_exists(client, db_session):
     project = _seed_longform_project(db_session, outline_chapters=[1, 3, 4], generated_chapters=[1, 2, 3])
     for chapter in db_session.query(ChapterContent).filter(ChapterContent.project_id == project.id):
@@ -578,6 +606,47 @@ def test_agent_generate_chapter_appends_length_feedback_after_repeated_under_tar
     assert output["agent_generation_feedback"]["reason"] == "repeated_under_target"
 
 
+def test_agent_generate_chapter_appends_previous_state_card(client, db_session, monkeypatch):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1])
+    chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=1).one()
+    chapter.title = "空白信的秘密"
+    chapter.content = "林深和苏晚晴在灯塔下发现空白信，信纸显出雾晶是钥匙。两人决定前往下城黑市。"
+    chapter.word_count = 2000
+    db_session.commit()
+
+    captured: dict[str, object] = {}
+
+    async def fake_execute(self, action_type, project_id, *, command_args=None, action_params=None):
+        captured["command_args"] = command_args
+        return {"status": "success", "chapter_index": 2}
+
+    monkeypatch.setattr("app.services.actions.action_execution_service.ActionExecutionService.execute", fake_execute)
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "生成第2章",
+            "tools": [
+                {
+                    "tool_name": "generate_chapter",
+                    "command_args": "保持紧张感",
+                    "params": {"chapter_index": 2},
+                }
+            ],
+        },
+    )
+
+    command_args = str(captured["command_args"])
+    output = response.json()["steps"][0]["output"]
+    assert response.status_code == 200
+    assert "保持紧张感" in command_args
+    assert "上一章状态卡" in command_args
+    assert "空白信的秘密" in command_args
+    assert "雾晶是钥匙" in command_args
+    assert "下城" in command_args
+    assert output["agent_continuity_feedback"]["card"]["title"] == "空白信的秘密"
+
+
 def test_agent_review_chapter_quality_flags_generic_title_and_length(client, db_session):
     project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1, 2])
     chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=2).one()
@@ -679,6 +748,79 @@ def test_agent_review_chapter_quality_ignores_single_future_character_name_match
     assert response.json()["status"] == "success"
     assert output["status"] == "ready"
     assert all(finding["code"] != "future_outline_overlap" for finding in output["findings"])
+
+
+def test_agent_review_chapter_quality_flags_character_profile_drift(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1], generated_chapters=[1])
+    chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=1).one()
+    chapter.title = "黑市雾晶"
+    chapter.content = "苏晚晴低声说，她以前是雾安局研究员，只是一直隐瞒身份。"
+    chapter.word_count = 2000
+    db_session.commit()
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "审稿第1章",
+            "tools": [{"tool_name": "review_chapter_quality", "params": {"chapter_index": 1}}],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    finding = next(item for item in output["findings"] if item["code"] == "character_profile_drift")
+    assert response.status_code == 200
+    assert output["status"] == "blocked"
+    assert finding["severity"] == "blocker"
+    assert finding["evidence"]["character"] == "苏晚晴"
+    assert "失踪者家属" in finding["evidence"]["known_profile"]
+
+
+def test_agent_review_chapter_quality_flags_ability_boundary_drift(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1], generated_chapters=[1])
+    chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=1).one()
+    chapter.title = "黑市雾晶"
+    chapter.content = "苏晚晴抬手制造幻觉，凭空创造出一段真实记忆骗过守卫。"
+    chapter.word_count = 2000
+    db_session.commit()
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "审稿第1章",
+            "tools": [{"tool_name": "review_chapter_quality", "params": {"chapter_index": 1}}],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    finding = next(item for item in output["findings"] if item["code"] == "ability_boundary_drift")
+    assert response.status_code == 200
+    assert output["status"] == "blocked"
+    assert finding["severity"] == "blocker"
+    assert "制造幻觉" in finding["evidence"]["matched_terms"]
+
+
+def test_agent_review_chapter_quality_warns_on_convenient_key_item_acquisition(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1], generated_chapters=[1])
+    chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=1).one()
+    chapter.title = "黑市雾晶"
+    chapter.content = "老赵看了林深一眼，立刻把稀有记忆雾晶给了他，让他们马上离开。"
+    chapter.word_count = 2000
+    db_session.commit()
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "审稿第1章",
+            "tools": [{"tool_name": "review_chapter_quality", "params": {"chapter_index": 1}}],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    finding = next(item for item in output["findings"] if item["code"] == "convenient_key_item_acquisition")
+    assert response.status_code == 200
+    assert output["status"] == "warning"
+    assert finding["severity"] == "warning"
+    assert "记忆雾晶" in finding["evidence"]["matched_terms"]
 
 
 def test_agent_plan_chapter_revision_maps_review_findings_to_actions(client, db_session):

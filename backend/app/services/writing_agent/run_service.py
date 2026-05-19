@@ -60,6 +60,7 @@ ALLOWED_TOOLS = {
     "draft_world_model_proposal_resolution_decisions",
 }
 CHAPTER_TOOL_NAME = "generate_chapter"
+CONTINUITY_KEY_TERMS = ("空白信", "雾晶", "记忆雾晶", "钥匙", "下城", "黑市", "灯塔", "实验体", "叶知秋", "苏晚晴", "林深")
 INTERNAL_TOOLS = {
     "preflight_writing",
     "import_setup_world_model",
@@ -160,13 +161,17 @@ class WritingAgentRunService:
 
     async def _execute_tool(self, project_id: str, tool: WritingAgentToolRequest, *, run_id: str) -> dict[str, Any]:
         if tool.tool_name == CHAPTER_TOOL_NAME:
+            chapter_index = int(tool.params.get("chapter_index") or 1)
+            continuity = _chapter_continuity_feedback(self.db, project_id, chapter_index)
             feedback = _chapter_generation_feedback(self.db, project_id)
             result = await ActionExecutionService(self.db).execute(
                 tool.tool_name,
                 project_id,
-                command_args=_effective_chapter_command_args(tool.command_args, feedback),
+                command_args=_effective_chapter_command_args(tool.command_args, continuity, feedback),
                 action_params=tool.params,
             )
+            if continuity and isinstance(result, dict):
+                result["agent_continuity_feedback"] = continuity
             if feedback and isinstance(result, dict):
                 result["agent_generation_feedback"] = feedback
             return result
@@ -547,6 +552,7 @@ class WritingAgentRunService:
             )
             if previous is None:
                 issues.append(_issue("missing_previous_chapter", "blocker", f"第{chapter_index - 1}章尚未生成。"))
+        checks["previous_chapter_state_card"] = _previous_chapter_state_card(self.db, project_id, chapter_index)
 
         checks["longform_maintenance"] = _longform_maintenance_check(self.db, project_id)
         checks["length_policy"] = _length_policy_check(self.db, project_id)
@@ -896,14 +902,44 @@ def _chapter_generation_feedback(db: Session, project_id: str) -> dict[str, Any]
     }
 
 
-def _effective_chapter_command_args(command_args: str | None, feedback: dict[str, Any] | None) -> str | None:
-    feedback_message = str((feedback or {}).get("message") or "").strip()
-    original = str(command_args or "").strip()
-    if not feedback_message:
-        return original or None
-    if not original:
-        return feedback_message
-    return f"{original}\n\n{feedback_message}"
+def _chapter_continuity_feedback(db: Session, project_id: str, chapter_index: int) -> dict[str, Any] | None:
+    card = _previous_chapter_state_card(db, project_id, chapter_index)
+    if card.get("status") != "ready":
+        return None
+    message = f"【上一章状态卡】第{card['chapter_index']}章《{card.get('title') or ''}》结尾：{card.get('last_excerpt') or ''}"
+    key_terms = card.get("key_terms") or []
+    if key_terms:
+        message += f"；延续关键词：{', '.join(str(term) for term in key_terms[:8])}"
+    return {"status": "active", "card": card, "message": message}
+
+
+def _previous_chapter_state_card(db: Session, project_id: str, chapter_index: int) -> dict[str, Any]:
+    if chapter_index <= 1:
+        return {"status": "not_required"}
+    chapter = (
+        db.query(ChapterContent)
+        .filter(ChapterContent.project_id == project_id, ChapterContent.chapter_index == chapter_index - 1)
+        .first()
+    )
+    if chapter is None:
+        return {"status": "missing", "chapter_index": chapter_index - 1}
+    content = str(chapter.content or "").strip()
+    excerpt = content[-220:] if len(content) > 220 else content
+    key_terms = [term for term in CONTINUITY_KEY_TERMS if term in content]
+    return {
+        "status": "ready",
+        "chapter_index": chapter.chapter_index,
+        "title": chapter.title,
+        "last_excerpt": excerpt,
+        "key_terms": key_terms,
+    }
+
+
+def _effective_chapter_command_args(command_args: str | None, *feedbacks: dict[str, Any] | None) -> str | None:
+    parts = [str(command_args or "").strip()]
+    parts.extend(str((feedback or {}).get("message") or "").strip() for feedback in feedbacks)
+    joined = "\n\n".join(part for part in parts if part)
+    return joined or None
 
 
 def _world_model_proposal_diagnostic(db: Session, *, project_id: str) -> dict[str, Any]:

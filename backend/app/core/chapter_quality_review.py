@@ -7,11 +7,17 @@ from sqlalchemy.orm import Session
 
 from app.core.outline_lookup import find_outline_chapter
 from app.core.world_proposal_review_queue import build_proposal_review_queue
-from app.models import ChapterContent, Outline, Project, ProjectProfileVersion
+from app.models import ChapterContent, Outline, Project, ProjectProfileVersion, Setup
 from app.prompting.providers.chapter import project_chapter_word_range
 
 GENERIC_TITLE_RE = re.compile(r"^第\s*[\d零〇一二两三四五六七八九十百千]+\s*章$")
 FUTURE_OUTLINE_WINDOW = 5
+IDENTITY_MARKERS = ("以前是", "其实是", "原来是", "曾是", "真实身份")
+CONFLICTING_ROLE_TERMS = ("雾安局研究员", "雾安局特工", "研究员", "特工")
+ABILITY_FORBIDDEN_TERMS = ("制造幻觉", "凭空创造", "创造真实记忆", "篡改记忆")
+KEY_ITEM_TERMS = ("记忆雾晶", "雾晶", "钥匙", "核心", "信物")
+ACQUISITION_TERMS = ("给了", "交给", "递给", "拿到", "获得", "买到")
+COST_OR_RISK_TERMS = ("代价", "交换", "条件", "欠", "债", "受伤", "暴露", "损失", "背叛", "追杀", "风险")
 
 
 def review_chapter_quality(db: Session, project_id: str, chapter_index: int) -> dict[str, Any]:
@@ -36,8 +42,13 @@ def review_chapter_quality(db: Session, project_id: str, chapter_index: int) -> 
     if GENERIC_TITLE_RE.match(title):
         findings.append(_finding("generic_chapter_title", "blocker", f"第{chapter_index}章标题仍为通用占位标题。"))
 
+    content = chapter.content or ""
     findings.extend(_word_target_findings(project, chapter))
-    future_overlap = _future_outline_overlap(db, project_id=project_id, chapter_index=chapter_index, content=chapter.content or "")
+    setup = _setup_payload(db, project_id)
+    findings.extend(_character_profile_drift_findings(setup, content))
+    findings.extend(_ability_boundary_findings(setup, content))
+    findings.extend(_convenient_key_item_findings(content))
+    future_overlap = _future_outline_overlap(db, project_id=project_id, chapter_index=chapter_index, content=content)
     if future_overlap:
         findings.append(
             _finding(
@@ -88,6 +99,106 @@ def _word_target_findings(project: Project, chapter: ChapterContent) -> list[dic
             )
         ]
     return []
+
+
+def _setup_payload(db: Session, project_id: str) -> Setup | None:
+    return (
+        db.query(Setup)
+        .filter(Setup.project_id == project_id)
+        .order_by(Setup.created_at.desc(), Setup.id.desc())
+        .first()
+    )
+
+
+def _character_profile_drift_findings(setup: Setup | None, content: str) -> list[dict[str, Any]]:
+    if setup is None or not content:
+        return []
+    findings: list[dict[str, Any]] = []
+    for character in setup.characters or []:
+        if not isinstance(character, dict):
+            continue
+        name = str(character.get("name") or "").strip()
+        known_profile = str(character.get("background") or character.get("role") or "").strip()
+        if not name or name not in content:
+            continue
+        window = _text_window(content, name, radius=48)
+        marker = next((term for term in IDENTITY_MARKERS if term in window), None)
+        role = next((term for term in CONFLICTING_ROLE_TERMS if term in window and term not in known_profile), None)
+        if marker and role:
+            findings.append(
+                _finding(
+                    "character_profile_drift",
+                    "blocker",
+                    f"{name} 的身份表述疑似偏离既有设定。",
+                    evidence={
+                        "character": name,
+                        "known_profile": known_profile,
+                        "matched_marker": marker,
+                        "matched_role": role,
+                        "excerpt": window,
+                    },
+                )
+            )
+    return findings
+
+
+def _ability_boundary_findings(setup: Setup | None, content: str) -> list[dict[str, Any]]:
+    if setup is None or not content:
+        return []
+    setup_text = _setup_text(setup)
+    if not any(marker in setup_text for marker in ("不能", "不可", "禁止", "无法")):
+        return []
+    matched_terms = [term for term in ABILITY_FORBIDDEN_TERMS if term in content]
+    if not matched_terms:
+        return []
+    return [
+        _finding(
+            "ability_boundary_drift",
+            "blocker",
+            "本章能力表现疑似突破既有世界规则或角色能力边界。",
+            evidence={"matched_terms": matched_terms, "known_rules_excerpt": setup_text[:300]},
+        )
+    ]
+
+
+def _convenient_key_item_findings(content: str) -> list[dict[str, Any]]:
+    if not content:
+        return []
+    for sentence in _sentences(content):
+        matched_terms = [term for term in KEY_ITEM_TERMS if term in sentence]
+        if not matched_terms:
+            continue
+        if not any(term in sentence for term in ACQUISITION_TERMS):
+            continue
+        if any(term in sentence for term in COST_OR_RISK_TERMS):
+            continue
+        return [
+            _finding(
+                "convenient_key_item_acquisition",
+                "warning",
+                "关键道具或线索获得过于顺滑，建议补足代价、条件、债务或风险。",
+                evidence={"matched_terms": matched_terms, "excerpt": sentence},
+            )
+        ]
+    return []
+
+
+def _setup_text(setup: Setup) -> str:
+    parts = [setup.world_building, setup.characters, setup.core_concept]
+    return " ".join(str(part) for part in parts if part)
+
+
+def _text_window(content: str, term: str, *, radius: int) -> str:
+    index = content.find(term)
+    if index < 0:
+        return ""
+    start = max(index - radius, 0)
+    end = min(index + len(term) + radius, len(content))
+    return content[start:end]
+
+
+def _sentences(content: str) -> list[str]:
+    return [part.strip() for part in re.split(r"[。！？!?；;]\s*", content) if part.strip()]
 
 
 def _future_outline_overlap(db: Session, *, project_id: str, chapter_index: int, content: str) -> dict[str, Any] | None:
@@ -182,7 +293,14 @@ def _result(*, chapter_index: int, findings: list[dict[str, Any]]) -> dict[str, 
 def _recommended_actions(findings: list[dict[str, Any]]) -> list[str]:
     actions: list[str] = []
     codes = {str(finding.get("code")) for finding in findings}
-    revision_codes = {"generic_chapter_title", "chapter_over_target", "future_outline_overlap", "missing_outline_chapter"}
+    revision_codes = {
+        "generic_chapter_title",
+        "chapter_over_target",
+        "future_outline_overlap",
+        "missing_outline_chapter",
+        "character_profile_drift",
+        "ability_boundary_drift",
+    }
     if any(finding.get("code") in revision_codes and finding.get("severity") == "blocker" for finding in findings):
         actions.append("revise_chapter")
     if "pending_world_model_proposals" in codes:
