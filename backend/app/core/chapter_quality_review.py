@@ -48,6 +48,7 @@ def review_chapter_quality(db: Session, project_id: str, chapter_index: int) -> 
     findings.extend(_character_profile_drift_findings(setup, content))
     findings.extend(_ability_boundary_findings(setup, content))
     findings.extend(_convenient_key_item_findings(content))
+    findings.extend(_structural_tail_findings(content))
     future_overlap = _future_outline_overlap(db, project_id=project_id, chapter_index=chapter_index, content=content)
     if future_overlap:
         findings.append(
@@ -183,6 +184,22 @@ def _convenient_key_item_findings(content: str) -> list[dict[str, Any]]:
     return []
 
 
+def _structural_tail_findings(content: str) -> list[dict[str, Any]]:
+    if not content:
+        return []
+    if content.count("“") > content.count("”"):
+        tail = content[-120:]
+        return [
+            _finding(
+                "unclosed_dialogue_quote",
+                "blocker",
+                "章节末尾存在未闭合对白引号，疑似压缩或修订后断尾。",
+                evidence={"tail_excerpt": tail},
+            )
+        ]
+    return []
+
+
 def _setup_text(setup: Setup) -> str:
     parts = [setup.world_building, setup.characters, setup.core_concept]
     return " ".join(str(part) for part in parts if part)
@@ -300,6 +317,7 @@ def _recommended_actions(findings: list[dict[str, Any]]) -> list[str]:
         "missing_outline_chapter",
         "character_profile_drift",
         "ability_boundary_drift",
+        "unclosed_dialogue_quote",
     }
     if any(finding.get("code") in revision_codes and finding.get("severity") == "blocker" for finding in findings):
         actions.append("revise_chapter")

@@ -51,6 +51,7 @@ ALLOWED_TOOLS = {
     "expand_outline_window",
     "backfill_outline_gaps",
     "review_chapter_quality",
+    "review_chapter_continuity",
     "plan_chapter_revision",
     "create_revision_draft",
     "apply_planner_revision_patch",
@@ -73,6 +74,7 @@ INTERNAL_TOOLS = {
     "expand_outline_window",
     "backfill_outline_gaps",
     "review_chapter_quality",
+    "review_chapter_continuity",
     "plan_chapter_revision",
     "create_revision_draft",
     "apply_planner_revision_patch",
@@ -86,6 +88,7 @@ INTERNAL_TOOLS = {
 }
 NON_BLOCKING_REPORT_TOOLS = {
     "review_chapter_quality",
+    "review_chapter_continuity",
     "plan_chapter_revision",
     "review_world_model_proposals",
     "plan_world_model_proposal_resolution",
@@ -254,6 +257,12 @@ class WritingAgentRunService:
 
             chapter_index = int(tool.params.get("chapter_index") or 1)
             return review_chapter_quality(self.db, project_id, chapter_index)
+        if tool.tool_name == "review_chapter_continuity":
+            from app.core.chapter_continuity_review import review_chapter_continuity
+
+            chapter_index = int(tool.params.get("chapter_index") or 1)
+            lookback = _optional_int(tool.params.get("lookback")) or 20
+            return review_chapter_continuity(self.db, project_id, chapter_index, lookback=lookback)
         if tool.tool_name == "plan_chapter_revision":
             from app.core.chapter_revision_planner import plan_chapter_revision
 
@@ -709,6 +718,7 @@ def _target_type_for_tool(tool_name: str) -> str | None:
         "expand_outline_window": "outline",
         "backfill_outline_gaps": "outline",
         "review_chapter_quality": "review",
+        "review_chapter_continuity": "review",
         "plan_chapter_revision": "revision_plan",
         "create_revision_draft": "revision",
         "apply_planner_revision_patch": "revision",

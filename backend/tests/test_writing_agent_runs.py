@@ -931,6 +931,139 @@ def test_agent_review_chapter_quality_warns_on_convenient_key_item_acquisition(c
     assert "记忆雾晶" in finding["evidence"]["matched_terms"]
 
 
+def test_agent_review_chapter_quality_flags_unclosed_quote_tail(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1], generated_chapters=[1])
+    chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=1).one()
+    chapter.title = "信任裂缝"
+    chapter.content = "林深走进雾中，听见父亲的声音响起——“林深，好久不见。"
+    chapter.word_count = 2000
+    db_session.commit()
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "审稿第1章",
+            "tools": [{"tool_name": "review_chapter_quality", "params": {"chapter_index": 1}}],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    finding = next(item for item in output["findings"] if item["code"] == "unclosed_dialogue_quote")
+    assert response.status_code == 200
+    assert output["status"] == "blocked"
+    assert finding["severity"] == "blocker"
+
+
+def test_agent_review_chapter_continuity_flags_event_date_conflict(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1, 2])
+    first = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=1).one()
+    second = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=2).one()
+    first.content = "信封上的邮戳日期是2045年8月9日——雾灾发生前三天。"
+    first.word_count = 2000
+    second.content = "林深看了看信封上的邮戳——2045年7月12日。那是雾灾发生的前三天。"
+    second.word_count = 2000
+    db_session.commit()
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "检查第2章连续性锚点",
+            "tools": [{"tool_name": "review_chapter_continuity", "params": {"chapter_index": 2}}],
+        },
+    )
+
+    payload = response.json()
+    step = payload["steps"][0]
+    output = step["output"]
+    finding = output["findings"][0]
+    assert response.status_code == 200
+    assert payload["status"] == "success"
+    assert step["status"] == "success"
+    assert step["target_type"] == "review"
+    assert output["status"] == "blocked"
+    assert finding["code"] == "timeline_anchor_conflict"
+    assert finding["severity"] == "blocker"
+    assert finding["evidence"]["event_key"] == "fog_disaster_minus_3_days"
+    assert finding["evidence"]["values"] == ["2045年8月9日", "2045年7月12日"]
+
+
+def test_agent_review_chapter_continuity_flags_identifier_kind_conflict(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1, 2])
+    first = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=1).one()
+    second = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=2).one()
+    first.content = "顾衍把军牌扔在桌上，上面刻着编号：N-017。"
+    first.word_count = 2000
+    second.content = "顾衍掏出军牌，翻到背面。上面刻着一串编号——N-07。"
+    second.word_count = 2000
+    db_session.commit()
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "检查第2章编号锚点",
+            "tools": [{"tool_name": "review_chapter_continuity", "params": {"chapter_index": 2}}],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    finding = output["findings"][0]
+    assert output["status"] == "blocked"
+    assert finding["code"] == "identifier_anchor_conflict"
+    assert finding["evidence"]["anchor_key"] == "顾衍:military_tag_number"
+    assert finding["evidence"]["values"] == ["N-017", "N-07"]
+
+
+def test_agent_review_chapter_continuity_allows_experiment_code_distinction(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1, 2])
+    first = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=1).one()
+    second = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=2).one()
+    first.content = "顾衍把军牌扔在桌上，上面刻着编号：N-017。"
+    first.word_count = 2000
+    second.content = "顾衍掏出军牌，正面的编号仍是N-017；背面浮出暗纹——N-07。那不是军牌编号，更像实验代号。"
+    second.word_count = 2000
+    db_session.commit()
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "检查第2章编号锚点",
+            "tools": [{"tool_name": "review_chapter_continuity", "params": {"chapter_index": 2}}],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    assert response.status_code == 200
+    assert output["status"] == "ready"
+    assert output["finding_count"] == 0
+
+
+def test_agent_review_chapter_continuity_flags_relationship_name_conflict(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1, 2])
+    first = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=1).one()
+    second = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=2).one()
+    first.content = "名单第一是林建国——他父亲的名字。"
+    first.word_count = 2000
+    second.content = "空白信背面浮出署名——林远山。林深认出那是父亲留下的字迹。"
+    second.word_count = 2000
+    db_session.commit()
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "检查第2章关系姓名锚点",
+            "tools": [{"tool_name": "review_chapter_continuity", "params": {"chapter_index": 2}}],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    finding = output["findings"][0]
+    assert response.status_code == 200
+    assert output["status"] == "blocked"
+    assert finding["code"] == "relationship_name_anchor_conflict"
+    assert finding["evidence"]["anchor_key"] == "林深:father_name"
+    assert finding["evidence"]["values"] == ["林建国", "林远山"]
+
+
 def test_agent_plan_chapter_revision_maps_review_findings_to_actions(client, db_session):
     project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1, 2])
     chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=2).one()
