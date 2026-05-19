@@ -33,6 +33,7 @@ async def compress_chapter_to_target(
     *,
     target_max_word_count: int | None = None,
     extra_instruction: str = "",
+    forbidden_terms: list[str] | None = None,
 ) -> dict[str, Any]:
     project = db.query(Project).filter(Project.id == project_id).first()
     if project is None:
@@ -55,6 +56,7 @@ async def compress_chapter_to_target(
     target_max = target_max_word_count or default_target_max
     if target_max < target_min:
         return _blocked("invalid_word_target", chapter_index, "压缩目标上限不能低于章节目标下限。")
+    forbidden_terms = _normalise_forbidden_terms(forbidden_terms)
 
     previous_word_count = int(chapter.word_count or count_words(chapter.content or ""))
     if previous_word_count <= target_max:
@@ -89,6 +91,8 @@ async def compress_chapter_to_target(
     prior_direction = ""
     compressed_content = ""
     compressed_word_count = 0
+    remaining_forbidden_terms: list[str] = []
+    postcondition_retry_count = 0
     payload: dict[str, Any] = {}
     result: Any = None
     trace = None
@@ -103,6 +107,7 @@ async def compress_chapter_to_target(
             target_min=target_min,
             target_max=target_max,
             extra_instruction=extra_instruction,
+            forbidden_terms=forbidden_terms,
             attempt_index=attempt_index,
             prior_candidate=prior_candidate,
             prior_word_count=prior_word_count,
@@ -133,6 +138,7 @@ async def compress_chapter_to_target(
                     "previous_word_count": previous_word_count,
                     "target_min_word_count": target_min,
                     "target_max_word_count": target_max,
+                    "forbidden_terms": forbidden_terms,
                     "prior_word_count": prior_word_count,
                     "prior_direction": prior_direction,
                 }
@@ -192,8 +198,12 @@ async def compress_chapter_to_target(
                 compressed_word_count = count_words(compressed_content)
                 deterministic_trim_applied = True
         direction = _target_direction(compressed_word_count, target_min, target_max)
-        if compressed_content and direction == "within_target":
+        remaining_forbidden_terms = _remaining_forbidden_terms(compressed_content, forbidden_terms)
+        if compressed_content and direction == "within_target" and not remaining_forbidden_terms:
             break
+        if direction == "within_target" and remaining_forbidden_terms:
+            direction = "forbidden_terms_remaining"
+            postcondition_retry_count += 1
         if attempt_index == MAX_COMPRESSION_ATTEMPTS and direction == "under_target":
             fallback_content, fallback_trimmed = _trim_over_target_candidate(
                 chapter.content or "",
@@ -203,31 +213,68 @@ async def compress_chapter_to_target(
             if fallback_trimmed:
                 compressed_content = fallback_content
                 compressed_word_count = count_words(compressed_content)
+                remaining_forbidden_terms = _remaining_forbidden_terms(compressed_content, forbidden_terms)
+                if remaining_forbidden_terms:
+                    direction = "forbidden_terms_remaining"
+                else:
+                    direction = _target_direction(compressed_word_count, target_min, target_max)
                 deterministic_trim_applied = True
                 payload = {
                     **payload,
                     "change_summary": str(payload.get("change_summary") or "")
                     or "模型候选低于目标下限，已从原文保守裁剪到目标范围。",
                 }
-                break
+                if direction == "within_target":
+                    break
 
         failed_attempt = {
             "attempt_index": attempt_index,
             "word_count": compressed_word_count,
             "direction": direction,
             "trace_id": trace.id,
+            "remaining_forbidden_terms": remaining_forbidden_terms,
         }
         failed_attempts.append(failed_attempt)
+        if direction == "forbidden_terms_remaining":
+            error_message = "compressed content still contains forbidden terms: " + ", ".join(remaining_forbidden_terms)
+        else:
+            error_message = f"compressed content outside target: {compressed_word_count} not in {target_min}-{target_max}"
         mark_trace_failed(
             db,
             trace,
-            error_message=f"compressed content outside target: {compressed_word_count} not in {target_min}-{target_max}",
+            error_message=error_message,
             latency_ms=now_ms() - started_at,
         )
         db.commit()
         prior_candidate = compressed_content
         prior_word_count = compressed_word_count
         prior_direction = direction
+
+    remaining_forbidden_terms = _remaining_forbidden_terms(compressed_content, forbidden_terms)
+    if (
+        compressed_content
+        and target_min <= compressed_word_count <= target_max
+        and remaining_forbidden_terms
+        and trace is not None
+    ):
+        return _blocked(
+            "forbidden_terms_remaining",
+            chapter_index,
+            "模型压缩结果仍包含明确禁止保留的内容，未写入章节。",
+            extra={
+                "previous_word_count": previous_word_count,
+                "word_count": compressed_word_count,
+                "target_min_word_count": target_min,
+                "target_max_word_count": target_max,
+                "forbidden_terms": forbidden_terms,
+                "remaining_forbidden_terms": remaining_forbidden_terms,
+                "postcondition_retry_count": postcondition_retry_count,
+                "compression_attempt_count": len(failed_attempts),
+                "failed_attempts": failed_attempts,
+                "deterministic_repair_applied": deterministic_repair_applied,
+                "deterministic_trim_applied": deterministic_trim_applied,
+            },
+        )
 
     if not compressed_content or compressed_word_count < target_min or compressed_word_count > target_max or trace is None:
         return _blocked(
@@ -239,6 +286,9 @@ async def compress_chapter_to_target(
                 "word_count": compressed_word_count,
                 "target_min_word_count": target_min,
                 "target_max_word_count": target_max,
+                "forbidden_terms": forbidden_terms,
+                "remaining_forbidden_terms": remaining_forbidden_terms,
+                "postcondition_retry_count": postcondition_retry_count,
                 "compression_attempt_count": len(failed_attempts),
                 "failed_attempts": failed_attempts,
                 "deterministic_repair_applied": deterministic_repair_applied,
@@ -287,6 +337,9 @@ async def compress_chapter_to_target(
             "change_summary": str(payload.get("change_summary") or ""),
             "deterministic_repair_applied": deterministic_repair_applied,
             "deterministic_trim_applied": deterministic_trim_applied,
+            "forbidden_terms": forbidden_terms,
+            "remaining_forbidden_terms": remaining_forbidden_terms,
+            "postcondition_retry_count": postcondition_retry_count,
         },
     }
     mark_trace_success(
@@ -315,6 +368,9 @@ async def compress_chapter_to_target(
         "word_count": chapter.word_count,
         "target_min_word_count": target_min,
         "target_max_word_count": target_max,
+        "forbidden_terms": forbidden_terms,
+        "remaining_forbidden_terms": remaining_forbidden_terms,
+        "postcondition_retry_count": postcondition_retry_count,
         "compression_attempt_count": len(failed_attempts) + 1,
         "failed_attempts": failed_attempts,
         "deterministic_repair_applied": deterministic_repair_applied,
@@ -354,6 +410,15 @@ def _target_direction(word_count: int, target_min: int, target_max: int) -> str:
     if word_count > target_max:
         return "over_target"
     return "within_target"
+
+
+def _normalise_forbidden_terms(terms: list[str] | None) -> list[str]:
+    return sorted({str(term).strip() for term in (terms or []) if str(term).strip()})
+
+
+def _remaining_forbidden_terms(content: str, forbidden_terms: list[str]) -> list[str]:
+    text = content or ""
+    return [term for term in forbidden_terms if term in text]
 
 
 def _repair_under_target_candidate(
@@ -441,6 +506,7 @@ def _compression_messages(
     target_min: int,
     target_max: int,
     extra_instruction: str,
+    forbidden_terms: list[str],
     attempt_index: int = 1,
     prior_candidate: str = "",
     prior_word_count: int | None = None,
@@ -476,11 +542,20 @@ def _compression_messages(
             "禁止原样返回候选稿；必须合并或删除低信息密度句子；"
             "不要改变剧情事实，必须回到目标范围。"
         )
+    elif attempt_index > 1 and prior_direction == "forbidden_terms_remaining":
+        retry_guidance = (
+            "上一次候选仍包含明确禁止保留的文本。"
+            "必须删除或改写这些文本，不能只压缩字数，也不能原样返回候选稿。"
+        )
+    forbidden_guidance = ""
+    if forbidden_terms:
+        forbidden_guidance = "禁止保留以下精确文本：" + "、".join(f"“{term}”" for term in forbidden_terms) + "。"
     instruction = (
         f"请压缩《{project.name}》第{chapter.chapter_index}章《{chapter.title or f'第{chapter.chapter_index}章'}》。\n"
         f"当前约{current_word_count}字，必须压缩到目标字数范围{target_min}-{target_max}字。\n"
         f"{scale_guidance}\n"
         f"{retry_guidance}\n"
+        f"{forbidden_guidance}\n"
         f"宁可接近上限，也绝不能低于{target_min}字。\n"
         "要求：保留既有剧情事实、章节标题、人物动机、关键冲突和章末钩子；不要新增世界模型事实；"
         "不要提前揭露后续大纲；这不是摘要，必须输出完整正文；"

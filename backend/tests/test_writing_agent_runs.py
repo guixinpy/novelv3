@@ -3324,7 +3324,9 @@ def test_agent_compress_chapter_to_target_updates_chapter_versions_and_requires_
         f"/api/v1/projects/{project.id}/agent-runs",
         json={
             "goal": "压缩第1章到目标字数",
-            "tools": [{"tool_name": "compress_chapter_to_target", "params": {"chapter_index": 1}}],
+            "tools": [
+                {"tool_name": "compress_chapter_to_target", "params": {"chapter_index": 1, "target_max_word_count": 2300}}
+            ],
         },
     )
 
@@ -3347,6 +3349,125 @@ def test_agent_compress_chapter_to_target_updates_chapter_versions_and_requires_
     assert len(versions) == 2
     assert output["should_generate_next_chapter"] is False
     assert output["recommended_next_tools"] == ["review_chapter_quality"]
+
+
+def test_agent_compress_chapter_to_target_retries_when_forbidden_terms_remain(client, db_session, monkeypatch):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1])
+    chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=1).one()
+    chapter.title = "暗网迷途"
+    chapter.content = "林深追踪N-07线索。苏晚晴低声说我就是N-07。" * 300
+    chapter.word_count = 3600
+    db_session.commit()
+
+    calls = []
+
+    class FakeAIResult:
+        prompt_tokens = 111
+        completion_tokens = 222
+        model = "fake-deepseek"
+
+        def __init__(self, content):
+            self.content = content
+
+    class FakeAIService:
+        async def complete(self, messages, **kwargs):
+            calls.append(messages[-1]["content"])
+            if len(calls) == 1:
+                return FakeAIResult(
+                    json.dumps(
+                        {
+                            "content": "林深追踪N-07线索。我就是N-07。" * 220,
+                            "change_summary": "仍有残留。",
+                        },
+                        ensure_ascii=False,
+                    )
+                )
+            return FakeAIResult(
+                json.dumps(
+                    {
+                        "content": "林深追踪N-07线索，确认这只是未验证编号。" * 220,
+                        "change_summary": "移除硬确认。",
+                    },
+                    ensure_ascii=False,
+                )
+            )
+
+    monkeypatch.setattr("app.core.chapter_compression.AIService", FakeAIService)
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "压缩并移除禁用词",
+            "tools": [
+                {
+                    "tool_name": "compress_chapter_to_target",
+                    "params": {
+                        "chapter_index": 1,
+                        "forbidden_terms": ["我就是N-07"],
+                    },
+                }
+            ],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    patched = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=1).one()
+    assert response.status_code == 200
+    assert output["status"] == "completed"
+    assert output["postcondition_retry_count"] == 1
+    assert output["remaining_forbidden_terms"] == []
+    assert len(calls) == 2
+    assert "我就是N-07" not in patched.content
+
+
+def test_agent_compress_chapter_to_target_blocks_when_forbidden_terms_survive_all_attempts(
+    client,
+    db_session,
+    monkeypatch,
+):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1])
+    chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=1).one()
+    chapter.title = "暗网迷途"
+    original_content = "林深追踪N-07线索。苏晚晴低声说我就是N-07。" * 300
+    chapter.content = original_content
+    chapter.word_count = 3600
+    db_session.commit()
+
+    class FakeAIResult:
+        content = json.dumps({"content": "林深追踪N-07线索。我就是N-07。" * 220, "change_summary": "仍有残留。"}, ensure_ascii=False)
+        prompt_tokens = 111
+        completion_tokens = 222
+        model = "fake-deepseek"
+
+    class FakeAIService:
+        async def complete(self, messages, **kwargs):
+            return FakeAIResult()
+
+    monkeypatch.setattr("app.core.chapter_compression.AIService", FakeAIService)
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "压缩并移除禁用词",
+            "tools": [
+                {
+                    "tool_name": "compress_chapter_to_target",
+                    "params": {
+                        "chapter_index": 1,
+                        "forbidden_terms": ["我就是N-07"],
+                    },
+                }
+            ],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    patched = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=1).one()
+    assert response.status_code == 200
+    assert output["status"] == "blocked"
+    assert output["reason"] == "forbidden_terms_remaining"
+    assert output["remaining_forbidden_terms"] == ["我就是N-07"]
+    assert patched.content == original_content
 
 
 def test_agent_compress_chapter_to_target_then_review_clears_over_target_warning(client, db_session, monkeypatch):
@@ -3375,7 +3496,7 @@ def test_agent_compress_chapter_to_target_then_review_clears_over_target_warning
         json={
             "goal": "压缩并复审",
             "tools": [
-                {"tool_name": "compress_chapter_to_target", "params": {"chapter_index": 1}},
+                {"tool_name": "compress_chapter_to_target", "params": {"chapter_index": 1, "target_max_word_count": 2300}},
                 {"tool_name": "review_chapter_quality", "params": {"chapter_index": 1}},
             ],
         },
@@ -3421,7 +3542,7 @@ def test_agent_compress_chapter_to_target_blocks_direct_followup_generation(clie
         json={
             "goal": "压缩后直接生成下一章",
             "tools": [
-                {"tool_name": "compress_chapter_to_target", "params": {"chapter_index": 1}},
+                {"tool_name": "compress_chapter_to_target", "params": {"chapter_index": 1, "target_max_word_count": 2300}},
                 {"tool_name": "generate_chapter", "params": {"chapter_index": 2}},
             ],
         },
@@ -3492,7 +3613,9 @@ def test_agent_compress_chapter_to_target_blocks_pending_world_model_proposals(c
         f"/api/v1/projects/{project.id}/agent-runs",
         json={
             "goal": "存在世界模型提案时压缩",
-            "tools": [{"tool_name": "compress_chapter_to_target", "params": {"chapter_index": 1}}],
+            "tools": [
+                {"tool_name": "compress_chapter_to_target", "params": {"chapter_index": 1, "target_max_word_count": 2300}}
+            ],
         },
     )
 
@@ -3537,7 +3660,9 @@ def test_agent_compress_chapter_to_target_repairs_under_target_retry(client, db_
         f"/api/v1/projects/{project.id}/agent-runs",
         json={
             "goal": "压缩第1章并修复过短候选",
-            "tools": [{"tool_name": "compress_chapter_to_target", "params": {"chapter_index": 1}}],
+            "tools": [
+                {"tool_name": "compress_chapter_to_target", "params": {"chapter_index": 1, "target_max_word_count": 2300}}
+            ],
         },
     )
 
@@ -3602,7 +3727,9 @@ def test_agent_compress_chapter_to_target_falls_back_to_source_trim_after_under_
         f"/api/v1/projects/{project.id}/agent-runs",
         json={
             "goal": "模型连续过短时从原文保守裁剪",
-            "tools": [{"tool_name": "compress_chapter_to_target", "params": {"chapter_index": 1}}],
+            "tools": [
+                {"tool_name": "compress_chapter_to_target", "params": {"chapter_index": 1, "target_max_word_count": 2300}}
+            ],
         },
     )
 
@@ -3664,7 +3791,9 @@ def test_agent_compress_chapter_to_target_refreshes_longform_memory_and_retrieva
         f"/api/v1/projects/{project.id}/agent-runs",
         json={
             "goal": "压缩后同步长篇记忆",
-            "tools": [{"tool_name": "compress_chapter_to_target", "params": {"chapter_index": 1}}],
+            "tools": [
+                {"tool_name": "compress_chapter_to_target", "params": {"chapter_index": 1, "target_max_word_count": 2300}}
+            ],
         },
     )
 
@@ -3896,7 +4025,9 @@ def test_agent_compress_chapter_to_target_repairs_near_target_candidate_from_sou
         f"/api/v1/projects/{project.id}/agent-runs",
         json={
             "goal": "压缩第1章并用源文恢复轻微缺口",
-            "tools": [{"tool_name": "compress_chapter_to_target", "params": {"chapter_index": 1}}],
+            "tools": [
+                {"tool_name": "compress_chapter_to_target", "params": {"chapter_index": 1, "target_max_word_count": 2300}}
+            ],
         },
     )
 
@@ -3943,7 +4074,9 @@ def test_agent_compress_chapter_to_target_trims_near_over_target_candidate(clien
         f"/api/v1/projects/{project.id}/agent-runs",
         json={
             "goal": "压缩第1章并裁剪轻微超长候选",
-            "tools": [{"tool_name": "compress_chapter_to_target", "params": {"chapter_index": 1}}],
+            "tools": [
+                {"tool_name": "compress_chapter_to_target", "params": {"chapter_index": 1, "target_max_word_count": 2300}}
+            ],
         },
     )
 
@@ -3992,7 +4125,9 @@ def test_agent_compress_chapter_to_target_trims_large_over_target_candidate(clie
         f"/api/v1/projects/{project.id}/agent-runs",
         json={
             "goal": "压缩大幅超长章节",
-            "tools": [{"tool_name": "compress_chapter_to_target", "params": {"chapter_index": 1}}],
+            "tools": [
+                {"tool_name": "compress_chapter_to_target", "params": {"chapter_index": 1, "target_max_word_count": 2300}}
+            ],
         },
     )
 
