@@ -8,6 +8,7 @@ from app.models import (
     AIModelCallTrace,
     ChapterContent,
     ChapterRevision,
+    LongformMemory,
     Outline,
     Project,
     ProjectProfileVersion,
@@ -3461,12 +3462,136 @@ def test_agent_compress_chapter_to_target_repairs_under_target_retry(client, db_
     assert [trace.status for trace in traces] == ["failed", "success"]
 
 
+def test_agent_compress_chapter_to_target_falls_back_to_source_trim_after_under_target_retries(
+    client, db_session, monkeypatch
+):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1])
+    chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=1).one()
+    opening = "林深推开废弃实验室的铁门，确认门缝里还压着父亲留下的空白信纸。"
+    ending = "门后的红灯重新亮起，林深知道名单上的下一个名字已经出现。"
+    middle = [f"潮湿走廊里第{i}次传来雾晶回声，墙皮落下细小灰尘。" for i in range(128)]
+    source_content = opening + "".join(middle) + ending
+    chapter.title = "废弃实验室"
+    chapter.content = source_content
+    chapter.word_count = 2706
+    project.current_word_count = 2706
+    db_session.commit()
+
+    too_short = "林深和苏晚晴在废弃实验室追查雾晶线索。 " * 75
+    calls = []
+
+    class FakeAIResult:
+        content = json.dumps({"content": too_short, "change_summary": "模型压缩过短。"}, ensure_ascii=False)
+        prompt_tokens = 111
+        completion_tokens = 222
+        model = "fake-deepseek"
+
+    class FakeAIService:
+        async def complete(self, messages, **kwargs):
+            calls.append(messages[-1]["content"])
+            return FakeAIResult()
+
+    monkeypatch.setattr("app.core.chapter_compression.AIService", FakeAIService)
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "模型连续过短时从原文保守裁剪",
+            "tools": [{"tool_name": "compress_chapter_to_target", "params": {"chapter_index": 1}}],
+        },
+    )
+
+    payload = response.json()
+    output = payload["steps"][0]["output"]
+    patched = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=1).one()
+    traces = (
+        db_session.query(AIModelCallTrace)
+        .filter_by(project_id=project.id, trace_type="chapter_compression", chapter_index=1)
+        .order_by(AIModelCallTrace.created_at.asc(), AIModelCallTrace.id.asc())
+        .all()
+    )
+    assert response.status_code == 200
+    assert payload["status"] == "success"
+    assert output["status"] == "completed"
+    assert output["compression_attempt_count"] == 3
+    assert output["deterministic_trim_applied"] is True
+    assert len(output["failed_attempts"]) == 2
+    assert all(attempt["direction"] == "under_target" for attempt in output["failed_attempts"])
+    assert 2000 <= output["word_count"] <= 2300
+    assert patched.content != too_short.strip()
+    assert opening in patched.content
+    assert ending in patched.content
+    assert len(calls) == 3
+    assert [trace.status for trace in traces] == ["failed", "failed", "success"]
+
+
+def test_agent_compress_chapter_to_target_refreshes_longform_memory_and_retrieval(
+    client, db_session, monkeypatch
+):
+    from app.core.athena_retrieval import reindex_project_retrieval, search_retrieval
+    from app.core.longform_memory import rebuild_longform_memory
+
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1])
+    chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=1).one()
+    chapter.title = "雾港密室"
+    chapter.content = "林深和苏晚晴在雾港密室反复核对旧照片，旧照片里只有灰色灯塔。 " * 120
+    chapter.word_count = 3000
+    project.current_word_count = 3000
+    db_session.commit()
+    rebuild_longform_memory(db_session, project.id)
+    reindex_project_retrieval(db_session, project.id)
+
+    compressed_content = "林深在雾港密室确认蓝珀钥匙启动，苏晚晴记下灰色灯塔坐标。 " * 100
+
+    class FakeAIResult:
+        content = json.dumps({"content": compressed_content, "change_summary": "压缩到蓝珀钥匙线索。"}, ensure_ascii=False)
+        prompt_tokens = 111
+        completion_tokens = 222
+        model = "fake-deepseek"
+
+    class FakeAIService:
+        async def complete(self, messages, **kwargs):
+            return FakeAIResult()
+
+    monkeypatch.setattr("app.core.chapter_compression.AIService", FakeAIService)
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "压缩后同步长篇记忆",
+            "tools": [{"tool_name": "compress_chapter_to_target", "params": {"chapter_index": 1}}],
+        },
+    )
+
+    payload = response.json()
+    db_session.expire_all()
+    chapter_memory = (
+        db_session.query(LongformMemory)
+        .filter_by(project_id=project.id, memory_type="chapter", scope_key="chapter:1")
+        .one()
+    )
+    retrieval_results = search_retrieval(
+        db_session,
+        project.id,
+        "蓝珀钥匙",
+        source_type="longform_memory",
+        max_chapter_index=2,
+    )
+    assert response.status_code == 200
+    assert payload["status"] == "success"
+    assert "蓝珀钥匙" in chapter_memory.summary
+    assert any(
+        item["source_ref"] == "memory:chapter:1" and "蓝珀钥匙" in item["snippet"]
+        for item in retrieval_results["items"]
+    )
+
+
 def test_agent_compress_chapter_to_target_blocks_after_retry_exhaustion(client, db_session, monkeypatch):
     project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1])
     chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=1).one()
-    original_content = "林深和苏晚晴沿着暗河追查雾晶管线，反复核对线索。 " * 120
+    original_content = "林深和苏晚晴沿着暗河追查雾晶管线，反复核对线索。 " * 180
     chapter.content = original_content
-    chapter.word_count = 3000
+    chapter.word_count = 4500
     db_session.commit()
 
     too_short = "林深和苏晚晴沿着暗河追查线索。 " * 80
@@ -3502,6 +3627,7 @@ def test_agent_compress_chapter_to_target_blocks_after_retry_exhaustion(client, 
     assert payload["status"] == "blocked"
     assert output["reason"] == "compressed_content_outside_target"
     assert output["compression_attempt_count"] == 3
+    assert output["deterministic_trim_applied"] is False
     assert len(output["failed_attempts"]) == 3
     assert len(calls) == 3
     assert patched.content == original_content

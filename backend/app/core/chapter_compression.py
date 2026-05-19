@@ -194,6 +194,22 @@ async def compress_chapter_to_target(
         direction = _target_direction(compressed_word_count, target_min, target_max)
         if compressed_content and direction == "within_target":
             break
+        if attempt_index == MAX_COMPRESSION_ATTEMPTS and direction == "under_target":
+            fallback_content, fallback_trimmed = _trim_over_target_candidate(
+                chapter.content or "",
+                target_min=target_min,
+                target_max=target_max,
+            )
+            if fallback_trimmed:
+                compressed_content = fallback_content
+                compressed_word_count = count_words(compressed_content)
+                deterministic_trim_applied = True
+                payload = {
+                    **payload,
+                    "change_summary": str(payload.get("change_summary") or "")
+                    or "模型候选低于目标下限，已从原文保守裁剪到目标范围。",
+                }
+                break
 
         failed_attempt = {
             "attempt_index": attempt_index,
@@ -285,6 +301,7 @@ async def compress_chapter_to_target(
     db.refresh(revision)
 
     warnings = _safe_reindex_chapter(db, project_id=project_id, chapter_index=chapter_index)
+    warnings.extend(_safe_refresh_longform_maintenance(db, project_id=project_id, chapter_index=chapter_index))
     return {
         "status": "completed",
         "chapter_index": chapter_index,
@@ -550,6 +567,34 @@ def _safe_reindex_chapter(db: Session, *, project_id: str, chapter_index: int) -
     except Exception as exc:
         db.rollback()
         return [{"code": "chapter_retrieval_index", "message": str(exc)}]
+
+
+def _safe_refresh_longform_maintenance(db: Session, *, project_id: str, chapter_index: int) -> list[dict[str, str]]:
+    try:
+        from app.core.longform_memory import refresh_longform_memory_for_chapter
+
+        refresh_result = refresh_longform_memory_for_chapter(
+            db,
+            project_id,
+            chapter_index,
+            reconcile_word_count=False,
+        )
+    except Exception as exc:
+        db.rollback()
+        return [{"code": "longform_memory_refresh", "message": str(exc)}]
+
+    try:
+        from app.core.athena_retrieval import sync_longform_memory_retrieval_documents
+
+        sync_longform_memory_retrieval_documents(
+            db,
+            project_id,
+            refresh_result.get("updated_memory_ids") or [],
+        )
+    except Exception as exc:
+        db.rollback()
+        return [{"code": "longform_memory_retrieval_sync", "message": str(exc)}]
+    return []
 
 
 def _blocked(

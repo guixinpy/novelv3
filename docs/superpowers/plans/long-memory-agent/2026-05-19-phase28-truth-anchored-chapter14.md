@@ -44,7 +44,7 @@ Out of scope:
 
 ## Task 1: Context Gate
 
-- [ ] **Step 1: Inspect Chapter 14 world context**
+- [x] **Step 1: Inspect Chapter 14 world context**
 
 Run:
 
@@ -64,7 +64,7 @@ print(package['prompt_context'])
 
 Expected: output contains `【已确认事实】`, `林深.father_name = 林建国`, `顾衍.military_tag_number = N-017`, and both fog-disaster dates.
 
-- [ ] **Step 2: If facts are missing, add a failing test**
+- [x] **Step 2: If facts are missing, add a failing test**
 
 If Step 1 fails, add a test in `backend/tests/test_chapters.py` proving `build_chapter_prompt_context_blocks()` must inject confirmed stable truth facts into the model prompt, then implement the minimal fix.
 
@@ -72,7 +72,7 @@ If Step 1 passes, do not add speculative code.
 
 ## Task 2: Generate Chapter 14
 
-- [ ] **Step 1: Run Writing Agent chapter generation**
+- [x] **Step 1: Run Writing Agent chapter generation**
 
 Use project `25fa2b20-5b9f-473b-918b-f4ea491cbb60`:
 
@@ -95,7 +95,7 @@ Expected:
 - continuity review has no stable truth conflicts;
 - world-model analysis creates or skips proposals without leaving stale maintenance.
 
-- [ ] **Step 2: Resolve immediate blockers**
+- [x] **Step 2: Resolve immediate blockers**
 
 If word count is outside the target range, use the existing expansion/compression tool and re-run quality and continuity review.
 
@@ -105,7 +105,7 @@ If world-model proposals remain, use `draft_world_model_proposal_resolution_deci
 
 ## Task 3: Subagent Reader/Continuity Review
 
-- [ ] **Step 1: Dispatch read-only subagent**
+- [x] **Step 1: Dispatch read-only subagent**
 
 Ask a subagent to inspect Chapter 14 in `data/mozhou.db` and report:
 
@@ -115,13 +115,13 @@ Ask a subagent to inspect Chapter 14 in `data/mozhou.db` and report:
 - whether Chapter 14 works as a readable web-novel chapter;
 - whether a code-level system issue is exposed.
 
-- [ ] **Step 2: Fix or document findings**
+- [x] **Step 2: Fix or document findings**
 
 Fix dogfood content or code for clear blockers. Record non-blocking quality observations in the phase report.
 
 ## Task 4: Verification and Report
 
-- [ ] **Step 1: Choose verification tier**
+- [x] **Step 1: Choose verification tier**
 
 If no production code changes are made, use T0/T1:
 
@@ -137,7 +137,7 @@ cd backend
 .venv\Scripts\python.exe -m pytest tests\test_writing_agent_runs.py tests\test_chapters.py -q
 ```
 
-- [ ] **Step 2: Write Phase28 report**
+- [x] **Step 2: Write Phase28 report**
 
 Create `docs/superpowers/notes/long-memory-agent/2026-05-19-phase28-truth-anchored-chapter14.md` with:
 
