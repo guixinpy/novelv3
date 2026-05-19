@@ -75,7 +75,7 @@ Without this bridge, the Agent can stop unsafe generation but cannot guide the u
 - Modify: `backend/app/core/chapter_revision_planner.py`
 - Modify: `backend/tests/test_writing_agent_runs.py`
 
-- [ ] **Step 1: Write failing planner test for drift findings**
+- [x] **Step 1: Write failing planner test for drift findings**
 
 Add this test near existing revision planner tests in `backend/tests/test_writing_agent_runs.py`:
 
@@ -108,7 +108,7 @@ def test_agent_plan_chapter_revision_maps_drift_findings_to_actions(client, db_s
     assert "制造幻觉" in actions["respect_ability_boundary"]["evidence"]["matched_terms"]
 ```
 
-- [ ] **Step 2: Run RED planner test**
+- [x] **Step 2: Run RED planner test**
 
 Run:
 
@@ -119,7 +119,7 @@ cd backend
 
 Expected: fail because revision actions are missing.
 
-- [ ] **Step 3: Implement minimal planner mappings**
+- [x] **Step 3: Implement minimal planner mappings**
 
 In `backend/app/core/chapter_revision_planner.py`, update `_action_for_finding`:
 
@@ -153,7 +153,7 @@ In `backend/app/core/chapter_revision_planner.py`, update `_action_for_finding`:
         }
 ```
 
-- [ ] **Step 4: Run GREEN planner test**
+- [x] **Step 4: Run GREEN planner test**
 
 Run the same test and confirm it passes.
 
@@ -164,7 +164,7 @@ Run the same test and confirm it passes.
 - Modify: `backend/app/core/chapter_revision_drafts.py`
 - Modify: `backend/tests/test_writing_agent_runs.py`
 
-- [ ] **Step 1: Write failing draft annotation test**
+- [x] **Step 1: Write failing draft annotation test**
 
 Add:
 
@@ -199,7 +199,7 @@ def test_agent_create_revision_draft_anchors_drift_actions(client, db_session):
     assert db_session.query(ChapterContent).filter_by(id=chapter.id).one().content == chapter.content
 ```
 
-- [ ] **Step 2: Run RED draft test**
+- [x] **Step 2: Run RED draft test**
 
 Run:
 
@@ -210,7 +210,7 @@ cd backend
 
 Expected: fail because actions/comments/anchors are not specific.
 
-- [ ] **Step 3: Improve selected evidence extraction**
+- [x] **Step 3: Improve selected evidence extraction**
 
 In `backend/app/core/chapter_revision_drafts.py`, update `_selected_evidence_text` so it can use:
 
@@ -234,7 +234,7 @@ Minimal behavior:
             return value
 ```
 
-- [ ] **Step 4: Add drift action comments**
+- [x] **Step 4: Add drift action comments**
 
 In `_comment_for_action`, add:
 
@@ -247,7 +247,7 @@ In `_comment_for_action`, add:
         message = str(action.get("target") or "补足关键道具获得的代价或风险。")
 ```
 
-- [ ] **Step 5: Run GREEN draft test**
+- [x] **Step 5: Run GREEN draft test**
 
 Run the same test and confirm it passes.
 
@@ -258,7 +258,7 @@ Run the same test and confirm it passes.
 - Create: `docs/superpowers/notes/long-memory-agent/2026-05-19-phase19-revision-bridge-for-drift-gates.md`
 - Modify: `docs/superpowers/plans/long-memory-agent/2026-05-19-phase19-revision-bridge-for-drift-gates.md`
 
-- [ ] **Step 1: Run dogfood revision plan**
+- [x] **Step 1: Run dogfood revision plan**
 
 Run a Writing Agent run:
 
@@ -274,7 +274,7 @@ Expected:
 - revision actions include `fix_character_profile_drift` and `respect_ability_boundary`
 - `should_generate_next_chapter` is false.
 
-- [ ] **Step 2: Run dogfood revision draft**
+- [x] **Step 2: Run dogfood revision draft**
 
 Run:
 
@@ -290,7 +290,7 @@ Expected:
 - annotations include both drift action comments;
 - Chapter 6 content remains unchanged.
 
-- [ ] **Step 3: Confirm Chapter 7 remains blocked by policy**
+- [x] **Step 3: Confirm Chapter 7 remains blocked by policy**
 
 Do not generate Chapter 7. Record that the next required action is applying or submitting the Chapter 6 revision, not continuing generation.
 
@@ -300,7 +300,7 @@ Do not generate Chapter 7. Record that the next required action is applying or s
 
 - Modify all Phase19 files.
 
-- [ ] **Step 1: Run targeted verification**
+- [x] **Step 1: Run targeted verification**
 
 Run:
 
@@ -311,7 +311,7 @@ cd backend
 
 Expected: pass.
 
-- [ ] **Step 2: Write Phase19 report**
+- [x] **Step 2: Write Phase19 report**
 
 Create `docs/superpowers/notes/long-memory-agent/2026-05-19-phase19-revision-bridge-for-drift-gates.md` with:
 
@@ -322,7 +322,7 @@ Create `docs/superpowers/notes/long-memory-agent/2026-05-19-phase19-revision-bri
 - Chapter 6 no-overwrite confirmation;
 - next phase recommendation.
 
-- [ ] **Step 3: Hygiene checks**
+- [x] **Step 3: Hygiene checks**
 
 Run:
 
@@ -338,7 +338,7 @@ Expected:
 - secret scan returns no matches;
 - only intended Phase19 files are changed.
 
-- [ ] **Step 4: Commit and push**
+- [x] **Step 4: Commit and push**
 
 Commit plan first:
 

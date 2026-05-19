@@ -854,6 +854,34 @@ def test_agent_plan_chapter_revision_maps_review_findings_to_actions(client, db_
     assert chapter_after_plan.title == "第2章"
 
 
+def test_agent_plan_chapter_revision_maps_drift_findings_to_actions(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1], generated_chapters=[1])
+    chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=1).one()
+    chapter.title = "黑市雾晶"
+    chapter.content = "苏晚晴低声说，她以前是雾安局研究员。随后她制造幻觉骗过守卫。"
+    chapter.word_count = 2000
+    db_session.commit()
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "规划第1章漂移修订",
+            "tools": [{"tool_name": "plan_chapter_revision", "params": {"chapter_index": 1}}],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    actions = {action["action"]: action for action in output["revision_actions"]}
+    assert response.status_code == 200
+    assert output["status"] == "blocked"
+    assert "fix_character_profile_drift" in actions
+    assert "respect_ability_boundary" in actions
+    assert actions["fix_character_profile_drift"]["source_finding"] == "character_profile_drift"
+    assert actions["respect_ability_boundary"]["source_finding"] == "ability_boundary_drift"
+    assert actions["fix_character_profile_drift"]["evidence"]["character"] == "苏晚晴"
+    assert "制造幻觉" in actions["respect_ability_boundary"]["evidence"]["matched_terms"]
+
+
 def test_agent_plan_chapter_revision_records_revision_plan_target_type(client, db_session):
     project = _seed_longform_project(db_session, outline_chapters=[1], generated_chapters=[1])
     chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=1).one()
@@ -2424,6 +2452,37 @@ def test_agent_create_revision_draft_from_plan_is_non_destructive(client, db_ses
     assert any("[PLAN_ACTION:compress_chapter]" in item.comment for item in annotations)
     assert chapter_after.content == original_content
     assert chapter_after.title == "第2章"
+
+
+def test_agent_create_revision_draft_anchors_drift_actions(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1], generated_chapters=[1])
+    chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=1).one()
+    chapter.title = "黑市雾晶"
+    chapter.content = "苏晚晴低声说，她以前是雾安局研究员。随后她制造幻觉骗过守卫。"
+    chapter.word_count = 2000
+    original_content = chapter.content
+    db_session.commit()
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "创建第1章漂移修订草稿",
+            "tools": [{"tool_name": "create_revision_draft", "params": {"chapter_index": 1}}],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    annotations = db_session.query(RevisionAnnotation).filter_by(revision_id=output["revision_id"]).all()
+    comments = [annotation.comment or "" for annotation in annotations]
+    selected = [annotation.selected_text or "" for annotation in annotations]
+    assert response.status_code == 200
+    assert output["status"] == "drafted"
+    assert output["annotation_count"] == 2
+    assert any("[PLAN_ACTION:fix_character_profile_drift]" in comment for comment in comments)
+    assert any("[PLAN_ACTION:respect_ability_boundary]" in comment for comment in comments)
+    assert any("雾安局研究员" in text for text in selected)
+    assert any("制造幻觉" in text for text in selected)
+    assert db_session.query(ChapterContent).filter_by(id=chapter.id).one().content == original_content
 
 
 def test_agent_create_revision_draft_reuses_existing_draft(client, db_session):

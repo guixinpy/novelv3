@@ -223,6 +223,17 @@ def _anchor_for_action(chapter: ChapterContent, action: dict[str, Any]) -> dict[
 
 def _selected_evidence_text(content: str, action: dict[str, Any]) -> str | None:
     evidence = action.get("evidence") if isinstance(action.get("evidence"), dict) else {}
+    excerpt = str(evidence.get("excerpt") or "").strip()
+    if excerpt and excerpt in content:
+        return excerpt[: min(len(excerpt), 80)]
+    matched_role = str(evidence.get("matched_role") or "").strip()
+    if matched_role and matched_role in content:
+        return matched_role
+    matched_terms = evidence.get("matched_terms") if isinstance(evidence.get("matched_terms"), list) else []
+    for term in matched_terms:
+        value = str(term or "").strip()
+        if value and value in content:
+            return value
     matches = evidence.get("matches") if isinstance(evidence.get("matches"), list) else []
     for match in matches:
         if not isinstance(match, dict):
@@ -254,6 +265,12 @@ def _comment_for_action(*, action_name: str, source: str, action: dict[str, Any]
         message = str(action.get("target") or "补足场景密度、人物反应和有效冲突。")
     elif action_name == "repair_outline_gap":
         message = "先修复章节大纲缺口，再决定是否改写正文。"
+    elif action_name == "fix_character_profile_drift":
+        message = str(action.get("target") or "修正角色身份表述，使其回到既有设定。")
+    elif action_name == "respect_ability_boundary":
+        message = str(action.get("target") or "改写超出既有世界规则的能力表现。")
+    elif action_name == "add_key_item_cost":
+        message = str(action.get("target") or "补足关键道具获得的代价或风险。")
     else:
         message = str(action.get("reason") or "根据修订计划处理该问题。")
     return f"[PLAN_ACTION:{action_name}][SOURCE:{source}] {message}"

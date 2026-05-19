@@ -78,6 +78,33 @@ def _action_for_finding(finding: dict[str, Any]) -> dict[str, Any] | None:
             "target": "移除或弱化提前消耗的后续章节信息，改为保留悬念或轻量暗示。",
             "evidence": finding.get("evidence") or {},
         }
+    if code == "character_profile_drift":
+        return {
+            "action": "fix_character_profile_drift",
+            "severity": severity,
+            "source_finding": code,
+            "reason": message,
+            "target": "修正角色身份、职业、性别或履历表述，使其回到既有设定；不要把漂移设定继续写成事实。",
+            "evidence": finding.get("evidence") or {},
+        }
+    if code == "ability_boundary_drift":
+        return {
+            "action": "respect_ability_boundary",
+            "severity": severity,
+            "source_finding": code,
+            "reason": message,
+            "target": "删除或改写超出既有世界规则的能力表现；如需保留新能力，必须先有明确解锁原因和世界模型提案。",
+            "evidence": finding.get("evidence") or {},
+        }
+    if code == "convenient_key_item_acquisition":
+        return {
+            "action": "add_key_item_cost",
+            "severity": severity,
+            "source_finding": code,
+            "reason": message,
+            "target": "为关键道具或线索补足代价、条件、债务、暴露风险或后续反噬。",
+            "evidence": finding.get("evidence") or {},
+        }
     if code == "missing_outline_chapter":
         return {
             "action": "repair_outline_gap",
