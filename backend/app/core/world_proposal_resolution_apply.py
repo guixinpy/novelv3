@@ -5,6 +5,7 @@ from typing import Any
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.core.continuity_anchor_proposals import is_continuity_anchor_item
 from app.core.world_proposal_resolution_preview import preview_world_model_proposal_resolution
 from app.core.world_proposal_service import review_proposal_item
 from app.core.world_proposal_state import ACTIONABLE_REVIEW_ITEM_STATUSES, NON_MERGE_ACTIONS
@@ -40,12 +41,16 @@ def apply_world_model_proposal_resolution(
         )
 
     for decision in valid_decisions:
-        if decision.get("action") not in NON_MERGE_ACTIONS:
+        if decision.get("action") not in NON_MERGE_ACTIONS and not _is_continuity_anchor_decision(
+            db,
+            project_id=project_id,
+            proposal_item_id=str(decision.get("proposal_item_id") or ""),
+        ):
             invalid_decisions.append(
                 _invalid_from_valid(
                     decision,
                     "approval_not_supported_in_guarded_apply",
-                    "guarded apply only supports reject and mark_uncertain in this phase",
+                    "guarded apply only supports reject/mark_uncertain and whitelisted continuity-anchor approvals",
                 )
             )
 
@@ -146,6 +151,15 @@ def _current_actionable_count(db: Session, project_id: str) -> int:
         .scalar()
         or 0
     )
+
+
+def _is_continuity_anchor_decision(db: Session, *, project_id: str, proposal_item_id: str) -> bool:
+    item = (
+        db.query(WorldProposalItem)
+        .filter(WorldProposalItem.project_id == project_id, WorldProposalItem.id == proposal_item_id)
+        .one_or_none()
+    )
+    return item is not None and is_continuity_anchor_item(item)
 
 
 def _result(

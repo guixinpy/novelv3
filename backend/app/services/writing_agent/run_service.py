@@ -62,6 +62,7 @@ ALLOWED_TOOLS = {
     "preview_world_model_proposal_resolution",
     "apply_world_model_proposal_resolution",
     "draft_world_model_proposal_resolution_decisions",
+    "seed_continuity_anchor_proposals",
 }
 CHAPTER_TOOL_NAME = "generate_chapter"
 CONTINUITY_KEY_TERMS = ("空白信", "雾晶", "记忆雾晶", "钥匙", "下城", "黑市", "灯塔", "实验体", "叶知秋", "苏晚晴", "林深")
@@ -85,6 +86,7 @@ INTERNAL_TOOLS = {
     "preview_world_model_proposal_resolution",
     "apply_world_model_proposal_resolution",
     "draft_world_model_proposal_resolution_decisions",
+    "seed_continuity_anchor_proposals",
 }
 NON_BLOCKING_REPORT_TOOLS = {
     "review_chapter_quality",
@@ -95,6 +97,7 @@ NON_BLOCKING_REPORT_TOOLS = {
     "preview_world_model_proposal_resolution",
     "apply_world_model_proposal_resolution",
     "draft_world_model_proposal_resolution_decisions",
+    "seed_continuity_anchor_proposals",
 }
 
 
@@ -348,6 +351,10 @@ class WritingAgentRunService:
                 predicate_policies=tool.params.get("predicate_policies") if isinstance(tool.params.get("predicate_policies"), dict) else None,
                 include_unclassified=tool.params.get("include_unclassified") is True,
             )
+        if tool.tool_name == "seed_continuity_anchor_proposals":
+            from app.core.continuity_anchor_proposals import seed_continuity_anchor_proposals
+
+            return seed_continuity_anchor_proposals(self.db, project_id)
         return {"status": "failed", "error": f"Unsupported writing agent tool: {tool.tool_name}"}
 
     def list_runs(self, project_id: str, *, offset: int = 0, limit: int = 20) -> dict[str, Any]:
@@ -729,6 +736,7 @@ def _target_type_for_tool(tool_name: str) -> str | None:
         "preview_world_model_proposal_resolution": "world_model",
         "apply_world_model_proposal_resolution": "world_model",
         "draft_world_model_proposal_resolution_decisions": "world_model",
+        "seed_continuity_anchor_proposals": "world_model",
     }.get(tool_name)
 
 
@@ -751,6 +759,7 @@ def _should_stop_after_report(
         "preview_world_model_proposal_resolution",
         "apply_world_model_proposal_resolution",
         "draft_world_model_proposal_resolution_decisions",
+        "seed_continuity_anchor_proposals",
     }:
         return False
     if step_index >= total_steps:
@@ -770,6 +779,7 @@ def _allowed_report_followup(tool_name: str, next_tool_name: str | None) -> bool
         ("plan_world_model_proposal_resolution", "preview_world_model_proposal_resolution"),
         ("preview_world_model_proposal_resolution", "apply_world_model_proposal_resolution"),
         ("draft_world_model_proposal_resolution_decisions", "apply_world_model_proposal_resolution"),
+        ("seed_continuity_anchor_proposals", "apply_world_model_proposal_resolution"),
     }
 
 
@@ -780,6 +790,7 @@ def _successful_report_block_message(tool_name: str) -> str:
         "preview_world_model_proposal_resolution": "世界模型提案解决决策尚未执行，已停止后续写作工具。",
         "apply_world_model_proposal_resolution": "世界模型提案队列仍未清空，已停止后续写作工具。",
         "draft_world_model_proposal_resolution_decisions": "世界模型提案决策草案尚未确认应用，已停止后续写作工具。",
+        "seed_continuity_anchor_proposals": "稳定连续性锚点提案尚未审批，已停止后续写作工具。",
         "plan_chapter_revision": "修订计划未通过，已停止后续写作工具。",
         "create_revision_draft": "修订草稿未通过，已停止后续写作工具。",
         "apply_planner_revision_patch": "修订补丁应用后尚未复审，已停止后续写作工具。",

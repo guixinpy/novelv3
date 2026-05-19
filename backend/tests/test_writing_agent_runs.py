@@ -1064,6 +1064,188 @@ def test_agent_review_chapter_continuity_flags_relationship_name_conflict(client
     assert finding["evidence"]["values"] == ["林建国", "林远山"]
 
 
+def test_agent_review_chapter_continuity_blocks_against_confirmed_father_truth(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1, 2])
+    import_setup_to_world_model(db_session, project.id)
+    _seed_confirmed_world_fact(
+        db_session,
+        project_id=project.id,
+        claim_id="claim.continuity.father-name",
+        subject_ref="林深",
+        predicate="father_name",
+        object_ref_or_value="林建国",
+        chapter_index=1,
+    )
+    second = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=2).one()
+    second.content = "空白信背面浮出署名——林远山。林深认出那是父亲留下的字迹。"
+    second.word_count = 2000
+    db_session.commit()
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "检查第2章稳定父亲姓名锚点",
+            "tools": [{"tool_name": "review_chapter_continuity", "params": {"chapter_index": 2}}],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    finding = next(item for item in output["findings"] if item["code"] == "stable_truth_anchor_conflict")
+    assert response.status_code == 200
+    assert output["status"] == "blocked"
+    assert finding["severity"] == "blocker"
+    assert finding["evidence"]["anchor_key"] == "林深:father_name"
+    assert finding["evidence"]["truth_value"] == "林建国"
+    assert finding["evidence"]["observed_values"] == ["林远山"]
+
+
+def test_agent_review_chapter_continuity_blocks_against_confirmed_military_tag_truth(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1, 2])
+    import_setup_to_world_model(db_session, project.id)
+    _seed_confirmed_world_fact(
+        db_session,
+        project_id=project.id,
+        claim_id="claim.continuity.guyan.military-tag",
+        subject_ref="顾衍",
+        predicate="military_tag_number",
+        object_ref_or_value="N-017",
+        chapter_index=1,
+    )
+    second = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=2).one()
+    second.content = "顾衍掏出军牌，翻到背面。上面刻着一串编号——N-07。"
+    second.word_count = 2000
+    db_session.commit()
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "检查第2章稳定军牌锚点",
+            "tools": [{"tool_name": "review_chapter_continuity", "params": {"chapter_index": 2}}],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    finding = next(item for item in output["findings"] if item["code"] == "stable_truth_anchor_conflict")
+    assert response.status_code == 200
+    assert output["status"] == "blocked"
+    assert finding["evidence"]["anchor_key"] == "顾衍:military_tag_number"
+    assert finding["evidence"]["truth_value"] == "N-017"
+    assert finding["evidence"]["observed_values"] == ["N-07"]
+
+
+def test_agent_review_chapter_continuity_blocks_against_confirmed_relative_event_date_truth(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1, 2])
+    import_setup_to_world_model(db_session, project.id)
+    _seed_confirmed_world_fact(
+        db_session,
+        project_id=project.id,
+        claim_id="claim.continuity.fog-disaster-minus-3-days",
+        subject_ref="event.fog_disaster.minus_3_days",
+        predicate="relative_event_date",
+        object_ref_or_value="2045年8月9日",
+        chapter_index=1,
+    )
+    second = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=2).one()
+    second.content = "信封上的邮戳日期是2045年8月12日——雾灾发生前三天。"
+    second.word_count = 2000
+    db_session.commit()
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "检查第2章稳定雾灾日期锚点",
+            "tools": [{"tool_name": "review_chapter_continuity", "params": {"chapter_index": 2}}],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    finding = next(item for item in output["findings"] if item["code"] == "stable_truth_anchor_conflict")
+    assert response.status_code == 200
+    assert output["status"] == "blocked"
+    assert finding["evidence"]["anchor_key"] == "fog_disaster_minus_3_days"
+    assert finding["evidence"]["truth_value"] == "2045年8月9日"
+    assert finding["evidence"]["observed_values"] == ["2045年8月12日"]
+
+
+def test_agent_seed_continuity_anchor_proposals_creates_missing_anchor_items(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1], generated_chapters=[1])
+    import_setup_to_world_model(db_session, project.id)
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "补齐稳定连续性锚点提案",
+            "tools": [{"tool_name": "seed_continuity_anchor_proposals"}],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    stored_items = db_session.query(WorldProposalItem).filter_by(project_id=project.id).all()
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    assert output["status"] == "blocked"
+    assert output["created_item_count"] >= 5
+    assert output["should_generate_next_chapter"] is False
+    assert {(item.subject_ref, item.predicate) for item in stored_items} >= {
+        ("林深", "father_name"),
+        ("顾衍", "military_tag_number"),
+        ("identifier.N-07", "identifier_meaning"),
+        ("event.fog_disaster", "event_date"),
+        ("event.fog_disaster.minus_3_days", "relative_event_date"),
+    }
+
+
+def test_agent_apply_world_model_proposal_resolution_allows_confirmed_continuity_anchor_approval(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1], generated_chapters=[1])
+    import_setup_to_world_model(db_session, project.id)
+    client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={"goal": "seed", "tools": [{"tool_name": "seed_continuity_anchor_proposals"}]},
+    )
+    item = (
+        db_session.query(WorldProposalItem)
+        .filter_by(project_id=project.id, subject_ref="林深", predicate="father_name")
+        .one()
+    )
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "审批稳定锚点",
+            "tools": [
+                {
+                    "tool_name": "apply_world_model_proposal_resolution",
+                    "params": {
+                        "confirm_apply": True,
+                        "decisions": [
+                            {
+                                "proposal_item_id": item.id,
+                                "action": "approve",
+                                "reason": "确认父亲姓名锚点",
+                                "evidence_refs": ["chapter:10", "chapter:11", "chapter:13"],
+                            }
+                        ],
+                    },
+                }
+            ],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    db_session.expire_all()
+    stored_item = db_session.query(WorldProposalItem).filter_by(id=item.id).one()
+    stored_claim = db_session.query(WorldFactClaim).filter_by(project_id=project.id, predicate="father_name").one()
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    assert output["applied_count"] == 1
+    assert output["after_actionable_items"] == 4
+    assert output["should_generate_next_chapter"] is False
+    assert stored_item.item_status == "approved"
+    assert stored_item.approved_claim_id == stored_claim.claim_id
+    assert stored_claim.subject_ref == "林深"
+    assert stored_claim.object_ref_or_value == "林建国"
+
+
 def test_agent_plan_chapter_revision_maps_review_findings_to_actions(client, db_session):
     project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1, 2])
     chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=2).one()
@@ -3755,6 +3937,38 @@ def _seed_pending_world_proposal(
     )
     db_session.commit()
     return item
+
+
+def _seed_confirmed_world_fact(
+    db_session,
+    *,
+    project_id: str,
+    claim_id: str,
+    subject_ref: str,
+    predicate: str,
+    object_ref_or_value,
+    chapter_index: int | None = None,
+) -> WorldFactClaim:
+    profile = db_session.query(ProjectProfileVersion).filter_by(project_id=project_id).one()
+    claim = WorldFactClaim(
+        project_id=project_id,
+        project_profile_version_id=profile.id,
+        profile_version=profile.version,
+        claim_id=claim_id,
+        chapter_index=chapter_index,
+        subject_ref=subject_ref,
+        predicate=predicate,
+        object_ref_or_value=object_ref_or_value,
+        claim_layer="truth",
+        claim_status="confirmed",
+        evidence_refs=[f"chapter:{chapter_index}"] if chapter_index is not None else [],
+        authority_type=DERIVED,
+        confidence=1.0,
+        contract_version=profile.contract_version,
+    )
+    db_session.add(claim)
+    db_session.commit()
+    return claim
 
 
 def _seed_longform_project(db_session, *, outline_chapters: list[int], generated_chapters: list[int]) -> Project:
