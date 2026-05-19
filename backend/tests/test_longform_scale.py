@@ -1773,9 +1773,9 @@ def test_longform_maintenance_diagnostics_uses_2000_floor_for_longform_projects(
 
     assert payload["word_target"]["target_average_word_count"] == 2000
     assert payload["word_target"]["target_min_word_count"] == 2000
-    assert payload["word_target"]["target_max_word_count"] == 2300
+    assert payload["word_target"]["target_max_word_count"] == 3000
     assert payload["word_target"]["under_target_chapter_indexes"] == [1]
-    assert payload["word_target"]["over_target_chapter_indexes"] == [3]
+    assert payload["word_target"]["over_target_chapter_indexes"] == []
 
 
 def test_longform_maintenance_diagnostics_reports_stale_memory_after_chapter_edit(client, db_session):

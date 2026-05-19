@@ -194,7 +194,7 @@ def test_agent_run_records_chapter_length_and_world_model_diagnostics(client, db
                 "actual_word_count": 3735,
                 "target_min_word_count": 2000,
                 "target_average_word_count": 2000,
-                "target_max_word_count": 2300,
+                "target_max_word_count": 3000,
             }
         },
     )
@@ -223,7 +223,7 @@ def test_agent_run_records_chapter_length_and_world_model_diagnostics(client, db
     assert length_decision["actual_word_count"] == 3735
     assert length_decision["target_min_word_count"] == 2000
     assert length_decision["target_average_word_count"] == 2000
-    assert length_decision["target_max_word_count"] == 2300
+    assert length_decision["target_max_word_count"] == 3000
     assert length_decision["repeated_drift_count"] == 0
     assert length_decision["recommended_actions"] == []
     assert output["world_model_proposal_diagnostic"]["status"] == "missing"
@@ -419,7 +419,7 @@ def test_agent_skips_analyze_when_generate_step_already_auto_analyzed_same_chapt
                 "actual_word_count": 2100,
                 "target_min_word_count": 2000,
                 "target_average_word_count": 2000,
-                "target_max_word_count": 2300,
+                "target_max_word_count": 3000,
             }
         },
     )
@@ -471,7 +471,7 @@ def test_agent_skips_analyze_when_generate_step_already_auto_analyzed_same_chapt
 def test_agent_chapter_length_decision_flags_repeated_over_target_drift(client, db_session, monkeypatch):
     project = _seed_longform_project(db_session, outline_chapters=[1, 2, 3], generated_chapters=[1, 2, 3])
     for chapter in db_session.query(ChapterContent).filter(ChapterContent.project_id == project.id):
-        chapter.word_count = 3000
+        chapter.word_count = 3300
     trace = AIModelCallTrace(
         project_id=project.id,
         trace_type="chapter_generation",
@@ -480,10 +480,10 @@ def test_agent_chapter_length_decision_flags_repeated_over_target_drift(client, 
         trace_metadata={
             "chapter_word_target": {
                 "status": "over",
-                "actual_word_count": 3000,
+                "actual_word_count": 3300,
                 "target_min_word_count": 2000,
                 "target_average_word_count": 2000,
-                "target_max_word_count": 2300,
+                "target_max_word_count": 3000,
             }
         },
     )
@@ -516,7 +516,7 @@ def test_agent_chapter_length_decision_flags_repeated_over_target_drift(client, 
 def test_agent_preflight_warns_when_repeated_over_target_drift_requires_review(client, db_session):
     project = _seed_longform_project(db_session, outline_chapters=[1, 2, 3, 4], generated_chapters=[1, 2, 3])
     for chapter in db_session.query(ChapterContent).filter(ChapterContent.project_id == project.id):
-        chapter.word_count = 3000
+        chapter.word_count = 3300
     db_session.commit()
     import_setup_to_world_model(db_session, project.id)
 
@@ -779,7 +779,7 @@ def test_agent_review_chapter_quality_flags_generic_title_and_length(client, db_
     assert "revise_chapter" in output["recommended_actions"]
 
 
-def test_agent_review_chapter_quality_warns_on_modest_over_target_length(client, db_session):
+def test_agent_review_chapter_quality_accepts_elastic_2000_plus_length(client, db_session):
     project = _seed_longform_project(db_session, outline_chapters=[1], generated_chapters=[1])
     chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=1).one()
     chapter.title = "雾中回声"
@@ -795,12 +795,10 @@ def test_agent_review_chapter_quality_warns_on_modest_over_target_length(client,
     )
 
     output = response.json()["steps"][0]["output"]
-    over_finding = next(finding for finding in output["findings"] if finding["code"] == "chapter_over_target")
+    codes = {finding["code"] for finding in output["findings"]}
     assert response.status_code == 200
     assert response.json()["status"] == "success"
-    assert output["status"] == "warning"
-    assert over_finding["severity"] == "warning"
-    assert "revise_chapter" not in output["recommended_actions"]
+    assert "chapter_over_target" not in codes
 
 
 def test_agent_review_chapter_quality_warns_on_duplicate_specific_title(client, db_session):

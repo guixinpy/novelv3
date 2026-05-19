@@ -231,7 +231,9 @@ def project_chapter_word_range(project: Project) -> tuple[int, int] | None:
     if target_words <= 0 or target_chapters <= 0:
         return None
     average = max(1, round(target_words / target_chapters))
-    target_min = average if average >= 2000 else round(average * 0.85)
+    if average >= 2000:
+        return average, max(average, round(average * 1.5))
+    target_min = round(average * 0.85)
     return max(1, target_min), max(1, round(average * 1.15))
 
 
