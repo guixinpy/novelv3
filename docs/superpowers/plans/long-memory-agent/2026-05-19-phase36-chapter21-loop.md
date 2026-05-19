@@ -259,6 +259,8 @@ Create `docs/superpowers/notes/long-memory-agent/2026-05-19-phase36-chapter21-lo
 
 Result: report written to `docs/superpowers/notes/long-memory-agent/2026-05-19-phase36-chapter21-loop.md`.
 
-- [ ] **Step 4: Commit and push**
+- [x] **Step 4: Commit and push**
 
 Commit and push `main` after checks pass.
+
+Result: committed `e12035f phase36: document chapter 21 loop` and pushed to `origin/main`.

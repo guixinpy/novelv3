@@ -120,6 +120,10 @@ Targeted verification:
 - `git diff --check`: passed with no output.
 - `rg "sk-[A-Za-z0-9]{20,}" -n docs backend frontend references --glob "!.git"`: no matches, exit code `1`.
 
+## Commit
+
+- pushed to `origin/main`: `e12035f phase36: document chapter 21 loop`
+
 ## Next Phase Recommendation
 
 Phase37 should continue from the Chapter 21 endpoint:
