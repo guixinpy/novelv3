@@ -18,6 +18,7 @@ ABILITY_FORBIDDEN_TERMS = ("制造幻觉", "凭空创造", "创造真实记忆",
 KEY_ITEM_TERMS = ("记忆雾晶", "雾晶", "钥匙", "核心", "信物")
 ACQUISITION_TERMS = ("给了", "交给", "递给", "拿到", "获得", "买到")
 COST_OR_RISK_TERMS = ("代价", "交换", "条件", "欠", "债", "受伤", "暴露", "损失", "背叛", "追杀", "风险")
+KNOWN_TYPO_PATTERNS = {"戴着眼睛": "戴着眼镜"}
 
 
 def review_chapter_quality(db: Session, project_id: str, chapter_index: int) -> dict[str, Any]:
@@ -43,6 +44,8 @@ def review_chapter_quality(db: Session, project_id: str, chapter_index: int) -> 
         findings.append(_finding("generic_chapter_title", "blocker", f"第{chapter_index}章标题仍为通用占位标题。"))
 
     content = chapter.content or ""
+    findings.extend(_duplicate_title_findings(db, project_id, chapter))
+    findings.extend(_known_typo_findings(content))
     findings.extend(_word_target_findings(project, chapter))
     setup = _setup_payload(db, project_id)
     findings.extend(_character_profile_drift_findings(setup, content))
@@ -100,6 +103,58 @@ def _word_target_findings(project: Project, chapter: ChapterContent) -> list[dic
             )
         ]
     return []
+
+
+def _duplicate_title_findings(db: Session, project_id: str, chapter: ChapterContent) -> list[dict[str, Any]]:
+    title = (chapter.title or "").strip()
+    if not title or GENERIC_TITLE_RE.match(title):
+        return []
+    matched_indexes = [
+        int(row.chapter_index)
+        for row in (
+            db.query(ChapterContent.chapter_index)
+            .filter(
+                ChapterContent.project_id == project_id,
+                ChapterContent.chapter_index != chapter.chapter_index,
+                ChapterContent.title == title,
+            )
+            .order_by(ChapterContent.chapter_index.asc())
+            .all()
+        )
+    ]
+    if not matched_indexes:
+        return []
+    return [
+        _finding(
+            "duplicate_chapter_title",
+            "warning",
+            f"第{chapter.chapter_index}章标题与既有章节重复，章节列表中容易混淆。",
+            evidence={"title": title, "matched_chapter_indexes": matched_indexes},
+        )
+    ]
+
+
+def _known_typo_findings(content: str) -> list[dict[str, Any]]:
+    if not content:
+        return []
+    findings: list[dict[str, Any]] = []
+    for matched_text, suggestion in KNOWN_TYPO_PATTERNS.items():
+        index = content.find(matched_text)
+        if index < 0:
+            continue
+        findings.append(
+            _finding(
+                "known_typo_pattern",
+                "warning",
+                "章节正文包含已知易错词，建议修正后再继续写作。",
+                evidence={
+                    "matched_text": matched_text,
+                    "suggestion": suggestion,
+                    "excerpt": content[max(0, index - 40) : index + len(matched_text) + 40],
+                },
+            )
+        )
+    return findings
 
 
 def _setup_payload(db: Session, project_id: str) -> Setup | None:

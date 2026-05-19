@@ -803,6 +803,56 @@ def test_agent_review_chapter_quality_warns_on_modest_over_target_length(client,
     assert "revise_chapter" not in output["recommended_actions"]
 
 
+def test_agent_review_chapter_quality_warns_on_duplicate_specific_title(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1, 2])
+    first = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=1).one()
+    second = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=2).one()
+    first.title = "废弃实验室"
+    second.title = "废弃实验室"
+    second.word_count = 2000
+    db_session.commit()
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "审稿第2章",
+            "tools": [{"tool_name": "review_chapter_quality", "params": {"chapter_index": 2}}],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    finding = next(item for item in output["findings"] if item["code"] == "duplicate_chapter_title")
+    assert response.status_code == 200
+    assert output["status"] == "warning"
+    assert finding["severity"] == "warning"
+    assert finding["evidence"]["matched_chapter_indexes"] == [1]
+
+
+def test_agent_review_chapter_quality_flags_known_typo_pattern(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1], generated_chapters=[1])
+    chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=1).one()
+    chapter.title = "门后回声"
+    chapter.content = "林深看见一个四十多岁的女人，戴着眼睛，头发扎成发髻。"
+    chapter.word_count = 2000
+    db_session.commit()
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "审稿第1章",
+            "tools": [{"tool_name": "review_chapter_quality", "params": {"chapter_index": 1}}],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    finding = next(item for item in output["findings"] if item["code"] == "known_typo_pattern")
+    assert response.status_code == 200
+    assert output["status"] == "warning"
+    assert finding["severity"] == "warning"
+    assert finding["evidence"]["matched_text"] == "戴着眼睛"
+    assert finding["evidence"]["suggestion"] == "戴着眼镜"
+
+
 def test_agent_review_chapter_quality_flags_future_outline_overlap(client, db_session):
     project = _seed_longform_project(db_session, outline_chapters=[1, 2, 3, 4], generated_chapters=[1, 2, 3])
     chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=3).one()
