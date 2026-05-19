@@ -2978,6 +2978,218 @@ def test_agent_compress_chapter_to_target_blocks_pending_world_model_proposals(c
     assert calls == []
 
 
+def test_agent_compress_chapter_to_target_repairs_under_target_retry(client, db_session, monkeypatch):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1])
+    chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=1).one()
+    chapter.title = "暗河引路"
+    chapter.content = "林深和苏晚晴沿着暗河追查雾晶管线，反复核对线索。 " * 120
+    chapter.word_count = 3000
+    project.current_word_count = 3000
+    db_session.commit()
+
+    too_short = "林深和苏晚晴沿着暗河追查线索。 " * 80
+    repaired = "林深和苏晚晴沿着暗河追查雾晶管线，确认警报来源。 " * 100
+    calls = []
+
+    class FakeAIResult:
+        prompt_tokens = 111
+        completion_tokens = 222
+        model = "fake-deepseek"
+
+        def __init__(self, content):
+            self.content = json.dumps({"content": content, "change_summary": "压缩并恢复场景密度。"}, ensure_ascii=False)
+
+    class FakeAIService:
+        async def complete(self, messages, **kwargs):
+            calls.append(messages[-1]["content"])
+            return FakeAIResult(too_short if len(calls) == 1 else repaired)
+
+    monkeypatch.setattr("app.core.chapter_compression.AIService", FakeAIService)
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "压缩第1章并修复过短候选",
+            "tools": [{"tool_name": "compress_chapter_to_target", "params": {"chapter_index": 1}}],
+        },
+    )
+
+    payload = response.json()
+    output = payload["steps"][0]["output"]
+    traces = (
+        db_session.query(AIModelCallTrace)
+        .filter_by(project_id=project.id, trace_type="chapter_compression", chapter_index=1)
+        .order_by(AIModelCallTrace.created_at.asc(), AIModelCallTrace.id.asc())
+        .all()
+    )
+    patched = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=1).one()
+    revision_count = db_session.query(ChapterRevision).filter_by(project_id=project.id, chapter_index=1).count()
+    version_count = db_session.query(Version).filter_by(project_id=project.id, node_type="chapter", node_id=chapter.id).count()
+    assert response.status_code == 200
+    assert payload["status"] == "success"
+    assert output["status"] == "completed"
+    assert output["compression_attempt_count"] == 2
+    assert len(output["failed_attempts"]) == 1
+    assert output["failed_attempts"][0]["direction"] == "under_target"
+    assert 2000 <= output["word_count"] <= 2300
+    assert patched.content == repaired.strip()
+    assert revision_count == 1
+    assert version_count == 2
+    assert len(calls) == 2
+    assert "上一次压缩结果低于目标下限" in calls[1]
+    assert [trace.status for trace in traces] == ["failed", "success"]
+
+
+def test_agent_compress_chapter_to_target_blocks_after_retry_exhaustion(client, db_session, monkeypatch):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1])
+    chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=1).one()
+    original_content = "林深和苏晚晴沿着暗河追查雾晶管线，反复核对线索。 " * 120
+    chapter.content = original_content
+    chapter.word_count = 3000
+    db_session.commit()
+
+    too_short = "林深和苏晚晴沿着暗河追查线索。 " * 80
+    calls = []
+
+    class FakeAIResult:
+        content = json.dumps({"content": too_short, "change_summary": "仍然过短。"}, ensure_ascii=False)
+        prompt_tokens = 111
+        completion_tokens = 222
+        model = "fake-deepseek"
+
+    class FakeAIService:
+        async def complete(self, messages, **kwargs):
+            calls.append(messages[-1]["content"])
+            return FakeAIResult()
+
+    monkeypatch.setattr("app.core.chapter_compression.AIService", FakeAIService)
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "压缩第1章但候选持续过短",
+            "tools": [{"tool_name": "compress_chapter_to_target", "params": {"chapter_index": 1}}],
+        },
+    )
+
+    payload = response.json()
+    output = payload["steps"][0]["output"]
+    patched = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=1).one()
+    revision_count = db_session.query(ChapterRevision).filter_by(project_id=project.id, chapter_index=1).count()
+    version_count = db_session.query(Version).filter_by(project_id=project.id, node_type="chapter", node_id=chapter.id).count()
+    assert response.status_code == 200
+    assert payload["status"] == "blocked"
+    assert output["reason"] == "compressed_content_outside_target"
+    assert output["compression_attempt_count"] == 3
+    assert len(output["failed_attempts"]) == 3
+    assert len(calls) == 3
+    assert patched.content == original_content
+    assert revision_count == 0
+    assert version_count == 0
+
+
+def test_agent_compress_chapter_to_target_repairs_near_target_candidate_from_source(client, db_session, monkeypatch):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1])
+    chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=1).one()
+    source_sentences = [
+        "他把旧号码牌贴进证物袋，确认暗河另一端仍有回声。",
+        "苏晚晴在墙面找到被水泡开的蓝色封条。",
+        "林深听见管道深处传来三短一长的敲击。",
+        "两人把警报频率记进随身本，准备回到灯塔核对。",
+        "陈默留下的旧坐标在纸背浮出，指向下游闸门。",
+        "雾晶管线旁的冷光忽明忽暗，像在回应失踪者的低语。",
+    ]
+    source_text = "".join(source_sentences)
+    chapter.content = ("林深和苏晚晴沿着暗河追查雾晶管线，反复核对线索。 " * 120) + source_text
+    chapter.word_count = 3050
+    project.current_word_count = 3050
+    db_session.commit()
+
+    almost_enough = "林深和苏晚晴沿着暗河追查雾晶管线，确认警报来源。 " * 85
+    calls = []
+
+    class FakeAIResult:
+        content = json.dumps({"content": almost_enough, "change_summary": "轻量压缩。"}, ensure_ascii=False)
+        prompt_tokens = 111
+        completion_tokens = 222
+        model = "fake-deepseek"
+
+    class FakeAIService:
+        async def complete(self, messages, **kwargs):
+            calls.append(messages[-1]["content"])
+            return FakeAIResult()
+
+    monkeypatch.setattr("app.core.chapter_compression.AIService", FakeAIService)
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "压缩第1章并用源文恢复轻微缺口",
+            "tools": [{"tool_name": "compress_chapter_to_target", "params": {"chapter_index": 1}}],
+        },
+    )
+
+    payload = response.json()
+    output = payload["steps"][0]["output"]
+    patched = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=1).one()
+    assert response.status_code == 200
+    assert payload["status"] == "success"
+    assert output["status"] == "completed"
+    assert output["compression_attempt_count"] == 1
+    assert output["deterministic_repair_applied"] is True
+    assert 2000 <= output["word_count"] <= 2300
+    assert any(sentence in patched.content for sentence in source_sentences)
+    assert len(calls) == 1
+
+
+def test_agent_compress_chapter_to_target_trims_near_over_target_candidate(client, db_session, monkeypatch):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1])
+    chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=1).one()
+    opening = "林深握紧灯塔钥匙，确认暗河入口没有被封死。"
+    ending = "苏晚晴把号码牌压在掌心，决定回到灯塔核对名单。"
+    middle = [f"他们沿着潮湿管道继续记录第{i}处雾晶回声。" for i in range(120)]
+    over_target_candidate = opening + "".join(middle) + ending
+    chapter.content = over_target_candidate
+    chapter.word_count = 2433
+    project.current_word_count = 2433
+    db_session.commit()
+    calls = []
+
+    class FakeAIResult:
+        content = json.dumps({"content": over_target_candidate, "change_summary": "模型返回原稿。"}, ensure_ascii=False)
+        prompt_tokens = 111
+        completion_tokens = 222
+        model = "fake-deepseek"
+
+    class FakeAIService:
+        async def complete(self, messages, **kwargs):
+            calls.append(messages[-1]["content"])
+            return FakeAIResult()
+
+    monkeypatch.setattr("app.core.chapter_compression.AIService", FakeAIService)
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "压缩第1章并裁剪轻微超长候选",
+            "tools": [{"tool_name": "compress_chapter_to_target", "params": {"chapter_index": 1}}],
+        },
+    )
+
+    payload = response.json()
+    output = payload["steps"][0]["output"]
+    patched = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=1).one()
+    assert response.status_code == 200
+    assert payload["status"] == "success"
+    assert output["status"] == "completed"
+    assert output["compression_attempt_count"] == 1
+    assert output["deterministic_trim_applied"] is True
+    assert 2000 <= output["word_count"] <= 2300
+    assert opening in patched.content
+    assert ending in patched.content
+    assert len(calls) == 1
+
+
 def test_agent_create_revision_draft_reuses_existing_draft(client, db_session):
     project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1, 2])
     chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=2).one()

@@ -80,7 +80,7 @@ This phase should add a bounded repair loop:
 
 - Modify: `backend/tests/test_writing_agent_runs.py`
 
-- [ ] **Step 1: Write retry-success failing test**
+- [x] **Step 1: Write retry-success failing test**
 
 Add this test near the Phase22 compression tests:
 
@@ -147,7 +147,7 @@ def test_agent_compress_chapter_to_target_repairs_under_target_retry(client, db_
     assert [trace.status for trace in traces] == ["failed", "success"]
 ```
 
-- [ ] **Step 2: Write retry-failure failing test**
+- [x] **Step 2: Write retry-failure failing test**
 
 Add:
 
@@ -200,7 +200,7 @@ def test_agent_compress_chapter_to_target_blocks_after_retry_exhaustion(client, 
     assert version_count == 0
 ```
 
-- [ ] **Step 3: Run RED retry tests**
+- [x] **Step 3: Run RED retry tests**
 
 Run:
 
@@ -211,13 +211,15 @@ cd backend
 
 Expected: fail because the current implementation stops after the first out-of-range candidate.
 
+Actual: failed as expected. Retry success test returned blocked after the first out-of-range candidate; retry exhaustion test did not expose `compression_attempt_count`.
+
 ## Task 2: Implement Bounded Compression Retry
 
 **Files:**
 
 - Modify: `backend/app/core/chapter_compression.py`
 
-- [ ] **Step 1: Add retry constants and helpers**
+- [x] **Step 1: Add retry constants and helpers**
 
 Add:
 
@@ -233,7 +235,7 @@ def _target_direction(word_count: int, target_min: int, target_max: int) -> str:
     return "within_target"
 ```
 
-- [ ] **Step 2: Build retry-aware messages**
+- [x] **Step 2: Build retry-aware messages**
 
 Extend `_compression_messages` with optional prior failure arguments:
 
@@ -258,7 +260,7 @@ When `prior_direction == "over_target"`, append:
 
 Include the prior candidate after the current source text so the model can repair the candidate instead of starting blind.
 
-- [ ] **Step 3: Replace single call with attempt loop**
+- [x] **Step 3: Replace single call with attempt loop**
 
 Use this behavior:
 
@@ -274,9 +276,11 @@ Use this behavior:
   - `failed_attempts`;
   - last `word_count`.
 
-- [ ] **Step 4: Run GREEN retry tests**
+- [x] **Step 4: Run GREEN retry tests**
 
 Run the same two retry tests and confirm they pass.
+
+Actual: `2 passed in 0.27s`.
 
 ## Task 3: Regression Verification
 
@@ -285,7 +289,7 @@ Run the same two retry tests and confirm they pass.
 - Modify: `backend/app/core/chapter_compression.py`
 - Modify: `backend/tests/test_writing_agent_runs.py`
 
-- [ ] **Step 1: Run all compression tests**
+- [x] **Step 1: Run all compression tests**
 
 Run:
 
@@ -296,13 +300,20 @@ cd backend
 
 Expected: all pass.
 
+Actual:
+
+- After adding bounded model retry: `8 passed in 0.80s`.
+- Dogfood then exposed two more repair cases: near-under-target candidate at 1879 words and repeated over-target candidate at 2433 words.
+- Added deterministic under-target source restoration and over-target sentence trim tests.
+- Final compression regression: `9 passed in 0.89s`.
+
 ## Task 4: Dogfood Chapter 9 and Chapter 10
 
 **Files:**
 
 - Create: `docs/superpowers/notes/long-memory-agent/2026-05-19-phase23-compression-retry-and-chapter10.md`
 
-- [ ] **Step 1: Compress Chapter 9**
+- [x] **Step 1: Compress Chapter 9**
 
 Run Writing Agent:
 
@@ -317,7 +328,14 @@ Expected:
 - completed with 2000-2300 words, or blocked with retry evidence;
 - if completed, output includes attempt metadata and a revision id.
 
-- [ ] **Step 2: Review and analyze Chapter 9**
+Actual:
+
+- Run `187b6016-57ea-42ea-acc3-56ca03425249`: blocked after 3 attempts; last candidate 1968 words.
+- Run `90fa7418-134e-434f-b714-49527b0a1f2b`: blocked after 3 attempts; last candidate 1879 words.
+- Run `b1fc66f6-587f-4e91-8d8c-eb05bad22427`: blocked after 3 attempts; model repeatedly returned 2433 words.
+- Run `c4bc7194-4b2a-4bee-952f-1faf9389f61a`: completed, 2433 -> 2015, one attempt, `deterministic_repair_applied=True`, revision `5a17e58c-da4c-4fd2-87f6-4fafc0ef8b91`.
+
+- [x] **Step 2: Review and analyze Chapter 9**
 
 If compression completed, run:
 
@@ -334,7 +352,13 @@ Expected:
 - blocker count 0;
 - if Athena creates proposals, resolve them before continuing.
 
-- [ ] **Step 3: Generate Chapter 10 only if clear**
+Actual:
+
+- Review/analyze run `db6e973e-f7a4-4452-b9e7-f5932bb319cd`: Chapter 9 ready, finding count 0, blocker count 0.
+- Analysis created 1 actionable proposal.
+- Draft/apply runs `6c48f42f-741b-4c56-9d24-7dad2b70fc88`, `7645a0c9-a7cc-47b4-961b-a8752f07dbc2`: rejected `mentioned_in_chapter` metadata proposal, after actionable items 0.
+
+- [x] **Step 3: Generate Chapter 10 only if clear**
 
 If Chapter 9 is within target, has no blockers, and pending proposal count is 0, run:
 
@@ -353,13 +377,21 @@ Expected:
 - Review blocker count is 0 or blockers are recorded and generation stops.
 - Pending world-model proposals are recorded and resolved when safe.
 
+Actual:
+
+- First Chapter 10 preflight run `149156fb-87db-4829-95f4-039cf225ad12` blocked because Chapter 10 outline was missing.
+- Outline expansion run `e71f6f0d-8989-4319-97c5-3f7da4fb1830` added Chapter 10; preflight then ready with repeated length drift warning.
+- Generation/review/analyze run `ace2a5f4-36cb-438b-8b7a-bde4e9f66b3a`: generated Chapter 10 `空白信纸`, 2878 words; review found `chapter_over_target` blocker and 6 pending proposals.
+- Draft/apply runs `43be33af-d44a-4942-8b37-a8431403489c`, `f8629c60-051c-41bb-8b2f-0cb98958d9ea`: applied 6 guarded proposal decisions, after actionable items 0.
+- Compression run `b8f144f6-1200-4ef8-9935-8e95e101f0f3`: blocked after 3 attempts; best candidate remained 2822 words. Chapter 10 remains a Phase24 blocker.
+
 ## Task 5: Verification, Report, Commit, Push
 
 **Files:**
 
 - Modify all Phase23 files.
 
-- [ ] **Step 1: Run T2 verification**
+- [x] **Step 1: Run T2 verification**
 
 Run:
 
@@ -370,7 +402,9 @@ cd backend
 
 Expected: pass.
 
-- [ ] **Step 2: Write Phase23 report**
+Actual: `142 passed in 10.12s`.
+
+- [x] **Step 2: Write Phase23 report**
 
 Create `docs/superpowers/notes/long-memory-agent/2026-05-19-phase23-compression-retry-and-chapter10.md` with:
 
@@ -382,7 +416,7 @@ Create `docs/superpowers/notes/long-memory-agent/2026-05-19-phase23-compression-
 - verification commands;
 - next phase recommendation.
 
-- [ ] **Step 3: Hygiene checks**
+- [x] **Step 3: Hygiene checks**
 
 Run:
 
@@ -397,6 +431,12 @@ Expected:
 - whitespace check passes;
 - secret scan returns no matches;
 - only intended Phase23 files are changed.
+
+Actual:
+
+- `git diff --check`: exit 0; Git reported only a CRLF normalization warning for `backend/tests/test_writing_agent_runs.py`.
+- `rg "sk-[A-Za-z0-9]{20,}" -n docs backend frontend references`: no matches.
+- `git status --short --branch`: only intended Phase23 implementation, tests, plan, and report files changed; branch has the Phase23 plan commit ahead of origin.
 
 - [ ] **Step 4: Commit and push**
 

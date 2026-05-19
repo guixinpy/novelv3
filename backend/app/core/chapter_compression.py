@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from typing import Any
 
@@ -14,6 +15,13 @@ from app.core.text_stats import count_words
 from app.core.world_proposal_state import ACTIONABLE_REVIEW_ITEM_STATUSES
 from app.models import ChapterContent, ChapterRevision, Project, ProjectProfileVersion, Version, WorldProposalItem
 from app.prompting.providers.chapter import project_chapter_word_range
+
+
+MAX_COMPRESSION_ATTEMPTS = 3
+NEAR_TARGET_UNDER_REPAIR_MAX_GAP = 220
+NEAR_TARGET_OVER_TRIM_MAX_OVERAGE = 260
+TRIM_PROTECTED_TERMS = ("林深", "苏晚晴", "灯塔", "暗河", "雾晶", "号码牌", "父亲", "陈默")
+TRIM_HINT_TERMS = ("反复", "再次", "似乎", "仿佛", "仍然", "只是", "沉默", "解释")
 
 
 async def compress_chapter_to_target(
@@ -72,67 +80,126 @@ async def compress_chapter_to_target(
             },
         )
 
-    messages = _compression_messages(
-        db,
-        project=project,
-        chapter=chapter,
-        target_min=target_min,
-        target_max=target_max,
-        extra_instruction=extra_instruction,
-    )
     max_tokens = min(8000, max(target_max + 1000, 2600))
-    trace = create_trace(
-        db,
-        project_id=project_id,
-        trace_type="chapter_compression",
-        messages=messages,
-        context_blocks=[
-            build_context_block(
-                key="chapter_compression_source",
-                kind="chapter",
-                title=f"第{chapter_index}章压缩前正文",
-                content=chapter.content or "",
-            )
-        ],
-        model=project.ai_model or "deepseek-chat",
-        temperature=0.35,
-        max_tokens=max_tokens,
-        chapter_id=chapter.id,
-        chapter_index=chapter_index,
-        trace_metadata={
-            "chapter_compression": {
-                "previous_word_count": previous_word_count,
-                "target_min_word_count": target_min,
-                "target_max_word_count": target_max,
-            }
-        },
-    )
-    db.commit()
-    started_at = now_ms()
+    failed_attempts: list[dict[str, Any]] = []
+    prior_candidate = ""
+    prior_word_count: int | None = None
+    prior_direction = ""
+    compressed_content = ""
+    compressed_word_count = 0
+    payload: dict[str, Any] = {}
+    result: Any = None
+    trace = None
+    deterministic_repair_applied = False
+    deterministic_trim_applied = False
 
-    try:
-        ai_service = AIService()
-        try:
-            result = await ai_service.complete(
-                messages,
-                temperature=0.35,
-                max_tokens=max_tokens,
-                model=project.ai_model or "deepseek-chat",
-                response_format={"type": "json_object"},
-            )
-        finally:
-            close = getattr(ai_service, "close", None)
-            if callable(close):
-                await close()
-        payload = parse_json_safely(result.content)
-    except Exception as exc:
-        mark_trace_failed(db, trace, error_message=str(exc), latency_ms=now_ms() - started_at)
+    for attempt_index in range(1, MAX_COMPRESSION_ATTEMPTS + 1):
+        messages = _compression_messages(
+            db,
+            project=project,
+            chapter=chapter,
+            target_min=target_min,
+            target_max=target_max,
+            extra_instruction=extra_instruction,
+            attempt_index=attempt_index,
+            prior_candidate=prior_candidate,
+            prior_word_count=prior_word_count,
+            prior_direction=prior_direction,
+        )
+        trace = create_trace(
+            db,
+            project_id=project_id,
+            trace_type="chapter_compression",
+            messages=messages,
+            context_blocks=[
+                build_context_block(
+                    key="chapter_compression_source",
+                    kind="chapter",
+                    title=f"第{chapter_index}章压缩前正文",
+                    content=chapter.content or "",
+                )
+            ],
+            model=project.ai_model or "deepseek-chat",
+            temperature=0.35,
+            max_tokens=max_tokens,
+            chapter_id=chapter.id,
+            chapter_index=chapter_index,
+            trace_metadata={
+                "chapter_compression": {
+                    "attempt_index": attempt_index,
+                    "max_attempts": MAX_COMPRESSION_ATTEMPTS,
+                    "previous_word_count": previous_word_count,
+                    "target_min_word_count": target_min,
+                    "target_max_word_count": target_max,
+                    "prior_word_count": prior_word_count,
+                    "prior_direction": prior_direction,
+                }
+            },
+        )
         db.commit()
-        return _blocked("model_call_failed", chapter_index, str(exc))
+        started_at = now_ms()
 
-    compressed_content = str(payload.get("content") or "").strip()
-    compressed_word_count = count_words(compressed_content)
-    if not compressed_content or compressed_word_count < target_min or compressed_word_count > target_max:
+        try:
+            ai_service = AIService()
+            try:
+                result = await ai_service.complete(
+                    messages,
+                    temperature=0.35,
+                    max_tokens=max_tokens,
+                    model=project.ai_model or "deepseek-chat",
+                    response_format={"type": "json_object"},
+                )
+            finally:
+                close = getattr(ai_service, "close", None)
+                if callable(close):
+                    await close()
+            payload = parse_json_safely(result.content)
+        except Exception as exc:
+            mark_trace_failed(db, trace, error_message=str(exc), latency_ms=now_ms() - started_at)
+            db.commit()
+            return _blocked(
+                "model_call_failed",
+                chapter_index,
+                str(exc),
+                extra={
+                    "compression_attempt_count": attempt_index,
+                    "failed_attempts": failed_attempts,
+                },
+            )
+
+        compressed_content = str(payload.get("content") or "").strip()
+        compressed_word_count = count_words(compressed_content)
+        repaired_content, repaired = _repair_under_target_candidate(
+            compressed_content,
+            source_content=chapter.content or "",
+            target_min=target_min,
+            target_max=target_max,
+        )
+        if repaired:
+            compressed_content = repaired_content
+            compressed_word_count = count_words(compressed_content)
+            deterministic_repair_applied = True
+        else:
+            trimmed_content, trimmed = _trim_over_target_candidate(
+                compressed_content,
+                target_min=target_min,
+                target_max=target_max,
+            )
+            if trimmed:
+                compressed_content = trimmed_content
+                compressed_word_count = count_words(compressed_content)
+                deterministic_trim_applied = True
+        direction = _target_direction(compressed_word_count, target_min, target_max)
+        if compressed_content and direction == "within_target":
+            break
+
+        failed_attempt = {
+            "attempt_index": attempt_index,
+            "word_count": compressed_word_count,
+            "direction": direction,
+            "trace_id": trace.id,
+        }
+        failed_attempts.append(failed_attempt)
         mark_trace_failed(
             db,
             trace,
@@ -140,6 +207,11 @@ async def compress_chapter_to_target(
             latency_ms=now_ms() - started_at,
         )
         db.commit()
+        prior_candidate = compressed_content
+        prior_word_count = compressed_word_count
+        prior_direction = direction
+
+    if not compressed_content or compressed_word_count < target_min or compressed_word_count > target_max or trace is None:
         return _blocked(
             "compressed_content_outside_target",
             chapter_index,
@@ -149,6 +221,10 @@ async def compress_chapter_to_target(
                 "word_count": compressed_word_count,
                 "target_min_word_count": target_min,
                 "target_max_word_count": target_max,
+                "compression_attempt_count": len(failed_attempts),
+                "failed_attempts": failed_attempts,
+                "deterministic_repair_applied": deterministic_repair_applied,
+                "deterministic_trim_applied": deterministic_trim_applied,
             },
         )
 
@@ -191,6 +267,8 @@ async def compress_chapter_to_target(
             **((trace.trace_metadata or {}).get("chapter_compression") or {}),
             "word_count": compressed_word_count,
             "change_summary": str(payload.get("change_summary") or ""),
+            "deterministic_repair_applied": deterministic_repair_applied,
+            "deterministic_trim_applied": deterministic_trim_applied,
         },
     }
     mark_trace_success(
@@ -218,6 +296,10 @@ async def compress_chapter_to_target(
         "word_count": chapter.word_count,
         "target_min_word_count": target_min,
         "target_max_word_count": target_max,
+        "compression_attempt_count": len(failed_attempts) + 1,
+        "failed_attempts": failed_attempts,
+        "deterministic_repair_applied": deterministic_repair_applied,
+        "deterministic_trim_applied": deterministic_trim_applied,
         "change_summary": str(payload.get("change_summary") or ""),
         "warnings": warnings,
         "should_generate_next_chapter": False,
@@ -247,6 +329,90 @@ def _pending_world_model_proposal_count(db: Session, project_id: str) -> int:
     )
 
 
+def _target_direction(word_count: int, target_min: int, target_max: int) -> str:
+    if word_count < target_min:
+        return "under_target"
+    if word_count > target_max:
+        return "over_target"
+    return "within_target"
+
+
+def _repair_under_target_candidate(
+    candidate: str,
+    *,
+    source_content: str,
+    target_min: int,
+    target_max: int,
+) -> tuple[str, bool]:
+    candidate = candidate.strip()
+    current_word_count = count_words(candidate)
+    gap = target_min - current_word_count
+    if not candidate or gap <= 0 or gap > NEAR_TARGET_UNDER_REPAIR_MAX_GAP:
+        return candidate, False
+
+    repaired = candidate
+    for sentence in reversed(_split_sentences(source_content)):
+        sentence = sentence.strip()
+        if not sentence or sentence in repaired:
+            continue
+        next_content = f"{repaired.rstrip()}\n\n{sentence}"
+        next_word_count = count_words(next_content)
+        if next_word_count > target_max:
+            continue
+        repaired = next_content
+        if next_word_count >= target_min:
+            return repaired, True
+    return candidate, False
+
+
+def _trim_over_target_candidate(
+    candidate: str,
+    *,
+    target_min: int,
+    target_max: int,
+) -> tuple[str, bool]:
+    candidate = candidate.strip()
+    current_word_count = count_words(candidate)
+    overage = current_word_count - target_max
+    if not candidate or overage <= 0 or overage > NEAR_TARGET_OVER_TRIM_MAX_OVERAGE:
+        return candidate, False
+
+    sentences = _split_sentences(candidate)
+    if len(sentences) < 6:
+        return candidate, False
+
+    protected_indexes = {0, len(sentences) - 1}
+    removable_indexes = [index for index in range(len(sentences)) if index not in protected_indexes]
+    removable_indexes.sort(key=lambda index: _trim_sentence_rank(sentences[index], overage))
+
+    removed: set[int] = set()
+    for index in removable_indexes:
+        removed.add(index)
+        trimmed = "".join(sentence for sentence_index, sentence in enumerate(sentences) if sentence_index not in removed)
+        trimmed_word_count = count_words(trimmed)
+        if trimmed_word_count < target_min:
+            removed.remove(index)
+            continue
+        if trimmed_word_count <= target_max:
+            return trimmed.strip(), True
+    return candidate, False
+
+
+def _trim_sentence_rank(sentence: str, overage: int) -> tuple[int, int]:
+    importance = 0
+    if "“" in sentence or "”" in sentence:
+        importance += 5
+    if any(term in sentence for term in TRIM_PROTECTED_TERMS):
+        importance += 2
+    if any(term in sentence for term in TRIM_HINT_TERMS):
+        importance -= 1
+    return importance, abs(count_words(sentence) - overage)
+
+
+def _split_sentences(content: str) -> list[str]:
+    return [part.strip() for part in re.findall(r"[^。！？!?]+[。！？!?]?", content or "") if part.strip()]
+
+
 def _compression_messages(
     db: Session,
     *,
@@ -255,6 +421,10 @@ def _compression_messages(
     target_min: int,
     target_max: int,
     extra_instruction: str,
+    attempt_index: int = 1,
+    prior_candidate: str = "",
+    prior_word_count: int | None = None,
+    prior_direction: str = "",
 ) -> list[dict[str, str]]:
     outline_text = _outline_text(db, project.id, int(chapter.chapter_index or 0))
     current_word_count = int(chapter.word_count or 0)
@@ -273,10 +443,22 @@ def _compression_messages(
             f"本章超出目标上限约{overage}字，可以压缩重复解释和冗余描写；"
             f"压缩后优先落在{preferred_low}-{preferred_high}字。"
         )
+    retry_guidance = ""
+    if attempt_index > 1 and prior_direction == "under_target":
+        retry_guidance = (
+            f"上一次压缩结果低于目标下限，只有{prior_word_count or 0}字。"
+            "请以候选稿为基础恢复必要场景密度、动作链、对话和情绪转折，必须回到目标范围。"
+        )
+    elif attempt_index > 1 and prior_direction == "over_target":
+        retry_guidance = (
+            f"上一次压缩结果仍高于目标上限，约{prior_word_count or 0}字。"
+            "请只删除重复解释和可合并描写，不要改变剧情事实，必须回到目标范围。"
+        )
     instruction = (
         f"请压缩《{project.name}》第{chapter.chapter_index}章《{chapter.title or f'第{chapter.chapter_index}章'}》。\n"
         f"当前约{current_word_count}字，必须压缩到目标字数范围{target_min}-{target_max}字。\n"
         f"{scale_guidance}\n"
+        f"{retry_guidance}\n"
         f"宁可接近上限，也绝不能低于{target_min}字。\n"
         "要求：保留既有剧情事实、章节标题、人物动机、关键冲突和章末钩子；不要新增世界模型事实；"
         "不要提前揭露后续大纲；这不是摘要，必须输出完整正文；"
@@ -289,6 +471,11 @@ def _compression_messages(
         f"章节大纲：\n{outline_text}\n\n"
         f"当前正文：\n{chapter.content or ''}"
     )
+    if prior_candidate.strip():
+        user_content = (
+            f"{user_content}\n\n"
+            f"上一次失败候选稿：\n{prior_candidate.strip()}"
+        )
     return [
         {"role": "system", "content": "你是专精网络小说的章节修订编辑，只做保守压缩，不改写世界真相。"},
         {"role": "user", "content": user_content},
