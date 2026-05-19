@@ -88,7 +88,7 @@ This phase should add a repair path for `chapter_over_target`:
 - Modify: `backend/app/services/writing_agent/run_service.py`
 - Modify: `backend/tests/test_writing_agent_runs.py`
 
-- [ ] **Step 1: Write failing compression test**
+- [x] **Step 1: Write failing compression test**
 
 Add this test near the Phase21 expansion tests in `backend/tests/test_writing_agent_runs.py`:
 
@@ -102,7 +102,7 @@ def test_agent_compress_chapter_to_target_updates_chapter_versions_and_requires_
     project.current_word_count = 3000
     db_session.commit()
 
-    compressed_content = "林深和苏晚晴在实验室里检查雾晶记录，确认线索。 " * 84
+    compressed_content = "林深和苏晚晴在实验室里检查雾晶记录，确认线索。 " * 100
 
     class FakeAIResult:
         content = json.dumps({"content": compressed_content, "change_summary": "压缩重复检查与解释段落。"}, ensure_ascii=False)
@@ -135,7 +135,7 @@ def test_agent_compress_chapter_to_target_updates_chapter_versions_and_requires_
     assert output["status"] == "completed"
     assert output["previous_word_count"] == 3000
     assert 2000 <= output["word_count"] <= 2300
-    assert patched.content == compressed_content
+    assert patched.content == compressed_content.strip()
     assert 2000 <= patched.word_count <= 2300
     assert project.current_word_count == patched.word_count
     assert revision.status == "completed"
@@ -146,7 +146,7 @@ def test_agent_compress_chapter_to_target_updates_chapter_versions_and_requires_
     assert output["recommended_next_tools"] == ["review_chapter_quality"]
 ```
 
-- [ ] **Step 2: Run RED compression test**
+- [x] **Step 2: Run RED compression test**
 
 Run:
 
@@ -157,7 +157,9 @@ cd backend
 
 Expected: fail because `app.core.chapter_compression` does not exist.
 
-- [ ] **Step 3: Implement `chapter_compression.py`**
+Actual: failed as expected with `ModuleNotFoundError: No module named 'app.core.chapter_compression'`.
+
+- [x] **Step 3: Implement `chapter_compression.py`**
 
 Create `compress_chapter_to_target` with this public signature:
 
@@ -194,7 +196,7 @@ Required behavior:
 - Create completed `ChapterRevision`, base `Version`, update chapter content/word count, update `Project.current_word_count`, create result `Version`, mark trace success, and commit.
 - Reindex chapter retrieval after commit; store warning if indexing fails.
 
-- [ ] **Step 4: Register Writing Agent tool**
+- [x] **Step 4: Register Writing Agent tool**
 
 In `backend/app/services/writing_agent/run_service.py`:
 
@@ -222,9 +224,11 @@ if tool.tool_name == "compress_chapter_to_target":
 - Allow follow-up `("compress_chapter_to_target", "review_chapter_quality")`.
 - Add block message: `章节压缩后尚未复审，已停止后续写作工具。`
 
-- [ ] **Step 5: Run GREEN compression test**
+- [x] **Step 5: Run GREEN compression test**
 
 Run the same test and confirm it passes.
+
+Actual: focused compression behavior passed as part of the five-test GREEN run below.
 
 ## Task 2: Verify Compression Gate Behavior
 
@@ -232,7 +236,7 @@ Run the same test and confirm it passes.
 
 - Modify: `backend/tests/test_writing_agent_runs.py`
 
-- [ ] **Step 1: Add review-after-compression and stop tests**
+- [x] **Step 1: Add review-after-compression and stop tests**
 
 Add:
 
@@ -244,7 +248,7 @@ def test_agent_compress_chapter_to_target_then_review_clears_over_target_warning
     chapter.content = "林深和苏晚晴在实验室里反复检查雾晶记录，确认线索。 " * 120
     chapter.word_count = 3000
     db_session.commit()
-    compressed_content = "林深和苏晚晴在实验室里检查雾晶记录，确认线索。 " * 84
+    compressed_content = "林深和苏晚晴在实验室里检查雾晶记录，确认线索。 " * 100
 
     class FakeAIResult:
         content = json.dumps({"content": compressed_content, "change_summary": "压缩重复检查与解释段落。"}, ensure_ascii=False)
@@ -284,7 +288,7 @@ def test_agent_compress_chapter_to_target_blocks_direct_followup_generation(clie
     chapter.content = "林深和苏晚晴在实验室里反复检查雾晶记录，确认线索。 " * 120
     chapter.word_count = 3000
     db_session.commit()
-    compressed_content = "林深和苏晚晴在实验室里检查雾晶记录，确认线索。 " * 84
+    compressed_content = "林深和苏晚晴在实验室里检查雾晶记录，确认线索。 " * 100
     calls = []
 
     class FakeAIResult:
@@ -322,7 +326,7 @@ def test_agent_compress_chapter_to_target_blocks_direct_followup_generation(clie
     assert calls == []
 ```
 
-- [ ] **Step 2: Add skip and pending-proposal tests**
+- [x] **Step 2: Add skip and pending-proposal tests**
 
 Add:
 
@@ -398,7 +402,7 @@ def test_agent_compress_chapter_to_target_blocks_pending_world_model_proposals(c
     assert calls == []
 ```
 
-- [ ] **Step 3: Run GREEN gate tests**
+- [x] **Step 3: Run GREEN gate tests**
 
 Run:
 
@@ -409,13 +413,15 @@ cd backend
 
 Expected: all pass.
 
+Actual: `5 passed in 0.61s`.
+
 ## Task 3: Dogfood Chapter 7/8 Compression and Chapter 9 Continuation
 
 **Files:**
 
 - Create report under `docs/superpowers/notes/long-memory-agent/`.
 
-- [ ] **Step 1: Compress Chapter 7 and Chapter 8**
+- [x] **Step 1: Compress Chapter 7 and Chapter 8**
 
 Run Writing Agent twice:
 
@@ -438,7 +444,12 @@ Expected:
 - both new word counts in `2000-2300`;
 - each creates completed revision and base/result versions.
 
-- [ ] **Step 2: Review and analyze compressed chapters**
+Actual:
+
+- Chapter 7 first compression was safely blocked because the model output was below target (`29f9ebd9-24f7-42b4-81fb-c4ce2b950bbc`), then succeeded after prompt tightening (`7f2d9d05-d9d3-48c1-a56b-d4adfb891d51`), reducing 2670 -> 2025.
+- Chapter 8 compression succeeded (`7c91d6d6-7db8-4606-a92f-c351405ed011`), reducing 2647 -> 2142.
+
+- [x] **Step 2: Review and analyze compressed chapters**
 
 Run:
 
@@ -457,7 +468,9 @@ Expected:
 - no blockers;
 - if Athena creates proposals, resolve them with existing `draft_world_model_proposal_resolution_decisions` and `apply_world_model_proposal_resolution`.
 
-- [ ] **Step 3: Generate Chapter 9 only if clear**
+Actual: review/analyze run `b1915d63-6144-47d4-8b9e-e4b9555d3073`; Chapter 7/8 reviews were ready, blocker count 0, and analysis created no new actionable proposals.
+
+- [x] **Step 3: Generate Chapter 9 only if clear**
 
 If pending world-model proposal count is 0 and Chapter 7/8 have no blockers, run:
 
@@ -476,13 +489,21 @@ Expected:
 - review blocker count is 0 or blockers are recorded and generation stops;
 - if Chapter 9 is over target, record it as Phase23 input.
 
+Actual:
+
+- Initial Chapter 9 preflight was blocked because the outline lacked Chapter 9 (`ce3ffd85-227a-41ed-ac90-fc0791e8fdc4`).
+- Outline window expansion added Chapter 9 (`76b5e6a3-e912-492c-b922-60d28b1bd221`).
+- Chapter 9 was generated as `暗河引路` (`6a28efb8-7fe1-4dd6-9d81-1c468da4ecfa`) at 2433 words, with no blockers but an over-target warning and 6 world-model proposals.
+- The 6 proposals were drafted and applied (`59db2d5f-884b-4c38-9c54-3dd4071af287`, `1c6b7fec-be96-4457-8d43-ad3cf3b4dd6d`), leaving 0 actionable proposals.
+- Chapter 9 compression attempts were blocked without writing because model outputs were under target (`7294b2f4-000d-4efb-9daa-7f4439306611`, `6f9b42ca-c36b-41c6-8ba8-71b3efdb22b8`). This is recorded as Phase23 input.
+
 ## Task 4: Verification, Report, Commit, Push
 
 **Files:**
 
 - Modify all Phase22 files.
 
-- [ ] **Step 1: Run T2 verification**
+- [x] **Step 1: Run T2 verification**
 
 Run:
 
@@ -493,7 +514,9 @@ cd backend
 
 Expected: pass.
 
-- [ ] **Step 2: Write Phase22 report**
+Actual: `138 passed in 9.74s`.
+
+- [x] **Step 2: Write Phase22 report**
 
 Create `docs/superpowers/notes/long-memory-agent/2026-05-19-phase22-agent-chapter-compression-and-chapter9.md` with:
 
@@ -505,7 +528,7 @@ Create `docs/superpowers/notes/long-memory-agent/2026-05-19-phase22-agent-chapte
 - verification commands;
 - next phase recommendation.
 
-- [ ] **Step 3: Hygiene checks**
+- [x] **Step 3: Hygiene checks**
 
 Run:
 
@@ -521,7 +544,13 @@ Expected:
 - secret scan returns no matches;
 - only intended Phase22 files are changed.
 
-- [ ] **Step 4: Commit and push**
+Actual:
+
+- `git diff --check`: exit 0; Git reported only a CRLF normalization warning for `backend/tests/test_writing_agent_runs.py`.
+- `rg "sk-[A-Za-z0-9]{20,}" -n docs backend frontend references`: no matches.
+- `git status --short --branch`: only intended Phase22 files changed, plus the prior Phase22 plan commit ahead of origin.
+
+- [x] **Step 4: Commit and push**
 
 Commit plan first:
 
