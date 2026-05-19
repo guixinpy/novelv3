@@ -81,7 +81,7 @@ This phase should add a conservative patch path for deterministic, known correct
 - Modify: `backend/app/services/writing_agent/run_service.py`
 - Modify: `backend/tests/test_writing_agent_runs.py`
 
-- [ ] **Step 1: Write failing apply-patch test**
+- [x] **Step 1: Write failing apply-patch test**
 
 Add a test to `backend/tests/test_writing_agent_runs.py` near revision draft tests:
 
@@ -129,7 +129,7 @@ def test_agent_apply_planner_revision_patch_updates_chapter_and_versions(client,
     assert output["should_generate_next_chapter"] is False
 ```
 
-- [ ] **Step 2: Run RED apply-patch test**
+- [x] **Step 2: Run RED apply-patch test**
 
 Run:
 
@@ -140,7 +140,9 @@ cd backend
 
 Expected: fail because the tool is unsupported.
 
-- [ ] **Step 3: Create `chapter_revision_apply.py`**
+Evidence: targeted tests failed before registration because `apply_planner_revision_patch` had no output/unsupported execution path.
+
+- [x] **Step 3: Create `chapter_revision_apply.py`**
 
 Implement:
 
@@ -162,7 +164,7 @@ Implement:
 - Create result version after patch.
 - Mark revision completed.
 
-- [ ] **Step 4: Register Writing Agent tool**
+- [x] **Step 4: Register Writing Agent tool**
 
 In `backend/app/services/writing_agent/run_service.py`:
 
@@ -172,9 +174,11 @@ In `backend/app/services/writing_agent/run_service.py`:
 - Add report-stop behavior so generation cannot follow it directly when `should_generate_next_chapter` is false.
 - Allow follow-up `review_chapter_quality`.
 
-- [ ] **Step 5: Run GREEN apply-patch test**
+- [x] **Step 5: Run GREEN apply-patch test**
 
 Run the same test and confirm it passes.
+
+Evidence: `2 passed in 0.33s` for the apply-patch and review-after-patch focused tests.
 
 ## Task 2: Verify Patch Clears Drift Findings
 
@@ -182,7 +186,7 @@ Run the same test and confirm it passes.
 
 - Modify: `backend/tests/test_writing_agent_runs.py`
 
-- [ ] **Step 1: Write review-after-patch test**
+- [x] **Step 1: Write review-after-patch test**
 
 Add:
 
@@ -216,7 +220,7 @@ def test_agent_apply_planner_revision_patch_then_review_clears_drift_blockers(cl
     assert review["blocker_count"] == 0
 ```
 
-- [ ] **Step 2: Run GREEN review-after-patch test**
+- [x] **Step 2: Run GREEN review-after-patch test**
 
 Run:
 
@@ -227,13 +231,15 @@ cd backend
 
 Expected: pass after Task 1 implementation.
 
+Evidence: `2 passed in 0.33s` for the combined targeted Phase20 tests.
+
 ## Task 3: Dogfood Chapter 6 Patch and Chapter 7 Continuation
 
 **Files:**
 
 - Create report under `docs/superpowers/notes/long-memory-agent/`.
 
-- [ ] **Step 1: Apply Chapter 6 planner patch**
+- [x] **Step 1: Apply Chapter 6 planner patch**
 
 Run Writing Agent:
 
@@ -250,7 +256,9 @@ Expected:
 - revision status `completed`
 - Chapter 6 still generated and not structurally replaced.
 
-- [ ] **Step 2: Review Chapter 6**
+Evidence: dogfood run `f4ca6e09-47f9-473d-a6d6-e93037894f8a` applied 2 deterministic replacements and completed revision `94ee16d6-1559-4dac-b13b-138bb065ae0a`.
+
+- [x] **Step 2: Review Chapter 6**
 
 Run:
 
@@ -266,7 +274,9 @@ Expected:
 - `ability_boundary_drift` absent.
 - blocker count 0.
 
-- [ ] **Step 3: Generate Chapter 7 only if clear**
+Evidence: Chapter 6 review status `ready`, `finding_count=0`, `blocker_count=0`.
+
+- [x] **Step 3: Generate Chapter 7 only if clear**
 
 If Chapter 6 blocker count is 0, run:
 
@@ -286,13 +296,15 @@ Expected:
 - `word_count >= 2000`.
 - If review has blockers, stop and record them.
 
+Evidence: dogfood run `1ec76939-57d8-4f32-80a6-9495052ccc8c` generated Chapter 7 only after Chapter 6 blocker count was 0. Chapter 7 review had no blockers but did expose `chapter_under_target` at 1814 words. World proposal warnings were resolved in runs `ed1c52da-127d-49d0-86ce-fc458edd8ce1` and `c7d0ce41-41cf-4911-8668-3cc9f781c408`.
+
 ## Task 4: Verification, Report, Commit, Push
 
 **Files:**
 
 - Modify all Phase20 files.
 
-- [ ] **Step 1: Run T2 verification**
+- [x] **Step 1: Run T2 verification**
 
 Run:
 
@@ -303,7 +315,9 @@ cd backend
 
 Expected: pass.
 
-- [ ] **Step 2: Write Phase20 report**
+Evidence: `128 passed in 9.70s`.
+
+- [x] **Step 2: Write Phase20 report**
 
 Create `docs/superpowers/notes/long-memory-agent/2026-05-19-phase20-deterministic-revision-apply-and-chapter7.md` with:
 
@@ -314,7 +328,7 @@ Create `docs/superpowers/notes/long-memory-agent/2026-05-19-phase20-deterministi
 - Chapter 7 generation/review result or blocker reason;
 - next phase recommendation.
 
-- [ ] **Step 3: Hygiene checks**
+- [x] **Step 3: Hygiene checks**
 
 Run:
 
@@ -329,6 +343,8 @@ Expected:
 - whitespace check passes;
 - secret scan returns no matches;
 - only intended Phase20 files are changed.
+
+Evidence: `git diff --check` passed, secret scan returned no matches, and `git status --short --branch` showed only Phase20 code/test/docs files.
 
 - [ ] **Step 4: Commit and push**
 
