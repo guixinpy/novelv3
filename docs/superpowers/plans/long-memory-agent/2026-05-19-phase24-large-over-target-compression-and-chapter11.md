@@ -79,7 +79,7 @@ This phase should:
 
 - Modify: `backend/tests/test_writing_agent_runs.py`
 
-- [ ] **Step 1: Write failing large-overage trim test**
+- [x] **Step 1: Write failing large-overage trim test**
 
 Add near the Phase23 compression tests:
 
@@ -137,7 +137,7 @@ def test_agent_compress_chapter_to_target_trims_large_over_target_candidate(clie
     assert len(calls) == 1
 ```
 
-- [ ] **Step 2: Run RED test**
+- [x] **Step 2: Run RED test**
 
 Run:
 
@@ -148,13 +148,15 @@ cd backend
 
 Expected: fail because current trim threshold rejects large over-target candidates.
 
+Actual: failed as expected with blocked run status because the large over-target candidate exceeded the existing deterministic trim threshold.
+
 ## Task 2: Implement Safer Large-Overage Trim
 
 **Files:**
 
 - Modify: `backend/app/core/chapter_compression.py`
 
-- [ ] **Step 1: Add large-overage threshold**
+- [x] **Step 1: Add large-overage threshold**
 
 Add:
 
@@ -163,7 +165,7 @@ LARGE_OVER_TRIM_MAX_OVERAGE = 900
 TRIM_PROTECTED_EDGE_SENTENCE_COUNT = 2
 ```
 
-- [ ] **Step 2: Broaden `_trim_over_target_candidate` safely**
+- [x] **Step 2: Broaden `_trim_over_target_candidate` safely**
 
 Update `_trim_over_target_candidate`:
 
@@ -174,7 +176,7 @@ Update `_trim_over_target_candidate`:
 - if trimming would fall below `target_min`, keep the sentence and try another;
 - return unchanged candidate if it cannot land in range.
 
-- [ ] **Step 3: Improve over-target retry prompt**
+- [x] **Step 3: Improve over-target retry prompt**
 
 When `prior_direction == "over_target"` and `prior_word_count` exists, include required cut size:
 
@@ -182,11 +184,13 @@ When `prior_direction == "over_target"` and `prior_word_count` exists, include r
 上一次候选仍高于目标上限，约{prior_word_count}字，需要至少删减{prior_word_count - target_max}字。禁止原样返回候选稿；必须合并或删除低信息密度句子。
 ```
 
-- [ ] **Step 4: Run GREEN large-overage test**
+- [x] **Step 4: Run GREEN large-overage test**
 
 Run the large-overage test again.
 
 Expected: pass.
+
+Actual: `1 passed in 0.21s`.
 
 ## Task 3: Regression Verification
 
@@ -195,7 +199,7 @@ Expected: pass.
 - Modify: `backend/app/core/chapter_compression.py`
 - Modify: `backend/tests/test_writing_agent_runs.py`
 
-- [ ] **Step 1: Run compression regression suite**
+- [x] **Step 1: Run compression regression suite**
 
 Run:
 
@@ -206,13 +210,15 @@ cd backend
 
 Expected: all pass.
 
+Actual: `10 passed in 0.99s`.
+
 ## Task 4: Dogfood Chapter 10 and Chapter 11
 
 **Files:**
 
 - Create report under `docs/superpowers/notes/long-memory-agent/`.
 
-- [ ] **Step 1: Compress Chapter 10**
+- [x] **Step 1: Compress Chapter 10**
 
 Run:
 
@@ -227,7 +233,16 @@ Expected:
 - completed with 2000-2300 words, or blocked with stronger evidence;
 - if completed, output includes revision id and deterministic/model attempt metadata.
 
-- [ ] **Step 2: Review and analyze Chapter 10**
+Actual:
+
+- Run `7f176132-8f3-4383-a597-b460a98996bb`: completed.
+- Chapter 10 `空白信纸`: 2878 -> 2292.
+- Attempt count: 1.
+- `deterministic_trim_applied=True`.
+- Revision: `34f649bf-0451-41be-ab6e-31c52afc3887`.
+- Trace: `bec0e99f-a271-421c-80ad-bf57d632c09c`.
+
+- [x] **Step 2: Review and analyze Chapter 10**
 
 If compression completed, run:
 
@@ -244,7 +259,12 @@ Expected:
 - blocker count 0;
 - if Athena creates proposals, resolve them before continuing.
 
-- [ ] **Step 3: Generate Chapter 11 only if clear**
+Actual:
+
+- Run `d689fd43-a5b0-4bdd-aaca-1c1b00e852a8`: Chapter 10 review ready, finding count 0, blocker count 0; analysis completed.
+- Pending actionable proposals after analysis: 0.
+
+- [x] **Step 3: Generate Chapter 11 only if clear**
 
 If Chapter 10 is within target, no blockers, and pending proposals are 0:
 
@@ -262,13 +282,20 @@ Expected:
 - Chapter 11 generated or blocked with recorded reason.
 - Proposal pressure and review blockers are recorded and handled when safe.
 
+Actual:
+
+- Preflight run `d66b2918-fa6b-4130-bc60-717f46546fe8`: blocked because Chapter 11 outline was missing.
+- Outline expansion run `98f233d8-752b-486e-a4cf-bc6bbcff9677`: added Chapter 11; preflight ready with repeated length drift warning.
+- Generation/review/analyze run `b51cfa1d-850b-4eb1-8855-04c3ac7edf20`: generated Chapter 11 `隐形墨水`, 2285 words, length decision within target, blocker count 0, with 7 pending world-model proposals.
+- Draft/apply runs `cdd675b5-7970-48dd-96ae-69158a6163fb`, `63e1141f-adfc-4efb-b4cf-8735eb8e2812`: applied 7 guarded decisions, after actionable items 0.
+
 ## Task 5: Verification, Report, Commit, Push
 
 **Files:**
 
 - Modify all Phase24 files.
 
-- [ ] **Step 1: Run T2 verification**
+- [x] **Step 1: Run T2 verification**
 
 Run:
 
@@ -279,7 +306,9 @@ cd backend
 
 Expected: pass.
 
-- [ ] **Step 2: Write Phase24 report**
+Actual: `143 passed in 10.45s`.
+
+- [x] **Step 2: Write Phase24 report**
 
 Create `docs/superpowers/notes/long-memory-agent/2026-05-19-phase24-large-over-target-compression-and-chapter11.md` with:
 
@@ -292,7 +321,7 @@ Create `docs/superpowers/notes/long-memory-agent/2026-05-19-phase24-large-over-t
 - remote push status;
 - next phase recommendation.
 
-- [ ] **Step 3: Hygiene checks**
+- [x] **Step 3: Hygiene checks**
 
 Run:
 
@@ -307,6 +336,12 @@ Expected:
 - whitespace check passes;
 - secret scan returns no matches;
 - only intended Phase24 files are changed.
+
+Actual:
+
+- `git diff --check`: exit 0; Git reported only a CRLF normalization warning for `backend/tests/test_writing_agent_runs.py`.
+- `rg "sk-[A-Za-z0-9]{20,}" -n docs backend frontend references`: no matches.
+- `git status --short --branch`: only intended Phase24 implementation, tests, plan, and report files changed; branch remains ahead of origin because earlier push attempts failed.
 
 - [ ] **Step 4: Commit and push**
 

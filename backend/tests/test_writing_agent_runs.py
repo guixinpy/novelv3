@@ -3190,6 +3190,59 @@ def test_agent_compress_chapter_to_target_trims_near_over_target_candidate(clien
     assert len(calls) == 1
 
 
+def test_agent_compress_chapter_to_target_trims_large_over_target_candidate(client, db_session, monkeypatch):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1])
+    chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=1).one()
+    opening = "林深推开第三研究所的铁门，确认门缝里还压着空白信纸。"
+    protected_dialogue = "“别碰那张纸。”苏晚晴按住他的手，“雾晶反应还在。”"
+    ending = "门后的红灯重新亮起，林深知道名单上的下一个名字已经出现。"
+    low_signal = [f"潮湿走廊里回声第{i}次拉长，墙皮落下细小灰尘。" for i in range(135)]
+    candidate = opening + protected_dialogue + "".join(low_signal) + ending
+    chapter.content = candidate
+    chapter.word_count = 2878
+    project.current_word_count = 2878
+    db_session.commit()
+    calls = []
+
+    class FakeAIResult:
+        content = json.dumps({"content": candidate, "change_summary": "模型返回仍然超长的候选。"}, ensure_ascii=False)
+        prompt_tokens = 111
+        completion_tokens = 222
+        model = "fake-deepseek"
+
+    class FakeAIService:
+        async def complete(self, messages, **kwargs):
+            calls.append(messages[-1]["content"])
+            return FakeAIResult()
+
+    monkeypatch.setattr("app.core.chapter_compression.AIService", FakeAIService)
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "压缩大幅超长章节",
+            "tools": [{"tool_name": "compress_chapter_to_target", "params": {"chapter_index": 1}}],
+        },
+    )
+
+    payload = response.json()
+    output = payload["steps"][0]["output"]
+    patched = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=1).one()
+    revision_count = db_session.query(ChapterRevision).filter_by(project_id=project.id, chapter_index=1).count()
+    version_count = db_session.query(Version).filter_by(project_id=project.id, node_type="chapter", node_id=chapter.id).count()
+    assert response.status_code == 200
+    assert payload["status"] == "success"
+    assert output["status"] == "completed"
+    assert output["deterministic_trim_applied"] is True
+    assert 2000 <= output["word_count"] <= 2300
+    assert opening in patched.content
+    assert protected_dialogue in patched.content
+    assert ending in patched.content
+    assert revision_count == 1
+    assert version_count == 2
+    assert len(calls) == 1
+
+
 def test_agent_create_revision_draft_reuses_existing_draft(client, db_session):
     project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1, 2])
     chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=2).one()

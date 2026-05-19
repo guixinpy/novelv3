@@ -20,6 +20,8 @@ from app.prompting.providers.chapter import project_chapter_word_range
 MAX_COMPRESSION_ATTEMPTS = 3
 NEAR_TARGET_UNDER_REPAIR_MAX_GAP = 220
 NEAR_TARGET_OVER_TRIM_MAX_OVERAGE = 260
+LARGE_OVER_TRIM_MAX_OVERAGE = 900
+TRIM_PROTECTED_EDGE_SENTENCE_COUNT = 2
 TRIM_PROTECTED_TERMS = ("林深", "苏晚晴", "灯塔", "暗河", "雾晶", "号码牌", "父亲", "陈默")
 TRIM_HINT_TERMS = ("反复", "再次", "似乎", "仿佛", "仍然", "只是", "沉默", "解释")
 
@@ -374,14 +376,15 @@ def _trim_over_target_candidate(
     candidate = candidate.strip()
     current_word_count = count_words(candidate)
     overage = current_word_count - target_max
-    if not candidate or overage <= 0 or overage > NEAR_TARGET_OVER_TRIM_MAX_OVERAGE:
+    if not candidate or overage <= 0 or overage > LARGE_OVER_TRIM_MAX_OVERAGE:
         return candidate, False
 
     sentences = _split_sentences(candidate)
-    if len(sentences) < 6:
+    edge_count = TRIM_PROTECTED_EDGE_SENTENCE_COUNT if overage > NEAR_TARGET_OVER_TRIM_MAX_OVERAGE else 1
+    if len(sentences) <= edge_count * 2 + 1:
         return candidate, False
 
-    protected_indexes = {0, len(sentences) - 1}
+    protected_indexes = set(range(edge_count)) | set(range(len(sentences) - edge_count, len(sentences)))
     removable_indexes = [index for index in range(len(sentences)) if index not in protected_indexes]
     removable_indexes.sort(key=lambda index: _trim_sentence_rank(sentences[index], overage))
 
@@ -450,9 +453,11 @@ def _compression_messages(
             "请以候选稿为基础恢复必要场景密度、动作链、对话和情绪转折，必须回到目标范围。"
         )
     elif attempt_index > 1 and prior_direction == "over_target":
+        cut_size = max(0, (prior_word_count or 0) - target_max)
         retry_guidance = (
-            f"上一次压缩结果仍高于目标上限，约{prior_word_count or 0}字。"
-            "请只删除重复解释和可合并描写，不要改变剧情事实，必须回到目标范围。"
+            f"上一次候选仍高于目标上限，约{prior_word_count or 0}字，需要至少删减{cut_size}字。"
+            "禁止原样返回候选稿；必须合并或删除低信息密度句子；"
+            "不要改变剧情事实，必须回到目标范围。"
         )
     instruction = (
         f"请压缩《{project.name}》第{chapter.chapter_index}章《{chapter.title or f'第{chapter.chapter_index}章'}》。\n"
