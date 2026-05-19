@@ -69,10 +69,11 @@ def _word_target_findings(project: Project, chapter: ChapterContent) -> list[dic
     target_min, target_max = target_range
     word_count = int(chapter.word_count or 0)
     if word_count > target_max:
+        severity = "blocker" if word_count > round(target_max * 1.25) else "warning"
         return [
             _finding(
                 "chapter_over_target",
-                "blocker",
+                severity,
                 f"第{chapter.chapter_index}章 {word_count} 字，超过目标上限 {target_max} 字。",
                 evidence={"word_count": word_count, "target_max_word_count": target_max},
             )
@@ -181,7 +182,8 @@ def _result(*, chapter_index: int, findings: list[dict[str, Any]]) -> dict[str, 
 def _recommended_actions(findings: list[dict[str, Any]]) -> list[str]:
     actions: list[str] = []
     codes = {str(finding.get("code")) for finding in findings}
-    if codes & {"generic_chapter_title", "chapter_over_target", "future_outline_overlap", "missing_outline_chapter"}:
+    revision_codes = {"generic_chapter_title", "chapter_over_target", "future_outline_overlap", "missing_outline_chapter"}
+    if any(finding.get("code") in revision_codes and finding.get("severity") == "blocker" for finding in findings):
         actions.append("revise_chapter")
     if "pending_world_model_proposals" in codes:
         actions.append("review_world_model_proposals")

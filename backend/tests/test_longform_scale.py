@@ -1746,6 +1746,38 @@ def test_longform_maintenance_diagnostics_reports_word_target_drift(db_session):
     }
 
 
+def test_longform_maintenance_diagnostics_uses_2000_floor_for_longform_projects(db_session):
+    from app.core.longform_memory import get_longform_maintenance_diagnostics
+
+    project = Project(
+        name="Longform Word Target Floor",
+        target_word_count=1_200_000,
+        target_chapter_count=600,
+    )
+    db_session.add(project)
+    db_session.flush()
+    for index, word_count in [(1, 1861), (2, 2100), (3, 2482)]:
+        db_session.add(
+            ChapterContent(
+                project_id=project.id,
+                chapter_index=index,
+                title=f"第{index}章",
+                content="正文",
+                word_count=word_count,
+                status="generated",
+            )
+        )
+    db_session.commit()
+
+    payload = get_longform_maintenance_diagnostics(db_session, project.id)
+
+    assert payload["word_target"]["target_average_word_count"] == 2000
+    assert payload["word_target"]["target_min_word_count"] == 2000
+    assert payload["word_target"]["target_max_word_count"] == 2300
+    assert payload["word_target"]["under_target_chapter_indexes"] == [1]
+    assert payload["word_target"]["over_target_chapter_indexes"] == [3]
+
+
 def test_longform_maintenance_diagnostics_reports_stale_memory_after_chapter_edit(client, db_session):
     from app.core.athena_retrieval import reindex_project_retrieval
     from app.core.longform_memory import rebuild_longform_memory

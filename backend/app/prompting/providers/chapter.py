@@ -231,7 +231,8 @@ def project_chapter_word_range(project: Project) -> tuple[int, int] | None:
     if target_words <= 0 or target_chapters <= 0:
         return None
     average = max(1, round(target_words / target_chapters))
-    return max(1, round(average * 0.85)), max(1, round(average * 1.15))
+    target_min = average if average >= 2000 else round(average * 0.85)
+    return max(1, target_min), max(1, round(average * 1.15))
 
 
 def build_length_constraint(extra_feedback: str) -> str | None:

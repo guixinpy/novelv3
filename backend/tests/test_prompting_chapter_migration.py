@@ -162,6 +162,24 @@ def test_chapter_payload_injects_project_word_target_without_user_range(db_sessi
     assert blocks_by_key["target_chapter_length"]["kind"] == "generation_constraint"
 
 
+def test_chapter_payload_uses_2000_floor_for_600_chapter_longform(db_session):
+    project = _project(
+        db_session,
+        id="chapter-prompt-longform-2000-floor",
+        target_chapter_count=600,
+        target_word_count=1_200_000,
+        style_config=None,
+    )
+    setup = _setup(db_session, project.id)
+
+    payload = chapters._build_chapter_call_payload(db_session, project, setup, 5, "")
+
+    message = payload["messages"][0]["content"]
+    assert "项目计划约1200000字 / 600章" in message
+    assert "本章正文建议控制在2000-2300字" in message
+    assert payload["max_tokens"] == 3100
+
+
 def test_chapter_payload_requires_continuous_prose_not_outline_format(db_session):
     project = _project(db_session, id="chapter-prompt-prose-format", style_config=None)
     setup = _setup(db_session, project.id)

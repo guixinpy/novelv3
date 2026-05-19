@@ -189,7 +189,7 @@ def test_agent_run_records_chapter_length_and_world_model_diagnostics(client, db
             "chapter_word_target": {
                 "status": "over",
                 "actual_word_count": 3735,
-                "target_min_word_count": 1700,
+                "target_min_word_count": 2000,
                 "target_average_word_count": 2000,
                 "target_max_word_count": 2300,
             }
@@ -218,7 +218,7 @@ def test_agent_run_records_chapter_length_and_world_model_diagnostics(client, db
     assert length_decision["decision"] == "accept_with_warning"
     assert length_decision["severity"] == "warning"
     assert length_decision["actual_word_count"] == 3735
-    assert length_decision["target_min_word_count"] == 1700
+    assert length_decision["target_min_word_count"] == 2000
     assert length_decision["target_average_word_count"] == 2000
     assert length_decision["target_max_word_count"] == 2300
     assert length_decision["repeated_drift_count"] == 0
@@ -386,7 +386,7 @@ def test_agent_skips_analyze_when_generate_step_already_auto_analyzed_same_chapt
             "chapter_word_target": {
                 "status": "within",
                 "actual_word_count": 2100,
-                "target_min_word_count": 1700,
+                "target_min_word_count": 2000,
                 "target_average_word_count": 2000,
                 "target_max_word_count": 2300,
             }
@@ -450,7 +450,7 @@ def test_agent_chapter_length_decision_flags_repeated_over_target_drift(client, 
             "chapter_word_target": {
                 "status": "over",
                 "actual_word_count": 3000,
-                "target_min_word_count": 1700,
+                "target_min_word_count": 2000,
                 "target_average_word_count": 2000,
                 "target_max_word_count": 2300,
             }
@@ -528,6 +528,30 @@ def test_agent_review_chapter_quality_flags_generic_title_and_length(client, db_
     assert output["status"] == "blocked"
     assert {finding["code"] for finding in output["findings"]} >= {"generic_chapter_title", "chapter_over_target"}
     assert "revise_chapter" in output["recommended_actions"]
+
+
+def test_agent_review_chapter_quality_warns_on_modest_over_target_length(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1], generated_chapters=[1])
+    chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=1).one()
+    chapter.title = "雾中回声"
+    chapter.word_count = 2482
+    db_session.commit()
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "审稿第1章",
+            "tools": [{"tool_name": "review_chapter_quality", "params": {"chapter_index": 1}}],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    over_finding = next(finding for finding in output["findings"] if finding["code"] == "chapter_over_target")
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    assert output["status"] == "warning"
+    assert over_finding["severity"] == "warning"
+    assert "revise_chapter" not in output["recommended_actions"]
 
 
 def test_agent_review_chapter_quality_flags_future_outline_overlap(client, db_session):
