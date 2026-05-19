@@ -54,6 +54,7 @@ ALLOWED_TOOLS = {
     "plan_chapter_revision",
     "create_revision_draft",
     "apply_planner_revision_patch",
+    "expand_chapter_to_target",
     "review_world_model_proposals",
     "plan_world_model_proposal_resolution",
     "preview_world_model_proposal_resolution",
@@ -72,6 +73,7 @@ INTERNAL_TOOLS = {
     "plan_chapter_revision",
     "create_revision_draft",
     "apply_planner_revision_patch",
+    "expand_chapter_to_target",
     "review_world_model_proposals",
     "plan_world_model_proposal_resolution",
     "preview_world_model_proposal_resolution",
@@ -266,6 +268,19 @@ class WritingAgentRunService:
             chapter_index = int(tool.params.get("chapter_index") or 1)
             revision_id = str(tool.params.get("revision_id") or "").strip() or None
             return apply_planner_revision_patch(self.db, project_id, chapter_index, revision_id=revision_id)
+        if tool.tool_name == "expand_chapter_to_target":
+            from app.core.chapter_expansion import expand_chapter_to_target
+
+            chapter_index = int(tool.params.get("chapter_index") or 1)
+            min_word_count = _optional_int(tool.params.get("min_word_count"))
+            extra_instruction = str(tool.params.get("extra_instruction") or "")
+            return await expand_chapter_to_target(
+                self.db,
+                project_id,
+                chapter_index,
+                min_word_count=min_word_count,
+                extra_instruction=extra_instruction,
+            )
         if tool.tool_name == "review_world_model_proposals":
             from app.core.world_proposal_agent_report import build_world_proposal_agent_report
 
@@ -680,6 +695,7 @@ def _target_type_for_tool(tool_name: str) -> str | None:
         "plan_chapter_revision": "revision_plan",
         "create_revision_draft": "revision",
         "apply_planner_revision_patch": "revision",
+        "expand_chapter_to_target": "revision",
         "review_world_model_proposals": "world_model",
         "plan_world_model_proposal_resolution": "world_model",
         "preview_world_model_proposal_resolution": "world_model",
@@ -700,6 +716,7 @@ def _should_stop_after_report(
         "plan_chapter_revision",
         "create_revision_draft",
         "apply_planner_revision_patch",
+        "expand_chapter_to_target",
         "review_world_model_proposals",
         "plan_world_model_proposal_resolution",
         "preview_world_model_proposal_resolution",
@@ -718,6 +735,7 @@ def _allowed_report_followup(tool_name: str, next_tool_name: str | None) -> bool
     return (tool_name, next_tool_name) in {
         ("create_revision_draft", "apply_planner_revision_patch"),
         ("apply_planner_revision_patch", "review_chapter_quality"),
+        ("expand_chapter_to_target", "review_chapter_quality"),
         ("review_world_model_proposals", "plan_world_model_proposal_resolution"),
         ("plan_world_model_proposal_resolution", "preview_world_model_proposal_resolution"),
         ("preview_world_model_proposal_resolution", "apply_world_model_proposal_resolution"),
@@ -735,6 +753,7 @@ def _successful_report_block_message(tool_name: str) -> str:
         "plan_chapter_revision": "修订计划未通过，已停止后续写作工具。",
         "create_revision_draft": "修订草稿未通过，已停止后续写作工具。",
         "apply_planner_revision_patch": "修订补丁应用后尚未复审，已停止后续写作工具。",
+        "expand_chapter_to_target": "章节扩写后尚未复审，已停止后续写作工具。",
     }.get(tool_name, "报告未通过，已停止后续写作工具。")
 
 
