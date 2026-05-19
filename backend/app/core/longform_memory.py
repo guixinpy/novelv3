@@ -12,12 +12,13 @@ from sqlalchemy.orm import Session
 
 from app.core.outline_lookup import find_outline_chapter
 from app.core.project_stats import reconcile_project_word_count
-from app.models import ChapterContent, LongformMemory, Project, RetrievalDocument
+from app.models import ChapterContent, LongformMemory, Project, RetrievalDocument, WorldProposalItem
 
 DEFAULT_ARC_SIZE = 20
 DEFAULT_VOLUME_SIZE = 100
 RECENT_CHAPTER_WINDOW = 3
 CHAPTER_MEMORY_CONTENT_QUERY_CHARS = 1200
+REVIEWED_EVENT_SUMMARY_STATUSES = {"uncertain", "approved", "approved_with_edits"}
 
 
 @dataclass
@@ -45,13 +46,23 @@ def rebuild_longform_memory(
     project = _require_project(db, project_id)
     chapters = _chapters(db, project_id)
     outline_lookup = _outline_lookup(db, project_id)
+    event_summary_lookup = _reviewed_event_summary_lookup(
+        db, project_id, [chapter.chapter_index for chapter in chapters]
+    )
 
     db.query(LongformMemory).filter(LongformMemory.project_id == project_id).delete(synchronize_session=False)
 
     memories: list[LongformMemory] = []
     for chapter in chapters:
         outline = outline_lookup.get(chapter.chapter_index)
-        memories.append(_chapter_memory(project_id, chapter, outline))
+        memories.append(
+            _chapter_memory(
+                project_id,
+                chapter,
+                outline,
+                event_summary=event_summary_lookup.get(chapter.chapter_index),
+            )
+        )
 
     for start, group in _chapter_groups(chapters, arc_size):
         memories.append(_range_memory(project_id, memory_type="arc", start=start, chapters=group))
@@ -355,6 +366,7 @@ def refresh_longform_memory_for_chapter(
 
     outline_chapter = find_outline_chapter(db, project_id, chapter_index)
     outline = outline_chapter[1] if outline_chapter is not None else None
+    event_summary_lookup = _reviewed_event_summary_lookup(db, project_id, [chapter_index])
     arc_chapters = _range_chapters(db, project_id, chapter_index, arc_size)
     volume_chapters = _range_chapters(db, project_id, chapter_index, volume_size)
     delete_filter = or_(
@@ -375,7 +387,14 @@ def refresh_longform_memory_for_chapter(
         synchronize_session=False
     )
 
-    memories = [_chapter_memory(project_id, chapter, outline)]
+    memories = [
+        _chapter_memory(
+            project_id,
+            chapter,
+            outline,
+            event_summary=event_summary_lookup.get(chapter_index),
+        )
+    ]
     if arc_chapters:
         memories.append(_range_memory(project_id, memory_type="arc", start=arc_chapters[0].chapter_index, chapters=arc_chapters))
     if volume_chapters:
@@ -587,12 +606,77 @@ def _decode_json_value(value: Any) -> Any:
     return value
 
 
-def _chapter_memory(project_id: str, chapter: Any, outline: dict[str, Any] | None) -> LongformMemory:
+def _reviewed_event_summary_lookup(
+    db: Session,
+    project_id: str,
+    chapter_indexes: list[int],
+) -> dict[int, dict[str, Any]]:
+    if not chapter_indexes:
+        return {}
+
+    rows = (
+        db.query(WorldProposalItem)
+        .filter(
+            WorldProposalItem.project_id == project_id,
+            WorldProposalItem.predicate == "event_summary",
+            WorldProposalItem.chapter_index.in_(chapter_indexes),
+            WorldProposalItem.item_status.in_(REVIEWED_EVENT_SUMMARY_STATUSES),
+        )
+        .order_by(
+            WorldProposalItem.chapter_index.asc(),
+            WorldProposalItem.updated_at.desc(),
+            WorldProposalItem.id.desc(),
+        )
+        .all()
+    )
+    lookup: dict[int, dict[str, Any]] = {}
+    for item in rows:
+        if item.chapter_index in lookup:
+            continue
+        value = item.object_ref_or_value
+        if not isinstance(value, dict):
+            continue
+        summary = str(value.get("summary") or "").strip()
+        if not summary:
+            continue
+        lookup[item.chapter_index] = {
+            "summary": summary,
+            "proposal_item_id": item.id,
+            "item_status": item.item_status,
+        }
+    return lookup
+
+
+def _chapter_memory(
+    project_id: str,
+    chapter: Any,
+    outline: dict[str, Any] | None,
+    *,
+    event_summary: dict[str, Any] | None = None,
+) -> LongformMemory:
     title = chapter.title or f"第{chapter.chapter_index}章"
     outline_summary = str((outline or {}).get("summary") or "").strip()
     content_summary = _chapter_content_preview(chapter.content or "", 180)
-    summary = content_summary or outline_summary or title
-    source = "chapter_content" if content_summary else "outline" if outline_summary else "title"
+    reviewed_summary = str((event_summary or {}).get("summary") or "").strip()
+    summary = reviewed_summary or content_summary or outline_summary or title
+    source = (
+        "reviewed_event_summary"
+        if reviewed_summary
+        else "chapter_content"
+        if content_summary
+        else "outline"
+        if outline_summary
+        else "title"
+    )
+    memory_metadata = {
+        "chapter_index": chapter.chapter_index,
+        "word_count": chapter.word_count or 0,
+        "status": chapter.status,
+        "source": source,
+    }
+    if reviewed_summary:
+        memory_metadata["event_summary_proposal_item_id"] = event_summary.get("proposal_item_id")
+        memory_metadata["event_summary_item_status"] = event_summary.get("item_status")
     return LongformMemory(
         project_id=project_id,
         memory_type="chapter",
@@ -602,12 +686,7 @@ def _chapter_memory(project_id: str, chapter: Any, outline: dict[str, Any] | Non
         title=title,
         summary=summary,
         status="current",
-        memory_metadata={
-            "chapter_index": chapter.chapter_index,
-            "word_count": chapter.word_count or 0,
-            "status": chapter.status,
-            "source": source,
-        },
+        memory_metadata=memory_metadata,
     )
 
 

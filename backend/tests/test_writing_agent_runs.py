@@ -3636,6 +3636,50 @@ def test_agent_compress_chapter_to_target_refreshes_longform_memory_and_retrieva
     )
 
 
+def test_refresh_longform_memory_prefers_reviewed_event_summary_proposal(db_session):
+    from app.core.athena_longform import analyze_chapter_to_world_proposals
+    from app.core.longform_memory import refresh_longform_memory_for_chapter
+    from app.core.world_proposal_service import review_proposal_item
+
+    project = _seed_longform_project(db_session, outline_chapters=[1], generated_chapters=[1])
+    chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=1).one()
+    chapter.title = "蓝雾电梯"
+    chapter.content = (
+        "林深沿着潮湿管道走了很久，墙上的灰蓝色雾晶回声像旧唱片一样反复刮擦。"
+        "他在第二道门后发现蓝雾电梯启动，苏晚晴确认这不是普通出口。"
+        + "随后他们又穿过一段漫长的空走廊，脚步声被黑暗吞没，墙面只剩无意义的噪点。" * 8
+    )
+    chapter.word_count = 2600
+    db_session.commit()
+    import_setup_to_world_model(db_session, project.id)
+    analyze_chapter_to_world_proposals(db=db_session, project_id=project.id, chapter_index=1)
+    event_item = (
+        db_session.query(WorldProposalItem)
+        .filter_by(project_id=project.id, subject_ref="chapter.1", predicate="event_summary")
+        .one()
+    )
+    review_proposal_item(
+        db=db_session,
+        proposal_item_id=event_item.id,
+        reviewer_ref="test",
+        action="mark_uncertain",
+        reason="章节摘要只进入写作记忆，不进入真相层",
+        evidence_refs=["chapter:1"],
+        commit=True,
+    )
+
+    refresh_longform_memory_for_chapter(db_session, project.id, 1)
+
+    memory = (
+        db_session.query(LongformMemory)
+        .filter_by(project_id=project.id, memory_type="chapter", scope_key="chapter:1")
+        .one()
+    )
+    assert "蓝雾电梯启动" in memory.summary
+    assert memory.memory_metadata["source"] == "reviewed_event_summary"
+    assert memory.memory_metadata["event_summary_proposal_item_id"] == event_item.id
+
+
 def test_agent_compress_chapter_to_target_blocks_after_retry_exhaustion(client, db_session, monkeypatch):
     project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1])
     chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=1).one()
