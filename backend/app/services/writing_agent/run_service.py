@@ -539,12 +539,25 @@ class WritingAgentRunService:
 
         checks["longform_maintenance"] = _longform_maintenance_check(self.db, project_id)
         checks["length_policy"] = _length_policy_check(self.db, project_id)
-        if checks["length_policy"].get("status") == "blocked":
+        length_policy_status = checks["length_policy"].get("status")
+        if length_policy_status == "blocked":
             issues.append(
                 _issue(
                     "repeated_chapter_length_drift",
                     "blocker",
                     str(checks["length_policy"].get("message") or "章节字数连续偏离目标，请先复核策略。"),
+                    extra={
+                        "reason": checks["length_policy"].get("reason"),
+                        "recommended_actions": checks["length_policy"].get("recommended_actions", []),
+                    },
+                )
+            )
+        elif length_policy_status == "review_required":
+            issues.append(
+                _issue(
+                    "repeated_chapter_length_drift",
+                    "warning",
+                    str(checks["length_policy"].get("message") or "章节字数连续偏离目标，后续生成需复核策略。"),
                     extra={
                         "reason": checks["length_policy"].get("reason"),
                         "recommended_actions": checks["length_policy"].get("recommended_actions", []),
@@ -792,11 +805,11 @@ def _length_policy_check(db: Session, project_id: str) -> dict[str, Any]:
         }
     direction = "过长" if policy["reason"] == "repeated_over_target" else "过短"
     return {
-        "status": "blocked",
+        "status": "review_required",
         "reason": policy["reason"],
         "repeated_drift_count": policy["repeated_drift_count"],
         "recommended_actions": policy["recommended_actions"],
-        "message": f"已有{policy['repeated_drift_count']}章连续或累计{direction}，请先复核章节长度策略再继续生成。",
+        "message": f"已有{policy['repeated_drift_count']}章连续或累计{direction}，后续生成需复核章节长度策略。",
     }
 
 

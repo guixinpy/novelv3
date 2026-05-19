@@ -482,7 +482,7 @@ def test_agent_chapter_length_decision_flags_repeated_over_target_drift(client, 
     assert "revise_or_adjust_project_target" in decision["recommended_actions"]
 
 
-def test_agent_preflight_blocks_when_repeated_over_target_drift_requires_review(client, db_session):
+def test_agent_preflight_warns_when_repeated_over_target_drift_requires_review(client, db_session):
     project = _seed_longform_project(db_session, outline_chapters=[1, 2, 3, 4], generated_chapters=[1, 2, 3])
     for chapter in db_session.query(ChapterContent).filter(ChapterContent.project_id == project.id):
         chapter.word_count = 3000
@@ -499,10 +499,12 @@ def test_agent_preflight_blocks_when_repeated_over_target_drift_requires_review(
 
     output = response.json()["steps"][0]["output"]
     assert response.status_code == 200
-    assert response.json()["status"] == "blocked"
-    assert output["checks"]["length_policy"]["status"] == "blocked"
+    assert response.json()["status"] == "success"
+    assert output["status"] == "ready"
+    assert output["checks"]["length_policy"]["status"] == "review_required"
     assert output["checks"]["length_policy"]["reason"] == "repeated_over_target"
     assert output["issues"][0]["code"] == "repeated_chapter_length_drift"
+    assert output["issues"][0]["severity"] == "warning"
 
 
 def test_agent_review_chapter_quality_flags_generic_title_and_length(client, db_session):
@@ -554,6 +556,34 @@ def test_agent_review_chapter_quality_flags_future_outline_overlap(client, db_se
     assert response.json()["status"] == "success"
     assert output["status"] == "blocked"
     assert any(finding["code"] == "future_outline_overlap" for finding in output["findings"])
+
+
+def test_agent_review_chapter_quality_ignores_single_future_character_name_match(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2, 3, 4], generated_chapters=[1, 2, 3])
+    chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=3).one()
+    chapter.title = "雾中童谣"
+    chapter.content = "林深接到苏晚晴的电话，两人只确认了旧码头的见面时间。"
+    chapter.word_count = 2000
+    outline = db_session.query(Outline).filter_by(project_id=project.id).one()
+    chapters = [dict(item) for item in outline.chapters]
+    chapters[3]["title"] = "苏晚晴的梦境"
+    chapters[3]["summary"] = "苏晚晴在梦境里看见雾港旧案的另一段证词。"
+    outline.chapters = chapters
+    db_session.commit()
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "审稿第3章",
+            "tools": [{"tool_name": "review_chapter_quality", "params": {"chapter_index": 3}}],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    assert output["status"] == "ready"
+    assert all(finding["code"] != "future_outline_overlap" for finding in output["findings"])
 
 
 def test_agent_plan_chapter_revision_maps_review_findings_to_actions(client, db_session):

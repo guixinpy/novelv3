@@ -55,7 +55,7 @@
 
 ## Task 1: Confirm Runtime Preconditions
 
-- [ ] **Step 1: Check dogfood project state**
+- [x] **Step 1: Check dogfood project state**
 
 Run:
 
@@ -67,7 +67,7 @@ cd backend
 
 Expected: 3 generated chapters, Chapter 4 outline available, zero pending actionable proposal items.
 
-- [ ] **Step 2: Confirm AI key can be loaded without printing it**
+- [x] **Step 2: Confirm AI key can be loaded without printing it**
 
 Run a local check that prints only `configured` or `missing`, never the key value.
 
@@ -75,7 +75,7 @@ Expected: configured. If missing, provide the key only as process-local runtime 
 
 ## Task 2: Generate Chapter 4 Through Writing Agent
 
-- [ ] **Step 1: Run preflight and generation**
+- [x] **Step 1: Run preflight and generation**
 
 Use the existing Writing Agent run endpoint/service with these tools:
 
@@ -88,7 +88,7 @@ Use the existing Writing Agent run endpoint/service with these tools:
 
 Expected: run status `success`; preflight ready; generation ready; Chapter 4 created.
 
-- [ ] **Step 2: Record generation result**
+- [x] **Step 2: Record generation result**
 
 Record:
 
@@ -101,7 +101,7 @@ Record:
 
 ## Task 3: Review and World-Model Feedback
 
-- [ ] **Step 1: Run quality review and world-model analysis**
+- [x] **Step 1: Run quality review and world-model analysis**
 
 Use the existing Writing Agent run endpoint/service with these tools:
 
@@ -114,7 +114,7 @@ Use the existing Writing Agent run endpoint/service with these tools:
 
 Expected: quality review produces actionable evidence; world-model analysis produces proposal output or a clear no-op report.
 
-- [ ] **Step 2: Inspect queue after analysis**
+- [x] **Step 2: Inspect queue after analysis**
 
 Record:
 
@@ -126,7 +126,7 @@ Record:
 
 ## Task 4: Fix Only Concrete Blockers
 
-- [ ] **Step 1: Classify any failure**
+- [x] **Step 1: Classify any failure**
 
 If a tool fails, classify it as:
 
@@ -136,17 +136,17 @@ If a tool fails, classify it as:
 - world-model extraction issue;
 - database/state issue.
 
-- [ ] **Step 2: Apply the smallest direct fix**
+- [x] **Step 2: Apply the smallest direct fix**
 
 Only modify backend code if the failure is a reproducible system bug. Add or update targeted tests for the failing behavior.
 
-- [ ] **Step 3: Re-run the failed tool path**
+- [x] **Step 3: Re-run the failed tool path**
 
 Expected: the same dogfood path completes or the remaining blocker is documented with evidence.
 
 ## Task 5: Report and Verification
 
-- [ ] **Step 1: Write the phase report**
+- [x] **Step 1: Write the phase report**
 
 Create `docs/superpowers/notes/long-memory-agent/2026-05-19-phase15-chapter4-generation-loop.md` with:
 
@@ -158,7 +158,7 @@ Create `docs/superpowers/notes/long-memory-agent/2026-05-19-phase15-chapter4-gen
 - validation evidence;
 - next-phase recommendation.
 
-- [ ] **Step 2: Run targeted verification**
+- [x] **Step 2: Run targeted verification**
 
 Run:
 
@@ -169,7 +169,7 @@ cd backend
 
 Expected: pass.
 
-- [ ] **Step 3: Run repository hygiene checks**
+- [x] **Step 3: Run repository hygiene checks**
 
 Run:
 
@@ -181,6 +181,6 @@ git status --short --branch
 
 Expected: whitespace check passes; secret scan returns no matches; only intentional docs/code changes remain.
 
-- [ ] **Step 4: Commit and push**
+- [x] **Step 4: Commit and push**
 
 Commit the plan before dogfood execution. Commit the final report and any code fixes after verification. Push `main` to `origin`.

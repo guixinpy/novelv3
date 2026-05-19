@@ -108,7 +108,7 @@ def _future_outline_overlap(db: Session, *, project_id: str, chapter_index: int,
         if future_index is None or future_index <= chapter_index or future_index > chapter_index + FUTURE_OUTLINE_WINDOW:
             continue
         tokens = _outline_tokens(chapter)
-        matched_tokens = [token for token in tokens if token and token in content]
+        matched_tokens = _significant_outline_matches(tokens, content)
         if matched_tokens:
             matches.append(
                 {
@@ -120,6 +120,15 @@ def _future_outline_overlap(db: Session, *, project_id: str, chapter_index: int,
     if not matches:
         return None
     return {"matches": matches[:5]}
+
+
+def _significant_outline_matches(tokens: list[str], content: str) -> list[str]:
+    matched_tokens = [token for token in tokens if token and token in content]
+    if any(len(token) >= 4 for token in matched_tokens):
+        return matched_tokens
+    if len(matched_tokens) >= 2:
+        return matched_tokens
+    return []
 
 
 def _outline_tokens(chapter: dict[str, Any]) -> list[str]:
