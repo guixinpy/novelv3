@@ -70,7 +70,7 @@ This is misaligned with the goal of a writing Agent that can orchestrate tools a
 
 ## Task 1: Add Agent Length Feedback
 
-- [ ] **Step 1: Write failing over-target auto-feedback test**
+- [x] **Step 1: Write failing over-target auto-feedback test**
 
 Add a test in `backend/tests/test_writing_agent_runs.py`:
 
@@ -82,11 +82,11 @@ Add a test in `backend/tests/test_writing_agent_runs.py`:
   - Agent text mentioning repeated over-target drift and `2000-2300`.
 - Assert step output includes `agent_generation_feedback.reason == "repeated_over_target"`.
 
-- [ ] **Step 2: Write failing under-target auto-feedback test**
+- [x] **Step 2: Write failing under-target auto-feedback test**
 
 Seed three under-target chapters and assert generated command args contain under-target corrective wording and the active target range.
 
-- [ ] **Step 3: Run RED tests**
+- [x] **Step 3: Run RED tests**
 
 Run:
 
@@ -97,7 +97,7 @@ cd backend
 
 Expected: fail because feedback is not appended.
 
-- [ ] **Step 4: Implement minimal run service augmentation**
+- [x] **Step 4: Implement minimal run service augmentation**
 
 In `WritingAgentRunService._execute_tool`:
 
@@ -107,13 +107,13 @@ In `WritingAgentRunService._execute_tool`:
 - call `ActionExecutionService.execute` with effective command args;
 - attach feedback diagnostic to result only when feedback exists.
 
-- [ ] **Step 5: Run GREEN tests**
+- [x] **Step 5: Run GREEN tests**
 
 Run the same tests and the existing length-policy tests.
 
 ## Task 2: Dogfood Chapter 6
 
-- [ ] **Step 1: Confirm preconditions**
+- [x] **Step 1: Confirm preconditions**
 
 Record:
 
@@ -122,7 +122,7 @@ Record:
 - API key configured without printing it;
 - pending proposal count.
 
-- [ ] **Step 2: Run preflight and generation with no manual length command**
+- [x] **Step 2: Run preflight and generation with no manual length command**
 
 Tools:
 
@@ -140,7 +140,7 @@ Expected:
 - Chapter 6 exists;
 - stored `word_count >= 2000`.
 
-- [ ] **Step 3: Review and analyze Chapter 6**
+- [x] **Step 3: Review and analyze Chapter 6**
 
 Run:
 
@@ -155,11 +155,11 @@ Expected:
 
 - no hard content blocker except possible pending world proposals.
 
-- [ ] **Step 4: Resolve proposal queue if needed**
+- [x] **Step 4: Resolve proposal queue if needed**
 
 Use draft/apply low-risk proposal resolution if pending items exist.
 
-- [ ] **Step 5: Final Chapter 6 quality check**
+- [x] **Step 5: Final Chapter 6 quality check**
 
 Expected:
 
@@ -168,7 +168,7 @@ Expected:
 
 ## Task 3: Verification and Report
 
-- [ ] **Step 1: Run targeted verification**
+- [x] **Step 1: Run targeted verification**
 
 Run:
 
@@ -179,7 +179,7 @@ cd backend
 
 Expected: pass.
 
-- [ ] **Step 2: Write phase report**
+- [x] **Step 2: Write phase report**
 
 Create `docs/superpowers/notes/long-memory-agent/2026-05-19-phase17-agent-length-feedback-and-chapter6-loop.md`.
 
@@ -192,7 +192,7 @@ Record:
 - final quality result;
 - next phase recommendation.
 
-- [ ] **Step 3: Hygiene checks**
+- [x] **Step 3: Hygiene checks**
 
 Run:
 
@@ -208,6 +208,6 @@ Expected:
 - secret scan returns no matches;
 - only intended Phase17 files are changed.
 
-- [ ] **Step 4: Commit and push**
+- [x] **Step 4: Commit and push**
 
 Commit the Phase17 plan first. Commit implementation/report after verification. Push `main` to `origin`.

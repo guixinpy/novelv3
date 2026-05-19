@@ -159,6 +159,17 @@ class WritingAgentRunService:
         return run
 
     async def _execute_tool(self, project_id: str, tool: WritingAgentToolRequest, *, run_id: str) -> dict[str, Any]:
+        if tool.tool_name == CHAPTER_TOOL_NAME:
+            feedback = _chapter_generation_feedback(self.db, project_id)
+            result = await ActionExecutionService(self.db).execute(
+                tool.tool_name,
+                project_id,
+                command_args=_effective_chapter_command_args(tool.command_args, feedback),
+                action_params=tool.params,
+            )
+            if feedback and isinstance(result, dict):
+                result["agent_generation_feedback"] = feedback
+            return result
         if tool.tool_name not in INTERNAL_TOOLS:
             return await ActionExecutionService(self.db).execute(
                 tool.tool_name,
@@ -847,6 +858,52 @@ def _blocked_length_policy(reason: str, count: int) -> dict[str, Any]:
         "repeated_drift_count": count,
         "recommended_actions": ["revise_or_adjust_project_target"],
     }
+
+
+def _chapter_generation_feedback(db: Session, project_id: str) -> dict[str, Any] | None:
+    check = _length_policy_check(db, project_id)
+    if check.get("status") != "review_required":
+        return None
+    reason = str(check.get("reason") or "")
+    project = db.query(Project).filter(Project.id == project_id).first()
+    target_range = None
+    if project is not None:
+        from app.prompting.providers.chapter import project_chapter_word_range
+
+        target_range = project_chapter_word_range(project)
+    if not target_range:
+        return None
+    low, high = target_range
+    if reason == "repeated_over_target":
+        message = (
+            f"【Writing Agent 长度校准】近期章节连续偏长；本章正文必须控制在{low}-{high}字，"
+            f"优先压缩说明性段落和重复心理描写，不要超过{high}字，同时保留场景推进和章末钩子。"
+        )
+    elif reason == "repeated_under_target":
+        message = (
+            f"【Writing Agent 长度校准】近期章节连续偏短；本章正文必须写足{low}-{high}字，"
+            f"补足场景动作、关键对话、信息揭示和章末钩子，不要低于{low}字。"
+        )
+    else:
+        return None
+    return {
+        "status": "active",
+        "reason": reason,
+        "target_min_word_count": low,
+        "target_max_word_count": high,
+        "repeated_drift_count": check.get("repeated_drift_count"),
+        "message": message,
+    }
+
+
+def _effective_chapter_command_args(command_args: str | None, feedback: dict[str, Any] | None) -> str | None:
+    feedback_message = str((feedback or {}).get("message") or "").strip()
+    original = str(command_args or "").strip()
+    if not feedback_message:
+        return original or None
+    if not original:
+        return feedback_message
+    return f"{original}\n\n{feedback_message}"
 
 
 def _world_model_proposal_diagnostic(db: Session, *, project_id: str) -> dict[str, Any]:

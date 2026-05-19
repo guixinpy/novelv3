@@ -507,6 +507,77 @@ def test_agent_preflight_warns_when_repeated_over_target_drift_requires_review(c
     assert output["issues"][0]["severity"] == "warning"
 
 
+def test_agent_generate_chapter_appends_length_feedback_after_repeated_over_target_drift(client, db_session, monkeypatch):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2, 3, 4], generated_chapters=[1, 2, 3])
+    for chapter in db_session.query(ChapterContent).filter(ChapterContent.project_id == project.id):
+        chapter.word_count = 3000
+    db_session.commit()
+
+    captured: dict[str, object] = {}
+
+    async def fake_execute(self, action_type, project_id, *, command_args=None, action_params=None):
+        captured["action_type"] = action_type
+        captured["command_args"] = command_args
+        return {"status": "success", "chapter_index": 4}
+
+    monkeypatch.setattr("app.services.actions.action_execution_service.ActionExecutionService.execute", fake_execute)
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "生成第4章",
+            "tools": [
+                {
+                    "tool_name": "generate_chapter",
+                    "command_args": "保留悬疑压迫感",
+                    "params": {"chapter_index": 4},
+                }
+            ],
+        },
+    )
+
+    command_args = str(captured["command_args"])
+    output = response.json()["steps"][0]["output"]
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    assert captured["action_type"] == "generate_chapter"
+    assert "保留悬疑压迫感" in command_args
+    assert "近期章节连续偏长" in command_args
+    assert "2000-2300字" in command_args
+    assert output["agent_generation_feedback"]["reason"] == "repeated_over_target"
+
+
+def test_agent_generate_chapter_appends_length_feedback_after_repeated_under_target_drift(client, db_session, monkeypatch):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2, 3, 4], generated_chapters=[1, 2, 3])
+    for chapter in db_session.query(ChapterContent).filter(ChapterContent.project_id == project.id):
+        chapter.word_count = 1200
+    db_session.commit()
+
+    captured: dict[str, object] = {}
+
+    async def fake_execute(self, action_type, project_id, *, command_args=None, action_params=None):
+        captured["command_args"] = command_args
+        return {"status": "success", "chapter_index": 4}
+
+    monkeypatch.setattr("app.services.actions.action_execution_service.ActionExecutionService.execute", fake_execute)
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "生成第4章",
+            "tools": [{"tool_name": "generate_chapter", "params": {"chapter_index": 4}}],
+        },
+    )
+
+    command_args = str(captured["command_args"])
+    output = response.json()["steps"][0]["output"]
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    assert "近期章节连续偏短" in command_args
+    assert "2000-2300字" in command_args
+    assert output["agent_generation_feedback"]["reason"] == "repeated_under_target"
+
+
 def test_agent_review_chapter_quality_flags_generic_title_and_length(client, db_session):
     project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1, 2])
     chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=2).one()
