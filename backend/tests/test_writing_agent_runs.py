@@ -537,6 +537,36 @@ def test_agent_preflight_warns_when_repeated_over_target_drift_requires_review(c
     assert output["issues"][0]["severity"] == "warning"
 
 
+def test_agent_preflight_keeps_historical_length_debt_out_of_recent_drift_warning(client, db_session):
+    project = _seed_longform_project(
+        db_session,
+        outline_chapters=list(range(1, 10)),
+        generated_chapters=list(range(1, 9)),
+    )
+    for chapter in db_session.query(ChapterContent).filter(ChapterContent.project_id == project.id):
+        chapter.word_count = 3000 if chapter.chapter_index <= 3 else 2100
+    db_session.commit()
+    import_setup_to_world_model(db_session, project.id)
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "检查第9章是否可写",
+            "tools": [{"tool_name": "preflight_writing", "params": {"chapter_index": 9}}],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    length_policy = output["checks"]["length_policy"]
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    assert output["status"] == "ready"
+    assert length_policy["status"] == "ready"
+    assert length_policy["historical_over_target_count"] == 3
+    assert length_policy["recent_over_target_count"] == 0
+    assert [issue["code"] for issue in output["issues"]] == []
+
+
 def test_agent_generate_chapter_appends_length_feedback_after_repeated_over_target_drift(client, db_session, monkeypatch):
     project = _seed_longform_project(db_session, outline_chapters=[1, 2, 3, 4], generated_chapters=[1, 2, 3])
     for chapter in db_session.query(ChapterContent).filter(ChapterContent.project_id == project.id):
@@ -606,6 +636,82 @@ def test_agent_generate_chapter_appends_length_feedback_after_repeated_under_tar
     assert "近期章节连续偏短" in command_args
     assert "2000-2300字" in command_args
     assert output["agent_generation_feedback"]["reason"] == "repeated_under_target"
+
+
+def test_agent_generate_chapter_ignores_old_over_target_debt_when_recent_window_is_clean(
+    client,
+    db_session,
+    monkeypatch,
+):
+    project = _seed_longform_project(
+        db_session,
+        outline_chapters=list(range(1, 10)),
+        generated_chapters=list(range(1, 9)),
+    )
+    for chapter in db_session.query(ChapterContent).filter(ChapterContent.project_id == project.id):
+        chapter.word_count = 3000 if chapter.chapter_index <= 3 else 2100
+    db_session.commit()
+
+    captured: dict[str, object] = {}
+
+    async def fake_execute(self, action_type, project_id, *, command_args=None, action_params=None):
+        captured["command_args"] = command_args
+        return {"status": "success", "chapter_index": 9}
+
+    monkeypatch.setattr("app.services.actions.action_execution_service.ActionExecutionService.execute", fake_execute)
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "生成第9章",
+            "tools": [{"tool_name": "generate_chapter", "params": {"chapter_index": 9}}],
+        },
+    )
+
+    command_args = str(captured["command_args"])
+    output = response.json()["steps"][0]["output"]
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    assert "近期章节连续偏长" not in command_args
+    assert "agent_generation_feedback" not in output
+
+
+def test_agent_generate_chapter_ignores_old_under_target_debt_when_recent_window_is_clean(
+    client,
+    db_session,
+    monkeypatch,
+):
+    project = _seed_longform_project(
+        db_session,
+        outline_chapters=list(range(1, 10)),
+        generated_chapters=list(range(1, 9)),
+    )
+    for chapter in db_session.query(ChapterContent).filter(ChapterContent.project_id == project.id):
+        chapter.word_count = 1200 if chapter.chapter_index <= 3 else 2100
+    db_session.commit()
+
+    captured: dict[str, object] = {}
+
+    async def fake_execute(self, action_type, project_id, *, command_args=None, action_params=None):
+        captured["command_args"] = command_args
+        return {"status": "success", "chapter_index": 9}
+
+    monkeypatch.setattr("app.services.actions.action_execution_service.ActionExecutionService.execute", fake_execute)
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "生成第9章",
+            "tools": [{"tool_name": "generate_chapter", "params": {"chapter_index": 9}}],
+        },
+    )
+
+    command_args = str(captured["command_args"])
+    output = response.json()["steps"][0]["output"]
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    assert "近期章节连续偏短" not in command_args
+    assert "agent_generation_feedback" not in output
 
 
 def test_agent_generate_chapter_appends_previous_state_card(client, db_session, monkeypatch):

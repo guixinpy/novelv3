@@ -64,6 +64,8 @@ ALLOWED_TOOLS = {
 }
 CHAPTER_TOOL_NAME = "generate_chapter"
 CONTINUITY_KEY_TERMS = ("空白信", "雾晶", "记忆雾晶", "钥匙", "下城", "黑市", "灯塔", "实验体", "叶知秋", "苏晚晴", "林深")
+LENGTH_POLICY_RECENT_WINDOW = 5
+LENGTH_POLICY_REPEATED_DRIFT_THRESHOLD = 3
 INTERNAL_TOOLS = {
     "preflight_writing",
     "import_setup_world_model",
@@ -869,6 +871,12 @@ def _length_policy_check(db: Session, project_id: str) -> dict[str, Any]:
             "status": "ready",
             "reason": None,
             "repeated_drift_count": policy["repeated_drift_count"],
+            "recent_window": policy["recent_window"],
+            "recent_chapter_indexes": policy["recent_chapter_indexes"],
+            "recent_under_target_count": policy["recent_under_target_count"],
+            "recent_over_target_count": policy["recent_over_target_count"],
+            "historical_under_target_count": policy["historical_under_target_count"],
+            "historical_over_target_count": policy["historical_over_target_count"],
             "recommended_actions": [],
         }
     direction = "过长" if policy["reason"] == "repeated_over_target" else "过短"
@@ -876,44 +884,91 @@ def _length_policy_check(db: Session, project_id: str) -> dict[str, Any]:
         "status": "review_required",
         "reason": policy["reason"],
         "repeated_drift_count": policy["repeated_drift_count"],
+        "recent_window": policy["recent_window"],
+        "recent_chapter_indexes": policy["recent_chapter_indexes"],
+        "recent_under_target_count": policy["recent_under_target_count"],
+        "recent_over_target_count": policy["recent_over_target_count"],
+        "historical_under_target_count": policy["historical_under_target_count"],
+        "historical_over_target_count": policy["historical_over_target_count"],
         "recommended_actions": policy["recommended_actions"],
-        "message": f"已有{policy['repeated_drift_count']}章连续或累计{direction}，后续生成需复核章节长度策略。",
+        "message": f"最近{policy['recent_window']}章中已有{policy['repeated_drift_count']}章{direction}，后续生成需复核章节长度策略。",
     }
 
 
 def _length_drift_policy(db: Session, project_id: str, *, status: str | None) -> dict[str, Any]:
-    try:
-        from app.core.longform_memory import get_longform_maintenance_diagnostics
-
-        diagnostics = get_longform_maintenance_diagnostics(db, project_id, limit=10)
-        word_target = diagnostics.get("word_target") if isinstance(diagnostics.get("word_target"), dict) else {}
-    except Exception:
-        word_target = {}
-    over_count = int(word_target.get("over_target_count") or 0)
-    under_count = int(word_target.get("under_target_count") or 0)
-    if status == "over" and over_count >= 3:
-        return _blocked_length_policy("repeated_over_target", over_count)
-    if status == "under" and under_count >= 3:
-        return _blocked_length_policy("repeated_under_target", under_count)
+    snapshot = _length_drift_snapshot(db, project_id)
+    over_count = int(snapshot["recent_over_target_count"])
+    under_count = int(snapshot["recent_under_target_count"])
+    if status == "over" and over_count >= LENGTH_POLICY_REPEATED_DRIFT_THRESHOLD:
+        return _blocked_length_policy("repeated_over_target", over_count, snapshot)
+    if status == "under" and under_count >= LENGTH_POLICY_REPEATED_DRIFT_THRESHOLD:
+        return _blocked_length_policy("repeated_under_target", under_count, snapshot)
     if status is None:
-        if over_count >= 3:
-            return _blocked_length_policy("repeated_over_target", over_count)
-        if under_count >= 3:
-            return _blocked_length_policy("repeated_under_target", under_count)
+        if over_count >= LENGTH_POLICY_REPEATED_DRIFT_THRESHOLD:
+            return _blocked_length_policy("repeated_over_target", over_count, snapshot)
+        if under_count >= LENGTH_POLICY_REPEATED_DRIFT_THRESHOLD:
+            return _blocked_length_policy("repeated_under_target", under_count, snapshot)
     return {
         "status": "ready",
         "reason": None,
         "repeated_drift_count": over_count if status == "over" else under_count if status == "under" else 0,
         "recommended_actions": [],
+        **snapshot,
     }
 
 
-def _blocked_length_policy(reason: str, count: int) -> dict[str, Any]:
+def _length_drift_snapshot(db: Session, project_id: str) -> dict[str, Any]:
+    base: dict[str, Any] = {
+        "recent_window": LENGTH_POLICY_RECENT_WINDOW,
+        "recent_chapter_indexes": [],
+        "recent_under_target_count": 0,
+        "recent_over_target_count": 0,
+        "historical_under_target_count": 0,
+        "historical_over_target_count": 0,
+    }
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if project is None:
+        return base
+    from app.prompting.providers.chapter import project_chapter_word_range
+
+    target_range = project_chapter_word_range(project)
+    if not target_range:
+        return base
+    low, high = target_range
+    chapters = (
+        db.query(ChapterContent.chapter_index, ChapterContent.word_count)
+        .filter(ChapterContent.project_id == project_id, ChapterContent.content != "")
+        .order_by(ChapterContent.chapter_index.asc())
+        .all()
+    )
+    recent = chapters[-LENGTH_POLICY_RECENT_WINDOW:]
+
+    def status_for(word_count: int) -> str:
+        if word_count < low:
+            return "under"
+        if word_count > high:
+            return "over"
+        return "within"
+
+    historical_statuses = [status_for(int(chapter.word_count or 0)) for chapter in chapters]
+    recent_statuses = [status_for(int(chapter.word_count or 0)) for chapter in recent]
+    return {
+        **base,
+        "recent_chapter_indexes": [int(chapter.chapter_index) for chapter in recent],
+        "recent_under_target_count": recent_statuses.count("under"),
+        "recent_over_target_count": recent_statuses.count("over"),
+        "historical_under_target_count": historical_statuses.count("under"),
+        "historical_over_target_count": historical_statuses.count("over"),
+    }
+
+
+def _blocked_length_policy(reason: str, count: int, snapshot: dict[str, Any]) -> dict[str, Any]:
     return {
         "status": "blocked",
         "reason": reason,
         "repeated_drift_count": count,
         "recommended_actions": ["revise_or_adjust_project_target"],
+        **snapshot,
     }
 
 
