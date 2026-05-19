@@ -1009,13 +1009,13 @@ def _chapter_generation_feedback(db: Session, project_id: str) -> dict[str, Any]
     low, high = target_range
     if reason == "repeated_over_target":
         message = (
-            f"【Writing Agent 长度校准】近期章节连续偏长；本章正文必须控制在{low}-{high}字，"
-            f"优先压缩说明性段落和重复心理描写，不要超过{high}字，同时保留场景推进和章末钩子。"
+            f"【Writing Agent 长度校准】近期章节连续偏长；本章正文建议回到{low}-{high}字，"
+            f"优先压缩说明性段落和重复心理描写；若为保证剧情完整可少量浮动，但避免继续明显超过{high}字。"
         )
     elif reason == "repeated_under_target":
         message = (
-            f"【Writing Agent 长度校准】近期章节连续偏短；本章正文必须写足{low}-{high}字，"
-            f"补足场景动作、关键对话、信息揭示和章末钩子，不要低于{low}字。"
+            f"【Writing Agent 长度校准】近期章节连续偏短；本章正文建议写到{low}-{high}字，"
+            f"补足场景动作、关键对话、信息揭示和章末钩子；避免长期低于{low}字。"
         )
     else:
         return None

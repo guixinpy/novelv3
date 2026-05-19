@@ -176,8 +176,8 @@ def test_chapter_payload_uses_2000_floor_for_600_chapter_longform(db_session):
 
     message = payload["messages"][0]["content"]
     assert "项目计划约1200000字 / 600章" in message
-    assert "本章正文建议控制在2000-2300字" in message
-    assert payload["max_tokens"] == 3100
+    assert "本章正文建议控制在2000-3000字" in message
+    assert payload["max_tokens"] == 3800
 
 
 def test_chapter_payload_requires_continuous_prose_not_outline_format(db_session):

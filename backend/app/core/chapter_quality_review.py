@@ -19,6 +19,13 @@ KEY_ITEM_TERMS = ("记忆雾晶", "雾晶", "钥匙", "核心", "信物")
 ACQUISITION_TERMS = ("给了", "交给", "递给", "拿到", "获得", "买到")
 COST_OR_RISK_TERMS = ("代价", "交换", "条件", "欠", "债", "受伤", "暴露", "损失", "背叛", "追杀", "风险")
 KNOWN_TYPO_PATTERNS = {"戴着眼睛": "戴着眼镜"}
+PREMATURE_MYSTERY_REVEAL_TERMS = (
+    "我就是N-07",
+    "那是我",
+    "我是从第三研究所逃出来的",
+    "十年前那场雾灾，是他们制造的",
+    "苏晚晴是实验体",
+)
 
 
 def review_chapter_quality(db: Session, project_id: str, chapter_index: int) -> dict[str, Any]:
@@ -50,6 +57,7 @@ def review_chapter_quality(db: Session, project_id: str, chapter_index: int) -> 
     setup = _setup_payload(db, project_id)
     findings.extend(_character_profile_drift_findings(setup, content))
     findings.extend(_ability_boundary_findings(setup, content))
+    findings.extend(_premature_mystery_reveal_findings(content))
     findings.extend(_convenient_key_item_findings(content))
     findings.extend(_structural_tail_findings(content))
     future_overlap = _future_outline_overlap(db, project_id=project_id, chapter_index=chapter_index, content=content)
@@ -84,7 +92,7 @@ def _word_target_findings(project: Project, chapter: ChapterContent) -> list[dic
     target_min, target_max = target_range
     word_count = int(chapter.word_count or 0)
     if word_count > target_max:
-        severity = "blocker" if word_count > round(target_max * 1.25) else "warning"
+        severity = "blocker" if word_count > round(target_max * 1.5) else "warning"
         return [
             _finding(
                 "chapter_over_target",
@@ -213,6 +221,26 @@ def _ability_boundary_findings(setup: Setup | None, content: str) -> list[dict[s
             "blocker",
             "本章能力表现疑似突破既有世界规则或角色能力边界。",
             evidence={"matched_terms": matched_terms, "known_rules_excerpt": setup_text[:300]},
+        )
+    ]
+
+
+def _premature_mystery_reveal_findings(content: str) -> list[dict[str, Any]]:
+    if not content or "N-07" not in content:
+        return []
+    matched_terms = [term for term in PREMATURE_MYSTERY_REVEAL_TERMS if term in content]
+    if not matched_terms:
+        return []
+    index = min(content.find(term) for term in matched_terms if term in content)
+    return [
+        _finding(
+            "premature_mystery_reveal",
+            "blocker",
+            "本章疑似过早确认核心身份或终局真相，应改为未确认线索或待验证碎片。",
+            evidence={
+                "matched_terms": matched_terms,
+                "excerpt": content[max(0, index - 80) : index + 180],
+            },
         )
     ]
 
@@ -373,6 +401,7 @@ def _recommended_actions(findings: list[dict[str, Any]]) -> list[str]:
         "character_profile_drift",
         "ability_boundary_drift",
         "unclosed_dialogue_quote",
+        "premature_mystery_reveal",
     }
     if any(finding.get("code") in revision_codes and finding.get("severity") == "blocker" for finding in findings):
         actions.append("revise_chapter")

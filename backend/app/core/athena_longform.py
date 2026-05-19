@@ -22,7 +22,7 @@ from app.core.l1_extractor import L1RuleExtractor
 from app.core.setup_projection import get_setup_character_projection
 from app.core.world_context_assembler import build_chapter_world_context_package
 from app.core.world_projection_service import invalidate_world_projection_cache
-from app.core.world_proposal_state import ACTIONABLE_REVIEW_ITEM_STATUSES
+from app.core.world_proposal_state import ACTIONABLE_REVIEW_ITEM_STATUSES, TERMINAL_ITEM_STATUSES
 from app.core.world_proposal_service import calculate_bundle_impact_scope, create_bundle, write_candidate_fact
 from app.models import (
     ChapterContent,
@@ -305,6 +305,9 @@ def analyze_chapter_to_world_proposals(db: Session, project_id: str, chapter_ind
             claim_id=candidate.claim_id,
         )
         if existing_candidate is not None:
+            if _should_create_refreshed_event_summary(existing_candidate, candidate):
+                new_candidates.append(candidate)
+                continue
             duplicate_count += 1
             if _refresh_existing_athena_candidate(existing_candidate, candidate):
                 updated_count += 1
@@ -692,6 +695,20 @@ def _refresh_existing_athena_candidate(item: WorldProposalItem, candidate: Any) 
     if changed:
         item.item_status = "needs_edit"
     return changed
+
+
+def _should_create_refreshed_event_summary(item: WorldProposalItem, candidate: Any) -> bool:
+    if item.created_by != ATHENA_ANALYZER:
+        return False
+    if item.predicate != "event_summary":
+        return False
+    if item.item_status not in TERMINAL_ITEM_STATUSES:
+        return False
+    return (
+        item.object_ref_or_value != candidate.object_ref_or_value
+        or item.notes != candidate.notes
+        or (item.evidence_refs or []) != (candidate.evidence_refs or [])
+    )
 
 
 def _require_project(db: Session, project_id: str) -> Project:

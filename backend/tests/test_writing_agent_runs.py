@@ -571,7 +571,7 @@ def test_agent_preflight_keeps_historical_length_debt_out_of_recent_drift_warnin
 def test_agent_generate_chapter_appends_length_feedback_after_repeated_over_target_drift(client, db_session, monkeypatch):
     project = _seed_longform_project(db_session, outline_chapters=[1, 2, 3, 4], generated_chapters=[1, 2, 3])
     for chapter in db_session.query(ChapterContent).filter(ChapterContent.project_id == project.id):
-        chapter.word_count = 3000
+        chapter.word_count = 3300
     db_session.commit()
 
     captured: dict[str, object] = {}
@@ -604,7 +604,8 @@ def test_agent_generate_chapter_appends_length_feedback_after_repeated_over_targ
     assert captured["action_type"] == "generate_chapter"
     assert "保留悬疑压迫感" in command_args
     assert "近期章节连续偏长" in command_args
-    assert "2000-2300字" in command_args
+    assert "2000-3000字" in command_args
+    assert "必须控制" not in command_args
     assert output["agent_generation_feedback"]["reason"] == "repeated_over_target"
 
 
@@ -635,7 +636,8 @@ def test_agent_generate_chapter_appends_length_feedback_after_repeated_under_tar
     assert response.status_code == 200
     assert response.json()["status"] == "success"
     assert "近期章节连续偏短" in command_args
-    assert "2000-2300字" in command_args
+    assert "2000-3000字" in command_args
+    assert "必须写足" not in command_args
     assert output["agent_generation_feedback"]["reason"] == "repeated_under_target"
 
 
@@ -799,6 +801,61 @@ def test_agent_review_chapter_quality_accepts_elastic_2000_plus_length(client, d
     assert response.status_code == 200
     assert response.json()["status"] == "success"
     assert "chapter_over_target" not in codes
+
+
+def test_agent_review_chapter_quality_warns_on_soft_over_target_without_blocking(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1], generated_chapters=[1])
+    chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=1).one()
+    chapter.title = "雾中回声"
+    chapter.word_count = 3846
+    db_session.commit()
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "审稿第1章",
+            "tools": [{"tool_name": "review_chapter_quality", "params": {"chapter_index": 1}}],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    finding = next(item for item in output["findings"] if item["code"] == "chapter_over_target")
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    assert output["status"] == "warning"
+    assert output["blocker_count"] == 0
+    assert finding["severity"] == "warning"
+    assert "revise_chapter" not in output["recommended_actions"]
+
+
+def test_agent_review_chapter_quality_blocks_premature_n07_identity_reveal(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[19], generated_chapters=[19])
+    chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=19).one()
+    chapter.title = "暗网迷途"
+    chapter.word_count = 2084
+    chapter.content = (
+        "苏晚晴醒来后声音颤抖。"
+        "“N-07。”她说，“我看到了N-07……那是我。”"
+        "她又说自己是从第三研究所逃出来的，十年前那场雾灾是他们制造的。"
+        "林深立刻确认苏晚晴是实验体。"
+    )
+    db_session.commit()
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "审稿第19章",
+            "tools": [{"tool_name": "review_chapter_quality", "params": {"chapter_index": 19}}],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    finding = next(item for item in output["findings"] if item["code"] == "premature_mystery_reveal")
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    assert output["status"] == "blocked"
+    assert finding["severity"] == "blocker"
+    assert "revise_chapter" in output["recommended_actions"]
 
 
 def test_agent_review_chapter_quality_warns_on_duplicate_specific_title(client, db_session):
@@ -3676,6 +3733,81 @@ def test_refresh_longform_memory_prefers_reviewed_event_summary_proposal(db_sess
     assert "蓝雾电梯启动" in memory.summary
     assert memory.memory_metadata["source"] == "reviewed_event_summary"
     assert memory.memory_metadata["event_summary_proposal_item_id"] == event_item.id
+
+
+def test_analyze_chapter_world_model_creates_new_event_summary_after_terminal_summary_goes_stale(db_session):
+    from app.core.athena_longform import analyze_chapter_to_world_proposals
+    from app.core.longform_memory import refresh_longform_memory_for_chapter
+    from app.core.world_proposal_service import review_proposal_item
+
+    project = _seed_longform_project(db_session, outline_chapters=[1], generated_chapters=[1])
+    chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=1).one()
+    chapter.title = "蓝雾电梯"
+    chapter.content = (
+        "林深在旧站台发现蓝雾电梯启动。"
+        "苏晚晴确认这不是普通出口。"
+        + "墙上的灰蓝色雾晶回声像旧唱片一样反复刮擦。" * 8
+    )
+    chapter.word_count = 2400
+    db_session.commit()
+    import_setup_to_world_model(db_session, project.id)
+    analyze_chapter_to_world_proposals(db=db_session, project_id=project.id, chapter_index=1)
+    old_item = (
+        db_session.query(WorldProposalItem)
+        .filter_by(project_id=project.id, subject_ref="chapter.1", predicate="event_summary")
+        .one()
+    )
+    review_proposal_item(
+        db=db_session,
+        proposal_item_id=old_item.id,
+        reviewer_ref="test",
+        action="mark_uncertain",
+        reason="旧摘要先进入写作记忆候选",
+        evidence_refs=["chapter:1"],
+        commit=True,
+    )
+
+    chapter.content = (
+        "林深在暗网密室找到回声稳定剂核心线索。"
+        "顾衍确认完整配方被转移到第三研究所核心数据库。"
+        + "蓝雾电梯的旧线索只剩下墙上的残影。" * 8
+    )
+    chapter.word_count = 2500
+    db_session.commit()
+
+    result = analyze_chapter_to_world_proposals(db=db_session, project_id=project.id, chapter_index=1)
+
+    event_items = (
+        db_session.query(WorldProposalItem)
+        .filter_by(project_id=project.id, subject_ref="chapter.1", predicate="event_summary")
+        .order_by(WorldProposalItem.created_at.asc())
+        .all()
+    )
+    assert result["created"]["proposal_items"] >= 1
+    assert len(event_items) == 2
+    assert event_items[0].item_status == "uncertain"
+    assert event_items[1].item_status == "pending"
+    assert "第三研究所核心数据库" in event_items[1].object_ref_or_value["summary"]
+
+    review_proposal_item(
+        db=db_session,
+        proposal_item_id=event_items[1].id,
+        reviewer_ref="test",
+        action="mark_uncertain",
+        reason="修订后摘要作为写作记忆来源",
+        evidence_refs=["chapter:1"],
+        commit=True,
+    )
+    refresh_longform_memory_for_chapter(db_session, project.id, 1)
+
+    memory = (
+        db_session.query(LongformMemory)
+        .filter_by(project_id=project.id, memory_type="chapter", scope_key="chapter:1")
+        .one()
+    )
+    assert "第三研究所核心数据库" in memory.summary
+    assert memory.memory_metadata["source"] == "reviewed_event_summary"
+    assert memory.memory_metadata["event_summary_proposal_item_id"] == event_items[1].id
 
 
 def test_agent_compress_chapter_to_target_blocks_after_retry_exhaustion(client, db_session, monkeypatch):
