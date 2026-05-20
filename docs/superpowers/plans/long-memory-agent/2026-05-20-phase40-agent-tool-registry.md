@@ -324,7 +324,7 @@ Expected:
 - secret scan returns no output;
 - targeted pytest passes.
 
-- [ ] **Step 3: Commit and push**
+- [x] **Step 3: Commit and push**
 
 Commit after successful T1 verification:
 
