@@ -31,6 +31,7 @@ from app.services.writing_agent.tool_executor import (
     execute_writing_agent_tool,
     writing_agent_tool_adapter_metadata,
 )
+from app.services.writing_agent.recovery_policy import build_writing_agent_recovery
 from app.services.writing_agent.tool_registry import (
     allowed_tool_names,
     internal_tool_names,
@@ -698,6 +699,12 @@ def _agent_tool_result_envelope(
         "adapter": writing_agent_tool_adapter_metadata(step.tool_name),
         "elapsed_ms": _elapsed_ms(step.started_at, finished_at),
         "output_size_bytes": _output_size_bytes(output),
+        "recovery": build_writing_agent_recovery(
+            tool_name=step.tool_name,
+            step_status=step_status,
+            output=output,
+            planner=planner,
+        ),
         "output_keys": output_keys,
     }
 

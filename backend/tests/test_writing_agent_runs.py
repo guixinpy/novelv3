@@ -409,6 +409,12 @@ def test_agent_preflight_blocks_when_target_outline_is_missing(client, db_sessio
     assert step["output"]["status"] == "blocked"
     assert step["output"]["checks"]["outline_chapter"]["status"] == "missing"
     assert step["output"]["issues"][0]["code"] == "missing_outline_chapter"
+    recovery = step["output"]["agent_tool_result"]["recovery"]
+    assert recovery["status"] == "recommended"
+    assert recovery["reason_code"] == "missing_outline_chapter"
+    assert recovery["next_tool"] == "expand_outline_window"
+    assert recovery["next_params"] == {"start_chapter": 3, "end_chapter": 3}
+    assert recovery["should_continue_current_run"] is False
 
 
 def test_agent_preflight_ready_when_required_context_exists(client, db_session):
@@ -482,6 +488,12 @@ def test_agent_preflight_blocks_when_generated_chapter_outline_gap_exists(client
     assert output["checks"]["historical_outline_gaps"]["chapter_indexes"] == [2]
     assert output["issues"][0]["code"] == "missing_historical_outline_chapters"
     assert output["issues"][0]["suggested_tool"] == "backfill_outline_gaps"
+    recovery = output["agent_tool_result"]["recovery"]
+    assert recovery["status"] == "recommended"
+    assert recovery["reason_code"] == "missing_historical_outline_chapters"
+    assert recovery["next_tool"] == "backfill_outline_gaps"
+    assert recovery["next_params"] == {"before_chapter": 4}
+    assert recovery["should_continue_current_run"] is False
 
 
 def test_agent_backfill_outline_gaps_uses_existing_chapter_content_then_preflight_ready(client, db_session):
@@ -512,6 +524,55 @@ def test_agent_backfill_outline_gaps_uses_existing_chapter_content_then_prefligh
     chapter_two = next(chapter for chapter in outline.chapters if chapter["chapter_index"] == 2)
     assert chapter_two["title"] == "雾港线索2"
     assert chapter_two["purpose"] == "根据已生成正文自动回填章节大纲。"
+
+
+def test_agent_preflight_missing_previous_chapter_recovery_recommends_prior_generation(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2, 3], generated_chapters=[1])
+    import_setup_to_world_model(db_session, project.id)
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "检查第3章是否可写",
+            "tools": [{"tool_name": "preflight_writing", "params": {"chapter_index": 3}}],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    recovery = output["agent_tool_result"]["recovery"]
+    assert response.status_code == 200
+    assert response.json()["status"] == "blocked"
+    assert output["issues"][0]["code"] == "missing_previous_chapter"
+    assert recovery["status"] == "recommended"
+    assert recovery["reason_code"] == "missing_previous_chapter"
+    assert recovery["next_tool"] == "generate_chapter"
+    assert recovery["next_params"] == {"chapter_index": 2}
+    assert recovery["should_continue_current_run"] is False
+
+
+def test_agent_preflight_missing_setup_recovery_requests_setup_generation(client):
+    project_id = _create_project(client, "Missing Setup Recovery")
+
+    response = client.post(
+        f"/api/v1/projects/{project_id}/agent-runs",
+        json={
+            "goal": "检查第1章是否可写",
+            "tools": [{"tool_name": "preflight_writing", "params": {"chapter_index": 1}}],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    recovery = output["agent_tool_result"]["recovery"]
+    assert response.status_code == 200
+    assert response.json()["status"] == "blocked"
+    assert output["issues"][0]["code"] == "missing_setup"
+    assert recovery["policy_version"] == "phase47.recovery_policy.v1"
+    assert recovery["status"] == "recommended"
+    assert recovery["reason_code"] == "missing_setup"
+    assert recovery["next_tool"] == "generate_setup"
+    assert recovery["next_params"] == {}
+    assert recovery["requires_user_input"] is True
+    assert recovery["user_input_fields"] == ["command_args"]
 
 
 def test_agent_import_setup_world_model_creates_profile(client, db_session):
