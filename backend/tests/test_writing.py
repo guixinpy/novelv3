@@ -8,6 +8,16 @@ from app.services.tasks.background_task_service import BackgroundTaskService
 from app.services.writing.writing_state_service import WritingStateService
 
 
+def _writing_task_control_plane(source: str, entrypoint: str, tool_name: str, chapter_index: int) -> dict:
+    return {
+        "version": "phase71.writing_task_control_plane.v1",
+        "source": source,
+        "entrypoint": entrypoint,
+        "tool_name": tool_name,
+        "chapter_index": chapter_index,
+    }
+
+
 def test_writing_start(client):
     r = client.post("/api/v1/projects", json={"name": "Test"})
     pid = r.json()["id"]
@@ -58,9 +68,16 @@ def test_writing_start_creates_generate_chapter_task(client, db_session):
         )
         .one()
     )
-    assert task.payload == {"chapter_index": 1}
+    expected_control_plane = _writing_task_control_plane(
+        "writing_start",
+        "continuous_writing_generate",
+        "generate_chapter",
+        1,
+    )
+    assert task.payload == {"chapter_index": 1, "control_plane": expected_control_plane}
     assert task.status == "pending"
     assert response.json()["task_id"] == task.id
+    assert response.json()["control_plane"] == expected_control_plane
     start.assert_called_once()
 
 
@@ -80,11 +97,19 @@ def test_writing_start_creates_range_task_when_target_is_known(client, db_sessio
         )
         .one()
     )
+    expected_control_plane = _writing_task_control_plane(
+        "writing_start",
+        "continuous_writing_generate",
+        "generate_chapter",
+        1,
+    )
     assert task.payload == {
         "chapter_index": 1,
+        "control_plane": expected_control_plane,
         "chapter_range": {"start": 1, "end": 3},
     }
     assert response.json()["task_id"] == task.id
+    assert response.json()["control_plane"] == expected_control_plane
     start.assert_called_once()
 
 
@@ -450,7 +475,14 @@ def test_writing_start_after_completed_chapter_queues_next_chapter(client, db_se
         )
         .one()
     )
-    assert task.payload == {"chapter_index": 2}
+    expected_control_plane = _writing_task_control_plane(
+        "writing_start",
+        "continuous_writing_generate",
+        "generate_chapter",
+        2,
+    )
+    assert task.payload == {"chapter_index": 2, "control_plane": expected_control_plane}
+    assert response.json()["control_plane"] == expected_control_plane
     start.assert_called_once()
 
 
@@ -629,7 +661,14 @@ def test_writing_resume_creates_generate_chapter_task(client, db_session):
         )
         .one()
     )
-    assert task.payload == {"chapter_index": 5}
+    expected_control_plane = _writing_task_control_plane(
+        "writing_resume",
+        "continuous_writing_generate",
+        "generate_chapter",
+        5,
+    )
+    assert task.payload == {"chapter_index": 5, "control_plane": expected_control_plane}
+    assert response.json()["control_plane"] == expected_control_plane
     assert task.status == "pending"
     start.assert_called_once()
 
@@ -670,7 +709,14 @@ def test_writing_retry_creates_background_task(client, db_session):
         )
         .one()
     )
-    assert task.payload == {"chapter_index": 2}
+    expected_control_plane = _writing_task_control_plane(
+        "writing_retry",
+        "continuous_writing_retry",
+        "retry_chapter",
+        2,
+    )
+    assert task.payload == {"chapter_index": 2, "control_plane": expected_control_plane}
+    assert response.json()["control_plane"] == expected_control_plane
     assert task.status == "pending"
     start.assert_called_once()
 

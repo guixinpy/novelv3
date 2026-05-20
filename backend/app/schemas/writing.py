@@ -11,3 +11,4 @@ class WritingStateOut(BaseModel):
 
 class WritingControlOut(WritingStateOut):
     task_id: str | None = None
+    control_plane: dict | None = None

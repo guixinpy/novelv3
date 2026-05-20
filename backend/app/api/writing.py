@@ -14,6 +14,7 @@ router = APIRouter(prefix="/api/v1/projects/{project_id}/writing", tags=["writin
 scheduler = WritingScheduler()
 GENERATION_DIAGNOSTIC_INDEX_LIMIT = 200
 GENERATION_DIAGNOSTIC_WARNING_LIMIT = 50
+WRITING_TASK_CONTROL_PLANE_VERSION = "phase71.writing_task_control_plane.v1"
 
 
 @router.post("/start", response_model=WritingControlOut, response_model_exclude_none=True)
@@ -24,7 +25,7 @@ async def start_writing(project_id: str, db: Session = Depends(get_db)):
     state = scheduler.start(project_id, db)
     if chapter_index_exceeds_target(db, project, state.current_chapter):
         return WritingStateService(db).finish_project(project_id)
-    task = _queue_generate_chapter_task(db, project_id, state.current_chapter)
+    task = _queue_generate_chapter_task(db, project_id, state.current_chapter, source="writing_start")
     return _control_out(state, task)
 
 
@@ -45,7 +46,7 @@ async def resume_writing(project_id: str, db: Session = Depends(get_db)):
     if state.status == "running":
         if chapter_index_exceeds_target(db, project, state.current_chapter):
             return WritingStateService(db).finish_project(project_id)
-        task = _queue_generate_chapter_task(db, project_id, state.current_chapter)
+        task = _queue_generate_chapter_task(db, project_id, state.current_chapter, source="writing_resume")
         return _control_out(state, task)
     return state
 
@@ -362,7 +363,7 @@ def _append_limited_index(indexes: list[int], chapter_index: int) -> None:
         indexes.append(chapter_index)
 
 
-def _queue_generate_chapter_task(db: Session, project_id: str, chapter_index: int) -> BackgroundTask:
+def _queue_generate_chapter_task(db: Session, project_id: str, chapter_index: int, *, source: str) -> BackgroundTask:
     active_tasks = (
         db.query(BackgroundTask)
         .filter(
@@ -379,22 +380,47 @@ def _queue_generate_chapter_task(db: Session, project_id: str, chapter_index: in
 
     project = db.query(Project).filter(Project.id == project_id).first()
     target = effective_chapter_target(db, project) if project else 0
+    payload = {
+        "chapter_index": chapter_index,
+        "control_plane": _writing_task_control_plane(
+            source=source,
+            entrypoint="continuous_writing_generate",
+            tool_name="generate_chapter",
+            chapter_index=chapter_index,
+        ),
+    }
     if target >= chapter_index > 0:
         task = BackgroundTaskService(db).create_chapter_range(
             project_id=project_id,
             task_type="generate_chapter",
             start_chapter_index=chapter_index,
             end_chapter_index=target,
-            payload={"chapter_index": chapter_index},
+            payload=payload,
         )
     else:
         task = BackgroundTaskService(db).create(
             project_id=project_id,
             task_type="generate_chapter",
-            payload={"chapter_index": chapter_index},
+            payload=payload,
         )
     LocalTaskRunner().start(task.id, build_generate_chapter_work(project_id, chapter_index))
     return task
+
+
+def _writing_task_control_plane(
+    *,
+    source: str,
+    entrypoint: str,
+    tool_name: str,
+    chapter_index: int,
+) -> dict:
+    return {
+        "version": WRITING_TASK_CONTROL_PLANE_VERSION,
+        "source": source,
+        "entrypoint": entrypoint,
+        "tool_name": tool_name,
+        "chapter_index": int(chapter_index),
+    }
 
 
 def _generate_task_covers_chapter(task: BackgroundTask, chapter_index: int) -> bool:
@@ -425,7 +451,15 @@ def _queue_retry_chapter_task(db: Session, project_id: str, chapter_index: int) 
     task = BackgroundTaskService(db).create(
         project_id=project_id,
         task_type="retry_chapter",
-        payload={"chapter_index": chapter_index},
+        payload={
+            "chapter_index": chapter_index,
+            "control_plane": _writing_task_control_plane(
+                source="writing_retry",
+                entrypoint="continuous_writing_retry",
+                tool_name="retry_chapter",
+                chapter_index=chapter_index,
+            ),
+        },
     )
     LocalTaskRunner().start(task.id, build_retry_chapter_work(project_id, chapter_index))
     return task
@@ -434,6 +468,10 @@ def _queue_retry_chapter_task(db: Session, project_id: str, chapter_index: int) 
 def _control_out(state: WritingStateOut, task: BackgroundTask) -> WritingControlOut:
     payload = state.model_dump()
     payload["task_id"] = task.id
+    task_payload = task.payload or {}
+    control_plane = task_payload.get("control_plane")
+    if isinstance(control_plane, dict):
+        payload["control_plane"] = control_plane
     return WritingControlOut(**payload)
 
 
