@@ -119,6 +119,75 @@ def test_agent_run_can_describe_current_tool_plan(client):
     assert "generate_setup" in {tool["name"] for tool in output["visible_tools"]}
 
 
+def test_agent_run_can_plan_writing_tool_chain(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1])
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "规划继续写下一章",
+            "tools": [
+                {
+                    "tool_name": "plan_writing_agent_run",
+                    "params": {"goal": "继续写下一章", "chapter_index": 2},
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "success"
+    step = payload["steps"][0]
+    assert step["target_type"] == "agent_tool_plan"
+    output = step["output"]
+    assert output["status"] == "completed"
+    assert output["intent_class"] == "continue_next_chapter"
+    assert "generate_chapter" in [tool["tool_name"] for tool in output["tools"]]
+    assert output["trace"]["selected_tools"][0] == "describe_agent_tools"
+
+
+def test_agent_run_auto_plan_executes_high_level_next_chapter_goal(client, db_session, monkeypatch):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1])
+    import_setup_to_world_model(db_session, project.id)
+    _create_trace(db_session, project.id, "trace-chapter-2", "chapter_generation")
+
+    async def fake_execute(self, action_type, project_id, *, command_args=None, action_params=None):
+        if action_type == "generate_chapter":
+            self.db.add(
+                ChapterContent(
+                    project_id=project_id,
+                    chapter_index=action_params["chapter_index"],
+                    title="雾港线索2",
+                    content="林深在记忆诊所外追踪新的雾晶线索，苏晚晴提醒他不要过早相信雾安局留下的证词。",
+                    word_count=2200,
+                    status="generated",
+                )
+            )
+            self.db.commit()
+            return {"status": "success", "chapter_index": action_params["chapter_index"], "trace_id": "trace-chapter-2"}
+        return {"status": "success"}
+
+    monkeypatch.setattr("app.services.actions.action_execution_service.ActionExecutionService.execute", fake_execute)
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "继续写下一章",
+            "input": {"auto_plan": True, "chapter_index": 2},
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "success"
+    step_names = [step["tool_name"] for step in payload["steps"]]
+    assert step_names[:3] == ["describe_agent_tools", "preflight_writing", "generate_chapter"]
+    assert step_names[-1] == "analyze_chapter_world_model"
+    assert payload["input"]["planner"]["intent_class"] == "continue_next_chapter"
+    assert payload["input"]["tools"][0]["tool_name"] == "describe_agent_tools"
+
+
 def test_agent_run_list_and_detail_are_project_scoped(client, db_session):
     project_a = _create_project(client, "Project A")
     project_b = _create_project(client, "Project B")

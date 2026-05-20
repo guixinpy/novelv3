@@ -78,6 +78,33 @@ _TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(
+        name="plan_writing_agent_run",
+        module="writing_agent",
+        category="preflight",
+        description="根据高层写作意图生成可解释的 Writing Agent 工具链计划。",
+        input_schema=_object_schema(
+            {
+                "goal": {"type": "string"},
+                "chapter_index": {"type": "integer", "minimum": 1},
+                "intent": {"type": "string"},
+            }
+        ),
+        output_schema=_object_schema(
+            {
+                "status": {"type": "string"},
+                "intent_class": {"type": "string"},
+                "steps": {"type": "array"},
+                "tools": {"type": "array"},
+                "trace": {"type": "object"},
+            }
+        ),
+        target_type="agent_tool_plan",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=6,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
         name="preflight_writing",
         module="writing_agent",
         category="preflight",

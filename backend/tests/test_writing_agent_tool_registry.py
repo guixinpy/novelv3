@@ -14,9 +14,10 @@ def test_agent_tool_registry_has_unique_names_and_contracts():
     names = [descriptor.name for descriptor in descriptors]
 
     assert len(names) == len(set(names))
-    assert {"generate_chapter", "preflight_writing", "describe_agent_tools"}.issubset(set(names))
+    assert {"generate_chapter", "preflight_writing", "describe_agent_tools", "plan_writing_agent_run"}.issubset(set(names))
     assert allowed_tool_names() == set(names)
     assert target_type_for_tool("describe_agent_tools") == "agent_tool_plan"
+    assert target_type_for_tool("plan_writing_agent_run") == "agent_tool_plan"
     assert "review_chapter_quality" in non_blocking_report_tool_names()
 
     for descriptor in descriptors:

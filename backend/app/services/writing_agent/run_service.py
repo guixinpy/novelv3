@@ -60,22 +60,53 @@ class WritingAgentRunService:
     def __init__(self, db: Session):
         self.db = db
 
-    def create_run(self, project_id: str, payload: WritingAgentRunCreate) -> WritingAgentRun:
+    def create_run(
+        self,
+        project_id: str,
+        payload: WritingAgentRunCreate,
+        *,
+        effective_tools: list[WritingAgentToolRequest] | None = None,
+        planner_output: dict[str, Any] | None = None,
+    ) -> WritingAgentRun:
         self._require_project(project_id)
+        tools = effective_tools if effective_tools is not None else payload.tools
+        run_input = {
+            **(payload.input or {}),
+            "tools": [tool.model_dump() for tool in tools],
+        }
+        if planner_output is not None:
+            run_input["planner"] = planner_output
         run = WritingAgentRun(
             project_id=project_id,
             goal=payload.goal,
             status=RUN_PENDING,
             entrypoint=payload.entrypoint or "api",
-            input={
-                **(payload.input or {}),
-                "tools": [tool.model_dump() for tool in payload.tools],
-            },
+            input=run_input,
         )
         self.db.add(run)
         self.db.commit()
         self.db.refresh(run)
         return run
+
+    def build_auto_plan_tools(
+        self,
+        project_id: str,
+        payload: WritingAgentRunCreate,
+    ) -> tuple[list[WritingAgentToolRequest], dict[str, Any] | None]:
+        if payload.tools or (payload.input or {}).get("auto_plan") is not True:
+            return payload.tools, None
+        from app.services.writing_agent.planner import build_writing_agent_run_plan, tools_from_plan
+
+        chapter_index = _optional_int((payload.input or {}).get("chapter_index"))
+        intent = str((payload.input or {}).get("intent") or "").strip() or None
+        plan = build_writing_agent_run_plan(
+            self.db,
+            project_id,
+            goal=payload.goal,
+            chapter_index=chapter_index,
+            intent=intent,
+        )
+        return tools_from_plan(plan), plan
 
     async def execute_run(self, run_id: str, tools: list[WritingAgentToolRequest]) -> WritingAgentRun:
         run = self._get_run(run_id)
@@ -154,6 +185,19 @@ class WritingAgentRunService:
         if tool.tool_name == "describe_agent_tools":
             chapter_index = _optional_int(tool.params.get("chapter_index"))
             return build_agent_tool_plan(self.db, project_id, chapter_index=chapter_index)
+        if tool.tool_name == "plan_writing_agent_run":
+            from app.services.writing_agent.planner import build_writing_agent_run_plan
+
+            chapter_index = _optional_int(tool.params.get("chapter_index"))
+            intent = str(tool.params.get("intent") or "").strip() or None
+            goal = str(tool.params.get("goal") or tool.command_args or "").strip() or "规划下一步写作"
+            return build_writing_agent_run_plan(
+                self.db,
+                project_id,
+                goal=goal,
+                chapter_index=chapter_index,
+                intent=intent,
+            )
         if tool.tool_name == "preflight_writing":
             return self._preflight_writing(project_id, tool.params)
         if tool.tool_name == "import_setup_world_model":

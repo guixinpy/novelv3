@@ -16,8 +16,9 @@ router = APIRouter(prefix="/api/v1/projects/{project_id}/agent-runs", tags=["wri
 @router.post("", response_model=WritingAgentRunDetail)
 async def create_agent_run(project_id: str, payload: WritingAgentRunCreate, db: Session = Depends(get_db)):
     service = WritingAgentRunService(db)
-    run = service.create_run(project_id, payload)
-    await service.execute_run(run.id, payload.tools)
+    effective_tools, planner_output = service.build_auto_plan_tools(project_id, payload)
+    run = service.create_run(project_id, payload, effective_tools=effective_tools, planner_output=planner_output)
+    await service.execute_run(run.id, effective_tools)
     return detail_payload(service.get_run_detail(project_id, run.id))
 
 
