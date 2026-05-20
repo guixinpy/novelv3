@@ -183,6 +183,32 @@ _TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(
+        name="inspect_longform_chapter_batch",
+        module="writing_agent",
+        category="task_queue",
+        description="只读查看已物化的长篇章节批次后台任务、章节范围、计划哈希和恢复状态。",
+        input_schema=_object_schema(
+            {
+                "task_id": {"type": "string"},
+                "plan_hash": {"type": "string"},
+                "limit": {"type": "integer", "minimum": 1},
+            }
+        ),
+        output_schema=_object_schema(
+            {
+                "status": {"type": "string"},
+                "summary": {"type": "object"},
+                "tasks": {"type": "array"},
+                "selected_task": {"type": "object"},
+            }
+        ),
+        target_type="background_task",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=10,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
         name="summarize_longform_context",
         module="writing_agent",
         category="longform_memory",

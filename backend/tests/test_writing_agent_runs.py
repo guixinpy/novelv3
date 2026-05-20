@@ -1022,6 +1022,93 @@ def test_agent_run_longform_chapter_batch_enqueue_blocks_on_source_continuation(
     assert db_session.query(BackgroundTask).filter(BackgroundTask.project_id == project.id).count() == 0
 
 
+def test_agent_run_inspects_longform_chapter_batch_queue(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2, 3], generated_chapters=[1])
+    preview_response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "准备把接下来两章加入批次队列",
+            "tools": [
+                {
+                    "tool_name": "enqueue_longform_chapter_batch",
+                    "params": {"start_chapter": 2, "batch_size": 2},
+                }
+            ],
+        },
+    )
+    plan_hash = preview_response.json()["steps"][0]["output"]["plan_hash"]
+    enqueue_response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "确认加入批次队列",
+            "tools": [
+                {
+                    "tool_name": "enqueue_longform_chapter_batch",
+                    "params": {
+                        "start_chapter": 2,
+                        "batch_size": 2,
+                        "confirm_enqueue": True,
+                        "plan_hash": plan_hash,
+                    },
+                }
+            ],
+        },
+    )
+    task_id = enqueue_response.json()["steps"][0]["output"]["task"]["id"]
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "查看长篇批次队列",
+            "tools": [{"tool_name": "inspect_longform_chapter_batch", "params": {"task_id": task_id}}],
+        },
+    )
+
+    payload = response.json()
+    output = payload["steps"][0]["output"]
+    assert response.status_code == 200
+    assert payload["status"] == "success"
+    assert payload["steps"][0]["target_type"] == "background_task"
+    assert output["status"] == "completed"
+    assert output["summary"]["total"] == 1
+    assert output["summary"]["returned"] == 1
+    assert output["summary"]["by_status"] == {"pending": 1}
+    assert output["queue"]["depth"] == 1
+    assert output["queue"]["active"] == 1
+    assert output["queue"]["terminal"] == 0
+    assert output["tasks"][0]["id"] == task_id
+    assert output["tasks"][0]["plan_hash"] == plan_hash
+    assert output["selected_task"]["id"] == task_id
+    assert output["selected_task"]["batch"]["chapter_indexes"] == [2, 3]
+    assert output["selected_task"]["dag"]["node_count"] <= 8
+    assert output["selected_task"]["execution_readiness"]["status"] == "materialized_only"
+    assert output["selected_task"]["resume"]["can_resume"] is False
+    assert output["selected_task"]["queue_policy"]["starts_runner"] is False
+
+
+def test_agent_run_inspect_longform_chapter_batch_reports_missing_selection(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1])
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "查看不存在的长篇批次",
+            "tools": [{"tool_name": "inspect_longform_chapter_batch", "params": {"task_id": "missing-task"}}],
+        },
+    )
+
+    payload = response.json()
+    output = payload["steps"][0]["output"]
+    assert response.status_code == 200
+    assert payload["status"] == "success"
+    assert output["status"] == "not_found"
+    assert output["summary"]["total"] == 0
+    assert output["selected_task"] is None
+    assert output["trace"]["rejected_tools"] == [
+        {"tool_name": "inspect_longform_chapter_batch", "reason": "selected_task_not_found"}
+    ]
+
+
 def test_agent_run_list_and_detail_are_project_scoped(client, db_session):
     project_a = _create_project(client, "Project A")
     project_b = _create_project(client, "Project B")

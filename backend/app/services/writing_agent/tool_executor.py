@@ -152,6 +152,18 @@ def _enqueue_longform_chapter_batch(context: WritingAgentToolContext, tool: Writ
     )
 
 
+def _inspect_longform_chapter_batch(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
+    from app.services.writing_agent.batch_queue_inspector import inspect_longform_chapter_batch_queue
+
+    return inspect_longform_chapter_batch_queue(
+        context.db,
+        context.project_id,
+        task_id=str(tool.params.get("task_id") or "").strip() or None,
+        plan_hash=str(tool.params.get("plan_hash") or "").strip() or None,
+        limit=_optional_int(tool.params.get("limit")),
+    )
+
+
 def _summarize_longform_context(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
     from app.services.writing_agent.longform_context_summary import summarize_longform_context
 
@@ -293,6 +305,12 @@ _STATIC_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
         _enqueue_longform_chapter_batch,
         category="task_queue",
         mutability="write",
+    ),
+    "inspect_longform_chapter_batch": WritingAgentToolAdapter(
+        "inspect_longform_chapter_batch",
+        _inspect_longform_chapter_batch,
+        category="task_queue",
+        mutability="read",
     ),
     "summarize_longform_context": WritingAgentToolAdapter(
         "summarize_longform_context",

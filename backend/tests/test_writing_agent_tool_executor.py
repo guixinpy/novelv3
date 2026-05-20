@@ -95,6 +95,7 @@ def test_tool_executor_static_adapter_names_are_report_or_agent_native_tools():
         "plan_writing_agent_run",
         "plan_longform_chapter_batch",
         "enqueue_longform_chapter_batch",
+        "inspect_longform_chapter_batch",
         "review_chapter_quality",
         "review_chapter_continuity",
         "plan_chapter_revision",
@@ -141,6 +142,7 @@ def test_tool_executor_lists_unhandled_internal_tools_for_migration_tracking():
     assert "plan_writing_agent_run" not in names
     assert "plan_longform_chapter_batch" not in names
     assert "enqueue_longform_chapter_batch" not in names
+    assert "inspect_longform_chapter_batch" not in names
     assert "preflight_writing" not in names
 
 
@@ -189,6 +191,18 @@ def test_tool_executor_exposes_enqueue_longform_chapter_batch_adapter_metadata()
         "category": "task_queue",
         "mutability": "write",
         "handler_name": "_enqueue_longform_chapter_batch",
+    }
+
+
+def test_tool_executor_exposes_inspect_longform_chapter_batch_adapter_metadata():
+    metadata = writing_agent_tool_adapter_metadata("inspect_longform_chapter_batch")
+
+    assert metadata == {
+        "tool_name": "inspect_longform_chapter_batch",
+        "adapter_type": "static",
+        "category": "task_queue",
+        "mutability": "read",
+        "handler_name": "_inspect_longform_chapter_batch",
     }
 
 
@@ -263,6 +277,35 @@ async def test_tool_executor_dispatches_enqueue_longform_chapter_batch_adapter(d
     assert result.handled is True
     assert result.output == {"status": "queued", "task": {"id": "task-1"}}
     assert calls == [(project.id, "run-1", 7, 2, True, "hash-1")]
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_dispatches_inspect_longform_chapter_batch_adapter(db_session, monkeypatch):
+    project = Project(name="Executor Batch Inspect")
+    db_session.add(project)
+    db_session.commit()
+    calls: list[tuple[str, str | None, str | None, int | None]] = []
+
+    def fake_inspect(db, project_id: str, *, task_id: str | None, plan_hash: str | None, limit: int | None):
+        calls.append((project_id, task_id, plan_hash, limit))
+        return {"status": "completed", "tasks": []}
+
+    monkeypatch.setattr(
+        "app.services.writing_agent.batch_queue_inspector.inspect_longform_chapter_batch_queue",
+        fake_inspect,
+    )
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(
+            tool_name="inspect_longform_chapter_batch",
+            params={"task_id": "task-1", "plan_hash": "hash-1", "limit": "2"},
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output == {"status": "completed", "tasks": []}
+    assert calls == [(project.id, "task-1", "hash-1", 2)]
 
 
 @pytest.mark.asyncio
