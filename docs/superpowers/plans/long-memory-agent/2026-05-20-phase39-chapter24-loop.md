@@ -25,6 +25,13 @@ This phase was corrected after the initial Chapter 24 outline expansion exposed 
 
 Phase39 will therefore focus on the Agent constraint chain, not on producing another chapter by hand.
 
+Additional goal clarification captured during the phase:
+
+- The goal's center is upgrading novelv3 into a domain Agent system.
+- Existing modules must be toolized so the Agent can call them as capabilities.
+- Reference projects `openclaw`, `hermes-agent`, and `openhuman` should be studied for Agent engineering patterns, especially tool contracts and orchestration loops.
+- Novel generation remains the pressure-test loop, not the primary output of the goal.
+
 ## Current State
 
 - project: `25fa2b20-5b9f-473b-918b-f4ea491cbb60`
@@ -165,6 +172,6 @@ git diff --check
 rg "sk-[A-Za-z0-9]{20,}" -n docs backend frontend references --glob "!.git"
 ```
 
-- [ ] **Step 3: Commit and push**
+- [x] **Step 3: Commit and push**
 
 Commit and push `main` after checks pass. If GitHub network is unavailable, record the local commit and ahead count.

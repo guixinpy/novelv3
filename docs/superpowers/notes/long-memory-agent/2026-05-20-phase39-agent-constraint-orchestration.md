@@ -10,6 +10,8 @@ User guidance added during this phase:
 - Users usually provide ideas, worldviews, character concepts, and high-level feedback.
 - The Agent must autonomously plan, retrieve context, apply world-model constraints, generate, review, revise, and record lessons.
 - Real chapter generation is a diagnostic pressure test, not the goal's center of gravity.
+- The most important engineering direction is upgrading the project into an Agent system by making existing modules tool-like and callable by the Agent.
+- Future phases should study `references/agent-projects/openclaw`, `references/agent-projects/hermes-agent`, and `references/agent-projects/openhuman` with emphasis on tool registration, tool contracts, planning/execution loops, memory, failure handling, and Trace/audit design.
 
 The global goal spec was updated with this principle in `docs/superpowers/specs/2026-05-18-long-memory-writing-agent-goal.md`.
 
@@ -89,6 +91,11 @@ cd backend
 
 Result: `21 passed, 90 deselected`
 
+## Commit And Push
+
+- implementation commit: `e33823c feat: add agent chapter constraints`
+- remote: pushed to `origin/main`
+
 ## Remaining Risks
 
 - The Agent constraint package is still a first-stage capability, not a full autonomous writing Agent.
@@ -98,10 +105,13 @@ Result: `21 passed, 90 deselected`
 
 ## Next Phase Recommendation
 
-Phase40 should build the next layer of autonomy: an Agent run planner that can choose a safe tool chain from a high-level goal such as "continue writing the next chapter" with minimal user detail.
+Phase40 should build the next layer of autonomy: Agent toolization and an Agent run planner that can choose a safe tool chain from a high-level goal such as "continue writing the next chapter" with minimal user detail.
 
 Recommended scope:
 
+- read and summarize the three reference Agent projects with a focus on tool contracts and orchestration patterns;
+- map current novelv3 modules into a first Agent tool registry;
+- define standard tool input/output/error/trace contracts;
 - derive next writing task from project state;
 - assemble constraints;
 - expand missing outline if needed;
