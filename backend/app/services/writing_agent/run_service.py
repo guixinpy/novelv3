@@ -99,12 +99,21 @@ class WritingAgentRunService:
         project_id: str,
         payload: WritingAgentRunCreate,
     ) -> tuple[list[WritingAgentToolRequest], dict[str, Any] | None]:
-        if payload.tools or (payload.input or {}).get("auto_plan") is not True:
+        run_input = payload.input or {}
+        if payload.tools or run_input.get("auto_plan") is not True:
             return payload.tools, None
         from app.services.writing_agent.planner import build_writing_agent_run_plan, tools_from_plan
 
-        chapter_index = _optional_int((payload.input or {}).get("chapter_index"))
-        intent = str((payload.input or {}).get("intent") or "").strip() or None
+        recovery_run_id = str(run_input.get("recovery_run_id") or "").strip() or None
+        if recovery_run_id:
+            from app.services.writing_agent.recovery_planner import build_recovery_tool_plan
+
+            plan = build_recovery_tool_plan(self.db, project_id, recovery_run_id)
+            tools = [WritingAgentToolRequest(**tool) for tool in plan.get("tools", []) if isinstance(tool, dict)]
+            return tools, plan
+
+        chapter_index = _optional_int(run_input.get("chapter_index"))
+        intent = str(run_input.get("intent") or "").strip() or None
         plan = build_writing_agent_run_plan(
             self.db,
             project_id,
