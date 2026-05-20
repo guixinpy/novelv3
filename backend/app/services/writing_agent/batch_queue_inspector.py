@@ -167,6 +167,11 @@ def _detailed_task(task: BackgroundTask) -> dict[str, Any]:
         if isinstance(result.get("post_generation_review_result"), dict)
         else None
     )
+    post_generation_route_result = (
+        result.get("post_generation_route_result")
+        if isinstance(result.get("post_generation_route_result"), dict)
+        else None
+    )
     queue_policy = _queue_policy(payload)
     return {
         **_compact_task(task),
@@ -186,6 +191,7 @@ def _detailed_task(task: BackgroundTask) -> dict[str, Any]:
         else None,
         "batch_execution_result": batch_execution_result,
         "post_generation_review_result": post_generation_review_result,
+        "post_generation_route_result": post_generation_route_result,
         "resume": _resume_payload(progress, queue_policy),
         "execution_readiness": _execution_readiness(queue_policy, result),
         "error": task.error,
@@ -230,6 +236,21 @@ def _resume_payload(progress: dict[str, Any] | None, queue_policy: dict[str, Any
 
 
 def _execution_readiness(queue_policy: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
+    route_result = (
+        result.get("post_generation_route_result")
+        if isinstance(result.get("post_generation_route_result"), dict)
+        else None
+    )
+    if route_result is not None:
+        route_decision = route_result.get("route_decision") if isinstance(route_result.get("route_decision"), dict) else {}
+        status = "phase64_routed_needs_revision"
+        if route_decision.get("decision") == "continue_to_next_batch":
+            status = "phase64_routed_passed"
+        return {
+            "status": status,
+            "can_execute": False,
+            "reason": "This materialized batch already has Phase64 post-review routing evidence.",
+        }
     if isinstance(result.get("post_generation_review_result"), dict):
         return {
             "status": "phase63_reviewed",

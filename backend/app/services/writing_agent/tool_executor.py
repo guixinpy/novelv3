@@ -226,6 +226,22 @@ def _review_longform_chapter_batch_execution(
     )
 
 
+def _route_longform_chapter_batch_after_review(
+    context: WritingAgentToolContext,
+    tool: WritingAgentToolRequest,
+) -> dict[str, Any]:
+    from app.services.writing_agent.batch_post_review_router import route_longform_chapter_batch_after_review
+
+    return route_longform_chapter_batch_after_review(
+        context.db,
+        context.project_id,
+        task_id=str(tool.params.get("task_id") or "").strip() or None,
+        expected_post_generation_review_hash=str(tool.params.get("expected_post_generation_review_hash") or "").strip()
+        or None,
+        next_batch_size=_optional_int(tool.params.get("next_batch_size")),
+    )
+
+
 def _summarize_longform_context(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
     from app.services.writing_agent.longform_context_summary import summarize_longform_context
 
@@ -395,6 +411,12 @@ _STATIC_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
     "review_longform_chapter_batch_execution": WritingAgentToolAdapter(
         "review_longform_chapter_batch_execution",
         _review_longform_chapter_batch_execution,
+        category="task_queue",
+        mutability="write",
+    ),
+    "route_longform_chapter_batch_after_review": WritingAgentToolAdapter(
+        "route_longform_chapter_batch_after_review",
+        _route_longform_chapter_batch_after_review,
         category="task_queue",
         mutability="write",
     ),

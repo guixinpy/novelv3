@@ -316,6 +316,34 @@ _TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(
+        name="route_longform_chapter_batch_after_review",
+        module="writing_agent",
+        category="task_queue",
+        description="根据长篇批次生成后审查结果，路由到修订恢复或下一章批次预览。",
+        input_schema=_object_schema(
+            {
+                "task_id": {"type": "string"},
+                "expected_post_generation_review_hash": {"type": "string"},
+                "next_batch_size": {"type": "integer", "minimum": 1},
+            },
+            required=("task_id",),
+        ),
+        output_schema=_object_schema(
+            {
+                "status": {"type": "string"},
+                "task": {"type": "object"},
+                "chapter_index": {"type": "integer"},
+                "route_decision": {"type": "object"},
+                "recovery_plan": {"type": "object"},
+                "next_batch_plan": {"type": "object"},
+            }
+        ),
+        target_type="background_task",
+        internal=True,
+        sort_key=15,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
         name="summarize_longform_context",
         module="writing_agent",
         category="longform_memory",

@@ -4,13 +4,13 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.core.chapter_quality_review import review_chapter_quality
+from app.core import chapter_quality_review
 from app.core.world_proposal_review_queue import build_proposal_review_queue
 from app.models import ProjectProfileVersion
 
 
 def plan_chapter_revision(db: Session, project_id: str, chapter_index: int) -> dict[str, Any]:
-    review = review_chapter_quality(db, project_id, chapter_index)
+    review = chapter_quality_review.review_chapter_quality(db, project_id, chapter_index)
     findings = review.get("findings") if isinstance(review.get("findings"), list) else []
     revision_actions = _revision_actions(findings)
     proposal_pressure = _world_model_proposal_pressure(db, project_id)

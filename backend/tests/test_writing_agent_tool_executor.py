@@ -100,6 +100,7 @@ def test_tool_executor_static_adapter_names_are_report_or_agent_native_tools():
         "prepare_longform_chapter_batch_execution",
         "execute_longform_chapter_batch",
         "review_longform_chapter_batch_execution",
+        "route_longform_chapter_batch_after_review",
         "review_chapter_quality",
         "review_chapter_continuity",
         "plan_chapter_revision",
@@ -151,6 +152,7 @@ def test_tool_executor_lists_unhandled_internal_tools_for_migration_tracking():
     assert "prepare_longform_chapter_batch_execution" not in names
     assert "execute_longform_chapter_batch" not in names
     assert "review_longform_chapter_batch_execution" not in names
+    assert "route_longform_chapter_batch_after_review" not in names
     assert "preflight_writing" not in names
 
 
@@ -259,6 +261,18 @@ def test_tool_executor_exposes_review_longform_chapter_batch_execution_adapter_m
         "category": "task_queue",
         "mutability": "write",
         "handler_name": "_review_longform_chapter_batch_execution",
+    }
+
+
+def test_tool_executor_exposes_route_longform_chapter_batch_after_review_adapter_metadata():
+    metadata = writing_agent_tool_adapter_metadata("route_longform_chapter_batch_after_review")
+
+    assert metadata == {
+        "tool_name": "route_longform_chapter_batch_after_review",
+        "adapter_type": "static",
+        "category": "task_queue",
+        "mutability": "write",
+        "handler_name": "_route_longform_chapter_batch_after_review",
     }
 
 
@@ -491,6 +505,49 @@ async def test_tool_executor_dispatches_review_longform_chapter_batch_execution_
     assert result.handled is True
     assert result.output == {"status": "completed", "chapter_index": 2}
     assert calls == [(project.id, "task-1", 12)]
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_dispatches_route_longform_chapter_batch_after_review_adapter(
+    db_session,
+    monkeypatch,
+):
+    project = Project(name="Executor Batch Route")
+    db_session.add(project)
+    db_session.commit()
+    calls: list[tuple[str, str | None, int | None]] = []
+
+    def fake_route(
+        db,
+        project_id: str,
+        *,
+        task_id: str | None,
+        expected_post_generation_review_hash: str | None,
+        next_batch_size: int | None,
+    ):
+        calls.append((project_id, task_id, next_batch_size))
+        return {"status": "completed", "route": {"decision": "next_batch_ready"}}
+
+    monkeypatch.setattr(
+        "app.services.writing_agent.batch_post_review_router.route_longform_chapter_batch_after_review",
+        fake_route,
+    )
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(
+            tool_name="route_longform_chapter_batch_after_review",
+            params={
+                "task_id": "task-1",
+                "expected_post_generation_review_hash": "review-hash",
+                "next_batch_size": "2",
+            },
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output == {"status": "completed", "route": {"decision": "next_batch_ready"}}
+    assert calls == [(project.id, "task-1", 2)]
 
 
 @pytest.mark.asyncio

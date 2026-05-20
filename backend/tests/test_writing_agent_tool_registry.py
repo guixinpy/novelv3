@@ -27,6 +27,7 @@ def test_agent_tool_registry_has_unique_names_and_contracts():
         "prepare_longform_chapter_batch_execution",
         "execute_longform_chapter_batch",
         "review_longform_chapter_batch_execution",
+        "route_longform_chapter_batch_after_review",
         "summarize_longform_context",
         "repair_longform_maintenance",
     }.issubset(set(names))
@@ -41,6 +42,7 @@ def test_agent_tool_registry_has_unique_names_and_contracts():
     assert target_type_for_tool("prepare_longform_chapter_batch_execution") == "background_task"
     assert target_type_for_tool("execute_longform_chapter_batch") == "background_task"
     assert target_type_for_tool("review_longform_chapter_batch_execution") == "background_task"
+    assert target_type_for_tool("route_longform_chapter_batch_after_review") == "background_task"
     assert target_type_for_tool("summarize_longform_context") == "longform_context_summary"
     assert target_type_for_tool("repair_longform_maintenance") == "longform_maintenance"
     assert "review_chapter_quality" in non_blocking_report_tool_names()
@@ -173,6 +175,22 @@ def test_agent_tool_registry_includes_review_longform_chapter_batch_execution():
     assert set(descriptor.input_schema["required"]) == {"task_id"}
     assert "review_longform_chapter_batch_execution" in allowed_tool_names()
     assert "review_longform_chapter_batch_execution" not in non_blocking_report_tool_names()
+
+
+def test_agent_tool_registry_includes_route_longform_chapter_batch_after_review():
+    descriptor = get_agent_tool_descriptor("route_longform_chapter_batch_after_review")
+
+    assert descriptor is not None
+    assert descriptor.internal is True
+    assert descriptor.non_blocking_report is False
+    assert descriptor.category == "task_queue"
+    assert descriptor.target_type == "background_task"
+    assert descriptor.input_schema["properties"]["task_id"]["type"] == "string"
+    assert descriptor.input_schema["properties"]["expected_post_generation_review_hash"]["type"] == "string"
+    assert descriptor.input_schema["properties"]["next_batch_size"]["minimum"] == 1
+    assert set(descriptor.input_schema["required"]) == {"task_id"}
+    assert "route_longform_chapter_batch_after_review" in allowed_tool_names()
+    assert "route_longform_chapter_batch_after_review" not in non_blocking_report_tool_names()
 
 
 def test_agent_tool_registry_includes_summarize_longform_context():
