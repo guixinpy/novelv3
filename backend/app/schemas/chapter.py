@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
@@ -19,5 +20,7 @@ class ChapterOut(BaseModel):
     created_at: datetime
     updated_at: datetime
     last_generation_trace_id: str | None = None
+    agent_run_id: str | None = None
+    control_plane: dict[str, Any] | None = None
 
     model_config = ConfigDict(from_attributes=True)

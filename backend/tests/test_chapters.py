@@ -16,6 +16,8 @@ from app.models import (
     ProjectProfileVersion,
     RetrievalDocument,
     Setup,
+    WritingAgentRun,
+    WritingAgentStep,
     WorldFactClaim,
 )
 from app.services.writing.writing_state_service import WritingStateService
@@ -41,7 +43,7 @@ def _create_project_with_setup(client):
 
 @patch("app.api.chapters.load_api_key", return_value="sk-test")
 @patch("app.api.chapters.ai_service.complete", new_callable=AsyncMock)
-def test_generate_chapter(mock_complete, mock_key, client):
+def test_generate_chapter(mock_complete, mock_key, client, db_session):
     r = client.post("/api/v1/projects", json={"name": "Test"})
     pid = r.json()["id"]
 
@@ -59,8 +61,22 @@ def test_generate_chapter(mock_complete, mock_key, client):
 
     r2 = client.post(f"/api/v1/projects/{pid}/chapters/1/generate")
     assert r2.status_code == 200
-    assert r2.json()["content"] == "第一章正文内容"
-    assert r2.json()["status"] == "generated"
+    body = r2.json()
+    assert body["content"] == "第一章正文内容"
+    assert body["status"] == "generated"
+    run = db_session.query(WritingAgentRun).filter_by(project_id=pid).one()
+    step = db_session.query(WritingAgentStep).filter_by(run_id=run.id).one()
+    assert body["agent_run_id"] == run.id
+    assert body["control_plane"]["source"] == "chapter_generate"
+    assert body["control_plane"]["chapter_index"] == 1
+    assert run.entrypoint == "chapter_generate"
+    assert run.status == "success"
+    assert run.input["tools"][0]["tool_name"] == "generate_chapter"
+    assert run.input["tools"][0]["params"] == {"chapter_index": 1}
+    assert step.tool_name == "generate_chapter"
+    assert step.status == "success"
+    assert step.target_type == "chapter"
+    assert step.chapter_index == 1
 
 
 @patch("app.api.chapters.load_api_key", return_value="sk-test")
@@ -224,12 +240,14 @@ def test_get_chapter_returns_last_generation_trace_id(mock_complete, mock_key, c
 
 @patch("app.api.chapters.load_api_key", return_value="sk-test")
 @patch("app.api.chapters.ai_service.complete", new_callable=AsyncMock)
-def test_generate_chapter_model_failure_records_failed_trace_and_reraises(mock_complete, mock_key, client, db_session):
+def test_generate_chapter_model_failure_records_failed_trace_and_agent_run(mock_complete, mock_key, client, db_session):
     pid = _create_project_with_setup(client)
     mock_complete.side_effect = RuntimeError("fake model outage")
 
-    with pytest.raises(RuntimeError, match="fake model outage"):
-        client.post(f"/api/v1/projects/{pid}/chapters/1/generate")
+    response = client.post(f"/api/v1/projects/{pid}/chapters/1/generate")
+
+    assert response.status_code == 500
+    assert "fake model outage" in response.json()["detail"]
 
     trace = (
         db_session.query(AIModelCallTrace)
@@ -242,6 +260,12 @@ def test_generate_chapter_model_failure_records_failed_trace_and_reraises(mock_c
     )
     assert trace.status == "failed"
     assert "fake model outage" in trace.error_message
+    run = db_session.query(WritingAgentRun).filter_by(project_id=pid).one()
+    step = db_session.query(WritingAgentStep).filter_by(run_id=run.id).one()
+    assert run.entrypoint == "chapter_generate"
+    assert run.status == "failed"
+    assert "fake model outage" in run.error
+    assert step.status == "failed"
 
 
 @patch("app.api.chapters.load_api_key", return_value="sk-test")
@@ -429,13 +453,18 @@ def test_generate_chapter_marks_writing_state_failed_after_model_error(mock_comp
     pid = _create_project_with_setup(client)
     mock_complete.side_effect = RuntimeError("model outage")
 
-    with pytest.raises(RuntimeError, match="model outage"):
-        client.post(f"/api/v1/projects/{pid}/chapters/3/generate")
+    response = client.post(f"/api/v1/projects/{pid}/chapters/3/generate")
+
+    assert response.status_code == 500
+    assert "model outage" in response.json()["detail"]
 
     state = WritingStateService(db_session).state(pid)
     assert state.status == "failed"
     assert state.current_chapter == 3
     assert state.last_error == "model outage"
+    run = db_session.query(WritingAgentRun).filter_by(project_id=pid).one()
+    assert run.status == "failed"
+    assert "model outage" in run.error
 
 
 @patch("app.api.chapters.load_api_key", return_value="sk-test")
@@ -1102,6 +1131,16 @@ def test_generate_chapter_without_setup(mock_key, client):
 
     r2 = client.post(f"/api/v1/projects/{pid}/chapters/1/generate")
     assert r2.status_code == 400
+
+
+@patch("app.api.chapters.load_api_key", return_value=None)
+def test_generate_chapter_agent_entrypoint_preserves_missing_api_key_400(mock_key, client):
+    pid = _create_project_with_setup(client)
+
+    response = client.post(f"/api/v1/projects/{pid}/chapters/1/generate")
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "API key not configured"
 
 
 @patch("app.api.chapters.load_api_key", return_value="sk-test")

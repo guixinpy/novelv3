@@ -31,6 +31,7 @@ from app.prompting.providers.chapter import (
 from app.prompting.providers.storyline import SetupContextSnapshot
 from app.prompting.tracing import build_prompt_trace_metadata
 from app.schemas import ChapterOut
+from app.services.writing_agent.api_control_plane import AgentApiToolRunResult, execute_agent_api_tool
 from app.services.writing.writing_state_service import WritingStateService
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/chapters", tags=["chapters"])
@@ -47,6 +48,14 @@ CHAPTER_OUTLINE_MARKER_RE = re.compile(
 EMPTY_CHAPTER_CONTENT_ERROR = "Generated chapter content is empty after normalization"
 POST_GENERATION_WARNING_MESSAGE_CHARS = 500
 OUTLINE_LIKE_CHAPTER_WARNING_MESSAGE = "章节内容疑似大纲或摘要格式，建议改写为连续正文场景。"
+CHAPTER_AGENT_CONTROL_PLANE_VERSION = "phase69.chapter_agent.v1"
+CHAPTER_GENERATE_ENTRYPOINT = "chapter_generate"
+CHAPTER_GENERATION_ERROR_STATUS_CODES = {
+    "API key not configured": 400,
+    "Chapter index exceeds project target chapter count": 400,
+    "Setup not generated yet": 400,
+    EMPTY_CHAPTER_CONTENT_ERROR: 502,
+}
 
 
 def _latest_chapter_generation_trace_id(db: Session, chapter: ChapterContent) -> str | None:
@@ -357,8 +366,37 @@ def _safe_refresh_longform_maintenance(db: Session, *, project_id: str, chapter_
 
 @router.post("/{chapter_index}/generate", response_model=ChapterOut)
 async def generate_chapter(project_id: str, chapter_index: int = Path(..., ge=1), db: Session = Depends(get_db)):
-    chapter = await create_or_replace_chapter(db, project_id, chapter_index)
-    return _chapter_out(db, chapter)
+    result = await execute_agent_api_tool(
+        db,
+        project_id=project_id,
+        entrypoint=CHAPTER_GENERATE_ENTRYPOINT,
+        version=CHAPTER_AGENT_CONTROL_PLANE_VERSION,
+        source=CHAPTER_GENERATE_ENTRYPOINT,
+        action_type="generate_chapter",
+        tool_name="generate_chapter",
+        goal=f"生成第{chapter_index}章正文",
+        params={"chapter_index": chapter_index},
+        extra_control_plane={"chapter_index": chapter_index},
+    )
+    _raise_if_agent_chapter_generation_failed(result)
+    chapter = db.query(ChapterContent).filter(
+        ChapterContent.project_id == project_id,
+        ChapterContent.chapter_index == chapter_index,
+    ).first()
+    if not chapter:
+        raise HTTPException(status_code=500, detail="Agent chapter generation completed without chapter output")
+    body = _chapter_out(db, chapter)
+    body["agent_run_id"] = result.run.id
+    body["control_plane"] = result.control_plane
+    return body
+
+
+def _raise_if_agent_chapter_generation_failed(result: AgentApiToolRunResult) -> None:
+    if result.run.status == "success":
+        return
+    detail = result.run.error or "Agent chapter generation failed"
+    status_code = CHAPTER_GENERATION_ERROR_STATUS_CODES.get(detail, 500)
+    raise HTTPException(status_code=status_code, detail=detail)
 
 
 async def create_or_replace_chapter(
