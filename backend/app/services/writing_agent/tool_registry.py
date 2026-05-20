@@ -209,6 +209,35 @@ _TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(
+        name="inspect_agent_job_projection",
+        module="writing_agent",
+        category="task_queue",
+        description="只读查看后台任务队列的 Agent Job 投影，包括控制面、进度、恢复建议和关联 Agent run。",
+        input_schema=_object_schema(
+            {
+                "task_id": {"type": "string"},
+                "task_type": {"type": "string"},
+                "status": {"type": "string"},
+                "limit": {"type": "integer", "minimum": 1},
+            }
+        ),
+        output_schema=_object_schema(
+            {
+                "status": {"type": "string"},
+                "summary": {"type": "object"},
+                "queue": {"type": "object"},
+                "tasks": {"type": "array"},
+                "selected_task": {"type": "object"},
+                "recommended_tools": {"type": "array"},
+            }
+        ),
+        target_type="agent_job_projection",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=10,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
         name="execute_longform_chapter_batch_preflight",
         module="writing_agent",
         category="task_queue",

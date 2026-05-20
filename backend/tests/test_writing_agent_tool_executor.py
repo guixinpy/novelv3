@@ -96,6 +96,7 @@ def test_tool_executor_static_adapter_names_are_report_or_agent_native_tools():
         "plan_longform_chapter_batch",
         "enqueue_longform_chapter_batch",
         "inspect_longform_chapter_batch",
+        "inspect_agent_job_projection",
         "execute_longform_chapter_batch_preflight",
         "prepare_longform_chapter_batch_execution",
         "execute_longform_chapter_batch",
@@ -154,6 +155,7 @@ def test_tool_executor_lists_unhandled_internal_tools_for_migration_tracking():
     assert "plan_longform_chapter_batch" not in names
     assert "enqueue_longform_chapter_batch" not in names
     assert "inspect_longform_chapter_batch" not in names
+    assert "inspect_agent_job_projection" not in names
     assert "execute_longform_chapter_batch_preflight" not in names
     assert "prepare_longform_chapter_batch_execution" not in names
     assert "execute_longform_chapter_batch" not in names
@@ -255,6 +257,18 @@ def test_tool_executor_exposes_inspect_longform_chapter_batch_adapter_metadata()
         "category": "task_queue",
         "mutability": "read",
         "handler_name": "_inspect_longform_chapter_batch",
+    }
+
+
+def test_tool_executor_exposes_inspect_agent_job_projection_adapter_metadata():
+    metadata = writing_agent_tool_adapter_metadata("inspect_agent_job_projection")
+
+    assert metadata == {
+        "tool_name": "inspect_agent_job_projection",
+        "adapter_type": "static",
+        "category": "task_queue",
+        "mutability": "read",
+        "handler_name": "_inspect_agent_job_projection",
     }
 
 
@@ -418,6 +432,43 @@ async def test_tool_executor_dispatches_inspect_longform_chapter_batch_adapter(d
     assert result.handled is True
     assert result.output == {"status": "completed", "tasks": []}
     assert calls == [(project.id, "task-1", "hash-1", 2)]
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_dispatches_inspect_agent_job_projection_adapter(db_session, monkeypatch):
+    project = Project(name="Executor Agent Job Projection")
+    db_session.add(project)
+    db_session.commit()
+    calls: list[tuple[str, str | None, str | None, str | None, int | None]] = []
+
+    def fake_projection(
+        db,
+        project_id: str,
+        *,
+        task_id: str | None,
+        task_type: str | None,
+        status: str | None,
+        limit: int | None,
+    ):
+        calls.append((project_id, task_id, task_type, status, limit))
+        return {"status": "completed", "queue": {"depth": 0}}
+
+    monkeypatch.setattr(
+        "app.services.writing_agent.agent_job_projection.inspect_agent_job_projection",
+        fake_projection,
+    )
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(
+            tool_name="inspect_agent_job_projection",
+            params={"task_id": "task-1", "task_type": "generate_chapter", "status": "failed", "limit": "9"},
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output == {"status": "completed", "queue": {"depth": 0}}
+    assert calls == [(project.id, "task-1", "generate_chapter", "failed", 9)]
 
 
 @pytest.mark.asyncio

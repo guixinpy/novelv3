@@ -169,6 +169,19 @@ def _inspect_longform_chapter_batch(context: WritingAgentToolContext, tool: Writ
     )
 
 
+def _inspect_agent_job_projection(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
+    from app.services.writing_agent.agent_job_projection import inspect_agent_job_projection
+
+    return inspect_agent_job_projection(
+        context.db,
+        context.project_id,
+        task_id=str(tool.params.get("task_id") or "").strip() or None,
+        task_type=str(tool.params.get("task_type") or "").strip() or None,
+        status=str(tool.params.get("status") or "").strip() or None,
+        limit=_optional_int(tool.params.get("limit")),
+    )
+
+
 def _execute_longform_chapter_batch_preflight(
     context: WritingAgentToolContext,
     tool: WritingAgentToolRequest,
@@ -424,6 +437,12 @@ _STATIC_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
     "inspect_longform_chapter_batch": WritingAgentToolAdapter(
         "inspect_longform_chapter_batch",
         _inspect_longform_chapter_batch,
+        category="task_queue",
+        mutability="read",
+    ),
+    "inspect_agent_job_projection": WritingAgentToolAdapter(
+        "inspect_agent_job_projection",
+        _inspect_agent_job_projection,
         category="task_queue",
         mutability="read",
     ),
