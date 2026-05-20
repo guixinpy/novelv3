@@ -119,6 +119,26 @@ def test_agent_run_can_describe_current_tool_plan(client):
     assert "generate_setup" in {tool["name"] for tool in output["visible_tools"]}
 
 
+def test_agent_run_result_metrics_include_adapter_metadata(client):
+    project_id = _create_project(client, "Agent Result Metrics")
+
+    response = client.post(
+        f"/api/v1/projects/{project_id}/agent-runs",
+        json={
+            "goal": "查看工具并记录执行指标",
+            "tools": [{"tool_name": "describe_agent_tools", "params": {"chapter_index": 1}}],
+        },
+    )
+
+    envelope = response.json()["steps"][0]["output"]["agent_tool_result"]
+    assert response.status_code == 200
+    assert envelope["adapter"]["tool_name"] == "describe_agent_tools"
+    assert envelope["adapter"]["adapter_type"] == "static"
+    assert envelope["adapter"]["mutability"] == "read"
+    assert envelope["elapsed_ms"] >= 0
+    assert envelope["output_size_bytes"] > 0
+
+
 def test_agent_run_can_plan_writing_tool_chain(client, db_session):
     project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1])
 

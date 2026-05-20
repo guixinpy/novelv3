@@ -6,6 +6,8 @@ from app.services.writing_agent.tool_executor import (
     WritingAgentToolContext,
     execute_writing_agent_tool,
     static_writing_agent_tool_adapter_names,
+    unhandled_internal_writing_agent_tool_names,
+    writing_agent_tool_adapter_metadata,
 )
 
 
@@ -101,6 +103,38 @@ def test_tool_executor_static_adapter_names_are_report_or_agent_native_tools():
     }.issubset(names)
     assert "generate_setup" not in names
     assert "generate_chapter" not in names
+
+
+def test_tool_executor_exposes_adapter_metadata_for_trace():
+    review_metadata = writing_agent_tool_adapter_metadata("review_chapter_quality")
+    preflight_metadata = writing_agent_tool_adapter_metadata("preflight_writing")
+
+    assert review_metadata == {
+        "tool_name": "review_chapter_quality",
+        "adapter_type": "static",
+        "category": "review",
+        "mutability": "read",
+        "handler_name": "_review_chapter_quality",
+    }
+    assert preflight_metadata == {
+        "tool_name": "preflight_writing",
+        "adapter_type": "injected",
+        "category": "preflight",
+        "mutability": "read",
+        "handler_name": "preflight_writing",
+    }
+    assert writing_agent_tool_adapter_metadata("generate_chapter") is None
+
+
+def test_tool_executor_lists_unhandled_internal_tools_for_migration_tracking():
+    names = unhandled_internal_writing_agent_tool_names()
+
+    assert "analyze_chapter_world_model" in names
+    assert "apply_world_model_proposal_resolution" in names
+    assert "create_revision_draft" in names
+    assert "review_chapter_quality" not in names
+    assert "plan_writing_agent_run" not in names
+    assert "preflight_writing" not in names
 
 
 @pytest.mark.asyncio

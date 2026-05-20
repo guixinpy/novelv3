@@ -7,11 +7,11 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.schemas.writing_agent import WritingAgentToolRequest
-from app.services.writing_agent.tool_registry import build_agent_tool_plan, get_agent_tool_descriptor
+from app.services.writing_agent.tool_registry import build_agent_tool_plan, get_agent_tool_descriptor, internal_tool_names
 
 
 PreflightWriting = Callable[[str, dict[str, Any]], dict[str, Any]]
-StaticToolAdapter = Callable[["WritingAgentToolContext", WritingAgentToolRequest], dict[str, Any]]
+StaticToolAdapterHandler = Callable[["WritingAgentToolContext", WritingAgentToolRequest], dict[str, Any]]
 
 
 @dataclass(frozen=True)
@@ -27,6 +27,24 @@ class WritingAgentToolExecutionResult:
     output: dict[str, Any] | None = None
 
 
+@dataclass(frozen=True)
+class WritingAgentToolAdapter:
+    tool_name: str
+    handler: StaticToolAdapterHandler
+    category: str
+    mutability: str
+    adapter_type: str = "static"
+
+    def to_metadata(self) -> dict[str, Any]:
+        return {
+            "tool_name": self.tool_name,
+            "adapter_type": self.adapter_type,
+            "category": self.category,
+            "mutability": self.mutability,
+            "handler_name": self.handler.__name__,
+        }
+
+
 async def execute_writing_agent_tool(
     context: WritingAgentToolContext,
     tool: WritingAgentToolRequest,
@@ -39,7 +57,7 @@ async def execute_writing_agent_tool(
 
     adapter = _STATIC_TOOL_ADAPTERS.get(tool.tool_name)
     if adapter is not None:
-        return WritingAgentToolExecutionResult(handled=True, output=adapter(context, tool))
+        return WritingAgentToolExecutionResult(handled=True, output=adapter.handler(context, tool))
 
     if tool.tool_name == "preflight_writing" and preflight_writing is not None:
         return WritingAgentToolExecutionResult(
@@ -52,6 +70,26 @@ async def execute_writing_agent_tool(
 
 def static_writing_agent_tool_adapter_names() -> set[str]:
     return set(_STATIC_TOOL_ADAPTERS)
+
+
+def writing_agent_tool_adapter_metadata(tool_name: str) -> dict[str, Any] | None:
+    adapter = _STATIC_TOOL_ADAPTERS.get(tool_name)
+    if adapter is not None:
+        return adapter.to_metadata()
+    if tool_name == "preflight_writing":
+        return {
+            "tool_name": "preflight_writing",
+            "adapter_type": "injected",
+            "category": "preflight",
+            "mutability": "read",
+            "handler_name": "preflight_writing",
+        }
+    return None
+
+
+def unhandled_internal_writing_agent_tool_names() -> set[str]:
+    handled = static_writing_agent_tool_adapter_names() | {"preflight_writing"}
+    return internal_tool_names() - handled
 
 
 def _describe_agent_tools(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
@@ -148,16 +186,61 @@ def _draft_world_model_proposal_resolution_decisions(
     )
 
 
-_STATIC_TOOL_ADAPTERS: dict[str, StaticToolAdapter] = {
-    "describe_agent_tools": _describe_agent_tools,
-    "plan_writing_agent_run": _plan_writing_agent_run,
-    "review_chapter_quality": _review_chapter_quality,
-    "review_chapter_continuity": _review_chapter_continuity,
-    "plan_chapter_revision": _plan_chapter_revision,
-    "review_world_model_proposals": _review_world_model_proposals,
-    "plan_world_model_proposal_resolution": _plan_world_model_proposal_resolution,
-    "preview_world_model_proposal_resolution": _preview_world_model_proposal_resolution,
-    "draft_world_model_proposal_resolution_decisions": _draft_world_model_proposal_resolution_decisions,
+_STATIC_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
+    "describe_agent_tools": WritingAgentToolAdapter(
+        "describe_agent_tools",
+        _describe_agent_tools,
+        category="preflight",
+        mutability="read",
+    ),
+    "plan_writing_agent_run": WritingAgentToolAdapter(
+        "plan_writing_agent_run",
+        _plan_writing_agent_run,
+        category="preflight",
+        mutability="read",
+    ),
+    "review_chapter_quality": WritingAgentToolAdapter(
+        "review_chapter_quality",
+        _review_chapter_quality,
+        category="review",
+        mutability="read",
+    ),
+    "review_chapter_continuity": WritingAgentToolAdapter(
+        "review_chapter_continuity",
+        _review_chapter_continuity,
+        category="review",
+        mutability="read",
+    ),
+    "plan_chapter_revision": WritingAgentToolAdapter(
+        "plan_chapter_revision",
+        _plan_chapter_revision,
+        category="review",
+        mutability="read",
+    ),
+    "review_world_model_proposals": WritingAgentToolAdapter(
+        "review_world_model_proposals",
+        _review_world_model_proposals,
+        category="athena_world_model",
+        mutability="read",
+    ),
+    "plan_world_model_proposal_resolution": WritingAgentToolAdapter(
+        "plan_world_model_proposal_resolution",
+        _plan_world_model_proposal_resolution,
+        category="athena_world_model",
+        mutability="read",
+    ),
+    "preview_world_model_proposal_resolution": WritingAgentToolAdapter(
+        "preview_world_model_proposal_resolution",
+        _preview_world_model_proposal_resolution,
+        category="athena_world_model",
+        mutability="read",
+    ),
+    "draft_world_model_proposal_resolution_decisions": WritingAgentToolAdapter(
+        "draft_world_model_proposal_resolution_decisions",
+        _draft_world_model_proposal_resolution_decisions,
+        category="athena_world_model",
+        mutability="read",
+    ),
 }
 
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from typing import Any
 
@@ -26,7 +27,11 @@ from app.models import (
 )
 from app.schemas.writing_agent import WritingAgentRunCreate, WritingAgentToolRequest
 from app.services.actions.action_execution_service import ActionExecutionService
-from app.services.writing_agent.tool_executor import WritingAgentToolContext, execute_writing_agent_tool
+from app.services.writing_agent.tool_executor import (
+    WritingAgentToolContext,
+    execute_writing_agent_tool,
+    writing_agent_tool_adapter_metadata,
+)
 from app.services.writing_agent.tool_registry import (
     allowed_tool_names,
     internal_tool_names,
@@ -393,8 +398,9 @@ class WritingAgentRunService:
 
     def _complete_step(self, step: WritingAgentStep, output: dict[str, Any]) -> None:
         trace_id = _optional_existing_trace_id(self.db, step.project_id, output.get("trace_id"))
+        finished_at = _now()
         output = dict(output)
-        output["agent_tool_result"] = _agent_tool_result_envelope(step, output, STEP_SUCCESS)
+        output["agent_tool_result"] = _agent_tool_result_envelope(step, output, STEP_SUCCESS, finished_at=finished_at)
         step.status = STEP_SUCCESS
         step.output = output
         step.error = None
@@ -402,7 +408,7 @@ class WritingAgentRunService:
         step.target_type = _target_type_for_tool(step.tool_name)
         step.chapter_index = _optional_int(output.get("chapter_index"))
         step.target_id = self._find_target_id(step)
-        step.finished_at = _now()
+        step.finished_at = finished_at
         self.db.commit()
         self.db.refresh(step)
 
@@ -416,7 +422,7 @@ class WritingAgentRunService:
     ) -> None:
         now = _now()
         output = dict(output) if output is not None else {"status": STEP_FAILED, "error": error}
-        output["agent_tool_result"] = _agent_tool_result_envelope(step, output, STEP_FAILED)
+        output["agent_tool_result"] = _agent_tool_result_envelope(step, output, STEP_FAILED, finished_at=now)
         step.status = STEP_FAILED
         step.error = error
         step.output = output
@@ -441,7 +447,7 @@ class WritingAgentRunService:
     ) -> None:
         now = _now()
         output = dict(output) if output is not None else {"status": STEP_BLOCKED, "error": error}
-        output["agent_tool_result"] = _agent_tool_result_envelope(step, output, STEP_BLOCKED)
+        output["agent_tool_result"] = _agent_tool_result_envelope(step, output, STEP_BLOCKED, finished_at=now)
         step.status = STEP_BLOCKED
         step.error = error
         step.output = output
@@ -676,7 +682,13 @@ def _target_type_for_tool(tool_name: str) -> str | None:
     return target_type_for_tool(tool_name)
 
 
-def _agent_tool_result_envelope(step: WritingAgentStep, output: dict[str, Any], step_status: str) -> dict[str, Any]:
+def _agent_tool_result_envelope(
+    step: WritingAgentStep,
+    output: dict[str, Any],
+    step_status: str,
+    *,
+    finished_at: datetime,
+) -> dict[str, Any]:
     planner = {}
     if isinstance(step.input, dict) and isinstance(step.input.get("planner"), dict):
         planner = step.input["planner"]
@@ -691,8 +703,31 @@ def _agent_tool_result_envelope(step: WritingAgentStep, output: dict[str, Any], 
         "is_error": step_status in {STEP_FAILED, STEP_BLOCKED} or result_status in {"failed", "blocked"},
         "trace_id": str(output.get("trace_id") or "") or None,
         "planner": planner,
+        "adapter": writing_agent_tool_adapter_metadata(step.tool_name),
+        "elapsed_ms": _elapsed_ms(step.started_at, finished_at),
+        "output_size_bytes": _output_size_bytes(output),
         "output_keys": output_keys,
     }
+
+
+def _elapsed_ms(started_at: datetime | None, finished_at: datetime) -> int:
+    if started_at is None:
+        return 0
+    try:
+        delta = finished_at - started_at
+    except TypeError:
+        normalized_started = started_at if started_at.tzinfo else started_at.replace(tzinfo=UTC)
+        normalized_finished = finished_at if finished_at.tzinfo else finished_at.replace(tzinfo=UTC)
+        delta = normalized_finished - normalized_started
+    return max(0, round(delta.total_seconds() * 1000))
+
+
+def _output_size_bytes(output: dict[str, Any]) -> int:
+    try:
+        serialized = json.dumps(output, ensure_ascii=False, default=str, sort_keys=True)
+    except (TypeError, ValueError):
+        serialized = str(output)
+    return len(serialized.encode("utf-8"))
 
 
 def _should_stop_after_report(
