@@ -18,7 +18,18 @@ from app.core.chat_commands import (
 )
 from app.core.chat_compaction import build_compaction_summary, select_compactable_plain_messages
 from app.core.intent_router import IntentRouter, parse_chapter_index
-from app.models import AIModelCallTrace, BackgroundTask, Dialog, DialogMessage, Outline, PendingAction, Setup, Storyline
+from app.models import (
+    AIModelCallTrace,
+    BackgroundTask,
+    Dialog,
+    DialogMessage,
+    Outline,
+    PendingAction,
+    Project,
+    Setup,
+    Storyline,
+    WritingAgentRun,
+)
 from app.schemas import ProjectDiagnosisOut
 from app.services.actions.action_result_service import ActionResultService
 
@@ -106,6 +117,166 @@ def test_chapter_command_leading_index_wins_over_context_mentions(client):
     body = r2.json()
     assert body["pending_action"]["params"]["chapter_index"] == 2
     assert "第2章正文" in body["pending_action"]["description"]
+
+
+def test_agent_control_plane_routes_confirmed_setup_through_writing_agent_run(client, db_session, monkeypatch):
+    started_task_ids: list[str] = []
+
+    def fake_start(self, task_id, work):
+        started_task_ids.append(task_id)
+        return None
+
+    monkeypatch.setattr("app.api.dialogs.LocalTaskRunner.start", fake_start)
+    project_id = client.post("/api/v1/projects", json={"name": "Agent Control Plane"}).json()["id"]
+    pending = client.post(
+        "/api/v1/dialog/chat",
+        json={
+            "project_id": project_id,
+            "input_type": "command",
+            "command_name": "setup",
+            "command_args": "雾港悬疑，主角是记忆取证师",
+        },
+    ).json()["pending_action"]
+
+    response = client.post(
+        "/api/v1/dialog/resolve-action",
+        json={"action_id": pending["id"], "decision": "confirm"},
+    )
+
+    body = response.json()
+    run = db_session.query(WritingAgentRun).filter_by(project_id=project_id).one()
+    task = db_session.query(BackgroundTask).filter_by(id=body["action_result"]["data"]["task_id"]).one()
+    assert response.status_code == 200
+    assert body["action_result"]["type"] == "generate_setup"
+    assert body["action_result"]["data"]["agent_run_id"] == run.id
+    assert body["action_result"]["data"]["task_id"] == task.id
+    assert body["action_result"]["data"]["control_plane"]["version"] == "phase65.agent_control_plane.v1"
+    assert run.entrypoint == "dialog_pending_action"
+    assert run.dialog_id is not None
+    assert run.background_task_id == task.id
+    assert run.input["control_plane"]["version"] == "phase65.agent_control_plane.v1"
+    assert run.input["control_plane"]["source"] == "dialog_pending_action"
+    assert run.input["tools"][0]["tool_name"] == "generate_setup"
+    assert run.input["tools"][0]["command_args"] == "雾港悬疑，主角是记忆取证师"
+    assert task.task_type == "writing_agent_run"
+    assert task.payload["agent_run_id"] == run.id
+    assert task.payload["action_type"] == "generate_setup"
+    assert started_task_ids == [task.id]
+
+
+@pytest.mark.asyncio
+async def test_agent_control_plane_background_work_records_terminal_dialog_message(db_session, monkeypatch):
+    project = Project(name="Agent Control Plane Work")
+    db_session.add(project)
+    db_session.commit()
+    dialog = dialogs_api._get_or_create_dialog(db_session, project.id)
+
+    from app.schemas.writing_agent import WritingAgentRunCreate, WritingAgentToolRequest
+    from app.services.tasks.background_task_service import BackgroundTaskService
+    from app.services.writing_agent.dialog_control_plane import (
+        CONTROL_PLANE_VERSION,
+        build_dialog_agent_run_background_work,
+    )
+    from app.services.writing_agent.run_service import WritingAgentRunService
+
+    tools = [WritingAgentToolRequest(tool_name="generate_setup", command_args="雾港悬疑")]
+    run = WritingAgentRunService(db_session).create_run(
+        project.id,
+        WritingAgentRunCreate(
+            goal="通过对话确认执行 generate_setup",
+            entrypoint="dialog_pending_action",
+            tools=tools,
+            input={"control_plane": {"version": CONTROL_PLANE_VERSION}},
+        ),
+        effective_tools=tools,
+        dialog_id=dialog.id,
+    )
+    task = BackgroundTaskService(db_session).create(
+        project_id=project.id,
+        task_type="writing_agent_run",
+        payload={"agent_run_id": run.id},
+    )
+    run.background_task_id = task.id
+    db_session.commit()
+
+    async def fake_execute(self, action_type, project_id, *, command_args=None, action_params=None):
+        return {"status": "success", "trace_id": None}
+
+    monkeypatch.setattr("app.services.actions.action_execution_service.ActionExecutionService.execute", fake_execute)
+    work = build_dialog_agent_run_background_work(
+        run_id=run.id,
+        tools=[tool.model_dump() for tool in tools],
+        dialog_id=dialog.id,
+        action_type="generate_setup",
+        command_args="雾港悬疑",
+        action_params={"project_id": project.id},
+    )
+
+    result = await work(db_session, task)
+
+    terminal = db_session.query(DialogMessage).filter_by(dialog_id=dialog.id, role="system").one()
+    saved_run = db_session.query(WritingAgentRun).filter_by(id=run.id).one()
+    assert result["agent_run_id"] == run.id
+    assert result["status"] == "success"
+    assert saved_run.status == "success"
+    assert terminal.action_result["type"] == "generate_setup"
+    assert terminal.action_result["status"] == "success"
+    assert terminal.action_result["data"]["agent_run_id"] == run.id
+    assert terminal.action_result["data"]["background_task_id"] == task.id
+    assert terminal.action_result["data"]["control_plane"]["version"] == CONTROL_PLANE_VERSION
+    assert "steps" not in terminal.action_result["data"]
+
+
+@pytest.mark.asyncio
+async def test_agent_control_plane_background_work_records_blocked_dialog_message(db_session):
+    project = Project(name="Agent Control Plane Blocked")
+    db_session.add(project)
+    db_session.commit()
+    dialog = dialogs_api._get_or_create_dialog(db_session, project.id)
+
+    from app.schemas.writing_agent import WritingAgentRunCreate, WritingAgentToolRequest
+    from app.services.tasks.background_task_service import BackgroundTaskService
+    from app.services.writing_agent.dialog_control_plane import (
+        CONTROL_PLANE_VERSION,
+        build_dialog_agent_run_background_work,
+    )
+    from app.services.writing_agent.run_service import WritingAgentRunService
+
+    tools = [WritingAgentToolRequest(tool_name="preflight_writing", params={"chapter_index": 1})]
+    run = WritingAgentRunService(db_session).create_run(
+        project.id,
+        WritingAgentRunCreate(
+            goal="通过对话确认执行 generate_setup",
+            entrypoint="dialog_pending_action",
+            tools=tools,
+            input={"control_plane": {"version": CONTROL_PLANE_VERSION}},
+        ),
+        effective_tools=tools,
+        dialog_id=dialog.id,
+    )
+    task = BackgroundTaskService(db_session).create(
+        project_id=project.id,
+        task_type="writing_agent_run",
+        payload={"agent_run_id": run.id},
+    )
+    run.background_task_id = task.id
+    db_session.commit()
+    work = build_dialog_agent_run_background_work(
+        run_id=run.id,
+        tools=[tool.model_dump() for tool in tools],
+        dialog_id=dialog.id,
+        action_type="generate_setup",
+        command_args=None,
+        action_params={"project_id": project.id},
+    )
+
+    result = await work(db_session, task)
+
+    terminal = db_session.query(DialogMessage).filter_by(dialog_id=dialog.id, role="system").one()
+    assert result["status"] == "blocked"
+    assert terminal.action_result["status"] == "blocked"
+    assert terminal.action_result["data"]["agent_run_id"] == run.id
+    assert terminal.action_result["data"]["control_plane"]["version"] == CONTROL_PLANE_VERSION
 
 
 def test_parse_chapter_index_uses_earliest_chapter_mention():
@@ -1052,7 +1223,7 @@ def test_resolve_action_confirm_sets_dialog_state_running(client, db_session):
     })
     action_id = r2.json()["pending_action"]["id"]
 
-    with patch("app.api.dialogs._execute_action_background") as mock_background:
+    with patch("app.api.dialogs.LocalTaskRunner.start") as mock_start:
         r3 = client.post("/api/v1/dialog/resolve-action", json={
             "action_id": action_id,
             "decision": "confirm",
@@ -1070,7 +1241,8 @@ def test_resolve_action_confirm_sets_dialog_state_running(client, db_session):
         },
     }
     assert r3.json()["refresh_targets"] == []
-    mock_background.assert_called_once()
+    mock_start.assert_called_once()
+    assert r3.json()["action_result"]["data"]["agent_run_id"]
 
     dialog = db_session.query(Dialog).filter(Dialog.project_id == pid).first()
     assert dialog is not None
@@ -1098,11 +1270,16 @@ def test_resolve_action_confirm_creates_background_task(client, db_session):
     assert r3.status_code == 200
     task_id = r3.json()["action_result"]["data"]["task_id"]
     task = db_session.query(BackgroundTask).filter(BackgroundTask.id == task_id).one()
+    run = db_session.query(WritingAgentRun).filter(WritingAgentRun.id == r3.json()["action_result"]["data"]["agent_run_id"]).one()
     assert task.project_id == pid
-    assert task.task_type == "generate_setup"
+    assert task.task_type == "writing_agent_run"
+    assert task.payload["agent_run_id"] == run.id
+    assert task.payload["action_type"] == "generate_setup"
+    assert task.payload["tools"][0]["tool_name"] == "generate_setup"
     assert task.payload["dialog_id"]
-    assert task.payload["action_params"]["project_id"] == pid
     assert task.status == "pending"
+    assert run.background_task_id == task.id
+    assert run.entrypoint == "dialog_pending_action"
     start.assert_called_once()
 
 
@@ -1263,7 +1440,7 @@ def test_running_dialog_blocks_mutating_commands(command_name, client, db_sessio
     })
     action_id = r2.json()["pending_action"]["id"]
 
-    with patch("app.api.dialogs._execute_action_background"):
+    with patch("app.api.dialogs.LocalTaskRunner.start"):
         r3 = client.post("/api/v1/dialog/resolve-action", json={
             "action_id": action_id,
             "decision": "confirm",
@@ -1306,7 +1483,7 @@ def test_resolve_action_double_confirm_only_one_effective(client):
             from datetime import datetime as _RealDateTime
             return _RealDateTime.now(tz)
 
-    with patch("app.api.dialogs.datetime", _SyncDateTime), patch("app.api.dialogs._execute_action_background") as mock_background:
+    with patch("app.api.dialogs.datetime", _SyncDateTime), patch("app.api.dialogs.LocalTaskRunner.start") as mock_start:
         def _confirm_once():
             return client.post("/api/v1/dialog/resolve-action", json={
                 "action_id": action_id,
@@ -1318,10 +1495,10 @@ def test_resolve_action_double_confirm_only_one_effective(client):
 
     statuses = sorted(resp.status_code for resp in responses)
     assert statuses == [200, 409]
-    assert mock_background.call_count == 1
+    assert mock_start.call_count == 1
 
 
-def test_resolve_action_confirm_passes_command_args_to_background(client):
+def test_resolve_action_confirm_passes_command_args_to_background(client, db_session):
     r = client.post("/api/v1/projects", json={"name": "Test"})
     pid = r.json()["id"]
 
@@ -1334,13 +1511,14 @@ def test_resolve_action_confirm_passes_command_args_to_background(client):
     assert r2.status_code == 200
     action_id = r2.json()["pending_action"]["id"]
 
-    with patch("app.api.dialogs._execute_action_background") as mock_background:
+    with patch("app.api.dialogs.LocalTaskRunner.start") as mock_start:
         r3 = client.post("/api/v1/dialog/resolve-action", json={
             "action_id": action_id,
             "decision": "confirm",
         })
 
     assert r3.status_code == 200
-    mock_background.assert_called_once()
-    assert mock_background.call_args.args[0] == "generate_setup"
-    assert mock_background.call_args.kwargs["command_args"] == "主角是植物学家"
+    mock_start.assert_called_once()
+    run = db_session.query(WritingAgentRun).filter_by(project_id=pid).one()
+    assert run.input["tools"][0]["tool_name"] == "generate_setup"
+    assert run.input["tools"][0]["command_args"] == "主角是植物学家"

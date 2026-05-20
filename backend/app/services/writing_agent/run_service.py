@@ -73,6 +73,10 @@ class WritingAgentRunService:
         *,
         effective_tools: list[WritingAgentToolRequest] | None = None,
         planner_output: dict[str, Any] | None = None,
+        dialog_id: str | None = None,
+        request_message_id: str | None = None,
+        response_message_id: str | None = None,
+        background_task_id: str | None = None,
     ) -> WritingAgentRun:
         self._require_project(project_id)
         tools = effective_tools if effective_tools is not None else payload.tools
@@ -88,6 +92,10 @@ class WritingAgentRunService:
             status=RUN_PENDING,
             entrypoint=payload.entrypoint or "api",
             input=run_input,
+            dialog_id=dialog_id,
+            request_message_id=request_message_id,
+            response_message_id=response_message_id,
+            background_task_id=background_task_id,
         )
         self.db.add(run)
         self.db.commit()

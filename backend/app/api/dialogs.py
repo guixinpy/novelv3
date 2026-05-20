@@ -33,6 +33,11 @@ from app.services.dialog.messages import DEFAULT_MESSAGE_CONTENT_PREVIEW_CHARS, 
 from app.services.dialog.session import DialogSessionService
 from app.services.tasks.background_task_service import BackgroundTaskService
 from app.services.tasks.local_task_runner import LocalTaskRunner
+from app.services.writing_agent.dialog_control_plane import (
+    CONTROL_PLANE_VERSION,
+    prepare_dialog_agent_run_dispatch,
+    supports_dialog_agent_control_plane,
+)
 from app.services.workspace.bootstrap import build_project_diagnosis
 
 router = APIRouter(tags=["dialogs"])
@@ -942,11 +947,28 @@ async def resolve_action(payload: ResolveActionIn, db: Session = Depends(get_db)
     if payload.decision == "confirm":
         project_id = (pending.params or {}).get("project_id", "")
         command_args = (pending.params or {}).get("command_args")
-        task = _execute_action_background(action_type, project_id, dialog.id, command_args=command_args, action_params=pending.params, db=db)
-        result_data = {"status": "generating"}
-        task_id = getattr(task, "id", None)
-        if isinstance(task_id, str):
-            result_data["task_id"] = task_id
+        if supports_dialog_agent_control_plane(action_type):
+            dispatch = prepare_dialog_agent_run_dispatch(
+                db,
+                project_id=project_id,
+                dialog_id=dialog.id,
+                action_type=action_type,
+                command_args=command_args,
+                action_params=pending.params,
+            )
+            LocalTaskRunner().start(dispatch.task.id, dispatch.work)
+            result_data = {
+                "status": "generating",
+                "task_id": dispatch.task.id,
+                "agent_run_id": dispatch.run.id,
+                "control_plane": {"version": CONTROL_PLANE_VERSION},
+            }
+        else:
+            task = _execute_action_background(action_type, project_id, dialog.id, command_args=command_args, action_params=pending.params, db=db)
+            result_data = {"status": "generating"}
+            task_id = getattr(task, "id", None)
+            if isinstance(task_id, str):
+                result_data["task_id"] = task_id
     elif payload.decision == "cancel":
         result_data = {"status": "cancelled"}
     elif payload.decision == "revise":
