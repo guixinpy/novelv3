@@ -1,7 +1,16 @@
 import json
 
 from app.api import chapters
-from app.models import ChapterContent, Outline, Project, Setup
+from app.models import (
+    ChapterContent,
+    GenreProfile,
+    Outline,
+    Project,
+    ProjectProfileVersion,
+    Setup,
+    Storyline,
+    WorldFactClaim,
+)
 from app.prompting.providers.errors import build_provider_error_block
 
 
@@ -29,6 +38,26 @@ def _setup(db_session, project_id: str) -> Setup:
     db_session.add(setup)
     db_session.commit()
     return setup
+
+
+def _profile(db_session, project_id: str) -> ProjectProfileVersion:
+    genre_profile = GenreProfile(
+        canonical_id=f"chapter-agent-constraints-{project_id}",
+        display_name="通用",
+        contract_version="world.contract.v1",
+    )
+    db_session.add(genre_profile)
+    db_session.commit()
+    profile = ProjectProfileVersion(
+        project_id=project_id,
+        genre_profile_id=genre_profile.id,
+        version=1,
+        contract_version="world.contract.v1",
+        profile_payload={},
+    )
+    db_session.add(profile)
+    db_session.commit()
+    return profile
 
 
 def test_chapter_payload_uses_prompt_orchestration_and_injects_context(monkeypatch, db_session):
@@ -111,6 +140,96 @@ def test_chapter_payload_uses_prompt_orchestration_and_injects_context(monkeypat
     assert "style_rule" in blocks_by_key
     assert "few_shot_examples" in blocks_by_key
     assert payload["max_tokens"] == 3000
+
+
+def test_chapter_payload_injects_agent_constraints_from_storyline_and_world_model(monkeypatch, db_session):
+    project = _project(db_session, id="chapter-agent-constraints")
+    setup = _setup(db_session, project.id)
+    profile = _profile(db_session, project.id)
+    db_session.add(
+        Storyline(
+            project_id=project.id,
+            status="generated",
+            plotlines=[
+                {
+                    "name": "主线",
+                    "type": "main",
+                    "summary": "调查雾灾真相",
+                    "milestones": [{"chapter_range": "21-30", "goal": "追踪证物线索但关键真相仍被遮蔽"}],
+                }
+            ],
+            foreshadowing=[
+                {
+                    "hint": "苏晚晴的 N-07 身份线索仍未回收。",
+                    "planted_chapter": 12,
+                    "resolved_chapter": 300,
+                    "status": "unresolved",
+                }
+            ],
+        )
+    )
+    db_session.add(
+        Outline(
+            project_id=project.id,
+            total_chapters=600,
+            chapters=[{"chapter_index": 24, "title": "雾中暂歇", "summary": "临时藏身并整理线索"}],
+            plotlines=[],
+            foreshadowing=[],
+        )
+    )
+    db_session.add(
+        ChapterContent(
+            project_id=project.id,
+            chapter_index=23,
+            title="暗渠追兵",
+            content="林深背着高烧的苏晚晴钻出暗渠，赵猛听见远处追兵仍在逼近。陈默提醒他们，EV-2045-0812-07 与 G-07 仍是下一步证物线索。",
+            status="generated",
+        )
+    )
+    db_session.add(
+        WorldFactClaim(
+            project_id=project.id,
+            project_profile_version_id=profile.id,
+            profile_version=profile.version,
+            claim_id="claim.identifier.n07.meaning",
+            chapter_index=12,
+            intra_chapter_seq=0,
+            subject_ref="identifier.N-07",
+            predicate="identifier_meaning",
+            object_ref_or_value={"value": "实验代号/实验体编号", "status": "confirmed_limited"},
+            claim_layer="truth",
+            claim_status="confirmed",
+            authority_type="authoritative_structured",
+            confidence=0.95,
+            notes="N-07 具体对象仍保持未解。",
+            contract_version="world.contract.v1",
+        )
+    )
+    db_session.commit()
+    monkeypatch.setattr(
+        "app.prompting.providers.athena.build_chapter_context_package",
+        lambda **kwargs: {
+            "chapter_index": kwargs["chapter_index"],
+            "profile_version": None,
+            "project_profile_version_id": None,
+            "sections": [],
+            "prompt_context": "",
+        },
+    )
+    monkeypatch.setattr("app.prompting.providers.retrieval.build_chapter_retrieval_context", lambda **kwargs: None)
+
+    payload = chapters._build_chapter_call_payload(db_session, project, setup, 24, "")
+
+    message = payload["messages"][0]["content"]
+    assert "【Agent章节约束】" in message
+    assert "未回收伏笔" in message
+    assert "苏晚晴的 N-07 身份线索仍未回收" in message
+    assert "不得提前给出终局答案" in message
+    assert "N-07 具体对象仍保持未解" in message
+    assert "近期行动线索" in message
+    assert "EV-2045-0812-07" in message
+    assert "G-07" in message
+    assert "不得改写为无来源的新地点、新物件或新档案" in message
 
 
 def test_chapter_payload_injects_retrieval_when_athena_context_lacks_it(monkeypatch, db_session):

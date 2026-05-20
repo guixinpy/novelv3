@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.model_call_trace import build_context_block
 from app.core.outline_lookup import find_outline_chapter
+from app.core.writing_agent_constraints import build_agent_chapter_constraint_block
 from app.models import ChapterContent, Project, Setup
 from app.prompting.providers.athena import athena_context_has_retrieval, build_athena_chapter_context_block
 from app.prompting.providers.few_shot import build_few_shot_examples_block
@@ -26,6 +27,7 @@ SETUP_CORE_CONCEPT_BLOCK_CHAR_LIMIT = 1200
 PRIORITY_USER_FEEDBACK = 0
 PRIORITY_LENGTH_CONSTRAINT = 1
 PRIORITY_PROJECT_LENGTH_CONSTRAINT = 2
+PRIORITY_AGENT_CONSTRAINTS = 8
 PRIORITY_CHAPTER_TARGET = 10
 PRIORITY_LONGFORM_CONTEXT = 18
 PRIORITY_ATHENA_CONTEXT = 20
@@ -97,6 +99,14 @@ def build_chapter_prompt_context_blocks(
                     PRIORITY_PROJECT_LENGTH_CONSTRAINT,
                 )
             )
+
+    agent_constraints_block = build_agent_chapter_constraint_block(
+        db,
+        project_id=project.id,
+        chapter_index=chapter_index,
+    )
+    if agent_constraints_block:
+        model_blocks.append(_prioritized(agent_constraints_block, PRIORITY_AGENT_CONSTRAINTS))
 
     outline_block = _build_outline_chapter_target_block(db, project.id, chapter_index)
     if outline_block:

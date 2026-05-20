@@ -157,6 +157,45 @@ def test_expand_outline_window_appends_missing_chapters_without_overwriting_exis
 @patch("app.api.outlines.load_api_key", return_value="sk-test")
 @patch("app.api.outlines.ai_service.complete", new_callable=AsyncMock)
 @patch("app.api.outlines.ai_service.parse_json")
+def test_expand_outline_window_injects_agent_constraints_without_manual_command_args(
+    mock_parse,
+    mock_complete,
+    mock_key,
+    client,
+    db_session,
+):
+    project = _seed_outline_window_project(db_session)
+    storyline = db_session.query(Storyline).filter(Storyline.project_id == project.id).one()
+    storyline.foreshadowing = [
+        {
+            "hint": "主角身世真相仍未回收。",
+            "planted_chapter": 1,
+            "resolved_chapter": 300,
+            "status": "unresolved",
+        }
+    ]
+    db_session.commit()
+    mock_complete.return_value.content = "{}"
+    mock_parse.return_value = {
+        "total_chapters": 600,
+        "chapters": [
+            {"chapter_index": 2, "title": "雾晶余温", "summary": "林深和苏晚晴整理雾晶线索。"},
+        ],
+    }
+
+    response = client.post(f"/api/v1/projects/{project.id}/outline/expand-window?start_chapter=2&end_chapter=2")
+
+    assert response.status_code == 200
+    sent_prompt = mock_complete.await_args.args[0][0]["content"]
+    assert "【Agent章节约束】" in sent_prompt
+    assert "未回收伏笔" in sent_prompt
+    assert "主角身世真相仍未回收" in sent_prompt
+    assert "不得提前给出终局答案" in sent_prompt
+
+
+@patch("app.api.outlines.load_api_key", return_value="sk-test")
+@patch("app.api.outlines.ai_service.complete", new_callable=AsyncMock)
+@patch("app.api.outlines.ai_service.parse_json")
 def test_expand_outline_window_ignores_out_of_window_chapters(
     mock_parse,
     mock_complete,

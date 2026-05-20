@@ -11,6 +11,7 @@ from app.config import load_api_key
 from app.core.ai_service import AIService
 from app.core.model_call_trace import create_trace, mark_trace_failed, mark_trace_success, now_ms
 from app.core.narrative_plan_window import get_evolution_plan_window
+from app.core.writing_agent_constraints import build_agent_chapter_constraint_block
 from app.db import get_db
 from app.models import Outline, Project, Setup, Storyline
 from app.prompting.assembler import build_generation_payload
@@ -289,6 +290,22 @@ def _build_outline_call_payload(
     )
 
 
+def _attach_agent_constraint_block(payload: dict, constraint_block: dict | None) -> dict:
+    if not constraint_block:
+        return payload
+    messages = list(payload.get("messages") or [])
+    if messages:
+        first_message = dict(messages[0])
+        title = constraint_block.get("title") or "Agent章节约束"
+        content = str(constraint_block.get("content") or "").strip()
+        if content:
+            first_message["content"] = f"{first_message.get('content', '')}\n\n【{title}】\n{content}"
+            messages[0] = first_message
+            payload["messages"] = messages
+    payload["context_blocks"] = [constraint_block, *list(payload.get("context_blocks") or [])]
+    return payload
+
+
 @router.post("/generate", response_model=OutlineOut)
 async def generate_outline(project_id: str, db: Session = Depends(get_db), command_args: str | None = None, response: Response = None):
     if response:
@@ -414,6 +431,14 @@ async def expand_outline_window(
     if command_args:
         window_args = f"{window_args}\n附加要求：{command_args}"
     payload = _build_outline_call_payload(project, setup, storyline_context, command_args=window_args)
+    payload = _attach_agent_constraint_block(
+        payload,
+        build_agent_chapter_constraint_block(
+            db,
+            project_id=project_id,
+            chapter_index=start_chapter,
+        ),
+    )
     trace = create_trace(
         db,
         project_id=project.id,
