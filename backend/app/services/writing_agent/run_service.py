@@ -108,7 +108,32 @@ class WritingAgentRunService:
         if recovery_run_id:
             from app.services.writing_agent.recovery_planner import build_recovery_tool_plan
 
+            if run_input.get("execute_recovery") is not True:
+                return _recovery_preview_auto_plan(recovery_run_id)
+
             plan = build_recovery_tool_plan(self.db, project_id, recovery_run_id)
+            expected_hash = str(run_input.get("recovery_plan_hash") or "").strip()
+            confirmed = run_input.get("confirm_execute") is True
+            actual_hash = str(plan.get("plan_hash") or "")
+            if not confirmed or not expected_hash or expected_hash != actual_hash or plan.get("can_execute") is not True:
+                status = "confirmation_required"
+                if expected_hash and expected_hash != actual_hash:
+                    status = "hash_mismatch"
+                elif plan.get("can_execute") is not True:
+                    status = "not_executable"
+                return _recovery_preview_auto_plan(recovery_run_id, status=status)
+
+            plan = dict(plan)
+            plan["mode"] = "execute"
+            plan["preview_only"] = False
+            plan["execution_policy"] = {
+                **(plan.get("execution_policy") or {}),
+                "mode": "execute",
+                "status": "confirmed",
+                "confirmed": True,
+                "requires_confirmation": True,
+                "requires_plan_hash": True,
+            }
             tools = [WritingAgentToolRequest(**tool) for tool in plan.get("tools", []) if isinstance(tool, dict)]
             return tools, plan
 
@@ -674,6 +699,41 @@ def detail_payload(detail: dict[str, Any]) -> dict[str, Any]:
         **_model_dict(run),
         "steps": steps,
     }
+
+
+def _recovery_preview_auto_plan(
+    recovery_run_id: str,
+    *,
+    status: str = "preview_required",
+) -> tuple[list[WritingAgentToolRequest], dict[str, Any]]:
+    preview_tool = WritingAgentToolRequest(
+        tool_name="plan_recovery_tools",
+        params={"run_id": recovery_run_id},
+        planner={
+            "mode": "preview",
+            "reason": "预览上一轮阻塞的恢复工具链，不直接执行写操作。",
+            "on_missing": "stop",
+            "on_failure": "stop",
+            "expected_output": "恢复工具链预览。",
+            "post_generation": False,
+            "planner_version": "phase50.recovery_preview_gate.v1",
+        },
+    )
+    planner_output = {
+        "status": "preview_required",
+        "mode": "preview",
+        "source_run_id": recovery_run_id,
+        "preview_only": True,
+        "tools": [preview_tool.model_dump()],
+        "trace": {"selected_tools": ["plan_recovery_tools"], "rejected_tools": []},
+        "execution_policy": {
+            "status": status,
+            "mode": "preview",
+            "requires_confirmation": True,
+            "requires_plan_hash": True,
+        },
+    }
+    return [preview_tool], planner_output
 
 
 def _model_dict(model: Any) -> dict[str, Any]:

@@ -194,13 +194,18 @@ def test_agent_run_can_plan_recovery_tools_from_blocked_run(client, db_session):
     assert output["status"] == "completed"
     assert output["source_run_id"] == blocked_run_id
     assert output["source_step"]["tool_name"] == "preflight_writing"
+    assert output["source_step_id"] == output["source_step"]["id"]
+    assert output["preview_only"] is True
+    assert output["can_execute"] is True
+    assert output["requires_confirmation"] is True
+    assert output["plan_hash"]
     assert output["recovery"]["next_tool"] == "expand_outline_window"
     assert output["tools"][0]["tool_name"] == "expand_outline_window"
     assert output["tools"][0]["params"] == {"start_chapter": 3, "end_chapter": 3}
     assert output["trace"]["selected_tools"] == ["expand_outline_window"]
 
 
-def test_agent_run_auto_plan_consumes_recovery_tool_plan(client, db_session, monkeypatch):
+def test_agent_run_auto_plan_previews_recovery_tool_plan_by_default(client, db_session):
     project = _seed_longform_project(db_session, outline_chapters=[1], generated_chapters=[1, 2])
     blocked = client.post(
         f"/api/v1/projects/{project.id}/agent-runs",
@@ -210,6 +215,50 @@ def test_agent_run_auto_plan_consumes_recovery_tool_plan(client, db_session, mon
         },
     )
     blocked_run_id = blocked.json()["id"]
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "恢复上一轮阻塞",
+            "input": {"auto_plan": True, "recovery_run_id": blocked_run_id},
+        },
+    )
+
+    payload = response.json()
+    assert response.status_code == 200
+    assert payload["status"] == "success"
+    assert payload["input"]["planner"]["mode"] == "preview"
+    assert payload["input"]["planner"]["source_run_id"] == blocked_run_id
+    assert payload["input"]["planner"]["preview_only"] is True
+    assert payload["input"]["planner"]["execution_policy"]["requires_confirmation"] is True
+    assert payload["input"]["tools"][0]["tool_name"] == "plan_recovery_tools"
+    assert payload["input"]["tools"][0]["params"] == {"run_id": blocked_run_id}
+    assert [step["tool_name"] for step in payload["steps"]] == ["plan_recovery_tools"]
+    preview = payload["steps"][0]["output"]
+    assert preview["plan_hash"]
+    assert preview["can_execute"] is True
+    assert preview["preview_only"] is True
+    assert preview["tools"][0]["tool_name"] == "expand_outline_window"
+
+
+def test_agent_run_auto_plan_executes_recovery_after_hash_confirmation(client, db_session, monkeypatch):
+    project = _seed_longform_project(db_session, outline_chapters=[1], generated_chapters=[1, 2])
+    blocked = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "检查第3章是否可写",
+            "tools": [{"tool_name": "preflight_writing", "params": {"chapter_index": 3}}],
+        },
+    )
+    blocked_run_id = blocked.json()["id"]
+    preview_response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "规划上一轮阻塞的恢复工具",
+            "tools": [{"tool_name": "plan_recovery_tools", "params": {"run_id": blocked_run_id}}],
+        },
+    )
+    plan_hash = preview_response.json()["steps"][0]["output"]["plan_hash"]
 
     class FakeOutline:
         id = "outline-recovery-3"
@@ -228,20 +277,59 @@ def test_agent_run_auto_plan_consumes_recovery_tool_plan(client, db_session, mon
     response = client.post(
         f"/api/v1/projects/{project.id}/agent-runs",
         json={
-            "goal": "恢复上一轮阻塞",
-            "input": {"auto_plan": True, "recovery_run_id": blocked_run_id},
+            "goal": "执行上一轮阻塞恢复",
+            "input": {
+                "auto_plan": True,
+                "recovery_run_id": blocked_run_id,
+                "execute_recovery": True,
+                "confirm_execute": True,
+                "recovery_plan_hash": plan_hash,
+            },
         },
     )
 
     payload = response.json()
     assert response.status_code == 200
     assert payload["status"] == "success"
-    assert payload["input"]["planner"]["source_run_id"] == blocked_run_id
-    assert payload["input"]["planner"]["trace"]["selected_tools"] == ["expand_outline_window"]
+    assert payload["input"]["planner"]["mode"] == "execute"
+    assert payload["input"]["planner"]["plan_hash"] == plan_hash
+    assert payload["input"]["planner"]["execution_policy"]["confirmed"] is True
     assert payload["input"]["tools"][0]["tool_name"] == "expand_outline_window"
-    assert payload["input"]["tools"][0]["params"] == {"start_chapter": 3, "end_chapter": 3}
     assert [step["tool_name"] for step in payload["steps"]] == ["expand_outline_window"]
-    assert payload["steps"][0]["input"]["planner"]["planner_version"] == "phase48.recovery_planner.v1"
+
+
+def test_agent_run_auto_plan_rejects_recovery_execute_hash_mismatch(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1], generated_chapters=[1, 2])
+    blocked = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "检查第3章是否可写",
+            "tools": [{"tool_name": "preflight_writing", "params": {"chapter_index": 3}}],
+        },
+    )
+    blocked_run_id = blocked.json()["id"]
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "尝试执行过期恢复计划",
+            "input": {
+                "auto_plan": True,
+                "recovery_run_id": blocked_run_id,
+                "execute_recovery": True,
+                "confirm_execute": True,
+                "recovery_plan_hash": "stale-plan-hash",
+            },
+        },
+    )
+
+    payload = response.json()
+    assert response.status_code == 200
+    assert payload["status"] == "success"
+    assert payload["input"]["planner"]["mode"] == "preview"
+    assert payload["input"]["planner"]["execution_policy"]["status"] == "hash_mismatch"
+    assert payload["input"]["tools"][0]["tool_name"] == "plan_recovery_tools"
+    assert [step["tool_name"] for step in payload["steps"]] == ["plan_recovery_tools"]
 
 
 def test_agent_run_auto_plan_executes_high_level_next_chapter_goal(client, db_session, monkeypatch):
