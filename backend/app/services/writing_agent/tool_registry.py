@@ -159,6 +159,30 @@ _TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(
+        name="repair_longform_maintenance",
+        module="athena_longform",
+        category="maintenance",
+        description="修复长篇记忆和检索索引缺口，使后续章节生成可获得稳定上下文。",
+        input_schema=_object_schema(
+            {
+                "limit": {"type": "integer", "minimum": 1},
+                "repair_limit": {"type": "integer", "minimum": 1},
+            }
+        ),
+        output_schema=_object_schema(
+            {
+                "status": {"type": "string"},
+                "repaired_memory_count": {"type": "integer"},
+                "repaired_retrieval_count": {"type": "integer"},
+                "remaining": {"type": "object"},
+            }
+        ),
+        target_type="longform_maintenance",
+        internal=True,
+        sort_key=9,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
         name="preflight_writing",
         module="writing_agent",
         category="preflight",

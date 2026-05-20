@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -92,6 +93,10 @@ def unhandled_internal_writing_agent_tool_names() -> set[str]:
     return internal_tool_names() - handled
 
 
+def _json_safe_output(output: dict[str, Any]) -> dict[str, Any]:
+    return json.loads(json.dumps(output, ensure_ascii=False, default=str))
+
+
 def _describe_agent_tools(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
     chapter_index = _optional_int(tool.params.get("chapter_index"))
     return build_agent_tool_plan(context.db, context.project_id, chapter_index=chapter_index)
@@ -129,6 +134,19 @@ def _summarize_longform_context(context: WritingAgentToolContext, tool: WritingA
         query=str(tool.params.get("query") or tool.command_args or "").strip() or None,
         max_chars=_optional_int(tool.params.get("max_chars")),
         include_prompt_context=tool.params.get("include_prompt_context") is True,
+    )
+
+
+def _repair_longform_maintenance(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
+    from app.core.longform_memory import repair_longform_maintenance
+
+    return _json_safe_output(
+        repair_longform_maintenance(
+            context.db,
+            context.project_id,
+            limit=_optional_int(tool.params.get("limit")) or 20,
+            repair_limit=_optional_int(tool.params.get("repair_limit")) or 100,
+        )
     )
 
 
@@ -241,6 +259,12 @@ _STATIC_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
         _summarize_longform_context,
         category="longform_memory",
         mutability="read",
+    ),
+    "repair_longform_maintenance": WritingAgentToolAdapter(
+        "repair_longform_maintenance",
+        _repair_longform_maintenance,
+        category="maintenance",
+        mutability="write",
     ),
     "review_chapter_quality": WritingAgentToolAdapter(
         "review_chapter_quality",

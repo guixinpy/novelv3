@@ -812,6 +812,7 @@ def _should_stop_after_report(
         "apply_planner_revision_patch",
         "expand_chapter_to_target",
         "compress_chapter_to_target",
+        "summarize_longform_context",
         "review_world_model_proposals",
         "plan_world_model_proposal_resolution",
         "preview_world_model_proposal_resolution",
@@ -843,6 +844,7 @@ def _allowed_report_followup(tool_name: str, next_tool_name: str | None) -> bool
 
 def _successful_report_block_message(tool_name: str) -> str:
     return {
+        "summarize_longform_context": "长篇上下文维护未就绪，已停止后续写作工具。",
         "review_world_model_proposals": "世界模型提案队列仍有待审项，已停止后续写作工具。",
         "plan_world_model_proposal_resolution": "世界模型提案尚未解决，已停止后续写作工具。",
         "preview_world_model_proposal_resolution": "世界模型提案解决决策尚未执行，已停止后续写作工具。",

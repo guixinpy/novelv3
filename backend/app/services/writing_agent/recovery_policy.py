@@ -14,11 +14,37 @@ def build_writing_agent_recovery(
     planner: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     planner = planner or {}
+    if tool_name == "summarize_longform_context" and output.get("should_generate_next_chapter") is False:
+        return _longform_context_recovery(output, planner)
     if step_status not in {"blocked", "failed"} and output.get("status") not in {"blocked", "failed"}:
         return _none(tool_name)
     if tool_name == "preflight_writing":
         return _preflight_recovery(output, planner)
     return _none(tool_name)
+
+
+def _longform_context_recovery(output: dict[str, Any], planner: dict[str, Any]) -> dict[str, Any]:
+    recommended_actions = output.get("recommended_actions")
+    if not isinstance(recommended_actions, list) or "repair_longform_maintenance" not in recommended_actions:
+        return _none("summarize_longform_context")
+    decision = output.get("decision") if isinstance(output.get("decision"), dict) else {}
+    return {
+        "policy_version": RECOVERY_POLICY_VERSION,
+        "status": "recommended",
+        "source_tool": "summarize_longform_context",
+        "reason_code": str(decision.get("reason") or "longform_context_blocked"),
+        "action": "run_tool",
+        "next_tool": "repair_longform_maintenance",
+        "next_params": {},
+        "next_command_args": None,
+        "requires_user_input": False,
+        "user_input_fields": [],
+        "affected_chapter_indexes": [],
+        "should_continue_current_run": False,
+        "planner_on_missing": planner.get("on_missing"),
+        "planner_on_failure": planner.get("on_failure"),
+        "message": str(decision.get("message") or "长篇上下文维护未就绪，建议先修复长篇记忆和检索索引。"),
+    }
 
 
 def _preflight_recovery(output: dict[str, Any], planner: dict[str, Any]) -> dict[str, Any]:

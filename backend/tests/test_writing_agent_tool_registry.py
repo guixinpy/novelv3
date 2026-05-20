@@ -21,12 +21,14 @@ def test_agent_tool_registry_has_unique_names_and_contracts():
         "plan_writing_agent_run",
         "plan_recovery_tools",
         "summarize_longform_context",
+        "repair_longform_maintenance",
     }.issubset(set(names))
     assert allowed_tool_names() == set(names)
     assert target_type_for_tool("describe_agent_tools") == "agent_tool_plan"
     assert target_type_for_tool("plan_writing_agent_run") == "agent_tool_plan"
     assert target_type_for_tool("plan_recovery_tools") == "agent_tool_plan"
     assert target_type_for_tool("summarize_longform_context") == "longform_context_summary"
+    assert target_type_for_tool("repair_longform_maintenance") == "longform_maintenance"
     assert "review_chapter_quality" in non_blocking_report_tool_names()
     assert "plan_recovery_tools" in non_blocking_report_tool_names()
     assert "summarize_longform_context" in non_blocking_report_tool_names()
@@ -63,6 +65,18 @@ def test_agent_tool_registry_includes_summarize_longform_context():
     assert descriptor.input_schema["properties"]["chapter_index"]["minimum"] == 1
     assert "summarize_longform_context" in allowed_tool_names()
     assert "summarize_longform_context" in non_blocking_report_tool_names()
+
+
+def test_agent_tool_registry_includes_repair_longform_maintenance():
+    descriptor = get_agent_tool_descriptor("repair_longform_maintenance")
+
+    assert descriptor is not None
+    assert descriptor.internal is True
+    assert descriptor.non_blocking_report is False
+    assert descriptor.category == "maintenance"
+    assert descriptor.target_type == "longform_maintenance"
+    assert descriptor.input_schema["properties"]["repair_limit"]["minimum"] == 1
+    assert "repair_longform_maintenance" in allowed_tool_names()
 
 
 def test_agent_tool_plan_hides_chapter_generation_until_dependencies_are_ready(db_session):

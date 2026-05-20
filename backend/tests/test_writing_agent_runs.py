@@ -534,6 +534,9 @@ def test_agent_recovery_preview_blocks_repeated_failed_plan(client, db_session):
 def test_agent_run_auto_plan_executes_high_level_next_chapter_goal(client, db_session, monkeypatch):
     project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1])
     import_setup_to_world_model(db_session, project.id)
+    from app.core.longform_memory import repair_longform_maintenance
+
+    repair_longform_maintenance(db_session, project.id)
     _create_trace(db_session, project.id, "trace-chapter-2", "chapter_generation")
 
     async def fake_execute(self, action_type, project_id, *, command_args=None, action_params=None):
@@ -589,6 +592,78 @@ def test_agent_run_auto_plan_executes_high_level_next_chapter_goal(client, db_se
     assert quality_step["input"]["planner"]["post_generation"] is True
     assert payload["input"]["planner"]["intent_class"] == "continue_next_chapter"
     assert payload["input"]["tools"][0]["tool_name"] == "describe_agent_tools"
+
+
+def test_agent_auto_plan_longform_context_blocks_stale_maintenance_before_generation(
+    client,
+    db_session,
+    monkeypatch,
+):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1])
+    calls: list[str] = []
+
+    async def fake_execute(self, action_type, project_id, *, command_args=None, action_params=None):
+        calls.append(action_type)
+        return {"status": "success"}
+
+    monkeypatch.setattr("app.services.actions.action_execution_service.ActionExecutionService.execute", fake_execute)
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "继续写下一章",
+            "input": {"auto_plan": True, "chapter_index": 2},
+        },
+    )
+
+    payload = response.json()
+    assert response.status_code == 200
+    assert payload["status"] == "blocked"
+    assert [step["tool_name"] for step in payload["steps"]] == [
+        "describe_agent_tools",
+        "summarize_longform_context",
+    ]
+    context_output = payload["steps"][1]["output"]
+    assert context_output["should_generate_next_chapter"] is False
+    assert context_output["recommended_actions"] == ["repair_longform_maintenance"]
+    assert context_output["decision"]["reason"] == "longform_memory_needs_maintenance"
+    assert calls == []
+
+    preview = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "预览上下文维护恢复",
+            "tools": [{"tool_name": "plan_recovery_tools", "params": {"run_id": payload["id"]}}],
+        },
+    )
+
+    recovery = preview.json()["steps"][0]["output"]
+    assert preview.status_code == 200
+    assert recovery["status"] == "completed"
+    assert recovery["source_step"]["tool_name"] == "summarize_longform_context"
+    assert recovery["recovery"]["next_tool"] == "repair_longform_maintenance"
+    assert recovery["tools"][0]["tool_name"] == "repair_longform_maintenance"
+
+
+def test_agent_run_can_repair_longform_maintenance(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1])
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "修复长篇记忆维护状态",
+            "tools": [{"tool_name": "repair_longform_maintenance", "params": {"repair_limit": 10}}],
+        },
+    )
+
+    payload = response.json()
+    output = payload["steps"][0]["output"]
+    assert response.status_code == 200
+    assert payload["status"] == "success"
+    assert payload["steps"][0]["target_type"] == "longform_maintenance"
+    assert output["status"] == "completed"
+    assert output["remaining"]["ready_for_writing"] is True
+    assert output["agent_tool_result"]["adapter"]["mutability"] == "write"
 
 
 def test_agent_run_list_and_detail_are_project_scoped(client, db_session):

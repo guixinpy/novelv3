@@ -54,6 +54,21 @@ def summarize_longform_context(
                 "issue_count": maintenance.get("issue_count", 0),
             }
         )
+        decision = {
+            "status": "blocked",
+            "reason": "longform_memory_needs_maintenance",
+            "message": "长篇记忆或检索索引存在缺口，建议先修复后再生成正文。",
+        }
+        should_generate_next_chapter = False
+        recommended_actions = ["repair_longform_maintenance"]
+    else:
+        decision = {
+            "status": "ready",
+            "reason": "longform_context_ready",
+            "message": "长篇上下文可用于后续生成。",
+        }
+        should_generate_next_chapter = True
+        recommended_actions = ["preflight_writing"]
     if len(prompt_context) > char_limit:
         diagnostics.append(
             {
@@ -90,6 +105,9 @@ def summarize_longform_context(
         "source_sections": source_sections,
         "source_section_keys": source_section_keys,
         "diagnostics": diagnostics,
+        "decision": decision,
+        "should_generate_next_chapter": should_generate_next_chapter,
+        "recommended_actions": recommended_actions,
         "prompt_context_chars": len(prompt_context),
         "limits": {
             "max_chars": char_limit,

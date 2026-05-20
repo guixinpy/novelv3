@@ -96,6 +96,7 @@ def test_tool_executor_static_adapter_names_are_report_or_agent_native_tools():
         "review_chapter_quality",
         "review_chapter_continuity",
         "plan_chapter_revision",
+        "repair_longform_maintenance",
         "review_world_model_proposals",
         "plan_world_model_proposal_resolution",
         "preview_world_model_proposal_resolution",
@@ -133,6 +134,7 @@ def test_tool_executor_lists_unhandled_internal_tools_for_migration_tracking():
     assert "apply_world_model_proposal_resolution" in names
     assert "create_revision_draft" in names
     assert "backfill_outline_gaps" not in names
+    assert "repair_longform_maintenance" not in names
     assert "review_chapter_quality" not in names
     assert "plan_writing_agent_run" not in names
     assert "preflight_writing" not in names
@@ -147,6 +149,18 @@ def test_tool_executor_exposes_backfill_adapter_metadata():
         "category": "maintenance",
         "mutability": "write",
         "handler_name": "_backfill_outline_gaps",
+    }
+
+
+def test_tool_executor_exposes_repair_longform_maintenance_adapter_metadata():
+    metadata = writing_agent_tool_adapter_metadata("repair_longform_maintenance")
+
+    assert metadata == {
+        "tool_name": "repair_longform_maintenance",
+        "adapter_type": "static",
+        "category": "maintenance",
+        "mutability": "write",
+        "handler_name": "_repair_longform_maintenance",
     }
 
 
@@ -185,6 +199,32 @@ async def test_tool_executor_dispatches_backfill_adapter_with_normalized_params(
     assert from_chapter.output == {"status": "completed", "before_chapter": 8}
     assert without_bound.output == {"status": "completed", "before_chapter": None}
     assert calls == [(project.id, 7), (project.id, 8), (project.id, None)]
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_dispatches_repair_longform_maintenance_adapter(db_session, monkeypatch):
+    project = Project(name="Executor Longform Repair")
+    db_session.add(project)
+    db_session.commit()
+    calls: list[tuple[str, int, int]] = []
+
+    def fake_repair(db, project_id: str, *, limit: int, repair_limit: int):
+        calls.append((project_id, limit, repair_limit))
+        return {"status": "completed", "limit": limit, "repair_limit": repair_limit}
+
+    monkeypatch.setattr("app.core.longform_memory.repair_longform_maintenance", fake_repair)
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(
+            tool_name="repair_longform_maintenance",
+            params={"limit": "9", "repair_limit": "11"},
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output == {"status": "completed", "limit": 9, "repair_limit": 11}
+    assert calls == [(project.id, 9, 11)]
 
 
 @pytest.mark.asyncio

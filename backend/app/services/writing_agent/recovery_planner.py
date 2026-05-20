@@ -10,7 +10,7 @@ from app.models import WritingAgentRun, WritingAgentStep
 from app.services.writing_agent.tool_registry import allowed_tool_names, build_agent_tool_plan
 
 RECOVERY_PREVIEW_VERSION = "phase50.recovery_preview.v1"
-SAFE_RECOVERY_EXECUTE_TOOLS = {"expand_outline_window", "backfill_outline_gaps"}
+SAFE_RECOVERY_EXECUTE_TOOLS = {"expand_outline_window", "backfill_outline_gaps", "repair_longform_maintenance"}
 
 
 def build_recovery_tool_plan(db: Session, project_id: str, run_id: str | None) -> dict[str, Any]:
@@ -112,7 +112,7 @@ def _latest_recommended_recovery(
         .filter(
             WritingAgentStep.project_id == project_id,
             WritingAgentStep.run_id == run_id,
-            WritingAgentStep.status.in_(("blocked", "failed")),
+            WritingAgentStep.status.in_(("blocked", "failed", "success")),
         )
         .order_by(WritingAgentStep.step_index.desc(), WritingAgentStep.id.desc())
         .all()
