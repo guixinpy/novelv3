@@ -103,6 +103,7 @@ def test_tool_executor_static_adapter_names_are_report_or_agent_native_tools():
         "route_longform_chapter_batch_after_review",
         "inspect_agent_trace_audit",
         "inspect_agent_memory_route",
+        "inspect_agent_world_model_route",
         "review_chapter_quality",
         "review_chapter_continuity",
         "plan_chapter_revision",
@@ -147,6 +148,7 @@ def test_tool_executor_lists_unhandled_internal_tools_for_migration_tracking():
     assert "repair_longform_maintenance" not in names
     assert "inspect_agent_trace_audit" not in names
     assert "inspect_agent_memory_route" not in names
+    assert "inspect_agent_world_model_route" not in names
     assert "review_chapter_quality" not in names
     assert "plan_writing_agent_run" not in names
     assert "plan_longform_chapter_batch" not in names
@@ -181,6 +183,18 @@ def test_tool_executor_exposes_inspect_agent_trace_audit_adapter_metadata():
         "category": "trace",
         "mutability": "read",
         "handler_name": "_inspect_agent_trace_audit",
+    }
+
+
+def test_tool_executor_exposes_inspect_agent_world_model_route_adapter_metadata():
+    metadata = writing_agent_tool_adapter_metadata("inspect_agent_world_model_route")
+
+    assert metadata == {
+        "tool_name": "inspect_agent_world_model_route",
+        "adapter_type": "static",
+        "category": "athena_world_model",
+        "mutability": "read",
+        "handler_name": "_inspect_agent_world_model_route",
     }
 
 
@@ -699,6 +713,32 @@ async def test_tool_executor_dispatches_inspect_agent_trace_audit_adapter(db_ses
     assert result.handled is True
     assert result.output == {"status": "completed", "audit": {"status": "completed"}}
     assert calls == [(project.id, "run-1", 12, "task-1", 7)]
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_dispatches_inspect_agent_world_model_route_adapter(db_session, monkeypatch):
+    project = Project(name="Executor World Model Route")
+    db_session.add(project)
+    db_session.commit()
+    calls: list[tuple[str, int | None, str | None, int | None]] = []
+
+    def fake_route(db, project_id: str, *, chapter_index: int | None, subject_ref: str | None, limit: int | None):
+        calls.append((project_id, chapter_index, subject_ref, limit))
+        return {"status": "completed", "route": {"status": "ready"}}
+
+    monkeypatch.setattr("app.services.writing_agent.agent_world_model_route.inspect_agent_world_model_route", fake_route)
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(
+            tool_name="inspect_agent_world_model_route",
+            params={"chapter_index": "12", "subject_ref": "char.hero", "limit": "9"},
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output == {"status": "completed", "route": {"status": "ready"}}
+    assert calls == [(project.id, 12, "char.hero", 9)]
 
 
 @pytest.mark.asyncio

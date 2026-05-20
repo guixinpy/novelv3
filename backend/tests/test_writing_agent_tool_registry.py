@@ -30,6 +30,7 @@ def test_agent_tool_registry_has_unique_names_and_contracts():
         "route_longform_chapter_batch_after_review",
         "inspect_agent_trace_audit",
         "inspect_agent_memory_route",
+        "inspect_agent_world_model_route",
         "summarize_longform_context",
         "repair_longform_maintenance",
     }.issubset(set(names))
@@ -47,6 +48,7 @@ def test_agent_tool_registry_has_unique_names_and_contracts():
     assert target_type_for_tool("route_longform_chapter_batch_after_review") == "background_task"
     assert target_type_for_tool("inspect_agent_trace_audit") == "agent_trace_audit"
     assert target_type_for_tool("inspect_agent_memory_route") == "agent_memory_route"
+    assert target_type_for_tool("inspect_agent_world_model_route") == "agent_world_model_route"
     assert target_type_for_tool("summarize_longform_context") == "longform_context_summary"
     assert target_type_for_tool("repair_longform_maintenance") == "longform_maintenance"
     assert "review_chapter_quality" in non_blocking_report_tool_names()
@@ -223,6 +225,20 @@ def test_agent_tool_registry_includes_inspect_agent_trace_audit():
     assert descriptor.input_schema["properties"]["chapter_index"]["minimum"] == 1
     assert "inspect_agent_trace_audit" in allowed_tool_names()
     assert "inspect_agent_trace_audit" in non_blocking_report_tool_names()
+
+
+def test_agent_tool_registry_includes_inspect_agent_world_model_route():
+    descriptor = get_agent_tool_descriptor("inspect_agent_world_model_route")
+
+    assert descriptor is not None
+    assert descriptor.internal is True
+    assert descriptor.non_blocking_report is True
+    assert descriptor.category == "athena_world_model"
+    assert descriptor.target_type == "agent_world_model_route"
+    assert descriptor.input_schema["properties"]["chapter_index"]["minimum"] == 1
+    assert descriptor.input_schema["properties"]["subject_ref"]["type"] == "string"
+    assert "inspect_agent_world_model_route" in allowed_tool_names()
+    assert "inspect_agent_world_model_route" in non_blocking_report_tool_names()
 
 
 def test_agent_tool_registry_includes_summarize_longform_context():

@@ -665,6 +665,35 @@ _TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         availability_checks=("world_model_profile_exists",),
     ),
     AgentToolDescriptor(
+        name="inspect_agent_world_model_route",
+        module="writing_agent",
+        category="athena_world_model",
+        description="汇总世界模型 profile、确认事实和待审提案压力，判断 Agent 是否可继续生成或应先处理世界模型。",
+        input_schema=_object_schema(
+            {
+                "chapter_index": {"type": "integer", "minimum": 1},
+                "subject_ref": {"type": "string"},
+                "limit": {"type": "integer", "minimum": 1},
+            }
+        ),
+        output_schema=_object_schema(
+            {
+                "status": {"type": "string"},
+                "route": {"type": "object"},
+                "profile": {"type": "object"},
+                "fact_summary": {"type": "object"},
+                "facts": {"type": "array"},
+                "proposal_pressure": {"type": "object"},
+                "recommended_actions": {"type": "array"},
+            }
+        ),
+        target_type="agent_world_model_route",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=161,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
         name="plan_world_model_proposal_resolution",
         module="athena_world_model",
         category="athena_world_model",

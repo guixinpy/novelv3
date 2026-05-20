@@ -334,6 +334,18 @@ def _review_world_model_proposals(context: WritingAgentToolContext, tool: Writin
     )
 
 
+def _inspect_agent_world_model_route(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
+    from app.services.writing_agent.agent_world_model_route import inspect_agent_world_model_route
+
+    return inspect_agent_world_model_route(
+        context.db,
+        context.project_id,
+        chapter_index=_optional_int(tool.params.get("chapter_index")),
+        subject_ref=str(tool.params.get("subject_ref") or "").strip() or None,
+        limit=_optional_int(tool.params.get("limit")),
+    )
+
+
 def _plan_world_model_proposal_resolution(
     context: WritingAgentToolContext,
     tool: WritingAgentToolRequest,
@@ -496,6 +508,12 @@ _STATIC_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
     "review_world_model_proposals": WritingAgentToolAdapter(
         "review_world_model_proposals",
         _review_world_model_proposals,
+        category="athena_world_model",
+        mutability="read",
+    ),
+    "inspect_agent_world_model_route": WritingAgentToolAdapter(
+        "inspect_agent_world_model_route",
+        _inspect_agent_world_model_route,
         category="athena_world_model",
         mutability="read",
     ),
