@@ -95,6 +95,30 @@ def test_create_agent_run_records_steps_and_returns_detail(client, db_session, m
     assert payload["steps"][0]["trace_id"] == "trace-setup"
 
 
+def test_agent_run_can_describe_current_tool_plan(client):
+    project_id = _create_project(client, "Agent Tool Plan API")
+
+    response = client.post(
+        f"/api/v1/projects/{project_id}/agent-runs",
+        json={
+            "goal": "查看当前 Agent 工具",
+            "tools": [{"tool_name": "describe_agent_tools", "params": {"chapter_index": 1}}],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "success"
+    assert payload["steps"][0]["tool_name"] == "describe_agent_tools"
+    assert payload["steps"][0]["target_type"] == "agent_tool_plan"
+    output = payload["steps"][0]["output"]
+    assert output["status"] == "completed"
+    assert "visible_tools" in output
+    assert "hidden_tools" in output
+    assert "diagnostics" in output
+    assert "generate_setup" in {tool["name"] for tool in output["visible_tools"]}
+
+
 def test_agent_run_list_and_detail_are_project_scoped(client, db_session):
     project_a = _create_project(client, "Project A")
     project_b = _create_project(client, "Project B")
@@ -545,7 +569,7 @@ def test_agent_preflight_keeps_historical_length_debt_out_of_recent_drift_warnin
         generated_chapters=list(range(1, 9)),
     )
     for chapter in db_session.query(ChapterContent).filter(ChapterContent.project_id == project.id):
-        chapter.word_count = 3000 if chapter.chapter_index <= 3 else 2100
+        chapter.word_count = 3200 if chapter.chapter_index <= 3 else 2100
     db_session.commit()
     import_setup_to_world_model(db_session, project.id)
 
@@ -652,7 +676,7 @@ def test_agent_generate_chapter_ignores_old_over_target_debt_when_recent_window_
         generated_chapters=list(range(1, 9)),
     )
     for chapter in db_session.query(ChapterContent).filter(ChapterContent.project_id == project.id):
-        chapter.word_count = 3000 if chapter.chapter_index <= 3 else 2100
+        chapter.word_count = 3200 if chapter.chapter_index <= 3 else 2100
     db_session.commit()
 
     captured: dict[str, object] = {}

@@ -26,6 +26,13 @@ from app.models import (
 )
 from app.schemas.writing_agent import WritingAgentRunCreate, WritingAgentToolRequest
 from app.services.actions.action_execution_service import ActionExecutionService
+from app.services.writing_agent.tool_registry import (
+    allowed_tool_names,
+    build_agent_tool_plan,
+    internal_tool_names,
+    non_blocking_report_tool_names,
+    target_type_for_tool,
+)
 
 RUN_PENDING = "pending"
 RUN_RUNNING = "running"
@@ -40,65 +47,13 @@ STEP_SUCCESS = "success"
 STEP_FAILED = "failed"
 STEP_BLOCKED = "blocked"
 
-ALLOWED_TOOLS = {
-    "generate_setup",
-    "generate_storyline",
-    "generate_outline",
-    "generate_chapter",
-    "preflight_writing",
-    "import_setup_world_model",
-    "analyze_chapter_world_model",
-    "expand_outline_window",
-    "backfill_outline_gaps",
-    "review_chapter_quality",
-    "review_chapter_continuity",
-    "plan_chapter_revision",
-    "create_revision_draft",
-    "apply_planner_revision_patch",
-    "expand_chapter_to_target",
-    "compress_chapter_to_target",
-    "review_world_model_proposals",
-    "plan_world_model_proposal_resolution",
-    "preview_world_model_proposal_resolution",
-    "apply_world_model_proposal_resolution",
-    "draft_world_model_proposal_resolution_decisions",
-    "seed_continuity_anchor_proposals",
-}
+ALLOWED_TOOLS = allowed_tool_names()
 CHAPTER_TOOL_NAME = "generate_chapter"
 CONTINUITY_KEY_TERMS = ("空白信", "雾晶", "记忆雾晶", "钥匙", "下城", "黑市", "灯塔", "实验体", "叶知秋", "苏晚晴", "林深")
 LENGTH_POLICY_RECENT_WINDOW = 5
 LENGTH_POLICY_REPEATED_DRIFT_THRESHOLD = 3
-INTERNAL_TOOLS = {
-    "preflight_writing",
-    "import_setup_world_model",
-    "analyze_chapter_world_model",
-    "expand_outline_window",
-    "backfill_outline_gaps",
-    "review_chapter_quality",
-    "review_chapter_continuity",
-    "plan_chapter_revision",
-    "create_revision_draft",
-    "apply_planner_revision_patch",
-    "expand_chapter_to_target",
-    "compress_chapter_to_target",
-    "review_world_model_proposals",
-    "plan_world_model_proposal_resolution",
-    "preview_world_model_proposal_resolution",
-    "apply_world_model_proposal_resolution",
-    "draft_world_model_proposal_resolution_decisions",
-    "seed_continuity_anchor_proposals",
-}
-NON_BLOCKING_REPORT_TOOLS = {
-    "review_chapter_quality",
-    "review_chapter_continuity",
-    "plan_chapter_revision",
-    "review_world_model_proposals",
-    "plan_world_model_proposal_resolution",
-    "preview_world_model_proposal_resolution",
-    "apply_world_model_proposal_resolution",
-    "draft_world_model_proposal_resolution_decisions",
-    "seed_continuity_anchor_proposals",
-}
+INTERNAL_TOOLS = internal_tool_names()
+NON_BLOCKING_REPORT_TOOLS = non_blocking_report_tool_names()
 
 
 class WritingAgentRunService:
@@ -196,6 +151,9 @@ class WritingAgentRunService:
                 command_args=tool.command_args,
                 action_params=tool.params,
             )
+        if tool.tool_name == "describe_agent_tools":
+            chapter_index = _optional_int(tool.params.get("chapter_index"))
+            return build_agent_tool_plan(self.db, project_id, chapter_index=chapter_index)
         if tool.tool_name == "preflight_writing":
             return self._preflight_writing(project_id, tool.params)
         if tool.tool_name == "import_setup_world_model":
@@ -716,30 +674,7 @@ def _model_dict(model: Any) -> dict[str, Any]:
 
 
 def _target_type_for_tool(tool_name: str) -> str | None:
-    return {
-        "generate_setup": "setup",
-        "generate_storyline": "storyline",
-        "generate_outline": "outline",
-        "generate_chapter": "chapter",
-        "preflight_writing": "preflight",
-        "import_setup_world_model": "world_model",
-        "analyze_chapter_world_model": "world_model",
-        "expand_outline_window": "outline",
-        "backfill_outline_gaps": "outline",
-        "review_chapter_quality": "review",
-        "review_chapter_continuity": "review",
-        "plan_chapter_revision": "revision_plan",
-        "create_revision_draft": "revision",
-        "apply_planner_revision_patch": "revision",
-        "expand_chapter_to_target": "revision",
-        "compress_chapter_to_target": "revision",
-        "review_world_model_proposals": "world_model",
-        "plan_world_model_proposal_resolution": "world_model",
-        "preview_world_model_proposal_resolution": "world_model",
-        "apply_world_model_proposal_resolution": "world_model",
-        "draft_world_model_proposal_resolution_decisions": "world_model",
-        "seed_continuity_anchor_proposals": "world_model",
-    }.get(tool_name)
+    return target_type_for_tool(tool_name)
 
 
 def _should_stop_after_report(
