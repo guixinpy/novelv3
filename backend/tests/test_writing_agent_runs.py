@@ -5063,6 +5063,57 @@ def test_agent_draft_world_model_proposal_resolution_decisions_keeps_plot_signal
     assert output["recommended_next_tools"] == ["plan_world_model_proposal_resolution"]
 
 
+def test_agent_draft_high_value_world_proposal_resolution_decisions_reports_without_writes(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1], generated_chapters=[1])
+    import_setup_to_world_model(db_session, project.id)
+    high_item = _seed_pending_world_proposal(
+        db_session,
+        project_id=project.id,
+        claim_id="claim.phase82.identifier.hypothesis",
+        predicate="identifier_meaning_hypothesis",
+        subject_ref="identifier.G-07",
+    )
+    low_item = _seed_pending_world_proposal(
+        db_session,
+        project_id=project.id,
+        claim_id="claim.phase82.presence.low",
+        predicate="presence_count",
+        subject_ref="char.林深",
+    )
+    before_review_count = db_session.query(WorldProposalReview).count()
+    before_fact_count = db_session.query(WorldFactClaim).count()
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "草拟高价值世界模型提案决策",
+            "tools": [{"tool_name": "draft_high_value_world_proposal_resolution_decisions", "params": {"limit": 20}}],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    stored_high = db_session.query(WorldProposalItem).filter_by(id=high_item.id).one()
+    stored_low = db_session.query(WorldProposalItem).filter_by(id=low_item.id).one()
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    assert output["status"] == "blocked"
+    assert output["report_only"] is True
+    assert output["inspected_item_count"] == 2
+    assert output["draft_decision_count"] == 1
+    assert output["skipped_item_count"] == 1
+    assert output["draft_decisions"][0]["proposal_item_id"] == high_item.id
+    assert output["draft_decisions"][0]["action"] == "mark_uncertain"
+    assert output["draft_decisions"][0]["predicate"] == "identifier_meaning_hypothesis"
+    assert output["requires_confirmation"] is True
+    assert output["can_auto_apply"] is False
+    assert output["should_generate_next_chapter"] is False
+    assert output["recommended_next_tools"] == ["apply_world_model_proposal_resolution"]
+    assert stored_high.item_status == "pending"
+    assert stored_low.item_status == "pending"
+    assert db_session.query(WorldProposalReview).count() == before_review_count
+    assert db_session.query(WorldFactClaim).count() == before_fact_count
+
+
 def test_agent_draft_world_model_proposal_resolution_decisions_ignores_approval_policy_overrides(
     client,
     db_session,
