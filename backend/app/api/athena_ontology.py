@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -15,6 +16,9 @@ from app.models import (
     WorldResource,
     WorldRule,
 )
+from app.schemas import SetupOut
+from app.schemas.writing_agent import WritingAgentRunCreate, WritingAgentToolRequest
+from app.services.writing_agent.run_service import WritingAgentRunService
 
 router = APIRouter()
 DEFAULT_ONTOLOGY_ENTITY_LIMIT = 500
@@ -22,6 +26,8 @@ DEFAULT_ONTOLOGY_RELATION_LIMIT = 1000
 DEFAULT_ONTOLOGY_RULE_LIMIT = 500
 DEFAULT_ONTOLOGY_TOPOLOGY_NODE_LIMIT = 200
 DEFAULT_ONTOLOGY_TOPOLOGY_EDGE_LIMIT = 500
+ATHENA_ONTOLOGY_AGENT_CONTROL_PLANE_VERSION = "phase67.athena_ontology_agent.v1"
+ATHENA_ONTOLOGY_GENERATE_ENTRYPOINT = "athena_ontology_generate"
 
 
 @router.get("/ontology")
@@ -256,8 +262,49 @@ def get_ontology_rules(
 
 @router.post("/ontology/generate")
 async def generate_ontology(project_id: str, db: Session = Depends(get_db)):
-    from app.api.setups import generate_setup
-    return await generate_setup(project_id, db)
+    require_project(db, project_id)
+    tool = WritingAgentToolRequest(tool_name="generate_setup")
+    service = WritingAgentRunService(db)
+    run = service.create_run(
+        project_id,
+        WritingAgentRunCreate(
+            goal="通过 Athena 设定入口生成项目设定",
+            entrypoint=ATHENA_ONTOLOGY_GENERATE_ENTRYPOINT,
+            tools=[tool],
+            input={
+                "control_plane": {
+                    "version": ATHENA_ONTOLOGY_AGENT_CONTROL_PLANE_VERSION,
+                    "source": ATHENA_ONTOLOGY_GENERATE_ENTRYPOINT,
+                    "action_type": "generate_setup",
+                }
+            },
+        ),
+        effective_tools=[tool],
+    )
+    run = await service.execute_run(run.id, [tool])
+    if run.status != "success":
+        status_code = 400 if run.error == "API key not configured" else 500
+        raise HTTPException(status_code=status_code, detail=run.error or "Agent setup generation failed")
+
+    setup = _latest_project_setup(db, project_id)
+    if not setup:
+        raise HTTPException(status_code=500, detail="Agent setup generation completed without setup output")
+    body = jsonable_encoder(SetupOut.model_validate(setup))
+    body["agent_run_id"] = run.id
+    body["control_plane"] = {
+        "version": ATHENA_ONTOLOGY_AGENT_CONTROL_PLANE_VERSION,
+        "source": ATHENA_ONTOLOGY_GENERATE_ENTRYPOINT,
+    }
+    return body
+
+
+def _latest_project_setup(db: Session, project_id: str) -> Setup | None:
+    return (
+        db.query(Setup)
+        .filter(Setup.project_id == project_id)
+        .order_by(Setup.created_at.desc(), Setup.id.desc())
+        .first()
+    )
 
 
 @router.post("/ontology/import-setup")
