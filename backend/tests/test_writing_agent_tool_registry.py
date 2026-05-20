@@ -25,6 +25,7 @@ def test_agent_tool_registry_has_unique_names_and_contracts():
         "inspect_longform_chapter_batch",
         "inspect_agent_job_projection",
         "inspect_agent_knowledge_base_route",
+        "record_agent_knowledge_base_candidate",
         "execute_longform_chapter_batch_preflight",
         "prepare_longform_chapter_batch_execution",
         "execute_longform_chapter_batch",
@@ -45,6 +46,7 @@ def test_agent_tool_registry_has_unique_names_and_contracts():
     assert target_type_for_tool("inspect_longform_chapter_batch") == "background_task"
     assert target_type_for_tool("inspect_agent_job_projection") == "agent_job_projection"
     assert target_type_for_tool("inspect_agent_knowledge_base_route") == "agent_knowledge_base_route"
+    assert target_type_for_tool("record_agent_knowledge_base_candidate") == "agent_knowledge_base_candidate"
     assert target_type_for_tool("execute_longform_chapter_batch_preflight") == "background_task"
     assert target_type_for_tool("prepare_longform_chapter_batch_execution") == "background_task"
     assert target_type_for_tool("execute_longform_chapter_batch") == "background_task"
@@ -151,6 +153,21 @@ def test_agent_tool_registry_includes_inspect_agent_knowledge_base_route():
     assert descriptor.input_schema["properties"]["limit"]["minimum"] == 1
     assert "inspect_agent_knowledge_base_route" in allowed_tool_names()
     assert "inspect_agent_knowledge_base_route" in non_blocking_report_tool_names()
+
+
+def test_agent_tool_registry_includes_record_agent_knowledge_base_candidate():
+    descriptor = get_agent_tool_descriptor("record_agent_knowledge_base_candidate")
+
+    assert descriptor is not None
+    assert descriptor.internal is True
+    assert descriptor.non_blocking_report is False
+    assert descriptor.category == "knowledge_base"
+    assert descriptor.target_type == "agent_knowledge_base_candidate"
+    assert descriptor.input_schema["properties"]["memory_type"]["type"] == "string"
+    assert descriptor.input_schema["properties"]["source_refs"]["type"] == "array"
+    assert set(descriptor.input_schema["required"]) == {"memory_type", "title", "summary", "source_refs"}
+    assert "record_agent_knowledge_base_candidate" in allowed_tool_names()
+    assert "record_agent_knowledge_base_candidate" not in non_blocking_report_tool_names()
 
 
 def test_agent_tool_registry_includes_execute_longform_chapter_batch_preflight():

@@ -98,6 +98,7 @@ def test_tool_executor_static_adapter_names_are_report_or_agent_native_tools():
         "inspect_longform_chapter_batch",
         "inspect_agent_job_projection",
         "inspect_agent_knowledge_base_route",
+        "record_agent_knowledge_base_candidate",
         "execute_longform_chapter_batch_preflight",
         "prepare_longform_chapter_batch_execution",
         "execute_longform_chapter_batch",
@@ -158,6 +159,7 @@ def test_tool_executor_lists_unhandled_internal_tools_for_migration_tracking():
     assert "inspect_longform_chapter_batch" not in names
     assert "inspect_agent_job_projection" not in names
     assert "inspect_agent_knowledge_base_route" not in names
+    assert "record_agent_knowledge_base_candidate" not in names
     assert "execute_longform_chapter_batch_preflight" not in names
     assert "prepare_longform_chapter_batch_execution" not in names
     assert "execute_longform_chapter_batch" not in names
@@ -283,6 +285,18 @@ def test_tool_executor_exposes_inspect_agent_knowledge_base_route_adapter_metada
         "category": "knowledge_base",
         "mutability": "read",
         "handler_name": "_inspect_agent_knowledge_base_route",
+    }
+
+
+def test_tool_executor_exposes_record_agent_knowledge_base_candidate_adapter_metadata():
+    metadata = writing_agent_tool_adapter_metadata("record_agent_knowledge_base_candidate")
+
+    assert metadata == {
+        "tool_name": "record_agent_knowledge_base_candidate",
+        "adapter_type": "static",
+        "category": "knowledge_base",
+        "mutability": "write",
+        "handler_name": "_record_agent_knowledge_base_candidate",
     }
 
 
@@ -512,6 +526,65 @@ async def test_tool_executor_dispatches_inspect_agent_knowledge_base_route_adapt
     assert result.handled is True
     assert result.output == {"status": "completed", "route": {"status": "ready"}}
     assert calls == [(project.id, 8, "雾港节奏", 5)]
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_dispatches_record_agent_knowledge_base_candidate_adapter(db_session, monkeypatch):
+    project = Project(name="Executor Knowledge Base Candidate")
+    db_session.add(project)
+    db_session.commit()
+    calls: list[tuple[str, str, str, str, list[str], float | None, str | None, list[str]]] = []
+
+    def fake_record(
+        db,
+        project_id: str,
+        *,
+        memory_type: str,
+        title: str,
+        summary: str,
+        source_refs: list[str],
+        confidence: float | None,
+        status: str | None,
+        tags: list[str],
+    ):
+        calls.append((project_id, memory_type, title, summary, source_refs, confidence, status, tags))
+        return {"status": "completed", "action": "created"}
+
+    monkeypatch.setattr(
+        "app.services.writing_agent.agent_knowledge_base_candidates.record_agent_knowledge_base_candidate",
+        fake_record,
+    )
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(
+            tool_name="record_agent_knowledge_base_candidate",
+            params={
+                "memory_type": "self_optimization_lesson",
+                "title": "低细节续写可行",
+                "summary": "Agent route 可以支撑续写。",
+                "source_refs": ["phase77", "chapter:24"],
+                "confidence": "0.8",
+                "status": "candidate",
+                "tags": ["dogfood"],
+            },
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output == {"status": "completed", "action": "created"}
+    assert calls == [
+        (
+            project.id,
+            "self_optimization_lesson",
+            "低细节续写可行",
+            "Agent route 可以支撑续写。",
+            ["phase77", "chapter:24"],
+            0.8,
+            "candidate",
+            ["dogfood"],
+        )
+    ]
 
 
 @pytest.mark.asyncio

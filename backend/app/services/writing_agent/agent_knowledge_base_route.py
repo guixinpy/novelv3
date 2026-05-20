@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.few_shot_library import FewShotExampleLibrary
 from app.models import Project, PromptRule
+from app.services.writing_agent.agent_knowledge_base_candidates import KNOWLEDGE_CANDIDATES_KEY
 
 AGENT_KNOWLEDGE_BASE_ROUTE_VERSION = "phase76.agent_knowledge_base_route.v1"
 DEFAULT_RULE_LIMIT = 20
@@ -29,15 +30,18 @@ def inspect_agent_knowledge_base_route(
     learned_rules = _learned_rules(db, project_id, limit=clamped_limit)
     author_preferences = _author_preferences(project)
     project_strategy = _project_strategy(project)
+    knowledge_candidates = _knowledge_candidates(project, limit=clamped_limit)
     reference_patterns = _reference_patterns(project, query=query)
     diagnostics = _diagnostics(
         author_preferences=author_preferences,
         learned_rules=learned_rules,
+        knowledge_candidates=knowledge_candidates,
     )
     route = _route_decision(
         chapter_index=chapter_index,
         author_preferences=author_preferences,
         learned_rules=learned_rules,
+        knowledge_candidates=knowledge_candidates,
     )
     return _json_safe_output(
         {
@@ -49,6 +53,7 @@ def inspect_agent_knowledge_base_route(
             "author_preferences": author_preferences,
             "project_strategy": project_strategy,
             "learned_rules": learned_rules,
+            "knowledge_candidates": knowledge_candidates,
             "reference_patterns": reference_patterns,
             "diagnostics": diagnostics,
             "trace": {
@@ -69,7 +74,11 @@ def _require_project(db: Session, project_id: str) -> Project:
 
 def _author_preferences(project: Project) -> dict[str, Any]:
     style_config = project.style_config if isinstance(project.style_config, dict) else {}
-    configured_items = {key: value for key, value in style_config.items() if value not in (None, "", [], {})}
+    configured_items = {
+        key: value
+        for key, value in style_config.items()
+        if key != KNOWLEDGE_CANDIDATES_KEY and value not in (None, "", [], {})
+    }
     return {
         "status": "configured" if configured_items else "empty",
         "style_config": style_config,
@@ -135,6 +144,45 @@ def _learned_rules(db: Session, project_id: str, *, limit: int) -> dict[str, Any
     }
 
 
+def _knowledge_candidates(project: Project, *, limit: int) -> dict[str, Any]:
+    style_config = project.style_config if isinstance(project.style_config, dict) else {}
+    candidates = [item for item in style_config.get(KNOWLEDGE_CANDIDATES_KEY, []) if isinstance(item, dict)]
+    visible = [item for item in candidates if str(item.get("status") or "candidate") not in {"rejected", "muted"}]
+    sorted_items = sorted(
+        visible,
+        key=lambda item: (
+            str(item.get("updated_at") or ""),
+            str(item.get("created_at") or ""),
+            str(item.get("id") or ""),
+        ),
+        reverse=True,
+    )
+    items = [
+        {
+            "id": item.get("id"),
+            "memory_type": item.get("memory_type"),
+            "title": item.get("title"),
+            "summary": item.get("summary"),
+            "source_refs": list(item.get("source_refs") or []),
+            "confidence": item.get("confidence"),
+            "status": item.get("status") or "candidate",
+            "tags": list(item.get("tags") or []),
+            "observed_count": int(item.get("observed_count") or 1),
+            "created_at": item.get("created_at"),
+            "updated_at": item.get("updated_at"),
+        }
+        for item in sorted_items[:limit]
+    ]
+    return {
+        "total": len(visible),
+        "returned": len(items),
+        "limit": limit,
+        "has_more": len(items) < len(visible),
+        "items": items,
+        "source_ref": f"Project.style_config.{KNOWLEDGE_CANDIDATES_KEY}",
+    }
+
+
 def _reference_patterns(project: Project, *, query: str | None) -> dict[str, Any]:
     genre = project.genre or _clean_query(query) or ""
     examples = FewShotExampleLibrary().select_examples("chapter", genre, limit=2)
@@ -155,7 +203,12 @@ def _reference_patterns(project: Project, *, query: str | None) -> dict[str, Any
     }
 
 
-def _diagnostics(*, author_preferences: dict[str, Any], learned_rules: dict[str, Any]) -> list[dict[str, Any]]:
+def _diagnostics(
+    *,
+    author_preferences: dict[str, Any],
+    learned_rules: dict[str, Any],
+    knowledge_candidates: dict[str, Any],
+) -> list[dict[str, Any]]:
     diagnostics = [
         {
             "code": "world_truth_boundary",
@@ -163,7 +216,11 @@ def _diagnostics(*, author_preferences: dict[str, Any], learned_rules: dict[str,
             "message": "知识库是作者偏好、项目策略和写法经验，不是 Athena 世界真相；内部事实仍需走世界模型和提案机制。",
         }
     ]
-    if author_preferences["status"] == "empty" and int(learned_rules["total"]) == 0:
+    if (
+        author_preferences["status"] == "empty"
+        and int(learned_rules["total"]) == 0
+        and int(knowledge_candidates["total"]) == 0
+    ):
         diagnostics.append(
             {
                 "code": "knowledge_base_sparse",
@@ -181,6 +238,16 @@ def _diagnostics(*, author_preferences: dict[str, Any], learned_rules: dict[str,
                 "returned": learned_rules["returned"],
             }
         )
+    if knowledge_candidates["has_more"]:
+        diagnostics.append(
+            {
+                "code": "knowledge_candidates_truncated",
+                "severity": "info",
+                "message": "知识库候选已按窗口限制截断，Agent 应只使用当前返回的候选项。",
+                "total": knowledge_candidates["total"],
+                "returned": knowledge_candidates["returned"],
+            }
+        )
     return diagnostics
 
 
@@ -189,8 +256,13 @@ def _route_decision(
     chapter_index: int | None,
     author_preferences: dict[str, Any],
     learned_rules: dict[str, Any],
+    knowledge_candidates: dict[str, Any],
 ) -> dict[str, Any]:
-    sparse = author_preferences["status"] == "empty" and int(learned_rules["total"]) == 0
+    sparse = (
+        author_preferences["status"] == "empty"
+        and int(learned_rules["total"]) == 0
+        and int(knowledge_candidates["total"]) == 0
+    )
     recommended_tools = ["summarize_longform_context"]
     if chapter_index:
         recommended_tools.append("preflight_writing")
