@@ -682,13 +682,20 @@ class WritingAgentRunService:
         return None
 
     def _run_output(self, run_id: str) -> dict[str, Any]:
-        rows = self.db.query(WritingAgentStep.status).filter(WritingAgentStep.run_id == run_id).all()
-        statuses = [row.status for row in rows]
+        run = self.db.query(WritingAgentRun).filter(WritingAgentRun.id == run_id).first()
+        steps = (
+            self.db.query(WritingAgentStep)
+            .filter(WritingAgentStep.run_id == run_id)
+            .order_by(WritingAgentStep.step_index.asc(), WritingAgentStep.id.asc())
+            .all()
+        )
+        statuses = [step.status for step in steps]
         return {
             "step_count": len(statuses),
             "successful_step_count": sum(1 for status in statuses if status == STEP_SUCCESS),
             "failed_step_count": sum(1 for status in statuses if status == STEP_FAILED),
             "blocked_step_count": sum(1 for status in statuses if status == STEP_BLOCKED),
+            "continuation_state": _continuation_state(run, steps) if run is not None else None,
         }
 
 
@@ -699,6 +706,179 @@ def detail_payload(detail: dict[str, Any]) -> dict[str, Any]:
         **_model_dict(run),
         "steps": steps,
     }
+
+
+def _continuation_state(run: WritingAgentRun, steps: list[WritingAgentStep]) -> dict[str, Any]:
+    recovery = _latest_recommended_recovery_from_steps(steps)
+    blocked_step = _blocked_or_failed_step(run, steps)
+    last_successful_step = _last_step_with_status(steps, STEP_SUCCESS)
+    next_planned_tool = _next_planned_tool(run, steps)
+    next_expected_tool = recovery.get("next_tool") if recovery.get("status") == "recommended" else next_planned_tool
+    status = _continuation_status(run.status)
+    return {
+        "version": "phase56.continuation_state.v1",
+        "status": status,
+        "active_task": {
+            "goal": run.goal,
+            "entrypoint": run.entrypoint,
+            "auto_plan": bool((run.input or {}).get("auto_plan") is True) if isinstance(run.input, dict) else False,
+            "planner_mode": _planner_mode(run),
+        },
+        "target_chapter_index": _continuation_target_chapter(run, steps),
+        "progress": {
+            "planned_step_count": _planned_step_count(run),
+            "executed_step_count": len(steps),
+            "successful_step_count": sum(1 for step in steps if step.status == STEP_SUCCESS),
+            "failed_step_count": sum(1 for step in steps if step.status == STEP_FAILED),
+            "blocked_step_count": sum(1 for step in steps if step.status == STEP_BLOCKED),
+        },
+        "last_successful_tool": _step_marker(last_successful_step),
+        "blocked_tool": _step_marker(blocked_step),
+        "next_expected_tool": next_expected_tool,
+        "recovery": recovery,
+        "failure": _failure_state(run, blocked_step),
+        "consumed": _consumed_state(steps),
+        "resume_hint": _resume_hint(status, next_expected_tool, recovery),
+    }
+
+
+def _continuation_status(status: str) -> str:
+    if status == RUN_SUCCESS:
+        return "completed"
+    return status
+
+
+def _planner_mode(run: WritingAgentRun) -> str | None:
+    run_input = run.input if isinstance(run.input, dict) else {}
+    planner = run_input.get("planner") if isinstance(run_input.get("planner"), dict) else {}
+    mode = str(planner.get("mode") or "").strip()
+    return mode or None
+
+
+def _planned_step_count(run: WritingAgentRun) -> int:
+    run_input = run.input if isinstance(run.input, dict) else {}
+    tools = run_input.get("tools") if isinstance(run_input.get("tools"), list) else []
+    return len(tools)
+
+
+def _next_planned_tool(run: WritingAgentRun, steps: list[WritingAgentStep]) -> str | None:
+    run_input = run.input if isinstance(run.input, dict) else {}
+    tools = run_input.get("tools") if isinstance(run_input.get("tools"), list) else []
+    if len(steps) >= len(tools):
+        return None
+    candidate = tools[len(steps)]
+    if not isinstance(candidate, dict):
+        return None
+    value = str(candidate.get("tool_name") or "").strip()
+    return value or None
+
+
+def _continuation_target_chapter(run: WritingAgentRun, steps: list[WritingAgentStep]) -> int | None:
+    for step in reversed(steps):
+        chapter_index = _optional_int(step.chapter_index)
+        if chapter_index:
+            return chapter_index
+        output = step.output if isinstance(step.output, dict) else {}
+        chapter_index = _optional_int(output.get("chapter_index"))
+        if chapter_index:
+            return chapter_index
+        step_input = step.input if isinstance(step.input, dict) else {}
+        params = step_input.get("params") if isinstance(step_input.get("params"), dict) else {}
+        chapter_index = _optional_int(params.get("chapter_index") or params.get("start_chapter") or params.get("before_chapter"))
+        if chapter_index:
+            return chapter_index
+    run_input = run.input if isinstance(run.input, dict) else {}
+    chapter_index = _optional_int(run_input.get("chapter_index"))
+    if chapter_index:
+        return chapter_index
+    planner = run_input.get("planner") if isinstance(run_input.get("planner"), dict) else {}
+    return _optional_int(planner.get("chapter_index"))
+
+
+def _last_step_with_status(steps: list[WritingAgentStep], status: str) -> WritingAgentStep | None:
+    for step in reversed(steps):
+        if step.status == status:
+            return step
+    return None
+
+
+def _blocked_or_failed_step(run: WritingAgentRun, steps: list[WritingAgentStep]) -> WritingAgentStep | None:
+    for step in reversed(steps):
+        if step.status in {STEP_BLOCKED, STEP_FAILED}:
+            return step
+    if run.status == RUN_BLOCKED and steps:
+        latest = steps[-1]
+        output = latest.output if isinstance(latest.output, dict) else {}
+        if output.get("should_generate_next_chapter") is False:
+            return latest
+    return None
+
+
+def _step_marker(step: WritingAgentStep | None) -> dict[str, Any] | None:
+    if step is None:
+        return None
+    return {
+        "step_index": step.step_index,
+        "tool_name": step.tool_name,
+        "status": step.status,
+        "chapter_index": step.chapter_index,
+        "target_type": step.target_type,
+        "target_id": step.target_id,
+    }
+
+
+def _latest_recommended_recovery_from_steps(steps: list[WritingAgentStep]) -> dict[str, Any]:
+    for step in reversed(steps):
+        output = step.output if isinstance(step.output, dict) else {}
+        envelope = output.get("agent_tool_result") if isinstance(output.get("agent_tool_result"), dict) else {}
+        recovery = envelope.get("recovery") if isinstance(envelope.get("recovery"), dict) else {}
+        if recovery.get("status") == "recommended":
+            return {
+                "status": "recommended",
+                "source_step_index": step.step_index,
+                "source_tool": recovery.get("source_tool") or step.tool_name,
+                "reason_code": recovery.get("reason_code"),
+                "next_tool": recovery.get("next_tool"),
+                "affected_chapter_indexes": recovery.get("affected_chapter_indexes", []),
+            }
+    return {"status": "none"}
+
+
+def _failure_state(run: WritingAgentRun, blocked_step: WritingAgentStep | None) -> dict[str, Any] | None:
+    if run.status not in {RUN_BLOCKED, RUN_FAILED}:
+        return None
+    output = blocked_step.output if blocked_step is not None and isinstance(blocked_step.output, dict) else {}
+    decision = output.get("decision") if isinstance(output.get("decision"), dict) else {}
+    return {
+        "status": run.status,
+        "tool_name": blocked_step.tool_name if blocked_step is not None else None,
+        "reason_code": decision.get("reason") or output.get("reason") or output.get("error"),
+        "message": run.error or decision.get("message") or output.get("error"),
+    }
+
+
+def _consumed_state(steps: list[WritingAgentStep]) -> dict[str, bool]:
+    successful_tools = {step.tool_name for step in steps if step.status == STEP_SUCCESS}
+    return {
+        "longform_maintenance": "repair_longform_maintenance" in successful_tools,
+        "longform_context": "summarize_longform_context" in successful_tools,
+        "preflight": "preflight_writing" in successful_tools,
+        "generated_chapter": CHAPTER_TOOL_NAME in successful_tools,
+        "quality_review": "review_chapter_quality" in successful_tools,
+        "continuity_review": "review_chapter_continuity" in successful_tools,
+        "review_findings": bool({"review_chapter_quality", "review_chapter_continuity"} & successful_tools),
+        "world_model_proposals": "analyze_chapter_world_model" in successful_tools,
+    }
+
+
+def _resume_hint(status: str, next_expected_tool: str | None, recovery: dict[str, Any]) -> str:
+    if status == "completed":
+        return "当前 Agent run 已完成，无需恢复。"
+    if recovery.get("status") == "recommended" and next_expected_tool:
+        return f"建议通过恢复预览确认后执行 {next_expected_tool}。"
+    if next_expected_tool:
+        return f"下一步应继续执行 {next_expected_tool}。"
+    return "没有可自动推断的下一步工具。"
 
 
 def _recovery_preview_auto_plan(

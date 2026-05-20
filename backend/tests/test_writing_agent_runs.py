@@ -628,6 +628,17 @@ def test_agent_auto_plan_longform_context_blocks_stale_maintenance_before_genera
     assert context_output["recommended_actions"] == ["repair_longform_maintenance"]
     assert context_output["decision"]["reason"] == "longform_memory_needs_maintenance"
     assert calls == []
+    state = payload["output"]["continuation_state"]
+    assert state["version"] == "phase56.continuation_state.v1"
+    assert state["status"] == "blocked"
+    assert state["target_chapter_index"] == 2
+    assert state["last_successful_tool"]["tool_name"] == "summarize_longform_context"
+    assert state["blocked_tool"]["tool_name"] == "summarize_longform_context"
+    assert state["next_expected_tool"] == "repair_longform_maintenance"
+    assert state["recovery"]["status"] == "recommended"
+    assert state["recovery"]["next_tool"] == "repair_longform_maintenance"
+    assert state["consumed"]["longform_context"] is True
+    assert state["consumed"]["generated_chapter"] is False
 
     preview = client.post(
         f"/api/v1/projects/{project.id}/agent-runs",
@@ -723,6 +734,17 @@ def test_agent_run_executes_longform_context_recovery_chain_after_confirmation(
     assert context_output["should_generate_next_chapter"] is True
     assert context_output["decision"]["reason"] == "longform_context_ready"
     assert payload["steps"][2]["output"]["status"] == "ready"
+    state = payload["output"]["continuation_state"]
+    assert state["version"] == "phase56.continuation_state.v1"
+    assert state["status"] == "completed"
+    assert state["target_chapter_index"] == 2
+    assert state["last_successful_tool"]["tool_name"] == "generate_chapter"
+    assert state["next_expected_tool"] is None
+    assert state["consumed"]["longform_maintenance"] is True
+    assert state["consumed"]["longform_context"] is True
+    assert state["consumed"]["preflight"] is True
+    assert state["consumed"]["generated_chapter"] is True
+    assert state["consumed"]["world_model_proposals"] is False
     assert calls == ["generate_chapter"]
 
 
