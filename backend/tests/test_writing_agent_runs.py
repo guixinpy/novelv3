@@ -184,6 +184,17 @@ def test_agent_run_auto_plan_executes_high_level_next_chapter_goal(client, db_se
     step_names = [step["tool_name"] for step in payload["steps"]]
     assert step_names[:3] == ["describe_agent_tools", "preflight_writing", "generate_chapter"]
     assert step_names[-1] == "analyze_chapter_world_model"
+    generate_step = next(step for step in payload["steps"] if step["tool_name"] == "generate_chapter")
+    assert generate_step["input"]["planner"]["reason"] == "依赖满足后生成第2章正文。"
+    envelope = generate_step["output"]["agent_tool_result"]
+    assert envelope["tool_name"] == "generate_chapter"
+    assert envelope["step_status"] == "success"
+    assert envelope["result_status"] == "success"
+    assert envelope["is_error"] is False
+    assert envelope["trace_id"] == "trace-chapter-2"
+    assert envelope["planner"]["reason"] == "依赖满足后生成第2章正文。"
+    quality_step = next(step for step in payload["steps"] if step["tool_name"] == "review_chapter_quality")
+    assert quality_step["input"]["planner"]["post_generation"] is True
     assert payload["input"]["planner"]["intent_class"] == "continue_next_chapter"
     assert payload["input"]["tools"][0]["tool_name"] == "describe_agent_tools"
 

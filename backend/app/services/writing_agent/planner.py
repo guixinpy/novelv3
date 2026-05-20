@@ -225,7 +225,19 @@ def _append_step(
 
 
 def _tool_request_from_step(step: dict[str, Any]) -> dict[str, Any]:
-    request = {"tool_name": step["tool_name"], "params": step.get("params") or {}}
+    request = {
+        "tool_name": step["tool_name"],
+        "params": step.get("params") or {},
+        "planner": {
+            "step_index": step["step_index"],
+            "reason": step["reason"],
+            "on_missing": step["on_missing"],
+            "on_failure": step["on_failure"],
+            "expected_output": step["expected_output"],
+            "post_generation": step["post_generation"],
+            "planner_version": PLANNER_VERSION,
+        },
+    }
     if step.get("command_args"):
         request["command_args"] = step["command_args"]
     return request

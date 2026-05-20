@@ -8,6 +8,7 @@ class WritingAgentToolRequest(BaseModel):
     tool_name: str
     command_args: str | None = None
     params: dict[str, Any] = Field(default_factory=dict)
+    planner: dict[str, Any] = Field(default_factory=dict)
 
 
 class WritingAgentRunCreate(BaseModel):

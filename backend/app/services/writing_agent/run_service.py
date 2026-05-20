@@ -47,6 +47,7 @@ STEP_SUCCESS = "success"
 STEP_FAILED = "failed"
 STEP_BLOCKED = "blocked"
 
+AGENT_TOOL_RESULT_VERSION = "phase42.tool_result.v1"
 ALLOWED_TOOLS = allowed_tool_names()
 CHAPTER_TOOL_NAME = "generate_chapter"
 CONTINUITY_KEY_TERMS = ("空白信", "雾晶", "记忆雾晶", "钥匙", "下城", "黑市", "灯塔", "实验体", "叶知秋", "苏晚晴", "林深")
@@ -428,13 +429,16 @@ class WritingAgentRunService:
         step_index: int,
         tool: WritingAgentToolRequest,
     ) -> WritingAgentStep:
+        step_input = {"command_args": tool.command_args, "params": tool.params}
+        if tool.planner:
+            step_input["planner"] = tool.planner
         step = WritingAgentStep(
             run_id=run.id,
             project_id=run.project_id,
             step_index=step_index,
             tool_name=tool.tool_name,
             status=STEP_RUNNING,
-            input={"command_args": tool.command_args, "params": tool.params},
+            input=step_input,
             started_at=_now(),
         )
         self.db.add(step)
@@ -444,6 +448,8 @@ class WritingAgentRunService:
 
     def _complete_step(self, step: WritingAgentStep, output: dict[str, Any]) -> None:
         trace_id = _optional_existing_trace_id(self.db, step.project_id, output.get("trace_id"))
+        output = dict(output)
+        output["agent_tool_result"] = _agent_tool_result_envelope(step, output, STEP_SUCCESS)
         step.status = STEP_SUCCESS
         step.output = output
         step.error = None
@@ -464,6 +470,9 @@ class WritingAgentRunService:
         output: dict[str, Any] | None = None,
     ) -> None:
         now = _now()
+        if output is not None:
+            output = dict(output)
+            output["agent_tool_result"] = _agent_tool_result_envelope(step, output, STEP_FAILED)
         step.status = STEP_FAILED
         step.error = error
         step.output = output
@@ -487,6 +496,9 @@ class WritingAgentRunService:
         output: dict[str, Any] | None = None,
     ) -> None:
         now = _now()
+        if output is not None:
+            output = dict(output)
+            output["agent_tool_result"] = _agent_tool_result_envelope(step, output, STEP_BLOCKED)
         step.status = STEP_BLOCKED
         step.error = error
         step.output = output
@@ -719,6 +731,25 @@ def _model_dict(model: Any) -> dict[str, Any]:
 
 def _target_type_for_tool(tool_name: str) -> str | None:
     return target_type_for_tool(tool_name)
+
+
+def _agent_tool_result_envelope(step: WritingAgentStep, output: dict[str, Any], step_status: str) -> dict[str, Any]:
+    planner = {}
+    if isinstance(step.input, dict) and isinstance(step.input.get("planner"), dict):
+        planner = step.input["planner"]
+    result_status = str(output.get("status") or step_status)
+    output_keys = sorted(str(key) for key in output if key != "agent_tool_result")
+    return {
+        "version": AGENT_TOOL_RESULT_VERSION,
+        "tool_name": step.tool_name,
+        "step_index": step.step_index,
+        "step_status": step_status,
+        "result_status": result_status,
+        "is_error": step_status in {STEP_FAILED, STEP_BLOCKED} or result_status in {"failed", "blocked"},
+        "trace_id": str(output.get("trace_id") or "") or None,
+        "planner": planner,
+        "output_keys": output_keys,
+    }
 
 
 def _should_stop_after_report(
