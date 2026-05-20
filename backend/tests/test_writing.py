@@ -122,6 +122,68 @@ async def test_generate_chapter_work_continues_until_project_target(client, db_s
 
 
 @pytest.mark.asyncio
+async def test_generate_chapter_work_records_agent_run_provenance(client, db_session, monkeypatch):
+    r = client.post("/api/v1/projects", json={"name": "Agent Provenance Range", "target_chapter_count": 2})
+    pid = r.json()["id"]
+    task = BackgroundTaskService(db_session).create_chapter_range(
+        project_id=pid,
+        task_type="generate_chapter",
+        start_chapter_index=1,
+        end_chapter_index=2,
+        payload={"chapter_index": 1},
+    )
+    WritingStateService(db_session).run_chapter(pid, 1)
+
+    async def fake_generate_chapter(project_id: str, chapter_index: int, db):
+        WritingStateService(db).complete_chapter(project_id, chapter_index)
+        return {
+            "chapter_index": chapter_index,
+            "agent_run_id": f"run-{chapter_index}",
+            "control_plane": {"source": "chapter_generate", "chapter_index": chapter_index},
+        }
+
+    monkeypatch.setattr("app.api.chapters.generate_chapter", fake_generate_chapter)
+    from app.api.writing import build_generate_chapter_work
+
+    result = await build_generate_chapter_work(pid, 1)(db_session, task)
+
+    assert result["agent_run_id"] == "run-2"
+    assert result["agent_runs"] == [
+        {"chapter_index": 1, "agent_run_id": "run-1", "control_plane": {"source": "chapter_generate", "chapter_index": 1}},
+        {"chapter_index": 2, "agent_run_id": "run-2", "control_plane": {"source": "chapter_generate", "chapter_index": 2}},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_retry_chapter_work_records_agent_run_provenance(client, db_session, monkeypatch):
+    project_id = client.post("/api/v1/projects", json={"name": "Retry Agent Provenance"}).json()["id"]
+    task = BackgroundTaskService(db_session).create(
+        project_id=project_id,
+        task_type="retry_chapter",
+        payload={"chapter_index": 3},
+    )
+
+    async def fake_generate_chapter(project_id: str, chapter_index: int, db):
+        WritingStateService(db).complete_chapter(project_id, chapter_index)
+        return {
+            "chapter_index": chapter_index,
+            "agent_run_id": "run-retry-3",
+            "control_plane": {"source": "chapter_generate", "chapter_index": 3},
+        }
+
+    monkeypatch.setattr("app.api.chapters.generate_chapter", fake_generate_chapter)
+    from app.api.writing import build_retry_chapter_work
+
+    result = await build_retry_chapter_work(project_id, 3)(db_session, task)
+
+    assert result == {
+        "chapter_index": 3,
+        "agent_run_id": "run-retry-3",
+        "control_plane": {"source": "chapter_generate", "chapter_index": 3},
+    }
+
+
+@pytest.mark.asyncio
 async def test_generate_chapter_work_summarizes_generation_diagnostics(client, db_session, monkeypatch):
     r = client.post("/api/v1/projects", json={"name": "Observable Range Work", "target_chapter_count": 3})
     pid = r.json()["id"]

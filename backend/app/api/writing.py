@@ -70,7 +70,13 @@ def build_retry_chapter_work(project_id: str, chapter_index: int):
 
         WritingStateService(rdb).complete_chapter(project_id, chapter_index)
         generated_index = chapter.get("chapter_index") if isinstance(chapter, dict) else chapter.chapter_index
-        return {"chapter_index": generated_index}
+        result = {"chapter_index": generated_index}
+        provenance = _chapter_agent_provenance(chapter)
+        if provenance:
+            result["agent_run_id"] = provenance["agent_run_id"]
+            if "control_plane" in provenance:
+                result["control_plane"] = provenance["control_plane"]
+        return result
 
     return _regen
 
@@ -89,6 +95,7 @@ def build_generate_chapter_work(project_id: str, chapter_index: int):
             chapter_indexes = range(chapter_index, chapter_index + 1)
 
         generated_index = chapter_index
+        agent_runs: list[dict] = []
         try:
             for next_chapter_index in chapter_indexes:
                 current_state = WritingStateService(rdb).state(project_id, include_task_id=False)
@@ -98,6 +105,9 @@ def build_generate_chapter_work(project_id: str, chapter_index: int):
                 WritingStateService(rdb).run_chapter(project_id, next_chapter_index, include_task_id=False)
                 chapter = await _gen_chapter(project_id, next_chapter_index, rdb)
                 generated_index = chapter.get("chapter_index") if isinstance(chapter, dict) else chapter.chapter_index
+                provenance = _chapter_agent_provenance(chapter)
+                if provenance:
+                    agent_runs.append(provenance)
 
                 if isinstance(chapter_range, dict):
                     progress_service.mark_range_progress(running_task.id, completed_chapter_index=int(generated_index))
@@ -113,6 +123,9 @@ def build_generate_chapter_work(project_id: str, chapter_index: int):
 
         result = dict(progress_service.get(running_task.id).result or {})
         result["chapter_index"] = generated_index
+        if agent_runs:
+            result["agent_runs"] = agent_runs
+            result["agent_run_id"] = agent_runs[-1]["agent_run_id"]
         return result
 
     return _generate
@@ -160,6 +173,20 @@ def _generated_chapter_trace_id(chapter) -> str | None:
         else getattr(chapter, "last_generation_trace_id", None)
     )
     return str(value) if value else None
+
+
+def _chapter_agent_provenance(chapter) -> dict | None:
+    agent_run_id = chapter.get("agent_run_id") if isinstance(chapter, dict) else getattr(chapter, "agent_run_id", None)
+    if not agent_run_id:
+        return None
+    item = {
+        "chapter_index": _generated_chapter_index(chapter),
+        "agent_run_id": str(agent_run_id),
+    }
+    control_plane = chapter.get("control_plane") if isinstance(chapter, dict) else getattr(chapter, "control_plane", None)
+    if isinstance(control_plane, dict):
+        item["control_plane"] = control_plane
+    return item
 
 
 def _generation_trace_metadata(db: Session, *, project_id: str, trace_id: str) -> dict:
