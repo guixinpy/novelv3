@@ -344,6 +344,37 @@ _TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(
+        name="inspect_agent_trace_audit",
+        module="writing_agent",
+        category="trace",
+        description="汇总 Writing Agent run、步骤、模型调用 Trace 和上下文块，帮助 Agent 解释执行链和失败原因。",
+        input_schema=_object_schema(
+            {
+                "run_id": {"type": "string"},
+                "chapter_index": {"type": "integer", "minimum": 1},
+                "task_id": {"type": "string"},
+                "limit": {"type": "integer", "minimum": 1},
+            }
+        ),
+        output_schema=_object_schema(
+            {
+                "status": {"type": "string"},
+                "audit": {"type": "object"},
+                "run": {"type": "object"},
+                "steps": {"type": "array"},
+                "traces": {"type": "array"},
+                "context": {"type": "object"},
+                "failure": {"type": "object"},
+                "recommended_actions": {"type": "array"},
+            }
+        ),
+        target_type="agent_trace_audit",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=6,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
         name="inspect_agent_memory_route",
         module="writing_agent",
         category="longform_memory",

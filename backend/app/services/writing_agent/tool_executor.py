@@ -242,6 +242,19 @@ def _route_longform_chapter_batch_after_review(
     )
 
 
+def _inspect_agent_trace_audit(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
+    from app.services.writing_agent.agent_trace_audit import inspect_agent_trace_audit
+
+    return inspect_agent_trace_audit(
+        context.db,
+        context.project_id,
+        run_id=str(tool.params.get("run_id") or "").strip() or None,
+        chapter_index=_optional_int(tool.params.get("chapter_index")),
+        task_id=str(tool.params.get("task_id") or "").strip() or None,
+        limit=_optional_int(tool.params.get("limit")),
+    )
+
+
 def _inspect_agent_memory_route(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
     from app.services.writing_agent.agent_memory_route import inspect_agent_memory_route
 
@@ -431,6 +444,12 @@ _STATIC_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
         _route_longform_chapter_batch_after_review,
         category="task_queue",
         mutability="write",
+    ),
+    "inspect_agent_trace_audit": WritingAgentToolAdapter(
+        "inspect_agent_trace_audit",
+        _inspect_agent_trace_audit,
+        category="trace",
+        mutability="read",
     ),
     "inspect_agent_memory_route": WritingAgentToolAdapter(
         "inspect_agent_memory_route",

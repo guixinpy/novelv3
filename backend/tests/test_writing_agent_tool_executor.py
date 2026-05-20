@@ -101,6 +101,7 @@ def test_tool_executor_static_adapter_names_are_report_or_agent_native_tools():
         "execute_longform_chapter_batch",
         "review_longform_chapter_batch_execution",
         "route_longform_chapter_batch_after_review",
+        "inspect_agent_trace_audit",
         "inspect_agent_memory_route",
         "review_chapter_quality",
         "review_chapter_continuity",
@@ -144,6 +145,7 @@ def test_tool_executor_lists_unhandled_internal_tools_for_migration_tracking():
     assert "create_revision_draft" in names
     assert "backfill_outline_gaps" not in names
     assert "repair_longform_maintenance" not in names
+    assert "inspect_agent_trace_audit" not in names
     assert "inspect_agent_memory_route" not in names
     assert "review_chapter_quality" not in names
     assert "plan_writing_agent_run" not in names
@@ -167,6 +169,18 @@ def test_tool_executor_exposes_inspect_agent_memory_route_adapter_metadata():
         "category": "longform_memory",
         "mutability": "read",
         "handler_name": "_inspect_agent_memory_route",
+    }
+
+
+def test_tool_executor_exposes_inspect_agent_trace_audit_adapter_metadata():
+    metadata = writing_agent_tool_adapter_metadata("inspect_agent_trace_audit")
+
+    assert metadata == {
+        "tool_name": "inspect_agent_trace_audit",
+        "adapter_type": "static",
+        "category": "trace",
+        "mutability": "read",
+        "handler_name": "_inspect_agent_trace_audit",
     }
 
 
@@ -651,6 +665,40 @@ async def test_tool_executor_dispatches_inspect_agent_memory_route_adapter(db_se
     assert result.handled is True
     assert result.output == {"status": "completed", "route": {"status": "ready"}}
     assert calls == [(project.id, 12, "父亲失踪", True)]
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_dispatches_inspect_agent_trace_audit_adapter(db_session, monkeypatch):
+    project = Project(name="Executor Trace Audit")
+    db_session.add(project)
+    db_session.commit()
+    calls: list[tuple[str, str | None, int | None, str | None, int | None]] = []
+
+    def fake_audit(
+        db,
+        project_id: str,
+        *,
+        run_id: str | None,
+        chapter_index: int | None,
+        task_id: str | None,
+        limit: int | None,
+    ):
+        calls.append((project_id, run_id, chapter_index, task_id, limit))
+        return {"status": "completed", "audit": {"status": "completed"}}
+
+    monkeypatch.setattr("app.services.writing_agent.agent_trace_audit.inspect_agent_trace_audit", fake_audit)
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(
+            tool_name="inspect_agent_trace_audit",
+            params={"run_id": "run-1", "chapter_index": "12", "task_id": "task-1", "limit": "7"},
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output == {"status": "completed", "audit": {"status": "completed"}}
+    assert calls == [(project.id, "run-1", 12, "task-1", 7)]
 
 
 @pytest.mark.asyncio
