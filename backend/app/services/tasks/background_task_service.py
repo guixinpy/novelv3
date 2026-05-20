@@ -202,11 +202,13 @@ class BackgroundTaskService:
 
     def fail_interrupted_running_tasks(self) -> int:
         now = datetime.now(UTC)
+        runner_managed = _runner_managed_task_filter()
         writing_project_ids = (
             select(BackgroundTask.project_id)
             .where(
                 BackgroundTask.status.in_(ACTIVE_TASK_STATUSES),
                 BackgroundTask.task_type.in_(("generate_chapter", "retry_chapter")),
+                runner_managed,
             )
             .distinct()
         )
@@ -224,6 +226,7 @@ class BackgroundTaskService:
         count = (
             self.db.query(BackgroundTask)
             .filter(BackgroundTask.status.in_(ACTIVE_TASK_STATUSES))
+            .filter(runner_managed)
             .update(
                 {
                     BackgroundTask.status: TASK_FAILED,
@@ -235,6 +238,10 @@ class BackgroundTaskService:
         )
         self.db.commit()
         return int(count or 0)
+
+
+def _runner_managed_task_filter():
+    return BackgroundTask.payload["queue_policy"]["starts_runner"].as_boolean().isnot(False)
 
 
 def _task_chapter_range(task: BackgroundTask) -> tuple[int, int]:

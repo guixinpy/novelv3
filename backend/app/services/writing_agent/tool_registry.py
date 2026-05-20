@@ -154,6 +154,35 @@ _TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(
+        name="enqueue_longform_chapter_batch",
+        module="writing_agent",
+        category="task_queue",
+        description="确认后将长篇章节批次计划写入后台任务队列，不直接启动真实生成。",
+        input_schema=_object_schema(
+            {
+                "source_run_id": {"type": "string"},
+                "start_chapter": {"type": "integer", "minimum": 1},
+                "batch_size": {"type": "integer", "minimum": 1},
+                "confirm_enqueue": {"type": "boolean"},
+                "plan_hash": {"type": "string"},
+            }
+        ),
+        output_schema=_object_schema(
+            {
+                "status": {"type": "string"},
+                "plan_hash": {"type": "string"},
+                "batch": {"type": "object"},
+                "dag": {"type": "object"},
+                "task": {"type": "object"},
+                "queue_policy": {"type": "object"},
+            }
+        ),
+        target_type="background_task",
+        internal=True,
+        sort_key=9,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
         name="summarize_longform_context",
         module="writing_agent",
         category="longform_memory",

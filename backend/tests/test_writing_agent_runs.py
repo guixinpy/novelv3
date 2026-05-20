@@ -6,6 +6,7 @@ from app.core.world_contracts import DERIVED
 from app.core.world_proposal_service import create_bundle, write_candidate_fact
 from app.models import (
     AIModelCallTrace,
+    BackgroundTask,
     ChapterContent,
     ChapterRevision,
     LongformMemory,
@@ -845,6 +846,180 @@ def test_agent_run_plan_longform_chapter_batch_blocks_on_source_continuation(cli
     assert output["source_continuation_state"]["status"] == "blocked"
     assert output["source_continuation_state"]["next_expected_tool"] == "repair_longform_maintenance"
     assert output["dag"]["nodes"] == []
+
+
+def test_agent_run_previews_longform_chapter_batch_enqueue(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2, 3], generated_chapters=[1])
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "准备把接下来两章加入批次队列",
+            "tools": [
+                {
+                    "tool_name": "enqueue_longform_chapter_batch",
+                    "params": {"start_chapter": 2, "batch_size": 2},
+                }
+            ],
+        },
+    )
+
+    payload = response.json()
+    output = payload["steps"][0]["output"]
+    assert response.status_code == 200
+    assert payload["status"] == "success"
+    assert payload["steps"][0]["target_type"] == "background_task"
+    assert output["status"] == "confirmation_required"
+    assert output["preview_only"] is True
+    assert output["can_enqueue"] is True
+    assert output["plan_hash"]
+    assert output["required_confirmation"] == {"confirm_enqueue": True, "plan_hash": output["plan_hash"]}
+    assert output["batch"]["chapter_indexes"] == [2, 3]
+    assert output["queue_policy"]["starts_runner"] is False
+    assert db_session.query(BackgroundTask).filter(BackgroundTask.project_id == project.id).count() == 0
+
+
+def test_agent_run_rejects_longform_chapter_batch_enqueue_hash_mismatch(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2, 3], generated_chapters=[1])
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "尝试执行过期批次计划",
+            "tools": [
+                {
+                    "tool_name": "enqueue_longform_chapter_batch",
+                    "params": {
+                        "start_chapter": 2,
+                        "batch_size": 2,
+                        "confirm_enqueue": True,
+                        "plan_hash": "stale",
+                    },
+                }
+            ],
+        },
+    )
+
+    payload = response.json()
+    output = payload["steps"][0]["output"]
+    assert response.status_code == 200
+    assert payload["status"] == "success"
+    assert output["status"] == "hash_mismatch"
+    assert output["can_enqueue"] is False
+    assert output["expected_plan_hash"]
+    assert output["provided_plan_hash"] == "stale"
+    assert db_session.query(BackgroundTask).filter(BackgroundTask.project_id == project.id).count() == 0
+
+
+def test_agent_run_confirms_longform_chapter_batch_enqueue(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2, 3], generated_chapters=[1])
+    preview_response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "准备把接下来两章加入批次队列",
+            "tools": [
+                {
+                    "tool_name": "enqueue_longform_chapter_batch",
+                    "params": {"start_chapter": 2, "batch_size": 2},
+                }
+            ],
+        },
+    )
+    plan_hash = preview_response.json()["steps"][0]["output"]["plan_hash"]
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "确认加入批次队列",
+            "tools": [
+                {
+                    "tool_name": "enqueue_longform_chapter_batch",
+                    "params": {
+                        "start_chapter": 2,
+                        "batch_size": 2,
+                        "confirm_enqueue": True,
+                        "plan_hash": plan_hash,
+                    },
+                }
+            ],
+        },
+    )
+
+    payload = response.json()
+    output = payload["steps"][0]["output"]
+    task = db_session.query(BackgroundTask).filter(BackgroundTask.id == output["task"]["id"]).one()
+    assert response.status_code == 200
+    assert payload["status"] == "success"
+    assert output["status"] == "queued"
+    assert output["plan_hash"] == plan_hash
+    assert output["task"]["task_type"] == "longform_chapter_batch"
+    assert output["task"]["status"] == "pending"
+    assert output["task"]["chapter_range"] == {"start": 2, "end": 3}
+    assert output["batch"]["chapter_indexes"] == [2, 3]
+    assert task.payload["plan_hash"] == plan_hash
+    assert task.payload["batch"]["chapter_indexes"] == [2, 3]
+    assert task.payload["dag"]["node_count"] <= 8
+    assert task.payload["queue_policy"]["starts_runner"] is False
+
+    duplicate_response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "重复确认同一批次",
+            "tools": [
+                {
+                    "tool_name": "enqueue_longform_chapter_batch",
+                    "params": {
+                        "start_chapter": 2,
+                        "batch_size": 2,
+                        "confirm_enqueue": True,
+                        "plan_hash": plan_hash,
+                    },
+                }
+            ],
+        },
+    )
+    duplicate_output = duplicate_response.json()["steps"][0]["output"]
+    assert duplicate_output["status"] == "queued"
+    assert duplicate_output["task"]["id"] == output["task"]["id"]
+    assert db_session.query(BackgroundTask).filter(BackgroundTask.project_id == project.id).count() == 1
+
+
+def test_agent_run_longform_chapter_batch_enqueue_blocks_on_source_continuation(client, db_session, monkeypatch):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1])
+
+    async def fake_execute(self, action_type, project_id, *, command_args=None, action_params=None):
+        return {"status": "success"}
+
+    monkeypatch.setattr("app.services.actions.action_execution_service.ActionExecutionService.execute", fake_execute)
+    blocked = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "继续写下一章",
+            "input": {"auto_plan": True, "chapter_index": 2},
+        },
+    )
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "尝试从阻塞运行加入批次队列",
+            "tools": [
+                {
+                    "tool_name": "enqueue_longform_chapter_batch",
+                    "params": {"source_run_id": blocked.json()["id"]},
+                }
+            ],
+        },
+    )
+
+    payload = response.json()
+    output = payload["steps"][0]["output"]
+    assert response.status_code == 200
+    assert payload["status"] == "blocked"
+    assert output["status"] == "blocked"
+    assert output["can_enqueue"] is False
+    assert output["recommended_next_tools"] == ["plan_recovery_tools"]
+    assert db_session.query(BackgroundTask).filter(BackgroundTask.project_id == project.id).count() == 0
 
 
 def test_agent_run_list_and_detail_are_project_scoped(client, db_session):

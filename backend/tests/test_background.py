@@ -721,6 +721,26 @@ def test_background_task_service_marks_interrupted_running_tasks_failed(client, 
     assert saved.error == "Task interrupted by local process restart"
 
 
+def test_background_task_service_keeps_materialized_queue_items_on_restart(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Materialized Queue Item"})
+    pid = r.json()["id"]
+    service = BackgroundTaskService(db_session)
+    task = service.create_chapter_range(
+        project_id=pid,
+        task_type="longform_chapter_batch",
+        start_chapter_index=1,
+        end_chapter_index=3,
+        payload={"queue_policy": {"starts_runner": False}},
+    )
+
+    count = service.fail_interrupted_running_tasks()
+
+    saved = service.get(task.id)
+    assert count == 0
+    assert saved.status == "pending"
+    assert saved.error is None
+
+
 def test_background_task_service_marks_interrupted_writing_state_failed(client, db_session):
     r = client.post("/api/v1/projects", json={"name": "Interrupted Writing"})
     pid = r.json()["id"]
