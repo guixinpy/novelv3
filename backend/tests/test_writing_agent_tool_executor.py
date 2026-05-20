@@ -101,6 +101,7 @@ def test_tool_executor_static_adapter_names_are_report_or_agent_native_tools():
         "execute_longform_chapter_batch",
         "review_longform_chapter_batch_execution",
         "route_longform_chapter_batch_after_review",
+        "inspect_agent_memory_route",
         "review_chapter_quality",
         "review_chapter_continuity",
         "plan_chapter_revision",
@@ -143,6 +144,7 @@ def test_tool_executor_lists_unhandled_internal_tools_for_migration_tracking():
     assert "create_revision_draft" in names
     assert "backfill_outline_gaps" not in names
     assert "repair_longform_maintenance" not in names
+    assert "inspect_agent_memory_route" not in names
     assert "review_chapter_quality" not in names
     assert "plan_writing_agent_run" not in names
     assert "plan_longform_chapter_batch" not in names
@@ -154,6 +156,18 @@ def test_tool_executor_lists_unhandled_internal_tools_for_migration_tracking():
     assert "review_longform_chapter_batch_execution" not in names
     assert "route_longform_chapter_batch_after_review" not in names
     assert "preflight_writing" not in names
+
+
+def test_tool_executor_exposes_inspect_agent_memory_route_adapter_metadata():
+    metadata = writing_agent_tool_adapter_metadata("inspect_agent_memory_route")
+
+    assert metadata == {
+        "tool_name": "inspect_agent_memory_route",
+        "adapter_type": "static",
+        "category": "longform_memory",
+        "mutability": "read",
+        "handler_name": "_inspect_agent_memory_route",
+    }
 
 
 def test_tool_executor_exposes_backfill_adapter_metadata():
@@ -611,6 +625,32 @@ async def test_tool_executor_dispatches_repair_longform_maintenance_adapter(db_s
     assert result.handled is True
     assert result.output == {"status": "completed", "limit": 9, "repair_limit": 11}
     assert calls == [(project.id, 9, 11)]
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_dispatches_inspect_agent_memory_route_adapter(db_session, monkeypatch):
+    project = Project(name="Executor Memory Route")
+    db_session.add(project)
+    db_session.commit()
+    calls: list[tuple[str, int | None, str | None, bool]] = []
+
+    def fake_route(db, project_id: str, *, chapter_index: int | None, query: str | None, include_context_summary: bool):
+        calls.append((project_id, chapter_index, query, include_context_summary))
+        return {"status": "completed", "route": {"status": "ready"}}
+
+    monkeypatch.setattr("app.services.writing_agent.agent_memory_route.inspect_agent_memory_route", fake_route)
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(
+            tool_name="inspect_agent_memory_route",
+            params={"chapter_index": "12", "query": "父亲失踪", "include_context_summary": True},
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output == {"status": "completed", "route": {"status": "ready"}}
+    assert calls == [(project.id, 12, "父亲失踪", True)]
 
 
 @pytest.mark.asyncio

@@ -242,6 +242,18 @@ def _route_longform_chapter_batch_after_review(
     )
 
 
+def _inspect_agent_memory_route(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
+    from app.services.writing_agent.agent_memory_route import inspect_agent_memory_route
+
+    return inspect_agent_memory_route(
+        context.db,
+        context.project_id,
+        chapter_index=_optional_int(tool.params.get("chapter_index")),
+        query=str(tool.params.get("query") or tool.command_args or "").strip() or None,
+        include_context_summary=tool.params.get("include_context_summary") is True,
+    )
+
+
 def _summarize_longform_context(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
     from app.services.writing_agent.longform_context_summary import summarize_longform_context
 
@@ -419,6 +431,12 @@ _STATIC_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
         _route_longform_chapter_batch_after_review,
         category="task_queue",
         mutability="write",
+    ),
+    "inspect_agent_memory_route": WritingAgentToolAdapter(
+        "inspect_agent_memory_route",
+        _inspect_agent_memory_route,
+        category="longform_memory",
+        mutability="read",
     ),
     "summarize_longform_context": WritingAgentToolAdapter(
         "summarize_longform_context",

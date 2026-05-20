@@ -344,6 +344,35 @@ _TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(
+        name="inspect_agent_memory_route",
+        module="writing_agent",
+        category="longform_memory",
+        description="汇总长篇记忆、检索索引和维护状态，判断 Agent 下一步应读取上下文、修复记忆还是进入生成前检查。",
+        input_schema=_object_schema(
+            {
+                "chapter_index": {"type": "integer", "minimum": 1},
+                "query": {"type": "string"},
+                "include_context_summary": {"type": "boolean"},
+            }
+        ),
+        output_schema=_object_schema(
+            {
+                "status": {"type": "string"},
+                "route": {"type": "object"},
+                "longform_memory": {"type": "object"},
+                "longform_maintenance": {"type": "object"},
+                "retrieval": {"type": "object"},
+                "diagnostics": {"type": "array"},
+                "context_summary": {"type": "object"},
+            }
+        ),
+        target_type="agent_memory_route",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=7,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
         name="summarize_longform_context",
         module="writing_agent",
         category="longform_memory",
