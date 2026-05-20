@@ -250,22 +250,6 @@ class WritingAgentRunService:
                 project_id,
                 before_chapter=int(before_chapter) if before_chapter else None,
             )
-        if tool.tool_name == "review_chapter_quality":
-            from app.core.chapter_quality_review import review_chapter_quality
-
-            chapter_index = int(tool.params.get("chapter_index") or 1)
-            return review_chapter_quality(self.db, project_id, chapter_index)
-        if tool.tool_name == "review_chapter_continuity":
-            from app.core.chapter_continuity_review import review_chapter_continuity
-
-            chapter_index = int(tool.params.get("chapter_index") or 1)
-            lookback = _optional_int(tool.params.get("lookback")) or 20
-            return review_chapter_continuity(self.db, project_id, chapter_index, lookback=lookback)
-        if tool.tool_name == "plan_chapter_revision":
-            from app.core.chapter_revision_planner import plan_chapter_revision
-
-            chapter_index = int(tool.params.get("chapter_index") or 1)
-            return plan_chapter_revision(self.db, project_id, chapter_index)
         if tool.tool_name == "create_revision_draft":
             from app.core.chapter_revision_drafts import create_revision_draft_from_plan
             from app.core.chapter_revision_planner import plan_chapter_revision
@@ -307,27 +291,6 @@ class WritingAgentRunService:
                 extra_instruction=extra_instruction,
                 forbidden_terms=forbidden_terms,
             )
-        if tool.tool_name == "review_world_model_proposals":
-            from app.core.world_proposal_agent_report import build_world_proposal_agent_report
-
-            offset = _optional_int(tool.params.get("offset")) or 0
-            limit = _optional_int(tool.params.get("limit")) or 50
-            return build_world_proposal_agent_report(self.db, project_id, offset=offset, limit=limit)
-        if tool.tool_name == "plan_world_model_proposal_resolution":
-            from app.core.world_proposal_resolution_plan import build_world_proposal_resolution_plan
-
-            offset = _optional_int(tool.params.get("offset")) or 0
-            limit = _optional_int(tool.params.get("limit")) or 50
-            return build_world_proposal_resolution_plan(self.db, project_id, offset=offset, limit=limit)
-        if tool.tool_name == "preview_world_model_proposal_resolution":
-            from app.core.world_proposal_resolution_preview import preview_world_model_proposal_resolution
-
-            decisions = tool.params.get("decisions")
-            return preview_world_model_proposal_resolution(
-                self.db,
-                project_id,
-                decisions if isinstance(decisions, list) else [],
-            )
         if tool.tool_name == "apply_world_model_proposal_resolution":
             from app.core.world_proposal_resolution_apply import apply_world_model_proposal_resolution
 
@@ -337,16 +300,6 @@ class WritingAgentRunService:
                 project_id,
                 decisions if isinstance(decisions, list) else [],
                 confirm_apply=tool.params.get("confirm_apply") is True,
-            )
-        if tool.tool_name == "draft_world_model_proposal_resolution_decisions":
-            from app.core.world_proposal_resolution_draft import draft_world_model_proposal_resolution_decisions
-
-            return draft_world_model_proposal_resolution_decisions(
-                self.db,
-                project_id,
-                limit=_optional_int(tool.params.get("limit")) or 50,
-                predicate_policies=tool.params.get("predicate_policies") if isinstance(tool.params.get("predicate_policies"), dict) else None,
-                include_unclassified=tool.params.get("include_unclassified") is True,
             )
         if tool.tool_name == "seed_continuity_anchor_proposals":
             from app.core.continuity_anchor_proposals import seed_continuity_anchor_proposals
