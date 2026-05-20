@@ -98,6 +98,7 @@ def test_tool_executor_static_adapter_names_are_report_or_agent_native_tools():
         "inspect_longform_chapter_batch",
         "execute_longform_chapter_batch_preflight",
         "prepare_longform_chapter_batch_execution",
+        "execute_longform_chapter_batch",
         "review_chapter_quality",
         "review_chapter_continuity",
         "plan_chapter_revision",
@@ -147,6 +148,7 @@ def test_tool_executor_lists_unhandled_internal_tools_for_migration_tracking():
     assert "inspect_longform_chapter_batch" not in names
     assert "execute_longform_chapter_batch_preflight" not in names
     assert "prepare_longform_chapter_batch_execution" not in names
+    assert "execute_longform_chapter_batch" not in names
     assert "preflight_writing" not in names
 
 
@@ -231,6 +233,18 @@ def test_tool_executor_exposes_prepare_longform_chapter_batch_execution_adapter_
         "category": "task_queue",
         "mutability": "write",
         "handler_name": "_prepare_longform_chapter_batch_execution",
+    }
+
+
+def test_tool_executor_exposes_execute_longform_chapter_batch_adapter_metadata():
+    metadata = writing_agent_tool_adapter_metadata("execute_longform_chapter_batch")
+
+    assert metadata == {
+        "tool_name": "execute_longform_chapter_batch",
+        "adapter_type": "static",
+        "category": "task_queue",
+        "mutability": "write",
+        "handler_name": "_execute_longform_chapter_batch",
     }
 
 
@@ -392,6 +406,48 @@ async def test_tool_executor_dispatches_prepare_longform_chapter_batch_execution
     assert result.handled is True
     assert result.output == {"status": "approval_required", "attempt_manifest": {"task_id": "task-1"}}
     assert calls == [(project.id, "task-1")]
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_dispatches_execute_longform_chapter_batch_adapter(db_session, monkeypatch):
+    project = Project(name="Executor Batch Execute")
+    db_session.add(project)
+    db_session.commit()
+    calls: list[tuple[str, str | None, bool, str | None, str | None]] = []
+
+    async def fake_execute(
+        db,
+        project_id: str,
+        *,
+        task_id: str | None,
+        confirm_execute: bool,
+        attempt_manifest_hash: str | None,
+        approval_contract_hash: str | None,
+    ):
+        calls.append((project_id, task_id, confirm_execute, attempt_manifest_hash, approval_contract_hash))
+        return {"status": "completed", "chapter_index": 2}
+
+    monkeypatch.setattr(
+        "app.services.writing_agent.batch_execution.execute_longform_chapter_batch",
+        fake_execute,
+    )
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(
+            tool_name="execute_longform_chapter_batch",
+            params={
+                "task_id": "task-1",
+                "confirm_execute": True,
+                "attempt_manifest_hash": "attempt-hash",
+                "approval_contract_hash": "contract-hash",
+            },
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output == {"status": "completed", "chapter_index": 2}
+    assert calls == [(project.id, "task-1", True, "attempt-hash", "contract-hash")]
 
 
 @pytest.mark.asyncio

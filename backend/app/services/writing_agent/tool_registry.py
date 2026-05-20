@@ -260,6 +260,35 @@ _TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(
+        name="execute_longform_chapter_batch",
+        module="writing_agent",
+        category="task_queue",
+        description="消费已审批的长篇批次执行契约，受控生成单章并写入执行证据。",
+        input_schema=_object_schema(
+            {
+                "task_id": {"type": "string"},
+                "confirm_execute": {"type": "boolean"},
+                "attempt_manifest_hash": {"type": "string"},
+                "approval_contract_hash": {"type": "string"},
+            },
+            required=("task_id", "confirm_execute", "attempt_manifest_hash", "approval_contract_hash"),
+        ),
+        output_schema=_object_schema(
+            {
+                "status": {"type": "string"},
+                "task": {"type": "object"},
+                "chapter_index": {"type": "integer"},
+                "generation": {"type": "object"},
+                "execution_checkpoint": {"type": "object"},
+                "side_effects": {"type": "object"},
+            }
+        ),
+        target_type="background_task",
+        internal=True,
+        sort_key=13,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
         name="summarize_longform_context",
         module="writing_agent",
         category="longform_memory",

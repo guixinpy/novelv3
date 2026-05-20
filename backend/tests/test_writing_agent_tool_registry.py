@@ -25,6 +25,7 @@ def test_agent_tool_registry_has_unique_names_and_contracts():
         "inspect_longform_chapter_batch",
         "execute_longform_chapter_batch_preflight",
         "prepare_longform_chapter_batch_execution",
+        "execute_longform_chapter_batch",
         "summarize_longform_context",
         "repair_longform_maintenance",
     }.issubset(set(names))
@@ -37,6 +38,7 @@ def test_agent_tool_registry_has_unique_names_and_contracts():
     assert target_type_for_tool("inspect_longform_chapter_batch") == "background_task"
     assert target_type_for_tool("execute_longform_chapter_batch_preflight") == "background_task"
     assert target_type_for_tool("prepare_longform_chapter_batch_execution") == "background_task"
+    assert target_type_for_tool("execute_longform_chapter_batch") == "background_task"
     assert target_type_for_tool("summarize_longform_context") == "longform_context_summary"
     assert target_type_for_tool("repair_longform_maintenance") == "longform_maintenance"
     assert "review_chapter_quality" in non_blocking_report_tool_names()
@@ -132,6 +134,28 @@ def test_agent_tool_registry_includes_prepare_longform_chapter_batch_execution()
     assert descriptor.input_schema["properties"]["task_id"]["type"] == "string"
     assert "prepare_longform_chapter_batch_execution" in allowed_tool_names()
     assert "prepare_longform_chapter_batch_execution" not in non_blocking_report_tool_names()
+
+
+def test_agent_tool_registry_includes_execute_longform_chapter_batch():
+    descriptor = get_agent_tool_descriptor("execute_longform_chapter_batch")
+
+    assert descriptor is not None
+    assert descriptor.internal is True
+    assert descriptor.non_blocking_report is False
+    assert descriptor.category == "task_queue"
+    assert descriptor.target_type == "background_task"
+    assert descriptor.input_schema["properties"]["task_id"]["type"] == "string"
+    assert descriptor.input_schema["properties"]["confirm_execute"]["type"] == "boolean"
+    assert descriptor.input_schema["properties"]["attempt_manifest_hash"]["type"] == "string"
+    assert descriptor.input_schema["properties"]["approval_contract_hash"]["type"] == "string"
+    assert set(descriptor.input_schema["required"]) == {
+        "task_id",
+        "confirm_execute",
+        "attempt_manifest_hash",
+        "approval_contract_hash",
+    }
+    assert "execute_longform_chapter_batch" in allowed_tool_names()
+    assert "execute_longform_chapter_batch" not in non_blocking_report_tool_names()
 
 
 def test_agent_tool_registry_includes_summarize_longform_context():

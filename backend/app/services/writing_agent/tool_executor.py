@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+import inspect
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -12,7 +13,8 @@ from app.services.writing_agent.tool_registry import build_agent_tool_plan, get_
 
 
 PreflightWriting = Callable[[str, dict[str, Any]], dict[str, Any]]
-StaticToolAdapterHandler = Callable[["WritingAgentToolContext", WritingAgentToolRequest], dict[str, Any]]
+StaticToolAdapterOutput = dict[str, Any] | Awaitable[dict[str, Any]]
+StaticToolAdapterHandler = Callable[["WritingAgentToolContext", WritingAgentToolRequest], StaticToolAdapterOutput]
 
 
 @dataclass(frozen=True)
@@ -58,7 +60,10 @@ async def execute_writing_agent_tool(
 
     adapter = _STATIC_TOOL_ADAPTERS.get(tool.tool_name)
     if adapter is not None:
-        return WritingAgentToolExecutionResult(handled=True, output=adapter.handler(context, tool))
+        output = adapter.handler(context, tool)
+        if inspect.isawaitable(output):
+            output = await output
+        return WritingAgentToolExecutionResult(handled=True, output=output)
 
     if tool.tool_name == "preflight_writing" and preflight_writing is not None:
         return WritingAgentToolExecutionResult(
@@ -188,6 +193,22 @@ def _prepare_longform_chapter_batch_execution(
         context.db,
         context.project_id,
         task_id=str(tool.params.get("task_id") or "").strip() or None,
+    )
+
+
+async def _execute_longform_chapter_batch(
+    context: WritingAgentToolContext,
+    tool: WritingAgentToolRequest,
+) -> dict[str, Any]:
+    from app.services.writing_agent.batch_execution import execute_longform_chapter_batch
+
+    return await execute_longform_chapter_batch(
+        context.db,
+        context.project_id,
+        task_id=str(tool.params.get("task_id") or "").strip() or None,
+        confirm_execute=tool.params.get("confirm_execute") is True,
+        attempt_manifest_hash=str(tool.params.get("attempt_manifest_hash") or "").strip() or None,
+        approval_contract_hash=str(tool.params.get("approval_contract_hash") or "").strip() or None,
     )
 
 
@@ -348,6 +369,12 @@ _STATIC_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
     "prepare_longform_chapter_batch_execution": WritingAgentToolAdapter(
         "prepare_longform_chapter_batch_execution",
         _prepare_longform_chapter_batch_execution,
+        category="task_queue",
+        mutability="write",
+    ),
+    "execute_longform_chapter_batch": WritingAgentToolAdapter(
+        "execute_longform_chapter_batch",
+        _execute_longform_chapter_batch,
         category="task_queue",
         mutability="write",
     ),
