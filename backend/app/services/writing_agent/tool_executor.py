@@ -55,7 +55,7 @@ async def execute_writing_agent_tool(
     preflight_writing: PreflightWriting | None = None,
 ) -> WritingAgentToolExecutionResult:
     descriptor = get_agent_tool_descriptor(tool.tool_name)
-    if descriptor is None or not descriptor.internal:
+    if descriptor is None:
         return WritingAgentToolExecutionResult(handled=False)
 
     adapter = _STATIC_TOOL_ADAPTERS.get(tool.tool_name)
@@ -70,6 +70,9 @@ async def execute_writing_agent_tool(
             handled=True,
             output=preflight_writing(context.project_id, tool.params),
         )
+
+    if not descriptor.internal:
+        return WritingAgentToolExecutionResult(handled=False)
 
     return WritingAgentToolExecutionResult(handled=False)
 
@@ -105,6 +108,19 @@ def _json_safe_output(output: dict[str, Any]) -> dict[str, Any]:
 def _describe_agent_tools(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
     chapter_index = _optional_int(tool.params.get("chapter_index"))
     return build_agent_tool_plan(context.db, context.project_id, chapter_index=chapter_index)
+
+
+async def _generate_chapter(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
+    from app.services.writing_agent.chapter_generation_tool import execute_generate_chapter_tool
+
+    chapter_index = int(tool.params.get("chapter_index") or 1)
+    return await execute_generate_chapter_tool(
+        context.db,
+        context.project_id,
+        chapter_index=chapter_index,
+        command_args=tool.command_args,
+        action_params=tool.params,
+    )
 
 
 def _plan_writing_agent_run(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
@@ -471,6 +487,12 @@ _STATIC_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
         _describe_agent_tools,
         category="preflight",
         mutability="read",
+    ),
+    "generate_chapter": WritingAgentToolAdapter(
+        "generate_chapter",
+        _generate_chapter,
+        category="generation",
+        mutability="write",
     ),
     "plan_writing_agent_run": WritingAgentToolAdapter(
         "plan_writing_agent_run",

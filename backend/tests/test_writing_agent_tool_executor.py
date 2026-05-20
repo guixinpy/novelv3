@@ -1,7 +1,8 @@
 import pytest
 
-from app.models import Project
+from app.models import ChapterContent, Project
 from app.schemas.writing_agent import WritingAgentToolRequest
+from app.services.writing_agent.chapter_generation_tool import execute_generate_chapter_tool
 from app.services.writing_agent.tool_registry import internal_tool_names
 from app.services.writing_agent.tool_executor import (
     WritingAgentToolContext,
@@ -74,6 +75,71 @@ async def test_tool_executor_handles_preflight_with_injected_callback(db_session
 
 
 @pytest.mark.asyncio
+async def test_generate_chapter_tool_appends_context_without_run_service(db_session, monkeypatch):
+    project = Project(name="Direct Chapter Tool")
+    db_session.add(project)
+    db_session.flush()
+    db_session.add(
+        ChapterContent(
+            project_id=project.id,
+            chapter_index=1,
+            title="空白信的秘密",
+            content="林深和苏晚晴在灯塔下发现空白信，信纸显出雾晶是钥匙。两人决定前往下城黑市。",
+            word_count=2000,
+            status="generated",
+        )
+    )
+    db_session.commit()
+    captured: dict[str, object] = {}
+
+    async def fake_execute(self, action_type, project_id, *, command_args=None, action_params=None):
+        captured["action_type"] = action_type
+        captured["command_args"] = command_args
+        captured["action_params"] = action_params
+        return {"status": "success", "chapter_index": action_params["chapter_index"]}
+
+    monkeypatch.setattr("app.services.actions.action_execution_service.ActionExecutionService.execute", fake_execute)
+
+    result = await execute_generate_chapter_tool(
+        db_session,
+        project.id,
+        chapter_index=2,
+        command_args="保持紧张感",
+    )
+
+    command_args = str(captured["command_args"])
+    assert result["status"] == "success"
+    assert captured["action_type"] == "generate_chapter"
+    assert captured["action_params"] == {"chapter_index": 2}
+    assert "保持紧张感" in command_args
+    assert "上一章状态卡" in command_args
+    assert "空白信" in command_args
+    assert result["agent_continuity_feedback"]["status"] == "active"
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_does_not_coerce_invalid_generate_chapter_index(db_session, monkeypatch):
+    project = Project(name="Invalid Chapter Index")
+    db_session.add(project)
+    db_session.commit()
+    calls: list[str] = []
+
+    async def fake_execute(self, action_type, project_id, *, command_args=None, action_params=None):
+        calls.append(action_type)
+        return {"status": "success"}
+
+    monkeypatch.setattr("app.services.actions.action_execution_service.ActionExecutionService.execute", fake_execute)
+
+    with pytest.raises(ValueError):
+        await execute_writing_agent_tool(
+            WritingAgentToolContext(db=db_session, project_id=project.id),
+            WritingAgentToolRequest(tool_name="generate_chapter", params={"chapter_index": "not-a-number"}),
+        )
+
+    assert calls == []
+
+
+@pytest.mark.asyncio
 async def test_tool_executor_leaves_legacy_generation_tools_unhandled(db_session):
     project = Project(name="Executor Legacy")
     db_session.add(project)
@@ -93,6 +159,7 @@ def test_tool_executor_static_adapter_names_are_report_or_agent_native_tools():
 
     assert {
         "describe_agent_tools",
+        "generate_chapter",
         "plan_writing_agent_run",
         "plan_longform_chapter_batch",
         "enqueue_longform_chapter_batch",
@@ -119,7 +186,6 @@ def test_tool_executor_static_adapter_names_are_report_or_agent_native_tools():
         "draft_world_model_proposal_resolution_decisions",
     }.issubset(names)
     assert "generate_setup" not in names
-    assert "generate_chapter" not in names
 
 
 def test_tool_executor_exposes_adapter_metadata_for_trace():
@@ -140,7 +206,13 @@ def test_tool_executor_exposes_adapter_metadata_for_trace():
         "mutability": "read",
         "handler_name": "preflight_writing",
     }
-    assert writing_agent_tool_adapter_metadata("generate_chapter") is None
+    assert writing_agent_tool_adapter_metadata("generate_chapter") == {
+        "tool_name": "generate_chapter",
+        "adapter_type": "static",
+        "category": "generation",
+        "mutability": "write",
+        "handler_name": "_generate_chapter",
+    }
 
 
 def test_tool_executor_lists_unhandled_internal_tools_for_migration_tracking():
@@ -238,8 +310,8 @@ async def test_tool_executor_handles_inspect_agent_tool_contracts(db_session):
         "plan_recovery_tools",
     ]
     assert tools_by_name["generate_chapter"]["resource_scope"] == "manuscript"
-    assert "missing_agent_native_adapter" in tools_by_name["generate_chapter"]["gap_codes"]
-    assert any(gap["tool_name"] == "generate_chapter" for gap in result.output["gaps"])
+    assert tools_by_name["generate_chapter"]["adapter_type"] == "static"
+    assert "missing_agent_native_adapter" not in tools_by_name["generate_chapter"]["gap_codes"]
     assert internal_tool_names().issubset(set(tools_by_name))
 
 
