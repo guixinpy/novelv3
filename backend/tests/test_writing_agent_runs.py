@@ -1621,6 +1621,263 @@ def test_agent_run_execute_longform_chapter_batch_blocks_chapter_state_drift(cli
     assert output["generated_chapter_indexes"] == [2]
 
 
+def test_agent_run_can_review_longform_chapter_batch_execution(client, db_session, monkeypatch):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1])
+    prepared = _prepare_longform_batch_execution_contract(client, project.id)
+    _execute_approved_longform_batch_chapter(client, project.id, prepared, monkeypatch)
+    calls: list[tuple[str, int]] = []
+
+    def fake_quality(db, project_id: str, chapter_index: int):
+        calls.append(("quality", chapter_index))
+        return {
+            "status": "ready",
+            "chapter_index": chapter_index,
+            "finding_count": 0,
+            "blocker_count": 0,
+            "findings": [],
+            "recommended_actions": [],
+        }
+
+    def fake_continuity(db, project_id: str, chapter_index: int, *, lookback: int):
+        calls.append(("continuity", lookback))
+        return {
+            "status": "ready",
+            "chapter_index": chapter_index,
+            "finding_count": 0,
+            "blocker_count": 0,
+            "findings": [],
+            "recommended_actions": [],
+        }
+
+    def fake_world_model(db, project_id: str, chapter_index: int):
+        calls.append(("world_model", chapter_index))
+        return {
+            "status": "completed",
+            "chapter_index": chapter_index,
+            "proposal_bundle_id": "bundle-2",
+            "created": {"proposal_items": 3},
+            "updated": {"proposal_items": 0},
+            "skipped": {"duplicates": 1},
+        }
+
+    monkeypatch.setattr("app.core.chapter_quality_review.review_chapter_quality", fake_quality)
+    monkeypatch.setattr("app.core.chapter_continuity_review.review_chapter_continuity", fake_continuity)
+    monkeypatch.setattr("app.core.athena_longform.analyze_chapter_to_world_proposals", fake_world_model)
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "审查已执行的长篇批次",
+            "tools": [
+                {
+                    "tool_name": "review_longform_chapter_batch_execution",
+                    "params": {"task_id": prepared["task_id"], "lookback": 12},
+                }
+            ],
+        },
+    )
+
+    payload = response.json()
+    output = payload["steps"][0]["output"]
+    task = db_session.query(BackgroundTask).filter(BackgroundTask.id == prepared["task_id"]).one()
+    assert response.status_code == 200
+    assert payload["status"] == "success"
+    assert payload["steps"][0]["target_type"] == "background_task"
+    assert output["status"] == "completed"
+    assert output["chapter_index"] == 2
+    assert output["review_gate"]["status"] == "passed"
+    assert output["reviews"]["quality"]["status"] == "ready"
+    assert output["reviews"]["continuity"]["status"] == "ready"
+    assert output["reviews"]["world_model"]["proposal_bundle_id"] == "bundle-2"
+    assert output["side_effects"]["executed"] == [
+        "review_chapter_quality",
+        "review_chapter_continuity",
+        "analyze_chapter_world_model",
+        "background_task_result_post_generation_review",
+    ]
+    assert calls == [("quality", 2), ("continuity", 12), ("world_model", 2)]
+    assert task.result["post_generation_review_result"]["status"] == "passed"
+    assert task.result["execution_checkpoints"][-1]["checkpoint_type"] == "post_generation_review"
+
+    inspect_response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "查看审查证据",
+            "tools": [{"tool_name": "inspect_longform_chapter_batch", "params": {"task_id": prepared["task_id"]}}],
+        },
+    )
+    inspected_task = inspect_response.json()["steps"][0]["output"]["selected_task"]
+    assert inspected_task["post_generation_review_result"]["status"] == "passed"
+    assert inspected_task["execution_readiness"]["status"] == "phase63_reviewed"
+
+
+def test_agent_run_review_longform_chapter_batch_requires_execution_evidence(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1])
+    prepared = _prepare_longform_batch_execution_contract(client, project.id)
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "拒绝未执行批次的审查",
+            "tools": [
+                {
+                    "tool_name": "review_longform_chapter_batch_execution",
+                    "params": {"task_id": prepared["task_id"]},
+                }
+            ],
+        },
+    )
+
+    payload = response.json()
+    output = payload["steps"][0]["output"]
+    assert response.status_code == 200
+    assert payload["status"] == "blocked"
+    assert output["status"] == "blocked"
+    assert output["reason"] == "missing_batch_execution_result"
+
+
+def test_agent_run_review_longform_chapter_batch_blocks_before_world_model_on_quality_blocker(
+    client,
+    db_session,
+    monkeypatch,
+):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1])
+    prepared = _prepare_longform_batch_execution_contract(client, project.id)
+    _execute_approved_longform_batch_chapter(client, project.id, prepared, monkeypatch)
+    calls: list[str] = []
+
+    def fake_quality(db, project_id: str, chapter_index: int):
+        calls.append("quality")
+        return {
+            "status": "blocked",
+            "chapter_index": chapter_index,
+            "finding_count": 1,
+            "blocker_count": 1,
+            "findings": [{"code": "generic_chapter_title", "severity": "blocker", "message": "标题占位", "evidence": {}}],
+            "recommended_actions": ["revise_chapter"],
+        }
+
+    def fake_continuity(db, project_id: str, chapter_index: int, *, lookback: int):
+        calls.append("continuity")
+        return {
+            "status": "ready",
+            "chapter_index": chapter_index,
+            "finding_count": 0,
+            "blocker_count": 0,
+            "findings": [],
+            "recommended_actions": [],
+        }
+
+    def fake_world_model(db, project_id: str, chapter_index: int):
+        calls.append("world_model")
+        return {"status": "completed", "chapter_index": chapter_index}
+
+    monkeypatch.setattr("app.core.chapter_quality_review.review_chapter_quality", fake_quality)
+    monkeypatch.setattr("app.core.chapter_continuity_review.review_chapter_continuity", fake_continuity)
+    monkeypatch.setattr("app.core.athena_longform.analyze_chapter_to_world_proposals", fake_world_model)
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "质量阻塞时不要回灌世界模型",
+            "tools": [
+                {
+                    "tool_name": "review_longform_chapter_batch_execution",
+                    "params": {"task_id": prepared["task_id"]},
+                }
+            ],
+        },
+    )
+
+    payload = response.json()
+    output = payload["steps"][0]["output"]
+    task = db_session.query(BackgroundTask).filter(BackgroundTask.id == prepared["task_id"]).one()
+    assert response.status_code == 200
+    assert payload["status"] == "blocked"
+    assert output["status"] == "blocked"
+    assert output["reason"] == "post_generation_review_has_blockers"
+    assert output["review_gate"]["status"] == "needs_revision"
+    assert output["reviews"]["world_model"]["status"] == "skipped"
+    assert output["reviews"]["world_model"]["reason"] == "review_blockers_present"
+    assert output["recommended_next_tools"] == ["plan_chapter_revision", "create_revision_draft", "inspect_longform_chapter_batch"]
+    assert calls == ["quality", "continuity"]
+    assert task.result["post_generation_review_result"]["status"] == "needs_revision"
+
+
+def test_agent_run_review_longform_chapter_batch_is_idempotent(client, db_session, monkeypatch):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1])
+    prepared = _prepare_longform_batch_execution_contract(client, project.id)
+    _execute_approved_longform_batch_chapter(client, project.id, prepared, monkeypatch)
+    calls: list[str] = []
+
+    def fake_quality(db, project_id: str, chapter_index: int):
+        calls.append("quality")
+        return {
+            "status": "ready",
+            "chapter_index": chapter_index,
+            "finding_count": 0,
+            "blocker_count": 0,
+            "findings": [],
+            "recommended_actions": [],
+        }
+
+    def fake_continuity(db, project_id: str, chapter_index: int, *, lookback: int):
+        calls.append("continuity")
+        return {
+            "status": "ready",
+            "chapter_index": chapter_index,
+            "finding_count": 0,
+            "blocker_count": 0,
+            "findings": [],
+            "recommended_actions": [],
+        }
+
+    def fake_world_model(db, project_id: str, chapter_index: int):
+        calls.append("world_model")
+        return {"status": "skipped", "reason": "missing_world_model_profile", "chapter_index": chapter_index}
+
+    monkeypatch.setattr("app.core.chapter_quality_review.review_chapter_quality", fake_quality)
+    monkeypatch.setattr("app.core.chapter_continuity_review.review_chapter_continuity", fake_continuity)
+    monkeypatch.setattr("app.core.athena_longform.analyze_chapter_to_world_proposals", fake_world_model)
+
+    first = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "首次审查",
+            "tools": [
+                {
+                    "tool_name": "review_longform_chapter_batch_execution",
+                    "params": {"task_id": prepared["task_id"]},
+                }
+            ],
+        },
+    )
+    calls_after_first = list(calls)
+    second = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "重复审查",
+            "tools": [
+                {
+                    "tool_name": "review_longform_chapter_batch_execution",
+                    "params": {"task_id": prepared["task_id"]},
+                }
+            ],
+        },
+    )
+
+    second_output = second.json()["steps"][0]["output"]
+    assert first.status_code == 200
+    assert first.json()["status"] == "success"
+    assert calls_after_first == ["quality", "continuity", "world_model"]
+    assert second.status_code == 200
+    assert second.json()["status"] == "success"
+    assert second_output["status"] == "skipped"
+    assert second_output["reason"] == "post_generation_review_already_recorded"
+    assert second_output["post_generation_review_result"]["status"] == "passed"
+    assert calls == calls_after_first
+
+
 def test_agent_run_list_and_detail_are_project_scoped(client, db_session):
     project_a = _create_project(client, "Project A")
     project_b = _create_project(client, "Project B")
@@ -6129,6 +6386,46 @@ def _prepare_longform_batch_execution_contract(client, project_id: str) -> dict:
         "attempt_manifest": output["attempt_manifest"],
         "approval_contract": output["approval_contract"],
     }
+
+
+def _execute_approved_longform_batch_chapter(client, project_id: str, prepared: dict, monkeypatch) -> dict:
+    async def fake_execute(self, action_type, project_id, *, command_args=None, action_params=None):
+        assert action_type == "generate_chapter"
+        assert action_params == {"chapter_index": 2}
+        self.db.add(
+            ChapterContent(
+                project_id=project_id,
+                chapter_index=2,
+                title="雾港线索2",
+                content="林深和苏晚晴追入记忆诊所后巷，发现雾晶核心的回声正在扩大。",
+                word_count=2200,
+                status="generated",
+            )
+        )
+        self.db.commit()
+        return {"status": "success", "chapter_index": 2, "trace_id": "trace-batch-chapter-2"}
+
+    monkeypatch.setattr("app.services.actions.action_execution_service.ActionExecutionService.execute", fake_execute)
+    response = client.post(
+        f"/api/v1/projects/{project_id}/agent-runs",
+        json={
+            "goal": "执行已批准的长篇批次",
+            "tools": [
+                {
+                    "tool_name": "execute_longform_chapter_batch",
+                    "params": {
+                        "task_id": prepared["task_id"],
+                        "confirm_execute": True,
+                        "attempt_manifest_hash": prepared["attempt_manifest_hash"],
+                        "approval_contract_hash": prepared["approval_contract_hash"],
+                    },
+                }
+            ],
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    return response.json()["steps"][0]["output"]
 
 
 def _seed_longform_project(db_session, *, outline_chapters: list[int], generated_chapters: list[int]) -> Project:

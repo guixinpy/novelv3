@@ -99,6 +99,7 @@ def test_tool_executor_static_adapter_names_are_report_or_agent_native_tools():
         "execute_longform_chapter_batch_preflight",
         "prepare_longform_chapter_batch_execution",
         "execute_longform_chapter_batch",
+        "review_longform_chapter_batch_execution",
         "review_chapter_quality",
         "review_chapter_continuity",
         "plan_chapter_revision",
@@ -149,6 +150,7 @@ def test_tool_executor_lists_unhandled_internal_tools_for_migration_tracking():
     assert "execute_longform_chapter_batch_preflight" not in names
     assert "prepare_longform_chapter_batch_execution" not in names
     assert "execute_longform_chapter_batch" not in names
+    assert "review_longform_chapter_batch_execution" not in names
     assert "preflight_writing" not in names
 
 
@@ -245,6 +247,18 @@ def test_tool_executor_exposes_execute_longform_chapter_batch_adapter_metadata()
         "category": "task_queue",
         "mutability": "write",
         "handler_name": "_execute_longform_chapter_batch",
+    }
+
+
+def test_tool_executor_exposes_review_longform_chapter_batch_execution_adapter_metadata():
+    metadata = writing_agent_tool_adapter_metadata("review_longform_chapter_batch_execution")
+
+    assert metadata == {
+        "tool_name": "review_longform_chapter_batch_execution",
+        "adapter_type": "static",
+        "category": "task_queue",
+        "mutability": "write",
+        "handler_name": "_review_longform_chapter_batch_execution",
     }
 
 
@@ -448,6 +462,35 @@ async def test_tool_executor_dispatches_execute_longform_chapter_batch_adapter(d
     assert result.handled is True
     assert result.output == {"status": "completed", "chapter_index": 2}
     assert calls == [(project.id, "task-1", True, "attempt-hash", "contract-hash")]
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_dispatches_review_longform_chapter_batch_execution_adapter(db_session, monkeypatch):
+    project = Project(name="Executor Batch Review")
+    db_session.add(project)
+    db_session.commit()
+    calls: list[tuple[str, str | None, int | None]] = []
+
+    def fake_review(db, project_id: str, *, task_id: str | None, lookback: int | None):
+        calls.append((project_id, task_id, lookback))
+        return {"status": "completed", "chapter_index": 2}
+
+    monkeypatch.setattr(
+        "app.services.writing_agent.batch_post_generation_review.review_longform_chapter_batch_execution",
+        fake_review,
+    )
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(
+            tool_name="review_longform_chapter_batch_execution",
+            params={"task_id": "task-1", "lookback": "12"},
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output == {"status": "completed", "chapter_index": 2}
+    assert calls == [(project.id, "task-1", 12)]
 
 
 @pytest.mark.asyncio

@@ -162,6 +162,11 @@ def _detailed_task(task: BackgroundTask) -> dict[str, Any]:
     batch_execution_result = (
         result.get("batch_execution_result") if isinstance(result.get("batch_execution_result"), dict) else None
     )
+    post_generation_review_result = (
+        result.get("post_generation_review_result")
+        if isinstance(result.get("post_generation_review_result"), dict)
+        else None
+    )
     queue_policy = _queue_policy(payload)
     return {
         **_compact_task(task),
@@ -180,6 +185,7 @@ def _detailed_task(task: BackgroundTask) -> dict[str, Any]:
         if isinstance(result.get("approval_contract"), dict)
         else None,
         "batch_execution_result": batch_execution_result,
+        "post_generation_review_result": post_generation_review_result,
         "resume": _resume_payload(progress, queue_policy),
         "execution_readiness": _execution_readiness(queue_policy, result),
         "error": task.error,
@@ -224,6 +230,12 @@ def _resume_payload(progress: dict[str, Any] | None, queue_policy: dict[str, Any
 
 
 def _execution_readiness(queue_policy: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
+    if isinstance(result.get("post_generation_review_result"), dict):
+        return {
+            "status": "phase63_reviewed",
+            "can_execute": False,
+            "reason": "This materialized batch already has Phase63 post-generation review evidence.",
+        }
     if isinstance(result.get("batch_execution_result"), dict):
         return {
             "status": "phase62_executed",

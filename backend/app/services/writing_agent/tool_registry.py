@@ -289,6 +289,33 @@ _TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(
+        name="review_longform_chapter_batch_execution",
+        module="writing_agent",
+        category="task_queue",
+        description="审查已执行的长篇批次单章，写入质量、连续性和世界模型分析证据。",
+        input_schema=_object_schema(
+            {
+                "task_id": {"type": "string"},
+                "lookback": {"type": "integer", "minimum": 1},
+            },
+            required=("task_id",),
+        ),
+        output_schema=_object_schema(
+            {
+                "status": {"type": "string"},
+                "task": {"type": "object"},
+                "chapter_index": {"type": "integer"},
+                "review_gate": {"type": "object"},
+                "reviews": {"type": "object"},
+                "side_effects": {"type": "object"},
+            }
+        ),
+        target_type="background_task",
+        internal=True,
+        sort_key=14,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
         name="summarize_longform_context",
         module="writing_agent",
         category="longform_memory",
