@@ -671,7 +671,7 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
         pending = PendingAction(
             dialog_id=dialog.id,
             type=payload.action_type,
-            params={"project_id": payload.project_id, **(payload.params or {})},
+            params={**(payload.params or {}), "project_id": payload.project_id},
         )
         db.add(pending)
         db.commit()
@@ -701,12 +701,20 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
 
     router = IntentRouter()
     candidate = None
-    if payload.input_type != "text":
+    if payload.input_type in {"text", "command"} and effective_text:
         candidate = router.resolve(
             effective_text,
             dialog.state,
             dialog.pending_action_id,
             diagnosis,
+        )
+
+    if candidate and dialog.state == "running" and candidate.type.startswith("preview_"):
+        return _build_running_guard_response(
+            db,
+            dialog,
+            diagnosis,
+            action_type=candidate.type,
         )
 
     if candidate and candidate.type in ("confirm", "cancel", "revise"):
@@ -729,10 +737,26 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
             project_diagnosis=diagnosis,
         )
 
-    if candidate and candidate.type != "confirm":
-        params = {"project_id": payload.project_id, **candidate.params}
+    if candidate and candidate.type == "query_diagnosis":
+        reply = _diagnosis_summary(diagnosis)
+        _save_message(db, dialog.id, "assistant", reply)
+        return ChatOut(
+            message=reply,
+            pending_action=None,
+            ui_hint=_build_chat_idle_hint("项目诊断"),
+            refresh_targets=[],
+            project_diagnosis=diagnosis,
+        )
+
+    if candidate and candidate.type.startswith("preview_"):
+        params = {**candidate.params, "project_id": payload.project_id}
+        if effective_text:
+            params["command_args"] = effective_text
         if candidate.type == "preview_chapter":
             params.update(_chapter_action_params(effective_text, candidate.params))
+            params["project_id"] = payload.project_id
+            if effective_text:
+                params["command_args"] = effective_text
         pending = PendingAction(
             dialog_id=dialog.id,
             type=candidate.type,
