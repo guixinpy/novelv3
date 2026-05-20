@@ -14,11 +14,19 @@ def test_agent_tool_registry_has_unique_names_and_contracts():
     names = [descriptor.name for descriptor in descriptors]
 
     assert len(names) == len(set(names))
-    assert {"generate_chapter", "preflight_writing", "describe_agent_tools", "plan_writing_agent_run"}.issubset(set(names))
+    assert {
+        "generate_chapter",
+        "preflight_writing",
+        "describe_agent_tools",
+        "plan_writing_agent_run",
+        "plan_recovery_tools",
+    }.issubset(set(names))
     assert allowed_tool_names() == set(names)
     assert target_type_for_tool("describe_agent_tools") == "agent_tool_plan"
     assert target_type_for_tool("plan_writing_agent_run") == "agent_tool_plan"
+    assert target_type_for_tool("plan_recovery_tools") == "agent_tool_plan"
     assert "review_chapter_quality" in non_blocking_report_tool_names()
+    assert "plan_recovery_tools" in non_blocking_report_tool_names()
 
     for descriptor in descriptors:
         assert descriptor.category
@@ -27,6 +35,18 @@ def test_agent_tool_registry_has_unique_names_and_contracts():
         assert descriptor.input_schema["type"] == "object"
         assert descriptor.output_schema["type"] == "object"
         assert get_agent_tool_descriptor(descriptor.name) == descriptor
+
+
+def test_agent_tool_registry_includes_plan_recovery_tools():
+    descriptor = get_agent_tool_descriptor("plan_recovery_tools")
+
+    assert descriptor is not None
+    assert descriptor.internal is True
+    assert descriptor.non_blocking_report is True
+    assert descriptor.category == "preflight"
+    assert descriptor.target_type == "agent_tool_plan"
+    assert "plan_recovery_tools" in allowed_tool_names()
+    assert "plan_recovery_tools" in non_blocking_report_tool_names()
 
 
 def test_agent_tool_plan_hides_chapter_generation_until_dependencies_are_ready(db_session):

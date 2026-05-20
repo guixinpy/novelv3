@@ -112,6 +112,13 @@ def _plan_writing_agent_run(context: WritingAgentToolContext, tool: WritingAgent
     )
 
 
+def _plan_recovery_tools(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
+    from app.services.writing_agent.recovery_planner import build_recovery_tool_plan
+
+    run_id = str(tool.params.get("run_id") or "").strip() or None
+    return build_recovery_tool_plan(context.db, context.project_id, run_id)
+
+
 def _review_chapter_quality(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
     from app.core.chapter_quality_review import review_chapter_quality
 
@@ -207,6 +214,12 @@ _STATIC_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
     "plan_writing_agent_run": WritingAgentToolAdapter(
         "plan_writing_agent_run",
         _plan_writing_agent_run,
+        category="preflight",
+        mutability="read",
+    ),
+    "plan_recovery_tools": WritingAgentToolAdapter(
+        "plan_recovery_tools",
+        _plan_recovery_tools,
         category="preflight",
         mutability="read",
     ),

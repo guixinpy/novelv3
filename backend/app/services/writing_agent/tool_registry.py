@@ -105,6 +105,28 @@ _TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(
+        name="plan_recovery_tools",
+        module="writing_agent",
+        category="preflight",
+        description="根据已阻塞或失败的 Writing Agent run 生成只读恢复工具链计划，不自动执行恢复。",
+        input_schema=_object_schema({"run_id": {"type": "string"}}),
+        output_schema=_object_schema(
+            {
+                "status": {"type": "string"},
+                "source_run_id": {"type": "string"},
+                "source_step": {"type": "object"},
+                "recovery": {"type": "object"},
+                "tools": {"type": "array"},
+                "trace": {"type": "object"},
+            }
+        ),
+        target_type="agent_tool_plan",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=7,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
         name="preflight_writing",
         module="writing_agent",
         category="preflight",

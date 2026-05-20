@@ -167,6 +167,39 @@ def test_agent_run_can_plan_writing_tool_chain(client, db_session):
     assert output["trace"]["selected_tools"][0] == "describe_agent_tools"
 
 
+def test_agent_run_can_plan_recovery_tools_from_blocked_run(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1], generated_chapters=[1, 2])
+    blocked = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "检查第3章是否可写",
+            "tools": [{"tool_name": "preflight_writing", "params": {"chapter_index": 3}}],
+        },
+    )
+    blocked_run_id = blocked.json()["id"]
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "规划上一轮阻塞的恢复工具",
+            "tools": [{"tool_name": "plan_recovery_tools", "params": {"run_id": blocked_run_id}}],
+        },
+    )
+
+    payload = response.json()
+    output = payload["steps"][0]["output"]
+    assert response.status_code == 200
+    assert payload["status"] == "success"
+    assert payload["steps"][0]["target_type"] == "agent_tool_plan"
+    assert output["status"] == "completed"
+    assert output["source_run_id"] == blocked_run_id
+    assert output["source_step"]["tool_name"] == "preflight_writing"
+    assert output["recovery"]["next_tool"] == "expand_outline_window"
+    assert output["tools"][0]["tool_name"] == "expand_outline_window"
+    assert output["tools"][0]["params"] == {"start_chapter": 3, "end_chapter": 3}
+    assert output["trace"]["selected_tools"] == ["expand_outline_window"]
+
+
 def test_agent_run_auto_plan_executes_high_level_next_chapter_goal(client, db_session, monkeypatch):
     project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1])
     import_setup_to_world_model(db_session, project.id)
