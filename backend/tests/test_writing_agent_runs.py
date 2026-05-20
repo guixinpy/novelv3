@@ -285,6 +285,33 @@ def test_agent_run_stops_after_failed_tool_step(client, db_session, monkeypatch)
     assert calls == ["generate_setup"]
 
 
+def test_agent_run_records_normalized_output_for_unsupported_tool(client):
+    project_id = _create_project(client, "Unsupported Tool Project")
+
+    response = client.post(
+        f"/api/v1/projects/{project_id}/agent-runs",
+        json={
+            "goal": "调用不存在的工具",
+            "tools": [{"tool_name": "not_a_real_tool", "params": {"chapter_index": 1}}],
+        },
+    )
+
+    payload = response.json()
+    assert response.status_code == 200
+    assert payload["status"] == "failed"
+    assert payload["error"] == "Unsupported writing agent tool: not_a_real_tool"
+    step = payload["steps"][0]
+    assert step["status"] == "failed"
+    assert step["output"]["status"] == "failed"
+    assert step["output"]["error"] == "Unsupported writing agent tool: not_a_real_tool"
+    envelope = step["output"]["agent_tool_result"]
+    assert envelope["version"] == "phase42.tool_result.v1"
+    assert envelope["tool_name"] == "not_a_real_tool"
+    assert envelope["step_status"] == "failed"
+    assert envelope["result_status"] == "failed"
+    assert envelope["is_error"] is True
+
+
 def test_agent_run_records_chapter_length_and_world_model_diagnostics(client, db_session, monkeypatch):
     project_id = _create_project(client, "Diagnostics Project")
     trace = AIModelCallTrace(

@@ -26,9 +26,9 @@ from app.models import (
 )
 from app.schemas.writing_agent import WritingAgentRunCreate, WritingAgentToolRequest
 from app.services.actions.action_execution_service import ActionExecutionService
+from app.services.writing_agent.tool_executor import WritingAgentToolContext, execute_writing_agent_tool
 from app.services.writing_agent.tool_registry import (
     allowed_tool_names,
-    build_agent_tool_plan,
     internal_tool_names,
     non_blocking_report_tool_names,
     target_type_for_tool,
@@ -161,6 +161,16 @@ class WritingAgentRunService:
         return run
 
     async def _execute_tool(self, project_id: str, tool: WritingAgentToolRequest, *, run_id: str) -> dict[str, Any]:
+        execution = await execute_writing_agent_tool(
+            WritingAgentToolContext(db=self.db, project_id=project_id, run_id=run_id),
+            tool,
+            preflight_writing=self._preflight_writing,
+        )
+        if execution.handled:
+            if execution.output is not None:
+                return execution.output
+            return {"status": "failed", "error": "Tool executor returned empty output"}
+
         if tool.tool_name == CHAPTER_TOOL_NAME:
             chapter_index = int(tool.params.get("chapter_index") or 1)
             continuity = _chapter_continuity_feedback(self.db, project_id, chapter_index)
@@ -183,24 +193,6 @@ class WritingAgentRunService:
                 command_args=tool.command_args,
                 action_params=tool.params,
             )
-        if tool.tool_name == "describe_agent_tools":
-            chapter_index = _optional_int(tool.params.get("chapter_index"))
-            return build_agent_tool_plan(self.db, project_id, chapter_index=chapter_index)
-        if tool.tool_name == "plan_writing_agent_run":
-            from app.services.writing_agent.planner import build_writing_agent_run_plan
-
-            chapter_index = _optional_int(tool.params.get("chapter_index"))
-            intent = str(tool.params.get("intent") or "").strip() or None
-            goal = str(tool.params.get("goal") or tool.command_args or "").strip() or "规划下一步写作"
-            return build_writing_agent_run_plan(
-                self.db,
-                project_id,
-                goal=goal,
-                chapter_index=chapter_index,
-                intent=intent,
-            )
-        if tool.tool_name == "preflight_writing":
-            return self._preflight_writing(project_id, tool.params)
         if tool.tool_name == "import_setup_world_model":
             from app.core.athena_longform import import_setup_to_world_model
 
@@ -470,9 +462,8 @@ class WritingAgentRunService:
         output: dict[str, Any] | None = None,
     ) -> None:
         now = _now()
-        if output is not None:
-            output = dict(output)
-            output["agent_tool_result"] = _agent_tool_result_envelope(step, output, STEP_FAILED)
+        output = dict(output) if output is not None else {"status": STEP_FAILED, "error": error}
+        output["agent_tool_result"] = _agent_tool_result_envelope(step, output, STEP_FAILED)
         step.status = STEP_FAILED
         step.error = error
         step.output = output
@@ -496,9 +487,8 @@ class WritingAgentRunService:
         output: dict[str, Any] | None = None,
     ) -> None:
         now = _now()
-        if output is not None:
-            output = dict(output)
-            output["agent_tool_result"] = _agent_tool_result_envelope(step, output, STEP_BLOCKED)
+        output = dict(output) if output is not None else {"status": STEP_BLOCKED, "error": error}
+        output["agent_tool_result"] = _agent_tool_result_envelope(step, output, STEP_BLOCKED)
         step.status = STEP_BLOCKED
         step.error = error
         step.output = output
