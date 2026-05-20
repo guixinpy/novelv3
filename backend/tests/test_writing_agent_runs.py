@@ -332,6 +332,136 @@ def test_agent_run_auto_plan_rejects_recovery_execute_hash_mismatch(client, db_s
     assert [step["tool_name"] for step in payload["steps"]] == ["plan_recovery_tools"]
 
 
+def test_agent_recovery_preview_blocks_requires_user_input(client):
+    project_id = _create_project(client, "Recovery Needs Setup Input")
+    blocked = client.post(
+        f"/api/v1/projects/{project_id}/agent-runs",
+        json={
+            "goal": "检查第1章是否可写",
+            "tools": [{"tool_name": "preflight_writing", "params": {"chapter_index": 1}}],
+        },
+    )
+    blocked_run_id = blocked.json()["id"]
+
+    response = client.post(
+        f"/api/v1/projects/{project_id}/agent-runs",
+        json={
+            "goal": "预览缺设定恢复",
+            "tools": [{"tool_name": "plan_recovery_tools", "params": {"run_id": blocked_run_id}}],
+        },
+    )
+
+    preview = response.json()["steps"][0]["output"]
+    assert response.status_code == 200
+    assert preview["recovery"]["reason_code"] == "missing_setup"
+    assert preview["can_execute"] is False
+    assert preview["guardrails"]["status"] == "blocked"
+    assert preview["guardrails"]["blockers"][0]["code"] == "requires_user_input"
+    assert preview["execution_policy"]["status"] == "requires_user_input"
+
+
+def test_agent_recovery_execute_rejects_hidden_tool_after_state_drift(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1], generated_chapters=[1, 2])
+    blocked = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "检查第3章是否可写",
+            "tools": [{"tool_name": "preflight_writing", "params": {"chapter_index": 3}}],
+        },
+    )
+    blocked_run_id = blocked.json()["id"]
+    preview_response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "规划上一轮阻塞的恢复工具",
+            "tools": [{"tool_name": "plan_recovery_tools", "params": {"run_id": blocked_run_id}}],
+        },
+    )
+    plan_hash = preview_response.json()["steps"][0]["output"]["plan_hash"]
+    db_session.query(Storyline).filter(Storyline.project_id == project.id).delete()
+    db_session.commit()
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "执行已漂移的恢复计划",
+            "input": {
+                "auto_plan": True,
+                "recovery_run_id": blocked_run_id,
+                "execute_recovery": True,
+                "confirm_execute": True,
+                "recovery_plan_hash": plan_hash,
+            },
+        },
+    )
+
+    payload = response.json()
+    assert response.status_code == 200
+    assert payload["input"]["planner"]["mode"] == "preview"
+    assert payload["input"]["planner"]["execution_policy"]["status"] == "tool_not_visible"
+    assert [step["tool_name"] for step in payload["steps"]] == ["plan_recovery_tools"]
+    preview = payload["steps"][0]["output"]
+    assert preview["can_execute"] is False
+    assert preview["guardrails"]["blockers"][0]["code"] == "tool_not_visible"
+
+
+def test_agent_recovery_preview_blocks_repeated_failed_plan(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1], generated_chapters=[1, 2])
+    blocked = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "检查第3章是否可写",
+            "tools": [{"tool_name": "preflight_writing", "params": {"chapter_index": 3}}],
+        },
+    )
+    blocked_run_id = blocked.json()["id"]
+    preview_response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "规划上一轮阻塞的恢复工具",
+            "tools": [{"tool_name": "plan_recovery_tools", "params": {"run_id": blocked_run_id}}],
+        },
+    )
+    plan_hash = preview_response.json()["steps"][0]["output"]["plan_hash"]
+    failed_run = WritingAgentRun(
+        project_id=project.id,
+        goal="失败的恢复执行",
+        status="failed",
+        entrypoint="api",
+        input={"planner": {"mode": "execute", "source_run_id": blocked_run_id, "plan_hash": plan_hash}},
+    )
+    db_session.add(failed_run)
+    db_session.flush()
+    db_session.add(
+        WritingAgentStep(
+            run_id=failed_run.id,
+            project_id=project.id,
+            step_index=1,
+            tool_name="expand_outline_window",
+            status="failed",
+            input={"params": {"start_chapter": 3, "end_chapter": 3}},
+            output={"status": "failed", "error": "outline expansion failed"},
+            error="outline expansion failed",
+        )
+    )
+    db_session.commit()
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "再次预览失败恢复",
+            "tools": [{"tool_name": "plan_recovery_tools", "params": {"run_id": blocked_run_id}}],
+        },
+    )
+
+    preview = response.json()["steps"][0]["output"]
+    assert response.status_code == 200
+    assert preview["can_execute"] is False
+    assert preview["guardrails"]["status"] == "blocked"
+    assert preview["guardrails"]["blockers"][0]["code"] == "repeat_failed_recovery"
+    assert preview["execution_policy"]["status"] == "repeat_failed_recovery"
+
+
 def test_agent_run_auto_plan_executes_high_level_next_chapter_goal(client, db_session, monkeypatch):
     project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1])
     import_setup_to_world_model(db_session, project.id)

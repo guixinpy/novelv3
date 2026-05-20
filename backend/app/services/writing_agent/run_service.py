@@ -120,7 +120,7 @@ class WritingAgentRunService:
                 if expected_hash and expected_hash != actual_hash:
                     status = "hash_mismatch"
                 elif plan.get("can_execute") is not True:
-                    status = "not_executable"
+                    status = str(((plan.get("execution_policy") or {}).get("status")) or "not_executable")
                 return _recovery_preview_auto_plan(recovery_run_id, status=status)
 
             plan = dict(plan)
