@@ -24,6 +24,7 @@ def test_agent_tool_registry_has_unique_names_and_contracts():
         "enqueue_longform_chapter_batch",
         "inspect_longform_chapter_batch",
         "inspect_agent_job_projection",
+        "inspect_agent_tool_contracts",
         "inspect_agent_knowledge_base_route",
         "record_agent_knowledge_base_candidate",
         "execute_longform_chapter_batch_preflight",
@@ -45,6 +46,7 @@ def test_agent_tool_registry_has_unique_names_and_contracts():
     assert target_type_for_tool("enqueue_longform_chapter_batch") == "background_task"
     assert target_type_for_tool("inspect_longform_chapter_batch") == "background_task"
     assert target_type_for_tool("inspect_agent_job_projection") == "agent_job_projection"
+    assert target_type_for_tool("inspect_agent_tool_contracts") == "agent_tool_contracts"
     assert target_type_for_tool("inspect_agent_knowledge_base_route") == "agent_knowledge_base_route"
     assert target_type_for_tool("record_agent_knowledge_base_candidate") == "agent_knowledge_base_candidate"
     assert target_type_for_tool("execute_longform_chapter_batch_preflight") == "background_task"
@@ -62,6 +64,7 @@ def test_agent_tool_registry_has_unique_names_and_contracts():
     assert "plan_longform_chapter_batch" in non_blocking_report_tool_names()
     assert "inspect_longform_chapter_batch" in non_blocking_report_tool_names()
     assert "inspect_agent_job_projection" in non_blocking_report_tool_names()
+    assert "inspect_agent_tool_contracts" in non_blocking_report_tool_names()
     assert "inspect_agent_knowledge_base_route" in non_blocking_report_tool_names()
     assert "summarize_longform_context" in non_blocking_report_tool_names()
 
@@ -139,6 +142,20 @@ def test_agent_tool_registry_includes_inspect_agent_job_projection():
     assert descriptor.input_schema["properties"]["limit"]["minimum"] == 1
     assert "inspect_agent_job_projection" in allowed_tool_names()
     assert "inspect_agent_job_projection" in non_blocking_report_tool_names()
+
+
+def test_agent_tool_registry_includes_inspect_agent_tool_contracts():
+    descriptor = get_agent_tool_descriptor("inspect_agent_tool_contracts")
+
+    assert descriptor is not None
+    assert descriptor.internal is True
+    assert descriptor.non_blocking_report is True
+    assert descriptor.category == "preflight"
+    assert descriptor.target_type == "agent_tool_contracts"
+    assert descriptor.input_schema["properties"]["chapter_index"]["minimum"] == 1
+    assert descriptor.input_schema["properties"]["include_gap_details"]["type"] == "boolean"
+    assert "inspect_agent_tool_contracts" in allowed_tool_names()
+    assert "inspect_agent_tool_contracts" in non_blocking_report_tool_names()
 
 
 def test_agent_tool_registry_includes_inspect_agent_knowledge_base_route():

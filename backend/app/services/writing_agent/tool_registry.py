@@ -238,6 +238,34 @@ _TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(
+        name="inspect_agent_tool_contracts",
+        module="writing_agent",
+        category="preflight",
+        description="只读输出 Writing Agent 工具契约快照、覆盖率和迁移差距，用于持续重构模块为 Agent 工具。",
+        input_schema=_object_schema(
+            {
+                "chapter_index": {"type": "integer", "minimum": 1},
+                "include_gap_details": {"type": "boolean"},
+            }
+        ),
+        output_schema=_object_schema(
+            {
+                "status": {"type": "string"},
+                "summary": {"type": "object"},
+                "coverage": {"type": "object"},
+                "tools": {"type": "array"},
+                "gaps": {"type": "array"},
+                "reference_alignment": {"type": "object"},
+                "recommended_next_steps": {"type": "array"},
+            }
+        ),
+        target_type="agent_tool_contracts",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=11,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
         name="inspect_agent_knowledge_base_route",
         module="writing_agent",
         category="knowledge_base",

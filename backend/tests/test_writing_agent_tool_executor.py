@@ -2,6 +2,7 @@ import pytest
 
 from app.models import Project
 from app.schemas.writing_agent import WritingAgentToolRequest
+from app.services.writing_agent.tool_registry import internal_tool_names
 from app.services.writing_agent.tool_executor import (
     WritingAgentToolContext,
     execute_writing_agent_tool,
@@ -97,6 +98,7 @@ def test_tool_executor_static_adapter_names_are_report_or_agent_native_tools():
         "enqueue_longform_chapter_batch",
         "inspect_longform_chapter_batch",
         "inspect_agent_job_projection",
+        "inspect_agent_tool_contracts",
         "inspect_agent_knowledge_base_route",
         "record_agent_knowledge_base_candidate",
         "execute_longform_chapter_batch_preflight",
@@ -158,6 +160,7 @@ def test_tool_executor_lists_unhandled_internal_tools_for_migration_tracking():
     assert "enqueue_longform_chapter_batch" not in names
     assert "inspect_longform_chapter_batch" not in names
     assert "inspect_agent_job_projection" not in names
+    assert "inspect_agent_tool_contracts" not in names
     assert "inspect_agent_knowledge_base_route" not in names
     assert "record_agent_knowledge_base_candidate" not in names
     assert "execute_longform_chapter_batch_preflight" not in names
@@ -178,6 +181,86 @@ def test_tool_executor_exposes_inspect_agent_memory_route_adapter_metadata():
         "mutability": "read",
         "handler_name": "_inspect_agent_memory_route",
     }
+
+
+def test_tool_executor_exposes_inspect_agent_tool_contracts_adapter_metadata():
+    metadata = writing_agent_tool_adapter_metadata("inspect_agent_tool_contracts")
+
+    assert metadata == {
+        "tool_name": "inspect_agent_tool_contracts",
+        "adapter_type": "static",
+        "category": "preflight",
+        "mutability": "read",
+        "handler_name": "_inspect_agent_tool_contracts",
+    }
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_handles_inspect_agent_tool_contracts(db_session):
+    project = Project(name="Tool Contract Snapshot")
+    db_session.add(project)
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-contract"),
+        WritingAgentToolRequest(
+            tool_name="inspect_agent_tool_contracts",
+            params={"chapter_index": 1, "include_gap_details": True},
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "completed"
+    assert result.output["summary"]["total_tools"] >= 1
+    assert result.output["summary"]["internal_tools"] >= 1
+    assert result.output["coverage"]["schema_coverage_ratio"] == 1.0
+    assert result.output["coverage"]["adapter_coverage_ratio"] < 1.0
+    assert "confirmation_contract_ratio" in result.output["coverage"]
+    assert "tool_visibility_projection" in result.output["reference_alignment"]["patterns"]
+    assert "permission_scope_category" in result.output["reference_alignment"]["patterns"]
+    assert "references/agent-projects/openclaw" in result.output["reference_alignment"]["source_refs"]
+    tools_by_name = {tool["name"]: tool for tool in result.output["tools"]}
+    assert tools_by_name["describe_agent_tools"]["mutability"] == "read"
+    assert tools_by_name["describe_agent_tools"]["parallel_safe"] is True
+    assert tools_by_name["inspect_agent_knowledge_base_route"]["memory_boundary"] == "knowledge_base"
+    assert tools_by_name["inspect_agent_tool_contracts"]["contract_status"] == "ready"
+    assert tools_by_name["enqueue_longform_chapter_batch"]["mutability"] == "guarded_write"
+    assert tools_by_name["enqueue_longform_chapter_batch"]["permission_level"] == "confirm_required"
+    assert "requires_confirmation" in tools_by_name["enqueue_longform_chapter_batch"]["side_effects"]
+    assert tools_by_name["route_longform_chapter_batch_after_review"]["mutability"] == "guarded_write"
+    assert tools_by_name["execute_longform_chapter_batch"]["requires_confirmation"] is True
+    assert tools_by_name["execute_longform_chapter_batch"]["mutability"] == "guarded_write"
+    assert tools_by_name["execute_longform_chapter_batch"]["permission_level"] == "confirm_required"
+    assert tools_by_name["execute_longform_chapter_batch"]["parallel_safe"] is False
+    assert tools_by_name["execute_longform_chapter_batch"]["recovery_tools"] == [
+        "inspect_agent_job_projection",
+        "plan_recovery_tools",
+    ]
+    assert tools_by_name["generate_chapter"]["resource_scope"] == "manuscript"
+    assert "missing_agent_native_adapter" in tools_by_name["generate_chapter"]["gap_codes"]
+    assert any(gap["tool_name"] == "generate_chapter" for gap in result.output["gaps"])
+    assert internal_tool_names().issubset(set(tools_by_name))
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_hides_contract_gap_details_when_requested(db_session):
+    project = Project(name="Tool Contract Snapshot Compact")
+    db_session.add(project)
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-contract-compact"),
+        WritingAgentToolRequest(
+            tool_name="inspect_agent_tool_contracts",
+            params={"chapter_index": 1, "include_gap_details": False},
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["gaps"] == []
+    assert all("gaps" not in tool for tool in result.output["tools"])
 
 
 def test_tool_executor_exposes_inspect_agent_trace_audit_adapter_metadata():

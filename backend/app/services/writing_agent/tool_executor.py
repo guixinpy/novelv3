@@ -182,6 +182,23 @@ def _inspect_agent_job_projection(context: WritingAgentToolContext, tool: Writin
     )
 
 
+def _inspect_agent_tool_contracts(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
+    from app.services.writing_agent.tool_contracts import build_agent_tool_contract_snapshot
+
+    adapter_metadata = {name: adapter.to_metadata() for name, adapter in _STATIC_TOOL_ADAPTERS.items()}
+    adapter_metadata["preflight_writing"] = {
+        "tool_name": "preflight_writing",
+        "adapter_type": "injected",
+        "category": "preflight",
+        "mutability": "read",
+        "handler_name": "preflight_writing",
+    }
+    return build_agent_tool_contract_snapshot(
+        adapter_metadata_by_name=adapter_metadata,
+        include_gap_details=tool.params.get("include_gap_details") is not False,
+    )
+
+
 def _inspect_agent_knowledge_base_route(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
     from app.services.writing_agent.agent_knowledge_base_route import inspect_agent_knowledge_base_route
 
@@ -489,6 +506,12 @@ _STATIC_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
         "inspect_agent_job_projection",
         _inspect_agent_job_projection,
         category="task_queue",
+        mutability="read",
+    ),
+    "inspect_agent_tool_contracts": WritingAgentToolAdapter(
+        "inspect_agent_tool_contracts",
+        _inspect_agent_tool_contracts,
+        category="preflight",
         mutability="read",
     ),
     "inspect_agent_knowledge_base_route": WritingAgentToolAdapter(
