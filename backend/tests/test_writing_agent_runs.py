@@ -566,8 +566,16 @@ def test_agent_run_auto_plan_executes_high_level_next_chapter_goal(client, db_se
     payload = response.json()
     assert payload["status"] == "success"
     step_names = [step["tool_name"] for step in payload["steps"]]
-    assert step_names[:3] == ["describe_agent_tools", "preflight_writing", "generate_chapter"]
+    assert step_names[:4] == [
+        "describe_agent_tools",
+        "summarize_longform_context",
+        "preflight_writing",
+        "generate_chapter",
+    ]
     assert step_names[-1] == "analyze_chapter_world_model"
+    context_step = next(step for step in payload["steps"] if step["tool_name"] == "summarize_longform_context")
+    assert context_step["target_type"] == "longform_context_summary"
+    assert context_step["output"]["agent_tool_result"]["adapter"]["mutability"] == "read"
     generate_step = next(step for step in payload["steps"] if step["tool_name"] == "generate_chapter")
     assert generate_step["input"]["planner"]["reason"] == "依赖满足后生成第2章正文。"
     envelope = generate_step["output"]["agent_tool_result"]

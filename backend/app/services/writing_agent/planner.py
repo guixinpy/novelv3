@@ -9,7 +9,7 @@ from app.models import ChapterContent
 from app.schemas.writing_agent import WritingAgentToolRequest
 from app.services.writing_agent.tool_registry import build_agent_tool_plan
 
-PLANNER_VERSION = "phase41.deterministic.v1"
+PLANNER_VERSION = "phase53.context_gate.v1"
 
 
 def build_writing_agent_run_plan(
@@ -157,6 +157,19 @@ def _build_continue_chapter_plan(
         trace["rejected_tools"].append({"tool_name": "generate_chapter", "reason": f"第{chapter_index}章缺少大纲且无法自动扩展。"})
         return
 
+    _append_step(
+        steps,
+        trace,
+        "summarize_longform_context",
+        {
+            "chapter_index": chapter_index,
+            "query": f"续写第{chapter_index}章前汇总长篇上下文。",
+        },
+        reason="生成前读取长篇记忆、检索证据和上下文诊断。",
+        on_missing="record_issue",
+        on_failure="record_issue",
+        expected_output="长篇上下文摘要。",
+    )
     _append_step(
         steps,
         trace,
