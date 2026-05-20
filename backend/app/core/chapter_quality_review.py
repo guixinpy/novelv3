@@ -26,6 +26,7 @@ PREMATURE_MYSTERY_REVEAL_TERMS = (
     "十年前那场雾灾，是他们制造的",
     "苏晚晴是实验体",
 )
+SOFT_WORD_TARGET_OVERFLOW_RATIO = 1.1
 
 
 def review_chapter_quality(db: Session, project_id: str, chapter_index: int) -> dict[str, Any]:
@@ -91,14 +92,19 @@ def _word_target_findings(project: Project, chapter: ChapterContent) -> list[dic
         return []
     target_min, target_max = target_range
     word_count = int(chapter.word_count or 0)
-    if word_count > target_max:
+    soft_target_max = round(target_max * SOFT_WORD_TARGET_OVERFLOW_RATIO)
+    if word_count > soft_target_max:
         severity = "blocker" if word_count > round(target_max * 1.5) else "warning"
         return [
             _finding(
                 "chapter_over_target",
                 severity,
-                f"第{chapter.chapter_index}章 {word_count} 字，超过目标上限 {target_max} 字。",
-                evidence={"word_count": word_count, "target_max_word_count": target_max},
+                f"第{chapter.chapter_index}章 {word_count} 字，明显超过目标上限 {target_max} 字。",
+                evidence={
+                    "word_count": word_count,
+                    "target_max_word_count": target_max,
+                    "soft_target_max_word_count": soft_target_max,
+                },
             )
         ]
     if word_count < target_min:

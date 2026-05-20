@@ -2870,7 +2870,7 @@ def test_agent_review_chapter_quality_flags_generic_title_and_length(client, db_
     project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1, 2])
     chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=2).one()
     chapter.title = "第2章"
-    chapter.word_count = 3200
+    chapter.word_count = 3400
     db_session.commit()
 
     response = client.post(
@@ -2894,6 +2894,28 @@ def test_agent_review_chapter_quality_accepts_elastic_2000_plus_length(client, d
     chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=1).one()
     chapter.title = "雾中回声"
     chapter.word_count = 2482
+    db_session.commit()
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "审稿第1章",
+            "tools": [{"tool_name": "review_chapter_quality", "params": {"chapter_index": 1}}],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    codes = {finding["code"] for finding in output["findings"]}
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    assert "chapter_over_target" not in codes
+
+
+def test_agent_review_chapter_quality_accepts_slight_soft_over_target(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1], generated_chapters=[1])
+    chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=1).one()
+    chapter.title = "雾中回声"
+    chapter.word_count = 3159
     db_session.commit()
 
     response = client.post(
@@ -3464,7 +3486,7 @@ def test_agent_plan_chapter_revision_maps_review_findings_to_actions(client, db_
     project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1, 2])
     chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=2).one()
     chapter.title = "第2章"
-    chapter.word_count = 3200
+    chapter.word_count = 3400
     original_content = chapter.content
     db_session.commit()
 
