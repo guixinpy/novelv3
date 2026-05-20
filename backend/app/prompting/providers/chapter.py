@@ -9,6 +9,7 @@ from app.core.writing_agent_constraints import build_agent_chapter_constraint_bl
 from app.models import ChapterContent, Project, Setup
 from app.prompting.providers.athena import athena_context_has_retrieval, build_athena_chapter_context_block
 from app.prompting.providers.few_shot import build_few_shot_examples_block
+from app.prompting.providers.knowledge_base import build_knowledge_base_candidate_block
 from app.prompting.providers.longform import build_longform_context_block
 from app.prompting.providers.retrieval import build_chapter_retrieval_block
 from app.prompting.providers.style import build_style_rule_block
@@ -28,6 +29,7 @@ PRIORITY_USER_FEEDBACK = 0
 PRIORITY_LENGTH_CONSTRAINT = 1
 PRIORITY_PROJECT_LENGTH_CONSTRAINT = 2
 PRIORITY_AGENT_CONSTRAINTS = 8
+PRIORITY_KNOWLEDGE_BASE = 9
 PRIORITY_CHAPTER_TARGET = 10
 PRIORITY_LONGFORM_CONTEXT = 18
 PRIORITY_ATHENA_CONTEXT = 20
@@ -107,6 +109,10 @@ def build_chapter_prompt_context_blocks(
     )
     if agent_constraints_block:
         model_blocks.append(_prioritized(agent_constraints_block, PRIORITY_AGENT_CONSTRAINTS))
+
+    knowledge_base_block = build_knowledge_base_candidate_block(project)
+    if knowledge_base_block:
+        model_blocks.append(_prioritized(knowledge_base_block, PRIORITY_KNOWLEDGE_BASE))
 
     outline_block = _build_outline_chapter_target_block(db, project.id, chapter_index)
     if outline_block:

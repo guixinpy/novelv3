@@ -232,6 +232,84 @@ def test_chapter_payload_injects_agent_constraints_from_storyline_and_world_mode
     assert "不得改写为无来源的新地点、新物件或新档案" in message
 
 
+def test_chapter_payload_injects_only_prompt_safe_knowledge_candidates(monkeypatch, db_session):
+    project = _project(
+        db_session,
+        id="chapter-prompt-knowledge-candidates",
+        style_config={
+            "knowledge_base_candidates": [
+                {
+                    "id": "candidate-active-pattern",
+                    "memory_type": "writing_pattern",
+                    "title": "章末压力",
+                    "summary": "章节结尾保留下一步行动压力，不要把追击线一次性解决。",
+                    "source_refs": ["chapter:24"],
+                    "confidence": 0.82,
+                    "status": "candidate",
+                    "tags": ["dogfood"],
+                    "observed_count": 1,
+                },
+                {
+                    "id": "candidate-low-confidence",
+                    "memory_type": "writing_pattern",
+                    "title": "低置信候选",
+                    "summary": "这条不应进入提示词。",
+                    "source_refs": ["chapter:20"],
+                    "confidence": 0.2,
+                    "status": "candidate",
+                },
+                {
+                    "id": "candidate-process-lesson",
+                    "memory_type": "self_optimization_lesson",
+                    "title": "低细节路线",
+                    "summary": "这是 Agent 流程经验，不应进入小说正文提示。",
+                    "source_refs": ["phase77"],
+                    "confidence": 0.95,
+                    "status": "active",
+                },
+                {
+                    "id": "candidate-muted",
+                    "memory_type": "project_strategy",
+                    "title": "静默策略",
+                    "summary": "已静默的候选不应进入提示词。",
+                    "source_refs": ["phase77"],
+                    "confidence": 1.0,
+                    "status": "muted",
+                },
+            ]
+        },
+    )
+    setup = _setup(db_session, project.id)
+    monkeypatch.setattr(
+        "app.prompting.providers.athena.build_chapter_context_package",
+        lambda **kwargs: {
+            "chapter_index": kwargs["chapter_index"],
+            "profile_version": None,
+            "project_profile_version_id": None,
+            "sections": [],
+            "prompt_context": "",
+        },
+    )
+    monkeypatch.setattr(
+        "app.prompting.providers.retrieval.build_chapter_retrieval_context",
+        lambda **kwargs: None,
+    )
+
+    payload = chapters._build_chapter_call_payload(db_session, project, setup, 25, "")
+
+    message = payload["messages"][0]["content"]
+    assert "【知识库创作记忆】" in message
+    assert "章末压力" in message
+    assert "章节结尾保留下一步行动压力" in message
+    assert "低置信候选" not in message
+    assert "低细节路线" not in message
+    assert "静默策略" not in message
+    blocks_by_key = {block["key"]: block for block in payload["context_blocks"]}
+    assert blocks_by_key["knowledge_base_candidates"]["kind"] == "knowledge_base"
+    assert blocks_by_key["knowledge_base_candidates"]["sources"][0]["source_id"] == "candidate-active-pattern"
+    assert blocks_by_key["knowledge_base_candidates"]["sources"][0]["metadata"]["memory_type"] == "writing_pattern"
+
+
 def test_chapter_payload_injects_retrieval_when_athena_context_lacks_it(monkeypatch, db_session):
     project = _project(db_session, id="chapter-prompt-retrieval", style_config=None)
     setup = _setup(db_session, project.id)
