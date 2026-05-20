@@ -157,6 +157,16 @@ Result:
 - `git diff --check` passed.
 - secret scan found no matches.
 
+## Commit And Push
+
+Phase37 documentation was committed as:
+
+```text
+8d55235 phase37: document chapter 22 loop
+```
+
+`main` was pushed to `origin/main` successfully on 2026-05-20 after earlier transient GitHub HTTPS connection failures recovered.
+
 ## Observations
 
 The phase exposed a useful process issue: context from prior user discussions contained an old protagonist name, while the actual current project data uses `林深`. For dogfood generation, the DB/setup/current manuscript must override memory or older summaries.
