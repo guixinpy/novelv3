@@ -570,13 +570,17 @@ def test_agent_run_auto_plan_executes_high_level_next_chapter_goal(client, db_se
     payload = response.json()
     assert payload["status"] == "success"
     step_names = [step["tool_name"] for step in payload["steps"]]
-    assert step_names[:4] == [
+    assert step_names[:5] == [
         "describe_agent_tools",
+        "inspect_agent_knowledge_base_route",
         "summarize_longform_context",
         "preflight_writing",
         "generate_chapter",
     ]
     assert step_names[-1] == "analyze_chapter_world_model"
+    knowledge_step = next(step for step in payload["steps"] if step["tool_name"] == "inspect_agent_knowledge_base_route")
+    assert knowledge_step["target_type"] == "agent_knowledge_base_route"
+    assert knowledge_step["output"]["agent_tool_result"]["adapter"]["mutability"] == "read"
     context_step = next(step for step in payload["steps"] if step["tool_name"] == "summarize_longform_context")
     assert context_step["target_type"] == "longform_context_summary"
     assert context_step["output"]["agent_tool_result"]["adapter"]["mutability"] == "read"
@@ -622,9 +626,10 @@ def test_agent_auto_plan_longform_context_blocks_stale_maintenance_before_genera
     assert payload["status"] == "blocked"
     assert [step["tool_name"] for step in payload["steps"]] == [
         "describe_agent_tools",
+        "inspect_agent_knowledge_base_route",
         "summarize_longform_context",
     ]
-    context_output = payload["steps"][1]["output"]
+    context_output = payload["steps"][2]["output"]
     assert context_output["should_generate_next_chapter"] is False
     assert context_output["recommended_actions"] == ["repair_longform_maintenance"]
     assert context_output["decision"]["reason"] == "longform_memory_needs_maintenance"

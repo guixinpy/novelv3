@@ -182,6 +182,18 @@ def _inspect_agent_job_projection(context: WritingAgentToolContext, tool: Writin
     )
 
 
+def _inspect_agent_knowledge_base_route(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
+    from app.services.writing_agent.agent_knowledge_base_route import inspect_agent_knowledge_base_route
+
+    return inspect_agent_knowledge_base_route(
+        context.db,
+        context.project_id,
+        chapter_index=_optional_int(tool.params.get("chapter_index")),
+        query=str(tool.params.get("query") or "").strip() or None,
+        limit=_optional_int(tool.params.get("limit")),
+    )
+
+
 def _execute_longform_chapter_batch_preflight(
     context: WritingAgentToolContext,
     tool: WritingAgentToolRequest,
@@ -444,6 +456,12 @@ _STATIC_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
         "inspect_agent_job_projection",
         _inspect_agent_job_projection,
         category="task_queue",
+        mutability="read",
+    ),
+    "inspect_agent_knowledge_base_route": WritingAgentToolAdapter(
+        "inspect_agent_knowledge_base_route",
+        _inspect_agent_knowledge_base_route,
+        category="knowledge_base",
         mutability="read",
     ),
     "execute_longform_chapter_batch_preflight": WritingAgentToolAdapter(

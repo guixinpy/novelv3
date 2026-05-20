@@ -160,6 +160,19 @@ def _build_continue_chapter_plan(
     _append_step(
         steps,
         trace,
+        "inspect_agent_knowledge_base_route",
+        {
+            "chapter_index": chapter_index,
+            "query": f"生成第{chapter_index}章前读取作者偏好、项目策略和写法经验。",
+        },
+        reason="读取知识库创作记忆，避免仅依赖用户临时提示约束长篇写作。",
+        on_missing="record_issue",
+        on_failure="record_issue",
+        expected_output="作者偏好、项目策略、学习规则和写法参考投影。",
+    )
+    _append_step(
+        steps,
+        trace,
         "summarize_longform_context",
         {
             "chapter_index": chapter_index,

@@ -97,6 +97,7 @@ def test_tool_executor_static_adapter_names_are_report_or_agent_native_tools():
         "enqueue_longform_chapter_batch",
         "inspect_longform_chapter_batch",
         "inspect_agent_job_projection",
+        "inspect_agent_knowledge_base_route",
         "execute_longform_chapter_batch_preflight",
         "prepare_longform_chapter_batch_execution",
         "execute_longform_chapter_batch",
@@ -156,6 +157,7 @@ def test_tool_executor_lists_unhandled_internal_tools_for_migration_tracking():
     assert "enqueue_longform_chapter_batch" not in names
     assert "inspect_longform_chapter_batch" not in names
     assert "inspect_agent_job_projection" not in names
+    assert "inspect_agent_knowledge_base_route" not in names
     assert "execute_longform_chapter_batch_preflight" not in names
     assert "prepare_longform_chapter_batch_execution" not in names
     assert "execute_longform_chapter_batch" not in names
@@ -269,6 +271,18 @@ def test_tool_executor_exposes_inspect_agent_job_projection_adapter_metadata():
         "category": "task_queue",
         "mutability": "read",
         "handler_name": "_inspect_agent_job_projection",
+    }
+
+
+def test_tool_executor_exposes_inspect_agent_knowledge_base_route_adapter_metadata():
+    metadata = writing_agent_tool_adapter_metadata("inspect_agent_knowledge_base_route")
+
+    assert metadata == {
+        "tool_name": "inspect_agent_knowledge_base_route",
+        "adapter_type": "static",
+        "category": "knowledge_base",
+        "mutability": "read",
+        "handler_name": "_inspect_agent_knowledge_base_route",
     }
 
 
@@ -469,6 +483,35 @@ async def test_tool_executor_dispatches_inspect_agent_job_projection_adapter(db_
     assert result.handled is True
     assert result.output == {"status": "completed", "queue": {"depth": 0}}
     assert calls == [(project.id, "task-1", "generate_chapter", "failed", 9)]
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_dispatches_inspect_agent_knowledge_base_route_adapter(db_session, monkeypatch):
+    project = Project(name="Executor Knowledge Base Route")
+    db_session.add(project)
+    db_session.commit()
+    calls: list[tuple[str, int | None, str | None, int | None]] = []
+
+    def fake_route(db, project_id: str, *, chapter_index: int | None, query: str | None, limit: int | None):
+        calls.append((project_id, chapter_index, query, limit))
+        return {"status": "completed", "route": {"status": "ready"}}
+
+    monkeypatch.setattr(
+        "app.services.writing_agent.agent_knowledge_base_route.inspect_agent_knowledge_base_route",
+        fake_route,
+    )
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(
+            tool_name="inspect_agent_knowledge_base_route",
+            params={"chapter_index": "8", "query": "雾港节奏", "limit": "5"},
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output == {"status": "completed", "route": {"status": "ready"}}
+    assert calls == [(project.id, 8, "雾港节奏", 5)]
 
 
 @pytest.mark.asyncio

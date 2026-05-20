@@ -12,6 +12,7 @@ def test_planner_builds_ready_next_chapter_tool_chain(db_session):
     assert plan["chapter_index"] == 2
     assert _tool_names(plan) == [
         "describe_agent_tools",
+        "inspect_agent_knowledge_base_route",
         "summarize_longform_context",
         "preflight_writing",
         "generate_chapter",
@@ -27,7 +28,7 @@ def test_planner_builds_ready_next_chapter_tool_chain(db_session):
     assert plan["trace"]["selected_tools"] == _tool_names(plan)
     generate_request = next(tool for tool in plan["tools"] if tool["tool_name"] == "generate_chapter")
     assert generate_request["planner"] == {
-        "step_index": 4,
+        "step_index": 5,
         "reason": "依赖满足后生成第2章正文。",
         "on_missing": "stop",
         "on_failure": "stop",
@@ -48,6 +49,7 @@ def test_planner_adds_outline_expansion_when_target_outline_is_missing(db_sessio
     assert _tool_names(plan) == [
         "describe_agent_tools",
         "expand_outline_window",
+        "inspect_agent_knowledge_base_route",
         "summarize_longform_context",
         "preflight_writing",
         "generate_chapter",
