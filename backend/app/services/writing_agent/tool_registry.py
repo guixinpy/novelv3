@@ -127,6 +127,33 @@ _TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(
+        name="plan_longform_chapter_batch",
+        module="writing_agent",
+        category="task_queue",
+        description="基于项目状态和可选 continuation state 生成只读长篇章节批次 DAG 计划，不直接入队或执行。",
+        input_schema=_object_schema(
+            {
+                "source_run_id": {"type": "string"},
+                "start_chapter": {"type": "integer", "minimum": 1},
+                "batch_size": {"type": "integer", "minimum": 1},
+            }
+        ),
+        output_schema=_object_schema(
+            {
+                "status": {"type": "string"},
+                "batch": {"type": "object"},
+                "dag": {"type": "object"},
+                "recommended_next_tools": {"type": "array"},
+                "source_continuation_state": {"type": "object"},
+            }
+        ),
+        target_type="longform_batch_plan",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=8,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
         name="summarize_longform_context",
         module="writing_agent",
         category="longform_memory",

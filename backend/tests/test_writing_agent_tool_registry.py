@@ -20,6 +20,7 @@ def test_agent_tool_registry_has_unique_names_and_contracts():
         "describe_agent_tools",
         "plan_writing_agent_run",
         "plan_recovery_tools",
+        "plan_longform_chapter_batch",
         "summarize_longform_context",
         "repair_longform_maintenance",
     }.issubset(set(names))
@@ -27,10 +28,12 @@ def test_agent_tool_registry_has_unique_names_and_contracts():
     assert target_type_for_tool("describe_agent_tools") == "agent_tool_plan"
     assert target_type_for_tool("plan_writing_agent_run") == "agent_tool_plan"
     assert target_type_for_tool("plan_recovery_tools") == "agent_tool_plan"
+    assert target_type_for_tool("plan_longform_chapter_batch") == "longform_batch_plan"
     assert target_type_for_tool("summarize_longform_context") == "longform_context_summary"
     assert target_type_for_tool("repair_longform_maintenance") == "longform_maintenance"
     assert "review_chapter_quality" in non_blocking_report_tool_names()
     assert "plan_recovery_tools" in non_blocking_report_tool_names()
+    assert "plan_longform_chapter_batch" in non_blocking_report_tool_names()
     assert "summarize_longform_context" in non_blocking_report_tool_names()
 
     for descriptor in descriptors:
@@ -52,6 +55,19 @@ def test_agent_tool_registry_includes_plan_recovery_tools():
     assert descriptor.target_type == "agent_tool_plan"
     assert "plan_recovery_tools" in allowed_tool_names()
     assert "plan_recovery_tools" in non_blocking_report_tool_names()
+
+
+def test_agent_tool_registry_includes_plan_longform_chapter_batch():
+    descriptor = get_agent_tool_descriptor("plan_longform_chapter_batch")
+
+    assert descriptor is not None
+    assert descriptor.internal is True
+    assert descriptor.non_blocking_report is True
+    assert descriptor.category == "task_queue"
+    assert descriptor.target_type == "longform_batch_plan"
+    assert descriptor.input_schema["properties"]["batch_size"]["minimum"] == 1
+    assert "plan_longform_chapter_batch" in allowed_tool_names()
+    assert "plan_longform_chapter_batch" in non_blocking_report_tool_names()
 
 
 def test_agent_tool_registry_includes_summarize_longform_context():

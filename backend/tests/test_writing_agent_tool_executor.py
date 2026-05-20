@@ -93,6 +93,7 @@ def test_tool_executor_static_adapter_names_are_report_or_agent_native_tools():
     assert {
         "describe_agent_tools",
         "plan_writing_agent_run",
+        "plan_longform_chapter_batch",
         "review_chapter_quality",
         "review_chapter_continuity",
         "plan_chapter_revision",
@@ -137,6 +138,7 @@ def test_tool_executor_lists_unhandled_internal_tools_for_migration_tracking():
     assert "repair_longform_maintenance" not in names
     assert "review_chapter_quality" not in names
     assert "plan_writing_agent_run" not in names
+    assert "plan_longform_chapter_batch" not in names
     assert "preflight_writing" not in names
 
 
@@ -162,6 +164,47 @@ def test_tool_executor_exposes_repair_longform_maintenance_adapter_metadata():
         "mutability": "write",
         "handler_name": "_repair_longform_maintenance",
     }
+
+
+def test_tool_executor_exposes_plan_longform_chapter_batch_adapter_metadata():
+    metadata = writing_agent_tool_adapter_metadata("plan_longform_chapter_batch")
+
+    assert metadata == {
+        "tool_name": "plan_longform_chapter_batch",
+        "adapter_type": "static",
+        "category": "task_queue",
+        "mutability": "read",
+        "handler_name": "_plan_longform_chapter_batch",
+    }
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_dispatches_plan_longform_chapter_batch_adapter(db_session, monkeypatch):
+    project = Project(name="Executor Batch Plan")
+    db_session.add(project)
+    db_session.commit()
+    calls: list[tuple[str, str | None, int | None, int | None]] = []
+
+    def fake_plan(db, project_id: str, *, source_run_id: str | None, start_chapter: int | None, batch_size: int | None):
+        calls.append((project_id, source_run_id, start_chapter, batch_size))
+        return {"status": "completed", "batch": {"chapter_indexes": [start_chapter]}}
+
+    monkeypatch.setattr(
+        "app.services.writing_agent.batch_planner.build_longform_chapter_batch_plan",
+        fake_plan,
+    )
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(
+            tool_name="plan_longform_chapter_batch",
+            params={"source_run_id": "run-1", "start_chapter": "7", "batch_size": "2"},
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output == {"status": "completed", "batch": {"chapter_indexes": [7]}}
+    assert calls == [(project.id, "run-1", 7, 2)]
 
 
 @pytest.mark.asyncio

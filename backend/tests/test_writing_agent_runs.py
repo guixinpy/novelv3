@@ -769,6 +769,84 @@ def test_agent_run_can_repair_longform_maintenance(client, db_session):
     assert output["agent_tool_result"]["adapter"]["mutability"] == "write"
 
 
+def test_agent_run_can_plan_longform_chapter_batch(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2, 3], generated_chapters=[1])
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "规划接下来两章的批次任务",
+            "tools": [
+                {
+                    "tool_name": "plan_longform_chapter_batch",
+                    "params": {"start_chapter": 2, "batch_size": 2},
+                }
+            ],
+        },
+    )
+
+    payload = response.json()
+    output = payload["steps"][0]["output"]
+    assert response.status_code == 200
+    assert payload["status"] == "success"
+    assert payload["steps"][0]["target_type"] == "longform_batch_plan"
+    assert output["status"] == "completed"
+    assert output["batch"]["chapter_indexes"] == [2, 3]
+    assert output["dag"]["node_count"] <= 8
+    assert [node["node_id"] for node in output["dag"]["nodes"]] == [
+        "context_diagnostics",
+        "preflight_gate",
+        "chapter_generation",
+        "quality_review",
+        "continuity_review",
+        "world_model_intake",
+        "batch_checkpoint",
+    ]
+    assert output["dag"]["nodes"][2]["tool_name"] == "generate_chapter"
+    assert output["dag"]["nodes"][2]["depends_on"] == ["preflight_gate"]
+    assert output["execution_policy"]["mode"] == "preview"
+    assert output["execution_policy"]["requires_queue"] is True
+
+
+def test_agent_run_plan_longform_chapter_batch_blocks_on_source_continuation(client, db_session, monkeypatch):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1])
+
+    async def fake_execute(self, action_type, project_id, *, command_args=None, action_params=None):
+        return {"status": "success"}
+
+    monkeypatch.setattr("app.services.actions.action_execution_service.ActionExecutionService.execute", fake_execute)
+    blocked = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "继续写下一章",
+            "input": {"auto_plan": True, "chapter_index": 2},
+        },
+    )
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "从阻塞运行规划批次",
+            "tools": [
+                {
+                    "tool_name": "plan_longform_chapter_batch",
+                    "params": {"source_run_id": blocked.json()["id"]},
+                }
+            ],
+        },
+    )
+
+    payload = response.json()
+    output = payload["steps"][0]["output"]
+    assert response.status_code == 200
+    assert payload["status"] == "success"
+    assert output["status"] == "blocked"
+    assert output["recommended_next_tools"] == ["plan_recovery_tools"]
+    assert output["source_continuation_state"]["status"] == "blocked"
+    assert output["source_continuation_state"]["next_expected_tool"] == "repair_longform_maintenance"
+    assert output["dag"]["nodes"] == []
+
+
 def test_agent_run_list_and_detail_are_project_scoped(client, db_session):
     project_a = _create_project(client, "Project A")
     project_b = _create_project(client, "Project B")
