@@ -1,6 +1,6 @@
 from unittest.mock import AsyncMock, patch
 
-from app.models import Outline, Project, Setup, Storyline
+from app.models import Outline, Project, Setup, Storyline, WritingAgentRun, WritingAgentStep
 
 
 def test_athena_storyline_generate_defaults_to_windowed_response(client, db_session):
@@ -60,6 +60,17 @@ def test_athena_storyline_generate_defaults_to_windowed_response(client, db_sess
     assert len(stored.plotlines) == 60
     assert len(stored.plotlines[0]["milestones"]) == 1000
     assert len(stored.foreshadowing) == 300
+    run = db_session.query(WritingAgentRun).filter_by(project_id=project.id).one()
+    step = db_session.query(WritingAgentStep).filter_by(run_id=run.id).one()
+    assert data["agent_run_id"] == run.id
+    assert data["control_plane"]["source"] == "athena_evolution_plan_generate"
+    assert data["control_plane"]["target"] == "storyline"
+    assert run.entrypoint == "athena_evolution_plan_generate"
+    assert run.input["tools"][0]["tool_name"] == "generate_storyline"
+    assert step.tool_name == "generate_storyline"
+    assert step.status == "success"
+    assert step.target_type == "storyline"
+    assert step.target_id == stored.id
 
 
 def test_athena_outline_generate_defaults_to_windowed_response(client, db_session):
@@ -137,3 +148,29 @@ def test_athena_outline_generate_defaults_to_windowed_response(client, db_sessio
     assert len(stored.chapters) == 1000
     assert len(stored.plotlines) == 50
     assert len(stored.foreshadowing) == 300
+    run = db_session.query(WritingAgentRun).filter_by(project_id=project.id).one()
+    step = db_session.query(WritingAgentStep).filter_by(run_id=run.id).one()
+    assert data["agent_run_id"] == run.id
+    assert data["control_plane"]["source"] == "athena_evolution_plan_generate"
+    assert data["control_plane"]["target"] == "outline"
+    assert run.entrypoint == "athena_evolution_plan_generate"
+    assert run.input["tools"][0]["tool_name"] == "generate_outline"
+    assert step.tool_name == "generate_outline"
+    assert step.status == "success"
+    assert step.target_type == "outline"
+    assert step.target_id == stored.id
+
+
+@patch("app.api.outlines.load_api_key", return_value=None)
+def test_athena_evolution_outline_generate_preserves_missing_api_key_400(mock_key, client, db_session):
+    project = Project(name="Missing Key Outline Agent")
+    db_session.add(project)
+    db_session.flush()
+    db_session.add(Setup(project_id=project.id, status="generated", world_building={}, characters=[], core_concept={}))
+    db_session.add(Storyline(project_id=project.id, status="generated", plotlines=[], foreshadowing=[]))
+    db_session.commit()
+
+    response = client.post(f"/api/v1/projects/{project.id}/athena/evolution/plan/generate?target=outline")
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "API key not configured"

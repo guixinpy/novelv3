@@ -17,8 +17,7 @@ from app.models import (
     WorldRule,
 )
 from app.schemas import SetupOut
-from app.schemas.writing_agent import WritingAgentRunCreate, WritingAgentToolRequest
-from app.services.writing_agent.run_service import WritingAgentRunService
+from app.services.writing_agent.api_control_plane import execute_agent_api_tool
 
 router = APIRouter()
 DEFAULT_ONTOLOGY_ENTITY_LIMIT = 500
@@ -263,25 +262,17 @@ def get_ontology_rules(
 @router.post("/ontology/generate")
 async def generate_ontology(project_id: str, db: Session = Depends(get_db)):
     require_project(db, project_id)
-    tool = WritingAgentToolRequest(tool_name="generate_setup")
-    service = WritingAgentRunService(db)
-    run = service.create_run(
-        project_id,
-        WritingAgentRunCreate(
-            goal="通过 Athena 设定入口生成项目设定",
-            entrypoint=ATHENA_ONTOLOGY_GENERATE_ENTRYPOINT,
-            tools=[tool],
-            input={
-                "control_plane": {
-                    "version": ATHENA_ONTOLOGY_AGENT_CONTROL_PLANE_VERSION,
-                    "source": ATHENA_ONTOLOGY_GENERATE_ENTRYPOINT,
-                    "action_type": "generate_setup",
-                }
-            },
-        ),
-        effective_tools=[tool],
+    result = await execute_agent_api_tool(
+        db,
+        project_id=project_id,
+        entrypoint=ATHENA_ONTOLOGY_GENERATE_ENTRYPOINT,
+        version=ATHENA_ONTOLOGY_AGENT_CONTROL_PLANE_VERSION,
+        source=ATHENA_ONTOLOGY_GENERATE_ENTRYPOINT,
+        action_type="generate_setup",
+        tool_name="generate_setup",
+        goal="通过 Athena 设定入口生成项目设定",
     )
-    run = await service.execute_run(run.id, [tool])
+    run = result.run
     if run.status != "success":
         status_code = 400 if run.error == "API key not configured" else 500
         raise HTTPException(status_code=status_code, detail=run.error or "Agent setup generation failed")
@@ -291,10 +282,7 @@ async def generate_ontology(project_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail="Agent setup generation completed without setup output")
     body = jsonable_encoder(SetupOut.model_validate(setup))
     body["agent_run_id"] = run.id
-    body["control_plane"] = {
-        "version": ATHENA_ONTOLOGY_AGENT_CONTROL_PLANE_VERSION,
-        "source": ATHENA_ONTOLOGY_GENERATE_ENTRYPOINT,
-    }
+    body["control_plane"] = result.control_plane
     return body
 
 
