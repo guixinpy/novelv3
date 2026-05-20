@@ -478,6 +478,84 @@ def test_analyze_chapter_creates_event_and_character_location_candidates(client,
         assert item.object_ref_or_value["quality"]["review_priority"] == "normal"
 
 
+def test_analyze_chapter_creates_high_value_plot_signal_candidates(client, db_session):
+    project = _seed_project_with_setup(db_session)
+    client.post(f"/api/v1/projects/{project.id}/athena/ontology/import-setup")
+    db_session.add(
+        ChapterContent(
+            project_id=project.id,
+            chapter_index=25,
+            title="第二十五章 暗流之下",
+            content=(
+                "陈默推断G-07可能不是柜号，而是G项目的第七号实验项目。"
+                "林舟把眼睛凑近虹膜锁，旧实验室的铁门竟然开了。"
+                "退役军官说周明远是顾衍战友死前最后见过的人，清道夫行动专门处理内部问题人员。"
+            ),
+            word_count=80,
+            status="generated",
+        )
+    )
+    db_session.commit()
+
+    response = client.post(f"/api/v1/projects/{project.id}/athena/evolution/chapters/25/analyze")
+    rerun = client.post(f"/api/v1/projects/{project.id}/athena/evolution/chapters/25/analyze")
+
+    assert response.status_code == 200
+    assert rerun.status_code == 200
+    predicates = {
+        item.predicate
+        for item in db_session.query(WorldProposalItem).filter(
+            WorldProposalItem.project_id == project.id,
+            WorldProposalItem.chapter_index == 25,
+        )
+    }
+    assert {
+        "identifier_meaning_hypothesis",
+        "access_permission_anomaly",
+        "investigation_lead",
+    } <= predicates
+    identifier_item = (
+        db_session.query(WorldProposalItem)
+        .filter_by(project_id=project.id, chapter_index=25, predicate="identifier_meaning_hypothesis")
+        .one()
+    )
+    assert identifier_item.object_ref_or_value["identifier"] == "G-07"
+    assert identifier_item.object_ref_or_value["is_hypothesis"] is True
+    assert identifier_item.object_ref_or_value["quality"]["review_priority"] == "high"
+    assert (
+        db_session.query(WorldProposalItem)
+        .filter_by(project_id=project.id, chapter_index=25, predicate="identifier_meaning_hypothesis")
+        .count()
+        == 1
+    )
+
+
+def test_analyze_chapter_does_not_treat_iris_door_reference_as_permission_anomaly(client, db_session):
+    project = _seed_project_with_setup(db_session)
+    client.post(f"/api/v1/projects/{project.id}/athena/ontology/import-setup")
+    db_session.add(
+        ChapterContent(
+            project_id=project.id,
+            chapter_index=3,
+            title="第三章 编号",
+            content="林舟打开终端，调出沈聆传来的数据——EV-2045-0812-07，那个虹膜门的编号。",
+            word_count=36,
+            status="generated",
+        )
+    )
+    db_session.commit()
+
+    response = client.post(f"/api/v1/projects/{project.id}/athena/evolution/chapters/3/analyze")
+
+    assert response.status_code == 200
+    assert (
+        db_session.query(WorldProposalItem)
+        .filter_by(project_id=project.id, chapter_index=3, predicate="access_permission_anomaly")
+        .count()
+        == 0
+    )
+
+
 def test_analyze_chapter_creates_non_character_entity_mentions(client, db_session):
     project = _seed_project_with_setup(db_session)
     client.post(f"/api/v1/projects/{project.id}/athena/ontology/import-setup")

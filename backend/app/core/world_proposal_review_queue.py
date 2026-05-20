@@ -2,14 +2,24 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import func
+from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
 from app.core.world_proposal_state import ACTIONABLE_REVIEW_ITEM_STATUSES
 from app.models import ProjectProfileVersion, WorldProposalItem
 
 LOW_RISK_PREDICATES = {"presence_count", "mentioned_in_chapter", "present_at_location"}
-HIGH_RISK_PREDICATES = {"status", "identity", "role", "event_summary", "rule", "relationship"}
+HIGH_RISK_PREDICATES = {
+    "status",
+    "identity",
+    "role",
+    "event_summary",
+    "rule",
+    "relationship",
+    "identifier_meaning_hypothesis",
+    "access_permission_anomaly",
+    "investigation_lead",
+}
 RISK_ORDER = {"high": 0, "medium": 1, "low": 2}
 
 
@@ -46,9 +56,15 @@ def build_proposal_review_queue(
         WorldProposalItem.subject_ref,
     ).filter(*filters)
     total_items = db.query(func.count(WorldProposalItem.id)).filter(*filters).scalar() or 0
+    risk_order = case(
+        (WorldProposalItem.predicate.in_(HIGH_RISK_PREDICATES), 0),
+        (func.lower(WorldProposalItem.predicate).like("%death%"), 0),
+        (WorldProposalItem.predicate.in_(LOW_RISK_PREDICATES), 2),
+        else_=1,
+    )
     items = (
-        query
-        .order_by(
+        query.order_by(
+            risk_order,
             WorldProposalItem.chapter_index.asc().nullsfirst(),
             WorldProposalItem.predicate.asc(),
             WorldProposalItem.subject_ref.asc(),

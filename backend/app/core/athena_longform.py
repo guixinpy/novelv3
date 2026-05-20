@@ -11,6 +11,7 @@ from app.core.athena_chapter_candidates import (
     candidate_from_l1_fact as _candidate_from_l1_fact,
     extract_chapter_event_candidate as _extract_chapter_event_candidate,
     extract_character_location_candidates as _extract_character_location_candidates,
+    extract_high_value_plot_signal_candidates as _extract_high_value_plot_signal_candidates,
     extract_non_character_entity_mentions as _extract_non_character_entity_mentions,
 )
 from app.core.athena_entity_resolver import (
@@ -273,6 +274,13 @@ def analyze_chapter_to_world_proposals(db: Session, project_id: str, chapter_ind
     if event_candidate:
         candidates.append(event_candidate)
     candidates.extend(
+        _extract_high_value_plot_signal_candidates(
+            project_id=project_id,
+            profile=profile,
+            chapter=chapter,
+        )
+    )
+    candidates.extend(
         _extract_non_character_entity_mentions(
             db=db,
             project_id=project_id,
@@ -326,7 +334,7 @@ def analyze_chapter_to_world_proposals(db: Session, project_id: str, chapter_ind
                     profile_version=profile.version,
                     created_by=ATHENA_ANALYZER,
                     title=f"第{chapter_index}章世界事实候选",
-                    summary=f"从《{chapter.title}》自动抽取 {len(new_candidates)} 条低风险世界事实候选。",
+                    summary=f"从《{chapter.title}》自动抽取 {len(new_candidates)} 条世界事实候选。",
                     commit=False,
                 )
                 bundle_id = bundle.id

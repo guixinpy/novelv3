@@ -3249,6 +3249,88 @@ def test_agent_review_chapter_continuity_flags_identifier_kind_conflict(client, 
     assert finding["evidence"]["values"] == ["N-017", "N-07"]
 
 
+def test_agent_review_chapter_continuity_warns_on_adjacent_transition_gap(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1, 2])
+    first = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=1).one()
+    second = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=2).one()
+    first.content = "夜里，林深和苏晚晴躲进暗渠尽头的地下临时藏身点，决定暂时不再移动。"
+    first.word_count = 2000
+    second.content = "清晨，赵猛的安全屋里弥漫着铁锈味，陈默开始破解终端里的旧档案。"
+    second.word_count = 2000
+    db_session.commit()
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "检查第2章相邻跳切",
+            "tools": [{"tool_name": "review_chapter_continuity", "params": {"chapter_index": 2}}],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    finding = next(item for item in output["findings"] if item["code"] == "adjacent_chapter_transition_gap")
+    assert response.status_code == 200
+    assert output["status"] == "warning"
+    assert finding["severity"] == "warning"
+    assert finding["evidence"]["previous_chapter_index"] == 1
+    assert finding["evidence"]["current_chapter_index"] == 2
+    assert "地下临时藏身点" in finding["evidence"]["previous_excerpt"]
+    assert "赵猛的安全屋" in finding["evidence"]["current_excerpt"]
+
+
+def test_agent_review_chapter_continuity_allows_explicit_adjacent_transition(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1, 2])
+    first = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=1).one()
+    second = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=2).one()
+    first.content = "夜里，林深和苏晚晴躲进暗渠尽头的地下临时藏身点，决定暂时不再移动。"
+    first.word_count = 2000
+    second.content = "几小时后，赵猛带他们穿过排水管转移到安全屋，清晨的铁锈味从墙缝里渗出来。"
+    second.word_count = 2000
+    db_session.commit()
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "检查第2章相邻跳切",
+            "tools": [{"tool_name": "review_chapter_continuity", "params": {"chapter_index": 2}}],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    codes = {finding["code"] for finding in output["findings"]}
+    assert response.status_code == 200
+    assert "adjacent_chapter_transition_gap" not in codes
+
+
+def test_agent_review_chapter_continuity_warns_on_identifier_semantic_drift(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1, 2])
+    first = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=1).one()
+    second = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=2).one()
+    first.content = "林深打开证物柜，柜号是G-07，里面只剩半张照片。"
+    first.word_count = 2000
+    second.content = "陈默推断G-07可能不是柜号，而是G项目的第七号实验项目。"
+    second.word_count = 2000
+    db_session.commit()
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "检查第2章编号语义",
+            "tools": [{"tool_name": "review_chapter_continuity", "params": {"chapter_index": 2}}],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    finding = next(item for item in output["findings"] if item["code"] == "identifier_semantic_drift")
+    assert response.status_code == 200
+    assert output["status"] == "warning"
+    assert finding["severity"] == "warning"
+    assert finding["evidence"]["identifier"] == "G-07"
+    assert finding["evidence"]["previous_semantic_kind"] == "evidence_locker"
+    assert finding["evidence"]["current_semantic_kind"] == "project_number"
+    assert finding["evidence"]["current_is_hypothesis"] is True
+
+
 def test_agent_review_chapter_continuity_allows_experiment_code_distinction(client, db_session):
     project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1, 2])
     first = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=1).one()
@@ -4948,6 +5030,39 @@ def test_agent_draft_world_model_proposal_resolution_decisions_tracks_unclassifi
     assert output["recommended_next_tools"] == ["plan_world_model_proposal_resolution"]
 
 
+def test_agent_draft_world_model_proposal_resolution_decisions_keeps_plot_signal_unclassified(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1], generated_chapters=[1])
+    import_setup_to_world_model(db_session, project.id)
+    _seed_pending_world_proposal(
+        db_session,
+        project_id=project.id,
+        claim_id="claim.phase81.identifier.hypothesis",
+        predicate="identifier_meaning_hypothesis",
+        subject_ref="identifier.G-07",
+    )
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "草拟高价值剧情事实提案决策",
+            "tools": [
+                {
+                    "tool_name": "draft_world_model_proposal_resolution_decisions",
+                    "params": {"limit": 20, "include_unclassified": True},
+                }
+            ],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    assert output["draft_decision_count"] == 0
+    assert output["unclassified_item_count"] == 1
+    assert output["unclassified_items"][0]["predicate"] == "identifier_meaning_hypothesis"
+    assert output["recommended_next_tools"] == ["plan_world_model_proposal_resolution"]
+
+
 def test_agent_draft_world_model_proposal_resolution_decisions_ignores_approval_policy_overrides(
     client,
     db_session,
@@ -5082,7 +5197,7 @@ def test_agent_create_revision_draft_from_plan_is_non_destructive(client, db_ses
     project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1, 2])
     chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=2).one()
     chapter.title = "第2章"
-    chapter.word_count = 3200
+    chapter.word_count = 3400
     original_content = chapter.content
     db_session.commit()
 
@@ -6283,7 +6398,7 @@ def test_agent_create_revision_draft_reuses_existing_draft(client, db_session):
     project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1, 2])
     chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=2).one()
     chapter.title = "第2章"
-    chapter.word_count = 3200
+    chapter.word_count = 3400
     db_session.commit()
 
     first = client.post(
@@ -6314,7 +6429,7 @@ def test_agent_create_revision_draft_does_not_modify_manual_draft(client, db_ses
     project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1, 2])
     chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=2).one()
     chapter.title = "第2章"
-    chapter.word_count = 3200
+    chapter.word_count = 3400
     revision = ChapterRevision(
         project_id=project.id,
         chapter_id=chapter.id,
@@ -6366,7 +6481,7 @@ def test_agent_create_revision_draft_does_not_compete_with_submitted_revision(cl
     project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1, 2])
     chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=2).one()
     chapter.title = "第2章"
-    chapter.word_count = 3200
+    chapter.word_count = 3400
     submitted = ChapterRevision(
         project_id=project.id,
         chapter_id=chapter.id,
@@ -6421,7 +6536,7 @@ def test_agent_create_revision_draft_blocks_followup_generation(client, db_sessi
     project = _seed_longform_project(db_session, outline_chapters=[1, 2, 3], generated_chapters=[1, 2])
     chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=2).one()
     chapter.title = "第2章"
-    chapter.word_count = 3200
+    chapter.word_count = 3400
     db_session.commit()
     calls = []
 

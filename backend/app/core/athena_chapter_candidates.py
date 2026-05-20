@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -18,6 +19,9 @@ from app.core.athena_entity_resolver import (
 from app.core.world_contracts import DERIVED
 from app.models import ChapterContent, ProjectProfileVersion
 from app.schemas.world_proposals import ProposalCandidateFactCreate
+
+WIDE_IDENTIFIER_RE = re.compile(r"(?<![A-Za-z0-9])[A-Z]{1,3}-\d+(?:-\d+)*(?![A-Za-z0-9])")
+HYPOTHESIS_TERMS = ("可能", "推断", "像是", "也许", "疑似", "尚未确认", "猜测")
 
 
 def candidate_from_l1_fact(
@@ -124,6 +128,167 @@ def extract_chapter_event_candidate(
     )
 
 
+def extract_high_value_plot_signal_candidates(
+    *,
+    project_id: str,
+    profile: ProjectProfileVersion,
+    chapter: ChapterContent,
+) -> list[ProposalCandidateFactCreate]:
+    text = chapter.content or ""
+    if not text:
+        return []
+    candidates: list[ProposalCandidateFactCreate] = []
+    seen: set[tuple[str, str]] = set()
+    sentences = chapter_sentences(text)
+    for sentence in sentences:
+        for candidate in _identifier_meaning_candidates(
+            project_id=project_id,
+            profile=profile,
+            chapter=chapter,
+            sentence=sentence,
+        ):
+            _append_unique_candidate(candidates, candidate, seen)
+        lead = _investigation_lead_candidate(
+            project_id=project_id,
+            profile=profile,
+            chapter=chapter,
+            sentence=sentence,
+        )
+        if lead is not None:
+            _append_unique_candidate(candidates, lead, seen)
+        if len(candidates) >= 8:
+            break
+    permission = _access_permission_candidate(
+        project_id=project_id,
+        profile=profile,
+        chapter=chapter,
+        sentences=sentences,
+    )
+    if permission is not None:
+        _append_unique_candidate(candidates, permission, seen)
+    return candidates
+
+
+def _identifier_meaning_candidates(
+    *,
+    project_id: str,
+    profile: ProjectProfileVersion,
+    chapter: ChapterContent,
+    sentence: str,
+) -> list[ProposalCandidateFactCreate]:
+    if "项目" not in sentence and "不是柜号" not in sentence:
+        return []
+    candidates: list[ProposalCandidateFactCreate] = []
+    for identifier in WIDE_IDENTIFIER_RE.findall(sentence):
+        speaker = _speaker_before(sentence, "推断") or _speaker_before(sentence, "判断") or ""
+        subject_ref = f"identifier.{slug(identifier)}"
+        candidates.append(
+            ProposalCandidateFactCreate(
+                project_id=project_id,
+                project_profile_version_id=profile.id,
+                profile_version=profile.version,
+                contract_version=profile.contract_version,
+                claim_id=f"claim.chapter.{chapter.chapter_index}.{slug(identifier)}.identifier_meaning_hypothesis",
+                chapter_index=chapter.chapter_index,
+                intra_chapter_seq=0,
+                subject_ref=subject_ref,
+                predicate="identifier_meaning_hypothesis",
+                object_ref_or_value={
+                    "chapter_index": chapter.chapter_index,
+                    "identifier": identifier,
+                    "speaker": speaker or None,
+                    "hypothesis": sentence[:220],
+                    "is_hypothesis": _is_hypothesis(sentence),
+                    "source": "deterministic_plot_signal",
+                    "evidence_span": {"ref": f"chapter:{chapter.chapter_index}", "text": sentence[:240]},
+                    "quality": candidate_quality(signal="identifier_meaning", confidence_band="medium", review_priority="high"),
+                },
+                claim_layer="truth",
+                evidence_refs=[f"chapter:{chapter.chapter_index}"],
+                authority_type=DERIVED,
+                confidence=0.82,
+                notes=f"自动抽取：{identifier} 出现新的语义解释，需要审阅其是否为角色推断。",
+            )
+        )
+    return candidates
+
+
+def _access_permission_candidate(
+    *,
+    project_id: str,
+    profile: ProjectProfileVersion,
+    chapter: ChapterContent,
+    sentences: list[str],
+) -> ProposalCandidateFactCreate | None:
+    window = _access_permission_window(sentences)
+    if not window:
+        return None
+    actor = _actor_near_iris(window)
+    subject_ref = entity_ref("char", actor) if actor else f"chapter.{chapter.chapter_index}"
+    return ProposalCandidateFactCreate(
+        project_id=project_id,
+        project_profile_version_id=profile.id,
+        profile_version=profile.version,
+        contract_version=profile.contract_version,
+        claim_id=f"claim.chapter.{chapter.chapter_index}.{slug(subject_ref)}.access_permission_anomaly",
+        chapter_index=chapter.chapter_index,
+        intra_chapter_seq=0,
+        subject_ref=subject_ref,
+        predicate="access_permission_anomaly",
+        object_ref_or_value={
+            "chapter_index": chapter.chapter_index,
+            "actor_name": actor or None,
+            "anomaly": window[:220],
+            "source": "deterministic_plot_signal",
+            "evidence_span": {"ref": f"chapter:{chapter.chapter_index}", "text": window[:240]},
+            "quality": candidate_quality(signal="access_permission_anomaly", confidence_band="medium", review_priority="high"),
+        },
+        claim_layer="truth",
+        evidence_refs=[f"chapter:{chapter.chapter_index}"],
+        authority_type=DERIVED,
+        confidence=0.8,
+        notes="自动抽取：角色权限或身份异常，需要审阅后再进入世界事实。",
+    )
+
+
+def _investigation_lead_candidate(
+    *,
+    project_id: str,
+    profile: ProjectProfileVersion,
+    chapter: ChapterContent,
+    sentence: str,
+) -> ProposalCandidateFactCreate | None:
+    if not any(term in sentence for term in ("周明远", "清道夫")):
+        return None
+    if not any(term in sentence for term in ("线索", "最后见过", "行动", "处理", "指向")):
+        return None
+    lead_key = "周明远" if "周明远" in sentence else "清道夫"
+    return ProposalCandidateFactCreate(
+        project_id=project_id,
+        project_profile_version_id=profile.id,
+        profile_version=profile.version,
+        contract_version=profile.contract_version,
+        claim_id=f"claim.chapter.{chapter.chapter_index}.{slug(lead_key)}.investigation_lead",
+        chapter_index=chapter.chapter_index,
+        intra_chapter_seq=0,
+        subject_ref=f"lead.{slug(lead_key)}",
+        predicate="investigation_lead",
+        object_ref_or_value={
+            "chapter_index": chapter.chapter_index,
+            "lead_key": lead_key,
+            "lead": sentence[:220],
+            "source": "deterministic_plot_signal",
+            "evidence_span": {"ref": f"chapter:{chapter.chapter_index}", "text": sentence[:240]},
+            "quality": candidate_quality(signal="investigation_lead", confidence_band="medium", review_priority="high"),
+        },
+        claim_layer="truth",
+        evidence_refs=[f"chapter:{chapter.chapter_index}"],
+        authority_type=DERIVED,
+        confidence=0.78,
+        notes="自动抽取：调查线索会影响后续追查方向，需要单独审阅。",
+    )
+
+
 def extract_character_location_candidates(
     *,
     db: Session,
@@ -165,6 +330,53 @@ def extract_character_location_candidates(
                 if len(candidates) >= 12:
                     return candidates
     return candidates
+
+
+def _append_unique_candidate(
+    candidates: list[ProposalCandidateFactCreate],
+    candidate: ProposalCandidateFactCreate,
+    seen: set[tuple[str, str]],
+) -> None:
+    key = (candidate.claim_id, candidate.predicate)
+    if key in seen:
+        return
+    seen.add(key)
+    candidates.append(candidate)
+
+
+def _speaker_before(sentence: str, verb: str) -> str | None:
+    match = re.search(rf"([\u4e00-\u9fff]{{2,3}}){verb}", sentence)
+    if not match:
+        return None
+    return match.group(1)
+
+
+def _actor_near_iris(sentence: str) -> str | None:
+    for known_name in ("林深", "林舟", "苏晚晴", "沈聆", "顾衍"):
+        if known_name in sentence:
+            return known_name
+    for pattern in (r"([\u4e00-\u9fff]{2,3})把眼睛", r"([\u4e00-\u9fff]{2,3})的虹膜", r"([\u4e00-\u9fff]{2,3})凑近"):
+        match = re.search(pattern, sentence)
+        if match:
+            return match.group(1)
+    return None
+
+
+def _access_permission_window(sentences: list[str]) -> str:
+    for index in range(len(sentences)):
+        window = "。".join(sentences[index : index + 6])
+        if "虹膜" not in window:
+            continue
+        if not any(term in window for term in ("眼睛", "扫描", "虹膜数据", "虹膜扫描")):
+            continue
+        if not any(term in window for term in ("门开了", "开了", "能打开这扇门", "验证通过", "门锁发出")):
+            continue
+        return window
+    return ""
+
+
+def _is_hypothesis(sentence: str) -> bool:
+    return any(term in sentence for term in HYPOTHESIS_TERMS)
 
 
 def candidate_from_character_location(

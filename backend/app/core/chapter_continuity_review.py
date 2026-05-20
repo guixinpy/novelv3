@@ -10,11 +10,27 @@ from app.models import ChapterContent, Project, ProjectProfileVersion, WorldFact
 
 DATE_RE = re.compile(r"\d{4}年\d{1,2}月\d{1,2}日")
 IDENTIFIER_RE = re.compile(r"\b[A-Z]-\d+\b")
+WIDE_IDENTIFIER_RE = re.compile(r"(?<![A-Za-z0-9])[A-Z]{1,3}-\d+(?:-\d+)*(?![A-Za-z0-9])")
 FATHER_DIRECT_RE = re.compile(r"父亲(?P<name>[\u4e00-\u9fff]{2,3})")
 FATHER_NAME_APPOSITION_RE = re.compile(r"(?P<name>[\u4e00-\u9fff]{2,3})[———\-，,、\s]*他?父亲的名字")
 SIGNATURE_RE = re.compile(r"署名[——:：-]*(?P<name>[\u4e00-\u9fff]{2,3})")
 DEFAULT_LOOKBACK = 20
 COMMON_CHINESE_SURNAMES = set("赵钱孙李周吴郑王冯陈褚卫蒋沈韩杨朱秦尤许何吕施张孔曹严华金魏陶姜谢邹喻柏水窦章云苏潘葛奚范彭郎鲁韦昌马苗凤花方俞任袁柳鲍史唐费廉岑薛雷贺倪汤滕殷罗毕郝邬安常乐于时傅皮卞齐康伍余元卜顾孟平黄和穆萧尹林")
+TRANSITION_TERMS = ("转移", "赶到", "穿过", "撤到", "抵达", "回到", "带他们", "几小时后", "数小时后", "次日", "第二天", "清晨之前")
+TIME_MARKERS = ("夜里", "深夜", "凌晨", "清晨", "上午", "正午", "午后", "傍晚", "黄昏")
+LOCATION_MARKERS = (
+    "地下临时藏身点",
+    "临时藏身点",
+    "赵猛的安全屋",
+    "安全屋",
+    "暗渠",
+    "排水管",
+    "旧实验室",
+    "地下室",
+    "灯塔",
+    "诊所",
+)
+HYPOTHESIS_TERMS = ("可能", "推断", "像是", "像", "也许", "疑似", "尚未确认", "猜测")
 STABLE_TRUTH_ANCHOR_KEYS = {
     ("林深", "father_name"): "林深:father_name",
     ("顾衍", "military_tag_number"): "顾衍:military_tag_number",
@@ -48,6 +64,8 @@ def review_chapter_continuity(
         *_timeline_anchor_findings(chapters),
         *_identifier_anchor_findings(chapters),
         *_relationship_name_anchor_findings(chapters),
+        *_adjacent_transition_findings(chapters, chapter_index),
+        *_identifier_semantic_findings(chapters, chapter_index),
     ]
     return _result(chapter_index=chapter_index, findings=findings)
 
@@ -180,6 +198,86 @@ def _relationship_name_anchor_findings(chapters: list[Any]) -> list[dict[str, An
     return findings
 
 
+def _adjacent_transition_findings(chapters: list[Any], chapter_index: int) -> list[dict[str, Any]]:
+    previous, current = _adjacent_chapter_pair(chapters, chapter_index)
+    if previous is None or current is None:
+        return []
+    current_opening = _opening_excerpt(str(current.content or ""))
+    if _has_transition_cue(current_opening):
+        return []
+    previous_ending = _ending_excerpt(str(previous.content or ""))
+    previous_locations = _matched_terms(previous_ending, LOCATION_MARKERS)
+    current_locations = _matched_terms(current_opening, LOCATION_MARKERS)
+    previous_times = _matched_terms(previous_ending, TIME_MARKERS)
+    current_times = _matched_terms(current_opening, TIME_MARKERS)
+    location_shift = bool(previous_locations and current_locations and set(previous_locations).isdisjoint(current_locations))
+    time_shift = bool(previous_times and current_times and set(previous_times).isdisjoint(current_times))
+    if not (location_shift or time_shift):
+        return []
+    return [
+        _finding(
+            "adjacent_chapter_transition_gap",
+            "warning",
+            "相邻章节开场发生地点或时间切换，但当前章开头缺少明确过渡交代。",
+            evidence={
+                "previous_chapter_index": int(previous.chapter_index),
+                "current_chapter_index": int(current.chapter_index),
+                "previous_locations": previous_locations,
+                "current_locations": current_locations,
+                "previous_times": previous_times,
+                "current_times": current_times,
+                "previous_excerpt": previous_ending,
+                "current_excerpt": current_opening,
+            },
+        )
+    ]
+
+
+def _identifier_semantic_findings(chapters: list[Any], chapter_index: int) -> list[dict[str, Any]]:
+    current = next((chapter for chapter in chapters if int(chapter.chapter_index) == chapter_index), None)
+    if current is None:
+        return []
+    history = [chapter for chapter in chapters if int(chapter.chapter_index) < chapter_index]
+    if not history:
+        return []
+    previous_semantics = _identifier_semantics(history)
+    current_semantics = _identifier_semantics([current])
+    findings: list[dict[str, Any]] = []
+    for identifier, current_refs in current_semantics.items():
+        previous_refs = previous_semantics.get(identifier) or []
+        for current_ref in current_refs:
+            current_kind = current_ref["semantic_kind"]
+            if current_kind == "unknown":
+                continue
+            previous_ref = next(
+                (
+                    ref
+                    for ref in previous_refs
+                    if ref["semantic_kind"] != "unknown" and ref["semantic_kind"] != current_kind
+                ),
+                None,
+            )
+            if previous_ref is None:
+                continue
+            findings.append(
+                _finding(
+                    "identifier_semantic_drift",
+                    "warning",
+                    f"{identifier} 的语义从 {_identifier_semantic_label(previous_ref['semantic_kind'])} 转向 {_identifier_semantic_label(current_kind)}，需要保持为推测或补足证据。",
+                    evidence={
+                        "identifier": identifier,
+                        "previous_semantic_kind": previous_ref["semantic_kind"],
+                        "current_semantic_kind": current_kind,
+                        "current_is_hypothesis": _is_hypothesis(current_ref["excerpt"]),
+                        "previous_reference": previous_ref,
+                        "current_reference": current_ref,
+                    },
+                )
+            )
+            break
+    return findings
+
+
 def _stable_truth_anchor_findings(
     chapters: list[Any],
     truth_anchors: dict[str, dict[str, Any]],
@@ -222,6 +320,90 @@ def _observed_anchors(chapters: list[Any]) -> dict[str, dict[str, list[dict[str,
             for value, refs in refs_by_value.items():
                 observed[anchor_key][value].extend(refs)
     return observed
+
+
+def _adjacent_chapter_pair(chapters: list[Any], chapter_index: int) -> tuple[Any | None, Any | None]:
+    previous = None
+    current = None
+    for chapter in chapters:
+        index = int(chapter.chapter_index)
+        if index == chapter_index - 1:
+            previous = chapter
+        elif index == chapter_index:
+            current = chapter
+    return previous, current
+
+
+def _opening_excerpt(content: str, *, max_chars: int = 180) -> str:
+    sentences = _sentences(content)
+    if not sentences:
+        return content[:max_chars]
+    return "。".join(sentences[:2])[:max_chars]
+
+
+def _ending_excerpt(content: str, *, max_chars: int = 180) -> str:
+    sentences = _sentences(content)
+    if not sentences:
+        return content[-max_chars:]
+    return "。".join(sentences[-2:])[-max_chars:]
+
+
+def _matched_terms(text: str, terms: tuple[str, ...]) -> list[str]:
+    return [term for term in terms if term in text]
+
+
+def _has_transition_cue(text: str) -> bool:
+    return any(term in text for term in TRANSITION_TERMS)
+
+
+def _identifier_semantics(chapters: list[Any]) -> dict[str, list[dict[str, Any]]]:
+    semantics: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for chapter in chapters:
+        for sentence in _anchor_windows(str(chapter.content or "")):
+            for identifier in WIDE_IDENTIFIER_RE.findall(sentence):
+                semantics[identifier].append(
+                    {
+                        "chapter_index": int(chapter.chapter_index),
+                        "title": chapter.title,
+                        "semantic_kind": _identifier_semantic_kind(sentence, identifier),
+                        "excerpt": sentence,
+                    }
+                )
+    return semantics
+
+
+def _identifier_semantic_kind(sentence: str, identifier: str) -> str:
+    index = sentence.find(identifier)
+    if index < 0:
+        return "unknown"
+    window = sentence[max(0, index - 32) : min(len(sentence), index + len(identifier) + 48)]
+    if any(term in window for term in ("项目", "实验项目", "第七号实验")):
+        return "project_number"
+    if any(term in window for term in ("证物柜", "柜号", "证物编号")) and not any(
+        term in window for term in ("不是柜号", "并非柜号")
+    ):
+        return "evidence_locker"
+    if any(term in window for term in ("实验体", "实验代号", "代号", "编号")) and not any(
+        term in window for term in ("证物柜", "柜号")
+    ):
+        return "experiment_code"
+    if any(term in window for term in ("虹膜门", "门禁", "记录", "档案")):
+        return "event_record"
+    return "unknown"
+
+
+def _identifier_semantic_label(kind: str) -> str:
+    return {
+        "evidence_locker": "证物柜/证物编号",
+        "project_number": "项目编号",
+        "experiment_code": "实验代号",
+        "event_record": "事件记录",
+        "unknown": "未知语义",
+    }.get(kind, kind)
+
+
+def _is_hypothesis(text: str) -> bool:
+    return any(term in text for term in HYPOTHESIS_TERMS)
 
 
 def _relationship_observed_anchors(chapters: list[Any]) -> dict[str, dict[str, list[dict[str, Any]]]]:

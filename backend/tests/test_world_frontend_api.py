@@ -2222,6 +2222,53 @@ def test_world_model_proposal_review_queue_clusters_low_risk_and_prioritizes_hig
     } == {"pending"}
 
 
+def test_world_model_proposal_review_queue_prioritizes_plot_signal_before_low_risk_window(client, db_session):
+    project, profile_version = _seed_profile(db_session)
+    bundle = create_bundle(
+        db=db_session,
+        project_id=project.id,
+        project_profile_version_id=profile_version.id,
+        profile_version=profile_version.version,
+        created_by="writer.alpha",
+        title="Plot signal queue",
+    )
+    low_item = write_candidate_fact(
+        db=db_session,
+        bundle_id=bundle.id,
+        created_by="writer.alpha",
+        candidate=_candidate_payload(
+            claim_id="claim.chapter.1.presence.low",
+            subject_ref="char.hero",
+            predicate="presence_count",
+            value={"chapter_index": 1, "mention_count": 3},
+            chapter_index=1,
+        ),
+    )
+    high_item = write_candidate_fact(
+        db=db_session,
+        bundle_id=bundle.id,
+        created_by="writer.alpha",
+        candidate=_candidate_payload(
+            claim_id="claim.chapter.25.identifier.g07.hypothesis",
+            subject_ref="identifier.G-07",
+            predicate="identifier_meaning_hypothesis",
+            value={"identifier": "G-07", "hypothesis": "G项目第七号实验项目"},
+            chapter_index=25,
+        ),
+    )
+
+    response = client.get(f"/api/v1/projects/{project.id}/world-model/proposal-review-queue?limit=1")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total_items"] == 2
+    assert payload["returned_items"] == 1
+    assert payload["clusters"][0]["risk_level"] == "high"
+    assert payload["clusters"][0]["review_mode"] == "individual"
+    assert payload["clusters"][0]["item_ids"] == [high_item.id]
+    assert low_item.id not in payload["clusters"][0]["item_ids"]
+
+
 def test_world_model_proposal_review_queue_limits_large_backlog(client, db_session):
     project, profile_version = _seed_profile(db_session)
     bundle = create_bundle(
