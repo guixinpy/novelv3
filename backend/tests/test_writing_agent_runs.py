@@ -1109,6 +1109,164 @@ def test_agent_run_inspect_longform_chapter_batch_reports_missing_selection(clie
     ]
 
 
+def test_agent_run_can_preflight_longform_chapter_batch_checkpoint(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1])
+    preview_response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "准备把下一章加入批次队列",
+            "tools": [
+                {
+                    "tool_name": "enqueue_longform_chapter_batch",
+                    "params": {"start_chapter": 2, "batch_size": 1},
+                }
+            ],
+        },
+    )
+    plan_hash = preview_response.json()["steps"][0]["output"]["plan_hash"]
+    enqueue_response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "确认加入批次队列",
+            "tools": [
+                {
+                    "tool_name": "enqueue_longform_chapter_batch",
+                    "params": {
+                        "start_chapter": 2,
+                        "batch_size": 1,
+                        "confirm_enqueue": True,
+                        "plan_hash": plan_hash,
+                    },
+                }
+            ],
+        },
+    )
+    task_id = enqueue_response.json()["steps"][0]["output"]["task"]["id"]
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "预检长篇批次任务",
+            "tools": [
+                {
+                    "tool_name": "execute_longform_chapter_batch_preflight",
+                    "params": {"task_id": task_id, "max_chapters": 1},
+                }
+            ],
+        },
+    )
+
+    payload = response.json()
+    output = payload["steps"][0]["output"]
+    task = db_session.query(BackgroundTask).filter(BackgroundTask.id == task_id).one()
+    assert response.status_code == 200
+    assert payload["status"] == "success"
+    assert payload["steps"][0]["target_type"] == "background_task"
+    assert output["status"] == "ready"
+    assert output["task"]["id"] == task_id
+    assert output["task"]["status"] == "pending"
+    assert output["canonical_execution_plan"]["chapter_indexes"] == [2]
+    assert output["canonical_execution_plan"]["stopped_before_node"] == "chapter_generation"
+    assert output["checkpoint"]["status"] == "ready"
+    assert output["checkpoint"]["ready_chapter_indexes"] == [2]
+    assert output["checkpoint"]["blocked_chapter_indexes"] == []
+    assert output["checkpoint"]["safe_nodes_executed"] == ["preflight_gate"]
+    assert output["checkpoint"]["generation_started"] is False
+    assert output["execution_policy"]["mode"] == "preflight_only"
+    assert output["execution_policy"]["can_execute_after_confirmation"] is False
+    assert output["side_effects"]["executed"] == ["background_task_result_checkpoint"]
+    assert {"start_runner", "generate_chapter", "world_model_apply"}.issubset(set(output["side_effects"]["skipped"]))
+    assert task.status == "pending"
+    assert task.result["preflight_checkpoint"]["task_id"] == task_id
+    assert task.result["preflight_checkpoint"]["status"] == "ready"
+    assert len(task.result["execution_checkpoints"]) == 1
+    assert (
+        db_session.query(ChapterContent)
+        .filter(ChapterContent.project_id == project.id, ChapterContent.chapter_index == 2)
+        .count()
+        == 0
+    )
+    inspect_response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "查看预检断点",
+            "tools": [{"tool_name": "inspect_longform_chapter_batch", "params": {"task_id": task_id}}],
+        },
+    )
+    inspected_task = inspect_response.json()["steps"][0]["output"]["selected_task"]
+    assert inspected_task["preflight_checkpoint"]["status"] == "ready"
+    assert len(inspected_task["execution_checkpoints"]) == 1
+
+
+def test_agent_run_preflight_longform_chapter_batch_blocks_on_dependencies(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2, 3], generated_chapters=[1])
+    preview_response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "准备把第三章加入批次队列",
+            "tools": [
+                {
+                    "tool_name": "enqueue_longform_chapter_batch",
+                    "params": {"start_chapter": 3, "batch_size": 1},
+                }
+            ],
+        },
+    )
+    plan_hash = preview_response.json()["steps"][0]["output"]["plan_hash"]
+    enqueue_response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "确认加入批次队列",
+            "tools": [
+                {
+                    "tool_name": "enqueue_longform_chapter_batch",
+                    "params": {
+                        "start_chapter": 3,
+                        "batch_size": 1,
+                        "confirm_enqueue": True,
+                        "plan_hash": plan_hash,
+                    },
+                }
+            ],
+        },
+    )
+    task_id = enqueue_response.json()["steps"][0]["output"]["task"]["id"]
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "预检缺少前章的长篇批次任务",
+            "tools": [
+                {
+                    "tool_name": "execute_longform_chapter_batch_preflight",
+                    "params": {"task_id": task_id, "max_chapters": 1},
+                }
+            ],
+        },
+    )
+
+    payload = response.json()
+    output = payload["steps"][0]["output"]
+    task = db_session.query(BackgroundTask).filter(BackgroundTask.id == task_id).one()
+    assert response.status_code == 200
+    assert payload["status"] == "blocked"
+    assert output["status"] == "blocked"
+    assert output["checkpoint"]["status"] == "blocked"
+    assert output["checkpoint"]["blocked_chapter_indexes"] == [3]
+    assert output["checkpoint"]["ready_chapter_indexes"] == []
+    assert output["checkpoint"]["chapter_preflights"][0]["status"] == "blocked"
+    assert output["recommended_next_tools"] == ["inspect_longform_chapter_batch", "plan_recovery_tools"]
+    assert output["side_effects"]["executed"] == ["background_task_result_checkpoint"]
+    assert task.status == "pending"
+    assert task.result["preflight_checkpoint"]["status"] == "blocked"
+    assert (
+        db_session.query(ChapterContent)
+        .filter(ChapterContent.project_id == project.id, ChapterContent.chapter_index == 3)
+        .count()
+        == 0
+    )
+
+
 def test_agent_run_list_and_detail_are_project_scoped(client, db_session):
     project_a = _create_project(client, "Project A")
     project_b = _create_project(client, "Project B")

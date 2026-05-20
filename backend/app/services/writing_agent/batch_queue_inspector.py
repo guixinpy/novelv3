@@ -166,6 +166,12 @@ def _detailed_task(task: BackgroundTask) -> dict[str, Any]:
         "dag": _dag_summary(payload.get("dag")),
         "tools": payload.get("tools") if isinstance(payload.get("tools"), list) else [],
         "progress": progress,
+        "preflight_checkpoint": result.get("preflight_checkpoint")
+        if isinstance(result.get("preflight_checkpoint"), dict)
+        else None,
+        "execution_checkpoints": result.get("execution_checkpoints")
+        if isinstance(result.get("execution_checkpoints"), list)
+        else [],
         "resume": _resume_payload(progress, queue_policy),
         "execution_readiness": _execution_readiness(queue_policy),
         "error": task.error,

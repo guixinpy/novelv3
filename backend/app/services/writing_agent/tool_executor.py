@@ -164,6 +164,20 @@ def _inspect_longform_chapter_batch(context: WritingAgentToolContext, tool: Writ
     )
 
 
+def _execute_longform_chapter_batch_preflight(
+    context: WritingAgentToolContext,
+    tool: WritingAgentToolRequest,
+) -> dict[str, Any]:
+    from app.services.writing_agent.batch_preflight import execute_longform_chapter_batch_preflight
+
+    return execute_longform_chapter_batch_preflight(
+        context.db,
+        context.project_id,
+        task_id=str(tool.params.get("task_id") or "").strip() or None,
+        max_chapters=_optional_int(tool.params.get("max_chapters")),
+    )
+
+
 def _summarize_longform_context(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
     from app.services.writing_agent.longform_context_summary import summarize_longform_context
 
@@ -311,6 +325,12 @@ _STATIC_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
         _inspect_longform_chapter_batch,
         category="task_queue",
         mutability="read",
+    ),
+    "execute_longform_chapter_batch_preflight": WritingAgentToolAdapter(
+        "execute_longform_chapter_batch_preflight",
+        _execute_longform_chapter_batch_preflight,
+        category="task_queue",
+        mutability="write",
     ),
     "summarize_longform_context": WritingAgentToolAdapter(
         "summarize_longform_context",

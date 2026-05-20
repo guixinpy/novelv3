@@ -23,6 +23,7 @@ def test_agent_tool_registry_has_unique_names_and_contracts():
         "plan_longform_chapter_batch",
         "enqueue_longform_chapter_batch",
         "inspect_longform_chapter_batch",
+        "execute_longform_chapter_batch_preflight",
         "summarize_longform_context",
         "repair_longform_maintenance",
     }.issubset(set(names))
@@ -33,6 +34,7 @@ def test_agent_tool_registry_has_unique_names_and_contracts():
     assert target_type_for_tool("plan_longform_chapter_batch") == "longform_batch_plan"
     assert target_type_for_tool("enqueue_longform_chapter_batch") == "background_task"
     assert target_type_for_tool("inspect_longform_chapter_batch") == "background_task"
+    assert target_type_for_tool("execute_longform_chapter_batch_preflight") == "background_task"
     assert target_type_for_tool("summarize_longform_context") == "longform_context_summary"
     assert target_type_for_tool("repair_longform_maintenance") == "longform_maintenance"
     assert "review_chapter_quality" in non_blocking_report_tool_names()
@@ -101,6 +103,20 @@ def test_agent_tool_registry_includes_inspect_longform_chapter_batch():
     assert descriptor.input_schema["properties"]["limit"]["minimum"] == 1
     assert "inspect_longform_chapter_batch" in allowed_tool_names()
     assert "inspect_longform_chapter_batch" in non_blocking_report_tool_names()
+
+
+def test_agent_tool_registry_includes_execute_longform_chapter_batch_preflight():
+    descriptor = get_agent_tool_descriptor("execute_longform_chapter_batch_preflight")
+
+    assert descriptor is not None
+    assert descriptor.internal is True
+    assert descriptor.non_blocking_report is False
+    assert descriptor.category == "task_queue"
+    assert descriptor.target_type == "background_task"
+    assert descriptor.input_schema["properties"]["task_id"]["type"] == "string"
+    assert descriptor.input_schema["properties"]["max_chapters"]["minimum"] == 1
+    assert "execute_longform_chapter_batch_preflight" in allowed_tool_names()
+    assert "execute_longform_chapter_batch_preflight" not in non_blocking_report_tool_names()
 
 
 def test_agent_tool_registry_includes_summarize_longform_context():
