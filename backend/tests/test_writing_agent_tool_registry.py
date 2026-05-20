@@ -77,6 +77,24 @@ def test_agent_tool_registry_has_unique_names_and_contracts():
         assert get_agent_tool_descriptor(descriptor.name) == descriptor
 
 
+def test_agent_tool_registry_generate_chapter_has_structured_output_contract():
+    descriptor = get_agent_tool_descriptor("generate_chapter")
+
+    assert descriptor is not None
+    properties = descriptor.output_schema["properties"]
+    assert {
+        "status",
+        "chapter_index",
+        "trace_id",
+        "athena_analysis",
+        "agent_continuity_feedback",
+        "agent_generation_feedback",
+        "recommended_next_tools",
+    }.issubset(properties)
+    assert properties["chapter_index"]["type"] == "integer"
+    assert properties["recommended_next_tools"]["type"] == "array"
+
+
 def test_agent_tool_registry_includes_plan_recovery_tools():
     descriptor = get_agent_tool_descriptor("plan_recovery_tools")
 

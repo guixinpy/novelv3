@@ -638,7 +638,19 @@ _TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         category="generation",
         description="生成指定章节正文，并融合前文状态、检索、Athena 和 Agent 约束。",
         input_schema=_CHAPTER_PARAMS,
-        output_schema=_STATUS_OUTPUT,
+        output_schema=_object_schema(
+            {
+                "status": {"type": "string"},
+                "chapter_index": {"type": "integer"},
+                "trace_id": {"type": "string"},
+                "athena_analysis": {"type": "object"},
+                "agent_continuity_feedback": {"type": "object"},
+                "agent_generation_feedback": {"type": "object"},
+                "chapter_length_decision": {"type": "object"},
+                "world_model_proposal_diagnostic": {"type": "object"},
+                "recommended_next_tools": {"type": "array"},
+            }
+        ),
         target_type="chapter",
         sort_key=50,
         availability_checks=("setup_exists", "outline_chapter_exists", "previous_chapter_exists"),

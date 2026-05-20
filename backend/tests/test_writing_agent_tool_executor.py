@@ -115,6 +115,11 @@ async def test_generate_chapter_tool_appends_context_without_run_service(db_sess
     assert "上一章状态卡" in command_args
     assert "空白信" in command_args
     assert result["agent_continuity_feedback"]["status"] == "active"
+    assert result["recommended_next_tools"] == [
+        "review_chapter_quality",
+        "review_chapter_continuity",
+        "analyze_chapter_world_model",
+    ]
 
 
 @pytest.mark.asyncio
@@ -312,6 +317,7 @@ async def test_tool_executor_handles_inspect_agent_tool_contracts(db_session):
     assert tools_by_name["generate_chapter"]["resource_scope"] == "manuscript"
     assert tools_by_name["generate_chapter"]["adapter_type"] == "static"
     assert "missing_agent_native_adapter" not in tools_by_name["generate_chapter"]["gap_codes"]
+    assert "output_schema_too_generic" not in tools_by_name["generate_chapter"]["gap_codes"]
     assert internal_tool_names().issubset(set(tools_by_name))
 
 

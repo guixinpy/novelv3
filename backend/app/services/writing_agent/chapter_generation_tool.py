@@ -10,6 +10,11 @@ from app.services.actions.action_execution_service import ActionExecutionService
 CONTINUITY_KEY_TERMS = ("空白信", "雾晶", "记忆雾晶", "钥匙", "下城", "黑市", "灯塔", "实验体", "叶知秋", "苏晚晴", "林深")
 LENGTH_POLICY_RECENT_WINDOW = 5
 LENGTH_POLICY_REPEATED_DRIFT_THRESHOLD = 3
+POST_GENERATION_NEXT_TOOLS = [
+    "review_chapter_quality",
+    "review_chapter_continuity",
+    "analyze_chapter_world_model",
+]
 
 
 async def execute_generate_chapter_tool(
@@ -32,6 +37,8 @@ async def execute_generate_chapter_tool(
         result["agent_continuity_feedback"] = continuity
     if feedback and isinstance(result, dict):
         result["agent_generation_feedback"] = feedback
+    if isinstance(result, dict) and str(result.get("status") or "") == "success":
+        result.setdefault("recommended_next_tools", list(POST_GENERATION_NEXT_TOOLS))
     return result
 
 
