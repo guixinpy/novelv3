@@ -167,6 +167,75 @@ def test_agent_run_can_plan_writing_tool_chain(client, db_session):
     assert output["trace"]["selected_tools"][0] == "describe_agent_tools"
 
 
+def test_agent_run_can_summarize_longform_context(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2, 3], generated_chapters=[1, 2])
+    db_session.add_all(
+        [
+            LongformMemory(
+                project_id=project.id,
+                memory_type="chapter",
+                scope_key="chapter:1",
+                start_chapter_index=1,
+                end_chapter_index=1,
+                title="雾港线索1",
+                summary="林深发现旧灯塔的雾晶回声，苏晚晴提供第一份证词。",
+                status="current",
+                memory_metadata={"word_count": 80, "source": "test"},
+            ),
+            LongformMemory(
+                project_id=project.id,
+                memory_type="chapter",
+                scope_key="chapter:2",
+                start_chapter_index=2,
+                end_chapter_index=2,
+                title="雾港线索2",
+                summary="雾安局巡逻队逼近，记忆诊所留下新的异常档案。",
+                status="current",
+                memory_metadata={"word_count": 80, "source": "test"},
+            ),
+        ]
+    )
+    db_session.commit()
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "查看长篇上下文",
+            "tools": [
+                {
+                    "tool_name": "summarize_longform_context",
+                    "params": {
+                        "chapter_index": 3,
+                        "query": "续写下一章",
+                        "max_chars": 1200,
+                    },
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "success"
+    step = payload["steps"][0]
+    assert step["tool_name"] == "summarize_longform_context"
+    assert step["target_type"] == "longform_context_summary"
+    output = step["output"]
+    assert output["status"] == "completed"
+    assert output["chapter_index"] == 3
+    assert output["project"]["target_chapter_count"] == 600
+    assert output["progress"]["generated_chapter_count"] == 2
+    assert output["progress"]["latest_generated_chapter_index"] == 2
+    assert output["context_summary"]["goal"] == "续写下一章"
+    assert "recent_chapters" in output["source_section_keys"]
+    assert "prompt_context" not in output
+    assert output["limits"]["max_chars"] == 1200
+    assert output["prompt_context_chars"] > 0
+    envelope = output["agent_tool_result"]
+    assert envelope["adapter"]["tool_name"] == "summarize_longform_context"
+    assert envelope["adapter"]["mutability"] == "read"
+
+
 def test_agent_run_can_plan_recovery_tools_from_blocked_run(client, db_session):
     project = _seed_longform_project(db_session, outline_chapters=[1], generated_chapters=[1, 2])
     blocked = client.post(

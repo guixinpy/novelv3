@@ -127,6 +127,38 @@ _TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(
+        name="summarize_longform_context",
+        module="writing_agent",
+        category="longform_memory",
+        description="汇总指定章节写作前的长篇记忆、检索证据和上下文来源，供 Agent 规划和生成前读取。",
+        input_schema=_object_schema(
+            {
+                "chapter_index": {"type": "integer", "minimum": 1},
+                "query": {"type": "string"},
+                "max_chars": {"type": "integer", "minimum": 500},
+                "include_prompt_context": {"type": "boolean"},
+            }
+        ),
+        output_schema=_object_schema(
+            {
+                "status": {"type": "string"},
+                "chapter_index": {"type": "integer"},
+                "project": {"type": "object"},
+                "progress": {"type": "object"},
+                "context_summary": {"type": "object"},
+                "sections": {"type": "array"},
+                "source_sections": {"type": "array"},
+                "source_section_keys": {"type": "array"},
+                "diagnostics": {"type": "array"},
+            }
+        ),
+        target_type="longform_context_summary",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=8,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
         name="preflight_writing",
         module="writing_agent",
         category="preflight",

@@ -119,6 +119,19 @@ def _plan_recovery_tools(context: WritingAgentToolContext, tool: WritingAgentToo
     return build_recovery_tool_plan(context.db, context.project_id, run_id)
 
 
+def _summarize_longform_context(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
+    from app.services.writing_agent.longform_context_summary import summarize_longform_context
+
+    return summarize_longform_context(
+        context.db,
+        context.project_id,
+        chapter_index=_optional_int(tool.params.get("chapter_index")),
+        query=str(tool.params.get("query") or tool.command_args or "").strip() or None,
+        max_chars=_optional_int(tool.params.get("max_chars")),
+        include_prompt_context=tool.params.get("include_prompt_context") is True,
+    )
+
+
 def _review_chapter_quality(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
     from app.core.chapter_quality_review import review_chapter_quality
 
@@ -221,6 +234,12 @@ _STATIC_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
         "plan_recovery_tools",
         _plan_recovery_tools,
         category="preflight",
+        mutability="read",
+    ),
+    "summarize_longform_context": WritingAgentToolAdapter(
+        "summarize_longform_context",
+        _summarize_longform_context,
+        category="longform_memory",
         mutability="read",
     ),
     "review_chapter_quality": WritingAgentToolAdapter(
