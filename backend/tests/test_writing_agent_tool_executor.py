@@ -173,6 +173,7 @@ def test_tool_executor_static_adapter_names_are_report_or_agent_native_tools():
         "inspect_agent_tool_contracts",
         "inspect_agent_knowledge_base_route",
         "record_agent_knowledge_base_candidate",
+        "analyze_chapter_world_model",
         "execute_longform_chapter_batch_preflight",
         "prepare_longform_chapter_batch_execution",
         "execute_longform_chapter_batch",
@@ -223,7 +224,6 @@ def test_tool_executor_exposes_adapter_metadata_for_trace():
 def test_tool_executor_lists_unhandled_internal_tools_for_migration_tracking():
     names = unhandled_internal_writing_agent_tool_names()
 
-    assert "analyze_chapter_world_model" in names
     assert "apply_world_model_proposal_resolution" in names
     assert "create_revision_draft" in names
     assert "backfill_outline_gaps" not in names
@@ -233,6 +233,7 @@ def test_tool_executor_lists_unhandled_internal_tools_for_migration_tracking():
     assert "inspect_agent_world_model_route" not in names
     assert "review_chapter_quality" not in names
     assert "plan_writing_agent_run" not in names
+    assert "analyze_chapter_world_model" not in names
     assert "plan_longform_chapter_batch" not in names
     assert "enqueue_longform_chapter_batch" not in names
     assert "inspect_longform_chapter_batch" not in names
@@ -269,6 +270,18 @@ def test_tool_executor_exposes_inspect_agent_tool_contracts_adapter_metadata():
         "category": "preflight",
         "mutability": "read",
         "handler_name": "_inspect_agent_tool_contracts",
+    }
+
+
+def test_tool_executor_exposes_analyze_chapter_world_model_adapter_metadata():
+    metadata = writing_agent_tool_adapter_metadata("analyze_chapter_world_model")
+
+    assert metadata == {
+        "tool_name": "analyze_chapter_world_model",
+        "adapter_type": "static",
+        "category": "athena_world_model",
+        "mutability": "write",
+        "handler_name": "_analyze_chapter_world_model",
     }
 
 
@@ -318,6 +331,8 @@ async def test_tool_executor_handles_inspect_agent_tool_contracts(db_session):
     assert tools_by_name["generate_chapter"]["adapter_type"] == "static"
     assert "missing_agent_native_adapter" not in tools_by_name["generate_chapter"]["gap_codes"]
     assert "output_schema_too_generic" not in tools_by_name["generate_chapter"]["gap_codes"]
+    assert tools_by_name["analyze_chapter_world_model"]["adapter_type"] == "static"
+    assert "missing_agent_native_adapter" not in tools_by_name["analyze_chapter_world_model"]["gap_codes"]
     assert internal_tool_names().issubset(set(tools_by_name))
 
 

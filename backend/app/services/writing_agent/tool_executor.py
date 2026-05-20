@@ -215,6 +215,18 @@ def _inspect_agent_tool_contracts(context: WritingAgentToolContext, tool: Writin
     )
 
 
+def _analyze_chapter_world_model(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
+    from app.services.writing_agent.world_model_analysis_tool import analyze_chapter_world_model_tool
+
+    chapter_index = int(tool.params.get("chapter_index") or 1)
+    return analyze_chapter_world_model_tool(
+        context.db,
+        context.project_id,
+        chapter_index=chapter_index,
+        run_id=context.run_id,
+    )
+
+
 def _inspect_agent_knowledge_base_route(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
     from app.services.writing_agent.agent_knowledge_base_route import inspect_agent_knowledge_base_route
 
@@ -535,6 +547,12 @@ _STATIC_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
         _inspect_agent_tool_contracts,
         category="preflight",
         mutability="read",
+    ),
+    "analyze_chapter_world_model": WritingAgentToolAdapter(
+        "analyze_chapter_world_model",
+        _analyze_chapter_world_model,
+        category="athena_world_model",
+        mutability="write",
     ),
     "inspect_agent_knowledge_base_route": WritingAgentToolAdapter(
         "inspect_agent_knowledge_base_route",
