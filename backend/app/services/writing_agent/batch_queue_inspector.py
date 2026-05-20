@@ -172,6 +172,10 @@ def _detailed_task(task: BackgroundTask) -> dict[str, Any]:
         "execution_checkpoints": result.get("execution_checkpoints")
         if isinstance(result.get("execution_checkpoints"), list)
         else [],
+        "attempt_manifest": result.get("attempt_manifest") if isinstance(result.get("attempt_manifest"), dict) else None,
+        "approval_contract": result.get("approval_contract")
+        if isinstance(result.get("approval_contract"), dict)
+        else None,
         "resume": _resume_payload(progress, queue_policy),
         "execution_readiness": _execution_readiness(queue_policy),
         "error": task.error,
