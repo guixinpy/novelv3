@@ -132,9 +132,59 @@ def test_tool_executor_lists_unhandled_internal_tools_for_migration_tracking():
     assert "analyze_chapter_world_model" in names
     assert "apply_world_model_proposal_resolution" in names
     assert "create_revision_draft" in names
+    assert "backfill_outline_gaps" not in names
     assert "review_chapter_quality" not in names
     assert "plan_writing_agent_run" not in names
     assert "preflight_writing" not in names
+
+
+def test_tool_executor_exposes_backfill_adapter_metadata():
+    metadata = writing_agent_tool_adapter_metadata("backfill_outline_gaps")
+
+    assert metadata == {
+        "tool_name": "backfill_outline_gaps",
+        "adapter_type": "static",
+        "category": "maintenance",
+        "mutability": "write",
+        "handler_name": "_backfill_outline_gaps",
+    }
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_dispatches_backfill_adapter_with_normalized_params(db_session, monkeypatch):
+    project = Project(name="Executor Backfill")
+    db_session.add(project)
+    db_session.commit()
+    calls: list[tuple[str, int | None]] = []
+
+    def fake_backfill(db, project_id: str, *, before_chapter: int | None):
+        calls.append((project_id, before_chapter))
+        return {"status": "completed", "before_chapter": before_chapter}
+
+    monkeypatch.setattr(
+        "app.core.outline_lookup.backfill_missing_outline_chapters_from_content",
+        fake_backfill,
+    )
+    context = WritingAgentToolContext(db=db_session, project_id=project.id)
+
+    from_before = await execute_writing_agent_tool(
+        context,
+        WritingAgentToolRequest(tool_name="backfill_outline_gaps", params={"before_chapter": "7"}),
+    )
+    from_chapter = await execute_writing_agent_tool(
+        context,
+        WritingAgentToolRequest(tool_name="backfill_outline_gaps", params={"chapter_index": "8"}),
+    )
+    without_bound = await execute_writing_agent_tool(
+        context,
+        WritingAgentToolRequest(tool_name="backfill_outline_gaps"),
+    )
+
+    assert from_before.handled is True
+    assert from_before.output == {"status": "completed", "before_chapter": 7}
+    assert from_chapter.output == {"status": "completed", "before_chapter": 8}
+    assert without_bound.output == {"status": "completed", "before_chapter": None}
+    assert calls == [(project.id, 7), (project.id, 8), (project.id, None)]
 
 
 @pytest.mark.asyncio

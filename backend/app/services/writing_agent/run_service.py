@@ -9,7 +9,6 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.outline_lookup import (
-    backfill_missing_outline_chapters_from_content,
     find_outline_chapter,
     generated_chapters_missing_outline,
 )
@@ -248,13 +247,6 @@ class WritingAgentRunService:
                 "merge": merge,
                 "trace_id": getattr(outline, "last_expansion_trace_id", None),
             }
-        if tool.tool_name == "backfill_outline_gaps":
-            before_chapter = tool.params.get("before_chapter") or tool.params.get("chapter_index")
-            return backfill_missing_outline_chapters_from_content(
-                self.db,
-                project_id,
-                before_chapter=int(before_chapter) if before_chapter else None,
-            )
         if tool.tool_name == "create_revision_draft":
             from app.core.chapter_revision_drafts import create_revision_draft_from_plan
             from app.core.chapter_revision_planner import plan_chapter_revision

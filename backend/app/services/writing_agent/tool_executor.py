@@ -131,6 +131,17 @@ def _plan_chapter_revision(context: WritingAgentToolContext, tool: WritingAgentT
     return plan_chapter_revision(context.db, context.project_id, _chapter_index(tool))
 
 
+def _backfill_outline_gaps(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
+    from app.core.outline_lookup import backfill_missing_outline_chapters_from_content
+
+    before_chapter = tool.params.get("before_chapter") or tool.params.get("chapter_index")
+    return backfill_missing_outline_chapters_from_content(
+        context.db,
+        context.project_id,
+        before_chapter=int(before_chapter) if before_chapter else None,
+    )
+
+
 def _review_world_model_proposals(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
     from app.core.world_proposal_agent_report import build_world_proposal_agent_report
 
@@ -216,6 +227,12 @@ _STATIC_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
         _plan_chapter_revision,
         category="review",
         mutability="read",
+    ),
+    "backfill_outline_gaps": WritingAgentToolAdapter(
+        "backfill_outline_gaps",
+        _backfill_outline_gaps,
+        category="maintenance",
+        mutability="write",
     ),
     "review_world_model_proposals": WritingAgentToolAdapter(
         "review_world_model_proposals",
