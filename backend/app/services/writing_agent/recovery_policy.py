@@ -28,6 +28,32 @@ def _longform_context_recovery(output: dict[str, Any], planner: dict[str, Any]) 
     if not isinstance(recommended_actions, list) or "repair_longform_maintenance" not in recommended_actions:
         return _none("summarize_longform_context")
     decision = output.get("decision") if isinstance(output.get("decision"), dict) else {}
+    chapter_index = _optional_positive_int(output.get("chapter_index"))
+    continuation_tools = []
+    if chapter_index is not None:
+        continuation_tools = [
+            {
+                "tool_name": "summarize_longform_context",
+                "params": {
+                    "chapter_index": chapter_index,
+                    "query": f"恢复长篇维护后，重新汇总第{chapter_index}章写作上下文。",
+                },
+                "reason": f"修复长篇维护后重新检查第{chapter_index}章上下文是否可写。",
+                "expected_output": "恢复后的长篇上下文摘要。",
+            },
+            {
+                "tool_name": "preflight_writing",
+                "params": {"chapter_index": chapter_index},
+                "reason": f"上下文恢复后重新执行第{chapter_index}章生成前检查。",
+                "expected_output": "章节可写性检查。",
+            },
+            {
+                "tool_name": "generate_chapter",
+                "params": {"chapter_index": chapter_index},
+                "reason": f"硬阻塞清除后继续生成第{chapter_index}章正文。",
+                "expected_output": "章节正文。",
+            },
+        ]
     return {
         "policy_version": RECOVERY_POLICY_VERSION,
         "status": "recommended",
@@ -36,10 +62,11 @@ def _longform_context_recovery(output: dict[str, Any], planner: dict[str, Any]) 
         "action": "run_tool",
         "next_tool": "repair_longform_maintenance",
         "next_params": {},
+        "continuation_tools": continuation_tools,
         "next_command_args": None,
         "requires_user_input": False,
         "user_input_fields": [],
-        "affected_chapter_indexes": [],
+        "affected_chapter_indexes": [chapter_index] if chapter_index is not None else [],
         "should_continue_current_run": False,
         "planner_on_missing": planner.get("on_missing"),
         "planner_on_failure": planner.get("on_failure"),
@@ -142,6 +169,14 @@ def _none(tool_name: str) -> dict[str, Any]:
         "status": "none",
         "source_tool": tool_name,
     }
+
+
+def _optional_positive_int(value: object) -> int | None:
+    try:
+        parsed = int(value or 0)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
 
 
 def _optional_int(value: object) -> int | None:

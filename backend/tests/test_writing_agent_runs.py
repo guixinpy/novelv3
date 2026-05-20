@@ -642,7 +642,88 @@ def test_agent_auto_plan_longform_context_blocks_stale_maintenance_before_genera
     assert recovery["status"] == "completed"
     assert recovery["source_step"]["tool_name"] == "summarize_longform_context"
     assert recovery["recovery"]["next_tool"] == "repair_longform_maintenance"
-    assert recovery["tools"][0]["tool_name"] == "repair_longform_maintenance"
+    assert [tool["tool_name"] for tool in recovery["tools"]] == [
+        "repair_longform_maintenance",
+        "summarize_longform_context",
+        "preflight_writing",
+        "generate_chapter",
+    ]
+    assert recovery["tools"][1]["params"]["chapter_index"] == 2
+    assert recovery["tools"][2]["params"]["chapter_index"] == 2
+    assert recovery["tools"][3]["params"]["chapter_index"] == 2
+    assert recovery["trace"]["selected_tools"] == [
+        "repair_longform_maintenance",
+        "summarize_longform_context",
+        "preflight_writing",
+        "generate_chapter",
+    ]
+    assert recovery["execution_policy"]["safe_auto_execute"] is False
+
+
+def test_agent_run_executes_longform_context_recovery_chain_after_confirmation(
+    client,
+    db_session,
+    monkeypatch,
+):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1])
+    calls: list[str] = []
+
+    async def fake_execute(self, action_type, project_id, *, command_args=None, action_params=None):
+        calls.append(action_type)
+        assert action_type == "generate_chapter"
+        assert action_params == {"chapter_index": 2}
+        return {"status": "success", "trace_id": None}
+
+    monkeypatch.setattr("app.services.actions.action_execution_service.ActionExecutionService.execute", fake_execute)
+
+    blocked = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "继续写下一章",
+            "input": {"auto_plan": True, "chapter_index": 2},
+        },
+    )
+    blocked_run_id = blocked.json()["id"]
+
+    preview = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "预览上下文恢复链",
+            "tools": [{"tool_name": "plan_recovery_tools", "params": {"run_id": blocked_run_id}}],
+        },
+    )
+    plan_hash = preview.json()["steps"][0]["output"]["plan_hash"]
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "执行上下文恢复并继续生成",
+            "input": {
+                "auto_plan": True,
+                "recovery_run_id": blocked_run_id,
+                "execute_recovery": True,
+                "confirm_execute": True,
+                "recovery_plan_hash": plan_hash,
+            },
+        },
+    )
+
+    payload = response.json()
+    assert response.status_code == 200
+    assert payload["status"] == "success"
+    assert payload["input"]["planner"]["mode"] == "execute"
+    assert payload["input"]["planner"]["plan_hash"] == plan_hash
+    assert [step["tool_name"] for step in payload["steps"]] == [
+        "repair_longform_maintenance",
+        "summarize_longform_context",
+        "preflight_writing",
+        "generate_chapter",
+    ]
+    context_output = payload["steps"][1]["output"]
+    assert context_output["should_generate_next_chapter"] is True
+    assert context_output["decision"]["reason"] == "longform_context_ready"
+    assert payload["steps"][2]["output"]["status"] == "ready"
+    assert calls == ["generate_chapter"]
 
 
 def test_agent_run_can_repair_longform_maintenance(client, db_session):

@@ -49,23 +49,26 @@ def build_recovery_tool_plan(db: Session, project_id: str, run_id: str | None) -
             "trace": {"selected_tools": [], "rejected_tools": [{"reason": "no_recommended_recovery"}]},
         }
 
-    tool = _tool_request_from_recovery(recovery)
-    selected_tools = [tool["tool_name"]] if tool else []
+    tools = _tool_requests_from_recovery(recovery)
+    selected_tools = [str(tool.get("tool_name") or "") for tool in tools]
     hash_payload = {
         "preview_version": RECOVERY_PREVIEW_VERSION,
+        "project_id": project_id,
         "source_run_id": run_id,
         "source_step_id": step.id,
         "source_step_index": step.step_index,
+        "source_tool": recovery.get("source_tool"),
         "reason_code": recovery.get("reason_code"),
-        "tools": [tool] if tool else [],
+        "affected_chapter_indexes": recovery.get("affected_chapter_indexes"),
+        "tools": tools,
     }
     plan_hash = _plan_hash(hash_payload)
-    safe_auto_execute = tool["tool_name"] in SAFE_RECOVERY_EXECUTE_TOOLS if tool else False
-    guardrails = _recovery_guardrails(db, project_id, tool=tool, recovery=recovery, plan_hash=plan_hash)
-    can_execute = tool is not None and guardrails["status"] == "ready"
+    safe_auto_execute = bool(tools) and all(tool.get("tool_name") in SAFE_RECOVERY_EXECUTE_TOOLS for tool in tools)
+    guardrails = _recovery_guardrails(db, project_id, tools=tools, recovery=recovery, plan_hash=plan_hash)
+    can_execute = bool(tools) and guardrails["status"] == "ready"
     execution_status = "ready" if can_execute else _first_blocker_code(guardrails)
     return {
-        "status": "completed" if tool else "ready",
+        "status": "completed" if tools else "ready",
         "preview_version": RECOVERY_PREVIEW_VERSION,
         "preview_only": True,
         "mode": "preview",
@@ -85,7 +88,7 @@ def build_recovery_tool_plan(db: Session, project_id: str, run_id: str | None) -
             "status": step.status,
         },
         "recovery": recovery,
-        "tools": [tool] if tool else [],
+        "tools": tools,
         "guardrails": guardrails,
         "execution_policy": {
             "mode": "preview",
@@ -96,7 +99,7 @@ def build_recovery_tool_plan(db: Session, project_id: str, run_id: str | None) -
         },
         "trace": {
             "selected_tools": selected_tools,
-            "rejected_tools": [] if tool else [{"reason": "recovery_without_next_tool"}],
+            "rejected_tools": [] if tools else [{"reason": "recovery_without_next_tool"}],
         },
     }
 
@@ -148,6 +151,46 @@ def _tool_request_from_recovery(recovery: dict[str, Any]) -> dict[str, Any] | No
     return request
 
 
+def _tool_requests_from_recovery(recovery: dict[str, Any]) -> list[dict[str, Any]]:
+    first = _tool_request_from_recovery(recovery)
+    if first is None:
+        return []
+    requests = [first]
+    continuation_tools = recovery.get("continuation_tools")
+    if not isinstance(continuation_tools, list):
+        return requests
+    for index, item in enumerate(continuation_tools, start=1):
+        if not isinstance(item, dict):
+            continue
+        request = _tool_request_from_continuation(item, index=index)
+        if request is not None:
+            requests.append(request)
+    return requests
+
+
+def _tool_request_from_continuation(item: dict[str, Any], *, index: int) -> dict[str, Any] | None:
+    tool_name = str(item.get("tool_name") or "").strip()
+    if not tool_name:
+        return None
+    request: dict[str, Any] = {
+        "tool_name": tool_name,
+        "params": item.get("params") if isinstance(item.get("params"), dict) else {},
+        "planner": {
+            "step_index": index + 1,
+            "reason": str(item.get("reason") or "恢复前置条件后继续执行下一步工具。"),
+            "on_missing": str(item.get("on_missing") or "stop"),
+            "on_failure": str(item.get("on_failure") or "stop"),
+            "expected_output": str(item.get("expected_output") or "恢复链后续工具输出。"),
+            "post_generation": bool(item.get("post_generation") is True),
+            "planner_version": "phase55.recovery_chain.v1",
+        },
+    }
+    command_args = item.get("command_args")
+    if command_args:
+        request["command_args"] = str(command_args)
+    return request
+
+
 def _plan_hash(payload: dict[str, Any]) -> str:
     serialized = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
@@ -157,33 +200,46 @@ def _recovery_guardrails(
     db: Session,
     project_id: str,
     *,
-    tool: dict[str, Any] | None,
+    tools: list[dict[str, Any]],
     recovery: dict[str, Any],
     plan_hash: str,
 ) -> dict[str, Any]:
     checks: list[dict[str, Any]] = []
     blockers: list[dict[str, Any]] = []
-    if tool is None:
+    if not tools:
         blockers.append({"code": "recovery_without_next_tool", "message": "恢复建议缺少可执行工具。"})
         return {"status": "blocked", "checks": checks, "blockers": blockers}
 
-    tool_name = str(tool.get("tool_name") or "").strip()
     if recovery.get("requires_user_input") is True:
         blockers.append(
             {
                 "code": "requires_user_input",
-                "tool_name": tool_name,
+                "tool_name": str(tools[0].get("tool_name") or ""),
                 "fields": recovery.get("user_input_fields") if isinstance(recovery.get("user_input_fields"), list) else [],
                 "message": "恢复工具需要用户补充输入，不能自动执行。",
             }
         )
 
-    allowed = tool_name in allowed_tool_names()
-    checks.append({"code": "tool_allowed", "status": "passed" if allowed else "blocked", "tool_name": tool_name})
-    if not allowed:
-        blockers.append({"code": "tool_not_allowed", "tool_name": tool_name, "message": "恢复工具未注册。"})
-    elif not _tool_visible_now(db, project_id, tool):
-        blockers.append({"code": "tool_not_visible", "tool_name": tool_name, "message": "恢复工具当前不可见。"})
+    allowed_tools = allowed_tool_names()
+    for index, tool in enumerate(tools, start=1):
+        tool_name = str(tool.get("tool_name") or "").strip()
+        allowed = tool_name in allowed_tools
+        checks.append(
+            {
+                "code": "tool_allowed",
+                "status": "passed" if allowed else "blocked",
+                "tool_name": tool_name,
+                "position": index,
+            }
+        )
+        if not allowed:
+            blockers.append(
+                {"code": "tool_not_allowed", "tool_name": tool_name, "position": index, "message": "恢复工具未注册。"}
+            )
+        elif not _tool_visible_now(db, project_id, tool):
+            blockers.append(
+                {"code": "tool_not_visible", "tool_name": tool_name, "position": index, "message": "恢复工具当前不可见。"}
+            )
 
     failed_attempt = _failed_recovery_attempt(db, project_id, plan_hash)
     checks.append(
