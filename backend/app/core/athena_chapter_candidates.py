@@ -22,6 +22,16 @@ from app.schemas.world_proposals import ProposalCandidateFactCreate
 
 WIDE_IDENTIFIER_RE = re.compile(r"(?<![A-Za-z0-9])[A-Z]{1,3}-\d+(?:-\d+)*(?![A-Za-z0-9])")
 HYPOTHESIS_TERMS = ("可能", "推断", "像是", "也许", "疑似", "尚未确认", "猜测")
+LEGACY_PLOT_SIGNAL_LIMIT = 6
+HIGH_VALUE_SIGNAL_LIMIT = 12
+VIDEO_TERMS = ("录像", "监控", "视频", "画面", "屏幕")
+HISTORICAL_TERMS = ("十年前", "旧", "当年", "历史", "雾灾当夜")
+MEMORY_ERASURE_TERMS = ("记忆被抹除", "记忆抹除", "记忆删除", "记忆被删除", "删除记忆", "清洗记忆", "记忆清洗")
+PARENT_TERMS = ("父亲", "母亲", "父母", "爸爸", "妈妈")
+FOG_DISASTER_TERMS = ("雾灾", "灾难")
+FOG_CAUSE_TERMS = ("不是天灾", "人祸", "人为", "实验失控", "制造")
+UNKNOWN_OPERATOR_TERMS = ("黑衣研究员", "研究员", "操作员", "陌生人", "黑衣人")
+INTERVENTION_TERMS = ("强行带进", "带进", "推进", "拖进", "启动", "扫描", "介入")
 
 
 def candidate_from_l1_fact(
@@ -156,7 +166,7 @@ def extract_high_value_plot_signal_candidates(
         )
         if lead is not None:
             _append_unique_candidate(candidates, lead, seen)
-        if len(candidates) >= 8:
+        if len(candidates) >= LEGACY_PLOT_SIGNAL_LIMIT:
             break
     permission = _access_permission_candidate(
         project_id=project_id,
@@ -166,6 +176,15 @@ def extract_high_value_plot_signal_candidates(
     )
     if permission is not None:
         _append_unique_candidate(candidates, permission, seen)
+    for candidate in _historical_video_signal_candidates(
+        project_id=project_id,
+        profile=profile,
+        chapter=chapter,
+        sentences=sentences,
+    ):
+        _append_unique_candidate(candidates, candidate, seen)
+        if len(candidates) >= HIGH_VALUE_SIGNAL_LIMIT:
+            break
     return candidates
 
 
@@ -287,6 +306,163 @@ def _investigation_lead_candidate(
         confidence=0.78,
         notes="自动抽取：调查线索会影响后续追查方向，需要单独审阅。",
     )
+
+
+def _historical_video_signal_candidates(
+    *,
+    project_id: str,
+    profile: ProjectProfileVersion,
+    chapter: ChapterContent,
+    sentences: list[str],
+) -> list[ProposalCandidateFactCreate]:
+    specs = [
+        (
+            "historical_video_evidence",
+            f"chapter.{chapter.chapter_index}.historical_video",
+            "video_evidence",
+            _historical_video_window(sentences),
+            "自动抽取：旧录像或监控证据可能改变主线真相，应单独审阅。",
+            0.78,
+        ),
+        (
+            "memory_erasure_hypothesis",
+            f"chapter.{chapter.chapter_index}.memory_erasure",
+            "memory_erasure",
+            _memory_erasure_window(sentences),
+            "自动抽取：记忆删除或抹除线索应先保留为待证推断。",
+            0.8,
+        ),
+        (
+            "parental_involvement_hypothesis",
+            f"chapter.{chapter.chapter_index}.parental_involvement",
+            "parental_involvement",
+            _parental_involvement_window(sentences),
+            "自动抽取：父母参与历史事件的线索会影响人物弧线，应单独审阅。",
+            0.78,
+        ),
+        (
+            "fog_disaster_cause_hypothesis",
+            f"chapter.{chapter.chapter_index}.fog_disaster_cause",
+            "fog_disaster_cause",
+            _fog_disaster_cause_window(sentences),
+            "自动抽取：雾灾成因线索属于核心谜团，应标为待证推断。",
+            0.82,
+        ),
+        (
+            "unknown_operator_intervention",
+            f"chapter.{chapter.chapter_index}.unknown_operator",
+            "unknown_operator",
+            _unknown_operator_window(sentences),
+            "自动抽取：未知操作者介入历史事件，需审阅身份和行为边界。",
+            0.78,
+        ),
+    ]
+    candidates: list[ProposalCandidateFactCreate] = []
+    for predicate, subject_ref, signal, evidence, notes, confidence in specs:
+        if not evidence:
+            continue
+        candidates.append(
+            _plot_signal_candidate(
+                project_id=project_id,
+                profile=profile,
+                chapter=chapter,
+                subject_ref=subject_ref,
+                predicate=predicate,
+                signal=signal,
+                evidence=evidence,
+                notes=notes,
+                confidence=confidence,
+            )
+        )
+    return candidates
+
+
+def _plot_signal_candidate(
+    *,
+    project_id: str,
+    profile: ProjectProfileVersion,
+    chapter: ChapterContent,
+    subject_ref: str,
+    predicate: str,
+    signal: str,
+    evidence: str,
+    notes: str,
+    confidence: float,
+) -> ProposalCandidateFactCreate:
+    return ProposalCandidateFactCreate(
+        project_id=project_id,
+        project_profile_version_id=profile.id,
+        profile_version=profile.version,
+        contract_version=profile.contract_version,
+        claim_id=f"claim.chapter.{chapter.chapter_index}.{slug(subject_ref)}.{predicate}",
+        chapter_index=chapter.chapter_index,
+        intra_chapter_seq=0,
+        subject_ref=subject_ref,
+        predicate=predicate,
+        object_ref_or_value={
+            "chapter_index": chapter.chapter_index,
+            "signal": signal,
+            "evidence": evidence[:220],
+            "is_hypothesis": _is_hypothesis(evidence) or predicate.endswith("_hypothesis"),
+            "source": "deterministic_plot_signal",
+            "evidence_span": {"ref": f"chapter:{chapter.chapter_index}", "text": evidence[:240]},
+            "quality": candidate_quality(signal=signal, confidence_band="medium", review_priority="high"),
+        },
+        claim_layer="truth",
+        evidence_refs=[f"chapter:{chapter.chapter_index}"],
+        authority_type=DERIVED,
+        confidence=confidence,
+        notes=notes,
+    )
+
+
+def _historical_video_window(sentences: list[str]) -> str:
+    for index, sentence in enumerate(sentences):
+        if not any(term in sentence for term in VIDEO_TERMS):
+            continue
+        window = "。".join(sentences[index : index + 2])
+        if any(term in window for term in HISTORICAL_TERMS + ("实验", "雾灾")):
+            return window
+    return ""
+
+
+def _memory_erasure_window(sentences: list[str]) -> str:
+    for index, sentence in enumerate(sentences):
+        if any(term in sentence for term in MEMORY_ERASURE_TERMS):
+            return sentence
+        if "记忆" in sentence and any(term in sentence for term in ("抹去", "模糊", "空白", "断片")):
+            return sentence
+        window = "。".join(sentences[index : index + 8])
+        if "记忆" in window and any(term in window for term in ("抹去", "模糊", "空白", "断片")):
+            return window
+    return ""
+
+
+def _parental_involvement_window(sentences: list[str]) -> str:
+    for index, sentence in enumerate(sentences):
+        if not any(term in sentence for term in PARENT_TERMS):
+            continue
+        window = "。".join(sentences[max(0, index - 1) : index + 2])
+        if any(term in window for term in ("实验", "录像", "监控", "雾灾", "舱室")):
+            return window
+    return ""
+
+
+def _fog_disaster_cause_window(sentences: list[str]) -> str:
+    for sentence in sentences:
+        if any(term in sentence for term in FOG_DISASTER_TERMS) and any(term in sentence for term in FOG_CAUSE_TERMS):
+            return sentence
+    return ""
+
+
+def _unknown_operator_window(sentences: list[str]) -> str:
+    for index, sentence in enumerate(sentences):
+        if not any(term in sentence for term in UNKNOWN_OPERATOR_TERMS):
+            continue
+        window = "。".join(sentences[index : index + 2])
+        if any(term in window for term in INTERVENTION_TERMS):
+            return window
+    return ""
 
 
 def extract_character_location_candidates(

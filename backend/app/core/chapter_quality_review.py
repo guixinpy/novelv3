@@ -26,6 +26,26 @@ PREMATURE_MYSTERY_REVEAL_TERMS = (
     "十年前那场雾灾，是他们制造的",
     "苏晚晴是实验体",
 )
+REVELATION_STRENGTH_OVERREACH_TERMS = (
+    "不是天灾，是人祸",
+    "不是天灾",
+    "是人祸",
+    "打开潘多拉魔盒的人",
+    "终局真相",
+    "全部真相",
+)
+REVELATION_HYPOTHESIS_FRAME_TERMS = (
+    "可能",
+    "也许",
+    "像是",
+    "疑似",
+    "推断",
+    "尚未确认",
+    "不能立刻下结论",
+    "还需要",
+    "待确认",
+)
+REVELATION_CORE_CONTEXT_TERMS = ("雾灾", "实验", "真相", "N-07", "记忆", "父亲", "母亲", "录像", "潘多拉魔盒")
 SOFT_WORD_TARGET_OVERFLOW_RATIO = 1.1
 
 
@@ -59,6 +79,7 @@ def review_chapter_quality(db: Session, project_id: str, chapter_index: int) -> 
     findings.extend(_character_profile_drift_findings(setup, content))
     findings.extend(_ability_boundary_findings(setup, content))
     findings.extend(_premature_mystery_reveal_findings(content))
+    findings.extend(_revelation_strength_overreach_findings(content))
     findings.extend(_convenient_key_item_findings(content))
     findings.extend(_structural_tail_findings(content))
     future_overlap = _future_outline_overlap(db, project_id=project_id, chapter_index=chapter_index, content=content)
@@ -247,6 +268,33 @@ def _premature_mystery_reveal_findings(content: str) -> list[dict[str, Any]]:
                 "matched_terms": matched_terms,
                 "excerpt": content[max(0, index - 80) : index + 180],
             },
+        )
+    ]
+
+
+def _revelation_strength_overreach_findings(content: str) -> list[dict[str, Any]]:
+    if not content:
+        return []
+    matched_terms: list[str] = []
+    excerpts: list[str] = []
+    for sentence in _sentences(content):
+        terms = [term for term in REVELATION_STRENGTH_OVERREACH_TERMS if term in sentence]
+        if not terms:
+            continue
+        if not any(term in sentence for term in REVELATION_CORE_CONTEXT_TERMS):
+            continue
+        if any(marker in sentence for marker in REVELATION_HYPOTHESIS_FRAME_TERMS):
+            continue
+        matched_terms.extend(term for term in terms if term not in matched_terms)
+        excerpts.append(sentence[:180])
+    if not matched_terms:
+        return []
+    return [
+        _finding(
+            "revelation_strength_overreach",
+            "warning",
+            "本章对核心谜团的揭示语气偏硬，建议改为证据、推断或待验证结论，避免过早消解长篇悬念。",
+            evidence={"matched_terms": matched_terms, "excerpts": excerpts[:3]},
         )
     ]
 

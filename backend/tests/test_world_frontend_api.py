@@ -2256,17 +2256,29 @@ def test_world_model_proposal_review_queue_prioritizes_plot_signal_before_low_ri
             chapter_index=25,
         ),
     )
+    video_item = write_candidate_fact(
+        db=db_session,
+        bundle_id=bundle.id,
+        created_by="writer.alpha",
+        candidate=_candidate_payload(
+            claim_id="claim.chapter.26.video.evidence",
+            subject_ref="chapter.26.historical_video",
+            predicate="historical_video_evidence",
+            value={"evidence": "十年前的监控录像显示实验室异常"},
+            chapter_index=26,
+        ),
+    )
 
-    response = client.get(f"/api/v1/projects/{project.id}/world-model/proposal-review-queue?limit=1")
+    response = client.get(f"/api/v1/projects/{project.id}/world-model/proposal-review-queue?limit=2")
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["total_items"] == 2
-    assert payload["returned_items"] == 1
-    assert payload["clusters"][0]["risk_level"] == "high"
-    assert payload["clusters"][0]["review_mode"] == "individual"
-    assert payload["clusters"][0]["item_ids"] == [high_item.id]
-    assert low_item.id not in payload["clusters"][0]["item_ids"]
+    assert payload["total_items"] == 3
+    assert payload["returned_items"] == 2
+    assert {cluster["risk_level"] for cluster in payload["clusters"]} == {"high"}
+    assert {cluster["review_mode"] for cluster in payload["clusters"]} == {"individual"}
+    assert {item_id for cluster in payload["clusters"] for item_id in cluster["item_ids"]} == {high_item.id, video_item.id}
+    assert all(low_item.id not in cluster["item_ids"] for cluster in payload["clusters"])
 
 
 def test_world_model_proposal_review_queue_limits_large_backlog(client, db_session):

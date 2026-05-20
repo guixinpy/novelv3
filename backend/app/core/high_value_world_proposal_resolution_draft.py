@@ -22,6 +22,26 @@ HIGH_VALUE_PREDICATE_POLICIES: dict[str, dict[str, str]] = {
         "policy_id": "plot_signal_investigation_lead",
         "reason": "调查线索会影响下一步行动，但应保留为待证方向，不直接确认为世界真相。",
     },
+    "historical_video_evidence": {
+        "policy_id": "plot_signal_historical_video_evidence",
+        "reason": "历史录像证据会影响主线真相，但当前应保留为待证证据，不直接确认为世界真相。",
+    },
+    "memory_erasure_hypothesis": {
+        "policy_id": "plot_signal_memory_erasure_hypothesis",
+        "reason": "记忆抹除线索属于核心机制推断，应先标为未定事实，等待后续证据确认。",
+    },
+    "parental_involvement_hypothesis": {
+        "policy_id": "plot_signal_parental_involvement_hypothesis",
+        "reason": "父母参与历史事件会影响人物弧线，应先标为未定事实，避免过早确认责任。",
+    },
+    "fog_disaster_cause_hypothesis": {
+        "policy_id": "plot_signal_fog_disaster_cause_hypothesis",
+        "reason": "雾灾成因属于主线谜底，应先标为未定事实，避免提前消解长篇悬念。",
+    },
+    "unknown_operator_intervention": {
+        "policy_id": "plot_signal_unknown_operator_intervention",
+        "reason": "未知操作者介入是高价值身份线索，应先标为未定事实，等待身份和动机确认。",
+    },
 }
 
 

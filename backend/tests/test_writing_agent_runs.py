@@ -2988,6 +2988,64 @@ def test_agent_review_chapter_quality_blocks_premature_n07_identity_reveal(clien
     assert "revise_chapter" in output["recommended_actions"]
 
 
+def test_agent_review_chapter_quality_warns_on_revelation_strength_overreach(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[26], generated_chapters=[26])
+    chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=26).one()
+    chapter.title = "深处的回响"
+    chapter.word_count = 2400
+    chapter.content = (
+        "旧录像里，十年前的实验室灯光一盏盏亮起，林深看见父亲把一个孩子推进舱室。"
+        "屏幕右下角跳出雾灾当夜的时间戳。"
+        "林深忽然明白，雾灾不是天灾，是人祸。"
+        "更可怕的是，他自己，是那个打开潘多拉魔盒的人。"
+    )
+    db_session.commit()
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "审稿第26章",
+            "tools": [{"tool_name": "review_chapter_quality", "params": {"chapter_index": 26}}],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    finding = next(item for item in output["findings"] if item["code"] == "revelation_strength_overreach")
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    assert output["status"] == "warning"
+    assert output["blocker_count"] == 0
+    assert finding["severity"] == "warning"
+    assert "不是天灾，是人祸" in finding["evidence"]["matched_terms"]
+
+
+def test_agent_review_chapter_quality_allows_hypothesis_framed_revelation(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[26], generated_chapters=[26])
+    chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=26).one()
+    chapter.title = "深处的回响"
+    chapter.word_count = 2400
+    chapter.content = (
+        "旧录像只留下断续片段，时间戳指向雾灾当夜。"
+        "林深不敢立刻下结论，只能把它记为一种可能：雾灾也许不是天灾，而是人为实验失控。"
+        "至于那个孩子是否与他有关，还需要等存储器解析后再确认。"
+    )
+    db_session.commit()
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "审稿第26章",
+            "tools": [{"tool_name": "review_chapter_quality", "params": {"chapter_index": 26}}],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    codes = {item["code"] for item in output["findings"]}
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    assert "revelation_strength_overreach" not in codes
+
+
 def test_agent_review_chapter_quality_warns_on_duplicate_specific_title(client, db_session):
     project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1, 2])
     first = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=1).one()
@@ -5073,6 +5131,13 @@ def test_agent_draft_high_value_world_proposal_resolution_decisions_reports_with
         predicate="identifier_meaning_hypothesis",
         subject_ref="identifier.G-07",
     )
+    video_item = _seed_pending_world_proposal(
+        db_session,
+        project_id=project.id,
+        claim_id="claim.phase84.video.evidence",
+        predicate="historical_video_evidence",
+        subject_ref="chapter.26.video",
+    )
     low_item = _seed_pending_world_proposal(
         db_session,
         project_id=project.id,
@@ -5098,12 +5163,14 @@ def test_agent_draft_high_value_world_proposal_resolution_decisions_reports_with
     assert response.json()["status"] == "success"
     assert output["status"] == "blocked"
     assert output["report_only"] is True
-    assert output["inspected_item_count"] == 2
-    assert output["draft_decision_count"] == 1
+    assert output["inspected_item_count"] == 3
+    assert output["draft_decision_count"] == 2
     assert output["skipped_item_count"] == 1
-    assert output["draft_decisions"][0]["proposal_item_id"] == high_item.id
-    assert output["draft_decisions"][0]["action"] == "mark_uncertain"
-    assert output["draft_decisions"][0]["predicate"] == "identifier_meaning_hypothesis"
+    draft_by_predicate = {item["predicate"]: item for item in output["draft_decisions"]}
+    assert draft_by_predicate["identifier_meaning_hypothesis"]["proposal_item_id"] == high_item.id
+    assert draft_by_predicate["historical_video_evidence"]["proposal_item_id"] == video_item.id
+    assert set(draft_by_predicate) == {"identifier_meaning_hypothesis", "historical_video_evidence"}
+    assert {item["action"] for item in output["draft_decisions"]} == {"mark_uncertain"}
     assert output["requires_confirmation"] is True
     assert output["can_auto_apply"] is False
     assert output["should_generate_next_chapter"] is False

@@ -19,6 +19,11 @@ HIGH_RISK_PREDICATES = {
     "identifier_meaning_hypothesis",
     "access_permission_anomaly",
     "investigation_lead",
+    "historical_video_evidence",
+    "memory_erasure_hypothesis",
+    "parental_involvement_hypothesis",
+    "fog_disaster_cause_hypothesis",
+    "unknown_operator_intervention",
 }
 RISK_ORDER = {"high": 0, "medium": 1, "low": 2}
 

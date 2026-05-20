@@ -530,6 +530,69 @@ def test_analyze_chapter_creates_high_value_plot_signal_candidates(client, db_se
     )
 
 
+def test_analyze_chapter_creates_historical_video_high_value_candidates(client, db_session):
+    project = _seed_project_with_setup(db_session)
+    client.post(f"/api/v1/projects/{project.id}/athena/ontology/import-setup")
+    db_session.add(
+        ChapterContent(
+            project_id=project.id,
+            chapter_index=26,
+            title="第二十六章 深处的回响",
+            content=(
+                "林深在地下控制室调出一段十年前的监控录像，画面显示父亲和母亲都进入过实验室。"
+                "录像里，黑衣研究员把年幼的林深强行带进舱室，启动记忆扫描。"
+                "林深想起一段记忆碎片。他记得自己躲在走廊角落。"
+                "他记得门关上了，也记得白光闪过。然后一切都模糊了。"
+                "像是被什么东西抹去了一样。"
+                "林深推断雾灾可能不是天灾，而是一次人为实验失控。"
+            ),
+            word_count=120,
+            status="generated",
+        )
+    )
+    db_session.commit()
+
+    response = client.post(f"/api/v1/projects/{project.id}/athena/evolution/chapters/26/analyze")
+    rerun = client.post(f"/api/v1/projects/{project.id}/athena/evolution/chapters/26/analyze")
+
+    assert response.status_code == 200
+    assert rerun.status_code == 200
+    predicates = {
+        item.predicate
+        for item in db_session.query(WorldProposalItem).filter(
+            WorldProposalItem.project_id == project.id,
+            WorldProposalItem.chapter_index == 26,
+        )
+    }
+    assert {
+        "historical_video_evidence",
+        "memory_erasure_hypothesis",
+        "parental_involvement_hypothesis",
+        "fog_disaster_cause_hypothesis",
+        "unknown_operator_intervention",
+    } <= predicates
+    high_value_items = (
+        db_session.query(WorldProposalItem)
+        .filter(
+            WorldProposalItem.project_id == project.id,
+            WorldProposalItem.chapter_index == 26,
+            WorldProposalItem.predicate.in_(
+                [
+                    "historical_video_evidence",
+                    "memory_erasure_hypothesis",
+                    "parental_involvement_hypothesis",
+                    "fog_disaster_cause_hypothesis",
+                    "unknown_operator_intervention",
+                ]
+            ),
+        )
+        .all()
+    )
+    assert len(high_value_items) == 5
+    assert {item.object_ref_or_value["quality"]["review_priority"] for item in high_value_items} == {"high"}
+    assert rerun.json()["created"]["proposal_items"] == 0
+
+
 def test_analyze_chapter_does_not_treat_iris_door_reference_as_permission_anomaly(client, db_session):
     project = _seed_project_with_setup(db_session)
     client.post(f"/api/v1/projects/{project.id}/athena/ontology/import-setup")
