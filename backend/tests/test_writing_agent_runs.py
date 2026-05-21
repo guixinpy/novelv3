@@ -4577,6 +4577,7 @@ def test_agent_apply_world_model_proposal_resolution_blocks_missing_profile_with
     assert response.status_code == 200
     assert response.json()["status"] == "success"
     assert output["status"] == "missing_profile"
+    assert output["profile_version"] is None
     assert output["applied_count"] == 0
     assert output["should_generate_next_chapter"] is False
     assert output["recommended_actions"] == ["import_setup_world_model"]

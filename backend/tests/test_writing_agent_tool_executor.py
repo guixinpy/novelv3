@@ -189,6 +189,7 @@ def test_tool_executor_static_adapter_names_are_report_or_agent_native_tools():
         "review_world_model_proposals",
         "plan_world_model_proposal_resolution",
         "preview_world_model_proposal_resolution",
+        "apply_world_model_proposal_resolution",
         "draft_world_model_proposal_resolution_decisions",
     }.issubset(names)
     assert "generate_setup" not in names
@@ -224,7 +225,6 @@ def test_tool_executor_exposes_adapter_metadata_for_trace():
 def test_tool_executor_lists_unhandled_internal_tools_for_migration_tracking():
     names = unhandled_internal_writing_agent_tool_names()
 
-    assert "apply_world_model_proposal_resolution" in names
     assert "create_revision_draft" in names
     assert "backfill_outline_gaps" not in names
     assert "repair_longform_maintenance" not in names
@@ -234,6 +234,7 @@ def test_tool_executor_lists_unhandled_internal_tools_for_migration_tracking():
     assert "review_chapter_quality" not in names
     assert "plan_writing_agent_run" not in names
     assert "analyze_chapter_world_model" not in names
+    assert "apply_world_model_proposal_resolution" not in names
     assert "plan_longform_chapter_batch" not in names
     assert "enqueue_longform_chapter_batch" not in names
     assert "inspect_longform_chapter_batch" not in names
@@ -285,6 +286,18 @@ def test_tool_executor_exposes_analyze_chapter_world_model_adapter_metadata():
     }
 
 
+def test_tool_executor_exposes_apply_world_model_proposal_resolution_adapter_metadata():
+    metadata = writing_agent_tool_adapter_metadata("apply_world_model_proposal_resolution")
+
+    assert metadata == {
+        "tool_name": "apply_world_model_proposal_resolution",
+        "adapter_type": "static",
+        "category": "athena_world_model",
+        "mutability": "write",
+        "handler_name": "_apply_world_model_proposal_resolution",
+    }
+
+
 @pytest.mark.asyncio
 async def test_tool_executor_handles_inspect_agent_tool_contracts(db_session):
     project = Project(name="Tool Contract Snapshot")
@@ -333,6 +346,11 @@ async def test_tool_executor_handles_inspect_agent_tool_contracts(db_session):
     assert "output_schema_too_generic" not in tools_by_name["generate_chapter"]["gap_codes"]
     assert tools_by_name["analyze_chapter_world_model"]["adapter_type"] == "static"
     assert "missing_agent_native_adapter" not in tools_by_name["analyze_chapter_world_model"]["gap_codes"]
+    assert tools_by_name["apply_world_model_proposal_resolution"]["adapter_type"] == "static"
+    assert tools_by_name["apply_world_model_proposal_resolution"]["mutability"] == "guarded_write"
+    assert tools_by_name["apply_world_model_proposal_resolution"]["requires_confirmation"] is True
+    assert "missing_agent_native_adapter" not in tools_by_name["apply_world_model_proposal_resolution"]["gap_codes"]
+    assert "output_schema_too_generic" not in tools_by_name["apply_world_model_proposal_resolution"]["gap_codes"]
     assert internal_tool_names().issubset(set(tools_by_name))
 
 

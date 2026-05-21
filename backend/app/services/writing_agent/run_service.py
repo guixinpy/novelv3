@@ -296,16 +296,6 @@ class WritingAgentRunService:
                 extra_instruction=extra_instruction,
                 forbidden_terms=forbidden_terms,
             )
-        if tool.tool_name == "apply_world_model_proposal_resolution":
-            from app.core.world_proposal_resolution_apply import apply_world_model_proposal_resolution
-
-            decisions = tool.params.get("decisions")
-            return apply_world_model_proposal_resolution(
-                self.db,
-                project_id,
-                decisions if isinstance(decisions, list) else [],
-                confirm_apply=tool.params.get("confirm_apply") is True,
-            )
         if tool.tool_name == "seed_continuity_anchor_proposals":
             from app.core.continuity_anchor_proposals import seed_continuity_anchor_proposals
 

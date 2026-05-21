@@ -493,6 +493,20 @@ def _draft_high_value_world_proposal_resolution_decisions(
     )
 
 
+def _apply_world_model_proposal_resolution(
+    context: WritingAgentToolContext,
+    tool: WritingAgentToolRequest,
+) -> dict[str, Any]:
+    from app.services.writing_agent.world_model_resolution_apply_tool import apply_world_model_proposal_resolution_tool
+
+    return apply_world_model_proposal_resolution_tool(
+        context.db,
+        context.project_id,
+        decisions=tool.params.get("decisions"),
+        confirm_apply=tool.params.get("confirm_apply") is True,
+    )
+
+
 _STATIC_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
     "describe_agent_tools": WritingAgentToolAdapter(
         "describe_agent_tools",
@@ -667,6 +681,12 @@ _STATIC_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
         _preview_world_model_proposal_resolution,
         category="athena_world_model",
         mutability="read",
+    ),
+    "apply_world_model_proposal_resolution": WritingAgentToolAdapter(
+        "apply_world_model_proposal_resolution",
+        _apply_world_model_proposal_resolution,
+        category="athena_world_model",
+        mutability="write",
     ),
     "draft_world_model_proposal_resolution_decisions": WritingAgentToolAdapter(
         "draft_world_model_proposal_resolution_decisions",

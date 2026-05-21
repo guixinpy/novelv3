@@ -95,6 +95,29 @@ def test_agent_tool_registry_generate_chapter_has_structured_output_contract():
     assert properties["recommended_next_tools"]["type"] == "array"
 
 
+def test_agent_tool_registry_apply_world_model_resolution_has_structured_output_contract():
+    descriptor = get_agent_tool_descriptor("apply_world_model_proposal_resolution")
+
+    assert descriptor is not None
+    properties = descriptor.output_schema["properties"]
+    assert {
+        "status",
+        "profile_version",
+        "before_actionable_items",
+        "after_actionable_items",
+        "applied_count",
+        "applied_reviews",
+        "invalid_decision_count",
+        "invalid_decisions",
+        "requires_confirmation",
+        "should_generate_next_chapter",
+        "recommended_actions",
+    }.issubset(properties)
+    assert properties["applied_reviews"]["type"] == "array"
+    assert properties["requires_confirmation"]["type"] == "boolean"
+    assert properties["profile_version"]["type"] == ["integer", "null"]
+
+
 def test_agent_tool_registry_includes_plan_recovery_tools():
     descriptor = get_agent_tool_descriptor("plan_recovery_tools")
 
