@@ -188,6 +188,7 @@ def test_tool_executor_static_adapter_names_are_report_or_agent_native_tools():
         "create_revision_draft",
         "apply_planner_revision_patch",
         "expand_chapter_to_target",
+        "compress_chapter_to_target",
         "repair_longform_maintenance",
         "review_world_model_proposals",
         "plan_world_model_proposal_resolution",
@@ -231,6 +232,7 @@ def test_tool_executor_lists_unhandled_internal_tools_for_migration_tracking():
     assert "create_revision_draft" not in names
     assert "apply_planner_revision_patch" not in names
     assert "expand_chapter_to_target" not in names
+    assert "compress_chapter_to_target" not in names
     assert "backfill_outline_gaps" not in names
     assert "repair_longform_maintenance" not in names
     assert "inspect_agent_trace_audit" not in names
@@ -339,6 +341,18 @@ def test_tool_executor_exposes_expand_chapter_to_target_adapter_metadata():
     }
 
 
+def test_tool_executor_exposes_compress_chapter_to_target_adapter_metadata():
+    metadata = writing_agent_tool_adapter_metadata("compress_chapter_to_target")
+
+    assert metadata == {
+        "tool_name": "compress_chapter_to_target",
+        "adapter_type": "static",
+        "category": "revision",
+        "mutability": "write",
+        "handler_name": "_compress_chapter_to_target",
+    }
+
+
 @pytest.mark.asyncio
 async def test_tool_executor_handles_inspect_agent_tool_contracts(db_session):
     project = Project(name="Tool Contract Snapshot")
@@ -403,6 +417,10 @@ async def test_tool_executor_handles_inspect_agent_tool_contracts(db_session):
     assert tools_by_name["expand_chapter_to_target"]["mutability"] == "write"
     assert "missing_agent_native_adapter" not in tools_by_name["expand_chapter_to_target"]["gap_codes"]
     assert "output_schema_too_generic" not in tools_by_name["expand_chapter_to_target"]["gap_codes"]
+    assert tools_by_name["compress_chapter_to_target"]["adapter_type"] == "static"
+    assert tools_by_name["compress_chapter_to_target"]["mutability"] == "write"
+    assert "missing_agent_native_adapter" not in tools_by_name["compress_chapter_to_target"]["gap_codes"]
+    assert "output_schema_too_generic" not in tools_by_name["compress_chapter_to_target"]["gap_codes"]
     assert internal_tool_names().issubset(set(tools_by_name))
 
 
@@ -1293,6 +1311,48 @@ async def test_tool_executor_dispatches_expand_chapter_to_target_adapter(db_sess
     assert result.handled is True
     assert result.output == {"status": "completed", "chapter_index": 9, "word_count": 2200}
     assert calls == [(project.id, 9, 2100, "补足动作细节")]
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_dispatches_compress_chapter_to_target_adapter(db_session, monkeypatch):
+    project = Project(name="Executor Chapter Compression")
+    db_session.add(project)
+    db_session.commit()
+    calls: list[tuple[str, int, int | None, str, list[str]]] = []
+
+    async def fake_compression_tool(
+        db,
+        project_id: str,
+        *,
+        chapter_index: int,
+        target_max_word_count: int | None,
+        extra_instruction: str,
+        forbidden_terms: list[str],
+    ):
+        calls.append((project_id, chapter_index, target_max_word_count, extra_instruction, forbidden_terms))
+        return {"status": "completed", "chapter_index": chapter_index, "word_count": 2200}
+
+    monkeypatch.setattr(
+        "app.services.writing_agent.chapter_compression_tool.compress_chapter_to_target_tool",
+        fake_compression_tool,
+    )
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(
+            tool_name="compress_chapter_to_target",
+            params={
+                "chapter_index": "10",
+                "target_max_word_count": "2300",
+                "extra_instruction": "保留悬念",
+                "forbidden_terms": ["  啰嗦  ", "", "重复"],
+            },
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output == {"status": "completed", "chapter_index": 10, "word_count": 2200}
+    assert calls == [(project.id, 10, 2300, "保留悬念", ["啰嗦", "重复"])]
 
 
 @pytest.mark.asyncio

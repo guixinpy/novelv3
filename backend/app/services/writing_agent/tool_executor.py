@@ -434,6 +434,20 @@ async def _expand_chapter_to_target(context: WritingAgentToolContext, tool: Writ
     )
 
 
+async def _compress_chapter_to_target(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
+    from app.services.writing_agent.chapter_compression_tool import compress_chapter_to_target_tool
+
+    forbidden_terms = [str(item).strip() for item in (tool.params.get("forbidden_terms") or []) if str(item).strip()]
+    return await compress_chapter_to_target_tool(
+        context.db,
+        context.project_id,
+        chapter_index=_chapter_index(tool),
+        target_max_word_count=_optional_int(tool.params.get("target_max_word_count")),
+        extra_instruction=str(tool.params.get("extra_instruction") or ""),
+        forbidden_terms=forbidden_terms,
+    )
+
+
 def _backfill_outline_gaps(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
     from app.core.outline_lookup import backfill_missing_outline_chapters_from_content
 
@@ -701,6 +715,12 @@ _STATIC_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
     "expand_chapter_to_target": WritingAgentToolAdapter(
         "expand_chapter_to_target",
         _expand_chapter_to_target,
+        category="revision",
+        mutability="write",
+    ),
+    "compress_chapter_to_target": WritingAgentToolAdapter(
+        "compress_chapter_to_target",
+        _compress_chapter_to_target,
         category="revision",
         mutability="write",
     ),

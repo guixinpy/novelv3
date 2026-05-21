@@ -89,6 +89,36 @@ _CHAPTER_EXPANSION_OUTPUT = _object_schema(
         "recommended_next_tools": {"type": "array"},
     }
 )
+_CHAPTER_COMPRESSION_OUTPUT = _object_schema(
+    {
+        "status": {"type": "string"},
+        "reason": {"type": "string"},
+        "message": {"type": "string"},
+        "chapter_index": {"type": "integer"},
+        "chapter_id": {"type": "string"},
+        "revision_id": {"type": "string"},
+        "revision_index": {"type": "integer"},
+        "base_version_id": {"type": "string"},
+        "result_version_id": {"type": "string"},
+        "trace_id": {"type": "string"},
+        "previous_word_count": {"type": "integer"},
+        "word_count": {"type": "integer"},
+        "target_min_word_count": {"type": "integer"},
+        "target_max_word_count": {"type": "integer"},
+        "forbidden_terms": {"type": "array"},
+        "remaining_forbidden_terms": {"type": "array"},
+        "postcondition_retry_count": {"type": "integer"},
+        "compression_attempt_count": {"type": "integer"},
+        "failed_attempts": {"type": "array"},
+        "deterministic_repair_applied": {"type": "boolean"},
+        "deterministic_trim_applied": {"type": "boolean"},
+        "change_summary": {"type": "string"},
+        "warnings": {"type": "array"},
+        "pending_world_model_proposal_count": {"type": "integer"},
+        "should_generate_next_chapter": {"type": "boolean"},
+        "recommended_next_tools": {"type": "array"},
+    }
+)
 _WINDOW_PARAMS = _object_schema(
     {
         "chapter_index": {"type": "integer", "minimum": 1},
@@ -820,8 +850,15 @@ _TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         module="revision",
         category="revision",
         description="在保留关键信息的前提下压缩明显失控的章节篇幅。",
-        input_schema=_object_schema({"chapter_index": {"type": "integer", "minimum": 1}, "target_max_word_count": {"type": "integer"}}),
-        output_schema=_STATUS_OUTPUT,
+        input_schema=_object_schema(
+            {
+                "chapter_index": {"type": "integer", "minimum": 1},
+                "target_max_word_count": {"type": "integer"},
+                "extra_instruction": {"type": "string"},
+                "forbidden_terms": {"type": "array"},
+            }
+        ),
+        output_schema=_CHAPTER_COMPRESSION_OUTPUT,
         target_type="revision",
         internal=True,
         sort_key=150,

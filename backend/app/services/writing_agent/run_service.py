@@ -255,21 +255,6 @@ class WritingAgentRunService:
                 "merge": merge,
                 "trace_id": getattr(outline, "last_expansion_trace_id", None),
             }
-        if tool.tool_name == "compress_chapter_to_target":
-            from app.core.chapter_compression import compress_chapter_to_target
-
-            chapter_index = int(tool.params.get("chapter_index") or 1)
-            target_max_word_count = _optional_int(tool.params.get("target_max_word_count"))
-            extra_instruction = str(tool.params.get("extra_instruction") or "")
-            forbidden_terms = [str(item).strip() for item in (tool.params.get("forbidden_terms") or []) if str(item).strip()]
-            return await compress_chapter_to_target(
-                self.db,
-                project_id,
-                chapter_index,
-                target_max_word_count=target_max_word_count,
-                extra_instruction=extra_instruction,
-                forbidden_terms=forbidden_terms,
-            )
         if tool.tool_name == "seed_continuity_anchor_proposals":
             from app.core.continuity_anchor_proposals import seed_continuity_anchor_proposals
 
