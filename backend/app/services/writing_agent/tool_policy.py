@@ -75,3 +75,20 @@ def should_stop_after_report(
 
 def successful_report_block_message(tool_name: str) -> str:
     return REPORT_BLOCK_MESSAGES.get(tool_name, "报告未通过，已停止后续写作工具。")
+
+
+def report_policy_for_tool(tool_name: str) -> dict[str, object]:
+    stops_after_report = tool_name in REPORT_STOP_TOOLS
+    allowed_followups = sorted(
+        next_tool for current_tool, next_tool in ALLOWED_REPORT_FOLLOWUPS if current_tool == tool_name
+    )
+    return {
+        "stop_check_required": stops_after_report,
+        "stop_condition": (
+            "non_terminal_step_and_should_generate_next_chapter_false_without_allowed_followup"
+            if stops_after_report
+            else None
+        ),
+        "allowed_followups": allowed_followups,
+        "block_message": successful_report_block_message(tool_name) if stops_after_report else None,
+    }

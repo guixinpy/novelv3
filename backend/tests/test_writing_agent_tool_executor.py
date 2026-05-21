@@ -418,6 +418,7 @@ async def test_tool_executor_handles_inspect_agent_tool_contracts(db_session):
     assert result.output["coverage"]["adapter_coverage_ratio"] < 1.0
     assert "confirmation_contract_ratio" in result.output["coverage"]
     assert "tool_visibility_projection" in result.output["reference_alignment"]["patterns"]
+    assert "runtime_policy_projection" in result.output["reference_alignment"]["patterns"]
     assert "permission_scope_category" in result.output["reference_alignment"]["patterns"]
     assert "references/agent-projects/openclaw" in result.output["reference_alignment"]["source_refs"]
     tools_by_name = {tool["name"]: tool for tool in result.output["tools"]}
@@ -438,6 +439,12 @@ async def test_tool_executor_handles_inspect_agent_tool_contracts(db_session):
         "plan_recovery_tools",
     ]
     assert tools_by_name["generate_chapter"]["resource_scope"] == "manuscript"
+    assert tools_by_name["generate_chapter"]["report_policy"] == {
+        "stop_check_required": False,
+        "stop_condition": None,
+        "allowed_followups": [],
+        "block_message": None,
+    }
     assert tools_by_name["generate_chapter"]["adapter_type"] == "static"
     assert "missing_agent_native_adapter" not in tools_by_name["generate_chapter"]["gap_codes"]
     assert "output_schema_too_generic" not in tools_by_name["generate_chapter"]["gap_codes"]
@@ -453,6 +460,12 @@ async def test_tool_executor_handles_inspect_agent_tool_contracts(db_session):
     assert "output_schema_too_generic" not in tools_by_name["import_setup_world_model"]["gap_codes"]
     assert tools_by_name["seed_continuity_anchor_proposals"]["adapter_type"] == "static"
     assert tools_by_name["seed_continuity_anchor_proposals"]["mutability"] == "write"
+    assert tools_by_name["seed_continuity_anchor_proposals"]["report_policy"] == {
+        "stop_check_required": True,
+        "stop_condition": "non_terminal_step_and_should_generate_next_chapter_false_without_allowed_followup",
+        "allowed_followups": ["apply_world_model_proposal_resolution"],
+        "block_message": "稳定连续性锚点提案尚未审批，已停止后续写作工具。",
+    }
     assert "missing_agent_native_adapter" not in tools_by_name["seed_continuity_anchor_proposals"]["gap_codes"]
     assert "output_schema_too_generic" not in tools_by_name["seed_continuity_anchor_proposals"]["gap_codes"]
     assert tools_by_name["apply_world_model_proposal_resolution"]["adapter_type"] == "static"

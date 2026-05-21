@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any
 
+from app.services.writing_agent.tool_policy import report_policy_for_tool
 from app.services.writing_agent.tool_registry import AgentToolDescriptor, list_agent_tool_descriptors
 
 REFERENCE_ALIGNMENT = {
@@ -10,6 +11,7 @@ REFERENCE_ALIGNMENT = {
         "tool_visibility_projection",
         "schema_backed_tool_contracts",
         "normalized_tool_results",
+        "runtime_policy_projection",
         "traceable_failure_recovery",
         "memory_tool_boundary",
         "permission_scope_category",
@@ -144,6 +146,7 @@ def _tool_contract(
         "preconditions": list(descriptor.availability_checks),
         "postconditions": _postconditions(descriptor, mutability),
         "recovery_tools": _recovery_tools(descriptor, mutability),
+        "report_policy": report_policy_for_tool(descriptor.name),
         "gap_codes": [gap["code"] for gap in gaps],
         "contract_status": "ready" if not gaps else "needs_work",
     }
