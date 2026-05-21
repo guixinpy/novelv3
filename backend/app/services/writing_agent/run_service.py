@@ -255,13 +255,6 @@ class WritingAgentRunService:
                 "merge": merge,
                 "trace_id": getattr(outline, "last_expansion_trace_id", None),
             }
-        if tool.tool_name == "create_revision_draft":
-            from app.core.chapter_revision_drafts import create_revision_draft_from_plan
-            from app.core.chapter_revision_planner import plan_chapter_revision
-
-            chapter_index = int(tool.params.get("chapter_index") or 1)
-            plan = plan_chapter_revision(self.db, project_id, chapter_index)
-            return create_revision_draft_from_plan(self.db, project_id, chapter_index, plan)
         if tool.tool_name == "apply_planner_revision_patch":
             from app.core.chapter_revision_apply import apply_planner_revision_patch
 

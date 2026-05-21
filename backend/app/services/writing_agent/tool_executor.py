@@ -400,6 +400,16 @@ def _plan_chapter_revision(context: WritingAgentToolContext, tool: WritingAgentT
     return plan_chapter_revision(context.db, context.project_id, _chapter_index(tool))
 
 
+def _create_revision_draft(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
+    from app.services.writing_agent.revision_draft_tool import create_revision_draft_tool
+
+    return create_revision_draft_tool(
+        context.db,
+        context.project_id,
+        chapter_index=_chapter_index(tool),
+    )
+
+
 def _backfill_outline_gaps(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
     from app.core.outline_lookup import backfill_missing_outline_chapters_from_content
 
@@ -651,6 +661,12 @@ _STATIC_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
         _plan_chapter_revision,
         category="review",
         mutability="read",
+    ),
+    "create_revision_draft": WritingAgentToolAdapter(
+        "create_revision_draft",
+        _create_revision_draft,
+        category="revision",
+        mutability="write",
     ),
     "backfill_outline_gaps": WritingAgentToolAdapter(
         "backfill_outline_gaps",
