@@ -419,6 +419,7 @@ async def test_tool_executor_handles_inspect_agent_tool_contracts(db_session):
     assert "confirmation_contract_ratio" in result.output["coverage"]
     assert "tool_visibility_projection" in result.output["reference_alignment"]["patterns"]
     assert "runtime_policy_projection" in result.output["reference_alignment"]["patterns"]
+    assert "recommendation_surface_normalization" in result.output["reference_alignment"]["patterns"]
     assert "permission_scope_category" in result.output["reference_alignment"]["patterns"]
     assert "references/agent-projects/openclaw" in result.output["reference_alignment"]["source_refs"]
     tools_by_name = {tool["name"]: tool for tool in result.output["tools"]}
@@ -445,6 +446,14 @@ async def test_tool_executor_handles_inspect_agent_tool_contracts(db_session):
         "allowed_followups": [],
         "block_message": None,
     }
+    assert tools_by_name["generate_chapter"]["recommendation_contract"] == {
+        "output_fields": ["recommended_next_tools"],
+        "canonical_output_field": "recommended_next_tools",
+        "legacy_output_fields": [],
+        "policy_followups": [],
+        "recovery_followups": ["plan_recovery_tools", "inspect_agent_trace_audit"],
+        "deterministic_followups": ["plan_recovery_tools", "inspect_agent_trace_audit"],
+    }
     assert tools_by_name["generate_chapter"]["adapter_type"] == "static"
     assert "missing_agent_native_adapter" not in tools_by_name["generate_chapter"]["gap_codes"]
     assert "output_schema_too_generic" not in tools_by_name["generate_chapter"]["gap_codes"]
@@ -466,11 +475,31 @@ async def test_tool_executor_handles_inspect_agent_tool_contracts(db_session):
         "allowed_followups": ["apply_world_model_proposal_resolution"],
         "block_message": "稳定连续性锚点提案尚未审批，已停止后续写作工具。",
     }
+    assert tools_by_name["seed_continuity_anchor_proposals"]["recommendation_contract"] == {
+        "output_fields": ["recommended_actions"],
+        "canonical_output_field": "recommended_actions",
+        "legacy_output_fields": ["recommended_actions"],
+        "policy_followups": ["apply_world_model_proposal_resolution"],
+        "recovery_followups": ["plan_recovery_tools", "inspect_agent_trace_audit"],
+        "deterministic_followups": [
+            "apply_world_model_proposal_resolution",
+            "plan_recovery_tools",
+            "inspect_agent_trace_audit",
+        ],
+    }
     assert "missing_agent_native_adapter" not in tools_by_name["seed_continuity_anchor_proposals"]["gap_codes"]
     assert "output_schema_too_generic" not in tools_by_name["seed_continuity_anchor_proposals"]["gap_codes"]
     assert tools_by_name["apply_world_model_proposal_resolution"]["adapter_type"] == "static"
     assert tools_by_name["apply_world_model_proposal_resolution"]["mutability"] == "guarded_write"
     assert tools_by_name["apply_world_model_proposal_resolution"]["requires_confirmation"] is True
+    assert tools_by_name["review_world_model_proposals"]["recommendation_contract"] == {
+        "output_fields": [],
+        "canonical_output_field": None,
+        "legacy_output_fields": [],
+        "policy_followups": ["plan_world_model_proposal_resolution"],
+        "recovery_followups": ["review_world_model_proposals", "plan_world_model_proposal_resolution"],
+        "deterministic_followups": ["plan_world_model_proposal_resolution", "review_world_model_proposals"],
+    }
     assert "missing_agent_native_adapter" not in tools_by_name["apply_world_model_proposal_resolution"]["gap_codes"]
     assert "output_schema_too_generic" not in tools_by_name["apply_world_model_proposal_resolution"]["gap_codes"]
     assert tools_by_name["create_revision_draft"]["adapter_type"] == "static"

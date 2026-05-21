@@ -12,6 +12,7 @@ REFERENCE_ALIGNMENT = {
         "schema_backed_tool_contracts",
         "normalized_tool_results",
         "runtime_policy_projection",
+        "recommendation_surface_normalization",
         "traceable_failure_recovery",
         "memory_tool_boundary",
         "permission_scope_category",
@@ -55,6 +56,7 @@ WRITE_PREFIXES = (
 )
 CONFIRM_PARAM_NAMES = ("confirm_apply", "confirm_enqueue", "confirm_execute")
 HASH_PARAM_NAMES = ("plan_hash", "attempt_manifest_hash", "approval_contract_hash", "expected_post_generation_review_hash")
+RECOMMENDATION_OUTPUT_FIELDS = ("recommended_next_tools", "recommended_actions")
 MEMORY_BOUNDARY_BY_CATEGORY = {
     "knowledge_base": "knowledge_base",
     "longform_memory": "longform_memory",
@@ -118,6 +120,8 @@ def _tool_contract(
         output_schema_present=output_schema_present,
         mutability=mutability,
     )
+    recovery_tools = _recovery_tools(descriptor, mutability)
+    report_policy = report_policy_for_tool(descriptor.name)
     contract = {
         "name": descriptor.name,
         "module": descriptor.module,
@@ -145,8 +149,9 @@ def _tool_contract(
         "warning_checks": list(descriptor.warning_checks),
         "preconditions": list(descriptor.availability_checks),
         "postconditions": _postconditions(descriptor, mutability),
-        "recovery_tools": _recovery_tools(descriptor, mutability),
-        "report_policy": report_policy_for_tool(descriptor.name),
+        "recovery_tools": recovery_tools,
+        "report_policy": report_policy,
+        "recommendation_contract": _recommendation_contract(descriptor, report_policy, recovery_tools),
         "gap_codes": [gap["code"] for gap in gaps],
         "contract_status": "ready" if not gaps else "needs_work",
     }
@@ -237,6 +242,37 @@ def _recovery_tools(descriptor: AgentToolDescriptor, mutability: str) -> list[st
     if descriptor.category == "generation" or mutability != "read":
         return ["plan_recovery_tools", "inspect_agent_trace_audit"]
     return []
+
+
+def _recommendation_contract(
+    descriptor: AgentToolDescriptor,
+    report_policy: dict[str, object],
+    recovery_tools: list[str],
+) -> dict[str, object]:
+    properties = descriptor.output_schema.get("properties") if isinstance(descriptor.output_schema, dict) else {}
+    output_fields = [
+        field for field in RECOMMENDATION_OUTPUT_FIELDS if isinstance(properties, dict) and field in properties
+    ]
+    policy_followups = [str(tool) for tool in report_policy.get("allowed_followups") or []]
+    return {
+        "output_fields": output_fields,
+        "canonical_output_field": output_fields[0] if output_fields else None,
+        "legacy_output_fields": [field for field in output_fields if field != "recommended_next_tools"],
+        "policy_followups": policy_followups,
+        "recovery_followups": list(recovery_tools),
+        "deterministic_followups": _dedupe(policy_followups + recovery_tools),
+    }
+
+
+def _dedupe(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        result.append(value)
+    return result
 
 
 def _gaps(
