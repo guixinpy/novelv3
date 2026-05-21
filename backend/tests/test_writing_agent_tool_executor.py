@@ -174,6 +174,7 @@ def test_tool_executor_static_adapter_names_are_report_or_agent_native_tools():
         "inspect_agent_knowledge_base_route",
         "record_agent_knowledge_base_candidate",
         "analyze_chapter_world_model",
+        "expand_outline_window",
         "execute_longform_chapter_batch_preflight",
         "prepare_longform_chapter_batch_execution",
         "execute_longform_chapter_batch",
@@ -235,6 +236,7 @@ def test_tool_executor_lists_unhandled_internal_tools_for_migration_tracking():
     assert "compress_chapter_to_target" not in names
     assert "backfill_outline_gaps" not in names
     assert "repair_longform_maintenance" not in names
+    assert "expand_outline_window" not in names
     assert "inspect_agent_trace_audit" not in names
     assert "inspect_agent_memory_route" not in names
     assert "inspect_agent_world_model_route" not in names
@@ -290,6 +292,18 @@ def test_tool_executor_exposes_analyze_chapter_world_model_adapter_metadata():
         "category": "athena_world_model",
         "mutability": "write",
         "handler_name": "_analyze_chapter_world_model",
+    }
+
+
+def test_tool_executor_exposes_expand_outline_window_adapter_metadata():
+    metadata = writing_agent_tool_adapter_metadata("expand_outline_window")
+
+    assert metadata == {
+        "tool_name": "expand_outline_window",
+        "adapter_type": "static",
+        "category": "generation",
+        "mutability": "write",
+        "handler_name": "_expand_outline_window",
     }
 
 
@@ -401,6 +415,10 @@ async def test_tool_executor_handles_inspect_agent_tool_contracts(db_session):
     assert "output_schema_too_generic" not in tools_by_name["generate_chapter"]["gap_codes"]
     assert tools_by_name["analyze_chapter_world_model"]["adapter_type"] == "static"
     assert "missing_agent_native_adapter" not in tools_by_name["analyze_chapter_world_model"]["gap_codes"]
+    assert tools_by_name["expand_outline_window"]["adapter_type"] == "static"
+    assert tools_by_name["expand_outline_window"]["mutability"] == "write"
+    assert "missing_agent_native_adapter" not in tools_by_name["expand_outline_window"]["gap_codes"]
+    assert "output_schema_too_generic" not in tools_by_name["expand_outline_window"]["gap_codes"]
     assert tools_by_name["apply_world_model_proposal_resolution"]["adapter_type"] == "static"
     assert tools_by_name["apply_world_model_proposal_resolution"]["mutability"] == "guarded_write"
     assert tools_by_name["apply_world_model_proposal_resolution"]["requires_confirmation"] is True
@@ -1311,6 +1329,56 @@ async def test_tool_executor_dispatches_expand_chapter_to_target_adapter(db_sess
     assert result.handled is True
     assert result.output == {"status": "completed", "chapter_index": 9, "word_count": 2200}
     assert calls == [(project.id, 9, 2100, "补足动作细节")]
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_dispatches_expand_outline_window_adapter(db_session, monkeypatch):
+    project = Project(name="Executor Outline Window")
+    db_session.add(project)
+    db_session.commit()
+    calls: list[tuple[str, int, int, str | None]] = []
+
+    async def fake_outline_window_tool(
+        db,
+        project_id: str,
+        *,
+        start_chapter: int,
+        end_chapter: int,
+        command_args: str | None,
+    ):
+        calls.append((project_id, start_chapter, end_chapter, command_args))
+        return {
+            "status": "completed",
+            "start_chapter": start_chapter,
+            "end_chapter": end_chapter,
+            "outline_id": "outline-3",
+            "total_chapters": 600,
+            "added_chapter_count": 1,
+            "merge": {"added_chapter_count": 1},
+            "trace_id": "trace-3",
+            "recommended_next_tools": ["preflight_writing"],
+        }
+
+    monkeypatch.setattr(
+        "app.services.writing_agent.outline_window_tool.expand_outline_window_tool",
+        fake_outline_window_tool,
+    )
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(
+            tool_name="expand_outline_window",
+            command_args="补齐第3章",
+            params={"chapter_index": "3"},
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "completed"
+    assert result.output["start_chapter"] == 3
+    assert result.output["end_chapter"] == 3
+    assert calls == [(project.id, 3, 3, "补齐第3章")]
 
 
 @pytest.mark.asyncio

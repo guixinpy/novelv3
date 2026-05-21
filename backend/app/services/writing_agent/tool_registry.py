@@ -127,6 +127,20 @@ _WINDOW_PARAMS = _object_schema(
         "command_args": {"type": "string"},
     }
 )
+_OUTLINE_WINDOW_OUTPUT = _object_schema(
+    {
+        "status": {"type": "string"},
+        "start_chapter": {"type": "integer"},
+        "end_chapter": {"type": "integer"},
+        "outline_id": {"type": "string"},
+        "total_chapters": {"type": "integer"},
+        "added_chapter_count": {"type": "integer"},
+        "merge": {"type": "object"},
+        "trace_id": {"type": ["string", "null"]},
+        "should_generate_next_chapter": {"type": "boolean"},
+        "recommended_next_tools": {"type": "array"},
+    }
+)
 
 
 _TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
@@ -698,7 +712,7 @@ _TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         category="generation",
         description="补齐或扩展指定章节窗口的大纲，并注入 Agent 长篇约束。",
         input_schema=_WINDOW_PARAMS,
-        output_schema=_STATUS_OUTPUT,
+        output_schema=_OUTLINE_WINDOW_OUTPUT,
         target_type="outline",
         internal=True,
         sort_key=45,

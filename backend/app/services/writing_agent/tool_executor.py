@@ -227,6 +227,21 @@ def _analyze_chapter_world_model(context: WritingAgentToolContext, tool: Writing
     )
 
 
+async def _expand_outline_window(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
+    from app.services.writing_agent.outline_window_tool import expand_outline_window_tool
+
+    start_chapter = int(tool.params.get("start_chapter") or tool.params.get("chapter_index") or 1)
+    end_chapter = int(tool.params.get("end_chapter") or start_chapter)
+    command_args = str(tool.params.get("command_args") or tool.command_args or "").strip() or None
+    return await expand_outline_window_tool(
+        context.db,
+        context.project_id,
+        start_chapter=start_chapter,
+        end_chapter=end_chapter,
+        command_args=command_args,
+    )
+
+
 def _inspect_agent_knowledge_base_route(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
     from app.services.writing_agent.agent_knowledge_base_route import inspect_agent_knowledge_base_route
 
@@ -614,6 +629,12 @@ _STATIC_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
         "analyze_chapter_world_model",
         _analyze_chapter_world_model,
         category="athena_world_model",
+        mutability="write",
+    ),
+    "expand_outline_window": WritingAgentToolAdapter(
+        "expand_outline_window",
+        _expand_outline_window,
+        category="generation",
         mutability="write",
     ),
     "inspect_agent_knowledge_base_route": WritingAgentToolAdapter(

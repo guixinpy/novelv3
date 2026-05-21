@@ -231,30 +231,6 @@ class WritingAgentRunService:
             from app.core.athena_longform import import_setup_to_world_model
 
             return import_setup_to_world_model(db=self.db, project_id=project_id)
-        if tool.tool_name == "expand_outline_window":
-            from app.api.outlines import expand_outline_window
-
-            start_chapter = int(tool.params.get("start_chapter") or tool.params.get("chapter_index") or 1)
-            end_chapter = int(tool.params.get("end_chapter") or start_chapter)
-            command_args = str(tool.params.get("command_args") or tool.command_args or "").strip() or None
-            outline = await expand_outline_window(
-                project_id,
-                start_chapter=start_chapter,
-                end_chapter=end_chapter,
-                db=self.db,
-                command_args=command_args,
-            )
-            merge = getattr(outline, "outline_expansion_result", {}) or {}
-            return {
-                "status": "completed",
-                "start_chapter": start_chapter,
-                "end_chapter": end_chapter,
-                "outline_id": outline.id,
-                "total_chapters": outline.total_chapters,
-                "added_chapter_count": int(merge.get("added_chapter_count") or 0),
-                "merge": merge,
-                "trace_id": getattr(outline, "last_expansion_trace_id", None),
-            }
         if tool.tool_name == "seed_continuity_anchor_proposals":
             from app.core.continuity_anchor_proposals import seed_continuity_anchor_proposals
 

@@ -95,6 +95,29 @@ def test_agent_tool_registry_generate_chapter_has_structured_output_contract():
     assert properties["recommended_next_tools"]["type"] == "array"
 
 
+def test_agent_tool_registry_expand_outline_window_has_structured_output_contract():
+    descriptor = get_agent_tool_descriptor("expand_outline_window")
+
+    assert descriptor is not None
+    input_properties = descriptor.input_schema["properties"]
+    output_properties = descriptor.output_schema["properties"]
+    assert {"chapter_index", "start_chapter", "end_chapter", "command_args"}.issubset(input_properties)
+    assert {
+        "status",
+        "start_chapter",
+        "end_chapter",
+        "outline_id",
+        "total_chapters",
+        "added_chapter_count",
+        "merge",
+        "trace_id",
+        "recommended_next_tools",
+    }.issubset(output_properties)
+    assert output_properties["merge"]["type"] == "object"
+    assert output_properties["trace_id"]["type"] == ["string", "null"]
+    assert output_properties["recommended_next_tools"]["type"] == "array"
+
+
 def test_agent_tool_registry_apply_world_model_resolution_has_structured_output_contract():
     descriptor = get_agent_tool_descriptor("apply_world_model_proposal_resolution")
 
