@@ -135,6 +135,26 @@ def test_agent_tool_registry_import_setup_world_model_has_structured_output_cont
     assert properties["recommended_next_tools"]["type"] == "array"
 
 
+def test_agent_tool_registry_seed_continuity_anchor_proposals_has_structured_output_contract():
+    descriptor = get_agent_tool_descriptor("seed_continuity_anchor_proposals")
+
+    assert descriptor is not None
+    properties = descriptor.output_schema["properties"]
+    assert {
+        "status",
+        "project_id",
+        "profile_version",
+        "proposal_bundle_id",
+        "created_item_count",
+        "created_items",
+        "pending_anchor_count",
+        "should_generate_next_chapter",
+        "recommended_actions",
+    }.issubset(properties)
+    assert properties["created_items"]["type"] == "array"
+    assert properties["recommended_actions"]["type"] == "array"
+
+
 def test_agent_tool_registry_apply_world_model_resolution_has_structured_output_contract():
     descriptor = get_agent_tool_descriptor("apply_world_model_proposal_resolution")
 

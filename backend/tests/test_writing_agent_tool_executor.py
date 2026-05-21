@@ -174,6 +174,7 @@ def test_tool_executor_static_adapter_names_are_report_or_agent_native_tools():
         "inspect_agent_knowledge_base_route",
         "record_agent_knowledge_base_candidate",
         "import_setup_world_model",
+        "seed_continuity_anchor_proposals",
         "analyze_chapter_world_model",
         "expand_outline_window",
         "execute_longform_chapter_batch_preflight",
@@ -244,6 +245,7 @@ def test_tool_executor_lists_unhandled_internal_tools_for_migration_tracking():
     assert "review_chapter_quality" not in names
     assert "plan_writing_agent_run" not in names
     assert "import_setup_world_model" not in names
+    assert "seed_continuity_anchor_proposals" not in names
     assert "analyze_chapter_world_model" not in names
     assert "apply_world_model_proposal_resolution" not in names
     assert "plan_longform_chapter_batch" not in names
@@ -318,6 +320,18 @@ def test_tool_executor_exposes_import_setup_world_model_adapter_metadata():
         "category": "athena_world_model",
         "mutability": "write",
         "handler_name": "_import_setup_world_model",
+    }
+
+
+def test_tool_executor_exposes_seed_continuity_anchor_proposals_adapter_metadata():
+    metadata = writing_agent_tool_adapter_metadata("seed_continuity_anchor_proposals")
+
+    assert metadata == {
+        "tool_name": "seed_continuity_anchor_proposals",
+        "adapter_type": "static",
+        "category": "maintenance",
+        "mutability": "write",
+        "handler_name": "_seed_continuity_anchor_proposals",
     }
 
 
@@ -437,6 +451,10 @@ async def test_tool_executor_handles_inspect_agent_tool_contracts(db_session):
     assert tools_by_name["import_setup_world_model"]["mutability"] == "write"
     assert "missing_agent_native_adapter" not in tools_by_name["import_setup_world_model"]["gap_codes"]
     assert "output_schema_too_generic" not in tools_by_name["import_setup_world_model"]["gap_codes"]
+    assert tools_by_name["seed_continuity_anchor_proposals"]["adapter_type"] == "static"
+    assert tools_by_name["seed_continuity_anchor_proposals"]["mutability"] == "write"
+    assert "missing_agent_native_adapter" not in tools_by_name["seed_continuity_anchor_proposals"]["gap_codes"]
+    assert "output_schema_too_generic" not in tools_by_name["seed_continuity_anchor_proposals"]["gap_codes"]
     assert tools_by_name["apply_world_model_proposal_resolution"]["adapter_type"] == "static"
     assert tools_by_name["apply_world_model_proposal_resolution"]["mutability"] == "guarded_write"
     assert tools_by_name["apply_world_model_proposal_resolution"]["requires_confirmation"] is True
@@ -1439,6 +1457,52 @@ async def test_tool_executor_dispatches_import_setup_world_model_adapter(db_sess
     assert result.output["status"] == "completed"
     assert result.output["profile_version"] == 1
     assert result.output["recommended_next_tools"] == ["preflight_writing", "inspect_agent_world_model_route"]
+    assert calls == [project.id]
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_dispatches_seed_continuity_anchor_proposals_adapter(db_session, monkeypatch):
+    project = Project(name="Executor Continuity Anchor Seed")
+    db_session.add(project)
+    db_session.commit()
+    calls: list[str] = []
+
+    def fake_seed_tool(db, project_id: str):
+        calls.append(project_id)
+        return {
+            "status": "blocked",
+            "project_id": project_id,
+            "profile_version": 1,
+            "proposal_bundle_id": "bundle-1",
+            "created_item_count": 2,
+            "created_items": [
+                {
+                    "proposal_item_id": "item-1",
+                    "claim_id": "claim-1",
+                    "subject_ref": "林深",
+                    "predicate": "father_name",
+                }
+            ],
+            "pending_anchor_count": 2,
+            "should_generate_next_chapter": False,
+            "recommended_actions": ["apply_world_model_proposal_resolution"],
+        }
+
+    monkeypatch.setattr(
+        "app.services.writing_agent.continuity_anchor_seed_tool.seed_continuity_anchor_proposals_tool",
+        fake_seed_tool,
+    )
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(tool_name="seed_continuity_anchor_proposals", params={}),
+    )
+
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "blocked"
+    assert result.output["created_item_count"] == 2
+    assert result.output["recommended_actions"] == ["apply_world_model_proposal_resolution"]
     assert calls == [project.id]
 
 

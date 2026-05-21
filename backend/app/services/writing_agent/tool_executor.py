@@ -233,6 +233,15 @@ def _import_setup_world_model(context: WritingAgentToolContext, tool: WritingAge
     return import_setup_world_model_tool(context.db, context.project_id)
 
 
+def _seed_continuity_anchor_proposals(
+    context: WritingAgentToolContext,
+    tool: WritingAgentToolRequest,
+) -> dict[str, Any]:
+    from app.services.writing_agent.continuity_anchor_seed_tool import seed_continuity_anchor_proposals_tool
+
+    return seed_continuity_anchor_proposals_tool(context.db, context.project_id)
+
+
 async def _expand_outline_window(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
     from app.services.writing_agent.outline_window_tool import expand_outline_window_tool
 
@@ -635,6 +644,12 @@ _STATIC_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
         "import_setup_world_model",
         _import_setup_world_model,
         category="athena_world_model",
+        mutability="write",
+    ),
+    "seed_continuity_anchor_proposals": WritingAgentToolAdapter(
+        "seed_continuity_anchor_proposals",
+        _seed_continuity_anchor_proposals,
+        category="maintenance",
         mutability="write",
     ),
     "analyze_chapter_world_model": WritingAgentToolAdapter(

@@ -227,10 +227,6 @@ class WritingAgentRunService:
                 command_args=tool.command_args,
                 action_params=tool.params,
             )
-        if tool.tool_name == "seed_continuity_anchor_proposals":
-            from app.core.continuity_anchor_proposals import seed_continuity_anchor_proposals
-
-            return seed_continuity_anchor_proposals(self.db, project_id)
         return {"status": "failed", "error": f"Unsupported writing agent tool: {tool.tool_name}"}
 
     def list_runs(self, project_id: str, *, offset: int = 0, limit: int = 20) -> dict[str, Any]:

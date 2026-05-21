@@ -151,6 +151,19 @@ _SETUP_WORLD_MODEL_IMPORT_OUTPUT = _object_schema(
         "recommended_next_tools": {"type": "array"},
     }
 )
+_CONTINUITY_ANCHOR_SEED_OUTPUT = _object_schema(
+    {
+        "status": {"type": "string"},
+        "project_id": {"type": "string"},
+        "profile_version": {"type": ["integer", "null"]},
+        "proposal_bundle_id": {"type": ["string", "null"]},
+        "created_item_count": {"type": "integer"},
+        "created_items": {"type": "array"},
+        "pending_anchor_count": {"type": "integer"},
+        "should_generate_next_chapter": {"type": "boolean"},
+        "recommended_actions": {"type": "array"},
+    }
+)
 
 
 _TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
@@ -1023,7 +1036,7 @@ _TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         category="maintenance",
         description="为关键连续性锚点生成世界模型提案。",
         input_schema=_object_schema(),
-        output_schema=_STATUS_OUTPUT,
+        output_schema=_CONTINUITY_ANCHOR_SEED_OUTPUT,
         target_type="world_model",
         internal=True,
         non_blocking_report=True,
