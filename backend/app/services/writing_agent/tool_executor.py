@@ -422,6 +422,18 @@ def _apply_planner_revision_patch(context: WritingAgentToolContext, tool: Writin
     )
 
 
+async def _expand_chapter_to_target(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
+    from app.services.writing_agent.chapter_expansion_tool import expand_chapter_to_target_tool
+
+    return await expand_chapter_to_target_tool(
+        context.db,
+        context.project_id,
+        chapter_index=_chapter_index(tool),
+        min_word_count=_optional_int(tool.params.get("min_word_count")),
+        extra_instruction=str(tool.params.get("extra_instruction") or ""),
+    )
+
+
 def _backfill_outline_gaps(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
     from app.core.outline_lookup import backfill_missing_outline_chapters_from_content
 
@@ -683,6 +695,12 @@ _STATIC_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
     "apply_planner_revision_patch": WritingAgentToolAdapter(
         "apply_planner_revision_patch",
         _apply_planner_revision_patch,
+        category="revision",
+        mutability="write",
+    ),
+    "expand_chapter_to_target": WritingAgentToolAdapter(
+        "expand_chapter_to_target",
+        _expand_chapter_to_target,
         category="revision",
         mutability="write",
     ),

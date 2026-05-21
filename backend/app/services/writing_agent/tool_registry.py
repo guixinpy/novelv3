@@ -66,6 +66,29 @@ _REVISION_PATCH_OUTPUT = _object_schema(
         "unsupported_actions": {"type": "array"},
     }
 )
+_CHAPTER_EXPANSION_OUTPUT = _object_schema(
+    {
+        "status": {"type": "string"},
+        "reason": {"type": "string"},
+        "message": {"type": "string"},
+        "chapter_index": {"type": "integer"},
+        "chapter_id": {"type": "string"},
+        "revision_id": {"type": "string"},
+        "revision_index": {"type": "integer"},
+        "base_version_id": {"type": "string"},
+        "result_version_id": {"type": "string"},
+        "trace_id": {"type": "string"},
+        "previous_word_count": {"type": "integer"},
+        "word_count": {"type": "integer"},
+        "target_min_word_count": {"type": "integer"},
+        "target_max_word_count": {"type": ["integer", "null"]},
+        "change_summary": {"type": "string"},
+        "warnings": {"type": "array"},
+        "pending_world_model_proposal_count": {"type": "integer"},
+        "should_generate_next_chapter": {"type": "boolean"},
+        "recommended_next_tools": {"type": "array"},
+    }
+)
 _WINDOW_PARAMS = _object_schema(
     {
         "chapter_index": {"type": "integer", "minimum": 1},
@@ -779,8 +802,14 @@ _TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         module="revision",
         category="revision",
         description="在保持剧情和设定一致的前提下扩写章节到目标篇幅。",
-        input_schema=_object_schema({"chapter_index": {"type": "integer", "minimum": 1}, "min_word_count": {"type": "integer"}}),
-        output_schema=_STATUS_OUTPUT,
+        input_schema=_object_schema(
+            {
+                "chapter_index": {"type": "integer", "minimum": 1},
+                "min_word_count": {"type": "integer"},
+                "extra_instruction": {"type": "string"},
+            }
+        ),
+        output_schema=_CHAPTER_EXPANSION_OUTPUT,
         target_type="revision",
         internal=True,
         sort_key=140,

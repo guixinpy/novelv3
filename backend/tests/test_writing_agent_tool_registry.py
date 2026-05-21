@@ -118,6 +118,37 @@ def test_agent_tool_registry_apply_world_model_resolution_has_structured_output_
     assert properties["profile_version"]["type"] == ["integer", "null"]
 
 
+def test_agent_tool_registry_expand_chapter_has_structured_output_contract():
+    descriptor = get_agent_tool_descriptor("expand_chapter_to_target")
+
+    assert descriptor is not None
+    input_properties = descriptor.input_schema["properties"]
+    output_properties = descriptor.output_schema["properties"]
+    assert {"chapter_index", "min_word_count", "extra_instruction"}.issubset(input_properties)
+    assert {
+        "status",
+        "chapter_index",
+        "chapter_id",
+        "revision_id",
+        "revision_index",
+        "base_version_id",
+        "result_version_id",
+        "trace_id",
+        "previous_word_count",
+        "word_count",
+        "target_min_word_count",
+        "target_max_word_count",
+        "change_summary",
+        "warnings",
+        "pending_world_model_proposal_count",
+        "should_generate_next_chapter",
+        "recommended_next_tools",
+    }.issubset(output_properties)
+    assert output_properties["warnings"]["type"] == "array"
+    assert output_properties["recommended_next_tools"]["type"] == "array"
+    assert output_properties["target_max_word_count"]["type"] == ["integer", "null"]
+
+
 def test_agent_tool_registry_includes_plan_recovery_tools():
     descriptor = get_agent_tool_descriptor("plan_recovery_tools")
 

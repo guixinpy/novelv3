@@ -187,6 +187,7 @@ def test_tool_executor_static_adapter_names_are_report_or_agent_native_tools():
         "plan_chapter_revision",
         "create_revision_draft",
         "apply_planner_revision_patch",
+        "expand_chapter_to_target",
         "repair_longform_maintenance",
         "review_world_model_proposals",
         "plan_world_model_proposal_resolution",
@@ -229,6 +230,7 @@ def test_tool_executor_lists_unhandled_internal_tools_for_migration_tracking():
 
     assert "create_revision_draft" not in names
     assert "apply_planner_revision_patch" not in names
+    assert "expand_chapter_to_target" not in names
     assert "backfill_outline_gaps" not in names
     assert "repair_longform_maintenance" not in names
     assert "inspect_agent_trace_audit" not in names
@@ -325,6 +327,18 @@ def test_tool_executor_exposes_apply_planner_revision_patch_adapter_metadata():
     }
 
 
+def test_tool_executor_exposes_expand_chapter_to_target_adapter_metadata():
+    metadata = writing_agent_tool_adapter_metadata("expand_chapter_to_target")
+
+    assert metadata == {
+        "tool_name": "expand_chapter_to_target",
+        "adapter_type": "static",
+        "category": "revision",
+        "mutability": "write",
+        "handler_name": "_expand_chapter_to_target",
+    }
+
+
 @pytest.mark.asyncio
 async def test_tool_executor_handles_inspect_agent_tool_contracts(db_session):
     project = Project(name="Tool Contract Snapshot")
@@ -385,6 +399,10 @@ async def test_tool_executor_handles_inspect_agent_tool_contracts(db_session):
     assert tools_by_name["apply_planner_revision_patch"]["mutability"] == "guarded_write"
     assert "missing_agent_native_adapter" not in tools_by_name["apply_planner_revision_patch"]["gap_codes"]
     assert "output_schema_too_generic" not in tools_by_name["apply_planner_revision_patch"]["gap_codes"]
+    assert tools_by_name["expand_chapter_to_target"]["adapter_type"] == "static"
+    assert tools_by_name["expand_chapter_to_target"]["mutability"] == "write"
+    assert "missing_agent_native_adapter" not in tools_by_name["expand_chapter_to_target"]["gap_codes"]
+    assert "output_schema_too_generic" not in tools_by_name["expand_chapter_to_target"]["gap_codes"]
     assert internal_tool_names().issubset(set(tools_by_name))
 
 
@@ -1239,6 +1257,42 @@ async def test_tool_executor_dispatches_apply_planner_revision_patch_adapter(db_
     assert result.handled is True
     assert result.output == {"status": "completed", "chapter_index": 8, "revision_id": "rev-8"}
     assert calls == [(project.id, 8, "rev-8")]
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_dispatches_expand_chapter_to_target_adapter(db_session, monkeypatch):
+    project = Project(name="Executor Chapter Expansion")
+    db_session.add(project)
+    db_session.commit()
+    calls: list[tuple[str, int, int | None, str]] = []
+
+    async def fake_expansion_tool(
+        db,
+        project_id: str,
+        *,
+        chapter_index: int,
+        min_word_count: int | None,
+        extra_instruction: str,
+    ):
+        calls.append((project_id, chapter_index, min_word_count, extra_instruction))
+        return {"status": "completed", "chapter_index": chapter_index, "word_count": 2200}
+
+    monkeypatch.setattr(
+        "app.services.writing_agent.chapter_expansion_tool.expand_chapter_to_target_tool",
+        fake_expansion_tool,
+    )
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(
+            tool_name="expand_chapter_to_target",
+            params={"chapter_index": "9", "min_word_count": "2100", "extra_instruction": "补足动作细节"},
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output == {"status": "completed", "chapter_index": 9, "word_count": 2200}
+    assert calls == [(project.id, 9, 2100, "补足动作细节")]
 
 
 @pytest.mark.asyncio

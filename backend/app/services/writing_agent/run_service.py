@@ -255,19 +255,6 @@ class WritingAgentRunService:
                 "merge": merge,
                 "trace_id": getattr(outline, "last_expansion_trace_id", None),
             }
-        if tool.tool_name == "expand_chapter_to_target":
-            from app.core.chapter_expansion import expand_chapter_to_target
-
-            chapter_index = int(tool.params.get("chapter_index") or 1)
-            min_word_count = _optional_int(tool.params.get("min_word_count"))
-            extra_instruction = str(tool.params.get("extra_instruction") or "")
-            return await expand_chapter_to_target(
-                self.db,
-                project_id,
-                chapter_index,
-                min_word_count=min_word_count,
-                extra_instruction=extra_instruction,
-            )
         if tool.tool_name == "compress_chapter_to_target":
             from app.core.chapter_compression import compress_chapter_to_target
 
