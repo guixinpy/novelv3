@@ -4,6 +4,7 @@ from collections import Counter
 from typing import Any
 
 from app.services.writing_agent.tool_policy import report_policy_for_tool
+from app.services.writing_agent.tool_recommendations import RECOMMENDATION_OUTPUT_FIELDS
 from app.services.writing_agent.tool_registry import AgentToolDescriptor, list_agent_tool_descriptors
 
 REFERENCE_ALIGNMENT = {
@@ -56,7 +57,6 @@ WRITE_PREFIXES = (
 )
 CONFIRM_PARAM_NAMES = ("confirm_apply", "confirm_enqueue", "confirm_execute")
 HASH_PARAM_NAMES = ("plan_hash", "attempt_manifest_hash", "approval_contract_hash", "expected_post_generation_review_hash")
-RECOMMENDATION_OUTPUT_FIELDS = ("recommended_next_tools", "recommended_actions")
 MEMORY_BOUNDARY_BY_CATEGORY = {
     "knowledge_base": "knowledge_base",
     "longform_memory": "longform_memory",

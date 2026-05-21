@@ -37,6 +37,7 @@ from app.services.writing_agent.tool_executor import (
     writing_agent_tool_adapter_metadata,
 )
 from app.services.writing_agent.tool_policy import should_stop_after_report, successful_report_block_message
+from app.services.writing_agent.tool_recommendations import normalize_tool_recommendations
 from app.services.writing_agent.recovery_policy import build_writing_agent_recovery
 from app.services.writing_agent.tool_registry import (
     allowed_tool_names,
@@ -845,6 +846,7 @@ def _agent_tool_result_envelope(
             output=output,
             planner=planner,
         ),
+        "recommendations": normalize_tool_recommendations(step.tool_name, output),
         "output_keys": output_keys,
     }
 

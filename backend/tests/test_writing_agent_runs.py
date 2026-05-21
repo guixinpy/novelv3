@@ -3562,6 +3562,11 @@ def test_agent_seed_continuity_anchor_proposals_creates_missing_anchor_items(cli
     assert output["status"] == "blocked"
     assert output["created_item_count"] >= 5
     assert output["should_generate_next_chapter"] is False
+    recommendations = output["agent_tool_result"]["recommendations"]
+    assert recommendations["source_fields"] == ["recommended_actions"]
+    assert recommendations["runtime_followups"] == ["apply_world_model_proposal_resolution"]
+    assert recommendations["policy_followups"] == ["apply_world_model_proposal_resolution"]
+    assert recommendations["canonical_followups"] == ["apply_world_model_proposal_resolution"]
     assert {(item.subject_ref, item.predicate) for item in stored_items} >= {
         ("林深", "father_name"),
         ("顾衍", "military_tag_number"),
