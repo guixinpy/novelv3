@@ -47,6 +47,25 @@ def _object_schema(properties: dict[str, Any] | None = None, required: tuple[str
 
 _STATUS_OUTPUT = _object_schema({"status": {"type": "string"}})
 _CHAPTER_PARAMS = _object_schema({"chapter_index": {"type": "integer", "minimum": 1}})
+_REVISION_PATCH_OUTPUT = _object_schema(
+    {
+        "status": {"type": "string"},
+        "reason": {"type": "string"},
+        "message": {"type": "string"},
+        "chapter_index": {"type": "integer"},
+        "chapter_id": {"type": "string"},
+        "revision_id": {"type": ["string", "null"]},
+        "revision_index": {"type": "integer"},
+        "base_version_id": {"type": "string"},
+        "result_version_id": {"type": "string"},
+        "applied_replacement_count": {"type": "integer"},
+        "applied_replacements": {"type": "array"},
+        "word_count": {"type": "integer"},
+        "should_generate_next_chapter": {"type": "boolean"},
+        "recommended_next_tools": {"type": "array"},
+        "unsupported_actions": {"type": "array"},
+    }
+)
 _WINDOW_PARAMS = _object_schema(
     {
         "chapter_index": {"type": "integer", "minimum": 1},
@@ -749,7 +768,7 @@ _TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         category="revision",
         description="应用由 Agent 修订计划生成的章节补丁。",
         input_schema=_object_schema({"chapter_index": {"type": "integer", "minimum": 1}, "revision_id": {"type": "string"}}),
-        output_schema=_STATUS_OUTPUT,
+        output_schema=_REVISION_PATCH_OUTPUT,
         target_type="revision",
         internal=True,
         sort_key=130,
