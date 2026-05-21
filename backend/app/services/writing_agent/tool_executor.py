@@ -227,6 +227,12 @@ def _analyze_chapter_world_model(context: WritingAgentToolContext, tool: Writing
     )
 
 
+def _import_setup_world_model(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
+    from app.services.writing_agent.setup_world_model_import_tool import import_setup_world_model_tool
+
+    return import_setup_world_model_tool(context.db, context.project_id)
+
+
 async def _expand_outline_window(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
     from app.services.writing_agent.outline_window_tool import expand_outline_window_tool
 
@@ -624,6 +630,12 @@ _STATIC_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
         _inspect_agent_tool_contracts,
         category="preflight",
         mutability="read",
+    ),
+    "import_setup_world_model": WritingAgentToolAdapter(
+        "import_setup_world_model",
+        _import_setup_world_model,
+        category="athena_world_model",
+        mutability="write",
     ),
     "analyze_chapter_world_model": WritingAgentToolAdapter(
         "analyze_chapter_world_model",

@@ -118,6 +118,23 @@ def test_agent_tool_registry_expand_outline_window_has_structured_output_contrac
     assert output_properties["recommended_next_tools"]["type"] == "array"
 
 
+def test_agent_tool_registry_import_setup_world_model_has_structured_output_contract():
+    descriptor = get_agent_tool_descriptor("import_setup_world_model")
+
+    assert descriptor is not None
+    properties = descriptor.output_schema["properties"]
+    assert {
+        "status",
+        "profile_version",
+        "project_profile_version_id",
+        "created",
+        "should_generate_next_chapter",
+        "recommended_next_tools",
+    }.issubset(properties)
+    assert properties["created"]["type"] == "object"
+    assert properties["recommended_next_tools"]["type"] == "array"
+
+
 def test_agent_tool_registry_apply_world_model_resolution_has_structured_output_contract():
     descriptor = get_agent_tool_descriptor("apply_world_model_proposal_resolution")
 

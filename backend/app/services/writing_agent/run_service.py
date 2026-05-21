@@ -227,10 +227,6 @@ class WritingAgentRunService:
                 command_args=tool.command_args,
                 action_params=tool.params,
             )
-        if tool.tool_name == "import_setup_world_model":
-            from app.core.athena_longform import import_setup_to_world_model
-
-            return import_setup_to_world_model(db=self.db, project_id=project_id)
         if tool.tool_name == "seed_continuity_anchor_proposals":
             from app.core.continuity_anchor_proposals import seed_continuity_anchor_proposals
 

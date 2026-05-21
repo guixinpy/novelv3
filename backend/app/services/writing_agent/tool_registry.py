@@ -141,6 +141,16 @@ _OUTLINE_WINDOW_OUTPUT = _object_schema(
         "recommended_next_tools": {"type": "array"},
     }
 )
+_SETUP_WORLD_MODEL_IMPORT_OUTPUT = _object_schema(
+    {
+        "status": {"type": "string"},
+        "profile_version": {"type": "integer"},
+        "project_profile_version_id": {"type": "string"},
+        "created": {"type": "object"},
+        "should_generate_next_chapter": {"type": "boolean"},
+        "recommended_next_tools": {"type": "array"},
+    }
+)
 
 
 _TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
@@ -748,7 +758,7 @@ _TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         category="athena_world_model",
         description="将项目设定导入 Athena 世界模型，形成可审计的初始事实层。",
         input_schema=_object_schema(),
-        output_schema=_STATUS_OUTPUT,
+        output_schema=_SETUP_WORLD_MODEL_IMPORT_OUTPUT,
         target_type="world_model",
         internal=True,
         sort_key=60,
