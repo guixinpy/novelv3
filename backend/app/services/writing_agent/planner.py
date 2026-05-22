@@ -14,6 +14,12 @@ from app.services.writing_agent.tool_contracts import agent_tool_execution_metad
 from app.services.writing_agent.tool_registry import build_agent_tool_plan, get_agent_tool_descriptor
 
 PLANNER_VERSION = "phase53.context_gate.v1"
+CHAPTER_GENERATION_ROUTE_LEGACY = "legacy_generate_chapter"
+CHAPTER_GENERATION_ROUTE_APPROVED_PREPARE = "approved_prepare"
+_SUPPORTED_CHAPTER_GENERATION_ROUTES = {
+    CHAPTER_GENERATION_ROUTE_LEGACY,
+    CHAPTER_GENERATION_ROUTE_APPROVED_PREPARE,
+}
 
 
 def build_writing_agent_run_plan(
@@ -25,9 +31,11 @@ def build_writing_agent_run_plan(
     intent: str | None = None,
     source_projection_id: str | None = None,
     source_plan_id: str | None = None,
+    chapter_generation_route: str | None = None,
 ) -> dict[str, Any]:
     resolved_chapter_index = _infer_chapter_index(db, project_id, chapter_index)
     intent_class = _classify_intent(goal, intent, resolved_chapter_index)
+    resolved_chapter_generation_route = _normalize_chapter_generation_route(chapter_generation_route)
     plan_id = source_plan_id or _plan_id(project_id, goal, intent_class, resolved_chapter_index)
     tool_plan = build_agent_tool_plan(db, project_id, chapter_index=resolved_chapter_index)
     diagnostics = tool_plan.get("diagnostics", [])
@@ -40,6 +48,7 @@ def build_writing_agent_run_plan(
         "rejected_tools": [],
         "missing_dependencies": [],
         "risk_flags": [],
+        "chapter_generation_route": resolved_chapter_generation_route,
     }
     steps: list[dict[str, Any]] = []
 
@@ -59,7 +68,14 @@ def build_writing_agent_run_plan(
     elif intent_class == "review_chapter":
         _build_review_plan(steps, trace, diagnostics, resolved_chapter_index)
     elif intent_class == "continue_next_chapter":
-        _build_continue_chapter_plan(steps, trace, diagnostics, tool_plan, resolved_chapter_index)
+        _build_continue_chapter_plan(
+            steps,
+            trace,
+            diagnostics,
+            tool_plan,
+            resolved_chapter_index,
+            chapter_generation_route=resolved_chapter_generation_route,
+        )
     else:
         trace["rejected_tools"].append({"tool_name": "*", "reason": "未识别到可安全自动执行的写作意图。"})
 
@@ -141,6 +157,8 @@ def _build_continue_chapter_plan(
     diagnostics: list[dict[str, Any]],
     tool_plan: dict[str, Any],
     chapter_index: int,
+    *,
+    chapter_generation_route: str,
 ) -> None:
     if _has_diagnostic(diagnostics, "generate_chapter", "missing_setup"):
         trace["risk_flags"].append("missing_setup")
@@ -205,6 +223,19 @@ def _build_continue_chapter_plan(
         on_failure="stop",
         expected_output="章节可写性检查。",
     )
+    if chapter_generation_route == CHAPTER_GENERATION_ROUTE_APPROVED_PREPARE:
+        _append_step(
+            steps,
+            trace,
+            "prepare_generate_chapter_execution",
+            {"chapter_index": chapter_index},
+            reason=f"为第{chapter_index}章生成创建审批合约，不直接写入正文。",
+            on_missing="stop",
+            on_failure="stop",
+            expected_output="章节生成审批合约。",
+        )
+        return
+
     _append_step(
         steps,
         trace,
@@ -367,6 +398,13 @@ def _classify_intent(goal: str, explicit_intent: str | None, chapter_index: int)
     if chapter_index >= 1 and any(token in text for token in ("继续", "下一章", "写", "生成", "章节")):
         return "continue_next_chapter"
     return "inspect_tools"
+
+
+def _normalize_chapter_generation_route(route: str | None) -> str:
+    cleaned = str(route or "").strip() or CHAPTER_GENERATION_ROUTE_LEGACY
+    if cleaned in _SUPPORTED_CHAPTER_GENERATION_ROUTES:
+        return cleaned
+    return CHAPTER_GENERATION_ROUTE_LEGACY
 
 
 def _has_diagnostic(diagnostics: list[dict[str, Any]], tool_name: str, code: str) -> bool:

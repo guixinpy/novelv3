@@ -8,13 +8,19 @@ from sqlalchemy.orm import Session
 from app.core.intent_router import IntentRouter
 from app.schemas import ProjectDiagnosisOut
 from app.services.workspace.bootstrap import build_project_diagnosis
-from app.services.writing_agent.planner import build_writing_agent_run_plan
+from app.services.writing_agent.planner import (
+    CHAPTER_GENERATION_ROUTE_APPROVED_PREPARE,
+    build_writing_agent_run_plan,
+)
 
 DIALOG_INTENT_AGENT_PLAN_VERSION = "phase106.dialog_intent_agent_plan.v1"
 
 _ACTION_TO_PLANNER_INTENT = {
     "preview_setup": "setup_project",
     "preview_chapter": "continue_next_chapter",
+}
+_ACTION_TO_CHAPTER_GENERATION_ROUTE = {
+    "preview_chapter": CHAPTER_GENERATION_ROUTE_APPROVED_PREPARE,
 }
 
 
@@ -66,6 +72,7 @@ def plan_dialog_intent_agent_run(
         intent=planner_intent,
         source_projection_id=projection_id,
         source_plan_id=plan_id,
+        chapter_generation_route=_ACTION_TO_CHAPTER_GENERATION_ROUTE.get(action_type),
     )
     return {
         "status": plan.get("status"),
@@ -79,6 +86,7 @@ def plan_dialog_intent_agent_run(
             "mapped_from_action_type": action_type,
             "mapped_from_rule_id": intent_projection.get("rule_id"),
             "chapter_index": plan.get("chapter_index"),
+            "chapter_generation_route": plan.get("trace", {}).get("chapter_generation_route"),
         },
         "plan": plan,
         "tools": list(plan.get("tools") or []),

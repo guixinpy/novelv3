@@ -266,12 +266,14 @@ async def test_tool_executor_handles_dialog_intent_agent_plan_for_chapter(db_ses
     assert result.output["planner"]["intent_class"] == "continue_next_chapter"
     assert result.output["planner"]["mapped_from_action_type"] == "preview_chapter"
     assert result.output["planner"]["chapter_index"] == 2
+    assert result.output["planner"]["chapter_generation_route"] == "approved_prepare"
     projection_id = result.output["intent_projection"]["trace"]["projection_id"]
     plan = result.output["plan"]
     assert result.output["planner"]["plan_id"] == plan["trace"]["plan_id"]
     assert plan["trace"]["source_projection_id"] == projection_id
+    assert plan["trace"]["chapter_generation_route"] == "approved_prepare"
     assert all(step["source_projection_id"] == projection_id for step in plan["steps"])
-    assert result.output["approval_contract"]["status"] == "requires_confirmation"
+    assert result.output["approval_contract"]["status"] == "not_required"
     assert result.output["approval_contract"]["plan_id"] == result.output["planner"]["plan_id"]
     assert result.output["approval_contract"] == plan["approval_contract"]
     assert [tool["tool_name"] for tool in result.output["tools"]] == [
@@ -279,10 +281,7 @@ async def test_tool_executor_handles_dialog_intent_agent_plan_for_chapter(db_ses
         "inspect_agent_knowledge_base_route",
         "summarize_longform_context",
         "preflight_writing",
-        "generate_chapter",
-        "review_chapter_quality",
-        "review_chapter_continuity",
-        "analyze_chapter_world_model",
+        "prepare_generate_chapter_execution",
     ]
 
 

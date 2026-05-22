@@ -10,6 +10,7 @@ def test_planner_builds_ready_next_chapter_tool_chain(db_session):
     assert plan["status"] == "completed"
     assert plan["intent_class"] == "continue_next_chapter"
     assert plan["chapter_index"] == 2
+    assert plan["trace"]["chapter_generation_route"] == "legacy_generate_chapter"
     assert _tool_names(plan) == [
         "describe_agent_tools",
         "inspect_agent_knowledge_base_route",
@@ -60,6 +61,37 @@ def test_planner_builds_ready_next_chapter_tool_chain(db_session):
         "analyze_chapter_world_model",
     ]
     assert plan["approval_contract"]["approval"]["approval_contract_hash"].startswith("approval:")
+
+
+def test_planner_can_prepare_next_chapter_through_approved_route(db_session):
+    project = _seed_project(db_session, outline_chapters=[2], generated_chapters=[1])
+
+    plan = build_writing_agent_run_plan(
+        db_session,
+        project.id,
+        goal="继续写下一章",
+        chapter_index=2,
+        chapter_generation_route="approved_prepare",
+    )
+
+    assert plan["status"] == "completed"
+    assert plan["intent_class"] == "continue_next_chapter"
+    assert plan["trace"]["chapter_generation_route"] == "approved_prepare"
+    assert _tool_names(plan) == [
+        "describe_agent_tools",
+        "inspect_agent_knowledge_base_route",
+        "summarize_longform_context",
+        "preflight_writing",
+        "prepare_generate_chapter_execution",
+    ]
+    assert "generate_chapter" not in _tool_names(plan)
+    assert [step["tool_name"] for step in plan["steps"] if step.get("post_generation")] == []
+    prepare_step = next(step for step in plan["steps"] if step["tool_name"] == "prepare_generate_chapter_execution")
+    assert prepare_step["mutability"] == "read"
+    assert prepare_step["requires_confirmation"] is False
+    assert prepare_step["params"] == {"chapter_index": 2}
+    assert plan["approval_contract"]["status"] == "not_required"
+    assert plan["approval_contract"]["write_steps"] == []
 
 
 def test_planner_marks_review_only_plan_as_not_requiring_approval(db_session):
