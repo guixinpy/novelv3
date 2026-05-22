@@ -214,6 +214,39 @@ _TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(
+        name="plan_dialog_intent_agent_run",
+        module="writing_agent",
+        category="preflight",
+        description="根据自然语言对话意图投影生成只读 Writing Agent 工具链计划，不直接执行工具。",
+        input_schema=_object_schema(
+            {
+                "text": {"type": "string"},
+                "dialog_state": {"type": "string"},
+                "pending_action_id": {"type": "string"},
+                "missing_items": {"type": "array"},
+                "completed_items": {"type": "array"},
+                "suggested_next_step": {"type": "string"},
+            },
+            required=("text",),
+        ),
+        output_schema=_object_schema(
+            {
+                "status": {"type": "string"},
+                "version": {"type": "string"},
+                "intent_projection": {"type": "object"},
+                "planner": {"type": "object"},
+                "plan": {"type": ["object", "null"]},
+                "tools": {"type": "array"},
+                "trace": {"type": "object"},
+            }
+        ),
+        target_type="agent_tool_plan",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=7,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
         name="plan_recovery_tools",
         module="writing_agent",
         category="preflight",

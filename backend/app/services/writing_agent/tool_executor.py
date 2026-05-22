@@ -138,6 +138,23 @@ def _plan_writing_agent_run(context: WritingAgentToolContext, tool: WritingAgent
     )
 
 
+def _plan_dialog_intent_agent_run(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
+    from app.services.writing_agent.dialog_intent_planner import (
+        plan_dialog_intent_agent_run,
+        project_diagnosis_from_params,
+    )
+
+    text = str(tool.params.get("text") or tool.command_args or "").strip()
+    return plan_dialog_intent_agent_run(
+        context.db,
+        context.project_id,
+        text=text,
+        dialog_state=str(tool.params.get("dialog_state") or "chatting"),
+        pending_action_id=str(tool.params.get("pending_action_id") or "").strip() or None,
+        diagnosis=project_diagnosis_from_params(tool.params),
+    )
+
+
 def _plan_recovery_tools(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
     from app.services.writing_agent.recovery_planner import build_recovery_tool_plan
 
@@ -661,6 +678,12 @@ _STATIC_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
     "plan_writing_agent_run": WritingAgentToolAdapter(
         "plan_writing_agent_run",
         _plan_writing_agent_run,
+        category="preflight",
+        mutability="read",
+    ),
+    "plan_dialog_intent_agent_run": WritingAgentToolAdapter(
+        "plan_dialog_intent_agent_run",
+        _plan_dialog_intent_agent_run,
         category="preflight",
         mutability="read",
     ),

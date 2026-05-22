@@ -1,6 +1,6 @@
 import pytest
 
-from app.models import ChapterContent, Project, WritingAgentRun, WritingAgentStep
+from app.models import ChapterContent, Outline, Project, Setup, Storyline, WritingAgentRun, WritingAgentStep
 from app.schemas.writing_agent import WritingAgentToolRequest
 from app.services.writing_agent.chapter_generation_tool import execute_generate_chapter_tool
 from app.services.writing_agent.tool_registry import internal_tool_names
@@ -116,6 +116,137 @@ async def test_tool_executor_handles_inspect_agent_intent_projection(db_session)
     assert result.output["agent_route"]["agent_tool_name"] == "generate_chapter"
     assert result.output["tool_selection"]["selected_tool"] == "generate_chapter"
     assert result.output["extracted_params"] == {"chapter_index": 3}
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_handles_dialog_intent_agent_plan_for_setup(db_session):
+    project = Project(name="Dialog Intent Agent Plan")
+    db_session.add(project)
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-dialog-intent-plan"),
+        WritingAgentToolRequest(
+            tool_name="plan_dialog_intent_agent_run",
+            params={
+                "text": "帮我创建这个都市悬疑新书的基础设定",
+                "missing_items": ["setup", "storyline", "outline"],
+                "completed_items": [],
+                "suggested_next_step": "preview_setup",
+            },
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "completed"
+    assert result.output["version"] == "phase106.dialog_intent_agent_plan.v1"
+    assert result.output["intent_projection"]["rule_id"] == "setup_intent"
+    assert result.output["planner"]["intent_class"] == "setup_project"
+    assert result.output["planner"]["mapped_from_action_type"] == "preview_setup"
+    assert [tool["tool_name"] for tool in result.output["tools"]] == ["describe_agent_tools", "generate_setup"]
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_dialog_intent_agent_plan_returns_no_plan_for_unmatched_text(db_session):
+    project = Project(name="Dialog Intent No Plan")
+    db_session.add(project)
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-dialog-intent-no-plan"),
+        WritingAgentToolRequest(
+            tool_name="plan_dialog_intent_agent_run",
+            params={"text": "今天先随便聊聊"},
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "no_plan"
+    assert result.output["tools"] == []
+    assert result.output["intent_projection"]["status"] == "no_match"
+    assert result.output["trace"]["reason"] == "intent_not_matched"
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_handles_dialog_intent_agent_plan_for_chapter(db_session):
+    project = Project(name="Dialog Intent Chapter Plan")
+    db_session.add(project)
+    db_session.flush()
+    db_session.add(
+        Setup(
+            project_id=project.id,
+            status="generated",
+            world_building={"background": "雾港被记忆异常影响。"},
+            characters=[{"name": "林深"}],
+            core_concept={"hook": "雾会回放记忆"},
+        )
+    )
+    db_session.add(
+        Storyline(
+            project_id=project.id,
+            status="generated",
+            plotlines=[{"name": "主线", "type": "main", "summary": "追查记忆异常"}],
+            foreshadowing=[],
+        )
+    )
+    db_session.add(
+        Outline(
+            project_id=project.id,
+            total_chapters=600,
+            status="generated",
+            chapters=[
+                {
+                    "chapter_index": 2,
+                    "title": "雾港线索2",
+                    "summary": "林深追查第二条线索。",
+                    "scenes": ["诊所追问"],
+                    "characters": ["林深"],
+                    "purpose": "推进主线",
+                }
+            ],
+            plotlines=[],
+            foreshadowing=[],
+        )
+    )
+    db_session.add(
+        ChapterContent(
+            project_id=project.id,
+            chapter_index=1,
+            title="雾港线索1",
+            content="林深发现雾港记忆异常的新证据。",
+            word_count=2200,
+            status="generated",
+        )
+    )
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-dialog-intent-chapter-plan"),
+        WritingAgentToolRequest(
+            tool_name="plan_dialog_intent_agent_run",
+            params={"text": "继续写第2章正文"},
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "completed"
+    assert result.output["intent_projection"]["rule_id"] == "chapter_intent"
+    assert result.output["planner"]["intent_class"] == "continue_next_chapter"
+    assert result.output["planner"]["mapped_from_action_type"] == "preview_chapter"
+    assert result.output["planner"]["chapter_index"] == 2
+    assert [tool["tool_name"] for tool in result.output["tools"]] == [
+        "describe_agent_tools",
+        "inspect_agent_knowledge_base_route",
+        "summarize_longform_context",
+        "preflight_writing",
+        "generate_chapter",
+        "review_chapter_quality",
+        "review_chapter_continuity",
+        "analyze_chapter_world_model",
+    ]
 
 
 @pytest.mark.asyncio
@@ -429,6 +560,7 @@ def test_tool_executor_static_adapter_names_are_report_or_agent_native_tools():
         "describe_agent_tools",
         "generate_chapter",
         "plan_writing_agent_run",
+        "plan_dialog_intent_agent_run",
         "plan_longform_chapter_batch",
         "enqueue_longform_chapter_batch",
         "inspect_longform_chapter_batch",
@@ -507,6 +639,7 @@ def test_tool_executor_lists_unhandled_internal_tools_for_migration_tracking():
     assert "inspect_agent_world_model_route" not in names
     assert "review_chapter_quality" not in names
     assert "plan_writing_agent_run" not in names
+    assert "plan_dialog_intent_agent_run" not in names
     assert "import_setup_world_model" not in names
     assert "seed_continuity_anchor_proposals" not in names
     assert "analyze_chapter_world_model" not in names
