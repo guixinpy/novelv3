@@ -210,6 +210,7 @@ export interface ActionResultView {
   status: string
   label: string
   variant: 'success' | 'error' | 'neutral' | string
+  detail_items?: Array<{ label: string; value: string }>
 }
 
 export interface ResolveActionResponse {

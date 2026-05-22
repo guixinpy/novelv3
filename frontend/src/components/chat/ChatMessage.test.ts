@@ -148,6 +148,45 @@ describe('ChatMessage', () => {
     expect(wrapper.text()).not.toContain('raw_status')
   })
 
+  it('renders backend-projected approval decision details without raw hashes', () => {
+    const wrapper = mount(ChatMessage, {
+      props: {
+        msg: {
+          role: 'system',
+          message_type: 'plain',
+          content: '操作已确认，正在生成中...',
+          action_result: {
+            type: 'generate_chapter',
+            status: 'generating',
+            data: {
+              approval_decision: {
+                approval_contract_hash: 'approval:secret-hash',
+              },
+            },
+          },
+          action_result_view: {
+            type: 'generate_chapter',
+            status: 'generating',
+            label: '正文生成中...',
+            variant: 'neutral',
+            detail_items: [
+              { label: '用户决策', value: '已确认' },
+              { label: '审批契约', value: '已绑定' },
+            ],
+          },
+        },
+        isLatest: false,
+        loading: false,
+      },
+    })
+
+    expect(wrapper.text()).toContain('用户决策')
+    expect(wrapper.text()).toContain('已确认')
+    expect(wrapper.text()).toContain('审批契约')
+    expect(wrapper.text()).toContain('已绑定')
+    expect(wrapper.text()).not.toContain('approval:secret-hash')
+  })
+
   it('renders generating action progress without repeating the action verb', () => {
     const wrapper = mount(ChatMessage, {
       props: {

@@ -30,12 +30,16 @@ def action_result_view(action_result: dict | None) -> dict | None:
         return None
 
     label = _label(action_type, status)
-    return {
+    view = {
         "type": action_type,
         "status": status,
         "label": label,
         "variant": _variant(status),
     }
+    detail_items = _detail_items(action_result)
+    if detail_items:
+        view["detail_items"] = detail_items
+    return view
 
 
 def _label(action_type: str, status: str) -> str:
@@ -61,3 +65,34 @@ def _variant(status: str) -> str:
     if status == "failed":
         return "error"
     return "neutral"
+
+
+def _detail_items(action_result: dict) -> list[dict[str, str]]:
+    data = action_result.get("data") if isinstance(action_result.get("data"), dict) else {}
+    approval_decision = data.get("approval_decision") if isinstance(data.get("approval_decision"), dict) else None
+    if not approval_decision:
+        return []
+
+    items = []
+    decision = str(approval_decision.get("decision") or "").strip()
+    if decision:
+        items.append({"label": "用户决策", "value": _decision_label(decision)})
+
+    approval_mode = str(approval_decision.get("approval_mode") or "").strip()
+    if approval_mode == "single":
+        items.append({"label": "审批模式", "value": "单次确认"})
+
+    if str(approval_decision.get("approval_contract_hash") or "").strip():
+        items.append({"label": "审批契约", "value": "已绑定"})
+
+    return items
+
+
+def _decision_label(decision: str) -> str:
+    if decision == "confirm":
+        return "已确认"
+    if decision == "cancel":
+        return "已取消"
+    if decision == "revise":
+        return "要求修改"
+    return decision

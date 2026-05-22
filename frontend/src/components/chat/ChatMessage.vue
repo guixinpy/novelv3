@@ -65,6 +65,17 @@ const resultVariant = computed(() => {
   return 'neutral'
 })
 
+const resultDetailItems = computed(() => {
+  const items = props.msg.action_result_view?.detail_items
+  if (!Array.isArray(items)) return []
+  return items.filter((item: any) => (
+    typeof item?.label === 'string'
+    && item.label.trim()
+    && typeof item?.value === 'string'
+    && item.value.trim()
+  ))
+})
+
 const summaryTitle = computed(() => {
   const title = props.msg.meta?.title
   return typeof title === 'string' && title.trim() ? title : '会话摘要'
@@ -148,7 +159,20 @@ function openTrace() {
         class="chat-msg__result"
         :class="`chat-msg__result--${resultVariant}`"
       >
-        {{ resultText }}
+        <div class="chat-msg__result-label">{{ resultText }}</div>
+        <dl
+          v-if="resultDetailItems.length"
+          class="chat-msg__result-details"
+        >
+          <div
+            v-for="item in resultDetailItems"
+            :key="`${item.label}:${item.value}`"
+            class="chat-msg__result-detail"
+          >
+            <dt>{{ item.label }}</dt>
+            <dd>{{ item.value }}</dd>
+          </div>
+        </dl>
       </div>
     </div>
   </div>
@@ -248,6 +272,34 @@ function openTrace() {
   border-radius: var(--radius-sm);
   font-size: var(--text-xs);
   font-weight: var(--font-medium);
+}
+
+.chat-msg__result-label {
+  line-height: var(--leading-normal);
+}
+
+.chat-msg__result-details {
+  display: grid;
+  gap: var(--space-1);
+  margin: var(--space-2) 0 0;
+}
+
+.chat-msg__result-detail {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--space-2);
+  align-items: baseline;
+}
+
+.chat-msg__result-detail dt {
+  color: var(--color-text-tertiary);
+}
+
+.chat-msg__result-detail dd {
+  margin: 0;
+  min-width: 0;
+  color: inherit;
+  overflow-wrap: anywhere;
 }
 
 .chat-msg__result--success {
