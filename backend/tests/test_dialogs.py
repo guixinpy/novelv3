@@ -36,6 +36,7 @@ from app.models import (
 )
 from app.schemas import ProjectDiagnosisOut
 from app.services.actions.action_result_service import ActionResultService
+from app.services.dialog.messages import DialogMessageService
 
 ORIGINAL_SESSION_COMMIT = OrmSession.commit
 
@@ -1570,6 +1571,33 @@ async def test_chapter_prepare_background_work_records_approval_required_without
     assert refreshed_dialog.pending_action_id == pending.id
     assert refreshed_dialog.state == "pending_action"
     assert db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=2).count() == 0
+
+
+@pytest.mark.asyncio
+async def test_chapter_approval_pending_message_uses_specific_description(db_session):
+    project = Project(name="Chapter Approval Pending Description")
+    db_session.add(project)
+    db_session.commit()
+    dialog = dialogs_api._get_or_create_dialog(db_session, project.id)
+
+    from app.services.writing_agent.dialog_control_plane import prepare_dialog_agent_run_dispatch
+
+    dispatch = prepare_dialog_agent_run_dispatch(
+        db_session,
+        project_id=project.id,
+        dialog_id=dialog.id,
+        action_type="generate_chapter",
+        command_args="2 承接上一章记忆线索",
+        action_params={"project_id": project.id, "chapter_index": 2},
+    )
+    await dispatch.work(db_session, dispatch.task)
+
+    messages = DialogMessageService(db_session).list_messages(project.id)
+    pending_action = messages[-1]["pending_action"]
+    assert pending_action["type"] == "generate_chapter"
+    assert "第2章正文" in pending_action["description"]
+    assert "确认后" in pending_action["description"]
+    assert pending_action["description"] != "已准备好执行操作。"
 
 
 @pytest.mark.asyncio

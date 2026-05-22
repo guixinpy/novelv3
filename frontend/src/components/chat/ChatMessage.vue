@@ -49,6 +49,7 @@ const resultText = computed(() => {
   if (r.status === 'success') return `✓ ${label}执行成功`
   if (r.status === 'cancelled') return `✗ 操作已取消`
   if (r.status === 'generating') return `⏳ ${GENERATING_LABELS[r.type] || label}生成中...`
+  if (r.status === 'approval_required') return `⏳ ${label}等待确认`
   if (r.status === 'failed') return `✗ ${label}失败`
   return `${label}: ${r.status}`
 })

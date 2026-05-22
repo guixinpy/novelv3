@@ -106,6 +106,24 @@ describe('ChatMessage', () => {
     expect(wrapper.text()).not.toContain('generate_chapter')
   })
 
+  it('renders chapter approval-required action results with a user-facing label', () => {
+    const wrapper = mount(ChatMessage, {
+      props: {
+        msg: {
+          role: 'system',
+          message_type: 'plain',
+          content: '第2章正文生成计划已准备完成，等待确认执行。',
+          action_result: { type: 'generate_chapter', status: 'approval_required' },
+        },
+        isLatest: false,
+        loading: false,
+      },
+    })
+
+    expect(wrapper.text()).toContain('生成正文等待确认')
+    expect(wrapper.text()).not.toContain('approval_required')
+  })
+
   it('renders generating action progress without repeating the action verb', () => {
     const wrapper = mount(ChatMessage, {
       props: {

@@ -134,7 +134,7 @@ class DialogMessageService:
         return PendingActionOut(
             id=pending.id,
             type=pending.type,
-            description=action_description(pending.type),
+            description=action_description(pending.type, pending.params),
             params=pending.params,
         ).model_dump()
 
