@@ -25,6 +25,19 @@
           </span>
         </li>
       </ul>
+      <dl
+        v-if="auditRows.length"
+        class="action-card__audit"
+      >
+        <dt class="action-card__audit-title">审批依据</dt>
+        <template
+          v-for="row in auditRows"
+          :key="row.label"
+        >
+          <dt>{{ row.label }}</dt>
+          <dd>{{ row.value }}</dd>
+        </template>
+      </dl>
     </section>
     <div class="action-card__actions">
       <button
@@ -81,6 +94,16 @@ const showRevise = ref(false)
 const reviseComment = ref('')
 const executionPreview = computed(() => props.action?.execution_preview || null)
 const previewSteps = computed(() => Array.isArray(executionPreview.value?.steps) ? executionPreview.value.steps : [])
+const auditRows = computed(() => {
+  const audit = executionPreview.value?.audit
+  if (!audit || typeof audit !== 'object') return []
+  return [
+    { label: '意图', value: audit.intent_class },
+    { label: '来源投影', value: audit.source_projection_id },
+    { label: '规划器', value: audit.planner_version },
+    { label: '计划', value: audit.plan_id },
+  ].filter((row) => typeof row.value === 'string' && row.value.trim())
+})
 
 function submitRevise() {
   if (!reviseComment.value.trim()) return
@@ -155,6 +178,34 @@ function submitRevise() {
   color: var(--color-text-secondary);
   font-size: 0.8rem;
   line-height: 1.4;
+}
+
+.action-card__audit {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0.28rem 0.55rem;
+  margin: 0.7rem 0 0;
+  color: var(--color-text-tertiary);
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.action-card__audit-title {
+  grid-column: 1 / -1;
+  color: var(--color-text-secondary);
+  font-weight: 800;
+}
+
+.action-card__audit dt,
+.action-card__audit dd {
+  margin: 0;
+}
+
+.action-card__audit dd {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .action-card__actions {

@@ -40,6 +40,15 @@ export interface PendingExecutionPreview {
   summary: string
   write_step_count: number
   approval_contract_hash?: string | null
+  audit?: {
+    kind?: string
+    approval_contract_hash?: string | null
+    approval_contract_version?: string | null
+    plan_id?: string | null
+    source_projection_id?: string | null
+    planner_version?: string | null
+    intent_class?: string | null
+  } | null
   steps: PendingExecutionPreviewStep[]
 }
 

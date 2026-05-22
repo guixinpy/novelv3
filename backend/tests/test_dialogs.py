@@ -1611,6 +1611,15 @@ async def test_chapter_approval_pending_message_uses_specific_description(db_ses
     assert preview["steps"][0]["tool_name"] == "generate_chapter"
     assert preview["steps"][0]["label"] == "生成正文"
     assert preview["steps"][0]["params"]["chapter_index"] == 2
+    assert preview["audit"] == {
+        "kind": "approval_contract",
+        "approval_contract_hash": preview["approval_contract_hash"],
+        "approval_contract_version": "phase108.agent_plan_approval_contract.v1",
+        "plan_id": f"direct-generate:{project.id}:chapter:2",
+        "source_projection_id": None,
+        "planner_version": "phase114.generate_chapter_execution_prepare.v1",
+        "intent_class": "direct_generate_chapter",
+    }
 
 
 @pytest.mark.asyncio

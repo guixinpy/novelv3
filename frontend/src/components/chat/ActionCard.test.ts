@@ -19,6 +19,15 @@ describe('ActionCard', () => {
             summary: '确认后将执行 1 个写入步骤。',
             write_step_count: 1,
             approval_contract_hash: 'approval:abc123',
+            audit: {
+              kind: 'approval_contract',
+              approval_contract_hash: 'approval:abc123',
+              approval_contract_version: 'phase108.agent_plan_approval_contract.v1',
+              plan_id: 'direct-generate:project-1:chapter:2',
+              source_projection_id: 'projection-1',
+              planner_version: 'phase114.generate_chapter_execution_prepare.v1',
+              intent_class: 'direct_generate_chapter',
+            },
             steps: [
               {
                 tool_name: 'generate_chapter',
@@ -36,6 +45,9 @@ describe('ActionCard', () => {
     expect(wrapper.text()).toContain('确认后将执行 1 个写入步骤。')
     expect(wrapper.text()).toContain('生成正文')
     expect(wrapper.text()).toContain('直接生成指定章节正文。')
+    expect(wrapper.text()).toContain('审批依据')
+    expect(wrapper.text()).toContain('direct_generate_chapter')
+    expect(wrapper.text()).toContain('projection-1')
     expect(wrapper.text()).not.toContain('approval:abc123')
   })
 })
