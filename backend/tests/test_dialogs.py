@@ -306,6 +306,48 @@ def test_chapter_command_without_index_uses_first_unwritten_outline_chapter(clie
     assert body["pending_action"]["params"]["chapter_index"] == 2
 
 
+def test_chapter_command_explicit_reserved_target_adds_conflict_warning(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Test"})
+    pid = r.json()["id"]
+    db_session.add(
+        Outline(
+            project_id=pid,
+            status="generated",
+            total_chapters=2,
+            chapters=[
+                {"chapter_index": 1, "title": "一", "summary": "一"},
+                {"chapter_index": 2, "title": "二", "summary": "二"},
+            ],
+        )
+    )
+    db_session.add(
+        BackgroundTask(
+            project_id=pid,
+            task_type="writing_agent_run",
+            status="running",
+            payload={"action_type": "generate_chapter", "tools": [{"params": {"chapter_index": 2}}]},
+        )
+    )
+    db_session.commit()
+
+    r2 = client.post("/api/v1/dialog/chat", json={
+        "project_id": pid,
+        "input_type": "command",
+        "command_name": "chapter",
+        "command_args": "2",
+    })
+
+    assert r2.status_code == 200
+    pending = r2.json()["pending_action"]
+    assert pending["params"]["chapter_index"] == 2
+    assert pending["params"]["chapter_target_conflict"] == {
+        "status": "reserved",
+        "chapter_index": 2,
+        "reason": "pending_or_running_generation",
+    }
+    assert "已有待确认或运行中的生成任务" in pending["description"]
+
+
 def test_agent_control_plane_routes_confirmed_setup_through_writing_agent_run(client, db_session, monkeypatch):
     started_task_ids: list[str] = []
 

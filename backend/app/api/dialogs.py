@@ -290,8 +290,11 @@ def _chapter_action_params_for_project(
     candidate_params: dict | None = None,
 ) -> dict:
     params = _chapter_action_params(command_args, candidate_params)
-    if parse_chapter_index(command_args) is not None:
+    explicit_chapter_index = parse_chapter_index(command_args)
+    if explicit_chapter_index is not None:
         params["chapter_index_source"] = "explicit_user"
+        if explicit_chapter_index in _reserved_chapter_indexes(db, project_id):
+            params["chapter_target_conflict"] = _chapter_target_conflict(explicit_chapter_index)
         return params
     inferred = _first_unwritten_outline_chapter_index(db, project_id)
     if inferred is not None:
@@ -300,6 +303,14 @@ def _chapter_action_params_for_project(
     else:
         params.setdefault("chapter_index_source", "router_default")
     return params
+
+
+def _chapter_target_conflict(chapter_index: int) -> dict[str, object]:
+    return {
+        "status": "reserved",
+        "chapter_index": chapter_index,
+        "reason": "pending_or_running_generation",
+    }
 
 
 def _save_command_feedback(
