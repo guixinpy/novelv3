@@ -34,6 +34,14 @@ class ActionResultService:
             self.db.add(message)
             self.db.flush()
             self._attach_trace(project_id=project_id, dialog_id=dialog_id, message_id=message.id, trace_id=result.get("trace_id"))
+        elif result.get("status") == "approval_required":
+            message = DialogMessage(
+                dialog_id=dialog_id,
+                role="system",
+                content=f"{label}已准备审批，等待确认执行。",
+                action_result={"type": action_type, "status": "approval_required", "data": result},
+            )
+            self.db.add(message)
         else:
             status = str(result.get("status") or "failed")
             action_result = {"type": action_type, "status": status}

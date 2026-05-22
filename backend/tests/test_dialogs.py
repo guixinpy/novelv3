@@ -24,6 +24,7 @@ from app.core.intent_router import IntentRouter, parse_chapter_index
 from app.models import (
     AIModelCallTrace,
     BackgroundTask,
+    ChapterContent,
     Dialog,
     DialogMessage,
     Outline,
@@ -1497,6 +1498,69 @@ def test_resolve_action_confirm_creates_background_task(client, db_session):
     assert run.background_task_id == task.id
     assert run.entrypoint == "dialog_pending_action"
     start.assert_called_once()
+
+
+def test_resolve_chapter_action_confirm_dispatches_prepare_tool(client, db_session):
+    project_id = client.post("/api/v1/projects", json={"name": "Chapter Prepare Dispatch"}).json()["id"]
+    response = client.post(
+        "/api/v1/dialog/chat",
+        json={
+            "project_id": project_id,
+            "input_type": "command",
+            "command_name": "chapter",
+            "command_args": "2 承接上一章记忆线索",
+        },
+    )
+    action_id = response.json()["pending_action"]["id"]
+
+    with patch("app.api.dialogs.LocalTaskRunner.start") as start:
+        confirmed = client.post(
+            "/api/v1/dialog/resolve-action",
+            json={"action_id": action_id, "decision": "confirm"},
+        )
+
+    assert confirmed.status_code == 200
+    start.assert_called_once()
+    payload = confirmed.json()["action_result"]["data"]
+    task = db_session.query(BackgroundTask).filter(BackgroundTask.id == payload["task_id"]).one()
+    run = db_session.query(WritingAgentRun).filter(WritingAgentRun.id == payload["agent_run_id"]).one()
+    assert task.payload["action_type"] == "generate_chapter"
+    assert task.payload["tools"][0]["tool_name"] == "prepare_generate_chapter_execution"
+    assert task.payload["tools"][0]["params"]["chapter_index"] == 2
+    assert run.input["tools"][0]["tool_name"] == "prepare_generate_chapter_execution"
+    assert run.input["tools"][0]["command_args"] == "2 承接上一章记忆线索"
+    assert run.input["tools"][0]["params"]["chapter_index"] == 2
+
+
+@pytest.mark.asyncio
+async def test_chapter_prepare_background_work_records_approval_required_without_generating(db_session):
+    project = Project(name="Chapter Prepare Work")
+    db_session.add(project)
+    db_session.commit()
+    dialog = dialogs_api._get_or_create_dialog(db_session, project.id)
+
+    from app.services.writing_agent.dialog_control_plane import prepare_dialog_agent_run_dispatch
+
+    dispatch = prepare_dialog_agent_run_dispatch(
+        db_session,
+        project_id=project.id,
+        dialog_id=dialog.id,
+        action_type="generate_chapter",
+        command_args="2 承接上一章记忆线索",
+        action_params={"project_id": project.id, "chapter_index": 2},
+    )
+
+    result = await dispatch.work(db_session, dispatch.task)
+
+    terminal = db_session.query(DialogMessage).filter_by(dialog_id=dialog.id, role="system").one()
+    assert result["status"] == "approval_required"
+    assert result["agent_run_id"] == dispatch.run.id
+    assert terminal.action_result["type"] == "generate_chapter"
+    assert terminal.action_result["status"] == "approval_required"
+    assert "等待确认" in terminal.content
+    assert terminal.action_result["data"]["chapter_index"] == 2
+    assert terminal.action_result["data"]["agent_plan_approval_contract_hash"].startswith("approval:")
+    assert db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=2).count() == 0
 
 
 @pytest.mark.asyncio

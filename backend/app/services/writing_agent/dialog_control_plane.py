@@ -20,7 +20,7 @@ SUPPORTED_DIALOG_ACTION_TO_TOOL = {
     "generate_setup": "generate_setup",
     "generate_storyline": "generate_storyline",
     "generate_outline": "generate_outline",
-    "generate_chapter": "generate_chapter",
+    "generate_chapter": "prepare_generate_chapter_execution",
 }
 
 DialogAgentRunWork = Callable[[Session, BackgroundTask], Any]
@@ -152,7 +152,8 @@ def _dialog_completion_result(db: Session, *, run: WritingAgentRun, background_t
     step_output = step.output if step is not None and isinstance(step.output, dict) else {}
     result = {key: value for key, value in step_output.items() if key != "agent_tool_result"}
     if run.status == "success":
-        result["status"] = "success"
+        if result.get("status") != "approval_required":
+            result["status"] = "success"
     else:
         result["status"] = run.status if run.status in {"blocked", "failed", "cancelled"} else "failed"
         result["error"] = run.error or result.get("error") or "Agent run did not complete successfully"
