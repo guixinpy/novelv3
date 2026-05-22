@@ -1682,6 +1682,15 @@ def test_agent_run_can_execute_approved_longform_chapter_batch_once(client, db_s
     assert output["evidence"]["chapter_content_written"] is True
     assert output["evidence"]["agent_plan_approval_verified"] is True
     assert output["agent_plan_approval_verification"]["status"] == "ready"
+    assert output["approval_verification_event"] == {
+        "event_type": "contract_verified",
+        "status": "ready",
+        "reason": "approval_contract_verified",
+        "approval_contract_bound": True,
+        "approval_contract_version": "phase108.agent_plan_approval_contract.v1",
+        "write_step_count": 1,
+        "tool_contract_drift_count": 0,
+    }
     assert output["execution_checkpoint"]["status"] == "completed"
     assert output["side_effects"]["executed"] == [
         "generate_chapter",

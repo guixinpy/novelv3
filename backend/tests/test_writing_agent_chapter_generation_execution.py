@@ -98,6 +98,9 @@ async def test_execute_generate_chapter_with_approval_blocks_stale_contract(db_s
 
     assert output["status"] == "blocked"
     assert output["reason"] == "approval_contract_hash_mismatch"
+    assert output["approval_verification_event"]["event_type"] == "contract_blocked"
+    assert output["approval_verification_event"]["reason"] == "approval_contract_hash_mismatch"
+    assert "approval:" not in str(output["approval_verification_event"])
     assert calls == []
 
 

@@ -18,6 +18,7 @@ from app.services.tasks.background_task_service import (
     BackgroundTaskService,
 )
 from app.services.writing_agent.approval_contract import verify_agent_plan_approval_contract
+from app.services.writing_agent.approval_verification_event import build_approval_verification_event
 from app.services.writing_agent.batch_enqueue import BATCH_TASK_TYPE
 from app.services.writing_agent.batch_execution_prepare import PREPARE_VERSION
 from app.services.writing_agent.batch_preflight import PREFLIGHT_VERSION
@@ -87,7 +88,10 @@ async def execute_longform_chapter_batch(
         return _blocked_output(
             task,
             reason=_agent_plan_approval_block_reason(agent_plan_approval_verification),
-            extra={"agent_plan_approval_verification": agent_plan_approval_verification},
+            extra={
+                "agent_plan_approval_verification": agent_plan_approval_verification,
+                "approval_verification_event": build_approval_verification_event(agent_plan_approval_verification),
+            },
         )
 
     result = task.result if isinstance(task.result, dict) else {}
@@ -170,6 +174,7 @@ async def execute_longform_chapter_batch(
         "execution_checkpoint": execution_checkpoint,
         "batch_execution_result": batch_execution_result,
         "agent_plan_approval_verification": agent_plan_approval_verification,
+        "approval_verification_event": build_approval_verification_event(agent_plan_approval_verification),
         "side_effects": _side_effects(
             executed=[
                 "generate_chapter",
