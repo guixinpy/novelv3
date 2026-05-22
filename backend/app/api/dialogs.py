@@ -168,6 +168,63 @@ def _chapter_action_params(command_args: str | None = None, candidate_params: di
     return chapter_action_params(command_args, candidate_params)
 
 
+def _generated_chapter_indexes(db: Session, project_id: str) -> set[int]:
+    rows = (
+        db.query(ChapterContent.chapter_index)
+        .filter(
+            ChapterContent.project_id == project_id,
+            ChapterContent.content != "",
+        )
+        .all()
+    )
+    return {int(row[0]) for row in rows if row[0]}
+
+
+def _outline_chapter_indexes(db: Session, project_id: str) -> list[int]:
+    outline = (
+        db.query(Outline)
+        .filter(Outline.project_id == project_id, Outline.status == "generated")
+        .order_by(Outline.updated_at.desc(), Outline.id.desc())
+        .first()
+    )
+    if outline is None or not isinstance(outline.chapters, list):
+        return []
+
+    indexes: list[int] = []
+    for chapter in outline.chapters:
+        if not isinstance(chapter, dict):
+            continue
+        value = chapter.get("chapter_index")
+        if isinstance(value, int) and value > 0:
+            indexes.append(value)
+    return indexes
+
+
+def _first_unwritten_outline_chapter_index(db: Session, project_id: str) -> int | None:
+    generated = _generated_chapter_indexes(db, project_id)
+    for chapter_index in _outline_chapter_indexes(db, project_id):
+        if chapter_index not in generated:
+            return chapter_index
+    if generated:
+        return max(generated) + 1
+    return None
+
+
+def _chapter_action_params_for_project(
+    db: Session,
+    project_id: str,
+    command_args: str | None = None,
+    candidate_params: dict | None = None,
+) -> dict:
+    params = _chapter_action_params(command_args, candidate_params)
+    if parse_chapter_index(command_args) is not None:
+        return params
+    inferred = _first_unwritten_outline_chapter_index(db, project_id)
+    if inferred is not None:
+        params["chapter_index"] = inferred
+    return params
+
+
 def _save_command_feedback(
     db: Session,
     dialog_id: str,
@@ -636,7 +693,7 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
                 if parsed_command.args:
                     params["command_args"] = parsed_command.args
                 if action_type == "preview_chapter":
-                    params.update(_chapter_action_params(parsed_command.args))
+                    params.update(_chapter_action_params_for_project(db, payload.project_id, parsed_command.args))
 
                 pending = PendingAction(
                     dialog_id=dialog.id,
@@ -776,7 +833,7 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
         if effective_text:
             params["command_args"] = effective_text
         if candidate.type == "preview_chapter":
-            params.update(_chapter_action_params(effective_text, candidate.params))
+            params.update(_chapter_action_params_for_project(db, payload.project_id, effective_text, candidate.params))
             params["project_id"] = payload.project_id
             if effective_text:
                 params["command_args"] = effective_text
