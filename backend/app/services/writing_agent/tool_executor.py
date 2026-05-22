@@ -145,6 +145,13 @@ def _plan_recovery_tools(context: WritingAgentToolContext, tool: WritingAgentToo
     return build_recovery_tool_plan(context.db, context.project_id, run_id)
 
 
+def _plan_recommended_followups(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
+    from app.services.writing_agent.recommended_followup_planner import build_recommended_followup_tool_plan
+
+    run_id = str(tool.params.get("run_id") or "").strip() or None
+    return build_recommended_followup_tool_plan(context.db, context.project_id, run_id)
+
+
 def _plan_longform_chapter_batch(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
     from app.services.writing_agent.batch_planner import build_longform_chapter_batch_plan
 
@@ -607,6 +614,12 @@ _STATIC_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
     "plan_recovery_tools": WritingAgentToolAdapter(
         "plan_recovery_tools",
         _plan_recovery_tools,
+        category="preflight",
+        mutability="read",
+    ),
+    "plan_recommended_followups": WritingAgentToolAdapter(
+        "plan_recommended_followups",
+        _plan_recommended_followups,
         category="preflight",
         mutability="read",
     ),

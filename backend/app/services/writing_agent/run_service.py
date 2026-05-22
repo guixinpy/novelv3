@@ -38,6 +38,10 @@ from app.services.writing_agent.tool_executor import (
 )
 from app.services.writing_agent.tool_policy import should_stop_after_report, successful_report_block_message
 from app.services.writing_agent.tool_recommendations import normalize_tool_recommendations
+from app.services.writing_agent.recommended_followup_planner import (
+    FOLLOWUP_PLANNER_VERSION,
+    latest_recommended_followup_state,
+)
 from app.services.writing_agent.recovery_policy import build_writing_agent_recovery
 from app.services.writing_agent.tool_registry import (
     allowed_tool_names,
@@ -602,6 +606,15 @@ def detail_payload(detail: dict[str, Any]) -> dict[str, Any]:
 
 def _continuation_state(run: WritingAgentRun, steps: list[WritingAgentStep]) -> dict[str, Any]:
     recovery = _latest_recommended_recovery_from_steps(steps)
+    if recovery.get("status") == "recommended":
+        recommended_followups = {
+            "version": FOLLOWUP_PLANNER_VERSION,
+            "status": "suppressed",
+            "reason": "recovery_required",
+            "recovery_next_tool": recovery.get("next_tool"),
+        }
+    else:
+        recommended_followups = latest_recommended_followup_state(steps)
     blocked_step = _blocked_or_failed_step(run, steps)
     last_successful_step = _last_step_with_status(steps, STEP_SUCCESS)
     next_planned_tool = _next_planned_tool(run, steps)
@@ -627,6 +640,7 @@ def _continuation_state(run: WritingAgentRun, steps: list[WritingAgentStep]) -> 
         "last_successful_tool": _step_marker(last_successful_step),
         "blocked_tool": _step_marker(blocked_step),
         "next_expected_tool": next_expected_tool,
+        "recommended_followups": recommended_followups,
         "recovery": recovery,
         "failure": _failure_state(run, blocked_step),
         "consumed": _consumed_state(steps),

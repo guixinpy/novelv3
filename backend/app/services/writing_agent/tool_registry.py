@@ -236,6 +236,28 @@ _TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(
+        name="plan_recommended_followups",
+        module="writing_agent",
+        category="preflight",
+        description="根据指定 Writing Agent run 的运行时推荐生成只读后继工具计划。",
+        input_schema=_object_schema({"run_id": {"type": "string"}}),
+        output_schema=_object_schema(
+            {
+                "status": {"type": "string"},
+                "source_run_id": {"type": "string"},
+                "source_step": {"type": "object"},
+                "recommended_followups": {"type": "object"},
+                "tools": {"type": "array"},
+                "trace": {"type": "object"},
+            }
+        ),
+        target_type="agent_tool_plan",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=8,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
         name="plan_longform_chapter_batch",
         module="writing_agent",
         category="task_queue",

@@ -1,6 +1,6 @@
 import pytest
 
-from app.models import ChapterContent, Project
+from app.models import ChapterContent, Project, WritingAgentRun, WritingAgentStep
 from app.schemas.writing_agent import WritingAgentToolRequest
 from app.services.writing_agent.chapter_generation_tool import execute_generate_chapter_tool
 from app.services.writing_agent.tool_registry import internal_tool_names
@@ -50,6 +50,182 @@ async def test_tool_executor_handles_planner_tool(db_session):
     assert result.output["status"] == "completed"
     assert result.output["intent_class"] == "setup_project"
     assert result.output["steps"][0]["tool_name"] == "describe_agent_tools"
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_handles_plan_recommended_followups(db_session):
+    project = Project(name="Recommended Followup Planner")
+    db_session.add(project)
+    db_session.flush()
+    run = WritingAgentRun(project_id=project.id, goal="生成第2章", status="success", input={})
+    db_session.add(run)
+    db_session.flush()
+    db_session.add(
+        WritingAgentStep(
+            run_id=run.id,
+            project_id=project.id,
+            step_index=1,
+            tool_name="generate_chapter",
+            status="success",
+            chapter_index=2,
+            input={"params": {"chapter_index": 2}},
+            output={
+                "status": "success",
+                "chapter_index": 2,
+                "agent_tool_result": {
+                    "recommendations": {
+                        "canonical_followups": [
+                            "review_chapter_quality",
+                            "review_chapter_continuity",
+                            "not_a_tool",
+                        ],
+                        "runtime_followups": ["review_chapter_quality", "review_chapter_continuity"],
+                        "non_tool_recommendations": ["revise_chapter"],
+                    }
+                },
+            },
+        )
+    )
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-followup"),
+        WritingAgentToolRequest(tool_name="plan_recommended_followups", params={"run_id": run.id}),
+    )
+
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "completed"
+    assert result.output["source_step"]["tool_name"] == "generate_chapter"
+    assert [tool["tool_name"] for tool in result.output["tools"]] == [
+        "review_chapter_quality",
+        "review_chapter_continuity",
+    ]
+    assert result.output["tools"][0]["params"] == {"chapter_index": 2}
+    assert result.output["trace"]["rejected_tools"] == [{"tool_name": "not_a_tool", "reason": "not_allowed"}]
+
+
+@pytest.mark.asyncio
+async def test_plan_recommended_followups_rejects_write_followups(db_session):
+    project = Project(name="Recommended Followup Guarded Write")
+    db_session.add(project)
+    db_session.flush()
+    run = WritingAgentRun(project_id=project.id, goal="修订章节", status="success", input={})
+    db_session.add(run)
+    db_session.flush()
+    db_session.add(
+        WritingAgentStep(
+            run_id=run.id,
+            project_id=project.id,
+            step_index=1,
+            tool_name="create_revision_draft",
+            status="success",
+            chapter_index=2,
+            input={"params": {"chapter_index": 2}},
+            output={
+                "status": "success",
+                "chapter_index": 2,
+                "agent_tool_result": {
+                    "recommendations": {
+                        "canonical_followups": ["apply_planner_revision_patch", "review_chapter_quality"],
+                    }
+                },
+            },
+        )
+    )
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-followup"),
+        WritingAgentToolRequest(tool_name="plan_recommended_followups", params={"run_id": run.id}),
+    )
+
+    assert result.handled is True
+    assert result.output is not None
+    assert [tool["tool_name"] for tool in result.output["tools"]] == ["review_chapter_quality"]
+    assert result.output["trace"]["rejected_tools"] == [
+        {"tool_name": "apply_planner_revision_patch", "reason": "requires_confirmation"}
+    ]
+
+
+@pytest.mark.asyncio
+async def test_plan_recommended_followups_blocks_when_source_run_requires_recovery(db_session):
+    project = Project(name="Recommended Followup Recovery First")
+    db_session.add(project)
+    db_session.flush()
+    run = WritingAgentRun(project_id=project.id, goal="继续写作", status="blocked", input={})
+    db_session.add(run)
+    db_session.flush()
+    db_session.add(
+        WritingAgentStep(
+            run_id=run.id,
+            project_id=project.id,
+            step_index=1,
+            tool_name="summarize_longform_context",
+            status="success",
+            chapter_index=2,
+            input={"params": {"chapter_index": 2}},
+            output={
+                "status": "blocked",
+                "chapter_index": 2,
+                "agent_tool_result": {
+                    "recovery": {"status": "recommended", "next_tool": "repair_longform_maintenance"},
+                    "recommendations": {"canonical_followups": ["repair_longform_maintenance"]},
+                },
+            },
+        )
+    )
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-followup"),
+        WritingAgentToolRequest(tool_name="plan_recommended_followups", params={"run_id": run.id}),
+    )
+
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "blocked"
+    assert result.output["tools"] == []
+    assert result.output["trace"]["rejected_tools"] == [{"reason": "source_run_requires_recovery"}]
+
+
+@pytest.mark.asyncio
+async def test_plan_recommended_followups_rejects_planner_loops(db_session):
+    project = Project(name="Recommended Followup Loop")
+    db_session.add(project)
+    db_session.flush()
+    run = WritingAgentRun(project_id=project.id, goal="规划后继", status="success", input={})
+    db_session.add(run)
+    db_session.flush()
+    db_session.add(
+        WritingAgentStep(
+            run_id=run.id,
+            project_id=project.id,
+            step_index=1,
+            tool_name="plan_writing_agent_run",
+            status="success",
+            input={"params": {}},
+            output={
+                "status": "success",
+                "agent_tool_result": {
+                    "recommendations": {"canonical_followups": ["plan_recommended_followups"]},
+                },
+            },
+        )
+    )
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-followup"),
+        WritingAgentToolRequest(tool_name="plan_recommended_followups", params={"run_id": run.id}),
+    )
+
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["tools"] == []
+    assert result.output["trace"]["rejected_tools"] == [
+        {"tool_name": "plan_recommended_followups", "reason": "planner_loop"}
+    ]
 
 
 @pytest.mark.asyncio

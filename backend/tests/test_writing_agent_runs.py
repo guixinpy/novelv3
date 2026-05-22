@@ -641,6 +641,8 @@ def test_agent_auto_plan_longform_context_blocks_stale_maintenance_before_genera
     assert state["last_successful_tool"]["tool_name"] == "summarize_longform_context"
     assert state["blocked_tool"]["tool_name"] == "summarize_longform_context"
     assert state["next_expected_tool"] == "repair_longform_maintenance"
+    assert state["recommended_followups"]["status"] == "suppressed"
+    assert state["recommended_followups"]["reason"] == "recovery_required"
     assert state["recovery"]["status"] == "recommended"
     assert state["recovery"]["next_tool"] == "repair_longform_maintenance"
     assert state["consumed"]["longform_context"] is True
@@ -2275,6 +2277,36 @@ def test_agent_run_records_chapter_length_and_world_model_diagnostics(client, db
     assert length_decision["recommended_actions"] == []
     assert output["world_model_proposal_diagnostic"]["status"] == "missing"
     assert output["world_model_proposal_diagnostic"]["reason"] == "missing_profile"
+
+
+def test_agent_run_continuation_state_exposes_recommended_followups(client, monkeypatch):
+    project_id = _create_project(client, "Continuation Followups")
+
+    async def fake_execute(self, action_type, project_id, *, command_args=None, action_params=None):
+        return {"status": "success", "chapter_index": action_params["chapter_index"]}
+
+    monkeypatch.setattr("app.services.actions.action_execution_service.ActionExecutionService.execute", fake_execute)
+
+    response = client.post(
+        f"/api/v1/projects/{project_id}/agent-runs",
+        json={
+            "goal": "生成第2章",
+            "tools": [{"tool_name": "generate_chapter", "params": {"chapter_index": 2}}],
+        },
+    )
+
+    payload = response.json()
+    state = payload["output"]["continuation_state"]
+    assert response.status_code == 200
+    assert payload["status"] == "success"
+    assert state["recommended_followups"]["status"] == "recommended"
+    assert state["recommended_followups"]["source_tool"] == "generate_chapter"
+    assert state["recommended_followups"]["next_tool"] == "review_chapter_quality"
+    assert state["recommended_followups"]["canonical_followups"] == [
+        "review_chapter_quality",
+        "review_chapter_continuity",
+        "analyze_chapter_world_model",
+    ]
 
 
 def test_agent_preflight_blocks_when_target_outline_is_missing(client, db_session):
