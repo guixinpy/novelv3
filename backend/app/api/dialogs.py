@@ -22,6 +22,7 @@ from app.core.ui_hints import action_to_refresh_targets, build_ui_hint
 from app.db import get_db
 from app.models import (
     AIModelCallTrace,
+    BackgroundTask,
     ChapterContent,
     Dialog,
     DialogMessage,
@@ -59,6 +60,7 @@ CHAT_HISTORY_LIMIT = 8
 TERMINAL_ACTION_STATUSES = {"completed", "success", "failed", "cancelled", "revised"}
 RUNNING_ACTION_STATUSES = {"running", "generating"}
 RUNNING_BLOCKED_COMMANDS = {"clear", "compact", "setup", "storyline", "outline", "chapter"}
+ACTIVE_CHAPTER_TARGET_STATUSES = {"pending", "running"}
 
 
 def _get_or_create_dialog(db: Session, project_id: str, dialog_type: str = "hermes") -> Dialog:
@@ -180,6 +182,77 @@ def _generated_chapter_indexes(db: Session, project_id: str) -> set[int]:
     return {int(row[0]) for row in rows if row[0]}
 
 
+def _reserved_chapter_indexes(db: Session, project_id: str) -> set[int]:
+    return _pending_chapter_action_indexes(db, project_id) | _active_chapter_task_indexes(db, project_id)
+
+
+def _pending_chapter_action_indexes(db: Session, project_id: str) -> set[int]:
+    actions = (
+        db.query(PendingAction)
+        .filter(
+            PendingAction.status == "pending",
+            PendingAction.type.in_(("preview_chapter", "generate_chapter")),
+        )
+        .all()
+    )
+    indexes: set[int] = set()
+    for action in actions:
+        params = action.params if isinstance(action.params, dict) else {}
+        if str(params.get("project_id") or "") != project_id:
+            continue
+        chapter_index = _optional_positive_int(params.get("chapter_index"))
+        if chapter_index is not None:
+            indexes.add(chapter_index)
+    return indexes
+
+
+def _active_chapter_task_indexes(db: Session, project_id: str) -> set[int]:
+    tasks = (
+        db.query(BackgroundTask)
+        .filter(
+            BackgroundTask.project_id == project_id,
+            BackgroundTask.status.in_(ACTIVE_CHAPTER_TARGET_STATUSES),
+            BackgroundTask.task_type.in_(("generate_chapter", "writing_agent_run")),
+        )
+        .all()
+    )
+    indexes: set[int] = set()
+    for task in tasks:
+        indexes.update(_chapter_indexes_from_task_payload(task.payload))
+    return indexes
+
+
+def _chapter_indexes_from_task_payload(payload: dict | None) -> set[int]:
+    if not isinstance(payload, dict):
+        return set()
+    if payload.get("action_type") not in {None, "generate_chapter"}:
+        return set()
+
+    indexes: set[int] = set()
+    action_params = payload.get("action_params") if isinstance(payload.get("action_params"), dict) else {}
+    chapter_index = _optional_positive_int(action_params.get("chapter_index") or payload.get("chapter_index"))
+    if chapter_index is not None:
+        indexes.add(chapter_index)
+
+    tools = payload.get("tools") if isinstance(payload.get("tools"), list) else []
+    for tool in tools:
+        if not isinstance(tool, dict):
+            continue
+        params = tool.get("params") if isinstance(tool.get("params"), dict) else {}
+        chapter_index = _optional_positive_int(params.get("chapter_index"))
+        if chapter_index is not None:
+            indexes.add(chapter_index)
+    return indexes
+
+
+def _optional_positive_int(value: object) -> int | None:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
+
 def _outline_chapter_indexes(db: Session, project_id: str) -> list[int]:
     outline = (
         db.query(Outline)
@@ -201,12 +274,12 @@ def _outline_chapter_indexes(db: Session, project_id: str) -> list[int]:
 
 
 def _first_unwritten_outline_chapter_index(db: Session, project_id: str) -> int | None:
-    generated = _generated_chapter_indexes(db, project_id)
+    occupied = _generated_chapter_indexes(db, project_id) | _reserved_chapter_indexes(db, project_id)
     for chapter_index in _outline_chapter_indexes(db, project_id):
-        if chapter_index not in generated:
+        if chapter_index not in occupied:
             return chapter_index
-    if generated:
-        return max(generated) + 1
+    if occupied:
+        return max(occupied) + 1
     return None
 
 

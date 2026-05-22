@@ -1084,6 +1084,81 @@ def test_chat_text_next_chapter_uses_inferred_chapter_source(client, db_session)
     assert body["pending_action"]["params"]["chapter_index_source"] == "inferred_next_unwritten"
 
 
+def test_chat_text_continue_skips_reserved_pending_chapter(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Test"})
+    pid = r.json()["id"]
+    db_session.add(Setup(project_id=pid, status="generated", world_building={}, characters=[], core_concept={}))
+    db_session.add(Storyline(project_id=pid, status="generated", plotlines=[], foreshadowing=[]))
+    db_session.add(
+        Outline(
+            project_id=pid,
+            status="generated",
+            total_chapters=3,
+            chapters=[
+                {"chapter_index": 1, "title": "一", "summary": "一"},
+                {"chapter_index": 2, "title": "二", "summary": "二"},
+                {"chapter_index": 3, "title": "三", "summary": "三"},
+            ],
+        )
+    )
+    db_session.add(ChapterContent(project_id=pid, chapter_index=1, title="一", content="第一章正文", status="generated"))
+    other_dialog = Dialog(project_id=pid, dialog_type="athena", state="pending_action")
+    db_session.add(other_dialog)
+    db_session.flush()
+    db_session.add(
+        PendingAction(
+            dialog_id=other_dialog.id,
+            type="preview_chapter",
+            params={"project_id": pid, "chapter_index": 2},
+            status="pending",
+        )
+    )
+    db_session.commit()
+
+    r2 = client.post("/api/v1/dialog/chat", json={"project_id": pid, "input_type": "text", "text": "继续吧"})
+
+    assert r2.status_code == 200
+    body = r2.json()
+    assert body["pending_action"]["type"] == "preview_chapter"
+    assert body["pending_action"]["params"]["chapter_index"] == 3
+
+
+def test_chat_text_continue_skips_active_chapter_task(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Test"})
+    pid = r.json()["id"]
+    db_session.add(Setup(project_id=pid, status="generated", world_building={}, characters=[], core_concept={}))
+    db_session.add(Storyline(project_id=pid, status="generated", plotlines=[], foreshadowing=[]))
+    db_session.add(
+        Outline(
+            project_id=pid,
+            status="generated",
+            total_chapters=3,
+            chapters=[
+                {"chapter_index": 1, "title": "一", "summary": "一"},
+                {"chapter_index": 2, "title": "二", "summary": "二"},
+                {"chapter_index": 3, "title": "三", "summary": "三"},
+            ],
+        )
+    )
+    db_session.add(ChapterContent(project_id=pid, chapter_index=1, title="一", content="第一章正文", status="generated"))
+    db_session.add(
+        BackgroundTask(
+            project_id=pid,
+            task_type="writing_agent_run",
+            status="running",
+            payload={"action_type": "generate_chapter", "tools": [{"params": {"chapter_index": 2}}]},
+        )
+    )
+    db_session.commit()
+
+    r2 = client.post("/api/v1/dialog/chat", json={"project_id": pid, "input_type": "text", "text": "继续吧"})
+
+    assert r2.status_code == 200
+    body = r2.json()
+    assert body["pending_action"]["type"] == "preview_chapter"
+    assert body["pending_action"]["params"]["chapter_index"] == 3
+
+
 def test_get_messages_includes_current_pending_action(client):
     r = client.post("/api/v1/projects", json={"name": "Test"})
     pid = r.json()["id"]
