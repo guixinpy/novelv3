@@ -271,6 +271,12 @@ def _inspect_agent_tool_contracts(context: WritingAgentToolContext, tool: Writin
     )
 
 
+def _inspect_agent_write_gate_coverage(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
+    from app.services.writing_agent.write_gate_coverage import inspect_agent_write_gate_coverage
+
+    return inspect_agent_write_gate_coverage(adapter_metadata_by_name=_static_adapter_metadata_by_name())
+
+
 def _static_adapter_metadata_by_name() -> dict[str, dict[str, Any]]:
     return {name: adapter.to_metadata() for name, adapter in _STATIC_TOOL_ADAPTERS.items()}
 
@@ -775,6 +781,12 @@ _STATIC_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
     "inspect_agent_tool_contracts": WritingAgentToolAdapter(
         "inspect_agent_tool_contracts",
         _inspect_agent_tool_contracts,
+        category="preflight",
+        mutability="read",
+    ),
+    "inspect_agent_write_gate_coverage": WritingAgentToolAdapter(
+        "inspect_agent_write_gate_coverage",
+        _inspect_agent_write_gate_coverage,
         category="preflight",
         mutability="read",
     ),

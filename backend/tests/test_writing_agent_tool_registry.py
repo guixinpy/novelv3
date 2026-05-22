@@ -27,6 +27,7 @@ def test_agent_tool_registry_has_unique_names_and_contracts():
         "inspect_longform_chapter_batch",
         "inspect_agent_job_projection",
         "inspect_agent_tool_contracts",
+        "inspect_agent_write_gate_coverage",
         "inspect_agent_knowledge_base_route",
         "record_agent_knowledge_base_candidate",
         "execute_longform_chapter_batch_preflight",
@@ -51,6 +52,7 @@ def test_agent_tool_registry_has_unique_names_and_contracts():
     assert target_type_for_tool("inspect_longform_chapter_batch") == "background_task"
     assert target_type_for_tool("inspect_agent_job_projection") == "agent_job_projection"
     assert target_type_for_tool("inspect_agent_tool_contracts") == "agent_tool_contracts"
+    assert target_type_for_tool("inspect_agent_write_gate_coverage") == "agent_write_gate_coverage"
     assert target_type_for_tool("inspect_agent_knowledge_base_route") == "agent_knowledge_base_route"
     assert target_type_for_tool("record_agent_knowledge_base_candidate") == "agent_knowledge_base_candidate"
     assert target_type_for_tool("execute_longform_chapter_batch_preflight") == "background_task"
@@ -69,6 +71,7 @@ def test_agent_tool_registry_has_unique_names_and_contracts():
     assert "inspect_longform_chapter_batch" in non_blocking_report_tool_names()
     assert "inspect_agent_job_projection" in non_blocking_report_tool_names()
     assert "inspect_agent_tool_contracts" in non_blocking_report_tool_names()
+    assert "inspect_agent_write_gate_coverage" in non_blocking_report_tool_names()
     assert "preview_agent_plan_approval_contract" in non_blocking_report_tool_names()
     assert "verify_agent_plan_approval_contract" in non_blocking_report_tool_names()
     assert "inspect_agent_knowledge_base_route" in non_blocking_report_tool_names()
@@ -366,6 +369,20 @@ def test_agent_tool_registry_includes_inspect_agent_tool_contracts():
     assert descriptor.input_schema["properties"]["include_gap_details"]["type"] == "boolean"
     assert "inspect_agent_tool_contracts" in allowed_tool_names()
     assert "inspect_agent_tool_contracts" in non_blocking_report_tool_names()
+
+
+def test_agent_tool_registry_includes_inspect_agent_write_gate_coverage():
+    descriptor = get_agent_tool_descriptor("inspect_agent_write_gate_coverage")
+
+    assert descriptor is not None
+    assert descriptor.internal is True
+    assert descriptor.non_blocking_report is True
+    assert descriptor.category == "preflight"
+    assert descriptor.target_type == "agent_write_gate_coverage"
+    assert descriptor.output_schema["properties"]["write_tools"]["type"] == "array"
+    assert descriptor.output_schema["properties"]["recommended_next_targets"]["type"] == "array"
+    assert "inspect_agent_write_gate_coverage" in allowed_tool_names()
+    assert "inspect_agent_write_gate_coverage" in non_blocking_report_tool_names()
 
 
 def test_agent_tool_registry_includes_inspect_agent_knowledge_base_route():

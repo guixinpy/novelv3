@@ -659,6 +659,7 @@ def test_tool_executor_static_adapter_names_are_report_or_agent_native_tools():
         "inspect_longform_chapter_batch",
         "inspect_agent_job_projection",
         "inspect_agent_tool_contracts",
+        "inspect_agent_write_gate_coverage",
         "inspect_agent_knowledge_base_route",
         "record_agent_knowledge_base_candidate",
         "import_setup_world_model",
@@ -744,6 +745,7 @@ def test_tool_executor_lists_unhandled_internal_tools_for_migration_tracking():
     assert "inspect_longform_chapter_batch" not in names
     assert "inspect_agent_job_projection" not in names
     assert "inspect_agent_tool_contracts" not in names
+    assert "inspect_agent_write_gate_coverage" not in names
     assert "inspect_agent_knowledge_base_route" not in names
     assert "record_agent_knowledge_base_candidate" not in names
     assert "execute_longform_chapter_batch_preflight" not in names
@@ -775,6 +777,18 @@ def test_tool_executor_exposes_inspect_agent_tool_contracts_adapter_metadata():
         "category": "preflight",
         "mutability": "read",
         "handler_name": "_inspect_agent_tool_contracts",
+    }
+
+
+def test_tool_executor_exposes_inspect_agent_write_gate_coverage_adapter_metadata():
+    metadata = writing_agent_tool_adapter_metadata("inspect_agent_write_gate_coverage")
+
+    assert metadata == {
+        "tool_name": "inspect_agent_write_gate_coverage",
+        "adapter_type": "static",
+        "category": "preflight",
+        "mutability": "read",
+        "handler_name": "_inspect_agent_write_gate_coverage",
     }
 
 
@@ -1009,6 +1023,27 @@ async def test_tool_executor_handles_inspect_agent_tool_contracts(db_session):
     assert "missing_agent_native_adapter" not in tools_by_name["compress_chapter_to_target"]["gap_codes"]
     assert "output_schema_too_generic" not in tools_by_name["compress_chapter_to_target"]["gap_codes"]
     assert internal_tool_names().issubset(set(tools_by_name))
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_handles_inspect_agent_write_gate_coverage(db_session):
+    project = Project(name="Write Gate Coverage")
+    db_session.add(project)
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-gate-coverage"),
+        WritingAgentToolRequest(tool_name="inspect_agent_write_gate_coverage", params={}),
+    )
+
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "completed"
+    tools_by_name = {tool["tool_name"]: tool for tool in result.output["write_tools"]}
+    assert tools_by_name["execute_longform_chapter_batch"]["agent_plan_gate_status"] == "enforced"
+    assert tools_by_name["generate_chapter"]["agent_plan_gate_status"] == "indirect_batch_only"
+    assert tools_by_name["generate_chapter"]["risk_level"] == "high"
+    assert result.output["recommended_next_targets"]
 
 
 @pytest.mark.asyncio

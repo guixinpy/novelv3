@@ -188,6 +188,16 @@ _AGENT_PLAN_APPROVAL_VERIFICATION_OUTPUT = _object_schema(
         "trace": {"type": "object"},
     }
 )
+_AGENT_WRITE_GATE_COVERAGE_OUTPUT = _object_schema(
+    {
+        "status": {"type": "string"},
+        "version": {"type": "string"},
+        "summary": {"type": "object"},
+        "write_tools": {"type": "array"},
+        "recommended_next_targets": {"type": "array"},
+        "trace": {"type": "object"},
+    }
+)
 
 
 _TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
@@ -557,6 +567,19 @@ _TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         internal=True,
         non_blocking_report=True,
         sort_key=11,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
+        name="inspect_agent_write_gate_coverage",
+        module="writing_agent",
+        category="preflight",
+        description="只读输出写入工具的 Agent 计划审批门禁覆盖度，用于选择下一批执行硬化目标。",
+        input_schema=_object_schema(),
+        output_schema=_AGENT_WRITE_GATE_COVERAGE_OUTPUT,
+        target_type="agent_write_gate_coverage",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=12,
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(
