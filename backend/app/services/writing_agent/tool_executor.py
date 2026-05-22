@@ -236,6 +236,20 @@ def _inspect_agent_slash_command_route(
     )
 
 
+def _inspect_agent_dialog_route_projection(
+    context: WritingAgentToolContext,
+    tool: WritingAgentToolRequest,
+) -> dict[str, Any]:
+    from app.services.actions.action_execution_service import SUPPORTED_ACTION_EXECUTION_TYPES
+    from app.services.writing_agent.slash_command_route import inspect_agent_dialog_route_projection
+
+    return inspect_agent_dialog_route_projection(
+        source=str(tool.params.get("source") or "").strip() or None,
+        static_adapter_tool_names=set(_STATIC_TOOL_ADAPTERS),
+        action_execution_tool_names=set(SUPPORTED_ACTION_EXECUTION_TYPES),
+    )
+
+
 def _analyze_chapter_world_model(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
     from app.services.writing_agent.world_model_analysis_tool import analyze_chapter_world_model_tool
 
@@ -670,6 +684,12 @@ _STATIC_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
     "inspect_agent_slash_command_route": WritingAgentToolAdapter(
         "inspect_agent_slash_command_route",
         _inspect_agent_slash_command_route,
+        category="preflight",
+        mutability="read",
+    ),
+    "inspect_agent_dialog_route_projection": WritingAgentToolAdapter(
+        "inspect_agent_dialog_route_projection",
+        _inspect_agent_dialog_route_projection,
         category="preflight",
         mutability="read",
     ),

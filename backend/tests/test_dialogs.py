@@ -12,13 +12,13 @@ from sqlalchemy.orm.session import Session as OrmSession
 
 from app.api import dialogs as dialogs_api
 from app.core.chat_commands import (
-    CHAT_COMMAND_AGENT_ROUTE_VERSION,
     command_agent_route,
     command_mutates_history,
     command_to_agent_tool_name,
     command_to_action_type,
     is_supported_chat_command,
 )
+from app.core.dialog_agent_routes import DIALOG_AGENT_ROUTE_VERSION
 from app.core.chat_compaction import build_compaction_summary, select_compactable_plain_messages
 from app.core.intent_router import IntentRouter, parse_chapter_index
 from app.models import (
@@ -37,6 +37,21 @@ from app.schemas import ProjectDiagnosisOut
 from app.services.actions.action_result_service import ActionResultService
 
 ORIGINAL_SESSION_COMMIT = OrmSession.commit
+
+
+def _expected_agent_route(source: str, action_type: str, agent_tool_name: str, *, command_name: str | None = None):
+    route = {
+        "version": DIALOG_AGENT_ROUTE_VERSION,
+        "source": source,
+        "action_type": action_type,
+        "agent_action_type": agent_tool_name,
+        "agent_tool_name": agent_tool_name,
+        "requires_confirmation": True,
+        "entrypoint": "dialog_pending_action",
+    }
+    if command_name is not None:
+        route["command_name"] = command_name
+    return route
 
 
 def test_state_diagnosis_empty_project(client):
@@ -112,15 +127,12 @@ def test_chat_command_registry_helpers_cover_expected_commands():
     assert command_to_agent_tool_name("compact") is None
 
     chapter_route = command_agent_route("chapter")
-    assert chapter_route == {
-        "version": CHAT_COMMAND_AGENT_ROUTE_VERSION,
-        "command_name": "chapter",
-        "action_type": "preview_chapter",
-        "agent_action_type": "generate_chapter",
-        "agent_tool_name": "generate_chapter",
-        "requires_confirmation": True,
-        "entrypoint": "dialog_pending_action",
-    }
+    assert chapter_route == _expected_agent_route(
+        "slash_command",
+        "preview_chapter",
+        "generate_chapter",
+        command_name="chapter",
+    )
     assert command_agent_route("clear") is None
 
 
@@ -138,15 +150,12 @@ def test_chapter_command_leading_index_wins_over_context_mentions(client):
     assert r2.status_code == 200
     body = r2.json()
     assert body["pending_action"]["params"]["chapter_index"] == 2
-    assert body["pending_action"]["params"]["agent_route"] == {
-        "version": CHAT_COMMAND_AGENT_ROUTE_VERSION,
-        "command_name": "chapter",
-        "action_type": "preview_chapter",
-        "agent_action_type": "generate_chapter",
-        "agent_tool_name": "generate_chapter",
-        "requires_confirmation": True,
-        "entrypoint": "dialog_pending_action",
-    }
+    assert body["pending_action"]["params"]["agent_route"] == _expected_agent_route(
+        "slash_command",
+        "preview_chapter",
+        "generate_chapter",
+        command_name="chapter",
+    )
     assert "第2章正文" in body["pending_action"]["description"]
 
 
@@ -214,9 +223,19 @@ def test_text_intent_creates_pending_setup_action(client, db_session):
     assert body["pending_action"]["type"] == "preview_setup"
     assert body["pending_action"]["params"]["project_id"] == project_id
     assert body["pending_action"]["params"]["command_args"] == text
+    assert body["pending_action"]["params"]["agent_route"] == _expected_agent_route(
+        "text_intent",
+        "preview_setup",
+        "generate_setup",
+    )
     assert pending.type == "preview_setup"
     assert pending.params["project_id"] == project_id
     assert pending.params["command_args"] == text
+    assert pending.params["agent_route"] == _expected_agent_route(
+        "text_intent",
+        "preview_setup",
+        "generate_setup",
+    )
     assert dialog.state == "pending_action"
 
 
@@ -247,6 +266,7 @@ def test_text_intent_confirm_routes_to_agent_run(client, db_session, monkeypatch
     assert run.entrypoint == "dialog_pending_action"
     assert run.input["tools"][0]["tool_name"] == "generate_setup"
     assert run.input["tools"][0]["command_args"] == text
+    assert "agent_route" not in run.input["tools"][0]["params"]
     assert started_task_ids == [body["action_result"]["data"]["task_id"]]
 
 
@@ -724,6 +744,11 @@ def test_chat_button_action(client):
     assert r2.status_code == 200
     assert r2.json()["pending_action"]["type"] == "preview_setup"
     assert r2.json()["pending_action"]["params"]["project_id"] == pid
+    assert r2.json()["pending_action"]["params"]["agent_route"] == _expected_agent_route(
+        "button_action",
+        "preview_setup",
+        "generate_setup",
+    )
     assert r2.json()["ui_hint"] == {
         "dialog_state": "PENDING_ACTION",
         "active_action": {
@@ -751,6 +776,11 @@ def test_chat_button_action_merges_project_id_with_extra_params(client):
     assert r2.json()["pending_action"]["params"] == {
         "project_id": pid,
         "command_args": "设定保持简洁",
+        "agent_route": _expected_agent_route(
+            "button_action",
+            "preview_setup",
+            "generate_setup",
+        ),
     }
 
 
@@ -781,6 +811,11 @@ def test_chat_text_start_writing_creates_pending_chapter_action(client, db_sessi
     assert body["pending_action"]["params"]["project_id"] == pid
     assert body["pending_action"]["params"]["chapter_index"] == 1
     assert body["pending_action"]["params"]["command_args"] == "请开始写正文，从第1章开始生成。"
+    assert body["pending_action"]["params"]["agent_route"] == _expected_agent_route(
+        "text_intent",
+        "preview_chapter",
+        "generate_chapter",
+    )
     assert body["ui_hint"]["dialog_state"] == "PENDING_ACTION"
     assert body["ui_hint"]["active_action"]["type"] == "preview_chapter"
 

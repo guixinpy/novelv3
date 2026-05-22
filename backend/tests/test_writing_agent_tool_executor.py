@@ -61,6 +61,32 @@ async def test_tool_executor_handles_inspect_agent_slash_command_route(db_sessio
 
 
 @pytest.mark.asyncio
+async def test_tool_executor_handles_inspect_agent_dialog_route_projection(db_session):
+    project = Project(name="Dialog Route Projection")
+    db_session.add(project)
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-dialog-route"),
+        WritingAgentToolRequest(tool_name="inspect_agent_dialog_route_projection", params={}),
+    )
+
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "ready"
+    assert result.output["version"] == "phase104.dialog_route_projection.v1"
+    keys = {
+        (route["source"], route["action_type"], route.get("command_name"))
+        for route in result.output["routes"]
+    }
+    assert ("slash_command", "preview_chapter", "chapter") in keys
+    assert ("text_intent", "preview_chapter", None) in keys
+    assert ("button_action", "preview_chapter", None) in keys
+    assert result.output["trace"]["sources"] == ["slash_command", "text_intent", "button_action"]
+    assert result.output["trace"]["unsupported_tools"] == []
+
+
+@pytest.mark.asyncio
 async def test_tool_executor_handles_planner_tool(db_session):
     project = Project(name="Executor Planner")
     db_session.add(project)

@@ -278,6 +278,26 @@ _TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(
+        name="inspect_agent_dialog_route_projection",
+        module="writing_agent",
+        category="preflight",
+        description="返回自然语言 intent、按钮 action 和斜杠命令到 Writing Agent 工具的统一路由投影。",
+        input_schema=_object_schema({"source": {"type": "string"}}),
+        output_schema=_object_schema(
+            {
+                "status": {"type": "string"},
+                "version": {"type": "string"},
+                "routes": {"type": "array"},
+                "trace": {"type": "object"},
+            }
+        ),
+        target_type="agent_tool_plan",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=10,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
         name="plan_longform_chapter_batch",
         module="writing_agent",
         category="task_queue",

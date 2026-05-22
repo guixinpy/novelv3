@@ -9,6 +9,7 @@ from app.config import load_api_key
 from app.core.ai_service import AIService
 from app.core.chat_commands import build_command_text, command_agent_route, command_to_action_type, parse_command
 from app.core.chat_compaction import build_compaction_summary, select_compactable_plain_messages
+from app.core.dialog_agent_routes import build_dialog_agent_route
 from app.core.intent_router import IntentRouter, parse_chapter_index
 from app.core.model_call_trace import (
     attach_trace_response,
@@ -671,10 +672,14 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
                 diagnosis,
                 action_type=payload.action_type,
             )
+        params = {**(payload.params or {}), "project_id": payload.project_id}
+        route = build_dialog_agent_route(payload.action_type, source="button_action")
+        if route:
+            params["agent_route"] = route
         pending = PendingAction(
             dialog_id=dialog.id,
             type=payload.action_type,
-            params={**(payload.params or {}), "project_id": payload.project_id},
+            params=params,
         )
         db.add(pending)
         db.commit()
@@ -753,6 +758,9 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
 
     if candidate and candidate.type.startswith("preview_"):
         params = {**candidate.params, "project_id": payload.project_id}
+        route = build_dialog_agent_route(candidate.type, source="text_intent")
+        if route:
+            params["agent_route"] = route
         if effective_text:
             params["command_args"] = effective_text
         if candidate.type == "preview_chapter":
