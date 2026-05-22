@@ -1,4 +1,4 @@
-from app.models import AIModelCallTrace, Project, WritingAgentRun, WritingAgentStep
+from app.models import AIModelCallTrace, Dialog, DialogMessage, Project, WritingAgentRun, WritingAgentStep
 from app.services.writing_agent.agent_trace_audit import inspect_agent_trace_audit
 
 
@@ -120,3 +120,67 @@ def test_inspect_agent_trace_audit_exposes_recommended_recovery_for_blocked_run(
             "source_step_index": 1,
         }
     ]
+
+
+def test_inspect_agent_trace_audit_includes_dialog_approval_events_without_raw_hash(db_session):
+    project = Project(name="Trace Audit Approval Events")
+    db_session.add(project)
+    db_session.flush()
+    dialog = Dialog(project_id=project.id, dialog_type="hermes", state="running")
+    db_session.add(dialog)
+    db_session.flush()
+    run = WritingAgentRun(
+        project_id=project.id,
+        goal="确认后生成第2章",
+        status="running",
+        entrypoint="dialog_pending_action",
+        input={"chapter_index": 2},
+        dialog_id=dialog.id,
+    )
+    db_session.add(run)
+    db_session.flush()
+    message = DialogMessage(
+        dialog_id=dialog.id,
+        role="system",
+        content="操作已确认，正在生成中...",
+        action_result={
+            "type": "generate_chapter",
+            "status": "generating",
+            "data": {
+                "agent_run_id": run.id,
+                "approval_decision": {
+                    "kind": "pending_action_decision",
+                    "pending_action_id": "pending-1",
+                    "action_type": "generate_chapter",
+                    "pending_action_type": "generate_chapter",
+                    "decision": "confirm",
+                    "decision_comment": "",
+                    "resolved_at": "2026-05-22T12:00:00+00:00",
+                    "approval_mode": "single",
+                    "approval_contract_hash": "approval:secret-hash",
+                    "approval_contract_version": "phase108.agent_plan_approval_contract.v1",
+                },
+            },
+        },
+    )
+    db_session.add(message)
+    db_session.commit()
+
+    output = inspect_agent_trace_audit(db_session, project.id, run_id=run.id)
+
+    assert output["approval_events"] == [
+        {
+            "kind": "pending_action_decision",
+            "message_id": message.id,
+            "action_type": "generate_chapter",
+            "pending_action_type": "generate_chapter",
+            "decision": "confirm",
+            "decision_label": "已确认",
+            "approval_mode": "single",
+            "approval_contract_bound": True,
+            "approval_contract_version": "phase108.agent_plan_approval_contract.v1",
+            "resolved_at": "2026-05-22T12:00:00+00:00",
+        }
+    ]
+    assert "approval:secret-hash" not in str(output["approval_events"])
+    assert output["audit"]["approval_event_count"] == 1

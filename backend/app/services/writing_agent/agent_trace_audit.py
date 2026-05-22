@@ -6,7 +6,7 @@ from typing import Any
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from app.models import AIModelCallTrace, Project, WritingAgentRun, WritingAgentStep
+from app.models import AIModelCallTrace, DialogMessage, Project, WritingAgentRun, WritingAgentStep
 
 AGENT_TRACE_AUDIT_VERSION = "phase73.agent_trace_audit.v1"
 DEFAULT_AUDIT_LIMIT = 20
@@ -38,6 +38,7 @@ def inspect_agent_trace_audit(
                 "run": None,
                 "steps": [],
                 "traces": [],
+                "approval_events": [],
                 "context": {"total_blocks": 0, "blocks": []},
                 "failure": None,
                 "recommended_actions": [{"tool_name": "inspect_agent_memory_route", "reason_code": "no_matching_run"}],
@@ -49,6 +50,7 @@ def inspect_agent_trace_audit(
     trace_ids = [step.trace_id for step in steps if step.trace_id]
     traces = _traces_by_id(db, project_id, trace_ids)
     trace_items = [_trace_summary(traces[trace_id]) for trace_id in trace_ids if trace_id in traces]
+    approval_events = _approval_events_for_run(db, run)
     context = _context_summary([traces[trace_id] for trace_id in trace_ids if trace_id in traces])
     failure = _failure_summary(run, steps)
     recommended_actions = _recommended_actions(steps, failure=failure)
@@ -61,11 +63,13 @@ def inspect_agent_trace_audit(
                 "reason": _audit_reason(run.status, failure=failure),
                 "step_count": len(steps),
                 "trace_count": len(trace_items),
+                "approval_event_count": len(approval_events),
                 "context_block_count": context["total_blocks"],
             },
             "run": _run_summary(run),
             "steps": [_step_summary(step) for step in steps],
             "traces": trace_items,
+            "approval_events": approval_events,
             "context": context,
             "failure": failure,
             "recommended_actions": recommended_actions,
@@ -201,6 +205,58 @@ def _trace_summary(trace: AIModelCallTrace) -> dict[str, Any]:
         "context_char_count": sum(len(str(block.get("content") or "")) for block in context_blocks if isinstance(block, dict)),
         "metadata_keys": sorted(metadata.keys()),
     }
+
+
+def _approval_events_for_run(db: Session, run: WritingAgentRun) -> list[dict[str, Any]]:
+    if not run.dialog_id:
+        return []
+    messages = (
+        db.query(DialogMessage)
+        .filter(
+            DialogMessage.dialog_id == run.dialog_id,
+            DialogMessage.role == "system",
+            DialogMessage.action_result.isnot(None),
+        )
+        .order_by(DialogMessage.created_at.asc(), DialogMessage.id.asc())
+        .all()
+    )
+    events: list[dict[str, Any]] = []
+    for message in messages:
+        action_result = message.action_result if isinstance(message.action_result, dict) else {}
+        data = action_result.get("data") if isinstance(action_result.get("data"), dict) else {}
+        if str(data.get("agent_run_id") or "") != run.id:
+            continue
+        decision = data.get("approval_decision") if isinstance(data.get("approval_decision"), dict) else None
+        if decision is None:
+            continue
+        events.append(_approval_event_summary(message, decision))
+    return events
+
+
+def _approval_event_summary(message: DialogMessage, decision: dict[str, Any]) -> dict[str, Any]:
+    decision_value = str(decision.get("decision") or "").strip()
+    return {
+        "kind": str(decision.get("kind") or "pending_action_decision"),
+        "message_id": message.id,
+        "action_type": str(decision.get("action_type") or ""),
+        "pending_action_type": str(decision.get("pending_action_type") or ""),
+        "decision": decision_value,
+        "decision_label": _decision_label(decision_value),
+        "approval_mode": str(decision.get("approval_mode") or ""),
+        "approval_contract_bound": bool(str(decision.get("approval_contract_hash") or "").strip()),
+        "approval_contract_version": decision.get("approval_contract_version"),
+        "resolved_at": decision.get("resolved_at"),
+    }
+
+
+def _decision_label(decision: str) -> str:
+    if decision == "confirm":
+        return "已确认"
+    if decision == "cancel":
+        return "已取消"
+    if decision == "revise":
+        return "要求修改"
+    return decision
 
 
 def _context_summary(traces: list[AIModelCallTrace]) -> dict[str, Any]:
