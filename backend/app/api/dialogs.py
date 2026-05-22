@@ -938,6 +938,23 @@ def _execute_action_background(
     return task
 
 
+def _approval_decision_metadata(pending: PendingAction, decision: str, action_type: str) -> dict:
+    params = pending.params if isinstance(pending.params, dict) else {}
+    contract = params.get("approval_contract") if isinstance(params.get("approval_contract"), dict) else {}
+    return {
+        "kind": "pending_action_decision",
+        "pending_action_id": pending.id,
+        "action_type": action_type,
+        "pending_action_type": pending.type,
+        "decision": decision,
+        "decision_comment": pending.decision_comment or "",
+        "resolved_at": pending.resolved_at.isoformat() if pending.resolved_at else None,
+        "approval_mode": "single",
+        "approval_contract_hash": params.get("approval_contract_hash"),
+        "approval_contract_version": contract.get("version"),
+    }
+
+
 @router.post("/api/v1/dialog/resolve-action")
 async def resolve_action(payload: ResolveActionIn, db: Session = Depends(get_db)):
     claimed = db.query(PendingAction).filter(
@@ -1010,13 +1027,14 @@ async def resolve_action(payload: ResolveActionIn, db: Session = Depends(get_db)
     elif payload.decision == "revise":
         result_data = {"status": "revised", "comment": payload.comment}
 
+    result_data["approval_decision"] = _approval_decision_metadata(pending, payload.decision, action_type)
     resolve_msg = _resolve_message(payload.decision)
     action_result = {
         "type": action_type,
         "status": result_data["status"],
         "data": result_data,
     }
-    _save_message(db, dialog.id, "system", resolve_msg, {"type": action_type, "status": result_data["status"]})
+    _save_message(db, dialog.id, "system", resolve_msg, action_result)
 
     return {
         "dialog_state": "RUNNING" if payload.decision == "confirm" else "CHATTING",

@@ -1690,6 +1690,56 @@ async def test_chapter_approval_followup_dispatches_execute_tool(db_session):
 
 
 @pytest.mark.asyncio
+async def test_chapter_approval_followup_resolve_action_records_decision_metadata(client, db_session):
+    project = Project(name="Chapter Approval Decision Metadata")
+    db_session.add(project)
+    db_session.commit()
+    dialog = dialogs_api._get_or_create_dialog(db_session, project.id)
+
+    from app.services.writing_agent.dialog_control_plane import prepare_dialog_agent_run_dispatch
+
+    prepare_dispatch = prepare_dialog_agent_run_dispatch(
+        db_session,
+        project_id=project.id,
+        dialog_id=dialog.id,
+        action_type="generate_chapter",
+        command_args="2 承接上一章记忆线索",
+        action_params={"project_id": project.id, "chapter_index": 2},
+    )
+    await prepare_dispatch.work(db_session, prepare_dispatch.task)
+
+    pending = db_session.query(PendingAction).filter_by(dialog_id=dialog.id, status="pending").one()
+
+    with patch("app.api.dialogs.LocalTaskRunner.start"):
+        response = client.post(
+            "/api/v1/dialog/resolve-action",
+            json={"action_id": pending.id, "decision": "confirm"},
+        )
+
+    assert response.status_code == 200
+    action_result = response.json()["action_result"]
+    decision = action_result["data"]["approval_decision"]
+    assert decision["kind"] == "pending_action_decision"
+    assert decision["pending_action_id"] == pending.id
+    assert decision["pending_action_type"] == "generate_chapter"
+    assert decision["action_type"] == "generate_chapter"
+    assert decision["decision"] == "confirm"
+    assert decision["decision_comment"] == ""
+    assert decision["approval_mode"] == "single"
+    assert decision["approval_contract_hash"] == pending.params["approval_contract_hash"]
+    assert decision["approval_contract_version"] == "phase108.agent_plan_approval_contract.v1"
+    assert decision["resolved_at"]
+
+    terminal = (
+        db_session.query(DialogMessage)
+        .filter(DialogMessage.dialog_id == dialog.id, DialogMessage.role == "system")
+        .order_by(DialogMessage.created_at.desc())
+        .first()
+    )
+    assert terminal.action_result["data"]["approval_decision"] == decision
+
+
+@pytest.mark.asyncio
 async def test_background_action_work_records_failure_message_on_exception(client, db_session, monkeypatch):
     r = client.post("/api/v1/projects", json={"name": "Background Failure Message"})
     pid = r.json()["id"]
