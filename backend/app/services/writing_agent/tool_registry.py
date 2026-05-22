@@ -298,6 +298,37 @@ _TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(
+        name="inspect_agent_intent_projection",
+        module="writing_agent",
+        category="preflight",
+        description="返回自然语言输入经 IntentRouter 规则匹配后的可解释投影报告。",
+        input_schema=_object_schema(
+            {
+                "text": {"type": "string"},
+                "missing_items": {"type": "array"},
+                "completed_items": {"type": "array"},
+                "suggested_next_step": {"type": "string"},
+            },
+            required=("text",),
+        ),
+        output_schema=_object_schema(
+            {
+                "status": {"type": "string"},
+                "rule_id": {"type": ["string", "null"]},
+                "reason": {"type": ["string", "null"]},
+                "candidate": {"type": ["object", "null"]},
+                "agent_route": {"type": ["object", "null"]},
+                "diagnosis": {"type": "object"},
+                "extracted_params": {"type": "object"},
+            }
+        ),
+        target_type="agent_tool_plan",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=11,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
         name="plan_longform_chapter_batch",
         module="writing_agent",
         category="task_queue",

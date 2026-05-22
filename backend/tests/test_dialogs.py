@@ -95,6 +95,81 @@ def test_intent_router_action_candidate():
     assert chapter_candidate.params["chapter_index"] == 1
 
 
+def test_intent_router_projection_explains_setup_route():
+    router = IntentRouter()
+    diag = ProjectDiagnosisOut(missing_items=["setup"], completed_items=[], suggested_next_step="preview_setup")
+
+    projection = router.project("创建主角设定", "chatting", None, diag).to_dict()
+
+    assert projection["status"] == "matched"
+    assert projection["version"] == "phase105.intent_projection.v1"
+    assert projection["input"]["normalized_text"] == "创建主角设定"
+    assert len(projection["input"]["input_hash"]) == 64
+    assert projection["rule_id"] == "setup_intent"
+    assert projection["decision"]["rule_id"] == "setup_intent"
+    assert projection["decision"]["reason_code"] == "intent_rule_matched"
+    assert projection["decision"]["match_evidence"] == [{"kind": "pattern", "name": "setup_phrase"}]
+    assert projection["candidate"] == {"type": "preview_setup", "params": {"project_id": ""}}
+    assert projection["agent_route"] == _expected_agent_route(
+        "text_intent",
+        "preview_setup",
+        "generate_setup",
+    )
+    assert projection["tool_selection"] == {
+        "selected_tool": "generate_setup",
+        "why_this_tool": "dialog_action_to_agent_tool.preview_setup",
+        "availability_checked": False,
+    }
+    assert {"code": "requires_confirmation", "passed": True} in projection["preconditions"]
+    assert projection["diagnosis"]["missing_items"] == ["setup"]
+    assert projection["extracted_params"] == {}
+
+
+def test_intent_router_projection_explains_chapter_route():
+    router = IntentRouter()
+    diag = ProjectDiagnosisOut(
+        missing_items=[],
+        completed_items=["setup", "storyline", "outline"],
+        suggested_next_step="preview_chapter",
+    )
+
+    projection = router.project("请开始写正文，从第3章开始生成。", "chatting", None, diag).to_dict()
+
+    assert projection["status"] == "matched"
+    assert projection["rule_id"] == "chapter_intent"
+    assert projection["decision"]["rule_id"] == "chapter_intent"
+    assert projection["decision"]["match_evidence"] == [{"kind": "pattern", "name": "chapter_generation_phrase"}]
+    assert projection["candidate"] == {"type": "preview_chapter", "params": {"chapter_index": 3}}
+    assert projection["agent_route"] == _expected_agent_route(
+        "text_intent",
+        "preview_chapter",
+        "generate_chapter",
+    )
+    assert projection["extracted_params"] == {"chapter_index": 3}
+    assert {"code": "outline_completed", "passed": True} in projection["preconditions"]
+    assert projection["trace"]["projection_id"].startswith("intent:")
+
+
+def test_intent_router_projection_reports_no_match():
+    router = IntentRouter()
+    diag = ProjectDiagnosisOut(missing_items=["setup"], completed_items=[], suggested_next_step="preview_setup")
+
+    projection = router.project("随便聊聊", "chatting", None, diag).to_dict()
+
+    assert projection["status"] == "no_match"
+    assert projection["rule_id"] is None
+    assert projection["reason"] == "no_intent_rule_matched"
+    assert projection["decision"]["reason_code"] == "no_intent_rule_matched"
+    assert projection["candidate"] is None
+    assert projection["agent_route"] is None
+    assert projection["tool_selection"] == {
+        "selected_tool": None,
+        "why_this_tool": None,
+        "availability_checked": False,
+    }
+    assert {"rule_id": "setup_intent", "reason_code": "intent_pattern_not_matched"} in projection["rejected_candidates"]
+
+
 def test_intent_router_no_match():
     router = IntentRouter()
     diag = ProjectDiagnosisOut(missing_items=["setup"], completed_items=[], suggested_next_step="preview_setup")

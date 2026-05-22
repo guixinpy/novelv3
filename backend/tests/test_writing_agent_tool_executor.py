@@ -87,6 +87,38 @@ async def test_tool_executor_handles_inspect_agent_dialog_route_projection(db_se
 
 
 @pytest.mark.asyncio
+async def test_tool_executor_handles_inspect_agent_intent_projection(db_session):
+    project = Project(name="Intent Projection")
+    db_session.add(project)
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-intent"),
+        WritingAgentToolRequest(
+            tool_name="inspect_agent_intent_projection",
+            params={
+                "text": "请开始写正文，从第3章开始生成。",
+                "missing_items": [],
+                "completed_items": ["setup", "storyline", "outline"],
+                "suggested_next_step": "preview_chapter",
+            },
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "matched"
+    assert result.output["version"] == "phase105.intent_projection.v1"
+    assert result.output["rule_id"] == "chapter_intent"
+    assert result.output["decision"]["reason_code"] == "intent_rule_matched"
+    assert result.output["decision"]["match_evidence"] == [{"kind": "pattern", "name": "chapter_generation_phrase"}]
+    assert result.output["candidate"] == {"type": "preview_chapter", "params": {"chapter_index": 3}}
+    assert result.output["agent_route"]["agent_tool_name"] == "generate_chapter"
+    assert result.output["tool_selection"]["selected_tool"] == "generate_chapter"
+    assert result.output["extracted_params"] == {"chapter_index": 3}
+
+
+@pytest.mark.asyncio
 async def test_tool_executor_handles_planner_tool(db_session):
     project = Project(name="Executor Planner")
     db_session.add(project)

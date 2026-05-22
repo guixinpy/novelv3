@@ -250,6 +250,31 @@ def _inspect_agent_dialog_route_projection(
     )
 
 
+def _inspect_agent_intent_projection(
+    context: WritingAgentToolContext,
+    tool: WritingAgentToolRequest,
+) -> dict[str, Any]:
+    from app.core.intent_router import IntentRouter
+    from app.schemas import ProjectDiagnosisOut
+    from app.services.workspace.bootstrap import build_project_diagnosis
+
+    text = str(tool.params.get("text") or tool.command_args or "").strip()
+    if "missing_items" in tool.params or "completed_items" in tool.params or "suggested_next_step" in tool.params:
+        diagnosis = ProjectDiagnosisOut(
+            missing_items=_string_list(tool.params.get("missing_items")),
+            completed_items=_string_list(tool.params.get("completed_items")),
+            suggested_next_step=str(tool.params.get("suggested_next_step") or "").strip() or None,
+        )
+    else:
+        diagnosis = build_project_diagnosis(context.db, context.project_id)
+    return IntentRouter().project(
+        text,
+        str(tool.params.get("dialog_state") or "chatting"),
+        str(tool.params.get("pending_action_id") or "").strip() or None,
+        diagnosis,
+    ).to_dict()
+
+
 def _analyze_chapter_world_model(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
     from app.services.writing_agent.world_model_analysis_tool import analyze_chapter_world_model_tool
 
@@ -690,6 +715,12 @@ _STATIC_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
     "inspect_agent_dialog_route_projection": WritingAgentToolAdapter(
         "inspect_agent_dialog_route_projection",
         _inspect_agent_dialog_route_projection,
+        category="preflight",
+        mutability="read",
+    ),
+    "inspect_agent_intent_projection": WritingAgentToolAdapter(
+        "inspect_agent_intent_projection",
+        _inspect_agent_intent_projection,
         category="preflight",
         mutability="read",
     ),
