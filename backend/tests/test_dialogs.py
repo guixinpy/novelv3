@@ -1522,6 +1522,12 @@ def test_resolve_chapter_action_confirm_dispatches_prepare_tool(client, db_sessi
 
     assert confirmed.status_code == 200
     start.assert_called_once()
+    assert confirmed.json()["action_result_view"] == {
+        "type": "generate_chapter",
+        "status": "generating",
+        "label": "正文生成中...",
+        "variant": "neutral",
+    }
     payload = confirmed.json()["action_result"]["data"]
     task = db_session.query(BackgroundTask).filter(BackgroundTask.id == payload["task_id"]).one()
     run = db_session.query(WritingAgentRun).filter(WritingAgentRun.id == payload["agent_run_id"]).one()
@@ -1598,6 +1604,35 @@ async def test_chapter_approval_pending_message_uses_specific_description(db_ses
     assert "第2章正文" in pending_action["description"]
     assert "确认后" in pending_action["description"]
     assert pending_action["description"] != "已准备好执行操作。"
+
+
+@pytest.mark.asyncio
+async def test_get_messages_includes_action_result_view_for_approval_required(db_session):
+    project = Project(name="Chapter Approval Result View")
+    db_session.add(project)
+    db_session.commit()
+    dialog = dialogs_api._get_or_create_dialog(db_session, project.id)
+
+    from app.services.writing_agent.dialog_control_plane import prepare_dialog_agent_run_dispatch
+
+    dispatch = prepare_dialog_agent_run_dispatch(
+        db_session,
+        project_id=project.id,
+        dialog_id=dialog.id,
+        action_type="generate_chapter",
+        command_args="2 承接上一章记忆线索",
+        action_params={"project_id": project.id, "chapter_index": 2},
+    )
+    await dispatch.work(db_session, dispatch.task)
+
+    messages = DialogMessageService(db_session).list_messages(project.id)
+    result_view = messages[-1]["action_result_view"]
+    assert result_view == {
+        "type": "generate_chapter",
+        "status": "approval_required",
+        "label": "生成正文等待确认",
+        "variant": "neutral",
+    }
 
 
 @pytest.mark.asyncio

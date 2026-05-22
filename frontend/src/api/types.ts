@@ -177,9 +177,17 @@ export interface ResolveActionResult extends Record<string, unknown> {
   data: Record<string, unknown>
 }
 
+export interface ActionResultView {
+  type: string
+  status: string
+  label: string
+  variant: 'success' | 'error' | 'neutral' | string
+}
+
 export interface ResolveActionResponse {
   dialog_state: DialogState
   action_result: ResolveActionResult
+  action_result_view?: ActionResultView | null
   message: string
   ui_hint: UiHint | null
   refresh_targets: RefreshTarget[]
@@ -257,6 +265,7 @@ export interface ChatHistoryMessage {
   pending_action?: PendingAction | null
   diagnosis?: ProjectDiagnosis | null
   action_result?: Record<string, unknown> | null
+  action_result_view?: ActionResultView | null
   trace_id?: string | null
   content_truncated?: boolean
   original_content_length?: number

@@ -26,6 +26,61 @@ describe('chat workspace polling', () => {
     vi.useRealTimers()
   })
 
+  it('resolveAction 会保留后端 action_result_view 投影', async () => {
+    const store = useChatStore()
+    store.projectId = 'project-1'
+    store.pendingAction = {
+      id: 'action-1',
+      type: 'preview_chapter',
+      description: '生成正文',
+      params: { project_id: 'project-1' },
+      requires_confirmation: true,
+    }
+
+    vi.mocked(api.resolveAction).mockResolvedValue({
+      dialog_state: 'CHATTING',
+      message: '操作已取消。',
+      action_result: {
+        type: 'generate_chapter',
+        status: 'cancelled',
+        data: { status: 'cancelled' },
+      },
+      action_result_view: {
+        type: 'generate_chapter',
+        status: 'cancelled',
+        label: '操作已取消',
+        variant: 'neutral',
+      },
+      ui_hint: null,
+      refresh_targets: [],
+    } as any)
+    vi.mocked(api.getDiagnosis).mockResolvedValue({
+      missing_items: [],
+      completed_items: [],
+      suggested_next_step: null,
+    })
+
+    await store.resolveAction('cancel')
+
+    expect(store.messages.slice(-1)).toEqual([
+      {
+        role: 'system',
+        content: '操作已取消。',
+        action_result: {
+          type: 'generate_chapter',
+          status: 'cancelled',
+          data: { status: 'cancelled' },
+        },
+        action_result_view: {
+          type: 'generate_chapter',
+          status: 'cancelled',
+          label: '操作已取消',
+          variant: 'neutral',
+        },
+      },
+    ])
+  })
+
   it('confirm 后轮询不会因为中途出现其他新消息而提前断开，直到消费到最终完成消息', async () => {
     const store = useChatStore()
     store.projectId = 'project-1'

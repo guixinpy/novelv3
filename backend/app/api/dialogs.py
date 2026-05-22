@@ -29,6 +29,7 @@ from app.schemas import ChatIn, ChatOut, PendingActionOut, ProjectDiagnosisOut, 
 from app.services.actions.action_execution_service import ActionExecutionService, chapter_action_params
 from app.services.actions.action_proposal_service import preview_action_to_execution
 from app.services.actions.action_result_service import ActionResultService
+from app.services.actions.action_result_view import action_result_view
 from app.services.actions.descriptions import action_description
 from app.services.dialog.messages import DEFAULT_MESSAGE_CONTENT_PREVIEW_CHARS, DialogMessageService
 from app.services.dialog.session import DialogSessionService
@@ -1010,15 +1011,17 @@ async def resolve_action(payload: ResolveActionIn, db: Session = Depends(get_db)
         result_data = {"status": "revised", "comment": payload.comment}
 
     resolve_msg = _resolve_message(payload.decision)
+    action_result = {
+        "type": action_type,
+        "status": result_data["status"],
+        "data": result_data,
+    }
     _save_message(db, dialog.id, "system", resolve_msg, {"type": action_type, "status": result_data["status"]})
 
     return {
         "dialog_state": "RUNNING" if payload.decision == "confirm" else "CHATTING",
-        "action_result": {
-            "type": action_type,
-            "status": result_data["status"],
-            "data": result_data,
-        },
+        "action_result": action_result,
+        "action_result_view": action_result_view(action_result),
         "message": resolve_msg,
         "ui_hint": build_ui_hint(
             action_type=action_type,

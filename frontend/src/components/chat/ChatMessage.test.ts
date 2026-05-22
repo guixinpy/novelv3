@@ -124,6 +124,30 @@ describe('ChatMessage', () => {
     expect(wrapper.text()).not.toContain('approval_required')
   })
 
+  it('prefers backend-projected action result labels when available', () => {
+    const wrapper = mount(ChatMessage, {
+      props: {
+        msg: {
+          role: 'system',
+          message_type: 'plain',
+          content: '状态已更新。',
+          action_result: { type: 'generate_chapter', status: 'raw_status' },
+          action_result_view: {
+            type: 'generate_chapter',
+            status: 'raw_status',
+            label: '后端投影文案',
+            variant: 'success',
+          },
+        },
+        isLatest: false,
+        loading: false,
+      },
+    })
+
+    expect(wrapper.text()).toContain('后端投影文案')
+    expect(wrapper.text()).not.toContain('raw_status')
+  })
+
   it('renders generating action progress without repeating the action verb', () => {
     const wrapper = mount(ChatMessage, {
       props: {

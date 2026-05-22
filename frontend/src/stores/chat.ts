@@ -5,6 +5,7 @@ import type {
   ChatHistoryMessage,
   ChatMessageType,
   ChatResponse,
+  ActionResultView,
   BackgroundTaskResponse,
   PendingAction as ApiPendingAction,
   ProjectDiagnosis,
@@ -27,6 +28,7 @@ export interface ChatMessage {
   pending_action?: PendingAction | null
   diagnosis?: Diagnosis | null
   action_result?: Record<string, unknown> | null
+  action_result_view?: ActionResultView | null
   trace_id?: string | null
 }
 
@@ -40,6 +42,7 @@ function toChatMessage(message: ChatHistoryMessage): ChatMessage {
     pending_action: message.pending_action || null,
     diagnosis: message.diagnosis || null,
     action_result: message.action_result || null,
+    ...('action_result_view' in message ? { action_result_view: message.action_result_view || null } : {}),
     ...('trace_id' in message ? { trace_id: message.trace_id || null } : {}),
   }
 }
@@ -303,6 +306,7 @@ export const useChatStore = defineStore('chat', () => {
         role: 'system',
         content: res.message,
         action_result: res.action_result || null,
+        ...(res.action_result_view ? { action_result_view: res.action_result_view } : {}),
       }
       messages.value.push(msg)
       historyCursor.value += 1

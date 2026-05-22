@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.models import AIModelCallTrace, Dialog, DialogMessage, PendingAction
 from app.core.model_call_trace import truncate_text
 from app.schemas import PendingActionOut
+from app.services.actions.action_result_view import action_result_view
 from app.services.actions.descriptions import action_description
 
 
@@ -80,6 +81,9 @@ class DialogMessageService:
                 "trace_id": trace_by_response_id.get(message.id),
                 "created_at": message.created_at.isoformat() if message.created_at else None,
             }
+            result_view = action_result_view(message.action_result)
+            if result_view:
+                item["action_result_view"] = result_view
             if content_payload["content_truncated"]:
                 item["content_truncated"] = True
                 item["original_content_length"] = content_payload["original_content_length"]

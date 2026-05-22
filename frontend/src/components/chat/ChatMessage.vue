@@ -45,6 +45,8 @@ const GENERATING_LABELS: Record<string, string> = {
 const resultText = computed(() => {
   const r = props.msg.action_result
   if (!r) return ''
+  const viewLabel = props.msg.action_result_view?.label
+  if (typeof viewLabel === 'string' && viewLabel.trim()) return viewLabel
   const label = TYPE_LABELS[r.type] || r.type
   if (r.status === 'success') return `✓ ${label}执行成功`
   if (r.status === 'cancelled') return `✗ 操作已取消`
@@ -55,6 +57,8 @@ const resultText = computed(() => {
 })
 
 const resultVariant = computed(() => {
+  const viewVariant = props.msg.action_result_view?.variant
+  if (viewVariant === 'success' || viewVariant === 'error' || viewVariant === 'neutral') return viewVariant
   const status = props.msg.action_result?.status
   if (status === 'success') return 'success'
   if (status === 'failed') return 'error'
