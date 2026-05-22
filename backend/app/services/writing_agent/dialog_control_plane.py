@@ -22,6 +22,7 @@ SUPPORTED_DIALOG_ACTION_TO_TOOL = {
     "generate_outline": "generate_outline",
     "generate_chapter": "prepare_generate_chapter_execution",
 }
+CHAPTER_APPROVAL_EXECUTE_TOOL = "execute_generate_chapter_with_approval"
 
 DialogAgentRunWork = Callable[[Session, BackgroundTask], Any]
 
@@ -135,11 +136,28 @@ def _tool_request_for_action(
     command_args: str | None,
     action_params: dict[str, Any] | None,
 ) -> WritingAgentToolRequest:
-    tool_name = SUPPORTED_DIALOG_ACTION_TO_TOOL[action_type]
     params = dict(action_params or {})
     for key in CONTROL_PLANE_PARAM_KEYS:
         params.pop(key, None)
-    return WritingAgentToolRequest(tool_name=tool_name, command_args=command_args, params=params)
+    return WritingAgentToolRequest(
+        tool_name=_tool_name_for_action(action_type, params),
+        command_args=command_args,
+        params=params,
+    )
+
+
+def _tool_name_for_action(action_type: str, params: dict[str, Any]) -> str:
+    if action_type == "generate_chapter" and _has_chapter_approval_contract(params):
+        return CHAPTER_APPROVAL_EXECUTE_TOOL
+    return SUPPORTED_DIALOG_ACTION_TO_TOOL[action_type]
+
+
+def _has_chapter_approval_contract(params: dict[str, Any]) -> bool:
+    return (
+        params.get("confirm_execute") is True
+        and bool(str(params.get("approval_contract_hash") or "").strip())
+        and isinstance(params.get("approval_contract"), dict)
+    )
 
 
 def _dialog_completion_result(db: Session, *, run: WritingAgentRun, background_task_id: str) -> dict[str, Any]:

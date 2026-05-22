@@ -1552,7 +1552,9 @@ async def test_chapter_prepare_background_work_records_approval_required_without
 
     result = await dispatch.work(db_session, dispatch.task)
 
-    terminal = db_session.query(DialogMessage).filter_by(dialog_id=dialog.id, role="system").one()
+    terminal = db_session.query(DialogMessage).filter_by(dialog_id=dialog.id, role="assistant").one()
+    pending = db_session.query(PendingAction).filter_by(dialog_id=dialog.id, status="pending").one()
+    refreshed_dialog = db_session.query(Dialog).filter(Dialog.id == dialog.id).one()
     assert result["status"] == "approval_required"
     assert result["agent_run_id"] == dispatch.run.id
     assert terminal.action_result["type"] == "generate_chapter"
@@ -1560,7 +1562,52 @@ async def test_chapter_prepare_background_work_records_approval_required_without
     assert "等待确认" in terminal.content
     assert terminal.action_result["data"]["chapter_index"] == 2
     assert terminal.action_result["data"]["agent_plan_approval_contract_hash"].startswith("approval:")
+    assert pending.type == "generate_chapter"
+    assert pending.params["chapter_index"] == 2
+    assert pending.params["confirm_execute"] is True
+    assert pending.params["approval_contract_hash"] == terminal.action_result["data"]["agent_plan_approval_contract_hash"]
+    assert pending.params["approval_contract"] == terminal.action_result["data"]["agent_plan_approval_contract"]
+    assert refreshed_dialog.pending_action_id == pending.id
+    assert refreshed_dialog.state == "pending_action"
     assert db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=2).count() == 0
+
+
+@pytest.mark.asyncio
+async def test_chapter_approval_followup_dispatches_execute_tool(db_session):
+    project = Project(name="Chapter Approval Execute Dispatch")
+    db_session.add(project)
+    db_session.commit()
+    dialog = dialogs_api._get_or_create_dialog(db_session, project.id)
+
+    from app.services.writing_agent.dialog_control_plane import prepare_dialog_agent_run_dispatch
+
+    prepare_dispatch = prepare_dialog_agent_run_dispatch(
+        db_session,
+        project_id=project.id,
+        dialog_id=dialog.id,
+        action_type="generate_chapter",
+        command_args="2 承接上一章记忆线索",
+        action_params={"project_id": project.id, "chapter_index": 2},
+    )
+    await prepare_dispatch.work(db_session, prepare_dispatch.task)
+
+    pending = db_session.query(PendingAction).filter_by(dialog_id=dialog.id, status="pending").one()
+    execute_dispatch = prepare_dialog_agent_run_dispatch(
+        db_session,
+        project_id=project.id,
+        dialog_id=dialog.id,
+        action_type=pending.type,
+        command_args=pending.params.get("command_args"),
+        action_params=pending.params,
+    )
+
+    tool = execute_dispatch.run.input["tools"][0]
+    assert execute_dispatch.task.payload["action_type"] == "generate_chapter"
+    assert tool["tool_name"] == "execute_generate_chapter_with_approval"
+    assert tool["params"]["chapter_index"] == 2
+    assert tool["params"]["confirm_execute"] is True
+    assert tool["params"]["approval_contract_hash"] == pending.params["approval_contract_hash"]
+    assert tool["params"]["approval_contract"] == pending.params["approval_contract"]
 
 
 @pytest.mark.asyncio

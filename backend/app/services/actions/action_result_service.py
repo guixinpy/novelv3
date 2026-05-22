@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 
-from app.models import AIModelCallTrace, Dialog, DialogMessage
+from app.models import AIModelCallTrace, Dialog, DialogMessage, PendingAction
 from app.services.actions.action_execution_service import action_label
 
 
@@ -35,11 +35,31 @@ class ActionResultService:
             self.db.flush()
             self._attach_trace(project_id=project_id, dialog_id=dialog_id, message_id=message.id, trace_id=result.get("trace_id"))
         elif result.get("status") == "approval_required":
+            pending = None
+            data = dict(result)
+            if dialog and action_type == "generate_chapter":
+                pending_params = _chapter_approval_pending_params(
+                    project_id=project_id,
+                    result=result,
+                    command_args=command_args,
+                    action_params=action_params,
+                )
+                if pending_params is not None:
+                    pending = PendingAction(
+                        dialog_id=dialog_id,
+                        type=action_type,
+                        params=pending_params,
+                    )
+                    self.db.add(pending)
+                    self.db.flush()
+                    dialog.pending_action_id = pending.id
+                    dialog.state = "pending_action"
+                    data["pending_action_id"] = pending.id
             message = DialogMessage(
                 dialog_id=dialog_id,
-                role="system",
+                role="assistant",
                 content=f"{label}已准备审批，等待确认执行。",
-                action_result={"type": action_type, "status": "approval_required", "data": result},
+                action_result={"type": action_type, "status": "approval_required", "data": data},
             )
             self.db.add(message)
         else:
@@ -78,3 +98,26 @@ def _athena_analysis_notice(result: dict) -> str:
     if analysis.get("status") == "skipped" and analysis.get("reason") == "missing_world_model_profile":
         return "Athena 世界模型尚未导入，已跳过本章世界事实分析；请先在雅典娜导入 Setup 后重新分析章节。"
     return ""
+
+
+def _chapter_approval_pending_params(
+    *,
+    project_id: str,
+    result: dict,
+    command_args: str | None,
+    action_params: dict | None,
+) -> dict | None:
+    approval_contract = result.get("agent_plan_approval_contract")
+    approval_hash = str(result.get("agent_plan_approval_contract_hash") or "").strip()
+    if not approval_hash or not isinstance(approval_contract, dict):
+        return None
+    params = {
+        "project_id": project_id,
+        "chapter_index": int(result.get("chapter_index") or (action_params or {}).get("chapter_index") or 1),
+        "confirm_execute": True,
+        "approval_contract_hash": approval_hash,
+        "approval_contract": approval_contract,
+    }
+    if command_args:
+        params["command_args"] = command_args
+    return params
