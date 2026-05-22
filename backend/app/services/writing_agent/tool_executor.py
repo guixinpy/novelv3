@@ -468,6 +468,7 @@ async def _execute_longform_chapter_batch(
         confirm_execute=tool.params.get("confirm_execute") is True,
         attempt_manifest_hash=str(tool.params.get("attempt_manifest_hash") or "").strip() or None,
         approval_contract_hash=str(tool.params.get("approval_contract_hash") or "").strip() or None,
+        approval_tool_metadata_provider=_approval_tool_metadata_by_name,
     )
 
 

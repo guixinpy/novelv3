@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.models import BackgroundTask, ChapterContent, Project
 from app.services.tasks.background_task_service import TASK_CANCELLED, TASK_COMPLETED, TASK_FAILED
+from app.services.writing_agent.approval_contract import build_agent_plan_approval_contract
 from app.services.writing_agent.batch_enqueue import BATCH_TASK_TYPE
 
 PREPARE_VERSION = "phase61.longform_batch_execution_prepare.v1"
@@ -79,7 +80,16 @@ def prepare_longform_chapter_batch_execution(
         "hash": attempt_hash,
         "prepared_at": datetime.now(UTC).isoformat(),
     }
-    contract_payload = _approval_contract_payload(task, attempt_hash)
+    agent_plan = _agent_plan_payload(task, selected_chapters, attempt_hash=attempt_hash)
+    agent_plan_approval_contract = build_agent_plan_approval_contract(agent_plan)
+    agent_plan_approval_hash = str(
+        ((agent_plan_approval_contract.get("approval") or {}).get("approval_contract_hash")) or ""
+    )
+    contract_payload = _approval_contract_payload(
+        task,
+        attempt_hash,
+        agent_plan_approval_contract=agent_plan_approval_contract,
+    )
     contract_hash = _stable_hash(contract_payload)
     approval_contract = {
         **contract_payload,
@@ -89,7 +99,7 @@ def prepare_longform_chapter_batch_execution(
             "approval_contract_hash": contract_hash,
         },
     }
-    _persist_prepare(db, task, attempt_manifest, approval_contract)
+    _persist_prepare(db, task, attempt_manifest, approval_contract, agent_plan, agent_plan_approval_contract)
 
     return {
         "status": "approval_required",
@@ -100,6 +110,9 @@ def prepare_longform_chapter_batch_execution(
         "approval_contract_hash": contract_hash,
         "attempt_manifest": attempt_manifest,
         "approval_contract": approval_contract,
+        "agent_plan": agent_plan,
+        "agent_plan_approval_contract": agent_plan_approval_contract,
+        "agent_plan_approval_contract_hash": agent_plan_approval_hash,
         "side_effects": {
             "executed": ["background_task_result_execution_prepare"],
             "skipped": list(SKIPPED_SIDE_EFFECTS),
@@ -203,14 +216,48 @@ def _attempt_manifest_payload(
     }
 
 
-def _approval_contract_payload(task: BackgroundTask, attempt_hash: str) -> dict[str, Any]:
+def _agent_plan_payload(task: BackgroundTask, selected_chapters: list[int], *, attempt_hash: str) -> dict[str, Any]:
     payload = task.payload if isinstance(task.payload, dict) else {}
+    chapter_index = selected_chapters[0] if selected_chapters else None
+    return {
+        "project_id": task.project_id,
+        "intent_class": "longform_batch_execute_chapter",
+        "trace": {
+            "plan_id": f"longform-batch:{task.id}:chapter-generation:{attempt_hash[:12]}",
+            "source_projection_id": attempt_hash,
+            "planner_version": PREPARE_VERSION,
+        },
+        "steps": [
+            {
+                "step_index": 1,
+                "step_id": f"longform-batch:{task.id}:generate_chapter",
+                "tool_name": "generate_chapter",
+                "params": {"chapter_index": chapter_index},
+                "mutability": "write",
+                "requires_confirmation": True,
+                "reason": "执行已通过批次预检的章节正文生成。",
+            }
+        ],
+    }
+
+
+def _approval_contract_payload(
+    task: BackgroundTask,
+    attempt_hash: str,
+    *,
+    agent_plan_approval_contract: dict[str, Any],
+) -> dict[str, Any]:
+    payload = task.payload if isinstance(task.payload, dict) else {}
+    agent_plan_approval_hash = str(
+        ((agent_plan_approval_contract.get("approval") or {}).get("approval_contract_hash")) or ""
+    )
     return {
         "version": PREPARE_VERSION,
         "task_id": task.id,
         "project_id": task.project_id,
         "plan_hash": payload.get("plan_hash"),
         "attempt_manifest_hash": attempt_hash,
+        "agent_plan_approval_contract_hash": agent_plan_approval_hash,
         "consume_tool": "execute_longform_chapter_batch",
         "required_confirmation": {
             "confirm_execute": True,
@@ -233,11 +280,18 @@ def _persist_prepare(
     task: BackgroundTask,
     attempt_manifest: dict[str, Any],
     approval_contract: dict[str, Any],
+    agent_plan: dict[str, Any],
+    agent_plan_approval_contract: dict[str, Any],
 ) -> None:
     result = dict(task.result) if isinstance(task.result, dict) else {}
     history = result.get("execution_checkpoints") if isinstance(result.get("execution_checkpoints"), list) else []
     result["attempt_manifest"] = attempt_manifest
     result["approval_contract"] = approval_contract
+    result["agent_plan"] = agent_plan
+    result["agent_plan_approval_contract"] = agent_plan_approval_contract
+    result["agent_plan_approval_contract_hash"] = (agent_plan_approval_contract.get("approval") or {}).get(
+        "approval_contract_hash"
+    )
     result["execution_checkpoints"] = [
         *history[-9:],
         {

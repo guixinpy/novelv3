@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from datetime import UTC, datetime
+from collections.abc import Callable
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -16,6 +17,7 @@ from app.services.tasks.background_task_service import (
     TASK_PENDING,
     BackgroundTaskService,
 )
+from app.services.writing_agent.approval_contract import verify_agent_plan_approval_contract
 from app.services.writing_agent.batch_enqueue import BATCH_TASK_TYPE
 from app.services.writing_agent.batch_execution_prepare import PREPARE_VERSION
 from app.services.writing_agent.batch_preflight import PREFLIGHT_VERSION
@@ -34,6 +36,7 @@ async def execute_longform_chapter_batch(
     confirm_execute: bool,
     attempt_manifest_hash: str | None,
     approval_contract_hash: str | None,
+    approval_tool_metadata_provider: Callable[[dict[str, Any]], dict[str, dict[str, Any]]] | None = None,
 ) -> dict[str, Any]:
     project = db.query(Project.id).filter(Project.id == project_id).first()
     if project is None:
@@ -75,6 +78,17 @@ async def execute_longform_chapter_batch(
     )
     if blocked_reason:
         return _blocked_output(task, reason=blocked_reason)
+
+    agent_plan_approval_verification = _verify_agent_plan_approval(
+        task,
+        approval_tool_metadata_provider=approval_tool_metadata_provider,
+    )
+    if agent_plan_approval_verification.get("status") != "ready":
+        return _blocked_output(
+            task,
+            reason=_agent_plan_approval_block_reason(agent_plan_approval_verification),
+            extra={"agent_plan_approval_verification": agent_plan_approval_verification},
+        )
 
     result = task.result if isinstance(task.result, dict) else {}
     attempt_manifest = result["attempt_manifest"]
@@ -151,9 +165,11 @@ async def execute_longform_chapter_batch(
             "task_progress_checkpoint_updated": True,
             "execution_checkpoint_written": True,
             "trace_id": trace_id,
+            "agent_plan_approval_verified": True,
         },
         "execution_checkpoint": execution_checkpoint,
         "batch_execution_result": batch_execution_result,
+        "agent_plan_approval_verification": agent_plan_approval_verification,
         "side_effects": _side_effects(
             executed=[
                 "generate_chapter",
@@ -247,6 +263,68 @@ def _validate_execution_request(
     if attempt_manifest.get("preflight_checkpoint") != _attempt_preflight_checkpoint(checkpoint):
         return "attempt_manifest_preflight_drift"
     return None
+
+
+def _verify_agent_plan_approval(
+    task: BackgroundTask,
+    *,
+    approval_tool_metadata_provider: Callable[[dict[str, Any]], dict[str, dict[str, Any]]] | None,
+) -> dict[str, Any]:
+    result = task.result if isinstance(task.result, dict) else {}
+    agent_plan = result.get("agent_plan") if isinstance(result.get("agent_plan"), dict) else None
+    agent_plan_approval_contract = (
+        result.get("agent_plan_approval_contract")
+        if isinstance(result.get("agent_plan_approval_contract"), dict)
+        else None
+    )
+    phase61_approval_contract = (
+        result.get("approval_contract") if isinstance(result.get("approval_contract"), dict) else None
+    )
+    if agent_plan is None or agent_plan_approval_contract is None or phase61_approval_contract is None:
+        return _agent_plan_approval_blocked("agent_plan_approval_verification_missing")
+
+    agent_plan_approval_hash = str(
+        ((agent_plan_approval_contract.get("approval") or {}).get("approval_contract_hash")) or ""
+    )
+    if not agent_plan_approval_hash:
+        return _agent_plan_approval_blocked("agent_plan_approval_verification_missing")
+    if phase61_approval_contract.get("agent_plan_approval_contract_hash") != agent_plan_approval_hash:
+        return _agent_plan_approval_blocked("agent_plan_approval_hash_mismatch")
+    if approval_tool_metadata_provider is None:
+        return _agent_plan_approval_blocked("agent_plan_tool_metadata_missing")
+
+    return verify_agent_plan_approval_contract(
+        agent_plan,
+        approval_contract_hash=agent_plan_approval_hash,
+        approval_contract=agent_plan_approval_contract,
+        project_id=task.project_id,
+        tool_metadata_by_name=approval_tool_metadata_provider(agent_plan),
+    )
+
+
+def _agent_plan_approval_blocked(reason: str) -> dict[str, Any]:
+    return {
+        "status": "blocked",
+        "version": "phase111.agent_plan_approval_execution_gate.v1",
+        "reason": reason,
+        "recommended_next_tools": _recommended_next_tools(reason),
+        "trace": {"reason": reason},
+    }
+
+
+def _agent_plan_approval_block_reason(verification: dict[str, Any]) -> str:
+    reason = str(verification.get("reason") or "")
+    if reason in {"agent_plan_approval_verification_missing", "agent_plan_tool_metadata_missing"}:
+        return reason
+    if reason == "approval_contract_hash_mismatch":
+        return "agent_plan_approval_hash_mismatch"
+    if reason == "approval_contract_snapshot_mismatch":
+        return "agent_plan_approval_snapshot_mismatch"
+    if reason == "approval_contract_project_mismatch":
+        return "agent_plan_approval_project_mismatch"
+    if reason == "tool_contract_drift":
+        return "agent_plan_tool_contract_drift"
+    return "agent_plan_approval_not_ready"
 
 
 def _validate_preflight_checkpoint(
@@ -372,6 +450,16 @@ def _blocked_output(task: BackgroundTask, *, reason: str, extra: dict[str, Any] 
 
 
 def _recommended_next_tools(reason: str) -> list[str]:
+    if reason in {
+        "agent_plan_approval_verification_missing",
+        "agent_plan_approval_hash_mismatch",
+        "agent_plan_approval_snapshot_mismatch",
+        "agent_plan_approval_project_mismatch",
+        "agent_plan_approval_not_ready",
+    }:
+        return ["prepare_longform_chapter_batch_execution"]
+    if reason in {"agent_plan_tool_contract_drift", "agent_plan_tool_metadata_missing"}:
+        return ["inspect_agent_tool_contracts"]
     if reason in {
         "missing_ready_preflight_checkpoint",
         "preflight_checkpoint_version_mismatch",

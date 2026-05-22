@@ -1501,7 +1501,7 @@ async def test_tool_executor_dispatches_execute_longform_chapter_batch_adapter(d
     project = Project(name="Executor Batch Execute")
     db_session.add(project)
     db_session.commit()
-    calls: list[tuple[str, str | None, bool, str | None, str | None]] = []
+    calls: list[tuple[str, str | None, bool, str | None, str | None, bool]] = []
 
     async def fake_execute(
         db,
@@ -1511,8 +1511,21 @@ async def test_tool_executor_dispatches_execute_longform_chapter_batch_adapter(d
         confirm_execute: bool,
         attempt_manifest_hash: str | None,
         approval_contract_hash: str | None,
+        approval_tool_metadata_provider,
     ):
-        calls.append((project_id, task_id, confirm_execute, attempt_manifest_hash, approval_contract_hash))
+        metadata = approval_tool_metadata_provider(
+            {"steps": [{"tool_name": "generate_chapter", "mutability": "write", "requires_confirmation": True}]}
+        )
+        calls.append(
+            (
+                project_id,
+                task_id,
+                confirm_execute,
+                attempt_manifest_hash,
+                approval_contract_hash,
+                metadata["generate_chapter"]["tool_exists"],
+            )
+        )
         return {"status": "completed", "chapter_index": 2}
 
     monkeypatch.setattr(
@@ -1535,7 +1548,7 @@ async def test_tool_executor_dispatches_execute_longform_chapter_batch_adapter(d
 
     assert result.handled is True
     assert result.output == {"status": "completed", "chapter_index": 2}
-    assert calls == [(project.id, "task-1", True, "attempt-hash", "contract-hash")]
+    assert calls == [(project.id, "task-1", True, "attempt-hash", "contract-hash", True)]
 
 
 @pytest.mark.asyncio

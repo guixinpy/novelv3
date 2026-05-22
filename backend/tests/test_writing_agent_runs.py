@@ -1520,6 +1520,17 @@ def test_agent_run_can_prepare_longform_chapter_batch_execution_manifest(client,
     assert output["attempt_manifest"]["plan_hash"] == plan_hash
     assert output["attempt_manifest"]["chapter_indexes"] == [2]
     assert output["attempt_manifest"]["stopped_before_node"] == "chapter_generation"
+    assert output["agent_plan"]["project_id"] == project.id
+    assert output["agent_plan"]["steps"][0]["tool_name"] == "generate_chapter"
+    assert output["agent_plan"]["steps"][0]["params"] == {"chapter_index": 2}
+    assert output["agent_plan_approval_contract"]["status"] == "requires_confirmation"
+    assert output["agent_plan_approval_contract"]["write_step_count"] == 1
+    assert output["agent_plan_approval_contract_hash"] == output["agent_plan_approval_contract"]["approval"][
+        "approval_contract_hash"
+    ]
+    assert output["approval_contract"]["agent_plan_approval_contract_hash"] == output["agent_plan_approval_contract"][
+        "approval"
+    ]["approval_contract_hash"]
     assert output["approval_contract"]["required_confirmation"] == {
         "confirm_execute": True,
         "task_id": task_id,
@@ -1532,6 +1543,9 @@ def test_agent_run_can_prepare_longform_chapter_batch_execution_manifest(client,
     assert task.status == "pending"
     assert task.result["attempt_manifest"]["hash"] == output["attempt_manifest_hash"]
     assert task.result["approval_contract"]["hash"] == output["approval_contract_hash"]
+    assert task.result["agent_plan"] == output["agent_plan"]
+    assert task.result["agent_plan_approval_contract"] == output["agent_plan_approval_contract"]
+    assert task.result["agent_plan_approval_contract_hash"] == output["agent_plan_approval_contract_hash"]
     assert (
         db_session.query(ChapterContent)
         .filter(ChapterContent.project_id == project.id, ChapterContent.chapter_index == 2)
@@ -1666,6 +1680,8 @@ def test_agent_run_can_execute_approved_longform_chapter_batch_once(client, db_s
     assert output["executed_chapter_indexes"] == [2]
     assert output["generation"]["status"] == "success"
     assert output["evidence"]["chapter_content_written"] is True
+    assert output["evidence"]["agent_plan_approval_verified"] is True
+    assert output["agent_plan_approval_verification"]["status"] == "ready"
     assert output["execution_checkpoint"]["status"] == "completed"
     assert output["side_effects"]["executed"] == [
         "generate_chapter",
@@ -1803,6 +1819,83 @@ def test_agent_run_execute_longform_chapter_batch_blocks_chapter_state_drift(cli
     assert output["status"] == "blocked"
     assert output["reason"] == "chapter_state_drift"
     assert output["generated_chapter_indexes"] == [2]
+
+
+def test_agent_run_execute_longform_chapter_batch_requires_agent_plan_approval_contract(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1])
+    prepared = _prepare_longform_batch_execution_contract(client, project.id)
+    task = db_session.query(BackgroundTask).filter(BackgroundTask.id == prepared["task_id"]).one()
+    task.result = {key: value for key, value in (task.result or {}).items() if key != "agent_plan_approval_contract"}
+    db_session.add(task)
+    db_session.commit()
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "拒绝缺少 Agent 计划审批验证的长篇批次执行",
+            "tools": [
+                {
+                    "tool_name": "execute_longform_chapter_batch",
+                    "params": {
+                        "task_id": prepared["task_id"],
+                        "confirm_execute": True,
+                        "attempt_manifest_hash": prepared["attempt_manifest_hash"],
+                        "approval_contract_hash": prepared["approval_contract_hash"],
+                    },
+                }
+            ],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    assert response.status_code == 200
+    assert response.json()["status"] == "blocked"
+    assert output["status"] == "blocked"
+    assert output["reason"] == "agent_plan_approval_verification_missing"
+    assert (
+        db_session.query(ChapterContent)
+        .filter(ChapterContent.project_id == project.id, ChapterContent.chapter_index == 2)
+        .count()
+        == 0
+    )
+
+
+def test_agent_run_execute_longform_chapter_batch_blocks_agent_plan_approval_hash_drift(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1])
+    prepared = _prepare_longform_batch_execution_contract(client, project.id)
+    task = db_session.query(BackgroundTask).filter(BackgroundTask.id == prepared["task_id"]).one()
+    result = dict(task.result or {})
+    agent_plan = dict(result["agent_plan"])
+    agent_plan["steps"] = [{**agent_plan["steps"][0], "params": {"chapter_index": 3}}]
+    result["agent_plan"] = agent_plan
+    task.result = result
+    db_session.add(task)
+    db_session.commit()
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "拒绝 Agent 计划审批哈希漂移后的长篇批次执行",
+            "tools": [
+                {
+                    "tool_name": "execute_longform_chapter_batch",
+                    "params": {
+                        "task_id": prepared["task_id"],
+                        "confirm_execute": True,
+                        "attempt_manifest_hash": prepared["attempt_manifest_hash"],
+                        "approval_contract_hash": prepared["approval_contract_hash"],
+                    },
+                }
+            ],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    assert response.status_code == 200
+    assert response.json()["status"] == "blocked"
+    assert output["status"] == "blocked"
+    assert output["reason"] == "agent_plan_approval_hash_mismatch"
+    assert output["agent_plan_approval_verification"]["reason"] == "approval_contract_hash_mismatch"
 
 
 def test_agent_run_can_review_longform_chapter_batch_execution(client, db_session, monkeypatch):
@@ -7123,6 +7216,9 @@ def _prepare_longform_batch_execution_contract(client, project_id: str) -> dict:
         "approval_contract_hash": output["approval_contract_hash"],
         "attempt_manifest": output["attempt_manifest"],
         "approval_contract": output["approval_contract"],
+        "agent_plan": output["agent_plan"],
+        "agent_plan_approval_contract": output["agent_plan_approval_contract"],
+        "agent_plan_approval_contract_hash": output["agent_plan_approval_contract_hash"],
     }
 
 
