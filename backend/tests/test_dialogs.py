@@ -152,6 +152,21 @@ def test_intent_router_projection_explains_chapter_route():
     assert projection["trace"]["projection_id"].startswith("intent:")
 
 
+def test_intent_router_low_detail_continue_uses_chapter_when_outline_ready():
+    router = IntentRouter()
+    diagnosis = ProjectDiagnosisOut(
+        missing_items=["content"],
+        completed_items=["setup", "storyline", "outline"],
+        suggested_next_step="preview_chapter",
+    )
+
+    candidate = router.resolve("继续吧", "chatting", None, diagnosis)
+
+    assert candidate is not None
+    assert candidate.type == "preview_chapter"
+    assert candidate.params["chapter_index"] == 1
+
+
 def test_intent_router_projection_reports_no_match():
     router = IntentRouter()
     diag = ProjectDiagnosisOut(missing_items=["setup"], completed_items=[], suggested_next_step="preview_setup")
@@ -895,6 +910,41 @@ def test_chat_text_start_writing_creates_pending_chapter_action(client, db_sessi
     )
     assert body["ui_hint"]["dialog_state"] == "PENDING_ACTION"
     assert body["ui_hint"]["active_action"]["type"] == "preview_chapter"
+
+
+def test_chat_text_low_detail_continue_creates_pending_chapter_action(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Test"})
+    pid = r.json()["id"]
+    db_session.add(Setup(project_id=pid, status="generated", world_building={}, characters=[], core_concept={}))
+    db_session.add(Storyline(project_id=pid, status="generated", plotlines=[], foreshadowing=[]))
+    db_session.add(
+        Outline(
+            project_id=pid,
+            status="generated",
+            total_chapters=20,
+            chapters=[{"chapter_index": 1, "title": "旧灯塔", "summary": "林舟开始调查。"}],
+        )
+    )
+    db_session.commit()
+
+    r2 = client.post("/api/v1/dialog/chat", json={
+        "project_id": pid,
+        "input_type": "text",
+        "text": "继续吧",
+    })
+
+    assert r2.status_code == 200
+    body = r2.json()
+    assert body["pending_action"]["type"] == "preview_chapter"
+    assert body["pending_action"]["params"]["project_id"] == pid
+    assert body["pending_action"]["params"]["chapter_index"] == 1
+    assert body["pending_action"]["params"]["command_args"] == "继续吧"
+    assert body["pending_action"]["params"]["agent_route"] == _expected_agent_route(
+        "text_intent",
+        "preview_chapter",
+        "generate_chapter",
+    )
+    assert body["ui_hint"]["dialog_state"] == "PENDING_ACTION"
 
 
 def test_get_messages_includes_current_pending_action(client):

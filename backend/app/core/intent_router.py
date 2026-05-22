@@ -295,6 +295,20 @@ class IntentRouter:
                 preconditions=[{"code": "outline_completed", "passed": True}],
             )
 
+        if _is_chapter_ready(diagnosis) and _is_low_detail_chapter_continue(text):
+            chapter_index = parse_chapter_index(text) or 1
+            return self._matched_projection(
+                text,
+                dialog_state,
+                pending_action_id,
+                diagnosis,
+                rule_id="chapter_intent",
+                candidate=ActionCandidate("preview_chapter", {"chapter_index": chapter_index}),
+                extracted_params={"chapter_index": chapter_index},
+                match_evidence=[{"kind": "pattern", "name": "low_detail_continue_phrase"}],
+                preconditions=[{"code": "outline_completed", "passed": True}],
+            )
+
         if re.search(r"还有什么要设定的|接下来做什么|然后呢", text):
             return self._matched_projection(
                 text,
@@ -358,6 +372,16 @@ class IntentRouter:
             preconditions=[],
             rejected_candidates=_rejected_candidates(None, matched=False),
         )
+
+
+def _is_chapter_ready(diagnosis: ProjectDiagnosisOut) -> bool:
+    return "outline" in diagnosis.completed_items
+
+
+def _is_low_detail_chapter_continue(text: str) -> bool:
+    if re.search(r"(设定|世界观|故事线|主枝干|大纲)", text):
+        return False
+    return bool(re.search(r"^(继续吧|继续写吧|开始写吧|开写吧|往下写|推进吧|继续推进|可以开始了|开始吧)$", text))
 
 
 def _rejected_candidates(selected_rule_id: str | None, *, matched: bool) -> list[dict[str, str]]:
