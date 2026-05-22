@@ -1717,8 +1717,13 @@ def test_resolve_chapter_action_confirm_dispatches_prepare_tool(client, db_sessi
     assert result_view["detail_items"] == [
         {"label": "用户决策", "value": "已确认"},
         {"label": "审批模式", "value": "单次确认"},
+        {"label": "目标章节", "value": "第2章"},
+        {"label": "章节来源", "value": "用户指定"},
     ]
     payload = confirmed.json()["action_result"]["data"]
+    decision = payload["approval_decision"]
+    assert decision["chapter_index"] == 2
+    assert decision["chapter_index_source"] == "explicit_user"
     task = db_session.query(BackgroundTask).filter(BackgroundTask.id == payload["task_id"]).one()
     run = db_session.query(WritingAgentRun).filter(WritingAgentRun.id == payload["agent_run_id"]).one()
     decision_message = (
@@ -1926,11 +1931,13 @@ async def test_chapter_approval_followup_resolve_action_records_decision_metadat
     assert decision["approval_mode"] == "single"
     assert decision["approval_contract_hash"] == pending.params["approval_contract_hash"]
     assert decision["approval_contract_version"] == "phase108.agent_plan_approval_contract.v1"
+    assert decision["chapter_index"] == 2
     assert decision["resolved_at"]
     view = response.json()["action_result_view"]
     assert view["detail_items"] == [
         {"label": "用户决策", "value": "已确认"},
         {"label": "审批模式", "value": "单次确认"},
+        {"label": "目标章节", "value": "第2章"},
         {"label": "审批契约", "value": "已绑定"},
     ]
     assert pending.params["approval_contract_hash"] not in str(view)

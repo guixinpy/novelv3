@@ -82,6 +82,14 @@ def _detail_items(action_result: dict) -> list[dict[str, str]]:
     if approval_mode == "single":
         items.append({"label": "审批模式", "value": "单次确认"})
 
+    chapter_index = approval_decision.get("chapter_index")
+    if isinstance(chapter_index, int) and chapter_index > 0:
+        items.append({"label": "目标章节", "value": f"第{chapter_index}章"})
+
+    chapter_index_source = str(approval_decision.get("chapter_index_source") or "").strip()
+    if chapter_index_source:
+        items.append({"label": "章节来源", "value": _chapter_source_label(chapter_index_source)})
+
     if str(approval_decision.get("approval_contract_hash") or "").strip():
         items.append({"label": "审批契约", "value": "已绑定"})
 
@@ -96,3 +104,13 @@ def _decision_label(decision: str) -> str:
     if decision == "revise":
         return "要求修改"
     return decision
+
+
+def _chapter_source_label(source: str) -> str:
+    if source == "explicit_user":
+        return "用户指定"
+    if source == "inferred_next_unwritten":
+        return "系统推断"
+    if source == "router_default":
+        return "默认目标"
+    return source

@@ -1013,7 +1013,7 @@ def _execute_action_background(
 def _approval_decision_metadata(pending: PendingAction, decision: str, action_type: str) -> dict:
     params = pending.params if isinstance(pending.params, dict) else {}
     contract = params.get("approval_contract") if isinstance(params.get("approval_contract"), dict) else {}
-    return {
+    metadata = {
         "kind": "pending_action_decision",
         "pending_action_id": pending.id,
         "action_type": action_type,
@@ -1025,6 +1025,16 @@ def _approval_decision_metadata(pending: PendingAction, decision: str, action_ty
         "approval_contract_hash": params.get("approval_contract_hash"),
         "approval_contract_version": contract.get("version"),
     }
+    try:
+        chapter_index = int(params.get("chapter_index"))
+    except (TypeError, ValueError):
+        chapter_index = None
+    if chapter_index is not None and chapter_index > 0:
+        metadata["chapter_index"] = chapter_index
+    chapter_index_source = str(params.get("chapter_index_source") or "").strip()
+    if chapter_index_source:
+        metadata["chapter_index_source"] = chapter_index_source
+    return metadata
 
 
 def _link_run_request_message(db: Session, run_id: object, message_id: str) -> None:

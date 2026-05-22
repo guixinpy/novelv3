@@ -276,15 +276,20 @@ def _event_chain(
 ) -> list[dict[str, Any]]:
     chain: list[dict[str, Any]] = []
     for event in approval_events:
-        chain.append(
-            {
-                "event_type": "approval_decision",
-                "message_id": event.get("message_id"),
-                "action_type": event.get("action_type"),
-                "decision": event.get("decision"),
-                "decision_label": event.get("decision_label"),
-            }
-        )
+        chain_event = {
+            "event_type": "approval_decision",
+            "message_id": event.get("message_id"),
+            "action_type": event.get("action_type"),
+            "decision": event.get("decision"),
+            "decision_label": event.get("decision_label"),
+        }
+        if event.get("chapter_index") is not None:
+            chain_event["chapter_index"] = event.get("chapter_index")
+        chapter_index_source = str(event.get("chapter_index_source") or "").strip()
+        if chapter_index_source:
+            chain_event["chapter_index_source"] = chapter_index_source
+            chain_event["chapter_index_source_label"] = event.get("chapter_index_source_label")
+        chain.append(chain_event)
 
     chain.append(
         {
@@ -360,7 +365,7 @@ def _verification_event_summary(value: Any) -> dict[str, Any] | None:
 
 def _approval_event_summary(message: DialogMessage, decision: dict[str, Any]) -> dict[str, Any]:
     decision_value = str(decision.get("decision") or "").strip()
-    return {
+    event = {
         "kind": str(decision.get("kind") or "pending_action_decision"),
         "message_id": message.id,
         "action_type": str(decision.get("action_type") or ""),
@@ -372,6 +377,14 @@ def _approval_event_summary(message: DialogMessage, decision: dict[str, Any]) ->
         "approval_contract_version": decision.get("approval_contract_version"),
         "resolved_at": decision.get("resolved_at"),
     }
+    chapter_index = _optional_int(decision.get("chapter_index"))
+    if chapter_index is not None:
+        event["chapter_index"] = chapter_index
+    chapter_index_source = str(decision.get("chapter_index_source") or "").strip()
+    if chapter_index_source:
+        event["chapter_index_source"] = chapter_index_source
+        event["chapter_index_source_label"] = _chapter_source_label(chapter_index_source)
+    return event
 
 
 def _decision_label(decision: str) -> str:
@@ -382,6 +395,24 @@ def _decision_label(decision: str) -> str:
     if decision == "revise":
         return "要求修改"
     return decision
+
+
+def _chapter_source_label(source: str) -> str:
+    if source == "explicit_user":
+        return "用户指定"
+    if source == "inferred_next_unwritten":
+        return "系统推断"
+    if source == "router_default":
+        return "默认目标"
+    return source
+
+
+def _optional_int(value: Any) -> int | None:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
 
 
 def _context_summary(traces: list[AIModelCallTrace]) -> dict[str, Any]:
