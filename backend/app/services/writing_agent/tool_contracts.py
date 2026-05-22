@@ -181,6 +181,19 @@ def _mutability(descriptor: AgentToolDescriptor, adapter_metadata: dict[str, Any
     return "unclassified"
 
 
+def agent_tool_execution_metadata(
+    descriptor: AgentToolDescriptor | None,
+    adapter_metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    if descriptor is None:
+        return {"mutability": "unclassified", "requires_confirmation": False}
+    mutability = _mutability(descriptor, adapter_metadata)
+    return {
+        "mutability": mutability,
+        "requires_confirmation": mutability in {"write", "guarded_write"} or _requires_confirmation(descriptor),
+    }
+
+
 def _permission_level(mutability: str) -> str:
     if mutability == "read":
         return "read"

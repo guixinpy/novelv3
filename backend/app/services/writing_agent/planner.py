@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import Any
 
 from sqlalchemy import func
@@ -7,7 +9,8 @@ from sqlalchemy.orm import Session
 
 from app.models import ChapterContent
 from app.schemas.writing_agent import WritingAgentToolRequest
-from app.services.writing_agent.tool_registry import build_agent_tool_plan
+from app.services.writing_agent.tool_contracts import agent_tool_execution_metadata
+from app.services.writing_agent.tool_registry import build_agent_tool_plan, get_agent_tool_descriptor
 
 PLANNER_VERSION = "phase53.context_gate.v1"
 
@@ -19,12 +22,17 @@ def build_writing_agent_run_plan(
     goal: str,
     chapter_index: int | None = None,
     intent: str | None = None,
+    source_projection_id: str | None = None,
+    source_plan_id: str | None = None,
 ) -> dict[str, Any]:
     resolved_chapter_index = _infer_chapter_index(db, project_id, chapter_index)
     intent_class = _classify_intent(goal, intent, resolved_chapter_index)
+    plan_id = source_plan_id or _plan_id(project_id, goal, intent_class, resolved_chapter_index)
     tool_plan = build_agent_tool_plan(db, project_id, chapter_index=resolved_chapter_index)
     diagnostics = tool_plan.get("diagnostics", [])
     trace: dict[str, Any] = {
+        "plan_id": plan_id,
+        "source_projection_id": source_projection_id,
         "planner_version": PLANNER_VERSION,
         "intent_class": intent_class,
         "selected_tools": [],
@@ -244,6 +252,8 @@ def _append_step(
         "expected_output": expected_output,
         "post_generation": post_generation,
     }
+    step_metadata = _step_metadata(trace, step)
+    step.update(step_metadata)
     if command_args:
         step["command_args"] = command_args
     steps.append(step)
@@ -256,6 +266,11 @@ def _tool_request_from_step(step: dict[str, Any]) -> dict[str, Any]:
         "params": step.get("params") or {},
         "planner": {
             "step_index": step["step_index"],
+            "step_id": step["step_id"],
+            "plan_id": step["plan_id"],
+            "source_projection_id": step["source_projection_id"],
+            "mutability": step["mutability"],
+            "requires_confirmation": step["requires_confirmation"],
             "reason": step["reason"],
             "on_missing": step["on_missing"],
             "on_failure": step["on_failure"],
@@ -267,6 +282,50 @@ def _tool_request_from_step(step: dict[str, Any]) -> dict[str, Any]:
     if step.get("command_args"):
         request["command_args"] = step["command_args"]
     return request
+
+
+def _step_metadata(trace: dict[str, Any], step: dict[str, Any]) -> dict[str, Any]:
+    plan_id = str(trace.get("plan_id") or "")
+    descriptor = get_agent_tool_descriptor(str(step["tool_name"]))
+    execution_metadata = agent_tool_execution_metadata(descriptor)
+    return {
+        "step_id": _step_id(plan_id, int(step["step_index"]), str(step["tool_name"]), step.get("params") or {}),
+        "plan_id": plan_id,
+        "source_projection_id": trace.get("source_projection_id"),
+        "mutability": execution_metadata["mutability"],
+        "requires_confirmation": execution_metadata["requires_confirmation"],
+    }
+
+
+def _plan_id(project_id: str, goal: str, intent_class: str, chapter_index: int) -> str:
+    source = json.dumps(
+        {
+            "project_id": project_id,
+            "goal": goal,
+            "intent_class": intent_class,
+            "chapter_index": chapter_index,
+            "planner_version": PLANNER_VERSION,
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        default=str,
+    )
+    return f"plan:{hashlib.sha256(source.encode('utf-8')).hexdigest()[:16]}"
+
+
+def _step_id(plan_id: str, step_index: int, tool_name: str, params: dict[str, Any]) -> str:
+    source = json.dumps(
+        {
+            "plan_id": plan_id,
+            "step_index": step_index,
+            "tool_name": tool_name,
+            "params": params,
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        default=str,
+    )
+    return f"step:{hashlib.sha256(source.encode('utf-8')).hexdigest()[:16]}"
 
 
 def _collect_missing_dependencies(trace: dict[str, Any], diagnostics: list[dict[str, Any]]) -> None:

@@ -26,9 +26,24 @@ def test_planner_builds_ready_next_chapter_tool_chain(db_session):
         "analyze_chapter_world_model",
     ]
     assert plan["trace"]["selected_tools"] == _tool_names(plan)
+    assert plan["trace"]["plan_id"].startswith("plan:")
+    first_step = plan["steps"][0]
+    generate_step = next(step for step in plan["steps"] if step["tool_name"] == "generate_chapter")
+    assert first_step["step_id"].startswith("step:")
+    assert first_step["plan_id"] == plan["trace"]["plan_id"]
+    assert first_step["source_projection_id"] is None
+    assert first_step["mutability"] == "read"
+    assert first_step["requires_confirmation"] is False
+    assert generate_step["mutability"] == "write"
+    assert generate_step["requires_confirmation"] is True
     generate_request = next(tool for tool in plan["tools"] if tool["tool_name"] == "generate_chapter")
     assert generate_request["planner"] == {
         "step_index": 5,
+        "step_id": generate_step["step_id"],
+        "plan_id": plan["trace"]["plan_id"],
+        "source_projection_id": None,
+        "mutability": "write",
+        "requires_confirmation": True,
         "reason": "依赖满足后生成第2章正文。",
         "on_missing": "stop",
         "on_failure": "stop",

@@ -237,6 +237,11 @@ async def test_tool_executor_handles_dialog_intent_agent_plan_for_chapter(db_ses
     assert result.output["planner"]["intent_class"] == "continue_next_chapter"
     assert result.output["planner"]["mapped_from_action_type"] == "preview_chapter"
     assert result.output["planner"]["chapter_index"] == 2
+    projection_id = result.output["intent_projection"]["trace"]["projection_id"]
+    plan = result.output["plan"]
+    assert result.output["planner"]["plan_id"] == plan["trace"]["plan_id"]
+    assert plan["trace"]["source_projection_id"] == projection_id
+    assert all(step["source_projection_id"] == projection_id for step in plan["steps"])
     assert [tool["tool_name"] for tool in result.output["tools"]] == [
         "describe_agent_tools",
         "inspect_agent_knowledge_base_route",

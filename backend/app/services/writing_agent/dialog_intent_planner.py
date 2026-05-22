@@ -57,14 +57,16 @@ def plan_dialog_intent_agent_run(
 
     params = candidate.get("params") if isinstance(candidate.get("params"), dict) else {}
     chapter_index = _optional_int(params.get("chapter_index"))
+    plan_id = _plan_id(project_id, projection_id, planner_intent, chapter_index)
     plan = build_writing_agent_run_plan(
         db,
         project_id,
         goal=text,
         chapter_index=chapter_index,
         intent=planner_intent,
+        source_projection_id=projection_id,
+        source_plan_id=plan_id,
     )
-    plan_id = _plan_id(projection_id, planner_intent, chapter_index)
     return {
         "status": plan.get("status"),
         "version": DIALOG_INTENT_AGENT_PLAN_VERSION,
@@ -133,8 +135,8 @@ def _empty_plan(
     }
 
 
-def _plan_id(projection_id: str, planner_intent: str, chapter_index: int | None) -> str:
-    source = f"{projection_id}:{planner_intent}:{chapter_index or ''}"
+def _plan_id(project_id: str, projection_id: str, planner_intent: str, chapter_index: int | None) -> str:
+    source = f"{project_id}:{projection_id}:{planner_intent}:{chapter_index or ''}"
     return f"plan:{hashlib.sha256(source.encode('utf-8')).hexdigest()[:16]}"
 
 
