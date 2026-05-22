@@ -14,14 +14,27 @@ def test_write_gate_coverage_marks_batch_execute_as_agent_gate_enforced():
     assert output["summary"]["agent_plan_gate_enforced_count"] >= 1
 
 
-def test_write_gate_coverage_marks_generate_chapter_as_direct_high_risk_gap():
+def test_write_gate_coverage_marks_approved_direct_generate_as_agent_gate_enforced():
+    output = inspect_agent_write_gate_coverage(adapter_metadata_by_name=_adapter_metadata())
+    tools_by_name = _tools_by_name(output)
+
+    execute_tool = tools_by_name["execute_generate_chapter_with_approval"]
+    assert execute_tool["agent_plan_gate_status"] == "enforced"
+    assert execute_tool["gate_version"] == "phase114.direct_generate_agent_plan_approval.v1"
+    assert execute_tool["risk_level"] == "low"
+
+
+def test_write_gate_coverage_marks_generate_chapter_as_indirectly_covered_direct_gap():
     output = inspect_agent_write_gate_coverage(adapter_metadata_by_name=_adapter_metadata())
     generate_tool = _tools_by_name(output)["generate_chapter"]
 
-    assert generate_tool["agent_plan_gate_status"] == "indirect_batch_only"
+    assert generate_tool["agent_plan_gate_status"] == "indirect_agent_gate_available"
     assert generate_tool["direct_confirmation_guard"] is False
     assert generate_tool["risk_level"] == "high"
-    assert generate_tool["indirect_coverage"][0]["consumer_tool"] == "execute_longform_chapter_batch"
+    assert {item["consumer_tool"] for item in generate_tool["indirect_coverage"]} >= {
+        "execute_generate_chapter_with_approval",
+        "execute_longform_chapter_batch",
+    }
     assert generate_tool["recommended_action"] == "add_direct_agent_plan_approval_gate"
 
 
@@ -43,7 +56,7 @@ def test_write_gate_coverage_recommends_high_risk_targets_first():
     assert output["recommended_next_targets"]
     first_target = output["recommended_next_targets"][0]
     assert first_target["risk_level"] == "high"
-    assert first_target["agent_plan_gate_status"] in {"missing_agent_plan_gate", "indirect_batch_only"}
+    assert first_target["agent_plan_gate_status"] in {"missing_agent_plan_gate", "indirect_agent_gate_available"}
 
 
 def _tools_by_name(output: dict) -> dict[str, dict]:
@@ -65,6 +78,13 @@ def _adapter_metadata() -> dict[str, dict]:
             "category": "task_queue",
             "mutability": "write",
             "handler_name": "_execute_longform_chapter_batch",
+        },
+        "execute_generate_chapter_with_approval": {
+            "tool_name": "execute_generate_chapter_with_approval",
+            "adapter_type": "static",
+            "category": "generation",
+            "mutability": "write",
+            "handler_name": "_execute_generate_chapter_with_approval",
         },
         "apply_world_model_proposal_resolution": {
             "tool_name": "apply_world_model_proposal_resolution",

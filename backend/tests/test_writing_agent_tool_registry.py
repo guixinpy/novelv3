@@ -16,6 +16,8 @@ def test_agent_tool_registry_has_unique_names_and_contracts():
     assert len(names) == len(set(names))
     assert {
         "generate_chapter",
+        "prepare_generate_chapter_execution",
+        "execute_generate_chapter_with_approval",
         "preflight_writing",
         "describe_agent_tools",
         "plan_writing_agent_run",
@@ -43,6 +45,8 @@ def test_agent_tool_registry_has_unique_names_and_contracts():
     }.issubset(set(names))
     assert allowed_tool_names() == set(names)
     assert target_type_for_tool("describe_agent_tools") == "agent_tool_plan"
+    assert target_type_for_tool("prepare_generate_chapter_execution") == "chapter_generation_approval"
+    assert target_type_for_tool("execute_generate_chapter_with_approval") == "chapter"
     assert target_type_for_tool("plan_writing_agent_run") == "agent_tool_plan"
     assert target_type_for_tool("preview_agent_plan_approval_contract") == "agent_plan_approval_contract"
     assert target_type_for_tool("verify_agent_plan_approval_contract") == "agent_plan_approval_verification"
@@ -66,6 +70,7 @@ def test_agent_tool_registry_has_unique_names_and_contracts():
     assert target_type_for_tool("summarize_longform_context") == "longform_context_summary"
     assert target_type_for_tool("repair_longform_maintenance") == "longform_maintenance"
     assert "review_chapter_quality" in non_blocking_report_tool_names()
+    assert "prepare_generate_chapter_execution" in non_blocking_report_tool_names()
     assert "plan_recovery_tools" in non_blocking_report_tool_names()
     assert "plan_longform_chapter_batch" in non_blocking_report_tool_names()
     assert "inspect_longform_chapter_batch" in non_blocking_report_tool_names()
@@ -102,6 +107,32 @@ def test_agent_tool_registry_generate_chapter_has_structured_output_contract():
     }.issubset(properties)
     assert properties["chapter_index"]["type"] == "integer"
     assert properties["recommended_next_tools"]["type"] == "array"
+
+
+def test_agent_tool_registry_includes_approved_direct_chapter_generation_tools():
+    prepare_descriptor = get_agent_tool_descriptor("prepare_generate_chapter_execution")
+    execute_descriptor = get_agent_tool_descriptor("execute_generate_chapter_with_approval")
+
+    assert prepare_descriptor is not None
+    assert prepare_descriptor.internal is True
+    assert prepare_descriptor.non_blocking_report is True
+    assert prepare_descriptor.category == "generation"
+    assert prepare_descriptor.target_type == "chapter_generation_approval"
+    assert set(prepare_descriptor.input_schema["required"]) == {"chapter_index"}
+    assert prepare_descriptor.output_schema["properties"]["agent_plan_approval_contract_hash"]["type"] == "string"
+
+    assert execute_descriptor is not None
+    assert execute_descriptor.internal is True
+    assert execute_descriptor.non_blocking_report is False
+    assert execute_descriptor.category == "generation"
+    assert execute_descriptor.target_type == "chapter"
+    assert set(execute_descriptor.input_schema["required"]) == {
+        "chapter_index",
+        "confirm_execute",
+        "approval_contract_hash",
+        "approval_contract",
+    }
+    assert execute_descriptor.output_schema["properties"]["agent_plan_approval_verification"]["type"] == "object"
 
 
 def test_agent_tool_registry_expand_outline_window_has_structured_output_contract():

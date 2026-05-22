@@ -630,6 +630,100 @@ async def test_tool_executor_does_not_coerce_invalid_generate_chapter_index(db_s
 
 
 @pytest.mark.asyncio
+async def test_tool_executor_dispatches_prepare_generate_chapter_execution(db_session):
+    project = Project(name="Prepare Approved Direct Generate")
+    db_session.add(project)
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(tool_name="prepare_generate_chapter_execution", params={"chapter_index": 2}),
+    )
+
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "approval_required"
+    assert result.output["chapter_index"] == 2
+    assert result.output["recommended_next_tools"] == ["execute_generate_chapter_with_approval"]
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_dispatches_execute_generate_chapter_with_approval(db_session, monkeypatch):
+    project = Project(name="Execute Approved Direct Generate")
+    db_session.add(project)
+    db_session.commit()
+    calls: list[dict] = []
+
+    async def fake_execute(
+        db,
+        project_id: str,
+        *,
+        chapter_index: int,
+        confirm_execute: bool,
+        approval_contract_hash: str | None,
+        approval_contract: dict | None,
+        approval_tool_metadata_provider,
+        command_args: str | None = None,
+        action_params: dict | None = None,
+    ):
+        metadata = approval_tool_metadata_provider(
+            {"steps": [{"tool_name": "generate_chapter", "mutability": "write", "requires_confirmation": True}]}
+        )
+        calls.append(
+            {
+                "project_id": project_id,
+                "chapter_index": chapter_index,
+                "confirm_execute": confirm_execute,
+                "approval_contract_hash": approval_contract_hash,
+                "approval_contract": approval_contract,
+                "metadata_tool_exists": metadata["generate_chapter"]["tool_exists"],
+                "command_args": command_args,
+                "action_params": action_params,
+            }
+        )
+        return {"status": "success", "chapter_index": chapter_index}
+
+    monkeypatch.setattr(
+        "app.services.writing_agent.chapter_generation_execution.execute_generate_chapter_with_approval",
+        fake_execute,
+    )
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(
+            tool_name="execute_generate_chapter_with_approval",
+            command_args="加快节奏",
+            params={
+                "chapter_index": 2,
+                "confirm_execute": True,
+                "approval_contract_hash": "approval:abc",
+                "approval_contract": {"status": "requires_confirmation"},
+            },
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output == {"status": "success", "chapter_index": 2}
+    assert calls == [
+        {
+            "project_id": project.id,
+            "chapter_index": 2,
+            "confirm_execute": True,
+            "approval_contract_hash": "approval:abc",
+            "approval_contract": {"status": "requires_confirmation"},
+            "metadata_tool_exists": True,
+            "command_args": "加快节奏",
+            "action_params": {
+                "chapter_index": 2,
+                "confirm_execute": True,
+                "approval_contract_hash": "approval:abc",
+                "approval_contract": {"status": "requires_confirmation"},
+            },
+        }
+    ]
+
+
+@pytest.mark.asyncio
 async def test_tool_executor_leaves_legacy_generation_tools_unhandled(db_session):
     project = Project(name="Executor Legacy")
     db_session.add(project)
@@ -650,6 +744,8 @@ def test_tool_executor_static_adapter_names_are_report_or_agent_native_tools():
     assert {
         "describe_agent_tools",
         "generate_chapter",
+        "prepare_generate_chapter_execution",
+        "execute_generate_chapter_with_approval",
         "plan_writing_agent_run",
         "plan_dialog_intent_agent_run",
         "preview_agent_plan_approval_contract",
@@ -718,12 +814,31 @@ def test_tool_executor_exposes_adapter_metadata_for_trace():
     }
 
 
+def test_tool_executor_exposes_approved_direct_chapter_generation_adapter_metadata():
+    assert writing_agent_tool_adapter_metadata("prepare_generate_chapter_execution") == {
+        "tool_name": "prepare_generate_chapter_execution",
+        "adapter_type": "static",
+        "category": "generation",
+        "mutability": "read",
+        "handler_name": "_prepare_generate_chapter_execution",
+    }
+    assert writing_agent_tool_adapter_metadata("execute_generate_chapter_with_approval") == {
+        "tool_name": "execute_generate_chapter_with_approval",
+        "adapter_type": "static",
+        "category": "generation",
+        "mutability": "write",
+        "handler_name": "_execute_generate_chapter_with_approval",
+    }
+
+
 def test_tool_executor_lists_unhandled_internal_tools_for_migration_tracking():
     names = unhandled_internal_writing_agent_tool_names()
 
     assert "create_revision_draft" not in names
     assert "apply_planner_revision_patch" not in names
     assert "expand_chapter_to_target" not in names
+    assert "prepare_generate_chapter_execution" not in names
+    assert "execute_generate_chapter_with_approval" not in names
     assert "compress_chapter_to_target" not in names
     assert "backfill_outline_gaps" not in names
     assert "repair_longform_maintenance" not in names
@@ -1041,7 +1156,8 @@ async def test_tool_executor_handles_inspect_agent_write_gate_coverage(db_sessio
     assert result.output["status"] == "completed"
     tools_by_name = {tool["tool_name"]: tool for tool in result.output["write_tools"]}
     assert tools_by_name["execute_longform_chapter_batch"]["agent_plan_gate_status"] == "enforced"
-    assert tools_by_name["generate_chapter"]["agent_plan_gate_status"] == "indirect_batch_only"
+    assert tools_by_name["execute_generate_chapter_with_approval"]["agent_plan_gate_status"] == "enforced"
+    assert tools_by_name["generate_chapter"]["agent_plan_gate_status"] == "indirect_agent_gate_available"
     assert tools_by_name["generate_chapter"]["risk_level"] == "high"
     assert result.output["recommended_next_targets"]
 

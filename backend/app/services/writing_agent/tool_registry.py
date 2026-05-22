@@ -974,6 +974,63 @@ _TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         warning_checks=("world_model_profile_exists",),
     ),
     AgentToolDescriptor(
+        name="prepare_generate_chapter_execution",
+        module="writing_agent",
+        category="generation",
+        description="为直接章节生成构建 Agent 计划审批契约，不执行正文生成。",
+        input_schema=_object_schema({"chapter_index": {"type": "integer", "minimum": 1}}, required=("chapter_index",)),
+        output_schema=_object_schema(
+            {
+                "status": {"type": "string"},
+                "prepare_version": {"type": "string"},
+                "chapter_index": {"type": "integer"},
+                "agent_plan": {"type": "object"},
+                "agent_plan_approval_contract": {"type": "object"},
+                "agent_plan_approval_contract_hash": {"type": "string"},
+                "required_confirmation": {"type": "object"},
+                "recommended_next_tools": {"type": "array"},
+            }
+        ),
+        target_type="chapter_generation_approval",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=51,
+        availability_checks=("project_exists", "outline_chapter_exists", "previous_chapter_exists"),
+        warning_checks=("world_model_profile_exists",),
+    ),
+    AgentToolDescriptor(
+        name="execute_generate_chapter_with_approval",
+        module="writing_agent",
+        category="generation",
+        description="在确认 Agent 计划审批契约后执行指定章节正文生成。",
+        input_schema=_object_schema(
+            {
+                "chapter_index": {"type": "integer", "minimum": 1},
+                "command_args": {"type": "string"},
+                "confirm_execute": {"type": "boolean"},
+                "approval_contract_hash": {"type": "string"},
+                "approval_contract": {"type": "object"},
+            },
+            required=("chapter_index", "confirm_execute", "approval_contract_hash", "approval_contract"),
+        ),
+        output_schema=_object_schema(
+            {
+                "status": {"type": "string"},
+                "execute_version": {"type": "string"},
+                "chapter_index": {"type": "integer"},
+                "trace_id": {"type": "string"},
+                "agent_plan_approval_verification": {"type": "object"},
+                "evidence": {"type": "object"},
+                "recommended_next_tools": {"type": "array"},
+            }
+        ),
+        target_type="chapter",
+        internal=True,
+        sort_key=52,
+        availability_checks=("project_exists", "outline_chapter_exists", "previous_chapter_exists"),
+        warning_checks=("world_model_profile_exists",),
+    ),
+    AgentToolDescriptor(
         name="import_setup_world_model",
         module="athena_world_model",
         category="athena_world_model",

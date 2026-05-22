@@ -7,6 +7,11 @@ from app.services.writing_agent.tool_registry import AgentToolDescriptor, list_a
 
 WRITE_MUTABILITY = {"write", "guarded_write"}
 AGENT_PLAN_GATED_TOOLS = {
+    "execute_generate_chapter_with_approval": {
+        "gate_version": "phase114.direct_generate_agent_plan_approval.v1",
+        "gate_type": "stateless_agent_plan_approval",
+        "covered_tools": ["generate_chapter"],
+    },
     "execute_longform_chapter_batch": {
         "gate_version": "phase111.agent_plan_approval_execution_gate.v1",
         "gate_type": "persisted_agent_plan_approval",
@@ -112,7 +117,7 @@ def _gate_status(
     if gate is not None:
         return "enforced"
     if indirect_coverage:
-        return "indirect_batch_only"
+        return "indirect_agent_gate_available"
     return "missing_agent_plan_gate"
 
 
