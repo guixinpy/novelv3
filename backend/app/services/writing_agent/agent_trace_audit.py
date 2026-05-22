@@ -297,6 +297,7 @@ def _event_chain(
     )
 
     for step in steps:
+        output = step.output if isinstance(step.output, dict) else {}
         chain.append(
             {
                 "event_type": "tool_step",
@@ -310,6 +311,9 @@ def _event_chain(
                 "chapter_index": step.chapter_index,
             }
         )
+        verification_event = _verification_event_summary(output.get("approval_verification_event"))
+        if verification_event is not None:
+            chain.append(verification_event)
 
     for trace in trace_items:
         chain.append(
@@ -335,6 +339,23 @@ def _event_chain(
         )
 
     return chain
+
+
+def _verification_event_summary(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    event_type = str(value.get("event_type") or "").strip()
+    if event_type not in {"contract_verified", "contract_blocked"}:
+        return None
+    return {
+        "event_type": event_type,
+        "status": str(value.get("status") or ""),
+        "reason": str(value.get("reason") or ""),
+        "approval_contract_bound": bool(value.get("approval_contract_bound")),
+        "approval_contract_version": value.get("approval_contract_version"),
+        "write_step_count": value.get("write_step_count"),
+        "tool_contract_drift_count": value.get("tool_contract_drift_count"),
+    }
 
 
 def _approval_event_summary(message: DialogMessage, decision: dict[str, Any]) -> dict[str, Any]:

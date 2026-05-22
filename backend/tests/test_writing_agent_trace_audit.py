@@ -158,7 +158,18 @@ def test_inspect_agent_trace_audit_includes_dialog_approval_events_without_raw_h
             tool_name="generate_chapter",
             status="success",
             input={"params": {"chapter_index": 2}},
-            output={"status": "success", "trace_id": trace.id},
+            output={
+                "status": "success",
+                "trace_id": trace.id,
+                "approval_verification_event": {
+                    "event_type": "contract_verified",
+                    "status": "ready",
+                    "reason": "approval_contract_verified",
+                    "approval_contract_bound": True,
+                    "approval_contract_version": "phase108.agent_plan_approval_contract.v1",
+                    "write_step_count": 1,
+                },
+            },
             trace_id=trace.id,
             target_type="chapter",
             target_id="chapter-2",
@@ -246,13 +257,15 @@ def test_inspect_agent_trace_audit_includes_dialog_approval_events_without_raw_h
         "approval_decision",
         "run_dispatched",
         "tool_step",
+        "contract_verified",
         "trace_attached",
         "result_message",
     ]
     assert output["event_chain"][0]["decision_label"] == "已确认"
     assert output["event_chain"][1]["run_id"] == run.id
     assert output["event_chain"][2]["tool_name"] == "generate_chapter"
-    assert output["event_chain"][3]["trace_id"] == "trace-chain"
-    assert output["event_chain"][4]["message_id"] == result_message.id
+    assert output["event_chain"][3]["reason"] == "approval_contract_verified"
+    assert output["event_chain"][4]["trace_id"] == "trace-chain"
+    assert output["event_chain"][5]["message_id"] == result_message.id
     assert "approval:secret-hash" not in str(output["event_chain"])
-    assert output["audit"]["event_chain_count"] == 5
+    assert output["audit"]["event_chain_count"] == 6

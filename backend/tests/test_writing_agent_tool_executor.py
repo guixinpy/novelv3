@@ -2,6 +2,10 @@ import pytest
 
 from app.models import ChapterContent, Outline, Project, Setup, Storyline, WritingAgentRun, WritingAgentStep
 from app.schemas.writing_agent import WritingAgentToolRequest
+from app.services.writing_agent.chapter_generation_execution import (
+    execute_generate_chapter_with_approval,
+    prepare_generate_chapter_execution,
+)
 from app.services.writing_agent.chapter_generation_tool import execute_generate_chapter_tool
 from app.services.writing_agent.tool_registry import internal_tool_names
 from app.services.writing_agent.tool_executor import (
@@ -749,6 +753,59 @@ async def test_tool_executor_dispatches_execute_generate_chapter_with_approval(d
             },
         }
     ]
+
+
+@pytest.mark.asyncio
+async def test_execute_generate_chapter_with_approval_records_verification_event(db_session, monkeypatch):
+    project = Project(name="Execute Approval Verification Event")
+    db_session.add(project)
+    db_session.commit()
+    prepare = prepare_generate_chapter_execution(db_session, project.id, chapter_index=2)
+
+    async def fake_generate_chapter_tool(
+        db,
+        project_id: str,
+        *,
+        chapter_index: int,
+        command_args: str | None = None,
+        action_params: dict | None = None,
+    ):
+        return {"status": "success", "chapter_index": chapter_index, "trace_id": "trace-ok"}
+
+    monkeypatch.setattr(
+        "app.services.writing_agent.chapter_generation_tool.execute_generate_chapter_tool",
+        fake_generate_chapter_tool,
+    )
+
+    result = await execute_generate_chapter_with_approval(
+        db_session,
+        project.id,
+        chapter_index=2,
+        confirm_execute=True,
+        approval_contract_hash=prepare["agent_plan_approval_contract_hash"],
+        approval_contract=prepare["agent_plan_approval_contract"],
+        approval_tool_metadata_provider=lambda plan: {
+            "generate_chapter": {
+                "tool_exists": True,
+                "adapter_exists": True,
+                "mutability": "write",
+                "requires_confirmation": True,
+                "required_fields": [],
+            }
+        },
+    )
+
+    assert result["status"] == "success"
+    assert result["approval_verification_event"] == {
+        "event_type": "contract_verified",
+        "status": "ready",
+        "reason": "approval_contract_verified",
+        "approval_contract_bound": True,
+        "approval_contract_version": "phase108.agent_plan_approval_contract.v1",
+        "write_step_count": 1,
+        "tool_contract_drift_count": 0,
+    }
+    assert "approval:" not in str(result["approval_verification_event"])
 
 
 @pytest.mark.asyncio

@@ -86,7 +86,10 @@ async def execute_generate_chapter_with_approval(
             project_id,
             chapter_index,
             reason=str(verification.get("reason") or "agent_plan_approval_not_ready"),
-            extra={"agent_plan_approval_verification": verification},
+            extra={
+                "agent_plan_approval_verification": verification,
+                "approval_verification_event": _approval_verification_event(verification),
+            },
         )
 
     from app.services.writing_agent.chapter_generation_tool import execute_generate_chapter_tool
@@ -106,6 +109,7 @@ async def execute_generate_chapter_with_approval(
             **(generation.get("evidence") if isinstance(generation.get("evidence"), dict) else {}),
             "agent_plan_approval_verified": True,
         }
+        generation["approval_verification_event"] = _approval_verification_event(verification)
         generation["trace"] = {
             **(generation.get("trace") if isinstance(generation.get("trace"), dict) else {}),
             "approval_gate_version": APPROVAL_GATE_VERSION,
@@ -118,6 +122,23 @@ async def execute_generate_chapter_with_approval(
         "project_id": project_id,
         "chapter_index": chapter_index,
         "agent_plan_approval_verification": verification,
+    }
+
+
+def _approval_verification_event(verification: dict[str, Any]) -> dict[str, Any]:
+    drift = verification.get("drift") if isinstance(verification.get("drift"), dict) else {}
+    current_contract = (
+        verification.get("current_contract") if isinstance(verification.get("current_contract"), dict) else {}
+    )
+    status = str(verification.get("status") or "").strip()
+    return {
+        "event_type": "contract_verified" if status == "ready" else "contract_blocked",
+        "status": status,
+        "reason": str(verification.get("reason") or "").strip(),
+        "approval_contract_bound": bool(drift.get("expected_approval_contract_hash")),
+        "approval_contract_version": current_contract.get("version"),
+        "write_step_count": drift.get("write_step_count"),
+        "tool_contract_drift_count": drift.get("tool_contract_drift_count"),
     }
 
 
