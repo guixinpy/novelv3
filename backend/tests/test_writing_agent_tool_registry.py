@@ -20,6 +20,7 @@ def test_agent_tool_registry_has_unique_names_and_contracts():
         "describe_agent_tools",
         "plan_writing_agent_run",
         "preview_agent_plan_approval_contract",
+        "verify_agent_plan_approval_contract",
         "plan_recovery_tools",
         "plan_longform_chapter_batch",
         "enqueue_longform_chapter_batch",
@@ -43,6 +44,7 @@ def test_agent_tool_registry_has_unique_names_and_contracts():
     assert target_type_for_tool("describe_agent_tools") == "agent_tool_plan"
     assert target_type_for_tool("plan_writing_agent_run") == "agent_tool_plan"
     assert target_type_for_tool("preview_agent_plan_approval_contract") == "agent_plan_approval_contract"
+    assert target_type_for_tool("verify_agent_plan_approval_contract") == "agent_plan_approval_verification"
     assert target_type_for_tool("plan_recovery_tools") == "agent_tool_plan"
     assert target_type_for_tool("plan_longform_chapter_batch") == "longform_batch_plan"
     assert target_type_for_tool("enqueue_longform_chapter_batch") == "background_task"
@@ -68,6 +70,7 @@ def test_agent_tool_registry_has_unique_names_and_contracts():
     assert "inspect_agent_job_projection" in non_blocking_report_tool_names()
     assert "inspect_agent_tool_contracts" in non_blocking_report_tool_names()
     assert "preview_agent_plan_approval_contract" in non_blocking_report_tool_names()
+    assert "verify_agent_plan_approval_contract" in non_blocking_report_tool_names()
     assert "inspect_agent_knowledge_base_route" in non_blocking_report_tool_names()
     assert "summarize_longform_context" in non_blocking_report_tool_names()
 
@@ -279,6 +282,21 @@ def test_agent_tool_registry_includes_agent_plan_approval_contract_preview():
     assert descriptor.output_schema["properties"]["approval"]["type"] == "object"
     assert "preview_agent_plan_approval_contract" in allowed_tool_names()
     assert "preview_agent_plan_approval_contract" in non_blocking_report_tool_names()
+
+
+def test_agent_tool_registry_includes_agent_plan_approval_contract_verification():
+    descriptor = get_agent_tool_descriptor("verify_agent_plan_approval_contract")
+
+    assert descriptor is not None
+    assert descriptor.internal is True
+    assert descriptor.non_blocking_report is True
+    assert descriptor.category == "preflight"
+    assert descriptor.target_type == "agent_plan_approval_verification"
+    assert descriptor.input_schema["properties"]["plan"]["type"] == "object"
+    assert descriptor.input_schema["properties"]["approval_contract_hash"]["type"] == "string"
+    assert descriptor.output_schema["properties"]["drift"]["type"] == "object"
+    assert "verify_agent_plan_approval_contract" in allowed_tool_names()
+    assert "verify_agent_plan_approval_contract" in non_blocking_report_tool_names()
 
 
 def test_agent_tool_registry_includes_plan_longform_chapter_batch():

@@ -165,6 +165,22 @@ def _preview_agent_plan_approval_contract(
     return build_agent_plan_approval_contract(plan if isinstance(plan, dict) else None)
 
 
+def _verify_agent_plan_approval_contract(
+    context: WritingAgentToolContext,
+    tool: WritingAgentToolRequest,
+) -> dict[str, Any]:
+    from app.services.writing_agent.approval_contract import verify_agent_plan_approval_contract
+
+    plan = tool.params.get("plan")
+    approval_contract = tool.params.get("approval_contract")
+    return verify_agent_plan_approval_contract(
+        plan if isinstance(plan, dict) else None,
+        approval_contract_hash=str(tool.params.get("approval_contract_hash") or "").strip() or None,
+        approval_contract=approval_contract if isinstance(approval_contract, dict) else None,
+        project_id=context.project_id,
+    )
+
+
 def _plan_recovery_tools(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
     from app.services.writing_agent.recovery_planner import build_recovery_tool_plan
 
@@ -700,6 +716,12 @@ _STATIC_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
     "preview_agent_plan_approval_contract": WritingAgentToolAdapter(
         "preview_agent_plan_approval_contract",
         _preview_agent_plan_approval_contract,
+        category="preflight",
+        mutability="read",
+    ),
+    "verify_agent_plan_approval_contract": WritingAgentToolAdapter(
+        "verify_agent_plan_approval_contract",
+        _verify_agent_plan_approval_contract,
         category="preflight",
         mutability="read",
     ),

@@ -177,6 +177,17 @@ _AGENT_PLAN_APPROVAL_CONTRACT_OUTPUT = _object_schema(
         "trace": {"type": "object"},
     }
 )
+_AGENT_PLAN_APPROVAL_VERIFICATION_OUTPUT = _object_schema(
+    {
+        "status": {"type": "string"},
+        "version": {"type": "string"},
+        "reason": {"type": "string"},
+        "current_contract": {"type": "object"},
+        "drift": {"type": "object"},
+        "recommended_next_tools": {"type": "array"},
+        "trace": {"type": "object"},
+    }
+)
 
 
 _TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
@@ -269,6 +280,26 @@ _TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         input_schema=_object_schema({"plan": {"type": "object"}}, required=("plan",)),
         output_schema=_AGENT_PLAN_APPROVAL_CONTRACT_OUTPUT,
         target_type="agent_plan_approval_contract",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=7,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
+        name="verify_agent_plan_approval_contract",
+        module="writing_agent",
+        category="preflight",
+        description="只读校验 Writing Agent 计划审批契约哈希，报告缺失、错配或漂移，不执行任何写入工具。",
+        input_schema=_object_schema(
+            {
+                "plan": {"type": "object"},
+                "approval_contract_hash": {"type": "string"},
+                "approval_contract": {"type": "object"},
+            },
+            required=("plan",),
+        ),
+        output_schema=_AGENT_PLAN_APPROVAL_VERIFICATION_OUTPUT,
+        target_type="agent_plan_approval_verification",
         internal=True,
         non_blocking_report=True,
         sort_key=7,

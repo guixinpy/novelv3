@@ -311,6 +311,49 @@ async def test_tool_executor_handles_agent_plan_approval_contract_preview(db_ses
 
 
 @pytest.mark.asyncio
+async def test_tool_executor_handles_agent_plan_approval_contract_verification(db_session):
+    project = Project(name="Approval Contract Verification")
+    db_session.add(project)
+    db_session.commit()
+    plan = {
+        "project_id": project.id,
+        "trace": {"plan_id": "plan:abc", "source_projection_id": None, "planner_version": "phase53.context_gate.v1"},
+        "steps": [
+            {
+                "step_index": 1,
+                "step_id": "step:write",
+                "tool_name": "generate_chapter",
+                "params": {"chapter_index": 2},
+                "mutability": "write",
+                "requires_confirmation": True,
+            }
+        ],
+    }
+    preview = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(tool_name="preview_agent_plan_approval_contract", params={"plan": plan}),
+    )
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(
+            tool_name="verify_agent_plan_approval_contract",
+            params={
+                "plan": plan,
+                "approval_contract": preview.output,
+                "approval_contract_hash": preview.output["approval"]["approval_contract_hash"],
+            },
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "ready"
+    assert result.output["reason"] == "approval_contract_verified"
+    assert result.output["drift"]["hash_matches"] is True
+
+
+@pytest.mark.asyncio
 async def test_tool_executor_handles_plan_recommended_followups(db_session):
     project = Project(name="Recommended Followup Planner")
     db_session.add(project)
@@ -602,6 +645,7 @@ def test_tool_executor_static_adapter_names_are_report_or_agent_native_tools():
         "plan_writing_agent_run",
         "plan_dialog_intent_agent_run",
         "preview_agent_plan_approval_contract",
+        "verify_agent_plan_approval_contract",
         "plan_longform_chapter_batch",
         "enqueue_longform_chapter_batch",
         "inspect_longform_chapter_batch",
@@ -682,6 +726,7 @@ def test_tool_executor_lists_unhandled_internal_tools_for_migration_tracking():
     assert "plan_writing_agent_run" not in names
     assert "plan_dialog_intent_agent_run" not in names
     assert "preview_agent_plan_approval_contract" not in names
+    assert "verify_agent_plan_approval_contract" not in names
     assert "import_setup_world_model" not in names
     assert "seed_continuity_anchor_proposals" not in names
     assert "analyze_chapter_world_model" not in names

@@ -1,4 +1,7 @@
-from app.services.writing_agent.approval_contract import build_agent_plan_approval_contract
+from app.services.writing_agent.approval_contract import (
+    build_agent_plan_approval_contract,
+    verify_agent_plan_approval_contract,
+)
 
 
 def test_approval_contract_requires_confirmation_for_write_steps():
@@ -108,3 +111,103 @@ def test_approval_contract_rejects_invalid_plan():
     assert contract["status"] == "invalid_plan"
     assert contract["approval"]["required"] is False
     assert contract["write_step_count"] == 0
+
+
+def test_verify_approval_contract_accepts_matching_hash():
+    plan = _write_plan(project_id="project-1")
+    contract = build_agent_plan_approval_contract(plan)
+
+    result = verify_agent_plan_approval_contract(
+        plan,
+        approval_contract_hash=contract["approval"]["approval_contract_hash"],
+        approval_contract=contract,
+        project_id="project-1",
+    )
+
+    assert result["status"] == "ready"
+    assert result["reason"] == "approval_contract_verified"
+    assert result["current_contract"] == contract
+    assert result["drift"]["hash_matches"] is True
+    assert result["drift"]["project_matches"] is True
+    assert result["recommended_next_tools"] == []
+
+
+def test_verify_approval_contract_blocks_hash_mismatch():
+    plan = _write_plan(project_id="project-1")
+
+    result = verify_agent_plan_approval_contract(
+        plan,
+        approval_contract_hash="approval:bad",
+        project_id="project-1",
+    )
+
+    assert result["status"] == "blocked"
+    assert result["reason"] == "approval_contract_hash_mismatch"
+    assert result["drift"]["hash_matches"] is False
+    assert result["recommended_next_tools"] == ["preview_agent_plan_approval_contract"]
+
+
+def test_verify_approval_contract_blocks_snapshot_mismatch():
+    plan = _write_plan(project_id="project-1")
+    contract = build_agent_plan_approval_contract(plan)
+    stale_contract = {
+        **contract,
+        "approval": {**contract["approval"], "approval_contract_hash": "approval:stale"},
+    }
+
+    result = verify_agent_plan_approval_contract(
+        plan,
+        approval_contract_hash=contract["approval"]["approval_contract_hash"],
+        approval_contract=stale_contract,
+        project_id="project-1",
+    )
+
+    assert result["status"] == "blocked"
+    assert result["reason"] == "approval_contract_snapshot_mismatch"
+    assert result["drift"]["snapshot_hash_matches"] is False
+
+
+def test_verify_approval_contract_returns_not_required_for_read_only_plan():
+    plan = {
+        "project_id": "project-1",
+        "trace": {"plan_id": "plan:read", "source_projection_id": None, "planner_version": "phase53.context_gate.v1"},
+        "steps": [
+            {
+                "step_index": 1,
+                "step_id": "step:read",
+                "tool_name": "review_chapter_quality",
+                "params": {"chapter_index": 2},
+                "mutability": "read",
+                "requires_confirmation": False,
+            },
+        ],
+    }
+
+    result = verify_agent_plan_approval_contract(plan, project_id="project-1")
+
+    assert result["status"] == "not_required"
+    assert result["reason"] == "approval_contract_not_required"
+    assert result["drift"]["hash_matches"] is None
+
+
+def _write_plan(project_id: str) -> dict:
+    return {
+        "project_id": project_id,
+        "intent_class": "continue_next_chapter",
+        "trace": {
+            "plan_id": "plan:abc",
+            "source_projection_id": "projection:1",
+            "planner_version": "phase53.context_gate.v1",
+        },
+        "steps": [
+            {
+                "step_index": 1,
+                "step_id": "step:write",
+                "tool_name": "generate_chapter",
+                "params": {"chapter_index": 2},
+                "mutability": "write",
+                "requires_confirmation": True,
+                "reason": "生成第2章。",
+            },
+        ],
+    }
