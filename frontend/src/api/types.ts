@@ -25,11 +25,30 @@ export type RefreshTarget =
   | 'projection'
   | 'proposals'
 
+export interface PendingExecutionPreviewStep {
+  step_id?: string
+  step_index?: number | null
+  tool_name: string
+  label: string
+  reason?: string
+  params?: Record<string, unknown>
+}
+
+export interface PendingExecutionPreview {
+  kind: string
+  title: string
+  summary: string
+  write_step_count: number
+  approval_contract_hash?: string | null
+  steps: PendingExecutionPreviewStep[]
+}
+
 export interface PendingAction {
   id: string
   type: string
   description: string
   params: Record<string, unknown>
+  execution_preview?: PendingExecutionPreview | null
   requires_confirmation: boolean
 }
 

@@ -1604,6 +1604,13 @@ async def test_chapter_approval_pending_message_uses_specific_description(db_ses
     assert "第2章正文" in pending_action["description"]
     assert "确认后" in pending_action["description"]
     assert pending_action["description"] != "已准备好执行操作。"
+    preview = pending_action["execution_preview"]
+    assert preview["title"] == "待执行：生成正文"
+    assert preview["write_step_count"] == 1
+    assert preview["approval_contract_hash"].startswith("approval:")
+    assert preview["steps"][0]["tool_name"] == "generate_chapter"
+    assert preview["steps"][0]["label"] == "生成正文"
+    assert preview["steps"][0]["params"]["chapter_index"] == 2
 
 
 @pytest.mark.asyncio

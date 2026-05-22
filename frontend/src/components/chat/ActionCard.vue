@@ -3,6 +3,29 @@
     <p class="action-card__copy">
       {{ action.description }}
     </p>
+    <section
+      v-if="executionPreview"
+      class="action-card__preview"
+      aria-label="执行预览"
+    >
+      <div class="action-card__preview-title">{{ executionPreview.title }}</div>
+      <p class="action-card__preview-summary">{{ executionPreview.summary }}</p>
+      <ul class="action-card__preview-list">
+        <li
+          v-for="(step, index) in previewSteps"
+          :key="step.step_id || `${step.tool_name}-${index}`"
+          class="action-card__preview-step"
+        >
+          <span class="action-card__preview-step-label">{{ step.label }}</span>
+          <span
+            v-if="step.reason"
+            class="action-card__preview-step-reason"
+          >
+            {{ step.reason }}
+          </span>
+        </li>
+      </ul>
+    </section>
     <div class="action-card__actions">
       <button
         :disabled="disabled"
@@ -49,13 +72,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 
-defineProps<{ action: any; disabled: boolean }>()
+const props = defineProps<{ action: any; disabled: boolean }>()
 const emit = defineEmits<{ decide: [decision: string, comment?: string] }>()
 
 const showRevise = ref(false)
 const reviseComment = ref('')
+const executionPreview = computed(() => props.action?.execution_preview || null)
+const previewSteps = computed(() => Array.isArray(executionPreview.value?.steps) ? executionPreview.value.steps : [])
 
 function submitRevise() {
   if (!reviseComment.value.trim()) return
@@ -80,6 +105,56 @@ function submitRevise() {
   color: var(--color-text-primary);
   font-size: 0.92rem;
   line-height: 1.55;
+}
+
+.action-card__preview {
+  margin-bottom: 0.85rem;
+  border: 1px solid rgba(111, 69, 31, 0.12);
+  border-radius: 0.85rem;
+  background: rgba(255, 251, 242, 0.72);
+  padding: 0.8rem;
+}
+
+.action-card__preview-title {
+  color: var(--color-text-primary);
+  font-size: 0.88rem;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.action-card__preview-summary {
+  margin: 0.3rem 0 0;
+  color: var(--color-text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.action-card__preview-list {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0.55rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.action-card__preview-step {
+  display: grid;
+  gap: 0.15rem;
+  padding-left: 0.55rem;
+  border-left: 2px solid rgba(111, 69, 31, 0.22);
+}
+
+.action-card__preview-step-label {
+  color: var(--color-text-primary);
+  font-size: 0.84rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.action-card__preview-step-reason {
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+  line-height: 1.4;
 }
 
 .action-card__actions {
