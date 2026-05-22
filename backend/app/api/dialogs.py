@@ -20,7 +20,18 @@ from app.core.model_call_trace import (
 )
 from app.core.ui_hints import action_to_refresh_targets, build_ui_hint
 from app.db import get_db
-from app.models import AIModelCallTrace, ChapterContent, Dialog, DialogMessage, Outline, PendingAction, Project, Setup, Storyline
+from app.models import (
+    AIModelCallTrace,
+    ChapterContent,
+    Dialog,
+    DialogMessage,
+    Outline,
+    PendingAction,
+    Project,
+    Setup,
+    Storyline,
+    WritingAgentRun,
+)
 from app.prompting.providers.dialog import (
     build_dialog_call_payload,
     build_dialog_history_block,
@@ -955,6 +966,17 @@ def _approval_decision_metadata(pending: PendingAction, decision: str, action_ty
     }
 
 
+def _link_run_request_message(db: Session, run_id: object, message_id: str) -> None:
+    if not run_id:
+        return
+    run = db.query(WritingAgentRun).filter(WritingAgentRun.id == str(run_id)).first()
+    if run is None:
+        return
+    run.request_message_id = message_id
+    db.add(run)
+    db.commit()
+
+
 @router.post("/api/v1/dialog/resolve-action")
 async def resolve_action(payload: ResolveActionIn, db: Session = Depends(get_db)):
     claimed = db.query(PendingAction).filter(
@@ -1034,7 +1056,8 @@ async def resolve_action(payload: ResolveActionIn, db: Session = Depends(get_db)
         "status": result_data["status"],
         "data": result_data,
     }
-    _save_message(db, dialog.id, "system", resolve_msg, action_result)
+    decision_message = _save_message(db, dialog.id, "system", resolve_msg, action_result)
+    _link_run_request_message(db, result_data.get("agent_run_id"), decision_message.id)
 
     return {
         "dialog_state": "RUNNING" if payload.decision == "confirm" else "CHATTING",

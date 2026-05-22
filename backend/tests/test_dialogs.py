@@ -1534,9 +1534,17 @@ def test_resolve_chapter_action_confirm_dispatches_prepare_tool(client, db_sessi
     payload = confirmed.json()["action_result"]["data"]
     task = db_session.query(BackgroundTask).filter(BackgroundTask.id == payload["task_id"]).one()
     run = db_session.query(WritingAgentRun).filter(WritingAgentRun.id == payload["agent_run_id"]).one()
+    decision_message = (
+        db_session.query(DialogMessage)
+        .filter(DialogMessage.dialog_id == run.dialog_id, DialogMessage.role == "system")
+        .order_by(DialogMessage.created_at.desc(), DialogMessage.id.desc())
+        .first()
+    )
     assert task.payload["action_type"] == "generate_chapter"
     assert task.payload["tools"][0]["tool_name"] == "prepare_generate_chapter_execution"
     assert task.payload["tools"][0]["params"]["chapter_index"] == 2
+    assert run.request_message_id == decision_message.id
+    assert decision_message.action_result["data"]["agent_run_id"] == run.id
     assert run.input["tools"][0]["tool_name"] == "prepare_generate_chapter_execution"
     assert run.input["tools"][0]["command_args"] == "2 承接上一章记忆线索"
     assert run.input["tools"][0]["params"]["chapter_index"] == 2

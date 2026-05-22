@@ -164,10 +164,42 @@ def test_inspect_agent_trace_audit_includes_dialog_approval_events_without_raw_h
         },
     )
     db_session.add(message)
+    db_session.flush()
+    result_message = DialogMessage(
+        dialog_id=dialog.id,
+        role="system",
+        content="第2章正文生成完成。",
+        action_result={
+            "type": "generate_chapter",
+            "status": "success",
+            "data": {
+                "agent_run_id": run.id,
+                "status": "success",
+            },
+        },
+    )
+    db_session.add(result_message)
+    db_session.flush()
+    run.request_message_id = message.id
+    run.response_message_id = result_message.id
     db_session.commit()
 
     output = inspect_agent_trace_audit(db_session, project.id, run_id=run.id)
 
+    assert output["dialog_events"] == {
+        "approval_message": {
+            "id": message.id,
+            "role": "system",
+            "action_type": "generate_chapter",
+            "action_status": "generating",
+        },
+        "result_message": {
+            "id": result_message.id,
+            "role": "system",
+            "action_type": "generate_chapter",
+            "action_status": "success",
+        },
+    }
     assert output["approval_events"] == [
         {
             "kind": "pending_action_decision",

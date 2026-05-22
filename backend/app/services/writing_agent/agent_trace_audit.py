@@ -51,6 +51,7 @@ def inspect_agent_trace_audit(
     traces = _traces_by_id(db, project_id, trace_ids)
     trace_items = [_trace_summary(traces[trace_id]) for trace_id in trace_ids if trace_id in traces]
     approval_events = _approval_events_for_run(db, run)
+    dialog_events = _dialog_events_for_run(db, run)
     context = _context_summary([traces[trace_id] for trace_id in trace_ids if trace_id in traces])
     failure = _failure_summary(run, steps)
     recommended_actions = _recommended_actions(steps, failure=failure)
@@ -69,6 +70,7 @@ def inspect_agent_trace_audit(
             "run": _run_summary(run),
             "steps": [_step_summary(step) for step in steps],
             "traces": trace_items,
+            "dialog_events": dialog_events,
             "approval_events": approval_events,
             "context": context,
             "failure": failure,
@@ -204,6 +206,28 @@ def _trace_summary(trace: AIModelCallTrace) -> dict[str, Any]:
         "context_block_count": len(context_blocks),
         "context_char_count": sum(len(str(block.get("content") or "")) for block in context_blocks if isinstance(block, dict)),
         "metadata_keys": sorted(metadata.keys()),
+    }
+
+
+def _dialog_events_for_run(db: Session, run: WritingAgentRun) -> dict[str, Any]:
+    return {
+        "approval_message": _dialog_message_summary(db, run.request_message_id),
+        "result_message": _dialog_message_summary(db, run.response_message_id),
+    }
+
+
+def _dialog_message_summary(db: Session, message_id: str | None) -> dict[str, Any] | None:
+    if not message_id:
+        return None
+    message = db.query(DialogMessage).filter(DialogMessage.id == message_id).first()
+    if message is None:
+        return None
+    action_result = message.action_result if isinstance(message.action_result, dict) else {}
+    return {
+        "id": message.id,
+        "role": message.role,
+        "action_type": action_result.get("type"),
+        "action_status": action_result.get("status"),
     }
 
 
