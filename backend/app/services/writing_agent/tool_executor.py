@@ -344,6 +344,20 @@ def _inspect_agent_dialog_route_projection(
     )
 
 
+def _inspect_agent_route_preference_projection(
+    context: WritingAgentToolContext,
+    tool: WritingAgentToolRequest,
+) -> dict[str, Any]:
+    from app.services.actions.action_execution_service import SUPPORTED_ACTION_EXECUTION_TYPES
+    from app.services.writing_agent.slash_command_route import inspect_agent_route_preference_projection
+
+    return inspect_agent_route_preference_projection(
+        source=str(tool.params.get("source") or "").strip() or None,
+        static_adapter_tool_names=set(_STATIC_TOOL_ADAPTERS),
+        action_execution_tool_names=set(SUPPORTED_ACTION_EXECUTION_TYPES),
+    )
+
+
 def _inspect_agent_intent_projection(
     context: WritingAgentToolContext,
     tool: WritingAgentToolRequest,
@@ -846,6 +860,12 @@ _STATIC_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
     "inspect_agent_dialog_route_projection": WritingAgentToolAdapter(
         "inspect_agent_dialog_route_projection",
         _inspect_agent_dialog_route_projection,
+        category="preflight",
+        mutability="read",
+    ),
+    "inspect_agent_route_preference_projection": WritingAgentToolAdapter(
+        "inspect_agent_route_preference_projection",
+        _inspect_agent_route_preference_projection,
         category="preflight",
         mutability="read",
     ),

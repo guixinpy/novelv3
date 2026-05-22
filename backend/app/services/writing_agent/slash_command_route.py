@@ -12,6 +12,16 @@ from app.services.writing_agent.tool_registry import get_agent_tool_descriptor
 
 SLASH_COMMAND_ROUTE_PROJECTION_VERSION = "phase103.slash_command_route_projection.v1"
 DIALOG_ROUTE_PROJECTION_VERSION = "phase104.dialog_route_projection.v1"
+ROUTE_PREFERENCE_PROJECTION_VERSION = "phase115.route_preference_projection.v1"
+APPROVED_CHAPTER_GENERATION_CHAIN = (
+    "prepare_generate_chapter_execution",
+    "execute_generate_chapter_with_approval",
+)
+APPROVED_CHAPTER_GENERATION_APPROVAL_FIELDS = (
+    "confirm_execute",
+    "approval_contract_hash",
+    "approval_contract",
+)
 
 
 def inspect_agent_slash_command_route(
@@ -90,6 +100,125 @@ def inspect_agent_dialog_route_projection(
             "unsupported_tools": unsupported_tools,
         },
     }
+
+
+def inspect_agent_route_preference_projection(
+    *,
+    source: str | None = None,
+    static_adapter_tool_names: set[str] | None = None,
+    action_execution_tool_names: set[str] | None = None,
+) -> dict[str, Any]:
+    static_adapter_tool_names = static_adapter_tool_names or set()
+    action_execution_tool_names = action_execution_tool_names or set()
+    route_projection = inspect_agent_dialog_route_projection(
+        source=source,
+        static_adapter_tool_names=static_adapter_tool_names,
+        action_execution_tool_names=action_execution_tool_names,
+    )
+
+    routes: list[dict[str, Any]] = []
+    missing_preferred_tools: set[str] = set()
+    recommended_migration_count = 0
+    for route in route_projection.get("routes") or []:
+        if not isinstance(route, dict):
+            continue
+        preference = _route_preference(
+            route,
+            static_adapter_tool_names=static_adapter_tool_names,
+            action_execution_tool_names=action_execution_tool_names,
+        )
+        missing_preferred_tools.update(preference["missing_preferred_tools"])
+        if preference["migration_status"] == "recommended_not_applied":
+            recommended_migration_count += 1
+        routes.append(preference)
+
+    status = (
+        "ready"
+        if route_projection.get("status") == "ready" and not missing_preferred_tools
+        else "degraded"
+    )
+    return {
+        "status": status,
+        "version": ROUTE_PREFERENCE_PROJECTION_VERSION,
+        "summary": {
+            "route_count": len(routes),
+            "recommended_migration_count": recommended_migration_count,
+            "missing_preferred_tool_count": len(missing_preferred_tools),
+        },
+        "routes": routes,
+        "trace": {
+            "selected_source": route_projection.get("trace", {}).get("selected_source"),
+            "runtime_behavior_changed": False,
+            "missing_tools": route_projection.get("trace", {}).get("missing_tools", []),
+            "unsupported_tools": route_projection.get("trace", {}).get("unsupported_tools", []),
+            "missing_preferred_tools": sorted(missing_preferred_tools),
+        },
+    }
+
+
+def _route_preference(
+    route: dict[str, Any],
+    *,
+    static_adapter_tool_names: set[str],
+    action_execution_tool_names: set[str],
+) -> dict[str, Any]:
+    current_tool_name = str(route.get("agent_tool_name") or "")
+    preferred_tool_chain = _preferred_tool_chain(route, current_tool_name)
+    missing_preferred_tools = [
+        tool_name
+        for tool_name in preferred_tool_chain
+        if not _tool_execution_supported(
+            tool_name,
+            static_adapter_tool_names=static_adapter_tool_names,
+            action_execution_tool_names=action_execution_tool_names,
+        )
+    ]
+    approval_gate_required = preferred_tool_chain != [current_tool_name]
+    preferred_prepare_tool = preferred_tool_chain[0] if approval_gate_required else None
+    preferred_execute_tool = preferred_tool_chain[-1] if approval_gate_required else None
+    return {
+        **route,
+        "current_tool_name": current_tool_name,
+        "runtime_tool_name": current_tool_name,
+        "current_execution_backend": route.get("execution_backend"),
+        "preferred_tool_chain": preferred_tool_chain,
+        "preferred_prepare_tool_name": preferred_prepare_tool,
+        "preferred_execute_tool_name": preferred_execute_tool,
+        "preferred_execution_supported": not missing_preferred_tools,
+        "missing_preferred_tools": missing_preferred_tools,
+        "approval_gate_required": approval_gate_required,
+        "required_approval_fields": (
+            list(APPROVED_CHAPTER_GENERATION_APPROVAL_FIELDS)
+            if approval_gate_required
+            else []
+        ),
+        "runtime_route_changed": False,
+        "runtime_behavior_changed": False,
+        "migration_status": "recommended_not_applied" if approval_gate_required else "no_change",
+        "reason_code": (
+            "chapter_generation_should_use_approved_agent_gate"
+            if approval_gate_required
+            else "current_route_is_preferred"
+        ),
+    }
+
+
+def _preferred_tool_chain(route: dict[str, Any], current_tool_name: str) -> list[str]:
+    action_type = str(route.get("action_type") or "")
+    if current_tool_name == "generate_chapter" and action_type in {"preview_chapter", "generate_chapter"}:
+        return list(APPROVED_CHAPTER_GENERATION_CHAIN)
+    return [current_tool_name]
+
+
+def _tool_execution_supported(
+    tool_name: str,
+    *,
+    static_adapter_tool_names: set[str],
+    action_execution_tool_names: set[str],
+) -> bool:
+    if get_agent_tool_descriptor(tool_name) is None:
+        return False
+    return tool_name in static_adapter_tool_names or tool_name in action_execution_tool_names
 
 
 def _enrich_routes(

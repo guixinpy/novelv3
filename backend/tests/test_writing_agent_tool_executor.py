@@ -87,6 +87,35 @@ async def test_tool_executor_handles_inspect_agent_dialog_route_projection(db_se
 
 
 @pytest.mark.asyncio
+async def test_tool_executor_handles_inspect_agent_route_preference_projection(db_session):
+    project = Project(name="Route Preference Projection")
+    db_session.add(project)
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-route-preference"),
+        WritingAgentToolRequest(tool_name="inspect_agent_route_preference_projection", params={}),
+    )
+
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "ready"
+    assert result.output["version"] == "phase115.route_preference_projection.v1"
+    chapter_route = next(
+        route
+        for route in result.output["routes"]
+        if route["source"] == "slash_command" and route["action_type"] == "preview_chapter"
+    )
+    assert chapter_route["current_tool_name"] == "generate_chapter"
+    assert chapter_route["preferred_tool_chain"] == [
+        "prepare_generate_chapter_execution",
+        "execute_generate_chapter_with_approval",
+    ]
+    assert chapter_route["runtime_route_changed"] is False
+    assert chapter_route["migration_status"] == "recommended_not_applied"
+
+
+@pytest.mark.asyncio
 async def test_tool_executor_handles_inspect_agent_intent_projection(db_session):
     project = Project(name="Intent Projection")
     db_session.add(project)
@@ -756,6 +785,7 @@ def test_tool_executor_static_adapter_names_are_report_or_agent_native_tools():
         "inspect_agent_job_projection",
         "inspect_agent_tool_contracts",
         "inspect_agent_write_gate_coverage",
+        "inspect_agent_route_preference_projection",
         "inspect_agent_knowledge_base_route",
         "record_agent_knowledge_base_candidate",
         "import_setup_world_model",
@@ -814,6 +844,16 @@ def test_tool_executor_exposes_adapter_metadata_for_trace():
     }
 
 
+def test_tool_executor_exposes_inspect_agent_route_preference_projection_adapter_metadata():
+    assert writing_agent_tool_adapter_metadata("inspect_agent_route_preference_projection") == {
+        "tool_name": "inspect_agent_route_preference_projection",
+        "adapter_type": "static",
+        "category": "preflight",
+        "mutability": "read",
+        "handler_name": "_inspect_agent_route_preference_projection",
+    }
+
+
 def test_tool_executor_exposes_approved_direct_chapter_generation_adapter_metadata():
     assert writing_agent_tool_adapter_metadata("prepare_generate_chapter_execution") == {
         "tool_name": "prepare_generate_chapter_execution",
@@ -861,6 +901,7 @@ def test_tool_executor_lists_unhandled_internal_tools_for_migration_tracking():
     assert "inspect_agent_job_projection" not in names
     assert "inspect_agent_tool_contracts" not in names
     assert "inspect_agent_write_gate_coverage" not in names
+    assert "inspect_agent_route_preference_projection" not in names
     assert "inspect_agent_knowledge_base_route" not in names
     assert "record_agent_knowledge_base_candidate" not in names
     assert "execute_longform_chapter_batch_preflight" not in names

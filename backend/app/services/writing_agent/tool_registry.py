@@ -400,6 +400,27 @@ _TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(
+        name="inspect_agent_route_preference_projection",
+        module="writing_agent",
+        category="preflight",
+        description="返回对话入口当前路由与推荐 Agent 审批工具链的只读偏好投影，不改变运行时路由。",
+        input_schema=_object_schema({"source": {"type": "string"}}),
+        output_schema=_object_schema(
+            {
+                "status": {"type": "string"},
+                "version": {"type": "string"},
+                "summary": {"type": "object"},
+                "routes": {"type": "array"},
+                "trace": {"type": "object"},
+            }
+        ),
+        target_type="agent_route_preference_projection",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=11,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
         name="inspect_agent_intent_projection",
         module="writing_agent",
         category="preflight",
