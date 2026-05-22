@@ -55,12 +55,14 @@ def verify_agent_plan_approval_contract(
     approval_contract_hash: str | None = None,
     approval_contract: dict[str, Any] | None = None,
     project_id: str | None = None,
+    tool_metadata_by_name: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     current_contract = build_agent_plan_approval_contract(plan)
     actual_hash = _contract_hash(current_contract)
     expected_hash = str(approval_contract_hash or "").strip() or None
     snapshot_hash = _contract_hash(approval_contract) if isinstance(approval_contract, dict) else None
     project_matches = project_id is None or current_contract.get("project_id") == project_id
+    tool_contracts = _tool_contract_checks(current_contract.get("write_steps"), tool_metadata_by_name)
     drift = {
         "hash_matches": None if expected_hash is None else actual_hash == expected_hash,
         "snapshot_hash_matches": None if snapshot_hash is None else snapshot_hash == actual_hash,
@@ -69,6 +71,9 @@ def verify_agent_plan_approval_contract(
         "actual_approval_contract_hash": actual_hash,
         "snapshot_approval_contract_hash": snapshot_hash,
         "write_step_count": current_contract.get("write_step_count", 0),
+        "tool_contracts_checked": tool_metadata_by_name is not None and bool(current_contract.get("write_steps")),
+        "tool_contract_drift_count": sum(1 for check in tool_contracts if check.get("status") != "ready"),
+        "tool_contracts": tool_contracts,
     }
 
     if current_contract.get("status") == "invalid_plan":
@@ -117,6 +122,14 @@ def verify_agent_plan_approval_contract(
             current_contract=current_contract,
             drift=drift,
             recommended_next_tools=["plan_writing_agent_run"],
+        )
+    if drift["tool_contract_drift_count"]:
+        return _verification_output(
+            status="blocked",
+            reason="tool_contract_drift",
+            current_contract=current_contract,
+            drift=drift,
+            recommended_next_tools=["inspect_agent_tool_contracts"],
         )
     return _verification_output(
         status="ready",
@@ -184,6 +197,78 @@ def _approval_step(step: dict[str, Any]) -> dict[str, Any]:
     if step.get("command_args"):
         approval_step["command_args"] = str(step["command_args"])
     return approval_step
+
+
+def _tool_contract_checks(
+    write_steps: object,
+    tool_metadata_by_name: dict[str, dict[str, Any]] | None,
+) -> list[dict[str, Any]]:
+    if tool_metadata_by_name is None or not isinstance(write_steps, list):
+        return []
+    return [_tool_contract_check(step, tool_metadata_by_name) for step in write_steps if isinstance(step, dict)]
+
+
+def _tool_contract_check(
+    step: dict[str, Any],
+    tool_metadata_by_name: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    tool_name = str(step.get("tool_name") or "").strip()
+    metadata = tool_metadata_by_name.get(tool_name) if tool_name else None
+    tool_exists = _metadata_bool(metadata, "tool_exists", fallback_key="exists")
+    adapter_exists = _metadata_bool(metadata, "adapter_exists") or bool(metadata and metadata.get("adapter_type"))
+    current_mutability = str((metadata or {}).get("mutability") or "unclassified")
+    current_requires_confirmation = _metadata_bool(metadata, "requires_confirmation")
+    required_fields = _metadata_list(metadata, "required_fields", fallback_key="input_required_fields")
+    params = step.get("params") if isinstance(step.get("params"), dict) else {}
+    missing_required_fields = [field for field in required_fields if field not in params]
+    reasons: list[str] = []
+
+    if not tool_name:
+        reasons.append("missing_tool_name")
+    if not tool_exists:
+        reasons.append("tool_missing")
+    if not adapter_exists:
+        reasons.append("adapter_missing")
+    if current_mutability not in _WRITE_MUTABILITY:
+        reasons.append("mutability_no_longer_write")
+    if not current_requires_confirmation:
+        reasons.append("confirmation_not_required")
+    if missing_required_fields:
+        reasons.append("missing_required_fields")
+
+    return {
+        "step_id": step.get("step_id"),
+        "tool_name": tool_name or None,
+        "tool_exists": tool_exists,
+        "adapter_exists": adapter_exists,
+        "current_mutability": current_mutability,
+        "current_requires_confirmation": current_requires_confirmation,
+        "required_fields": required_fields,
+        "missing_required_fields": missing_required_fields,
+        "status": "ready" if not reasons else "drift",
+        "reasons": reasons,
+    }
+
+
+def _metadata_bool(metadata: dict[str, Any] | None, key: str, *, fallback_key: str | None = None) -> bool:
+    if not metadata:
+        return False
+    if key in metadata:
+        return metadata.get(key) is True
+    if fallback_key and fallback_key in metadata:
+        return metadata.get(fallback_key) is True
+    return False
+
+
+def _metadata_list(metadata: dict[str, Any] | None, key: str, *, fallback_key: str | None = None) -> list[str]:
+    if not metadata:
+        return []
+    value = metadata.get(key)
+    if value is None and fallback_key:
+        value = metadata.get(fallback_key)
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value if str(item)]
 
 
 def _hash_payload(payload: dict[str, Any]) -> str:

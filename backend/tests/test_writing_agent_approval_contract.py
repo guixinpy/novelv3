@@ -132,6 +132,124 @@ def test_verify_approval_contract_accepts_matching_hash():
     assert result["recommended_next_tools"] == []
 
 
+def test_verify_approval_contract_checks_write_step_tool_contracts():
+    plan = _write_plan(project_id="project-1")
+    contract = build_agent_plan_approval_contract(plan)
+
+    result = verify_agent_plan_approval_contract(
+        plan,
+        approval_contract_hash=contract["approval"]["approval_contract_hash"],
+        approval_contract=contract,
+        project_id="project-1",
+        tool_metadata_by_name={
+            "generate_chapter": {
+                "tool_exists": True,
+                "adapter_exists": True,
+                "mutability": "write",
+                "requires_confirmation": True,
+                "required_fields": ["chapter_index"],
+            }
+        },
+    )
+
+    assert result["status"] == "ready"
+    assert result["reason"] == "approval_contract_verified"
+    assert result["drift"]["tool_contracts_checked"] is True
+    assert result["drift"]["tool_contract_drift_count"] == 0
+    assert result["drift"]["tool_contracts"] == [
+        {
+            "step_id": "step:write",
+            "tool_name": "generate_chapter",
+            "tool_exists": True,
+            "adapter_exists": True,
+            "current_mutability": "write",
+            "current_requires_confirmation": True,
+            "required_fields": ["chapter_index"],
+            "missing_required_fields": [],
+            "status": "ready",
+            "reasons": [],
+        }
+    ]
+
+
+def test_verify_approval_contract_blocks_missing_required_step_params():
+    plan = _write_plan(project_id="project-1")
+    plan["steps"][0]["params"] = {}
+    contract = build_agent_plan_approval_contract(plan)
+
+    result = verify_agent_plan_approval_contract(
+        plan,
+        approval_contract_hash=contract["approval"]["approval_contract_hash"],
+        approval_contract=contract,
+        project_id="project-1",
+        tool_metadata_by_name={
+            "generate_chapter": {
+                "tool_exists": True,
+                "adapter_exists": True,
+                "mutability": "write",
+                "requires_confirmation": True,
+                "required_fields": ["chapter_index"],
+            }
+        },
+    )
+
+    assert result["status"] == "blocked"
+    assert result["reason"] == "tool_contract_drift"
+    assert result["drift"]["tool_contract_drift_count"] == 1
+    assert result["drift"]["tool_contracts"][0]["missing_required_fields"] == ["chapter_index"]
+    assert "missing_required_fields" in result["drift"]["tool_contracts"][0]["reasons"]
+    assert result["recommended_next_tools"] == ["inspect_agent_tool_contracts"]
+
+
+def test_verify_approval_contract_blocks_missing_tool_or_adapter():
+    plan = _write_plan(project_id="project-1")
+    contract = build_agent_plan_approval_contract(plan)
+
+    result = verify_agent_plan_approval_contract(
+        plan,
+        approval_contract_hash=contract["approval"]["approval_contract_hash"],
+        approval_contract=contract,
+        project_id="project-1",
+        tool_metadata_by_name={},
+    )
+
+    assert result["status"] == "blocked"
+    assert result["reason"] == "tool_contract_drift"
+    assert result["drift"]["tool_contract_drift_count"] == 1
+    assert result["drift"]["tool_contracts"][0]["tool_exists"] is False
+    assert result["drift"]["tool_contracts"][0]["adapter_exists"] is False
+    assert "tool_missing" in result["drift"]["tool_contracts"][0]["reasons"]
+    assert "adapter_missing" in result["drift"]["tool_contracts"][0]["reasons"]
+
+
+def test_verify_approval_contract_blocks_when_tool_no_longer_requires_confirmation():
+    plan = _write_plan(project_id="project-1")
+    contract = build_agent_plan_approval_contract(plan)
+
+    result = verify_agent_plan_approval_contract(
+        plan,
+        approval_contract_hash=contract["approval"]["approval_contract_hash"],
+        approval_contract=contract,
+        project_id="project-1",
+        tool_metadata_by_name={
+            "generate_chapter": {
+                "tool_exists": True,
+                "adapter_exists": True,
+                "mutability": "read",
+                "requires_confirmation": False,
+                "required_fields": ["chapter_index"],
+            }
+        },
+    )
+
+    assert result["status"] == "blocked"
+    assert result["reason"] == "tool_contract_drift"
+    assert result["drift"]["tool_contract_drift_count"] == 1
+    assert result["drift"]["tool_contracts"][0]["current_mutability"] == "read"
+    assert result["drift"]["tool_contracts"][0]["current_requires_confirmation"] is False
+    assert result["drift"]["tool_contracts"][0]["reasons"] == ["mutability_no_longer_write", "confirmation_not_required"]
+
+
 def test_verify_approval_contract_blocks_hash_mismatch():
     plan = _write_plan(project_id="project-1")
 

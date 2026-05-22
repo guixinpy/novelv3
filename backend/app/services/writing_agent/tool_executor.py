@@ -9,6 +9,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.schemas.writing_agent import WritingAgentToolRequest
+from app.services.writing_agent.tool_contracts import agent_tool_execution_metadata
 from app.services.writing_agent.tool_registry import build_agent_tool_plan, get_agent_tool_descriptor, internal_tool_names
 
 
@@ -178,6 +179,7 @@ def _verify_agent_plan_approval_contract(
         approval_contract_hash=str(tool.params.get("approval_contract_hash") or "").strip() or None,
         approval_contract=approval_contract if isinstance(approval_contract, dict) else None,
         project_id=context.project_id,
+        tool_metadata_by_name=_approval_tool_metadata_by_name(plan if isinstance(plan, dict) else None),
     )
 
 
@@ -186,6 +188,42 @@ def _plan_recovery_tools(context: WritingAgentToolContext, tool: WritingAgentToo
 
     run_id = str(tool.params.get("run_id") or "").strip() or None
     return build_recovery_tool_plan(context.db, context.project_id, run_id)
+
+
+def _approval_tool_metadata_by_name(plan: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
+    if not isinstance(plan, dict):
+        return {}
+    steps = plan.get("steps") if isinstance(plan.get("steps"), list) else []
+    metadata_by_name: dict[str, dict[str, Any]] = {}
+    for step in steps:
+        if not _approval_step_needs_contract_check(step):
+            continue
+        tool_name = str(step.get("tool_name") or "").strip() if isinstance(step, dict) else ""
+        if not tool_name:
+            continue
+        descriptor = get_agent_tool_descriptor(tool_name)
+        adapter_metadata = writing_agent_tool_adapter_metadata(tool_name)
+        execution_metadata = agent_tool_execution_metadata(descriptor, adapter_metadata)
+        input_schema = descriptor.input_schema if descriptor is not None else {}
+        required_fields = input_schema.get("required") if isinstance(input_schema, dict) else []
+        metadata_by_name[tool_name] = {
+            "tool_name": tool_name,
+            "tool_exists": descriptor is not None,
+            "adapter_exists": adapter_metadata is not None,
+            "adapter_type": adapter_metadata.get("adapter_type") if adapter_metadata else None,
+            "handler_name": adapter_metadata.get("handler_name") if adapter_metadata else None,
+            "mutability": execution_metadata["mutability"],
+            "requires_confirmation": execution_metadata["requires_confirmation"],
+            "required_fields": list(required_fields) if isinstance(required_fields, list) else [],
+        }
+    return metadata_by_name
+
+
+def _approval_step_needs_contract_check(step: object) -> bool:
+    if not isinstance(step, dict):
+        return False
+    mutability = str(step.get("mutability") or "")
+    return step.get("requires_confirmation") is True or mutability in {"write", "guarded_write"}
 
 
 def _plan_recommended_followups(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:

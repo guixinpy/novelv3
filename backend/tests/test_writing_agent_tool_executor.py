@@ -351,6 +351,14 @@ async def test_tool_executor_handles_agent_plan_approval_contract_verification(d
     assert result.output["status"] == "ready"
     assert result.output["reason"] == "approval_contract_verified"
     assert result.output["drift"]["hash_matches"] is True
+    assert result.output["drift"]["tool_contracts_checked"] is True
+    assert result.output["drift"]["tool_contract_drift_count"] == 0
+    assert result.output["drift"]["tool_contracts"][0]["tool_name"] == "generate_chapter"
+    assert result.output["drift"]["tool_contracts"][0]["tool_exists"] is True
+    assert result.output["drift"]["tool_contracts"][0]["adapter_exists"] is True
+    assert result.output["drift"]["tool_contracts"][0]["current_mutability"] == "write"
+    assert result.output["drift"]["tool_contracts"][0]["current_requires_confirmation"] is True
+    assert result.output["drift"]["tool_contracts"][0]["status"] == "ready"
 
 
 @pytest.mark.asyncio
