@@ -82,6 +82,7 @@ def plan_dialog_intent_agent_run(
         },
         "plan": plan,
         "tools": list(plan.get("tools") or []),
+        "approval_contract": plan.get("approval_contract"),
         "trace": {
             "reason": "planned_from_intent_projection",
             "projection_id": projection_id,

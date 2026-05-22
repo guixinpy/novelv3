@@ -242,6 +242,9 @@ async def test_tool_executor_handles_dialog_intent_agent_plan_for_chapter(db_ses
     assert result.output["planner"]["plan_id"] == plan["trace"]["plan_id"]
     assert plan["trace"]["source_projection_id"] == projection_id
     assert all(step["source_projection_id"] == projection_id for step in plan["steps"])
+    assert result.output["approval_contract"]["status"] == "requires_confirmation"
+    assert result.output["approval_contract"]["plan_id"] == result.output["planner"]["plan_id"]
+    assert result.output["approval_contract"] == plan["approval_contract"]
     assert [tool["tool_name"] for tool in result.output["tools"]] == [
         "describe_agent_tools",
         "inspect_agent_knowledge_base_route",
@@ -273,6 +276,38 @@ async def test_tool_executor_handles_planner_tool(db_session):
     assert result.output["status"] == "completed"
     assert result.output["intent_class"] == "setup_project"
     assert result.output["steps"][0]["tool_name"] == "describe_agent_tools"
+    assert result.output["approval_contract"]["status"] == "requires_confirmation"
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_handles_agent_plan_approval_contract_preview(db_session):
+    project = Project(name="Approval Contract Preview")
+    db_session.add(project)
+    db_session.commit()
+    plan = {
+        "trace": {"plan_id": "plan:abc", "source_projection_id": None, "planner_version": "phase53.context_gate.v1"},
+        "steps": [
+            {
+                "step_index": 1,
+                "step_id": "step:write",
+                "tool_name": "generate_chapter",
+                "params": {"chapter_index": 2},
+                "mutability": "write",
+                "requires_confirmation": True,
+            }
+        ],
+    }
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(tool_name="preview_agent_plan_approval_contract", params={"plan": plan}),
+    )
+
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "requires_confirmation"
+    assert result.output["plan_id"] == "plan:abc"
+    assert result.output["write_step_count"] == 1
 
 
 @pytest.mark.asyncio
@@ -566,6 +601,7 @@ def test_tool_executor_static_adapter_names_are_report_or_agent_native_tools():
         "generate_chapter",
         "plan_writing_agent_run",
         "plan_dialog_intent_agent_run",
+        "preview_agent_plan_approval_contract",
         "plan_longform_chapter_batch",
         "enqueue_longform_chapter_batch",
         "inspect_longform_chapter_batch",
@@ -645,6 +681,7 @@ def test_tool_executor_lists_unhandled_internal_tools_for_migration_tracking():
     assert "review_chapter_quality" not in names
     assert "plan_writing_agent_run" not in names
     assert "plan_dialog_intent_agent_run" not in names
+    assert "preview_agent_plan_approval_contract" not in names
     assert "import_setup_world_model" not in names
     assert "seed_continuity_anchor_proposals" not in names
     assert "analyze_chapter_world_model" not in names

@@ -155,6 +155,16 @@ def _plan_dialog_intent_agent_run(context: WritingAgentToolContext, tool: Writin
     )
 
 
+def _preview_agent_plan_approval_contract(
+    context: WritingAgentToolContext,
+    tool: WritingAgentToolRequest,
+) -> dict[str, Any]:
+    from app.services.writing_agent.approval_contract import build_agent_plan_approval_contract
+
+    plan = tool.params.get("plan")
+    return build_agent_plan_approval_contract(plan if isinstance(plan, dict) else None)
+
+
 def _plan_recovery_tools(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
     from app.services.writing_agent.recovery_planner import build_recovery_tool_plan
 
@@ -684,6 +694,12 @@ _STATIC_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
     "plan_dialog_intent_agent_run": WritingAgentToolAdapter(
         "plan_dialog_intent_agent_run",
         _plan_dialog_intent_agent_run,
+        category="preflight",
+        mutability="read",
+    ),
+    "preview_agent_plan_approval_contract": WritingAgentToolAdapter(
+        "preview_agent_plan_approval_contract",
+        _preview_agent_plan_approval_contract,
         category="preflight",
         mutability="read",
     ),

@@ -164,6 +164,19 @@ _CONTINUITY_ANCHOR_SEED_OUTPUT = _object_schema(
         "recommended_actions": {"type": "array"},
     }
 )
+_AGENT_PLAN_APPROVAL_CONTRACT_OUTPUT = _object_schema(
+    {
+        "status": {"type": "string"},
+        "version": {"type": "string"},
+        "project_id": {"type": ["string", "null"]},
+        "plan_id": {"type": ["string", "null"]},
+        "source_projection_id": {"type": ["string", "null"]},
+        "write_step_count": {"type": "integer"},
+        "write_steps": {"type": "array"},
+        "approval": {"type": "object"},
+        "trace": {"type": "object"},
+    }
+)
 
 
 _TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
@@ -204,6 +217,7 @@ _TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
                 "intent_class": {"type": "string"},
                 "steps": {"type": "array"},
                 "tools": {"type": "array"},
+                "approval_contract": {"type": "object"},
                 "trace": {"type": "object"},
             }
         ),
@@ -237,10 +251,24 @@ _TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
                 "planner": {"type": "object"},
                 "plan": {"type": ["object", "null"]},
                 "tools": {"type": "array"},
+                "approval_contract": {"type": "object"},
                 "trace": {"type": "object"},
             }
         ),
         target_type="agent_tool_plan",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=7,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
+        name="preview_agent_plan_approval_contract",
+        module="writing_agent",
+        category="preflight",
+        description="为 Writing Agent 计划中的写入步骤生成只读审批契约和稳定哈希，不执行任何工具。",
+        input_schema=_object_schema({"plan": {"type": "object"}}, required=("plan",)),
+        output_schema=_AGENT_PLAN_APPROVAL_CONTRACT_OUTPUT,
+        target_type="agent_plan_approval_contract",
         internal=True,
         non_blocking_report=True,
         sort_key=7,

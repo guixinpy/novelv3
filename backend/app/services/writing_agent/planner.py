@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.models import ChapterContent
 from app.schemas.writing_agent import WritingAgentToolRequest
+from app.services.writing_agent.approval_contract import build_agent_plan_approval_contract
 from app.services.writing_agent.tool_contracts import agent_tool_execution_metadata
 from app.services.writing_agent.tool_registry import build_agent_tool_plan, get_agent_tool_descriptor
 
@@ -64,9 +65,10 @@ def build_writing_agent_run_plan(
 
     _collect_missing_dependencies(trace, diagnostics)
     status = "blocked" if trace["risk_flags"] else "completed"
-    return {
+    plan = {
         "status": status,
         "planner_version": PLANNER_VERSION,
+        "project_id": project_id,
         "intent_class": intent_class,
         "goal": goal,
         "chapter_index": resolved_chapter_index,
@@ -74,6 +76,8 @@ def build_writing_agent_run_plan(
         "tools": [_tool_request_from_step(step) for step in steps],
         "trace": trace,
     }
+    plan["approval_contract"] = build_agent_plan_approval_contract(plan)
+    return plan
 
 
 def tools_from_plan(plan: dict[str, Any]) -> list[WritingAgentToolRequest]:

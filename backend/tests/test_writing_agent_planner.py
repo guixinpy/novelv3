@@ -53,6 +53,30 @@ def test_planner_builds_ready_next_chapter_tool_chain(db_session):
     }
     quality_review = next(tool for tool in plan["tools"] if tool["tool_name"] == "review_chapter_quality")
     assert quality_review["planner"]["post_generation"] is True
+    assert plan["approval_contract"]["status"] == "requires_confirmation"
+    assert plan["approval_contract"]["plan_id"] == plan["trace"]["plan_id"]
+    assert [step["tool_name"] for step in plan["approval_contract"]["write_steps"]] == [
+        "generate_chapter",
+        "analyze_chapter_world_model",
+    ]
+    assert plan["approval_contract"]["approval"]["approval_contract_hash"].startswith("approval:")
+
+
+def test_planner_marks_review_only_plan_as_not_requiring_approval(db_session):
+    project = _seed_project(db_session, outline_chapters=[2], generated_chapters=[2])
+
+    plan = build_writing_agent_run_plan(db_session, project.id, goal="审稿第2章", chapter_index=2)
+
+    assert plan["status"] == "completed"
+    assert plan["intent_class"] == "review_chapter"
+    assert _tool_names(plan) == [
+        "describe_agent_tools",
+        "review_chapter_quality",
+        "review_chapter_continuity",
+        "plan_chapter_revision",
+    ]
+    assert plan["approval_contract"]["status"] == "not_required"
+    assert plan["approval_contract"]["write_steps"] == []
 
 
 def test_planner_adds_outline_expansion_when_target_outline_is_missing(db_session):
