@@ -52,6 +52,13 @@ def inspect_agent_trace_audit(
     trace_items = [_trace_summary(traces[trace_id]) for trace_id in trace_ids if trace_id in traces]
     approval_events = _approval_events_for_run(db, run)
     dialog_events = _dialog_events_for_run(db, run)
+    event_chain = _event_chain(
+        run,
+        steps=steps,
+        trace_items=trace_items,
+        approval_events=approval_events,
+        dialog_events=dialog_events,
+    )
     context = _context_summary([traces[trace_id] for trace_id in trace_ids if trace_id in traces])
     failure = _failure_summary(run, steps)
     recommended_actions = _recommended_actions(steps, failure=failure)
@@ -65,6 +72,7 @@ def inspect_agent_trace_audit(
                 "step_count": len(steps),
                 "trace_count": len(trace_items),
                 "approval_event_count": len(approval_events),
+                "event_chain_count": len(event_chain),
                 "context_block_count": context["total_blocks"],
             },
             "run": _run_summary(run),
@@ -72,6 +80,7 @@ def inspect_agent_trace_audit(
             "traces": trace_items,
             "dialog_events": dialog_events,
             "approval_events": approval_events,
+            "event_chain": event_chain,
             "context": context,
             "failure": failure,
             "recommended_actions": recommended_actions,
@@ -255,6 +264,77 @@ def _approval_events_for_run(db: Session, run: WritingAgentRun) -> list[dict[str
             continue
         events.append(_approval_event_summary(message, decision))
     return events
+
+
+def _event_chain(
+    run: WritingAgentRun,
+    *,
+    steps: list[WritingAgentStep],
+    trace_items: list[dict[str, Any]],
+    approval_events: list[dict[str, Any]],
+    dialog_events: dict[str, Any],
+) -> list[dict[str, Any]]:
+    chain: list[dict[str, Any]] = []
+    for event in approval_events:
+        chain.append(
+            {
+                "event_type": "approval_decision",
+                "message_id": event.get("message_id"),
+                "action_type": event.get("action_type"),
+                "decision": event.get("decision"),
+                "decision_label": event.get("decision_label"),
+            }
+        )
+
+    chain.append(
+        {
+            "event_type": "run_dispatched",
+            "run_id": run.id,
+            "status": run.status,
+            "entrypoint": run.entrypoint,
+            "background_task_id": run.background_task_id,
+        }
+    )
+
+    for step in steps:
+        chain.append(
+            {
+                "event_type": "tool_step",
+                "step_id": step.id,
+                "step_index": step.step_index,
+                "tool_name": step.tool_name,
+                "status": step.status,
+                "trace_id": step.trace_id,
+                "target_type": step.target_type,
+                "target_id": step.target_id,
+                "chapter_index": step.chapter_index,
+            }
+        )
+
+    for trace in trace_items:
+        chain.append(
+            {
+                "event_type": "trace_attached",
+                "trace_id": trace.get("id"),
+                "trace_type": trace.get("trace_type"),
+                "status": trace.get("status"),
+                "chapter_index": trace.get("chapter_index"),
+                "context_block_count": trace.get("context_block_count"),
+            }
+        )
+
+    result_message = dialog_events.get("result_message") if isinstance(dialog_events.get("result_message"), dict) else None
+    if result_message:
+        chain.append(
+            {
+                "event_type": "result_message",
+                "message_id": result_message.get("id"),
+                "action_type": result_message.get("action_type"),
+                "action_status": result_message.get("action_status"),
+            }
+        )
+
+    return chain
 
 
 def _approval_event_summary(message: DialogMessage, decision: dict[str, Any]) -> dict[str, Any]:

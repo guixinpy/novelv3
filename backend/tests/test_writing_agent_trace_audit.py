@@ -139,6 +139,32 @@ def test_inspect_agent_trace_audit_includes_dialog_approval_events_without_raw_h
     )
     db_session.add(run)
     db_session.flush()
+    trace = AIModelCallTrace(
+        id="trace-chain",
+        project_id=project.id,
+        trace_type="chapter_generation",
+        status="success",
+        model="deepseek-chat",
+        chapter_index=2,
+        context_blocks=[{"key": "outline", "content": "第2章承接灯塔记忆线索。"}],
+    )
+    db_session.add(trace)
+    db_session.flush()
+    db_session.add(
+        WritingAgentStep(
+            run_id=run.id,
+            project_id=project.id,
+            step_index=1,
+            tool_name="generate_chapter",
+            status="success",
+            input={"params": {"chapter_index": 2}},
+            output={"status": "success", "trace_id": trace.id},
+            trace_id=trace.id,
+            target_type="chapter",
+            target_id="chapter-2",
+            chapter_index=2,
+        )
+    )
     message = DialogMessage(
         dialog_id=dialog.id,
         role="system",
@@ -216,3 +242,17 @@ def test_inspect_agent_trace_audit_includes_dialog_approval_events_without_raw_h
     ]
     assert "approval:secret-hash" not in str(output["approval_events"])
     assert output["audit"]["approval_event_count"] == 1
+    assert [event["event_type"] for event in output["event_chain"]] == [
+        "approval_decision",
+        "run_dispatched",
+        "tool_step",
+        "trace_attached",
+        "result_message",
+    ]
+    assert output["event_chain"][0]["decision_label"] == "已确认"
+    assert output["event_chain"][1]["run_id"] == run.id
+    assert output["event_chain"][2]["tool_name"] == "generate_chapter"
+    assert output["event_chain"][3]["trace_id"] == "trace-chain"
+    assert output["event_chain"][4]["message_id"] == result_message.id
+    assert "approval:secret-hash" not in str(output["event_chain"])
+    assert output["audit"]["event_chain_count"] == 5
