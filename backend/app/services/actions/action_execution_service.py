@@ -4,6 +4,15 @@ from sqlalchemy.orm import Session
 from app.core.intent_router import parse_chapter_index
 from app.models import AIModelCallTrace
 
+SUPPORTED_ACTION_EXECUTION_TYPES = frozenset(
+    {
+        "generate_setup",
+        "generate_storyline",
+        "generate_outline",
+        "generate_chapter",
+    }
+)
+
 
 def chapter_action_params(command_args: str | None = None, candidate_params: dict | None = None) -> dict:
     params = dict(candidate_params or {})

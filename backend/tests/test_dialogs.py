@@ -12,7 +12,10 @@ from sqlalchemy.orm.session import Session as OrmSession
 
 from app.api import dialogs as dialogs_api
 from app.core.chat_commands import (
+    CHAT_COMMAND_AGENT_ROUTE_VERSION,
+    command_agent_route,
     command_mutates_history,
+    command_to_agent_tool_name,
     command_to_action_type,
     is_supported_chat_command,
 )
@@ -101,6 +104,25 @@ def test_chat_command_registry_helpers_cover_expected_commands():
     assert command_to_action_type("clear") is None
     assert command_to_action_type("compact") is None
 
+    assert command_to_agent_tool_name("setup") == "generate_setup"
+    assert command_to_agent_tool_name("storyline") == "generate_storyline"
+    assert command_to_agent_tool_name("outline") == "generate_outline"
+    assert command_to_agent_tool_name("chapter") == "generate_chapter"
+    assert command_to_agent_tool_name("clear") is None
+    assert command_to_agent_tool_name("compact") is None
+
+    chapter_route = command_agent_route("chapter")
+    assert chapter_route == {
+        "version": CHAT_COMMAND_AGENT_ROUTE_VERSION,
+        "command_name": "chapter",
+        "action_type": "preview_chapter",
+        "agent_action_type": "generate_chapter",
+        "agent_tool_name": "generate_chapter",
+        "requires_confirmation": True,
+        "entrypoint": "dialog_pending_action",
+    }
+    assert command_agent_route("clear") is None
+
 
 def test_chapter_command_leading_index_wins_over_context_mentions(client):
     r = client.post("/api/v1/projects", json={"name": "Test"})
@@ -116,6 +138,15 @@ def test_chapter_command_leading_index_wins_over_context_mentions(client):
     assert r2.status_code == 200
     body = r2.json()
     assert body["pending_action"]["params"]["chapter_index"] == 2
+    assert body["pending_action"]["params"]["agent_route"] == {
+        "version": CHAT_COMMAND_AGENT_ROUTE_VERSION,
+        "command_name": "chapter",
+        "action_type": "preview_chapter",
+        "agent_action_type": "generate_chapter",
+        "agent_tool_name": "generate_chapter",
+        "requires_confirmation": True,
+        "entrypoint": "dialog_pending_action",
+    }
     assert "第2章正文" in body["pending_action"]["description"]
 
 
@@ -137,6 +168,8 @@ def test_agent_control_plane_routes_confirmed_setup_through_writing_agent_run(cl
             "command_args": "雾港悬疑，主角是记忆取证师",
         },
     ).json()["pending_action"]
+    assert pending["params"]["agent_route"]["agent_tool_name"] == "generate_setup"
+    assert pending["params"]["agent_route"]["agent_action_type"] == "generate_setup"
 
     response = client.post(
         "/api/v1/dialog/resolve-action",
@@ -158,6 +191,7 @@ def test_agent_control_plane_routes_confirmed_setup_through_writing_agent_run(cl
     assert run.input["control_plane"]["source"] == "dialog_pending_action"
     assert run.input["tools"][0]["tool_name"] == "generate_setup"
     assert run.input["tools"][0]["command_args"] == "雾港悬疑，主角是记忆取证师"
+    assert "agent_route" not in run.input["tools"][0]["params"]
     assert task.task_type == "writing_agent_run"
     assert task.payload["agent_run_id"] == run.id
     assert task.payload["action_type"] == "generate_setup"

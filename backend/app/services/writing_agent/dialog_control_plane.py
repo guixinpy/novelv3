@@ -14,6 +14,7 @@ from app.services.writing_agent.run_service import WritingAgentRunService
 
 CONTROL_PLANE_VERSION = "phase65.agent_control_plane.v1"
 AGENT_RUN_TASK_TYPE = "writing_agent_run"
+CONTROL_PLANE_PARAM_KEYS = {"project_id", "agent_route"}
 
 SUPPORTED_DIALOG_ACTION_TO_TOOL = {
     "generate_setup": "generate_setup",
@@ -136,7 +137,8 @@ def _tool_request_for_action(
 ) -> WritingAgentToolRequest:
     tool_name = SUPPORTED_DIALOG_ACTION_TO_TOOL[action_type]
     params = dict(action_params or {})
-    params.pop("project_id", None)
+    for key in CONTROL_PLANE_PARAM_KEYS:
+        params.pop(key, None)
     return WritingAgentToolRequest(tool_name=tool_name, command_args=command_args, params=params)
 
 

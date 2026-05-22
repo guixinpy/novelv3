@@ -32,6 +32,35 @@ async def test_tool_executor_handles_describe_agent_tools(db_session):
 
 
 @pytest.mark.asyncio
+async def test_tool_executor_handles_inspect_agent_slash_command_route(db_session):
+    project = Project(name="Slash Command Route Projection")
+    db_session.add(project)
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-slash"),
+        WritingAgentToolRequest(tool_name="inspect_agent_slash_command_route", params={}),
+    )
+
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "ready"
+    assert result.output["version"] == "phase103.slash_command_route_projection.v1"
+    routes_by_command = {route["command_name"]: route for route in result.output["routes"]}
+    assert routes_by_command["setup"]["agent_tool_name"] == "generate_setup"
+    assert routes_by_command["storyline"]["agent_tool_name"] == "generate_storyline"
+    assert routes_by_command["outline"]["agent_tool_name"] == "generate_outline"
+    assert routes_by_command["chapter"]["agent_tool_name"] == "generate_chapter"
+    assert routes_by_command["setup"]["execution_supported"] is True
+    assert routes_by_command["setup"]["execution_backend"] == "action_execution_service"
+    assert routes_by_command["chapter"]["execution_supported"] is True
+    assert routes_by_command["chapter"]["execution_backend"] == "static_adapter"
+    assert "clear" not in routes_by_command
+    assert "compact" not in routes_by_command
+    assert result.output["trace"]["non_agent_commands"] == ["clear", "compact"]
+
+
+@pytest.mark.asyncio
 async def test_tool_executor_handles_planner_tool(db_session):
     project = Project(name="Executor Planner")
     db_session.add(project)

@@ -11,8 +11,12 @@ class ParsedCommand:
 class ChatCommandSpec:
     description: str
     action_type: str | None = None
+    agent_action_type: str | None = None
+    agent_tool_name: str | None = None
     mutates_history: bool = False
 
+
+CHAT_COMMAND_AGENT_ROUTE_VERSION = "phase103.chat_command_agent_route.v1"
 
 CHAT_COMMAND_REGISTRY: dict[str, ChatCommandSpec] = {
     "clear": ChatCommandSpec(
@@ -26,18 +30,26 @@ CHAT_COMMAND_REGISTRY: dict[str, ChatCommandSpec] = {
     "setup": ChatCommandSpec(
         description="触发设定生成预览动作",
         action_type="preview_setup",
+        agent_action_type="generate_setup",
+        agent_tool_name="generate_setup",
     ),
     "storyline": ChatCommandSpec(
         description="触发故事线生成预览动作",
         action_type="preview_storyline",
+        agent_action_type="generate_storyline",
+        agent_tool_name="generate_storyline",
     ),
     "outline": ChatCommandSpec(
         description="触发大纲生成预览动作",
         action_type="preview_outline",
+        agent_action_type="generate_outline",
+        agent_tool_name="generate_outline",
     ),
     "chapter": ChatCommandSpec(
         description="触发章节正文生成预览动作",
         action_type="preview_chapter",
+        agent_action_type="generate_chapter",
+        agent_tool_name="generate_chapter",
     ),
 }
 
@@ -83,6 +95,39 @@ def command_to_action_type(command_name: str | None) -> str | None:
     if not spec:
         return None
     return spec.action_type
+
+
+def command_to_agent_tool_name(command_name: str | None) -> str | None:
+    normalized = (command_name or "").strip().lower()
+    spec = CHAT_COMMAND_REGISTRY.get(normalized)
+    if not spec:
+        return None
+    return spec.agent_tool_name
+
+
+def command_agent_route(command_name: str | None) -> dict[str, str | bool] | None:
+    normalized = (command_name or "").strip().lower()
+    spec = CHAT_COMMAND_REGISTRY.get(normalized)
+    if not spec or not spec.action_type or not spec.agent_action_type or not spec.agent_tool_name:
+        return None
+    return {
+        "version": CHAT_COMMAND_AGENT_ROUTE_VERSION,
+        "command_name": normalized,
+        "action_type": spec.action_type,
+        "agent_action_type": spec.agent_action_type,
+        "agent_tool_name": spec.agent_tool_name,
+        "requires_confirmation": True,
+        "entrypoint": "dialog_pending_action",
+    }
+
+
+def agent_slash_command_routes() -> list[dict[str, str | bool]]:
+    routes: list[dict[str, str | bool]] = []
+    for command_name in CHAT_COMMAND_REGISTRY:
+        route = command_agent_route(command_name)
+        if route is not None:
+            routes.append(route)
+    return routes
 
 
 def command_mutates_history(command_name: str | None) -> bool:

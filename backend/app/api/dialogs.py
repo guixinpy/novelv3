@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.config import load_api_key
 from app.core.ai_service import AIService
-from app.core.chat_commands import build_command_text, command_to_action_type, parse_command
+from app.core.chat_commands import build_command_text, command_agent_route, command_to_action_type, parse_command
 from app.core.chat_compaction import build_compaction_summary, select_compactable_plain_messages
 from app.core.intent_router import IntentRouter, parse_chapter_index
 from app.core.model_call_trace import (
@@ -617,6 +617,9 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
             action_type = command_to_action_type(parsed_command.name)
             if action_type:
                 params = {"project_id": payload.project_id}
+                route = command_agent_route(parsed_command.name)
+                if route:
+                    params["agent_route"] = route
                 if parsed_command.args:
                     params["command_args"] = parsed_command.args
                 if action_type == "preview_chapter":
