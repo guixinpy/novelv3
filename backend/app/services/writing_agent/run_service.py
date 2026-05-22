@@ -40,6 +40,7 @@ from app.services.writing_agent.tool_policy import should_stop_after_report, suc
 from app.services.writing_agent.tool_recommendations import normalize_tool_recommendations
 from app.services.writing_agent.recommended_followup_planner import (
     FOLLOWUP_PLANNER_VERSION,
+    build_recommended_followup_tool_plan,
     latest_recommended_followup_state,
 )
 from app.services.writing_agent.recovery_policy import build_writing_agent_recovery
@@ -142,6 +143,43 @@ class WritingAgentRunService:
             plan = dict(plan)
             plan["mode"] = "execute"
             plan["preview_only"] = False
+            plan["execution_policy"] = {
+                **(plan.get("execution_policy") or {}),
+                "mode": "execute",
+                "status": "confirmed",
+                "confirmed": True,
+                "requires_confirmation": True,
+                "requires_plan_hash": True,
+            }
+            tools = [WritingAgentToolRequest(**tool) for tool in plan.get("tools", []) if isinstance(tool, dict)]
+            return tools, plan
+
+        recommended_followup_run_id = str(run_input.get("recommended_followup_run_id") or "").strip() or None
+        if recommended_followup_run_id:
+            if run_input.get("execute_recommended_followups") is not True:
+                return _recommended_followup_preview_auto_plan(recommended_followup_run_id)
+
+            plan = build_recommended_followup_tool_plan(self.db, project_id, recommended_followup_run_id)
+            expected_hash = str(run_input.get("recommended_followup_plan_hash") or "").strip()
+            confirmed = run_input.get("confirm_execute") is True
+            actual_hash = str(plan.get("plan_hash") or "")
+            executable = bool(plan.get("tools")) and plan.get("status") == "completed"
+            if not confirmed or not expected_hash or expected_hash != actual_hash or not executable:
+                status = "confirmation_required"
+                if expected_hash and expected_hash != actual_hash:
+                    status = "hash_mismatch"
+                elif not executable:
+                    status = str(
+                        ((plan.get("execution_policy") or {}).get("status"))
+                        or plan.get("status")
+                        or "not_executable"
+                    )
+                return _recommended_followup_preview_auto_plan(recommended_followup_run_id, status=status)
+
+            plan = dict(plan)
+            plan["mode"] = "execute"
+            plan["preview_only"] = False
+            plan["can_execute"] = True
             plan["execution_policy"] = {
                 **(plan.get("execution_policy") or {}),
                 "mode": "execute",
@@ -812,6 +850,41 @@ def _recovery_preview_auto_plan(
         "preview_only": True,
         "tools": [preview_tool.model_dump()],
         "trace": {"selected_tools": ["plan_recovery_tools"], "rejected_tools": []},
+        "execution_policy": {
+            "status": status,
+            "mode": "preview",
+            "requires_confirmation": True,
+            "requires_plan_hash": True,
+        },
+    }
+    return [preview_tool], planner_output
+
+
+def _recommended_followup_preview_auto_plan(
+    recommended_followup_run_id: str,
+    *,
+    status: str = "preview_required",
+) -> tuple[list[WritingAgentToolRequest], dict[str, Any]]:
+    preview_tool = WritingAgentToolRequest(
+        tool_name="plan_recommended_followups",
+        params={"run_id": recommended_followup_run_id},
+        planner={
+            "mode": "preview",
+            "reason": "预览上一轮运行时推荐的后继工具链，不直接执行。",
+            "on_missing": "stop",
+            "on_failure": "stop",
+            "expected_output": "推荐后继工具链预览。",
+            "post_generation": False,
+            "planner_version": "phase102.recommended_followup_preview_gate.v1",
+        },
+    )
+    planner_output = {
+        "status": "preview_required",
+        "mode": "preview",
+        "source_run_id": recommended_followup_run_id,
+        "preview_only": True,
+        "tools": [preview_tool.model_dump()],
+        "trace": {"selected_tools": ["plan_recommended_followups"], "rejected_tools": []},
         "execution_policy": {
             "status": status,
             "mode": "preview",

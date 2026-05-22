@@ -402,6 +402,183 @@ def test_agent_run_auto_plan_rejects_recovery_execute_hash_mismatch(client, db_s
     assert [step["tool_name"] for step in payload["steps"]] == ["plan_recovery_tools"]
 
 
+def test_agent_run_auto_plan_previews_recommended_followups_by_default(client, db_session):
+    project_id, source_run = _seed_recommended_followup_source_run(
+        db_session,
+        ["review_chapter_quality", "review_chapter_continuity"],
+    )
+
+    response = client.post(
+        f"/api/v1/projects/{project_id}/agent-runs",
+        json={
+            "goal": "规划上一轮推荐后继",
+            "input": {"auto_plan": True, "recommended_followup_run_id": source_run.id},
+        },
+    )
+
+    payload = response.json()
+    assert response.status_code == 200
+    assert payload["status"] == "success"
+    assert payload["input"]["planner"]["mode"] == "preview"
+    assert payload["input"]["planner"]["source_run_id"] == source_run.id
+    assert payload["input"]["planner"]["execution_policy"]["requires_confirmation"] is True
+    assert payload["input"]["tools"][0]["tool_name"] == "plan_recommended_followups"
+    assert payload["input"]["tools"][0]["params"] == {"run_id": source_run.id}
+    assert [step["tool_name"] for step in payload["steps"]] == ["plan_recommended_followups"]
+    preview = payload["steps"][0]["output"]
+    assert preview["plan_hash"]
+    assert preview["preview_only"] is True
+    assert [tool["tool_name"] for tool in preview["tools"]] == ["review_chapter_quality", "review_chapter_continuity"]
+
+
+def test_agent_run_auto_plan_executes_recommended_followups_after_hash_confirmation(client, db_session):
+    project_id, source_run = _seed_recommended_followup_source_run(
+        db_session,
+        ["review_chapter_quality", "review_chapter_continuity"],
+    )
+    preview = client.post(
+        f"/api/v1/projects/{project_id}/agent-runs",
+        json={
+            "goal": "预览推荐后继",
+            "tools": [{"tool_name": "plan_recommended_followups", "params": {"run_id": source_run.id}}],
+        },
+    )
+    plan_hash = preview.json()["steps"][0]["output"]["plan_hash"]
+
+    response = client.post(
+        f"/api/v1/projects/{project_id}/agent-runs",
+        json={
+            "goal": "执行推荐后继",
+            "input": {
+                "auto_plan": True,
+                "recommended_followup_run_id": source_run.id,
+                "execute_recommended_followups": True,
+                "confirm_execute": True,
+                "recommended_followup_plan_hash": plan_hash,
+            },
+        },
+    )
+
+    payload = response.json()
+    assert response.status_code == 200
+    assert payload["status"] == "success"
+    assert payload["input"]["planner"]["mode"] == "execute"
+    assert payload["input"]["planner"]["plan_hash"] == plan_hash
+    assert payload["input"]["planner"]["execution_policy"]["confirmed"] is True
+    assert [tool["tool_name"] for tool in payload["input"]["tools"]] == [
+        "review_chapter_quality",
+        "review_chapter_continuity",
+    ]
+    assert [step["tool_name"] for step in payload["steps"]] == ["review_chapter_quality", "review_chapter_continuity"]
+
+
+def test_agent_run_auto_plan_rejects_recommended_followup_hash_mismatch(client, db_session):
+    project_id, source_run = _seed_recommended_followup_source_run(db_session, ["review_chapter_quality"])
+
+    response = client.post(
+        f"/api/v1/projects/{project_id}/agent-runs",
+        json={
+            "goal": "执行过期推荐后继",
+            "input": {
+                "auto_plan": True,
+                "recommended_followup_run_id": source_run.id,
+                "execute_recommended_followups": True,
+                "confirm_execute": True,
+                "recommended_followup_plan_hash": "stale-plan-hash",
+            },
+        },
+    )
+
+    payload = response.json()
+    assert response.status_code == 200
+    assert payload["status"] == "success"
+    assert payload["input"]["planner"]["mode"] == "preview"
+    assert payload["input"]["planner"]["execution_policy"]["status"] == "hash_mismatch"
+    assert payload["input"]["tools"][0]["tool_name"] == "plan_recommended_followups"
+    assert [step["tool_name"] for step in payload["steps"]] == ["plan_recommended_followups"]
+
+
+def test_agent_run_auto_plan_rejects_recommended_followup_execute_without_confirmation(client, db_session):
+    project_id, source_run = _seed_recommended_followup_source_run(db_session, ["review_chapter_quality"])
+    preview = client.post(
+        f"/api/v1/projects/{project_id}/agent-runs",
+        json={
+            "goal": "预览推荐后继",
+            "tools": [{"tool_name": "plan_recommended_followups", "params": {"run_id": source_run.id}}],
+        },
+    )
+    plan_hash = preview.json()["steps"][0]["output"]["plan_hash"]
+
+    for input_payload in (
+        {
+            "auto_plan": True,
+            "recommended_followup_run_id": source_run.id,
+            "execute_recommended_followups": True,
+            "recommended_followup_plan_hash": plan_hash,
+        },
+        {
+            "auto_plan": True,
+            "recommended_followup_run_id": source_run.id,
+            "execute_recommended_followups": True,
+            "confirm_execute": True,
+        },
+    ):
+        response = client.post(
+            f"/api/v1/projects/{project_id}/agent-runs",
+            json={"goal": "未确认执行推荐后继", "input": input_payload},
+        )
+        payload = response.json()
+        assert response.status_code == 200
+        assert payload["status"] == "success"
+        assert payload["input"]["planner"]["mode"] == "preview"
+        assert payload["input"]["planner"]["execution_policy"]["status"] == "confirmation_required"
+        assert payload["input"]["tools"][0]["tool_name"] == "plan_recommended_followups"
+        assert [step["tool_name"] for step in payload["steps"]] == ["plan_recommended_followups"]
+
+
+def test_agent_run_auto_plan_does_not_execute_guarded_recommended_followups(client, db_session):
+    project_id, source_run = _seed_recommended_followup_source_run(
+        db_session,
+        ["apply_planner_revision_patch", "review_chapter_quality"],
+    )
+    preview = client.post(
+        f"/api/v1/projects/{project_id}/agent-runs",
+        json={
+            "goal": "预览含写工具的推荐后继",
+            "tools": [{"tool_name": "plan_recommended_followups", "params": {"run_id": source_run.id}}],
+        },
+    )
+    preview_output = preview.json()["steps"][0]["output"]
+    plan_hash = preview_output["plan_hash"]
+    assert [tool["tool_name"] for tool in preview_output["tools"]] == ["review_chapter_quality"]
+    assert preview_output["trace"]["rejected_tools"] == [
+        {"tool_name": "apply_planner_revision_patch", "reason": "requires_confirmation"}
+    ]
+
+    response = client.post(
+        f"/api/v1/projects/{project_id}/agent-runs",
+        json={
+            "goal": "执行安全推荐后继",
+            "input": {
+                "auto_plan": True,
+                "recommended_followup_run_id": source_run.id,
+                "execute_recommended_followups": True,
+                "confirm_execute": True,
+                "recommended_followup_plan_hash": plan_hash,
+            },
+        },
+    )
+
+    payload = response.json()
+    assert response.status_code == 200
+    assert payload["status"] == "success"
+    assert [tool["tool_name"] for tool in payload["input"]["tools"]] == ["review_chapter_quality"]
+    assert [step["tool_name"] for step in payload["steps"]] == ["review_chapter_quality"]
+    assert payload["input"]["planner"]["trace"]["rejected_tools"] == [
+        {"tool_name": "apply_planner_revision_patch", "reason": "requires_confirmation"}
+    ]
+
+
 def test_agent_recovery_preview_blocks_requires_user_input(client):
     project_id = _create_project(client, "Recovery Needs Setup Input")
     blocked = client.post(
@@ -6782,6 +6959,37 @@ def _create_project(client, name: str) -> str:
 def _create_trace(db_session, project_id: str, trace_id: str, trace_type: str) -> None:
     db_session.add(AIModelCallTrace(id=trace_id, project_id=project_id, trace_type=trace_type, status="success"))
     db_session.commit()
+
+
+def _seed_recommended_followup_source_run(db_session, canonical_followups: list[str]) -> tuple[str, WritingAgentRun]:
+    project = Project(name="Recommended Followup Source")
+    db_session.add(project)
+    db_session.flush()
+    run = WritingAgentRun(project_id=project.id, goal="生成第2章", status="success", input={})
+    db_session.add(run)
+    db_session.flush()
+    db_session.add(
+        WritingAgentStep(
+            run_id=run.id,
+            project_id=project.id,
+            step_index=1,
+            tool_name="generate_chapter",
+            status="success",
+            chapter_index=2,
+            input={"params": {"chapter_index": 2}},
+            output={
+                "status": "success",
+                "chapter_index": 2,
+                "agent_tool_result": {
+                    "recommendations": {
+                        "canonical_followups": canonical_followups,
+                    }
+                },
+            },
+        )
+    )
+    db_session.commit()
+    return project.id, run
 
 
 def _seed_pending_world_proposal(
