@@ -141,13 +141,16 @@ def test_intent_router_projection_explains_chapter_route():
     assert projection["rule_id"] == "chapter_intent"
     assert projection["decision"]["rule_id"] == "chapter_intent"
     assert projection["decision"]["match_evidence"] == [{"kind": "pattern", "name": "chapter_generation_phrase"}]
-    assert projection["candidate"] == {"type": "preview_chapter", "params": {"chapter_index": 3}}
+    assert projection["candidate"] == {
+        "type": "preview_chapter",
+        "params": {"chapter_index": 3, "chapter_index_source": "explicit_user"},
+    }
     assert projection["agent_route"] == _expected_agent_route(
         "text_intent",
         "preview_chapter",
         "generate_chapter",
     )
-    assert projection["extracted_params"] == {"chapter_index": 3}
+    assert projection["extracted_params"] == {"chapter_index": 3, "chapter_index_source": "explicit_user"}
     assert {"code": "outline_completed", "passed": True} in projection["preconditions"]
     assert projection["trace"]["projection_id"].startswith("intent:")
 
@@ -165,6 +168,22 @@ def test_intent_router_low_detail_continue_uses_chapter_when_outline_ready():
     assert candidate is not None
     assert candidate.type == "preview_chapter"
     assert candidate.params["chapter_index"] == 1
+
+
+def test_intent_router_next_chapter_phrase_uses_chapter_when_outline_ready():
+    router = IntentRouter()
+    diagnosis = ProjectDiagnosisOut(
+        missing_items=["content"],
+        completed_items=["setup", "storyline", "outline"],
+        suggested_next_step="preview_chapter",
+    )
+
+    candidate = router.resolve("下一章", "chatting", None, diagnosis)
+
+    assert candidate is not None
+    assert candidate.type == "preview_chapter"
+    assert candidate.params["chapter_index"] == 1
+    assert candidate.params["chapter_index_source"] == "router_default"
 
 
 def test_intent_router_projection_reports_no_match():
@@ -1023,6 +1042,46 @@ def test_chat_text_low_detail_continue_uses_first_unwritten_outline_chapter(clie
     assert body["pending_action"]["params"]["project_id"] == pid
     assert body["pending_action"]["params"]["chapter_index"] == 2
     assert body["pending_action"]["params"]["command_args"] == "继续吧"
+
+
+def test_chat_text_next_chapter_uses_inferred_chapter_source(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Test"})
+    pid = r.json()["id"]
+    db_session.add(Setup(project_id=pid, status="generated", world_building={}, characters=[], core_concept={}))
+    db_session.add(Storyline(project_id=pid, status="generated", plotlines=[], foreshadowing=[]))
+    db_session.add(
+        Outline(
+            project_id=pid,
+            status="generated",
+            total_chapters=2,
+            chapters=[
+                {"chapter_index": 1, "title": "旧灯塔", "summary": "林舟开始调查。"},
+                {"chapter_index": 2, "title": "雨夜证词", "summary": "林舟追查新的证词。"},
+            ],
+        )
+    )
+    db_session.add(
+        ChapterContent(
+            project_id=pid,
+            chapter_index=1,
+            title="旧灯塔",
+            content="第一章正文",
+            status="generated",
+        )
+    )
+    db_session.commit()
+
+    r2 = client.post("/api/v1/dialog/chat", json={
+        "project_id": pid,
+        "input_type": "text",
+        "text": "下一章",
+    })
+
+    assert r2.status_code == 200
+    body = r2.json()
+    assert body["pending_action"]["type"] == "preview_chapter"
+    assert body["pending_action"]["params"]["chapter_index"] == 2
+    assert body["pending_action"]["params"]["chapter_index_source"] == "inferred_next_unwritten"
 
 
 def test_get_messages_includes_current_pending_action(client):

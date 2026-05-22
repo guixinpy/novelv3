@@ -218,10 +218,14 @@ def _chapter_action_params_for_project(
 ) -> dict:
     params = _chapter_action_params(command_args, candidate_params)
     if parse_chapter_index(command_args) is not None:
+        params["chapter_index_source"] = "explicit_user"
         return params
     inferred = _first_unwritten_outline_chapter_index(db, project_id)
     if inferred is not None:
         params["chapter_index"] = inferred
+        params["chapter_index_source"] = "inferred_next_unwritten"
+    else:
+        params.setdefault("chapter_index_source", "router_default")
     return params
 
 

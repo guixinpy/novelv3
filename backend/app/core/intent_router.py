@@ -282,29 +282,39 @@ class IntentRouter:
             )
 
         if "outline" in diagnosis.completed_items and re.search(r"(开始|继续|生成|写|创作).*(正文|章节|第\s*[\d零〇一二两三四五六七八九十]+\s*章|下一章)", text):
-            chapter_index = parse_chapter_index(text) or 1
+            parsed_chapter_index = parse_chapter_index(text)
+            chapter_index = parsed_chapter_index or 1
+            chapter_index_source = "explicit_user" if parsed_chapter_index is not None else "router_default"
             return self._matched_projection(
                 text,
                 dialog_state,
                 pending_action_id,
                 diagnosis,
                 rule_id="chapter_intent",
-                candidate=ActionCandidate("preview_chapter", {"chapter_index": chapter_index}),
-                extracted_params={"chapter_index": chapter_index},
+                candidate=ActionCandidate(
+                    "preview_chapter",
+                    {"chapter_index": chapter_index, "chapter_index_source": chapter_index_source},
+                ),
+                extracted_params={"chapter_index": chapter_index, "chapter_index_source": chapter_index_source},
                 match_evidence=[{"kind": "pattern", "name": "chapter_generation_phrase"}],
                 preconditions=[{"code": "outline_completed", "passed": True}],
             )
 
         if _is_chapter_ready(diagnosis) and _is_low_detail_chapter_continue(text):
-            chapter_index = parse_chapter_index(text) or 1
+            parsed_chapter_index = parse_chapter_index(text)
+            chapter_index = parsed_chapter_index or 1
+            chapter_index_source = "explicit_user" if parsed_chapter_index is not None else "router_default"
             return self._matched_projection(
                 text,
                 dialog_state,
                 pending_action_id,
                 diagnosis,
                 rule_id="chapter_intent",
-                candidate=ActionCandidate("preview_chapter", {"chapter_index": chapter_index}),
-                extracted_params={"chapter_index": chapter_index},
+                candidate=ActionCandidate(
+                    "preview_chapter",
+                    {"chapter_index": chapter_index, "chapter_index_source": chapter_index_source},
+                ),
+                extracted_params={"chapter_index": chapter_index, "chapter_index_source": chapter_index_source},
                 match_evidence=[{"kind": "pattern", "name": "low_detail_continue_phrase"}],
                 preconditions=[{"code": "outline_completed", "passed": True}],
             )
@@ -381,7 +391,12 @@ def _is_chapter_ready(diagnosis: ProjectDiagnosisOut) -> bool:
 def _is_low_detail_chapter_continue(text: str) -> bool:
     if re.search(r"(设定|世界观|故事线|主枝干|大纲)", text):
         return False
-    return bool(re.search(r"^(继续吧|继续写吧|开始写吧|开写吧|往下写|推进吧|继续推进|可以开始了|开始吧)$", text))
+    return bool(
+        re.search(
+            r"^(继续吧|继续写吧|开始写吧|开写吧|往下写|推进吧|继续推进|可以开始了|开始吧|下一章|接着写|继续下一章)$",
+            text,
+        )
+    )
 
 
 def _rejected_candidates(selected_rule_id: str | None, *, matched: bool) -> list[dict[str, str]]:
