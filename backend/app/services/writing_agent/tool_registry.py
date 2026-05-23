@@ -14,6 +14,7 @@ from app.services.writing_agent.agent_task_queue_tool_descriptors import AGENT_T
 from app.services.writing_agent.hermes_action_tool_descriptors import HERMES_ACTION_AGENT_TOOL_DESCRIPTORS
 from app.services.writing_agent.knowledge_base_tool_descriptors import KNOWLEDGE_BASE_AGENT_TOOL_DESCRIPTORS
 from app.services.writing_agent.longform_tool_descriptors import LONGFORM_AGENT_TOOL_DESCRIPTORS
+from app.services.writing_agent.outline_generation_tool_descriptors import OUTLINE_GENERATION_AGENT_TOOL_DESCRIPTORS
 from app.services.writing_agent.review_revision_tool_descriptors import REVIEW_REVISION_AGENT_TOOL_DESCRIPTORS
 from app.services.writing_agent.setup_generation_tool_descriptors import SETUP_GENERATION_AGENT_TOOL_DESCRIPTORS
 from app.services.writing_agent.storyline_generation_tool_descriptors import STORYLINE_GENERATION_AGENT_TOOL_DESCRIPTORS
@@ -29,6 +30,7 @@ _TOOL_DESCRIPTORS: tuple[Any, ...] = (
     *HERMES_ACTION_AGENT_TOOL_DESCRIPTORS,
     *SETUP_GENERATION_AGENT_TOOL_DESCRIPTORS,
     *STORYLINE_GENERATION_AGENT_TOOL_DESCRIPTORS,
+    *OUTLINE_GENERATION_AGENT_TOOL_DESCRIPTORS,
     *AGENT_GENERATION_TOOL_DESCRIPTORS,
     *WORLD_MODEL_AGENT_TOOL_DESCRIPTORS,
     *REVIEW_REVISION_AGENT_TOOL_DESCRIPTORS,

@@ -15,6 +15,8 @@ from app.services.writing_agent.agent_memory_trace_tool_adapters import AGENT_ME
 from app.services.writing_agent.agent_task_queue_tool_adapters import AGENT_TASK_QUEUE_TOOL_ADAPTERS
 from app.services.writing_agent.knowledge_base_tool_adapters import KNOWLEDGE_BASE_AGENT_TOOL_ADAPTERS
 from app.services.writing_agent.longform_tool_adapters import build_longform_agent_tool_adapters
+from app.services.writing_agent.outline_generation_execution import prepare_generate_outline_execution
+from app.services.writing_agent.outline_generation_tool_adapters import build_outline_generation_agent_tool_adapters
 from app.services.writing_agent.review_revision_tool_adapters import REVIEW_REVISION_AGENT_TOOL_ADAPTERS
 from app.services.writing_agent.setup_generation_execution import prepare_generate_setup_execution
 from app.services.writing_agent.setup_generation_tool_adapters import build_setup_generation_agent_tool_adapters
@@ -132,6 +134,23 @@ def test_storyline_generation_tool_adapters_live_in_dedicated_module():
     assert adapters["execute_generate_storyline_with_approval"].mutability == "write"
     assert adapters["execute_generate_storyline_with_approval"].handler.__name__ == (
         "_execute_generate_storyline_with_approval"
+    )
+
+
+def test_outline_generation_tool_adapters_live_in_dedicated_module():
+    adapters = build_outline_generation_agent_tool_adapters(approval_tool_metadata_provider=lambda plan: {})
+    names = list(adapters)
+
+    assert names == [
+        "preview_generate_outline_execution",
+        "prepare_generate_outline_execution",
+        "execute_generate_outline_with_approval",
+    ]
+    assert adapters["preview_generate_outline_execution"].mutability == "read"
+    assert adapters["prepare_generate_outline_execution"].mutability == "read"
+    assert adapters["execute_generate_outline_with_approval"].mutability == "write"
+    assert adapters["execute_generate_outline_with_approval"].handler.__name__ == (
+        "_execute_generate_outline_with_approval"
     )
 
 
@@ -1238,6 +1257,111 @@ async def test_tool_executor_executes_generate_storyline_with_approval(db_sessio
 
 
 @pytest.mark.asyncio
+async def test_tool_executor_dispatches_preview_generate_outline_execution(db_session):
+    project = Project(name="Preview Outline Generation")
+    db_session.add(project)
+    db_session.commit()
+    db_session.add(Setup(project_id=project.id, status="generated", world_building={}, characters=[], core_concept={}))
+    db_session.add(Storyline(project_id=project.id, status="generated", plotlines=[], foreshadowing=[]))
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(tool_name="preview_generate_outline_execution", command_args="每章留钩子"),
+    )
+
+    assert result.handled is True
+    assert result.output["status"] == "completed"
+    assert result.output["target_type"] == "outline"
+    assert result.output["side_effects"] == {"executed": [], "skipped": ["generate_outline"]}
+    assert result.output["recommended_next_tools"] == ["prepare_generate_outline_execution"]
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_dispatches_prepare_generate_outline_execution(db_session):
+    project = Project(name="Prepare Outline Generation")
+    db_session.add(project)
+    db_session.commit()
+    db_session.add(Setup(project_id=project.id, status="generated", world_building={}, characters=[], core_concept={}))
+    db_session.add(Storyline(project_id=project.id, status="generated", plotlines=[], foreshadowing=[]))
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(tool_name="prepare_generate_outline_execution", command_args="每章留钩子"),
+    )
+
+    assert result.handled is True
+    assert result.output["status"] == "approval_required"
+    plan_step = result.output["agent_plan"]["steps"][0]
+    assert plan_step["tool_name"] == "generate_outline"
+    assert plan_step["approval_executor_tool_name"] == "execute_generate_outline_with_approval"
+    assert result.output["agent_plan_approval_contract_hash"]
+    assert result.output["agent_plan_approval_contract"]["write_steps"][0]["tool_name"] == "generate_outline"
+    assert result.output["required_confirmation"]["confirm_execute"] is True
+    assert result.output["recommended_next_tools"] == ["execute_generate_outline_with_approval"]
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_blocks_execute_generate_outline_without_confirmation(db_session):
+    project = Project(name="Blocked Outline Generation")
+    db_session.add(project)
+    db_session.commit()
+    db_session.add(Setup(project_id=project.id, status="generated", world_building={}, characters=[], core_concept={}))
+    db_session.add(Storyline(project_id=project.id, status="generated", plotlines=[], foreshadowing=[]))
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(tool_name="execute_generate_outline_with_approval"),
+    )
+
+    assert result.handled is True
+    assert result.output["status"] == "blocked"
+    assert result.output["reason"] == "confirmation_required"
+    assert result.output["side_effects"] == {"executed": [], "skipped": ["generate_outline"]}
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_executes_generate_outline_with_approval(db_session, monkeypatch):
+    project = Project(name="Execute Outline Generation")
+    db_session.add(project)
+    db_session.commit()
+    db_session.add(Setup(project_id=project.id, status="generated", world_building={}, characters=[], core_concept={}))
+    db_session.add(Storyline(project_id=project.id, status="generated", plotlines=[], foreshadowing=[]))
+    db_session.commit()
+    prepare = prepare_generate_outline_execution(db_session, project.id, command_args="每章留钩子")
+    calls: list[dict] = []
+
+    async def fake_generate_outline(project_id: str, db, command_args=None):
+        calls.append({"project_id": project_id, "command_args": command_args})
+
+    monkeypatch.setattr("app.api.outlines.generate_outline", fake_generate_outline)
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(
+            tool_name="execute_generate_outline_with_approval",
+            command_args="每章留钩子",
+            params={
+                "confirm_execute": True,
+                "approval_contract_hash": prepare["agent_plan_approval_contract_hash"],
+                "approval_contract": prepare["agent_plan_approval_contract"],
+            },
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output["status"] == "success"
+    assert result.output["execute_version"]
+    assert result.output["agent_plan_approval_verification"]["status"] == "ready"
+    assert result.output["execution_resource_binding"]["status"] == "ready"
+    assert result.output["execution_resource_binding"]["expected"]["tool_name"] == "generate_outline"
+    assert result.output["side_effects"] == {"executed": ["generate_outline"], "skipped": []}
+    assert calls == [{"project_id": project.id, "command_args": "每章留钩子"}]
+
+
+@pytest.mark.asyncio
 async def test_tool_executor_leaves_legacy_generation_tools_unhandled(db_session):
     project = Project(name="Executor Legacy")
     db_session.add(project)
@@ -1251,11 +1375,17 @@ async def test_tool_executor_leaves_legacy_generation_tools_unhandled(db_session
         WritingAgentToolContext(db=db_session, project_id=project.id),
         WritingAgentToolRequest(tool_name="generate_storyline", command_args="双线叙事"),
     )
+    outline_result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(tool_name="generate_outline", command_args="每章留钩子"),
+    )
 
     assert setup_result.handled is False
     assert setup_result.output is None
     assert storyline_result.handled is False
     assert storyline_result.output is None
+    assert outline_result.handled is False
+    assert outline_result.output is None
 
 
 def test_tool_executor_static_adapter_names_are_report_or_agent_native_tools():
@@ -1308,9 +1438,13 @@ def test_tool_executor_static_adapter_names_are_report_or_agent_native_tools():
         "preview_generate_storyline_execution",
         "prepare_generate_storyline_execution",
         "execute_generate_storyline_with_approval",
+        "preview_generate_outline_execution",
+        "prepare_generate_outline_execution",
+        "execute_generate_outline_with_approval",
     }.issubset(names)
     assert "generate_setup" not in names
     assert "generate_storyline" not in names
+    assert "generate_outline" not in names
 
 
 def test_tool_executor_exposes_adapter_metadata_for_trace():
@@ -1415,6 +1549,30 @@ def test_tool_executor_exposes_approved_storyline_generation_adapter_metadata():
     }
 
 
+def test_tool_executor_exposes_approved_outline_generation_adapter_metadata():
+    assert writing_agent_tool_adapter_metadata("preview_generate_outline_execution") == {
+        "tool_name": "preview_generate_outline_execution",
+        "adapter_type": "static",
+        "category": "generation",
+        "mutability": "read",
+        "handler_name": "_preview_generate_outline_execution",
+    }
+    assert writing_agent_tool_adapter_metadata("prepare_generate_outline_execution") == {
+        "tool_name": "prepare_generate_outline_execution",
+        "adapter_type": "static",
+        "category": "generation",
+        "mutability": "read",
+        "handler_name": "_prepare_generate_outline_execution",
+    }
+    assert writing_agent_tool_adapter_metadata("execute_generate_outline_with_approval") == {
+        "tool_name": "execute_generate_outline_with_approval",
+        "adapter_type": "static",
+        "category": "generation",
+        "mutability": "write",
+        "handler_name": "_execute_generate_outline_with_approval",
+    }
+
+
 def test_tool_executor_lists_unhandled_internal_tools_for_migration_tracking():
     names = unhandled_internal_writing_agent_tool_names()
 
@@ -1429,6 +1587,9 @@ def test_tool_executor_lists_unhandled_internal_tools_for_migration_tracking():
     assert "preview_generate_storyline_execution" not in names
     assert "prepare_generate_storyline_execution" not in names
     assert "execute_generate_storyline_with_approval" not in names
+    assert "preview_generate_outline_execution" not in names
+    assert "prepare_generate_outline_execution" not in names
+    assert "execute_generate_outline_with_approval" not in names
     assert "compress_chapter_to_target" not in names
     assert "backfill_outline_gaps" not in names
     assert "repair_longform_maintenance" not in names

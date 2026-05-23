@@ -11,6 +11,7 @@ from app.services.writing_agent.agent_memory_trace_tool_adapters import AGENT_ME
 from app.services.writing_agent.agent_task_queue_tool_adapters import AGENT_TASK_QUEUE_TOOL_ADAPTERS
 from app.services.writing_agent.knowledge_base_tool_adapters import KNOWLEDGE_BASE_AGENT_TOOL_ADAPTERS
 from app.services.writing_agent.longform_tool_adapters import build_longform_agent_tool_adapters
+from app.services.writing_agent.outline_generation_tool_adapters import build_outline_generation_agent_tool_adapters
 from app.services.writing_agent.review_revision_tool_adapters import REVIEW_REVISION_AGENT_TOOL_ADAPTERS
 from app.services.writing_agent.setup_generation_tool_adapters import build_setup_generation_agent_tool_adapters
 from app.services.writing_agent.storyline_generation_tool_adapters import build_storyline_generation_agent_tool_adapters
@@ -86,6 +87,9 @@ _STATIC_TOOL_ADAPTERS.update(
 )
 _STATIC_TOOL_ADAPTERS.update(
     build_storyline_generation_agent_tool_adapters(approval_tool_metadata_provider=_approval_tool_metadata_by_name)
+)
+_STATIC_TOOL_ADAPTERS.update(
+    build_outline_generation_agent_tool_adapters(approval_tool_metadata_provider=_approval_tool_metadata_by_name)
 )
 _STATIC_TOOL_ADAPTERS.update(
     build_agent_generation_tool_adapters(approval_tool_metadata_provider=_approval_tool_metadata_by_name)
