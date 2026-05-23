@@ -379,6 +379,42 @@ describe('ChatMessage', () => {
     expect(wrapper.text()).not.toContain('prepare_longform_chapter_batch_execution')
   })
 
+  it('renders longform execute fallback labels when backend view is missing', () => {
+    const wrapper = mount(ChatMessage, {
+      props: {
+        msg: {
+          role: 'system',
+          message_type: 'plain',
+          content: '长篇批次执行已完成。',
+          action_result: {
+            type: 'execute_longform_chapter_batch',
+            status: 'success',
+            data: {
+              status: 'completed',
+              chapter_index: 21,
+              executed_chapter_indexes: [21],
+              generation: { status: 'success' },
+              evidence: {
+                chapter_content_written: true,
+                agent_plan_approval_verified: true,
+              },
+              execution_resource_binding: { status: 'ready' },
+              side_effects: { executed: ['generate_chapter', 'background_task_result_execution_checkpoint'] },
+              recommended_next_tools: ['review_chapter_quality', 'review_chapter_continuity'],
+            },
+          },
+        },
+        isLatest: false,
+        loading: false,
+      },
+    })
+
+    expect(wrapper.text()).toContain('长篇批次执行已完成')
+    expect(wrapper.text()).toContain('章节写入')
+    expect(wrapper.text()).toContain('已写入')
+    expect(wrapper.text()).not.toContain('execute_longform_chapter_batch')
+  })
+
   it('emits openAgentRun from recovery execution action results', async () => {
     const wrapper = mount(ChatMessage, {
       props: {

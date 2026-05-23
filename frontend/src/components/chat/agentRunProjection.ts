@@ -7,6 +7,7 @@ export const AGENT_RUN_ACTION_TYPES = [
   'inspect_longform_chapter_batch',
   'execute_longform_chapter_batch_preflight',
   'prepare_longform_chapter_batch_execution',
+  'execute_longform_chapter_batch',
 ] as const
 export type AgentRunActionType = typeof AGENT_RUN_ACTION_TYPES[number]
 
@@ -39,6 +40,10 @@ const AGENT_RUN_ACTION_DESCRIPTORS: Record<AgentRunActionType, AgentRunActionDes
   prepare_longform_chapter_batch_execution: {
     type: 'prepare_longform_chapter_batch_execution',
     buildView: buildLongformPrepareActionResultView,
+  },
+  execute_longform_chapter_batch: {
+    type: 'execute_longform_chapter_batch',
+    buildView: buildLongformExecuteActionResultView,
   },
 }
 
@@ -213,6 +218,19 @@ function buildLongformPrepareActionResultView(actionResult: Record<string, unkno
   }
 }
 
+function buildLongformExecuteActionResultView(actionResult: Record<string, unknown>, status: string): ActionResultView {
+  const data = recordValue(actionResult.data)
+  const executeStatus = stringValue(data.status) || status
+  const detailItems = longformExecuteDetailItems(data)
+  return {
+    type: 'execute_longform_chapter_batch',
+    status,
+    label: longformExecuteLabel(executeStatus),
+    variant: longformExecuteVariant(executeStatus),
+    ...(detailItems.length ? { detail_items: detailItems } : {}),
+  }
+}
+
 function recoveryPreviewLabel(status: string) {
   if (status === 'success' || status === 'completed') return '恢复预览已生成'
   if (status === 'failed') return '恢复预览失败'
@@ -268,6 +286,21 @@ function longformPrepareLabel(status: string) {
 function longformPrepareVariant(status: string) {
   if (status === 'blocked' || status === 'failed') return 'error'
   if (status === 'success' || status === 'completed') return 'success'
+  return 'neutral'
+}
+
+function longformExecuteLabel(status: string) {
+  if (status === 'completed' || status === 'success') return '长篇批次执行已完成'
+  if (status === 'blocked') return '长篇批次执行已阻塞'
+  if (status === 'failed') return '长篇批次执行失败'
+  if (status === 'not_found') return '长篇批次未找到'
+  if (status === 'running') return '长篇批次执行中'
+  return `长篇批次执行: ${status || '未知状态'}`
+}
+
+function longformExecuteVariant(status: string) {
+  if (status === 'completed' || status === 'success') return 'success'
+  if (status === 'blocked' || status === 'failed') return 'error'
   return 'neutral'
 }
 
@@ -503,6 +536,83 @@ function approvalStatusLabel(status: string) {
   if (status === 'requires_confirmation' || status === 'approval_required') return '等待确认'
   if (status === 'approved') return '已确认'
   if (status === 'rejected') return '已拒绝'
+  return status
+}
+
+function longformExecuteDetailItems(data: Record<string, unknown>) {
+  const items: Array<{ label: string; value: string }> = []
+  const executedChapters = numberArrayValue(data.executed_chapter_indexes)
+  const chapterIndex = numberValue(data.chapter_index)
+  const task = recordValue(data.task)
+  const executionChapters = chapterIndexesLabel(executedChapters)
+    || (chapterIndex !== null ? `第${chapterIndex}章` : '')
+    || chapterRangeLabel(task)
+  if (executionChapters) {
+    items.push({ label: '执行章节', value: executionChapters })
+  }
+
+  const generation = recordValue(data.generation)
+  const generationStatus = stringValue(generation.status)
+  if (generationStatus) {
+    items.push({ label: '生成状态', value: generationStatusLabel(generationStatus) })
+  }
+
+  const evidence = recordValue(data.evidence)
+  const chapterWritten = booleanValue(evidence.chapter_content_written)
+  if (chapterWritten !== null) {
+    items.push({ label: '章节写入', value: chapterWritten ? '已写入' : '未写入' })
+  }
+
+  const approvalVerified = booleanValue(evidence.agent_plan_approval_verified)
+  const approvalVerification = recordValue(data.agent_plan_approval_verification)
+  const approvalStatus = stringValue(approvalVerification.status)
+  if (approvalVerified !== null) {
+    items.push({ label: '审批校验', value: approvalVerified ? '已验证' : '未验证' })
+  } else if (approvalStatus) {
+    items.push({ label: '审批校验', value: executionReadinessStatusLabel(approvalStatus) })
+  }
+
+  const resourceBinding = recordValue(data.execution_resource_binding)
+  const bindingStatus = stringValue(resourceBinding.status)
+  if (bindingStatus) {
+    items.push({ label: '资源绑定', value: executionReadinessStatusLabel(bindingStatus) })
+  }
+
+  const reason = stringValue(data.reason)
+  if (reason) {
+    items.push({ label: '阻塞原因', value: reason })
+  }
+
+  const error = stringValue(data.error)
+  if (error) {
+    items.push({ label: '错误摘要', value: error })
+  }
+
+  const sideEffects = recordValue(data.side_effects)
+  const executed = Array.isArray(sideEffects.executed) ? sideEffects.executed : []
+  if (executed.length) {
+    items.push({ label: '副作用', value: `${executed.length} 项` })
+  }
+
+  const nextTools = Array.isArray(data.recommended_next_tools) ? data.recommended_next_tools : []
+  if (nextTools.length) {
+    items.push({ label: '下一步', value: `${nextTools.length} 个工具` })
+  }
+  return items
+}
+
+function generationStatusLabel(status: string) {
+  if (status === 'success' || status === 'completed') return '成功'
+  if (status === 'failed') return '失败'
+  if (status === 'running') return '生成中'
+  return status
+}
+
+function executionReadinessStatusLabel(status: string) {
+  if (status === 'ready') return '就绪'
+  if (status === 'blocked') return '阻塞'
+  if (status === 'failed') return '失败'
+  if (status === 'success') return '成功'
   return status
 }
 

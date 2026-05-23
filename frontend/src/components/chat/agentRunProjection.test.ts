@@ -43,6 +43,7 @@ describe('agentRunProjection', () => {
     expect(isAgentRunActionType('inspect_longform_chapter_batch')).toBe(true)
     expect(isAgentRunActionType('execute_longform_chapter_batch_preflight')).toBe(true)
     expect(isAgentRunActionType('prepare_longform_chapter_batch_execution')).toBe(true)
+    expect(isAgentRunActionType('execute_longform_chapter_batch')).toBe(true)
     expect(isAgentRunActionType('generate_chapter')).toBe(false)
   })
 
@@ -53,6 +54,7 @@ describe('agentRunProjection', () => {
     expect(getAgentRunActionDescriptor('inspect_longform_chapter_batch')?.type).toBe('inspect_longform_chapter_batch')
     expect(getAgentRunActionDescriptor('execute_longform_chapter_batch_preflight')?.type).toBe('execute_longform_chapter_batch_preflight')
     expect(getAgentRunActionDescriptor('prepare_longform_chapter_batch_execution')?.type).toBe('prepare_longform_chapter_batch_execution')
+    expect(getAgentRunActionDescriptor('execute_longform_chapter_batch')?.type).toBe('execute_longform_chapter_batch')
     expect(getAgentRunActionDescriptor('generate_chapter')).toBeNull()
   })
 
@@ -94,6 +96,16 @@ describe('agentRunProjection', () => {
         data: { agent_run_id: 'run-prepare-1' },
       },
     })).toBe('run-prepare-1')
+  })
+
+  it('extracts run ids from longform execute action results', () => {
+    expect(getAgentRunIdFromMessage({
+      action_result: {
+        type: 'execute_longform_chapter_batch',
+        status: 'success',
+        data: { agent_run_id: 'run-execute-1' },
+      },
+    })).toBe('run-execute-1')
   })
 
   it('builds fallback views for recovery preview action results', () => {
@@ -298,6 +310,76 @@ describe('agentRunProjection', () => {
     expect(view?.detail_items).toContainEqual({ label: '执行章节', value: '第21章' })
     expect(view?.detail_items).toContainEqual({ label: '阻塞原因', value: 'missing_ready_preflight_checkpoint' })
     expect(view?.detail_items).toContainEqual({ label: '下一步', value: '1 个工具' })
+  })
+
+  it('builds completed fallback views for longform execute action results', () => {
+    const view = buildAgentRunActionResultView({
+      type: 'execute_longform_chapter_batch',
+      status: 'success',
+      data: {
+        status: 'completed',
+        chapter_index: 21,
+        executed_chapter_indexes: [21],
+        generation: { status: 'success' },
+        evidence: {
+          chapter_content_written: true,
+          agent_plan_approval_verified: true,
+        },
+        execution_resource_binding: { status: 'ready' },
+        side_effects: { executed: ['generate_chapter', 'background_task_result_execution_checkpoint'] },
+        recommended_next_tools: ['review_chapter_quality', 'review_chapter_continuity'],
+      },
+    })
+
+    expect(view?.label).toBe('长篇批次执行已完成')
+    expect(view?.variant).toBe('success')
+    expect(view?.detail_items).toContainEqual({ label: '执行章节', value: '第21章' })
+    expect(view?.detail_items).toContainEqual({ label: '生成状态', value: '成功' })
+    expect(view?.detail_items).toContainEqual({ label: '章节写入', value: '已写入' })
+    expect(view?.detail_items).toContainEqual({ label: '审批校验', value: '已验证' })
+    expect(view?.detail_items).toContainEqual({ label: '资源绑定', value: '就绪' })
+    expect(view?.detail_items).toContainEqual({ label: '副作用', value: '2 项' })
+    expect(view?.detail_items).toContainEqual({ label: '下一步', value: '2 个工具' })
+  })
+
+  it('builds blocked fallback views for longform execute action results', () => {
+    const view = buildAgentRunActionResultView({
+      type: 'execute_longform_chapter_batch',
+      status: 'success',
+      data: {
+        status: 'blocked',
+        reason: 'confirmation_required',
+        task: { chapter_range: { start: 21, end: 21 } },
+        recommended_next_tools: ['inspect_longform_chapter_batch'],
+      },
+    })
+
+    expect(view?.label).toBe('长篇批次执行已阻塞')
+    expect(view?.variant).toBe('error')
+    expect(view?.detail_items).toContainEqual({ label: '执行章节', value: '第21章' })
+    expect(view?.detail_items).toContainEqual({ label: '阻塞原因', value: 'confirmation_required' })
+    expect(view?.detail_items).toContainEqual({ label: '下一步', value: '1 个工具' })
+  })
+
+  it('builds failed fallback views for longform execute action results', () => {
+    const view = buildAgentRunActionResultView({
+      type: 'execute_longform_chapter_batch',
+      status: 'success',
+      data: {
+        status: 'failed',
+        chapter_index: 21,
+        generation: { status: 'failed' },
+        error: 'generate_chapter failed',
+        side_effects: { executed: ['generate_chapter'], failed: true },
+      },
+    })
+
+    expect(view?.label).toBe('长篇批次执行失败')
+    expect(view?.variant).toBe('error')
+    expect(view?.detail_items).toContainEqual({ label: '执行章节', value: '第21章' })
+    expect(view?.detail_items).toContainEqual({ label: '生成状态', value: '失败' })
+    expect(view?.detail_items).toContainEqual({ label: '错误摘要', value: 'generate_chapter failed' })
+    expect(view?.detail_items).toContainEqual({ label: '副作用', value: '1 项' })
   })
 
   it('builds recovery execution feedback without leaking plan hash', () => {
