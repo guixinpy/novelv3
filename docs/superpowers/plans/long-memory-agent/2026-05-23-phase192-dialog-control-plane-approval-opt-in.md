@@ -98,7 +98,7 @@ rg -n "sk-[A-Za-z0-9]{20,}" backend frontend docs --glob "!backend/static/assets
 docs/superpowers/notes/long-memory-agent/2026-05-23-phase192-dialog-control-plane-approval-opt-in.md
 ```
 
-- [ ] Commit and push:
+- [x] Commit and push:
 
 ```powershell
 git add backend/app/services/writing_agent/dialog_control_plane.py backend/tests/test_dialogs.py docs/superpowers/plans/long-memory-agent/2026-05-23-phase192-dialog-control-plane-approval-opt-in.md docs/superpowers/notes/long-memory-agent/2026-05-23-phase192-dialog-control-plane-approval-opt-in.md

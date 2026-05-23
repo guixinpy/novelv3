@@ -81,3 +81,8 @@ rg -n "sk-[A-Za-z0-9]{20,}" backend frontend docs --glob "!backend/static/assets
 - 让内部 Agent route metadata 可以安全设置 `use_agent_approval_chain`。
 - 仍保持用户普通确认路径默认 legacy。
 - 先从命令或 route metadata 的只读/显式入口开始，不直接改所有文本意图。
+
+## Git
+
+- Main commit: `f12970ee feat: opt in dialog approval routes`
+- Remote: pushed to `origin/main`
