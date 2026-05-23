@@ -47,6 +47,7 @@ def test_agent_core_tool_adapters_live_in_dedicated_module():
         "inspect_agent_route_preference_projection",
         "inspect_agent_intent_projection",
         "inspect_agent_tool_contracts",
+        "inspect_legacy_hermes_action_migration",
         "inspect_agent_write_gate_coverage",
         "inspect_agent_mutation_fingerprints",
     ]
@@ -1204,6 +1205,18 @@ def test_tool_executor_exposes_inspect_agent_tool_contracts_adapter_metadata():
     }
 
 
+def test_tool_executor_exposes_legacy_hermes_migration_projection_metadata():
+    metadata = writing_agent_tool_adapter_metadata("inspect_legacy_hermes_action_migration")
+
+    assert metadata == {
+        "tool_name": "inspect_legacy_hermes_action_migration",
+        "adapter_type": "static",
+        "category": "preflight",
+        "mutability": "read",
+        "handler_name": "_inspect_legacy_hermes_action_migration",
+    }
+
+
 def test_tool_executor_exposes_inspect_agent_write_gate_coverage_adapter_metadata():
     metadata = writing_agent_tool_adapter_metadata("inspect_agent_write_gate_coverage")
 
@@ -1322,6 +1335,31 @@ def test_tool_executor_exposes_compress_chapter_to_target_adapter_metadata():
         "mutability": "write",
         "handler_name": "_compress_chapter_to_target",
     }
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_handles_legacy_hermes_migration_projection(db_session):
+    project = Project(name="Legacy Hermes Migration")
+    db_session.add(project)
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(tool_name="inspect_legacy_hermes_action_migration"),
+    )
+
+    assert result.handled is True
+    assert result.output["status"] == "completed"
+    assert result.output["summary"]["legacy_action_count"] == 3
+    tools_by_name = {item["tool_name"]: item for item in result.output["tools"]}
+    assert set(tools_by_name) == {"generate_setup", "generate_storyline", "generate_outline"}
+    assert tools_by_name["generate_setup"]["current_execution_route"] == "legacy_action_fallback"
+    assert (
+        tools_by_name["generate_setup"]["recommended_agent_native_shape"]["preview_tool"]
+        == "preview_generate_setup_execution"
+    )
+    assert "confirm_execute" in tools_by_name["generate_setup"]["required_guards"]
+    assert "inspect_agent_tool_contracts" in result.output["recommended_next_tools"]
 
 
 @pytest.mark.asyncio

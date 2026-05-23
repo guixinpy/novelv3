@@ -91,6 +91,12 @@ def build_agent_core_tool_adapters(
             category="preflight",
             mutability="read",
         ),
+        "inspect_legacy_hermes_action_migration": WritingAgentToolAdapter(
+            "inspect_legacy_hermes_action_migration",
+            _inspect_legacy_hermes_action_migration(adapter_metadata_by_name_provider),
+            category="preflight",
+            mutability="read",
+        ),
         "inspect_agent_write_gate_coverage": WritingAgentToolAdapter(
             "inspect_agent_write_gate_coverage",
             _inspect_agent_write_gate_coverage(adapter_metadata_by_name_provider),
@@ -309,6 +315,25 @@ def _inspect_agent_write_gate_coverage(
 
     inspect_agent_write_gate_coverage_adapter.__name__ = "_inspect_agent_write_gate_coverage"
     return inspect_agent_write_gate_coverage_adapter
+
+
+def _inspect_legacy_hermes_action_migration(
+    adapter_metadata_by_name_provider: AdapterMetadataByNameProvider,
+) -> Callable[[WritingAgentToolContext, WritingAgentToolRequest], dict[str, Any]]:
+    def inspect_legacy_hermes_action_migration_adapter(
+        context: WritingAgentToolContext,
+        tool: WritingAgentToolRequest,
+    ) -> dict[str, Any]:
+        from app.services.writing_agent.legacy_hermes_migration_projection import (
+            inspect_legacy_hermes_action_migration,
+        )
+
+        return inspect_legacy_hermes_action_migration(
+            adapter_metadata_by_name=dict(adapter_metadata_by_name_provider()),
+        )
+
+    inspect_legacy_hermes_action_migration_adapter.__name__ = "_inspect_legacy_hermes_action_migration"
+    return inspect_legacy_hermes_action_migration_adapter
 
 
 def _inspect_agent_mutation_fingerprints(

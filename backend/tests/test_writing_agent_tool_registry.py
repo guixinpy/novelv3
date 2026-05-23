@@ -34,6 +34,7 @@ def test_agent_core_tool_descriptors_live_in_dedicated_module():
         "inspect_agent_route_preference_projection",
         "inspect_agent_intent_projection",
         "inspect_agent_tool_contracts",
+        "inspect_legacy_hermes_action_migration",
         "inspect_agent_write_gate_coverage",
         "inspect_agent_mutation_fingerprints",
         "preflight_writing",
@@ -617,6 +618,18 @@ def test_agent_tool_registry_includes_inspect_agent_tool_contracts():
     assert descriptor.input_schema["properties"]["include_gap_details"]["type"] == "boolean"
     assert "inspect_agent_tool_contracts" in allowed_tool_names()
     assert "inspect_agent_tool_contracts" in non_blocking_report_tool_names()
+
+
+def test_agent_tool_registry_includes_legacy_hermes_migration_projection():
+    descriptor = get_agent_tool_descriptor("inspect_legacy_hermes_action_migration")
+
+    assert descriptor is not None
+    assert descriptor.internal is True
+    assert descriptor.non_blocking_report is True
+    assert descriptor.category == "preflight"
+    assert descriptor.target_type == "agent_tool_migration_projection"
+    assert "inspect_legacy_hermes_action_migration" in allowed_tool_names()
+    assert "inspect_legacy_hermes_action_migration" in non_blocking_report_tool_names()
 
 
 def test_agent_tool_registry_includes_inspect_agent_write_gate_coverage():

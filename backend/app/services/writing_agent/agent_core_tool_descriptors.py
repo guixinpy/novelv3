@@ -320,6 +320,28 @@ AGENT_CORE_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(
+        name="inspect_legacy_hermes_action_migration",
+        module="writing_agent",
+        category="preflight",
+        description="只读输出 legacy Hermes 生成动作迁移为 Agent-native preview/approval/execute 工具的路线图。",
+        input_schema=object_schema(),
+        output_schema=object_schema(
+            {
+                "status": {"type": "string"},
+                "version": {"type": "string"},
+                "summary": {"type": "object"},
+                "tools": {"type": "array"},
+                "recommended_next_tools": {"type": "array"},
+                "trace": {"type": "object"},
+            }
+        ),
+        target_type="agent_tool_migration_projection",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=11,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
         name="inspect_agent_write_gate_coverage",
         module="writing_agent",
         category="preflight",
