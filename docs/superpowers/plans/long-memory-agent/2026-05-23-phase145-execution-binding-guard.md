@@ -214,7 +214,7 @@ Expected: no whitespace errors and no committed API key leaks.
 
 Create `docs/superpowers/notes/long-memory-agent/2026-05-23-phase145-execution-binding-guard.md`.
 
-- [ ] **Step 4: Commit and push**
+- [x] **Step 4: Commit and push**
 
 Run:
 
