@@ -1806,14 +1806,22 @@ async def test_tool_executor_handles_legacy_hermes_migration_projection(db_sessi
     assert result.handled is True
     assert result.output["status"] == "completed"
     assert result.output["summary"]["legacy_action_count"] == 3
+    assert result.output["summary"]["agent_native_ready_count"] == 3
     tools_by_name = {item["tool_name"]: item for item in result.output["tools"]}
     assert set(tools_by_name) == {"generate_setup", "generate_storyline", "generate_outline"}
-    assert tools_by_name["generate_setup"]["current_execution_route"] == "legacy_action_fallback"
-    assert (
-        tools_by_name["generate_setup"]["recommended_agent_native_shape"]["preview_tool"]
-        == "preview_generate_setup_execution"
-    )
-    assert "confirm_execute" in tools_by_name["generate_setup"]["required_guards"]
+    expected_execute_tools = {
+        "generate_setup": "execute_generate_setup_with_approval",
+        "generate_storyline": "execute_generate_storyline_with_approval",
+        "generate_outline": "execute_generate_outline_with_approval",
+    }
+    for tool_name, execute_tool in expected_execute_tools.items():
+        item = tools_by_name[tool_name]
+        assert item["current_execution_route"] == "legacy_action_fallback"
+        assert item["migration_stage"] == "agent_native_wrapper_ready"
+        assert item["agent_native_execution_route"] == "static_adapter"
+        assert item["approval_wrapper"]["execute_tool"] == execute_tool
+        assert item["approval_wrapper"]["execute_adapter_exists"] is True
+        assert "confirm_execute" in item["required_guards"]
     assert "inspect_agent_tool_contracts" in result.output["recommended_next_tools"]
 
 
