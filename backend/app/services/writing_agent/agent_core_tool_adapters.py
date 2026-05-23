@@ -79,6 +79,12 @@ def build_agent_core_tool_adapters(
             category="preflight",
             mutability="read",
         ),
+        "inspect_agent_dialog_control_plane_projection": WritingAgentToolAdapter(
+            "inspect_agent_dialog_control_plane_projection",
+            _inspect_agent_dialog_control_plane_projection,
+            category="preflight",
+            mutability="read",
+        ),
         "inspect_agent_intent_projection": WritingAgentToolAdapter(
             "inspect_agent_intent_projection",
             _inspect_agent_intent_projection,
@@ -258,6 +264,17 @@ def _inspect_agent_route_preference_projection(
 
     inspect_agent_route_preference_projection_adapter.__name__ = "_inspect_agent_route_preference_projection"
     return inspect_agent_route_preference_projection_adapter
+
+
+def _inspect_agent_dialog_control_plane_projection(
+    context: WritingAgentToolContext,
+    tool: WritingAgentToolRequest,
+) -> dict[str, Any]:
+    from app.services.writing_agent.dialog_control_plane import inspect_agent_dialog_control_plane_projection
+
+    return inspect_agent_dialog_control_plane_projection(
+        action_type=str(tool.params.get("action_type") or "").strip() or None,
+    )
 
 
 def _inspect_agent_intent_projection(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:

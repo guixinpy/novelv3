@@ -51,6 +51,7 @@ def test_agent_core_tool_adapters_live_in_dedicated_module():
         "inspect_agent_slash_command_route",
         "inspect_agent_dialog_route_projection",
         "inspect_agent_route_preference_projection",
+        "inspect_agent_dialog_control_plane_projection",
         "inspect_agent_intent_projection",
         "inspect_agent_tool_contracts",
         "inspect_legacy_hermes_action_migration",
@@ -381,6 +382,40 @@ async def test_tool_executor_handles_inspect_agent_route_preference_projection(d
         assert route["runtime_route_changed"] is False
         assert route["runtime_behavior_changed"] is False
         assert route["migration_status"] == "recommended_not_applied"
+    assert result.output["trace"]["runtime_behavior_changed"] is False
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_handles_dialog_control_plane_projection(db_session):
+    project = Project(name="Dialog Control Plane Projection")
+    db_session.add(project)
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-control-plane"),
+        WritingAgentToolRequest(tool_name="inspect_agent_dialog_control_plane_projection", params={}),
+    )
+
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "ready"
+    assert result.output["version"] == "phase191.dialog_control_plane_projection.v1"
+    actions_by_type = {action["action_type"]: action for action in result.output["actions"]}
+    setup_action = actions_by_type["generate_setup"]
+    assert setup_action["current_runtime_tool_name"] == "generate_setup"
+    assert setup_action["recommended_tool_chain"] == [
+        "prepare_generate_setup_execution",
+        "execute_generate_setup_with_approval",
+    ]
+    assert setup_action["runtime_behavior_changed"] is False
+    chapter_action = actions_by_type["generate_chapter"]
+    assert chapter_action["current_runtime_tool_name"] == "prepare_generate_chapter_execution"
+    assert chapter_action["current_approval_execute_tool_name"] == "execute_generate_chapter_with_approval"
+    assert chapter_action["recommended_tool_chain"] == [
+        "prepare_generate_chapter_execution",
+        "execute_generate_chapter_with_approval",
+    ]
+    assert chapter_action["runtime_already_uses_approval_chain"] is True
     assert result.output["trace"]["runtime_behavior_changed"] is False
 
 
@@ -1509,6 +1544,16 @@ def test_tool_executor_exposes_inspect_agent_route_preference_projection_adapter
         "category": "preflight",
         "mutability": "read",
         "handler_name": "_inspect_agent_route_preference_projection",
+    }
+
+
+def test_tool_executor_exposes_dialog_control_plane_projection_adapter_metadata():
+    assert writing_agent_tool_adapter_metadata("inspect_agent_dialog_control_plane_projection") == {
+        "tool_name": "inspect_agent_dialog_control_plane_projection",
+        "adapter_type": "static",
+        "category": "preflight",
+        "mutability": "read",
+        "handler_name": "_inspect_agent_dialog_control_plane_projection",
     }
 
 

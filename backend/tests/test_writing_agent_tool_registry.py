@@ -35,6 +35,7 @@ def test_agent_core_tool_descriptors_live_in_dedicated_module():
         "inspect_agent_slash_command_route",
         "inspect_agent_dialog_route_projection",
         "inspect_agent_route_preference_projection",
+        "inspect_agent_dialog_control_plane_projection",
         "inspect_agent_intent_projection",
         "inspect_agent_tool_contracts",
         "inspect_legacy_hermes_action_migration",
@@ -783,6 +784,20 @@ def test_agent_tool_registry_includes_legacy_hermes_migration_projection():
     assert descriptor.target_type == "agent_tool_migration_projection"
     assert "inspect_legacy_hermes_action_migration" in allowed_tool_names()
     assert "inspect_legacy_hermes_action_migration" in non_blocking_report_tool_names()
+
+
+def test_agent_tool_registry_includes_dialog_control_plane_projection():
+    descriptor = get_agent_tool_descriptor("inspect_agent_dialog_control_plane_projection")
+
+    assert descriptor is not None
+    assert descriptor.internal is True
+    assert descriptor.non_blocking_report is True
+    assert descriptor.category == "preflight"
+    assert descriptor.target_type == "agent_dialog_control_plane_projection"
+    assert descriptor.input_schema["properties"]["action_type"]["type"] == "string"
+    assert descriptor.output_schema["properties"]["actions"]["type"] == "array"
+    assert "inspect_agent_dialog_control_plane_projection" in allowed_tool_names()
+    assert "inspect_agent_dialog_control_plane_projection" in non_blocking_report_tool_names()
 
 
 def test_agent_tool_registry_includes_inspect_agent_write_gate_coverage():

@@ -261,6 +261,27 @@ AGENT_CORE_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(
+        name="inspect_agent_dialog_control_plane_projection",
+        module="writing_agent",
+        category="preflight",
+        description="返回对话 pending action control plane 的当前运行工具与推荐审批工具链投影，不改变运行时路由。",
+        input_schema=object_schema({"action_type": {"type": "string"}}),
+        output_schema=object_schema(
+            {
+                "status": {"type": "string"},
+                "version": {"type": "string"},
+                "summary": {"type": "object"},
+                "actions": {"type": "array"},
+                "trace": {"type": "object"},
+            }
+        ),
+        target_type="agent_dialog_control_plane_projection",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=12,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
         name="inspect_agent_intent_projection",
         module="writing_agent",
         category="preflight",

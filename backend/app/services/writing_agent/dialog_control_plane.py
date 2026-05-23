@@ -13,6 +13,7 @@ from app.services.tasks.background_task_service import BackgroundTaskService
 from app.services.writing_agent.run_service import WritingAgentRunService
 
 CONTROL_PLANE_VERSION = "phase65.agent_control_plane.v1"
+DIALOG_CONTROL_PLANE_PROJECTION_VERSION = "phase191.dialog_control_plane_projection.v1"
 AGENT_RUN_TASK_TYPE = "writing_agent_run"
 CONTROL_PLANE_PARAM_KEYS = {"project_id", "agent_route"}
 
@@ -23,6 +24,12 @@ SUPPORTED_DIALOG_ACTION_TO_TOOL = {
     "generate_chapter": "prepare_generate_chapter_execution",
 }
 CHAPTER_APPROVAL_EXECUTE_TOOL = "execute_generate_chapter_with_approval"
+APPROVED_DIALOG_CONTROL_PLANE_CHAINS = {
+    "generate_setup": ("prepare_generate_setup_execution", "execute_generate_setup_with_approval"),
+    "generate_storyline": ("prepare_generate_storyline_execution", "execute_generate_storyline_with_approval"),
+    "generate_outline": ("prepare_generate_outline_execution", "execute_generate_outline_with_approval"),
+    "generate_chapter": ("prepare_generate_chapter_execution", "execute_generate_chapter_with_approval"),
+}
 
 DialogAgentRunWork = Callable[[Session, BackgroundTask], Any]
 
@@ -36,6 +43,33 @@ class DialogAgentRunDispatch:
 
 def supports_dialog_agent_control_plane(action_type: str | None) -> bool:
     return str(action_type or "").strip() in SUPPORTED_DIALOG_ACTION_TO_TOOL
+
+
+def inspect_agent_dialog_control_plane_projection(action_type: str | None = None) -> dict[str, Any]:
+    selected_action_type = str(action_type or "").strip() or None
+    actions = [
+        _dialog_control_plane_action_projection(candidate_action_type)
+        for candidate_action_type in SUPPORTED_DIALOG_ACTION_TO_TOOL
+        if selected_action_type is None or candidate_action_type == selected_action_type
+    ]
+    return {
+        "status": "ready",
+        "version": DIALOG_CONTROL_PLANE_PROJECTION_VERSION,
+        "summary": {
+            "action_count": len(actions),
+            "recommended_migration_count": sum(
+                1 for action in actions if action["migration_status"] == "recommended_not_applied"
+            ),
+            "already_approved_count": sum(
+                1 for action in actions if action["runtime_already_uses_approval_chain"] is True
+            ),
+        },
+        "actions": actions,
+        "trace": {
+            "selected_action_type": selected_action_type,
+            "runtime_behavior_changed": False,
+        },
+    }
 
 
 def prepare_dialog_agent_run_dispatch(
@@ -150,6 +184,34 @@ def _tool_name_for_action(action_type: str, params: dict[str, Any]) -> str:
     if action_type == "generate_chapter" and _has_chapter_approval_contract(params):
         return CHAPTER_APPROVAL_EXECUTE_TOOL
     return SUPPORTED_DIALOG_ACTION_TO_TOOL[action_type]
+
+
+def _dialog_control_plane_action_projection(action_type: str) -> dict[str, Any]:
+    current_runtime_tool = SUPPORTED_DIALOG_ACTION_TO_TOOL[action_type]
+    recommended_chain = list(APPROVED_DIALOG_CONTROL_PLANE_CHAINS.get(action_type, (current_runtime_tool,)))
+    runtime_already_uses_approval_chain = (
+        action_type == "generate_chapter"
+        and current_runtime_tool == recommended_chain[0]
+        and CHAPTER_APPROVAL_EXECUTE_TOOL == recommended_chain[-1]
+    )
+    return {
+        "action_type": action_type,
+        "current_runtime_tool_name": current_runtime_tool,
+        "current_approval_execute_tool_name": CHAPTER_APPROVAL_EXECUTE_TOOL
+        if action_type == "generate_chapter"
+        else None,
+        "recommended_tool_chain": recommended_chain,
+        "recommended_prepare_tool_name": recommended_chain[0] if len(recommended_chain) > 1 else None,
+        "recommended_execute_tool_name": recommended_chain[-1] if len(recommended_chain) > 1 else None,
+        "approval_gate_required": len(recommended_chain) > 1,
+        "runtime_already_uses_approval_chain": runtime_already_uses_approval_chain,
+        "runtime_behavior_changed": False,
+        "migration_status": "already_applied"
+        if runtime_already_uses_approval_chain
+        else "recommended_not_applied"
+        if len(recommended_chain) > 1
+        else "no_change",
+    }
 
 
 def _has_chapter_approval_contract(params: dict[str, Any]) -> bool:
