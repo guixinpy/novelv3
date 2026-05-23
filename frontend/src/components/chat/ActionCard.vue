@@ -1,8 +1,18 @@
 <template>
   <div class="action-card" data-testid="pending-action-card">
     <p class="action-card__copy">
-      {{ action.description }}
+      {{ actionCopy }}
     </p>
+    <div
+      v-if="chapterTargetConflict"
+      class="action-card__warning"
+      data-testid="chapter-target-conflict"
+    >
+      <strong>章节目标冲突</strong>
+      <span>
+        第{{ chapterTargetConflict.chapterIndex }}章已有待确认或运行中的生成任务，确认前请检查是否要继续覆盖同一章节。
+      </span>
+    </div>
     <section
       v-if="executionPreview"
       class="action-card__preview"
@@ -93,6 +103,19 @@ const emit = defineEmits<{ decide: [decision: string, comment?: string] }>()
 const showRevise = ref(false)
 const reviseComment = ref('')
 const executionPreview = computed(() => props.action?.execution_preview || null)
+const chapterTargetConflict = computed(() => {
+  const conflict = props.action?.params?.chapter_target_conflict
+  if (!conflict || typeof conflict !== 'object') return null
+  if (conflict.status !== 'reserved') return null
+  const chapterIndex = Number(conflict.chapter_index || props.action?.params?.chapter_index)
+  if (!Number.isInteger(chapterIndex) || chapterIndex <= 0) return null
+  return { chapterIndex }
+})
+const actionCopy = computed(() => {
+  const copy = String(props.action?.description || '')
+  if (!chapterTargetConflict.value) return copy
+  return copy.replace(/\s*注意：第\d+章已有待确认或运行中的生成任务，请确认是否仍要继续。\s*$/, '').trim()
+})
 const previewSteps = computed(() => Array.isArray(executionPreview.value?.steps) ? executionPreview.value.steps : [])
 const auditRows = computed(() => {
   const audit = executionPreview.value?.audit
@@ -128,6 +151,23 @@ function submitRevise() {
   color: var(--color-text-primary);
   font-size: 0.92rem;
   line-height: 1.55;
+}
+
+.action-card__warning {
+  display: grid;
+  gap: 0.2rem;
+  margin-bottom: 0.8rem;
+  border-left: 3px solid var(--color-warning, #b7791f);
+  background: rgba(255, 247, 214, 0.78);
+  color: var(--color-text-primary);
+  padding: 0.65rem 0.75rem;
+  border-radius: 0.55rem;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.action-card__warning strong {
+  font-size: 0.78rem;
 }
 
 .action-card__preview {
