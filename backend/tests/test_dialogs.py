@@ -344,8 +344,42 @@ def test_chapter_command_explicit_reserved_target_adds_conflict_warning(client, 
         "status": "reserved",
         "chapter_index": 2,
         "reason": "pending_or_running_generation",
+        "source": "single_task",
+        "source_label": "单章生成任务",
     }
-    assert "已有待确认或运行中的生成任务" in pending["description"]
+    assert "已有单章生成任务" in pending["description"]
+
+
+def test_chapter_command_explicit_range_reserved_target_labels_conflict_source(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Test"})
+    pid = r.json()["id"]
+    db_session.add(
+        BackgroundTask(
+            project_id=pid,
+            task_type="generate_chapter_range",
+            status="running",
+            payload={"chapter_range": {"start": 2, "end": 3}},
+        )
+    )
+    db_session.commit()
+
+    r2 = client.post("/api/v1/dialog/chat", json={
+        "project_id": pid,
+        "input_type": "command",
+        "command_name": "chapter",
+        "command_args": "2",
+    })
+
+    assert r2.status_code == 200
+    pending = r2.json()["pending_action"]
+    assert pending["params"]["chapter_target_conflict"] == {
+        "status": "reserved",
+        "chapter_index": 2,
+        "reason": "pending_or_running_generation",
+        "source": "range_task",
+        "source_label": "批量生成任务",
+    }
+    assert "已有批量生成任务" in pending["description"]
 
 
 def test_agent_control_plane_routes_confirmed_setup_through_writing_agent_run(client, db_session, monkeypatch):

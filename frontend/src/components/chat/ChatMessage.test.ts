@@ -219,6 +219,39 @@ describe('ChatMessage', () => {
     expect(wrapper.get('.action-card__copy').text()).not.toContain('注意：')
   })
 
+  it('renders pending chapter conflict source labels', () => {
+    const wrapper = mount(ChatMessage, {
+      props: {
+        msg: {
+          role: 'assistant',
+          message_type: 'plain',
+          content: '准备生成章节。',
+          pending_action: {
+            id: 'pending-1',
+            type: 'preview_chapter',
+            description: '我可以生成第2章正文，完成后会进入 Calliope 和正文进度。 注意：第2章已有批量生成任务，请确认是否仍要继续。',
+            params: {
+              chapter_index: 2,
+              chapter_target_conflict: {
+                status: 'reserved',
+                chapter_index: 2,
+                reason: 'pending_or_running_generation',
+                source: 'range_task',
+                source_label: '批量生成任务',
+              },
+            },
+          },
+        },
+        isLatest: true,
+        loading: false,
+      },
+    })
+
+    const warning = wrapper.get('[data-testid="chapter-target-conflict"]')
+    expect(warning.text()).toContain('第2章已有批量生成任务')
+    expect(wrapper.get('.action-card__copy').text()).not.toContain('注意：')
+  })
+
   it('renders generating action progress without repeating the action verb', () => {
     const wrapper = mount(ChatMessage, {
       props: {

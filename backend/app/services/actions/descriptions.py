@@ -30,4 +30,5 @@ def _append_chapter_conflict_warning(description: str, params: dict) -> str:
     chapter_index = conflict.get("chapter_index") or params.get("chapter_index")
     if not chapter_index:
         return description
-    return f"{description} 注意：第{chapter_index}章已有待确认或运行中的生成任务，请确认是否仍要继续。"
+    source_label = str(conflict.get("source_label") or "待确认或运行中的生成任务").strip()
+    return f"{description} 注意：第{chapter_index}章已有{source_label}，请确认是否仍要继续。"

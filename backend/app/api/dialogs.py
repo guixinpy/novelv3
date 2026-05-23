@@ -61,6 +61,11 @@ TERMINAL_ACTION_STATUSES = {"completed", "success", "failed", "cancelled", "revi
 RUNNING_ACTION_STATUSES = {"running", "generating"}
 RUNNING_BLOCKED_COMMANDS = {"clear", "compact", "setup", "storyline", "outline", "chapter"}
 ACTIVE_CHAPTER_TARGET_STATUSES = {"pending", "running"}
+CHAPTER_TARGET_SOURCE_LABELS = {
+    "pending_action": "待确认操作",
+    "single_task": "单章生成任务",
+    "range_task": "批量生成任务",
+}
 
 
 def _get_or_create_dialog(db: Session, project_id: str, dialog_type: str = "hermes") -> Dialog:
@@ -183,10 +188,21 @@ def _generated_chapter_indexes(db: Session, project_id: str) -> set[int]:
 
 
 def _reserved_chapter_indexes(db: Session, project_id: str) -> set[int]:
-    return _pending_chapter_action_indexes(db, project_id) | _active_chapter_task_indexes(db, project_id)
+    return set(_reserved_chapter_index_sources(db, project_id))
+
+
+def _reserved_chapter_index_sources(db: Session, project_id: str) -> dict[int, str]:
+    sources = _pending_chapter_action_index_sources(db, project_id)
+    for chapter_index, source in _active_chapter_task_index_sources(db, project_id).items():
+        sources.setdefault(chapter_index, source)
+    return sources
 
 
 def _pending_chapter_action_indexes(db: Session, project_id: str) -> set[int]:
+    return set(_pending_chapter_action_index_sources(db, project_id))
+
+
+def _pending_chapter_action_index_sources(db: Session, project_id: str) -> dict[int, str]:
     actions = (
         db.query(PendingAction)
         .filter(
@@ -195,18 +211,22 @@ def _pending_chapter_action_indexes(db: Session, project_id: str) -> set[int]:
         )
         .all()
     )
-    indexes: set[int] = set()
+    sources: dict[int, str] = {}
     for action in actions:
         params = action.params if isinstance(action.params, dict) else {}
         if str(params.get("project_id") or "") != project_id:
             continue
         chapter_index = _optional_positive_int(params.get("chapter_index"))
         if chapter_index is not None:
-            indexes.add(chapter_index)
-    return indexes
+            sources[chapter_index] = "pending_action"
+    return sources
 
 
 def _active_chapter_task_indexes(db: Session, project_id: str) -> set[int]:
+    return set(_active_chapter_task_index_sources(db, project_id))
+
+
+def _active_chapter_task_index_sources(db: Session, project_id: str) -> dict[int, str]:
     tasks = (
         db.query(BackgroundTask)
         .filter(
@@ -216,29 +236,35 @@ def _active_chapter_task_indexes(db: Session, project_id: str) -> set[int]:
         )
         .all()
     )
-    indexes: set[int] = set()
+    sources: dict[int, str] = {}
     for task in tasks:
-        indexes.update(_chapter_indexes_from_task_payload(task.payload))
-    return indexes
+        for chapter_index, source in _chapter_index_sources_from_task_payload(task.payload).items():
+            sources.setdefault(chapter_index, source)
+    return sources
 
 
 def _chapter_indexes_from_task_payload(payload: dict | None) -> set[int]:
-    if not isinstance(payload, dict):
-        return set()
-    if payload.get("action_type") not in {None, "generate_chapter", "generate_chapter_range"}:
-        return set()
+    return set(_chapter_index_sources_from_task_payload(payload))
 
-    indexes: set[int] = set()
+
+def _chapter_index_sources_from_task_payload(payload: dict | None) -> dict[int, str]:
+    if not isinstance(payload, dict):
+        return {}
+    if payload.get("action_type") not in {None, "generate_chapter", "generate_chapter_range"}:
+        return {}
+
+    sources: dict[int, str] = {}
     chapter_range = payload.get("chapter_range") if isinstance(payload.get("chapter_range"), dict) else {}
     start = _optional_positive_int(chapter_range.get("start"))
     end = _optional_positive_int(chapter_range.get("end"))
     if start is not None and end is not None and start <= end:
-        indexes.update(range(start, end + 1))
+        for chapter_index in range(start, end + 1):
+            sources[chapter_index] = "range_task"
 
     action_params = payload.get("action_params") if isinstance(payload.get("action_params"), dict) else {}
     chapter_index = _optional_positive_int(action_params.get("chapter_index") or payload.get("chapter_index"))
     if chapter_index is not None:
-        indexes.add(chapter_index)
+        sources.setdefault(chapter_index, "single_task")
 
     tools = payload.get("tools") if isinstance(payload.get("tools"), list) else []
     for tool in tools:
@@ -247,8 +273,8 @@ def _chapter_indexes_from_task_payload(payload: dict | None) -> set[int]:
         params = tool.get("params") if isinstance(tool.get("params"), dict) else {}
         chapter_index = _optional_positive_int(params.get("chapter_index"))
         if chapter_index is not None:
-            indexes.add(chapter_index)
-    return indexes
+            sources.setdefault(chapter_index, "single_task")
+    return sources
 
 
 def _optional_positive_int(value: object) -> int | None:
@@ -299,8 +325,9 @@ def _chapter_action_params_for_project(
     explicit_chapter_index = parse_chapter_index(command_args)
     if explicit_chapter_index is not None:
         params["chapter_index_source"] = "explicit_user"
-        if explicit_chapter_index in _reserved_chapter_indexes(db, project_id):
-            params["chapter_target_conflict"] = _chapter_target_conflict(explicit_chapter_index)
+        conflict_source = _reserved_chapter_index_sources(db, project_id).get(explicit_chapter_index)
+        if conflict_source:
+            params["chapter_target_conflict"] = _chapter_target_conflict(explicit_chapter_index, conflict_source)
         return params
     inferred = _first_unwritten_outline_chapter_index(db, project_id)
     if inferred is not None:
@@ -311,11 +338,13 @@ def _chapter_action_params_for_project(
     return params
 
 
-def _chapter_target_conflict(chapter_index: int) -> dict[str, object]:
+def _chapter_target_conflict(chapter_index: int, source: str) -> dict[str, object]:
     return {
         "status": "reserved",
         "chapter_index": chapter_index,
         "reason": "pending_or_running_generation",
+        "source": source,
+        "source_label": CHAPTER_TARGET_SOURCE_LABELS.get(source, "占用目标"),
     }
 
 

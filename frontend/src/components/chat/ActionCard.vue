@@ -10,7 +10,7 @@
     >
       <strong>章节目标冲突</strong>
       <span>
-        第{{ chapterTargetConflict.chapterIndex }}章已有待确认或运行中的生成任务，确认前请检查是否要继续覆盖同一章节。
+        第{{ chapterTargetConflict.chapterIndex }}章已有{{ chapterTargetConflict.sourceLabel }}，确认前请检查是否要继续覆盖同一章节。
       </span>
     </div>
     <section
@@ -109,12 +109,15 @@ const chapterTargetConflict = computed(() => {
   if (conflict.status !== 'reserved') return null
   const chapterIndex = Number(conflict.chapter_index || props.action?.params?.chapter_index)
   if (!Number.isInteger(chapterIndex) || chapterIndex <= 0) return null
-  return { chapterIndex }
+  const sourceLabel = typeof conflict.source_label === 'string' && conflict.source_label.trim()
+    ? conflict.source_label.trim()
+    : '待确认或运行中的生成任务'
+  return { chapterIndex, sourceLabel }
 })
 const actionCopy = computed(() => {
   const copy = String(props.action?.description || '')
   if (!chapterTargetConflict.value) return copy
-  return copy.replace(/\s*注意：第\d+章已有待确认或运行中的生成任务，请确认是否仍要继续。\s*$/, '').trim()
+  return copy.replace(/\s*注意：第\d+章已有.+?，请确认是否仍要继续。\s*$/, '').trim()
 })
 const previewSteps = computed(() => Array.isArray(executionPreview.value?.steps) ? executionPreview.value.steps : [])
 const auditRows = computed(() => {
