@@ -39,13 +39,25 @@ describe('agentRunProjection', () => {
   it('recognizes supported agent run action types', () => {
     expect(isAgentRunActionType('plan_recovery_tools')).toBe(true)
     expect(isAgentRunActionType('ui_recovery_execute')).toBe(true)
+    expect(isAgentRunActionType('inspect_agent_trace_audit')).toBe(true)
     expect(isAgentRunActionType('generate_chapter')).toBe(false)
   })
 
   it('exposes registered agent run action descriptors', () => {
     expect(getAgentRunActionDescriptor('plan_recovery_tools')?.type).toBe('plan_recovery_tools')
     expect(getAgentRunActionDescriptor('ui_recovery_execute')?.type).toBe('ui_recovery_execute')
+    expect(getAgentRunActionDescriptor('inspect_agent_trace_audit')?.type).toBe('inspect_agent_trace_audit')
     expect(getAgentRunActionDescriptor('generate_chapter')).toBeNull()
+  })
+
+  it('extracts nested run ids from trace audit action results', () => {
+    expect(getAgentRunIdFromMessage({
+      action_result: {
+        type: 'inspect_agent_trace_audit',
+        status: 'success',
+        data: { run: { id: 'run-audit-1' } },
+      },
+    })).toBe('run-audit-1')
   })
 
   it('builds fallback views for recovery preview action results', () => {
@@ -86,6 +98,27 @@ describe('agentRunProjection', () => {
     expect(view?.label).toBe('恢复执行中')
     expect(view?.variant).toBe('neutral')
     expect(view?.detail_items).toContainEqual({ label: '运行 ID', value: 'run-running' })
+  })
+
+  it('builds fallback views for trace audit action results', () => {
+    const view = buildAgentRunActionResultView({
+      type: 'inspect_agent_trace_audit',
+      status: 'success',
+      data: {
+        run: { id: 'run-audit-1', status: 'failed' },
+        audit: { status: 'failed', step_count: 3, trace_count: 2 },
+        failure: { reason_code: 'tool_failed' },
+        recommended_actions: [{ tool_name: 'plan_recovery_tools' }],
+      },
+    })
+
+    expect(view?.label).toBe('Trace 审计已生成')
+    expect(view?.variant).toBe('success')
+    expect(view?.detail_items).toContainEqual({ label: '运行状态', value: '失败' })
+    expect(view?.detail_items).toContainEqual({ label: '工具步骤', value: '3 个' })
+    expect(view?.detail_items).toContainEqual({ label: 'Trace', value: '2 条' })
+    expect(view?.detail_items).toContainEqual({ label: '失败原因', value: 'tool_failed' })
+    expect(view?.detail_items).toContainEqual({ label: '建议动作', value: '1 个' })
   })
 
   it('builds recovery execution feedback without leaking plan hash', () => {

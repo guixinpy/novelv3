@@ -1,6 +1,6 @@
 import type { ActionResultView, WritingAgentRunDetail } from '../../api/types'
 
-export const AGENT_RUN_ACTION_TYPES = ['plan_recovery_tools', 'ui_recovery_execute'] as const
+export const AGENT_RUN_ACTION_TYPES = ['plan_recovery_tools', 'ui_recovery_execute', 'inspect_agent_trace_audit'] as const
 export type AgentRunActionType = typeof AGENT_RUN_ACTION_TYPES[number]
 
 export interface AgentRunActionDescriptor {
@@ -16,6 +16,10 @@ const AGENT_RUN_ACTION_DESCRIPTORS: Record<AgentRunActionType, AgentRunActionDes
   ui_recovery_execute: {
     type: 'ui_recovery_execute',
     buildView: buildRecoveryExecutionActionResultView,
+  },
+  inspect_agent_trace_audit: {
+    type: 'inspect_agent_trace_audit',
+    buildView: buildTraceAuditActionResultView,
   },
 }
 
@@ -62,7 +66,9 @@ export function getAgentRunIdFromMessage(message: AgentRunMessageLike) {
   const data = message.action_result?.data
   if (!data || typeof data !== 'object') return ''
   const dataRunId = (data as Record<string, unknown>).agent_run_id
-  return typeof dataRunId === 'string' ? dataRunId.trim() : ''
+  if (typeof dataRunId === 'string' && dataRunId.trim()) return dataRunId.trim()
+  const run = recordValue((data as Record<string, unknown>).run)
+  return stringValue(run.id)
 }
 
 export function buildAgentRunActionResultView(actionResult: Record<string, unknown> | null | undefined): ActionResultView | null {
@@ -138,10 +144,28 @@ function buildRecoveryExecutionActionResultView(actionResult: Record<string, unk
   }
 }
 
+function buildTraceAuditActionResultView(actionResult: Record<string, unknown>, status: string): ActionResultView {
+  const detailItems = traceAuditDetailItems(recordValue(actionResult.data))
+  return {
+    type: 'inspect_agent_trace_audit',
+    status,
+    label: traceAuditLabel(status),
+    variant: statusVariant(status),
+    ...(detailItems.length ? { detail_items: detailItems } : {}),
+  }
+}
+
 function recoveryPreviewLabel(status: string) {
   if (status === 'success' || status === 'completed') return '恢复预览已生成'
   if (status === 'failed') return '恢复预览失败'
   return `恢复预览: ${status || '未知状态'}`
+}
+
+function traceAuditLabel(status: string) {
+  if (status === 'success' || status === 'completed') return 'Trace 审计已生成'
+  if (status === 'failed') return 'Trace 审计失败'
+  if (status === 'running') return 'Trace 审计中'
+  return `Trace 审计: ${status || '未知状态'}`
 }
 
 function statusVariant(status: string) {
@@ -176,6 +200,45 @@ function recoveryPreviewDetailItems(data: Record<string, unknown>) {
   return items
 }
 
+function traceAuditDetailItems(data: Record<string, unknown>) {
+  const items: Array<{ label: string; value: string }> = []
+  const run = recordValue(data.run)
+  const runStatus = stringValue(run.status)
+  if (runStatus) {
+    items.push({ label: '运行状态', value: runStatusLabel(runStatus) })
+  }
+
+  const audit = recordValue(data.audit)
+  const stepCount = numberValue(audit.step_count)
+  if (stepCount !== null) {
+    items.push({ label: '工具步骤', value: `${stepCount} 个` })
+  }
+  const traceCount = numberValue(audit.trace_count)
+  if (traceCount !== null) {
+    items.push({ label: 'Trace', value: `${traceCount} 条` })
+  }
+
+  const failure = recordValue(data.failure)
+  const reasonCode = stringValue(failure.reason_code)
+  if (reasonCode) {
+    items.push({ label: '失败原因', value: reasonCode })
+  }
+
+  const recommendedActions = Array.isArray(data.recommended_actions) ? data.recommended_actions : []
+  if (recommendedActions.length) {
+    items.push({ label: '建议动作', value: `${recommendedActions.length} 个` })
+  }
+  return items
+}
+
+function runStatusLabel(status: string) {
+  if (status === 'success') return '成功'
+  if (status === 'failed') return '失败'
+  if (status === 'running') return '运行中'
+  if (status === 'blocked') return '已阻止'
+  return status
+}
+
 function recoveryStatusLabel(status: string) {
   if (status === 'recommended') return '建议恢复'
   if (status === 'none') return '无恢复建议'
@@ -197,6 +260,10 @@ function recordValue(value: unknown): Record<string, unknown> {
 
 function stringValue(value: unknown) {
   return typeof value === 'string' ? value.trim() : ''
+}
+
+function numberValue(value: unknown) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 
 function recoveryExecutionDetailStatusLabel(status: string) {

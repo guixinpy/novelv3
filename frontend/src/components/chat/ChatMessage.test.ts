@@ -246,6 +246,35 @@ describe('ChatMessage', () => {
     expect(wrapper.text()).not.toContain('plan_recovery_tools')
   })
 
+  it('renders trace audit fallback labels when backend view is missing', () => {
+    const wrapper = mount(ChatMessage, {
+      props: {
+        msg: {
+          role: 'system',
+          message_type: 'plain',
+          content: 'Trace 审计已完成。',
+          action_result: {
+            type: 'inspect_agent_trace_audit',
+            status: 'success',
+            data: {
+              run: { id: 'run-audit-1', status: 'failed' },
+              audit: { step_count: 3, trace_count: 2 },
+              failure: { reason_code: 'tool_failed' },
+              recommended_actions: [{ tool_name: 'plan_recovery_tools' }],
+            },
+          },
+        },
+        isLatest: false,
+        loading: false,
+      },
+    })
+
+    expect(wrapper.text()).toContain('Trace 审计已生成')
+    expect(wrapper.text()).toContain('工具步骤')
+    expect(wrapper.text()).toContain('3 个')
+    expect(wrapper.text()).not.toContain('inspect_agent_trace_audit')
+  })
+
   it('emits openAgentRun from recovery execution action results', async () => {
     const wrapper = mount(ChatMessage, {
       props: {
