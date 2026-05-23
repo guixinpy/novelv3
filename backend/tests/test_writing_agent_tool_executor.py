@@ -7,6 +7,7 @@ from app.services.writing_agent.chapter_generation_execution import (
     prepare_generate_chapter_execution,
 )
 from app.services.writing_agent.chapter_generation_tool import execute_generate_chapter_tool
+from app.services.writing_agent.longform_tool_adapters import build_longform_agent_tool_adapters
 from app.services.writing_agent.tool_registry import internal_tool_names
 from app.services.writing_agent.tool_executor import (
     WritingAgentToolContext,
@@ -15,6 +16,27 @@ from app.services.writing_agent.tool_executor import (
     unhandled_internal_writing_agent_tool_names,
     writing_agent_tool_adapter_metadata,
 )
+
+
+def test_longform_tool_adapters_live_in_dedicated_module():
+    adapters = build_longform_agent_tool_adapters(approval_tool_metadata_provider=lambda plan: {})
+    names = list(adapters)
+
+    assert names == [
+        "plan_longform_chapter_batch",
+        "enqueue_longform_chapter_batch",
+        "inspect_longform_chapter_batch",
+        "execute_longform_chapter_batch_preflight",
+        "prepare_longform_chapter_batch_execution",
+        "execute_longform_chapter_batch",
+        "review_longform_chapter_batch_execution",
+        "route_longform_chapter_batch_after_review",
+    ]
+    assert {adapter.category for adapter in adapters.values()} == {"task_queue"}
+    assert adapters["plan_longform_chapter_batch"].mutability == "read"
+    assert adapters["inspect_longform_chapter_batch"].mutability == "read"
+    assert adapters["execute_longform_chapter_batch"].mutability == "write"
+    assert adapters["execute_longform_chapter_batch"].handler.__name__ == "_execute_longform_chapter_batch"
 
 
 @pytest.mark.asyncio

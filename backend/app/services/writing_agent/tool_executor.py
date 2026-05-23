@@ -1,52 +1,19 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
 import inspect
 from typing import Any
 
-from sqlalchemy.orm import Session
-
 from app.schemas.writing_agent import WritingAgentToolRequest
 from app.services.writing_agent.approval_tool_metadata import build_approval_tool_metadata_by_name
+from app.services.writing_agent.longform_tool_adapters import build_longform_agent_tool_adapters
+from app.services.writing_agent.tool_adapter_types import (
+    PreflightWriting,
+    WritingAgentToolAdapter,
+    WritingAgentToolContext,
+    WritingAgentToolExecutionResult,
+)
 from app.services.writing_agent.tool_registry import build_agent_tool_plan, get_agent_tool_descriptor, internal_tool_names
-
-
-PreflightWriting = Callable[[str, dict[str, Any]], dict[str, Any]]
-StaticToolAdapterOutput = dict[str, Any] | Awaitable[dict[str, Any]]
-StaticToolAdapterHandler = Callable[["WritingAgentToolContext", WritingAgentToolRequest], StaticToolAdapterOutput]
-
-
-@dataclass(frozen=True)
-class WritingAgentToolContext:
-    db: Session
-    project_id: str
-    run_id: str | None = None
-
-
-@dataclass(frozen=True)
-class WritingAgentToolExecutionResult:
-    handled: bool
-    output: dict[str, Any] | None = None
-
-
-@dataclass(frozen=True)
-class WritingAgentToolAdapter:
-    tool_name: str
-    handler: StaticToolAdapterHandler
-    category: str
-    mutability: str
-    adapter_type: str = "static"
-
-    def to_metadata(self) -> dict[str, Any]:
-        return {
-            "tool_name": self.tool_name,
-            "adapter_type": self.adapter_type,
-            "category": self.category,
-            "mutability": self.mutability,
-            "handler_name": self.handler.__name__,
-        }
 
 
 async def execute_writing_agent_tool(
@@ -246,46 +213,6 @@ def _plan_recommended_followups(context: WritingAgentToolContext, tool: WritingA
     return build_recommended_followup_tool_plan(context.db, context.project_id, run_id)
 
 
-def _plan_longform_chapter_batch(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
-    from app.services.writing_agent.batch_planner import build_longform_chapter_batch_plan
-
-    source_run_id = str(tool.params.get("source_run_id") or "").strip() or None
-    return build_longform_chapter_batch_plan(
-        context.db,
-        context.project_id,
-        source_run_id=source_run_id,
-        start_chapter=_optional_int(tool.params.get("start_chapter")),
-        batch_size=_optional_int(tool.params.get("batch_size")),
-    )
-
-
-def _enqueue_longform_chapter_batch(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
-    from app.services.writing_agent.batch_enqueue import build_longform_chapter_batch_enqueue
-
-    source_run_id = str(tool.params.get("source_run_id") or "").strip() or None
-    return build_longform_chapter_batch_enqueue(
-        context.db,
-        context.project_id,
-        source_run_id=source_run_id,
-        start_chapter=_optional_int(tool.params.get("start_chapter")),
-        batch_size=_optional_int(tool.params.get("batch_size")),
-        confirm_enqueue=tool.params.get("confirm_enqueue") is True,
-        plan_hash=str(tool.params.get("plan_hash") or "").strip() or None,
-    )
-
-
-def _inspect_longform_chapter_batch(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
-    from app.services.writing_agent.batch_queue_inspector import inspect_longform_chapter_batch_queue
-
-    return inspect_longform_chapter_batch_queue(
-        context.db,
-        context.project_id,
-        task_id=str(tool.params.get("task_id") or "").strip() or None,
-        plan_hash=str(tool.params.get("plan_hash") or "").strip() or None,
-        limit=_optional_int(tool.params.get("limit")),
-    )
-
-
 def _inspect_agent_job_projection(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
     from app.services.writing_agent.agent_job_projection import inspect_agent_job_projection
 
@@ -472,80 +399,6 @@ def _record_agent_knowledge_base_candidate(context: WritingAgentToolContext, too
         confidence=_optional_float(tool.params.get("confidence")),
         status=str(tool.params.get("status") or "").strip() or None,
         tags=_string_list(tags),
-    )
-
-
-def _execute_longform_chapter_batch_preflight(
-    context: WritingAgentToolContext,
-    tool: WritingAgentToolRequest,
-) -> dict[str, Any]:
-    from app.services.writing_agent.batch_preflight import execute_longform_chapter_batch_preflight
-
-    return execute_longform_chapter_batch_preflight(
-        context.db,
-        context.project_id,
-        task_id=str(tool.params.get("task_id") or "").strip() or None,
-        max_chapters=_optional_int(tool.params.get("max_chapters")),
-    )
-
-
-def _prepare_longform_chapter_batch_execution(
-    context: WritingAgentToolContext,
-    tool: WritingAgentToolRequest,
-) -> dict[str, Any]:
-    from app.services.writing_agent.batch_execution_prepare import prepare_longform_chapter_batch_execution
-
-    return prepare_longform_chapter_batch_execution(
-        context.db,
-        context.project_id,
-        task_id=str(tool.params.get("task_id") or "").strip() or None,
-    )
-
-
-async def _execute_longform_chapter_batch(
-    context: WritingAgentToolContext,
-    tool: WritingAgentToolRequest,
-) -> dict[str, Any]:
-    from app.services.writing_agent.batch_execution import execute_longform_chapter_batch
-
-    return await execute_longform_chapter_batch(
-        context.db,
-        context.project_id,
-        task_id=str(tool.params.get("task_id") or "").strip() or None,
-        confirm_execute=tool.params.get("confirm_execute") is True,
-        attempt_manifest_hash=str(tool.params.get("attempt_manifest_hash") or "").strip() or None,
-        approval_contract_hash=str(tool.params.get("approval_contract_hash") or "").strip() or None,
-        approval_tool_metadata_provider=_approval_tool_metadata_by_name,
-    )
-
-
-def _review_longform_chapter_batch_execution(
-    context: WritingAgentToolContext,
-    tool: WritingAgentToolRequest,
-) -> dict[str, Any]:
-    from app.services.writing_agent.batch_post_generation_review import review_longform_chapter_batch_execution
-
-    return review_longform_chapter_batch_execution(
-        context.db,
-        context.project_id,
-        task_id=str(tool.params.get("task_id") or "").strip() or None,
-        lookback=_optional_int(tool.params.get("lookback")),
-    )
-
-
-def _route_longform_chapter_batch_after_review(
-    context: WritingAgentToolContext,
-    tool: WritingAgentToolRequest,
-) -> dict[str, Any]:
-    from app.services.writing_agent.batch_post_review_router import route_longform_chapter_batch_after_review
-
-    return route_longform_chapter_batch_after_review(
-        context.db,
-        context.project_id,
-        task_id=str(tool.params.get("task_id") or "").strip() or None,
-        expected_post_generation_review_hash=str(tool.params.get("expected_post_generation_review_hash") or "").strip()
-        or None,
-        next_batch_size=_optional_int(tool.params.get("next_batch_size")),
     )
 
 
@@ -841,24 +694,6 @@ _STATIC_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
         category="preflight",
         mutability="read",
     ),
-    "plan_longform_chapter_batch": WritingAgentToolAdapter(
-        "plan_longform_chapter_batch",
-        _plan_longform_chapter_batch,
-        category="task_queue",
-        mutability="read",
-    ),
-    "enqueue_longform_chapter_batch": WritingAgentToolAdapter(
-        "enqueue_longform_chapter_batch",
-        _enqueue_longform_chapter_batch,
-        category="task_queue",
-        mutability="write",
-    ),
-    "inspect_longform_chapter_batch": WritingAgentToolAdapter(
-        "inspect_longform_chapter_batch",
-        _inspect_longform_chapter_batch,
-        category="task_queue",
-        mutability="read",
-    ),
     "inspect_agent_job_projection": WritingAgentToolAdapter(
         "inspect_agent_job_projection",
         _inspect_agent_job_projection,
@@ -941,36 +776,6 @@ _STATIC_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
         "record_agent_knowledge_base_candidate",
         _record_agent_knowledge_base_candidate,
         category="knowledge_base",
-        mutability="write",
-    ),
-    "execute_longform_chapter_batch_preflight": WritingAgentToolAdapter(
-        "execute_longform_chapter_batch_preflight",
-        _execute_longform_chapter_batch_preflight,
-        category="task_queue",
-        mutability="write",
-    ),
-    "prepare_longform_chapter_batch_execution": WritingAgentToolAdapter(
-        "prepare_longform_chapter_batch_execution",
-        _prepare_longform_chapter_batch_execution,
-        category="task_queue",
-        mutability="write",
-    ),
-    "execute_longform_chapter_batch": WritingAgentToolAdapter(
-        "execute_longform_chapter_batch",
-        _execute_longform_chapter_batch,
-        category="task_queue",
-        mutability="write",
-    ),
-    "review_longform_chapter_batch_execution": WritingAgentToolAdapter(
-        "review_longform_chapter_batch_execution",
-        _review_longform_chapter_batch_execution,
-        category="task_queue",
-        mutability="write",
-    ),
-    "route_longform_chapter_batch_after_review": WritingAgentToolAdapter(
-        "route_longform_chapter_batch_after_review",
-        _route_longform_chapter_batch_after_review,
-        category="task_queue",
         mutability="write",
     ),
     "inspect_agent_trace_audit": WritingAgentToolAdapter(
@@ -1088,6 +893,9 @@ _STATIC_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
         mutability="read",
     ),
 }
+_STATIC_TOOL_ADAPTERS.update(
+    build_longform_agent_tool_adapters(approval_tool_metadata_provider=_approval_tool_metadata_by_name)
+)
 
 
 def _chapter_index(tool: WritingAgentToolRequest) -> int:
