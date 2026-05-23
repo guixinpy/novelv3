@@ -83,3 +83,8 @@ rg -n "sk-[A-Za-z0-9]{20,}" backend frontend docs --glob "!backend/static/assets
 ## Next Phase
 
 建议 Phase195 开始让内部 route preference / control plane 能输出“可执行迁移建议包”，供后续 Agent 决策是否把某条 pending action 写入 opt-in metadata。
+
+## Git
+
+- Main commit: `8a4d9cef feat: expose route approval opt in state`
+- Remote: pushed to `origin/main`

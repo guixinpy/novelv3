@@ -96,7 +96,7 @@ rg -n "sk-[A-Za-z0-9]{20,}" backend frontend docs --glob "!backend/static/assets
 docs/superpowers/notes/long-memory-agent/2026-05-23-phase194-route-preference-opt-in-observability.md
 ```
 
-- [ ] Commit and push:
+- [x] Commit and push:
 
 ```powershell
 git add backend/app/services/writing_agent/slash_command_route.py backend/app/services/writing_agent/agent_core_tool_descriptors.py backend/app/services/writing_agent/agent_core_tool_adapters.py backend/tests/test_writing_agent_route_preference.py backend/tests/test_writing_agent_tool_executor.py docs/superpowers/plans/long-memory-agent/2026-05-23-phase194-route-preference-opt-in-observability.md docs/superpowers/notes/long-memory-agent/2026-05-23-phase194-route-preference-opt-in-observability.md
