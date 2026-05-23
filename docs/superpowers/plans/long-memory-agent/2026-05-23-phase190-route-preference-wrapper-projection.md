@@ -133,7 +133,7 @@ rg -n "sk-[A-Za-z0-9]{20,}" backend frontend docs --glob "!backend/static/assets
 docs/superpowers/notes/long-memory-agent/2026-05-23-phase190-route-preference-wrapper-projection.md
 ```
 
-- [ ] Commit and push:
+- [x] Commit and push:
 
 ```powershell
 git add backend/app/services/writing_agent/slash_command_route.py backend/tests/test_writing_agent_route_preference.py backend/tests/test_writing_agent_tool_executor.py docs/superpowers/plans/long-memory-agent/2026-05-23-phase190-route-preference-wrapper-projection.md docs/superpowers/notes/long-memory-agent/2026-05-23-phase190-route-preference-wrapper-projection.md
