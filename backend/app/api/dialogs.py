@@ -212,7 +212,7 @@ def _active_chapter_task_indexes(db: Session, project_id: str) -> set[int]:
         .filter(
             BackgroundTask.project_id == project_id,
             BackgroundTask.status.in_(ACTIVE_CHAPTER_TARGET_STATUSES),
-            BackgroundTask.task_type.in_(("generate_chapter", "writing_agent_run")),
+            BackgroundTask.task_type.in_(("generate_chapter", "generate_chapter_range", "writing_agent_run")),
         )
         .all()
     )
@@ -225,10 +225,16 @@ def _active_chapter_task_indexes(db: Session, project_id: str) -> set[int]:
 def _chapter_indexes_from_task_payload(payload: dict | None) -> set[int]:
     if not isinstance(payload, dict):
         return set()
-    if payload.get("action_type") not in {None, "generate_chapter"}:
+    if payload.get("action_type") not in {None, "generate_chapter", "generate_chapter_range"}:
         return set()
 
     indexes: set[int] = set()
+    chapter_range = payload.get("chapter_range") if isinstance(payload.get("chapter_range"), dict) else {}
+    start = _optional_positive_int(chapter_range.get("start"))
+    end = _optional_positive_int(chapter_range.get("end"))
+    if start is not None and end is not None and start <= end:
+        indexes.update(range(start, end + 1))
+
     action_params = payload.get("action_params") if isinstance(payload.get("action_params"), dict) else {}
     chapter_index = _optional_positive_int(action_params.get("chapter_index") or payload.get("chapter_index"))
     if chapter_index is not None:
