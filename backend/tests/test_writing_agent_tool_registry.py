@@ -2,6 +2,7 @@ from app.models import ChapterContent, Outline, Project, Setup, Storyline
 from app.services.writing_agent.agent_core_tool_descriptors import AGENT_CORE_TOOL_DESCRIPTORS
 from app.services.writing_agent.agent_generation_tool_descriptors import AGENT_GENERATION_TOOL_DESCRIPTORS
 from app.services.writing_agent.agent_memory_trace_tool_descriptors import AGENT_MEMORY_TRACE_TOOL_DESCRIPTORS
+from app.services.writing_agent.agent_task_queue_tool_descriptors import AGENT_TASK_QUEUE_TOOL_DESCRIPTORS
 from app.services.writing_agent.knowledge_base_tool_descriptors import KNOWLEDGE_BASE_AGENT_TOOL_DESCRIPTORS
 from app.services.writing_agent.longform_tool_descriptors import LONGFORM_AGENT_TOOL_DESCRIPTORS
 from app.services.writing_agent.review_revision_tool_descriptors import REVIEW_REVISION_AGENT_TOOL_DESCRIPTORS
@@ -85,6 +86,21 @@ def test_agent_generation_tool_descriptors_live_in_dedicated_module():
     assert target_type_for_tool("backfill_outline_gaps") == "outline"
     assert "prepare_generate_chapter_execution" in non_blocking_report_tool_names()
     assert "execute_generate_chapter_with_approval" not in non_blocking_report_tool_names()
+
+
+def test_agent_task_queue_tool_descriptors_live_in_dedicated_module():
+    names = [descriptor.name for descriptor in AGENT_TASK_QUEUE_TOOL_DESCRIPTORS]
+
+    assert names == [
+        "inspect_agent_job_projection",
+        "plan_chapter_conflict_recovery",
+    ]
+    assert {descriptor.category for descriptor in AGENT_TASK_QUEUE_TOOL_DESCRIPTORS} == {"task_queue"}
+    assert {descriptor.module for descriptor in AGENT_TASK_QUEUE_TOOL_DESCRIPTORS} == {"writing_agent"}
+    assert all(descriptor.internal for descriptor in AGENT_TASK_QUEUE_TOOL_DESCRIPTORS)
+    assert all(descriptor.non_blocking_report for descriptor in AGENT_TASK_QUEUE_TOOL_DESCRIPTORS)
+    assert target_type_for_tool("inspect_agent_job_projection") == "agent_job_projection"
+    assert target_type_for_tool("plan_chapter_conflict_recovery") == "agent_tool_plan"
 
 
 def test_review_revision_tool_descriptors_live_in_dedicated_module():

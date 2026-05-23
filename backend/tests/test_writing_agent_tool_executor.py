@@ -12,6 +12,7 @@ from app.services.writing_agent.chapter_generation_tool import execute_generate_
 from app.services.writing_agent.agent_core_tool_adapters import build_agent_core_tool_adapters
 from app.services.writing_agent.agent_generation_tool_adapters import build_agent_generation_tool_adapters
 from app.services.writing_agent.agent_memory_trace_tool_adapters import AGENT_MEMORY_TRACE_TOOL_ADAPTERS
+from app.services.writing_agent.agent_task_queue_tool_adapters import AGENT_TASK_QUEUE_TOOL_ADAPTERS
 from app.services.writing_agent.knowledge_base_tool_adapters import KNOWLEDGE_BASE_AGENT_TOOL_ADAPTERS
 from app.services.writing_agent.longform_tool_adapters import build_longform_agent_tool_adapters
 from app.services.writing_agent.review_revision_tool_adapters import REVIEW_REVISION_AGENT_TOOL_ADAPTERS
@@ -95,6 +96,25 @@ def test_agent_generation_tool_adapters_live_in_dedicated_module():
     assert adapters["execute_generate_chapter_with_approval"].mutability == "write"
     assert adapters["expand_outline_window"].mutability == "write"
     assert adapters["backfill_outline_gaps"].handler.__name__ == "_backfill_outline_gaps"
+
+
+def test_agent_task_queue_tool_adapters_live_in_dedicated_module():
+    names = list(AGENT_TASK_QUEUE_TOOL_ADAPTERS)
+
+    assert names == [
+        "plan_chapter_conflict_recovery",
+        "inspect_agent_job_projection",
+    ]
+    assert {adapter.category for adapter in AGENT_TASK_QUEUE_TOOL_ADAPTERS.values()} == {"task_queue"}
+    assert {adapter.mutability for adapter in AGENT_TASK_QUEUE_TOOL_ADAPTERS.values()} == {"read"}
+    assert (
+        AGENT_TASK_QUEUE_TOOL_ADAPTERS["plan_chapter_conflict_recovery"].handler.__name__
+        == "_plan_chapter_conflict_recovery"
+    )
+    assert (
+        AGENT_TASK_QUEUE_TOOL_ADAPTERS["inspect_agent_job_projection"].handler.__name__
+        == "_inspect_agent_job_projection"
+    )
 
 
 def test_review_revision_tool_adapters_live_in_dedicated_module():
