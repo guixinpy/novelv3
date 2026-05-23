@@ -114,3 +114,8 @@ rg -n "sk-[A-Za-z0-9]{20,}" backend frontend docs --glob "!backend/static/assets
 - 当 Phase199 contract preview 返回 `requires_confirmation` 时，在推荐下一步工具中提供 `apply_pending_action_route_approval_opt_in`。
 - 对前端/对话投影隐藏 approval hash 明文时仍能保留 Agent 内部工具调用所需参数。
 - 验证对话 pending action 从 legacy route 迁入 approval-chain 后，后续确认路径仍按现有 control plane 执行。
+
+## Git
+
+- Main commit: `108bda74 feat: apply route opt in approval`
+- Remote: pushed to `origin/main`
