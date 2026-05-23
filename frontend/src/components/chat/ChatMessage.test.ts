@@ -275,6 +275,39 @@ describe('ChatMessage', () => {
     expect(wrapper.text()).not.toContain('inspect_agent_trace_audit')
   })
 
+  it('renders longform batch inspection fallback labels when backend view is missing', () => {
+    const wrapper = mount(ChatMessage, {
+      props: {
+        msg: {
+          role: 'system',
+          message_type: 'plain',
+          content: '长篇批次队列检查已完成。',
+          action_result: {
+            type: 'inspect_longform_chapter_batch',
+            status: 'success',
+            data: {
+              status: 'completed',
+              summary: { total: 3, returned: 2, selected: true },
+              queue: { depth: 2, active: 1, terminal: 1 },
+              selected_task: {
+                status: 'pending',
+                chapter_range: { start: 21, end: 23 },
+                execution_readiness: { status: 'materialized_only' },
+              },
+            },
+          },
+        },
+        isLatest: false,
+        loading: false,
+      },
+    })
+
+    expect(wrapper.text()).toContain('长篇批次检查已生成')
+    expect(wrapper.text()).toContain('章节范围')
+    expect(wrapper.text()).toContain('第21-23章')
+    expect(wrapper.text()).not.toContain('inspect_longform_chapter_batch')
+  })
+
   it('emits openAgentRun from recovery execution action results', async () => {
     const wrapper = mount(ChatMessage, {
       props: {

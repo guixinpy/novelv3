@@ -40,6 +40,7 @@ describe('agentRunProjection', () => {
     expect(isAgentRunActionType('plan_recovery_tools')).toBe(true)
     expect(isAgentRunActionType('ui_recovery_execute')).toBe(true)
     expect(isAgentRunActionType('inspect_agent_trace_audit')).toBe(true)
+    expect(isAgentRunActionType('inspect_longform_chapter_batch')).toBe(true)
     expect(isAgentRunActionType('generate_chapter')).toBe(false)
   })
 
@@ -47,6 +48,7 @@ describe('agentRunProjection', () => {
     expect(getAgentRunActionDescriptor('plan_recovery_tools')?.type).toBe('plan_recovery_tools')
     expect(getAgentRunActionDescriptor('ui_recovery_execute')?.type).toBe('ui_recovery_execute')
     expect(getAgentRunActionDescriptor('inspect_agent_trace_audit')?.type).toBe('inspect_agent_trace_audit')
+    expect(getAgentRunActionDescriptor('inspect_longform_chapter_batch')?.type).toBe('inspect_longform_chapter_batch')
     expect(getAgentRunActionDescriptor('generate_chapter')).toBeNull()
   })
 
@@ -58,6 +60,16 @@ describe('agentRunProjection', () => {
         data: { run: { id: 'run-audit-1' } },
       },
     })).toBe('run-audit-1')
+  })
+
+  it('extracts run ids from longform batch inspection action results', () => {
+    expect(getAgentRunIdFromMessage({
+      action_result: {
+        type: 'inspect_longform_chapter_batch',
+        status: 'success',
+        data: { agent_run_id: 'run-batch-1' },
+      },
+    })).toBe('run-batch-1')
   })
 
   it('builds fallback views for recovery preview action results', () => {
@@ -119,6 +131,47 @@ describe('agentRunProjection', () => {
     expect(view?.detail_items).toContainEqual({ label: 'Trace', value: '2 条' })
     expect(view?.detail_items).toContainEqual({ label: '失败原因', value: 'tool_failed' })
     expect(view?.detail_items).toContainEqual({ label: '建议动作', value: '1 个' })
+  })
+
+  it('builds fallback views for longform batch inspection action results', () => {
+    const view = buildAgentRunActionResultView({
+      type: 'inspect_longform_chapter_batch',
+      status: 'success',
+      data: {
+        status: 'completed',
+        summary: { total: 3, returned: 2, selected: true },
+        queue: { depth: 2, active: 1, terminal: 1 },
+        selected_task: {
+          status: 'pending',
+          chapter_range: { start: 21, end: 23 },
+          execution_readiness: { status: 'materialized_only' },
+        },
+      },
+    })
+
+    expect(view?.label).toBe('长篇批次检查已生成')
+    expect(view?.variant).toBe('success')
+    expect(view?.detail_items).toContainEqual({ label: '队列深度', value: '2 个' })
+    expect(view?.detail_items).toContainEqual({ label: '活跃任务', value: '1 个' })
+    expect(view?.detail_items).toContainEqual({ label: '命中任务', value: '是' })
+    expect(view?.detail_items).toContainEqual({ label: '章节范围', value: '第21-23章' })
+    expect(view?.detail_items).toContainEqual({ label: '执行状态', value: '已物化，等待执行工具' })
+  })
+
+  it('builds not-found fallback views for longform batch inspection action results', () => {
+    const view = buildAgentRunActionResultView({
+      type: 'inspect_longform_chapter_batch',
+      status: 'success',
+      data: {
+        status: 'not_found',
+        summary: { total: 0, returned: 0, selected: false },
+        selected_task: null,
+      },
+    })
+
+    expect(view?.label).toBe('长篇批次未找到')
+    expect(view?.variant).toBe('neutral')
+    expect(view?.detail_items).toContainEqual({ label: '命中任务', value: '否' })
   })
 
   it('builds recovery execution feedback without leaking plan hash', () => {

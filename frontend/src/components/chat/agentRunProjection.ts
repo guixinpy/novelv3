@@ -1,6 +1,11 @@
 import type { ActionResultView, WritingAgentRunDetail } from '../../api/types'
 
-export const AGENT_RUN_ACTION_TYPES = ['plan_recovery_tools', 'ui_recovery_execute', 'inspect_agent_trace_audit'] as const
+export const AGENT_RUN_ACTION_TYPES = [
+  'plan_recovery_tools',
+  'ui_recovery_execute',
+  'inspect_agent_trace_audit',
+  'inspect_longform_chapter_batch',
+] as const
 export type AgentRunActionType = typeof AGENT_RUN_ACTION_TYPES[number]
 
 export interface AgentRunActionDescriptor {
@@ -20,6 +25,10 @@ const AGENT_RUN_ACTION_DESCRIPTORS: Record<AgentRunActionType, AgentRunActionDes
   inspect_agent_trace_audit: {
     type: 'inspect_agent_trace_audit',
     buildView: buildTraceAuditActionResultView,
+  },
+  inspect_longform_chapter_batch: {
+    type: 'inspect_longform_chapter_batch',
+    buildView: buildLongformBatchActionResultView,
   },
 }
 
@@ -155,6 +164,19 @@ function buildTraceAuditActionResultView(actionResult: Record<string, unknown>, 
   }
 }
 
+function buildLongformBatchActionResultView(actionResult: Record<string, unknown>, status: string): ActionResultView {
+  const data = recordValue(actionResult.data)
+  const batchStatus = stringValue(data.status) || status
+  const detailItems = longformBatchDetailItems(data)
+  return {
+    type: 'inspect_longform_chapter_batch',
+    status,
+    label: longformBatchLabel(batchStatus),
+    variant: longformBatchVariant(batchStatus),
+    ...(detailItems.length ? { detail_items: detailItems } : {}),
+  }
+}
+
 function recoveryPreviewLabel(status: string) {
   if (status === 'success' || status === 'completed') return '恢复预览已生成'
   if (status === 'failed') return '恢复预览失败'
@@ -166,6 +188,19 @@ function traceAuditLabel(status: string) {
   if (status === 'failed') return 'Trace 审计失败'
   if (status === 'running') return 'Trace 审计中'
   return `Trace 审计: ${status || '未知状态'}`
+}
+
+function longformBatchLabel(status: string) {
+  if (status === 'success' || status === 'completed') return '长篇批次检查已生成'
+  if (status === 'not_found') return '长篇批次未找到'
+  if (status === 'failed') return '长篇批次检查失败'
+  if (status === 'running') return '长篇批次检查中'
+  return `长篇批次检查: ${status || '未知状态'}`
+}
+
+function longformBatchVariant(status: string) {
+  if (status === 'not_found') return 'neutral'
+  return statusVariant(status)
 }
 
 function statusVariant(status: string) {
@@ -231,6 +266,67 @@ function traceAuditDetailItems(data: Record<string, unknown>) {
   return items
 }
 
+function longformBatchDetailItems(data: Record<string, unknown>) {
+  const items: Array<{ label: string; value: string }> = []
+  const queue = recordValue(data.queue)
+  const queueDepth = numberValue(queue.depth)
+  if (queueDepth !== null) {
+    items.push({ label: '队列深度', value: `${queueDepth} 个` })
+  }
+  const active = numberValue(queue.active)
+  if (active !== null) {
+    items.push({ label: '活跃任务', value: `${active} 个` })
+  }
+
+  const summary = recordValue(data.summary)
+  const selected = booleanValue(summary.selected)
+  if (selected !== null) {
+    items.push({ label: '命中任务', value: selected ? '是' : '否' })
+  }
+
+  const selectedTask = recordValue(data.selected_task)
+  const chapterRange = chapterRangeLabel(selectedTask)
+  if (chapterRange) {
+    items.push({ label: '章节范围', value: chapterRange })
+  }
+
+  const readiness = recordValue(selectedTask.execution_readiness)
+  const readinessStatus = stringValue(readiness.status)
+  if (readinessStatus) {
+    items.push({ label: '执行状态', value: batchExecutionReadinessLabel(readinessStatus) })
+  }
+  return items
+}
+
+function chapterRangeLabel(selectedTask: Record<string, unknown>) {
+  const chapterRange = recordValue(selectedTask.chapter_range)
+  const start = numberValue(chapterRange.start) ?? numberValue(chapterRange.start_chapter)
+  const end = numberValue(chapterRange.end) ?? numberValue(chapterRange.end_chapter)
+  if (start !== null && end !== null) {
+    return start === end ? `第${start}章` : `第${start}-${end}章`
+  }
+
+  const batch = recordValue(selectedTask.batch)
+  const chapterIndexes = Array.isArray(batch.chapter_indexes)
+    ? batch.chapter_indexes.filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
+    : []
+  if (!chapterIndexes.length) return ''
+  const first = Math.min(...chapterIndexes)
+  const last = Math.max(...chapterIndexes)
+  return first === last ? `第${first}章` : `第${first}-${last}章`
+}
+
+function batchExecutionReadinessLabel(status: string) {
+  if (status === 'materialized_only') return '已物化，等待执行工具'
+  if (status === 'runner_managed') return '队列可执行'
+  if (status === 'approval_contract_ready') return '审批契约已就绪'
+  if (status === 'phase62_executed') return '批次已执行'
+  if (status === 'phase63_reviewed') return '生成后审查已完成'
+  if (status === 'phase64_routed_passed') return '已路由到下一批次'
+  if (status === 'phase64_routed_needs_revision') return '已路由到修订流程'
+  return status
+}
+
 function runStatusLabel(status: string) {
   if (status === 'success') return '成功'
   if (status === 'failed') return '失败'
@@ -264,6 +360,10 @@ function stringValue(value: unknown) {
 
 function numberValue(value: unknown) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function booleanValue(value: unknown) {
+  return typeof value === 'boolean' ? value : null
 }
 
 function recoveryExecutionDetailStatusLabel(status: string) {
