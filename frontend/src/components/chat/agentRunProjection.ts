@@ -5,6 +5,7 @@ export const AGENT_RUN_ACTION_TYPES = [
   'ui_recovery_execute',
   'inspect_agent_trace_audit',
   'inspect_longform_chapter_batch',
+  'execute_longform_chapter_batch_preflight',
 ] as const
 export type AgentRunActionType = typeof AGENT_RUN_ACTION_TYPES[number]
 
@@ -29,6 +30,10 @@ const AGENT_RUN_ACTION_DESCRIPTORS: Record<AgentRunActionType, AgentRunActionDes
   inspect_longform_chapter_batch: {
     type: 'inspect_longform_chapter_batch',
     buildView: buildLongformBatchActionResultView,
+  },
+  execute_longform_chapter_batch_preflight: {
+    type: 'execute_longform_chapter_batch_preflight',
+    buildView: buildLongformPreflightActionResultView,
   },
 }
 
@@ -177,6 +182,19 @@ function buildLongformBatchActionResultView(actionResult: Record<string, unknown
   }
 }
 
+function buildLongformPreflightActionResultView(actionResult: Record<string, unknown>, status: string): ActionResultView {
+  const data = recordValue(actionResult.data)
+  const preflightStatus = stringValue(data.status) || status
+  const detailItems = longformPreflightDetailItems(data)
+  return {
+    type: 'execute_longform_chapter_batch_preflight',
+    status,
+    label: longformPreflightLabel(preflightStatus),
+    variant: longformPreflightVariant(preflightStatus),
+    ...(detailItems.length ? { detail_items: detailItems } : {}),
+  }
+}
+
 function recoveryPreviewLabel(status: string) {
   if (status === 'success' || status === 'completed') return '恢复预览已生成'
   if (status === 'failed') return '恢复预览失败'
@@ -201,6 +219,22 @@ function longformBatchLabel(status: string) {
 function longformBatchVariant(status: string) {
   if (status === 'not_found') return 'neutral'
   return statusVariant(status)
+}
+
+function longformPreflightLabel(status: string) {
+  if (status === 'ready') return '长篇批次预检已就绪'
+  if (status === 'blocked') return '长篇批次预检已阻塞'
+  if (status === 'not_found') return '长篇批次未找到'
+  if (status === 'failed') return '长篇批次预检失败'
+  if (status === 'running') return '长篇批次预检中'
+  if (status === 'success' || status === 'completed') return '长篇批次预检已完成'
+  return `长篇批次预检: ${status || '未知状态'}`
+}
+
+function longformPreflightVariant(status: string) {
+  if (status === 'ready' || status === 'success' || status === 'completed') return 'success'
+  if (status === 'blocked' || status === 'failed') return 'error'
+  return 'neutral'
 }
 
 function statusVariant(status: string) {
@@ -327,6 +361,62 @@ function batchExecutionReadinessLabel(status: string) {
   return status
 }
 
+function longformPreflightDetailItems(data: Record<string, unknown>) {
+  const items: Array<{ label: string; value: string }> = []
+  const checkpoint = recordValue(data.checkpoint)
+  const plan = recordValue(data.canonical_execution_plan)
+  const selectedChapters = numberArrayValue(checkpoint.selected_chapter_indexes)
+  const fallbackChapters = numberArrayValue(plan.chapters_to_run)
+  const preflightChapters = selectedChapters.length ? selectedChapters : fallbackChapters
+  const preflightLabel = chapterIndexesLabel(preflightChapters)
+  if (preflightLabel) {
+    items.push({ label: '预检章节', value: preflightLabel })
+  }
+
+  const readyChapters = numberArrayValue(checkpoint.ready_chapter_indexes)
+  if (readyChapters.length || Array.isArray(checkpoint.ready_chapter_indexes)) {
+    items.push({ label: '就绪章节', value: `${readyChapters.length} 章` })
+  }
+
+  const blockedChapters = numberArrayValue(checkpoint.blocked_chapter_indexes)
+  if (blockedChapters.length || Array.isArray(checkpoint.blocked_chapter_indexes)) {
+    items.push({ label: '阻塞章节', value: `${blockedChapters.length} 章` })
+  }
+
+  const stoppedBeforeNode = stringValue(plan.stopped_before_node)
+  if (stoppedBeforeNode) {
+    items.push({ label: '停止节点', value: stoppedBeforeNodeLabel(stoppedBeforeNode) })
+  }
+
+  const reason = stringValue(data.reason)
+  if (reason) {
+    items.push({ label: '阻塞原因', value: reason })
+  }
+
+  const nextTools = Array.isArray(data.recommended_next_tools) ? data.recommended_next_tools : []
+  if (nextTools.length) {
+    items.push({ label: '下一步', value: `${nextTools.length} 个工具` })
+  }
+  return items
+}
+
+function chapterIndexesLabel(indexes: number[]) {
+  const normalized = Array.from(new Set(indexes)).sort((left, right) => left - right)
+  if (!normalized.length) return ''
+  if (normalized.length === 1) return `第${normalized[0]}章`
+  const first = normalized[0]
+  const last = normalized[normalized.length - 1]
+  const isContiguous = normalized.every((value, index) => value === first + index)
+  if (isContiguous) return `第${first}-${last}章`
+  return `第${normalized.join('、')}章`
+}
+
+function stoppedBeforeNodeLabel(node: string) {
+  if (node === 'chapter_generation') return '正文生成前'
+  if (node === 'world_model_apply') return '世界模型写入前'
+  return node
+}
+
 function runStatusLabel(status: string) {
   if (status === 'success') return '成功'
   if (status === 'failed') return '失败'
@@ -360,6 +450,12 @@ function stringValue(value: unknown) {
 
 function numberValue(value: unknown) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function numberArrayValue(value: unknown) {
+  return Array.isArray(value)
+    ? value.filter((item): item is number => typeof item === 'number' && Number.isFinite(item))
+    : []
 }
 
 function booleanValue(value: unknown) {

@@ -308,6 +308,40 @@ describe('ChatMessage', () => {
     expect(wrapper.text()).not.toContain('inspect_longform_chapter_batch')
   })
 
+  it('renders longform preflight fallback labels when backend view is missing', () => {
+    const wrapper = mount(ChatMessage, {
+      props: {
+        msg: {
+          role: 'system',
+          message_type: 'plain',
+          content: '长篇批次预检已完成。',
+          action_result: {
+            type: 'execute_longform_chapter_batch_preflight',
+            status: 'success',
+            data: {
+              status: 'ready',
+              canonical_execution_plan: { chapters_to_run: [21], stopped_before_node: 'chapter_generation' },
+              checkpoint: {
+                status: 'ready',
+                selected_chapter_indexes: [21],
+                ready_chapter_indexes: [21],
+                blocked_chapter_indexes: [],
+              },
+              recommended_next_tools: ['inspect_longform_chapter_batch'],
+            },
+          },
+        },
+        isLatest: false,
+        loading: false,
+      },
+    })
+
+    expect(wrapper.text()).toContain('长篇批次预检已就绪')
+    expect(wrapper.text()).toContain('预检章节')
+    expect(wrapper.text()).toContain('第21章')
+    expect(wrapper.text()).not.toContain('execute_longform_chapter_batch_preflight')
+  })
+
   it('emits openAgentRun from recovery execution action results', async () => {
     const wrapper = mount(ChatMessage, {
       props: {

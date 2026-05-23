@@ -41,6 +41,7 @@ describe('agentRunProjection', () => {
     expect(isAgentRunActionType('ui_recovery_execute')).toBe(true)
     expect(isAgentRunActionType('inspect_agent_trace_audit')).toBe(true)
     expect(isAgentRunActionType('inspect_longform_chapter_batch')).toBe(true)
+    expect(isAgentRunActionType('execute_longform_chapter_batch_preflight')).toBe(true)
     expect(isAgentRunActionType('generate_chapter')).toBe(false)
   })
 
@@ -49,6 +50,7 @@ describe('agentRunProjection', () => {
     expect(getAgentRunActionDescriptor('ui_recovery_execute')?.type).toBe('ui_recovery_execute')
     expect(getAgentRunActionDescriptor('inspect_agent_trace_audit')?.type).toBe('inspect_agent_trace_audit')
     expect(getAgentRunActionDescriptor('inspect_longform_chapter_batch')?.type).toBe('inspect_longform_chapter_batch')
+    expect(getAgentRunActionDescriptor('execute_longform_chapter_batch_preflight')?.type).toBe('execute_longform_chapter_batch_preflight')
     expect(getAgentRunActionDescriptor('generate_chapter')).toBeNull()
   })
 
@@ -70,6 +72,16 @@ describe('agentRunProjection', () => {
         data: { agent_run_id: 'run-batch-1' },
       },
     })).toBe('run-batch-1')
+  })
+
+  it('extracts run ids from longform preflight action results', () => {
+    expect(getAgentRunIdFromMessage({
+      action_result: {
+        type: 'execute_longform_chapter_batch_preflight',
+        status: 'success',
+        data: { agent_run_id: 'run-preflight-1' },
+      },
+    })).toBe('run-preflight-1')
   })
 
   it('builds fallback views for recovery preview action results', () => {
@@ -172,6 +184,59 @@ describe('agentRunProjection', () => {
     expect(view?.label).toBe('长篇批次未找到')
     expect(view?.variant).toBe('neutral')
     expect(view?.detail_items).toContainEqual({ label: '命中任务', value: '否' })
+  })
+
+  it('builds ready fallback views for longform preflight action results', () => {
+    const view = buildAgentRunActionResultView({
+      type: 'execute_longform_chapter_batch_preflight',
+      status: 'success',
+      data: {
+        status: 'ready',
+        canonical_execution_plan: { chapters_to_run: [21], stopped_before_node: 'chapter_generation' },
+        checkpoint: {
+          status: 'ready',
+          selected_chapter_indexes: [21],
+          ready_chapter_indexes: [21],
+          blocked_chapter_indexes: [],
+        },
+        recommended_next_tools: ['inspect_longform_chapter_batch'],
+      },
+    })
+
+    expect(view?.label).toBe('长篇批次预检已就绪')
+    expect(view?.variant).toBe('success')
+    expect(view?.detail_items).toContainEqual({ label: '预检章节', value: '第21章' })
+    expect(view?.detail_items).toContainEqual({ label: '就绪章节', value: '1 章' })
+    expect(view?.detail_items).toContainEqual({ label: '阻塞章节', value: '0 章' })
+    expect(view?.detail_items).toContainEqual({ label: '停止节点', value: '正文生成前' })
+    expect(view?.detail_items).toContainEqual({ label: '下一步', value: '1 个工具' })
+  })
+
+  it('builds blocked fallback views for longform preflight action results', () => {
+    const view = buildAgentRunActionResultView({
+      type: 'execute_longform_chapter_batch_preflight',
+      status: 'success',
+      data: {
+        status: 'blocked',
+        reason: 'missing_previous_chapter',
+        canonical_execution_plan: { chapters_to_run: [23], stopped_before_node: 'chapter_generation' },
+        checkpoint: {
+          status: 'blocked',
+          selected_chapter_indexes: [23],
+          ready_chapter_indexes: [],
+          blocked_chapter_indexes: [23],
+        },
+        recommended_next_tools: ['inspect_longform_chapter_batch', 'plan_recovery_tools'],
+      },
+    })
+
+    expect(view?.label).toBe('长篇批次预检已阻塞')
+    expect(view?.variant).toBe('error')
+    expect(view?.detail_items).toContainEqual({ label: '预检章节', value: '第23章' })
+    expect(view?.detail_items).toContainEqual({ label: '就绪章节', value: '0 章' })
+    expect(view?.detail_items).toContainEqual({ label: '阻塞章节', value: '1 章' })
+    expect(view?.detail_items).toContainEqual({ label: '阻塞原因', value: 'missing_previous_chapter' })
+    expect(view?.detail_items).toContainEqual({ label: '下一步', value: '2 个工具' })
   })
 
   it('builds recovery execution feedback without leaking plan hash', () => {
