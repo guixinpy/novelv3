@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import ActionCard from './ActionCard.vue'
 import ChatSummaryCard from './ChatSummaryCard.vue'
+import { getAgentRunIdFromMessage } from './agentRunProjection'
 
 const props = defineProps<{
   msg: any
@@ -77,21 +78,7 @@ const resultDetailItems = computed(() => {
   ))
 })
 
-const agentRunId = computed(() => {
-  const actionType = String(
-    props.msg.action_result_view?.type
-    || props.msg.action_result?.type
-    || props.msg.meta?.agent_action_type
-    || '',
-  )
-  if (!['plan_recovery_tools', 'ui_recovery_execute'].includes(actionType)) return ''
-  const metaRunId = props.msg.meta?.agent_run_id
-  if (typeof metaRunId === 'string' && metaRunId.trim()) return metaRunId.trim()
-  const data = props.msg.action_result?.data
-  if (!data || typeof data !== 'object') return ''
-  const dataRunId = (data as Record<string, unknown>).agent_run_id
-  return typeof dataRunId === 'string' ? dataRunId.trim() : ''
-})
+const agentRunId = computed(() => getAgentRunIdFromMessage(props.msg))
 
 const summaryTitle = computed(() => {
   const title = props.msg.meta?.title

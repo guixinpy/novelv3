@@ -14,6 +14,7 @@ import type {
   WritingAgentRunDetail,
   WorkspaceBootstrap,
 } from '../api/types'
+import { buildAgentRunExecutionFeedback } from '../components/chat/agentRunProjection'
 import type { ChatCommandName } from '../components/workspace/chatCommands'
 import { useProjectWorkspaceStore } from './projectWorkspace'
 
@@ -79,28 +80,6 @@ function taskFailureMessage(task: BackgroundTaskResponse) {
     return error ? `后台任务已取消：${error}` : '后台任务已取消。'
   }
   return error ? `后台任务失败：${error}` : '后台任务失败，请稍后刷新重试。'
-}
-
-function recoveryExecutionStatusLabel(status: string) {
-  if (status === 'success') return '恢复执行已完成'
-  if (status === 'failed') return '恢复执行失败'
-  if (status === 'running') return '恢复执行中'
-  if (status === 'blocked') return '恢复执行已阻止'
-  return `恢复执行已创建：${status || '未知状态'}`
-}
-
-function recoveryExecutionDetailStatusLabel(status: string) {
-  if (status === 'success') return '已完成'
-  if (status === 'failed') return '失败'
-  if (status === 'running') return '执行中'
-  if (status === 'blocked') return '已阻止'
-  return status || '未知'
-}
-
-function recoveryExecutionVariant(status: string) {
-  if (status === 'success') return 'success'
-  if (status === 'failed' || status === 'blocked') return 'error'
-  return 'neutral'
 }
 
 function findRecoverableRunningAction(history: ChatHistoryMessage[] | null | undefined) {
@@ -429,31 +408,7 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   function appendAgentRunExecutionFeedback(run: WritingAgentRunDetail) {
-    const status = String(run.status || '')
-    const label = recoveryExecutionStatusLabel(status)
-    messages.value.push({
-      role: 'system',
-      content: '恢复执行已创建，可在运行详情中查看执行步骤。',
-      action_result: {
-        type: 'ui_recovery_execute',
-        status,
-        data: { agent_run_id: run.id },
-      },
-      action_result_view: {
-        type: 'ui_recovery_execute',
-        status,
-        label,
-        variant: recoveryExecutionVariant(status),
-        detail_items: [
-          { label: '运行 ID', value: run.id },
-          { label: '状态', value: recoveryExecutionDetailStatusLabel(status) },
-        ],
-      },
-      meta: {
-        agent_run_id: run.id,
-        agent_action_type: 'ui_recovery_execute',
-      },
-    })
+    messages.value.push(buildAgentRunExecutionFeedback(run))
     historyCursor.value += 1
     clearStaleHistoryAnchorAfterLocalAppend()
   }

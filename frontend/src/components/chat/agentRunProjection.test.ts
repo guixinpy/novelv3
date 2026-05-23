@@ -1,0 +1,60 @@
+import { describe, expect, it } from 'vitest'
+import { buildAgentRunExecutionFeedback, getAgentRunIdFromMessage, isAgentRunActionType } from './agentRunProjection'
+
+describe('agentRunProjection', () => {
+  it('extracts run ids only from supported agent run action messages', () => {
+    expect(getAgentRunIdFromMessage({
+      action_result: {
+        type: 'plan_recovery_tools',
+        status: 'success',
+        data: { agent_run_id: 'run-preview' },
+      },
+    })).toBe('run-preview')
+
+    expect(getAgentRunIdFromMessage({
+      action_result_view: {
+        type: 'ui_recovery_execute',
+        status: 'success',
+        label: '恢复执行已完成',
+        variant: 'success',
+      },
+      meta: { agent_run_id: 'run-executed' },
+    })).toBe('run-executed')
+
+    expect(getAgentRunIdFromMessage({
+      action_result: {
+        type: 'unknown_tool',
+        status: 'success',
+        data: { agent_run_id: 'run-hidden' },
+      },
+    })).toBe('')
+  })
+
+  it('recognizes supported agent run action types', () => {
+    expect(isAgentRunActionType('plan_recovery_tools')).toBe(true)
+    expect(isAgentRunActionType('ui_recovery_execute')).toBe(true)
+    expect(isAgentRunActionType('generate_chapter')).toBe(false)
+  })
+
+  it('builds recovery execution feedback without leaking plan hash', () => {
+    const message = buildAgentRunExecutionFeedback({
+      id: 'run-executed',
+      project_id: 'project-1',
+      goal: '执行恢复计划',
+      status: 'success',
+      entrypoint: 'ui_recovery_execute',
+      input: { recovery_plan_hash: 'plan-hash-1' },
+      output: null,
+      error: null,
+      steps: [],
+    })
+
+    expect(message.role).toBe('system')
+    expect(message.content).toContain('恢复执行已创建')
+    expect(message.action_result?.type).toBe('ui_recovery_execute')
+    expect(message.action_result?.data).toEqual({ agent_run_id: 'run-executed' })
+    expect(message.action_result_view?.label).toBe('恢复执行已完成')
+    expect(message.meta?.agent_run_id).toBe('run-executed')
+    expect(JSON.stringify(message)).not.toContain('plan-hash-1')
+  })
+})
