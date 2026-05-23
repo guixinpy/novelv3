@@ -193,6 +193,8 @@ def _step_summary(step: WritingAgentStep) -> dict[str, Any]:
         "target_type": step.target_type,
         "target_id": step.target_id,
         "chapter_index": step.chapter_index,
+        "tool_call_id": step.tool_call_id,
+        "resource_binding": summarize_resource_binding(step.resource_binding),
         "error": step.error,
         "output_keys": sorted(output.keys()),
         "result_status": envelope.get("result_status") or output.get("status"),
@@ -317,6 +319,8 @@ def _event_chain(
                 "target_type": step.target_type,
                 "target_id": step.target_id,
                 "chapter_index": step.chapter_index,
+                "tool_call_id": step.tool_call_id,
+                "resource_binding": summarize_resource_binding(step.resource_binding),
             }
         )
         verification_event = _verification_event_summary(output.get("approval_verification_event"))

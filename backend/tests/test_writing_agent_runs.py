@@ -1721,6 +1721,11 @@ def test_agent_run_can_execute_approved_longform_chapter_batch_once(client, db_s
     assert task.result["batch_execution_result"]["status"] == "chapter_generated"
     assert task.result["progress"]["completed_chapter_indexes"] == [2]
     assert task.result["execution_checkpoints"][-1]["checkpoint_type"] == "chapter_generation"
+    persisted_step = db_session.query(WritingAgentStep).filter(WritingAgentStep.run_id == payload["id"]).one()
+    assert persisted_step.tool_call_id.startswith("toolcall:")
+    assert persisted_step.resource_binding["target_id"] == "chapter:2"
+    assert payload["steps"][0]["tool_call_id"] == persisted_step.tool_call_id
+    assert payload["steps"][0]["resource_binding"]["target_id"] == "chapter:2"
 
     inspect_response = client.post(
         f"/api/v1/projects/{project.id}/agent-runs",

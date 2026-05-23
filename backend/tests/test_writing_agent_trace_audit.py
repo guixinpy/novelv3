@@ -1,5 +1,13 @@
 from app.models import AIModelCallTrace, Dialog, DialogMessage, Project, WritingAgentRun, WritingAgentStep
+from app.schemas.writing_agent import WritingAgentStepOut
 from app.services.writing_agent.agent_trace_audit import inspect_agent_trace_audit
+
+
+def test_writing_agent_step_binding_fields_are_modelled():
+    assert hasattr(WritingAgentStep, "tool_call_id")
+    assert hasattr(WritingAgentStep, "resource_binding")
+    assert "tool_call_id" in WritingAgentStepOut.model_fields
+    assert "resource_binding" in WritingAgentStepOut.model_fields
 
 
 def test_inspect_agent_trace_audit_summarizes_successful_run_without_raw_context(db_session):
@@ -50,6 +58,16 @@ def test_inspect_agent_trace_audit_summarizes_successful_run_without_raw_context
             target_type="chapter",
             target_id="chapter-2",
             chapter_index=2,
+            tool_call_id="toolcall:test",
+            resource_binding={
+                "tool_call_id": "toolcall:test",
+                "tool_name": "generate_chapter",
+                "target_type": "chapter",
+                "target_id": "chapter:2",
+                "source_plan_id": "plan:direct",
+                "source_step_id": "step:write",
+                "binding_source": "server_derived",
+            },
         )
     )
     db_session.commit()
@@ -186,6 +204,16 @@ def test_inspect_agent_trace_audit_includes_dialog_approval_events_without_raw_h
             target_type="chapter",
             target_id="chapter-2",
             chapter_index=2,
+            tool_call_id="toolcall:test",
+            resource_binding={
+                "tool_call_id": "toolcall:test",
+                "tool_name": "generate_chapter",
+                "target_type": "chapter",
+                "target_id": "chapter:2",
+                "source_plan_id": "plan:direct",
+                "source_step_id": "step:write",
+                "binding_source": "server_derived",
+            },
         )
     )
     message = DialogMessage(
@@ -305,10 +333,14 @@ def test_inspect_agent_trace_audit_includes_dialog_approval_events_without_raw_h
     }
     assert output["event_chain"][1]["run_id"] == run.id
     assert output["event_chain"][2]["tool_name"] == "generate_chapter"
+    assert output["event_chain"][2]["tool_call_id"] == "toolcall:test"
+    assert output["event_chain"][2]["resource_binding"]["target_id"] == "chapter:2"
     assert output["event_chain"][3]["reason"] == "approval_contract_verified"
     assert output["event_chain"][3]["tool_call_ids"] == ["toolcall:test"]
     assert output["event_chain"][3]["resource_bindings"][0]["target_id"] == "chapter:2"
     assert output["event_chain"][4]["trace_id"] == "trace-chain"
     assert output["event_chain"][5]["message_id"] == result_message.id
     assert "approval:secret-hash" not in str(output["event_chain"])
+    assert output["steps"][0]["tool_call_id"] == "toolcall:test"
+    assert output["steps"][0]["resource_binding"]["target_id"] == "chapter:2"
     assert output["audit"]["event_chain_count"] == 6

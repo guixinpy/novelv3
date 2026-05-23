@@ -31,6 +31,7 @@ from app.services.writing_agent.chapter_generation_tool import (
     _length_policy_check,
     _previous_chapter_state_card,
 )
+from app.services.writing_agent.agent_step_binding import summarize_resource_binding
 from app.services.writing_agent.tool_executor import (
     WritingAgentToolContext,
     execute_writing_agent_tool,
@@ -369,6 +370,9 @@ class WritingAgentRunService:
         step.target_type = _target_type_for_tool(step.tool_name)
         step.chapter_index = _optional_int(output.get("chapter_index"))
         step.target_id = self._find_target_id(step)
+        resource_binding = _extract_step_resource_binding(output)
+        step.resource_binding = resource_binding
+        step.tool_call_id = _resource_binding_tool_call_id(resource_binding)
         step.finished_at = finished_at
         self.db.commit()
         self.db.refresh(step)
@@ -414,6 +418,9 @@ class WritingAgentRunService:
         step.output = output
         step.target_type = _target_type_for_tool(step.tool_name)
         step.chapter_index = _optional_int((output or {}).get("chapter_index"))
+        resource_binding = _extract_step_resource_binding(output)
+        step.resource_binding = resource_binding
+        step.tool_call_id = _resource_binding_tool_call_id(resource_binding)
         step.finished_at = now
         self.db.flush()
         run.status = RUN_BLOCKED
@@ -897,6 +904,40 @@ def _recommended_followup_preview_auto_plan(
 
 def _model_dict(model: Any) -> dict[str, Any]:
     return {column.name: getattr(model, column.name) for column in model.__table__.columns}
+
+
+def _extract_step_resource_binding(output: object) -> dict[str, Any] | None:
+    if not isinstance(output, dict):
+        return None
+
+    execution_binding = output.get("execution_resource_binding")
+    if isinstance(execution_binding, dict):
+        summary = summarize_resource_binding(execution_binding.get("resource_binding"))
+        if summary:
+            return summary
+
+    summary = summarize_resource_binding(output.get("resource_binding"))
+    if summary:
+        return summary
+
+    verification_event = output.get("approval_verification_event")
+    resource_bindings = (
+        verification_event.get("resource_bindings")
+        if isinstance(verification_event, dict) and isinstance(verification_event.get("resource_bindings"), list)
+        else []
+    )
+    for item in resource_bindings:
+        summary = summarize_resource_binding(item)
+        if summary:
+            return summary
+    return None
+
+
+def _resource_binding_tool_call_id(resource_binding: dict[str, Any] | None) -> str | None:
+    if not resource_binding:
+        return None
+    tool_call_id = str(resource_binding.get("tool_call_id") or "").strip()
+    return tool_call_id or None
 
 
 def _target_type_for_tool(tool_name: str) -> str | None:

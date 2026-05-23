@@ -60,6 +60,8 @@ class WritingAgentStep(Base):
     target_type = Column(String, nullable=True)
     target_id = Column(String, nullable=True)
     chapter_index = Column(Integer, nullable=True)
+    tool_call_id = Column(String, nullable=True)
+    resource_binding = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=_now)
     started_at = Column(DateTime, nullable=True)
     finished_at = Column(DateTime, nullable=True)

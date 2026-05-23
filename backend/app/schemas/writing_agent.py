@@ -35,6 +35,8 @@ class WritingAgentStepOut(BaseModel):
     target_type: str | None = None
     target_id: str | None = None
     chapter_index: int | None = None
+    tool_call_id: str | None = None
+    resource_binding: dict[str, Any] | None = None
     created_at: datetime | None = None
     started_at: datetime | None = None
     finished_at: datetime | None = None
