@@ -159,7 +159,7 @@ def _build_recover_blocked_run_plan(
     db: Session,
     project_id: str,
 ) -> None:
-    run_id = _latest_recoverable_run_id(db, project_id)
+    run_id = latest_recoverable_run_id(db, project_id)
     if not run_id:
         trace["risk_flags"].append("missing_recoverable_run")
         trace["rejected_tools"].append({"tool_name": "plan_recovery_tools", "reason": "没有找到可恢复的阻塞或失败运行。"})
@@ -443,7 +443,7 @@ def _tool_visible(tool_plan: dict[str, Any], tool_name: str) -> bool:
     return any(tool.get("name") == tool_name for tool in tool_plan.get("visible_tools", []))
 
 
-def _latest_recoverable_run_id(db: Session, project_id: str) -> str | None:
+def latest_recoverable_run_id(db: Session, project_id: str) -> str | None:
     runs = (
         db.query(WritingAgentRun)
         .filter(WritingAgentRun.project_id == project_id, WritingAgentRun.status.in_(("blocked", "failed")))

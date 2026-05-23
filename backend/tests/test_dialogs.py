@@ -33,6 +33,7 @@ from app.models import (
     Setup,
     Storyline,
     WritingAgentRun,
+    WritingAgentStep,
 )
 from app.schemas import ProjectDiagnosisOut
 from app.services.actions.action_result_service import ActionResultService
@@ -1116,6 +1117,89 @@ def test_chat_text_low_detail_continue_creates_pending_chapter_action(client, db
         "generate_chapter",
     )
     assert body["ui_hint"]["dialog_state"] == "PENDING_ACTION"
+
+
+def test_chat_text_low_detail_continue_prefers_recovery_preview_when_blocked_run_exists(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Test"})
+    pid = r.json()["id"]
+    db_session.add(Setup(project_id=pid, status="generated", world_building={}, characters=[], core_concept={}))
+    db_session.add(Storyline(project_id=pid, status="generated", plotlines=[], foreshadowing=[]))
+    db_session.add(
+        Outline(
+            project_id=pid,
+            status="generated",
+            total_chapters=20,
+            chapters=[{"chapter_index": 1, "title": "旧灯塔", "summary": "林舟开始调查。"}],
+        )
+    )
+    blocked_run = WritingAgentRun(
+        project_id=pid,
+        goal="阻塞的直接章节执行",
+        status="blocked",
+        entrypoint="api",
+        input={},
+    )
+    db_session.add(blocked_run)
+    db_session.flush()
+    db_session.add(
+        WritingAgentStep(
+            run_id=blocked_run.id,
+            project_id=pid,
+            step_index=1,
+            tool_name="execute_generate_chapter_with_approval",
+            status="blocked",
+            input={"params": {"chapter_index": 1}},
+            output={
+                "status": "blocked",
+                "agent_tool_result": {
+                    "recovery": {
+                        "status": "recommended",
+                        "source_tool": "execute_generate_chapter_with_approval",
+                        "reason_code": "resource_binding_target_mismatch",
+                        "next_tool": "prepare_generate_chapter_execution",
+                        "next_params": {"chapter_index": 1},
+                    }
+                },
+            },
+        )
+    )
+    db_session.commit()
+
+    r2 = client.post("/api/v1/dialog/chat", json={
+        "project_id": pid,
+        "input_type": "text",
+        "text": "继续吧",
+    })
+
+    assert r2.status_code == 200
+    body = r2.json()
+    assert body["pending_action"] is None
+    dialog = db_session.query(Dialog).filter_by(project_id=pid, dialog_type="hermes").one()
+    assert db_session.query(PendingAction).filter_by(dialog_id=dialog.id).count() == 0
+
+    recovery_run = (
+        db_session.query(WritingAgentRun)
+        .filter(WritingAgentRun.project_id == pid, WritingAgentRun.entrypoint == "dialog_auto_plan")
+        .one()
+    )
+    assert recovery_run.status == "success"
+    assert recovery_run.input["planner"]["intent_class"] == "recover_blocked_run"
+    assert [tool["tool_name"] for tool in recovery_run.input["tools"]] == [
+        "describe_agent_tools",
+        "plan_recovery_tools",
+    ]
+
+    assistant_message = (
+        db_session.query(DialogMessage)
+        .filter(DialogMessage.dialog_id == dialog.id, DialogMessage.role == "assistant")
+        .order_by(DialogMessage.created_at.desc(), DialogMessage.id.desc())
+        .first()
+    )
+    assert assistant_message.content == "上一轮 Agent 运行存在可恢复阻塞，我已先规划恢复工具链。"
+    assert assistant_message.action_result["type"] == "plan_recovery_tools"
+    assert assistant_message.action_result["status"] == "success"
+    assert assistant_message.action_result["data"]["agent_run_id"] == recovery_run.id
+    assert assistant_message.action_result["data"]["source_run_id"] == blocked_run.id
 
 
 def test_chat_text_low_detail_continue_uses_first_unwritten_outline_chapter(client, db_session):

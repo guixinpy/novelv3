@@ -32,12 +32,14 @@ from app.models import (
     Setup,
     Storyline,
     WritingAgentRun,
+    WritingAgentStep,
 )
 from app.prompting.providers.dialog import (
     build_dialog_call_payload,
     build_dialog_history_block,
 )
 from app.schemas import ChatIn, ChatOut, PendingActionOut, ProjectDiagnosisOut, ResolveActionIn
+from app.schemas.writing_agent import WritingAgentRunCreate
 from app.services.actions.action_execution_service import ActionExecutionService, chapter_action_params
 from app.services.actions.action_proposal_service import preview_action_to_execution
 from app.services.actions.action_result_service import ActionResultService
@@ -52,6 +54,8 @@ from app.services.writing_agent.dialog_control_plane import (
     prepare_dialog_agent_run_dispatch,
     supports_dialog_agent_control_plane,
 )
+from app.services.writing_agent.planner import latest_recoverable_run_id
+from app.services.writing_agent.run_service import WritingAgentRunService
 from app.services.workspace.bootstrap import build_project_diagnosis
 
 router = APIRouter(tags=["dialogs"])
@@ -101,6 +105,68 @@ def _build_chat_idle_hint(reason: str):
         dialog_state="CHATTING",
         status="idle",
         reason=reason,
+    )
+
+
+def _is_low_detail_continue_text(text: str | None) -> bool:
+    cleaned = str(text or "").strip()
+    if not cleaned:
+        return False
+    if cleaned in {"继续", "继续吧", "接着", "接着写", "继续写", "下一步"}:
+        return True
+    return len(cleaned) <= 12 and any(token in cleaned for token in ("继续", "接着"))
+
+
+async def _handle_dialog_recovery_preview(
+    db: Session,
+    dialog: Dialog,
+    project: Project,
+    diagnosis: ProjectDiagnosisOut,
+    *,
+    request_message_id: str | None,
+) -> ChatOut:
+    service = WritingAgentRunService(db)
+    payload = WritingAgentRunCreate(
+        goal="恢复上一轮阻塞",
+        entrypoint="dialog_auto_plan",
+        input={"auto_plan": True, "intent": "recover_blocked_run"},
+    )
+    tools, planner_output = service.build_auto_plan_tools(project.id, payload)
+    run = service.create_run(
+        project.id,
+        payload,
+        effective_tools=tools,
+        planner_output=planner_output,
+        dialog_id=dialog.id,
+        request_message_id=request_message_id,
+    )
+    run = await service.execute_run(run.id, tools)
+    latest_step = (
+        db.query(WritingAgentStep)
+        .filter(WritingAgentStep.project_id == project.id, WritingAgentStep.run_id == run.id)
+        .order_by(WritingAgentStep.step_index.desc(), WritingAgentStep.id.desc())
+        .first()
+    )
+    output = latest_step.output if latest_step and isinstance(latest_step.output, dict) else {}
+    action_result = {
+        "type": "plan_recovery_tools",
+        "status": run.status,
+        "data": {
+            "agent_run_id": run.id,
+            "source_run_id": output.get("source_run_id"),
+            "recovery": output.get("recovery"),
+            "tools": output.get("tools"),
+            "execution_policy": output.get("execution_policy"),
+        },
+    }
+    reply = "上一轮 Agent 运行存在可恢复阻塞，我已先规划恢复工具链。"
+    _save_message(db, dialog.id, "assistant", reply, action_result=action_result)
+    return ChatOut(
+        message=reply,
+        pending_action=None,
+        ui_hint=_build_chat_idle_hint("恢复预览已生成"),
+        refresh_targets=[],
+        project_diagnosis=diagnosis,
     )
 
 
@@ -871,6 +937,21 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
 
     if (payload.input_type == "text" and payload.text) or (payload.input_type == "command" and effective_text):
         request_message = _save_message(db, dialog.id, "user", effective_text)
+
+    if (
+        payload.input_type in {"text", "command"}
+        and effective_text
+        and dialog.state not in {"pending_action", "running"}
+        and _is_low_detail_continue_text(effective_text)
+        and latest_recoverable_run_id(db, payload.project_id)
+    ):
+        return await _handle_dialog_recovery_preview(
+            db,
+            dialog,
+            project,
+            diagnosis,
+            request_message_id=request_message.id if request_message else None,
+        )
 
     if payload.input_type == "button" and payload.action_type:
         if dialog.state == "running":
