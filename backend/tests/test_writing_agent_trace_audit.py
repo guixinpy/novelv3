@@ -168,6 +168,18 @@ def test_inspect_agent_trace_audit_includes_dialog_approval_events_without_raw_h
                     "approval_contract_bound": True,
                     "approval_contract_version": "phase108.agent_plan_approval_contract.v1",
                     "write_step_count": 1,
+                    "tool_call_ids": ["toolcall:test"],
+                    "resource_bindings": [
+                        {
+                            "tool_call_id": "toolcall:test",
+                            "tool_name": "generate_chapter",
+                            "target_type": "chapter",
+                            "target_id": "chapter:2",
+                            "source_plan_id": "plan:direct",
+                            "source_step_id": "step:write",
+                            "binding_source": "server_derived",
+                        }
+                    ],
                 },
             },
             trace_id=trace.id,
@@ -294,6 +306,8 @@ def test_inspect_agent_trace_audit_includes_dialog_approval_events_without_raw_h
     assert output["event_chain"][1]["run_id"] == run.id
     assert output["event_chain"][2]["tool_name"] == "generate_chapter"
     assert output["event_chain"][3]["reason"] == "approval_contract_verified"
+    assert output["event_chain"][3]["tool_call_ids"] == ["toolcall:test"]
+    assert output["event_chain"][3]["resource_bindings"][0]["target_id"] == "chapter:2"
     assert output["event_chain"][4]["trace_id"] == "trace-chain"
     assert output["event_chain"][5]["message_id"] == result_message.id
     assert "approval:secret-hash" not in str(output["event_chain"])

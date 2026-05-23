@@ -19,7 +19,11 @@ def test_prepare_generate_chapter_execution_returns_agent_approval_contract(db_s
     assert output["status"] == "approval_required"
     assert output["chapter_index"] == 2
     step = output["agent_plan"]["steps"][0]
-    assert {key: value for key, value in step.items() if key != "mutation_fingerprint"} == {
+    assert {
+        key: value
+        for key, value in step.items()
+        if key not in {"mutation_fingerprint", "tool_call_id", "resource_binding"}
+    } == {
         "step_index": 1,
         "step_id": f"direct-generate:{project.id}:chapter:2",
         "tool_name": "generate_chapter",
@@ -31,7 +35,12 @@ def test_prepare_generate_chapter_execution_returns_agent_approval_contract(db_s
     assert step["mutation_fingerprint"]["status"] == "ready"
     assert step["mutation_fingerprint"]["components"]["target_id"] == "chapter:2"
     assert output["mutation_fingerprint"] == step["mutation_fingerprint"]
+    assert step["tool_call_id"].startswith("toolcall:")
+    assert output["tool_call_id"] == step["tool_call_id"]
+    assert output["resource_binding"] == step["resource_binding"]
+    assert output["resource_binding"]["target_id"] == "chapter:2"
     assert output["agent_plan_approval_contract"]["write_steps"][0]["mutation_fingerprint"] == step["mutation_fingerprint"]
+    assert output["agent_plan_approval_contract"]["write_steps"][0]["tool_call_id"] == step["tool_call_id"]
     assert output["agent_plan_approval_contract"]["status"] == "requires_confirmation"
     assert output["agent_plan_approval_contract_hash"].startswith("approval:")
     assert output["side_effects"]["executed"] == []

@@ -4,6 +4,7 @@ import hashlib
 import json
 from typing import Any
 
+from app.services.writing_agent.agent_step_binding import build_agent_step_binding, summarize_resource_binding
 from app.services.writing_agent.mutation_fingerprint import build_mutation_fingerprint
 
 APPROVAL_CONTRACT_VERSION = "phase108.agent_plan_approval_contract.v1"
@@ -17,12 +18,18 @@ def build_agent_plan_approval_contract(plan: dict[str, Any] | None) -> dict[str,
     trace = plan.get("trace") if isinstance(plan.get("trace"), dict) else {}
     steps = plan.get("steps") if isinstance(plan.get("steps"), list) else []
     project_id = plan.get("project_id")
-    write_steps = [_approval_step(step, project_id=project_id) for step in steps if _step_requires_approval(step)]
+    plan_id = trace.get("plan_id") or plan.get("plan_id")
+    source_projection_id = trace.get("source_projection_id") or plan.get("source_projection_id")
+    write_steps = [
+        _approval_step(step, project_id=project_id, plan_id=plan_id, source_projection_id=source_projection_id)
+        for step in steps
+        if _step_requires_approval(step)
+    ]
     payload = {
         "contract_version": APPROVAL_CONTRACT_VERSION,
         "project_id": project_id,
-        "plan_id": trace.get("plan_id") or plan.get("plan_id"),
-        "source_projection_id": trace.get("source_projection_id") or plan.get("source_projection_id"),
+        "plan_id": plan_id,
+        "source_projection_id": source_projection_id,
         "planner_version": trace.get("planner_version") or plan.get("planner_version"),
         "intent_class": plan.get("intent_class"),
         "write_steps": write_steps,
@@ -67,6 +74,7 @@ def verify_agent_plan_approval_contract(
     project_matches = project_id is None or current_contract.get("project_id") == project_id
     tool_contracts = _tool_contract_checks(current_contract.get("write_steps"), tool_metadata_by_name)
     mutation_fingerprints = _mutation_fingerprint_checks(current_contract.get("write_steps"))
+    resource_bindings = _resource_binding_summaries(current_contract.get("write_steps"))
     drift = {
         "hash_matches": None if expected_hash is None else actual_hash == expected_hash,
         "snapshot_hash_matches": None if snapshot_hash is None else snapshot_hash == actual_hash,
@@ -83,6 +91,9 @@ def verify_agent_plan_approval_contract(
             1 for check in mutation_fingerprints if check.get("status") != "ready"
         ),
         "mutation_fingerprints": mutation_fingerprints,
+        "resource_binding_count": len(resource_bindings),
+        "tool_call_ids": [item["tool_call_id"] for item in resource_bindings if item.get("tool_call_id")],
+        "resource_bindings": resource_bindings,
     }
 
     if current_contract.get("status") == "invalid_plan":
@@ -201,7 +212,13 @@ def _step_requires_approval(step: object) -> bool:
     return step.get("requires_confirmation") is True or mutability in _WRITE_MUTABILITY
 
 
-def _approval_step(step: dict[str, Any], *, project_id: object) -> dict[str, Any]:
+def _approval_step(
+    step: dict[str, Any],
+    *,
+    project_id: object,
+    plan_id: object,
+    source_projection_id: object,
+) -> dict[str, Any]:
     approval_step = {
         "step_index": step.get("step_index"),
         "step_id": step.get("step_id"),
@@ -222,7 +239,28 @@ def _approval_step(step: dict[str, Any], *, project_id: object) -> dict[str, Any
         )
     if mutation_fingerprint.get("mutating") is True:
         approval_step["mutation_fingerprint"] = mutation_fingerprint
+        binding = build_agent_step_binding(
+            project_id=str(project_id or ""),
+            plan_id=plan_id,
+            source_projection_id=source_projection_id,
+            step=approval_step,
+            mutation_fingerprint=mutation_fingerprint,
+        )
+        approval_step.update(binding)
     return approval_step
+
+
+def _resource_binding_summaries(write_steps: object) -> list[dict[str, Any]]:
+    if not isinstance(write_steps, list):
+        return []
+    summaries: list[dict[str, Any]] = []
+    for step in write_steps:
+        if not isinstance(step, dict):
+            continue
+        summary = summarize_resource_binding(step.get("resource_binding"))
+        if summary:
+            summaries.append(summary)
+    return summaries
 
 
 def _mutation_fingerprint_checks(write_steps: object) -> list[dict[str, Any]]:

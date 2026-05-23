@@ -1682,7 +1682,19 @@ def test_agent_run_can_execute_approved_longform_chapter_batch_once(client, db_s
     assert output["evidence"]["chapter_content_written"] is True
     assert output["evidence"]["agent_plan_approval_verified"] is True
     assert output["agent_plan_approval_verification"]["status"] == "ready"
-    assert output["approval_verification_event"] == {
+    verification_event = output["approval_verification_event"]
+    assert {
+        key: verification_event[key]
+        for key in (
+            "event_type",
+            "status",
+            "reason",
+            "approval_contract_bound",
+            "approval_contract_version",
+            "write_step_count",
+            "tool_contract_drift_count",
+        )
+    } == {
         "event_type": "contract_verified",
         "status": "ready",
         "reason": "approval_contract_verified",
@@ -1691,6 +1703,10 @@ def test_agent_run_can_execute_approved_longform_chapter_batch_once(client, db_s
         "write_step_count": 1,
         "tool_contract_drift_count": 0,
     }
+    assert verification_event["tool_call_ids"][0].startswith("toolcall:")
+    assert verification_event["resource_bindings"][0]["tool_name"] == "generate_chapter"
+    assert verification_event["resource_bindings"][0]["target_type"] == "chapter"
+    assert verification_event["resource_bindings"][0]["target_id"] == "chapter:2"
     assert output["execution_checkpoint"]["status"] == "completed"
     assert output["side_effects"]["executed"] == [
         "generate_chapter",

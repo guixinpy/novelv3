@@ -7,6 +7,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.models import AIModelCallTrace, DialogMessage, Project, WritingAgentRun, WritingAgentStep
+from app.services.writing_agent.agent_step_binding import summarize_resource_binding
 
 AGENT_TRACE_AUDIT_VERSION = "phase73.agent_trace_audit.v1"
 DEFAULT_AUDIT_LIMIT = 20
@@ -362,7 +363,26 @@ def _verification_event_summary(value: Any) -> dict[str, Any] | None:
         "approval_contract_version": value.get("approval_contract_version"),
         "write_step_count": value.get("write_step_count"),
         "tool_contract_drift_count": value.get("tool_contract_drift_count"),
+        "tool_call_ids": _string_list(value.get("tool_call_ids")),
+        "resource_bindings": _resource_binding_summaries(value.get("resource_bindings")),
     }
+
+
+def _string_list(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value if str(item or "").strip()]
+
+
+def _resource_binding_summaries(value: object) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    summaries: list[dict[str, Any]] = []
+    for item in value:
+        summary = summarize_resource_binding(item)
+        if summary:
+            summaries.append(summary)
+    return summaries
 
 
 def _approval_event_summary(message: DialogMessage, decision: dict[str, Any]) -> dict[str, Any]:

@@ -126,6 +126,8 @@ def test_agent_tool_registry_includes_approved_direct_chapter_generation_tools()
     assert prepare_descriptor.target_type == "chapter_generation_approval"
     assert set(prepare_descriptor.input_schema["required"]) == {"chapter_index"}
     assert prepare_descriptor.output_schema["properties"]["mutation_fingerprint"]["type"] == "object"
+    assert prepare_descriptor.output_schema["properties"]["tool_call_id"]["type"] == "string"
+    assert prepare_descriptor.output_schema["properties"]["resource_binding"]["type"] == "object"
     assert prepare_descriptor.output_schema["properties"]["agent_plan_approval_contract_hash"]["type"] == "string"
 
     assert execute_descriptor is not None

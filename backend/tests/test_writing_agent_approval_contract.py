@@ -42,7 +42,9 @@ def test_approval_contract_requires_confirmation_for_write_steps():
     assert contract["write_step_count"] == 1
     step = contract["write_steps"][0]
     assert {
-        key: value for key, value in step.items() if key != "mutation_fingerprint"
+        key: value
+        for key, value in step.items()
+        if key not in {"mutation_fingerprint", "tool_call_id", "resource_binding"}
     } == {
         "step_index": 2,
         "step_id": "step:write",
@@ -68,6 +70,13 @@ def test_approval_contract_attaches_mutation_fingerprint_to_write_steps():
     assert fingerprint["status"] == "ready"
     assert fingerprint["components"]["target_id"] == "chapter:2"
     assert len(fingerprint["fingerprint"]) == 64
+    assert contract["write_steps"][0]["tool_call_id"].startswith("toolcall:")
+    resource = contract["write_steps"][0]["resource_binding"]
+    assert resource["binding_source"] == "server_derived"
+    assert resource["source_plan_id"] == "plan:abc"
+    assert resource["source_projection_id"] == "projection:1"
+    assert resource["target_type"] == "chapter"
+    assert resource["target_id"] == "chapter:2"
 
 
 def test_approval_contract_is_not_required_for_read_only_plan():
@@ -146,6 +155,9 @@ def test_verify_approval_contract_accepts_matching_hash():
     assert result["current_contract"] == contract
     assert result["drift"]["hash_matches"] is True
     assert result["drift"]["project_matches"] is True
+    assert result["drift"]["resource_binding_count"] == 1
+    assert result["drift"]["tool_call_ids"] == [contract["write_steps"][0]["tool_call_id"]]
+    assert result["drift"]["resource_bindings"][0]["target_id"] == "chapter:2"
     assert result["recommended_next_tools"] == []
 
 
