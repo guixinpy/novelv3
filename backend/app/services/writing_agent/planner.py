@@ -7,7 +7,7 @@ from typing import Any
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.models import ChapterContent
+from app.models import ChapterContent, WritingAgentRun, WritingAgentStep
 from app.schemas.writing_agent import WritingAgentToolRequest
 from app.services.writing_agent.approval_contract import build_agent_plan_approval_contract
 from app.services.writing_agent.tool_contracts import agent_tool_execution_metadata
@@ -76,6 +76,8 @@ def build_writing_agent_run_plan(
             resolved_chapter_index,
             chapter_generation_route=resolved_chapter_generation_route,
         )
+    elif intent_class == "recover_blocked_run":
+        _build_recover_blocked_run_plan(steps, trace, db, project_id)
     else:
         trace["rejected_tools"].append({"tool_name": "*", "reason": "未识别到可安全自动执行的写作意图。"})
 
@@ -149,6 +151,30 @@ def _build_review_plan(
             on_failure="record_issue",
             expected_output="审稿或修订计划报告。",
         )
+
+
+def _build_recover_blocked_run_plan(
+    steps: list[dict[str, Any]],
+    trace: dict[str, Any],
+    db: Session,
+    project_id: str,
+) -> None:
+    run_id = _latest_recoverable_run_id(db, project_id)
+    if not run_id:
+        trace["risk_flags"].append("missing_recoverable_run")
+        trace["rejected_tools"].append({"tool_name": "plan_recovery_tools", "reason": "没有找到可恢复的阻塞或失败运行。"})
+        return
+
+    _append_step(
+        steps,
+        trace,
+        "plan_recovery_tools",
+        {"run_id": run_id},
+        reason="预览上一轮阻塞或失败运行的恢复工具链，不直接执行恢复。",
+        on_missing="stop",
+        on_failure="stop",
+        expected_output="恢复工具链预览。",
+    )
 
 
 def _build_continue_chapter_plan(
@@ -391,6 +417,8 @@ def _classify_intent(goal: str, explicit_intent: str | None, chapter_index: int)
     if explicit_intent:
         return explicit_intent
     text = str(goal or "")
+    if "恢复" in text or any(token in text for token in ("上一轮阻塞", "上次阻塞", "上一轮失败", "上次失败")):
+        return "recover_blocked_run"
     if any(token in text for token in ("设定", "开书", "创建", "新书")):
         return "setup_project"
     if any(token in text for token in ("审稿", "检查", "复查", "问题")):
@@ -413,3 +441,27 @@ def _has_diagnostic(diagnostics: list[dict[str, Any]], tool_name: str, code: str
 
 def _tool_visible(tool_plan: dict[str, Any], tool_name: str) -> bool:
     return any(tool.get("name") == tool_name for tool in tool_plan.get("visible_tools", []))
+
+
+def _latest_recoverable_run_id(db: Session, project_id: str) -> str | None:
+    runs = (
+        db.query(WritingAgentRun)
+        .filter(WritingAgentRun.project_id == project_id, WritingAgentRun.status.in_(("blocked", "failed")))
+        .order_by(WritingAgentRun.updated_at.desc(), WritingAgentRun.id.desc())
+        .limit(20)
+        .all()
+    )
+    for run in runs:
+        steps = (
+            db.query(WritingAgentStep)
+            .filter(WritingAgentStep.project_id == project_id, WritingAgentStep.run_id == run.id)
+            .order_by(WritingAgentStep.step_index.desc(), WritingAgentStep.id.desc())
+            .all()
+        )
+        for step in steps:
+            output = step.output if isinstance(step.output, dict) else {}
+            envelope = output.get("agent_tool_result") if isinstance(output.get("agent_tool_result"), dict) else {}
+            recovery = envelope.get("recovery") if isinstance(envelope.get("recovery"), dict) else {}
+            if recovery.get("status") == "recommended":
+                return str(run.id)
+    return None

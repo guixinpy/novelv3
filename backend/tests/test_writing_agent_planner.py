@@ -1,4 +1,4 @@
-from app.models import ChapterContent, Outline, Project, Setup, Storyline
+from app.models import ChapterContent, Outline, Project, Setup, Storyline, WritingAgentRun, WritingAgentStep
 from app.services.writing_agent.planner import build_writing_agent_run_plan
 
 
@@ -90,6 +90,54 @@ def test_planner_can_prepare_next_chapter_through_approved_route(db_session):
     assert prepare_step["mutability"] == "read"
     assert prepare_step["requires_confirmation"] is False
     assert prepare_step["params"] == {"chapter_index": 2}
+    assert plan["approval_contract"]["status"] == "not_required"
+    assert plan["approval_contract"]["write_steps"] == []
+
+
+def test_planner_routes_recovery_intent_to_latest_recoverable_run(db_session):
+    project = _seed_project(db_session, outline_chapters=[2], generated_chapters=[1])
+    blocked_run = WritingAgentRun(
+        project_id=project.id,
+        goal="阻塞的直接章节执行",
+        status="blocked",
+        entrypoint="api",
+        input={},
+    )
+    db_session.add(blocked_run)
+    db_session.flush()
+    db_session.add(
+        WritingAgentStep(
+            run_id=blocked_run.id,
+            project_id=project.id,
+            step_index=1,
+            tool_name="execute_generate_chapter_with_approval",
+            status="blocked",
+            input={"params": {"chapter_index": 2}},
+            output={
+                "status": "blocked",
+                "agent_tool_result": {
+                    "recovery": {
+                        "status": "recommended",
+                        "source_tool": "execute_generate_chapter_with_approval",
+                        "reason_code": "resource_binding_target_mismatch",
+                        "next_tool": "prepare_generate_chapter_execution",
+                        "next_params": {"chapter_index": 2},
+                    }
+                },
+            },
+        )
+    )
+    db_session.commit()
+
+    plan = build_writing_agent_run_plan(db_session, project.id, goal="恢复上一轮阻塞")
+
+    assert plan["status"] == "completed"
+    assert plan["intent_class"] == "recover_blocked_run"
+    assert _tool_names(plan) == ["describe_agent_tools", "plan_recovery_tools"]
+    recovery_step = plan["steps"][1]
+    assert recovery_step["params"] == {"run_id": blocked_run.id}
+    assert recovery_step["mutability"] == "read"
+    assert recovery_step["requires_confirmation"] is False
     assert plan["approval_contract"]["status"] == "not_required"
     assert plan["approval_contract"]["write_steps"] == []
 
