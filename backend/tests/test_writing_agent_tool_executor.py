@@ -63,6 +63,7 @@ def test_agent_core_tool_adapters_live_in_dedicated_module():
         "inspect_agent_dialog_route_projection",
         "inspect_agent_route_preference_projection",
         "plan_agent_route_approval_opt_in",
+        "preview_pending_action_route_approval_opt_in_apply",
         "inspect_agent_dialog_control_plane_projection",
         "inspect_agent_intent_projection",
         "inspect_agent_tool_contracts",
@@ -528,6 +529,173 @@ async def test_tool_executor_blocks_missing_pending_action_route_opt_in_plan(db_
     assert result.output["write_performed"] is False
     assert result.output["risk"]["codes"] == ["pending_action_not_found"]
     assert result.output["trace"]["pending_action_id"] == "missing-pending-action"
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_previews_pending_action_route_opt_in_apply_diff(db_session):
+    project = Project(name="Pending Route Opt In Apply Preview")
+    db_session.add(project)
+    db_session.commit()
+    dialog = Dialog(project_id=project.id, state="pending_action")
+    db_session.add(dialog)
+    db_session.commit()
+    route = build_dialog_agent_route("preview_setup", source="slash_command", command_name="setup")
+    pending = PendingAction(
+        dialog_id=dialog.id,
+        type="preview_setup",
+        params={"project_id": project.id, "agent_route": route, "command_args": "雾港悬疑"},
+    )
+    db_session.add(pending)
+    db_session.commit()
+    original_params = dict(pending.params)
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-route-apply-preview"),
+        WritingAgentToolRequest(
+            tool_name="preview_pending_action_route_approval_opt_in_apply",
+            params={"pending_action_id": pending.id},
+        ),
+    )
+
+    db_session.refresh(pending)
+    diff = result.output["params_diff"]["agent_route"]
+    assert result.handled is True
+    assert result.output["status"] == "ready"
+    assert result.output["write_performed"] is False
+    assert result.output["route_plan"]["status"] == "ready"
+    assert result.output["params_before"] == original_params
+    assert result.output["params_after"]["agent_route"]["use_agent_approval_chain"] is True
+    assert diff["before"] == original_params["agent_route"]
+    assert diff["after"]["use_agent_approval_chain"] is True
+    assert pending.params == original_params
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_previews_pending_action_route_opt_in_apply_already_declared_no_diff(db_session):
+    project = Project(name="Pending Route Opt In Apply Preview Declared")
+    db_session.add(project)
+    db_session.commit()
+    dialog = Dialog(project_id=project.id, state="pending_action")
+    db_session.add(dialog)
+    db_session.commit()
+    route = {
+        **build_dialog_agent_route("preview_setup", source="slash_command", command_name="setup"),
+        "use_agent_approval_chain": True,
+    }
+    pending = PendingAction(
+        dialog_id=dialog.id,
+        type="preview_setup",
+        params={"project_id": project.id, "agent_route": route},
+    )
+    db_session.add(pending)
+    db_session.commit()
+    original_params = dict(pending.params)
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-route-apply-preview-declared"),
+        WritingAgentToolRequest(
+            tool_name="preview_pending_action_route_approval_opt_in_apply",
+            params={"pending_action_id": pending.id},
+        ),
+    )
+
+    db_session.refresh(pending)
+    assert result.handled is True
+    assert result.output["status"] == "already_declared"
+    assert result.output["write_performed"] is False
+    assert result.output["params_diff"] == {}
+    assert result.output["params_after"] == original_params
+    assert pending.params == original_params
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_blocks_missing_pending_action_route_opt_in_apply_preview(db_session):
+    project = Project(name="Missing Pending Route Opt In Apply Preview")
+    db_session.add(project)
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-missing-route-apply-preview"),
+        WritingAgentToolRequest(
+            tool_name="preview_pending_action_route_approval_opt_in_apply",
+            params={"pending_action_id": "missing-pending-action"},
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output["status"] == "blocked"
+    assert result.output["write_performed"] is False
+    assert result.output["risk"]["codes"] == ["pending_action_not_found"]
+    assert result.output["params_diff"] == {}
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_blocks_pending_action_route_opt_in_apply_preview_without_agent_route(db_session):
+    project = Project(name="Pending Route Opt In Apply Preview Missing Route")
+    db_session.add(project)
+    db_session.commit()
+    dialog = Dialog(project_id=project.id, state="pending_action")
+    db_session.add(dialog)
+    db_session.commit()
+    pending = PendingAction(
+        dialog_id=dialog.id,
+        type="preview_setup",
+        params={"project_id": project.id, "command_args": "雾港悬疑"},
+    )
+    db_session.add(pending)
+    db_session.commit()
+    original_params = dict(pending.params)
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-route-apply-preview-missing-route"),
+        WritingAgentToolRequest(
+            tool_name="preview_pending_action_route_approval_opt_in_apply",
+            params={"pending_action_id": pending.id},
+        ),
+    )
+
+    db_session.refresh(pending)
+    assert result.handled is True
+    assert result.output["status"] == "blocked"
+    assert result.output["write_performed"] is False
+    assert result.output["risk"]["codes"] == ["pending_action_agent_route_missing"]
+    assert result.output["params_diff"] == {}
+    assert pending.params == original_params
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_blocks_pending_action_route_opt_in_apply_preview_with_top_level_override(db_session):
+    project = Project(name="Pending Route Opt In Apply Preview Override")
+    db_session.add(project)
+    db_session.commit()
+    dialog = Dialog(project_id=project.id, state="pending_action")
+    db_session.add(dialog)
+    db_session.commit()
+    route = build_dialog_agent_route("preview_setup", source="slash_command", command_name="setup")
+    pending = PendingAction(
+        dialog_id=dialog.id,
+        type="preview_setup",
+        params={"project_id": project.id, "agent_route": route, "use_agent_approval_chain": False},
+    )
+    db_session.add(pending)
+    db_session.commit()
+    original_params = dict(pending.params)
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-route-apply-preview-override"),
+        WritingAgentToolRequest(
+            tool_name="preview_pending_action_route_approval_opt_in_apply",
+            params={"pending_action_id": pending.id},
+        ),
+    )
+
+    db_session.refresh(pending)
+    assert result.handled is True
+    assert result.output["status"] == "blocked"
+    assert result.output["write_performed"] is False
+    assert result.output["risk"]["codes"] == ["pending_action_top_level_override"]
+    assert result.output["params_diff"] == {}
+    assert pending.params == original_params
 
 
 @pytest.mark.asyncio
@@ -1616,6 +1784,7 @@ def test_tool_executor_static_adapter_names_are_report_or_agent_native_tools():
         "inspect_agent_write_gate_coverage",
         "inspect_agent_route_preference_projection",
         "plan_agent_route_approval_opt_in",
+        "preview_pending_action_route_approval_opt_in_apply",
         "inspect_agent_knowledge_base_route",
         "record_agent_knowledge_base_candidate",
         "import_setup_world_model",
@@ -1700,6 +1869,16 @@ def test_tool_executor_exposes_route_approval_opt_in_plan_adapter_metadata():
         "category": "preflight",
         "mutability": "read",
         "handler_name": "_plan_agent_route_approval_opt_in",
+    }
+
+
+def test_tool_executor_exposes_route_opt_in_apply_preview_adapter_metadata():
+    assert writing_agent_tool_adapter_metadata("preview_pending_action_route_approval_opt_in_apply") == {
+        "tool_name": "preview_pending_action_route_approval_opt_in_apply",
+        "adapter_type": "static",
+        "category": "preflight",
+        "mutability": "read",
+        "handler_name": "_preview_pending_action_route_approval_opt_in_apply",
     }
 
 
@@ -1844,6 +2023,7 @@ def test_tool_executor_lists_unhandled_internal_tools_for_migration_tracking():
     assert "inspect_agent_write_gate_coverage" not in names
     assert "inspect_agent_route_preference_projection" not in names
     assert "plan_agent_route_approval_opt_in" not in names
+    assert "preview_pending_action_route_approval_opt_in_apply" not in names
     assert "inspect_agent_knowledge_base_route" not in names
     assert "record_agent_knowledge_base_candidate" not in names
     assert "execute_longform_chapter_batch_preflight" not in names

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 from typing import Any
 
 from app.core.chat_commands import CHAT_COMMAND_REGISTRY, agent_slash_command_routes
@@ -15,6 +16,7 @@ SLASH_COMMAND_ROUTE_PROJECTION_VERSION = "phase103.slash_command_route_projectio
 DIALOG_ROUTE_PROJECTION_VERSION = "phase104.dialog_route_projection.v1"
 ROUTE_PREFERENCE_PROJECTION_VERSION = "phase115.route_preference_projection.v1"
 ROUTE_APPROVAL_OPT_IN_PLAN_VERSION = "phase196.route_approval_opt_in_plan.v1"
+PENDING_ACTION_ROUTE_OPT_IN_APPLY_PREVIEW_VERSION = "phase198.pending_action_route_opt_in_apply_preview.v1"
 DIALOG_ROUTE_SOURCES = {"slash_command", "text_intent", "button_action"}
 APPROVED_GENERATION_CHAINS = {
     ("generate_setup", "preview_setup"): (
@@ -270,6 +272,77 @@ def plan_agent_route_approval_opt_in(
             "runtime_behavior_changed": False,
         },
     }
+
+
+def preview_pending_action_route_approval_opt_in_apply(
+    *,
+    pending_action_id: str,
+    pending_action_type: str | None,
+    pending_params: dict[str, Any] | None,
+    route_plan: dict[str, Any],
+) -> dict[str, Any]:
+    params_before = copy.deepcopy(dict(pending_params or {}))
+    plan_status = str(route_plan.get("status") or "")
+    metadata_patch = copy.deepcopy(dict(route_plan.get("metadata_patch") or {}))
+    route_after = copy.deepcopy(route_plan.get("route_after")) if isinstance(route_plan.get("route_after"), dict) else None
+    params_after = copy.deepcopy(params_before)
+    params_diff: dict[str, Any] = {}
+    if plan_status == "ready" and metadata_patch and route_after is not None:
+        before_route = params_before.get("agent_route")
+        params_after["agent_route"] = route_after
+        if before_route != route_after:
+            params_diff["agent_route"] = {"before": before_route, "after": route_after}
+    status = plan_status if plan_status in {"ready", "already_declared", "blocked", "noop"} else "blocked"
+    return {
+        "status": status,
+        "version": PENDING_ACTION_ROUTE_OPT_IN_APPLY_PREVIEW_VERSION,
+        "write_performed": False,
+        "pending_action_id": pending_action_id,
+        "pending_action_type": pending_action_type,
+        "params_before": params_before,
+        "params_after": params_after,
+        "params_diff": params_diff,
+        "route_plan": route_plan,
+        "risk": dict(route_plan.get("risk") or {}),
+        "trace": {
+            "pending_action_id": pending_action_id,
+            "pending_action_type": pending_action_type,
+            "runtime_behavior_changed": False,
+        },
+    }
+
+
+def blocked_pending_action_route_approval_opt_in_apply_preview(
+    *,
+    pending_action_id: str,
+    pending_action_type: str | None,
+    pending_params: dict[str, Any] | None,
+    risk_code: str,
+) -> dict[str, Any]:
+    route_plan = {
+        "status": "blocked",
+        "version": ROUTE_APPROVAL_OPT_IN_PLAN_VERSION,
+        "can_apply": False,
+        "write_performed": False,
+        "metadata_patch": {},
+        "route_before": None,
+        "route_after": None,
+        "preference": None,
+        "suggestion": None,
+        "missing_preferred_tools": [],
+        "risk": {
+            "codes": [risk_code],
+            "missing_preferred_tools": [],
+            "guardrails": _approval_opt_in_guardrails(),
+        },
+        "trace": {"reason_code": risk_code, "runtime_behavior_changed": False},
+    }
+    return preview_pending_action_route_approval_opt_in_apply(
+        pending_action_id=pending_action_id,
+        pending_action_type=pending_action_type,
+        pending_params=pending_params,
+        route_plan=route_plan,
+    )
 
 
 def _route_preference(

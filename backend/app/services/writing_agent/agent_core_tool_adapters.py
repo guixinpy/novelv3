@@ -85,6 +85,12 @@ def build_agent_core_tool_adapters(
             category="preflight",
             mutability="read",
         ),
+        "preview_pending_action_route_approval_opt_in_apply": WritingAgentToolAdapter(
+            "preview_pending_action_route_approval_opt_in_apply",
+            _preview_pending_action_route_approval_opt_in_apply(static_adapter_tool_names_provider),
+            category="preflight",
+            mutability="read",
+        ),
         "inspect_agent_dialog_control_plane_projection": WritingAgentToolAdapter(
             "inspect_agent_dialog_control_plane_projection",
             _inspect_agent_dialog_control_plane_projection,
@@ -341,6 +347,78 @@ def _plan_agent_route_approval_opt_in(
 
     plan_agent_route_approval_opt_in_adapter.__name__ = "_plan_agent_route_approval_opt_in"
     return plan_agent_route_approval_opt_in_adapter
+
+
+def _preview_pending_action_route_approval_opt_in_apply(
+    static_adapter_tool_names_provider: StaticAdapterToolNamesProvider,
+) -> Callable[[WritingAgentToolContext, WritingAgentToolRequest], dict[str, Any]]:
+    def preview_pending_action_route_approval_opt_in_apply_adapter(
+        context: WritingAgentToolContext,
+        tool: WritingAgentToolRequest,
+    ) -> dict[str, Any]:
+        from app.models import Dialog, PendingAction
+        from app.services.actions.action_execution_service import SUPPORTED_ACTION_EXECUTION_TYPES
+        from app.services.writing_agent.slash_command_route import (
+            blocked_pending_action_route_approval_opt_in_apply_preview,
+            plan_agent_route_approval_opt_in,
+            preview_pending_action_route_approval_opt_in_apply,
+        )
+
+        pending_action_id = str(tool.params.get("pending_action_id") or "").strip()
+        pending = context.db.query(PendingAction).filter(PendingAction.id == pending_action_id).first()
+        if pending is None:
+            return blocked_pending_action_route_approval_opt_in_apply_preview(
+                pending_action_id=pending_action_id,
+                pending_action_type=None,
+                pending_params=None,
+                risk_code="pending_action_not_found",
+            )
+        dialog = context.db.query(Dialog).filter(Dialog.id == pending.dialog_id).first()
+        if dialog is None or dialog.project_id != context.project_id:
+            return blocked_pending_action_route_approval_opt_in_apply_preview(
+                pending_action_id=pending_action_id,
+                pending_action_type=pending.type,
+                pending_params=None,
+                risk_code="pending_action_not_found",
+            )
+        pending_params = pending.params if isinstance(pending.params, dict) else {}
+        agent_route = pending_params.get("agent_route")
+        if not isinstance(agent_route, dict):
+            return blocked_pending_action_route_approval_opt_in_apply_preview(
+                pending_action_id=pending.id,
+                pending_action_type=pending.type,
+                pending_params=pending_params,
+                risk_code="pending_action_agent_route_missing",
+            )
+        if pending_params.get("use_agent_approval_chain") is False:
+            return blocked_pending_action_route_approval_opt_in_apply_preview(
+                pending_action_id=pending.id,
+                pending_action_type=pending.type,
+                pending_params=pending_params,
+                risk_code="pending_action_top_level_override",
+            )
+        route_plan = plan_agent_route_approval_opt_in(
+            action_type=str(pending.type or "").strip() or None,
+            agent_route=agent_route,
+            static_adapter_tool_names=static_adapter_tool_names_provider(),
+            action_execution_tool_names=set(SUPPORTED_ACTION_EXECUTION_TYPES),
+        )
+        preview = preview_pending_action_route_approval_opt_in_apply(
+            pending_action_id=pending.id,
+            pending_action_type=pending.type,
+            pending_params=pending_params,
+            route_plan=route_plan,
+        )
+        preview["trace"] = {
+            **preview.get("trace", {}),
+            "pending_action_route_source": "pending_action",
+        }
+        return preview
+
+    preview_pending_action_route_approval_opt_in_apply_adapter.__name__ = (
+        "_preview_pending_action_route_approval_opt_in_apply"
+    )
+    return preview_pending_action_route_approval_opt_in_apply_adapter
 
 
 def _inspect_agent_dialog_control_plane_projection(
