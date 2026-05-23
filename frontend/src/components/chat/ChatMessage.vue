@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import ActionCard from './ActionCard.vue'
 import ChatSummaryCard from './ChatSummaryCard.vue'
-import { getAgentRunIdFromMessage } from './agentRunProjection'
+import { buildAgentRunActionResultView, getAgentRunIdFromMessage } from './agentRunProjection'
 
 const props = defineProps<{
   msg: any
@@ -44,10 +44,14 @@ const GENERATING_LABELS: Record<string, string> = {
   preview_chapter: '正文',
 }
 
+const projectedActionResultView = computed(() => (
+  props.msg.action_result_view || buildAgentRunActionResultView(props.msg.action_result)
+))
+
 const resultText = computed(() => {
   const r = props.msg.action_result
   if (!r) return ''
-  const viewLabel = props.msg.action_result_view?.label
+  const viewLabel = projectedActionResultView.value?.label
   if (typeof viewLabel === 'string' && viewLabel.trim()) return viewLabel
   const label = TYPE_LABELS[r.type] || r.type
   if (r.status === 'success') return `✓ ${label}执行成功`
@@ -59,7 +63,7 @@ const resultText = computed(() => {
 })
 
 const resultVariant = computed(() => {
-  const viewVariant = props.msg.action_result_view?.variant
+  const viewVariant = projectedActionResultView.value?.variant
   if (viewVariant === 'success' || viewVariant === 'error' || viewVariant === 'neutral') return viewVariant
   const status = props.msg.action_result?.status
   if (status === 'success') return 'success'
@@ -68,7 +72,7 @@ const resultVariant = computed(() => {
 })
 
 const resultDetailItems = computed(() => {
-  const items = props.msg.action_result_view?.detail_items
+  const items = projectedActionResultView.value?.detail_items
   if (!Array.isArray(items)) return []
   return items.filter((item: any) => (
     typeof item?.label === 'string'

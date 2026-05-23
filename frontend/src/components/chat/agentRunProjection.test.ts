@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { buildAgentRunExecutionFeedback, getAgentRunIdFromMessage, isAgentRunActionType } from './agentRunProjection'
+import {
+  buildAgentRunActionResultView,
+  buildAgentRunExecutionFeedback,
+  getAgentRunIdFromMessage,
+  isAgentRunActionType,
+} from './agentRunProjection'
 
 describe('agentRunProjection', () => {
   it('extracts run ids only from supported agent run action messages', () => {
@@ -34,6 +39,34 @@ describe('agentRunProjection', () => {
     expect(isAgentRunActionType('plan_recovery_tools')).toBe(true)
     expect(isAgentRunActionType('ui_recovery_execute')).toBe(true)
     expect(isAgentRunActionType('generate_chapter')).toBe(false)
+  })
+
+  it('builds fallback views for recovery preview action results', () => {
+    const view = buildAgentRunActionResultView({
+      type: 'plan_recovery_tools',
+      status: 'success',
+      data: {
+        source_run_id: 'source-run-123456',
+        recovery: { status: 'recommended' },
+        execution_policy: { status: 'ready' },
+        tools: [{ tool_name: 'prepare_generate_chapter_execution' }],
+      },
+    })
+
+    expect(view?.label).toBe('恢复预览已生成')
+    expect(view?.variant).toBe('success')
+    expect(view?.detail_items).toContainEqual({ label: '来源运行', value: 'source-r' })
+    expect(view?.detail_items).toContainEqual({ label: '恢复状态', value: '建议恢复' })
+    expect(view?.detail_items).toContainEqual({ label: '执行策略', value: '可执行' })
+    expect(view?.detail_items).toContainEqual({ label: '恢复工具', value: '1 个' })
+  })
+
+  it('does not build fallback views for unknown action results', () => {
+    expect(buildAgentRunActionResultView({
+      type: 'generate_chapter',
+      status: 'success',
+      data: { agent_run_id: 'run-hidden' },
+    })).toBeNull()
   })
 
   it('builds recovery execution feedback without leaking plan hash', () => {

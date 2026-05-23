@@ -216,6 +216,36 @@ describe('ChatMessage', () => {
     expect(wrapper.emitted('openAgentRun')).toEqual([['run-1']])
   })
 
+  it('renders recovery preview fallback labels when backend view is missing', () => {
+    const wrapper = mount(ChatMessage, {
+      props: {
+        msg: {
+          role: 'assistant',
+          message_type: 'plain',
+          content: '上一轮 Agent 运行存在可恢复阻塞，我已先规划恢复工具链。',
+          action_result: {
+            type: 'plan_recovery_tools',
+            status: 'success',
+            data: {
+              agent_run_id: 'run-1',
+              source_run_id: 'source-run-123456',
+              recovery: { status: 'recommended' },
+              execution_policy: { status: 'ready' },
+              tools: [{ tool_name: 'prepare_generate_chapter_execution' }],
+            },
+          },
+        },
+        isLatest: false,
+        loading: false,
+      },
+    })
+
+    expect(wrapper.text()).toContain('恢复预览已生成')
+    expect(wrapper.text()).toContain('执行策略')
+    expect(wrapper.text()).toContain('可执行')
+    expect(wrapper.text()).not.toContain('plan_recovery_tools')
+  })
+
   it('emits openAgentRun from recovery execution action results', async () => {
     const wrapper = mount(ChatMessage, {
       props: {
