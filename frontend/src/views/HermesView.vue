@@ -375,6 +375,11 @@ async function openAgentRun(runId: string) {
   }
 }
 
+async function refreshAgentRun() {
+  if (!activeAgentRunId.value) return
+  await openAgentRun(activeAgentRunId.value)
+}
+
 function closeAgentRun() {
   activeAgentRunId.value = null
   activeAgentRun.value = null
@@ -491,6 +496,7 @@ async function executeRecoveryFromRun(payload: RecoveryExecutePayload) {
       :loading="agentRunLoading"
       :error="agentRunError"
       @close="closeAgentRun"
+      @refresh="refreshAgentRun"
       @execute-recovery="executeRecoveryFromRun"
     />
   </div>

@@ -12,6 +12,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   close: []
+  refresh: []
   executeRecovery: [payload: { sourceRunId: string; planHash: string }]
 }>()
 
@@ -72,6 +73,10 @@ function close() {
   emit('close')
 }
 
+function refreshRun() {
+  emit('refresh')
+}
+
 function executeRecovery() {
   if (!recoveryExecutePayload.value) return
   emit('executeRecovery', recoveryExecutePayload.value)
@@ -122,9 +127,19 @@ function guardrailStatusLabel(status: unknown) {
       <p v-else-if="!run" class="agent-run-drawer__state">暂无运行详情。</p>
       <template v-else>
         <section class="agent-run-drawer__summary">
-          <div>
-            <span class="agent-run-drawer__eyebrow">目标</span>
-            <h4>{{ run.goal }}</h4>
+          <div class="agent-run-drawer__summary-head">
+            <div>
+              <span class="agent-run-drawer__eyebrow">目标</span>
+              <h4>{{ run.goal }}</h4>
+            </div>
+            <button
+              type="button"
+              class="agent-run-drawer__ghost"
+              data-testid="refresh-agent-run"
+              @click="refreshRun"
+            >
+              刷新运行
+            </button>
           </div>
           <dl>
             <div>
@@ -261,6 +276,13 @@ function guardrailStatusLabel(status: unknown) {
   gap: var(--space-3);
 }
 
+.agent-run-drawer__summary-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
 .agent-run-drawer__eyebrow {
   display: block;
   margin-bottom: var(--space-1);
@@ -378,6 +400,24 @@ function guardrailStatusLabel(status: unknown) {
 
 .agent-run-drawer__execute:hover {
   filter: brightness(0.96);
+}
+
+.agent-run-drawer__ghost {
+  min-height: 30px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-white);
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+  font-weight: var(--font-medium);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.agent-run-drawer__ghost:hover {
+  border-color: var(--color-border-strong);
+  color: var(--color-text-primary);
 }
 
 .agent-run-drawer__steps {

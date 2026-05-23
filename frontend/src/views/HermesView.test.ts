@@ -96,8 +96,8 @@ async function mountHermesView(path = '/projects/project-1/hermes') {
         ModelTraceDrawer: { template: '<div />' },
         AgentRunDrawer: {
           props: ['open', 'run'],
-          emits: ['executeRecovery'],
-          template: '<div v-if="open" data-testid="agent-run-drawer">{{ run && run.id }}<button data-testid="stub-execute-recovery" @click="$emit(\'executeRecovery\', { sourceRunId: \'source-run-1\', planHash: \'plan-hash-1\' })">execute</button></div>',
+          emits: ['executeRecovery', 'refresh'],
+          template: '<div v-if="open" data-testid="agent-run-drawer">{{ run && run.id }}<button data-testid="stub-execute-recovery" @click="$emit(\'executeRecovery\', { sourceRunId: \'source-run-1\', planHash: \'plan-hash-1\' })">execute</button><button data-testid="stub-refresh-agent-run" @click="$emit(\'refresh\')">refresh</button></div>',
         },
       },
     },
@@ -208,6 +208,45 @@ describe('HermesView', () => {
 
     expect(api.getAgentRun).toHaveBeenCalledWith('project-1', 'run-1')
     expect(wrapper.get('[data-testid="agent-run-drawer"]').text()).toContain('run-1')
+
+    wrapper.unmount()
+  })
+
+  it('refreshes the active writing agent run detail from the drawer', async () => {
+    const wrapper = await mountHermesView()
+
+    vi.mocked(api.getAgentRun)
+      .mockResolvedValueOnce({
+        id: 'run-1',
+        project_id: 'project-1',
+        goal: '恢复上一轮阻塞',
+        status: 'running',
+        entrypoint: 'dialog_auto_plan',
+        input: {},
+        output: null,
+        error: null,
+        steps: [],
+      } as any)
+      .mockResolvedValueOnce({
+        id: 'run-1-refreshed',
+        project_id: 'project-1',
+        goal: '恢复上一轮阻塞',
+        status: 'success',
+        entrypoint: 'dialog_auto_plan',
+        input: {},
+        output: null,
+        error: null,
+        steps: [],
+      } as any)
+
+    await wrapper.get('[data-testid="stub-open-agent-run"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="stub-refresh-agent-run"]').trigger('click')
+    await flushPromises()
+
+    expect(api.getAgentRun).toHaveBeenNthCalledWith(1, 'project-1', 'run-1')
+    expect(api.getAgentRun).toHaveBeenNthCalledWith(2, 'project-1', 'run-1')
+    expect(wrapper.get('[data-testid="agent-run-drawer"]').text()).toContain('run-1-refreshed')
 
     wrapper.unmount()
   })

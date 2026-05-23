@@ -9,7 +9,7 @@ describe('AgentRunDrawer', () => {
   })
 
   it('renders writing agent run detail and steps', () => {
-    mount(AgentRunDrawer, {
+    const wrapper = mount(AgentRunDrawer, {
       attachTo: document.body,
       props: {
         open: true,
@@ -55,6 +55,11 @@ describe('AgentRunDrawer', () => {
     expect(document.body.textContent).toContain('run-1')
     expect(document.body.textContent).toContain('describe_agent_tools')
     expect(document.body.textContent).toContain('plan_recovery_tools')
+
+    const refresh = document.body.querySelector('[data-testid="refresh-agent-run"]') as HTMLButtonElement
+    expect(refresh).not.toBeNull()
+    refresh.click()
+    expect(wrapper.emitted('refresh')).toEqual([[]])
   })
 
   it('renders loading and error states', () => {
