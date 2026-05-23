@@ -386,6 +386,31 @@ async def test_tool_executor_handles_inspect_agent_route_preference_projection(d
 
 
 @pytest.mark.asyncio
+async def test_tool_executor_handles_inspect_agent_route_preference_projection_opt_in_metadata(db_session):
+    project = Project(name="Route Preference Projection Opt In")
+    db_session.add(project)
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-route-preference-opt-in"),
+        WritingAgentToolRequest(
+            tool_name="inspect_agent_route_preference_projection",
+            params={
+                "source": "slash_command",
+                "approval_chain_opt_in_action_types": ["preview_setup"],
+            },
+        ),
+    )
+
+    setup_route = next(route for route in result.output["routes"] if route["action_type"] == "preview_setup")
+    assert result.handled is True
+    assert result.output["summary"]["opt_in_declared_count"] == 1
+    assert result.output["trace"]["approval_chain_opt_in_action_types"] == ["preview_setup"]
+    assert setup_route["approval_chain_opt_in_declared"] is True
+    assert setup_route["migration_status"] == "opt_in_declared"
+
+
+@pytest.mark.asyncio
 async def test_tool_executor_handles_dialog_control_plane_projection(db_session):
     project = Project(name="Dialog Control Plane Projection")
     db_session.add(project)

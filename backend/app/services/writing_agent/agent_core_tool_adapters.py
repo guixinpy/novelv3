@@ -258,6 +258,7 @@ def _inspect_agent_route_preference_projection(
 
         return inspect_agent_route_preference_projection(
             source=str(tool.params.get("source") or "").strip() or None,
+            approval_chain_opt_in_action_types=tool.params.get("approval_chain_opt_in_action_types"),
             static_adapter_tool_names=static_adapter_tool_names_provider(),
             action_execution_tool_names=set(SUPPORTED_ACTION_EXECUTION_TYPES),
         )

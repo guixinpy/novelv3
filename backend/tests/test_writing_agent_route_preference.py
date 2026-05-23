@@ -63,9 +63,37 @@ def test_route_preference_recommends_approved_chains_for_hermes_routes_without_m
         assert route["runtime_tool_name"] == route["current_tool_name"]
         assert route["runtime_route_changed"] is False
         assert route["runtime_behavior_changed"] is False
+        assert route["approval_chain_opt_in_param_name"] == "use_agent_approval_chain"
+        assert route["approval_chain_opt_in_declared"] is False
+        assert route["approval_chain_opt_in_available"] is True
         assert route["migration_status"] == "recommended_not_applied"
         assert route["missing_preferred_tools"] == []
     assert output["trace"]["runtime_behavior_changed"] is False
+
+
+def test_route_preference_marks_explicit_approval_opt_in_metadata():
+    output = inspect_agent_route_preference_projection(
+        source="slash_command",
+        approval_chain_opt_in_action_types=["preview_setup"],
+        static_adapter_tool_names=_static_adapter_tools(),
+        action_execution_tool_names=_action_execution_tools(),
+    )
+    setup_route = next(route for route in output["routes"] if route["action_type"] == "preview_setup")
+    storyline_route = next(route for route in output["routes"] if route["action_type"] == "preview_storyline")
+
+    assert output["status"] == "ready"
+    assert output["summary"]["opt_in_declared_count"] == 1
+    assert output["summary"]["recommended_migration_count"] == 3
+    assert output["trace"]["approval_chain_opt_in_action_types"] == ["preview_setup"]
+    assert setup_route["use_agent_approval_chain"] is True
+    assert setup_route["approval_chain_opt_in_param_name"] == "use_agent_approval_chain"
+    assert setup_route["approval_chain_opt_in_declared"] is True
+    assert setup_route["approval_chain_opt_in_available"] is True
+    assert setup_route["migration_status"] == "opt_in_declared"
+    assert setup_route["runtime_route_changed"] is False
+    assert setup_route["runtime_behavior_changed"] is False
+    assert storyline_route["approval_chain_opt_in_declared"] is False
+    assert storyline_route["migration_status"] == "recommended_not_applied"
 
 
 def test_route_preference_can_filter_to_text_intent_source():

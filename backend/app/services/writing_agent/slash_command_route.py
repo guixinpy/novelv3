@@ -4,6 +4,7 @@ from typing import Any
 
 from app.core.chat_commands import CHAT_COMMAND_REGISTRY, agent_slash_command_routes
 from app.core.dialog_agent_routes import (
+    DIALOG_AGENT_ROUTE_APPROVAL_CHAIN_OPT_IN_KEY,
     build_dialog_agent_route,
     dialog_action_to_agent_tool_name,
     preview_dialog_action_types,
@@ -88,10 +89,12 @@ def inspect_agent_slash_command_route(
 def inspect_agent_dialog_route_projection(
     *,
     source: str | None = None,
+    approval_chain_opt_in_action_types: Any = None,
     static_adapter_tool_names: set[str] | None = None,
     action_execution_tool_names: set[str] | None = None,
 ) -> dict[str, Any]:
     selected_source = (source or "").strip() or None
+    opt_in_action_types = _normalize_action_type_filter(approval_chain_opt_in_action_types)
     sources = ("slash_command", "text_intent", "button_action")
     routes: list[dict[str, str | bool]] = []
     if selected_source in (None, "slash_command"):
@@ -103,6 +106,10 @@ def inspect_agent_dialog_route_projection(
             route = build_dialog_agent_route(action_type, source=route_source)
             if route is not None:
                 routes.append(route)
+    routes = [
+        _route_with_approval_chain_opt_in(route, approval_chain_opt_in_action_types=opt_in_action_types)
+        for route in routes
+    ]
 
     enriched_routes, missing_tools, unsupported_tools = _enrich_routes(
         routes,
@@ -117,6 +124,7 @@ def inspect_agent_dialog_route_projection(
         "trace": {
             "selected_source": selected_source,
             "sources": [item for item in sources if selected_source in (None, item)],
+            "approval_chain_opt_in_action_types": sorted(opt_in_action_types),
             "missing_tools": missing_tools,
             "unsupported_tools": unsupported_tools,
         },
@@ -126,6 +134,7 @@ def inspect_agent_dialog_route_projection(
 def inspect_agent_route_preference_projection(
     *,
     source: str | None = None,
+    approval_chain_opt_in_action_types: Any = None,
     static_adapter_tool_names: set[str] | None = None,
     action_execution_tool_names: set[str] | None = None,
 ) -> dict[str, Any]:
@@ -133,6 +142,7 @@ def inspect_agent_route_preference_projection(
     action_execution_tool_names = action_execution_tool_names or set()
     route_projection = inspect_agent_dialog_route_projection(
         source=source,
+        approval_chain_opt_in_action_types=approval_chain_opt_in_action_types,
         static_adapter_tool_names=static_adapter_tool_names,
         action_execution_tool_names=action_execution_tool_names,
     )
@@ -140,6 +150,7 @@ def inspect_agent_route_preference_projection(
     routes: list[dict[str, Any]] = []
     missing_preferred_tools: set[str] = set()
     recommended_migration_count = 0
+    opt_in_declared_count = 0
     for route in route_projection.get("routes") or []:
         if not isinstance(route, dict):
             continue
@@ -151,6 +162,8 @@ def inspect_agent_route_preference_projection(
         missing_preferred_tools.update(preference["missing_preferred_tools"])
         if preference["migration_status"] == "recommended_not_applied":
             recommended_migration_count += 1
+        if preference["approval_chain_opt_in_declared"] is True:
+            opt_in_declared_count += 1
         routes.append(preference)
 
     status = (
@@ -164,12 +177,17 @@ def inspect_agent_route_preference_projection(
         "summary": {
             "route_count": len(routes),
             "recommended_migration_count": recommended_migration_count,
+            "opt_in_declared_count": opt_in_declared_count,
             "missing_preferred_tool_count": len(missing_preferred_tools),
         },
         "routes": routes,
         "trace": {
             "selected_source": route_projection.get("trace", {}).get("selected_source"),
             "runtime_behavior_changed": False,
+            "approval_chain_opt_in_action_types": route_projection.get("trace", {}).get(
+                "approval_chain_opt_in_action_types",
+                [],
+            ),
             "missing_tools": route_projection.get("trace", {}).get("missing_tools", []),
             "unsupported_tools": route_projection.get("trace", {}).get("unsupported_tools", []),
             "missing_preferred_tools": sorted(missing_preferred_tools),
@@ -195,8 +213,10 @@ def _route_preference(
         )
     ]
     approval_gate_required = preferred_tool_chain != [current_tool_name]
+    approval_chain_opt_in_declared = route.get(DIALOG_AGENT_ROUTE_APPROVAL_CHAIN_OPT_IN_KEY) is True
     preferred_prepare_tool = preferred_tool_chain[0] if approval_gate_required else None
     preferred_execute_tool = preferred_tool_chain[-1] if approval_gate_required else None
+    preferred_execution_supported = not missing_preferred_tools
     return {
         **route,
         "current_tool_name": current_tool_name,
@@ -205,9 +225,12 @@ def _route_preference(
         "preferred_tool_chain": preferred_tool_chain,
         "preferred_prepare_tool_name": preferred_prepare_tool,
         "preferred_execute_tool_name": preferred_execute_tool,
-        "preferred_execution_supported": not missing_preferred_tools,
+        "preferred_execution_supported": preferred_execution_supported,
         "missing_preferred_tools": missing_preferred_tools,
         "approval_gate_required": approval_gate_required,
+        "approval_chain_opt_in_param_name": DIALOG_AGENT_ROUTE_APPROVAL_CHAIN_OPT_IN_KEY,
+        "approval_chain_opt_in_declared": approval_chain_opt_in_declared,
+        "approval_chain_opt_in_available": approval_gate_required and preferred_execution_supported,
         "required_approval_fields": (
             list(APPROVED_GENERATION_APPROVAL_FIELDS)
             if approval_gate_required
@@ -215,7 +238,11 @@ def _route_preference(
         ),
         "runtime_route_changed": False,
         "runtime_behavior_changed": False,
-        "migration_status": "recommended_not_applied" if approval_gate_required else "no_change",
+        "migration_status": "opt_in_declared"
+        if approval_gate_required and approval_chain_opt_in_declared
+        else "recommended_not_applied"
+        if approval_gate_required
+        else "no_change",
         "reason_code": (
             _approved_generation_reason_code(current_tool_name)
             if approval_gate_required
@@ -230,6 +257,26 @@ def _preferred_tool_chain(route: dict[str, Any], current_tool_name: str) -> list
     if chain is not None:
         return list(chain)
     return [current_tool_name]
+
+
+def _normalize_action_type_filter(value: Any) -> set[str]:
+    if value is None:
+        return set()
+    if isinstance(value, str):
+        return {value.strip()} if value.strip() else set()
+    if isinstance(value, (list, tuple, set)):
+        return {str(item).strip() for item in value if str(item).strip()}
+    return set()
+
+
+def _route_with_approval_chain_opt_in(
+    route: dict[str, str | bool],
+    *,
+    approval_chain_opt_in_action_types: set[str],
+) -> dict[str, str | bool]:
+    if route.get("action_type") not in approval_chain_opt_in_action_types:
+        return route
+    return {**route, DIALOG_AGENT_ROUTE_APPROVAL_CHAIN_OPT_IN_KEY: True}
 
 
 def _approved_generation_reason_code(current_tool_name: str) -> str:

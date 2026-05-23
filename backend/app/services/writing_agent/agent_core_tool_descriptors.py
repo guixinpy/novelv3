@@ -224,7 +224,15 @@ AGENT_CORE_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         module="writing_agent",
         category="preflight",
         description="返回自然语言 intent、按钮 action 和斜杠命令到 Writing Agent 工具的统一路由投影。",
-        input_schema=object_schema({"source": {"type": "string"}}),
+        input_schema=object_schema(
+            {
+                "source": {"type": "string"},
+                "approval_chain_opt_in_action_types": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                },
+            }
+        ),
         output_schema=object_schema(
             {
                 "status": {"type": "string"},
