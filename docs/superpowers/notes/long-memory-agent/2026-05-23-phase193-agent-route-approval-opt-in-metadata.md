@@ -89,3 +89,8 @@ rg -n "sk-[A-Za-z0-9]{20,}" backend frontend docs --glob "!backend/static/assets
 - `inspect_agent_route_preference_projection` 能展示某条 route 是否已经声明 approval-chain opt-in。
 - 区分 `recommended_not_applied` 与 `opt_in_available` / `opt_in_declared`。
 - 仍不默认改变 runtime route。
+
+## Git
+
+- Main commit: `59d15948 feat: route dialog approval opt in metadata`
+- Remote: pushed to `origin/main`
