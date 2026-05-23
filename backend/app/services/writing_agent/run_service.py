@@ -32,8 +32,8 @@ from app.services.writing_agent.chapter_generation_tool import (
     _previous_chapter_state_card,
 )
 from app.services.writing_agent.agent_step_binding import summarize_resource_binding
+from app.services.writing_agent.tool_adapter_types import WritingAgentToolContext
 from app.services.writing_agent.tool_executor import (
-    WritingAgentToolContext,
     execute_writing_agent_tool,
     writing_agent_tool_adapter_metadata,
 )

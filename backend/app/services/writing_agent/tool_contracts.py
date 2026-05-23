@@ -5,7 +5,8 @@ from typing import Any
 
 from app.services.writing_agent.tool_policy import report_policy_for_tool
 from app.services.writing_agent.tool_recommendations import RECOMMENDATION_OUTPUT_FIELDS
-from app.services.writing_agent.tool_registry import AgentToolDescriptor, list_agent_tool_descriptors
+from app.services.writing_agent.tool_descriptor_types import AgentToolDescriptor
+from app.services.writing_agent.tool_registry import list_agent_tool_descriptors
 
 REFERENCE_ALIGNMENT = {
     "patterns": [

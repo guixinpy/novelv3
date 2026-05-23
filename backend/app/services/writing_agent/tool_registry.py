@@ -15,11 +15,10 @@ from app.services.writing_agent.hermes_action_tool_descriptors import HERMES_ACT
 from app.services.writing_agent.knowledge_base_tool_descriptors import KNOWLEDGE_BASE_AGENT_TOOL_DESCRIPTORS
 from app.services.writing_agent.longform_tool_descriptors import LONGFORM_AGENT_TOOL_DESCRIPTORS
 from app.services.writing_agent.review_revision_tool_descriptors import REVIEW_REVISION_AGENT_TOOL_DESCRIPTORS
-from app.services.writing_agent.tool_descriptor_types import AgentToolDescriptor
 from app.services.writing_agent.world_model_tool_descriptors import WORLD_MODEL_AGENT_TOOL_DESCRIPTORS
 
 
-_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
+_TOOL_DESCRIPTORS: tuple[Any, ...] = (
     *AGENT_CORE_TOOL_DESCRIPTORS,
     *LONGFORM_AGENT_TOOL_DESCRIPTORS,
     *AGENT_TASK_QUEUE_TOOL_DESCRIPTORS,
@@ -34,11 +33,11 @@ _TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
 _TOOLS_BY_NAME = {descriptor.name: descriptor for descriptor in _TOOL_DESCRIPTORS}
 
 
-def list_agent_tool_descriptors() -> tuple[AgentToolDescriptor, ...]:
+def list_agent_tool_descriptors() -> tuple[Any, ...]:
     return tuple(sorted(_TOOL_DESCRIPTORS, key=lambda descriptor: (descriptor.sort_key, descriptor.name)))
 
 
-def get_agent_tool_descriptor(name: str) -> AgentToolDescriptor | None:
+def get_agent_tool_descriptor(name: str) -> Any | None:
     return _TOOLS_BY_NAME.get(name)
 
 
@@ -152,7 +151,7 @@ def _generated_chapter_exists(db: Session, project_id: str, chapter_index: int |
     )
 
 
-def _diagnostics_for_descriptor(descriptor: AgentToolDescriptor, state: _ProjectToolState) -> list[dict[str, Any]]:
+def _diagnostics_for_descriptor(descriptor: Any, state: _ProjectToolState) -> list[dict[str, Any]]:
     diagnostics: list[dict[str, Any]] = []
     for check_name in descriptor.availability_checks:
         diagnostic = _diagnostic_for_check(descriptor.name, check_name, state, severity="blocker")

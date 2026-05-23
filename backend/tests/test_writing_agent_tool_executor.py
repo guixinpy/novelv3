@@ -16,9 +16,9 @@ from app.services.writing_agent.agent_task_queue_tool_adapters import AGENT_TASK
 from app.services.writing_agent.knowledge_base_tool_adapters import KNOWLEDGE_BASE_AGENT_TOOL_ADAPTERS
 from app.services.writing_agent.longform_tool_adapters import build_longform_agent_tool_adapters
 from app.services.writing_agent.review_revision_tool_adapters import REVIEW_REVISION_AGENT_TOOL_ADAPTERS
+from app.services.writing_agent.tool_adapter_types import WritingAgentToolContext
 from app.services.writing_agent.tool_registry import internal_tool_names
 from app.services.writing_agent.tool_executor import (
-    WritingAgentToolContext,
     execute_writing_agent_tool,
     static_writing_agent_tool_adapter_names,
     unhandled_internal_writing_agent_tool_names,
