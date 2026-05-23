@@ -149,7 +149,7 @@ rg -n "sk-[A-Za-z0-9]{20,}" backend frontend docs --glob "!backend/static/assets
 docs/superpowers/notes/long-memory-agent/2026-05-23-phase183-tool-aggregation-boundary-guards.md
 ```
 
-- [ ] Commit and push:
+- [x] Commit and push:
 
 ```powershell
 git add backend/app/services/writing_agent/tool_registry.py backend/app/services/writing_agent/tool_executor.py backend/tests/test_writing_agent_tool_aggregation_boundaries.py docs/superpowers/plans/long-memory-agent/2026-05-23-phase183-tool-aggregation-boundary-guards.md docs/superpowers/notes/long-memory-agent/2026-05-23-phase183-tool-aggregation-boundary-guards.md
