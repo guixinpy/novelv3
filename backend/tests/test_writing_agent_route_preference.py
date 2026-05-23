@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.services.writing_agent.slash_command_route import inspect_agent_route_preference_projection
+from app.services.writing_agent.slash_command_route import _route_preference, inspect_agent_route_preference_projection
 
 
 def test_route_preference_recommends_approved_chain_for_chapter_routes_without_mutating_runtime_route():
@@ -94,6 +94,59 @@ def test_route_preference_marks_explicit_approval_opt_in_metadata():
     assert setup_route["runtime_behavior_changed"] is False
     assert storyline_route["approval_chain_opt_in_declared"] is False
     assert storyline_route["migration_status"] == "recommended_not_applied"
+
+
+def test_route_preference_emits_approval_opt_in_migration_suggestion():
+    output = inspect_agent_route_preference_projection(
+        source="slash_command",
+        static_adapter_tool_names=_static_adapter_tools(),
+        action_execution_tool_names=_action_execution_tools(),
+    )
+    setup_route = next(route for route in output["routes"] if route["action_type"] == "preview_setup")
+
+    assert setup_route["approval_chain_opt_in_suggestion"] == {
+        "status": "available",
+        "param_name": "use_agent_approval_chain",
+        "route_metadata_patch": {"use_agent_approval_chain": True},
+        "expected_prepare_tool_name": "prepare_generate_setup_execution",
+        "expected_execute_tool_name": "execute_generate_setup_with_approval",
+        "runtime_default_preserved": True,
+        "guardrails": [
+            "apply_only_when_explicitly_requested",
+            "preserve_default_dialog_routes",
+            "strip_control_plane_params_before_tool_execution",
+        ],
+    }
+
+
+def test_route_preference_marks_migration_suggestion_already_declared_for_opt_in_route():
+    output = inspect_agent_route_preference_projection(
+        source="slash_command",
+        approval_chain_opt_in_action_types=["preview_setup"],
+        static_adapter_tool_names=_static_adapter_tools(),
+        action_execution_tool_names=_action_execution_tools(),
+    )
+    setup_route = next(route for route in output["routes"] if route["action_type"] == "preview_setup")
+
+    assert setup_route["approval_chain_opt_in_suggestion"]["status"] == "already_declared"
+    assert setup_route["approval_chain_opt_in_suggestion"]["route_metadata_patch"] == {
+        "use_agent_approval_chain": True
+    }
+
+
+def test_route_preference_has_no_migration_suggestion_for_non_gated_route():
+    route = _route_preference(
+        {
+            "source": "test",
+            "action_type": "diagnose",
+            "agent_tool_name": "diagnose_project",
+        },
+        static_adapter_tool_names=set(),
+        action_execution_tool_names=set(),
+    )
+
+    assert route["approval_gate_required"] is False
+    assert route["approval_chain_opt_in_suggestion"] is None
 
 
 def test_route_preference_can_filter_to_text_intent_source():

@@ -231,6 +231,13 @@ def _route_preference(
         "approval_chain_opt_in_param_name": DIALOG_AGENT_ROUTE_APPROVAL_CHAIN_OPT_IN_KEY,
         "approval_chain_opt_in_declared": approval_chain_opt_in_declared,
         "approval_chain_opt_in_available": approval_gate_required and preferred_execution_supported,
+        "approval_chain_opt_in_suggestion": _approval_chain_opt_in_suggestion(
+            approval_gate_required=approval_gate_required,
+            approval_chain_opt_in_declared=approval_chain_opt_in_declared,
+            preferred_execution_supported=preferred_execution_supported,
+            preferred_prepare_tool=preferred_prepare_tool,
+            preferred_execute_tool=preferred_execute_tool,
+        ),
         "required_approval_fields": (
             list(APPROVED_GENERATION_APPROVAL_FIELDS)
             if approval_gate_required
@@ -257,6 +264,34 @@ def _preferred_tool_chain(route: dict[str, Any], current_tool_name: str) -> list
     if chain is not None:
         return list(chain)
     return [current_tool_name]
+
+
+def _approval_chain_opt_in_suggestion(
+    *,
+    approval_gate_required: bool,
+    approval_chain_opt_in_declared: bool,
+    preferred_execution_supported: bool,
+    preferred_prepare_tool: str | None,
+    preferred_execute_tool: str | None,
+) -> dict[str, Any] | None:
+    if not approval_gate_required:
+        return None
+    status = "already_declared" if approval_chain_opt_in_declared else "available"
+    if not preferred_execution_supported:
+        status = "blocked_missing_tools"
+    return {
+        "status": status,
+        "param_name": DIALOG_AGENT_ROUTE_APPROVAL_CHAIN_OPT_IN_KEY,
+        "route_metadata_patch": {DIALOG_AGENT_ROUTE_APPROVAL_CHAIN_OPT_IN_KEY: True},
+        "expected_prepare_tool_name": preferred_prepare_tool,
+        "expected_execute_tool_name": preferred_execute_tool,
+        "runtime_default_preserved": True,
+        "guardrails": [
+            "apply_only_when_explicitly_requested",
+            "preserve_default_dialog_routes",
+            "strip_control_plane_params_before_tool_execution",
+        ],
+    }
 
 
 def _normalize_action_type_filter(value: Any) -> set[str]:

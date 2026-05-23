@@ -411,6 +411,28 @@ async def test_tool_executor_handles_inspect_agent_route_preference_projection_o
 
 
 @pytest.mark.asyncio
+async def test_tool_executor_handles_inspect_agent_route_preference_projection_migration_suggestion(db_session):
+    project = Project(name="Route Preference Migration Suggestion")
+    db_session.add(project)
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-route-preference-suggestion"),
+        WritingAgentToolRequest(
+            tool_name="inspect_agent_route_preference_projection",
+            params={"source": "slash_command"},
+        ),
+    )
+
+    setup_route = next(route for route in result.output["routes"] if route["action_type"] == "preview_setup")
+    suggestion = setup_route["approval_chain_opt_in_suggestion"]
+    assert result.handled is True
+    assert suggestion["status"] == "available"
+    assert suggestion["route_metadata_patch"] == {"use_agent_approval_chain": True}
+    assert suggestion["expected_prepare_tool_name"] == "prepare_generate_setup_execution"
+
+
+@pytest.mark.asyncio
 async def test_tool_executor_handles_dialog_control_plane_projection(db_session):
     project = Project(name="Dialog Control Plane Projection")
     db_session.add(project)
