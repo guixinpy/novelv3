@@ -342,6 +342,43 @@ describe('ChatMessage', () => {
     expect(wrapper.text()).not.toContain('execute_longform_chapter_batch_preflight')
   })
 
+  it('renders longform prepare fallback labels when backend view is missing', () => {
+    const wrapper = mount(ChatMessage, {
+      props: {
+        msg: {
+          role: 'system',
+          message_type: 'plain',
+          content: '长篇批次执行准备已完成。',
+          action_result: {
+            type: 'prepare_longform_chapter_batch_execution',
+            status: 'success',
+            data: {
+              status: 'approval_required',
+              attempt_manifest: {
+                chapter_indexes: [21],
+                stopped_before_node: 'chapter_generation',
+                execution_steps: [{ tool_name: 'generate_chapter' }],
+              },
+              approval_contract: {
+                consume_tool: 'execute_longform_chapter_batch',
+                high_risk_side_effects: ['chapter_generation', 'world_model_intake'],
+              },
+              agent_plan_approval_contract: { status: 'requires_confirmation', write_step_count: 1 },
+              recommended_next_tools: ['execute_longform_chapter_batch'],
+            },
+          },
+        },
+        isLatest: false,
+        loading: false,
+      },
+    })
+
+    expect(wrapper.text()).toContain('长篇批次执行准备待确认')
+    expect(wrapper.text()).toContain('审批状态')
+    expect(wrapper.text()).toContain('等待确认')
+    expect(wrapper.text()).not.toContain('prepare_longform_chapter_batch_execution')
+  })
+
   it('emits openAgentRun from recovery execution action results', async () => {
     const wrapper = mount(ChatMessage, {
       props: {

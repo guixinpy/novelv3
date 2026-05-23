@@ -6,6 +6,7 @@ export const AGENT_RUN_ACTION_TYPES = [
   'inspect_agent_trace_audit',
   'inspect_longform_chapter_batch',
   'execute_longform_chapter_batch_preflight',
+  'prepare_longform_chapter_batch_execution',
 ] as const
 export type AgentRunActionType = typeof AGENT_RUN_ACTION_TYPES[number]
 
@@ -34,6 +35,10 @@ const AGENT_RUN_ACTION_DESCRIPTORS: Record<AgentRunActionType, AgentRunActionDes
   execute_longform_chapter_batch_preflight: {
     type: 'execute_longform_chapter_batch_preflight',
     buildView: buildLongformPreflightActionResultView,
+  },
+  prepare_longform_chapter_batch_execution: {
+    type: 'prepare_longform_chapter_batch_execution',
+    buildView: buildLongformPrepareActionResultView,
   },
 }
 
@@ -195,6 +200,19 @@ function buildLongformPreflightActionResultView(actionResult: Record<string, unk
   }
 }
 
+function buildLongformPrepareActionResultView(actionResult: Record<string, unknown>, status: string): ActionResultView {
+  const data = recordValue(actionResult.data)
+  const prepareStatus = stringValue(data.status) || status
+  const detailItems = longformPrepareDetailItems(data)
+  return {
+    type: 'prepare_longform_chapter_batch_execution',
+    status,
+    label: longformPrepareLabel(prepareStatus),
+    variant: longformPrepareVariant(prepareStatus),
+    ...(detailItems.length ? { detail_items: detailItems } : {}),
+  }
+}
+
 function recoveryPreviewLabel(status: string) {
   if (status === 'success' || status === 'completed') return '恢复预览已生成'
   if (status === 'failed') return '恢复预览失败'
@@ -234,6 +252,22 @@ function longformPreflightLabel(status: string) {
 function longformPreflightVariant(status: string) {
   if (status === 'ready' || status === 'success' || status === 'completed') return 'success'
   if (status === 'blocked' || status === 'failed') return 'error'
+  return 'neutral'
+}
+
+function longformPrepareLabel(status: string) {
+  if (status === 'approval_required') return '长篇批次执行准备待确认'
+  if (status === 'blocked') return '长篇批次执行准备已阻塞'
+  if (status === 'not_found') return '长篇批次未找到'
+  if (status === 'failed') return '长篇批次执行准备失败'
+  if (status === 'running') return '长篇批次执行准备中'
+  if (status === 'success' || status === 'completed') return '长篇批次执行准备已完成'
+  return `长篇批次执行准备: ${status || '未知状态'}`
+}
+
+function longformPrepareVariant(status: string) {
+  if (status === 'blocked' || status === 'failed') return 'error'
+  if (status === 'success' || status === 'completed') return 'success'
   return 'neutral'
 }
 
@@ -415,6 +449,61 @@ function stoppedBeforeNodeLabel(node: string) {
   if (node === 'chapter_generation') return '正文生成前'
   if (node === 'world_model_apply') return '世界模型写入前'
   return node
+}
+
+function longformPrepareDetailItems(data: Record<string, unknown>) {
+  const items: Array<{ label: string; value: string }> = []
+  const attemptManifest = recordValue(data.attempt_manifest)
+  const task = recordValue(data.task)
+  const executionChapters = chapterIndexesLabel(numberArrayValue(attemptManifest.chapter_indexes))
+    || chapterRangeLabel(task)
+  if (executionChapters) {
+    items.push({ label: '执行章节', value: executionChapters })
+  }
+
+  const agentApproval = recordValue(data.agent_plan_approval_contract)
+  const approvalStatus = stringValue(agentApproval.status)
+  if (approvalStatus) {
+    items.push({ label: '审批状态', value: approvalStatusLabel(approvalStatus) })
+  }
+
+  const writeStepCount = numberValue(agentApproval.write_step_count)
+  const executionSteps = Array.isArray(attemptManifest.execution_steps) ? attemptManifest.execution_steps : []
+  const resolvedWriteStepCount = writeStepCount ?? executionSteps.length
+  if (resolvedWriteStepCount > 0) {
+    items.push({ label: '写入步骤', value: `${resolvedWriteStepCount} 个` })
+  }
+
+  const approvalContract = recordValue(data.approval_contract)
+  const consumeTool = stringValue(approvalContract.consume_tool)
+  if (consumeTool) {
+    items.push({ label: '消费工具', value: consumeTool })
+  }
+
+  const highRiskSideEffects = Array.isArray(approvalContract.high_risk_side_effects)
+    ? approvalContract.high_risk_side_effects
+    : []
+  if (highRiskSideEffects.length) {
+    items.push({ label: '高风险副作用', value: `${highRiskSideEffects.length} 项` })
+  }
+
+  const reason = stringValue(data.reason)
+  if (reason) {
+    items.push({ label: '阻塞原因', value: reason })
+  }
+
+  const nextTools = Array.isArray(data.recommended_next_tools) ? data.recommended_next_tools : []
+  if (nextTools.length) {
+    items.push({ label: '下一步', value: `${nextTools.length} 个工具` })
+  }
+  return items
+}
+
+function approvalStatusLabel(status: string) {
+  if (status === 'requires_confirmation' || status === 'approval_required') return '等待确认'
+  if (status === 'approved') return '已确认'
+  if (status === 'rejected') return '已拒绝'
+  return status
 }
 
 function runStatusLabel(status: string) {
