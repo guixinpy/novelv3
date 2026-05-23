@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Literal
 
 DIALOG_AGENT_ROUTE_VERSION = "phase104.dialog_agent_route.v1"
+DIALOG_AGENT_ROUTE_APPROVAL_CHAIN_OPT_IN_KEY = "use_agent_approval_chain"
 
 DialogAgentRouteSource = Literal["slash_command", "text_intent", "button_action"]
 
@@ -38,6 +39,7 @@ def build_dialog_agent_route(
     *,
     source: DialogAgentRouteSource,
     command_name: str | None = None,
+    use_agent_approval_chain: bool = False,
 ) -> dict[str, str | bool] | None:
     normalized_action_type = (action_type or "").strip()
     agent_tool_name = dialog_action_to_agent_tool_name(normalized_action_type)
@@ -55,4 +57,6 @@ def build_dialog_agent_route(
     normalized_command_name = (command_name or "").strip().lower()
     if normalized_command_name:
         route["command_name"] = normalized_command_name
+    if use_agent_approval_chain is True:
+        route[DIALOG_AGENT_ROUTE_APPROVAL_CHAIN_OPT_IN_KEY] = True
     return route

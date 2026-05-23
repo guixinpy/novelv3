@@ -18,7 +18,7 @@ from app.core.chat_commands import (
     command_to_action_type,
     is_supported_chat_command,
 )
-from app.core.dialog_agent_routes import DIALOG_AGENT_ROUTE_VERSION
+from app.core.dialog_agent_routes import DIALOG_AGENT_ROUTE_VERSION, build_dialog_agent_route
 from app.core.chat_compaction import build_compaction_summary, select_compactable_plain_messages
 from app.core.intent_router import IntentRouter, parse_chapter_index
 from app.models import (
@@ -246,6 +246,92 @@ def test_chat_command_registry_helpers_cover_expected_commands():
         command_name="chapter",
     )
     assert command_agent_route("clear") is None
+
+
+def test_agent_route_approval_opt_in_metadata_is_explicit():
+    expected_default = _expected_agent_route(
+        "slash_command",
+        "preview_setup",
+        "generate_setup",
+        command_name="setup",
+    )
+    assert build_dialog_agent_route("preview_setup", source="slash_command", command_name="setup") == expected_default
+    assert command_agent_route("setup") == expected_default
+
+    explicit_route = build_dialog_agent_route(
+        "preview_setup",
+        source="slash_command",
+        command_name="setup",
+        use_agent_approval_chain=True,
+    )
+
+    assert explicit_route == {**expected_default, "use_agent_approval_chain": True}
+
+
+def test_dialog_control_plane_agent_route_approval_opt_in_metadata_routes_prepare_tool(db_session):
+    from app.services.writing_agent.dialog_control_plane import prepare_dialog_agent_run_dispatch
+
+    project = Project(name="Agent Route Approval Opt In Metadata")
+    db_session.add(project)
+    db_session.commit()
+    dialog = dialogs_api._get_or_create_dialog(db_session, project.id)
+    route = build_dialog_agent_route(
+        "preview_setup",
+        source="slash_command",
+        command_name="setup",
+        use_agent_approval_chain=True,
+    )
+
+    dispatch = prepare_dialog_agent_run_dispatch(
+        db_session,
+        project_id=project.id,
+        dialog_id=dialog.id,
+        action_type="generate_setup",
+        command_args="雾港悬疑",
+        action_params={"project_id": project.id, "agent_route": route},
+    )
+
+    run_tool = dispatch.run.input["tools"][0]
+    task_tool = dispatch.task.payload["tools"][0]
+    assert run_tool["tool_name"] == "prepare_generate_setup_execution"
+    assert task_tool["tool_name"] == "prepare_generate_setup_execution"
+    assert run_tool["params"] == {}
+    assert task_tool["params"] == {}
+
+
+def test_dialog_control_plane_agent_route_approval_opt_in_top_level_false_overrides_route_metadata(db_session):
+    from app.services.writing_agent.dialog_control_plane import prepare_dialog_agent_run_dispatch
+
+    project = Project(name="Agent Route Approval Opt In Override")
+    db_session.add(project)
+    db_session.commit()
+    dialog = dialogs_api._get_or_create_dialog(db_session, project.id)
+    route = build_dialog_agent_route(
+        "preview_setup",
+        source="slash_command",
+        command_name="setup",
+        use_agent_approval_chain=True,
+    )
+
+    dispatch = prepare_dialog_agent_run_dispatch(
+        db_session,
+        project_id=project.id,
+        dialog_id=dialog.id,
+        action_type="generate_setup",
+        command_args="雾港悬疑",
+        action_params={
+            "project_id": project.id,
+            "agent_route": route,
+            "use_agent_approval_chain": False,
+        },
+    )
+
+    run_tool = dispatch.run.input["tools"][0]
+    task_tool = dispatch.task.payload["tools"][0]
+    assert run_tool["tool_name"] == "generate_setup"
+    assert task_tool["tool_name"] == "generate_setup"
+    assert run_tool["params"] == {}
+    assert task_tool["params"] == {}
 
 
 def test_chapter_command_leading_index_wins_over_context_mentions(client):

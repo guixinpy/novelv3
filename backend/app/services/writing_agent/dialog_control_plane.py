@@ -6,6 +6,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.core.dialog_agent_routes import DIALOG_AGENT_ROUTE_APPROVAL_CHAIN_OPT_IN_KEY
 from app.models import BackgroundTask, WritingAgentRun, WritingAgentStep
 from app.schemas.writing_agent import WritingAgentRunCreate, WritingAgentToolRequest
 from app.services.actions.action_result_service import ActionResultService
@@ -15,7 +16,7 @@ from app.services.writing_agent.run_service import WritingAgentRunService
 CONTROL_PLANE_VERSION = "phase65.agent_control_plane.v1"
 DIALOG_CONTROL_PLANE_PROJECTION_VERSION = "phase191.dialog_control_plane_projection.v1"
 AGENT_RUN_TASK_TYPE = "writing_agent_run"
-APPROVAL_CHAIN_OPT_IN_PARAM = "use_agent_approval_chain"
+APPROVAL_CHAIN_OPT_IN_PARAM = DIALOG_AGENT_ROUTE_APPROVAL_CHAIN_OPT_IN_KEY
 CONTROL_PLANE_PARAM_KEYS = {"project_id", "agent_route", APPROVAL_CHAIN_OPT_IN_PARAM}
 
 SUPPORTED_DIALOG_ACTION_TO_TOOL = {
@@ -172,6 +173,8 @@ def _tool_request_for_action(
     action_params: dict[str, Any] | None,
 ) -> WritingAgentToolRequest:
     params = dict(action_params or {})
+    if APPROVAL_CHAIN_OPT_IN_PARAM not in params and _agent_route_requests_approval_chain(params):
+        params[APPROVAL_CHAIN_OPT_IN_PARAM] = True
     tool_name = _tool_name_for_action(action_type, params)
     for key in CONTROL_PLANE_PARAM_KEYS:
         params.pop(key, None)
@@ -190,6 +193,11 @@ def _tool_name_for_action(action_type: str, params: dict[str, Any]) -> str:
         if recommended_chain:
             return recommended_chain[0]
     return SUPPORTED_DIALOG_ACTION_TO_TOOL[action_type]
+
+
+def _agent_route_requests_approval_chain(params: dict[str, Any]) -> bool:
+    route = params.get("agent_route")
+    return isinstance(route, dict) and route.get(APPROVAL_CHAIN_OPT_IN_PARAM) is True
 
 
 def _dialog_control_plane_action_projection(action_type: str) -> dict[str, Any]:
