@@ -90,6 +90,15 @@ def _detail_items(action_result: dict) -> list[dict[str, str]]:
     if chapter_index_source:
         items.append({"label": "章节来源", "value": _chapter_source_label(chapter_index_source)})
 
+    conflict = (
+        approval_decision.get("chapter_target_conflict")
+        if isinstance(approval_decision.get("chapter_target_conflict"), dict)
+        else None
+    )
+    if conflict and conflict.get("status") == "reserved":
+        source_label = str(conflict.get("source_label") or "").strip()
+        items.append({"label": "章节冲突", "value": source_label or "已占用"})
+
     if str(approval_decision.get("approval_contract_hash") or "").strip():
         items.append({"label": "审批契约", "value": "已绑定"})
 

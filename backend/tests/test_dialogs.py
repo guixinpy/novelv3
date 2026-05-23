@@ -382,6 +382,46 @@ def test_chapter_command_explicit_range_reserved_target_labels_conflict_source(c
     assert "已有批量生成任务" in pending["description"]
 
 
+def test_resolve_chapter_conflict_confirmation_records_decision_metadata(client, db_session):
+    project_id = client.post("/api/v1/projects", json={"name": "Chapter Conflict Audit"}).json()["id"]
+    db_session.add(
+        BackgroundTask(
+            project_id=project_id,
+            task_type="generate_chapter_range",
+            status="running",
+            payload={"chapter_range": {"start": 2, "end": 3}},
+        )
+    )
+    db_session.commit()
+    pending = client.post(
+        "/api/v1/dialog/chat",
+        json={
+            "project_id": project_id,
+            "input_type": "command",
+            "command_name": "chapter",
+            "command_args": "2",
+        },
+    ).json()["pending_action"]
+
+    with patch("app.api.dialogs.LocalTaskRunner.start"):
+        response = client.post(
+            "/api/v1/dialog/resolve-action",
+            json={"action_id": pending["id"], "decision": "confirm"},
+        )
+
+    assert response.status_code == 200
+    decision = response.json()["action_result"]["data"]["approval_decision"]
+    assert decision["chapter_target_conflict"] == {
+        "status": "reserved",
+        "chapter_index": 2,
+        "reason": "pending_or_running_generation",
+        "source": "range_task",
+        "source_label": "批量生成任务",
+    }
+    detail_items = response.json()["action_result_view"]["detail_items"]
+    assert {"label": "章节冲突", "value": "批量生成任务"} in detail_items
+
+
 def test_agent_control_plane_routes_confirmed_setup_through_writing_agent_run(client, db_session, monkeypatch):
     started_task_ids: list[str] = []
 

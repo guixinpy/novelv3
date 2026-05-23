@@ -348,6 +348,22 @@ def _chapter_target_conflict(chapter_index: int, source: str) -> dict[str, objec
     }
 
 
+def _approval_chapter_target_conflict(params: dict) -> dict | None:
+    conflict = params.get("chapter_target_conflict") if isinstance(params.get("chapter_target_conflict"), dict) else None
+    if not conflict or conflict.get("status") != "reserved":
+        return None
+    chapter_index = _optional_positive_int(conflict.get("chapter_index") or params.get("chapter_index"))
+    if chapter_index is None:
+        return None
+    return {
+        "status": "reserved",
+        "chapter_index": chapter_index,
+        "reason": str(conflict.get("reason") or "pending_or_running_generation"),
+        "source": str(conflict.get("source") or "").strip(),
+        "source_label": str(conflict.get("source_label") or "").strip(),
+    }
+
+
 def _save_command_feedback(
     db: Session,
     dialog_id: str,
@@ -1153,6 +1169,9 @@ def _approval_decision_metadata(pending: PendingAction, decision: str, action_ty
     chapter_index_source = str(params.get("chapter_index_source") or "").strip()
     if chapter_index_source:
         metadata["chapter_index_source"] = chapter_index_source
+    chapter_target_conflict = _approval_chapter_target_conflict(params)
+    if chapter_target_conflict is not None:
+        metadata["chapter_target_conflict"] = chapter_target_conflict
     return metadata
 
 

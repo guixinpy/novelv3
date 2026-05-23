@@ -196,6 +196,13 @@ def test_inspect_agent_trace_audit_includes_dialog_approval_events_without_raw_h
                     "approval_mode": "single",
                     "chapter_index": 2,
                     "chapter_index_source": "inferred_next_unwritten",
+                    "chapter_target_conflict": {
+                        "status": "reserved",
+                        "chapter_index": 2,
+                        "reason": "pending_or_running_generation",
+                        "source": "range_task",
+                        "source_label": "批量生成任务",
+                    },
                     "approval_contract_hash": "approval:secret-hash",
                     "approval_contract_version": "phase108.agent_plan_approval_contract.v1",
                 },
@@ -251,6 +258,13 @@ def test_inspect_agent_trace_audit_includes_dialog_approval_events_without_raw_h
             "chapter_index": 2,
             "chapter_index_source": "inferred_next_unwritten",
             "chapter_index_source_label": "系统推断",
+            "chapter_target_conflict": {
+                "status": "reserved",
+                "chapter_index": 2,
+                "reason": "pending_or_running_generation",
+                "source": "range_task",
+                "source_label": "批量生成任务",
+            },
             "approval_contract_bound": True,
             "approval_contract_version": "phase108.agent_plan_approval_contract.v1",
             "resolved_at": "2026-05-22T12:00:00+00:00",
@@ -270,6 +284,13 @@ def test_inspect_agent_trace_audit_includes_dialog_approval_events_without_raw_h
     assert output["event_chain"][0]["chapter_index"] == 2
     assert output["event_chain"][0]["chapter_index_source"] == "inferred_next_unwritten"
     assert output["event_chain"][0]["chapter_index_source_label"] == "系统推断"
+    assert output["event_chain"][0]["chapter_target_conflict"] == {
+        "status": "reserved",
+        "chapter_index": 2,
+        "reason": "pending_or_running_generation",
+        "source": "range_task",
+        "source_label": "批量生成任务",
+    }
     assert output["event_chain"][1]["run_id"] == run.id
     assert output["event_chain"][2]["tool_name"] == "generate_chapter"
     assert output["event_chain"][3]["reason"] == "approval_contract_verified"

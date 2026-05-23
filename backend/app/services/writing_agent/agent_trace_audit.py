@@ -289,6 +289,8 @@ def _event_chain(
         if chapter_index_source:
             chain_event["chapter_index_source"] = chapter_index_source
             chain_event["chapter_index_source_label"] = event.get("chapter_index_source_label")
+        if event.get("chapter_target_conflict") is not None:
+            chain_event["chapter_target_conflict"] = event.get("chapter_target_conflict")
         chain.append(chain_event)
 
     chain.append(
@@ -384,7 +386,25 @@ def _approval_event_summary(message: DialogMessage, decision: dict[str, Any]) ->
     if chapter_index_source:
         event["chapter_index_source"] = chapter_index_source
         event["chapter_index_source_label"] = _chapter_source_label(chapter_index_source)
+    chapter_target_conflict = _chapter_target_conflict_summary(decision.get("chapter_target_conflict"))
+    if chapter_target_conflict is not None:
+        event["chapter_target_conflict"] = chapter_target_conflict
     return event
+
+
+def _chapter_target_conflict_summary(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict) or value.get("status") != "reserved":
+        return None
+    chapter_index = _optional_int(value.get("chapter_index"))
+    if chapter_index is None:
+        return None
+    return {
+        "status": "reserved",
+        "chapter_index": chapter_index,
+        "reason": str(value.get("reason") or "pending_or_running_generation"),
+        "source": str(value.get("source") or "").strip(),
+        "source_label": str(value.get("source_label") or "").strip(),
+    }
 
 
 def _decision_label(decision: str) -> str:
