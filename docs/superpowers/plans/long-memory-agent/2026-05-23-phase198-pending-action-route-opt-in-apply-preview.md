@@ -102,7 +102,7 @@ rg -n "sk-[A-Za-z0-9]{20,}" backend frontend docs --glob "!backend/static/assets
 docs/superpowers/notes/long-memory-agent/2026-05-23-phase198-pending-action-route-opt-in-apply-preview.md
 ```
 
-- [ ] Commit and push:
+- [x] Commit and push:
 
 ```powershell
 git add backend/app/services/writing_agent/slash_command_route.py backend/app/services/writing_agent/agent_core_tool_adapters.py backend/app/services/writing_agent/agent_core_tool_descriptors.py backend/tests/test_writing_agent_tool_executor.py backend/tests/test_writing_agent_tool_registry.py docs/superpowers/plans/long-memory-agent/2026-05-23-phase198-pending-action-route-opt-in-apply-preview.md docs/superpowers/notes/long-memory-agent/2026-05-23-phase198-pending-action-route-opt-in-apply-preview.md

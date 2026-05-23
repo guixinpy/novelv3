@@ -122,3 +122,8 @@ rg -n "sk-[A-Za-z0-9]{20,}" backend frontend docs --glob "!backend/static/assets
 ## Next Phase
 
 建议 Phase199 增加真实 apply 工具的审批契约预览：在不写入的情况下生成 `approval_contract_hash`，为后续真正 mutation 工具提供确认门。
+
+## Git
+
+- Main commit: `055b36a6 feat: preview pending route opt in apply`
+- Remote: pushed to `origin/main`
