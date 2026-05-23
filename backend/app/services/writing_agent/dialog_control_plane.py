@@ -15,7 +15,8 @@ from app.services.writing_agent.run_service import WritingAgentRunService
 CONTROL_PLANE_VERSION = "phase65.agent_control_plane.v1"
 DIALOG_CONTROL_PLANE_PROJECTION_VERSION = "phase191.dialog_control_plane_projection.v1"
 AGENT_RUN_TASK_TYPE = "writing_agent_run"
-CONTROL_PLANE_PARAM_KEYS = {"project_id", "agent_route"}
+APPROVAL_CHAIN_OPT_IN_PARAM = "use_agent_approval_chain"
+CONTROL_PLANE_PARAM_KEYS = {"project_id", "agent_route", APPROVAL_CHAIN_OPT_IN_PARAM}
 
 SUPPORTED_DIALOG_ACTION_TO_TOOL = {
     "generate_setup": "generate_setup",
@@ -171,10 +172,11 @@ def _tool_request_for_action(
     action_params: dict[str, Any] | None,
 ) -> WritingAgentToolRequest:
     params = dict(action_params or {})
+    tool_name = _tool_name_for_action(action_type, params)
     for key in CONTROL_PLANE_PARAM_KEYS:
         params.pop(key, None)
     return WritingAgentToolRequest(
-        tool_name=_tool_name_for_action(action_type, params),
+        tool_name=tool_name,
         command_args=command_args,
         params=params,
     )
@@ -183,6 +185,10 @@ def _tool_request_for_action(
 def _tool_name_for_action(action_type: str, params: dict[str, Any]) -> str:
     if action_type == "generate_chapter" and _has_chapter_approval_contract(params):
         return CHAPTER_APPROVAL_EXECUTE_TOOL
+    if params.get(APPROVAL_CHAIN_OPT_IN_PARAM) is True:
+        recommended_chain = APPROVED_DIALOG_CONTROL_PLANE_CHAINS.get(action_type)
+        if recommended_chain:
+            return recommended_chain[0]
     return SUPPORTED_DIALOG_ACTION_TO_TOOL[action_type]
 
 

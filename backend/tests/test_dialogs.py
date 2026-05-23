@@ -471,6 +471,74 @@ def test_agent_control_plane_routes_confirmed_setup_through_writing_agent_run(cl
     assert started_task_ids == [task.id]
 
 
+def test_dialog_control_plane_approval_chain_opt_in_default_setup_route_stays_legacy(db_session):
+    from app.services.writing_agent.dialog_control_plane import prepare_dialog_agent_run_dispatch
+
+    project = Project(name="Dialog Approval Opt In Default")
+    db_session.add(project)
+    db_session.commit()
+    dialog = dialogs_api._get_or_create_dialog(db_session, project.id)
+
+    dispatch = prepare_dialog_agent_run_dispatch(
+        db_session,
+        project_id=project.id,
+        dialog_id=dialog.id,
+        action_type="generate_setup",
+        command_args="雾港悬疑",
+        action_params={"project_id": project.id, "use_agent_approval_chain": False},
+    )
+
+    run_tool = dispatch.run.input["tools"][0]
+    task_tool = dispatch.task.payload["tools"][0]
+    assert run_tool["tool_name"] == "generate_setup"
+    assert task_tool["tool_name"] == "generate_setup"
+    assert "use_agent_approval_chain" not in run_tool["params"]
+    assert "use_agent_approval_chain" not in task_tool["params"]
+
+
+@pytest.mark.parametrize(
+    ("action_type", "command_args", "expected_tool_name"),
+    [
+        ("generate_setup", "雾港悬疑", "prepare_generate_setup_execution"),
+        ("generate_storyline", "双线叙事", "prepare_generate_storyline_execution"),
+        ("generate_outline", "每章留钩子", "prepare_generate_outline_execution"),
+    ],
+)
+def test_dialog_control_plane_approval_chain_opt_in_routes_to_prepare_tool(
+    db_session,
+    action_type,
+    command_args,
+    expected_tool_name,
+):
+    from app.services.writing_agent.dialog_control_plane import prepare_dialog_agent_run_dispatch
+
+    project = Project(name=f"Dialog Approval Opt In {action_type}")
+    db_session.add(project)
+    db_session.commit()
+    dialog = dialogs_api._get_or_create_dialog(db_session, project.id)
+
+    dispatch = prepare_dialog_agent_run_dispatch(
+        db_session,
+        project_id=project.id,
+        dialog_id=dialog.id,
+        action_type=action_type,
+        command_args=command_args,
+        action_params={
+            "project_id": project.id,
+            "agent_route": {"source": "test"},
+            "use_agent_approval_chain": True,
+            "user_note": "保留给工具的普通参数",
+        },
+    )
+
+    run_tool = dispatch.run.input["tools"][0]
+    task_tool = dispatch.task.payload["tools"][0]
+    assert run_tool["tool_name"] == expected_tool_name
+    assert task_tool["tool_name"] == expected_tool_name
+    assert run_tool["params"] == {"user_note": "保留给工具的普通参数"}
+    assert task_tool["params"] == {"user_note": "保留给工具的普通参数"}
+
+
 def test_text_intent_creates_pending_setup_action(client, db_session):
     project_id = client.post("/api/v1/projects", json={"name": "Text Intent Agent"}).json()["id"]
     text = "创建主角设定，主角是植物学家"
