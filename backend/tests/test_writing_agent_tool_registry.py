@@ -38,6 +38,7 @@ def test_agent_core_tool_descriptors_live_in_dedicated_module():
         "plan_agent_route_approval_opt_in",
         "preview_pending_action_route_approval_opt_in_apply",
         "preview_pending_action_route_approval_opt_in_apply_contract",
+        "apply_pending_action_route_approval_opt_in",
         "inspect_agent_dialog_control_plane_projection",
         "inspect_agent_intent_projection",
         "inspect_agent_tool_contracts",
@@ -890,6 +891,29 @@ def test_agent_tool_registry_includes_route_opt_in_apply_contract_preview():
     assert descriptor.output_schema["properties"]["route_apply_preview"]["type"] == "object"
     assert "preview_pending_action_route_approval_opt_in_apply_contract" in allowed_tool_names()
     assert "preview_pending_action_route_approval_opt_in_apply_contract" in non_blocking_report_tool_names()
+
+
+def test_agent_tool_registry_includes_apply_route_opt_in_approval():
+    descriptor = get_agent_tool_descriptor("apply_pending_action_route_approval_opt_in")
+
+    assert descriptor is not None
+    assert descriptor.internal is True
+    assert descriptor.non_blocking_report is False
+    assert descriptor.category == "preflight"
+    assert descriptor.target_type == "agent_route_approval_opt_in_apply"
+    assert descriptor.input_schema["properties"]["pending_action_id"]["type"] == "string"
+    assert descriptor.input_schema["properties"]["confirm_apply"]["type"] == "boolean"
+    assert descriptor.input_schema["properties"]["approval_contract_hash"]["type"] == "string"
+    assert descriptor.input_schema["properties"]["approval_contract"]["type"] == "object"
+    assert set(descriptor.input_schema["required"]) == {
+        "pending_action_id",
+        "confirm_apply",
+        "approval_contract_hash",
+        "approval_contract",
+    }
+    assert descriptor.output_schema["properties"]["write_performed"]["type"] == "boolean"
+    assert "apply_pending_action_route_approval_opt_in" in allowed_tool_names()
+    assert "apply_pending_action_route_approval_opt_in" not in non_blocking_report_tool_names()
 
 
 def test_agent_tool_registry_includes_inspect_agent_knowledge_base_route():

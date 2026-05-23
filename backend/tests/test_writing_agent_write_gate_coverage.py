@@ -49,6 +49,17 @@ def test_write_gate_coverage_marks_confirm_guarded_tools_as_missing_agent_gate()
     assert apply_tool["recommended_action"] == "promote_confirm_guard_to_agent_plan_approval"
 
 
+def test_write_gate_coverage_marks_apply_route_opt_in_as_direct_confirmation_guarded():
+    output = inspect_agent_write_gate_coverage(adapter_metadata_by_name=_adapter_metadata())
+    apply_tool = _tools_by_name(output)["apply_pending_action_route_approval_opt_in"]
+
+    assert apply_tool["mutability"] == "guarded_write"
+    assert apply_tool["requires_confirmation"] is True
+    assert apply_tool["direct_confirmation_guard"] is True
+    assert apply_tool["confirmation_fields"] == ["approval_contract_hash", "confirm_apply"]
+    assert apply_tool["risk_level"] == "medium"
+
+
 def test_write_gate_coverage_recommends_high_risk_targets_first():
     output = inspect_agent_write_gate_coverage(adapter_metadata_by_name=_adapter_metadata())
 
@@ -92,5 +103,12 @@ def _adapter_metadata() -> dict[str, dict]:
             "category": "athena_world_model",
             "mutability": "write",
             "handler_name": "_apply_world_model_proposal_resolution",
+        },
+        "apply_pending_action_route_approval_opt_in": {
+            "tool_name": "apply_pending_action_route_approval_opt_in",
+            "adapter_type": "static",
+            "category": "preflight",
+            "mutability": "write",
+            "handler_name": "_apply_pending_action_route_approval_opt_in",
         },
     }

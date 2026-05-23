@@ -20,6 +20,7 @@ ROUTE_PREFERENCE_PROJECTION_VERSION = "phase115.route_preference_projection.v1"
 ROUTE_APPROVAL_OPT_IN_PLAN_VERSION = "phase196.route_approval_opt_in_plan.v1"
 PENDING_ACTION_ROUTE_OPT_IN_APPLY_PREVIEW_VERSION = "phase198.pending_action_route_opt_in_apply_preview.v1"
 PENDING_ACTION_ROUTE_OPT_IN_APPLY_CONTRACT_VERSION = "phase199.pending_action_route_opt_in_apply_contract.v1"
+PENDING_ACTION_ROUTE_OPT_IN_APPLY_VERSION = "phase200.pending_action_route_opt_in_apply.v1"
 DIALOG_ROUTE_SOURCES = {"slash_command", "text_intent", "button_action"}
 APPROVED_GENERATION_CHAINS = {
     ("generate_setup", "preview_setup"): (
@@ -450,6 +451,155 @@ def _route_opt_in_contract_output(
 def _hash_route_opt_in_contract(payload: dict[str, Any]) -> str:
     normalized = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
     return f"approval:{hashlib.sha256(normalized.encode('utf-8')).hexdigest()[:16]}"
+
+
+def verify_pending_action_route_approval_opt_in_apply_contract(
+    *,
+    approval_contract_hash: str | None,
+    approval_contract: dict[str, Any] | None,
+    recomputed_contract: dict[str, Any],
+) -> dict[str, Any]:
+    expected_hash = str(approval_contract_hash or "").strip() or None
+    actual_hash = str(recomputed_contract.get("approval_contract_hash") or "").strip() or None
+    current_contract = recomputed_contract.get("approval_contract")
+    snapshot_hash = None
+    if isinstance(approval_contract, dict):
+        snapshot_approval = approval_contract.get("approval") if isinstance(approval_contract.get("approval"), dict) else {}
+        snapshot_hash = str(snapshot_approval.get("approval_contract_hash") or "").strip() or None
+    drift = {
+        "expected_approval_contract_hash": expected_hash,
+        "actual_approval_contract_hash": actual_hash,
+        "snapshot_approval_contract_hash": snapshot_hash,
+        "hash_matches": None if expected_hash is None or actual_hash is None else expected_hash == actual_hash,
+        "snapshot_hash_matches": None if expected_hash is None or snapshot_hash is None else snapshot_hash == expected_hash,
+        "snapshot_matches": approval_contract == current_contract if isinstance(approval_contract, dict) else False,
+    }
+    if recomputed_contract.get("status") != "requires_confirmation":
+        return _route_opt_in_apply_verification(
+            status="blocked",
+            reason=str(recomputed_contract.get("trace", {}).get("reason") or "route_apply_contract_not_required"),
+            drift=drift,
+            current_contract=recomputed_contract,
+        )
+    if not expected_hash:
+        return _route_opt_in_apply_verification(
+            status="blocked",
+            reason="approval_contract_hash_required",
+            drift=drift,
+            current_contract=recomputed_contract,
+        )
+    if not isinstance(approval_contract, dict):
+        return _route_opt_in_apply_verification(
+            status="blocked",
+            reason="approval_contract_required",
+            drift=drift,
+            current_contract=recomputed_contract,
+        )
+    if actual_hash != expected_hash:
+        return _route_opt_in_apply_verification(
+            status="blocked",
+            reason="approval_contract_hash_mismatch",
+            drift=drift,
+            current_contract=recomputed_contract,
+        )
+    if snapshot_hash != expected_hash:
+        return _route_opt_in_apply_verification(
+            status="blocked",
+            reason="approval_contract_snapshot_hash_mismatch",
+            drift=drift,
+            current_contract=recomputed_contract,
+        )
+    if approval_contract != current_contract:
+        return _route_opt_in_apply_verification(
+            status="blocked",
+            reason="approval_contract_snapshot_mismatch",
+            drift=drift,
+            current_contract=recomputed_contract,
+        )
+    return _route_opt_in_apply_verification(
+        status="ready",
+        reason="approval_contract_verified",
+        drift=drift,
+        current_contract=recomputed_contract,
+    )
+
+
+def blocked_pending_action_route_approval_opt_in_apply(
+    *,
+    pending_action_id: str | None,
+    reason: str,
+    route_apply_preview: dict[str, Any] | None = None,
+    approval_verification: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return {
+        "status": "blocked",
+        "version": PENDING_ACTION_ROUTE_OPT_IN_APPLY_VERSION,
+        "reason": reason,
+        "write_performed": False,
+        "pending_action_id": pending_action_id,
+        "pending_action_type": route_apply_preview.get("pending_action_type") if isinstance(route_apply_preview, dict) else None,
+        "params_before": route_apply_preview.get("params_before") if isinstance(route_apply_preview, dict) else None,
+        "params_after": route_apply_preview.get("params_after") if isinstance(route_apply_preview, dict) else None,
+        "params_diff": {},
+        "route_apply_preview": route_apply_preview,
+        "approval_verification": approval_verification,
+        "risk": {"codes": [reason]},
+        "side_effects": {"executed": [], "skipped": ["PendingAction.params.agent_route"]},
+        "recommended_next_tools": ["preview_pending_action_route_approval_opt_in_apply_contract"],
+        "trace": {"runtime_behavior_changed": False},
+    }
+
+
+def completed_pending_action_route_approval_opt_in_apply(
+    *,
+    pending_action_id: str,
+    pending_action_type: str | None,
+    params_before: dict[str, Any],
+    params_after: dict[str, Any],
+    params_diff: dict[str, Any],
+    route_apply_preview: dict[str, Any],
+    approval_verification: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "status": "success",
+        "version": PENDING_ACTION_ROUTE_OPT_IN_APPLY_VERSION,
+        "reason": "route_opt_in_apply_completed",
+        "write_performed": True,
+        "pending_action_id": pending_action_id,
+        "pending_action_type": pending_action_type,
+        "params_before": params_before,
+        "params_after": params_after,
+        "params_diff": params_diff,
+        "route_apply_preview": route_apply_preview,
+        "approval_verification": approval_verification,
+        "risk": {"codes": []},
+        "evidence": {
+            "approval_contract_verified": True,
+            "params_replaced": True,
+            "pending_action_executed": False,
+            "dialog_state_changed": False,
+        },
+        "side_effects": {"executed": ["PendingAction.params.agent_route"], "skipped": ["pending_action_execution"]},
+        "recommended_next_tools": ["inspect_agent_dialog_control_plane_projection"],
+        "trace": {"runtime_behavior_changed": True},
+    }
+
+
+def _route_opt_in_apply_verification(
+    *,
+    status: str,
+    reason: str,
+    drift: dict[str, Any],
+    current_contract: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "status": status,
+        "version": PENDING_ACTION_ROUTE_OPT_IN_APPLY_VERSION,
+        "reason": reason,
+        "current_contract": current_contract,
+        "drift": drift,
+        "trace": {"reason": "route_opt_in_apply_contract_verification"},
+    }
 
 
 def blocked_pending_action_route_approval_opt_in_apply_preview(
