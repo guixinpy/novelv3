@@ -91,7 +91,7 @@ rg -n "sk-[A-Za-z0-9]{20,}" backend frontend docs --glob "!backend/static/assets
 docs/superpowers/notes/long-memory-agent/2026-05-23-phase189-legacy-hermes-wrapper-readiness.md
 ```
 
-- [ ] Commit and push:
+- [x] Commit and push:
 
 ```powershell
 git add backend/app/services/writing_agent/legacy_hermes_migration_projection.py backend/tests/test_writing_agent_tool_executor.py docs/superpowers/plans/long-memory-agent/2026-05-23-phase189-legacy-hermes-wrapper-readiness.md docs/superpowers/notes/long-memory-agent/2026-05-23-phase189-legacy-hermes-wrapper-readiness.md
