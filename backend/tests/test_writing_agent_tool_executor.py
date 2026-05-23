@@ -7,6 +7,7 @@ from app.services.writing_agent.chapter_generation_execution import (
     prepare_generate_chapter_execution,
 )
 from app.services.writing_agent.chapter_generation_tool import execute_generate_chapter_tool
+from app.services.writing_agent.agent_core_tool_adapters import build_agent_core_tool_adapters
 from app.services.writing_agent.knowledge_base_tool_adapters import KNOWLEDGE_BASE_AGENT_TOOL_ADAPTERS
 from app.services.writing_agent.longform_tool_adapters import build_longform_agent_tool_adapters
 from app.services.writing_agent.review_revision_tool_adapters import REVIEW_REVISION_AGENT_TOOL_ADAPTERS
@@ -19,6 +20,36 @@ from app.services.writing_agent.tool_executor import (
     writing_agent_tool_adapter_metadata,
 )
 from app.services.writing_agent.world_model_tool_adapters import WORLD_MODEL_AGENT_TOOL_ADAPTERS
+
+
+def test_agent_core_tool_adapters_live_in_dedicated_module():
+    adapters = build_agent_core_tool_adapters(
+        adapter_metadata_by_name_provider=lambda: {},
+        static_adapter_tool_names_provider=lambda: set(),
+    )
+    names = list(adapters)
+
+    assert names == [
+        "describe_agent_tools",
+        "plan_writing_agent_run",
+        "plan_dialog_intent_agent_run",
+        "preview_agent_plan_approval_contract",
+        "verify_agent_plan_approval_contract",
+        "plan_recovery_tools",
+        "plan_recommended_followups",
+        "inspect_agent_slash_command_route",
+        "inspect_agent_dialog_route_projection",
+        "inspect_agent_route_preference_projection",
+        "inspect_agent_intent_projection",
+        "inspect_agent_tool_contracts",
+        "inspect_agent_write_gate_coverage",
+        "inspect_agent_mutation_fingerprints",
+    ]
+    assert "preflight_writing" not in names
+    assert {adapter.category for adapter in adapters.values()} == {"preflight"}
+    assert {adapter.mutability for adapter in adapters.values()} == {"read"}
+    assert adapters["verify_agent_plan_approval_contract"].handler.__name__ == "_verify_agent_plan_approval_contract"
+    assert adapters["inspect_agent_intent_projection"].handler.__name__ == "_inspect_agent_intent_projection"
 
 
 def test_review_revision_tool_adapters_live_in_dedicated_module():

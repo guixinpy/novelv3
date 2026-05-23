@@ -1,4 +1,5 @@
 from app.models import ChapterContent, Outline, Project, Setup, Storyline
+from app.services.writing_agent.agent_core_tool_descriptors import AGENT_CORE_TOOL_DESCRIPTORS
 from app.services.writing_agent.knowledge_base_tool_descriptors import KNOWLEDGE_BASE_AGENT_TOOL_DESCRIPTORS
 from app.services.writing_agent.longform_tool_descriptors import LONGFORM_AGENT_TOOL_DESCRIPTORS
 from app.services.writing_agent.review_revision_tool_descriptors import REVIEW_REVISION_AGENT_TOOL_DESCRIPTORS
@@ -11,6 +12,35 @@ from app.services.writing_agent.tool_registry import (
     target_type_for_tool,
 )
 from app.services.writing_agent.world_model_tool_descriptors import WORLD_MODEL_AGENT_TOOL_DESCRIPTORS
+
+
+def test_agent_core_tool_descriptors_live_in_dedicated_module():
+    names = [descriptor.name for descriptor in AGENT_CORE_TOOL_DESCRIPTORS]
+
+    assert names == [
+        "describe_agent_tools",
+        "plan_writing_agent_run",
+        "plan_dialog_intent_agent_run",
+        "preview_agent_plan_approval_contract",
+        "verify_agent_plan_approval_contract",
+        "plan_recovery_tools",
+        "plan_recommended_followups",
+        "inspect_agent_slash_command_route",
+        "inspect_agent_dialog_route_projection",
+        "inspect_agent_route_preference_projection",
+        "inspect_agent_intent_projection",
+        "inspect_agent_tool_contracts",
+        "inspect_agent_write_gate_coverage",
+        "inspect_agent_mutation_fingerprints",
+        "preflight_writing",
+    ]
+    assert {descriptor.category for descriptor in AGENT_CORE_TOOL_DESCRIPTORS} == {"preflight"}
+    assert {descriptor.module for descriptor in AGENT_CORE_TOOL_DESCRIPTORS} == {"writing_agent"}
+    assert all(descriptor.internal for descriptor in AGENT_CORE_TOOL_DESCRIPTORS)
+    assert target_type_for_tool("preview_agent_plan_approval_contract") == "agent_plan_approval_contract"
+    assert target_type_for_tool("inspect_agent_write_gate_coverage") == "agent_write_gate_coverage"
+    assert "plan_writing_agent_run" in non_blocking_report_tool_names()
+    assert "preflight_writing" not in non_blocking_report_tool_names()
 
 
 def test_review_revision_tool_descriptors_live_in_dedicated_module():
