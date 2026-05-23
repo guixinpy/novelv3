@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import copy
+import hashlib
+import json
 from typing import Any
 
 from app.core.chat_commands import CHAT_COMMAND_REGISTRY, agent_slash_command_routes
@@ -17,6 +19,7 @@ DIALOG_ROUTE_PROJECTION_VERSION = "phase104.dialog_route_projection.v1"
 ROUTE_PREFERENCE_PROJECTION_VERSION = "phase115.route_preference_projection.v1"
 ROUTE_APPROVAL_OPT_IN_PLAN_VERSION = "phase196.route_approval_opt_in_plan.v1"
 PENDING_ACTION_ROUTE_OPT_IN_APPLY_PREVIEW_VERSION = "phase198.pending_action_route_opt_in_apply_preview.v1"
+PENDING_ACTION_ROUTE_OPT_IN_APPLY_CONTRACT_VERSION = "phase199.pending_action_route_opt_in_apply_contract.v1"
 DIALOG_ROUTE_SOURCES = {"slash_command", "text_intent", "button_action"}
 APPROVED_GENERATION_CHAINS = {
     ("generate_setup", "preview_setup"): (
@@ -310,6 +313,143 @@ def preview_pending_action_route_approval_opt_in_apply(
             "runtime_behavior_changed": False,
         },
     }
+
+
+def build_pending_action_route_approval_opt_in_apply_contract(
+    *,
+    project_id: str | None,
+    route_apply_preview: dict[str, Any],
+    pending_status: str | None = "pending",
+) -> dict[str, Any]:
+    preview_status = str(route_apply_preview.get("status") or "")
+    risk = dict(route_apply_preview.get("risk") or {})
+    pending_action_id = str(route_apply_preview.get("pending_action_id") or "")
+    if pending_status not in (None, "pending"):
+        risk = {
+            **risk,
+            "codes": ["pending_action_not_pending"],
+        }
+        return _route_opt_in_contract_output(
+            status="blocked",
+            required_confirmation=False,
+            approval_contract=None,
+            approval_contract_hash=None,
+            route_apply_preview=route_apply_preview,
+            risk=risk,
+            reason="pending_action_not_pending",
+        )
+    if preview_status == "blocked":
+        return _route_opt_in_contract_output(
+            status="blocked",
+            required_confirmation=False,
+            approval_contract=None,
+            approval_contract_hash=None,
+            route_apply_preview=route_apply_preview,
+            risk=risk,
+            reason="route_apply_preview_blocked",
+        )
+    if preview_status != "ready" or not route_apply_preview.get("params_diff"):
+        return _route_opt_in_contract_output(
+            status="not_required",
+            required_confirmation=False,
+            approval_contract=None,
+            approval_contract_hash=None,
+            route_apply_preview=route_apply_preview,
+            risk=risk,
+            reason="route_apply_contract_not_required",
+        )
+
+    route_plan = route_apply_preview.get("route_plan") if isinstance(route_apply_preview.get("route_plan"), dict) else {}
+    preference = route_plan.get("preference") if isinstance(route_plan.get("preference"), dict) else {}
+    metadata_patch = copy.deepcopy(dict(route_plan.get("metadata_patch") or {}))
+    route_before = copy.deepcopy(route_plan.get("route_before")) if isinstance(route_plan.get("route_before"), dict) else None
+    route_after = copy.deepcopy(route_plan.get("route_after")) if isinstance(route_plan.get("route_after"), dict) else None
+    approval_contract = {
+        "status": "requires_confirmation",
+        "version": PENDING_ACTION_ROUTE_OPT_IN_APPLY_CONTRACT_VERSION,
+        "project_id": project_id,
+        "pending_action_id": pending_action_id,
+        "pending_action_type": route_apply_preview.get("pending_action_type"),
+        "preview_version": route_apply_preview.get("version"),
+        "route_plan_version": route_plan.get("version"),
+        "mutation_target": "PendingAction.params.agent_route",
+        "mutation_path": "params.agent_route.use_agent_approval_chain",
+        "metadata_patch": metadata_patch,
+        "route_before": route_before,
+        "route_after": route_after,
+        "expected_prepare_tool_name": preference.get("preferred_prepare_tool_name"),
+        "expected_execute_tool_name": preference.get("preferred_execute_tool_name"),
+        "required_preconditions": {
+            "pending_status": "pending",
+            "route_plan_status": "ready",
+            "params_diff_required": True,
+        },
+        "approval": {
+            "required": True,
+            "confirmation_param": "approval_contract_hash",
+            "approval_contract_hash": None,
+            "hash_algorithm": "sha256",
+        },
+        "trace": {"reason": "route_opt_in_apply_contract_preview_only"},
+    }
+    approval_contract_hash = _hash_route_opt_in_contract(
+        {
+            "contract_version": PENDING_ACTION_ROUTE_OPT_IN_APPLY_CONTRACT_VERSION,
+            "project_id": project_id,
+            "pending_action_id": pending_action_id,
+            "pending_action_type": route_apply_preview.get("pending_action_type"),
+            "preview_version": route_apply_preview.get("version"),
+            "route_plan_version": route_plan.get("version"),
+            "mutation_target": approval_contract["mutation_target"],
+            "mutation_path": approval_contract["mutation_path"],
+            "metadata_patch": metadata_patch,
+            "route_before": route_before,
+            "route_after": route_after,
+            "expected_prepare_tool_name": approval_contract["expected_prepare_tool_name"],
+            "expected_execute_tool_name": approval_contract["expected_execute_tool_name"],
+            "required_preconditions": approval_contract["required_preconditions"],
+        }
+    )
+    approval_contract["approval"]["approval_contract_hash"] = approval_contract_hash
+    return _route_opt_in_contract_output(
+        status="requires_confirmation",
+        required_confirmation=True,
+        approval_contract=approval_contract,
+        approval_contract_hash=approval_contract_hash,
+        route_apply_preview=route_apply_preview,
+        risk=risk,
+        reason="route_apply_contract_requires_confirmation",
+    )
+
+
+def _route_opt_in_contract_output(
+    *,
+    status: str,
+    required_confirmation: bool,
+    approval_contract: dict[str, Any] | None,
+    approval_contract_hash: str | None,
+    route_apply_preview: dict[str, Any],
+    risk: dict[str, Any],
+    reason: str,
+) -> dict[str, Any]:
+    return {
+        "status": status,
+        "version": PENDING_ACTION_ROUTE_OPT_IN_APPLY_CONTRACT_VERSION,
+        "required_confirmation": required_confirmation,
+        "approval_contract_hash": approval_contract_hash,
+        "approval_contract": approval_contract,
+        "route_apply_preview": route_apply_preview,
+        "risk": risk,
+        "trace": {
+            "reason": reason,
+            "runtime_behavior_changed": False,
+        },
+    }
+
+
+def _hash_route_opt_in_contract(payload: dict[str, Any]) -> str:
+    normalized = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
+    return f"approval:{hashlib.sha256(normalized.encode('utf-8')).hexdigest()[:16]}"
 
 
 def blocked_pending_action_route_approval_opt_in_apply_preview(

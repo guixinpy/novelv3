@@ -339,6 +339,30 @@ AGENT_CORE_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(
+        name="preview_pending_action_route_approval_opt_in_apply_contract",
+        module="writing_agent",
+        category="preflight",
+        description="只读生成 pending action route approval-chain opt-in apply 的审批契约和稳定确认哈希，不执行写入。",
+        input_schema=object_schema({"pending_action_id": {"type": "string"}}, required=("pending_action_id",)),
+        output_schema=object_schema(
+            {
+                "status": {"type": "string"},
+                "version": {"type": "string"},
+                "required_confirmation": {"type": "boolean"},
+                "approval_contract_hash": {"type": ["string", "null"]},
+                "approval_contract": {"type": ["object", "null"]},
+                "route_apply_preview": {"type": "object"},
+                "risk": {"type": "object"},
+                "trace": {"type": "object"},
+            }
+        ),
+        target_type="agent_route_approval_opt_in_apply_contract",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=14,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
         name="inspect_agent_dialog_control_plane_projection",
         module="writing_agent",
         category="preflight",
