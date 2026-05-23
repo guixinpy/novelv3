@@ -9,6 +9,7 @@ from app.services.writing_agent.chapter_generation_execution import (
 from app.services.writing_agent.chapter_generation_tool import execute_generate_chapter_tool
 from app.services.writing_agent.knowledge_base_tool_adapters import KNOWLEDGE_BASE_AGENT_TOOL_ADAPTERS
 from app.services.writing_agent.longform_tool_adapters import build_longform_agent_tool_adapters
+from app.services.writing_agent.review_revision_tool_adapters import REVIEW_REVISION_AGENT_TOOL_ADAPTERS
 from app.services.writing_agent.tool_registry import internal_tool_names
 from app.services.writing_agent.tool_executor import (
     WritingAgentToolContext,
@@ -18,6 +19,27 @@ from app.services.writing_agent.tool_executor import (
     writing_agent_tool_adapter_metadata,
 )
 from app.services.writing_agent.world_model_tool_adapters import WORLD_MODEL_AGENT_TOOL_ADAPTERS
+
+
+def test_review_revision_tool_adapters_live_in_dedicated_module():
+    names = list(REVIEW_REVISION_AGENT_TOOL_ADAPTERS)
+
+    assert names == [
+        "review_chapter_quality",
+        "review_chapter_continuity",
+        "plan_chapter_revision",
+        "create_revision_draft",
+        "apply_planner_revision_patch",
+        "expand_chapter_to_target",
+        "compress_chapter_to_target",
+    ]
+    assert {adapter.category for adapter in REVIEW_REVISION_AGENT_TOOL_ADAPTERS.values()} == {"review", "revision"}
+    assert REVIEW_REVISION_AGENT_TOOL_ADAPTERS["review_chapter_quality"].mutability == "read"
+    assert REVIEW_REVISION_AGENT_TOOL_ADAPTERS["create_revision_draft"].mutability == "write"
+    assert (
+        REVIEW_REVISION_AGENT_TOOL_ADAPTERS["apply_planner_revision_patch"].handler.__name__
+        == "_apply_planner_revision_patch"
+    )
 
 
 def test_world_model_tool_adapters_live_in_dedicated_module():

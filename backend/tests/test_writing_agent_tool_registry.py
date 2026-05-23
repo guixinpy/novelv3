@@ -1,6 +1,7 @@
 from app.models import ChapterContent, Outline, Project, Setup, Storyline
 from app.services.writing_agent.knowledge_base_tool_descriptors import KNOWLEDGE_BASE_AGENT_TOOL_DESCRIPTORS
 from app.services.writing_agent.longform_tool_descriptors import LONGFORM_AGENT_TOOL_DESCRIPTORS
+from app.services.writing_agent.review_revision_tool_descriptors import REVIEW_REVISION_AGENT_TOOL_DESCRIPTORS
 from app.services.writing_agent.tool_registry import (
     allowed_tool_names,
     build_agent_tool_plan,
@@ -10,6 +11,25 @@ from app.services.writing_agent.tool_registry import (
     target_type_for_tool,
 )
 from app.services.writing_agent.world_model_tool_descriptors import WORLD_MODEL_AGENT_TOOL_DESCRIPTORS
+
+
+def test_review_revision_tool_descriptors_live_in_dedicated_module():
+    names = [descriptor.name for descriptor in REVIEW_REVISION_AGENT_TOOL_DESCRIPTORS]
+
+    assert names == [
+        "review_chapter_quality",
+        "review_chapter_continuity",
+        "plan_chapter_revision",
+        "create_revision_draft",
+        "apply_planner_revision_patch",
+        "expand_chapter_to_target",
+        "compress_chapter_to_target",
+    ]
+    assert {descriptor.category for descriptor in REVIEW_REVISION_AGENT_TOOL_DESCRIPTORS} == {"review", "revision"}
+    assert all(descriptor.internal for descriptor in REVIEW_REVISION_AGENT_TOOL_DESCRIPTORS)
+    assert target_type_for_tool("plan_chapter_revision") == "revision_plan"
+    assert target_type_for_tool("apply_planner_revision_patch") == "revision"
+    assert "review_chapter_quality" in non_blocking_report_tool_names()
 
 
 def test_world_model_tool_descriptors_live_in_dedicated_module():
