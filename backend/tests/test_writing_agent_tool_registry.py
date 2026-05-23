@@ -852,6 +852,7 @@ def test_agent_tool_registry_includes_route_approval_opt_in_plan():
     assert descriptor.non_blocking_report is True
     assert descriptor.category == "preflight"
     assert descriptor.target_type == "agent_route_approval_opt_in_plan"
+    assert descriptor.input_schema["properties"]["pending_action_id"]["type"] == "string"
     assert descriptor.input_schema["properties"]["agent_route"]["type"] == "object"
     assert descriptor.input_schema["properties"]["action_type"]["type"] == "string"
     assert descriptor.output_schema["properties"]["metadata_patch"]["type"] == "object"

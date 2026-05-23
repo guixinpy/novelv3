@@ -283,7 +283,53 @@ def _plan_agent_route_approval_opt_in(
         from app.services.actions.action_execution_service import SUPPORTED_ACTION_EXECUTION_TYPES
         from app.services.writing_agent.slash_command_route import plan_agent_route_approval_opt_in
 
+        pending_action_id = str(tool.params.get("pending_action_id") or "").strip()
         agent_route = tool.params.get("agent_route")
+        if pending_action_id:
+            from app.models import Dialog, PendingAction
+
+            pending = context.db.query(PendingAction).filter(PendingAction.id == pending_action_id).first()
+            if pending is None:
+                output = plan_agent_route_approval_opt_in(
+                    static_adapter_tool_names=static_adapter_tool_names_provider(),
+                    action_execution_tool_names=set(SUPPORTED_ACTION_EXECUTION_TYPES),
+                )
+                output["risk"] = {
+                    "codes": ["pending_action_not_found"],
+                    "missing_preferred_tools": [],
+                    "guardrails": output.get("risk", {}).get("guardrails", []),
+                }
+                output["trace"] = {**output.get("trace", {}), "pending_action_id": pending_action_id}
+                return output
+            dialog = context.db.query(Dialog).filter(Dialog.id == pending.dialog_id).first()
+            if dialog is None or dialog.project_id != context.project_id:
+                output = plan_agent_route_approval_opt_in(
+                    static_adapter_tool_names=static_adapter_tool_names_provider(),
+                    action_execution_tool_names=set(SUPPORTED_ACTION_EXECUTION_TYPES),
+                )
+                output["risk"] = {
+                    "codes": ["pending_action_not_found"],
+                    "missing_preferred_tools": [],
+                    "guardrails": output.get("risk", {}).get("guardrails", []),
+                }
+                output["trace"] = {**output.get("trace", {}), "pending_action_id": pending_action_id}
+                return output
+            pending_params = pending.params if isinstance(pending.params, dict) else {}
+            agent_route = pending_params.get("agent_route")
+            output = plan_agent_route_approval_opt_in(
+                action_type=str(pending.type or "").strip() or None,
+                agent_route=agent_route if isinstance(agent_route, dict) else None,
+                static_adapter_tool_names=static_adapter_tool_names_provider(),
+                action_execution_tool_names=set(SUPPORTED_ACTION_EXECUTION_TYPES),
+            )
+            output["trace"] = {
+                **output.get("trace", {}),
+                "pending_action_id": pending.id,
+                "pending_action_type": pending.type,
+                "pending_action_route_source": "pending_action",
+            }
+            return output
+
         return plan_agent_route_approval_opt_in(
             action_type=str(tool.params.get("action_type") or "").strip() or None,
             source=str(tool.params.get("source") or "").strip() or None,

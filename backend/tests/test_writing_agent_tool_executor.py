@@ -2,7 +2,18 @@ from datetime import datetime
 
 import pytest
 
-from app.models import ChapterContent, Outline, Project, Setup, Storyline, WritingAgentRun, WritingAgentStep
+from app.core.dialog_agent_routes import build_dialog_agent_route
+from app.models import (
+    ChapterContent,
+    Dialog,
+    Outline,
+    PendingAction,
+    Project,
+    Setup,
+    Storyline,
+    WritingAgentRun,
+    WritingAgentStep,
+)
 from app.schemas.writing_agent import WritingAgentToolRequest
 from app.services.writing_agent.chapter_generation_execution import (
     execute_generate_chapter_with_approval,
@@ -457,6 +468,66 @@ async def test_tool_executor_handles_route_approval_opt_in_plan(db_session):
     assert result.output["write_performed"] is False
     assert result.output["metadata_patch"] == {"use_agent_approval_chain": True}
     assert result.output["route_after"]["use_agent_approval_chain"] is True
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_handles_pending_action_route_opt_in_plan(db_session):
+    project = Project(name="Pending Route Approval Opt In Plan")
+    db_session.add(project)
+    db_session.commit()
+    dialog = Dialog(project_id=project.id, state="pending_action")
+    db_session.add(dialog)
+    db_session.commit()
+    route = build_dialog_agent_route("preview_setup", source="slash_command", command_name="setup")
+    pending = PendingAction(
+        dialog_id=dialog.id,
+        type="preview_setup",
+        params={"project_id": project.id, "agent_route": route},
+    )
+    db_session.add(pending)
+    db_session.commit()
+    original_params = dict(pending.params)
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-pending-route-opt-in-plan"),
+        WritingAgentToolRequest(
+            tool_name="plan_agent_route_approval_opt_in",
+            params={"pending_action_id": pending.id},
+        ),
+    )
+
+    db_session.refresh(pending)
+    assert result.handled is True
+    assert result.output["status"] == "ready"
+    assert result.output["can_apply"] is True
+    assert result.output["write_performed"] is False
+    assert result.output["metadata_patch"] == {"use_agent_approval_chain": True}
+    assert result.output["trace"]["pending_action_id"] == pending.id
+    assert result.output["trace"]["pending_action_type"] == "preview_setup"
+    assert result.output["trace"]["pending_action_route_source"] == "pending_action"
+    assert pending.params == original_params
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_blocks_missing_pending_action_route_opt_in_plan(db_session):
+    project = Project(name="Missing Pending Route Approval Opt In Plan")
+    db_session.add(project)
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-missing-pending-route-plan"),
+        WritingAgentToolRequest(
+            tool_name="plan_agent_route_approval_opt_in",
+            params={"pending_action_id": "missing-pending-action"},
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output["status"] == "blocked"
+    assert result.output["can_apply"] is False
+    assert result.output["write_performed"] is False
+    assert result.output["risk"]["codes"] == ["pending_action_not_found"]
+    assert result.output["trace"]["pending_action_id"] == "missing-pending-action"
 
 
 @pytest.mark.asyncio

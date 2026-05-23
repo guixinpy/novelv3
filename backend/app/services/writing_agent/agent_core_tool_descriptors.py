@@ -283,6 +283,7 @@ AGENT_CORE_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         description="返回对话 route 写入 approval-chain opt-in metadata 前的只读计划和 guardrails，不执行写入。",
         input_schema=object_schema(
             {
+                "pending_action_id": {"type": "string"},
                 "agent_route": {"type": "object"},
                 "action_type": {"type": "string"},
                 "source": {"type": "string"},
