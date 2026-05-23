@@ -230,6 +230,8 @@ def _approval_step(
     }
     if step.get("command_args"):
         approval_step["command_args"] = str(step["command_args"])
+    if step.get("approval_executor_tool_name"):
+        approval_step["approval_executor_tool_name"] = str(step["approval_executor_tool_name"])
     mutation_fingerprint = step.get("mutation_fingerprint")
     if not isinstance(mutation_fingerprint, dict):
         mutation_fingerprint = build_mutation_fingerprint(

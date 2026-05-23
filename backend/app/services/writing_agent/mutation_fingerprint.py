@@ -7,6 +7,8 @@ from typing import Any
 MUTATION_FINGERPRINT_VERSION = "phase142.mutation_fingerprint.v1"
 
 _KNOWN_MUTATING_TOOLS = {
+    "execute_generate_setup_with_approval",
+    "generate_setup",
     "generate_chapter",
     "generate_chapter_range",
     "apply_world_model_proposal_resolution",
@@ -56,7 +58,7 @@ def build_mutation_fingerprint(project_id: str, tool_name: str, params: dict[str
             diagnostics=[],
         )
 
-    target = _target_for_tool(tool_name, params)
+    target = _target_for_tool(project_id, tool_name, params)
     if target["status"] != "ready":
         return _fingerprint_result(
             project_id=project_id,
@@ -81,7 +83,13 @@ def build_mutation_fingerprint(project_id: str, tool_name: str, params: dict[str
     )
 
 
-def _target_for_tool(tool_name: str, params: dict[str, Any]) -> dict[str, Any]:
+def _target_for_tool(project_id: str, tool_name: str, params: dict[str, Any]) -> dict[str, Any]:
+    if tool_name in {"execute_generate_setup_with_approval", "generate_setup"}:
+        project_target = _clean_string(project_id)
+        if not project_target:
+            return _blocked("setup", "missing_target", f"{tool_name} requires project_id")
+        return _ready("setup", f"setup:{project_target}")
+
     if tool_name == "generate_chapter":
         chapter_index = _positive_int(params.get("chapter_index"))
         if chapter_index is None:

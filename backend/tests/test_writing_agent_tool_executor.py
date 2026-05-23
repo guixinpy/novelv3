@@ -16,6 +16,8 @@ from app.services.writing_agent.agent_task_queue_tool_adapters import AGENT_TASK
 from app.services.writing_agent.knowledge_base_tool_adapters import KNOWLEDGE_BASE_AGENT_TOOL_ADAPTERS
 from app.services.writing_agent.longform_tool_adapters import build_longform_agent_tool_adapters
 from app.services.writing_agent.review_revision_tool_adapters import REVIEW_REVISION_AGENT_TOOL_ADAPTERS
+from app.services.writing_agent.setup_generation_execution import prepare_generate_setup_execution
+from app.services.writing_agent.setup_generation_tool_adapters import build_setup_generation_agent_tool_adapters
 from app.services.writing_agent.tool_adapter_types import WritingAgentToolContext
 from app.services.writing_agent.tool_registry import internal_tool_names
 from app.services.writing_agent.tool_executor import (
@@ -97,6 +99,21 @@ def test_agent_generation_tool_adapters_live_in_dedicated_module():
     assert adapters["execute_generate_chapter_with_approval"].mutability == "write"
     assert adapters["expand_outline_window"].mutability == "write"
     assert adapters["backfill_outline_gaps"].handler.__name__ == "_backfill_outline_gaps"
+
+
+def test_setup_generation_tool_adapters_live_in_dedicated_module():
+    adapters = build_setup_generation_agent_tool_adapters(approval_tool_metadata_provider=lambda plan: {})
+    names = list(adapters)
+
+    assert names == [
+        "preview_generate_setup_execution",
+        "prepare_generate_setup_execution",
+        "execute_generate_setup_with_approval",
+    ]
+    assert adapters["preview_generate_setup_execution"].mutability == "read"
+    assert adapters["prepare_generate_setup_execution"].mutability == "read"
+    assert adapters["execute_generate_setup_with_approval"].mutability == "write"
+    assert adapters["execute_generate_setup_with_approval"].handler.__name__ == "_execute_generate_setup_with_approval"
 
 
 def test_agent_task_queue_tool_adapters_live_in_dedicated_module():
@@ -1008,6 +1025,99 @@ async def test_execute_generate_chapter_with_approval_records_verification_event
 
 
 @pytest.mark.asyncio
+async def test_tool_executor_dispatches_preview_generate_setup_execution(db_session):
+    project = Project(name="Preview Setup Generation")
+    db_session.add(project)
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(tool_name="preview_generate_setup_execution", command_args="城市悬疑"),
+    )
+
+    assert result.handled is True
+    assert result.output["status"] == "completed"
+    assert result.output["target_type"] == "setup"
+    assert result.output["side_effects"] == {"executed": [], "skipped": ["generate_setup"]}
+    assert result.output["recommended_next_tools"] == ["prepare_generate_setup_execution"]
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_dispatches_prepare_generate_setup_execution(db_session):
+    project = Project(name="Prepare Setup Generation")
+    db_session.add(project)
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(tool_name="prepare_generate_setup_execution", command_args="城市悬疑"),
+    )
+
+    assert result.handled is True
+    assert result.output["status"] == "approval_required"
+    plan_step = result.output["agent_plan"]["steps"][0]
+    assert plan_step["tool_name"] == "generate_setup"
+    assert plan_step["approval_executor_tool_name"] == "execute_generate_setup_with_approval"
+    assert result.output["agent_plan_approval_contract_hash"]
+    assert result.output["agent_plan_approval_contract"]["write_steps"][0]["tool_name"] == "generate_setup"
+    assert result.output["required_confirmation"]["confirm_execute"] is True
+    assert result.output["recommended_next_tools"] == ["execute_generate_setup_with_approval"]
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_blocks_execute_generate_setup_without_confirmation(db_session):
+    project = Project(name="Blocked Setup Generation")
+    db_session.add(project)
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(tool_name="execute_generate_setup_with_approval"),
+    )
+
+    assert result.handled is True
+    assert result.output["status"] == "blocked"
+    assert result.output["reason"] == "confirmation_required"
+    assert result.output["side_effects"] == {"executed": [], "skipped": ["generate_setup"]}
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_executes_generate_setup_with_approval(db_session, monkeypatch):
+    project = Project(name="Execute Setup Generation")
+    db_session.add(project)
+    db_session.commit()
+    prepare = prepare_generate_setup_execution(db_session, project.id, command_args="城市悬疑")
+    calls: list[dict] = []
+
+    async def fake_generate_setup(project_id: str, db, command_args=None):
+        calls.append({"project_id": project_id, "command_args": command_args})
+
+    monkeypatch.setattr("app.api.setups.generate_setup", fake_generate_setup)
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(
+            tool_name="execute_generate_setup_with_approval",
+            command_args="城市悬疑",
+            params={
+                "confirm_execute": True,
+                "approval_contract_hash": prepare["agent_plan_approval_contract_hash"],
+                "approval_contract": prepare["agent_plan_approval_contract"],
+            },
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output["status"] == "success"
+    assert result.output["execute_version"]
+    assert result.output["agent_plan_approval_verification"]["status"] == "ready"
+    assert result.output["execution_resource_binding"]["status"] == "ready"
+    assert result.output["execution_resource_binding"]["expected"]["tool_name"] == "generate_setup"
+    assert result.output["side_effects"] == {"executed": ["generate_setup"], "skipped": []}
+    assert calls == [{"project_id": project.id, "command_args": "城市悬疑"}]
+
+
+@pytest.mark.asyncio
 async def test_tool_executor_leaves_legacy_generation_tools_unhandled(db_session):
     project = Project(name="Executor Legacy")
     db_session.add(project)
@@ -1127,6 +1237,30 @@ def test_tool_executor_exposes_approved_direct_chapter_generation_adapter_metada
     }
 
 
+def test_tool_executor_exposes_approved_setup_generation_adapter_metadata():
+    assert writing_agent_tool_adapter_metadata("preview_generate_setup_execution") == {
+        "tool_name": "preview_generate_setup_execution",
+        "adapter_type": "static",
+        "category": "generation",
+        "mutability": "read",
+        "handler_name": "_preview_generate_setup_execution",
+    }
+    assert writing_agent_tool_adapter_metadata("prepare_generate_setup_execution") == {
+        "tool_name": "prepare_generate_setup_execution",
+        "adapter_type": "static",
+        "category": "generation",
+        "mutability": "read",
+        "handler_name": "_prepare_generate_setup_execution",
+    }
+    assert writing_agent_tool_adapter_metadata("execute_generate_setup_with_approval") == {
+        "tool_name": "execute_generate_setup_with_approval",
+        "adapter_type": "static",
+        "category": "generation",
+        "mutability": "write",
+        "handler_name": "_execute_generate_setup_with_approval",
+    }
+
+
 def test_tool_executor_lists_unhandled_internal_tools_for_migration_tracking():
     names = unhandled_internal_writing_agent_tool_names()
 
@@ -1135,6 +1269,9 @@ def test_tool_executor_lists_unhandled_internal_tools_for_migration_tracking():
     assert "expand_chapter_to_target" not in names
     assert "prepare_generate_chapter_execution" not in names
     assert "execute_generate_chapter_with_approval" not in names
+    assert "preview_generate_setup_execution" not in names
+    assert "prepare_generate_setup_execution" not in names
+    assert "execute_generate_setup_with_approval" not in names
     assert "compress_chapter_to_target" not in names
     assert "backfill_outline_gaps" not in names
     assert "repair_longform_maintenance" not in names

@@ -29,6 +29,8 @@ def build_approval_tool_metadata_by_name(
 
         descriptor = get_agent_tool_descriptor(tool_name)
         adapter_metadata = adapter_metadata_by_name.get(tool_name)
+        if adapter_metadata is None:
+            adapter_metadata = _approval_executor_adapter_metadata(step, adapter_metadata_by_name)
         execution_metadata = agent_tool_execution_metadata(descriptor, adapter_metadata)
         input_schema = descriptor.input_schema if descriptor is not None else {}
         required_fields = input_schema.get("required") if isinstance(input_schema, dict) else []
@@ -44,6 +46,26 @@ def build_approval_tool_metadata_by_name(
         }
 
     return metadata_by_name
+
+
+def _approval_executor_adapter_metadata(
+    step: dict[str, Any],
+    adapter_metadata_by_name: dict[str, dict[str, Any]],
+) -> dict[str, Any] | None:
+    executor_tool_name = str(step.get("approval_executor_tool_name") or "").strip()
+    if not executor_tool_name:
+        return None
+    executor_metadata = adapter_metadata_by_name.get(executor_tool_name)
+    if executor_metadata is None:
+        return None
+    return {
+        "tool_name": str(step.get("tool_name") or "").strip(),
+        "adapter_type": "approval_wrapper",
+        "category": executor_metadata.get("category"),
+        "mutability": "write",
+        "handler_name": executor_metadata.get("handler_name"),
+        "approval_executor_tool_name": executor_tool_name,
+    }
 
 
 def _approval_step_needs_contract_check(step: object) -> bool:

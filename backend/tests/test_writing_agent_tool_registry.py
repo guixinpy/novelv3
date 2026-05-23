@@ -7,6 +7,7 @@ from app.services.writing_agent.hermes_action_tool_descriptors import HERMES_ACT
 from app.services.writing_agent.knowledge_base_tool_descriptors import KNOWLEDGE_BASE_AGENT_TOOL_DESCRIPTORS
 from app.services.writing_agent.longform_tool_descriptors import LONGFORM_AGENT_TOOL_DESCRIPTORS
 from app.services.writing_agent.review_revision_tool_descriptors import REVIEW_REVISION_AGENT_TOOL_DESCRIPTORS
+from app.services.writing_agent.setup_generation_tool_descriptors import SETUP_GENERATION_AGENT_TOOL_DESCRIPTORS
 from app.services.writing_agent.tool_registry import (
     allowed_tool_names,
     build_agent_tool_plan,
@@ -88,6 +89,23 @@ def test_agent_generation_tool_descriptors_live_in_dedicated_module():
     assert target_type_for_tool("backfill_outline_gaps") == "outline"
     assert "prepare_generate_chapter_execution" in non_blocking_report_tool_names()
     assert "execute_generate_chapter_with_approval" not in non_blocking_report_tool_names()
+
+
+def test_setup_generation_tool_descriptors_live_in_dedicated_module():
+    names = [descriptor.name for descriptor in SETUP_GENERATION_AGENT_TOOL_DESCRIPTORS]
+
+    assert names == [
+        "preview_generate_setup_execution",
+        "prepare_generate_setup_execution",
+        "execute_generate_setup_with_approval",
+    ]
+    assert {descriptor.category for descriptor in SETUP_GENERATION_AGENT_TOOL_DESCRIPTORS} == {"generation"}
+    assert all(descriptor.internal for descriptor in SETUP_GENERATION_AGENT_TOOL_DESCRIPTORS)
+    assert target_type_for_tool("preview_generate_setup_execution") == "setup_generation_preview"
+    assert target_type_for_tool("prepare_generate_setup_execution") == "setup_generation_approval"
+    assert target_type_for_tool("execute_generate_setup_with_approval") == "setup"
+    assert "prepare_generate_setup_execution" in non_blocking_report_tool_names()
+    assert "execute_generate_setup_with_approval" not in non_blocking_report_tool_names()
 
 
 def test_agent_task_queue_tool_descriptors_live_in_dedicated_module():
@@ -329,6 +347,39 @@ def test_agent_tool_registry_includes_approved_direct_chapter_generation_tools()
         "approval_contract_hash",
         "approval_contract",
     }
+    assert execute_descriptor.output_schema["properties"]["agent_plan_approval_verification"]["type"] == "object"
+    assert execute_descriptor.output_schema["properties"]["execution_resource_binding"]["type"] == "object"
+
+
+def test_agent_tool_registry_includes_approved_setup_generation_tools():
+    preview_descriptor = get_agent_tool_descriptor("preview_generate_setup_execution")
+    prepare_descriptor = get_agent_tool_descriptor("prepare_generate_setup_execution")
+    execute_descriptor = get_agent_tool_descriptor("execute_generate_setup_with_approval")
+
+    assert preview_descriptor is not None
+    assert preview_descriptor.internal is True
+    assert preview_descriptor.non_blocking_report is True
+    assert preview_descriptor.category == "generation"
+    assert preview_descriptor.target_type == "setup_generation_preview"
+
+    assert prepare_descriptor is not None
+    assert prepare_descriptor.internal is True
+    assert prepare_descriptor.non_blocking_report is True
+    assert prepare_descriptor.category == "generation"
+    assert prepare_descriptor.target_type == "setup_generation_approval"
+    assert prepare_descriptor.output_schema["properties"]["agent_plan_approval_contract_hash"]["type"] == "string"
+
+    assert execute_descriptor is not None
+    assert execute_descriptor.internal is True
+    assert execute_descriptor.non_blocking_report is False
+    assert execute_descriptor.category == "generation"
+    assert execute_descriptor.target_type == "setup"
+    assert set(execute_descriptor.input_schema["required"]) == {
+        "confirm_execute",
+        "approval_contract_hash",
+        "approval_contract",
+    }
+    assert execute_descriptor.input_schema["properties"]["confirm_execute"]["type"] == "boolean"
     assert execute_descriptor.output_schema["properties"]["agent_plan_approval_verification"]["type"] == "object"
     assert execute_descriptor.output_schema["properties"]["execution_resource_binding"]["type"] == "object"
 
