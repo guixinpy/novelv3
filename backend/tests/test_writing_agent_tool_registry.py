@@ -1,4 +1,5 @@
 from app.models import ChapterContent, Outline, Project, Setup, Storyline
+from app.services.writing_agent.knowledge_base_tool_descriptors import KNOWLEDGE_BASE_AGENT_TOOL_DESCRIPTORS
 from app.services.writing_agent.longform_tool_descriptors import LONGFORM_AGENT_TOOL_DESCRIPTORS
 from app.services.writing_agent.tool_registry import (
     allowed_tool_names,
@@ -8,6 +9,19 @@ from app.services.writing_agent.tool_registry import (
     non_blocking_report_tool_names,
     target_type_for_tool,
 )
+
+
+def test_knowledge_base_tool_descriptors_live_in_dedicated_module():
+    names = [descriptor.name for descriptor in KNOWLEDGE_BASE_AGENT_TOOL_DESCRIPTORS]
+
+    assert names == [
+        "inspect_agent_knowledge_base_route",
+        "record_agent_knowledge_base_candidate",
+    ]
+    assert {descriptor.category for descriptor in KNOWLEDGE_BASE_AGENT_TOOL_DESCRIPTORS} == {"knowledge_base"}
+    assert {descriptor.module for descriptor in KNOWLEDGE_BASE_AGENT_TOOL_DESCRIPTORS} == {"writing_agent"}
+    assert all(descriptor.internal for descriptor in KNOWLEDGE_BASE_AGENT_TOOL_DESCRIPTORS)
+    assert target_type_for_tool("inspect_agent_knowledge_base_route") == "agent_knowledge_base_route"
 
 
 def test_longform_tool_descriptors_live_in_dedicated_module():

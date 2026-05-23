@@ -7,6 +7,7 @@ from app.services.writing_agent.chapter_generation_execution import (
     prepare_generate_chapter_execution,
 )
 from app.services.writing_agent.chapter_generation_tool import execute_generate_chapter_tool
+from app.services.writing_agent.knowledge_base_tool_adapters import KNOWLEDGE_BASE_AGENT_TOOL_ADAPTERS
 from app.services.writing_agent.longform_tool_adapters import build_longform_agent_tool_adapters
 from app.services.writing_agent.tool_registry import internal_tool_names
 from app.services.writing_agent.tool_executor import (
@@ -16,6 +17,22 @@ from app.services.writing_agent.tool_executor import (
     unhandled_internal_writing_agent_tool_names,
     writing_agent_tool_adapter_metadata,
 )
+
+
+def test_knowledge_base_tool_adapters_live_in_dedicated_module():
+    names = list(KNOWLEDGE_BASE_AGENT_TOOL_ADAPTERS)
+
+    assert names == [
+        "inspect_agent_knowledge_base_route",
+        "record_agent_knowledge_base_candidate",
+    ]
+    assert {adapter.category for adapter in KNOWLEDGE_BASE_AGENT_TOOL_ADAPTERS.values()} == {"knowledge_base"}
+    assert KNOWLEDGE_BASE_AGENT_TOOL_ADAPTERS["inspect_agent_knowledge_base_route"].mutability == "read"
+    assert KNOWLEDGE_BASE_AGENT_TOOL_ADAPTERS["record_agent_knowledge_base_candidate"].mutability == "write"
+    assert (
+        KNOWLEDGE_BASE_AGENT_TOOL_ADAPTERS["record_agent_knowledge_base_candidate"].handler.__name__
+        == "_record_agent_knowledge_base_candidate"
+    )
 
 
 def test_longform_tool_adapters_live_in_dedicated_module():

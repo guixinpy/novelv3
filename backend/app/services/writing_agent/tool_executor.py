@@ -6,6 +6,7 @@ from typing import Any
 
 from app.schemas.writing_agent import WritingAgentToolRequest
 from app.services.writing_agent.approval_tool_metadata import build_approval_tool_metadata_by_name
+from app.services.writing_agent.knowledge_base_tool_adapters import KNOWLEDGE_BASE_AGENT_TOOL_ADAPTERS
 from app.services.writing_agent.longform_tool_adapters import build_longform_agent_tool_adapters
 from app.services.writing_agent.tool_adapter_types import (
     PreflightWriting,
@@ -369,36 +370,6 @@ async def _expand_outline_window(context: WritingAgentToolContext, tool: Writing
         start_chapter=start_chapter,
         end_chapter=end_chapter,
         command_args=command_args,
-    )
-
-
-def _inspect_agent_knowledge_base_route(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
-    from app.services.writing_agent.agent_knowledge_base_route import inspect_agent_knowledge_base_route
-
-    return inspect_agent_knowledge_base_route(
-        context.db,
-        context.project_id,
-        chapter_index=_optional_int(tool.params.get("chapter_index")),
-        query=str(tool.params.get("query") or "").strip() or None,
-        limit=_optional_int(tool.params.get("limit")),
-    )
-
-
-def _record_agent_knowledge_base_candidate(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
-    from app.services.writing_agent.agent_knowledge_base_candidates import record_agent_knowledge_base_candidate
-
-    source_refs = tool.params.get("source_refs")
-    tags = tool.params.get("tags")
-    return record_agent_knowledge_base_candidate(
-        context.db,
-        context.project_id,
-        memory_type=str(tool.params.get("memory_type") or "").strip(),
-        title=str(tool.params.get("title") or "").strip(),
-        summary=str(tool.params.get("summary") or "").strip(),
-        source_refs=_string_list(source_refs),
-        confidence=_optional_float(tool.params.get("confidence")),
-        status=str(tool.params.get("status") or "").strip() or None,
-        tags=_string_list(tags),
     )
 
 
@@ -766,18 +737,6 @@ _STATIC_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
         category="generation",
         mutability="write",
     ),
-    "inspect_agent_knowledge_base_route": WritingAgentToolAdapter(
-        "inspect_agent_knowledge_base_route",
-        _inspect_agent_knowledge_base_route,
-        category="knowledge_base",
-        mutability="read",
-    ),
-    "record_agent_knowledge_base_candidate": WritingAgentToolAdapter(
-        "record_agent_knowledge_base_candidate",
-        _record_agent_knowledge_base_candidate,
-        category="knowledge_base",
-        mutability="write",
-    ),
     "inspect_agent_trace_audit": WritingAgentToolAdapter(
         "inspect_agent_trace_audit",
         _inspect_agent_trace_audit,
@@ -893,6 +852,7 @@ _STATIC_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
         mutability="read",
     ),
 }
+_STATIC_TOOL_ADAPTERS.update(KNOWLEDGE_BASE_AGENT_TOOL_ADAPTERS)
 _STATIC_TOOL_ADAPTERS.update(
     build_longform_agent_tool_adapters(approval_tool_metadata_provider=_approval_tool_metadata_by_name)
 )
@@ -907,15 +867,6 @@ def _optional_int(value: object) -> int | None:
         return None
     try:
         return int(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def _optional_float(value: object) -> float | None:
-    if value is None:
-        return None
-    try:
-        return float(value)
     except (TypeError, ValueError):
         return None
 
