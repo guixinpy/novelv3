@@ -8,12 +8,16 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models import BackgroundTask, Project, WritingAgentRun
-from app.services.tasks.background_task_service import BackgroundTaskService
+from app.services.tasks.background_task_service import ACTIVE_TASK_STATUSES, BackgroundTaskService
 
 AGENT_JOB_PROJECTION_VERSION = "phase75.agent_job_projection.v1"
 DEFAULT_JOB_LIMIT = 20
 MAX_JOB_LIMIT = 100
 ERROR_PREVIEW_LIMIT = 240
+CHAPTER_TARGET_SOURCE_LABELS = {
+    "single_task": "单章生成任务",
+    "range_task": "批量生成任务",
+}
 
 
 def inspect_agent_job_projection(
@@ -24,20 +28,28 @@ def inspect_agent_job_projection(
     task_type: str | None = None,
     status: str | None = None,
     limit: int | None = None,
+    chapter_index: int | None = None,
 ) -> dict[str, Any]:
     _require_project(db, project_id)
     clamped_limit = _clamp_limit(limit)
+    normalized_chapter_index = _optional_positive_int(chapter_index)
     selected_task = _selected_task(db, project_id=project_id, task_id=task_id)
     if task_id and selected_task is None:
         return _json_safe_output(
             {
                 "status": "not_found",
                 "project_id": project_id,
-                "selector": _selector(task_id=task_id, task_type=task_type, status=status),
+                "selector": _selector(
+                    task_id=task_id,
+                    task_type=task_type,
+                    status=status,
+                    chapter_index=normalized_chapter_index,
+                ),
                 "summary": _summary(total=0, returned=0, limit=clamped_limit, by_status={}),
                 "queue": _queue_projection([]),
                 "tasks": [],
                 "selected_task": None,
+                "chapter_reservation": _chapter_reservation_projection([], normalized_chapter_index),
                 "recommended_tools": ["inspect_agent_trace_audit"],
                 "trace": _projection_trace_metadata(),
             }
@@ -48,8 +60,17 @@ def inspect_agent_job_projection(
         query = query.filter(BackgroundTask.task_type == task_type)
     if status:
         query = query.filter(BackgroundTask.status == status)
-    total = query.with_entities(func.count(BackgroundTask.id)).order_by(None).scalar() or 0
-    tasks = query.order_by(BackgroundTask.created_at.desc(), BackgroundTask.id.desc()).limit(clamped_limit).all()
+    ordered_query = query.order_by(BackgroundTask.created_at.desc(), BackgroundTask.id.desc())
+    if normalized_chapter_index is not None:
+        matching_tasks = [
+            task for task in ordered_query.all() if _task_covers_chapter(task, normalized_chapter_index)
+        ]
+        total = len(matching_tasks)
+        tasks = matching_tasks[:clamped_limit]
+    else:
+        total = query.with_entities(func.count(BackgroundTask.id)).order_by(None).scalar() or 0
+        matching_tasks = ordered_query.limit(clamped_limit).all()
+        tasks = matching_tasks
     by_status = _status_counts(tasks)
     selected_projection = _detailed_task(db, selected_task) if selected_task is not None else None
     recommended_tools = _recommended_tools(tasks=tasks, selected_task=selected_projection)
@@ -57,11 +78,17 @@ def inspect_agent_job_projection(
         {
             "status": "completed",
             "project_id": project_id,
-            "selector": _selector(task_id=task_id, task_type=task_type, status=status),
+            "selector": _selector(
+                task_id=task_id,
+                task_type=task_type,
+                status=status,
+                chapter_index=normalized_chapter_index,
+            ),
             "summary": _summary(total=int(total), returned=len(tasks), limit=clamped_limit, by_status=by_status),
             "queue": _queue_projection(tasks),
             "tasks": [_compact_task(task) for task in tasks],
             "selected_task": selected_projection,
+            "chapter_reservation": _chapter_reservation_projection(matching_tasks, normalized_chapter_index),
             "recommended_tools": recommended_tools,
             "trace": _projection_trace_metadata(),
         }
@@ -83,7 +110,13 @@ def _selected_task(db: Session, *, project_id: str, task_id: str | None) -> Back
     return _base_query(db, project_id).filter(BackgroundTask.id == task_id).first()
 
 
-def _selector(*, task_id: str | None, task_type: str | None, status: str | None) -> dict[str, str] | None:
+def _selector(
+    *,
+    task_id: str | None,
+    task_type: str | None,
+    status: str | None,
+    chapter_index: int | None,
+) -> dict[str, str] | None:
     selector = {}
     if task_id:
         selector["task_id"] = task_id
@@ -91,6 +124,8 @@ def _selector(*, task_id: str | None, task_type: str | None, status: str | None)
         selector["task_type"] = task_type
     if status:
         selector["status"] = status
+    if chapter_index is not None:
+        selector["chapter_index"] = str(chapter_index)
     return selector or None
 
 
@@ -158,6 +193,84 @@ def _detailed_task(db: Session, task: BackgroundTask | None) -> dict[str, Any] |
 def _chapter_range(payload: dict[str, Any]) -> dict[str, Any] | None:
     chapter_range = payload.get("chapter_range")
     return chapter_range if isinstance(chapter_range, dict) else None
+
+
+def _task_covers_chapter(task: BackgroundTask, chapter_index: int | None) -> bool:
+    if chapter_index is None:
+        return True
+    payload = task.payload if isinstance(task.payload, dict) else {}
+    return chapter_index in _chapter_index_sources_from_task_payload(payload)
+
+
+def _chapter_index_sources_from_task_payload(payload: dict[str, Any] | None) -> dict[int, str]:
+    if not isinstance(payload, dict):
+        return {}
+    if payload.get("action_type") not in {None, "generate_chapter", "generate_chapter_range"}:
+        return {}
+
+    sources: dict[int, str] = {}
+    chapter_range = payload.get("chapter_range") if isinstance(payload.get("chapter_range"), dict) else {}
+    start = _optional_positive_int(chapter_range.get("start"))
+    end = _optional_positive_int(chapter_range.get("end"))
+    if start is not None and end is not None and start <= end:
+        for index in range(start, end + 1):
+            sources[index] = "range_task"
+
+    action_params = payload.get("action_params") if isinstance(payload.get("action_params"), dict) else {}
+    chapter_index = _optional_positive_int(action_params.get("chapter_index") or payload.get("chapter_index"))
+    if chapter_index is not None:
+        sources.setdefault(chapter_index, "single_task")
+
+    tools = payload.get("tools") if isinstance(payload.get("tools"), list) else []
+    for tool in tools:
+        if not isinstance(tool, dict):
+            continue
+        params = tool.get("params") if isinstance(tool.get("params"), dict) else {}
+        chapter_index = _optional_positive_int(params.get("chapter_index"))
+        if chapter_index is not None:
+            sources.setdefault(chapter_index, "single_task")
+    return sources
+
+
+def _chapter_reservation_projection(tasks: list[BackgroundTask], chapter_index: int | None) -> dict[str, Any] | None:
+    if chapter_index is None:
+        return None
+    active_tasks = [task for task in tasks if task.status in ACTIVE_TASK_STATUSES and _task_covers_chapter(task, chapter_index)]
+    return {
+        "chapter_index": chapter_index,
+        "status": "reserved" if active_tasks else "available",
+        "active_task_count": len(active_tasks),
+        "tasks": [_chapter_reservation_task(task, chapter_index) for task in active_tasks],
+        "recommended_tools": ["inspect_agent_job_projection", "inspect_agent_trace_audit"] if active_tasks else [],
+        "recovery_options": [
+            {
+                "action": "inspect_occupying_task",
+                "tool_name": "inspect_agent_job_projection",
+                "params": {"task_id": task.id},
+            }
+            for task in active_tasks
+        ],
+    }
+
+
+def _chapter_reservation_task(task: BackgroundTask, chapter_index: int) -> dict[str, Any]:
+    payload = task.payload if isinstance(task.payload, dict) else {}
+    sources = _chapter_index_sources_from_task_payload(payload)
+    source = sources.get(chapter_index, "single_task")
+    return {
+        "task_id": task.id,
+        "task_type": task.task_type,
+        "status": task.status,
+        "source": source,
+        "source_label": CHAPTER_TARGET_SOURCE_LABELS.get(source, "占用任务"),
+        "chapter_index": _payload_chapter_index(payload),
+        "chapter_range": _chapter_range(payload),
+    }
+
+
+def _payload_chapter_index(payload: dict[str, Any]) -> int | None:
+    action_params = payload.get("action_params") if isinstance(payload.get("action_params"), dict) else {}
+    return _optional_positive_int(action_params.get("chapter_index") or payload.get("chapter_index"))
 
 
 def _control_plane(payload: dict[str, Any]) -> dict[str, Any] | None:
@@ -259,6 +372,14 @@ def _clamp_limit(limit: int | None) -> int:
     if limit is None:
         return DEFAULT_JOB_LIMIT
     return min(max(int(limit), 1), MAX_JOB_LIMIT)
+
+
+def _optional_positive_int(value: object) -> int | None:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
 
 
 def _projection_trace_metadata() -> dict[str, Any]:

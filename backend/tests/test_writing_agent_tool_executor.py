@@ -145,10 +145,13 @@ async def test_tool_executor_handles_inspect_agent_intent_projection(db_session)
     assert result.output["rule_id"] == "chapter_intent"
     assert result.output["decision"]["reason_code"] == "intent_rule_matched"
     assert result.output["decision"]["match_evidence"] == [{"kind": "pattern", "name": "chapter_generation_phrase"}]
-    assert result.output["candidate"] == {"type": "preview_chapter", "params": {"chapter_index": 3}}
+    assert result.output["candidate"] == {
+        "type": "preview_chapter",
+        "params": {"chapter_index": 3, "chapter_index_source": "explicit_user"},
+    }
     assert result.output["agent_route"]["agent_tool_name"] == "generate_chapter"
     assert result.output["tool_selection"]["selected_tool"] == "generate_chapter"
-    assert result.output["extracted_params"] == {"chapter_index": 3}
+    assert result.output["extracted_params"] == {"chapter_index": 3, "chapter_index_source": "explicit_user"}
 
 
 @pytest.mark.asyncio
@@ -1566,7 +1569,7 @@ async def test_tool_executor_dispatches_inspect_agent_job_projection_adapter(db_
     project = Project(name="Executor Agent Job Projection")
     db_session.add(project)
     db_session.commit()
-    calls: list[tuple[str, str | None, str | None, str | None, int | None]] = []
+    calls: list[tuple[str, str | None, str | None, str | None, int | None, int | None]] = []
 
     def fake_projection(
         db,
@@ -1576,8 +1579,9 @@ async def test_tool_executor_dispatches_inspect_agent_job_projection_adapter(db_
         task_type: str | None,
         status: str | None,
         limit: int | None,
+        chapter_index: int | None,
     ):
-        calls.append((project_id, task_id, task_type, status, limit))
+        calls.append((project_id, task_id, task_type, status, limit, chapter_index))
         return {"status": "completed", "queue": {"depth": 0}}
 
     monkeypatch.setattr(
@@ -1595,7 +1599,58 @@ async def test_tool_executor_dispatches_inspect_agent_job_projection_adapter(db_
 
     assert result.handled is True
     assert result.output == {"status": "completed", "queue": {"depth": 0}}
-    assert calls == [(project.id, "task-1", "generate_chapter", "failed", 9)]
+    assert calls == [(project.id, "task-1", "generate_chapter", "failed", 9, None)]
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_dispatches_inspect_agent_job_projection_with_chapter_index(db_session, monkeypatch):
+    project = Project(name="Executor Agent Job Projection Chapter")
+    db_session.add(project)
+    db_session.commit()
+    captured = {}
+
+    def fake_projection(
+        db,
+        project_id: str,
+        *,
+        task_id: str | None,
+        task_type: str | None,
+        status: str | None,
+        limit: int | None,
+        chapter_index: int | None,
+    ):
+        captured.update(
+            {
+                "project_id": project_id,
+                "task_id": task_id,
+                "task_type": task_type,
+                "status": status,
+                "limit": limit,
+                "chapter_index": chapter_index,
+            }
+        )
+        return {"status": "completed"}
+
+    monkeypatch.setattr(
+        "app.services.writing_agent.agent_job_projection.inspect_agent_job_projection",
+        fake_projection,
+    )
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(tool_name="inspect_agent_job_projection", params={"chapter_index": 3, "limit": 5}),
+    )
+
+    assert result.handled is True
+    assert result.output == {"status": "completed"}
+    assert captured == {
+        "project_id": project.id,
+        "task_id": None,
+        "task_type": None,
+        "status": None,
+        "limit": 5,
+        "chapter_index": 3,
+    }
 
 
 @pytest.mark.asyncio

@@ -75,6 +75,55 @@ def test_inspect_agent_job_projection_exposes_active_control_plane_and_progress(
     assert "inspect_agent_trace_audit" in output["recommended_tools"]
 
 
+def test_inspect_agent_job_projection_filters_active_chapter_reservation(db_session):
+    project = Project(name="Agent Job Chapter Reservation")
+    db_session.add(project)
+    db_session.flush()
+    occupying = BackgroundTask(
+        project_id=project.id,
+        task_type="generate_chapter_range",
+        status="running",
+        payload={"chapter_range": {"start": 2, "end": 4}},
+    )
+    unrelated = BackgroundTask(
+        project_id=project.id,
+        task_type="generate_chapter",
+        status="running",
+        payload={"chapter_index": 8},
+    )
+    db_session.add_all([occupying, unrelated])
+    db_session.commit()
+
+    output = inspect_agent_job_projection(db_session, project.id, chapter_index=3)
+
+    assert output["selector"] == {"chapter_index": "3"}
+    assert [task["id"] for task in output["tasks"]] == [occupying.id]
+    assert output["chapter_reservation"] == {
+        "chapter_index": 3,
+        "status": "reserved",
+        "active_task_count": 1,
+        "tasks": [
+            {
+                "task_id": occupying.id,
+                "task_type": "generate_chapter_range",
+                "status": "running",
+                "source": "range_task",
+                "source_label": "批量生成任务",
+                "chapter_index": None,
+                "chapter_range": {"start": 2, "end": 4},
+            }
+        ],
+        "recommended_tools": ["inspect_agent_job_projection", "inspect_agent_trace_audit"],
+        "recovery_options": [
+            {
+                "action": "inspect_occupying_task",
+                "tool_name": "inspect_agent_job_projection",
+                "params": {"task_id": occupying.id},
+            }
+        ],
+    }
+
+
 def test_inspect_agent_job_projection_exposes_failed_recovery_hint(db_session):
     project = Project(name="Agent Job Failed")
     db_session.add(project)

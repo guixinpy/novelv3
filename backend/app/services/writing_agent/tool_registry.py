@@ -544,6 +544,7 @@ _TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
                 "task_type": {"type": "string"},
                 "status": {"type": "string"},
                 "limit": {"type": "integer", "minimum": 1},
+                "chapter_index": {"type": "integer", "minimum": 1},
             }
         ),
         output_schema=_object_schema(
@@ -553,6 +554,7 @@ _TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
                 "queue": {"type": "object"},
                 "tasks": {"type": "array"},
                 "selected_task": {"type": "object"},
+                "chapter_reservation": {"type": ["object", "null"]},
                 "recommended_tools": {"type": "array"},
             }
         ),

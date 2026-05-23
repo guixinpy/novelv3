@@ -286,6 +286,7 @@ def _inspect_agent_job_projection(context: WritingAgentToolContext, tool: Writin
         task_type=str(tool.params.get("task_type") or "").strip() or None,
         status=str(tool.params.get("status") or "").strip() or None,
         limit=_optional_int(tool.params.get("limit")),
+        chapter_index=_optional_int(tool.params.get("chapter_index")),
     )
 
 

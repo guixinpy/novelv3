@@ -391,6 +391,13 @@ def test_agent_tool_registry_includes_inspect_agent_job_projection():
     assert "inspect_agent_job_projection" in non_blocking_report_tool_names()
 
 
+def test_agent_tool_registry_inspect_agent_job_projection_accepts_chapter_index():
+    descriptor = get_agent_tool_descriptor("inspect_agent_job_projection")
+    properties = descriptor.input_schema["properties"]
+
+    assert properties["chapter_index"] == {"type": "integer", "minimum": 1}
+
+
 def test_agent_tool_registry_includes_inspect_agent_tool_contracts():
     descriptor = get_agent_tool_descriptor("inspect_agent_tool_contracts")
 
