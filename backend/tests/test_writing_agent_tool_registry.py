@@ -1,4 +1,5 @@
 from app.models import ChapterContent, Outline, Project, Setup, Storyline
+from app.services.writing_agent.longform_tool_descriptors import LONGFORM_AGENT_TOOL_DESCRIPTORS
 from app.services.writing_agent.tool_registry import (
     allowed_tool_names,
     build_agent_tool_plan,
@@ -7,6 +8,25 @@ from app.services.writing_agent.tool_registry import (
     non_blocking_report_tool_names,
     target_type_for_tool,
 )
+
+
+def test_longform_tool_descriptors_live_in_dedicated_module():
+    names = [descriptor.name for descriptor in LONGFORM_AGENT_TOOL_DESCRIPTORS]
+
+    assert names == [
+        "plan_longform_chapter_batch",
+        "enqueue_longform_chapter_batch",
+        "inspect_longform_chapter_batch",
+        "execute_longform_chapter_batch_preflight",
+        "prepare_longform_chapter_batch_execution",
+        "execute_longform_chapter_batch",
+        "review_longform_chapter_batch_execution",
+        "route_longform_chapter_batch_after_review",
+    ]
+    assert {descriptor.category for descriptor in LONGFORM_AGENT_TOOL_DESCRIPTORS} == {"task_queue"}
+    assert {descriptor.module for descriptor in LONGFORM_AGENT_TOOL_DESCRIPTORS} == {"writing_agent"}
+    assert all(descriptor.internal for descriptor in LONGFORM_AGENT_TOOL_DESCRIPTORS)
+    assert target_type_for_tool("execute_longform_chapter_batch") == "background_task"
 
 
 def test_agent_tool_registry_has_unique_names_and_contracts():

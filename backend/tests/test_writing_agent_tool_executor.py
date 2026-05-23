@@ -799,7 +799,19 @@ async def test_execute_generate_chapter_with_approval_records_verification_event
     )
 
     assert result["status"] == "success"
-    assert result["approval_verification_event"] == {
+    verification_event = result["approval_verification_event"]
+    assert {
+        key: verification_event[key]
+        for key in (
+            "event_type",
+            "status",
+            "reason",
+            "approval_contract_bound",
+            "approval_contract_version",
+            "write_step_count",
+            "tool_contract_drift_count",
+        )
+    } == {
         "event_type": "contract_verified",
         "status": "ready",
         "reason": "approval_contract_verified",
@@ -808,7 +820,9 @@ async def test_execute_generate_chapter_with_approval_records_verification_event
         "write_step_count": 1,
         "tool_contract_drift_count": 0,
     }
-    assert "approval:" not in str(result["approval_verification_event"])
+    assert verification_event["resource_bindings"][0]["tool_name"] == "generate_chapter"
+    assert verification_event["resource_bindings"][0]["target_id"] == "chapter:2"
+    assert "approval:" not in str(verification_event)
 
 
 @pytest.mark.asyncio
