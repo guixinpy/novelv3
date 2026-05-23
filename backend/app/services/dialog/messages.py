@@ -6,7 +6,7 @@ from app.core.model_call_trace import truncate_text
 from app.schemas import PendingActionOut
 from app.services.actions.action_result_view import action_result_view
 from app.services.actions.descriptions import action_description
-from app.services.actions.pending_action_projection import pending_action_execution_preview
+from app.services.actions.pending_action_projection import pending_action_execution_preview, pending_action_safety_view
 
 
 DEFAULT_DIALOG_MESSAGE_LIMIT = 80
@@ -142,6 +142,7 @@ class DialogMessageService:
             description=action_description(pending.type, pending.params),
             params=pending.params,
             execution_preview=pending_action_execution_preview(pending.params),
+            safety_view=pending_action_safety_view(pending.type, pending.params),
         ).model_dump()
 
     @staticmethod

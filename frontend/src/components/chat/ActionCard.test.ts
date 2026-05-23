@@ -50,4 +50,39 @@ describe('ActionCard', () => {
     expect(wrapper.text()).toContain('projection-1')
     expect(wrapper.text()).not.toContain('approval:abc123')
   })
+
+  it('renders safe pending action recommendations without internal tool details', () => {
+    const wrapper = mount(ActionCard, {
+      props: {
+        disabled: false,
+        action: {
+          id: 'pending-2',
+          type: 'preview_setup',
+          description: '我建议先为项目生成设定，这样后续创作更有基础。',
+          params: {},
+          requires_confirmation: true,
+          safety_view: {
+            kind: 'pending_action_safety',
+            recommendations: [
+              {
+                kind: 'route_upgrade_preview',
+                title: '可先生成路由升级审批契约',
+                message: '这只生成审批准备信息，不会执行当前待确认操作。',
+                severity: 'info',
+                auto_execute: false,
+                guarded_apply: false,
+                approval_contract_hash: 'approval:secret',
+                tool_name: 'preview_pending_action_route_approval_opt_in_apply_contract',
+              },
+            ],
+          },
+        },
+      },
+    })
+
+    expect(wrapper.text()).toContain('可先生成路由升级审批契约')
+    expect(wrapper.text()).toContain('这只生成审批准备信息，不会执行当前待确认操作。')
+    expect(wrapper.text()).not.toContain('approval:secret')
+    expect(wrapper.text()).not.toContain('preview_pending_action_route_approval_opt_in_apply_contract')
+  })
 })

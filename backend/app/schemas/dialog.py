@@ -36,6 +36,7 @@ class PendingActionOut(BaseModel):
     description: str
     params: dict
     execution_preview: dict | None = None
+    safety_view: dict | None = None
     requires_confirmation: bool = True
 
 

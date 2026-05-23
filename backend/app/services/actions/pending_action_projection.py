@@ -1,6 +1,35 @@
 from app.services.actions.action_result_view import TYPE_LABELS
 
 
+def pending_action_safety_view(action_type: str | None, params: dict | None) -> dict | None:
+    if not isinstance(params, dict):
+        return None
+    agent_route = params.get("agent_route")
+    if not isinstance(agent_route, dict):
+        return None
+    if params.get("use_agent_approval_chain") is False:
+        return None
+    if agent_route.get("use_agent_approval_chain") is True:
+        return None
+    if not str(agent_route.get("agent_tool_name") or "").strip():
+        return None
+    if not str(action_type or "").strip():
+        return None
+    return {
+        "kind": "pending_action_safety",
+        "recommendations": [
+            {
+                "kind": "route_upgrade_preview",
+                "title": "可先生成路由升级审批契约",
+                "message": "这只生成审批准备信息，不会执行当前待确认操作。",
+                "severity": "info",
+                "auto_execute": False,
+                "guarded_apply": False,
+            }
+        ],
+    }
+
+
 def pending_action_execution_preview(params: dict | None) -> dict | None:
     if not isinstance(params, dict):
         return None

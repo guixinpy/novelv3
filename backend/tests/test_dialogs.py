@@ -557,6 +557,66 @@ def test_agent_control_plane_routes_confirmed_setup_through_writing_agent_run(cl
     assert started_task_ids == [task.id]
 
 
+def test_pending_action_exposes_route_opt_in_safety_view_without_contract_hash(client):
+    project_id = client.post("/api/v1/projects", json={"name": "Agent Safety View"}).json()["id"]
+
+    response = client.post(
+        "/api/v1/dialog/chat",
+        json={
+            "project_id": project_id,
+            "input_type": "command",
+            "command_name": "setup",
+            "command_args": "雾港悬疑",
+        },
+    )
+
+    assert response.status_code == 200
+    pending = response.json()["pending_action"]
+    safety_view = pending["safety_view"]
+    recommendation = safety_view["recommendations"][0]
+    assert safety_view["kind"] == "pending_action_safety"
+    assert recommendation["kind"] == "route_upgrade_preview"
+    assert recommendation["title"] == "可先生成路由升级审批契约"
+    assert recommendation["message"] == "这只生成审批准备信息，不会执行当前待确认操作。"
+    assert recommendation["severity"] == "info"
+    assert recommendation["auto_execute"] is False
+    assert recommendation["guarded_apply"] is False
+    assert "approval:" not in str(safety_view)
+    assert "approval_contract" not in str(safety_view)
+    assert "params_diff" not in str(safety_view)
+    assert "route_before" not in str(safety_view)
+    assert "route_after" not in str(safety_view)
+    assert "apply_pending_action_route_approval_opt_in" not in str(safety_view)
+
+    messages = client.get(f"/api/v1/dialog/projects/{project_id}/messages").json()
+    assert messages[-1]["pending_action"]["safety_view"] == safety_view
+
+
+@pytest.mark.parametrize(
+    ("action_type", "params"),
+    [
+        ("preview_setup", {}),
+        (
+            "preview_setup",
+            {
+                "agent_route": {"agent_tool_name": "generate_setup"},
+                "use_agent_approval_chain": False,
+            },
+        ),
+        (
+            "preview_setup",
+            {"agent_route": {"agent_tool_name": "generate_setup", "use_agent_approval_chain": True}},
+        ),
+        ("preview_setup", {"agent_route": {"source": "slash_command"}}),
+        ("", {"agent_route": {"agent_tool_name": "generate_setup"}}),
+    ],
+)
+def test_pending_action_safety_view_omits_non_upgradeable_routes(action_type, params):
+    from app.services.actions.pending_action_projection import pending_action_safety_view
+
+    assert pending_action_safety_view(action_type, params) is None
+
+
 def test_dialog_control_plane_approval_chain_opt_in_default_setup_route_stays_legacy(db_session):
     from app.services.writing_agent.dialog_control_plane import prepare_dialog_agent_run_dispatch
 

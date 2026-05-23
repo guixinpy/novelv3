@@ -49,6 +49,21 @@
         </template>
       </dl>
     </section>
+    <section
+      v-if="safetyRecommendations.length"
+      class="action-card__safety"
+      aria-label="Agent 安全建议"
+    >
+      <div
+        v-for="recommendation in safetyRecommendations"
+        :key="recommendation.key"
+        class="action-card__safety-item"
+        :class="`action-card__safety-item--${recommendation.severity}`"
+      >
+        <div class="action-card__safety-title">{{ recommendation.title }}</div>
+        <p class="action-card__safety-message">{{ recommendation.message }}</p>
+      </div>
+    </section>
     <div class="action-card__actions">
       <button
         :disabled="disabled"
@@ -120,6 +135,26 @@ const actionCopy = computed(() => {
   return copy.replace(/\s*注意：第\d+章已有.+?，请确认是否仍要继续。\s*$/, '').trim()
 })
 const previewSteps = computed(() => Array.isArray(executionPreview.value?.steps) ? executionPreview.value.steps : [])
+const safetyRecommendations = computed(() => {
+  const recommendations = props.action?.safety_view?.recommendations
+  if (!Array.isArray(recommendations)) return []
+  return recommendations
+    .map((item: any, index: number) => {
+      const title = typeof item?.title === 'string' ? item.title.trim() : ''
+      const message = typeof item?.message === 'string' ? item.message.trim() : ''
+      const severity = typeof item?.severity === 'string' && item.severity.trim()
+        ? item.severity.trim()
+        : 'info'
+      if (!title && !message) return null
+      return {
+        key: `${item?.kind || 'recommendation'}-${index}`,
+        title,
+        message,
+        severity,
+      }
+    })
+    .filter((item): item is { key: string; title: string; message: string; severity: string } => Boolean(item))
+})
 const auditRows = computed(() => {
   const audit = executionPreview.value?.audit
   if (!audit || typeof audit !== 'object') return []
@@ -249,6 +284,33 @@ function submitRevise() {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.action-card__safety {
+  display: grid;
+  gap: 0.55rem;
+  margin-bottom: 0.85rem;
+}
+
+.action-card__safety-item {
+  border: 1px solid rgba(45, 112, 95, 0.16);
+  background: rgba(238, 250, 246, 0.78);
+  color: var(--color-text-primary);
+  border-radius: 0.75rem;
+  padding: 0.7rem 0.8rem;
+}
+
+.action-card__safety-title {
+  font-size: 0.84rem;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.action-card__safety-message {
+  margin: 0.24rem 0 0;
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+  line-height: 1.45;
 }
 
 .action-card__actions {

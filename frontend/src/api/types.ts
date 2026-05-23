@@ -52,12 +52,27 @@ export interface PendingExecutionPreview {
   steps: PendingExecutionPreviewStep[]
 }
 
+export interface PendingActionSafetyRecommendation {
+  kind: string
+  title: string
+  message: string
+  severity?: 'info' | 'warning' | 'error' | string
+  auto_execute?: boolean
+  guarded_apply?: boolean
+}
+
+export interface PendingActionSafetyView {
+  kind: string
+  recommendations: PendingActionSafetyRecommendation[]
+}
+
 export interface PendingAction {
   id: string
   type: string
   description: string
   params: Record<string, unknown>
   execution_preview?: PendingExecutionPreview | null
+  safety_view?: PendingActionSafetyView | null
   requires_confirmation: boolean
 }
 

@@ -45,6 +45,7 @@ from app.services.actions.action_proposal_service import preview_action_to_execu
 from app.services.actions.action_result_service import ActionResultService
 from app.services.actions.action_result_view import action_result_view
 from app.services.actions.descriptions import action_description
+from app.services.actions.pending_action_projection import pending_action_safety_view
 from app.services.dialog.messages import DEFAULT_MESSAGE_CONTENT_PREVIEW_CHARS, DialogMessageService
 from app.services.dialog.session import DialogSessionService
 from app.services.tasks.background_task_service import BackgroundTaskService
@@ -78,6 +79,16 @@ def _get_or_create_dialog(db: Session, project_id: str, dialog_type: str = "herm
 
 def _build_diagnosis(db: Session, project_id: str) -> ProjectDiagnosisOut:
     return build_project_diagnosis(db, project_id)
+
+
+def _pending_action_out(pending: PendingAction) -> PendingActionOut:
+    return PendingActionOut(
+        id=pending.id,
+        type=pending.type,
+        description=_action_description(pending.type, pending.params),
+        params=pending.params,
+        safety_view=pending_action_safety_view(pending.type, pending.params),
+    )
 
 
 def _save_message(
@@ -924,12 +935,7 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
                 _save_message(db, dialog.id, "assistant", reply)
                 return ChatOut(
                     message=reply,
-                    pending_action=PendingActionOut(
-                        id=pending.id,
-                        type=pending.type,
-                        description=_action_description(action_type, params),
-                        params=pending.params,
-                    ),
+                    pending_action=_pending_action_out(pending),
                     ui_hint=build_ui_hint(
                         action_type=pending.type,
                         dialog_state="PENDING_ACTION",
@@ -986,12 +992,7 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
         _save_message(db, dialog.id, "assistant", reply)
         return ChatOut(
             message=reply,
-            pending_action=PendingActionOut(
-                id=pending.id,
-                type=pending.type,
-                description=_action_description(pending.type, pending.params),
-                params=pending.params,
-            ),
+            pending_action=_pending_action_out(pending),
             ui_hint=build_ui_hint(
                 action_type=pending.type,
                 dialog_state="PENDING_ACTION",
@@ -1078,12 +1079,7 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
         _save_message(db, dialog.id, "assistant", reply)
         return ChatOut(
             message=reply,
-            pending_action=PendingActionOut(
-                id=pending.id,
-                type=pending.type,
-                description=_action_description(candidate.type, params),
-                params=pending.params,
-            ),
+            pending_action=_pending_action_out(pending),
             ui_hint=build_ui_hint(
                 action_type=pending.type,
                 dialog_state="PENDING_ACTION",
