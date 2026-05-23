@@ -84,3 +84,8 @@ rg -n "sk-[A-Za-z0-9]{20,}" backend frontend docs --glob "!backend/static/assets
 ## Next Phase
 
 建议 Phase196 做一个真正的“写入前计划”工具：给定 pending action 或 route，返回是否可应用 opt-in metadata、所需 patch 和风险提示，但仍不直接写入。
+
+## Git
+
+- Main commit: `3432f5e1 feat: suggest route approval opt in patches`
+- Remote: pushed to `origin/main`
