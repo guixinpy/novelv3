@@ -348,6 +348,20 @@ export interface WritingAgentRunDetail {
   steps: WritingAgentStep[]
 }
 
+export interface WritingAgentToolRequest {
+  tool_name: string
+  command_args?: string | null
+  params?: Record<string, unknown>
+  planner?: Record<string, unknown>
+}
+
+export interface WritingAgentRunCreate {
+  goal: string
+  entrypoint?: string
+  tools?: WritingAgentToolRequest[]
+  input?: Record<string, unknown>
+}
+
 export type ModelTraceStatus = 'running' | 'success' | 'failed' | string
 
 export interface TraceSource {

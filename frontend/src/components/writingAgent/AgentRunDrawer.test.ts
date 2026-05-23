@@ -146,5 +146,65 @@ describe('AgentRunDrawer', () => {
     expect(text).toContain('保护策略')
     expect(text).toContain('恢复工具需要用户补充输入')
     expect(text).toContain('prepare_generate_chapter_execution')
+    expect(document.body.querySelector('[data-testid="execute-recovery"]')).toBeNull()
+  })
+
+  it('emits confirmed recovery execution payload when preview is executable', async () => {
+    const wrapper = mount(AgentRunDrawer, {
+      attachTo: document.body,
+      props: {
+        open: true,
+        loading: false,
+        error: '',
+        run: {
+          id: 'run-recovery',
+          project_id: 'project-1',
+          goal: '恢复上一轮阻塞',
+          status: 'success',
+          entrypoint: 'dialog_auto_plan',
+          input: {},
+          output: null,
+          error: null,
+          steps: [
+            {
+              id: 'step-recovery',
+              run_id: 'run-recovery',
+              project_id: 'project-1',
+              step_index: 2,
+              tool_name: 'plan_recovery_tools',
+              status: 'success',
+              input: {},
+              output: {
+                can_execute: true,
+                source_run_id: 'source-run-1',
+                plan_hash: 'plan-hash-1',
+                execution_policy: {
+                  mode: 'preview',
+                  status: 'ready',
+                  requires_confirmation: true,
+                  requires_plan_hash: true,
+                  safe_auto_execute: false,
+                },
+                guardrails: {
+                  status: 'ready',
+                  blockers: [],
+                },
+                tools: [{ tool_name: 'prepare_generate_chapter_execution' }],
+              },
+            },
+          ],
+        },
+      },
+    })
+
+    const button = document.body.querySelector('[data-testid="execute-recovery"]') as HTMLButtonElement
+    expect(button).not.toBeNull()
+    expect(button.textContent).toContain('确认执行恢复')
+
+    await button.click()
+
+    expect(wrapper.emitted('executeRecovery')).toEqual([
+      [{ sourceRunId: 'source-run-1', planHash: 'plan-hash-1' }],
+    ])
   })
 })

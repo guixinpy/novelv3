@@ -10,7 +10,10 @@ const props = defineProps<{
   run: WritingAgentRunDetail | null
 }>()
 
-const emit = defineEmits<{ close: [] }>()
+const emit = defineEmits<{
+  close: []
+  executeRecovery: [payload: { sourceRunId: string; planHash: string }]
+}>()
 
 const steps = computed(() => props.run?.steps || [])
 const recoveryPreview = computed(() => {
@@ -34,9 +37,27 @@ const recoveryTools = computed(() => {
   return Array.isArray(tools) ? tools.filter(isRecord) : []
 })
 const hasRecoveryPolicy = computed(() => Boolean(executionPolicy.value || guardrails.value || recoveryTools.value.length))
+const recoveryExecutePayload = computed(() => {
+  const sourceRunId = stringValue(recoveryPreview.value?.source_run_id)
+  const planHash = stringValue(recoveryPreview.value?.plan_hash)
+  if (
+    recoveryPreview.value?.can_execute === true &&
+    executionPolicy.value?.status === 'ready' &&
+    sourceRunId &&
+    planHash
+  ) {
+    return { sourceRunId, planHash }
+  }
+  return null
+})
 
 function close() {
   emit('close')
+}
+
+function executeRecovery() {
+  if (!recoveryExecutePayload.value) return
+  emit('executeRecovery', recoveryExecutePayload.value)
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -158,6 +179,16 @@ function guardrailStatusLabel(status: unknown) {
               {{ tool.tool_name }}
             </li>
           </ul>
+          <div v-if="recoveryExecutePayload" class="agent-run-drawer__actions">
+            <button
+              type="button"
+              class="agent-run-drawer__execute"
+              data-testid="execute-recovery"
+              @click="executeRecovery"
+            >
+              确认执行恢复
+            </button>
+          </div>
         </section>
 
         <section class="agent-run-drawer__steps" aria-label="Agent run steps">
@@ -297,6 +328,27 @@ function guardrailStatusLabel(status: unknown) {
   color: var(--color-text-primary);
   font-size: var(--text-xs);
   overflow-wrap: anywhere;
+}
+
+.agent-run-drawer__actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.agent-run-drawer__execute {
+  min-height: 32px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-sm);
+  background: var(--color-primary);
+  color: var(--color-bg-white);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  cursor: pointer;
+}
+
+.agent-run-drawer__execute:hover {
+  filter: brightness(0.96);
 }
 
 .agent-run-drawer__steps {

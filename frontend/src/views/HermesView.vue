@@ -42,6 +42,7 @@ type UiAwareResponse =
   | Pick<ResolveActionResponse, 'ui_hint' | 'refresh_targets'>
 
 type WritingControlAction = 'start' | 'pause' | 'resume'
+type RecoveryExecutePayload = { sourceRunId: string; planHash: string }
 
 const route = useRoute()
 const router = useRouter()
@@ -380,6 +381,30 @@ function closeAgentRun() {
   agentRunError.value = ''
   agentRunLoading.value = false
 }
+
+async function executeRecoveryFromRun(payload: RecoveryExecutePayload) {
+  agentRunError.value = ''
+  agentRunLoading.value = true
+  try {
+    const run = await api.createAgentRun(pid.value, {
+      goal: '执行恢复计划',
+      entrypoint: 'ui_recovery_execute',
+      input: {
+        auto_plan: true,
+        recovery_run_id: payload.sourceRunId,
+        execute_recovery: true,
+        confirm_execute: true,
+        recovery_plan_hash: payload.planHash,
+      },
+    })
+    activeAgentRunId.value = run.id
+    activeAgentRun.value = run
+  } catch (err) {
+    agentRunError.value = err instanceof Error ? err.message : '执行恢复计划失败'
+  } finally {
+    agentRunLoading.value = false
+  }
+}
 </script>
 
 <template>
@@ -465,6 +490,7 @@ function closeAgentRun() {
       :loading="agentRunLoading"
       :error="agentRunError"
       @close="closeAgentRun"
+      @execute-recovery="executeRecoveryFromRun"
     />
   </div>
   <div v-else class="hermes-view__loading">

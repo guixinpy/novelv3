@@ -15,6 +15,7 @@ vi.mock('../api/client', () => ({
     regenerateRevision: vi.fn(),
     getMessages: vi.fn(),
     getAgentRun: vi.fn(),
+    createAgentRun: vi.fn(),
     getDiagnosis: vi.fn(),
     getProject: vi.fn(),
     listChapters: vi.fn(),
@@ -94,7 +95,8 @@ async function mountHermesView(path = '/projects/project-1/hermes') {
         ModelTraceDrawer: { template: '<div />' },
         AgentRunDrawer: {
           props: ['open', 'run'],
-          template: '<div v-if="open" data-testid="agent-run-drawer">{{ run && run.id }}</div>',
+          emits: ['executeRecovery'],
+          template: '<div v-if="open" data-testid="agent-run-drawer">{{ run && run.id }}<button data-testid="stub-execute-recovery" @click="$emit(\'executeRecovery\', { sourceRunId: \'source-run-1\', planHash: \'plan-hash-1\' })">execute</button></div>',
         },
       },
     },
@@ -126,6 +128,17 @@ describe('HermesView', () => {
       error: null,
       steps: [],
     } as any)
+    vi.mocked((api as any).createAgentRun).mockResolvedValue({
+      id: 'run-executed',
+      project_id: 'project-1',
+      goal: '执行恢复计划',
+      status: 'success',
+      entrypoint: 'ui_recovery_execute',
+      input: {},
+      output: null,
+      error: null,
+      steps: [],
+    })
     vi.mocked(api.getDiagnosis).mockResolvedValue({
       missing_items: [],
       completed_items: ['content'],
@@ -194,6 +207,30 @@ describe('HermesView', () => {
 
     expect(api.getAgentRun).toHaveBeenCalledWith('project-1', 'run-1')
     expect(wrapper.get('[data-testid="agent-run-drawer"]').text()).toContain('run-1')
+
+    wrapper.unmount()
+  })
+
+  it('creates a confirmed recovery execution run from the agent drawer', async () => {
+    const wrapper = await mountHermesView()
+
+    await wrapper.get('[data-testid="stub-open-agent-run"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="stub-execute-recovery"]').trigger('click')
+    await flushPromises()
+
+    expect((api as any).createAgentRun).toHaveBeenCalledWith('project-1', {
+      goal: '执行恢复计划',
+      entrypoint: 'ui_recovery_execute',
+      input: {
+        auto_plan: true,
+        recovery_run_id: 'source-run-1',
+        execute_recovery: true,
+        confirm_execute: true,
+        recovery_plan_hash: 'plan-hash-1',
+      },
+    })
+    expect(wrapper.get('[data-testid="agent-run-drawer"]').text()).toContain('run-executed')
 
     wrapper.unmount()
   })
