@@ -216,6 +216,39 @@ describe('ChatMessage', () => {
     expect(wrapper.emitted('openAgentRun')).toEqual([['run-1']])
   })
 
+  it('emits openAgentRun from recovery execution action results', async () => {
+    const wrapper = mount(ChatMessage, {
+      props: {
+        msg: {
+          role: 'system',
+          message_type: 'plain',
+          content: '恢复执行已创建，可在运行详情中查看执行步骤。',
+          action_result: {
+            type: 'ui_recovery_execute',
+            status: 'success',
+            data: { agent_run_id: 'run-executed' },
+          },
+          action_result_view: {
+            type: 'ui_recovery_execute',
+            status: 'success',
+            label: '恢复执行已完成',
+            variant: 'success',
+            detail_items: [
+              { label: '运行 ID', value: 'run-executed' },
+              { label: '状态', value: '已完成' },
+            ],
+          },
+        },
+        isLatest: false,
+        loading: false,
+      },
+    })
+
+    await wrapper.get('[data-testid="open-agent-run"]').trigger('click')
+
+    expect(wrapper.emitted('openAgentRun')).toEqual([['run-executed']])
+  })
+
   it('renders pending chapter conflict as a warning before confirmation', () => {
     const wrapper = mount(ChatMessage, {
       props: {

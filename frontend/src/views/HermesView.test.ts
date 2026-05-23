@@ -86,8 +86,9 @@ async function mountHermesView(path = '/projects/project-1/hermes') {
       plugins: [router],
       stubs: {
         ChatMessageList: {
+          props: ['messages'],
           emits: ['openAgentRun'],
-          template: '<div data-testid="chat-message-list"><button data-testid="stub-open-agent-run" @click="$emit(\'openAgentRun\', \'run-1\')">open run</button></div>',
+          template: '<div data-testid="chat-message-list"><button data-testid="stub-open-agent-run" @click="$emit(\'openAgentRun\', \'run-1\')">open run</button><span data-testid="stub-last-message">{{ messages[messages.length - 1]?.content }}</span></div>',
         },
         ChatInput: { template: '<div data-testid="chat-input" />' },
         ExportModal: { template: '<div />' },
@@ -231,6 +232,8 @@ describe('HermesView', () => {
       },
     })
     expect(wrapper.get('[data-testid="agent-run-drawer"]').text()).toContain('run-executed')
+    expect(wrapper.get('[data-testid="stub-last-message"]').text()).toContain('恢复执行已创建')
+    expect(wrapper.get('[data-testid="stub-last-message"]').text()).not.toContain('plan-hash-1')
 
     wrapper.unmount()
   })

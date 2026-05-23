@@ -399,6 +399,7 @@ async function executeRecoveryFromRun(payload: RecoveryExecutePayload) {
     })
     activeAgentRunId.value = run.id
     activeAgentRun.value = run
+    chat.appendAgentRunExecutionFeedback(run)
   } catch (err) {
     agentRunError.value = err instanceof Error ? err.message : '执行恢复计划失败'
   } finally {

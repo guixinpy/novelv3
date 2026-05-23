@@ -84,7 +84,7 @@ const agentRunId = computed(() => {
     || props.msg.meta?.agent_action_type
     || '',
   )
-  if (actionType !== 'plan_recovery_tools') return ''
+  if (!['plan_recovery_tools', 'ui_recovery_execute'].includes(actionType)) return ''
   const metaRunId = props.msg.meta?.agent_run_id
   if (typeof metaRunId === 'string' && metaRunId.trim()) return metaRunId.trim()
   const data = props.msg.action_result?.data
