@@ -138,6 +138,8 @@ describe('AgentRunDrawer', () => {
     })
 
     const text = document.body.textContent || ''
+    expect(text).toContain('运行类型')
+    expect(text).toContain('恢复预览')
     expect(text).toContain('恢复执行策略')
     expect(text).toContain('需要用户补充输入')
     expect(text).toContain('需要确认')
@@ -206,5 +208,39 @@ describe('AgentRunDrawer', () => {
     expect(wrapper.emitted('executeRecovery')).toEqual([
       [{ sourceRunId: 'source-run-1', planHash: 'plan-hash-1' }],
     ])
+  })
+
+  it('labels confirmed recovery execution runs with source metadata', () => {
+    mount(AgentRunDrawer, {
+      attachTo: document.body,
+      props: {
+        open: true,
+        loading: false,
+        error: '',
+        run: {
+          id: 'run-executed',
+          project_id: 'project-1',
+          goal: '执行恢复计划',
+          status: 'success',
+          entrypoint: 'ui_recovery_execute',
+          input: {
+            execute_recovery: true,
+            recovery_run_id: 'source-run-1',
+            recovery_plan_hash: 'plan-hash-1',
+          },
+          output: null,
+          error: null,
+          steps: [],
+        },
+      },
+    })
+
+    const text = document.body.textContent || ''
+    expect(text).toContain('运行类型')
+    expect(text).toContain('恢复执行')
+    expect(text).toContain('来源运行')
+    expect(text).toContain('source-run-1')
+    expect(text).toContain('计划哈希')
+    expect(text).toContain('plan-hash-1')
   })
 })

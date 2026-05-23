@@ -16,10 +16,15 @@ const emit = defineEmits<{
 }>()
 
 const steps = computed(() => props.run?.steps || [])
+const runInput = computed(() => (isRecord(props.run?.input) ? props.run.input : {}))
 const recoveryPreview = computed(() => {
   const step = steps.value.find((item) => item.tool_name === 'plan_recovery_tools')
   return isRecord(step?.output) ? step.output : null
 })
+const isRecoveryExecutionRun = computed(() => (
+  props.run?.entrypoint === 'ui_recovery_execute' ||
+  runInput.value.execute_recovery === true
+))
 const executionPolicy = computed(() => {
   const value = recoveryPreview.value?.execution_policy
   return isRecord(value) ? value : null
@@ -37,6 +42,18 @@ const recoveryTools = computed(() => {
   return Array.isArray(tools) ? tools.filter(isRecord) : []
 })
 const hasRecoveryPolicy = computed(() => Boolean(executionPolicy.value || guardrails.value || recoveryTools.value.length))
+const runKindLabel = computed(() => {
+  if (isRecoveryExecutionRun.value) return '恢复执行'
+  if (recoveryPreview.value) return '恢复预览'
+  if (props.run?.entrypoint === 'dialog_auto_plan') return '自动规划'
+  return '普通运行'
+})
+const recoverySourceRunId = computed(() => (
+  stringValue(runInput.value.recovery_run_id) || stringValue(recoveryPreview.value?.source_run_id)
+))
+const recoveryPlanHash = computed(() => (
+  stringValue(runInput.value.recovery_plan_hash) || stringValue(recoveryPreview.value?.plan_hash)
+))
 const recoveryExecutePayload = computed(() => {
   const sourceRunId = stringValue(recoveryPreview.value?.source_run_id)
   const planHash = stringValue(recoveryPreview.value?.plan_hash)
@@ -121,6 +138,18 @@ function guardrailStatusLabel(status: unknown) {
             <div>
               <dt>运行 ID</dt>
               <dd>{{ run.id }}</dd>
+            </div>
+            <div>
+              <dt>运行类型</dt>
+              <dd>{{ runKindLabel }}</dd>
+            </div>
+            <div v-if="recoverySourceRunId">
+              <dt>来源运行</dt>
+              <dd>{{ recoverySourceRunId }}</dd>
+            </div>
+            <div v-if="recoveryPlanHash">
+              <dt>计划哈希</dt>
+              <dd>{{ recoveryPlanHash }}</dd>
             </div>
           </dl>
         </section>
