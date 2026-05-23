@@ -103,3 +103,8 @@ rg -n "sk-[A-Za-z0-9]{20,}" backend frontend docs --glob "!backend/static/assets
 - 执行前重新计算 Phase198 preview + Phase199 contract。
 - 只有 hash 和 snapshot 都匹配时才更新 `PendingAction.params.agent_route`。
 - 写入后返回 params diff、approval verification 和 runtime behavior 说明。
+
+## Git
+
+- Main commit: `a869df90 feat: preview route opt in apply contract`
+- Remote: pushed to `origin/main`

@@ -190,7 +190,7 @@ rg -n "sk-[A-Za-z0-9]{20,}" backend frontend docs --glob "!backend/static/assets
 
 Expected: diff check exits 0; secret scan exits 1 with no matches.
 
-- [ ] Commit and push:
+- [x] Commit and push:
 
 ```powershell
 git add backend/app/services/writing_agent/slash_command_route.py backend/app/services/writing_agent/agent_core_tool_adapters.py backend/app/services/writing_agent/agent_core_tool_descriptors.py backend/tests/test_writing_agent_tool_executor.py backend/tests/test_writing_agent_tool_registry.py docs/superpowers/plans/long-memory-agent/2026-05-23-phase199-route-opt-in-apply-approval-contract.md docs/superpowers/notes/long-memory-agent/2026-05-23-phase199-route-opt-in-apply-approval-contract.md
