@@ -8,7 +8,9 @@ MUTATION_FINGERPRINT_VERSION = "phase142.mutation_fingerprint.v1"
 
 _KNOWN_MUTATING_TOOLS = {
     "execute_generate_setup_with_approval",
+    "execute_generate_storyline_with_approval",
     "generate_setup",
+    "generate_storyline",
     "generate_chapter",
     "generate_chapter_range",
     "apply_world_model_proposal_resolution",
@@ -89,6 +91,12 @@ def _target_for_tool(project_id: str, tool_name: str, params: dict[str, Any]) ->
         if not project_target:
             return _blocked("setup", "missing_target", f"{tool_name} requires project_id")
         return _ready("setup", f"setup:{project_target}")
+
+    if tool_name in {"execute_generate_storyline_with_approval", "generate_storyline"}:
+        project_target = _clean_string(project_id)
+        if not project_target:
+            return _blocked("storyline", "missing_target", f"{tool_name} requires project_id")
+        return _ready("storyline", f"storyline:{project_target}")
 
     if tool_name == "generate_chapter":
         chapter_index = _positive_int(params.get("chapter_index"))
