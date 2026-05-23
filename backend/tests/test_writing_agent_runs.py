@@ -1908,6 +1908,114 @@ def test_agent_run_execute_longform_chapter_batch_recovers_missing_resource_bind
     assert calls == []
 
 
+def test_agent_run_auto_plan_executes_binding_recovery_prepare_only_after_hash_confirmation(
+    client,
+    db_session,
+    monkeypatch,
+):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1])
+    prepared = _prepare_longform_batch_execution_contract(client, project.id)
+    calls: list[str] = []
+
+    def fake_verify(*args, **kwargs):
+        return {
+            "status": "ready",
+            "reason": "approval_contract_verified",
+            "current_contract": {"version": "phase108.agent_plan_approval_contract.v1"},
+            "drift": {
+                "expected_approval_contract_hash": prepared["approval_contract_hash"],
+                "write_step_count": 1,
+                "tool_contract_drift_count": 0,
+                "resource_bindings": [
+                    {
+                        "tool_call_id": "toolcall:wrong",
+                        "tool_name": "generate_chapter",
+                        "target_type": "chapter",
+                        "target_id": "chapter:99",
+                        "source_plan_id": "plan:wrong",
+                        "source_step_id": "step:write",
+                        "binding_source": "server_derived",
+                    }
+                ],
+            },
+        }
+
+    async def fake_execute(self, action_type, project_id, *, command_args=None, action_params=None):
+        calls.append(action_type)
+        return {"status": "success", "chapter_index": 2}
+
+    monkeypatch.setattr("app.services.writing_agent.batch_execution.verify_agent_plan_approval_contract", fake_verify)
+    monkeypatch.setattr("app.services.actions.action_execution_service.ActionExecutionService.execute", fake_execute)
+
+    blocked = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "阻断资源绑定错配的长篇批次执行",
+            "tools": [
+                {
+                    "tool_name": "execute_longform_chapter_batch",
+                    "params": {
+                        "task_id": prepared["task_id"],
+                        "confirm_execute": True,
+                        "attempt_manifest_hash": prepared["attempt_manifest_hash"],
+                        "approval_contract_hash": prepared["approval_contract_hash"],
+                    },
+                }
+            ],
+        },
+    )
+    blocked_run_id = blocked.json()["id"]
+    preview = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "预览资源绑定恢复",
+            "tools": [{"tool_name": "plan_recovery_tools", "params": {"run_id": blocked_run_id}}],
+        },
+    )
+    preview_output = preview.json()["steps"][0]["output"]
+    plan_hash = preview_output["plan_hash"]
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "执行资源绑定恢复 prepare",
+            "input": {
+                "auto_plan": True,
+                "recovery_run_id": blocked_run_id,
+                "execute_recovery": True,
+                "confirm_execute": True,
+                "recovery_plan_hash": plan_hash,
+            },
+        },
+    )
+
+    payload = response.json()
+    output = payload["steps"][0]["output"]
+    assert blocked.status_code == 200
+    assert blocked.json()["status"] == "blocked"
+    assert preview.status_code == 200
+    assert preview_output["can_execute"] is True
+    assert len(preview_output["tools"]) == 1
+    assert preview_output["tools"][0]["tool_name"] == "prepare_longform_chapter_batch_execution"
+    assert preview_output["execution_policy"]["safe_auto_execute"] is False
+    assert response.status_code == 200
+    assert payload["status"] == "success"
+    assert payload["input"]["planner"]["mode"] == "execute"
+    assert payload["input"]["planner"]["plan_hash"] == plan_hash
+    assert payload["input"]["tools"][0]["tool_name"] == "prepare_longform_chapter_batch_execution"
+    assert [step["tool_name"] for step in payload["steps"]] == ["prepare_longform_chapter_batch_execution"]
+    assert output["status"] == "approval_required"
+    assert output["task"]["id"] == prepared["task_id"]
+    assert "generate_chapter" in output["side_effects"]["skipped"]
+    assert calls == []
+    assert (
+        db_session.query(ChapterContent)
+        .filter(ChapterContent.project_id == project.id, ChapterContent.chapter_index == 2)
+        .count()
+        == 0
+    )
+
+
 def test_agent_run_execute_longform_chapter_batch_requires_confirmation(client, db_session):
     project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1])
     prepared = _prepare_longform_batch_execution_contract(client, project.id)
