@@ -354,6 +354,34 @@ async def test_tool_executor_handles_inspect_agent_route_preference_projection(d
     ]
     assert chapter_route["runtime_route_changed"] is False
     assert chapter_route["migration_status"] == "recommended_not_applied"
+    expected_routes = {
+        "preview_setup": [
+            "prepare_generate_setup_execution",
+            "execute_generate_setup_with_approval",
+        ],
+        "preview_storyline": [
+            "prepare_generate_storyline_execution",
+            "execute_generate_storyline_with_approval",
+        ],
+        "preview_outline": [
+            "prepare_generate_outline_execution",
+            "execute_generate_outline_with_approval",
+        ],
+    }
+    for action_type, preferred_chain in expected_routes.items():
+        route = next(
+            route
+            for route in result.output["routes"]
+            if route["source"] == "slash_command" and route["action_type"] == action_type
+        )
+        assert route["preferred_tool_chain"] == preferred_chain
+        assert route["preferred_prepare_tool_name"] == preferred_chain[0]
+        assert route["preferred_execute_tool_name"] == preferred_chain[1]
+        assert route["runtime_tool_name"] == route["current_tool_name"]
+        assert route["runtime_route_changed"] is False
+        assert route["runtime_behavior_changed"] is False
+        assert route["migration_status"] == "recommended_not_applied"
+    assert result.output["trace"]["runtime_behavior_changed"] is False
 
 
 @pytest.mark.asyncio

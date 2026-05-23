@@ -13,15 +13,36 @@ from app.services.writing_agent.tool_registry import get_agent_tool_descriptor
 SLASH_COMMAND_ROUTE_PROJECTION_VERSION = "phase103.slash_command_route_projection.v1"
 DIALOG_ROUTE_PROJECTION_VERSION = "phase104.dialog_route_projection.v1"
 ROUTE_PREFERENCE_PROJECTION_VERSION = "phase115.route_preference_projection.v1"
-APPROVED_CHAPTER_GENERATION_CHAIN = (
-    "prepare_generate_chapter_execution",
-    "execute_generate_chapter_with_approval",
-)
-APPROVED_CHAPTER_GENERATION_APPROVAL_FIELDS = (
+APPROVED_GENERATION_CHAINS = {
+    ("generate_setup", "preview_setup"): (
+        "prepare_generate_setup_execution",
+        "execute_generate_setup_with_approval",
+    ),
+    ("generate_storyline", "preview_storyline"): (
+        "prepare_generate_storyline_execution",
+        "execute_generate_storyline_with_approval",
+    ),
+    ("generate_outline", "preview_outline"): (
+        "prepare_generate_outline_execution",
+        "execute_generate_outline_with_approval",
+    ),
+    ("generate_chapter", "preview_chapter"): (
+        "prepare_generate_chapter_execution",
+        "execute_generate_chapter_with_approval",
+    ),
+    ("generate_chapter", "generate_chapter"): (
+        "prepare_generate_chapter_execution",
+        "execute_generate_chapter_with_approval",
+    ),
+}
+APPROVED_GENERATION_APPROVAL_FIELDS = (
     "confirm_execute",
     "approval_contract_hash",
     "approval_contract",
 )
+APPROVED_GENERATION_REASON_CODES = {
+    "generate_chapter": "chapter_generation_should_use_approved_agent_gate",
+}
 
 
 def inspect_agent_slash_command_route(
@@ -188,7 +209,7 @@ def _route_preference(
         "missing_preferred_tools": missing_preferred_tools,
         "approval_gate_required": approval_gate_required,
         "required_approval_fields": (
-            list(APPROVED_CHAPTER_GENERATION_APPROVAL_FIELDS)
+            list(APPROVED_GENERATION_APPROVAL_FIELDS)
             if approval_gate_required
             else []
         ),
@@ -196,7 +217,7 @@ def _route_preference(
         "runtime_behavior_changed": False,
         "migration_status": "recommended_not_applied" if approval_gate_required else "no_change",
         "reason_code": (
-            "chapter_generation_should_use_approved_agent_gate"
+            _approved_generation_reason_code(current_tool_name)
             if approval_gate_required
             else "current_route_is_preferred"
         ),
@@ -205,9 +226,17 @@ def _route_preference(
 
 def _preferred_tool_chain(route: dict[str, Any], current_tool_name: str) -> list[str]:
     action_type = str(route.get("action_type") or "")
-    if current_tool_name == "generate_chapter" and action_type in {"preview_chapter", "generate_chapter"}:
-        return list(APPROVED_CHAPTER_GENERATION_CHAIN)
+    chain = APPROVED_GENERATION_CHAINS.get((current_tool_name, action_type))
+    if chain is not None:
+        return list(chain)
     return [current_tool_name]
+
+
+def _approved_generation_reason_code(current_tool_name: str) -> str:
+    return APPROVED_GENERATION_REASON_CODES.get(
+        current_tool_name,
+        f"{current_tool_name}_should_use_approved_agent_gate",
+    )
 
 
 def _tool_execution_supported(
