@@ -133,3 +133,8 @@ rg -n "sk-[A-Za-z0-9]{20,}" backend frontend docs --glob "!backend/static/assets
 ## Next Phase
 
 建议 Phase197 将 prewrite plan 与真实 pending action 读取连接起来：允许工具按 `pending_action_id` 读取现有 `agent_route` 并返回 patch 计划，但仍不写入。
+
+## Git
+
+- Main commit: `197e3ac9 feat: plan route approval opt in patches`
+- Remote: pushed to `origin/main`
