@@ -17,6 +17,30 @@ from app.services.writing_agent.tool_executor import (
     unhandled_internal_writing_agent_tool_names,
     writing_agent_tool_adapter_metadata,
 )
+from app.services.writing_agent.world_model_tool_adapters import WORLD_MODEL_AGENT_TOOL_ADAPTERS
+
+
+def test_world_model_tool_adapters_live_in_dedicated_module():
+    names = list(WORLD_MODEL_AGENT_TOOL_ADAPTERS)
+
+    assert names == [
+        "import_setup_world_model",
+        "analyze_chapter_world_model",
+        "review_world_model_proposals",
+        "inspect_agent_world_model_route",
+        "plan_world_model_proposal_resolution",
+        "preview_world_model_proposal_resolution",
+        "apply_world_model_proposal_resolution",
+        "draft_world_model_proposal_resolution_decisions",
+        "draft_high_value_world_proposal_resolution_decisions",
+        "seed_continuity_anchor_proposals",
+    ]
+    assert WORLD_MODEL_AGENT_TOOL_ADAPTERS["inspect_agent_world_model_route"].mutability == "read"
+    assert WORLD_MODEL_AGENT_TOOL_ADAPTERS["apply_world_model_proposal_resolution"].mutability == "write"
+    assert (
+        WORLD_MODEL_AGENT_TOOL_ADAPTERS["apply_world_model_proposal_resolution"].handler.__name__
+        == "_apply_world_model_proposal_resolution"
+    )
 
 
 def test_knowledge_base_tool_adapters_live_in_dedicated_module():

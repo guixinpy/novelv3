@@ -9,6 +9,31 @@ from app.services.writing_agent.tool_registry import (
     non_blocking_report_tool_names,
     target_type_for_tool,
 )
+from app.services.writing_agent.world_model_tool_descriptors import WORLD_MODEL_AGENT_TOOL_DESCRIPTORS
+
+
+def test_world_model_tool_descriptors_live_in_dedicated_module():
+    names = [descriptor.name for descriptor in WORLD_MODEL_AGENT_TOOL_DESCRIPTORS]
+
+    assert names == [
+        "import_setup_world_model",
+        "analyze_chapter_world_model",
+        "review_world_model_proposals",
+        "inspect_agent_world_model_route",
+        "plan_world_model_proposal_resolution",
+        "preview_world_model_proposal_resolution",
+        "apply_world_model_proposal_resolution",
+        "draft_world_model_proposal_resolution_decisions",
+        "draft_high_value_world_proposal_resolution_decisions",
+        "seed_continuity_anchor_proposals",
+    ]
+    assert {descriptor.category for descriptor in WORLD_MODEL_AGENT_TOOL_DESCRIPTORS} == {
+        "athena_world_model",
+        "maintenance",
+    }
+    assert all(descriptor.internal for descriptor in WORLD_MODEL_AGENT_TOOL_DESCRIPTORS)
+    assert target_type_for_tool("inspect_agent_world_model_route") == "agent_world_model_route"
+    assert target_type_for_tool("apply_world_model_proposal_resolution") == "world_model"
 
 
 def test_knowledge_base_tool_descriptors_live_in_dedicated_module():
