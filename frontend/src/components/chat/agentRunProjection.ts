@@ -8,6 +8,7 @@ export const AGENT_RUN_ACTION_TYPES = [
   'execute_longform_chapter_batch_preflight',
   'prepare_longform_chapter_batch_execution',
   'execute_longform_chapter_batch',
+  'review_longform_chapter_batch_execution',
 ] as const
 export type AgentRunActionType = typeof AGENT_RUN_ACTION_TYPES[number]
 
@@ -44,6 +45,10 @@ const AGENT_RUN_ACTION_DESCRIPTORS: Record<AgentRunActionType, AgentRunActionDes
   execute_longform_chapter_batch: {
     type: 'execute_longform_chapter_batch',
     buildView: buildLongformExecuteActionResultView,
+  },
+  review_longform_chapter_batch_execution: {
+    type: 'review_longform_chapter_batch_execution',
+    buildView: buildLongformReviewActionResultView,
   },
 }
 
@@ -231,6 +236,19 @@ function buildLongformExecuteActionResultView(actionResult: Record<string, unkno
   }
 }
 
+function buildLongformReviewActionResultView(actionResult: Record<string, unknown>, status: string): ActionResultView {
+  const data = recordValue(actionResult.data)
+  const reviewStatus = stringValue(data.status) || status
+  const detailItems = longformReviewDetailItems(data, reviewStatus)
+  return {
+    type: 'review_longform_chapter_batch_execution',
+    status,
+    label: longformReviewLabel(reviewStatus),
+    variant: longformReviewVariant(reviewStatus),
+    ...(detailItems.length ? { detail_items: detailItems } : {}),
+  }
+}
+
 function recoveryPreviewLabel(status: string) {
   if (status === 'success' || status === 'completed') return '恢复预览已生成'
   if (status === 'failed') return '恢复预览失败'
@@ -299,6 +317,22 @@ function longformExecuteLabel(status: string) {
 }
 
 function longformExecuteVariant(status: string) {
+  if (status === 'completed' || status === 'success') return 'success'
+  if (status === 'blocked' || status === 'failed') return 'error'
+  return 'neutral'
+}
+
+function longformReviewLabel(status: string) {
+  if (status === 'completed' || status === 'success') return '长篇批次审查已通过'
+  if (status === 'blocked') return '长篇批次审查已阻塞'
+  if (status === 'skipped') return '长篇批次审查已记录'
+  if (status === 'failed') return '长篇批次审查失败'
+  if (status === 'not_found') return '长篇批次未找到'
+  if (status === 'running') return '长篇批次审查中'
+  return `长篇批次审查: ${status || '未知状态'}`
+}
+
+function longformReviewVariant(status: string) {
   if (status === 'completed' || status === 'success') return 'success'
   if (status === 'blocked' || status === 'failed') return 'error'
   return 'neutral'
@@ -613,6 +647,73 @@ function executionReadinessStatusLabel(status: string) {
   if (status === 'blocked') return '阻塞'
   if (status === 'failed') return '失败'
   if (status === 'success') return '成功'
+  return status
+}
+
+function longformReviewDetailItems(data: Record<string, unknown>, reviewStatus: string) {
+  const items: Array<{ label: string; value: string }> = []
+  const chapterIndex = numberValue(data.chapter_index)
+  const task = recordValue(data.task)
+  const reviewChapter = chapterIndex !== null ? `第${chapterIndex}章` : chapterRangeLabel(task)
+  if (reviewChapter) {
+    items.push({ label: '审查章节', value: reviewChapter })
+  }
+
+  const reviewGate = recordValue(data.review_gate)
+  const gateStatus = stringValue(reviewGate.status)
+  if (gateStatus) {
+    items.push({ label: '审查闸门', value: reviewGateStatusLabel(gateStatus) })
+  }
+
+  const blockerCount = numberValue(reviewGate.blocker_count)
+  if (blockerCount !== null) {
+    items.push({ label: '阻塞项', value: `${blockerCount} 项` })
+  }
+
+  const warningCount = numberValue(reviewGate.warning_count)
+  if (warningCount !== null) {
+    items.push({ label: '警告项', value: `${warningCount} 项` })
+  }
+
+  const reviews = recordValue(data.reviews)
+  const qualityStatus = stringValue(recordValue(reviews.quality).status)
+  if (qualityStatus) {
+    items.push({ label: '质量审查', value: reviewComponentStatusLabel(qualityStatus) })
+  }
+  const continuityStatus = stringValue(recordValue(reviews.continuity).status)
+  if (continuityStatus) {
+    items.push({ label: '连续性审查', value: reviewComponentStatusLabel(continuityStatus) })
+  }
+  const worldModelStatus = stringValue(recordValue(reviews.world_model).status)
+  if (worldModelStatus) {
+    items.push({ label: '世界模型', value: reviewComponentStatusLabel(worldModelStatus) })
+  }
+
+  const reason = stringValue(data.reason)
+  if (reason) {
+    items.push({ label: reviewStatus === 'skipped' ? '跳过原因' : '阻塞原因', value: reason })
+  }
+
+  const nextTools = Array.isArray(data.recommended_next_tools) ? data.recommended_next_tools : []
+  if (nextTools.length) {
+    items.push({ label: '下一步', value: `${nextTools.length} 个工具` })
+  }
+  return items
+}
+
+function reviewGateStatusLabel(status: string) {
+  if (status === 'passed') return '已通过'
+  if (status === 'needs_revision') return '需要修订'
+  if (status === 'blocked') return '阻塞'
+  return status
+}
+
+function reviewComponentStatusLabel(status: string) {
+  if (status === 'ready') return '就绪'
+  if (status === 'completed' || status === 'success') return '成功'
+  if (status === 'blocked') return '阻塞'
+  if (status === 'failed') return '失败'
+  if (status === 'skipped') return '已跳过'
   return status
 }
 

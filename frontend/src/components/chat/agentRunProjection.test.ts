@@ -44,6 +44,7 @@ describe('agentRunProjection', () => {
     expect(isAgentRunActionType('execute_longform_chapter_batch_preflight')).toBe(true)
     expect(isAgentRunActionType('prepare_longform_chapter_batch_execution')).toBe(true)
     expect(isAgentRunActionType('execute_longform_chapter_batch')).toBe(true)
+    expect(isAgentRunActionType('review_longform_chapter_batch_execution')).toBe(true)
     expect(isAgentRunActionType('generate_chapter')).toBe(false)
   })
 
@@ -55,6 +56,7 @@ describe('agentRunProjection', () => {
     expect(getAgentRunActionDescriptor('execute_longform_chapter_batch_preflight')?.type).toBe('execute_longform_chapter_batch_preflight')
     expect(getAgentRunActionDescriptor('prepare_longform_chapter_batch_execution')?.type).toBe('prepare_longform_chapter_batch_execution')
     expect(getAgentRunActionDescriptor('execute_longform_chapter_batch')?.type).toBe('execute_longform_chapter_batch')
+    expect(getAgentRunActionDescriptor('review_longform_chapter_batch_execution')?.type).toBe('review_longform_chapter_batch_execution')
     expect(getAgentRunActionDescriptor('generate_chapter')).toBeNull()
   })
 
@@ -106,6 +108,16 @@ describe('agentRunProjection', () => {
         data: { agent_run_id: 'run-execute-1' },
       },
     })).toBe('run-execute-1')
+  })
+
+  it('extracts run ids from longform review action results', () => {
+    expect(getAgentRunIdFromMessage({
+      action_result: {
+        type: 'review_longform_chapter_batch_execution',
+        status: 'success',
+        data: { agent_run_id: 'run-review-1' },
+      },
+    })).toBe('run-review-1')
   })
 
   it('builds fallback views for recovery preview action results', () => {
@@ -380,6 +392,81 @@ describe('agentRunProjection', () => {
     expect(view?.detail_items).toContainEqual({ label: '生成状态', value: '失败' })
     expect(view?.detail_items).toContainEqual({ label: '错误摘要', value: 'generate_chapter failed' })
     expect(view?.detail_items).toContainEqual({ label: '副作用', value: '1 项' })
+  })
+
+  it('builds completed fallback views for longform review action results', () => {
+    const view = buildAgentRunActionResultView({
+      type: 'review_longform_chapter_batch_execution',
+      status: 'success',
+      data: {
+        status: 'completed',
+        chapter_index: 21,
+        review_gate: { status: 'passed', blocker_count: 0, warning_count: 1 },
+        reviews: {
+          quality: { status: 'ready' },
+          continuity: { status: 'ready' },
+          world_model: { status: 'completed' },
+        },
+        recommended_next_tools: ['inspect_longform_chapter_batch', 'prepare_longform_chapter_batch_execution'],
+      },
+    })
+
+    expect(view?.label).toBe('长篇批次审查已通过')
+    expect(view?.variant).toBe('success')
+    expect(view?.detail_items).toContainEqual({ label: '审查章节', value: '第21章' })
+    expect(view?.detail_items).toContainEqual({ label: '审查闸门', value: '已通过' })
+    expect(view?.detail_items).toContainEqual({ label: '阻塞项', value: '0 项' })
+    expect(view?.detail_items).toContainEqual({ label: '警告项', value: '1 项' })
+    expect(view?.detail_items).toContainEqual({ label: '质量审查', value: '就绪' })
+    expect(view?.detail_items).toContainEqual({ label: '连续性审查', value: '就绪' })
+    expect(view?.detail_items).toContainEqual({ label: '世界模型', value: '成功' })
+    expect(view?.detail_items).toContainEqual({ label: '下一步', value: '2 个工具' })
+  })
+
+  it('builds blocked fallback views for longform review action results', () => {
+    const view = buildAgentRunActionResultView({
+      type: 'review_longform_chapter_batch_execution',
+      status: 'success',
+      data: {
+        status: 'blocked',
+        chapter_index: 21,
+        reason: 'post_generation_review_has_blockers',
+        review_gate: { status: 'needs_revision', blocker_count: 1, warning_count: 0 },
+        reviews: {
+          quality: { status: 'blocked' },
+          continuity: { status: 'ready' },
+          world_model: { status: 'skipped' },
+        },
+        recommended_next_tools: ['plan_chapter_revision', 'create_revision_draft', 'inspect_longform_chapter_batch'],
+      },
+    })
+
+    expect(view?.label).toBe('长篇批次审查已阻塞')
+    expect(view?.variant).toBe('error')
+    expect(view?.detail_items).toContainEqual({ label: '审查闸门', value: '需要修订' })
+    expect(view?.detail_items).toContainEqual({ label: '阻塞项', value: '1 项' })
+    expect(view?.detail_items).toContainEqual({ label: '阻塞原因', value: 'post_generation_review_has_blockers' })
+    expect(view?.detail_items).toContainEqual({ label: '下一步', value: '3 个工具' })
+  })
+
+  it('builds skipped fallback views for longform review action results', () => {
+    const view = buildAgentRunActionResultView({
+      type: 'review_longform_chapter_batch_execution',
+      status: 'success',
+      data: {
+        status: 'skipped',
+        reason: 'post_generation_review_already_recorded',
+        chapter_index: 21,
+        review_gate: { status: 'passed', blocker_count: 0, warning_count: 0 },
+        recommended_next_tools: ['inspect_longform_chapter_batch'],
+      },
+    })
+
+    expect(view?.label).toBe('长篇批次审查已记录')
+    expect(view?.variant).toBe('neutral')
+    expect(view?.detail_items).toContainEqual({ label: '审查章节', value: '第21章' })
+    expect(view?.detail_items).toContainEqual({ label: '跳过原因', value: 'post_generation_review_already_recorded' })
+    expect(view?.detail_items).toContainEqual({ label: '下一步', value: '1 个工具' })
   })
 
   it('builds recovery execution feedback without leaking plan hash', () => {

@@ -415,6 +415,40 @@ describe('ChatMessage', () => {
     expect(wrapper.text()).not.toContain('execute_longform_chapter_batch')
   })
 
+  it('renders longform review fallback labels when backend view is missing', () => {
+    const wrapper = mount(ChatMessage, {
+      props: {
+        msg: {
+          role: 'system',
+          message_type: 'plain',
+          content: '长篇批次执行后审查已完成。',
+          action_result: {
+            type: 'review_longform_chapter_batch_execution',
+            status: 'success',
+            data: {
+              status: 'completed',
+              chapter_index: 21,
+              review_gate: { status: 'passed', blocker_count: 0, warning_count: 1 },
+              reviews: {
+                quality: { status: 'ready' },
+                continuity: { status: 'ready' },
+                world_model: { status: 'completed' },
+              },
+              recommended_next_tools: ['inspect_longform_chapter_batch', 'prepare_longform_chapter_batch_execution'],
+            },
+          },
+        },
+        isLatest: false,
+        loading: false,
+      },
+    })
+
+    expect(wrapper.text()).toContain('长篇批次审查已通过')
+    expect(wrapper.text()).toContain('审查闸门')
+    expect(wrapper.text()).toContain('已通过')
+    expect(wrapper.text()).not.toContain('review_longform_chapter_batch_execution')
+  })
+
   it('emits openAgentRun from recovery execution action results', async () => {
     const wrapper = mount(ChatMessage, {
       props: {
