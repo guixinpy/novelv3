@@ -140,6 +140,7 @@ def _tool_contract(
         "resource_scope": RESOURCE_SCOPE_BY_CATEGORY.get(descriptor.category, descriptor.category),
         "memory_boundary": MEMORY_BOUNDARY_BY_CATEGORY.get(descriptor.category, "none"),
         "trace_required": descriptor.internal or mutability in {"write", "guarded_write"},
+        "execution_route": _execution_route(descriptor, adapter_metadata),
         "result_size_policy": _result_size_policy(descriptor),
         "adapter_type": adapter_metadata.get("adapter_type") if adapter_metadata else None,
         "handler_name": adapter_metadata.get("handler_name") if adapter_metadata else None,
@@ -193,6 +194,15 @@ def agent_tool_execution_metadata(
         "mutability": mutability,
         "requires_confirmation": mutability in {"write", "guarded_write"} or _requires_confirmation(descriptor),
     }
+
+
+def _execution_route(descriptor: AgentToolDescriptor, adapter_metadata: dict[str, Any] | None) -> str:
+    if adapter_metadata:
+        adapter_type = str(adapter_metadata.get("adapter_type") or "adapter")
+        return f"{adapter_type}_adapter"
+    if descriptor.internal:
+        return "unsupported_internal"
+    return "legacy_action_fallback"
 
 
 def _permission_level(mutability: str) -> str:

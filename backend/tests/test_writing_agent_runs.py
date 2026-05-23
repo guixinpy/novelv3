@@ -94,6 +94,9 @@ def test_create_agent_run_records_steps_and_returns_detail(client, db_session, m
     assert payload["steps"][0]["tool_name"] == "generate_setup"
     assert payload["steps"][0]["status"] == "success"
     assert payload["steps"][0]["trace_id"] == "trace-setup"
+    envelope = payload["steps"][0]["output"]["agent_tool_result"]
+    assert envelope["execution_route"] == "legacy_action_fallback"
+    assert envelope["adapter"] is None
 
 
 def test_agent_run_can_describe_current_tool_plan(client):
@@ -136,6 +139,7 @@ def test_agent_run_result_metrics_include_adapter_metadata(client):
     assert envelope["adapter"]["tool_name"] == "describe_agent_tools"
     assert envelope["adapter"]["adapter_type"] == "static"
     assert envelope["adapter"]["mutability"] == "read"
+    assert envelope["execution_route"] == "static_adapter"
     assert envelope["elapsed_ms"] >= 0
     assert envelope["output_size_bytes"] > 0
 
@@ -2984,6 +2988,7 @@ def test_agent_run_records_normalized_output_for_unsupported_tool(client):
     assert envelope["step_status"] == "failed"
     assert envelope["result_status"] == "failed"
     assert envelope["is_error"] is True
+    assert envelope["execution_route"] == "unsupported"
 
 
 def test_agent_run_records_chapter_length_and_world_model_diagnostics(client, db_session, monkeypatch):

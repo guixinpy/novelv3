@@ -1352,6 +1352,9 @@ async def test_tool_executor_handles_inspect_agent_tool_contracts(db_session):
     assert "permission_scope_category" in result.output["reference_alignment"]["patterns"]
     assert "references/agent-projects/openclaw" in result.output["reference_alignment"]["source_refs"]
     tools_by_name = {tool["name"]: tool for tool in result.output["tools"]}
+    assert tools_by_name["generate_setup"]["execution_route"] == "legacy_action_fallback"
+    assert tools_by_name["generate_chapter"]["execution_route"] == "static_adapter"
+    assert tools_by_name["preflight_writing"]["execution_route"] == "injected_adapter"
     assert tools_by_name["describe_agent_tools"]["mutability"] == "read"
     assert tools_by_name["describe_agent_tools"]["parallel_safe"] is True
     assert tools_by_name["inspect_agent_knowledge_base_route"]["memory_boundary"] == "knowledge_base"

@@ -47,6 +47,7 @@ from app.services.writing_agent.recommended_followup_planner import (
 from app.services.writing_agent.recovery_policy import build_writing_agent_recovery
 from app.services.writing_agent.tool_registry import (
     allowed_tool_names,
+    get_agent_tool_descriptor,
     internal_tool_names,
     non_blocking_report_tool_names,
     target_type_for_tool,
@@ -961,6 +962,7 @@ def _agent_tool_result_envelope(
         planner = step.input["planner"]
     result_status = str(output.get("status") or step_status)
     output_keys = sorted(str(key) for key in output if key != "agent_tool_result")
+    adapter = writing_agent_tool_adapter_metadata(step.tool_name)
     return {
         "version": AGENT_TOOL_RESULT_VERSION,
         "tool_name": step.tool_name,
@@ -970,7 +972,8 @@ def _agent_tool_result_envelope(
         "is_error": step_status in {STEP_FAILED, STEP_BLOCKED} or result_status in {"failed", "blocked"},
         "trace_id": str(output.get("trace_id") or "") or None,
         "planner": planner,
-        "adapter": writing_agent_tool_adapter_metadata(step.tool_name),
+        "adapter": adapter,
+        "execution_route": _execution_route_for_tool(step.tool_name, adapter),
         "elapsed_ms": _elapsed_ms(step.started_at, finished_at),
         "output_size_bytes": _output_size_bytes(output),
         "recovery": build_writing_agent_recovery(
@@ -982,6 +985,18 @@ def _agent_tool_result_envelope(
         "recommendations": normalize_tool_recommendations(step.tool_name, output),
         "output_keys": output_keys,
     }
+
+
+def _execution_route_for_tool(tool_name: str, adapter_metadata: dict[str, Any] | None) -> str:
+    if adapter_metadata:
+        adapter_type = str(adapter_metadata.get("adapter_type") or "adapter")
+        return f"{adapter_type}_adapter"
+    descriptor = get_agent_tool_descriptor(tool_name)
+    if descriptor is None:
+        return "unsupported"
+    if descriptor.internal:
+        return "unsupported_internal"
+    return "legacy_action_fallback"
 
 
 def _elapsed_ms(started_at: datetime | None, finished_at: datetime) -> int:
