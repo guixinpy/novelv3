@@ -79,6 +79,12 @@ def build_agent_core_tool_adapters(
             category="preflight",
             mutability="read",
         ),
+        "plan_agent_route_approval_opt_in": WritingAgentToolAdapter(
+            "plan_agent_route_approval_opt_in",
+            _plan_agent_route_approval_opt_in(static_adapter_tool_names_provider),
+            category="preflight",
+            mutability="read",
+        ),
         "inspect_agent_dialog_control_plane_projection": WritingAgentToolAdapter(
             "inspect_agent_dialog_control_plane_projection",
             _inspect_agent_dialog_control_plane_projection,
@@ -265,6 +271,30 @@ def _inspect_agent_route_preference_projection(
 
     inspect_agent_route_preference_projection_adapter.__name__ = "_inspect_agent_route_preference_projection"
     return inspect_agent_route_preference_projection_adapter
+
+
+def _plan_agent_route_approval_opt_in(
+    static_adapter_tool_names_provider: StaticAdapterToolNamesProvider,
+) -> Callable[[WritingAgentToolContext, WritingAgentToolRequest], dict[str, Any]]:
+    def plan_agent_route_approval_opt_in_adapter(
+        context: WritingAgentToolContext,
+        tool: WritingAgentToolRequest,
+    ) -> dict[str, Any]:
+        from app.services.actions.action_execution_service import SUPPORTED_ACTION_EXECUTION_TYPES
+        from app.services.writing_agent.slash_command_route import plan_agent_route_approval_opt_in
+
+        agent_route = tool.params.get("agent_route")
+        return plan_agent_route_approval_opt_in(
+            action_type=str(tool.params.get("action_type") or "").strip() or None,
+            source=str(tool.params.get("source") or "").strip() or None,
+            command_name=str(tool.params.get("command_name") or "").strip() or None,
+            agent_route=agent_route if isinstance(agent_route, dict) else None,
+            static_adapter_tool_names=static_adapter_tool_names_provider(),
+            action_execution_tool_names=set(SUPPORTED_ACTION_EXECUTION_TYPES),
+        )
+
+    plan_agent_route_approval_opt_in_adapter.__name__ = "_plan_agent_route_approval_opt_in"
+    return plan_agent_route_approval_opt_in_adapter
 
 
 def _inspect_agent_dialog_control_plane_projection(

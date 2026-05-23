@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from app.services.writing_agent.slash_command_route import _route_preference, inspect_agent_route_preference_projection
+from app.services.writing_agent.slash_command_route import (
+    _route_preference,
+    inspect_agent_route_preference_projection,
+    plan_agent_route_approval_opt_in,
+)
 
 
 def test_route_preference_recommends_approved_chain_for_chapter_routes_without_mutating_runtime_route():
@@ -147,6 +151,106 @@ def test_route_preference_has_no_migration_suggestion_for_non_gated_route():
 
     assert route["approval_gate_required"] is False
     assert route["approval_chain_opt_in_suggestion"] is None
+
+
+def test_route_approval_opt_in_prewrite_plan_returns_patch_for_setup_route():
+    plan = plan_agent_route_approval_opt_in(
+        action_type="preview_setup",
+        source="slash_command",
+        command_name="setup",
+        static_adapter_tool_names=_static_adapter_tools(),
+        action_execution_tool_names=_action_execution_tools(),
+    )
+
+    assert plan["status"] == "ready"
+    assert plan["version"] == "phase196.route_approval_opt_in_plan.v1"
+    assert plan["can_apply"] is True
+    assert plan["write_performed"] is False
+    assert plan["metadata_patch"] == {"use_agent_approval_chain": True}
+    assert "use_agent_approval_chain" not in plan["route_before"]
+    assert plan["route_after"]["use_agent_approval_chain"] is True
+    assert plan["suggestion"]["status"] == "available"
+    assert plan["preference"]["preferred_prepare_tool_name"] == "prepare_generate_setup_execution"
+    assert plan["risk"]["codes"] == ["requires_explicit_opt_in"]
+    assert plan["risk"]["missing_preferred_tools"] == []
+    assert plan["trace"]["runtime_behavior_changed"] is False
+
+
+def test_route_approval_opt_in_prewrite_plan_marks_already_declared_route():
+    plan = plan_agent_route_approval_opt_in(
+        agent_route={
+            "version": "phase104.dialog_agent_route.v1",
+            "source": "slash_command",
+            "action_type": "preview_setup",
+            "agent_action_type": "generate_setup",
+            "agent_tool_name": "generate_setup",
+            "requires_confirmation": True,
+            "entrypoint": "dialog_pending_action",
+            "command_name": "setup",
+            "use_agent_approval_chain": True,
+        },
+        static_adapter_tool_names=_static_adapter_tools(),
+        action_execution_tool_names=_action_execution_tools(),
+    )
+
+    assert plan["status"] == "already_declared"
+    assert plan["can_apply"] is False
+    assert plan["metadata_patch"] == {"use_agent_approval_chain": True}
+    assert plan["route_before"]["use_agent_approval_chain"] is True
+    assert plan["route_after"]["use_agent_approval_chain"] is True
+    assert plan["suggestion"]["status"] == "already_declared"
+    assert plan["risk"]["codes"] == ["already_declared"]
+
+
+def test_route_approval_opt_in_prewrite_plan_blocks_when_preferred_tools_are_missing():
+    plan = plan_agent_route_approval_opt_in(
+        action_type="preview_setup",
+        source="slash_command",
+        command_name="setup",
+        static_adapter_tool_names=_static_adapter_tools() - {"prepare_generate_setup_execution"},
+        action_execution_tool_names=_action_execution_tools(),
+    )
+
+    assert plan["status"] == "blocked"
+    assert plan["can_apply"] is False
+    assert plan["write_performed"] is False
+    assert plan["missing_preferred_tools"] == ["prepare_generate_setup_execution"]
+    assert plan["suggestion"]["status"] == "blocked_missing_tools"
+    assert plan["risk"]["codes"] == ["missing_preferred_tools"]
+    assert plan["risk"]["missing_preferred_tools"] == ["prepare_generate_setup_execution"]
+
+
+def test_route_approval_opt_in_prewrite_plan_noops_for_non_gated_route():
+    plan = plan_agent_route_approval_opt_in(
+        agent_route={
+            "source": "test",
+            "action_type": "diagnose",
+            "agent_tool_name": "diagnose_project",
+        },
+        static_adapter_tool_names=set(),
+        action_execution_tool_names=set(),
+    )
+
+    assert plan["status"] == "noop"
+    assert plan["can_apply"] is False
+    assert plan["metadata_patch"] == {}
+    assert plan["route_after"] == plan["route_before"]
+    assert plan["suggestion"] is None
+    assert plan["risk"]["codes"] == ["approval_gate_not_required"]
+
+
+def test_route_approval_opt_in_prewrite_plan_warns_for_runtime_action_type_without_route_context():
+    plan = plan_agent_route_approval_opt_in(
+        action_type="generate_setup",
+        source="slash_command",
+        static_adapter_tool_names=_static_adapter_tools(),
+        action_execution_tool_names=_action_execution_tools(),
+    )
+
+    assert plan["status"] == "noop"
+    assert plan["can_apply"] is False
+    assert plan["risk"]["codes"] == ["action_type_not_dialog_route", "approval_gate_not_required"]
+    assert plan["metadata_patch"] == {}
 
 
 def test_route_preference_can_filter_to_text_intent_source():

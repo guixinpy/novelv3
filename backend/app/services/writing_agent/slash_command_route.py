@@ -14,6 +14,8 @@ from app.services.writing_agent.tool_registry import get_agent_tool_descriptor
 SLASH_COMMAND_ROUTE_PROJECTION_VERSION = "phase103.slash_command_route_projection.v1"
 DIALOG_ROUTE_PROJECTION_VERSION = "phase104.dialog_route_projection.v1"
 ROUTE_PREFERENCE_PROJECTION_VERSION = "phase115.route_preference_projection.v1"
+ROUTE_APPROVAL_OPT_IN_PLAN_VERSION = "phase196.route_approval_opt_in_plan.v1"
+DIALOG_ROUTE_SOURCES = {"slash_command", "text_intent", "button_action"}
 APPROVED_GENERATION_CHAINS = {
     ("generate_setup", "preview_setup"): (
         "prepare_generate_setup_execution",
@@ -195,6 +197,81 @@ def inspect_agent_route_preference_projection(
     }
 
 
+def plan_agent_route_approval_opt_in(
+    *,
+    action_type: str | None = None,
+    source: str | None = None,
+    command_name: str | None = None,
+    agent_route: dict[str, Any] | None = None,
+    static_adapter_tool_names: set[str] | None = None,
+    action_execution_tool_names: set[str] | None = None,
+) -> dict[str, Any]:
+    static_adapter_tool_names = static_adapter_tool_names or set()
+    action_execution_tool_names = action_execution_tool_names or set()
+    route = _route_from_plan_input(
+        action_type=action_type,
+        source=source,
+        command_name=command_name,
+        agent_route=agent_route,
+    )
+    if route is None:
+        return {
+            "status": "blocked",
+            "version": ROUTE_APPROVAL_OPT_IN_PLAN_VERSION,
+            "can_apply": False,
+            "write_performed": False,
+            "metadata_patch": {},
+            "route_before": None,
+            "route_after": None,
+            "preference": None,
+            "suggestion": None,
+            "missing_preferred_tools": [],
+            "risk": {
+                "codes": ["route_not_available"],
+                "missing_preferred_tools": [],
+                "guardrails": _approval_opt_in_guardrails(),
+            },
+            "trace": {
+                "reason_code": "route_not_available",
+                "runtime_behavior_changed": False,
+            },
+        }
+
+    route_before = dict(route)
+    preference = _route_preference(
+        route_before,
+        static_adapter_tool_names=static_adapter_tool_names,
+        action_execution_tool_names=action_execution_tool_names,
+    )
+    suggestion = preference.get("approval_chain_opt_in_suggestion")
+    metadata_patch = dict(suggestion.get("route_metadata_patch") or {}) if isinstance(suggestion, dict) else {}
+    route_after = {**route_before, **metadata_patch} if metadata_patch else dict(route_before)
+    suggestion_status = str(suggestion.get("status") or "") if isinstance(suggestion, dict) else ""
+    status = _prewrite_plan_status(suggestion_status, has_suggestion=isinstance(suggestion, dict))
+    missing_preferred_tools = list(preference.get("missing_preferred_tools") or [])
+    return {
+        "status": status,
+        "version": ROUTE_APPROVAL_OPT_IN_PLAN_VERSION,
+        "can_apply": status == "ready",
+        "write_performed": False,
+        "metadata_patch": metadata_patch if status in {"ready", "already_declared", "blocked"} else {},
+        "route_before": route_before,
+        "route_after": route_after if status != "noop" else dict(route_before),
+        "preference": preference,
+        "suggestion": suggestion,
+        "missing_preferred_tools": missing_preferred_tools,
+        "risk": _prewrite_plan_risk(
+            route_before=route_before,
+            status=status,
+            missing_preferred_tools=missing_preferred_tools,
+        ),
+        "trace": {
+            "reason_code": suggestion_status or "approval_gate_not_required",
+            "runtime_behavior_changed": False,
+        },
+    }
+
+
 def _route_preference(
     route: dict[str, Any],
     *,
@@ -266,6 +343,61 @@ def _preferred_tool_chain(route: dict[str, Any], current_tool_name: str) -> list
     return [current_tool_name]
 
 
+def _route_from_plan_input(
+    *,
+    action_type: str | None,
+    source: str | None,
+    command_name: str | None,
+    agent_route: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if isinstance(agent_route, dict):
+        return dict(agent_route)
+    normalized_source = str(source or "slash_command").strip() or "slash_command"
+    if normalized_source not in DIALOG_ROUTE_SOURCES:
+        return None
+    route = build_dialog_agent_route(
+        action_type,
+        source=normalized_source,  # type: ignore[arg-type]
+        command_name=command_name,
+    )
+    return dict(route) if route is not None else None
+
+
+def _prewrite_plan_status(suggestion_status: str, *, has_suggestion: bool) -> str:
+    if not has_suggestion:
+        return "noop"
+    if suggestion_status == "available":
+        return "ready"
+    if suggestion_status == "already_declared":
+        return "already_declared"
+    return "blocked"
+
+
+def _prewrite_plan_risk(
+    *,
+    route_before: dict[str, Any],
+    status: str,
+    missing_preferred_tools: list[str],
+) -> dict[str, Any]:
+    codes: list[str] = []
+    action_type = str(route_before.get("action_type") or "")
+    if status == "ready":
+        codes.append("requires_explicit_opt_in")
+    elif status == "already_declared":
+        codes.append("already_declared")
+    elif status == "noop":
+        if action_type.startswith("generate_"):
+            codes.append("action_type_not_dialog_route")
+        codes.append("approval_gate_not_required")
+    elif missing_preferred_tools:
+        codes.append("missing_preferred_tools")
+    return {
+        "codes": codes,
+        "missing_preferred_tools": missing_preferred_tools,
+        "guardrails": _approval_opt_in_guardrails(),
+    }
+
+
 def _approval_chain_opt_in_suggestion(
     *,
     approval_gate_required: bool,
@@ -286,12 +418,16 @@ def _approval_chain_opt_in_suggestion(
         "expected_prepare_tool_name": preferred_prepare_tool,
         "expected_execute_tool_name": preferred_execute_tool,
         "runtime_default_preserved": True,
-        "guardrails": [
-            "apply_only_when_explicitly_requested",
-            "preserve_default_dialog_routes",
-            "strip_control_plane_params_before_tool_execution",
-        ],
+        "guardrails": _approval_opt_in_guardrails(),
     }
+
+
+def _approval_opt_in_guardrails() -> list[str]:
+    return [
+        "apply_only_when_explicitly_requested",
+        "preserve_default_dialog_routes",
+        "strip_control_plane_params_before_tool_execution",
+    ]
 
 
 def _normalize_action_type_filter(value: Any) -> set[str]:

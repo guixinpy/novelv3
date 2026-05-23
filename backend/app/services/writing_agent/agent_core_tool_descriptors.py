@@ -252,7 +252,15 @@ AGENT_CORE_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         module="writing_agent",
         category="preflight",
         description="返回对话入口当前路由与推荐 Agent 审批工具链的只读偏好投影，不改变运行时路由。",
-        input_schema=object_schema({"source": {"type": "string"}}),
+        input_schema=object_schema(
+            {
+                "source": {"type": "string"},
+                "approval_chain_opt_in_action_types": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                },
+            }
+        ),
         output_schema=object_schema(
             {
                 "status": {"type": "string"},
@@ -266,6 +274,40 @@ AGENT_CORE_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         internal=True,
         non_blocking_report=True,
         sort_key=11,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
+        name="plan_agent_route_approval_opt_in",
+        module="writing_agent",
+        category="preflight",
+        description="返回对话 route 写入 approval-chain opt-in metadata 前的只读计划和 guardrails，不执行写入。",
+        input_schema=object_schema(
+            {
+                "agent_route": {"type": "object"},
+                "action_type": {"type": "string"},
+                "source": {"type": "string"},
+                "command_name": {"type": "string"},
+            }
+        ),
+        output_schema=object_schema(
+            {
+                "status": {"type": "string"},
+                "version": {"type": "string"},
+                "can_apply": {"type": "boolean"},
+                "write_performed": {"type": "boolean"},
+                "metadata_patch": {"type": "object"},
+                "route_before": {"type": ["object", "null"]},
+                "route_after": {"type": ["object", "null"]},
+                "preference": {"type": ["object", "null"]},
+                "suggestion": {"type": ["object", "null"]},
+                "risk": {"type": "object"},
+                "trace": {"type": "object"},
+            }
+        ),
+        target_type="agent_route_approval_opt_in_plan",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=12,
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(

@@ -35,6 +35,7 @@ def test_agent_core_tool_descriptors_live_in_dedicated_module():
         "inspect_agent_slash_command_route",
         "inspect_agent_dialog_route_projection",
         "inspect_agent_route_preference_projection",
+        "plan_agent_route_approval_opt_in",
         "inspect_agent_dialog_control_plane_projection",
         "inspect_agent_intent_projection",
         "inspect_agent_tool_contracts",
@@ -836,10 +837,26 @@ def test_agent_tool_registry_includes_route_preference_projection():
     assert descriptor.non_blocking_report is True
     assert descriptor.category == "preflight"
     assert descriptor.target_type == "agent_route_preference_projection"
+    assert descriptor.input_schema["properties"]["approval_chain_opt_in_action_types"]["type"] == "array"
     assert descriptor.output_schema["properties"]["routes"]["type"] == "array"
     assert descriptor.output_schema["properties"]["summary"]["type"] == "object"
     assert "inspect_agent_route_preference_projection" in allowed_tool_names()
     assert "inspect_agent_route_preference_projection" in non_blocking_report_tool_names()
+
+
+def test_agent_tool_registry_includes_route_approval_opt_in_plan():
+    descriptor = get_agent_tool_descriptor("plan_agent_route_approval_opt_in")
+
+    assert descriptor is not None
+    assert descriptor.internal is True
+    assert descriptor.non_blocking_report is True
+    assert descriptor.category == "preflight"
+    assert descriptor.target_type == "agent_route_approval_opt_in_plan"
+    assert descriptor.input_schema["properties"]["agent_route"]["type"] == "object"
+    assert descriptor.input_schema["properties"]["action_type"]["type"] == "string"
+    assert descriptor.output_schema["properties"]["metadata_patch"]["type"] == "object"
+    assert "plan_agent_route_approval_opt_in" in allowed_tool_names()
+    assert "plan_agent_route_approval_opt_in" in non_blocking_report_tool_names()
 
 
 def test_agent_tool_registry_includes_inspect_agent_knowledge_base_route():

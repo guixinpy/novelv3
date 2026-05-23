@@ -51,6 +51,7 @@ def test_agent_core_tool_adapters_live_in_dedicated_module():
         "inspect_agent_slash_command_route",
         "inspect_agent_dialog_route_projection",
         "inspect_agent_route_preference_projection",
+        "plan_agent_route_approval_opt_in",
         "inspect_agent_dialog_control_plane_projection",
         "inspect_agent_intent_projection",
         "inspect_agent_tool_contracts",
@@ -430,6 +431,32 @@ async def test_tool_executor_handles_inspect_agent_route_preference_projection_m
     assert suggestion["status"] == "available"
     assert suggestion["route_metadata_patch"] == {"use_agent_approval_chain": True}
     assert suggestion["expected_prepare_tool_name"] == "prepare_generate_setup_execution"
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_handles_route_approval_opt_in_plan(db_session):
+    project = Project(name="Route Approval Opt In Plan")
+    db_session.add(project)
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-route-opt-in-plan"),
+        WritingAgentToolRequest(
+            tool_name="plan_agent_route_approval_opt_in",
+            params={
+                "action_type": "preview_setup",
+                "source": "slash_command",
+                "command_name": "setup",
+            },
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output["status"] == "ready"
+    assert result.output["can_apply"] is True
+    assert result.output["write_performed"] is False
+    assert result.output["metadata_patch"] == {"use_agent_approval_chain": True}
+    assert result.output["route_after"]["use_agent_approval_chain"] is True
 
 
 @pytest.mark.asyncio
@@ -1517,6 +1544,7 @@ def test_tool_executor_static_adapter_names_are_report_or_agent_native_tools():
         "inspect_agent_tool_contracts",
         "inspect_agent_write_gate_coverage",
         "inspect_agent_route_preference_projection",
+        "plan_agent_route_approval_opt_in",
         "inspect_agent_knowledge_base_route",
         "record_agent_knowledge_base_candidate",
         "import_setup_world_model",
@@ -1591,6 +1619,16 @@ def test_tool_executor_exposes_inspect_agent_route_preference_projection_adapter
         "category": "preflight",
         "mutability": "read",
         "handler_name": "_inspect_agent_route_preference_projection",
+    }
+
+
+def test_tool_executor_exposes_route_approval_opt_in_plan_adapter_metadata():
+    assert writing_agent_tool_adapter_metadata("plan_agent_route_approval_opt_in") == {
+        "tool_name": "plan_agent_route_approval_opt_in",
+        "adapter_type": "static",
+        "category": "preflight",
+        "mutability": "read",
+        "handler_name": "_plan_agent_route_approval_opt_in",
     }
 
 
@@ -1734,6 +1772,7 @@ def test_tool_executor_lists_unhandled_internal_tools_for_migration_tracking():
     assert "inspect_agent_tool_contracts" not in names
     assert "inspect_agent_write_gate_coverage" not in names
     assert "inspect_agent_route_preference_projection" not in names
+    assert "plan_agent_route_approval_opt_in" not in names
     assert "inspect_agent_knowledge_base_route" not in names
     assert "record_agent_knowledge_base_candidate" not in names
     assert "execute_longform_chapter_batch_preflight" not in names
