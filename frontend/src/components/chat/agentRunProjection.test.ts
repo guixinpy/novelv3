@@ -6,8 +6,27 @@ import {
   getAgentRunIdFromMessage,
   isAgentRunActionType,
 } from './agentRunProjection'
+import {
+  LONGFORM_AGENT_RUN_ACTION_DESCRIPTORS,
+  LONGFORM_AGENT_RUN_ACTION_TYPES,
+} from './longformAgentRunProjection'
 
 describe('agentRunProjection', () => {
+  it('exposes longform action descriptors from a dedicated module', () => {
+    expect(LONGFORM_AGENT_RUN_ACTION_TYPES).toEqual([
+      'inspect_longform_chapter_batch',
+      'execute_longform_chapter_batch_preflight',
+      'prepare_longform_chapter_batch_execution',
+      'execute_longform_chapter_batch',
+      'review_longform_chapter_batch_execution',
+      'route_longform_chapter_batch_after_review',
+    ])
+    for (const type of LONGFORM_AGENT_RUN_ACTION_TYPES) {
+      expect(LONGFORM_AGENT_RUN_ACTION_DESCRIPTORS[type]?.type).toBe(type)
+      expect(typeof LONGFORM_AGENT_RUN_ACTION_DESCRIPTORS[type]?.buildView).toBe('function')
+    }
+  })
+
   it('extracts run ids only from supported agent run action messages', () => {
     expect(getAgentRunIdFromMessage({
       action_result: {
