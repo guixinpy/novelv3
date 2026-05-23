@@ -7,6 +7,7 @@ TYPE_LABELS = {
     "preview_storyline": "生成故事线",
     "preview_outline": "生成大纲",
     "preview_chapter": "生成正文",
+    "plan_recovery_tools": "恢复预览",
 }
 
 GENERATING_LABELS = {
@@ -44,6 +45,11 @@ def action_result_view(action_result: dict | None) -> dict | None:
 
 def _label(action_type: str, status: str) -> str:
     label = TYPE_LABELS.get(action_type, action_type)
+    if action_type == "plan_recovery_tools":
+        if status in {"success", "completed"}:
+            return "恢复预览已生成"
+        if status == "failed":
+            return "恢复预览失败"
     if status in {"success", "completed"}:
         return f"{label}执行成功"
     if status == "cancelled":
@@ -68,7 +74,11 @@ def _variant(status: str) -> str:
 
 
 def _detail_items(action_result: dict) -> list[dict[str, str]]:
+    action_type = str(action_result.get("type") or "").strip()
     data = action_result.get("data") if isinstance(action_result.get("data"), dict) else {}
+    if action_type == "plan_recovery_tools":
+        return _recovery_preview_detail_items(data)
+
     approval_decision = data.get("approval_decision") if isinstance(data.get("approval_decision"), dict) else None
     if not approval_decision:
         return []
@@ -123,3 +133,45 @@ def _chapter_source_label(source: str) -> str:
     if source == "router_default":
         return "默认目标"
     return source
+
+
+def _recovery_preview_detail_items(data: dict) -> list[dict[str, str]]:
+    items = []
+    source_run_id = str(data.get("source_run_id") or "").strip()
+    if source_run_id:
+        items.append({"label": "来源运行", "value": source_run_id[:8]})
+
+    recovery = data.get("recovery") if isinstance(data.get("recovery"), dict) else {}
+    recovery_status = str(recovery.get("status") or "").strip()
+    if recovery_status:
+        items.append({"label": "恢复状态", "value": _recovery_status_label(recovery_status)})
+
+    execution_policy = data.get("execution_policy") if isinstance(data.get("execution_policy"), dict) else {}
+    policy_status = str(execution_policy.get("status") or "").strip()
+    if policy_status:
+        items.append({"label": "执行策略", "value": _execution_policy_label(policy_status)})
+
+    tools = data.get("tools") if isinstance(data.get("tools"), list) else []
+    if tools:
+        items.append({"label": "恢复工具", "value": f"{len(tools)} 个"})
+    return items
+
+
+def _recovery_status_label(status: str) -> str:
+    if status == "recommended":
+        return "建议恢复"
+    if status == "none":
+        return "无恢复建议"
+    return status
+
+
+def _execution_policy_label(status: str) -> str:
+    if status == "ready":
+        return "可执行"
+    if status == "confirmation_required":
+        return "等待确认"
+    if status == "not_executable":
+        return "不可执行"
+    if status == "repeat_failed_recovery":
+        return "重复失败保护"
+    return status

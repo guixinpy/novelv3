@@ -2166,6 +2166,45 @@ async def test_get_messages_includes_action_result_view_for_approval_required(db
     }
 
 
+def test_get_messages_includes_action_result_view_for_recovery_preview(db_session):
+    project = Project(name="Recovery Preview Result View")
+    db_session.add(project)
+    db_session.commit()
+    dialog = dialogs_api._get_or_create_dialog(db_session, project.id)
+    dialogs_api._save_message(
+        db_session,
+        dialog.id,
+        "assistant",
+        "上一轮 Agent 运行存在可恢复阻塞，我已先规划恢复工具链。",
+        action_result={
+            "type": "plan_recovery_tools",
+            "status": "success",
+            "data": {
+                "agent_run_id": "recovery-run-123456",
+                "source_run_id": "blocked-run-abcdef",
+                "recovery": {"status": "recommended"},
+                "tools": [{"tool_name": "prepare_generate_chapter_execution"}],
+                "execution_policy": {"status": "ready"},
+            },
+        },
+    )
+
+    messages = DialogMessageService(db_session).list_messages(project.id)
+
+    assert messages[-1]["action_result_view"] == {
+        "type": "plan_recovery_tools",
+        "status": "success",
+        "label": "恢复预览已生成",
+        "variant": "success",
+        "detail_items": [
+            {"label": "来源运行", "value": "blocked-"},
+            {"label": "恢复状态", "value": "建议恢复"},
+            {"label": "执行策略", "value": "可执行"},
+            {"label": "恢复工具", "value": "1 个"},
+        ],
+    }
+
+
 @pytest.mark.asyncio
 async def test_chapter_approval_followup_dispatches_execute_tool(db_session):
     project = Project(name="Chapter Approval Execute Dispatch")
