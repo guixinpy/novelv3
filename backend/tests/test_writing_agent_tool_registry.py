@@ -398,6 +398,19 @@ def test_agent_tool_registry_inspect_agent_job_projection_accepts_chapter_index(
     assert properties["chapter_index"] == {"type": "integer", "minimum": 1}
 
 
+def test_agent_tool_registry_includes_plan_chapter_conflict_recovery():
+    descriptor = get_agent_tool_descriptor("plan_chapter_conflict_recovery")
+
+    assert descriptor is not None
+    assert descriptor.internal is True
+    assert descriptor.non_blocking_report is True
+    assert descriptor.category == "task_queue"
+    assert descriptor.target_type == "agent_tool_plan"
+    assert descriptor.input_schema["properties"]["chapter_index"] == {"type": "integer", "minimum": 1}
+    assert "plan_chapter_conflict_recovery" in allowed_tool_names()
+    assert "plan_chapter_conflict_recovery" in non_blocking_report_tool_names()
+
+
 def test_agent_tool_registry_includes_inspect_agent_tool_contracts():
     descriptor = get_agent_tool_descriptor("inspect_agent_tool_contracts")
 

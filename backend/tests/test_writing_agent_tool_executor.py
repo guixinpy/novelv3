@@ -1654,6 +1654,32 @@ async def test_tool_executor_dispatches_inspect_agent_job_projection_with_chapte
 
 
 @pytest.mark.asyncio
+async def test_tool_executor_dispatches_plan_chapter_conflict_recovery_adapter(db_session, monkeypatch):
+    project = Project(name="Executor Chapter Conflict Recovery")
+    db_session.add(project)
+    db_session.commit()
+    captured = {}
+
+    def fake_plan(db, project_id: str, *, chapter_index: int | None):
+        captured.update({"project_id": project_id, "chapter_index": chapter_index})
+        return {"status": "completed", "chapter_index": chapter_index}
+
+    monkeypatch.setattr(
+        "app.services.writing_agent.chapter_conflict_recovery_planner.plan_chapter_conflict_recovery",
+        fake_plan,
+    )
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(tool_name="plan_chapter_conflict_recovery", params={"chapter_index": "3"}),
+    )
+
+    assert result.handled is True
+    assert result.output == {"status": "completed", "chapter_index": 3}
+    assert captured == {"project_id": project.id, "chapter_index": 3}
+
+
+@pytest.mark.asyncio
 async def test_tool_executor_dispatches_inspect_agent_knowledge_base_route_adapter(db_session, monkeypatch):
     project = Project(name="Executor Knowledge Base Route")
     db_session.add(project)

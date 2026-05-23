@@ -565,6 +565,30 @@ _TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(
+        name="plan_chapter_conflict_recovery",
+        module="writing_agent",
+        category="task_queue",
+        description="根据目标章节占用投影生成只读冲突恢复工具计划，不直接取消或重排任务。",
+        input_schema=_object_schema({"chapter_index": {"type": "integer", "minimum": 1}}, required=("chapter_index",)),
+        output_schema=_object_schema(
+            {
+                "status": {"type": "string"},
+                "version": {"type": "string"},
+                "chapter_index": {"type": "integer"},
+                "conflict": {"type": "object"},
+                "recovery": {"type": "object"},
+                "tools": {"type": "array"},
+                "recovery_options": {"type": "array"},
+                "trace": {"type": "object"},
+            }
+        ),
+        target_type="agent_tool_plan",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=10,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
         name="inspect_agent_tool_contracts",
         module="writing_agent",
         category="preflight",

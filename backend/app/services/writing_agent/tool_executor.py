@@ -225,6 +225,16 @@ def _plan_recovery_tools(context: WritingAgentToolContext, tool: WritingAgentToo
     return build_recovery_tool_plan(context.db, context.project_id, run_id)
 
 
+def _plan_chapter_conflict_recovery(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
+    from app.services.writing_agent.chapter_conflict_recovery_planner import plan_chapter_conflict_recovery
+
+    return plan_chapter_conflict_recovery(
+        context.db,
+        context.project_id,
+        chapter_index=_optional_int(tool.params.get("chapter_index")),
+    )
+
+
 def _approval_tool_metadata_by_name(plan: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
     return build_approval_tool_metadata_by_name(plan, adapter_metadata_by_name=_static_adapter_metadata_by_name())
 
@@ -808,6 +818,12 @@ _STATIC_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
         "plan_recovery_tools",
         _plan_recovery_tools,
         category="preflight",
+        mutability="read",
+    ),
+    "plan_chapter_conflict_recovery": WritingAgentToolAdapter(
+        "plan_chapter_conflict_recovery",
+        _plan_chapter_conflict_recovery,
+        category="task_queue",
         mutability="read",
     ),
     "plan_recommended_followups": WritingAgentToolAdapter(
