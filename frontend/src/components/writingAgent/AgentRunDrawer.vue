@@ -13,9 +13,60 @@ const props = defineProps<{
 const emit = defineEmits<{ close: [] }>()
 
 const steps = computed(() => props.run?.steps || [])
+const recoveryPreview = computed(() => {
+  const step = steps.value.find((item) => item.tool_name === 'plan_recovery_tools')
+  return isRecord(step?.output) ? step.output : null
+})
+const executionPolicy = computed(() => {
+  const value = recoveryPreview.value?.execution_policy
+  return isRecord(value) ? value : null
+})
+const guardrails = computed(() => {
+  const value = recoveryPreview.value?.guardrails
+  return isRecord(value) ? value : null
+})
+const guardrailBlockers = computed(() => {
+  const blockers = guardrails.value?.blockers
+  return Array.isArray(blockers) ? blockers.filter(isRecord) : []
+})
+const recoveryTools = computed(() => {
+  const tools = recoveryPreview.value?.tools
+  return Array.isArray(tools) ? tools.filter(isRecord) : []
+})
+const hasRecoveryPolicy = computed(() => Boolean(executionPolicy.value || guardrails.value || recoveryTools.value.length))
 
 function close() {
   emit('close')
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value))
+}
+
+function stringValue(value: unknown) {
+  return typeof value === 'string' ? value : ''
+}
+
+function booleanLabel(value: unknown, trueLabel: string, falseLabel: string) {
+  return value === true ? trueLabel : falseLabel
+}
+
+function policyStatusLabel(status: unknown) {
+  const value = stringValue(status)
+  if (value === 'ready') return '可执行'
+  if (value === 'requires_user_input') return '需要用户补充输入'
+  if (value === 'confirmation_required') return '等待确认'
+  if (value === 'repeat_failed_recovery') return '重复失败保护'
+  if (value === 'blocked') return '已阻止'
+  if (value === 'not_executable') return '不可执行'
+  return value || '未知'
+}
+
+function guardrailStatusLabel(status: unknown) {
+  const value = stringValue(status)
+  if (value === 'ready') return '通过'
+  if (value === 'blocked') return '已阻止'
+  return value || '未知'
 }
 </script>
 
@@ -51,6 +102,62 @@ function close() {
               <dd>{{ run.id }}</dd>
             </div>
           </dl>
+        </section>
+
+        <section
+          v-if="hasRecoveryPolicy"
+          class="agent-run-drawer__recovery"
+          aria-label="Recovery policy"
+        >
+          <h4>恢复执行策略</h4>
+          <dl v-if="executionPolicy" class="agent-run-drawer__facts">
+            <div>
+              <dt>策略状态</dt>
+              <dd>{{ policyStatusLabel(executionPolicy.status) }}</dd>
+            </div>
+            <div>
+              <dt>确认要求</dt>
+              <dd>{{ booleanLabel(executionPolicy.requires_confirmation, '需要确认', '无需确认') }}</dd>
+            </div>
+            <div>
+              <dt>计划哈希</dt>
+              <dd>{{ booleanLabel(executionPolicy.requires_plan_hash, '需要计划哈希', '无需计划哈希') }}</dd>
+            </div>
+            <div>
+              <dt>自动执行</dt>
+              <dd>{{ booleanLabel(executionPolicy.safe_auto_execute, '允许安全自动执行', '不允许自动执行') }}</dd>
+            </div>
+          </dl>
+          <dl v-if="guardrails" class="agent-run-drawer__facts">
+            <div>
+              <dt>保护策略</dt>
+              <dd>{{ guardrailStatusLabel(guardrails.status) }}</dd>
+            </div>
+          </dl>
+          <ul
+            v-if="guardrailBlockers.length"
+            class="agent-run-drawer__blockers"
+          >
+            <li
+              v-for="(blocker, index) in guardrailBlockers"
+              :key="`${blocker.code || 'blocker'}:${index}`"
+            >
+              <strong>{{ blocker.code }}</strong>
+              <span v-if="blocker.tool_name">{{ blocker.tool_name }}</span>
+              <p>{{ blocker.message || '未提供阻止原因。' }}</p>
+            </li>
+          </ul>
+          <ul
+            v-if="recoveryTools.length"
+            class="agent-run-drawer__tools"
+          >
+            <li
+              v-for="(tool, index) in recoveryTools"
+              :key="`${tool.tool_name || 'tool'}:${index}`"
+            >
+              {{ tool.tool_name }}
+            </li>
+          </ul>
         </section>
 
         <section class="agent-run-drawer__steps" aria-label="Agent run steps">
@@ -103,6 +210,7 @@ function close() {
 }
 
 .agent-run-drawer__summary h4,
+.agent-run-drawer__recovery h4,
 .agent-run-drawer__steps h4 {
   margin: 0;
   color: var(--color-text-primary);
@@ -110,26 +218,82 @@ function close() {
   font-weight: var(--font-semibold);
 }
 
-.agent-run-drawer__summary dl {
+.agent-run-drawer__summary dl,
+.agent-run-drawer__facts {
   display: grid;
   gap: var(--space-2);
   margin: 0;
 }
 
-.agent-run-drawer__summary dl div {
+.agent-run-drawer__summary dl div,
+.agent-run-drawer__facts div {
   display: grid;
   grid-template-columns: 5rem minmax(0, 1fr);
   gap: var(--space-3);
 }
 
-.agent-run-drawer__summary dt {
+.agent-run-drawer__summary dt,
+.agent-run-drawer__facts dt {
   color: var(--color-text-tertiary);
   font-size: var(--text-xs);
 }
 
-.agent-run-drawer__summary dd {
+.agent-run-drawer__summary dd,
+.agent-run-drawer__facts dd {
   margin: 0;
   min-width: 0;
+  color: var(--color-text-primary);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+
+.agent-run-drawer__recovery {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-secondary);
+}
+
+.agent-run-drawer__blockers,
+.agent-run-drawer__tools {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.agent-run-drawer__blockers li {
+  display: grid;
+  gap: 2px;
+  padding: var(--space-2);
+  border-left: 3px solid var(--color-warning);
+  background: var(--color-bg-white);
+  font-size: var(--text-xs);
+}
+
+.agent-run-drawer__blockers strong {
+  color: var(--color-text-primary);
+}
+
+.agent-run-drawer__blockers span {
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.agent-run-drawer__blockers p {
+  margin: 0;
+  color: var(--color-text-secondary);
+  line-height: var(--leading-normal);
+}
+
+.agent-run-drawer__tools li {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-white);
   color: var(--color-text-primary);
   font-size: var(--text-xs);
   overflow-wrap: anywhere;

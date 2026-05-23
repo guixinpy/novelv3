@@ -85,4 +85,66 @@ describe('AgentRunDrawer', () => {
     expect(document.body.textContent).toContain('加载失败')
     failed.unmount()
   })
+
+  it('renders recovery execution policy and guardrails', () => {
+    mount(AgentRunDrawer, {
+      attachTo: document.body,
+      props: {
+        open: true,
+        loading: false,
+        error: '',
+        run: {
+          id: 'run-recovery',
+          project_id: 'project-1',
+          goal: '恢复上一轮阻塞',
+          status: 'success',
+          entrypoint: 'dialog_auto_plan',
+          input: {},
+          output: null,
+          error: null,
+          steps: [
+            {
+              id: 'step-recovery',
+              run_id: 'run-recovery',
+              project_id: 'project-1',
+              step_index: 2,
+              tool_name: 'plan_recovery_tools',
+              status: 'success',
+              input: {},
+              output: {
+                execution_policy: {
+                  mode: 'preview',
+                  status: 'requires_user_input',
+                  requires_confirmation: true,
+                  requires_plan_hash: true,
+                  safe_auto_execute: false,
+                },
+                guardrails: {
+                  status: 'blocked',
+                  blockers: [
+                    {
+                      code: 'requires_user_input',
+                      tool_name: 'prepare_generate_chapter_execution',
+                      message: '恢复工具需要用户补充输入，不能自动执行。',
+                    },
+                  ],
+                },
+                tools: [{ tool_name: 'prepare_generate_chapter_execution' }],
+              },
+            },
+          ],
+        },
+      },
+    })
+
+    const text = document.body.textContent || ''
+    expect(text).toContain('恢复执行策略')
+    expect(text).toContain('需要用户补充输入')
+    expect(text).toContain('需要确认')
+    expect(text).toContain('需要计划哈希')
+    expect(text).toContain('不允许自动执行')
+    expect(text).toContain('保护策略')
+    expect(text).toContain('恢复工具需要用户补充输入')
+    expect(text).toContain('prepare_generate_chapter_execution')
+  })
 })
