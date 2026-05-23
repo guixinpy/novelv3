@@ -6,6 +6,7 @@ from app.services.writing_agent.approval_contract import (
 
 def test_approval_contract_requires_confirmation_for_write_steps():
     plan = {
+        "project_id": "project-1",
         "trace": {
             "plan_id": "plan:abc",
             "source_projection_id": "projection:1",
@@ -39,7 +40,10 @@ def test_approval_contract_requires_confirmation_for_write_steps():
     assert contract["plan_id"] == "plan:abc"
     assert contract["source_projection_id"] == "projection:1"
     assert contract["write_step_count"] == 1
-    assert contract["write_steps"][0] == {
+    step = contract["write_steps"][0]
+    assert {
+        key: value for key, value in step.items() if key != "mutation_fingerprint"
+    } == {
         "step_index": 2,
         "step_id": "step:write",
         "tool_name": "generate_chapter",
@@ -48,9 +52,22 @@ def test_approval_contract_requires_confirmation_for_write_steps():
         "requires_confirmation": True,
         "reason": "生成第2章。",
     }
+    assert step["mutation_fingerprint"]["components"]["project_id"] == "project-1"
+    assert step["mutation_fingerprint"]["components"]["target_id"] == "chapter:2"
     assert contract["approval"]["required"] is True
     assert contract["approval"]["approval_contract_hash"].startswith("approval:")
     assert contract["approval"]["confirmation_param"] == "approval_contract_hash"
+
+
+def test_approval_contract_attaches_mutation_fingerprint_to_write_steps():
+    plan = _write_plan(project_id="project-1")
+
+    contract = build_agent_plan_approval_contract(plan)
+
+    fingerprint = contract["write_steps"][0]["mutation_fingerprint"]
+    assert fingerprint["status"] == "ready"
+    assert fingerprint["components"]["target_id"] == "chapter:2"
+    assert len(fingerprint["fingerprint"]) == 64
 
 
 def test_approval_contract_is_not_required_for_read_only_plan():
@@ -199,6 +216,24 @@ def test_verify_approval_contract_blocks_missing_required_step_params():
     assert result["drift"]["tool_contracts"][0]["missing_required_fields"] == ["chapter_index"]
     assert "missing_required_fields" in result["drift"]["tool_contracts"][0]["reasons"]
     assert result["recommended_next_tools"] == ["inspect_agent_tool_contracts"]
+
+
+def test_verify_approval_contract_blocks_when_mutation_fingerprint_not_ready():
+    plan = _write_plan(project_id="project-1")
+    plan["steps"][0]["params"] = {}
+    contract = build_agent_plan_approval_contract(plan)
+
+    result = verify_agent_plan_approval_contract(
+        plan,
+        approval_contract_hash=contract["approval"]["approval_contract_hash"],
+        approval_contract=contract,
+        project_id="project-1",
+    )
+
+    assert result["status"] == "blocked"
+    assert result["reason"] == "mutation_fingerprint_not_ready"
+    assert result["drift"]["mutation_fingerprint_drift_count"] == 1
+    assert result["recommended_next_tools"] == ["inspect_agent_mutation_fingerprints"]
 
 
 def test_verify_approval_contract_blocks_missing_tool_or_adapter():

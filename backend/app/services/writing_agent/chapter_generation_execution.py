@@ -10,6 +10,7 @@ from app.services.writing_agent.approval_contract import (
     verify_agent_plan_approval_contract,
 )
 from app.services.writing_agent.approval_verification_event import build_approval_verification_event
+from app.services.writing_agent.mutation_fingerprint import build_mutation_fingerprint
 
 PREPARE_GENERATE_CHAPTER_EXECUTION_VERSION = "phase114.generate_chapter_execution_prepare.v1"
 EXECUTE_GENERATE_CHAPTER_WITH_APPROVAL_VERSION = "phase114.generate_chapter_with_approval_execute.v1"
@@ -30,11 +31,13 @@ def prepare_generate_chapter_execution(
     agent_plan = _direct_generate_chapter_agent_plan(project_id, chapter_index)
     approval_contract = build_agent_plan_approval_contract(agent_plan)
     approval_hash = str(((approval_contract.get("approval") or {}).get("approval_contract_hash")) or "")
+    mutation_fingerprint = agent_plan["steps"][0].get("mutation_fingerprint")
     return {
         "status": "approval_required",
         "prepare_version": PREPARE_GENERATE_CHAPTER_EXECUTION_VERSION,
         "project_id": project_id,
         "chapter_index": chapter_index,
+        "mutation_fingerprint": mutation_fingerprint,
         "agent_plan": agent_plan,
         "agent_plan_approval_contract": approval_contract,
         "agent_plan_approval_contract_hash": approval_hash,
@@ -127,6 +130,7 @@ async def execute_generate_chapter_with_approval(
 
 
 def _direct_generate_chapter_agent_plan(project_id: str, chapter_index: int) -> dict[str, Any]:
+    params = {"chapter_index": chapter_index}
     return {
         "project_id": project_id,
         "intent_class": "direct_generate_chapter",
@@ -140,9 +144,10 @@ def _direct_generate_chapter_agent_plan(project_id: str, chapter_index: int) -> 
                 "step_index": 1,
                 "step_id": f"direct-generate:{project_id}:chapter:{chapter_index}",
                 "tool_name": "generate_chapter",
-                "params": {"chapter_index": chapter_index},
+                "params": params,
                 "mutability": "write",
                 "requires_confirmation": True,
+                "mutation_fingerprint": build_mutation_fingerprint(project_id, "generate_chapter", params),
                 "reason": "直接生成指定章节正文。",
             }
         ],

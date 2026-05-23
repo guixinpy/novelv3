@@ -1065,6 +1065,7 @@ _TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
                 "status": {"type": "string"},
                 "prepare_version": {"type": "string"},
                 "chapter_index": {"type": "integer"},
+                "mutation_fingerprint": {"type": "object"},
                 "agent_plan": {"type": "object"},
                 "agent_plan_approval_contract": {"type": "object"},
                 "agent_plan_approval_contract_hash": {"type": "string"},

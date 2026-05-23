@@ -4,6 +4,8 @@ import hashlib
 import json
 from typing import Any
 
+from app.services.writing_agent.mutation_fingerprint import build_mutation_fingerprint
+
 APPROVAL_CONTRACT_VERSION = "phase108.agent_plan_approval_contract.v1"
 _WRITE_MUTABILITY = {"write", "guarded_write"}
 
@@ -14,10 +16,11 @@ def build_agent_plan_approval_contract(plan: dict[str, Any] | None) -> dict[str,
 
     trace = plan.get("trace") if isinstance(plan.get("trace"), dict) else {}
     steps = plan.get("steps") if isinstance(plan.get("steps"), list) else []
-    write_steps = [_approval_step(step) for step in steps if _step_requires_approval(step)]
+    project_id = plan.get("project_id")
+    write_steps = [_approval_step(step, project_id=project_id) for step in steps if _step_requires_approval(step)]
     payload = {
         "contract_version": APPROVAL_CONTRACT_VERSION,
-        "project_id": plan.get("project_id"),
+        "project_id": project_id,
         "plan_id": trace.get("plan_id") or plan.get("plan_id"),
         "source_projection_id": trace.get("source_projection_id") or plan.get("source_projection_id"),
         "planner_version": trace.get("planner_version") or plan.get("planner_version"),
@@ -63,6 +66,7 @@ def verify_agent_plan_approval_contract(
     snapshot_hash = _contract_hash(approval_contract) if isinstance(approval_contract, dict) else None
     project_matches = project_id is None or current_contract.get("project_id") == project_id
     tool_contracts = _tool_contract_checks(current_contract.get("write_steps"), tool_metadata_by_name)
+    mutation_fingerprints = _mutation_fingerprint_checks(current_contract.get("write_steps"))
     drift = {
         "hash_matches": None if expected_hash is None else actual_hash == expected_hash,
         "snapshot_hash_matches": None if snapshot_hash is None else snapshot_hash == actual_hash,
@@ -74,6 +78,11 @@ def verify_agent_plan_approval_contract(
         "tool_contracts_checked": tool_metadata_by_name is not None and bool(current_contract.get("write_steps")),
         "tool_contract_drift_count": sum(1 for check in tool_contracts if check.get("status") != "ready"),
         "tool_contracts": tool_contracts,
+        "mutation_fingerprint_checked": bool(mutation_fingerprints),
+        "mutation_fingerprint_drift_count": sum(
+            1 for check in mutation_fingerprints if check.get("status") != "ready"
+        ),
+        "mutation_fingerprints": mutation_fingerprints,
     }
 
     if current_contract.get("status") == "invalid_plan":
@@ -131,6 +140,14 @@ def verify_agent_plan_approval_contract(
             drift=drift,
             recommended_next_tools=["inspect_agent_tool_contracts"],
         )
+    if drift["mutation_fingerprint_drift_count"]:
+        return _verification_output(
+            status="blocked",
+            reason="mutation_fingerprint_not_ready",
+            current_contract=current_contract,
+            drift=drift,
+            recommended_next_tools=["inspect_agent_mutation_fingerprints"],
+        )
     return _verification_output(
         status="ready",
         reason="approval_contract_verified",
@@ -184,7 +201,7 @@ def _step_requires_approval(step: object) -> bool:
     return step.get("requires_confirmation") is True or mutability in _WRITE_MUTABILITY
 
 
-def _approval_step(step: dict[str, Any]) -> dict[str, Any]:
+def _approval_step(step: dict[str, Any], *, project_id: object) -> dict[str, Any]:
     approval_step = {
         "step_index": step.get("step_index"),
         "step_id": step.get("step_id"),
@@ -196,7 +213,44 @@ def _approval_step(step: dict[str, Any]) -> dict[str, Any]:
     }
     if step.get("command_args"):
         approval_step["command_args"] = str(step["command_args"])
+    mutation_fingerprint = step.get("mutation_fingerprint")
+    if not isinstance(mutation_fingerprint, dict):
+        mutation_fingerprint = build_mutation_fingerprint(
+            str(project_id or ""),
+            str(step.get("tool_name") or "").strip(),
+            step.get("params") if isinstance(step.get("params"), dict) else {},
+        )
+    if mutation_fingerprint.get("mutating") is True:
+        approval_step["mutation_fingerprint"] = mutation_fingerprint
     return approval_step
+
+
+def _mutation_fingerprint_checks(write_steps: object) -> list[dict[str, Any]]:
+    if not isinstance(write_steps, list):
+        return []
+    return [_mutation_fingerprint_check(step) for step in write_steps if isinstance(step, dict)]
+
+
+def _mutation_fingerprint_check(step: dict[str, Any]) -> dict[str, Any]:
+    fingerprint = step.get("mutation_fingerprint") if isinstance(step.get("mutation_fingerprint"), dict) else None
+    reasons: list[str] = []
+    if fingerprint is None:
+        reasons.append("missing_mutation_fingerprint")
+        fingerprint_status = None
+    else:
+        fingerprint_status = str(fingerprint.get("status") or "")
+        if fingerprint_status != "ready" or not fingerprint.get("fingerprint"):
+            reasons.append("mutation_fingerprint_not_ready")
+    return {
+        "step_id": step.get("step_id"),
+        "tool_name": step.get("tool_name"),
+        "fingerprint": fingerprint.get("fingerprint") if fingerprint else None,
+        "fingerprint_status": fingerprint_status,
+        "target_type": ((fingerprint or {}).get("components") or {}).get("target_type"),
+        "target_id": ((fingerprint or {}).get("components") or {}).get("target_id"),
+        "status": "ready" if not reasons else "drift",
+        "reasons": reasons,
+    }
 
 
 def _tool_contract_checks(
