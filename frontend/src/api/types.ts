@@ -306,6 +306,48 @@ export interface MessageQuery {
   after_id?: string
 }
 
+export interface WritingAgentStep {
+  id: string
+  run_id: string
+  project_id: string
+  step_index: number
+  tool_name: string
+  status: string
+  input: Record<string, unknown>
+  output: Record<string, unknown> | null
+  error?: string | null
+  trace_id?: string | null
+  background_task_id?: string | null
+  target_type?: string | null
+  target_id?: string | null
+  chapter_index?: number | null
+  tool_call_id?: string | null
+  resource_binding?: Record<string, unknown> | null
+  created_at?: string | null
+  started_at?: string | null
+  finished_at?: string | null
+}
+
+export interface WritingAgentRunDetail {
+  id: string
+  project_id: string
+  goal: string
+  status: string
+  entrypoint: string
+  input: Record<string, unknown>
+  output: Record<string, unknown> | null
+  error: string | null
+  background_task_id?: string | null
+  dialog_id?: string | null
+  request_message_id?: string | null
+  response_message_id?: string | null
+  created_at?: string | null
+  started_at?: string | null
+  finished_at?: string | null
+  updated_at?: string | null
+  steps: WritingAgentStep[]
+}
+
 export type ModelTraceStatus = 'running' | 'success' | 'failed' | string
 
 export interface TraceSource {

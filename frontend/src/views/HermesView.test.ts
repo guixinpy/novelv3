@@ -14,6 +14,7 @@ vi.mock('../api/client', () => ({
     resumeWriting: vi.fn(),
     regenerateRevision: vi.fn(),
     getMessages: vi.fn(),
+    getAgentRun: vi.fn(),
     getDiagnosis: vi.fn(),
     getProject: vi.fn(),
     listChapters: vi.fn(),
@@ -83,11 +84,18 @@ async function mountHermesView(path = '/projects/project-1/hermes') {
     global: {
       plugins: [router],
       stubs: {
-        ChatMessageList: { template: '<div data-testid="chat-message-list" />' },
+        ChatMessageList: {
+          emits: ['openAgentRun'],
+          template: '<div data-testid="chat-message-list"><button data-testid="stub-open-agent-run" @click="$emit(\'openAgentRun\', \'run-1\')">open run</button></div>',
+        },
         ChatInput: { template: '<div data-testid="chat-input" />' },
         ExportModal: { template: '<div />' },
         VersionsModal: { template: '<div />' },
         ModelTraceDrawer: { template: '<div />' },
+        AgentRunDrawer: {
+          props: ['open', 'run'],
+          template: '<div v-if="open" data-testid="agent-run-drawer">{{ run && run.id }}</div>',
+        },
       },
     },
   })
@@ -107,6 +115,17 @@ describe('HermesView', () => {
     })
     vi.mocked(api.regenerateRevision).mockResolvedValue(regeneratedChapter as any)
     vi.mocked(api.getMessages).mockResolvedValue([])
+    vi.mocked(api.getAgentRun).mockResolvedValue({
+      id: 'run-1',
+      project_id: 'project-1',
+      goal: '恢复上一轮阻塞',
+      status: 'success',
+      entrypoint: 'dialog_auto_plan',
+      input: {},
+      output: null,
+      error: null,
+      steps: [],
+    } as any)
     vi.mocked(api.getDiagnosis).mockResolvedValue({
       missing_items: [],
       completed_items: ['content'],
@@ -163,6 +182,18 @@ describe('HermesView', () => {
     expect(api.listVersions).toHaveBeenCalledWith('project-1', undefined, { offset: 0, limit: 50 })
     expect(api.getWritingState).toHaveBeenCalledWith('project-1')
     expect(api.getChapter).toHaveBeenCalledWith('project-1', 1)
+
+    wrapper.unmount()
+  })
+
+  it('opens writing agent run details from chat messages', async () => {
+    const wrapper = await mountHermesView()
+
+    await wrapper.get('[data-testid="stub-open-agent-run"]').trigger('click')
+    await flushPromises()
+
+    expect(api.getAgentRun).toHaveBeenCalledWith('project-1', 'run-1')
+    expect(wrapper.get('[data-testid="agent-run-drawer"]').text()).toContain('run-1')
 
     wrapper.unmount()
   })

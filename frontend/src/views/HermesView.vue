@@ -2,13 +2,14 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api/client'
-import type { ChatResponse, RefreshTarget, ResolveActionResponse, WorkspacePanel } from '../api/types'
+import type { ChatResponse, RefreshTarget, ResolveActionResponse, WorkspacePanel, WritingAgentRunDetail } from '../api/types'
 import ProjectDashboard from '../components/shared/ProjectDashboard.vue'
 import ExportModal from '../components/shared/ExportModal.vue'
 import VersionsModal from '../components/shared/VersionsModal.vue'
 import ChatMessageList from '../components/chat/ChatMessageList.vue'
 import ChatInput from '../components/chat/ChatInput.vue'
 import ModelTraceDrawer from '../components/modelTrace/ModelTraceDrawer.vue'
+import AgentRunDrawer from '../components/writingAgent/AgentRunDrawer.vue'
 import { parseSlashCommand } from '../components/workspace/chatCommands'
 import {
   getActionLabel,
@@ -60,6 +61,10 @@ const showExportModal = ref(false)
 const showVersionsModal = ref(false)
 const handledRevisionIds = ref(new Set<string>())
 const activeTraceId = ref<string | null>(null)
+const activeAgentRunId = ref<string | null>(null)
+const activeAgentRun = ref<WritingAgentRunDetail | null>(null)
+const agentRunLoading = ref(false)
+const agentRunError = ref('')
 const writingControlLoading = ref(false)
 
 // Project stats
@@ -352,6 +357,29 @@ function closeTrace() {
   activeTraceId.value = null
   modelTrace.closeTrace()
 }
+
+async function openAgentRun(runId: string) {
+  const targetRunId = String(runId || '').trim()
+  if (!targetRunId) return
+  activeAgentRunId.value = targetRunId
+  activeAgentRun.value = null
+  agentRunError.value = ''
+  agentRunLoading.value = true
+  try {
+    activeAgentRun.value = await api.getAgentRun(pid.value, targetRunId)
+  } catch (err) {
+    agentRunError.value = err instanceof Error ? err.message : '加载 Agent 运行详情失败'
+  } finally {
+    agentRunLoading.value = false
+  }
+}
+
+function closeAgentRun() {
+  activeAgentRunId.value = null
+  activeAgentRun.value = null
+  agentRunError.value = ''
+  agentRunLoading.value = false
+}
 </script>
 
 <template>
@@ -397,6 +425,7 @@ function closeTrace() {
         :loading="chat.loading"
         @decide="onDecide"
         @open-trace="openTrace"
+        @open-agent-run="openAgentRun"
       />
       <ChatInput
         :loading="chat.loading"
@@ -429,6 +458,13 @@ function closeTrace() {
       :trace-id="activeTraceId"
       :open="!!activeTraceId"
       @close="closeTrace"
+    />
+    <AgentRunDrawer
+      :open="!!activeAgentRunId"
+      :run="activeAgentRun"
+      :loading="agentRunLoading"
+      :error="agentRunError"
+      @close="closeAgentRun"
     />
   </div>
   <div v-else class="hermes-view__loading">

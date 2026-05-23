@@ -48,6 +48,7 @@ import type {
   WorldModelDashboard,
   WorldModelOverview,
   WorldModelOverviewQuery,
+  WritingAgentRunDetail,
   WritingState,
   WorkspaceBootstrap,
 } from './types'
@@ -382,6 +383,7 @@ export const api = {
     query.set('dialog_type', dialogType)
     return request<ChatHistoryMessage[]>(`/dialog/projects/${id}/messages?${query.toString()}`)
   },
+  getAgentRun: (id: string, runId: string) => request<WritingAgentRunDetail>(`/projects/${id}/agent-runs/${runId}`),
   sendChat: (data: ChatRequest) => request<ChatResponse>('/dialog/chat', { method: 'POST', body: JSON.stringify(data) }),
   resolveAction: (data: ResolveActionRequest) => request<ResolveActionResponse>('/dialog/resolve-action', { method: 'POST', body: JSON.stringify(data) }),
   startWriting: (id: string) => request<WritingState>(`/projects/${id}/writing/start`, { method: 'POST' }),

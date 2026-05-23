@@ -187,6 +187,35 @@ describe('ChatMessage', () => {
     expect(wrapper.text()).not.toContain('approval:secret-hash')
   })
 
+  it('emits openAgentRun from recovery preview action results', async () => {
+    const wrapper = mount(ChatMessage, {
+      props: {
+        msg: {
+          role: 'assistant',
+          message_type: 'plain',
+          content: '上一轮 Agent 运行存在可恢复阻塞，我已先规划恢复工具链。',
+          action_result: {
+            type: 'plan_recovery_tools',
+            status: 'success',
+            data: { agent_run_id: 'run-1' },
+          },
+          action_result_view: {
+            type: 'plan_recovery_tools',
+            status: 'success',
+            label: '恢复预览已生成',
+            variant: 'success',
+          },
+        },
+        isLatest: false,
+        loading: false,
+      },
+    })
+
+    await wrapper.get('[data-testid="open-agent-run"]').trigger('click')
+
+    expect(wrapper.emitted('openAgentRun')).toEqual([['run-1']])
+  })
+
   it('renders pending chapter conflict as a warning before confirmation', () => {
     const wrapper = mount(ChatMessage, {
       props: {

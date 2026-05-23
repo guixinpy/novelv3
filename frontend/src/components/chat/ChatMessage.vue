@@ -12,6 +12,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   decide: [decision: string, comment?: string]
   openTrace: [traceId: string]
+  openAgentRun: [runId: string]
 }>()
 
 const roleName = computed(() => {
@@ -76,6 +77,22 @@ const resultDetailItems = computed(() => {
   ))
 })
 
+const agentRunId = computed(() => {
+  const actionType = String(
+    props.msg.action_result_view?.type
+    || props.msg.action_result?.type
+    || props.msg.meta?.agent_action_type
+    || '',
+  )
+  if (actionType !== 'plan_recovery_tools') return ''
+  const metaRunId = props.msg.meta?.agent_run_id
+  if (typeof metaRunId === 'string' && metaRunId.trim()) return metaRunId.trim()
+  const data = props.msg.action_result?.data
+  if (!data || typeof data !== 'object') return ''
+  const dataRunId = (data as Record<string, unknown>).agent_run_id
+  return typeof dataRunId === 'string' ? dataRunId.trim() : ''
+})
+
 const summaryTitle = computed(() => {
   const title = props.msg.meta?.title
   return typeof title === 'string' && title.trim() ? title : '会话摘要'
@@ -109,6 +126,11 @@ function onDecide(decision: string, comment?: string) {
 function openTrace() {
   if (!canOpenTrace.value) return
   emit('openTrace', props.msg.trace_id)
+}
+
+function openAgentRun() {
+  if (!agentRunId.value) return
+  emit('openAgentRun', agentRunId.value)
 }
 </script>
 
@@ -173,6 +195,15 @@ function openTrace() {
             <dd>{{ item.value }}</dd>
           </div>
         </dl>
+        <button
+          v-if="agentRunId"
+          type="button"
+          class="chat-msg__result-action"
+          data-testid="open-agent-run"
+          @click="openAgentRun"
+        >
+          查看运行
+        </button>
       </div>
     </div>
   </div>
@@ -300,6 +331,23 @@ function openTrace() {
   min-width: 0;
   color: inherit;
   overflow-wrap: anywhere;
+}
+
+.chat-msg__result-action {
+  margin-top: var(--space-2);
+  height: 26px;
+  padding: 0 var(--space-2);
+  border: 1px solid currentColor;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  line-height: 24px;
+}
+
+.chat-msg__result-action:hover {
+  background: rgba(255, 255, 255, 0.55);
 }
 
 .chat-msg__result--success {
