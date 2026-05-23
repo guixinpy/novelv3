@@ -1,6 +1,23 @@
 import type { ActionResultView, WritingAgentRunDetail } from '../../api/types'
 
 export const AGENT_RUN_ACTION_TYPES = ['plan_recovery_tools', 'ui_recovery_execute'] as const
+export type AgentRunActionType = typeof AGENT_RUN_ACTION_TYPES[number]
+
+export interface AgentRunActionDescriptor {
+  type: AgentRunActionType
+  buildView: (actionResult: Record<string, unknown>, status: string) => ActionResultView
+}
+
+const AGENT_RUN_ACTION_DESCRIPTORS: Record<AgentRunActionType, AgentRunActionDescriptor> = {
+  plan_recovery_tools: {
+    type: 'plan_recovery_tools',
+    buildView: buildRecoveryPreviewActionResultView,
+  },
+  ui_recovery_execute: {
+    type: 'ui_recovery_execute',
+    buildView: buildRecoveryExecutionActionResultView,
+  },
+}
 
 interface AgentRunMessageLike {
   action_result?: Record<string, unknown> | null
@@ -24,7 +41,12 @@ export interface AgentRunFeedbackMessage {
 }
 
 export function isAgentRunActionType(value: unknown) {
-  return typeof value === 'string' && AGENT_RUN_ACTION_TYPES.includes(value as typeof AGENT_RUN_ACTION_TYPES[number])
+  return Boolean(getAgentRunActionDescriptor(value))
+}
+
+export function getAgentRunActionDescriptor(value: unknown): AgentRunActionDescriptor | null {
+  if (typeof value !== 'string') return null
+  return AGENT_RUN_ACTION_DESCRIPTORS[value as AgentRunActionType] || null
 }
 
 export function getAgentRunIdFromMessage(message: AgentRunMessageLike) {
@@ -47,29 +69,9 @@ export function buildAgentRunActionResultView(actionResult: Record<string, unkno
   if (!actionResult) return null
   const actionType = stringValue(actionResult.type)
   const status = stringValue(actionResult.status)
-  if (!actionType || !status || !isAgentRunActionType(actionType)) return null
-  if (actionType === 'plan_recovery_tools') {
-    const detailItems = recoveryPreviewDetailItems(recordValue(actionResult.data))
-    return {
-      type: actionType,
-      status,
-      label: recoveryPreviewLabel(status),
-      variant: statusVariant(status),
-      ...(detailItems.length ? { detail_items: detailItems } : {}),
-    }
-  }
-  if (actionType === 'ui_recovery_execute') {
-    const data = recordValue(actionResult.data)
-    const runId = stringValue(data.agent_run_id)
-    return {
-      type: actionType,
-      status,
-      label: recoveryExecutionStatusLabel(status),
-      variant: recoveryExecutionVariant(status),
-      ...(runId ? { detail_items: [{ label: '运行 ID', value: runId }] } : {}),
-    }
-  }
-  return null
+  const descriptor = getAgentRunActionDescriptor(actionType)
+  if (!descriptor || !status) return null
+  return descriptor.buildView(actionResult, status)
 }
 
 export function buildAgentRunExecutionFeedback(run: WritingAgentRunDetail): AgentRunFeedbackMessage {
@@ -111,6 +113,29 @@ function recoveryExecutionStatusLabel(status: string) {
   if (status === 'running') return '恢复执行中'
   if (status === 'blocked') return '恢复执行已阻止'
   return `恢复执行已创建：${status || '未知状态'}`
+}
+
+function buildRecoveryPreviewActionResultView(actionResult: Record<string, unknown>, status: string): ActionResultView {
+  const detailItems = recoveryPreviewDetailItems(recordValue(actionResult.data))
+  return {
+    type: 'plan_recovery_tools',
+    status,
+    label: recoveryPreviewLabel(status),
+    variant: statusVariant(status),
+    ...(detailItems.length ? { detail_items: detailItems } : {}),
+  }
+}
+
+function buildRecoveryExecutionActionResultView(actionResult: Record<string, unknown>, status: string): ActionResultView {
+  const data = recordValue(actionResult.data)
+  const runId = stringValue(data.agent_run_id)
+  return {
+    type: 'ui_recovery_execute',
+    status,
+    label: recoveryExecutionStatusLabel(status),
+    variant: recoveryExecutionVariant(status),
+    ...(runId ? { detail_items: [{ label: '运行 ID', value: runId }] } : {}),
+  }
 }
 
 function recoveryPreviewLabel(status: string) {

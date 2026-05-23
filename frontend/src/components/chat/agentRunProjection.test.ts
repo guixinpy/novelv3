@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildAgentRunActionResultView,
   buildAgentRunExecutionFeedback,
+  getAgentRunActionDescriptor,
   getAgentRunIdFromMessage,
   isAgentRunActionType,
 } from './agentRunProjection'
@@ -41,6 +42,12 @@ describe('agentRunProjection', () => {
     expect(isAgentRunActionType('generate_chapter')).toBe(false)
   })
 
+  it('exposes registered agent run action descriptors', () => {
+    expect(getAgentRunActionDescriptor('plan_recovery_tools')?.type).toBe('plan_recovery_tools')
+    expect(getAgentRunActionDescriptor('ui_recovery_execute')?.type).toBe('ui_recovery_execute')
+    expect(getAgentRunActionDescriptor('generate_chapter')).toBeNull()
+  })
+
   it('builds fallback views for recovery preview action results', () => {
     const view = buildAgentRunActionResultView({
       type: 'plan_recovery_tools',
@@ -67,6 +74,18 @@ describe('agentRunProjection', () => {
       status: 'success',
       data: { agent_run_id: 'run-hidden' },
     })).toBeNull()
+  })
+
+  it('builds fallback views for recovery execution action results', () => {
+    const view = buildAgentRunActionResultView({
+      type: 'ui_recovery_execute',
+      status: 'running',
+      data: { agent_run_id: 'run-running' },
+    })
+
+    expect(view?.label).toBe('恢复执行中')
+    expect(view?.variant).toBe('neutral')
+    expect(view?.detail_items).toContainEqual({ label: '运行 ID', value: 'run-running' })
   })
 
   it('builds recovery execution feedback without leaking plan hash', () => {
