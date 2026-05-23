@@ -1,5 +1,6 @@
 from app.models import ChapterContent, Outline, Project, Setup, Storyline
 from app.services.writing_agent.agent_core_tool_descriptors import AGENT_CORE_TOOL_DESCRIPTORS
+from app.services.writing_agent.agent_generation_tool_descriptors import AGENT_GENERATION_TOOL_DESCRIPTORS
 from app.services.writing_agent.agent_memory_trace_tool_descriptors import AGENT_MEMORY_TRACE_TOOL_DESCRIPTORS
 from app.services.writing_agent.knowledge_base_tool_descriptors import KNOWLEDGE_BASE_AGENT_TOOL_DESCRIPTORS
 from app.services.writing_agent.longform_tool_descriptors import LONGFORM_AGENT_TOOL_DESCRIPTORS
@@ -65,6 +66,25 @@ def test_agent_memory_trace_tool_descriptors_live_in_dedicated_module():
     assert target_type_for_tool("repair_longform_maintenance") == "longform_maintenance"
     assert "inspect_agent_trace_audit" in non_blocking_report_tool_names()
     assert "repair_longform_maintenance" not in non_blocking_report_tool_names()
+
+
+def test_agent_generation_tool_descriptors_live_in_dedicated_module():
+    names = [descriptor.name for descriptor in AGENT_GENERATION_TOOL_DESCRIPTORS]
+
+    assert names == [
+        "expand_outline_window",
+        "generate_chapter",
+        "prepare_generate_chapter_execution",
+        "execute_generate_chapter_with_approval",
+        "backfill_outline_gaps",
+    ]
+    assert {descriptor.category for descriptor in AGENT_GENERATION_TOOL_DESCRIPTORS} == {"generation", "maintenance"}
+    assert target_type_for_tool("generate_chapter") == "chapter"
+    assert target_type_for_tool("prepare_generate_chapter_execution") == "chapter_generation_approval"
+    assert target_type_for_tool("execute_generate_chapter_with_approval") == "chapter"
+    assert target_type_for_tool("backfill_outline_gaps") == "outline"
+    assert "prepare_generate_chapter_execution" in non_blocking_report_tool_names()
+    assert "execute_generate_chapter_with_approval" not in non_blocking_report_tool_names()
 
 
 def test_review_revision_tool_descriptors_live_in_dedicated_module():

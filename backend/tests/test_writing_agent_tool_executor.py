@@ -10,6 +10,7 @@ from app.services.writing_agent.chapter_generation_execution import (
 )
 from app.services.writing_agent.chapter_generation_tool import execute_generate_chapter_tool
 from app.services.writing_agent.agent_core_tool_adapters import build_agent_core_tool_adapters
+from app.services.writing_agent.agent_generation_tool_adapters import build_agent_generation_tool_adapters
 from app.services.writing_agent.agent_memory_trace_tool_adapters import AGENT_MEMORY_TRACE_TOOL_ADAPTERS
 from app.services.writing_agent.knowledge_base_tool_adapters import KNOWLEDGE_BASE_AGENT_TOOL_ADAPTERS
 from app.services.writing_agent.longform_tool_adapters import build_longform_agent_tool_adapters
@@ -76,6 +77,24 @@ def test_agent_memory_trace_tool_adapters_live_in_dedicated_module():
         AGENT_MEMORY_TRACE_TOOL_ADAPTERS["repair_longform_maintenance"].handler.__name__
         == "_repair_longform_maintenance"
     )
+
+
+def test_agent_generation_tool_adapters_live_in_dedicated_module():
+    adapters = build_agent_generation_tool_adapters(approval_tool_metadata_provider=lambda plan: {})
+    names = list(adapters)
+
+    assert names == [
+        "generate_chapter",
+        "prepare_generate_chapter_execution",
+        "execute_generate_chapter_with_approval",
+        "expand_outline_window",
+        "backfill_outline_gaps",
+    ]
+    assert adapters["generate_chapter"].mutability == "write"
+    assert adapters["prepare_generate_chapter_execution"].mutability == "read"
+    assert adapters["execute_generate_chapter_with_approval"].mutability == "write"
+    assert adapters["expand_outline_window"].mutability == "write"
+    assert adapters["backfill_outline_gaps"].handler.__name__ == "_backfill_outline_gaps"
 
 
 def test_review_revision_tool_adapters_live_in_dedicated_module():
