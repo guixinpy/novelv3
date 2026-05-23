@@ -9,6 +9,7 @@ export const AGENT_RUN_ACTION_TYPES = [
   'prepare_longform_chapter_batch_execution',
   'execute_longform_chapter_batch',
   'review_longform_chapter_batch_execution',
+  'route_longform_chapter_batch_after_review',
 ] as const
 export type AgentRunActionType = typeof AGENT_RUN_ACTION_TYPES[number]
 
@@ -49,6 +50,10 @@ const AGENT_RUN_ACTION_DESCRIPTORS: Record<AgentRunActionType, AgentRunActionDes
   review_longform_chapter_batch_execution: {
     type: 'review_longform_chapter_batch_execution',
     buildView: buildLongformReviewActionResultView,
+  },
+  route_longform_chapter_batch_after_review: {
+    type: 'route_longform_chapter_batch_after_review',
+    buildView: buildLongformRouteActionResultView,
   },
 }
 
@@ -249,6 +254,20 @@ function buildLongformReviewActionResultView(actionResult: Record<string, unknow
   }
 }
 
+function buildLongformRouteActionResultView(actionResult: Record<string, unknown>, status: string): ActionResultView {
+  const data = recordValue(actionResult.data)
+  const routeStatus = stringValue(data.status) || status
+  const routeDecision = stringValue(recordValue(data.route_decision).decision)
+  const detailItems = longformRouteDetailItems(data, routeStatus)
+  return {
+    type: 'route_longform_chapter_batch_after_review',
+    status,
+    label: longformRouteLabel(routeStatus, routeDecision),
+    variant: longformRouteVariant(routeStatus, routeDecision),
+    ...(detailItems.length ? { detail_items: detailItems } : {}),
+  }
+}
+
 function recoveryPreviewLabel(status: string) {
   if (status === 'success' || status === 'completed') return '恢复预览已生成'
   if (status === 'failed') return '恢复预览失败'
@@ -334,6 +353,27 @@ function longformReviewLabel(status: string) {
 
 function longformReviewVariant(status: string) {
   if (status === 'completed' || status === 'success') return 'success'
+  if (status === 'blocked' || status === 'failed') return 'error'
+  return 'neutral'
+}
+
+function longformRouteLabel(status: string, decision: string) {
+  if ((status === 'completed' || status === 'success') && decision === 'continue_to_next_batch') {
+    return '长篇批次已路由到下一批'
+  }
+  if ((status === 'completed' || status === 'success') && decision === 'stop_for_revision') {
+    return '长篇批次已路由到修订'
+  }
+  if (status === 'blocked') return '长篇批次路由已阻塞'
+  if (status === 'skipped') return '长篇批次路由已记录'
+  if (status === 'failed') return '长篇批次路由失败'
+  if (status === 'not_found') return '长篇批次未找到'
+  if (status === 'running') return '长篇批次路由中'
+  return `长篇批次路由: ${status || '未知状态'}`
+}
+
+function longformRouteVariant(status: string, decision: string) {
+  if ((status === 'completed' || status === 'success') && decision === 'continue_to_next_batch') return 'success'
   if (status === 'blocked' || status === 'failed') return 'error'
   return 'neutral'
 }
@@ -715,6 +755,64 @@ function reviewComponentStatusLabel(status: string) {
   if (status === 'failed') return '失败'
   if (status === 'skipped') return '已跳过'
   return status
+}
+
+function longformRouteDetailItems(data: Record<string, unknown>, routeStatus: string) {
+  const items: Array<{ label: string; value: string }> = []
+  const chapterIndex = numberValue(data.chapter_index)
+  const task = recordValue(data.task)
+  const routeChapter = chapterIndex !== null ? `第${chapterIndex}章` : chapterRangeLabel(task)
+  if (routeChapter) {
+    items.push({ label: '路由章节', value: routeChapter })
+  }
+
+  const routeDecision = recordValue(data.route_decision)
+  const decision = stringValue(routeDecision.decision)
+  if (decision) {
+    items.push({ label: '路由决策', value: routeDecisionLabel(decision) })
+  }
+
+  const nextChapterIndex = numberValue(routeDecision.next_chapter_index)
+  if (nextChapterIndex !== null) {
+    items.push({ label: '下一章', value: `第${nextChapterIndex}章` })
+  }
+
+  const nextBatchPlan = recordValue(data.next_batch_plan)
+  const nextBatch = recordValue(nextBatchPlan.batch)
+  const nextBatchIndexes = numberArrayValue(nextBatch.chapter_indexes)
+  const nextBatchLabel = chapterIndexesLabel(nextBatchIndexes)
+  if (nextBatchLabel) {
+    items.push({ label: '下一批', value: nextBatchLabel })
+  } else {
+    const nextBatchSize = numberValue(routeDecision.next_batch_size)
+    if (nextBatchSize !== null) {
+      items.push({ label: '下一批', value: `${nextBatchSize} 章` })
+    }
+  }
+
+  const recoveryPlan = recordValue(data.recovery_plan)
+  const revisionPlan = recordValue(recoveryPlan.revision_plan)
+  const revisionActions = Array.isArray(revisionPlan.revision_actions) ? revisionPlan.revision_actions : []
+  if (revisionActions.length) {
+    items.push({ label: '修订动作', value: `${revisionActions.length} 项` })
+  }
+
+  const reason = stringValue(data.reason)
+  if (reason) {
+    items.push({ label: routeStatus === 'skipped' ? '跳过原因' : '阻塞原因', value: reason })
+  }
+
+  const nextTools = Array.isArray(data.recommended_next_tools) ? data.recommended_next_tools : []
+  if (nextTools.length) {
+    items.push({ label: '下一步', value: `${nextTools.length} 个工具` })
+  }
+  return items
+}
+
+function routeDecisionLabel(decision: string) {
+  if (decision === 'continue_to_next_batch') return '继续下一批'
+  if (decision === 'stop_for_revision') return '进入修订'
+  return decision
 }
 
 function runStatusLabel(status: string) {

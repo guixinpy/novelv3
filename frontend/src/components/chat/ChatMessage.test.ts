@@ -449,6 +449,40 @@ describe('ChatMessage', () => {
     expect(wrapper.text()).not.toContain('review_longform_chapter_batch_execution')
   })
 
+  it('renders longform route fallback labels when backend view is missing', () => {
+    const wrapper = mount(ChatMessage, {
+      props: {
+        msg: {
+          role: 'system',
+          message_type: 'plain',
+          content: '长篇批次审查后路由已完成。',
+          action_result: {
+            type: 'route_longform_chapter_batch_after_review',
+            status: 'success',
+            data: {
+              status: 'completed',
+              chapter_index: 21,
+              route_decision: {
+                decision: 'continue_to_next_batch',
+                next_chapter_index: 22,
+                next_batch_size: 2,
+              },
+              next_batch_plan: { batch: { chapter_indexes: [22, 23] } },
+              recommended_next_tools: ['enqueue_longform_chapter_batch', 'inspect_longform_chapter_batch'],
+            },
+          },
+        },
+        isLatest: false,
+        loading: false,
+      },
+    })
+
+    expect(wrapper.text()).toContain('长篇批次已路由到下一批')
+    expect(wrapper.text()).toContain('下一批')
+    expect(wrapper.text()).toContain('第22-23章')
+    expect(wrapper.text()).not.toContain('route_longform_chapter_batch_after_review')
+  })
+
   it('emits openAgentRun from recovery execution action results', async () => {
     const wrapper = mount(ChatMessage, {
       props: {
