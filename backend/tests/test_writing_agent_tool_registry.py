@@ -1,5 +1,6 @@
 from app.models import ChapterContent, Outline, Project, Setup, Storyline
 from app.services.writing_agent.agent_core_tool_descriptors import AGENT_CORE_TOOL_DESCRIPTORS
+from app.services.writing_agent.agent_memory_trace_tool_descriptors import AGENT_MEMORY_TRACE_TOOL_DESCRIPTORS
 from app.services.writing_agent.knowledge_base_tool_descriptors import KNOWLEDGE_BASE_AGENT_TOOL_DESCRIPTORS
 from app.services.writing_agent.longform_tool_descriptors import LONGFORM_AGENT_TOOL_DESCRIPTORS
 from app.services.writing_agent.review_revision_tool_descriptors import REVIEW_REVISION_AGENT_TOOL_DESCRIPTORS
@@ -41,6 +42,29 @@ def test_agent_core_tool_descriptors_live_in_dedicated_module():
     assert target_type_for_tool("inspect_agent_write_gate_coverage") == "agent_write_gate_coverage"
     assert "plan_writing_agent_run" in non_blocking_report_tool_names()
     assert "preflight_writing" not in non_blocking_report_tool_names()
+
+
+def test_agent_memory_trace_tool_descriptors_live_in_dedicated_module():
+    names = [descriptor.name for descriptor in AGENT_MEMORY_TRACE_TOOL_DESCRIPTORS]
+
+    assert names == [
+        "inspect_agent_trace_audit",
+        "inspect_agent_memory_route",
+        "summarize_longform_context",
+        "repair_longform_maintenance",
+    ]
+    assert {descriptor.category for descriptor in AGENT_MEMORY_TRACE_TOOL_DESCRIPTORS} == {
+        "trace",
+        "longform_memory",
+        "maintenance",
+    }
+    assert all(descriptor.internal for descriptor in AGENT_MEMORY_TRACE_TOOL_DESCRIPTORS)
+    assert target_type_for_tool("inspect_agent_trace_audit") == "agent_trace_audit"
+    assert target_type_for_tool("inspect_agent_memory_route") == "agent_memory_route"
+    assert target_type_for_tool("summarize_longform_context") == "longform_context_summary"
+    assert target_type_for_tool("repair_longform_maintenance") == "longform_maintenance"
+    assert "inspect_agent_trace_audit" in non_blocking_report_tool_names()
+    assert "repair_longform_maintenance" not in non_blocking_report_tool_names()
 
 
 def test_review_revision_tool_descriptors_live_in_dedicated_module():

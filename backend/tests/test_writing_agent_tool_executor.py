@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import pytest
 
 from app.models import ChapterContent, Outline, Project, Setup, Storyline, WritingAgentRun, WritingAgentStep
@@ -8,6 +10,7 @@ from app.services.writing_agent.chapter_generation_execution import (
 )
 from app.services.writing_agent.chapter_generation_tool import execute_generate_chapter_tool
 from app.services.writing_agent.agent_core_tool_adapters import build_agent_core_tool_adapters
+from app.services.writing_agent.agent_memory_trace_tool_adapters import AGENT_MEMORY_TRACE_TOOL_ADAPTERS
 from app.services.writing_agent.knowledge_base_tool_adapters import KNOWLEDGE_BASE_AGENT_TOOL_ADAPTERS
 from app.services.writing_agent.longform_tool_adapters import build_longform_agent_tool_adapters
 from app.services.writing_agent.review_revision_tool_adapters import REVIEW_REVISION_AGENT_TOOL_ADAPTERS
@@ -50,6 +53,29 @@ def test_agent_core_tool_adapters_live_in_dedicated_module():
     assert {adapter.mutability for adapter in adapters.values()} == {"read"}
     assert adapters["verify_agent_plan_approval_contract"].handler.__name__ == "_verify_agent_plan_approval_contract"
     assert adapters["inspect_agent_intent_projection"].handler.__name__ == "_inspect_agent_intent_projection"
+
+
+def test_agent_memory_trace_tool_adapters_live_in_dedicated_module():
+    names = list(AGENT_MEMORY_TRACE_TOOL_ADAPTERS)
+
+    assert names == [
+        "inspect_agent_trace_audit",
+        "inspect_agent_memory_route",
+        "summarize_longform_context",
+        "repair_longform_maintenance",
+    ]
+    assert {adapter.category for adapter in AGENT_MEMORY_TRACE_TOOL_ADAPTERS.values()} == {
+        "trace",
+        "longform_memory",
+        "maintenance",
+    }
+    assert AGENT_MEMORY_TRACE_TOOL_ADAPTERS["inspect_agent_trace_audit"].mutability == "read"
+    assert AGENT_MEMORY_TRACE_TOOL_ADAPTERS["summarize_longform_context"].mutability == "read"
+    assert AGENT_MEMORY_TRACE_TOOL_ADAPTERS["repair_longform_maintenance"].mutability == "write"
+    assert (
+        AGENT_MEMORY_TRACE_TOOL_ADAPTERS["repair_longform_maintenance"].handler.__name__
+        == "_repair_longform_maintenance"
+    )
 
 
 def test_review_revision_tool_adapters_live_in_dedicated_module():
@@ -988,6 +1014,7 @@ def test_tool_executor_static_adapter_names_are_report_or_agent_native_tools():
         "route_longform_chapter_batch_after_review",
         "inspect_agent_trace_audit",
         "inspect_agent_memory_route",
+        "summarize_longform_context",
         "inspect_agent_world_model_route",
         "review_chapter_quality",
         "review_chapter_continuity",
@@ -1074,6 +1101,7 @@ def test_tool_executor_lists_unhandled_internal_tools_for_migration_tracking():
     assert "expand_outline_window" not in names
     assert "inspect_agent_trace_audit" not in names
     assert "inspect_agent_memory_route" not in names
+    assert "summarize_longform_context" not in names
     assert "inspect_agent_world_model_route" not in names
     assert "review_chapter_quality" not in names
     assert "plan_writing_agent_run" not in names
@@ -1110,6 +1138,18 @@ def test_tool_executor_exposes_inspect_agent_memory_route_adapter_metadata():
         "category": "longform_memory",
         "mutability": "read",
         "handler_name": "_inspect_agent_memory_route",
+    }
+
+
+def test_tool_executor_exposes_summarize_longform_context_adapter_metadata():
+    metadata = writing_agent_tool_adapter_metadata("summarize_longform_context")
+
+    assert metadata == {
+        "tool_name": "summarize_longform_context",
+        "adapter_type": "static",
+        "category": "longform_memory",
+        "mutability": "read",
+        "handler_name": "_summarize_longform_context",
     }
 
 
@@ -2146,6 +2186,26 @@ async def test_tool_executor_dispatches_repair_longform_maintenance_adapter(db_s
 
 
 @pytest.mark.asyncio
+async def test_tool_executor_dispatches_repair_longform_maintenance_with_json_safe_output(db_session, monkeypatch):
+    project = Project(name="Executor Longform Repair JSON Safe")
+    db_session.add(project)
+    db_session.commit()
+
+    def fake_repair(db, project_id: str, *, limit: int, repair_limit: int):
+        return {"status": "completed", "repaired_at": datetime(2026, 5, 23, 10, 30)}
+
+    monkeypatch.setattr("app.core.longform_memory.repair_longform_maintenance", fake_repair)
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(tool_name="repair_longform_maintenance", params={}),
+    )
+
+    assert result.handled is True
+    assert result.output == {"status": "completed", "repaired_at": "2026-05-23 10:30:00"}
+
+
+@pytest.mark.asyncio
 async def test_tool_executor_dispatches_inspect_agent_memory_route_adapter(db_session, monkeypatch):
     project = Project(name="Executor Memory Route")
     db_session.add(project)
@@ -2169,6 +2229,41 @@ async def test_tool_executor_dispatches_inspect_agent_memory_route_adapter(db_se
     assert result.handled is True
     assert result.output == {"status": "completed", "route": {"status": "ready"}}
     assert calls == [(project.id, 12, "父亲失踪", True)]
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_dispatches_summarize_longform_context_adapter(db_session, monkeypatch):
+    project = Project(name="Executor Context Summary")
+    db_session.add(project)
+    db_session.commit()
+    calls: list[tuple[str, int | None, str | None, int | None, bool]] = []
+
+    def fake_summary(
+        db,
+        project_id: str,
+        *,
+        chapter_index: int | None,
+        query: str | None,
+        max_chars: int | None,
+        include_prompt_context: bool,
+    ):
+        calls.append((project_id, chapter_index, query, max_chars, include_prompt_context))
+        return {"status": "completed", "chapter_index": chapter_index, "sections": []}
+
+    monkeypatch.setattr("app.services.writing_agent.longform_context_summary.summarize_longform_context", fake_summary)
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(
+            tool_name="summarize_longform_context",
+            command_args="灯塔记忆",
+            params={"chapter_index": "14", "max_chars": "1500", "include_prompt_context": True},
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output == {"status": "completed", "chapter_index": 14, "sections": []}
+    assert calls == [(project.id, 14, "灯塔记忆", 1500, True)]
 
 
 @pytest.mark.asyncio

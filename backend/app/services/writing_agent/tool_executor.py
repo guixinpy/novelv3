@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import json
 import inspect
 from typing import Any
 
 from app.schemas.writing_agent import WritingAgentToolRequest
 from app.services.writing_agent.approval_tool_metadata import build_approval_tool_metadata_by_name
 from app.services.writing_agent.agent_core_tool_adapters import build_agent_core_tool_adapters
+from app.services.writing_agent.agent_memory_trace_tool_adapters import AGENT_MEMORY_TRACE_TOOL_ADAPTERS
 from app.services.writing_agent.knowledge_base_tool_adapters import KNOWLEDGE_BASE_AGENT_TOOL_ADAPTERS
 from app.services.writing_agent.longform_tool_adapters import build_longform_agent_tool_adapters
 from app.services.writing_agent.review_revision_tool_adapters import REVIEW_REVISION_AGENT_TOOL_ADAPTERS
@@ -71,10 +71,6 @@ def writing_agent_tool_adapter_metadata(tool_name: str) -> dict[str, Any] | None
 def unhandled_internal_writing_agent_tool_names() -> set[str]:
     handled = static_writing_agent_tool_adapter_names() | {"preflight_writing"}
     return internal_tool_names() - handled
-
-
-def _json_safe_output(output: dict[str, Any]) -> dict[str, Any]:
-    return json.loads(json.dumps(output, ensure_ascii=False, default=str))
 
 
 async def _generate_chapter(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
@@ -172,57 +168,6 @@ async def _expand_outline_window(context: WritingAgentToolContext, tool: Writing
     )
 
 
-def _inspect_agent_trace_audit(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
-    from app.services.writing_agent.agent_trace_audit import inspect_agent_trace_audit
-
-    return inspect_agent_trace_audit(
-        context.db,
-        context.project_id,
-        run_id=str(tool.params.get("run_id") or "").strip() or None,
-        chapter_index=_optional_int(tool.params.get("chapter_index")),
-        task_id=str(tool.params.get("task_id") or "").strip() or None,
-        limit=_optional_int(tool.params.get("limit")),
-    )
-
-
-def _inspect_agent_memory_route(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
-    from app.services.writing_agent.agent_memory_route import inspect_agent_memory_route
-
-    return inspect_agent_memory_route(
-        context.db,
-        context.project_id,
-        chapter_index=_optional_int(tool.params.get("chapter_index")),
-        query=str(tool.params.get("query") or tool.command_args or "").strip() or None,
-        include_context_summary=tool.params.get("include_context_summary") is True,
-    )
-
-
-def _summarize_longform_context(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
-    from app.services.writing_agent.longform_context_summary import summarize_longform_context
-
-    return summarize_longform_context(
-        context.db,
-        context.project_id,
-        chapter_index=_optional_int(tool.params.get("chapter_index")),
-        query=str(tool.params.get("query") or tool.command_args or "").strip() or None,
-        max_chars=_optional_int(tool.params.get("max_chars")),
-        include_prompt_context=tool.params.get("include_prompt_context") is True,
-    )
-
-
-def _repair_longform_maintenance(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
-    from app.core.longform_memory import repair_longform_maintenance
-
-    return _json_safe_output(
-        repair_longform_maintenance(
-            context.db,
-            context.project_id,
-            limit=_optional_int(tool.params.get("limit")) or 20,
-            repair_limit=_optional_int(tool.params.get("repair_limit")) or 100,
-        )
-    )
-
-
 def _backfill_outline_gaps(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
     from app.core.outline_lookup import backfill_missing_outline_chapters_from_content
 
@@ -271,30 +216,6 @@ _STATIC_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
         category="generation",
         mutability="write",
     ),
-    "inspect_agent_trace_audit": WritingAgentToolAdapter(
-        "inspect_agent_trace_audit",
-        _inspect_agent_trace_audit,
-        category="trace",
-        mutability="read",
-    ),
-    "inspect_agent_memory_route": WritingAgentToolAdapter(
-        "inspect_agent_memory_route",
-        _inspect_agent_memory_route,
-        category="longform_memory",
-        mutability="read",
-    ),
-    "summarize_longform_context": WritingAgentToolAdapter(
-        "summarize_longform_context",
-        _summarize_longform_context,
-        category="longform_memory",
-        mutability="read",
-    ),
-    "repair_longform_maintenance": WritingAgentToolAdapter(
-        "repair_longform_maintenance",
-        _repair_longform_maintenance,
-        category="maintenance",
-        mutability="write",
-    ),
     "backfill_outline_gaps": WritingAgentToolAdapter(
         "backfill_outline_gaps",
         _backfill_outline_gaps,
@@ -308,6 +229,7 @@ _STATIC_TOOL_ADAPTERS.update(
         static_adapter_tool_names_provider=lambda: set(_STATIC_TOOL_ADAPTERS),
     )
 )
+_STATIC_TOOL_ADAPTERS.update(AGENT_MEMORY_TRACE_TOOL_ADAPTERS)
 _STATIC_TOOL_ADAPTERS.update(REVIEW_REVISION_AGENT_TOOL_ADAPTERS)
 _STATIC_TOOL_ADAPTERS.update(WORLD_MODEL_AGENT_TOOL_ADAPTERS)
 _STATIC_TOOL_ADAPTERS.update(KNOWLEDGE_BASE_AGENT_TOOL_ADAPTERS)
