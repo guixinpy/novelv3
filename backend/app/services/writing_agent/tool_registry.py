@@ -630,6 +630,40 @@ _TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(
+        name="inspect_agent_mutation_fingerprints",
+        module="writing_agent",
+        category="preflight",
+        description="只读计算计划写入工具的稳定 mutation fingerprint，用于恢复、审批和冲突诊断绑定具体目标。",
+        input_schema=_object_schema(
+            {
+                "tools": {
+                    "type": "array",
+                    "items": _object_schema(
+                        {
+                            "tool_name": {"type": "string"},
+                            "params": {"type": "object"},
+                        }
+                    ),
+                },
+            }
+        ),
+        output_schema=_object_schema(
+            {
+                "status": {"type": "string"},
+                "version": {"type": "string"},
+                "project_id": {"type": "string"},
+                "summary": {"type": "object"},
+                "fingerprints": {"type": "array"},
+                "recommended_next_tools": {"type": "array"},
+            }
+        ),
+        target_type="agent_mutation_fingerprint",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=12,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
         name="inspect_agent_knowledge_base_route",
         module="writing_agent",
         category="knowledge_base",

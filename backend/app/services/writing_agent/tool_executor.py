@@ -323,6 +323,15 @@ def _inspect_agent_write_gate_coverage(context: WritingAgentToolContext, tool: W
     return inspect_agent_write_gate_coverage(adapter_metadata_by_name=_static_adapter_metadata_by_name())
 
 
+def _inspect_agent_mutation_fingerprints(
+    context: WritingAgentToolContext,
+    tool: WritingAgentToolRequest,
+) -> dict[str, Any]:
+    from app.services.writing_agent.mutation_fingerprint import inspect_agent_mutation_fingerprints
+
+    return inspect_agent_mutation_fingerprints(context.project_id, tool.params.get("tools"))
+
+
 def _static_adapter_metadata_by_name() -> dict[str, dict[str, Any]]:
     return {name: adapter.to_metadata() for name, adapter in _STATIC_TOOL_ADAPTERS.items()}
 
@@ -865,6 +874,12 @@ _STATIC_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
     "inspect_agent_write_gate_coverage": WritingAgentToolAdapter(
         "inspect_agent_write_gate_coverage",
         _inspect_agent_write_gate_coverage,
+        category="preflight",
+        mutability="read",
+    ),
+    "inspect_agent_mutation_fingerprints": WritingAgentToolAdapter(
+        "inspect_agent_mutation_fingerprints",
+        _inspect_agent_mutation_fingerprints,
         category="preflight",
         mutability="read",
     ),

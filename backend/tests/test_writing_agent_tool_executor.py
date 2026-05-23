@@ -2102,6 +2102,30 @@ async def test_tool_executor_dispatches_inspect_agent_world_model_route_adapter(
 
 
 @pytest.mark.asyncio
+async def test_tool_executor_dispatches_inspect_agent_mutation_fingerprints_adapter(db_session):
+    project = Project(name="Executor Mutation Fingerprints")
+    db_session.add(project)
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(
+            tool_name="inspect_agent_mutation_fingerprints",
+            params={"tools": [{"tool_name": "generate_chapter", "params": {"chapter_index": "4"}}]},
+        ),
+    )
+    metadata = writing_agent_tool_adapter_metadata("inspect_agent_mutation_fingerprints")
+
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "completed"
+    assert result.output["fingerprints"][0]["components"]["target_id"] == "chapter:4"
+    assert metadata is not None
+    assert metadata["mutability"] == "read"
+    assert metadata["handler_name"] == "_inspect_agent_mutation_fingerprints"
+
+
+@pytest.mark.asyncio
 async def test_tool_executor_dispatches_chapter_report_adapters(db_session, monkeypatch):
     import app.core.chapter_revision_planner as revision_planner
 
