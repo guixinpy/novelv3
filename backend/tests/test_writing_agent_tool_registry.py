@@ -3,6 +3,7 @@ from app.services.writing_agent.agent_core_tool_descriptors import AGENT_CORE_TO
 from app.services.writing_agent.agent_generation_tool_descriptors import AGENT_GENERATION_TOOL_DESCRIPTORS
 from app.services.writing_agent.agent_memory_trace_tool_descriptors import AGENT_MEMORY_TRACE_TOOL_DESCRIPTORS
 from app.services.writing_agent.agent_task_queue_tool_descriptors import AGENT_TASK_QUEUE_TOOL_DESCRIPTORS
+from app.services.writing_agent.hermes_action_tool_descriptors import HERMES_ACTION_AGENT_TOOL_DESCRIPTORS
 from app.services.writing_agent.knowledge_base_tool_descriptors import KNOWLEDGE_BASE_AGENT_TOOL_DESCRIPTORS
 from app.services.writing_agent.longform_tool_descriptors import LONGFORM_AGENT_TOOL_DESCRIPTORS
 from app.services.writing_agent.review_revision_tool_descriptors import REVIEW_REVISION_AGENT_TOOL_DESCRIPTORS
@@ -101,6 +102,23 @@ def test_agent_task_queue_tool_descriptors_live_in_dedicated_module():
     assert all(descriptor.non_blocking_report for descriptor in AGENT_TASK_QUEUE_TOOL_DESCRIPTORS)
     assert target_type_for_tool("inspect_agent_job_projection") == "agent_job_projection"
     assert target_type_for_tool("plan_chapter_conflict_recovery") == "agent_tool_plan"
+
+
+def test_hermes_action_tool_descriptors_live_in_dedicated_module():
+    names = [descriptor.name for descriptor in HERMES_ACTION_AGENT_TOOL_DESCRIPTORS]
+
+    assert names == [
+        "generate_setup",
+        "generate_storyline",
+        "generate_outline",
+    ]
+    assert {descriptor.module for descriptor in HERMES_ACTION_AGENT_TOOL_DESCRIPTORS} == {"hermes"}
+    assert {descriptor.category for descriptor in HERMES_ACTION_AGENT_TOOL_DESCRIPTORS} == {"generation"}
+    assert all(not descriptor.internal for descriptor in HERMES_ACTION_AGENT_TOOL_DESCRIPTORS)
+    assert target_type_for_tool("generate_setup") == "setup"
+    assert target_type_for_tool("generate_storyline") == "storyline"
+    assert target_type_for_tool("generate_outline") == "outline"
+    assert "generate_setup" in allowed_tool_names()
 
 
 def test_review_revision_tool_descriptors_live_in_dedicated_module():

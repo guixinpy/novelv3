@@ -11,15 +11,12 @@ from app.services.writing_agent.agent_core_tool_descriptors import AGENT_CORE_TO
 from app.services.writing_agent.agent_generation_tool_descriptors import AGENT_GENERATION_TOOL_DESCRIPTORS
 from app.services.writing_agent.agent_memory_trace_tool_descriptors import AGENT_MEMORY_TRACE_TOOL_DESCRIPTORS
 from app.services.writing_agent.agent_task_queue_tool_descriptors import AGENT_TASK_QUEUE_TOOL_DESCRIPTORS
+from app.services.writing_agent.hermes_action_tool_descriptors import HERMES_ACTION_AGENT_TOOL_DESCRIPTORS
 from app.services.writing_agent.knowledge_base_tool_descriptors import KNOWLEDGE_BASE_AGENT_TOOL_DESCRIPTORS
 from app.services.writing_agent.longform_tool_descriptors import LONGFORM_AGENT_TOOL_DESCRIPTORS
 from app.services.writing_agent.review_revision_tool_descriptors import REVIEW_REVISION_AGENT_TOOL_DESCRIPTORS
 from app.services.writing_agent.tool_descriptor_types import AgentToolDescriptor
-from app.services.writing_agent.tool_descriptor_types import object_schema as _object_schema
 from app.services.writing_agent.world_model_tool_descriptors import WORLD_MODEL_AGENT_TOOL_DESCRIPTORS
-
-
-_STATUS_OUTPUT = _object_schema({"status": {"type": "string"}})
 
 
 _TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
@@ -28,39 +25,7 @@ _TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
     *AGENT_TASK_QUEUE_TOOL_DESCRIPTORS,
     *KNOWLEDGE_BASE_AGENT_TOOL_DESCRIPTORS,
     *AGENT_MEMORY_TRACE_TOOL_DESCRIPTORS,
-    AgentToolDescriptor(
-        name="generate_setup",
-        module="hermes",
-        category="generation",
-        description="根据项目意图生成小说基础设定。",
-        input_schema=_object_schema({"command_args": {"type": "string"}}),
-        output_schema=_STATUS_OUTPUT,
-        target_type="setup",
-        sort_key=20,
-        availability_checks=("project_exists",),
-    ),
-    AgentToolDescriptor(
-        name="generate_storyline",
-        module="hermes",
-        category="generation",
-        description="基于设定生成叙事主线、支线和伏笔结构。",
-        input_schema=_object_schema({"command_args": {"type": "string"}}),
-        output_schema=_STATUS_OUTPUT,
-        target_type="storyline",
-        sort_key=30,
-        availability_checks=("setup_exists",),
-    ),
-    AgentToolDescriptor(
-        name="generate_outline",
-        module="hermes",
-        category="generation",
-        description="基于设定和故事线生成章节大纲。",
-        input_schema=_object_schema({"command_args": {"type": "string"}}),
-        output_schema=_STATUS_OUTPUT,
-        target_type="outline",
-        sort_key=40,
-        availability_checks=("setup_exists", "storyline_exists"),
-    ),
+    *HERMES_ACTION_AGENT_TOOL_DESCRIPTORS,
     *AGENT_GENERATION_TOOL_DESCRIPTORS,
     *WORLD_MODEL_AGENT_TOOL_DESCRIPTORS,
     *REVIEW_REVISION_AGENT_TOOL_DESCRIPTORS,
