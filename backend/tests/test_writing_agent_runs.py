@@ -1823,6 +1823,10 @@ def test_agent_run_execute_longform_chapter_batch_blocks_resource_binding_mismat
     assert continuation["blocked_tool"]["resource_binding"]["target_id"] == "chapter:99"
     assert continuation["failure"]["tool_call_id"] == "toolcall:wrong"
     assert continuation["failure"]["resource_binding"]["target_id"] == "chapter:99"
+    assert continuation["recovery"]["status"] == "recommended"
+    assert continuation["recovery"]["reason_code"] == "resource_binding_target_mismatch"
+    assert continuation["recovery"]["next_tool"] == "prepare_longform_chapter_batch_execution"
+    assert continuation["recovery"]["next_params"] == {"task_id": prepared["task_id"]}
     assert calls == []
     assert (
         db_session.query(ChapterContent)
@@ -1830,6 +1834,78 @@ def test_agent_run_execute_longform_chapter_batch_blocks_resource_binding_mismat
         .count()
         == 0
     )
+    recovery_preview = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "规划资源绑定错配恢复",
+            "tools": [{"tool_name": "plan_recovery_tools", "params": {"run_id": payload["id"]}}],
+        },
+    )
+    recovery_output = recovery_preview.json()["steps"][0]["output"]
+    assert recovery_preview.status_code == 200
+    assert recovery_output["status"] == "completed"
+    assert recovery_output["recovery"]["reason_code"] == "resource_binding_target_mismatch"
+    assert len(recovery_output["tools"]) == 1
+    assert recovery_output["tools"][0]["tool_name"] == "prepare_longform_chapter_batch_execution"
+    assert recovery_output["tools"][0]["params"] == {"task_id": prepared["task_id"]}
+    assert recovery_output["execution_policy"]["safe_auto_execute"] is False
+
+
+def test_agent_run_execute_longform_chapter_batch_recovers_missing_resource_binding(client, db_session, monkeypatch):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1])
+    prepared = _prepare_longform_batch_execution_contract(client, project.id)
+    calls: list[str] = []
+
+    def fake_verify(*args, **kwargs):
+        return {
+            "status": "ready",
+            "reason": "approval_contract_verified",
+            "current_contract": {"version": "phase108.agent_plan_approval_contract.v1"},
+            "drift": {
+                "expected_approval_contract_hash": prepared["approval_contract_hash"],
+                "write_step_count": 1,
+                "tool_contract_drift_count": 0,
+                "resource_bindings": [],
+            },
+        }
+
+    async def fake_execute(self, action_type, project_id, *, command_args=None, action_params=None):
+        calls.append(action_type)
+        return {"status": "success", "chapter_index": 2}
+
+    monkeypatch.setattr("app.services.writing_agent.batch_execution.verify_agent_plan_approval_contract", fake_verify)
+    monkeypatch.setattr("app.services.actions.action_execution_service.ActionExecutionService.execute", fake_execute)
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "恢复缺失资源绑定的长篇批次执行",
+            "tools": [
+                {
+                    "tool_name": "execute_longform_chapter_batch",
+                    "params": {
+                        "task_id": prepared["task_id"],
+                        "confirm_execute": True,
+                        "attempt_manifest_hash": prepared["attempt_manifest_hash"],
+                        "approval_contract_hash": prepared["approval_contract_hash"],
+                    },
+                }
+            ],
+        },
+    )
+
+    payload = response.json()
+    output = payload["steps"][0]["output"]
+    continuation = payload["output"]["continuation_state"]
+    assert response.status_code == 200
+    assert payload["status"] == "blocked"
+    assert output["reason"] == "resource_binding_missing"
+    assert output["execution_resource_binding"]["expected"]["target_id"] == "chapter:2"
+    assert continuation["recovery"]["status"] == "recommended"
+    assert continuation["recovery"]["reason_code"] == "resource_binding_missing"
+    assert continuation["recovery"]["next_tool"] == "prepare_longform_chapter_batch_execution"
+    assert continuation["recovery"]["next_params"] == {"task_id": prepared["task_id"]}
+    assert calls == []
 
 
 def test_agent_run_execute_longform_chapter_batch_requires_confirmation(client, db_session):

@@ -792,6 +792,7 @@ def _latest_recommended_recovery_from_steps(steps: list[WritingAgentStep]) -> di
                 "source_tool": recovery.get("source_tool") or step.tool_name,
                 "reason_code": recovery.get("reason_code"),
                 "next_tool": recovery.get("next_tool"),
+                "next_params": recovery.get("next_params") if isinstance(recovery.get("next_params"), dict) else {},
                 "affected_chapter_indexes": recovery.get("affected_chapter_indexes", []),
             }
     return {"status": "none"}

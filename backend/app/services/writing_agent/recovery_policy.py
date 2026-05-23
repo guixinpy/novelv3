@@ -4,6 +4,7 @@ from typing import Any
 
 
 RECOVERY_POLICY_VERSION = "phase47.recovery_policy.v1"
+BINDING_RECOVERY_REASONS = {"resource_binding_missing", "resource_binding_target_mismatch"}
 
 
 def build_writing_agent_recovery(
@@ -18,6 +19,9 @@ def build_writing_agent_recovery(
         return _longform_context_recovery(output, planner)
     if step_status not in {"blocked", "failed"} and output.get("status") not in {"blocked", "failed"}:
         return _none(tool_name)
+    binding_recovery = _binding_recovery(tool_name, output, planner)
+    if binding_recovery.get("status") == "recommended":
+        return binding_recovery
     if tool_name == "preflight_writing":
         return _preflight_recovery(output, planner)
     return _none(tool_name)
@@ -150,6 +154,55 @@ def _preflight_recovery(output: dict[str, Any], planner: dict[str, Any]) -> dict
         "next_params": {},
         "requires_user_input": True,
         "message": str(issue.get("message") or "Agent 运行被阻塞，需要用户确认下一步。"),
+    }
+
+
+def _binding_recovery(tool_name: str, output: dict[str, Any], planner: dict[str, Any]) -> dict[str, Any]:
+    reason = str(output.get("reason") or output.get("error") or "").strip()
+    if reason not in BINDING_RECOVERY_REASONS:
+        return _none(tool_name)
+
+    chapter_index = _optional_positive_int(output.get("chapter_index"))
+    base = {
+        "policy_version": RECOVERY_POLICY_VERSION,
+        "status": "recommended",
+        "source_tool": tool_name,
+        "reason_code": reason,
+        "action": "run_tool",
+        "next_command_args": None,
+        "requires_user_input": False,
+        "user_input_fields": [],
+        "affected_chapter_indexes": [chapter_index] if chapter_index is not None else [],
+        "should_continue_current_run": False,
+        "planner_on_missing": planner.get("on_missing"),
+        "planner_on_failure": planner.get("on_failure"),
+        "message": "资源绑定已过期或不匹配，建议重新生成执行前审批快照后再继续。",
+    }
+
+    if tool_name == "execute_longform_chapter_batch":
+        task = output.get("task") if isinstance(output.get("task"), dict) else {}
+        task_id = str(task.get("id") or "").strip()
+        if task_id:
+            return {
+                **base,
+                "next_tool": "prepare_longform_chapter_batch_execution",
+                "next_params": {"task_id": task_id},
+            }
+
+    if tool_name == "execute_generate_chapter_with_approval" and chapter_index is not None:
+        return {
+            **base,
+            "next_tool": "prepare_generate_chapter_execution",
+            "next_params": {"chapter_index": chapter_index},
+        }
+
+    return {
+        **base,
+        "action": "ask_user",
+        "next_tool": None,
+        "next_params": {},
+        "requires_user_input": True,
+        "message": "资源绑定已过期或不匹配，但缺少可定位的恢复参数，需要用户确认下一步。",
     }
 
 

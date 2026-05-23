@@ -7,6 +7,7 @@ from app.services.writing_agent.chapter_generation_execution import (
     execute_generate_chapter_with_approval,
     prepare_generate_chapter_execution,
 )
+from app.services.writing_agent.recovery_policy import build_writing_agent_recovery
 
 
 def test_prepare_generate_chapter_execution_returns_agent_approval_contract(db_session):
@@ -236,4 +237,78 @@ async def test_execute_generate_chapter_with_approval_blocks_resource_binding_mi
     assert output["execution_resource_binding"]["status"] == "blocked"
     assert output["execution_resource_binding"]["expected"]["target_id"] == "chapter:2"
     assert output["execution_resource_binding"]["resource_bindings"][0]["target_id"] == "chapter:99"
+    recovery = build_writing_agent_recovery(
+        tool_name="execute_generate_chapter_with_approval",
+        step_status="blocked",
+        output=output,
+    )
+    assert recovery["status"] == "recommended"
+    assert recovery["reason_code"] == "resource_binding_target_mismatch"
+    assert recovery["next_tool"] == "prepare_generate_chapter_execution"
+    assert recovery["next_params"] == {"chapter_index": 2}
+    assert recovery["requires_user_input"] is False
+    assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_execute_generate_chapter_with_approval_recovers_missing_resource_binding(db_session, monkeypatch):
+    project = Project(name="Direct Chapter Missing Binding")
+    db_session.add(project)
+    db_session.commit()
+    approval = prepare_generate_chapter_execution(db_session, project.id, chapter_index=2)
+    calls: list[str] = []
+
+    def fake_verify(*args, **kwargs):
+        return {
+            "status": "ready",
+            "reason": "approval_contract_verified",
+            "current_contract": {"version": "phase108.agent_plan_approval_contract.v1"},
+            "drift": {
+                "expected_approval_contract_hash": approval["agent_plan_approval_contract_hash"],
+                "write_step_count": 1,
+                "tool_contract_drift_count": 0,
+                "resource_bindings": [],
+            },
+        }
+
+    async def fake_generate(*args, **kwargs):
+        calls.append("called")
+        return {"status": "success"}
+
+    monkeypatch.setattr(
+        "app.services.writing_agent.chapter_generation_execution.verify_agent_plan_approval_contract",
+        fake_verify,
+    )
+    monkeypatch.setattr("app.services.writing_agent.chapter_generation_tool.execute_generate_chapter_tool", fake_generate)
+
+    output = await execute_generate_chapter_with_approval(
+        db_session,
+        project.id,
+        chapter_index=2,
+        confirm_execute=True,
+        approval_contract_hash=approval["agent_plan_approval_contract_hash"],
+        approval_contract=approval["agent_plan_approval_contract"],
+        approval_tool_metadata_provider=lambda plan: {
+            "generate_chapter": {
+                "tool_exists": True,
+                "adapter_exists": True,
+                "mutability": "write",
+                "requires_confirmation": True,
+                "required_fields": [],
+            }
+        },
+    )
+
+    assert output["status"] == "blocked"
+    assert output["reason"] == "resource_binding_missing"
+    assert output["execution_resource_binding"]["expected"]["target_id"] == "chapter:2"
+    recovery = build_writing_agent_recovery(
+        tool_name="execute_generate_chapter_with_approval",
+        step_status="blocked",
+        output=output,
+    )
+    assert recovery["status"] == "recommended"
+    assert recovery["reason_code"] == "resource_binding_missing"
+    assert recovery["next_tool"] == "prepare_generate_chapter_execution"
+    assert recovery["next_params"] == {"chapter_index": 2}
     assert calls == []
