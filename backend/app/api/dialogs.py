@@ -159,10 +159,16 @@ async def _handle_dialog_recovery_preview(
             "execution_policy": output.get("execution_policy"),
         },
     }
+    response_meta = {
+        "agent_run_id": run.id,
+        "source_run_id": output.get("source_run_id"),
+        "agent_action_type": "plan_recovery_tools",
+    }
     reply = "上一轮 Agent 运行存在可恢复阻塞，我已先规划恢复工具链。"
-    _save_message(db, dialog.id, "assistant", reply, action_result=action_result)
+    _save_message(db, dialog.id, "assistant", reply, action_result=action_result, meta=response_meta)
     return ChatOut(
         message=reply,
+        meta=response_meta,
         pending_action=None,
         ui_hint=_build_chat_idle_hint("恢复预览已生成"),
         refresh_targets=[],

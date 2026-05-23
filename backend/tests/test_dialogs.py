@@ -1188,6 +1188,11 @@ def test_chat_text_low_detail_continue_prefers_recovery_preview_when_blocked_run
         "describe_agent_tools",
         "plan_recovery_tools",
     ]
+    assert body["meta"] == {
+        "agent_run_id": recovery_run.id,
+        "source_run_id": blocked_run.id,
+        "agent_action_type": "plan_recovery_tools",
+    }
 
     assistant_message = (
         db_session.query(DialogMessage)
@@ -1200,6 +1205,7 @@ def test_chat_text_low_detail_continue_prefers_recovery_preview_when_blocked_run
     assert assistant_message.action_result["status"] == "success"
     assert assistant_message.action_result["data"]["agent_run_id"] == recovery_run.id
     assert assistant_message.action_result["data"]["source_run_id"] == blocked_run.id
+    assert assistant_message.meta == body["meta"]
 
 
 def test_chat_text_low_detail_continue_uses_first_unwritten_outline_chapter(client, db_session):
