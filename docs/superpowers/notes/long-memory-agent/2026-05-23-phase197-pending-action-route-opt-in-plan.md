@@ -87,3 +87,8 @@ rg -n "sk-[A-Za-z0-9]{20,}" backend frontend docs --glob "!backend/static/assets
 ## Next Phase
 
 建议 Phase198 实现只读 apply-preview：给定 pending action id 和 prewrite plan，返回“如果执行写入会产生的 pending params diff”，仍不真正写入。
+
+## Git
+
+- Main commit: `1e6f57ed feat: plan pending action route opt in`
+- Remote: pushed to `origin/main`
