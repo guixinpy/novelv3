@@ -44,6 +44,79 @@ def summarize_resource_binding(resource_binding: object) -> dict[str, Any] | Non
     }
 
 
+def verify_resource_binding_target(
+    verification: object,
+    *,
+    tool_name: str,
+    target_type: str,
+    target_id: str,
+) -> dict[str, Any]:
+    expected = {
+        "tool_name": _clean(tool_name),
+        "target_type": _clean(target_type),
+        "target_id": _clean(target_id),
+    }
+    resource_bindings = _verification_resource_bindings(verification)
+    tool_bindings = [binding for binding in resource_bindings if binding.get("tool_name") == expected["tool_name"]]
+    if not tool_bindings:
+        return _binding_check(
+            status="blocked",
+            reason="resource_binding_missing",
+            expected=expected,
+            resource_bindings=resource_bindings,
+        )
+
+    for binding in tool_bindings:
+        if binding.get("target_type") == expected["target_type"] and binding.get("target_id") == expected["target_id"]:
+            return _binding_check(
+                status="ready",
+                reason="resource_binding_verified",
+                expected=expected,
+                resource_binding=binding,
+                resource_bindings=tool_bindings,
+            )
+
+    return _binding_check(
+        status="blocked",
+        reason="resource_binding_target_mismatch",
+        expected=expected,
+        resource_bindings=tool_bindings,
+    )
+
+
+def _verification_resource_bindings(verification: object) -> list[dict[str, Any]]:
+    drift = verification.get("drift") if isinstance(verification, dict) and isinstance(verification.get("drift"), dict) else {}
+    value = drift.get("resource_bindings")
+    if not isinstance(value, list):
+        return []
+    bindings: list[dict[str, Any]] = []
+    for item in value:
+        summary = summarize_resource_binding(item)
+        if summary:
+            bindings.append(summary)
+    return bindings
+
+
+def _binding_check(
+    *,
+    status: str,
+    reason: str,
+    expected: dict[str, Any],
+    resource_bindings: list[dict[str, Any]],
+    resource_binding: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "status": status,
+        "reason": reason,
+        "expected": expected,
+        "resource_bindings": resource_bindings,
+    }
+    if resource_binding is not None:
+        result["tool_call_id"] = resource_binding.get("tool_call_id")
+        result["resource_binding"] = resource_binding
+    return result
+
+
 def _resource_binding(
     *,
     project_id: str,

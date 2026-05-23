@@ -159,6 +159,8 @@ async def test_execute_generate_chapter_with_approval_runs_after_contract_verifi
 
     assert output["status"] == "success"
     assert output["evidence"]["agent_plan_approval_verified"] is True
+    assert output["execution_resource_binding"]["status"] == "ready"
+    assert output["execution_resource_binding"]["resource_binding"]["target_id"] == "chapter:2"
     assert output["agent_plan_approval_verification"]["status"] == "ready"
     assert calls == [
         {
@@ -168,3 +170,70 @@ async def test_execute_generate_chapter_with_approval_runs_after_contract_verifi
             "action_params": {"chapter_index": 2},
         }
     ]
+
+
+@pytest.mark.asyncio
+async def test_execute_generate_chapter_with_approval_blocks_resource_binding_mismatch(db_session, monkeypatch):
+    project = Project(name="Direct Chapter Binding Mismatch")
+    db_session.add(project)
+    db_session.commit()
+    approval = prepare_generate_chapter_execution(db_session, project.id, chapter_index=2)
+    calls: list[str] = []
+
+    def fake_verify(*args, **kwargs):
+        return {
+            "status": "ready",
+            "reason": "approval_contract_verified",
+            "current_contract": {"version": "phase108.agent_plan_approval_contract.v1"},
+            "drift": {
+                "expected_approval_contract_hash": approval["agent_plan_approval_contract_hash"],
+                "write_step_count": 1,
+                "tool_contract_drift_count": 0,
+                "resource_bindings": [
+                    {
+                        "tool_call_id": "toolcall:wrong",
+                        "tool_name": "generate_chapter",
+                        "target_type": "chapter",
+                        "target_id": "chapter:99",
+                        "source_plan_id": "plan:wrong",
+                        "source_step_id": "step:write",
+                        "binding_source": "server_derived",
+                    }
+                ],
+            },
+        }
+
+    async def fake_generate(*args, **kwargs):
+        calls.append("called")
+        return {"status": "success"}
+
+    monkeypatch.setattr(
+        "app.services.writing_agent.chapter_generation_execution.verify_agent_plan_approval_contract",
+        fake_verify,
+    )
+    monkeypatch.setattr("app.services.writing_agent.chapter_generation_tool.execute_generate_chapter_tool", fake_generate)
+
+    output = await execute_generate_chapter_with_approval(
+        db_session,
+        project.id,
+        chapter_index=2,
+        confirm_execute=True,
+        approval_contract_hash=approval["agent_plan_approval_contract_hash"],
+        approval_contract=approval["agent_plan_approval_contract"],
+        approval_tool_metadata_provider=lambda plan: {
+            "generate_chapter": {
+                "tool_exists": True,
+                "adapter_exists": True,
+                "mutability": "write",
+                "requires_confirmation": True,
+                "required_fields": [],
+            }
+        },
+    )
+
+    assert output["status"] == "blocked"
+    assert output["reason"] == "resource_binding_target_mismatch"
+    assert output["execution_resource_binding"]["status"] == "blocked"
+    assert output["execution_resource_binding"]["expected"]["target_id"] == "chapter:2"
+    assert output["execution_resource_binding"]["resource_bindings"][0]["target_id"] == "chapter:99"
+    assert calls == []

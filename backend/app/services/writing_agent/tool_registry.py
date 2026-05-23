@@ -794,6 +794,8 @@ _TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
                 "chapter_index": {"type": "integer"},
                 "generation": {"type": "object"},
                 "execution_checkpoint": {"type": "object"},
+                "agent_plan_approval_verification": {"type": "object"},
+                "execution_resource_binding": {"type": "object"},
                 "side_effects": {"type": "object"},
             }
         ),
@@ -1104,6 +1106,7 @@ _TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
                 "chapter_index": {"type": "integer"},
                 "trace_id": {"type": "string"},
                 "agent_plan_approval_verification": {"type": "object"},
+                "execution_resource_binding": {"type": "object"},
                 "evidence": {"type": "object"},
                 "recommended_next_tools": {"type": "array"},
             }

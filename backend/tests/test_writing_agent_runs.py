@@ -1682,6 +1682,8 @@ def test_agent_run_can_execute_approved_longform_chapter_batch_once(client, db_s
     assert output["evidence"]["chapter_content_written"] is True
     assert output["evidence"]["agent_plan_approval_verified"] is True
     assert output["agent_plan_approval_verification"]["status"] == "ready"
+    assert output["execution_resource_binding"]["status"] == "ready"
+    assert output["execution_resource_binding"]["resource_binding"]["target_id"] == "chapter:2"
     verification_event = output["approval_verification_event"]
     assert {
         key: verification_event[key]
@@ -1730,6 +1732,77 @@ def test_agent_run_can_execute_approved_longform_chapter_batch_once(client, db_s
     inspected_task = inspect_response.json()["steps"][0]["output"]["selected_task"]
     assert inspected_task["batch_execution_result"]["status"] == "chapter_generated"
     assert inspected_task["execution_readiness"]["status"] == "phase62_executed"
+
+
+def test_agent_run_execute_longform_chapter_batch_blocks_resource_binding_mismatch(client, db_session, monkeypatch):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1])
+    prepared = _prepare_longform_batch_execution_contract(client, project.id)
+    calls: list[str] = []
+
+    def fake_verify(*args, **kwargs):
+        return {
+            "status": "ready",
+            "reason": "approval_contract_verified",
+            "current_contract": {"version": "phase108.agent_plan_approval_contract.v1"},
+            "drift": {
+                "expected_approval_contract_hash": "approval:test",
+                "write_step_count": 1,
+                "tool_contract_drift_count": 0,
+                "resource_bindings": [
+                    {
+                        "tool_call_id": "toolcall:wrong",
+                        "tool_name": "generate_chapter",
+                        "target_type": "chapter",
+                        "target_id": "chapter:99",
+                        "source_plan_id": "plan:wrong",
+                        "source_step_id": "step:write",
+                        "binding_source": "server_derived",
+                    }
+                ],
+            },
+        }
+
+    async def fake_execute(self, action_type, project_id, *, command_args=None, action_params=None):
+        calls.append(action_type)
+        return {"status": "success", "chapter_index": 2}
+
+    monkeypatch.setattr("app.services.writing_agent.batch_execution.verify_agent_plan_approval_contract", fake_verify)
+    monkeypatch.setattr("app.services.actions.action_execution_service.ActionExecutionService.execute", fake_execute)
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "拒绝资源绑定错配的长篇批次执行",
+            "tools": [
+                {
+                    "tool_name": "execute_longform_chapter_batch",
+                    "params": {
+                        "task_id": prepared["task_id"],
+                        "confirm_execute": True,
+                        "attempt_manifest_hash": prepared["attempt_manifest_hash"],
+                        "approval_contract_hash": prepared["approval_contract_hash"],
+                    },
+                }
+            ],
+        },
+    )
+
+    payload = response.json()
+    output = payload["steps"][0]["output"]
+    assert response.status_code == 200
+    assert payload["status"] == "blocked"
+    assert output["status"] == "blocked"
+    assert output["reason"] == "resource_binding_target_mismatch"
+    assert output["execution_resource_binding"]["status"] == "blocked"
+    assert output["execution_resource_binding"]["expected"]["target_id"] == "chapter:2"
+    assert output["execution_resource_binding"]["resource_bindings"][0]["target_id"] == "chapter:99"
+    assert calls == []
+    assert (
+        db_session.query(ChapterContent)
+        .filter(ChapterContent.project_id == project.id, ChapterContent.chapter_index == 2)
+        .count()
+        == 0
+    )
 
 
 def test_agent_run_execute_longform_chapter_batch_requires_confirmation(client, db_session):

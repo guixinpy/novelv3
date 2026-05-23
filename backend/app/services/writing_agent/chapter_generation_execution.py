@@ -10,7 +10,7 @@ from app.services.writing_agent.approval_contract import (
     verify_agent_plan_approval_contract,
 )
 from app.services.writing_agent.approval_verification_event import build_approval_verification_event
-from app.services.writing_agent.agent_step_binding import build_agent_step_binding
+from app.services.writing_agent.agent_step_binding import build_agent_step_binding, verify_resource_binding_target
 from app.services.writing_agent.mutation_fingerprint import build_mutation_fingerprint
 
 PREPARE_GENERATE_CHAPTER_EXECUTION_VERSION = "phase114.generate_chapter_execution_prepare.v1"
@@ -98,6 +98,23 @@ async def execute_generate_chapter_with_approval(
                 "approval_verification_event": build_approval_verification_event(verification),
             },
         )
+    binding_check = verify_resource_binding_target(
+        verification,
+        tool_name="generate_chapter",
+        target_type="chapter",
+        target_id=f"chapter:{chapter_index}",
+    )
+    if binding_check.get("status") != "ready":
+        return _blocked_output(
+            project_id,
+            chapter_index,
+            reason=str(binding_check.get("reason") or "resource_binding_target_mismatch"),
+            extra={
+                "agent_plan_approval_verification": verification,
+                "approval_verification_event": build_approval_verification_event(verification),
+                "execution_resource_binding": binding_check,
+            },
+        )
 
     from app.services.writing_agent.chapter_generation_tool import execute_generate_chapter_tool
 
@@ -117,6 +134,7 @@ async def execute_generate_chapter_with_approval(
             "agent_plan_approval_verified": True,
         }
         generation["approval_verification_event"] = build_approval_verification_event(verification)
+        generation["execution_resource_binding"] = binding_check
         generation["trace"] = {
             **(generation.get("trace") if isinstance(generation.get("trace"), dict) else {}),
             "approval_gate_version": APPROVAL_GATE_VERSION,

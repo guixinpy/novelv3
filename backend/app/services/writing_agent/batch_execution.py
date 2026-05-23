@@ -19,6 +19,7 @@ from app.services.tasks.background_task_service import (
 )
 from app.services.writing_agent.approval_contract import verify_agent_plan_approval_contract
 from app.services.writing_agent.approval_verification_event import build_approval_verification_event
+from app.services.writing_agent.agent_step_binding import verify_resource_binding_target
 from app.services.writing_agent.batch_enqueue import BATCH_TASK_TYPE
 from app.services.writing_agent.batch_execution_prepare import PREPARE_VERSION
 from app.services.writing_agent.batch_preflight import PREFLIGHT_VERSION
@@ -106,6 +107,23 @@ async def execute_longform_chapter_batch(
         )
 
     chapter_index = selected_chapters[0]
+    binding_check = verify_resource_binding_target(
+        agent_plan_approval_verification,
+        tool_name="generate_chapter",
+        target_type="chapter",
+        target_id=f"chapter:{chapter_index}",
+    )
+    if binding_check.get("status") != "ready":
+        return _blocked_output(
+            task,
+            reason=str(binding_check.get("reason") or "resource_binding_target_mismatch"),
+            extra={
+                "agent_plan_approval_verification": agent_plan_approval_verification,
+                "approval_verification_event": build_approval_verification_event(agent_plan_approval_verification),
+                "execution_resource_binding": binding_check,
+            },
+        )
+
     generation = await ActionExecutionService(db).execute(
         "generate_chapter",
         project_id,
@@ -175,6 +193,7 @@ async def execute_longform_chapter_batch(
         "batch_execution_result": batch_execution_result,
         "agent_plan_approval_verification": agent_plan_approval_verification,
         "approval_verification_event": build_approval_verification_event(agent_plan_approval_verification),
+        "execution_resource_binding": binding_check,
         "side_effects": _side_effects(
             executed=[
                 "generate_chapter",
@@ -465,6 +484,8 @@ def _recommended_next_tools(reason: str) -> list[str]:
         return ["prepare_longform_chapter_batch_execution"]
     if reason in {"agent_plan_tool_contract_drift", "agent_plan_tool_metadata_missing"}:
         return ["inspect_agent_tool_contracts"]
+    if reason in {"resource_binding_missing", "resource_binding_target_mismatch"}:
+        return ["prepare_longform_chapter_batch_execution"]
     if reason in {
         "missing_ready_preflight_checkpoint",
         "preflight_checkpoint_version_mismatch",

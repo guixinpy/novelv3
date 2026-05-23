@@ -142,6 +142,7 @@ def test_agent_tool_registry_includes_approved_direct_chapter_generation_tools()
         "approval_contract",
     }
     assert execute_descriptor.output_schema["properties"]["agent_plan_approval_verification"]["type"] == "object"
+    assert execute_descriptor.output_schema["properties"]["execution_resource_binding"]["type"] == "object"
 
 
 def test_agent_tool_registry_expand_outline_window_has_structured_output_contract():
@@ -547,6 +548,8 @@ def test_agent_tool_registry_includes_execute_longform_chapter_batch():
         "attempt_manifest_hash",
         "approval_contract_hash",
     }
+    assert descriptor.output_schema["properties"]["agent_plan_approval_verification"]["type"] == "object"
+    assert descriptor.output_schema["properties"]["execution_resource_binding"]["type"] == "object"
     assert "execute_longform_chapter_batch" in allowed_tool_names()
     assert "execute_longform_chapter_batch" not in non_blocking_report_tool_names()
 
