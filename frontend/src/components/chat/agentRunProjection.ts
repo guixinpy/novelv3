@@ -46,6 +46,14 @@ export function getAgentRunIdFromMessage(message: AgentRunMessageLike) {
 export function buildAgentRunExecutionFeedback(run: WritingAgentRunDetail): AgentRunFeedbackMessage {
   const status = String(run.status || '')
   const label = recoveryExecutionStatusLabel(status)
+  const detailItems = [
+    { label: '运行 ID', value: run.id },
+    { label: '状态', value: recoveryExecutionDetailStatusLabel(status) },
+  ]
+  const errorSummary = typeof run.error === 'string' ? run.error.trim() : ''
+  if (errorSummary) {
+    detailItems.push({ label: '错误摘要', value: errorSummary })
+  }
   return {
     role: 'system',
     content: '恢复执行已创建，可在运行详情中查看执行步骤。',
@@ -59,10 +67,7 @@ export function buildAgentRunExecutionFeedback(run: WritingAgentRunDetail): Agen
       status,
       label,
       variant: recoveryExecutionVariant(status),
-      detail_items: [
-        { label: '运行 ID', value: run.id },
-        { label: '状态', value: recoveryExecutionDetailStatusLabel(status) },
-      ],
+      detail_items: detailItems,
     },
     meta: {
       agent_run_id: run.id,

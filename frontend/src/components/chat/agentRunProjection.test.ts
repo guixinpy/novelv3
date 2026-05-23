@@ -57,4 +57,26 @@ describe('agentRunProjection', () => {
     expect(message.meta?.agent_run_id).toBe('run-executed')
     expect(JSON.stringify(message)).not.toContain('plan-hash-1')
   })
+
+  it('builds failed recovery execution feedback with an error summary', () => {
+    const message = buildAgentRunExecutionFeedback({
+      id: 'run-failed',
+      project_id: 'project-1',
+      goal: '执行恢复计划',
+      status: 'failed',
+      entrypoint: 'ui_recovery_execute',
+      input: { recovery_plan_hash: 'plan-hash-2' },
+      output: null,
+      error: ' 工具执行失败：缺少章节上下文 ',
+      steps: [],
+    })
+
+    expect(message.action_result_view.label).toBe('恢复执行失败')
+    expect(message.action_result_view.variant).toBe('error')
+    expect(message.action_result_view.detail_items).toContainEqual({
+      label: '错误摘要',
+      value: '工具执行失败：缺少章节上下文',
+    })
+    expect(JSON.stringify(message)).not.toContain('plan-hash-2')
+  })
 })
