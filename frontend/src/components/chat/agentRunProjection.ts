@@ -8,6 +8,8 @@ export const AGENT_RUN_ACTION_TYPES = [
   'plan_recovery_tools',
   'ui_recovery_execute',
   'inspect_agent_trace_audit',
+  'preview_pending_action_route_approval_opt_in_apply_contract',
+  'apply_pending_action_route_approval_opt_in',
   ...LONGFORM_AGENT_RUN_ACTION_TYPES,
 ] as const
 export type AgentRunActionType = typeof AGENT_RUN_ACTION_TYPES[number]
@@ -29,6 +31,14 @@ const AGENT_RUN_ACTION_DESCRIPTORS: Record<AgentRunActionType, AgentRunActionDes
   inspect_agent_trace_audit: {
     type: 'inspect_agent_trace_audit',
     buildView: buildTraceAuditActionResultView,
+  },
+  preview_pending_action_route_approval_opt_in_apply_contract: {
+    type: 'preview_pending_action_route_approval_opt_in_apply_contract',
+    buildView: buildRouteOptInContractActionResultView,
+  },
+  apply_pending_action_route_approval_opt_in: {
+    type: 'apply_pending_action_route_approval_opt_in',
+    buildView: buildRouteOptInApplyActionResultView,
   },
   ...LONGFORM_AGENT_RUN_ACTION_DESCRIPTORS,
 }
@@ -165,6 +175,32 @@ function buildTraceAuditActionResultView(actionResult: Record<string, unknown>, 
   }
 }
 
+function buildRouteOptInContractActionResultView(actionResult: Record<string, unknown>, status: string): ActionResultView {
+  const data = recordValue(actionResult.data)
+  const routeStatus = stringValue(data.status) || status
+  const detailItems = routeOptInContractDetailItems(data)
+  return {
+    type: 'preview_pending_action_route_approval_opt_in_apply_contract',
+    status,
+    label: routeOptInContractLabel(routeStatus),
+    variant: routeStatus === 'blocked' ? 'error' : 'neutral',
+    ...(detailItems.length ? { detail_items: detailItems } : {}),
+  }
+}
+
+function buildRouteOptInApplyActionResultView(actionResult: Record<string, unknown>, status: string): ActionResultView {
+  const data = recordValue(actionResult.data)
+  const applyStatus = stringValue(data.status) || status
+  const detailItems = routeOptInApplyDetailItems(data)
+  return {
+    type: 'apply_pending_action_route_approval_opt_in',
+    status,
+    label: routeOptInApplyLabel(applyStatus),
+    variant: applyStatus === 'success' ? 'success' : applyStatus === 'blocked' || applyStatus === 'failed' ? 'error' : 'neutral',
+    ...(detailItems.length ? { detail_items: detailItems } : {}),
+  }
+}
+
 function recoveryPreviewLabel(status: string) {
   if (status === 'success' || status === 'completed') return '恢复预览已生成'
   if (status === 'failed') return '恢复预览失败'
@@ -176,6 +212,20 @@ function traceAuditLabel(status: string) {
   if (status === 'failed') return 'Trace 审计失败'
   if (status === 'running') return 'Trace 审计中'
   return `Trace 审计: ${status || '未知状态'}`
+}
+
+function routeOptInContractLabel(status: string) {
+  if (status === 'requires_confirmation') return '路由升级契约待确认'
+  if (status === 'blocked') return '路由升级契约已阻塞'
+  if (status === 'not_required') return '路由升级无需处理'
+  return `路由升级契约: ${status || '未知状态'}`
+}
+
+function routeOptInApplyLabel(status: string) {
+  if (status === 'success') return '路由升级已应用'
+  if (status === 'blocked') return '路由升级应用已阻塞'
+  if (status === 'failed') return '路由升级应用失败'
+  return `路由升级应用: ${status || '未知状态'}`
 }
 
 function statusVariant(status: string) {
@@ -241,6 +291,53 @@ function traceAuditDetailItems(data: Record<string, unknown>) {
   return items
 }
 
+function routeOptInContractDetailItems(data: Record<string, unknown>) {
+  const items: Array<{ label: string; value: string }> = []
+  const contractStatus = stringValue(data.status)
+  if (contractStatus) {
+    items.push({ label: '契约状态', value: routeOptInContractStatusLabel(contractStatus) })
+  }
+  const requiredConfirmation = data.required_confirmation
+  if (typeof requiredConfirmation === 'boolean') {
+    items.push({ label: '需要确认', value: requiredConfirmation ? '是' : '否' })
+  }
+  const risk = recordValue(data.risk)
+  const riskCodes = Array.isArray(risk.codes) ? risk.codes : []
+  if (riskCodes.length) {
+    items.push({ label: '风险项', value: `${riskCodes.length} 项` })
+  }
+  const recommendedTools = Array.isArray(data.recommended_next_tools) ? data.recommended_next_tools : []
+  if (recommendedTools.length) {
+    items.push({ label: '下一步', value: `${recommendedTools.length} 个工具` })
+  }
+  return items
+}
+
+function routeOptInApplyDetailItems(data: Record<string, unknown>) {
+  const items: Array<{ label: string; value: string }> = []
+  const applyStatus = stringValue(data.status)
+  if (applyStatus) {
+    items.push({ label: '应用状态', value: routeOptInApplyStatusLabel(applyStatus) })
+  }
+  if (typeof data.write_performed === 'boolean') {
+    items.push({ label: '写入结果', value: data.write_performed ? '已写入' : '未写入' })
+  }
+  const reason = stringValue(data.reason)
+  if (reason) {
+    items.push({ label: '原因', value: reason })
+  }
+  const sideEffects = recordValue(data.side_effects)
+  const executed = Array.isArray(sideEffects.executed) ? sideEffects.executed : []
+  if (executed.length) {
+    items.push({ label: '副作用', value: `${executed.length} 项` })
+  }
+  const recommendedTools = Array.isArray(data.recommended_next_tools) ? data.recommended_next_tools : []
+  if (recommendedTools.length) {
+    items.push({ label: '下一步', value: `${recommendedTools.length} 个工具` })
+  }
+  return items
+}
+
 function runStatusLabel(status: string) {
   if (status === 'success') return '成功'
   if (status === 'failed') return '失败'
@@ -252,6 +349,20 @@ function runStatusLabel(status: string) {
 function recoveryStatusLabel(status: string) {
   if (status === 'recommended') return '建议恢复'
   if (status === 'none') return '无恢复建议'
+  return status
+}
+
+function routeOptInContractStatusLabel(status: string) {
+  if (status === 'requires_confirmation') return '等待确认'
+  if (status === 'blocked') return '已阻塞'
+  if (status === 'not_required') return '无需处理'
+  return status
+}
+
+function routeOptInApplyStatusLabel(status: string) {
+  if (status === 'success') return '成功'
+  if (status === 'blocked') return '已阻塞'
+  if (status === 'failed') return '失败'
   return status
 }
 

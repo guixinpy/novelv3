@@ -65,6 +65,8 @@ describe('agentRunProjection', () => {
     expect(isAgentRunActionType('execute_longform_chapter_batch')).toBe(true)
     expect(isAgentRunActionType('review_longform_chapter_batch_execution')).toBe(true)
     expect(isAgentRunActionType('route_longform_chapter_batch_after_review')).toBe(true)
+    expect(isAgentRunActionType('preview_pending_action_route_approval_opt_in_apply_contract')).toBe(true)
+    expect(isAgentRunActionType('apply_pending_action_route_approval_opt_in')).toBe(true)
     expect(isAgentRunActionType('generate_chapter')).toBe(false)
   })
 
@@ -78,6 +80,8 @@ describe('agentRunProjection', () => {
     expect(getAgentRunActionDescriptor('execute_longform_chapter_batch')?.type).toBe('execute_longform_chapter_batch')
     expect(getAgentRunActionDescriptor('review_longform_chapter_batch_execution')?.type).toBe('review_longform_chapter_batch_execution')
     expect(getAgentRunActionDescriptor('route_longform_chapter_batch_after_review')?.type).toBe('route_longform_chapter_batch_after_review')
+    expect(getAgentRunActionDescriptor('preview_pending_action_route_approval_opt_in_apply_contract')?.type).toBe('preview_pending_action_route_approval_opt_in_apply_contract')
+    expect(getAgentRunActionDescriptor('apply_pending_action_route_approval_opt_in')?.type).toBe('apply_pending_action_route_approval_opt_in')
     expect(getAgentRunActionDescriptor('generate_chapter')).toBeNull()
   })
 
@@ -210,6 +214,49 @@ describe('agentRunProjection', () => {
     expect(view?.detail_items).toContainEqual({ label: 'Trace', value: '2 条' })
     expect(view?.detail_items).toContainEqual({ label: '失败原因', value: 'tool_failed' })
     expect(view?.detail_items).toContainEqual({ label: '建议动作', value: '1 个' })
+  })
+
+  it('builds route opt-in contract preview fallback views without leaking approval hashes', () => {
+    const view = buildAgentRunActionResultView({
+      type: 'preview_pending_action_route_approval_opt_in_apply_contract',
+      status: 'success',
+      data: {
+        status: 'requires_confirmation',
+        approval_contract_hash: 'approval:secret',
+        approval_contract: { approval: { approval_contract_hash: 'approval:secret' } },
+        recommended_next_tools: ['apply_pending_action_route_approval_opt_in'],
+      },
+    })
+
+    expect(view?.label).toBe('路由升级契约待确认')
+    expect(view?.variant).toBe('neutral')
+    expect(view?.detail_items).toContainEqual({ label: '契约状态', value: '等待确认' })
+    expect(view?.detail_items).toContainEqual({ label: '下一步', value: '1 个工具' })
+    expect(JSON.stringify(view)).not.toContain('approval:secret')
+  })
+
+  it('builds route opt-in apply fallback views without leaking approval hashes', () => {
+    const view = buildAgentRunActionResultView({
+      type: 'apply_pending_action_route_approval_opt_in',
+      status: 'success',
+      data: {
+        status: 'success',
+        reason: 'route_opt_in_apply_completed',
+        write_performed: true,
+        approval_verification: {
+          drift: { expected_approval_contract_hash: 'approval:secret' },
+        },
+        recommended_next_tools: ['inspect_agent_dialog_control_plane_projection'],
+      },
+    })
+
+    expect(view?.label).toBe('路由升级已应用')
+    expect(view?.variant).toBe('success')
+    expect(view?.detail_items).toContainEqual({ label: '应用状态', value: '成功' })
+    expect(view?.detail_items).toContainEqual({ label: '写入结果', value: '已写入' })
+    expect(view?.detail_items).toContainEqual({ label: '原因', value: 'route_opt_in_apply_completed' })
+    expect(view?.detail_items).toContainEqual({ label: '下一步', value: '1 个工具' })
+    expect(JSON.stringify(view)).not.toContain('approval:secret')
   })
 
   it('builds fallback views for longform batch inspection action results', () => {

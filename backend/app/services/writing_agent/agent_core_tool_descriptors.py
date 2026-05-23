@@ -353,6 +353,8 @@ AGENT_CORE_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
                 "approval_contract": {"type": ["object", "null"]},
                 "route_apply_preview": {"type": "object"},
                 "risk": {"type": "object"},
+                "recommended_next_tools": {"type": "array"},
+                "recommended_next_tool_calls": {"type": "array"},
                 "trace": {"type": "object"},
             }
         ),

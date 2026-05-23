@@ -744,6 +744,20 @@ async def test_tool_executor_previews_pending_route_opt_in_apply_contract(db_ses
     assert result.output["route_apply_preview"]["write_performed"] is False
     assert result.output["approval_contract"]["mutation_target"] == "PendingAction.params.agent_route"
     assert result.output["approval_contract"]["mutation_path"] == "params.agent_route.use_agent_approval_chain"
+    assert result.output["recommended_next_tools"] == ["apply_pending_action_route_approval_opt_in"]
+    assert result.output["recommended_next_tool_calls"] == [
+        {
+            "tool_name": "apply_pending_action_route_approval_opt_in",
+            "visibility": "agent_internal",
+            "requires_confirmation": True,
+            "params": {
+                "pending_action_id": pending.id,
+                "confirm_apply": True,
+                "approval_contract_hash": result.output["approval_contract_hash"],
+                "approval_contract": result.output["approval_contract"],
+            },
+        }
+    ]
     assert pending.params == original_params
 
 
@@ -871,6 +885,8 @@ async def test_tool_executor_blocks_pending_route_opt_in_apply_contract_when_pre
     assert result.output["required_confirmation"] is False
     assert result.output["approval_contract_hash"] is None
     assert result.output["risk"]["codes"] == ["pending_action_not_found"]
+    assert result.output["recommended_next_tools"] == []
+    assert result.output["recommended_next_tool_calls"] == []
 
 
 @pytest.mark.asyncio
@@ -911,6 +927,8 @@ async def test_tool_executor_hides_foreign_non_pending_route_opt_in_apply_contra
     assert result.output["risk"]["codes"] == ["pending_action_not_found"]
     assert result.output["route_apply_preview"]["params_before"] == {}
     assert result.output["route_apply_preview"]["params_after"] == {}
+    assert result.output["recommended_next_tools"] == []
+    assert result.output["recommended_next_tool_calls"] == []
     assert "foreign-secret" not in str(result.output)
 
 
@@ -947,6 +965,8 @@ async def test_tool_executor_does_not_require_route_opt_in_apply_contract_for_al
     assert result.output["required_confirmation"] is False
     assert result.output["approval_contract_hash"] is None
     assert result.output["route_apply_preview"]["status"] == "already_declared"
+    assert result.output["recommended_next_tools"] == []
+    assert result.output["recommended_next_tool_calls"] == []
 
 
 @pytest.mark.asyncio
@@ -1785,6 +1805,103 @@ async def test_plan_recommended_followups_rejects_write_followups(db_session):
     assert [tool["tool_name"] for tool in result.output["tools"]] == ["review_chapter_quality"]
     assert result.output["trace"]["rejected_tools"] == [
         {"tool_name": "apply_planner_revision_patch", "reason": "requires_confirmation"}
+    ]
+
+
+@pytest.mark.asyncio
+async def test_plan_recommended_followups_plans_route_opt_in_contract_preview(db_session):
+    project = Project(name="Recommended Route Opt In Contract")
+    db_session.add(project)
+    db_session.flush()
+    dialog = Dialog(project_id=project.id, state="pending_action")
+    db_session.add(dialog)
+    db_session.flush()
+    route = build_dialog_agent_route("preview_setup", source="slash_command", command_name="setup")
+    pending = PendingAction(
+        dialog_id=dialog.id,
+        type="preview_setup",
+        params={"project_id": project.id, "agent_route": route},
+    )
+    db_session.add(pending)
+    db_session.flush()
+    run = WritingAgentRun(project_id=project.id, goal="升级 pending action route", status="success", input={})
+    db_session.add(run)
+    db_session.flush()
+    db_session.add(
+        WritingAgentStep(
+            run_id=run.id,
+            project_id=project.id,
+            step_index=1,
+            tool_name="preview_pending_action_route_approval_opt_in_apply",
+            status="success",
+            input={"params": {"pending_action_id": pending.id}},
+            output={
+                "status": "ready",
+                "pending_action_id": pending.id,
+                "agent_tool_result": {
+                    "recommendations": {
+                        "canonical_followups": ["preview_pending_action_route_approval_opt_in_apply_contract"],
+                    }
+                },
+            },
+        )
+    )
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-followup-route-contract"),
+        WritingAgentToolRequest(tool_name="plan_recommended_followups", params={"run_id": run.id}),
+    )
+
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "completed"
+    assert [tool["tool_name"] for tool in result.output["tools"]] == [
+        "preview_pending_action_route_approval_opt_in_apply_contract"
+    ]
+    assert result.output["tools"][0]["params"] == {"pending_action_id": pending.id}
+    assert result.output["trace"]["rejected_tools"] == []
+
+
+@pytest.mark.asyncio
+async def test_plan_recommended_followups_keeps_route_opt_in_apply_guarded(db_session):
+    project = Project(name="Recommended Route Opt In Apply Guard")
+    db_session.add(project)
+    db_session.flush()
+    run = WritingAgentRun(project_id=project.id, goal="确认 route opt-in", status="success", input={})
+    db_session.add(run)
+    db_session.flush()
+    db_session.add(
+        WritingAgentStep(
+            run_id=run.id,
+            project_id=project.id,
+            step_index=1,
+            tool_name="preview_pending_action_route_approval_opt_in_apply_contract",
+            status="success",
+            input={"params": {"pending_action_id": "pending-route-1"}},
+            output={
+                "status": "requires_confirmation",
+                "pending_action_id": "pending-route-1",
+                "agent_tool_result": {
+                    "recommendations": {
+                        "canonical_followups": ["apply_pending_action_route_approval_opt_in"],
+                    }
+                },
+            },
+        )
+    )
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-followup-route-apply"),
+        WritingAgentToolRequest(tool_name="plan_recommended_followups", params={"run_id": run.id}),
+    )
+
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["tools"] == []
+    assert result.output["trace"]["rejected_tools"] == [
+        {"tool_name": "apply_pending_action_route_approval_opt_in", "reason": "requires_confirmation"}
     ]
 
 

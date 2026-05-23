@@ -33,6 +33,7 @@ SAFE_RECOMMENDED_FOLLOWUP_TOOLS = frozenset(
         "preview_world_model_proposal_resolution",
         "draft_world_model_proposal_resolution_decisions",
         "draft_high_value_world_proposal_resolution_decisions",
+        "preview_pending_action_route_approval_opt_in_apply_contract",
     }
 )
 LOOPING_FOLLOWUP_TOOLS = frozenset({"plan_recommended_followups"})
@@ -263,6 +264,10 @@ def _params_for_followup(
         params["run_id"] = source_run_id
     if "source_run_id" in properties:
         params["source_run_id"] = source_run_id
+    if "pending_action_id" in properties:
+        pending_action_id = _source_pending_action_id(source_step)
+        if pending_action_id:
+            params["pending_action_id"] = pending_action_id
     return params
 
 
@@ -280,6 +285,21 @@ def _source_chapter_index(step: WritingAgentStep) -> int | None:
         if value:
             return value
     return None
+
+
+def _source_pending_action_id(step: WritingAgentStep) -> str | None:
+    output = step.output if isinstance(step.output, dict) else {}
+    pending_action_id = _optional_string(output.get("pending_action_id"))
+    if pending_action_id:
+        return pending_action_id
+    envelope = output.get("agent_tool_result") if isinstance(output.get("agent_tool_result"), dict) else {}
+    envelope_output = envelope.get("output") if isinstance(envelope.get("output"), dict) else {}
+    pending_action_id = _optional_string(envelope_output.get("pending_action_id"))
+    if pending_action_id:
+        return pending_action_id
+    step_input = step.input if isinstance(step.input, dict) else {}
+    params = step_input.get("params") if isinstance(step_input.get("params"), dict) else {}
+    return _optional_string(params.get("pending_action_id"))
 
 
 def _latest_recommended_recovery_state(steps: Sequence[WritingAgentStep]) -> dict[str, Any]:
@@ -314,6 +334,13 @@ def _optional_int(value: object) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def _optional_string(value: object) -> str | None:
+    if value is None:
+        return None
+    cleaned = str(value).strip()
+    return cleaned or None
 
 
 def _plan_hash(payload: dict[str, Any]) -> str:

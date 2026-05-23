@@ -433,6 +433,22 @@ def _route_opt_in_contract_output(
     risk: dict[str, Any],
     reason: str,
 ) -> dict[str, Any]:
+    recommended_next_tools = ["apply_pending_action_route_approval_opt_in"] if status == "requires_confirmation" else []
+    recommended_next_tool_calls = []
+    if status == "requires_confirmation" and approval_contract_hash and approval_contract:
+        recommended_next_tool_calls.append(
+            {
+                "tool_name": "apply_pending_action_route_approval_opt_in",
+                "visibility": "agent_internal",
+                "requires_confirmation": True,
+                "params": {
+                    "pending_action_id": str(route_apply_preview.get("pending_action_id") or ""),
+                    "confirm_apply": True,
+                    "approval_contract_hash": approval_contract_hash,
+                    "approval_contract": approval_contract,
+                },
+            }
+        )
     return {
         "status": status,
         "version": PENDING_ACTION_ROUTE_OPT_IN_APPLY_CONTRACT_VERSION,
@@ -441,6 +457,8 @@ def _route_opt_in_contract_output(
         "approval_contract": approval_contract,
         "route_apply_preview": route_apply_preview,
         "risk": risk,
+        "recommended_next_tools": recommended_next_tools,
+        "recommended_next_tool_calls": recommended_next_tool_calls,
         "trace": {
             "reason": reason,
             "runtime_behavior_changed": False,
