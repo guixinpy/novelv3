@@ -247,6 +247,19 @@ def test_agent_run_can_plan_recovery_tools_from_blocked_run(client, db_session):
         },
     )
     blocked_run_id = blocked.json()["id"]
+    blocked_step = db_session.query(WritingAgentStep).filter(WritingAgentStep.run_id == blocked_run_id).one()
+    blocked_step.tool_call_id = "toolcall:preflight-3"
+    blocked_step.resource_binding = {
+        "tool_call_id": "toolcall:preflight-3",
+        "tool_name": "preflight_writing",
+        "target_type": "chapter",
+        "target_id": "chapter:3",
+        "source_plan_id": "plan:preflight",
+        "source_step_id": "step:preflight",
+        "binding_source": "server_derived",
+    }
+    db_session.add(blocked_step)
+    db_session.commit()
 
     response = client.post(
         f"/api/v1/projects/{project.id}/agent-runs",
@@ -265,6 +278,10 @@ def test_agent_run_can_plan_recovery_tools_from_blocked_run(client, db_session):
     assert output["source_run_id"] == blocked_run_id
     assert output["source_step"]["tool_name"] == "preflight_writing"
     assert output["source_step_id"] == output["source_step"]["id"]
+    assert output["source_step"]["tool_call_id"] == "toolcall:preflight-3"
+    assert output["source_step"]["resource_binding"]["target_id"] == "chapter:3"
+    assert output["hash_payload"]["source_tool_call_id"] == "toolcall:preflight-3"
+    assert output["hash_payload"]["source_resource_binding"]["target_id"] == "chapter:3"
     assert output["preview_only"] is True
     assert output["can_execute"] is True
     assert output["requires_confirmation"] is True
@@ -1801,6 +1818,11 @@ def test_agent_run_execute_longform_chapter_batch_blocks_resource_binding_mismat
     assert output["execution_resource_binding"]["status"] == "blocked"
     assert output["execution_resource_binding"]["expected"]["target_id"] == "chapter:2"
     assert output["execution_resource_binding"]["resource_bindings"][0]["target_id"] == "chapter:99"
+    continuation = payload["output"]["continuation_state"]
+    assert continuation["blocked_tool"]["tool_call_id"] == "toolcall:wrong"
+    assert continuation["blocked_tool"]["resource_binding"]["target_id"] == "chapter:99"
+    assert continuation["failure"]["tool_call_id"] == "toolcall:wrong"
+    assert continuation["failure"]["resource_binding"]["target_id"] == "chapter:99"
     assert calls == []
     assert (
         db_session.query(ChapterContent)

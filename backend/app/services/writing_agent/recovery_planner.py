@@ -7,6 +7,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.models import WritingAgentRun, WritingAgentStep
+from app.services.writing_agent.agent_step_binding import summarize_resource_binding
 from app.services.writing_agent.tool_registry import allowed_tool_names, build_agent_tool_plan
 
 RECOVERY_PREVIEW_VERSION = "phase50.recovery_preview.v1"
@@ -57,6 +58,8 @@ def build_recovery_tool_plan(db: Session, project_id: str, run_id: str | None) -
         "source_run_id": run_id,
         "source_step_id": step.id,
         "source_step_index": step.step_index,
+        "source_tool_call_id": step.tool_call_id,
+        "source_resource_binding": summarize_resource_binding(step.resource_binding),
         "source_tool": recovery.get("source_tool"),
         "reason_code": recovery.get("reason_code"),
         "affected_chapter_indexes": recovery.get("affected_chapter_indexes"),
@@ -86,6 +89,8 @@ def build_recovery_tool_plan(db: Session, project_id: str, run_id: str | None) -
             "step_index": step.step_index,
             "tool_name": step.tool_name,
             "status": step.status,
+            "tool_call_id": step.tool_call_id,
+            "resource_binding": summarize_resource_binding(step.resource_binding),
         },
         "recovery": recovery,
         "tools": tools,

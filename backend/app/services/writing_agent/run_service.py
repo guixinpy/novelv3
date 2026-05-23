@@ -775,6 +775,8 @@ def _step_marker(step: WritingAgentStep | None) -> dict[str, Any] | None:
         "chapter_index": step.chapter_index,
         "target_type": step.target_type,
         "target_id": step.target_id,
+        "tool_call_id": step.tool_call_id,
+        "resource_binding": summarize_resource_binding(step.resource_binding),
     }
 
 
@@ -803,6 +805,8 @@ def _failure_state(run: WritingAgentRun, blocked_step: WritingAgentStep | None) 
     return {
         "status": run.status,
         "tool_name": blocked_step.tool_name if blocked_step is not None else None,
+        "tool_call_id": blocked_step.tool_call_id if blocked_step is not None else None,
+        "resource_binding": summarize_resource_binding(blocked_step.resource_binding) if blocked_step is not None else None,
         "reason_code": decision.get("reason") or output.get("reason") or output.get("error"),
         "message": run.error or decision.get("message") or output.get("error"),
     }
