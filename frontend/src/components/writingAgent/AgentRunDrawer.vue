@@ -40,6 +40,13 @@ const agentProfileDelegationAllowed = computed(() => (
     ? agentProfileDefinition.value.delegation_allowed
     : null
 ))
+const agentProfileDelegateTargetCount = computed(() => {
+  const targets = agentProfileDefinition.value.delegate_to_profiles
+  if (agentProfileDefinition.value.delegation_allowed !== true || !Array.isArray(targets)) {
+    return 0
+  }
+  return targets.length
+})
 const hasAgentProfileProjection = computed(() => Boolean(
   agentProfile.value ||
   Object.keys(agentProfileDefinition.value).length ||
@@ -305,6 +312,10 @@ function hasRouteApplyRecommendation(output: Record<string, unknown>) {
             <div v-if="agentProfileDelegationAllowed !== null">
               <dt>委派</dt>
               <dd>{{ agentProfileDelegationAllowed ? '可委派' : '不可委派' }}</dd>
+            </div>
+            <div v-if="agentProfileDelegateTargetCount > 0">
+              <dt>可委派目标</dt>
+              <dd>{{ agentProfileDelegateTargetCount }} 个声明</dd>
             </div>
             <div v-if="toolDiscoveryStatus">
               <dt>工具面</dt>

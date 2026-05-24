@@ -207,6 +207,36 @@ describe('agentRunProjection', () => {
     expect(view?.detail_items).toContainEqual({ label: '已过滤', value: '7 个' })
   })
 
+  it('builds fallback views with declared delegate profile targets', () => {
+    const view = buildAgentRunActionResultView({
+      type: 'plan_recovery_tools',
+      status: 'success',
+      data: {
+        agent_profile: 'orchestrator',
+        agent_profile_definition: {
+          version: 'phase212.agent_profile_definition.v1',
+          status: 'known',
+          profile: 'orchestrator',
+          display_name: '编排主控',
+          role: 'orchestrator',
+          tier: 'reasoning',
+          delegation_allowed: true,
+          delegate_to_profiles: [
+            'drafting_worker',
+            'reviewer_worker',
+            'world_model_worker',
+            'recovery_worker',
+          ],
+          source: 'planner_trace',
+        },
+      },
+    })
+
+    expect(view?.detail_items).toContainEqual({ label: 'Agent 身份', value: '编排主控' })
+    expect(view?.detail_items).toContainEqual({ label: '委派', value: '可委派' })
+    expect(view?.detail_items).toContainEqual({ label: '可委派目标', value: '4 个声明' })
+  })
+
   it('does not build fallback views for unknown action results', () => {
     expect(buildAgentRunActionResultView({
       type: 'generate_chapter',

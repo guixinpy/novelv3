@@ -118,6 +118,52 @@ describe('AgentRunDrawer', () => {
     expect(text).toContain('7')
   })
 
+  it('renders declared delegate profile targets for orchestrator runs', () => {
+    mount(AgentRunDrawer, {
+      attachTo: document.body,
+      props: {
+        open: true,
+        loading: false,
+        error: '',
+        run: {
+          id: 'run-orchestrator',
+          project_id: 'project-1',
+          goal: '编排下一轮写作',
+          status: 'success',
+          entrypoint: 'dialog_auto_plan',
+          input: {},
+          output: null,
+          error: null,
+          agent_profile: 'orchestrator',
+          agent_profile_definition: {
+            version: 'phase212.agent_profile_definition.v1',
+            profile: 'orchestrator',
+            display_name: '编排主控',
+            role: 'orchestrator',
+            tier: 'reasoning',
+            delegation_allowed: true,
+            delegate_to_profiles: [
+              'drafting_worker',
+              'reviewer_worker',
+              'world_model_worker',
+              'recovery_worker',
+            ],
+            source: 'planner_trace',
+          },
+          steps: [],
+        },
+      },
+    })
+
+    const text = document.body.textContent || ''
+    expect(text).toContain('Agent 身份')
+    expect(text).toContain('编排主控')
+    expect(text).toContain('委派')
+    expect(text).toContain('可委派')
+    expect(text).toContain('可委派目标')
+    expect(text).toContain('4 个声明')
+  })
+
   it('renders loading and error states', () => {
     const loading = mount(AgentRunDrawer, {
       attachTo: document.body,

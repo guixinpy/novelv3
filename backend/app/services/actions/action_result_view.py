@@ -189,6 +189,10 @@ def _agent_discovery_detail_items(data: dict) -> list[dict[str, str]]:
     if delegation:
         items.append({"label": "委派", "value": delegation})
 
+    delegate_targets = definition.get("delegate_to_profiles")
+    if definition.get("delegation_allowed") is True and isinstance(delegate_targets, list) and delegate_targets:
+        items.append({"label": "可委派目标", "value": f"{len(delegate_targets)} 个声明"})
+
     status = str(discovery.get("status") or "").strip()
     if status:
         items.append({"label": "工具面", "value": _agent_tool_scope_status_label(status)})

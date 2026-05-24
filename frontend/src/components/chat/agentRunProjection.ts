@@ -297,6 +297,11 @@ function agentDiscoveryDetailItems(data: Record<string, unknown>) {
     items.push({ label: '委派', value: delegation })
   }
 
+  const delegateTargets = Array.isArray(definition.delegate_to_profiles) ? definition.delegate_to_profiles : []
+  if (definition.delegation_allowed === true && delegateTargets.length) {
+    items.push({ label: '可委派目标', value: `${delegateTargets.length} 个声明` })
+  }
+
   const scopeStatus = stringValue(discovery.status) || (discovery.scope_applied === true ? 'applied' : '')
   if (scopeStatus) {
     items.push({ label: '工具面', value: agentToolScopeStatusLabel(scopeStatus) })

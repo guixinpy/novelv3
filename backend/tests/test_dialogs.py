@@ -2500,6 +2500,49 @@ def test_get_messages_includes_agent_discovery_view_detail_items(db_session):
     assert {"label": "已过滤", "value": "7 个"} in detail_items
 
 
+def test_get_messages_includes_delegate_profile_targets_detail_item(db_session):
+    project = Project(name="Delegate Profile Targets Result View")
+    db_session.add(project)
+    db_session.commit()
+    dialog = dialogs_api._get_or_create_dialog(db_session, project.id)
+    dialogs_api._save_message(
+        db_session,
+        dialog.id,
+        "assistant",
+        "Agent 已按编排主控身份规划工具面。",
+        action_result={
+            "type": "plan_recovery_tools",
+            "status": "success",
+            "data": {
+                "agent_profile": "orchestrator",
+                "agent_profile_definition": {
+                    "version": "phase212.agent_profile_definition.v1",
+                    "status": "known",
+                    "profile": "orchestrator",
+                    "display_name": "编排主控",
+                    "role": "orchestrator",
+                    "tier": "reasoning",
+                    "delegation_allowed": True,
+                    "delegate_to_profiles": [
+                        "drafting_worker",
+                        "reviewer_worker",
+                        "world_model_worker",
+                        "recovery_worker",
+                    ],
+                    "source": "planner_trace",
+                },
+            },
+        },
+    )
+
+    messages = DialogMessageService(db_session).list_messages(project.id)
+    detail_items = messages[-1]["action_result_view"]["detail_items"]
+
+    assert {"label": "Agent 身份", "value": "编排主控"} in detail_items
+    assert {"label": "委派", "value": "可委派"} in detail_items
+    assert {"label": "可委派目标", "value": "4 个声明"} in detail_items
+
+
 @pytest.mark.asyncio
 async def test_chapter_approval_followup_dispatches_execute_tool(db_session):
     project = Project(name="Chapter Approval Execute Dispatch")
