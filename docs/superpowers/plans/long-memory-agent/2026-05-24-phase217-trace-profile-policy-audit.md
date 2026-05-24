@@ -138,7 +138,7 @@ $pat='sk-'+'f6aa'; rg -n $pat backend frontend docs --glob '!frontend/node_modul
 ```
 
 - [x] Write phase report.
-- [ ] Commit and push:
+- [x] Commit and push:
 
 ```text
 feat: expose profile policy audit in trace tool
