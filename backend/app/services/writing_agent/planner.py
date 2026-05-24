@@ -69,7 +69,7 @@ def build_writing_agent_run_plan(
         steps,
         trace,
         "describe_agent_tools",
-        {"chapter_index": resolved_chapter_index},
+        {"chapter_index": resolved_chapter_index, "agent_profile": agent_profile},
         reason="读取当前项目和章节下可见工具、隐藏工具与依赖诊断。",
         on_missing="stop",
         on_failure="stop",

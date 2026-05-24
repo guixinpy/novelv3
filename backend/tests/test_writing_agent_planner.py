@@ -35,6 +35,8 @@ def test_planner_builds_ready_next_chapter_tool_chain(db_session):
     assert plan["trace"]["agent_profile_tool_projection"]["profile"] == "drafting_worker"
     assert "generate_chapter" in plan["trace"]["agent_profile_tool_projection"]["allowed_visible_tools"]
     first_step = plan["steps"][0]
+    assert first_step["params"] == {"chapter_index": 2, "agent_profile": "drafting_worker"}
+    assert plan["tools"][0]["params"] == {"chapter_index": 2, "agent_profile": "drafting_worker"}
     generate_step = next(step for step in plan["steps"] if step["tool_name"] == "generate_chapter")
     assert first_step["step_id"].startswith("step:")
     assert first_step["plan_id"] == plan["trace"]["plan_id"]
@@ -83,6 +85,7 @@ def test_planner_can_prepare_next_chapter_through_approved_route(db_session):
     assert plan["status"] == "completed"
     assert plan["intent_class"] == "continue_next_chapter"
     assert plan["trace"]["chapter_generation_route"] == "approved_prepare"
+    assert plan["steps"][0]["params"] == {"chapter_index": 2, "agent_profile": "drafting_worker"}
     assert _tool_names(plan) == [
         "describe_agent_tools",
         "inspect_agent_knowledge_base_route",
@@ -141,6 +144,7 @@ def test_planner_routes_recovery_intent_to_latest_recoverable_run(db_session):
     assert plan["intent_class"] == "recover_blocked_run"
     assert plan["trace"]["agent_profile"] == "recovery_worker"
     assert plan["trace"]["agent_profile_tool_projection"]["profile"] == "recovery_worker"
+    assert plan["steps"][0]["params"] == {"chapter_index": 2, "agent_profile": "recovery_worker"}
     assert _tool_names(plan) == ["describe_agent_tools", "plan_recovery_tools"]
     recovery_step = plan["steps"][1]
     assert recovery_step["params"] == {"run_id": blocked_run.id}
@@ -159,6 +163,7 @@ def test_planner_marks_review_only_plan_as_not_requiring_approval(db_session):
     assert plan["intent_class"] == "review_chapter"
     assert plan["trace"]["agent_profile"] == "reviewer_worker"
     assert plan["trace"]["agent_profile_tool_projection"]["profile"] == "reviewer_worker"
+    assert plan["steps"][0]["params"] == {"chapter_index": 2, "agent_profile": "reviewer_worker"}
     assert _tool_names(plan) == [
         "describe_agent_tools",
         "review_chapter_quality",
@@ -212,6 +217,7 @@ def test_planner_builds_setup_project_plan_for_bare_project(db_session):
     assert plan["status"] == "completed"
     assert plan["intent_class"] == "setup_project"
     assert plan["trace"]["agent_profile"] == "drafting_worker"
+    assert plan["steps"][0]["params"] == {"chapter_index": 1, "agent_profile": "drafting_worker"}
     assert _tool_names(plan) == ["describe_agent_tools", "generate_setup"]
 
 
@@ -223,6 +229,7 @@ def test_planner_defaults_inspection_to_orchestrator_profile(db_session):
     assert plan["intent_class"] == "inspect_tools"
     assert plan["trace"]["agent_profile"] == "orchestrator"
     assert plan["trace"]["agent_profile_tool_projection"]["profile"] == "orchestrator"
+    assert plan["steps"][0]["params"] == {"chapter_index": 1, "agent_profile": "orchestrator"}
     assert _tool_names(plan) == ["describe_agent_tools"]
 
 
