@@ -34,6 +34,10 @@ def test_planner_builds_ready_next_chapter_tool_chain(db_session):
     assert plan["trace"]["agent_profile"] == "drafting_worker"
     assert plan["trace"]["agent_profile_tool_projection"]["profile"] == "drafting_worker"
     assert "generate_chapter" in plan["trace"]["agent_profile_tool_projection"]["allowed_visible_tools"]
+    assert plan["trace"]["agent_health_projection"]["version"] == "phase218.agent_health_projection.v1"
+    assert plan["trace"]["agent_health_projection"]["status"] in {"ready", "degraded", "needs_attention"}
+    assert isinstance(plan["trace"]["agent_health_projection"]["diagnostic_count"], int)
+    assert "profile_policy" not in plan["trace"]["agent_health_projection"]
     first_step = plan["steps"][0]
     assert first_step["params"] == {"chapter_index": 2, "agent_profile": "drafting_worker"}
     assert plan["tools"][0]["params"] == {"chapter_index": 2, "agent_profile": "drafting_worker"}

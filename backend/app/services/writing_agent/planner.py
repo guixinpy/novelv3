@@ -12,6 +12,7 @@ from app.schemas.writing_agent import WritingAgentToolRequest
 from app.services.writing_agent.approval_contract import build_agent_plan_approval_contract
 from app.services.writing_agent.tool_contracts import agent_tool_execution_metadata
 from app.services.writing_agent.tool_executor import (
+    static_writing_agent_tool_adapter_names,
     writing_agent_tool_adapter_metadata,
     writing_agent_tool_adapter_metadata_by_name,
 )
@@ -49,6 +50,12 @@ def build_writing_agent_run_plan(
         adapter_metadata_by_name=writing_agent_tool_adapter_metadata_by_name(),
     )
     diagnostics = tool_plan.get("diagnostics", [])
+    health_projection = _planner_health_projection(
+        db,
+        project_id,
+        chapter_index=resolved_chapter_index,
+        tool_plan=tool_plan,
+    )
     trace: dict[str, Any] = {
         "plan_id": plan_id,
         "source_projection_id": source_projection_id,
@@ -57,6 +64,7 @@ def build_writing_agent_run_plan(
         "tool_policy_projection": tool_plan.get("tool_policy_projection"),
         "agent_profile": agent_profile,
         "agent_profile_tool_projection": _profile_projection_from_tool_plan(tool_plan, agent_profile),
+        "agent_health_projection": health_projection,
         "selected_tools": [],
         "rejected_tools": [],
         "missing_dependencies": [],
@@ -372,6 +380,35 @@ def _step_metadata(trace: dict[str, Any], step: dict[str, Any]) -> dict[str, Any
         "source_projection_id": trace.get("source_projection_id"),
         "mutability": execution_metadata["mutability"],
         "requires_confirmation": execution_metadata["requires_confirmation"],
+    }
+
+
+def _planner_health_projection(
+    db: Session,
+    project_id: str,
+    *,
+    chapter_index: int,
+    tool_plan: dict[str, Any],
+) -> dict[str, Any]:
+    from app.services.actions.action_execution_service import SUPPORTED_ACTION_EXECUTION_TYPES
+    from app.services.writing_agent.agent_health_projection import inspect_agent_health_projection
+
+    output = inspect_agent_health_projection(
+        db,
+        project_id,
+        chapter_index=chapter_index,
+        adapter_metadata_by_name=writing_agent_tool_adapter_metadata_by_name(),
+        static_adapter_tool_names=static_writing_agent_tool_adapter_names(),
+        action_execution_tool_names=set(SUPPORTED_ACTION_EXECUTION_TYPES),
+        tool_plan=tool_plan,
+    )
+    diagnostics = output.get("diagnostics") if isinstance(output.get("diagnostics"), list) else []
+    return {
+        "version": output.get("version"),
+        "status": output.get("status"),
+        "diagnostic_count": len(diagnostics),
+        "diagnostics": diagnostics,
+        "recommended_tools": output.get("recommended_tools") if isinstance(output.get("recommended_tools"), list) else [],
     }
 
 

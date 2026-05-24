@@ -26,19 +26,24 @@ def inspect_agent_health_projection(
     adapter_metadata_by_name: dict[str, dict[str, Any]] | None = None,
     static_adapter_tool_names: set[str] | None = None,
     action_execution_tool_names: set[str] | None = None,
+    tool_plan: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     _require_project(db, project_id)
     adapter_metadata_by_name = adapter_metadata_by_name or {}
     static_adapter_tool_names = static_adapter_tool_names or set()
     action_execution_tool_names = action_execution_tool_names or set()
 
-    tool_plan = build_agent_tool_plan(
-        db,
-        project_id,
-        chapter_index=chapter_index,
-        adapter_metadata_by_name=adapter_metadata_by_name,
+    resolved_tool_plan = (
+        tool_plan
+        if isinstance(tool_plan, dict)
+        else build_agent_tool_plan(
+            db,
+            project_id,
+            chapter_index=chapter_index,
+            adapter_metadata_by_name=adapter_metadata_by_name,
+        )
     )
-    profile_policy = _profile_policy_audit_summary(_profile_policy_audit_from_tool_plan(tool_plan))
+    profile_policy = _profile_policy_audit_summary(_profile_policy_audit_from_tool_plan(resolved_tool_plan))
     route_preference = _route_preference_summary(
         inspect_agent_route_preference_projection(
             source=source,
