@@ -2543,6 +2543,46 @@ def test_get_messages_includes_delegate_profile_targets_detail_item(db_session):
     assert {"label": "可委派目标", "value": "4 个声明"} in detail_items
 
 
+def test_get_messages_includes_agent_profile_policy_audit_detail_item(db_session):
+    project = Project(name="Profile Policy Audit Result View")
+    db_session.add(project)
+    db_session.commit()
+    dialog = dialogs_api._get_or_create_dialog(db_session, project.id)
+    dialogs_api._save_message(
+        db_session,
+        dialog.id,
+        "assistant",
+        "Agent 已检查 profile 策略审计。",
+        action_result={
+            "type": "plan_recovery_tools",
+            "status": "success",
+            "data": {
+                "agent_profile": "orchestrator",
+                "agent_profile_policy_audit": {
+                    "version": "phase215.agent_profile_policy_audit.v1",
+                    "status": "needs_attention",
+                    "summary": {"issues": 2, "delegate_edges": 4},
+                    "issues": [
+                        {
+                            "code": "delegate_target_missing_definition",
+                            "profile": "orchestrator",
+                            "target": "ghost_worker",
+                        }
+                    ],
+                },
+            },
+        },
+    )
+
+    messages = DialogMessageService(db_session).list_messages(project.id)
+    detail_items = messages[-1]["action_result_view"]["detail_items"]
+
+    assert {"label": "Agent 身份", "value": "编排主控"} in detail_items
+    assert {"label": "策略审计", "value": "需关注：2 个问题"} in detail_items
+    assert "delegate_target_missing_definition" not in str(detail_items)
+    assert "ghost_worker" not in str(detail_items)
+
+
 @pytest.mark.asyncio
 async def test_chapter_approval_followup_dispatches_execute_tool(db_session):
     project = Project(name="Chapter Approval Execute Dispatch")

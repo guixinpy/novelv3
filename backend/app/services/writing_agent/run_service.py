@@ -649,6 +649,7 @@ def detail_payload(detail: dict[str, Any]) -> dict[str, Any]:
     return {
         **_model_dict(run),
         **_agent_profile_projection(run, steps),
+        "agent_profile_policy_audit": _agent_profile_policy_audit_from_steps(steps),
         "steps": steps,
     }
 
@@ -770,6 +771,22 @@ def _agent_profile_scope_from_steps(steps: list[WritingAgentStep]) -> dict[str, 
         scope = output.get("agent_profile_scope")
         if isinstance(scope, dict):
             return dict(scope)
+    return None
+
+
+def _agent_profile_policy_audit_from_steps(steps: list[WritingAgentStep]) -> dict[str, Any] | None:
+    for step in reversed(steps):
+        if step.tool_name != "describe_agent_tools":
+            continue
+        output = step.output if isinstance(step.output, dict) else {}
+        projection = (
+            output.get("agent_profile_tool_projection")
+            if isinstance(output.get("agent_profile_tool_projection"), dict)
+            else {}
+        )
+        audit = projection.get("consistency_audit")
+        if isinstance(audit, dict):
+            return dict(audit)
     return None
 
 

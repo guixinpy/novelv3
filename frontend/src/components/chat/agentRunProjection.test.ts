@@ -237,6 +237,33 @@ describe('agentRunProjection', () => {
     expect(view?.detail_items).toContainEqual({ label: '可委派目标', value: '4 个声明' })
   })
 
+  it('builds fallback views with profile policy audit status', () => {
+    const view = buildAgentRunActionResultView({
+      type: 'plan_recovery_tools',
+      status: 'success',
+      data: {
+        agent_profile: 'orchestrator',
+        agent_profile_policy_audit: {
+          version: 'phase215.agent_profile_policy_audit.v1',
+          status: 'needs_attention',
+          summary: { issues: 2, delegate_edges: 4 },
+          issues: [
+            {
+              code: 'delegate_target_missing_definition',
+              profile: 'orchestrator',
+              target: 'ghost_worker',
+            },
+          ],
+        },
+      },
+    })
+
+    expect(view?.detail_items).toContainEqual({ label: 'Agent 身份', value: '编排主控' })
+    expect(view?.detail_items).toContainEqual({ label: '策略审计', value: '需关注：2 个问题' })
+    expect(JSON.stringify(view?.detail_items)).not.toContain('delegate_target_missing_definition')
+    expect(JSON.stringify(view?.detail_items)).not.toContain('ghost_worker')
+  })
+
   it('does not build fallback views for unknown action results', () => {
     expect(buildAgentRunActionResultView({
       type: 'generate_chapter',

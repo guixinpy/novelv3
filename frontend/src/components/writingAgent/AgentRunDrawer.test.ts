@@ -164,6 +164,47 @@ describe('AgentRunDrawer', () => {
     expect(text).toContain('4 个声明')
   })
 
+  it('renders profile policy audit summary', () => {
+    mount(AgentRunDrawer, {
+      attachTo: document.body,
+      props: {
+        open: true,
+        loading: false,
+        error: '',
+        run: {
+          id: 'run-audit',
+          project_id: 'project-1',
+          goal: '检查 profile 策略',
+          status: 'success',
+          entrypoint: 'dialog_auto_plan',
+          input: {},
+          output: null,
+          error: null,
+          agent_profile: 'orchestrator',
+          agent_profile_policy_audit: {
+            version: 'phase215.agent_profile_policy_audit.v1',
+            status: 'passed',
+            summary: { issues: 0, delegate_edges: 4 },
+            issues: [
+              {
+                code: 'delegate_target_missing_definition',
+                profile: 'orchestrator',
+                target: 'ghost_worker',
+              },
+            ],
+          },
+          steps: [],
+        },
+      },
+    })
+
+    const text = document.body.textContent || ''
+    expect(text).toContain('策略审计')
+    expect(text).toContain('通过')
+    expect(text).not.toContain('delegate_target_missing_definition')
+    expect(text).not.toContain('ghost_worker')
+  })
+
   it('renders loading and error states', () => {
     const loading = mount(AgentRunDrawer, {
       attachTo: document.body,

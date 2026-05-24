@@ -28,6 +28,7 @@ const runInput = computed(() => (isRecord(props.run?.input) ? props.run.input : 
 const agentProfileDefinition = computed(() => recordValue(props.run?.agent_profile_definition))
 const agentProfileScope = computed(() => recordValue(props.run?.agent_profile_scope))
 const agentToolDiscovery = computed(() => recordValue(props.run?.agent_tool_discovery))
+const agentProfilePolicyAudit = computed(() => recordValue(props.run?.agent_profile_policy_audit))
 const agentProfile = computed(() => (
   stringValue(props.run?.agent_profile) ||
   stringValue(agentProfileDefinition.value.profile) ||
@@ -66,6 +67,7 @@ const profileFilteredVisibleToolCount = computed(() => (
   numberValue(agentToolDiscovery.value.filtered_by_profile_count) ??
   numberValue(agentProfileScope.value.profile_filtered_visible_tool_count)
 ))
+const agentProfilePolicyAuditLabel = computed(() => profilePolicyAuditLabel(agentProfilePolicyAudit.value))
 const recoveryPreview = computed(() => {
   const step = steps.value.find((item) => item.tool_name === 'plan_recovery_tools')
   return isRecord(step?.output) ? step.output : null
@@ -211,6 +213,17 @@ function agentProfileScopeStatusLabel(status: unknown) {
   return value || '未知'
 }
 
+function profilePolicyAuditLabel(audit: Record<string, unknown>) {
+  const status = stringValue(audit.status)
+  const summary = recordValue(audit.summary)
+  const issueCount = numberValue(summary.issues)
+  if (status === 'passed') return '通过'
+  if (status === 'needs_attention') {
+    return issueCount !== null ? `需关注：${issueCount} 个问题` : '需关注'
+  }
+  return status
+}
+
 function policyStatusLabel(status: unknown) {
   const value = stringValue(status)
   if (value === 'ready') return '可执行'
@@ -328,6 +341,10 @@ function hasRouteApplyRecommendation(output: Record<string, unknown>) {
             <div v-if="profileFilteredVisibleToolCount !== null">
               <dt>已过滤</dt>
               <dd>{{ profileFilteredVisibleToolCount }}</dd>
+            </div>
+            <div v-if="agentProfilePolicyAuditLabel">
+              <dt>策略审计</dt>
+              <dd>{{ agentProfilePolicyAuditLabel }}</dd>
             </div>
             <div v-if="recoverySourceRunId">
               <dt>来源运行</dt>

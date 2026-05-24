@@ -160,6 +160,11 @@ def test_agent_run_detail_exposes_agent_profile_projection_for_auto_plan(client)
     assert definition["tier"] == "reasoning"
     assert definition["delegation_allowed"] is True
     assert definition["source"] == "planner_trace"
+    audit = payload["agent_profile_policy_audit"]
+    assert audit["version"] == "phase215.agent_profile_policy_audit.v1"
+    assert audit["status"] == "passed"
+    assert audit["summary"]["issues"] == 0
+    assert audit["summary"]["delegate_edges"] == 4
 
     detail = client.get(f"/api/v1/projects/{project_id}/agent-runs/{payload['id']}")
 
@@ -169,6 +174,7 @@ def test_agent_run_detail_exposes_agent_profile_projection_for_auto_plan(client)
     assert detail_payload["agent_profile_scope"] == payload["agent_profile_scope"]
     assert detail_payload["agent_tool_discovery"] == payload["agent_tool_discovery"]
     assert detail_payload["agent_profile_definition"] == payload["agent_profile_definition"]
+    assert detail_payload["agent_profile_policy_audit"] == audit
 
 
 def test_agent_run_result_metrics_include_adapter_metadata(client):

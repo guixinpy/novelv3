@@ -316,6 +316,11 @@ function agentDiscoveryDetailItems(data: Record<string, unknown>) {
   if (filteredCount !== null) {
     items.push({ label: '已过滤', value: `${filteredCount} 个` })
   }
+
+  const policyAuditLabel = profilePolicyAuditLabel(recordValue(data.agent_profile_policy_audit))
+  if (policyAuditLabel) {
+    items.push({ label: '策略审计', value: policyAuditLabel })
+  }
   return items
 }
 
@@ -461,6 +466,17 @@ function agentToolScopeStatusLabel(status: string) {
   if (status === 'unknown_profile') return '未知身份，已拒绝工具面'
   if (status === 'not_available') return '暂无工具面摘要'
   return status || '未知'
+}
+
+function profilePolicyAuditLabel(audit: Record<string, unknown>) {
+  const status = stringValue(audit.status)
+  const summary = recordValue(audit.summary)
+  const issueCount = numberValue(summary.issues)
+  if (status === 'passed') return '通过'
+  if (status === 'needs_attention') {
+    return issueCount !== null ? `需关注：${issueCount} 个问题` : '需关注'
+  }
+  return status
 }
 
 function recordValue(value: unknown): Record<string, unknown> {

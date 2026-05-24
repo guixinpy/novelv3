@@ -204,6 +204,13 @@ def _agent_discovery_detail_items(data: dict) -> list[dict[str, str]]:
     filtered_count = _optional_int(discovery.get("filtered_by_profile_count"))
     if filtered_count is not None:
         items.append({"label": "已过滤", "value": f"{filtered_count} 个"})
+
+    policy_audit = (
+        data.get("agent_profile_policy_audit") if isinstance(data.get("agent_profile_policy_audit"), dict) else {}
+    )
+    policy_audit_label = _profile_policy_audit_label(policy_audit)
+    if policy_audit_label:
+        items.append({"label": "策略审计", "value": policy_audit_label})
     return items
 
 
@@ -247,6 +254,19 @@ def _agent_tool_scope_status_label(status: str) -> str:
     if status == "not_available":
         return "暂无工具面摘要"
     return status or "未知"
+
+
+def _profile_policy_audit_label(audit: dict) -> str:
+    status = str(audit.get("status") or "").strip()
+    summary = audit.get("summary") if isinstance(audit.get("summary"), dict) else {}
+    issue_count = _optional_int(summary.get("issues"))
+    if status == "passed":
+        return "通过"
+    if status == "needs_attention":
+        if issue_count is not None:
+            return f"需关注：{issue_count} 个问题"
+        return "需关注"
+    return status
 
 
 def _optional_int(value: object) -> int | None:
