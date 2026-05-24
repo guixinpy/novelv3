@@ -3,6 +3,7 @@ from app.services.writing_agent.agent_core_tool_descriptors import AGENT_CORE_TO
 from app.services.writing_agent.agent_generation_tool_descriptors import AGENT_GENERATION_TOOL_DESCRIPTORS
 from app.services.writing_agent.agent_memory_trace_tool_descriptors import AGENT_MEMORY_TRACE_TOOL_DESCRIPTORS
 from app.services.writing_agent.agent_task_queue_tool_descriptors import AGENT_TASK_QUEUE_TOOL_DESCRIPTORS
+from app.services.writing_agent.agent_tool_surface_policy import build_agent_profile_policy_audit
 from app.services.writing_agent.hermes_action_tool_descriptors import HERMES_ACTION_AGENT_TOOL_DESCRIPTORS
 from app.services.writing_agent.knowledge_base_tool_descriptors import KNOWLEDGE_BASE_AGENT_TOOL_DESCRIPTORS
 from app.services.writing_agent.longform_tool_descriptors import LONGFORM_AGENT_TOOL_DESCRIPTORS
@@ -1249,6 +1250,43 @@ def test_agent_tool_plan_exposes_agent_profile_tool_projection(db_session):
     assert "review_world_model_proposals" in profiles["world_model_worker"]["allowed_hidden_tools"]
     assert profiles["drafting_worker"]["summary"]["allowed_visible_tools"] >= 1
     assert profiles["orchestrator"]["summary"]["blocked_visible_tools"] >= 1
+    audit = projection["consistency_audit"]
+    assert audit["version"] == "phase215.agent_profile_policy_audit.v1"
+    assert audit["status"] == "passed"
+    assert audit["summary"]["issues"] == 0
+    assert audit["summary"]["delegate_edges"] == 4
+    assert {"source": "orchestrator", "target": "drafting_worker"} in audit["delegate_edges"]
+    audit_rule_codes = {rule["code"] for rule in audit["rules"]}
+    assert {
+        "profile_definitions_have_tool_rules",
+        "profile_tool_rules_have_definitions",
+        "delegate_targets_have_definitions",
+        "delegate_targets_have_tool_rules",
+        "non_delegating_profiles_have_no_delegate_targets",
+        "delegated_profiles_are_leaf_profiles",
+    }.issubset(audit_rule_codes)
+
+
+def test_agent_profile_policy_audit_flags_unknown_delegate_targets():
+    audit = build_agent_profile_policy_audit(
+        {
+            "version": "test",
+            "profiles": {
+                "orchestrator": {
+                    "profile": "orchestrator",
+                    "delegation_allowed": True,
+                    "delegate_to_profiles": ["ghost_worker"],
+                }
+            },
+        },
+        {"orchestrator": {"profile": "orchestrator"}},
+    )
+
+    assert audit["status"] == "needs_attention"
+    assert audit["summary"]["issues"] == 2
+    assert {"source": "orchestrator", "target": "ghost_worker"} in audit["delegate_edges"]
+    assert any(issue["code"] == "delegate_target_missing_definition" for issue in audit["issues"])
+    assert any(issue["code"] == "delegate_target_missing_tool_rule" for issue in audit["issues"])
 
 
 def test_agent_profile_projection_does_not_change_tool_visibility(db_session):

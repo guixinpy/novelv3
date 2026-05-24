@@ -6,6 +6,7 @@ from typing import Any
 TOOL_SURFACE_POLICY_VERSION = "phase206.agent_tool_surface_policy.v1"
 AGENT_PROFILE_TOOL_POLICY_VERSION = "phase207.agent_profile_tool_policy.v1"
 AGENT_PROFILE_DEFINITION_VERSION = "phase212.agent_profile_definition.v1"
+AGENT_PROFILE_POLICY_AUDIT_VERSION = "phase215.agent_profile_policy_audit.v1"
 
 AGENT_PROFILE_DEFINITIONS: dict[str, dict[str, object]] = {
     "orchestrator": {
@@ -138,10 +139,12 @@ def build_agent_profile_tool_projection(
         profile: _profile_projection(profile, rule, tools)
         for profile, rule in AGENT_TOOL_PROFILE_RULES.items()
     }
+    profile_definitions = build_agent_profile_definitions_projection()
     return {
         "version": AGENT_PROFILE_TOOL_POLICY_VERSION,
-        "profile_definitions": build_agent_profile_definitions_projection(),
+        "profile_definitions": profile_definitions,
         "profiles": profiles,
+        "consistency_audit": build_agent_profile_policy_audit(profile_definitions, profiles),
         "policy_rules": [
             {
                 "code": "profiles_filter_visibility_only",
@@ -201,6 +204,128 @@ def build_agent_profile_definition(profile: str | None, *, source: str | None = 
         "delegate_to_profiles": [str(item) for item in definition.get("delegate_to_profiles", ())],
         "source": source,
         "description": str(rule.get("description") or ""),
+    }
+
+
+def build_agent_profile_policy_audit(
+    profile_definitions_projection: dict[str, Any],
+    profiles_projection: dict[str, Any],
+) -> dict[str, Any]:
+    definitions = profile_definitions_projection.get("profiles")
+    if not isinstance(definitions, dict):
+        definitions = {}
+    profiles = profiles_projection if isinstance(profiles_projection, dict) else {}
+    definition_profiles = {str(profile) for profile, definition in definitions.items() if isinstance(definition, dict)}
+    tool_rule_profiles = {str(profile) for profile, profile_projection in profiles.items() if isinstance(profile_projection, dict)}
+    issues: list[dict[str, Any]] = []
+    delegate_edges: list[dict[str, str]] = []
+
+    for profile in sorted(definition_profiles - tool_rule_profiles):
+        issues.append(
+            {
+                "code": "profile_definition_missing_tool_rule",
+                "severity": "error",
+                "profile": profile,
+            }
+        )
+
+    for profile in sorted(tool_rule_profiles - definition_profiles):
+        issues.append(
+            {
+                "code": "profile_tool_rule_missing_definition",
+                "severity": "error",
+                "profile": profile,
+            }
+        )
+
+    for profile in sorted(definition_profiles):
+        definition = definitions.get(profile)
+        if not isinstance(definition, dict):
+            continue
+        delegate_targets = _delegate_target_names(definition.get("delegate_to_profiles"))
+        if definition.get("delegation_allowed") is not True and delegate_targets:
+            issues.append(
+                {
+                    "code": "non_delegating_profile_has_delegate_targets",
+                    "severity": "error",
+                    "profile": profile,
+                    "targets": delegate_targets,
+                }
+            )
+        for target in delegate_targets:
+            delegate_edges.append({"source": profile, "target": target})
+            if target not in definition_profiles:
+                issues.append(
+                    {
+                        "code": "delegate_target_missing_definition",
+                        "severity": "error",
+                        "profile": profile,
+                        "target": target,
+                    }
+                )
+            if target not in tool_rule_profiles:
+                issues.append(
+                    {
+                        "code": "delegate_target_missing_tool_rule",
+                        "severity": "error",
+                        "profile": profile,
+                        "target": target,
+                    }
+                )
+            target_definition = definitions.get(target)
+            if isinstance(target_definition, dict) and target_definition.get("delegation_allowed") is True:
+                issues.append(
+                    {
+                        "code": "delegated_profile_can_delegate",
+                        "severity": "warning",
+                        "profile": profile,
+                        "target": target,
+                    }
+                )
+
+    return {
+        "version": AGENT_PROFILE_POLICY_AUDIT_VERSION,
+        "status": "passed" if not issues else "needs_attention",
+        "summary": {
+            "profile_definitions": len(definition_profiles),
+            "profile_tool_rules": len(tool_rule_profiles),
+            "delegate_edges": len(delegate_edges),
+            "issues": len(issues),
+        },
+        "delegate_edges": delegate_edges,
+        "issues": issues,
+        "rules": [
+            _audit_rule(
+                "profile_definitions_have_tool_rules",
+                issues,
+                {"profile_definition_missing_tool_rule"},
+            ),
+            _audit_rule(
+                "profile_tool_rules_have_definitions",
+                issues,
+                {"profile_tool_rule_missing_definition"},
+            ),
+            _audit_rule(
+                "delegate_targets_have_definitions",
+                issues,
+                {"delegate_target_missing_definition"},
+            ),
+            _audit_rule(
+                "delegate_targets_have_tool_rules",
+                issues,
+                {"delegate_target_missing_tool_rule"},
+            ),
+            _audit_rule(
+                "non_delegating_profiles_have_no_delegate_targets",
+                issues,
+                {"non_delegating_profile_has_delegate_targets"},
+            ),
+            _audit_rule(
+                "delegated_profiles_are_leaf_profiles",
+                issues,
+                {"delegated_profile_can_delegate"},
+            ),
+        ],
     }
 
 
@@ -335,6 +460,17 @@ def _tool_allowed(tool: dict[str, Any], rule: dict[str, object]) -> bool:
     if tool["mutability"] not in allowed_mutabilities:
         return False
     return True
+
+
+def _delegate_target_names(value: object) -> list[str]:
+    if not isinstance(value, (list, tuple)):
+        return []
+    return [target for target in (str(item).strip() for item in value) if target]
+
+
+def _audit_rule(code: str, issues: list[dict[str, Any]], issue_codes: set[str]) -> dict[str, str]:
+    status = "failed" if any(issue.get("code") in issue_codes for issue in issues) else "passed"
+    return {"code": code, "status": status}
 
 
 def _names(tools: Any) -> list[str]:
