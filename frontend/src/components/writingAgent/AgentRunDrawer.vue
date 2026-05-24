@@ -25,6 +25,31 @@ const emit = defineEmits<{
 
 const steps = computed(() => props.run?.steps || [])
 const runInput = computed(() => (isRecord(props.run?.input) ? props.run.input : {}))
+const agentProfileScope = computed(() => recordValue(props.run?.agent_profile_scope))
+const agentToolDiscovery = computed(() => recordValue(props.run?.agent_tool_discovery))
+const agentProfile = computed(() => (
+  stringValue(props.run?.agent_profile) ||
+  stringValue(agentToolDiscovery.value.effective_profile) ||
+  stringValue(agentProfileScope.value.agent_profile)
+))
+const hasAgentProfileProjection = computed(() => Boolean(
+  agentProfile.value ||
+  Object.keys(agentToolDiscovery.value).length ||
+  Object.keys(agentProfileScope.value).length,
+))
+const toolDiscoveryStatus = computed(() => (
+  stringValue(agentToolDiscovery.value.status) ||
+  (agentToolDiscovery.value.scope_applied === true ? 'applied' : '') ||
+  stringValue(agentProfileScope.value.status)
+))
+const allowedVisibleToolCount = computed(() => (
+  numberValue(agentToolDiscovery.value.visible_tool_count) ??
+  numberValue(agentProfileScope.value.allowed_visible_tool_count)
+))
+const profileFilteredVisibleToolCount = computed(() => (
+  numberValue(agentToolDiscovery.value.filtered_by_profile_count) ??
+  numberValue(agentProfileScope.value.profile_filtered_visible_tool_count)
+))
 const recoveryPreview = computed(() => {
   const step = steps.value.find((item) => item.tool_name === 'plan_recovery_tools')
   return isRecord(step?.output) ? step.output : null
@@ -142,8 +167,30 @@ function stringValue(value: unknown) {
   return typeof value === 'string' ? value : ''
 }
 
+function numberValue(value: unknown) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
 function booleanLabel(value: unknown, trueLabel: string, falseLabel: string) {
   return value === true ? trueLabel : falseLabel
+}
+
+function agentProfileLabel(profile: unknown) {
+  const value = stringValue(profile)
+  if (value === 'orchestrator') return '编排主控'
+  if (value === 'drafting_worker') return '创作执行者'
+  if (value === 'reviewer_worker') return '审稿执行者'
+  if (value === 'world_model_worker') return '世界模型执行者'
+  if (value === 'recovery_worker') return '恢复维护者'
+  return value || '未标注'
+}
+
+function agentProfileScopeStatusLabel(status: unknown) {
+  const value = stringValue(status)
+  if (value === 'applied') return '已按身份收窄'
+  if (value === 'not_requested') return '未请求身份收窄'
+  if (value === 'unknown_profile') return '未知身份，已拒绝工具面'
+  return value || '未知'
 }
 
 function policyStatusLabel(status: unknown) {
@@ -235,6 +282,22 @@ function hasRouteApplyRecommendation(output: Record<string, unknown>) {
             <div>
               <dt>运行类型</dt>
               <dd>{{ runKindLabel }}</dd>
+            </div>
+            <div v-if="hasAgentProfileProjection">
+              <dt>Agent 身份</dt>
+              <dd>{{ agentProfileLabel(agentProfile) }}</dd>
+            </div>
+            <div v-if="toolDiscoveryStatus">
+              <dt>工具面</dt>
+              <dd>{{ agentProfileScopeStatusLabel(toolDiscoveryStatus) }}</dd>
+            </div>
+            <div v-if="allowedVisibleToolCount !== null">
+              <dt>可见工具</dt>
+              <dd>{{ allowedVisibleToolCount }}</dd>
+            </div>
+            <div v-if="profileFilteredVisibleToolCount !== null">
+              <dt>已过滤</dt>
+              <dd>{{ profileFilteredVisibleToolCount }}</dd>
             </div>
             <div v-if="recoverySourceRunId">
               <dt>来源运行</dt>

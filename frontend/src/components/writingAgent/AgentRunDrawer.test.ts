@@ -62,6 +62,49 @@ describe('AgentRunDrawer', () => {
     expect(wrapper.emitted('refresh')).toEqual([[]])
   })
 
+  it('renders agent profile scoped tool discovery summary', () => {
+    mount(AgentRunDrawer, {
+      attachTo: document.body,
+      props: {
+        open: true,
+        loading: false,
+        error: '',
+        run: {
+          id: 'run-profile',
+          project_id: 'project-1',
+          goal: '继续写下一章',
+          status: 'success',
+          entrypoint: 'dialog_auto_plan',
+          input: {},
+          output: null,
+          error: null,
+          agent_profile: 'drafting_worker',
+          agent_tool_discovery: {
+            version: 'phase210.agent_tool_discovery_projection.v1',
+            scope_applied: true,
+            scope_source: 'agent_profile',
+            requested_profile: 'drafting_worker',
+            effective_profile: 'drafting_worker',
+            visible_tool_count: 12,
+            filtered_by_profile_count: 7,
+            filter_stages: ['profile'],
+          },
+          steps: [],
+        },
+      },
+    })
+
+    const text = document.body.textContent || ''
+    expect(text).toContain('Agent 身份')
+    expect(text).toContain('创作执行者')
+    expect(text).toContain('工具面')
+    expect(text).toContain('已按身份收窄')
+    expect(text).toContain('可见工具')
+    expect(text).toContain('12')
+    expect(text).toContain('已过滤')
+    expect(text).toContain('7')
+  })
+
   it('renders loading and error states', () => {
     const loading = mount(AgentRunDrawer, {
       attachTo: document.body,

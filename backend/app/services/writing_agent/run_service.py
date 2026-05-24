@@ -71,6 +71,7 @@ ALLOWED_TOOLS = allowed_tool_names()
 CHAPTER_TOOL_NAME = "generate_chapter"
 INTERNAL_TOOLS = internal_tool_names()
 NON_BLOCKING_REPORT_TOOLS = non_blocking_report_tool_names()
+AGENT_TOOL_DISCOVERY_PROJECTION_VERSION = "phase210.agent_tool_discovery_projection.v1"
 
 
 class WritingAgentRunService:
@@ -646,8 +647,127 @@ def detail_payload(detail: dict[str, Any]) -> dict[str, Any]:
     steps = detail["steps"]
     return {
         **_model_dict(run),
+        **_agent_profile_projection(run, steps),
         "steps": steps,
     }
+
+
+def _agent_profile_projection(run: WritingAgentRun, steps: list[WritingAgentStep]) -> dict[str, Any]:
+    scope = _agent_profile_scope_from_steps(steps)
+    requested_profile = _agent_profile_from_run_input(run) or _agent_profile_from_step_input(steps)
+    profile = requested_profile
+    if isinstance(scope, dict):
+        scoped_profile = _non_empty_string(scope.get("agent_profile"))
+        if scoped_profile:
+            profile = scoped_profile
+    return {
+        "agent_profile": profile,
+        "agent_profile_scope": scope,
+        "agent_tool_discovery": _agent_tool_discovery_projection(requested_profile, profile, scope),
+    }
+
+
+def _agent_tool_discovery_projection(
+    requested_profile: str | None,
+    effective_profile: str | None,
+    scope: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if not requested_profile and not scope:
+        return None
+
+    status = _non_empty_string(scope.get("status")) if isinstance(scope, dict) else None
+    visible_tool_count = _optional_int(scope.get("allowed_visible_tool_count")) if isinstance(scope, dict) else None
+    filtered_count = (
+        _optional_int(scope.get("profile_filtered_visible_tool_count")) if isinstance(scope, dict) else None
+    )
+    hidden_tool_count = _optional_int(scope.get("allowed_hidden_tool_count")) if isinstance(scope, dict) else None
+    candidate_visible_tool_count = (
+        visible_tool_count + filtered_count
+        if visible_tool_count is not None and filtered_count is not None
+        else None
+    )
+    scope_source = "agent_profile" if requested_profile or effective_profile else "none"
+    return {
+        "version": AGENT_TOOL_DISCOVERY_PROJECTION_VERSION,
+        "status": status or "not_available",
+        "scope_applied": status == "applied",
+        "scope_source": scope_source,
+        "requested_profile": requested_profile,
+        "effective_profile": effective_profile,
+        "visible_tool_count": visible_tool_count,
+        "filtered_by_profile_count": filtered_count,
+        "hidden_tool_count": hidden_tool_count,
+        "candidate_visible_tool_count": candidate_visible_tool_count,
+        "filter_stages": ["profile"] if status == "applied" else [],
+        "warnings": _agent_tool_discovery_warnings(status, requested_profile, scope),
+    }
+
+
+def _agent_tool_discovery_warnings(
+    status: str | None,
+    requested_profile: str | None,
+    scope: dict[str, Any] | None,
+) -> list[str]:
+    if scope is None:
+        return ["missing_describe_agent_tools_scope"] if requested_profile else []
+    if status == "unknown_profile":
+        return ["unknown_profile"]
+    if status == "not_requested" and requested_profile:
+        return ["profile_scope_not_requested"]
+    return []
+
+
+def _agent_profile_from_run_input(run: WritingAgentRun) -> str | None:
+    run_input = run.input if isinstance(run.input, dict) else {}
+    planner = run_input.get("planner") if isinstance(run_input.get("planner"), dict) else {}
+    trace = planner.get("trace") if isinstance(planner.get("trace"), dict) else {}
+    profile = _non_empty_string(planner.get("agent_profile")) or _non_empty_string(trace.get("agent_profile"))
+    if profile:
+        return profile
+
+    tools = run_input.get("tools") if isinstance(run_input.get("tools"), list) else []
+    return _agent_profile_from_tool_rows(tools)
+
+
+def _agent_profile_from_step_input(steps: list[WritingAgentStep]) -> str | None:
+    for step in steps:
+        if step.tool_name != "describe_agent_tools":
+            continue
+        step_input = step.input if isinstance(step.input, dict) else {}
+        params = step_input.get("params") if isinstance(step_input.get("params"), dict) else {}
+        profile = _non_empty_string(params.get("agent_profile"))
+        if profile:
+            return profile
+    return None
+
+
+def _agent_profile_from_tool_rows(tools: list[object]) -> str | None:
+    for tool in tools:
+        if not isinstance(tool, dict) or tool.get("tool_name") != "describe_agent_tools":
+            continue
+        params = tool.get("params") if isinstance(tool.get("params"), dict) else {}
+        profile = _non_empty_string(params.get("agent_profile"))
+        if profile:
+            return profile
+    return None
+
+
+def _agent_profile_scope_from_steps(steps: list[WritingAgentStep]) -> dict[str, Any] | None:
+    for step in steps:
+        if step.tool_name != "describe_agent_tools":
+            continue
+        output = step.output if isinstance(step.output, dict) else {}
+        scope = output.get("agent_profile_scope")
+        if isinstance(scope, dict):
+            return dict(scope)
+    return None
+
+
+def _non_empty_string(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    stripped = value.strip()
+    return stripped or None
 
 
 def _continuation_state(run: WritingAgentRun, steps: list[WritingAgentStep]) -> dict[str, Any]:

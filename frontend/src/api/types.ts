@@ -365,6 +365,9 @@ export interface WritingAgentRunDetail {
   dialog_id?: string | null
   request_message_id?: string | null
   response_message_id?: string | null
+  agent_profile?: string | null
+  agent_profile_scope?: Record<string, unknown> | null
+  agent_tool_discovery?: Record<string, unknown> | null
   created_at?: string | null
   started_at?: string | null
   finished_at?: string | null

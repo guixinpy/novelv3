@@ -123,6 +123,45 @@ def test_agent_run_can_describe_current_tool_plan(client):
     assert "generate_setup" in {tool["name"] for tool in output["visible_tools"]}
 
 
+def test_agent_run_detail_exposes_agent_profile_projection_for_auto_plan(client):
+    project_id = _create_project(client, "Agent Profile Projection API")
+
+    response = client.post(
+        f"/api/v1/projects/{project_id}/agent-runs",
+        json={
+            "goal": "看看现在能做什么",
+            "input": {"auto_plan": True},
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["agent_profile"] == "orchestrator"
+    assert payload["agent_profile_scope"]["status"] == "applied"
+    assert payload["agent_profile_scope"]["agent_profile"] == "orchestrator"
+    assert payload["agent_profile_scope"]["allowed_visible_tool_count"] > 0
+    assert payload["agent_profile_scope"]["profile_filtered_visible_tool_count"] > 0
+    assert payload["agent_tool_discovery"]["version"] == "phase210.agent_tool_discovery_projection.v1"
+    assert payload["agent_tool_discovery"]["scope_applied"] is True
+    assert payload["agent_tool_discovery"]["scope_source"] == "agent_profile"
+    assert payload["agent_tool_discovery"]["requested_profile"] == "orchestrator"
+    assert payload["agent_tool_discovery"]["effective_profile"] == "orchestrator"
+    assert payload["agent_tool_discovery"]["visible_tool_count"] == payload["agent_profile_scope"]["allowed_visible_tool_count"]
+    assert (
+        payload["agent_tool_discovery"]["filtered_by_profile_count"]
+        == payload["agent_profile_scope"]["profile_filtered_visible_tool_count"]
+    )
+    assert payload["agent_tool_discovery"]["filter_stages"] == ["profile"]
+
+    detail = client.get(f"/api/v1/projects/{project_id}/agent-runs/{payload['id']}")
+
+    assert detail.status_code == 200
+    detail_payload = detail.json()
+    assert detail_payload["agent_profile"] == "orchestrator"
+    assert detail_payload["agent_profile_scope"] == payload["agent_profile_scope"]
+    assert detail_payload["agent_tool_discovery"] == payload["agent_tool_discovery"]
+
+
 def test_agent_run_result_metrics_include_adapter_metadata(client):
     project_id = _create_project(client, "Agent Result Metrics")
 
