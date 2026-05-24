@@ -25,15 +25,24 @@ const emit = defineEmits<{
 
 const steps = computed(() => props.run?.steps || [])
 const runInput = computed(() => (isRecord(props.run?.input) ? props.run.input : {}))
+const agentProfileDefinition = computed(() => recordValue(props.run?.agent_profile_definition))
 const agentProfileScope = computed(() => recordValue(props.run?.agent_profile_scope))
 const agentToolDiscovery = computed(() => recordValue(props.run?.agent_tool_discovery))
 const agentProfile = computed(() => (
   stringValue(props.run?.agent_profile) ||
+  stringValue(agentProfileDefinition.value.profile) ||
   stringValue(agentToolDiscovery.value.effective_profile) ||
   stringValue(agentProfileScope.value.agent_profile)
 ))
+const agentProfileTier = computed(() => stringValue(agentProfileDefinition.value.tier))
+const agentProfileDelegationAllowed = computed(() => (
+  typeof agentProfileDefinition.value.delegation_allowed === 'boolean'
+    ? agentProfileDefinition.value.delegation_allowed
+    : null
+))
 const hasAgentProfileProjection = computed(() => Boolean(
   agentProfile.value ||
+  Object.keys(agentProfileDefinition.value).length ||
   Object.keys(agentToolDiscovery.value).length ||
   Object.keys(agentProfileScope.value).length,
 ))
@@ -176,6 +185,8 @@ function booleanLabel(value: unknown, trueLabel: string, falseLabel: string) {
 }
 
 function agentProfileLabel(profile: unknown) {
+  const displayName = stringValue(agentProfileDefinition.value.display_name)
+  if (displayName) return displayName
   const value = stringValue(profile)
   if (value === 'orchestrator') return '编排主控'
   if (value === 'drafting_worker') return '创作执行者'
@@ -286,6 +297,14 @@ function hasRouteApplyRecommendation(output: Record<string, unknown>) {
             <div v-if="hasAgentProfileProjection">
               <dt>Agent 身份</dt>
               <dd>{{ agentProfileLabel(agentProfile) }}</dd>
+            </div>
+            <div v-if="agentProfileTier">
+              <dt>编排层级</dt>
+              <dd>{{ agentProfileTier }}</dd>
+            </div>
+            <div v-if="agentProfileDelegationAllowed !== null">
+              <dt>委派</dt>
+              <dd>{{ agentProfileDelegationAllowed ? '可委派' : '不可委派' }}</dd>
             </div>
             <div v-if="toolDiscoveryStatus">
               <dt>工具面</dt>

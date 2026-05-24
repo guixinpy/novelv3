@@ -152,6 +152,14 @@ def test_agent_run_detail_exposes_agent_profile_projection_for_auto_plan(client)
         == payload["agent_profile_scope"]["profile_filtered_visible_tool_count"]
     )
     assert payload["agent_tool_discovery"]["filter_stages"] == ["profile"]
+    definition = payload["agent_profile_definition"]
+    assert definition["version"] == "phase212.agent_profile_definition.v1"
+    assert definition["profile"] == "orchestrator"
+    assert definition["display_name"] == "编排主控"
+    assert definition["role"] == "orchestrator"
+    assert definition["tier"] == "reasoning"
+    assert definition["delegation_allowed"] is True
+    assert definition["source"] == "planner_trace"
 
     detail = client.get(f"/api/v1/projects/{project_id}/agent-runs/{payload['id']}")
 
@@ -160,6 +168,7 @@ def test_agent_run_detail_exposes_agent_profile_projection_for_auto_plan(client)
     assert detail_payload["agent_profile"] == "orchestrator"
     assert detail_payload["agent_profile_scope"] == payload["agent_profile_scope"]
     assert detail_payload["agent_tool_discovery"] == payload["agent_tool_discovery"]
+    assert detail_payload["agent_profile_definition"] == payload["agent_profile_definition"]
 
 
 def test_agent_run_result_metrics_include_adapter_metadata(client):

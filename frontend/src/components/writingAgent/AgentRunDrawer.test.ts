@@ -79,6 +79,15 @@ describe('AgentRunDrawer', () => {
           output: null,
           error: null,
           agent_profile: 'drafting_worker',
+          agent_profile_definition: {
+            version: 'phase212.agent_profile_definition.v1',
+            profile: 'drafting_worker',
+            display_name: '创作执行者',
+            role: 'worker',
+            tier: 'worker',
+            delegation_allowed: false,
+            source: 'planner_trace',
+          },
           agent_tool_discovery: {
             version: 'phase210.agent_tool_discovery_projection.v1',
             scope_applied: true,
@@ -97,6 +106,10 @@ describe('AgentRunDrawer', () => {
     const text = document.body.textContent || ''
     expect(text).toContain('Agent 身份')
     expect(text).toContain('创作执行者')
+    expect(text).toContain('编排层级')
+    expect(text).toContain('worker')
+    expect(text).toContain('委派')
+    expect(text).toContain('不可委派')
     expect(text).toContain('工具面')
     expect(text).toContain('已按身份收窄')
     expect(text).toContain('可见工具')

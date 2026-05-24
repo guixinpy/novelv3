@@ -368,6 +368,7 @@ export interface WritingAgentRunDetail {
   agent_profile?: string | null
   agent_profile_scope?: Record<string, unknown> | null
   agent_tool_discovery?: Record<string, unknown> | null
+  agent_profile_definition?: Record<string, unknown> | null
   created_at?: string | null
   started_at?: string | null
   finished_at?: string | null

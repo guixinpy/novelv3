@@ -1221,6 +1221,14 @@ def test_agent_tool_plan_exposes_agent_profile_tool_projection(db_session):
     projection = plan["agent_profile_tool_projection"]
 
     assert projection["version"] == "phase207.agent_profile_tool_policy.v1"
+    definitions = projection["profile_definitions"]
+    assert definitions["version"] == "phase212.agent_profile_definition.v1"
+    assert definitions["profiles"]["orchestrator"]["role"] == "orchestrator"
+    assert definitions["profiles"]["orchestrator"]["tier"] == "reasoning"
+    assert definitions["profiles"]["orchestrator"]["delegation_allowed"] is True
+    assert "drafting_worker" in definitions["profiles"]["orchestrator"]["delegate_to_profiles"]
+    assert definitions["profiles"]["drafting_worker"]["tier"] == "worker"
+    assert definitions["profiles"]["drafting_worker"]["delegation_allowed"] is False
     profiles = projection["profiles"]
     assert set(profiles) >= {
         "orchestrator",

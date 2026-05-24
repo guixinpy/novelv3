@@ -45,6 +45,7 @@ from app.services.writing_agent.recommended_followup_planner import (
     latest_recommended_followup_state,
 )
 from app.services.writing_agent.recovery_policy import build_writing_agent_recovery
+from app.services.writing_agent.agent_tool_surface_policy import build_agent_profile_definition
 from app.services.writing_agent.tool_registry import (
     allowed_tool_names,
     get_agent_tool_descriptor,
@@ -654,7 +655,9 @@ def detail_payload(detail: dict[str, Any]) -> dict[str, Any]:
 
 def _agent_profile_projection(run: WritingAgentRun, steps: list[WritingAgentStep]) -> dict[str, Any]:
     scope = _agent_profile_scope_from_steps(steps)
-    requested_profile = _agent_profile_from_run_input(run) or _agent_profile_from_step_input(steps)
+    requested_profile, source = _agent_profile_from_run_input(run)
+    if requested_profile is None:
+        requested_profile, source = _agent_profile_from_step_input(steps)
     profile = requested_profile
     if isinstance(scope, dict):
         scoped_profile = _non_empty_string(scope.get("agent_profile"))
@@ -664,6 +667,7 @@ def _agent_profile_projection(run: WritingAgentRun, steps: list[WritingAgentStep
         "agent_profile": profile,
         "agent_profile_scope": scope,
         "agent_tool_discovery": _agent_tool_discovery_projection(requested_profile, profile, scope),
+        "agent_profile_definition": build_agent_profile_definition(profile, source=source),
     }
 
 
@@ -717,19 +721,25 @@ def _agent_tool_discovery_warnings(
     return []
 
 
-def _agent_profile_from_run_input(run: WritingAgentRun) -> str | None:
+def _agent_profile_from_run_input(run: WritingAgentRun) -> tuple[str | None, str | None]:
     run_input = run.input if isinstance(run.input, dict) else {}
     planner = run_input.get("planner") if isinstance(run_input.get("planner"), dict) else {}
     trace = planner.get("trace") if isinstance(planner.get("trace"), dict) else {}
-    profile = _non_empty_string(planner.get("agent_profile")) or _non_empty_string(trace.get("agent_profile"))
+    profile = _non_empty_string(planner.get("agent_profile"))
     if profile:
-        return profile
+        return profile, "planner"
+    profile = _non_empty_string(trace.get("agent_profile"))
+    if profile:
+        return profile, "planner_trace"
 
     tools = run_input.get("tools") if isinstance(run_input.get("tools"), list) else []
-    return _agent_profile_from_tool_rows(tools)
+    profile = _agent_profile_from_tool_rows(tools)
+    if profile:
+        return profile, "run_input_tools"
+    return None, None
 
 
-def _agent_profile_from_step_input(steps: list[WritingAgentStep]) -> str | None:
+def _agent_profile_from_step_input(steps: list[WritingAgentStep]) -> tuple[str | None, str | None]:
     for step in steps:
         if step.tool_name != "describe_agent_tools":
             continue
@@ -737,8 +747,8 @@ def _agent_profile_from_step_input(steps: list[WritingAgentStep]) -> str | None:
         params = step_input.get("params") if isinstance(step_input.get("params"), dict) else {}
         profile = _non_empty_string(params.get("agent_profile"))
         if profile:
-            return profile
-    return None
+            return profile, "describe_agent_tools_input"
+    return None, None
 
 
 def _agent_profile_from_tool_rows(tools: list[object]) -> str | None:

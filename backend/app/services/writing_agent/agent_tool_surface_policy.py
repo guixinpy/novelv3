@@ -5,6 +5,45 @@ from typing import Any
 
 TOOL_SURFACE_POLICY_VERSION = "phase206.agent_tool_surface_policy.v1"
 AGENT_PROFILE_TOOL_POLICY_VERSION = "phase207.agent_profile_tool_policy.v1"
+AGENT_PROFILE_DEFINITION_VERSION = "phase212.agent_profile_definition.v1"
+
+AGENT_PROFILE_DEFINITIONS: dict[str, dict[str, object]] = {
+    "orchestrator": {
+        "display_name": "编排主控",
+        "role": "orchestrator",
+        "tier": "reasoning",
+        "delegation_allowed": True,
+        "delegate_to_profiles": ("drafting_worker", "reviewer_worker", "world_model_worker", "recovery_worker"),
+    },
+    "drafting_worker": {
+        "display_name": "创作执行者",
+        "role": "worker",
+        "tier": "worker",
+        "delegation_allowed": False,
+        "delegate_to_profiles": (),
+    },
+    "reviewer_worker": {
+        "display_name": "审稿执行者",
+        "role": "worker",
+        "tier": "worker",
+        "delegation_allowed": False,
+        "delegate_to_profiles": (),
+    },
+    "world_model_worker": {
+        "display_name": "世界模型执行者",
+        "role": "worker",
+        "tier": "worker",
+        "delegation_allowed": False,
+        "delegate_to_profiles": (),
+    },
+    "recovery_worker": {
+        "display_name": "恢复维护者",
+        "role": "worker",
+        "tier": "worker",
+        "delegation_allowed": False,
+        "delegate_to_profiles": (),
+    },
+}
 
 AGENT_TOOL_PROFILE_RULES: dict[str, dict[str, object]] = {
     "orchestrator": {
@@ -101,6 +140,7 @@ def build_agent_profile_tool_projection(
     }
     return {
         "version": AGENT_PROFILE_TOOL_POLICY_VERSION,
+        "profile_definitions": build_agent_profile_definitions_projection(),
         "profiles": profiles,
         "policy_rules": [
             {
@@ -116,6 +156,51 @@ def build_agent_profile_tool_projection(
                 "description": "worker profile 按写作域能力分组接收有限工具面。",
             },
         ],
+    }
+
+
+def build_agent_profile_definitions_projection() -> dict[str, Any]:
+    return {
+        "version": AGENT_PROFILE_DEFINITION_VERSION,
+        "profiles": {
+            profile: build_agent_profile_definition(profile)
+            for profile in sorted(AGENT_PROFILE_DEFINITIONS)
+        },
+    }
+
+
+def build_agent_profile_definition(profile: str | None, *, source: str | None = None) -> dict[str, Any] | None:
+    profile_id = str(profile or "").strip()
+    if not profile_id:
+        return None
+
+    definition = AGENT_PROFILE_DEFINITIONS.get(profile_id)
+    if definition is None:
+        return {
+            "version": AGENT_PROFILE_DEFINITION_VERSION,
+            "status": "unknown_profile",
+            "profile": profile_id,
+            "display_name": profile_id,
+            "role": "unknown",
+            "tier": "unknown",
+            "delegation_allowed": False,
+            "delegate_to_profiles": [],
+            "source": source,
+            "description": "",
+        }
+
+    rule = AGENT_TOOL_PROFILE_RULES.get(profile_id, {})
+    return {
+        "version": AGENT_PROFILE_DEFINITION_VERSION,
+        "status": "known",
+        "profile": profile_id,
+        "display_name": str(definition["display_name"]),
+        "role": str(definition["role"]),
+        "tier": str(definition["tier"]),
+        "delegation_allowed": definition["delegation_allowed"] is True,
+        "delegate_to_profiles": [str(item) for item in definition.get("delegate_to_profiles", ())],
+        "source": source,
+        "description": str(rule.get("description") or ""),
     }
 
 
