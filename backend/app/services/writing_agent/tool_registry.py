@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.outline_lookup import find_outline_chapter
 from app.models import ChapterContent, Outline, Project, ProjectProfileVersion, Setup, Storyline
+from app.services.writing_agent.agent_tool_surface_policy import build_agent_tool_surface_policy_projection
 from app.services.writing_agent.agent_core_tool_descriptors import AGENT_CORE_TOOL_DESCRIPTORS
 from app.services.writing_agent.agent_generation_tool_descriptors import AGENT_GENERATION_TOOL_DESCRIPTORS
 from app.services.writing_agent.agent_memory_trace_tool_descriptors import AGENT_MEMORY_TRACE_TOOL_DESCRIPTORS
@@ -95,6 +96,7 @@ def build_agent_tool_plan(
         "hidden_tools": hidden_tools,
         "diagnostics": diagnostics,
         "toolsets": _group_visible_tools_by_category(visible_tools),
+        "tool_policy_projection": build_agent_tool_surface_policy_projection(visible_tools, hidden_tools),
     }
 
 

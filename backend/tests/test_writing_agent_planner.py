@@ -28,6 +28,9 @@ def test_planner_builds_ready_next_chapter_tool_chain(db_session):
     ]
     assert plan["trace"]["selected_tools"] == _tool_names(plan)
     assert plan["trace"]["plan_id"].startswith("plan:")
+    assert plan["trace"]["tool_policy_projection"]["version"] == "phase206.agent_tool_surface_policy.v1"
+    assert plan["trace"]["tool_policy_projection"]["summary"]["read_tools"] >= 1
+    assert "describe_agent_tools" in plan["trace"]["tool_policy_projection"]["parallel_read_tools"]
     first_step = plan["steps"][0]
     generate_step = next(step for step in plan["steps"] if step["tool_name"] == "generate_chapter")
     assert first_step["step_id"].startswith("step:")

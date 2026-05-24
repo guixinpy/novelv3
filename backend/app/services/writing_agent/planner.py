@@ -53,6 +53,7 @@ def build_writing_agent_run_plan(
         "source_projection_id": source_projection_id,
         "planner_version": PLANNER_VERSION,
         "intent_class": intent_class,
+        "tool_policy_projection": tool_plan.get("tool_policy_projection"),
         "selected_tools": [],
         "rejected_tools": [],
         "missing_dependencies": [],

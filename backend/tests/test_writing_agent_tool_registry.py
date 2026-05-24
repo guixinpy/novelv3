@@ -1187,6 +1187,33 @@ def test_agent_tool_plan_uses_adapter_metadata_for_surface_classification(db_ses
     assert tools["review_longform_chapter_batch_execution"]["agent_tool_surface"]["mutability"] == "write"
 
 
+def test_agent_tool_plan_exposes_tool_policy_projection(db_session):
+    project = _seed_ready_project(db_session)
+
+    plan = build_agent_tool_plan(db_session, project.id, chapter_index=2)
+    projection = plan["tool_policy_projection"]
+
+    assert projection["version"] == "phase206.agent_tool_surface_policy.v1"
+    assert projection["summary"]["visible_tools"] == len(plan["visible_tools"])
+    assert projection["summary"]["hidden_tools"] == len(plan["hidden_tools"])
+    assert projection["summary"]["read_tools"] >= 1
+    assert projection["summary"]["write_tools"] >= 1
+    assert projection["summary"]["guarded_write_tools"] >= 1
+    assert projection["summary"]["unclassified_tools"] == len(projection["unclassified_tools"])
+    assert "describe_agent_tools" in projection["parallel_read_tools"]
+    assert "generate_chapter" in projection["approval_required_tools"]
+    assert "apply_world_model_proposal_resolution" in projection["approval_required_tools"]
+    assert "apply_world_model_proposal_resolution" in projection["explicit_confirmation_tools"]
+    assert "describe_agent_tools" in projection["agent_only_tools"]
+    assert "generate_chapter" in projection["legacy_action_bridge_tools"]
+    policy_codes = {rule["code"] for rule in projection["policy_rules"]}
+    assert {
+        "read_tools_are_parallel_safe",
+        "guarded_writes_require_confirmation",
+        "unclassified_tools_require_review",
+    }.issubset(policy_codes)
+
+
 def _seed_ready_project(db_session) -> Project:
     project = Project(name="Tool Plan Ready", genre="都市悬疑", target_chapter_count=600, target_word_count=1200000)
     db_session.add(project)
