@@ -50,6 +50,12 @@ type UiAwareResponse =
 
 type WritingControlAction = 'start' | 'pause' | 'resume'
 type RecoveryExecutePayload = { sourceRunId: string; planHash: string }
+type RouteUpgradeApplyPayload = {
+  sourceRunId: string
+  pendingActionId: string
+  approvalContractHash: string
+  approvalContract: Record<string, unknown>
+}
 
 const route = useRoute()
 const router = useRouter()
@@ -426,6 +432,43 @@ async function executeRecoveryFromRun(payload: RecoveryExecutePayload) {
     agentRunLoading.value = false
   }
 }
+
+async function applyRouteUpgradeFromRun(payload: RouteUpgradeApplyPayload) {
+  if (!payload.pendingActionId || !payload.approvalContractHash || !payload.approvalContract) return
+  if (payload.sourceRunId !== activeAgentRunId.value || payload.sourceRunId !== activeAgentRun.value?.id) return
+  if (payload.pendingActionId !== chat.pendingAction?.id) return
+  agentRunError.value = ''
+  agentRunLoading.value = true
+  try {
+    const run = await api.createAgentRun(pid.value, {
+      goal: '应用待确认操作的路由升级审批契约',
+      entrypoint: 'pending_action_route_upgrade_apply',
+      tools: [
+        {
+          tool_name: 'apply_pending_action_route_approval_opt_in',
+          params: {
+            pending_action_id: payload.pendingActionId,
+            confirm_apply: true,
+            approval_contract_hash: payload.approvalContractHash,
+            approval_contract: payload.approvalContract,
+          },
+        },
+      ],
+      input: {
+        safety_action: { kind: 'apply_route_upgrade_contract' },
+        source_run_id: payload.sourceRunId,
+        pending_action_id: payload.pendingActionId,
+      },
+    })
+    activeAgentRunId.value = run.id
+    activeAgentRun.value = run
+    chat.appendRouteUpgradeApplyFeedback(run)
+  } catch (err) {
+    agentRunError.value = err instanceof Error ? err.message : '应用路由升级失败'
+  } finally {
+    agentRunLoading.value = false
+  }
+}
 </script>
 
 <template>
@@ -511,9 +554,11 @@ async function executeRecoveryFromRun(payload: RecoveryExecutePayload) {
       :run="activeAgentRun"
       :loading="agentRunLoading"
       :error="agentRunError"
+      :pending-action-id="chat.pendingAction?.id || null"
       @close="closeAgentRun"
       @refresh="refreshAgentRun"
       @execute-recovery="executeRecoveryFromRun"
+      @apply-route-upgrade="applyRouteUpgradeFromRun"
     />
   </div>
   <div v-else class="hermes-view__loading">

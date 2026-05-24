@@ -8,12 +8,19 @@ const props = defineProps<{
   loading: boolean
   error: string
   run: WritingAgentRunDetail | null
+  pendingActionId?: string | null
 }>()
 
 const emit = defineEmits<{
   close: []
   refresh: []
   executeRecovery: [payload: { sourceRunId: string; planHash: string }]
+  applyRouteUpgrade: [payload: {
+    sourceRunId: string
+    pendingActionId: string
+    approvalContractHash: string
+    approvalContract: Record<string, unknown>
+  }]
 }>()
 
 const steps = computed(() => props.run?.steps || [])
@@ -68,6 +75,41 @@ const recoveryExecutePayload = computed(() => {
   }
   return null
 })
+const routeUpgradeContractOutput = computed(() => {
+  for (let index = steps.value.length - 1; index >= 0; index -= 1) {
+    const step = steps.value[index]
+    if (step?.tool_name !== 'preview_pending_action_route_approval_opt_in_apply_contract') continue
+    const output = recordValue(step.output)
+    if (Object.keys(output).length) return output
+  }
+  return null
+})
+const routeUpgradeStatus = computed(() => stringValue(routeUpgradeContractOutput.value?.status))
+const routeUpgradeRequiredConfirmation = computed(() => routeUpgradeContractOutput.value?.required_confirmation === true)
+const routeUpgradeContract = computed(() => recordValue(routeUpgradeContractOutput.value?.approval_contract))
+const routeUpgradeContractHash = computed(() => stringValue(routeUpgradeContractOutput.value?.approval_contract_hash))
+const routeUpgradePendingActionId = computed(() => {
+  const output = routeUpgradeContractOutput.value
+  const routePreview = recordValue(output?.route_apply_preview)
+  const recommendedCall = firstRecommendedRouteApplyCall(output)
+  const recommendedParams = recordValue(recommendedCall?.params)
+  return (
+    stringValue(output?.pending_action_id) ||
+    stringValue(routePreview.pending_action_id) ||
+    stringValue(recommendedParams.pending_action_id)
+  )
+})
+const canApplyRouteUpgrade = computed(() => {
+  const output = routeUpgradeContractOutput.value
+  if (!props.run?.id || !output) return false
+  if (props.run.entrypoint !== 'pending_action_safety_action') return false
+  if (props.run.status !== 'success') return false
+  if (routeUpgradeStatus.value !== 'requires_confirmation') return false
+  if (!routeUpgradeRequiredConfirmation.value) return false
+  if (!routeUpgradePendingActionId.value || !routeUpgradeContractHash.value || !Object.keys(routeUpgradeContract.value).length) return false
+  if (String(props.pendingActionId || '').trim() !== routeUpgradePendingActionId.value) return false
+  return hasRouteApplyRecommendation(output)
+})
 
 function close() {
   emit('close')
@@ -80,6 +122,16 @@ function refreshRun() {
 function executeRecovery() {
   if (!recoveryExecutePayload.value) return
   emit('executeRecovery', recoveryExecutePayload.value)
+}
+
+function applyRouteUpgrade() {
+  if (!canApplyRouteUpgrade.value || !props.run?.id) return
+  emit('applyRouteUpgrade', {
+    sourceRunId: props.run.id,
+    pendingActionId: routeUpgradePendingActionId.value,
+    approvalContractHash: routeUpgradeContractHash.value,
+    approvalContract: routeUpgradeContract.value,
+  })
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -110,6 +162,32 @@ function guardrailStatusLabel(status: unknown) {
   if (value === 'ready') return '通过'
   if (value === 'blocked') return '已阻止'
   return value || '未知'
+}
+
+function routeUpgradeStatusLabel(status: unknown) {
+  const value = stringValue(status)
+  if (value === 'requires_confirmation') return '等待确认'
+  if (value === 'blocked') return '已阻止'
+  if (value === 'not_required') return '无需处理'
+  if (value === 'success') return '成功'
+  return value || '未知'
+}
+
+function recordValue(value: unknown): Record<string, unknown> {
+  return isRecord(value) ? value : {}
+}
+
+function firstRecommendedRouteApplyCall(output: Record<string, unknown> | null | undefined) {
+  const calls = Array.isArray(output?.recommended_next_tool_calls) ? output.recommended_next_tool_calls : []
+  return calls
+    .filter(isRecord)
+    .find((call) => call.tool_name === 'apply_pending_action_route_approval_opt_in') || null
+}
+
+function hasRouteApplyRecommendation(output: Record<string, unknown>) {
+  const tools = Array.isArray(output.recommended_next_tools) ? output.recommended_next_tools : []
+  if (tools.includes('apply_pending_action_route_approval_opt_in')) return true
+  return Boolean(firstRecommendedRouteApplyCall(output))
 }
 </script>
 
@@ -235,6 +313,38 @@ function guardrailStatusLabel(status: unknown) {
           </div>
         </section>
 
+        <section
+          v-if="routeUpgradeContractOutput"
+          class="agent-run-drawer__route-upgrade"
+          aria-label="Route upgrade approval"
+        >
+          <h4>路由升级审批</h4>
+          <dl class="agent-run-drawer__facts">
+            <div>
+              <dt>契约状态</dt>
+              <dd>{{ routeUpgradeStatusLabel(routeUpgradeStatus) }}</dd>
+            </div>
+            <div>
+              <dt>确认要求</dt>
+              <dd>{{ routeUpgradeRequiredConfirmation ? '需要确认' : '无需确认' }}</dd>
+            </div>
+            <div v-if="routeUpgradePendingActionId">
+              <dt>待处理动作</dt>
+              <dd>{{ routeUpgradePendingActionId }}</dd>
+            </div>
+          </dl>
+          <div v-if="canApplyRouteUpgrade" class="agent-run-drawer__actions">
+            <button
+              type="button"
+              class="agent-run-drawer__execute"
+              data-testid="apply-route-upgrade"
+              @click="applyRouteUpgrade"
+            >
+              确认应用路由升级
+            </button>
+          </div>
+        </section>
+
         <section class="agent-run-drawer__steps" aria-label="Agent run steps">
           <h4>工具步骤</h4>
           <ol v-if="steps.length">
@@ -330,6 +440,15 @@ function guardrailStatusLabel(status: unknown) {
 }
 
 .agent-run-drawer__recovery {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-secondary);
+}
+
+.agent-run-drawer__route-upgrade {
   display: grid;
   gap: var(--space-3);
   padding: var(--space-3);

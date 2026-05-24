@@ -97,8 +97,8 @@ async function mountHermesView(path = '/projects/project-1/hermes') {
         ModelTraceDrawer: { template: '<div />' },
         AgentRunDrawer: {
           props: ['open', 'run'],
-          emits: ['executeRecovery', 'refresh'],
-          template: '<div v-if="open" data-testid="agent-run-drawer">{{ run && run.id }}<button data-testid="stub-execute-recovery" @click="$emit(\'executeRecovery\', { sourceRunId: \'source-run-1\', planHash: \'plan-hash-1\' })">execute</button><button data-testid="stub-refresh-agent-run" @click="$emit(\'refresh\')">refresh</button></div>',
+          emits: ['executeRecovery', 'refresh', 'applyRouteUpgrade'],
+          template: '<div v-if="open" data-testid="agent-run-drawer">{{ run && run.id }}<button data-testid="stub-execute-recovery" @click="$emit(\'executeRecovery\', { sourceRunId: \'source-run-1\', planHash: \'plan-hash-1\' })">execute</button><button data-testid="stub-refresh-agent-run" @click="$emit(\'refresh\')">refresh</button><button data-testid="stub-apply-route-upgrade" @click="$emit(\'applyRouteUpgrade\', { sourceRunId: run && run.id, pendingActionId: \'action-1\', approvalContractHash: \'approval:secret\', approvalContract: { approval: { approval_contract_hash: \'approval:secret\' } } })">apply route</button><button data-testid="stub-apply-route-upgrade-stale" @click="$emit(\'applyRouteUpgrade\', { sourceRunId: \'stale-run\', pendingActionId: \'action-1\', approvalContractHash: \'approval:secret\', approvalContract: { approval: { approval_contract_hash: \'approval:secret\' } } })">stale route</button></div>',
         },
       },
     },
@@ -278,6 +278,133 @@ describe('HermesView', () => {
     expect(wrapper.get('[data-testid="agent-run-drawer"]').text()).toContain('run-safety-1')
     expect(wrapper.get('[data-testid="stub-last-message"]').text()).toContain('路由升级审批契约已生成')
     expect(wrapper.get('[data-testid="stub-last-message"]').text()).not.toContain('approval:secret')
+
+    wrapper.unmount()
+  })
+
+  it('creates a guarded route upgrade apply run from the agent drawer without resolving the pending action', async () => {
+    vi.mocked(api.getWorkspaceBootstrap).mockResolvedValueOnce({
+      ...workspaceBootstrap(),
+      dialogs: {
+        hermes: {
+          messages: [
+            {
+              id: 'message-apply',
+              role: 'assistant',
+              content: '准备生成设定。',
+              created_at: '2026-05-24T10:00:00Z',
+              pending_action: {
+                id: 'action-1',
+                type: 'preview_setup',
+                description: '生成设定',
+                params: { project_id: 'project-1' },
+                requires_confirmation: true,
+              },
+            },
+          ],
+        },
+      },
+    } as any)
+    vi.mocked((api as any).createAgentRun).mockResolvedValueOnce({
+      id: 'run-apply-1',
+      project_id: 'project-1',
+      goal: '应用待确认操作的路由升级审批契约',
+      status: 'success',
+      entrypoint: 'pending_action_route_upgrade_apply',
+      input: {
+        tools: [
+          {
+            tool_name: 'apply_pending_action_route_approval_opt_in',
+            params: {
+              approval_contract_hash: 'approval:secret',
+              approval_contract: { approval: { approval_contract_hash: 'approval:secret' } },
+            },
+          },
+        ],
+      },
+      output: null,
+      error: null,
+      steps: [
+        {
+          output: {
+            status: 'success',
+            write_performed: true,
+            reason: 'route_opt_in_apply_completed',
+            approval_verification: {
+              drift: { expected_approval_contract_hash: 'approval:secret' },
+            },
+          },
+        },
+      ],
+    })
+    const wrapper = await mountHermesView()
+
+    await wrapper.get('[data-testid="stub-open-agent-run"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="stub-apply-route-upgrade"]').trigger('click')
+    await flushPromises()
+
+    expect((api as any).createAgentRun).toHaveBeenCalledWith('project-1', {
+      goal: '应用待确认操作的路由升级审批契约',
+      entrypoint: 'pending_action_route_upgrade_apply',
+      tools: [
+        {
+          tool_name: 'apply_pending_action_route_approval_opt_in',
+          params: {
+            pending_action_id: 'action-1',
+            confirm_apply: true,
+            approval_contract_hash: 'approval:secret',
+            approval_contract: { approval: { approval_contract_hash: 'approval:secret' } },
+          },
+        },
+      ],
+      input: {
+        safety_action: { kind: 'apply_route_upgrade_contract' },
+        source_run_id: 'run-1',
+        pending_action_id: 'action-1',
+      },
+    })
+    expect((api as any).resolveAction).not.toHaveBeenCalled()
+    expect(wrapper.get('[data-testid="agent-run-drawer"]').text()).toContain('run-apply-1')
+    expect(wrapper.get('[data-testid="stub-last-message"]').text()).toContain('路由升级应用已创建')
+    expect(wrapper.get('[data-testid="stub-last-message"]').text()).not.toContain('approval:secret')
+    expect(wrapper.get('[data-testid="stub-last-message"]').text()).not.toContain('approval_contract')
+
+    wrapper.unmount()
+  })
+
+  it('rejects stale route upgrade apply events from inactive runs', async () => {
+    vi.mocked(api.getWorkspaceBootstrap).mockResolvedValueOnce({
+      ...workspaceBootstrap(),
+      dialogs: {
+        hermes: {
+          messages: [
+            {
+              id: 'message-apply',
+              role: 'assistant',
+              content: '准备生成设定。',
+              created_at: '2026-05-24T10:00:00Z',
+              pending_action: {
+                id: 'action-1',
+                type: 'preview_setup',
+                description: '生成设定',
+                params: { project_id: 'project-1' },
+                requires_confirmation: true,
+              },
+            },
+          ],
+        },
+      },
+    } as any)
+    const wrapper = await mountHermesView()
+
+    await wrapper.get('[data-testid="stub-open-agent-run"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="stub-apply-route-upgrade-stale"]').trigger('click')
+    await flushPromises()
+
+    expect((api as any).createAgentRun).not.toHaveBeenCalled()
+    expect((api as any).resolveAction).not.toHaveBeenCalled()
 
     wrapper.unmount()
   })

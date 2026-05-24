@@ -414,6 +414,12 @@ export const useChatStore = defineStore('chat', () => {
     clearStaleHistoryAnchorAfterLocalAppend()
   }
 
+  function appendRouteUpgradeApplyFeedback(run: WritingAgentRunDetail) {
+    messages.value.push(buildRouteUpgradeApplyFeedback(run))
+    historyCursor.value += 1
+    clearStaleHistoryAnchorAfterLocalAppend()
+  }
+
   async function preparePendingActionSafetyAction(action: PendingActionSafetyAction): Promise<WritingAgentRunDetail | null> {
     if (loading.value || !projectId.value || !pendingAction.value) return null
     if (!isRouteUpgradeSafetyAction(action, pendingAction.value.id)) return null
@@ -614,6 +620,7 @@ export const useChatStore = defineStore('chat', () => {
     init, initFromWorkspaceBootstrap, loadDiagnosis, setDialogType, sendText, sendCommand, sendButtonAction, resolveAction, regenerateRevision,
     preparePendingActionSafetyAction,
     appendAgentRunExecutionFeedback,
+    appendRouteUpgradeApplyFeedback,
   }
 })
 
@@ -644,6 +651,35 @@ function buildRouteUpgradeContractFeedback(run: WritingAgentRunDetail): ChatMess
     meta: {
       agent_run_id: run.id,
       agent_action_type: 'prepare_route_upgrade_contract',
+    },
+  }
+}
+
+function buildRouteUpgradeApplyFeedback(run: WritingAgentRunDetail): ChatMessage {
+  const output = latestStepOutput(run)
+  const status = stringValue(output.status) || String(run.status || '')
+  const actionResult = {
+    type: 'apply_pending_action_route_approval_opt_in',
+    status: String(run.status || ''),
+    data: {
+      agent_run_id: run.id,
+      status,
+      ...(typeof output.write_performed === 'boolean'
+        ? { write_performed: output.write_performed }
+        : {}),
+      ...(stringValue(output.reason)
+        ? { reason: stringValue(output.reason) }
+        : {}),
+    },
+  }
+  return {
+    role: 'system',
+    content: '路由升级应用已创建，可在 Agent 运行详情中查看结果。',
+    action_result: actionResult,
+    action_result_view: buildAgentRunActionResultView(actionResult),
+    meta: {
+      agent_run_id: run.id,
+      agent_action_type: 'apply_pending_action_route_approval_opt_in',
     },
   }
 }

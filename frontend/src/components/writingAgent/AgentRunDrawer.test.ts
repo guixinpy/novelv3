@@ -215,6 +215,152 @@ describe('AgentRunDrawer', () => {
     ])
   })
 
+  it('renders route upgrade guarded apply only for eligible contract preview runs without leaking contract internals', async () => {
+    const wrapper = mount(AgentRunDrawer, {
+      attachTo: document.body,
+      props: {
+        open: true,
+        loading: false,
+        error: '',
+        pendingActionId: 'action-1',
+        run: {
+          id: 'run-contract',
+          project_id: 'project-1',
+          goal: '生成待确认操作的路由升级审批契约',
+          status: 'success',
+          entrypoint: 'pending_action_safety_action',
+          input: {},
+          output: null,
+          error: null,
+          steps: [
+            {
+              id: 'step-contract',
+              run_id: 'run-contract',
+              project_id: 'project-1',
+              step_index: 1,
+              tool_name: 'preview_pending_action_route_approval_opt_in_apply_contract',
+              status: 'success',
+              input: {},
+              output: {
+                status: 'requires_confirmation',
+                required_confirmation: true,
+                pending_action_id: 'action-1',
+                approval_contract_hash: 'approval:secret',
+                approval_contract: { approval: { approval_contract_hash: 'approval:secret' } },
+                recommended_next_tools: ['apply_pending_action_route_approval_opt_in'],
+              },
+            },
+          ],
+        },
+      },
+    })
+
+    const text = document.body.textContent || ''
+    expect(text).toContain('路由升级审批')
+    expect(text).toContain('等待确认')
+    expect(text).toContain('需要确认')
+    expect(text).not.toContain('approval:secret')
+    expect(text).not.toContain('approval_contract')
+
+    const button = document.body.querySelector('[data-testid="apply-route-upgrade"]') as HTMLButtonElement
+    expect(button).not.toBeNull()
+    await button.click()
+
+    expect(wrapper.emitted('applyRouteUpgrade')).toEqual([[
+      {
+        sourceRunId: 'run-contract',
+        pendingActionId: 'action-1',
+        approvalContractHash: 'approval:secret',
+        approvalContract: { approval: { approval_contract_hash: 'approval:secret' } },
+      },
+    ]])
+  })
+
+  it('does not render route upgrade apply when contract preview is not confirmable', () => {
+    mount(AgentRunDrawer, {
+      attachTo: document.body,
+      props: {
+        open: true,
+        loading: false,
+        error: '',
+        run: {
+          id: 'run-contract',
+          project_id: 'project-1',
+          goal: '无需升级',
+          status: 'success',
+          entrypoint: 'pending_action_safety_action',
+          input: {},
+          output: null,
+          error: null,
+          steps: [
+            {
+              id: 'step-contract',
+              run_id: 'run-contract',
+              project_id: 'project-1',
+              step_index: 1,
+              tool_name: 'preview_pending_action_route_approval_opt_in_apply_contract',
+              status: 'success',
+              input: {},
+              output: {
+                status: 'not_required',
+                required_confirmation: false,
+                pending_action_id: 'action-1',
+                recommended_next_tools: [],
+              },
+            },
+          ],
+        },
+      },
+    })
+
+    expect(document.body.querySelector('[data-testid="apply-route-upgrade"]')).toBeNull()
+  })
+
+  it('does not render route upgrade apply for stale or unrelated contract runs', () => {
+    mount(AgentRunDrawer, {
+      attachTo: document.body,
+      props: {
+        open: true,
+        loading: false,
+        error: '',
+        pendingActionId: 'action-current',
+        run: {
+          id: 'run-contract',
+          project_id: 'project-1',
+          goal: '生成待确认操作的路由升级审批契约',
+          status: 'success',
+          entrypoint: 'manual_debug_run',
+          input: {},
+          output: null,
+          error: null,
+          steps: [
+            {
+              id: 'step-contract',
+              run_id: 'run-contract',
+              project_id: 'project-1',
+              step_index: 1,
+              tool_name: 'preview_pending_action_route_approval_opt_in_apply_contract',
+              status: 'success',
+              input: {},
+              output: {
+                status: 'requires_confirmation',
+                required_confirmation: true,
+                pending_action_id: 'action-stale',
+                approval_contract_hash: 'approval:secret',
+                approval_contract: { approval: { approval_contract_hash: 'approval:secret' } },
+                recommended_next_tools: ['apply_pending_action_route_approval_opt_in'],
+              },
+            },
+          ],
+        },
+      },
+    })
+
+    const text = document.body.textContent || ''
+    expect(text).not.toContain('approval:secret')
+    expect(document.body.querySelector('[data-testid="apply-route-upgrade"]')).toBeNull()
+  })
+
   it('labels confirmed recovery execution runs with source metadata', () => {
     mount(AgentRunDrawer, {
       attachTo: document.body,

@@ -199,6 +199,58 @@ describe('chat workspace polling', () => {
     expect(store.messages).toEqual([])
   })
 
+  it('appendRouteUpgradeApplyFeedback 会生成脱敏的路由升级应用反馈', () => {
+    const store = useChatStore()
+
+    store.appendRouteUpgradeApplyFeedback({
+      id: 'run-apply-1',
+      project_id: 'project-1',
+      goal: '应用待确认操作的路由升级审批契约',
+      status: 'success',
+      entrypoint: 'pending_action_route_upgrade_apply',
+      input: {
+        tools: [
+          {
+            tool_name: 'apply_pending_action_route_approval_opt_in',
+            params: {
+              approval_contract_hash: 'approval:secret',
+              approval_contract: { approval: { approval_contract_hash: 'approval:secret' } },
+            },
+          },
+        ],
+      },
+      output: null,
+      error: null,
+      steps: [
+        {
+          output: {
+            status: 'success',
+            write_performed: true,
+            reason: 'route_opt_in_apply_completed',
+            approval_verification: {
+              drift: { expected_approval_contract_hash: 'approval:secret' },
+            },
+          },
+        },
+      ],
+    } as any)
+
+    const message = store.messages[store.messages.length - 1]
+    expect(message?.role).toBe('system')
+    expect(message?.content).toContain('路由升级应用已创建')
+    expect(message?.action_result?.type).toBe('apply_pending_action_route_approval_opt_in')
+    expect(message?.action_result?.data).toEqual({
+      agent_run_id: 'run-apply-1',
+      status: 'success',
+      write_performed: true,
+      reason: 'route_opt_in_apply_completed',
+    })
+    expect(message?.action_result_view?.label).toBe('路由升级已应用')
+    expect(JSON.stringify(message)).not.toContain('approval:secret')
+    expect(JSON.stringify(message)).not.toContain('approval_contract')
+    expect(JSON.stringify(message)).not.toContain('confirm_apply')
+  })
+
   it('confirm 后轮询不会因为中途出现其他新消息而提前断开，直到消费到最终完成消息', async () => {
     const store = useChatStore()
     store.projectId = 'project-1'
