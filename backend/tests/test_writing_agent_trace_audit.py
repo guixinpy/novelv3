@@ -88,6 +88,55 @@ def test_inspect_agent_trace_audit_summarizes_successful_run_without_raw_context
     assert output["recommended_actions"] == []
 
 
+def test_inspect_agent_trace_audit_includes_profile_policy_audit(db_session):
+    project = Project(name="Trace Profile Policy Audit")
+    db_session.add(project)
+    db_session.flush()
+    run = WritingAgentRun(project_id=project.id, goal="检查 profile 策略", status="success", entrypoint="api")
+    db_session.add(run)
+    db_session.flush()
+    db_session.add(
+        WritingAgentStep(
+            run_id=run.id,
+            project_id=project.id,
+            step_index=1,
+            tool_name="describe_agent_tools",
+            status="success",
+            input={"params": {"agent_profile": "orchestrator"}},
+            output={
+                "status": "completed",
+                "agent_profile_tool_projection": {
+                    "consistency_audit": {
+                        "version": "phase215.agent_profile_policy_audit.v1",
+                        "status": "needs_attention",
+                        "summary": {"issues": 1, "delegate_edges": 4},
+                        "issues": [
+                            {
+                                "code": "delegate_target_missing_definition",
+                                "severity": "error",
+                                "profile": "orchestrator",
+                                "target": "ghost_worker",
+                            }
+                        ],
+                        "delegate_edges": [{"source": "orchestrator", "target": "ghost_worker"}],
+                    }
+                },
+            },
+            target_type="agent_tool_plan",
+        )
+    )
+    db_session.commit()
+
+    output = inspect_agent_trace_audit(db_session, project.id, run_id=run.id)
+
+    assert output["audit"]["profile_policy_status"] == "needs_attention"
+    assert output["audit"]["profile_policy_issue_count"] == 1
+    assert output["profile_policy_audit"]["status"] == "needs_attention"
+    assert output["profile_policy_audit"]["summary"]["issues"] == 1
+    assert output["profile_policy_audit"]["issues"][0]["code"] == "delegate_target_missing_definition"
+    assert "delegate_edges" not in output["profile_policy_audit"]
+
+
 def test_inspect_agent_trace_audit_exposes_recommended_recovery_for_blocked_run(db_session):
     project = Project(name="Trace Audit Blocked")
     db_session.add(project)

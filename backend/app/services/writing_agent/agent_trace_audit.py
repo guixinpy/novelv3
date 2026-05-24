@@ -63,19 +63,27 @@ def inspect_agent_trace_audit(
     context = _context_summary([traces[trace_id] for trace_id in trace_ids if trace_id in traces])
     failure = _failure_summary(run, steps)
     recommended_actions = _recommended_actions(steps, failure=failure)
+    profile_policy_audit = _profile_policy_audit_summary(_profile_policy_audit_from_steps(steps))
+    audit = {
+        "status": _audit_status(run.status),
+        "reason": _audit_reason(run.status, failure=failure),
+        "step_count": len(steps),
+        "trace_count": len(trace_items),
+        "approval_event_count": len(approval_events),
+        "event_chain_count": len(event_chain),
+        "context_block_count": context["total_blocks"],
+    }
+    if profile_policy_audit is not None:
+        profile_policy_summary = (
+            profile_policy_audit.get("summary") if isinstance(profile_policy_audit.get("summary"), dict) else {}
+        )
+        audit["profile_policy_status"] = profile_policy_audit.get("status")
+        audit["profile_policy_issue_count"] = profile_policy_summary.get("issues", 0)
     return _json_safe_output(
         {
             "status": "completed",
             "project_id": project_id,
-            "audit": {
-                "status": _audit_status(run.status),
-                "reason": _audit_reason(run.status, failure=failure),
-                "step_count": len(steps),
-                "trace_count": len(trace_items),
-                "approval_event_count": len(approval_events),
-                "event_chain_count": len(event_chain),
-                "context_block_count": context["total_blocks"],
-            },
+            "audit": audit,
             "run": _run_summary(run),
             "steps": [_step_summary(step) for step in steps],
             "traces": trace_items,
@@ -85,6 +93,7 @@ def inspect_agent_trace_audit(
             "context": context,
             "failure": failure,
             "recommended_actions": recommended_actions,
+            "profile_policy_audit": profile_policy_audit,
             "trace": _audit_trace_metadata(),
         }
     )
@@ -513,6 +522,58 @@ def _recommended_actions(steps: list[WritingAgentStep], *, failure: dict[str, An
                 }
             ]
     return [{"tool_name": "plan_recovery_tools", "reason_code": failure.get("reason_code") or "agent_run_blocked"}]
+
+
+def _profile_policy_audit_from_steps(steps: list[WritingAgentStep]) -> dict[str, Any] | None:
+    for step in reversed(steps):
+        if step.tool_name != "describe_agent_tools":
+            continue
+        output = step.output if isinstance(step.output, dict) else {}
+        projection = (
+            output.get("agent_profile_tool_projection")
+            if isinstance(output.get("agent_profile_tool_projection"), dict)
+            else {}
+        )
+        audit = projection.get("consistency_audit")
+        if isinstance(audit, dict):
+            return dict(audit)
+    return None
+
+
+def _profile_policy_audit_summary(audit: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(audit, dict):
+        return None
+    summary = audit.get("summary") if isinstance(audit.get("summary"), dict) else {}
+    issues = audit.get("issues") if isinstance(audit.get("issues"), list) else []
+    return {
+        "version": str(audit.get("version") or ""),
+        "status": str(audit.get("status") or ""),
+        "summary": {
+            "issues": _non_negative_int(summary.get("issues")),
+            "delegate_edges": _non_negative_int(summary.get("delegate_edges")),
+        },
+        "issues": [_profile_policy_issue_summary(issue) for issue in issues if isinstance(issue, dict)],
+    }
+
+
+def _profile_policy_issue_summary(issue: dict[str, Any]) -> dict[str, Any]:
+    summary = {
+        "code": str(issue.get("code") or ""),
+        "severity": str(issue.get("severity") or ""),
+        "profile": str(issue.get("profile") or ""),
+    }
+    target = str(issue.get("target") or "").strip()
+    if target:
+        summary["target"] = target
+    return summary
+
+
+def _non_negative_int(value: Any) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return 0
+    return max(parsed, 0)
 
 
 def _audit_status(status: str) -> str:
