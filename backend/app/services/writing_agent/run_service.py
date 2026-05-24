@@ -833,11 +833,39 @@ def _continuation_state(run: WritingAgentRun, steps: list[WritingAgentStep]) -> 
         "last_successful_tool": _step_marker(last_successful_step),
         "blocked_tool": _step_marker(blocked_step),
         "next_expected_tool": next_expected_tool,
+        "profile_policy_health": _profile_policy_health(steps),
         "recommended_followups": recommended_followups,
         "recovery": recovery,
         "failure": _failure_state(run, blocked_step),
         "consumed": _consumed_state(steps),
         "resume_hint": _resume_hint(status, next_expected_tool, recovery),
+    }
+
+
+def _profile_policy_health(steps: list[WritingAgentStep]) -> dict[str, Any]:
+    audit = _agent_profile_policy_audit_from_steps(steps)
+    if not isinstance(audit, dict):
+        return {
+            "status": "unknown",
+            "reason": "missing_agent_profile_policy_audit",
+            "issue_count": 0,
+            "recommended_tools": ["describe_agent_tools"],
+        }
+    summary = audit.get("summary") if isinstance(audit.get("summary"), dict) else {}
+    issue_count = _optional_int(summary.get("issues")) or 0
+    status = _non_empty_string(audit.get("status")) or "unknown"
+    if status == "passed":
+        return {
+            "status": "passed",
+            "reason": "agent_profile_policy_passed",
+            "issue_count": issue_count,
+            "recommended_tools": [],
+        }
+    return {
+        "status": status,
+        "reason": "agent_profile_policy_needs_attention",
+        "issue_count": issue_count,
+        "recommended_tools": ["inspect_agent_health_projection", "describe_agent_tools"],
     }
 
 

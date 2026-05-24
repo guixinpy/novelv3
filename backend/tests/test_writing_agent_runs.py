@@ -165,6 +165,14 @@ def test_agent_run_detail_exposes_agent_profile_projection_for_auto_plan(client)
     assert audit["status"] == "passed"
     assert audit["summary"]["issues"] == 0
     assert audit["summary"]["delegate_edges"] == 4
+    health = payload["output"]["continuation_state"]["profile_policy_health"]
+    assert health == {
+        "status": "passed",
+        "reason": "agent_profile_policy_passed",
+        "issue_count": 0,
+        "recommended_tools": [],
+    }
+    assert "delegate_edges" not in health
 
     detail = client.get(f"/api/v1/projects/{project_id}/agent-runs/{payload['id']}")
 
