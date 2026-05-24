@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.services.writing_agent.tool_contracts import CONFIRM_PARAM_NAMES, HASH_PARAM_NAMES, agent_tool_execution_metadata
-from app.services.writing_agent.tool_descriptor_types import AgentToolDescriptor
+from app.services.writing_agent.tool_contracts import agent_tool_execution_metadata
+from app.services.writing_agent.tool_descriptor_types import AgentToolDescriptor, CONFIRM_PARAM_NAMES, HASH_PARAM_NAMES
 from app.services.writing_agent.tool_registry import list_agent_tool_descriptors
 
 WRITE_MUTABILITY = {"write", "guarded_write"}

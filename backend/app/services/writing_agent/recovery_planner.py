@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.models import WritingAgentRun, WritingAgentStep
 from app.services.writing_agent.agent_step_binding import summarize_resource_binding
+from app.services.writing_agent.tool_executor import writing_agent_tool_adapter_metadata_by_name
 from app.services.writing_agent.tool_registry import allowed_tool_names, build_agent_tool_plan
 
 RECOVERY_PREVIEW_VERSION = "phase50.recovery_preview.v1"
@@ -269,7 +270,12 @@ def _recovery_guardrails(
 def _tool_visible_now(db: Session, project_id: str, tool: dict[str, Any]) -> bool:
     tool_name = str(tool.get("tool_name") or "").strip()
     chapter_index = _chapter_index_from_tool(tool)
-    plan = build_agent_tool_plan(db, project_id, chapter_index=chapter_index)
+    plan = build_agent_tool_plan(
+        db,
+        project_id,
+        chapter_index=chapter_index,
+        adapter_metadata_by_name=writing_agent_tool_adapter_metadata_by_name(),
+    )
     return tool_name in {str(item.get("name")) for item in plan.get("visible_tools", []) if isinstance(item, dict)}
 
 

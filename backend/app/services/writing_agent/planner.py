@@ -11,6 +11,10 @@ from app.models import ChapterContent, WritingAgentRun, WritingAgentStep
 from app.schemas.writing_agent import WritingAgentToolRequest
 from app.services.writing_agent.approval_contract import build_agent_plan_approval_contract
 from app.services.writing_agent.tool_contracts import agent_tool_execution_metadata
+from app.services.writing_agent.tool_executor import (
+    writing_agent_tool_adapter_metadata,
+    writing_agent_tool_adapter_metadata_by_name,
+)
 from app.services.writing_agent.tool_registry import build_agent_tool_plan, get_agent_tool_descriptor
 
 PLANNER_VERSION = "phase53.context_gate.v1"
@@ -37,7 +41,12 @@ def build_writing_agent_run_plan(
     intent_class = _classify_intent(goal, intent, resolved_chapter_index)
     resolved_chapter_generation_route = _normalize_chapter_generation_route(chapter_generation_route)
     plan_id = source_plan_id or _plan_id(project_id, goal, intent_class, resolved_chapter_index)
-    tool_plan = build_agent_tool_plan(db, project_id, chapter_index=resolved_chapter_index)
+    tool_plan = build_agent_tool_plan(
+        db,
+        project_id,
+        chapter_index=resolved_chapter_index,
+        adapter_metadata_by_name=writing_agent_tool_adapter_metadata_by_name(),
+    )
     diagnostics = tool_plan.get("diagnostics", [])
     trace: dict[str, Any] = {
         "plan_id": plan_id,
@@ -347,10 +356,14 @@ def _tool_request_from_step(step: dict[str, Any]) -> dict[str, Any]:
 
 def _step_metadata(trace: dict[str, Any], step: dict[str, Any]) -> dict[str, Any]:
     plan_id = str(trace.get("plan_id") or "")
-    descriptor = get_agent_tool_descriptor(str(step["tool_name"]))
-    execution_metadata = agent_tool_execution_metadata(descriptor)
+    tool_name = str(step["tool_name"])
+    descriptor = get_agent_tool_descriptor(tool_name)
+    execution_metadata = agent_tool_execution_metadata(
+        descriptor,
+        adapter_metadata=writing_agent_tool_adapter_metadata(tool_name),
+    )
     return {
-        "step_id": _step_id(plan_id, int(step["step_index"]), str(step["tool_name"]), step.get("params") or {}),
+        "step_id": _step_id(plan_id, int(step["step_index"]), tool_name, step.get("params") or {}),
         "plan_id": plan_id,
         "source_projection_id": trace.get("source_projection_id"),
         "mutability": execution_metadata["mutability"],

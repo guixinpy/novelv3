@@ -40,6 +40,7 @@ from app.services.writing_agent.tool_executor import (
     static_writing_agent_tool_adapter_names,
     unhandled_internal_writing_agent_tool_names,
     writing_agent_tool_adapter_metadata,
+    writing_agent_tool_adapter_metadata_by_name,
 )
 from app.services.writing_agent.world_model_tool_adapters import WORLD_MODEL_AGENT_TOOL_ADAPTERS
 
@@ -291,6 +292,20 @@ async def test_tool_executor_handles_describe_agent_tools(db_session):
     assert result.output["status"] == "completed"
     assert "visible_tools" in result.output
     assert "hidden_tools" in result.output
+    tools = {tool["name"]: tool for tool in [*result.output["visible_tools"], *result.output["hidden_tools"]]}
+    describe_surface = tools["describe_agent_tools"]["agent_tool_surface"]
+    assert describe_surface["mutability"] == "read"
+    assert describe_surface["permission_level"] == "read"
+    assert describe_surface["parallel_safe"] is True
+    assert tools["verify_agent_plan_approval_contract"]["agent_tool_surface"]["mutability"] == "read"
+    assert tools["verify_agent_plan_approval_contract"]["agent_tool_surface"]["requires_confirmation"] is False
+    assert tools["preflight_writing"]["agent_tool_surface"]["mutability"] == "read"
+    assert tools["preflight_writing"]["agent_tool_surface"]["permission_level"] == "read"
+    assert tools["inspect_longform_chapter_batch"]["agent_tool_surface"]["mutability"] == "read"
+    assert tools["seed_continuity_anchor_proposals"]["agent_tool_surface"]["mutability"] == "write"
+    assert tools["review_longform_chapter_batch_execution"]["agent_tool_surface"]["mutability"] == "write"
+    assert tools["execute_longform_chapter_batch"]["agent_tool_surface"]["mutability"] == "guarded_write"
+    assert tools["execute_longform_chapter_batch"]["agent_tool_surface"]["permission_level"] == "confirm_required"
 
 
 @pytest.mark.asyncio
@@ -2645,6 +2660,7 @@ def test_tool_executor_exposes_adapter_metadata_for_trace():
         "mutability": "read",
         "handler_name": "preflight_writing",
     }
+    assert writing_agent_tool_adapter_metadata_by_name()["preflight_writing"] == preflight_metadata
     assert writing_agent_tool_adapter_metadata("generate_chapter") == {
         "tool_name": "generate_chapter",
         "adapter_type": "static",

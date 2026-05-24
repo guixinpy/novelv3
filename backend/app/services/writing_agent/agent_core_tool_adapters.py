@@ -22,7 +22,7 @@ def build_agent_core_tool_adapters(
     return {
         "describe_agent_tools": WritingAgentToolAdapter(
             "describe_agent_tools",
-            _describe_agent_tools,
+            _describe_agent_tools(adapter_metadata_by_name_provider),
             category="preflight",
             mutability="read",
         ),
@@ -143,9 +143,20 @@ def build_agent_core_tool_adapters(
     }
 
 
-def _describe_agent_tools(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
-    chapter_index = _optional_int(tool.params.get("chapter_index"))
-    return build_agent_tool_plan(context.db, context.project_id, chapter_index=chapter_index)
+def _describe_agent_tools(
+    adapter_metadata_by_name_provider: AdapterMetadataByNameProvider,
+) -> Callable[[WritingAgentToolContext, WritingAgentToolRequest], dict[str, Any]]:
+    def describe_agent_tools_adapter(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
+        chapter_index = _optional_int(tool.params.get("chapter_index"))
+        return build_agent_tool_plan(
+            context.db,
+            context.project_id,
+            chapter_index=chapter_index,
+            adapter_metadata_by_name=adapter_metadata_by_name_provider(),
+        )
+
+    describe_agent_tools_adapter.__name__ = "_describe_agent_tools"
+    return describe_agent_tools_adapter
 
 
 def _plan_writing_agent_run(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:

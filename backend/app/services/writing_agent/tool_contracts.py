@@ -5,7 +5,11 @@ from typing import Any
 
 from app.services.writing_agent.tool_policy import report_policy_for_tool
 from app.services.writing_agent.tool_recommendations import RECOMMENDATION_OUTPUT_FIELDS
-from app.services.writing_agent.tool_descriptor_types import AgentToolDescriptor
+from app.services.writing_agent.tool_descriptor_types import (
+    AgentToolDescriptor,
+    descriptor_mutability,
+    descriptor_requires_confirmation,
+)
 from app.services.writing_agent.tool_registry import list_agent_tool_descriptors
 
 REFERENCE_ALIGNMENT = {
@@ -41,23 +45,6 @@ CAPABILITY_AREA_BY_CATEGORY = {
     "maintenance": "maintenance",
 }
 
-READ_PREFIXES = ("describe_", "inspect_", "plan_", "preview_", "review_", "summarize_")
-WRITE_PREFIXES = (
-    "generate_",
-    "expand_",
-    "import_",
-    "analyze_",
-    "apply_",
-    "record_",
-    "repair_",
-    "enqueue_",
-    "execute_",
-    "create_",
-    "backfill_",
-    "compress_",
-)
-CONFIRM_PARAM_NAMES = ("confirm_apply", "confirm_enqueue", "confirm_execute")
-HASH_PARAM_NAMES = ("plan_hash", "attempt_manifest_hash", "approval_contract_hash", "expected_post_generation_review_hash")
 MEMORY_BOUNDARY_BY_CATEGORY = {
     "knowledge_base": "knowledge_base",
     "longform_memory": "longform_memory",
@@ -167,20 +154,7 @@ def _schema_present(schema: dict[str, Any]) -> bool:
 
 
 def _mutability(descriptor: AgentToolDescriptor, adapter_metadata: dict[str, Any] | None) -> str:
-    if adapter_metadata and adapter_metadata.get("mutability"):
-        adapter_mutability = str(adapter_metadata["mutability"])
-        if adapter_mutability == "write" and (
-            _requires_confirmation(descriptor) or descriptor.name.startswith(("apply_", "execute_", "enqueue_", "route_"))
-        ):
-            return "guarded_write"
-        return adapter_mutability
-    if descriptor.name.startswith(READ_PREFIXES) or descriptor.non_blocking_report:
-        return "read"
-    if descriptor.name.startswith(("apply_", "execute_", "enqueue_", "route_")) or _requires_confirmation(descriptor):
-        return "guarded_write"
-    if descriptor.name.startswith(WRITE_PREFIXES):
-        return "write"
-    return "unclassified"
+    return descriptor_mutability(descriptor, adapter_metadata=adapter_metadata)
 
 
 def agent_tool_execution_metadata(
@@ -226,10 +200,7 @@ def _side_effects(mutability: str) -> list[str]:
 
 
 def _requires_confirmation(descriptor: AgentToolDescriptor) -> bool:
-    properties = descriptor.input_schema.get("properties") if isinstance(descriptor.input_schema, dict) else {}
-    if not isinstance(properties, dict):
-        return False
-    return any(name in properties for name in CONFIRM_PARAM_NAMES + HASH_PARAM_NAMES)
+    return descriptor_requires_confirmation(descriptor)
 
 
 def _parallel_safe(mutability: str) -> bool:

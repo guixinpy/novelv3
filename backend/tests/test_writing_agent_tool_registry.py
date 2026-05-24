@@ -1120,6 +1120,73 @@ def test_agent_tool_plan_shows_chapter_generation_when_required_inputs_are_ready
     assert any(item["code"] == "missing_world_model_profile" and item["severity"] == "warning" for item in chapter_diagnostics)
 
 
+def test_agent_tool_plan_exposes_agent_tool_surface_for_visible_tools(db_session):
+    project = _seed_ready_project(db_session)
+
+    plan = build_agent_tool_plan(db_session, project.id, chapter_index=2)
+    visible = {tool["name"]: tool for tool in plan["visible_tools"]}
+
+    describe_surface = visible["describe_agent_tools"]["agent_tool_surface"]
+    assert describe_surface == {
+        "visibility": "internal_only",
+        "tool_scope": "agent_only",
+        "mutability": "read",
+        "permission_level": "read",
+        "requires_confirmation": False,
+        "parallel_safe": True,
+    }
+    preflight_surface = visible["preflight_writing"]["agent_tool_surface"]
+    assert preflight_surface["mutability"] == "read"
+    assert preflight_surface["permission_level"] == "read"
+
+    generate_surface = visible["generate_chapter"]["agent_tool_surface"]
+    assert generate_surface["visibility"] == "agent_visible"
+    assert generate_surface["tool_scope"] == "agent_and_legacy_action"
+    assert generate_surface["mutability"] == "write"
+    assert generate_surface["permission_level"] == "write"
+    assert generate_surface["requires_confirmation"] is False
+    assert generate_surface["parallel_safe"] is False
+
+
+def test_agent_tool_plan_exposes_guarded_write_surface_for_hidden_tools(db_session):
+    project = _seed_ready_project(db_session)
+
+    plan = build_agent_tool_plan(db_session, project.id, chapter_index=2)
+    tools = {tool["name"]: tool for tool in [*plan["visible_tools"], *plan["hidden_tools"]]}
+
+    execute_surface = tools["apply_world_model_proposal_resolution"]["agent_tool_surface"]
+    assert execute_surface["mutability"] == "guarded_write"
+    assert execute_surface["permission_level"] == "confirm_required"
+    assert execute_surface["requires_confirmation"] is True
+    assert execute_surface["parallel_safe"] is False
+    assert tools["verify_agent_plan_approval_contract"]["agent_tool_surface"]["mutability"] == "read"
+    assert tools["inspect_longform_chapter_batch"]["agent_tool_surface"]["mutability"] == "read"
+
+
+def test_agent_tool_plan_uses_adapter_metadata_for_surface_classification(db_session):
+    project = _seed_ready_project(db_session)
+
+    plan = build_agent_tool_plan(
+        db_session,
+        project.id,
+        chapter_index=2,
+        adapter_metadata_by_name={
+            "verify_agent_plan_approval_contract": {"mutability": "read", "adapter_type": "static"},
+            "inspect_longform_chapter_batch": {"mutability": "read", "adapter_type": "static"},
+            "seed_continuity_anchor_proposals": {"mutability": "write", "adapter_type": "static"},
+            "review_longform_chapter_batch_execution": {"mutability": "write", "adapter_type": "static"},
+        },
+    )
+    tools = {tool["name"]: tool for tool in [*plan["visible_tools"], *plan["hidden_tools"]]}
+
+    assert tools["verify_agent_plan_approval_contract"]["agent_tool_surface"]["mutability"] == "read"
+    assert tools["verify_agent_plan_approval_contract"]["agent_tool_surface"]["requires_confirmation"] is False
+    assert tools["inspect_longform_chapter_batch"]["agent_tool_surface"]["mutability"] == "read"
+    assert tools["seed_continuity_anchor_proposals"]["agent_tool_surface"]["mutability"] == "write"
+    assert tools["seed_continuity_anchor_proposals"]["agent_tool_surface"]["permission_level"] == "write"
+    assert tools["review_longform_chapter_batch_execution"]["agent_tool_surface"]["mutability"] == "write"
+
+
 def _seed_ready_project(db_session) -> Project:
     project = Project(name="Tool Plan Ready", genre="都市悬疑", target_chapter_count=600, target_word_count=1200000)
     db_session.add(project)

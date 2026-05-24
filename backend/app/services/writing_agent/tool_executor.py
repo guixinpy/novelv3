@@ -68,6 +68,14 @@ def writing_agent_tool_adapter_metadata(tool_name: str) -> dict[str, Any] | None
     return None
 
 
+def writing_agent_tool_adapter_metadata_by_name() -> dict[str, dict[str, Any]]:
+    metadata = _static_adapter_metadata_by_name()
+    preflight_metadata = writing_agent_tool_adapter_metadata("preflight_writing")
+    if preflight_metadata is not None:
+        metadata["preflight_writing"] = preflight_metadata
+    return metadata
+
+
 def unhandled_internal_writing_agent_tool_names() -> set[str]:
     handled = static_writing_agent_tool_adapter_names() | {"preflight_writing"}
     return internal_tool_names() - handled
@@ -96,7 +104,7 @@ _STATIC_TOOL_ADAPTERS.update(
 )
 _STATIC_TOOL_ADAPTERS.update(
     build_agent_core_tool_adapters(
-        adapter_metadata_by_name_provider=lambda: _static_adapter_metadata_by_name(),
+        adapter_metadata_by_name_provider=lambda: writing_agent_tool_adapter_metadata_by_name(),
         static_adapter_tool_names_provider=lambda: set(_STATIC_TOOL_ADAPTERS),
     )
 )

@@ -64,8 +64,15 @@ def target_type_for_tool(name: str) -> str | None:
     return descriptor.target_type if descriptor else None
 
 
-def build_agent_tool_plan(db: Session, project_id: str, chapter_index: int | None = None) -> dict[str, Any]:
+def build_agent_tool_plan(
+    db: Session,
+    project_id: str,
+    chapter_index: int | None = None,
+    *,
+    adapter_metadata_by_name: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     state = _load_project_tool_state(db, project_id, chapter_index)
+    adapter_metadata_by_name = adapter_metadata_by_name or {}
     visible_tools: list[dict[str, Any]] = []
     hidden_tools: list[dict[str, Any]] = []
     diagnostics: list[dict[str, Any]] = []
@@ -74,7 +81,7 @@ def build_agent_tool_plan(db: Session, project_id: str, chapter_index: int | Non
         tool_diagnostics = _diagnostics_for_descriptor(descriptor, state)
         diagnostics.extend(tool_diagnostics)
         blockers = [item for item in tool_diagnostics if item["severity"] == "blocker"]
-        public_descriptor = descriptor.to_public_dict()
+        public_descriptor = descriptor.to_public_dict(adapter_metadata_by_name.get(descriptor.name))
         if blockers:
             hidden_tools.append({**public_descriptor, "diagnostics": tool_diagnostics})
         else:
