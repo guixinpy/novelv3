@@ -14,6 +14,7 @@ FOLLOWUP_PLANNER_VERSION = "phase101.recommended_followup_planner.v1"
 SAFE_RECOMMENDED_FOLLOWUP_TOOLS = frozenset(
     {
         "describe_agent_tools",
+        "inspect_agent_health_projection",
         "plan_writing_agent_run",
         "plan_recovery_tools",
         "plan_longform_chapter_batch",
@@ -22,6 +23,7 @@ SAFE_RECOMMENDED_FOLLOWUP_TOOLS = frozenset(
         "inspect_agent_tool_contracts",
         "inspect_agent_knowledge_base_route",
         "inspect_agent_trace_audit",
+        "inspect_agent_route_preference_projection",
         "inspect_agent_memory_route",
         "summarize_longform_context",
         "review_chapter_quality",

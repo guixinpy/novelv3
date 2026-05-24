@@ -1052,8 +1052,24 @@ def test_agent_tool_registry_includes_inspect_agent_trace_audit():
     assert descriptor.target_type == "agent_trace_audit"
     assert descriptor.input_schema["properties"]["run_id"]["type"] == "string"
     assert descriptor.input_schema["properties"]["chapter_index"]["minimum"] == 1
+    assert descriptor.output_schema["properties"]["profile_policy_audit"]["type"] == ["object", "null"]
     assert "inspect_agent_trace_audit" in allowed_tool_names()
     assert "inspect_agent_trace_audit" in non_blocking_report_tool_names()
+
+
+def test_agent_tool_registry_includes_inspect_agent_health_projection():
+    descriptor = get_agent_tool_descriptor("inspect_agent_health_projection")
+
+    assert descriptor is not None
+    assert descriptor.internal is True
+    assert descriptor.non_blocking_report is True
+    assert descriptor.category == "preflight"
+    assert descriptor.target_type == "agent_health_projection"
+    assert descriptor.input_schema["properties"]["run_id"]["type"] == "string"
+    assert descriptor.output_schema["properties"]["profile_policy"]["type"] == ["object", "null"]
+    assert descriptor.output_schema["properties"]["recommended_next_tools"]["type"] == "array"
+    assert "inspect_agent_health_projection" in allowed_tool_names()
+    assert "inspect_agent_health_projection" in non_blocking_report_tool_names()
 
 
 def test_agent_tool_registry_includes_inspect_agent_world_model_route():

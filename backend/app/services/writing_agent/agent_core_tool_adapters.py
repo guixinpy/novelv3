@@ -63,6 +63,12 @@ def build_agent_core_tool_adapters(
             category="preflight",
             mutability="read",
         ),
+        "inspect_agent_health_projection": WritingAgentToolAdapter(
+            "inspect_agent_health_projection",
+            _inspect_agent_health_projection(adapter_metadata_by_name_provider, static_adapter_tool_names_provider),
+            category="preflight",
+            mutability="read",
+        ),
         "inspect_agent_slash_command_route": WritingAgentToolAdapter(
             "inspect_agent_slash_command_route",
             _inspect_agent_slash_command_route(static_adapter_tool_names_provider),
@@ -242,6 +248,32 @@ def _plan_recommended_followups(context: WritingAgentToolContext, tool: WritingA
 
     run_id = str(tool.params.get("run_id") or "").strip() or None
     return build_recommended_followup_tool_plan(context.db, context.project_id, run_id)
+
+
+def _inspect_agent_health_projection(
+    adapter_metadata_by_name_provider: AdapterMetadataByNameProvider,
+    static_adapter_tool_names_provider: StaticAdapterToolNamesProvider,
+) -> Callable[[WritingAgentToolContext, WritingAgentToolRequest], dict[str, Any]]:
+    def inspect_agent_health_projection_adapter(
+        context: WritingAgentToolContext,
+        tool: WritingAgentToolRequest,
+    ) -> dict[str, Any]:
+        from app.services.actions.action_execution_service import SUPPORTED_ACTION_EXECUTION_TYPES
+        from app.services.writing_agent.agent_health_projection import inspect_agent_health_projection
+
+        return inspect_agent_health_projection(
+            context.db,
+            context.project_id,
+            run_id=str(tool.params.get("run_id") or "").strip() or None,
+            source=str(tool.params.get("source") or "").strip() or None,
+            chapter_index=_optional_int(tool.params.get("chapter_index")),
+            adapter_metadata_by_name=adapter_metadata_by_name_provider(),
+            static_adapter_tool_names=static_adapter_tool_names_provider(),
+            action_execution_tool_names=set(SUPPORTED_ACTION_EXECUTION_TYPES),
+        )
+
+    inspect_agent_health_projection_adapter.__name__ = "_inspect_agent_health_projection"
+    return inspect_agent_health_projection_adapter
 
 
 def _inspect_agent_slash_command_route(

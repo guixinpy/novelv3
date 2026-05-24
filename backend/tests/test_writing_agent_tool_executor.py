@@ -1827,6 +1827,53 @@ async def test_tool_executor_handles_plan_recommended_followups(db_session):
 
 
 @pytest.mark.asyncio
+async def test_plan_recommended_followups_allows_health_and_route_diagnosis_tools(db_session):
+    project = Project(name="Recommended Health Followup")
+    db_session.add(project)
+    db_session.flush()
+    run = WritingAgentRun(project_id=project.id, goal="检查 Agent 健康", status="success", input={})
+    db_session.add(run)
+    db_session.flush()
+    db_session.add(
+        WritingAgentStep(
+            run_id=run.id,
+            project_id=project.id,
+            step_index=1,
+            tool_name="inspect_agent_trace_audit",
+            status="success",
+            output={
+                "status": "completed",
+                "agent_tool_result": {
+                    "recommendations": {
+                        "canonical_followups": [
+                            "inspect_agent_health_projection",
+                            "inspect_agent_route_preference_projection",
+                            "apply_pending_action_route_approval_opt_in",
+                        ],
+                    }
+                },
+            },
+        )
+    )
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-followup"),
+        WritingAgentToolRequest(tool_name="plan_recommended_followups", params={"run_id": run.id}),
+    )
+
+    assert result.handled is True
+    assert result.output is not None
+    assert [tool["tool_name"] for tool in result.output["tools"]] == [
+        "inspect_agent_health_projection",
+        "inspect_agent_route_preference_projection",
+    ]
+    assert result.output["trace"]["rejected_tools"] == [
+        {"tool_name": "apply_pending_action_route_approval_opt_in", "reason": "requires_confirmation"}
+    ]
+
+
+@pytest.mark.asyncio
 async def test_plan_recommended_followups_rejects_write_followups(db_session):
     project = Project(name="Recommended Followup Guarded Write")
     db_session.add(project)
@@ -2686,6 +2733,7 @@ def test_tool_executor_static_adapter_names_are_report_or_agent_native_tools():
 
     assert {
         "describe_agent_tools",
+        "inspect_agent_health_projection",
         "generate_chapter",
         "prepare_generate_chapter_execution",
         "execute_generate_chapter_with_approval",
@@ -2779,6 +2827,16 @@ def test_tool_executor_exposes_inspect_agent_route_preference_projection_adapter
         "category": "preflight",
         "mutability": "read",
         "handler_name": "_inspect_agent_route_preference_projection",
+    }
+
+
+def test_tool_executor_exposes_inspect_agent_health_projection_adapter_metadata():
+    assert writing_agent_tool_adapter_metadata("inspect_agent_health_projection") == {
+        "tool_name": "inspect_agent_health_projection",
+        "adapter_type": "static",
+        "category": "preflight",
+        "mutability": "read",
+        "handler_name": "_inspect_agent_health_projection",
     }
 
 
@@ -4198,6 +4256,45 @@ async def test_tool_executor_dispatches_inspect_agent_trace_audit_adapter(db_ses
     assert result.handled is True
     assert result.output == {"status": "completed", "audit": {"status": "completed"}}
     assert calls == [(project.id, "run-1", 12, "task-1", 7)]
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_dispatches_inspect_agent_health_projection_adapter(db_session, monkeypatch):
+    project = Project(name="Executor Agent Health")
+    db_session.add(project)
+    db_session.commit()
+    calls: list[tuple[str, str | None, str | None, int | None]] = []
+
+    def fake_health(
+        db,
+        project_id: str,
+        *,
+        run_id: str | None,
+        source: str | None,
+        chapter_index: int | None,
+        adapter_metadata_by_name,
+        static_adapter_tool_names,
+        action_execution_tool_names,
+    ):
+        calls.append((project_id, run_id, source, chapter_index))
+        assert "inspect_agent_health_projection" in adapter_metadata_by_name
+        assert "inspect_agent_health_projection" in static_adapter_tool_names
+        assert isinstance(action_execution_tool_names, set)
+        return {"status": "ready", "version": "phase218.agent_health_projection.v1"}
+
+    monkeypatch.setattr("app.services.writing_agent.agent_health_projection.inspect_agent_health_projection", fake_health)
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(
+            tool_name="inspect_agent_health_projection",
+            params={"run_id": "run-1", "source": "text_intent", "chapter_index": "12"},
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output == {"status": "ready", "version": "phase218.agent_health_projection.v1"}
+    assert calls == [(project.id, "run-1", "text_intent", 12)]
 
 
 @pytest.mark.asyncio

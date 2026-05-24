@@ -27,6 +27,7 @@ AGENT_MEMORY_TRACE_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
                 "context": {"type": "object"},
                 "failure": {"type": "object"},
                 "recommended_actions": {"type": "array"},
+                "profile_policy_audit": {"type": ["object", "null"]},
             }
         ),
         target_type="agent_trace_audit",

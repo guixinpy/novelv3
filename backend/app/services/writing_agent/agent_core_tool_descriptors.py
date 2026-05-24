@@ -48,6 +48,21 @@ _AGENT_WRITE_GATE_COVERAGE_OUTPUT = object_schema(
         "trace": {"type": "object"},
     }
 )
+_AGENT_HEALTH_PROJECTION_OUTPUT = object_schema(
+    {
+        "status": {"type": "string"},
+        "version": {"type": "string"},
+        "profile_policy": {"type": ["object", "null"]},
+        "route_preference": {"type": "object"},
+        "tool_contracts": {"type": "object"},
+        "write_gate": {"type": "object"},
+        "trace_audit": {"type": ["object", "null"]},
+        "diagnostics": {"type": "array"},
+        "recommended_tools": {"type": "array"},
+        "recommended_next_tools": {"type": "array"},
+        "trace": {"type": "object"},
+    }
+)
 
 
 AGENT_CORE_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
@@ -164,6 +179,25 @@ AGENT_CORE_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         internal=True,
         non_blocking_report=True,
         sort_key=7,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
+        name="inspect_agent_health_projection",
+        module="writing_agent",
+        category="preflight",
+        description="聚合 Agent profile 策略、路由偏好、工具契约、写入门禁和可选运行 Trace 的只读健康投影。",
+        input_schema=object_schema(
+            {
+                "run_id": {"type": "string"},
+                "source": {"type": "string"},
+                "chapter_index": {"type": "integer", "minimum": 1},
+            }
+        ),
+        output_schema=_AGENT_HEALTH_PROJECTION_OUTPUT,
+        target_type="agent_health_projection",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=8,
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(
