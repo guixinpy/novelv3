@@ -164,6 +164,17 @@ describe('agentRunProjection', () => {
       data: {
         source_run_id: 'source-run-123456',
         agent_profile: 'drafting_worker',
+        agent_profile_definition: {
+          version: 'phase212.agent_profile_definition.v1',
+          status: 'known',
+          profile: 'drafting_worker',
+          display_name: '创作执行者',
+          role: 'worker',
+          tier: 'worker',
+          delegation_allowed: false,
+          delegate_to_profiles: [],
+          source: 'planner_trace',
+        },
         agent_tool_discovery: {
           version: 'phase210.agent_tool_discovery_projection.v1',
           status: 'applied',
@@ -188,6 +199,9 @@ describe('agentRunProjection', () => {
     expect(view?.detail_items).toContainEqual({ label: '执行策略', value: '可执行' })
     expect(view?.detail_items).toContainEqual({ label: '恢复工具', value: '1 个' })
     expect(view?.detail_items).toContainEqual({ label: 'Agent 身份', value: '创作执行者' })
+    expect(view?.detail_items).toContainEqual({ label: 'Agent 角色', value: 'worker' })
+    expect(view?.detail_items).toContainEqual({ label: '编排层级', value: 'worker' })
+    expect(view?.detail_items).toContainEqual({ label: '委派', value: '不可委派' })
     expect(view?.detail_items).toContainEqual({ label: '工具面', value: '已按身份收窄' })
     expect(view?.detail_items).toContainEqual({ label: '可见工具', value: '12 个' })
     expect(view?.detail_items).toContainEqual({ label: '已过滤', value: '7 个' })
@@ -648,6 +662,17 @@ describe('agentRunProjection', () => {
       output: null,
       error: null,
       agent_profile: 'recovery_worker',
+      agent_profile_definition: {
+        version: 'phase212.agent_profile_definition.v1',
+        status: 'known',
+        profile: 'recovery_worker',
+        display_name: '恢复维护者',
+        role: 'worker',
+        tier: 'worker',
+        delegation_allowed: false,
+        delegate_to_profiles: [],
+        source: 'planner_trace',
+      },
       agent_tool_discovery: {
         version: 'phase210.agent_tool_discovery_projection.v1',
         status: 'applied',
@@ -668,6 +693,9 @@ describe('agentRunProjection', () => {
     expect(message.action_result?.data).toEqual({ agent_run_id: 'run-executed' })
     expect(message.action_result_view?.label).toBe('恢复执行已完成')
     expect(message.action_result_view.detail_items).toContainEqual({ label: 'Agent 身份', value: '恢复维护者' })
+    expect(message.action_result_view.detail_items).toContainEqual({ label: 'Agent 角色', value: 'worker' })
+    expect(message.action_result_view.detail_items).toContainEqual({ label: '编排层级', value: 'worker' })
+    expect(message.action_result_view.detail_items).toContainEqual({ label: '委派', value: '不可委派' })
     expect(message.action_result_view.detail_items).toContainEqual({ label: '工具面', value: '已按身份收窄' })
     expect(message.action_result_view.detail_items).toContainEqual({ label: '可见工具', value: '9 个' })
     expect(message.action_result_view.detail_items).toContainEqual({ label: '已过滤', value: '10 个' })

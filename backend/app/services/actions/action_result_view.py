@@ -163,11 +163,31 @@ def _recovery_preview_detail_items(data: dict) -> list[dict[str, str]]:
 
 def _agent_discovery_detail_items(data: dict) -> list[dict[str, str]]:
     items = []
+    definition = data.get("agent_profile_definition") if isinstance(data.get("agent_profile_definition"), dict) else {}
     profile = str(data.get("agent_profile") or "").strip()
     discovery = data.get("agent_tool_discovery") if isinstance(data.get("agent_tool_discovery"), dict) else {}
     effective_profile = str(discovery.get("effective_profile") or "").strip()
-    if profile or effective_profile:
-        items.append({"label": "Agent 身份", "value": _agent_profile_label(profile or effective_profile)})
+    definition_profile = str(definition.get("profile") or "").strip()
+    display_name = str(definition.get("display_name") or "").strip()
+    if display_name or profile or effective_profile or definition_profile:
+        items.append(
+            {
+                "label": "Agent 身份",
+                "value": display_name or _agent_profile_label(profile or effective_profile or definition_profile),
+            }
+        )
+
+    role = str(definition.get("role") or "").strip()
+    if role:
+        items.append({"label": "Agent 角色", "value": _agent_role_label(role)})
+
+    tier = str(definition.get("tier") or "").strip()
+    if tier:
+        items.append({"label": "编排层级", "value": tier})
+
+    delegation = _delegation_label(definition.get("delegation_allowed"))
+    if delegation:
+        items.append({"label": "委派", "value": delegation})
 
     status = str(discovery.get("status") or "").strip()
     if status:
@@ -195,6 +215,22 @@ def _agent_profile_label(profile: str) -> str:
     if profile == "recovery_worker":
         return "恢复维护者"
     return profile or "未标注"
+
+
+def _agent_role_label(role: str) -> str:
+    if role == "orchestrator":
+        return "orchestrator"
+    if role == "worker":
+        return "worker"
+    return role or "未知"
+
+
+def _delegation_label(value: object) -> str | None:
+    if value is True:
+        return "可委派"
+    if value is False:
+        return "不可委派"
+    return None
 
 
 def _agent_tool_scope_status_label(status: str) -> str:

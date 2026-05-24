@@ -2462,6 +2462,17 @@ def test_get_messages_includes_agent_discovery_view_detail_items(db_session):
             "status": "success",
             "data": {
                 "agent_profile": "drafting_worker",
+                "agent_profile_definition": {
+                    "version": "phase212.agent_profile_definition.v1",
+                    "status": "known",
+                    "profile": "drafting_worker",
+                    "display_name": "创作执行者",
+                    "role": "worker",
+                    "tier": "worker",
+                    "delegation_allowed": False,
+                    "delegate_to_profiles": [],
+                    "source": "planner_trace",
+                },
                 "agent_tool_discovery": {
                     "version": "phase210.agent_tool_discovery_projection.v1",
                     "status": "applied",
@@ -2481,6 +2492,9 @@ def test_get_messages_includes_agent_discovery_view_detail_items(db_session):
     detail_items = messages[-1]["action_result_view"]["detail_items"]
 
     assert {"label": "Agent 身份", "value": "创作执行者"} in detail_items
+    assert {"label": "Agent 角色", "value": "worker"} in detail_items
+    assert {"label": "编排层级", "value": "worker"} in detail_items
+    assert {"label": "委派", "value": "不可委派"} in detail_items
     assert {"label": "工具面", "value": "已按身份收窄"} in detail_items
     assert {"label": "可见工具", "value": "12 个"} in detail_items
     assert {"label": "已过滤", "value": "7 个"} in detail_items

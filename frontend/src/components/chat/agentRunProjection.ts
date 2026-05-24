@@ -274,10 +274,27 @@ function recoveryPreviewDetailItems(data: Record<string, unknown>) {
 
 function agentDiscoveryDetailItems(data: Record<string, unknown>) {
   const items: Array<{ label: string; value: string }> = []
+  const definition = recordValue(data.agent_profile_definition)
   const discovery = recordValue(data.agent_tool_discovery)
-  const profile = stringValue(data.agent_profile) || stringValue(discovery.effective_profile)
-  if (profile) {
-    items.push({ label: 'Agent 身份', value: agentProfileLabel(profile) })
+  const profile = stringValue(data.agent_profile) || stringValue(discovery.effective_profile) || stringValue(definition.profile)
+  const displayName = stringValue(definition.display_name)
+  if (displayName || profile) {
+    items.push({ label: 'Agent 身份', value: displayName || agentProfileLabel(profile) })
+  }
+
+  const role = stringValue(definition.role)
+  if (role) {
+    items.push({ label: 'Agent 角色', value: agentRoleLabel(role) })
+  }
+
+  const tier = stringValue(definition.tier)
+  if (tier) {
+    items.push({ label: '编排层级', value: tier })
+  }
+
+  const delegation = delegationLabel(definition.delegation_allowed)
+  if (delegation) {
+    items.push({ label: '委派', value: delegation })
   }
 
   const scopeStatus = stringValue(discovery.status) || (discovery.scope_applied === true ? 'applied' : '')
@@ -419,6 +436,18 @@ function agentProfileLabel(profile: string) {
   if (profile === 'world_model_worker') return '世界模型执行者'
   if (profile === 'recovery_worker') return '恢复维护者'
   return profile || '未标注'
+}
+
+function agentRoleLabel(role: string) {
+  if (role === 'orchestrator') return 'orchestrator'
+  if (role === 'worker') return 'worker'
+  return role || '未知'
+}
+
+function delegationLabel(value: unknown) {
+  if (value === true) return '可委派'
+  if (value === false) return '不可委派'
+  return ''
 }
 
 function agentToolScopeStatusLabel(status: string) {
