@@ -3,7 +3,17 @@ from __future__ import annotations
 from app.services.writing_agent.tool_descriptor_types import AgentToolDescriptor, object_schema
 
 
-_CHAPTER_PARAMS = object_schema({"chapter_index": {"type": "integer", "minimum": 1}})
+_CHAPTER_PARAMS = object_schema(
+    {
+        "chapter_index": {"type": "integer", "minimum": 1},
+    }
+)
+_DESCRIBE_AGENT_TOOLS_INPUT = object_schema(
+    {
+        "chapter_index": {"type": "integer", "minimum": 1},
+        "agent_profile": {"type": "string"},
+    }
+)
 _AGENT_PLAN_APPROVAL_CONTRACT_OUTPUT = object_schema(
     {
         "status": {"type": "string"},
@@ -46,13 +56,14 @@ AGENT_CORE_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         module="writing_agent",
         category="preflight",
         description="返回当前项目和章节下 Agent 可见工具、隐藏工具和缺失依赖诊断。",
-        input_schema=_CHAPTER_PARAMS,
+        input_schema=_DESCRIBE_AGENT_TOOLS_INPUT,
         output_schema=object_schema(
             {
                 "status": {"type": "string"},
                 "visible_tools": {"type": "array"},
                 "hidden_tools": {"type": "array"},
                 "diagnostics": {"type": "array"},
+                "agent_profile_scope": {"type": "object"},
             }
         ),
         target_type="agent_tool_plan",

@@ -119,6 +119,53 @@ def build_agent_profile_tool_projection(
     }
 
 
+def apply_agent_profile_tool_scope(plan: dict[str, Any], agent_profile: str | None) -> dict[str, Any]:
+    profile = str(agent_profile or "").strip()
+    if not profile:
+        return {**plan, "agent_profile_scope": {"status": "not_requested", "agent_profile": None}}
+
+    profile_projection = _profile_projection_from_plan(plan, profile)
+    if profile_projection is None:
+        return {
+            **plan,
+            "visible_tools": [],
+            "hidden_tools": [],
+            "toolsets": {},
+            "tool_policy_projection": build_agent_tool_surface_policy_projection([], []),
+            "agent_profile_tool_projection": build_agent_profile_tool_projection([], []),
+            "agent_profile_scope": {
+                "status": "unknown_profile",
+                "agent_profile": profile,
+                "available_profiles": _available_profiles(plan),
+            },
+        }
+
+    allowed_visible = set(profile_projection.get("allowed_visible_tools") or [])
+    allowed_hidden = set(profile_projection.get("allowed_hidden_tools") or [])
+    blocked_visible = set(profile_projection.get("blocked_visible_tools") or [])
+    scoped_visible = [tool for tool in plan.get("visible_tools", []) if tool.get("name") in allowed_visible]
+    profile_filtered = [tool for tool in plan.get("visible_tools", []) if tool.get("name") in blocked_visible]
+    scoped_hidden = [
+        *[tool for tool in plan.get("hidden_tools", []) if tool.get("name") in allowed_hidden],
+    ]
+    return {
+        **plan,
+        "visible_tools": scoped_visible,
+        "hidden_tools": scoped_hidden,
+        "toolsets": _group_tools_by_category(scoped_visible),
+        "tool_policy_projection": build_agent_tool_surface_policy_projection(scoped_visible, scoped_hidden),
+        "agent_profile_tool_projection": build_agent_profile_tool_projection(scoped_visible, scoped_hidden),
+        "agent_profile_scope": {
+            "status": "applied",
+            "agent_profile": profile,
+            "allowed_visible_tool_count": len(scoped_visible),
+            "profile_filtered_visible_tool_count": len(profile_filtered),
+            "profile_filtered_visible_tools": _names(profile_filtered),
+            "allowed_hidden_tool_count": len(scoped_hidden),
+        },
+    }
+
+
 def _tool_rows(tools: list[dict[str, Any]], *, visibility_state: str) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for tool in tools:
@@ -135,6 +182,34 @@ def _tool_rows(tools: list[dict[str, Any]], *, visibility_state: str) -> list[di
             }
         )
     return rows
+
+
+def _profile_projection_from_plan(plan: dict[str, Any], profile: str) -> dict[str, Any] | None:
+    projection = plan.get("agent_profile_tool_projection")
+    if not isinstance(projection, dict):
+        return None
+    profiles = projection.get("profiles")
+    if not isinstance(profiles, dict):
+        return None
+    selected = profiles.get(profile)
+    return selected if isinstance(selected, dict) else None
+
+
+def _available_profiles(plan: dict[str, Any]) -> list[str]:
+    projection = plan.get("agent_profile_tool_projection")
+    if not isinstance(projection, dict):
+        return []
+    profiles = projection.get("profiles")
+    if not isinstance(profiles, dict):
+        return []
+    return sorted(str(profile) for profile in profiles)
+
+
+def _group_tools_by_category(tools: list[dict[str, Any]]) -> dict[str, list[str]]:
+    grouped: dict[str, list[str]] = {}
+    for tool in tools:
+        grouped.setdefault(str(tool.get("category") or "unknown"), []).append(str(tool.get("name") or ""))
+    return grouped
 
 
 def _profile_projection(profile: str, rule: dict[str, object], tools: list[dict[str, Any]]) -> dict[str, Any]:

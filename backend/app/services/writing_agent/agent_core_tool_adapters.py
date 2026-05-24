@@ -6,6 +6,7 @@ from typing import Any
 
 from app.schemas.writing_agent import WritingAgentToolRequest
 from app.services.writing_agent.approval_tool_metadata import build_approval_tool_metadata_by_name
+from app.services.writing_agent.agent_tool_surface_policy import apply_agent_profile_tool_scope
 from app.services.writing_agent.tool_adapter_types import WritingAgentToolAdapter, WritingAgentToolContext
 from app.services.writing_agent.tool_registry import build_agent_tool_plan
 
@@ -148,12 +149,13 @@ def _describe_agent_tools(
 ) -> Callable[[WritingAgentToolContext, WritingAgentToolRequest], dict[str, Any]]:
     def describe_agent_tools_adapter(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
         chapter_index = _optional_int(tool.params.get("chapter_index"))
-        return build_agent_tool_plan(
+        plan = build_agent_tool_plan(
             context.db,
             context.project_id,
             chapter_index=chapter_index,
             adapter_metadata_by_name=adapter_metadata_by_name_provider(),
         )
+        return apply_agent_profile_tool_scope(plan, str(tool.params.get("agent_profile") or "").strip() or None)
 
     describe_agent_tools_adapter.__name__ = "_describe_agent_tools"
     return describe_agent_tools_adapter

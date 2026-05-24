@@ -290,6 +290,7 @@ async def test_tool_executor_handles_describe_agent_tools(db_session):
     assert result.handled is True
     assert result.output is not None
     assert result.output["status"] == "completed"
+    assert result.output["agent_profile_scope"]["status"] == "not_requested"
     assert "visible_tools" in result.output
     assert "hidden_tools" in result.output
     tools = {tool["name"]: tool for tool in [*result.output["visible_tools"], *result.output["hidden_tools"]]}
@@ -306,6 +307,51 @@ async def test_tool_executor_handles_describe_agent_tools(db_session):
     assert tools["review_longform_chapter_batch_execution"]["agent_tool_surface"]["mutability"] == "write"
     assert tools["execute_longform_chapter_batch"]["agent_tool_surface"]["mutability"] == "guarded_write"
     assert tools["execute_longform_chapter_batch"]["agent_tool_surface"]["permission_level"] == "confirm_required"
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_scopes_describe_agent_tools_by_agent_profile(db_session):
+    project = _seed_profile_scope_project(db_session)
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-profile-scope"),
+        WritingAgentToolRequest(
+            tool_name="describe_agent_tools",
+            params={"chapter_index": 2, "agent_profile": "reviewer_worker"},
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output["agent_profile_scope"]["status"] == "applied"
+    assert result.output["agent_profile_scope"]["agent_profile"] == "reviewer_worker"
+    assert "generate_chapter" in result.output["agent_profile_scope"]["profile_filtered_visible_tools"]
+    visible = {tool["name"] for tool in result.output["visible_tools"]}
+    hidden = {tool["name"] for tool in result.output["hidden_tools"]}
+
+    assert "review_chapter_quality" in visible
+    assert "generate_chapter" not in visible
+    assert "generate_chapter" not in hidden
+    assert "generate_chapter" not in result.output["tool_policy_projection"]["approval_required_tools"]
+    assert "generate_chapter" not in result.output["agent_profile_tool_projection"]["profiles"]["reviewer_worker"]["allowed_visible_tools"]
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_fails_closed_for_unknown_describe_agent_tools_profile(db_session):
+    project = _seed_profile_scope_project(db_session)
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-profile-unknown"),
+        WritingAgentToolRequest(
+            tool_name="describe_agent_tools",
+            params={"chapter_index": 2, "agent_profile": "unknown_worker"},
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output["agent_profile_scope"]["status"] == "unknown_profile"
+    assert result.output["visible_tools"] == []
+    assert result.output["hidden_tools"] == []
+    assert "reviewer_worker" in result.output["agent_profile_scope"]["available_profiles"]
 
 
 @pytest.mark.asyncio
@@ -2577,6 +2623,62 @@ async def test_tool_executor_leaves_legacy_generation_tools_unhandled(db_session
     assert storyline_result.output is None
     assert outline_result.handled is False
     assert outline_result.output is None
+
+
+def _seed_profile_scope_project(db_session) -> Project:
+    project = Project(name="Profile Scoped Tool Plan", genre="都市悬疑", target_chapter_count=600)
+    db_session.add(project)
+    db_session.flush()
+    db_session.add(
+        Setup(
+            project_id=project.id,
+            status="generated",
+            world_building={"background": "雾港被记忆异常影响。"},
+            characters=[{"name": "林深"}],
+            core_concept={"hook": "雾会回放记忆"},
+        )
+    )
+    db_session.add(
+        Storyline(
+            project_id=project.id,
+            status="generated",
+            plotlines=[{"name": "主线", "type": "main", "summary": "追查记忆异常"}],
+            foreshadowing=[],
+        )
+    )
+    db_session.add(
+        Outline(
+            project_id=project.id,
+            total_chapters=600,
+            status="generated",
+            chapters=[
+                {
+                    "chapter_index": 2,
+                    "title": "雾港线索2",
+                    "summary": "林深追查第二条线索。",
+                    "scenes": ["诊所追问"],
+                    "characters": ["林深"],
+                    "purpose": "推进主线",
+                }
+            ],
+            plotlines=[],
+            foreshadowing=[],
+        )
+    )
+    for index in (1, 2):
+        db_session.add(
+            ChapterContent(
+                project_id=project.id,
+                chapter_index=index,
+                title=f"雾港线索{index}",
+                content=f"林深在第{index}章发现雾港记忆异常的新证据。",
+                word_count=2200,
+                status="generated",
+            )
+        )
+    db_session.commit()
+    db_session.refresh(project)
+    return project
 
 
 def test_tool_executor_static_adapter_names_are_report_or_agent_native_tools():
