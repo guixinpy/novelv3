@@ -163,6 +163,18 @@ describe('agentRunProjection', () => {
       status: 'success',
       data: {
         source_run_id: 'source-run-123456',
+        agent_profile: 'drafting_worker',
+        agent_tool_discovery: {
+          version: 'phase210.agent_tool_discovery_projection.v1',
+          status: 'applied',
+          scope_applied: true,
+          scope_source: 'agent_profile',
+          requested_profile: 'drafting_worker',
+          effective_profile: 'drafting_worker',
+          visible_tool_count: 12,
+          filtered_by_profile_count: 7,
+          filter_stages: ['profile'],
+        },
         recovery: { status: 'recommended' },
         execution_policy: { status: 'ready' },
         tools: [{ tool_name: 'prepare_generate_chapter_execution' }],
@@ -175,6 +187,10 @@ describe('agentRunProjection', () => {
     expect(view?.detail_items).toContainEqual({ label: '恢复状态', value: '建议恢复' })
     expect(view?.detail_items).toContainEqual({ label: '执行策略', value: '可执行' })
     expect(view?.detail_items).toContainEqual({ label: '恢复工具', value: '1 个' })
+    expect(view?.detail_items).toContainEqual({ label: 'Agent 身份', value: '创作执行者' })
+    expect(view?.detail_items).toContainEqual({ label: '工具面', value: '已按身份收窄' })
+    expect(view?.detail_items).toContainEqual({ label: '可见工具', value: '12 个' })
+    expect(view?.detail_items).toContainEqual({ label: '已过滤', value: '7 个' })
   })
 
   it('does not build fallback views for unknown action results', () => {
@@ -631,6 +647,18 @@ describe('agentRunProjection', () => {
       input: { recovery_plan_hash: 'plan-hash-1' },
       output: null,
       error: null,
+      agent_profile: 'recovery_worker',
+      agent_tool_discovery: {
+        version: 'phase210.agent_tool_discovery_projection.v1',
+        status: 'applied',
+        scope_applied: true,
+        scope_source: 'agent_profile',
+        requested_profile: 'recovery_worker',
+        effective_profile: 'recovery_worker',
+        visible_tool_count: 9,
+        filtered_by_profile_count: 10,
+        filter_stages: ['profile'],
+      },
       steps: [],
     })
 
@@ -639,6 +667,10 @@ describe('agentRunProjection', () => {
     expect(message.action_result?.type).toBe('ui_recovery_execute')
     expect(message.action_result?.data).toEqual({ agent_run_id: 'run-executed' })
     expect(message.action_result_view?.label).toBe('恢复执行已完成')
+    expect(message.action_result_view.detail_items).toContainEqual({ label: 'Agent 身份', value: '恢复维护者' })
+    expect(message.action_result_view.detail_items).toContainEqual({ label: '工具面', value: '已按身份收窄' })
+    expect(message.action_result_view.detail_items).toContainEqual({ label: '可见工具', value: '9 个' })
+    expect(message.action_result_view.detail_items).toContainEqual({ label: '已过滤', value: '10 个' })
     expect(message.meta?.agent_run_id).toBe('run-executed')
     expect(JSON.stringify(message)).not.toContain('plan-hash-1')
   })

@@ -77,11 +77,14 @@ def _detail_items(action_result: dict) -> list[dict[str, str]]:
     action_type = str(action_result.get("type") or "").strip()
     data = action_result.get("data") if isinstance(action_result.get("data"), dict) else {}
     if action_type == "plan_recovery_tools":
-        return _recovery_preview_detail_items(data)
+        return [
+            *_recovery_preview_detail_items(data),
+            *_agent_discovery_detail_items(data),
+        ]
 
     approval_decision = data.get("approval_decision") if isinstance(data.get("approval_decision"), dict) else None
     if not approval_decision:
-        return []
+        return _agent_discovery_detail_items(data)
 
     items = []
     decision = str(approval_decision.get("decision") or "").strip()
@@ -112,6 +115,7 @@ def _detail_items(action_result: dict) -> list[dict[str, str]]:
     if str(approval_decision.get("approval_contract_hash") or "").strip():
         items.append({"label": "审批契约", "value": "已绑定"})
 
+    items.extend(_agent_discovery_detail_items(data))
     return items
 
 
@@ -155,6 +159,63 @@ def _recovery_preview_detail_items(data: dict) -> list[dict[str, str]]:
     if tools:
         items.append({"label": "恢复工具", "value": f"{len(tools)} 个"})
     return items
+
+
+def _agent_discovery_detail_items(data: dict) -> list[dict[str, str]]:
+    items = []
+    profile = str(data.get("agent_profile") or "").strip()
+    discovery = data.get("agent_tool_discovery") if isinstance(data.get("agent_tool_discovery"), dict) else {}
+    effective_profile = str(discovery.get("effective_profile") or "").strip()
+    if profile or effective_profile:
+        items.append({"label": "Agent 身份", "value": _agent_profile_label(profile or effective_profile)})
+
+    status = str(discovery.get("status") or "").strip()
+    if status:
+        items.append({"label": "工具面", "value": _agent_tool_scope_status_label(status)})
+
+    visible_tool_count = _optional_int(discovery.get("visible_tool_count"))
+    if visible_tool_count is not None:
+        items.append({"label": "可见工具", "value": f"{visible_tool_count} 个"})
+
+    filtered_count = _optional_int(discovery.get("filtered_by_profile_count"))
+    if filtered_count is not None:
+        items.append({"label": "已过滤", "value": f"{filtered_count} 个"})
+    return items
+
+
+def _agent_profile_label(profile: str) -> str:
+    if profile == "orchestrator":
+        return "编排主控"
+    if profile == "drafting_worker":
+        return "创作执行者"
+    if profile == "reviewer_worker":
+        return "审稿执行者"
+    if profile == "world_model_worker":
+        return "世界模型执行者"
+    if profile == "recovery_worker":
+        return "恢复维护者"
+    return profile or "未标注"
+
+
+def _agent_tool_scope_status_label(status: str) -> str:
+    if status == "applied":
+        return "已按身份收窄"
+    if status == "not_requested":
+        return "未请求身份收窄"
+    if status == "unknown_profile":
+        return "未知身份，已拒绝工具面"
+    if status == "not_available":
+        return "暂无工具面摘要"
+    return status or "未知"
+
+
+def _optional_int(value: object) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _recovery_status_label(status: str) -> str:

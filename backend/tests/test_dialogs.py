@@ -2447,6 +2447,45 @@ def test_get_messages_includes_action_result_view_for_recovery_preview(db_sessio
     }
 
 
+def test_get_messages_includes_agent_discovery_view_detail_items(db_session):
+    project = Project(name="Agent Discovery Result View")
+    db_session.add(project)
+    db_session.commit()
+    dialog = dialogs_api._get_or_create_dialog(db_session, project.id)
+    dialogs_api._save_message(
+        db_session,
+        dialog.id,
+        "assistant",
+        "Agent 已按创作执行者身份规划工具面。",
+        action_result={
+            "type": "plan_recovery_tools",
+            "status": "success",
+            "data": {
+                "agent_profile": "drafting_worker",
+                "agent_tool_discovery": {
+                    "version": "phase210.agent_tool_discovery_projection.v1",
+                    "status": "applied",
+                    "scope_applied": True,
+                    "scope_source": "agent_profile",
+                    "requested_profile": "drafting_worker",
+                    "effective_profile": "drafting_worker",
+                    "visible_tool_count": 12,
+                    "filtered_by_profile_count": 7,
+                    "filter_stages": ["profile"],
+                },
+            },
+        },
+    )
+
+    messages = DialogMessageService(db_session).list_messages(project.id)
+    detail_items = messages[-1]["action_result_view"]["detail_items"]
+
+    assert {"label": "Agent 身份", "value": "创作执行者"} in detail_items
+    assert {"label": "工具面", "value": "已按身份收窄"} in detail_items
+    assert {"label": "可见工具", "value": "12 个"} in detail_items
+    assert {"label": "已过滤", "value": "7 个"} in detail_items
+
+
 @pytest.mark.asyncio
 async def test_chapter_approval_followup_dispatches_execute_tool(db_session):
     project = Project(name="Chapter Approval Execute Dispatch")

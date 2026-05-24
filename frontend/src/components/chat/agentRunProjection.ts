@@ -116,6 +116,7 @@ export function buildAgentRunExecutionFeedback(run: WritingAgentRunDetail): Agen
   if (errorSummary) {
     detailItems.push({ label: '错误摘要', value: errorSummary })
   }
+  detailItems.push(...agentDiscoveryDetailItems(run as unknown as Record<string, unknown>))
   return {
     role: 'system',
     content: '恢复执行已创建，可在运行详情中查看执行步骤。',
@@ -160,12 +161,16 @@ function buildRecoveryPreviewActionResultView(actionResult: Record<string, unkno
 function buildRecoveryExecutionActionResultView(actionResult: Record<string, unknown>, status: string): ActionResultView {
   const data = recordValue(actionResult.data)
   const runId = stringValue(data.agent_run_id)
+  const detailItems = [
+    ...(runId ? [{ label: '运行 ID', value: runId }] : []),
+    ...agentDiscoveryDetailItems(data),
+  ]
   return {
     type: 'ui_recovery_execute',
     status,
     label: recoveryExecutionStatusLabel(status),
     variant: recoveryExecutionVariant(status),
-    ...(runId ? { detail_items: [{ label: '运行 ID', value: runId }] } : {}),
+    ...(detailItems.length ? { detail_items: detailItems } : {}),
   }
 }
 
@@ -262,6 +267,32 @@ function recoveryPreviewDetailItems(data: Record<string, unknown>) {
   const tools = Array.isArray(data.tools) ? data.tools : []
   if (tools.length) {
     items.push({ label: '恢复工具', value: `${tools.length} 个` })
+  }
+  items.push(...agentDiscoveryDetailItems(data))
+  return items
+}
+
+function agentDiscoveryDetailItems(data: Record<string, unknown>) {
+  const items: Array<{ label: string; value: string }> = []
+  const discovery = recordValue(data.agent_tool_discovery)
+  const profile = stringValue(data.agent_profile) || stringValue(discovery.effective_profile)
+  if (profile) {
+    items.push({ label: 'Agent 身份', value: agentProfileLabel(profile) })
+  }
+
+  const scopeStatus = stringValue(discovery.status) || (discovery.scope_applied === true ? 'applied' : '')
+  if (scopeStatus) {
+    items.push({ label: '工具面', value: agentToolScopeStatusLabel(scopeStatus) })
+  }
+
+  const visibleToolCount = numberValue(discovery.visible_tool_count)
+  if (visibleToolCount !== null) {
+    items.push({ label: '可见工具', value: `${visibleToolCount} 个` })
+  }
+
+  const filteredCount = numberValue(discovery.filtered_by_profile_count)
+  if (filteredCount !== null) {
+    items.push({ label: '已过滤', value: `${filteredCount} 个` })
   }
   return items
 }
@@ -379,6 +410,23 @@ function executionPolicyLabel(status: string) {
   if (status === 'repeat_failed_recovery') return '重复失败保护'
   if (status === 'requires_user_input') return '需要用户补充输入'
   return status
+}
+
+function agentProfileLabel(profile: string) {
+  if (profile === 'orchestrator') return '编排主控'
+  if (profile === 'drafting_worker') return '创作执行者'
+  if (profile === 'reviewer_worker') return '审稿执行者'
+  if (profile === 'world_model_worker') return '世界模型执行者'
+  if (profile === 'recovery_worker') return '恢复维护者'
+  return profile || '未标注'
+}
+
+function agentToolScopeStatusLabel(status: string) {
+  if (status === 'applied') return '已按身份收窄'
+  if (status === 'not_requested') return '未请求身份收窄'
+  if (status === 'unknown_profile') return '未知身份，已拒绝工具面'
+  if (status === 'not_available') return '暂无工具面摘要'
+  return status || '未知'
 }
 
 function recordValue(value: unknown): Record<string, unknown> {
