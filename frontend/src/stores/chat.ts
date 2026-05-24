@@ -8,13 +8,14 @@ import type {
   ActionResultView,
   BackgroundTaskResponse,
   PendingAction as ApiPendingAction,
+  PendingActionSafetyAction,
   ProjectDiagnosis,
   ResolveActionResponse,
   ChapterContent,
   WritingAgentRunDetail,
   WorkspaceBootstrap,
 } from '../api/types'
-import { buildAgentRunExecutionFeedback } from '../components/chat/agentRunProjection'
+import { buildAgentRunActionResultView, buildAgentRunExecutionFeedback } from '../components/chat/agentRunProjection'
 import type { ChatCommandName } from '../components/workspace/chatCommands'
 import { useProjectWorkspaceStore } from './projectWorkspace'
 
@@ -413,6 +414,42 @@ export const useChatStore = defineStore('chat', () => {
     clearStaleHistoryAnchorAfterLocalAppend()
   }
 
+  async function preparePendingActionSafetyAction(action: PendingActionSafetyAction): Promise<WritingAgentRunDetail | null> {
+    if (loading.value || !projectId.value || !pendingAction.value) return null
+    if (!isRouteUpgradeSafetyAction(action, pendingAction.value.id)) return null
+    const { pidSnapshot, versionSnapshot } = captureSnapshot()
+    loading.value = true
+    try {
+      const run = await api.createAgentRun(pidSnapshot, {
+        goal: '生成待确认操作的路由升级审批契约',
+        entrypoint: 'pending_action_safety_action',
+        tools: [
+          {
+            tool_name: 'preview_pending_action_route_approval_opt_in_apply_contract',
+            params: { pending_action_id: action.pending_action_id },
+          },
+        ],
+        input: {
+          safety_action: { kind: 'prepare_route_upgrade_contract' },
+          pending_action_id: action.pending_action_id,
+        },
+      })
+      if (!isActiveSnapshot(pidSnapshot, versionSnapshot)) return null
+      messages.value.push(buildRouteUpgradeContractFeedback(run))
+      historyCursor.value += 1
+      clearStaleHistoryAnchorAfterLocalAppend()
+      return run
+    } catch (e: any) {
+      if (!isActiveSnapshot(pidSnapshot, versionSnapshot)) return null
+      messages.value.push({ role: 'assistant', content: `安全准备失败：${e.message}` })
+      return null
+    } finally {
+      if (isActiveSnapshot(pidSnapshot, versionSnapshot)) {
+        loading.value = false
+      }
+    }
+  }
+
   async function pollForCompletion(
     actionType: string,
     pidSnapshot = projectId.value,
@@ -575,6 +612,49 @@ export const useChatStore = defineStore('chat', () => {
   return {
     messages, projectId, diagnosis, pendingAction, loading,
     init, initFromWorkspaceBootstrap, loadDiagnosis, setDialogType, sendText, sendCommand, sendButtonAction, resolveAction, regenerateRevision,
+    preparePendingActionSafetyAction,
     appendAgentRunExecutionFeedback,
   }
 })
+
+function isRouteUpgradeSafetyAction(action: PendingActionSafetyAction | null | undefined, pendingActionId: string) {
+  if (!action || action.kind !== 'prepare_route_upgrade_contract') return false
+  if (action.auto_execute === true || action.guarded_apply === true) return false
+  return action.pending_action_id === pendingActionId
+}
+
+function buildRouteUpgradeContractFeedback(run: WritingAgentRunDetail): ChatMessage {
+  const output = latestStepOutput(run)
+  const actionResult = {
+    type: 'prepare_route_upgrade_contract',
+    status: String(run.status || ''),
+    data: {
+      agent_run_id: run.id,
+      status: stringValue(output.status) || String(run.status || ''),
+      ...(typeof output.required_confirmation === 'boolean'
+        ? { required_confirmation: output.required_confirmation }
+        : {}),
+    },
+  }
+  return {
+    role: 'system',
+    content: '路由升级审批契约已生成，可在 Agent 运行详情中查看。',
+    action_result: actionResult,
+    action_result_view: buildAgentRunActionResultView(actionResult),
+    meta: {
+      agent_run_id: run.id,
+      agent_action_type: 'prepare_route_upgrade_contract',
+    },
+  }
+}
+
+function latestStepOutput(run: WritingAgentRunDetail): Record<string, unknown> {
+  const steps = Array.isArray(run.steps) ? run.steps : []
+  const last = steps[steps.length - 1]
+  const output = last?.output
+  return output && typeof output === 'object' && !Array.isArray(output) ? output as Record<string, unknown> : {}
+}
+
+function stringValue(value: unknown) {
+  return typeof value === 'string' ? value.trim() : ''
+}

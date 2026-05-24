@@ -142,7 +142,7 @@ class DialogMessageService:
             description=action_description(pending.type, pending.params),
             params=pending.params,
             execution_preview=pending_action_execution_preview(pending.params),
-            safety_view=pending_action_safety_view(pending.type, pending.params),
+            safety_view=pending_action_safety_view(pending.type, pending.params, pending_action_id=pending.id),
         ).model_dump()
 
     @staticmethod

@@ -8,6 +8,7 @@ export const AGENT_RUN_ACTION_TYPES = [
   'plan_recovery_tools',
   'ui_recovery_execute',
   'inspect_agent_trace_audit',
+  'prepare_route_upgrade_contract',
   'preview_pending_action_route_approval_opt_in_apply_contract',
   'apply_pending_action_route_approval_opt_in',
   ...LONGFORM_AGENT_RUN_ACTION_TYPES,
@@ -31,6 +32,10 @@ const AGENT_RUN_ACTION_DESCRIPTORS: Record<AgentRunActionType, AgentRunActionDes
   inspect_agent_trace_audit: {
     type: 'inspect_agent_trace_audit',
     buildView: buildTraceAuditActionResultView,
+  },
+  prepare_route_upgrade_contract: {
+    type: 'prepare_route_upgrade_contract',
+    buildView: buildRouteOptInContractActionResultView,
   },
   preview_pending_action_route_approval_opt_in_apply_contract: {
     type: 'preview_pending_action_route_approval_opt_in_apply_contract',
@@ -179,8 +184,9 @@ function buildRouteOptInContractActionResultView(actionResult: Record<string, un
   const data = recordValue(actionResult.data)
   const routeStatus = stringValue(data.status) || status
   const detailItems = routeOptInContractDetailItems(data)
+  const actionType = stringValue(actionResult.type) || 'preview_pending_action_route_approval_opt_in_apply_contract'
   return {
-    type: 'preview_pending_action_route_approval_opt_in_apply_contract',
+    type: actionType,
     status,
     label: routeOptInContractLabel(routeStatus),
     variant: routeStatus === 'blocked' ? 'error' : 'neutral',

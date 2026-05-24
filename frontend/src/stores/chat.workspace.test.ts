@@ -10,6 +10,7 @@ vi.mock('../api/client', () => ({
     getDiagnosis: vi.fn(),
     resolveAction: vi.fn(),
     sendChat: vi.fn(),
+    createAgentRun: vi.fn(),
     regenerateRevision: vi.fn(),
     getBackgroundTask: vi.fn(),
   },
@@ -79,6 +80,123 @@ describe('chat workspace polling', () => {
         },
       },
     ])
+  })
+
+  it('preparePendingActionSafetyAction 只创建只读审批契约预览并保留 pendingAction', async () => {
+    const store = useChatStore()
+    store.projectId = 'project-1'
+    store.pendingAction = {
+      id: 'action-1',
+      type: 'preview_setup',
+      description: '生成设定',
+      params: { project_id: 'project-1' },
+      requires_confirmation: true,
+    }
+
+    vi.mocked(api.createAgentRun).mockResolvedValue({
+      id: 'run-route-1',
+      project_id: 'project-1',
+      goal: '生成待确认操作的路由升级审批契约',
+      status: 'success',
+      entrypoint: 'pending_action_safety_action',
+      steps: [
+        {
+          output: {
+            status: 'requires_confirmation',
+            required_confirmation: true,
+            approval_contract_hash: 'approval:secret',
+            approval_contract: { approval: { approval_contract_hash: 'approval:secret' } },
+            recommended_next_tools: ['apply_pending_action_route_approval_opt_in'],
+          },
+        },
+      ],
+    } as any)
+
+    const run = await store.preparePendingActionSafetyAction({
+      kind: 'prepare_route_upgrade_contract',
+      label: '生成审批契约',
+      pending_action_id: 'action-1',
+      auto_execute: false,
+      guarded_apply: false,
+    })
+
+    expect(run?.id).toBe('run-route-1')
+    expect(api.createAgentRun).toHaveBeenCalledWith('project-1', {
+      goal: '生成待确认操作的路由升级审批契约',
+      entrypoint: 'pending_action_safety_action',
+      tools: [
+        {
+          tool_name: 'preview_pending_action_route_approval_opt_in_apply_contract',
+          params: { pending_action_id: 'action-1' },
+        },
+      ],
+      input: {
+        safety_action: { kind: 'prepare_route_upgrade_contract' },
+        pending_action_id: 'action-1',
+      },
+    })
+    expect(store.pendingAction?.id).toBe('action-1')
+    const message = store.messages[store.messages.length - 1]
+    expect(message?.action_result?.type).toBe('prepare_route_upgrade_contract')
+    expect(message?.action_result?.data).toEqual({
+      agent_run_id: 'run-route-1',
+      status: 'requires_confirmation',
+      required_confirmation: true,
+    })
+    expect(JSON.stringify(message)).not.toContain('approval:secret')
+    expect(JSON.stringify(message)).not.toContain('approval_contract')
+    expect(JSON.stringify(message)).not.toContain('apply_pending_action_route_approval_opt_in')
+    expect(JSON.stringify(message)).not.toContain('preview_pending_action_route_approval_opt_in_apply_contract')
+  })
+
+  it.each([
+    {
+      name: 'pending_action_id 不匹配',
+      action: {
+        kind: 'prepare_route_upgrade_contract',
+        label: '生成审批契约',
+        pending_action_id: 'other-action',
+        auto_execute: false,
+        guarded_apply: false,
+      },
+    },
+    {
+      name: '要求自动执行',
+      action: {
+        kind: 'prepare_route_upgrade_contract',
+        label: '生成审批契约',
+        pending_action_id: 'action-1',
+        auto_execute: true,
+        guarded_apply: false,
+      },
+    },
+    {
+      name: '要求 guarded apply',
+      action: {
+        kind: 'prepare_route_upgrade_contract',
+        label: '生成审批契约',
+        pending_action_id: 'action-1',
+        auto_execute: false,
+        guarded_apply: true,
+      },
+    },
+  ])('preparePendingActionSafetyAction 会拒绝不安全动作：$name', async ({ action }) => {
+    const store = useChatStore()
+    store.projectId = 'project-1'
+    store.pendingAction = {
+      id: 'action-1',
+      type: 'preview_setup',
+      description: '生成设定',
+      params: { project_id: 'project-1' },
+      requires_confirmation: true,
+    }
+
+    const run = await store.preparePendingActionSafetyAction(action)
+
+    expect(run).toBeNull()
+    expect(api.createAgentRun).not.toHaveBeenCalled()
+    expect(store.pendingAction?.id).toBe('action-1')
+    expect(store.messages).toEqual([])
   })
 
   it('confirm 后轮询不会因为中途出现其他新消息而提前断开，直到消费到最终完成消息', async () => {

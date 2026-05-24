@@ -51,4 +51,58 @@ describe('ChatMessageList', () => {
 
     expect(wrapper.emitted('openAgentRun')).toEqual([['run-list-1']])
   })
+
+  it('forwards pending action safety actions from child messages', async () => {
+    const wrapper = mount(ChatMessageList, {
+      props: {
+        messages: [
+          {
+            role: 'assistant',
+            content: '准备生成设定。',
+            pending_action: {
+              id: 'pending-list-1',
+              type: 'preview_setup',
+              description: '我可以生成设定。',
+              params: {},
+              safety_view: {
+                kind: 'pending_action_safety',
+                recommendations: [
+                  {
+                    kind: 'route_upgrade_preview',
+                    title: '可先生成路由升级审批契约',
+                    message: '这只生成审批准备信息，不会执行当前待确认操作。',
+                    severity: 'info',
+                    auto_execute: false,
+                    guarded_apply: false,
+                    action: {
+                      kind: 'prepare_route_upgrade_contract',
+                      label: '生成审批契约',
+                      pending_action_id: 'pending-list-1',
+                      auto_execute: false,
+                      guarded_apply: false,
+                    },
+                  },
+                ],
+              },
+            },
+          },
+        ],
+        loading: false,
+      },
+    })
+
+    await wrapper.get('[data-testid="pending-action-safety-prepare"]').trigger('click')
+
+    expect(wrapper.emitted('safetyAction')).toEqual([
+      [
+        {
+          kind: 'prepare_route_upgrade_contract',
+          label: '生成审批契约',
+          pending_action_id: 'pending-list-1',
+          auto_execute: false,
+          guarded_apply: false,
+        },
+      ],
+    ])
+  })
 })

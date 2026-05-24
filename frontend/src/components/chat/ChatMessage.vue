@@ -12,6 +12,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   decide: [decision: string, comment?: string]
+  safetyAction: [action: any]
   openTrace: [traceId: string]
   openAgentRun: [runId: string]
 }>()
@@ -114,6 +115,10 @@ function onDecide(decision: string, comment?: string) {
   emit('decide', decision, comment)
 }
 
+function onSafetyAction(action: any) {
+  emit('safetyAction', action)
+}
+
 function openTrace() {
   if (!canOpenTrace.value) return
   emit('openTrace', props.msg.trace_id)
@@ -166,6 +171,7 @@ function openAgentRun() {
         :action="msg.pending_action"
         :disabled="loading"
         @decide="onDecide"
+        @safety-action="onSafetyAction"
       />
       <div
         v-if="msg.action_result"

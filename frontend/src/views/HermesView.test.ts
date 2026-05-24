@@ -16,6 +16,7 @@ vi.mock('../api/client', () => ({
     getMessages: vi.fn(),
     getAgentRun: vi.fn(),
     createAgentRun: vi.fn(),
+    resolveAction: vi.fn(),
     getDiagnosis: vi.fn(),
     getProject: vi.fn(),
     listChapters: vi.fn(),
@@ -87,8 +88,8 @@ async function mountHermesView(path = '/projects/project-1/hermes') {
       stubs: {
         ChatMessageList: {
           props: ['messages'],
-          emits: ['openAgentRun'],
-          template: '<div data-testid="chat-message-list"><button data-testid="stub-open-agent-run" @click="$emit(\'openAgentRun\', \'run-1\')">open run</button><span data-testid="stub-last-message">{{ messages[messages.length - 1]?.content }}</span></div>',
+          emits: ['openAgentRun', 'safetyAction'],
+          template: '<div data-testid="chat-message-list"><button data-testid="stub-open-agent-run" @click="$emit(\'openAgentRun\', \'run-1\')">open run</button><button data-testid="stub-safety-action" @click="$emit(\'safetyAction\', { kind: \'prepare_route_upgrade_contract\', label: \'生成审批契约\', pending_action_id: \'action-1\', auto_execute: false, guarded_apply: false })">safety</button><span data-testid="stub-last-message">{{ messages[messages.length - 1]?.content }}</span></div>',
         },
         ChatInput: { template: '<div data-testid="chat-input" />' },
         ExportModal: { template: '<div />' },
@@ -208,6 +209,75 @@ describe('HermesView', () => {
 
     expect(api.getAgentRun).toHaveBeenCalledWith('project-1', 'run-1')
     expect(wrapper.get('[data-testid="agent-run-drawer"]').text()).toContain('run-1')
+
+    wrapper.unmount()
+  })
+
+  it('creates a route contract preview run from pending action safety action without resolving the pending action', async () => {
+    vi.mocked(api.getWorkspaceBootstrap).mockResolvedValueOnce({
+      ...workspaceBootstrap(),
+      dialogs: {
+        hermes: {
+          messages: [
+            {
+              id: 'message-1',
+              role: 'assistant',
+              content: '准备生成设定。',
+              created_at: '2026-05-24T10:00:00Z',
+              pending_action: {
+                id: 'action-1',
+                type: 'preview_setup',
+                description: '生成设定',
+                params: { project_id: 'project-1' },
+                requires_confirmation: true,
+              },
+            },
+          ],
+        },
+      },
+    } as any)
+    vi.mocked((api as any).createAgentRun).mockResolvedValueOnce({
+      id: 'run-safety-1',
+      project_id: 'project-1',
+      goal: '生成待确认操作的路由升级审批契约',
+      status: 'success',
+      entrypoint: 'pending_action_safety_action',
+      input: {},
+      output: null,
+      error: null,
+      steps: [
+        {
+          output: {
+            status: 'requires_confirmation',
+            required_confirmation: true,
+            approval_contract_hash: 'approval:secret',
+          },
+        },
+      ],
+    })
+    const wrapper = await mountHermesView()
+
+    await wrapper.get('[data-testid="stub-safety-action"]').trigger('click')
+    await flushPromises()
+
+    expect((api as any).createAgentRun).toHaveBeenCalledWith('project-1', {
+      goal: '生成待确认操作的路由升级审批契约',
+      entrypoint: 'pending_action_safety_action',
+      tools: [
+        {
+          tool_name: 'preview_pending_action_route_approval_opt_in_apply_contract',
+          params: { pending_action_id: 'action-1' },
+        },
+      ],
+      input: {
+        safety_action: { kind: 'prepare_route_upgrade_contract' },
+        pending_action_id: 'action-1',
+      },
+    })
+    expect((api as any).resolveAction).not.toHaveBeenCalled()
+    expect(wrapper.get('[data-testid="agent-run-drawer"]').text()).toContain('run-safety-1')
+    expect(wrapper.get('[data-testid="stub-last-message"]').text()).toContain('路由升级审批契约已生成')
+    expect(wrapper.get('[data-testid="stub-last-message"]').text()).not.toContain('approval:secret')
 
     wrapper.unmount()
   })

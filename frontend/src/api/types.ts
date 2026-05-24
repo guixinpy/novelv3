@@ -59,6 +59,15 @@ export interface PendingActionSafetyRecommendation {
   severity?: 'info' | 'warning' | 'error' | string
   auto_execute?: boolean
   guarded_apply?: boolean
+  action?: PendingActionSafetyAction | null
+}
+
+export interface PendingActionSafetyAction {
+  kind: string
+  label: string
+  pending_action_id: string
+  auto_execute?: boolean
+  guarded_apply?: boolean
 }
 
 export interface PendingActionSafetyView {

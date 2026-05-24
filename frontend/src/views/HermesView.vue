@@ -2,7 +2,14 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api/client'
-import type { ChatResponse, RefreshTarget, ResolveActionResponse, WorkspacePanel, WritingAgentRunDetail } from '../api/types'
+import type {
+  ChatResponse,
+  PendingActionSafetyAction,
+  RefreshTarget,
+  ResolveActionResponse,
+  WorkspacePanel,
+  WritingAgentRunDetail,
+} from '../api/types'
 import ProjectDashboard from '../components/shared/ProjectDashboard.vue'
 import ExportModal from '../components/shared/ExportModal.vue'
 import VersionsModal from '../components/shared/VersionsModal.vue'
@@ -277,6 +284,14 @@ async function onDecide(decision: string, comment?: string) {
   await handleResponse(res)
 }
 
+async function onSafetyAction(action: PendingActionSafetyAction) {
+  workspace.applyUserPanel(workspace.panel, '你请求生成审批契约')
+  const run = await chat.preparePendingActionSafetyAction(action)
+  if (!run) return
+  activeAgentRunId.value = run.id
+  activeAgentRun.value = run
+}
+
 async function onExport(format: string) {
   showExportModal.value = false
   await project.exportProject(pid.value, format)
@@ -455,6 +470,7 @@ async function executeRecoveryFromRun(payload: RecoveryExecutePayload) {
         :messages="chat.messages"
         :loading="chat.loading"
         @decide="onDecide"
+        @safety-action="onSafetyAction"
         @open-trace="openTrace"
         @open-agent-run="openAgentRun"
       />

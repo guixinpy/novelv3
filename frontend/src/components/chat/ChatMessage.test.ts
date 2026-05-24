@@ -581,6 +581,60 @@ describe('ChatMessage', () => {
     expect(wrapper.get('.action-card__copy').text()).not.toContain('注意：')
   })
 
+  it('emits pending action safety actions from the action card', async () => {
+    const wrapper = mount(ChatMessage, {
+      props: {
+        msg: {
+          role: 'assistant',
+          message_type: 'plain',
+          content: '准备生成设定。',
+          pending_action: {
+            id: 'pending-safety-1',
+            type: 'preview_setup',
+            description: '我可以生成设定。',
+            params: {},
+            safety_view: {
+              kind: 'pending_action_safety',
+              recommendations: [
+                {
+                  kind: 'route_upgrade_preview',
+                  title: '可先生成路由升级审批契约',
+                  message: '这只生成审批准备信息，不会执行当前待确认操作。',
+                  severity: 'info',
+                  auto_execute: false,
+                  guarded_apply: false,
+                  action: {
+                    kind: 'prepare_route_upgrade_contract',
+                    label: '生成审批契约',
+                    pending_action_id: 'pending-safety-1',
+                    auto_execute: false,
+                    guarded_apply: false,
+                  },
+                },
+              ],
+            },
+          },
+        },
+        isLatest: true,
+        loading: false,
+      },
+    })
+
+    await wrapper.get('[data-testid="pending-action-safety-prepare"]').trigger('click')
+
+    expect(wrapper.emitted('safetyAction')).toEqual([
+      [
+        {
+          kind: 'prepare_route_upgrade_contract',
+          label: '生成审批契约',
+          pending_action_id: 'pending-safety-1',
+          auto_execute: false,
+          guarded_apply: false,
+        },
+      ],
+    ])
+  })
+
   it('renders generating action progress without repeating the action verb', () => {
     const wrapper = mount(ChatMessage, {
       props: {

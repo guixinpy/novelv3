@@ -62,6 +62,16 @@
       >
         <div class="action-card__safety-title">{{ recommendation.title }}</div>
         <p class="action-card__safety-message">{{ recommendation.message }}</p>
+        <button
+          v-if="recommendation.action"
+          :disabled="disabled"
+          type="button"
+          class="action-card__safety-action"
+          data-testid="pending-action-safety-prepare"
+          @click="$emit('safetyAction', recommendation.action)"
+        >
+          {{ recommendation.action.label }}
+        </button>
       </div>
     </section>
     <div class="action-card__actions">
@@ -113,7 +123,16 @@
 import { computed, ref } from 'vue'
 
 const props = defineProps<{ action: any; disabled: boolean }>()
-const emit = defineEmits<{ decide: [decision: string, comment?: string] }>()
+const emit = defineEmits<{
+  decide: [decision: string, comment?: string]
+  safetyAction: [action: {
+    kind: string
+    label: string
+    pending_action_id: string
+    auto_execute: boolean
+    guarded_apply: boolean
+  }]
+}>()
 
 const showRevise = ref(false)
 const reviseComment = ref('')
@@ -151,9 +170,16 @@ const safetyRecommendations = computed(() => {
         title,
         message,
         severity,
+        action: safetyActionFromRecommendation(item),
       }
     })
-    .filter((item): item is { key: string; title: string; message: string; severity: string } => Boolean(item))
+    .filter((item): item is {
+      key: string
+      title: string
+      message: string
+      severity: string
+      action: ReturnType<typeof safetyActionFromRecommendation>
+    } => Boolean(item))
 })
 const auditRows = computed(() => {
   const audit = executionPreview.value?.audit
@@ -171,6 +197,25 @@ function submitRevise() {
   emit('decide', 'revise', reviseComment.value)
   reviseComment.value = ''
   showRevise.value = false
+}
+
+function safetyActionFromRecommendation(item: any) {
+  const action = item?.action
+  if (!action || typeof action !== 'object') return null
+  if (action.kind !== 'prepare_route_upgrade_contract') return null
+  if (action.auto_execute === true || action.guarded_apply === true) return null
+  const pendingActionId = typeof action.pending_action_id === 'string' ? action.pending_action_id.trim() : ''
+  if (!pendingActionId || pendingActionId !== String(props.action?.id || '').trim()) return null
+  const label = typeof action.label === 'string' && action.label.trim()
+    ? action.label.trim()
+    : '生成审批契约'
+  return {
+    kind: 'prepare_route_upgrade_contract',
+    label,
+    pending_action_id: pendingActionId,
+    auto_execute: false,
+    guarded_apply: false,
+  }
 }
 </script>
 
@@ -311,6 +356,27 @@ function submitRevise() {
   color: var(--color-text-secondary);
   font-size: 0.8rem;
   line-height: 1.45;
+}
+
+.action-card__safety-action {
+  margin-top: 0.55rem;
+  border: 1px solid rgba(45, 112, 95, 0.24);
+  background: rgba(255, 255, 255, 0.72);
+  color: #1f6a5a;
+  border-radius: 0.65rem;
+  padding: 0.44rem 0.7rem;
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.action-card__safety-action:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.94);
+}
+
+.action-card__safety-action:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .action-card__actions {

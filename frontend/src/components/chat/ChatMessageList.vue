@@ -9,6 +9,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   decide: [decision: string, comment?: string]
+  safetyAction: [action: any]
   openTrace: [traceId: string]
   openAgentRun: [runId: string]
 }>()
@@ -35,6 +36,7 @@ watch(() => props.loading, scrollToBottom)
       :is-latest="index === messages.length - 1"
       :loading="loading"
       @decide="(d, c) => emit('decide', d, c)"
+      @safety-action="(action) => emit('safetyAction', action)"
       @open-trace="(traceId) => emit('openTrace', traceId)"
       @open-agent-run="(runId) => emit('openAgentRun', runId)"
     />

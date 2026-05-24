@@ -1,7 +1,12 @@
 from app.services.actions.action_result_view import TYPE_LABELS
 
 
-def pending_action_safety_view(action_type: str | None, params: dict | None) -> dict | None:
+def pending_action_safety_view(
+    action_type: str | None,
+    params: dict | None,
+    *,
+    pending_action_id: str | None = None,
+) -> dict | None:
     if not isinstance(params, dict):
         return None
     agent_route = params.get("agent_route")
@@ -15,18 +20,26 @@ def pending_action_safety_view(action_type: str | None, params: dict | None) -> 
         return None
     if not str(action_type or "").strip():
         return None
+    recommendation = {
+        "kind": "route_upgrade_preview",
+        "title": "可先生成路由升级审批契约",
+        "message": "这只生成审批准备信息，不会执行当前待确认操作。",
+        "severity": "info",
+        "auto_execute": False,
+        "guarded_apply": False,
+    }
+    action_id = str(pending_action_id or "").strip()
+    if action_id:
+        recommendation["action"] = {
+            "kind": "prepare_route_upgrade_contract",
+            "label": "生成审批契约",
+            "pending_action_id": action_id,
+            "auto_execute": False,
+            "guarded_apply": False,
+        }
     return {
         "kind": "pending_action_safety",
-        "recommendations": [
-            {
-                "kind": "route_upgrade_preview",
-                "title": "可先生成路由升级审批契约",
-                "message": "这只生成审批准备信息，不会执行当前待确认操作。",
-                "severity": "info",
-                "auto_execute": False,
-                "guarded_apply": False,
-            }
-        ],
+        "recommendations": [recommendation],
     }
 
 

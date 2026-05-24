@@ -87,7 +87,7 @@ def _pending_action_out(pending: PendingAction) -> PendingActionOut:
         type=pending.type,
         description=_action_description(pending.type, pending.params),
         params=pending.params,
-        safety_view=pending_action_safety_view(pending.type, pending.params),
+        safety_view=pending_action_safety_view(pending.type, pending.params, pending_action_id=pending.id),
     )
 
 

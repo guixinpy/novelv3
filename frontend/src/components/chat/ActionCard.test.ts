@@ -51,7 +51,7 @@ describe('ActionCard', () => {
     expect(wrapper.text()).not.toContain('approval:abc123')
   })
 
-  it('renders safe pending action recommendations without internal tool details', () => {
+  it('renders safe pending action recommendations without internal tool details', async () => {
     const wrapper = mount(ActionCard, {
       props: {
         disabled: false,
@@ -71,6 +71,14 @@ describe('ActionCard', () => {
                 severity: 'info',
                 auto_execute: false,
                 guarded_apply: false,
+                action: {
+                  kind: 'prepare_route_upgrade_contract',
+                  label: '生成审批契约',
+                  pending_action_id: 'pending-2',
+                  auto_execute: false,
+                  guarded_apply: false,
+                  tool_name: 'preview_pending_action_route_approval_opt_in_apply_contract',
+                },
                 approval_contract_hash: 'approval:secret',
                 tool_name: 'preview_pending_action_route_approval_opt_in_apply_contract',
               },
@@ -84,5 +92,15 @@ describe('ActionCard', () => {
     expect(wrapper.text()).toContain('这只生成审批准备信息，不会执行当前待确认操作。')
     expect(wrapper.text()).not.toContain('approval:secret')
     expect(wrapper.text()).not.toContain('preview_pending_action_route_approval_opt_in_apply_contract')
+
+    await wrapper.get('[data-testid="pending-action-safety-prepare"]').trigger('click')
+
+    expect(wrapper.emitted('safetyAction')?.[0]?.[0]).toEqual({
+      kind: 'prepare_route_upgrade_contract',
+      label: '生成审批契约',
+      pending_action_id: 'pending-2',
+      auto_execute: false,
+      guarded_apply: false,
+    })
   })
 })

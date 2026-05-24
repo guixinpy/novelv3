@@ -581,12 +581,20 @@ def test_pending_action_exposes_route_opt_in_safety_view_without_contract_hash(c
     assert recommendation["severity"] == "info"
     assert recommendation["auto_execute"] is False
     assert recommendation["guarded_apply"] is False
+    assert recommendation["action"] == {
+        "kind": "prepare_route_upgrade_contract",
+        "label": "生成审批契约",
+        "pending_action_id": pending["id"],
+        "auto_execute": False,
+        "guarded_apply": False,
+    }
     assert "approval:" not in str(safety_view)
     assert "approval_contract" not in str(safety_view)
     assert "params_diff" not in str(safety_view)
     assert "route_before" not in str(safety_view)
     assert "route_after" not in str(safety_view)
     assert "apply_pending_action_route_approval_opt_in" not in str(safety_view)
+    assert "preview_pending_action_route_approval_opt_in_apply_contract" not in str(safety_view)
 
     messages = client.get(f"/api/v1/dialog/projects/{project_id}/messages").json()
     assert messages[-1]["pending_action"]["safety_view"] == safety_view
@@ -614,7 +622,21 @@ def test_pending_action_exposes_route_opt_in_safety_view_without_contract_hash(c
 def test_pending_action_safety_view_omits_non_upgradeable_routes(action_type, params):
     from app.services.actions.pending_action_projection import pending_action_safety_view
 
-    assert pending_action_safety_view(action_type, params) is None
+    assert pending_action_safety_view(action_type, params, pending_action_id="pending-1") is None
+
+
+def test_pending_action_safety_view_omits_action_without_pending_action_id():
+    from app.services.actions.pending_action_projection import pending_action_safety_view
+
+    view = pending_action_safety_view(
+        "preview_setup",
+        {"agent_route": {"agent_tool_name": "generate_setup"}},
+        pending_action_id="",
+    )
+
+    assert view is not None
+    recommendation = view["recommendations"][0]
+    assert "action" not in recommendation
 
 
 def test_dialog_control_plane_approval_chain_opt_in_default_setup_route_stays_legacy(db_session):
