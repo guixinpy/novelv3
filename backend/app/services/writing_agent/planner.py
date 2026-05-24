@@ -39,6 +39,7 @@ def build_writing_agent_run_plan(
 ) -> dict[str, Any]:
     resolved_chapter_index = _infer_chapter_index(db, project_id, chapter_index)
     intent_class = _classify_intent(goal, intent, resolved_chapter_index)
+    agent_profile = _agent_profile_for_intent(intent_class)
     resolved_chapter_generation_route = _normalize_chapter_generation_route(chapter_generation_route)
     plan_id = source_plan_id or _plan_id(project_id, goal, intent_class, resolved_chapter_index)
     tool_plan = build_agent_tool_plan(
@@ -54,6 +55,8 @@ def build_writing_agent_run_plan(
         "planner_version": PLANNER_VERSION,
         "intent_class": intent_class,
         "tool_policy_projection": tool_plan.get("tool_policy_projection"),
+        "agent_profile": agent_profile,
+        "agent_profile_tool_projection": _profile_projection_from_tool_plan(tool_plan, agent_profile),
         "selected_tools": [],
         "rejected_tools": [],
         "missing_dependencies": [],
@@ -440,6 +443,29 @@ def _classify_intent(goal: str, explicit_intent: str | None, chapter_index: int)
     if chapter_index >= 1 and any(token in text for token in ("继续", "下一章", "写", "生成", "章节")):
         return "continue_next_chapter"
     return "inspect_tools"
+
+
+def _agent_profile_for_intent(intent_class: str) -> str:
+    if intent_class == "continue_next_chapter":
+        return "drafting_worker"
+    if intent_class == "review_chapter":
+        return "reviewer_worker"
+    if intent_class == "recover_blocked_run":
+        return "recovery_worker"
+    if intent_class == "setup_project":
+        return "drafting_worker"
+    return "orchestrator"
+
+
+def _profile_projection_from_tool_plan(tool_plan: dict[str, Any], profile: str) -> dict[str, Any] | None:
+    projection = tool_plan.get("agent_profile_tool_projection")
+    if not isinstance(projection, dict):
+        return None
+    profiles = projection.get("profiles")
+    if not isinstance(profiles, dict):
+        return None
+    selected = profiles.get(profile)
+    return selected if isinstance(selected, dict) else None
 
 
 def _normalize_chapter_generation_route(route: str | None) -> str:

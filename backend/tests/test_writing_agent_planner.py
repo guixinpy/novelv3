@@ -31,6 +31,9 @@ def test_planner_builds_ready_next_chapter_tool_chain(db_session):
     assert plan["trace"]["tool_policy_projection"]["version"] == "phase206.agent_tool_surface_policy.v1"
     assert plan["trace"]["tool_policy_projection"]["summary"]["read_tools"] >= 1
     assert "describe_agent_tools" in plan["trace"]["tool_policy_projection"]["parallel_read_tools"]
+    assert plan["trace"]["agent_profile"] == "drafting_worker"
+    assert plan["trace"]["agent_profile_tool_projection"]["profile"] == "drafting_worker"
+    assert "generate_chapter" in plan["trace"]["agent_profile_tool_projection"]["allowed_visible_tools"]
     first_step = plan["steps"][0]
     generate_step = next(step for step in plan["steps"] if step["tool_name"] == "generate_chapter")
     assert first_step["step_id"].startswith("step:")
@@ -136,6 +139,8 @@ def test_planner_routes_recovery_intent_to_latest_recoverable_run(db_session):
 
     assert plan["status"] == "completed"
     assert plan["intent_class"] == "recover_blocked_run"
+    assert plan["trace"]["agent_profile"] == "recovery_worker"
+    assert plan["trace"]["agent_profile_tool_projection"]["profile"] == "recovery_worker"
     assert _tool_names(plan) == ["describe_agent_tools", "plan_recovery_tools"]
     recovery_step = plan["steps"][1]
     assert recovery_step["params"] == {"run_id": blocked_run.id}
@@ -152,6 +157,8 @@ def test_planner_marks_review_only_plan_as_not_requiring_approval(db_session):
 
     assert plan["status"] == "completed"
     assert plan["intent_class"] == "review_chapter"
+    assert plan["trace"]["agent_profile"] == "reviewer_worker"
+    assert plan["trace"]["agent_profile_tool_projection"]["profile"] == "reviewer_worker"
     assert _tool_names(plan) == [
         "describe_agent_tools",
         "review_chapter_quality",
@@ -204,7 +211,19 @@ def test_planner_builds_setup_project_plan_for_bare_project(db_session):
 
     assert plan["status"] == "completed"
     assert plan["intent_class"] == "setup_project"
+    assert plan["trace"]["agent_profile"] == "drafting_worker"
     assert _tool_names(plan) == ["describe_agent_tools", "generate_setup"]
+
+
+def test_planner_defaults_inspection_to_orchestrator_profile(db_session):
+    project = _seed_project(db_session, outline_chapters=[1], generated_chapters=[])
+
+    plan = build_writing_agent_run_plan(db_session, project.id, goal="看看现在能做什么")
+
+    assert plan["intent_class"] == "inspect_tools"
+    assert plan["trace"]["agent_profile"] == "orchestrator"
+    assert plan["trace"]["agent_profile_tool_projection"]["profile"] == "orchestrator"
+    assert _tool_names(plan) == ["describe_agent_tools"]
 
 
 def _seed_project(db_session, *, outline_chapters: list[int], generated_chapters: list[int]) -> Project:

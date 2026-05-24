@@ -1214,6 +1214,45 @@ def test_agent_tool_plan_exposes_tool_policy_projection(db_session):
     }.issubset(policy_codes)
 
 
+def test_agent_tool_plan_exposes_agent_profile_tool_projection(db_session):
+    project = _seed_ready_project(db_session)
+
+    plan = build_agent_tool_plan(db_session, project.id, chapter_index=2)
+    projection = plan["agent_profile_tool_projection"]
+
+    assert projection["version"] == "phase207.agent_profile_tool_policy.v1"
+    profiles = projection["profiles"]
+    assert set(profiles) >= {
+        "orchestrator",
+        "drafting_worker",
+        "reviewer_worker",
+        "world_model_worker",
+        "recovery_worker",
+    }
+    assert "describe_agent_tools" in profiles["orchestrator"]["allowed_visible_tools"]
+    assert "generate_chapter" not in profiles["orchestrator"]["allowed_visible_tools"]
+    assert "generate_chapter" in profiles["orchestrator"]["blocked_visible_tools"]
+    assert "generate_chapter" in profiles["drafting_worker"]["allowed_visible_tools"]
+    assert "analyze_chapter_world_model" in profiles["drafting_worker"]["allowed_hidden_tools"]
+    assert "apply_world_model_proposal_resolution" not in profiles["drafting_worker"]["allowed_hidden_tools"]
+    assert "review_chapter_quality" in profiles["reviewer_worker"]["allowed_hidden_tools"]
+    assert "generate_chapter" not in profiles["reviewer_worker"]["allowed_visible_tools"]
+    assert "apply_pending_action_route_approval_opt_in" in profiles["reviewer_worker"]["blocked_visible_tools"]
+    assert "review_world_model_proposals" in profiles["world_model_worker"]["allowed_hidden_tools"]
+    assert profiles["drafting_worker"]["summary"]["allowed_visible_tools"] >= 1
+    assert profiles["orchestrator"]["summary"]["blocked_visible_tools"] >= 1
+
+
+def test_agent_profile_projection_does_not_change_tool_visibility(db_session):
+    project = _seed_ready_project(db_session)
+
+    baseline = build_agent_tool_plan(db_session, project.id, chapter_index=2)
+    projected = build_agent_tool_plan(db_session, project.id, chapter_index=2)
+
+    assert _tool_names(projected["visible_tools"]) == _tool_names(baseline["visible_tools"])
+    assert _tool_names(projected["hidden_tools"]) == _tool_names(baseline["hidden_tools"])
+
+
 def _seed_ready_project(db_session) -> Project:
     project = Project(name="Tool Plan Ready", genre="都市悬疑", target_chapter_count=600, target_word_count=1200000)
     db_session.add(project)
