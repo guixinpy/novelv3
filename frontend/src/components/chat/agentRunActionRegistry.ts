@@ -1,0 +1,44 @@
+import type { ActionResultView } from '../../api/types'
+import {
+  DIAGNOSTIC_AGENT_RUN_ACTION_DESCRIPTORS,
+  DIAGNOSTIC_AGENT_RUN_ACTION_TYPES,
+} from './agentDiagnosticRunProjection'
+import {
+  LONGFORM_AGENT_RUN_ACTION_DESCRIPTORS,
+  LONGFORM_AGENT_RUN_ACTION_TYPES,
+} from './longformAgentRunProjection'
+import {
+  ROUTE_OPT_IN_AGENT_RUN_ACTION_DESCRIPTORS,
+  ROUTE_OPT_IN_AGENT_RUN_ACTION_TYPES,
+} from './routeOptInAgentRunProjection'
+import {
+  RECOVERY_AGENT_RUN_ACTION_DESCRIPTORS,
+  RECOVERY_AGENT_RUN_ACTION_TYPES,
+} from './recoveryAgentRunProjection'
+import {
+  WRITING_TOOL_AGENT_RUN_ACTION_DESCRIPTORS,
+  WRITING_TOOL_AGENT_RUN_ACTION_TYPES,
+} from './writingToolAgentRunProjection'
+
+export const AGENT_RUN_ACTION_TYPES = [
+  ...RECOVERY_AGENT_RUN_ACTION_TYPES,
+  ...DIAGNOSTIC_AGENT_RUN_ACTION_TYPES,
+  ...WRITING_TOOL_AGENT_RUN_ACTION_TYPES,
+  ...ROUTE_OPT_IN_AGENT_RUN_ACTION_TYPES,
+  ...LONGFORM_AGENT_RUN_ACTION_TYPES,
+] as const
+
+export type AgentRunActionType = typeof AGENT_RUN_ACTION_TYPES[number]
+
+export interface AgentRunActionDescriptor {
+  type: AgentRunActionType
+  buildView: (actionResult: Record<string, unknown>, status: string) => ActionResultView
+}
+
+export const AGENT_RUN_ACTION_DESCRIPTORS: Record<AgentRunActionType, AgentRunActionDescriptor> = {
+  ...RECOVERY_AGENT_RUN_ACTION_DESCRIPTORS,
+  ...DIAGNOSTIC_AGENT_RUN_ACTION_DESCRIPTORS,
+  ...WRITING_TOOL_AGENT_RUN_ACTION_DESCRIPTORS,
+  ...ROUTE_OPT_IN_AGENT_RUN_ACTION_DESCRIPTORS,
+  ...LONGFORM_AGENT_RUN_ACTION_DESCRIPTORS,
+}

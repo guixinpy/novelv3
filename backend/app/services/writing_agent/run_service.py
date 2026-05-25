@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from datetime import UTC, datetime
 from typing import Any
@@ -39,6 +40,9 @@ from app.services.writing_agent.tool_executor import (
 )
 from app.services.writing_agent.tool_policy import should_stop_after_report, successful_report_block_message
 from app.services.writing_agent.tool_recommendations import normalize_tool_recommendations
+from app.services.writing_agent.tool_request_validation import validate_writing_agent_tool_request
+from app.services.writing_agent.command_contract_projection import command_contracts_from_run_input
+from app.services.writing_agent.control_plane_readiness_projection import control_plane_readiness_from_run_input
 from app.services.writing_agent.recommended_followup_planner import (
     FOLLOWUP_PLANNER_VERSION,
     build_recommended_followup_tool_plan,
@@ -73,6 +77,9 @@ CHAPTER_TOOL_NAME = "generate_chapter"
 INTERNAL_TOOLS = internal_tool_names()
 NON_BLOCKING_REPORT_TOOLS = non_blocking_report_tool_names()
 AGENT_TOOL_DISCOVERY_PROJECTION_VERSION = "phase210.agent_tool_discovery_projection.v1"
+AGENT_LOOP_CONTRACT_VERSION = "phase219.agent_loop_contract.v1"
+LOOP_RISK_WARNING_THRESHOLD = 3
+LOOP_RISK_CRITICAL_THRESHOLD = 5
 
 
 class WritingAgentRunService:
@@ -223,6 +230,20 @@ class WritingAgentRunService:
             step = self._start_step(run, step_index, tool)
             if tool.tool_name not in ALLOWED_TOOLS:
                 self._fail_step_and_run(run, step, f"Unsupported writing agent tool: {tool.tool_name}")
+                return run
+
+            validation = validate_writing_agent_tool_request(tool.tool_name, tool.params)
+            if validation.get("status") == "failed":
+                self._fail_step_and_run(
+                    run,
+                    step,
+                    "Tool input validation failed",
+                    output={
+                        "status": "failed",
+                        "error": "Tool input validation failed",
+                        "validation": validation,
+                    },
+                )
                 return run
 
             result = await self._execute_tool(run.project_id, tool, run_id=run.id)
@@ -650,6 +671,8 @@ def detail_payload(detail: dict[str, Any]) -> dict[str, Any]:
         **_model_dict(run),
         **_agent_profile_projection(run, steps),
         "agent_profile_policy_audit": _agent_profile_policy_audit_from_steps(steps),
+        "agent_command_contracts": command_contracts_from_run_input(run.input),
+        "agent_control_plane_readiness": control_plane_readiness_from_run_input(run.input),
         "steps": steps,
     }
 
@@ -813,6 +836,13 @@ def _continuation_state(run: WritingAgentRun, steps: list[WritingAgentStep]) -> 
     next_planned_tool = _next_planned_tool(run, steps)
     next_expected_tool = recovery.get("next_tool") if recovery.get("status") == "recommended" else next_planned_tool
     status = _continuation_status(run.status)
+    agent_loop = _agent_loop_contract(
+        run,
+        steps,
+        status=status,
+        next_expected_tool=next_expected_tool,
+        recovery=recovery,
+    )
     return {
         "version": "phase56.continuation_state.v1",
         "status": status,
@@ -833,6 +863,8 @@ def _continuation_state(run: WritingAgentRun, steps: list[WritingAgentStep]) -> 
         "last_successful_tool": _step_marker(last_successful_step),
         "blocked_tool": _step_marker(blocked_step),
         "next_expected_tool": next_expected_tool,
+        "agent_loop": agent_loop,
+        "memory_provenance": _latest_memory_provenance_from_steps(steps),
         "profile_policy_health": _profile_policy_health(steps),
         "recommended_followups": recommended_followups,
         "recovery": recovery,
@@ -840,6 +872,150 @@ def _continuation_state(run: WritingAgentRun, steps: list[WritingAgentStep]) -> 
         "consumed": _consumed_state(steps),
         "resume_hint": _resume_hint(status, next_expected_tool, recovery),
     }
+
+
+def _agent_loop_contract(
+    run: WritingAgentRun,
+    steps: list[WritingAgentStep],
+    *,
+    status: str,
+    next_expected_tool: str | None,
+    recovery: dict[str, Any],
+) -> dict[str, Any]:
+    planned_step_count = _planned_step_count(run)
+    used_iterations = len(steps)
+    max_iterations = max(planned_step_count, used_iterations)
+    exit_reason = _agent_loop_exit_reason(run.status)
+    return {
+        "version": AGENT_LOOP_CONTRACT_VERSION,
+        "loop_kind": "sequential_tool_plan",
+        "status": status,
+        "budget": {
+            "max_iterations": max_iterations,
+            "used_iterations": used_iterations,
+            "remaining_iterations": max(0, max_iterations - used_iterations),
+        },
+        "exit_reason": exit_reason,
+        "requires_user_action": exit_reason in {"blocked", "tool_failed", "cancelled"},
+        "loop_risk": _agent_loop_risk(steps),
+        "next_action": _agent_loop_next_action(
+            status=status,
+            exit_reason=exit_reason,
+            next_expected_tool=next_expected_tool,
+            recovery=recovery,
+        ),
+        "tool_call_sequence": [_agent_loop_step_marker(step) for step in steps],
+    }
+
+
+def _agent_loop_exit_reason(run_status: str) -> str:
+    if run_status == RUN_SUCCESS:
+        return "completed"
+    if run_status == RUN_FAILED:
+        return "tool_failed"
+    if run_status == RUN_BLOCKED:
+        return "blocked"
+    if run_status == RUN_CANCELLED:
+        return "cancelled"
+    if run_status == RUN_RUNNING:
+        return "running"
+    if run_status == RUN_PENDING:
+        return "pending"
+    return str(run_status or "unknown")
+
+
+def _agent_loop_next_action(
+    *,
+    status: str,
+    exit_reason: str,
+    next_expected_tool: str | None,
+    recovery: dict[str, Any],
+) -> dict[str, Any]:
+    if status == "completed":
+        return {"kind": "none", "tool_name": None, "requires_confirmation": False}
+    if recovery.get("status") == "recommended":
+        requires_input = recovery.get("requires_user_input") is True
+        action = str(recovery.get("action") or "").strip()
+        return {
+            "kind": "request_input" if requires_input or action == "ask_user" else "recover",
+            "tool_name": _non_empty_string(recovery.get("next_tool")),
+            "requires_confirmation": requires_input or action in {"ask_user", "review_policy"},
+        }
+    if next_expected_tool:
+        return {"kind": "continue", "tool_name": next_expected_tool, "requires_confirmation": False}
+    if exit_reason == "tool_failed":
+        return {
+            "kind": "inspect_failure",
+            "tool_name": "inspect_agent_health_projection",
+            "requires_confirmation": False,
+        }
+    if exit_reason == "blocked":
+        return {
+            "kind": "resolve_blocker",
+            "tool_name": "inspect_agent_health_projection",
+            "requires_confirmation": False,
+        }
+    return {"kind": "none", "tool_name": None, "requires_confirmation": False}
+
+
+def _agent_loop_step_marker(step: WritingAgentStep) -> dict[str, Any]:
+    return {
+        "step_index": step.step_index,
+        "tool_name": step.tool_name,
+        "status": step.status,
+        "tool_call_id": step.tool_call_id,
+        "target_type": step.target_type,
+        "chapter_index": step.chapter_index,
+    }
+
+
+def _agent_loop_risk(steps: list[WritingAgentStep]) -> dict[str, Any]:
+    max_repeat_count = 0
+    repeated_tool_name: str | None = None
+    repeated_signature: str | None = None
+    previous_signature: str | None = None
+    current_repeat_count = 0
+
+    for step in steps:
+        signature = _agent_loop_step_signature(step)
+        if signature == previous_signature:
+            current_repeat_count += 1
+        else:
+            current_repeat_count = 1
+            previous_signature = signature
+        if current_repeat_count > max_repeat_count:
+            max_repeat_count = current_repeat_count
+            repeated_tool_name = step.tool_name
+            repeated_signature = signature
+
+    status = "clear"
+    if max_repeat_count >= LOOP_RISK_CRITICAL_THRESHOLD:
+        status = "critical"
+    elif max_repeat_count >= LOOP_RISK_WARNING_THRESHOLD:
+        status = "warning"
+
+    return {
+        "status": status,
+        "detector": "adjacent_repeat",
+        "max_repeat_count": max_repeat_count,
+        "tool_name": repeated_tool_name if status != "clear" else None,
+        "signature": repeated_signature if status != "clear" else None,
+        "thresholds": {
+            "warning": LOOP_RISK_WARNING_THRESHOLD,
+            "critical": LOOP_RISK_CRITICAL_THRESHOLD,
+        },
+    }
+
+
+def _agent_loop_step_signature(step: WritingAgentStep) -> str:
+    step_input = step.input if isinstance(step.input, dict) else {}
+    params = step_input.get("params") if isinstance(step_input.get("params"), dict) else {}
+    try:
+        serialized = json.dumps(params, ensure_ascii=False, sort_keys=True, default=str)
+    except (TypeError, ValueError):
+        serialized = str(params)
+    digest = hashlib.sha256(serialized.encode("utf-8")).hexdigest()[:16]
+    return f"{step.tool_name}:{digest}"
 
 
 def _profile_policy_health(steps: list[WritingAgentStep]) -> dict[str, Any]:
@@ -967,11 +1143,42 @@ def _latest_recommended_recovery_from_steps(steps: list[WritingAgentStep]) -> di
                 "source_step_index": step.step_index,
                 "source_tool": recovery.get("source_tool") or step.tool_name,
                 "reason_code": recovery.get("reason_code"),
+                "action": recovery.get("action"),
                 "next_tool": recovery.get("next_tool"),
                 "next_params": recovery.get("next_params") if isinstance(recovery.get("next_params"), dict) else {},
+                "requires_user_input": recovery.get("requires_user_input") is True,
                 "affected_chapter_indexes": recovery.get("affected_chapter_indexes", []),
+                "memory_provenance_status": recovery.get("memory_provenance_status"),
+                "memory_provenance_recovery_status": recovery.get("memory_provenance_recovery_status"),
+                "memory_source_count": recovery.get("memory_source_count"),
             }
     return {"status": "none"}
+
+
+def _latest_memory_provenance_from_steps(steps: list[WritingAgentStep]) -> dict[str, Any]:
+    for step in reversed(steps):
+        output = step.output if isinstance(step.output, dict) else {}
+        provenance = output.get("memory_provenance") if isinstance(output.get("memory_provenance"), dict) else None
+        if provenance is None:
+            continue
+        recovery = provenance.get("recovery") if isinstance(provenance.get("recovery"), dict) else {}
+        prompt_context = (
+            provenance.get("prompt_context") if isinstance(provenance.get("prompt_context"), dict) else None
+        )
+        return {
+            "version": provenance.get("version"),
+            "source_step_index": step.step_index,
+            "source_tool": step.tool_name,
+            "status": provenance.get("status"),
+            "source_count": provenance.get("source_count"),
+            "prompt_context": prompt_context,
+            "recovery": {
+                "status": recovery.get("status"),
+                "reason": recovery.get("reason"),
+                "next_tools": recovery.get("next_tools") if isinstance(recovery.get("next_tools"), list) else [],
+            },
+        }
+    return {"status": "unavailable", "reason": "no_memory_provenance_seen"}
 
 
 def _failure_state(run: WritingAgentRun, blocked_step: WritingAgentStep | None) -> dict[str, Any] | None:

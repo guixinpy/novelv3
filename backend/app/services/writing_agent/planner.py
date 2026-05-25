@@ -408,6 +408,12 @@ def _planner_health_projection(
         "status": output.get("status"),
         "diagnostic_count": len(diagnostics),
         "diagnostics": diagnostics,
+        "command_contracts": output.get("command_contracts")
+        if isinstance(output.get("command_contracts"), dict)
+        else {},
+        "control_plane_readiness": output.get("control_plane_readiness")
+        if isinstance(output.get("control_plane_readiness"), dict)
+        else {},
         "recommended_tools": output.get("recommended_tools") if isinstance(output.get("recommended_tools"), list) else [],
     }
 

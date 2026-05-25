@@ -7,6 +7,8 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.models import Project
+from app.services.writing_agent.agent_command_contracts import inspect_agent_command_contracts
+from app.services.writing_agent.agent_control_plane_readiness import inspect_agent_control_plane_readiness
 from app.services.writing_agent.agent_trace_audit import inspect_agent_trace_audit
 from app.services.writing_agent.slash_command_route import inspect_agent_route_preference_projection
 from app.services.writing_agent.tool_contracts import build_agent_tool_contract_snapshot
@@ -51,10 +53,19 @@ def inspect_agent_health_projection(
             action_execution_tool_names=action_execution_tool_names,
         )
     )
-    tool_contracts = _tool_contract_summary(
-        build_agent_tool_contract_snapshot(
-            adapter_metadata_by_name=adapter_metadata_by_name,
-            include_gap_details=False,
+    raw_tool_contracts = build_agent_tool_contract_snapshot(
+        adapter_metadata_by_name=adapter_metadata_by_name,
+        include_gap_details=False,
+    )
+    tool_contracts = _tool_contract_summary(raw_tool_contracts)
+    raw_command_contracts = inspect_agent_command_contracts(
+        adapter_names_provider=lambda: static_adapter_tool_names,
+    )
+    command_contracts = _command_contract_summary(raw_command_contracts)
+    control_plane_readiness = _control_plane_readiness_summary(
+        inspect_agent_control_plane_readiness(
+            tool_contract_snapshot_provider=lambda: raw_tool_contracts,
+            command_contract_provider=lambda: raw_command_contracts,
         )
     )
     write_gate = _write_gate_summary(inspect_agent_write_gate_coverage(adapter_metadata_by_name=adapter_metadata_by_name))
@@ -64,6 +75,7 @@ def inspect_agent_health_projection(
         profile_policy=profile_policy,
         route_preference=route_preference,
         tool_contracts=tool_contracts,
+        command_contracts=command_contracts,
         write_gate=write_gate,
         trace_audit=trace_audit,
     )
@@ -77,6 +89,8 @@ def inspect_agent_health_projection(
             "profile_policy": profile_policy,
             "route_preference": route_preference,
             "tool_contracts": tool_contracts,
+            "command_contracts": command_contracts,
+            "control_plane_readiness": control_plane_readiness,
             "write_gate": write_gate,
             "trace_audit": trace_audit,
             "diagnostics": diagnostics,
@@ -164,6 +178,40 @@ def _tool_contract_summary(output: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _command_contract_summary(output: dict[str, Any]) -> dict[str, Any]:
+    summary = output.get("summary") if isinstance(output.get("summary"), dict) else {}
+    return {
+        "status": str(output.get("status") or ""),
+        "version": output.get("version"),
+        "summary": {
+            "total_commands": _non_negative_int(summary.get("total_commands")),
+            "agent_control_commands": _non_negative_int(summary.get("agent_control_commands")),
+            "commands_with_control_projection": _non_negative_int(summary.get("commands_with_control_projection")),
+            "gap_count": _non_negative_int(summary.get("gap_count")),
+        },
+        "recommended_next_tools": _string_list(output.get("recommended_next_tools")),
+    }
+
+
+def _control_plane_readiness_summary(output: dict[str, Any]) -> dict[str, Any]:
+    summary = output.get("summary") if isinstance(output.get("summary"), dict) else {}
+    return {
+        "status": str(output.get("status") or ""),
+        "version": output.get("version"),
+        "summary": {
+            "total_tools": _non_negative_int(summary.get("total_tools")),
+            "tools_needing_work": _non_negative_int(summary.get("tools_needing_work")),
+            "tool_gap_count": _non_negative_int(summary.get("tool_gap_count")),
+            "total_commands": _non_negative_int(summary.get("total_commands")),
+            "agent_control_commands": _non_negative_int(summary.get("agent_control_commands")),
+            "commands_with_control_projection": _non_negative_int(summary.get("commands_with_control_projection")),
+            "command_gap_count": _non_negative_int(summary.get("command_gap_count")),
+            "total_gap_count": _non_negative_int(summary.get("total_gap_count")),
+        },
+        "recommended_next_tools": _string_list(output.get("recommended_next_tools")),
+    }
+
+
 def _write_gate_summary(output: dict[str, Any]) -> dict[str, Any]:
     summary = output.get("summary") if isinstance(output.get("summary"), dict) else {}
     return {
@@ -198,6 +246,7 @@ def _diagnostics(
     profile_policy: dict[str, Any] | None,
     route_preference: dict[str, Any],
     tool_contracts: dict[str, Any],
+    command_contracts: dict[str, Any],
     write_gate: dict[str, Any],
     trace_audit: dict[str, Any] | None,
 ) -> list[dict[str, Any]]:
@@ -241,6 +290,17 @@ def _diagnostics(
                 "tools_needing_work": contract_summary.get("tools_needing_work", 0),
             }
         )
+    command_summary = command_contracts.get("summary") if isinstance(command_contracts.get("summary"), dict) else {}
+    if _non_negative_int(command_summary.get("gap_count")):
+        diagnostics.append(
+            {
+                "code": "agent_command_contract_gaps",
+                "severity": "warning",
+                "message": "Hermes 命令控制面存在 Agent 契约缺口，可能影响自主编排或状态反馈。",
+                "gap_count": command_summary.get("gap_count", 0),
+                "agent_control_commands": command_summary.get("agent_control_commands", 0),
+            }
+        )
     write_summary = write_gate.get("summary") if isinstance(write_gate.get("summary"), dict) else {}
     if _non_negative_int(write_summary.get("high_risk_direct_write_count")):
         diagnostics.append(
@@ -268,7 +328,8 @@ def _recommended_tools(diagnostics: list[dict[str, Any]]) -> list[str]:
         "agent_profile_policy_needs_attention": ["describe_agent_tools"],
         "latest_run_profile_policy_needs_attention": ["inspect_agent_trace_audit"],
         "agent_route_preference_degraded": ["inspect_agent_route_preference_projection"],
-        "agent_tool_contract_gaps": ["inspect_agent_tool_contracts"],
+        "agent_tool_contract_gaps": ["inspect_agent_control_plane_readiness", "inspect_agent_tool_contracts"],
+        "agent_command_contract_gaps": ["inspect_agent_control_plane_readiness", "inspect_agent_command_contracts"],
         "agent_write_gate_high_risk": ["inspect_agent_write_gate_coverage"],
     }
     tools: list[str] = []

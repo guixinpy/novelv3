@@ -21,6 +21,8 @@ SAFE_RECOMMENDED_FOLLOWUP_TOOLS = frozenset(
         "inspect_longform_chapter_batch",
         "inspect_agent_job_projection",
         "inspect_agent_tool_contracts",
+        "inspect_agent_control_plane_readiness",
+        "inspect_agent_command_contracts",
         "inspect_agent_knowledge_base_route",
         "inspect_agent_trace_audit",
         "inspect_agent_route_preference_projection",
@@ -47,6 +49,27 @@ def latest_recommended_followup_state(steps: Sequence[WritingAgentStep]) -> dict
         return {"version": FOLLOWUP_PLANNER_VERSION, "status": "none"}
     step, recommendations = source
     return _followup_state_from_recommendations(step, recommendations)
+
+
+def latest_recommended_followup_run_id(db: Session, project_id: str) -> str | None:
+    runs = (
+        db.query(WritingAgentRun)
+        .filter(WritingAgentRun.project_id == project_id, WritingAgentRun.status.in_(("success", "completed")))
+        .order_by(WritingAgentRun.updated_at.desc(), WritingAgentRun.id.desc())
+        .limit(20)
+        .all()
+    )
+    for run in runs:
+        steps = (
+            db.query(WritingAgentStep)
+            .filter(WritingAgentStep.project_id == project_id, WritingAgentStep.run_id == run.id)
+            .order_by(WritingAgentStep.step_index.asc(), WritingAgentStep.id.asc())
+            .all()
+        )
+        state = latest_recommended_followup_state(steps)
+        if state.get("status") == "recommended":
+            return str(run.id)
+    return None
 
 
 def build_recommended_followup_tool_plan(db: Session, project_id: str, run_id: str | None) -> dict[str, Any]:
@@ -109,6 +132,7 @@ def build_recommended_followup_tool_plan(db: Session, project_id: str, run_id: s
         state["canonical_followups"],
         source_step=step,
         source_run_id=run_id,
+        provenance_tools=state["provenance_recovery_tools"],
     )
     selected_tools = [str(tool.get("tool_name") or "") for tool in tools]
     hash_payload = {
@@ -185,6 +209,8 @@ def _followup_state_from_recommendations(
         "policy_followups": _string_list(recommendations.get("policy_followups")),
         "canonical_followups": canonical_followups,
         "non_tool_recommendations": _string_list(recommendations.get("non_tool_recommendations")),
+        "provenance_recovery_tools": _tool_request_list(recommendations.get("provenance_recovery_tools")),
+        "provenance_write_tools": _tool_request_list(recommendations.get("provenance_write_tools")),
         "next_tool": allowed_followups[0] if allowed_followups else None,
     }
 
@@ -194,16 +220,21 @@ def _tool_requests_from_followups(
     *,
     source_step: WritingAgentStep,
     source_run_id: str,
+    provenance_tools: list[dict[str, Any]] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
     allowed = allowed_tool_names()
     tools: list[dict[str, Any]] = []
     rejected_tools: list[dict[str, str]] = []
     seen: set[str] = set()
+    provenance_tools = provenance_tools or []
     for index, tool_name in enumerate(followups, start=1):
         if tool_name in seen:
             continue
         seen.add(tool_name)
-        if tool_name in LOOPING_FOLLOWUP_TOOLS or tool_name == source_step.tool_name:
+        provenance_tool = _matching_provenance_tool(tool_name, provenance_tools)
+        if tool_name in LOOPING_FOLLOWUP_TOOLS or (
+            tool_name == source_step.tool_name and not _is_distinct_provenance_retry(source_step, provenance_tool)
+        ):
             rejected_tools.append({"tool_name": tool_name, "reason": "planner_loop"})
             continue
         if tool_name not in allowed:
@@ -212,7 +243,25 @@ def _tool_requests_from_followups(
         if tool_name not in SAFE_RECOMMENDED_FOLLOWUP_TOOLS:
             rejected_tools.append({"tool_name": tool_name, "reason": "requires_confirmation"})
             continue
-        tools.append(_tool_request_from_followup(tool_name, source_step=source_step, source_run_id=source_run_id, index=index))
+        selected_index = len(tools) + 1
+        if provenance_tool is not None:
+            tools.append(
+                _tool_request_from_provenance_followup(
+                    provenance_tool,
+                    source_step=source_step,
+                    source_run_id=source_run_id,
+                    index=selected_index,
+                )
+            )
+        else:
+            tools.append(
+                _tool_request_from_followup(
+                    tool_name,
+                    source_step=source_step,
+                    source_run_id=source_run_id,
+                    index=selected_index,
+                )
+            )
     return tools, rejected_tools
 
 
@@ -229,6 +278,33 @@ def _tool_request_from_followup(
         "planner": {
             "step_index": index,
             "reason": f"根据上一轮 {source_step.tool_name} 的运行时推荐规划后继工具 {tool_name}。",
+            "on_missing": "record_issue",
+            "on_failure": "record_issue",
+            "expected_output": "推荐后继工具输出。",
+            "post_generation": False,
+            "planner_version": FOLLOWUP_PLANNER_VERSION,
+            "source_run_id": source_run_id,
+            "source_step_index": source_step.step_index,
+            "source_tool": source_step.tool_name,
+        },
+    }
+
+
+def _tool_request_from_provenance_followup(
+    provenance_tool: dict[str, Any],
+    *,
+    source_step: WritingAgentStep,
+    source_run_id: str,
+    index: int,
+) -> dict[str, Any]:
+    tool_name = str(provenance_tool.get("tool_name") or "").strip()
+    params = provenance_tool.get("params") if isinstance(provenance_tool.get("params"), dict) else {}
+    return {
+        "tool_name": tool_name,
+        "params": dict(params),
+        "planner": {
+            "step_index": index,
+            "reason": f"根据上一轮 {source_step.tool_name} 的 provenance 恢复建议规划后继工具 {tool_name}。",
             "on_missing": "record_issue",
             "on_failure": "record_issue",
             "expected_output": "推荐后继工具输出。",
@@ -318,6 +394,45 @@ def _latest_recommended_recovery_state(steps: Sequence[WritingAgentStep]) -> dic
                 "reason_code": recovery.get("reason_code"),
             }
     return {"status": "none"}
+
+
+def _matching_provenance_tool(tool_name: str, provenance_tools: list[dict[str, Any]]) -> dict[str, Any] | None:
+    for item in provenance_tools:
+        if str(item.get("tool_name") or "").strip() == tool_name:
+            return item
+    return None
+
+
+def _is_distinct_provenance_retry(source_step: WritingAgentStep, provenance_tool: dict[str, Any] | None) -> bool:
+    if provenance_tool is None:
+        return False
+    params = provenance_tool.get("params") if isinstance(provenance_tool.get("params"), dict) else {}
+    return _stable_json(params) != _stable_json(_source_step_params(source_step))
+
+
+def _source_step_params(step: WritingAgentStep) -> dict[str, Any]:
+    step_input = step.input if isinstance(step.input, dict) else {}
+    params = step_input.get("params") if isinstance(step_input.get("params"), dict) else {}
+    return dict(params)
+
+
+def _tool_request_list(value: object) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    results: list[dict[str, Any]] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        tool_name = _optional_string(item.get("tool_name"))
+        if not tool_name:
+            continue
+        params = item.get("params") if isinstance(item.get("params"), dict) else {}
+        results.append({"tool_name": tool_name, "params": dict(params)})
+    return results
+
+
+def _stable_json(value: object) -> str:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
 
 
 def _string_list(value: object) -> list[str]:

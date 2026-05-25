@@ -9,6 +9,7 @@ import { api } from '../api/client'
 vi.mock('../api/client', () => ({
   api: {
     getWorkspaceBootstrap: vi.fn(),
+    getChatCommandCatalog: vi.fn(),
     startWriting: vi.fn(),
     pauseWriting: vi.fn(),
     resumeWriting: vi.fn(),
@@ -91,14 +92,17 @@ async function mountHermesView(path = '/projects/project-1/hermes') {
           emits: ['openAgentRun', 'safetyAction'],
           template: '<div data-testid="chat-message-list"><button data-testid="stub-open-agent-run" @click="$emit(\'openAgentRun\', \'run-1\')">open run</button><button data-testid="stub-safety-action" @click="$emit(\'safetyAction\', { kind: \'prepare_route_upgrade_contract\', label: \'生成审批契约\', pending_action_id: \'action-1\', auto_execute: false, guarded_apply: false })">safety</button><span data-testid="stub-last-message">{{ messages[messages.length - 1]?.content }}</span></div>',
         },
-        ChatInput: { template: '<div data-testid="chat-input" />' },
+        ChatInput: {
+          props: ['commands'],
+          template: '<div data-testid="chat-input">{{ commands?.map((command) => command.name).join(",") }}</div>',
+        },
         ExportModal: { template: '<div />' },
         VersionsModal: { template: '<div />' },
         ModelTraceDrawer: { template: '<div />' },
         AgentRunDrawer: {
           props: ['open', 'run'],
-          emits: ['executeRecovery', 'refresh', 'applyRouteUpgrade'],
-          template: '<div v-if="open" data-testid="agent-run-drawer">{{ run && run.id }}<button data-testid="stub-execute-recovery" @click="$emit(\'executeRecovery\', { sourceRunId: \'source-run-1\', planHash: \'plan-hash-1\' })">execute</button><button data-testid="stub-refresh-agent-run" @click="$emit(\'refresh\')">refresh</button><button data-testid="stub-apply-route-upgrade" @click="$emit(\'applyRouteUpgrade\', { sourceRunId: run && run.id, pendingActionId: \'action-1\', approvalContractHash: \'approval:secret\', approvalContract: { approval: { approval_contract_hash: \'approval:secret\' } } })">apply route</button><button data-testid="stub-apply-route-upgrade-stale" @click="$emit(\'applyRouteUpgrade\', { sourceRunId: \'stale-run\', pendingActionId: \'action-1\', approvalContractHash: \'approval:secret\', approvalContract: { approval: { approval_contract_hash: \'approval:secret\' } } })">stale route</button></div>',
+          emits: ['executeRecovery', 'executeRecommendedFollowups', 'refresh', 'applyRouteUpgrade'],
+          template: '<div v-if="open" data-testid="agent-run-drawer">{{ run && run.id }}<button data-testid="stub-execute-recovery" @click="$emit(\'executeRecovery\', { sourceRunId: \'source-run-1\', planHash: \'plan-hash-1\' })">execute</button><button data-testid="stub-execute-followups" @click="$emit(\'executeRecommendedFollowups\', { sourceRunId: \'source-run-2\', planHash: \'followup-plan-hash-1\' })">execute followups</button><button data-testid="stub-refresh-agent-run" @click="$emit(\'refresh\')">refresh</button><button data-testid="stub-apply-route-upgrade" @click="$emit(\'applyRouteUpgrade\', { sourceRunId: run && run.id, pendingActionId: \'action-1\', approvalContractHash: \'approval:secret\', approvalContract: { approval: { approval_contract_hash: \'approval:secret\' } } })">apply route</button><button data-testid="stub-apply-route-upgrade-stale" @click="$emit(\'applyRouteUpgrade\', { sourceRunId: \'stale-run\', pendingActionId: \'action-1\', approvalContractHash: \'approval:secret\', approvalContract: { approval: { approval_contract_hash: \'approval:secret\' } } })">stale route</button></div>',
         },
       },
     },
@@ -111,6 +115,30 @@ describe('HermesView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(api.getWorkspaceBootstrap).mockResolvedValue(workspaceBootstrap() as any)
+    vi.mocked(api.getChatCommandCatalog).mockResolvedValue({
+      version: 'phase26.agent_chat_command_catalog.v1',
+      public_command_names: ['continue', 'status', 'clear', 'compact'],
+      legacy_alias_names: ['setup', 'storyline', 'outline', 'chapter'],
+      commands: [
+        {
+          name: 'continue',
+          label: '/continue',
+          description: '继续',
+          example: '/continue',
+          supports_args: false,
+          public: true,
+        },
+        {
+          name: 'setup',
+          label: '/setup',
+          description: '旧命令',
+          example: '/setup',
+          supports_args: true,
+          public: false,
+          legacy: true,
+        },
+      ],
+    } as any)
     vi.mocked(api.startWriting).mockResolvedValue({
       project_id: 'project-1',
       current_chapter: 12,
@@ -184,6 +212,16 @@ describe('HermesView', () => {
     await flushPromises()
 
     expect(api.startWriting).toHaveBeenCalledWith('project-1')
+
+    wrapper.unmount()
+  })
+
+  it('loads backend command catalog and passes it to chat input', async () => {
+    const wrapper = await mountHermesView()
+
+    expect(api.getChatCommandCatalog).toHaveBeenCalled()
+    expect(wrapper.get('[data-testid="chat-input"]').text()).toContain('continue')
+    expect(wrapper.get('[data-testid="chat-input"]').text()).toContain('setup')
 
     wrapper.unmount()
   })
@@ -470,6 +508,43 @@ describe('HermesView', () => {
     expect(wrapper.get('[data-testid="agent-run-drawer"]').text()).toContain('run-executed')
     expect(wrapper.get('[data-testid="stub-last-message"]').text()).toContain('恢复执行已创建')
     expect(wrapper.get('[data-testid="stub-last-message"]').text()).not.toContain('plan-hash-1')
+
+    wrapper.unmount()
+  })
+
+  it('creates a confirmed recommended followup execution run from the agent drawer', async () => {
+    vi.mocked((api as any).createAgentRun).mockResolvedValueOnce({
+      id: 'run-followups-executed',
+      project_id: 'project-1',
+      goal: '执行推荐后继',
+      status: 'success',
+      entrypoint: 'ui_recommended_followup_execute',
+      input: {},
+      output: null,
+      error: null,
+      steps: [],
+    })
+    const wrapper = await mountHermesView()
+
+    await wrapper.get('[data-testid="stub-open-agent-run"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="stub-execute-followups"]').trigger('click')
+    await flushPromises()
+
+    expect((api as any).createAgentRun).toHaveBeenCalledWith('project-1', {
+      goal: '执行推荐后继工具链',
+      entrypoint: 'ui_recommended_followup_execute',
+      input: {
+        auto_plan: true,
+        recommended_followup_run_id: 'source-run-2',
+        execute_recommended_followups: true,
+        confirm_execute: true,
+        recommended_followup_plan_hash: 'followup-plan-hash-1',
+      },
+    })
+    expect(wrapper.get('[data-testid="agent-run-drawer"]').text()).toContain('run-followups-executed')
+    expect(wrapper.get('[data-testid="stub-last-message"]').text()).toContain('推荐后继执行已创建')
+    expect(wrapper.get('[data-testid="stub-last-message"]').text()).not.toContain('followup-plan-hash-1')
 
     wrapper.unmount()
   })

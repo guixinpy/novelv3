@@ -95,6 +95,97 @@ const summaryCompactedCount = computed(() => {
   return typeof compactedCount === 'number' ? compactedCount : 0
 })
 
+const isUnavailableCommandFeedback = computed(() => (
+  props.msg.message_type === 'command'
+  && props.msg.meta?.command_available === false
+))
+
+const commandFeedbackLabel = computed(() => {
+  const commandName = props.msg.meta?.command_name
+  if (typeof commandName !== 'string' || !commandName.trim()) return '命令'
+  return commandName.trim().startsWith('/') ? commandName.trim() : `/${commandName.trim()}`
+})
+
+const commandFeedbackReasons = computed(() => {
+  const reasons = props.msg.meta?.unavailable_reasons
+  if (!Array.isArray(reasons)) return []
+  return reasons
+    .map((reason: unknown) => (typeof reason === 'string' ? reason.trim() : ''))
+    .filter(Boolean)
+})
+
+const agentHealthProjection = computed(() => {
+  const projection = props.msg.meta?.agent_health_projection
+  if (!projection || typeof projection !== 'object' || Array.isArray(projection)) return null
+  return projection as Record<string, any>
+})
+
+const agentHealthStatusLabel = computed(() => {
+  const status = String(agentHealthProjection.value?.status || '')
+  if (status === 'ready') return '就绪'
+  if (status === 'degraded') return '部分降级'
+  if (status === 'needs_attention') return '需要处理'
+  return status || '未知'
+})
+
+const agentHealthDiagnostics = computed(() => {
+  const diagnostics = agentHealthProjection.value?.diagnostics
+  if (!Array.isArray(diagnostics)) return []
+  return diagnostics
+    .map((diagnostic: any) => ({
+      code: typeof diagnostic?.code === 'string' ? diagnostic.code.trim() : '',
+      message: typeof diagnostic?.message === 'string' ? diagnostic.message.trim() : '',
+    }))
+    .filter((diagnostic) => diagnostic.message)
+    .slice(0, 3)
+})
+
+const agentHealthRecommendedTools = computed(() => {
+  const tools = agentHealthProjection.value?.recommended_next_tools
+  if (!Array.isArray(tools)) return []
+  return tools
+    .map((tool: unknown) => (typeof tool === 'string' ? tool.trim() : ''))
+    .filter(Boolean)
+    .slice(0, 5)
+})
+
+const agentControlProjection = computed(() => {
+  const projection = props.msg.meta?.agent_control
+  if (!projection || typeof projection !== 'object' || Array.isArray(projection)) return null
+  return projection as Record<string, any>
+})
+
+const agentControlCommandLabel = computed(() => {
+  const commandName = String(agentControlProjection.value?.command_name || '').trim()
+  if (!commandName) return 'Agent 命令'
+  return commandName.startsWith('/') ? commandName : `/${commandName}`
+})
+
+const agentControlRouteLabel = computed(() => {
+  const route = String(agentControlProjection.value?.selected_route || '')
+  if (route === 'recover_blocked_run') return '恢复阻塞'
+  if (route === 'recommended_followups') return '推荐后继'
+  if (route === 'chapter_generation') return '生成下一章'
+  return route || '未选择'
+})
+
+const agentControlReasonLabel = computed(() => {
+  const reason = String(agentControlProjection.value?.reason_code || '')
+  if (reason === 'recoverable_run_found') return '发现可恢复运行'
+  if (reason === 'recommended_followups_found') return '存在推荐后继'
+  if (reason === 'no_recovery_or_followup') return '无恢复或推荐后继'
+  return reason || '暂无原因'
+})
+
+const agentControlRequiredTools = computed(() => {
+  const tools = agentControlProjection.value?.required_agent_tools
+  if (!Array.isArray(tools)) return []
+  return tools
+    .map((tool: unknown) => (typeof tool === 'string' ? tool.trim() : ''))
+    .filter(Boolean)
+    .slice(0, 4)
+})
+
 const canOpenTrace = computed(() => (
   props.msg.role !== 'user'
   && typeof props.msg.trace_id === 'string'
@@ -166,6 +257,83 @@ function openAgentRun() {
         </button>
       </div>
       <div class="chat-msg__content">{{ msg.content }}</div>
+      <div
+        v-if="isUnavailableCommandFeedback"
+        class="chat-msg__command-feedback"
+        data-testid="command-feedback"
+      >
+        <div class="chat-msg__command-feedback-head">
+          <span class="chat-msg__command-feedback-name">{{ commandFeedbackLabel }}</span>
+          <span class="chat-msg__command-feedback-status">暂不可用</span>
+        </div>
+        <ul
+          v-if="commandFeedbackReasons.length"
+          class="chat-msg__command-feedback-reasons"
+        >
+          <li
+            v-for="reason in commandFeedbackReasons"
+            :key="reason"
+          >
+            {{ reason }}
+          </li>
+        </ul>
+      </div>
+      <div
+        v-if="agentHealthProjection"
+        class="chat-msg__agent-health"
+        data-testid="agent-health-card"
+      >
+        <div class="chat-msg__agent-health-head">
+          <span class="chat-msg__agent-health-title">Agent 状态</span>
+          <span class="chat-msg__agent-health-status">{{ agentHealthStatusLabel }}</span>
+        </div>
+        <ul
+          v-if="agentHealthDiagnostics.length"
+          class="chat-msg__agent-health-list"
+        >
+          <li
+            v-for="diagnostic in agentHealthDiagnostics"
+            :key="diagnostic.code || diagnostic.message"
+          >
+            {{ diagnostic.message }}
+          </li>
+        </ul>
+        <div
+          v-if="agentHealthRecommendedTools.length"
+          class="chat-msg__agent-health-tools"
+        >
+          <span>建议工具</span>
+          <code
+            v-for="tool in agentHealthRecommendedTools"
+            :key="tool"
+          >
+            {{ tool }}
+          </code>
+        </div>
+      </div>
+      <div
+        v-if="agentControlProjection"
+        class="chat-msg__agent-control"
+        data-testid="agent-control-card"
+      >
+        <div class="chat-msg__agent-control-head">
+          <span class="chat-msg__agent-control-command">{{ agentControlCommandLabel }}</span>
+          <span class="chat-msg__agent-control-route">{{ agentControlRouteLabel }}</span>
+        </div>
+        <div class="chat-msg__agent-control-reason">{{ agentControlReasonLabel }}</div>
+        <div
+          v-if="agentControlRequiredTools.length"
+          class="chat-msg__agent-control-tools"
+        >
+          <span>依赖工具</span>
+          <code
+            v-for="tool in agentControlRequiredTools"
+            :key="tool"
+          >
+            {{ tool }}
+          </code>
+        </div>
+      </div>
       <ActionCard
         v-if="msg.pending_action && isLatest"
         :action="msg.pending_action"
@@ -292,6 +460,152 @@ function openAgentRun() {
   font-size: var(--text-sm);
   line-height: var(--leading-relaxed);
   color: var(--color-text-primary);
+}
+
+.chat-msg__command-feedback {
+  margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-error-light);
+  border-left: 3px solid var(--color-error);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-secondary);
+}
+
+.chat-msg__command-feedback-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.chat-msg__command-feedback-name {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  color: var(--color-text-primary);
+}
+
+.chat-msg__command-feedback-status {
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  color: var(--color-error);
+}
+
+.chat-msg__command-feedback-reasons {
+  margin: var(--space-1) 0 0;
+  padding-left: var(--space-4);
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+}
+
+.chat-msg__agent-health {
+  margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-brand);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-secondary);
+}
+
+.chat-msg__agent-health-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+  justify-content: space-between;
+}
+
+.chat-msg__agent-health-title {
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  color: var(--color-text-secondary);
+}
+
+.chat-msg__agent-health-status {
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  color: var(--color-brand);
+}
+
+.chat-msg__agent-health-list {
+  margin: var(--space-2) 0 0;
+  padding-left: var(--space-4);
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+}
+
+.chat-msg__agent-health-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  align-items: center;
+  margin-top: var(--space-2);
+  color: var(--color-text-tertiary);
+  font-size: var(--text-xs);
+}
+
+.chat-msg__agent-health-tools code {
+  padding: 1px var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono);
+}
+
+.chat-msg__agent-control {
+  margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-warning);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-secondary);
+}
+
+.chat-msg__agent-control-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.chat-msg__agent-control-command {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  color: var(--color-text-primary);
+}
+
+.chat-msg__agent-control-route {
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  color: var(--color-warning);
+}
+
+.chat-msg__agent-control-reason {
+  margin-top: var(--space-1);
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+}
+
+.chat-msg__agent-control-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  align-items: center;
+  margin-top: var(--space-2);
+  color: var(--color-text-tertiary);
+  font-size: var(--text-xs);
+}
+
+.chat-msg__agent-control-tools code {
+  padding: 1px var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono);
 }
 
 .chat-msg__result {

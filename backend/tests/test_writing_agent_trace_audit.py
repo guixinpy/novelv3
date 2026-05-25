@@ -137,6 +137,109 @@ def test_inspect_agent_trace_audit_includes_profile_policy_audit(db_session):
     assert "delegate_edges" not in output["profile_policy_audit"]
 
 
+def test_inspect_agent_trace_audit_includes_control_plane_readiness(db_session):
+    project = Project(name="Trace Control Plane Readiness")
+    db_session.add(project)
+    db_session.flush()
+    run = WritingAgentRun(
+        project_id=project.id,
+        goal="检查控制平面",
+        status="success",
+        entrypoint="api",
+        input={
+            "planner": {
+                "trace": {
+                    "agent_health_projection": {
+                        "control_plane_readiness": {
+                            "status": "degraded",
+                            "version": "phase46.agent_control_plane_readiness.v1",
+                            "summary": {
+                                "tool_gap_count": 1,
+                                "command_gap_count": 2,
+                                "total_gap_count": 3,
+                                "agent_control_commands": 2,
+                            },
+                            "recommended_next_tools": [
+                                "inspect_agent_control_plane_readiness",
+                                "inspect_agent_command_contracts",
+                            ],
+                        }
+                    }
+                }
+            }
+        },
+    )
+    db_session.add(run)
+    db_session.commit()
+
+    output = inspect_agent_trace_audit(db_session, project.id, run_id=run.id)
+
+    assert output["audit"]["control_plane_status"] == "degraded"
+    assert output["audit"]["control_plane_gap_count"] == 3
+    readiness = output["control_plane_readiness"]
+    assert readiness["status"] == "degraded"
+    assert readiness["summary"]["total_gap_count"] == 3
+    assert readiness["summary"]["agent_control_commands"] == 2
+    assert readiness["recommended_next_tools"] == [
+        "inspect_agent_control_plane_readiness",
+        "inspect_agent_command_contracts",
+    ]
+    assert output["recommended_actions"] == [
+        {
+            "tool_name": "inspect_agent_control_plane_readiness",
+            "reason_code": "agent_control_plane_degraded",
+        }
+    ]
+
+
+def test_inspect_agent_trace_audit_includes_command_contracts(db_session):
+    project = Project(name="Trace Command Contracts")
+    db_session.add(project)
+    db_session.flush()
+    run = WritingAgentRun(
+        project_id=project.id,
+        goal="检查命令契约",
+        status="success",
+        entrypoint="api",
+        input={
+            "planner": {
+                "trace": {
+                    "agent_health_projection": {
+                        "command_contracts": {
+                            "status": "completed",
+                            "summary": {
+                                "total_commands": 8,
+                                "public_commands": 5,
+                                "agent_control_commands": 2,
+                                "available_commands": 5,
+                                "gap_count": 2,
+                            },
+                            "commands": [{"name": "legacy_world_model"}],
+                        }
+                    }
+                }
+            }
+        },
+    )
+    db_session.add(run)
+    db_session.commit()
+
+    output = inspect_agent_trace_audit(db_session, project.id, run_id=run.id)
+
+    assert output["audit"]["command_contract_gap_count"] == 2
+    contracts = output["command_contracts"]
+    assert contracts["summary"]["total_commands"] == 8
+    assert contracts["summary"]["agent_control_commands"] == 2
+    assert contracts["summary"]["gap_count"] == 2
+    assert "commands" not in contracts
+    assert output["recommended_actions"] == [
+        {
+            "tool_name": "inspect_agent_command_contracts",
+            "reason_code": "agent_command_contracts_have_gaps",
+        }
+    ]
+
+
 def test_inspect_agent_trace_audit_exposes_recommended_recovery_for_blocked_run(db_session):
     project = Project(name="Trace Audit Blocked")
     db_session.add(project)
@@ -393,3 +496,91 @@ def test_inspect_agent_trace_audit_includes_dialog_approval_events_without_raw_h
     assert output["steps"][0]["tool_call_id"] == "toolcall:test"
     assert output["steps"][0]["resource_binding"]["target_id"] == "chapter:2"
     assert output["audit"]["event_chain_count"] == 6
+
+
+def test_inspect_agent_trace_audit_includes_dialog_route_decision_events(db_session):
+    project = Project(name="Trace Audit Route Decisions")
+    db_session.add(project)
+    db_session.flush()
+    dialog = Dialog(project_id=project.id, dialog_type="hermes", state="chatting")
+    db_session.add(dialog)
+    db_session.flush()
+    request_message = DialogMessage(dialog_id=dialog.id, role="user", content="继续吧")
+    response_message = DialogMessage(
+        dialog_id=dialog.id,
+        role="assistant",
+        content="上一轮 Agent 运行存在可恢复阻塞，我已先规划恢复工具链。",
+        meta={
+            "dialog_route_decision": {
+                "version": "phase20.dialog_continue_route_decision.v1",
+                "trigger": "low_detail_continue",
+                "selected_route": "recover_blocked_run",
+                "reason_code": "recoverable_run_found",
+                "priority": ["recover_blocked_run", "recommended_followups", "chapter_generation"],
+                "source_run_id": "blocked-run",
+            }
+        },
+    )
+    db_session.add_all([request_message, response_message])
+    db_session.flush()
+    run = WritingAgentRun(
+        project_id=project.id,
+        goal="恢复上一轮阻塞",
+        status="success",
+        entrypoint="dialog_auto_plan",
+        dialog_id=dialog.id,
+        request_message_id=request_message.id,
+    )
+    db_session.add(run)
+    db_session.flush()
+    trace = AIModelCallTrace(
+        id="trace-route-decision",
+        project_id=project.id,
+        trace_type="dialog_route_decision",
+        status="success",
+        model="local-dialog-router",
+        dialog_id=dialog.id,
+        request_message_id=request_message.id,
+        response_message_id=response_message.id,
+        trace_metadata={
+            "dialog_route_decision": response_message.meta["dialog_route_decision"],
+            "agent_run_id": run.id,
+            "source_run_id": "blocked-run",
+            "action_type": "plan_recovery_tools",
+        },
+    )
+    db_session.add(trace)
+    db_session.commit()
+
+    output = inspect_agent_trace_audit(db_session, project.id, run_id=run.id)
+
+    assert output["audit"]["dialog_route_event_count"] == 1
+    assert output["dialog_route_events"] == [
+        {
+            "trace_id": "trace-route-decision",
+            "trace_type": "dialog_route_decision",
+            "status": "success",
+            "model": "local-dialog-router",
+            "action_type": "plan_recovery_tools",
+            "selected_route": "recover_blocked_run",
+            "selected_route_label": "恢复阻塞运行",
+            "reason_code": "recoverable_run_found",
+            "reason_label": "发现可恢复的阻塞运行",
+            "source_run_id": "blocked-run",
+            "request_message_id": request_message.id,
+            "response_message_id": response_message.id,
+        }
+    ]
+    assert output["event_chain"][0] == {
+        "event_type": "dialog_route_decision",
+        "trace_id": "trace-route-decision",
+        "action_type": "plan_recovery_tools",
+        "selected_route": "recover_blocked_run",
+        "selected_route_label": "恢复阻塞运行",
+        "reason_code": "recoverable_run_found",
+        "reason_label": "发现可恢复的阻塞运行",
+        "source_run_id": "blocked-run",
+        "request_message_id": request_message.id,
+        "response_message_id": response_message.id,
+    }
+    assert "priority" not in str(output["dialog_route_events"])

@@ -22,6 +22,10 @@ def test_inspect_agent_knowledge_base_route_reports_sparse_project_memory(db_ses
     assert {"knowledge_base_sparse", "world_truth_boundary"}.issubset(
         {item["code"] for item in output["diagnostics"]}
     )
+    assert output["memory_provenance"]["status"] == "sparse"
+    assert output["memory_provenance"]["boundaries"]["world_truth"]["status"] == "separated"
+    assert output["memory_provenance"]["boundaries"]["world_truth"]["canonical_source"] == "Athena/world_model"
+    assert output["memory_provenance"]["sources"][0]["source_ref"] == "Project"
 
 
 def test_inspect_agent_knowledge_base_route_projects_preferences_rules_and_patterns(db_session):
@@ -79,6 +83,21 @@ def test_inspect_agent_knowledge_base_route_projects_preferences_rules_and_patte
     assert output["reference_patterns"]["available"] is True
     assert output["reference_patterns"]["task_type"] == "chapter"
     assert output["reference_patterns"]["genre"] == "末世悬疑"
+    provenance = output["memory_provenance"]
+    assert provenance["status"] == "available"
+    assert provenance["source_count"] >= 4
+    assert {
+        "Project.style_config",
+        "Project",
+        "PromptRule(rule_type=learned)",
+        "FewShotExampleLibrary",
+    }.issubset({source["source_ref"] for source in provenance["sources"]})
+    assert provenance["windows"]["learned_rules"] == {
+        "total": 1,
+        "returned": 1,
+        "limit": 20,
+        "has_more": False,
+    }
     assert output["trace"]["mutability"] == "read"
 
 
@@ -110,6 +129,12 @@ def test_inspect_agent_knowledge_base_route_bounds_learned_rule_window(db_sessio
     assert output["learned_rules"]["has_more"] is True
     assert output["learned_rules"]["items"][0]["condition"] == "规则 11"
     assert "learned_rules_truncated" in {item["code"] for item in output["diagnostics"]}
+    assert output["memory_provenance"]["windows"]["learned_rules"] == {
+        "total": 12,
+        "returned": 3,
+        "limit": 3,
+        "has_more": True,
+    }
 
 
 def test_record_agent_knowledge_base_candidate_persists_candidate_and_updates_route(db_session):

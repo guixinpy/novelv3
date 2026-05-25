@@ -16,6 +16,7 @@ MIN_MAX_CHARS = 500
 MAX_MAX_CHARS = 12000
 SECTION_ITEM_LIMIT = 5
 SUMMARY_TEXT_LIMIT = 220
+LONGFORM_MEMORY_PROVENANCE_VERSION = "phase223.longform_memory_provenance.v1"
 
 
 def summarize_longform_context(
@@ -79,6 +80,16 @@ def summarize_longform_context(
                 "max_chars": char_limit,
             }
         )
+    memory_provenance = _memory_provenance(
+        chapter_index=target_chapter,
+        source_sections=source_sections,
+        sections=sections,
+        diagnostics=diagnostics,
+        decision=decision,
+        prompt_context_chars=len(prompt_context),
+        char_limit=char_limit,
+        include_prompt_context=include_prompt_context,
+    )
 
     output: dict[str, Any] = {
         "status": "completed",
@@ -104,6 +115,7 @@ def summarize_longform_context(
         "sections": sections,
         "source_sections": source_sections,
         "source_section_keys": source_section_keys,
+        "memory_provenance": memory_provenance,
         "diagnostics": diagnostics,
         "decision": decision,
         "should_generate_next_chapter": should_generate_next_chapter,
@@ -264,6 +276,168 @@ def _source_section(section: dict[str, Any]) -> dict[str, Any]:
         "title": str(section.get("title") or ""),
         "item_count": len(items),
         "source_type": "longform_context_package",
+    }
+
+
+def _memory_provenance(
+    *,
+    chapter_index: int,
+    source_sections: list[dict[str, Any]],
+    sections: list[dict[str, Any]],
+    diagnostics: list[dict[str, Any]],
+    decision: dict[str, Any],
+    prompt_context_chars: int,
+    char_limit: int,
+    include_prompt_context: bool,
+) -> dict[str, Any]:
+    section_windows = {section["key"]: _section_window(section) for section in sections}
+    has_section_truncation = any(window["has_more"] for window in section_windows.values())
+    prompt_truncated = prompt_context_chars > char_limit
+    status = _provenance_status(
+        source_sections=source_sections,
+        decision=decision,
+        has_section_truncation=has_section_truncation,
+        prompt_truncated=prompt_truncated,
+    )
+    return {
+        "version": LONGFORM_MEMORY_PROVENANCE_VERSION,
+        "status": status,
+        "source_count": len(source_sections),
+        "sources": [_provenance_source(section, section_windows.get(section["key"], {})) for section in source_sections],
+        "windows": {
+            "sections": section_windows,
+        },
+        "prompt_context": {
+            "chars": prompt_context_chars,
+            "max_chars": char_limit,
+            "included": include_prompt_context,
+            "truncated": prompt_truncated,
+        },
+        "boundaries": {
+            "world_truth": {
+                "status": "separated",
+                "canonical_source": "Athena/world_model",
+                "longform_context_role": "retrieved_memory_rollups_and_generation_context",
+            }
+        },
+        "diagnostics": [
+            {
+                "code": item.get("code"),
+                "severity": item.get("severity"),
+                "section_key": item.get("section_key"),
+            }
+            for item in diagnostics
+            if isinstance(item, dict)
+        ],
+        "recovery": _provenance_recovery(
+            chapter_index=chapter_index,
+            decision=decision,
+            has_section_truncation=has_section_truncation,
+            prompt_truncated=prompt_truncated,
+            char_limit=char_limit,
+        ),
+        "trace": {
+            "source": "summarize_longform_context",
+            "version": LONGFORM_MEMORY_PROVENANCE_VERSION,
+            "mutability": "read",
+        },
+    }
+
+
+def _section_window(section: dict[str, Any]) -> dict[str, Any]:
+    total = int(section.get("item_count") or 0)
+    returned = len(section.get("items") if isinstance(section.get("items"), list) else [])
+    return {
+        "total": total,
+        "returned": returned,
+        "limit": SECTION_ITEM_LIMIT,
+        "has_more": returned < total,
+    }
+
+
+def _provenance_source(section: dict[str, Any], window: dict[str, Any]) -> dict[str, Any]:
+    key = str(section.get("key") or "")
+    return {
+        "source_ref": f"longform_context_package:{key}",
+        "source_type": key or "unknown",
+        "title": str(section.get("title") or ""),
+        "item_count": int(section.get("item_count") or 0),
+        "returned_count": int(window.get("returned") or 0),
+        "limit": int(window.get("limit") or SECTION_ITEM_LIMIT),
+        "has_more": bool(window.get("has_more")),
+        "state": "active",
+    }
+
+
+def _provenance_status(
+    *,
+    source_sections: list[dict[str, Any]],
+    decision: dict[str, Any],
+    has_section_truncation: bool,
+    prompt_truncated: bool,
+) -> str:
+    if decision.get("status") == "blocked":
+        return "blocked"
+    if has_section_truncation or prompt_truncated:
+        return "truncated"
+    if not source_sections:
+        return "sparse"
+    return "available"
+
+
+def _provenance_recovery(
+    *,
+    chapter_index: int,
+    decision: dict[str, Any],
+    has_section_truncation: bool,
+    prompt_truncated: bool,
+    char_limit: int,
+) -> dict[str, Any]:
+    if decision.get("status") == "blocked":
+        return {
+            "status": "recommended",
+            "reason": decision.get("reason"),
+            "next_tools": ["repair_longform_maintenance"],
+            "tools": [{"tool_name": "repair_longform_maintenance", "params": {}}],
+        }
+    if has_section_truncation or prompt_truncated:
+        if int(char_limit) >= MAX_MAX_CHARS:
+            return {
+                "status": "exhausted",
+                "reason": "longform_context_window_limit_exhausted",
+                "next_tools": ["inspect_agent_memory_route"],
+                "tools": [
+                    {
+                        "tool_name": "inspect_agent_memory_route",
+                        "params": {
+                            "chapter_index": chapter_index,
+                            "query": f"最大上下文窗口仍截断，诊断第{chapter_index}章长篇记忆与检索覆盖。",
+                            "include_context_summary": False,
+                        },
+                    }
+                ],
+            }
+        retry_max_chars = min(MAX_MAX_CHARS, max(MIN_MAX_CHARS, int(char_limit) * 2))
+        return {
+            "status": "optional",
+            "reason": "longform_context_window_limited",
+            "next_tools": ["summarize_longform_context"],
+            "tools": [
+                {
+                    "tool_name": "summarize_longform_context",
+                    "params": {
+                        "chapter_index": chapter_index,
+                        "query": f"缩小上下文窗口后重新汇总第{chapter_index}章写作上下文。",
+                        "max_chars": retry_max_chars,
+                    },
+                }
+            ],
+        }
+    return {
+        "status": "none",
+        "reason": "longform_context_available",
+        "next_tools": [],
+        "tools": [],
     }
 
 

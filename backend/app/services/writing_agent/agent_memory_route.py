@@ -10,6 +10,7 @@ from app.core.longform_memory import get_longform_maintenance_diagnostics, get_l
 from app.services.writing_agent.longform_context_summary import summarize_longform_context
 
 AGENT_MEMORY_ROUTE_VERSION = "phase72.agent_memory_route.v1"
+AGENT_MEMORY_ROUTE_PROVENANCE_VERSION = "phase224.agent_memory_route_provenance.v1"
 
 
 def inspect_agent_memory_route(
@@ -36,6 +37,13 @@ def inspect_agent_memory_route(
         chapter_index=chapter_index,
         include_context_summary=include_context_summary,
     )
+    memory_provenance = _memory_provenance(
+        longform_memory=longform_memory,
+        maintenance=maintenance,
+        retrieval=retrieval,
+        route=route,
+        chapter_index=chapter_index,
+    )
     output: dict[str, Any] = {
         "status": "completed",
         "project_id": project_id,
@@ -45,6 +53,7 @@ def inspect_agent_memory_route(
         "longform_memory": longform_memory,
         "longform_maintenance": maintenance,
         "retrieval": retrieval,
+        "memory_provenance": memory_provenance,
         "diagnostics": diagnostics,
         "trace": {
             "source": "inspect_agent_memory_route",
@@ -129,6 +138,137 @@ def _route_diagnostics(
             }
         )
     return diagnostics
+
+
+def _memory_provenance(
+    *,
+    longform_memory: dict[str, Any],
+    maintenance: dict[str, Any],
+    retrieval: dict[str, Any],
+    route: dict[str, Any],
+    chapter_index: int | None,
+) -> dict[str, Any]:
+    chapter_count = int(longform_memory.get("chapter_count") or 0)
+    memory_count = int(longform_memory.get("total_memories") or 0)
+    retrieval_document_count = int(retrieval.get("total_documents") or 0)
+    ready_for_writing = maintenance.get("ready_for_writing") is not False
+    provenance_status = _provenance_status(
+        route=route,
+        chapter_count=chapter_count,
+        memory_count=memory_count,
+        retrieval_document_count=retrieval_document_count,
+    )
+    return {
+        "version": AGENT_MEMORY_ROUTE_PROVENANCE_VERSION,
+        "status": provenance_status,
+        "source_count": 3,
+        "sources": [
+            {
+                "source_ref": "LongformMemory",
+                "source_type": "longform_memory",
+                "item_count": memory_count,
+                "chapter_count": chapter_count,
+                "mutability": "read",
+            },
+            {
+                "source_ref": "LongformMaintenance",
+                "source_type": "maintenance_diagnostics",
+                "item_count": int(maintenance.get("issue_count") or 0),
+                "ready_for_writing": ready_for_writing,
+                "mutability": "read",
+            },
+            {
+                "source_ref": "RetrievalDocument",
+                "source_type": "retrieval_index",
+                "item_count": retrieval_document_count,
+                "mutability": "read",
+            },
+        ],
+        "coverage": {
+            "chapter_count": chapter_count,
+            "longform_memory_count": memory_count,
+            "retrieval_document_count": retrieval_document_count,
+            "ready_for_writing": ready_for_writing,
+        },
+        "boundaries": {
+            "world_truth": {
+                "status": "separated",
+                "canonical_source": "Athena/world_model",
+                "memory_route_role": "longform_memory_retrieval_and_maintenance_diagnostics",
+            }
+        },
+        "recovery": _provenance_recovery(
+            route,
+            provenance_status=provenance_status,
+            chapter_index=chapter_index,
+        ),
+        "trace": {
+            "source": "inspect_agent_memory_route",
+            "version": AGENT_MEMORY_ROUTE_PROVENANCE_VERSION,
+            "mutability": "read",
+        },
+    }
+
+
+def _provenance_status(
+    *,
+    route: dict[str, Any],
+    chapter_count: int,
+    memory_count: int,
+    retrieval_document_count: int,
+) -> str:
+    if route.get("status") == "blocked":
+        return "blocked"
+    if chapter_count == 0 or memory_count == 0:
+        return "sparse"
+    if retrieval_document_count == 0:
+        return "degraded"
+    return "available"
+
+
+def _provenance_recovery(
+    route: dict[str, Any],
+    *,
+    provenance_status: str,
+    chapter_index: int | None,
+) -> dict[str, Any]:
+    recommended_tools = route.get("recommended_tools") if isinstance(route.get("recommended_tools"), list) else []
+    if "repair_longform_maintenance" in recommended_tools:
+        return {
+            "status": "recommended",
+            "reason": route.get("reason"),
+            "next_tools": ["repair_longform_maintenance"],
+            "tools": [{"tool_name": "repair_longform_maintenance", "params": {}}],
+        }
+    if provenance_status == "degraded":
+        query = (
+            f"检索索引为空，诊断第{chapter_index}章长篇记忆与检索覆盖。"
+            if chapter_index
+            else "检索索引为空，诊断长篇记忆与检索覆盖。"
+        )
+        return {
+            "status": "optional",
+            "reason": "retrieval_index_empty",
+            "next_tools": ["inspect_agent_memory_route", "repair_longform_maintenance"],
+            "tools": [
+                {
+                    "tool_name": "inspect_agent_memory_route",
+                    "params": {
+                        "chapter_index": chapter_index,
+                        "query": query,
+                        "include_context_summary": False,
+                    },
+                }
+            ],
+            "write_tools": [{"tool_name": "repair_longform_maintenance", "params": {}}],
+            "write_policy": "requires_confirmation",
+        }
+    return {
+        "status": "none",
+        "reason": route.get("reason"),
+        "next_tools": [],
+        "tools": [],
+    }
 
 
 def _clean_query(query: str | None) -> str | None:

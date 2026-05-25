@@ -24,6 +24,7 @@ import type {
   ChapterRevisionListResponse,
   ChapterRevisionPayload,
   ChatHistoryMessage,
+  ChatCommandCatalogResponse,
   ChatRequest,
   ChatResponse,
   LongformMaintenanceDiagnostics,
@@ -387,6 +388,7 @@ export const api = {
   getAgentRun: (id: string, runId: string) => request<WritingAgentRunDetail>(`/projects/${id}/agent-runs/${runId}`),
   createAgentRun: (id: string, data: WritingAgentRunCreate) =>
     request<WritingAgentRunDetail>(`/projects/${id}/agent-runs`, { method: 'POST', body: JSON.stringify(data) }),
+  getChatCommandCatalog: () => request<ChatCommandCatalogResponse>('/dialog/chat-commands'),
   sendChat: (data: ChatRequest) => request<ChatResponse>('/dialog/chat', { method: 'POST', body: JSON.stringify(data) }),
   resolveAction: (data: ResolveActionRequest) => request<ResolveActionResponse>('/dialog/resolve-action', { method: 'POST', body: JSON.stringify(data) }),
   startWriting: (id: string) => request<WritingState>(`/projects/${id}/writing/start`, { method: 'POST' }),

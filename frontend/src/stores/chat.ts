@@ -15,7 +15,11 @@ import type {
   WritingAgentRunDetail,
   WorkspaceBootstrap,
 } from '../api/types'
-import { buildAgentRunActionResultView, buildAgentRunExecutionFeedback } from '../components/chat/agentRunProjection'
+import {
+  buildAgentRunActionResultView,
+  buildAgentRunExecutionFeedback,
+  buildRecommendedFollowupExecutionFeedback,
+} from '../components/chat/agentRunProjection'
 import type { ChatCommandName } from '../components/workspace/chatCommands'
 import { useProjectWorkspaceStore } from './projectWorkspace'
 
@@ -414,6 +418,12 @@ export const useChatStore = defineStore('chat', () => {
     clearStaleHistoryAnchorAfterLocalAppend()
   }
 
+  function appendRecommendedFollowupExecutionFeedback(run: WritingAgentRunDetail) {
+    messages.value.push(buildRecommendedFollowupExecutionFeedback(run))
+    historyCursor.value += 1
+    clearStaleHistoryAnchorAfterLocalAppend()
+  }
+
   function appendRouteUpgradeApplyFeedback(run: WritingAgentRunDetail) {
     messages.value.push(buildRouteUpgradeApplyFeedback(run))
     historyCursor.value += 1
@@ -620,6 +630,7 @@ export const useChatStore = defineStore('chat', () => {
     init, initFromWorkspaceBootstrap, loadDiagnosis, setDialogType, sendText, sendCommand, sendButtonAction, resolveAction, regenerateRevision,
     preparePendingActionSafetyAction,
     appendAgentRunExecutionFeedback,
+    appendRecommendedFollowupExecutionFeedback,
     appendRouteUpgradeApplyFeedback,
   }
 })

@@ -62,3 +62,46 @@ def test_normalize_tool_recommendations_extracts_structured_action_tool_names():
     assert result["non_tool_recommendations"] == ["revise_chapter"]
     assert result["canonical_followups"] == ["inspect_agent_memory_route", "plan_recovery_tools"]
     json.dumps(result, ensure_ascii=False)
+
+
+def test_normalize_tool_recommendations_separates_provenance_read_and_write_tools():
+    result = normalize_tool_recommendations(
+        "inspect_agent_memory_route",
+        {
+            "memory_provenance": {
+                "recovery": {
+                    "next_tools": ["inspect_agent_memory_route", "repair_longform_maintenance"],
+                    "tools": [
+                        {
+                            "tool_name": "inspect_agent_memory_route",
+                            "params": {
+                                "chapter_index": 13,
+                                "query": "检索索引为空，诊断第13章长篇记忆与检索覆盖。",
+                                "include_context_summary": False,
+                            },
+                        }
+                    ],
+                    "write_tools": [{"tool_name": "repair_longform_maintenance", "params": {}}],
+                }
+            }
+        },
+        allowed_tools={"inspect_agent_memory_route", "repair_longform_maintenance"},
+    )
+
+    assert result["source_fields"] == [
+        "memory_provenance.recovery.tools",
+        "memory_provenance.recovery.write_tools",
+    ]
+    assert result["runtime_followups"] == ["inspect_agent_memory_route"]
+    assert result["canonical_followups"] == ["inspect_agent_memory_route"]
+    assert result["provenance_recovery_tools"] == [
+        {
+            "tool_name": "inspect_agent_memory_route",
+            "params": {
+                "chapter_index": 13,
+                "query": "检索索引为空，诊断第13章长篇记忆与检索覆盖。",
+                "include_context_summary": False,
+            },
+        }
+    ]
+    assert result["provenance_write_tools"] == [{"tool_name": "repair_longform_maintenance", "params": {}}]

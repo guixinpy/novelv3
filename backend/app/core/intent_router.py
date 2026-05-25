@@ -393,7 +393,7 @@ def _is_low_detail_chapter_continue(text: str) -> bool:
         return False
     return bool(
         re.search(
-            r"^(继续吧|继续写吧|开始写吧|开写吧|往下写|推进吧|继续推进|可以开始了|开始吧|下一章|接着写|继续下一章)$",
+            r"^(继续|继续吧|继续写吧|开始写吧|开写吧|往下写|推进吧|继续推进|可以开始了|开始吧|下一章|接着写|继续下一章)$",
             text,
         )
     )

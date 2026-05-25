@@ -69,6 +69,96 @@ describe('ChatMessage', () => {
     expect(wrapper.find('[data-testid="open-trace"]').exists()).toBe(false)
   })
 
+  it('renders unavailable command feedback with command name and reasons', () => {
+    const wrapper = mount(ChatMessage, {
+      props: {
+        msg: {
+          role: 'assistant',
+          message_type: 'command',
+          content: '/continue 暂不可用：缺少 Agent 工具适配器：prepare_generate_chapter_execution。该命令未执行。',
+          meta: {
+            command_name: 'continue',
+            command_available: false,
+            unavailable_reasons: ['缺少 Agent 工具适配器：prepare_generate_chapter_execution'],
+          },
+        },
+        isLatest: false,
+        loading: false,
+      },
+    })
+
+    const feedback = wrapper.get('[data-testid="command-feedback"]')
+    expect(feedback.text()).toContain('/continue')
+    expect(feedback.text()).toContain('暂不可用')
+    expect(feedback.text()).toContain('缺少 Agent 工具适配器：prepare_generate_chapter_execution')
+    expect(wrapper.text()).toContain('该命令未执行')
+  })
+
+  it('renders agent health projection for status command messages', () => {
+    const wrapper = mount(ChatMessage, {
+      props: {
+        msg: {
+          role: 'assistant',
+          message_type: 'command',
+          content: 'Agent 状态：部分降级。',
+          meta: {
+            command_name: 'status',
+            agent_health_projection: {
+              status: 'degraded',
+              diagnostics: [
+                { code: 'agent_tool_contract_gaps', message: 'Agent 工具契约仍存在迁移或 schema 差距。' },
+              ],
+              recommended_next_tools: ['inspect_agent_tool_contracts', 'inspect_agent_write_gate_coverage'],
+            },
+          },
+        },
+        isLatest: false,
+        loading: false,
+      },
+    })
+
+    const card = wrapper.get('[data-testid="agent-health-card"]')
+    expect(card.text()).toContain('Agent 状态')
+    expect(card.text()).toContain('部分降级')
+    expect(card.text()).toContain('Agent 工具契约仍存在迁移或 schema 差距')
+    expect(card.text()).toContain('inspect_agent_tool_contracts')
+  })
+
+  it('renders agent control projection for continue command messages', () => {
+    const wrapper = mount(ChatMessage, {
+      props: {
+        msg: {
+          role: 'assistant',
+          message_type: 'plain',
+          content: '第2章正文生成计划已准备完成，等待确认执行。',
+          meta: {
+            agent_control: {
+              version: 'phase32.continue_agent_control.v1',
+              command_name: 'continue',
+              selected_route: 'chapter_generation',
+              reason_code: 'no_recovery_or_followup',
+              required_agent_tools: [
+                'inspect_agent_health_projection',
+                'plan_recovery_tools',
+                'plan_recommended_followups',
+                'prepare_generate_chapter_execution',
+              ],
+            },
+          },
+        },
+        isLatest: false,
+        loading: false,
+      },
+    })
+
+    const card = wrapper.get('[data-testid="agent-control-card"]')
+    expect(card.text()).toContain('/continue')
+    expect(card.text()).toContain('生成下一章')
+    expect(card.text()).toContain('无恢复或推荐后继')
+    expect(card.text()).toContain('inspect_agent_health_projection')
+    expect(card.text()).toContain('prepare_generate_chapter_execution')
+  })
+
   it('emits openTrace for system action messages with trace id', async () => {
     const wrapper = mount(ChatMessage, {
       props: {

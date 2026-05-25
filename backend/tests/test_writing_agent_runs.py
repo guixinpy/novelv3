@@ -165,6 +165,14 @@ def test_agent_run_detail_exposes_agent_profile_projection_for_auto_plan(client)
     assert audit["status"] == "passed"
     assert audit["summary"]["issues"] == 0
     assert audit["summary"]["delegate_edges"] == 4
+    command_contracts = payload["agent_command_contracts"]
+    assert command_contracts["source"] == "planner_trace.agent_health_projection.command_contracts"
+    assert command_contracts["summary"]["agent_control_commands"] == 2
+    assert isinstance(command_contracts["summary"]["gap_count"], int)
+    control_plane = payload["agent_control_plane_readiness"]
+    assert control_plane["source"] == "planner_trace.agent_health_projection.control_plane_readiness"
+    assert control_plane["summary"]["agent_control_commands"] == 2
+    assert isinstance(control_plane["summary"]["total_gap_count"], int)
     health = payload["output"]["continuation_state"]["profile_policy_health"]
     assert health == {
         "status": "passed",
@@ -183,6 +191,182 @@ def test_agent_run_detail_exposes_agent_profile_projection_for_auto_plan(client)
     assert detail_payload["agent_tool_discovery"] == payload["agent_tool_discovery"]
     assert detail_payload["agent_profile_definition"] == payload["agent_profile_definition"]
     assert detail_payload["agent_profile_policy_audit"] == audit
+    assert detail_payload["agent_command_contracts"] == command_contracts
+    assert detail_payload["agent_control_plane_readiness"] == control_plane
+
+
+def test_agent_run_output_exposes_agent_loop_contract_for_success(client):
+    project_id = _create_project(client, "Agent Loop Success")
+
+    response = client.post(
+        f"/api/v1/projects/{project_id}/agent-runs",
+        json={
+            "goal": "查看当前 Agent 工具",
+            "tools": [{"tool_name": "describe_agent_tools", "params": {"chapter_index": 1}}],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    agent_loop = payload["output"]["continuation_state"]["agent_loop"]
+    assert agent_loop["version"] == "phase219.agent_loop_contract.v1"
+    assert agent_loop["loop_kind"] == "sequential_tool_plan"
+    assert agent_loop["budget"] == {
+        "max_iterations": 1,
+        "used_iterations": 1,
+        "remaining_iterations": 0,
+    }
+    assert agent_loop["exit_reason"] == "completed"
+    assert agent_loop["requires_user_action"] is False
+    assert agent_loop["loop_risk"] == {
+        "status": "clear",
+        "detector": "adjacent_repeat",
+        "max_repeat_count": 1,
+        "tool_name": None,
+        "signature": None,
+        "thresholds": {"warning": 3, "critical": 5},
+    }
+    assert agent_loop["next_action"] == {"kind": "none", "tool_name": None, "requires_confirmation": False}
+    assert agent_loop["tool_call_sequence"] == [
+        {
+            "step_index": 1,
+            "tool_name": "describe_agent_tools",
+                "status": "success",
+                "tool_call_id": None,
+                "target_type": "agent_tool_plan",
+                "chapter_index": 1,
+            }
+        ]
+
+
+def test_agent_run_output_exposes_agent_loop_contract_for_blocked_run(client):
+    project_id = _create_project(client, "Agent Loop Blocked")
+
+    response = client.post(
+        f"/api/v1/projects/{project_id}/agent-runs",
+        json={
+            "goal": "检查第1章是否可写",
+            "tools": [{"tool_name": "preflight_writing", "params": {"chapter_index": 1}}],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    agent_loop = payload["output"]["continuation_state"]["agent_loop"]
+    assert payload["status"] == "blocked"
+    assert agent_loop["exit_reason"] == "blocked"
+    assert agent_loop["requires_user_action"] is True
+    assert agent_loop["next_action"] == {
+        "kind": "request_input",
+        "tool_name": "generate_setup",
+        "requires_confirmation": True,
+    }
+    assert agent_loop["budget"]["used_iterations"] == 1
+    assert agent_loop["tool_call_sequence"][0]["tool_name"] == "preflight_writing"
+    assert agent_loop["tool_call_sequence"][0]["status"] == "blocked"
+
+
+def test_agent_run_output_exposes_agent_loop_contract_for_failed_tool(client):
+    project_id = _create_project(client, "Agent Loop Failed")
+
+    response = client.post(
+        f"/api/v1/projects/{project_id}/agent-runs",
+        json={
+            "goal": "调用不存在的工具",
+            "tools": [{"tool_name": "missing_agent_tool", "params": {}}],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    agent_loop = payload["output"]["continuation_state"]["agent_loop"]
+    assert payload["status"] == "failed"
+    assert agent_loop["exit_reason"] == "tool_failed"
+    assert agent_loop["requires_user_action"] is True
+    assert agent_loop["next_action"] == {
+        "kind": "inspect_failure",
+        "tool_name": "inspect_agent_health_projection",
+        "requires_confirmation": False,
+    }
+    assert agent_loop["budget"]["used_iterations"] == 1
+    assert agent_loop["tool_call_sequence"][0]["tool_name"] == "missing_agent_tool"
+    assert agent_loop["tool_call_sequence"][0]["status"] == "failed"
+
+
+def test_agent_loop_risk_warns_on_repeated_adjacent_tool_calls(client):
+    project_id = _create_project(client, "Agent Loop Risk")
+    repeated_tool = {"tool_name": "describe_agent_tools", "params": {"chapter_index": 1}}
+
+    response = client.post(
+        f"/api/v1/projects/{project_id}/agent-runs",
+        json={
+            "goal": "重复查看工具面",
+            "tools": [repeated_tool, repeated_tool, repeated_tool],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    loop_risk = payload["output"]["continuation_state"]["agent_loop"]["loop_risk"]
+    assert loop_risk["status"] == "warning"
+    assert loop_risk["detector"] == "adjacent_repeat"
+    assert loop_risk["tool_name"] == "describe_agent_tools"
+    assert loop_risk["max_repeat_count"] == 3
+    assert loop_risk["signature"].startswith("describe_agent_tools:")
+    assert loop_risk["thresholds"] == {"warning": 3, "critical": 5}
+
+
+def test_agent_tool_input_validation_blocks_missing_required_params(client):
+    project_id = _create_project(client, "Agent Tool Validation Missing")
+
+    response = client.post(
+        f"/api/v1/projects/{project_id}/agent-runs",
+        json={
+            "goal": "预览审批契约但缺少计划参数",
+            "tools": [{"tool_name": "preview_agent_plan_approval_contract", "params": {}}],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "failed"
+    step = payload["steps"][0]
+    assert step["tool_name"] == "preview_agent_plan_approval_contract"
+    assert step["status"] == "failed"
+    output = step["output"]
+    assert output["status"] == "failed"
+    assert output["error"] == "Tool input validation failed"
+    assert output["validation"]["status"] == "failed"
+    assert output["validation"]["issues"] == [
+        {"code": "missing_required_param", "path": "plan", "message": "Missing required param: plan"}
+    ]
+    assert payload["output"]["continuation_state"]["agent_loop"]["exit_reason"] == "tool_failed"
+
+
+def test_agent_tool_input_validation_blocks_wrong_param_type(client):
+    project_id = _create_project(client, "Agent Tool Validation Type")
+
+    response = client.post(
+        f"/api/v1/projects/{project_id}/agent-runs",
+        json={
+            "goal": "用错误章节参数执行预检",
+            "tools": [{"tool_name": "preflight_writing", "params": {"chapter_index": "abc"}}],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "failed"
+    output = payload["steps"][0]["output"]
+    assert output["status"] == "failed"
+    assert output["validation"]["issues"] == [
+        {
+            "code": "invalid_param_type",
+            "path": "chapter_index",
+            "message": "Param chapter_index must be integer.",
+        }
+    ]
+    assert payload["output"]["continuation_state"]["agent_loop"]["tool_call_sequence"][0]["status"] == "failed"
 
 
 def test_agent_run_result_metrics_include_adapter_metadata(client):
@@ -236,6 +420,8 @@ def test_agent_run_can_plan_writing_tool_chain(client, db_session):
 
 def test_agent_run_can_summarize_longform_context(client, db_session):
     project = _seed_longform_project(db_session, outline_chapters=[1, 2, 3], generated_chapters=[1, 2])
+    from app.core.longform_memory import repair_longform_maintenance
+
     db_session.add_all(
         [
             LongformMemory(
@@ -263,6 +449,7 @@ def test_agent_run_can_summarize_longform_context(client, db_session):
         ]
     )
     db_session.commit()
+    repair_longform_maintenance(db_session, project.id)
 
     response = client.post(
         f"/api/v1/projects/{project.id}/agent-runs",
@@ -274,7 +461,7 @@ def test_agent_run_can_summarize_longform_context(client, db_session):
                     "params": {
                         "chapter_index": 3,
                         "query": "续写下一章",
-                        "max_chars": 1200,
+                        "max_chars": 12000,
                     },
                 }
             ],
@@ -296,11 +483,240 @@ def test_agent_run_can_summarize_longform_context(client, db_session):
     assert output["context_summary"]["goal"] == "续写下一章"
     assert "recent_chapters" in output["source_section_keys"]
     assert "prompt_context" not in output
-    assert output["limits"]["max_chars"] == 1200
+    assert output["limits"]["max_chars"] == 12000
     assert output["prompt_context_chars"] > 0
+    provenance = output["memory_provenance"]
+    assert provenance["status"] == "available"
+    assert provenance["boundaries"]["world_truth"]["status"] == "separated"
+    assert provenance["boundaries"]["world_truth"]["canonical_source"] == "Athena/world_model"
+    assert "longform_context_package:recent_chapters" in {
+        source["source_ref"] for source in provenance["sources"]
+    }
+    assert provenance["windows"]["sections"]["recent_chapters"] == {
+        "total": 2,
+        "returned": 2,
+        "limit": 5,
+        "has_more": False,
+    }
+    assert provenance["prompt_context"]["included"] is False
+    assert provenance["prompt_context"]["max_chars"] == 12000
     envelope = output["agent_tool_result"]
     assert envelope["adapter"]["tool_name"] == "summarize_longform_context"
     assert envelope["adapter"]["mutability"] == "read"
+
+
+def test_agent_run_longform_context_provenance_reports_limited_sections(client, db_session, monkeypatch):
+    project = Project(name="Longform Provenance Window")
+    db_session.add(project)
+    db_session.commit()
+
+    def fake_context_package(db, project_id: str, chapter_index: int, *, user_query: str | None = None):
+        return {
+            "project_id": project_id,
+            "chapter_index": chapter_index,
+            "sections": [
+                {
+                    "key": "manual_overflow",
+                    "title": "人工溢出上下文",
+                    "items": [
+                        {
+                            "id": f"memory-{index}",
+                            "memory_type": "chapter",
+                            "scope_key": f"chapter:{index}",
+                            "title": f"第{index}章",
+                            "summary": f"第{index}章摘要。",
+                        }
+                        for index in range(1, 7)
+                    ],
+                }
+            ],
+            "prompt_context": "雾港记忆" * 360,
+        }
+
+    monkeypatch.setattr(
+        "app.services.writing_agent.longform_context_summary.build_longform_context_package",
+        fake_context_package,
+    )
+    monkeypatch.setattr(
+        "app.services.writing_agent.longform_context_summary.get_longform_maintenance_diagnostics",
+        lambda db, project_id, limit=5: {"ready_for_writing": True, "issue_count": 0},
+    )
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "检查长篇上下文来源窗口",
+            "tools": [
+                {
+                    "tool_name": "summarize_longform_context",
+                    "params": {"chapter_index": 7, "max_chars": 1200},
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    output = payload["steps"][0]["output"]
+    assert output["diagnostics"][0]["code"] == "section_items_limited"
+    provenance = output["memory_provenance"]
+    assert provenance["windows"]["sections"]["manual_overflow"] == {
+        "total": 6,
+        "returned": 5,
+        "limit": 5,
+        "has_more": True,
+    }
+    assert provenance["prompt_context"]["truncated"] is True
+    assert provenance["recovery"]["status"] == "optional"
+    assert "summarize_longform_context" in provenance["recovery"]["next_tools"]
+    assert provenance["recovery"]["tools"] == [
+        {
+            "tool_name": "summarize_longform_context",
+            "params": {
+                "chapter_index": 7,
+                "query": "缩小上下文窗口后重新汇总第7章写作上下文。",
+                "max_chars": 2400,
+            },
+        }
+    ]
+
+    preview = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "预览截断上下文重试",
+            "tools": [{"tool_name": "plan_recommended_followups", "params": {"run_id": payload["id"]}}],
+        },
+    )
+
+    followup = preview.json()["steps"][0]["output"]
+    assert preview.status_code == 200
+    assert followup["status"] == "completed"
+    assert "memory_provenance.recovery.tools" in followup["recommended_followups"]["source_fields"]
+    assert followup["tools"] == [
+        {
+            "tool_name": "summarize_longform_context",
+            "params": {
+                "chapter_index": 7,
+                "query": "缩小上下文窗口后重新汇总第7章写作上下文。",
+                "max_chars": 2400,
+            },
+            "planner": {
+                "step_index": 1,
+                "reason": "根据上一轮 summarize_longform_context 的 provenance 恢复建议规划后继工具 summarize_longform_context。",
+                "on_missing": "record_issue",
+                "on_failure": "record_issue",
+                "expected_output": "推荐后继工具输出。",
+                "post_generation": False,
+                "planner_version": "phase101.recommended_followup_planner.v1",
+                "source_run_id": payload["id"],
+                "source_step_index": 1,
+                "source_tool": "summarize_longform_context",
+            },
+        }
+    ]
+
+
+def test_agent_run_longform_context_provenance_exhausts_retry_at_max_window(client, db_session, monkeypatch):
+    project = Project(name="Longform Provenance Exhausted")
+    db_session.add(project)
+    db_session.commit()
+
+    def fake_context_package(db, project_id: str, chapter_index: int, *, user_query: str | None = None):
+        return {
+            "project_id": project_id,
+            "chapter_index": chapter_index,
+            "sections": [
+                {
+                    "key": "manual_overflow",
+                    "title": "人工溢出上下文",
+                    "items": [
+                        {
+                            "id": f"memory-{index}",
+                            "memory_type": "chapter",
+                            "scope_key": f"chapter:{index}",
+                            "title": f"第{index}章",
+                            "summary": f"第{index}章摘要。",
+                        }
+                        for index in range(1, 7)
+                    ],
+                }
+            ],
+            "prompt_context": "雾港记忆" * 4000,
+        }
+
+    monkeypatch.setattr(
+        "app.services.writing_agent.longform_context_summary.build_longform_context_package",
+        fake_context_package,
+    )
+    monkeypatch.setattr(
+        "app.services.writing_agent.longform_context_summary.get_longform_maintenance_diagnostics",
+        lambda db, project_id, limit=5: {"ready_for_writing": True, "issue_count": 0},
+    )
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "检查最大上下文窗口来源",
+            "tools": [
+                {
+                    "tool_name": "summarize_longform_context",
+                    "params": {"chapter_index": 7, "max_chars": 12000},
+                }
+            ],
+        },
+    )
+
+    payload = response.json()
+    provenance = payload["steps"][0]["output"]["memory_provenance"]
+    assert response.status_code == 200
+    assert provenance["status"] == "truncated"
+    assert provenance["recovery"]["status"] == "exhausted"
+    assert provenance["recovery"]["reason"] == "longform_context_window_limit_exhausted"
+    assert provenance["recovery"]["next_tools"] == ["inspect_agent_memory_route"]
+    assert provenance["recovery"]["tools"] == [
+        {
+            "tool_name": "inspect_agent_memory_route",
+            "params": {
+                "chapter_index": 7,
+                "query": "最大上下文窗口仍截断，诊断第7章长篇记忆与检索覆盖。",
+                "include_context_summary": False,
+            },
+        }
+    ]
+
+    preview = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "预览最大窗口截断后的后继",
+            "tools": [{"tool_name": "plan_recommended_followups", "params": {"run_id": payload["id"]}}],
+        },
+    )
+
+    followup = preview.json()["steps"][0]["output"]
+    assert preview.status_code == 200
+    assert followup["trace"]["selected_tools"] == ["inspect_agent_memory_route"]
+    assert followup["tools"] == [
+        {
+            "tool_name": "inspect_agent_memory_route",
+            "params": {
+                "chapter_index": 7,
+                "query": "最大上下文窗口仍截断，诊断第7章长篇记忆与检索覆盖。",
+                "include_context_summary": False,
+            },
+            "planner": {
+                "step_index": 1,
+                "reason": "根据上一轮 summarize_longform_context 的 provenance 恢复建议规划后继工具 inspect_agent_memory_route。",
+                "on_missing": "record_issue",
+                "on_failure": "record_issue",
+                "expected_output": "推荐后继工具输出。",
+                "post_generation": False,
+                "planner_version": "phase101.recommended_followup_planner.v1",
+                "source_run_id": payload["id"],
+                "source_step_index": 1,
+                "source_tool": "summarize_longform_context",
+            },
+        }
+    ]
 
 
 def test_agent_run_can_plan_recovery_tools_from_blocked_run(client, db_session):
@@ -719,6 +1135,65 @@ def test_agent_run_auto_plan_does_not_execute_guarded_recommended_followups(clie
     ]
 
 
+def test_agent_run_recommended_followup_preview_projects_provenance_write_tools(client, db_session):
+    project = Project(name="Recommended Followup Provenance Write Tools")
+    db_session.add(project)
+    db_session.flush()
+    source_run = WritingAgentRun(project_id=project.id, goal="诊断检索覆盖", status="success", input={})
+    db_session.add(source_run)
+    db_session.flush()
+    write_tools = [{"tool_name": "repair_longform_maintenance", "params": {}}]
+    db_session.add(
+        WritingAgentStep(
+            run_id=source_run.id,
+            project_id=project.id,
+            step_index=1,
+            tool_name="inspect_agent_memory_route",
+            status="success",
+            chapter_index=13,
+            input={"params": {"chapter_index": 13}},
+            output={
+                "status": "completed",
+                "agent_tool_result": {
+                    "recommendations": {
+                        "source_fields": [
+                            "memory_provenance.recovery.tools",
+                            "memory_provenance.recovery.write_tools",
+                        ],
+                        "canonical_followups": ["inspect_agent_memory_route"],
+                        "provenance_recovery_tools": [
+                            {
+                                "tool_name": "inspect_agent_memory_route",
+                                "params": {
+                                    "chapter_index": 13,
+                                    "query": "检索索引为空，诊断第13章长篇记忆与检索覆盖。",
+                                    "include_context_summary": False,
+                                },
+                            }
+                        ],
+                        "provenance_write_tools": write_tools,
+                    }
+                },
+            },
+        )
+    )
+    db_session.commit()
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "预览检索覆盖恢复后继",
+            "tools": [{"tool_name": "plan_recommended_followups", "params": {"run_id": source_run.id}}],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    assert response.status_code == 200
+    assert output["status"] == "completed"
+    assert [tool["tool_name"] for tool in output["tools"]] == ["inspect_agent_memory_route"]
+    assert output["recommended_followups"]["provenance_write_tools"] == write_tools
+
+
 def test_agent_recovery_preview_blocks_requires_user_input(client):
     project_id = _create_project(client, "Recovery Needs Setup Input")
     blocked = client.post(
@@ -950,6 +1425,10 @@ def test_agent_auto_plan_longform_context_blocks_stale_maintenance_before_genera
     assert context_output["should_generate_next_chapter"] is False
     assert context_output["recommended_actions"] == ["repair_longform_maintenance"]
     assert context_output["decision"]["reason"] == "longform_memory_needs_maintenance"
+    provenance = context_output["memory_provenance"]
+    assert provenance["status"] == "blocked"
+    assert provenance["recovery"]["status"] == "recommended"
+    assert provenance["recovery"]["next_tools"] == ["repair_longform_maintenance"]
     assert calls == []
     state = payload["output"]["continuation_state"]
     assert state["version"] == "phase56.continuation_state.v1"
@@ -962,6 +1441,11 @@ def test_agent_auto_plan_longform_context_blocks_stale_maintenance_before_genera
     assert state["recommended_followups"]["reason"] == "recovery_required"
     assert state["recovery"]["status"] == "recommended"
     assert state["recovery"]["next_tool"] == "repair_longform_maintenance"
+    assert state["recovery"]["memory_provenance_status"] == "blocked"
+    assert state["recovery"]["memory_provenance_recovery_status"] == "recommended"
+    assert state["memory_provenance"]["source_tool"] == "summarize_longform_context"
+    assert state["memory_provenance"]["status"] == "blocked"
+    assert state["memory_provenance"]["recovery"]["next_tools"] == ["repair_longform_maintenance"]
     assert state["consumed"]["longform_context"] is True
     assert state["consumed"]["generated_chapter"] is False
 

@@ -31,6 +31,8 @@ def test_agent_core_tool_descriptors_live_in_dedicated_module():
         "plan_dialog_intent_agent_run",
         "preview_agent_plan_approval_contract",
         "verify_agent_plan_approval_contract",
+        "inspect_agent_health_projection",
+        "inspect_agent_control_plane_readiness",
         "plan_recovery_tools",
         "plan_recommended_followups",
         "inspect_agent_slash_command_route",
@@ -43,6 +45,7 @@ def test_agent_core_tool_descriptors_live_in_dedicated_module():
         "inspect_agent_dialog_control_plane_projection",
         "inspect_agent_intent_projection",
         "inspect_agent_tool_contracts",
+        "inspect_agent_command_contracts",
         "inspect_legacy_hermes_action_migration",
         "inspect_agent_write_gate_coverage",
         "inspect_agent_mutation_fingerprints",
@@ -777,6 +780,33 @@ def test_agent_tool_registry_includes_inspect_agent_tool_contracts():
     assert descriptor.input_schema["properties"]["include_gap_details"]["type"] == "boolean"
     assert "inspect_agent_tool_contracts" in allowed_tool_names()
     assert "inspect_agent_tool_contracts" in non_blocking_report_tool_names()
+
+
+def test_agent_tool_registry_includes_inspect_agent_command_contracts():
+    descriptor = get_agent_tool_descriptor("inspect_agent_command_contracts")
+
+    assert descriptor is not None
+    assert descriptor.internal is True
+    assert descriptor.non_blocking_report is True
+    assert descriptor.category == "preflight"
+    assert descriptor.target_type == "agent_command_contracts"
+    assert descriptor.output_schema["properties"]["commands"]["type"] == "array"
+    assert descriptor.output_schema["properties"]["gaps"]["type"] == "array"
+    assert "inspect_agent_command_contracts" in allowed_tool_names()
+    assert "inspect_agent_command_contracts" in non_blocking_report_tool_names()
+
+
+def test_agent_tool_registry_includes_inspect_agent_control_plane_readiness():
+    descriptor = get_agent_tool_descriptor("inspect_agent_control_plane_readiness")
+
+    assert descriptor is not None
+    assert descriptor.internal is True
+    assert descriptor.non_blocking_report is True
+    assert descriptor.category == "preflight"
+    assert descriptor.target_type == "agent_control_plane_readiness"
+    assert descriptor.output_schema["properties"]["control_surfaces"]["type"] == "object"
+    assert "inspect_agent_control_plane_readiness" in allowed_tool_names()
+    assert "inspect_agent_control_plane_readiness" in non_blocking_report_tool_names()
 
 
 def test_agent_tool_registry_includes_legacy_hermes_migration_projection():

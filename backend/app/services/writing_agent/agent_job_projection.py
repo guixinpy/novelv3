@@ -8,6 +8,14 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models import BackgroundTask, Project, WritingAgentRun
+from app.services.writing_agent.command_contract_projection import (
+    command_contracts_from_run_input,
+    command_contracts_needs_attention,
+)
+from app.services.writing_agent.control_plane_readiness_projection import (
+    control_plane_readiness_from_run_input,
+    control_plane_readiness_needs_attention,
+)
 from app.services.tasks.background_task_service import ACTIVE_TASK_STATUSES, BackgroundTaskService
 
 AGENT_JOB_PROJECTION_VERSION = "phase75.agent_job_projection.v1"
@@ -179,13 +187,16 @@ def _detailed_task(db: Session, task: BackgroundTask | None) -> dict[str, Any] |
         return None
     payload = task.payload if isinstance(task.payload, dict) else {}
     result = task.result if isinstance(task.result, dict) else {}
+    agent_runs = _agent_runs_for_task(db, task)
     return {
         **_compact_task(task),
         "payload_summary": _payload_summary(payload),
         "result_summary": _result_summary(result),
         "resume": _resume_summary(db, task),
         "recovery": _recovery_summary(task),
-        "agent_runs": _agent_runs_for_task(db, task),
+        "agent_runs": agent_runs,
+        "control_plane_readiness": _latest_control_plane_readiness(agent_runs),
+        "command_contracts": _latest_command_contracts(agent_runs),
         "error_preview": _error_preview(task.error),
     }
 
@@ -341,6 +352,8 @@ def _agent_runs_for_task(db: Session, task: BackgroundTask) -> list[dict[str, An
             "goal": run.goal,
             "status": run.status,
             "entrypoint": run.entrypoint,
+            "control_plane_readiness": control_plane_readiness_from_run_input(run.input),
+            "command_contracts": command_contracts_from_run_input(run.input),
             "created_at": run.created_at,
         }
         for run in rows
@@ -352,6 +365,10 @@ def _recommended_tools(*, tasks: list[BackgroundTask], selected_task: dict[str, 
         recovery = selected_task.get("recovery") if isinstance(selected_task.get("recovery"), dict) else {}
         if recovery.get("can_retry") is True:
             return list(recovery.get("recommended_tools") or [])
+        if control_plane_readiness_needs_attention(selected_task.get("control_plane_readiness")):
+            return ["inspect_agent_control_plane_readiness", "inspect_agent_trace_audit"]
+        if command_contracts_needs_attention(selected_task.get("command_contracts")):
+            return ["inspect_agent_command_contracts", "inspect_agent_trace_audit"]
         return ["inspect_agent_trace_audit"]
     if not tasks:
         return ["plan_longform_chapter_batch"]
@@ -360,6 +377,22 @@ def _recommended_tools(*, tasks: list[BackgroundTask], selected_task: dict[str, 
     if any(task.status in {"pending", "running"} for task in tasks):
         return ["inspect_agent_trace_audit"]
     return ["plan_longform_chapter_batch"]
+
+
+def _latest_control_plane_readiness(agent_runs: list[dict[str, Any]]) -> dict[str, Any] | None:
+    for run in agent_runs:
+        readiness = run.get("control_plane_readiness") if isinstance(run, dict) else None
+        if isinstance(readiness, dict):
+            return readiness
+    return None
+
+
+def _latest_command_contracts(agent_runs: list[dict[str, Any]]) -> dict[str, Any] | None:
+    for run in agent_runs:
+        contracts = run.get("command_contracts") if isinstance(run, dict) else None
+        if isinstance(contracts, dict):
+            return contracts
+    return None
 
 
 def _error_preview(error: str | None) -> str | None:

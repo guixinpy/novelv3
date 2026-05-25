@@ -12,6 +12,7 @@ from app.models import Project, PromptRule
 from app.services.writing_agent.agent_knowledge_base_candidates import KNOWLEDGE_CANDIDATES_KEY
 
 AGENT_KNOWLEDGE_BASE_ROUTE_VERSION = "phase76.agent_knowledge_base_route.v1"
+MEMORY_PROVENANCE_VERSION = "phase222.agent_memory_provenance.v1"
 DEFAULT_RULE_LIMIT = 20
 MAX_RULE_LIMIT = 100
 PREVIEW_LIMIT = 120
@@ -43,6 +44,14 @@ def inspect_agent_knowledge_base_route(
         learned_rules=learned_rules,
         knowledge_candidates=knowledge_candidates,
     )
+    memory_provenance = _memory_provenance(
+        route=route,
+        author_preferences=author_preferences,
+        project_strategy=project_strategy,
+        learned_rules=learned_rules,
+        knowledge_candidates=knowledge_candidates,
+        reference_patterns=reference_patterns,
+    )
     return _json_safe_output(
         {
             "status": "completed",
@@ -55,6 +64,7 @@ def inspect_agent_knowledge_base_route(
             "learned_rules": learned_rules,
             "knowledge_candidates": knowledge_candidates,
             "reference_patterns": reference_patterns,
+            "memory_provenance": memory_provenance,
             "diagnostics": diagnostics,
             "trace": {
                 "source": "inspect_agent_knowledge_base_route",
@@ -272,6 +282,94 @@ def _route_decision(
         "reason": "knowledge_base_sparse" if sparse else "knowledge_base_available",
         "can_inform_generation": True,
         "recommended_tools": recommended_tools,
+    }
+
+
+def _memory_provenance(
+    *,
+    route: dict[str, Any],
+    author_preferences: dict[str, Any],
+    project_strategy: dict[str, Any],
+    learned_rules: dict[str, Any],
+    knowledge_candidates: dict[str, Any],
+    reference_patterns: dict[str, Any],
+) -> dict[str, Any]:
+    sources = [
+        {
+            "source_ref": "Project",
+            "source_type": "project_strategy",
+            "item_count": 1,
+            "mutability": "read",
+        }
+    ]
+    if author_preferences["status"] != "empty":
+        sources.append(
+            {
+                "source_ref": author_preferences["source_ref"],
+                "source_type": "author_preferences",
+                "item_count": len(author_preferences["facets"]),
+                "mutability": "read",
+            }
+        )
+    if int(learned_rules["returned"]) > 0:
+        sources.append(
+            {
+                "source_ref": learned_rules["source_ref"],
+                "source_type": "learned_rules",
+                "item_count": int(learned_rules["returned"]),
+                "total_count": int(learned_rules["total"]),
+                "mutability": "read",
+            }
+        )
+    if int(knowledge_candidates["returned"]) > 0:
+        sources.append(
+            {
+                "source_ref": knowledge_candidates["source_ref"],
+                "source_type": "knowledge_candidates",
+                "item_count": int(knowledge_candidates["returned"]),
+                "total_count": int(knowledge_candidates["total"]),
+                "mutability": "read",
+            }
+        )
+    if int(reference_patterns["returned"]) > 0:
+        sources.append(
+            {
+                "source_ref": reference_patterns["source_ref"],
+                "source_type": "reference_patterns",
+                "item_count": int(reference_patterns["returned"]),
+                "mutability": "read",
+            }
+        )
+    return {
+        "version": MEMORY_PROVENANCE_VERSION,
+        "status": "sparse" if route["status"] == "sparse" else "available",
+        "source_count": len(sources),
+        "sources": sources,
+        "windows": {
+            "learned_rules": _window_provenance(learned_rules),
+            "knowledge_candidates": _window_provenance(knowledge_candidates),
+        },
+        "boundaries": {
+            "world_truth": {
+                "status": "separated",
+                "canonical_source": "Athena/world_model",
+                "knowledge_base_role": "author_preferences_project_strategy_reference_patterns_and_lessons",
+            }
+        },
+        "trace": {
+            "source": "inspect_agent_knowledge_base_route",
+            "version": MEMORY_PROVENANCE_VERSION,
+            "mutability": "read",
+        },
+    }
+
+
+def _window_provenance(section: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "total": int(section["total"]),
+        "returned": int(section["returned"]),
+        "limit": int(section["limit"]),
+        "has_more": bool(section["has_more"]),
     }
 
 

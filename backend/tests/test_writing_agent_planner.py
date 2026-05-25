@@ -37,6 +37,13 @@ def test_planner_builds_ready_next_chapter_tool_chain(db_session):
     assert plan["trace"]["agent_health_projection"]["version"] == "phase218.agent_health_projection.v1"
     assert plan["trace"]["agent_health_projection"]["status"] in {"ready", "degraded", "needs_attention"}
     assert isinstance(plan["trace"]["agent_health_projection"]["diagnostic_count"], int)
+    assert plan["trace"]["agent_health_projection"]["command_contracts"]["summary"]["agent_control_commands"] == 2
+    assert isinstance(plan["trace"]["agent_health_projection"]["command_contracts"]["summary"]["gap_count"], int)
+    assert plan["trace"]["agent_health_projection"]["control_plane_readiness"]["summary"]["agent_control_commands"] == 2
+    assert isinstance(
+        plan["trace"]["agent_health_projection"]["control_plane_readiness"]["summary"]["total_gap_count"],
+        int,
+    )
     assert "profile_policy" not in plan["trace"]["agent_health_projection"]
     first_step = plan["steps"][0]
     assert first_step["params"] == {"chapter_index": 2, "agent_profile": "drafting_worker"}

@@ -7,7 +7,15 @@ from sqlalchemy.orm import Session
 
 from app.config import load_api_key
 from app.core.ai_service import AIService
-from app.core.chat_commands import build_command_text, command_agent_route, command_to_action_type, parse_command
+from app.core.chat_commands import (
+    build_command_text,
+    command_agent_route,
+    command_control_projection_type,
+    command_to_action_type,
+    command_to_agent_intent_text,
+    is_legacy_chat_command,
+    parse_command,
+)
 from app.core.chat_compaction import build_compaction_summary, select_compactable_plain_messages
 from app.core.dialog_agent_routes import build_dialog_agent_route
 from app.core.intent_router import IntentRouter, parse_chapter_index
@@ -40,7 +48,11 @@ from app.prompting.providers.dialog import (
 )
 from app.schemas import ChatIn, ChatOut, PendingActionOut, ProjectDiagnosisOut, ResolveActionIn
 from app.schemas.writing_agent import WritingAgentRunCreate
-from app.services.actions.action_execution_service import ActionExecutionService, chapter_action_params
+from app.services.actions.action_execution_service import (
+    SUPPORTED_ACTION_EXECUTION_TYPES,
+    ActionExecutionService,
+    chapter_action_params,
+)
 from app.services.actions.action_proposal_service import preview_action_to_execution
 from app.services.actions.action_result_service import ActionResultService
 from app.services.actions.action_result_view import action_result_view
@@ -50,13 +62,29 @@ from app.services.dialog.messages import DEFAULT_MESSAGE_CONTENT_PREVIEW_CHARS, 
 from app.services.dialog.session import DialogSessionService
 from app.services.tasks.background_task_service import BackgroundTaskService
 from app.services.tasks.local_task_runner import LocalTaskRunner
+from app.services.writing_agent.agent_command_catalog import (
+    build_agent_chat_command_catalog,
+    find_unavailable_agent_chat_command,
+    unavailable_agent_chat_command_message,
+    unavailable_agent_chat_command_meta,
+)
+from app.services.writing_agent.agent_health_projection import inspect_agent_health_projection
+from app.services.writing_agent.continue_agent_control import (
+    build_continue_agent_control_projection,
+    continue_agent_control_to_route_decision,
+)
 from app.services.writing_agent.dialog_control_plane import (
     CONTROL_PLANE_VERSION,
     prepare_dialog_agent_run_dispatch,
     supports_dialog_agent_control_plane,
 )
 from app.services.writing_agent.planner import latest_recoverable_run_id
+from app.services.writing_agent.recommended_followup_planner import latest_recommended_followup_run_id
 from app.services.writing_agent.run_service import WritingAgentRunService
+from app.services.writing_agent.tool_executor import (
+    static_writing_agent_tool_adapter_names,
+    writing_agent_tool_adapter_metadata_by_name,
+)
 from app.services.workspace.bootstrap import build_project_diagnosis
 
 router = APIRouter(tags=["dialogs"])
@@ -64,13 +92,15 @@ ai_service = AIService()
 CHAT_HISTORY_LIMIT = 8
 TERMINAL_ACTION_STATUSES = {"completed", "success", "failed", "cancelled", "revised"}
 RUNNING_ACTION_STATUSES = {"running", "generating"}
-RUNNING_BLOCKED_COMMANDS = {"clear", "compact", "setup", "storyline", "outline", "chapter"}
+RUNNING_BLOCKED_COMMANDS = {"clear", "compact", "continue", "setup", "storyline", "outline", "chapter"}
 ACTIVE_CHAPTER_TARGET_STATUSES = {"pending", "running"}
 CHAPTER_TARGET_SOURCE_LABELS = {
     "pending_action": "待确认操作",
     "single_task": "单章生成任务",
     "range_task": "批量生成任务",
 }
+LOW_DETAIL_CONTINUE_ROUTE_DECISION_VERSION = "phase20.dialog_continue_route_decision.v1"
+LOW_DETAIL_CONTINUE_ROUTE_PRIORITY = ["recover_blocked_run", "recommended_followups", "chapter_generation"]
 
 
 def _get_or_create_dialog(db: Session, project_id: str, dialog_type: str = "hermes") -> Dialog:
@@ -128,6 +158,141 @@ def _is_low_detail_continue_text(text: str | None) -> bool:
     return len(cleaned) <= 12 and any(token in cleaned for token in ("继续", "接着"))
 
 
+def _build_low_detail_continue_route_decision(
+    *,
+    selected_route: str,
+    reason_code: str,
+    source_run_id: str | None = None,
+) -> dict:
+    decision = {
+        "version": LOW_DETAIL_CONTINUE_ROUTE_DECISION_VERSION,
+        "trigger": "low_detail_continue",
+        "selected_route": selected_route,
+        "reason_code": reason_code,
+        "priority": LOW_DETAIL_CONTINUE_ROUTE_PRIORITY,
+    }
+    if source_run_id:
+        decision["source_run_id"] = source_run_id
+    return decision
+
+
+def _build_continue_agent_control_projection_for_command(
+    command_name: str | None,
+    *,
+    selected_route: str,
+    reason_code: str,
+    source_run_id: str | None = None,
+) -> dict | None:
+    if (command_name or "").strip().lower() != "continue":
+        return None
+    return build_continue_agent_control_projection(
+        selected_route=selected_route,
+        reason_code=reason_code,
+        source_run_id=source_run_id,
+    )
+
+
+def _assistant_continue_meta(route_decision: dict | None, agent_control: dict | None) -> dict | None:
+    meta = {}
+    if route_decision:
+        meta["dialog_route_decision"] = route_decision
+    if agent_control:
+        meta["agent_control"] = agent_control
+        control_projection_type = command_control_projection_type(agent_control.get("command_name"))
+        if control_projection_type:
+            meta["control_projection_type"] = control_projection_type
+    return meta or None
+
+
+def _record_dialog_route_decision_trace(
+    db: Session,
+    *,
+    project_id: str,
+    dialog_id: str,
+    request_message_id: str | None,
+    response_message_id: str,
+    route_decision: dict | None,
+    agent_run_id: str | None = None,
+    source_run_id: str | None = None,
+    action_type: str | None = None,
+    agent_control: dict | None = None,
+) -> str | None:
+    if not route_decision:
+        return None
+    metadata = {"dialog_route_decision": route_decision}
+    if agent_run_id:
+        metadata["agent_run_id"] = agent_run_id
+    if source_run_id:
+        metadata["source_run_id"] = source_run_id
+    if action_type:
+        metadata["action_type"] = action_type
+    if agent_control:
+        metadata["agent_control"] = agent_control
+        control_projection_type = command_control_projection_type(agent_control.get("command_name"))
+        if control_projection_type:
+            metadata["control_projection_type"] = control_projection_type
+    try:
+        trace = create_trace(
+            db,
+            project_id=project_id,
+            trace_type="dialog_route_decision",
+            model="local-dialog-router",
+            dialog_id=dialog_id,
+            request_message_id=request_message_id,
+            trace_metadata=metadata,
+        )
+        attach_trace_response(db, trace, response_message_id=response_message_id)
+        mark_trace_success(db, trace, latency_ms=0)
+        db.commit()
+        return trace.id
+    except Exception:
+        db.rollback()
+        return None
+
+
+def _record_dialog_agent_route_trace(
+    db: Session,
+    *,
+    project_id: str,
+    dialog_id: str,
+    request_message_id: str | None,
+    response_message_id: str,
+    agent_route: dict | None,
+    action_type: str,
+    pending_action_id: str,
+    command_name: str | None = None,
+) -> str | None:
+    if not agent_route:
+        return None
+    metadata = {
+        "agent_route": agent_route,
+        "action_type": action_type,
+        "pending_action_id": pending_action_id,
+        "source": agent_route.get("source"),
+        "agent_tool_name": agent_route.get("agent_tool_name"),
+    }
+    route_command_name = command_name or agent_route.get("command_name")
+    if route_command_name:
+        metadata["command_name"] = route_command_name
+    try:
+        trace = create_trace(
+            db,
+            project_id=project_id,
+            trace_type="dialog_agent_route",
+            model="local-dialog-router",
+            dialog_id=dialog_id,
+            request_message_id=request_message_id,
+            trace_metadata=metadata,
+        )
+        attach_trace_response(db, trace, response_message_id=response_message_id)
+        mark_trace_success(db, trace, latency_ms=0)
+        db.commit()
+        return trace.id
+    except Exception:
+        db.rollback()
+        return None
+
+
 async def _handle_dialog_recovery_preview(
     db: Session,
     dialog: Dialog,
@@ -135,6 +300,8 @@ async def _handle_dialog_recovery_preview(
     diagnosis: ProjectDiagnosisOut,
     *,
     request_message_id: str | None,
+    route_decision: dict | None = None,
+    agent_control: dict | None = None,
 ) -> ChatOut:
     service = WritingAgentRunService(db)
     payload = WritingAgentRunCreate(
@@ -168,20 +335,114 @@ async def _handle_dialog_recovery_preview(
             "recovery": output.get("recovery"),
             "tools": output.get("tools"),
             "execution_policy": output.get("execution_policy"),
+            **({"route_decision": route_decision} if route_decision else {}),
+            **({"agent_control": agent_control} if agent_control else {}),
         },
     }
     response_meta = {
         "agent_run_id": run.id,
         "source_run_id": output.get("source_run_id"),
         "agent_action_type": "plan_recovery_tools",
+        **({"dialog_route_decision": route_decision} if route_decision else {}),
+        **({"agent_control": agent_control} if agent_control else {}),
     }
     reply = "上一轮 Agent 运行存在可恢复阻塞，我已先规划恢复工具链。"
-    _save_message(db, dialog.id, "assistant", reply, action_result=action_result, meta=response_meta)
+    assistant_message = _save_message(db, dialog.id, "assistant", reply, action_result=action_result, meta=response_meta)
+    _record_dialog_route_decision_trace(
+        db,
+        project_id=project.id,
+        dialog_id=dialog.id,
+        request_message_id=request_message_id,
+        response_message_id=assistant_message.id,
+        route_decision=route_decision,
+        agent_run_id=run.id,
+        source_run_id=output.get("source_run_id"),
+        action_type="plan_recovery_tools",
+        agent_control=agent_control,
+    )
     return ChatOut(
         message=reply,
         meta=response_meta,
         pending_action=None,
         ui_hint=_build_chat_idle_hint("恢复预览已生成"),
+        refresh_targets=[],
+        project_diagnosis=diagnosis,
+    )
+
+
+async def _handle_dialog_recommended_followup_preview(
+    db: Session,
+    dialog: Dialog,
+    project: Project,
+    diagnosis: ProjectDiagnosisOut,
+    *,
+    source_run_id: str,
+    request_message_id: str | None,
+    route_decision: dict | None = None,
+    agent_control: dict | None = None,
+) -> ChatOut:
+    service = WritingAgentRunService(db)
+    payload = WritingAgentRunCreate(
+        goal="继续上一轮推荐后继",
+        entrypoint="dialog_auto_plan",
+        input={"auto_plan": True, "recommended_followup_run_id": source_run_id},
+    )
+    tools, planner_output = service.build_auto_plan_tools(project.id, payload)
+    run = service.create_run(
+        project.id,
+        payload,
+        effective_tools=tools,
+        planner_output=planner_output,
+        dialog_id=dialog.id,
+        request_message_id=request_message_id,
+    )
+    run = await service.execute_run(run.id, tools)
+    latest_step = (
+        db.query(WritingAgentStep)
+        .filter(WritingAgentStep.project_id == project.id, WritingAgentStep.run_id == run.id)
+        .order_by(WritingAgentStep.step_index.desc(), WritingAgentStep.id.desc())
+        .first()
+    )
+    output = latest_step.output if latest_step and isinstance(latest_step.output, dict) else {}
+    action_result = {
+        "type": "plan_recommended_followups",
+        "status": run.status,
+        "data": {
+            "agent_run_id": run.id,
+            "source_run_id": output.get("source_run_id") or source_run_id,
+            "recommended_followups": output.get("recommended_followups"),
+            "tools": output.get("tools"),
+            "execution_policy": output.get("execution_policy"),
+            **({"route_decision": route_decision} if route_decision else {}),
+            **({"agent_control": agent_control} if agent_control else {}),
+        },
+    }
+    response_meta = {
+        "agent_run_id": run.id,
+        "source_run_id": output.get("source_run_id") or source_run_id,
+        "agent_action_type": "plan_recommended_followups",
+        **({"dialog_route_decision": route_decision} if route_decision else {}),
+        **({"agent_control": agent_control} if agent_control else {}),
+    }
+    reply = "上一轮 Agent 运行给出了推荐后继，我已先规划后继工具链。"
+    assistant_message = _save_message(db, dialog.id, "assistant", reply, action_result=action_result, meta=response_meta)
+    _record_dialog_route_decision_trace(
+        db,
+        project_id=project.id,
+        dialog_id=dialog.id,
+        request_message_id=request_message_id,
+        response_message_id=assistant_message.id,
+        route_decision=route_decision,
+        agent_run_id=run.id,
+        source_run_id=output.get("source_run_id") or source_run_id,
+        action_type="plan_recommended_followups",
+        agent_control=agent_control,
+    )
+    return ChatOut(
+        message=reply,
+        meta=response_meta,
+        pending_action=None,
+        ui_hint=_build_chat_idle_hint("推荐后继预览已生成"),
         refresh_targets=[],
         project_diagnosis=diagnosis,
     )
@@ -252,6 +513,108 @@ def _build_running_guard_response(
         refresh_targets=[],
         project_diagnosis=diagnosis,
     )
+
+
+def _build_unavailable_command_response(
+    db: Session,
+    dialog: Dialog,
+    diagnosis: ProjectDiagnosisOut,
+    command: dict,
+) -> ChatOut:
+    reply = unavailable_agent_chat_command_message(command)
+    meta = unavailable_agent_chat_command_meta(command)
+    command_name = str(meta["command_name"])
+    _save_command_feedback(
+        db,
+        dialog.id,
+        command_name,
+        reply,
+        extra_meta={
+            "command_available": False,
+            "unavailable_reasons": meta["unavailable_reasons"],
+        },
+    )
+    return ChatOut(
+        message=reply,
+        message_type="command",
+        meta=meta,
+        pending_action=None,
+        ui_hint=None,
+        refresh_targets=[],
+        project_diagnosis=diagnosis,
+    )
+
+
+def _handle_status_command(
+    db: Session,
+    project: Project,
+    dialog: Dialog,
+    diagnosis: ProjectDiagnosisOut,
+) -> ChatOut:
+    health = inspect_agent_health_projection(
+        db,
+        project.id,
+        source="slash_command",
+        adapter_metadata_by_name=writing_agent_tool_adapter_metadata_by_name(),
+        static_adapter_tool_names=static_writing_agent_tool_adapter_names(),
+        action_execution_tool_names=set(SUPPORTED_ACTION_EXECUTION_TYPES),
+    )
+    reply = _agent_health_status_message(health)
+    meta = {
+        "command_name": "status",
+        "control_projection_type": command_control_projection_type("status"),
+        "agent_health_projection": health,
+    }
+    _save_message(
+        db,
+        dialog.id,
+        "assistant",
+        reply,
+        message_type="command",
+        meta=meta,
+    )
+    return ChatOut(
+        message=reply,
+        message_type="command",
+        meta=meta,
+        pending_action=None,
+        ui_hint=build_ui_hint(
+            action_type="agent_status",
+            dialog_state="chatting",
+            status="completed",
+            reason="Agent 状态",
+        ),
+        refresh_targets=[],
+        project_diagnosis=diagnosis,
+    )
+
+
+def _agent_health_status_message(health: dict) -> str:
+    status_value = str(health.get("status") or "")
+    status_label = {
+        "ready": "就绪",
+        "degraded": "部分降级",
+        "needs_attention": "需要处理",
+    }.get(status_value, status_value or "未知")
+    diagnostics = health.get("diagnostics") if isinstance(health.get("diagnostics"), list) else []
+    lines = [
+        f"Agent 状态：{status_label}。",
+        f"诊断项：{len(diagnostics)}。",
+    ]
+    if diagnostics:
+        messages = [
+            str(item.get("message") or "").strip()
+            for item in diagnostics[:3]
+            if isinstance(item, dict) and str(item.get("message") or "").strip()
+        ]
+        if messages:
+            lines.append("重点问题：" + "；".join(messages) + "。")
+    else:
+        lines.append("未发现阻塞项。")
+    recommended_tools = health.get("recommended_next_tools")
+    if isinstance(recommended_tools, list) and recommended_tools:
+        lines.append("建议工具：" + "、".join(str(tool) for tool in recommended_tools[:5]) + "。")
+    return "\n".join(lines)
 
 
 def _chapter_action_params(command_args: str | None = None, candidate_params: dict | None = None) -> dict:
@@ -860,6 +1223,11 @@ def get_messages(
     )
 
 
+@router.get("/api/v1/dialog/chat-commands")
+def chat_commands():
+    return build_agent_chat_command_catalog()
+
+
 @router.get("/api/v1/projects/{project_id}/state-diagnosis")
 def state_diagnosis(project_id: str, db: Session = Depends(get_db)):
     project = db.query(Project).filter(Project.id == project_id).first()
@@ -878,11 +1246,15 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
     diagnosis = _build_diagnosis(db, payload.project_id)
     effective_text = payload.text
     request_message = None
+    legacy_command_meta = None
+    routed_command_name = None
+    agent_control_projection = None
 
     if payload.input_type == "command":
         parsed_command = parse_command(payload.command_name, payload.text, payload.command_args)
         if parsed_command:
-            _save_message(
+            routed_command_name = parsed_command.name
+            request_message = _save_message(
                 db,
                 dialog.id,
                 "user",
@@ -893,6 +1265,16 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
                     "command_args": parsed_command.args,
                 },
             )
+
+            unavailable_command = find_unavailable_agent_chat_command(
+                parsed_command.name,
+                build_agent_chat_command_catalog(),
+            )
+            if unavailable_command:
+                return _build_unavailable_command_response(db, dialog, diagnosis, unavailable_command)
+
+            if parsed_command.name == "status":
+                return _handle_status_command(db, project, dialog, diagnosis)
 
             if dialog.state == "running" and parsed_command.name in RUNNING_BLOCKED_COMMANDS:
                 return _build_running_guard_response(
@@ -906,63 +1288,147 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
                 return _handle_clear_command(db, dialog, diagnosis)
             if parsed_command.name == "compact":
                 return await _handle_compact_command(db, dialog, project, diagnosis)
-            action_type = command_to_action_type(parsed_command.name)
-            if action_type:
-                params = {"project_id": payload.project_id}
-                route = command_agent_route(parsed_command.name)
-                if route:
-                    params["agent_route"] = route
-                if parsed_command.args:
-                    params["command_args"] = parsed_command.args
-                if action_type == "preview_chapter":
-                    params.update(_chapter_action_params_for_project(db, payload.project_id, parsed_command.args))
+            agent_intent_text = command_to_agent_intent_text(parsed_command.name, parsed_command.args)
+            if agent_intent_text:
+                effective_text = agent_intent_text
+                if is_legacy_chat_command(parsed_command.name):
+                    legacy_command_meta = {
+                        "command_name": parsed_command.name,
+                        "command_args": parsed_command.args,
+                        "migration": "agent_intent_alias",
+                    }
+            else:
+                action_type = command_to_action_type(parsed_command.name)
+                if action_type:
+                    params = {"project_id": payload.project_id}
+                    route = command_agent_route(parsed_command.name)
+                    if route:
+                        params["agent_route"] = route
+                    if parsed_command.args:
+                        params["command_args"] = parsed_command.args
+                    if action_type == "preview_chapter":
+                        params.update(_chapter_action_params_for_project(db, payload.project_id, parsed_command.args))
 
-                pending = PendingAction(
-                    dialog_id=dialog.id,
-                    type=action_type,
-                    params=params,
-                )
-                db.add(pending)
-                db.commit()
-                db.refresh(pending)
-                dialog.pending_action_id = pending.id
-                dialog.state = "pending_action"
-                db.commit()
+                    pending = PendingAction(
+                        dialog_id=dialog.id,
+                        type=action_type,
+                        params=params,
+                    )
+                    db.add(pending)
+                    db.commit()
+                    db.refresh(pending)
+                    dialog.pending_action_id = pending.id
+                    dialog.state = "pending_action"
+                    db.commit()
 
-                reply = _action_description(action_type, params)
-                if parsed_command.args:
-                    reply = f"{reply}\n附加要求：{parsed_command.args}"
-                _save_message(db, dialog.id, "assistant", reply)
-                return ChatOut(
-                    message=reply,
-                    pending_action=_pending_action_out(pending),
-                    ui_hint=build_ui_hint(
-                        action_type=pending.type,
-                        dialog_state="PENDING_ACTION",
-                        status="pending",
-                        reason="等待用户确认",
-                    ),
-                    refresh_targets=action_to_refresh_targets(pending.type, "pending"),
-                    project_diagnosis=diagnosis,
-                )
-        effective_text = _build_command_fallback_text(payload)
+                    reply = _action_description(action_type, params)
+                    if parsed_command.args:
+                        reply = f"{reply}\n附加要求：{parsed_command.args}"
+                    assistant_message = _save_message(db, dialog.id, "assistant", reply)
+                    _record_dialog_agent_route_trace(
+                        db,
+                        project_id=project.id,
+                        dialog_id=dialog.id,
+                        request_message_id=request_message.id if request_message else None,
+                        response_message_id=assistant_message.id,
+                        agent_route=route,
+                        action_type=action_type,
+                        pending_action_id=pending.id,
+                        command_name=parsed_command.name,
+                    )
+                    return ChatOut(
+                        message=reply,
+                        pending_action=_pending_action_out(pending),
+                        ui_hint=build_ui_hint(
+                            action_type=pending.type,
+                            dialog_state="PENDING_ACTION",
+                            status="pending",
+                            reason="等待用户确认",
+                        ),
+                        refresh_targets=action_to_refresh_targets(pending.type, "pending"),
+                        project_diagnosis=diagnosis,
+                    )
+                effective_text = _build_command_fallback_text(payload)
+        else:
+            effective_text = _build_command_fallback_text(payload)
 
-    if (payload.input_type == "text" and payload.text) or (payload.input_type == "command" and effective_text):
+    if request_message is None and (
+        (payload.input_type == "text" and payload.text) or (payload.input_type == "command" and effective_text)
+    ):
         request_message = _save_message(db, dialog.id, "user", effective_text)
 
+    low_detail_continue_route_decision = None
     if (
         payload.input_type in {"text", "command"}
         and effective_text
         and dialog.state not in {"pending_action", "running"}
         and _is_low_detail_continue_text(effective_text)
-        and latest_recoverable_run_id(db, payload.project_id)
     ):
-        return await _handle_dialog_recovery_preview(
-            db,
-            dialog,
-            project,
-            diagnosis,
-            request_message_id=request_message.id if request_message else None,
+        recoverable_run_id = latest_recoverable_run_id(db, payload.project_id)
+        if recoverable_run_id:
+            agent_control_projection = _build_continue_agent_control_projection_for_command(
+                routed_command_name,
+                selected_route="recover_blocked_run",
+                reason_code="recoverable_run_found",
+                source_run_id=recoverable_run_id,
+            )
+            route_decision = (
+                continue_agent_control_to_route_decision(agent_control_projection)
+                if agent_control_projection
+                else _build_low_detail_continue_route_decision(
+                    selected_route="recover_blocked_run",
+                    reason_code="recoverable_run_found",
+                    source_run_id=recoverable_run_id,
+                )
+            )
+            return await _handle_dialog_recovery_preview(
+                db,
+                dialog,
+                project,
+                diagnosis,
+                request_message_id=request_message.id if request_message else None,
+                route_decision=route_decision,
+                agent_control=agent_control_projection,
+            )
+        followup_run_id = latest_recommended_followup_run_id(db, payload.project_id)
+        if followup_run_id:
+            agent_control_projection = _build_continue_agent_control_projection_for_command(
+                routed_command_name,
+                selected_route="recommended_followups",
+                reason_code="recommended_followups_found",
+                source_run_id=followup_run_id,
+            )
+            route_decision = (
+                continue_agent_control_to_route_decision(agent_control_projection)
+                if agent_control_projection
+                else _build_low_detail_continue_route_decision(
+                    selected_route="recommended_followups",
+                    reason_code="recommended_followups_found",
+                    source_run_id=followup_run_id,
+                )
+            )
+            return await _handle_dialog_recommended_followup_preview(
+                db,
+                dialog,
+                project,
+                diagnosis,
+                source_run_id=followup_run_id,
+                request_message_id=request_message.id if request_message else None,
+                route_decision=route_decision,
+                agent_control=agent_control_projection,
+            )
+        agent_control_projection = _build_continue_agent_control_projection_for_command(
+            routed_command_name,
+            selected_route="chapter_generation",
+            reason_code="no_recovery_or_followup",
+        )
+        low_detail_continue_route_decision = (
+            continue_agent_control_to_route_decision(agent_control_projection)
+            if agent_control_projection
+            else _build_low_detail_continue_route_decision(
+                selected_route="chapter_generation",
+                reason_code="no_recovery_or_followup",
+            )
         )
 
     if payload.input_type == "button" and payload.action_type:
@@ -1057,6 +1523,15 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
         route = build_dialog_agent_route(candidate.type, source="text_intent")
         if route:
             params["agent_route"] = route
+        if legacy_command_meta:
+            params["legacy_command"] = legacy_command_meta
+        if low_detail_continue_route_decision:
+            params["dialog_route_decision"] = low_detail_continue_route_decision
+        if agent_control_projection:
+            params["agent_control"] = agent_control_projection
+            control_projection_type = command_control_projection_type(agent_control_projection.get("command_name"))
+            if control_projection_type:
+                params["control_projection_type"] = control_projection_type
         if effective_text:
             params["command_args"] = effective_text
         if candidate.type == "preview_chapter":
@@ -1064,6 +1539,10 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
             params["project_id"] = payload.project_id
             if effective_text:
                 params["command_args"] = effective_text
+        if legacy_command_meta:
+            params["agent_intent_text"] = effective_text
+            if legacy_command_meta.get("command_args"):
+                params["command_args"] = legacy_command_meta["command_args"]
         pending = PendingAction(
             dialog_id=dialog.id,
             type=candidate.type,
@@ -1076,9 +1555,33 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
         dialog.state = "pending_action"
         db.commit()
         reply = _action_description(candidate.type, params)
-        _save_message(db, dialog.id, "assistant", reply)
+        assistant_meta = _assistant_continue_meta(low_detail_continue_route_decision, agent_control_projection)
+        assistant_message = _save_message(db, dialog.id, "assistant", reply, meta=assistant_meta)
+        _record_dialog_route_decision_trace(
+            db,
+            project_id=project.id,
+            dialog_id=dialog.id,
+            request_message_id=request_message.id if request_message else None,
+            response_message_id=assistant_message.id,
+            route_decision=low_detail_continue_route_decision,
+            action_type=candidate.type,
+            agent_control=agent_control_projection,
+        )
+        if not low_detail_continue_route_decision:
+            _record_dialog_agent_route_trace(
+                db,
+                project_id=project.id,
+                dialog_id=dialog.id,
+                request_message_id=request_message.id if request_message else None,
+                response_message_id=assistant_message.id,
+                agent_route=route,
+                action_type=candidate.type,
+                pending_action_id=pending.id,
+                command_name=routed_command_name,
+            )
         return ChatOut(
             message=reply,
+            meta=assistant_meta,
             pending_action=_pending_action_out(pending),
             ui_hint=build_ui_hint(
                 action_type=pending.type,

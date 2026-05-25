@@ -51,6 +51,34 @@ describe('ActionCard', () => {
     expect(wrapper.text()).not.toContain('approval:abc123')
   })
 
+  it('renders dialog continue route decisions for pending actions', () => {
+    const wrapper = mount(ActionCard, {
+      props: {
+        disabled: false,
+        action: {
+          id: 'pending-route-1',
+          type: 'preview_chapter',
+          description: '我可以生成第2章正文，完成后会进入 Calliope 和正文进度。',
+          params: {
+            dialog_route_decision: {
+              selected_route: 'chapter_generation',
+              reason_code: 'no_recovery_or_followup',
+              priority: ['recover_blocked_run', 'recommended_followups', 'chapter_generation'],
+            },
+          },
+          requires_confirmation: true,
+        },
+      },
+    })
+
+    expect(wrapper.text()).toContain('继续路由')
+    expect(wrapper.text()).toContain('继续章节生成')
+    expect(wrapper.text()).toContain('路由原因')
+    expect(wrapper.text()).toContain('无恢复或后继，继续章节生成')
+    expect(wrapper.text()).not.toContain('recover_blocked_run')
+    expect(wrapper.text()).not.toContain('recommended_followups')
+  })
+
   it('renders safe pending action recommendations without internal tool details', async () => {
     const wrapper = mount(ActionCard, {
       props: {

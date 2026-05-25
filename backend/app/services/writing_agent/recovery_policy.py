@@ -29,7 +29,14 @@ def build_writing_agent_recovery(
 
 def _longform_context_recovery(output: dict[str, Any], planner: dict[str, Any]) -> dict[str, Any]:
     recommended_actions = output.get("recommended_actions")
-    if not isinstance(recommended_actions, list) or "repair_longform_maintenance" not in recommended_actions:
+    provenance = output.get("memory_provenance") if isinstance(output.get("memory_provenance"), dict) else {}
+    provenance_recovery = provenance.get("recovery") if isinstance(provenance.get("recovery"), dict) else {}
+    provenance_next_tools = (
+        provenance_recovery.get("next_tools") if isinstance(provenance_recovery.get("next_tools"), list) else []
+    )
+    has_legacy_repair = isinstance(recommended_actions, list) and "repair_longform_maintenance" in recommended_actions
+    has_provenance_repair = "repair_longform_maintenance" in provenance_next_tools
+    if not has_legacy_repair and not has_provenance_repair:
         return _none("summarize_longform_context")
     decision = output.get("decision") if isinstance(output.get("decision"), dict) else {}
     chapter_index = _optional_positive_int(output.get("chapter_index"))
@@ -62,7 +69,7 @@ def _longform_context_recovery(output: dict[str, Any], planner: dict[str, Any]) 
         "policy_version": RECOVERY_POLICY_VERSION,
         "status": "recommended",
         "source_tool": "summarize_longform_context",
-        "reason_code": str(decision.get("reason") or "longform_context_blocked"),
+        "reason_code": str(provenance_recovery.get("reason") or decision.get("reason") or "longform_context_blocked"),
         "action": "run_tool",
         "next_tool": "repair_longform_maintenance",
         "next_params": {},
@@ -74,6 +81,9 @@ def _longform_context_recovery(output: dict[str, Any], planner: dict[str, Any]) 
         "should_continue_current_run": False,
         "planner_on_missing": planner.get("on_missing"),
         "planner_on_failure": planner.get("on_failure"),
+        "memory_provenance_status": provenance.get("status"),
+        "memory_provenance_recovery_status": provenance_recovery.get("status"),
+        "memory_source_count": provenance.get("source_count"),
         "message": str(decision.get("message") or "长篇上下文维护未就绪，建议先修复长篇记忆和检索索引。"),
     }
 

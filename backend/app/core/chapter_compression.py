@@ -550,19 +550,20 @@ def _compression_messages(
     forbidden_guidance = ""
     if forbidden_terms:
         forbidden_guidance = "禁止保留以下精确文本：" + "、".join(f"“{term}”" for term in forbidden_terms) + "。"
-    instruction = (
-        f"请压缩《{project.name}》第{chapter.chapter_index}章《{chapter.title or f'第{chapter.chapter_index}章'}》。\n"
-        f"当前约{current_word_count}字，必须压缩到目标字数范围{target_min}-{target_max}字。\n"
-        f"{scale_guidance}\n"
-        f"{retry_guidance}\n"
-        f"{forbidden_guidance}\n"
-        f"宁可接近上限，也绝不能低于{target_min}字。\n"
-        "要求：保留既有剧情事实、章节标题、人物动机、关键冲突和章末钩子；不要新增世界模型事实；"
-        "不要提前揭露后续大纲；这不是摘要，必须输出完整正文；"
-        "删除重复说明、冗余心理描写、过长环境铺陈和反复解释，但保留完整场景链条、关键动作、关键对话和情绪转折；"
-        "输出必须是 JSON，格式为 {\"content\":\"完整压缩后的正文\", \"change_summary\":\"压缩摘要\"}。\n"
-        f"{extra_instruction.strip()}"
-    ).strip()
+    instruction_parts = [
+        f"请压缩《{project.name}》第{chapter.chapter_index}章《{chapter.title or f'第{chapter.chapter_index}章'}》。",
+        f"当前约{current_word_count}字，必须压缩到目标字数范围{target_min}-{target_max}字。",
+        scale_guidance,
+        retry_guidance,
+        forbidden_guidance,
+        f"宁可接近上限，也绝不能低于{target_min}字。",
+        "要求：保留既有剧情事实、章节标题、人物动机、关键冲突和章末钩子；不要新增世界模型事实。",
+        "不要提前揭露后续大纲；这不是摘要，必须输出完整正文。",
+        "删除重复说明、冗余心理描写、过长环境铺陈和反复解释，但保留完整场景链条、关键动作、关键对话和情绪转折。",
+        '输出必须是 JSON，格式为 {"content":"完整压缩后的正文", "change_summary":"压缩摘要"}。',
+        extra_instruction.strip(),
+    ]
+    instruction = "\n".join(part.strip() for part in instruction_parts if part and part.strip())
     user_content = (
         f"{instruction}\n\n"
         f"章节大纲：\n{outline_text}\n\n"

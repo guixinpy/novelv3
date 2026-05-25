@@ -3,16 +3,20 @@ import { computed, nextTick, ref, watch } from 'vue'
 import BaseButton from '../base/BaseButton.vue'
 import CommandMenu from './CommandMenu.vue'
 import {
+  chatCommandRegistry,
   filterChatCommands,
   parseSlashCommand,
   type ChatCommandDefinition,
 } from '../../components/workspace/chatCommands'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   loading: boolean
   disabled: boolean
   hasPendingAction: boolean
-}>()
+  commands?: ChatCommandDefinition[]
+}>(), {
+  commands: () => chatCommandRegistry,
+})
 
 const emit = defineEmits<{
   send: [text: string]
@@ -24,7 +28,7 @@ const activeCommandIndex = ref(0)
 const commandMenuDismissed = ref(false)
 
 const commandCandidates = computed(() => {
-  const candidates = filterChatCommands(input.value)
+  const candidates = filterChatCommands(input.value, props.commands)
   if (!props.hasPendingAction) return candidates
   return candidates.filter((c) => c.name === 'clear')
 })
@@ -39,7 +43,7 @@ const canSubmit = computed(() => {
   const text = input.value.trim()
   if (!text || props.loading) return false
   if (!props.hasPendingAction) return true
-  const parsed = parseSlashCommand(text)
+  const parsed = parseSlashCommand(text, props.commands)
   return parsed.kind === 'command' && parsed.name === 'clear'
 })
 

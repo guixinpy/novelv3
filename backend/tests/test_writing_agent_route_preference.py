@@ -32,8 +32,9 @@ def test_route_preference_recommends_approved_chain_for_chapter_routes_without_m
         assert route["missing_preferred_tools"] == []
 
 
-def test_route_preference_recommends_approved_chains_for_hermes_routes_without_mutating_runtime_route():
+def test_route_preference_recommends_approved_chains_for_dialog_routes_without_mutating_runtime_route():
     output = inspect_agent_route_preference_projection(
+        source="text_intent",
         static_adapter_tool_names=_static_adapter_tools(),
         action_execution_tool_names=_action_execution_tools(),
     )
@@ -57,7 +58,7 @@ def test_route_preference_recommends_approved_chains_for_hermes_routes_without_m
         route = next(
             route
             for route in output["routes"]
-            if route["source"] == "slash_command" and route["action_type"] == action_type
+            if route["source"] == "text_intent" and route["action_type"] == action_type
         )
         assert route["preferred_tool_chain"] == preferred_chain
         assert route["preferred_prepare_tool_name"] == preferred_chain[0]
@@ -77,7 +78,7 @@ def test_route_preference_recommends_approved_chains_for_hermes_routes_without_m
 
 def test_route_preference_marks_explicit_approval_opt_in_metadata():
     output = inspect_agent_route_preference_projection(
-        source="slash_command",
+        source="text_intent",
         approval_chain_opt_in_action_types=["preview_setup"],
         static_adapter_tool_names=_static_adapter_tools(),
         action_execution_tool_names=_action_execution_tools(),
@@ -102,7 +103,7 @@ def test_route_preference_marks_explicit_approval_opt_in_metadata():
 
 def test_route_preference_emits_approval_opt_in_migration_suggestion():
     output = inspect_agent_route_preference_projection(
-        source="slash_command",
+        source="text_intent",
         static_adapter_tool_names=_static_adapter_tools(),
         action_execution_tool_names=_action_execution_tools(),
     )
@@ -125,7 +126,7 @@ def test_route_preference_emits_approval_opt_in_migration_suggestion():
 
 def test_route_preference_marks_migration_suggestion_already_declared_for_opt_in_route():
     output = inspect_agent_route_preference_projection(
-        source="slash_command",
+        source="text_intent",
         approval_chain_opt_in_action_types=["preview_setup"],
         static_adapter_tool_names=_static_adapter_tools(),
         action_execution_tool_names=_action_execution_tools(),

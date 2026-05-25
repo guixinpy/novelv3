@@ -8,6 +8,7 @@ TYPE_LABELS = {
     "preview_outline": "生成大纲",
     "preview_chapter": "生成正文",
     "plan_recovery_tools": "恢复预览",
+    "plan_recommended_followups": "推荐后继预览",
 }
 
 GENERATING_LABELS = {
@@ -50,6 +51,11 @@ def _label(action_type: str, status: str) -> str:
             return "恢复预览已生成"
         if status == "failed":
             return "恢复预览失败"
+    if action_type == "plan_recommended_followups":
+        if status in {"success", "completed"}:
+            return "推荐后继预览已生成"
+        if status == "failed":
+            return "推荐后继预览失败"
     if status in {"success", "completed"}:
         return f"{label}执行成功"
     if status == "cancelled":
@@ -79,6 +85,11 @@ def _detail_items(action_result: dict) -> list[dict[str, str]]:
     if action_type == "plan_recovery_tools":
         return [
             *_recovery_preview_detail_items(data),
+            *_agent_discovery_detail_items(data),
+        ]
+    if action_type == "plan_recommended_followups":
+        return [
+            *_recommended_followup_preview_detail_items(data),
             *_agent_discovery_detail_items(data),
         ]
 
@@ -144,6 +155,7 @@ def _recovery_preview_detail_items(data: dict) -> list[dict[str, str]]:
     source_run_id = str(data.get("source_run_id") or "").strip()
     if source_run_id:
         items.append({"label": "来源运行", "value": source_run_id[:8]})
+    items.extend(_dialog_route_decision_detail_items(data))
 
     recovery = data.get("recovery") if isinstance(data.get("recovery"), dict) else {}
     recovery_status = str(recovery.get("status") or "").strip()
@@ -158,6 +170,40 @@ def _recovery_preview_detail_items(data: dict) -> list[dict[str, str]]:
     tools = data.get("tools") if isinstance(data.get("tools"), list) else []
     if tools:
         items.append({"label": "恢复工具", "value": f"{len(tools)} 个"})
+    return items
+
+
+def _recommended_followup_preview_detail_items(data: dict) -> list[dict[str, str]]:
+    items = []
+    source_run_id = str(data.get("source_run_id") or "").strip()
+    if source_run_id:
+        items.append({"label": "来源运行", "value": source_run_id[:8]})
+    items.extend(_dialog_route_decision_detail_items(data))
+
+    followups = data.get("recommended_followups") if isinstance(data.get("recommended_followups"), dict) else {}
+    followup_status = str(followups.get("status") or "").strip()
+    if followup_status:
+        items.append({"label": "推荐状态", "value": _recommended_followup_status_label(followup_status)})
+
+    tools = data.get("tools") if isinstance(data.get("tools"), list) else []
+    if tools:
+        items.append({"label": "自动后继", "value": f"{len(tools)} 个"})
+
+    write_tools = followups.get("provenance_write_tools") if isinstance(followups.get("provenance_write_tools"), list) else []
+    if write_tools:
+        items.append({"label": "需确认修复", "value": f"{len(write_tools)} 个"})
+    return items
+
+
+def _dialog_route_decision_detail_items(data: dict) -> list[dict[str, str]]:
+    decision = data.get("route_decision") if isinstance(data.get("route_decision"), dict) else {}
+    items = []
+    selected_route = str(decision.get("selected_route") or "").strip()
+    if selected_route:
+        items.append({"label": "继续路由", "value": _dialog_route_label(selected_route)})
+    reason_code = str(decision.get("reason_code") or "").strip()
+    if reason_code:
+        items.append({"label": "路由原因", "value": _dialog_route_reason_label(reason_code)})
     return items
 
 
@@ -211,7 +257,61 @@ def _agent_discovery_detail_items(data: dict) -> list[dict[str, str]]:
     policy_audit_label = _profile_policy_audit_label(policy_audit)
     if policy_audit_label:
         items.append({"label": "策略审计", "value": policy_audit_label})
+    items.extend(_agent_command_contract_detail_items(data))
+    items.extend(_agent_control_plane_readiness_detail_items(data))
     return items
+
+
+def _agent_command_contract_detail_items(data: dict) -> list[dict[str, str]]:
+    contracts = data.get("agent_command_contracts") if isinstance(data.get("agent_command_contracts"), dict) else {}
+    summary = contracts.get("summary") if isinstance(contracts.get("summary"), dict) else {}
+    if not summary:
+        return []
+    items = [{"label": "命令契约", "value": "已投影"}]
+    control_commands = _optional_int(summary.get("agent_control_commands"))
+    if control_commands is not None:
+        items.append({"label": "控制命令", "value": f"{control_commands} 个"})
+    gap_count = _optional_int(summary.get("gap_count"))
+    if gap_count is not None:
+        items.append({"label": "契约缺口", "value": f"{gap_count} 个"})
+    return items
+
+
+def _agent_control_plane_readiness_detail_items(data: dict) -> list[dict[str, str]]:
+    readiness = (
+        data.get("agent_control_plane_readiness")
+        if isinstance(data.get("agent_control_plane_readiness"), dict)
+        else {}
+    )
+    summary = readiness.get("summary") if isinstance(readiness.get("summary"), dict) else {}
+    if not summary:
+        return []
+    items = [{"label": "控制平面", "value": _agent_control_plane_status_label(str(readiness.get("status") or ""))}]
+    total_gap_count = _optional_int(summary.get("total_gap_count"))
+    if total_gap_count is not None:
+        items.append({"label": "控制面缺口", "value": f"{total_gap_count} 个"})
+    tool_gap_count = _optional_int(summary.get("tool_gap_count"))
+    if tool_gap_count is not None:
+        items.append({"label": "工具缺口", "value": f"{tool_gap_count} 个"})
+    command_gap_count = _optional_int(summary.get("command_gap_count"))
+    if command_gap_count is not None:
+        items.append({"label": "命令缺口", "value": f"{command_gap_count} 个"})
+    recommended_next_tools = (
+        readiness.get("recommended_next_tools") if isinstance(readiness.get("recommended_next_tools"), list) else []
+    )
+    if recommended_next_tools:
+        items.append({"label": "建议检查", "value": f"{len(recommended_next_tools)} 项"})
+    return items
+
+
+def _agent_control_plane_status_label(status: str) -> str:
+    if status == "ready":
+        return "可继续编排"
+    if status == "degraded":
+        return "需检查"
+    if status == "needs_attention":
+        return "需处理"
+    return status or "未知"
 
 
 def _agent_profile_label(profile: str) -> str:
@@ -284,6 +384,34 @@ def _recovery_status_label(status: str) -> str:
     if status == "none":
         return "无恢复建议"
     return status
+
+
+def _recommended_followup_status_label(status: str) -> str:
+    if status == "recommended":
+        return "已推荐"
+    if status == "none":
+        return "无推荐"
+    return status
+
+
+def _dialog_route_label(route: str) -> str:
+    if route == "recover_blocked_run":
+        return "恢复阻塞运行"
+    if route == "recommended_followups":
+        return "推荐后继"
+    if route == "chapter_generation":
+        return "继续章节生成"
+    return route
+
+
+def _dialog_route_reason_label(reason_code: str) -> str:
+    if reason_code == "recoverable_run_found":
+        return "发现可恢复运行"
+    if reason_code == "recommended_followups_found":
+        return "发现上一轮推荐后继"
+    if reason_code == "no_recovery_or_followup":
+        return "无恢复或后继，继续章节生成"
+    return reason_code
 
 
 def _execution_policy_label(status: str) -> str:

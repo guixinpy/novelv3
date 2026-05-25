@@ -14,9 +14,12 @@ from app.api import dialogs as dialogs_api
 from app.core.chat_commands import (
     command_agent_route,
     command_mutates_history,
+    command_to_agent_intent_text,
     command_to_agent_tool_name,
     command_to_action_type,
     is_supported_chat_command,
+    is_legacy_chat_command,
+    public_chat_command_names,
 )
 from app.core.dialog_agent_routes import DIALOG_AGENT_ROUTE_VERSION, build_dialog_agent_route
 from app.core.chat_compaction import build_compaction_summary, select_compactable_plain_messages
@@ -55,6 +58,47 @@ def _expected_agent_route(source: str, action_type: str, agent_tool_name: str, *
     if command_name is not None:
         route["command_name"] = command_name
     return route
+
+
+def _latest_dialog_route_trace(db_session, project_id: str) -> AIModelCallTrace | None:
+    return (
+        db_session.query(AIModelCallTrace)
+        .filter(
+            AIModelCallTrace.project_id == project_id,
+            AIModelCallTrace.trace_type == "dialog_route_decision",
+        )
+        .order_by(AIModelCallTrace.created_at.desc(), AIModelCallTrace.id.desc())
+        .first()
+    )
+
+
+def _latest_dialog_agent_route_trace(db_session, project_id: str) -> AIModelCallTrace | None:
+    return (
+        db_session.query(AIModelCallTrace)
+        .filter(
+            AIModelCallTrace.project_id == project_id,
+            AIModelCallTrace.trace_type == "dialog_agent_route",
+        )
+        .order_by(AIModelCallTrace.created_at.desc(), AIModelCallTrace.id.desc())
+        .first()
+    )
+
+
+def _seed_project_ready_for_chapter_generation(db_session, project_id: str, total_chapters: int = 3) -> None:
+    db_session.add(Setup(project_id=project_id, status="generated", world_building={}, characters=[], core_concept={}))
+    db_session.add(Storyline(project_id=project_id, status="generated", plotlines=[], foreshadowing=[]))
+    db_session.add(
+        Outline(
+            project_id=project_id,
+            status="generated",
+            total_chapters=total_chapters,
+            chapters=[
+                {"chapter_index": chapter_index, "title": f"第{chapter_index}章", "summary": "章节摘要。"}
+                for chapter_index in range(1, total_chapters + 1)
+            ],
+        )
+    )
+    db_session.commit()
 
 
 def test_state_diagnosis_empty_project(client):
@@ -214,9 +258,13 @@ def test_intent_router_no_match():
 
 
 def test_chat_command_registry_helpers_cover_expected_commands():
-    for command_name in ("clear", "compact", "setup", "storyline", "outline", "chapter"):
+    assert public_chat_command_names() == ["continue", "status", "clear", "compact"]
+
+    for command_name in ("continue", "status", "clear", "compact", "setup", "storyline", "outline", "chapter"):
         assert is_supported_chat_command(command_name) is True
 
+    assert command_mutates_history("continue") is False
+    assert command_mutates_history("status") is False
     assert command_mutates_history("clear") is True
     assert command_mutates_history("compact") is True
     assert command_mutates_history("setup") is False
@@ -224,28 +272,67 @@ def test_chat_command_registry_helpers_cover_expected_commands():
     assert command_mutates_history("outline") is False
     assert command_mutates_history("chapter") is False
 
-    assert command_to_action_type("setup") == "preview_setup"
-    assert command_to_action_type("storyline") == "preview_storyline"
-    assert command_to_action_type("outline") == "preview_outline"
-    assert command_to_action_type("chapter") == "preview_chapter"
+    assert command_to_agent_intent_text("continue") == "继续"
+    assert command_to_agent_intent_text("status") == "接下来做什么"
+
+    assert command_to_action_type("setup") is None
+    assert command_to_action_type("storyline") is None
+    assert command_to_action_type("outline") is None
+    assert command_to_action_type("chapter") is None
     assert command_to_action_type("clear") is None
     assert command_to_action_type("compact") is None
 
-    assert command_to_agent_tool_name("setup") == "generate_setup"
-    assert command_to_agent_tool_name("storyline") == "generate_storyline"
-    assert command_to_agent_tool_name("outline") == "generate_outline"
-    assert command_to_agent_tool_name("chapter") == "generate_chapter"
+    assert command_to_agent_tool_name("setup") is None
+    assert command_to_agent_tool_name("storyline") is None
+    assert command_to_agent_tool_name("outline") is None
+    assert command_to_agent_tool_name("chapter") is None
     assert command_to_agent_tool_name("clear") is None
     assert command_to_agent_tool_name("compact") is None
 
-    chapter_route = command_agent_route("chapter")
-    assert chapter_route == _expected_agent_route(
-        "slash_command",
-        "preview_chapter",
-        "generate_chapter",
-        command_name="chapter",
-    )
+    assert is_legacy_chat_command("setup") is True
+    assert is_legacy_chat_command("chapter") is True
+    assert is_legacy_chat_command("continue") is False
+    assert command_agent_route("setup") is None
+    assert command_agent_route("chapter") is None
     assert command_agent_route("clear") is None
+
+
+def test_chat_command_catalog_endpoint_returns_agent_control_surface(client):
+    response = client.get("/api/v1/dialog/chat-commands")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["version"] == "phase27.agent_chat_command_catalog.v1"
+    assert data["public_command_names"] == ["continue", "status", "clear", "compact"]
+    assert data["legacy_alias_names"] == ["setup", "storyline", "outline", "chapter"]
+    commands = {command["name"]: command for command in data["commands"]}
+    assert commands["continue"]["public"] is True
+    assert commands["continue"]["legacy"] is False
+    assert commands["continue"]["supports_args"] is False
+    assert commands["continue"]["category"] == "agent_control"
+    assert commands["continue"]["capability_id"] == "agent.continue"
+    assert commands["continue"]["control_projection_type"] == "continue_agent_control"
+    assert commands["continue"]["required_agent_tools"] == [
+        "inspect_agent_health_projection",
+        "inspect_agent_command_contracts",
+        "plan_recovery_tools",
+        "plan_recommended_followups",
+        "prepare_generate_chapter_execution",
+    ]
+    assert commands["continue"]["available"] is True
+    assert commands["continue"]["unavailable_reasons"] == []
+    assert commands["continue"]["agent_intent_text"] == "继续"
+    assert commands["status"]["control_projection_type"] == "agent_health_projection"
+    assert commands["status"]["required_agent_tools"] == [
+        "inspect_agent_health_projection",
+        "inspect_agent_command_contracts",
+    ]
+    assert commands["clear"]["control_projection_type"] == ""
+    assert commands["setup"]["public"] is False
+    assert commands["setup"]["legacy"] is True
+    assert commands["setup"]["supports_args"] is True
+    assert commands["setup"]["control_projection_type"] == ""
+    assert "action_type" not in commands["setup"]
 
 
 def test_agent_route_approval_opt_in_metadata_is_explicit():
@@ -256,7 +343,7 @@ def test_agent_route_approval_opt_in_metadata_is_explicit():
         command_name="setup",
     )
     assert build_dialog_agent_route("preview_setup", source="slash_command", command_name="setup") == expected_default
-    assert command_agent_route("setup") == expected_default
+    assert command_agent_route("setup") is None
 
     explicit_route = build_dialog_agent_route(
         "preview_setup",
@@ -334,9 +421,10 @@ def test_dialog_control_plane_agent_route_approval_opt_in_top_level_false_overri
     assert task_tool["params"] == {}
 
 
-def test_chapter_command_leading_index_wins_over_context_mentions(client):
+def test_chapter_command_leading_index_wins_over_context_mentions(client, db_session):
     r = client.post("/api/v1/projects", json={"name": "Test"})
     pid = r.json()["id"]
+    _seed_project_ready_for_chapter_generation(db_session, pid)
 
     r2 = client.post("/api/v1/dialog/chat", json={
         "project_id": pid,
@@ -349,10 +437,9 @@ def test_chapter_command_leading_index_wins_over_context_mentions(client):
     body = r2.json()
     assert body["pending_action"]["params"]["chapter_index"] == 2
     assert body["pending_action"]["params"]["agent_route"] == _expected_agent_route(
-        "slash_command",
+        "text_intent",
         "preview_chapter",
         "generate_chapter",
-        command_name="chapter",
     )
     assert "第2章正文" in body["pending_action"]["description"]
 
@@ -391,6 +478,11 @@ def test_chapter_command_without_index_uses_first_unwritten_outline_chapter(clie
     assert r2.status_code == 200
     body = r2.json()
     assert body["pending_action"]["params"]["chapter_index"] == 2
+    assert body["pending_action"]["params"]["agent_route"] == _expected_agent_route(
+        "text_intent",
+        "preview_chapter",
+        "generate_chapter",
+    )
 
 
 def test_chapter_command_explicit_reserved_target_adds_conflict_warning(client, db_session):
@@ -440,6 +532,7 @@ def test_chapter_command_explicit_reserved_target_adds_conflict_warning(client, 
 def test_chapter_command_explicit_range_reserved_target_labels_conflict_source(client, db_session):
     r = client.post("/api/v1/projects", json={"name": "Test"})
     pid = r.json()["id"]
+    _seed_project_ready_for_chapter_generation(db_session, pid)
     db_session.add(
         BackgroundTask(
             project_id=pid,
@@ -471,6 +564,7 @@ def test_chapter_command_explicit_range_reserved_target_labels_conflict_source(c
 
 def test_resolve_chapter_conflict_confirmation_records_decision_metadata(client, db_session):
     project_id = client.post("/api/v1/projects", json={"name": "Chapter Conflict Audit"}).json()["id"]
+    _seed_project_ready_for_chapter_generation(db_session, project_id)
     db_session.add(
         BackgroundTask(
             project_id=project_id,
@@ -529,6 +623,31 @@ def test_agent_control_plane_routes_confirmed_setup_through_writing_agent_run(cl
     ).json()["pending_action"]
     assert pending["params"]["agent_route"]["agent_tool_name"] == "generate_setup"
     assert pending["params"]["agent_route"]["agent_action_type"] == "generate_setup"
+    dialog = db_session.query(Dialog).filter_by(project_id=project_id, dialog_type="hermes").one()
+    request_message = (
+        db_session.query(DialogMessage)
+        .filter(DialogMessage.dialog_id == dialog.id, DialogMessage.role == "user")
+        .order_by(DialogMessage.created_at.desc(), DialogMessage.id.desc())
+        .first()
+    )
+    response_message = (
+        db_session.query(DialogMessage)
+        .filter(DialogMessage.dialog_id == dialog.id, DialogMessage.role == "assistant")
+        .order_by(DialogMessage.created_at.desc(), DialogMessage.id.desc())
+        .first()
+    )
+    route_trace = _latest_dialog_agent_route_trace(db_session, project_id)
+    assert route_trace is not None
+    assert route_trace.status == "success"
+    assert route_trace.model == "local-dialog-router"
+    assert route_trace.dialog_id == dialog.id
+    assert route_trace.request_message_id == request_message.id
+    assert route_trace.response_message_id == response_message.id
+    assert route_trace.trace_metadata["agent_route"] == pending["params"]["agent_route"]
+    assert route_trace.trace_metadata["action_type"] == "preview_setup"
+    assert route_trace.trace_metadata["source"] == "text_intent"
+    assert route_trace.trace_metadata["command_name"] == "setup"
+    assert route_trace.trace_metadata["pending_action_id"] == pending["id"]
 
     response = client.post(
         "/api/v1/dialog/resolve-action",
@@ -1213,6 +1332,29 @@ def test_chat_text_that_matches_action_intent_creates_pending_action(client, db_
     assert body["pending_action"]["params"]["project_id"] == pid
     assert body["pending_action"]["params"]["command_args"] == "创建主角设定"
     assert db_session.query(PendingAction).filter_by(dialog_id=dialog.id).count() == 1
+    request_message = (
+        db_session.query(DialogMessage)
+        .filter(DialogMessage.dialog_id == dialog.id, DialogMessage.role == "user")
+        .order_by(DialogMessage.created_at.desc(), DialogMessage.id.desc())
+        .first()
+    )
+    response_message = (
+        db_session.query(DialogMessage)
+        .filter(DialogMessage.dialog_id == dialog.id, DialogMessage.role == "assistant")
+        .order_by(DialogMessage.created_at.desc(), DialogMessage.id.desc())
+        .first()
+    )
+    route_trace = _latest_dialog_agent_route_trace(db_session, pid)
+    assert route_trace is not None
+    assert route_trace.status == "success"
+    assert route_trace.model == "local-dialog-router"
+    assert route_trace.dialog_id == dialog.id
+    assert route_trace.request_message_id == request_message.id
+    assert route_trace.response_message_id == response_message.id
+    assert route_trace.trace_metadata["agent_route"] == body["pending_action"]["params"]["agent_route"]
+    assert route_trace.trace_metadata["action_type"] == "preview_setup"
+    assert route_trace.trace_metadata["source"] == "text_intent"
+    assert route_trace.trace_metadata["pending_action_id"] == body["pending_action"]["id"]
 
 
 @patch("app.api.dialogs.load_api_key", return_value=None)
@@ -1353,6 +1495,197 @@ def test_chat_text_low_detail_continue_creates_pending_chapter_action(client, db
         "generate_chapter",
     )
     assert body["ui_hint"]["dialog_state"] == "PENDING_ACTION"
+    route_trace = _latest_dialog_route_trace(db_session, pid)
+    assert route_trace is not None
+    assert "control_projection_type" not in route_trace.trace_metadata
+
+
+def test_continue_command_routes_through_low_detail_agent_continue(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Agent Slash Continue"})
+    pid = r.json()["id"]
+    db_session.add(Setup(project_id=pid, status="generated", world_building={}, characters=[], core_concept={}))
+    db_session.add(Storyline(project_id=pid, status="generated", plotlines=[], foreshadowing=[]))
+    db_session.add(
+        Outline(
+            project_id=pid,
+            status="generated",
+            total_chapters=2,
+            chapters=[
+                {"chapter_index": 1, "title": "旧灯塔", "summary": "林舟开始调查。"},
+                {"chapter_index": 2, "title": "雾中人", "summary": "线索指向失踪档案。"},
+            ],
+        )
+    )
+    db_session.add(
+        ChapterContent(project_id=pid, chapter_index=1, title="旧灯塔", content="第一章正文", status="generated")
+    )
+    db_session.commit()
+
+    r2 = client.post(
+        "/api/v1/dialog/chat",
+        json={"project_id": pid, "input_type": "command", "command_name": "continue"},
+    )
+
+    assert r2.status_code == 200
+    body = r2.json()
+    assert body["pending_action"]["type"] == "preview_chapter"
+    assert body["pending_action"]["params"]["chapter_index"] == 2
+    assert body["pending_action"]["params"]["chapter_index_source"] == "inferred_next_unwritten"
+    assert body["pending_action"]["params"]["agent_route"] == _expected_agent_route(
+        "text_intent",
+        "preview_chapter",
+        "generate_chapter",
+    )
+    assert body["pending_action"]["params"]["command_args"] == "继续"
+    assert body["meta"]["dialog_route_decision"]["selected_route"] == "chapter_generation"
+    assert body["meta"]["control_projection_type"] == "continue_agent_control"
+    assert body["meta"]["agent_control"] == {
+        "version": "phase32.continue_agent_control.v1",
+        "command_name": "continue",
+        "source": "slash_command",
+        "selected_route": "chapter_generation",
+        "reason_code": "no_recovery_or_followup",
+        "source_run_id": None,
+        "required_agent_tools": [
+            "inspect_agent_health_projection",
+            "inspect_agent_command_contracts",
+            "plan_recovery_tools",
+            "plan_recommended_followups",
+            "prepare_generate_chapter_execution",
+        ],
+    }
+    assert body["pending_action"]["params"]["agent_control"] == body["meta"]["agent_control"]
+    assert body["pending_action"]["params"]["control_projection_type"] == "continue_agent_control"
+    route_trace = _latest_dialog_route_trace(db_session, pid)
+    assert route_trace is not None
+    assert route_trace.trace_metadata["dialog_route_decision"] == body["meta"]["dialog_route_decision"]
+    assert route_trace.trace_metadata["agent_control"] == body["meta"]["agent_control"]
+    assert route_trace.trace_metadata["control_projection_type"] == "continue_agent_control"
+
+
+def test_unavailable_agent_command_returns_feedback_without_pending_action(client, db_session, monkeypatch):
+    r = client.post("/api/v1/projects", json={"name": "Unavailable Agent Command"})
+    pid = r.json()["id"]
+    unavailable_reason = "缺少 Agent 工具适配器：prepare_generate_chapter_execution"
+    monkeypatch.setattr(
+        dialogs_api,
+        "build_agent_chat_command_catalog",
+        lambda: {
+            "version": "phase27.agent_chat_command_catalog.v1",
+            "public_command_names": ["status", "clear", "compact"],
+            "legacy_alias_names": ["setup", "storyline", "outline", "chapter"],
+            "commands": [
+                {
+                    "name": "continue",
+                    "label": "/continue",
+                    "description": "继续",
+                    "public": True,
+                    "legacy": False,
+                    "available": False,
+                    "unavailable_reasons": [unavailable_reason],
+                },
+            ],
+        },
+    )
+
+    response = client.post(
+        "/api/v1/dialog/chat",
+        json={"project_id": pid, "input_type": "command", "command_name": "continue"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["message_type"] == "command"
+    assert body["pending_action"] is None
+    assert "/continue 暂不可用" in body["message"]
+    assert unavailable_reason in body["message"]
+    assert body["meta"] == {
+        "command_name": "continue",
+        "command_available": False,
+        "unavailable_reasons": [unavailable_reason],
+    }
+    assert db_session.query(PendingAction).count() == 0
+    feedback = (
+        db_session.query(DialogMessage)
+        .join(Dialog, Dialog.id == DialogMessage.dialog_id)
+        .filter(Dialog.project_id == pid, DialogMessage.message_type == "command", DialogMessage.role == "system")
+        .order_by(DialogMessage.created_at.desc(), DialogMessage.id.desc())
+        .first()
+    )
+    assert feedback is not None
+    assert feedback.meta == body["meta"]
+
+
+def test_status_command_routes_through_agent_health_projection(client):
+    r = client.post("/api/v1/projects", json={"name": "Agent Slash Status"})
+    pid = r.json()["id"]
+
+    r2 = client.post(
+        "/api/v1/dialog/chat",
+        json={"project_id": pid, "input_type": "command", "command_name": "status"},
+    )
+
+    assert r2.status_code == 200
+    body = r2.json()
+    assert body["message_type"] == "command"
+    assert body["pending_action"] is None
+    assert "Agent 状态" in body["message"]
+    assert "诊断项" in body["message"]
+    assert body["meta"]["command_name"] == "status"
+    assert body["meta"]["control_projection_type"] == "agent_health_projection"
+    health = body["meta"]["agent_health_projection"]
+    assert health["version"] == "phase218.agent_health_projection.v1"
+    assert health["status"] in {"ready", "degraded", "needs_attention"}
+    assert isinstance(health["diagnostics"], list)
+    assert body["ui_hint"]["dialog_state"] == "CHATTING"
+    assert body["ui_hint"]["active_action"]["reason"] == "Agent 状态"
+
+
+def test_legacy_chapter_command_routes_as_agent_intent_not_direct_slash_action(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Legacy Slash Chapter"})
+    pid = r.json()["id"]
+    db_session.add(Setup(project_id=pid, status="generated", world_building={}, characters=[], core_concept={}))
+    db_session.add(Storyline(project_id=pid, status="generated", plotlines=[], foreshadowing=[]))
+    db_session.add(
+        Outline(
+            project_id=pid,
+            status="generated",
+            total_chapters=2,
+            chapters=[
+                {"chapter_index": 1, "title": "旧灯塔", "summary": "林舟开始调查。"},
+                {"chapter_index": 2, "title": "雾中人", "summary": "线索指向失踪档案。"},
+            ],
+        )
+    )
+    db_session.commit()
+
+    r2 = client.post(
+        "/api/v1/dialog/chat",
+        json={
+            "project_id": pid,
+            "input_type": "command",
+            "command_name": "chapter",
+            "command_args": "2 强化悬疑",
+        },
+    )
+
+    assert r2.status_code == 200
+    body = r2.json()
+    assert body["pending_action"]["type"] == "preview_chapter"
+    params = body["pending_action"]["params"]
+    assert params["chapter_index"] == 2
+    assert params["agent_route"] == _expected_agent_route(
+        "text_intent",
+        "preview_chapter",
+        "generate_chapter",
+    )
+    assert params["legacy_command"] == {
+        "command_name": "chapter",
+        "command_args": "2 强化悬疑",
+        "migration": "agent_intent_alias",
+    }
+    assert params["command_args"] == "2 强化悬疑"
+    assert params["agent_intent_text"] == "请生成第2章正文，强化悬疑"
 
 
 def test_chat_text_low_detail_continue_prefers_recovery_preview_when_blocked_run_exists(client, db_session):
@@ -1424,11 +1757,13 @@ def test_chat_text_low_detail_continue_prefers_recovery_preview_when_blocked_run
         "describe_agent_tools",
         "plan_recovery_tools",
     ]
-    assert body["meta"] == {
-        "agent_run_id": recovery_run.id,
-        "source_run_id": blocked_run.id,
-        "agent_action_type": "plan_recovery_tools",
-    }
+    assert body["meta"]["agent_run_id"] == recovery_run.id
+    assert body["meta"]["source_run_id"] == blocked_run.id
+    assert body["meta"]["agent_action_type"] == "plan_recovery_tools"
+    route_decision = body["meta"]["dialog_route_decision"]
+    assert route_decision["selected_route"] == "recover_blocked_run"
+    assert route_decision["reason_code"] == "recoverable_run_found"
+    assert route_decision["source_run_id"] == blocked_run.id
 
     assistant_message = (
         db_session.query(DialogMessage)
@@ -1441,7 +1776,132 @@ def test_chat_text_low_detail_continue_prefers_recovery_preview_when_blocked_run
     assert assistant_message.action_result["status"] == "success"
     assert assistant_message.action_result["data"]["agent_run_id"] == recovery_run.id
     assert assistant_message.action_result["data"]["source_run_id"] == blocked_run.id
+    assert assistant_message.action_result["data"]["route_decision"] == route_decision
     assert assistant_message.meta == body["meta"]
+    request_message = (
+        db_session.query(DialogMessage)
+        .filter(DialogMessage.dialog_id == dialog.id, DialogMessage.role == "user")
+        .order_by(DialogMessage.created_at.desc(), DialogMessage.id.desc())
+        .first()
+    )
+    route_trace = _latest_dialog_route_trace(db_session, pid)
+    assert route_trace is not None
+    assert route_trace.status == "success"
+    assert route_trace.model == "local-dialog-router"
+    assert route_trace.dialog_id == dialog.id
+    assert route_trace.request_message_id == request_message.id
+    assert route_trace.response_message_id == assistant_message.id
+    assert route_trace.trace_metadata["dialog_route_decision"] == route_decision
+    assert route_trace.trace_metadata["agent_run_id"] == recovery_run.id
+    assert route_trace.trace_metadata["source_run_id"] == blocked_run.id
+
+
+def test_chat_text_low_detail_continue_previews_latest_recommended_followups(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Test"})
+    pid = r.json()["id"]
+    db_session.add(Setup(project_id=pid, status="generated", world_building={}, characters=[], core_concept={}))
+    db_session.add(Storyline(project_id=pid, status="generated", plotlines=[], foreshadowing=[]))
+    db_session.add(
+        Outline(
+            project_id=pid,
+            status="generated",
+            total_chapters=20,
+            chapters=[{"chapter_index": 1, "title": "旧灯塔", "summary": "林舟开始调查。"}],
+        )
+    )
+    source_run = WritingAgentRun(
+        project_id=pid,
+        goal="生成第1章",
+        status="success",
+        entrypoint="api",
+        input={},
+    )
+    db_session.add(source_run)
+    db_session.flush()
+    db_session.add(
+        WritingAgentStep(
+            run_id=source_run.id,
+            project_id=pid,
+            step_index=1,
+            tool_name="generate_chapter",
+            status="success",
+            chapter_index=1,
+            input={"params": {"chapter_index": 1}},
+            output={
+                "status": "success",
+                "chapter_index": 1,
+                "agent_tool_result": {
+                    "recommendations": {
+                        "canonical_followups": ["review_chapter_quality", "review_chapter_continuity"],
+                    }
+                },
+            },
+        )
+    )
+    db_session.commit()
+
+    r2 = client.post("/api/v1/dialog/chat", json={
+        "project_id": pid,
+        "input_type": "text",
+        "text": "继续吧",
+    })
+
+    assert r2.status_code == 200
+    body = r2.json()
+    assert body["pending_action"] is None
+    dialog = db_session.query(Dialog).filter_by(project_id=pid, dialog_type="hermes").one()
+    assert db_session.query(PendingAction).filter_by(dialog_id=dialog.id).count() == 0
+
+    followup_run = (
+        db_session.query(WritingAgentRun)
+        .filter(WritingAgentRun.project_id == pid, WritingAgentRun.entrypoint == "dialog_auto_plan")
+        .one()
+    )
+    assert followup_run.status == "success"
+    assert followup_run.input["planner"]["source_run_id"] == source_run.id
+    assert [tool["tool_name"] for tool in followup_run.input["tools"]] == ["plan_recommended_followups"]
+    assert body["meta"]["agent_run_id"] == followup_run.id
+    assert body["meta"]["source_run_id"] == source_run.id
+    assert body["meta"]["agent_action_type"] == "plan_recommended_followups"
+    route_decision = body["meta"]["dialog_route_decision"]
+    assert route_decision["selected_route"] == "recommended_followups"
+    assert route_decision["reason_code"] == "recommended_followups_found"
+    assert route_decision["source_run_id"] == source_run.id
+
+    assistant_message = (
+        db_session.query(DialogMessage)
+        .filter(DialogMessage.dialog_id == dialog.id, DialogMessage.role == "assistant")
+        .order_by(DialogMessage.created_at.desc(), DialogMessage.id.desc())
+        .first()
+    )
+    assert assistant_message.content == "上一轮 Agent 运行给出了推荐后继，我已先规划后继工具链。"
+    assert assistant_message.action_result["type"] == "plan_recommended_followups"
+    assert assistant_message.action_result["status"] == "success"
+    assert assistant_message.action_result["data"]["agent_run_id"] == followup_run.id
+    assert assistant_message.action_result["data"]["source_run_id"] == source_run.id
+    assert assistant_message.action_result["data"]["recommended_followups"]["status"] == "recommended"
+    assert [tool["tool_name"] for tool in assistant_message.action_result["data"]["tools"]] == [
+        "review_chapter_quality",
+        "review_chapter_continuity",
+    ]
+    assert assistant_message.action_result["data"]["route_decision"] == route_decision
+    assert assistant_message.meta == body["meta"]
+    request_message = (
+        db_session.query(DialogMessage)
+        .filter(DialogMessage.dialog_id == dialog.id, DialogMessage.role == "user")
+        .order_by(DialogMessage.created_at.desc(), DialogMessage.id.desc())
+        .first()
+    )
+    route_trace = _latest_dialog_route_trace(db_session, pid)
+    assert route_trace is not None
+    assert route_trace.status == "success"
+    assert route_trace.model == "local-dialog-router"
+    assert route_trace.dialog_id == dialog.id
+    assert route_trace.request_message_id == request_message.id
+    assert route_trace.response_message_id == assistant_message.id
+    assert route_trace.trace_metadata["dialog_route_decision"] == route_decision
+    assert route_trace.trace_metadata["agent_run_id"] == followup_run.id
+    assert route_trace.trace_metadata["source_run_id"] == source_run.id
 
 
 def test_chat_text_low_detail_continue_uses_first_unwritten_outline_chapter(client, db_session):
@@ -1484,6 +1944,34 @@ def test_chat_text_low_detail_continue_uses_first_unwritten_outline_chapter(clie
     assert body["pending_action"]["params"]["project_id"] == pid
     assert body["pending_action"]["params"]["chapter_index"] == 2
     assert body["pending_action"]["params"]["command_args"] == "继续吧"
+    route_decision = body["meta"]["dialog_route_decision"]
+    assert route_decision["selected_route"] == "chapter_generation"
+    assert route_decision["reason_code"] == "no_recovery_or_followup"
+    assert body["pending_action"]["params"]["dialog_route_decision"] == route_decision
+
+    dialog = db_session.query(Dialog).filter_by(project_id=pid, dialog_type="hermes").one()
+    assistant_message = (
+        db_session.query(DialogMessage)
+        .filter(DialogMessage.dialog_id == dialog.id, DialogMessage.role == "assistant")
+        .order_by(DialogMessage.created_at.desc(), DialogMessage.id.desc())
+        .first()
+    )
+    assert assistant_message.meta["dialog_route_decision"] == route_decision
+    request_message = (
+        db_session.query(DialogMessage)
+        .filter(DialogMessage.dialog_id == dialog.id, DialogMessage.role == "user")
+        .order_by(DialogMessage.created_at.desc(), DialogMessage.id.desc())
+        .first()
+    )
+    route_trace = _latest_dialog_route_trace(db_session, pid)
+    assert route_trace is not None
+    assert route_trace.status == "success"
+    assert route_trace.model == "local-dialog-router"
+    assert route_trace.dialog_id == dialog.id
+    assert route_trace.request_message_id == request_message.id
+    assert route_trace.response_message_id == assistant_message.id
+    assert route_trace.trace_metadata["dialog_route_decision"] == route_decision
+    assert route_trace.trace_metadata["action_type"] == "preview_chapter"
 
 
 def test_chat_text_next_chapter_uses_inferred_chapter_source(client, db_session):
@@ -1756,6 +2244,7 @@ def test_command_with_args_enters_preview_pending_action_and_message(command_nam
     r = client.post("/api/v1/projects", json={"name": "Test"})
     pid = r.json()["id"]
     args = "主角是植物学家"
+    expected_intent_text = command_to_agent_intent_text(command_name, args)
 
     r2 = client.post(
         "/api/v1/dialog/chat",
@@ -1771,7 +2260,22 @@ def test_command_with_args_enters_preview_pending_action_and_message(command_nam
     body = r2.json()
     assert body["pending_action"]["type"] == expected_action_type
     assert body["pending_action"]["params"]["command_args"] == args
-    assert f"附加要求：{args}" in body["message"]
+    assert body["pending_action"]["params"]["agent_intent_text"] == expected_intent_text
+    assert body["pending_action"]["params"]["legacy_command"] == {
+        "command_name": command_name,
+        "command_args": args,
+        "migration": "agent_intent_alias",
+    }
+    expected_tool_name = {
+        "preview_setup": "generate_setup",
+        "preview_storyline": "generate_storyline",
+        "preview_outline": "generate_outline",
+    }[expected_action_type]
+    assert body["pending_action"]["params"]["agent_route"] == _expected_agent_route(
+        "text_intent",
+        expected_action_type,
+        expected_tool_name,
+    )
 
 
 @patch("app.api.dialogs.load_api_key", return_value=None)
@@ -2244,6 +2748,7 @@ def test_resolve_action_confirm_creates_background_task(client, db_session):
 
 def test_resolve_chapter_action_confirm_dispatches_prepare_tool(client, db_session):
     project_id = client.post("/api/v1/projects", json={"name": "Chapter Prepare Dispatch"}).json()["id"]
+    _seed_project_ready_for_chapter_generation(db_session, project_id)
     response = client.post(
         "/api/v1/dialog/chat",
         json={
@@ -2427,6 +2932,10 @@ def test_get_messages_includes_action_result_view_for_recovery_preview(db_sessio
                 "recovery": {"status": "recommended"},
                 "tools": [{"tool_name": "prepare_generate_chapter_execution"}],
                 "execution_policy": {"status": "ready"},
+                "route_decision": {
+                    "selected_route": "recover_blocked_run",
+                    "reason_code": "recoverable_run_found",
+                },
             },
         },
     )
@@ -2440,9 +2949,58 @@ def test_get_messages_includes_action_result_view_for_recovery_preview(db_sessio
         "variant": "success",
         "detail_items": [
             {"label": "来源运行", "value": "blocked-"},
+            {"label": "继续路由", "value": "恢复阻塞运行"},
+            {"label": "路由原因", "value": "发现可恢复运行"},
             {"label": "恢复状态", "value": "建议恢复"},
             {"label": "执行策略", "value": "可执行"},
             {"label": "恢复工具", "value": "1 个"},
+        ],
+    }
+
+
+def test_get_messages_includes_action_result_view_for_recommended_followup_result_view(db_session):
+    project = Project(name="Recommended Followup Result View")
+    db_session.add(project)
+    db_session.commit()
+    dialog = dialogs_api._get_or_create_dialog(db_session, project.id)
+    dialogs_api._save_message(
+        db_session,
+        dialog.id,
+        "assistant",
+        "我已预览上一轮推荐的后继工具链。",
+        action_result={
+            "type": "plan_recommended_followups",
+            "status": "success",
+            "data": {
+                "agent_run_id": "followup-run-123456",
+                "source_run_id": "source-run-abcdef",
+                "recommended_followups": {
+                    "status": "recommended",
+                    "provenance_write_tools": [{"tool_name": "repair_longform_maintenance", "params": {}}],
+                },
+                "tools": [{"tool_name": "inspect_agent_memory_route"}],
+                "route_decision": {
+                    "selected_route": "recommended_followups",
+                    "reason_code": "recommended_followups_found",
+                },
+            },
+        },
+    )
+
+    messages = DialogMessageService(db_session).list_messages(project.id)
+
+    assert messages[-1]["action_result_view"] == {
+        "type": "plan_recommended_followups",
+        "status": "success",
+        "label": "推荐后继预览已生成",
+        "variant": "success",
+        "detail_items": [
+            {"label": "来源运行", "value": "source-r"},
+            {"label": "继续路由", "value": "推荐后继"},
+            {"label": "路由原因", "value": "发现上一轮推荐后继"},
+            {"label": "推荐状态", "value": "已推荐"},
+            {"label": "自动后继", "value": "1 个"},
+            {"label": "需确认修复", "value": "1 个"},
         ],
     }
 
@@ -2581,6 +3139,87 @@ def test_get_messages_includes_agent_profile_policy_audit_detail_item(db_session
     assert {"label": "策略审计", "value": "需关注：2 个问题"} in detail_items
     assert "delegate_target_missing_definition" not in str(detail_items)
     assert "ghost_worker" not in str(detail_items)
+
+
+def test_get_messages_includes_agent_command_contract_detail_items(db_session):
+    project = Project(name="Agent Command Contract Result View")
+    db_session.add(project)
+    db_session.commit()
+    dialog = dialogs_api._get_or_create_dialog(db_session, project.id)
+    dialogs_api._save_message(
+        db_session,
+        dialog.id,
+        "assistant",
+        "Agent 已检查命令契约。",
+        action_result={
+            "type": "plan_recovery_tools",
+            "status": "success",
+            "data": {
+                "agent_profile": "orchestrator",
+                "agent_command_contracts": {
+                    "source": "planner_trace.agent_health_projection.command_contracts",
+                    "summary": {
+                        "agent_control_commands": 2,
+                        "gap_count": 0,
+                    },
+                    "commands": [{"name": "continue"}],
+                },
+            },
+        },
+    )
+
+    messages = DialogMessageService(db_session).list_messages(project.id)
+    detail_items = messages[-1]["action_result_view"]["detail_items"]
+
+    assert {"label": "Agent 身份", "value": "编排主控"} in detail_items
+    assert {"label": "命令契约", "value": "已投影"} in detail_items
+    assert {"label": "控制命令", "value": "2 个"} in detail_items
+    assert {"label": "契约缺口", "value": "0 个"} in detail_items
+    assert "planner_trace.agent_health_projection.command_contracts" not in str(detail_items)
+    assert "continue" not in str(detail_items)
+
+
+def test_get_messages_includes_agent_control_plane_readiness_detail_items(db_session):
+    project = Project(name="Agent Control Plane Result View")
+    db_session.add(project)
+    db_session.commit()
+    dialog = dialogs_api._get_or_create_dialog(db_session, project.id)
+    dialogs_api._save_message(
+        db_session,
+        dialog.id,
+        "assistant",
+        "Agent 已检查控制平面。",
+        action_result={
+            "type": "plan_recovery_tools",
+            "status": "success",
+            "data": {
+                "agent_profile": "orchestrator",
+                "agent_control_plane_readiness": {
+                    "source": "planner_trace.agent_health_projection.control_plane_readiness",
+                    "status": "ready",
+                    "version": "phase46.agent_control_plane_readiness.v1",
+                    "summary": {
+                        "tool_gap_count": 0,
+                        "command_gap_count": 0,
+                        "total_gap_count": 0,
+                    },
+                    "recommended_next_tools": ["inspect_agent_health_projection"],
+                },
+            },
+        },
+    )
+
+    messages = DialogMessageService(db_session).list_messages(project.id)
+    detail_items = messages[-1]["action_result_view"]["detail_items"]
+
+    assert {"label": "Agent 身份", "value": "编排主控"} in detail_items
+    assert {"label": "控制平面", "value": "可继续编排"} in detail_items
+    assert {"label": "控制面缺口", "value": "0 个"} in detail_items
+    assert {"label": "工具缺口", "value": "0 个"} in detail_items
+    assert {"label": "命令缺口", "value": "0 个"} in detail_items
+    assert {"label": "建议检查", "value": "1 项"} in detail_items
+    assert "planner_trace.agent_health_projection.control_plane_readiness" not in str(detail_items)
+    assert "inspect_agent_health_projection" not in str(detail_items)
 
 
 @pytest.mark.asyncio

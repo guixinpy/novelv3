@@ -205,6 +205,66 @@ describe('AgentRunDrawer', () => {
     expect(text).not.toContain('ghost_worker')
   })
 
+  it('renders command contract summary', () => {
+    mount(AgentRunDrawer, {
+      attachTo: document.body,
+      props: {
+        open: true,
+        loading: false,
+        error: '',
+        run: {
+          id: 'run-command-contracts',
+          project_id: 'project-1',
+          goal: '检查命令契约',
+          status: 'success',
+          entrypoint: 'dialog_auto_plan',
+          input: {},
+          output: null,
+          error: null,
+          agent_command_contracts: {
+            source: 'planner_trace.agent_health_projection.command_contracts',
+            summary: {
+              total_commands: 8,
+              public_commands: 5,
+              agent_control_commands: 2,
+              available_commands: 5,
+              gap_count: 0,
+            },
+          },
+          agent_control_plane_readiness: {
+            source: 'planner_trace.agent_health_projection.control_plane_readiness',
+            status: 'ready',
+            version: 'phase46.agent_control_plane_readiness.v1',
+            summary: {
+              total_gap_count: 0,
+              tool_gap_count: 0,
+              command_gap_count: 0,
+            },
+            recommended_next_tools: ['inspect_agent_health_projection'],
+          },
+          steps: [],
+        },
+      },
+    })
+
+    const text = document.body.textContent || ''
+    expect(text).toContain('命令契约')
+    expect(text).toContain('已投影')
+    expect(text).toContain('控制命令')
+    expect(text).toContain('2')
+    expect(text).toContain('契约缺口')
+    expect(text).toContain('0')
+    expect(text).toContain('控制平面')
+    expect(text).toContain('可继续编排')
+    expect(text).toContain('控制面缺口')
+    expect(text).toContain('工具缺口')
+    expect(text).toContain('命令缺口')
+    expect(text).toContain('建议检查')
+    expect(text).toContain('1')
+    expect(text).not.toContain('planner_trace.agent_health_projection.control_plane_readiness')
+    expect(text).not.toContain('inspect_agent_health_projection')
+  })
+
   it('renders loading and error states', () => {
     const loading = mount(AgentRunDrawer, {
       attachTo: document.body,
@@ -297,6 +357,130 @@ describe('AgentRunDrawer', () => {
     expect(text).toContain('恢复工具需要用户补充输入')
     expect(text).toContain('prepare_generate_chapter_execution')
     expect(document.body.querySelector('[data-testid="execute-recovery"]')).toBeNull()
+  })
+
+  it('renders recommended followup provenance write tools as confirmation-only suggestions', () => {
+    mount(AgentRunDrawer, {
+      attachTo: document.body,
+      props: {
+        open: true,
+        loading: false,
+        error: '',
+        run: {
+          id: 'run-followup',
+          project_id: 'project-1',
+          goal: '预览检索覆盖恢复后继',
+          status: 'success',
+          entrypoint: 'dialog_auto_plan',
+          input: {},
+          output: null,
+          error: null,
+          steps: [
+            {
+              id: 'step-followup',
+              run_id: 'run-followup',
+              project_id: 'project-1',
+              step_index: 1,
+              tool_name: 'plan_recommended_followups',
+              status: 'success',
+              input: {},
+              output: {
+                status: 'completed',
+                recommended_followups: {
+                  status: 'recommended',
+                  source_fields: [
+                    'memory_provenance.recovery.tools',
+                    'memory_provenance.recovery.write_tools',
+                  ],
+                  provenance_write_tools: [
+                    { tool_name: 'repair_longform_maintenance', params: {} },
+                  ],
+                },
+                tools: [
+                  {
+                    tool_name: 'inspect_agent_memory_route',
+                    params: {
+                      chapter_index: 13,
+                      query: '检索索引为空，诊断第13章长篇记忆与检索覆盖。',
+                      include_context_summary: false,
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      },
+    })
+
+    const text = document.body.textContent || ''
+    expect(text).toContain('推荐后继策略')
+    expect(text).toContain('自动诊断工具')
+    expect(text).toContain('inspect_agent_memory_route')
+    expect(text).toContain('需确认修复')
+    expect(text).toContain('repair_longform_maintenance')
+    expect(document.body.querySelector('[data-testid="execute-recovery"]')).toBeNull()
+  })
+
+  it('emits confirmed recommended followup execution payload when preview has executable tools', async () => {
+    const wrapper = mount(AgentRunDrawer, {
+      attachTo: document.body,
+      props: {
+        open: true,
+        loading: false,
+        error: '',
+        run: {
+          id: 'run-followup',
+          project_id: 'project-1',
+          goal: '预览推荐后继',
+          status: 'success',
+          entrypoint: 'dialog_auto_plan',
+          input: {},
+          output: null,
+          error: null,
+          steps: [
+            {
+              id: 'step-followup',
+              run_id: 'run-followup',
+              project_id: 'project-1',
+              step_index: 1,
+              tool_name: 'plan_recommended_followups',
+              status: 'success',
+              input: {},
+              output: {
+                status: 'completed',
+                source_run_id: 'source-run-2',
+                plan_hash: 'followup-plan-hash-1',
+                recommended_followups: {
+                  status: 'recommended',
+                },
+                tools: [
+                  { tool_name: 'review_chapter_quality', params: { chapter_index: 2 } },
+                  { tool_name: 'review_chapter_continuity', params: { chapter_index: 2 } },
+                ],
+                execution_policy: {
+                  mode: 'preview',
+                  status: 'preview_only',
+                  requires_followup_run: true,
+                  requires_confirmation: true,
+                  requires_plan_hash: true,
+                },
+              },
+            },
+          ],
+        },
+      },
+    })
+
+    const button = document.body.querySelector('[data-testid="execute-recommended-followups"]') as HTMLButtonElement
+    expect(button).not.toBeNull()
+    expect(button.textContent).toContain('确认执行后继')
+
+    await button.click()
+
+    expect(wrapper.emitted('executeRecommendedFollowups')).toEqual([
+      [{ sourceRunId: 'source-run-2', planHash: 'followup-plan-hash-1' }],
+    ])
   })
 
   it('emits confirmed recovery execution payload when preview is executable', async () => {

@@ -206,6 +206,32 @@ export interface ChatRequest {
   command_args?: string
 }
 
+export interface ChatCommandCatalogItem {
+  name: string
+  label: string
+  description: string
+  example: string
+  supports_args: boolean
+  public: boolean
+  legacy?: boolean
+  mutates_history?: boolean
+  category?: string
+  capability_id?: string
+  required_agent_tools?: string[]
+  control_projection_type?: string
+  available?: boolean
+  unavailable_reasons?: string[]
+  action_type?: string
+  agent_intent_text?: string
+}
+
+export interface ChatCommandCatalogResponse {
+  version: string
+  public_command_names: string[]
+  legacy_alias_names: string[]
+  commands: ChatCommandCatalogItem[]
+}
+
 export interface ChatResponse {
   message: string
   pending_action: PendingAction | null
@@ -370,6 +396,8 @@ export interface WritingAgentRunDetail {
   agent_tool_discovery?: Record<string, unknown> | null
   agent_profile_definition?: Record<string, unknown> | null
   agent_profile_policy_audit?: Record<string, unknown> | null
+  agent_command_contracts?: Record<string, unknown> | null
+  agent_control_plane_readiness?: Record<string, unknown> | null
   created_at?: string | null
   started_at?: string | null
   finished_at?: string | null

@@ -55,7 +55,26 @@ def test_inspect_agent_job_projection_exposes_active_control_plane_and_progress(
             status="running",
             entrypoint="writing_start",
             background_task_id=task.id,
-            input={"task_id": task.id},
+            input={
+                "task_id": task.id,
+                "planner": {
+                    "trace": {
+                        "agent_health_projection": {
+                            "control_plane_readiness": {
+                                "status": "degraded",
+                                "version": "phase46.agent_control_plane_readiness.v1",
+                                "summary": {
+                                    "tool_gap_count": 1,
+                                    "command_gap_count": 1,
+                                    "total_gap_count": 2,
+                                    "agent_control_commands": 2,
+                                },
+                                "recommended_next_tools": ["inspect_agent_control_plane_readiness"],
+                            }
+                        }
+                    }
+                },
+            },
         )
     )
     db_session.commit()
@@ -72,7 +91,62 @@ def test_inspect_agent_job_projection_exposes_active_control_plane_and_progress(
     assert selected["resume"]["can_resume"] is True
     assert selected["resume"]["pending_chapter_indexes"] == [4, 5]
     assert selected["agent_runs"][0]["entrypoint"] == "writing_start"
-    assert "inspect_agent_trace_audit" in output["recommended_tools"]
+    assert selected["control_plane_readiness"]["status"] == "degraded"
+    assert selected["control_plane_readiness"]["summary"]["total_gap_count"] == 2
+    assert selected["agent_runs"][0]["control_plane_readiness"]["summary"]["agent_control_commands"] == 2
+    assert output["recommended_tools"] == ["inspect_agent_control_plane_readiness", "inspect_agent_trace_audit"]
+
+
+def test_inspect_agent_job_projection_exposes_command_contracts(db_session):
+    project = Project(name="Agent Job Command Contracts")
+    db_session.add(project)
+    db_session.flush()
+    task = BackgroundTask(
+        project_id=project.id,
+        task_type="generate_chapter",
+        status="running",
+        payload={"chapter_index": 6},
+    )
+    db_session.add(task)
+    db_session.flush()
+    db_session.add(
+        WritingAgentRun(
+            project_id=project.id,
+            goal="生成第6章",
+            status="running",
+            entrypoint="writing_start",
+            background_task_id=task.id,
+            input={
+                "task_id": task.id,
+                "planner": {
+                    "trace": {
+                        "agent_health_projection": {
+                            "command_contracts": {
+                                "status": "completed",
+                                "summary": {
+                                    "total_commands": 9,
+                                    "public_commands": 6,
+                                    "agent_control_commands": 2,
+                                    "available_commands": 6,
+                                    "gap_count": 1,
+                                },
+                                "commands": [{"name": "legacy_generate"}],
+                            }
+                        }
+                    }
+                },
+            },
+        )
+    )
+    db_session.commit()
+
+    output = inspect_agent_job_projection(db_session, project.id, task_id=task.id)
+
+    selected = output["selected_task"]
+    assert selected["command_contracts"]["summary"]["gap_count"] == 1
+    assert selected["agent_runs"][0]["command_contracts"]["summary"]["agent_control_commands"] == 2
+    assert "commands" not in selected["command_contracts"]
+    assert output["recommended_tools"] == ["inspect_agent_command_contracts", "inspect_agent_trace_audit"]
 
 
 def test_inspect_agent_job_projection_filters_active_chapter_reservation(db_session):

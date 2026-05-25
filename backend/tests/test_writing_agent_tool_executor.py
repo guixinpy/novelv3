@@ -60,6 +60,8 @@ def test_agent_core_tool_adapters_live_in_dedicated_module():
         "verify_agent_plan_approval_contract",
         "plan_recovery_tools",
         "plan_recommended_followups",
+        "inspect_agent_health_projection",
+        "inspect_agent_control_plane_readiness",
         "inspect_agent_slash_command_route",
         "inspect_agent_dialog_route_projection",
         "inspect_agent_route_preference_projection",
@@ -70,6 +72,7 @@ def test_agent_core_tool_adapters_live_in_dedicated_module():
         "inspect_agent_dialog_control_plane_projection",
         "inspect_agent_intent_projection",
         "inspect_agent_tool_contracts",
+        "inspect_agent_command_contracts",
         "inspect_legacy_hermes_action_migration",
         "inspect_agent_write_gate_coverage",
         "inspect_agent_mutation_fingerprints",
@@ -369,18 +372,10 @@ async def test_tool_executor_handles_inspect_agent_slash_command_route(db_sessio
     assert result.output is not None
     assert result.output["status"] == "ready"
     assert result.output["version"] == "phase103.slash_command_route_projection.v1"
-    routes_by_command = {route["command_name"]: route for route in result.output["routes"]}
-    assert routes_by_command["setup"]["agent_tool_name"] == "generate_setup"
-    assert routes_by_command["storyline"]["agent_tool_name"] == "generate_storyline"
-    assert routes_by_command["outline"]["agent_tool_name"] == "generate_outline"
-    assert routes_by_command["chapter"]["agent_tool_name"] == "generate_chapter"
-    assert routes_by_command["setup"]["execution_supported"] is True
-    assert routes_by_command["setup"]["execution_backend"] == "action_execution_service"
-    assert routes_by_command["chapter"]["execution_supported"] is True
-    assert routes_by_command["chapter"]["execution_backend"] == "static_adapter"
-    assert "clear" not in routes_by_command
-    assert "compact" not in routes_by_command
-    assert result.output["trace"]["non_agent_commands"] == ["clear", "compact"]
+    assert result.output["routes"] == []
+    assert result.output["trace"]["public_commands"] == ["continue", "status", "clear", "compact"]
+    assert result.output["trace"]["session_or_control_commands"] == ["continue", "status", "clear", "compact"]
+    assert result.output["trace"]["legacy_aliases"] == ["setup", "storyline", "outline", "chapter"]
 
 
 @pytest.mark.asyncio
@@ -402,7 +397,7 @@ async def test_tool_executor_handles_inspect_agent_dialog_route_projection(db_se
         (route["source"], route["action_type"], route.get("command_name"))
         for route in result.output["routes"]
     }
-    assert ("slash_command", "preview_chapter", "chapter") in keys
+    assert all(source != "slash_command" for source, _, _ in keys)
     assert ("text_intent", "preview_chapter", None) in keys
     assert ("button_action", "preview_chapter", None) in keys
     assert result.output["trace"]["sources"] == ["slash_command", "text_intent", "button_action"]
@@ -427,7 +422,7 @@ async def test_tool_executor_handles_inspect_agent_route_preference_projection(d
     chapter_route = next(
         route
         for route in result.output["routes"]
-        if route["source"] == "slash_command" and route["action_type"] == "preview_chapter"
+        if route["source"] == "text_intent" and route["action_type"] == "preview_chapter"
     )
     assert chapter_route["current_tool_name"] == "generate_chapter"
     assert chapter_route["preferred_tool_chain"] == [
@@ -454,7 +449,7 @@ async def test_tool_executor_handles_inspect_agent_route_preference_projection(d
         route = next(
             route
             for route in result.output["routes"]
-            if route["source"] == "slash_command" and route["action_type"] == action_type
+            if route["source"] == "text_intent" and route["action_type"] == action_type
         )
         assert route["preferred_tool_chain"] == preferred_chain
         assert route["preferred_prepare_tool_name"] == preferred_chain[0]
@@ -477,7 +472,7 @@ async def test_tool_executor_handles_inspect_agent_route_preference_projection_o
         WritingAgentToolRequest(
             tool_name="inspect_agent_route_preference_projection",
             params={
-                "source": "slash_command",
+                "source": "text_intent",
                 "approval_chain_opt_in_action_types": ["preview_setup"],
             },
         ),
@@ -501,7 +496,7 @@ async def test_tool_executor_handles_inspect_agent_route_preference_projection_m
         WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-route-preference-suggestion"),
         WritingAgentToolRequest(
             tool_name="inspect_agent_route_preference_projection",
-            params={"source": "slash_command"},
+            params={"source": "text_intent"},
         ),
     )
 
@@ -1847,6 +1842,8 @@ async def test_plan_recommended_followups_allows_health_and_route_diagnosis_tool
                     "recommendations": {
                         "canonical_followups": [
                             "inspect_agent_health_projection",
+                            "inspect_agent_control_plane_readiness",
+                            "inspect_agent_command_contracts",
                             "inspect_agent_route_preference_projection",
                             "apply_pending_action_route_approval_opt_in",
                         ],
@@ -1866,6 +1863,8 @@ async def test_plan_recommended_followups_allows_health_and_route_diagnosis_tool
     assert result.output is not None
     assert [tool["tool_name"] for tool in result.output["tools"]] == [
         "inspect_agent_health_projection",
+        "inspect_agent_control_plane_readiness",
+        "inspect_agent_command_contracts",
         "inspect_agent_route_preference_projection",
     ]
     assert result.output["trace"]["rejected_tools"] == [
@@ -2734,6 +2733,7 @@ def test_tool_executor_static_adapter_names_are_report_or_agent_native_tools():
     assert {
         "describe_agent_tools",
         "inspect_agent_health_projection",
+        "inspect_agent_control_plane_readiness",
         "generate_chapter",
         "prepare_generate_chapter_execution",
         "execute_generate_chapter_with_approval",
@@ -2746,6 +2746,7 @@ def test_tool_executor_static_adapter_names_are_report_or_agent_native_tools():
         "inspect_longform_chapter_batch",
         "inspect_agent_job_projection",
         "inspect_agent_tool_contracts",
+        "inspect_agent_command_contracts",
         "inspect_agent_write_gate_coverage",
         "inspect_agent_route_preference_projection",
         "plan_agent_route_approval_opt_in",
@@ -3009,6 +3010,7 @@ def test_tool_executor_lists_unhandled_internal_tools_for_migration_tracking():
     assert "plan_dialog_intent_agent_run" not in names
     assert "preview_agent_plan_approval_contract" not in names
     assert "verify_agent_plan_approval_contract" not in names
+    assert "inspect_agent_control_plane_readiness" not in names
     assert "import_setup_world_model" not in names
     assert "seed_continuity_anchor_proposals" not in names
     assert "analyze_chapter_world_model" not in names
@@ -3018,6 +3020,7 @@ def test_tool_executor_lists_unhandled_internal_tools_for_migration_tracking():
     assert "inspect_longform_chapter_batch" not in names
     assert "inspect_agent_job_projection" not in names
     assert "inspect_agent_tool_contracts" not in names
+    assert "inspect_agent_command_contracts" not in names
     assert "inspect_agent_write_gate_coverage" not in names
     assert "inspect_agent_route_preference_projection" not in names
     assert "plan_agent_route_approval_opt_in" not in names
@@ -3067,6 +3070,30 @@ def test_tool_executor_exposes_inspect_agent_tool_contracts_adapter_metadata():
         "category": "preflight",
         "mutability": "read",
         "handler_name": "_inspect_agent_tool_contracts",
+    }
+
+
+def test_tool_executor_exposes_inspect_agent_command_contracts_adapter_metadata():
+    metadata = writing_agent_tool_adapter_metadata("inspect_agent_command_contracts")
+
+    assert metadata == {
+        "tool_name": "inspect_agent_command_contracts",
+        "adapter_type": "static",
+        "category": "preflight",
+        "mutability": "read",
+        "handler_name": "_inspect_agent_command_contracts",
+    }
+
+
+def test_tool_executor_exposes_inspect_agent_control_plane_readiness_adapter_metadata():
+    metadata = writing_agent_tool_adapter_metadata("inspect_agent_control_plane_readiness")
+
+    assert metadata == {
+        "tool_name": "inspect_agent_control_plane_readiness",
+        "adapter_type": "static",
+        "category": "preflight",
+        "mutability": "read",
+        "handler_name": "_inspect_agent_control_plane_readiness",
     }
 
 
@@ -3366,6 +3393,60 @@ async def test_tool_executor_handles_inspect_agent_tool_contracts(db_session):
     assert "missing_agent_native_adapter" not in tools_by_name["compress_chapter_to_target"]["gap_codes"]
     assert "output_schema_too_generic" not in tools_by_name["compress_chapter_to_target"]["gap_codes"]
     assert internal_tool_names().issubset(set(tools_by_name))
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_handles_inspect_agent_command_contracts(db_session):
+    project = Project(name="Command Contract Snapshot")
+    db_session.add(project)
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-command-contract"),
+        WritingAgentToolRequest(tool_name="inspect_agent_command_contracts"),
+    )
+
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "completed"
+    assert result.output["version"] == "phase38.agent_command_contracts.v1"
+    assert result.output["summary"]["total_commands"] >= 4
+    assert result.output["summary"]["commands_with_control_projection"] == 2
+    commands_by_name = {command["name"]: command for command in result.output["commands"]}
+    assert commands_by_name["continue"]["contract_status"] == "ready"
+    assert commands_by_name["continue"]["control_projection_type"] == "continue_agent_control"
+    assert commands_by_name["continue"]["required_agent_tools"] == [
+        "inspect_agent_health_projection",
+        "inspect_agent_command_contracts",
+        "plan_recovery_tools",
+        "plan_recommended_followups",
+        "prepare_generate_chapter_execution",
+    ]
+    assert commands_by_name["status"]["control_projection_type"] == "agent_health_projection"
+    assert commands_by_name["clear"]["contract_status"] == "ready"
+    assert commands_by_name["clear"]["control_projection_type"] == ""
+    assert result.output["gaps"] == []
+    assert "inspect_agent_tool_contracts" in result.output["recommended_next_tools"]
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_handles_inspect_agent_control_plane_readiness(db_session):
+    project = Project(name="Control Plane Readiness")
+    db_session.add(project)
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-control-plane"),
+        WritingAgentToolRequest(tool_name="inspect_agent_control_plane_readiness"),
+    )
+
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] in {"ready", "degraded"}
+    assert result.output["summary"]["agent_control_commands"] == 2
+    assert "tool_contracts" in result.output["control_surfaces"]
+    assert "command_contracts" in result.output["control_surfaces"]
+    assert "inspect_agent_health_projection" in result.output["recommended_next_tools"]
 
 
 @pytest.mark.asyncio

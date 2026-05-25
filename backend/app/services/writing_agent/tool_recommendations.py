@@ -23,8 +23,15 @@ def normalize_tool_recommendations(
             continue
         source_fields.append(field)
         raw_recommendations.extend(_recommendation_values(output.get(field)))
+    provenance_tools = _provenance_recovery_tools(output)
+    if provenance_tools:
+        source_fields.append("memory_provenance.recovery.tools")
+        raw_recommendations.extend(_recommendation_value(tool) for tool in provenance_tools)
+    provenance_write_tools = _provenance_write_tools(output)
+    if provenance_write_tools:
+        source_fields.append("memory_provenance.recovery.write_tools")
 
-    raw_recommendations = _dedupe(raw_recommendations)
+    raw_recommendations = _dedupe([item for item in raw_recommendations if item])
     runtime_followups = [item for item in raw_recommendations if item in allowed]
     non_tool_recommendations = [item for item in raw_recommendations if item not in allowed]
     policy = report_policy_for_tool(tool_name)
@@ -37,6 +44,8 @@ def normalize_tool_recommendations(
         "non_tool_recommendations": non_tool_recommendations,
         "policy_followups": policy_followups,
         "canonical_followups": _dedupe(runtime_followups + policy_followups),
+        "provenance_recovery_tools": provenance_tools,
+        "provenance_write_tools": provenance_write_tools,
     }
 
 
@@ -69,6 +78,41 @@ def _recommendation_value(item: object) -> str | None:
         if normalized:
             return normalized
     return None
+
+
+def _provenance_recovery_tools(output: Mapping[str, object]) -> list[dict[str, object]]:
+    return _provenance_tool_requests(output, field="tools")
+
+
+def _provenance_write_tools(output: Mapping[str, object]) -> list[dict[str, object]]:
+    return _provenance_tool_requests(output, field="write_tools")
+
+
+def _provenance_tool_requests(output: Mapping[str, object], *, field: str) -> list[dict[str, object]]:
+    provenance = output.get("memory_provenance")
+    if not isinstance(provenance, Mapping):
+        return []
+    recovery = provenance.get("recovery")
+    if not isinstance(recovery, Mapping):
+        return []
+    tools = recovery.get(field)
+    if not isinstance(tools, list):
+        return []
+    results: list[dict[str, object]] = []
+    for item in tools:
+        if not isinstance(item, Mapping):
+            continue
+        tool_name = item.get("tool_name")
+        if not isinstance(tool_name, str) or not tool_name.strip():
+            continue
+        params = item.get("params")
+        results.append(
+            {
+                "tool_name": tool_name.strip(),
+                "params": dict(params) if isinstance(params, Mapping) else {},
+            }
+        )
+    return results
 
 
 def _dedupe(values: list[str]) -> list[str]:

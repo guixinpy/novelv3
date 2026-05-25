@@ -55,11 +55,24 @@ _AGENT_HEALTH_PROJECTION_OUTPUT = object_schema(
         "profile_policy": {"type": ["object", "null"]},
         "route_preference": {"type": "object"},
         "tool_contracts": {"type": "object"},
+        "command_contracts": {"type": "object"},
+        "control_plane_readiness": {"type": "object"},
         "write_gate": {"type": "object"},
         "trace_audit": {"type": ["object", "null"]},
         "diagnostics": {"type": "array"},
         "recommended_tools": {"type": "array"},
         "recommended_next_tools": {"type": "array"},
+        "trace": {"type": "object"},
+    }
+)
+_AGENT_CONTROL_PLANE_READINESS_OUTPUT = object_schema(
+    {
+        "status": {"type": "string"},
+        "version": {"type": "string"},
+        "summary": {"type": "object"},
+        "diagnostics": {"type": "array"},
+        "recommended_next_tools": {"type": "array"},
+        "control_surfaces": {"type": "object"},
         "trace": {"type": "object"},
     }
 )
@@ -195,6 +208,19 @@ AGENT_CORE_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         ),
         output_schema=_AGENT_HEALTH_PROJECTION_OUTPUT,
         target_type="agent_health_projection",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=8,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
+        name="inspect_agent_control_plane_readiness",
+        module="writing_agent",
+        category="preflight",
+        description="聚合工具契约与命令契约的控制面就绪度摘要，用于 Agent 编排前自检。",
+        input_schema=object_schema(),
+        output_schema=_AGENT_CONTROL_PLANE_READINESS_OUTPUT,
+        target_type="agent_control_plane_readiness",
         internal=True,
         non_blocking_report=True,
         sort_key=8,
@@ -523,6 +549,29 @@ AGENT_CORE_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
             }
         ),
         target_type="agent_tool_contracts",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=11,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
+        name="inspect_agent_command_contracts",
+        module="writing_agent",
+        category="preflight",
+        description="只读输出 Hermes slash 命令控制面的 Agent 契约快照、投影类型和依赖工具缺口。",
+        input_schema=object_schema(),
+        output_schema=object_schema(
+            {
+                "status": {"type": "string"},
+                "version": {"type": "string"},
+                "summary": {"type": "object"},
+                "commands": {"type": "array"},
+                "gaps": {"type": "array"},
+                "recommended_next_tools": {"type": "array"},
+                "trace": {"type": "object"},
+            }
+        ),
+        target_type="agent_command_contracts",
         internal=True,
         non_blocking_report=True,
         sort_key=11,

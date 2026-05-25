@@ -69,6 +69,15 @@ def build_agent_core_tool_adapters(
             category="preflight",
             mutability="read",
         ),
+        "inspect_agent_control_plane_readiness": WritingAgentToolAdapter(
+            "inspect_agent_control_plane_readiness",
+            _inspect_agent_control_plane_readiness(
+                adapter_metadata_by_name_provider,
+                static_adapter_tool_names_provider,
+            ),
+            category="preflight",
+            mutability="read",
+        ),
         "inspect_agent_slash_command_route": WritingAgentToolAdapter(
             "inspect_agent_slash_command_route",
             _inspect_agent_slash_command_route(static_adapter_tool_names_provider),
@@ -126,6 +135,12 @@ def build_agent_core_tool_adapters(
         "inspect_agent_tool_contracts": WritingAgentToolAdapter(
             "inspect_agent_tool_contracts",
             _inspect_agent_tool_contracts(adapter_metadata_by_name_provider),
+            category="preflight",
+            mutability="read",
+        ),
+        "inspect_agent_command_contracts": WritingAgentToolAdapter(
+            "inspect_agent_command_contracts",
+            _inspect_agent_command_contracts(static_adapter_tool_names_provider),
             category="preflight",
             mutability="read",
         ),
@@ -274,6 +289,27 @@ def _inspect_agent_health_projection(
 
     inspect_agent_health_projection_adapter.__name__ = "_inspect_agent_health_projection"
     return inspect_agent_health_projection_adapter
+
+
+def _inspect_agent_control_plane_readiness(
+    adapter_metadata_by_name_provider: AdapterMetadataByNameProvider,
+    static_adapter_tool_names_provider: StaticAdapterToolNamesProvider,
+) -> Callable[[WritingAgentToolContext, WritingAgentToolRequest], dict[str, Any]]:
+    def inspect_agent_control_plane_readiness_adapter(
+        context: WritingAgentToolContext,
+        tool: WritingAgentToolRequest,
+    ) -> dict[str, Any]:
+        from app.services.writing_agent.agent_control_plane_readiness import inspect_agent_control_plane_readiness
+
+        adapter_metadata = dict(adapter_metadata_by_name_provider())
+        adapter_metadata["preflight_writing"] = _preflight_writing_adapter_metadata()
+        return inspect_agent_control_plane_readiness(
+            adapter_metadata_by_name=adapter_metadata,
+            static_adapter_tool_names=static_adapter_tool_names_provider(),
+        )
+
+    inspect_agent_control_plane_readiness_adapter.__name__ = "_inspect_agent_control_plane_readiness"
+    return inspect_agent_control_plane_readiness_adapter
 
 
 def _inspect_agent_slash_command_route(
@@ -714,6 +750,23 @@ def _inspect_agent_tool_contracts(
 
     inspect_agent_tool_contracts_adapter.__name__ = "_inspect_agent_tool_contracts"
     return inspect_agent_tool_contracts_adapter
+
+
+def _inspect_agent_command_contracts(
+    static_adapter_tool_names_provider: StaticAdapterToolNamesProvider,
+) -> Callable[[WritingAgentToolContext, WritingAgentToolRequest], dict[str, Any]]:
+    def inspect_agent_command_contracts_adapter(
+        context: WritingAgentToolContext,
+        tool: WritingAgentToolRequest,
+    ) -> dict[str, Any]:
+        from app.services.writing_agent.agent_command_contracts import inspect_agent_command_contracts
+
+        return inspect_agent_command_contracts(
+            adapter_names_provider=static_adapter_tool_names_provider,
+        )
+
+    inspect_agent_command_contracts_adapter.__name__ = "_inspect_agent_command_contracts"
+    return inspect_agent_command_contracts_adapter
 
 
 def _inspect_agent_write_gate_coverage(

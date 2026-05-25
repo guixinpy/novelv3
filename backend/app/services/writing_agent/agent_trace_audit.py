@@ -8,6 +8,14 @@ from sqlalchemy.orm import Session
 
 from app.models import AIModelCallTrace, DialogMessage, Project, WritingAgentRun, WritingAgentStep
 from app.services.writing_agent.agent_step_binding import summarize_resource_binding
+from app.services.writing_agent.command_contract_projection import (
+    command_contracts_from_run_input,
+    command_contracts_needs_attention,
+)
+from app.services.writing_agent.control_plane_readiness_projection import (
+    control_plane_readiness_from_run_input,
+    control_plane_readiness_needs_attention,
+)
 
 AGENT_TRACE_AUDIT_VERSION = "phase73.agent_trace_audit.v1"
 DEFAULT_AUDIT_LIMIT = 20
@@ -44,6 +52,7 @@ def inspect_agent_trace_audit(
                 "failure": None,
                 "recommended_actions": [{"tool_name": "inspect_agent_memory_route", "reason_code": "no_matching_run"}],
                 "trace": _audit_trace_metadata(),
+                "control_plane_readiness": None,
             }
         )
 
@@ -53,22 +62,32 @@ def inspect_agent_trace_audit(
     trace_items = [_trace_summary(traces[trace_id]) for trace_id in trace_ids if trace_id in traces]
     approval_events = _approval_events_for_run(db, run)
     dialog_events = _dialog_events_for_run(db, run)
+    dialog_route_events = _dialog_route_events_for_run(db, project_id, run)
     event_chain = _event_chain(
         run,
         steps=steps,
         trace_items=trace_items,
         approval_events=approval_events,
         dialog_events=dialog_events,
+        dialog_route_events=dialog_route_events,
     )
     context = _context_summary([traces[trace_id] for trace_id in trace_ids if trace_id in traces])
     failure = _failure_summary(run, steps)
-    recommended_actions = _recommended_actions(steps, failure=failure)
     profile_policy_audit = _profile_policy_audit_summary(_profile_policy_audit_from_steps(steps))
+    control_plane_readiness = control_plane_readiness_from_run_input(run.input)
+    command_contracts = command_contracts_from_run_input(run.input)
+    recommended_actions = _recommended_actions(
+        steps,
+        failure=failure,
+        control_plane_readiness=control_plane_readiness,
+        command_contracts=command_contracts,
+    )
     audit = {
         "status": _audit_status(run.status),
         "reason": _audit_reason(run.status, failure=failure),
         "step_count": len(steps),
         "trace_count": len(trace_items),
+        "dialog_route_event_count": len(dialog_route_events),
         "approval_event_count": len(approval_events),
         "event_chain_count": len(event_chain),
         "context_block_count": context["total_blocks"],
@@ -79,6 +98,22 @@ def inspect_agent_trace_audit(
         )
         audit["profile_policy_status"] = profile_policy_audit.get("status")
         audit["profile_policy_issue_count"] = profile_policy_summary.get("issues", 0)
+    if control_plane_readiness is not None:
+        control_plane_summary = (
+            control_plane_readiness.get("summary")
+            if isinstance(control_plane_readiness.get("summary"), dict)
+            else {}
+        )
+        audit["control_plane_status"] = control_plane_readiness.get("status")
+        audit["control_plane_gap_count"] = control_plane_summary.get("total_gap_count", 0)
+    if command_contracts is not None:
+        command_contract_summary = (
+            command_contracts.get("summary")
+            if isinstance(command_contracts.get("summary"), dict)
+            else {}
+        )
+        audit["command_contract_gap_count"] = command_contract_summary.get("gap_count", 0)
+        audit["command_contract_available_commands"] = command_contract_summary.get("available_commands", 0)
     return _json_safe_output(
         {
             "status": "completed",
@@ -88,12 +123,15 @@ def inspect_agent_trace_audit(
             "steps": [_step_summary(step) for step in steps],
             "traces": trace_items,
             "dialog_events": dialog_events,
+            "dialog_route_events": dialog_route_events,
             "approval_events": approval_events,
             "event_chain": event_chain,
             "context": context,
             "failure": failure,
             "recommended_actions": recommended_actions,
             "profile_policy_audit": profile_policy_audit,
+            "control_plane_readiness": control_plane_readiness,
+            "command_contracts": command_contracts,
             "trace": _audit_trace_metadata(),
         }
     )
@@ -252,6 +290,77 @@ def _dialog_message_summary(db: Session, message_id: str | None) -> dict[str, An
     }
 
 
+def _dialog_route_events_for_run(db: Session, project_id: str, run: WritingAgentRun) -> list[dict[str, Any]]:
+    if not run.dialog_id:
+        return []
+    traces = (
+        db.query(AIModelCallTrace)
+        .filter(
+            AIModelCallTrace.project_id == project_id,
+            AIModelCallTrace.dialog_id == run.dialog_id,
+            AIModelCallTrace.trace_type == "dialog_route_decision",
+        )
+        .order_by(AIModelCallTrace.created_at.asc(), AIModelCallTrace.id.asc())
+        .all()
+    )
+    events: list[dict[str, Any]] = []
+    for trace in traces:
+        metadata = trace.trace_metadata if isinstance(trace.trace_metadata, dict) else {}
+        agent_run_id = str(metadata.get("agent_run_id") or "").strip()
+        request_matches = bool(run.request_message_id and trace.request_message_id == run.request_message_id)
+        response_matches = bool(run.response_message_id and trace.response_message_id == run.response_message_id)
+        if agent_run_id != run.id and not request_matches and not response_matches:
+            continue
+        event = _dialog_route_event_summary(trace)
+        if event is not None:
+            events.append(event)
+    return events
+
+
+def _dialog_route_event_summary(trace: AIModelCallTrace) -> dict[str, Any] | None:
+    metadata = trace.trace_metadata if isinstance(trace.trace_metadata, dict) else {}
+    decision = metadata.get("dialog_route_decision") if isinstance(metadata.get("dialog_route_decision"), dict) else {}
+    selected_route = str(decision.get("selected_route") or "").strip()
+    reason_code = str(decision.get("reason_code") or "").strip()
+    if not selected_route and not reason_code:
+        return None
+    event: dict[str, Any] = {
+        "trace_id": trace.id,
+        "trace_type": trace.trace_type,
+        "status": trace.status,
+        "model": trace.model,
+        "selected_route": selected_route,
+        "selected_route_label": _dialog_route_label(selected_route),
+        "reason_code": reason_code,
+        "reason_label": _dialog_route_reason_label(reason_code),
+        "request_message_id": trace.request_message_id,
+        "response_message_id": trace.response_message_id,
+    }
+    action_type = str(metadata.get("action_type") or "").strip()
+    if action_type:
+        event["action_type"] = action_type
+    source_run_id = str(metadata.get("source_run_id") or decision.get("source_run_id") or "").strip()
+    if source_run_id:
+        event["source_run_id"] = source_run_id
+    return event
+
+
+def _dialog_route_label(route: str) -> str:
+    return {
+        "recover_blocked_run": "恢复阻塞运行",
+        "recommended_followups": "执行推荐后继",
+        "chapter_generation": "生成下一章节",
+    }.get(route, route)
+
+
+def _dialog_route_reason_label(reason_code: str) -> str:
+    return {
+        "recoverable_run_found": "发现可恢复的阻塞运行",
+        "recommended_followups_found": "发现可执行的推荐后继",
+        "no_recovery_or_followup": "未发现恢复或后继，回落到章节生成",
+    }.get(reason_code, reason_code)
+
+
 def _approval_events_for_run(db: Session, run: WritingAgentRun) -> list[dict[str, Any]]:
     if not run.dialog_id:
         return []
@@ -285,8 +394,26 @@ def _event_chain(
     trace_items: list[dict[str, Any]],
     approval_events: list[dict[str, Any]],
     dialog_events: dict[str, Any],
+    dialog_route_events: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
     chain: list[dict[str, Any]] = []
+    for event in dialog_route_events:
+        chain_event = {
+            "event_type": "dialog_route_decision",
+            "trace_id": event.get("trace_id"),
+            "action_type": event.get("action_type"),
+            "selected_route": event.get("selected_route"),
+            "selected_route_label": event.get("selected_route_label"),
+            "reason_code": event.get("reason_code"),
+            "reason_label": event.get("reason_label"),
+            "request_message_id": event.get("request_message_id"),
+            "response_message_id": event.get("response_message_id"),
+        }
+        source_run_id = str(event.get("source_run_id") or "").strip()
+        if source_run_id:
+            chain_event["source_run_id"] = source_run_id
+        chain.append(chain_event)
+
     for event in approval_events:
         chain_event = {
             "event_type": "approval_decision",
@@ -505,9 +632,30 @@ def _failure_summary(run: WritingAgentRun, steps: list[WritingAgentStep]) -> dic
     }
 
 
-def _recommended_actions(steps: list[WritingAgentStep], *, failure: dict[str, Any] | None) -> list[dict[str, Any]]:
+def _recommended_actions(
+    steps: list[WritingAgentStep],
+    *,
+    failure: dict[str, Any] | None,
+    control_plane_readiness: dict[str, Any] | None,
+    command_contracts: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
     if failure is None:
-        return []
+        actions: list[dict[str, Any]] = []
+        if control_plane_readiness_needs_attention(control_plane_readiness):
+            actions.append(
+                {
+                    "tool_name": "inspect_agent_control_plane_readiness",
+                    "reason_code": "agent_control_plane_degraded",
+                }
+            )
+        if command_contracts_needs_attention(command_contracts):
+            actions.append(
+                {
+                    "tool_name": "inspect_agent_command_contracts",
+                    "reason_code": "agent_command_contracts_have_gaps",
+                }
+            )
+        return actions
     for step in reversed(steps):
         output = step.output if isinstance(step.output, dict) else {}
         envelope = output.get("agent_tool_result") if isinstance(output.get("agent_tool_result"), dict) else {}

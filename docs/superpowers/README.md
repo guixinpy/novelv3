@@ -6,15 +6,15 @@
 
 当前活跃的 `specs/` 文件：
 
-- `specs/2026-05-18-long-memory-writing-agent-goal.md`
+- 暂无
 
 当前活跃的 `plans/` 目录：
 
-- `plans/long-memory-agent/`
+- 暂无
 
 当前活跃的 `notes/` 目录：
 
-- `notes/long-memory-agent/`
+- 暂无
 
 历史材料已归档到：
 
@@ -26,6 +26,18 @@
 
 - `../archive/superpowers/specs/longform-scale/`
 - `../archive/superpowers/plans/longform-scale/`
+
+上一轮 long-memory writing Agent goal 已归档到：
+
+- `../archive/superpowers/specs/long-memory-agent/`
+- `../archive/superpowers/plans/long-memory-agent/`
+- `../archive/superpowers/notes/long-memory-agent/`
+
+上一轮 agent-native writing Agent goal 已归档到：
+
+- `../archive/superpowers/specs/agent-native-writing/`
+- `../archive/superpowers/plans/agent-native-writing/`
+- `../archive/superpowers/notes/agent-native-writing/`
 
 ## 规则
 

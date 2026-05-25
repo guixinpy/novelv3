@@ -13,6 +13,19 @@
         第{{ chapterTargetConflict.chapterIndex }}章已有{{ chapterTargetConflict.sourceLabel }}，确认前请检查是否要继续覆盖同一章节。
       </span>
     </div>
+    <dl
+      v-if="dialogRouteRows.length"
+      class="action-card__route"
+      data-testid="dialog-route-decision"
+    >
+      <template
+        v-for="row in dialogRouteRows"
+        :key="row.label"
+      >
+        <dt>{{ row.label }}</dt>
+        <dd>{{ row.value }}</dd>
+      </template>
+    </dl>
     <section
       v-if="executionPreview"
       class="action-card__preview"
@@ -153,6 +166,20 @@ const actionCopy = computed(() => {
   if (!chapterTargetConflict.value) return copy
   return copy.replace(/\s*注意：第\d+章已有.+?，请确认是否仍要继续。\s*$/, '').trim()
 })
+const dialogRouteRows = computed(() => {
+  const decision = props.action?.params?.dialog_route_decision
+  if (!decision || typeof decision !== 'object') return []
+  const rows: Array<{ label: string; value: string }> = []
+  const selectedRoute = stringValue(decision.selected_route)
+  if (selectedRoute) {
+    rows.push({ label: '继续路由', value: dialogRouteLabel(selectedRoute) })
+  }
+  const reasonCode = stringValue(decision.reason_code)
+  if (reasonCode) {
+    rows.push({ label: '路由原因', value: dialogRouteReasonLabel(reasonCode) })
+  }
+  return rows
+})
 const previewSteps = computed(() => Array.isArray(executionPreview.value?.steps) ? executionPreview.value.steps : [])
 const safetyRecommendations = computed(() => {
   const recommendations = props.action?.safety_view?.recommendations
@@ -217,6 +244,24 @@ function safetyActionFromRecommendation(item: any) {
     guarded_apply: false,
   }
 }
+
+function stringValue(value: unknown) {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function dialogRouteLabel(route: string) {
+  if (route === 'recover_blocked_run') return '恢复阻塞运行'
+  if (route === 'recommended_followups') return '推荐后继'
+  if (route === 'chapter_generation') return '继续章节生成'
+  return route
+}
+
+function dialogRouteReasonLabel(reasonCode: string) {
+  if (reasonCode === 'recoverable_run_found') return '发现可恢复运行'
+  if (reasonCode === 'recommended_followups_found') return '发现上一轮推荐后继'
+  if (reasonCode === 'no_recovery_or_followup') return '无恢复或后继，继续章节生成'
+  return reasonCode
+}
 </script>
 
 <style scoped>
@@ -251,6 +296,28 @@ function safetyActionFromRecommendation(item: any) {
 
 .action-card__warning strong {
   font-size: 0.78rem;
+}
+
+.action-card__route {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.35rem 0.65rem;
+  margin: 0 0 0.85rem;
+  border: 1px solid rgba(79, 70, 229, 0.14);
+  background: rgba(238, 242, 255, 0.62);
+  border-radius: 0.75rem;
+  padding: 0.65rem 0.75rem;
+  font-size: 0.82rem;
+}
+
+.action-card__route dt {
+  color: var(--color-text-secondary);
+  font-weight: 700;
+}
+
+.action-card__route dd {
+  margin: 0;
+  color: var(--color-text-primary);
 }
 
 .action-card__preview {

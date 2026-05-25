@@ -15,6 +15,7 @@ const emit = defineEmits<{
   close: []
   refresh: []
   executeRecovery: [payload: { sourceRunId: string; planHash: string }]
+  executeRecommendedFollowups: [payload: { sourceRunId: string; planHash: string }]
   applyRouteUpgrade: [payload: {
     sourceRunId: string
     pendingActionId: string
@@ -29,6 +30,23 @@ const agentProfileDefinition = computed(() => recordValue(props.run?.agent_profi
 const agentProfileScope = computed(() => recordValue(props.run?.agent_profile_scope))
 const agentToolDiscovery = computed(() => recordValue(props.run?.agent_tool_discovery))
 const agentProfilePolicyAudit = computed(() => recordValue(props.run?.agent_profile_policy_audit))
+const agentCommandContracts = computed(() => recordValue(props.run?.agent_command_contracts))
+const agentCommandContractSummary = computed(() => recordValue(agentCommandContracts.value.summary))
+const hasAgentCommandContracts = computed(() => Object.keys(agentCommandContractSummary.value).length > 0)
+const agentControlCommandCount = computed(() => numberValue(agentCommandContractSummary.value.agent_control_commands))
+const agentCommandContractGapCount = computed(() => numberValue(agentCommandContractSummary.value.gap_count))
+const agentControlPlaneReadiness = computed(() => recordValue(props.run?.agent_control_plane_readiness))
+const agentControlPlaneSummary = computed(() => recordValue(agentControlPlaneReadiness.value.summary))
+const hasAgentControlPlaneReadiness = computed(() => Object.keys(agentControlPlaneSummary.value).length > 0)
+const agentControlPlaneStatus = computed(() => stringValue(agentControlPlaneReadiness.value.status))
+const agentControlPlaneTotalGapCount = computed(() => numberValue(agentControlPlaneSummary.value.total_gap_count))
+const agentControlPlaneToolGapCount = computed(() => numberValue(agentControlPlaneSummary.value.tool_gap_count))
+const agentControlPlaneCommandGapCount = computed(() => numberValue(agentControlPlaneSummary.value.command_gap_count))
+const agentControlPlaneRecommendedCheckCount = computed(() => (
+  Array.isArray(agentControlPlaneReadiness.value.recommended_next_tools)
+    ? agentControlPlaneReadiness.value.recommended_next_tools.length
+    : 0
+))
 const agentProfile = computed(() => (
   stringValue(props.run?.agent_profile) ||
   stringValue(agentProfileDefinition.value.profile) ||
@@ -93,9 +111,28 @@ const recoveryTools = computed(() => {
   return Array.isArray(tools) ? tools.filter(isRecord) : []
 })
 const hasRecoveryPolicy = computed(() => Boolean(executionPolicy.value || guardrails.value || recoveryTools.value.length))
+const recommendedFollowupPreview = computed(() => {
+  const step = steps.value.find((item) => item.tool_name === 'plan_recommended_followups')
+  return isRecord(step?.output) ? step.output : null
+})
+const recommendedFollowupState = computed(() => recordValue(recommendedFollowupPreview.value?.recommended_followups))
+const recommendedFollowupTools = computed(() => {
+  const tools = recommendedFollowupPreview.value?.tools
+  return Array.isArray(tools) ? tools.filter(isRecord) : []
+})
+const recommendedFollowupExecutionPolicy = computed(() => recordValue(recommendedFollowupPreview.value?.execution_policy))
+const recommendedFollowupWriteTools = computed(() => {
+  const tools = recommendedFollowupState.value.provenance_write_tools
+  return Array.isArray(tools) ? tools.filter(isRecord) : []
+})
+const hasRecommendedFollowupPolicy = computed(() => Boolean(
+  recommendedFollowupPreview.value &&
+  (recommendedFollowupTools.value.length || recommendedFollowupWriteTools.value.length),
+))
 const runKindLabel = computed(() => {
   if (isRecoveryExecutionRun.value) return '恢复执行'
   if (recoveryPreview.value) return '恢复预览'
+  if (recommendedFollowupPreview.value) return '后继预览'
   if (props.run?.entrypoint === 'dialog_auto_plan') return '自动规划'
   return '普通运行'
 })
@@ -111,6 +148,19 @@ const recoveryExecutePayload = computed(() => {
   if (
     recoveryPreview.value?.can_execute === true &&
     executionPolicy.value?.status === 'ready' &&
+    sourceRunId &&
+    planHash
+  ) {
+    return { sourceRunId, planHash }
+  }
+  return null
+})
+const recommendedFollowupExecutePayload = computed(() => {
+  const sourceRunId = stringValue(recommendedFollowupPreview.value?.source_run_id)
+  const planHash = stringValue(recommendedFollowupPreview.value?.plan_hash)
+  if (
+    recommendedFollowupTools.value.length &&
+    recommendedFollowupExecutionPolicy.value.requires_followup_run === true &&
     sourceRunId &&
     planHash
   ) {
@@ -167,6 +217,11 @@ function executeRecovery() {
   emit('executeRecovery', recoveryExecutePayload.value)
 }
 
+function executeRecommendedFollowups() {
+  if (!recommendedFollowupExecutePayload.value) return
+  emit('executeRecommendedFollowups', recommendedFollowupExecutePayload.value)
+}
+
 function applyRouteUpgrade() {
   if (!canApplyRouteUpgrade.value || !props.run?.id) return
   emit('applyRouteUpgrade', {
@@ -210,6 +265,14 @@ function agentProfileScopeStatusLabel(status: unknown) {
   if (value === 'applied') return '已按身份收窄'
   if (value === 'not_requested') return '未请求身份收窄'
   if (value === 'unknown_profile') return '未知身份，已拒绝工具面'
+  return value || '未知'
+}
+
+function agentControlPlaneStatusLabel(status: unknown) {
+  const value = stringValue(status)
+  if (value === 'ready') return '可继续编排'
+  if (value === 'degraded') return '需检查'
+  if (value === 'needs_attention') return '需处理'
   return value || '未知'
 }
 
@@ -346,6 +409,38 @@ function hasRouteApplyRecommendation(output: Record<string, unknown>) {
               <dt>策略审计</dt>
               <dd>{{ agentProfilePolicyAuditLabel }}</dd>
             </div>
+            <div v-if="hasAgentCommandContracts">
+              <dt>命令契约</dt>
+              <dd>已投影</dd>
+            </div>
+            <div v-if="agentControlCommandCount !== null">
+              <dt>控制命令</dt>
+              <dd>{{ agentControlCommandCount }}</dd>
+            </div>
+            <div v-if="agentCommandContractGapCount !== null">
+              <dt>契约缺口</dt>
+              <dd>{{ agentCommandContractGapCount }}</dd>
+            </div>
+            <div v-if="hasAgentControlPlaneReadiness">
+              <dt>控制平面</dt>
+              <dd>{{ agentControlPlaneStatusLabel(agentControlPlaneStatus) }}</dd>
+            </div>
+            <div v-if="agentControlPlaneTotalGapCount !== null">
+              <dt>控制面缺口</dt>
+              <dd>{{ agentControlPlaneTotalGapCount }}</dd>
+            </div>
+            <div v-if="agentControlPlaneToolGapCount !== null">
+              <dt>工具缺口</dt>
+              <dd>{{ agentControlPlaneToolGapCount }}</dd>
+            </div>
+            <div v-if="agentControlPlaneCommandGapCount !== null">
+              <dt>命令缺口</dt>
+              <dd>{{ agentControlPlaneCommandGapCount }}</dd>
+            </div>
+            <div v-if="agentControlPlaneRecommendedCheckCount > 0">
+              <dt>建议检查</dt>
+              <dd>{{ agentControlPlaneRecommendedCheckCount }}</dd>
+            </div>
             <div v-if="recoverySourceRunId">
               <dt>来源运行</dt>
               <dd>{{ recoverySourceRunId }}</dd>
@@ -419,6 +514,56 @@ function hasRouteApplyRecommendation(output: Record<string, unknown>) {
               @click="executeRecovery"
             >
               确认执行恢复
+            </button>
+          </div>
+        </section>
+
+        <section
+          v-if="hasRecommendedFollowupPolicy"
+          class="agent-run-drawer__followups"
+          aria-label="Recommended follow-up policy"
+        >
+          <h4>推荐后继策略</h4>
+          <dl class="agent-run-drawer__facts">
+            <div>
+              <dt>自动诊断工具</dt>
+              <dd>{{ recommendedFollowupTools.length }} 个</dd>
+            </div>
+            <div>
+              <dt>需确认修复</dt>
+              <dd>{{ recommendedFollowupWriteTools.length }} 个</dd>
+            </div>
+          </dl>
+          <ul
+            v-if="recommendedFollowupTools.length"
+            class="agent-run-drawer__tools"
+          >
+            <li
+              v-for="(tool, index) in recommendedFollowupTools"
+              :key="`followup:${tool.tool_name || 'tool'}:${index}`"
+            >
+              {{ tool.tool_name }}
+            </li>
+          </ul>
+          <ul
+            v-if="recommendedFollowupWriteTools.length"
+            class="agent-run-drawer__write-tools"
+          >
+            <li
+              v-for="(tool, index) in recommendedFollowupWriteTools"
+              :key="`write:${tool.tool_name || 'tool'}:${index}`"
+            >
+              {{ tool.tool_name }}
+            </li>
+          </ul>
+          <div v-if="recommendedFollowupExecutePayload" class="agent-run-drawer__actions">
+            <button
+              type="button"
+              class="agent-run-drawer__execute"
+              data-testid="execute-recommended-followups"
+              @click="executeRecommendedFollowups"
+            >
+              确认执行后继
             </button>
           </div>
         </section>
@@ -513,6 +658,7 @@ function hasRouteApplyRecommendation(output: Record<string, unknown>) {
 
 .agent-run-drawer__summary h4,
 .agent-run-drawer__recovery h4,
+.agent-run-drawer__followups h4,
 .agent-run-drawer__steps h4 {
   margin: 0;
   color: var(--color-text-primary);
@@ -558,6 +704,15 @@ function hasRouteApplyRecommendation(output: Record<string, unknown>) {
   background: var(--color-bg-secondary);
 }
 
+.agent-run-drawer__followups {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-secondary);
+}
+
 .agent-run-drawer__route-upgrade {
   display: grid;
   gap: var(--space-3);
@@ -568,7 +723,8 @@ function hasRouteApplyRecommendation(output: Record<string, unknown>) {
 }
 
 .agent-run-drawer__blockers,
-.agent-run-drawer__tools {
+.agent-run-drawer__tools,
+.agent-run-drawer__write-tools {
   display: grid;
   gap: var(--space-2);
   margin: 0;
@@ -603,6 +759,16 @@ function hasRouteApplyRecommendation(output: Record<string, unknown>) {
 .agent-run-drawer__tools li {
   padding: var(--space-1) var(--space-2);
   border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-white);
+  color: var(--color-text-primary);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+
+.agent-run-drawer__write-tools li {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-warning);
   border-radius: var(--radius-sm);
   background: var(--color-bg-white);
   color: var(--color-text-primary);

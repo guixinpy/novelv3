@@ -69,6 +69,8 @@ class WritingAgentRunDetail(WritingAgentRunListItem):
     agent_tool_discovery: dict[str, Any] | None = None
     agent_profile_definition: dict[str, Any] | None = None
     agent_profile_policy_audit: dict[str, Any] | None = None
+    agent_command_contracts: dict[str, Any] | None = None
+    agent_control_plane_readiness: dict[str, Any] | None = None
     steps: list[WritingAgentStepOut] = Field(default_factory=list)
 
 

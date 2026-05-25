@@ -5,7 +5,12 @@ import hashlib
 import json
 from typing import Any
 
-from app.core.chat_commands import CHAT_COMMAND_REGISTRY, agent_slash_command_routes
+from app.core.chat_commands import (
+    CHAT_COMMAND_REGISTRY,
+    agent_slash_command_routes,
+    is_legacy_chat_command,
+    public_chat_command_names,
+)
 from app.core.dialog_agent_routes import (
     DIALOG_AGENT_ROUTE_APPROVAL_CHAIN_OPT_IN_KEY,
     build_dialog_agent_route,
@@ -75,11 +80,12 @@ def inspect_agent_slash_command_route(
         action_execution_tool_names=action_execution_tool_names,
     )
 
-    non_agent_commands = [
+    session_or_control_commands = [
         name
         for name, spec in CHAT_COMMAND_REGISTRY.items()
-        if dialog_action_to_agent_tool_name(spec.action_type) is None
+        if spec.public and dialog_action_to_agent_tool_name(spec.action_type) is None
     ]
+    legacy_aliases = [name for name in CHAT_COMMAND_REGISTRY if is_legacy_chat_command(name)]
 
     return {
         "status": "ready" if not missing_tools and not unsupported_tools else "degraded",
@@ -87,7 +93,9 @@ def inspect_agent_slash_command_route(
         "routes": enriched_routes,
         "trace": {
             "selected_command_name": selected_command_name,
-            "non_agent_commands": non_agent_commands,
+            "public_commands": public_chat_command_names(),
+            "session_or_control_commands": session_or_control_commands,
+            "legacy_aliases": legacy_aliases,
             "missing_tools": missing_tools,
             "unsupported_tools": unsupported_tools,
         },

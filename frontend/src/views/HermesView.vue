@@ -17,7 +17,12 @@ import ChatMessageList from '../components/chat/ChatMessageList.vue'
 import ChatInput from '../components/chat/ChatInput.vue'
 import ModelTraceDrawer from '../components/modelTrace/ModelTraceDrawer.vue'
 import AgentRunDrawer from '../components/writingAgent/AgentRunDrawer.vue'
-import { parseSlashCommand } from '../components/workspace/chatCommands'
+import {
+  chatCommandRegistry,
+  normalizeChatCommandDefinitions,
+  parseSlashCommand,
+  type ChatCommandDefinition,
+} from '../components/workspace/chatCommands'
 import {
   getActionLabel,
   getActionRefreshTargets,
@@ -50,6 +55,7 @@ type UiAwareResponse =
 
 type WritingControlAction = 'start' | 'pause' | 'resume'
 type RecoveryExecutePayload = { sourceRunId: string; planHash: string }
+type RecommendedFollowupExecutePayload = { sourceRunId: string; planHash: string }
 type RouteUpgradeApplyPayload = {
   sourceRunId: string
   pendingActionId: string
@@ -80,6 +86,7 @@ const activeAgentRun = ref<WritingAgentRunDetail | null>(null)
 const agentRunLoading = ref(false)
 const agentRunError = ref('')
 const writingControlLoading = ref(false)
+const chatCommands = ref<ChatCommandDefinition[]>(chatCommandRegistry)
 
 // Project stats
 const totalWords = computed(() => {
@@ -151,6 +158,7 @@ watch(latestActionFingerprint, async (fingerprint) => {
 async function initialize(projectId: string) {
   ready.value = false
   closeTrace()
+  await loadChatCommandCatalog()
   const snapshot = beginHydration(hydrationTracker, projectId)
   const projectChanged = projectWorkspace.enterProject(projectId)
   if (projectChanged) {
@@ -191,6 +199,15 @@ async function initialize(projectId: string) {
   if (!isActiveHydrationSnapshot(hydrationTracker, snapshot)) return
   ready.value = true
   await handleRevisionQuery(projectId)
+}
+
+async function loadChatCommandCatalog() {
+  try {
+    const catalog = await api.getChatCommandCatalog()
+    chatCommands.value = normalizeChatCommandDefinitions(catalog.commands)
+  } catch {
+    chatCommands.value = chatCommandRegistry
+  }
 }
 
 async function handleRevisionQuery(projectId = pid.value) {
@@ -267,7 +284,7 @@ async function handleResponse(res: UiAwareResponse | null) {
 }
 
 async function onSend(text: string) {
-  const parsed = parseSlashCommand(text)
+  const parsed = parseSlashCommand(text, chatCommands.value)
   if (chat.pendingAction && !(parsed.kind === 'command' && parsed.name === 'clear')) return
   workspace.applyUserPanel(workspace.panel, '你发送了一条消息')
   const res = parsed.kind === 'command'
@@ -433,6 +450,31 @@ async function executeRecoveryFromRun(payload: RecoveryExecutePayload) {
   }
 }
 
+async function executeRecommendedFollowupsFromRun(payload: RecommendedFollowupExecutePayload) {
+  agentRunError.value = ''
+  agentRunLoading.value = true
+  try {
+    const run = await api.createAgentRun(pid.value, {
+      goal: '执行推荐后继工具链',
+      entrypoint: 'ui_recommended_followup_execute',
+      input: {
+        auto_plan: true,
+        recommended_followup_run_id: payload.sourceRunId,
+        execute_recommended_followups: true,
+        confirm_execute: true,
+        recommended_followup_plan_hash: payload.planHash,
+      },
+    })
+    activeAgentRunId.value = run.id
+    activeAgentRun.value = run
+    chat.appendRecommendedFollowupExecutionFeedback(run)
+  } catch (err) {
+    agentRunError.value = err instanceof Error ? err.message : '执行推荐后继失败'
+  } finally {
+    agentRunLoading.value = false
+  }
+}
+
 async function applyRouteUpgradeFromRun(payload: RouteUpgradeApplyPayload) {
   if (!payload.pendingActionId || !payload.approvalContractHash || !payload.approvalContract) return
   if (payload.sourceRunId !== activeAgentRunId.value || payload.sourceRunId !== activeAgentRun.value?.id) return
@@ -521,6 +563,7 @@ async function applyRouteUpgradeFromRun(payload: RouteUpgradeApplyPayload) {
         :loading="chat.loading"
         :disabled="false"
         :has-pending-action="!!chat.pendingAction"
+        :commands="chatCommands"
         @send="onSend"
       />
     </div>
@@ -558,6 +601,7 @@ async function applyRouteUpgradeFromRun(payload: RouteUpgradeApplyPayload) {
       @close="closeAgentRun"
       @refresh="refreshAgentRun"
       @execute-recovery="executeRecoveryFromRun"
+      @execute-recommended-followups="executeRecommendedFollowupsFromRun"
       @apply-route-upgrade="applyRouteUpgradeFromRun"
     />
   </div>

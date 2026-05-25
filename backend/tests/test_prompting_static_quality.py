@@ -63,7 +63,10 @@ JSON_PROMPT_CALL_SITE_FILES = {
 JSON_PROMPT_CALL_SITE_CONTRACTS = {
     "setup.generate": {("backend/app/api/setups.py", "_build_setup_call_payload", "generate_setup")},
     "storyline.generate": {("backend/app/api/storylines.py", "_build_storyline_call_payload", "generate_storyline")},
-    "outline.generate": {("backend/app/api/outlines.py", "_build_outline_call_payload", "generate_outline")},
+    "outline.generate": {
+        ("backend/app/api/outlines.py", "_build_outline_call_payload", "expand_outline_window"),
+        ("backend/app/api/outlines.py", "_build_outline_call_payload", "generate_outline"),
+    },
     "athena.extract_l2": {("backend/app/core/l2_extractor.py", "extract", "extract")},
 }
 
@@ -459,8 +462,9 @@ def _production_json_prompt_call_contracts_from_tree(
             and _has_json_response_format(node)
             and _has_parse_json_call(node)
         }
-        consumer_name = sorted(json_consumers)[0] if json_consumers else "<missing_json_consumer>"
-        contracts.add((relative_path, builder_name, consumer_name))
+        consumer_names = sorted(json_consumers) if json_consumers else ["<missing_json_consumer>"]
+        for consumer_name in consumer_names:
+            contracts.add((relative_path, builder_name, consumer_name))
     return contracts
 
 

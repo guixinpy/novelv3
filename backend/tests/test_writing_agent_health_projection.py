@@ -81,6 +81,105 @@ def test_inspect_agent_health_projection_imports_trace_profile_policy_status(db_
     assert "inspect_agent_trace_audit" in output["recommended_tools"]
 
 
+def test_inspect_agent_health_projection_surfaces_command_contract_gap(db_session, monkeypatch):
+    project = Project(name="Agent Health Command Contracts")
+    db_session.add(project)
+    db_session.commit()
+    _patch_ready_sources(monkeypatch)
+    monkeypatch.setattr(
+        agent_health_projection,
+        "inspect_agent_command_contracts",
+        lambda **kwargs: {
+            "status": "completed",
+            "summary": {
+                "total_commands": 8,
+                "agent_control_commands": 2,
+                "commands_with_control_projection": 1,
+                "gap_count": 1,
+            },
+            "gaps": [{"code": "missing_control_projection_type", "command_name": "continue"}],
+            "recommended_next_tools": ["inspect_agent_command_contracts"],
+        },
+        raising=False,
+    )
+
+    output = agent_health_projection.inspect_agent_health_projection(
+        db_session,
+        project.id,
+        adapter_metadata_by_name={},
+        static_adapter_tool_names=set(),
+        action_execution_tool_names=set(),
+    )
+
+    assert output["status"] == "degraded"
+    assert output["command_contracts"]["summary"]["gap_count"] == 1
+    diagnostic = next(item for item in output["diagnostics"] if item["code"] == "agent_command_contract_gaps")
+    assert diagnostic["severity"] == "warning"
+    assert diagnostic["gap_count"] == 1
+    assert "inspect_agent_control_plane_readiness" in output["recommended_tools"]
+    assert "inspect_agent_command_contracts" in output["recommended_tools"]
+
+
+def test_inspect_agent_health_projection_includes_control_plane_readiness(db_session, monkeypatch):
+    project = Project(name="Agent Health Control Plane")
+    db_session.add(project)
+    db_session.commit()
+    _patch_ready_sources(monkeypatch)
+    monkeypatch.setattr(agent_health_projection, "build_agent_tool_plan", _tool_plan_with_passed_profile_policy)
+
+    output = agent_health_projection.inspect_agent_health_projection(
+        db_session,
+        project.id,
+        adapter_metadata_by_name={},
+        static_adapter_tool_names=set(),
+        action_execution_tool_names=set(),
+    )
+
+    readiness = output["control_plane_readiness"]
+    assert readiness["status"] == "ready"
+    assert readiness["summary"]["agent_control_commands"] == 2
+    assert readiness["summary"]["command_gap_count"] == 0
+    assert readiness["summary"]["total_gap_count"] == 0
+    assert readiness["recommended_next_tools"] == ["inspect_agent_health_projection"]
+
+
+def test_inspect_agent_health_projection_control_plane_readiness_tracks_command_gaps(db_session, monkeypatch):
+    project = Project(name="Agent Health Control Plane Gap")
+    db_session.add(project)
+    db_session.commit()
+    _patch_ready_sources(monkeypatch)
+    monkeypatch.setattr(
+        agent_health_projection,
+        "inspect_agent_command_contracts",
+        lambda **kwargs: {
+            "status": "completed",
+            "summary": {
+                "total_commands": 8,
+                "agent_control_commands": 2,
+                "commands_with_control_projection": 1,
+                "gap_count": 1,
+            },
+            "gaps": [{"code": "missing_control_projection_type", "command_name": "continue"}],
+            "recommended_next_tools": ["inspect_agent_command_contracts"],
+        },
+        raising=False,
+    )
+
+    output = agent_health_projection.inspect_agent_health_projection(
+        db_session,
+        project.id,
+        adapter_metadata_by_name={},
+        static_adapter_tool_names=set(),
+        action_execution_tool_names=set(),
+    )
+
+    readiness = output["control_plane_readiness"]
+    assert readiness["status"] == "degraded"
+    assert readiness["summary"]["command_gap_count"] == 1
+    assert readiness["summary"]["total_gap_count"] == 1
+    assert "inspect_agent_command_contracts" in readiness["recommended_next_tools"]
+
+
 def _patch_ready_sources(monkeypatch):
     monkeypatch.setattr(
         agent_health_projection,
@@ -116,6 +215,22 @@ def _patch_ready_sources(monkeypatch):
             },
             "recommended_next_targets": [],
         },
+    )
+    monkeypatch.setattr(
+        agent_health_projection,
+        "inspect_agent_command_contracts",
+        lambda **kwargs: {
+            "status": "completed",
+            "summary": {
+                "total_commands": 8,
+                "agent_control_commands": 2,
+                "commands_with_control_projection": 2,
+                "gap_count": 0,
+            },
+            "gaps": [],
+            "recommended_next_tools": ["inspect_agent_command_contracts"],
+        },
+        raising=False,
     )
 
 
