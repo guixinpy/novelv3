@@ -129,22 +129,29 @@ git commit -m "Inject narrative memory into chapter generation"
 - Create: `docs/superpowers/notes/long-memory-agent/2026-05-26-narrative-memory-activation-dogfood.md`
 - Modify: `docs/superpowers/plans/2026-05-26-narrative-memory-activation.md`
 
-- [ ] **Step 1: Verify write-after memory refresh evidence**
+- [x] **Step 1: Verify write-after memory refresh evidence**
 
 Focused tests must prove refreshed chapter memory records whether it used reviewed event summary, chapter content, outline, and activation-relevant metadata.
 
-- [ ] **Step 2: Run dogfood**
+- [x] **Step 2: Run dogfood**
 
 Use an isolated SQLite DB. Generate or simulate at least chapters 1-3 with a planted clue in chapter 1 and chapter 3 target requiring that clue. Evidence must show activation selected the clue before generation/review.
 
-- [ ] **Step 3: Run verification**
+- [x] **Step 3: Run verification**
 
 ```powershell
 backend\.venv\Scripts\python.exe -m pytest backend\tests\test_writing_agent_memory_activation.py backend\tests\test_writing_agent_context_compression_projection.py backend\tests\test_writing_agent_health_projection.py -q
+# 17 passed
+
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify_local_quality.ps1
+# Backend pytest: 1358 passed
+# Frontend unit: 567 passed
+# Frontend build: passed
+# Perf smoke skipped: missing PERF_SMOKE_BASE_URL, PERF_SMOKE_PROJECT_ID, PERF_SMOKE_SESSION
+# Frontend E2E skipped: -RunE2E / RUN_E2E=1 not enabled
 ```
 
-- [ ] **Step 4: Completion audit and commit**
+- [x] **Step 4: Completion audit and commit**
 
 Record:
 - activation selected prior memory and excluded future memory;
@@ -156,3 +163,16 @@ Record:
 git add backend docs\superpowers\plans\2026-05-26-narrative-memory-activation.md docs\superpowers\notes\long-memory-agent\2026-05-26-narrative-memory-activation-dogfood.md
 git commit -m "Complete narrative memory activation loop"
 ```
+
+Completion audit:
+- Activation selected prior memory and excluded future memory in
+  `test_memory_activation_selects_prior_memory_and_foreshadowing_without_future_leak`
+  and API dogfood run `e122d31b-d1ad-4e0d-9a4c-639a45b169ba`.
+- Generation command args carried the activation prompt block while output kept
+  only summary/provenance in
+  `test_agent_generate_chapter_appends_memory_activation_without_future_leak`.
+- Health projection surfaced memory coverage debt in
+  `test_inspect_agent_health_projection_reports_memory_activation_debt`.
+- Write-after evidence is covered by
+  `test_refresh_longform_memory_prefers_reviewed_event_summary_proposal` and
+  dogfood `repair_longform_maintenance` chapter 3 -> chapter 4 activation.
