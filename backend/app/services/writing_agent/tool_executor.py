@@ -16,6 +16,12 @@ from app.services.writing_agent.review_revision_tool_adapters import REVIEW_REVI
 from app.services.writing_agent.setup_generation_tool_adapters import build_setup_generation_agent_tool_adapters
 from app.services.writing_agent.storyline_generation_tool_adapters import build_storyline_generation_agent_tool_adapters
 from app.services.writing_agent.tool_adapter_types import WritingAgentToolExecutionResult
+from app.services.writing_agent.tool_lifecycle_hooks import (
+    build_tool_lifecycle_hooks,
+    run_after_tool_call_hooks,
+    run_before_tool_call_hooks,
+    run_tool_error_hooks,
+)
 from app.services.writing_agent.tool_registry import get_agent_tool_descriptor, internal_tool_names
 from app.services.writing_agent.world_model_tool_adapters import WORLD_MODEL_AGENT_TOOL_ADAPTERS
 
@@ -32,15 +38,93 @@ async def execute_writing_agent_tool(
 
     adapter = _STATIC_TOOL_ADAPTERS.get(tool.tool_name)
     if adapter is not None:
-        output = adapter.handler(context, tool)
-        if inspect.isawaitable(output):
-            output = await output
-        return WritingAgentToolExecutionResult(handled=True, output=output)
-
-    if tool.tool_name == "preflight_writing" and preflight_writing is not None:
+        adapter_metadata = adapter.to_metadata()
+        before = run_before_tool_call_hooks(
+            context,
+            tool,
+            descriptor=descriptor,
+            adapter_metadata=adapter_metadata,
+        )
+        if before["allow_call"] is not True:
+            return WritingAgentToolExecutionResult(
+                handled=True,
+                output=_blocked_by_lifecycle_hook(tool, before),
+                lifecycle_hooks=build_tool_lifecycle_hooks(before=before),
+            )
+        try:
+            output = adapter.handler(context, tool)
+            if inspect.isawaitable(output):
+                output = await output
+        except ValueError:
+            raise
+        except Exception as exc:
+            error = run_tool_error_hooks(
+                context,
+                tool,
+                exc,
+                descriptor=descriptor,
+                adapter_metadata=adapter_metadata,
+            )
+            return WritingAgentToolExecutionResult(
+                handled=True,
+                output=_failed_by_lifecycle_hook(tool, exc),
+                lifecycle_hooks=build_tool_lifecycle_hooks(before=before, error=error),
+            )
+        after = run_after_tool_call_hooks(
+            context,
+            tool,
+            output,
+            descriptor=descriptor,
+            adapter_metadata=adapter_metadata,
+        )
         return WritingAgentToolExecutionResult(
             handled=True,
-            output=preflight_writing(context.project_id, tool.params),
+            output=output,
+            lifecycle_hooks=build_tool_lifecycle_hooks(before=before, after=after),
+        )
+
+    if tool.tool_name == "preflight_writing" and preflight_writing is not None:
+        adapter_metadata = writing_agent_tool_adapter_metadata("preflight_writing")
+        before = run_before_tool_call_hooks(
+            context,
+            tool,
+            descriptor=descriptor,
+            adapter_metadata=adapter_metadata,
+        )
+        if before["allow_call"] is not True:
+            return WritingAgentToolExecutionResult(
+                handled=True,
+                output=_blocked_by_lifecycle_hook(tool, before),
+                lifecycle_hooks=build_tool_lifecycle_hooks(before=before),
+            )
+        try:
+            output = preflight_writing(context.project_id, tool.params)
+        except ValueError:
+            raise
+        except Exception as exc:
+            error = run_tool_error_hooks(
+                context,
+                tool,
+                exc,
+                descriptor=descriptor,
+                adapter_metadata=adapter_metadata,
+            )
+            return WritingAgentToolExecutionResult(
+                handled=True,
+                output=_failed_by_lifecycle_hook(tool, exc),
+                lifecycle_hooks=build_tool_lifecycle_hooks(before=before, error=error),
+            )
+        after = run_after_tool_call_hooks(
+            context,
+            tool,
+            output,
+            descriptor=descriptor,
+            adapter_metadata=adapter_metadata,
+        )
+        return WritingAgentToolExecutionResult(
+            handled=True,
+            output=output,
+            lifecycle_hooks=build_tool_lifecycle_hooks(before=before, after=after),
         )
 
     if not descriptor.internal:
@@ -87,6 +171,26 @@ def _approval_tool_metadata_by_name(plan: dict[str, Any] | None) -> dict[str, di
 
 def _static_adapter_metadata_by_name() -> dict[str, dict[str, Any]]:
     return {name: adapter.to_metadata() for name, adapter in _STATIC_TOOL_ADAPTERS.items()}
+
+
+def _blocked_by_lifecycle_hook(tool: WritingAgentToolRequest, before: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "status": "blocked",
+        "error": "Tool lifecycle hook denied execution",
+        "reason_code": before.get("reason_code"),
+        "tool_name": tool.tool_name,
+        "agent_profile": before.get("agent_profile"),
+        "write_performed": False,
+    }
+
+
+def _failed_by_lifecycle_hook(tool: WritingAgentToolRequest, exc: Exception) -> dict[str, Any]:
+    return {
+        "status": "failed",
+        "error": str(exc),
+        "error_type": type(exc).__name__,
+        "tool_name": tool.tool_name,
+    }
 
 
 _STATIC_TOOL_ADAPTERS: dict[str, Any] = dict(AGENT_TASK_QUEUE_TOOL_ADAPTERS)

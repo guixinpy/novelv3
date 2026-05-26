@@ -73,6 +73,7 @@ STEP_FAILED = "failed"
 STEP_BLOCKED = "blocked"
 
 AGENT_TOOL_RESULT_VERSION = "phase42.tool_result.v1"
+TOOL_LIFECYCLE_HOOKS_OUTPUT_KEY = "_tool_lifecycle_hooks"
 ALLOWED_TOOLS = allowed_tool_names()
 CHAPTER_TOOL_NAME = "generate_chapter"
 INTERNAL_TOOLS = internal_tool_names()
@@ -285,7 +286,7 @@ class WritingAgentRunService:
         )
         if execution.handled:
             if execution.output is not None:
-                return execution.output
+                return _attach_tool_lifecycle_hooks(execution.output, execution.lifecycle_hooks)
             return {"status": "failed", "error": "Tool executor returned empty output"}
 
         if tool.tool_name not in INTERNAL_TOOLS:
@@ -385,7 +386,14 @@ class WritingAgentRunService:
         trace_id = _optional_existing_trace_id(self.db, step.project_id, output.get("trace_id"))
         finished_at = _now()
         output = dict(output)
-        output["agent_tool_result"] = _agent_tool_result_envelope(step, output, STEP_SUCCESS, finished_at=finished_at)
+        lifecycle_hooks = _extract_tool_lifecycle_hooks(output)
+        output["agent_tool_result"] = _agent_tool_result_envelope(
+            step,
+            output,
+            STEP_SUCCESS,
+            finished_at=finished_at,
+            tool_lifecycle_hooks=lifecycle_hooks,
+        )
         step.status = STEP_SUCCESS
         step.output = output
         step.error = None
@@ -410,7 +418,14 @@ class WritingAgentRunService:
     ) -> None:
         now = _now()
         output = dict(output) if output is not None else {"status": STEP_FAILED, "error": error}
-        output["agent_tool_result"] = _agent_tool_result_envelope(step, output, STEP_FAILED, finished_at=now)
+        lifecycle_hooks = _extract_tool_lifecycle_hooks(output)
+        output["agent_tool_result"] = _agent_tool_result_envelope(
+            step,
+            output,
+            STEP_FAILED,
+            finished_at=now,
+            tool_lifecycle_hooks=lifecycle_hooks,
+        )
         step.status = STEP_FAILED
         step.error = error
         step.output = output
@@ -435,7 +450,14 @@ class WritingAgentRunService:
     ) -> None:
         now = _now()
         output = dict(output) if output is not None else {"status": STEP_BLOCKED, "error": error}
-        output["agent_tool_result"] = _agent_tool_result_envelope(step, output, STEP_BLOCKED, finished_at=now)
+        lifecycle_hooks = _extract_tool_lifecycle_hooks(output)
+        output["agent_tool_result"] = _agent_tool_result_envelope(
+            step,
+            output,
+            STEP_BLOCKED,
+            finished_at=now,
+            tool_lifecycle_hooks=lifecycle_hooks,
+        )
         step.status = STEP_BLOCKED
         step.error = error
         step.output = output
@@ -1307,6 +1329,7 @@ def _agent_tool_result_envelope(
     step_status: str,
     *,
     finished_at: datetime,
+    tool_lifecycle_hooks: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     planner = {}
     if isinstance(step.input, dict) and isinstance(step.input.get("planner"), dict):
@@ -1314,7 +1337,7 @@ def _agent_tool_result_envelope(
     result_status = str(output.get("status") or step_status)
     output_keys = sorted(str(key) for key in output if key != "agent_tool_result")
     adapter = writing_agent_tool_adapter_metadata(step.tool_name)
-    return {
+    envelope = {
         "version": AGENT_TOOL_RESULT_VERSION,
         "tool_name": step.tool_name,
         "step_index": step.step_index,
@@ -1336,6 +1359,20 @@ def _agent_tool_result_envelope(
         "recommendations": normalize_tool_recommendations(step.tool_name, output),
         "output_keys": output_keys,
     }
+    if tool_lifecycle_hooks is not None:
+        envelope["tool_lifecycle_hooks"] = tool_lifecycle_hooks
+    return envelope
+
+
+def _attach_tool_lifecycle_hooks(output: dict[str, Any], lifecycle_hooks: dict[str, Any] | None) -> dict[str, Any]:
+    if lifecycle_hooks is None:
+        return output
+    return {**output, TOOL_LIFECYCLE_HOOKS_OUTPUT_KEY: lifecycle_hooks}
+
+
+def _extract_tool_lifecycle_hooks(output: dict[str, Any]) -> dict[str, Any] | None:
+    lifecycle_hooks = output.pop(TOOL_LIFECYCLE_HOOKS_OUTPUT_KEY, None)
+    return lifecycle_hooks if isinstance(lifecycle_hooks, dict) else None
 
 
 def _execution_route_for_tool(tool_name: str, adapter_metadata: dict[str, Any] | None) -> str:

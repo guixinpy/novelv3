@@ -185,11 +185,11 @@ backend\.venv\Scripts\python.exe -m pytest backend\tests\test_writing_agent_cont
 - Modify: `backend/app/services/writing_agent/tool_executor.py`
 - Test: `backend/tests/test_writing_agent_tool_lifecycle_hooks.py`
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Cover pre-tool denial for child-agent guarded writes, post-tool event envelope, and hook output appearing in step metadata.
 
-- [ ] **Step 2: Implement hook registry**
+- [x] **Step 2: Implement hook registry**
 
 Implement deterministic built-in hooks only:
 - `before_tool_call`
@@ -197,6 +197,16 @@ Implement deterministic built-in hooks only:
 - `on_tool_error`
 
 No plugin loading yet.
+
+**Verification:**
+
+```powershell
+backend\.venv\Scripts\python.exe -m pytest backend\tests\test_writing_agent_tool_lifecycle_hooks.py backend\tests\test_writing_agent_tool_executor.py -q
+# 163 passed
+
+backend\.venv\Scripts\python.exe -m pytest backend\tests\test_writing_agent_runs.py -k "agent_tool_result or lifecycle or result_metrics or unsupported or stop_hooks" -q
+# 3 passed, 183 deselected
+```
 
 ### Task 5: AgentDefinition Worker Slice
 

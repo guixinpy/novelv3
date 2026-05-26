@@ -25,6 +25,7 @@ class WritingAgentToolContext:
 class WritingAgentToolExecutionResult:
     handled: bool
     output: dict[str, Any] | None = None
+    lifecycle_hooks: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
