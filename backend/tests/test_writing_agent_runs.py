@@ -3750,6 +3750,29 @@ def test_agent_preflight_reports_previous_chapter_state_card(client, db_session)
     assert "下城" in card["key_terms"]
 
 
+def test_agent_preflight_reports_memory_activation_plan(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2, 3], generated_chapters=[1, 2])
+    _seed_activation_memories(db_session, project.id)
+    import_setup_to_world_model(db_session, project.id)
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "检查第3章长期记忆是否可用",
+            "tools": [{"tool_name": "preflight_writing", "params": {"chapter_index": 3}}],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    activation = output["checks"]["memory_activation"]
+    assert response.status_code == 200
+    assert activation["status"] in {"ready", "degraded"}
+    assert activation["activated_counts"]["longform"] >= 2
+    assert "空白信" in activation["prompt_preview"]
+    assert "雾晶" in activation["prompt_preview"]
+    assert "潮下车站" not in activation["prompt_preview"]
+
+
 def test_agent_preflight_blocks_when_generated_chapter_outline_gap_exists(client, db_session):
     project = _seed_longform_project(db_session, outline_chapters=[1, 3, 4], generated_chapters=[1, 2, 3])
     for chapter in db_session.query(ChapterContent).filter(ChapterContent.project_id == project.id):
@@ -4103,6 +4126,43 @@ def test_agent_generate_chapter_appends_length_feedback_after_repeated_over_targ
     assert "2000-3000字" in command_args
     assert "必须控制" not in command_args
     assert output["agent_generation_feedback"]["reason"] == "repeated_over_target"
+
+
+def test_agent_generate_chapter_appends_memory_activation_without_future_leak(client, db_session, monkeypatch):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2, 3], generated_chapters=[1, 2])
+    _seed_activation_memories(db_session, project.id)
+    db_session.commit()
+
+    captured: dict[str, object] = {}
+
+    async def fake_execute(self, action_type, project_id, *, command_args=None, action_params=None):
+        captured["action_type"] = action_type
+        captured["command_args"] = command_args
+        return {"status": "success", "chapter_index": 3}
+
+    monkeypatch.setattr("app.services.actions.action_execution_service.ActionExecutionService.execute", fake_execute)
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "生成第3章",
+            "tools": [{"tool_name": "generate_chapter", "params": {"chapter_index": 3}}],
+        },
+    )
+
+    command_args = str(captured["command_args"])
+    output = response.json()["steps"][0]["output"]
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    assert captured["action_type"] == "generate_chapter"
+    assert "Writing Agent 长记忆激活" in command_args
+    assert "空白信" in command_args
+    assert "雾晶" in command_args
+    assert "潮下车站" not in command_args
+    assert output["agent_memory_activation"]["status"] in {"ready", "degraded"}
+    assert output["agent_memory_activation"]["activated_counts"]["longform"] >= 2
+    assert output["agent_memory_activation"]["memory_provenance"]["source_count"] >= 2
+    assert "prompt_block" not in output["agent_memory_activation"]
 
 
 def test_agent_generate_chapter_appends_length_feedback_after_repeated_under_target_drift(client, db_session, monkeypatch):
@@ -8489,3 +8549,68 @@ def _seed_longform_project(db_session, *, outline_chapters: list[int], generated
     db_session.commit()
     db_session.refresh(project)
     return project
+
+
+def _seed_activation_memories(db_session, project_id: str) -> None:
+    db_session.add_all(
+        [
+            LongformMemory(
+                project_id=project_id,
+                memory_type="global",
+                scope_key="global",
+                start_chapter_index=1,
+                end_chapter_index=2,
+                title="全书记忆",
+                summary="林深收到空白信，苏晚晴确认雾晶会造成记忆代价。",
+                status="current",
+            ),
+            LongformMemory(
+                project_id=project_id,
+                memory_type="chapter",
+                scope_key="chapter:1",
+                start_chapter_index=1,
+                end_chapter_index=1,
+                title="空白信",
+                summary="空白信遇水显出黑潮门坐标。",
+                status="current",
+            ),
+            LongformMemory(
+                project_id=project_id,
+                memory_type="chapter",
+                scope_key="chapter:2",
+                start_chapter_index=2,
+                end_chapter_index=2,
+                title="雾晶代价",
+                summary="雾晶会吞掉短期记忆。",
+                status="current",
+            ),
+            LongformMemory(
+                project_id=project_id,
+                memory_type="chapter",
+                scope_key="chapter:4",
+                start_chapter_index=4,
+                end_chapter_index=4,
+                title="未来地点",
+                summary="潮下车站是未来章节才揭示的地点。",
+                status="current",
+            ),
+        ]
+    )
+    storyline = db_session.query(Storyline).filter(Storyline.project_id == project_id).first()
+    storyline.foreshadowing = [
+        {
+            "title": "空白信来源",
+            "summary": "空白信来自黑潮门内部。",
+            "introduced_chapter": 1,
+            "expected_resolution_chapter": 5,
+            "status": "open",
+        },
+        {
+            "title": "潮下车站",
+            "summary": "未来地点，不应提前泄漏。",
+            "introduced_chapter": 4,
+            "expected_resolution_chapter": 8,
+            "status": "open",
+        },
+    ]
+    db_session.commit()

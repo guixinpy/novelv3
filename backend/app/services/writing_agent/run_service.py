@@ -34,6 +34,7 @@ from app.services.writing_agent.chapter_generation_tool import (
 from app.services.writing_agent.agent_step_binding import summarize_resource_binding
 from app.services.writing_agent.agent_loop_risk import build_agent_loop_risk
 from app.services.writing_agent.agent_stop_hooks import evaluate_agent_stop_hooks
+from app.services.writing_agent.memory_activation import build_memory_activation_plan
 from app.services.writing_agent.tool_adapter_types import WritingAgentToolContext
 from app.services.writing_agent.tool_executor import (
     execute_writing_agent_tool,
@@ -588,6 +589,7 @@ class WritingAgentRunService:
                 issues.append(_issue("missing_previous_chapter", "blocker", f"第{chapter_index - 1}章尚未生成。"))
         checks["previous_chapter_state_card"] = _previous_chapter_state_card(self.db, project_id, chapter_index)
 
+        checks["memory_activation"] = _memory_activation_check(self.db, project_id, chapter_index)
         checks["longform_maintenance"] = _longform_maintenance_check(self.db, project_id)
         checks["length_policy"] = _length_policy_check(self.db, project_id)
         length_policy_status = checks["length_policy"].get("status")
@@ -1511,6 +1513,30 @@ def _longform_maintenance_check(db: Session, project_id: str) -> dict[str, Any]:
             "status": "ready" if diagnostics.get("ready_for_writing") else "warning",
             "ready_for_writing": bool(diagnostics.get("ready_for_writing")),
             "issue_count": int(diagnostics.get("issue_count") or 0),
+        }
+    except Exception as exc:
+        return {"status": "unknown", "error": str(exc)}
+
+
+def _memory_activation_check(db: Session, project_id: str, chapter_index: int) -> dict[str, Any]:
+    try:
+        plan = build_memory_activation_plan(db, project_id, chapter_index=chapter_index)
+        coverage = plan.get("coverage") if isinstance(plan.get("coverage"), dict) else {}
+        risks = plan.get("risks") if isinstance(plan.get("risks"), list) else []
+        prompt_block = str(plan.get("prompt_block") or "")
+        return {
+            "status": str(plan.get("status") or "unknown"),
+            "activated_counts": coverage.get("activated_counts")
+            if isinstance(coverage.get("activated_counts"), dict)
+            else {},
+            "memory_coverage_debt": (
+                coverage.get("memory_coverage_debt") if isinstance(coverage.get("memory_coverage_debt"), dict) else {}
+            ),
+            "risk_codes": [str(risk.get("code") or "") for risk in risks if isinstance(risk, dict)],
+            "recommended_next_tools": plan.get("recommended_next_tools")
+            if isinstance(plan.get("recommended_next_tools"), list)
+            else [],
+            "prompt_preview": prompt_block[:500],
         }
     except Exception as exc:
         return {"status": "unknown", "error": str(exc)}

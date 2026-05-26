@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.models import ChapterContent, Project
 from app.services.actions.action_execution_service import ActionExecutionService
+from app.services.writing_agent.memory_activation import build_memory_activation_plan
 
 CONTINUITY_KEY_TERMS = ("空白信", "雾晶", "记忆雾晶", "钥匙", "下城", "黑市", "灯塔", "实验体", "叶知秋", "苏晚晴", "林深")
 LENGTH_POLICY_RECENT_WINDOW = 5
@@ -26,15 +27,18 @@ async def execute_generate_chapter_tool(
     action_params: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     continuity = _chapter_continuity_feedback(db, project_id, chapter_index)
+    memory_activation = _chapter_memory_activation_feedback(db, project_id, chapter_index, command_args=command_args)
     feedback = _chapter_generation_feedback(db, project_id)
     result = await ActionExecutionService(db).execute(
         "generate_chapter",
         project_id,
-        command_args=_effective_chapter_command_args(command_args, continuity, feedback),
+        command_args=_effective_chapter_command_args(command_args, continuity, memory_activation, feedback),
         action_params={**(action_params or {}), "chapter_index": chapter_index},
     )
     if continuity and isinstance(result, dict):
         result["agent_continuity_feedback"] = continuity
+    if memory_activation and isinstance(result, dict):
+        result["agent_memory_activation"] = _memory_activation_result(memory_activation)
     if feedback and isinstance(result, dict):
         result["agent_generation_feedback"] = feedback
     if isinstance(result, dict) and str(result.get("status") or "") == "success":
@@ -76,6 +80,42 @@ def _chapter_generation_feedback(db: Session, project_id: str) -> dict[str, Any]
         "repeated_drift_count": check.get("repeated_drift_count"),
         "message": message,
     }
+
+
+def _chapter_memory_activation_feedback(
+    db: Session,
+    project_id: str,
+    chapter_index: int,
+    *,
+    command_args: str | None,
+) -> dict[str, Any] | None:
+    plan = build_memory_activation_plan(
+        db,
+        project_id,
+        chapter_index=chapter_index,
+        query=command_args or f"生成第{chapter_index}章",
+    )
+    message = str(plan.get("prompt_block") or "").strip()
+    if not message:
+        return None
+    coverage = plan.get("coverage") if isinstance(plan.get("coverage"), dict) else {}
+    return {
+        "status": str(plan.get("status") or ""),
+        "activated_counts": coverage.get("activated_counts") if isinstance(coverage.get("activated_counts"), dict) else {},
+        "memory_coverage_debt": (
+            coverage.get("memory_coverage_debt") if isinstance(coverage.get("memory_coverage_debt"), dict) else {}
+        ),
+        "risks": plan.get("risks") if isinstance(plan.get("risks"), list) else [],
+        "recommended_next_tools": plan.get("recommended_next_tools")
+        if isinstance(plan.get("recommended_next_tools"), list)
+        else [],
+        "memory_provenance": plan.get("memory_provenance") if isinstance(plan.get("memory_provenance"), dict) else {},
+        "message": message,
+    }
+
+
+def _memory_activation_result(feedback: dict[str, Any]) -> dict[str, Any]:
+    return {key: value for key, value in feedback.items() if key != "message"}
 
 
 def _length_policy_check(db: Session, project_id: str) -> dict[str, Any]:

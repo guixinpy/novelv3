@@ -90,22 +90,29 @@ git commit -m "Surface narrative memory activation to agents"
 - Modify: `backend/app/services/writing_agent/run_service.py`
 - Modify: `backend/tests/test_writing_agent_runs.py`
 
-- [ ] **Step 1: Add activation to preflight**
+- [x] **Step 1: Add activation to preflight**
 
 `preflight_writing` includes `checks["memory_activation"]`. It warns, not blocks, when activation is degraded due bounded coverage; it blocks only if longform maintenance reports write-unsafe missing memory.
 
-- [ ] **Step 2: Add activation command feedback**
+- [x] **Step 2: Add activation command feedback**
 
 `execute_generate_chapter_tool` appends `prompt_block` after continuity and length feedback. On success, output includes `agent_memory_activation` with source counts and provenance, not full prompt text.
 
-- [ ] **Step 3: Prove no future leak**
+- [x] **Step 3: Prove no future leak**
 
 Tests seed chapter 4 memory while generating chapter 3 and assert activation/generation feedback excludes chapter 4.
 
-- [ ] **Step 4: Run focused tests**
+- [x] **Step 4: Run focused tests**
 
 ```powershell
 backend\.venv\Scripts\python.exe -m pytest backend\tests\test_writing_agent_memory_activation.py backend\tests\test_writing_agent_runs.py -k "memory_activation or preflight or generate_chapter" -q
+# Focused no-future-leak checks:
+# backend\.venv\Scripts\python.exe -m pytest backend\tests\test_writing_agent_runs.py::test_agent_preflight_reports_memory_activation_plan backend\tests\test_writing_agent_runs.py::test_agent_generate_chapter_appends_memory_activation_without_future_leak -q
+# 2 passed
+#
+# Regression subset:
+# backend\.venv\Scripts\python.exe -m pytest backend\tests\test_writing_agent_memory_activation.py backend\tests\test_writing_agent_runs.py -k "memory_activation or preflight_reports_previous_chapter_state_card or preflight_ready_when_required_context_exists or generate_chapter_appends_length_feedback" -q
+# 8 passed, 182 deselected
 ```
 
 - [ ] **Step 5: Commit**
