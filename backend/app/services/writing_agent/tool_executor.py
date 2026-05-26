@@ -11,6 +11,7 @@ from app.services.writing_agent.agent_memory_trace_tool_adapters import AGENT_ME
 from app.services.writing_agent.agent_task_queue_tool_adapters import AGENT_TASK_QUEUE_TOOL_ADAPTERS
 from app.services.writing_agent.knowledge_base_tool_adapters import KNOWLEDGE_BASE_AGENT_TOOL_ADAPTERS
 from app.services.writing_agent.longform_tool_adapters import build_longform_agent_tool_adapters
+from app.services.writing_agent.memory_tree_tool_adapters import MEMORY_TREE_TOOL_ADAPTERS
 from app.services.writing_agent.outline_generation_tool_adapters import build_outline_generation_agent_tool_adapters
 from app.services.writing_agent.review_revision_tool_adapters import REVIEW_REVISION_AGENT_TOOL_ADAPTERS
 from app.services.writing_agent.setup_generation_tool_adapters import build_setup_generation_agent_tool_adapters
@@ -213,6 +214,7 @@ _STATIC_TOOL_ADAPTERS.update(
     )
 )
 _STATIC_TOOL_ADAPTERS.update(AGENT_MEMORY_TRACE_TOOL_ADAPTERS)
+_STATIC_TOOL_ADAPTERS.update(MEMORY_TREE_TOOL_ADAPTERS)
 _STATIC_TOOL_ADAPTERS.update(REVIEW_REVISION_AGENT_TOOL_ADAPTERS)
 _STATIC_TOOL_ADAPTERS.update(WORLD_MODEL_AGENT_TOOL_ADAPTERS)
 _STATIC_TOOL_ADAPTERS.update(KNOWLEDGE_BASE_AGENT_TOOL_ADAPTERS)

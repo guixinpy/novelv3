@@ -244,17 +244,24 @@ backend\.venv\Scripts\python.exe -m pytest backend\tests\test_writing_agent_agen
 - Modify: `backend/app/services/writing_agent/tool_registry.py`
 - Test: `backend/tests/test_writing_agent_memory_tree.py`
 
-- [ ] **Step 1: Write failing tree tests**
+- [x] **Step 1: Write failing tree tests**
 
 Seed chapters and longform memories. Assert tree levels `volume`, `chapter`, `scene`, `beat` and source refs point back to chapter/memory IDs.
 
-- [ ] **Step 2: Implement in-memory projection first**
+- [x] **Step 2: Implement in-memory projection first**
 
 Build deterministic tree projection from existing `ChapterContent`, `Outline`, `LongformMemory`, and `Storyline` data. Do not add tables until dogfood shows persistence is needed.
 
-- [ ] **Step 3: Add drill-down tool**
+- [x] **Step 3: Add drill-down tool**
 
 Expose `inspect_agent_memory_tree` with params `level`, `node_id`, `chapter_index`, `query`.
+
+**Verification:**
+
+```powershell
+backend\.venv\Scripts\python.exe -m pytest backend\tests\test_writing_agent_memory_tree.py -q
+# 3 passed
+```
 
 ### Task 7: Long-Term Narrative Trend Monitor
 
