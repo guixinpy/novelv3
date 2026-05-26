@@ -4,6 +4,7 @@ from typing import Any
 
 
 RECOVERY_POLICY_VERSION = "phase47.recovery_policy.v1"
+CHECKPOINT_RESUME_PREVIEW_VERSION = "phase233.checkpoint_resume_preview.v1"
 BINDING_RECOVERY_REASONS = {"resource_binding_missing", "resource_binding_target_mismatch"}
 
 
@@ -25,6 +26,41 @@ def build_writing_agent_recovery(
     if tool_name == "preflight_writing":
         return _preflight_recovery(output, planner)
     return _none(tool_name)
+
+
+def build_checkpoint_resume_policy(
+    *,
+    task_id: str,
+    chapter_range: dict[str, int],
+    completed_chapter_indexes: list[int],
+    blocked_chapter_indexes: list[int],
+    pending_chapter_indexes: list[int],
+) -> dict[str, Any]:
+    next_chapter_index = blocked_chapter_indexes[0] if blocked_chapter_indexes else None
+    if next_chapter_index is None and pending_chapter_indexes:
+        next_chapter_index = pending_chapter_indexes[0]
+    if next_chapter_index is None:
+        return {
+            "status": "completed",
+            "can_resume": False,
+            "next_chapter_index": None,
+            "resume_range": None,
+            "skip_completed": True,
+            "skipped_chapter_indexes": completed_chapter_indexes,
+            "next_tool": None,
+            "next_params": {},
+        }
+
+    return {
+        "status": "ready",
+        "can_resume": True,
+        "next_chapter_index": next_chapter_index,
+        "resume_range": {"start": next_chapter_index, "end": chapter_range["end"]},
+        "skip_completed": True,
+        "skipped_chapter_indexes": completed_chapter_indexes,
+        "next_tool": "execute_longform_chapter_batch_preflight",
+        "next_params": {"task_id": task_id, "max_chapters": 1},
+    }
 
 
 def _longform_context_recovery(output: dict[str, Any], planner: dict[str, Any]) -> dict[str, Any]:

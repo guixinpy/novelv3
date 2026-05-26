@@ -6,8 +6,14 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.models import WritingAgentRun, WritingAgentStep
+from app.models import BackgroundTask, ChapterContent, WritingAgentRun, WritingAgentStep
 from app.services.writing_agent.agent_step_binding import summarize_resource_binding
+from app.services.writing_agent.batch_enqueue import BATCH_TASK_TYPE
+from app.services.writing_agent.batch_execution import execution_checkpoints_for_resume
+from app.services.writing_agent.recovery_policy import (
+    CHECKPOINT_RESUME_PREVIEW_VERSION,
+    build_checkpoint_resume_policy,
+)
 from app.services.writing_agent.tool_executor import writing_agent_tool_adapter_metadata_by_name
 from app.services.writing_agent.tool_registry import allowed_tool_names, build_agent_tool_plan
 
@@ -110,6 +116,99 @@ def build_recovery_tool_plan(db: Session, project_id: str, run_id: str | None) -
     }
 
 
+def build_checkpoint_resume_preview(
+    db: Session,
+    project_id: str,
+    *,
+    task_id: str | None = None,
+    run_id: str | None = None,
+) -> dict[str, Any]:
+    run = _resume_run(db, project_id=project_id, run_id=run_id)
+    if run_id and run is None:
+        return _checkpoint_resume_failed(project_id, task_id=task_id, run_id=run_id, reason="missing_run")
+
+    task = _resume_task(db, project_id=project_id, task_id=task_id, run=run)
+    if task is None:
+        return _checkpoint_resume_failed(project_id, task_id=task_id, run_id=run_id, reason="missing_task")
+
+    chapter_range = _resume_chapter_range(task)
+    if chapter_range is None:
+        return _checkpoint_resume_failed(project_id, task_id=task.id, run_id=run_id, reason="missing_chapter_range")
+
+    chapter_indexes = list(range(chapter_range["start"], chapter_range["end"] + 1))
+    chapter_set = set(chapter_indexes)
+    progress = _task_progress(task)
+    checkpoints = execution_checkpoints_for_resume(task)
+    step_evidence = _resume_step_evidence(
+        db,
+        project_id=project_id,
+        task_id=task.id,
+        run_id=run.id if run is not None else run_id,
+        chapter_indexes=chapter_set,
+    )
+    chapter_records = _chapter_record_indexes(db, project_id=project_id, chapter_indexes=chapter_indexes)
+
+    completed = sorted(
+        (
+            set(_progress_completed_indexes(progress, chapter_range=chapter_range))
+            | set(chapter_records)
+            | {item["chapter_index"] for item in checkpoints if item.get("status") == "completed"}
+            | {
+                item["chapter_index"]
+                for item in step_evidence
+                if item.get("status") == "success" and item.get("output_status") in {"completed", "success"}
+            }
+        )
+        & chapter_set
+    )
+    blocked = sorted(
+        (
+            {item["chapter_index"] for item in checkpoints if item.get("status") in {"blocked", "failed"}}
+            | {
+                item["chapter_index"]
+                for item in step_evidence
+                if item.get("status") in {"blocked", "failed"} or item.get("output_status") in {"blocked", "failed"}
+            }
+        )
+        - set(completed)
+    )
+    pending = [chapter_index for chapter_index in chapter_indexes if chapter_index not in set(completed)]
+    resume = build_checkpoint_resume_policy(
+        task_id=task.id,
+        chapter_range=chapter_range,
+        completed_chapter_indexes=completed,
+        blocked_chapter_indexes=blocked,
+        pending_chapter_indexes=pending,
+    )
+    return {
+        "status": resume["status"],
+        "preview_version": CHECKPOINT_RESUME_PREVIEW_VERSION,
+        "preview_only": True,
+        "mode": "preview",
+        "project_id": project_id,
+        "task_id": task.id,
+        "task_status": task.status,
+        "source_run_id": run.id if run is not None else run_id,
+        "source_run_status": run.status if run is not None else None,
+        "chapter_range": chapter_range,
+        "completed_chapter_indexes": completed,
+        "skipped_chapter_indexes": completed,
+        "blocked_chapter_indexes": blocked,
+        "pending_chapter_indexes": pending,
+        "resume": resume,
+        "checkpoint_evidence": {
+            "background_task_progress": progress,
+            "execution_checkpoints": checkpoints,
+            "chapter_records": chapter_records,
+            "writing_agent_steps": step_evidence,
+        },
+        "trace": {
+            "selected_sources": ["background_task", "chapter_records", "writing_agent_steps"],
+            "resume_reason": "blocked_chapter" if blocked else "first_pending_chapter",
+        },
+    }
+
+
 def _latest_recommended_recovery(
     db: Session,
     *,
@@ -133,6 +232,176 @@ def _latest_recommended_recovery(
         if recovery and recovery.get("status") == "recommended":
             return step, recovery
     return None, None
+
+
+def _checkpoint_resume_failed(
+    project_id: str,
+    *,
+    task_id: str | None,
+    run_id: str | None,
+    reason: str,
+) -> dict[str, Any]:
+    return {
+        "status": "failed",
+        "preview_version": CHECKPOINT_RESUME_PREVIEW_VERSION,
+        "project_id": project_id,
+        "task_id": task_id,
+        "source_run_id": run_id,
+        "reason": reason,
+        "completed_chapter_indexes": [],
+        "skipped_chapter_indexes": [],
+        "blocked_chapter_indexes": [],
+        "pending_chapter_indexes": [],
+        "resume": {"status": "failed", "can_resume": False, "next_chapter_index": None},
+        "checkpoint_evidence": {},
+        "trace": {"selected_sources": [], "rejected_sources": [{"reason": reason}]},
+    }
+
+
+def _resume_run(db: Session, *, project_id: str, run_id: str | None) -> WritingAgentRun | None:
+    if not run_id:
+        return None
+    return (
+        db.query(WritingAgentRun)
+        .filter(WritingAgentRun.project_id == project_id, WritingAgentRun.id == run_id)
+        .first()
+    )
+
+
+def _resume_task(
+    db: Session,
+    *,
+    project_id: str,
+    task_id: str | None,
+    run: WritingAgentRun | None,
+) -> BackgroundTask | None:
+    resolved_task_id = str(task_id or "").strip()
+    if not resolved_task_id and run is not None:
+        resolved_task_id = str(run.background_task_id or "").strip()
+        run_input = run.input if isinstance(run.input, dict) else {}
+        resolved_task_id = resolved_task_id or str(run_input.get("task_id") or "").strip()
+    query = db.query(BackgroundTask).filter(
+        BackgroundTask.project_id == project_id,
+        BackgroundTask.task_type == BATCH_TASK_TYPE,
+    )
+    if resolved_task_id:
+        return query.filter(BackgroundTask.id == resolved_task_id).first()
+    return query.order_by(BackgroundTask.created_at.desc(), BackgroundTask.id.desc()).first()
+
+
+def _resume_chapter_range(task: BackgroundTask) -> dict[str, int] | None:
+    payload = task.payload if isinstance(task.payload, dict) else {}
+    result = task.result if isinstance(task.result, dict) else {}
+    progress = result.get("progress") if isinstance(result.get("progress"), dict) else {}
+    for source in (payload, progress):
+        chapter_range = source.get("chapter_range") if isinstance(source, dict) else None
+        if not isinstance(chapter_range, dict):
+            continue
+        start = _positive_int(chapter_range.get("start"))
+        end = _positive_int(chapter_range.get("end"))
+        if start is not None and end is not None and start <= end:
+            return {"start": start, "end": end}
+    chapter_indexes = _payload_chapter_indexes(payload)
+    if chapter_indexes:
+        return {"start": min(chapter_indexes), "end": max(chapter_indexes)}
+    return None
+
+
+def _task_progress(task: BackgroundTask) -> dict[str, Any]:
+    result = task.result if isinstance(task.result, dict) else {}
+    progress = result.get("progress") if isinstance(result.get("progress"), dict) else {}
+    return dict(progress)
+
+
+def _progress_completed_indexes(progress: dict[str, Any], *, chapter_range: dict[str, int]) -> list[int]:
+    completed = set(_int_list(progress.get("completed_chapter_indexes")))
+    completed_until = _positive_int(progress.get("completed_until_chapter_index"))
+    if completed_until is not None:
+        completed.update(range(chapter_range["start"], min(completed_until, chapter_range["end"]) + 1))
+    return sorted(index for index in completed if chapter_range["start"] <= index <= chapter_range["end"])
+
+
+def _resume_step_evidence(
+    db: Session,
+    *,
+    project_id: str,
+    task_id: str,
+    run_id: str | None,
+    chapter_indexes: set[int],
+) -> list[dict[str, Any]]:
+    query = db.query(WritingAgentStep).filter(WritingAgentStep.project_id == project_id)
+    if run_id:
+        query = query.filter(WritingAgentStep.run_id == run_id)
+    else:
+        query = query.filter(WritingAgentStep.background_task_id == task_id)
+    rows = query.order_by(WritingAgentStep.step_index.asc(), WritingAgentStep.id.asc()).all()
+    evidence: list[dict[str, Any]] = []
+    for step in rows:
+        if step.background_task_id and step.background_task_id != task_id:
+            continue
+        output = step.output if isinstance(step.output, dict) else {}
+        chapter_index = _positive_int(step.chapter_index) or _positive_int(output.get("chapter_index"))
+        if chapter_index is None or chapter_index not in chapter_indexes:
+            continue
+        output_task = output.get("task") if isinstance(output.get("task"), dict) else {}
+        if not step.background_task_id and output_task.get("id") not in (None, task_id):
+            continue
+        evidence.append(
+            {
+                "id": step.id,
+                "run_id": step.run_id,
+                "step_index": step.step_index,
+                "tool_name": step.tool_name,
+                "status": step.status,
+                "output_status": str(output.get("status") or ""),
+                "chapter_index": chapter_index,
+                "reason": output.get("reason") or step.error,
+                "trace_id": step.trace_id,
+            }
+        )
+    return evidence
+
+
+def _chapter_record_indexes(
+    db: Session,
+    *,
+    project_id: str,
+    chapter_indexes: list[int],
+) -> list[int]:
+    if not chapter_indexes:
+        return []
+    rows = (
+        db.query(ChapterContent.chapter_index)
+        .filter(
+            ChapterContent.project_id == project_id,
+            ChapterContent.chapter_index.in_(chapter_indexes),
+            ChapterContent.content.isnot(None),
+            ChapterContent.content != "",
+        )
+        .order_by(ChapterContent.chapter_index.asc())
+        .all()
+    )
+    return [int(row.chapter_index) for row in rows]
+
+
+def _payload_chapter_indexes(payload: dict[str, Any]) -> list[int]:
+    batch = payload.get("batch") if isinstance(payload.get("batch"), dict) else {}
+    return _int_list(batch.get("chapter_indexes"))
+
+
+def _int_list(value: object) -> list[int]:
+    if not isinstance(value, list):
+        return []
+    indexes = {_positive_int(item) for item in value}
+    return sorted(index for index in indexes if index is not None)
+
+
+def _positive_int(value: object) -> int | None:
+    try:
+        parsed = int(value or 0)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
 
 
 def _tool_request_from_recovery(recovery: dict[str, Any]) -> dict[str, Any] | None:

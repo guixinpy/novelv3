@@ -30,6 +30,34 @@ REQUIRED_SAFE_NODES = ["preflight_gate"]
 TERMINAL_STATUSES = {TASK_COMPLETED, TASK_FAILED, TASK_CANCELLED}
 
 
+def execution_checkpoints_for_resume(task: BackgroundTask) -> list[dict[str, Any]]:
+    result = task.result if isinstance(task.result, dict) else {}
+    checkpoints = result.get("execution_checkpoints") if isinstance(result.get("execution_checkpoints"), list) else []
+    normalized: list[dict[str, Any]] = []
+    for checkpoint in checkpoints:
+        if not isinstance(checkpoint, dict):
+            continue
+        chapter_index = _optional_int(checkpoint.get("chapter_index"))
+        if chapter_index is None:
+            selected = checkpoint.get("selected_chapter_indexes")
+            if isinstance(selected, list) and selected:
+                chapter_index = _optional_int(selected[0])
+        if chapter_index is None:
+            continue
+        normalized.append(
+            {
+                "checkpoint_type": str(checkpoint.get("checkpoint_type") or ""),
+                "status": str(checkpoint.get("status") or ""),
+                "chapter_index": chapter_index,
+                "task_id": str(checkpoint.get("task_id") or task.id),
+                "trace_id": checkpoint.get("trace_id"),
+                "error": checkpoint.get("error"),
+                "checkpointed_at": checkpoint.get("checkpointed_at"),
+            }
+        )
+    return normalized
+
+
 async def execute_longform_chapter_batch(
     db: Session,
     project_id: str,

@@ -297,13 +297,25 @@ backend\.venv\Scripts\python.exe -m pytest backend\tests\test_writing_agent_narr
 - Modify: `backend/app/services/writing_agent/batch_execution.py`
 - Test: `backend/tests/test_writing_agent_recovery_checkpoint_resume.py`
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Seed a batch run with chapters 1-3 completed, chapter 4 blocked, chapter 5 pending. Assert recovery preview resumes at chapter 4 and skips completed chapters.
 
-- [ ] **Step 2: Implement resume policy**
+- [x] **Step 2: Implement resume policy**
 
 Use persisted `WritingAgentStep`, `BackgroundTask`, and chapter records as checkpoint evidence. Return explicit skipped/completed/next ranges.
+
+Completed verification:
+```powershell
+backend\.venv\Scripts\python.exe -m pytest backend\tests\test_writing_agent_recovery_checkpoint_resume.py -q
+# 1 passed
+
+backend\.venv\Scripts\python.exe -m pytest backend\tests\test_writing_agent_recovery_checkpoint_resume.py backend\tests\test_writing_agent_planner.py backend\tests\test_writing_agent_runs.py -k "recovery or checkpoint_resume or recovery_tool_plan" -q
+# 14 passed, 181 deselected
+
+backend\.venv\Scripts\python.exe -m pytest backend\tests\test_writing_agent_tool_executor.py -k "recovery or execute_longform_chapter_batch or prepare_longform_chapter_batch" -q
+# 8 passed, 151 deselected
+```
 
 ### Task 9: Event And Task Queue Boundary
 
