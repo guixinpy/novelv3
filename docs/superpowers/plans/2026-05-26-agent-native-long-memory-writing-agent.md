@@ -270,7 +270,7 @@ backend\.venv\Scripts\python.exe -m pytest backend\tests\test_writing_agent_memo
 - Modify: `backend/app/services/writing_agent/agent_health_projection.py`
 - Test: `backend/tests/test_writing_agent_narrative_trend_projection.py`
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Cover:
 - style drift findings from review output;
@@ -278,9 +278,16 @@ Cover:
 - unresolved/overdue foreshadowing from Storyline/Athena data;
 - trend status `ready`, `watch`, `needs_human_judgment`.
 
-- [ ] **Step 2: Implement projection**
+- [x] **Step 2: Implement projection**
 
 Aggregate existing review step outputs and available storyline/world-model records. Do not invent rhythm automation; mark pacing risks as `requires_human_judgment`.
+
+**Verification:**
+
+```powershell
+backend\.venv\Scripts\python.exe -m pytest backend\tests\test_writing_agent_narrative_trend_projection.py -q
+# 4 passed
+```
 
 ### Task 8: Recovery And Checkpoint Resume
 

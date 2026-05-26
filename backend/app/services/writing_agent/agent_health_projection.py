@@ -12,6 +12,7 @@ from app.services.writing_agent.agent_command_contracts import inspect_agent_com
 from app.services.writing_agent.agent_context_compression_projection import inspect_agent_context_compression_projection
 from app.services.writing_agent.agent_control_plane_readiness import inspect_agent_control_plane_readiness
 from app.services.writing_agent.agent_trace_audit import inspect_agent_trace_audit
+from app.services.writing_agent.narrative_trend_projection import inspect_narrative_trend_projection
 from app.services.writing_agent.slash_command_route import inspect_agent_route_preference_projection
 from app.services.writing_agent.tool_contracts import build_agent_tool_contract_snapshot
 from app.services.writing_agent.tool_registry import allowed_tool_names, build_agent_tool_plan
@@ -76,6 +77,7 @@ def inspect_agent_health_projection(
     loop_risk = _loop_risk_summary(db, project_id, run_id)
     creative_quality = _creative_quality_summary(db, project_id)
     context_compression = _context_compression_summary(db, project_id, chapter_index)
+    narrative_trends = inspect_narrative_trend_projection(db, project_id, chapter_index=chapter_index)
 
     diagnostics = _diagnostics(
         profile_policy=profile_policy,
@@ -87,6 +89,7 @@ def inspect_agent_health_projection(
         loop_risk=loop_risk,
         creative_quality=creative_quality,
         context_compression=context_compression,
+        narrative_trends=narrative_trends,
     )
     recommended_tools = _recommended_tools(diagnostics)
     return _json_safe_output(
@@ -105,6 +108,7 @@ def inspect_agent_health_projection(
             "loop_risk": loop_risk,
             "creative_quality": creative_quality,
             "context_compression": context_compression,
+            "narrative_trends": narrative_trends,
             "diagnostics": diagnostics,
             "recommended_tools": recommended_tools,
             "recommended_next_tools": recommended_tools,
@@ -424,6 +428,7 @@ def _diagnostics(
     loop_risk: dict[str, Any] | None,
     creative_quality: dict[str, Any],
     context_compression: dict[str, Any] | None,
+    narrative_trends: dict[str, Any],
 ) -> list[dict[str, Any]]:
     diagnostics: list[dict[str, Any]] = []
     if profile_policy and profile_policy.get("status") not in {"passed", ""}:
@@ -489,6 +494,17 @@ def _diagnostics(
                 "message": "章节上下文窗口或压缩断路器存在风险，继续生成前应检查上下文来源和恢复建议。",
                 "risk_codes": risk_codes,
                 "recommended_tools": _string_list(context_compression.get("recommended_next_tools")),
+            }
+        )
+    if narrative_trends.get("status") in {"watch", "needs_human_judgment"}:
+        status = str(narrative_trends.get("status") or "")
+        diagnostics.append(
+            {
+                "code": f"narrative_trend_{status}",
+                "severity": "error" if status == "needs_human_judgment" else "warning",
+                "message": "长期叙事趋势存在风格、世界模型、伏笔或节奏风险，继续生成前应先处理趋势诊断。",
+                "summary": narrative_trends.get("summary") if isinstance(narrative_trends.get("summary"), dict) else {},
+                "recommended_tools": _string_list(narrative_trends.get("recommended_next_tools")),
             }
         )
     route_summary = route_preference.get("summary") if isinstance(route_preference.get("summary"), dict) else {}
