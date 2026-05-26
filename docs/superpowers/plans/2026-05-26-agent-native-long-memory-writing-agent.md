@@ -350,18 +350,27 @@ backend\.venv\Scripts\python.exe -m pytest backend\tests\test_writing_agent_tool
 - Create: `docs/superpowers/notes/long-memory-agent/2026-05-26-full-agent-native-dogfood.md`
 - Optional modify: backend/frontend files only for bugs surfaced by dogfood
 
-- [ ] **Step 1: Restore local services**
+- [x] **Step 1: Restore local services**
 
 Run existing Windows chain: check ports 8000/5173, run migrations, start backend/frontend, verify `/api/v1/health` and frontend 200.
 
-- [ ] **Step 2: Execute multi-chapter loop**
+- [x] **Step 2: Execute multi-chapter loop**
 
 Run at least one loop:
 generate chapters -> review quality/continuity -> inspect health/context/memory/tree -> plan recovery -> apply safe recovery -> regenerate or continue.
 
-- [ ] **Step 3: Record evidence**
+- [x] **Step 3: Record evidence**
 
 Record run IDs, chapter indexes, trace IDs, provenance statuses, recovery actions, and observed UX/API issues.
+
+Completed dogfood evidence: `docs/superpowers/notes/long-memory-agent/2026-05-26-full-agent-native-dogfood.md`.
+
+Key evidence:
+- Project: `3f85aed4-4f6f-413f-bd1a-03fbe02ea0f4`
+- Generated chapters: 1, 2, 3.
+- Repair loop: chapter 2 quality blocked -> world-model proposals resolved -> compression retried -> quality ready.
+- Continue loop: chapter 3 generated after chapter 2 repair.
+- Final observability run: `5d298e4c-56d0-47c4-b180-de297cda35cd`.
 
 ### Task 11: Verification And Completion Audit
 
