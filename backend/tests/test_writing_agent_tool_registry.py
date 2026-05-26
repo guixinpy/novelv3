@@ -68,6 +68,7 @@ def test_agent_memory_trace_tool_descriptors_live_in_dedicated_module():
         "inspect_agent_memory_route",
         "summarize_longform_context",
         "inspect_agent_context_compression_projection",
+        "inspect_agent_memory_activation_plan",
         "repair_longform_maintenance",
     ]
     assert {descriptor.category for descriptor in AGENT_MEMORY_TRACE_TOOL_DESCRIPTORS} == {
@@ -80,9 +81,11 @@ def test_agent_memory_trace_tool_descriptors_live_in_dedicated_module():
     assert target_type_for_tool("inspect_agent_memory_route") == "agent_memory_route"
     assert target_type_for_tool("summarize_longform_context") == "longform_context_summary"
     assert target_type_for_tool("inspect_agent_context_compression_projection") == "agent_context_compression_projection"
+    assert target_type_for_tool("inspect_agent_memory_activation_plan") == "agent_memory_activation_plan"
     assert target_type_for_tool("repair_longform_maintenance") == "longform_maintenance"
     assert "inspect_agent_trace_audit" in non_blocking_report_tool_names()
     assert "inspect_agent_context_compression_projection" in non_blocking_report_tool_names()
+    assert "inspect_agent_memory_activation_plan" in non_blocking_report_tool_names()
     assert "repair_longform_maintenance" not in non_blocking_report_tool_names()
 
 

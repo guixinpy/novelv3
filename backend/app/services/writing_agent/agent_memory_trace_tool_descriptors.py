@@ -128,6 +128,35 @@ AGENT_MEMORY_TRACE_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(
+        name="inspect_agent_memory_activation_plan",
+        module="writing_agent",
+        category="longform_memory",
+        description="为目标章节生成长记忆激活计划，选择既往章节、伏笔、世界模型和风格锚点供生成前使用。",
+        input_schema=object_schema(
+            {
+                "chapter_index": {"type": "integer", "minimum": 1},
+                "query": {"type": "string"},
+            }
+        ),
+        output_schema=object_schema(
+            {
+                "status": {"type": "string"},
+                "activation": {"type": "object"},
+                "coverage": {"type": "object"},
+                "risks": {"type": "array"},
+                "recommended_next_tools": {"type": "array"},
+                "prompt_block": {"type": "string"},
+                "memory_provenance": {"type": "object"},
+                "trace": {"type": "object"},
+            }
+        ),
+        target_type="agent_memory_activation_plan",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=8,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
         name="repair_longform_maintenance",
         module="athena_longform",
         category="maintenance",

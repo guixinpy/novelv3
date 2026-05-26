@@ -368,6 +368,49 @@ def test_inspect_agent_health_projection_reports_context_compression_warning(db_
     assert "inspect_agent_memory_route" in output["recommended_tools"]
 
 
+def test_inspect_agent_health_projection_reports_memory_activation_debt(db_session, monkeypatch):
+    project = Project(name="Agent Health Memory Activation")
+    db_session.add(project)
+    db_session.commit()
+    _patch_ready_sources(monkeypatch)
+    monkeypatch.setattr(agent_health_projection, "build_agent_tool_plan", _tool_plan_with_passed_profile_policy)
+    monkeypatch.setattr(
+        agent_health_projection,
+        "build_memory_activation_plan",
+        lambda *args, **kwargs: {
+            "status": "degraded",
+            "coverage": {
+                "memory_coverage_debt": {
+                    "status": "degraded",
+                    "issue_count": 2,
+                    "missing_memory_count": 1,
+                    "missing_retrieval_count": 1,
+                },
+                "activated_counts": {"longform": 1, "foreshadowing": 0, "world_model": 0, "style": 0},
+            },
+            "risks": [{"code": "memory_coverage_debt", "severity": "warning"}],
+            "recommended_next_tools": ["repair_longform_maintenance", "inspect_agent_memory_route"],
+        },
+        raising=False,
+    )
+
+    output = agent_health_projection.inspect_agent_health_projection(
+        db_session,
+        project.id,
+        chapter_index=3,
+        adapter_metadata_by_name={},
+        static_adapter_tool_names=set(),
+        action_execution_tool_names=set(),
+    )
+
+    assert output["memory_activation"]["status"] == "degraded"
+    diagnostic = next(item for item in output["diagnostics"] if item["code"] == "agent_memory_activation_degraded")
+    assert diagnostic["severity"] == "warning"
+    assert diagnostic["risk_codes"] == ["memory_coverage_debt"]
+    assert "repair_longform_maintenance" in output["recommended_tools"]
+    assert "inspect_agent_memory_route" in output["recommended_tools"]
+
+
 def test_inspect_agent_health_projection_closes_generate_review_diagnose_recovery_fixture(db_session, monkeypatch):
     project = Project(name="Agent Health Closed Loop")
     db_session.add(project)
@@ -522,6 +565,20 @@ def _patch_ready_sources(monkeypatch):
             },
             "recommended_next_targets": [],
         },
+    )
+    monkeypatch.setattr(
+        agent_health_projection,
+        "build_memory_activation_plan",
+        lambda *args, **kwargs: {
+            "status": "ready",
+            "coverage": {
+                "memory_coverage_debt": {"status": "ready", "issue_count": 0},
+                "activated_counts": {"longform": 0, "foreshadowing": 0, "world_model": 0, "style": 0},
+            },
+            "risks": [],
+            "recommended_next_tools": ["preflight_writing", "generate_chapter"],
+        },
+        raising=False,
     )
     monkeypatch.setattr(
         agent_health_projection,

@@ -62,6 +62,20 @@ def _inspect_agent_context_compression_projection(
     )
 
 
+def _inspect_agent_memory_activation_plan(
+    context: WritingAgentToolContext,
+    tool: WritingAgentToolRequest,
+) -> dict[str, Any]:
+    from app.services.writing_agent.memory_activation import build_memory_activation_plan
+
+    return build_memory_activation_plan(
+        context.db,
+        context.project_id,
+        chapter_index=_optional_int(tool.params.get("chapter_index")) or 1,
+        query=str(tool.params.get("query") or tool.command_args or "").strip() or None,
+    )
+
+
 def _repair_longform_maintenance(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
     from app.core.longform_memory import repair_longform_maintenance
 
@@ -97,6 +111,12 @@ AGENT_MEMORY_TRACE_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
     "inspect_agent_context_compression_projection": WritingAgentToolAdapter(
         "inspect_agent_context_compression_projection",
         _inspect_agent_context_compression_projection,
+        category="longform_memory",
+        mutability="read",
+    ),
+    "inspect_agent_memory_activation_plan": WritingAgentToolAdapter(
+        "inspect_agent_memory_activation_plan",
+        _inspect_agent_memory_activation_plan,
         category="longform_memory",
         mutability="read",
     ),

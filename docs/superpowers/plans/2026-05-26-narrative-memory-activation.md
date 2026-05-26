@@ -58,19 +58,22 @@ git commit -m "Add narrative memory activation projection"
 - Modify: `backend/tests/test_writing_agent_tool_executor.py`
 - Modify: `backend/tests/test_writing_agent_health_projection.py`
 
-- [ ] **Step 1: Register `inspect_agent_memory_activation_plan`**
+- [x] **Step 1: Register `inspect_agent_memory_activation_plan`**
 
 Add a read-only internal longform memory tool with `non_blocking_report=True`.
 
-- [ ] **Step 2: Surface activation risk in health**
+- [x] **Step 2: Surface activation risk in health**
 
 When `chapter_index` is present, health projection includes `memory_activation`.
 If activation is degraded/blocked, diagnostics include `agent_memory_activation_degraded` or `agent_memory_activation_blocked` and recommend exact next tools.
 
-- [ ] **Step 3: Run focused tests**
+- [x] **Step 3: Run focused tests**
 
 ```powershell
 backend\.venv\Scripts\python.exe -m pytest backend\tests\test_writing_agent_memory_activation.py backend\tests\test_writing_agent_tool_registry.py backend\tests\test_writing_agent_tool_executor.py -k "memory_activation or agent_memory_trace_tool or health_projection" -q
+# Superset run:
+# backend\.venv\Scripts\python.exe -m pytest backend\tests\test_writing_agent_memory_activation.py backend\tests\test_writing_agent_tool_registry.py backend\tests\test_writing_agent_tool_executor.py backend\tests\test_writing_agent_health_projection.py -k "memory_activation or agent_memory_trace_tool or context_compression or creative_quality" -q
+# 9 passed, 231 deselected
 ```
 
 - [ ] **Step 4: Commit**

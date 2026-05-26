@@ -12,6 +12,7 @@ from app.services.writing_agent.agent_command_contracts import inspect_agent_com
 from app.services.writing_agent.agent_context_compression_projection import inspect_agent_context_compression_projection
 from app.services.writing_agent.agent_control_plane_readiness import inspect_agent_control_plane_readiness
 from app.services.writing_agent.agent_trace_audit import inspect_agent_trace_audit
+from app.services.writing_agent.memory_activation import build_memory_activation_plan
 from app.services.writing_agent.narrative_trend_projection import inspect_narrative_trend_projection
 from app.services.writing_agent.slash_command_route import inspect_agent_route_preference_projection
 from app.services.writing_agent.tool_contracts import build_agent_tool_contract_snapshot
@@ -77,6 +78,7 @@ def inspect_agent_health_projection(
     loop_risk = _loop_risk_summary(db, project_id, run_id)
     creative_quality = _creative_quality_summary(db, project_id)
     context_compression = _context_compression_summary(db, project_id, chapter_index)
+    memory_activation = _memory_activation_summary(db, project_id, chapter_index)
     narrative_trends = inspect_narrative_trend_projection(db, project_id, chapter_index=chapter_index)
 
     diagnostics = _diagnostics(
@@ -89,6 +91,7 @@ def inspect_agent_health_projection(
         loop_risk=loop_risk,
         creative_quality=creative_quality,
         context_compression=context_compression,
+        memory_activation=memory_activation,
         narrative_trends=narrative_trends,
     )
     recommended_tools = _recommended_tools(diagnostics)
@@ -108,6 +111,7 @@ def inspect_agent_health_projection(
             "loop_risk": loop_risk,
             "creative_quality": creative_quality,
             "context_compression": context_compression,
+            "memory_activation": memory_activation,
             "narrative_trends": narrative_trends,
             "diagnostics": diagnostics,
             "recommended_tools": recommended_tools,
@@ -287,6 +291,19 @@ def _context_compression_summary(db: Session, project_id: str, chapter_index: in
     return inspect_agent_context_compression_projection(db, project_id, chapter_index=chapter_index)
 
 
+def _memory_activation_summary(db: Session, project_id: str, chapter_index: int | None) -> dict[str, Any] | None:
+    if not chapter_index:
+        return None
+    output = build_memory_activation_plan(db, project_id, chapter_index=chapter_index)
+    return {
+        "status": str(output.get("status") or ""),
+        "coverage": output.get("coverage") if isinstance(output.get("coverage"), dict) else {},
+        "risks": output.get("risks") if isinstance(output.get("risks"), list) else [],
+        "recommended_next_tools": _string_list(output.get("recommended_next_tools")),
+        "trace": output.get("trace") if isinstance(output.get("trace"), dict) else {},
+    }
+
+
 def _creative_quality_summary(db: Session, project_id: str) -> dict[str, Any]:
     steps = (
         db.query(WritingAgentStep)
@@ -428,6 +445,7 @@ def _diagnostics(
     loop_risk: dict[str, Any] | None,
     creative_quality: dict[str, Any],
     context_compression: dict[str, Any] | None,
+    memory_activation: dict[str, Any] | None,
     narrative_trends: dict[str, Any],
 ) -> list[dict[str, Any]]:
     diagnostics: list[dict[str, Any]] = []
@@ -494,6 +512,20 @@ def _diagnostics(
                 "message": "章节上下文窗口或压缩断路器存在风险，继续生成前应检查上下文来源和恢复建议。",
                 "risk_codes": risk_codes,
                 "recommended_tools": _string_list(context_compression.get("recommended_next_tools")),
+            }
+        )
+    if memory_activation and memory_activation.get("status") in {"degraded", "blocked"}:
+        status = str(memory_activation.get("status") or "")
+        risks = memory_activation.get("risks") if isinstance(memory_activation.get("risks"), list) else []
+        risk_codes = [str(risk.get("code") or "") for risk in risks if isinstance(risk, dict)]
+        diagnostics.append(
+            {
+                "code": f"agent_memory_activation_{status}",
+                "severity": "error" if status == "blocked" else "warning",
+                "message": "目标章节的长记忆激活存在覆盖债务或冲突风险，继续生成前应修复或明确降级使用。",
+                "risk_codes": risk_codes,
+                "coverage": memory_activation.get("coverage") if isinstance(memory_activation.get("coverage"), dict) else {},
+                "recommended_tools": _string_list(memory_activation.get("recommended_next_tools")),
             }
         )
     if narrative_trends.get("status") in {"watch", "needs_human_judgment"}:
