@@ -110,11 +110,11 @@ backend\.venv\Scripts\python.exe -m pytest backend\tests\test_writing_agent_tool
 - Modify: `backend/app/services/writing_agent/longform_context_summary.py`
 - Test: `backend/tests/test_writing_agent_memory_provenance_contract.py`
 
-- [ ] **Step 1: Write failing schema tests**
+- [x] **Step 1: Write failing schema tests**
 
 Assert `build_memory_provenance(...)` validates required fields, normalizes `sources`, `windows`, `recovery`, and rejects missing `trace.source`.
 
-- [ ] **Step 2: Replace helper-only usage with schema builder**
+- [x] **Step 2: Replace helper-only usage with schema builder**
 
 Expose a small typed builder:
 ```python
@@ -129,11 +129,20 @@ build_memory_provenance(
 ) -> dict[str, Any]
 ```
 
-- [ ] **Step 3: Verify route compatibility**
+- [x] **Step 3: Verify route compatibility**
 
 Run:
 ```powershell
 backend\.venv\Scripts\python.exe -m pytest backend\tests\test_writing_agent_memory_provenance_contract.py backend\tests\test_writing_agent_memory_route.py backend\tests\test_writing_agent_knowledge_base_route.py backend\tests\test_writing_agent_runs.py -k provenance -q
+```
+
+Completed verification:
+```powershell
+backend\.venv\Scripts\python.exe -m pytest backend\tests\test_writing_agent_memory_provenance_contract.py backend\tests\test_writing_agent_memory_route.py backend\tests\test_writing_agent_knowledge_base_route.py backend\tests\test_writing_agent_runs.py -k provenance -q
+# 6 passed, 191 deselected
+
+backend\.venv\Scripts\python.exe -m pytest backend\tests\test_writing_agent_context_compression_projection.py backend\tests\test_writing_agent_health_projection.py -q
+# 14 passed
 ```
 
 ### Task 3: StopHooks Strategy Layer

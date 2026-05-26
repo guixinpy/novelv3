@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.core.longform_memory import build_longform_context_package, get_longform_maintenance_diagnostics
 from app.core.outline_lookup import find_outline_chapter
 from app.models import ChapterContent, Project
-from app.services.writing_agent.memory_provenance_contract import ensure_memory_provenance_contract
+from app.services.writing_agent.memory_provenance_contract import build_memory_provenance
 
 DEFAULT_MAX_CHARS = 4000
 MIN_MAX_CHARS = 500
@@ -300,18 +300,28 @@ def _memory_provenance(
         has_section_truncation=has_section_truncation,
         prompt_truncated=prompt_truncated,
     )
-    return ensure_memory_provenance_contract(
-        {
+    return build_memory_provenance(
+        version=LONGFORM_MEMORY_PROVENANCE_VERSION,
+        status=status,
+        sources=[
+            _provenance_source(section, section_windows.get(section["key"], {})) for section in source_sections
+        ],
+        windows={
+            "sections": section_windows,
+        },
+        recovery=_provenance_recovery(
+            chapter_index=chapter_index,
+            decision=decision,
+            has_section_truncation=has_section_truncation,
+            prompt_truncated=prompt_truncated,
+            char_limit=char_limit,
+        ),
+        trace={
+            "source": "summarize_longform_context",
             "version": LONGFORM_MEMORY_PROVENANCE_VERSION,
-            "status": status,
-            "source_count": len(source_sections),
-            "sources": [
-                _provenance_source(section, section_windows.get(section["key"], {}))
-                for section in source_sections
-            ],
-            "windows": {
-                "sections": section_windows,
-            },
+            "mutability": "read",
+        },
+        extras={
             "prompt_context": {
                 "chars": prompt_context_chars,
                 "max_chars": char_limit,
@@ -334,18 +344,6 @@ def _memory_provenance(
                 for item in diagnostics
                 if isinstance(item, dict)
             ],
-            "recovery": _provenance_recovery(
-                chapter_index=chapter_index,
-                decision=decision,
-                has_section_truncation=has_section_truncation,
-                prompt_truncated=prompt_truncated,
-                char_limit=char_limit,
-            ),
-            "trace": {
-                "source": "summarize_longform_context",
-                "version": LONGFORM_MEMORY_PROVENANCE_VERSION,
-                "mutability": "read",
-            },
         }
     )
 
