@@ -16,7 +16,7 @@
 - Create: `backend/app/services/writing_agent/memory_activation.py`
 - Create: `backend/tests/test_writing_agent_memory_activation.py`
 
-- [ ] **Step 1: Write failing projection tests**
+- [x] **Step 1: Write failing projection tests**
 
 Cover:
 - target chapter 3 activates global/arc/recent chapter memory from chapters 1-2;
@@ -24,7 +24,7 @@ Cover:
 - missing/stale longform maintenance produces `memory_coverage_debt`;
 - activated items never include future chapters.
 
-- [ ] **Step 2: Implement `build_memory_activation_plan`**
+- [x] **Step 2: Implement `build_memory_activation_plan`**
 
 Return a JSON-safe payload:
 - `status`: `ready`, `degraded`, or `blocked`
@@ -34,10 +34,11 @@ Return a JSON-safe payload:
 - `memory_provenance`: standard provenance fields
 - `recommended_next_tools`: maintenance or generation follow-ups
 
-- [ ] **Step 3: Run focused tests**
+- [x] **Step 3: Run focused tests**
 
 ```powershell
 backend\.venv\Scripts\python.exe -m pytest backend\tests\test_writing_agent_memory_activation.py -q
+# 2 passed
 ```
 
 - [ ] **Step 4: Commit**
