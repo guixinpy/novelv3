@@ -1,0 +1,108 @@
+from app.services.writing_agent.agent_definitions import (
+    AGENT_DEFINITION_VERSION,
+    load_agent_definition,
+)
+from app.services.writing_agent.agent_worker_dispatch import (
+    AGENT_WORKER_DISPATCH_VERSION,
+    preview_agent_worker_dispatch,
+)
+
+
+def test_reviewer_agent_definition_loads_from_repo_yaml():
+    definition = load_agent_definition("reviewer")
+
+    assert definition["version"] == AGENT_DEFINITION_VERSION
+    assert definition["status"] == "ready"
+    assert definition["name"] == "reviewer"
+    assert definition["role"] == "worker"
+    assert definition["max_depth"] == 0
+    assert definition["can_dispatch_children"] is False
+    assert definition["allowed_tools"] == [
+        "review_chapter_quality",
+        "review_chapter_continuity",
+        "inspect_agent_world_model_route",
+    ]
+    assert definition["write_policy"] == {
+        "mode": "read_only_review",
+        "allow_writes": False,
+        "guarded_writes": "deny",
+        "child_dispatch": "deny",
+    }
+
+
+def test_worker_dispatch_preview_returns_non_executing_task_envelopes():
+    preview = preview_agent_worker_dispatch(
+        "reviewer",
+        [
+            {"tool_name": "review_chapter_quality", "params": {"chapter_index": 3}},
+            {"tool_name": "inspect_agent_world_model_route", "params": {"chapter_index": 3}},
+        ],
+        parent_run_id="run-review-1",
+    )
+
+    assert preview["version"] == AGENT_WORKER_DISPATCH_VERSION
+    assert preview["status"] == "ready"
+    assert preview["worker"]["name"] == "reviewer"
+    assert preview["worker"]["can_dispatch_children"] is False
+    assert preview["summary"] == {"planned_tasks": 2, "blocked_tasks": 0, "issues": 0}
+    assert preview["task_envelopes"] == [
+        {
+            "status": "planned",
+            "worker": "reviewer",
+            "role": "worker",
+            "tool_name": "review_chapter_quality",
+            "params": {"chapter_index": 3},
+            "parent_run_id": "run-review-1",
+            "dispatch_mode": "preview_only",
+            "will_execute": False,
+            "child_dispatch_allowed": False,
+        },
+        {
+            "status": "planned",
+            "worker": "reviewer",
+            "role": "worker",
+            "tool_name": "inspect_agent_world_model_route",
+            "params": {"chapter_index": 3},
+            "parent_run_id": "run-review-1",
+            "dispatch_mode": "preview_only",
+            "will_execute": False,
+            "child_dispatch_allowed": False,
+        },
+    ]
+    assert preview["issues"] == []
+
+
+def test_worker_dispatch_preview_blocks_child_dispatch_and_disallowed_tools():
+    preview = preview_agent_worker_dispatch(
+        "reviewer",
+        [
+            {
+                "tool_name": "review_chapter_quality",
+                "params": {"chapter_index": 3},
+                "children": [{"tool_name": "generate_chapter"}],
+            },
+            {"tool_name": "generate_chapter", "params": {"chapter_index": 4}},
+        ],
+        parent_run_id="run-review-blocked",
+    )
+
+    assert preview["status"] == "blocked"
+    assert preview["summary"] == {"planned_tasks": 0, "blocked_tasks": 2, "issues": 2}
+    assert preview["task_envelopes"][0]["status"] == "blocked"
+    assert preview["task_envelopes"][0]["issue_codes"] == ["child_dispatch_not_allowed"]
+    assert preview["task_envelopes"][1]["status"] == "blocked"
+    assert preview["task_envelopes"][1]["issue_codes"] == ["tool_not_allowed_for_worker"]
+    assert preview["issues"] == [
+        {
+            "code": "child_dispatch_not_allowed",
+            "severity": "error",
+            "tool_name": "review_chapter_quality",
+            "worker": "reviewer",
+        },
+        {
+            "code": "tool_not_allowed_for_worker",
+            "severity": "error",
+            "tool_name": "generate_chapter",
+            "worker": "reviewer",
+        },
+    ]

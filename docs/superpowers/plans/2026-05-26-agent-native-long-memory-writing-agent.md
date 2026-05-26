@@ -216,17 +216,24 @@ backend\.venv\Scripts\python.exe -m pytest backend\tests\test_writing_agent_runs
 - Create: `backend/app/services/writing_agent/agent_definitions/reviewer.yaml`
 - Test: `backend/tests/test_writing_agent_agent_definitions.py`
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Assert reviewer worker config loads with allowed tools `review_chapter_quality`, `review_chapter_continuity`, `inspect_agent_world_model_route`, and cannot dispatch children.
 
-- [ ] **Step 2: Implement config loader**
+- [x] **Step 2: Implement config loader**
 
 Support repo-local YAML definitions with explicit `name`, `role`, `max_depth`, `allowed_tools`, and `write_policy`.
 
-- [ ] **Step 3: Implement dispatch preview**
+- [x] **Step 3: Implement dispatch preview**
 
 Add a read-only preview function that returns planned worker task envelopes without executing LLM calls.
+
+**Verification:**
+
+```powershell
+backend\.venv\Scripts\python.exe -m pytest backend\tests\test_writing_agent_agent_definitions.py -q
+# 3 passed
+```
 
 ### Task 6: Memory Tree Vertical Slice
 
