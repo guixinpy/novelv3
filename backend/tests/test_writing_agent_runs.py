@@ -219,6 +219,8 @@ def test_agent_run_output_exposes_agent_loop_contract_for_success(client):
     }
     assert agent_loop["exit_reason"] == "completed"
     assert agent_loop["requires_user_action"] is False
+    assert agent_loop["stop_hooks"]["status"] == "clear"
+    assert agent_loop["stop_hooks"]["allow_continue"] is True
     assert agent_loop["loop_risk"]["status"] == "clear"
     assert agent_loop["loop_risk"]["detector"] is None
     assert agent_loop["loop_risk"]["max_repeat_count"] == 1
@@ -324,6 +326,33 @@ def test_agent_loop_risk_warns_on_repeated_adjacent_tool_calls(client):
     assert loop_risk["thresholds"] == {"warning": 3, "critical": 5, "global_circuit_breaker": 30}
     assert loop_risk["detectors"][0]["detector"] == "generic_repeat"
     assert loop_risk["recommended_next_action"]["next_tool"] == "inspect_agent_health_projection"
+    assert payload["output"]["continuation_state"]["agent_loop"]["stop_hooks"]["status"] == "clear"
+
+
+def test_agent_loop_stop_hooks_block_critical_loop_risk(client):
+    project_id = _create_project(client, "Agent Loop Critical StopHooks")
+    repeated_tools = [
+        {"tool_name": "describe_agent_tools", "params": {"chapter_index": 1}},
+        {"tool_name": "describe_agent_tools", "params": {"chapter_index": 1}},
+        {"tool_name": "describe_agent_tools", "params": {"chapter_index": 1}},
+        {"tool_name": "describe_agent_tools", "params": {"chapter_index": 1}},
+        {"tool_name": "describe_agent_tools", "params": {"chapter_index": 1}},
+    ]
+
+    response = client.post(
+        f"/api/v1/projects/{project_id}/agent-runs",
+        json={"goal": "重复工具调用触发 stop hooks", "tools": repeated_tools},
+    )
+
+    payload = response.json()
+    stop_hooks = payload["output"]["continuation_state"]["agent_loop"]["stop_hooks"]
+    assert response.status_code == 200
+    assert stop_hooks["status"] == "blocked"
+    assert stop_hooks["reason"] == "loop_risk_critical"
+    assert stop_hooks["allow_continue"] is False
+    assert stop_hooks["hooks"][0]["code"] == "critical_loop_risk"
+    assert stop_hooks["hooks"][0]["detector"] == "generic_repeat"
+    assert "inspect_agent_trace_audit" in stop_hooks["recommended_tools"]
 
 
 def test_agent_tool_input_validation_blocks_missing_required_params(client):

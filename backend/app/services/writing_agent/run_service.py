@@ -33,6 +33,7 @@ from app.services.writing_agent.chapter_generation_tool import (
 )
 from app.services.writing_agent.agent_step_binding import summarize_resource_binding
 from app.services.writing_agent.agent_loop_risk import build_agent_loop_risk
+from app.services.writing_agent.agent_stop_hooks import evaluate_agent_stop_hooks
 from app.services.writing_agent.tool_adapter_types import WritingAgentToolContext
 from app.services.writing_agent.tool_executor import (
     execute_writing_agent_tool,
@@ -884,6 +885,7 @@ def _agent_loop_contract(
     used_iterations = len(steps)
     max_iterations = max(planned_step_count, used_iterations)
     exit_reason = _agent_loop_exit_reason(run.status)
+    latest_output = _latest_step_output(steps)
     return {
         "version": AGENT_LOOP_CONTRACT_VERSION,
         "loop_kind": "sequential_tool_plan",
@@ -900,6 +902,7 @@ def _agent_loop_contract(
             planned_tools=_planned_tool_rows(run),
             known_tool_names=ALLOWED_TOOLS,
         ),
+        "stop_hooks": evaluate_agent_stop_hooks(run, steps, latest_output),
         "next_action": _agent_loop_next_action(
             status=status,
             exit_reason=exit_reason,
@@ -908,6 +911,13 @@ def _agent_loop_contract(
         ),
         "tool_call_sequence": [_agent_loop_step_marker(step) for step in steps],
     }
+
+
+def _latest_step_output(steps: list[WritingAgentStep]) -> dict[str, Any]:
+    if not steps:
+        return {}
+    output = steps[-1].output
+    return output if isinstance(output, dict) else {}
 
 
 def _agent_loop_exit_reason(run_status: str) -> str:

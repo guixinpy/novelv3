@@ -153,11 +153,11 @@ backend\.venv\Scripts\python.exe -m pytest backend\tests\test_writing_agent_cont
 - Test: `backend/tests/test_writing_agent_stop_hooks.py`
 - Test: `backend/tests/test_writing_agent_runs.py`
 
-- [ ] **Step 1: Write failing tests for existing behavior**
+- [x] **Step 1: Write failing tests for existing behavior**
 
 Cover loop risk critical, missing approval, blocked memory provenance, and context guard blocked as separate stop decisions.
 
-- [ ] **Step 2: Extract strategy layer**
+- [x] **Step 2: Extract strategy layer**
 
 Implement:
 ```python
@@ -165,9 +165,18 @@ evaluate_agent_stop_hooks(run, steps, latest_output) -> dict[str, Any]
 ```
 Return `status`, `reason`, `severity`, `recommended_tools`, `allow_continue`.
 
-- [ ] **Step 3: Wire into `run_service.py`**
+- [x] **Step 3: Wire into `run_service.py`**
 
 Replace inline stop checks only where tests prove equivalence. Preserve existing output shape.
+
+Completed verification:
+```powershell
+backend\.venv\Scripts\python.exe -m pytest backend\tests\test_writing_agent_stop_hooks.py backend\tests\test_writing_agent_runs.py -k "agent_loop or stop_hooks or provenance" -q
+# 12 passed, 178 deselected
+
+backend\.venv\Scripts\python.exe -m pytest backend\tests\test_writing_agent_context_compression_projection.py backend\tests\test_writing_agent_health_projection.py backend\tests\test_writing_agent_memory_provenance_contract.py -q
+# 17 passed
+```
 
 ### Task 4: Tool Lifecycle Hooks
 
