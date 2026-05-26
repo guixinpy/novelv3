@@ -191,6 +191,7 @@ def test_agent_task_queue_tool_adapters_live_in_dedicated_module():
     assert names == [
         "plan_chapter_conflict_recovery",
         "inspect_agent_job_projection",
+        "inspect_agent_event_projection",
     ]
     assert {adapter.category for adapter in AGENT_TASK_QUEUE_TOOL_ADAPTERS.values()} == {"task_queue"}
     assert {adapter.mutability for adapter in AGENT_TASK_QUEUE_TOOL_ADAPTERS.values()} == {"read"}
@@ -201,6 +202,10 @@ def test_agent_task_queue_tool_adapters_live_in_dedicated_module():
     assert (
         AGENT_TASK_QUEUE_TOOL_ADAPTERS["inspect_agent_job_projection"].handler.__name__
         == "_inspect_agent_job_projection"
+    )
+    assert (
+        AGENT_TASK_QUEUE_TOOL_ADAPTERS["inspect_agent_event_projection"].handler.__name__
+        == "_inspect_agent_event_projection"
     )
 
 

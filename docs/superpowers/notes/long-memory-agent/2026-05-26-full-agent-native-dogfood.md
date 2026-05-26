@@ -163,3 +163,21 @@ for `black_tide_gate` and `lin_deep_signature`.
    changes.
 5. The loop can continue after repair, and the next generated chapter exposes
    the next round of concrete quality/world-model work.
+
+## Verification Addendum
+
+- Focused regression after adding event projection:
+  `backend\.venv\Scripts\python.exe -m pytest backend\tests\test_writing_agent_tool_executor.py::test_agent_task_queue_tool_adapters_live_in_dedicated_module backend\tests\test_writing_agent_event_projection.py backend\tests\test_writing_agent_job_projection.py backend\tests\test_writing_agent_tool_registry.py -q`
+  -> `75 passed`.
+- Full local quality:
+  `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify_local_quality.ps1`
+  -> backend `1353 passed`, frontend unit `567 passed`, frontend build passed.
+- Perf smoke was skipped by the script because `PERF_SMOKE_BASE_URL`,
+  `PERF_SMOKE_PROJECT_ID`, and `PERF_SMOKE_SESSION` were not set.
+- Frontend E2E was skipped by the script because `-RunE2E` / `RUN_E2E=1` was
+  not enabled.
+- Substitute E2E evidence for this goal is the API-backed dogfood above:
+  local backend health returned `ok`, local frontend returned HTTP 200, and the
+  loop completed generate -> review -> recover -> revise -> continue generation.
+- Non-blocking residue: the full quality script exited `0`; pytest emitted one
+  ignored Windows `PermissionError` while cleaning a temp directory at atexit.

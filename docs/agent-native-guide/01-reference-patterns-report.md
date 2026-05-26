@@ -281,9 +281,9 @@ novelv3 当前在 `agent_memory_route.py`、`agent_knowledge_base_route.py`、`l
 6. **验证分层完成**：小改动有针对性 pytest；涉及 health projection / run_service 的阶段跑相关后端测试；goal 收尾前跑项目既有质量验证脚本或说明无法运行的具体原因
 7. **文档回填**：在本文件或后续 phase note 中记录实际发现的失败类型、修复方式、验证命令和下一轮才应考虑的架构项
 
-### 5.2 本轮实现回填
+### 5.2 第一轮实现回填（历史记录）
 
-本轮按 5.1 收敛到控制环加固，没有展开完整 Memory Tree、配置驱动子 Agent 或 StopHooks 重构。
+本节记录第一轮控制环加固完成状态；它不是 2026-05-26 完整 goal 的最终范围。完整落实审计见第七节。第一轮按 5.1 收敛到控制环加固，没有展开完整 Memory Tree、配置驱动子 Agent 或 StopHooks 重构。
 
 **已修复/加固：**
 
@@ -318,6 +318,55 @@ novelv3 当前在 `agent_memory_route.py`、`agent_knowledge_base_route.py`、`l
 5. **Provenance 模式的抽象**：当前三个模块的 `_memory_provenance()` 重复，是否需要统一的 provenance trait/协议？
 
 这些问题不阻塞下一阶段 goal。它们只有在控制环加固后的真实生成压测中继续暴露同类失败时，才进入后续架构设计。
+
+---
+
+## 七、2026-05-26 完整落实审计
+
+本节修正前文的阶段性判断：4.2 中的架构项已经不再作为“暂缓项”整体搁置。本次 goal 对 4.1、4.2 和第六节开放问题做了完整落实；其中确实不适合落地的项以有证据的排除结论收束，而不是继续悬空。
+
+### 7.1 4.1 五项直接模式
+
+1. **五级工具循环检测**：已实现 `generic_repeat`、`ping_pong`、`known_poll_no_progress`、`unknown_tool_repeat`、`global_circuit_breaker`，并接入 health projection 与阻断建议。
+2. **质量趋势投影**：已将质量审稿、连续性审稿、设定 drift、伏笔/叙事趋势接入 `agent_health_projection` / `narrative_trend_projection`。
+3. **轻量 Provenance 字段约定**：已落到 `memory_provenance_contract`，覆盖 memory route、knowledge base route、longform context summary 和压缩上下文。
+4. **恢复与继续生成建议**：已覆盖 conflict recovery、checkpoint resume preview、质量/世界模型恢复路径；真实 dogfood 中完成“发现问题 -> 恢复 -> 修稿 -> 继续生成”闭环。
+5. **上下文分层压缩前置诊断**：已实现 `inspect_agent_context_compression_projection`，输出窗口、截断、检索覆盖、provenance 与恢复状态。
+
+### 7.2 4.2 六项原暂缓模式
+
+1. **Memory Tree 分层记忆**：已实现最小可运行投影，dogfood final snapshot 中 `status=ready`，包含 1 个 volume node 和 3 个 chapter node。
+2. **AgentDefinition 配置驱动子 Agent**：已落为 YAML 驱动的 reviewer/worker 定义、调度预览与契约测试；worker 仍由主 orchestrator 调用，不开放递归派生。
+3. **StopHooks 策略层**：已抽出等价的 stop hook 策略模块；dogfood 中 direct report -> draft 被 StopHook 阻断，证明它能阻止越过受控计划路径。
+4. **插件钩子系统**：没有引入通用 plugin framework；已实现写作场景需要的 `pre_tool_call` / `post_tool_call` 等价 tool lifecycle hooks 和测试覆盖。
+5. **事件总线**：没有新建事件总线或持久化表；已实现从 run/step/job 记录投影事件的 `inspect_agent_event_projection`。dogfood final snapshot 投影 100 个事件，覆盖 run/tool 生命周期和错误。
+6. **自注册工具系统**：明确排除。当前显式 registry + adapter contract tests 能保持工具边界可审查；改成自注册会削弱本阶段需要的可控性和审计性。
+
+### 7.3 第六节开放问题结论
+
+1. **上下文压缩粒度**：采用 chapter window 优先，不按固定 token 数盲切；dogfood 中压缩上下文 `usage_ratio=0.5022`、`truncated_section_count=1`、`source_count=5`。
+2. **Memory Tree 节点定义**：采用 volume / chapter / scene / beat 的最小层级；精确原文仍留在 retrieval 与 chapter text，不把 Memory Tree 变成正文副本。
+3. **子 Agent 层级深度**：固定为 orchestrator -> reviewer/worker 一层；不允许 worker 再创建 worker。
+4. **`run_service.py` 拆分策略**：只拆出已有测试能约束的策略模块和投影模块，包括 loop risk、stop hooks、tool lifecycle hooks、event/job projection；不做大规模管线重写。
+5. **Provenance 抽象**：采用正式字段 schema/builder，而不是重量级 trait；字段稳定后再考虑协议化。
+
+### 7.4 真实 dogfood 证据
+
+- Dogfood project: `3f85aed4-4f6f-413f-bd1a-03fbe02ea0f4`
+- 生成章节：chapter 1 trace `8d3c8402-fe7e-4d9a-8d76-c0b019d88bef`，chapter 2 trace `a4358b98-29f0-42e3-8a43-46d0f553ab11`，chapter 3 trace `df7b128e-3c48-4639-ae32-6178730f77fc`
+- 质量问题：chapter 2 被 `chapter_over_target`、`future_outline_overlap` 阻断；continuity 报 `identifier_semantic_drift`
+- 恢复动作：导入 world model、生成/应用 proposal decisions、压缩 chapter 2，最终 chapter 2 从 1114 字降到 567 字并清除 forbidden terms
+- 继续生成：修复后成功生成 chapter 3，并暴露下一轮真实问题 `chapter_over_target`、`pending_world_model_proposals`
+- Final snapshot run: `5d298e4c-56d0-47c4-b180-de297cda35cd`
+
+### 7.5 验证状态
+
+1. 聚焦事件/工具边界测试：`backend\.venv\Scripts\python.exe -m pytest backend\tests\test_writing_agent_tool_executor.py::test_agent_task_queue_tool_adapters_live_in_dedicated_module backend\tests\test_writing_agent_event_projection.py backend\tests\test_writing_agent_job_projection.py backend\tests\test_writing_agent_tool_registry.py -q` -> `75 passed`
+2. 全量本地质量脚本：`powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify_local_quality.ps1` -> backend `1353 passed`，frontend unit `567 passed`，frontend build passed
+3. Perf smoke：按脚本默认跳过，原因是未设置 `PERF_SMOKE_BASE_URL`、`PERF_SMOKE_PROJECT_ID`、`PERF_SMOKE_SESSION`
+4. Frontend E2E：按脚本默认跳过，原因是未传 `-RunE2E` 且未设置 `RUN_E2E=1`
+5. E2E 替代证据：本次 dogfood 已启动本地 backend/frontend，验证 `/api/v1/health` 返回 `ok`、frontend 返回 HTTP 200，并通过 API 完成多章节生成、审稿、恢复、继续生成闭环
+6. 非阻断残留：全量脚本退出码为 0；末尾有一次 pytest 临时目录 atexit cleanup 的 Windows `PermissionError`，未影响测试结果
 
 ---
 

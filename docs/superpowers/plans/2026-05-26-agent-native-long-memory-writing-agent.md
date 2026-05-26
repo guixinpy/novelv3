@@ -378,22 +378,22 @@ Key evidence:
 - Modify: `docs/agent-native-guide/01-reference-patterns-report.md`
 - Modify: dogfood note from Task 10
 
-- [ ] **Step 1: Run focused tests per slice**
+- [x] **Step 1: Run focused tests per slice**
 
 Each task must include its focused pytest command and result in the notes.
 
-- [ ] **Step 2: Run full local quality**
+- [x] **Step 2: Run full local quality**
 
 Run:
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify_local_quality.ps1
 ```
 
-- [ ] **Step 3: E2E or substitute evidence**
+- [x] **Step 3: E2E or substitute evidence**
 
 Run E2E when service credentials and browser state are available. If not, record exact missing env vars or setup reason and provide backend/API/browser-smoke substitute evidence.
 
-- [ ] **Step 4: Completion audit**
+- [x] **Step 4: Completion audit**
 
 Map every objective item to evidence:
 - 4.1 five direct patterns;
@@ -401,3 +401,24 @@ Map every objective item to evidence:
 - section six five decisions;
 - real dogfood loop;
 - full verification.
+
+Completed verification:
+```powershell
+backend\.venv\Scripts\python.exe -m pytest backend\tests\test_writing_agent_tool_executor.py::test_agent_task_queue_tool_adapters_live_in_dedicated_module backend\tests\test_writing_agent_event_projection.py backend\tests\test_writing_agent_job_projection.py backend\tests\test_writing_agent_tool_registry.py -q
+# 75 passed
+
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify_local_quality.ps1
+# Backend pytest: 1353 passed
+# Frontend unit: 567 passed
+# Frontend build: passed
+# Perf smoke skipped: missing PERF_SMOKE_BASE_URL, PERF_SMOKE_PROJECT_ID, PERF_SMOKE_SESSION
+# Frontend E2E skipped: -RunE2E / RUN_E2E=1 not enabled
+```
+
+Completion audit:
+- `docs/agent-native-guide/01-reference-patterns-report.md` section 7 maps all
+  4.1 patterns, 4.2 formerly deferred patterns, section 6 decisions, dogfood
+  evidence, and verification status.
+- `docs/superpowers/notes/long-memory-agent/2026-05-26-full-agent-native-dogfood.md`
+  records the API-backed generate -> review -> recover -> revise -> continue
+  dogfood loop and final observability snapshot.
