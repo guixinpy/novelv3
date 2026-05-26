@@ -324,13 +324,25 @@ backend\.venv\Scripts\python.exe -m pytest backend\tests\test_writing_agent_tool
 - Modify: `backend/app/services/writing_agent/agent_job_projection.py`
 - Test: `backend/tests/test_writing_agent_event_projection.py`
 
-- [ ] **Step 1: Write failing projection tests**
+- [x] **Step 1: Write failing projection tests**
 
 Assert tool start/complete/error events can be projected from existing run/step/job data without adding a new event bus.
 
-- [ ] **Step 2: Implement minimal event projection**
+- [x] **Step 2: Implement minimal event projection**
 
 Prefer projection over new event bus. Escalate to persistence only if dogfood shows missing causality.
+
+Completed verification:
+```powershell
+backend\.venv\Scripts\python.exe -m pytest backend\tests\test_writing_agent_event_projection.py -q
+# 2 passed
+
+backend\.venv\Scripts\python.exe -m pytest backend\tests\test_writing_agent_event_projection.py backend\tests\test_writing_agent_job_projection.py backend\tests\test_writing_agent_tool_registry.py -q
+# 74 passed
+
+backend\.venv\Scripts\python.exe -m pytest backend\tests\test_writing_agent_tool_executor.py -k "agent_job_projection or agent_event_projection or describe_agent_tools" -q
+# 6 passed, 153 deselected
+```
 
 ### Task 10: Real Dogfood Loop
 

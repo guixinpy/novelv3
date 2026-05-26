@@ -16,6 +16,7 @@ from app.services.writing_agent.control_plane_readiness_projection import (
     control_plane_readiness_from_run_input,
     control_plane_readiness_needs_attention,
 )
+from app.services.writing_agent.agent_event_projection import event_projection_summary_for_task
 from app.services.tasks.background_task_service import ACTIVE_TASK_STATUSES, BackgroundTaskService
 
 AGENT_JOB_PROJECTION_VERSION = "phase75.agent_job_projection.v1"
@@ -194,6 +195,7 @@ def _detailed_task(db: Session, task: BackgroundTask | None) -> dict[str, Any] |
         "result_summary": _result_summary(result),
         "resume": _resume_summary(db, task),
         "recovery": _recovery_summary(task),
+        "event_projection": event_projection_summary_for_task(db, task),
         "agent_runs": agent_runs,
         "control_plane_readiness": _latest_control_plane_readiness(agent_runs),
         "command_contracts": _latest_command_contracts(agent_runs),

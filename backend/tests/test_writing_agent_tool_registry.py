@@ -160,6 +160,7 @@ def test_agent_task_queue_tool_descriptors_live_in_dedicated_module():
     names = [descriptor.name for descriptor in AGENT_TASK_QUEUE_TOOL_DESCRIPTORS]
 
     assert names == [
+        "inspect_agent_event_projection",
         "inspect_agent_job_projection",
         "plan_chapter_conflict_recovery",
     ]
@@ -167,6 +168,7 @@ def test_agent_task_queue_tool_descriptors_live_in_dedicated_module():
     assert {descriptor.module for descriptor in AGENT_TASK_QUEUE_TOOL_DESCRIPTORS} == {"writing_agent"}
     assert all(descriptor.internal for descriptor in AGENT_TASK_QUEUE_TOOL_DESCRIPTORS)
     assert all(descriptor.non_blocking_report for descriptor in AGENT_TASK_QUEUE_TOOL_DESCRIPTORS)
+    assert target_type_for_tool("inspect_agent_event_projection") == "agent_event_projection"
     assert target_type_for_tool("inspect_agent_job_projection") == "agent_job_projection"
     assert target_type_for_tool("plan_chapter_conflict_recovery") == "agent_tool_plan"
 

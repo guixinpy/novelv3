@@ -30,6 +30,18 @@ def _inspect_agent_job_projection(context: WritingAgentToolContext, tool: Writin
     )
 
 
+def _inspect_agent_event_projection(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
+    from app.services.writing_agent.agent_event_projection import inspect_agent_event_projection
+
+    return inspect_agent_event_projection(
+        context.db,
+        context.project_id,
+        task_id=str(tool.params.get("task_id") or "").strip() or None,
+        run_id=str(tool.params.get("run_id") or "").strip() or None,
+        limit=_optional_int(tool.params.get("limit")),
+    )
+
+
 AGENT_TASK_QUEUE_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
     "plan_chapter_conflict_recovery": WritingAgentToolAdapter(
         "plan_chapter_conflict_recovery",
@@ -40,6 +52,12 @@ AGENT_TASK_QUEUE_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
     "inspect_agent_job_projection": WritingAgentToolAdapter(
         "inspect_agent_job_projection",
         _inspect_agent_job_projection,
+        category="task_queue",
+        mutability="read",
+    ),
+    "inspect_agent_event_projection": WritingAgentToolAdapter(
+        "inspect_agent_event_projection",
+        _inspect_agent_event_projection,
         category="task_queue",
         mutability="read",
     ),

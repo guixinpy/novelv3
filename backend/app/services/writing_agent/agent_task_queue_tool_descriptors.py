@@ -5,6 +5,34 @@ from app.services.writing_agent.tool_descriptor_types import AgentToolDescriptor
 
 AGENT_TASK_QUEUE_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
     AgentToolDescriptor(
+        name="inspect_agent_event_projection",
+        module="writing_agent",
+        category="task_queue",
+        description="只读查看 Agent 事件投影，从后台任务、Agent run 和 step 记录推导工具开始、完成和错误事件。",
+        input_schema=object_schema(
+            {
+                "task_id": {"type": "string"},
+                "run_id": {"type": "string"},
+                "limit": {"type": "integer", "minimum": 1},
+            }
+        ),
+        output_schema=object_schema(
+            {
+                "status": {"type": "string"},
+                "version": {"type": "string"},
+                "boundary": {"type": "object"},
+                "summary": {"type": "object"},
+                "events": {"type": "array"},
+                "recommended_tools": {"type": "array"},
+            }
+        ),
+        target_type="agent_event_projection",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=10,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
         name="inspect_agent_job_projection",
         module="writing_agent",
         category="task_queue",
