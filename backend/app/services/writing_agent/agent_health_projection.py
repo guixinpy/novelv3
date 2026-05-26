@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.models import Project, WritingAgentRun, WritingAgentStep
 from app.services.writing_agent.agent_loop_risk import build_agent_loop_risk
 from app.services.writing_agent.agent_command_contracts import inspect_agent_command_contracts
+from app.services.writing_agent.agent_context_compression_projection import inspect_agent_context_compression_projection
 from app.services.writing_agent.agent_control_plane_readiness import inspect_agent_control_plane_readiness
 from app.services.writing_agent.agent_trace_audit import inspect_agent_trace_audit
 from app.services.writing_agent.slash_command_route import inspect_agent_route_preference_projection
@@ -74,6 +75,7 @@ def inspect_agent_health_projection(
     trace_audit = _trace_audit_summary(db, project_id, run_id)
     loop_risk = _loop_risk_summary(db, project_id, run_id)
     creative_quality = _creative_quality_summary(db, project_id)
+    context_compression = _context_compression_summary(db, project_id, chapter_index)
 
     diagnostics = _diagnostics(
         profile_policy=profile_policy,
@@ -84,6 +86,7 @@ def inspect_agent_health_projection(
         trace_audit=trace_audit,
         loop_risk=loop_risk,
         creative_quality=creative_quality,
+        context_compression=context_compression,
     )
     recommended_tools = _recommended_tools(diagnostics)
     return _json_safe_output(
@@ -101,6 +104,7 @@ def inspect_agent_health_projection(
             "trace_audit": trace_audit,
             "loop_risk": loop_risk,
             "creative_quality": creative_quality,
+            "context_compression": context_compression,
             "diagnostics": diagnostics,
             "recommended_tools": recommended_tools,
             "recommended_next_tools": recommended_tools,
@@ -273,6 +277,12 @@ def _loop_risk_summary(db: Session, project_id: str, run_id: str | None) -> dict
     return {"run_id": run.id, **risk}
 
 
+def _context_compression_summary(db: Session, project_id: str, chapter_index: int | None) -> dict[str, Any] | None:
+    if not chapter_index:
+        return None
+    return inspect_agent_context_compression_projection(db, project_id, chapter_index=chapter_index)
+
+
 def _creative_quality_summary(db: Session, project_id: str) -> dict[str, Any]:
     steps = (
         db.query(WritingAgentStep)
@@ -413,6 +423,7 @@ def _diagnostics(
     trace_audit: dict[str, Any] | None,
     loop_risk: dict[str, Any] | None,
     creative_quality: dict[str, Any],
+    context_compression: dict[str, Any] | None,
 ) -> list[dict[str, Any]]:
     diagnostics: list[dict[str, Any]] = []
     if profile_policy and profile_policy.get("status") not in {"passed", ""}:
@@ -465,6 +476,19 @@ def _diagnostics(
                 "latest_chapter_index": window.get("latest_chapter_index"),
                 "risk_score": latest_chapter.get("risk_score"),
                 "recommended_tools": _string_list(creative_quality.get("recommended_next_tools")),
+            }
+        )
+    if context_compression and context_compression.get("status") in {"warning", "blocked"}:
+        status = str(context_compression.get("status") or "")
+        risks = context_compression.get("risks") if isinstance(context_compression.get("risks"), list) else []
+        risk_codes = [str(risk.get("code") or "") for risk in risks if isinstance(risk, dict)]
+        diagnostics.append(
+            {
+                "code": f"agent_context_compression_{status}",
+                "severity": "error" if status == "blocked" else "warning",
+                "message": "章节上下文窗口或压缩断路器存在风险，继续生成前应检查上下文来源和恢复建议。",
+                "risk_codes": risk_codes,
+                "recommended_tools": _string_list(context_compression.get("recommended_next_tools")),
             }
         )
     route_summary = route_preference.get("summary") if isinstance(route_preference.get("summary"), dict) else {}

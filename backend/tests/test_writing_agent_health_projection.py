@@ -326,6 +326,48 @@ def test_inspect_agent_health_projection_reports_creative_quality_risk_rising(db
     assert "plan_chapter_revision" in output["recommended_tools"]
 
 
+def test_inspect_agent_health_projection_reports_context_compression_warning(db_session, monkeypatch):
+    project = Project(name="Agent Health Context Compression")
+    db_session.add(project)
+    db_session.commit()
+    _patch_ready_sources(monkeypatch)
+    monkeypatch.setattr(agent_health_projection, "build_agent_tool_plan", _tool_plan_with_passed_profile_policy)
+    monkeypatch.setattr(
+        agent_health_projection,
+        "inspect_agent_context_compression_projection",
+        lambda *args, **kwargs: {
+            "status": "warning",
+            "strategy": {"granularity": "chapter_window"},
+            "summary": {"usage_ratio": 0.95, "prompt_context_chars": 3800, "max_chars": 4000},
+            "risks": [{"code": "context_window_pressure", "severity": "warning"}],
+            "recommended_next_tools": ["summarize_longform_context", "inspect_agent_memory_route"],
+            "recovery": {
+                "status": "optional",
+                "reason": "context_compression_window_pressure",
+                "next_tools": ["summarize_longform_context", "inspect_agent_memory_route"],
+                "tools": [],
+            },
+        },
+        raising=False,
+    )
+
+    output = agent_health_projection.inspect_agent_health_projection(
+        db_session,
+        project.id,
+        chapter_index=4,
+        adapter_metadata_by_name={},
+        static_adapter_tool_names=set(),
+        action_execution_tool_names=set(),
+    )
+
+    assert output["context_compression"]["status"] == "warning"
+    diagnostic = next(item for item in output["diagnostics"] if item["code"] == "agent_context_compression_warning")
+    assert diagnostic["severity"] == "warning"
+    assert diagnostic["risk_codes"] == ["context_window_pressure"]
+    assert "summarize_longform_context" in output["recommended_tools"]
+    assert "inspect_agent_memory_route" in output["recommended_tools"]
+
+
 def test_inspect_agent_health_projection_closes_generate_review_diagnose_recovery_fixture(db_session, monkeypatch):
     project = Project(name="Agent Health Closed Loop")
     db_session.add(project)

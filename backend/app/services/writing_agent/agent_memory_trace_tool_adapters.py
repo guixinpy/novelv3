@@ -45,6 +45,23 @@ def _summarize_longform_context(context: WritingAgentToolContext, tool: WritingA
     )
 
 
+def _inspect_agent_context_compression_projection(
+    context: WritingAgentToolContext,
+    tool: WritingAgentToolRequest,
+) -> dict[str, Any]:
+    from app.services.writing_agent.agent_context_compression_projection import (
+        inspect_agent_context_compression_projection,
+    )
+
+    return inspect_agent_context_compression_projection(
+        context.db,
+        context.project_id,
+        chapter_index=_optional_int(tool.params.get("chapter_index")),
+        max_chars=_optional_int(tool.params.get("max_chars")),
+        context_guard_failure_count=_optional_int(tool.params.get("context_guard_failure_count")) or 0,
+    )
+
+
 def _repair_longform_maintenance(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
     from app.core.longform_memory import repair_longform_maintenance
 
@@ -74,6 +91,12 @@ AGENT_MEMORY_TRACE_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
     "summarize_longform_context": WritingAgentToolAdapter(
         "summarize_longform_context",
         _summarize_longform_context,
+        category="longform_memory",
+        mutability="read",
+    ),
+    "inspect_agent_context_compression_projection": WritingAgentToolAdapter(
+        "inspect_agent_context_compression_projection",
+        _inspect_agent_context_compression_projection,
         category="longform_memory",
         mutability="read",
     ),

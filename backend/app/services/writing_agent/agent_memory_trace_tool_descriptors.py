@@ -98,6 +98,36 @@ AGENT_MEMORY_TRACE_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(
+        name="inspect_agent_context_compression_projection",
+        module="writing_agent",
+        category="longform_memory",
+        description="只读投影章节上下文窗口、截断、压缩压力和 ContextGuard 断路风险，供 Agent 生成前自检。",
+        input_schema=object_schema(
+            {
+                "chapter_index": {"type": "integer", "minimum": 1},
+                "max_chars": {"type": "integer", "minimum": 500},
+                "context_guard_failure_count": {"type": "integer", "minimum": 0},
+            }
+        ),
+        output_schema=object_schema(
+            {
+                "status": {"type": "string"},
+                "strategy": {"type": "object"},
+                "summary": {"type": "object"},
+                "risks": {"type": "array"},
+                "recommended_next_tools": {"type": "array"},
+                "recovery": {"type": "object"},
+                "memory_provenance": {"type": "object"},
+                "trace": {"type": "object"},
+            }
+        ),
+        target_type="agent_context_compression_projection",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=8,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
         name="repair_longform_maintenance",
         module="athena_longform",
         category="maintenance",

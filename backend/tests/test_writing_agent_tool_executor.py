@@ -96,6 +96,7 @@ def test_agent_memory_trace_tool_adapters_live_in_dedicated_module():
         "inspect_agent_trace_audit",
         "inspect_agent_memory_route",
         "summarize_longform_context",
+        "inspect_agent_context_compression_projection",
         "repair_longform_maintenance",
     ]
     assert {adapter.category for adapter in AGENT_MEMORY_TRACE_TOOL_ADAPTERS.values()} == {
@@ -105,7 +106,12 @@ def test_agent_memory_trace_tool_adapters_live_in_dedicated_module():
     }
     assert AGENT_MEMORY_TRACE_TOOL_ADAPTERS["inspect_agent_trace_audit"].mutability == "read"
     assert AGENT_MEMORY_TRACE_TOOL_ADAPTERS["summarize_longform_context"].mutability == "read"
+    assert AGENT_MEMORY_TRACE_TOOL_ADAPTERS["inspect_agent_context_compression_projection"].mutability == "read"
     assert AGENT_MEMORY_TRACE_TOOL_ADAPTERS["repair_longform_maintenance"].mutability == "write"
+    assert (
+        AGENT_MEMORY_TRACE_TOOL_ADAPTERS["inspect_agent_context_compression_projection"].handler.__name__
+        == "_inspect_agent_context_compression_projection"
+    )
     assert (
         AGENT_MEMORY_TRACE_TOOL_ADAPTERS["repair_longform_maintenance"].handler.__name__
         == "_repair_longform_maintenance"
