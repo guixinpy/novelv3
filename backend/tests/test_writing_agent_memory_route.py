@@ -34,6 +34,7 @@ def test_inspect_agent_memory_route_blocks_when_longform_memory_is_missing(db_se
     assert output["longform_maintenance"]["issue_count"] > 0
     assert "longform_memory_needs_maintenance" in {item["code"] for item in output["diagnostics"]}
     provenance = output["memory_provenance"]
+    _assert_memory_provenance_contract(provenance)
     assert provenance["status"] == "blocked"
     assert provenance["coverage"]["ready_for_writing"] is False
     assert provenance["coverage"]["chapter_count"] == 1
@@ -67,6 +68,7 @@ def test_inspect_agent_memory_route_is_ready_for_empty_project(db_session):
     assert output["longform_memory"]["chapter_count"] == 0
     assert output["retrieval"]["total_documents"] == 0
     provenance = output["memory_provenance"]
+    _assert_memory_provenance_contract(provenance)
     assert provenance["status"] == "sparse"
     assert provenance["coverage"] == {
         "chapter_count": 0,
@@ -126,6 +128,7 @@ def test_inspect_agent_memory_route_reports_degraded_retrieval_coverage(db_sessi
     assert output["route"]["status"] == "ready"
     assert "retrieval_index_empty" in {item["code"] for item in output["diagnostics"]}
     provenance = output["memory_provenance"]
+    _assert_memory_provenance_contract(provenance)
     assert provenance["status"] == "degraded"
     assert provenance["coverage"] == {
         "chapter_count": 12,
@@ -147,3 +150,18 @@ def test_inspect_agent_memory_route_reports_degraded_retrieval_coverage(db_sessi
         }
     ]
     assert provenance["recovery"]["write_tools"] == [{"tool_name": "repair_longform_maintenance", "params": {}}]
+
+
+def _assert_memory_provenance_contract(provenance):
+    assert {
+        "version",
+        "status",
+        "sources",
+        "windows",
+        "recovery",
+        "trace",
+    }.issubset(provenance)
+    assert isinstance(provenance["sources"], list)
+    assert isinstance(provenance["windows"], dict)
+    assert isinstance(provenance["recovery"], dict)
+    assert isinstance(provenance["trace"], dict)

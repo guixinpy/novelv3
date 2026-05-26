@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import json
 from datetime import UTC, datetime
 from typing import Any
@@ -33,6 +32,7 @@ from app.services.writing_agent.chapter_generation_tool import (
     _previous_chapter_state_card,
 )
 from app.services.writing_agent.agent_step_binding import summarize_resource_binding
+from app.services.writing_agent.agent_loop_risk import build_agent_loop_risk
 from app.services.writing_agent.tool_adapter_types import WritingAgentToolContext
 from app.services.writing_agent.tool_executor import (
     execute_writing_agent_tool,
@@ -78,8 +78,6 @@ INTERNAL_TOOLS = internal_tool_names()
 NON_BLOCKING_REPORT_TOOLS = non_blocking_report_tool_names()
 AGENT_TOOL_DISCOVERY_PROJECTION_VERSION = "phase210.agent_tool_discovery_projection.v1"
 AGENT_LOOP_CONTRACT_VERSION = "phase219.agent_loop_contract.v1"
-LOOP_RISK_WARNING_THRESHOLD = 3
-LOOP_RISK_CRITICAL_THRESHOLD = 5
 
 
 class WritingAgentRunService:
@@ -897,7 +895,11 @@ def _agent_loop_contract(
         },
         "exit_reason": exit_reason,
         "requires_user_action": exit_reason in {"blocked", "tool_failed", "cancelled"},
-        "loop_risk": _agent_loop_risk(steps),
+        "loop_risk": build_agent_loop_risk(
+            steps,
+            planned_tools=_planned_tool_rows(run),
+            known_tool_names=ALLOWED_TOOLS,
+        ),
         "next_action": _agent_loop_next_action(
             status=status,
             exit_reason=exit_reason,
@@ -969,53 +971,10 @@ def _agent_loop_step_marker(step: WritingAgentStep) -> dict[str, Any]:
     }
 
 
-def _agent_loop_risk(steps: list[WritingAgentStep]) -> dict[str, Any]:
-    max_repeat_count = 0
-    repeated_tool_name: str | None = None
-    repeated_signature: str | None = None
-    previous_signature: str | None = None
-    current_repeat_count = 0
-
-    for step in steps:
-        signature = _agent_loop_step_signature(step)
-        if signature == previous_signature:
-            current_repeat_count += 1
-        else:
-            current_repeat_count = 1
-            previous_signature = signature
-        if current_repeat_count > max_repeat_count:
-            max_repeat_count = current_repeat_count
-            repeated_tool_name = step.tool_name
-            repeated_signature = signature
-
-    status = "clear"
-    if max_repeat_count >= LOOP_RISK_CRITICAL_THRESHOLD:
-        status = "critical"
-    elif max_repeat_count >= LOOP_RISK_WARNING_THRESHOLD:
-        status = "warning"
-
-    return {
-        "status": status,
-        "detector": "adjacent_repeat",
-        "max_repeat_count": max_repeat_count,
-        "tool_name": repeated_tool_name if status != "clear" else None,
-        "signature": repeated_signature if status != "clear" else None,
-        "thresholds": {
-            "warning": LOOP_RISK_WARNING_THRESHOLD,
-            "critical": LOOP_RISK_CRITICAL_THRESHOLD,
-        },
-    }
-
-
-def _agent_loop_step_signature(step: WritingAgentStep) -> str:
-    step_input = step.input if isinstance(step.input, dict) else {}
-    params = step_input.get("params") if isinstance(step_input.get("params"), dict) else {}
-    try:
-        serialized = json.dumps(params, ensure_ascii=False, sort_keys=True, default=str)
-    except (TypeError, ValueError):
-        serialized = str(params)
-    digest = hashlib.sha256(serialized.encode("utf-8")).hexdigest()[:16]
-    return f"{step.tool_name}:{digest}"
+def _planned_tool_rows(run: WritingAgentRun) -> list[dict[str, Any]]:
+    run_input = run.input if isinstance(run.input, dict) else {}
+    tools = run_input.get("tools") if isinstance(run_input.get("tools"), list) else []
+    return [tool for tool in tools if isinstance(tool, dict)]
 
 
 def _profile_policy_health(steps: list[WritingAgentStep]) -> dict[str, Any]:

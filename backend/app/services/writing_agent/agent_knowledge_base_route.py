@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.core.few_shot_library import FewShotExampleLibrary
 from app.models import Project, PromptRule
 from app.services.writing_agent.agent_knowledge_base_candidates import KNOWLEDGE_CANDIDATES_KEY
+from app.services.writing_agent.memory_provenance_contract import ensure_memory_provenance_contract, no_recovery
 
 AGENT_KNOWLEDGE_BASE_ROUTE_VERSION = "phase76.agent_knowledge_base_route.v1"
 MEMORY_PROVENANCE_VERSION = "phase222.agent_memory_provenance.v1"
@@ -339,29 +340,32 @@ def _memory_provenance(
                 "item_count": int(reference_patterns["returned"]),
                 "mutability": "read",
             }
-        )
-    return {
-        "version": MEMORY_PROVENANCE_VERSION,
-        "status": "sparse" if route["status"] == "sparse" else "available",
-        "source_count": len(sources),
-        "sources": sources,
-        "windows": {
-            "learned_rules": _window_provenance(learned_rules),
-            "knowledge_candidates": _window_provenance(knowledge_candidates),
-        },
-        "boundaries": {
-            "world_truth": {
-                "status": "separated",
-                "canonical_source": "Athena/world_model",
-                "knowledge_base_role": "author_preferences_project_strategy_reference_patterns_and_lessons",
-            }
-        },
-        "trace": {
-            "source": "inspect_agent_knowledge_base_route",
+    )
+    return ensure_memory_provenance_contract(
+        {
             "version": MEMORY_PROVENANCE_VERSION,
-            "mutability": "read",
+            "status": "sparse" if route["status"] == "sparse" else "available",
+            "source_count": len(sources),
+            "sources": sources,
+            "windows": {
+                "learned_rules": _window_provenance(learned_rules),
+                "knowledge_candidates": _window_provenance(knowledge_candidates),
+            },
+            "boundaries": {
+                "world_truth": {
+                    "status": "separated",
+                    "canonical_source": "Athena/world_model",
+                    "knowledge_base_role": "author_preferences_project_strategy_reference_patterns_and_lessons",
+                }
+            },
+            "trace": {
+                "source": "inspect_agent_knowledge_base_route",
+                "version": MEMORY_PROVENANCE_VERSION,
+                "mutability": "read",
+            },
         },
-    }
+        recovery=no_recovery(reason=route.get("reason")),
+    )
 
 
 def _window_provenance(section: dict[str, Any]) -> dict[str, Any]:

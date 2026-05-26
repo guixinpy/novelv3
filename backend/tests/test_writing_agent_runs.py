@@ -25,6 +25,7 @@ from app.models import (
     WritingAgentStep,
 )
 from app.schemas.world_proposals import ProposalCandidateFactCreate
+from app.services.writing_agent.memory_provenance_contract import MEMORY_PROVENANCE_REQUIRED_FIELDS
 
 
 def test_writing_agent_run_and_step_persist(client, db_session):
@@ -218,13 +219,20 @@ def test_agent_run_output_exposes_agent_loop_contract_for_success(client):
     }
     assert agent_loop["exit_reason"] == "completed"
     assert agent_loop["requires_user_action"] is False
-    assert agent_loop["loop_risk"] == {
-        "status": "clear",
-        "detector": "adjacent_repeat",
-        "max_repeat_count": 1,
-        "tool_name": None,
-        "signature": None,
-        "thresholds": {"warning": 3, "critical": 5},
+    assert agent_loop["loop_risk"]["status"] == "clear"
+    assert agent_loop["loop_risk"]["detector"] is None
+    assert agent_loop["loop_risk"]["max_repeat_count"] == 1
+    assert agent_loop["loop_risk"]["tool_name"] is None
+    assert agent_loop["loop_risk"]["signature"] is None
+    assert agent_loop["loop_risk"]["thresholds"] == {"warning": 3, "critical": 5, "global_circuit_breaker": 30}
+    assert agent_loop["loop_risk"]["detectors"] == []
+    assert agent_loop["loop_risk"]["recommended_next_action"] == {
+        "status": "none",
+        "reason": "loop_risk_clear",
+        "next_tool": None,
+        "recommended_tools": [],
+        "requires_user_input": False,
+        "allow_continue": True,
     }
     assert agent_loop["next_action"] == {"kind": "none", "tool_name": None, "requires_confirmation": False}
     assert agent_loop["tool_call_sequence"] == [
@@ -309,11 +317,13 @@ def test_agent_loop_risk_warns_on_repeated_adjacent_tool_calls(client):
     payload = response.json()
     loop_risk = payload["output"]["continuation_state"]["agent_loop"]["loop_risk"]
     assert loop_risk["status"] == "warning"
-    assert loop_risk["detector"] == "adjacent_repeat"
+    assert loop_risk["detector"] == "generic_repeat"
     assert loop_risk["tool_name"] == "describe_agent_tools"
     assert loop_risk["max_repeat_count"] == 3
     assert loop_risk["signature"].startswith("describe_agent_tools:")
-    assert loop_risk["thresholds"] == {"warning": 3, "critical": 5}
+    assert loop_risk["thresholds"] == {"warning": 3, "critical": 5, "global_circuit_breaker": 30}
+    assert loop_risk["detectors"][0]["detector"] == "generic_repeat"
+    assert loop_risk["recommended_next_action"]["next_tool"] == "inspect_agent_health_projection"
 
 
 def test_agent_tool_input_validation_blocks_missing_required_params(client):
@@ -486,6 +496,7 @@ def test_agent_run_can_summarize_longform_context(client, db_session):
     assert output["limits"]["max_chars"] == 12000
     assert output["prompt_context_chars"] > 0
     provenance = output["memory_provenance"]
+    _assert_memory_provenance_contract(provenance)
     assert provenance["status"] == "available"
     assert provenance["boundaries"]["world_truth"]["status"] == "separated"
     assert provenance["boundaries"]["world_truth"]["canonical_source"] == "Athena/world_model"
@@ -560,6 +571,7 @@ def test_agent_run_longform_context_provenance_reports_limited_sections(client, 
     output = payload["steps"][0]["output"]
     assert output["diagnostics"][0]["code"] == "section_items_limited"
     provenance = output["memory_provenance"]
+    _assert_memory_provenance_contract(provenance)
     assert provenance["windows"]["sections"]["manual_overflow"] == {
         "total": 6,
         "returned": 5,
@@ -614,6 +626,14 @@ def test_agent_run_longform_context_provenance_reports_limited_sections(client, 
             },
         }
     ]
+
+
+def _assert_memory_provenance_contract(provenance):
+    assert set(MEMORY_PROVENANCE_REQUIRED_FIELDS).issubset(provenance)
+    assert isinstance(provenance["sources"], list)
+    assert isinstance(provenance["windows"], dict)
+    assert isinstance(provenance["recovery"], dict)
+    assert isinstance(provenance["trace"], dict)
 
 
 def test_agent_run_longform_context_provenance_exhausts_retry_at_max_window(client, db_session, monkeypatch):

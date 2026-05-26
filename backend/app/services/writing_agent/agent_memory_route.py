@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.athena_retrieval import get_retrieval_diagnostics
 from app.core.longform_memory import get_longform_maintenance_diagnostics, get_longform_memory_diagnostics
 from app.services.writing_agent.longform_context_summary import summarize_longform_context
+from app.services.writing_agent.memory_provenance_contract import count_window, ensure_memory_provenance_contract
 
 AGENT_MEMORY_ROUTE_VERSION = "phase72.agent_memory_route.v1"
 AGENT_MEMORY_ROUTE_PROVENANCE_VERSION = "phase224.agent_memory_route_provenance.v1"
@@ -158,56 +159,64 @@ def _memory_provenance(
         memory_count=memory_count,
         retrieval_document_count=retrieval_document_count,
     )
-    return {
-        "version": AGENT_MEMORY_ROUTE_PROVENANCE_VERSION,
-        "status": provenance_status,
-        "source_count": 3,
-        "sources": [
-            {
-                "source_ref": "LongformMemory",
-                "source_type": "longform_memory",
-                "item_count": memory_count,
-                "chapter_count": chapter_count,
-                "mutability": "read",
-            },
-            {
-                "source_ref": "LongformMaintenance",
-                "source_type": "maintenance_diagnostics",
-                "item_count": int(maintenance.get("issue_count") or 0),
-                "ready_for_writing": ready_for_writing,
-                "mutability": "read",
-            },
-            {
-                "source_ref": "RetrievalDocument",
-                "source_type": "retrieval_index",
-                "item_count": retrieval_document_count,
-                "mutability": "read",
-            },
-        ],
-        "coverage": {
-            "chapter_count": chapter_count,
-            "longform_memory_count": memory_count,
-            "retrieval_document_count": retrieval_document_count,
-            "ready_for_writing": ready_for_writing,
-        },
-        "boundaries": {
-            "world_truth": {
-                "status": "separated",
-                "canonical_source": "Athena/world_model",
-                "memory_route_role": "longform_memory_retrieval_and_maintenance_diagnostics",
-            }
-        },
-        "recovery": _provenance_recovery(
-            route,
-            provenance_status=provenance_status,
-            chapter_index=chapter_index,
-        ),
-        "trace": {
-            "source": "inspect_agent_memory_route",
+    return ensure_memory_provenance_contract(
+        {
             "version": AGENT_MEMORY_ROUTE_PROVENANCE_VERSION,
-            "mutability": "read",
+            "status": provenance_status,
+            "source_count": 3,
+            "sources": [
+                {
+                    "source_ref": "LongformMemory",
+                    "source_type": "longform_memory",
+                    "item_count": memory_count,
+                    "chapter_count": chapter_count,
+                    "mutability": "read",
+                },
+                {
+                    "source_ref": "LongformMaintenance",
+                    "source_type": "maintenance_diagnostics",
+                    "item_count": int(maintenance.get("issue_count") or 0),
+                    "ready_for_writing": ready_for_writing,
+                    "mutability": "read",
+                },
+                {
+                    "source_ref": "RetrievalDocument",
+                    "source_type": "retrieval_index",
+                    "item_count": retrieval_document_count,
+                    "mutability": "read",
+                },
+            ],
+            "coverage": {
+                "chapter_count": chapter_count,
+                "longform_memory_count": memory_count,
+                "retrieval_document_count": retrieval_document_count,
+                "ready_for_writing": ready_for_writing,
+            },
+            "boundaries": {
+                "world_truth": {
+                    "status": "separated",
+                    "canonical_source": "Athena/world_model",
+                    "memory_route_role": "longform_memory_retrieval_and_maintenance_diagnostics",
+                }
+            },
+            "recovery": _provenance_recovery(
+                route,
+                provenance_status=provenance_status,
+                chapter_index=chapter_index,
+            ),
+            "trace": {
+                "source": "inspect_agent_memory_route",
+                "version": AGENT_MEMORY_ROUTE_PROVENANCE_VERSION,
+                "mutability": "read",
+            },
         },
-    }
+        windows={
+            "longform_memory": count_window(memory_count),
+            "chapters": count_window(chapter_count),
+            "retrieval": count_window(retrieval_document_count),
+            "maintenance": count_window(int(maintenance.get("issue_count") or 0), limit=20),
+        },
+    )
 
 
 def _provenance_status(

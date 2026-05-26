@@ -6,16 +6,18 @@ from typing import Any
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from app.models import Project
+from app.models import Project, WritingAgentRun, WritingAgentStep
+from app.services.writing_agent.agent_loop_risk import build_agent_loop_risk
 from app.services.writing_agent.agent_command_contracts import inspect_agent_command_contracts
 from app.services.writing_agent.agent_control_plane_readiness import inspect_agent_control_plane_readiness
 from app.services.writing_agent.agent_trace_audit import inspect_agent_trace_audit
 from app.services.writing_agent.slash_command_route import inspect_agent_route_preference_projection
 from app.services.writing_agent.tool_contracts import build_agent_tool_contract_snapshot
-from app.services.writing_agent.tool_registry import build_agent_tool_plan
+from app.services.writing_agent.tool_registry import allowed_tool_names, build_agent_tool_plan
 from app.services.writing_agent.write_gate_coverage import inspect_agent_write_gate_coverage
 
 AGENT_HEALTH_PROJECTION_VERSION = "phase218.agent_health_projection.v1"
+CREATIVE_QUALITY_REVIEW_TOOLS = ("review_chapter_quality", "review_chapter_continuity")
 
 
 def inspect_agent_health_projection(
@@ -70,6 +72,8 @@ def inspect_agent_health_projection(
     )
     write_gate = _write_gate_summary(inspect_agent_write_gate_coverage(adapter_metadata_by_name=adapter_metadata_by_name))
     trace_audit = _trace_audit_summary(db, project_id, run_id)
+    loop_risk = _loop_risk_summary(db, project_id, run_id)
+    creative_quality = _creative_quality_summary(db, project_id)
 
     diagnostics = _diagnostics(
         profile_policy=profile_policy,
@@ -78,6 +82,8 @@ def inspect_agent_health_projection(
         command_contracts=command_contracts,
         write_gate=write_gate,
         trace_audit=trace_audit,
+        loop_risk=loop_risk,
+        creative_quality=creative_quality,
     )
     recommended_tools = _recommended_tools(diagnostics)
     return _json_safe_output(
@@ -93,6 +99,8 @@ def inspect_agent_health_projection(
             "control_plane_readiness": control_plane_readiness,
             "write_gate": write_gate,
             "trace_audit": trace_audit,
+            "loop_risk": loop_risk,
+            "creative_quality": creative_quality,
             "diagnostics": diagnostics,
             "recommended_tools": recommended_tools,
             "recommended_next_tools": recommended_tools,
@@ -241,6 +249,160 @@ def _trace_audit_summary(db: Session, project_id: str, run_id: str | None) -> di
     }
 
 
+def _loop_risk_summary(db: Session, project_id: str, run_id: str | None) -> dict[str, Any] | None:
+    run_query = db.query(WritingAgentRun).filter(WritingAgentRun.project_id == project_id)
+    if run_id:
+        run = run_query.filter(WritingAgentRun.id == run_id).first()
+    else:
+        run = run_query.order_by(WritingAgentRun.created_at.desc(), WritingAgentRun.id.desc()).first()
+    if run is None:
+        return None
+    steps = (
+        db.query(WritingAgentStep)
+        .filter(WritingAgentStep.run_id == run.id)
+        .order_by(WritingAgentStep.step_index.asc(), WritingAgentStep.id.asc())
+        .all()
+    )
+    run_input = run.input if isinstance(run.input, dict) else {}
+    planned_tools = run_input.get("tools") if isinstance(run_input.get("tools"), list) else []
+    risk = build_agent_loop_risk(
+        steps,
+        planned_tools=[tool for tool in planned_tools if isinstance(tool, dict)],
+        known_tool_names=allowed_tool_names(),
+    )
+    return {"run_id": run.id, **risk}
+
+
+def _creative_quality_summary(db: Session, project_id: str) -> dict[str, Any]:
+    steps = (
+        db.query(WritingAgentStep)
+        .filter(WritingAgentStep.project_id == project_id)
+        .filter(WritingAgentStep.tool_name.in_(CREATIVE_QUALITY_REVIEW_TOOLS))
+        .filter(WritingAgentStep.status == "success")
+        .order_by(WritingAgentStep.chapter_index.asc(), WritingAgentStep.created_at.asc(), WritingAgentStep.id.asc())
+        .all()
+    )
+    chapters_by_index: dict[int, dict[str, Any]] = {}
+    review_step_count = 0
+    for step in steps:
+        chapter_index = _review_chapter_index(step)
+        if chapter_index is None:
+            continue
+        review_step_count += 1
+        output = step.output if isinstance(step.output, dict) else {}
+        warnings = _review_warning_count(output)
+        blockers = _review_blocker_count(output)
+        findings = output.get("findings") if isinstance(output.get("findings"), list) else []
+        chapter = chapters_by_index.setdefault(
+            chapter_index,
+            {
+                "chapter_index": chapter_index,
+                "review_step_count": 0,
+                "warning_count": 0,
+                "blocker_count": 0,
+                "finding_count": 0,
+                "finding_codes": [],
+                "tools": [],
+            },
+        )
+        chapter["review_step_count"] += 1
+        chapter["warning_count"] += warnings
+        chapter["blocker_count"] += blockers
+        chapter["finding_count"] += _non_negative_int(output.get("finding_count") or len(findings))
+        chapter["finding_codes"] = _dedupe(chapter["finding_codes"] + _finding_codes(findings))
+        chapter["tools"].append(
+            {
+                "tool_name": step.tool_name,
+                "status": str(output.get("status") or step.status or ""),
+                "warning_count": warnings,
+                "blocker_count": blockers,
+            }
+        )
+
+    chapters = []
+    for chapter in sorted(chapters_by_index.values(), key=lambda item: item["chapter_index"]):
+        chapter["risk_score"] = chapter["blocker_count"] * 3 + chapter["warning_count"]
+        chapters.append(chapter)
+
+    if not chapters:
+        return {
+            "status": "insufficient_data",
+            "trend": "insufficient_data",
+            "window": {"chapter_count": 0, "review_step_count": 0, "latest_chapter_index": None},
+            "chapters": [],
+            "recommended_next_tools": list(CREATIVE_QUALITY_REVIEW_TOOLS),
+        }
+
+    risk_scores = [_non_negative_int(chapter.get("risk_score")) for chapter in chapters]
+    has_blockers = any(_non_negative_int(chapter.get("blocker_count")) for chapter in chapters)
+    has_warnings = any(_non_negative_int(chapter.get("warning_count")) for chapter in chapters)
+    risk_rising = len(risk_scores) >= 2 and risk_scores[-1] > 0 and risk_scores[-1] > risk_scores[0]
+    if risk_rising:
+        trend = "risk_rising"
+    elif has_blockers or has_warnings:
+        trend = "risk_present"
+    else:
+        trend = "clear"
+    if has_blockers or risk_rising:
+        status = "needs_attention"
+    elif has_warnings:
+        status = "degraded"
+    else:
+        status = "ready"
+    recommended_tools = list(CREATIVE_QUALITY_REVIEW_TOOLS)
+    if status in {"needs_attention", "degraded"}:
+        recommended_tools.append("plan_chapter_revision")
+    return {
+        "status": status,
+        "trend": trend,
+        "window": {
+            "chapter_count": len(chapters),
+            "review_step_count": review_step_count,
+            "latest_chapter_index": chapters[-1]["chapter_index"],
+        },
+        "chapters": chapters,
+        "recommended_next_tools": recommended_tools,
+    }
+
+
+def _review_chapter_index(step: WritingAgentStep) -> int | None:
+    if step.chapter_index is not None:
+        return _non_negative_int(step.chapter_index)
+    output = step.output if isinstance(step.output, dict) else {}
+    if output.get("chapter_index") is not None:
+        return _non_negative_int(output.get("chapter_index"))
+    input_payload = step.input if isinstance(step.input, dict) else {}
+    params = input_payload.get("params") if isinstance(input_payload.get("params"), dict) else {}
+    if params.get("chapter_index") is not None:
+        return _non_negative_int(params.get("chapter_index"))
+    return None
+
+
+def _review_warning_count(output: dict[str, Any]) -> int:
+    if output.get("warning_count") is not None:
+        return _non_negative_int(output.get("warning_count"))
+    findings = output.get("findings") if isinstance(output.get("findings"), list) else []
+    return sum(1 for finding in findings if isinstance(finding, dict) and finding.get("severity") == "warning")
+
+
+def _review_blocker_count(output: dict[str, Any]) -> int:
+    if output.get("blocker_count") is not None:
+        return _non_negative_int(output.get("blocker_count"))
+    findings = output.get("findings") if isinstance(output.get("findings"), list) else []
+    return sum(1 for finding in findings if isinstance(finding, dict) and finding.get("severity") == "blocker")
+
+
+def _finding_codes(findings: list[Any]) -> list[str]:
+    codes: list[str] = []
+    for finding in findings:
+        if not isinstance(finding, dict):
+            continue
+        code = str(finding.get("code") or "").strip()
+        if code:
+            codes.append(code)
+    return codes
+
+
 def _diagnostics(
     *,
     profile_policy: dict[str, Any] | None,
@@ -249,6 +411,8 @@ def _diagnostics(
     command_contracts: dict[str, Any],
     write_gate: dict[str, Any],
     trace_audit: dict[str, Any] | None,
+    loop_risk: dict[str, Any] | None,
+    creative_quality: dict[str, Any],
 ) -> list[dict[str, Any]]:
     diagnostics: list[dict[str, Any]] = []
     if profile_policy and profile_policy.get("status") not in {"passed", ""}:
@@ -267,6 +431,40 @@ def _diagnostics(
                 "severity": "warning",
                 "message": "最近运行的 Trace 审计显示 profile policy 需要关注。",
                 "issue_count": trace_audit.get("profile_policy_issue_count", 0),
+            }
+        )
+    if loop_risk and loop_risk.get("status") in {"warning", "critical"}:
+        action = (
+            loop_risk.get("recommended_next_action")
+            if isinstance(loop_risk.get("recommended_next_action"), dict)
+            else {}
+        )
+        status = str(loop_risk.get("status") or "")
+        diagnostics.append(
+            {
+                "code": f"agent_loop_risk_{status}",
+                "severity": "error" if status == "critical" else "warning",
+                "message": "最近运行的 Agent 工具循环存在可解释风险，继续执行前应检查 Trace 和恢复建议。",
+                "detector": loop_risk.get("detector"),
+                "reason": action.get("reason"),
+                "next_tool": action.get("next_tool"),
+                "recommended_tools": _dedupe(
+                    ["inspect_agent_trace_audit"] + _string_list(action.get("recommended_tools"))
+                ),
+            }
+        )
+    if creative_quality.get("trend") == "risk_rising":
+        window = creative_quality.get("window") if isinstance(creative_quality.get("window"), dict) else {}
+        chapters = creative_quality.get("chapters") if isinstance(creative_quality.get("chapters"), list) else []
+        latest_chapter = chapters[-1] if chapters and isinstance(chapters[-1], dict) else {}
+        diagnostics.append(
+            {
+                "code": "creative_quality_risk_rising",
+                "severity": "error" if creative_quality.get("status") == "needs_attention" else "warning",
+                "message": "最近章节的质量或连续性审查风险正在上升，继续生成前应先规划修订。",
+                "latest_chapter_index": window.get("latest_chapter_index"),
+                "risk_score": latest_chapter.get("risk_score"),
+                "recommended_tools": _string_list(creative_quality.get("recommended_next_tools")),
             }
         )
     route_summary = route_preference.get("summary") if isinstance(route_preference.get("summary"), dict) else {}
@@ -335,6 +533,7 @@ def _recommended_tools(diagnostics: list[dict[str, Any]]) -> list[str]:
     tools: list[str] = []
     for diagnostic in diagnostics:
         tools.extend(tools_by_code.get(str(diagnostic.get("code") or ""), []))
+        tools.extend(_string_list(diagnostic.get("recommended_tools")))
     return _dedupe(tools)
 
 

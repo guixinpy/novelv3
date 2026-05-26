@@ -23,6 +23,13 @@ def test_inspect_agent_knowledge_base_route_reports_sparse_project_memory(db_ses
         {item["code"] for item in output["diagnostics"]}
     )
     assert output["memory_provenance"]["status"] == "sparse"
+    _assert_memory_provenance_contract(output["memory_provenance"])
+    assert output["memory_provenance"]["recovery"] == {
+        "status": "none",
+        "reason": "knowledge_base_sparse",
+        "next_tools": [],
+        "tools": [],
+    }
     assert output["memory_provenance"]["boundaries"]["world_truth"]["status"] == "separated"
     assert output["memory_provenance"]["boundaries"]["world_truth"]["canonical_source"] == "Athena/world_model"
     assert output["memory_provenance"]["sources"][0]["source_ref"] == "Project"
@@ -84,6 +91,7 @@ def test_inspect_agent_knowledge_base_route_projects_preferences_rules_and_patte
     assert output["reference_patterns"]["task_type"] == "chapter"
     assert output["reference_patterns"]["genre"] == "末世悬疑"
     provenance = output["memory_provenance"]
+    _assert_memory_provenance_contract(provenance)
     assert provenance["status"] == "available"
     assert provenance["source_count"] >= 4
     assert {
@@ -135,6 +143,21 @@ def test_inspect_agent_knowledge_base_route_bounds_learned_rule_window(db_sessio
         "limit": 3,
         "has_more": True,
     }
+
+
+def _assert_memory_provenance_contract(provenance):
+    assert {
+        "version",
+        "status",
+        "sources",
+        "windows",
+        "recovery",
+        "trace",
+    }.issubset(provenance)
+    assert isinstance(provenance["sources"], list)
+    assert isinstance(provenance["windows"], dict)
+    assert isinstance(provenance["recovery"], dict)
+    assert isinstance(provenance["trace"], dict)
 
 
 def test_record_agent_knowledge_base_candidate_persists_candidate_and_updates_route(db_session):

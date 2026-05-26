@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.core.longform_memory import build_longform_context_package, get_longform_maintenance_diagnostics
 from app.core.outline_lookup import find_outline_chapter
 from app.models import ChapterContent, Project
+from app.services.writing_agent.memory_provenance_contract import ensure_memory_provenance_contract
 
 DEFAULT_MAX_CHARS = 4000
 MIN_MAX_CHARS = 500
@@ -299,49 +300,54 @@ def _memory_provenance(
         has_section_truncation=has_section_truncation,
         prompt_truncated=prompt_truncated,
     )
-    return {
-        "version": LONGFORM_MEMORY_PROVENANCE_VERSION,
-        "status": status,
-        "source_count": len(source_sections),
-        "sources": [_provenance_source(section, section_windows.get(section["key"], {})) for section in source_sections],
-        "windows": {
-            "sections": section_windows,
-        },
-        "prompt_context": {
-            "chars": prompt_context_chars,
-            "max_chars": char_limit,
-            "included": include_prompt_context,
-            "truncated": prompt_truncated,
-        },
-        "boundaries": {
-            "world_truth": {
-                "status": "separated",
-                "canonical_source": "Athena/world_model",
-                "longform_context_role": "retrieved_memory_rollups_and_generation_context",
-            }
-        },
-        "diagnostics": [
-            {
-                "code": item.get("code"),
-                "severity": item.get("severity"),
-                "section_key": item.get("section_key"),
-            }
-            for item in diagnostics
-            if isinstance(item, dict)
-        ],
-        "recovery": _provenance_recovery(
-            chapter_index=chapter_index,
-            decision=decision,
-            has_section_truncation=has_section_truncation,
-            prompt_truncated=prompt_truncated,
-            char_limit=char_limit,
-        ),
-        "trace": {
-            "source": "summarize_longform_context",
+    return ensure_memory_provenance_contract(
+        {
             "version": LONGFORM_MEMORY_PROVENANCE_VERSION,
-            "mutability": "read",
-        },
-    }
+            "status": status,
+            "source_count": len(source_sections),
+            "sources": [
+                _provenance_source(section, section_windows.get(section["key"], {}))
+                for section in source_sections
+            ],
+            "windows": {
+                "sections": section_windows,
+            },
+            "prompt_context": {
+                "chars": prompt_context_chars,
+                "max_chars": char_limit,
+                "included": include_prompt_context,
+                "truncated": prompt_truncated,
+            },
+            "boundaries": {
+                "world_truth": {
+                    "status": "separated",
+                    "canonical_source": "Athena/world_model",
+                    "longform_context_role": "retrieved_memory_rollups_and_generation_context",
+                }
+            },
+            "diagnostics": [
+                {
+                    "code": item.get("code"),
+                    "severity": item.get("severity"),
+                    "section_key": item.get("section_key"),
+                }
+                for item in diagnostics
+                if isinstance(item, dict)
+            ],
+            "recovery": _provenance_recovery(
+                chapter_index=chapter_index,
+                decision=decision,
+                has_section_truncation=has_section_truncation,
+                prompt_truncated=prompt_truncated,
+                char_limit=char_limit,
+            ),
+            "trace": {
+                "source": "summarize_longform_context",
+                "version": LONGFORM_MEMORY_PROVENANCE_VERSION,
+                "mutability": "read",
+            },
+        }
+    )
 
 
 def _section_window(section: dict[str, Any]) -> dict[str, Any]:
