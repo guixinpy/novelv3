@@ -18,6 +18,7 @@ import type {
 import {
   buildAgentRunActionResultView,
   buildAgentRunExecutionFeedback,
+  buildPlannerContinuationExecutionFeedback,
   buildRecommendedFollowupExecutionFeedback,
 } from '../components/chat/agentRunProjection'
 import type { ChatCommandName } from '../components/workspace/chatCommands'
@@ -424,6 +425,12 @@ export const useChatStore = defineStore('chat', () => {
     clearStaleHistoryAnchorAfterLocalAppend()
   }
 
+  function appendPlannerContinuationFeedback(run: WritingAgentRunDetail) {
+    messages.value.push(buildPlannerContinuationExecutionFeedback(run))
+    historyCursor.value += 1
+    clearStaleHistoryAnchorAfterLocalAppend()
+  }
+
   function appendRouteUpgradeApplyFeedback(run: WritingAgentRunDetail) {
     messages.value.push(buildRouteUpgradeApplyFeedback(run))
     historyCursor.value += 1
@@ -631,6 +638,7 @@ export const useChatStore = defineStore('chat', () => {
     preparePendingActionSafetyAction,
     appendAgentRunExecutionFeedback,
     appendRecommendedFollowupExecutionFeedback,
+    appendPlannerContinuationFeedback,
     appendRouteUpgradeApplyFeedback,
   }
 })

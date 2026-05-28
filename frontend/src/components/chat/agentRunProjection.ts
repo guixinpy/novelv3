@@ -16,6 +16,10 @@ export {
   buildAgentRunExecutionFeedback,
   buildRecommendedFollowupExecutionFeedback,
 } from './recoveryAgentRunProjection'
+export type { PlannerAgentRunFeedbackMessage } from './plannerAgentRunProjection'
+export {
+  buildPlannerContinuationExecutionFeedback,
+} from './plannerAgentRunProjection'
 
 interface AgentRunMessageLike {
   action_result?: Record<string, unknown> | null

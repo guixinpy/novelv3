@@ -9,6 +9,7 @@ import type {
   ResolveActionResponse,
   WorkspacePanel,
   WritingAgentRunDetail,
+  WritingAgentToolRequest,
 } from '../api/types'
 import ProjectDashboard from '../components/shared/ProjectDashboard.vue'
 import ExportModal from '../components/shared/ExportModal.vue'
@@ -56,6 +57,13 @@ type UiAwareResponse =
 type WritingControlAction = 'start' | 'pause' | 'resume'
 type RecoveryExecutePayload = { sourceRunId: string; planHash: string }
 type RecommendedFollowupExecutePayload = { sourceRunId: string; planHash: string }
+type PlannerPlanExecutePayload = {
+  sourceRunId: string
+  sourcePlanId: string
+  goal: string
+  tools: Array<Record<string, unknown>>
+  planner: Record<string, unknown>
+}
 type RouteUpgradeApplyPayload = {
   sourceRunId: string
   pendingActionId: string
@@ -475,6 +483,57 @@ async function executeRecommendedFollowupsFromRun(payload: RecommendedFollowupEx
   }
 }
 
+async function executePlannerPlanFromRun(payload: PlannerPlanExecutePayload) {
+  const tools = normalizePlannerToolRequests(payload.tools)
+  if (!payload.sourceRunId || !payload.sourcePlanId || !tools.length || !payload.planner) return
+  if (payload.sourceRunId !== activeAgentRunId.value || payload.sourceRunId !== activeAgentRun.value?.id) return
+  agentRunError.value = ''
+  agentRunLoading.value = true
+  try {
+    const run = await api.createAgentRun(pid.value, {
+      goal: payload.goal || '执行规划工具链',
+      entrypoint: 'ui_planner_continuation_execute',
+      tools,
+      input: {
+        planner_continuation: true,
+        source_run_id: payload.sourceRunId,
+        source_plan_id: payload.sourcePlanId,
+        planner: payload.planner,
+      },
+    })
+    activeAgentRunId.value = run.id
+    activeAgentRun.value = run
+    chat.appendPlannerContinuationFeedback(run)
+  } catch (err) {
+    agentRunError.value = err instanceof Error ? err.message : '执行规划工具链失败'
+  } finally {
+    agentRunLoading.value = false
+  }
+}
+
+function normalizePlannerToolRequests(tools: Array<Record<string, unknown>>): WritingAgentToolRequest[] {
+  return tools.flatMap((tool) => {
+    const toolName = stringValue(tool.tool_name)
+    if (!toolName) return []
+    const request: WritingAgentToolRequest = { tool_name: toolName }
+    const commandArgs = stringValue(tool.command_args)
+    if (commandArgs) request.command_args = commandArgs
+    const params = recordValue(tool.params)
+    if (Object.keys(params).length) request.params = params
+    const planner = recordValue(tool.planner)
+    if (Object.keys(planner).length) request.planner = planner
+    return [request]
+  })
+}
+
+function recordValue(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
+}
+
+function stringValue(value: unknown) {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
 async function applyRouteUpgradeFromRun(payload: RouteUpgradeApplyPayload) {
   if (!payload.pendingActionId || !payload.approvalContractHash || !payload.approvalContract) return
   if (payload.sourceRunId !== activeAgentRunId.value || payload.sourceRunId !== activeAgentRun.value?.id) return
@@ -602,6 +661,7 @@ async function applyRouteUpgradeFromRun(payload: RouteUpgradeApplyPayload) {
       @refresh="refreshAgentRun"
       @execute-recovery="executeRecoveryFromRun"
       @execute-recommended-followups="executeRecommendedFollowupsFromRun"
+      @execute-planner-plan="executePlannerPlanFromRun"
       @apply-route-upgrade="applyRouteUpgradeFromRun"
     />
   </div>

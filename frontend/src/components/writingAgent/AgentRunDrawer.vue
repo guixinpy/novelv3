@@ -3,6 +3,14 @@ import { computed } from 'vue'
 import BaseModal from '../base/BaseModal.vue'
 import type { WritingAgentRunDetail } from '../../api/types'
 
+type PlannerPlanExecutePayload = {
+  sourceRunId: string
+  sourcePlanId: string
+  goal: string
+  tools: Array<Record<string, unknown>>
+  planner: Record<string, unknown>
+}
+
 const props = defineProps<{
   open: boolean
   loading: boolean
@@ -16,6 +24,7 @@ const emit = defineEmits<{
   refresh: []
   executeRecovery: [payload: { sourceRunId: string; planHash: string }]
   executeRecommendedFollowups: [payload: { sourceRunId: string; planHash: string }]
+  executePlannerPlan: [payload: PlannerPlanExecutePayload]
   applyRouteUpgrade: [payload: {
     sourceRunId: string
     pendingActionId: string
@@ -26,7 +35,23 @@ const emit = defineEmits<{
 
 const steps = computed(() => props.run?.steps || [])
 const runInput = computed(() => (isRecord(props.run?.input) ? props.run.input : {}))
-const plannerOutput = computed(() => recordValue(runInput.value.planner))
+const inputPlannerOutput = computed(() => recordValue(runInput.value.planner))
+const plannerPreviewOutput = computed(() => {
+  for (let index = steps.value.length - 1; index >= 0; index -= 1) {
+    const step = steps.value[index]
+    if (step?.tool_name !== 'plan_writing_agent_run' && step?.tool_name !== 'plan_dialog_intent_agent_run') continue
+    const output = recordValue(step.output)
+    const nestedPlan = recordValue(output.plan)
+    return Object.keys(nestedPlan).length ? nestedPlan : output
+  }
+  return {}
+})
+const plannerSourceIsPreview = computed(() => (
+  Object.keys(inputPlannerOutput.value).length === 0 && Object.keys(plannerPreviewOutput.value).length > 0
+))
+const plannerOutput = computed(() => (
+  Object.keys(inputPlannerOutput.value).length ? inputPlannerOutput.value : plannerPreviewOutput.value
+))
 const nestedPlannerOutput = computed(() => recordValue(plannerOutput.value.planner))
 const nestedPlanOutput = computed(() => recordValue(plannerOutput.value.plan))
 const directPlannerTrace = computed(() => recordValue(plannerOutput.value.trace))
@@ -54,17 +79,32 @@ const plannerChapterIndex = computed(() => (
   numberValue(plannerSummary.value.chapter_index) ??
   numberValue(nestedPlanOutput.value.chapter_index)
 ))
+const plannerPlanId = computed(() => (
+  stringValue(plannerTrace.value.plan_id) ||
+  stringValue(plannerSummary.value.plan_id) ||
+  stringValue(nestedPlanTrace.value.plan_id)
+))
+const plannerToolRequests = computed(() => {
+  const direct = toolRequestList(plannerOutput.value.tools)
+  if (direct.length) return direct
+  const nested = toolRequestList(nestedPlanOutput.value.tools)
+  return nested
+})
 const plannerSelectedTools = computed(() => {
   const traced = uniqueStrings(toolNameList(plannerTrace.value.selected_tools))
   if (traced.length) return traced
-  const direct = uniqueStrings(toolNameList(plannerOutput.value.tools))
+  const direct = uniqueStrings(toolNameList(plannerToolRequests.value))
   if (direct.length) return direct
-  const nested = uniqueStrings(toolNameList(nestedPlanOutput.value.tools))
-  if (nested.length) return nested
   return uniqueStrings(toolNameList(plannerOutput.value.steps))
 })
 const plannerRiskFlags = computed(() => stringList(plannerTrace.value.risk_flags))
 const plannerMissingDependencies = computed(() => dependencyList(plannerTrace.value.missing_dependencies))
+const plannerApprovalContract = computed(() => {
+  const direct = recordValue(plannerOutput.value.approval_contract)
+  if (Object.keys(direct).length) return direct
+  return recordValue(nestedPlanOutput.value.approval_contract)
+})
+const plannerApprovalStatus = computed(() => stringValue(plannerApprovalContract.value.status))
 const plannerReferencePatterns = computed(() => {
   const traced = referencePatternList(plannerTrace.value.reference_patterns)
   if (traced.length) return traced
@@ -95,11 +135,24 @@ const hasPlannerProjection = computed(() => Boolean(
     plannerIntentClass.value ||
     plannerVersion.value ||
     plannerSelectedTools.value.length ||
+    plannerApprovalStatus.value ||
     plannerRiskFlags.value.length ||
     plannerMissingDependencies.value.length ||
     plannerReferencePatterns.value.length
   ),
 ))
+const plannerExecutePayload = computed<PlannerPlanExecutePayload | null>(() => {
+  if (!plannerSourceIsPreview.value || props.run?.status !== 'success') return null
+  if (plannerApprovalStatus.value !== 'not_required') return null
+  if (!props.run?.id || !plannerPlanId.value || !plannerToolRequests.value.length) return null
+  return {
+    sourceRunId: props.run.id,
+    sourcePlanId: plannerPlanId.value,
+    goal: `执行规划工具链：${plannerIntentLabel(plannerIntentClass.value)}`,
+    tools: plannerToolRequests.value,
+    planner: plannerOutput.value,
+  }
+})
 const agentProfileDefinition = computed(() => recordValue(props.run?.agent_profile_definition))
 const agentProfileScope = computed(() => recordValue(props.run?.agent_profile_scope))
 const agentToolDiscovery = computed(() => recordValue(props.run?.agent_tool_discovery))
@@ -296,6 +349,11 @@ function executeRecommendedFollowups() {
   emit('executeRecommendedFollowups', recommendedFollowupExecutePayload.value)
 }
 
+function executePlannerPlan() {
+  if (!plannerExecutePayload.value) return
+  emit('executePlannerPlan', plannerExecutePayload.value)
+}
+
 function applyRouteUpgrade() {
   if (!canApplyRouteUpgrade.value || !props.run?.id) return
   emit('applyRouteUpgrade', {
@@ -368,6 +426,14 @@ function plannerStatusLabel(status: unknown) {
   if (value === 'blocked') return '已阻塞'
   if (value === 'success') return '成功'
   if (value === 'failed') return '失败'
+  return value || '未知'
+}
+
+function plannerApprovalStatusLabel(status: unknown) {
+  const value = stringValue(status)
+  if (value === 'not_required') return '无需审批'
+  if (value === 'requires_confirmation') return '需要审批'
+  if (value === 'blocked') return '已阻止'
   return value || '未知'
 }
 
@@ -446,6 +512,13 @@ function toolNameList(value: unknown) {
       return stringValue(recordValue(item).tool_name)
     })
     .filter(Boolean)
+}
+
+function toolRequestList(value: unknown) {
+  if (!Array.isArray(value)) return []
+  return value
+    .filter(isRecord)
+    .filter((item) => Boolean(stringValue(item.tool_name)))
 }
 
 function uniqueStrings(values: string[]) {
@@ -628,6 +701,10 @@ function missingDependencyTool(value: Record<string, unknown>) {
               <dt>规划器</dt>
               <dd>{{ plannerVersion }}</dd>
             </div>
+            <div v-if="plannerApprovalStatus">
+              <dt>审批</dt>
+              <dd>{{ plannerApprovalStatusLabel(plannerApprovalStatus) }}</dd>
+            </div>
             <div v-if="plannerSelectedTools.length">
               <dt>工具链</dt>
               <dd>{{ plannerSelectedTools.length }} 个工具</dd>
@@ -699,6 +776,16 @@ function missingDependencyTool(value: Record<string, unknown>) {
               <p v-if="pattern.decision">{{ pattern.decision }}</p>
             </li>
           </ul>
+          <div v-if="plannerExecutePayload" class="agent-run-drawer__actions">
+            <button
+              type="button"
+              class="agent-run-drawer__execute"
+              data-testid="execute-planner-plan"
+              @click="executePlannerPlan"
+            >
+              确认执行规划工具链
+            </button>
+          </div>
         </section>
 
         <section

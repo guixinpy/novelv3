@@ -19,6 +19,10 @@ import {
   LONGFORM_AGENT_RUN_ACTION_TYPES,
 } from './longformAgentRunProjection'
 import {
+  PLANNER_AGENT_RUN_ACTION_DESCRIPTORS,
+  PLANNER_AGENT_RUN_ACTION_TYPES,
+} from './plannerAgentRunProjection'
+import {
   ROUTE_OPT_IN_AGENT_RUN_ACTION_TYPES,
 } from './routeOptInAgentRunProjection'
 import {
@@ -45,6 +49,7 @@ describe('agentRunProjection', () => {
 
   it('exposes a dedicated aggregate registry for agent run action descriptors', () => {
     expect(REGISTRY_AGENT_RUN_ACTION_TYPES).toEqual([
+      ...PLANNER_AGENT_RUN_ACTION_TYPES,
       ...RECOVERY_AGENT_RUN_ACTION_TYPES,
       ...DIAGNOSTIC_AGENT_RUN_ACTION_TYPES,
       ...WRITING_TOOL_AGENT_RUN_ACTION_TYPES,
@@ -54,6 +59,16 @@ describe('agentRunProjection', () => {
     for (const type of REGISTRY_AGENT_RUN_ACTION_TYPES) {
       expect(REGISTRY_AGENT_RUN_ACTION_DESCRIPTORS[type]?.type).toBe(type)
       expect(typeof REGISTRY_AGENT_RUN_ACTION_DESCRIPTORS[type]?.buildView).toBe('function')
+    }
+  })
+
+  it('exposes planner continuation action descriptors from a dedicated module', () => {
+    expect(PLANNER_AGENT_RUN_ACTION_TYPES).toEqual([
+      'ui_planner_continuation_execute',
+    ])
+    for (const type of PLANNER_AGENT_RUN_ACTION_TYPES) {
+      expect(PLANNER_AGENT_RUN_ACTION_DESCRIPTORS[type]?.type).toBe(type)
+      expect(typeof PLANNER_AGENT_RUN_ACTION_DESCRIPTORS[type]?.buildView).toBe('function')
     }
   })
 
@@ -112,6 +127,14 @@ describe('agentRunProjection', () => {
   it('extracts run ids only from supported agent run action messages', () => {
     expect(getAgentRunIdFromMessage({
       action_result: {
+        type: 'ui_planner_continuation_execute',
+        status: 'success',
+        data: { agent_run_id: 'run-planner-executed' },
+      },
+    })).toBe('run-planner-executed')
+
+    expect(getAgentRunIdFromMessage({
+      action_result: {
         type: 'plan_recovery_tools',
         status: 'success',
         data: { agent_run_id: 'run-preview' },
@@ -138,6 +161,7 @@ describe('agentRunProjection', () => {
   })
 
   it('recognizes supported agent run action types', () => {
+    expect(isAgentRunActionType('ui_planner_continuation_execute')).toBe(true)
     expect(isAgentRunActionType('plan_recovery_tools')).toBe(true)
     expect(isAgentRunActionType('plan_recommended_followups')).toBe(true)
     expect(isAgentRunActionType('ui_recovery_execute')).toBe(true)
@@ -173,6 +197,7 @@ describe('agentRunProjection', () => {
   })
 
   it('exposes registered agent run action descriptors', () => {
+    expect(getAgentRunActionDescriptor('ui_planner_continuation_execute')?.type).toBe('ui_planner_continuation_execute')
     expect(getAgentRunActionDescriptor('plan_recovery_tools')?.type).toBe('plan_recovery_tools')
     expect(getAgentRunActionDescriptor('plan_recommended_followups')?.type).toBe('plan_recommended_followups')
     expect(getAgentRunActionDescriptor('ui_recovery_execute')?.type).toBe('ui_recovery_execute')

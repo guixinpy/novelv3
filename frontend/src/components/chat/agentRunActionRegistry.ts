@@ -8,6 +8,10 @@ import {
   LONGFORM_AGENT_RUN_ACTION_TYPES,
 } from './longformAgentRunProjection'
 import {
+  PLANNER_AGENT_RUN_ACTION_DESCRIPTORS,
+  PLANNER_AGENT_RUN_ACTION_TYPES,
+} from './plannerAgentRunProjection'
+import {
   ROUTE_OPT_IN_AGENT_RUN_ACTION_DESCRIPTORS,
   ROUTE_OPT_IN_AGENT_RUN_ACTION_TYPES,
 } from './routeOptInAgentRunProjection'
@@ -21,6 +25,7 @@ import {
 } from './writingToolAgentRunProjection'
 
 export const AGENT_RUN_ACTION_TYPES = [
+  ...PLANNER_AGENT_RUN_ACTION_TYPES,
   ...RECOVERY_AGENT_RUN_ACTION_TYPES,
   ...DIAGNOSTIC_AGENT_RUN_ACTION_TYPES,
   ...WRITING_TOOL_AGENT_RUN_ACTION_TYPES,
@@ -36,6 +41,7 @@ export interface AgentRunActionDescriptor {
 }
 
 export const AGENT_RUN_ACTION_DESCRIPTORS: Record<AgentRunActionType, AgentRunActionDescriptor> = {
+  ...PLANNER_AGENT_RUN_ACTION_DESCRIPTORS,
   ...RECOVERY_AGENT_RUN_ACTION_DESCRIPTORS,
   ...DIAGNOSTIC_AGENT_RUN_ACTION_DESCRIPTORS,
   ...WRITING_TOOL_AGENT_RUN_ACTION_DESCRIPTORS,

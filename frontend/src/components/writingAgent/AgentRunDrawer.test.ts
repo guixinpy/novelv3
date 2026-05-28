@@ -353,6 +353,153 @@ describe('AgentRunDrawer', () => {
     expect(text).not.toContain('references/agent-projects')
   })
 
+  it('emits a planner continuation payload only for non-confirmation planner previews', async () => {
+    const wrapper = mount(AgentRunDrawer, {
+      attachTo: document.body,
+      props: {
+        open: true,
+        loading: false,
+        error: '',
+        run: {
+          id: 'run-plan-preview',
+          project_id: 'project-1',
+          goal: '规划审稿第12章',
+          status: 'success',
+          entrypoint: 'manual_debug_run',
+          input: {},
+          output: null,
+          error: null,
+          steps: [
+            {
+              id: 'step-plan',
+              run_id: 'run-plan-preview',
+              project_id: 'project-1',
+              step_index: 1,
+              tool_name: 'plan_writing_agent_run',
+              status: 'success',
+              input: {},
+              output: {
+                status: 'completed',
+                planner_version: 'phase53.context_gate.v1',
+                intent_class: 'review_chapter',
+                chapter_index: 12,
+                approval_contract: { status: 'not_required', write_steps: [] },
+                trace: { plan_id: 'plan:review-12', selected_tools: ['review_chapter_quality'] },
+                tools: [
+                  {
+                    tool_name: 'review_chapter_quality',
+                    params: { chapter_index: 12 },
+                    planner: {
+                      step_id: 'step:review-quality',
+                      plan_id: 'plan:review-12',
+                      mutability: 'read',
+                      requires_confirmation: false,
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      },
+    })
+
+    const button = document.body.querySelector('[data-testid="execute-planner-plan"]') as HTMLButtonElement
+    expect(button).not.toBeNull()
+    expect(button.textContent).toContain('确认执行规划工具链')
+
+    await button.click()
+
+    expect(wrapper.emitted('executePlannerPlan')).toEqual([[
+      {
+        sourceRunId: 'run-plan-preview',
+        sourcePlanId: 'plan:review-12',
+        goal: '执行规划工具链：审稿章节',
+        tools: [
+          {
+            tool_name: 'review_chapter_quality',
+            params: { chapter_index: 12 },
+            planner: {
+              step_id: 'step:review-quality',
+              plan_id: 'plan:review-12',
+              mutability: 'read',
+              requires_confirmation: false,
+            },
+          },
+        ],
+        planner: {
+          status: 'completed',
+          planner_version: 'phase53.context_gate.v1',
+          intent_class: 'review_chapter',
+          chapter_index: 12,
+          approval_contract: { status: 'not_required', write_steps: [] },
+          trace: { plan_id: 'plan:review-12', selected_tools: ['review_chapter_quality'] },
+          tools: [
+            {
+              tool_name: 'review_chapter_quality',
+              params: { chapter_index: 12 },
+              planner: {
+                step_id: 'step:review-quality',
+                plan_id: 'plan:review-12',
+                mutability: 'read',
+                requires_confirmation: false,
+              },
+            },
+          ],
+        },
+      },
+    ]])
+  })
+
+  it('does not offer direct planner continuation when approval is required', () => {
+    mount(AgentRunDrawer, {
+      attachTo: document.body,
+      props: {
+        open: true,
+        loading: false,
+        error: '',
+        run: {
+          id: 'run-plan-write-preview',
+          project_id: 'project-1',
+          goal: '规划生成设定',
+          status: 'success',
+          entrypoint: 'manual_debug_run',
+          input: {},
+          output: null,
+          error: null,
+          steps: [
+            {
+              id: 'step-plan',
+              run_id: 'run-plan-write-preview',
+              project_id: 'project-1',
+              step_index: 1,
+              tool_name: 'plan_writing_agent_run',
+              status: 'success',
+              input: {},
+              output: {
+                status: 'completed',
+                intent_class: 'setup_project',
+                approval_contract: {
+                  status: 'requires_confirmation',
+                  approval: { approval_contract_hash: 'approval:secret' },
+                  write_steps: [{ tool_name: 'generate_setup' }],
+                },
+                trace: { plan_id: 'plan:setup' },
+                tools: [{ tool_name: 'generate_setup', params: {} }],
+              },
+            },
+          ],
+        },
+      },
+    })
+
+    const text = document.body.textContent || ''
+    expect(text).toContain('Agent 规划投影')
+    expect(text).toContain('需要审批')
+    expect(text).not.toContain('approval:secret')
+    expect(document.body.querySelector('[data-testid="execute-planner-plan"]')).toBeNull()
+  })
+
   it('renders loading and error states', () => {
     const loading = mount(AgentRunDrawer, {
       attachTo: document.body,
