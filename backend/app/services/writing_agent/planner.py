@@ -10,6 +10,10 @@ from sqlalchemy.orm import Session
 from app.models import ChapterContent, WritingAgentRun, WritingAgentStep
 from app.schemas.writing_agent import WritingAgentToolRequest
 from app.services.writing_agent.approval_contract import build_agent_plan_approval_contract
+from app.services.writing_agent.reference_pattern_projection import (
+    REFERENCE_PATTERN_PROJECTION_VERSION,
+    build_reference_pattern_projection,
+)
 from app.services.writing_agent.tool_contracts import agent_tool_execution_metadata
 from app.services.writing_agent.tool_executor import (
     static_writing_agent_tool_adapter_names,
@@ -60,6 +64,8 @@ def build_writing_agent_run_plan(
         "plan_id": plan_id,
         "source_projection_id": source_projection_id,
         "planner_version": PLANNER_VERSION,
+        "reference_pattern_version": REFERENCE_PATTERN_PROJECTION_VERSION,
+        "reference_patterns": build_reference_pattern_projection(),
         "intent_class": intent_class,
         "tool_policy_projection": tool_plan.get("tool_policy_projection"),
         "agent_profile": agent_profile,

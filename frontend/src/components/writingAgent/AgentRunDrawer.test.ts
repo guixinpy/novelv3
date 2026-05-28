@@ -265,6 +265,94 @@ describe('AgentRunDrawer', () => {
     expect(text).not.toContain('inspect_agent_health_projection')
   })
 
+  it('renders planner trace and reference pattern projection for auditable dialog runs', () => {
+    mount(AgentRunDrawer, {
+      attachTo: document.body,
+      props: {
+        open: true,
+        loading: false,
+        error: '',
+        run: {
+          id: 'run-planner',
+          project_id: 'project-1',
+          goal: '审稿第12章',
+          status: 'success',
+          entrypoint: 'dialog_auto_plan',
+          input: {
+            planner: {
+              status: 'completed',
+              planner_version: 'phase53.context_gate.v1',
+              intent_class: 'review_chapter',
+              chapter_index: 12,
+              tools: [
+                { tool_name: 'describe_agent_tools' },
+                { tool_name: 'review_chapter_quality' },
+                { tool_name: 'review_chapter_continuity' },
+                { tool_name: 'plan_chapter_revision' },
+              ],
+              trace: {
+                selected_tools: [
+                  'describe_agent_tools',
+                  'review_chapter_quality',
+                  'review_chapter_continuity',
+                  'plan_chapter_revision',
+                ],
+                risk_flags: ['review_requires_revision'],
+                missing_dependencies: [
+                  { code: 'chapter_quality_review_missing', tool_name: 'review_chapter_quality' },
+                ],
+                reference_pattern_version: 'phase107.reference_pattern_projection.v1',
+                reference_patterns: [
+                  {
+                    source: 'hermes-agent',
+                    source_lines: ['499-508'],
+                    applied_patterns: ['tool_lifecycle_hooks'],
+                    decision: 'Keep dialog planning explicit.',
+                  },
+                  {
+                    source: 'openhuman',
+                    source_lines: ['31-41'],
+                    applied_patterns: ['compact_subagent_result_contract'],
+                    decision: 'Preserve compact worker outputs.',
+                  },
+                  {
+                    source: 'openclaw',
+                    source_lines: ['44-49'],
+                    applied_patterns: ['schema_and_audit_discipline'],
+                    decision: 'Prefer deterministic schemas.',
+                  },
+                ],
+              },
+            },
+          },
+          output: null,
+          error: null,
+          steps: [],
+        },
+      },
+    })
+
+    const text = document.body.textContent || ''
+    expect(text).toContain('Agent 规划投影')
+    expect(text).toContain('审稿章节')
+    expect(text).toContain('第12章')
+    expect(text).toContain('phase53.context_gate.v1')
+    expect(text).toContain('工具链')
+    expect(text).toContain('4 个工具')
+    expect(text).toContain('风险')
+    expect(text).toContain('review_requires_revision')
+    expect(text).toContain('缺依赖')
+    expect(text).toContain('chapter_quality_review_missing')
+    expect(text).toContain('参考模式')
+    expect(text).toContain('hermes-agent')
+    expect(text).toContain('openhuman')
+    expect(text).toContain('openclaw')
+    expect(text).toContain('tool_lifecycle_hooks')
+    expect(text).toContain('compact_subagent_result_contract')
+    expect(text).toContain('schema_and_audit_discipline')
+    expect(text).not.toContain('references/agent-projects')
+  })
+
   it('renders loading and error states', () => {
     const loading = mount(AgentRunDrawer, {
       attachTo: document.body,

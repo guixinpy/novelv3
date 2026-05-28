@@ -37,6 +37,12 @@ def test_planner_builds_ready_next_chapter_tool_chain(db_session):
     assert plan["trace"]["agent_health_projection"]["version"] == "phase218.agent_health_projection.v1"
     assert plan["trace"]["agent_health_projection"]["status"] in {"ready", "degraded", "needs_attention"}
     assert isinstance(plan["trace"]["agent_health_projection"]["diagnostic_count"], int)
+    assert plan["trace"]["reference_pattern_version"] == "phase107.reference_pattern_projection.v1"
+    assert [item["source"] for item in plan["trace"]["reference_patterns"]] == [
+        "hermes-agent",
+        "openhuman",
+        "openclaw",
+    ]
     assert plan["trace"]["agent_health_projection"]["command_contracts"]["summary"]["agent_control_commands"] == 2
     assert isinstance(plan["trace"]["agent_health_projection"]["command_contracts"]["summary"]["gap_count"], int)
     assert plan["trace"]["agent_health_projection"]["control_plane_readiness"]["summary"]["agent_control_commands"] == 2

@@ -26,6 +26,80 @@ const emit = defineEmits<{
 
 const steps = computed(() => props.run?.steps || [])
 const runInput = computed(() => (isRecord(props.run?.input) ? props.run.input : {}))
+const plannerOutput = computed(() => recordValue(runInput.value.planner))
+const nestedPlannerOutput = computed(() => recordValue(plannerOutput.value.planner))
+const nestedPlanOutput = computed(() => recordValue(plannerOutput.value.plan))
+const directPlannerTrace = computed(() => recordValue(plannerOutput.value.trace))
+const nestedPlanTrace = computed(() => recordValue(nestedPlanOutput.value.trace))
+const plannerTrace = computed(() => (
+  Object.keys(directPlannerTrace.value).length ? directPlannerTrace.value : nestedPlanTrace.value
+))
+const plannerSummary = computed(() => (
+  Object.keys(nestedPlannerOutput.value).length ? nestedPlannerOutput.value : plannerOutput.value
+))
+const plannerStatus = computed(() => (
+  stringValue(plannerOutput.value.status) || stringValue(nestedPlanOutput.value.status)
+))
+const plannerIntentClass = computed(() => (
+  stringValue(plannerSummary.value.intent_class) ||
+  stringValue(nestedPlanOutput.value.intent_class) ||
+  stringValue(plannerTrace.value.intent_class)
+))
+const plannerVersion = computed(() => (
+  stringValue(plannerSummary.value.planner_version) ||
+  stringValue(nestedPlanOutput.value.planner_version) ||
+  stringValue(plannerTrace.value.planner_version)
+))
+const plannerChapterIndex = computed(() => (
+  numberValue(plannerSummary.value.chapter_index) ??
+  numberValue(nestedPlanOutput.value.chapter_index)
+))
+const plannerSelectedTools = computed(() => {
+  const traced = uniqueStrings(toolNameList(plannerTrace.value.selected_tools))
+  if (traced.length) return traced
+  const direct = uniqueStrings(toolNameList(plannerOutput.value.tools))
+  if (direct.length) return direct
+  const nested = uniqueStrings(toolNameList(nestedPlanOutput.value.tools))
+  if (nested.length) return nested
+  return uniqueStrings(toolNameList(plannerOutput.value.steps))
+})
+const plannerRiskFlags = computed(() => stringList(plannerTrace.value.risk_flags))
+const plannerMissingDependencies = computed(() => dependencyList(plannerTrace.value.missing_dependencies))
+const plannerReferencePatterns = computed(() => {
+  const traced = referencePatternList(plannerTrace.value.reference_patterns)
+  if (traced.length) return traced
+  const nested = referencePatternList(nestedPlanTrace.value.reference_patterns)
+  if (nested.length) return nested
+  for (const step of steps.value) {
+    const outputTrace = recordValue(recordValue(step.output).trace)
+    const patterns = referencePatternList(outputTrace.reference_patterns)
+    if (patterns.length) return patterns
+  }
+  return []
+})
+const plannerReferencePatternVersion = computed(() => {
+  if (plannerReferencePatterns.value.length === 0) return ''
+  if (stringValue(plannerTrace.value.reference_pattern_version)) return stringValue(plannerTrace.value.reference_pattern_version)
+  if (stringValue(nestedPlanTrace.value.reference_pattern_version)) return stringValue(nestedPlanTrace.value.reference_pattern_version)
+  for (const step of steps.value) {
+    const outputTrace = recordValue(recordValue(step.output).trace)
+    const version = stringValue(outputTrace.reference_pattern_version)
+    if (version) return version
+  }
+  return ''
+})
+const hasPlannerProjection = computed(() => Boolean(
+  Object.keys(plannerOutput.value).length &&
+  (
+    plannerStatus.value ||
+    plannerIntentClass.value ||
+    plannerVersion.value ||
+    plannerSelectedTools.value.length ||
+    plannerRiskFlags.value.length ||
+    plannerMissingDependencies.value.length ||
+    plannerReferencePatterns.value.length
+  ),
+))
 const agentProfileDefinition = computed(() => recordValue(props.run?.agent_profile_definition))
 const agentProfileScope = computed(() => recordValue(props.run?.agent_profile_scope))
 const agentToolDiscovery = computed(() => recordValue(props.run?.agent_tool_discovery))
@@ -276,6 +350,32 @@ function agentControlPlaneStatusLabel(status: unknown) {
   return value || '未知'
 }
 
+function plannerIntentLabel(intent: unknown) {
+  const value = stringValue(intent)
+  if (value === 'setup_project') return '基础设定'
+  if (value === 'build_storyline') return '故事线'
+  if (value === 'build_outline') return '大纲'
+  if (value === 'review_chapter') return '审稿章节'
+  if (value === 'continue_next_chapter') return '续写章节'
+  if (value === 'recover_blocked_run') return '恢复阻塞'
+  if (value === 'inspect_tools') return '工具检查'
+  return value || '未知'
+}
+
+function plannerStatusLabel(status: unknown) {
+  const value = stringValue(status)
+  if (value === 'completed') return '已完成'
+  if (value === 'blocked') return '已阻塞'
+  if (value === 'success') return '成功'
+  if (value === 'failed') return '失败'
+  return value || '未知'
+}
+
+function chapterIndexLabel(value: unknown) {
+  const index = numberValue(value)
+  return index !== null ? `第${index}章` : ''
+}
+
 function profilePolicyAuditLabel(audit: Record<string, unknown>) {
   const status = stringValue(audit.status)
   const summary = recordValue(audit.summary)
@@ -329,6 +429,59 @@ function hasRouteApplyRecommendation(output: Record<string, unknown>) {
   const tools = Array.isArray(output.recommended_next_tools) ? output.recommended_next_tools : []
   if (tools.includes('apply_pending_action_route_approval_opt_in')) return true
   return Boolean(firstRecommendedRouteApplyCall(output))
+}
+
+function stringList(value: unknown) {
+  if (!Array.isArray(value)) return []
+  return value
+    .map((item) => stringValue(item))
+    .filter(Boolean)
+}
+
+function toolNameList(value: unknown) {
+  if (!Array.isArray(value)) return []
+  return value
+    .map((item) => {
+      if (typeof item === 'string') return item.trim()
+      return stringValue(recordValue(item).tool_name)
+    })
+    .filter(Boolean)
+}
+
+function uniqueStrings(values: string[]) {
+  return [...new Set(values)]
+}
+
+function dependencyList(value: unknown) {
+  if (!Array.isArray(value)) return []
+  return value
+    .map((item) => {
+      if (typeof item === 'string') return { code: item }
+      return recordValue(item)
+    })
+    .filter((item) => Object.keys(item).length > 0)
+}
+
+function referencePatternList(value: unknown) {
+  if (!Array.isArray(value)) return []
+  return value.filter(isRecord)
+}
+
+function sourceLinesLabel(value: unknown) {
+  const lines = stringList(value)
+  return lines.length ? `lines ${lines.join(', ')}` : ''
+}
+
+function appliedPatternsLabel(value: unknown) {
+  return stringList(value).join(', ')
+}
+
+function missingDependencyCode(value: Record<string, unknown>) {
+  return stringValue(value.code) || stringValue(value.reason) || 'unknown_dependency'
+}
+
+function missingDependencyTool(value: Record<string, unknown>) {
+  return stringValue(value.tool_name)
 }
 </script>
 
@@ -450,6 +603,102 @@ function hasRouteApplyRecommendation(output: Record<string, unknown>) {
               <dd>{{ recoveryPlanHash }}</dd>
             </div>
           </dl>
+        </section>
+
+        <section
+          v-if="hasPlannerProjection"
+          class="agent-run-drawer__planner"
+          aria-label="Agent planner projection"
+        >
+          <h4>Agent 规划投影</h4>
+          <dl class="agent-run-drawer__facts">
+            <div v-if="plannerIntentClass">
+              <dt>意图</dt>
+              <dd>{{ plannerIntentLabel(plannerIntentClass) }}</dd>
+            </div>
+            <div v-if="plannerStatus">
+              <dt>规划状态</dt>
+              <dd>{{ plannerStatusLabel(plannerStatus) }}</dd>
+            </div>
+            <div v-if="plannerChapterIndex !== null">
+              <dt>章节</dt>
+              <dd>{{ chapterIndexLabel(plannerChapterIndex) }}</dd>
+            </div>
+            <div v-if="plannerVersion">
+              <dt>规划器</dt>
+              <dd>{{ plannerVersion }}</dd>
+            </div>
+            <div v-if="plannerSelectedTools.length">
+              <dt>工具链</dt>
+              <dd>{{ plannerSelectedTools.length }} 个工具</dd>
+            </div>
+            <div v-if="plannerRiskFlags.length">
+              <dt>风险</dt>
+              <dd>{{ plannerRiskFlags.length }} 项</dd>
+            </div>
+            <div v-if="plannerMissingDependencies.length">
+              <dt>缺依赖</dt>
+              <dd>{{ plannerMissingDependencies.length }} 项</dd>
+            </div>
+            <div v-if="plannerReferencePatterns.length">
+              <dt>参考模式</dt>
+              <dd>{{ plannerReferencePatterns.length }} 个来源</dd>
+            </div>
+            <div v-if="plannerReferencePatternVersion">
+              <dt>模式版本</dt>
+              <dd>{{ plannerReferencePatternVersion }}</dd>
+            </div>
+          </dl>
+          <ul
+            v-if="plannerSelectedTools.length"
+            class="agent-run-drawer__tools"
+          >
+            <li
+              v-for="tool in plannerSelectedTools"
+              :key="`planner-tool:${tool}`"
+            >
+              {{ tool }}
+            </li>
+          </ul>
+          <ul
+            v-if="plannerRiskFlags.length"
+            class="agent-run-drawer__planner-signals"
+          >
+            <li
+              v-for="flag in plannerRiskFlags"
+              :key="`planner-risk:${flag}`"
+            >
+              {{ flag }}
+            </li>
+          </ul>
+          <ul
+            v-if="plannerMissingDependencies.length"
+            class="agent-run-drawer__planner-signals"
+          >
+            <li
+              v-for="(dependency, index) in plannerMissingDependencies"
+              :key="`planner-dependency:${missingDependencyCode(dependency)}:${index}`"
+            >
+              <strong>{{ missingDependencyCode(dependency) }}</strong>
+              <span v-if="missingDependencyTool(dependency)">{{ missingDependencyTool(dependency) }}</span>
+            </li>
+          </ul>
+          <ul
+            v-if="plannerReferencePatterns.length"
+            class="agent-run-drawer__reference-patterns"
+          >
+            <li
+              v-for="(pattern, index) in plannerReferencePatterns"
+              :key="`reference-pattern:${pattern.source || index}`"
+            >
+              <div>
+                <strong>{{ pattern.source || 'unknown-source' }}</strong>
+                <span v-if="sourceLinesLabel(pattern.source_lines)">{{ sourceLinesLabel(pattern.source_lines) }}</span>
+              </div>
+              <p v-if="appliedPatternsLabel(pattern.applied_patterns)">{{ appliedPatternsLabel(pattern.applied_patterns) }}</p>
+              <p v-if="pattern.decision">{{ pattern.decision }}</p>
+            </li>
+          </ul>
         </section>
 
         <section
@@ -657,6 +906,7 @@ function hasRouteApplyRecommendation(output: Record<string, unknown>) {
 }
 
 .agent-run-drawer__summary h4,
+.agent-run-drawer__planner h4,
 .agent-run-drawer__recovery h4,
 .agent-run-drawer__followups h4,
 .agent-run-drawer__steps h4 {
@@ -695,6 +945,15 @@ function hasRouteApplyRecommendation(output: Record<string, unknown>) {
   overflow-wrap: anywhere;
 }
 
+.agent-run-drawer__planner {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-secondary);
+}
+
 .agent-run-drawer__recovery {
   display: grid;
   gap: var(--space-3);
@@ -724,7 +983,9 @@ function hasRouteApplyRecommendation(output: Record<string, unknown>) {
 
 .agent-run-drawer__blockers,
 .agent-run-drawer__tools,
-.agent-run-drawer__write-tools {
+.agent-run-drawer__write-tools,
+.agent-run-drawer__planner-signals,
+.agent-run-drawer__reference-patterns {
   display: grid;
   gap: var(--space-2);
   margin: 0;
@@ -764,6 +1025,54 @@ function hasRouteApplyRecommendation(output: Record<string, unknown>) {
   color: var(--color-text-primary);
   font-size: var(--text-xs);
   overflow-wrap: anywhere;
+}
+
+.agent-run-drawer__planner-signals li {
+  display: grid;
+  gap: 2px;
+  padding: var(--space-2);
+  border-left: 3px solid var(--color-warning);
+  background: var(--color-bg-white);
+  color: var(--color-text-primary);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+
+.agent-run-drawer__planner-signals strong {
+  color: var(--color-text-primary);
+}
+
+.agent-run-drawer__planner-signals span {
+  color: var(--color-text-secondary);
+}
+
+.agent-run-drawer__reference-patterns li {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-white);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+
+.agent-run-drawer__reference-patterns div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: baseline;
+}
+
+.agent-run-drawer__reference-patterns strong {
+  color: var(--color-text-primary);
+}
+
+.agent-run-drawer__reference-patterns span,
+.agent-run-drawer__reference-patterns p {
+  margin: 0;
+  color: var(--color-text-secondary);
+  line-height: var(--leading-normal);
 }
 
 .agent-run-drawer__write-tools li {
