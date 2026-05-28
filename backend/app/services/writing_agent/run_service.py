@@ -42,6 +42,7 @@ from app.services.writing_agent.tool_executor import (
 )
 from app.services.writing_agent.tool_policy import should_stop_after_report, successful_report_block_message
 from app.services.writing_agent.tool_recommendations import normalize_tool_recommendations
+from app.services.writing_agent.tool_contracts import agent_tool_execution_metadata
 from app.services.writing_agent.tool_request_validation import validate_writing_agent_tool_request
 from app.services.writing_agent.command_contract_projection import command_contracts_from_run_input
 from app.services.writing_agent.control_plane_readiness_projection import control_plane_readiness_from_run_input
@@ -231,6 +232,16 @@ class WritingAgentRunService:
             step = self._start_step(run, step_index, tool)
             if tool.tool_name not in ALLOWED_TOOLS:
                 self._fail_step_and_run(run, step, f"Unsupported writing agent tool: {tool.tool_name}")
+                return run
+
+            planner_continuation_block = _planner_continuation_approval_block(run, tool)
+            if planner_continuation_block:
+                self._block_step_and_run(
+                    run,
+                    step,
+                    "Planner continuation requires approval",
+                    output=planner_continuation_block,
+                )
                 return run
 
             validation = validate_writing_agent_tool_request(tool.tool_name, tool.params)
@@ -841,6 +852,62 @@ def _non_empty_string(value: object) -> str | None:
         return None
     stripped = value.strip()
     return stripped or None
+
+
+def _planner_continuation_approval_block(
+    run: WritingAgentRun,
+    tool: WritingAgentToolRequest,
+) -> dict[str, Any] | None:
+    run_input = run.input if isinstance(run.input, dict) else {}
+    if run.entrypoint != "ui_planner_continuation_execute" and run_input.get("planner_continuation") is not True:
+        return None
+
+    planner = run_input.get("planner") if isinstance(run_input.get("planner"), dict) else {}
+    approval_contract = (
+        planner.get("approval_contract")
+        if isinstance(planner.get("approval_contract"), dict)
+        else {}
+    )
+    approval_status = _non_empty_string(approval_contract.get("status")) or "missing"
+    planner_metadata = tool.planner if isinstance(tool.planner, dict) else {}
+    execution_metadata = agent_tool_execution_metadata(
+        get_agent_tool_descriptor(tool.tool_name),
+        writing_agent_tool_adapter_metadata(tool.tool_name),
+    )
+    execution_mutability = _non_empty_string(execution_metadata.get("mutability")) or "unclassified"
+    planner_mutability = _non_empty_string(planner_metadata.get("mutability"))
+    requires_confirmation = (
+        execution_metadata.get("requires_confirmation") is True
+        or execution_mutability in {"write", "guarded_write"}
+        or (
+            execution_mutability == "unclassified"
+            and (
+                planner_metadata.get("requires_confirmation") is True
+                or planner_mutability in {"write", "guarded_write"}
+            )
+        )
+    )
+    if not requires_confirmation:
+        return None
+
+    return {
+        "status": RUN_BLOCKED,
+        "reason": "planner_continuation_requires_approval",
+        "message": "Planner continuation includes a write or confirmation-required tool.",
+        "source_run_id": _non_empty_string(run_input.get("source_run_id")),
+        "source_plan_id": _non_empty_string(run_input.get("source_plan_id"))
+        or _non_empty_string(planner_metadata.get("plan_id")),
+        "blocked_tool": tool.tool_name,
+        "approval_contract_status": approval_status,
+        "tool_execution_metadata": {
+            "mutability": execution_metadata.get("mutability"),
+            "requires_confirmation": execution_metadata.get("requires_confirmation") is True,
+        },
+        "recommended_next_tools": [
+            "preview_agent_plan_approval_contract",
+            "verify_agent_plan_approval_contract",
+        ],
+    }
 
 
 def _continuation_state(run: WritingAgentRun, steps: list[WritingAgentStep]) -> dict[str, Any]:

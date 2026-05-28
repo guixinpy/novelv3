@@ -100,6 +100,119 @@ def test_create_agent_run_records_steps_and_returns_detail(client, db_session, m
     assert envelope["adapter"] is None
 
 
+def test_planner_continuation_blocks_unapproved_write_tools(client):
+    project_id = _create_project(client, "Planner Continuation Guard")
+
+    response = client.post(
+        f"/api/v1/projects/{project_id}/agent-runs",
+        json={
+            "goal": "执行规划工具链：修订章节",
+            "entrypoint": "ui_planner_continuation_execute",
+            "tools": [
+                {
+                    "tool_name": "apply_planner_revision_patch",
+                    "params": {"chapter_index": 1},
+                    "planner": {"plan_id": "plan:revision-1"},
+                }
+            ],
+            "input": {
+                "planner_continuation": True,
+                "source_run_id": "run-source-1",
+                "source_plan_id": "plan:revision-1",
+                "planner": {
+                    "trace": {"plan_id": "plan:revision-1"},
+                    "approval_contract": {
+                        "status": "not_required",
+                        "write_steps": [],
+                    },
+                },
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "blocked"
+    assert payload["error"] == "Planner continuation requires approval"
+    assert [step["tool_name"] for step in payload["steps"]] == ["apply_planner_revision_patch"]
+    step = payload["steps"][0]
+    assert step["status"] == "blocked"
+    output = step["output"]
+    assert output["status"] == "blocked"
+    assert output["reason"] == "planner_continuation_requires_approval"
+    assert output["source_run_id"] == "run-source-1"
+    assert output["source_plan_id"] == "plan:revision-1"
+    assert output["blocked_tool"] == "apply_planner_revision_patch"
+    assert output["approval_contract_status"] == "not_required"
+    assert output["tool_execution_metadata"] == {
+        "mutability": "guarded_write",
+        "requires_confirmation": True,
+    }
+    assert output["recommended_next_tools"] == [
+        "preview_agent_plan_approval_contract",
+        "verify_agent_plan_approval_contract",
+    ]
+
+
+def test_planner_continuation_allows_read_approval_preview(client):
+    project_id = _create_project(client, "Planner Continuation Read Guard")
+    plan = {
+        "project_id": project_id,
+        "trace": {
+            "plan_id": "plan:revision-preview",
+            "source_projection_id": "projection:revision-preview",
+            "planner_version": "phase53.context_gate.v1",
+        },
+        "steps": [
+            {
+                "step_index": 1,
+                "step_id": "step:write",
+                "tool_name": "apply_planner_revision_patch",
+                "params": {"chapter_index": 1},
+                "mutability": "guarded_write",
+                "requires_confirmation": True,
+            }
+        ],
+    }
+
+    response = client.post(
+        f"/api/v1/projects/{project_id}/agent-runs",
+        json={
+            "goal": "预览规划审批契约",
+            "entrypoint": "ui_planner_continuation_execute",
+            "tools": [
+                {
+                    "tool_name": "preview_agent_plan_approval_contract",
+                    "params": {"plan": plan},
+                    "planner": {"plan_id": "plan:revision-preview"},
+                }
+            ],
+            "input": {
+                "planner_continuation": True,
+                "source_run_id": "run-source-2",
+                "source_plan_id": "plan:revision-preview",
+                "planner": {
+                    "trace": {"plan_id": "plan:revision-preview"},
+                    "approval_contract": {
+                        "status": "requires_confirmation",
+                        "write_steps": plan["steps"],
+                    },
+                },
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "success"
+    step = payload["steps"][0]
+    assert step["tool_name"] == "preview_agent_plan_approval_contract"
+    assert step["status"] == "success"
+    assert step["target_type"] == "agent_plan_approval_contract"
+    assert step["output"]["status"] == "requires_confirmation"
+    assert step["output"]["write_step_count"] == 1
+
+
 def test_agent_run_can_describe_current_tool_plan(client):
     project_id = _create_project(client, "Agent Tool Plan API")
 
