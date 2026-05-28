@@ -314,6 +314,111 @@ def test_planner_continuation_blocks_write_tool_on_approval_hash_mismatch(client
     assert calls == []
 
 
+def test_planner_continuation_executes_confirmed_revision_patch_after_contract_verification(
+    client,
+    db_session,
+    monkeypatch,
+):
+    project = _seed_longform_project(db_session, outline_chapters=[1], generated_chapters=[1])
+    calls = []
+
+    def fake_apply_revision_patch(db, project_id, chapter_index, *, revision_id=None):
+        calls.append((project_id, chapter_index, revision_id))
+        return {
+            "status": "success",
+            "chapter_index": chapter_index,
+            "revision_id": revision_id,
+            "result_version_id": "chapter-version-revised",
+        }
+
+    monkeypatch.setattr(
+        "app.services.writing_agent.revision_patch_tool.apply_planner_revision_patch_tool",
+        fake_apply_revision_patch,
+    )
+    plan = _planner_revision_patch_plan(project.id, chapter_index=1, revision_id="revision-1")
+    approval_hash = plan["approval_contract"]["approval"]["approval_contract_hash"]
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "执行已审批规划工具链：应用章节修订补丁",
+            "entrypoint": "ui_planner_continuation_execute",
+            "tools": plan["tools"],
+            "input": {
+                "planner_continuation": True,
+                "source_run_id": "run-source-revision-approved",
+                "source_plan_id": plan["trace"]["plan_id"],
+                "confirm_execute": True,
+                "approval_contract_hash": approval_hash,
+                "approval_contract": plan["approval_contract"],
+                "planner": plan,
+            },
+        },
+    )
+
+    payload = response.json()
+    assert response.status_code == 200
+    assert payload["status"] == "success"
+    step = payload["steps"][0]
+    assert step["tool_name"] == "apply_planner_revision_patch"
+    assert step["status"] == "success"
+    assert step["output"]["planner_continuation_approval"]["approval_contract_hash"] == approval_hash
+    assert calls == [(project.id, 1, "revision-1")]
+
+
+def test_planner_continuation_blocks_revision_patch_when_mutation_fingerprint_missing_target(
+    client,
+    db_session,
+    monkeypatch,
+):
+    project = _seed_longform_project(db_session, outline_chapters=[1], generated_chapters=[1])
+    calls = []
+
+    def fake_apply_revision_patch(db, project_id, chapter_index, *, revision_id=None):
+        calls.append((project_id, chapter_index, revision_id))
+        return {"status": "success", "chapter_index": chapter_index}
+
+    monkeypatch.setattr(
+        "app.services.writing_agent.revision_patch_tool.apply_planner_revision_patch_tool",
+        fake_apply_revision_patch,
+    )
+    plan = _planner_revision_patch_plan(project.id, chapter_index=1, revision_id="")
+    approval_hash = plan["approval_contract"]["approval"]["approval_contract_hash"]
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "执行缺少目标的规划工具链：应用章节修订补丁",
+            "entrypoint": "ui_planner_continuation_execute",
+            "tools": plan["tools"],
+            "input": {
+                "planner_continuation": True,
+                "source_run_id": "run-source-revision-missing-target",
+                "source_plan_id": plan["trace"]["plan_id"],
+                "confirm_execute": True,
+                "approval_contract_hash": approval_hash,
+                "approval_contract": plan["approval_contract"],
+                "planner": plan,
+            },
+        },
+    )
+
+    payload = response.json()
+    assert response.status_code == 200
+    assert payload["status"] == "blocked"
+    assert payload["error"] == "Planner continuation requires approval"
+    step = payload["steps"][0]
+    assert step["tool_name"] == "apply_planner_revision_patch"
+    assert step["status"] == "blocked"
+    output = step["output"]
+    assert output["approval_verification"]["reason"] == "mutation_fingerprint_not_ready"
+    assert output["approval_verification"]["drift"]["mutation_fingerprint_drift_count"] == 1
+    assert output["approval_verification"]["drift"]["mutation_fingerprints"][0]["target_type"] == (
+        "chapter_revision_patch"
+    )
+    assert calls == []
+
+
 def test_agent_run_can_describe_current_tool_plan(client):
     project_id = _create_project(client, "Agent Tool Plan API")
 
@@ -8454,6 +8559,52 @@ def _planner_generate_chapter_plan(project_id: str, *, chapter_index: int) -> di
             "source_projection_id": f"projection:generate-chapter-{chapter_index}",
             "planner_version": "phase53.context_gate.v1",
             "selected_tools": ["generate_chapter"],
+        },
+    }
+    plan["approval_contract"] = build_agent_plan_approval_contract(plan)
+    return plan
+
+
+def _planner_revision_patch_plan(project_id: str, *, chapter_index: int, revision_id: str) -> dict:
+    plan_id = f"plan:revision-patch-{chapter_index}"
+    params = {"chapter_index": chapter_index, "revision_id": revision_id}
+    step = {
+        "step_index": 1,
+        "step_id": f"step:revision-patch-{chapter_index}",
+        "tool_name": "apply_planner_revision_patch",
+        "params": params,
+        "mutability": "guarded_write",
+        "requires_confirmation": True,
+        "reason": f"应用第{chapter_index}章修订补丁。",
+    }
+    tool = {
+        "tool_name": "apply_planner_revision_patch",
+        "params": params,
+        "planner": {
+            "step_index": 1,
+            "step_id": step["step_id"],
+            "plan_id": plan_id,
+            "source_projection_id": f"projection:revision-patch-{chapter_index}",
+            "mutability": "guarded_write",
+            "requires_confirmation": True,
+            "reason": step["reason"],
+            "planner_version": "phase53.context_gate.v1",
+        },
+    }
+    plan = {
+        "status": "completed",
+        "planner_version": "phase53.context_gate.v1",
+        "project_id": project_id,
+        "intent_class": "apply_revision_patch",
+        "goal": f"应用第{chapter_index}章修订补丁",
+        "chapter_index": chapter_index,
+        "steps": [step],
+        "tools": [tool],
+        "trace": {
+            "plan_id": plan_id,
+            "source_projection_id": f"projection:revision-patch-{chapter_index}",
+            "planner_version": "phase53.context_gate.v1",
+            "selected_tools": ["apply_planner_revision_patch"],
         },
     }
     plan["approval_contract"] = build_agent_plan_approval_contract(plan)

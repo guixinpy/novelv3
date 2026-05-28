@@ -47,3 +47,36 @@ def test_build_mutation_fingerprint_covers_world_model_bundle():
     assert result["status"] == "ready"
     assert result["components"]["target_type"] == "world_model_proposal_bundle"
     assert result["components"]["target_id"] == "world_model_proposal_bundle:bundle-1"
+
+
+def test_build_mutation_fingerprint_covers_planner_revision_patch():
+    first = build_mutation_fingerprint(
+        "project-1",
+        "apply_planner_revision_patch",
+        {"chapter_index": "2", "revision_id": "revision-1"},
+    )
+    second = build_mutation_fingerprint(
+        "project-1",
+        "apply_planner_revision_patch",
+        {"chapter_index": 2, "revision_id": "revision-1"},
+    )
+
+    assert first["status"] == "ready"
+    assert first["mutating"] is True
+    assert first["fingerprint"] == second["fingerprint"]
+    assert first["components"]["target_type"] == "chapter_revision_patch"
+    assert first["components"]["target_id"] == "chapter_revision_patch:2:revision-1"
+
+
+def test_build_mutation_fingerprint_blocks_planner_revision_patch_without_revision_id():
+    result = build_mutation_fingerprint("project-1", "apply_planner_revision_patch", {"chapter_index": 2})
+
+    assert result["status"] == "blocked"
+    assert result["fingerprint"] is None
+    assert result["components"]["target_type"] == "chapter_revision_patch"
+    assert result["diagnostics"] == [
+        {
+            "code": "missing_target",
+            "message": "apply_planner_revision_patch requires a positive chapter_index and revision_id",
+        }
+    ]

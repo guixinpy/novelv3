@@ -15,6 +15,7 @@ _KNOWN_MUTATING_TOOLS = {
     "generate_outline",
     "generate_chapter",
     "generate_chapter_range",
+    "apply_planner_revision_patch",
     "apply_world_model_proposal_resolution",
 }
 
@@ -131,6 +132,17 @@ def _target_for_tool(project_id: str, tool_name: str, params: dict[str, Any]) ->
         if start is None or end is None or end < start:
             return _blocked("chapter_range", "missing_target", "generate_chapter_range requires a valid start/end range")
         return _ready("chapter_range", f"chapters:{start}-{end}")
+
+    if tool_name == "apply_planner_revision_patch":
+        chapter_index = _positive_int(params.get("chapter_index"))
+        revision_id = _clean_string(params.get("revision_id"))
+        if chapter_index is None or not revision_id:
+            return _blocked(
+                "chapter_revision_patch",
+                "missing_target",
+                "apply_planner_revision_patch requires a positive chapter_index and revision_id",
+            )
+        return _ready("chapter_revision_patch", f"chapter_revision_patch:{chapter_index}:{revision_id}")
 
     if tool_name == "apply_world_model_proposal_resolution":
         bundle_id = _clean_string(params.get("proposal_bundle_id") or params.get("bundle_id"))
