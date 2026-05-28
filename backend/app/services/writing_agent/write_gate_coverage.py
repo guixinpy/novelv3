@@ -8,10 +8,30 @@ from app.services.writing_agent.tool_registry import list_agent_tool_descriptors
 
 WRITE_MUTABILITY = {"write", "guarded_write"}
 AGENT_PLAN_GATED_TOOLS = {
+    "execute_generate_setup_with_approval": {
+        "gate_version": "phase186.setup_agent_plan_approval.v1",
+        "gate_type": "stateless_agent_plan_approval",
+        "covered_tools": ["generate_setup"],
+    },
+    "execute_generate_storyline_with_approval": {
+        "gate_version": "phase187.storyline_agent_plan_approval.v1",
+        "gate_type": "stateless_agent_plan_approval",
+        "covered_tools": ["generate_storyline"],
+    },
+    "execute_generate_outline_with_approval": {
+        "gate_version": "phase188.outline_agent_plan_approval.v1",
+        "gate_type": "stateless_agent_plan_approval",
+        "covered_tools": ["generate_outline"],
+    },
     "execute_generate_chapter_with_approval": {
         "gate_version": "phase114.direct_generate_agent_plan_approval.v1",
         "gate_type": "stateless_agent_plan_approval",
         "covered_tools": ["generate_chapter"],
+    },
+    "execute_record_agent_knowledge_base_candidate_with_approval": {
+        "gate_version": "phase189.knowledge_base_candidate_agent_plan_approval.v1",
+        "gate_type": "stateless_agent_plan_approval",
+        "covered_tools": ["record_agent_knowledge_base_candidate"],
     },
     "execute_longform_chapter_batch": {
         "gate_version": "phase111.agent_plan_approval_execution_gate.v1",

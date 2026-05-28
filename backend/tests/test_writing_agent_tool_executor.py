@@ -24,7 +24,10 @@ from app.services.writing_agent.agent_core_tool_adapters import build_agent_core
 from app.services.writing_agent.agent_generation_tool_adapters import build_agent_generation_tool_adapters
 from app.services.writing_agent.agent_memory_trace_tool_adapters import AGENT_MEMORY_TRACE_TOOL_ADAPTERS
 from app.services.writing_agent.agent_task_queue_tool_adapters import AGENT_TASK_QUEUE_TOOL_ADAPTERS
-from app.services.writing_agent.knowledge_base_tool_adapters import KNOWLEDGE_BASE_AGENT_TOOL_ADAPTERS
+from app.services.writing_agent.knowledge_base_tool_adapters import (
+    KNOWLEDGE_BASE_AGENT_TOOL_ADAPTERS,
+    build_knowledge_base_agent_tool_adapters,
+)
 from app.services.writing_agent.longform_tool_adapters import build_longform_agent_tool_adapters
 from app.services.writing_agent.outline_generation_execution import prepare_generate_outline_execution
 from app.services.writing_agent.outline_generation_tool_adapters import build_outline_generation_agent_tool_adapters
@@ -272,6 +275,24 @@ def test_knowledge_base_tool_adapters_live_in_dedicated_module():
     assert (
         KNOWLEDGE_BASE_AGENT_TOOL_ADAPTERS["record_agent_knowledge_base_candidate"].handler.__name__
         == "_record_agent_knowledge_base_candidate"
+    )
+
+
+def test_knowledge_base_tool_adapter_builder_adds_approval_chain():
+    adapters = build_knowledge_base_agent_tool_adapters(approval_tool_metadata_provider=lambda plan: {})
+    names = list(adapters)
+
+    assert names == [
+        "inspect_agent_knowledge_base_route",
+        "record_agent_knowledge_base_candidate",
+        "prepare_record_agent_knowledge_base_candidate",
+        "execute_record_agent_knowledge_base_candidate_with_approval",
+    ]
+    assert adapters["prepare_record_agent_knowledge_base_candidate"].mutability == "read"
+    assert adapters["execute_record_agent_knowledge_base_candidate_with_approval"].mutability == "write"
+    assert (
+        adapters["execute_record_agent_knowledge_base_candidate_with_approval"].handler.__name__
+        == "_execute_record_agent_knowledge_base_candidate_with_approval"
     )
 
 
@@ -3264,6 +3285,8 @@ def test_tool_executor_lists_unhandled_internal_tools_for_migration_tracking():
     assert "apply_pending_action_route_approval_opt_in" not in names
     assert "inspect_agent_knowledge_base_route" not in names
     assert "record_agent_knowledge_base_candidate" not in names
+    assert "prepare_record_agent_knowledge_base_candidate" not in names
+    assert "execute_record_agent_knowledge_base_candidate_with_approval" not in names
     assert "execute_longform_chapter_batch_preflight" not in names
     assert "prepare_longform_chapter_batch_execution" not in names
     assert "execute_longform_chapter_batch" not in names
@@ -3846,6 +3869,26 @@ def test_tool_executor_exposes_record_agent_knowledge_base_candidate_adapter_met
     }
 
 
+def test_tool_executor_exposes_knowledge_base_candidate_approval_chain_adapter_metadata():
+    prepare_metadata = writing_agent_tool_adapter_metadata("prepare_record_agent_knowledge_base_candidate")
+    execute_metadata = writing_agent_tool_adapter_metadata("execute_record_agent_knowledge_base_candidate_with_approval")
+
+    assert prepare_metadata == {
+        "tool_name": "prepare_record_agent_knowledge_base_candidate",
+        "adapter_type": "static",
+        "category": "knowledge_base",
+        "mutability": "read",
+        "handler_name": "_prepare_record_agent_knowledge_base_candidate",
+    }
+    assert execute_metadata == {
+        "tool_name": "execute_record_agent_knowledge_base_candidate_with_approval",
+        "adapter_type": "static",
+        "category": "knowledge_base",
+        "mutability": "write",
+        "handler_name": "_execute_record_agent_knowledge_base_candidate_with_approval",
+    }
+
+
 def test_tool_executor_exposes_execute_longform_chapter_batch_preflight_adapter_metadata():
     metadata = writing_agent_tool_adapter_metadata("execute_longform_chapter_batch_preflight")
 
@@ -4209,6 +4252,115 @@ async def test_tool_executor_dispatches_record_agent_knowledge_base_candidate_ad
             ["dogfood"],
         )
     ]
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_dispatches_prepare_record_agent_knowledge_base_candidate(db_session):
+    project = Project(name="Prepare Knowledge Candidate")
+    db_session.add(project)
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(
+            tool_name="prepare_record_agent_knowledge_base_candidate",
+            params={
+                "memory_type": "self_optimization_lesson",
+                "title": "低细节续写可行",
+                "summary": "Agent route 可以支撑续写。",
+                "source_refs": ["phase77", "chapter:24"],
+                "confidence": "0.8",
+                "status": "candidate",
+                "tags": ["dogfood"],
+            },
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output["status"] == "approval_required"
+    plan_step = result.output["agent_plan"]["steps"][0]
+    assert plan_step["tool_name"] == "record_agent_knowledge_base_candidate"
+    assert plan_step["approval_executor_tool_name"] == "execute_record_agent_knowledge_base_candidate_with_approval"
+    assert plan_step["mutation_fingerprint"]["components"]["target_type"] == "agent_knowledge_base_candidate"
+    assert result.output["agent_plan_approval_contract_hash"]
+    assert result.output["agent_plan_approval_contract"]["write_steps"][0]["tool_name"] == (
+        "record_agent_knowledge_base_candidate"
+    )
+    assert result.output["required_confirmation"]["confirm_execute"] is True
+    assert result.output["side_effects"] == {"executed": [], "skipped": ["record_agent_knowledge_base_candidate"]}
+    assert result.output["recommended_next_tools"] == ["execute_record_agent_knowledge_base_candidate_with_approval"]
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_blocks_execute_record_knowledge_candidate_without_confirmation(db_session):
+    project = Project(name="Blocked Knowledge Candidate")
+    db_session.add(project)
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(
+            tool_name="execute_record_agent_knowledge_base_candidate_with_approval",
+            params={
+                "memory_type": "writing_pattern",
+                "title": "章末钩子",
+                "summary": "保持章节末尾的下一步行动压力。",
+                "source_refs": ["chapter:24"],
+            },
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output["status"] == "blocked"
+    assert result.output["reason"] == "confirmation_required"
+    assert result.output["side_effects"] == {"executed": [], "skipped": ["record_agent_knowledge_base_candidate"]}
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_executes_record_knowledge_candidate_with_approval(db_session):
+    project = Project(name="Execute Knowledge Candidate", style_config={})
+    db_session.add(project)
+    db_session.commit()
+    candidate_params = {
+        "memory_type": "self_optimization_lesson",
+        "title": "低细节续写可行",
+        "summary": "Agent route 可以支撑续写。",
+        "source_refs": ["phase77", "chapter:24"],
+        "confidence": "0.8",
+        "status": "candidate",
+        "tags": ["dogfood"],
+    }
+    prepare = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(tool_name="prepare_record_agent_knowledge_base_candidate", params=candidate_params),
+    )
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(
+            tool_name="execute_record_agent_knowledge_base_candidate_with_approval",
+            params={
+                **candidate_params,
+                "confirm_execute": True,
+                "approval_contract_hash": prepare.output["agent_plan_approval_contract_hash"],
+                "approval_contract": prepare.output["agent_plan_approval_contract"],
+            },
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output["status"] == "success"
+    assert result.output["agent_plan_approval_verification"]["status"] == "ready"
+    assert result.output["approval_verification_event"]["reason"] == "approval_contract_verified"
+    assert result.output["execution_resource_binding"]["status"] == "ready"
+    assert result.output["execution_resource_binding"]["expected"]["tool_name"] == "record_agent_knowledge_base_candidate"
+    assert result.output["side_effects"] == {"executed": ["record_agent_knowledge_base_candidate"], "skipped": []}
+    assert result.output["candidate"]["title"] == "低细节续写可行"
+
+    db_session.refresh(project)
+    candidates = project.style_config["knowledge_base_candidates"]
+    assert len(candidates) == 1
+    assert candidates[0]["title"] == "低细节续写可行"
 
 
 @pytest.mark.asyncio

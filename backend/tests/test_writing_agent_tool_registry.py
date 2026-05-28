@@ -242,6 +242,8 @@ def test_knowledge_base_tool_descriptors_live_in_dedicated_module():
     assert names == [
         "inspect_agent_knowledge_base_route",
         "record_agent_knowledge_base_candidate",
+        "prepare_record_agent_knowledge_base_candidate",
+        "execute_record_agent_knowledge_base_candidate_with_approval",
     ]
     assert {descriptor.category for descriptor in KNOWLEDGE_BASE_AGENT_TOOL_DESCRIPTORS} == {"knowledge_base"}
     assert {descriptor.module for descriptor in KNOWLEDGE_BASE_AGENT_TOOL_DESCRIPTORS} == {"writing_agent"}
@@ -986,6 +988,40 @@ def test_agent_tool_registry_includes_record_agent_knowledge_base_candidate():
     assert set(descriptor.input_schema["required"]) == {"memory_type", "title", "summary", "source_refs"}
     assert "record_agent_knowledge_base_candidate" in allowed_tool_names()
     assert "record_agent_knowledge_base_candidate" not in non_blocking_report_tool_names()
+
+
+def test_agent_tool_registry_includes_knowledge_base_candidate_approval_chain():
+    prepare_descriptor = get_agent_tool_descriptor("prepare_record_agent_knowledge_base_candidate")
+    execute_descriptor = get_agent_tool_descriptor("execute_record_agent_knowledge_base_candidate_with_approval")
+
+    assert prepare_descriptor is not None
+    assert prepare_descriptor.internal is True
+    assert prepare_descriptor.non_blocking_report is True
+    assert prepare_descriptor.target_type == "agent_knowledge_base_candidate_approval"
+    assert prepare_descriptor.input_schema["properties"]["memory_type"]["type"] == "string"
+    assert prepare_descriptor.output_schema["properties"]["agent_plan_approval_contract_hash"]["type"] == "string"
+    assert "prepare_record_agent_knowledge_base_candidate" in allowed_tool_names()
+    assert "prepare_record_agent_knowledge_base_candidate" in non_blocking_report_tool_names()
+
+    assert execute_descriptor is not None
+    assert execute_descriptor.internal is True
+    assert execute_descriptor.non_blocking_report is False
+    assert execute_descriptor.target_type == "agent_knowledge_base_candidate"
+    assert execute_descriptor.input_schema["properties"]["confirm_execute"]["type"] == "boolean"
+    assert execute_descriptor.input_schema["properties"]["approval_contract_hash"]["type"] == "string"
+    assert execute_descriptor.input_schema["properties"]["approval_contract"]["type"] == "object"
+    assert set(execute_descriptor.input_schema["required"]) == {
+        "memory_type",
+        "title",
+        "summary",
+        "source_refs",
+        "confirm_execute",
+        "approval_contract_hash",
+        "approval_contract",
+    }
+    assert execute_descriptor.output_schema["properties"]["agent_plan_approval_verification"]["type"] == "object"
+    assert "execute_record_agent_knowledge_base_candidate_with_approval" in allowed_tool_names()
+    assert "execute_record_agent_knowledge_base_candidate_with_approval" not in non_blocking_report_tool_names()
 
 
 def test_agent_tool_registry_includes_execute_longform_chapter_batch_preflight():

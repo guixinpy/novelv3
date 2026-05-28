@@ -68,6 +68,59 @@ def test_build_mutation_fingerprint_covers_planner_revision_patch():
     assert first["components"]["target_id"] == "chapter_revision_patch:2:revision-1"
 
 
+def test_build_mutation_fingerprint_covers_knowledge_base_candidate():
+    first = build_mutation_fingerprint(
+        "project-1",
+        "record_agent_knowledge_base_candidate",
+        {
+            "memory_type": "self_optimization_lesson",
+            "title": "低细节续写可行",
+            "summary": "先读取知识库、长篇记忆、世界模型和 preflight 后，低细节目标也能续写。",
+            "source_refs": ["chapter:24", "dogfood:phase77"],
+        },
+    )
+    second = build_mutation_fingerprint(
+        "project-1",
+        "record_agent_knowledge_base_candidate",
+        {
+            "memory_type": "self_optimization_lesson",
+            "title": "低细节续写可行",
+            "summary": "先读取知识库、长篇记忆、世界模型和 preflight 后，低细节目标也能续写。",
+            "source_refs": ["dogfood:phase77", "chapter:24"],
+            "confidence": 0.91,
+        },
+    )
+
+    assert first["status"] == "ready"
+    assert first["mutating"] is True
+    assert first["fingerprint"] == second["fingerprint"]
+    assert first["components"]["target_type"] == "agent_knowledge_base_candidate"
+    assert first["components"]["target_id"].startswith("agent_knowledge_base_candidate:")
+
+
+def test_build_mutation_fingerprint_blocks_knowledge_base_candidate_without_sources():
+    result = build_mutation_fingerprint(
+        "project-1",
+        "record_agent_knowledge_base_candidate",
+        {
+            "memory_type": "writing_pattern",
+            "title": "章末钩子",
+            "summary": "保持章节末尾的下一步行动压力。",
+            "source_refs": [],
+        },
+    )
+
+    assert result["status"] == "blocked"
+    assert result["fingerprint"] is None
+    assert result["components"]["target_type"] == "agent_knowledge_base_candidate"
+    assert result["diagnostics"] == [
+        {
+            "code": "missing_target",
+            "message": "record_agent_knowledge_base_candidate requires memory_type, title, summary, and source_refs",
+        }
+    ]
+
+
 def test_build_mutation_fingerprint_blocks_planner_revision_patch_without_revision_id():
     result = build_mutation_fingerprint("project-1", "apply_planner_revision_patch", {"chapter_index": 2})
 

@@ -24,6 +24,24 @@ def test_write_gate_coverage_marks_approved_direct_generate_as_agent_gate_enforc
     assert execute_tool["risk_level"] == "low"
 
 
+def test_write_gate_coverage_marks_pre_chapter_generation_approval_executors_as_enforced():
+    output = inspect_agent_write_gate_coverage(adapter_metadata_by_name=_adapter_metadata())
+    tools_by_name = _tools_by_name(output)
+
+    expected_gate_versions = {
+        "execute_generate_setup_with_approval": "phase186.setup_agent_plan_approval.v1",
+        "execute_generate_storyline_with_approval": "phase187.storyline_agent_plan_approval.v1",
+        "execute_generate_outline_with_approval": "phase188.outline_agent_plan_approval.v1",
+    }
+    for tool_name, gate_version in expected_gate_versions.items():
+        execute_tool = tools_by_name[tool_name]
+        assert execute_tool["agent_plan_gate_status"] == "enforced"
+        assert execute_tool["gate_version"] == gate_version
+        assert execute_tool["gate_type"] == "stateless_agent_plan_approval"
+        assert execute_tool["risk_level"] == "low"
+        assert execute_tool["confirmation_fields"] == ["approval_contract_hash", "confirm_execute"]
+
+
 def test_write_gate_coverage_marks_generate_chapter_as_indirectly_covered_direct_gap():
     output = inspect_agent_write_gate_coverage(adapter_metadata_by_name=_adapter_metadata())
     generate_tool = _tools_by_name(output)["generate_chapter"]
@@ -36,6 +54,44 @@ def test_write_gate_coverage_marks_generate_chapter_as_indirectly_covered_direct
         "execute_longform_chapter_batch",
     }
     assert generate_tool["recommended_action"] == "add_direct_agent_plan_approval_gate"
+
+
+def test_write_gate_coverage_marks_pre_chapter_generate_tools_as_indirectly_covered_direct_gaps():
+    output = inspect_agent_write_gate_coverage(adapter_metadata_by_name=_adapter_metadata())
+    tools_by_name = _tools_by_name(output)
+
+    expected_consumers = {
+        "generate_setup": "execute_generate_setup_with_approval",
+        "generate_storyline": "execute_generate_storyline_with_approval",
+        "generate_outline": "execute_generate_outline_with_approval",
+    }
+    for tool_name, consumer_tool in expected_consumers.items():
+        generate_tool = tools_by_name[tool_name]
+        assert generate_tool["agent_plan_gate_status"] == "indirect_agent_gate_available"
+        assert generate_tool["direct_confirmation_guard"] is False
+        assert generate_tool["risk_level"] == "high"
+        assert {item["consumer_tool"] for item in generate_tool["indirect_coverage"]} == {consumer_tool}
+        assert generate_tool["recommended_action"] == "add_direct_agent_plan_approval_gate"
+
+
+def test_write_gate_coverage_marks_knowledge_base_candidate_approval_executor_as_enforced():
+    output = inspect_agent_write_gate_coverage(adapter_metadata_by_name=_adapter_metadata())
+    tools_by_name = _tools_by_name(output)
+
+    execute_tool = tools_by_name["execute_record_agent_knowledge_base_candidate_with_approval"]
+    assert execute_tool["agent_plan_gate_status"] == "enforced"
+    assert execute_tool["gate_version"] == "phase189.knowledge_base_candidate_agent_plan_approval.v1"
+    assert execute_tool["gate_type"] == "stateless_agent_plan_approval"
+    assert execute_tool["risk_level"] == "low"
+    assert execute_tool["confirmation_fields"] == ["approval_contract_hash", "confirm_execute"]
+
+    record_tool = tools_by_name["record_agent_knowledge_base_candidate"]
+    assert record_tool["agent_plan_gate_status"] == "indirect_agent_gate_available"
+    assert record_tool["direct_confirmation_guard"] is False
+    assert record_tool["risk_level"] == "high"
+    assert {item["consumer_tool"] for item in record_tool["indirect_coverage"]} == {
+        "execute_record_agent_knowledge_base_candidate_with_approval"
+    }
 
 
 def test_write_gate_coverage_marks_confirm_guarded_tools_as_missing_agent_gate():
@@ -97,6 +153,48 @@ def _adapter_metadata() -> dict[str, dict]:
             "mutability": "write",
             "handler_name": "_execute_generate_chapter_with_approval",
         },
+        "generate_setup": {
+            "tool_name": "generate_setup",
+            "adapter_type": "static",
+            "category": "generation",
+            "mutability": "write",
+            "handler_name": "_generate_setup",
+        },
+        "execute_generate_setup_with_approval": {
+            "tool_name": "execute_generate_setup_with_approval",
+            "adapter_type": "static",
+            "category": "generation",
+            "mutability": "write",
+            "handler_name": "_execute_generate_setup_with_approval",
+        },
+        "generate_storyline": {
+            "tool_name": "generate_storyline",
+            "adapter_type": "static",
+            "category": "generation",
+            "mutability": "write",
+            "handler_name": "_generate_storyline",
+        },
+        "execute_generate_storyline_with_approval": {
+            "tool_name": "execute_generate_storyline_with_approval",
+            "adapter_type": "static",
+            "category": "generation",
+            "mutability": "write",
+            "handler_name": "_execute_generate_storyline_with_approval",
+        },
+        "generate_outline": {
+            "tool_name": "generate_outline",
+            "adapter_type": "static",
+            "category": "generation",
+            "mutability": "write",
+            "handler_name": "_generate_outline",
+        },
+        "execute_generate_outline_with_approval": {
+            "tool_name": "execute_generate_outline_with_approval",
+            "adapter_type": "static",
+            "category": "generation",
+            "mutability": "write",
+            "handler_name": "_execute_generate_outline_with_approval",
+        },
         "apply_world_model_proposal_resolution": {
             "tool_name": "apply_world_model_proposal_resolution",
             "adapter_type": "static",
@@ -110,5 +208,19 @@ def _adapter_metadata() -> dict[str, dict]:
             "category": "preflight",
             "mutability": "write",
             "handler_name": "_apply_pending_action_route_approval_opt_in",
+        },
+        "record_agent_knowledge_base_candidate": {
+            "tool_name": "record_agent_knowledge_base_candidate",
+            "adapter_type": "static",
+            "category": "knowledge_base",
+            "mutability": "write",
+            "handler_name": "_record_agent_knowledge_base_candidate",
+        },
+        "execute_record_agent_knowledge_base_candidate_with_approval": {
+            "tool_name": "execute_record_agent_knowledge_base_candidate_with_approval",
+            "adapter_type": "static",
+            "category": "knowledge_base",
+            "mutability": "write",
+            "handler_name": "_execute_record_agent_knowledge_base_candidate_with_approval",
         },
     }

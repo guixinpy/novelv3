@@ -15,6 +15,7 @@ _KNOWN_MUTATING_TOOLS = {
     "generate_outline",
     "generate_chapter",
     "generate_chapter_range",
+    "record_agent_knowledge_base_candidate",
     "apply_planner_revision_patch",
     "apply_world_model_proposal_resolution",
 }
@@ -133,6 +134,16 @@ def _target_for_tool(project_id: str, tool_name: str, params: dict[str, Any]) ->
             return _blocked("chapter_range", "missing_target", "generate_chapter_range requires a valid start/end range")
         return _ready("chapter_range", f"chapters:{start}-{end}")
 
+    if tool_name == "record_agent_knowledge_base_candidate":
+        candidate_target = _knowledge_base_candidate_target_id(params)
+        if candidate_target:
+            return _ready("agent_knowledge_base_candidate", candidate_target)
+        return _blocked(
+            "agent_knowledge_base_candidate",
+            "missing_target",
+            "record_agent_knowledge_base_candidate requires memory_type, title, summary, and source_refs",
+        )
+
     if tool_name == "apply_planner_revision_patch":
         chapter_index = _positive_int(params.get("chapter_index"))
         revision_id = _clean_string(params.get("revision_id"))
@@ -213,6 +224,24 @@ def _decision_target_id(decisions: object) -> str | None:
     return f"world_model_proposal_decisions:{digest}"
 
 
+def _knowledge_base_candidate_target_id(params: dict[str, Any]) -> str | None:
+    memory_type = _clean_string(params.get("memory_type"))
+    title = _clean_string(params.get("title"))
+    summary = _clean_string(params.get("summary"))
+    source_refs = _clean_string_list(params.get("source_refs"))
+    if not memory_type or not title or not summary or not source_refs:
+        return None
+    digest = _sha256(
+        {
+            "memory_type": memory_type,
+            "title": title,
+            "summary": summary,
+            "source_refs": sorted(source_refs),
+        }
+    )[:16]
+    return f"agent_knowledge_base_candidate:{digest}"
+
+
 def _sha256(value: object) -> str:
     payload = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
@@ -244,3 +273,10 @@ def _positive_int(value: object) -> int | None:
 def _clean_string(value: object) -> str | None:
     cleaned = str(value or "").strip()
     return cleaned or None
+
+
+def _clean_string_list(value: object) -> list[str]:
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    cleaned = _clean_string(value)
+    return [cleaned] if cleaned else []

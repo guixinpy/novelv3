@@ -3,6 +3,36 @@ from __future__ import annotations
 from app.services.writing_agent.tool_descriptor_types import AgentToolDescriptor, object_schema
 
 
+_KNOWLEDGE_CANDIDATE_INPUT_PROPERTIES = {
+    "memory_type": {"type": "string"},
+    "title": {"type": "string"},
+    "summary": {"type": "string"},
+    "source_refs": {"type": "array"},
+    "confidence": {"type": "number"},
+    "status": {"type": "string"},
+    "tags": {"type": "array"},
+}
+_KNOWLEDGE_CANDIDATE_REQUIRED = ("memory_type", "title", "summary", "source_refs")
+_KNOWLEDGE_CANDIDATE_PREPARE_OUTPUT = object_schema(
+    {
+        "status": {"type": "string"},
+        "prepare_version": {"type": "string"},
+        "project_id": {"type": "string"},
+        "target_type": {"type": "string"},
+        "mutation_fingerprint": {"type": "object"},
+        "tool_call_id": {"type": "string"},
+        "resource_binding": {"type": "object"},
+        "agent_plan": {"type": "object"},
+        "agent_plan_approval_contract": {"type": "object"},
+        "agent_plan_approval_contract_hash": {"type": "string"},
+        "required_confirmation": {"type": "object"},
+        "side_effects": {"type": "object"},
+        "recommended_next_tools": {"type": "array"},
+        "trace": {"type": "object"},
+    }
+)
+
+
 KNOWLEDGE_BASE_AGENT_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
     AgentToolDescriptor(
         name="inspect_agent_knowledge_base_route",
@@ -38,18 +68,7 @@ KNOWLEDGE_BASE_AGENT_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         module="writing_agent",
         category="knowledge_base",
         description="记录知识库候选项，用于沉淀作者偏好、项目策略、写法模式和自优化经验，不写入世界真相。",
-        input_schema=object_schema(
-            {
-                "memory_type": {"type": "string"},
-                "title": {"type": "string"},
-                "summary": {"type": "string"},
-                "source_refs": {"type": "array"},
-                "confidence": {"type": "number"},
-                "status": {"type": "string"},
-                "tags": {"type": "array"},
-            },
-            required=("memory_type", "title", "summary", "source_refs"),
-        ),
+        input_schema=object_schema(_KNOWLEDGE_CANDIDATE_INPUT_PROPERTIES, required=_KNOWLEDGE_CANDIDATE_REQUIRED),
         output_schema=object_schema(
             {
                 "status": {"type": "string"},
@@ -61,6 +80,64 @@ KNOWLEDGE_BASE_AGENT_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         target_type="agent_knowledge_base_candidate",
         internal=True,
         sort_key=10,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
+        name="prepare_record_agent_knowledge_base_candidate",
+        module="writing_agent",
+        category="knowledge_base",
+        description="为知识库候选项写入构建 Agent 计划审批契约，不执行写入。",
+        input_schema=object_schema(_KNOWLEDGE_CANDIDATE_INPUT_PROPERTIES, required=_KNOWLEDGE_CANDIDATE_REQUIRED),
+        output_schema=_KNOWLEDGE_CANDIDATE_PREPARE_OUTPUT,
+        target_type="agent_knowledge_base_candidate_approval",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=11,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
+        name="execute_record_agent_knowledge_base_candidate_with_approval",
+        module="writing_agent",
+        category="knowledge_base",
+        description="在确认 Agent 计划审批契约后记录知识库候选项。",
+        input_schema=object_schema(
+            {
+                **_KNOWLEDGE_CANDIDATE_INPUT_PROPERTIES,
+                "confirm_execute": {"type": "boolean"},
+                "approval_contract_hash": {"type": "string"},
+                "approval_contract": {"type": "object"},
+            },
+            required=(
+                "memory_type",
+                "title",
+                "summary",
+                "source_refs",
+                "confirm_execute",
+                "approval_contract_hash",
+                "approval_contract",
+            ),
+        ),
+        output_schema=object_schema(
+            {
+                "status": {"type": "string"},
+                "execute_version": {"type": "string"},
+                "project_id": {"type": "string"},
+                "target_type": {"type": "string"},
+                "action": {"type": "string"},
+                "candidate": {"type": "object"},
+                "candidate_count": {"type": "integer"},
+                "agent_plan_approval_verification": {"type": "object"},
+                "approval_verification_event": {"type": "object"},
+                "execution_resource_binding": {"type": "object"},
+                "evidence": {"type": "object"},
+                "side_effects": {"type": "object"},
+                "recommended_next_tools": {"type": "array"},
+                "trace": {"type": "object"},
+            }
+        ),
+        target_type="agent_knowledge_base_candidate",
+        internal=True,
+        sort_key=12,
         availability_checks=("project_exists",),
     ),
 )

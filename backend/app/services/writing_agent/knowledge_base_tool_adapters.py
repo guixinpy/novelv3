@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from app.schemas.writing_agent import WritingAgentToolRequest
 from app.services.writing_agent.tool_adapter_types import WritingAgentToolAdapter, WritingAgentToolContext
+
+ApprovalToolMetadataProvider = Callable[[dict[str, Any] | None], dict[str, dict[str, Any]]]
 
 
 def _inspect_agent_knowledge_base_route(
@@ -40,6 +43,70 @@ def _record_agent_knowledge_base_candidate(
         status=str(tool.params.get("status") or "").strip() or None,
         tags=_string_list(tags),
     )
+
+
+def build_knowledge_base_agent_tool_adapters(
+    *,
+    approval_tool_metadata_provider: ApprovalToolMetadataProvider,
+) -> dict[str, WritingAgentToolAdapter]:
+    return {
+        **KNOWLEDGE_BASE_AGENT_TOOL_ADAPTERS,
+        "prepare_record_agent_knowledge_base_candidate": WritingAgentToolAdapter(
+            "prepare_record_agent_knowledge_base_candidate",
+            _prepare_record_agent_knowledge_base_candidate,
+            category="knowledge_base",
+            mutability="read",
+        ),
+        "execute_record_agent_knowledge_base_candidate_with_approval": WritingAgentToolAdapter(
+            "execute_record_agent_knowledge_base_candidate_with_approval",
+            _execute_record_agent_knowledge_base_candidate_with_approval(approval_tool_metadata_provider),
+            category="knowledge_base",
+            mutability="write",
+        ),
+    }
+
+
+def _prepare_record_agent_knowledge_base_candidate(
+    context: WritingAgentToolContext,
+    tool: WritingAgentToolRequest,
+) -> dict[str, Any]:
+    from app.services.writing_agent.knowledge_base_candidate_execution import (
+        prepare_record_agent_knowledge_base_candidate,
+    )
+
+    return prepare_record_agent_knowledge_base_candidate(
+        context.db,
+        context.project_id,
+        action_params=tool.params,
+    )
+
+
+def _execute_record_agent_knowledge_base_candidate_with_approval(
+    approval_tool_metadata_provider: ApprovalToolMetadataProvider,
+) -> Callable[[WritingAgentToolContext, WritingAgentToolRequest], dict[str, Any]]:
+    def execute_record_agent_knowledge_base_candidate_with_approval_adapter(
+        context: WritingAgentToolContext,
+        tool: WritingAgentToolRequest,
+    ) -> dict[str, Any]:
+        from app.services.writing_agent.knowledge_base_candidate_execution import (
+            execute_record_agent_knowledge_base_candidate_with_approval,
+        )
+
+        approval_contract = tool.params.get("approval_contract")
+        return execute_record_agent_knowledge_base_candidate_with_approval(
+            context.db,
+            context.project_id,
+            action_params=tool.params,
+            confirm_execute=tool.params.get("confirm_execute") is True,
+            approval_contract_hash=str(tool.params.get("approval_contract_hash") or "").strip() or None,
+            approval_contract=approval_contract if isinstance(approval_contract, dict) else None,
+            approval_tool_metadata_provider=approval_tool_metadata_provider,
+        )
+
+    execute_record_agent_knowledge_base_candidate_with_approval_adapter.__name__ = (
+        "_execute_record_agent_knowledge_base_candidate_with_approval"
+    )
+    return execute_record_agent_knowledge_base_candidate_with_approval_adapter
 
 
 KNOWLEDGE_BASE_AGENT_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
