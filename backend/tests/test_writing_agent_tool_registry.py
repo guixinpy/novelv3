@@ -567,6 +567,10 @@ def test_agent_tool_registry_apply_world_model_resolution_has_structured_output_
     descriptor = get_agent_tool_descriptor("apply_world_model_proposal_resolution")
 
     assert descriptor is not None
+    input_properties = descriptor.input_schema["properties"]
+    assert input_properties["confirm_apply"]["type"] == "boolean"
+    assert input_properties["approval_contract_hash"]["type"] == "string"
+    assert input_properties["approval_contract"]["type"] == "object"
     properties = descriptor.output_schema["properties"]
     assert {
         "status",

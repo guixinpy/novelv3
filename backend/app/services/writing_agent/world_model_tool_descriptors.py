@@ -128,7 +128,14 @@ WORLD_MODEL_AGENT_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         module="athena_world_model",
         category="athena_world_model",
         description="在确认后应用世界模型提案处理决策。",
-        input_schema=object_schema({"decisions": {"type": "array"}, "confirm_apply": {"type": "boolean"}}),
+        input_schema=object_schema(
+            {
+                "decisions": {"type": "array"},
+                "confirm_apply": {"type": "boolean"},
+                "approval_contract_hash": {"type": "string"},
+                "approval_contract": {"type": "object"},
+            }
+        ),
         output_schema=object_schema(
             {
                 "status": {"type": "string"},

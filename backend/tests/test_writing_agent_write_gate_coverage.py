@@ -44,7 +44,7 @@ def test_write_gate_coverage_marks_confirm_guarded_tools_as_missing_agent_gate()
 
     assert apply_tool["agent_plan_gate_status"] == "missing_agent_plan_gate"
     assert apply_tool["direct_confirmation_guard"] is True
-    assert apply_tool["confirmation_fields"] == ["confirm_apply"]
+    assert apply_tool["confirmation_fields"] == ["approval_contract_hash", "confirm_apply"]
     assert apply_tool["risk_level"] == "medium"
     assert apply_tool["recommended_action"] == "promote_confirm_guard_to_agent_plan_approval"
 
