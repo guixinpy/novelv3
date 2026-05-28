@@ -920,6 +920,141 @@ def test_text_intent_confirm_routes_to_agent_run(client, db_session, monkeypatch
     assert started_task_ids == [body["action_result"]["data"]["task_id"]]
 
 
+def test_text_intent_confirm_routes_review_to_planned_agent_run(client, db_session, monkeypatch):
+    started_task_ids: list[str] = []
+
+    def fake_start(self, task_id, work):
+        started_task_ids.append(task_id)
+        return None
+
+    monkeypatch.setattr("app.api.dialogs.LocalTaskRunner.start", fake_start)
+    project_id = client.post("/api/v1/projects", json={"name": "Text Intent Review"}).json()["id"]
+    db_session.add(Setup(project_id=project_id, status="generated", world_building={}, characters=[], core_concept={}))
+    db_session.add(Storyline(project_id=project_id, status="generated", plotlines=[], foreshadowing=[]))
+    db_session.add(
+        Outline(
+            project_id=project_id,
+            status="generated",
+            total_chapters=2,
+            chapters=[{"chapter_index": 2, "title": "雾中人", "summary": "线索指向失踪档案。"}],
+        )
+    )
+    db_session.add(
+        ChapterContent(
+            project_id=project_id,
+            chapter_index=2,
+            title="雾中人",
+            content="林深在雾里追上失踪档案的线索。",
+            status="generated",
+        )
+    )
+    db_session.commit()
+
+    pending = client.post(
+        "/api/v1/dialog/chat",
+        json={"project_id": project_id, "input_type": "text", "text": "审稿第2章并给出修订计划"},
+    ).json()["pending_action"]
+    response = client.post(
+        "/api/v1/dialog/resolve-action",
+        json={"action_id": pending["id"], "decision": "confirm"},
+    )
+
+    body = response.json()
+    run = db_session.query(WritingAgentRun).filter_by(project_id=project_id).one()
+    assert response.status_code == 200
+    assert pending["type"] == "preview_review"
+    assert pending["params"]["agent_route"]["agent_tool_name"] == "plan_writing_agent_run"
+    assert body["action_result"]["type"] == "review_chapter"
+    assert body["action_result"]["data"]["agent_run_id"] == run.id
+    assert run.input["planner"]["intent_class"] == "review_chapter"
+    assert [tool["tool_name"] for tool in run.input["tools"]] == [
+        "describe_agent_tools",
+        "review_chapter_quality",
+        "review_chapter_continuity",
+        "plan_chapter_revision",
+    ]
+    assert [tool["params"].get("chapter_index") for tool in run.input["tools"][1:]] == [2, 2, 2]
+    assert started_task_ids == [body["action_result"]["data"]["task_id"]]
+
+
+def test_text_intent_confirm_routes_recovery_to_planned_agent_run(client, db_session, monkeypatch):
+    started_task_ids: list[str] = []
+
+    def fake_start(self, task_id, work):
+        started_task_ids.append(task_id)
+        return None
+
+    monkeypatch.setattr("app.api.dialogs.LocalTaskRunner.start", fake_start)
+    project_id = client.post("/api/v1/projects", json={"name": "Text Intent Recovery"}).json()["id"]
+    db_session.add(Setup(project_id=project_id, status="generated", world_building={}, characters=[], core_concept={}))
+    db_session.add(Storyline(project_id=project_id, status="generated", plotlines=[], foreshadowing=[]))
+    db_session.add(
+        Outline(
+            project_id=project_id,
+            status="generated",
+            total_chapters=2,
+            chapters=[{"chapter_index": 2, "title": "雾中人", "summary": "线索指向失踪档案。"}],
+        )
+    )
+    blocked_run = WritingAgentRun(
+        project_id=project_id,
+        goal="阻塞的直接章节执行",
+        status="blocked",
+        entrypoint="api",
+        input={},
+    )
+    db_session.add(blocked_run)
+    db_session.flush()
+    db_session.add(
+        WritingAgentStep(
+            run_id=blocked_run.id,
+            project_id=project_id,
+            step_index=1,
+            tool_name="execute_generate_chapter_with_approval",
+            status="blocked",
+            input={"params": {"chapter_index": 2}},
+            output={
+                "status": "blocked",
+                "agent_tool_result": {
+                    "recovery": {
+                        "status": "recommended",
+                        "source_tool": "execute_generate_chapter_with_approval",
+                        "reason_code": "resource_binding_target_mismatch",
+                        "next_tool": "prepare_generate_chapter_execution",
+                        "next_params": {"chapter_index": 2},
+                    }
+                },
+            },
+        )
+    )
+    db_session.commit()
+
+    pending = client.post(
+        "/api/v1/dialog/chat",
+        json={"project_id": project_id, "input_type": "text", "text": "恢复上一轮阻塞的写作任务"},
+    ).json()["pending_action"]
+    response = client.post(
+        "/api/v1/dialog/resolve-action",
+        json={"action_id": pending["id"], "decision": "confirm"},
+    )
+
+    body = response.json()
+    run = (
+        db_session.query(WritingAgentRun)
+        .filter(WritingAgentRun.project_id == project_id, WritingAgentRun.entrypoint == "dialog_pending_action")
+        .one()
+    )
+    assert response.status_code == 200
+    assert pending["type"] == "preview_recovery"
+    assert pending["params"]["agent_route"]["agent_tool_name"] == "plan_writing_agent_run"
+    assert body["action_result"]["type"] == "recover_blocked_run"
+    assert body["action_result"]["data"]["agent_run_id"] == run.id
+    assert run.input["planner"]["intent_class"] == "recover_blocked_run"
+    assert [tool["tool_name"] for tool in run.input["tools"]] == ["describe_agent_tools", "plan_recovery_tools"]
+    assert run.input["tools"][1]["params"] == {"run_id": blocked_run.id}
+    assert started_task_ids == [body["action_result"]["data"]["task_id"]]
+
+
 def test_text_intent_preserves_regular_chat(client, db_session):
     project_id = client.post("/api/v1/projects", json={"name": "Text Intent Chat"}).json()["id"]
 

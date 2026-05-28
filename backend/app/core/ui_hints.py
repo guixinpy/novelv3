@@ -7,6 +7,10 @@ ACTION_TO_PANEL = {
     "generate_outline": "outline",
     "preview_chapter": "content",
     "generate_chapter": "content",
+    "preview_review": "content",
+    "review_chapter": "content",
+    "preview_recovery": "content",
+    "recover_blocked_run": "content",
     "retry_chapter": "content",
     "consistency_deep_check": "content",
 }

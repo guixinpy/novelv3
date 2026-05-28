@@ -101,6 +101,25 @@ def test_route_preference_marks_explicit_approval_opt_in_metadata():
     assert storyline_route["migration_status"] == "recommended_not_applied"
 
 
+def test_route_preference_marks_review_and_recovery_as_planner_routes():
+    output = inspect_agent_route_preference_projection(
+        source="text_intent",
+        static_adapter_tool_names=_static_adapter_tools(),
+        action_execution_tool_names=_action_execution_tools(),
+    )
+    review_route = next(route for route in output["routes"] if route["action_type"] == "preview_review")
+    recovery_route = next(route for route in output["routes"] if route["action_type"] == "preview_recovery")
+
+    assert output["status"] == "ready"
+    for route in (review_route, recovery_route):
+        assert route["current_tool_name"] == "plan_writing_agent_run"
+        assert route["preferred_tool_chain"] == ["plan_writing_agent_run"]
+        assert route["approval_gate_required"] is False
+        assert route["migration_status"] == "no_change"
+        assert route["reason_code"] == "current_route_is_preferred"
+        assert route["missing_preferred_tools"] == []
+
+
 def test_route_preference_emits_approval_opt_in_migration_suggestion():
     output = inspect_agent_route_preference_projection(
         source="text_intent",
@@ -308,6 +327,7 @@ def test_route_preference_degrades_when_hermes_approval_tools_are_missing():
 
 def _static_adapter_tools() -> set[str]:
     return {
+        "plan_writing_agent_run",
         "generate_chapter",
         "prepare_generate_setup_execution",
         "execute_generate_setup_with_approval",

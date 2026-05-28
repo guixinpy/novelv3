@@ -24,6 +24,12 @@ SUPPORTED_DIALOG_ACTION_TO_TOOL = {
     "generate_storyline": "generate_storyline",
     "generate_outline": "generate_outline",
     "generate_chapter": "prepare_generate_chapter_execution",
+    "review_chapter": "plan_writing_agent_run",
+    "recover_blocked_run": "plan_writing_agent_run",
+}
+PLANNED_DIALOG_ACTION_INTENTS = {
+    "review_chapter": "review_chapter",
+    "recover_blocked_run": "recover_blocked_run",
 }
 CHAPTER_APPROVAL_EXECUTE_TOOL = "execute_generate_chapter_with_approval"
 APPROVED_DIALOG_CONTROL_PLANE_CHAINS = {
@@ -84,8 +90,13 @@ def prepare_dialog_agent_run_dispatch(
     action_params: dict[str, Any] | None,
     request_message_id: str | None = None,
 ) -> DialogAgentRunDispatch:
-    tool = _tool_request_for_action(action_type, command_args=command_args, action_params=action_params)
-    tools = [tool]
+    tools, planner_output = _tools_for_action(
+        db,
+        project_id=project_id,
+        action_type=action_type,
+        command_args=command_args,
+        action_params=action_params,
+    )
     payload = WritingAgentRunCreate(
         goal=f"通过对话确认执行 {action_type}",
         entrypoint="dialog_pending_action",
@@ -102,6 +113,7 @@ def prepare_dialog_agent_run_dispatch(
         project_id,
         payload,
         effective_tools=tools,
+        planner_output=planner_output,
         dialog_id=dialog_id,
         request_message_id=request_message_id,
     )
@@ -166,6 +178,34 @@ def build_dialog_agent_run_background_work(
     return _run
 
 
+def _tools_for_action(
+    db: Session,
+    *,
+    project_id: str,
+    action_type: str,
+    command_args: str | None,
+    action_params: dict[str, Any] | None,
+) -> tuple[list[WritingAgentToolRequest], dict[str, Any] | None]:
+    planner_intent = PLANNED_DIALOG_ACTION_INTENTS.get(action_type)
+    if planner_intent:
+        from app.core.intent_router import parse_chapter_index
+        from app.services.writing_agent.planner import build_writing_agent_run_plan, tools_from_plan
+
+        params = dict(action_params or {})
+        chapter_index = _optional_int(params.get("chapter_index")) or parse_chapter_index(command_args)
+        plan = build_writing_agent_run_plan(
+            db,
+            project_id,
+            goal=(command_args or "").strip() or f"通过对话确认执行 {action_type}",
+            chapter_index=chapter_index,
+            intent=planner_intent,
+        )
+        return tools_from_plan(plan), plan
+
+    tool = _tool_request_for_action(action_type, command_args=command_args, action_params=action_params)
+    return [tool], None
+
+
 def _tool_request_for_action(
     action_type: str,
     *,
@@ -202,6 +242,20 @@ def _agent_route_requests_approval_chain(params: dict[str, Any]) -> bool:
 
 def _dialog_control_plane_action_projection(action_type: str) -> dict[str, Any]:
     current_runtime_tool = SUPPORTED_DIALOG_ACTION_TO_TOOL[action_type]
+    if action_type in PLANNED_DIALOG_ACTION_INTENTS:
+        return {
+            "action_type": action_type,
+            "current_runtime_tool_name": current_runtime_tool,
+            "current_approval_execute_tool_name": None,
+            "recommended_tool_chain": [current_runtime_tool],
+            "recommended_prepare_tool_name": None,
+            "recommended_execute_tool_name": None,
+            "approval_gate_required": False,
+            "runtime_already_uses_approval_chain": False,
+            "runtime_behavior_changed": False,
+            "migration_status": "no_change",
+            "planner_intent": PLANNED_DIALOG_ACTION_INTENTS[action_type],
+        }
     recommended_chain = list(APPROVED_DIALOG_CONTROL_PLANE_CHAINS.get(action_type, (current_runtime_tool,)))
     runtime_already_uses_approval_chain = (
         action_type == "generate_chapter"
@@ -234,6 +288,16 @@ def _has_chapter_approval_contract(params: dict[str, Any]) -> bool:
         and bool(str(params.get("approval_contract_hash") or "").strip())
         and isinstance(params.get("approval_contract"), dict)
     )
+
+
+def _optional_int(value: object) -> int | None:
+    if value is None:
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
 
 
 def _dialog_completion_result(db: Session, *, run: WritingAgentRun, background_task_id: str) -> dict[str, Any]:

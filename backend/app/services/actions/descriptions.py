@@ -14,6 +14,12 @@ def action_description(action_type: str, params: dict | None = None) -> str:
         if action_params.get("confirm_execute") is True and action_params.get("approval_contract_hash"):
             return _append_chapter_conflict_warning(f"{chapter_label}已准备好审批，确认后将正式写入正文。", action_params)
         return _append_chapter_conflict_warning(f"我可以生成{chapter_label}，完成后会进入 Calliope 和正文进度。", action_params)
+    if action_type == "preview_review":
+        chapter_index = action_params.get("chapter_index")
+        chapter_label = f"第{chapter_index}章" if chapter_index else "目标章节"
+        return f"我可以审查{chapter_label}并生成修订计划。"
+    if action_type == "preview_recovery":
+        return "我可以为上一轮阻塞或失败的 Agent 运行规划恢复工具链。"
     mapping = {
         "preview_setup": "我建议先为项目生成设定，这样后续创作更有基础。",
         "preview_storyline": "基于已有设定，我可以生成故事线。",

@@ -12,10 +12,14 @@ _DIALOG_ACTION_TO_AGENT_TOOL: dict[str, str] = {
     "preview_storyline": "generate_storyline",
     "preview_outline": "generate_outline",
     "preview_chapter": "generate_chapter",
+    "preview_review": "plan_writing_agent_run",
+    "preview_recovery": "plan_writing_agent_run",
     "generate_setup": "generate_setup",
     "generate_storyline": "generate_storyline",
     "generate_outline": "generate_outline",
     "generate_chapter": "generate_chapter",
+    "review_chapter": "plan_writing_agent_run",
+    "recover_blocked_run": "plan_writing_agent_run",
 }
 
 _PREVIEW_DIALOG_ACTION_TYPES = (
@@ -23,6 +27,8 @@ _PREVIEW_DIALOG_ACTION_TYPES = (
     "preview_storyline",
     "preview_outline",
     "preview_chapter",
+    "preview_review",
+    "preview_recovery",
 )
 
 
