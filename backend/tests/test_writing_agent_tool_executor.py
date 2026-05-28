@@ -1672,6 +1672,11 @@ async def test_tool_executor_handles_dialog_intent_agent_plan_for_chapter(db_ses
     assert result.output["approval_contract"]["status"] == "not_required"
     assert result.output["approval_contract"]["plan_id"] == result.output["planner"]["plan_id"]
     assert result.output["approval_contract"] == plan["approval_contract"]
+    reference_patterns = result.output["trace"]["reference_patterns"]
+    assert [item["source"] for item in reference_patterns] == ["hermes-agent", "openhuman", "openclaw"]
+    assert "tool_lifecycle_hooks" in reference_patterns[0]["applied_patterns"]
+    assert "agent_definition_visible_tool_split" in reference_patterns[1]["applied_patterns"]
+    assert "schema_and_audit_discipline" in reference_patterns[2]["applied_patterns"]
     assert [tool["tool_name"] for tool in result.output["tools"]] == [
         "describe_agent_tools",
         "inspect_agent_knowledge_base_route",
@@ -1679,6 +1684,219 @@ async def test_tool_executor_handles_dialog_intent_agent_plan_for_chapter(db_ses
         "preflight_writing",
         "prepare_generate_chapter_execution",
     ]
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_handles_dialog_intent_agent_plan_for_storyline(db_session):
+    project = Project(name="Dialog Intent Storyline Plan")
+    db_session.add(project)
+    db_session.flush()
+    db_session.add(
+        Setup(
+            project_id=project.id,
+            status="generated",
+            world_building={"background": "雾港被记忆异常影响。"},
+            characters=[{"name": "林深"}],
+            core_concept={"hook": "雾会回放记忆"},
+        )
+    )
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-dialog-intent-storyline-plan"),
+        WritingAgentToolRequest(
+            tool_name="plan_dialog_intent_agent_run",
+            params={
+                "text": "生成故事线",
+                "missing_items": ["storyline", "outline"],
+                "completed_items": ["setup"],
+                "suggested_next_step": "preview_storyline",
+            },
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "completed"
+    assert result.output["intent_projection"]["rule_id"] == "storyline_intent"
+    assert result.output["planner"]["intent_class"] == "build_storyline"
+    assert result.output["planner"]["mapped_from_action_type"] == "preview_storyline"
+    assert [tool["tool_name"] for tool in result.output["tools"]] == [
+        "describe_agent_tools",
+        "prepare_generate_storyline_execution",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_handles_dialog_intent_agent_plan_for_outline(db_session):
+    project = Project(name="Dialog Intent Outline Plan")
+    db_session.add(project)
+    db_session.flush()
+    db_session.add(
+        Setup(
+            project_id=project.id,
+            status="generated",
+            world_building={"background": "雾港被记忆异常影响。"},
+            characters=[{"name": "林深"}],
+            core_concept={"hook": "雾会回放记忆"},
+        )
+    )
+    db_session.add(
+        Storyline(
+            project_id=project.id,
+            status="generated",
+            plotlines=[{"name": "主线", "type": "main", "summary": "追查记忆异常"}],
+            foreshadowing=[],
+        )
+    )
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-dialog-intent-outline-plan"),
+        WritingAgentToolRequest(
+            tool_name="plan_dialog_intent_agent_run",
+            params={
+                "text": "生成章节大纲",
+                "missing_items": ["outline"],
+                "completed_items": ["setup", "storyline"],
+                "suggested_next_step": "preview_outline",
+            },
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "completed"
+    assert result.output["intent_projection"]["rule_id"] == "outline_intent"
+    assert result.output["planner"]["intent_class"] == "build_outline"
+    assert result.output["planner"]["mapped_from_action_type"] == "preview_outline"
+    assert [tool["tool_name"] for tool in result.output["tools"]] == [
+        "describe_agent_tools",
+        "prepare_generate_outline_execution",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_handles_dialog_intent_agent_plan_for_review(db_session):
+    project = Project(name="Dialog Intent Review Plan")
+    db_session.add(project)
+    db_session.flush()
+    db_session.add(Setup(project_id=project.id, status="generated", world_building={}, characters=[], core_concept={}))
+    db_session.add(Storyline(project_id=project.id, status="generated", plotlines=[], foreshadowing=[]))
+    db_session.add(
+        Outline(
+            project_id=project.id,
+            status="generated",
+            total_chapters=2,
+            chapters=[{"chapter_index": 2, "title": "雾中人", "summary": "线索指向失踪档案。"}],
+        )
+    )
+    db_session.add(
+        ChapterContent(
+            project_id=project.id,
+            chapter_index=2,
+            title="雾中人",
+            content="林深在雾里追上失踪档案的线索。",
+            status="generated",
+        )
+    )
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-dialog-intent-review-plan"),
+        WritingAgentToolRequest(
+            tool_name="plan_dialog_intent_agent_run",
+            params={
+                "text": "审稿第2章并给出修订计划",
+                "completed_items": ["setup", "storyline", "outline", "content"],
+                "suggested_next_step": "preview_chapter",
+            },
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "completed"
+    assert result.output["intent_projection"]["rule_id"] == "review_intent"
+    assert result.output["planner"]["intent_class"] == "review_chapter"
+    assert result.output["planner"]["mapped_from_action_type"] == "preview_review"
+    assert result.output["planner"]["chapter_index"] == 2
+    assert [tool["tool_name"] for tool in result.output["tools"]] == [
+        "describe_agent_tools",
+        "review_chapter_quality",
+        "review_chapter_continuity",
+        "plan_chapter_revision",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_handles_dialog_intent_agent_plan_for_recovery(db_session):
+    project = Project(name="Dialog Intent Recovery Plan")
+    db_session.add(project)
+    db_session.flush()
+    db_session.add(Setup(project_id=project.id, status="generated", world_building={}, characters=[], core_concept={}))
+    db_session.add(Storyline(project_id=project.id, status="generated", plotlines=[], foreshadowing=[]))
+    db_session.add(
+        Outline(
+            project_id=project.id,
+            status="generated",
+            total_chapters=2,
+            chapters=[{"chapter_index": 2, "title": "雾中人", "summary": "线索指向失踪档案。"}],
+        )
+    )
+    db_session.add(ChapterContent(project_id=project.id, chapter_index=1, title="旧灯塔", content="第一章正文"))
+    blocked_run = WritingAgentRun(
+        project_id=project.id,
+        goal="阻塞的直接章节执行",
+        status="blocked",
+        entrypoint="api",
+        input={},
+    )
+    db_session.add(blocked_run)
+    db_session.flush()
+    db_session.add(
+        WritingAgentStep(
+            run_id=blocked_run.id,
+            project_id=project.id,
+            step_index=1,
+            tool_name="execute_generate_chapter_with_approval",
+            status="blocked",
+            input={"params": {"chapter_index": 2}},
+            output={
+                "status": "blocked",
+                "agent_tool_result": {
+                    "recovery": {
+                        "status": "recommended",
+                        "source_tool": "execute_generate_chapter_with_approval",
+                        "reason_code": "resource_binding_target_mismatch",
+                        "next_tool": "prepare_generate_chapter_execution",
+                        "next_params": {"chapter_index": 2},
+                    }
+                },
+            },
+        )
+    )
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-dialog-intent-recovery-plan"),
+        WritingAgentToolRequest(
+            tool_name="plan_dialog_intent_agent_run",
+            params={
+                "text": "恢复上一轮阻塞的写作任务",
+                "completed_items": ["setup", "storyline", "outline"],
+                "suggested_next_step": "preview_chapter",
+            },
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "completed"
+    assert result.output["intent_projection"]["rule_id"] == "recovery_intent"
+    assert result.output["planner"]["intent_class"] == "recover_blocked_run"
+    assert result.output["planner"]["mapped_from_action_type"] == "preview_recovery"
+    assert [tool["tool_name"] for tool in result.output["tools"]] == ["describe_agent_tools", "plan_recovery_tools"]
 
 
 @pytest.mark.asyncio

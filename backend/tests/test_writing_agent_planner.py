@@ -165,6 +165,64 @@ def test_planner_routes_recovery_intent_to_latest_recoverable_run(db_session):
     assert plan["approval_contract"]["write_steps"] == []
 
 
+def test_planner_builds_storyline_plan_after_setup(db_session):
+    project = Project(name="Storyline Planner Project")
+    db_session.add(project)
+    db_session.flush()
+    db_session.add(
+        Setup(
+            project_id=project.id,
+            status="generated",
+            world_building={"background": "雾港被记忆异常影响。"},
+            characters=[{"name": "林深"}],
+            core_concept={"hook": "雾会回放记忆"},
+        )
+    )
+    db_session.commit()
+
+    plan = build_writing_agent_run_plan(db_session, project.id, goal="生成故事线", intent="build_storyline")
+
+    assert plan["status"] == "completed"
+    assert plan["intent_class"] == "build_storyline"
+    assert plan["trace"]["agent_profile"] == "orchestrator"
+    assert _tool_names(plan) == ["describe_agent_tools", "prepare_generate_storyline_execution"]
+    assert plan["approval_contract"]["status"] == "not_required"
+    assert plan["approval_contract"]["write_steps"] == []
+
+
+def test_planner_builds_outline_plan_after_storyline(db_session):
+    project = Project(name="Outline Planner Project")
+    db_session.add(project)
+    db_session.flush()
+    db_session.add(
+        Setup(
+            project_id=project.id,
+            status="generated",
+            world_building={"background": "雾港被记忆异常影响。"},
+            characters=[{"name": "林深"}],
+            core_concept={"hook": "雾会回放记忆"},
+        )
+    )
+    db_session.add(
+        Storyline(
+            project_id=project.id,
+            status="generated",
+            plotlines=[{"name": "主线", "type": "main", "summary": "追查记忆异常", "milestones": []}],
+            foreshadowing=[],
+        )
+    )
+    db_session.commit()
+
+    plan = build_writing_agent_run_plan(db_session, project.id, goal="生成大纲", intent="build_outline")
+
+    assert plan["status"] == "completed"
+    assert plan["intent_class"] == "build_outline"
+    assert plan["trace"]["agent_profile"] == "orchestrator"
+    assert _tool_names(plan) == ["describe_agent_tools", "prepare_generate_outline_execution"]
+    assert plan["approval_contract"]["status"] == "not_required"
+    assert plan["approval_contract"]["write_steps"] == []
+
+
 def test_planner_marks_review_only_plan_as_not_requiring_approval(db_session):
     project = _seed_project(db_session, outline_chapters=[2], generated_chapters=[2])
 

@@ -12,12 +12,20 @@ from app.services.writing_agent.planner import (
     CHAPTER_GENERATION_ROUTE_APPROVED_PREPARE,
     build_writing_agent_run_plan,
 )
+from app.services.writing_agent.reference_pattern_projection import (
+    REFERENCE_PATTERN_PROJECTION_VERSION,
+    build_reference_pattern_projection,
+)
 
 DIALOG_INTENT_AGENT_PLAN_VERSION = "phase106.dialog_intent_agent_plan.v1"
 
 _ACTION_TO_PLANNER_INTENT = {
     "preview_setup": "setup_project",
+    "preview_storyline": "build_storyline",
+    "preview_outline": "build_outline",
     "preview_chapter": "continue_next_chapter",
+    "preview_review": "review_chapter",
+    "preview_recovery": "recover_blocked_run",
 }
 _ACTION_TO_CHAPTER_GENERATION_ROUTE = {
     "preview_chapter": CHAPTER_GENERATION_ROUTE_APPROVED_PREPARE,
@@ -98,6 +106,8 @@ def plan_dialog_intent_agent_run(
             "selected_tool": intent_projection.get("tool_selection", {}).get("selected_tool"),
             "missing_dependencies": plan.get("trace", {}).get("missing_dependencies", []),
             "risk_flags": plan.get("trace", {}).get("risk_flags", []),
+            "reference_pattern_version": REFERENCE_PATTERN_PROJECTION_VERSION,
+            "reference_patterns": build_reference_pattern_projection(),
         },
     }
 

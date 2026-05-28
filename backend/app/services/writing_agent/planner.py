@@ -86,6 +86,10 @@ def build_writing_agent_run_plan(
 
     if intent_class == "setup_project":
         _build_setup_plan(steps, trace, diagnostics, tool_plan, goal)
+    elif intent_class == "build_storyline":
+        _build_storyline_plan(steps, trace, diagnostics, goal)
+    elif intent_class == "build_outline":
+        _build_outline_plan(steps, trace, diagnostics, goal)
     elif intent_class == "review_chapter":
         _build_review_plan(steps, trace, diagnostics, resolved_chapter_index)
     elif intent_class == "continue_next_chapter":
@@ -145,6 +149,62 @@ def _build_setup_plan(
         )
     else:
         trace["rejected_tools"].append({"tool_name": "generate_setup", "reason": "项目已有设定，避免重复覆盖基础设定。"})
+
+
+def _build_storyline_plan(
+    steps: list[dict[str, Any]],
+    trace: dict[str, Any],
+    diagnostics: list[dict[str, Any]],
+    goal: str,
+) -> None:
+    if _has_diagnostic(diagnostics, "prepare_generate_storyline_execution", "missing_setup"):
+        trace["risk_flags"].append("missing_setup")
+        trace["rejected_tools"].append(
+            {"tool_name": "prepare_generate_storyline_execution", "reason": "项目缺少设定，不能稳定生成故事线。"}
+        )
+        return
+    _append_step(
+        steps,
+        trace,
+        "prepare_generate_storyline_execution",
+        {},
+        reason="基于现有设定准备故事线生成审批合约，不直接写入故事线。",
+        command_args=goal,
+        on_missing="stop",
+        on_failure="stop",
+        expected_output="故事线生成审批合约。",
+    )
+
+
+def _build_outline_plan(
+    steps: list[dict[str, Any]],
+    trace: dict[str, Any],
+    diagnostics: list[dict[str, Any]],
+    goal: str,
+) -> None:
+    if _has_diagnostic(diagnostics, "prepare_generate_outline_execution", "missing_setup"):
+        trace["risk_flags"].append("missing_setup")
+        trace["rejected_tools"].append(
+            {"tool_name": "prepare_generate_outline_execution", "reason": "项目缺少设定，不能稳定生成大纲。"}
+        )
+        return
+    if _has_diagnostic(diagnostics, "prepare_generate_outline_execution", "missing_storyline"):
+        trace["risk_flags"].append("missing_storyline")
+        trace["rejected_tools"].append(
+            {"tool_name": "prepare_generate_outline_execution", "reason": "项目缺少故事线，不能稳定生成大纲。"}
+        )
+        return
+    _append_step(
+        steps,
+        trace,
+        "prepare_generate_outline_execution",
+        {},
+        reason="基于设定和故事线准备章节大纲生成审批合约，不直接写入大纲。",
+        command_args=goal,
+        on_missing="stop",
+        on_failure="stop",
+        expected_output="章节大纲生成审批合约。",
+    )
 
 
 def _build_review_plan(
@@ -481,6 +541,10 @@ def _classify_intent(goal: str, explicit_intent: str | None, chapter_index: int)
         return "recover_blocked_run"
     if any(token in text for token in ("设定", "开书", "创建", "新书")):
         return "setup_project"
+    if "故事线" in text or "主枝干" in text:
+        return "build_storyline"
+    if "大纲" in text:
+        return "build_outline"
     if any(token in text for token in ("审稿", "检查", "复查", "问题")):
         return "review_chapter"
     if chapter_index >= 1 and any(token in text for token in ("继续", "下一章", "写", "生成", "章节")):

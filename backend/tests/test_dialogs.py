@@ -231,6 +231,37 @@ def test_intent_router_next_chapter_phrase_uses_chapter_when_outline_ready():
     assert candidate.params["chapter_index_source"] == "router_default"
 
 
+def test_intent_router_review_phrase_routes_to_preview_review():
+    router = IntentRouter()
+    diagnosis = ProjectDiagnosisOut(
+        missing_items=[],
+        completed_items=["setup", "storyline", "outline", "content"],
+        suggested_next_step="preview_chapter",
+    )
+
+    candidate = router.resolve("审稿第2章并给出修订计划", "chatting", None, diagnosis)
+
+    assert candidate is not None
+    assert candidate.type == "preview_review"
+    assert candidate.params["chapter_index"] == 2
+    assert candidate.params["chapter_index_source"] == "explicit_user"
+
+
+def test_intent_router_recovery_phrase_routes_to_preview_recovery():
+    router = IntentRouter()
+    diagnosis = ProjectDiagnosisOut(
+        missing_items=[],
+        completed_items=["setup", "storyline", "outline"],
+        suggested_next_step="preview_chapter",
+    )
+
+    candidate = router.resolve("恢复上一轮阻塞的写作任务", "chatting", None, diagnosis)
+
+    assert candidate is not None
+    assert candidate.type == "preview_recovery"
+    assert candidate.params == {}
+
+
 def test_intent_router_projection_reports_no_match():
     router = IntentRouter()
     diag = ProjectDiagnosisOut(missing_items=["setup"], completed_items=[], suggested_next_step="preview_setup")
