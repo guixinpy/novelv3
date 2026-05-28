@@ -102,7 +102,7 @@ async function mountHermesView(path = '/projects/project-1/hermes') {
         AgentRunDrawer: {
           props: ['open', 'run'],
           emits: ['executeRecovery', 'executeRecommendedFollowups', 'executePlannerPlan', 'refresh', 'applyRouteUpgrade'],
-          template: '<div v-if="open" data-testid="agent-run-drawer">{{ run && run.id }}<button data-testid="stub-execute-recovery" @click="$emit(\'executeRecovery\', { sourceRunId: \'source-run-1\', planHash: \'plan-hash-1\' })">execute</button><button data-testid="stub-execute-followups" @click="$emit(\'executeRecommendedFollowups\', { sourceRunId: \'source-run-2\', planHash: \'followup-plan-hash-1\' })">execute followups</button><button data-testid="stub-execute-planner-plan" @click="$emit(\'executePlannerPlan\', { sourceRunId: run && run.id, sourcePlanId: \'plan:review-12\', goal: \'执行规划工具链：审稿章节\', tools: [{ tool_name: \'review_chapter_quality\', params: { chapter_index: 12 }, planner: { plan_id: \'plan:review-12\' } }], planner: { trace: { plan_id: \'plan:review-12\' }, approval_contract: { status: \'not_required\' }, tools: [{ tool_name: \'review_chapter_quality\', params: { chapter_index: 12 }, planner: { plan_id: \'plan:review-12\' } }] } })">execute planner</button><button data-testid="stub-execute-planner-plan-stale" @click="$emit(\'executePlannerPlan\', { sourceRunId: \'stale-run\', sourcePlanId: \'plan:review-12\', goal: \'执行规划工具链：审稿章节\', tools: [{ tool_name: \'review_chapter_quality\', params: { chapter_index: 12 } }], planner: { trace: { plan_id: \'plan:review-12\' }, approval_contract: { status: \'not_required\' } } })">stale planner</button><button data-testid="stub-refresh-agent-run" @click="$emit(\'refresh\')">refresh</button><button data-testid="stub-apply-route-upgrade" @click="$emit(\'applyRouteUpgrade\', { sourceRunId: run && run.id, pendingActionId: \'action-1\', approvalContractHash: \'approval:secret\', approvalContract: { approval: { approval_contract_hash: \'approval:secret\' } } })">apply route</button><button data-testid="stub-apply-route-upgrade-stale" @click="$emit(\'applyRouteUpgrade\', { sourceRunId: \'stale-run\', pendingActionId: \'action-1\', approvalContractHash: \'approval:secret\', approvalContract: { approval: { approval_contract_hash: \'approval:secret\' } } })">stale route</button></div>',
+          template: '<div v-if="open" data-testid="agent-run-drawer">{{ run && run.id }}<button data-testid="stub-execute-recovery" @click="$emit(\'executeRecovery\', { sourceRunId: \'source-run-1\', planHash: \'plan-hash-1\' })">execute</button><button data-testid="stub-execute-followups" @click="$emit(\'executeRecommendedFollowups\', { sourceRunId: \'source-run-2\', planHash: \'followup-plan-hash-1\' })">execute followups</button><button data-testid="stub-execute-planner-plan" @click="$emit(\'executePlannerPlan\', { sourceRunId: run && run.id, sourcePlanId: \'plan:review-12\', goal: \'执行规划工具链：审稿章节\', tools: [{ tool_name: \'review_chapter_quality\', params: { chapter_index: 12 }, planner: { plan_id: \'plan:review-12\' } }], planner: { trace: { plan_id: \'plan:review-12\' }, approval_contract: { status: \'not_required\' }, tools: [{ tool_name: \'review_chapter_quality\', params: { chapter_index: 12 }, planner: { plan_id: \'plan:review-12\' } }] } })">execute planner</button><button data-testid="stub-execute-planner-plan-approved" @click="$emit(\'executePlannerPlan\', { sourceRunId: run && run.id, sourcePlanId: \'plan:chapter-2\', goal: \'执行规划工具链：续写下一章\', tools: [{ tool_name: \'generate_chapter\', params: { chapter_index: 2 }, planner: { plan_id: \'plan:chapter-2\', mutability: \'write\', requires_confirmation: true } }], planner: { trace: { plan_id: \'plan:chapter-2\' }, approval_contract: { status: \'requires_confirmation\', approval: { approval_contract_hash: \'approval:secret\' } }, tools: [{ tool_name: \'generate_chapter\', params: { chapter_index: 2 }, planner: { plan_id: \'plan:chapter-2\', mutability: \'write\', requires_confirmation: true } }] }, approvalContractHash: \'approval:secret\', approvalContract: { status: \'requires_confirmation\', approval: { approval_contract_hash: \'approval:secret\' } } })">execute approved planner</button><button data-testid="stub-execute-planner-plan-stale" @click="$emit(\'executePlannerPlan\', { sourceRunId: \'stale-run\', sourcePlanId: \'plan:review-12\', goal: \'执行规划工具链：审稿章节\', tools: [{ tool_name: \'review_chapter_quality\', params: { chapter_index: 12 } }], planner: { trace: { plan_id: \'plan:review-12\' }, approval_contract: { status: \'not_required\' } } })">stale planner</button><button data-testid="stub-refresh-agent-run" @click="$emit(\'refresh\')">refresh</button><button data-testid="stub-apply-route-upgrade" @click="$emit(\'applyRouteUpgrade\', { sourceRunId: run && run.id, pendingActionId: \'action-1\', approvalContractHash: \'approval:secret\', approvalContract: { approval: { approval_contract_hash: \'approval:secret\' } } })">apply route</button><button data-testid="stub-apply-route-upgrade-stale" @click="$emit(\'applyRouteUpgrade\', { sourceRunId: \'stale-run\', pendingActionId: \'action-1\', approvalContractHash: \'approval:secret\', approvalContract: { approval: { approval_contract_hash: \'approval:secret\' } } })">stale route</button></div>',
         },
       },
     },
@@ -598,6 +598,68 @@ describe('HermesView', () => {
     expect(wrapper.get('[data-testid="agent-run-drawer"]').text()).toContain('run-planner-executed')
     expect(wrapper.get('[data-testid="stub-last-message"]').text()).toContain('规划工具链执行已创建')
     expect(wrapper.get('[data-testid="stub-last-message"]').text()).not.toContain('approval_contract')
+
+    wrapper.unmount()
+  })
+
+  it('creates a confirmed planner continuation run with approval contract binding', async () => {
+    vi.mocked((api as any).createAgentRun).mockResolvedValueOnce({
+      id: 'run-planner-approved-executed',
+      project_id: 'project-1',
+      goal: '执行规划工具链：续写下一章',
+      status: 'success',
+      entrypoint: 'ui_planner_continuation_execute',
+      input: {},
+      output: null,
+      error: null,
+      steps: [{ id: 'step-1', tool_name: 'generate_chapter', status: 'success' }],
+    })
+    const wrapper = await mountHermesView()
+
+    await wrapper.get('[data-testid="stub-open-agent-run"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="stub-execute-planner-plan-approved"]').trigger('click')
+    await flushPromises()
+
+    expect((api as any).createAgentRun).toHaveBeenCalledWith('project-1', {
+      goal: '执行规划工具链：续写下一章',
+      entrypoint: 'ui_planner_continuation_execute',
+      tools: [
+        {
+          tool_name: 'generate_chapter',
+          params: { chapter_index: 2 },
+          planner: { plan_id: 'plan:chapter-2', mutability: 'write', requires_confirmation: true },
+        },
+      ],
+      input: {
+        planner_continuation: true,
+        source_run_id: 'run-1',
+        source_plan_id: 'plan:chapter-2',
+        confirm_execute: true,
+        approval_contract_hash: 'approval:secret',
+        approval_contract: {
+          status: 'requires_confirmation',
+          approval: { approval_contract_hash: 'approval:secret' },
+        },
+        planner: {
+          trace: { plan_id: 'plan:chapter-2' },
+          approval_contract: {
+            status: 'requires_confirmation',
+            approval: { approval_contract_hash: 'approval:secret' },
+          },
+          tools: [
+            {
+              tool_name: 'generate_chapter',
+              params: { chapter_index: 2 },
+              planner: { plan_id: 'plan:chapter-2', mutability: 'write', requires_confirmation: true },
+            },
+          ],
+        },
+      },
+    })
+    expect(wrapper.get('[data-testid="agent-run-drawer"]').text()).toContain('run-planner-approved-executed')
+    expect(wrapper.get('[data-testid="stub-last-message"]').text()).toContain('规划工具链执行已创建')
+    expect(wrapper.get('[data-testid="stub-last-message"]').text()).not.toContain('approval:secret')
 
     wrapper.unmount()
   })

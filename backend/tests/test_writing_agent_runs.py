@@ -26,6 +26,7 @@ from app.models import (
 )
 from app.schemas.world_proposals import ProposalCandidateFactCreate
 from app.services.writing_agent.memory_provenance_contract import MEMORY_PROVENANCE_REQUIRED_FIELDS
+from app.services.writing_agent.approval_contract import build_agent_plan_approval_contract
 
 
 def test_writing_agent_run_and_step_persist(client, db_session):
@@ -211,6 +212,106 @@ def test_planner_continuation_allows_read_approval_preview(client):
     assert step["target_type"] == "agent_plan_approval_contract"
     assert step["output"]["status"] == "requires_confirmation"
     assert step["output"]["write_step_count"] == 1
+
+
+def test_planner_continuation_executes_confirmed_write_tool_after_contract_verification(
+    client,
+    db_session,
+    monkeypatch,
+):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1])
+    calls = []
+
+    async def fake_execute(self, action_type, project_id, *, command_args=None, action_params=None):
+        calls.append((action_type, project_id, command_args, action_params))
+        return {"status": "success", "chapter_index": 2, "trace_id": "trace-generated-2"}
+
+    monkeypatch.setattr("app.services.actions.action_execution_service.ActionExecutionService.execute", fake_execute)
+    plan = _planner_generate_chapter_plan(project.id, chapter_index=2)
+    approval_hash = plan["approval_contract"]["approval"]["approval_contract_hash"]
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "执行已审批规划工具链：续写章节",
+            "entrypoint": "ui_planner_continuation_execute",
+            "tools": plan["tools"],
+            "input": {
+                "planner_continuation": True,
+                "source_run_id": "run-source-approved",
+                "source_plan_id": plan["trace"]["plan_id"],
+                "confirm_execute": True,
+                "approval_contract_hash": approval_hash,
+                "approval_contract": plan["approval_contract"],
+                "planner": plan,
+            },
+        },
+    )
+
+    payload = response.json()
+    assert response.status_code == 200
+    assert payload["status"] == "success"
+    step = payload["steps"][0]
+    assert step["tool_name"] == "generate_chapter"
+    assert step["status"] == "success"
+    assert step["output"]["status"] == "success"
+    assert step["output"]["planner_continuation_approval"] == {
+        "status": "ready",
+        "reason": "approval_contract_verified",
+        "approval_contract_hash": approval_hash,
+        "source_plan_id": plan["trace"]["plan_id"],
+        "blocked_tool": None,
+    }
+    assert len(calls) == 1
+    action_type, called_project_id, command_args, action_params = calls[0]
+    assert action_type == "generate_chapter"
+    assert called_project_id == project.id
+    assert "上一章状态卡" in command_args
+    assert action_params == {"chapter_index": 2}
+
+
+def test_planner_continuation_blocks_write_tool_on_approval_hash_mismatch(client, db_session, monkeypatch):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1])
+    calls = []
+
+    async def fake_execute(self, action_type, project_id, *, command_args=None, action_params=None):
+        calls.append(action_type)
+        return {"status": "success", "chapter_index": 2}
+
+    monkeypatch.setattr("app.services.actions.action_execution_service.ActionExecutionService.execute", fake_execute)
+    plan = _planner_generate_chapter_plan(project.id, chapter_index=2)
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "执行漂移的规划工具链：续写章节",
+            "entrypoint": "ui_planner_continuation_execute",
+            "tools": plan["tools"],
+            "input": {
+                "planner_continuation": True,
+                "source_run_id": "run-source-drift",
+                "source_plan_id": plan["trace"]["plan_id"],
+                "confirm_execute": True,
+                "approval_contract_hash": "approval:stale",
+                "approval_contract": plan["approval_contract"],
+                "planner": plan,
+            },
+        },
+    )
+
+    payload = response.json()
+    assert response.status_code == 200
+    assert payload["status"] == "blocked"
+    assert payload["error"] == "Planner continuation requires approval"
+    step = payload["steps"][0]
+    assert step["tool_name"] == "generate_chapter"
+    assert step["status"] == "blocked"
+    output = step["output"]
+    assert output["reason"] == "planner_continuation_requires_approval"
+    assert output["approval_verification"]["status"] == "blocked"
+    assert output["approval_verification"]["reason"] == "approval_contract_hash_mismatch"
+    assert output["approval_verification"]["drift"]["expected_approval_contract_hash"] == "approval:stale"
+    assert calls == []
 
 
 def test_agent_run_can_describe_current_tool_plan(client):
@@ -8311,6 +8412,52 @@ def _create_project(client, name: str) -> str:
 def _create_trace(db_session, project_id: str, trace_id: str, trace_type: str) -> None:
     db_session.add(AIModelCallTrace(id=trace_id, project_id=project_id, trace_type=trace_type, status="success"))
     db_session.commit()
+
+
+def _planner_generate_chapter_plan(project_id: str, *, chapter_index: int) -> dict:
+    plan_id = f"plan:generate-chapter-{chapter_index}"
+    params = {"chapter_index": chapter_index}
+    step = {
+        "step_index": 1,
+        "step_id": f"step:generate-chapter-{chapter_index}",
+        "tool_name": "generate_chapter",
+        "params": params,
+        "mutability": "write",
+        "requires_confirmation": True,
+        "reason": f"生成第{chapter_index}章正文。",
+    }
+    tool = {
+        "tool_name": "generate_chapter",
+        "params": params,
+        "planner": {
+            "step_index": 1,
+            "step_id": step["step_id"],
+            "plan_id": plan_id,
+            "source_projection_id": f"projection:generate-chapter-{chapter_index}",
+            "mutability": "write",
+            "requires_confirmation": True,
+            "reason": step["reason"],
+            "planner_version": "phase53.context_gate.v1",
+        },
+    }
+    plan = {
+        "status": "completed",
+        "planner_version": "phase53.context_gate.v1",
+        "project_id": project_id,
+        "intent_class": "continue_next_chapter",
+        "goal": f"生成第{chapter_index}章",
+        "chapter_index": chapter_index,
+        "steps": [step],
+        "tools": [tool],
+        "trace": {
+            "plan_id": plan_id,
+            "source_projection_id": f"projection:generate-chapter-{chapter_index}",
+            "planner_version": "phase53.context_gate.v1",
+            "selected_tools": ["generate_chapter"],
+        },
+    }
+    plan["approval_contract"] = build_agent_plan_approval_contract(plan)
+    return plan
 
 
 def _seed_recommended_followup_source_run(db_session, canonical_followups: list[str]) -> tuple[str, WritingAgentRun]:

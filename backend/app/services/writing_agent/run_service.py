@@ -31,6 +31,8 @@ from app.services.writing_agent.chapter_generation_tool import (
     _length_policy_check,
     _previous_chapter_state_card,
 )
+from app.services.writing_agent.approval_contract import verify_agent_plan_approval_contract
+from app.services.writing_agent.approval_tool_metadata import build_approval_tool_metadata_by_name
 from app.services.writing_agent.agent_step_binding import summarize_resource_binding
 from app.services.writing_agent.agent_loop_risk import build_agent_loop_risk
 from app.services.writing_agent.agent_stop_hooks import evaluate_agent_stop_hooks
@@ -39,6 +41,7 @@ from app.services.writing_agent.tool_adapter_types import WritingAgentToolContex
 from app.services.writing_agent.tool_executor import (
     execute_writing_agent_tool,
     writing_agent_tool_adapter_metadata,
+    writing_agent_tool_adapter_metadata_by_name,
 )
 from app.services.writing_agent.tool_policy import should_stop_after_report, successful_report_block_message
 from app.services.writing_agent.tool_recommendations import normalize_tool_recommendations
@@ -234,13 +237,13 @@ class WritingAgentRunService:
                 self._fail_step_and_run(run, step, f"Unsupported writing agent tool: {tool.tool_name}")
                 return run
 
-            planner_continuation_block = _planner_continuation_approval_block(run, tool)
-            if planner_continuation_block:
+            planner_continuation_gate = _planner_continuation_approval_gate(run, tool)
+            if planner_continuation_gate and planner_continuation_gate.get("status") == RUN_BLOCKED:
                 self._block_step_and_run(
                     run,
                     step,
                     "Planner continuation requires approval",
-                    output=planner_continuation_block,
+                    output=planner_continuation_gate["output"],
                 )
                 return run
 
@@ -269,6 +272,8 @@ class WritingAgentRunService:
                 return run
 
             output = self._enrich_step_output(run.project_id, tool=tool, result=result)
+            if planner_continuation_gate and planner_continuation_gate.get("status") == "ready":
+                output["planner_continuation_approval"] = planner_continuation_gate["approval"]
             self._complete_step(step, output)
             next_tool_name = tools[step_index].tool_name if step_index < total_steps else None
             if should_stop_after_report(
@@ -854,7 +859,7 @@ def _non_empty_string(value: object) -> str | None:
     return stripped or None
 
 
-def _planner_continuation_approval_block(
+def _planner_continuation_approval_gate(
     run: WritingAgentRun,
     tool: WritingAgentToolRequest,
 ) -> dict[str, Any] | None:
@@ -890,13 +895,13 @@ def _planner_continuation_approval_block(
     if not requires_confirmation:
         return None
 
-    return {
+    source_plan_id = _non_empty_string(run_input.get("source_plan_id")) or _non_empty_string(planner_metadata.get("plan_id"))
+    block_output = {
         "status": RUN_BLOCKED,
         "reason": "planner_continuation_requires_approval",
         "message": "Planner continuation includes a write or confirmation-required tool.",
         "source_run_id": _non_empty_string(run_input.get("source_run_id")),
-        "source_plan_id": _non_empty_string(run_input.get("source_plan_id"))
-        or _non_empty_string(planner_metadata.get("plan_id")),
+        "source_plan_id": source_plan_id,
         "blocked_tool": tool.tool_name,
         "approval_contract_status": approval_status,
         "tool_execution_metadata": {
@@ -908,6 +913,62 @@ def _planner_continuation_approval_block(
             "verify_agent_plan_approval_contract",
         ],
     }
+    if run_input.get("confirm_execute") is not True:
+        return {"status": RUN_BLOCKED, "output": block_output}
+
+    plan = _planner_continuation_plan(planner)
+    approval_contract = _planner_continuation_approval_contract(run_input, planner, plan)
+    verification = verify_agent_plan_approval_contract(
+        plan,
+        approval_contract_hash=_non_empty_string(run_input.get("approval_contract_hash")),
+        approval_contract=approval_contract,
+        project_id=run.project_id,
+        tool_metadata_by_name=build_approval_tool_metadata_by_name(
+            plan,
+            adapter_metadata_by_name=writing_agent_tool_adapter_metadata_by_name(),
+        ),
+    )
+    if verification.get("status") != "ready":
+        block_output["approval_verification"] = verification
+        return {"status": RUN_BLOCKED, "output": block_output}
+
+    approval_hash = (verification.get("drift") or {}).get("actual_approval_contract_hash")
+    return {
+        "status": "ready",
+        "approval": {
+            "status": "ready",
+            "reason": str(verification.get("reason") or "approval_contract_verified"),
+            "approval_contract_hash": _non_empty_string(approval_hash),
+            "source_plan_id": source_plan_id,
+            "blocked_tool": None,
+        },
+    }
+
+
+def _planner_continuation_plan(planner: dict[str, Any]) -> dict[str, Any] | None:
+    nested_plan = planner.get("plan") if isinstance(planner.get("plan"), dict) else None
+    if nested_plan and (
+        isinstance(nested_plan.get("steps"), list)
+        or isinstance(nested_plan.get("tools"), list)
+        or isinstance(nested_plan.get("trace"), dict)
+    ):
+        return nested_plan
+    return planner
+
+
+def _planner_continuation_approval_contract(
+    run_input: dict[str, Any],
+    planner: dict[str, Any],
+    plan: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    for source in (
+        run_input.get("approval_contract"),
+        planner.get("approval_contract"),
+        plan.get("approval_contract") if isinstance(plan, dict) else None,
+    ):
+        if isinstance(source, dict):
+            return source
+    return None
 
 
 def _continuation_state(run: WritingAgentRun, steps: list[WritingAgentStep]) -> dict[str, Any]:

@@ -9,6 +9,8 @@ type PlannerPlanExecutePayload = {
   goal: string
   tools: Array<Record<string, unknown>>
   planner: Record<string, unknown>
+  approvalContractHash?: string
+  approvalContract?: Record<string, unknown>
 }
 
 const props = defineProps<{
@@ -105,6 +107,9 @@ const plannerApprovalContract = computed(() => {
   return recordValue(nestedPlanOutput.value.approval_contract)
 })
 const plannerApprovalStatus = computed(() => stringValue(plannerApprovalContract.value.status))
+const plannerApprovalHash = computed(() => (
+  stringValue(recordValue(plannerApprovalContract.value.approval).approval_contract_hash)
+))
 const plannerReferencePatterns = computed(() => {
   const traced = referencePatternList(plannerTrace.value.reference_patterns)
   if (traced.length) return traced
@@ -143,7 +148,12 @@ const hasPlannerProjection = computed(() => Boolean(
 ))
 const plannerExecutePayload = computed<PlannerPlanExecutePayload | null>(() => {
   if (!plannerSourceIsPreview.value || props.run?.status !== 'success') return null
-  if (plannerApprovalStatus.value !== 'not_required') return null
+  const approvalReady = (
+    plannerApprovalStatus.value === 'requires_confirmation' &&
+    Boolean(plannerApprovalHash.value) &&
+    Object.keys(plannerApprovalContract.value).length > 0
+  )
+  if (plannerApprovalStatus.value !== 'not_required' && !approvalReady) return null
   if (!props.run?.id || !plannerPlanId.value || !plannerToolRequests.value.length) return null
   return {
     sourceRunId: props.run.id,
@@ -151,6 +161,12 @@ const plannerExecutePayload = computed<PlannerPlanExecutePayload | null>(() => {
     goal: `执行规划工具链：${plannerIntentLabel(plannerIntentClass.value)}`,
     tools: plannerToolRequests.value,
     planner: plannerOutput.value,
+    ...(approvalReady
+      ? {
+          approvalContractHash: plannerApprovalHash.value,
+          approvalContract: plannerApprovalContract.value,
+        }
+      : {}),
   }
 })
 const agentProfileDefinition = computed(() => recordValue(props.run?.agent_profile_definition))

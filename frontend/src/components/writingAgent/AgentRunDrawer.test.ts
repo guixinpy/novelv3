@@ -451,7 +451,108 @@ describe('AgentRunDrawer', () => {
     ]])
   })
 
-  it('does not offer direct planner continuation when approval is required', () => {
+  it('emits a confirmed planner continuation payload when approval contract hash is present', async () => {
+    const approvalContract = {
+      status: 'requires_confirmation',
+      approval: { approval_contract_hash: 'approval:secret' },
+      write_steps: [{ tool_name: 'generate_chapter' }],
+    }
+    const wrapper = mount(AgentRunDrawer, {
+      attachTo: document.body,
+      props: {
+        open: true,
+        loading: false,
+        error: '',
+        run: {
+          id: 'run-plan-write-preview',
+          project_id: 'project-1',
+          goal: '规划生成第2章',
+          status: 'success',
+          entrypoint: 'manual_debug_run',
+          input: {},
+          output: null,
+          error: null,
+          steps: [
+            {
+              id: 'step-plan',
+              run_id: 'run-plan-write-preview',
+              project_id: 'project-1',
+              step_index: 1,
+              tool_name: 'plan_writing_agent_run',
+              status: 'success',
+              input: {},
+              output: {
+                status: 'completed',
+                intent_class: 'continue_next_chapter',
+                approval_contract: approvalContract,
+                trace: { plan_id: 'plan:chapter-2' },
+                tools: [
+                  {
+                    tool_name: 'generate_chapter',
+                    params: { chapter_index: 2 },
+                    planner: {
+                      step_id: 'step:generate-chapter-2',
+                      plan_id: 'plan:chapter-2',
+                      mutability: 'write',
+                      requires_confirmation: true,
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      },
+    })
+
+    const button = document.body.querySelector('[data-testid="execute-planner-plan"]') as HTMLButtonElement
+    expect(button).not.toBeNull()
+    expect(document.body.textContent).not.toContain('approval:secret')
+
+    await button.click()
+
+    expect(wrapper.emitted('executePlannerPlan')).toEqual([[
+      {
+        sourceRunId: 'run-plan-write-preview',
+        sourcePlanId: 'plan:chapter-2',
+        goal: '执行规划工具链：续写章节',
+        tools: [
+          {
+            tool_name: 'generate_chapter',
+            params: { chapter_index: 2 },
+            planner: {
+              step_id: 'step:generate-chapter-2',
+              plan_id: 'plan:chapter-2',
+              mutability: 'write',
+              requires_confirmation: true,
+            },
+          },
+        ],
+        planner: {
+          status: 'completed',
+          intent_class: 'continue_next_chapter',
+          approval_contract: approvalContract,
+          trace: { plan_id: 'plan:chapter-2' },
+          tools: [
+            {
+              tool_name: 'generate_chapter',
+              params: { chapter_index: 2 },
+              planner: {
+                step_id: 'step:generate-chapter-2',
+                plan_id: 'plan:chapter-2',
+                mutability: 'write',
+                requires_confirmation: true,
+              },
+            },
+          ],
+        },
+        approvalContractHash: 'approval:secret',
+        approvalContract,
+      },
+    ]])
+  })
+
+  it('does not offer direct planner continuation when approval hash is missing', () => {
     mount(AgentRunDrawer, {
       attachTo: document.body,
       props: {
@@ -481,7 +582,7 @@ describe('AgentRunDrawer', () => {
                 intent_class: 'setup_project',
                 approval_contract: {
                   status: 'requires_confirmation',
-                  approval: { approval_contract_hash: 'approval:secret' },
+                  approval: {},
                   write_steps: [{ tool_name: 'generate_setup' }],
                 },
                 trace: { plan_id: 'plan:setup' },
@@ -496,7 +597,6 @@ describe('AgentRunDrawer', () => {
     const text = document.body.textContent || ''
     expect(text).toContain('Agent 规划投影')
     expect(text).toContain('需要审批')
-    expect(text).not.toContain('approval:secret')
     expect(document.body.querySelector('[data-testid="execute-planner-plan"]')).toBeNull()
   })
 

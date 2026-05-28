@@ -63,6 +63,8 @@ type PlannerPlanExecutePayload = {
   goal: string
   tools: Array<Record<string, unknown>>
   planner: Record<string, unknown>
+  approvalContractHash?: string
+  approvalContract?: Record<string, unknown>
 }
 type RouteUpgradeApplyPayload = {
   sourceRunId: string
@@ -487,6 +489,14 @@ async function executePlannerPlanFromRun(payload: PlannerPlanExecutePayload) {
   const tools = normalizePlannerToolRequests(payload.tools)
   if (!payload.sourceRunId || !payload.sourcePlanId || !tools.length || !payload.planner) return
   if (payload.sourceRunId !== activeAgentRunId.value || payload.sourceRunId !== activeAgentRun.value?.id) return
+  const approvalContract = recordValue(payload.approvalContract)
+  const approvalBinding = payload.approvalContractHash && Object.keys(approvalContract).length
+    ? {
+        confirm_execute: true,
+        approval_contract_hash: payload.approvalContractHash,
+        approval_contract: approvalContract,
+      }
+    : {}
   agentRunError.value = ''
   agentRunLoading.value = true
   try {
@@ -498,6 +508,7 @@ async function executePlannerPlanFromRun(payload: PlannerPlanExecutePayload) {
         planner_continuation: true,
         source_run_id: payload.sourceRunId,
         source_plan_id: payload.sourcePlanId,
+        ...approvalBinding,
         planner: payload.planner,
       },
     })
