@@ -145,13 +145,13 @@ def _build_setup_plan(
         _append_step(
             steps,
             trace,
-            "generate_setup",
+            "prepare_generate_setup_execution",
             {},
-            reason="项目需要先生成基础设定，后续故事线、大纲和章节才能稳定推进。",
+            reason="项目需要先生成基础设定，先准备设定生成审批合约，不直接写入设定。",
             command_args=goal,
             on_missing="ask_user",
             on_failure="stop",
-            expected_output="项目基础设定。",
+            expected_output="设定生成审批合约。",
         )
     else:
         trace["rejected_tools"].append({"tool_name": "generate_setup", "reason": "项目已有设定，避免重复覆盖基础设定。"})

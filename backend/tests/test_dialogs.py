@@ -417,7 +417,7 @@ def test_dialog_control_plane_agent_route_approval_opt_in_metadata_routes_prepar
     assert task_tool["params"] == {}
 
 
-def test_dialog_control_plane_agent_route_approval_opt_in_top_level_false_overrides_route_metadata(db_session):
+def test_dialog_control_plane_agent_route_approval_opt_in_false_cannot_bypass_setup_prepare(db_session):
     from app.services.writing_agent.dialog_control_plane import prepare_dialog_agent_run_dispatch
 
     project = Project(name="Agent Route Approval Opt In Override")
@@ -446,8 +446,8 @@ def test_dialog_control_plane_agent_route_approval_opt_in_top_level_false_overri
 
     run_tool = dispatch.run.input["tools"][0]
     task_tool = dispatch.task.payload["tools"][0]
-    assert run_tool["tool_name"] == "generate_setup"
-    assert task_tool["tool_name"] == "generate_setup"
+    assert run_tool["tool_name"] == "prepare_generate_setup_execution"
+    assert task_tool["tool_name"] == "prepare_generate_setup_execution"
     assert run_tool["params"] == {}
     assert task_tool["params"] == {}
 
@@ -698,7 +698,7 @@ def test_agent_control_plane_routes_confirmed_setup_through_writing_agent_run(cl
     assert run.background_task_id == task.id
     assert run.input["control_plane"]["version"] == "phase65.agent_control_plane.v1"
     assert run.input["control_plane"]["source"] == "dialog_pending_action"
-    assert run.input["tools"][0]["tool_name"] == "generate_setup"
+    assert run.input["tools"][0]["tool_name"] == "prepare_generate_setup_execution"
     assert run.input["tools"][0]["command_args"] == "雾港悬疑，主角是记忆取证师"
     assert "agent_route" not in run.input["tools"][0]["params"]
     assert task.task_type == "writing_agent_run"
@@ -789,7 +789,7 @@ def test_pending_action_safety_view_omits_action_without_pending_action_id():
     assert "action" not in recommendation
 
 
-def test_dialog_control_plane_approval_chain_opt_in_default_setup_route_stays_legacy(db_session):
+def test_dialog_control_plane_setup_route_defaults_to_prepare_even_without_approval_opt_in(db_session):
     from app.services.writing_agent.dialog_control_plane import prepare_dialog_agent_run_dispatch
 
     project = Project(name="Dialog Approval Opt In Default")
@@ -808,8 +808,8 @@ def test_dialog_control_plane_approval_chain_opt_in_default_setup_route_stays_le
 
     run_tool = dispatch.run.input["tools"][0]
     task_tool = dispatch.task.payload["tools"][0]
-    assert run_tool["tool_name"] == "generate_setup"
-    assert task_tool["tool_name"] == "generate_setup"
+    assert run_tool["tool_name"] == "prepare_generate_setup_execution"
+    assert task_tool["tool_name"] == "prepare_generate_setup_execution"
     assert "use_agent_approval_chain" not in run_tool["params"]
     assert "use_agent_approval_chain" not in task_tool["params"]
 
@@ -914,7 +914,7 @@ def test_text_intent_confirm_routes_to_agent_run(client, db_session, monkeypatch
     assert response.status_code == 200
     assert body["action_result"]["data"]["agent_run_id"] == run.id
     assert run.entrypoint == "dialog_pending_action"
-    assert run.input["tools"][0]["tool_name"] == "generate_setup"
+    assert run.input["tools"][0]["tool_name"] == "prepare_generate_setup_execution"
     assert run.input["tools"][0]["command_args"] == text
     assert "agent_route" not in run.input["tools"][0]["params"]
     assert started_task_ids == [body["action_result"]["data"]["task_id"]]
@@ -1103,7 +1103,7 @@ async def test_agent_control_plane_background_work_records_terminal_dialog_messa
     )
     from app.services.writing_agent.run_service import WritingAgentRunService
 
-    tools = [WritingAgentToolRequest(tool_name="generate_setup", command_args="雾港悬疑")]
+    tools = [WritingAgentToolRequest(tool_name="prepare_generate_setup_execution", command_args="雾港悬疑")]
     run = WritingAgentRunService(db_session).create_run(
         project.id,
         WritingAgentRunCreate(
@@ -1138,13 +1138,13 @@ async def test_agent_control_plane_background_work_records_terminal_dialog_messa
 
     result = await work(db_session, task)
 
-    terminal = db_session.query(DialogMessage).filter_by(dialog_id=dialog.id, role="system").one()
+    terminal = db_session.query(DialogMessage).filter_by(dialog_id=dialog.id, role="assistant").one()
     saved_run = db_session.query(WritingAgentRun).filter_by(id=run.id).one()
     assert result["agent_run_id"] == run.id
-    assert result["status"] == "success"
+    assert result["status"] == "approval_required"
     assert saved_run.status == "success"
     assert terminal.action_result["type"] == "generate_setup"
-    assert terminal.action_result["status"] == "success"
+    assert terminal.action_result["status"] == "approval_required"
     assert terminal.action_result["data"]["agent_run_id"] == run.id
     assert terminal.action_result["data"]["background_task_id"] == task.id
     assert terminal.action_result["data"]["control_plane"]["version"] == CONTROL_PLANE_VERSION
@@ -2904,7 +2904,7 @@ def test_resolve_action_confirm_creates_background_task(client, db_session):
     assert task.task_type == "writing_agent_run"
     assert task.payload["agent_run_id"] == run.id
     assert task.payload["action_type"] == "generate_setup"
-    assert task.payload["tools"][0]["tool_name"] == "generate_setup"
+    assert task.payload["tools"][0]["tool_name"] == "prepare_generate_setup_execution"
     assert task.payload["dialog_id"]
     assert task.status == "pending"
     assert run.background_task_id == task.id
@@ -3722,5 +3722,5 @@ def test_resolve_action_confirm_passes_command_args_to_background(client, db_ses
     assert r3.status_code == 200
     mock_start.assert_called_once()
     run = db_session.query(WritingAgentRun).filter_by(project_id=pid).one()
-    assert run.input["tools"][0]["tool_name"] == "generate_setup"
+    assert run.input["tools"][0]["tool_name"] == "prepare_generate_setup_execution"
     assert run.input["tools"][0]["command_args"] == "主角是植物学家"

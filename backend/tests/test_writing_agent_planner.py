@@ -293,7 +293,7 @@ def test_planner_builds_setup_project_plan_for_bare_project(db_session):
     assert plan["intent_class"] == "setup_project"
     assert plan["trace"]["agent_profile"] == "drafting_worker"
     assert plan["steps"][0]["params"] == {"chapter_index": 1, "agent_profile": "drafting_worker"}
-    assert _tool_names(plan) == ["describe_agent_tools", "generate_setup"]
+    assert _tool_names(plan) == ["describe_agent_tools", "prepare_generate_setup_execution"]
 
 
 def test_planner_defaults_inspection_to_orchestrator_profile(db_session):

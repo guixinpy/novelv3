@@ -20,9 +20,9 @@ APPROVAL_CHAIN_OPT_IN_PARAM = DIALOG_AGENT_ROUTE_APPROVAL_CHAIN_OPT_IN_KEY
 CONTROL_PLANE_PARAM_KEYS = {"project_id", "agent_route", APPROVAL_CHAIN_OPT_IN_PARAM}
 
 SUPPORTED_DIALOG_ACTION_TO_TOOL = {
-    "generate_setup": "generate_setup",
-    "generate_storyline": "generate_storyline",
-    "generate_outline": "generate_outline",
+    "generate_setup": "prepare_generate_setup_execution",
+    "generate_storyline": "prepare_generate_storyline_execution",
+    "generate_outline": "prepare_generate_outline_execution",
     "generate_chapter": "prepare_generate_chapter_execution",
     "review_chapter": "plan_writing_agent_run",
     "recover_blocked_run": "plan_writing_agent_run",
@@ -257,23 +257,17 @@ def _dialog_control_plane_action_projection(action_type: str) -> dict[str, Any]:
             "planner_intent": PLANNED_DIALOG_ACTION_INTENTS[action_type],
         }
     recommended_chain = list(APPROVED_DIALOG_CONTROL_PLANE_CHAINS.get(action_type, (current_runtime_tool,)))
-    runtime_already_uses_approval_chain = (
-        action_type == "generate_chapter"
-        and current_runtime_tool == recommended_chain[0]
-        and CHAPTER_APPROVAL_EXECUTE_TOOL == recommended_chain[-1]
-    )
+    runtime_already_uses_approval_chain = current_runtime_tool == recommended_chain[0] and len(recommended_chain) > 1
     return {
         "action_type": action_type,
         "current_runtime_tool_name": current_runtime_tool,
-        "current_approval_execute_tool_name": CHAPTER_APPROVAL_EXECUTE_TOOL
-        if action_type == "generate_chapter"
-        else None,
+        "current_approval_execute_tool_name": recommended_chain[-1] if runtime_already_uses_approval_chain else None,
         "recommended_tool_chain": recommended_chain,
         "recommended_prepare_tool_name": recommended_chain[0] if len(recommended_chain) > 1 else None,
         "recommended_execute_tool_name": recommended_chain[-1] if len(recommended_chain) > 1 else None,
         "approval_gate_required": len(recommended_chain) > 1,
         "runtime_already_uses_approval_chain": runtime_already_uses_approval_chain,
-        "runtime_behavior_changed": False,
+        "runtime_behavior_changed": runtime_already_uses_approval_chain and action_type != "generate_chapter",
         "migration_status": "already_applied"
         if runtime_already_uses_approval_chain
         else "recommended_not_applied"

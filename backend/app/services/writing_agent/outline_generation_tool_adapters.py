@@ -4,6 +4,7 @@ from collections.abc import Callable
 from typing import Any
 
 from app.schemas.writing_agent import WritingAgentToolRequest
+from app.services.writing_agent.direct_generation_write_guard import approval_required_redirect
 from app.services.writing_agent.tool_adapter_types import WritingAgentToolAdapter, WritingAgentToolContext
 
 
@@ -15,6 +16,13 @@ def build_outline_generation_agent_tool_adapters(
     approval_tool_metadata_provider: ApprovalToolMetadataProvider,
 ) -> dict[str, WritingAgentToolAdapter]:
     return {
+        "generate_outline": WritingAgentToolAdapter(
+            "generate_outline",
+            _generate_outline,
+            category="generation",
+            mutability="guarded_write",
+            write_policy="approval_required_redirect",
+        ),
         "preview_generate_outline_execution": WritingAgentToolAdapter(
             "preview_generate_outline_execution",
             _preview_generate_outline_execution,
@@ -34,6 +42,21 @@ def build_outline_generation_agent_tool_adapters(
             mutability="write",
         ),
     }
+
+
+def _generate_outline(
+    context: WritingAgentToolContext,
+    tool: WritingAgentToolRequest,
+) -> dict[str, Any]:
+    command_args = str(tool.params.get("command_args") or tool.command_args or "").strip() or None
+    return approval_required_redirect(
+        project_id=context.project_id,
+        tool_name="generate_outline",
+        target_type="outline",
+        prepare_tool="prepare_generate_outline_execution",
+        execute_tool="execute_generate_outline_with_approval",
+        command_args=command_args,
+    )
 
 
 def _preview_generate_outline_execution(

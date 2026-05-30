@@ -79,10 +79,12 @@ def test_write_gate_coverage_marks_pre_chapter_generate_tools_as_indirectly_cove
     for tool_name, consumer_tool in expected_consumers.items():
         generate_tool = tools_by_name[tool_name]
         assert generate_tool["agent_plan_gate_status"] == "indirect_agent_gate_available"
+        assert generate_tool["direct_write_policy"] == "approval_required_redirect"
+        assert generate_tool["direct_write_blocked"] is True
         assert generate_tool["direct_confirmation_guard"] is False
-        assert generate_tool["risk_level"] == "high"
+        assert generate_tool["risk_level"] == "low"
         assert {item["consumer_tool"] for item in generate_tool["indirect_coverage"]} == {consumer_tool}
-        assert generate_tool["recommended_action"] == "add_direct_agent_plan_approval_gate"
+        assert generate_tool["recommended_action"] == "route_direct_calls_to_approval_executor"
 
 
 def test_write_gate_coverage_marks_knowledge_base_candidate_approval_executor_as_enforced():
@@ -217,8 +219,9 @@ def _adapter_metadata() -> dict[str, dict]:
             "tool_name": "generate_setup",
             "adapter_type": "static",
             "category": "generation",
-            "mutability": "write",
+            "mutability": "guarded_write",
             "handler_name": "_generate_setup",
+            "write_policy": "approval_required_redirect",
         },
         "execute_generate_setup_with_approval": {
             "tool_name": "execute_generate_setup_with_approval",
@@ -231,8 +234,9 @@ def _adapter_metadata() -> dict[str, dict]:
             "tool_name": "generate_storyline",
             "adapter_type": "static",
             "category": "generation",
-            "mutability": "write",
+            "mutability": "guarded_write",
             "handler_name": "_generate_storyline",
+            "write_policy": "approval_required_redirect",
         },
         "execute_generate_storyline_with_approval": {
             "tool_name": "execute_generate_storyline_with_approval",
@@ -245,8 +249,9 @@ def _adapter_metadata() -> dict[str, dict]:
             "tool_name": "generate_outline",
             "adapter_type": "static",
             "category": "generation",
-            "mutability": "write",
+            "mutability": "guarded_write",
             "handler_name": "_generate_outline",
+            "write_policy": "approval_required_redirect",
         },
         "execute_generate_outline_with_approval": {
             "tool_name": "execute_generate_outline_with_approval",

@@ -186,6 +186,16 @@ def _blocked_by_lifecycle_hook(tool: WritingAgentToolRequest, before: dict[str, 
 
 
 def _failed_by_lifecycle_hook(tool: WritingAgentToolRequest, exc: Exception) -> dict[str, Any]:
+    status_code = getattr(exc, "status_code", None)
+    detail = getattr(exc, "detail", None)
+    if isinstance(status_code, int) and detail:
+        return {
+            "status": "failed",
+            "error": str(detail),
+            "error_type": type(exc).__name__,
+            "status_code": status_code,
+            "tool_name": tool.tool_name,
+        }
     return {
         "status": "failed",
         "error": str(exc),

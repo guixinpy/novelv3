@@ -29,8 +29,8 @@ def test_athena_ontology_generate_routes_through_writing_agent_run(
     assert run.entrypoint == "athena_ontology_generate"
     assert run.status == "success"
     assert run.input["control_plane"]["source"] == "athena_ontology_generate"
-    assert run.input["tools"][0]["tool_name"] == "generate_setup"
-    assert step.tool_name == "generate_setup"
+    assert run.input["tools"][0]["tool_name"] == "execute_generate_setup_with_approval"
+    assert step.tool_name == "execute_generate_setup_with_approval"
     assert step.status == "success"
     assert step.target_type == "setup"
     assert step.target_id == body["id"]

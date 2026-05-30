@@ -71,11 +71,13 @@ def test_writing_agent_run_and_step_persist(client, db_session):
     assert saved_step.output == {"trace_id": "trace-1"}
 
 
-def test_create_agent_run_records_steps_and_returns_detail(client, db_session, monkeypatch):
+def test_create_agent_run_blocks_direct_setup_without_approval(client, db_session, monkeypatch):
     project_id = _create_project(client, "Agent API")
     _create_trace(db_session, project_id, "trace-setup", "setup_generation")
+    calls: list[str] = []
 
     async def fake_execute(self, action_type, project_id, *, command_args=None, action_params=None):
+        calls.append(action_type)
         return {"status": "success", "trace_id": "trace-setup"}
 
     monkeypatch.setattr("app.services.actions.action_execution_service.ActionExecutionService.execute", fake_execute)
@@ -90,15 +92,18 @@ def test_create_agent_run_records_steps_and_returns_detail(client, db_session, m
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["status"] == "success"
+    assert payload["status"] == "blocked"
     assert payload["goal"] == "生成设定"
     assert len(payload["steps"]) == 1
     assert payload["steps"][0]["tool_name"] == "generate_setup"
-    assert payload["steps"][0]["status"] == "success"
-    assert payload["steps"][0]["trace_id"] == "trace-setup"
+    assert payload["steps"][0]["status"] == "blocked"
+    assert payload["steps"][0]["trace_id"] is None
+    assert payload["steps"][0]["output"]["reason"] == "approval_required_before_write"
+    assert payload["steps"][0]["output"]["recommended_next_tools"] == ["prepare_generate_setup_execution"]
     envelope = payload["steps"][0]["output"]["agent_tool_result"]
-    assert envelope["execution_route"] == "legacy_action_fallback"
-    assert envelope["adapter"] is None
+    assert envelope["execution_route"] == "static_adapter"
+    assert envelope["adapter"]["write_policy"] == "approval_required_redirect"
+    assert calls == []
 
 
 def test_planner_continuation_blocks_unapproved_write_tools(client):
@@ -4201,11 +4206,13 @@ def test_cancel_agent_run_marks_pending_or_running_run_cancelled(client, db_sess
     assert response.json()["finished_at"] is not None
 
 
-def test_agent_run_records_successful_tool_step_with_trace_id(client, db_session, monkeypatch):
+def test_agent_run_blocks_direct_storyline_without_approval(client, db_session, monkeypatch):
     project_id = _create_project(client, "Trace Project")
     _create_trace(db_session, project_id, "trace-storyline", "storyline_generation")
+    calls: list[str] = []
 
     async def fake_execute(self, action_type, project_id, *, command_args=None, action_params=None):
+        calls.append(action_type)
         return {"status": "success", "trace_id": "trace-storyline"}
 
     monkeypatch.setattr("app.services.actions.action_execution_service.ActionExecutionService.execute", fake_execute)
@@ -4220,12 +4227,14 @@ def test_agent_run_records_successful_tool_step_with_trace_id(client, db_session
 
     step = response.json()["steps"][0]
     assert response.status_code == 200
-    assert response.json()["status"] == "success"
-    assert step["trace_id"] == "trace-storyline"
-    assert step["output"]["trace_id"] == "trace-storyline"
+    assert response.json()["status"] == "blocked"
+    assert step["trace_id"] is None
+    assert step["output"]["reason"] == "approval_required_before_write"
+    assert step["output"]["recommended_next_tools"] == ["prepare_generate_storyline_execution"]
+    assert calls == []
 
 
-def test_agent_run_stops_after_failed_tool_step(client, db_session, monkeypatch):
+def test_agent_run_stops_after_unapproved_direct_generation_tool(client, db_session, monkeypatch):
     project_id = _create_project(client, "Fail Project")
     calls = []
 
@@ -4248,10 +4257,11 @@ def test_agent_run_stops_after_failed_tool_step(client, db_session, monkeypatch)
 
     payload = response.json()
     assert response.status_code == 200
-    assert payload["status"] == "failed"
-    assert payload["error"] == "model unavailable"
-    assert [step["status"] for step in payload["steps"]] == ["failed"]
-    assert calls == ["generate_setup"]
+    assert payload["status"] == "blocked"
+    assert payload["error"] == "Agent run blocked"
+    assert [step["status"] for step in payload["steps"]] == ["blocked"]
+    assert payload["steps"][0]["output"]["recommended_next_tools"] == ["prepare_generate_setup_execution"]
+    assert calls == []
 
 
 def test_agent_run_records_normalized_output_for_unsupported_tool(client):

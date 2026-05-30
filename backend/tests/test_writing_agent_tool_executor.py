@@ -179,10 +179,13 @@ def test_setup_generation_tool_adapters_live_in_dedicated_module():
     names = list(adapters)
 
     assert names == [
+        "generate_setup",
         "preview_generate_setup_execution",
         "prepare_generate_setup_execution",
         "execute_generate_setup_with_approval",
     ]
+    assert adapters["generate_setup"].mutability == "guarded_write"
+    assert adapters["generate_setup"].write_policy == "approval_required_redirect"
     assert adapters["preview_generate_setup_execution"].mutability == "read"
     assert adapters["prepare_generate_setup_execution"].mutability == "read"
     assert adapters["execute_generate_setup_with_approval"].mutability == "write"
@@ -194,10 +197,13 @@ def test_storyline_generation_tool_adapters_live_in_dedicated_module():
     names = list(adapters)
 
     assert names == [
+        "generate_storyline",
         "preview_generate_storyline_execution",
         "prepare_generate_storyline_execution",
         "execute_generate_storyline_with_approval",
     ]
+    assert adapters["generate_storyline"].mutability == "guarded_write"
+    assert adapters["generate_storyline"].write_policy == "approval_required_redirect"
     assert adapters["preview_generate_storyline_execution"].mutability == "read"
     assert adapters["prepare_generate_storyline_execution"].mutability == "read"
     assert adapters["execute_generate_storyline_with_approval"].mutability == "write"
@@ -211,10 +217,13 @@ def test_outline_generation_tool_adapters_live_in_dedicated_module():
     names = list(adapters)
 
     assert names == [
+        "generate_outline",
         "preview_generate_outline_execution",
         "prepare_generate_outline_execution",
         "execute_generate_outline_with_approval",
     ]
+    assert adapters["generate_outline"].mutability == "guarded_write"
+    assert adapters["generate_outline"].write_policy == "approval_required_redirect"
     assert adapters["preview_generate_outline_execution"].mutability == "read"
     assert adapters["prepare_generate_outline_execution"].mutability == "read"
     assert adapters["execute_generate_outline_with_approval"].mutability == "write"
@@ -1546,12 +1555,14 @@ async def test_tool_executor_handles_dialog_control_plane_projection(db_session)
     assert result.output["version"] == "phase191.dialog_control_plane_projection.v1"
     actions_by_type = {action["action_type"]: action for action in result.output["actions"]}
     setup_action = actions_by_type["generate_setup"]
-    assert setup_action["current_runtime_tool_name"] == "generate_setup"
+    assert setup_action["current_runtime_tool_name"] == "prepare_generate_setup_execution"
+    assert setup_action["current_approval_execute_tool_name"] == "execute_generate_setup_with_approval"
     assert setup_action["recommended_tool_chain"] == [
         "prepare_generate_setup_execution",
         "execute_generate_setup_with_approval",
     ]
-    assert setup_action["runtime_behavior_changed"] is False
+    assert setup_action["runtime_behavior_changed"] is True
+    assert setup_action["runtime_already_uses_approval_chain"] is True
     chapter_action = actions_by_type["generate_chapter"]
     assert chapter_action["current_runtime_tool_name"] == "prepare_generate_chapter_execution"
     assert chapter_action["current_approval_execute_tool_name"] == "execute_generate_chapter_with_approval"
@@ -1624,7 +1635,10 @@ async def test_tool_executor_handles_dialog_intent_agent_plan_for_setup(db_sessi
     assert result.output["intent_projection"]["rule_id"] == "setup_intent"
     assert result.output["planner"]["intent_class"] == "setup_project"
     assert result.output["planner"]["mapped_from_action_type"] == "preview_setup"
-    assert [tool["tool_name"] for tool in result.output["tools"]] == ["describe_agent_tools", "generate_setup"]
+    assert [tool["tool_name"] for tool in result.output["tools"]] == [
+        "describe_agent_tools",
+        "prepare_generate_setup_execution",
+    ]
 
 
 @pytest.mark.asyncio
@@ -1973,7 +1987,7 @@ async def test_tool_executor_handles_planner_tool(db_session):
     assert result.output["status"] == "completed"
     assert result.output["intent_class"] == "setup_project"
     assert result.output["steps"][0]["tool_name"] == "describe_agent_tools"
-    assert result.output["approval_contract"]["status"] == "requires_confirmation"
+    assert result.output["approval_contract"]["status"] == "not_required"
 
 
 @pytest.mark.asyncio
@@ -2935,7 +2949,7 @@ async def test_tool_executor_executes_generate_outline_with_approval(db_session,
 
 
 @pytest.mark.asyncio
-async def test_tool_executor_leaves_legacy_generation_tools_unhandled(db_session):
+async def test_tool_executor_redirects_direct_pre_chapter_generation_tools_to_approval(db_session):
     project = Project(name="Executor Legacy")
     db_session.add(project)
     db_session.commit()
@@ -2953,12 +2967,26 @@ async def test_tool_executor_leaves_legacy_generation_tools_unhandled(db_session
         WritingAgentToolRequest(tool_name="generate_outline", command_args="每章留钩子"),
     )
 
-    assert setup_result.handled is False
-    assert setup_result.output is None
-    assert storyline_result.handled is False
-    assert storyline_result.output is None
-    assert outline_result.handled is False
-    assert outline_result.output is None
+    assert setup_result.handled is True
+    assert setup_result.output["status"] == "blocked"
+    assert setup_result.output["reason"] == "approval_required_before_write"
+    assert setup_result.output["side_effects"] == {"executed": [], "skipped": ["generate_setup"]}
+    assert setup_result.output["recommended_next_tools"] == ["prepare_generate_setup_execution"]
+    assert setup_result.output["required_approval"]["prepare_tool"] == "prepare_generate_setup_execution"
+
+    assert storyline_result.handled is True
+    assert storyline_result.output["status"] == "blocked"
+    assert storyline_result.output["reason"] == "approval_required_before_write"
+    assert storyline_result.output["side_effects"] == {"executed": [], "skipped": ["generate_storyline"]}
+    assert storyline_result.output["recommended_next_tools"] == ["prepare_generate_storyline_execution"]
+    assert storyline_result.output["required_approval"]["prepare_tool"] == "prepare_generate_storyline_execution"
+
+    assert outline_result.handled is True
+    assert outline_result.output["status"] == "blocked"
+    assert outline_result.output["reason"] == "approval_required_before_write"
+    assert outline_result.output["side_effects"] == {"executed": [], "skipped": ["generate_outline"]}
+    assert outline_result.output["recommended_next_tools"] == ["prepare_generate_outline_execution"]
+    assert outline_result.output["required_approval"]["prepare_tool"] == "prepare_generate_outline_execution"
 
 
 def _seed_profile_scope_project(db_session) -> Project:
@@ -3071,16 +3099,16 @@ def test_tool_executor_static_adapter_names_are_report_or_agent_native_tools():
         "preview_world_model_proposal_resolution",
         "apply_world_model_proposal_resolution",
         "draft_world_model_proposal_resolution_decisions",
+        "generate_setup",
         "preview_generate_storyline_execution",
         "prepare_generate_storyline_execution",
         "execute_generate_storyline_with_approval",
+        "generate_storyline",
         "preview_generate_outline_execution",
         "prepare_generate_outline_execution",
         "execute_generate_outline_with_approval",
+        "generate_outline",
     }.issubset(names)
-    assert "generate_setup" not in names
-    assert "generate_storyline" not in names
-    assert "generate_outline" not in names
 
 
 def test_tool_executor_exposes_adapter_metadata_for_trace():
@@ -3199,6 +3227,14 @@ def test_tool_executor_exposes_approved_direct_chapter_generation_adapter_metada
 
 
 def test_tool_executor_exposes_approved_setup_generation_adapter_metadata():
+    assert writing_agent_tool_adapter_metadata("generate_setup") == {
+        "tool_name": "generate_setup",
+        "adapter_type": "static",
+        "category": "generation",
+        "mutability": "guarded_write",
+        "handler_name": "_generate_setup",
+        "write_policy": "approval_required_redirect",
+    }
     assert writing_agent_tool_adapter_metadata("preview_generate_setup_execution") == {
         "tool_name": "preview_generate_setup_execution",
         "adapter_type": "static",
@@ -3223,6 +3259,14 @@ def test_tool_executor_exposes_approved_setup_generation_adapter_metadata():
 
 
 def test_tool_executor_exposes_approved_storyline_generation_adapter_metadata():
+    assert writing_agent_tool_adapter_metadata("generate_storyline") == {
+        "tool_name": "generate_storyline",
+        "adapter_type": "static",
+        "category": "generation",
+        "mutability": "guarded_write",
+        "handler_name": "_generate_storyline",
+        "write_policy": "approval_required_redirect",
+    }
     assert writing_agent_tool_adapter_metadata("preview_generate_storyline_execution") == {
         "tool_name": "preview_generate_storyline_execution",
         "adapter_type": "static",
@@ -3247,6 +3291,14 @@ def test_tool_executor_exposes_approved_storyline_generation_adapter_metadata():
 
 
 def test_tool_executor_exposes_approved_outline_generation_adapter_metadata():
+    assert writing_agent_tool_adapter_metadata("generate_outline") == {
+        "tool_name": "generate_outline",
+        "adapter_type": "static",
+        "category": "generation",
+        "mutability": "guarded_write",
+        "handler_name": "_generate_outline",
+        "write_policy": "approval_required_redirect",
+    }
     assert writing_agent_tool_adapter_metadata("preview_generate_outline_execution") == {
         "tool_name": "preview_generate_outline_execution",
         "adapter_type": "static",
@@ -3547,8 +3599,8 @@ async def test_tool_executor_handles_legacy_hermes_migration_projection(db_sessi
     }
     for tool_name, execute_tool in expected_execute_tools.items():
         item = tools_by_name[tool_name]
-        assert item["current_execution_route"] == "legacy_action_fallback"
-        assert item["migration_stage"] == "agent_native_wrapper_ready"
+        assert item["current_execution_route"] == "static_adapter"
+        assert item["migration_stage"] == "agent_native_ready"
         assert item["agent_native_execution_route"] == "static_adapter"
         assert item["approval_wrapper"]["execute_tool"] == execute_tool
         assert item["approval_wrapper"]["execute_adapter_exists"] is True
@@ -3576,7 +3628,7 @@ async def test_tool_executor_handles_inspect_agent_tool_contracts(db_session):
     assert result.output["summary"]["total_tools"] >= 1
     assert result.output["summary"]["internal_tools"] >= 1
     assert result.output["coverage"]["schema_coverage_ratio"] == 1.0
-    assert result.output["coverage"]["adapter_coverage_ratio"] < 1.0
+    assert result.output["coverage"]["adapter_coverage_ratio"] == 1.0
     assert "confirmation_contract_ratio" in result.output["coverage"]
     assert "tool_visibility_projection" in result.output["reference_alignment"]["patterns"]
     assert "runtime_policy_projection" in result.output["reference_alignment"]["patterns"]
@@ -3584,7 +3636,10 @@ async def test_tool_executor_handles_inspect_agent_tool_contracts(db_session):
     assert "permission_scope_category" in result.output["reference_alignment"]["patterns"]
     assert "references/agent-projects/openclaw" in result.output["reference_alignment"]["source_refs"]
     tools_by_name = {tool["name"]: tool for tool in result.output["tools"]}
-    assert tools_by_name["generate_setup"]["execution_route"] == "legacy_action_fallback"
+    assert tools_by_name["generate_setup"]["execution_route"] == "static_adapter"
+    assert tools_by_name["generate_setup"]["mutability"] == "guarded_write"
+    assert tools_by_name["generate_setup"]["permission_level"] == "confirm_required"
+    assert "requires_confirmation" in tools_by_name["generate_setup"]["side_effects"]
     assert tools_by_name["generate_chapter"]["execution_route"] == "static_adapter"
     assert tools_by_name["preflight_writing"]["execution_route"] == "injected_adapter"
     assert tools_by_name["describe_agent_tools"]["mutability"] == "read"

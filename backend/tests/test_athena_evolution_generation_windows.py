@@ -66,8 +66,8 @@ def test_athena_storyline_generate_defaults_to_windowed_response(client, db_sess
     assert data["control_plane"]["source"] == "athena_evolution_plan_generate"
     assert data["control_plane"]["target"] == "storyline"
     assert run.entrypoint == "athena_evolution_plan_generate"
-    assert run.input["tools"][0]["tool_name"] == "generate_storyline"
-    assert step.tool_name == "generate_storyline"
+    assert run.input["tools"][0]["tool_name"] == "execute_generate_storyline_with_approval"
+    assert step.tool_name == "execute_generate_storyline_with_approval"
     assert step.status == "success"
     assert step.target_type == "storyline"
     assert step.target_id == stored.id
@@ -154,8 +154,8 @@ def test_athena_outline_generate_defaults_to_windowed_response(client, db_sessio
     assert data["control_plane"]["source"] == "athena_evolution_plan_generate"
     assert data["control_plane"]["target"] == "outline"
     assert run.entrypoint == "athena_evolution_plan_generate"
-    assert run.input["tools"][0]["tool_name"] == "generate_outline"
-    assert step.tool_name == "generate_outline"
+    assert run.input["tools"][0]["tool_name"] == "execute_generate_outline_with_approval"
+    assert step.tool_name == "execute_generate_outline_with_approval"
     assert step.status == "success"
     assert step.target_type == "outline"
     assert step.target_id == stored.id

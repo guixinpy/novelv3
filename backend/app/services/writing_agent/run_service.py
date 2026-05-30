@@ -650,7 +650,7 @@ class WritingAgentRunService:
         }
 
     def _find_target_id(self, step: WritingAgentStep) -> str | None:
-        if step.tool_name == "generate_setup":
+        if step.tool_name in {"generate_setup", "execute_generate_setup_with_approval"}:
             row = (
                 self.db.query(Setup.id)
                 .filter(Setup.project_id == step.project_id)
@@ -658,7 +658,7 @@ class WritingAgentRunService:
                 .first()
             )
             return row.id if row else None
-        if step.tool_name == "generate_storyline":
+        if step.tool_name in {"generate_storyline", "execute_generate_storyline_with_approval"}:
             row = (
                 self.db.query(Storyline.id)
                 .filter(Storyline.project_id == step.project_id)
@@ -666,7 +666,7 @@ class WritingAgentRunService:
                 .first()
             )
             return row.id if row else None
-        if step.tool_name == "generate_outline":
+        if step.tool_name in {"generate_outline", "execute_generate_outline_with_approval"}:
             row = (
                 self.db.query(Outline.id)
                 .filter(Outline.project_id == step.project_id)
