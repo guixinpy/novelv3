@@ -4,6 +4,7 @@ from collections.abc import Callable
 from typing import Any
 
 from app.schemas.writing_agent import WritingAgentToolRequest
+from app.services.writing_agent.direct_generation_write_guard import approval_required_redirect
 from app.services.writing_agent.tool_adapter_types import WritingAgentToolAdapter, WritingAgentToolContext
 
 
@@ -24,6 +25,19 @@ def build_longform_agent_tool_adapters(
         "enqueue_longform_chapter_batch": WritingAgentToolAdapter(
             "enqueue_longform_chapter_batch",
             _enqueue_longform_chapter_batch,
+            category="task_queue",
+            mutability="guarded_write",
+            write_policy="approval_required_redirect",
+        ),
+        "prepare_enqueue_longform_chapter_batch": WritingAgentToolAdapter(
+            "prepare_enqueue_longform_chapter_batch",
+            _prepare_enqueue_longform_chapter_batch,
+            category="task_queue",
+            mutability="read",
+        ),
+        "execute_enqueue_longform_chapter_batch_with_approval": WritingAgentToolAdapter(
+            "execute_enqueue_longform_chapter_batch_with_approval",
+            _execute_enqueue_longform_chapter_batch_with_approval(approval_tool_metadata_provider),
             category="task_queue",
             mutability="write",
         ),
@@ -80,18 +94,64 @@ def _plan_longform_chapter_batch(context: WritingAgentToolContext, tool: Writing
 
 
 def _enqueue_longform_chapter_batch(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
-    from app.services.writing_agent.batch_enqueue import build_longform_chapter_batch_enqueue
+    source_run_id = str(tool.params.get("source_run_id") or "").strip() or None
+    return approval_required_redirect(
+        project_id=context.project_id,
+        tool_name="enqueue_longform_chapter_batch",
+        target_type="background_task_enqueue",
+        prepare_tool="prepare_enqueue_longform_chapter_batch",
+        execute_tool="execute_enqueue_longform_chapter_batch_with_approval",
+        extra={
+            "source_run_id": source_run_id,
+            "start_chapter": _optional_int(tool.params.get("start_chapter")),
+            "batch_size": _optional_int(tool.params.get("batch_size")),
+        },
+    )
+
+
+def _prepare_enqueue_longform_chapter_batch(
+    context: WritingAgentToolContext,
+    tool: WritingAgentToolRequest,
+) -> dict[str, Any]:
+    from app.services.writing_agent.batch_enqueue_execution import prepare_enqueue_longform_chapter_batch
 
     source_run_id = str(tool.params.get("source_run_id") or "").strip() or None
-    return build_longform_chapter_batch_enqueue(
+    return prepare_enqueue_longform_chapter_batch(
         context.db,
         context.project_id,
         source_run_id=source_run_id,
         start_chapter=_optional_int(tool.params.get("start_chapter")),
         batch_size=_optional_int(tool.params.get("batch_size")),
-        confirm_enqueue=tool.params.get("confirm_enqueue") is True,
-        plan_hash=str(tool.params.get("plan_hash") or "").strip() or None,
     )
+
+
+def _execute_enqueue_longform_chapter_batch_with_approval(
+    approval_tool_metadata_provider: ApprovalToolMetadataProvider,
+):
+    def _execute_enqueue_longform_chapter_batch_with_approval(
+        context: WritingAgentToolContext,
+        tool: WritingAgentToolRequest,
+    ) -> dict[str, Any]:
+        from app.services.writing_agent.batch_enqueue_execution import (
+            execute_enqueue_longform_chapter_batch_with_approval,
+        )
+
+        source_run_id = str(tool.params.get("source_run_id") or "").strip() or None
+        approval_contract = tool.params.get("approval_contract")
+        return execute_enqueue_longform_chapter_batch_with_approval(
+            context.db,
+            context.project_id,
+            source_run_id=source_run_id,
+            start_chapter=_optional_int(tool.params.get("start_chapter")),
+            batch_size=_optional_int(tool.params.get("batch_size")),
+            plan_hash=str(tool.params.get("plan_hash") or "").strip() or None,
+            confirm_execute=tool.params.get("confirm_execute") is True,
+            approval_contract_hash=str(tool.params.get("approval_contract_hash") or "").strip() or None,
+            approval_contract=approval_contract if isinstance(approval_contract, dict) else None,
+            approval_tool_metadata_provider=approval_tool_metadata_provider,
+        )
+
+    return _execute_enqueue_longform_chapter_batch_with_approval
 
 
 def _inspect_longform_chapter_batch(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:

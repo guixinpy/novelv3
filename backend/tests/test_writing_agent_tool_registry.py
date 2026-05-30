@@ -304,6 +304,8 @@ def test_longform_tool_descriptors_live_in_dedicated_module():
     assert names == [
         "plan_longform_chapter_batch",
         "enqueue_longform_chapter_batch",
+        "prepare_enqueue_longform_chapter_batch",
+        "execute_enqueue_longform_chapter_batch_with_approval",
         "inspect_longform_chapter_batch",
         "execute_longform_chapter_batch_preflight",
         "prepare_longform_chapter_batch_execution",
@@ -314,6 +316,9 @@ def test_longform_tool_descriptors_live_in_dedicated_module():
     assert {descriptor.category for descriptor in LONGFORM_AGENT_TOOL_DESCRIPTORS} == {"task_queue"}
     assert {descriptor.module for descriptor in LONGFORM_AGENT_TOOL_DESCRIPTORS} == {"writing_agent"}
     assert all(descriptor.internal for descriptor in LONGFORM_AGENT_TOOL_DESCRIPTORS)
+    assert target_type_for_tool("enqueue_longform_chapter_batch") == "background_task"
+    assert target_type_for_tool("prepare_enqueue_longform_chapter_batch") == "background_task_enqueue_approval"
+    assert target_type_for_tool("execute_enqueue_longform_chapter_batch_with_approval") == "background_task_enqueue"
     assert target_type_for_tool("execute_longform_chapter_batch") == "background_task"
 
 
@@ -334,6 +339,8 @@ def test_agent_tool_registry_has_unique_names_and_contracts():
         "plan_recovery_tools",
         "plan_longform_chapter_batch",
         "enqueue_longform_chapter_batch",
+        "prepare_enqueue_longform_chapter_batch",
+        "execute_enqueue_longform_chapter_batch_with_approval",
         "inspect_longform_chapter_batch",
         "inspect_agent_job_projection",
         "inspect_agent_tool_contracts",
@@ -363,6 +370,8 @@ def test_agent_tool_registry_has_unique_names_and_contracts():
     assert target_type_for_tool("plan_recovery_tools") == "agent_tool_plan"
     assert target_type_for_tool("plan_longform_chapter_batch") == "longform_batch_plan"
     assert target_type_for_tool("enqueue_longform_chapter_batch") == "background_task"
+    assert target_type_for_tool("prepare_enqueue_longform_chapter_batch") == "background_task_enqueue_approval"
+    assert target_type_for_tool("execute_enqueue_longform_chapter_batch_with_approval") == "background_task_enqueue"
     assert target_type_for_tool("inspect_longform_chapter_batch") == "background_task"
     assert target_type_for_tool("inspect_agent_job_projection") == "agent_job_projection"
     assert target_type_for_tool("inspect_agent_tool_contracts") == "agent_tool_contracts"
@@ -385,6 +394,7 @@ def test_agent_tool_registry_has_unique_names_and_contracts():
     assert "prepare_generate_chapter_execution" in non_blocking_report_tool_names()
     assert "plan_recovery_tools" in non_blocking_report_tool_names()
     assert "plan_longform_chapter_batch" in non_blocking_report_tool_names()
+    assert "prepare_enqueue_longform_chapter_batch" in non_blocking_report_tool_names()
     assert "inspect_longform_chapter_batch" in non_blocking_report_tool_names()
     assert "inspect_agent_job_projection" in non_blocking_report_tool_names()
     assert "inspect_agent_tool_contracts" in non_blocking_report_tool_names()
@@ -779,6 +789,25 @@ def test_agent_tool_registry_includes_enqueue_longform_chapter_batch():
     assert descriptor.input_schema["properties"]["confirm_enqueue"]["type"] == "boolean"
     assert "enqueue_longform_chapter_batch" in allowed_tool_names()
     assert "enqueue_longform_chapter_batch" not in non_blocking_report_tool_names()
+
+
+def test_agent_tool_registry_includes_enqueue_longform_chapter_batch_approval_chain():
+    prepare_descriptor = get_agent_tool_descriptor("prepare_enqueue_longform_chapter_batch")
+    execute_descriptor = get_agent_tool_descriptor("execute_enqueue_longform_chapter_batch_with_approval")
+
+    assert prepare_descriptor is not None
+    assert prepare_descriptor.internal is True
+    assert prepare_descriptor.non_blocking_report is True
+    assert prepare_descriptor.target_type == "background_task_enqueue_approval"
+    assert prepare_descriptor.input_schema["properties"]["batch_size"]["minimum"] == 1
+    assert execute_descriptor is not None
+    assert execute_descriptor.internal is True
+    assert execute_descriptor.target_type == "background_task_enqueue"
+    assert execute_descriptor.input_schema["properties"]["confirm_execute"]["type"] == "boolean"
+    assert "approval_contract_hash" in execute_descriptor.input_schema["required"]
+    assert "prepare_enqueue_longform_chapter_batch" in allowed_tool_names()
+    assert "execute_enqueue_longform_chapter_batch_with_approval" in allowed_tool_names()
+    assert "prepare_enqueue_longform_chapter_batch" in non_blocking_report_tool_names()
 
 
 def test_agent_tool_registry_includes_inspect_longform_chapter_batch():

@@ -265,6 +265,29 @@ def test_write_gate_coverage_marks_longform_maintenance_approval_executor_as_enf
     }
 
 
+def test_write_gate_coverage_marks_longform_batch_enqueue_as_approval_redirected():
+    output = inspect_agent_write_gate_coverage(adapter_metadata_by_name=_adapter_metadata())
+    tools_by_name = _tools_by_name(output)
+
+    execute_tool = tools_by_name["execute_enqueue_longform_chapter_batch_with_approval"]
+    assert execute_tool["agent_plan_gate_status"] == "enforced"
+    assert execute_tool["gate_version"] == "phase199.longform_batch_enqueue_agent_plan_approval.v1"
+    assert execute_tool["gate_type"] == "stateless_agent_plan_approval"
+    assert execute_tool["risk_level"] == "low"
+    assert execute_tool["confirmation_fields"] == ["approval_contract_hash", "confirm_execute", "plan_hash"]
+
+    enqueue_tool = tools_by_name["enqueue_longform_chapter_batch"]
+    assert enqueue_tool["agent_plan_gate_status"] == "indirect_agent_gate_available"
+    assert enqueue_tool["direct_write_policy"] == "approval_required_redirect"
+    assert enqueue_tool["direct_write_blocked"] is True
+    assert enqueue_tool["direct_confirmation_guard"] is True
+    assert enqueue_tool["risk_level"] == "low"
+    assert enqueue_tool["recommended_action"] == "route_direct_calls_to_approval_executor"
+    assert {item["consumer_tool"] for item in enqueue_tool["indirect_coverage"]} == {
+        "execute_enqueue_longform_chapter_batch_with_approval"
+    }
+
+
 def test_write_gate_coverage_marks_confirm_guarded_tools_as_missing_agent_gate():
     output = inspect_agent_write_gate_coverage(adapter_metadata_by_name=_adapter_metadata())
     apply_tool = _tools_by_name(output)["apply_world_model_proposal_resolution"]
@@ -340,6 +363,21 @@ def _adapter_metadata() -> dict[str, dict]:
             "category": "task_queue",
             "mutability": "write",
             "handler_name": "_execute_longform_chapter_batch",
+        },
+        "enqueue_longform_chapter_batch": {
+            "tool_name": "enqueue_longform_chapter_batch",
+            "adapter_type": "static",
+            "category": "task_queue",
+            "mutability": "guarded_write",
+            "handler_name": "_enqueue_longform_chapter_batch",
+            "write_policy": "approval_required_redirect",
+        },
+        "execute_enqueue_longform_chapter_batch_with_approval": {
+            "tool_name": "execute_enqueue_longform_chapter_batch_with_approval",
+            "adapter_type": "static",
+            "category": "task_queue",
+            "mutability": "write",
+            "handler_name": "_execute_enqueue_longform_chapter_batch_with_approval",
         },
         "execute_generate_chapter_with_approval": {
             "tool_name": "execute_generate_chapter_with_approval",

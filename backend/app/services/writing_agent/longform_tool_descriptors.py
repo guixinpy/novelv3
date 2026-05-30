@@ -35,7 +35,7 @@ LONGFORM_AGENT_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         name="enqueue_longform_chapter_batch",
         module="writing_agent",
         category="task_queue",
-        description="确认后将长篇章节批次计划写入后台任务队列，不直接启动真实生成。",
+        description="为长篇章节批次入队构建审批重定向，直接调用不写入后台任务队列。",
         input_schema=object_schema(
             {
                 "source_run_id": {"type": "string"},
@@ -61,6 +61,76 @@ LONGFORM_AGENT_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(
+        name="prepare_enqueue_longform_chapter_batch",
+        module="writing_agent",
+        category="task_queue",
+        description="为长篇章节批次入队构建 Agent 计划审批契约，不写入后台任务队列。",
+        input_schema=object_schema(
+            {
+                "source_run_id": {"type": "string"},
+                "start_chapter": {"type": "integer", "minimum": 1},
+                "batch_size": {"type": "integer", "minimum": 1},
+            }
+        ),
+        output_schema=object_schema(
+            {
+                "status": {"type": "string"},
+                "prepare_version": {"type": "string"},
+                "project_id": {"type": "string"},
+                "plan_hash": {"type": "string"},
+                "enqueue_preview": {"type": "object"},
+                "mutation_fingerprint": {"type": "object"},
+                "tool_call_id": {"type": "string"},
+                "resource_binding": {"type": "object"},
+                "agent_plan": {"type": "object"},
+                "agent_plan_approval_contract": {"type": "object"},
+                "agent_plan_approval_contract_hash": {"type": "string"},
+                "required_confirmation": {"type": "object"},
+                "recommended_next_tools": {"type": "array"},
+            }
+        ),
+        target_type="background_task_enqueue_approval",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=10,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
+        name="execute_enqueue_longform_chapter_batch_with_approval",
+        module="writing_agent",
+        category="task_queue",
+        description="在确认 Agent 计划审批契约后将长篇章节批次计划写入后台任务队列。",
+        input_schema=object_schema(
+            {
+                "source_run_id": {"type": "string"},
+                "start_chapter": {"type": "integer", "minimum": 1},
+                "batch_size": {"type": "integer", "minimum": 1},
+                "plan_hash": {"type": "string"},
+                "confirm_execute": {"type": "boolean"},
+                "approval_contract_hash": {"type": "string"},
+                "approval_contract": {"type": "object"},
+            },
+            required=("plan_hash", "confirm_execute", "approval_contract_hash", "approval_contract"),
+        ),
+        output_schema=object_schema(
+            {
+                "status": {"type": "string"},
+                "plan_hash": {"type": "string"},
+                "batch": {"type": "object"},
+                "dag": {"type": "object"},
+                "task": {"type": "object"},
+                "queue_policy": {"type": "object"},
+                "agent_plan_approval_verification": {"type": "object"},
+                "execution_resource_binding": {"type": "object"},
+                "side_effects": {"type": "object"},
+            }
+        ),
+        target_type="background_task_enqueue",
+        internal=True,
+        sort_key=11,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
         name="inspect_longform_chapter_batch",
         module="writing_agent",
         category="task_queue",
@@ -83,7 +153,7 @@ LONGFORM_AGENT_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         target_type="background_task",
         internal=True,
         non_blocking_report=True,
-        sort_key=10,
+        sort_key=12,
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(
@@ -110,7 +180,7 @@ LONGFORM_AGENT_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         ),
         target_type="background_task",
         internal=True,
-        sort_key=11,
+        sort_key=13,
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(
@@ -136,7 +206,7 @@ LONGFORM_AGENT_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         ),
         target_type="background_task",
         internal=True,
-        sort_key=12,
+        sort_key=14,
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(
@@ -167,7 +237,7 @@ LONGFORM_AGENT_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         ),
         target_type="background_task",
         internal=True,
-        sort_key=13,
+        sort_key=15,
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(
@@ -195,7 +265,7 @@ LONGFORM_AGENT_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         ),
         target_type="background_task",
         internal=True,
-        sort_key=14,
+        sort_key=16,
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(
@@ -223,7 +293,7 @@ LONGFORM_AGENT_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         ),
         target_type="background_task",
         internal=True,
-        sort_key=15,
+        sort_key=17,
         availability_checks=("project_exists",),
     ),
 )

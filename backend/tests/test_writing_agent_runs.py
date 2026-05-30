@@ -2239,7 +2239,7 @@ def test_agent_run_previews_longform_chapter_batch_enqueue(client, db_session):
             "goal": "准备把接下来两章加入批次队列",
             "tools": [
                 {
-                    "tool_name": "enqueue_longform_chapter_batch",
+                    "tool_name": "prepare_enqueue_longform_chapter_batch",
                     "params": {"start_chapter": 2, "batch_size": 2},
                 }
             ],
@@ -2250,19 +2250,24 @@ def test_agent_run_previews_longform_chapter_batch_enqueue(client, db_session):
     output = payload["steps"][0]["output"]
     assert response.status_code == 200
     assert payload["status"] == "success"
-    assert payload["steps"][0]["target_type"] == "background_task"
-    assert output["status"] == "confirmation_required"
-    assert output["preview_only"] is True
-    assert output["can_enqueue"] is True
+    assert payload["steps"][0]["target_type"] == "background_task_enqueue_approval"
+    assert output["status"] == "approval_required"
     assert output["plan_hash"]
-    assert output["required_confirmation"] == {"confirm_enqueue": True, "plan_hash": output["plan_hash"]}
-    assert output["batch"]["chapter_indexes"] == [2, 3]
-    assert output["queue_policy"]["starts_runner"] is False
+    assert output["required_confirmation"] == {
+        "confirm_execute": True,
+        "approval_contract_hash": output["agent_plan_approval_contract_hash"],
+    }
+    preview = output["enqueue_preview"]
+    assert preview["preview_only"] is True
+    assert preview["can_enqueue"] is True
+    assert preview["batch"]["chapter_indexes"] == [2, 3]
+    assert preview["queue_policy"]["starts_runner"] is False
     assert db_session.query(BackgroundTask).filter(BackgroundTask.project_id == project.id).count() == 0
 
 
-def test_agent_run_rejects_longform_chapter_batch_enqueue_hash_mismatch(client, db_session):
+def test_agent_run_rejects_longform_chapter_batch_enqueue_approval_hash_mismatch(client, db_session):
     project = _seed_longform_project(db_session, outline_chapters=[1, 2, 3], generated_chapters=[1])
+    prepared = _prepare_enqueue_longform_batch(client, project.id, start_chapter=2, batch_size=2)
 
     response = client.post(
         f"/api/v1/projects/{project.id}/agent-runs",
@@ -2270,12 +2275,14 @@ def test_agent_run_rejects_longform_chapter_batch_enqueue_hash_mismatch(client, 
             "goal": "尝试执行过期批次计划",
             "tools": [
                 {
-                    "tool_name": "enqueue_longform_chapter_batch",
+                    "tool_name": "execute_enqueue_longform_chapter_batch_with_approval",
                     "params": {
                         "start_chapter": 2,
                         "batch_size": 2,
-                        "confirm_enqueue": True,
-                        "plan_hash": "stale",
+                        "plan_hash": prepared["plan_hash"],
+                        "confirm_execute": True,
+                        "approval_contract_hash": "stale",
+                        "approval_contract": prepared["agent_plan_approval_contract"],
                     },
                 }
             ],
@@ -2285,29 +2292,16 @@ def test_agent_run_rejects_longform_chapter_batch_enqueue_hash_mismatch(client, 
     payload = response.json()
     output = payload["steps"][0]["output"]
     assert response.status_code == 200
-    assert payload["status"] == "success"
-    assert output["status"] == "hash_mismatch"
-    assert output["can_enqueue"] is False
-    assert output["expected_plan_hash"]
-    assert output["provided_plan_hash"] == "stale"
+    assert payload["status"] == "blocked"
+    assert output["status"] == "blocked"
+    assert output["reason"] == "approval_contract_hash_mismatch"
     assert db_session.query(BackgroundTask).filter(BackgroundTask.project_id == project.id).count() == 0
 
 
 def test_agent_run_confirms_longform_chapter_batch_enqueue(client, db_session):
     project = _seed_longform_project(db_session, outline_chapters=[1, 2, 3], generated_chapters=[1])
-    preview_response = client.post(
-        f"/api/v1/projects/{project.id}/agent-runs",
-        json={
-            "goal": "准备把接下来两章加入批次队列",
-            "tools": [
-                {
-                    "tool_name": "enqueue_longform_chapter_batch",
-                    "params": {"start_chapter": 2, "batch_size": 2},
-                }
-            ],
-        },
-    )
-    plan_hash = preview_response.json()["steps"][0]["output"]["plan_hash"]
+    prepared = _prepare_enqueue_longform_batch(client, project.id, start_chapter=2, batch_size=2)
+    plan_hash = prepared["plan_hash"]
 
     response = client.post(
         f"/api/v1/projects/{project.id}/agent-runs",
@@ -2315,12 +2309,14 @@ def test_agent_run_confirms_longform_chapter_batch_enqueue(client, db_session):
             "goal": "确认加入批次队列",
             "tools": [
                 {
-                    "tool_name": "enqueue_longform_chapter_batch",
+                    "tool_name": "execute_enqueue_longform_chapter_batch_with_approval",
                     "params": {
                         "start_chapter": 2,
                         "batch_size": 2,
-                        "confirm_enqueue": True,
+                        "confirm_execute": True,
                         "plan_hash": plan_hash,
+                        "approval_contract_hash": prepared["agent_plan_approval_contract_hash"],
+                        "approval_contract": prepared["agent_plan_approval_contract"],
                     },
                 }
             ],
@@ -2349,12 +2345,14 @@ def test_agent_run_confirms_longform_chapter_batch_enqueue(client, db_session):
             "goal": "重复确认同一批次",
             "tools": [
                 {
-                    "tool_name": "enqueue_longform_chapter_batch",
+                    "tool_name": "execute_enqueue_longform_chapter_batch_with_approval",
                     "params": {
                         "start_chapter": 2,
                         "batch_size": 2,
-                        "confirm_enqueue": True,
+                        "confirm_execute": True,
                         "plan_hash": plan_hash,
+                        "approval_contract_hash": prepared["agent_plan_approval_contract_hash"],
+                        "approval_contract": prepared["agent_plan_approval_contract"],
                     },
                 }
             ],
@@ -2387,7 +2385,7 @@ def test_agent_run_longform_chapter_batch_enqueue_blocks_on_source_continuation(
             "goal": "尝试从阻塞运行加入批次队列",
             "tools": [
                 {
-                    "tool_name": "enqueue_longform_chapter_batch",
+                    "tool_name": "prepare_enqueue_longform_chapter_batch",
                     "params": {"source_run_id": blocked.json()["id"]},
                 }
             ],
@@ -2397,7 +2395,7 @@ def test_agent_run_longform_chapter_batch_enqueue_blocks_on_source_continuation(
     payload = response.json()
     output = payload["steps"][0]["output"]
     assert response.status_code == 200
-    assert payload["status"] == "blocked"
+    assert payload["status"] == "success"
     assert output["status"] == "blocked"
     assert output["can_enqueue"] is False
     assert output["recommended_next_tools"] == ["plan_recovery_tools"]
@@ -2406,37 +2404,9 @@ def test_agent_run_longform_chapter_batch_enqueue_blocks_on_source_continuation(
 
 def test_agent_run_inspects_longform_chapter_batch_queue(client, db_session):
     project = _seed_longform_project(db_session, outline_chapters=[1, 2, 3], generated_chapters=[1])
-    preview_response = client.post(
-        f"/api/v1/projects/{project.id}/agent-runs",
-        json={
-            "goal": "准备把接下来两章加入批次队列",
-            "tools": [
-                {
-                    "tool_name": "enqueue_longform_chapter_batch",
-                    "params": {"start_chapter": 2, "batch_size": 2},
-                }
-            ],
-        },
-    )
-    plan_hash = preview_response.json()["steps"][0]["output"]["plan_hash"]
-    enqueue_response = client.post(
-        f"/api/v1/projects/{project.id}/agent-runs",
-        json={
-            "goal": "确认加入批次队列",
-            "tools": [
-                {
-                    "tool_name": "enqueue_longform_chapter_batch",
-                    "params": {
-                        "start_chapter": 2,
-                        "batch_size": 2,
-                        "confirm_enqueue": True,
-                        "plan_hash": plan_hash,
-                    },
-                }
-            ],
-        },
-    )
-    task_id = enqueue_response.json()["steps"][0]["output"]["task"]["id"]
+    enqueue_output = _enqueue_longform_batch_with_approval(client, project.id, start_chapter=2, batch_size=2)
+    plan_hash = enqueue_output["plan_hash"]
+    task_id = enqueue_output["task"]["id"]
 
     response = client.post(
         f"/api/v1/projects/{project.id}/agent-runs",
@@ -2493,37 +2463,8 @@ def test_agent_run_inspect_longform_chapter_batch_reports_missing_selection(clie
 
 def test_agent_run_can_preflight_longform_chapter_batch_checkpoint(client, db_session):
     project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1])
-    preview_response = client.post(
-        f"/api/v1/projects/{project.id}/agent-runs",
-        json={
-            "goal": "准备把下一章加入批次队列",
-            "tools": [
-                {
-                    "tool_name": "enqueue_longform_chapter_batch",
-                    "params": {"start_chapter": 2, "batch_size": 1},
-                }
-            ],
-        },
-    )
-    plan_hash = preview_response.json()["steps"][0]["output"]["plan_hash"]
-    enqueue_response = client.post(
-        f"/api/v1/projects/{project.id}/agent-runs",
-        json={
-            "goal": "确认加入批次队列",
-            "tools": [
-                {
-                    "tool_name": "enqueue_longform_chapter_batch",
-                    "params": {
-                        "start_chapter": 2,
-                        "batch_size": 1,
-                        "confirm_enqueue": True,
-                        "plan_hash": plan_hash,
-                    },
-                }
-            ],
-        },
-    )
-    task_id = enqueue_response.json()["steps"][0]["output"]["task"]["id"]
+    enqueue_output = _enqueue_longform_batch_with_approval(client, project.id, start_chapter=2, batch_size=1)
+    task_id = enqueue_output["task"]["id"]
 
     response = client.post(
         f"/api/v1/projects/{project.id}/agent-runs",
@@ -2582,37 +2523,8 @@ def test_agent_run_can_preflight_longform_chapter_batch_checkpoint(client, db_se
 
 def test_agent_run_preflight_longform_chapter_batch_requires_checkpoint_confirmation(client, db_session):
     project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1])
-    preview_response = client.post(
-        f"/api/v1/projects/{project.id}/agent-runs",
-        json={
-            "goal": "准备把下一章加入批次队列",
-            "tools": [
-                {
-                    "tool_name": "enqueue_longform_chapter_batch",
-                    "params": {"start_chapter": 2, "batch_size": 1},
-                }
-            ],
-        },
-    )
-    plan_hash = preview_response.json()["steps"][0]["output"]["plan_hash"]
-    enqueue_response = client.post(
-        f"/api/v1/projects/{project.id}/agent-runs",
-        json={
-            "goal": "确认加入批次队列",
-            "tools": [
-                {
-                    "tool_name": "enqueue_longform_chapter_batch",
-                    "params": {
-                        "start_chapter": 2,
-                        "batch_size": 1,
-                        "confirm_enqueue": True,
-                        "plan_hash": plan_hash,
-                    },
-                }
-            ],
-        },
-    )
-    task_id = enqueue_response.json()["steps"][0]["output"]["task"]["id"]
+    enqueue_output = _enqueue_longform_batch_with_approval(client, project.id, start_chapter=2, batch_size=1)
+    task_id = enqueue_output["task"]["id"]
 
     response = client.post(
         f"/api/v1/projects/{project.id}/agent-runs",
@@ -2647,37 +2559,8 @@ def test_agent_run_preflight_longform_chapter_batch_requires_checkpoint_confirma
 
 def test_agent_run_preflight_longform_chapter_batch_blocks_on_dependencies(client, db_session):
     project = _seed_longform_project(db_session, outline_chapters=[1, 2, 3], generated_chapters=[1])
-    preview_response = client.post(
-        f"/api/v1/projects/{project.id}/agent-runs",
-        json={
-            "goal": "准备把第三章加入批次队列",
-            "tools": [
-                {
-                    "tool_name": "enqueue_longform_chapter_batch",
-                    "params": {"start_chapter": 3, "batch_size": 1},
-                }
-            ],
-        },
-    )
-    plan_hash = preview_response.json()["steps"][0]["output"]["plan_hash"]
-    enqueue_response = client.post(
-        f"/api/v1/projects/{project.id}/agent-runs",
-        json={
-            "goal": "确认加入批次队列",
-            "tools": [
-                {
-                    "tool_name": "enqueue_longform_chapter_batch",
-                    "params": {
-                        "start_chapter": 3,
-                        "batch_size": 1,
-                        "confirm_enqueue": True,
-                        "plan_hash": plan_hash,
-                    },
-                }
-            ],
-        },
-    )
-    task_id = enqueue_response.json()["steps"][0]["output"]["task"]["id"]
+    enqueue_output = _enqueue_longform_batch_with_approval(client, project.id, start_chapter=3, batch_size=1)
+    task_id = enqueue_output["task"]["id"]
 
     response = client.post(
         f"/api/v1/projects/{project.id}/agent-runs",
@@ -2716,37 +2599,9 @@ def test_agent_run_preflight_longform_chapter_batch_blocks_on_dependencies(clien
 
 def test_agent_run_can_prepare_longform_chapter_batch_execution_manifest(client, db_session):
     project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1])
-    preview_response = client.post(
-        f"/api/v1/projects/{project.id}/agent-runs",
-        json={
-            "goal": "准备把下一章加入批次队列",
-            "tools": [
-                {
-                    "tool_name": "enqueue_longform_chapter_batch",
-                    "params": {"start_chapter": 2, "batch_size": 1},
-                }
-            ],
-        },
-    )
-    plan_hash = preview_response.json()["steps"][0]["output"]["plan_hash"]
-    enqueue_response = client.post(
-        f"/api/v1/projects/{project.id}/agent-runs",
-        json={
-            "goal": "确认加入批次队列",
-            "tools": [
-                {
-                    "tool_name": "enqueue_longform_chapter_batch",
-                    "params": {
-                        "start_chapter": 2,
-                        "batch_size": 1,
-                        "confirm_enqueue": True,
-                        "plan_hash": plan_hash,
-                    },
-                }
-            ],
-        },
-    )
-    task_id = enqueue_response.json()["steps"][0]["output"]["task"]["id"]
+    enqueue_output = _enqueue_longform_batch_with_approval(client, project.id, start_chapter=2, batch_size=1)
+    plan_hash = enqueue_output["plan_hash"]
+    task_id = enqueue_output["task"]["id"]
     client.post(
         f"/api/v1/projects/{project.id}/agent-runs",
         json={
@@ -2834,37 +2689,8 @@ def test_agent_run_can_prepare_longform_chapter_batch_execution_manifest(client,
 
 def test_agent_run_prepare_longform_chapter_batch_execution_requires_prepare_confirmation(client, db_session):
     project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1])
-    preview_response = client.post(
-        f"/api/v1/projects/{project.id}/agent-runs",
-        json={
-            "goal": "准备把下一章加入批次队列",
-            "tools": [
-                {
-                    "tool_name": "enqueue_longform_chapter_batch",
-                    "params": {"start_chapter": 2, "batch_size": 1},
-                }
-            ],
-        },
-    )
-    plan_hash = preview_response.json()["steps"][0]["output"]["plan_hash"]
-    enqueue_response = client.post(
-        f"/api/v1/projects/{project.id}/agent-runs",
-        json={
-            "goal": "确认加入批次队列",
-            "tools": [
-                {
-                    "tool_name": "enqueue_longform_chapter_batch",
-                    "params": {
-                        "start_chapter": 2,
-                        "batch_size": 1,
-                        "confirm_enqueue": True,
-                        "plan_hash": plan_hash,
-                    },
-                }
-            ],
-        },
-    )
-    task_id = enqueue_response.json()["steps"][0]["output"]["task"]["id"]
+    enqueue_output = _enqueue_longform_batch_with_approval(client, project.id, start_chapter=2, batch_size=1)
+    task_id = enqueue_output["task"]["id"]
     client.post(
         f"/api/v1/projects/{project.id}/agent-runs",
         json={
@@ -2901,37 +2727,8 @@ def test_agent_run_prepare_longform_chapter_batch_execution_requires_prepare_con
 
 def test_agent_run_prepare_longform_chapter_batch_execution_requires_ready_preflight(client, db_session):
     project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1])
-    preview_response = client.post(
-        f"/api/v1/projects/{project.id}/agent-runs",
-        json={
-            "goal": "准备把下一章加入批次队列",
-            "tools": [
-                {
-                    "tool_name": "enqueue_longform_chapter_batch",
-                    "params": {"start_chapter": 2, "batch_size": 1},
-                }
-            ],
-        },
-    )
-    plan_hash = preview_response.json()["steps"][0]["output"]["plan_hash"]
-    enqueue_response = client.post(
-        f"/api/v1/projects/{project.id}/agent-runs",
-        json={
-            "goal": "确认加入批次队列",
-            "tools": [
-                {
-                    "tool_name": "enqueue_longform_chapter_batch",
-                    "params": {
-                        "start_chapter": 2,
-                        "batch_size": 1,
-                        "confirm_enqueue": True,
-                        "plan_hash": plan_hash,
-                    },
-                }
-            ],
-        },
-    )
-    task_id = enqueue_response.json()["steps"][0]["output"]["task"]["id"]
+    enqueue_output = _enqueue_longform_batch_with_approval(client, project.id, start_chapter=2, batch_size=1)
+    task_id = enqueue_output["task"]["id"]
 
     response = client.post(
         f"/api/v1/projects/{project.id}/agent-runs",
@@ -9441,37 +9238,8 @@ def _seed_confirmed_world_fact(
 
 
 def _prepare_longform_batch_execution_contract(client, project_id: str) -> dict:
-    preview_response = client.post(
-        f"/api/v1/projects/{project_id}/agent-runs",
-        json={
-            "goal": "准备把下一章加入批次队列",
-            "tools": [
-                {
-                    "tool_name": "enqueue_longform_chapter_batch",
-                    "params": {"start_chapter": 2, "batch_size": 1},
-                }
-            ],
-        },
-    )
-    plan_hash = preview_response.json()["steps"][0]["output"]["plan_hash"]
-    enqueue_response = client.post(
-        f"/api/v1/projects/{project_id}/agent-runs",
-        json={
-            "goal": "确认加入批次队列",
-            "tools": [
-                {
-                    "tool_name": "enqueue_longform_chapter_batch",
-                    "params": {
-                        "start_chapter": 2,
-                        "batch_size": 1,
-                        "confirm_enqueue": True,
-                        "plan_hash": plan_hash,
-                    },
-                }
-            ],
-        },
-    )
-    task_id = enqueue_response.json()["steps"][0]["output"]["task"]["id"]
+    enqueue_output = _enqueue_longform_batch_with_approval(client, project_id, start_chapter=2, batch_size=1)
+    task_id = enqueue_output["task"]["id"]
     client.post(
         f"/api/v1/projects/{project_id}/agent-runs",
         json={
@@ -9507,6 +9275,65 @@ def _prepare_longform_batch_execution_contract(client, project_id: str) -> dict:
         "agent_plan_approval_contract": output["agent_plan_approval_contract"],
         "agent_plan_approval_contract_hash": output["agent_plan_approval_contract_hash"],
     }
+
+
+def _prepare_enqueue_longform_batch(
+    client,
+    project_id: str,
+    *,
+    start_chapter: int,
+    batch_size: int,
+    source_run_id: str | None = None,
+) -> dict:
+    params = {"start_chapter": start_chapter, "batch_size": batch_size}
+    if source_run_id is not None:
+        params["source_run_id"] = source_run_id
+    response = client.post(
+        f"/api/v1/projects/{project_id}/agent-runs",
+        json={
+            "goal": "准备把章节加入批次队列",
+            "tools": [{"tool_name": "prepare_enqueue_longform_chapter_batch", "params": params}],
+        },
+    )
+    assert response.status_code == 200
+    return response.json()["steps"][0]["output"]
+
+
+def _enqueue_longform_batch_with_approval(
+    client,
+    project_id: str,
+    *,
+    start_chapter: int,
+    batch_size: int,
+    source_run_id: str | None = None,
+) -> dict:
+    prepared = _prepare_enqueue_longform_batch(
+        client,
+        project_id,
+        start_chapter=start_chapter,
+        batch_size=batch_size,
+        source_run_id=source_run_id,
+    )
+    params = {
+        "start_chapter": start_chapter,
+        "batch_size": batch_size,
+        "plan_hash": prepared["plan_hash"],
+        "confirm_execute": True,
+        "approval_contract_hash": prepared["agent_plan_approval_contract_hash"],
+        "approval_contract": prepared["agent_plan_approval_contract"],
+    }
+    if source_run_id is not None:
+        params["source_run_id"] = source_run_id
+    response = client.post(
+        f"/api/v1/projects/{project_id}/agent-runs",
+        json={
+            "goal": "确认加入批次队列",
+            "tools": [{"tool_name": "execute_enqueue_longform_chapter_batch_with_approval", "params": params}],
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    return response.json()["steps"][0]["output"]
 
 
 def _execute_approved_longform_batch_chapter(client, project_id: str, prepared: dict, monkeypatch) -> dict:

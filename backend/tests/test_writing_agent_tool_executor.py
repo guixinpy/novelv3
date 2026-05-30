@@ -405,6 +405,8 @@ def test_longform_tool_adapters_live_in_dedicated_module():
     assert names == [
         "plan_longform_chapter_batch",
         "enqueue_longform_chapter_batch",
+        "prepare_enqueue_longform_chapter_batch",
+        "execute_enqueue_longform_chapter_batch_with_approval",
         "inspect_longform_chapter_batch",
         "execute_longform_chapter_batch_preflight",
         "prepare_longform_chapter_batch_execution",
@@ -414,6 +416,10 @@ def test_longform_tool_adapters_live_in_dedicated_module():
     ]
     assert {adapter.category for adapter in adapters.values()} == {"task_queue"}
     assert adapters["plan_longform_chapter_batch"].mutability == "read"
+    assert adapters["enqueue_longform_chapter_batch"].mutability == "guarded_write"
+    assert adapters["enqueue_longform_chapter_batch"].write_policy == "approval_required_redirect"
+    assert adapters["prepare_enqueue_longform_chapter_batch"].mutability == "read"
+    assert adapters["execute_enqueue_longform_chapter_batch_with_approval"].mutability == "write"
     assert adapters["inspect_longform_chapter_batch"].mutability == "read"
     assert adapters["execute_longform_chapter_batch"].mutability == "write"
     assert adapters["execute_longform_chapter_batch"].handler.__name__ == "_execute_longform_chapter_batch"
@@ -3154,6 +3160,8 @@ def test_tool_executor_static_adapter_names_are_report_or_agent_native_tools():
         "verify_agent_plan_approval_contract",
         "plan_longform_chapter_batch",
         "enqueue_longform_chapter_batch",
+        "prepare_enqueue_longform_chapter_batch",
+        "execute_enqueue_longform_chapter_batch_with_approval",
         "inspect_longform_chapter_batch",
         "inspect_agent_job_projection",
         "inspect_agent_tool_contracts",
@@ -4143,8 +4151,29 @@ def test_tool_executor_exposes_enqueue_longform_chapter_batch_adapter_metadata()
         "tool_name": "enqueue_longform_chapter_batch",
         "adapter_type": "static",
         "category": "task_queue",
-        "mutability": "write",
+        "mutability": "guarded_write",
         "handler_name": "_enqueue_longform_chapter_batch",
+        "write_policy": "approval_required_redirect",
+    }
+
+
+def test_tool_executor_exposes_enqueue_longform_chapter_batch_approval_chain_adapter_metadata():
+    prepare_metadata = writing_agent_tool_adapter_metadata("prepare_enqueue_longform_chapter_batch")
+    execute_metadata = writing_agent_tool_adapter_metadata("execute_enqueue_longform_chapter_batch_with_approval")
+
+    assert prepare_metadata == {
+        "tool_name": "prepare_enqueue_longform_chapter_batch",
+        "adapter_type": "static",
+        "category": "task_queue",
+        "mutability": "read",
+        "handler_name": "_prepare_enqueue_longform_chapter_batch",
+    }
+    assert execute_metadata == {
+        "tool_name": "execute_enqueue_longform_chapter_batch_with_approval",
+        "adapter_type": "static",
+        "category": "task_queue",
+        "mutability": "write",
+        "handler_name": "_execute_enqueue_longform_chapter_batch_with_approval",
     }
 
 
@@ -4307,7 +4336,10 @@ async def test_tool_executor_dispatches_plan_longform_chapter_batch_adapter(db_s
 
 
 @pytest.mark.asyncio
-async def test_tool_executor_dispatches_enqueue_longform_chapter_batch_adapter(db_session, monkeypatch):
+async def test_tool_executor_dispatches_enqueue_longform_chapter_batch_adapter_to_approval_redirect(
+    db_session,
+    monkeypatch,
+):
     project = Project(name="Executor Batch Enqueue")
     db_session.add(project)
     db_session.commit()
@@ -4346,8 +4378,73 @@ async def test_tool_executor_dispatches_enqueue_longform_chapter_batch_adapter(d
     )
 
     assert result.handled is True
-    assert result.output == {"status": "queued", "task": {"id": "task-1"}}
-    assert calls == [(project.id, "run-1", 7, 2, True, "hash-1")]
+    assert result.output["status"] == "blocked"
+    assert result.output["reason"] == "approval_required_before_write"
+    assert result.output["target_type"] == "background_task_enqueue"
+    assert result.output["recommended_next_tools"] == ["prepare_enqueue_longform_chapter_batch"]
+    assert result.output["required_approval"] == {
+        "prepare_tool": "prepare_enqueue_longform_chapter_batch",
+        "execute_tool": "execute_enqueue_longform_chapter_batch_with_approval",
+        "approval_scope": "agent_plan_approval",
+    }
+    assert result.output["source_run_id"] == "run-1"
+    assert result.output["start_chapter"] == 7
+    assert result.output["batch_size"] == 2
+    assert result.output["side_effects"] == {"executed": [], "skipped": ["enqueue_longform_chapter_batch"]}
+    assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_dispatches_enqueue_longform_chapter_batch_approval_executor(
+    db_session,
+    monkeypatch,
+):
+    from app.services.writing_agent.batch_enqueue_execution import prepare_enqueue_longform_chapter_batch
+
+    project = Project(name="Executor Approved Batch Enqueue")
+    db_session.add(project)
+    db_session.commit()
+    prepared = prepare_enqueue_longform_chapter_batch(db_session, project.id, start_chapter=7, batch_size=2)
+    calls: list[tuple[str, int | None, int | None, bool, str | None]] = []
+
+    def fake_enqueue(
+        db,
+        project_id: str,
+        *,
+        source_run_id: str | None,
+        start_chapter: int | None,
+        batch_size: int | None,
+        confirm_enqueue: bool,
+        plan_hash: str | None,
+    ):
+        calls.append((project_id, start_chapter, batch_size, confirm_enqueue, plan_hash))
+        return {"status": "queued", "task": {"id": "task-1"}, "plan_hash": plan_hash}
+
+    monkeypatch.setattr(
+        "app.services.writing_agent.batch_enqueue_execution.build_longform_chapter_batch_enqueue",
+        fake_enqueue,
+    )
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(
+            tool_name="execute_enqueue_longform_chapter_batch_with_approval",
+            params={
+                "start_chapter": "7",
+                "batch_size": "2",
+                "plan_hash": prepared["plan_hash"],
+                "confirm_execute": True,
+                "approval_contract_hash": prepared["agent_plan_approval_contract_hash"],
+                "approval_contract": prepared["agent_plan_approval_contract"],
+            },
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output["status"] == "queued"
+    assert result.output["agent_plan_approval_verification"]["status"] == "ready"
+    assert result.output["side_effects"]["executed"] == ["enqueue_longform_chapter_batch"]
+    assert calls == [(project.id, 7, 2, True, prepared["plan_hash"])]
 
 
 @pytest.mark.asyncio

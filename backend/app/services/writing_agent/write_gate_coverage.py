@@ -78,6 +78,11 @@ AGENT_PLAN_GATED_TOOLS = {
         "gate_type": "stateless_agent_plan_approval",
         "covered_tools": ["seed_continuity_anchor_proposals"],
     },
+    "execute_enqueue_longform_chapter_batch_with_approval": {
+        "gate_version": "phase199.longform_batch_enqueue_agent_plan_approval.v1",
+        "gate_type": "stateless_agent_plan_approval",
+        "covered_tools": ["enqueue_longform_chapter_batch"],
+    },
     "execute_longform_chapter_batch": {
         "gate_version": "phase111.agent_plan_approval_execution_gate.v1",
         "gate_type": "persisted_agent_plan_approval",

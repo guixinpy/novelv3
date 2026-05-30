@@ -701,6 +701,14 @@ class WritingAgentRunService:
             output = step.output if isinstance(step.output, dict) else {}
             proposal_bundle_id = output.get("proposal_bundle_id")
             return str(proposal_bundle_id) if proposal_bundle_id else None
+        if step.tool_name in {
+            "enqueue_longform_chapter_batch",
+            "execute_enqueue_longform_chapter_batch_with_approval",
+        }:
+            output = step.output if isinstance(step.output, dict) else {}
+            task = output.get("task") if isinstance(output.get("task"), dict) else {}
+            task_id = task.get("id")
+            return str(task_id) if task_id else None
         if step.tool_name in CHAPTER_GENERATION_TOOL_NAMES and step.chapter_index is not None:
             row = (
                 self.db.query(ChapterContent.id)

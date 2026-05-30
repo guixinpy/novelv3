@@ -61,6 +61,26 @@ def test_build_mutation_fingerprint_covers_continuity_anchor_seed():
     assert approved["components"]["target_id"] == direct["components"]["target_id"]
 
 
+def test_build_mutation_fingerprint_covers_longform_batch_enqueue():
+    direct = build_mutation_fingerprint(
+        "project-1",
+        "enqueue_longform_chapter_batch",
+        {"plan_hash": "plan-1", "start_chapter": 2, "batch_size": 2},
+    )
+    approved = build_mutation_fingerprint(
+        "project-1",
+        "execute_enqueue_longform_chapter_batch_with_approval",
+        {"plan_hash": "plan-1"},
+    )
+
+    assert direct["status"] == "ready"
+    assert direct["mutating"] is True
+    assert direct["components"]["target_type"] == "background_task_enqueue"
+    assert direct["components"]["target_id"] == "background_task_enqueue:project-1:plan-1"
+    assert approved["status"] == "ready"
+    assert approved["components"]["target_id"] == direct["components"]["target_id"]
+
+
 def test_build_mutation_fingerprint_covers_planner_revision_patch():
     first = build_mutation_fingerprint(
         "project-1",
