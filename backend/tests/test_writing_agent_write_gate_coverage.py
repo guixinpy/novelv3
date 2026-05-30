@@ -87,8 +87,11 @@ def test_write_gate_coverage_marks_knowledge_base_candidate_approval_executor_as
 
     record_tool = tools_by_name["record_agent_knowledge_base_candidate"]
     assert record_tool["agent_plan_gate_status"] == "indirect_agent_gate_available"
+    assert record_tool["direct_write_policy"] == "approval_required_redirect"
+    assert record_tool["direct_write_blocked"] is True
     assert record_tool["direct_confirmation_guard"] is False
-    assert record_tool["risk_level"] == "high"
+    assert record_tool["risk_level"] == "low"
+    assert record_tool["recommended_action"] == "route_direct_calls_to_approval_executor"
     assert {item["consumer_tool"] for item in record_tool["indirect_coverage"]} == {
         "execute_record_agent_knowledge_base_candidate_with_approval"
     }
@@ -107,8 +110,11 @@ def test_write_gate_coverage_marks_longform_maintenance_approval_executor_as_enf
 
     repair_tool = tools_by_name["repair_longform_maintenance"]
     assert repair_tool["agent_plan_gate_status"] == "indirect_agent_gate_available"
+    assert repair_tool["direct_write_policy"] == "approval_required_redirect"
+    assert repair_tool["direct_write_blocked"] is True
     assert repair_tool["direct_confirmation_guard"] is False
-    assert repair_tool["risk_level"] == "high"
+    assert repair_tool["risk_level"] == "low"
+    assert repair_tool["recommended_action"] == "route_direct_calls_to_approval_executor"
     assert {item["consumer_tool"] for item in repair_tool["indirect_coverage"]} == {
         "execute_repair_longform_maintenance_with_approval"
     }
@@ -256,8 +262,9 @@ def _adapter_metadata() -> dict[str, dict]:
             "tool_name": "record_agent_knowledge_base_candidate",
             "adapter_type": "static",
             "category": "knowledge_base",
-            "mutability": "write",
+            "mutability": "guarded_write",
             "handler_name": "_record_agent_knowledge_base_candidate",
+            "write_policy": "approval_required_redirect",
         },
         "execute_record_agent_knowledge_base_candidate_with_approval": {
             "tool_name": "execute_record_agent_knowledge_base_candidate_with_approval",
@@ -270,8 +277,9 @@ def _adapter_metadata() -> dict[str, dict]:
             "tool_name": "repair_longform_maintenance",
             "adapter_type": "static",
             "category": "maintenance",
-            "mutability": "write",
+            "mutability": "guarded_write",
             "handler_name": "_repair_longform_maintenance",
+            "write_policy": "approval_required_redirect",
         },
         "execute_repair_longform_maintenance_with_approval": {
             "tool_name": "execute_repair_longform_maintenance_with_approval",

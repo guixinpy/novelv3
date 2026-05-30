@@ -35,12 +35,16 @@ class WritingAgentToolAdapter:
     category: str
     mutability: str
     adapter_type: str = "static"
+    write_policy: str | None = None
 
     def to_metadata(self) -> dict[str, Any]:
-        return {
+        metadata = {
             "tool_name": self.tool_name,
             "adapter_type": self.adapter_type,
             "category": self.category,
             "mutability": self.mutability,
             "handler_name": self.handler.__name__,
         }
+        if self.write_policy:
+            metadata["write_policy"] = self.write_policy
+        return metadata

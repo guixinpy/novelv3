@@ -2133,11 +2133,19 @@ def test_agent_run_can_repair_longform_maintenance(client, db_session):
     payload = response.json()
     output = payload["steps"][0]["output"]
     assert response.status_code == 200
-    assert payload["status"] == "success"
+    assert payload["status"] == "blocked"
     assert payload["steps"][0]["target_type"] == "longform_maintenance"
-    assert output["status"] == "completed"
-    assert output["remaining"]["ready_for_writing"] is True
-    assert output["agent_tool_result"]["adapter"]["mutability"] == "write"
+    assert output["status"] == "blocked"
+    assert output["reason"] == "approval_required_before_write"
+    assert output["required_approval"]["prepare_tool"] == "prepare_repair_longform_maintenance"
+    assert output["required_approval"]["execute_tool"] == "execute_repair_longform_maintenance_with_approval"
+    assert output["side_effects"] == {
+        "executed": [],
+        "skipped": ["repair_longform_maintenance"],
+    }
+    assert output["recommended_next_tools"] == ["prepare_repair_longform_maintenance"]
+    assert output["agent_tool_result"]["adapter"]["mutability"] == "guarded_write"
+    assert output["agent_tool_result"]["adapter"]["write_policy"] == "approval_required_redirect"
 
 
 def test_agent_run_can_plan_longform_chapter_batch(client, db_session):

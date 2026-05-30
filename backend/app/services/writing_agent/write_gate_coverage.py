@@ -85,12 +85,15 @@ def _write_tool_projection(descriptor: AgentToolDescriptor, adapter_metadata: di
     execution_metadata = agent_tool_execution_metadata(descriptor, adapter_metadata)
     confirmation_fields = _confirmation_fields(descriptor)
     direct_confirmation_guard = bool(confirmation_fields)
+    direct_write_policy = str((adapter_metadata or {}).get("write_policy") or "")
+    direct_write_blocked = direct_write_policy == "approval_required_redirect"
     gate = AGENT_PLAN_GATED_TOOLS.get(descriptor.name)
     indirect_coverage = _indirect_coverage_for_tool(descriptor.name)
     gate_status = _gate_status(descriptor.name, gate, indirect_coverage)
     risk_level = _risk_level(
         gate_status=gate_status,
         direct_confirmation_guard=direct_confirmation_guard,
+        direct_write_blocked=direct_write_blocked,
     )
     return {
         "tool_name": descriptor.name,
@@ -103,13 +106,19 @@ def _write_tool_projection(descriptor: AgentToolDescriptor, adapter_metadata: di
         "mutability": execution_metadata["mutability"],
         "requires_confirmation": execution_metadata["requires_confirmation"],
         "direct_confirmation_guard": direct_confirmation_guard,
+        "direct_write_policy": direct_write_policy or None,
+        "direct_write_blocked": direct_write_blocked,
         "confirmation_fields": confirmation_fields,
         "agent_plan_gate_status": gate_status,
         "gate_version": gate.get("gate_version") if gate else None,
         "gate_type": gate.get("gate_type") if gate else None,
         "indirect_coverage": indirect_coverage,
         "risk_level": risk_level,
-        "recommended_action": _recommended_action(gate_status, direct_confirmation_guard),
+        "recommended_action": _recommended_action(
+            gate_status,
+            direct_confirmation_guard,
+            direct_write_blocked=direct_write_blocked,
+        ),
     }
 
 
@@ -147,17 +156,21 @@ def _gate_status(
     return "missing_agent_plan_gate"
 
 
-def _risk_level(*, gate_status: str, direct_confirmation_guard: bool) -> str:
+def _risk_level(*, gate_status: str, direct_confirmation_guard: bool, direct_write_blocked: bool) -> str:
     if gate_status == "enforced":
+        return "low"
+    if direct_write_blocked:
         return "low"
     if direct_confirmation_guard:
         return "medium"
     return "high"
 
 
-def _recommended_action(gate_status: str, direct_confirmation_guard: bool) -> str:
+def _recommended_action(gate_status: str, direct_confirmation_guard: bool, *, direct_write_blocked: bool) -> str:
     if gate_status == "enforced":
         return "monitor_gate_drift"
+    if direct_write_blocked:
+        return "route_direct_calls_to_approval_executor"
     if direct_confirmation_guard:
         return "promote_confirm_guard_to_agent_plan_approval"
     return "add_direct_agent_plan_approval_gate"

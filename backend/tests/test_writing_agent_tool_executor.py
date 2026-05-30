@@ -115,7 +115,11 @@ def test_agent_memory_trace_tool_adapters_live_in_dedicated_module():
     assert AGENT_MEMORY_TRACE_TOOL_ADAPTERS["summarize_longform_context"].mutability == "read"
     assert AGENT_MEMORY_TRACE_TOOL_ADAPTERS["inspect_agent_context_compression_projection"].mutability == "read"
     assert AGENT_MEMORY_TRACE_TOOL_ADAPTERS["inspect_agent_memory_activation_plan"].mutability == "read"
-    assert AGENT_MEMORY_TRACE_TOOL_ADAPTERS["repair_longform_maintenance"].mutability == "write"
+    assert AGENT_MEMORY_TRACE_TOOL_ADAPTERS["repair_longform_maintenance"].mutability == "guarded_write"
+    assert (
+        AGENT_MEMORY_TRACE_TOOL_ADAPTERS["repair_longform_maintenance"].write_policy
+        == "approval_required_redirect"
+    )
     assert (
         AGENT_MEMORY_TRACE_TOOL_ADAPTERS["inspect_agent_context_compression_projection"].handler.__name__
         == "_inspect_agent_context_compression_projection"
@@ -296,7 +300,11 @@ def test_knowledge_base_tool_adapters_live_in_dedicated_module():
     ]
     assert {adapter.category for adapter in KNOWLEDGE_BASE_AGENT_TOOL_ADAPTERS.values()} == {"knowledge_base"}
     assert KNOWLEDGE_BASE_AGENT_TOOL_ADAPTERS["inspect_agent_knowledge_base_route"].mutability == "read"
-    assert KNOWLEDGE_BASE_AGENT_TOOL_ADAPTERS["record_agent_knowledge_base_candidate"].mutability == "write"
+    assert KNOWLEDGE_BASE_AGENT_TOOL_ADAPTERS["record_agent_knowledge_base_candidate"].mutability == "guarded_write"
+    assert (
+        KNOWLEDGE_BASE_AGENT_TOOL_ADAPTERS["record_agent_knowledge_base_candidate"].write_policy
+        == "approval_required_redirect"
+    )
     assert (
         KNOWLEDGE_BASE_AGENT_TOOL_ADAPTERS["record_agent_knowledge_base_candidate"].handler.__name__
         == "_record_agent_knowledge_base_candidate"
@@ -3820,8 +3828,9 @@ def test_tool_executor_exposes_repair_longform_maintenance_adapter_metadata():
         "tool_name": "repair_longform_maintenance",
         "adapter_type": "static",
         "category": "maintenance",
-        "mutability": "write",
+        "mutability": "guarded_write",
         "handler_name": "_repair_longform_maintenance",
+        "write_policy": "approval_required_redirect",
     }
 
 
@@ -3912,8 +3921,9 @@ def test_tool_executor_exposes_record_agent_knowledge_base_candidate_adapter_met
         "tool_name": "record_agent_knowledge_base_candidate",
         "adapter_type": "static",
         "category": "knowledge_base",
-        "mutability": "write",
+        "mutability": "guarded_write",
         "handler_name": "_record_agent_knowledge_base_candidate",
+        "write_policy": "approval_required_redirect",
     }
 
 
@@ -4248,21 +4258,10 @@ async def test_tool_executor_dispatches_record_agent_knowledge_base_candidate_ad
     project = Project(name="Executor Knowledge Base Candidate")
     db_session.add(project)
     db_session.commit()
-    calls: list[tuple[str, str, str, str, list[str], float | None, str | None, list[str]]] = []
+    calls: list[str] = []
 
-    def fake_record(
-        db,
-        project_id: str,
-        *,
-        memory_type: str,
-        title: str,
-        summary: str,
-        source_refs: list[str],
-        confidence: float | None,
-        status: str | None,
-        tags: list[str],
-    ):
-        calls.append((project_id, memory_type, title, summary, source_refs, confidence, status, tags))
+    def fake_record(*args, **kwargs):
+        calls.append("record")
         return {"status": "completed", "action": "created"}
 
     monkeypatch.setattr(
@@ -4287,19 +4286,12 @@ async def test_tool_executor_dispatches_record_agent_knowledge_base_candidate_ad
     )
 
     assert result.handled is True
-    assert result.output == {"status": "completed", "action": "created"}
-    assert calls == [
-        (
-            project.id,
-            "self_optimization_lesson",
-            "低细节续写可行",
-            "Agent route 可以支撑续写。",
-            ["phase77", "chapter:24"],
-            0.8,
-            "candidate",
-            ["dogfood"],
-        )
-    ]
+    assert result.output["status"] == "blocked"
+    assert result.output["reason"] == "approval_required_before_write"
+    assert result.output["side_effects"] == {"executed": [], "skipped": ["record_agent_knowledge_base_candidate"]}
+    assert result.output["recommended_next_tools"] == ["prepare_record_agent_knowledge_base_candidate"]
+    assert result.output["required_approval"]["prepare_tool"] == "prepare_record_agent_knowledge_base_candidate"
+    assert calls == []
 
 
 @pytest.mark.asyncio
@@ -4656,11 +4648,11 @@ async def test_tool_executor_dispatches_repair_longform_maintenance_adapter(db_s
     project = Project(name="Executor Longform Repair")
     db_session.add(project)
     db_session.commit()
-    calls: list[tuple[str, int, int]] = []
+    calls: list[str] = []
 
-    def fake_repair(db, project_id: str, *, limit: int, repair_limit: int):
-        calls.append((project_id, limit, repair_limit))
-        return {"status": "completed", "limit": limit, "repair_limit": repair_limit}
+    def fake_repair(*args, **kwargs):
+        calls.append("repair")
+        return {"status": "completed", "unexpected_direct_call": True}
 
     monkeypatch.setattr("app.core.longform_memory.repair_longform_maintenance", fake_repair)
 
@@ -4673,8 +4665,12 @@ async def test_tool_executor_dispatches_repair_longform_maintenance_adapter(db_s
     )
 
     assert result.handled is True
-    assert result.output == {"status": "completed", "limit": 9, "repair_limit": 11}
-    assert calls == [(project.id, 9, 11)]
+    assert result.output["status"] == "blocked"
+    assert result.output["reason"] == "approval_required_before_write"
+    assert result.output["side_effects"] == {"executed": [], "skipped": ["repair_longform_maintenance"]}
+    assert result.output["recommended_next_tools"] == ["prepare_repair_longform_maintenance"]
+    assert result.output["required_approval"]["prepare_tool"] == "prepare_repair_longform_maintenance"
+    assert calls == []
 
 
 @pytest.mark.asyncio
@@ -4694,7 +4690,8 @@ async def test_tool_executor_dispatches_repair_longform_maintenance_with_json_sa
     )
 
     assert result.handled is True
-    assert result.output == {"status": "completed", "repaired_at": "2026-05-23 10:30:00"}
+    assert result.output["status"] == "blocked"
+    assert result.output["required_approval"]["execute_tool"] == "execute_repair_longform_maintenance_with_approval"
 
 
 @pytest.mark.asyncio

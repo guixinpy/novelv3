@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-import json
 from typing import Any
 
 from app.schemas.writing_agent import WritingAgentToolRequest
@@ -80,16 +79,26 @@ def _inspect_agent_memory_activation_plan(
 
 
 def _repair_longform_maintenance(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
-    from app.core.longform_memory import repair_longform_maintenance
-
-    return _json_safe_output(
-        repair_longform_maintenance(
-            context.db,
-            context.project_id,
-            limit=_optional_int(tool.params.get("limit")) or 20,
-            repair_limit=_optional_int(tool.params.get("repair_limit")) or 100,
-        )
-    )
+    return {
+        "status": "blocked",
+        "reason": "approval_required_before_write",
+        "project_id": context.project_id,
+        "target_type": "longform_maintenance",
+        "required_approval": {
+            "prepare_tool": "prepare_repair_longform_maintenance",
+            "execute_tool": "execute_repair_longform_maintenance_with_approval",
+            "approval_scope": "agent_plan_approval",
+        },
+        "side_effects": {"executed": [], "skipped": ["repair_longform_maintenance"]},
+        "recommended_next_tools": ["prepare_repair_longform_maintenance"],
+        "trace": {
+            "selected_tools": [],
+            "rejected_tools": [
+                {"tool_name": "repair_longform_maintenance", "reason": "approval_required_before_write"}
+            ],
+            "source": "direct_agent_write_guard",
+        },
+    }
 
 
 def build_agent_memory_trace_tool_adapters(
@@ -189,14 +198,10 @@ AGENT_MEMORY_TRACE_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
         "repair_longform_maintenance",
         _repair_longform_maintenance,
         category="maintenance",
-        mutability="write",
+        mutability="guarded_write",
+        write_policy="approval_required_redirect",
     ),
 }
-
-
-def _json_safe_output(output: dict[str, Any]) -> dict[str, Any]:
-    return json.loads(json.dumps(output, ensure_ascii=False, default=str))
-
 
 def _optional_int(value: object) -> int | None:
     if value is None:

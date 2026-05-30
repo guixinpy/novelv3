@@ -28,21 +28,26 @@ def _record_agent_knowledge_base_candidate(
     context: WritingAgentToolContext,
     tool: WritingAgentToolRequest,
 ) -> dict[str, Any]:
-    from app.services.writing_agent.agent_knowledge_base_candidates import record_agent_knowledge_base_candidate
-
-    source_refs = tool.params.get("source_refs")
-    tags = tool.params.get("tags")
-    return record_agent_knowledge_base_candidate(
-        context.db,
-        context.project_id,
-        memory_type=str(tool.params.get("memory_type") or "").strip(),
-        title=str(tool.params.get("title") or "").strip(),
-        summary=str(tool.params.get("summary") or "").strip(),
-        source_refs=_string_list(source_refs),
-        confidence=_optional_float(tool.params.get("confidence")),
-        status=str(tool.params.get("status") or "").strip() or None,
-        tags=_string_list(tags),
-    )
+    return {
+        "status": "blocked",
+        "reason": "approval_required_before_write",
+        "project_id": context.project_id,
+        "target_type": "agent_knowledge_base_candidate",
+        "required_approval": {
+            "prepare_tool": "prepare_record_agent_knowledge_base_candidate",
+            "execute_tool": "execute_record_agent_knowledge_base_candidate_with_approval",
+            "approval_scope": "agent_plan_approval",
+        },
+        "side_effects": {"executed": [], "skipped": ["record_agent_knowledge_base_candidate"]},
+        "recommended_next_tools": ["prepare_record_agent_knowledge_base_candidate"],
+        "trace": {
+            "selected_tools": [],
+            "rejected_tools": [
+                {"tool_name": "record_agent_knowledge_base_candidate", "reason": "approval_required_before_write"}
+            ],
+            "source": "direct_agent_write_guard",
+        },
+    }
 
 
 def build_knowledge_base_agent_tool_adapters(
@@ -120,7 +125,8 @@ KNOWLEDGE_BASE_AGENT_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
         "record_agent_knowledge_base_candidate",
         _record_agent_knowledge_base_candidate,
         category="knowledge_base",
-        mutability="write",
+        mutability="guarded_write",
+        write_policy="approval_required_redirect",
     ),
 }
 
@@ -132,21 +138,3 @@ def _optional_int(value: object) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
-
-
-def _optional_float(value: object) -> float | None:
-    if value is None:
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def _string_list(value: object) -> list[str]:
-    if isinstance(value, list):
-        return [str(item).strip() for item in value if str(item).strip()]
-    if value is None:
-        return []
-    cleaned = str(value).strip()
-    return [cleaned] if cleaned else []
