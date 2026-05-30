@@ -26,13 +26,13 @@ def test_prepare_generate_chapter_execution_returns_agent_approval_contract(db_s
         if key not in {"mutation_fingerprint", "tool_call_id", "resource_binding"}
     } == {
         "step_index": 1,
-        "step_id": f"direct-generate:{project.id}:chapter:2",
-        "tool_name": "generate_chapter",
-        "params": {"chapter_index": 2},
-        "mutability": "write",
-        "requires_confirmation": True,
-        "reason": "直接生成指定章节正文。",
-    }
+            "step_id": f"direct-generate:{project.id}:chapter:2",
+            "tool_name": "generate_chapter",
+            "params": {"chapter_index": 2},
+            "mutability": "guarded_write",
+            "requires_confirmation": True,
+            "reason": "直接生成指定章节正文。",
+        }
     assert step["mutation_fingerprint"]["status"] == "ready"
     assert step["mutation_fingerprint"]["components"]["target_id"] == "chapter:2"
     assert output["mutation_fingerprint"] == step["mutation_fingerprint"]

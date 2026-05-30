@@ -232,7 +232,7 @@ def test_planner_continuation_executes_confirmed_write_tool_after_contract_verif
         return {"status": "success", "chapter_index": 2, "trace_id": "trace-generated-2"}
 
     monkeypatch.setattr("app.services.actions.action_execution_service.ActionExecutionService.execute", fake_execute)
-    plan = _planner_generate_chapter_plan(project.id, chapter_index=2)
+    plan = _planner_generate_chapter_plan(db_session, project.id, chapter_index=2)
     approval_hash = plan["approval_contract"]["approval"]["approval_contract_hash"]
 
     response = client.post(
@@ -257,7 +257,7 @@ def test_planner_continuation_executes_confirmed_write_tool_after_contract_verif
     assert response.status_code == 200
     assert payload["status"] == "success"
     step = payload["steps"][0]
-    assert step["tool_name"] == "generate_chapter"
+    assert step["tool_name"] == "execute_generate_chapter_with_approval"
     assert step["status"] == "success"
     assert step["output"]["status"] == "success"
     assert step["output"]["planner_continuation_approval"] == {
@@ -284,7 +284,7 @@ def test_planner_continuation_blocks_write_tool_on_approval_hash_mismatch(client
         return {"status": "success", "chapter_index": 2}
 
     monkeypatch.setattr("app.services.actions.action_execution_service.ActionExecutionService.execute", fake_execute)
-    plan = _planner_generate_chapter_plan(project.id, chapter_index=2)
+    plan = _planner_generate_chapter_plan(db_session, project.id, chapter_index=2)
 
     response = client.post(
         f"/api/v1/projects/{project.id}/agent-runs",
@@ -309,7 +309,7 @@ def test_planner_continuation_blocks_write_tool_on_approval_hash_mismatch(client
     assert payload["status"] == "blocked"
     assert payload["error"] == "Planner continuation requires approval"
     step = payload["steps"][0]
-    assert step["tool_name"] == "generate_chapter"
+    assert step["tool_name"] == "execute_generate_chapter_with_approval"
     assert step["status"] == "blocked"
     output = step["output"]
     assert output["reason"] == "planner_continuation_requires_approval"
@@ -916,7 +916,7 @@ def test_agent_run_can_plan_writing_tool_chain(client, db_session):
     output = step["output"]
     assert output["status"] == "completed"
     assert output["intent_class"] == "continue_next_chapter"
-    assert "generate_chapter" in [tool["tool_name"] for tool in output["tools"]]
+    assert "prepare_generate_chapter_execution" in [tool["tool_name"] for tool in output["tools"]]
     assert output["trace"]["selected_tools"][0] == "describe_agent_tools"
 
 
@@ -1891,7 +1891,7 @@ def test_agent_recovery_preview_blocks_repeated_failed_plan(client, db_session):
     assert preview["execution_policy"]["status"] == "repeat_failed_recovery"
 
 
-def test_agent_run_auto_plan_executes_high_level_next_chapter_goal(client, db_session, monkeypatch):
+def test_agent_run_auto_plan_prepares_high_level_next_chapter_goal_for_approval(client, db_session, monkeypatch):
     project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1])
     import_setup_to_world_model(db_session, project.id)
     from app.core.longform_memory import repair_longform_maintenance
@@ -1934,26 +1934,24 @@ def test_agent_run_auto_plan_executes_high_level_next_chapter_goal(client, db_se
         "inspect_agent_knowledge_base_route",
         "summarize_longform_context",
         "preflight_writing",
-        "generate_chapter",
+        "prepare_generate_chapter_execution",
     ]
-    assert step_names[-1] == "analyze_chapter_world_model"
+    assert step_names[-1] == "prepare_generate_chapter_execution"
     knowledge_step = next(step for step in payload["steps"] if step["tool_name"] == "inspect_agent_knowledge_base_route")
     assert knowledge_step["target_type"] == "agent_knowledge_base_route"
     assert knowledge_step["output"]["agent_tool_result"]["adapter"]["mutability"] == "read"
     context_step = next(step for step in payload["steps"] if step["tool_name"] == "summarize_longform_context")
     assert context_step["target_type"] == "longform_context_summary"
     assert context_step["output"]["agent_tool_result"]["adapter"]["mutability"] == "read"
-    generate_step = next(step for step in payload["steps"] if step["tool_name"] == "generate_chapter")
-    assert generate_step["input"]["planner"]["reason"] == "依赖满足后生成第2章正文。"
-    envelope = generate_step["output"]["agent_tool_result"]
-    assert envelope["tool_name"] == "generate_chapter"
+    prepare_step = next(step for step in payload["steps"] if step["tool_name"] == "prepare_generate_chapter_execution")
+    assert prepare_step["input"]["planner"]["reason"] == "为第2章生成创建审批合约，不直接写入正文。"
+    assert prepare_step["output"]["status"] == "approval_required"
+    envelope = prepare_step["output"]["agent_tool_result"]
+    assert envelope["tool_name"] == "prepare_generate_chapter_execution"
     assert envelope["step_status"] == "success"
-    assert envelope["result_status"] == "success"
+    assert envelope["result_status"] == "approval_required"
     assert envelope["is_error"] is False
-    assert envelope["trace_id"] == "trace-chapter-2"
-    assert envelope["planner"]["reason"] == "依赖满足后生成第2章正文。"
-    quality_step = next(step for step in payload["steps"] if step["tool_name"] == "review_chapter_quality")
-    assert quality_step["input"]["planner"]["post_generation"] is True
+    assert envelope["planner"]["reason"] == "为第2章生成创建审批合约，不直接写入正文。"
     assert payload["input"]["planner"]["intent_class"] == "continue_next_chapter"
     assert payload["input"]["tools"][0]["tool_name"] == "describe_agent_tools"
 
@@ -4321,7 +4319,7 @@ def test_agent_run_records_chapter_length_and_world_model_diagnostics(client, db
         f"/api/v1/projects/{project_id}/agent-runs",
         json={
             "goal": "生成第2章",
-            "tools": [{"tool_name": "generate_chapter", "params": {"chapter_index": 2}}],
+            "tools": [_approved_generate_chapter_tool(db_session, project_id, chapter_index=2)],
         },
     )
 
@@ -4341,7 +4339,7 @@ def test_agent_run_records_chapter_length_and_world_model_diagnostics(client, db
     assert output["world_model_proposal_diagnostic"]["reason"] == "missing_profile"
 
 
-def test_agent_run_continuation_state_exposes_recommended_followups(client, monkeypatch):
+def test_agent_run_continuation_state_exposes_recommended_followups(client, db_session, monkeypatch):
     project_id = _create_project(client, "Continuation Followups")
 
     async def fake_execute(self, action_type, project_id, *, command_args=None, action_params=None):
@@ -4353,7 +4351,7 @@ def test_agent_run_continuation_state_exposes_recommended_followups(client, monk
         f"/api/v1/projects/{project_id}/agent-runs",
         json={
             "goal": "生成第2章",
-            "tools": [{"tool_name": "generate_chapter", "params": {"chapter_index": 2}}],
+            "tools": [_approved_generate_chapter_tool(db_session, project_id, chapter_index=2)],
         },
     )
 
@@ -4362,7 +4360,7 @@ def test_agent_run_continuation_state_exposes_recommended_followups(client, monk
     assert response.status_code == 200
     assert payload["status"] == "success"
     assert state["recommended_followups"]["status"] == "recommended"
-    assert state["recommended_followups"]["source_tool"] == "generate_chapter"
+    assert state["recommended_followups"]["source_tool"] == "execute_generate_chapter_with_approval"
     assert state["recommended_followups"]["next_tool"] == "review_chapter_quality"
     assert state["recommended_followups"]["canonical_followups"] == [
         "review_chapter_quality",
@@ -4676,7 +4674,7 @@ def test_agent_skips_analyze_when_generate_step_already_auto_analyzed_same_chapt
         json={
             "goal": "生成第4章并分析世界模型",
             "tools": [
-                {"tool_name": "generate_chapter", "params": {"chapter_index": 4}},
+                _approved_generate_chapter_tool(db_session, project.id, chapter_index=4),
                 {"tool_name": "analyze_chapter_world_model", "params": {"chapter_index": 4}},
             ],
         },
@@ -4724,7 +4722,7 @@ def test_agent_chapter_length_decision_flags_repeated_over_target_drift(client, 
         f"/api/v1/projects/{project.id}/agent-runs",
         json={
             "goal": "生成第3章",
-            "tools": [{"tool_name": "generate_chapter", "params": {"chapter_index": 3}}],
+            "tools": [_approved_generate_chapter_tool(db_session, project.id, chapter_index=3)],
         },
     )
 
@@ -4813,11 +4811,12 @@ def test_agent_generate_chapter_appends_length_feedback_after_repeated_over_targ
         json={
             "goal": "生成第4章",
             "tools": [
-                {
-                    "tool_name": "generate_chapter",
-                    "command_args": "保留悬疑压迫感",
-                    "params": {"chapter_index": 4},
-                }
+                _approved_generate_chapter_tool(
+                    db_session,
+                    project.id,
+                    chapter_index=4,
+                    command_args="保留悬疑压迫感",
+                )
             ],
         },
     )
@@ -4852,7 +4851,7 @@ def test_agent_generate_chapter_appends_memory_activation_without_future_leak(cl
         f"/api/v1/projects/{project.id}/agent-runs",
         json={
             "goal": "生成第3章",
-            "tools": [{"tool_name": "generate_chapter", "params": {"chapter_index": 3}}],
+            "tools": [_approved_generate_chapter_tool(db_session, project.id, chapter_index=3)],
         },
     )
 
@@ -4889,7 +4888,7 @@ def test_agent_generate_chapter_appends_length_feedback_after_repeated_under_tar
         f"/api/v1/projects/{project.id}/agent-runs",
         json={
             "goal": "生成第4章",
-            "tools": [{"tool_name": "generate_chapter", "params": {"chapter_index": 4}}],
+            "tools": [_approved_generate_chapter_tool(db_session, project.id, chapter_index=4)],
         },
     )
 
@@ -4929,7 +4928,7 @@ def test_agent_generate_chapter_ignores_old_over_target_debt_when_recent_window_
         f"/api/v1/projects/{project.id}/agent-runs",
         json={
             "goal": "生成第9章",
-            "tools": [{"tool_name": "generate_chapter", "params": {"chapter_index": 9}}],
+            "tools": [_approved_generate_chapter_tool(db_session, project.id, chapter_index=9)],
         },
     )
 
@@ -4967,7 +4966,7 @@ def test_agent_generate_chapter_ignores_old_under_target_debt_when_recent_window
         f"/api/v1/projects/{project.id}/agent-runs",
         json={
             "goal": "生成第9章",
-            "tools": [{"tool_name": "generate_chapter", "params": {"chapter_index": 9}}],
+            "tools": [_approved_generate_chapter_tool(db_session, project.id, chapter_index=9)],
         },
     )
 
@@ -5000,11 +4999,12 @@ def test_agent_generate_chapter_appends_previous_state_card(client, db_session, 
         json={
             "goal": "生成第2章",
             "tools": [
-                {
-                    "tool_name": "generate_chapter",
-                    "command_args": "保持紧张感",
-                    "params": {"chapter_index": 2},
-                }
+                _approved_generate_chapter_tool(
+                    db_session,
+                    project.id,
+                    chapter_index=2,
+                    command_args="保持紧张感",
+                )
             ],
         },
     )
@@ -6042,7 +6042,7 @@ def test_agent_review_world_model_proposals_blocks_followup_generation(client, d
             "goal": "检查提案队列后尝试生成第2章",
             "tools": [
                 {"tool_name": "review_world_model_proposals", "params": {"limit": 20}},
-                {"tool_name": "generate_chapter", "params": {"chapter_index": 2}},
+                _approved_generate_chapter_tool(db_session, project.id, chapter_index=2),
             ],
         },
     )
@@ -6269,7 +6269,7 @@ def test_agent_plan_world_model_proposal_resolution_blocks_followup_generation(c
             "goal": "规划提案解决后尝试生成第2章",
             "tools": [
                 {"tool_name": "plan_world_model_proposal_resolution", "params": {"limit": 20}},
-                {"tool_name": "generate_chapter", "params": {"chapter_index": 2}},
+                _approved_generate_chapter_tool(db_session, project.id, chapter_index=2),
             ],
         },
     )
@@ -7152,7 +7152,7 @@ def test_agent_apply_world_model_proposal_resolution_allows_generation_when_queu
                         ],
                     },
                 },
-                {"tool_name": "generate_chapter", "params": {"chapter_index": 2}},
+                _approved_generate_chapter_tool(db_session, project.id, chapter_index=2),
             ],
         },
     )
@@ -7162,7 +7162,7 @@ def test_agent_apply_world_model_proposal_resolution_allows_generation_when_queu
     assert payload["status"] == "success"
     assert [step["tool_name"] for step in payload["steps"]] == [
         "apply_world_model_proposal_resolution",
-        "generate_chapter",
+        "execute_generate_chapter_with_approval",
     ]
     assert calls == ["generate_chapter"]
 
@@ -8911,20 +8911,28 @@ def _create_trace(db_session, project_id: str, trace_id: str, trace_type: str) -
     db_session.commit()
 
 
-def _planner_generate_chapter_plan(project_id: str, *, chapter_index: int) -> dict:
+def _planner_generate_chapter_plan(db_session, project_id: str, *, chapter_index: int) -> dict:
+    from app.services.writing_agent.chapter_generation_execution import prepare_generate_chapter_execution
+
+    prepared = prepare_generate_chapter_execution(db_session, project_id, chapter_index=chapter_index)
     plan_id = f"plan:generate-chapter-{chapter_index}"
-    params = {"chapter_index": chapter_index}
+    params = {
+        "chapter_index": chapter_index,
+        "confirm_execute": True,
+        "approval_contract_hash": prepared["agent_plan_approval_contract_hash"],
+        "approval_contract": prepared["agent_plan_approval_contract"],
+    }
     step = {
         "step_index": 1,
-        "step_id": f"step:generate-chapter-{chapter_index}",
-        "tool_name": "generate_chapter",
+        "step_id": f"step:execute-generate-chapter-{chapter_index}",
+        "tool_name": "execute_generate_chapter_with_approval",
         "params": params,
         "mutability": "write",
         "requires_confirmation": True,
         "reason": f"生成第{chapter_index}章正文。",
     }
     tool = {
-        "tool_name": "generate_chapter",
+        "tool_name": "execute_generate_chapter_with_approval",
         "params": params,
         "planner": {
             "step_index": 1,
@@ -8950,11 +8958,29 @@ def _planner_generate_chapter_plan(project_id: str, *, chapter_index: int) -> di
             "plan_id": plan_id,
             "source_projection_id": f"projection:generate-chapter-{chapter_index}",
             "planner_version": "phase53.context_gate.v1",
-            "selected_tools": ["generate_chapter"],
+            "selected_tools": ["execute_generate_chapter_with_approval"],
         },
     }
     plan["approval_contract"] = build_agent_plan_approval_contract(plan)
     return plan
+
+
+def _approved_generate_chapter_tool(db_session, project_id: str, *, chapter_index: int, command_args: str | None = None) -> dict:
+    from app.services.writing_agent.chapter_generation_execution import prepare_generate_chapter_execution
+
+    prepared = prepare_generate_chapter_execution(db_session, project_id, chapter_index=chapter_index)
+    tool = {
+        "tool_name": "execute_generate_chapter_with_approval",
+        "params": {
+            "chapter_index": chapter_index,
+            "confirm_execute": True,
+            "approval_contract_hash": prepared["agent_plan_approval_contract_hash"],
+            "approval_contract": prepared["agent_plan_approval_contract"],
+        },
+    }
+    if command_args is not None:
+        tool["command_args"] = command_args
+    return tool
 
 
 def _planner_revision_patch_plan(project_id: str, *, chapter_index: int, revision_id: str) -> dict:

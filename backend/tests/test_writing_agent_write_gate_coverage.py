@@ -42,18 +42,20 @@ def test_write_gate_coverage_marks_pre_chapter_generation_approval_executors_as_
         assert execute_tool["confirmation_fields"] == ["approval_contract_hash", "confirm_execute"]
 
 
-def test_write_gate_coverage_marks_generate_chapter_as_indirectly_covered_direct_gap():
+def test_write_gate_coverage_marks_generate_chapter_direct_calls_as_approval_redirected():
     output = inspect_agent_write_gate_coverage(adapter_metadata_by_name=_adapter_metadata())
     generate_tool = _tools_by_name(output)["generate_chapter"]
 
     assert generate_tool["agent_plan_gate_status"] == "indirect_agent_gate_available"
+    assert generate_tool["direct_write_policy"] == "approval_required_redirect"
+    assert generate_tool["direct_write_blocked"] is True
     assert generate_tool["direct_confirmation_guard"] is False
-    assert generate_tool["risk_level"] == "high"
+    assert generate_tool["risk_level"] == "low"
     assert {item["consumer_tool"] for item in generate_tool["indirect_coverage"]} >= {
         "execute_generate_chapter_with_approval",
         "execute_longform_chapter_batch",
     }
-    assert generate_tool["recommended_action"] == "add_direct_agent_plan_approval_gate"
+    assert generate_tool["recommended_action"] == "route_direct_calls_to_approval_executor"
 
 
 def test_write_gate_coverage_marks_expand_outline_window_as_direct_confirmation_guarded():
@@ -198,8 +200,9 @@ def _adapter_metadata() -> dict[str, dict]:
             "tool_name": "generate_chapter",
             "adapter_type": "static",
             "category": "generation",
-            "mutability": "write",
+            "mutability": "guarded_write",
             "handler_name": "_generate_chapter",
+            "write_policy": "approval_required_redirect",
         },
         "execute_longform_chapter_batch": {
             "tool_name": "execute_longform_chapter_batch",

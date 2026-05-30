@@ -11,6 +11,7 @@ def approval_required_redirect(
     prepare_tool: str,
     execute_tool: str,
     command_args: str | None = None,
+    extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
         "status": "blocked",
@@ -18,6 +19,7 @@ def approval_required_redirect(
         "project_id": project_id,
         "target_type": target_type,
         "command_args": command_args,
+        **(extra or {}),
         "required_approval": {
             "prepare_tool": prepare_tool,
             "execute_tool": execute_tool,

@@ -67,7 +67,13 @@ def _api_tool_request(
     params: dict[str, Any] | None,
 ) -> WritingAgentToolRequest:
     base_params = dict(params or {})
-    prepared = _prepare_approved_generation_tool(db, project_id, tool_name=tool_name, command_args=command_args)
+    prepared = _prepare_approved_generation_tool(
+        db,
+        project_id,
+        tool_name=tool_name,
+        command_args=command_args,
+        params=base_params,
+    )
     if prepared is None or prepared.get("status") != "approval_required":
         return WritingAgentToolRequest(tool_name=tool_name, command_args=command_args, params=base_params)
     return WritingAgentToolRequest(
@@ -75,6 +81,7 @@ def _api_tool_request(
         command_args=command_args,
         params={
             **base_params,
+            **(prepared.get("extra_params") if isinstance(prepared.get("extra_params"), dict) else {}),
             "confirm_execute": True,
             "approval_contract_hash": prepared["approval_contract_hash"],
             "approval_contract": prepared["approval_contract"],
@@ -88,6 +95,7 @@ def _prepare_approved_generation_tool(
     *,
     tool_name: str,
     command_args: str | None,
+    params: dict[str, Any],
 ) -> dict[str, Any] | None:
     if tool_name == "generate_setup":
         from app.services.writing_agent.setup_generation_execution import prepare_generate_setup_execution
@@ -110,13 +118,28 @@ def _prepare_approved_generation_tool(
             "execute_generate_outline_with_approval",
             prepare_generate_outline_execution(db, project_id, command_args=command_args),
         )
+    if tool_name == "generate_chapter":
+        from app.services.writing_agent.chapter_generation_execution import prepare_generate_chapter_execution
+
+        chapter_index = int(params.get("chapter_index") or 1)
+        return _prepared_tool(
+            "execute_generate_chapter_with_approval",
+            prepare_generate_chapter_execution(db, project_id, chapter_index=chapter_index),
+            extra_params={"chapter_index": chapter_index},
+        )
     return None
 
 
-def _prepared_tool(execute_tool: str, prepared: dict[str, Any]) -> dict[str, Any]:
+def _prepared_tool(
+    execute_tool: str,
+    prepared: dict[str, Any],
+    *,
+    extra_params: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     return {
         "status": prepared.get("status"),
         "execute_tool": execute_tool,
         "approval_contract_hash": prepared.get("agent_plan_approval_contract_hash"),
         "approval_contract": prepared.get("agent_plan_approval_contract"),
+        "extra_params": dict(extra_params or {}),
     }

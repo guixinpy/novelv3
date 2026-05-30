@@ -167,7 +167,8 @@ def test_agent_generation_tool_adapters_live_in_dedicated_module():
         "expand_outline_window",
         "backfill_outline_gaps",
     ]
-    assert adapters["generate_chapter"].mutability == "write"
+    assert adapters["generate_chapter"].mutability == "guarded_write"
+    assert adapters["generate_chapter"].write_policy == "approval_required_redirect"
     assert adapters["prepare_generate_chapter_execution"].mutability == "read"
     assert adapters["execute_generate_chapter_with_approval"].mutability == "write"
     assert adapters["expand_outline_window"].mutability == "write"
@@ -2067,7 +2068,7 @@ async def test_tool_executor_handles_agent_plan_approval_contract_verification(d
     assert result.output["drift"]["tool_contracts"][0]["tool_name"] == "generate_chapter"
     assert result.output["drift"]["tool_contracts"][0]["tool_exists"] is True
     assert result.output["drift"]["tool_contracts"][0]["adapter_exists"] is True
-    assert result.output["drift"]["tool_contracts"][0]["current_mutability"] == "write"
+    assert result.output["drift"]["tool_contracts"][0]["current_mutability"] == "guarded_write"
     assert result.output["drift"]["tool_contracts"][0]["current_requires_confirmation"] is True
     assert result.output["drift"]["tool_contracts"][0]["status"] == "ready"
 
@@ -2489,6 +2490,38 @@ async def test_tool_executor_does_not_coerce_invalid_generate_chapter_index(db_s
 
 
 @pytest.mark.asyncio
+async def test_tool_executor_redirects_direct_generate_chapter_to_approval(db_session, monkeypatch):
+    project = Project(name="Direct Chapter Approval Redirect")
+    db_session.add(project)
+    db_session.commit()
+    calls: list[str] = []
+
+    async def fake_execute(self, action_type, project_id, *, command_args=None, action_params=None):
+        calls.append(action_type)
+        return {"status": "success"}
+
+    monkeypatch.setattr("app.services.actions.action_execution_service.ActionExecutionService.execute", fake_execute)
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(
+            tool_name="generate_chapter",
+            command_args="保持紧张感",
+            params={"chapter_index": 2},
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output["status"] == "blocked"
+    assert result.output["reason"] == "approval_required_before_write"
+    assert result.output["chapter_index"] == 2
+    assert result.output["side_effects"] == {"executed": [], "skipped": ["generate_chapter"]}
+    assert result.output["recommended_next_tools"] == ["prepare_generate_chapter_execution"]
+    assert result.output["required_approval"]["prepare_tool"] == "prepare_generate_chapter_execution"
+    assert calls == []
+
+
+@pytest.mark.asyncio
 async def test_tool_executor_dispatches_prepare_generate_chapter_execution(db_session):
     project = Project(name="Prepare Approved Direct Generate")
     db_session.add(project)
@@ -2526,7 +2559,7 @@ async def test_tool_executor_dispatches_execute_generate_chapter_with_approval(d
         action_params: dict | None = None,
     ):
         metadata = approval_tool_metadata_provider(
-            {"steps": [{"tool_name": "generate_chapter", "mutability": "write", "requires_confirmation": True}]}
+            {"steps": [{"tool_name": "generate_chapter", "mutability": "guarded_write", "requires_confirmation": True}]}
         )
         calls.append(
             {
@@ -2615,7 +2648,7 @@ async def test_execute_generate_chapter_with_approval_records_verification_event
             "generate_chapter": {
                 "tool_exists": True,
                 "adapter_exists": True,
-                "mutability": "write",
+                "mutability": "guarded_write",
                 "requires_confirmation": True,
                 "required_fields": [],
             }
@@ -3134,8 +3167,9 @@ def test_tool_executor_exposes_adapter_metadata_for_trace():
         "tool_name": "generate_chapter",
         "adapter_type": "static",
         "category": "generation",
-        "mutability": "write",
+        "mutability": "guarded_write",
         "handler_name": "_generate_chapter",
+        "write_policy": "approval_required_redirect",
     }
 
 
@@ -3818,7 +3852,9 @@ async def test_tool_executor_handles_inspect_agent_write_gate_coverage(db_sessio
     assert tools_by_name["execute_longform_chapter_batch"]["agent_plan_gate_status"] == "enforced"
     assert tools_by_name["execute_generate_chapter_with_approval"]["agent_plan_gate_status"] == "enforced"
     assert tools_by_name["generate_chapter"]["agent_plan_gate_status"] == "indirect_agent_gate_available"
-    assert tools_by_name["generate_chapter"]["risk_level"] == "high"
+    assert tools_by_name["generate_chapter"]["direct_write_policy"] == "approval_required_redirect"
+    assert tools_by_name["generate_chapter"]["direct_write_blocked"] is True
+    assert tools_by_name["generate_chapter"]["risk_level"] == "low"
     assert result.output["recommended_next_targets"]
 
 

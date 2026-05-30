@@ -10,6 +10,7 @@ _KNOWN_MUTATING_TOOLS = {
     "execute_generate_setup_with_approval",
     "execute_generate_storyline_with_approval",
     "execute_generate_outline_with_approval",
+    "execute_generate_chapter_with_approval",
     "generate_setup",
     "generate_storyline",
     "generate_outline",
@@ -109,10 +110,10 @@ def _target_for_tool(project_id: str, tool_name: str, params: dict[str, Any]) ->
             return _blocked("outline", "missing_target", f"{tool_name} requires project_id")
         return _ready("outline", f"outline:{project_target}")
 
-    if tool_name == "generate_chapter":
+    if tool_name in {"execute_generate_chapter_with_approval", "generate_chapter"}:
         chapter_index = _positive_int(params.get("chapter_index"))
         if chapter_index is None:
-            return _blocked("chapter", "missing_target", "generate_chapter requires a positive chapter_index")
+            return _blocked("chapter", "missing_target", f"{tool_name} requires a positive chapter_index")
         return _ready("chapter", f"chapter:{chapter_index}")
 
     if tool_name == "generate_chapter_range":

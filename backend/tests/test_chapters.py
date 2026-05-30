@@ -71,9 +71,11 @@ def test_generate_chapter(mock_complete, mock_key, client, db_session):
     assert body["control_plane"]["chapter_index"] == 1
     assert run.entrypoint == "chapter_generate"
     assert run.status == "success"
-    assert run.input["tools"][0]["tool_name"] == "generate_chapter"
-    assert run.input["tools"][0]["params"] == {"chapter_index": 1}
-    assert step.tool_name == "generate_chapter"
+    assert run.input["tools"][0]["tool_name"] == "execute_generate_chapter_with_approval"
+    assert run.input["tools"][0]["params"]["chapter_index"] == 1
+    assert run.input["tools"][0]["params"]["confirm_execute"] is True
+    assert run.input["tools"][0]["params"]["approval_contract_hash"].startswith("approval:")
+    assert step.tool_name == "execute_generate_chapter_with_approval"
     assert step.status == "success"
     assert step.target_type == "chapter"
     assert step.chapter_index == 1

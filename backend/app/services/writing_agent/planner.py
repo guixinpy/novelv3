@@ -582,10 +582,10 @@ def _profile_projection_from_tool_plan(tool_plan: dict[str, Any], profile: str) 
 
 
 def _normalize_chapter_generation_route(route: str | None) -> str:
-    cleaned = str(route or "").strip() or CHAPTER_GENERATION_ROUTE_LEGACY
+    cleaned = str(route or "").strip() or CHAPTER_GENERATION_ROUTE_APPROVED_PREPARE
     if cleaned in _SUPPORTED_CHAPTER_GENERATION_ROUTES:
         return cleaned
-    return CHAPTER_GENERATION_ROUTE_LEGACY
+    return CHAPTER_GENERATION_ROUTE_APPROVED_PREPARE
 
 
 def _has_diagnostic(diagnostics: list[dict[str, Any]], tool_name: str, code: str) -> bool:

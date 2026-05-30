@@ -2,7 +2,7 @@ from app.models import ChapterContent, Outline, Project, Setup, Storyline, Writi
 from app.services.writing_agent.planner import build_writing_agent_run_plan
 
 
-def test_planner_builds_ready_next_chapter_tool_chain(db_session):
+def test_planner_defaults_ready_next_chapter_to_approval_prepare(db_session):
     project = _seed_project(db_session, outline_chapters=[2], generated_chapters=[1])
 
     plan = build_writing_agent_run_plan(db_session, project.id, goal="继续写下一章", chapter_index=2)
@@ -10,22 +10,15 @@ def test_planner_builds_ready_next_chapter_tool_chain(db_session):
     assert plan["status"] == "completed"
     assert plan["intent_class"] == "continue_next_chapter"
     assert plan["chapter_index"] == 2
-    assert plan["trace"]["chapter_generation_route"] == "legacy_generate_chapter"
+    assert plan["trace"]["chapter_generation_route"] == "approved_prepare"
     assert _tool_names(plan) == [
         "describe_agent_tools",
         "inspect_agent_knowledge_base_route",
         "summarize_longform_context",
         "preflight_writing",
-        "generate_chapter",
-        "review_chapter_quality",
-        "review_chapter_continuity",
-        "analyze_chapter_world_model",
+        "prepare_generate_chapter_execution",
     ]
-    assert [step["tool_name"] for step in plan["steps"] if step.get("post_generation")] == [
-        "review_chapter_quality",
-        "review_chapter_continuity",
-        "analyze_chapter_world_model",
-    ]
+    assert [step["tool_name"] for step in plan["steps"] if step.get("post_generation")] == []
     assert plan["trace"]["selected_tools"] == _tool_names(plan)
     assert plan["trace"]["plan_id"].startswith("plan:")
     assert plan["trace"]["tool_policy_projection"]["version"] == "phase206.agent_tool_surface_policy.v1"
@@ -54,38 +47,31 @@ def test_planner_builds_ready_next_chapter_tool_chain(db_session):
     first_step = plan["steps"][0]
     assert first_step["params"] == {"chapter_index": 2, "agent_profile": "drafting_worker"}
     assert plan["tools"][0]["params"] == {"chapter_index": 2, "agent_profile": "drafting_worker"}
-    generate_step = next(step for step in plan["steps"] if step["tool_name"] == "generate_chapter")
+    prepare_step = next(step for step in plan["steps"] if step["tool_name"] == "prepare_generate_chapter_execution")
     assert first_step["step_id"].startswith("step:")
     assert first_step["plan_id"] == plan["trace"]["plan_id"]
     assert first_step["source_projection_id"] is None
     assert first_step["mutability"] == "read"
     assert first_step["requires_confirmation"] is False
-    assert generate_step["mutability"] == "write"
-    assert generate_step["requires_confirmation"] is True
-    generate_request = next(tool for tool in plan["tools"] if tool["tool_name"] == "generate_chapter")
-    assert generate_request["planner"] == {
+    assert prepare_step["mutability"] == "read"
+    assert prepare_step["requires_confirmation"] is False
+    prepare_request = next(tool for tool in plan["tools"] if tool["tool_name"] == "prepare_generate_chapter_execution")
+    assert prepare_request["planner"] == {
         "step_index": 5,
-        "step_id": generate_step["step_id"],
+        "step_id": prepare_step["step_id"],
         "plan_id": plan["trace"]["plan_id"],
         "source_projection_id": None,
-        "mutability": "write",
-        "requires_confirmation": True,
-        "reason": "依赖满足后生成第2章正文。",
+        "mutability": "read",
+        "requires_confirmation": False,
+        "reason": "为第2章生成创建审批合约，不直接写入正文。",
         "on_missing": "stop",
         "on_failure": "stop",
-        "expected_output": "章节正文。",
+        "expected_output": "章节生成审批合约。",
         "post_generation": False,
         "planner_version": "phase53.context_gate.v1",
     }
-    quality_review = next(tool for tool in plan["tools"] if tool["tool_name"] == "review_chapter_quality")
-    assert quality_review["planner"]["post_generation"] is True
-    assert plan["approval_contract"]["status"] == "requires_confirmation"
-    assert plan["approval_contract"]["plan_id"] == plan["trace"]["plan_id"]
-    assert [step["tool_name"] for step in plan["approval_contract"]["write_steps"]] == [
-        "generate_chapter",
-        "analyze_chapter_world_model",
-    ]
-    assert plan["approval_contract"]["approval"]["approval_contract_hash"].startswith("approval:")
+    assert plan["approval_contract"]["status"] == "not_required"
+    assert plan["approval_contract"]["write_steps"] == []
 
 
 def test_planner_can_prepare_next_chapter_through_approved_route(db_session):
@@ -261,10 +247,7 @@ def test_planner_adds_outline_expansion_when_target_outline_is_missing(db_sessio
         "inspect_agent_knowledge_base_route",
         "summarize_longform_context",
         "preflight_writing",
-        "generate_chapter",
-        "review_chapter_quality",
-        "review_chapter_continuity",
-        "analyze_chapter_world_model",
+        "prepare_generate_chapter_execution",
     ]
     expansion = plan["steps"][1]
     assert expansion["params"] == {"start_chapter": 2, "end_chapter": 2}

@@ -81,6 +81,8 @@ AGENT_TOOL_RESULT_VERSION = "phase42.tool_result.v1"
 TOOL_LIFECYCLE_HOOKS_OUTPUT_KEY = "_tool_lifecycle_hooks"
 ALLOWED_TOOLS = allowed_tool_names()
 CHAPTER_TOOL_NAME = "generate_chapter"
+APPROVED_CHAPTER_TOOL_NAME = "execute_generate_chapter_with_approval"
+CHAPTER_GENERATION_TOOL_NAMES = {CHAPTER_TOOL_NAME, APPROVED_CHAPTER_TOOL_NAME}
 INTERNAL_TOOLS = internal_tool_names()
 NON_BLOCKING_REPORT_TOOLS = non_blocking_report_tool_names()
 AGENT_TOOL_DISCOVERY_PROJECTION_VERSION = "phase210.agent_tool_discovery_projection.v1"
@@ -518,7 +520,7 @@ class WritingAgentRunService:
         result: dict[str, Any],
     ) -> dict[str, Any]:
         output = dict(result)
-        if tool.tool_name != CHAPTER_TOOL_NAME:
+        if tool.tool_name not in CHAPTER_GENERATION_TOOL_NAMES:
             return output
 
         trace_id = str(output.get("trace_id") or "") or None
@@ -674,7 +676,7 @@ class WritingAgentRunService:
                 .first()
             )
             return row.id if row else None
-        if step.tool_name == CHAPTER_TOOL_NAME and step.chapter_index is not None:
+        if step.tool_name in CHAPTER_GENERATION_TOOL_NAMES and step.chapter_index is not None:
             row = (
                 self.db.query(ChapterContent.id)
                 .filter(
@@ -1350,7 +1352,7 @@ def _consumed_state(steps: list[WritingAgentStep]) -> dict[str, bool]:
         ),
         "longform_context": "summarize_longform_context" in successful_tools,
         "preflight": "preflight_writing" in successful_tools,
-        "generated_chapter": CHAPTER_TOOL_NAME in successful_tools,
+        "generated_chapter": bool(CHAPTER_GENERATION_TOOL_NAMES & successful_tools),
         "quality_review": "review_chapter_quality" in successful_tools,
         "continuity_review": "review_chapter_continuity" in successful_tools,
         "review_findings": bool({"review_chapter_quality", "review_chapter_continuity"} & successful_tools),

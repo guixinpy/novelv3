@@ -4,6 +4,7 @@ from collections.abc import Callable
 from typing import Any
 
 from app.schemas.writing_agent import WritingAgentToolRequest
+from app.services.writing_agent.direct_generation_write_guard import approval_required_redirect
 from app.services.writing_agent.tool_adapter_types import WritingAgentToolAdapter, WritingAgentToolContext
 
 
@@ -19,7 +20,8 @@ def build_agent_generation_tool_adapters(
             "generate_chapter",
             _generate_chapter,
             category="generation",
-            mutability="write",
+            mutability="guarded_write",
+            write_policy="approval_required_redirect",
         ),
         "prepare_generate_chapter_execution": WritingAgentToolAdapter(
             "prepare_generate_chapter_execution",
@@ -48,16 +50,17 @@ def build_agent_generation_tool_adapters(
     }
 
 
-async def _generate_chapter(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
-    from app.services.writing_agent.chapter_generation_tool import execute_generate_chapter_tool
-
+def _generate_chapter(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
     chapter_index = int(tool.params.get("chapter_index") or 1)
-    return await execute_generate_chapter_tool(
-        context.db,
-        context.project_id,
-        chapter_index=chapter_index,
-        command_args=tool.command_args,
-        action_params=tool.params,
+    command_args = str(tool.params.get("command_args") or tool.command_args or "").strip() or None
+    return approval_required_redirect(
+        project_id=context.project_id,
+        tool_name="generate_chapter",
+        target_type="chapter",
+        prepare_tool="prepare_generate_chapter_execution",
+        execute_tool="execute_generate_chapter_with_approval",
+        command_args=command_args,
+        extra={"chapter_index": chapter_index},
     )
 
 

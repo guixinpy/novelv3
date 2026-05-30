@@ -159,7 +159,7 @@ def _direct_generate_chapter_agent_plan(project_id: str, chapter_index: int) -> 
         "step_id": plan_id,
         "tool_name": "generate_chapter",
         "params": params,
-        "mutability": "write",
+        "mutability": "guarded_write",
         "requires_confirmation": True,
         "mutation_fingerprint": mutation_fingerprint,
         "reason": "直接生成指定章节正文。",

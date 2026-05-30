@@ -7,6 +7,8 @@ from sqlalchemy.orm import Session
 from app.models import WritingAgentStep
 
 CHAPTER_TOOL_NAME = "generate_chapter"
+APPROVED_CHAPTER_TOOL_NAME = "execute_generate_chapter_with_approval"
+CHAPTER_GENERATION_TOOL_NAMES = {CHAPTER_TOOL_NAME, APPROVED_CHAPTER_TOOL_NAME}
 STEP_SUCCESS = "success"
 
 
@@ -54,7 +56,7 @@ def _same_run_completed_chapter_analysis(
         .filter(
             WritingAgentStep.run_id == run_id,
             WritingAgentStep.project_id == project_id,
-            WritingAgentStep.tool_name == CHAPTER_TOOL_NAME,
+            WritingAgentStep.tool_name.in_(CHAPTER_GENERATION_TOOL_NAMES),
             WritingAgentStep.status == STEP_SUCCESS,
             WritingAgentStep.chapter_index == chapter_index,
         )
@@ -67,4 +69,3 @@ def _same_run_completed_chapter_analysis(
         if isinstance(analysis, dict) and analysis.get("status") == "completed":
             return {"source_step_id": step.id, "analysis": analysis}
     return None
-
