@@ -108,6 +108,13 @@ async def _expand_outline_window(context: WritingAgentToolContext, tool: Writing
     start_chapter = int(tool.params.get("start_chapter") or tool.params.get("chapter_index") or 1)
     end_chapter = int(tool.params.get("end_chapter") or start_chapter)
     command_args = str(tool.params.get("command_args") or tool.command_args or "").strip() or None
+    if tool.params.get("confirm_execute") is not True:
+        return _blocked_confirmation_required(
+            context.project_id,
+            "expand_outline_window",
+            target_type="outline",
+            extra={"start_chapter": start_chapter, "end_chapter": end_chapter},
+        )
     return await expand_outline_window_tool(
         context.db,
         context.project_id,
@@ -126,3 +133,26 @@ def _backfill_outline_gaps(context: WritingAgentToolContext, tool: WritingAgentT
         context.project_id,
         before_chapter=int(before_chapter) if before_chapter else None,
     )
+
+
+def _blocked_confirmation_required(
+    project_id: str,
+    tool_name: str,
+    *,
+    target_type: str,
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return {
+        "status": "blocked",
+        "reason": "confirmation_required",
+        "project_id": project_id,
+        "target_type": target_type,
+        **(extra or {}),
+        "required_confirmation": {"confirm_execute": True},
+        "side_effects": {"executed": [], "skipped": [tool_name]},
+        "trace": {
+            "selected_tools": [],
+            "rejected_tools": [{"tool_name": tool_name, "reason": "confirmation_required"}],
+            "source": "direct_agent_write_guard",
+        },
+    }

@@ -167,7 +167,10 @@ class WritingAgentRunService:
                 "requires_confirmation": True,
                 "requires_plan_hash": True,
             }
-            tools = [WritingAgentToolRequest(**tool) for tool in plan.get("tools", []) if isinstance(tool, dict)]
+            tools = [
+                WritingAgentToolRequest(**tool)
+                for tool in _tools_with_execution_confirmation(plan.get("tools", []))
+            ]
             return tools, plan
 
         recommended_followup_run_id = str(run_input.get("recommended_followup_run_id") or "").strip() or None
@@ -204,7 +207,10 @@ class WritingAgentRunService:
                 "requires_confirmation": True,
                 "requires_plan_hash": True,
             }
-            tools = [WritingAgentToolRequest(**tool) for tool in plan.get("tools", []) if isinstance(tool, dict)]
+            tools = [
+                WritingAgentToolRequest(**tool)
+                for tool in _tools_with_execution_confirmation(plan.get("tools", []))
+            ]
             return tools, plan
 
         chapter_index = _optional_int(run_input.get("chapter_index"))
@@ -1434,6 +1440,22 @@ def _recommended_followup_preview_auto_plan(
 
 def _model_dict(model: Any) -> dict[str, Any]:
     return {column.name: getattr(model, column.name) for column in model.__table__.columns}
+
+
+def _tools_with_execution_confirmation(tools: object) -> list[dict[str, Any]]:
+    confirmed_tools: list[dict[str, Any]] = []
+    if not isinstance(tools, list):
+        return confirmed_tools
+    for tool in tools:
+        if not isinstance(tool, dict):
+            continue
+        confirmed_tool = dict(tool)
+        tool_name = str(confirmed_tool.get("tool_name") or "").strip()
+        if tool_name in {"expand_outline_window", "backfill_outline_gaps"}:
+            params = confirmed_tool.get("params") if isinstance(confirmed_tool.get("params"), dict) else {}
+            confirmed_tool["params"] = {**params, "confirm_execute": True}
+        confirmed_tools.append(confirmed_tool)
+    return confirmed_tools
 
 
 def _extract_step_resource_binding(output: object) -> dict[str, Any] | None:

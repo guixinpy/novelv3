@@ -3624,7 +3624,9 @@ async def test_tool_executor_handles_inspect_agent_tool_contracts(db_session):
     assert tools_by_name["analyze_chapter_world_model"]["adapter_type"] == "static"
     assert "missing_agent_native_adapter" not in tools_by_name["analyze_chapter_world_model"]["gap_codes"]
     assert tools_by_name["expand_outline_window"]["adapter_type"] == "static"
-    assert tools_by_name["expand_outline_window"]["mutability"] == "write"
+    assert tools_by_name["expand_outline_window"]["mutability"] == "guarded_write"
+    assert tools_by_name["expand_outline_window"]["permission_level"] == "confirm_required"
+    assert "requires_confirmation" in tools_by_name["expand_outline_window"]["side_effects"]
     assert "missing_agent_native_adapter" not in tools_by_name["expand_outline_window"]["gap_codes"]
     assert "output_schema_too_generic" not in tools_by_name["expand_outline_window"]["gap_codes"]
     assert tools_by_name["import_setup_world_model"]["adapter_type"] == "static"
@@ -5165,9 +5167,26 @@ async def test_tool_executor_dispatches_expand_outline_window_adapter(db_session
 
     assert result.handled is True
     assert result.output is not None
-    assert result.output["status"] == "completed"
-    assert result.output["start_chapter"] == 3
-    assert result.output["end_chapter"] == 3
+    assert result.output["status"] == "blocked"
+    assert result.output["reason"] == "confirmation_required"
+    assert result.output["side_effects"] == {"executed": [], "skipped": ["expand_outline_window"]}
+    assert result.output["required_confirmation"] == {"confirm_execute": True}
+    assert calls == []
+
+    confirmed = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(
+            tool_name="expand_outline_window",
+            command_args="补齐第3章",
+            params={"chapter_index": "3", "confirm_execute": True},
+        ),
+    )
+
+    assert confirmed.handled is True
+    assert confirmed.output is not None
+    assert confirmed.output["status"] == "completed"
+    assert confirmed.output["start_chapter"] == 3
+    assert confirmed.output["end_chapter"] == 3
     assert calls == [(project.id, 3, 3, "补齐第3章")]
 
 

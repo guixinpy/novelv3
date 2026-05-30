@@ -56,6 +56,17 @@ def test_write_gate_coverage_marks_generate_chapter_as_indirectly_covered_direct
     assert generate_tool["recommended_action"] == "add_direct_agent_plan_approval_gate"
 
 
+def test_write_gate_coverage_marks_expand_outline_window_as_direct_confirmation_guarded():
+    output = inspect_agent_write_gate_coverage(adapter_metadata_by_name=_adapter_metadata())
+    expand_tool = _tools_by_name(output)["expand_outline_window"]
+
+    assert expand_tool["agent_plan_gate_status"] == "missing_agent_plan_gate"
+    assert expand_tool["direct_confirmation_guard"] is True
+    assert expand_tool["confirmation_fields"] == ["confirm_execute"]
+    assert expand_tool["risk_level"] == "medium"
+    assert expand_tool["recommended_action"] == "promote_confirm_guard_to_agent_plan_approval"
+
+
 def test_write_gate_coverage_marks_pre_chapter_generate_tools_as_indirectly_covered_direct_gaps():
     output = inspect_agent_write_gate_coverage(adapter_metadata_by_name=_adapter_metadata())
     tools_by_name = _tools_by_name(output)

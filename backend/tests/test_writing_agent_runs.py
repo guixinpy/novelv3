@@ -8868,7 +8868,12 @@ def test_agent_expand_outline_window_adds_missing_outline_then_preflight_ready(
             "tools": [
                 {
                     "tool_name": "expand_outline_window",
-                    "params": {"start_chapter": 3, "end_chapter": 3, "command_args": "补齐第3章"},
+                    "params": {
+                        "start_chapter": 3,
+                        "end_chapter": 3,
+                        "command_args": "补齐第3章",
+                        "confirm_execute": True,
+                    },
                 },
                 {"tool_name": "preflight_writing", "params": {"chapter_index": 3}},
             ],

@@ -11,6 +11,7 @@ _WINDOW_PARAMS = object_schema(
         "start_chapter": {"type": "integer", "minimum": 1},
         "end_chapter": {"type": "integer", "minimum": 1},
         "command_args": {"type": "string"},
+        "confirm_execute": {"type": "boolean"},
     }
 )
 _OUTLINE_WINDOW_OUTPUT = object_schema(
