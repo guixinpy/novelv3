@@ -7500,7 +7500,7 @@ def test_agent_create_revision_draft_from_plan_is_non_destructive(client, db_ses
         f"/api/v1/projects/{project.id}/agent-runs",
         json={
             "goal": "为第2章创建修订草稿",
-            "tools": [{"tool_name": "create_revision_draft", "params": {"chapter_index": 2}}],
+            "tools": [_approved_create_revision_draft_tool(db_session, project.id, chapter_index=2)],
         },
     )
 
@@ -7536,7 +7536,7 @@ def test_agent_create_revision_draft_anchors_drift_actions(client, db_session):
         f"/api/v1/projects/{project.id}/agent-runs",
         json={
             "goal": "创建第1章漂移修订草稿",
-            "tools": [{"tool_name": "create_revision_draft", "params": {"chapter_index": 1}}],
+            "tools": [_approved_create_revision_draft_tool(db_session, project.id, chapter_index=1)],
         },
     )
 
@@ -7566,7 +7566,7 @@ def test_agent_apply_planner_revision_patch_updates_chapter_and_versions(client,
         f"/api/v1/projects/{project.id}/agent-runs",
         json={
             "goal": "创建修订草稿",
-            "tools": [{"tool_name": "create_revision_draft", "params": {"chapter_index": 1}}],
+            "tools": [_approved_create_revision_draft_tool(db_session, project.id, chapter_index=1)],
         },
     )
     revision_id = draft.json()["steps"][0]["output"]["revision_id"]
@@ -7610,7 +7610,7 @@ def test_agent_apply_planner_revision_patch_then_review_clears_drift_blockers(cl
         json={
             "goal": "修订并复审",
             "tools": [
-                {"tool_name": "create_revision_draft", "params": {"chapter_index": 1}},
+                _approved_create_revision_draft_tool(db_session, project.id, chapter_index=1),
                 {"tool_name": "apply_planner_revision_patch", "params": {"chapter_index": 1}},
                 {"tool_name": "review_chapter_quality", "params": {"chapter_index": 1}},
             ],
@@ -8700,14 +8700,14 @@ def test_agent_create_revision_draft_reuses_existing_draft(client, db_session):
         f"/api/v1/projects/{project.id}/agent-runs",
         json={
             "goal": "为第2章创建修订草稿",
-            "tools": [{"tool_name": "create_revision_draft", "params": {"chapter_index": 2}}],
+            "tools": [_approved_create_revision_draft_tool(db_session, project.id, chapter_index=2)],
         },
     )
     second = client.post(
         f"/api/v1/projects/{project.id}/agent-runs",
         json={
             "goal": "再次为第2章创建修订草稿",
-            "tools": [{"tool_name": "create_revision_draft", "params": {"chapter_index": 2}}],
+            "tools": [_approved_create_revision_draft_tool(db_session, project.id, chapter_index=2)],
         },
     )
 
@@ -8758,7 +8758,7 @@ def test_agent_create_revision_draft_does_not_modify_manual_draft(client, db_ses
         f"/api/v1/projects/{project.id}/agent-runs",
         json={
             "goal": "不要覆盖用户手写草稿",
-            "tools": [{"tool_name": "create_revision_draft", "params": {"chapter_index": 2}}],
+            "tools": [_approved_create_revision_draft_tool(db_session, project.id, chapter_index=2)],
         },
     )
 
@@ -8791,7 +8791,7 @@ def test_agent_create_revision_draft_does_not_compete_with_submitted_revision(cl
         f"/api/v1/projects/{project.id}/agent-runs",
         json={
             "goal": "不要创建竞争修订",
-            "tools": [{"tool_name": "create_revision_draft", "params": {"chapter_index": 2}}],
+            "tools": [_approved_create_revision_draft_tool(db_session, project.id, chapter_index=2)],
         },
     )
 
@@ -8814,7 +8814,7 @@ def test_agent_create_revision_draft_skips_ready_chapter(client, db_session):
         f"/api/v1/projects/{project.id}/agent-runs",
         json={
             "goal": "检查第1章是否需要修订草稿",
-            "tools": [{"tool_name": "create_revision_draft", "params": {"chapter_index": 1}}],
+            "tools": [_approved_create_revision_draft_tool(db_session, project.id, chapter_index=1)],
         },
     )
 
@@ -8846,7 +8846,7 @@ def test_agent_create_revision_draft_blocks_followup_generation(client, db_sessi
         json={
             "goal": "创建第2章修订草稿后尝试生成第3章",
             "tools": [
-                {"tool_name": "create_revision_draft", "params": {"chapter_index": 2}},
+                _approved_create_revision_draft_tool(db_session, project.id, chapter_index=2),
                 {"tool_name": "generate_chapter", "params": {"chapter_index": 3}},
             ],
         },
@@ -8855,7 +8855,7 @@ def test_agent_create_revision_draft_blocks_followup_generation(client, db_sessi
     payload = response.json()
     assert response.status_code == 200
     assert payload["status"] == "blocked"
-    assert payload["steps"][0]["tool_name"] == "create_revision_draft"
+    assert payload["steps"][0]["tool_name"] == "execute_create_revision_draft_with_approval"
     assert payload["steps"][0]["output"]["should_generate_next_chapter"] is False
     assert len(payload["steps"]) == 1
     assert calls == []
@@ -9031,6 +9031,21 @@ def _approved_backfill_outline_gaps_tool(db_session, project_id: str, *, before_
     return {
         "tool_name": "execute_backfill_outline_gaps_with_approval",
         "params": params,
+    }
+
+
+def _approved_create_revision_draft_tool(db_session, project_id: str, *, chapter_index: int) -> dict:
+    from app.services.writing_agent.revision_draft_execution import prepare_create_revision_draft_execution
+
+    prepared = prepare_create_revision_draft_execution(db_session, project_id, chapter_index=chapter_index)
+    return {
+        "tool_name": "execute_create_revision_draft_with_approval",
+        "params": {
+            "chapter_index": chapter_index,
+            "confirm_execute": True,
+            "approval_contract_hash": prepared["agent_plan_approval_contract_hash"],
+            "approval_contract": prepared["agent_plan_approval_contract"],
+        },
     }
 
 

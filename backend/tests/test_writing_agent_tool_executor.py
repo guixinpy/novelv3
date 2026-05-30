@@ -271,13 +271,18 @@ def test_review_revision_tool_adapters_live_in_dedicated_module():
         "review_chapter_continuity",
         "plan_chapter_revision",
         "create_revision_draft",
+        "prepare_create_revision_draft_execution",
+        "execute_create_revision_draft_with_approval",
         "apply_planner_revision_patch",
         "expand_chapter_to_target",
         "compress_chapter_to_target",
     ]
     assert {adapter.category for adapter in REVIEW_REVISION_AGENT_TOOL_ADAPTERS.values()} == {"review", "revision"}
     assert REVIEW_REVISION_AGENT_TOOL_ADAPTERS["review_chapter_quality"].mutability == "read"
-    assert REVIEW_REVISION_AGENT_TOOL_ADAPTERS["create_revision_draft"].mutability == "write"
+    assert REVIEW_REVISION_AGENT_TOOL_ADAPTERS["create_revision_draft"].mutability == "guarded_write"
+    assert REVIEW_REVISION_AGENT_TOOL_ADAPTERS["create_revision_draft"].write_policy == "approval_required_redirect"
+    assert REVIEW_REVISION_AGENT_TOOL_ADAPTERS["prepare_create_revision_draft_execution"].mutability == "read"
+    assert REVIEW_REVISION_AGENT_TOOL_ADAPTERS["execute_create_revision_draft_with_approval"].mutability == "write"
     assert (
         REVIEW_REVISION_AGENT_TOOL_ADAPTERS["apply_planner_revision_patch"].handler.__name__
         == "_apply_planner_revision_patch"
@@ -3139,6 +3144,8 @@ def test_tool_executor_static_adapter_names_are_report_or_agent_native_tools():
         "review_chapter_continuity",
         "plan_chapter_revision",
         "create_revision_draft",
+        "prepare_create_revision_draft_execution",
+        "execute_create_revision_draft_with_approval",
         "apply_planner_revision_patch",
         "expand_chapter_to_target",
         "compress_chapter_to_target",
@@ -3653,8 +3660,9 @@ def test_tool_executor_exposes_create_revision_draft_adapter_metadata():
         "tool_name": "create_revision_draft",
         "adapter_type": "static",
         "category": "revision",
-        "mutability": "write",
+        "mutability": "guarded_write",
         "handler_name": "_create_revision_draft",
+        "write_policy": "approval_required_redirect",
     }
 
 
@@ -3846,7 +3854,7 @@ async def test_tool_executor_handles_inspect_agent_tool_contracts(db_session):
     assert "missing_agent_native_adapter" not in tools_by_name["apply_world_model_proposal_resolution"]["gap_codes"]
     assert "output_schema_too_generic" not in tools_by_name["apply_world_model_proposal_resolution"]["gap_codes"]
     assert tools_by_name["create_revision_draft"]["adapter_type"] == "static"
-    assert tools_by_name["create_revision_draft"]["mutability"] == "write"
+    assert tools_by_name["create_revision_draft"]["mutability"] == "guarded_write"
     assert "missing_agent_native_adapter" not in tools_by_name["create_revision_draft"]["gap_codes"]
     assert tools_by_name["apply_planner_revision_patch"]["adapter_type"] == "static"
     assert tools_by_name["apply_planner_revision_patch"]["mutability"] == "guarded_write"
@@ -5264,7 +5272,7 @@ async def test_tool_executor_dispatches_chapter_report_adapters(db_session, monk
 
 
 @pytest.mark.asyncio
-async def test_tool_executor_dispatches_create_revision_draft_adapter(db_session, monkeypatch):
+async def test_tool_executor_redirects_direct_create_revision_draft_to_approval(db_session, monkeypatch):
     project = Project(name="Executor Revision Draft")
     db_session.add(project)
     db_session.commit()
@@ -5285,7 +5293,53 @@ async def test_tool_executor_dispatches_create_revision_draft_adapter(db_session
     )
 
     assert result.handled is True
-    assert result.output == {"status": "drafted", "chapter_index": 7, "revision_id": "rev-1"}
+    assert result.output["status"] == "blocked"
+    assert result.output["reason"] == "approval_required_before_write"
+    assert result.output["chapter_index"] == 7
+    assert result.output["required_approval"]["prepare_tool"] == "prepare_create_revision_draft_execution"
+    assert result.output["required_approval"]["execute_tool"] == "execute_create_revision_draft_with_approval"
+    assert result.output["side_effects"]["executed"] == []
+    assert result.output["side_effects"]["skipped"] == ["create_revision_draft"]
+    assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_dispatches_create_revision_draft_approval_adapter(db_session, monkeypatch):
+    from app.services.writing_agent.revision_draft_execution import prepare_create_revision_draft_execution
+
+    project = Project(name="Executor Approved Revision Draft")
+    db_session.add(project)
+    db_session.commit()
+    calls: list[tuple[str, int]] = []
+
+    def fake_revision_draft_tool(db, project_id: str, *, chapter_index: int):
+        calls.append((project_id, chapter_index))
+        return {"status": "drafted", "chapter_index": chapter_index, "revision_id": "rev-1"}
+
+    monkeypatch.setattr(
+        "app.services.writing_agent.revision_draft_execution.create_revision_draft_tool",
+        fake_revision_draft_tool,
+    )
+    prepared = prepare_create_revision_draft_execution(db_session, project.id, chapter_index=7)
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(
+            tool_name="execute_create_revision_draft_with_approval",
+            params={
+                "chapter_index": "7",
+                "confirm_execute": True,
+                "approval_contract_hash": prepared["agent_plan_approval_contract_hash"],
+                "approval_contract": prepared["agent_plan_approval_contract"],
+            },
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output["status"] == "drafted"
+    assert result.output["chapter_index"] == 7
+    assert result.output["revision_id"] == "rev-1"
+    assert result.output["agent_plan_approval_verification"]["status"] == "ready"
     assert calls == [(project.id, 7)]
 
 

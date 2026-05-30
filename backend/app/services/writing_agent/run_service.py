@@ -705,7 +705,7 @@ class WritingAgentRunService:
                 .first()
             )
             return row.id if row else None
-        if step.tool_name == "create_revision_draft":
+        if step.tool_name in {"create_revision_draft", "execute_create_revision_draft_with_approval"}:
             output = step.output if isinstance(step.output, dict) else {}
             revision_id = output.get("revision_id")
             return str(revision_id) if revision_id else None

@@ -21,6 +21,7 @@ _KNOWN_MUTATING_TOOLS = {
     "backfill_outline_gaps",
     "record_agent_knowledge_base_candidate",
     "repair_longform_maintenance",
+    "create_revision_draft",
     "apply_planner_revision_patch",
     "apply_world_model_proposal_resolution",
 }
@@ -179,6 +180,16 @@ def _target_for_tool(project_id: str, tool_name: str, params: dict[str, Any]) ->
         if not project_target:
             return _blocked("longform_maintenance", "missing_target", "repair_longform_maintenance requires project_id")
         return _ready("longform_maintenance", f"longform_maintenance:{project_target}")
+
+    if tool_name == "create_revision_draft":
+        chapter_index = _positive_int(params.get("chapter_index"))
+        if chapter_index is None:
+            return _blocked(
+                "chapter_revision_draft",
+                "missing_target",
+                "create_revision_draft requires a positive chapter_index",
+            )
+        return _ready("chapter_revision_draft", f"chapter_revision_draft:{chapter_index}")
 
     if tool_name == "apply_planner_revision_patch":
         chapter_index = _positive_int(params.get("chapter_index"))

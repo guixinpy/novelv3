@@ -211,6 +211,8 @@ def test_review_revision_tool_descriptors_live_in_dedicated_module():
         "review_chapter_continuity",
         "plan_chapter_revision",
         "create_revision_draft",
+        "prepare_create_revision_draft_execution",
+        "execute_create_revision_draft_with_approval",
         "apply_planner_revision_patch",
         "expand_chapter_to_target",
         "compress_chapter_to_target",
@@ -218,6 +220,8 @@ def test_review_revision_tool_descriptors_live_in_dedicated_module():
     assert {descriptor.category for descriptor in REVIEW_REVISION_AGENT_TOOL_DESCRIPTORS} == {"review", "revision"}
     assert all(descriptor.internal for descriptor in REVIEW_REVISION_AGENT_TOOL_DESCRIPTORS)
     assert target_type_for_tool("plan_chapter_revision") == "revision_plan"
+    assert target_type_for_tool("prepare_create_revision_draft_execution") == "revision_draft_approval"
+    assert "prepare_create_revision_draft_execution" in non_blocking_report_tool_names()
     assert target_type_for_tool("apply_planner_revision_patch") == "revision"
     assert "review_chapter_quality" in non_blocking_report_tool_names()
 

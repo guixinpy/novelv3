@@ -6,6 +6,7 @@ REPORT_STOP_TOOLS = frozenset(
     {
         "plan_chapter_revision",
         "create_revision_draft",
+        "execute_create_revision_draft_with_approval",
         "apply_planner_revision_patch",
         "expand_chapter_to_target",
         "compress_chapter_to_target",
@@ -23,6 +24,7 @@ REPORT_STOP_TOOLS = frozenset(
 ALLOWED_REPORT_FOLLOWUPS = frozenset(
     {
         ("create_revision_draft", "apply_planner_revision_patch"),
+        ("execute_create_revision_draft_with_approval", "apply_planner_revision_patch"),
         ("apply_planner_revision_patch", "review_chapter_quality"),
         ("expand_chapter_to_target", "review_chapter_quality"),
         ("compress_chapter_to_target", "review_chapter_quality"),
@@ -46,6 +48,7 @@ REPORT_BLOCK_MESSAGES = {
     "seed_continuity_anchor_proposals": "稳定连续性锚点提案尚未审批，已停止后续写作工具。",
     "plan_chapter_revision": "修订计划未通过，已停止后续写作工具。",
     "create_revision_draft": "修订草稿未通过，已停止后续写作工具。",
+    "execute_create_revision_draft_with_approval": "修订草稿未通过，已停止后续写作工具。",
     "apply_planner_revision_patch": "修订补丁应用后尚未复审，已停止后续写作工具。",
     "expand_chapter_to_target": "章节扩写后尚未复审，已停止后续写作工具。",
     "compress_chapter_to_target": "章节压缩后尚未复审，已停止后续写作工具。",
