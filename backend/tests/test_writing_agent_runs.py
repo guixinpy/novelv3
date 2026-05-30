@@ -337,10 +337,10 @@ def test_planner_continuation_executes_confirmed_revision_patch_after_contract_v
         }
 
     monkeypatch.setattr(
-        "app.services.writing_agent.revision_patch_tool.apply_planner_revision_patch_tool",
+        "app.services.writing_agent.revision_patch_execution.apply_planner_revision_patch_tool",
         fake_apply_revision_patch,
     )
-    plan = _planner_revision_patch_plan(project.id, chapter_index=1, revision_id="revision-1")
+    plan = _planner_revision_patch_plan(db_session, project.id, chapter_index=1, revision_id="revision-1")
     approval_hash = plan["approval_contract"]["approval"]["approval_contract_hash"]
 
     response = client.post(
@@ -365,9 +365,10 @@ def test_planner_continuation_executes_confirmed_revision_patch_after_contract_v
     assert response.status_code == 200
     assert payload["status"] == "success"
     step = payload["steps"][0]
-    assert step["tool_name"] == "apply_planner_revision_patch"
+    assert step["tool_name"] == "execute_apply_planner_revision_patch_with_approval"
     assert step["status"] == "success"
     assert step["output"]["planner_continuation_approval"]["approval_contract_hash"] == approval_hash
+    assert step["output"]["agent_plan_approval_verification"]["status"] == "ready"
     assert calls == [(project.id, 1, "revision-1")]
 
 
@@ -384,10 +385,10 @@ def test_planner_continuation_blocks_revision_patch_when_mutation_fingerprint_mi
         return {"status": "success", "chapter_index": chapter_index}
 
     monkeypatch.setattr(
-        "app.services.writing_agent.revision_patch_tool.apply_planner_revision_patch_tool",
+        "app.services.writing_agent.revision_patch_execution.apply_planner_revision_patch_tool",
         fake_apply_revision_patch,
     )
-    plan = _planner_revision_patch_plan(project.id, chapter_index=1, revision_id="")
+    plan = _planner_revision_patch_plan(db_session, project.id, chapter_index=1, revision_id="")
     approval_hash = plan["approval_contract"]["approval"]["approval_contract_hash"]
 
     response = client.post(
@@ -413,7 +414,7 @@ def test_planner_continuation_blocks_revision_patch_when_mutation_fingerprint_mi
     assert payload["status"] == "blocked"
     assert payload["error"] == "Planner continuation requires approval"
     step = payload["steps"][0]
-    assert step["tool_name"] == "apply_planner_revision_patch"
+    assert step["tool_name"] == "execute_apply_planner_revision_patch_with_approval"
     assert step["status"] == "blocked"
     output = step["output"]
     assert output["approval_verification"]["reason"] == "mutation_fingerprint_not_ready"
@@ -7575,7 +7576,14 @@ def test_agent_apply_planner_revision_patch_updates_chapter_and_versions(client,
         f"/api/v1/projects/{project.id}/agent-runs",
         json={
             "goal": "应用planner修订",
-            "tools": [{"tool_name": "apply_planner_revision_patch", "params": {"chapter_index": 1}}],
+            "tools": [
+                _approved_apply_planner_revision_patch_tool(
+                    db_session,
+                    project.id,
+                    chapter_index=1,
+                    revision_id=revision_id,
+                )
+            ],
         },
     )
 
@@ -7605,19 +7613,32 @@ def test_agent_apply_planner_revision_patch_then_review_clears_drift_blockers(cl
     chapter.word_count = 2000
     db_session.commit()
 
+    draft = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "创建修订草稿",
+            "tools": [_approved_create_revision_draft_tool(db_session, project.id, chapter_index=1)],
+        },
+    )
+    revision_id = draft.json()["steps"][0]["output"]["revision_id"]
+
     response = client.post(
         f"/api/v1/projects/{project.id}/agent-runs",
         json={
             "goal": "修订并复审",
             "tools": [
-                _approved_create_revision_draft_tool(db_session, project.id, chapter_index=1),
-                {"tool_name": "apply_planner_revision_patch", "params": {"chapter_index": 1}},
+                _approved_apply_planner_revision_patch_tool(
+                    db_session,
+                    project.id,
+                    chapter_index=1,
+                    revision_id=revision_id,
+                ),
                 {"tool_name": "review_chapter_quality", "params": {"chapter_index": 1}},
             ],
         },
     )
 
-    review = response.json()["steps"][2]["output"]
+    review = response.json()["steps"][1]["output"]
     codes = {finding["code"] for finding in review["findings"]}
     assert response.status_code == 200
     assert response.json()["status"] == "success"
@@ -9049,27 +9070,68 @@ def _approved_create_revision_draft_tool(db_session, project_id: str, *, chapter
     }
 
 
-def _planner_revision_patch_plan(project_id: str, *, chapter_index: int, revision_id: str) -> dict:
+def _approved_apply_planner_revision_patch_tool(
+    db_session,
+    project_id: str,
+    *,
+    chapter_index: int,
+    revision_id: str,
+) -> dict:
+    from app.services.writing_agent.revision_patch_execution import prepare_apply_planner_revision_patch_execution
+
+    prepared = prepare_apply_planner_revision_patch_execution(
+        db_session,
+        project_id,
+        chapter_index=chapter_index,
+        revision_id=revision_id,
+    )
+    return {
+        "tool_name": "execute_apply_planner_revision_patch_with_approval",
+        "params": {
+            "chapter_index": chapter_index,
+            "revision_id": revision_id,
+            "confirm_execute": True,
+            "approval_contract_hash": prepared["agent_plan_approval_contract_hash"],
+            "approval_contract": prepared["agent_plan_approval_contract"],
+        },
+    }
+
+
+def _planner_revision_patch_plan(db_session, project_id: str, *, chapter_index: int, revision_id: str) -> dict:
+    from app.services.writing_agent.revision_patch_execution import prepare_apply_planner_revision_patch_execution
+
+    prepared = prepare_apply_planner_revision_patch_execution(
+        db_session,
+        project_id,
+        chapter_index=chapter_index,
+        revision_id=revision_id,
+    )
     plan_id = f"plan:revision-patch-{chapter_index}"
-    params = {"chapter_index": chapter_index, "revision_id": revision_id}
+    params = {
+        "chapter_index": chapter_index,
+        "revision_id": revision_id,
+        "confirm_execute": True,
+        "approval_contract_hash": prepared["agent_plan_approval_contract_hash"],
+        "approval_contract": prepared["agent_plan_approval_contract"],
+    }
     step = {
         "step_index": 1,
         "step_id": f"step:revision-patch-{chapter_index}",
-        "tool_name": "apply_planner_revision_patch",
+        "tool_name": "execute_apply_planner_revision_patch_with_approval",
         "params": params,
-        "mutability": "guarded_write",
+        "mutability": "write",
         "requires_confirmation": True,
         "reason": f"应用第{chapter_index}章修订补丁。",
     }
     tool = {
-        "tool_name": "apply_planner_revision_patch",
+        "tool_name": "execute_apply_planner_revision_patch_with_approval",
         "params": params,
         "planner": {
             "step_index": 1,
             "step_id": step["step_id"],
             "plan_id": plan_id,
             "source_projection_id": f"projection:revision-patch-{chapter_index}",
-            "mutability": "guarded_write",
+            "mutability": "write",
             "requires_confirmation": True,
             "reason": step["reason"],
             "planner_version": "phase53.context_gate.v1",
@@ -9088,7 +9150,7 @@ def _planner_revision_patch_plan(project_id: str, *, chapter_index: int, revisio
             "plan_id": plan_id,
             "source_projection_id": f"projection:revision-patch-{chapter_index}",
             "planner_version": "phase53.context_gate.v1",
-            "selected_tools": ["apply_planner_revision_patch"],
+            "selected_tools": ["execute_apply_planner_revision_patch_with_approval"],
         },
     }
     plan["approval_contract"] = build_agent_plan_approval_contract(plan)

@@ -709,6 +709,10 @@ class WritingAgentRunService:
             output = step.output if isinstance(step.output, dict) else {}
             revision_id = output.get("revision_id")
             return str(revision_id) if revision_id else None
+        if step.tool_name in {"apply_planner_revision_patch", "execute_apply_planner_revision_patch_with_approval"}:
+            output = step.output if isinstance(step.output, dict) else {}
+            result_version_id = output.get("result_version_id")
+            return str(result_version_id) if result_version_id else None
         return None
 
     def _run_output(self, run_id: str) -> dict[str, Any]:

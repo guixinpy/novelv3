@@ -23,6 +23,7 @@ _KNOWN_MUTATING_TOOLS = {
     "repair_longform_maintenance",
     "create_revision_draft",
     "apply_planner_revision_patch",
+    "execute_apply_planner_revision_patch_with_approval",
     "apply_world_model_proposal_resolution",
 }
 
@@ -191,14 +192,14 @@ def _target_for_tool(project_id: str, tool_name: str, params: dict[str, Any]) ->
             )
         return _ready("chapter_revision_draft", f"chapter_revision_draft:{chapter_index}")
 
-    if tool_name == "apply_planner_revision_patch":
+    if tool_name in {"apply_planner_revision_patch", "execute_apply_planner_revision_patch_with_approval"}:
         chapter_index = _positive_int(params.get("chapter_index"))
         revision_id = _clean_string(params.get("revision_id"))
         if chapter_index is None or not revision_id:
             return _blocked(
                 "chapter_revision_patch",
                 "missing_target",
-                "apply_planner_revision_patch requires a positive chapter_index and revision_id",
+                f"{tool_name} requires a positive chapter_index and revision_id",
             )
         return _ready("chapter_revision_patch", f"chapter_revision_patch:{chapter_index}:{revision_id}")
 

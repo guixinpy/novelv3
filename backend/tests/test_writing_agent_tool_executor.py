@@ -274,6 +274,8 @@ def test_review_revision_tool_adapters_live_in_dedicated_module():
         "prepare_create_revision_draft_execution",
         "execute_create_revision_draft_with_approval",
         "apply_planner_revision_patch",
+        "prepare_apply_planner_revision_patch_execution",
+        "execute_apply_planner_revision_patch_with_approval",
         "expand_chapter_to_target",
         "compress_chapter_to_target",
     ]
@@ -283,6 +285,14 @@ def test_review_revision_tool_adapters_live_in_dedicated_module():
     assert REVIEW_REVISION_AGENT_TOOL_ADAPTERS["create_revision_draft"].write_policy == "approval_required_redirect"
     assert REVIEW_REVISION_AGENT_TOOL_ADAPTERS["prepare_create_revision_draft_execution"].mutability == "read"
     assert REVIEW_REVISION_AGENT_TOOL_ADAPTERS["execute_create_revision_draft_with_approval"].mutability == "write"
+    assert REVIEW_REVISION_AGENT_TOOL_ADAPTERS["apply_planner_revision_patch"].mutability == "guarded_write"
+    assert REVIEW_REVISION_AGENT_TOOL_ADAPTERS["apply_planner_revision_patch"].write_policy == (
+        "approval_required_redirect"
+    )
+    assert REVIEW_REVISION_AGENT_TOOL_ADAPTERS["prepare_apply_planner_revision_patch_execution"].mutability == "read"
+    assert REVIEW_REVISION_AGENT_TOOL_ADAPTERS["execute_apply_planner_revision_patch_with_approval"].mutability == (
+        "write"
+    )
     assert (
         REVIEW_REVISION_AGENT_TOOL_ADAPTERS["apply_planner_revision_patch"].handler.__name__
         == "_apply_planner_revision_patch"
@@ -3673,8 +3683,9 @@ def test_tool_executor_exposes_apply_planner_revision_patch_adapter_metadata():
         "tool_name": "apply_planner_revision_patch",
         "adapter_type": "static",
         "category": "revision",
-        "mutability": "write",
+        "mutability": "guarded_write",
         "handler_name": "_apply_planner_revision_patch",
+        "write_policy": "approval_required_redirect",
     }
 
 
@@ -5344,20 +5355,10 @@ async def test_tool_executor_dispatches_create_revision_draft_approval_adapter(d
 
 
 @pytest.mark.asyncio
-async def test_tool_executor_dispatches_apply_planner_revision_patch_adapter(db_session, monkeypatch):
+async def test_tool_executor_dispatches_apply_planner_revision_patch_adapter_to_approval_redirect(db_session):
     project = Project(name="Executor Revision Patch")
     db_session.add(project)
     db_session.commit()
-    calls: list[tuple[str, int, str | None]] = []
-
-    def fake_revision_patch_tool(db, project_id: str, *, chapter_index: int, revision_id: str | None):
-        calls.append((project_id, chapter_index, revision_id))
-        return {"status": "completed", "chapter_index": chapter_index, "revision_id": revision_id}
-
-    monkeypatch.setattr(
-        "app.services.writing_agent.revision_patch_tool.apply_planner_revision_patch_tool",
-        fake_revision_patch_tool,
-    )
 
     result = await execute_writing_agent_tool(
         WritingAgentToolContext(db=db_session, project_id=project.id),
@@ -5368,7 +5369,61 @@ async def test_tool_executor_dispatches_apply_planner_revision_patch_adapter(db_
     )
 
     assert result.handled is True
-    assert result.output == {"status": "completed", "chapter_index": 8, "revision_id": "rev-8"}
+    assert result.output["status"] == "blocked"
+    assert result.output["reason"] == "approval_required_before_write"
+    assert result.output["revision_id"] == "rev-8"
+    assert result.output["recommended_next_tools"] == ["prepare_apply_planner_revision_patch_execution"]
+    assert result.output["required_approval"] == {
+        "prepare_tool": "prepare_apply_planner_revision_patch_execution",
+        "execute_tool": "execute_apply_planner_revision_patch_with_approval",
+        "approval_scope": "agent_plan_approval",
+    }
+    assert result.output["side_effects"] == {"executed": [], "skipped": ["apply_planner_revision_patch"]}
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_dispatches_approved_apply_planner_revision_patch_adapter(db_session, monkeypatch):
+    from app.services.writing_agent.revision_patch_execution import prepare_apply_planner_revision_patch_execution
+
+    project = Project(name="Executor Approved Revision Patch")
+    db_session.add(project)
+    db_session.commit()
+    calls: list[tuple[str, int, str | None]] = []
+
+    def fake_revision_patch_tool(db, project_id: str, *, chapter_index: int, revision_id: str | None):
+        calls.append((project_id, chapter_index, revision_id))
+        return {"status": "completed", "chapter_index": chapter_index, "revision_id": revision_id}
+
+    monkeypatch.setattr(
+        "app.services.writing_agent.revision_patch_execution.apply_planner_revision_patch_tool",
+        fake_revision_patch_tool,
+    )
+    prepared = prepare_apply_planner_revision_patch_execution(
+        db_session,
+        project.id,
+        chapter_index=8,
+        revision_id="rev-8",
+    )
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(
+            tool_name="execute_apply_planner_revision_patch_with_approval",
+            params={
+                "chapter_index": "8",
+                "revision_id": " rev-8 ",
+                "confirm_execute": True,
+                "approval_contract_hash": prepared["agent_plan_approval_contract_hash"],
+                "approval_contract": prepared["agent_plan_approval_contract"],
+            },
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output["status"] == "completed"
+    assert result.output["chapter_index"] == 8
+    assert result.output["revision_id"] == "rev-8"
+    assert result.output["agent_plan_approval_verification"]["status"] == "ready"
     assert calls == [(project.id, 8, "rev-8")]
 
 
