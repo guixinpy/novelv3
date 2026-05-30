@@ -168,6 +168,7 @@ def _review_longform_chapter_batch_execution(
         context.project_id,
         task_id=str(tool.params.get("task_id") or "").strip() or None,
         lookback=_optional_int(tool.params.get("lookback")),
+        confirm_review=tool.params.get("confirm_review") is True,
     )
 
 

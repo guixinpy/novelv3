@@ -27,6 +27,7 @@ CONFIRM_PARAM_NAMES = (
     "confirm_enqueue",
     "confirm_execute",
     "confirm_prepare",
+    "confirm_review",
 )
 HASH_PARAM_NAMES = (
     "plan_hash",

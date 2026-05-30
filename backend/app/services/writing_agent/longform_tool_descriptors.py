@@ -179,6 +179,7 @@ LONGFORM_AGENT_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
             {
                 "task_id": {"type": "string"},
                 "lookback": {"type": "integer", "minimum": 1},
+                "confirm_review": {"type": "boolean"},
             },
             required=("task_id",),
         ),

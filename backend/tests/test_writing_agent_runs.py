@@ -3683,7 +3683,7 @@ def test_agent_run_can_review_longform_chapter_batch_execution(client, db_sessio
             "tools": [
                 {
                     "tool_name": "review_longform_chapter_batch_execution",
-                    "params": {"task_id": prepared["task_id"], "lookback": 12},
+                    "params": {"task_id": prepared["task_id"], "lookback": 12, "confirm_review": True},
                 }
             ],
         },
@@ -3723,6 +3723,44 @@ def test_agent_run_can_review_longform_chapter_batch_execution(client, db_sessio
     assert inspected_task["execution_readiness"]["status"] == "phase63_reviewed"
 
 
+def test_agent_run_review_longform_chapter_batch_requires_review_confirmation(client, db_session, monkeypatch):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1])
+    prepared = _prepare_longform_batch_execution_contract(client, project.id)
+    _execute_approved_longform_batch_chapter(client, project.id, prepared, monkeypatch)
+    calls: list[str] = []
+
+    def fake_quality(db, project_id: str, chapter_index: int):
+        calls.append("quality")
+        return {"status": "ready", "chapter_index": chapter_index, "finding_count": 0, "blocker_count": 0}
+
+    monkeypatch.setattr("app.core.chapter_quality_review.review_chapter_quality", fake_quality)
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "未确认时审查已执行的长篇批次",
+            "tools": [
+                {
+                    "tool_name": "review_longform_chapter_batch_execution",
+                    "params": {"task_id": prepared["task_id"]},
+                }
+            ],
+        },
+    )
+
+    payload = response.json()
+    output = payload["steps"][0]["output"]
+    task = db_session.query(BackgroundTask).filter(BackgroundTask.id == prepared["task_id"]).one()
+    assert response.status_code == 200
+    assert payload["status"] == "blocked"
+    assert output["status"] == "blocked"
+    assert output["reason"] == "review_confirmation_required"
+    assert output["required_confirmation"] == {"confirm_review": True, "task_id": prepared["task_id"]}
+    assert output["side_effects"]["executed"] == []
+    assert calls == []
+    assert "post_generation_review_result" not in (task.result or {})
+
+
 def test_agent_run_review_longform_chapter_batch_requires_execution_evidence(client, db_session):
     project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1])
     prepared = _prepare_longform_batch_execution_contract(client, project.id)
@@ -3734,7 +3772,7 @@ def test_agent_run_review_longform_chapter_batch_requires_execution_evidence(cli
             "tools": [
                 {
                     "tool_name": "review_longform_chapter_batch_execution",
-                    "params": {"task_id": prepared["task_id"]},
+                    "params": {"task_id": prepared["task_id"], "confirm_review": True},
                 }
             ],
         },
@@ -3795,7 +3833,7 @@ def test_agent_run_review_longform_chapter_batch_blocks_before_world_model_on_qu
             "tools": [
                 {
                     "tool_name": "review_longform_chapter_batch_execution",
-                    "params": {"task_id": prepared["task_id"]},
+                    "params": {"task_id": prepared["task_id"], "confirm_review": True},
                 }
             ],
         },
@@ -3859,7 +3897,7 @@ def test_agent_run_review_longform_chapter_batch_is_idempotent(client, db_sessio
             "tools": [
                 {
                     "tool_name": "review_longform_chapter_batch_execution",
-                    "params": {"task_id": prepared["task_id"]},
+                    "params": {"task_id": prepared["task_id"], "confirm_review": True},
                 }
             ],
         },
@@ -9254,7 +9292,12 @@ def _review_executed_longform_batch_chapter(
         f"/api/v1/projects/{project_id}/agent-runs",
         json={
             "goal": "审查已执行的长篇批次",
-            "tools": [{"tool_name": "review_longform_chapter_batch_execution", "params": {"task_id": task_id}}],
+            "tools": [
+                {
+                    "tool_name": "review_longform_chapter_batch_execution",
+                    "params": {"task_id": task_id, "confirm_review": True},
+                }
+            ],
         },
     )
     assert response.status_code == 200

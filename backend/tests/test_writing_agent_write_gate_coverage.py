@@ -152,6 +152,12 @@ def test_write_gate_coverage_marks_batch_checkpoint_writes_as_confirmation_guard
     assert prepare_tool["confirmation_fields"] == ["confirm_prepare"]
     assert prepare_tool["risk_level"] == "medium"
 
+    review_tool = tools_by_name["review_longform_chapter_batch_execution"]
+    assert review_tool["agent_plan_gate_status"] == "missing_agent_plan_gate"
+    assert review_tool["direct_confirmation_guard"] is True
+    assert review_tool["confirmation_fields"] == ["confirm_review"]
+    assert review_tool["risk_level"] == "medium"
+
 
 def test_write_gate_coverage_recommends_high_risk_targets_first():
     output = inspect_agent_write_gate_coverage(adapter_metadata_by_name=_adapter_metadata())
@@ -287,5 +293,12 @@ def _adapter_metadata() -> dict[str, dict]:
             "category": "task_queue",
             "mutability": "write",
             "handler_name": "_prepare_longform_chapter_batch_execution",
+        },
+        "review_longform_chapter_batch_execution": {
+            "tool_name": "review_longform_chapter_batch_execution",
+            "adapter_type": "static",
+            "category": "task_queue",
+            "mutability": "write",
+            "handler_name": "_review_longform_chapter_batch_execution",
         },
     }

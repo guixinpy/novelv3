@@ -23,6 +23,7 @@ def review_longform_chapter_batch_execution(
     *,
     task_id: str | None,
     lookback: int | None = None,
+    confirm_review: bool = False,
 ) -> dict[str, Any]:
     project = db.query(Project.id).filter(Project.id == project_id).first()
     if project is None:
@@ -82,6 +83,18 @@ def review_longform_chapter_batch_execution(
             "recommended_next_tools": ["inspect_longform_chapter_batch"],
             "trace": _trace(reason="post_generation_review_already_recorded"),
         }
+    if confirm_review is not True:
+        return _blocked_output(
+            task,
+            reason="review_confirmation_required",
+            required_confirmation={"confirm_review": True, "task_id": task.id},
+            skipped=[
+                "review_chapter_quality",
+                "review_chapter_continuity",
+                "analyze_chapter_world_model",
+                "background_task_result_post_generation_review",
+            ],
+        )
 
     quality = _run_quality_review(db, project_id, chapter_index)
     continuity = _run_continuity_review(db, project_id, chapter_index, lookback=actual_lookback)
@@ -278,17 +291,29 @@ def _persist_post_review(db: Session, task: BackgroundTask, post_review: dict[st
     return checkpoint
 
 
-def _blocked_output(task: BackgroundTask, *, reason: str) -> dict[str, Any]:
-    return {
+def _blocked_output(
+    task: BackgroundTask,
+    *,
+    reason: str,
+    required_confirmation: dict[str, Any] | None = None,
+    skipped: list[str] | None = None,
+) -> dict[str, Any]:
+    output = {
         "status": "blocked",
         "review_version": POST_REVIEW_VERSION,
         "project_id": task.project_id,
         "task": _task_payload(task),
         "reason": reason,
-        "side_effects": _side_effects(executed=[], skipped=["review_chapter_quality", "review_chapter_continuity"]),
+        "side_effects": _side_effects(
+            executed=[],
+            skipped=skipped or ["review_chapter_quality", "review_chapter_continuity"],
+        ),
         "recommended_next_tools": _recommended_next_tools(reason),
         "trace": _trace(reason=reason),
     }
+    if required_confirmation is not None:
+        output["required_confirmation"] = required_confirmation
+    return output
 
 
 def _recommended_next_tools(reason: str) -> list[str]:

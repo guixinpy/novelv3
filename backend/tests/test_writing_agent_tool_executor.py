@@ -370,7 +370,8 @@ async def test_tool_executor_handles_describe_agent_tools(db_session):
     assert tools["preflight_writing"]["agent_tool_surface"]["permission_level"] == "read"
     assert tools["inspect_longform_chapter_batch"]["agent_tool_surface"]["mutability"] == "read"
     assert tools["seed_continuity_anchor_proposals"]["agent_tool_surface"]["mutability"] == "write"
-    assert tools["review_longform_chapter_batch_execution"]["agent_tool_surface"]["mutability"] == "write"
+    assert tools["review_longform_chapter_batch_execution"]["agent_tool_surface"]["mutability"] == "guarded_write"
+    assert tools["review_longform_chapter_batch_execution"]["agent_tool_surface"]["permission_level"] == "confirm_required"
     assert tools["execute_longform_chapter_batch"]["agent_tool_surface"]["mutability"] == "guarded_write"
     assert tools["execute_longform_chapter_batch"]["agent_tool_surface"]["permission_level"] == "confirm_required"
 
@@ -4539,10 +4540,17 @@ async def test_tool_executor_dispatches_review_longform_chapter_batch_execution_
     project = Project(name="Executor Batch Review")
     db_session.add(project)
     db_session.commit()
-    calls: list[tuple[str, str | None, int | None]] = []
+    calls: list[tuple[str, str | None, int | None, bool]] = []
 
-    def fake_review(db, project_id: str, *, task_id: str | None, lookback: int | None):
-        calls.append((project_id, task_id, lookback))
+    def fake_review(
+        db,
+        project_id: str,
+        *,
+        task_id: str | None,
+        lookback: int | None,
+        confirm_review: bool,
+    ):
+        calls.append((project_id, task_id, lookback, confirm_review))
         return {"status": "completed", "chapter_index": 2}
 
     monkeypatch.setattr(
@@ -4554,13 +4562,13 @@ async def test_tool_executor_dispatches_review_longform_chapter_batch_execution_
         WritingAgentToolContext(db=db_session, project_id=project.id),
         WritingAgentToolRequest(
             tool_name="review_longform_chapter_batch_execution",
-            params={"task_id": "task-1", "lookback": "12"},
+            params={"task_id": "task-1", "lookback": "12", "confirm_review": True},
         ),
     )
 
     assert result.handled is True
     assert result.output == {"status": "completed", "chapter_index": 2}
-    assert calls == [(project.id, "task-1", 12)]
+    assert calls == [(project.id, "task-1", 12, True)]
 
 
 @pytest.mark.asyncio

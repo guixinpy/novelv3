@@ -1094,6 +1094,7 @@ def test_agent_tool_registry_includes_review_longform_chapter_batch_execution():
     assert descriptor.target_type == "background_task"
     assert descriptor.input_schema["properties"]["task_id"]["type"] == "string"
     assert descriptor.input_schema["properties"]["lookback"]["minimum"] == 1
+    assert descriptor.input_schema["properties"]["confirm_review"]["type"] == "boolean"
     assert set(descriptor.input_schema["required"]) == {"task_id"}
     assert "review_longform_chapter_batch_execution" in allowed_tool_names()
     assert "review_longform_chapter_batch_execution" not in non_blocking_report_tool_names()
@@ -1319,7 +1320,8 @@ def test_agent_tool_plan_uses_adapter_metadata_for_surface_classification(db_ses
     assert tools["inspect_longform_chapter_batch"]["agent_tool_surface"]["mutability"] == "read"
     assert tools["seed_continuity_anchor_proposals"]["agent_tool_surface"]["mutability"] == "write"
     assert tools["seed_continuity_anchor_proposals"]["agent_tool_surface"]["permission_level"] == "write"
-    assert tools["review_longform_chapter_batch_execution"]["agent_tool_surface"]["mutability"] == "write"
+    assert tools["review_longform_chapter_batch_execution"]["agent_tool_surface"]["mutability"] == "guarded_write"
+    assert tools["review_longform_chapter_batch_execution"]["agent_tool_surface"]["permission_level"] == "confirm_required"
 
 
 def test_agent_tool_plan_exposes_tool_policy_projection(db_session):
