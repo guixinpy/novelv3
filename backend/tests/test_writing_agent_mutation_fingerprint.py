@@ -49,6 +49,18 @@ def test_build_mutation_fingerprint_covers_world_model_bundle():
     assert result["components"]["target_id"] == "world_model_proposal_bundle:bundle-1"
 
 
+def test_build_mutation_fingerprint_covers_continuity_anchor_seed():
+    direct = build_mutation_fingerprint("project-1", "seed_continuity_anchor_proposals", {})
+    approved = build_mutation_fingerprint("project-1", "execute_seed_continuity_anchor_proposals_with_approval", {})
+
+    assert direct["status"] == "ready"
+    assert direct["mutating"] is True
+    assert direct["components"]["target_type"] == "world_model_continuity_anchor_seed"
+    assert direct["components"]["target_id"] == "world_model_continuity_anchor_seed:project-1"
+    assert approved["status"] == "ready"
+    assert approved["components"]["target_id"] == direct["components"]["target_id"]
+
+
 def test_build_mutation_fingerprint_covers_planner_revision_patch():
     first = build_mutation_fingerprint(
         "project-1",

@@ -21,6 +21,7 @@ REPORT_STOP_TOOLS = frozenset(
         "draft_world_model_proposal_resolution_decisions",
         "draft_high_value_world_proposal_resolution_decisions",
         "seed_continuity_anchor_proposals",
+        "execute_seed_continuity_anchor_proposals_with_approval",
     }
 )
 
@@ -40,6 +41,7 @@ ALLOWED_REPORT_FOLLOWUPS = frozenset(
         ("draft_world_model_proposal_resolution_decisions", "apply_world_model_proposal_resolution"),
         ("draft_high_value_world_proposal_resolution_decisions", "apply_world_model_proposal_resolution"),
         ("seed_continuity_anchor_proposals", "apply_world_model_proposal_resolution"),
+        ("execute_seed_continuity_anchor_proposals_with_approval", "apply_world_model_proposal_resolution"),
     }
 )
 
@@ -52,6 +54,7 @@ REPORT_BLOCK_MESSAGES = {
     "draft_world_model_proposal_resolution_decisions": "世界模型提案决策草案尚未确认应用，已停止后续写作工具。",
     "draft_high_value_world_proposal_resolution_decisions": "高价值世界模型提案决策草案尚未确认应用，已停止后续写作工具。",
     "seed_continuity_anchor_proposals": "稳定连续性锚点提案尚未审批，已停止后续写作工具。",
+    "execute_seed_continuity_anchor_proposals_with_approval": "稳定连续性锚点提案尚未审批处理，已停止后续写作工具。",
     "plan_chapter_revision": "修订计划未通过，已停止后续写作工具。",
     "create_revision_draft": "修订草稿未通过，已停止后续写作工具。",
     "execute_create_revision_draft_with_approval": "修订草稿未通过，已停止后续写作工具。",

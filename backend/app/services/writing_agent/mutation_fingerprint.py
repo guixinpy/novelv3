@@ -29,6 +29,8 @@ _KNOWN_MUTATING_TOOLS = {
     "compress_chapter_to_target",
     "execute_compress_chapter_to_target_with_approval",
     "apply_world_model_proposal_resolution",
+    "seed_continuity_anchor_proposals",
+    "execute_seed_continuity_anchor_proposals_with_approval",
 }
 
 
@@ -241,6 +243,19 @@ def _target_for_tool(project_id: str, tool_name: str, params: dict[str, Any]) ->
             "missing_target",
             "apply_world_model_proposal_resolution requires a proposal bundle, plan, or decision target",
         )
+
+    if tool_name in {
+        "seed_continuity_anchor_proposals",
+        "execute_seed_continuity_anchor_proposals_with_approval",
+    }:
+        project_target = _clean_string(project_id)
+        if not project_target:
+            return _blocked(
+                "world_model_continuity_anchor_seed",
+                "missing_target",
+                f"{tool_name} requires project_id",
+            )
+        return _ready("world_model_continuity_anchor_seed", f"world_model_continuity_anchor_seed:{project_target}")
 
     return _blocked(None, "unsupported_tool", f"{tool_name} is not supported by mutation fingerprinting")
 

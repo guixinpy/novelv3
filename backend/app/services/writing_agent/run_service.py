@@ -694,6 +694,13 @@ class WritingAgentRunService:
                 .first()
             )
             return row.id if row else None
+        if step.tool_name in {
+            "seed_continuity_anchor_proposals",
+            "execute_seed_continuity_anchor_proposals_with_approval",
+        }:
+            output = step.output if isinstance(step.output, dict) else {}
+            proposal_bundle_id = output.get("proposal_bundle_id")
+            return str(proposal_bundle_id) if proposal_bundle_id else None
         if step.tool_name in CHAPTER_GENERATION_TOOL_NAMES and step.chapter_index is not None:
             row = (
                 self.db.query(ChapterContent.id)

@@ -150,6 +150,28 @@ def test_write_gate_coverage_marks_chapter_revision_adjustments_as_approval_redi
         assert {item["consumer_tool"] for item in direct_tool["indirect_coverage"]} == {execute_tool_name}
 
 
+def test_write_gate_coverage_marks_continuity_anchor_seed_as_approval_redirected():
+    output = inspect_agent_write_gate_coverage(adapter_metadata_by_name=_adapter_metadata())
+    tools_by_name = _tools_by_name(output)
+
+    execute_tool = tools_by_name["execute_seed_continuity_anchor_proposals_with_approval"]
+    assert execute_tool["agent_plan_gate_status"] == "enforced"
+    assert execute_tool["gate_version"] == "phase198.continuity_anchor_seed_agent_plan_approval.v1"
+    assert execute_tool["gate_type"] == "stateless_agent_plan_approval"
+    assert execute_tool["risk_level"] == "low"
+    assert execute_tool["confirmation_fields"] == ["approval_contract_hash", "confirm_execute"]
+
+    seed_tool = tools_by_name["seed_continuity_anchor_proposals"]
+    assert seed_tool["agent_plan_gate_status"] == "indirect_agent_gate_available"
+    assert seed_tool["direct_write_policy"] == "approval_required_redirect"
+    assert seed_tool["direct_write_blocked"] is True
+    assert seed_tool["risk_level"] == "low"
+    assert seed_tool["recommended_action"] == "route_direct_calls_to_approval_executor"
+    assert {item["consumer_tool"] for item in seed_tool["indirect_coverage"]} == {
+        "execute_seed_continuity_anchor_proposals_with_approval"
+    }
+
+
 def test_write_gate_coverage_marks_generate_chapter_direct_calls_as_approval_redirected():
     output = inspect_agent_write_gate_coverage(adapter_metadata_by_name=_adapter_metadata())
     generate_tool = _tools_by_name(output)["generate_chapter"]
@@ -460,6 +482,21 @@ def _adapter_metadata() -> dict[str, dict]:
             "category": "revision",
             "mutability": "write",
             "handler_name": "_execute_compress_chapter_to_target_with_approval",
+        },
+        "seed_continuity_anchor_proposals": {
+            "tool_name": "seed_continuity_anchor_proposals",
+            "adapter_type": "static",
+            "category": "maintenance",
+            "mutability": "guarded_write",
+            "handler_name": "_seed_continuity_anchor_proposals",
+            "write_policy": "approval_required_redirect",
+        },
+        "execute_seed_continuity_anchor_proposals_with_approval": {
+            "tool_name": "execute_seed_continuity_anchor_proposals_with_approval",
+            "adapter_type": "static",
+            "category": "maintenance",
+            "mutability": "write",
+            "handler_name": "_execute_seed_continuity_anchor_proposals_with_approval",
         },
         "apply_world_model_proposal_resolution": {
             "tool_name": "apply_world_model_proposal_resolution",

@@ -34,6 +34,13 @@ def test_agent_tool_policy_blocks_report_tools_until_allowed_followup():
         )
         is True
     )
+    assert (
+        allowed_report_followup(
+            "execute_seed_continuity_anchor_proposals_with_approval",
+            "apply_world_model_proposal_resolution",
+        )
+        is True
+    )
 
 
 def test_agent_tool_policy_allows_terminal_step_and_non_report_tools():
@@ -73,6 +80,12 @@ def test_agent_tool_policy_projects_report_policy_for_planner():
         "stop_condition": "non_terminal_step_and_should_generate_next_chapter_false_without_allowed_followup",
         "allowed_followups": ["apply_world_model_proposal_resolution"],
         "block_message": "稳定连续性锚点提案尚未审批，已停止后续写作工具。",
+    }
+    assert report_policy_for_tool("execute_seed_continuity_anchor_proposals_with_approval") == {
+        "stop_check_required": True,
+        "stop_condition": "non_terminal_step_and_should_generate_next_chapter_false_without_allowed_followup",
+        "allowed_followups": ["apply_world_model_proposal_resolution"],
+        "block_message": "稳定连续性锚点提案尚未审批处理，已停止后续写作工具。",
     }
     assert report_policy_for_tool("generate_chapter") == {
         "stop_check_required": False,

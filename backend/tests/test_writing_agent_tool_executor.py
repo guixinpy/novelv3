@@ -335,6 +335,8 @@ def test_world_model_tool_adapters_live_in_dedicated_module():
         "draft_world_model_proposal_resolution_decisions",
         "draft_high_value_world_proposal_resolution_decisions",
         "seed_continuity_anchor_proposals",
+        "prepare_seed_continuity_anchor_proposals_execution",
+        "execute_seed_continuity_anchor_proposals_with_approval",
     ]
     assert WORLD_MODEL_AGENT_TOOL_ADAPTERS["import_setup_world_model"].mutability == "guarded_write"
     assert WORLD_MODEL_AGENT_TOOL_ADAPTERS["import_setup_world_model"].write_policy == "approval_required_redirect"
@@ -344,6 +346,14 @@ def test_world_model_tool_adapters_live_in_dedicated_module():
     assert WORLD_MODEL_AGENT_TOOL_ADAPTERS["execute_analyze_chapter_world_model_with_approval"].mutability == "write"
     assert WORLD_MODEL_AGENT_TOOL_ADAPTERS["inspect_agent_world_model_route"].mutability == "read"
     assert WORLD_MODEL_AGENT_TOOL_ADAPTERS["apply_world_model_proposal_resolution"].mutability == "write"
+    assert WORLD_MODEL_AGENT_TOOL_ADAPTERS["seed_continuity_anchor_proposals"].mutability == "guarded_write"
+    assert WORLD_MODEL_AGENT_TOOL_ADAPTERS["seed_continuity_anchor_proposals"].write_policy == (
+        "approval_required_redirect"
+    )
+    assert WORLD_MODEL_AGENT_TOOL_ADAPTERS["prepare_seed_continuity_anchor_proposals_execution"].mutability == "read"
+    assert WORLD_MODEL_AGENT_TOOL_ADAPTERS["execute_seed_continuity_anchor_proposals_with_approval"].mutability == (
+        "write"
+    )
     assert (
         WORLD_MODEL_AGENT_TOOL_ADAPTERS["apply_world_model_proposal_resolution"].handler.__name__
         == "_apply_world_model_proposal_resolution"
@@ -436,7 +446,8 @@ async def test_tool_executor_handles_describe_agent_tools(db_session):
     assert tools["preflight_writing"]["agent_tool_surface"]["mutability"] == "read"
     assert tools["preflight_writing"]["agent_tool_surface"]["permission_level"] == "read"
     assert tools["inspect_longform_chapter_batch"]["agent_tool_surface"]["mutability"] == "read"
-    assert tools["seed_continuity_anchor_proposals"]["agent_tool_surface"]["mutability"] == "write"
+    assert tools["seed_continuity_anchor_proposals"]["agent_tool_surface"]["mutability"] == "guarded_write"
+    assert tools["seed_continuity_anchor_proposals"]["agent_tool_surface"]["permission_level"] == "confirm_required"
     assert tools["review_longform_chapter_batch_execution"]["agent_tool_surface"]["mutability"] == "guarded_write"
     assert tools["review_longform_chapter_batch_execution"]["agent_tool_surface"]["permission_level"] == "confirm_required"
     assert tools["execute_longform_chapter_batch"]["agent_tool_surface"]["mutability"] == "guarded_write"
@@ -3157,6 +3168,8 @@ def test_tool_executor_static_adapter_names_are_report_or_agent_native_tools():
         "record_agent_knowledge_base_candidate",
         "import_setup_world_model",
         "seed_continuity_anchor_proposals",
+        "prepare_seed_continuity_anchor_proposals_execution",
+        "execute_seed_continuity_anchor_proposals_with_approval",
         "analyze_chapter_world_model",
         "expand_outline_window",
         "execute_longform_chapter_batch_preflight",
@@ -3664,8 +3677,9 @@ def test_tool_executor_exposes_seed_continuity_anchor_proposals_adapter_metadata
         "tool_name": "seed_continuity_anchor_proposals",
         "adapter_type": "static",
         "category": "maintenance",
-        "mutability": "write",
+        "mutability": "guarded_write",
         "handler_name": "_seed_continuity_anchor_proposals",
+        "write_policy": "approval_required_redirect",
     }
 
 
@@ -3850,7 +3864,8 @@ async def test_tool_executor_handles_inspect_agent_tool_contracts(db_session):
     assert "missing_agent_native_adapter" not in tools_by_name["import_setup_world_model"]["gap_codes"]
     assert "output_schema_too_generic" not in tools_by_name["import_setup_world_model"]["gap_codes"]
     assert tools_by_name["seed_continuity_anchor_proposals"]["adapter_type"] == "static"
-    assert tools_by_name["seed_continuity_anchor_proposals"]["mutability"] == "write"
+    assert tools_by_name["seed_continuity_anchor_proposals"]["mutability"] == "guarded_write"
+    assert tools_by_name["seed_continuity_anchor_proposals"]["permission_level"] == "confirm_required"
     assert tools_by_name["seed_continuity_anchor_proposals"]["report_policy"] == {
         "stop_check_required": True,
         "stop_condition": "non_terminal_step_and_should_generate_next_chapter_false_without_allowed_followup",
@@ -5652,7 +5667,10 @@ async def test_tool_executor_dispatches_import_setup_world_model_approval_adapte
 
 
 @pytest.mark.asyncio
-async def test_tool_executor_dispatches_seed_continuity_anchor_proposals_adapter(db_session, monkeypatch):
+async def test_tool_executor_dispatches_seed_continuity_anchor_proposals_adapter_to_approval_redirect(
+    db_session,
+    monkeypatch,
+):
     project = Project(name="Executor Continuity Anchor Seed")
     db_session.add(project)
     db_session.commit()
@@ -5692,8 +5710,77 @@ async def test_tool_executor_dispatches_seed_continuity_anchor_proposals_adapter
     assert result.handled is True
     assert result.output is not None
     assert result.output["status"] == "blocked"
+    assert result.output["reason"] == "approval_required_before_write"
+    assert result.output["target_type"] == "world_model_continuity_anchor_seed"
+    assert result.output["recommended_next_tools"] == ["prepare_seed_continuity_anchor_proposals_execution"]
+    assert result.output["required_approval"] == {
+        "prepare_tool": "prepare_seed_continuity_anchor_proposals_execution",
+        "execute_tool": "execute_seed_continuity_anchor_proposals_with_approval",
+        "approval_scope": "agent_plan_approval",
+    }
+    assert result.output["side_effects"] == {"executed": [], "skipped": ["seed_continuity_anchor_proposals"]}
+    assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_dispatches_seed_continuity_anchor_proposals_approval_executor(
+    db_session,
+    monkeypatch,
+):
+    from app.services.writing_agent.continuity_anchor_seed_execution import (
+        prepare_seed_continuity_anchor_proposals_execution,
+    )
+
+    project = Project(name="Executor Approved Continuity Anchor Seed")
+    db_session.add(project)
+    db_session.commit()
+    calls: list[str] = []
+
+    def fake_seed_tool(db, project_id: str):
+        calls.append(project_id)
+        return {
+            "status": "blocked",
+            "project_id": project_id,
+            "profile_version": 1,
+            "proposal_bundle_id": "bundle-1",
+            "created_item_count": 2,
+            "created_items": [
+                {
+                    "proposal_item_id": "item-1",
+                    "claim_id": "claim-1",
+                    "subject_ref": "林深",
+                    "predicate": "father_name",
+                }
+            ],
+            "pending_anchor_count": 2,
+            "should_generate_next_chapter": False,
+            "recommended_actions": ["apply_world_model_proposal_resolution"],
+        }
+
+    monkeypatch.setattr(
+        "app.services.writing_agent.continuity_anchor_seed_execution.seed_continuity_anchor_proposals_tool",
+        fake_seed_tool,
+    )
+    prepared = prepare_seed_continuity_anchor_proposals_execution(db_session, project.id)
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(
+            tool_name="execute_seed_continuity_anchor_proposals_with_approval",
+            params={
+                "confirm_execute": True,
+                "approval_contract_hash": prepared["agent_plan_approval_contract_hash"],
+                "approval_contract": prepared["agent_plan_approval_contract"],
+            },
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "blocked"
     assert result.output["created_item_count"] == 2
     assert result.output["recommended_actions"] == ["apply_world_model_proposal_resolution"]
+    assert result.output["agent_plan_approval_verification"]["status"] == "ready"
     assert calls == [project.id]
 
 

@@ -198,9 +198,43 @@ def _seed_continuity_anchor_proposals(
     context: WritingAgentToolContext,
     tool: WritingAgentToolRequest,
 ) -> dict[str, Any]:
-    from app.services.writing_agent.continuity_anchor_seed_tool import seed_continuity_anchor_proposals_tool
+    return approval_required_redirect(
+        project_id=context.project_id,
+        tool_name="seed_continuity_anchor_proposals",
+        target_type="world_model_continuity_anchor_seed",
+        prepare_tool="prepare_seed_continuity_anchor_proposals_execution",
+        execute_tool="execute_seed_continuity_anchor_proposals_with_approval",
+    )
 
-    return seed_continuity_anchor_proposals_tool(context.db, context.project_id)
+
+def _prepare_seed_continuity_anchor_proposals_execution(
+    context: WritingAgentToolContext,
+    tool: WritingAgentToolRequest,
+) -> dict[str, Any]:
+    from app.services.writing_agent.continuity_anchor_seed_execution import (
+        prepare_seed_continuity_anchor_proposals_execution,
+    )
+
+    return prepare_seed_continuity_anchor_proposals_execution(context.db, context.project_id)
+
+
+def _execute_seed_continuity_anchor_proposals_with_approval(
+    context: WritingAgentToolContext,
+    tool: WritingAgentToolRequest,
+) -> dict[str, Any]:
+    from app.services.writing_agent.continuity_anchor_seed_execution import (
+        execute_seed_continuity_anchor_proposals_with_approval,
+    )
+
+    approval_contract = tool.params.get("approval_contract")
+    return execute_seed_continuity_anchor_proposals_with_approval(
+        context.db,
+        context.project_id,
+        confirm_execute=tool.params.get("confirm_execute") is True,
+        approval_contract_hash=str(tool.params.get("approval_contract_hash") or "").strip() or None,
+        approval_contract=approval_contract if isinstance(approval_contract, dict) else None,
+        approval_tool_metadata_provider=_world_model_approval_tool_metadata_by_name,
+    )
 
 
 WORLD_MODEL_AGENT_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
@@ -287,6 +321,19 @@ WORLD_MODEL_AGENT_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
     "seed_continuity_anchor_proposals": WritingAgentToolAdapter(
         "seed_continuity_anchor_proposals",
         _seed_continuity_anchor_proposals,
+        category="maintenance",
+        mutability="guarded_write",
+        write_policy="approval_required_redirect",
+    ),
+    "prepare_seed_continuity_anchor_proposals_execution": WritingAgentToolAdapter(
+        "prepare_seed_continuity_anchor_proposals_execution",
+        _prepare_seed_continuity_anchor_proposals_execution,
+        category="maintenance",
+        mutability="read",
+    ),
+    "execute_seed_continuity_anchor_proposals_with_approval": WritingAgentToolAdapter(
+        "execute_seed_continuity_anchor_proposals_with_approval",
+        _execute_seed_continuity_anchor_proposals_with_approval,
         category="maintenance",
         mutability="write",
     ),

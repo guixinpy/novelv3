@@ -259,6 +259,8 @@ def test_world_model_tool_descriptors_live_in_dedicated_module():
         "draft_world_model_proposal_resolution_decisions",
         "draft_high_value_world_proposal_resolution_decisions",
         "seed_continuity_anchor_proposals",
+        "prepare_seed_continuity_anchor_proposals_execution",
+        "execute_seed_continuity_anchor_proposals_with_approval",
     ]
     assert {descriptor.category for descriptor in WORLD_MODEL_AGENT_TOOL_DESCRIPTORS} == {
         "athena_world_model",
@@ -269,6 +271,16 @@ def test_world_model_tool_descriptors_live_in_dedicated_module():
     assert target_type_for_tool("apply_world_model_proposal_resolution") == "world_model"
     assert target_type_for_tool("execute_import_setup_world_model_with_approval") == "world_model"
     assert target_type_for_tool("execute_analyze_chapter_world_model_with_approval") == "world_model"
+    assert target_type_for_tool("seed_continuity_anchor_proposals") == "world_model_continuity_anchor_seed"
+    assert (
+        target_type_for_tool("prepare_seed_continuity_anchor_proposals_execution")
+        == "world_model_continuity_anchor_seed_approval"
+    )
+    assert (
+        target_type_for_tool("execute_seed_continuity_anchor_proposals_with_approval")
+        == "world_model_continuity_anchor_seed"
+    )
+    assert "prepare_seed_continuity_anchor_proposals_execution" in non_blocking_report_tool_names()
 
 
 def test_knowledge_base_tool_descriptors_live_in_dedicated_module():
@@ -1339,7 +1351,11 @@ def test_agent_tool_plan_uses_adapter_metadata_for_surface_classification(db_ses
         adapter_metadata_by_name={
             "verify_agent_plan_approval_contract": {"mutability": "read", "adapter_type": "static"},
             "inspect_longform_chapter_batch": {"mutability": "read", "adapter_type": "static"},
-            "seed_continuity_anchor_proposals": {"mutability": "write", "adapter_type": "static"},
+            "seed_continuity_anchor_proposals": {
+                "mutability": "guarded_write",
+                "adapter_type": "static",
+                "write_policy": "approval_required_redirect",
+            },
             "review_longform_chapter_batch_execution": {"mutability": "write", "adapter_type": "static"},
         },
     )
@@ -1348,8 +1364,8 @@ def test_agent_tool_plan_uses_adapter_metadata_for_surface_classification(db_ses
     assert tools["verify_agent_plan_approval_contract"]["agent_tool_surface"]["mutability"] == "read"
     assert tools["verify_agent_plan_approval_contract"]["agent_tool_surface"]["requires_confirmation"] is False
     assert tools["inspect_longform_chapter_batch"]["agent_tool_surface"]["mutability"] == "read"
-    assert tools["seed_continuity_anchor_proposals"]["agent_tool_surface"]["mutability"] == "write"
-    assert tools["seed_continuity_anchor_proposals"]["agent_tool_surface"]["permission_level"] == "write"
+    assert tools["seed_continuity_anchor_proposals"]["agent_tool_surface"]["mutability"] == "guarded_write"
+    assert tools["seed_continuity_anchor_proposals"]["agent_tool_surface"]["permission_level"] == "confirm_required"
     assert tools["review_longform_chapter_batch_execution"]["agent_tool_surface"]["mutability"] == "guarded_write"
     assert tools["review_longform_chapter_batch_execution"]["agent_tool_surface"]["permission_level"] == "confirm_required"
 

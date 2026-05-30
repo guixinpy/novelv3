@@ -5723,7 +5723,7 @@ def test_agent_seed_continuity_anchor_proposals_creates_missing_anchor_items(cli
         f"/api/v1/projects/{project.id}/agent-runs",
         json={
             "goal": "补齐稳定连续性锚点提案",
-            "tools": [{"tool_name": "seed_continuity_anchor_proposals"}],
+            "tools": [_approved_seed_continuity_anchor_proposals_tool(db_session, project.id)],
         },
     )
 
@@ -5753,7 +5753,7 @@ def test_agent_apply_world_model_proposal_resolution_allows_confirmed_continuity
     import_setup_to_world_model(db_session, project.id)
     client.post(
         f"/api/v1/projects/{project.id}/agent-runs",
-        json={"goal": "seed", "tools": [{"tool_name": "seed_continuity_anchor_proposals"}]},
+        json={"goal": "seed", "tools": [_approved_seed_continuity_anchor_proposals_tool(db_session, project.id)]},
     )
     item = (
         db_session.query(WorldProposalItem)
@@ -9079,6 +9079,22 @@ def _approved_analyze_chapter_world_model_tool(db_session, project_id: str, *, c
         "tool_name": "execute_analyze_chapter_world_model_with_approval",
         "params": {
             "chapter_index": chapter_index,
+            "confirm_execute": True,
+            "approval_contract_hash": prepared["agent_plan_approval_contract_hash"],
+            "approval_contract": prepared["agent_plan_approval_contract"],
+        },
+    }
+
+
+def _approved_seed_continuity_anchor_proposals_tool(db_session, project_id: str) -> dict:
+    from app.services.writing_agent.continuity_anchor_seed_execution import (
+        prepare_seed_continuity_anchor_proposals_execution,
+    )
+
+    prepared = prepare_seed_continuity_anchor_proposals_execution(db_session, project_id)
+    return {
+        "tool_name": "execute_seed_continuity_anchor_proposals_with_approval",
+        "params": {
             "confirm_execute": True,
             "approval_contract_hash": prepared["agent_plan_approval_contract_hash"],
             "approval_contract": prepared["agent_plan_approval_contract"],
