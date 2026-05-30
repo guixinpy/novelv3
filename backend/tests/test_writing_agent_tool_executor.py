@@ -283,6 +283,8 @@ def test_world_model_tool_adapters_live_in_dedicated_module():
 
     assert names == [
         "import_setup_world_model",
+        "prepare_import_setup_world_model_execution",
+        "execute_import_setup_world_model_with_approval",
         "analyze_chapter_world_model",
         "review_world_model_proposals",
         "inspect_agent_world_model_route",
@@ -293,6 +295,9 @@ def test_world_model_tool_adapters_live_in_dedicated_module():
         "draft_high_value_world_proposal_resolution_decisions",
         "seed_continuity_anchor_proposals",
     ]
+    assert WORLD_MODEL_AGENT_TOOL_ADAPTERS["import_setup_world_model"].mutability == "guarded_write"
+    assert WORLD_MODEL_AGENT_TOOL_ADAPTERS["import_setup_world_model"].write_policy == "approval_required_redirect"
+    assert WORLD_MODEL_AGENT_TOOL_ADAPTERS["execute_import_setup_world_model_with_approval"].mutability == "write"
     assert WORLD_MODEL_AGENT_TOOL_ADAPTERS["inspect_agent_world_model_route"].mutability == "read"
     assert WORLD_MODEL_AGENT_TOOL_ADAPTERS["apply_world_model_proposal_resolution"].mutability == "write"
     assert (
@@ -3532,9 +3537,43 @@ def test_tool_executor_exposes_import_setup_world_model_adapter_metadata():
         "tool_name": "import_setup_world_model",
         "adapter_type": "static",
         "category": "athena_world_model",
-        "mutability": "write",
+        "mutability": "guarded_write",
         "handler_name": "_import_setup_world_model",
+        "write_policy": "approval_required_redirect",
     }
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_redirects_direct_import_setup_world_model_to_approval(db_session, monkeypatch):
+    project = Project(name="Direct Setup World Model Redirect")
+    db_session.add(project)
+    db_session.commit()
+    calls: list[str] = []
+
+    def fake_import_tool(db, project_id: str):
+        calls.append(project_id)
+        return {"status": "completed"}
+
+    monkeypatch.setattr(
+        "app.services.writing_agent.setup_world_model_import_tool.import_setup_world_model_tool",
+        fake_import_tool,
+    )
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(tool_name="import_setup_world_model", params={}),
+    )
+
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "blocked"
+    assert result.output["reason"] == "approval_required_before_write"
+    assert result.output["target_type"] == "world_model"
+    assert result.output["recommended_next_tools"] == ["prepare_import_setup_world_model_execution"]
+    assert result.output["required_approval"]["execute_tool"] == "execute_import_setup_world_model_with_approval"
+    assert result.output["side_effects"]["executed"] == []
+    assert result.output["side_effects"]["skipped"] == ["import_setup_world_model"]
+    assert calls == []
 
 
 def test_tool_executor_exposes_seed_continuity_anchor_proposals_adapter_metadata():
@@ -3719,7 +3758,8 @@ async def test_tool_executor_handles_inspect_agent_tool_contracts(db_session):
     assert "missing_agent_native_adapter" not in tools_by_name["expand_outline_window"]["gap_codes"]
     assert "output_schema_too_generic" not in tools_by_name["expand_outline_window"]["gap_codes"]
     assert tools_by_name["import_setup_world_model"]["adapter_type"] == "static"
-    assert tools_by_name["import_setup_world_model"]["mutability"] == "write"
+    assert tools_by_name["import_setup_world_model"]["mutability"] == "guarded_write"
+    assert tools_by_name["import_setup_world_model"]["permission_level"] == "confirm_required"
     assert "missing_agent_native_adapter" not in tools_by_name["import_setup_world_model"]["gap_codes"]
     assert "output_schema_too_generic" not in tools_by_name["import_setup_world_model"]["gap_codes"]
     assert tools_by_name["seed_continuity_anchor_proposals"]["adapter_type"] == "static"
@@ -5282,10 +5322,14 @@ async def test_tool_executor_dispatches_expand_outline_window_adapter(db_session
 
 
 @pytest.mark.asyncio
-async def test_tool_executor_dispatches_import_setup_world_model_adapter(db_session, monkeypatch):
+async def test_tool_executor_dispatches_import_setup_world_model_approval_adapter(db_session, monkeypatch):
     project = Project(name="Executor Setup Import")
     db_session.add(project)
     db_session.commit()
+    from app.services.writing_agent.setup_world_model_import_execution import (
+        prepare_import_setup_world_model_execution,
+    )
+
     calls: list[str] = []
 
     def fake_import_tool(db, project_id: str):
@@ -5307,19 +5351,28 @@ async def test_tool_executor_dispatches_import_setup_world_model_adapter(db_sess
         }
 
     monkeypatch.setattr(
-        "app.services.writing_agent.setup_world_model_import_tool.import_setup_world_model_tool",
+        "app.services.writing_agent.setup_world_model_import_execution.import_setup_world_model_tool",
         fake_import_tool,
     )
+    prepared = prepare_import_setup_world_model_execution(db_session, project.id)
 
     result = await execute_writing_agent_tool(
         WritingAgentToolContext(db=db_session, project_id=project.id),
-        WritingAgentToolRequest(tool_name="import_setup_world_model", params={}),
+        WritingAgentToolRequest(
+            tool_name="execute_import_setup_world_model_with_approval",
+            params={
+                "confirm_execute": True,
+                "approval_contract_hash": prepared["agent_plan_approval_contract_hash"],
+                "approval_contract": prepared["agent_plan_approval_contract"],
+            },
+        ),
     )
 
     assert result.handled is True
     assert result.output is not None
     assert result.output["status"] == "completed"
     assert result.output["profile_version"] == 1
+    assert result.output["agent_plan_approval_verification"]["status"] == "ready"
     assert result.output["recommended_next_tools"] == ["preflight_writing", "inspect_agent_world_model_route"]
     assert calls == [project.id]
 

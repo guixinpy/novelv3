@@ -28,6 +28,11 @@ AGENT_PLAN_GATED_TOOLS = {
         "gate_type": "stateless_agent_plan_approval",
         "covered_tools": ["generate_chapter"],
     },
+    "execute_import_setup_world_model_with_approval": {
+        "gate_version": "phase191.setup_world_model_import_agent_plan_approval.v1",
+        "gate_type": "stateless_agent_plan_approval",
+        "covered_tools": ["import_setup_world_model"],
+    },
     "execute_record_agent_knowledge_base_candidate_with_approval": {
         "gate_version": "phase189.knowledge_base_candidate_agent_plan_approval.v1",
         "gate_type": "stateless_agent_plan_approval",

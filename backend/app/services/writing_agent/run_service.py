@@ -676,6 +676,14 @@ class WritingAgentRunService:
                 .first()
             )
             return row.id if row else None
+        if step.tool_name in {"import_setup_world_model", "execute_import_setup_world_model_with_approval"}:
+            row = (
+                self.db.query(ProjectProfileVersion.id)
+                .filter(ProjectProfileVersion.project_id == step.project_id)
+                .order_by(ProjectProfileVersion.version.desc(), ProjectProfileVersion.created_at.desc())
+                .first()
+            )
+            return row.id if row else None
         if step.tool_name in CHAPTER_GENERATION_TOOL_NAMES and step.chapter_index is not None:
             row = (
                 self.db.query(ChapterContent.id)

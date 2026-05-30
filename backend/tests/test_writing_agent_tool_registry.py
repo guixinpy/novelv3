@@ -222,6 +222,8 @@ def test_world_model_tool_descriptors_live_in_dedicated_module():
 
     assert names == [
         "import_setup_world_model",
+        "prepare_import_setup_world_model_execution",
+        "execute_import_setup_world_model_with_approval",
         "analyze_chapter_world_model",
         "review_world_model_proposals",
         "inspect_agent_world_model_route",
@@ -239,6 +241,7 @@ def test_world_model_tool_descriptors_live_in_dedicated_module():
     assert all(descriptor.internal for descriptor in WORLD_MODEL_AGENT_TOOL_DESCRIPTORS)
     assert target_type_for_tool("inspect_agent_world_model_route") == "agent_world_model_route"
     assert target_type_for_tool("apply_world_model_proposal_resolution") == "world_model"
+    assert target_type_for_tool("execute_import_setup_world_model_with_approval") == "world_model"
 
 
 def test_knowledge_base_tool_descriptors_live_in_dedicated_module():

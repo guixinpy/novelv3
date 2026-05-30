@@ -4588,18 +4588,33 @@ def test_agent_preflight_missing_setup_recovery_requests_setup_generation(client
 
 def test_agent_import_setup_world_model_creates_profile(client, db_session):
     project = _seed_longform_project(db_session, outline_chapters=[1], generated_chapters=[])
+    from app.services.writing_agent.setup_world_model_import_execution import (
+        prepare_import_setup_world_model_execution,
+    )
+
+    prepared = prepare_import_setup_world_model_execution(db_session, project.id)
 
     response = client.post(
         f"/api/v1/projects/{project.id}/agent-runs",
         json={
             "goal": "导入世界模型",
-            "tools": [{"tool_name": "import_setup_world_model"}],
+            "tools": [
+                {
+                    "tool_name": "execute_import_setup_world_model_with_approval",
+                    "params": {
+                        "confirm_execute": True,
+                        "approval_contract_hash": prepared["agent_plan_approval_contract_hash"],
+                        "approval_contract": prepared["agent_plan_approval_contract"],
+                    },
+                }
+            ],
         },
     )
 
     output = response.json()["steps"][0]["output"]
     assert response.status_code == 200
     assert response.json()["status"] == "success"
+    assert response.json()["steps"][0]["tool_name"] == "execute_import_setup_world_model_with_approval"
     assert output["status"] == "completed"
     assert output["profile_version"] == 1
     assert db_session.query(ProjectProfileVersion).filter_by(project_id=project.id).count() == 1

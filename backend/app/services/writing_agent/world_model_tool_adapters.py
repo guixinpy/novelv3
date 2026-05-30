@@ -3,13 +3,49 @@ from __future__ import annotations
 from typing import Any
 
 from app.schemas.writing_agent import WritingAgentToolRequest
+from app.services.writing_agent.approval_tool_metadata import build_approval_tool_metadata_by_name
+from app.services.writing_agent.direct_generation_write_guard import approval_required_redirect
 from app.services.writing_agent.tool_adapter_types import WritingAgentToolAdapter, WritingAgentToolContext
 
 
 def _import_setup_world_model(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
-    from app.services.writing_agent.setup_world_model_import_tool import import_setup_world_model_tool
+    return approval_required_redirect(
+        project_id=context.project_id,
+        tool_name="import_setup_world_model",
+        target_type="world_model",
+        prepare_tool="prepare_import_setup_world_model_execution",
+        execute_tool="execute_import_setup_world_model_with_approval",
+    )
 
-    return import_setup_world_model_tool(context.db, context.project_id)
+
+def _prepare_import_setup_world_model_execution(
+    context: WritingAgentToolContext,
+    tool: WritingAgentToolRequest,
+) -> dict[str, Any]:
+    from app.services.writing_agent.setup_world_model_import_execution import (
+        prepare_import_setup_world_model_execution,
+    )
+
+    return prepare_import_setup_world_model_execution(context.db, context.project_id)
+
+
+def _execute_import_setup_world_model_with_approval(
+    context: WritingAgentToolContext,
+    tool: WritingAgentToolRequest,
+) -> dict[str, Any]:
+    from app.services.writing_agent.setup_world_model_import_execution import (
+        execute_import_setup_world_model_with_approval,
+    )
+
+    approval_contract = tool.params.get("approval_contract")
+    return execute_import_setup_world_model_with_approval(
+        context.db,
+        context.project_id,
+        confirm_execute=tool.params.get("confirm_execute") is True,
+        approval_contract_hash=str(tool.params.get("approval_contract_hash") or "").strip() or None,
+        approval_contract=approval_contract if isinstance(approval_contract, dict) else None,
+        approval_tool_metadata_provider=_world_model_approval_tool_metadata_by_name,
+    )
 
 
 def _analyze_chapter_world_model(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
@@ -134,6 +170,19 @@ WORLD_MODEL_AGENT_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
         "import_setup_world_model",
         _import_setup_world_model,
         category="athena_world_model",
+        mutability="guarded_write",
+        write_policy="approval_required_redirect",
+    ),
+    "prepare_import_setup_world_model_execution": WritingAgentToolAdapter(
+        "prepare_import_setup_world_model_execution",
+        _prepare_import_setup_world_model_execution,
+        category="athena_world_model",
+        mutability="read",
+    ),
+    "execute_import_setup_world_model_with_approval": WritingAgentToolAdapter(
+        "execute_import_setup_world_model_with_approval",
+        _execute_import_setup_world_model_with_approval,
+        category="athena_world_model",
         mutability="write",
     ),
     "analyze_chapter_world_model": WritingAgentToolAdapter(
@@ -191,6 +240,16 @@ WORLD_MODEL_AGENT_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
         mutability="write",
     ),
 }
+
+
+def _world_model_approval_tool_metadata_by_name(plan: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
+    return build_approval_tool_metadata_by_name(
+        plan,
+        adapter_metadata_by_name={
+            name: adapter.to_metadata()
+            for name, adapter in WORLD_MODEL_AGENT_TOOL_ADAPTERS.items()
+        },
+    )
 
 
 def _optional_int(value: object) -> int | None:

@@ -42,6 +42,26 @@ def test_write_gate_coverage_marks_pre_chapter_generation_approval_executors_as_
         assert execute_tool["confirmation_fields"] == ["approval_contract_hash", "confirm_execute"]
 
 
+def test_write_gate_coverage_marks_import_setup_world_model_direct_calls_as_approval_redirected():
+    output = inspect_agent_write_gate_coverage(adapter_metadata_by_name=_adapter_metadata())
+    tools_by_name = _tools_by_name(output)
+
+    execute_tool = tools_by_name["execute_import_setup_world_model_with_approval"]
+    assert execute_tool["agent_plan_gate_status"] == "enforced"
+    assert execute_tool["gate_version"] == "phase191.setup_world_model_import_agent_plan_approval.v1"
+    assert execute_tool["risk_level"] == "low"
+
+    import_tool = tools_by_name["import_setup_world_model"]
+    assert import_tool["agent_plan_gate_status"] == "indirect_agent_gate_available"
+    assert import_tool["direct_write_policy"] == "approval_required_redirect"
+    assert import_tool["direct_write_blocked"] is True
+    assert import_tool["risk_level"] == "low"
+    assert {item["consumer_tool"] for item in import_tool["indirect_coverage"]} == {
+        "execute_import_setup_world_model_with_approval"
+    }
+    assert import_tool["recommended_action"] == "route_direct_calls_to_approval_executor"
+
+
 def test_write_gate_coverage_marks_generate_chapter_direct_calls_as_approval_redirected():
     output = inspect_agent_write_gate_coverage(adapter_metadata_by_name=_adapter_metadata())
     generate_tool = _tools_by_name(output)["generate_chapter"]
@@ -262,6 +282,21 @@ def _adapter_metadata() -> dict[str, dict]:
             "category": "generation",
             "mutability": "write",
             "handler_name": "_execute_generate_outline_with_approval",
+        },
+        "import_setup_world_model": {
+            "tool_name": "import_setup_world_model",
+            "adapter_type": "static",
+            "category": "athena_world_model",
+            "mutability": "guarded_write",
+            "handler_name": "_import_setup_world_model",
+            "write_policy": "approval_required_redirect",
+        },
+        "execute_import_setup_world_model_with_approval": {
+            "tool_name": "execute_import_setup_world_model_with_approval",
+            "adapter_type": "static",
+            "category": "athena_world_model",
+            "mutability": "write",
+            "handler_name": "_execute_import_setup_world_model_with_approval",
         },
         "apply_world_model_proposal_resolution": {
             "tool_name": "apply_world_model_proposal_resolution",

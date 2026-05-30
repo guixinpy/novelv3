@@ -16,6 +16,7 @@ _KNOWN_MUTATING_TOOLS = {
     "generate_outline",
     "generate_chapter",
     "generate_chapter_range",
+    "import_setup_world_model",
     "record_agent_knowledge_base_candidate",
     "repair_longform_maintenance",
     "apply_planner_revision_patch",
@@ -135,6 +136,12 @@ def _target_for_tool(project_id: str, tool_name: str, params: dict[str, Any]) ->
         if start is None or end is None or end < start:
             return _blocked("chapter_range", "missing_target", "generate_chapter_range requires a valid start/end range")
         return _ready("chapter_range", f"chapters:{start}-{end}")
+
+    if tool_name == "import_setup_world_model":
+        project_target = _clean_string(project_id)
+        if not project_target:
+            return _blocked("world_model", "missing_target", "import_setup_world_model requires project_id")
+        return _ready("world_model", f"world_model:{project_target}")
 
     if tool_name == "record_agent_knowledge_base_candidate":
         candidate_target = _knowledge_base_candidate_target_id(params)
