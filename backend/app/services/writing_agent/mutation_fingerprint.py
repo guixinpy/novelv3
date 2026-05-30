@@ -33,6 +33,8 @@ _KNOWN_MUTATING_TOOLS = {
     "execute_seed_continuity_anchor_proposals_with_approval",
     "enqueue_longform_chapter_batch",
     "execute_enqueue_longform_chapter_batch_with_approval",
+    "execute_longform_chapter_batch_preflight",
+    "execute_longform_chapter_batch_preflight_with_approval",
 }
 
 
@@ -272,6 +274,19 @@ def _target_for_tool(project_id: str, tool_name: str, params: dict[str, Any]) ->
                 f"{tool_name} requires project_id and plan_hash",
             )
         return _ready("background_task_enqueue", f"background_task_enqueue:{project_target}:{plan_hash}")
+
+    if tool_name in {
+        "execute_longform_chapter_batch_preflight",
+        "execute_longform_chapter_batch_preflight_with_approval",
+    }:
+        task_id = _clean_string(params.get("task_id"))
+        if not task_id:
+            return _blocked(
+                "background_task_checkpoint",
+                "missing_target",
+                f"{tool_name} requires task_id",
+            )
+        return _ready("background_task_checkpoint", f"background_task_checkpoint:{task_id}:preflight")
 
     return _blocked(None, "unsupported_tool", f"{tool_name} is not supported by mutation fingerprinting")
 

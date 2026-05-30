@@ -308,6 +308,8 @@ def test_longform_tool_descriptors_live_in_dedicated_module():
         "execute_enqueue_longform_chapter_batch_with_approval",
         "inspect_longform_chapter_batch",
         "execute_longform_chapter_batch_preflight",
+        "prepare_longform_chapter_batch_preflight",
+        "execute_longform_chapter_batch_preflight_with_approval",
         "prepare_longform_chapter_batch_execution",
         "execute_longform_chapter_batch",
         "review_longform_chapter_batch_execution",
@@ -319,6 +321,8 @@ def test_longform_tool_descriptors_live_in_dedicated_module():
     assert target_type_for_tool("enqueue_longform_chapter_batch") == "background_task"
     assert target_type_for_tool("prepare_enqueue_longform_chapter_batch") == "background_task_enqueue_approval"
     assert target_type_for_tool("execute_enqueue_longform_chapter_batch_with_approval") == "background_task_enqueue"
+    assert target_type_for_tool("prepare_longform_chapter_batch_preflight") == "background_task_checkpoint_approval"
+    assert target_type_for_tool("execute_longform_chapter_batch_preflight_with_approval") == "background_task_checkpoint"
     assert target_type_for_tool("execute_longform_chapter_batch") == "background_task"
 
 
@@ -342,6 +346,8 @@ def test_agent_tool_registry_has_unique_names_and_contracts():
         "prepare_enqueue_longform_chapter_batch",
         "execute_enqueue_longform_chapter_batch_with_approval",
         "inspect_longform_chapter_batch",
+        "prepare_longform_chapter_batch_preflight",
+        "execute_longform_chapter_batch_preflight_with_approval",
         "inspect_agent_job_projection",
         "inspect_agent_tool_contracts",
         "inspect_agent_write_gate_coverage",
@@ -373,6 +379,8 @@ def test_agent_tool_registry_has_unique_names_and_contracts():
     assert target_type_for_tool("prepare_enqueue_longform_chapter_batch") == "background_task_enqueue_approval"
     assert target_type_for_tool("execute_enqueue_longform_chapter_batch_with_approval") == "background_task_enqueue"
     assert target_type_for_tool("inspect_longform_chapter_batch") == "background_task"
+    assert target_type_for_tool("prepare_longform_chapter_batch_preflight") == "background_task_checkpoint_approval"
+    assert target_type_for_tool("execute_longform_chapter_batch_preflight_with_approval") == "background_task_checkpoint"
     assert target_type_for_tool("inspect_agent_job_projection") == "agent_job_projection"
     assert target_type_for_tool("inspect_agent_tool_contracts") == "agent_tool_contracts"
     assert target_type_for_tool("inspect_agent_write_gate_coverage") == "agent_write_gate_coverage"
@@ -1114,6 +1122,28 @@ def test_agent_tool_registry_includes_execute_longform_chapter_batch_preflight()
     assert set(descriptor.input_schema["required"]) == {"task_id"}
     assert "execute_longform_chapter_batch_preflight" in allowed_tool_names()
     assert "execute_longform_chapter_batch_preflight" not in non_blocking_report_tool_names()
+
+
+def test_agent_tool_registry_includes_longform_chapter_batch_preflight_approval_chain():
+    prepare_descriptor = get_agent_tool_descriptor("prepare_longform_chapter_batch_preflight")
+    execute_descriptor = get_agent_tool_descriptor("execute_longform_chapter_batch_preflight_with_approval")
+
+    assert prepare_descriptor is not None
+    assert prepare_descriptor.internal is True
+    assert prepare_descriptor.non_blocking_report is True
+    assert prepare_descriptor.target_type == "background_task_checkpoint_approval"
+    assert prepare_descriptor.input_schema["properties"]["task_id"]["type"] == "string"
+    assert prepare_descriptor.output_schema["properties"]["agent_plan_approval_contract_hash"]["type"] == "string"
+    assert execute_descriptor is not None
+    assert execute_descriptor.internal is True
+    assert execute_descriptor.target_type == "background_task_checkpoint"
+    assert execute_descriptor.input_schema["properties"]["confirm_execute"]["type"] == "boolean"
+    assert "approval_contract_hash" in execute_descriptor.input_schema["required"]
+    assert "approval_contract" in execute_descriptor.input_schema["required"]
+    assert execute_descriptor.output_schema["properties"]["agent_plan_approval_verification"]["type"] == "object"
+    assert "prepare_longform_chapter_batch_preflight" in allowed_tool_names()
+    assert "execute_longform_chapter_batch_preflight_with_approval" in allowed_tool_names()
+    assert "prepare_longform_chapter_batch_preflight" in non_blocking_report_tool_names()
 
 
 def test_agent_tool_registry_includes_prepare_longform_chapter_batch_execution():

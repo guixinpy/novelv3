@@ -320,7 +320,7 @@ def _recommended_next_tools(reason: str) -> list[str]:
     if reason == "missing_batch_execution_result":
         return ["execute_longform_chapter_batch", "inspect_longform_chapter_batch"]
     if reason == "generated_chapter_missing":
-        return ["execute_longform_chapter_batch_preflight", "prepare_longform_chapter_batch_execution"]
+        return ["prepare_longform_chapter_batch_preflight", "prepare_longform_chapter_batch_execution"]
     return ["inspect_longform_chapter_batch"]
 
 

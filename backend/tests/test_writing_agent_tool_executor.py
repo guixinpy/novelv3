@@ -409,6 +409,8 @@ def test_longform_tool_adapters_live_in_dedicated_module():
         "execute_enqueue_longform_chapter_batch_with_approval",
         "inspect_longform_chapter_batch",
         "execute_longform_chapter_batch_preflight",
+        "prepare_longform_chapter_batch_preflight",
+        "execute_longform_chapter_batch_preflight_with_approval",
         "prepare_longform_chapter_batch_execution",
         "execute_longform_chapter_batch",
         "review_longform_chapter_batch_execution",
@@ -421,6 +423,10 @@ def test_longform_tool_adapters_live_in_dedicated_module():
     assert adapters["prepare_enqueue_longform_chapter_batch"].mutability == "read"
     assert adapters["execute_enqueue_longform_chapter_batch_with_approval"].mutability == "write"
     assert adapters["inspect_longform_chapter_batch"].mutability == "read"
+    assert adapters["execute_longform_chapter_batch_preflight"].mutability == "guarded_write"
+    assert adapters["execute_longform_chapter_batch_preflight"].write_policy == "approval_required_redirect"
+    assert adapters["prepare_longform_chapter_batch_preflight"].mutability == "read"
+    assert adapters["execute_longform_chapter_batch_preflight_with_approval"].mutability == "write"
     assert adapters["execute_longform_chapter_batch"].mutability == "write"
     assert adapters["execute_longform_chapter_batch"].handler.__name__ == "_execute_longform_chapter_batch"
 
@@ -3181,6 +3187,8 @@ def test_tool_executor_static_adapter_names_are_report_or_agent_native_tools():
         "analyze_chapter_world_model",
         "expand_outline_window",
         "execute_longform_chapter_batch_preflight",
+        "prepare_longform_chapter_batch_preflight",
+        "execute_longform_chapter_batch_preflight_with_approval",
         "prepare_longform_chapter_batch_execution",
         "execute_longform_chapter_batch",
         "review_longform_chapter_batch_execution",
@@ -3482,6 +3490,8 @@ def test_tool_executor_lists_unhandled_internal_tools_for_migration_tracking():
     assert "prepare_record_agent_knowledge_base_candidate" not in names
     assert "execute_record_agent_knowledge_base_candidate_with_approval" not in names
     assert "execute_longform_chapter_batch_preflight" not in names
+    assert "prepare_longform_chapter_batch_preflight" not in names
+    assert "execute_longform_chapter_batch_preflight_with_approval" not in names
     assert "prepare_longform_chapter_batch_execution" not in names
     assert "execute_longform_chapter_batch" not in names
     assert "review_longform_chapter_batch_execution" not in names
@@ -4253,8 +4263,29 @@ def test_tool_executor_exposes_execute_longform_chapter_batch_preflight_adapter_
         "tool_name": "execute_longform_chapter_batch_preflight",
         "adapter_type": "static",
         "category": "task_queue",
-        "mutability": "write",
+        "mutability": "guarded_write",
         "handler_name": "_execute_longform_chapter_batch_preflight",
+        "write_policy": "approval_required_redirect",
+    }
+
+
+def test_tool_executor_exposes_longform_chapter_batch_preflight_approval_chain_adapter_metadata():
+    prepare_metadata = writing_agent_tool_adapter_metadata("prepare_longform_chapter_batch_preflight")
+    execute_metadata = writing_agent_tool_adapter_metadata("execute_longform_chapter_batch_preflight_with_approval")
+
+    assert prepare_metadata == {
+        "tool_name": "prepare_longform_chapter_batch_preflight",
+        "adapter_type": "static",
+        "category": "task_queue",
+        "mutability": "read",
+        "handler_name": "_prepare_longform_chapter_batch_preflight",
+    }
+    assert execute_metadata == {
+        "tool_name": "execute_longform_chapter_batch_preflight_with_approval",
+        "adapter_type": "static",
+        "category": "task_queue",
+        "mutability": "write",
+        "handler_name": "_execute_longform_chapter_batch_preflight_with_approval",
     }
 
 
@@ -4775,27 +4806,10 @@ async def test_tool_executor_executes_record_knowledge_candidate_with_approval(d
 
 
 @pytest.mark.asyncio
-async def test_tool_executor_dispatches_execute_longform_chapter_batch_preflight_adapter(db_session, monkeypatch):
+async def test_tool_executor_dispatches_execute_longform_chapter_batch_preflight_adapter(db_session):
     project = Project(name="Executor Batch Preflight")
     db_session.add(project)
     db_session.commit()
-    calls: list[tuple[str, str | None, int | None, bool]] = []
-
-    def fake_preflight(
-        db,
-        project_id: str,
-        *,
-        task_id: str | None,
-        max_chapters: int | None,
-        confirm_checkpoint: bool,
-    ):
-        calls.append((project_id, task_id, max_chapters, confirm_checkpoint))
-        return {"status": "ready", "checkpoint": {"task_id": task_id}}
-
-    monkeypatch.setattr(
-        "app.services.writing_agent.batch_preflight.execute_longform_chapter_batch_preflight",
-        fake_preflight,
-    )
 
     result = await execute_writing_agent_tool(
         WritingAgentToolContext(db=db_session, project_id=project.id),
@@ -4806,8 +4820,62 @@ async def test_tool_executor_dispatches_execute_longform_chapter_batch_preflight
     )
 
     assert result.handled is True
+    assert result.output["status"] == "blocked"
+    assert result.output["reason"] == "approval_required_before_write"
+    assert result.output["required_approval"]["prepare_tool"] == "prepare_longform_chapter_batch_preflight"
+    assert result.output["required_approval"]["execute_tool"] == "execute_longform_chapter_batch_preflight_with_approval"
+    assert result.output["side_effects"] == {
+        "executed": [],
+        "skipped": ["execute_longform_chapter_batch_preflight"],
+    }
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_dispatches_approved_longform_chapter_batch_preflight_adapter(db_session, monkeypatch):
+    project = Project(name="Executor Approved Batch Preflight")
+    db_session.add(project)
+    db_session.commit()
+    calls: list[tuple[str, str | None, int | None, bool, str | None, dict | None]] = []
+
+    def fake_execute(
+        db,
+        project_id: str,
+        *,
+        task_id: str | None,
+        max_chapters: int | None,
+        confirm_execute: bool,
+        approval_contract_hash: str | None,
+        approval_contract: dict | None,
+        approval_tool_metadata_provider,
+    ):
+        calls.append((project_id, task_id, max_chapters, confirm_execute, approval_contract_hash, approval_contract))
+        assert approval_tool_metadata_provider is not None
+        return {"status": "ready", "checkpoint": {"task_id": task_id}}
+
+    monkeypatch.setattr(
+        "app.services.writing_agent.batch_preflight_execution.execute_longform_chapter_batch_preflight_with_approval",
+        fake_execute,
+    )
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(
+            tool_name="execute_longform_chapter_batch_preflight_with_approval",
+            params={
+                "task_id": "task-1",
+                "max_chapters": "2",
+                "confirm_execute": True,
+                "approval_contract_hash": "approval:1",
+                "approval_contract": {"status": "requires_confirmation"},
+            },
+        ),
+    )
+
+    assert result.handled is True
     assert result.output == {"status": "ready", "checkpoint": {"task_id": "task-1"}}
-    assert calls == [(project.id, "task-1", 2, True)]
+    assert calls == [
+        (project.id, "task-1", 2, True, "approval:1", {"status": "requires_confirmation"}),
+    ]
 
 
 @pytest.mark.asyncio

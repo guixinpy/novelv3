@@ -2466,25 +2466,11 @@ def test_agent_run_can_preflight_longform_chapter_batch_checkpoint(client, db_se
     enqueue_output = _enqueue_longform_batch_with_approval(client, project.id, start_chapter=2, batch_size=1)
     task_id = enqueue_output["task"]["id"]
 
-    response = client.post(
-        f"/api/v1/projects/{project.id}/agent-runs",
-        json={
-            "goal": "预检长篇批次任务",
-            "tools": [
-                {
-                    "tool_name": "execute_longform_chapter_batch_preflight",
-                    "params": {"task_id": task_id, "max_chapters": 1, "confirm_checkpoint": True},
-                }
-            ],
-        },
-    )
-
-    payload = response.json()
+    payload = _preflight_longform_batch_with_approval(client, project.id, task_id, max_chapters=1)
     output = payload["steps"][0]["output"]
     task = db_session.query(BackgroundTask).filter(BackgroundTask.id == task_id).one()
-    assert response.status_code == 200
     assert payload["status"] == "success"
-    assert payload["steps"][0]["target_type"] == "background_task"
+    assert payload["steps"][0]["target_type"] == "background_task_checkpoint"
     assert output["status"] == "ready"
     assert output["task"]["id"] == task_id
     assert output["task"]["status"] == "pending"
@@ -2521,7 +2507,7 @@ def test_agent_run_can_preflight_longform_chapter_batch_checkpoint(client, db_se
     assert len(inspected_task["execution_checkpoints"]) == 1
 
 
-def test_agent_run_preflight_longform_chapter_batch_requires_checkpoint_confirmation(client, db_session):
+def test_agent_run_preflight_longform_chapter_batch_requires_agent_approval(client, db_session):
     project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1])
     enqueue_output = _enqueue_longform_batch_with_approval(client, project.id, start_chapter=2, batch_size=1)
     task_id = enqueue_output["task"]["id"]
@@ -2545,8 +2531,9 @@ def test_agent_run_preflight_longform_chapter_batch_requires_checkpoint_confirma
     assert response.status_code == 200
     assert payload["status"] == "blocked"
     assert output["status"] == "blocked"
-    assert output["reason"] == "checkpoint_confirmation_required"
-    assert output["required_confirmation"] == {"confirm_checkpoint": True, "task_id": task_id}
+    assert output["reason"] == "approval_required_before_write"
+    assert output["required_approval"]["prepare_tool"] == "prepare_longform_chapter_batch_preflight"
+    assert output["required_approval"]["execute_tool"] == "execute_longform_chapter_batch_preflight_with_approval"
     assert output["side_effects"]["executed"] == []
     assert "preflight_checkpoint" not in (task.result or {})
     assert (
@@ -2562,23 +2549,9 @@ def test_agent_run_preflight_longform_chapter_batch_blocks_on_dependencies(clien
     enqueue_output = _enqueue_longform_batch_with_approval(client, project.id, start_chapter=3, batch_size=1)
     task_id = enqueue_output["task"]["id"]
 
-    response = client.post(
-        f"/api/v1/projects/{project.id}/agent-runs",
-        json={
-            "goal": "预检缺少前章的长篇批次任务",
-            "tools": [
-                {
-                    "tool_name": "execute_longform_chapter_batch_preflight",
-                    "params": {"task_id": task_id, "max_chapters": 1, "confirm_checkpoint": True},
-                }
-            ],
-        },
-    )
-
-    payload = response.json()
+    payload = _preflight_longform_batch_with_approval(client, project.id, task_id, max_chapters=1)
     output = payload["steps"][0]["output"]
     task = db_session.query(BackgroundTask).filter(BackgroundTask.id == task_id).one()
-    assert response.status_code == 200
     assert payload["status"] == "blocked"
     assert output["status"] == "blocked"
     assert output["checkpoint"]["status"] == "blocked"
@@ -2602,18 +2575,7 @@ def test_agent_run_can_prepare_longform_chapter_batch_execution_manifest(client,
     enqueue_output = _enqueue_longform_batch_with_approval(client, project.id, start_chapter=2, batch_size=1)
     plan_hash = enqueue_output["plan_hash"]
     task_id = enqueue_output["task"]["id"]
-    client.post(
-        f"/api/v1/projects/{project.id}/agent-runs",
-        json={
-            "goal": "预检长篇批次任务",
-            "tools": [
-                {
-                    "tool_name": "execute_longform_chapter_batch_preflight",
-                    "params": {"task_id": task_id, "max_chapters": 1, "confirm_checkpoint": True},
-                }
-            ],
-        },
-    )
+    _preflight_longform_batch_with_approval(client, project.id, task_id, max_chapters=1)
 
     response = client.post(
         f"/api/v1/projects/{project.id}/agent-runs",
@@ -2691,18 +2653,7 @@ def test_agent_run_prepare_longform_chapter_batch_execution_requires_prepare_con
     project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1])
     enqueue_output = _enqueue_longform_batch_with_approval(client, project.id, start_chapter=2, batch_size=1)
     task_id = enqueue_output["task"]["id"]
-    client.post(
-        f"/api/v1/projects/{project.id}/agent-runs",
-        json={
-            "goal": "确认预检长篇批次任务",
-            "tools": [
-                {
-                    "tool_name": "execute_longform_chapter_batch_preflight",
-                    "params": {"task_id": task_id, "max_chapters": 1, "confirm_checkpoint": True},
-                }
-            ],
-        },
-    )
+    _preflight_longform_batch_with_approval(client, project.id, task_id, max_chapters=1)
 
     response = client.post(
         f"/api/v1/projects/{project.id}/agent-runs",
@@ -2745,7 +2696,7 @@ def test_agent_run_prepare_longform_chapter_batch_execution_requires_ready_prefl
     assert payload["status"] == "blocked"
     assert output["status"] == "blocked"
     assert output["reason"] == "missing_ready_preflight_checkpoint"
-    assert output["recommended_next_tools"] == ["execute_longform_chapter_batch_preflight"]
+    assert output["recommended_next_tools"] == ["prepare_longform_chapter_batch_preflight"]
     assert "attempt_manifest" not in (task.result or {})
     assert (
         db_session.query(ChapterContent)
@@ -9240,18 +9191,7 @@ def _seed_confirmed_world_fact(
 def _prepare_longform_batch_execution_contract(client, project_id: str) -> dict:
     enqueue_output = _enqueue_longform_batch_with_approval(client, project_id, start_chapter=2, batch_size=1)
     task_id = enqueue_output["task"]["id"]
-    client.post(
-        f"/api/v1/projects/{project_id}/agent-runs",
-        json={
-            "goal": "预检长篇批次任务",
-            "tools": [
-                {
-                    "tool_name": "execute_longform_chapter_batch_preflight",
-                    "params": {"task_id": task_id, "max_chapters": 1, "confirm_checkpoint": True},
-                }
-            ],
-        },
-    )
+    _preflight_longform_batch_with_approval(client, project_id, task_id, max_chapters=1)
     prepare_response = client.post(
         f"/api/v1/projects/{project_id}/agent-runs",
         json={
@@ -9334,6 +9274,49 @@ def _enqueue_longform_batch_with_approval(
     assert response.status_code == 200
     assert response.json()["status"] == "success"
     return response.json()["steps"][0]["output"]
+
+
+def _preflight_longform_batch_with_approval(
+    client,
+    project_id: str,
+    task_id: str,
+    *,
+    max_chapters: int,
+) -> dict:
+    prepared_response = client.post(
+        f"/api/v1/projects/{project_id}/agent-runs",
+        json={
+            "goal": "准备预检长篇批次任务",
+            "tools": [
+                {
+                    "tool_name": "prepare_longform_chapter_batch_preflight",
+                    "params": {"task_id": task_id, "max_chapters": max_chapters},
+                }
+            ],
+        },
+    )
+    assert prepared_response.status_code == 200
+    prepared = prepared_response.json()["steps"][0]["output"]
+    response = client.post(
+        f"/api/v1/projects/{project_id}/agent-runs",
+        json={
+            "goal": "确认预检长篇批次任务",
+            "tools": [
+                {
+                    "tool_name": "execute_longform_chapter_batch_preflight_with_approval",
+                    "params": {
+                        "task_id": task_id,
+                        "max_chapters": max_chapters,
+                        "confirm_execute": True,
+                        "approval_contract_hash": prepared["agent_plan_approval_contract_hash"],
+                        "approval_contract": prepared["agent_plan_approval_contract"],
+                    },
+                }
+            ],
+        },
+    )
+    assert response.status_code == 200
+    return response.json()
 
 
 def _execute_approved_longform_batch_chapter(client, project_id: str, prepared: dict, monkeypatch) -> dict:

@@ -521,7 +521,7 @@ def _recommended_next_tools(reason: str) -> list[str]:
         "preflight_checkpoint_safe_nodes_mismatch",
         "preflight_checkpoint_not_ready",
     }:
-        return ["execute_longform_chapter_batch_preflight"]
+        return ["prepare_longform_chapter_batch_preflight"]
     if reason in {"missing_approval_contract", "attempt_manifest_preflight_drift"}:
         return ["prepare_longform_chapter_batch_execution"]
     return ["inspect_longform_chapter_batch"]

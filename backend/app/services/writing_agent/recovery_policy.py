@@ -60,8 +60,8 @@ def build_checkpoint_resume_policy(
         "resume_range": {"start": next_chapter_index, "end": chapter_range["end"]},
         "skip_completed": True,
         "skipped_chapter_indexes": completed_chapter_indexes,
-        "next_tool": "execute_longform_chapter_batch_preflight",
-        "next_params": {"task_id": task_id, "max_chapters": 1, "confirm_checkpoint": True},
+        "next_tool": "prepare_longform_chapter_batch_preflight",
+        "next_params": {"task_id": task_id, "max_chapters": 1},
     }
 
 

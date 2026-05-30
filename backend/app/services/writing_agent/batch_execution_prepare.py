@@ -348,7 +348,7 @@ def _recommended_next_tools(reason: str) -> list[str]:
         "preflight_checkpoint_boundary_mismatch",
         "preflight_checkpoint_safe_nodes_mismatch",
     }:
-        return ["execute_longform_chapter_batch_preflight"]
+        return ["prepare_longform_chapter_batch_preflight"]
     return ["inspect_longform_chapter_batch"]
 
 

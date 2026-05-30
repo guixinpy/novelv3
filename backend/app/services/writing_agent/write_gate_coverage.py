@@ -83,6 +83,11 @@ AGENT_PLAN_GATED_TOOLS = {
         "gate_type": "stateless_agent_plan_approval",
         "covered_tools": ["enqueue_longform_chapter_batch"],
     },
+    "execute_longform_chapter_batch_preflight_with_approval": {
+        "gate_version": "phase200.longform_batch_preflight_agent_plan_approval.v1",
+        "gate_type": "stateless_agent_plan_approval",
+        "covered_tools": ["execute_longform_chapter_batch_preflight"],
+    },
     "execute_longform_chapter_batch": {
         "gate_version": "phase111.agent_plan_approval_execution_gate.v1",
         "gate_type": "persisted_agent_plan_approval",

@@ -314,11 +314,24 @@ def test_write_gate_coverage_marks_batch_checkpoint_writes_as_confirmation_guard
     output = inspect_agent_write_gate_coverage(adapter_metadata_by_name=_adapter_metadata())
     tools_by_name = _tools_by_name(output)
 
+    approved_preflight_tool = tools_by_name["execute_longform_chapter_batch_preflight_with_approval"]
+    assert approved_preflight_tool["agent_plan_gate_status"] == "enforced"
+    assert approved_preflight_tool["gate_version"] == "phase200.longform_batch_preflight_agent_plan_approval.v1"
+    assert approved_preflight_tool["gate_type"] == "stateless_agent_plan_approval"
+    assert approved_preflight_tool["confirmation_fields"] == ["approval_contract_hash", "confirm_execute"]
+    assert approved_preflight_tool["risk_level"] == "low"
+
     preflight_tool = tools_by_name["execute_longform_chapter_batch_preflight"]
-    assert preflight_tool["agent_plan_gate_status"] == "missing_agent_plan_gate"
+    assert preflight_tool["agent_plan_gate_status"] == "indirect_agent_gate_available"
+    assert preflight_tool["direct_write_policy"] == "approval_required_redirect"
+    assert preflight_tool["direct_write_blocked"] is True
     assert preflight_tool["direct_confirmation_guard"] is True
     assert preflight_tool["confirmation_fields"] == ["confirm_checkpoint"]
-    assert preflight_tool["risk_level"] == "medium"
+    assert preflight_tool["risk_level"] == "low"
+    assert preflight_tool["recommended_action"] == "route_direct_calls_to_approval_executor"
+    assert {item["consumer_tool"] for item in preflight_tool["indirect_coverage"]} == {
+        "execute_longform_chapter_batch_preflight_with_approval"
+    }
 
     prepare_tool = tools_by_name["prepare_longform_chapter_batch_execution"]
     assert prepare_tool["agent_plan_gate_status"] == "missing_agent_plan_gate"
@@ -584,8 +597,16 @@ def _adapter_metadata() -> dict[str, dict]:
             "tool_name": "execute_longform_chapter_batch_preflight",
             "adapter_type": "static",
             "category": "task_queue",
-            "mutability": "write",
+            "mutability": "guarded_write",
             "handler_name": "_execute_longform_chapter_batch_preflight",
+            "write_policy": "approval_required_redirect",
+        },
+        "execute_longform_chapter_batch_preflight_with_approval": {
+            "tool_name": "execute_longform_chapter_batch_preflight_with_approval",
+            "adapter_type": "static",
+            "category": "task_queue",
+            "mutability": "write",
+            "handler_name": "_execute_longform_chapter_batch_preflight_with_approval",
         },
         "prepare_longform_chapter_batch_execution": {
             "tool_name": "prepare_longform_chapter_batch_execution",

@@ -160,7 +160,7 @@ LONGFORM_AGENT_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         name="execute_longform_chapter_batch_preflight",
         module="writing_agent",
         category="task_queue",
-        description="对已物化的长篇章节批次执行安全预检并写入断点，停止在正文生成前。",
+        description="为长篇章节批次预检断点写入构建审批重定向，直接调用不写入断点。",
         input_schema=object_schema(
             {
                 "task_id": {"type": "string"},
@@ -181,6 +181,71 @@ LONGFORM_AGENT_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         target_type="background_task",
         internal=True,
         sort_key=13,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
+        name="prepare_longform_chapter_batch_preflight",
+        module="writing_agent",
+        category="task_queue",
+        description="为长篇章节批次预检断点写入构建 Agent 计划审批契约，不写入断点。",
+        input_schema=object_schema(
+            {
+                "task_id": {"type": "string"},
+                "max_chapters": {"type": "integer", "minimum": 1},
+            },
+            required=("task_id",),
+        ),
+        output_schema=object_schema(
+            {
+                "status": {"type": "string"},
+                "prepare_version": {"type": "string"},
+                "project_id": {"type": "string"},
+                "task": {"type": "object"},
+                "mutation_fingerprint": {"type": "object"},
+                "tool_call_id": {"type": "string"},
+                "resource_binding": {"type": "object"},
+                "agent_plan": {"type": "object"},
+                "agent_plan_approval_contract": {"type": "object"},
+                "agent_plan_approval_contract_hash": {"type": "string"},
+                "required_confirmation": {"type": "object"},
+                "recommended_next_tools": {"type": "array"},
+            }
+        ),
+        target_type="background_task_checkpoint_approval",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=14,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
+        name="execute_longform_chapter_batch_preflight_with_approval",
+        module="writing_agent",
+        category="task_queue",
+        description="在确认 Agent 计划审批契约后执行长篇章节批次安全预检并写入可恢复断点。",
+        input_schema=object_schema(
+            {
+                "task_id": {"type": "string"},
+                "max_chapters": {"type": "integer", "minimum": 1},
+                "confirm_execute": {"type": "boolean"},
+                "approval_contract_hash": {"type": "string"},
+                "approval_contract": {"type": "object"},
+            },
+            required=("task_id", "confirm_execute", "approval_contract_hash", "approval_contract"),
+        ),
+        output_schema=object_schema(
+            {
+                "status": {"type": "string"},
+                "task": {"type": "object"},
+                "canonical_execution_plan": {"type": "object"},
+                "checkpoint": {"type": "object"},
+                "agent_plan_approval_verification": {"type": "object"},
+                "execution_resource_binding": {"type": "object"},
+                "side_effects": {"type": "object"},
+            }
+        ),
+        target_type="background_task_checkpoint",
+        internal=True,
+        sort_key=15,
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(
@@ -206,7 +271,7 @@ LONGFORM_AGENT_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         ),
         target_type="background_task",
         internal=True,
-        sort_key=14,
+        sort_key=16,
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(
@@ -237,7 +302,7 @@ LONGFORM_AGENT_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         ),
         target_type="background_task",
         internal=True,
-        sort_key=15,
+        sort_key=17,
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(
@@ -265,7 +330,7 @@ LONGFORM_AGENT_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         ),
         target_type="background_task",
         internal=True,
-        sort_key=16,
+        sort_key=18,
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(
@@ -293,7 +358,7 @@ LONGFORM_AGENT_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         ),
         target_type="background_task",
         internal=True,
-        sort_key=17,
+        sort_key=19,
         availability_checks=("project_exists",),
     ),
 )
