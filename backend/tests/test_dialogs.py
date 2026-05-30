@@ -3142,7 +3142,7 @@ def test_get_messages_includes_action_result_view_for_recommended_followup_resul
                 "source_run_id": "source-run-abcdef",
                 "recommended_followups": {
                     "status": "recommended",
-                    "provenance_write_tools": [{"tool_name": "repair_longform_maintenance", "params": {}}],
+                    "provenance_write_tools": [{"tool_name": "prepare_repair_longform_maintenance", "params": {}}],
                 },
                 "tools": [{"tool_name": "inspect_agent_memory_route"}],
                 "route_decision": {

@@ -1206,9 +1206,15 @@ def _continuation_target_chapter(run: WritingAgentRun, steps: list[WritingAgentS
         chapter_index = _optional_int(output.get("chapter_index"))
         if chapter_index:
             return chapter_index
+        chapter_index = _chapter_index_from_tool_list(output.get("post_approval_continuation_tools"))
+        if chapter_index:
+            return chapter_index
         step_input = step.input if isinstance(step.input, dict) else {}
         params = step_input.get("params") if isinstance(step_input.get("params"), dict) else {}
         chapter_index = _optional_int(params.get("chapter_index") or params.get("start_chapter") or params.get("before_chapter"))
+        if chapter_index:
+            return chapter_index
+        chapter_index = _chapter_index_from_tool_list(params.get("post_approval_continuation_tools"))
         if chapter_index:
             return chapter_index
     run_input = run.input if isinstance(run.input, dict) else {}
@@ -1217,6 +1223,19 @@ def _continuation_target_chapter(run: WritingAgentRun, steps: list[WritingAgentS
         return chapter_index
     planner = run_input.get("planner") if isinstance(run_input.get("planner"), dict) else {}
     return _optional_int(planner.get("chapter_index"))
+
+
+def _chapter_index_from_tool_list(value: object) -> int | None:
+    if not isinstance(value, list):
+        return None
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        params = item.get("params") if isinstance(item.get("params"), dict) else {}
+        chapter_index = _optional_int(params.get("chapter_index") or params.get("start_chapter") or params.get("before_chapter"))
+        if chapter_index:
+            return chapter_index
+    return None
 
 
 def _last_step_with_status(steps: list[WritingAgentStep], status: str) -> WritingAgentStep | None:
@@ -1320,7 +1339,9 @@ def _failure_state(run: WritingAgentRun, blocked_step: WritingAgentStep | None) 
 def _consumed_state(steps: list[WritingAgentStep]) -> dict[str, bool]:
     successful_tools = {step.tool_name for step in steps if step.status == STEP_SUCCESS}
     return {
-        "longform_maintenance": "repair_longform_maintenance" in successful_tools,
+        "longform_maintenance": bool(
+            {"repair_longform_maintenance", "execute_repair_longform_maintenance_with_approval"} & successful_tools
+        ),
         "longform_context": "summarize_longform_context" in successful_tools,
         "preflight": "preflight_writing" in successful_tools,
         "generated_chapter": CHAPTER_TOOL_NAME in successful_tools,

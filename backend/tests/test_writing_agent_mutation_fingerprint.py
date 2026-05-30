@@ -98,6 +98,17 @@ def test_build_mutation_fingerprint_covers_knowledge_base_candidate():
     assert first["components"]["target_id"].startswith("agent_knowledge_base_candidate:")
 
 
+def test_build_mutation_fingerprint_covers_longform_maintenance_repair():
+    first = build_mutation_fingerprint("project-1", "repair_longform_maintenance", {"limit": "20"})
+    second = build_mutation_fingerprint("project-1", "repair_longform_maintenance", {"repair_limit": 100})
+
+    assert first["status"] == "ready"
+    assert first["mutating"] is True
+    assert first["fingerprint"] == second["fingerprint"]
+    assert first["components"]["target_type"] == "longform_maintenance"
+    assert first["components"]["target_id"] == "longform_maintenance:project-1"
+
+
 def test_build_mutation_fingerprint_blocks_knowledge_base_candidate_without_sources():
     result = build_mutation_fingerprint(
         "project-1",

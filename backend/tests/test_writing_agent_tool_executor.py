@@ -22,7 +22,10 @@ from app.services.writing_agent.chapter_generation_execution import (
 from app.services.writing_agent.chapter_generation_tool import execute_generate_chapter_tool
 from app.services.writing_agent.agent_core_tool_adapters import build_agent_core_tool_adapters
 from app.services.writing_agent.agent_generation_tool_adapters import build_agent_generation_tool_adapters
-from app.services.writing_agent.agent_memory_trace_tool_adapters import AGENT_MEMORY_TRACE_TOOL_ADAPTERS
+from app.services.writing_agent.agent_memory_trace_tool_adapters import (
+    AGENT_MEMORY_TRACE_TOOL_ADAPTERS,
+    build_agent_memory_trace_tool_adapters,
+)
 from app.services.writing_agent.agent_task_queue_tool_adapters import AGENT_TASK_QUEUE_TOOL_ADAPTERS
 from app.services.writing_agent.knowledge_base_tool_adapters import (
     KNOWLEDGE_BASE_AGENT_TOOL_ADAPTERS,
@@ -124,6 +127,28 @@ def test_agent_memory_trace_tool_adapters_live_in_dedicated_module():
     assert (
         AGENT_MEMORY_TRACE_TOOL_ADAPTERS["inspect_agent_memory_activation_plan"].handler.__name__
         == "_inspect_agent_memory_activation_plan"
+    )
+
+
+def test_agent_memory_trace_tool_adapter_builder_adds_maintenance_approval_chain():
+    adapters = build_agent_memory_trace_tool_adapters(approval_tool_metadata_provider=lambda plan: {})
+    names = list(adapters)
+
+    assert names == [
+        "inspect_agent_trace_audit",
+        "inspect_agent_memory_route",
+        "summarize_longform_context",
+        "inspect_agent_context_compression_projection",
+        "inspect_agent_memory_activation_plan",
+        "repair_longform_maintenance",
+        "prepare_repair_longform_maintenance",
+        "execute_repair_longform_maintenance_with_approval",
+    ]
+    assert adapters["prepare_repair_longform_maintenance"].mutability == "read"
+    assert adapters["execute_repair_longform_maintenance_with_approval"].mutability == "write"
+    assert (
+        adapters["execute_repair_longform_maintenance_with_approval"].handler.__name__
+        == "_execute_repair_longform_maintenance_with_approval"
     )
 
 
@@ -3256,6 +3281,8 @@ def test_tool_executor_lists_unhandled_internal_tools_for_migration_tracking():
     assert "compress_chapter_to_target" not in names
     assert "backfill_outline_gaps" not in names
     assert "repair_longform_maintenance" not in names
+    assert "prepare_repair_longform_maintenance" not in names
+    assert "execute_repair_longform_maintenance_with_approval" not in names
     assert "expand_outline_window" not in names
     assert "inspect_agent_trace_audit" not in names
     assert "inspect_agent_memory_route" not in names
@@ -3794,6 +3821,26 @@ def test_tool_executor_exposes_repair_longform_maintenance_adapter_metadata():
         "category": "maintenance",
         "mutability": "write",
         "handler_name": "_repair_longform_maintenance",
+    }
+
+
+def test_tool_executor_exposes_repair_longform_maintenance_approval_chain_adapter_metadata():
+    prepare_metadata = writing_agent_tool_adapter_metadata("prepare_repair_longform_maintenance")
+    execute_metadata = writing_agent_tool_adapter_metadata("execute_repair_longform_maintenance_with_approval")
+
+    assert prepare_metadata == {
+        "tool_name": "prepare_repair_longform_maintenance",
+        "adapter_type": "static",
+        "category": "maintenance",
+        "mutability": "read",
+        "handler_name": "_prepare_repair_longform_maintenance",
+    }
+    assert execute_metadata == {
+        "tool_name": "execute_repair_longform_maintenance_with_approval",
+        "adapter_type": "static",
+        "category": "maintenance",
+        "mutability": "write",
+        "handler_name": "_execute_repair_longform_maintenance_with_approval",
     }
 
 
@@ -4344,6 +4391,10 @@ async def test_tool_executor_executes_record_knowledge_candidate_with_approval(d
                 "confirm_execute": True,
                 "approval_contract_hash": prepare.output["agent_plan_approval_contract_hash"],
                 "approval_contract": prepare.output["agent_plan_approval_contract"],
+                "post_approval_continuation_tools": [
+                    {"tool_name": "summarize_longform_context", "params": {"chapter_index": 2}},
+                    {"tool_name": "preflight_writing", "params": {"chapter_index": 2}},
+                ],
             },
         ),
     )
@@ -4629,6 +4680,108 @@ async def test_tool_executor_dispatches_repair_longform_maintenance_with_json_sa
 
     assert result.handled is True
     assert result.output == {"status": "completed", "repaired_at": "2026-05-23 10:30:00"}
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_dispatches_prepare_repair_longform_maintenance(db_session):
+    project = Project(name="Prepare Longform Repair")
+    db_session.add(project)
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(
+            tool_name="prepare_repair_longform_maintenance",
+            params={"limit": "9", "repair_limit": "11"},
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output["status"] == "approval_required"
+    plan_step = result.output["agent_plan"]["steps"][0]
+    assert plan_step["tool_name"] == "repair_longform_maintenance"
+    assert plan_step["approval_executor_tool_name"] == "execute_repair_longform_maintenance_with_approval"
+    assert plan_step["params"] == {"limit": 9, "repair_limit": 11}
+    assert plan_step["mutation_fingerprint"]["components"]["target_type"] == "longform_maintenance"
+    assert result.output["agent_plan_approval_contract_hash"]
+    assert result.output["side_effects"] == {"executed": [], "skipped": ["repair_longform_maintenance"]}
+    assert result.output["recommended_next_tools"] == ["execute_repair_longform_maintenance_with_approval"]
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_blocks_execute_repair_longform_maintenance_without_confirmation(db_session):
+    project = Project(name="Blocked Longform Repair")
+    db_session.add(project)
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(
+            tool_name="execute_repair_longform_maintenance_with_approval",
+            params={"limit": "9", "repair_limit": "11"},
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output["status"] == "blocked"
+    assert result.output["reason"] == "confirmation_required"
+    assert result.output["side_effects"] == {"executed": [], "skipped": ["repair_longform_maintenance"]}
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_executes_repair_longform_maintenance_with_approval(db_session, monkeypatch):
+    project = Project(name="Execute Longform Repair")
+    db_session.add(project)
+    db_session.commit()
+    prepare = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(
+            tool_name="prepare_repair_longform_maintenance",
+            params={"limit": "9", "repair_limit": "11"},
+        ),
+    )
+    calls: list[tuple[str, int, int]] = []
+
+    def fake_repair(db, project_id: str, *, limit: int, repair_limit: int):
+        calls.append((project_id, limit, repair_limit))
+        return {
+            "status": "completed",
+            "repaired_memory_count": 2,
+            "repaired_retrieval_count": 3,
+            "remaining": {"ready_for_writing": True, "issue_count": 0},
+        }
+
+    monkeypatch.setattr("app.core.longform_memory.repair_longform_maintenance", fake_repair)
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(
+            tool_name="execute_repair_longform_maintenance_with_approval",
+            params={
+                "limit": "9",
+                "repair_limit": "11",
+                "confirm_execute": True,
+                "approval_contract_hash": prepare.output["agent_plan_approval_contract_hash"],
+                "approval_contract": prepare.output["agent_plan_approval_contract"],
+                "post_approval_continuation_tools": [
+                    {"tool_name": "summarize_longform_context", "params": {"chapter_index": 2}},
+                    {"tool_name": "preflight_writing", "params": {"chapter_index": 2}},
+                ],
+            },
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output["status"] == "success"
+    assert result.output["repaired_memory_count"] == 2
+    assert result.output["repaired_retrieval_count"] == 3
+    assert result.output["agent_plan_approval_verification"]["status"] == "ready"
+    assert result.output["approval_verification_event"]["reason"] == "approval_contract_verified"
+    assert result.output["execution_resource_binding"]["expected"]["tool_name"] == "repair_longform_maintenance"
+    assert result.output["side_effects"] == {"executed": ["repair_longform_maintenance"], "skipped": []}
+    assert result.output["recommended_next_tools"] == ["summarize_longform_context", "preflight_writing"]
+    assert result.output["post_approval_continuation_tools"][0]["params"] == {"chapter_index": 2}
+    assert calls == [(project.id, 9, 11)]
 
 
 @pytest.mark.asyncio

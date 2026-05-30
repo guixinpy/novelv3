@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 import json
 from typing import Any
 
 from app.schemas.writing_agent import WritingAgentToolRequest
 from app.services.writing_agent.tool_adapter_types import WritingAgentToolAdapter, WritingAgentToolContext
+
+ApprovalToolMetadataProvider = Callable[[dict[str, Any] | None], dict[str, dict[str, Any]]]
 
 
 def _inspect_agent_trace_audit(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
@@ -87,6 +90,68 @@ def _repair_longform_maintenance(context: WritingAgentToolContext, tool: Writing
             repair_limit=_optional_int(tool.params.get("repair_limit")) or 100,
         )
     )
+
+
+def build_agent_memory_trace_tool_adapters(
+    *,
+    approval_tool_metadata_provider: ApprovalToolMetadataProvider,
+) -> dict[str, WritingAgentToolAdapter]:
+    return {
+        **AGENT_MEMORY_TRACE_TOOL_ADAPTERS,
+        "prepare_repair_longform_maintenance": WritingAgentToolAdapter(
+            "prepare_repair_longform_maintenance",
+            _prepare_repair_longform_maintenance,
+            category="maintenance",
+            mutability="read",
+        ),
+        "execute_repair_longform_maintenance_with_approval": WritingAgentToolAdapter(
+            "execute_repair_longform_maintenance_with_approval",
+            _execute_repair_longform_maintenance_with_approval(approval_tool_metadata_provider),
+            category="maintenance",
+            mutability="write",
+        ),
+    }
+
+
+def _prepare_repair_longform_maintenance(
+    context: WritingAgentToolContext,
+    tool: WritingAgentToolRequest,
+) -> dict[str, Any]:
+    from app.services.writing_agent.longform_maintenance_execution import prepare_repair_longform_maintenance
+
+    return prepare_repair_longform_maintenance(
+        context.db,
+        context.project_id,
+        action_params=tool.params,
+    )
+
+
+def _execute_repair_longform_maintenance_with_approval(
+    approval_tool_metadata_provider: ApprovalToolMetadataProvider,
+) -> Callable[[WritingAgentToolContext, WritingAgentToolRequest], dict[str, Any]]:
+    def execute_repair_longform_maintenance_with_approval_adapter(
+        context: WritingAgentToolContext,
+        tool: WritingAgentToolRequest,
+    ) -> dict[str, Any]:
+        from app.services.writing_agent.longform_maintenance_execution import (
+            execute_repair_longform_maintenance_with_approval,
+        )
+
+        approval_contract = tool.params.get("approval_contract")
+        return execute_repair_longform_maintenance_with_approval(
+            context.db,
+            context.project_id,
+            action_params=tool.params,
+            confirm_execute=tool.params.get("confirm_execute") is True,
+            approval_contract_hash=str(tool.params.get("approval_contract_hash") or "").strip() or None,
+            approval_contract=approval_contract if isinstance(approval_contract, dict) else None,
+            approval_tool_metadata_provider=approval_tool_metadata_provider,
+        )
+
+    execute_repair_longform_maintenance_with_approval_adapter.__name__ = (
+        "_execute_repair_longform_maintenance_with_approval"
+    )
+    return execute_repair_longform_maintenance_with_approval_adapter
 
 
 AGENT_MEMORY_TRACE_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {

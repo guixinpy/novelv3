@@ -94,6 +94,26 @@ def test_write_gate_coverage_marks_knowledge_base_candidate_approval_executor_as
     }
 
 
+def test_write_gate_coverage_marks_longform_maintenance_approval_executor_as_enforced():
+    output = inspect_agent_write_gate_coverage(adapter_metadata_by_name=_adapter_metadata())
+    tools_by_name = _tools_by_name(output)
+
+    execute_tool = tools_by_name["execute_repair_longform_maintenance_with_approval"]
+    assert execute_tool["agent_plan_gate_status"] == "enforced"
+    assert execute_tool["gate_version"] == "phase190.longform_maintenance_agent_plan_approval.v1"
+    assert execute_tool["gate_type"] == "stateless_agent_plan_approval"
+    assert execute_tool["risk_level"] == "low"
+    assert execute_tool["confirmation_fields"] == ["approval_contract_hash", "confirm_execute"]
+
+    repair_tool = tools_by_name["repair_longform_maintenance"]
+    assert repair_tool["agent_plan_gate_status"] == "indirect_agent_gate_available"
+    assert repair_tool["direct_confirmation_guard"] is False
+    assert repair_tool["risk_level"] == "high"
+    assert {item["consumer_tool"] for item in repair_tool["indirect_coverage"]} == {
+        "execute_repair_longform_maintenance_with_approval"
+    }
+
+
 def test_write_gate_coverage_marks_confirm_guarded_tools_as_missing_agent_gate():
     output = inspect_agent_write_gate_coverage(adapter_metadata_by_name=_adapter_metadata())
     apply_tool = _tools_by_name(output)["apply_world_model_proposal_resolution"]
@@ -222,5 +242,19 @@ def _adapter_metadata() -> dict[str, dict]:
             "category": "knowledge_base",
             "mutability": "write",
             "handler_name": "_execute_record_agent_knowledge_base_candidate_with_approval",
+        },
+        "repair_longform_maintenance": {
+            "tool_name": "repair_longform_maintenance",
+            "adapter_type": "static",
+            "category": "maintenance",
+            "mutability": "write",
+            "handler_name": "_repair_longform_maintenance",
+        },
+        "execute_repair_longform_maintenance_with_approval": {
+            "tool_name": "execute_repair_longform_maintenance_with_approval",
+            "adapter_type": "static",
+            "category": "maintenance",
+            "mutability": "write",
+            "handler_name": "_execute_repair_longform_maintenance_with_approval",
         },
     }

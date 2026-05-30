@@ -267,7 +267,7 @@ def test_inspect_agent_trace_audit_exposes_recommended_recovery_for_blocked_run(
                 "agent_tool_result": {
                     "recovery": {
                         "status": "recommended",
-                        "next_tool": "repair_longform_maintenance",
+                        "next_tool": "prepare_repair_longform_maintenance",
                         "reason_code": "longform_memory_needs_maintenance",
                     }
                 },
@@ -285,7 +285,7 @@ def test_inspect_agent_trace_audit_exposes_recommended_recovery_for_blocked_run(
     assert output["failure"]["message"] == "长篇记忆未就绪"
     assert output["recommended_actions"] == [
         {
-            "tool_name": "repair_longform_maintenance",
+            "tool_name": "prepare_repair_longform_maintenance",
             "reason_code": "longform_memory_needs_maintenance",
             "source_step_index": 1,
         }

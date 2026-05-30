@@ -12,6 +12,7 @@ from app.services.writing_agent.memory_provenance_contract import build_memory_p
 
 AGENT_MEMORY_ROUTE_VERSION = "phase72.agent_memory_route.v1"
 AGENT_MEMORY_ROUTE_PROVENANCE_VERSION = "phase224.agent_memory_route_provenance.v1"
+MAINTENANCE_REPAIR_PREPARE_TOOL = "prepare_repair_longform_maintenance"
 
 
 def inspect_agent_memory_route(
@@ -87,7 +88,7 @@ def _route_decision(
             "status": "blocked",
             "reason": "longform_memory_needs_maintenance",
             "can_use_longform_context": False,
-            "recommended_tools": ["repair_longform_maintenance"],
+            "recommended_tools": [MAINTENANCE_REPAIR_PREPARE_TOOL],
         }
 
     recommended_tools: list[str] = []
@@ -241,12 +242,12 @@ def _provenance_recovery(
     chapter_index: int | None,
 ) -> dict[str, Any]:
     recommended_tools = route.get("recommended_tools") if isinstance(route.get("recommended_tools"), list) else []
-    if "repair_longform_maintenance" in recommended_tools:
+    if MAINTENANCE_REPAIR_PREPARE_TOOL in recommended_tools or "repair_longform_maintenance" in recommended_tools:
         return {
             "status": "recommended",
             "reason": route.get("reason"),
-            "next_tools": ["repair_longform_maintenance"],
-            "tools": [{"tool_name": "repair_longform_maintenance", "params": {}}],
+            "next_tools": [MAINTENANCE_REPAIR_PREPARE_TOOL],
+            "tools": [{"tool_name": MAINTENANCE_REPAIR_PREPARE_TOOL, "params": {}}],
         }
     if provenance_status == "degraded":
         query = (
@@ -257,7 +258,7 @@ def _provenance_recovery(
         return {
             "status": "optional",
             "reason": "retrieval_index_empty",
-            "next_tools": ["inspect_agent_memory_route", "repair_longform_maintenance"],
+            "next_tools": ["inspect_agent_memory_route", MAINTENANCE_REPAIR_PREPARE_TOOL],
             "tools": [
                 {
                     "tool_name": "inspect_agent_memory_route",
@@ -268,7 +269,7 @@ def _provenance_recovery(
                     },
                 }
             ],
-            "write_tools": [{"tool_name": "repair_longform_maintenance", "params": {}}],
+            "write_tools": [{"tool_name": MAINTENANCE_REPAIR_PREPARE_TOOL, "params": {}}],
             "write_policy": "requires_confirmation",
         }
     return {

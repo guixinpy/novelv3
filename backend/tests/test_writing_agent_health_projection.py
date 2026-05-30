@@ -389,7 +389,7 @@ def test_inspect_agent_health_projection_reports_memory_activation_debt(db_sessi
                 "activated_counts": {"longform": 1, "foreshadowing": 0, "world_model": 0, "style": 0},
             },
             "risks": [{"code": "memory_coverage_debt", "severity": "warning"}],
-            "recommended_next_tools": ["repair_longform_maintenance", "inspect_agent_memory_route"],
+            "recommended_next_tools": ["prepare_repair_longform_maintenance", "inspect_agent_memory_route"],
         },
         raising=False,
     )
@@ -407,7 +407,7 @@ def test_inspect_agent_health_projection_reports_memory_activation_debt(db_sessi
     diagnostic = next(item for item in output["diagnostics"] if item["code"] == "agent_memory_activation_degraded")
     assert diagnostic["severity"] == "warning"
     assert diagnostic["risk_codes"] == ["memory_coverage_debt"]
-    assert "repair_longform_maintenance" in output["recommended_tools"]
+    assert "prepare_repair_longform_maintenance" in output["recommended_tools"]
     assert "inspect_agent_memory_route" in output["recommended_tools"]
 
 

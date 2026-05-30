@@ -6,6 +6,8 @@ from typing import Any
 RECOVERY_POLICY_VERSION = "phase47.recovery_policy.v1"
 CHECKPOINT_RESUME_PREVIEW_VERSION = "phase233.checkpoint_resume_preview.v1"
 BINDING_RECOVERY_REASONS = {"resource_binding_missing", "resource_binding_target_mismatch"}
+MAINTENANCE_REPAIR_PREPARE_TOOL = "prepare_repair_longform_maintenance"
+LEGACY_MAINTENANCE_REPAIR_TOOL = "repair_longform_maintenance"
 
 
 def build_writing_agent_recovery(
@@ -70,8 +72,11 @@ def _longform_context_recovery(output: dict[str, Any], planner: dict[str, Any]) 
     provenance_next_tools = (
         provenance_recovery.get("next_tools") if isinstance(provenance_recovery.get("next_tools"), list) else []
     )
-    has_legacy_repair = isinstance(recommended_actions, list) and "repair_longform_maintenance" in recommended_actions
-    has_provenance_repair = "repair_longform_maintenance" in provenance_next_tools
+    repair_tools = {LEGACY_MAINTENANCE_REPAIR_TOOL, MAINTENANCE_REPAIR_PREPARE_TOOL}
+    has_legacy_repair = isinstance(recommended_actions, list) and any(
+        item in repair_tools for item in recommended_actions if isinstance(item, str)
+    )
+    has_provenance_repair = any(item in repair_tools for item in provenance_next_tools if isinstance(item, str))
     if not has_legacy_repair and not has_provenance_repair:
         return _none("summarize_longform_context")
     decision = output.get("decision") if isinstance(output.get("decision"), dict) else {}
@@ -107,9 +112,10 @@ def _longform_context_recovery(output: dict[str, Any], planner: dict[str, Any]) 
         "source_tool": "summarize_longform_context",
         "reason_code": str(provenance_recovery.get("reason") or decision.get("reason") or "longform_context_blocked"),
         "action": "run_tool",
-        "next_tool": "repair_longform_maintenance",
-        "next_params": {},
-        "continuation_tools": continuation_tools,
+        "next_tool": MAINTENANCE_REPAIR_PREPARE_TOOL,
+        "next_params": {"post_approval_continuation_tools": continuation_tools} if continuation_tools else {},
+        "continuation_tools": [],
+        "post_approval_continuation_tools": continuation_tools,
         "next_command_args": None,
         "requires_user_input": False,
         "user_input_fields": [],

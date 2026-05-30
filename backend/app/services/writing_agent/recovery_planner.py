@@ -18,7 +18,9 @@ from app.services.writing_agent.tool_executor import writing_agent_tool_adapter_
 from app.services.writing_agent.tool_registry import allowed_tool_names, build_agent_tool_plan
 
 RECOVERY_PREVIEW_VERSION = "phase50.recovery_preview.v1"
-SAFE_RECOVERY_EXECUTE_TOOLS = {"expand_outline_window", "backfill_outline_gaps", "repair_longform_maintenance"}
+MAINTENANCE_REPAIR_PREPARE_TOOL = "prepare_repair_longform_maintenance"
+LEGACY_MAINTENANCE_REPAIR_TOOL = "repair_longform_maintenance"
+SAFE_RECOVERY_EXECUTE_TOOLS = {"expand_outline_window", "backfill_outline_gaps"}
 
 
 def build_recovery_tool_plan(db: Session, project_id: str, run_id: str | None) -> dict[str, Any]:
@@ -56,6 +58,7 @@ def build_recovery_tool_plan(db: Session, project_id: str, run_id: str | None) -
             "tools": [],
             "trace": {"selected_tools": [], "rejected_tools": [{"reason": "no_recommended_recovery"}]},
         }
+    recovery = _normalize_recovery(recovery)
 
     tools = _tool_requests_from_recovery(recovery)
     selected_tools = [str(tool.get("tool_name") or "") for tool in tools]
@@ -408,9 +411,10 @@ def _tool_request_from_recovery(recovery: dict[str, Any]) -> dict[str, Any] | No
     next_tool = str(recovery.get("next_tool") or "").strip()
     if not next_tool:
         return None
+    params = recovery.get("next_params") if isinstance(recovery.get("next_params"), dict) else {}
     request: dict[str, Any] = {
         "tool_name": next_tool,
-        "params": recovery.get("next_params") if isinstance(recovery.get("next_params"), dict) else {},
+        "params": params,
         "planner": {
             "reason": str(recovery.get("message") or "根据上一轮阻塞结果规划恢复工具。"),
             "on_missing": "ask_user" if recovery.get("requires_user_input") else "stop",
@@ -424,6 +428,22 @@ def _tool_request_from_recovery(recovery: dict[str, Any]) -> dict[str, Any] | No
     if next_command_args:
         request["command_args"] = str(next_command_args)
     return request
+
+
+def _normalize_recovery(recovery: dict[str, Any]) -> dict[str, Any]:
+    if str(recovery.get("next_tool") or "").strip() != LEGACY_MAINTENANCE_REPAIR_TOOL:
+        return recovery
+    normalized = dict(recovery)
+    continuation_tools = recovery.get("continuation_tools") if isinstance(recovery.get("continuation_tools"), list) else []
+    next_params = dict(recovery.get("next_params") if isinstance(recovery.get("next_params"), dict) else {})
+    if continuation_tools and "post_approval_continuation_tools" not in next_params:
+        next_params["post_approval_continuation_tools"] = continuation_tools
+        normalized["post_approval_continuation_tools"] = continuation_tools
+    normalized["legacy_next_tool"] = LEGACY_MAINTENANCE_REPAIR_TOOL
+    normalized["next_tool"] = MAINTENANCE_REPAIR_PREPARE_TOOL
+    normalized["next_params"] = next_params
+    normalized["continuation_tools"] = []
+    return normalized
 
 
 def _tool_requests_from_recovery(recovery: dict[str, Any]) -> list[dict[str, Any]]:

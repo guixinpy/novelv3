@@ -70,7 +70,7 @@ def test_normalize_tool_recommendations_separates_provenance_read_and_write_tool
         {
             "memory_provenance": {
                 "recovery": {
-                    "next_tools": ["inspect_agent_memory_route", "repair_longform_maintenance"],
+                    "next_tools": ["inspect_agent_memory_route", "prepare_repair_longform_maintenance"],
                     "tools": [
                         {
                             "tool_name": "inspect_agent_memory_route",
@@ -81,11 +81,11 @@ def test_normalize_tool_recommendations_separates_provenance_read_and_write_tool
                             },
                         }
                     ],
-                    "write_tools": [{"tool_name": "repair_longform_maintenance", "params": {}}],
+                    "write_tools": [{"tool_name": "prepare_repair_longform_maintenance", "params": {}}],
                 }
             }
         },
-        allowed_tools={"inspect_agent_memory_route", "repair_longform_maintenance"},
+        allowed_tools={"inspect_agent_memory_route", "prepare_repair_longform_maintenance"},
     )
 
     assert result["source_fields"] == [
@@ -104,4 +104,4 @@ def test_normalize_tool_recommendations_separates_provenance_read_and_write_tool
             },
         }
     ]
-    assert result["provenance_write_tools"] == [{"tool_name": "repair_longform_maintenance", "params": {}}]
+    assert result["provenance_write_tools"] == [{"tool_name": "prepare_repair_longform_maintenance", "params": {}}]

@@ -33,6 +33,11 @@ AGENT_PLAN_GATED_TOOLS = {
         "gate_type": "stateless_agent_plan_approval",
         "covered_tools": ["record_agent_knowledge_base_candidate"],
     },
+    "execute_repair_longform_maintenance_with_approval": {
+        "gate_version": "phase190.longform_maintenance_agent_plan_approval.v1",
+        "gate_type": "stateless_agent_plan_approval",
+        "covered_tools": ["repair_longform_maintenance"],
+    },
     "execute_longform_chapter_batch": {
         "gate_version": "phase111.agent_plan_approval_execution_gate.v1",
         "gate_type": "persisted_agent_plan_approval",

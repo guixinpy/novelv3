@@ -13,6 +13,7 @@ from app.services.writing_agent.memory_provenance_contract import build_memory_p
 
 MEMORY_ACTIVATION_VERSION = "phase241.memory_activation.v1"
 MEMORY_ACTIVATION_PROVENANCE_VERSION = "phase241.memory_activation_provenance.v1"
+MAINTENANCE_REPAIR_PREPARE_TOOL = "prepare_repair_longform_maintenance"
 LONGFORM_ITEM_LIMIT = 8
 FORESHADOWING_ITEM_LIMIT = 5
 WORLD_MODEL_ITEM_LIMIT = 5
@@ -275,7 +276,7 @@ def _status(risks: list[dict[str, Any]]) -> str:
 def _recommended_next_tools(status: str) -> list[str]:
     if status == "ready":
         return ["preflight_writing", "generate_chapter"]
-    return ["repair_longform_maintenance", "inspect_agent_memory_route"]
+    return [MAINTENANCE_REPAIR_PREPARE_TOOL, "inspect_agent_memory_route"]
 
 
 def _prompt_block(

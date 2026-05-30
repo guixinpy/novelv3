@@ -18,6 +18,7 @@ MAX_MAX_CHARS = 12000
 SECTION_ITEM_LIMIT = 5
 SUMMARY_TEXT_LIMIT = 220
 LONGFORM_MEMORY_PROVENANCE_VERSION = "phase223.longform_memory_provenance.v1"
+MAINTENANCE_REPAIR_PREPARE_TOOL = "prepare_repair_longform_maintenance"
 
 
 def summarize_longform_context(
@@ -62,7 +63,7 @@ def summarize_longform_context(
             "message": "长篇记忆或检索索引存在缺口，建议先修复后再生成正文。",
         }
         should_generate_next_chapter = False
-        recommended_actions = ["repair_longform_maintenance"]
+        recommended_actions = [MAINTENANCE_REPAIR_PREPARE_TOOL]
     else:
         decision = {
             "status": "ready",
@@ -401,8 +402,8 @@ def _provenance_recovery(
         return {
             "status": "recommended",
             "reason": decision.get("reason"),
-            "next_tools": ["repair_longform_maintenance"],
-            "tools": [{"tool_name": "repair_longform_maintenance", "params": {}}],
+            "next_tools": [MAINTENANCE_REPAIR_PREPARE_TOOL],
+            "tools": [{"tool_name": MAINTENANCE_REPAIR_PREPARE_TOOL, "params": {}}],
         }
     if has_section_truncation or prompt_truncated:
         if int(char_limit) >= MAX_MAX_CHARS:

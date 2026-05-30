@@ -16,6 +16,7 @@ _KNOWN_MUTATING_TOOLS = {
     "generate_chapter",
     "generate_chapter_range",
     "record_agent_knowledge_base_candidate",
+    "repair_longform_maintenance",
     "apply_planner_revision_patch",
     "apply_world_model_proposal_resolution",
 }
@@ -143,6 +144,12 @@ def _target_for_tool(project_id: str, tool_name: str, params: dict[str, Any]) ->
             "missing_target",
             "record_agent_knowledge_base_candidate requires memory_type, title, summary, and source_refs",
         )
+
+    if tool_name == "repair_longform_maintenance":
+        project_target = _clean_string(project_id)
+        if not project_target:
+            return _blocked("longform_maintenance", "missing_target", "repair_longform_maintenance requires project_id")
+        return _ready("longform_maintenance", f"longform_maintenance:{project_target}")
 
     if tool_name == "apply_planner_revision_patch":
         chapter_index = _positive_int(params.get("chapter_index"))

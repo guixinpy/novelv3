@@ -1281,6 +1281,61 @@ def test_agent_run_can_plan_recovery_tools_from_blocked_run(client, db_session):
     assert output["trace"]["selected_tools"] == ["expand_outline_window"]
 
 
+def test_agent_run_recovery_plan_redirects_legacy_longform_repair_to_prepare(client, db_session):
+    project = Project(name="Legacy Longform Repair Recovery")
+    db_session.add(project)
+    db_session.flush()
+    run = WritingAgentRun(project_id=project.id, goal="legacy repair", status="blocked", input={})
+    db_session.add(run)
+    db_session.flush()
+    db_session.add(
+        WritingAgentStep(
+            run_id=run.id,
+            project_id=project.id,
+            step_index=1,
+            tool_name="summarize_longform_context",
+            status="blocked",
+            output={
+                "agent_tool_result": {
+                    "recovery": {
+                        "status": "recommended",
+                        "source_tool": "summarize_longform_context",
+                        "reason_code": "longform_memory_needs_maintenance",
+                        "next_tool": "repair_longform_maintenance",
+                        "next_params": {},
+                        "continuation_tools": [
+                            {"tool_name": "summarize_longform_context", "params": {"chapter_index": 2}},
+                            {"tool_name": "preflight_writing", "params": {"chapter_index": 2}},
+                        ],
+                    }
+                }
+            },
+        )
+    )
+    db_session.commit()
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "规划旧版长篇维护恢复",
+            "tools": [{"tool_name": "plan_recovery_tools", "params": {"run_id": run.id}}],
+        },
+    )
+
+    payload = response.json()
+    output = payload["steps"][0]["output"]
+    assert response.status_code == 200
+    assert payload["status"] == "success"
+    assert output["recovery"]["legacy_next_tool"] == "repair_longform_maintenance"
+    assert output["recovery"]["next_tool"] == "prepare_repair_longform_maintenance"
+    assert output["tools"][0]["tool_name"] == "prepare_repair_longform_maintenance"
+    assert [tool["tool_name"] for tool in output["tools"][0]["params"]["post_approval_continuation_tools"]] == [
+        "summarize_longform_context",
+        "preflight_writing",
+    ]
+    assert output["trace"]["selected_tools"] == ["prepare_repair_longform_maintenance"]
+
+
 def test_agent_run_auto_plan_previews_recovery_tool_plan_by_default(client, db_session):
     project = _seed_longform_project(db_session, outline_chapters=[1], generated_chapters=[1, 2])
     blocked = client.post(
@@ -1930,12 +1985,12 @@ def test_agent_auto_plan_longform_context_blocks_stale_maintenance_before_genera
     ]
     context_output = payload["steps"][2]["output"]
     assert context_output["should_generate_next_chapter"] is False
-    assert context_output["recommended_actions"] == ["repair_longform_maintenance"]
+    assert context_output["recommended_actions"] == ["prepare_repair_longform_maintenance"]
     assert context_output["decision"]["reason"] == "longform_memory_needs_maintenance"
     provenance = context_output["memory_provenance"]
     assert provenance["status"] == "blocked"
     assert provenance["recovery"]["status"] == "recommended"
-    assert provenance["recovery"]["next_tools"] == ["repair_longform_maintenance"]
+    assert provenance["recovery"]["next_tools"] == ["prepare_repair_longform_maintenance"]
     assert calls == []
     state = payload["output"]["continuation_state"]
     assert state["version"] == "phase56.continuation_state.v1"
@@ -1943,16 +1998,16 @@ def test_agent_auto_plan_longform_context_blocks_stale_maintenance_before_genera
     assert state["target_chapter_index"] == 2
     assert state["last_successful_tool"]["tool_name"] == "summarize_longform_context"
     assert state["blocked_tool"]["tool_name"] == "summarize_longform_context"
-    assert state["next_expected_tool"] == "repair_longform_maintenance"
+    assert state["next_expected_tool"] == "prepare_repair_longform_maintenance"
     assert state["recommended_followups"]["status"] == "suppressed"
     assert state["recommended_followups"]["reason"] == "recovery_required"
     assert state["recovery"]["status"] == "recommended"
-    assert state["recovery"]["next_tool"] == "repair_longform_maintenance"
+    assert state["recovery"]["next_tool"] == "prepare_repair_longform_maintenance"
     assert state["recovery"]["memory_provenance_status"] == "blocked"
     assert state["recovery"]["memory_provenance_recovery_status"] == "recommended"
     assert state["memory_provenance"]["source_tool"] == "summarize_longform_context"
     assert state["memory_provenance"]["status"] == "blocked"
-    assert state["memory_provenance"]["recovery"]["next_tools"] == ["repair_longform_maintenance"]
+    assert state["memory_provenance"]["recovery"]["next_tools"] == ["prepare_repair_longform_maintenance"]
     assert state["consumed"]["longform_context"] is True
     assert state["consumed"]["generated_chapter"] is False
 
@@ -1968,26 +2023,23 @@ def test_agent_auto_plan_longform_context_blocks_stale_maintenance_before_genera
     assert preview.status_code == 200
     assert recovery["status"] == "completed"
     assert recovery["source_step"]["tool_name"] == "summarize_longform_context"
-    assert recovery["recovery"]["next_tool"] == "repair_longform_maintenance"
+    assert recovery["recovery"]["next_tool"] == "prepare_repair_longform_maintenance"
     assert [tool["tool_name"] for tool in recovery["tools"]] == [
-        "repair_longform_maintenance",
+        "prepare_repair_longform_maintenance",
+    ]
+    assert [tool["tool_name"] for tool in recovery["tools"][0]["params"]["post_approval_continuation_tools"]] == [
         "summarize_longform_context",
         "preflight_writing",
         "generate_chapter",
     ]
-    assert recovery["tools"][1]["params"]["chapter_index"] == 2
-    assert recovery["tools"][2]["params"]["chapter_index"] == 2
-    assert recovery["tools"][3]["params"]["chapter_index"] == 2
+    assert recovery["tools"][0]["params"]["post_approval_continuation_tools"][0]["params"]["chapter_index"] == 2
     assert recovery["trace"]["selected_tools"] == [
-        "repair_longform_maintenance",
-        "summarize_longform_context",
-        "preflight_writing",
-        "generate_chapter",
+        "prepare_repair_longform_maintenance",
     ]
     assert recovery["execution_policy"]["safe_auto_execute"] is False
 
 
-def test_agent_run_executes_longform_context_recovery_chain_after_confirmation(
+def test_agent_run_prepares_longform_context_recovery_after_confirmation(
     client,
     db_session,
     monkeypatch,
@@ -2041,27 +2093,30 @@ def test_agent_run_executes_longform_context_recovery_chain_after_confirmation(
     assert payload["input"]["planner"]["mode"] == "execute"
     assert payload["input"]["planner"]["plan_hash"] == plan_hash
     assert [step["tool_name"] for step in payload["steps"]] == [
-        "repair_longform_maintenance",
+        "prepare_repair_longform_maintenance",
+    ]
+    prepare_output = payload["steps"][0]["output"]
+    assert prepare_output["status"] == "approval_required"
+    assert prepare_output["side_effects"] == {"executed": [], "skipped": ["repair_longform_maintenance"]}
+    assert prepare_output["recommended_next_tools"] == ["execute_repair_longform_maintenance_with_approval"]
+    assert [tool["tool_name"] for tool in prepare_output["post_approval_continuation_tools"]] == [
         "summarize_longform_context",
         "preflight_writing",
         "generate_chapter",
     ]
-    context_output = payload["steps"][1]["output"]
-    assert context_output["should_generate_next_chapter"] is True
-    assert context_output["decision"]["reason"] == "longform_context_ready"
-    assert payload["steps"][2]["output"]["status"] == "ready"
     state = payload["output"]["continuation_state"]
     assert state["version"] == "phase56.continuation_state.v1"
     assert state["status"] == "completed"
     assert state["target_chapter_index"] == 2
-    assert state["last_successful_tool"]["tool_name"] == "generate_chapter"
+    assert state["last_successful_tool"]["tool_name"] == "prepare_repair_longform_maintenance"
     assert state["next_expected_tool"] is None
-    assert state["consumed"]["longform_maintenance"] is True
-    assert state["consumed"]["longform_context"] is True
-    assert state["consumed"]["preflight"] is True
-    assert state["consumed"]["generated_chapter"] is True
+    assert state["recommended_followups"]["next_tool"] == "execute_repair_longform_maintenance_with_approval"
+    assert state["consumed"]["longform_maintenance"] is False
+    assert state["consumed"]["longform_context"] is False
+    assert state["consumed"]["preflight"] is False
+    assert state["consumed"]["generated_chapter"] is False
     assert state["consumed"]["world_model_proposals"] is False
-    assert calls == ["generate_chapter"]
+    assert calls == []
 
 
 def test_agent_run_can_repair_longform_maintenance(client, db_session):
@@ -2159,7 +2214,7 @@ def test_agent_run_plan_longform_chapter_batch_blocks_on_source_continuation(cli
     assert output["status"] == "blocked"
     assert output["recommended_next_tools"] == ["plan_recovery_tools"]
     assert output["source_continuation_state"]["status"] == "blocked"
-    assert output["source_continuation_state"]["next_expected_tool"] == "repair_longform_maintenance"
+    assert output["source_continuation_state"]["next_expected_tool"] == "prepare_repair_longform_maintenance"
     assert output["dag"]["nodes"] == []
 
 

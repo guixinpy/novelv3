@@ -29,7 +29,7 @@ def test_inspect_agent_memory_route_blocks_when_longform_memory_is_missing(db_se
     assert output["status"] == "completed"
     assert output["route"]["status"] == "blocked"
     assert output["route"]["reason"] == "longform_memory_needs_maintenance"
-    assert output["route"]["recommended_tools"] == ["repair_longform_maintenance"]
+    assert output["route"]["recommended_tools"] == ["prepare_repair_longform_maintenance"]
     assert output["longform_maintenance"]["ready_for_writing"] is False
     assert output["longform_maintenance"]["issue_count"] > 0
     assert "longform_memory_needs_maintenance" in {item["code"] for item in output["diagnostics"]}
@@ -41,8 +41,8 @@ def test_inspect_agent_memory_route_blocks_when_longform_memory_is_missing(db_se
     assert provenance["coverage"]["longform_memory_count"] == 0
     assert provenance["coverage"]["retrieval_document_count"] == 0
     assert provenance["recovery"]["status"] == "recommended"
-    assert provenance["recovery"]["next_tools"] == ["repair_longform_maintenance"]
-    assert provenance["recovery"]["tools"] == [{"tool_name": "repair_longform_maintenance", "params": {}}]
+    assert provenance["recovery"]["next_tools"] == ["prepare_repair_longform_maintenance"]
+    assert provenance["recovery"]["tools"] == [{"tool_name": "prepare_repair_longform_maintenance", "params": {}}]
     assert {"LongformMemory", "LongformMaintenance", "RetrievalDocument"}.issubset(
         {source["source_ref"] for source in provenance["sources"]}
     )
@@ -138,7 +138,7 @@ def test_inspect_agent_memory_route_reports_degraded_retrieval_coverage(db_sessi
     }
     assert provenance["recovery"]["status"] == "optional"
     assert provenance["recovery"]["reason"] == "retrieval_index_empty"
-    assert provenance["recovery"]["next_tools"] == ["inspect_agent_memory_route", "repair_longform_maintenance"]
+    assert provenance["recovery"]["next_tools"] == ["inspect_agent_memory_route", "prepare_repair_longform_maintenance"]
     assert provenance["recovery"]["tools"] == [
         {
             "tool_name": "inspect_agent_memory_route",
@@ -149,7 +149,7 @@ def test_inspect_agent_memory_route_reports_degraded_retrieval_coverage(db_sessi
             },
         }
     ]
-    assert provenance["recovery"]["write_tools"] == [{"tool_name": "repair_longform_maintenance", "params": {}}]
+    assert provenance["recovery"]["write_tools"] == [{"tool_name": "prepare_repair_longform_maintenance", "params": {}}]
 
 
 def _assert_memory_provenance_contract(provenance):

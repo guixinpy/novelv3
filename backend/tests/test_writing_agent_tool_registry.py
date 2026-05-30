@@ -70,6 +70,8 @@ def test_agent_memory_trace_tool_descriptors_live_in_dedicated_module():
         "inspect_agent_context_compression_projection",
         "inspect_agent_memory_activation_plan",
         "repair_longform_maintenance",
+        "prepare_repair_longform_maintenance",
+        "execute_repair_longform_maintenance_with_approval",
     ]
     assert {descriptor.category for descriptor in AGENT_MEMORY_TRACE_TOOL_DESCRIPTORS} == {
         "trace",
@@ -83,9 +85,12 @@ def test_agent_memory_trace_tool_descriptors_live_in_dedicated_module():
     assert target_type_for_tool("inspect_agent_context_compression_projection") == "agent_context_compression_projection"
     assert target_type_for_tool("inspect_agent_memory_activation_plan") == "agent_memory_activation_plan"
     assert target_type_for_tool("repair_longform_maintenance") == "longform_maintenance"
+    assert target_type_for_tool("prepare_repair_longform_maintenance") == "longform_maintenance_approval"
+    assert target_type_for_tool("execute_repair_longform_maintenance_with_approval") == "longform_maintenance"
     assert "inspect_agent_trace_audit" in non_blocking_report_tool_names()
     assert "inspect_agent_context_compression_projection" in non_blocking_report_tool_names()
     assert "inspect_agent_memory_activation_plan" in non_blocking_report_tool_names()
+    assert "prepare_repair_longform_maintenance" in non_blocking_report_tool_names()
     assert "repair_longform_maintenance" not in non_blocking_report_tool_names()
 
 
@@ -1187,6 +1192,37 @@ def test_agent_tool_registry_includes_repair_longform_maintenance():
     assert descriptor.target_type == "longform_maintenance"
     assert descriptor.input_schema["properties"]["repair_limit"]["minimum"] == 1
     assert "repair_longform_maintenance" in allowed_tool_names()
+
+
+def test_agent_tool_registry_includes_repair_longform_maintenance_approval_chain():
+    prepare_descriptor = get_agent_tool_descriptor("prepare_repair_longform_maintenance")
+    execute_descriptor = get_agent_tool_descriptor("execute_repair_longform_maintenance_with_approval")
+
+    assert prepare_descriptor is not None
+    assert prepare_descriptor.internal is True
+    assert prepare_descriptor.non_blocking_report is True
+    assert prepare_descriptor.category == "maintenance"
+    assert prepare_descriptor.target_type == "longform_maintenance_approval"
+    assert prepare_descriptor.output_schema["properties"]["agent_plan_approval_contract_hash"]["type"] == "string"
+    assert "prepare_repair_longform_maintenance" in allowed_tool_names()
+    assert "prepare_repair_longform_maintenance" in non_blocking_report_tool_names()
+
+    assert execute_descriptor is not None
+    assert execute_descriptor.internal is True
+    assert execute_descriptor.non_blocking_report is False
+    assert execute_descriptor.category == "maintenance"
+    assert execute_descriptor.target_type == "longform_maintenance"
+    assert execute_descriptor.input_schema["properties"]["confirm_execute"]["type"] == "boolean"
+    assert execute_descriptor.input_schema["properties"]["approval_contract_hash"]["type"] == "string"
+    assert execute_descriptor.input_schema["properties"]["approval_contract"]["type"] == "object"
+    assert set(execute_descriptor.input_schema["required"]) == {
+        "confirm_execute",
+        "approval_contract_hash",
+        "approval_contract",
+    }
+    assert execute_descriptor.output_schema["properties"]["agent_plan_approval_verification"]["type"] == "object"
+    assert "execute_repair_longform_maintenance_with_approval" in allowed_tool_names()
+    assert "execute_repair_longform_maintenance_with_approval" not in non_blocking_report_tool_names()
 
 
 def test_agent_tool_plan_hides_chapter_generation_until_dependencies_are_ready(db_session):

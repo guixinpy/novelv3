@@ -169,7 +169,7 @@ def test_memory_activation_reports_coverage_debt_for_missing_memory(db_session):
     debt = output["coverage"]["memory_coverage_debt"]
     assert debt["status"] == "degraded"
     assert debt["missing_memory_count"] == 1
-    assert output["recommended_next_tools"] == ["repair_longform_maintenance", "inspect_agent_memory_route"]
+    assert output["recommended_next_tools"] == ["prepare_repair_longform_maintenance", "inspect_agent_memory_route"]
     assert any(risk["code"] == "memory_coverage_debt" for risk in output["risks"])
 
 

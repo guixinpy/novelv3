@@ -3,6 +3,34 @@ from __future__ import annotations
 from app.services.writing_agent.tool_descriptor_types import AgentToolDescriptor, object_schema
 
 
+_LONGFORM_MAINTENANCE_INPUT = object_schema(
+    {
+        "limit": {"type": "integer", "minimum": 1},
+        "repair_limit": {"type": "integer", "minimum": 1},
+        "post_approval_continuation_tools": {"type": "array"},
+    }
+)
+_LONGFORM_MAINTENANCE_PREPARE_OUTPUT = object_schema(
+    {
+        "status": {"type": "string"},
+        "prepare_version": {"type": "string"},
+        "project_id": {"type": "string"},
+        "target_type": {"type": "string"},
+        "mutation_fingerprint": {"type": "object"},
+        "tool_call_id": {"type": "string"},
+        "resource_binding": {"type": "object"},
+        "agent_plan": {"type": "object"},
+        "agent_plan_approval_contract": {"type": "object"},
+        "agent_plan_approval_contract_hash": {"type": "string"},
+        "required_confirmation": {"type": "object"},
+        "side_effects": {"type": "object"},
+        "recommended_next_tools": {"type": "array"},
+        "post_approval_continuation_tools": {"type": "array"},
+        "trace": {"type": "object"},
+    }
+)
+
+
 AGENT_MEMORY_TRACE_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
     AgentToolDescriptor(
         name="inspect_agent_trace_audit",
@@ -161,18 +189,67 @@ AGENT_MEMORY_TRACE_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         module="athena_longform",
         category="maintenance",
         description="修复长篇记忆和检索索引缺口，使后续章节生成可获得稳定上下文。",
-        input_schema=object_schema(
-            {
-                "limit": {"type": "integer", "minimum": 1},
-                "repair_limit": {"type": "integer", "minimum": 1},
-            }
-        ),
+        input_schema=_LONGFORM_MAINTENANCE_INPUT,
         output_schema=object_schema(
             {
                 "status": {"type": "string"},
                 "repaired_memory_count": {"type": "integer"},
                 "repaired_retrieval_count": {"type": "integer"},
                 "remaining": {"type": "object"},
+            }
+        ),
+        target_type="longform_maintenance",
+        internal=True,
+        sort_key=9,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
+        name="prepare_repair_longform_maintenance",
+        module="writing_agent",
+        category="maintenance",
+        description="为长篇记忆和检索维护修复构建 Agent 计划审批契约，不执行修复。",
+        input_schema=_LONGFORM_MAINTENANCE_INPUT,
+        output_schema=_LONGFORM_MAINTENANCE_PREPARE_OUTPUT,
+        target_type="longform_maintenance_approval",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=9,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
+        name="execute_repair_longform_maintenance_with_approval",
+        module="writing_agent",
+        category="maintenance",
+        description="在确认 Agent 计划审批契约后修复长篇记忆和检索维护缺口。",
+        input_schema=object_schema(
+            {
+                "limit": {"type": "integer", "minimum": 1},
+                "repair_limit": {"type": "integer", "minimum": 1},
+                "confirm_execute": {"type": "boolean"},
+                "approval_contract_hash": {"type": "string"},
+                "approval_contract": {"type": "object"},
+                "post_approval_continuation_tools": {"type": "array"},
+            },
+            required=("confirm_execute", "approval_contract_hash", "approval_contract"),
+        ),
+        output_schema=object_schema(
+            {
+                "status": {"type": "string"},
+                "execute_version": {"type": "string"},
+                "project_id": {"type": "string"},
+                "target_type": {"type": "string"},
+                "repaired_memory_count": {"type": "integer"},
+                "repaired_retrieval_count": {"type": "integer"},
+                "remaining": {"type": "object"},
+                "repair_result": {"type": "object"},
+                "agent_plan_approval_verification": {"type": "object"},
+                "approval_verification_event": {"type": "object"},
+                "execution_resource_binding": {"type": "object"},
+                "evidence": {"type": "object"},
+                "side_effects": {"type": "object"},
+                "recommended_next_tools": {"type": "array"},
+                "post_approval_continuation_tools": {"type": "array"},
+                "trace": {"type": "object"},
             }
         ),
         target_type="longform_maintenance",

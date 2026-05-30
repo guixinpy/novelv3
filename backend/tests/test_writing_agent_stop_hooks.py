@@ -64,7 +64,7 @@ def test_stop_hooks_block_memory_provenance_recovery():
             "recovery": {
                 "status": "recommended",
                 "reason": "longform_memory_needs_maintenance",
-                "next_tools": ["repair_longform_maintenance"],
+                "next_tools": ["prepare_repair_longform_maintenance"],
             },
         },
     }
@@ -84,7 +84,7 @@ def test_stop_hooks_block_memory_provenance_recovery():
     assert decision["status"] == "blocked"
     assert decision["reason"] == "memory_provenance_blocked"
     assert decision["allow_continue"] is False
-    assert decision["recommended_tools"] == ["repair_longform_maintenance"]
+    assert decision["recommended_tools"] == ["prepare_repair_longform_maintenance"]
     assert decision["hooks"][0]["code"] == "memory_provenance_blocked"
 
 
