@@ -286,6 +286,8 @@ def test_world_model_tool_adapters_live_in_dedicated_module():
         "prepare_import_setup_world_model_execution",
         "execute_import_setup_world_model_with_approval",
         "analyze_chapter_world_model",
+        "prepare_analyze_chapter_world_model_execution",
+        "execute_analyze_chapter_world_model_with_approval",
         "review_world_model_proposals",
         "inspect_agent_world_model_route",
         "plan_world_model_proposal_resolution",
@@ -298,6 +300,9 @@ def test_world_model_tool_adapters_live_in_dedicated_module():
     assert WORLD_MODEL_AGENT_TOOL_ADAPTERS["import_setup_world_model"].mutability == "guarded_write"
     assert WORLD_MODEL_AGENT_TOOL_ADAPTERS["import_setup_world_model"].write_policy == "approval_required_redirect"
     assert WORLD_MODEL_AGENT_TOOL_ADAPTERS["execute_import_setup_world_model_with_approval"].mutability == "write"
+    assert WORLD_MODEL_AGENT_TOOL_ADAPTERS["analyze_chapter_world_model"].mutability == "guarded_write"
+    assert WORLD_MODEL_AGENT_TOOL_ADAPTERS["analyze_chapter_world_model"].write_policy == "approval_required_redirect"
+    assert WORLD_MODEL_AGENT_TOOL_ADAPTERS["execute_analyze_chapter_world_model_with_approval"].mutability == "write"
     assert WORLD_MODEL_AGENT_TOOL_ADAPTERS["inspect_agent_world_model_route"].mutability == "read"
     assert WORLD_MODEL_AGENT_TOOL_ADAPTERS["apply_world_model_proposal_resolution"].mutability == "write"
     assert (
@@ -3513,9 +3518,44 @@ def test_tool_executor_exposes_analyze_chapter_world_model_adapter_metadata():
         "tool_name": "analyze_chapter_world_model",
         "adapter_type": "static",
         "category": "athena_world_model",
-        "mutability": "write",
+        "mutability": "guarded_write",
         "handler_name": "_analyze_chapter_world_model",
+        "write_policy": "approval_required_redirect",
     }
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_redirects_direct_analyze_chapter_world_model_to_approval(db_session, monkeypatch):
+    project = Project(name="Direct Chapter World Model Analysis Redirect")
+    db_session.add(project)
+    db_session.commit()
+    calls: list[int] = []
+
+    def fake_analysis_tool(db, project_id: str, *, chapter_index: int, run_id=None):
+        calls.append(chapter_index)
+        return {"status": "completed"}
+
+    monkeypatch.setattr(
+        "app.services.writing_agent.world_model_analysis_tool.analyze_chapter_world_model_tool",
+        fake_analysis_tool,
+    )
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-direct"),
+        WritingAgentToolRequest(tool_name="analyze_chapter_world_model", params={"chapter_index": 3}),
+    )
+
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "blocked"
+    assert result.output["reason"] == "approval_required_before_write"
+    assert result.output["target_type"] == "world_model"
+    assert result.output["chapter_index"] == 3
+    assert result.output["recommended_next_tools"] == ["prepare_analyze_chapter_world_model_execution"]
+    assert result.output["required_approval"]["execute_tool"] == "execute_analyze_chapter_world_model_with_approval"
+    assert result.output["side_effects"]["executed"] == []
+    assert result.output["side_effects"]["skipped"] == ["analyze_chapter_world_model"]
+    assert calls == []
 
 
 def test_tool_executor_exposes_expand_outline_window_adapter_metadata():
@@ -3750,6 +3790,8 @@ async def test_tool_executor_handles_inspect_agent_tool_contracts(db_session):
     assert "missing_agent_native_adapter" not in tools_by_name["generate_chapter"]["gap_codes"]
     assert "output_schema_too_generic" not in tools_by_name["generate_chapter"]["gap_codes"]
     assert tools_by_name["analyze_chapter_world_model"]["adapter_type"] == "static"
+    assert tools_by_name["analyze_chapter_world_model"]["mutability"] == "guarded_write"
+    assert tools_by_name["analyze_chapter_world_model"]["permission_level"] == "confirm_required"
     assert "missing_agent_native_adapter" not in tools_by_name["analyze_chapter_world_model"]["gap_codes"]
     assert tools_by_name["expand_outline_window"]["adapter_type"] == "static"
     assert tools_by_name["expand_outline_window"]["mutability"] == "guarded_write"

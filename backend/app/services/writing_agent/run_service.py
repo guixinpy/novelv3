@@ -676,7 +676,12 @@ class WritingAgentRunService:
                 .first()
             )
             return row.id if row else None
-        if step.tool_name in {"import_setup_world_model", "execute_import_setup_world_model_with_approval"}:
+        if step.tool_name in {
+            "import_setup_world_model",
+            "execute_import_setup_world_model_with_approval",
+            "analyze_chapter_world_model",
+            "execute_analyze_chapter_world_model_with_approval",
+        }:
             row = (
                 self.db.query(ProjectProfileVersion.id)
                 .filter(ProjectProfileVersion.project_id == step.project_id)

@@ -4628,13 +4628,14 @@ def test_agent_analyze_chapter_world_model_records_proposal_output(client, db_se
         f"/api/v1/projects/{project.id}/agent-runs",
         json={
             "goal": "分析第1章",
-            "tools": [{"tool_name": "analyze_chapter_world_model", "params": {"chapter_index": 1}}],
+            "tools": [_approved_analyze_chapter_world_model_tool(db_session, project.id, chapter_index=1)],
         },
     )
 
     output = response.json()["steps"][0]["output"]
     assert response.status_code == 200
     assert response.json()["status"] == "success"
+    assert response.json()["steps"][0]["tool_name"] == "execute_analyze_chapter_world_model_with_approval"
     assert output["status"] == "completed"
     assert output["chapter_index"] == 1
     assert output["created"]["proposal_items"] >= 1
@@ -4690,7 +4691,7 @@ def test_agent_skips_analyze_when_generate_step_already_auto_analyzed_same_chapt
             "goal": "生成第4章并分析世界模型",
             "tools": [
                 _approved_generate_chapter_tool(db_session, project.id, chapter_index=4),
-                {"tool_name": "analyze_chapter_world_model", "params": {"chapter_index": 4}},
+                _approved_analyze_chapter_world_model_tool(db_session, project.id, chapter_index=4),
             ],
         },
     )
@@ -8996,6 +8997,23 @@ def _approved_generate_chapter_tool(db_session, project_id: str, *, chapter_inde
     if command_args is not None:
         tool["command_args"] = command_args
     return tool
+
+
+def _approved_analyze_chapter_world_model_tool(db_session, project_id: str, *, chapter_index: int) -> dict:
+    from app.services.writing_agent.world_model_analysis_execution import (
+        prepare_analyze_chapter_world_model_execution,
+    )
+
+    prepared = prepare_analyze_chapter_world_model_execution(db_session, project_id, chapter_index=chapter_index)
+    return {
+        "tool_name": "execute_analyze_chapter_world_model_with_approval",
+        "params": {
+            "chapter_index": chapter_index,
+            "confirm_execute": True,
+            "approval_contract_hash": prepared["agent_plan_approval_contract_hash"],
+            "approval_contract": prepared["agent_plan_approval_contract"],
+        },
+    }
 
 
 def _planner_revision_patch_plan(project_id: str, *, chapter_index: int, revision_id: str) -> dict:

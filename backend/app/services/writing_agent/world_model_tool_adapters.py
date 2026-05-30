@@ -49,14 +49,52 @@ def _execute_import_setup_world_model_with_approval(
 
 
 def _analyze_chapter_world_model(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
-    from app.services.writing_agent.world_model_analysis_tool import analyze_chapter_world_model_tool
+    chapter_index = int(tool.params.get("chapter_index") or 1)
+    return approval_required_redirect(
+        project_id=context.project_id,
+        tool_name="analyze_chapter_world_model",
+        target_type="world_model",
+        prepare_tool="prepare_analyze_chapter_world_model_execution",
+        execute_tool="execute_analyze_chapter_world_model_with_approval",
+        extra={"chapter_index": chapter_index},
+    )
+
+
+def _prepare_analyze_chapter_world_model_execution(
+    context: WritingAgentToolContext,
+    tool: WritingAgentToolRequest,
+) -> dict[str, Any]:
+    from app.services.writing_agent.world_model_analysis_execution import (
+        prepare_analyze_chapter_world_model_execution,
+    )
 
     chapter_index = int(tool.params.get("chapter_index") or 1)
-    return analyze_chapter_world_model_tool(
+    return prepare_analyze_chapter_world_model_execution(
+        context.db,
+        context.project_id,
+        chapter_index=chapter_index,
+    )
+
+
+def _execute_analyze_chapter_world_model_with_approval(
+    context: WritingAgentToolContext,
+    tool: WritingAgentToolRequest,
+) -> dict[str, Any]:
+    from app.services.writing_agent.world_model_analysis_execution import (
+        execute_analyze_chapter_world_model_with_approval,
+    )
+
+    chapter_index = int(tool.params.get("chapter_index") or 1)
+    approval_contract = tool.params.get("approval_contract")
+    return execute_analyze_chapter_world_model_with_approval(
         context.db,
         context.project_id,
         chapter_index=chapter_index,
         run_id=context.run_id,
+        confirm_execute=tool.params.get("confirm_execute") is True,
+        approval_contract_hash=str(tool.params.get("approval_contract_hash") or "").strip() or None,
+        approval_contract=approval_contract if isinstance(approval_contract, dict) else None,
+        approval_tool_metadata_provider=_world_model_approval_tool_metadata_by_name,
     )
 
 
@@ -188,6 +226,19 @@ WORLD_MODEL_AGENT_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
     "analyze_chapter_world_model": WritingAgentToolAdapter(
         "analyze_chapter_world_model",
         _analyze_chapter_world_model,
+        category="athena_world_model",
+        mutability="guarded_write",
+        write_policy="approval_required_redirect",
+    ),
+    "prepare_analyze_chapter_world_model_execution": WritingAgentToolAdapter(
+        "prepare_analyze_chapter_world_model_execution",
+        _prepare_analyze_chapter_world_model_execution,
+        category="athena_world_model",
+        mutability="read",
+    ),
+    "execute_analyze_chapter_world_model_with_approval": WritingAgentToolAdapter(
+        "execute_analyze_chapter_world_model_with_approval",
+        _execute_analyze_chapter_world_model_with_approval,
         category="athena_world_model",
         mutability="write",
     ),
