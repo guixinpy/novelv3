@@ -122,6 +122,34 @@ def test_write_gate_coverage_marks_create_revision_draft_direct_calls_as_approva
     assert draft_tool["recommended_action"] == "route_direct_calls_to_approval_executor"
 
 
+def test_write_gate_coverage_marks_chapter_revision_adjustments_as_approval_redirected():
+    output = inspect_agent_write_gate_coverage(adapter_metadata_by_name=_adapter_metadata())
+    tools_by_name = _tools_by_name(output)
+
+    expected = {
+        "expand_chapter_to_target": (
+            "execute_expand_chapter_to_target_with_approval",
+            "phase196.chapter_expansion_agent_plan_approval.v1",
+        ),
+        "compress_chapter_to_target": (
+            "execute_compress_chapter_to_target_with_approval",
+            "phase197.chapter_compression_agent_plan_approval.v1",
+        ),
+    }
+    for direct_tool_name, (execute_tool_name, gate_version) in expected.items():
+        execute_tool = tools_by_name[execute_tool_name]
+        assert execute_tool["agent_plan_gate_status"] == "enforced"
+        assert execute_tool["gate_version"] == gate_version
+        assert execute_tool["risk_level"] == "low"
+
+        direct_tool = tools_by_name[direct_tool_name]
+        assert direct_tool["agent_plan_gate_status"] == "indirect_agent_gate_available"
+        assert direct_tool["direct_write_policy"] == "approval_required_redirect"
+        assert direct_tool["direct_write_blocked"] is True
+        assert direct_tool["risk_level"] == "low"
+        assert {item["consumer_tool"] for item in direct_tool["indirect_coverage"]} == {execute_tool_name}
+
+
 def test_write_gate_coverage_marks_generate_chapter_direct_calls_as_approval_redirected():
     output = inspect_agent_write_gate_coverage(adapter_metadata_by_name=_adapter_metadata())
     generate_tool = _tools_by_name(output)["generate_chapter"]
@@ -402,6 +430,36 @@ def _adapter_metadata() -> dict[str, dict]:
             "category": "revision",
             "mutability": "write",
             "handler_name": "_execute_create_revision_draft_with_approval",
+        },
+        "expand_chapter_to_target": {
+            "tool_name": "expand_chapter_to_target",
+            "adapter_type": "static",
+            "category": "revision",
+            "mutability": "guarded_write",
+            "handler_name": "_expand_chapter_to_target",
+            "write_policy": "approval_required_redirect",
+        },
+        "execute_expand_chapter_to_target_with_approval": {
+            "tool_name": "execute_expand_chapter_to_target_with_approval",
+            "adapter_type": "static",
+            "category": "revision",
+            "mutability": "write",
+            "handler_name": "_execute_expand_chapter_to_target_with_approval",
+        },
+        "compress_chapter_to_target": {
+            "tool_name": "compress_chapter_to_target",
+            "adapter_type": "static",
+            "category": "revision",
+            "mutability": "guarded_write",
+            "handler_name": "_compress_chapter_to_target",
+            "write_policy": "approval_required_redirect",
+        },
+        "execute_compress_chapter_to_target_with_approval": {
+            "tool_name": "execute_compress_chapter_to_target_with_approval",
+            "adapter_type": "static",
+            "category": "revision",
+            "mutability": "write",
+            "handler_name": "_execute_compress_chapter_to_target_with_approval",
         },
         "apply_world_model_proposal_resolution": {
             "tool_name": "apply_world_model_proposal_resolution",

@@ -7675,7 +7675,7 @@ def test_agent_expand_chapter_to_target_updates_chapter_versions_and_requires_re
         f"/api/v1/projects/{project.id}/agent-runs",
         json={
             "goal": "扩写第1章到目标字数",
-            "tools": [{"tool_name": "expand_chapter_to_target", "params": {"chapter_index": 1}}],
+            "tools": [_approved_expand_chapter_to_target_tool(db_session, project.id, chapter_index=1)],
         },
     )
 
@@ -7726,7 +7726,7 @@ def test_agent_expand_chapter_to_target_then_review_clears_under_target_warning(
         json={
             "goal": "扩写并复审",
             "tools": [
-                {"tool_name": "expand_chapter_to_target", "params": {"chapter_index": 1}},
+                _approved_expand_chapter_to_target_tool(db_session, project.id, chapter_index=1),
                 {"tool_name": "review_chapter_quality", "params": {"chapter_index": 1}},
             ],
         },
@@ -7771,7 +7771,7 @@ def test_agent_expand_chapter_to_target_blocks_direct_followup_generation(client
         json={
             "goal": "扩写后直接生成下一章",
             "tools": [
-                {"tool_name": "expand_chapter_to_target", "params": {"chapter_index": 1}},
+                _approved_expand_chapter_to_target_tool(db_session, project.id, chapter_index=1),
                 {"tool_name": "generate_chapter", "params": {"chapter_index": 2}},
             ],
         },
@@ -7780,7 +7780,7 @@ def test_agent_expand_chapter_to_target_blocks_direct_followup_generation(client
     payload = response.json()
     assert response.status_code == 200
     assert payload["status"] == "blocked"
-    assert [step["tool_name"] for step in payload["steps"]] == ["expand_chapter_to_target"]
+    assert [step["tool_name"] for step in payload["steps"]] == ["execute_expand_chapter_to_target_with_approval"]
     assert calls == []
 
 
@@ -7803,7 +7803,7 @@ def test_agent_expand_chapter_to_target_skips_when_chapter_already_at_target(cli
         f"/api/v1/projects/{project.id}/agent-runs",
         json={
             "goal": "扩写已达标章节",
-            "tools": [{"tool_name": "expand_chapter_to_target", "params": {"chapter_index": 1}}],
+            "tools": [_approved_expand_chapter_to_target_tool(db_session, project.id, chapter_index=1)],
         },
     )
 
@@ -7843,7 +7843,7 @@ def test_agent_expand_chapter_to_target_blocks_pending_world_model_proposals(cli
         f"/api/v1/projects/{project.id}/agent-runs",
         json={
             "goal": "存在世界模型提案时扩写",
-            "tools": [{"tool_name": "expand_chapter_to_target", "params": {"chapter_index": 1}}],
+            "tools": [_approved_expand_chapter_to_target_tool(db_session, project.id, chapter_index=1)],
         },
     )
 
@@ -7886,7 +7886,12 @@ def test_agent_compress_chapter_to_target_updates_chapter_versions_and_requires_
         json={
             "goal": "压缩第1章到目标字数",
             "tools": [
-                {"tool_name": "compress_chapter_to_target", "params": {"chapter_index": 1, "target_max_word_count": 2300}}
+                _approved_compress_chapter_to_target_tool(
+                    db_session,
+                    project.id,
+                    chapter_index=1,
+                    target_max_word_count=2300,
+                )
             ],
         },
     )
@@ -7960,13 +7965,12 @@ def test_agent_compress_chapter_to_target_retries_when_forbidden_terms_remain(cl
         json={
             "goal": "压缩并移除禁用词",
             "tools": [
-                {
-                    "tool_name": "compress_chapter_to_target",
-                    "params": {
-                        "chapter_index": 1,
-                        "forbidden_terms": ["我就是N-07"],
-                    },
-                }
+                _approved_compress_chapter_to_target_tool(
+                    db_session,
+                    project.id,
+                    chapter_index=1,
+                    forbidden_terms=["我就是N-07"],
+                )
             ],
         },
     )
@@ -8011,13 +8015,12 @@ def test_agent_compress_chapter_to_target_blocks_when_forbidden_terms_survive_al
         json={
             "goal": "压缩并移除禁用词",
             "tools": [
-                {
-                    "tool_name": "compress_chapter_to_target",
-                    "params": {
-                        "chapter_index": 1,
-                        "forbidden_terms": ["我就是N-07"],
-                    },
-                }
+                _approved_compress_chapter_to_target_tool(
+                    db_session,
+                    project.id,
+                    chapter_index=1,
+                    forbidden_terms=["我就是N-07"],
+                )
             ],
         },
     )
@@ -8057,7 +8060,12 @@ def test_agent_compress_chapter_to_target_then_review_clears_over_target_warning
         json={
             "goal": "压缩并复审",
             "tools": [
-                {"tool_name": "compress_chapter_to_target", "params": {"chapter_index": 1, "target_max_word_count": 2300}},
+                _approved_compress_chapter_to_target_tool(
+                    db_session,
+                    project.id,
+                    chapter_index=1,
+                    target_max_word_count=2300,
+                ),
                 {"tool_name": "review_chapter_quality", "params": {"chapter_index": 1}},
             ],
         },
@@ -8103,7 +8111,12 @@ def test_agent_compress_chapter_to_target_blocks_direct_followup_generation(clie
         json={
             "goal": "压缩后直接生成下一章",
             "tools": [
-                {"tool_name": "compress_chapter_to_target", "params": {"chapter_index": 1, "target_max_word_count": 2300}},
+                _approved_compress_chapter_to_target_tool(
+                    db_session,
+                    project.id,
+                    chapter_index=1,
+                    target_max_word_count=2300,
+                ),
                 {"tool_name": "generate_chapter", "params": {"chapter_index": 2}},
             ],
         },
@@ -8112,7 +8125,7 @@ def test_agent_compress_chapter_to_target_blocks_direct_followup_generation(clie
     payload = response.json()
     assert response.status_code == 200
     assert payload["status"] == "blocked"
-    assert [step["tool_name"] for step in payload["steps"]] == ["compress_chapter_to_target"]
+    assert [step["tool_name"] for step in payload["steps"]] == ["execute_compress_chapter_to_target_with_approval"]
     assert calls == []
 
 
@@ -8135,7 +8148,7 @@ def test_agent_compress_chapter_to_target_skips_when_chapter_already_within_targ
         f"/api/v1/projects/{project.id}/agent-runs",
         json={
             "goal": "压缩已达标章节",
-            "tools": [{"tool_name": "compress_chapter_to_target", "params": {"chapter_index": 1}}],
+            "tools": [_approved_compress_chapter_to_target_tool(db_session, project.id, chapter_index=1)],
         },
     )
 
@@ -8175,7 +8188,12 @@ def test_agent_compress_chapter_to_target_blocks_pending_world_model_proposals(c
         json={
             "goal": "存在世界模型提案时压缩",
             "tools": [
-                {"tool_name": "compress_chapter_to_target", "params": {"chapter_index": 1, "target_max_word_count": 2300}}
+                _approved_compress_chapter_to_target_tool(
+                    db_session,
+                    project.id,
+                    chapter_index=1,
+                    target_max_word_count=2300,
+                )
             ],
         },
     )
@@ -8222,7 +8240,12 @@ def test_agent_compress_chapter_to_target_repairs_under_target_retry(client, db_
         json={
             "goal": "压缩第1章并修复过短候选",
             "tools": [
-                {"tool_name": "compress_chapter_to_target", "params": {"chapter_index": 1, "target_max_word_count": 2300}}
+                _approved_compress_chapter_to_target_tool(
+                    db_session,
+                    project.id,
+                    chapter_index=1,
+                    target_max_word_count=2300,
+                )
             ],
         },
     )
@@ -8289,7 +8312,12 @@ def test_agent_compress_chapter_to_target_falls_back_to_source_trim_after_under_
         json={
             "goal": "模型连续过短时从原文保守裁剪",
             "tools": [
-                {"tool_name": "compress_chapter_to_target", "params": {"chapter_index": 1, "target_max_word_count": 2300}}
+                _approved_compress_chapter_to_target_tool(
+                    db_session,
+                    project.id,
+                    chapter_index=1,
+                    target_max_word_count=2300,
+                )
             ],
         },
     )
@@ -8353,7 +8381,12 @@ def test_agent_compress_chapter_to_target_refreshes_longform_memory_and_retrieva
         json={
             "goal": "压缩后同步长篇记忆",
             "tools": [
-                {"tool_name": "compress_chapter_to_target", "params": {"chapter_index": 1, "target_max_word_count": 2300}}
+                _approved_compress_chapter_to_target_tool(
+                    db_session,
+                    project.id,
+                    chapter_index=1,
+                    target_max_word_count=2300,
+                )
             ],
         },
     )
@@ -8528,7 +8561,7 @@ def test_agent_compress_chapter_to_target_blocks_after_retry_exhaustion(client, 
         f"/api/v1/projects/{project.id}/agent-runs",
         json={
             "goal": "压缩第1章但候选持续过短",
-            "tools": [{"tool_name": "compress_chapter_to_target", "params": {"chapter_index": 1}}],
+            "tools": [_approved_compress_chapter_to_target_tool(db_session, project.id, chapter_index=1)],
         },
     )
 
@@ -8587,7 +8620,12 @@ def test_agent_compress_chapter_to_target_repairs_near_target_candidate_from_sou
         json={
             "goal": "压缩第1章并用源文恢复轻微缺口",
             "tools": [
-                {"tool_name": "compress_chapter_to_target", "params": {"chapter_index": 1, "target_max_word_count": 2300}}
+                _approved_compress_chapter_to_target_tool(
+                    db_session,
+                    project.id,
+                    chapter_index=1,
+                    target_max_word_count=2300,
+                )
             ],
         },
     )
@@ -8636,7 +8674,12 @@ def test_agent_compress_chapter_to_target_trims_near_over_target_candidate(clien
         json={
             "goal": "压缩第1章并裁剪轻微超长候选",
             "tools": [
-                {"tool_name": "compress_chapter_to_target", "params": {"chapter_index": 1, "target_max_word_count": 2300}}
+                _approved_compress_chapter_to_target_tool(
+                    db_session,
+                    project.id,
+                    chapter_index=1,
+                    target_max_word_count=2300,
+                )
             ],
         },
     )
@@ -8687,7 +8730,12 @@ def test_agent_compress_chapter_to_target_trims_large_over_target_candidate(clie
         json={
             "goal": "压缩大幅超长章节",
             "tools": [
-                {"tool_name": "compress_chapter_to_target", "params": {"chapter_index": 1, "target_max_word_count": 2300}}
+                _approved_compress_chapter_to_target_tool(
+                    db_session,
+                    project.id,
+                    chapter_index=1,
+                    target_max_word_count=2300,
+                )
             ],
         },
     )
@@ -9094,6 +9142,76 @@ def _approved_apply_planner_revision_patch_tool(
             "approval_contract_hash": prepared["agent_plan_approval_contract_hash"],
             "approval_contract": prepared["agent_plan_approval_contract"],
         },
+    }
+
+
+def _approved_expand_chapter_to_target_tool(
+    db_session,
+    project_id: str,
+    *,
+    chapter_index: int,
+    min_word_count: int | None = None,
+    extra_instruction: str = "",
+) -> dict:
+    from app.services.writing_agent.chapter_revision_execution import prepare_expand_chapter_to_target_execution
+
+    prepared = prepare_expand_chapter_to_target_execution(
+        db_session,
+        project_id,
+        chapter_index=chapter_index,
+        min_word_count=min_word_count,
+        extra_instruction=extra_instruction,
+    )
+    params = {
+        "chapter_index": chapter_index,
+        "confirm_execute": True,
+        "approval_contract_hash": prepared["agent_plan_approval_contract_hash"],
+        "approval_contract": prepared["agent_plan_approval_contract"],
+    }
+    if min_word_count is not None:
+        params["min_word_count"] = min_word_count
+    if extra_instruction:
+        params["extra_instruction"] = extra_instruction
+    return {
+        "tool_name": "execute_expand_chapter_to_target_with_approval",
+        "params": params,
+    }
+
+
+def _approved_compress_chapter_to_target_tool(
+    db_session,
+    project_id: str,
+    *,
+    chapter_index: int,
+    target_max_word_count: int | None = None,
+    extra_instruction: str = "",
+    forbidden_terms: list[str] | None = None,
+) -> dict:
+    from app.services.writing_agent.chapter_revision_execution import prepare_compress_chapter_to_target_execution
+
+    prepared = prepare_compress_chapter_to_target_execution(
+        db_session,
+        project_id,
+        chapter_index=chapter_index,
+        target_max_word_count=target_max_word_count,
+        extra_instruction=extra_instruction,
+        forbidden_terms=forbidden_terms,
+    )
+    params = {
+        "chapter_index": chapter_index,
+        "confirm_execute": True,
+        "approval_contract_hash": prepared["agent_plan_approval_contract_hash"],
+        "approval_contract": prepared["agent_plan_approval_contract"],
+    }
+    if target_max_word_count is not None:
+        params["target_max_word_count"] = target_max_word_count
+    if extra_instruction:
+        params["extra_instruction"] = extra_instruction
+    if forbidden_terms is not None:
+        params["forbidden_terms"] = forbidden_terms
+    return {
+        "tool_name": "execute_compress_chapter_to_target_with_approval",
+        "params": params,
     }
 
 

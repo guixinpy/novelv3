@@ -713,6 +713,15 @@ class WritingAgentRunService:
             output = step.output if isinstance(step.output, dict) else {}
             result_version_id = output.get("result_version_id")
             return str(result_version_id) if result_version_id else None
+        if step.tool_name in {
+            "expand_chapter_to_target",
+            "execute_expand_chapter_to_target_with_approval",
+            "compress_chapter_to_target",
+            "execute_compress_chapter_to_target_with_approval",
+        }:
+            output = step.output if isinstance(step.output, dict) else {}
+            result_version_id = output.get("result_version_id")
+            return str(result_version_id) if result_version_id else None
         return None
 
     def _run_output(self, run_id: str) -> dict[str, Any]:

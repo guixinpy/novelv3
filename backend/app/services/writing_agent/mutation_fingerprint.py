@@ -24,6 +24,10 @@ _KNOWN_MUTATING_TOOLS = {
     "create_revision_draft",
     "apply_planner_revision_patch",
     "execute_apply_planner_revision_patch_with_approval",
+    "expand_chapter_to_target",
+    "execute_expand_chapter_to_target_with_approval",
+    "compress_chapter_to_target",
+    "execute_compress_chapter_to_target_with_approval",
     "apply_world_model_proposal_resolution",
 }
 
@@ -203,6 +207,22 @@ def _target_for_tool(project_id: str, tool_name: str, params: dict[str, Any]) ->
             )
         return _ready("chapter_revision_patch", f"chapter_revision_patch:{chapter_index}:{revision_id}")
 
+    if tool_name in {
+        "expand_chapter_to_target",
+        "execute_expand_chapter_to_target_with_approval",
+        "compress_chapter_to_target",
+        "execute_compress_chapter_to_target_with_approval",
+    }:
+        chapter_index = _positive_int(params.get("chapter_index"))
+        if chapter_index is None:
+            return _blocked(
+                "chapter_revision_adjustment",
+                "missing_target",
+                f"{tool_name} requires a positive chapter_index",
+            )
+        action = _chapter_revision_adjustment_action(tool_name)
+        return _ready("chapter_revision_adjustment", f"chapter_revision_adjustment:{action}:{chapter_index}")
+
     if tool_name == "apply_world_model_proposal_resolution":
         bundle_id = _clean_string(params.get("proposal_bundle_id") or params.get("bundle_id"))
         if bundle_id:
@@ -288,6 +308,13 @@ def _knowledge_base_candidate_target_id(params: dict[str, Any]) -> str | None:
         }
     )[:16]
     return f"agent_knowledge_base_candidate:{digest}"
+
+
+def _chapter_revision_adjustment_action(tool_name: str) -> str:
+    return {
+        "execute_expand_chapter_to_target_with_approval": "expand_chapter_to_target",
+        "execute_compress_chapter_to_target_with_approval": "compress_chapter_to_target",
+    }.get(tool_name, tool_name)
 
 
 def _sha256(value: object) -> str:

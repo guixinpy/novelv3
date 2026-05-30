@@ -63,6 +63,16 @@ AGENT_PLAN_GATED_TOOLS = {
         "gate_type": "stateless_agent_plan_approval",
         "covered_tools": ["apply_planner_revision_patch"],
     },
+    "execute_expand_chapter_to_target_with_approval": {
+        "gate_version": "phase196.chapter_expansion_agent_plan_approval.v1",
+        "gate_type": "stateless_agent_plan_approval",
+        "covered_tools": ["expand_chapter_to_target"],
+    },
+    "execute_compress_chapter_to_target_with_approval": {
+        "gate_version": "phase197.chapter_compression_agent_plan_approval.v1",
+        "gate_type": "stateless_agent_plan_approval",
+        "covered_tools": ["compress_chapter_to_target"],
+    },
     "execute_longform_chapter_batch": {
         "gate_version": "phase111.agent_plan_approval_execution_gate.v1",
         "gate_type": "persisted_agent_plan_approval",

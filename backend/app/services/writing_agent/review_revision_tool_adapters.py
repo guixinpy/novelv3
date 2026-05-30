@@ -136,9 +136,27 @@ def _execute_apply_planner_revision_patch_with_approval(
 
 
 async def _expand_chapter_to_target(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
-    from app.services.writing_agent.chapter_expansion_tool import expand_chapter_to_target_tool
+    return approval_required_redirect(
+        project_id=context.project_id,
+        tool_name="expand_chapter_to_target",
+        target_type="chapter_revision_adjustment",
+        prepare_tool="prepare_expand_chapter_to_target_execution",
+        execute_tool="execute_expand_chapter_to_target_with_approval",
+        extra={
+            "chapter_index": _chapter_index(tool),
+            "min_word_count": _optional_int(tool.params.get("min_word_count")),
+            "extra_instruction": str(tool.params.get("extra_instruction") or ""),
+        },
+    )
 
-    return await expand_chapter_to_target_tool(
+
+def _prepare_expand_chapter_to_target_execution(
+    context: WritingAgentToolContext,
+    tool: WritingAgentToolRequest,
+) -> dict[str, Any]:
+    from app.services.writing_agent.chapter_revision_execution import prepare_expand_chapter_to_target_execution
+
+    return prepare_expand_chapter_to_target_execution(
         context.db,
         context.project_id,
         chapter_index=_chapter_index(tool),
@@ -147,11 +165,57 @@ async def _expand_chapter_to_target(context: WritingAgentToolContext, tool: Writ
     )
 
 
+def _execute_expand_chapter_to_target_with_approval(
+    approval_tool_metadata_provider: ApprovalToolMetadataProvider,
+) -> Callable[[WritingAgentToolContext, WritingAgentToolRequest], Any]:
+    async def execute_expand_chapter_to_target_with_approval_adapter(
+        context: WritingAgentToolContext,
+        tool: WritingAgentToolRequest,
+    ) -> dict[str, Any]:
+        from app.services.writing_agent.chapter_revision_execution import execute_expand_chapter_to_target_with_approval
+
+        approval_contract = tool.params.get("approval_contract")
+        return await execute_expand_chapter_to_target_with_approval(
+            context.db,
+            context.project_id,
+            chapter_index=_chapter_index(tool),
+            min_word_count=_optional_int(tool.params.get("min_word_count")),
+            extra_instruction=str(tool.params.get("extra_instruction") or ""),
+            confirm_execute=tool.params.get("confirm_execute") is True,
+            approval_contract_hash=str(tool.params.get("approval_contract_hash") or "").strip() or None,
+            approval_contract=approval_contract if isinstance(approval_contract, dict) else None,
+            approval_tool_metadata_provider=approval_tool_metadata_provider,
+        )
+
+    execute_expand_chapter_to_target_with_approval_adapter.__name__ = "_execute_expand_chapter_to_target_with_approval"
+    return execute_expand_chapter_to_target_with_approval_adapter
+
+
 async def _compress_chapter_to_target(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
-    from app.services.writing_agent.chapter_compression_tool import compress_chapter_to_target_tool
+    forbidden_terms = [str(item).strip() for item in (tool.params.get("forbidden_terms") or []) if str(item).strip()]
+    return approval_required_redirect(
+        project_id=context.project_id,
+        tool_name="compress_chapter_to_target",
+        target_type="chapter_revision_adjustment",
+        prepare_tool="prepare_compress_chapter_to_target_execution",
+        execute_tool="execute_compress_chapter_to_target_with_approval",
+        extra={
+            "chapter_index": _chapter_index(tool),
+            "target_max_word_count": _optional_int(tool.params.get("target_max_word_count")),
+            "extra_instruction": str(tool.params.get("extra_instruction") or ""),
+            "forbidden_terms": forbidden_terms,
+        },
+    )
+
+
+def _prepare_compress_chapter_to_target_execution(
+    context: WritingAgentToolContext,
+    tool: WritingAgentToolRequest,
+) -> dict[str, Any]:
+    from app.services.writing_agent.chapter_revision_execution import prepare_compress_chapter_to_target_execution
 
     forbidden_terms = [str(item).strip() for item in (tool.params.get("forbidden_terms") or []) if str(item).strip()]
-    return await compress_chapter_to_target_tool(
+    return prepare_compress_chapter_to_target_execution(
         context.db,
         context.project_id,
         chapter_index=_chapter_index(tool),
@@ -159,6 +223,38 @@ async def _compress_chapter_to_target(context: WritingAgentToolContext, tool: Wr
         extra_instruction=str(tool.params.get("extra_instruction") or ""),
         forbidden_terms=forbidden_terms,
     )
+
+
+def _execute_compress_chapter_to_target_with_approval(
+    approval_tool_metadata_provider: ApprovalToolMetadataProvider,
+) -> Callable[[WritingAgentToolContext, WritingAgentToolRequest], Any]:
+    async def execute_compress_chapter_to_target_with_approval_adapter(
+        context: WritingAgentToolContext,
+        tool: WritingAgentToolRequest,
+    ) -> dict[str, Any]:
+        from app.services.writing_agent.chapter_revision_execution import execute_compress_chapter_to_target_with_approval
+
+        forbidden_terms = [
+            str(item).strip() for item in (tool.params.get("forbidden_terms") or []) if str(item).strip()
+        ]
+        approval_contract = tool.params.get("approval_contract")
+        return await execute_compress_chapter_to_target_with_approval(
+            context.db,
+            context.project_id,
+            chapter_index=_chapter_index(tool),
+            target_max_word_count=_optional_int(tool.params.get("target_max_word_count")),
+            extra_instruction=str(tool.params.get("extra_instruction") or ""),
+            forbidden_terms=forbidden_terms,
+            confirm_execute=tool.params.get("confirm_execute") is True,
+            approval_contract_hash=str(tool.params.get("approval_contract_hash") or "").strip() or None,
+            approval_contract=approval_contract if isinstance(approval_contract, dict) else None,
+            approval_tool_metadata_provider=approval_tool_metadata_provider,
+        )
+
+    execute_compress_chapter_to_target_with_approval_adapter.__name__ = (
+        "_execute_compress_chapter_to_target_with_approval"
+    )
+    return execute_compress_chapter_to_target_with_approval_adapter
 
 
 def build_review_revision_agent_tool_adapters(
@@ -225,11 +321,37 @@ def build_review_revision_agent_tool_adapters(
             "expand_chapter_to_target",
             _expand_chapter_to_target,
             category="revision",
+            mutability="guarded_write",
+            write_policy="approval_required_redirect",
+        ),
+        "prepare_expand_chapter_to_target_execution": WritingAgentToolAdapter(
+            "prepare_expand_chapter_to_target_execution",
+            _prepare_expand_chapter_to_target_execution,
+            category="revision",
+            mutability="read",
+        ),
+        "execute_expand_chapter_to_target_with_approval": WritingAgentToolAdapter(
+            "execute_expand_chapter_to_target_with_approval",
+            _execute_expand_chapter_to_target_with_approval(approval_tool_metadata_provider),
+            category="revision",
             mutability="write",
         ),
         "compress_chapter_to_target": WritingAgentToolAdapter(
             "compress_chapter_to_target",
             _compress_chapter_to_target,
+            category="revision",
+            mutability="guarded_write",
+            write_policy="approval_required_redirect",
+        ),
+        "prepare_compress_chapter_to_target_execution": WritingAgentToolAdapter(
+            "prepare_compress_chapter_to_target_execution",
+            _prepare_compress_chapter_to_target_execution,
+            category="revision",
+            mutability="read",
+        ),
+        "execute_compress_chapter_to_target_with_approval": WritingAgentToolAdapter(
+            "execute_compress_chapter_to_target_with_approval",
+            _execute_compress_chapter_to_target_with_approval(approval_tool_metadata_provider),
             category="revision",
             mutability="write",
         ),

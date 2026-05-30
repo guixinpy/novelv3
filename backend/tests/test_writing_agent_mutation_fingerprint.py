@@ -68,6 +68,31 @@ def test_build_mutation_fingerprint_covers_planner_revision_patch():
     assert first["components"]["target_id"] == "chapter_revision_patch:2:revision-1"
 
 
+def test_build_mutation_fingerprint_covers_chapter_revision_adjustments():
+    expansion = build_mutation_fingerprint(
+        "project-1",
+        "expand_chapter_to_target",
+        {"chapter_index": "2", "min_word_count": 2200},
+    )
+    approved_expansion = build_mutation_fingerprint(
+        "project-1",
+        "execute_expand_chapter_to_target_with_approval",
+        {"chapter_index": "2", "min_word_count": 2200},
+    )
+    compression = build_mutation_fingerprint(
+        "project-1",
+        "compress_chapter_to_target",
+        {"chapter_index": 3, "target_max_word_count": 2300},
+    )
+
+    assert expansion["status"] == "ready"
+    assert expansion["components"]["target_type"] == "chapter_revision_adjustment"
+    assert expansion["components"]["target_id"] == "chapter_revision_adjustment:expand_chapter_to_target:2"
+    assert approved_expansion["components"]["target_id"] == expansion["components"]["target_id"]
+    assert compression["status"] == "ready"
+    assert compression["components"]["target_id"] == "chapter_revision_adjustment:compress_chapter_to_target:3"
+
+
 def test_build_mutation_fingerprint_covers_knowledge_base_candidate():
     first = build_mutation_fingerprint(
         "project-1",

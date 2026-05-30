@@ -217,7 +217,11 @@ def test_review_revision_tool_descriptors_live_in_dedicated_module():
         "prepare_apply_planner_revision_patch_execution",
         "execute_apply_planner_revision_patch_with_approval",
         "expand_chapter_to_target",
+        "prepare_expand_chapter_to_target_execution",
+        "execute_expand_chapter_to_target_with_approval",
         "compress_chapter_to_target",
+        "prepare_compress_chapter_to_target_execution",
+        "execute_compress_chapter_to_target_with_approval",
     ]
     assert {descriptor.category for descriptor in REVIEW_REVISION_AGENT_TOOL_DESCRIPTORS} == {"review", "revision"}
     assert all(descriptor.internal for descriptor in REVIEW_REVISION_AGENT_TOOL_DESCRIPTORS)
@@ -228,6 +232,12 @@ def test_review_revision_tool_descriptors_live_in_dedicated_module():
     assert target_type_for_tool("prepare_apply_planner_revision_patch_execution") == "revision_patch_approval"
     assert target_type_for_tool("execute_apply_planner_revision_patch_with_approval") == "revision"
     assert "prepare_apply_planner_revision_patch_execution" in non_blocking_report_tool_names()
+    assert target_type_for_tool("prepare_expand_chapter_to_target_execution") == "revision_adjustment_approval"
+    assert target_type_for_tool("execute_expand_chapter_to_target_with_approval") == "revision"
+    assert target_type_for_tool("prepare_compress_chapter_to_target_execution") == "revision_adjustment_approval"
+    assert target_type_for_tool("execute_compress_chapter_to_target_with_approval") == "revision"
+    assert "prepare_expand_chapter_to_target_execution" in non_blocking_report_tool_names()
+    assert "prepare_compress_chapter_to_target_execution" in non_blocking_report_tool_names()
     assert "review_chapter_quality" in non_blocking_report_tool_names()
 
 

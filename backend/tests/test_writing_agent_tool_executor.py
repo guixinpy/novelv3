@@ -277,7 +277,11 @@ def test_review_revision_tool_adapters_live_in_dedicated_module():
         "prepare_apply_planner_revision_patch_execution",
         "execute_apply_planner_revision_patch_with_approval",
         "expand_chapter_to_target",
+        "prepare_expand_chapter_to_target_execution",
+        "execute_expand_chapter_to_target_with_approval",
         "compress_chapter_to_target",
+        "prepare_compress_chapter_to_target_execution",
+        "execute_compress_chapter_to_target_with_approval",
     ]
     assert {adapter.category for adapter in REVIEW_REVISION_AGENT_TOOL_ADAPTERS.values()} == {"review", "revision"}
     assert REVIEW_REVISION_AGENT_TOOL_ADAPTERS["review_chapter_quality"].mutability == "read"
@@ -291,6 +295,20 @@ def test_review_revision_tool_adapters_live_in_dedicated_module():
     )
     assert REVIEW_REVISION_AGENT_TOOL_ADAPTERS["prepare_apply_planner_revision_patch_execution"].mutability == "read"
     assert REVIEW_REVISION_AGENT_TOOL_ADAPTERS["execute_apply_planner_revision_patch_with_approval"].mutability == (
+        "write"
+    )
+    assert REVIEW_REVISION_AGENT_TOOL_ADAPTERS["expand_chapter_to_target"].mutability == "guarded_write"
+    assert REVIEW_REVISION_AGENT_TOOL_ADAPTERS["expand_chapter_to_target"].write_policy == (
+        "approval_required_redirect"
+    )
+    assert REVIEW_REVISION_AGENT_TOOL_ADAPTERS["prepare_expand_chapter_to_target_execution"].mutability == "read"
+    assert REVIEW_REVISION_AGENT_TOOL_ADAPTERS["execute_expand_chapter_to_target_with_approval"].mutability == "write"
+    assert REVIEW_REVISION_AGENT_TOOL_ADAPTERS["compress_chapter_to_target"].mutability == "guarded_write"
+    assert REVIEW_REVISION_AGENT_TOOL_ADAPTERS["compress_chapter_to_target"].write_policy == (
+        "approval_required_redirect"
+    )
+    assert REVIEW_REVISION_AGENT_TOOL_ADAPTERS["prepare_compress_chapter_to_target_execution"].mutability == "read"
+    assert REVIEW_REVISION_AGENT_TOOL_ADAPTERS["execute_compress_chapter_to_target_with_approval"].mutability == (
         "write"
     )
     assert (
@@ -3696,8 +3714,9 @@ def test_tool_executor_exposes_expand_chapter_to_target_adapter_metadata():
         "tool_name": "expand_chapter_to_target",
         "adapter_type": "static",
         "category": "revision",
-        "mutability": "write",
+        "mutability": "guarded_write",
         "handler_name": "_expand_chapter_to_target",
+        "write_policy": "approval_required_redirect",
     }
 
 
@@ -3708,8 +3727,9 @@ def test_tool_executor_exposes_compress_chapter_to_target_adapter_metadata():
         "tool_name": "compress_chapter_to_target",
         "adapter_type": "static",
         "category": "revision",
-        "mutability": "write",
+        "mutability": "guarded_write",
         "handler_name": "_compress_chapter_to_target",
+        "write_policy": "approval_required_redirect",
     }
 
 
@@ -3877,11 +3897,11 @@ async def test_tool_executor_handles_inspect_agent_tool_contracts(db_session):
     assert "missing_agent_native_adapter" not in tools_by_name["apply_pending_action_route_approval_opt_in"]["gap_codes"]
     assert "output_schema_too_generic" not in tools_by_name["apply_pending_action_route_approval_opt_in"]["gap_codes"]
     assert tools_by_name["expand_chapter_to_target"]["adapter_type"] == "static"
-    assert tools_by_name["expand_chapter_to_target"]["mutability"] == "write"
+    assert tools_by_name["expand_chapter_to_target"]["mutability"] == "guarded_write"
     assert "missing_agent_native_adapter" not in tools_by_name["expand_chapter_to_target"]["gap_codes"]
     assert "output_schema_too_generic" not in tools_by_name["expand_chapter_to_target"]["gap_codes"]
     assert tools_by_name["compress_chapter_to_target"]["adapter_type"] == "static"
-    assert tools_by_name["compress_chapter_to_target"]["mutability"] == "write"
+    assert tools_by_name["compress_chapter_to_target"]["mutability"] == "guarded_write"
     assert "missing_agent_native_adapter" not in tools_by_name["compress_chapter_to_target"]["gap_codes"]
     assert "output_schema_too_generic" not in tools_by_name["compress_chapter_to_target"]["gap_codes"]
     assert internal_tool_names().issubset(set(tools_by_name))
@@ -5428,8 +5448,36 @@ async def test_tool_executor_dispatches_approved_apply_planner_revision_patch_ad
 
 
 @pytest.mark.asyncio
-async def test_tool_executor_dispatches_expand_chapter_to_target_adapter(db_session, monkeypatch):
+async def test_tool_executor_dispatches_expand_chapter_to_target_adapter_to_approval_redirect(db_session):
     project = Project(name="Executor Chapter Expansion")
+    db_session.add(project)
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(
+            tool_name="expand_chapter_to_target",
+            params={"chapter_index": "9", "min_word_count": "2100", "extra_instruction": "补足动作细节"},
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output["status"] == "blocked"
+    assert result.output["reason"] == "approval_required_before_write"
+    assert result.output["recommended_next_tools"] == ["prepare_expand_chapter_to_target_execution"]
+    assert result.output["required_approval"] == {
+        "prepare_tool": "prepare_expand_chapter_to_target_execution",
+        "execute_tool": "execute_expand_chapter_to_target_with_approval",
+        "approval_scope": "agent_plan_approval",
+    }
+    assert result.output["side_effects"] == {"executed": [], "skipped": ["expand_chapter_to_target"]}
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_dispatches_approved_expand_chapter_to_target_adapter(db_session, monkeypatch):
+    from app.services.writing_agent.chapter_revision_execution import prepare_expand_chapter_to_target_execution
+
+    project = Project(name="Executor Approved Chapter Expansion")
     db_session.add(project)
     db_session.commit()
     calls: list[tuple[str, int, int | None, str]] = []
@@ -5446,20 +5494,37 @@ async def test_tool_executor_dispatches_expand_chapter_to_target_adapter(db_sess
         return {"status": "completed", "chapter_index": chapter_index, "word_count": 2200}
 
     monkeypatch.setattr(
-        "app.services.writing_agent.chapter_expansion_tool.expand_chapter_to_target_tool",
+        "app.services.writing_agent.chapter_revision_execution.expand_chapter_to_target_tool",
         fake_expansion_tool,
+    )
+    prepared = prepare_expand_chapter_to_target_execution(
+        db_session,
+        project.id,
+        chapter_index=9,
+        min_word_count=2100,
+        extra_instruction="补足动作细节",
     )
 
     result = await execute_writing_agent_tool(
         WritingAgentToolContext(db=db_session, project_id=project.id),
         WritingAgentToolRequest(
-            tool_name="expand_chapter_to_target",
-            params={"chapter_index": "9", "min_word_count": "2100", "extra_instruction": "补足动作细节"},
+            tool_name="execute_expand_chapter_to_target_with_approval",
+            params={
+                "chapter_index": "9",
+                "min_word_count": "2100",
+                "extra_instruction": "补足动作细节",
+                "confirm_execute": True,
+                "approval_contract_hash": prepared["agent_plan_approval_contract_hash"],
+                "approval_contract": prepared["agent_plan_approval_contract"],
+            },
         ),
     )
 
     assert result.handled is True
-    assert result.output == {"status": "completed", "chapter_index": 9, "word_count": 2200}
+    assert result.output["status"] == "completed"
+    assert result.output["chapter_index"] == 9
+    assert result.output["word_count"] == 2200
+    assert result.output["agent_plan_approval_verification"]["status"] == "ready"
     assert calls == [(project.id, 9, 2100, "补足动作细节")]
 
 
@@ -5633,8 +5698,42 @@ async def test_tool_executor_dispatches_seed_continuity_anchor_proposals_adapter
 
 
 @pytest.mark.asyncio
-async def test_tool_executor_dispatches_compress_chapter_to_target_adapter(db_session, monkeypatch):
+async def test_tool_executor_dispatches_compress_chapter_to_target_adapter_to_approval_redirect(db_session):
     project = Project(name="Executor Chapter Compression")
+    db_session.add(project)
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(
+            tool_name="compress_chapter_to_target",
+            params={
+                "chapter_index": "10",
+                "target_max_word_count": "2300",
+                "extra_instruction": "保留悬念",
+                "forbidden_terms": ["  啰嗦  ", "", "重复"],
+            },
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output["status"] == "blocked"
+    assert result.output["reason"] == "approval_required_before_write"
+    assert result.output["recommended_next_tools"] == ["prepare_compress_chapter_to_target_execution"]
+    assert result.output["required_approval"] == {
+        "prepare_tool": "prepare_compress_chapter_to_target_execution",
+        "execute_tool": "execute_compress_chapter_to_target_with_approval",
+        "approval_scope": "agent_plan_approval",
+    }
+    assert result.output["forbidden_terms"] == ["啰嗦", "重复"]
+    assert result.output["side_effects"] == {"executed": [], "skipped": ["compress_chapter_to_target"]}
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_dispatches_approved_compress_chapter_to_target_adapter(db_session, monkeypatch):
+    from app.services.writing_agent.chapter_revision_execution import prepare_compress_chapter_to_target_execution
+
+    project = Project(name="Executor Approved Chapter Compression")
     db_session.add(project)
     db_session.commit()
     calls: list[tuple[str, int, int | None, str, list[str]]] = []
@@ -5652,25 +5751,39 @@ async def test_tool_executor_dispatches_compress_chapter_to_target_adapter(db_se
         return {"status": "completed", "chapter_index": chapter_index, "word_count": 2200}
 
     monkeypatch.setattr(
-        "app.services.writing_agent.chapter_compression_tool.compress_chapter_to_target_tool",
+        "app.services.writing_agent.chapter_revision_execution.compress_chapter_to_target_tool",
         fake_compression_tool,
+    )
+    prepared = prepare_compress_chapter_to_target_execution(
+        db_session,
+        project.id,
+        chapter_index=10,
+        target_max_word_count=2300,
+        extra_instruction="保留悬念",
+        forbidden_terms=["啰嗦", "重复"],
     )
 
     result = await execute_writing_agent_tool(
         WritingAgentToolContext(db=db_session, project_id=project.id),
         WritingAgentToolRequest(
-            tool_name="compress_chapter_to_target",
+            tool_name="execute_compress_chapter_to_target_with_approval",
             params={
                 "chapter_index": "10",
                 "target_max_word_count": "2300",
                 "extra_instruction": "保留悬念",
                 "forbidden_terms": ["  啰嗦  ", "", "重复"],
+                "confirm_execute": True,
+                "approval_contract_hash": prepared["agent_plan_approval_contract_hash"],
+                "approval_contract": prepared["agent_plan_approval_contract"],
             },
         ),
     )
 
     assert result.handled is True
-    assert result.output == {"status": "completed", "chapter_index": 10, "word_count": 2200}
+    assert result.output["status"] == "completed"
+    assert result.output["chapter_index"] == 10
+    assert result.output["word_count"] == 2200
+    assert result.output["agent_plan_approval_verification"]["status"] == "ready"
     assert calls == [(project.id, 10, 2300, "保留悬念", ["啰嗦", "重复"])]
 
 

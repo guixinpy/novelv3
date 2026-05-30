@@ -10,7 +10,9 @@ REPORT_STOP_TOOLS = frozenset(
         "apply_planner_revision_patch",
         "execute_apply_planner_revision_patch_with_approval",
         "expand_chapter_to_target",
+        "execute_expand_chapter_to_target_with_approval",
         "compress_chapter_to_target",
+        "execute_compress_chapter_to_target_with_approval",
         "summarize_longform_context",
         "review_world_model_proposals",
         "plan_world_model_proposal_resolution",
@@ -29,7 +31,9 @@ ALLOWED_REPORT_FOLLOWUPS = frozenset(
         ("apply_planner_revision_patch", "review_chapter_quality"),
         ("execute_apply_planner_revision_patch_with_approval", "review_chapter_quality"),
         ("expand_chapter_to_target", "review_chapter_quality"),
+        ("execute_expand_chapter_to_target_with_approval", "review_chapter_quality"),
         ("compress_chapter_to_target", "review_chapter_quality"),
+        ("execute_compress_chapter_to_target_with_approval", "review_chapter_quality"),
         ("review_world_model_proposals", "plan_world_model_proposal_resolution"),
         ("plan_world_model_proposal_resolution", "preview_world_model_proposal_resolution"),
         ("preview_world_model_proposal_resolution", "apply_world_model_proposal_resolution"),
@@ -54,7 +58,9 @@ REPORT_BLOCK_MESSAGES = {
     "apply_planner_revision_patch": "修订补丁应用后尚未复审，已停止后续写作工具。",
     "execute_apply_planner_revision_patch_with_approval": "修订补丁应用后尚未复审，已停止后续写作工具。",
     "expand_chapter_to_target": "章节扩写后尚未复审，已停止后续写作工具。",
+    "execute_expand_chapter_to_target_with_approval": "章节扩写后尚未复审，已停止后续写作工具。",
     "compress_chapter_to_target": "章节压缩后尚未复审，已停止后续写作工具。",
+    "execute_compress_chapter_to_target_with_approval": "章节压缩后尚未复审，已停止后续写作工具。",
 }
 
 
