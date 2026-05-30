@@ -82,6 +82,26 @@ def test_write_gate_coverage_marks_analyze_chapter_world_model_direct_calls_as_a
     assert analyze_tool["recommended_action"] == "route_direct_calls_to_approval_executor"
 
 
+def test_write_gate_coverage_marks_backfill_outline_gaps_direct_calls_as_approval_redirected():
+    output = inspect_agent_write_gate_coverage(adapter_metadata_by_name=_adapter_metadata())
+    tools_by_name = _tools_by_name(output)
+
+    execute_tool = tools_by_name["execute_backfill_outline_gaps_with_approval"]
+    assert execute_tool["agent_plan_gate_status"] == "enforced"
+    assert execute_tool["gate_version"] == "phase193.outline_backfill_agent_plan_approval.v1"
+    assert execute_tool["risk_level"] == "low"
+
+    backfill_tool = tools_by_name["backfill_outline_gaps"]
+    assert backfill_tool["agent_plan_gate_status"] == "indirect_agent_gate_available"
+    assert backfill_tool["direct_write_policy"] == "approval_required_redirect"
+    assert backfill_tool["direct_write_blocked"] is True
+    assert backfill_tool["risk_level"] == "low"
+    assert {item["consumer_tool"] for item in backfill_tool["indirect_coverage"]} == {
+        "execute_backfill_outline_gaps_with_approval"
+    }
+    assert backfill_tool["recommended_action"] == "route_direct_calls_to_approval_executor"
+
+
 def test_write_gate_coverage_marks_generate_chapter_direct_calls_as_approval_redirected():
     output = inspect_agent_write_gate_coverage(adapter_metadata_by_name=_adapter_metadata())
     generate_tool = _tools_by_name(output)["generate_chapter"]
@@ -332,6 +352,21 @@ def _adapter_metadata() -> dict[str, dict]:
             "category": "athena_world_model",
             "mutability": "write",
             "handler_name": "_execute_analyze_chapter_world_model_with_approval",
+        },
+        "backfill_outline_gaps": {
+            "tool_name": "backfill_outline_gaps",
+            "adapter_type": "static",
+            "category": "maintenance",
+            "mutability": "guarded_write",
+            "handler_name": "_backfill_outline_gaps",
+            "write_policy": "approval_required_redirect",
+        },
+        "execute_backfill_outline_gaps_with_approval": {
+            "tool_name": "execute_backfill_outline_gaps_with_approval",
+            "adapter_type": "static",
+            "category": "maintenance",
+            "mutability": "write",
+            "handler_name": "_execute_backfill_outline_gaps_with_approval",
         },
         "apply_world_model_proposal_resolution": {
             "tool_name": "apply_world_model_proposal_resolution",

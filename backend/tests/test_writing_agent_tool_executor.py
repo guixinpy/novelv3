@@ -166,13 +166,19 @@ def test_agent_generation_tool_adapters_live_in_dedicated_module():
         "execute_generate_chapter_with_approval",
         "expand_outline_window",
         "backfill_outline_gaps",
+        "prepare_backfill_outline_gaps_execution",
+        "execute_backfill_outline_gaps_with_approval",
     ]
     assert adapters["generate_chapter"].mutability == "guarded_write"
     assert adapters["generate_chapter"].write_policy == "approval_required_redirect"
     assert adapters["prepare_generate_chapter_execution"].mutability == "read"
     assert adapters["execute_generate_chapter_with_approval"].mutability == "write"
     assert adapters["expand_outline_window"].mutability == "write"
+    assert adapters["backfill_outline_gaps"].mutability == "guarded_write"
+    assert adapters["backfill_outline_gaps"].write_policy == "approval_required_redirect"
     assert adapters["backfill_outline_gaps"].handler.__name__ == "_backfill_outline_gaps"
+    assert adapters["prepare_backfill_outline_gaps_execution"].mutability == "read"
+    assert adapters["execute_backfill_outline_gaps_with_approval"].mutability == "write"
 
 
 def test_setup_generation_tool_adapters_live_in_dedicated_module():
@@ -3991,9 +3997,44 @@ def test_tool_executor_exposes_backfill_adapter_metadata():
         "tool_name": "backfill_outline_gaps",
         "adapter_type": "static",
         "category": "maintenance",
-        "mutability": "write",
+        "mutability": "guarded_write",
         "handler_name": "_backfill_outline_gaps",
+        "write_policy": "approval_required_redirect",
     }
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_redirects_direct_backfill_outline_gaps_to_approval(db_session, monkeypatch):
+    project = Project(name="Direct Backfill Redirect")
+    db_session.add(project)
+    db_session.commit()
+    calls: list[int | None] = []
+
+    def fake_backfill(db, project_id: str, *, before_chapter: int | None):
+        calls.append(before_chapter)
+        return {"status": "completed"}
+
+    monkeypatch.setattr(
+        "app.core.outline_lookup.backfill_missing_outline_chapters_from_content",
+        fake_backfill,
+    )
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(tool_name="backfill_outline_gaps", params={"before_chapter": "4"}),
+    )
+
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "blocked"
+    assert result.output["reason"] == "approval_required_before_write"
+    assert result.output["target_type"] == "outline"
+    assert result.output["before_chapter"] == 4
+    assert result.output["recommended_next_tools"] == ["prepare_backfill_outline_gaps_execution"]
+    assert result.output["required_approval"]["execute_tool"] == "execute_backfill_outline_gaps_with_approval"
+    assert result.output["side_effects"]["executed"] == []
+    assert result.output["side_effects"]["skipped"] == ["backfill_outline_gaps"]
+    assert calls == []
 
 
 def test_tool_executor_exposes_repair_longform_maintenance_adapter_metadata():
@@ -4782,10 +4823,12 @@ async def test_tool_executor_dispatches_route_longform_chapter_batch_after_revie
 
 
 @pytest.mark.asyncio
-async def test_tool_executor_dispatches_backfill_adapter_with_normalized_params(db_session, monkeypatch):
+async def test_tool_executor_dispatches_backfill_approval_adapter_with_normalized_params(db_session, monkeypatch):
     project = Project(name="Executor Backfill")
     db_session.add(project)
     db_session.commit()
+    from app.services.writing_agent.outline_backfill_execution import prepare_backfill_outline_gaps_execution
+
     calls: list[tuple[str, int | None]] = []
 
     def fake_backfill(db, project_id: str, *, before_chapter: int | None):
@@ -4793,29 +4836,44 @@ async def test_tool_executor_dispatches_backfill_adapter_with_normalized_params(
         return {"status": "completed", "before_chapter": before_chapter}
 
     monkeypatch.setattr(
-        "app.core.outline_lookup.backfill_missing_outline_chapters_from_content",
+        "app.services.writing_agent.outline_backfill_execution.backfill_missing_outline_chapters_from_content",
         fake_backfill,
     )
     context = WritingAgentToolContext(db=db_session, project_id=project.id)
 
+    def approved_tool_params(before_chapter: int | None) -> dict:
+        prepared = prepare_backfill_outline_gaps_execution(db_session, project.id, before_chapter=before_chapter)
+        params = {
+            "confirm_execute": True,
+            "approval_contract_hash": prepared["agent_plan_approval_contract_hash"],
+            "approval_contract": prepared["agent_plan_approval_contract"],
+        }
+        if before_chapter is not None:
+            params["before_chapter"] = str(before_chapter)
+        return params
+
     from_before = await execute_writing_agent_tool(
         context,
-        WritingAgentToolRequest(tool_name="backfill_outline_gaps", params={"before_chapter": "7"}),
-    )
-    from_chapter = await execute_writing_agent_tool(
-        context,
-        WritingAgentToolRequest(tool_name="backfill_outline_gaps", params={"chapter_index": "8"}),
+        WritingAgentToolRequest(
+            tool_name="execute_backfill_outline_gaps_with_approval",
+            params=approved_tool_params(7),
+        ),
     )
     without_bound = await execute_writing_agent_tool(
         context,
-        WritingAgentToolRequest(tool_name="backfill_outline_gaps"),
+        WritingAgentToolRequest(
+            tool_name="execute_backfill_outline_gaps_with_approval",
+            params=approved_tool_params(None),
+        ),
     )
 
     assert from_before.handled is True
-    assert from_before.output == {"status": "completed", "before_chapter": 7}
-    assert from_chapter.output == {"status": "completed", "before_chapter": 8}
-    assert without_bound.output == {"status": "completed", "before_chapter": None}
-    assert calls == [(project.id, 7), (project.id, 8), (project.id, None)]
+    assert from_before.output["status"] == "completed"
+    assert from_before.output["before_chapter"] == 7
+    assert from_before.output["agent_plan_approval_verification"]["status"] == "ready"
+    assert without_bound.output["status"] == "completed"
+    assert without_bound.output["before_chapter"] is None
+    assert calls == [(project.id, 7), (project.id, None)]
 
 
 @pytest.mark.asyncio

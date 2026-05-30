@@ -103,13 +103,18 @@ def test_agent_generation_tool_descriptors_live_in_dedicated_module():
         "prepare_generate_chapter_execution",
         "execute_generate_chapter_with_approval",
         "backfill_outline_gaps",
+        "prepare_backfill_outline_gaps_execution",
+        "execute_backfill_outline_gaps_with_approval",
     ]
     assert {descriptor.category for descriptor in AGENT_GENERATION_TOOL_DESCRIPTORS} == {"generation", "maintenance"}
     assert target_type_for_tool("generate_chapter") == "chapter"
     assert target_type_for_tool("prepare_generate_chapter_execution") == "chapter_generation_approval"
     assert target_type_for_tool("execute_generate_chapter_with_approval") == "chapter"
     assert target_type_for_tool("backfill_outline_gaps") == "outline"
+    assert target_type_for_tool("prepare_backfill_outline_gaps_execution") == "outline_backfill_approval"
+    assert target_type_for_tool("execute_backfill_outline_gaps_with_approval") == "outline"
     assert "prepare_generate_chapter_execution" in non_blocking_report_tool_names()
+    assert "prepare_backfill_outline_gaps_execution" in non_blocking_report_tool_names()
     assert "execute_generate_chapter_with_approval" not in non_blocking_report_tool_names()
 
 

@@ -668,7 +668,12 @@ class WritingAgentRunService:
                 .first()
             )
             return row.id if row else None
-        if step.tool_name in {"generate_outline", "execute_generate_outline_with_approval"}:
+        if step.tool_name in {
+            "generate_outline",
+            "execute_generate_outline_with_approval",
+            "backfill_outline_gaps",
+            "execute_backfill_outline_gaps_with_approval",
+        }:
             row = (
                 self.db.query(Outline.id)
                 .filter(Outline.project_id == step.project_id)

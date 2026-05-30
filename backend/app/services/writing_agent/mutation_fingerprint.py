@@ -18,6 +18,7 @@ _KNOWN_MUTATING_TOOLS = {
     "generate_chapter_range",
     "import_setup_world_model",
     "analyze_chapter_world_model",
+    "backfill_outline_gaps",
     "record_agent_knowledge_base_candidate",
     "repair_longform_maintenance",
     "apply_planner_revision_patch",
@@ -154,6 +155,14 @@ def _target_for_tool(project_id: str, tool_name: str, params: dict[str, Any]) ->
                 "analyze_chapter_world_model requires project_id and a positive chapter_index",
             )
         return _ready("world_model", f"world_model:{project_target}:chapter:{chapter_index}")
+
+    if tool_name == "backfill_outline_gaps":
+        project_target = _clean_string(project_id)
+        before_chapter = _positive_int(params.get("before_chapter") or params.get("chapter_index"))
+        if not project_target:
+            return _blocked("outline", "missing_target", "backfill_outline_gaps requires project_id")
+        target_label = before_chapter if before_chapter is not None else "all"
+        return _ready("outline", f"outline_backfill:{project_target}:before:{target_label}")
 
     if tool_name == "record_agent_knowledge_base_candidate":
         candidate_target = _knowledge_base_candidate_target_id(params)

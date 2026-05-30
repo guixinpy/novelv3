@@ -38,6 +38,11 @@ AGENT_PLAN_GATED_TOOLS = {
         "gate_type": "stateless_agent_plan_approval",
         "covered_tools": ["analyze_chapter_world_model"],
     },
+    "execute_backfill_outline_gaps_with_approval": {
+        "gate_version": "phase193.outline_backfill_agent_plan_approval.v1",
+        "gate_type": "stateless_agent_plan_approval",
+        "covered_tools": ["backfill_outline_gaps"],
+    },
     "execute_record_agent_knowledge_base_candidate_with_approval": {
         "gate_version": "phase189.knowledge_base_candidate_agent_plan_approval.v1",
         "gate_type": "stateless_agent_plan_approval",

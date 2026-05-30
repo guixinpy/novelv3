@@ -4519,7 +4519,7 @@ def test_agent_backfill_outline_gaps_uses_existing_chapter_content_then_prefligh
         json={
             "goal": "回填历史大纲缺口并检查第4章",
             "tools": [
-                {"tool_name": "backfill_outline_gaps", "params": {"before_chapter": 4}},
+                _approved_backfill_outline_gaps_tool(db_session, project.id, before_chapter=4),
                 {"tool_name": "preflight_writing", "params": {"chapter_index": 4}},
             ],
         },
@@ -4528,6 +4528,7 @@ def test_agent_backfill_outline_gaps_uses_existing_chapter_content_then_prefligh
     payload = response.json()
     assert response.status_code == 200
     assert payload["status"] == "success"
+    assert payload["steps"][0]["tool_name"] == "execute_backfill_outline_gaps_with_approval"
     assert payload["steps"][0]["output"]["backfilled_chapter_indexes"] == [2]
     assert payload["steps"][1]["output"]["status"] == "ready"
     outline = db_session.query(Outline).filter(Outline.project_id == project.id).one()
@@ -9013,6 +9014,23 @@ def _approved_analyze_chapter_world_model_tool(db_session, project_id: str, *, c
             "approval_contract_hash": prepared["agent_plan_approval_contract_hash"],
             "approval_contract": prepared["agent_plan_approval_contract"],
         },
+    }
+
+
+def _approved_backfill_outline_gaps_tool(db_session, project_id: str, *, before_chapter: int | None) -> dict:
+    from app.services.writing_agent.outline_backfill_execution import prepare_backfill_outline_gaps_execution
+
+    prepared = prepare_backfill_outline_gaps_execution(db_session, project_id, before_chapter=before_chapter)
+    params = {
+        "confirm_execute": True,
+        "approval_contract_hash": prepared["agent_plan_approval_contract_hash"],
+        "approval_contract": prepared["agent_plan_approval_contract"],
+    }
+    if before_chapter is not None:
+        params["before_chapter"] = before_chapter
+    return {
+        "tool_name": "execute_backfill_outline_gaps_with_approval",
+        "params": params,
     }
 
 

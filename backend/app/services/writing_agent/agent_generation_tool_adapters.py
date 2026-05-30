@@ -45,6 +45,19 @@ def build_agent_generation_tool_adapters(
             "backfill_outline_gaps",
             _backfill_outline_gaps,
             category="maintenance",
+            mutability="guarded_write",
+            write_policy="approval_required_redirect",
+        ),
+        "prepare_backfill_outline_gaps_execution": WritingAgentToolAdapter(
+            "prepare_backfill_outline_gaps_execution",
+            _prepare_backfill_outline_gaps_execution,
+            category="maintenance",
+            mutability="read",
+        ),
+        "execute_backfill_outline_gaps_with_approval": WritingAgentToolAdapter(
+            "execute_backfill_outline_gaps_with_approval",
+            _execute_backfill_outline_gaps_with_approval(approval_tool_metadata_provider),
+            category="maintenance",
             mutability="write",
         ),
     }
@@ -128,14 +141,64 @@ async def _expand_outline_window(context: WritingAgentToolContext, tool: Writing
 
 
 def _backfill_outline_gaps(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
-    from app.core.outline_lookup import backfill_missing_outline_chapters_from_content
+    before_chapter = _optional_int(tool.params.get("before_chapter") or tool.params.get("chapter_index"))
+    return approval_required_redirect(
+        project_id=context.project_id,
+        tool_name="backfill_outline_gaps",
+        target_type="outline",
+        prepare_tool="prepare_backfill_outline_gaps_execution",
+        execute_tool="execute_backfill_outline_gaps_with_approval",
+        extra={"before_chapter": before_chapter},
+    )
 
-    before_chapter = tool.params.get("before_chapter") or tool.params.get("chapter_index")
-    return backfill_missing_outline_chapters_from_content(
+
+def _prepare_backfill_outline_gaps_execution(
+    context: WritingAgentToolContext,
+    tool: WritingAgentToolRequest,
+) -> dict[str, Any]:
+    from app.services.writing_agent.outline_backfill_execution import prepare_backfill_outline_gaps_execution
+
+    before_chapter = _optional_int(tool.params.get("before_chapter") or tool.params.get("chapter_index"))
+    return prepare_backfill_outline_gaps_execution(
         context.db,
         context.project_id,
-        before_chapter=int(before_chapter) if before_chapter else None,
+        before_chapter=before_chapter,
     )
+
+
+def _execute_backfill_outline_gaps_with_approval(
+    approval_tool_metadata_provider: ApprovalToolMetadataProvider,
+) -> Callable[[WritingAgentToolContext, WritingAgentToolRequest], Any]:
+    def execute_backfill_outline_gaps_with_approval_adapter(
+        context: WritingAgentToolContext,
+        tool: WritingAgentToolRequest,
+    ) -> dict[str, Any]:
+        from app.services.writing_agent.outline_backfill_execution import (
+            execute_backfill_outline_gaps_with_approval,
+        )
+
+        before_chapter = _optional_int(tool.params.get("before_chapter") or tool.params.get("chapter_index"))
+        approval_contract = tool.params.get("approval_contract")
+        return execute_backfill_outline_gaps_with_approval(
+            context.db,
+            context.project_id,
+            before_chapter=before_chapter,
+            confirm_execute=tool.params.get("confirm_execute") is True,
+            approval_contract_hash=str(tool.params.get("approval_contract_hash") or "").strip() or None,
+            approval_contract=approval_contract if isinstance(approval_contract, dict) else None,
+            approval_tool_metadata_provider=approval_tool_metadata_provider,
+        )
+
+    execute_backfill_outline_gaps_with_approval_adapter.__name__ = "_execute_backfill_outline_gaps_with_approval"
+    return execute_backfill_outline_gaps_with_approval_adapter
+
+
+def _optional_int(value: object) -> int | None:
+    try:
+        parsed = int(value) if value not in (None, "") else None
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed and parsed > 0 else None
 
 
 def _blocked_confirmation_required(
