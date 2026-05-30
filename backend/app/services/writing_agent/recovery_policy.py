@@ -61,7 +61,7 @@ def build_checkpoint_resume_policy(
         "skip_completed": True,
         "skipped_chapter_indexes": completed_chapter_indexes,
         "next_tool": "execute_longform_chapter_batch_preflight",
-        "next_params": {"task_id": task_id, "max_chapters": 1},
+        "next_params": {"task_id": task_id, "max_chapters": 1, "confirm_checkpoint": True},
     }
 
 
@@ -238,7 +238,7 @@ def _binding_recovery(tool_name: str, output: dict[str, Any], planner: dict[str,
             return {
                 **base,
                 "next_tool": "prepare_longform_chapter_batch_execution",
-                "next_params": {"task_id": task_id},
+                "next_params": {"task_id": task_id, "confirm_prepare": True},
             }
 
     if tool_name == "execute_generate_chapter_with_approval" and chapter_index is not None:

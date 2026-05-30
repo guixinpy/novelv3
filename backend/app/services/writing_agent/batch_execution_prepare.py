@@ -25,6 +25,7 @@ def prepare_longform_chapter_batch_execution(
     project_id: str,
     *,
     task_id: str | None,
+    confirm_prepare: bool = False,
 ) -> dict[str, Any]:
     project = db.query(Project.id).filter(Project.id == project_id).first()
     if project is None:
@@ -72,6 +73,12 @@ def prepare_longform_chapter_batch_execution(
     generated = _generated_chapters(db, task.project_id, selected_chapters)
     if generated:
         return _blocked_output(task, reason="chapter_state_drift", extra={"generated_chapter_indexes": generated})
+    if confirm_prepare is not True:
+        return _blocked_output(
+            task,
+            reason="prepare_confirmation_required",
+            extra={"required_confirmation": {"confirm_prepare": True, "task_id": task.id}},
+        )
 
     attempt_payload = _attempt_manifest_payload(task, checkpoint, selected_chapters)
     attempt_hash = _stable_hash(attempt_payload)

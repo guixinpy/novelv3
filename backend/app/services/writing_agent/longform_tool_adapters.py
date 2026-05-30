@@ -117,6 +117,7 @@ def _execute_longform_chapter_batch_preflight(
         context.project_id,
         task_id=str(tool.params.get("task_id") or "").strip() or None,
         max_chapters=_optional_int(tool.params.get("max_chapters")),
+        confirm_checkpoint=tool.params.get("confirm_checkpoint") is True,
     )
 
 
@@ -130,6 +131,7 @@ def _prepare_longform_chapter_batch_execution(
         context.db,
         context.project_id,
         task_id=str(tool.params.get("task_id") or "").strip() or None,
+        confirm_prepare=tool.params.get("confirm_prepare") is True,
     )
 
 

@@ -95,6 +95,7 @@ LONGFORM_AGENT_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
             {
                 "task_id": {"type": "string"},
                 "max_chapters": {"type": "integer", "minimum": 1},
+                "confirm_checkpoint": {"type": "boolean"},
             },
             required=("task_id",),
         ),
@@ -120,6 +121,7 @@ LONGFORM_AGENT_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         input_schema=object_schema(
             {
                 "task_id": {"type": "string"},
+                "confirm_prepare": {"type": "boolean"},
             },
             required=("task_id",),
         ),

@@ -4419,10 +4419,17 @@ async def test_tool_executor_dispatches_execute_longform_chapter_batch_preflight
     project = Project(name="Executor Batch Preflight")
     db_session.add(project)
     db_session.commit()
-    calls: list[tuple[str, str | None, int | None]] = []
+    calls: list[tuple[str, str | None, int | None, bool]] = []
 
-    def fake_preflight(db, project_id: str, *, task_id: str | None, max_chapters: int | None):
-        calls.append((project_id, task_id, max_chapters))
+    def fake_preflight(
+        db,
+        project_id: str,
+        *,
+        task_id: str | None,
+        max_chapters: int | None,
+        confirm_checkpoint: bool,
+    ):
+        calls.append((project_id, task_id, max_chapters, confirm_checkpoint))
         return {"status": "ready", "checkpoint": {"task_id": task_id}}
 
     monkeypatch.setattr(
@@ -4434,13 +4441,13 @@ async def test_tool_executor_dispatches_execute_longform_chapter_batch_preflight
         WritingAgentToolContext(db=db_session, project_id=project.id),
         WritingAgentToolRequest(
             tool_name="execute_longform_chapter_batch_preflight",
-            params={"task_id": "task-1", "max_chapters": "2"},
+            params={"task_id": "task-1", "max_chapters": "2", "confirm_checkpoint": True},
         ),
     )
 
     assert result.handled is True
     assert result.output == {"status": "ready", "checkpoint": {"task_id": "task-1"}}
-    assert calls == [(project.id, "task-1", 2)]
+    assert calls == [(project.id, "task-1", 2, True)]
 
 
 @pytest.mark.asyncio
@@ -4448,10 +4455,10 @@ async def test_tool_executor_dispatches_prepare_longform_chapter_batch_execution
     project = Project(name="Executor Batch Prepare")
     db_session.add(project)
     db_session.commit()
-    calls: list[tuple[str, str | None]] = []
+    calls: list[tuple[str, str | None, bool]] = []
 
-    def fake_prepare(db, project_id: str, *, task_id: str | None):
-        calls.append((project_id, task_id))
+    def fake_prepare(db, project_id: str, *, task_id: str | None, confirm_prepare: bool):
+        calls.append((project_id, task_id, confirm_prepare))
         return {"status": "approval_required", "attempt_manifest": {"task_id": task_id}}
 
     monkeypatch.setattr(
@@ -4463,13 +4470,13 @@ async def test_tool_executor_dispatches_prepare_longform_chapter_batch_execution
         WritingAgentToolContext(db=db_session, project_id=project.id),
         WritingAgentToolRequest(
             tool_name="prepare_longform_chapter_batch_execution",
-            params={"task_id": "task-1"},
+            params={"task_id": "task-1", "confirm_prepare": True},
         ),
     )
 
     assert result.handled is True
     assert result.output == {"status": "approval_required", "attempt_manifest": {"task_id": "task-1"}}
-    assert calls == [(project.id, "task-1")]
+    assert calls == [(project.id, "task-1", True)]
 
 
 @pytest.mark.asyncio

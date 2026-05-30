@@ -1039,6 +1039,8 @@ def test_agent_tool_registry_includes_execute_longform_chapter_batch_preflight()
     assert descriptor.target_type == "background_task"
     assert descriptor.input_schema["properties"]["task_id"]["type"] == "string"
     assert descriptor.input_schema["properties"]["max_chapters"]["minimum"] == 1
+    assert descriptor.input_schema["properties"]["confirm_checkpoint"]["type"] == "boolean"
+    assert set(descriptor.input_schema["required"]) == {"task_id"}
     assert "execute_longform_chapter_batch_preflight" in allowed_tool_names()
     assert "execute_longform_chapter_batch_preflight" not in non_blocking_report_tool_names()
 
@@ -1052,6 +1054,8 @@ def test_agent_tool_registry_includes_prepare_longform_chapter_batch_execution()
     assert descriptor.category == "task_queue"
     assert descriptor.target_type == "background_task"
     assert descriptor.input_schema["properties"]["task_id"]["type"] == "string"
+    assert descriptor.input_schema["properties"]["confirm_prepare"]["type"] == "boolean"
+    assert set(descriptor.input_schema["required"]) == {"task_id"}
     assert "prepare_longform_chapter_batch_execution" in allowed_tool_names()
     assert "prepare_longform_chapter_batch_execution" not in non_blocking_report_tool_names()
 

@@ -25,6 +25,7 @@ def execute_longform_chapter_batch_preflight(
     *,
     task_id: str | None,
     max_chapters: int | None = None,
+    confirm_checkpoint: bool = False,
 ) -> dict[str, Any]:
     project = db.query(Project.id).filter(Project.id == project_id).first()
     if project is None:
@@ -78,6 +79,15 @@ def execute_longform_chapter_batch_preflight(
             gates=[_gate("chapter_range", "blocked")],
             chapter_preflights=[],
             selected_chapters=[],
+        )
+    if confirm_checkpoint is not True:
+        return _blocked_output(
+            task,
+            reason="checkpoint_confirmation_required",
+            gates=[_gate("checkpoint_confirmation", "blocked")],
+            chapter_preflights=[],
+            selected_chapters=selected_chapters,
+            required_confirmation={"confirm_checkpoint": True, "task_id": task.id},
         )
 
     preflights = [_compact_preflight(_run_preflight(db, project_id, index)) for index in selected_chapters]
@@ -175,6 +185,7 @@ def _base_output(
     *,
     selected_chapters: list[int],
     checkpoint: dict[str, Any],
+    checkpoint_persisted: bool = True,
 ) -> dict[str, Any]:
     payload = task.payload if isinstance(task.payload, dict) else {}
     chapter_indexes = _chapter_indexes(payload)
@@ -213,8 +224,10 @@ def _base_output(
             "plan_hash": payload.get("plan_hash"),
         },
         "side_effects": {
-            "executed": ["background_task_result_checkpoint"],
-            "skipped": list(SKIPPED_SIDE_EFFECTS),
+            "executed": ["background_task_result_checkpoint"] if checkpoint_persisted else [],
+            "skipped": list(SKIPPED_SIDE_EFFECTS)
+            if checkpoint_persisted
+            else ["background_task_result_checkpoint", *SKIPPED_SIDE_EFFECTS],
             "blocked_high_risk": ["chapter_generation", "world_model_intake"],
         },
         "expected_evidence": [
@@ -234,6 +247,7 @@ def _blocked_output(
     gates: list[dict[str, Any]],
     chapter_preflights: list[dict[str, Any]],
     selected_chapters: list[int],
+    required_confirmation: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     checkpoint = _checkpoint(
         task=task,
@@ -241,7 +255,7 @@ def _blocked_output(
         chapter_preflights=chapter_preflights,
         status="blocked",
     )
-    output = _base_output(task, selected_chapters=selected_chapters, checkpoint=checkpoint)
+    output = _base_output(task, selected_chapters=selected_chapters, checkpoint=checkpoint, checkpoint_persisted=False)
     output.update(
         {
             "status": "blocked",
@@ -254,6 +268,8 @@ def _blocked_output(
             },
         }
     )
+    if required_confirmation is not None:
+        output["required_confirmation"] = required_confirmation
     return output
 
 

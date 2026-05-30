@@ -136,6 +136,23 @@ def test_write_gate_coverage_marks_apply_route_opt_in_as_direct_confirmation_gua
     assert apply_tool["risk_level"] == "medium"
 
 
+def test_write_gate_coverage_marks_batch_checkpoint_writes_as_confirmation_guarded():
+    output = inspect_agent_write_gate_coverage(adapter_metadata_by_name=_adapter_metadata())
+    tools_by_name = _tools_by_name(output)
+
+    preflight_tool = tools_by_name["execute_longform_chapter_batch_preflight"]
+    assert preflight_tool["agent_plan_gate_status"] == "missing_agent_plan_gate"
+    assert preflight_tool["direct_confirmation_guard"] is True
+    assert preflight_tool["confirmation_fields"] == ["confirm_checkpoint"]
+    assert preflight_tool["risk_level"] == "medium"
+
+    prepare_tool = tools_by_name["prepare_longform_chapter_batch_execution"]
+    assert prepare_tool["agent_plan_gate_status"] == "missing_agent_plan_gate"
+    assert prepare_tool["direct_confirmation_guard"] is True
+    assert prepare_tool["confirmation_fields"] == ["confirm_prepare"]
+    assert prepare_tool["risk_level"] == "medium"
+
+
 def test_write_gate_coverage_recommends_high_risk_targets_first():
     output = inspect_agent_write_gate_coverage(adapter_metadata_by_name=_adapter_metadata())
 
@@ -256,5 +273,19 @@ def _adapter_metadata() -> dict[str, dict]:
             "category": "maintenance",
             "mutability": "write",
             "handler_name": "_execute_repair_longform_maintenance_with_approval",
+        },
+        "execute_longform_chapter_batch_preflight": {
+            "tool_name": "execute_longform_chapter_batch_preflight",
+            "adapter_type": "static",
+            "category": "task_queue",
+            "mutability": "write",
+            "handler_name": "_execute_longform_chapter_batch_preflight",
+        },
+        "prepare_longform_chapter_batch_execution": {
+            "tool_name": "prepare_longform_chapter_batch_execution",
+            "adapter_type": "static",
+            "category": "task_queue",
+            "mutability": "write",
+            "handler_name": "_prepare_longform_chapter_batch_execution",
         },
     }

@@ -21,7 +21,13 @@ WRITE_PREFIXES = (
     "compress_",
 )
 GUARDED_WRITE_PREFIXES = ("apply_", "execute_", "enqueue_", "route_")
-CONFIRM_PARAM_NAMES = ("confirm_apply", "confirm_enqueue", "confirm_execute")
+CONFIRM_PARAM_NAMES = (
+    "confirm_apply",
+    "confirm_checkpoint",
+    "confirm_enqueue",
+    "confirm_execute",
+    "confirm_prepare",
+)
 HASH_PARAM_NAMES = (
     "plan_hash",
     "attempt_manifest_hash",
