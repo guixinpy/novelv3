@@ -7,6 +7,7 @@ from app.services.writing_agent.agent_definitions import (
 from app.services.writing_agent.agent_worker_dispatch import (
     AGENT_WORKER_DISPATCH_VERSION,
     preview_agent_worker_dispatch,
+    preview_agent_worker_dispatches,
 )
 
 
@@ -108,6 +109,24 @@ def test_worker_dispatch_preview_blocks_child_dispatch_and_disallowed_tools():
             "worker": "reviewer",
         },
     ]
+
+
+def test_worker_dispatch_routes_memory_activation_to_memory_worker():
+    preview = preview_agent_worker_dispatches(
+        [
+            {
+                "tool_name": "inspect_agent_memory_activation_plan",
+                "params": {"chapter_index": 3},
+            }
+        ],
+        parent_run_id="run-memory-activation",
+    )
+
+    assert preview["status"] == "ready"
+    assert preview["summary"] == {"workers": 1, "planned_tasks": 1, "blocked_tasks": 0, "issues": 0}
+    dispatch = preview["worker_dispatches"][0]
+    assert dispatch["worker"]["name"] == "memory_worker"
+    assert dispatch["task_envelopes"][0]["tool_name"] == "inspect_agent_memory_activation_plan"
 
 
 def test_agent_definition_registry_audit_binds_worker_profiles_to_yaml_leaf_definitions():
