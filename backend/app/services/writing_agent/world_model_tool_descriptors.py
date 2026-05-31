@@ -221,7 +221,7 @@ WORLD_MODEL_AGENT_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         name="apply_world_model_proposal_resolution",
         module="athena_world_model",
         category="athena_world_model",
-        description="在确认后应用世界模型提案处理决策。",
+        description="为世界模型提案处理决策应用构建审批重定向，直接调用不写入评审结果。",
         input_schema=object_schema(
             {
                 "decisions": {"type": "array"},
@@ -229,6 +229,60 @@ WORLD_MODEL_AGENT_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
                 "approval_contract_hash": {"type": "string"},
                 "approval_contract": {"type": "object"},
             }
+        ),
+        output_schema=object_schema(
+            {
+                "status": {"type": "string"},
+                "required_approval": {"type": "object"},
+                "side_effects": {"type": "object"},
+            }
+        ),
+        target_type="world_model",
+        internal=True,
+        sort_key=190,
+        availability_checks=("world_model_profile_exists",),
+    ),
+    AgentToolDescriptor(
+        name="prepare_apply_world_model_proposal_resolution",
+        module="writing_agent",
+        category="athena_world_model",
+        description="为世界模型提案处理决策应用构建 Agent 计划审批契约，不写入评审结果。",
+        input_schema=object_schema({"decisions": {"type": "array"}}),
+        output_schema=object_schema(
+            {
+                "status": {"type": "string"},
+                "prepare_version": {"type": "string"},
+                "project_id": {"type": "string"},
+                "apply_preview": {"type": "object"},
+                "mutation_fingerprint": {"type": "object"},
+                "tool_call_id": {"type": "string"},
+                "resource_binding": {"type": "object"},
+                "agent_plan": {"type": "object"},
+                "agent_plan_approval_contract": {"type": "object"},
+                "agent_plan_approval_contract_hash": {"type": "string"},
+                "required_confirmation": {"type": "object"},
+                "recommended_next_tools": {"type": "array"},
+            }
+        ),
+        target_type="world_model_proposal_resolution_approval",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=191,
+        availability_checks=("world_model_profile_exists",),
+    ),
+    AgentToolDescriptor(
+        name="execute_apply_world_model_proposal_resolution_with_approval",
+        module="writing_agent",
+        category="athena_world_model",
+        description="在确认 Agent 计划审批契约后应用世界模型提案处理决策并写入评审结果。",
+        input_schema=object_schema(
+            {
+                "decisions": {"type": "array"},
+                "confirm_execute": {"type": "boolean"},
+                "approval_contract_hash": {"type": "string"},
+                "approval_contract": {"type": "object"},
+            },
+            required=("confirm_execute", "approval_contract_hash", "approval_contract"),
         ),
         output_schema=object_schema(
             {
@@ -245,12 +299,14 @@ WORLD_MODEL_AGENT_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
                 "can_auto_apply": {"type": "boolean"},
                 "should_generate_next_chapter": {"type": "boolean"},
                 "recommended_actions": {"type": "array"},
+                "agent_plan_approval_verification": {"type": "object"},
+                "execution_resource_binding": {"type": "object"},
             }
         ),
-        target_type="world_model",
+        target_type="world_model_proposal_resolution",
         internal=True,
         non_blocking_report=True,
-        sort_key=190,
+        sort_key=192,
         availability_checks=("world_model_profile_exists",),
     ),
     AgentToolDescriptor(

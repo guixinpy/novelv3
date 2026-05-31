@@ -29,6 +29,7 @@ _KNOWN_MUTATING_TOOLS = {
     "compress_chapter_to_target",
     "execute_compress_chapter_to_target_with_approval",
     "apply_world_model_proposal_resolution",
+    "execute_apply_world_model_proposal_resolution_with_approval",
     "seed_continuity_anchor_proposals",
     "execute_seed_continuity_anchor_proposals_with_approval",
     "enqueue_longform_chapter_batch",
@@ -235,7 +236,10 @@ def _target_for_tool(project_id: str, tool_name: str, params: dict[str, Any]) ->
         action = _chapter_revision_adjustment_action(tool_name)
         return _ready("chapter_revision_adjustment", f"chapter_revision_adjustment:{action}:{chapter_index}")
 
-    if tool_name == "apply_world_model_proposal_resolution":
+    if tool_name in {
+        "apply_world_model_proposal_resolution",
+        "execute_apply_world_model_proposal_resolution_with_approval",
+    }:
         bundle_id = _clean_string(params.get("proposal_bundle_id") or params.get("bundle_id"))
         if bundle_id:
             return _ready("world_model_proposal_bundle", f"world_model_proposal_bundle:{bundle_id}")
@@ -251,7 +255,7 @@ def _target_for_tool(project_id: str, tool_name: str, params: dict[str, Any]) ->
         return _blocked(
             "world_model_proposal_bundle",
             "missing_target",
-            "apply_world_model_proposal_resolution requires a proposal bundle, plan, or decision target",
+            f"{tool_name} requires a proposal bundle, plan, or decision target",
         )
 
     if tool_name in {

@@ -439,7 +439,8 @@ def test_planner_continuation_executes_confirmed_world_model_resolution_after_co
         subject_ref="char.林深",
     )
     decisions = [{"proposal_item_id": item.id, "action": "reject", "reason": "规划审批后拒绝错误事实"}]
-    plan = _planner_world_model_resolution_plan(project.id, decisions=decisions)
+    apply_approval = _prepare_apply_world_model_resolution(client, project.id, decisions)
+    plan = _planner_world_model_resolution_plan(project.id, decisions=decisions, apply_approval=apply_approval)
     approval_hash = plan["approval_contract"]["approval"]["approval_contract_hash"]
 
     response = client.post(
@@ -467,7 +468,7 @@ def test_planner_continuation_executes_confirmed_world_model_resolution_after_co
     assert response.status_code == 200
     assert payload["status"] == "success"
     step = payload["steps"][0]
-    assert step["tool_name"] == "apply_world_model_proposal_resolution"
+    assert step["tool_name"] == "execute_apply_world_model_proposal_resolution_with_approval"
     assert step["status"] == "success"
     assert step["output"]["applied_count"] == 1
     assert step["output"]["planner_continuation_approval"]["approval_contract_hash"] == approval_hash
@@ -486,7 +487,8 @@ def test_planner_continuation_blocks_world_model_resolution_on_approval_hash_mis
         subject_ref="char.林深",
     )
     decisions = [{"proposal_item_id": item.id, "action": "reject", "reason": "漂移审批不应执行"}]
-    plan = _planner_world_model_resolution_plan(project.id, decisions=decisions)
+    apply_approval = _prepare_apply_world_model_resolution(client, project.id, decisions)
+    plan = _planner_world_model_resolution_plan(project.id, decisions=decisions, apply_approval=apply_approval)
     before_review_count = db_session.query(WorldProposalReview).count()
 
     response = client.post(
@@ -514,7 +516,7 @@ def test_planner_continuation_blocks_world_model_resolution_on_approval_hash_mis
     assert payload["status"] == "blocked"
     assert payload["error"] == "Planner continuation requires approval"
     step = payload["steps"][0]
-    assert step["tool_name"] == "apply_world_model_proposal_resolution"
+    assert step["tool_name"] == "execute_apply_world_model_proposal_resolution_with_approval"
     assert step["status"] == "blocked"
     output = step["output"]
     assert output["approval_verification"]["reason"] == "approval_contract_hash_mismatch"
@@ -5545,8 +5547,14 @@ def test_agent_seed_continuity_anchor_proposals_creates_missing_anchor_items(cli
     recommendations = output["agent_tool_result"]["recommendations"]
     assert recommendations["source_fields"] == ["recommended_actions"]
     assert recommendations["runtime_followups"] == ["apply_world_model_proposal_resolution"]
-    assert recommendations["policy_followups"] == ["apply_world_model_proposal_resolution"]
-    assert recommendations["canonical_followups"] == ["apply_world_model_proposal_resolution"]
+    assert recommendations["policy_followups"] == [
+        "apply_world_model_proposal_resolution",
+        "execute_apply_world_model_proposal_resolution_with_approval",
+    ]
+    assert recommendations["canonical_followups"] == [
+        "apply_world_model_proposal_resolution",
+        "execute_apply_world_model_proposal_resolution_with_approval",
+    ]
     assert {(item.subject_ref, item.predicate) for item in stored_items} >= {
         ("林深", "father_name"),
         ("顾衍", "military_tag_number"),
@@ -5569,27 +5577,17 @@ def test_agent_apply_world_model_proposal_resolution_allows_confirmed_continuity
         .one()
     )
 
-    response = client.post(
-        f"/api/v1/projects/{project.id}/agent-runs",
-        json={
-            "goal": "审批稳定锚点",
-            "tools": [
-                {
-                    "tool_name": "apply_world_model_proposal_resolution",
-                    "params": {
-                        "confirm_apply": True,
-                        "decisions": [
-                            {
-                                "proposal_item_id": item.id,
-                                "action": "approve",
-                                "reason": "确认父亲姓名锚点",
-                                "evidence_refs": ["chapter:10", "chapter:11", "chapter:13"],
-                            }
-                        ],
-                    },
-                }
-            ],
-        },
+    response = _apply_world_model_resolution_with_approval(
+        client,
+        project.id,
+        [
+            {
+                "proposal_item_id": item.id,
+                "action": "approve",
+                "reason": "确认父亲姓名锚点",
+                "evidence_refs": ["chapter:10", "chapter:11", "chapter:13"],
+            }
+        ],
     )
 
     output = response.json()["steps"][0]["output"]
@@ -6532,12 +6530,15 @@ def test_agent_apply_world_model_proposal_resolution_requires_confirmation_witho
     output = response.json()["steps"][0]["output"]
     stored_item = db_session.query(WorldProposalItem).filter_by(id=item.id).one()
     assert response.status_code == 200
-    assert response.json()["status"] == "success"
+    assert response.json()["status"] == "blocked"
     assert output["status"] == "blocked"
-    assert output["requires_confirmation"] is True
-    assert output["applied_count"] == 0
-    assert output["invalid_decision_count"] == 0
-    assert output["should_generate_next_chapter"] is False
+    assert output["reason"] == "approval_required_before_write"
+    assert output["required_approval"] == {
+        "prepare_tool": "prepare_apply_world_model_proposal_resolution",
+        "execute_tool": "execute_apply_world_model_proposal_resolution_with_approval",
+        "approval_scope": "agent_plan_approval",
+    }
+    assert output["side_effects"]["executed"] == []
     assert stored_item.item_status == "pending"
     assert db_session.query(WorldProposalReview).count() == before_review_count
 
@@ -6545,22 +6546,7 @@ def test_agent_apply_world_model_proposal_resolution_requires_confirmation_witho
 def test_agent_apply_world_model_proposal_resolution_blocks_missing_profile_without_decisions(client, db_session):
     project = _seed_longform_project(db_session, outline_chapters=[1], generated_chapters=[1])
 
-    response = client.post(
-        f"/api/v1/projects/{project.id}/agent-runs",
-        json={
-            "goal": "缺少世界模型档案时不能应用空决策",
-            "tools": [
-                {
-                    "tool_name": "apply_world_model_proposal_resolution",
-                    "params": {"confirm_apply": True, "decisions": []},
-                }
-            ],
-        },
-    )
-
-    output = response.json()["steps"][0]["output"]
-    assert response.status_code == 200
-    assert response.json()["status"] == "success"
+    output = _prepare_apply_world_model_resolution(client, project.id, [])
     assert output["status"] == "missing_profile"
     assert output["profile_version"] is None
     assert output["applied_count"] == 0
@@ -6587,33 +6573,23 @@ def test_agent_apply_world_model_proposal_resolution_applies_confirmed_non_merge
     )
     before_fact_count = db_session.query(WorldFactClaim).count()
 
-    response = client.post(
-        f"/api/v1/projects/{project.id}/agent-runs",
-        json={
-            "goal": "确认应用世界模型非合并提案决策",
-            "tools": [
-                {
-                    "tool_name": "apply_world_model_proposal_resolution",
-                    "params": {
-                        "confirm_apply": True,
-                        "decisions": [
-                            {
-                                "proposal_item_id": reject_item.id,
-                                "action": "reject",
-                                "reason": "拒绝错误角色事实",
-                                "evidence_refs": ["test:phase13"],
-                            },
-                            {
-                                "proposal_item_id": uncertain_item.id,
-                                "action": "mark_uncertain",
-                                "reason": "状态暂不确定",
-                                "evidence_refs": "test:phase13:string-ref",
-                            },
-                        ],
-                    },
-                }
-            ],
-        },
+    response = _apply_world_model_resolution_with_approval(
+        client,
+        project.id,
+        [
+            {
+                "proposal_item_id": reject_item.id,
+                "action": "reject",
+                "reason": "拒绝错误角色事实",
+                "evidence_refs": ["test:phase13"],
+            },
+            {
+                "proposal_item_id": uncertain_item.id,
+                "action": "mark_uncertain",
+                "reason": "状态暂不确定",
+                "evidence_refs": "test:phase13:string-ref",
+            },
+        ],
     )
 
     output = response.json()["steps"][0]["output"]
@@ -6659,38 +6635,24 @@ def test_agent_apply_world_model_proposal_resolution_rejects_approval_actions_wi
     before_review_count = db_session.query(WorldProposalReview).count()
     before_fact_count = db_session.query(WorldFactClaim).count()
 
-    response = client.post(
-        f"/api/v1/projects/{project.id}/agent-runs",
-        json={
-            "goal": "尝试在守卫应用中审批事实",
-            "tools": [
-                {
-                    "tool_name": "apply_world_model_proposal_resolution",
-                    "params": {
-                        "confirm_apply": True,
-                        "decisions": [
-                            {
-                                "proposal_item_id": item.id,
-                                "action": "approve",
-                                "reason": "本阶段不允许",
-                            },
-                            {
-                                "proposal_item_id": edit_item.id,
-                                "action": "approve_with_edits",
-                                "reason": "本阶段同样不允许",
-                                "edited_fields": {"object_ref_or_value": "雾港协作者"},
-                            }
-                        ],
-                    },
-                }
-            ],
-        },
+    output = _prepare_apply_world_model_resolution(
+        client,
+        project.id,
+        [
+            {
+                "proposal_item_id": item.id,
+                "action": "approve",
+                "reason": "本阶段不允许",
+            },
+            {
+                "proposal_item_id": edit_item.id,
+                "action": "approve_with_edits",
+                "reason": "本阶段同样不允许",
+                "edited_fields": {"object_ref_or_value": "雾港协作者"},
+            },
+        ],
     )
-
-    output = response.json()["steps"][0]["output"]
     stored_item = db_session.query(WorldProposalItem).filter_by(id=item.id).one()
-    assert response.status_code == 200
-    assert response.json()["status"] == "success"
     assert output["status"] == "blocked"
     assert output["applied_count"] == 0
     assert output["invalid_decision_count"] == 2
@@ -6725,31 +6687,21 @@ def test_agent_apply_world_model_proposal_resolution_rolls_back_when_review_stag
     db_session.commit()
     before_review_count = db_session.query(WorldProposalReview).count()
 
-    response = client.post(
-        f"/api/v1/projects/{project.id}/agent-runs",
-        json={
-            "goal": "第二条评审阶段失败时整批回滚",
-            "tools": [
-                {
-                    "tool_name": "apply_world_model_proposal_resolution",
-                    "params": {
-                        "confirm_apply": True,
-                        "decisions": [
-                            {
-                                "proposal_item_id": valid_item.id,
-                                "action": "reject",
-                                "reason": "第一条本应回滚",
-                            },
-                            {
-                                "proposal_item_id": drift_item.id,
-                                "action": "mark_uncertain",
-                                "reason": "合约版本漂移导致评审阶段失败",
-                            },
-                        ],
-                    },
-                }
-            ],
-        },
+    response = _apply_world_model_resolution_with_approval(
+        client,
+        project.id,
+        [
+            {
+                "proposal_item_id": valid_item.id,
+                "action": "reject",
+                "reason": "第一条本应回滚",
+            },
+            {
+                "proposal_item_id": drift_item.id,
+                "action": "mark_uncertain",
+                "reason": "合约版本漂移导致评审阶段失败",
+            },
+        ],
     )
 
     output = response.json()["steps"][0]["output"]
@@ -6782,37 +6734,23 @@ def test_agent_apply_world_model_proposal_resolution_blocks_invalid_batch_withou
     )
     before_review_count = db_session.query(WorldProposalReview).count()
 
-    response = client.post(
-        f"/api/v1/projects/{project.id}/agent-runs",
-        json={
-            "goal": "无效批次不能部分应用",
-            "tools": [
-                {
-                    "tool_name": "apply_world_model_proposal_resolution",
-                    "params": {
-                        "confirm_apply": True,
-                        "decisions": [
-                            {
-                                "proposal_item_id": valid_item.id,
-                                "action": "reject",
-                                "reason": "有效但不应部分落库",
-                            },
-                            {
-                                "proposal_item_id": "proposal-item.missing.phase13",
-                                "action": "mark_uncertain",
-                                "reason": "缺失项导致整批阻断",
-                            },
-                        ],
-                    },
-                }
-            ],
-        },
+    output = _prepare_apply_world_model_resolution(
+        client,
+        project.id,
+        [
+            {
+                "proposal_item_id": valid_item.id,
+                "action": "reject",
+                "reason": "有效但不应部分落库",
+            },
+            {
+                "proposal_item_id": "proposal-item.missing.phase13",
+                "action": "mark_uncertain",
+                "reason": "缺失项导致整批阻断",
+            },
+        ],
     )
-
-    output = response.json()["steps"][0]["output"]
     stored_valid_item = db_session.query(WorldProposalItem).filter_by(id=valid_item.id).one()
-    assert response.status_code == 200
-    assert response.json()["status"] == "success"
     assert output["status"] == "blocked"
     assert output["applied_count"] == 0
     assert output["invalid_decision_count"] == 1
@@ -6832,6 +6770,13 @@ def test_agent_preview_world_model_proposal_resolution_allows_apply_followup(cli
         subject_ref="char.林深",
     )
 
+    decisions = [
+        {
+            "proposal_item_id": item.id,
+            "action": "reject",
+            "reason": "预览后确认拒绝",
+        }
+    ]
     response = client.post(
         f"/api/v1/projects/{project.id}/agent-runs",
         json={
@@ -6839,29 +6784,9 @@ def test_agent_preview_world_model_proposal_resolution_allows_apply_followup(cli
             "tools": [
                 {
                     "tool_name": "preview_world_model_proposal_resolution",
-                    "params": {
-                        "decisions": [
-                            {
-                                "proposal_item_id": item.id,
-                                "action": "reject",
-                                "reason": "预览后确认拒绝",
-                            }
-                        ]
-                    },
+                    "params": {"decisions": decisions},
                 },
-                {
-                    "tool_name": "apply_world_model_proposal_resolution",
-                    "params": {
-                        "confirm_apply": True,
-                        "decisions": [
-                            {
-                                "proposal_item_id": item.id,
-                                "action": "reject",
-                                "reason": "预览后确认拒绝",
-                            }
-                        ],
-                    },
-                },
+                _approved_apply_world_model_resolution_tool(client, project.id, decisions),
             ],
         },
     )
@@ -6871,7 +6796,7 @@ def test_agent_preview_world_model_proposal_resolution_allows_apply_followup(cli
     assert payload["status"] == "success"
     assert [step["tool_name"] for step in payload["steps"]] == [
         "preview_world_model_proposal_resolution",
-        "apply_world_model_proposal_resolution",
+        "execute_apply_world_model_proposal_resolution_with_approval",
     ]
     assert payload["steps"][1]["output"]["applied_count"] == 1
 
@@ -6905,24 +6830,19 @@ def test_agent_apply_world_model_proposal_resolution_blocks_followup_generation_
 
     monkeypatch.setattr("app.services.actions.action_execution_service.ActionExecutionService.execute", fake_execute)
 
+    decisions = [
+        {
+            "proposal_item_id": item_to_apply.id,
+            "action": "reject",
+            "reason": "只处理一个，仍有待审项",
+        }
+    ]
     response = client.post(
         f"/api/v1/projects/{project.id}/agent-runs",
         json={
             "goal": "应用部分提案后尝试生成第2章",
             "tools": [
-                {
-                    "tool_name": "apply_world_model_proposal_resolution",
-                    "params": {
-                        "confirm_apply": True,
-                        "decisions": [
-                            {
-                                "proposal_item_id": item_to_apply.id,
-                                "action": "reject",
-                                "reason": "只处理一个，仍有待审项",
-                            }
-                        ],
-                    },
-                },
+                _approved_apply_world_model_resolution_tool(client, project.id, decisions),
                 {"tool_name": "generate_chapter", "params": {"chapter_index": 2}},
             ],
         },
@@ -6931,7 +6851,7 @@ def test_agent_apply_world_model_proposal_resolution_blocks_followup_generation_
     payload = response.json()
     assert response.status_code == 200
     assert payload["status"] == "blocked"
-    assert payload["steps"][0]["tool_name"] == "apply_world_model_proposal_resolution"
+    assert payload["steps"][0]["tool_name"] == "execute_apply_world_model_proposal_resolution_with_approval"
     assert payload["steps"][0]["output"]["after_actionable_items"] == 1
     assert payload["steps"][0]["output"]["should_generate_next_chapter"] is False
     assert len(payload["steps"]) == 1
@@ -6960,24 +6880,19 @@ def test_agent_apply_world_model_proposal_resolution_allows_generation_when_queu
 
     monkeypatch.setattr("app.services.actions.action_execution_service.ActionExecutionService.execute", fake_execute)
 
+    decisions = [
+        {
+            "proposal_item_id": item.id,
+            "action": "reject",
+            "reason": "清空队列",
+        }
+    ]
     response = client.post(
         f"/api/v1/projects/{project.id}/agent-runs",
         json={
             "goal": "清空提案队列后生成第2章",
             "tools": [
-                {
-                    "tool_name": "apply_world_model_proposal_resolution",
-                    "params": {
-                        "confirm_apply": True,
-                        "decisions": [
-                            {
-                                "proposal_item_id": item.id,
-                                "action": "reject",
-                                "reason": "清空队列",
-                            }
-                        ],
-                    },
-                },
+                _approved_apply_world_model_resolution_tool(client, project.id, decisions),
                 _approved_generate_chapter_tool(db_session, project.id, chapter_index=2),
             ],
         },
@@ -6987,7 +6902,7 @@ def test_agent_apply_world_model_proposal_resolution_allows_generation_when_queu
     assert response.status_code == 200
     assert payload["status"] == "success"
     assert [step["tool_name"] for step in payload["steps"]] == [
-        "apply_world_model_proposal_resolution",
+        "execute_apply_world_model_proposal_resolution_with_approval",
         "execute_generate_chapter_with_approval",
     ]
     assert calls == ["generate_chapter"]
@@ -7222,25 +7137,20 @@ def test_agent_draft_world_model_proposal_resolution_decisions_allows_apply_foll
         subject_ref="char.林深",
     )
 
+    decisions = [
+        {
+            "proposal_item_id": item.id,
+            "action": "reject",
+            "reason": "presence_count 是提取元数据，不进入真相层",
+        }
+    ]
     response = client.post(
         f"/api/v1/projects/{project.id}/agent-runs",
         json={
             "goal": "先草拟再应用世界模型提案决策",
             "tools": [
                 {"tool_name": "draft_world_model_proposal_resolution_decisions", "params": {"limit": 20}},
-                {
-                    "tool_name": "apply_world_model_proposal_resolution",
-                    "params": {
-                        "confirm_apply": True,
-                        "decisions": [
-                            {
-                                "proposal_item_id": item.id,
-                                "action": "reject",
-                                "reason": "presence_count 是提取元数据，不进入真相层",
-                            }
-                        ],
-                    },
-                },
+                _approved_apply_world_model_resolution_tool(client, project.id, decisions),
             ],
         },
     )
@@ -7250,7 +7160,7 @@ def test_agent_draft_world_model_proposal_resolution_decisions_allows_apply_foll
     assert payload["status"] == "success"
     assert [step["tool_name"] for step in payload["steps"]] == [
         "draft_world_model_proposal_resolution_decisions",
-        "apply_world_model_proposal_resolution",
+        "execute_apply_world_model_proposal_resolution_with_approval",
     ]
     assert payload["steps"][1]["output"]["applied_count"] == 1
 
@@ -9099,20 +9009,37 @@ def _planner_revision_patch_plan(db_session, project_id: str, *, chapter_index: 
     return plan
 
 
-def _planner_world_model_resolution_plan(project_id: str, *, decisions: list[dict]) -> dict:
+def _planner_world_model_resolution_plan(
+    project_id: str,
+    *,
+    decisions: list[dict],
+    apply_approval: dict | None = None,
+) -> dict:
     plan_id = f"plan:world-model-resolution:{project_id}"
-    params = {"confirm_apply": True, "decisions": decisions}
+    if apply_approval is None:
+        tool_name = "apply_world_model_proposal_resolution"
+        params = {"confirm_apply": True, "decisions": decisions}
+        intent_class = "apply_world_model_proposal_resolution"
+    else:
+        tool_name = "execute_apply_world_model_proposal_resolution_with_approval"
+        params = {
+            "decisions": decisions,
+            "confirm_execute": True,
+            "approval_contract_hash": apply_approval["agent_plan_approval_contract_hash"],
+            "approval_contract": apply_approval["agent_plan_approval_contract"],
+        }
+        intent_class = "execute_apply_world_model_proposal_resolution_with_approval"
     step = {
         "step_index": 1,
         "step_id": f"step:world-model-resolution:{project_id}",
-        "tool_name": "apply_world_model_proposal_resolution",
+        "tool_name": tool_name,
         "params": params,
         "mutability": "guarded_write",
         "requires_confirmation": True,
         "reason": "应用世界模型提案处理决策。",
     }
     tool = {
-        "tool_name": "apply_world_model_proposal_resolution",
+        "tool_name": tool_name,
         "params": params,
         "planner": {
             "step_index": 1,
@@ -9129,7 +9056,7 @@ def _planner_world_model_resolution_plan(project_id: str, *, decisions: list[dic
         "status": "completed",
         "planner_version": "phase53.context_gate.v1",
         "project_id": project_id,
-        "intent_class": "apply_world_model_proposal_resolution",
+        "intent_class": intent_class,
         "goal": "应用世界模型提案处理决策",
         "steps": [step],
         "tools": [tool],
@@ -9137,7 +9064,7 @@ def _planner_world_model_resolution_plan(project_id: str, *, decisions: list[dic
             "plan_id": plan_id,
             "source_projection_id": f"projection:world-model-resolution:{project_id}",
             "planner_version": "phase53.context_gate.v1",
-            "selected_tools": ["apply_world_model_proposal_resolution"],
+            "selected_tools": [tool_name],
         },
     }
     plan["approval_contract"] = build_agent_plan_approval_contract(plan)
@@ -9580,6 +9507,50 @@ def _route_reviewed_longform_batch_after_review(
     )
     assert response.status_code == 200
     return response.json()
+
+
+def _prepare_apply_world_model_resolution(client, project_id: str, decisions: list[dict]) -> dict:
+    response = client.post(
+        f"/api/v1/projects/{project_id}/agent-runs",
+        json={
+            "goal": "准备应用世界模型提案决策",
+            "tools": [
+                {
+                    "tool_name": "prepare_apply_world_model_proposal_resolution",
+                    "params": {"decisions": decisions},
+                }
+            ],
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    return response.json()["steps"][0]["output"]
+
+
+def _approved_apply_world_model_resolution_tool(client, project_id: str, decisions: list[dict]) -> dict:
+    prepared = _prepare_apply_world_model_resolution(client, project_id, decisions)
+    assert prepared["status"] == "approval_required"
+    return {
+        "tool_name": "execute_apply_world_model_proposal_resolution_with_approval",
+        "params": {
+            "decisions": decisions,
+            "confirm_execute": True,
+            "approval_contract_hash": prepared["agent_plan_approval_contract_hash"],
+            "approval_contract": prepared["agent_plan_approval_contract"],
+        },
+    }
+
+
+def _apply_world_model_resolution_with_approval(client, project_id: str, decisions: list[dict]) -> dict:
+    response = client.post(
+        f"/api/v1/projects/{project_id}/agent-runs",
+        json={
+            "goal": "确认应用世界模型提案决策",
+            "tools": [_approved_apply_world_model_resolution_tool(client, project_id, decisions)],
+        },
+    )
+    assert response.status_code == 200
+    return response
 
 
 def _seed_longform_project(db_session, *, outline_chapters: list[int], generated_chapters: list[int]) -> Project:

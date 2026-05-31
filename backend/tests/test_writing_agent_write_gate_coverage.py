@@ -288,15 +288,28 @@ def test_write_gate_coverage_marks_longform_batch_enqueue_as_approval_redirected
     }
 
 
-def test_write_gate_coverage_marks_confirm_guarded_tools_as_missing_agent_gate():
+def test_write_gate_coverage_marks_world_model_proposal_apply_as_approval_redirected():
     output = inspect_agent_write_gate_coverage(adapter_metadata_by_name=_adapter_metadata())
-    apply_tool = _tools_by_name(output)["apply_world_model_proposal_resolution"]
+    tools_by_name = _tools_by_name(output)
 
-    assert apply_tool["agent_plan_gate_status"] == "missing_agent_plan_gate"
+    execute_tool = tools_by_name["execute_apply_world_model_proposal_resolution_with_approval"]
+    assert execute_tool["agent_plan_gate_status"] == "enforced"
+    assert execute_tool["gate_version"] == "phase204.world_model_proposal_apply_agent_plan_approval.v1"
+    assert execute_tool["gate_type"] == "stateless_agent_plan_approval"
+    assert execute_tool["risk_level"] == "low"
+    assert execute_tool["confirmation_fields"] == ["approval_contract_hash", "confirm_execute"]
+
+    apply_tool = tools_by_name["apply_world_model_proposal_resolution"]
+    assert apply_tool["agent_plan_gate_status"] == "indirect_agent_gate_available"
+    assert apply_tool["direct_write_policy"] == "approval_required_redirect"
+    assert apply_tool["direct_write_blocked"] is True
     assert apply_tool["direct_confirmation_guard"] is True
     assert apply_tool["confirmation_fields"] == ["approval_contract_hash", "confirm_apply"]
-    assert apply_tool["risk_level"] == "medium"
-    assert apply_tool["recommended_action"] == "promote_confirm_guard_to_agent_plan_approval"
+    assert apply_tool["risk_level"] == "low"
+    assert apply_tool["recommended_action"] == "route_direct_calls_to_approval_executor"
+    assert {item["consumer_tool"] for item in apply_tool["indirect_coverage"]} == {
+        "execute_apply_world_model_proposal_resolution_with_approval"
+    }
 
 
 def test_write_gate_coverage_marks_apply_route_opt_in_as_direct_confirmation_guarded():
@@ -603,8 +616,16 @@ def _adapter_metadata() -> dict[str, dict]:
             "tool_name": "apply_world_model_proposal_resolution",
             "adapter_type": "static",
             "category": "athena_world_model",
-            "mutability": "write",
+            "mutability": "guarded_write",
             "handler_name": "_apply_world_model_proposal_resolution",
+            "write_policy": "approval_required_redirect",
+        },
+        "execute_apply_world_model_proposal_resolution_with_approval": {
+            "tool_name": "execute_apply_world_model_proposal_resolution_with_approval",
+            "adapter_type": "static",
+            "category": "athena_world_model",
+            "mutability": "write",
+            "handler_name": "_execute_apply_world_model_proposal_resolution_with_approval",
         },
         "apply_pending_action_route_approval_opt_in": {
             "tool_name": "apply_pending_action_route_approval_opt_in",

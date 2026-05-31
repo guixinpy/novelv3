@@ -332,6 +332,8 @@ def test_world_model_tool_adapters_live_in_dedicated_module():
         "plan_world_model_proposal_resolution",
         "preview_world_model_proposal_resolution",
         "apply_world_model_proposal_resolution",
+        "prepare_apply_world_model_proposal_resolution",
+        "execute_apply_world_model_proposal_resolution_with_approval",
         "draft_world_model_proposal_resolution_decisions",
         "draft_high_value_world_proposal_resolution_decisions",
         "seed_continuity_anchor_proposals",
@@ -345,7 +347,14 @@ def test_world_model_tool_adapters_live_in_dedicated_module():
     assert WORLD_MODEL_AGENT_TOOL_ADAPTERS["analyze_chapter_world_model"].write_policy == "approval_required_redirect"
     assert WORLD_MODEL_AGENT_TOOL_ADAPTERS["execute_analyze_chapter_world_model_with_approval"].mutability == "write"
     assert WORLD_MODEL_AGENT_TOOL_ADAPTERS["inspect_agent_world_model_route"].mutability == "read"
-    assert WORLD_MODEL_AGENT_TOOL_ADAPTERS["apply_world_model_proposal_resolution"].mutability == "write"
+    assert WORLD_MODEL_AGENT_TOOL_ADAPTERS["apply_world_model_proposal_resolution"].mutability == "guarded_write"
+    assert WORLD_MODEL_AGENT_TOOL_ADAPTERS["apply_world_model_proposal_resolution"].write_policy == (
+        "approval_required_redirect"
+    )
+    assert WORLD_MODEL_AGENT_TOOL_ADAPTERS["prepare_apply_world_model_proposal_resolution"].mutability == "read"
+    assert WORLD_MODEL_AGENT_TOOL_ADAPTERS["execute_apply_world_model_proposal_resolution_with_approval"].mutability == (
+        "write"
+    )
     assert WORLD_MODEL_AGENT_TOOL_ADAPTERS["seed_continuity_anchor_proposals"].mutability == "guarded_write"
     assert WORLD_MODEL_AGENT_TOOL_ADAPTERS["seed_continuity_anchor_proposals"].write_policy == (
         "approval_required_redirect"
@@ -3235,6 +3244,8 @@ def test_tool_executor_static_adapter_names_are_report_or_agent_native_tools():
         "plan_world_model_proposal_resolution",
         "preview_world_model_proposal_resolution",
         "apply_world_model_proposal_resolution",
+        "prepare_apply_world_model_proposal_resolution",
+        "execute_apply_world_model_proposal_resolution_with_approval",
         "draft_world_model_proposal_resolution_decisions",
         "generate_setup",
         "preview_generate_storyline_execution",
@@ -3497,6 +3508,8 @@ def test_tool_executor_lists_unhandled_internal_tools_for_migration_tracking():
     assert "seed_continuity_anchor_proposals" not in names
     assert "analyze_chapter_world_model" not in names
     assert "apply_world_model_proposal_resolution" not in names
+    assert "prepare_apply_world_model_proposal_resolution" not in names
+    assert "execute_apply_world_model_proposal_resolution_with_approval" not in names
     assert "plan_longform_chapter_batch" not in names
     assert "enqueue_longform_chapter_batch" not in names
     assert "inspect_longform_chapter_batch" not in names
@@ -3733,13 +3746,32 @@ def test_tool_executor_exposes_seed_continuity_anchor_proposals_adapter_metadata
 
 def test_tool_executor_exposes_apply_world_model_proposal_resolution_adapter_metadata():
     metadata = writing_agent_tool_adapter_metadata("apply_world_model_proposal_resolution")
+    prepare_metadata = writing_agent_tool_adapter_metadata("prepare_apply_world_model_proposal_resolution")
+    execute_metadata = writing_agent_tool_adapter_metadata(
+        "execute_apply_world_model_proposal_resolution_with_approval"
+    )
 
     assert metadata == {
         "tool_name": "apply_world_model_proposal_resolution",
         "adapter_type": "static",
         "category": "athena_world_model",
-        "mutability": "write",
+        "mutability": "guarded_write",
         "handler_name": "_apply_world_model_proposal_resolution",
+        "write_policy": "approval_required_redirect",
+    }
+    assert prepare_metadata == {
+        "tool_name": "prepare_apply_world_model_proposal_resolution",
+        "adapter_type": "static",
+        "category": "athena_world_model",
+        "mutability": "read",
+        "handler_name": "_prepare_apply_world_model_proposal_resolution",
+    }
+    assert execute_metadata == {
+        "tool_name": "execute_apply_world_model_proposal_resolution_with_approval",
+        "adapter_type": "static",
+        "category": "athena_world_model",
+        "mutability": "write",
+        "handler_name": "_execute_apply_world_model_proposal_resolution_with_approval",
     }
 
 
@@ -3917,21 +3949,28 @@ async def test_tool_executor_handles_inspect_agent_tool_contracts(db_session):
     assert tools_by_name["seed_continuity_anchor_proposals"]["report_policy"] == {
         "stop_check_required": True,
         "stop_condition": "non_terminal_step_and_should_generate_next_chapter_false_without_allowed_followup",
-        "allowed_followups": ["apply_world_model_proposal_resolution"],
+        "allowed_followups": [
+            "apply_world_model_proposal_resolution",
+            "execute_apply_world_model_proposal_resolution_with_approval",
+        ],
         "block_message": "稳定连续性锚点提案尚未审批，已停止后续写作工具。",
     }
     assert tools_by_name["seed_continuity_anchor_proposals"]["recommendation_contract"] == {
         "output_fields": ["recommended_actions"],
         "canonical_output_field": "recommended_actions",
         "legacy_output_fields": ["recommended_actions"],
-        "policy_followups": ["apply_world_model_proposal_resolution"],
-        "recovery_followups": ["plan_recovery_tools", "inspect_agent_trace_audit"],
-        "deterministic_followups": [
-            "apply_world_model_proposal_resolution",
-            "plan_recovery_tools",
-            "inspect_agent_trace_audit",
-        ],
-    }
+            "policy_followups": [
+                "apply_world_model_proposal_resolution",
+                "execute_apply_world_model_proposal_resolution_with_approval",
+            ],
+            "recovery_followups": ["plan_recovery_tools", "inspect_agent_trace_audit"],
+            "deterministic_followups": [
+                "apply_world_model_proposal_resolution",
+                "execute_apply_world_model_proposal_resolution_with_approval",
+                "plan_recovery_tools",
+                "inspect_agent_trace_audit",
+            ],
+        }
     assert "missing_agent_native_adapter" not in tools_by_name["seed_continuity_anchor_proposals"]["gap_codes"]
     assert "output_schema_too_generic" not in tools_by_name["seed_continuity_anchor_proposals"]["gap_codes"]
     assert tools_by_name["apply_world_model_proposal_resolution"]["adapter_type"] == "static"

@@ -153,13 +153,48 @@ def _apply_world_model_proposal_resolution(
     context: WritingAgentToolContext,
     tool: WritingAgentToolRequest,
 ) -> dict[str, Any]:
-    from app.services.writing_agent.world_model_resolution_apply_tool import apply_world_model_proposal_resolution_tool
+    return approval_required_redirect(
+        project_id=context.project_id,
+        tool_name="apply_world_model_proposal_resolution",
+        target_type="world_model_proposal_resolution",
+        prepare_tool="prepare_apply_world_model_proposal_resolution",
+        execute_tool="execute_apply_world_model_proposal_resolution_with_approval",
+        extra={"decisions": tool.params.get("decisions") if isinstance(tool.params.get("decisions"), list) else []},
+    )
 
-    return apply_world_model_proposal_resolution_tool(
+
+def _prepare_apply_world_model_proposal_resolution(
+    context: WritingAgentToolContext,
+    tool: WritingAgentToolRequest,
+) -> dict[str, Any]:
+    from app.services.writing_agent.world_model_resolution_apply_execution import (
+        prepare_apply_world_model_proposal_resolution,
+    )
+
+    return prepare_apply_world_model_proposal_resolution(
         context.db,
         context.project_id,
         decisions=tool.params.get("decisions"),
-        confirm_apply=tool.params.get("confirm_apply") is True,
+    )
+
+
+def _execute_apply_world_model_proposal_resolution_with_approval(
+    context: WritingAgentToolContext,
+    tool: WritingAgentToolRequest,
+) -> dict[str, Any]:
+    from app.services.writing_agent.world_model_resolution_apply_execution import (
+        execute_apply_world_model_proposal_resolution_with_approval,
+    )
+
+    approval_contract = tool.params.get("approval_contract")
+    return execute_apply_world_model_proposal_resolution_with_approval(
+        context.db,
+        context.project_id,
+        decisions=tool.params.get("decisions"),
+        confirm_execute=tool.params.get("confirm_execute") is True,
+        approval_contract_hash=str(tool.params.get("approval_contract_hash") or "").strip() or None,
+        approval_contract=approval_contract if isinstance(approval_contract, dict) else None,
+        approval_tool_metadata_provider=_world_model_approval_tool_metadata_by_name,
     )
 
 
@@ -303,6 +338,19 @@ WORLD_MODEL_AGENT_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
     "apply_world_model_proposal_resolution": WritingAgentToolAdapter(
         "apply_world_model_proposal_resolution",
         _apply_world_model_proposal_resolution,
+        category="athena_world_model",
+        mutability="guarded_write",
+        write_policy="approval_required_redirect",
+    ),
+    "prepare_apply_world_model_proposal_resolution": WritingAgentToolAdapter(
+        "prepare_apply_world_model_proposal_resolution",
+        _prepare_apply_world_model_proposal_resolution,
+        category="athena_world_model",
+        mutability="read",
+    ),
+    "execute_apply_world_model_proposal_resolution_with_approval": WritingAgentToolAdapter(
+        "execute_apply_world_model_proposal_resolution_with_approval",
+        _execute_apply_world_model_proposal_resolution_with_approval,
         category="athena_world_model",
         mutability="write",
     ),

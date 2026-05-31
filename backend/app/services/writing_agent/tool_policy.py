@@ -18,6 +18,7 @@ REPORT_STOP_TOOLS = frozenset(
         "plan_world_model_proposal_resolution",
         "preview_world_model_proposal_resolution",
         "apply_world_model_proposal_resolution",
+        "execute_apply_world_model_proposal_resolution_with_approval",
         "draft_world_model_proposal_resolution_decisions",
         "draft_high_value_world_proposal_resolution_decisions",
         "seed_continuity_anchor_proposals",
@@ -38,10 +39,24 @@ ALLOWED_REPORT_FOLLOWUPS = frozenset(
         ("review_world_model_proposals", "plan_world_model_proposal_resolution"),
         ("plan_world_model_proposal_resolution", "preview_world_model_proposal_resolution"),
         ("preview_world_model_proposal_resolution", "apply_world_model_proposal_resolution"),
+        ("preview_world_model_proposal_resolution", "execute_apply_world_model_proposal_resolution_with_approval"),
         ("draft_world_model_proposal_resolution_decisions", "apply_world_model_proposal_resolution"),
+        (
+            "draft_world_model_proposal_resolution_decisions",
+            "execute_apply_world_model_proposal_resolution_with_approval",
+        ),
         ("draft_high_value_world_proposal_resolution_decisions", "apply_world_model_proposal_resolution"),
+        (
+            "draft_high_value_world_proposal_resolution_decisions",
+            "execute_apply_world_model_proposal_resolution_with_approval",
+        ),
         ("seed_continuity_anchor_proposals", "apply_world_model_proposal_resolution"),
+        ("seed_continuity_anchor_proposals", "execute_apply_world_model_proposal_resolution_with_approval"),
         ("execute_seed_continuity_anchor_proposals_with_approval", "apply_world_model_proposal_resolution"),
+        (
+            "execute_seed_continuity_anchor_proposals_with_approval",
+            "execute_apply_world_model_proposal_resolution_with_approval",
+        ),
     }
 )
 
@@ -51,6 +66,7 @@ REPORT_BLOCK_MESSAGES = {
     "plan_world_model_proposal_resolution": "世界模型提案尚未解决，已停止后续写作工具。",
     "preview_world_model_proposal_resolution": "世界模型提案解决决策尚未执行，已停止后续写作工具。",
     "apply_world_model_proposal_resolution": "世界模型提案队列仍未清空，已停止后续写作工具。",
+    "execute_apply_world_model_proposal_resolution_with_approval": "世界模型提案队列仍未清空，已停止后续写作工具。",
     "draft_world_model_proposal_resolution_decisions": "世界模型提案决策草案尚未确认应用，已停止后续写作工具。",
     "draft_high_value_world_proposal_resolution_decisions": "高价值世界模型提案决策草案尚未确认应用，已停止后续写作工具。",
     "seed_continuity_anchor_proposals": "稳定连续性锚点提案尚未审批，已停止后续写作工具。",

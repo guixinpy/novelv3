@@ -256,6 +256,8 @@ def test_world_model_tool_descriptors_live_in_dedicated_module():
         "plan_world_model_proposal_resolution",
         "preview_world_model_proposal_resolution",
         "apply_world_model_proposal_resolution",
+        "prepare_apply_world_model_proposal_resolution",
+        "execute_apply_world_model_proposal_resolution_with_approval",
         "draft_world_model_proposal_resolution_decisions",
         "draft_high_value_world_proposal_resolution_decisions",
         "seed_continuity_anchor_proposals",
@@ -269,6 +271,12 @@ def test_world_model_tool_descriptors_live_in_dedicated_module():
     assert all(descriptor.internal for descriptor in WORLD_MODEL_AGENT_TOOL_DESCRIPTORS)
     assert target_type_for_tool("inspect_agent_world_model_route") == "agent_world_model_route"
     assert target_type_for_tool("apply_world_model_proposal_resolution") == "world_model"
+    assert target_type_for_tool("prepare_apply_world_model_proposal_resolution") == (
+        "world_model_proposal_resolution_approval"
+    )
+    assert target_type_for_tool("execute_apply_world_model_proposal_resolution_with_approval") == (
+        "world_model_proposal_resolution"
+    )
     assert target_type_for_tool("execute_import_setup_world_model_with_approval") == "world_model"
     assert target_type_for_tool("execute_analyze_chapter_world_model_with_approval") == "world_model"
     assert target_type_for_tool("seed_continuity_anchor_proposals") == "world_model_continuity_anchor_seed"
@@ -281,6 +289,7 @@ def test_world_model_tool_descriptors_live_in_dedicated_module():
         == "world_model_continuity_anchor_seed"
     )
     assert "prepare_seed_continuity_anchor_proposals_execution" in non_blocking_report_tool_names()
+    assert "prepare_apply_world_model_proposal_resolution" in non_blocking_report_tool_names()
 
 
 def test_knowledge_base_tool_descriptors_live_in_dedicated_module():
@@ -669,13 +678,25 @@ def test_agent_tool_registry_seed_continuity_anchor_proposals_has_structured_out
 
 def test_agent_tool_registry_apply_world_model_resolution_has_structured_output_contract():
     descriptor = get_agent_tool_descriptor("apply_world_model_proposal_resolution")
+    prepare_descriptor = get_agent_tool_descriptor("prepare_apply_world_model_proposal_resolution")
+    execute_descriptor = get_agent_tool_descriptor("execute_apply_world_model_proposal_resolution_with_approval")
 
     assert descriptor is not None
+    assert descriptor.non_blocking_report is False
     input_properties = descriptor.input_schema["properties"]
     assert input_properties["confirm_apply"]["type"] == "boolean"
     assert input_properties["approval_contract_hash"]["type"] == "string"
     assert input_properties["approval_contract"]["type"] == "object"
     properties = descriptor.output_schema["properties"]
+    assert {"status", "required_approval", "side_effects"}.issubset(properties)
+
+    assert prepare_descriptor is not None
+    assert prepare_descriptor.non_blocking_report is True
+    assert prepare_descriptor.output_schema["properties"]["agent_plan_approval_contract"]["type"] == "object"
+
+    assert execute_descriptor is not None
+    assert execute_descriptor.non_blocking_report is True
+    execute_properties = execute_descriptor.output_schema["properties"]
     assert {
         "status",
         "profile_version",
@@ -688,10 +709,13 @@ def test_agent_tool_registry_apply_world_model_resolution_has_structured_output_
         "requires_confirmation",
         "should_generate_next_chapter",
         "recommended_actions",
-    }.issubset(properties)
-    assert properties["applied_reviews"]["type"] == "array"
-    assert properties["requires_confirmation"]["type"] == "boolean"
-    assert properties["profile_version"]["type"] == ["integer", "null"]
+        "agent_plan_approval_verification",
+        "execution_resource_binding",
+    }.issubset(execute_properties)
+    assert execute_properties["applied_reviews"]["type"] == "array"
+    assert execute_properties["requires_confirmation"]["type"] == "boolean"
+    assert execute_properties["profile_version"]["type"] == ["integer", "null"]
+    assert "execute_apply_world_model_proposal_resolution_with_approval" in non_blocking_report_tool_names()
 
 
 def test_agent_tool_registry_expand_chapter_has_structured_output_contract():

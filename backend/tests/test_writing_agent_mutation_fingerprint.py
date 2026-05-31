@@ -43,10 +43,17 @@ def test_build_mutation_fingerprint_covers_world_model_bundle():
         "apply_world_model_proposal_resolution",
         {"proposal_bundle_id": "bundle-1"},
     )
+    approved = build_mutation_fingerprint(
+        "project-1",
+        "execute_apply_world_model_proposal_resolution_with_approval",
+        {"proposal_bundle_id": "bundle-1"},
+    )
 
     assert result["status"] == "ready"
     assert result["components"]["target_type"] == "world_model_proposal_bundle"
     assert result["components"]["target_id"] == "world_model_proposal_bundle:bundle-1"
+    assert approved["status"] == "ready"
+    assert approved["components"]["target_id"] == result["components"]["target_id"]
 
 
 def test_build_mutation_fingerprint_covers_continuity_anchor_seed():
