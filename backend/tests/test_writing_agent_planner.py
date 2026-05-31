@@ -43,6 +43,8 @@ def test_planner_defaults_ready_next_chapter_to_approval_prepare(db_session):
         plan["trace"]["agent_health_projection"]["control_plane_readiness"]["summary"]["total_gap_count"],
         int,
     )
+    assert plan["trace"]["agent_health_projection"]["reference_alignment"]["summary"]["source_count"] == 3
+    assert "inspect_agent_reference_alignment" in plan["trace"]["agent_health_projection"]["recommended_tools"]
     assert "profile_policy" not in plan["trace"]["agent_health_projection"]
     first_step = plan["steps"][0]
     assert first_step["params"] == {"chapter_index": 2, "agent_profile": "drafting_worker"}

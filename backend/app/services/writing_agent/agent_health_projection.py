@@ -14,6 +14,7 @@ from app.services.writing_agent.agent_control_plane_readiness import inspect_age
 from app.services.writing_agent.agent_trace_audit import inspect_agent_trace_audit
 from app.services.writing_agent.memory_activation import build_memory_activation_plan
 from app.services.writing_agent.narrative_trend_projection import inspect_narrative_trend_projection
+from app.services.writing_agent.reference_pattern_projection import inspect_reference_pattern_alignment
 from app.services.writing_agent.slash_command_route import inspect_agent_route_preference_projection
 from app.services.writing_agent.tool_contracts import build_agent_tool_contract_snapshot
 from app.services.writing_agent.tool_registry import allowed_tool_names, build_agent_tool_plan
@@ -80,6 +81,9 @@ def inspect_agent_health_projection(
     context_compression = _context_compression_summary(db, project_id, chapter_index)
     memory_activation = _memory_activation_summary(db, project_id, chapter_index)
     narrative_trends = inspect_narrative_trend_projection(db, project_id, chapter_index=chapter_index)
+    reference_alignment = _reference_alignment_summary(
+        inspect_reference_pattern_alignment(adapter_metadata_by_name=adapter_metadata_by_name)
+    )
 
     diagnostics = _diagnostics(
         profile_policy=profile_policy,
@@ -113,6 +117,7 @@ def inspect_agent_health_projection(
             "context_compression": context_compression,
             "memory_activation": memory_activation,
             "narrative_trends": narrative_trends,
+            "reference_alignment": reference_alignment,
             "diagnostics": diagnostics,
             "recommended_tools": recommended_tools,
             "recommended_next_tools": recommended_tools,
@@ -229,6 +234,30 @@ def _control_plane_readiness_summary(output: dict[str, Any]) -> dict[str, Any]:
             "total_gap_count": _non_negative_int(summary.get("total_gap_count")),
         },
         "recommended_next_tools": _string_list(output.get("recommended_next_tools")),
+    }
+
+
+def _reference_alignment_summary(output: dict[str, Any]) -> dict[str, Any]:
+    summary = output.get("summary") if isinstance(output.get("summary"), dict) else {}
+    patterns = output.get("patterns") if isinstance(output.get("patterns"), list) else []
+    capability_alignment = (
+        output.get("capability_alignment") if isinstance(output.get("capability_alignment"), list) else []
+    )
+    return {
+        "status": str(output.get("status") or ""),
+        "version": output.get("version"),
+        "source_refs": _string_list(output.get("source_refs")),
+        "summary": {
+            "source_count": _non_negative_int(summary.get("source_count")),
+            "pattern_count": _non_negative_int(summary.get("pattern_count")),
+            "decision_count": _non_negative_int(summary.get("decision_count")),
+            "capability_area_count": _non_negative_int(summary.get("capability_area_count")),
+        },
+        "pattern_ids": [str(pattern.get("pattern_id") or "") for pattern in patterns if isinstance(pattern, dict)],
+        "capability_areas": [
+            str(item.get("area") or "") for item in capability_alignment if isinstance(item, dict)
+        ],
+        "recommended_next_tools": ["inspect_agent_reference_alignment"],
     }
 
 
@@ -606,6 +635,7 @@ def _recommended_tools(diagnostics: list[dict[str, Any]]) -> list[str]:
     for diagnostic in diagnostics:
         tools.extend(tools_by_code.get(str(diagnostic.get("code") or ""), []))
         tools.extend(_string_list(diagnostic.get("recommended_tools")))
+    tools.append("inspect_agent_reference_alignment")
     return _dedupe(tools)
 
 

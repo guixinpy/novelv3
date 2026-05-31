@@ -480,6 +480,9 @@ def _planner_health_projection(
         "control_plane_readiness": output.get("control_plane_readiness")
         if isinstance(output.get("control_plane_readiness"), dict)
         else {},
+        "reference_alignment": output.get("reference_alignment")
+        if isinstance(output.get("reference_alignment"), dict)
+        else {},
         "recommended_tools": output.get("recommended_tools") if isinstance(output.get("recommended_tools"), list) else [],
     }
 

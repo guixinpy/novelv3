@@ -63,6 +63,7 @@ _AGENT_HEALTH_PROJECTION_OUTPUT = object_schema(
         "context_compression": {"type": ["object", "null"]},
         "memory_activation": {"type": ["object", "null"]},
         "narrative_trends": {"type": "object"},
+        "reference_alignment": {"type": "object"},
         "diagnostics": {"type": "array"},
         "recommended_tools": {"type": "array"},
         "recommended_next_tools": {"type": "array"},

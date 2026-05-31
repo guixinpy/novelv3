@@ -141,6 +141,13 @@ def test_inspect_agent_health_projection_includes_control_plane_readiness(db_ses
     assert readiness["summary"]["command_gap_count"] == 0
     assert readiness["summary"]["total_gap_count"] == 0
     assert readiness["recommended_next_tools"] == ["inspect_agent_health_projection"]
+    reference_alignment = output["reference_alignment"]
+    assert reference_alignment["status"] == "completed"
+    assert reference_alignment["summary"]["source_count"] == 3
+    assert reference_alignment["summary"]["decision_count"] >= 9
+    assert reference_alignment["summary"]["capability_area_count"] >= 9
+    assert reference_alignment["recommended_next_tools"] == ["inspect_agent_reference_alignment"]
+    assert "inspect_agent_reference_alignment" in output["recommended_tools"]
 
 
 def test_inspect_agent_health_projection_control_plane_readiness_tracks_command_gaps(db_session, monkeypatch):
