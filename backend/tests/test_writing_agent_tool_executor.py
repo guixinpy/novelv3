@@ -2355,6 +2355,76 @@ async def test_plan_recommended_followups_allows_memory_loop_read_followups(db_s
 
 
 @pytest.mark.asyncio
+async def test_plan_recommended_followups_projects_worker_dispatch_for_domain_followups(db_session):
+    project = Project(name="Recommended Worker Dispatch Followup")
+    db_session.add(project)
+    db_session.flush()
+    run = WritingAgentRun(project_id=project.id, goal="生成第2章", status="success", input={})
+    db_session.add(run)
+    db_session.flush()
+    db_session.add(
+        WritingAgentStep(
+            run_id=run.id,
+            project_id=project.id,
+            step_index=1,
+            tool_name="execute_generate_chapter_with_approval",
+            status="success",
+            chapter_index=2,
+            input={"params": {"chapter_index": 2}},
+            output={
+                "status": "success",
+                "chapter_index": 2,
+                "agent_tool_result": {
+                    "recommendations": {
+                        "canonical_followups": [
+                            "review_chapter_quality",
+                            "search_agent_retrieval_context",
+                            "plan_post_chapter_memory_capture",
+                            "prepare_analyze_chapter_world_model_execution",
+                            "plan_chapter_revision",
+                        ],
+                    }
+                },
+            },
+        )
+    )
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-followup-workers"),
+        WritingAgentToolRequest(tool_name="plan_recommended_followups", params={"run_id": run.id}),
+    )
+
+    assert result.handled is True
+    assert result.output is not None
+    assert [tool["planner"]["agent_profile"] for tool in result.output["tools"]] == [
+        "reviewer_worker",
+        "retrieval_worker",
+        "memory_worker",
+        "world_model_worker",
+        "revision_worker",
+    ]
+    assert result.output["trace"]["worker_profiles"] == [
+        "reviewer_worker",
+        "retrieval_worker",
+        "memory_worker",
+        "world_model_worker",
+        "revision_worker",
+    ]
+    dispatch = result.output["worker_dispatch"]
+    assert dispatch["status"] == "ready"
+    assert dispatch["summary"] == {"workers": 5, "planned_tasks": 5, "blocked_tasks": 0, "issues": 0}
+    assert [item["worker"]["name"] for item in dispatch["worker_dispatches"]] == [
+        "reviewer_worker",
+        "retrieval_worker",
+        "memory_worker",
+        "world_model_worker",
+        "revision_worker",
+    ]
+    assert all(item["summary"]["planned_tasks"] == 1 for item in dispatch["worker_dispatches"])
+
+
+@pytest.mark.asyncio
 async def test_plan_recommended_followups_rejects_write_followups(db_session):
     project = Project(name="Recommended Followup Guarded Write")
     db_session.add(project)

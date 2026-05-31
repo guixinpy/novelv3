@@ -1,0 +1,18 @@
+name: world_model_worker
+role: worker
+max_depth: 0
+allowed_tools:
+  - inspect_agent_world_model_route
+  - prepare_analyze_chapter_world_model_execution
+  - analyze_chapter_world_model
+  - execute_analyze_chapter_world_model_with_approval
+  - review_world_model_proposals
+  - plan_world_model_proposal_resolution
+  - preview_world_model_proposal_resolution
+  - draft_world_model_proposal_resolution_decisions
+  - draft_high_value_world_proposal_resolution_decisions
+write_policy:
+  mode: guarded_world_model
+  allow_writes: true
+  guarded_writes: approval_required
+  child_dispatch: deny

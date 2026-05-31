@@ -5,6 +5,39 @@ from typing import Any
 from app.services.writing_agent.agent_definitions import load_agent_definition
 
 AGENT_WORKER_DISPATCH_VERSION = "phase230.agent_worker_dispatch.v1"
+TOOL_WORKER_ROUTES = {
+    "generate_setup": "drafting_worker",
+    "generate_storyline": "drafting_worker",
+    "generate_outline": "drafting_worker",
+    "generate_chapter": "drafting_worker",
+    "prepare_generate_chapter_execution": "drafting_worker",
+    "execute_generate_chapter_with_approval": "drafting_worker",
+    "review_chapter_quality": "reviewer_worker",
+    "review_chapter_continuity": "reviewer_worker",
+    "search_agent_retrieval_context": "retrieval_worker",
+    "summarize_longform_context": "memory_worker",
+    "plan_post_chapter_memory_capture": "memory_worker",
+    "prepare_record_agent_knowledge_base_candidate": "memory_worker",
+    "record_agent_knowledge_base_candidate": "memory_worker",
+    "execute_record_agent_knowledge_base_candidate_with_approval": "memory_worker",
+    "inspect_agent_memory_route": "memory_worker",
+    "inspect_agent_knowledge_base_route": "memory_worker",
+    "inspect_agent_world_model_route": "world_model_worker",
+    "prepare_analyze_chapter_world_model_execution": "world_model_worker",
+    "analyze_chapter_world_model": "world_model_worker",
+    "execute_analyze_chapter_world_model_with_approval": "world_model_worker",
+    "review_world_model_proposals": "world_model_worker",
+    "plan_world_model_proposal_resolution": "world_model_worker",
+    "preview_world_model_proposal_resolution": "world_model_worker",
+    "draft_world_model_proposal_resolution_decisions": "world_model_worker",
+    "draft_high_value_world_proposal_resolution_decisions": "world_model_worker",
+    "plan_chapter_revision": "revision_worker",
+    "create_revision_draft": "revision_worker",
+    "apply_planner_revision_patch": "revision_worker",
+    "execute_apply_planner_revision_patch_with_approval": "revision_worker",
+    "plan_recovery_tools": "recovery_worker",
+    "repair_longform_maintenance": "recovery_worker",
+}
 
 
 def preview_agent_worker_dispatch(
@@ -48,6 +81,45 @@ def preview_agent_worker_dispatch(
             "issues": len(issues),
         },
         "task_envelopes": task_envelopes,
+        "issues": issues,
+    }
+
+
+def agent_worker_profile_for_tool(tool_name: str) -> str | None:
+    return TOOL_WORKER_ROUTES.get(str(tool_name or "").strip()) or None
+
+
+def preview_agent_worker_dispatches(
+    tasks: list[dict[str, Any]],
+    *,
+    parent_run_id: str | None = None,
+) -> dict[str, Any]:
+    grouped_tasks: dict[str, list[dict[str, Any]]] = {}
+    for task in tasks:
+        if not isinstance(task, dict):
+            continue
+        worker_name = agent_worker_profile_for_tool(str(task.get("tool_name") or ""))
+        if not worker_name:
+            continue
+        grouped_tasks.setdefault(worker_name, []).append(task)
+
+    worker_dispatches = [
+        preview_agent_worker_dispatch(worker_name, worker_tasks, parent_run_id=parent_run_id)
+        for worker_name, worker_tasks in grouped_tasks.items()
+    ]
+    issues = [issue for dispatch in worker_dispatches for issue in dispatch.get("issues", [])]
+    planned_tasks = sum(int(dispatch.get("summary", {}).get("planned_tasks") or 0) for dispatch in worker_dispatches)
+    blocked_tasks = sum(int(dispatch.get("summary", {}).get("blocked_tasks") or 0) for dispatch in worker_dispatches)
+    return {
+        "version": AGENT_WORKER_DISPATCH_VERSION,
+        "status": "ready" if not issues else "blocked",
+        "summary": {
+            "workers": len(worker_dispatches),
+            "planned_tasks": planned_tasks,
+            "blocked_tasks": blocked_tasks,
+            "issues": len(issues),
+        },
+        "worker_dispatches": worker_dispatches,
         "issues": issues,
     }
 

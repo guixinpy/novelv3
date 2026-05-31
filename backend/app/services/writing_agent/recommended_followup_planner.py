@@ -8,6 +8,10 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.models import WritingAgentRun, WritingAgentStep
+from app.services.writing_agent.agent_worker_dispatch import (
+    agent_worker_profile_for_tool,
+    preview_agent_worker_dispatches,
+)
 from app.services.writing_agent.tool_registry import allowed_tool_names, get_agent_tool_descriptor
 
 FOLLOWUP_PLANNER_VERSION = "phase101.recommended_followup_planner.v1"
@@ -142,6 +146,18 @@ def build_recommended_followup_tool_plan(db: Session, project_id: str, run_id: s
         provenance_tools=state["provenance_recovery_tools"],
     )
     selected_tools = [str(tool.get("tool_name") or "") for tool in tools]
+    worker_profiles = [
+        str(profile)
+        for tool in tools
+        if (
+            profile := (
+                (tool.get("planner") or {}).get("agent_profile")
+                if isinstance(tool.get("planner"), dict)
+                else None
+            )
+        )
+    ]
+    worker_dispatch = preview_agent_worker_dispatches(tools, parent_run_id=run_id)
     hash_payload = {
         "preview_version": FOLLOWUP_PLANNER_VERSION,
         "project_id": project_id,
@@ -172,6 +188,7 @@ def build_recommended_followup_tool_plan(db: Session, project_id: str, run_id: s
         },
         "recommended_followups": state,
         "tools": tools,
+        "worker_dispatch": worker_dispatch,
         "execution_policy": {
             "mode": "preview",
             "status": "preview_only" if tools else "no_executable_followup",
@@ -180,6 +197,7 @@ def build_recommended_followup_tool_plan(db: Session, project_id: str, run_id: s
         },
         "trace": {
             "selected_tools": selected_tools,
+            "worker_profiles": worker_profiles,
             "rejected_tools": rejected_tools,
         },
     }
@@ -286,7 +304,7 @@ def _tool_request_from_followup(
     source_run_id: str,
     index: int,
 ) -> dict[str, Any]:
-    return {
+    request = {
         "tool_name": tool_name,
         "params": _params_for_followup(tool_name, source_step=source_step, source_run_id=source_run_id),
         "planner": {
@@ -302,6 +320,7 @@ def _tool_request_from_followup(
             "source_tool": source_step.tool_name,
         },
     }
+    return _with_worker_dispatch(request, source_run_id=source_run_id)
 
 
 def _tool_request_from_provenance_followup(
@@ -313,7 +332,7 @@ def _tool_request_from_provenance_followup(
 ) -> dict[str, Any]:
     tool_name = str(provenance_tool.get("tool_name") or "").strip()
     params = provenance_tool.get("params") if isinstance(provenance_tool.get("params"), dict) else {}
-    return {
+    request = {
         "tool_name": tool_name,
         "params": dict(params),
         "planner": {
@@ -329,6 +348,26 @@ def _tool_request_from_provenance_followup(
             "source_tool": source_step.tool_name,
         },
     }
+    return _with_worker_dispatch(request, source_run_id=source_run_id)
+
+
+def _with_worker_dispatch(request: dict[str, Any], *, source_run_id: str) -> dict[str, Any]:
+    worker_profile = agent_worker_profile_for_tool(str(request.get("tool_name") or ""))
+    if not worker_profile:
+        return request
+    planner = request.get("planner") if isinstance(request.get("planner"), dict) else {}
+    request["planner"] = {
+        **planner,
+        "agent_profile": worker_profile,
+        "worker_dispatch": {
+            "status": "planned",
+            "worker": worker_profile,
+            "parent_run_id": source_run_id,
+            "dispatch_mode": "preview_only",
+            "will_execute": False,
+        },
+    }
+    return request
 
 
 def _params_for_followup(

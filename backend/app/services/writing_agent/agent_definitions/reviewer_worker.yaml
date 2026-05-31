@@ -1,0 +1,12 @@
+name: reviewer_worker
+role: worker
+max_depth: 0
+allowed_tools:
+  - review_chapter_quality
+  - review_chapter_continuity
+  - inspect_agent_world_model_route
+write_policy:
+  mode: read_only_review
+  allow_writes: false
+  guarded_writes: deny
+  child_dispatch: deny

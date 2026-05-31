@@ -1099,28 +1099,26 @@ def test_agent_run_longform_context_provenance_reports_limited_sections(client, 
     assert preview.status_code == 200
     assert followup["status"] == "completed"
     assert "memory_provenance.recovery.tools" in followup["recommended_followups"]["source_fields"]
-    assert followup["tools"] == [
-        {
-            "tool_name": "summarize_longform_context",
-            "params": {
-                "chapter_index": 7,
-                "query": "缩小上下文窗口后重新汇总第7章写作上下文。",
-                "max_chars": 2400,
-            },
-            "planner": {
-                "step_index": 1,
-                "reason": "根据上一轮 summarize_longform_context 的 provenance 恢复建议规划后继工具 summarize_longform_context。",
-                "on_missing": "record_issue",
-                "on_failure": "record_issue",
-                "expected_output": "推荐后继工具输出。",
-                "post_generation": False,
-                "planner_version": "phase101.recommended_followup_planner.v1",
-                "source_run_id": payload["id"],
-                "source_step_index": 1,
-                "source_tool": "summarize_longform_context",
-            },
-        }
-    ]
+    assert [tool["tool_name"] for tool in followup["tools"]] == ["summarize_longform_context"]
+    assert followup["tools"][0]["params"] == {
+        "chapter_index": 7,
+        "query": "缩小上下文窗口后重新汇总第7章写作上下文。",
+        "max_chars": 2400,
+    }
+    planner = followup["tools"][0]["planner"]
+    assert planner["reason"] == "根据上一轮 summarize_longform_context 的 provenance 恢复建议规划后继工具 summarize_longform_context。"
+    assert planner["planner_version"] == "phase101.recommended_followup_planner.v1"
+    assert planner["source_run_id"] == payload["id"]
+    assert planner["source_step_index"] == 1
+    assert planner["source_tool"] == "summarize_longform_context"
+    assert planner["agent_profile"] == "memory_worker"
+    assert planner["worker_dispatch"]["worker"] == "memory_worker"
+    assert followup["worker_dispatch"]["summary"] == {
+        "workers": 1,
+        "planned_tasks": 1,
+        "blocked_tasks": 0,
+        "issues": 0,
+    }
 
 
 def _assert_memory_provenance_contract(provenance):
@@ -1210,28 +1208,26 @@ def test_agent_run_longform_context_provenance_exhausts_retry_at_max_window(clie
     followup = preview.json()["steps"][0]["output"]
     assert preview.status_code == 200
     assert followup["trace"]["selected_tools"] == ["inspect_agent_memory_route"]
-    assert followup["tools"] == [
-        {
-            "tool_name": "inspect_agent_memory_route",
-            "params": {
-                "chapter_index": 7,
-                "query": "最大上下文窗口仍截断，诊断第7章长篇记忆与检索覆盖。",
-                "include_context_summary": False,
-            },
-            "planner": {
-                "step_index": 1,
-                "reason": "根据上一轮 summarize_longform_context 的 provenance 恢复建议规划后继工具 inspect_agent_memory_route。",
-                "on_missing": "record_issue",
-                "on_failure": "record_issue",
-                "expected_output": "推荐后继工具输出。",
-                "post_generation": False,
-                "planner_version": "phase101.recommended_followup_planner.v1",
-                "source_run_id": payload["id"],
-                "source_step_index": 1,
-                "source_tool": "summarize_longform_context",
-            },
-        }
-    ]
+    assert [tool["tool_name"] for tool in followup["tools"]] == ["inspect_agent_memory_route"]
+    assert followup["tools"][0]["params"] == {
+        "chapter_index": 7,
+        "query": "最大上下文窗口仍截断，诊断第7章长篇记忆与检索覆盖。",
+        "include_context_summary": False,
+    }
+    planner = followup["tools"][0]["planner"]
+    assert planner["reason"] == "根据上一轮 summarize_longform_context 的 provenance 恢复建议规划后继工具 inspect_agent_memory_route。"
+    assert planner["planner_version"] == "phase101.recommended_followup_planner.v1"
+    assert planner["source_run_id"] == payload["id"]
+    assert planner["source_step_index"] == 1
+    assert planner["source_tool"] == "summarize_longform_context"
+    assert planner["agent_profile"] == "memory_worker"
+    assert planner["worker_dispatch"]["worker"] == "memory_worker"
+    assert followup["worker_dispatch"]["summary"] == {
+        "workers": 1,
+        "planned_tasks": 1,
+        "blocked_tasks": 0,
+        "issues": 0,
+    }
 
 
 def test_agent_run_can_plan_recovery_tools_from_blocked_run(client, db_session):
@@ -1645,27 +1641,27 @@ def test_agent_run_recommended_followups_prepare_world_model_analysis_instead_of
 
     assert preview.status_code == 200
     assert preview_output["status"] == "completed"
-    assert preview_output["tools"] == [
-        {
-            "tool_name": "prepare_analyze_chapter_world_model_execution",
-            "params": {"chapter_index": 2},
-            "planner": {
-                "step_index": 1,
-                "reason": (
-                    "根据上一轮 execute_generate_chapter_with_approval 的运行时推荐规划后继工具 "
-                    "prepare_analyze_chapter_world_model_execution。"
-                ),
-                "on_missing": "record_issue",
-                "on_failure": "record_issue",
-                "expected_output": "推荐后继工具输出。",
-                "post_generation": False,
-                "planner_version": "phase101.recommended_followup_planner.v1",
-                "source_run_id": source_run.id,
-                "source_step_index": 1,
-                "source_tool": "execute_generate_chapter_with_approval",
-            },
-        }
+    assert [tool["tool_name"] for tool in preview_output["tools"]] == [
+        "prepare_analyze_chapter_world_model_execution"
     ]
+    assert preview_output["tools"][0]["params"] == {"chapter_index": 2}
+    planner = preview_output["tools"][0]["planner"]
+    assert planner["reason"] == (
+        "根据上一轮 execute_generate_chapter_with_approval 的运行时推荐规划后继工具 "
+        "prepare_analyze_chapter_world_model_execution。"
+    )
+    assert planner["planner_version"] == "phase101.recommended_followup_planner.v1"
+    assert planner["source_run_id"] == source_run.id
+    assert planner["source_step_index"] == 1
+    assert planner["source_tool"] == "execute_generate_chapter_with_approval"
+    assert planner["agent_profile"] == "world_model_worker"
+    assert planner["worker_dispatch"]["worker"] == "world_model_worker"
+    assert preview_output["worker_dispatch"]["summary"] == {
+        "workers": 1,
+        "planned_tasks": 1,
+        "blocked_tasks": 0,
+        "issues": 0,
+    }
     assert preview_output["trace"]["rejected_tools"] == []
 
     response = client.post(

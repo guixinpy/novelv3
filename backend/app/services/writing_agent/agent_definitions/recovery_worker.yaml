@@ -1,0 +1,13 @@
+name: recovery_worker
+role: worker
+max_depth: 0
+allowed_tools:
+  - plan_recovery_tools
+  - repair_longform_maintenance
+  - inspect_agent_job_projection
+  - inspect_agent_trace_audit
+write_policy:
+  mode: guarded_recovery
+  allow_writes: true
+  guarded_writes: approval_required
+  child_dispatch: deny

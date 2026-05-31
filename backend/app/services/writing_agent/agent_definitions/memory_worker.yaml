@@ -1,0 +1,18 @@
+name: memory_worker
+role: worker
+max_depth: 0
+allowed_tools:
+  - inspect_agent_memory_route
+  - inspect_agent_knowledge_base_route
+  - inspect_agent_trace_audit
+  - search_agent_retrieval_context
+  - summarize_longform_context
+  - plan_post_chapter_memory_capture
+  - prepare_record_agent_knowledge_base_candidate
+  - record_agent_knowledge_base_candidate
+  - execute_record_agent_knowledge_base_candidate_with_approval
+write_policy:
+  mode: guarded_memory
+  allow_writes: true
+  guarded_writes: approval_required
+  child_dispatch: deny

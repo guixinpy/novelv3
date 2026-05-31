@@ -1,0 +1,17 @@
+name: drafting_worker
+role: worker
+max_depth: 0
+allowed_tools:
+  - generate_setup
+  - generate_storyline
+  - generate_outline
+  - generate_chapter
+  - prepare_generate_chapter_execution
+  - execute_generate_chapter_with_approval
+  - search_agent_retrieval_context
+  - summarize_longform_context
+write_policy:
+  mode: guarded_generation
+  allow_writes: true
+  guarded_writes: approval_required
+  child_dispatch: deny

@@ -1,0 +1,12 @@
+name: retrieval_worker
+role: worker
+max_depth: 0
+allowed_tools:
+  - search_agent_retrieval_context
+  - summarize_longform_context
+  - inspect_agent_trace_audit
+write_policy:
+  mode: read_only_retrieval
+  allow_writes: false
+  guarded_writes: deny
+  child_dispatch: deny

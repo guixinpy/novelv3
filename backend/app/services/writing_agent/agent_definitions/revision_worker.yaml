@@ -1,0 +1,15 @@
+name: revision_worker
+role: worker
+max_depth: 0
+allowed_tools:
+  - review_chapter_quality
+  - review_chapter_continuity
+  - plan_chapter_revision
+  - create_revision_draft
+  - apply_planner_revision_patch
+  - execute_apply_planner_revision_patch_with_approval
+write_policy:
+  mode: guarded_revision
+  allow_writes: true
+  guarded_writes: approval_required
+  child_dispatch: deny
