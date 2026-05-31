@@ -509,11 +509,11 @@ def _recommended_next_tools(reason: str) -> list[str]:
         "agent_plan_approval_project_mismatch",
         "agent_plan_approval_not_ready",
     }:
-        return ["prepare_longform_chapter_batch_execution"]
+        return ["prepare_longform_chapter_batch_execution_prepare"]
     if reason in {"agent_plan_tool_contract_drift", "agent_plan_tool_metadata_missing"}:
         return ["inspect_agent_tool_contracts"]
     if reason in {"resource_binding_missing", "resource_binding_target_mismatch"}:
-        return ["prepare_longform_chapter_batch_execution"]
+        return ["prepare_longform_chapter_batch_execution_prepare"]
     if reason in {
         "missing_ready_preflight_checkpoint",
         "preflight_checkpoint_version_mismatch",
@@ -523,7 +523,7 @@ def _recommended_next_tools(reason: str) -> list[str]:
     }:
         return ["prepare_longform_chapter_batch_preflight"]
     if reason in {"missing_approval_contract", "attempt_manifest_preflight_drift"}:
-        return ["prepare_longform_chapter_batch_execution"]
+        return ["prepare_longform_chapter_batch_execution_prepare"]
     return ["inspect_longform_chapter_batch"]
 
 

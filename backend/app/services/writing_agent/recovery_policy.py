@@ -237,8 +237,8 @@ def _binding_recovery(tool_name: str, output: dict[str, Any], planner: dict[str,
         if task_id:
             return {
                 **base,
-                "next_tool": "prepare_longform_chapter_batch_execution",
-                "next_params": {"task_id": task_id, "confirm_prepare": True},
+                "next_tool": "prepare_longform_chapter_batch_execution_prepare",
+                "next_params": {"task_id": task_id},
             }
 
     if tool_name == "execute_generate_chapter_with_approval" and chapter_index is not None:

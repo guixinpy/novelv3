@@ -101,6 +101,26 @@ def test_build_mutation_fingerprint_covers_longform_batch_preflight_checkpoint()
     assert approved["components"]["target_id"] == direct["components"]["target_id"]
 
 
+def test_build_mutation_fingerprint_covers_longform_batch_execution_prepare():
+    direct = build_mutation_fingerprint(
+        "project-1",
+        "prepare_longform_chapter_batch_execution",
+        {"task_id": "task-1"},
+    )
+    approved = build_mutation_fingerprint(
+        "project-1",
+        "execute_longform_chapter_batch_execution_prepare_with_approval",
+        {"task_id": "task-1"},
+    )
+
+    assert direct["status"] == "ready"
+    assert direct["mutating"] is True
+    assert direct["components"]["target_type"] == "background_task_execution_prepare"
+    assert direct["components"]["target_id"] == "background_task_execution_prepare:task-1"
+    assert approved["status"] == "ready"
+    assert approved["components"]["target_id"] == direct["components"]["target_id"]
+
+
 def test_build_mutation_fingerprint_covers_planner_revision_patch():
     first = build_mutation_fingerprint(
         "project-1",

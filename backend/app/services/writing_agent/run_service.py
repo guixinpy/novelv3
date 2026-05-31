@@ -706,6 +706,8 @@ class WritingAgentRunService:
             "execute_enqueue_longform_chapter_batch_with_approval",
             "prepare_longform_chapter_batch_preflight",
             "execute_longform_chapter_batch_preflight_with_approval",
+            "prepare_longform_chapter_batch_execution_prepare",
+            "execute_longform_chapter_batch_execution_prepare_with_approval",
         }:
             output = step.output if isinstance(step.output, dict) else {}
             task = output.get("task") if isinstance(output.get("task"), dict) else {}

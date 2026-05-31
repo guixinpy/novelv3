@@ -70,6 +70,19 @@ def build_longform_agent_tool_adapters(
             "prepare_longform_chapter_batch_execution",
             _prepare_longform_chapter_batch_execution,
             category="task_queue",
+            mutability="guarded_write",
+            write_policy="approval_required_redirect",
+        ),
+        "prepare_longform_chapter_batch_execution_prepare": WritingAgentToolAdapter(
+            "prepare_longform_chapter_batch_execution_prepare",
+            _prepare_longform_chapter_batch_execution_prepare,
+            category="task_queue",
+            mutability="read",
+        ),
+        "execute_longform_chapter_batch_execution_prepare_with_approval": WritingAgentToolAdapter(
+            "execute_longform_chapter_batch_execution_prepare_with_approval",
+            _execute_longform_chapter_batch_execution_prepare_with_approval(approval_tool_metadata_provider),
+            category="task_queue",
             mutability="write",
         ),
         "execute_longform_chapter_batch": WritingAgentToolAdapter(
@@ -240,14 +253,54 @@ def _prepare_longform_chapter_batch_execution(
     context: WritingAgentToolContext,
     tool: WritingAgentToolRequest,
 ) -> dict[str, Any]:
-    from app.services.writing_agent.batch_execution_prepare import prepare_longform_chapter_batch_execution
+    return approval_required_redirect(
+        project_id=context.project_id,
+        tool_name="prepare_longform_chapter_batch_execution",
+        target_type="background_task_execution_prepare",
+        prepare_tool="prepare_longform_chapter_batch_execution_prepare",
+        execute_tool="execute_longform_chapter_batch_execution_prepare_with_approval",
+        extra={"task_id": str(tool.params.get("task_id") or "").strip() or None},
+    )
 
-    return prepare_longform_chapter_batch_execution(
+
+def _prepare_longform_chapter_batch_execution_prepare(
+    context: WritingAgentToolContext,
+    tool: WritingAgentToolRequest,
+) -> dict[str, Any]:
+    from app.services.writing_agent.batch_execution_prepare_approval import (
+        prepare_longform_chapter_batch_execution_prepare,
+    )
+
+    return prepare_longform_chapter_batch_execution_prepare(
         context.db,
         context.project_id,
         task_id=str(tool.params.get("task_id") or "").strip() or None,
-        confirm_prepare=tool.params.get("confirm_prepare") is True,
     )
+
+
+def _execute_longform_chapter_batch_execution_prepare_with_approval(
+    approval_tool_metadata_provider: ApprovalToolMetadataProvider,
+):
+    def _execute_longform_chapter_batch_execution_prepare_with_approval(
+        context: WritingAgentToolContext,
+        tool: WritingAgentToolRequest,
+    ) -> dict[str, Any]:
+        from app.services.writing_agent.batch_execution_prepare_approval import (
+            execute_longform_chapter_batch_execution_prepare_with_approval,
+        )
+
+        approval_contract = tool.params.get("approval_contract")
+        return execute_longform_chapter_batch_execution_prepare_with_approval(
+            context.db,
+            context.project_id,
+            task_id=str(tool.params.get("task_id") or "").strip() or None,
+            confirm_execute=tool.params.get("confirm_execute") is True,
+            approval_contract_hash=str(tool.params.get("approval_contract_hash") or "").strip() or None,
+            approval_contract=approval_contract if isinstance(approval_contract, dict) else None,
+            approval_tool_metadata_provider=approval_tool_metadata_provider,
+        )
+
+    return _execute_longform_chapter_batch_execution_prepare_with_approval
 
 
 def _execute_longform_chapter_batch_with(

@@ -175,7 +175,10 @@ def review_longform_chapter_batch_execution(
             ],
             skipped=[],
         ),
-        "recommended_next_tools": ["inspect_longform_chapter_batch", "prepare_longform_chapter_batch_execution"],
+        "recommended_next_tools": [
+            "inspect_longform_chapter_batch",
+            "prepare_longform_chapter_batch_execution_prepare",
+        ],
         "trace": _trace(),
     }
 
@@ -320,7 +323,7 @@ def _recommended_next_tools(reason: str) -> list[str]:
     if reason == "missing_batch_execution_result":
         return ["execute_longform_chapter_batch", "inspect_longform_chapter_batch"]
     if reason == "generated_chapter_missing":
-        return ["prepare_longform_chapter_batch_preflight", "prepare_longform_chapter_batch_execution"]
+        return ["prepare_longform_chapter_batch_preflight", "prepare_longform_chapter_batch_execution_prepare"]
     return ["inspect_longform_chapter_batch"]
 
 
