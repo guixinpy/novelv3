@@ -27,7 +27,9 @@ SAFE_RECOMMENDED_FOLLOWUP_TOOLS = frozenset(
         "inspect_agent_trace_audit",
         "inspect_agent_route_preference_projection",
         "inspect_agent_memory_route",
+        "search_agent_retrieval_context",
         "summarize_longform_context",
+        "plan_post_chapter_memory_capture",
         "review_chapter_quality",
         "review_chapter_continuity",
         "plan_chapter_revision",
@@ -346,6 +348,9 @@ def _params_for_followup(
         pending_action_id = _source_pending_action_id(source_step)
         if pending_action_id:
             params["pending_action_id"] = pending_action_id
+    if tool_name == "search_agent_retrieval_context" and chapter_index:
+        params.setdefault("query", f"第{chapter_index}章相关记忆与检索证据")
+        params.setdefault("max_chapter_index", chapter_index)
     return params
 
 

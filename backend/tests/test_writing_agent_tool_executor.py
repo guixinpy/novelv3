@@ -2303,6 +2303,58 @@ async def test_plan_recommended_followups_allows_health_and_route_diagnosis_tool
 
 
 @pytest.mark.asyncio
+async def test_plan_recommended_followups_allows_memory_loop_read_followups(db_session):
+    project = Project(name="Recommended Memory Loop Followup")
+    db_session.add(project)
+    db_session.flush()
+    run = WritingAgentRun(project_id=project.id, goal="生成第2章", status="success", input={})
+    db_session.add(run)
+    db_session.flush()
+    db_session.add(
+        WritingAgentStep(
+            run_id=run.id,
+            project_id=project.id,
+            step_index=1,
+            tool_name="execute_generate_chapter_with_approval",
+            status="success",
+            chapter_index=2,
+            input={"params": {"chapter_index": 2}},
+            output={
+                "status": "success",
+                "chapter_index": 2,
+                "agent_tool_result": {
+                    "recommendations": {
+                        "canonical_followups": [
+                            "search_agent_retrieval_context",
+                            "plan_post_chapter_memory_capture",
+                        ],
+                    }
+                },
+            },
+        )
+    )
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-followup"),
+        WritingAgentToolRequest(tool_name="plan_recommended_followups", params={"run_id": run.id}),
+    )
+
+    assert result.handled is True
+    assert result.output is not None
+    assert [tool["tool_name"] for tool in result.output["tools"]] == [
+        "search_agent_retrieval_context",
+        "plan_post_chapter_memory_capture",
+    ]
+    assert result.output["tools"][0]["params"] == {
+        "query": "第2章相关记忆与检索证据",
+        "max_chapter_index": 2,
+    }
+    assert result.output["tools"][1]["params"] == {"chapter_index": 2}
+    assert result.output["trace"]["rejected_tools"] == []
+
+
+@pytest.mark.asyncio
 async def test_plan_recommended_followups_rejects_write_followups(db_session):
     project = Project(name="Recommended Followup Guarded Write")
     db_session.add(project)
