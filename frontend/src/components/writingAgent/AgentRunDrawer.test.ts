@@ -857,6 +857,29 @@ describe('AgentRunDrawer', () => {
           error: null,
           steps: [
             {
+              id: 'step-memory-activation',
+              run_id: 'run-memory-loop',
+              project_id: 'project-1',
+              step_index: 0,
+              tool_name: 'inspect_agent_memory_activation_plan',
+              status: 'success',
+              input: { chapter_index: 3 },
+              output: {
+                status: 'ready',
+                coverage: {
+                  activated_counts: {
+                    longform: 2,
+                    foreshadowing: 1,
+                    knowledge_base: 1,
+                    style: 1,
+                  },
+                },
+                memory_provenance: {
+                  status: 'available',
+                },
+              },
+            },
+            {
               id: 'step-retrieval',
               run_id: 'run-memory-loop',
               project_id: 'project-1',
@@ -921,6 +944,9 @@ describe('AgentRunDrawer', () => {
 
     const text = document.body.textContent || ''
     expect(text).toContain('Agent 记忆闭环')
+    expect(text).toContain('写前激活')
+    expect(text).toContain('长篇记忆 2')
+    expect(text).toContain('知识库经验 1')
     expect(text).toContain('检索证据')
     expect(text).toContain('返回 2 / 共 3')
     expect(text).toContain('低细节续写可行')

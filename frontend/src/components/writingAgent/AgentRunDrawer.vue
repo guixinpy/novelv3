@@ -281,6 +281,22 @@ const recommendedFollowupWriteTools = computed(() => {
   const tools = recommendedFollowupState.value.provenance_write_tools
   return Array.isArray(tools) ? tools.filter(isRecord) : []
 })
+const memoryActivationOutput = computed(() => {
+  const directOutput = latestToolOutput('inspect_agent_memory_activation_plan')
+  if (directOutput) return directOutput
+  const generationOutput = latestToolOutput('generate_chapter')
+  const nestedOutput = recordValue(generationOutput?.agent_memory_activation)
+  return Object.keys(nestedOutput).length ? nestedOutput : null
+})
+const memoryActivationStatus = computed(() => stringValue(memoryActivationOutput.value?.status))
+const memoryActivationCounts = computed(() => {
+  const coverage = recordValue(memoryActivationOutput.value?.coverage)
+  const coveredCounts = recordValue(coverage.activated_counts)
+  if (Object.keys(coveredCounts).length) return coveredCounts
+  return recordValue(memoryActivationOutput.value?.activated_counts)
+})
+const memoryActivationLongformCount = computed(() => numberValue(memoryActivationCounts.value.longform))
+const memoryActivationKnowledgeBaseCount = computed(() => numberValue(memoryActivationCounts.value.knowledge_base))
 const retrievalContextOutput = computed(() => latestToolOutput('search_agent_retrieval_context'))
 const retrievalContextSummary = computed(() => recordValue(retrievalContextOutput.value?.summary))
 const retrievalContextItems = computed(() => recordList(retrievalContextOutput.value?.items))
@@ -309,7 +325,7 @@ const postChapterMemoryCandidateCount = computed(() => numberValue(postChapterMe
 const postChapterMemoryReviewStepCount = computed(() => numberValue(postChapterMemorySummary.value.review_step_count))
 const postChapterMemoryRecommendedTools = computed(() => stringList(postChapterMemoryOutput.value?.recommended_next_tools))
 const hasMemoryLoopProjection = computed(() => Boolean(
-  retrievalContextOutput.value || postChapterMemoryOutput.value,
+  memoryActivationOutput.value || retrievalContextOutput.value || postChapterMemoryOutput.value,
 ))
 const hasRecommendedFollowupPolicy = computed(() => Boolean(
   recommendedFollowupPreview.value &&
@@ -555,6 +571,14 @@ function postChapterMemoryCaptureStatusLabel(status: unknown) {
   if (value === 'ready') return '可写入候选'
   if (value === 'needs_review') return '需要审稿'
   if (value === 'missing_chapter') return '缺少章节'
+  return value || '未知'
+}
+
+function memoryActivationStatusLabel(status: unknown) {
+  const value = stringValue(status)
+  if (value === 'ready') return '已激活'
+  if (value === 'degraded') return '降级激活'
+  if (value === 'blocked') return '已阻止'
   return value || '未知'
 }
 
@@ -911,6 +935,18 @@ function missingDependencyTool(value: Record<string, unknown>) {
         >
           <h4>Agent 记忆闭环</h4>
           <dl class="agent-run-drawer__facts">
+            <div v-if="memoryActivationOutput">
+              <dt>写前激活</dt>
+              <dd>{{ memoryActivationStatusLabel(memoryActivationStatus) }}</dd>
+            </div>
+            <div v-if="memoryActivationLongformCount !== null">
+              <dt>长篇记忆</dt>
+              <dd>长篇记忆 {{ memoryActivationLongformCount }}</dd>
+            </div>
+            <div v-if="memoryActivationKnowledgeBaseCount !== null">
+              <dt>知识库经验</dt>
+              <dd>知识库经验 {{ memoryActivationKnowledgeBaseCount }}</dd>
+            </div>
             <div v-if="retrievalContextCoverageLabel">
               <dt>检索证据</dt>
               <dd>{{ retrievalContextCoverageLabel }}</dd>
