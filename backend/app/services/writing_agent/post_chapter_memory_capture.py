@@ -191,6 +191,7 @@ def _output(
             status=memory_status,
             recovery_reason=recovery_reason,
             next_tools=recommended_next_tools,
+            recovery_tools=_candidate_recovery_tools(candidates),
         ),
         "trace": {
             "source": "plan_post_chapter_memory_capture",
@@ -208,6 +209,7 @@ def _memory_provenance(
     status: str,
     recovery_reason: str,
     next_tools: list[str],
+    recovery_tools: list[dict[str, Any]],
 ) -> dict[str, Any]:
     sources: list[dict[str, Any]] = []
     if chapter is not None:
@@ -239,13 +241,27 @@ def _memory_provenance(
             "status": "action_required" if next_tools else "none",
             "reason": recovery_reason,
             "next_tools": next_tools,
-            "tools": [{"tool_name": name} for name in next_tools],
+            "tools": recovery_tools,
         },
         trace={
             "source": "plan_post_chapter_memory_capture",
             "version": POST_CHAPTER_MEMORY_CAPTURE_VERSION,
         },
     )
+
+
+def _candidate_recovery_tools(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    tools: list[dict[str, Any]] = []
+    for candidate in candidates:
+        next_tool_call = candidate.get("next_tool_call") if isinstance(candidate, dict) else None
+        if not isinstance(next_tool_call, dict):
+            continue
+        tool_name = str(next_tool_call.get("tool_name") or "").strip()
+        if tool_name != PREPARE_KNOWLEDGE_CANDIDATE_TOOL:
+            continue
+        params = next_tool_call.get("params")
+        tools.append({"tool_name": tool_name, "params": dict(params) if isinstance(params, dict) else {}})
+    return tools
 
 
 def _review_findings(review_steps: list[WritingAgentStep]) -> list[dict[str, Any]]:

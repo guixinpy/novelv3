@@ -1603,6 +1603,124 @@ def test_agent_run_auto_plan_executes_recommended_followups_after_hash_confirmat
     assert [step["tool_name"] for step in payload["steps"]] == ["review_chapter_quality", "review_chapter_continuity"]
 
 
+def test_agent_run_recommended_followups_prepare_post_chapter_memory_candidates(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1, 2])
+    source_run = WritingAgentRun(project_id=project.id, goal="生成第2章", status="success", input={})
+    db_session.add(source_run)
+    db_session.flush()
+    db_session.add(
+        WritingAgentStep(
+            run_id=source_run.id,
+            project_id=project.id,
+            step_index=1,
+            tool_name="execute_generate_chapter_with_approval",
+            status="success",
+            chapter_index=2,
+            input={"params": {"chapter_index": 2}},
+            output={
+                "status": "success",
+                "chapter_index": 2,
+                "agent_tool_result": {
+                    "recommendations": {
+                        "canonical_followups": [
+                            "review_chapter_quality",
+                            "review_chapter_continuity",
+                            "plan_post_chapter_memory_capture",
+                        ],
+                    }
+                },
+            },
+        )
+    )
+    db_session.commit()
+
+    post_generation_preview = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "预览生成后记忆闭环",
+            "tools": [{"tool_name": "plan_recommended_followups", "params": {"run_id": source_run.id}}],
+        },
+    )
+    post_generation_plan_hash = post_generation_preview.json()["steps"][0]["output"]["plan_hash"]
+
+    post_generation_response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "执行生成后记忆闭环",
+            "input": {
+                "auto_plan": True,
+                "recommended_followup_run_id": source_run.id,
+                "execute_recommended_followups": True,
+                "confirm_execute": True,
+                "recommended_followup_plan_hash": post_generation_plan_hash,
+            },
+        },
+    )
+
+    post_generation_payload = post_generation_response.json()
+    assert post_generation_response.status_code == 200
+    assert post_generation_payload["status"] == "success"
+    assert [step["tool_name"] for step in post_generation_payload["steps"]] == [
+        "review_chapter_quality",
+        "review_chapter_continuity",
+        "plan_post_chapter_memory_capture",
+    ]
+    capture_output = post_generation_payload["steps"][-1]["output"]
+    assert capture_output["capture_status"] == "ready"
+    assert capture_output["summary"]["candidate_count"] >= 2
+
+    candidate_preview = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "预览章节后记忆候选审批准备",
+            "tools": [
+                {"tool_name": "plan_recommended_followups", "params": {"run_id": post_generation_payload["id"]}}
+            ],
+        },
+    )
+    candidate_plan = candidate_preview.json()["steps"][0]["output"]
+
+    assert candidate_preview.status_code == 200
+    assert candidate_plan["status"] == "completed"
+    assert [tool["tool_name"] for tool in candidate_plan["tools"]] == [
+        "prepare_record_agent_knowledge_base_candidate"
+        for _ in range(capture_output["summary"]["candidate_count"])
+    ]
+    assert {tool["params"]["memory_type"] for tool in candidate_plan["tools"]} >= {
+        "writing_pattern",
+        "self_optimization_lesson",
+    }
+    assert all(tool["params"]["source_refs"][0].startswith("chapter_content:") for tool in candidate_plan["tools"])
+
+    candidate_prepare_response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "准备章节后记忆候选审批",
+            "input": {
+                "auto_plan": True,
+                "recommended_followup_run_id": post_generation_payload["id"],
+                "execute_recommended_followups": True,
+                "confirm_execute": True,
+                "recommended_followup_plan_hash": candidate_plan["plan_hash"],
+            },
+        },
+    )
+
+    candidate_prepare_payload = candidate_prepare_response.json()
+    assert candidate_prepare_response.status_code == 200
+    assert candidate_prepare_payload["status"] == "success"
+    assert [step["tool_name"] for step in candidate_prepare_payload["steps"]] == [
+        "prepare_record_agent_knowledge_base_candidate"
+        for _ in range(capture_output["summary"]["candidate_count"])
+    ]
+    assert {step["output"]["status"] for step in candidate_prepare_payload["steps"]} == {"approval_required"}
+    assert all(
+        step["output"]["recommended_next_tools"] == ["execute_record_agent_knowledge_base_candidate_with_approval"]
+        for step in candidate_prepare_payload["steps"]
+    )
+    assert all(step["output"]["side_effects"]["executed"] == [] for step in candidate_prepare_payload["steps"])
+
+
 def test_agent_run_auto_plan_rejects_recommended_followup_hash_mismatch(client, db_session):
     project_id, source_run = _seed_recommended_followup_source_run(db_session, ["review_chapter_quality"])
 

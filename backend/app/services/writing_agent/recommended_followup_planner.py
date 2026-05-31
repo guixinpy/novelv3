@@ -30,6 +30,7 @@ SAFE_RECOMMENDED_FOLLOWUP_TOOLS = frozenset(
         "search_agent_retrieval_context",
         "summarize_longform_context",
         "plan_post_chapter_memory_capture",
+        "prepare_record_agent_knowledge_base_candidate",
         "review_chapter_quality",
         "review_chapter_continuity",
         "plan_chapter_revision",
@@ -230,35 +231,40 @@ def _tool_requests_from_followups(
     seen: set[str] = set()
     provenance_tools = provenance_tools or []
     for index, tool_name in enumerate(followups, start=1):
-        if tool_name in seen:
+        matched_provenance_tools = _matching_provenance_tools(tool_name, provenance_tools)
+        if not matched_provenance_tools and tool_name in seen:
             continue
-        seen.add(tool_name)
-        provenance_tool = _matching_provenance_tool(tool_name, provenance_tools)
-        if tool_name in LOOPING_FOLLOWUP_TOOLS or (
-            tool_name == source_step.tool_name and not _is_distinct_provenance_retry(source_step, provenance_tool)
-        ):
-            rejected_tools.append({"tool_name": tool_name, "reason": "planner_loop"})
-            continue
-        if tool_name not in allowed:
-            rejected_tools.append({"tool_name": tool_name, "reason": "not_allowed"})
-            continue
-        if tool_name not in SAFE_RECOMMENDED_FOLLOWUP_TOOLS:
-            rejected_tools.append({"tool_name": tool_name, "reason": "requires_confirmation"})
-            continue
-        selected_index = len(tools) + 1
-        if provenance_tool is not None:
+        candidate_tools: list[dict[str, Any] | None] = matched_provenance_tools or [None]
+        for provenance_tool in candidate_tools:
+            seen_key = _seen_key(tool_name, provenance_tool)
+            if seen_key in seen:
+                continue
+            seen.add(seen_key)
+            if tool_name in LOOPING_FOLLOWUP_TOOLS or (
+                tool_name == source_step.tool_name and not _is_distinct_provenance_retry(source_step, provenance_tool)
+            ):
+                rejected_tools.append({"tool_name": tool_name, "reason": "planner_loop"})
+                continue
+            if tool_name not in allowed:
+                rejected_tools.append({"tool_name": tool_name, "reason": "not_allowed"})
+                continue
+            if tool_name not in SAFE_RECOMMENDED_FOLLOWUP_TOOLS:
+                rejected_tools.append({"tool_name": tool_name, "reason": "requires_confirmation"})
+                continue
+            selected_index = len(tools) + 1
+            if provenance_tool is None:
+                tools.append(
+                    _tool_request_from_followup(
+                        tool_name,
+                        source_step=source_step,
+                        source_run_id=source_run_id,
+                        index=selected_index,
+                    )
+                )
+                continue
             tools.append(
                 _tool_request_from_provenance_followup(
                     provenance_tool,
-                    source_step=source_step,
-                    source_run_id=source_run_id,
-                    index=selected_index,
-                )
-            )
-        else:
-            tools.append(
-                _tool_request_from_followup(
-                    tool_name,
                     source_step=source_step,
                     source_run_id=source_run_id,
                     index=selected_index,
@@ -401,11 +407,15 @@ def _latest_recommended_recovery_state(steps: Sequence[WritingAgentStep]) -> dic
     return {"status": "none"}
 
 
-def _matching_provenance_tool(tool_name: str, provenance_tools: list[dict[str, Any]]) -> dict[str, Any] | None:
-    for item in provenance_tools:
-        if str(item.get("tool_name") or "").strip() == tool_name:
-            return item
-    return None
+def _matching_provenance_tools(tool_name: str, provenance_tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [item for item in provenance_tools if str(item.get("tool_name") or "").strip() == tool_name]
+
+
+def _seen_key(tool_name: str, provenance_tool: dict[str, Any] | None) -> str:
+    if provenance_tool is None:
+        return tool_name
+    params = provenance_tool.get("params") if isinstance(provenance_tool.get("params"), dict) else {}
+    return f"{tool_name}:{_stable_json(params)}"
 
 
 def _is_distinct_provenance_retry(source_step: WritingAgentStep, provenance_tool: dict[str, Any] | None) -> bool:
