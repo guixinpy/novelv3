@@ -3146,6 +3146,14 @@ def test_get_messages_includes_action_result_view_for_recommended_followup_resul
                     "provenance_write_tools": [{"tool_name": "prepare_repair_longform_maintenance", "params": {}}],
                 },
                 "tools": [{"tool_name": "inspect_agent_memory_route"}],
+                "worker_dispatch": {
+                    "summary": {
+                        "workers": 1,
+                        "planned_tasks": 1,
+                        "blocked_tasks": 0,
+                        "issues": 0,
+                    }
+                },
                 "route_decision": {
                     "selected_route": "recommended_followups",
                     "reason_code": "recommended_followups_found",
@@ -3167,6 +3175,8 @@ def test_get_messages_includes_action_result_view_for_recommended_followup_resul
             {"label": "路由原因", "value": "发现上一轮推荐后继"},
             {"label": "推荐状态", "value": "已推荐"},
             {"label": "自动后继", "value": "1 个"},
+            {"label": "Worker 分派", "value": "1 个 worker"},
+            {"label": "分派任务", "value": "1 个任务"},
             {"label": "需确认修复", "value": "1 个"},
         ],
     }

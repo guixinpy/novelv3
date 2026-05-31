@@ -92,6 +92,14 @@ describe('recoveryAgentRunProjection', () => {
         provenance_write_tools: [{ tool_name: 'repair_longform_maintenance', params: {} }],
       },
       tools: [{ tool_name: 'inspect_agent_memory_route' }],
+      worker_dispatch: {
+        summary: {
+          workers: 1,
+          planned_tasks: 1,
+          blocked_tasks: 0,
+          issues: 0,
+        },
+      },
       route_decision: {
         selected_route: 'recommended_followups',
         reason_code: 'recommended_followups_found',
@@ -105,6 +113,8 @@ describe('recoveryAgentRunProjection', () => {
     expect(view?.detail_items).toContainEqual({ label: '路由原因', value: '发现上一轮推荐后继' })
     expect(view?.detail_items).toContainEqual({ label: '推荐状态', value: '已推荐' })
     expect(view?.detail_items).toContainEqual({ label: '自动后继', value: '1 个' })
+    expect(view?.detail_items).toContainEqual({ label: 'Worker 分派', value: '1 个 worker' })
+    expect(view?.detail_items).toContainEqual({ label: '分派任务', value: '1 个任务' })
     expect(view?.detail_items).toContainEqual({ label: '需确认修复', value: '1 个' })
     expect(JSON.stringify(view)).not.toContain('repair_longform_maintenance')
   })

@@ -203,10 +203,30 @@ def _recommended_followup_preview_detail_items(data: dict) -> list[dict[str, str
     tools = data.get("tools") if isinstance(data.get("tools"), list) else []
     if tools:
         items.append({"label": "自动后继", "value": f"{len(tools)} 个"})
+    items.extend(_worker_dispatch_detail_items(data))
 
     write_tools = followups.get("provenance_write_tools") if isinstance(followups.get("provenance_write_tools"), list) else []
     if write_tools:
         items.append({"label": "需确认修复", "value": f"{len(write_tools)} 个"})
+    return items
+
+
+def _worker_dispatch_detail_items(data: dict) -> list[dict[str, str]]:
+    dispatch = data.get("worker_dispatch") if isinstance(data.get("worker_dispatch"), dict) else {}
+    summary = dispatch.get("summary") if isinstance(dispatch.get("summary"), dict) else {}
+    items = []
+    worker_count = _optional_int(summary.get("workers"))
+    if worker_count is not None:
+        items.append({"label": "Worker 分派", "value": f"{worker_count} 个 worker"})
+    planned_tasks = _optional_int(summary.get("planned_tasks"))
+    if planned_tasks is not None:
+        items.append({"label": "分派任务", "value": f"{planned_tasks} 个任务"})
+    blocked_tasks = _optional_int(summary.get("blocked_tasks"))
+    if blocked_tasks is not None and blocked_tasks > 0:
+        items.append({"label": "分派阻塞", "value": f"{blocked_tasks} 个"})
+    issue_count = _optional_int(summary.get("issues"))
+    if issue_count is not None and issue_count > 0:
+        items.append({"label": "分派问题", "value": f"{issue_count} 个"})
     return items
 
 

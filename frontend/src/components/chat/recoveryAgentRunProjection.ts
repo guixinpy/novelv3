@@ -250,12 +250,36 @@ function recommendedFollowupPreviewDetailItems(data: Record<string, unknown>) {
   if (tools.length) {
     items.push({ label: '自动后继', value: `${tools.length} 个` })
   }
+  items.push(...workerDispatchDetailItems(data))
 
   const writeTools = Array.isArray(followups.provenance_write_tools) ? followups.provenance_write_tools : []
   if (writeTools.length) {
     items.push({ label: '需确认修复', value: `${writeTools.length} 个` })
   }
   items.push(...agentDiscoveryDetailItems(data))
+  return items
+}
+
+function workerDispatchDetailItems(data: Record<string, unknown>) {
+  const dispatch = recordValue(data.worker_dispatch)
+  const summary = recordValue(dispatch.summary)
+  const items: Array<{ label: string; value: string }> = []
+  const workerCount = numberValue(summary.workers)
+  if (workerCount !== null) {
+    items.push({ label: 'Worker 分派', value: `${workerCount} 个 worker` })
+  }
+  const plannedTasks = numberValue(summary.planned_tasks)
+  if (plannedTasks !== null) {
+    items.push({ label: '分派任务', value: `${plannedTasks} 个任务` })
+  }
+  const blockedTasks = numberValue(summary.blocked_tasks)
+  if (blockedTasks !== null && blockedTasks > 0) {
+    items.push({ label: '分派阻塞', value: `${blockedTasks} 个` })
+  }
+  const issueCount = numberValue(summary.issues)
+  if (issueCount !== null && issueCount > 0) {
+    items.push({ label: '分派问题', value: `${issueCount} 个` })
+  }
   return items
 }
 
