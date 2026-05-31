@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -21,6 +22,7 @@ SUPPORTED_MEMORY_TYPES = {
     "decomposition_pattern",
 }
 SUPPORTED_STATUSES = {"candidate", "active", "muted", "rejected"}
+logger = logging.getLogger(__name__)
 
 
 def record_agent_knowledge_base_candidate(
@@ -91,6 +93,7 @@ def record_agent_knowledge_base_candidate(
     project.style_config = config
     db.add(project)
     db.commit()
+    retrieval_sync = _sync_retrieval_document(db, project_id=project_id, candidate=candidate)
     return _json_safe_output(
         {
             "status": "completed",
@@ -98,6 +101,7 @@ def record_agent_knowledge_base_candidate(
             "action": action,
             "candidate": candidate,
             "candidate_count": len(candidates),
+            "retrieval_sync": retrieval_sync,
             "trace": _trace_metadata(),
         }
     )
@@ -173,6 +177,18 @@ def _trace_metadata() -> dict[str, Any]:
         "version": AGENT_KNOWLEDGE_BASE_CANDIDATE_VERSION,
         "mutability": "write",
     }
+
+
+def _sync_retrieval_document(db: Session, *, project_id: str, candidate: dict[str, Any]) -> dict[str, Any]:
+    try:
+        from app.core.athena_retrieval import sync_knowledge_base_candidate_retrieval_document
+
+        return sync_knowledge_base_candidate_retrieval_document(db, project_id, candidate)
+    except Exception as exc:
+        db.rollback()
+        candidate_id = str(candidate.get("id") or "").strip() or None
+        logger.exception("Failed to sync retrieval document for knowledge base candidate %s", candidate_id)
+        return {"status": "failed", "candidate_id": candidate_id, "error": str(exc)}
 
 
 def _json_safe_output(output: dict[str, Any]) -> dict[str, Any]:

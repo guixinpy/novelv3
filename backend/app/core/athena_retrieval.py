@@ -29,6 +29,7 @@ from app.models import (
     RetrievalTerm,
     WorldFactClaim,
 )
+from app.services.writing_agent.agent_knowledge_base_candidates import KNOWLEDGE_CANDIDATES_KEY
 
 
 MAX_CHUNK_CHARS = 900
@@ -199,6 +200,47 @@ def sync_longform_memory_retrieval_documents(
         "synced_scope_keys": [memory.scope_key for memory in memories],
         "indexed": indexed,
     }
+
+
+def sync_knowledge_base_candidate_retrieval_document(
+    db: Session,
+    project_id: str,
+    candidate: dict[str, Any],
+) -> dict[str, Any]:
+    _require_project(db, project_id)
+    candidate_id = str(candidate.get("id") or "").strip()
+    if not candidate_id:
+        return {
+            "status": "skipped",
+            "project_id": project_id,
+            "reason": "invalid_candidate",
+            "indexed": _empty_indexed(),
+        }
+
+    _delete_document(db, project_id=project_id, source_type="knowledge_base_candidate", source_id=candidate_id)
+    if str(candidate.get("status") or "candidate") in {"rejected", "muted"}:
+        db.commit()
+        return {
+            "status": "completed",
+            "project_id": project_id,
+            "source_id": candidate_id,
+            "indexed": _empty_indexed(),
+        }
+
+    source = _knowledge_base_candidate_source(candidate)
+    if source is None:
+        db.commit()
+        return {
+            "status": "skipped",
+            "project_id": project_id,
+            "source_id": candidate_id,
+            "reason": "invalid_candidate",
+            "indexed": _empty_indexed(),
+        }
+
+    indexed = _index_sources(db, project_id, [source])
+    db.commit()
+    return {"status": "completed", "project_id": project_id, "source_id": source.source_id, "indexed": indexed}
 
 
 def search_retrieval(
@@ -573,6 +615,7 @@ def _source_type_label(source_type: str) -> str:
     return {
         "chapter": "章节正文",
         "longform_memory": "长篇记忆",
+        "knowledge_base_candidate": "知识库候选",
         "world_fact": "世界事实",
     }.get(source_type, source_type or "未知来源")
 
@@ -632,6 +675,10 @@ def _project_sources(db: Session, project_id: str) -> Iterator[RetrievalSource]:
     for memory in memories:
         yield _longform_memory_source(memory)
 
+    project = db.query(Project.id, Project.style_config).filter(Project.id == project_id).first()
+    if project is not None:
+        yield from _knowledge_base_candidate_sources(project.style_config)
+
     facts = (
         db.query(WorldFactClaim)
         .filter(
@@ -653,7 +700,12 @@ def _project_sources_by_key(
 ) -> Iterator[RetrievalSource]:
     if not source_keys:
         return
-    source_ids_by_type: dict[str, set[str]] = {"chapter": set(), "longform_memory": set(), "world_fact": set()}
+    source_ids_by_type: dict[str, set[str]] = {
+        "chapter": set(),
+        "longform_memory": set(),
+        "knowledge_base_candidate": set(),
+        "world_fact": set(),
+    }
     for source_type, source_id in source_keys:
         if source_type in source_ids_by_type:
             source_ids_by_type[source_type].add(source_id)
@@ -696,6 +748,12 @@ def _project_sources_by_key(
         )
         for memory in memories:
             yield _longform_memory_source(memory)
+
+    project = db.query(Project.id, Project.style_config).filter(Project.id == project_id).first()
+    if project is not None:
+        for source in _knowledge_base_candidate_sources(project.style_config):
+            if source.source_id in source_ids_by_type["knowledge_base_candidate"]:
+                yield source
 
     for source_ids in _iter_id_batches(source_ids_by_type["world_fact"]):
         facts = (
@@ -760,6 +818,58 @@ def _longform_memory_source(memory: LongformMemory) -> RetrievalSource:
             "start_chapter_index": memory.start_chapter_index,
             "end_chapter_index": memory.end_chapter_index,
             **metadata,
+        },
+    )
+
+
+def _knowledge_base_candidate_sources(style_config: Any) -> Iterator[RetrievalSource]:
+    config = style_config if isinstance(style_config, dict) else {}
+    candidates = config.get(KNOWLEDGE_CANDIDATES_KEY)
+    if not isinstance(candidates, list):
+        return
+    for candidate in candidates:
+        if not isinstance(candidate, dict):
+            continue
+        source = _knowledge_base_candidate_source(candidate)
+        if source is not None:
+            yield source
+
+
+def _knowledge_base_candidate_source(candidate: dict[str, Any]) -> RetrievalSource | None:
+    candidate_id = str(candidate.get("id") or "").strip()
+    if not candidate_id:
+        return None
+    status = str(candidate.get("status") or "candidate").strip()
+    if status in {"rejected", "muted"}:
+        return None
+    title = str(candidate.get("title") or "").strip()
+    summary = str(candidate.get("summary") or "").strip()
+    if not title and not summary:
+        return None
+    memory_type = str(candidate.get("memory_type") or "").strip()
+    tags = [str(tag).strip() for tag in candidate.get("tags") or [] if str(tag).strip()]
+    source_refs = [str(ref).strip() for ref in candidate.get("source_refs") or [] if str(ref).strip()]
+    text_parts = [
+        title,
+        summary,
+        f"memory_type: {memory_type}" if memory_type else "",
+        f"tags: {' '.join(tags)}" if tags else "",
+        f"source_refs: {' '.join(source_refs)}" if source_refs else "",
+    ]
+    return RetrievalSource(
+        source_type="knowledge_base_candidate",
+        source_id=candidate_id,
+        source_ref=f"knowledge_base_candidate:{candidate_id}",
+        title=title or memory_type or "知识库候选",
+        text="\n".join(part for part in text_parts if part),
+        chapter_index=None,
+        profile_version=None,
+        metadata={
+            "memory_type": memory_type,
+            "status": status,
+            "source_refs": source_refs,
+            "tags": tags,
+            "confidence": candidate.get("confidence"),
         },
     )
 
