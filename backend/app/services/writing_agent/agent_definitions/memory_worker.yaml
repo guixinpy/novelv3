@@ -7,6 +7,7 @@ allowed_tools:
   - inspect_agent_trace_audit
   - search_agent_retrieval_context
   - summarize_longform_context
+  - inspect_agent_context_compression_projection
   - inspect_agent_memory_activation_plan
   - plan_post_chapter_memory_capture
   - prepare_record_agent_knowledge_base_candidate

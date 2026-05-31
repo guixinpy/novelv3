@@ -129,6 +129,24 @@ def test_worker_dispatch_routes_memory_activation_to_memory_worker():
     assert dispatch["task_envelopes"][0]["tool_name"] == "inspect_agent_memory_activation_plan"
 
 
+def test_worker_dispatch_routes_context_compression_to_memory_worker():
+    preview = preview_agent_worker_dispatches(
+        [
+            {
+                "tool_name": "inspect_agent_context_compression_projection",
+                "params": {"chapter_index": 8},
+            }
+        ],
+        parent_run_id="run-context-compression",
+    )
+
+    assert preview["status"] == "ready"
+    assert preview["summary"] == {"workers": 1, "planned_tasks": 1, "blocked_tasks": 0, "issues": 0}
+    dispatch = preview["worker_dispatches"][0]
+    assert dispatch["worker"]["name"] == "memory_worker"
+    assert dispatch["task_envelopes"][0]["tool_name"] == "inspect_agent_context_compression_projection"
+
+
 def test_agent_definition_registry_audit_binds_worker_profiles_to_yaml_leaf_definitions():
     audit = inspect_agent_definition_registry()
 

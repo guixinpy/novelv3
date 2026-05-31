@@ -16,6 +16,7 @@ TOOL_WORKER_ROUTES = {
     "review_chapter_continuity": "reviewer_worker",
     "search_agent_retrieval_context": "retrieval_worker",
     "summarize_longform_context": "memory_worker",
+    "inspect_agent_context_compression_projection": "memory_worker",
     "inspect_agent_memory_activation_plan": "memory_worker",
     "plan_post_chapter_memory_capture": "memory_worker",
     "prepare_record_agent_knowledge_base_candidate": "memory_worker",
