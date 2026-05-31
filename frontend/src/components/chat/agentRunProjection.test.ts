@@ -19,6 +19,10 @@ import {
   LONGFORM_AGENT_RUN_ACTION_TYPES,
 } from './longformAgentRunProjection'
 import {
+  MEMORY_LOOP_AGENT_RUN_ACTION_DESCRIPTORS,
+  MEMORY_LOOP_AGENT_RUN_ACTION_TYPES,
+} from './memoryLoopAgentRunProjection'
+import {
   PLANNER_AGENT_RUN_ACTION_DESCRIPTORS,
   PLANNER_AGENT_RUN_ACTION_TYPES,
 } from './plannerAgentRunProjection'
@@ -53,12 +57,24 @@ describe('agentRunProjection', () => {
       ...RECOVERY_AGENT_RUN_ACTION_TYPES,
       ...DIAGNOSTIC_AGENT_RUN_ACTION_TYPES,
       ...WRITING_TOOL_AGENT_RUN_ACTION_TYPES,
+      ...MEMORY_LOOP_AGENT_RUN_ACTION_TYPES,
       ...ROUTE_OPT_IN_AGENT_RUN_ACTION_TYPES,
       ...LONGFORM_AGENT_RUN_ACTION_TYPES,
     ])
     for (const type of REGISTRY_AGENT_RUN_ACTION_TYPES) {
       expect(REGISTRY_AGENT_RUN_ACTION_DESCRIPTORS[type]?.type).toBe(type)
       expect(typeof REGISTRY_AGENT_RUN_ACTION_DESCRIPTORS[type]?.buildView).toBe('function')
+    }
+  })
+
+  it('exposes memory loop action descriptors from a dedicated module', () => {
+    expect(MEMORY_LOOP_AGENT_RUN_ACTION_TYPES).toEqual([
+      'search_agent_retrieval_context',
+      'plan_post_chapter_memory_capture',
+    ])
+    for (const type of MEMORY_LOOP_AGENT_RUN_ACTION_TYPES) {
+      expect(MEMORY_LOOP_AGENT_RUN_ACTION_DESCRIPTORS[type]?.type).toBe(type)
+      expect(typeof MEMORY_LOOP_AGENT_RUN_ACTION_DESCRIPTORS[type]?.buildView).toBe('function')
     }
   })
 
@@ -184,6 +200,8 @@ describe('agentRunProjection', () => {
     expect(isAgentRunActionType('apply_planner_revision_patch')).toBe(true)
     expect(isAgentRunActionType('expand_chapter_to_target')).toBe(true)
     expect(isAgentRunActionType('compress_chapter_to_target')).toBe(true)
+    expect(isAgentRunActionType('search_agent_retrieval_context')).toBe(true)
+    expect(isAgentRunActionType('plan_post_chapter_memory_capture')).toBe(true)
     expect(isAgentRunActionType('prepare_route_upgrade_contract')).toBe(true)
     expect(isAgentRunActionType('inspect_longform_chapter_batch')).toBe(true)
     expect(isAgentRunActionType('execute_longform_chapter_batch_preflight')).toBe(true)
@@ -220,6 +238,8 @@ describe('agentRunProjection', () => {
     expect(getAgentRunActionDescriptor('apply_planner_revision_patch')?.type).toBe('apply_planner_revision_patch')
     expect(getAgentRunActionDescriptor('expand_chapter_to_target')?.type).toBe('expand_chapter_to_target')
     expect(getAgentRunActionDescriptor('compress_chapter_to_target')?.type).toBe('compress_chapter_to_target')
+    expect(getAgentRunActionDescriptor('search_agent_retrieval_context')?.type).toBe('search_agent_retrieval_context')
+    expect(getAgentRunActionDescriptor('plan_post_chapter_memory_capture')?.type).toBe('plan_post_chapter_memory_capture')
     expect(getAgentRunActionDescriptor('prepare_route_upgrade_contract')?.type).toBe('prepare_route_upgrade_contract')
     expect(getAgentRunActionDescriptor('inspect_longform_chapter_batch')?.type).toBe('inspect_longform_chapter_batch')
     expect(getAgentRunActionDescriptor('execute_longform_chapter_batch_preflight')?.type).toBe('execute_longform_chapter_batch_preflight')
