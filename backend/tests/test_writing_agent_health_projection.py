@@ -1,4 +1,4 @@
-from app.models import Project, WritingAgentRun, WritingAgentStep
+from app.models import ChapterContent, Project, WritingAgentRun, WritingAgentStep
 from app.services.writing_agent import agent_health_projection
 
 
@@ -416,6 +416,52 @@ def test_inspect_agent_health_projection_reports_memory_activation_debt(db_sessi
     assert diagnostic["risk_codes"] == ["memory_coverage_debt"]
     assert "prepare_repair_longform_maintenance" in output["recommended_tools"]
     assert "inspect_agent_memory_route" in output["recommended_tools"]
+
+
+def test_inspect_agent_health_projection_reports_post_chapter_memory_capture_gap(db_session, monkeypatch):
+    project = Project(name="Agent Health Post Chapter Memory")
+    db_session.add(project)
+    db_session.flush()
+    db_session.add(
+        ChapterContent(
+            project_id=project.id,
+            chapter_index=2,
+            title="雾港追踪",
+            content="林深追查雾晶钥匙，结尾发现灯塔旧案的新证据。",
+            word_count=2200,
+            status="generated",
+        )
+    )
+    _seed_review_step(
+        db_session,
+        project.id,
+        2,
+        "review_chapter_quality",
+        "warning",
+        warnings=1,
+        code="thin_scene_action",
+    )
+    db_session.commit()
+    _patch_ready_sources(monkeypatch)
+    monkeypatch.setattr(agent_health_projection, "build_agent_tool_plan", _tool_plan_with_passed_profile_policy)
+
+    output = agent_health_projection.inspect_agent_health_projection(
+        db_session,
+        project.id,
+        chapter_index=2,
+        adapter_metadata_by_name={},
+        static_adapter_tool_names=set(),
+        action_execution_tool_names=set(),
+    )
+
+    capture = output["post_chapter_memory_capture"]
+    assert capture["capture_status"] == "ready"
+    assert capture["summary"]["candidate_count"] >= 2
+    assert "self_optimization_lesson" in capture["candidate_memory_types"]
+    diagnostic = next(item for item in output["diagnostics"] if item["code"] == "agent_post_chapter_memory_capture_pending")
+    assert diagnostic["chapter_index"] == 2
+    assert diagnostic["candidate_count"] >= 2
+    assert "prepare_record_agent_knowledge_base_candidate" in output["recommended_tools"]
 
 
 def test_inspect_agent_health_projection_closes_generate_review_diagnose_recovery_fixture(db_session, monkeypatch):

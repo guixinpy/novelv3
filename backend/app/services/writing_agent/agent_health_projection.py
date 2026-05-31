@@ -14,6 +14,7 @@ from app.services.writing_agent.agent_control_plane_readiness import inspect_age
 from app.services.writing_agent.agent_trace_audit import inspect_agent_trace_audit
 from app.services.writing_agent.memory_activation import build_memory_activation_plan
 from app.services.writing_agent.narrative_trend_projection import inspect_narrative_trend_projection
+from app.services.writing_agent.post_chapter_memory_capture import plan_post_chapter_memory_capture
 from app.services.writing_agent.reference_pattern_projection import inspect_reference_pattern_alignment
 from app.services.writing_agent.slash_command_route import inspect_agent_route_preference_projection
 from app.services.writing_agent.tool_contracts import build_agent_tool_contract_snapshot
@@ -80,6 +81,7 @@ def inspect_agent_health_projection(
     creative_quality = _creative_quality_summary(db, project_id)
     context_compression = _context_compression_summary(db, project_id, chapter_index)
     memory_activation = _memory_activation_summary(db, project_id, chapter_index)
+    post_chapter_memory_capture = _post_chapter_memory_capture_summary(db, project_id, chapter_index)
     narrative_trends = inspect_narrative_trend_projection(db, project_id, chapter_index=chapter_index)
     reference_alignment = _reference_alignment_summary(
         inspect_reference_pattern_alignment(adapter_metadata_by_name=adapter_metadata_by_name)
@@ -96,6 +98,7 @@ def inspect_agent_health_projection(
         creative_quality=creative_quality,
         context_compression=context_compression,
         memory_activation=memory_activation,
+        post_chapter_memory_capture=post_chapter_memory_capture,
         narrative_trends=narrative_trends,
     )
     recommended_tools = _recommended_tools(diagnostics)
@@ -116,6 +119,7 @@ def inspect_agent_health_projection(
             "creative_quality": creative_quality,
             "context_compression": context_compression,
             "memory_activation": memory_activation,
+            "post_chapter_memory_capture": post_chapter_memory_capture,
             "narrative_trends": narrative_trends,
             "reference_alignment": reference_alignment,
             "diagnostics": diagnostics,
@@ -333,6 +337,32 @@ def _memory_activation_summary(db: Session, project_id: str, chapter_index: int 
     }
 
 
+def _post_chapter_memory_capture_summary(
+    db: Session,
+    project_id: str,
+    chapter_index: int | None,
+) -> dict[str, Any] | None:
+    if not chapter_index:
+        return None
+    output = plan_post_chapter_memory_capture(db, project_id, chapter_index=chapter_index)
+    candidates = output.get("candidates") if isinstance(output.get("candidates"), list) else []
+    return {
+        "status": str(output.get("status") or ""),
+        "version": output.get("version"),
+        "chapter_index": output.get("chapter_index"),
+        "capture_status": str(output.get("capture_status") or ""),
+        "summary": output.get("summary") if isinstance(output.get("summary"), dict) else {},
+        "candidate_memory_types": _dedupe(
+            [str(candidate.get("memory_type") or "") for candidate in candidates if isinstance(candidate, dict)]
+        ),
+        "recommended_next_tools": _string_list(output.get("recommended_next_tools")),
+        "memory_provenance": output.get("memory_provenance")
+        if isinstance(output.get("memory_provenance"), dict)
+        else {},
+        "trace": output.get("trace") if isinstance(output.get("trace"), dict) else {},
+    }
+
+
 def _creative_quality_summary(db: Session, project_id: str) -> dict[str, Any]:
     steps = (
         db.query(WritingAgentStep)
@@ -475,6 +505,7 @@ def _diagnostics(
     creative_quality: dict[str, Any],
     context_compression: dict[str, Any] | None,
     memory_activation: dict[str, Any] | None,
+    post_chapter_memory_capture: dict[str, Any] | None,
     narrative_trends: dict[str, Any],
 ) -> list[dict[str, Any]]:
     diagnostics: list[dict[str, Any]] = []
@@ -557,6 +588,34 @@ def _diagnostics(
                 "recommended_tools": _string_list(memory_activation.get("recommended_next_tools")),
             }
         )
+    if post_chapter_memory_capture:
+        capture_status = str(post_chapter_memory_capture.get("capture_status") or "")
+        summary = (
+            post_chapter_memory_capture.get("summary")
+            if isinstance(post_chapter_memory_capture.get("summary"), dict)
+            else {}
+        )
+        if capture_status == "ready":
+            diagnostics.append(
+                {
+                    "code": "agent_post_chapter_memory_capture_pending",
+                    "severity": "warning",
+                    "message": "目标章节已有章节与审稿证据，可进入长期知识候选审批写入，避免写后记忆断链。",
+                    "chapter_index": post_chapter_memory_capture.get("chapter_index"),
+                    "candidate_count": _non_negative_int(summary.get("candidate_count")),
+                    "recommended_tools": _string_list(post_chapter_memory_capture.get("recommended_next_tools")),
+                }
+            )
+        elif capture_status == "needs_review":
+            diagnostics.append(
+                {
+                    "code": "agent_post_chapter_memory_capture_needs_review",
+                    "severity": "warning",
+                    "message": "目标章节已生成但缺少审稿证据，写后长期记忆沉淀前应先完成质量与连续性审查。",
+                    "chapter_index": post_chapter_memory_capture.get("chapter_index"),
+                    "recommended_tools": _string_list(post_chapter_memory_capture.get("recommended_next_tools")),
+                }
+            )
     if narrative_trends.get("status") in {"watch", "needs_human_judgment"}:
         status = str(narrative_trends.get("status") or "")
         diagnostics.append(
