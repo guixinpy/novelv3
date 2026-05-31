@@ -89,6 +89,12 @@ _PATTERNS: list[dict[str, Any]] = [
                 ["describe_agent_tools", "inspect_agent_health_projection"],
             ),
             _decision(
+                "yaml_worker_definition_registry",
+                "backend/app/services/writing_agent/agent_definitions.py",
+                "Worker profile boundaries are backed by YAML AgentDefinition files and audited as leaf workers before dispatch.",
+                ["inspect_agent_worker_dispatch", "inspect_agent_health_projection"],
+            ),
+            _decision(
                 "longform_batch_queue_boundary",
                 "backend/app/services/writing_agent/longform_tool_adapters.py",
                 "Multi-chapter writing is represented as task queue work rather than hidden synchronous recursion.",
@@ -96,7 +102,11 @@ _PATTERNS: list[dict[str, Any]] = [
             ),
         ],
         "capability_areas": ["review", "task_queue"],
-        "recommended_next_tools": ["inspect_agent_job_projection", "plan_recovery_tools"],
+        "recommended_next_tools": [
+            "inspect_agent_worker_dispatch",
+            "inspect_agent_job_projection",
+            "plan_recovery_tools",
+        ],
     },
     {
         "pattern_id": "long_memory_context_resume",

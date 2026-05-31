@@ -1,5 +1,7 @@
 from app.services.writing_agent.agent_definitions import (
     AGENT_DEFINITION_VERSION,
+    AGENT_DEFINITION_REGISTRY_AUDIT_VERSION,
+    inspect_agent_definition_registry,
     load_agent_definition,
 )
 from app.services.writing_agent.agent_worker_dispatch import (
@@ -106,3 +108,29 @@ def test_worker_dispatch_preview_blocks_child_dispatch_and_disallowed_tools():
             "worker": "reviewer",
         },
     ]
+
+
+def test_agent_definition_registry_audit_binds_worker_profiles_to_yaml_leaf_definitions():
+    audit = inspect_agent_definition_registry()
+
+    assert audit["version"] == AGENT_DEFINITION_REGISTRY_AUDIT_VERSION
+    assert audit["status"] == "passed"
+    assert audit["summary"] == {
+        "worker_profiles": 7,
+        "ready_worker_definitions": 7,
+        "leaf_worker_definitions": 7,
+        "issues": 0,
+    }
+    assert audit["worker_profiles"] == [
+        "drafting_worker",
+        "memory_worker",
+        "recovery_worker",
+        "retrieval_worker",
+        "reviewer_worker",
+        "revision_worker",
+        "world_model_worker",
+    ]
+    assert audit["issues"] == []
+    assert {row["profile"] for row in audit["definitions"]} == set(audit["worker_profiles"])
+    assert all(row["status"] == "ready" for row in audit["definitions"])
+    assert all(row["can_dispatch_children"] is False for row in audit["definitions"])

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.services.writing_agent.agent_definitions import load_agent_definition
+from app.services.writing_agent.agent_definitions import inspect_agent_definition_registry, load_agent_definition
 
 AGENT_WORKER_DISPATCH_VERSION = "phase230.agent_worker_dispatch.v1"
 TOOL_WORKER_ROUTES = {
@@ -45,10 +45,11 @@ def preview_agent_worker_dispatch(
     tasks: list[dict[str, Any]],
     *,
     parent_run_id: str | None = None,
+    include_definition_registry: bool = True,
 ) -> dict[str, Any]:
     definition = load_agent_definition(worker_name)
     if definition.get("status") != "ready":
-        return {
+        output = {
             "version": AGENT_WORKER_DISPATCH_VERSION,
             "status": "blocked",
             "worker": _worker_summary(definition),
@@ -62,6 +63,7 @@ def preview_agent_worker_dispatch(
                 }
             ],
         }
+        return _with_definition_registry(output, include_definition_registry=include_definition_registry)
 
     task_envelopes = [
         _task_envelope(definition, task, parent_run_id=parent_run_id)
@@ -71,7 +73,7 @@ def preview_agent_worker_dispatch(
     issues = [issue for envelope in task_envelopes for issue in envelope.pop("_issues", [])]
     blocked_tasks = sum(1 for envelope in task_envelopes if envelope["status"] == "blocked")
     planned_tasks = len(task_envelopes) - blocked_tasks
-    return {
+    output = {
         "version": AGENT_WORKER_DISPATCH_VERSION,
         "status": "ready" if not issues else "blocked",
         "worker": _worker_summary(definition),
@@ -83,6 +85,7 @@ def preview_agent_worker_dispatch(
         "task_envelopes": task_envelopes,
         "issues": issues,
     }
+    return _with_definition_registry(output, include_definition_registry=include_definition_registry)
 
 
 def agent_worker_profile_for_tool(tool_name: str) -> str | None:
@@ -104,7 +107,12 @@ def preview_agent_worker_dispatches(
         grouped_tasks.setdefault(worker_name, []).append(task)
 
     worker_dispatches = [
-        preview_agent_worker_dispatch(worker_name, worker_tasks, parent_run_id=parent_run_id)
+        preview_agent_worker_dispatch(
+            worker_name,
+            worker_tasks,
+            parent_run_id=parent_run_id,
+            include_definition_registry=False,
+        )
         for worker_name, worker_tasks in grouped_tasks.items()
     ]
     issues = [issue for dispatch in worker_dispatches for issue in dispatch.get("issues", [])]
@@ -119,6 +127,7 @@ def preview_agent_worker_dispatches(
             "blocked_tasks": blocked_tasks,
             "issues": len(issues),
         },
+        "definition_registry": inspect_agent_definition_registry(),
         "worker_dispatches": worker_dispatches,
         "issues": issues,
     }
@@ -166,6 +175,16 @@ def _worker_summary(definition: dict[str, Any]) -> dict[str, Any]:
         "can_dispatch_children": definition.get("can_dispatch_children") is True,
         "allowed_tools": list(definition.get("allowed_tools") or []),
     }
+
+
+def _with_definition_registry(
+    output: dict[str, Any],
+    *,
+    include_definition_registry: bool,
+) -> dict[str, Any]:
+    if include_definition_registry:
+        output["definition_registry"] = inspect_agent_definition_registry()
+    return output
 
 
 def _issue(code: str, *, worker_name: str, tool_name: str) -> dict[str, Any]:

@@ -2276,6 +2276,13 @@ async def test_tool_executor_handles_inspect_agent_worker_dispatch(db_session):
     assert result.output is not None
     assert result.output["status"] == "ready"
     assert result.output["summary"] == {"workers": 3, "planned_tasks": 3, "blocked_tasks": 0, "issues": 0}
+    assert result.output["definition_registry"]["status"] == "passed"
+    assert result.output["definition_registry"]["summary"] == {
+        "worker_profiles": 7,
+        "ready_worker_definitions": 7,
+        "leaf_worker_definitions": 7,
+        "issues": 0,
+    }
     assert [item["worker"]["name"] for item in result.output["worker_dispatches"]] == [
         "reviewer_worker",
         "retrieval_worker",
@@ -4263,6 +4270,12 @@ async def test_tool_executor_handles_inspect_agent_reference_alignment(db_sessio
         "permission_audit_gate",
         "long_memory_context_resume",
     }.issubset(pattern_ids)
+    worker_pattern = next(
+        pattern for pattern in result.output["patterns"] if pattern["pattern_id"] == "subagent_worker_boundary"
+    )
+    worker_decision_ids = {decision["decision_id"] for decision in worker_pattern["novelv3_decisions"]}
+    assert "yaml_worker_definition_registry" in worker_decision_ids
+    assert "inspect_agent_worker_dispatch" in worker_pattern["recommended_next_tools"]
     capability_areas = {item["area"] for item in result.output["capability_alignment"]}
     assert {
         "Hermes/dialog",

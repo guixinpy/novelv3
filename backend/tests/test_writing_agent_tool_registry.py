@@ -1004,6 +1004,19 @@ def test_agent_tool_registry_includes_inspect_agent_reference_alignment():
     assert "inspect_agent_reference_alignment" in non_blocking_report_tool_names()
 
 
+def test_agent_tool_registry_includes_inspect_agent_worker_dispatch_definition_registry():
+    descriptor = get_agent_tool_descriptor("inspect_agent_worker_dispatch")
+
+    assert descriptor is not None
+    assert descriptor.internal is True
+    assert descriptor.non_blocking_report is True
+    assert descriptor.category == "preflight"
+    assert descriptor.target_type == "agent_worker_dispatch"
+    assert descriptor.output_schema["properties"]["definition_registry"]["type"] == "object"
+    assert "inspect_agent_worker_dispatch" in allowed_tool_names()
+    assert "inspect_agent_worker_dispatch" in non_blocking_report_tool_names()
+
+
 def test_agent_tool_registry_includes_inspect_agent_command_contracts():
     descriptor = get_agent_tool_descriptor("inspect_agent_command_contracts")
 
@@ -1515,6 +1528,7 @@ def test_agent_tool_registry_includes_inspect_agent_health_projection():
     assert descriptor.target_type == "agent_health_projection"
     assert descriptor.input_schema["properties"]["run_id"]["type"] == "string"
     assert descriptor.output_schema["properties"]["profile_policy"]["type"] == ["object", "null"]
+    assert descriptor.output_schema["properties"]["agent_definition_registry"]["type"] == "object"
     assert descriptor.output_schema["properties"]["recommended_next_tools"]["type"] == "array"
     assert "inspect_agent_health_projection" in allowed_tool_names()
     assert "inspect_agent_health_projection" in non_blocking_report_tool_names()

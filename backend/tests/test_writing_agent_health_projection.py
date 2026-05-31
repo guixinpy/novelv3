@@ -26,6 +26,57 @@ def test_inspect_agent_health_projection_surfaces_profile_policy_issue_without_d
     assert "describe_agent_tools" in output["recommended_tools"]
 
 
+def test_inspect_agent_health_projection_surfaces_agent_definition_registry_issue(db_session, monkeypatch):
+    project = Project(name="Agent Health Definition Registry")
+    db_session.add(project)
+    db_session.commit()
+    _patch_ready_sources(monkeypatch)
+    monkeypatch.setattr(agent_health_projection, "build_agent_tool_plan", _tool_plan_with_passed_profile_policy)
+    monkeypatch.setattr(
+        agent_health_projection,
+        "inspect_agent_definition_registry",
+        lambda: {
+            "version": "phase234.agent_definition_registry_audit.v1",
+            "status": "needs_attention",
+            "summary": {
+                "worker_profiles": 7,
+                "ready_worker_definitions": 6,
+                "leaf_worker_definitions": 7,
+                "issues": 1,
+            },
+            "worker_profiles": ["memory_worker"],
+            "definitions": [],
+            "issues": [
+                {
+                    "code": "agent_definition_not_ready",
+                    "severity": "error",
+                    "profile": "memory_worker",
+                    "definition_name": "memory_worker",
+                }
+            ],
+        },
+        raising=False,
+    )
+
+    output = agent_health_projection.inspect_agent_health_projection(
+        db_session,
+        project.id,
+        adapter_metadata_by_name={},
+        static_adapter_tool_names=set(),
+        action_execution_tool_names=set(),
+    )
+
+    assert output["status"] == "needs_attention"
+    assert output["agent_definition_registry"]["status"] == "needs_attention"
+    assert output["agent_definition_registry"]["summary"]["issues"] == 1
+    diagnostic = next(
+        item for item in output["diagnostics"] if item["code"] == "agent_definition_registry_needs_attention"
+    )
+    assert diagnostic["severity"] == "error"
+    assert diagnostic["issue_count"] == 1
+    assert "inspect_agent_worker_dispatch" in output["recommended_tools"]
+
+
 def test_inspect_agent_health_projection_imports_trace_profile_policy_status(db_session, monkeypatch):
     project = Project(name="Agent Health Trace Audit")
     db_session.add(project)
