@@ -316,6 +316,19 @@ def _build_continue_chapter_plan(
     _append_step(
         steps,
         trace,
+        "search_agent_retrieval_context",
+        {
+            "query": f"续写第{chapter_index}章前检索相关章节、长篇记忆和世界事实证据。",
+            "max_chapter_index": chapter_index - 1 if chapter_index > 1 else None,
+        },
+        reason="生成前检索 indexed retrieval 证据，给长篇上下文摘要和章节生成提供可追溯来源。",
+        on_missing="record_issue",
+        on_failure="record_issue",
+        expected_output="检索证据与来源 provenance。",
+    )
+    _append_step(
+        steps,
+        trace,
         "summarize_longform_context",
         {
             "chapter_index": chapter_index,
@@ -363,6 +376,7 @@ def _build_continue_chapter_plan(
         ("review_chapter_quality", "生成后审查正文质量和弹性字数。", "record_issue"),
         ("review_chapter_continuity", "生成后审查连续性和关键伏笔。", "record_issue"),
         ("analyze_chapter_world_model", "生成后抽取世界模型候选事实，进入提案机制。", "record_issue"),
+        ("plan_post_chapter_memory_capture", "生成与审稿后规划长期知识候选沉淀，不直接写入知识库。", "record_issue"),
     ):
         _append_step(
             steps,

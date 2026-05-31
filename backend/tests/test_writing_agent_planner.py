@@ -14,6 +14,7 @@ def test_planner_defaults_ready_next_chapter_to_approval_prepare(db_session):
     assert _tool_names(plan) == [
         "describe_agent_tools",
         "inspect_agent_knowledge_base_route",
+        "search_agent_retrieval_context",
         "summarize_longform_context",
         "preflight_writing",
         "prepare_generate_chapter_execution",
@@ -59,7 +60,7 @@ def test_planner_defaults_ready_next_chapter_to_approval_prepare(db_session):
     assert prepare_step["requires_confirmation"] is False
     prepare_request = next(tool for tool in plan["tools"] if tool["tool_name"] == "prepare_generate_chapter_execution")
     assert prepare_request["planner"] == {
-        "step_index": 5,
+        "step_index": 6,
         "step_id": prepare_step["step_id"],
         "plan_id": plan["trace"]["plan_id"],
         "source_projection_id": None,
@@ -94,6 +95,7 @@ def test_planner_can_prepare_next_chapter_through_approved_route(db_session):
     assert _tool_names(plan) == [
         "describe_agent_tools",
         "inspect_agent_knowledge_base_route",
+        "search_agent_retrieval_context",
         "summarize_longform_context",
         "preflight_writing",
         "prepare_generate_chapter_execution",
@@ -247,6 +249,7 @@ def test_planner_adds_outline_expansion_when_target_outline_is_missing(db_sessio
         "describe_agent_tools",
         "expand_outline_window",
         "inspect_agent_knowledge_base_route",
+        "search_agent_retrieval_context",
         "summarize_longform_context",
         "preflight_writing",
         "prepare_generate_chapter_execution",
@@ -254,6 +257,39 @@ def test_planner_adds_outline_expansion_when_target_outline_is_missing(db_sessio
     expansion = plan["steps"][1]
     assert expansion["params"] == {"start_chapter": 2, "end_chapter": 2}
     assert expansion["on_missing"] == "fallback_tool"
+
+
+def test_planner_legacy_continue_chapter_closes_post_generation_memory_loop(db_session):
+    project = _seed_project(db_session, outline_chapters=[2], generated_chapters=[1])
+
+    plan = build_writing_agent_run_plan(
+        db_session,
+        project.id,
+        goal="继续写第2章并完成写后记忆",
+        chapter_index=2,
+        chapter_generation_route="legacy_generate_chapter",
+    )
+
+    assert plan["status"] == "completed"
+    assert _tool_names(plan) == [
+        "describe_agent_tools",
+        "inspect_agent_knowledge_base_route",
+        "search_agent_retrieval_context",
+        "summarize_longform_context",
+        "preflight_writing",
+        "generate_chapter",
+        "review_chapter_quality",
+        "review_chapter_continuity",
+        "analyze_chapter_world_model",
+        "plan_post_chapter_memory_capture",
+    ]
+    assert [step["tool_name"] for step in plan["steps"] if step.get("post_generation")] == [
+        "review_chapter_quality",
+        "review_chapter_continuity",
+        "analyze_chapter_world_model",
+        "plan_post_chapter_memory_capture",
+    ]
+    assert plan["approval_contract"]["status"] == "requires_confirmation"
 
 
 def test_planner_blocks_when_previous_chapter_is_missing(db_session):

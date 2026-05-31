@@ -1937,9 +1937,10 @@ def test_agent_run_auto_plan_prepares_high_level_next_chapter_goal_for_approval(
     payload = response.json()
     assert payload["status"] == "success"
     step_names = [step["tool_name"] for step in payload["steps"]]
-    assert step_names[:5] == [
+    assert step_names[:6] == [
         "describe_agent_tools",
         "inspect_agent_knowledge_base_route",
+        "search_agent_retrieval_context",
         "summarize_longform_context",
         "preflight_writing",
         "prepare_generate_chapter_execution",
@@ -1992,9 +1993,10 @@ def test_agent_auto_plan_longform_context_blocks_stale_maintenance_before_genera
     assert [step["tool_name"] for step in payload["steps"]] == [
         "describe_agent_tools",
         "inspect_agent_knowledge_base_route",
+        "search_agent_retrieval_context",
         "summarize_longform_context",
     ]
-    context_output = payload["steps"][2]["output"]
+    context_output = payload["steps"][3]["output"]
     assert context_output["should_generate_next_chapter"] is False
     assert context_output["recommended_actions"] == ["prepare_repair_longform_maintenance"]
     assert context_output["decision"]["reason"] == "longform_memory_needs_maintenance"

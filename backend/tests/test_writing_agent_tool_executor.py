@@ -1874,6 +1874,7 @@ async def test_tool_executor_handles_dialog_intent_agent_plan_for_chapter(db_ses
     assert [tool["tool_name"] for tool in result.output["tools"]] == [
         "describe_agent_tools",
         "inspect_agent_knowledge_base_route",
+        "search_agent_retrieval_context",
         "summarize_longform_context",
         "preflight_writing",
         "prepare_generate_chapter_execution",
