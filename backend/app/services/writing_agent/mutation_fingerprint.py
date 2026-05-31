@@ -39,6 +39,8 @@ _KNOWN_MUTATING_TOOLS = {
     "execute_longform_chapter_batch_execution_prepare_with_approval",
     "review_longform_chapter_batch_execution",
     "execute_longform_chapter_batch_execution_review_with_approval",
+    "route_longform_chapter_batch_after_review",
+    "execute_longform_chapter_batch_after_review_route_with_approval",
 }
 
 
@@ -317,6 +319,19 @@ def _target_for_tool(project_id: str, tool_name: str, params: dict[str, Any]) ->
                 f"{tool_name} requires task_id",
             )
         return _ready("background_task_post_generation_review", f"background_task_post_generation_review:{task_id}")
+
+    if tool_name in {
+        "route_longform_chapter_batch_after_review",
+        "execute_longform_chapter_batch_after_review_route_with_approval",
+    }:
+        task_id = _clean_string(params.get("task_id"))
+        if not task_id:
+            return _blocked(
+                "background_task_post_review_route",
+                "missing_target",
+                f"{tool_name} requires task_id",
+            )
+        return _ready("background_task_post_review_route", f"background_task_post_review_route:{task_id}")
 
     return _blocked(None, "unsupported_tool", f"{tool_name} is not supported by mutation fingerprinting")
 

@@ -114,6 +114,19 @@ def build_longform_agent_tool_adapters(
             "route_longform_chapter_batch_after_review",
             _route_longform_chapter_batch_after_review,
             category="task_queue",
+            mutability="guarded_write",
+            write_policy="approval_required_redirect",
+        ),
+        "prepare_longform_chapter_batch_after_review_route": WritingAgentToolAdapter(
+            "prepare_longform_chapter_batch_after_review_route",
+            _prepare_longform_chapter_batch_after_review_route,
+            category="task_queue",
+            mutability="read",
+        ),
+        "execute_longform_chapter_batch_after_review_route_with_approval": WritingAgentToolAdapter(
+            "execute_longform_chapter_batch_after_review_route_with_approval",
+            _execute_longform_chapter_batch_after_review_route_with_approval(approval_tool_metadata_provider),
+            category="task_queue",
             mutability="write",
         ),
     }
@@ -401,9 +414,32 @@ def _route_longform_chapter_batch_after_review(
     context: WritingAgentToolContext,
     tool: WritingAgentToolRequest,
 ) -> dict[str, Any]:
-    from app.services.writing_agent.batch_post_review_router import route_longform_chapter_batch_after_review
+    return approval_required_redirect(
+        project_id=context.project_id,
+        tool_name="route_longform_chapter_batch_after_review",
+        target_type="background_task_post_review_route",
+        prepare_tool="prepare_longform_chapter_batch_after_review_route",
+        execute_tool="execute_longform_chapter_batch_after_review_route_with_approval",
+        extra={
+            "task_id": str(tool.params.get("task_id") or "").strip() or None,
+            "expected_post_generation_review_hash": str(
+                tool.params.get("expected_post_generation_review_hash") or ""
+            ).strip()
+            or None,
+            "next_batch_size": _optional_int(tool.params.get("next_batch_size")),
+        },
+    )
 
-    return route_longform_chapter_batch_after_review(
+
+def _prepare_longform_chapter_batch_after_review_route(
+    context: WritingAgentToolContext,
+    tool: WritingAgentToolRequest,
+) -> dict[str, Any]:
+    from app.services.writing_agent.batch_execution_route_approval import (
+        prepare_longform_chapter_batch_after_review_route,
+    )
+
+    return prepare_longform_chapter_batch_after_review_route(
         context.db,
         context.project_id,
         task_id=str(tool.params.get("task_id") or "").strip() or None,
@@ -411,6 +447,36 @@ def _route_longform_chapter_batch_after_review(
         or None,
         next_batch_size=_optional_int(tool.params.get("next_batch_size")),
     )
+
+
+def _execute_longform_chapter_batch_after_review_route_with_approval(
+    approval_tool_metadata_provider: ApprovalToolMetadataProvider,
+):
+    def _execute_longform_chapter_batch_after_review_route_with_approval(
+        context: WritingAgentToolContext,
+        tool: WritingAgentToolRequest,
+    ) -> dict[str, Any]:
+        from app.services.writing_agent.batch_execution_route_approval import (
+            execute_longform_chapter_batch_after_review_route_with_approval,
+        )
+
+        approval_contract = tool.params.get("approval_contract")
+        return execute_longform_chapter_batch_after_review_route_with_approval(
+            context.db,
+            context.project_id,
+            task_id=str(tool.params.get("task_id") or "").strip() or None,
+            expected_post_generation_review_hash=str(
+                tool.params.get("expected_post_generation_review_hash") or ""
+            ).strip()
+            or None,
+            next_batch_size=_optional_int(tool.params.get("next_batch_size")),
+            confirm_execute=tool.params.get("confirm_execute") is True,
+            approval_contract_hash=str(tool.params.get("approval_contract_hash") or "").strip() or None,
+            approval_contract=approval_contract if isinstance(approval_contract, dict) else None,
+            approval_tool_metadata_provider=approval_tool_metadata_provider,
+        )
+
+    return _execute_longform_chapter_batch_after_review_route_with_approval
 
 
 def _optional_int(value: object) -> int | None:

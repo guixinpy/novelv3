@@ -419,6 +419,8 @@ def test_longform_tool_adapters_live_in_dedicated_module():
         "prepare_longform_chapter_batch_execution_review",
         "execute_longform_chapter_batch_execution_review_with_approval",
         "route_longform_chapter_batch_after_review",
+        "prepare_longform_chapter_batch_after_review_route",
+        "execute_longform_chapter_batch_after_review_route_with_approval",
     ]
     assert {adapter.category for adapter in adapters.values()} == {"task_queue"}
     assert adapters["plan_longform_chapter_batch"].mutability == "read"
@@ -440,6 +442,10 @@ def test_longform_tool_adapters_live_in_dedicated_module():
     assert adapters["review_longform_chapter_batch_execution"].write_policy == "approval_required_redirect"
     assert adapters["prepare_longform_chapter_batch_execution_review"].mutability == "read"
     assert adapters["execute_longform_chapter_batch_execution_review_with_approval"].mutability == "write"
+    assert adapters["route_longform_chapter_batch_after_review"].mutability == "guarded_write"
+    assert adapters["route_longform_chapter_batch_after_review"].write_policy == "approval_required_redirect"
+    assert adapters["prepare_longform_chapter_batch_after_review_route"].mutability == "read"
+    assert adapters["execute_longform_chapter_batch_after_review_route_with_approval"].mutability == "write"
     assert adapters["execute_longform_chapter_batch"].handler.__name__ == "_execute_longform_chapter_batch"
 
 
@@ -3209,6 +3215,8 @@ def test_tool_executor_static_adapter_names_are_report_or_agent_native_tools():
         "prepare_longform_chapter_batch_execution_review",
         "execute_longform_chapter_batch_execution_review_with_approval",
         "route_longform_chapter_batch_after_review",
+        "prepare_longform_chapter_batch_after_review_route",
+        "execute_longform_chapter_batch_after_review_route_with_approval",
         "inspect_agent_trace_audit",
         "inspect_agent_memory_route",
         "summarize_longform_context",
@@ -3516,6 +3524,8 @@ def test_tool_executor_lists_unhandled_internal_tools_for_migration_tracking():
     assert "prepare_longform_chapter_batch_execution_review" not in names
     assert "execute_longform_chapter_batch_execution_review_with_approval" not in names
     assert "route_longform_chapter_batch_after_review" not in names
+    assert "prepare_longform_chapter_batch_after_review_route" not in names
+    assert "execute_longform_chapter_batch_after_review_route_with_approval" not in names
     assert "preflight_writing" not in names
 
 
@@ -4393,13 +4403,32 @@ def test_tool_executor_exposes_longform_chapter_batch_execution_review_approval_
 
 def test_tool_executor_exposes_route_longform_chapter_batch_after_review_adapter_metadata():
     metadata = writing_agent_tool_adapter_metadata("route_longform_chapter_batch_after_review")
+    prepare_metadata = writing_agent_tool_adapter_metadata("prepare_longform_chapter_batch_after_review_route")
+    execute_metadata = writing_agent_tool_adapter_metadata(
+        "execute_longform_chapter_batch_after_review_route_with_approval"
+    )
 
     assert metadata == {
         "tool_name": "route_longform_chapter_batch_after_review",
         "adapter_type": "static",
         "category": "task_queue",
-        "mutability": "write",
+        "mutability": "guarded_write",
         "handler_name": "_route_longform_chapter_batch_after_review",
+        "write_policy": "approval_required_redirect",
+    }
+    assert prepare_metadata == {
+        "tool_name": "prepare_longform_chapter_batch_after_review_route",
+        "adapter_type": "static",
+        "category": "task_queue",
+        "mutability": "read",
+        "handler_name": "_prepare_longform_chapter_batch_after_review_route",
+    }
+    assert execute_metadata == {
+        "tool_name": "execute_longform_chapter_batch_after_review_route_with_approval",
+        "adapter_type": "static",
+        "category": "task_queue",
+        "mutability": "write",
+        "handler_name": "_execute_longform_chapter_batch_after_review_route_with_approval",
     }
 
 
@@ -5156,28 +5185,10 @@ async def test_tool_executor_dispatches_approved_longform_chapter_batch_executio
 @pytest.mark.asyncio
 async def test_tool_executor_dispatches_route_longform_chapter_batch_after_review_adapter(
     db_session,
-    monkeypatch,
 ):
     project = Project(name="Executor Batch Route")
     db_session.add(project)
     db_session.commit()
-    calls: list[tuple[str, str | None, int | None]] = []
-
-    def fake_route(
-        db,
-        project_id: str,
-        *,
-        task_id: str | None,
-        expected_post_generation_review_hash: str | None,
-        next_batch_size: int | None,
-    ):
-        calls.append((project_id, task_id, next_batch_size))
-        return {"status": "completed", "route": {"decision": "next_batch_ready"}}
-
-    monkeypatch.setattr(
-        "app.services.writing_agent.batch_post_review_router.route_longform_chapter_batch_after_review",
-        fake_route,
-    )
 
     result = await execute_writing_agent_tool(
         WritingAgentToolContext(db=db_session, project_id=project.id),
@@ -5192,8 +5203,133 @@ async def test_tool_executor_dispatches_route_longform_chapter_batch_after_revie
     )
 
     assert result.handled is True
-    assert result.output == {"status": "completed", "route": {"decision": "next_batch_ready"}}
-    assert calls == [(project.id, "task-1", 2)]
+    assert result.output["status"] == "blocked"
+    assert result.output["reason"] == "approval_required_before_write"
+    assert result.output["target_type"] == "background_task_post_review_route"
+    assert result.output["required_approval"]["prepare_tool"] == "prepare_longform_chapter_batch_after_review_route"
+    assert result.output["required_approval"]["execute_tool"] == (
+        "execute_longform_chapter_batch_after_review_route_with_approval"
+    )
+    assert result.output["side_effects"] == {
+        "executed": [],
+        "skipped": ["route_longform_chapter_batch_after_review"],
+    }
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_dispatches_prepare_longform_chapter_batch_after_review_route_adapter(
+    db_session,
+    monkeypatch,
+):
+    project = Project(name="Executor Batch Route Prepare")
+    db_session.add(project)
+    db_session.commit()
+    calls: list[tuple[str, str | None, str | None, int | None]] = []
+
+    def fake_prepare(
+        db,
+        project_id: str,
+        *,
+        task_id: str | None,
+        expected_post_generation_review_hash: str | None,
+        next_batch_size: int | None,
+    ):
+        calls.append((project_id, task_id, expected_post_generation_review_hash, next_batch_size))
+        return {"status": "approval_required", "task": {"id": task_id}}
+
+    monkeypatch.setattr(
+        "app.services.writing_agent.batch_execution_route_approval."
+        "prepare_longform_chapter_batch_after_review_route",
+        fake_prepare,
+    )
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(
+            tool_name="prepare_longform_chapter_batch_after_review_route",
+            params={
+                "task_id": "task-1",
+                "expected_post_generation_review_hash": "review-hash",
+                "next_batch_size": "2",
+            },
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output == {"status": "approval_required", "task": {"id": "task-1"}}
+    assert calls == [(project.id, "task-1", "review-hash", 2)]
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_dispatches_approved_longform_chapter_batch_after_review_route_adapter(
+    db_session,
+    monkeypatch,
+):
+    project = Project(name="Executor Approved Batch Route")
+    db_session.add(project)
+    db_session.commit()
+    calls: list[tuple[str, str | None, str | None, int | None, bool, str | None, dict | None]] = []
+
+    def fake_route(
+        db,
+        project_id: str,
+        *,
+        task_id: str | None,
+        expected_post_generation_review_hash: str | None,
+        next_batch_size: int | None,
+        confirm_execute: bool,
+        approval_contract_hash: str | None,
+        approval_contract: dict | None,
+        approval_tool_metadata_provider,
+    ):
+        calls.append(
+            (
+                project_id,
+                task_id,
+                expected_post_generation_review_hash,
+                next_batch_size,
+                confirm_execute,
+                approval_contract_hash,
+                approval_contract,
+            )
+        )
+        assert approval_tool_metadata_provider is not None
+        return {"status": "completed", "route_decision": {"decision": "continue_to_next_batch"}}
+
+    monkeypatch.setattr(
+        "app.services.writing_agent.batch_execution_route_approval."
+        "execute_longform_chapter_batch_after_review_route_with_approval",
+        fake_route,
+    )
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(
+            tool_name="execute_longform_chapter_batch_after_review_route_with_approval",
+            params={
+                "task_id": "task-1",
+                "expected_post_generation_review_hash": "review-hash",
+                "next_batch_size": "2",
+                "confirm_execute": True,
+                "approval_contract_hash": "approval:route",
+                "approval_contract": {"status": "requires_confirmation"},
+            },
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output == {"status": "completed", "route_decision": {"decision": "continue_to_next_batch"}}
+    assert calls == [
+        (
+            project.id,
+            "task-1",
+            "review-hash",
+            2,
+            True,
+            "approval:route",
+            {"status": "requires_confirmation"},
+        )
+    ]
 
 
 @pytest.mark.asyncio

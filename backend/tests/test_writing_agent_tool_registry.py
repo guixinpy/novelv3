@@ -318,6 +318,8 @@ def test_longform_tool_descriptors_live_in_dedicated_module():
         "prepare_longform_chapter_batch_execution_review",
         "execute_longform_chapter_batch_execution_review_with_approval",
         "route_longform_chapter_batch_after_review",
+        "prepare_longform_chapter_batch_after_review_route",
+        "execute_longform_chapter_batch_after_review_route_with_approval",
     ]
     assert {descriptor.category for descriptor in LONGFORM_AGENT_TOOL_DESCRIPTORS} == {"task_queue"}
     assert {descriptor.module for descriptor in LONGFORM_AGENT_TOOL_DESCRIPTORS} == {"writing_agent"}
@@ -328,6 +330,12 @@ def test_longform_tool_descriptors_live_in_dedicated_module():
     assert target_type_for_tool("prepare_longform_chapter_batch_preflight") == "background_task_checkpoint_approval"
     assert target_type_for_tool("execute_longform_chapter_batch_preflight_with_approval") == "background_task_checkpoint"
     assert target_type_for_tool("execute_longform_chapter_batch") == "background_task"
+    assert target_type_for_tool("prepare_longform_chapter_batch_after_review_route") == (
+        "background_task_post_review_route_approval"
+    )
+    assert target_type_for_tool("execute_longform_chapter_batch_after_review_route_with_approval") == (
+        "background_task_post_review_route"
+    )
 
 
 def test_agent_tool_registry_has_unique_names_and_contracts():
@@ -368,6 +376,8 @@ def test_agent_tool_registry_has_unique_names_and_contracts():
         "prepare_longform_chapter_batch_execution_review",
         "execute_longform_chapter_batch_execution_review_with_approval",
         "route_longform_chapter_batch_after_review",
+        "prepare_longform_chapter_batch_after_review_route",
+        "execute_longform_chapter_batch_after_review_route_with_approval",
         "inspect_agent_trace_audit",
         "inspect_agent_memory_route",
         "inspect_agent_world_model_route",
@@ -413,6 +423,12 @@ def test_agent_tool_registry_has_unique_names_and_contracts():
         "background_task_post_generation_review"
     )
     assert target_type_for_tool("route_longform_chapter_batch_after_review") == "background_task"
+    assert target_type_for_tool("prepare_longform_chapter_batch_after_review_route") == (
+        "background_task_post_review_route_approval"
+    )
+    assert target_type_for_tool("execute_longform_chapter_batch_after_review_route_with_approval") == (
+        "background_task_post_review_route"
+    )
     assert target_type_for_tool("inspect_agent_trace_audit") == "agent_trace_audit"
     assert target_type_for_tool("inspect_agent_memory_route") == "agent_memory_route"
     assert target_type_for_tool("inspect_agent_world_model_route") == "agent_world_model_route"
@@ -433,6 +449,7 @@ def test_agent_tool_registry_has_unique_names_and_contracts():
     assert "verify_agent_plan_approval_contract" in non_blocking_report_tool_names()
     assert "inspect_agent_knowledge_base_route" in non_blocking_report_tool_names()
     assert "summarize_longform_context" in non_blocking_report_tool_names()
+    assert "prepare_longform_chapter_batch_after_review_route" in non_blocking_report_tool_names()
 
     for descriptor in descriptors:
         assert descriptor.category
@@ -1277,6 +1294,8 @@ def test_agent_tool_registry_includes_longform_batch_execution_review_approval_c
 
 def test_agent_tool_registry_includes_route_longform_chapter_batch_after_review():
     descriptor = get_agent_tool_descriptor("route_longform_chapter_batch_after_review")
+    prepare_descriptor = get_agent_tool_descriptor("prepare_longform_chapter_batch_after_review_route")
+    execute_descriptor = get_agent_tool_descriptor("execute_longform_chapter_batch_after_review_route_with_approval")
 
     assert descriptor is not None
     assert descriptor.internal is True
@@ -1289,6 +1308,28 @@ def test_agent_tool_registry_includes_route_longform_chapter_batch_after_review(
     assert set(descriptor.input_schema["required"]) == {"task_id"}
     assert "route_longform_chapter_batch_after_review" in allowed_tool_names()
     assert "route_longform_chapter_batch_after_review" not in non_blocking_report_tool_names()
+
+    assert prepare_descriptor is not None
+    assert prepare_descriptor.internal is True
+    assert prepare_descriptor.non_blocking_report is True
+    assert prepare_descriptor.category == "task_queue"
+    assert prepare_descriptor.target_type == "background_task_post_review_route_approval"
+    assert set(prepare_descriptor.input_schema["required"]) == {"task_id"}
+    assert prepare_descriptor.output_schema["properties"]["agent_plan_approval_contract"]["type"] == "object"
+
+    assert execute_descriptor is not None
+    assert execute_descriptor.internal is True
+    assert execute_descriptor.non_blocking_report is False
+    assert execute_descriptor.category == "task_queue"
+    assert execute_descriptor.target_type == "background_task_post_review_route"
+    assert set(execute_descriptor.input_schema["required"]) == {
+        "task_id",
+        "confirm_execute",
+        "approval_contract_hash",
+        "approval_contract",
+    }
+    assert execute_descriptor.output_schema["properties"]["agent_plan_approval_verification"]["type"] == "object"
+    assert "prepare_longform_chapter_batch_after_review_route" in non_blocking_report_tool_names()
 
 
 def test_agent_tool_registry_includes_inspect_agent_memory_route():

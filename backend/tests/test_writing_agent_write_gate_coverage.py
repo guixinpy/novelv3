@@ -372,6 +372,29 @@ def test_write_gate_coverage_marks_batch_checkpoint_writes_as_confirmation_guard
         "execute_longform_chapter_batch_execution_review_with_approval"
     }
 
+    approved_route_tool = tools_by_name["execute_longform_chapter_batch_after_review_route_with_approval"]
+    assert approved_route_tool["agent_plan_gate_status"] == "enforced"
+    assert approved_route_tool["gate_version"] == "phase203.longform_batch_post_review_route_agent_plan_approval.v1"
+    assert approved_route_tool["gate_type"] == "stateless_agent_plan_approval"
+    assert approved_route_tool["confirmation_fields"] == [
+        "approval_contract_hash",
+        "confirm_execute",
+        "expected_post_generation_review_hash",
+    ]
+    assert approved_route_tool["risk_level"] == "low"
+
+    route_tool = tools_by_name["route_longform_chapter_batch_after_review"]
+    assert route_tool["agent_plan_gate_status"] == "indirect_agent_gate_available"
+    assert route_tool["direct_write_policy"] == "approval_required_redirect"
+    assert route_tool["direct_write_blocked"] is True
+    assert route_tool["direct_confirmation_guard"] is True
+    assert route_tool["confirmation_fields"] == ["expected_post_generation_review_hash"]
+    assert route_tool["risk_level"] == "low"
+    assert route_tool["recommended_action"] == "route_direct_calls_to_approval_executor"
+    assert {item["consumer_tool"] for item in route_tool["indirect_coverage"]} == {
+        "execute_longform_chapter_batch_after_review_route_with_approval"
+    }
+
 
 def test_write_gate_coverage_recommends_high_risk_targets_first():
     output = inspect_agent_write_gate_coverage(adapter_metadata_by_name=_adapter_metadata())
@@ -664,5 +687,20 @@ def _adapter_metadata() -> dict[str, dict]:
             "category": "task_queue",
             "mutability": "write",
             "handler_name": "_execute_longform_chapter_batch_execution_review_with_approval",
+        },
+        "route_longform_chapter_batch_after_review": {
+            "tool_name": "route_longform_chapter_batch_after_review",
+            "adapter_type": "static",
+            "category": "task_queue",
+            "mutability": "guarded_write",
+            "handler_name": "_route_longform_chapter_batch_after_review",
+            "write_policy": "approval_required_redirect",
+        },
+        "execute_longform_chapter_batch_after_review_route_with_approval": {
+            "tool_name": "execute_longform_chapter_batch_after_review_route_with_approval",
+            "adapter_type": "static",
+            "category": "task_queue",
+            "mutability": "write",
+            "handler_name": "_execute_longform_chapter_batch_after_review_route_with_approval",
         },
     }
