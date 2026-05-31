@@ -9,6 +9,8 @@ TYPE_LABELS = {
     "preview_chapter": "生成正文",
     "plan_recovery_tools": "恢复预览",
     "plan_recommended_followups": "推荐后继预览",
+    "search_agent_retrieval_context": "检索证据",
+    "plan_post_chapter_memory_capture": "写后记忆规划",
 }
 
 GENERATING_LABELS = {
@@ -31,12 +33,13 @@ def action_result_view(action_result: dict | None) -> dict | None:
     if not action_type or not status:
         return None
 
-    label = _label(action_type, status)
+    data = action_result.get("data") if isinstance(action_result.get("data"), dict) else {}
+    label = _label(action_type, status, data)
     view = {
         "type": action_type,
         "status": status,
         "label": label,
-        "variant": _variant(status),
+        "variant": _variant(action_type, status, data),
     }
     detail_items = _detail_items(action_result)
     if detail_items:
@@ -44,7 +47,8 @@ def action_result_view(action_result: dict | None) -> dict | None:
     return view
 
 
-def _label(action_type: str, status: str) -> str:
+def _label(action_type: str, status: str, data: dict | None = None) -> str:
+    data = data or {}
     label = TYPE_LABELS.get(action_type, action_type)
     if action_type == "plan_recovery_tools":
         if status in {"success", "completed"}:
@@ -56,6 +60,10 @@ def _label(action_type: str, status: str) -> str:
             return "推荐后继预览已生成"
         if status == "failed":
             return "推荐后继预览失败"
+    if action_type == "search_agent_retrieval_context":
+        return _retrieval_context_label(action_result_status=status, data=data)
+    if action_type == "plan_post_chapter_memory_capture":
+        return _post_chapter_memory_capture_label(action_result_status=status, data=data)
     if status in {"success", "completed"}:
         return f"{label}执行成功"
     if status == "cancelled":
@@ -71,7 +79,10 @@ def _label(action_type: str, status: str) -> str:
     return f"{label}: {status}"
 
 
-def _variant(status: str) -> str:
+def _variant(action_type: str, status: str, data: dict | None = None) -> str:
+    data = data or {}
+    if action_type == "plan_post_chapter_memory_capture":
+        return _post_chapter_memory_capture_variant(str(data.get("capture_status") or "").strip(), status)
     if status in {"success", "completed"}:
         return "success"
     if status == "failed":
@@ -92,6 +103,10 @@ def _detail_items(action_result: dict) -> list[dict[str, str]]:
             *_recommended_followup_preview_detail_items(data),
             *_agent_discovery_detail_items(data),
         ]
+    if action_type == "search_agent_retrieval_context":
+        return _retrieval_context_detail_items(data)
+    if action_type == "plan_post_chapter_memory_capture":
+        return _post_chapter_memory_capture_detail_items(data)
 
     approval_decision = data.get("approval_decision") if isinstance(data.get("approval_decision"), dict) else None
     if not approval_decision:
@@ -192,6 +207,50 @@ def _recommended_followup_preview_detail_items(data: dict) -> list[dict[str, str
     write_tools = followups.get("provenance_write_tools") if isinstance(followups.get("provenance_write_tools"), list) else []
     if write_tools:
         items.append({"label": "需确认修复", "value": f"{len(write_tools)} 个"})
+    return items
+
+
+def _retrieval_context_detail_items(data: dict) -> list[dict[str, str]]:
+    items = []
+    summary = data.get("summary") if isinstance(data.get("summary"), dict) else {}
+    returned = _optional_int(summary.get("returned"))
+    total = _optional_int(summary.get("total"))
+    coverage_label = _retrieval_coverage_label(returned, total)
+    if coverage_label:
+        items.append({"label": "检索证据", "value": coverage_label})
+
+    retrieval_items = data.get("items") if isinstance(data.get("items"), list) else []
+    primary_source = _retrieval_primary_source_label(retrieval_items[0] if retrieval_items else None)
+    if primary_source:
+        items.append({"label": "首个来源", "value": primary_source})
+
+    next_tools = data.get("recommended_next_tools") if isinstance(data.get("recommended_next_tools"), list) else []
+    if next_tools:
+        items.append({"label": "下一步", "value": f"{len(next_tools)} 个工具"})
+    return items
+
+
+def _post_chapter_memory_capture_detail_items(data: dict) -> list[dict[str, str]]:
+    items = []
+    chapter_index = _optional_int(data.get("chapter_index"))
+    if chapter_index is not None and chapter_index > 0:
+        items.append({"label": "章节", "value": f"第{chapter_index}章"})
+
+    capture_status = str(data.get("capture_status") or "").strip()
+    if capture_status:
+        items.append({"label": "写后记忆", "value": _post_chapter_memory_capture_status_label(capture_status)})
+
+    summary = data.get("summary") if isinstance(data.get("summary"), dict) else {}
+    candidate_count = _optional_int(summary.get("candidate_count"))
+    if candidate_count is not None:
+        items.append({"label": "候选", "value": f"{candidate_count} 个"})
+    review_step_count = _optional_int(summary.get("review_step_count"))
+    if review_step_count is not None:
+        items.append({"label": "审稿证据", "value": f"{review_step_count} 个"})
+
+    next_tools = data.get("recommended_next_tools") if isinstance(data.get("recommended_next_tools"), list) else []
+    if next_tools:
+        items.append({"label": "下一步", "value": f"{len(next_tools)} 个工具"})
     return items
 
 
@@ -367,6 +426,75 @@ def _profile_policy_audit_label(audit: dict) -> str:
             return f"需关注：{issue_count} 个问题"
         return "需关注"
     return status
+
+
+def _retrieval_context_label(*, action_result_status: str, data: dict) -> str:
+    if action_result_status in {"success", "completed"}:
+        summary = data.get("summary") if isinstance(data.get("summary"), dict) else {}
+        if _optional_int(summary.get("returned")) == 0:
+            return "检索证据为空"
+        return "检索证据已返回"
+    if action_result_status == "failed":
+        return "检索证据获取失败"
+    if action_result_status in {"running", "generating"}:
+        return "检索证据检索中"
+    return f"检索证据: {action_result_status or '未知状态'}"
+
+
+def _post_chapter_memory_capture_label(*, action_result_status: str, data: dict) -> str:
+    capture_status = str(data.get("capture_status") or "").strip()
+    if action_result_status in {"success", "completed"}:
+        if capture_status == "needs_review":
+            return "写后记忆等待审稿"
+        if capture_status == "missing_chapter":
+            return "写后记忆缺少章节"
+        return "写后记忆候选已规划"
+    if action_result_status == "failed":
+        return "写后记忆规划失败"
+    if action_result_status in {"running", "generating"}:
+        return "写后记忆规划中"
+    return f"写后记忆规划: {action_result_status or '未知状态'}"
+
+
+def _post_chapter_memory_capture_variant(capture_status: str, action_result_status: str) -> str:
+    if action_result_status == "failed" or capture_status in {"failed", "blocked"}:
+        return "error"
+    if capture_status in {"needs_review", "missing_chapter", "skipped"}:
+        return "neutral"
+    if action_result_status in {"success", "completed"}:
+        return "success"
+    return "neutral"
+
+
+def _post_chapter_memory_capture_status_label(status: str) -> str:
+    if status == "ready":
+        return "可写入候选"
+    if status == "needs_review":
+        return "需要审稿"
+    if status == "missing_chapter":
+        return "缺少章节"
+    if status in {"completed", "success"}:
+        return "完成"
+    return status or "未知"
+
+
+def _retrieval_coverage_label(returned: int | None, total: int | None) -> str:
+    if returned is not None and total is not None:
+        return f"返回 {returned} / 共 {total}"
+    if returned is not None:
+        return f"返回 {returned}"
+    if total is not None:
+        return f"共 {total}"
+    return ""
+
+
+def _retrieval_primary_source_label(item: object) -> str:
+    if not isinstance(item, dict):
+        return ""
+    title = str(item.get("title") or item.get("source_ref") or "").strip()
+    chapter_index = _optional_int(item.get("chapter_index"))
+    chapter_label = f"第{chapter_index}章" if chapter_index is not None and chapter_index > 0 else ""
+    return " · ".join(value for value in [title, chapter_label] if value)
 
 
 def _optional_int(value: object) -> int | None:

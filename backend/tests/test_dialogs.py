@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import json
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
@@ -3167,6 +3168,156 @@ def test_get_messages_includes_action_result_view_for_recommended_followup_resul
             {"label": "推荐状态", "value": "已推荐"},
             {"label": "自动后继", "value": "1 个"},
             {"label": "需确认修复", "value": "1 个"},
+        ],
+    }
+
+
+def test_get_messages_includes_action_result_view_for_retrieval_context_without_raw_provenance(db_session):
+    project = Project(name="Retrieval Context Result View")
+    db_session.add(project)
+    db_session.commit()
+    dialog = dialogs_api._get_or_create_dialog(db_session, project.id)
+    dialogs_api._save_message(
+        db_session,
+        dialog.id,
+        "assistant",
+        "我已检索写前上下文证据。",
+        action_result={
+            "type": "search_agent_retrieval_context",
+            "status": "success",
+            "data": {
+                "status": "completed",
+                "summary": {"total": 3, "returned": 2},
+                "items": [
+                    {
+                        "source_type": "chapter",
+                        "source_ref": "chapter:2",
+                        "title": "雾港追踪",
+                        "chapter_index": 2,
+                        "snippet": "主角在码头发现伪造货单。",
+                    },
+                ],
+                "recommended_next_tools": ["summarize_longform_context"],
+                "memory_provenance": {"status": "available", "trace_id": "trace-secret"},
+            },
+        },
+    )
+
+    messages = DialogMessageService(db_session).list_messages(project.id)
+    result_view = messages[-1]["action_result_view"]
+
+    assert result_view == {
+        "type": "search_agent_retrieval_context",
+        "status": "success",
+        "label": "检索证据已返回",
+        "variant": "success",
+        "detail_items": [
+            {"label": "检索证据", "value": "返回 2 / 共 3"},
+            {"label": "首个来源", "value": "雾港追踪 · 第2章"},
+            {"label": "下一步", "value": "1 个工具"},
+        ],
+    }
+    serialized = json.dumps(result_view, ensure_ascii=False)
+    assert "memory_provenance" not in serialized
+    assert "trace-secret" not in serialized
+    assert "伪造货单" not in serialized
+
+
+def test_get_messages_includes_action_result_view_for_post_chapter_memory_capture_without_candidate_body(db_session):
+    project = Project(name="Post Chapter Memory Capture Result View")
+    db_session.add(project)
+    db_session.commit()
+    dialog = dialogs_api._get_or_create_dialog(db_session, project.id)
+    dialogs_api._save_message(
+        db_session,
+        dialog.id,
+        "assistant",
+        "我已规划写后记忆候选。",
+        action_result={
+            "type": "plan_post_chapter_memory_capture",
+            "status": "success",
+            "data": {
+                "status": "completed",
+                "chapter_index": 3,
+                "capture_status": "ready",
+                "summary": {
+                    "chapter_available": True,
+                    "review_step_count": 2,
+                    "candidate_count": 2,
+                },
+                "candidates": [
+                    {"memory_type": "writing_pattern", "title": "第3章写作沉淀：雾港追踪"},
+                    {"memory_type": "self_optimization_lesson", "title": "第3章审稿经验：雾港追踪"},
+                ],
+                "recommended_next_tools": ["prepare_record_agent_knowledge_base_candidate"],
+                "memory_provenance": {"status": "available", "trace_id": "trace-secret"},
+            },
+        },
+    )
+
+    messages = DialogMessageService(db_session).list_messages(project.id)
+    result_view = messages[-1]["action_result_view"]
+
+    assert result_view == {
+        "type": "plan_post_chapter_memory_capture",
+        "status": "success",
+        "label": "写后记忆候选已规划",
+        "variant": "success",
+        "detail_items": [
+            {"label": "章节", "value": "第3章"},
+            {"label": "写后记忆", "value": "可写入候选"},
+            {"label": "候选", "value": "2 个"},
+            {"label": "审稿证据", "value": "2 个"},
+            {"label": "下一步", "value": "1 个工具"},
+        ],
+    }
+    serialized = json.dumps(result_view, ensure_ascii=False)
+    assert "memory_provenance" not in serialized
+    assert "trace-secret" not in serialized
+    assert "第3章写作沉淀" not in serialized
+
+
+def test_get_messages_labels_post_chapter_memory_capture_needs_review_as_neutral(db_session):
+    project = Project(name="Post Chapter Memory Capture Needs Review")
+    db_session.add(project)
+    db_session.commit()
+    dialog = dialogs_api._get_or_create_dialog(db_session, project.id)
+    dialogs_api._save_message(
+        db_session,
+        dialog.id,
+        "assistant",
+        "写后记忆还需要审稿证据。",
+        action_result={
+            "type": "plan_post_chapter_memory_capture",
+            "status": "success",
+            "data": {
+                "status": "completed",
+                "chapter_index": 4,
+                "capture_status": "needs_review",
+                "summary": {
+                    "chapter_available": True,
+                    "review_step_count": 0,
+                    "candidate_count": 0,
+                },
+                "recommended_next_tools": ["review_chapter_quality", "review_chapter_continuity"],
+            },
+        },
+    )
+
+    messages = DialogMessageService(db_session).list_messages(project.id)
+    result_view = messages[-1]["action_result_view"]
+
+    assert result_view == {
+        "type": "plan_post_chapter_memory_capture",
+        "status": "success",
+        "label": "写后记忆等待审稿",
+        "variant": "neutral",
+        "detail_items": [
+            {"label": "章节", "value": "第4章"},
+            {"label": "写后记忆", "value": "需要审稿"},
+            {"label": "候选", "value": "0 个"},
+            {"label": "审稿证据", "value": "0 个"},
+            {"label": "下一步", "value": "2 个工具"},
         ],
     }
 
