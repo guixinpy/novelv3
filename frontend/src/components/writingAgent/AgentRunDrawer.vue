@@ -284,7 +284,8 @@ const retrievalPrimarySourceLabel = computed(() => {
   if (!item) return ''
   const title = stringValue(item.title) || stringValue(item.source_ref)
   const chapter = chapterIndexLabel(item.chapter_index)
-  return [title, chapter].filter(Boolean).join(' · ')
+  const sourceType = retrievalSourceTypeLabel(stringValue(item.source_type))
+  return [title, chapter || sourceType].filter(Boolean).join(' · ')
 })
 const retrievalRecommendedTools = computed(() => stringList(retrievalContextOutput.value?.recommended_next_tools))
 const postChapterMemoryOutput = computed(() => latestToolOutput('plan_post_chapter_memory_capture'))
@@ -531,6 +532,13 @@ function postChapterMemoryCaptureStatusLabel(status: unknown) {
   if (value === 'needs_review') return '需要审稿'
   if (value === 'missing_chapter') return '缺少章节'
   return value || '未知'
+}
+
+function retrievalSourceTypeLabel(sourceType: string) {
+  if (sourceType === 'knowledge_base_candidate') return '知识库候选'
+  if (sourceType === 'longform_memory') return '长篇记忆'
+  if (sourceType === 'world_fact') return '世界事实'
+  return ''
 }
 
 function recordValue(value: unknown): Record<string, unknown> {

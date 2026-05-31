@@ -56,6 +56,22 @@ describe('memoryLoopAgentRunProjection', () => {
     expect(JSON.stringify(view)).not.toContain('伪造货单')
   })
 
+  it('labels knowledge base candidate retrieval sources', () => {
+    const view = buildMemoryLoopView('search_agent_retrieval_context', 'success', {
+      status: 'completed',
+      summary: { total: 1, returned: 1 },
+      items: [
+        {
+          source_type: 'knowledge_base_candidate',
+          source_ref: 'knowledge_base_candidate:candidate-1',
+          title: '低细节续写可行',
+        },
+      ],
+    })
+
+    expect(view.detail_items).toContainEqual({ label: '首个来源', value: '低细节续写可行 · 知识库候选' })
+  })
+
   it('builds post-chapter memory capture views without leaking candidate bodies', () => {
     const view = buildMemoryLoopView('plan_post_chapter_memory_capture', 'success', {
       status: 'completed',

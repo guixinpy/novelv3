@@ -787,12 +787,11 @@ describe('AgentRunDrawer', () => {
                 summary: { total: 3, returned: 2 },
                 items: [
                   {
-                    source_type: 'chapter',
-                    source_ref: 'chapter:2',
-                    title: '雾港追踪',
-                    chapter_index: 2,
+                    source_type: 'knowledge_base_candidate',
+                    source_ref: 'knowledge_base_candidate:candidate-1',
+                    title: '低细节续写可行',
                     score: 0.91,
-                    snippet: '主角在码头发现伪造货单。',
+                    snippet: 'Agent 先读取知识库后可从低细节目标续写。',
                   },
                 ],
                 recommended_next_tools: ['summarize_longform_context'],
@@ -842,8 +841,8 @@ describe('AgentRunDrawer', () => {
     expect(text).toContain('Agent 记忆闭环')
     expect(text).toContain('检索证据')
     expect(text).toContain('返回 2 / 共 3')
-    expect(text).toContain('雾港追踪')
-    expect(text).toContain('第2章')
+    expect(text).toContain('低细节续写可行')
+    expect(text).toContain('知识库候选')
     expect(text).toContain('写后记忆')
     expect(text).toContain('第3章')
     expect(text).toContain('可写入候选')

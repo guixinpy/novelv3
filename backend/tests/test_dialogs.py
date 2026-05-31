@@ -3223,6 +3223,42 @@ def test_get_messages_includes_action_result_view_for_retrieval_context_without_
     assert "伪造货单" not in serialized
 
 
+def test_get_messages_labels_knowledge_base_candidate_retrieval_source(db_session):
+    project = Project(name="Knowledge Candidate Retrieval Result View")
+    db_session.add(project)
+    db_session.commit()
+    dialog = dialogs_api._get_or_create_dialog(db_session, project.id)
+    dialogs_api._save_message(
+        db_session,
+        dialog.id,
+        "assistant",
+        "我已检索到写作经验。",
+        action_result={
+            "type": "search_agent_retrieval_context",
+            "status": "success",
+            "data": {
+                "status": "completed",
+                "summary": {"total": 1, "returned": 1},
+                "items": [
+                    {
+                        "source_type": "knowledge_base_candidate",
+                        "source_ref": "knowledge_base_candidate:candidate-1",
+                        "title": "低细节续写可行",
+                    },
+                ],
+            },
+        },
+    )
+
+    messages = DialogMessageService(db_session).list_messages(project.id)
+    result_view = messages[-1]["action_result_view"]
+
+    assert result_view["detail_items"] == [
+        {"label": "检索证据", "value": "返回 1 / 共 1"},
+        {"label": "首个来源", "value": "低细节续写可行 · 知识库候选"},
+    ]
+
+
 def test_get_messages_includes_action_result_view_for_post_chapter_memory_capture_without_candidate_body(db_session):
     project = Project(name="Post Chapter Memory Capture Result View")
     db_session.add(project)

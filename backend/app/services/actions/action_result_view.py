@@ -494,7 +494,18 @@ def _retrieval_primary_source_label(item: object) -> str:
     title = str(item.get("title") or item.get("source_ref") or "").strip()
     chapter_index = _optional_int(item.get("chapter_index"))
     chapter_label = f"第{chapter_index}章" if chapter_index is not None and chapter_index > 0 else ""
-    return " · ".join(value for value in [title, chapter_label] if value)
+    source_label = _retrieval_source_type_label(str(item.get("source_type") or "").strip())
+    return " · ".join(value for value in [title, chapter_label or source_label] if value)
+
+
+def _retrieval_source_type_label(source_type: str) -> str:
+    if source_type == "knowledge_base_candidate":
+        return "知识库候选"
+    if source_type == "longform_memory":
+        return "长篇记忆"
+    if source_type == "world_fact":
+        return "世界事实"
+    return ""
 
 
 def _optional_int(value: object) -> int | None:

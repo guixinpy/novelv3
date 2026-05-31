@@ -134,7 +134,15 @@ function retrievalPrimarySourceLabel(item: Record<string, unknown> | undefined) 
   const title = stringValue(item.title) || stringValue(item.source_ref)
   const chapterIndex = numberValue(item.chapter_index)
   const chapter = chapterIndex !== null ? `第${chapterIndex}章` : ''
-  return [title, chapter].filter(Boolean).join(' · ')
+  const sourceType = retrievalSourceTypeLabel(stringValue(item.source_type))
+  return [title, chapter || sourceType].filter(Boolean).join(' · ')
+}
+
+function retrievalSourceTypeLabel(sourceType: string) {
+  if (sourceType === 'knowledge_base_candidate') return '知识库候选'
+  if (sourceType === 'longform_memory') return '长篇记忆'
+  if (sourceType === 'world_fact') return '世界事实'
+  return ''
 }
 
 function memoryLoopVariant(innerStatus: string, actionStatus: string) {
