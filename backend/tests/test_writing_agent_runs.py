@@ -1603,6 +1603,95 @@ def test_agent_run_auto_plan_executes_recommended_followups_after_hash_confirmat
     assert [step["tool_name"] for step in payload["steps"]] == ["review_chapter_quality", "review_chapter_continuity"]
 
 
+def test_agent_run_recommended_followups_prepare_world_model_analysis_instead_of_writing(
+    client,
+    db_session,
+):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1, 2])
+    import_setup_to_world_model(db_session, project.id)
+    source_run = WritingAgentRun(project_id=project.id, goal="生成第2章", status="success", input={})
+    db_session.add(source_run)
+    db_session.flush()
+    db_session.add(
+        WritingAgentStep(
+            run_id=source_run.id,
+            project_id=project.id,
+            step_index=1,
+            tool_name="execute_generate_chapter_with_approval",
+            status="success",
+            chapter_index=2,
+            input={"params": {"chapter_index": 2}},
+            output={
+                "status": "success",
+                "chapter_index": 2,
+                "agent_tool_result": {
+                    "recommendations": {
+                        "canonical_followups": ["analyze_chapter_world_model"],
+                    }
+                },
+            },
+        )
+    )
+    db_session.commit()
+
+    preview = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "预览世界模型分析后继",
+            "tools": [{"tool_name": "plan_recommended_followups", "params": {"run_id": source_run.id}}],
+        },
+    )
+    preview_output = preview.json()["steps"][0]["output"]
+
+    assert preview.status_code == 200
+    assert preview_output["status"] == "completed"
+    assert preview_output["tools"] == [
+        {
+            "tool_name": "prepare_analyze_chapter_world_model_execution",
+            "params": {"chapter_index": 2},
+            "planner": {
+                "step_index": 1,
+                "reason": (
+                    "根据上一轮 execute_generate_chapter_with_approval 的运行时推荐规划后继工具 "
+                    "prepare_analyze_chapter_world_model_execution。"
+                ),
+                "on_missing": "record_issue",
+                "on_failure": "record_issue",
+                "expected_output": "推荐后继工具输出。",
+                "post_generation": False,
+                "planner_version": "phase101.recommended_followup_planner.v1",
+                "source_run_id": source_run.id,
+                "source_step_index": 1,
+                "source_tool": "execute_generate_chapter_with_approval",
+            },
+        }
+    ]
+    assert preview_output["trace"]["rejected_tools"] == []
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "准备世界模型分析审批",
+            "input": {
+                "auto_plan": True,
+                "recommended_followup_run_id": source_run.id,
+                "execute_recommended_followups": True,
+                "confirm_execute": True,
+                "recommended_followup_plan_hash": preview_output["plan_hash"],
+            },
+        },
+    )
+
+    payload = response.json()
+    assert response.status_code == 200
+    assert payload["status"] == "success"
+    assert [step["tool_name"] for step in payload["steps"]] == ["prepare_analyze_chapter_world_model_execution"]
+    output = payload["steps"][0]["output"]
+    assert output["status"] == "approval_required"
+    assert output["side_effects"] == {"executed": [], "skipped": ["analyze_chapter_world_model"]}
+    assert output["recommended_next_tools"] == ["execute_analyze_chapter_world_model_with_approval"]
+
+
 def test_agent_run_recommended_followups_prepare_post_chapter_memory_candidates(client, db_session):
     project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1, 2])
     source_run = WritingAgentRun(project_id=project.id, goal="生成第2章", status="success", input={})

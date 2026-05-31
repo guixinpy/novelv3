@@ -31,6 +31,7 @@ SAFE_RECOMMENDED_FOLLOWUP_TOOLS = frozenset(
         "summarize_longform_context",
         "plan_post_chapter_memory_capture",
         "prepare_record_agent_knowledge_base_candidate",
+        "prepare_analyze_chapter_world_model_execution",
         "review_chapter_quality",
         "review_chapter_continuity",
         "plan_chapter_revision",
@@ -44,6 +45,9 @@ SAFE_RECOMMENDED_FOLLOWUP_TOOLS = frozenset(
     }
 )
 LOOPING_FOLLOWUP_TOOLS = frozenset({"plan_recommended_followups"})
+APPROVAL_PREPARE_FOLLOWUP_TOOLS = {
+    "analyze_chapter_world_model": "prepare_analyze_chapter_world_model_execution",
+}
 
 
 def latest_recommended_followup_state(steps: Sequence[WritingAgentStep]) -> dict[str, Any]:
@@ -236,26 +240,28 @@ def _tool_requests_from_followups(
             continue
         candidate_tools: list[dict[str, Any] | None] = matched_provenance_tools or [None]
         for provenance_tool in candidate_tools:
-            seen_key = _seen_key(tool_name, provenance_tool)
+            effective_tool_name = _effective_followup_tool_name(tool_name)
+            seen_key = _seen_key(effective_tool_name, provenance_tool)
             if seen_key in seen:
                 continue
             seen.add(seen_key)
-            if tool_name in LOOPING_FOLLOWUP_TOOLS or (
-                tool_name == source_step.tool_name and not _is_distinct_provenance_retry(source_step, provenance_tool)
+            if effective_tool_name in LOOPING_FOLLOWUP_TOOLS or (
+                effective_tool_name == source_step.tool_name
+                and not _is_distinct_provenance_retry(source_step, provenance_tool)
             ):
                 rejected_tools.append({"tool_name": tool_name, "reason": "planner_loop"})
                 continue
-            if tool_name not in allowed:
+            if effective_tool_name not in allowed:
                 rejected_tools.append({"tool_name": tool_name, "reason": "not_allowed"})
                 continue
-            if tool_name not in SAFE_RECOMMENDED_FOLLOWUP_TOOLS:
+            if effective_tool_name not in SAFE_RECOMMENDED_FOLLOWUP_TOOLS:
                 rejected_tools.append({"tool_name": tool_name, "reason": "requires_confirmation"})
                 continue
             selected_index = len(tools) + 1
             if provenance_tool is None:
                 tools.append(
                     _tool_request_from_followup(
-                        tool_name,
+                        effective_tool_name,
                         source_step=source_step,
                         source_run_id=source_run_id,
                         index=selected_index,
@@ -409,6 +415,10 @@ def _latest_recommended_recovery_state(steps: Sequence[WritingAgentStep]) -> dic
 
 def _matching_provenance_tools(tool_name: str, provenance_tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [item for item in provenance_tools if str(item.get("tool_name") or "").strip() == tool_name]
+
+
+def _effective_followup_tool_name(tool_name: str) -> str:
+    return APPROVAL_PREPARE_FOLLOWUP_TOOLS.get(tool_name, tool_name)
 
 
 def _seen_key(tool_name: str, provenance_tool: dict[str, Any] | None) -> str:
