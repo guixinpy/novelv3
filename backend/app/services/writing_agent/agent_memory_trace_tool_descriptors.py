@@ -194,7 +194,7 @@ AGENT_MEMORY_TRACE_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         name="inspect_agent_memory_activation_plan",
         module="writing_agent",
         category="longform_memory",
-        description="为目标章节生成长记忆激活计划，选择既往章节、伏笔、世界模型和风格锚点供生成前使用。",
+        description="为目标章节生成长记忆激活计划，选择既往章节、伏笔、世界模型、知识库经验和风格锚点供生成前使用。",
         input_schema=object_schema(
             {
                 "chapter_index": {"type": "integer", "minimum": 1},

@@ -9,6 +9,13 @@ from sqlalchemy.orm import Session
 
 from app.core.longform_memory import get_longform_maintenance_diagnostics
 from app.models import LongformMemory, Project, Storyline, WorldProposalItem
+from app.prompting.providers.knowledge_base import (
+    DEFAULT_CANDIDATE_LIMIT,
+    KNOWLEDGE_CANDIDATES_KEY,
+    MIN_CANDIDATE_CONFIDENCE,
+    PROMPT_SAFE_MEMORY_TYPES,
+    PROMPT_SAFE_STATUSES,
+)
 from app.services.writing_agent.memory_provenance_contract import build_memory_provenance, count_window
 
 MEMORY_ACTIVATION_VERSION = "phase241.memory_activation.v1"
@@ -19,6 +26,7 @@ FORESHADOWING_ITEM_LIMIT = 5
 WORLD_MODEL_ITEM_LIMIT = 5
 SUMMARY_LIMIT = 220
 PROMPT_BLOCK_LIMIT = 1800
+KNOWLEDGE_BASE_ITEM_LIMIT = DEFAULT_CANDIDATE_LIMIT
 
 
 def build_memory_activation_plan(
@@ -33,6 +41,7 @@ def build_memory_activation_plan(
     longform_items = _longform_items(db, project_id, target_chapter)
     foreshadowing = _foreshadowing_items(db, project_id, target_chapter)
     world_model = _world_model_items(db, project_id, target_chapter)
+    knowledge_base = _knowledge_base_items(project)
     style = _style_items(project)
     coverage_debt = _memory_coverage_debt(db, project_id)
     risks = _risks(coverage_debt)
@@ -42,6 +51,7 @@ def build_memory_activation_plan(
         "longform": longform_items,
         "foreshadowing": foreshadowing,
         "world_model": world_model,
+        "knowledge_base": knowledge_base,
         "style": style,
     }
     prompt_block = _prompt_block(
@@ -293,6 +303,7 @@ def _prompt_block(
         ("既往长篇记忆", "longform"),
         ("未闭合伏笔", "foreshadowing"),
         ("世界模型状态", "world_model"),
+        ("知识库写作经验", "knowledge_base"),
         ("风格锚点", "style"),
     ]:
         items = activation.get(key) or []
@@ -360,7 +371,63 @@ def _limit_for_key(key: str) -> int:
         return FORESHADOWING_ITEM_LIMIT
     if key == "world_model":
         return WORLD_MODEL_ITEM_LIMIT
+    if key == "knowledge_base":
+        return KNOWLEDGE_BASE_ITEM_LIMIT
     return 4
+
+
+def _knowledge_base_items(project: Project) -> list[dict[str, Any]]:
+    style_config = project.style_config if isinstance(project.style_config, dict) else {}
+    candidates = style_config.get(KNOWLEDGE_CANDIDATES_KEY)
+    if not isinstance(candidates, list):
+        return []
+    eligible = [item for item in candidates if isinstance(item, dict) and _is_prompt_safe_candidate(item)]
+    ordered = sorted(
+        eligible,
+        key=lambda item: (
+            str(item.get("status") or "") == "active",
+            _candidate_confidence(item),
+            str(item.get("updated_at") or ""),
+            str(item.get("created_at") or ""),
+        ),
+        reverse=True,
+    )
+    return [_knowledge_base_item(item) for item in ordered[:KNOWLEDGE_BASE_ITEM_LIMIT]]
+
+
+def _knowledge_base_item(item: dict[str, Any]) -> dict[str, Any]:
+    candidate_id = str(item.get("id") or "").strip()
+    return {
+        "kind": "knowledge_base_candidate",
+        "candidate_id": candidate_id,
+        "memory_type": str(item.get("memory_type") or ""),
+        "title": str(item.get("title") or "").strip(),
+        "summary": _limit_text(item.get("summary"), SUMMARY_LIMIT),
+        "confidence": _candidate_confidence(item),
+        "status": str(item.get("status") or "candidate"),
+        "tags": [str(tag).strip() for tag in item.get("tags") or [] if str(tag).strip()],
+        "source_refs": [str(ref).strip() for ref in item.get("source_refs") or [] if str(ref).strip()],
+        "source_ref": f"knowledge_base_candidate:{candidate_id}",
+    }
+
+
+def _is_prompt_safe_candidate(item: dict[str, Any]) -> bool:
+    memory_type = str(item.get("memory_type") or "")
+    status = str(item.get("status") or "candidate")
+    if memory_type not in PROMPT_SAFE_MEMORY_TYPES:
+        return False
+    if status not in PROMPT_SAFE_STATUSES:
+        return False
+    if status == "candidate" and _candidate_confidence(item) < MIN_CANDIDATE_CONFIDENCE:
+        return False
+    return bool(str(item.get("title") or "").strip() and str(item.get("summary") or "").strip())
+
+
+def _candidate_confidence(item: dict[str, Any]) -> float:
+    try:
+        return float(item.get("confidence") or 0)
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def _limit_text(value: Any, limit: int) -> str:

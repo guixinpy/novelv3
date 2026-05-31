@@ -4875,6 +4875,20 @@ def test_agent_generate_chapter_appends_length_feedback_after_repeated_over_targ
 def test_agent_generate_chapter_appends_memory_activation_without_future_leak(client, db_session, monkeypatch):
     project = _seed_longform_project(db_session, outline_chapters=[1, 2, 3], generated_chapters=[1, 2])
     _seed_activation_memories(db_session, project.id)
+    project.style_config = {
+        "knowledge_base_candidates": [
+            {
+                "id": "candidate-active-pattern",
+                "memory_type": "writing_pattern",
+                "title": "章末钩子",
+                "summary": "每章结尾保留一个可追踪的实物线索。",
+                "confidence": 0.82,
+                "status": "active",
+                "source_refs": ["chapter_content:2"],
+            }
+        ]
+    }
+    db_session.add(project)
     db_session.commit()
 
     captured: dict[str, object] = {}
@@ -4902,9 +4916,11 @@ def test_agent_generate_chapter_appends_memory_activation_without_future_leak(cl
     assert "Writing Agent 长记忆激活" in command_args
     assert "空白信" in command_args
     assert "雾晶" in command_args
+    assert "章末钩子" in command_args
     assert "潮下车站" not in command_args
     assert output["agent_memory_activation"]["status"] in {"ready", "degraded"}
     assert output["agent_memory_activation"]["activated_counts"]["longform"] >= 2
+    assert output["agent_memory_activation"]["activated_counts"]["knowledge_base"] == 1
     assert output["agent_memory_activation"]["memory_provenance"]["source_count"] >= 2
     assert "prompt_block" not in output["agent_memory_activation"]
 

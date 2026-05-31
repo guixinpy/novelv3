@@ -7,7 +7,41 @@ def test_memory_activation_selects_prior_memory_and_foreshadowing_without_future
         name="Memory Activation",
         genre="悬疑科幻",
         style="冷峻、短句、强悬念",
-        style_config={"tone": "冷峻", "pov": "第三人称限知"},
+        style_config={
+            "tone": "冷峻",
+            "pov": "第三人称限知",
+            "knowledge_base_candidates": [
+                {
+                    "id": "candidate-active-pattern",
+                    "memory_type": "writing_pattern",
+                    "title": "章末钩子",
+                    "summary": "每章结尾保留一个可追踪的实物线索。",
+                    "confidence": 0.82,
+                    "status": "active",
+                    "source_refs": ["chapter_content:2"],
+                    "tags": ["post-chapter-capture"],
+                    "updated_at": "2026-05-01T10:00:00Z",
+                },
+                {
+                    "id": "candidate-low-confidence",
+                    "memory_type": "writing_pattern",
+                    "title": "低置信经验",
+                    "summary": "这条候选还不能进入写前激活。",
+                    "confidence": 0.45,
+                    "status": "candidate",
+                    "source_refs": ["chapter_content:2"],
+                },
+                {
+                    "id": "candidate-muted",
+                    "memory_type": "writing_pattern",
+                    "title": "静默经验",
+                    "summary": "静默候选不能进入写前激活。",
+                    "confidence": 0.95,
+                    "status": "muted",
+                    "source_refs": ["chapter_content:2"],
+                },
+            ],
+        },
     )
     db_session.add(project)
     db_session.flush()
@@ -140,10 +174,24 @@ def test_memory_activation_selects_prior_memory_and_foreshadowing_without_future
     assert "未来章节" not in longform_titles
     foreshadow_titles = [item["title"] for item in output["activation"]["foreshadowing"]]
     assert foreshadow_titles == ["空白信来源"]
+    knowledge_titles = [item["title"] for item in output["activation"]["knowledge_base"]]
+    assert knowledge_titles == ["章末钩子"]
+    assert output["coverage"]["activated_counts"]["knowledge_base"] == 1
     assert "空白信" in output["prompt_block"]
     assert "雾晶" in output["prompt_block"]
+    assert "章末钩子" in output["prompt_block"]
+    assert "低置信经验" not in output["prompt_block"]
+    assert "静默经验" not in output["prompt_block"]
     assert "潮下车站" not in output["prompt_block"]
     assert output["memory_provenance"]["status"] == "available"
+    source_refs = {source["source_ref"] for source in output["memory_provenance"]["sources"]}
+    assert "knowledge_base_candidate:candidate-active-pattern" in source_refs
+    assert output["memory_provenance"]["windows"]["knowledge_base"] == {
+        "total": 1,
+        "returned": 1,
+        "limit": 4,
+        "has_more": False,
+    }
     assert output["trace"]["runtime_behavior_changed"] is False
 
 
