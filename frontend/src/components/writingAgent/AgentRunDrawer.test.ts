@@ -757,6 +757,102 @@ describe('AgentRunDrawer', () => {
     expect(document.body.querySelector('[data-testid="execute-recovery"]')).toBeNull()
   })
 
+  it('renders retrieval evidence and post-chapter memory capture loop summaries', () => {
+    mount(AgentRunDrawer, {
+      attachTo: document.body,
+      props: {
+        open: true,
+        loading: false,
+        error: '',
+        run: {
+          id: 'run-memory-loop',
+          project_id: 'project-1',
+          goal: '续写第3章并沉淀写后记忆',
+          status: 'success',
+          entrypoint: 'dialog_auto_plan',
+          input: {},
+          output: null,
+          error: null,
+          steps: [
+            {
+              id: 'step-retrieval',
+              run_id: 'run-memory-loop',
+              project_id: 'project-1',
+              step_index: 1,
+              tool_name: 'search_agent_retrieval_context',
+              status: 'success',
+              input: { query: '雾港追踪 第3章' },
+              output: {
+                status: 'completed',
+                summary: { total: 3, returned: 2 },
+                items: [
+                  {
+                    source_type: 'chapter',
+                    source_ref: 'chapter:2',
+                    title: '雾港追踪',
+                    chapter_index: 2,
+                    score: 0.91,
+                    snippet: '主角在码头发现伪造货单。',
+                  },
+                ],
+                recommended_next_tools: ['summarize_longform_context'],
+                memory_provenance: {
+                  status: 'available',
+                  recovery: { next_tools: [] },
+                },
+              },
+            },
+            {
+              id: 'step-post-memory',
+              run_id: 'run-memory-loop',
+              project_id: 'project-1',
+              step_index: 5,
+              tool_name: 'plan_post_chapter_memory_capture',
+              status: 'success',
+              input: { chapter_index: 3 },
+              output: {
+                status: 'completed',
+                chapter_index: 3,
+                capture_status: 'ready',
+                summary: {
+                  chapter_available: true,
+                  review_step_count: 2,
+                  candidate_count: 2,
+                },
+                candidates: [
+                  { memory_type: 'writing_pattern', title: '第3章写作沉淀：雾港追踪' },
+                  { memory_type: 'self_optimization_lesson', title: '第3章审稿经验：雾港追踪' },
+                ],
+                recommended_next_tools: ['prepare_record_agent_knowledge_base_candidate'],
+                memory_provenance: {
+                  status: 'available',
+                  recovery: {
+                    status: 'action_required',
+                    next_tools: ['prepare_record_agent_knowledge_base_candidate'],
+                  },
+                },
+              },
+            },
+          ],
+        },
+      },
+    })
+
+    const text = document.body.textContent || ''
+    expect(text).toContain('Agent 记忆闭环')
+    expect(text).toContain('检索证据')
+    expect(text).toContain('返回 2 / 共 3')
+    expect(text).toContain('雾港追踪')
+    expect(text).toContain('第2章')
+    expect(text).toContain('写后记忆')
+    expect(text).toContain('第3章')
+    expect(text).toContain('可写入候选')
+    expect(text).toContain('候选 2')
+    expect(text).toContain('审稿证据 2')
+    expect(text).toContain('prepare_record_agent_knowledge_base_candidate')
+    expect(text).not.toContain('memory_provenance')
+  })
+
   it('emits confirmed recommended followup execution payload when preview has executable tools', async () => {
     const wrapper = mount(AgentRunDrawer, {
       attachTo: document.body,

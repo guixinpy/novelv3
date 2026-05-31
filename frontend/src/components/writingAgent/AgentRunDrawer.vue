@@ -268,6 +268,35 @@ const recommendedFollowupWriteTools = computed(() => {
   const tools = recommendedFollowupState.value.provenance_write_tools
   return Array.isArray(tools) ? tools.filter(isRecord) : []
 })
+const retrievalContextOutput = computed(() => latestToolOutput('search_agent_retrieval_context'))
+const retrievalContextSummary = computed(() => recordValue(retrievalContextOutput.value?.summary))
+const retrievalContextItems = computed(() => recordList(retrievalContextOutput.value?.items))
+const retrievalContextCoverageLabel = computed(() => {
+  const returned = numberValue(retrievalContextSummary.value.returned)
+  const total = numberValue(retrievalContextSummary.value.total)
+  if (returned !== null && total !== null) return `返回 ${returned} / 共 ${total}`
+  if (returned !== null) return `返回 ${returned}`
+  if (total !== null) return `共 ${total}`
+  return ''
+})
+const retrievalPrimarySourceLabel = computed(() => {
+  const item = retrievalContextItems.value[0]
+  if (!item) return ''
+  const title = stringValue(item.title) || stringValue(item.source_ref)
+  const chapter = chapterIndexLabel(item.chapter_index)
+  return [title, chapter].filter(Boolean).join(' · ')
+})
+const retrievalRecommendedTools = computed(() => stringList(retrievalContextOutput.value?.recommended_next_tools))
+const postChapterMemoryOutput = computed(() => latestToolOutput('plan_post_chapter_memory_capture'))
+const postChapterMemorySummary = computed(() => recordValue(postChapterMemoryOutput.value?.summary))
+const postChapterMemoryChapterLabel = computed(() => chapterIndexLabel(postChapterMemoryOutput.value?.chapter_index))
+const postChapterMemoryCaptureStatus = computed(() => stringValue(postChapterMemoryOutput.value?.capture_status))
+const postChapterMemoryCandidateCount = computed(() => numberValue(postChapterMemorySummary.value.candidate_count))
+const postChapterMemoryReviewStepCount = computed(() => numberValue(postChapterMemorySummary.value.review_step_count))
+const postChapterMemoryRecommendedTools = computed(() => stringList(postChapterMemoryOutput.value?.recommended_next_tools))
+const hasMemoryLoopProjection = computed(() => Boolean(
+  retrievalContextOutput.value || postChapterMemoryOutput.value,
+))
 const hasRecommendedFollowupPolicy = computed(() => Boolean(
   recommendedFollowupPreview.value &&
   (recommendedFollowupTools.value.length || recommendedFollowupWriteTools.value.length),
@@ -496,8 +525,31 @@ function routeUpgradeStatusLabel(status: unknown) {
   return value || '未知'
 }
 
+function postChapterMemoryCaptureStatusLabel(status: unknown) {
+  const value = stringValue(status)
+  if (value === 'ready') return '可写入候选'
+  if (value === 'needs_review') return '需要审稿'
+  if (value === 'missing_chapter') return '缺少章节'
+  return value || '未知'
+}
+
 function recordValue(value: unknown): Record<string, unknown> {
   return isRecord(value) ? value : {}
+}
+
+function recordList(value: unknown) {
+  if (!Array.isArray(value)) return []
+  return value.filter(isRecord)
+}
+
+function latestToolOutput(toolName: string) {
+  for (let index = steps.value.length - 1; index >= 0; index -= 1) {
+    const step = steps.value[index]
+    if (step?.tool_name !== toolName) continue
+    const output = recordValue(step.output)
+    if (Object.keys(output).length) return output
+  }
+  return null
 }
 
 function firstRecommendedRouteApplyCall(output: Record<string, unknown> | null | undefined) {
@@ -805,6 +857,58 @@ function missingDependencyTool(value: Record<string, unknown>) {
         </section>
 
         <section
+          v-if="hasMemoryLoopProjection"
+          class="agent-run-drawer__memory-loop"
+          aria-label="Agent memory loop"
+        >
+          <h4>Agent 记忆闭环</h4>
+          <dl class="agent-run-drawer__facts">
+            <div v-if="retrievalContextCoverageLabel">
+              <dt>检索证据</dt>
+              <dd>{{ retrievalContextCoverageLabel }}</dd>
+            </div>
+            <div v-if="retrievalPrimarySourceLabel">
+              <dt>检索来源</dt>
+              <dd>{{ retrievalPrimarySourceLabel }}</dd>
+            </div>
+            <div v-if="postChapterMemoryOutput">
+              <dt>写后记忆</dt>
+              <dd>{{ postChapterMemoryChapterLabel }} {{ postChapterMemoryCaptureStatusLabel(postChapterMemoryCaptureStatus) }}</dd>
+            </div>
+            <div v-if="postChapterMemoryCandidateCount !== null">
+              <dt>候选</dt>
+              <dd>候选 {{ postChapterMemoryCandidateCount }}</dd>
+            </div>
+            <div v-if="postChapterMemoryReviewStepCount !== null">
+              <dt>审稿</dt>
+              <dd>审稿证据 {{ postChapterMemoryReviewStepCount }}</dd>
+            </div>
+          </dl>
+          <ul
+            v-if="retrievalRecommendedTools.length"
+            class="agent-run-drawer__tools"
+          >
+            <li
+              v-for="tool in retrievalRecommendedTools"
+              :key="`retrieval-next:${tool}`"
+            >
+              {{ tool }}
+            </li>
+          </ul>
+          <ul
+            v-if="postChapterMemoryRecommendedTools.length"
+            class="agent-run-drawer__write-tools"
+          >
+            <li
+              v-for="tool in postChapterMemoryRecommendedTools"
+              :key="`post-memory-next:${tool}`"
+            >
+              {{ tool }}
+            </li>
+          </ul>
+        </section>
+
+        <section
           v-if="hasRecoveryPolicy"
           class="agent-run-drawer__recovery"
           aria-label="Recovery policy"
@@ -1010,6 +1114,7 @@ function missingDependencyTool(value: Record<string, unknown>) {
 
 .agent-run-drawer__summary h4,
 .agent-run-drawer__planner h4,
+.agent-run-drawer__memory-loop h4,
 .agent-run-drawer__recovery h4,
 .agent-run-drawer__followups h4,
 .agent-run-drawer__steps h4 {
@@ -1049,6 +1154,15 @@ function missingDependencyTool(value: Record<string, unknown>) {
 }
 
 .agent-run-drawer__planner {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-secondary);
+}
+
+.agent-run-drawer__memory-loop {
   display: grid;
   gap: var(--space-3);
   padding: var(--space-3);
