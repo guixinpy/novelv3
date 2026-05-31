@@ -79,6 +79,7 @@ def test_agent_core_tool_adapters_live_in_dedicated_module():
         "execute_apply_pending_action_route_approval_opt_in_with_approval",
         "inspect_agent_dialog_control_plane_projection",
         "inspect_agent_intent_projection",
+        "inspect_agent_reference_alignment",
         "inspect_agent_tool_contracts",
         "inspect_agent_command_contracts",
         "inspect_legacy_hermes_action_migration",
@@ -3609,6 +3610,18 @@ def test_tool_executor_exposes_inspect_agent_tool_contracts_adapter_metadata():
     }
 
 
+def test_tool_executor_exposes_inspect_agent_reference_alignment_adapter_metadata():
+    metadata = writing_agent_tool_adapter_metadata("inspect_agent_reference_alignment")
+
+    assert metadata == {
+        "tool_name": "inspect_agent_reference_alignment",
+        "adapter_type": "static",
+        "category": "preflight",
+        "mutability": "read",
+        "handler_name": "_inspect_agent_reference_alignment",
+    }
+
+
 def test_tool_executor_exposes_inspect_agent_command_contracts_adapter_metadata():
     metadata = writing_agent_tool_adapter_metadata("inspect_agent_command_contracts")
 
@@ -4039,6 +4052,51 @@ async def test_tool_executor_handles_inspect_agent_tool_contracts(db_session):
     assert "missing_agent_native_adapter" not in tools_by_name["compress_chapter_to_target"]["gap_codes"]
     assert "output_schema_too_generic" not in tools_by_name["compress_chapter_to_target"]["gap_codes"]
     assert internal_tool_names().issubset(set(tools_by_name))
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_handles_inspect_agent_reference_alignment(db_session):
+    project = Project(name="Reference Alignment Projection")
+    db_session.add(project)
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-reference"),
+        WritingAgentToolRequest(tool_name="inspect_agent_reference_alignment"),
+    )
+
+    assert result.handled is True
+    assert result.output["status"] == "completed"
+    assert result.output["summary"]["source_count"] == 3
+    assert result.output["summary"]["decision_count"] >= 9
+    assert result.output["summary"]["capability_area_count"] >= 9
+    assert result.output["source_refs"] == [
+        "references/agent-projects/hermes-agent",
+        "references/agent-projects/openhuman",
+        "references/agent-projects/openclaw",
+    ]
+    pattern_ids = {pattern["pattern_id"] for pattern in result.output["patterns"]}
+    assert {
+        "tool_registry_visible_surface",
+        "subagent_worker_boundary",
+        "permission_audit_gate",
+        "long_memory_context_resume",
+    }.issubset(pattern_ids)
+    capability_areas = {item["area"] for item in result.output["capability_alignment"]}
+    assert {
+        "Hermes/dialog",
+        "Athena/world_model",
+        "retrieval",
+        "knowledge_base",
+        "review",
+        "task_queue",
+        "trace",
+        "frontend",
+        "long_memory",
+    }.issubset(capability_areas)
+    assert "inspect_agent_tool_contracts" in result.output["recommended_next_tools"]
+    assert "inspect_agent_write_gate_coverage" in result.output["recommended_next_tools"]
+    assert result.output["trace"]["adapter_backed_tool_count"] >= 1
 
 
 @pytest.mark.asyncio

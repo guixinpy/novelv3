@@ -46,6 +46,7 @@ def test_agent_core_tool_descriptors_live_in_dedicated_module():
         "execute_apply_pending_action_route_approval_opt_in_with_approval",
         "inspect_agent_dialog_control_plane_projection",
         "inspect_agent_intent_projection",
+        "inspect_agent_reference_alignment",
         "inspect_agent_tool_contracts",
         "inspect_agent_command_contracts",
         "inspect_legacy_hermes_action_migration",
@@ -378,6 +379,7 @@ def test_agent_tool_registry_has_unique_names_and_contracts():
         "prepare_longform_chapter_batch_preflight",
         "execute_longform_chapter_batch_preflight_with_approval",
         "inspect_agent_job_projection",
+        "inspect_agent_reference_alignment",
         "inspect_agent_tool_contracts",
         "inspect_agent_write_gate_coverage",
         "inspect_agent_mutation_fingerprints",
@@ -417,6 +419,7 @@ def test_agent_tool_registry_has_unique_names_and_contracts():
     assert target_type_for_tool("prepare_longform_chapter_batch_preflight") == "background_task_checkpoint_approval"
     assert target_type_for_tool("execute_longform_chapter_batch_preflight_with_approval") == "background_task_checkpoint"
     assert target_type_for_tool("inspect_agent_job_projection") == "agent_job_projection"
+    assert target_type_for_tool("inspect_agent_reference_alignment") == "agent_reference_alignment"
     assert target_type_for_tool("inspect_agent_tool_contracts") == "agent_tool_contracts"
     assert target_type_for_tool("inspect_agent_write_gate_coverage") == "agent_write_gate_coverage"
     assert target_type_for_tool("inspect_agent_mutation_fingerprints") == "agent_mutation_fingerprint"
@@ -973,6 +976,21 @@ def test_agent_tool_registry_includes_inspect_agent_tool_contracts():
     assert descriptor.input_schema["properties"]["include_gap_details"]["type"] == "boolean"
     assert "inspect_agent_tool_contracts" in allowed_tool_names()
     assert "inspect_agent_tool_contracts" in non_blocking_report_tool_names()
+
+
+def test_agent_tool_registry_includes_inspect_agent_reference_alignment():
+    descriptor = get_agent_tool_descriptor("inspect_agent_reference_alignment")
+
+    assert descriptor is not None
+    assert descriptor.internal is True
+    assert descriptor.non_blocking_report is True
+    assert descriptor.category == "preflight"
+    assert descriptor.target_type == "agent_reference_alignment"
+    assert descriptor.output_schema["properties"]["patterns"]["type"] == "array"
+    assert descriptor.output_schema["properties"]["capability_alignment"]["type"] == "array"
+    assert descriptor.output_schema["properties"]["recommended_next_tools"]["type"] == "array"
+    assert "inspect_agent_reference_alignment" in allowed_tool_names()
+    assert "inspect_agent_reference_alignment" in non_blocking_report_tool_names()
 
 
 def test_agent_tool_registry_includes_inspect_agent_command_contracts():

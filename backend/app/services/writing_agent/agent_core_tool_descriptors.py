@@ -80,6 +80,18 @@ _AGENT_CONTROL_PLANE_READINESS_OUTPUT = object_schema(
         "trace": {"type": "object"},
     }
 )
+_AGENT_REFERENCE_ALIGNMENT_OUTPUT = object_schema(
+    {
+        "status": {"type": "string"},
+        "version": {"type": "string"},
+        "source_refs": {"type": "array"},
+        "summary": {"type": "object"},
+        "patterns": {"type": "array"},
+        "capability_alignment": {"type": "array"},
+        "recommended_next_tools": {"type": "array"},
+        "trace": {"type": "object"},
+    }
+)
 
 
 AGENT_CORE_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
@@ -607,6 +619,19 @@ AGENT_CORE_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
             }
         ),
         target_type="agent_tool_plan",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=11,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
+        name="inspect_agent_reference_alignment",
+        module="writing_agent",
+        category="preflight",
+        description="只读输出三个本地参考 Agent 项目的可复用模式、novelv3 已采纳决策和下一步工具建议。",
+        input_schema=object_schema(),
+        output_schema=_AGENT_REFERENCE_ALIGNMENT_OUTPUT,
+        target_type="agent_reference_alignment",
         internal=True,
         non_blocking_report=True,
         sort_key=11,

@@ -147,6 +147,12 @@ def build_agent_core_tool_adapters(
             category="preflight",
             mutability="read",
         ),
+        "inspect_agent_reference_alignment": WritingAgentToolAdapter(
+            "inspect_agent_reference_alignment",
+            _inspect_agent_reference_alignment(adapter_metadata_by_name_provider),
+            category="preflight",
+            mutability="read",
+        ),
         "inspect_agent_tool_contracts": WritingAgentToolAdapter(
             "inspect_agent_tool_contracts",
             _inspect_agent_tool_contracts(adapter_metadata_by_name_provider),
@@ -739,6 +745,23 @@ def _inspect_agent_tool_contracts(
 
     inspect_agent_tool_contracts_adapter.__name__ = "_inspect_agent_tool_contracts"
     return inspect_agent_tool_contracts_adapter
+
+
+def _inspect_agent_reference_alignment(
+    adapter_metadata_by_name_provider: AdapterMetadataByNameProvider,
+) -> Callable[[WritingAgentToolContext, WritingAgentToolRequest], dict[str, Any]]:
+    def inspect_agent_reference_alignment_adapter(
+        context: WritingAgentToolContext,
+        tool: WritingAgentToolRequest,
+    ) -> dict[str, Any]:
+        from app.services.writing_agent.reference_pattern_projection import inspect_reference_pattern_alignment
+
+        adapter_metadata = dict(adapter_metadata_by_name_provider())
+        adapter_metadata["preflight_writing"] = _preflight_writing_adapter_metadata()
+        return inspect_reference_pattern_alignment(adapter_metadata_by_name=adapter_metadata)
+
+    inspect_agent_reference_alignment_adapter.__name__ = "_inspect_agent_reference_alignment"
+    return inspect_agent_reference_alignment_adapter
 
 
 def _inspect_agent_command_contracts(
