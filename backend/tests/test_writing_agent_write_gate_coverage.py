@@ -188,15 +188,28 @@ def test_write_gate_coverage_marks_generate_chapter_direct_calls_as_approval_red
     assert generate_tool["recommended_action"] == "route_direct_calls_to_approval_executor"
 
 
-def test_write_gate_coverage_marks_expand_outline_window_as_direct_confirmation_guarded():
+def test_write_gate_coverage_marks_expand_outline_window_as_approval_redirected():
     output = inspect_agent_write_gate_coverage(adapter_metadata_by_name=_adapter_metadata())
-    expand_tool = _tools_by_name(output)["expand_outline_window"]
+    tools_by_name = _tools_by_name(output)
 
-    assert expand_tool["agent_plan_gate_status"] == "missing_agent_plan_gate"
+    execute_tool = tools_by_name["execute_expand_outline_window_with_approval"]
+    assert execute_tool["agent_plan_gate_status"] == "enforced"
+    assert execute_tool["gate_version"] == "phase230.outline_window_expansion_agent_plan_approval.v1"
+    assert execute_tool["gate_type"] == "stateless_agent_plan_approval"
+    assert execute_tool["risk_level"] == "low"
+    assert execute_tool["confirmation_fields"] == ["approval_contract_hash", "confirm_execute"]
+
+    expand_tool = tools_by_name["expand_outline_window"]
+    assert expand_tool["agent_plan_gate_status"] == "indirect_agent_gate_available"
+    assert expand_tool["direct_write_policy"] == "approval_required_redirect"
+    assert expand_tool["direct_write_blocked"] is True
     assert expand_tool["direct_confirmation_guard"] is True
     assert expand_tool["confirmation_fields"] == ["confirm_execute"]
-    assert expand_tool["risk_level"] == "medium"
-    assert expand_tool["recommended_action"] == "promote_confirm_guard_to_agent_plan_approval"
+    assert expand_tool["risk_level"] == "low"
+    assert expand_tool["recommended_action"] == "route_direct_calls_to_approval_executor"
+    assert {item["consumer_tool"] for item in expand_tool["indirect_coverage"]} == {
+        "execute_expand_outline_window_with_approval"
+    }
 
 
 def test_write_gate_coverage_marks_pre_chapter_generate_tools_as_indirectly_covered_direct_gaps():
@@ -461,6 +474,21 @@ def _adapter_metadata() -> dict[str, dict]:
             "category": "generation",
             "mutability": "write",
             "handler_name": "_execute_generate_chapter_with_approval",
+        },
+        "expand_outline_window": {
+            "tool_name": "expand_outline_window",
+            "adapter_type": "static",
+            "category": "generation",
+            "mutability": "guarded_write",
+            "handler_name": "_expand_outline_window",
+            "write_policy": "approval_required_redirect",
+        },
+        "execute_expand_outline_window_with_approval": {
+            "tool_name": "execute_expand_outline_window_with_approval",
+            "adapter_type": "static",
+            "category": "generation",
+            "mutability": "write",
+            "handler_name": "_execute_expand_outline_window_with_approval",
         },
         "generate_setup": {
             "tool_name": "generate_setup",

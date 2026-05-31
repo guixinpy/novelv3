@@ -168,6 +168,26 @@ def test_build_mutation_fingerprint_covers_longform_batch_after_review_route():
     assert approved["components"]["target_id"] == direct["components"]["target_id"]
 
 
+def test_build_mutation_fingerprint_covers_outline_window_expansion():
+    direct = build_mutation_fingerprint(
+        "project-1",
+        "expand_outline_window",
+        {"start_chapter": "3", "end_chapter": 5},
+    )
+    approved = build_mutation_fingerprint(
+        "project-1",
+        "execute_expand_outline_window_with_approval",
+        {"start_chapter": 3, "end_chapter": "5"},
+    )
+
+    assert direct["status"] == "ready"
+    assert direct["mutating"] is True
+    assert direct["components"]["target_type"] == "outline"
+    assert direct["components"]["target_id"] == "outline_window:project-1:chapters:3-5"
+    assert approved["status"] == "ready"
+    assert approved["components"]["target_id"] == direct["components"]["target_id"]
+
+
 def test_build_mutation_fingerprint_covers_planner_revision_patch():
     first = build_mutation_fingerprint(
         "project-1",

@@ -99,6 +99,8 @@ def test_agent_generation_tool_descriptors_live_in_dedicated_module():
 
     assert names == [
         "expand_outline_window",
+        "prepare_expand_outline_window_execution",
+        "execute_expand_outline_window_with_approval",
         "generate_chapter",
         "prepare_generate_chapter_execution",
         "execute_generate_chapter_with_approval",
@@ -107,6 +109,9 @@ def test_agent_generation_tool_descriptors_live_in_dedicated_module():
         "execute_backfill_outline_gaps_with_approval",
     ]
     assert {descriptor.category for descriptor in AGENT_GENERATION_TOOL_DESCRIPTORS} == {"generation", "maintenance"}
+    assert target_type_for_tool("expand_outline_window") == "outline"
+    assert target_type_for_tool("prepare_expand_outline_window_execution") == "outline_window_expansion_approval"
+    assert target_type_for_tool("execute_expand_outline_window_with_approval") == "outline"
     assert target_type_for_tool("generate_chapter") == "chapter"
     assert target_type_for_tool("prepare_generate_chapter_execution") == "chapter_generation_approval"
     assert target_type_for_tool("execute_generate_chapter_with_approval") == "chapter"
@@ -114,6 +119,7 @@ def test_agent_generation_tool_descriptors_live_in_dedicated_module():
     assert target_type_for_tool("prepare_backfill_outline_gaps_execution") == "outline_backfill_approval"
     assert target_type_for_tool("execute_backfill_outline_gaps_with_approval") == "outline"
     assert "prepare_generate_chapter_execution" in non_blocking_report_tool_names()
+    assert "prepare_expand_outline_window_execution" in non_blocking_report_tool_names()
     assert "prepare_backfill_outline_gaps_execution" in non_blocking_report_tool_names()
     assert "execute_generate_chapter_with_approval" not in non_blocking_report_tool_names()
 
@@ -599,6 +605,32 @@ def test_agent_tool_registry_includes_approved_outline_generation_tools():
     assert prepare_descriptor.non_blocking_report is True
     assert prepare_descriptor.category == "generation"
     assert prepare_descriptor.target_type == "outline_generation_approval"
+    assert prepare_descriptor.output_schema["properties"]["agent_plan_approval_contract_hash"]["type"] == "string"
+
+    assert execute_descriptor is not None
+    assert execute_descriptor.internal is True
+    assert execute_descriptor.non_blocking_report is False
+    assert execute_descriptor.category == "generation"
+    assert execute_descriptor.target_type == "outline"
+    assert set(execute_descriptor.input_schema["required"]) == {
+        "confirm_execute",
+        "approval_contract_hash",
+        "approval_contract",
+    }
+    assert execute_descriptor.input_schema["properties"]["confirm_execute"]["type"] == "boolean"
+    assert execute_descriptor.output_schema["properties"]["agent_plan_approval_verification"]["type"] == "object"
+    assert execute_descriptor.output_schema["properties"]["execution_resource_binding"]["type"] == "object"
+
+
+def test_agent_tool_registry_includes_approved_outline_window_expansion_tools():
+    prepare_descriptor = get_agent_tool_descriptor("prepare_expand_outline_window_execution")
+    execute_descriptor = get_agent_tool_descriptor("execute_expand_outline_window_with_approval")
+
+    assert prepare_descriptor is not None
+    assert prepare_descriptor.internal is True
+    assert prepare_descriptor.non_blocking_report is True
+    assert prepare_descriptor.category == "generation"
+    assert prepare_descriptor.target_type == "outline_window_expansion_approval"
     assert prepare_descriptor.output_schema["properties"]["agent_plan_approval_contract_hash"]["type"] == "string"
 
     assert execute_descriptor is not None

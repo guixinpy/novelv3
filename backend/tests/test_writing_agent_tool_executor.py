@@ -165,6 +165,8 @@ def test_agent_generation_tool_adapters_live_in_dedicated_module():
         "prepare_generate_chapter_execution",
         "execute_generate_chapter_with_approval",
         "expand_outline_window",
+        "prepare_expand_outline_window_execution",
+        "execute_expand_outline_window_with_approval",
         "backfill_outline_gaps",
         "prepare_backfill_outline_gaps_execution",
         "execute_backfill_outline_gaps_with_approval",
@@ -173,7 +175,10 @@ def test_agent_generation_tool_adapters_live_in_dedicated_module():
     assert adapters["generate_chapter"].write_policy == "approval_required_redirect"
     assert adapters["prepare_generate_chapter_execution"].mutability == "read"
     assert adapters["execute_generate_chapter_with_approval"].mutability == "write"
-    assert adapters["expand_outline_window"].mutability == "write"
+    assert adapters["expand_outline_window"].mutability == "guarded_write"
+    assert adapters["expand_outline_window"].write_policy == "approval_required_redirect"
+    assert adapters["prepare_expand_outline_window_execution"].mutability == "read"
+    assert adapters["execute_expand_outline_window_with_approval"].mutability == "write"
     assert adapters["backfill_outline_gaps"].mutability == "guarded_write"
     assert adapters["backfill_outline_gaps"].write_policy == "approval_required_redirect"
     assert adapters["backfill_outline_gaps"].handler.__name__ == "_backfill_outline_gaps"
@@ -3213,6 +3218,8 @@ def test_tool_executor_static_adapter_names_are_report_or_agent_native_tools():
         "execute_seed_continuity_anchor_proposals_with_approval",
         "analyze_chapter_world_model",
         "expand_outline_window",
+        "prepare_expand_outline_window_execution",
+        "execute_expand_outline_window_with_approval",
         "execute_longform_chapter_batch_preflight",
         "prepare_longform_chapter_batch_preflight",
         "execute_longform_chapter_batch_preflight_with_approval",
@@ -3680,8 +3687,9 @@ def test_tool_executor_exposes_expand_outline_window_adapter_metadata():
         "tool_name": "expand_outline_window",
         "adapter_type": "static",
         "category": "generation",
-        "mutability": "write",
+        "mutability": "guarded_write",
         "handler_name": "_expand_outline_window",
+        "write_policy": "approval_required_redirect",
     }
 
 
@@ -6067,7 +6075,7 @@ async def test_tool_executor_dispatches_expand_outline_window_adapter(db_session
         }
 
     monkeypatch.setattr(
-        "app.services.writing_agent.outline_window_tool.expand_outline_window_tool",
+        "app.services.writing_agent.outline_window_expansion_execution.expand_outline_window_tool",
         fake_outline_window_tool,
     )
 
@@ -6083,17 +6091,34 @@ async def test_tool_executor_dispatches_expand_outline_window_adapter(db_session
     assert result.handled is True
     assert result.output is not None
     assert result.output["status"] == "blocked"
-    assert result.output["reason"] == "confirmation_required"
+    assert result.output["reason"] == "approval_required_before_write"
+    assert result.output["required_approval"]["prepare_tool"] == "prepare_expand_outline_window_execution"
+    assert result.output["required_approval"]["execute_tool"] == "execute_expand_outline_window_with_approval"
     assert result.output["side_effects"] == {"executed": [], "skipped": ["expand_outline_window"]}
-    assert result.output["required_confirmation"] == {"confirm_execute": True}
     assert calls == []
+
+    prepared = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(
+            tool_name="prepare_expand_outline_window_execution",
+            params={"chapter_index": "3"},
+        ),
+    )
+
+    assert prepared.handled is True
+    assert prepared.output["status"] == "approval_required"
 
     confirmed = await execute_writing_agent_tool(
         WritingAgentToolContext(db=db_session, project_id=project.id),
         WritingAgentToolRequest(
-            tool_name="expand_outline_window",
+            tool_name="execute_expand_outline_window_with_approval",
             command_args="补齐第3章",
-            params={"chapter_index": "3", "confirm_execute": True},
+            params={
+                "chapter_index": "3",
+                "confirm_execute": True,
+                "approval_contract_hash": prepared.output["agent_plan_approval_contract_hash"],
+                "approval_contract": prepared.output["agent_plan_approval_contract"],
+            },
         ),
     )
 
@@ -6102,6 +6127,7 @@ async def test_tool_executor_dispatches_expand_outline_window_adapter(db_session
     assert confirmed.output["status"] == "completed"
     assert confirmed.output["start_chapter"] == 3
     assert confirmed.output["end_chapter"] == 3
+    assert confirmed.output["agent_plan_approval_verification"]["status"] == "ready"
     assert calls == [(project.id, 3, 3, "补齐第3章")]
 
 

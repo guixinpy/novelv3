@@ -20,7 +20,9 @@ from app.services.writing_agent.tool_registry import allowed_tool_names, build_a
 RECOVERY_PREVIEW_VERSION = "phase50.recovery_preview.v1"
 MAINTENANCE_REPAIR_PREPARE_TOOL = "prepare_repair_longform_maintenance"
 LEGACY_MAINTENANCE_REPAIR_TOOL = "repair_longform_maintenance"
-SAFE_RECOVERY_EXECUTE_TOOLS = {"expand_outline_window", "backfill_outline_gaps"}
+OUTLINE_WINDOW_EXPAND_EXECUTE_TOOL = "execute_expand_outline_window_with_approval"
+LEGACY_OUTLINE_WINDOW_EXPAND_TOOL = "expand_outline_window"
+SAFE_RECOVERY_EXECUTE_TOOLS = {OUTLINE_WINDOW_EXPAND_EXECUTE_TOOL, "backfill_outline_gaps"}
 
 
 def build_recovery_tool_plan(db: Session, project_id: str, run_id: str | None) -> dict[str, Any]:
@@ -58,7 +60,7 @@ def build_recovery_tool_plan(db: Session, project_id: str, run_id: str | None) -
             "tools": [],
             "trace": {"selected_tools": [], "rejected_tools": [{"reason": "no_recommended_recovery"}]},
         }
-    recovery = _normalize_recovery(recovery)
+    recovery = _normalize_recovery(db, project_id, recovery)
 
     tools = _tool_requests_from_recovery(recovery)
     selected_tools = [str(tool.get("tool_name") or "") for tool in tools]
@@ -430,8 +432,11 @@ def _tool_request_from_recovery(recovery: dict[str, Any]) -> dict[str, Any] | No
     return request
 
 
-def _normalize_recovery(recovery: dict[str, Any]) -> dict[str, Any]:
-    if str(recovery.get("next_tool") or "").strip() != LEGACY_MAINTENANCE_REPAIR_TOOL:
+def _normalize_recovery(db: Session, project_id: str, recovery: dict[str, Any]) -> dict[str, Any]:
+    next_tool = str(recovery.get("next_tool") or "").strip()
+    if next_tool == LEGACY_OUTLINE_WINDOW_EXPAND_TOOL:
+        return _normalize_outline_window_expansion_recovery(db, project_id, recovery)
+    if next_tool != LEGACY_MAINTENANCE_REPAIR_TOOL:
         return recovery
     normalized = dict(recovery)
     continuation_tools = recovery.get("continuation_tools") if isinstance(recovery.get("continuation_tools"), list) else []
@@ -443,6 +448,43 @@ def _normalize_recovery(recovery: dict[str, Any]) -> dict[str, Any]:
     normalized["next_tool"] = MAINTENANCE_REPAIR_PREPARE_TOOL
     normalized["next_params"] = next_params
     normalized["continuation_tools"] = []
+    return normalized
+
+
+def _normalize_outline_window_expansion_recovery(
+    db: Session,
+    project_id: str,
+    recovery: dict[str, Any],
+) -> dict[str, Any]:
+    next_params = recovery.get("next_params") if isinstance(recovery.get("next_params"), dict) else {}
+    start_chapter = _positive_int(next_params.get("start_chapter") or next_params.get("chapter_index"))
+    end_chapter = _positive_int(next_params.get("end_chapter") or start_chapter)
+    if start_chapter is None or end_chapter is None or end_chapter < start_chapter:
+        return recovery
+
+    from app.services.writing_agent.outline_window_expansion_execution import (
+        prepare_expand_outline_window_execution,
+    )
+
+    prepared = prepare_expand_outline_window_execution(
+        db,
+        project_id,
+        start_chapter=start_chapter,
+        end_chapter=end_chapter,
+    )
+    if prepared.get("status") != "approval_required":
+        return recovery
+
+    normalized = dict(recovery)
+    normalized["legacy_next_tool"] = LEGACY_OUTLINE_WINDOW_EXPAND_TOOL
+    normalized["next_tool"] = OUTLINE_WINDOW_EXPAND_EXECUTE_TOOL
+    normalized["next_params"] = {
+        "start_chapter": start_chapter,
+        "end_chapter": end_chapter,
+        "confirm_execute": True,
+        "approval_contract_hash": prepared["agent_plan_approval_contract_hash"],
+        "approval_contract": prepared["agent_plan_approval_contract"],
+    }
     return normalized
 
 

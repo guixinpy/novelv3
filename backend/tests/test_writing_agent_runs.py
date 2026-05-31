@@ -1283,10 +1283,14 @@ def test_agent_run_can_plan_recovery_tools_from_blocked_run(client, db_session):
     assert output["can_execute"] is True
     assert output["requires_confirmation"] is True
     assert output["plan_hash"]
-    assert output["recovery"]["next_tool"] == "expand_outline_window"
-    assert output["tools"][0]["tool_name"] == "expand_outline_window"
-    assert output["tools"][0]["params"] == {"start_chapter": 3, "end_chapter": 3}
-    assert output["trace"]["selected_tools"] == ["expand_outline_window"]
+    assert output["recovery"]["legacy_next_tool"] == "expand_outline_window"
+    assert output["recovery"]["next_tool"] == "execute_expand_outline_window_with_approval"
+    assert output["tools"][0]["tool_name"] == "execute_expand_outline_window_with_approval"
+    assert output["tools"][0]["params"]["start_chapter"] == 3
+    assert output["tools"][0]["params"]["end_chapter"] == 3
+    assert output["tools"][0]["params"]["confirm_execute"] is True
+    assert output["tools"][0]["params"]["approval_contract_hash"].startswith("approval:")
+    assert output["trace"]["selected_tools"] == ["execute_expand_outline_window_with_approval"]
 
 
 def test_agent_run_recovery_plan_redirects_legacy_longform_repair_to_prepare(client, db_session):
@@ -1377,7 +1381,7 @@ def test_agent_run_auto_plan_previews_recovery_tool_plan_by_default(client, db_s
     assert preview["plan_hash"]
     assert preview["can_execute"] is True
     assert preview["preview_only"] is True
-    assert preview["tools"][0]["tool_name"] == "expand_outline_window"
+    assert preview["tools"][0]["tool_name"] == "execute_expand_outline_window_with_approval"
 
 
 def test_agent_run_auto_plan_recovers_latest_blocked_run_from_goal(client, db_session):
@@ -1490,8 +1494,9 @@ def test_agent_run_auto_plan_executes_recovery_after_hash_confirmation(client, d
     assert payload["input"]["planner"]["mode"] == "execute"
     assert payload["input"]["planner"]["plan_hash"] == plan_hash
     assert payload["input"]["planner"]["execution_policy"]["confirmed"] is True
-    assert payload["input"]["tools"][0]["tool_name"] == "expand_outline_window"
-    assert [step["tool_name"] for step in payload["steps"]] == ["expand_outline_window"]
+    assert payload["input"]["tools"][0]["tool_name"] == "execute_expand_outline_window_with_approval"
+    assert [step["tool_name"] for step in payload["steps"]] == ["execute_expand_outline_window_with_approval"]
+    assert payload["steps"][0]["output"]["agent_plan_approval_verification"]["status"] == "ready"
 
 
 def test_agent_run_auto_plan_rejects_recovery_execute_hash_mismatch(client, db_session):
@@ -8674,6 +8679,11 @@ def test_agent_expand_outline_window_adds_missing_outline_then_preflight_ready(
             }
         ],
     }
+    from app.services.writing_agent.outline_window_expansion_execution import (
+        prepare_expand_outline_window_execution,
+    )
+
+    prepared = prepare_expand_outline_window_execution(db_session, project.id, start_chapter=3, end_chapter=3)
 
     response = client.post(
         f"/api/v1/projects/{project.id}/agent-runs",
@@ -8681,12 +8691,14 @@ def test_agent_expand_outline_window_adds_missing_outline_then_preflight_ready(
             "goal": "补齐第3章大纲并检查可写性",
             "tools": [
                 {
-                    "tool_name": "expand_outline_window",
+                    "tool_name": "execute_expand_outline_window_with_approval",
                     "params": {
                         "start_chapter": 3,
                         "end_chapter": 3,
                         "command_args": "补齐第3章",
                         "confirm_execute": True,
+                        "approval_contract_hash": prepared["agent_plan_approval_contract_hash"],
+                        "approval_contract": prepared["agent_plan_approval_contract"],
                     },
                 },
                 {"tool_name": "preflight_writing", "params": {"chapter_index": 3}},
@@ -8697,8 +8709,9 @@ def test_agent_expand_outline_window_adds_missing_outline_then_preflight_ready(
     payload = response.json()
     assert response.status_code == 200
     assert payload["status"] == "success"
-    assert payload["steps"][0]["tool_name"] == "expand_outline_window"
+    assert payload["steps"][0]["tool_name"] == "execute_expand_outline_window_with_approval"
     assert payload["steps"][0]["output"]["added_chapter_count"] == 1
+    assert payload["steps"][0]["output"]["agent_plan_approval_verification"]["status"] == "ready"
     assert payload["steps"][1]["output"]["status"] == "ready"
     outline = db_session.query(Outline).filter(Outline.project_id == project.id).one()
     assert [chapter["chapter_index"] for chapter in outline.chapters] == [1, 2, 3]

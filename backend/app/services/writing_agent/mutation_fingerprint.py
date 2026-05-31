@@ -16,6 +16,8 @@ _KNOWN_MUTATING_TOOLS = {
     "generate_outline",
     "generate_chapter",
     "generate_chapter_range",
+    "expand_outline_window",
+    "execute_expand_outline_window_with_approval",
     "import_setup_world_model",
     "analyze_chapter_world_model",
     "backfill_outline_gaps",
@@ -157,6 +159,18 @@ def _target_for_tool(project_id: str, tool_name: str, params: dict[str, Any]) ->
         if start is None or end is None or end < start:
             return _blocked("chapter_range", "missing_target", "generate_chapter_range requires a valid start/end range")
         return _ready("chapter_range", f"chapters:{start}-{end}")
+
+    if tool_name in {"expand_outline_window", "execute_expand_outline_window_with_approval"}:
+        project_target = _clean_string(project_id)
+        start = _positive_int(params.get("start_chapter") or params.get("chapter_index"))
+        end = _positive_int(params.get("end_chapter") or start)
+        if not project_target or start is None or end is None or end < start:
+            return _blocked(
+                "outline",
+                "missing_target",
+                f"{tool_name} requires project_id and a valid start/end chapter window",
+            )
+        return _ready("outline", f"outline_window:{project_target}:chapters:{start}-{end}")
 
     if tool_name == "import_setup_world_model":
         project_target = _clean_string(project_id)

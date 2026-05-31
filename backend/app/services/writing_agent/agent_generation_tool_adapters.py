@@ -39,6 +39,19 @@ def build_agent_generation_tool_adapters(
             "expand_outline_window",
             _expand_outline_window,
             category="generation",
+            mutability="guarded_write",
+            write_policy="approval_required_redirect",
+        ),
+        "prepare_expand_outline_window_execution": WritingAgentToolAdapter(
+            "prepare_expand_outline_window_execution",
+            _prepare_expand_outline_window_execution,
+            category="generation",
+            mutability="read",
+        ),
+        "execute_expand_outline_window_with_approval": WritingAgentToolAdapter(
+            "execute_expand_outline_window_with_approval",
+            _execute_expand_outline_window_with_approval(approval_tool_metadata_provider),
+            category="generation",
             mutability="write",
         ),
         "backfill_outline_gaps": WritingAgentToolAdapter(
@@ -119,25 +132,67 @@ def _execute_generate_chapter_with_approval(
 
 
 async def _expand_outline_window(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
-    from app.services.writing_agent.outline_window_tool import expand_outline_window_tool
-
     start_chapter = int(tool.params.get("start_chapter") or tool.params.get("chapter_index") or 1)
     end_chapter = int(tool.params.get("end_chapter") or start_chapter)
     command_args = str(tool.params.get("command_args") or tool.command_args or "").strip() or None
-    if tool.params.get("confirm_execute") is not True:
-        return _blocked_confirmation_required(
-            context.project_id,
-            "expand_outline_window",
-            target_type="outline",
-            extra={"start_chapter": start_chapter, "end_chapter": end_chapter},
-        )
-    return await expand_outline_window_tool(
+    return approval_required_redirect(
+        project_id=context.project_id,
+        tool_name="expand_outline_window",
+        target_type="outline",
+        prepare_tool="prepare_expand_outline_window_execution",
+        execute_tool="execute_expand_outline_window_with_approval",
+        command_args=command_args,
+        extra={"start_chapter": start_chapter, "end_chapter": end_chapter},
+    )
+
+
+def _prepare_expand_outline_window_execution(
+    context: WritingAgentToolContext,
+    tool: WritingAgentToolRequest,
+) -> dict[str, Any]:
+    from app.services.writing_agent.outline_window_expansion_execution import (
+        prepare_expand_outline_window_execution,
+    )
+
+    start_chapter = int(tool.params.get("start_chapter") or tool.params.get("chapter_index") or 1)
+    end_chapter = int(tool.params.get("end_chapter") or start_chapter)
+    return prepare_expand_outline_window_execution(
         context.db,
         context.project_id,
         start_chapter=start_chapter,
         end_chapter=end_chapter,
-        command_args=command_args,
     )
+
+
+def _execute_expand_outline_window_with_approval(
+    approval_tool_metadata_provider: ApprovalToolMetadataProvider,
+) -> Callable[[WritingAgentToolContext, WritingAgentToolRequest], Any]:
+    async def execute_expand_outline_window_with_approval_adapter(
+        context: WritingAgentToolContext,
+        tool: WritingAgentToolRequest,
+    ) -> dict[str, Any]:
+        from app.services.writing_agent.outline_window_expansion_execution import (
+            execute_expand_outline_window_with_approval,
+        )
+
+        start_chapter = int(tool.params.get("start_chapter") or tool.params.get("chapter_index") or 1)
+        end_chapter = int(tool.params.get("end_chapter") or start_chapter)
+        command_args = str(tool.params.get("command_args") or tool.command_args or "").strip() or None
+        approval_contract = tool.params.get("approval_contract")
+        return await execute_expand_outline_window_with_approval(
+            context.db,
+            context.project_id,
+            start_chapter=start_chapter,
+            end_chapter=end_chapter,
+            command_args=command_args,
+            confirm_execute=tool.params.get("confirm_execute") is True,
+            approval_contract_hash=str(tool.params.get("approval_contract_hash") or "").strip() or None,
+            approval_contract=approval_contract if isinstance(approval_contract, dict) else None,
+            approval_tool_metadata_provider=approval_tool_metadata_provider,
+        )
+
+    execute_expand_outline_window_with_approval_adapter.__name__ = "_execute_expand_outline_window_with_approval"
+    return execute_expand_outline_window_with_approval_adapter
 
 
 def _backfill_outline_gaps(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
@@ -199,26 +254,3 @@ def _optional_int(value: object) -> int | None:
     except (TypeError, ValueError):
         return None
     return parsed if parsed and parsed > 0 else None
-
-
-def _blocked_confirmation_required(
-    project_id: str,
-    tool_name: str,
-    *,
-    target_type: str,
-    extra: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    return {
-        "status": "blocked",
-        "reason": "confirmation_required",
-        "project_id": project_id,
-        "target_type": target_type,
-        **(extra or {}),
-        "required_confirmation": {"confirm_execute": True},
-        "side_effects": {"executed": [], "skipped": [tool_name]},
-        "trace": {
-            "selected_tools": [],
-            "rejected_tools": [{"tool_name": tool_name, "reason": "confirmation_required"}],
-            "source": "direct_agent_write_guard",
-        },
-    }
