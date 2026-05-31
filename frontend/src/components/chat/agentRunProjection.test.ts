@@ -69,6 +69,7 @@ describe('agentRunProjection', () => {
 
   it('exposes memory loop action descriptors from a dedicated module', () => {
     expect(MEMORY_LOOP_AGENT_RUN_ACTION_TYPES).toEqual([
+      'inspect_agent_memory_activation_plan',
       'search_agent_retrieval_context',
       'plan_post_chapter_memory_capture',
     ])

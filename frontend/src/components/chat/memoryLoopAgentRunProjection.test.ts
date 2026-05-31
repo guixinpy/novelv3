@@ -16,6 +16,7 @@ function buildMemoryLoopView(
 describe('memoryLoopAgentRunProjection', () => {
   it('exposes memory loop action descriptors', () => {
     expect(MEMORY_LOOP_AGENT_RUN_ACTION_TYPES).toEqual([
+      'inspect_agent_memory_activation_plan',
       'search_agent_retrieval_context',
       'plan_post_chapter_memory_capture',
     ])
@@ -54,6 +55,36 @@ describe('memoryLoopAgentRunProjection', () => {
     expect(JSON.stringify(view)).not.toContain('memory_provenance')
     expect(JSON.stringify(view)).not.toContain('trace-secret')
     expect(JSON.stringify(view)).not.toContain('伪造货单')
+  })
+
+  it('builds memory activation views without leaking prompt blocks or provenance', () => {
+    const view = buildMemoryLoopView('inspect_agent_memory_activation_plan', 'success', {
+      status: 'ready',
+      coverage: {
+        activated_counts: {
+          longform: 2,
+          foreshadowing: 1,
+          knowledge_base: 1,
+          style: 1,
+        },
+      },
+      recommended_next_tools: ['generate_chapter'],
+      prompt_block: '不要直接暴露给聊天卡片的完整写作提示',
+      memory_provenance: {
+        status: 'available',
+        trace_id: 'trace-secret',
+      },
+    })
+
+    expect(view.label).toBe('写前记忆已激活')
+    expect(view.variant).toBe('success')
+    expect(view.detail_items).toContainEqual({ label: '写前激活', value: '已激活' })
+    expect(view.detail_items).toContainEqual({ label: '长篇记忆', value: '2 个' })
+    expect(view.detail_items).toContainEqual({ label: '知识库经验', value: '1 个' })
+    expect(view.detail_items).toContainEqual({ label: '下一步', value: '1 个工具' })
+    expect(JSON.stringify(view)).not.toContain('prompt_block')
+    expect(JSON.stringify(view)).not.toContain('trace-secret')
+    expect(JSON.stringify(view)).not.toContain('完整写作提示')
   })
 
   it('labels knowledge base candidate retrieval sources', () => {

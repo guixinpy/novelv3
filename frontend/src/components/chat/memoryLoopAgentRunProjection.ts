@@ -1,6 +1,7 @@
 import type { ActionResultView } from '../../api/types'
 
 export const MEMORY_LOOP_AGENT_RUN_ACTION_TYPES = [
+  'inspect_agent_memory_activation_plan',
   'search_agent_retrieval_context',
   'plan_post_chapter_memory_capture',
 ] as const
@@ -13,6 +14,10 @@ export interface MemoryLoopAgentRunActionDescriptor {
 }
 
 export const MEMORY_LOOP_AGENT_RUN_ACTION_DESCRIPTORS: Record<MemoryLoopAgentRunActionType, MemoryLoopAgentRunActionDescriptor> = {
+  inspect_agent_memory_activation_plan: {
+    type: 'inspect_agent_memory_activation_plan',
+    buildView: buildMemoryActivationActionResultView,
+  },
   search_agent_retrieval_context: {
     type: 'search_agent_retrieval_context',
     buildView: buildRetrievalContextActionResultView,
@@ -21,6 +26,19 @@ export const MEMORY_LOOP_AGENT_RUN_ACTION_DESCRIPTORS: Record<MemoryLoopAgentRun
     type: 'plan_post_chapter_memory_capture',
     buildView: buildPostChapterMemoryCaptureActionResultView,
   },
+}
+
+function buildMemoryActivationActionResultView(actionResult: Record<string, unknown>, status: string): ActionResultView {
+  const data = recordValue(actionResult.data)
+  const activationStatus = stringValue(data.status) || status
+  const detailItems = memoryActivationDetailItems(data)
+  return {
+    type: 'inspect_agent_memory_activation_plan',
+    status,
+    label: memoryActivationLabel(activationStatus, status),
+    variant: memoryLoopVariant(activationStatus, status),
+    ...(detailItems.length ? { detail_items: detailItems } : {}),
+  }
 }
 
 function buildRetrievalContextActionResultView(actionResult: Record<string, unknown>, status: string): ActionResultView {
@@ -47,6 +65,28 @@ function buildPostChapterMemoryCaptureActionResultView(actionResult: Record<stri
     variant: memoryLoopVariant(captureStatus, status),
     ...(detailItems.length ? { detail_items: detailItems } : {}),
   }
+}
+
+function memoryActivationDetailItems(data: Record<string, unknown>) {
+  const items: Array<{ label: string; value: string }> = []
+  const activationStatus = stringValue(data.status)
+  if (activationStatus) {
+    items.push({ label: '写前激活', value: memoryActivationStatusLabel(activationStatus) })
+  }
+
+  const coverage = recordValue(data.coverage)
+  const counts = Object.keys(recordValue(coverage.activated_counts)).length
+    ? recordValue(coverage.activated_counts)
+    : recordValue(data.activated_counts)
+  pushCountItem(items, '长篇记忆', counts.longform, '个')
+  pushCountItem(items, '伏笔', counts.foreshadowing, '个')
+  pushCountItem(items, '知识库经验', counts.knowledge_base, '个')
+
+  const nextToolCount = recommendedToolCount(data)
+  if (nextToolCount > 0) {
+    items.push({ label: '下一步', value: `${nextToolCount} 个工具` })
+  }
+  return items
 }
 
 function retrievalContextDetailItems(data: Record<string, unknown>) {
@@ -94,6 +134,17 @@ function postChapterMemoryCaptureDetailItems(data: Record<string, unknown>) {
   return items
 }
 
+function memoryActivationLabel(activationStatus: string, actionStatus: string) {
+  if (actionStatus === 'failed' || activationStatus === 'failed') return '写前记忆激活失败'
+  if (actionStatus === 'running' || activationStatus === 'running') return '写前记忆激活中'
+  if (activationStatus === 'ready' || activationStatus === 'completed' || activationStatus === 'success') {
+    return '写前记忆已激活'
+  }
+  if (activationStatus === 'degraded') return '写前记忆降级激活'
+  if (activationStatus === 'blocked') return '写前记忆已阻止'
+  return `写前记忆: ${activationStatus || '未知状态'}`
+}
+
 function retrievalContextLabel(status: string, data: Record<string, unknown>) {
   if (status === 'failed') return '检索证据获取失败'
   if (status === 'running') return '检索证据检索中'
@@ -112,6 +163,14 @@ function postChapterMemoryCaptureLabel(captureStatus: string, actionStatus: stri
   if (captureStatus === 'missing_chapter') return '写后记忆缺少章节'
   if (captureStatus === 'completed' || captureStatus === 'success') return '写后记忆规划已完成'
   return `写后记忆规划: ${captureStatus || '未知状态'}`
+}
+
+function memoryActivationStatusLabel(status: string) {
+  if (status === 'ready') return '已激活'
+  if (status === 'degraded') return '降级激活'
+  if (status === 'blocked') return '已阻止'
+  if (status === 'completed' || status === 'success') return '完成'
+  return status || '未知'
 }
 
 function postChapterMemoryCaptureStatusLabel(status: string) {
