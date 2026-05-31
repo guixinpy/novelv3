@@ -757,6 +757,88 @@ describe('AgentRunDrawer', () => {
     expect(document.body.querySelector('[data-testid="execute-recovery"]')).toBeNull()
   })
 
+  it('renders recommended followup worker dispatch summary', () => {
+    mount(AgentRunDrawer, {
+      attachTo: document.body,
+      props: {
+        open: true,
+        loading: false,
+        error: '',
+        run: {
+          id: 'run-followup-workers',
+          project_id: 'project-1',
+          goal: '预览推荐后继 worker 分派',
+          status: 'success',
+          entrypoint: 'dialog_auto_plan',
+          input: {},
+          output: null,
+          error: null,
+          steps: [
+            {
+              id: 'step-followup-workers',
+              run_id: 'run-followup-workers',
+              project_id: 'project-1',
+              step_index: 1,
+              tool_name: 'plan_recommended_followups',
+              status: 'success',
+              input: {},
+              output: {
+                status: 'completed',
+                recommended_followups: { status: 'recommended' },
+                tools: [
+                  {
+                    tool_name: 'review_chapter_quality',
+                    planner: { agent_profile: 'reviewer_worker' },
+                  },
+                  {
+                    tool_name: 'search_agent_retrieval_context',
+                    planner: { agent_profile: 'retrieval_worker' },
+                  },
+                  {
+                    tool_name: 'plan_post_chapter_memory_capture',
+                    planner: { agent_profile: 'memory_worker' },
+                  },
+                ],
+                worker_dispatch: {
+                  status: 'ready',
+                  summary: {
+                    workers: 3,
+                    planned_tasks: 3,
+                    blocked_tasks: 0,
+                    issues: 0,
+                  },
+                  worker_dispatches: [
+                    {
+                      worker: { name: 'reviewer_worker' },
+                      summary: { planned_tasks: 1, blocked_tasks: 0, issues: 0 },
+                    },
+                    {
+                      worker: { name: 'retrieval_worker' },
+                      summary: { planned_tasks: 1, blocked_tasks: 0, issues: 0 },
+                    },
+                    {
+                      worker: { name: 'memory_worker' },
+                      summary: { planned_tasks: 1, blocked_tasks: 0, issues: 0 },
+                    },
+                  ],
+                },
+              },
+            },
+          ],
+        },
+      },
+    })
+
+    const text = document.body.textContent || ''
+    expect(text).toContain('Worker 分派')
+    expect(text).toContain('3 个 worker')
+    expect(text).toContain('3 个任务')
+    expect(text).toContain('审稿执行者')
+    expect(text).toContain('检索取证者')
+    expect(text).toContain('记忆维护者')
+    expect(text).not.toContain('worker_dispatch')
+  })
+
   it('renders retrieval evidence and post-chapter memory capture loop summaries', () => {
     mount(AgentRunDrawer, {
       attachTo: document.body,

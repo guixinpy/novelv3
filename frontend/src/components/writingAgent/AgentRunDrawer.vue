@@ -264,6 +264,19 @@ const recommendedFollowupTools = computed(() => {
   return Array.isArray(tools) ? tools.filter(isRecord) : []
 })
 const recommendedFollowupExecutionPolicy = computed(() => recordValue(recommendedFollowupPreview.value?.execution_policy))
+const recommendedFollowupWorkerDispatch = computed(() => recordValue(recommendedFollowupPreview.value?.worker_dispatch))
+const recommendedFollowupWorkerDispatchSummary = computed(() => (
+  recordValue(recommendedFollowupWorkerDispatch.value.summary)
+))
+const recommendedFollowupWorkerDispatches = computed(() => (
+  recordList(recommendedFollowupWorkerDispatch.value.worker_dispatches)
+))
+const recommendedFollowupWorkerCount = computed(() => (
+  numberValue(recommendedFollowupWorkerDispatchSummary.value.workers)
+))
+const recommendedFollowupPlannedTaskCount = computed(() => (
+  numberValue(recommendedFollowupWorkerDispatchSummary.value.planned_tasks)
+))
 const recommendedFollowupWriteTools = computed(() => {
   const tools = recommendedFollowupState.value.provenance_write_tools
   return Array.isArray(tools) ? tools.filter(isRecord) : []
@@ -300,7 +313,11 @@ const hasMemoryLoopProjection = computed(() => Boolean(
 ))
 const hasRecommendedFollowupPolicy = computed(() => Boolean(
   recommendedFollowupPreview.value &&
-  (recommendedFollowupTools.value.length || recommendedFollowupWriteTools.value.length),
+  (
+    recommendedFollowupTools.value.length ||
+    recommendedFollowupWriteTools.value.length ||
+    recommendedFollowupWorkerDispatches.value.length
+  ),
 ))
 const runKindLabel = computed(() => {
   if (isRecoveryExecutionRun.value) return '恢复执行'
@@ -429,11 +446,18 @@ function booleanLabel(value: unknown, trueLabel: string, falseLabel: string) {
 function agentProfileLabel(profile: unknown) {
   const displayName = stringValue(agentProfileDefinition.value.display_name)
   if (displayName) return displayName
+  return agentProfileNameLabel(profile)
+}
+
+function agentProfileNameLabel(profile: unknown) {
   const value = stringValue(profile)
   if (value === 'orchestrator') return '编排主控'
   if (value === 'drafting_worker') return '创作执行者'
   if (value === 'reviewer_worker') return '审稿执行者'
+  if (value === 'memory_worker') return '记忆维护者'
+  if (value === 'retrieval_worker') return '检索取证者'
   if (value === 'world_model_worker') return '世界模型执行者'
+  if (value === 'revision_worker') return '修订执行者'
   if (value === 'recovery_worker') return '恢复维护者'
   return value || '未标注'
 }
@@ -623,6 +647,22 @@ function sourceLinesLabel(value: unknown) {
 
 function appliedPatternsLabel(value: unknown) {
   return stringList(value).join(', ')
+}
+
+function workerDispatchName(dispatch: Record<string, unknown>) {
+  return agentProfileNameLabel(recordValue(dispatch.worker).name)
+}
+
+function workerDispatchTaskLabel(dispatch: Record<string, unknown>) {
+  const summary = recordValue(dispatch.summary)
+  const planned = numberValue(summary.planned_tasks)
+  const blocked = numberValue(summary.blocked_tasks)
+  const issues = numberValue(summary.issues)
+  const parts = []
+  if (planned !== null) parts.push(`${planned} 个任务`)
+  if (blocked !== null && blocked > 0) parts.push(`${blocked} 个阻塞`)
+  if (issues !== null && issues > 0) parts.push(`${issues} 个问题`)
+  return parts.join(' · ')
 }
 
 function missingDependencyCode(value: Record<string, unknown>) {
@@ -997,6 +1037,14 @@ function missingDependencyTool(value: Record<string, unknown>) {
               <dt>需确认修复</dt>
               <dd>{{ recommendedFollowupWriteTools.length }} 个</dd>
             </div>
+            <div v-if="recommendedFollowupWorkerCount !== null">
+              <dt>Worker 分派</dt>
+              <dd>{{ recommendedFollowupWorkerCount }} 个 worker</dd>
+            </div>
+            <div v-if="recommendedFollowupPlannedTaskCount !== null">
+              <dt>分派任务</dt>
+              <dd>{{ recommendedFollowupPlannedTaskCount }} 个任务</dd>
+            </div>
           </dl>
           <ul
             v-if="recommendedFollowupTools.length"
@@ -1007,6 +1055,18 @@ function missingDependencyTool(value: Record<string, unknown>) {
               :key="`followup:${tool.tool_name || 'tool'}:${index}`"
             >
               {{ tool.tool_name }}
+            </li>
+          </ul>
+          <ul
+            v-if="recommendedFollowupWorkerDispatches.length"
+            class="agent-run-drawer__worker-dispatches"
+          >
+            <li
+              v-for="(dispatch, index) in recommendedFollowupWorkerDispatches"
+              :key="`worker-dispatch:${workerDispatchName(dispatch)}:${index}`"
+            >
+              <strong>{{ workerDispatchName(dispatch) }}</strong>
+              <span v-if="workerDispatchTaskLabel(dispatch)">{{ workerDispatchTaskLabel(dispatch) }}</span>
             </li>
           </ul>
           <ul
@@ -1209,6 +1269,7 @@ function missingDependencyTool(value: Record<string, unknown>) {
 .agent-run-drawer__blockers,
 .agent-run-drawer__tools,
 .agent-run-drawer__write-tools,
+.agent-run-drawer__worker-dispatches,
 .agent-run-drawer__planner-signals,
 .agent-run-drawer__reference-patterns {
   display: grid;
@@ -1308,6 +1369,27 @@ function missingDependencyTool(value: Record<string, unknown>) {
   color: var(--color-text-primary);
   font-size: var(--text-xs);
   overflow-wrap: anywhere;
+}
+
+.agent-run-drawer__worker-dispatches li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: baseline;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-white);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+
+.agent-run-drawer__worker-dispatches strong {
+  color: var(--color-text-primary);
+}
+
+.agent-run-drawer__worker-dispatches span {
+  color: var(--color-text-secondary);
 }
 
 .agent-run-drawer__actions {
