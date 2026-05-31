@@ -47,6 +47,20 @@ def _summarize_longform_context(context: WritingAgentToolContext, tool: WritingA
     )
 
 
+def _search_agent_retrieval_context(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
+    from app.services.writing_agent.agent_retrieval_context import search_agent_retrieval_context
+
+    return search_agent_retrieval_context(
+        context.db,
+        context.project_id,
+        query=str(tool.params.get("query") or tool.command_args or "").strip(),
+        limit=_optional_int(tool.params.get("limit")),
+        source_type=str(tool.params.get("source_type") or "").strip() or None,
+        max_chapter_index=_optional_int(tool.params.get("max_chapter_index")),
+        candidate_limit=_optional_int(tool.params.get("candidate_limit")),
+    )
+
+
 def _inspect_agent_context_compression_projection(
     context: WritingAgentToolContext,
     tool: WritingAgentToolRequest,
@@ -174,6 +188,12 @@ AGENT_MEMORY_TRACE_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
         "inspect_agent_memory_route",
         _inspect_agent_memory_route,
         category="longform_memory",
+        mutability="read",
+    ),
+    "search_agent_retrieval_context": WritingAgentToolAdapter(
+        "search_agent_retrieval_context",
+        _search_agent_retrieval_context,
+        category="retrieval",
         mutability="read",
     ),
     "summarize_longform_context": WritingAgentToolAdapter(

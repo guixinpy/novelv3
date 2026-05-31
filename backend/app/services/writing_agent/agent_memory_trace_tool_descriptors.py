@@ -94,6 +94,41 @@ AGENT_MEMORY_TRACE_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(
+        name="search_agent_retrieval_context",
+        module="athena_retrieval",
+        category="retrieval",
+        description="只读检索 Athena retrieval 索引，返回章节、长篇记忆和世界事实证据，供 Agent 在生成、审稿和修订前取证。",
+        input_schema=object_schema(
+            {
+                "query": {"type": "string"},
+                "limit": {"type": "integer", "minimum": 1},
+                "source_type": {"type": "string"},
+                "max_chapter_index": {"type": "integer", "minimum": 1},
+                "candidate_limit": {"type": "integer", "minimum": 1},
+            }
+        ),
+        output_schema=object_schema(
+            {
+                "status": {"type": "string"},
+                "version": {"type": "string"},
+                "project_id": {"type": "string"},
+                "query": {"type": "string"},
+                "filters": {"type": "object"},
+                "summary": {"type": "object"},
+                "items": {"type": "array"},
+                "retrieval": {"type": "object"},
+                "recommended_next_tools": {"type": "array"},
+                "memory_provenance": {"type": "object"},
+                "trace": {"type": "object"},
+            }
+        ),
+        target_type="agent_retrieval_context",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=8,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
         name="summarize_longform_context",
         module="writing_agent",
         category="longform_memory",

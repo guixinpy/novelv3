@@ -38,6 +38,7 @@ CAPABILITY_AREA_BY_CATEGORY = {
     "generation": "hermes_generation",
     "knowledge_base": "knowledge_base",
     "longform_memory": "longform_memory",
+    "retrieval": "retrieval",
     "athena_world_model": "world_model",
     "review": "review",
     "task_queue": "task_queue",
@@ -48,6 +49,7 @@ CAPABILITY_AREA_BY_CATEGORY = {
 MEMORY_BOUNDARY_BY_CATEGORY = {
     "knowledge_base": "knowledge_base",
     "longform_memory": "longform_memory",
+    "retrieval": "retrieval_index",
     "athena_world_model": "world_model",
     "trace": "trace_audit",
 }
@@ -56,6 +58,7 @@ RESOURCE_SCOPE_BY_CATEGORY = {
     "generation": "manuscript",
     "knowledge_base": "knowledge_base",
     "longform_memory": "longform_memory",
+    "retrieval": "retrieval_index",
     "athena_world_model": "world_model",
     "review": "chapter_review",
     "task_queue": "background_task",

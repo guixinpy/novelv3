@@ -631,7 +631,7 @@ def test_agent_run_detail_exposes_agent_profile_projection_for_auto_plan(client)
     assert audit["version"] == "phase215.agent_profile_policy_audit.v1"
     assert audit["status"] == "passed"
     assert audit["summary"]["issues"] == 0
-    assert audit["summary"]["delegate_edges"] == 4
+    assert audit["summary"]["delegate_edges"] == 7
     command_contracts = payload["agent_command_contracts"]
     assert command_contracts["source"] == "planner_trace.agent_health_projection.command_contracts"
     assert command_contracts["summary"]["agent_control_commands"] == 2

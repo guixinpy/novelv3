@@ -69,6 +69,7 @@ def test_agent_memory_trace_tool_descriptors_live_in_dedicated_module():
     assert names == [
         "inspect_agent_trace_audit",
         "inspect_agent_memory_route",
+        "search_agent_retrieval_context",
         "summarize_longform_context",
         "inspect_agent_context_compression_projection",
         "inspect_agent_memory_activation_plan",
@@ -79,11 +80,13 @@ def test_agent_memory_trace_tool_descriptors_live_in_dedicated_module():
     assert {descriptor.category for descriptor in AGENT_MEMORY_TRACE_TOOL_DESCRIPTORS} == {
         "trace",
         "longform_memory",
+        "retrieval",
         "maintenance",
     }
     assert all(descriptor.internal for descriptor in AGENT_MEMORY_TRACE_TOOL_DESCRIPTORS)
     assert target_type_for_tool("inspect_agent_trace_audit") == "agent_trace_audit"
     assert target_type_for_tool("inspect_agent_memory_route") == "agent_memory_route"
+    assert target_type_for_tool("search_agent_retrieval_context") == "agent_retrieval_context"
     assert target_type_for_tool("summarize_longform_context") == "longform_context_summary"
     assert target_type_for_tool("inspect_agent_context_compression_projection") == "agent_context_compression_projection"
     assert target_type_for_tool("inspect_agent_memory_activation_plan") == "agent_memory_activation_plan"
@@ -91,6 +94,7 @@ def test_agent_memory_trace_tool_descriptors_live_in_dedicated_module():
     assert target_type_for_tool("prepare_repair_longform_maintenance") == "longform_maintenance_approval"
     assert target_type_for_tool("execute_repair_longform_maintenance_with_approval") == "longform_maintenance"
     assert "inspect_agent_trace_audit" in non_blocking_report_tool_names()
+    assert "search_agent_retrieval_context" in non_blocking_report_tool_names()
     assert "inspect_agent_context_compression_projection" in non_blocking_report_tool_names()
     assert "inspect_agent_memory_activation_plan" in non_blocking_report_tool_names()
     assert "prepare_repair_longform_maintenance" in non_blocking_report_tool_names()
@@ -401,6 +405,7 @@ def test_agent_tool_registry_has_unique_names_and_contracts():
         "execute_longform_chapter_batch_after_review_route_with_approval",
         "inspect_agent_trace_audit",
         "inspect_agent_memory_route",
+        "search_agent_retrieval_context",
         "inspect_agent_world_model_route",
         "summarize_longform_context",
         "repair_longform_maintenance",
@@ -454,6 +459,7 @@ def test_agent_tool_registry_has_unique_names_and_contracts():
     )
     assert target_type_for_tool("inspect_agent_trace_audit") == "agent_trace_audit"
     assert target_type_for_tool("inspect_agent_memory_route") == "agent_memory_route"
+    assert target_type_for_tool("search_agent_retrieval_context") == "agent_retrieval_context"
     assert target_type_for_tool("inspect_agent_world_model_route") == "agent_world_model_route"
     assert target_type_for_tool("summarize_longform_context") == "longform_context_summary"
     assert target_type_for_tool("repair_longform_maintenance") == "longform_maintenance"
@@ -1481,6 +1487,22 @@ def test_agent_tool_registry_includes_inspect_agent_trace_audit():
     assert "inspect_agent_trace_audit" in non_blocking_report_tool_names()
 
 
+def test_agent_tool_registry_includes_search_agent_retrieval_context():
+    descriptor = get_agent_tool_descriptor("search_agent_retrieval_context")
+
+    assert descriptor is not None
+    assert descriptor.internal is True
+    assert descriptor.non_blocking_report is True
+    assert descriptor.category == "retrieval"
+    assert descriptor.target_type == "agent_retrieval_context"
+    assert descriptor.input_schema["properties"]["query"]["type"] == "string"
+    assert descriptor.input_schema["properties"]["limit"]["minimum"] == 1
+    assert descriptor.output_schema["properties"]["items"]["type"] == "array"
+    assert descriptor.output_schema["properties"]["memory_provenance"]["type"] == "object"
+    assert "search_agent_retrieval_context" in allowed_tool_names()
+    assert "search_agent_retrieval_context" in non_blocking_report_tool_names()
+
+
 def test_agent_tool_registry_includes_inspect_agent_health_projection():
     descriptor = get_agent_tool_descriptor("inspect_agent_health_projection")
 
@@ -1711,13 +1733,19 @@ def test_agent_tool_plan_exposes_agent_profile_tool_projection(db_session):
         "orchestrator",
         "drafting_worker",
         "reviewer_worker",
+        "memory_worker",
+        "retrieval_worker",
         "world_model_worker",
+        "revision_worker",
         "recovery_worker",
     }
     assert "describe_agent_tools" in profiles["orchestrator"]["allowed_visible_tools"]
     assert "generate_chapter" not in profiles["orchestrator"]["allowed_visible_tools"]
     assert "generate_chapter" in profiles["orchestrator"]["blocked_visible_tools"]
     assert "generate_chapter" in profiles["drafting_worker"]["allowed_visible_tools"]
+    assert "search_agent_retrieval_context" in profiles["retrieval_worker"]["allowed_visible_tools"]
+    assert "inspect_agent_memory_activation_plan" in profiles["memory_worker"]["allowed_visible_tools"]
+    assert "plan_chapter_revision" in profiles["revision_worker"]["allowed_hidden_tools"]
     assert "analyze_chapter_world_model" in profiles["drafting_worker"]["allowed_hidden_tools"]
     assert "apply_world_model_proposal_resolution" not in profiles["drafting_worker"]["allowed_hidden_tools"]
     assert "review_chapter_quality" in profiles["reviewer_worker"]["allowed_hidden_tools"]
@@ -1730,8 +1758,9 @@ def test_agent_tool_plan_exposes_agent_profile_tool_projection(db_session):
     assert audit["version"] == "phase215.agent_profile_policy_audit.v1"
     assert audit["status"] == "passed"
     assert audit["summary"]["issues"] == 0
-    assert audit["summary"]["delegate_edges"] == 4
+    assert audit["summary"]["delegate_edges"] == 7
     assert {"source": "orchestrator", "target": "drafting_worker"} in audit["delegate_edges"]
+    assert {"source": "orchestrator", "target": "retrieval_worker"} in audit["delegate_edges"]
     audit_rule_codes = {rule["code"] for rule in audit["rules"]}
     assert {
         "profile_definitions_have_tool_rules",

@@ -199,9 +199,9 @@ _CAPABILITY_ALIGNMENT: list[dict[str, Any]] = [
     ),
     _capability(
         "retrieval",
-        "Chapter generation can inspect longform context and retrieval state before drafting.",
+        "Chapter generation, review and revision can retrieve indexed evidence before drafting or changing canon.",
         ["backend/app/services/writing_agent/agent_memory_trace_tool_adapters.py"],
-        ["summarize_longform_context", "inspect_agent_memory_activation_plan"],
+        ["search_agent_retrieval_context", "summarize_longform_context", "inspect_agent_memory_activation_plan"],
     ),
     _capability(
         "knowledge_base",

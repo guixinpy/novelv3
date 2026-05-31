@@ -111,6 +111,7 @@ def test_agent_memory_trace_tool_adapters_live_in_dedicated_module():
     assert names == [
         "inspect_agent_trace_audit",
         "inspect_agent_memory_route",
+        "search_agent_retrieval_context",
         "summarize_longform_context",
         "inspect_agent_context_compression_projection",
         "inspect_agent_memory_activation_plan",
@@ -119,9 +120,11 @@ def test_agent_memory_trace_tool_adapters_live_in_dedicated_module():
     assert {adapter.category for adapter in AGENT_MEMORY_TRACE_TOOL_ADAPTERS.values()} == {
         "trace",
         "longform_memory",
+        "retrieval",
         "maintenance",
     }
     assert AGENT_MEMORY_TRACE_TOOL_ADAPTERS["inspect_agent_trace_audit"].mutability == "read"
+    assert AGENT_MEMORY_TRACE_TOOL_ADAPTERS["search_agent_retrieval_context"].mutability == "read"
     assert AGENT_MEMORY_TRACE_TOOL_ADAPTERS["summarize_longform_context"].mutability == "read"
     assert AGENT_MEMORY_TRACE_TOOL_ADAPTERS["inspect_agent_context_compression_projection"].mutability == "read"
     assert AGENT_MEMORY_TRACE_TOOL_ADAPTERS["inspect_agent_memory_activation_plan"].mutability == "read"
@@ -133,6 +136,10 @@ def test_agent_memory_trace_tool_adapters_live_in_dedicated_module():
     assert (
         AGENT_MEMORY_TRACE_TOOL_ADAPTERS["inspect_agent_context_compression_projection"].handler.__name__
         == "_inspect_agent_context_compression_projection"
+    )
+    assert (
+        AGENT_MEMORY_TRACE_TOOL_ADAPTERS["search_agent_retrieval_context"].handler.__name__
+        == "_search_agent_retrieval_context"
     )
     assert (
         AGENT_MEMORY_TRACE_TOOL_ADAPTERS["repair_longform_maintenance"].handler.__name__
@@ -151,6 +158,7 @@ def test_agent_memory_trace_tool_adapter_builder_adds_maintenance_approval_chain
     assert names == [
         "inspect_agent_trace_audit",
         "inspect_agent_memory_route",
+        "search_agent_retrieval_context",
         "summarize_longform_context",
         "inspect_agent_context_compression_projection",
         "inspect_agent_memory_activation_plan",
@@ -3589,6 +3597,18 @@ def test_tool_executor_exposes_inspect_agent_memory_route_adapter_metadata():
     }
 
 
+def test_tool_executor_exposes_search_agent_retrieval_context_adapter_metadata():
+    metadata = writing_agent_tool_adapter_metadata("search_agent_retrieval_context")
+
+    assert metadata == {
+        "tool_name": "search_agent_retrieval_context",
+        "adapter_type": "static",
+        "category": "retrieval",
+        "mutability": "read",
+        "handler_name": "_search_agent_retrieval_context",
+    }
+
+
 def test_tool_executor_exposes_summarize_longform_context_adapter_metadata():
     metadata = writing_agent_tool_adapter_metadata("summarize_longform_context")
 
@@ -3945,6 +3965,8 @@ async def test_tool_executor_handles_inspect_agent_tool_contracts(db_session):
     assert tools_by_name["describe_agent_tools"]["mutability"] == "read"
     assert tools_by_name["describe_agent_tools"]["parallel_safe"] is True
     assert tools_by_name["inspect_agent_knowledge_base_route"]["memory_boundary"] == "knowledge_base"
+    assert tools_by_name["search_agent_retrieval_context"]["capability_area"] == "retrieval"
+    assert tools_by_name["search_agent_retrieval_context"]["resource_scope"] == "retrieval_index"
     assert tools_by_name["inspect_agent_tool_contracts"]["contract_status"] == "ready"
     assert tools_by_name["enqueue_longform_chapter_batch"]["mutability"] == "guarded_write"
     assert tools_by_name["enqueue_longform_chapter_batch"]["permission_level"] == "confirm_required"
@@ -5785,6 +5807,59 @@ async def test_tool_executor_dispatches_inspect_agent_memory_route_adapter(db_se
     assert result.handled is True
     assert result.output == {"status": "completed", "route": {"status": "ready"}}
     assert calls == [(project.id, 12, "父亲失踪", True)]
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_dispatches_search_agent_retrieval_context_adapter(db_session, monkeypatch):
+    project = Project(name="Executor Retrieval Context")
+    db_session.add(project)
+    db_session.commit()
+    calls: list[tuple[str, str, int, str | None, int | None, int | None]] = []
+
+    def fake_search(
+        db,
+        project_id: str,
+        query: str,
+        *,
+        limit: int,
+        source_type: str | None,
+        max_chapter_index: int | None,
+        candidate_limit: int | None,
+    ):
+        calls.append((project_id, query, limit, source_type, max_chapter_index, candidate_limit))
+        return {
+            "query": query,
+            "total": 1,
+            "items": [
+                {
+                    "source_type": "chapter",
+                    "source_ref": "chapter:2",
+                    "title": "雾港追踪",
+                    "chapter_index": 2,
+                    "score": 0.91,
+                    "snippet": "雾晶钥匙与灯塔旧案有关。",
+                }
+            ],
+        }
+
+    monkeypatch.setattr("app.core.athena_retrieval.search_retrieval", fake_search)
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(
+            tool_name="search_agent_retrieval_context",
+            command_args="灯塔旧案",
+            params={"limit": "3", "source_type": "chapter", "max_chapter_index": "8", "candidate_limit": "20"},
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output["status"] == "completed"
+    assert result.output["summary"] == {"total": 1, "returned": 1}
+    assert result.output["items"][0]["source_ref"] == "chapter:2"
+    assert result.output["memory_provenance"]["sources"][0]["source_ref"] == "chapter:2"
+    assert result.output["trace"]["mutability"] == "read"
+    assert calls == [(project.id, "灯塔旧案", 3, "chapter", 8, 20)]
 
 
 @pytest.mark.asyncio

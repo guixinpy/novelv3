@@ -14,7 +14,15 @@ AGENT_PROFILE_DEFINITIONS: dict[str, dict[str, object]] = {
         "role": "orchestrator",
         "tier": "reasoning",
         "delegation_allowed": True,
-        "delegate_to_profiles": ("drafting_worker", "reviewer_worker", "world_model_worker", "recovery_worker"),
+        "delegate_to_profiles": (
+            "drafting_worker",
+            "reviewer_worker",
+            "memory_worker",
+            "retrieval_worker",
+            "world_model_worker",
+            "revision_worker",
+            "recovery_worker",
+        ),
     },
     "drafting_worker": {
         "display_name": "创作执行者",
@@ -30,8 +38,29 @@ AGENT_PROFILE_DEFINITIONS: dict[str, dict[str, object]] = {
         "delegation_allowed": False,
         "delegate_to_profiles": (),
     },
+    "memory_worker": {
+        "display_name": "记忆维护者",
+        "role": "worker",
+        "tier": "worker",
+        "delegation_allowed": False,
+        "delegate_to_profiles": (),
+    },
+    "retrieval_worker": {
+        "display_name": "检索取证者",
+        "role": "worker",
+        "tier": "worker",
+        "delegation_allowed": False,
+        "delegate_to_profiles": (),
+    },
     "world_model_worker": {
         "display_name": "世界模型执行者",
+        "role": "worker",
+        "tier": "worker",
+        "delegation_allowed": False,
+        "delegate_to_profiles": (),
+    },
+    "revision_worker": {
+        "display_name": "修订执行者",
         "role": "worker",
         "tier": "worker",
         "delegation_allowed": False,
@@ -49,30 +78,51 @@ AGENT_PROFILE_DEFINITIONS: dict[str, dict[str, object]] = {
 AGENT_TOOL_PROFILE_RULES: dict[str, dict[str, object]] = {
     "orchestrator": {
         "description": "顶层路由与计划编排，只保留只读的核心路由、Trace 和记忆检查工具。",
-        "allowed_categories": frozenset({"preflight", "trace", "knowledge_base", "longform_memory"}),
+        "allowed_categories": frozenset({"preflight", "trace", "knowledge_base", "longform_memory", "retrieval"}),
         "allowed_mutabilities": frozenset({"read"}),
     },
     "drafting_worker": {
         "description": "章节生成工作者，可访问写作生成、知识库、长篇记忆、审稿和世界模型分析工具。",
-        "allowed_categories": frozenset({"preflight", "generation", "knowledge_base", "longform_memory", "review"}),
+        "allowed_categories": frozenset(
+            {"preflight", "generation", "knowledge_base", "longform_memory", "retrieval", "review"}
+        ),
         "allowed_mutabilities": frozenset({"read", "write", "guarded_write"}),
         "allowed_tools": frozenset({"analyze_chapter_world_model"}),
         "denied_tools": frozenset({"apply_pending_action_route_approval_opt_in"}),
     },
     "reviewer_worker": {
         "description": "审稿和修订工作者，默认不直接生成新章节。",
-        "allowed_categories": frozenset({"preflight", "knowledge_base", "longform_memory", "review", "revision", "trace"}),
+        "allowed_categories": frozenset(
+            {"preflight", "knowledge_base", "longform_memory", "retrieval", "review", "revision", "trace"}
+        ),
         "allowed_mutabilities": frozenset({"read", "write", "guarded_write"}),
         "denied_tools": frozenset({"apply_pending_action_route_approval_opt_in"}),
     },
+    "memory_worker": {
+        "description": "长期记忆工作者，聚焦长篇记忆、知识库候选、检索状态和 Trace 证据。",
+        "allowed_categories": frozenset({"preflight", "knowledge_base", "longform_memory", "retrieval", "trace"}),
+        "allowed_mutabilities": frozenset({"read", "write", "guarded_write"}),
+        "denied_tools": frozenset({"apply_pending_action_route_approval_opt_in"}),
+    },
+    "retrieval_worker": {
+        "description": "检索工作者，聚焦 Athena retrieval 取证、长篇上下文和只读 Trace。",
+        "allowed_categories": frozenset({"preflight", "retrieval", "longform_memory", "trace"}),
+        "allowed_mutabilities": frozenset({"read"}),
+    },
     "world_model_worker": {
         "description": "世界模型维护工作者，聚焦 Athena 世界模型、知识库和 Trace。",
-        "allowed_categories": frozenset({"preflight", "athena_world_model", "knowledge_base", "trace"}),
+        "allowed_categories": frozenset({"preflight", "athena_world_model", "knowledge_base", "retrieval", "trace"}),
         "allowed_mutabilities": frozenset({"read", "write", "guarded_write"}),
+    },
+    "revision_worker": {
+        "description": "修订工作者，聚焦审稿结果、章节修订、检索证据和知识库沉淀。",
+        "allowed_categories": frozenset({"preflight", "review", "revision", "retrieval", "knowledge_base", "trace"}),
+        "allowed_mutabilities": frozenset({"read", "write", "guarded_write"}),
+        "denied_tools": frozenset({"generate_chapter", "apply_pending_action_route_approval_opt_in"}),
     },
     "recovery_worker": {
         "description": "恢复和维护工作者，聚焦任务队列、维护、长篇记忆和 Trace。",
-        "allowed_categories": frozenset({"preflight", "task_queue", "maintenance", "longform_memory", "trace"}),
+        "allowed_categories": frozenset({"preflight", "task_queue", "maintenance", "longform_memory", "retrieval", "trace"}),
         "allowed_mutabilities": frozenset({"read", "write", "guarded_write"}),
         "denied_tools": frozenset({"apply_pending_action_route_approval_opt_in"}),
     },
