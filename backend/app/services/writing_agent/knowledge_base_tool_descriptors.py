@@ -64,6 +64,36 @@ KNOWLEDGE_BASE_AGENT_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(
+        name="plan_post_chapter_memory_capture",
+        module="writing_agent",
+        category="knowledge_base",
+        description="根据已生成章节和审稿证据规划章节后长期记忆沉淀，只返回候选项和审批下一步，不直接写入知识库。",
+        input_schema=object_schema(
+            {"chapter_index": {"type": "integer", "minimum": 1}},
+            required=("chapter_index",),
+        ),
+        output_schema=object_schema(
+            {
+                "status": {"type": "string"},
+                "version": {"type": "string"},
+                "project_id": {"type": "string"},
+                "chapter_index": {"type": "integer"},
+                "target_type": {"type": "string"},
+                "capture_status": {"type": "string"},
+                "summary": {"type": "object"},
+                "candidates": {"type": "array"},
+                "recommended_next_tools": {"type": "array"},
+                "memory_provenance": {"type": "object"},
+                "trace": {"type": "object"},
+            }
+        ),
+        target_type="agent_post_chapter_memory_capture_plan",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=10,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
         name="record_agent_knowledge_base_candidate",
         module="writing_agent",
         category="knowledge_base",

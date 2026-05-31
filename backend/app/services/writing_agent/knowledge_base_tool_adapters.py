@@ -50,6 +50,19 @@ def _record_agent_knowledge_base_candidate(
     }
 
 
+def _plan_post_chapter_memory_capture(
+    context: WritingAgentToolContext,
+    tool: WritingAgentToolRequest,
+) -> dict[str, Any]:
+    from app.services.writing_agent.post_chapter_memory_capture import plan_post_chapter_memory_capture
+
+    return plan_post_chapter_memory_capture(
+        context.db,
+        context.project_id,
+        chapter_index=_optional_int(tool.params.get("chapter_index")) or 1,
+    )
+
+
 def build_knowledge_base_agent_tool_adapters(
     *,
     approval_tool_metadata_provider: ApprovalToolMetadataProvider,
@@ -118,6 +131,12 @@ KNOWLEDGE_BASE_AGENT_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
     "inspect_agent_knowledge_base_route": WritingAgentToolAdapter(
         "inspect_agent_knowledge_base_route",
         _inspect_agent_knowledge_base_route,
+        category="knowledge_base",
+        mutability="read",
+    ),
+    "plan_post_chapter_memory_capture": WritingAgentToolAdapter(
+        "plan_post_chapter_memory_capture",
+        _plan_post_chapter_memory_capture,
         category="knowledge_base",
         mutability="read",
     ),

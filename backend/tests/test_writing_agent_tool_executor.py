@@ -389,6 +389,7 @@ def test_knowledge_base_tool_adapters_live_in_dedicated_module():
 
     assert names == [
         "inspect_agent_knowledge_base_route",
+        "plan_post_chapter_memory_capture",
         "record_agent_knowledge_base_candidate",
     ]
     assert {adapter.category for adapter in KNOWLEDGE_BASE_AGENT_TOOL_ADAPTERS.values()} == {"knowledge_base"}
@@ -410,6 +411,7 @@ def test_knowledge_base_tool_adapter_builder_adds_approval_chain():
 
     assert names == [
         "inspect_agent_knowledge_base_route",
+        "plan_post_chapter_memory_capture",
         "record_agent_knowledge_base_candidate",
         "prepare_record_agent_knowledge_base_candidate",
         "execute_record_agent_knowledge_base_candidate_with_approval",
@@ -2578,6 +2580,7 @@ async def test_generate_chapter_tool_appends_context_without_run_service(db_sess
         "review_chapter_quality",
         "review_chapter_continuity",
         "analyze_chapter_world_model",
+        "plan_post_chapter_memory_capture",
     ]
 
 
@@ -4382,6 +4385,18 @@ def test_tool_executor_exposes_inspect_agent_knowledge_base_route_adapter_metada
     }
 
 
+def test_tool_executor_exposes_plan_post_chapter_memory_capture_adapter_metadata():
+    metadata = writing_agent_tool_adapter_metadata("plan_post_chapter_memory_capture")
+
+    assert metadata == {
+        "tool_name": "plan_post_chapter_memory_capture",
+        "adapter_type": "static",
+        "category": "knowledge_base",
+        "mutability": "read",
+        "handler_name": "_plan_post_chapter_memory_capture",
+    }
+
+
 def test_tool_executor_exposes_record_agent_knowledge_base_candidate_adapter_metadata():
     metadata = writing_agent_tool_adapter_metadata("record_agent_knowledge_base_candidate")
 
@@ -4413,6 +4428,84 @@ def test_tool_executor_exposes_knowledge_base_candidate_approval_chain_adapter_m
         "mutability": "write",
         "handler_name": "_execute_record_agent_knowledge_base_candidate_with_approval",
     }
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_handles_plan_post_chapter_memory_capture(db_session):
+    project = Project(name="Post Chapter Memory Capture")
+    db_session.add(project)
+    db_session.flush()
+    db_session.add(
+        ChapterContent(
+            project_id=project.id,
+            chapter_index=2,
+            title="雾港追踪",
+            content="林深在黑市追查雾晶钥匙，结尾发现灯塔旧案的新证据。",
+            word_count=2200,
+            status="generated",
+        )
+    )
+    run = WritingAgentRun(project_id=project.id, goal="审稿第2章", status="success", entrypoint="api")
+    db_session.add(run)
+    db_session.flush()
+    db_session.add_all(
+        [
+            WritingAgentStep(
+                run_id=run.id,
+                project_id=project.id,
+                step_index=1,
+                tool_name="review_chapter_quality",
+                status="success",
+                chapter_index=2,
+                output={
+                    "status": "completed",
+                    "warning_count": 1,
+                    "findings": [
+                        {
+                            "severity": "warning",
+                            "code": "thin_scene_action",
+                            "message": "黑市场景动作偏少。",
+                        }
+                    ],
+                },
+            ),
+            WritingAgentStep(
+                run_id=run.id,
+                project_id=project.id,
+                step_index=2,
+                tool_name="review_chapter_continuity",
+                status="success",
+                chapter_index=2,
+                output={"status": "completed", "findings": []},
+            ),
+        ]
+    )
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id=run.id),
+        WritingAgentToolRequest(tool_name="plan_post_chapter_memory_capture", params={"chapter_index": 2}),
+    )
+
+    assert result.handled is True
+    assert result.output["status"] == "completed"
+    assert result.output["capture_status"] == "ready"
+    assert result.output["chapter_index"] == 2
+    assert result.output["summary"]["candidate_count"] >= 2
+    assert result.output["recommended_next_tools"] == ["prepare_record_agent_knowledge_base_candidate"]
+    candidates = result.output["candidates"]
+    assert {candidate["memory_type"] for candidate in candidates} >= {
+        "writing_pattern",
+        "self_optimization_lesson",
+    }
+    assert candidates[0]["source_refs"] == [f"chapter_content:{candidates[0]['evidence']['chapter_content_id']}"]
+    lesson = next(candidate for candidate in candidates if candidate["memory_type"] == "self_optimization_lesson")
+    assert "thin_scene_action" in lesson["summary"]
+    assert any(ref.startswith("writing_agent_step:") for ref in lesson["source_refs"])
+    assert lesson["next_tool_call"]["tool_name"] == "prepare_record_agent_knowledge_base_candidate"
+    assert result.output["memory_provenance"]["recovery"]["next_tools"] == [
+        "prepare_record_agent_knowledge_base_candidate"
+    ]
 
 
 def test_tool_executor_exposes_execute_longform_chapter_batch_preflight_adapter_metadata():

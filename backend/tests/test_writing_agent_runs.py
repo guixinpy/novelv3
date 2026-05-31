@@ -4182,6 +4182,7 @@ def test_agent_run_continuation_state_exposes_recommended_followups(client, db_s
         "review_chapter_quality",
         "review_chapter_continuity",
         "analyze_chapter_world_model",
+        "plan_post_chapter_memory_capture",
     ]
 
 

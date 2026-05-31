@@ -15,6 +15,7 @@ POST_GENERATION_NEXT_TOOLS = [
     "review_chapter_quality",
     "review_chapter_continuity",
     "analyze_chapter_world_model",
+    "plan_post_chapter_memory_capture",
 ]
 
 

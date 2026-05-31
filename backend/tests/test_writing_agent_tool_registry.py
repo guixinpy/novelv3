@@ -306,6 +306,7 @@ def test_knowledge_base_tool_descriptors_live_in_dedicated_module():
 
     assert names == [
         "inspect_agent_knowledge_base_route",
+        "plan_post_chapter_memory_capture",
         "record_agent_knowledge_base_candidate",
         "prepare_record_agent_knowledge_base_candidate",
         "execute_record_agent_knowledge_base_candidate_with_approval",
@@ -385,6 +386,7 @@ def test_agent_tool_registry_has_unique_names_and_contracts():
         "inspect_agent_mutation_fingerprints",
         "inspect_agent_route_preference_projection",
         "inspect_agent_knowledge_base_route",
+        "plan_post_chapter_memory_capture",
         "record_agent_knowledge_base_candidate",
         "execute_longform_chapter_batch_preflight",
         "prepare_longform_chapter_batch_execution",
@@ -425,6 +427,7 @@ def test_agent_tool_registry_has_unique_names_and_contracts():
     assert target_type_for_tool("inspect_agent_mutation_fingerprints") == "agent_mutation_fingerprint"
     assert target_type_for_tool("inspect_agent_route_preference_projection") == "agent_route_preference_projection"
     assert target_type_for_tool("inspect_agent_knowledge_base_route") == "agent_knowledge_base_route"
+    assert target_type_for_tool("plan_post_chapter_memory_capture") == "agent_post_chapter_memory_capture_plan"
     assert target_type_for_tool("record_agent_knowledge_base_candidate") == "agent_knowledge_base_candidate"
     assert target_type_for_tool("execute_longform_chapter_batch_preflight") == "background_task"
     assert target_type_for_tool("prepare_longform_chapter_batch_execution") == "background_task"
@@ -1196,6 +1199,21 @@ def test_agent_tool_registry_includes_inspect_agent_knowledge_base_route():
     assert descriptor.input_schema["properties"]["limit"]["minimum"] == 1
     assert "inspect_agent_knowledge_base_route" in allowed_tool_names()
     assert "inspect_agent_knowledge_base_route" in non_blocking_report_tool_names()
+
+
+def test_agent_tool_registry_includes_plan_post_chapter_memory_capture():
+    descriptor = get_agent_tool_descriptor("plan_post_chapter_memory_capture")
+
+    assert descriptor is not None
+    assert descriptor.internal is True
+    assert descriptor.non_blocking_report is True
+    assert descriptor.category == "knowledge_base"
+    assert descriptor.target_type == "agent_post_chapter_memory_capture_plan"
+    assert descriptor.input_schema["properties"]["chapter_index"]["minimum"] == 1
+    assert descriptor.output_schema["properties"]["candidates"]["type"] == "array"
+    assert descriptor.output_schema["properties"]["memory_provenance"]["type"] == "object"
+    assert "plan_post_chapter_memory_capture" in allowed_tool_names()
+    assert "plan_post_chapter_memory_capture" in non_blocking_report_tool_names()
 
 
 def test_agent_tool_registry_includes_record_agent_knowledge_base_candidate():
