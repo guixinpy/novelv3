@@ -381,7 +381,7 @@ def _existing_route_result(result: dict[str, Any], post_review_hash: str) -> dic
 
 def _recommended_next_tools(reason: str) -> list[str]:
     if reason == "missing_post_generation_review_result":
-        return ["review_longform_chapter_batch_execution", "inspect_longform_chapter_batch"]
+        return ["prepare_longform_chapter_batch_execution_review", "inspect_longform_chapter_batch"]
     if reason == "missing_batch_execution_result":
         return ["execute_longform_chapter_batch", "inspect_longform_chapter_batch"]
     return ["inspect_longform_chapter_batch"]

@@ -353,11 +353,24 @@ def test_write_gate_coverage_marks_batch_checkpoint_writes_as_confirmation_guard
         "execute_longform_chapter_batch_execution_prepare_with_approval"
     }
 
+    approved_review_tool = tools_by_name["execute_longform_chapter_batch_execution_review_with_approval"]
+    assert approved_review_tool["agent_plan_gate_status"] == "enforced"
+    assert approved_review_tool["gate_version"] == "phase202.longform_batch_execution_review_agent_plan_approval.v1"
+    assert approved_review_tool["gate_type"] == "stateless_agent_plan_approval"
+    assert approved_review_tool["confirmation_fields"] == ["approval_contract_hash", "confirm_execute"]
+    assert approved_review_tool["risk_level"] == "low"
+
     review_tool = tools_by_name["review_longform_chapter_batch_execution"]
-    assert review_tool["agent_plan_gate_status"] == "missing_agent_plan_gate"
+    assert review_tool["agent_plan_gate_status"] == "indirect_agent_gate_available"
+    assert review_tool["direct_write_policy"] == "approval_required_redirect"
+    assert review_tool["direct_write_blocked"] is True
     assert review_tool["direct_confirmation_guard"] is True
     assert review_tool["confirmation_fields"] == ["confirm_review"]
-    assert review_tool["risk_level"] == "medium"
+    assert review_tool["risk_level"] == "low"
+    assert review_tool["recommended_action"] == "route_direct_calls_to_approval_executor"
+    assert {item["consumer_tool"] for item in review_tool["indirect_coverage"]} == {
+        "execute_longform_chapter_batch_execution_review_with_approval"
+    }
 
 
 def test_write_gate_coverage_recommends_high_risk_targets_first():
@@ -641,7 +654,15 @@ def _adapter_metadata() -> dict[str, dict]:
             "tool_name": "review_longform_chapter_batch_execution",
             "adapter_type": "static",
             "category": "task_queue",
-            "mutability": "write",
+            "mutability": "guarded_write",
             "handler_name": "_review_longform_chapter_batch_execution",
+            "write_policy": "approval_required_redirect",
+        },
+        "execute_longform_chapter_batch_execution_review_with_approval": {
+            "tool_name": "execute_longform_chapter_batch_execution_review_with_approval",
+            "adapter_type": "static",
+            "category": "task_queue",
+            "mutability": "write",
+            "handler_name": "_execute_longform_chapter_batch_execution_review_with_approval",
         },
     }

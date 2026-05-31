@@ -371,7 +371,7 @@ LONGFORM_AGENT_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         name="review_longform_chapter_batch_execution",
         module="writing_agent",
         category="task_queue",
-        description="审查已执行的长篇批次单章，写入质量、连续性和世界模型分析证据。",
+        description="为长篇批次生成后审查写入构建审批重定向，直接调用不写入审查证据。",
         input_schema=object_schema(
             {
                 "task_id": {"type": "string"},
@@ -383,16 +383,81 @@ LONGFORM_AGENT_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         output_schema=object_schema(
             {
                 "status": {"type": "string"},
-                "task": {"type": "object"},
-                "chapter_index": {"type": "integer"},
-                "review_gate": {"type": "object"},
-                "reviews": {"type": "object"},
+                "required_approval": {"type": "object"},
                 "side_effects": {"type": "object"},
             }
         ),
         target_type="background_task",
         internal=True,
         sort_key=20,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
+        name="prepare_longform_chapter_batch_execution_review",
+        module="writing_agent",
+        category="task_queue",
+        description="为长篇批次生成后审查写入构建 Agent 计划审批契约，不写入审查证据。",
+        input_schema=object_schema(
+            {
+                "task_id": {"type": "string"},
+                "lookback": {"type": "integer", "minimum": 1},
+            },
+            required=("task_id",),
+        ),
+        output_schema=object_schema(
+            {
+                "status": {"type": "string"},
+                "prepare_version": {"type": "string"},
+                "project_id": {"type": "string"},
+                "task": {"type": "object"},
+                "review_preview": {"type": "object"},
+                "mutation_fingerprint": {"type": "object"},
+                "tool_call_id": {"type": "string"},
+                "resource_binding": {"type": "object"},
+                "agent_plan": {"type": "object"},
+                "agent_plan_approval_contract": {"type": "object"},
+                "agent_plan_approval_contract_hash": {"type": "string"},
+                "required_confirmation": {"type": "object"},
+                "recommended_next_tools": {"type": "array"},
+            }
+        ),
+        target_type="background_task_post_generation_review_approval",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=21,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
+        name="execute_longform_chapter_batch_execution_review_with_approval",
+        module="writing_agent",
+        category="task_queue",
+        description="在确认 Agent 计划审批契约后执行生成后审查并写入质量、连续性和世界模型分析证据。",
+        input_schema=object_schema(
+            {
+                "task_id": {"type": "string"},
+                "lookback": {"type": "integer", "minimum": 1},
+                "confirm_execute": {"type": "boolean"},
+                "approval_contract_hash": {"type": "string"},
+                "approval_contract": {"type": "object"},
+            },
+            required=("task_id", "confirm_execute", "approval_contract_hash", "approval_contract"),
+        ),
+        output_schema=object_schema(
+            {
+                "status": {"type": "string"},
+                "task": {"type": "object"},
+                "chapter_index": {"type": "integer"},
+                "review_gate": {"type": "object"},
+                "reviews": {"type": "object"},
+                "post_generation_review_result": {"type": "object"},
+                "agent_plan_approval_verification": {"type": "object"},
+                "execution_resource_binding": {"type": "object"},
+                "side_effects": {"type": "object"},
+            }
+        ),
+        target_type="background_task_post_generation_review",
+        internal=True,
+        sort_key=22,
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(
@@ -420,7 +485,7 @@ LONGFORM_AGENT_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         ),
         target_type="background_task",
         internal=True,
-        sort_key=21,
+        sort_key=23,
         availability_checks=("project_exists",),
     ),
 )

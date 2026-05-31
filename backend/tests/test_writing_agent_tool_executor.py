@@ -416,6 +416,8 @@ def test_longform_tool_adapters_live_in_dedicated_module():
         "execute_longform_chapter_batch_execution_prepare_with_approval",
         "execute_longform_chapter_batch",
         "review_longform_chapter_batch_execution",
+        "prepare_longform_chapter_batch_execution_review",
+        "execute_longform_chapter_batch_execution_review_with_approval",
         "route_longform_chapter_batch_after_review",
     ]
     assert {adapter.category for adapter in adapters.values()} == {"task_queue"}
@@ -434,6 +436,10 @@ def test_longform_tool_adapters_live_in_dedicated_module():
     assert adapters["prepare_longform_chapter_batch_execution_prepare"].mutability == "read"
     assert adapters["execute_longform_chapter_batch_execution_prepare_with_approval"].mutability == "write"
     assert adapters["execute_longform_chapter_batch"].mutability == "write"
+    assert adapters["review_longform_chapter_batch_execution"].mutability == "guarded_write"
+    assert adapters["review_longform_chapter_batch_execution"].write_policy == "approval_required_redirect"
+    assert adapters["prepare_longform_chapter_batch_execution_review"].mutability == "read"
+    assert adapters["execute_longform_chapter_batch_execution_review_with_approval"].mutability == "write"
     assert adapters["execute_longform_chapter_batch"].handler.__name__ == "_execute_longform_chapter_batch"
 
 
@@ -3200,6 +3206,8 @@ def test_tool_executor_static_adapter_names_are_report_or_agent_native_tools():
         "execute_longform_chapter_batch_execution_prepare_with_approval",
         "execute_longform_chapter_batch",
         "review_longform_chapter_batch_execution",
+        "prepare_longform_chapter_batch_execution_review",
+        "execute_longform_chapter_batch_execution_review_with_approval",
         "route_longform_chapter_batch_after_review",
         "inspect_agent_trace_audit",
         "inspect_agent_memory_route",
@@ -3505,6 +3513,8 @@ def test_tool_executor_lists_unhandled_internal_tools_for_migration_tracking():
     assert "execute_longform_chapter_batch_execution_prepare_with_approval" not in names
     assert "execute_longform_chapter_batch" not in names
     assert "review_longform_chapter_batch_execution" not in names
+    assert "prepare_longform_chapter_batch_execution_review" not in names
+    assert "execute_longform_chapter_batch_execution_review_with_approval" not in names
     assert "route_longform_chapter_batch_after_review" not in names
     assert "preflight_writing" not in names
 
@@ -4353,8 +4363,31 @@ def test_tool_executor_exposes_review_longform_chapter_batch_execution_adapter_m
         "tool_name": "review_longform_chapter_batch_execution",
         "adapter_type": "static",
         "category": "task_queue",
-        "mutability": "write",
+        "mutability": "guarded_write",
         "handler_name": "_review_longform_chapter_batch_execution",
+        "write_policy": "approval_required_redirect",
+    }
+
+
+def test_tool_executor_exposes_longform_chapter_batch_execution_review_approval_chain_adapter_metadata():
+    prepare_metadata = writing_agent_tool_adapter_metadata("prepare_longform_chapter_batch_execution_review")
+    execute_metadata = writing_agent_tool_adapter_metadata(
+        "execute_longform_chapter_batch_execution_review_with_approval"
+    )
+
+    assert prepare_metadata == {
+        "tool_name": "prepare_longform_chapter_batch_execution_review",
+        "adapter_type": "static",
+        "category": "task_queue",
+        "mutability": "read",
+        "handler_name": "_prepare_longform_chapter_batch_execution_review",
+    }
+    assert execute_metadata == {
+        "tool_name": "execute_longform_chapter_batch_execution_review_with_approval",
+        "adapter_type": "static",
+        "category": "task_queue",
+        "mutability": "write",
+        "handler_name": "_execute_longform_chapter_batch_execution_review_with_approval",
     }
 
 
@@ -5046,23 +5079,6 @@ async def test_tool_executor_dispatches_review_longform_chapter_batch_execution_
     project = Project(name="Executor Batch Review")
     db_session.add(project)
     db_session.commit()
-    calls: list[tuple[str, str | None, int | None, bool]] = []
-
-    def fake_review(
-        db,
-        project_id: str,
-        *,
-        task_id: str | None,
-        lookback: int | None,
-        confirm_review: bool,
-    ):
-        calls.append((project_id, task_id, lookback, confirm_review))
-        return {"status": "completed", "chapter_index": 2}
-
-    monkeypatch.setattr(
-        "app.services.writing_agent.batch_post_generation_review.review_longform_chapter_batch_execution",
-        fake_review,
-    )
 
     result = await execute_writing_agent_tool(
         WritingAgentToolContext(db=db_session, project_id=project.id),
@@ -5073,8 +5089,68 @@ async def test_tool_executor_dispatches_review_longform_chapter_batch_execution_
     )
 
     assert result.handled is True
+    assert result.output["status"] == "blocked"
+    assert result.output["reason"] == "approval_required_before_write"
+    assert result.output["required_approval"]["prepare_tool"] == "prepare_longform_chapter_batch_execution_review"
+    assert result.output["required_approval"]["execute_tool"] == (
+        "execute_longform_chapter_batch_execution_review_with_approval"
+    )
+    assert result.output["side_effects"] == {
+        "executed": [],
+        "skipped": ["review_longform_chapter_batch_execution"],
+    }
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_dispatches_approved_longform_chapter_batch_execution_review_adapter(
+    db_session,
+    monkeypatch,
+):
+    project = Project(name="Executor Approved Batch Review")
+    db_session.add(project)
+    db_session.commit()
+    calls: list[tuple[str, str | None, int | None, bool, str | None, dict | None]] = []
+
+    def fake_review(
+        db,
+        project_id: str,
+        *,
+        task_id: str | None,
+        lookback: int | None,
+        confirm_execute: bool,
+        approval_contract_hash: str | None,
+        approval_contract: dict | None,
+        approval_tool_metadata_provider,
+    ):
+        calls.append((project_id, task_id, lookback, confirm_execute, approval_contract_hash, approval_contract))
+        assert approval_tool_metadata_provider is not None
+        return {"status": "completed", "chapter_index": 2}
+
+    monkeypatch.setattr(
+        "app.services.writing_agent.batch_execution_review_approval."
+        "execute_longform_chapter_batch_execution_review_with_approval",
+        fake_review,
+    )
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(
+            tool_name="execute_longform_chapter_batch_execution_review_with_approval",
+            params={
+                "task_id": "task-1",
+                "lookback": "12",
+                "confirm_execute": True,
+                "approval_contract_hash": "approval:review",
+                "approval_contract": {"status": "requires_confirmation"},
+            },
+        ),
+    )
+
+    assert result.handled is True
     assert result.output == {"status": "completed", "chapter_index": 2}
-    assert calls == [(project.id, "task-1", 12, True)]
+    assert calls == [
+        (project.id, "task-1", 12, True, "approval:review", {"status": "requires_confirmation"})
+    ]
 
 
 @pytest.mark.asyncio
