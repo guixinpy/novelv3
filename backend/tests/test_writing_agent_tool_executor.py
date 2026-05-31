@@ -75,6 +75,8 @@ def test_agent_core_tool_adapters_live_in_dedicated_module():
         "preview_pending_action_route_approval_opt_in_apply",
         "preview_pending_action_route_approval_opt_in_apply_contract",
         "apply_pending_action_route_approval_opt_in",
+        "prepare_apply_pending_action_route_approval_opt_in",
+        "execute_apply_pending_action_route_approval_opt_in_with_approval",
         "inspect_agent_dialog_control_plane_projection",
         "inspect_agent_intent_projection",
         "inspect_agent_tool_contracts",
@@ -85,11 +87,18 @@ def test_agent_core_tool_adapters_live_in_dedicated_module():
     ]
     assert "preflight_writing" not in names
     assert {adapter.category for adapter in adapters.values()} == {"preflight"}
-    assert adapters["apply_pending_action_route_approval_opt_in"].mutability == "write"
+    assert adapters["apply_pending_action_route_approval_opt_in"].mutability == "guarded_write"
+    assert adapters["apply_pending_action_route_approval_opt_in"].write_policy == "approval_required_redirect"
+    assert adapters["prepare_apply_pending_action_route_approval_opt_in"].mutability == "read"
+    assert adapters["execute_apply_pending_action_route_approval_opt_in_with_approval"].mutability == "write"
     assert {
         adapter.mutability
         for name, adapter in adapters.items()
-        if name != "apply_pending_action_route_approval_opt_in"
+        if name
+        not in {
+            "apply_pending_action_route_approval_opt_in",
+            "execute_apply_pending_action_route_approval_opt_in_with_approval",
+        }
     } == {"read"}
     assert adapters["verify_agent_plan_approval_contract"].handler.__name__ == "_verify_agent_plan_approval_contract"
     assert adapters["inspect_agent_intent_projection"].handler.__name__ == "_inspect_agent_intent_projection"
@@ -986,17 +995,14 @@ async def test_tool_executor_previews_pending_route_opt_in_apply_contract(db_ses
     assert result.output["route_apply_preview"]["write_performed"] is False
     assert result.output["approval_contract"]["mutation_target"] == "PendingAction.params.agent_route"
     assert result.output["approval_contract"]["mutation_path"] == "params.agent_route.use_agent_approval_chain"
-    assert result.output["recommended_next_tools"] == ["apply_pending_action_route_approval_opt_in"]
+    assert result.output["recommended_next_tools"] == ["prepare_apply_pending_action_route_approval_opt_in"]
     assert result.output["recommended_next_tool_calls"] == [
         {
-            "tool_name": "apply_pending_action_route_approval_opt_in",
+            "tool_name": "prepare_apply_pending_action_route_approval_opt_in",
             "visibility": "agent_internal",
-            "requires_confirmation": True,
+            "requires_confirmation": False,
             "params": {
                 "pending_action_id": pending.id,
-                "confirm_apply": True,
-                "approval_contract_hash": result.output["approval_contract_hash"],
-                "approval_contract": result.output["approval_contract"],
             },
         }
     ]
@@ -1245,11 +1251,14 @@ async def test_tool_executor_apply_route_opt_in_approval_updates_pending_params(
     db_session.expire_all()
     reloaded = db_session.query(PendingAction).filter(PendingAction.id == pending.id).first()
     assert result.handled is True
-    assert result.output["status"] == "success"
-    assert result.output["write_performed"] is True
-    assert result.output["params_diff"]["agent_route"]["after"]["use_agent_approval_chain"] is True
-    assert result.output["approval_verification"]["status"] == "ready"
-    assert reloaded.params["agent_route"]["use_agent_approval_chain"] is True
+    assert result.output["status"] == "blocked"
+    assert result.output["reason"] == "approval_required_before_write"
+    assert result.output["write_performed"] is False
+    assert result.output["required_approval"]["prepare_tool"] == "prepare_apply_pending_action_route_approval_opt_in"
+    assert result.output["required_approval"]["execute_tool"] == (
+        "execute_apply_pending_action_route_approval_opt_in_with_approval"
+    )
+    assert reloaded.params == pending.params
     assert reloaded.status == "pending"
 
 
@@ -3350,8 +3359,23 @@ def test_tool_executor_exposes_apply_route_opt_in_approval_adapter_metadata():
         "tool_name": "apply_pending_action_route_approval_opt_in",
         "adapter_type": "static",
         "category": "preflight",
-        "mutability": "write",
+        "mutability": "guarded_write",
         "handler_name": "_apply_pending_action_route_approval_opt_in",
+        "write_policy": "approval_required_redirect",
+    }
+    assert writing_agent_tool_adapter_metadata("prepare_apply_pending_action_route_approval_opt_in") == {
+        "tool_name": "prepare_apply_pending_action_route_approval_opt_in",
+        "adapter_type": "static",
+        "category": "preflight",
+        "mutability": "read",
+        "handler_name": "_prepare_apply_pending_action_route_approval_opt_in",
+    }
+    assert writing_agent_tool_adapter_metadata("execute_apply_pending_action_route_approval_opt_in_with_approval") == {
+        "tool_name": "execute_apply_pending_action_route_approval_opt_in_with_approval",
+        "adapter_type": "static",
+        "category": "preflight",
+        "mutability": "write",
+        "handler_name": "_execute_apply_pending_action_route_approval_opt_in_with_approval",
     }
 
 

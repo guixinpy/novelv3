@@ -42,6 +42,8 @@ def test_agent_core_tool_descriptors_live_in_dedicated_module():
         "preview_pending_action_route_approval_opt_in_apply",
         "preview_pending_action_route_approval_opt_in_apply_contract",
         "apply_pending_action_route_approval_opt_in",
+        "prepare_apply_pending_action_route_approval_opt_in",
+        "execute_apply_pending_action_route_approval_opt_in_with_approval",
         "inspect_agent_dialog_control_plane_projection",
         "inspect_agent_intent_projection",
         "inspect_agent_tool_contracts",
@@ -1117,6 +1119,8 @@ def test_agent_tool_registry_includes_route_opt_in_apply_contract_preview():
 
 def test_agent_tool_registry_includes_apply_route_opt_in_approval():
     descriptor = get_agent_tool_descriptor("apply_pending_action_route_approval_opt_in")
+    prepare_descriptor = get_agent_tool_descriptor("prepare_apply_pending_action_route_approval_opt_in")
+    execute_descriptor = get_agent_tool_descriptor("execute_apply_pending_action_route_approval_opt_in_with_approval")
 
     assert descriptor is not None
     assert descriptor.internal is True
@@ -1136,6 +1140,30 @@ def test_agent_tool_registry_includes_apply_route_opt_in_approval():
     assert descriptor.output_schema["properties"]["write_performed"]["type"] == "boolean"
     assert "apply_pending_action_route_approval_opt_in" in allowed_tool_names()
     assert "apply_pending_action_route_approval_opt_in" not in non_blocking_report_tool_names()
+
+    assert prepare_descriptor is not None
+    assert prepare_descriptor.internal is True
+    assert prepare_descriptor.non_blocking_report is True
+    assert prepare_descriptor.category == "preflight"
+    assert prepare_descriptor.target_type == "agent_route_approval_opt_in_apply_approval"
+    assert prepare_descriptor.output_schema["properties"]["agent_plan_approval_contract_hash"]["type"] == "string"
+    assert prepare_descriptor.output_schema["properties"]["route_apply_approval_contract_hash"]["type"] == "string"
+
+    assert execute_descriptor is not None
+    assert execute_descriptor.internal is True
+    assert execute_descriptor.non_blocking_report is False
+    assert execute_descriptor.category == "preflight"
+    assert execute_descriptor.target_type == "agent_route_approval_opt_in_apply"
+    assert set(execute_descriptor.input_schema["required"]) == {
+        "pending_action_id",
+        "confirm_execute",
+        "route_apply_approval_contract_hash",
+        "route_apply_approval_contract",
+        "agent_plan_approval_contract_hash",
+        "agent_plan_approval_contract",
+    }
+    assert execute_descriptor.output_schema["properties"]["agent_plan_approval_verification"]["type"] == "object"
+    assert execute_descriptor.output_schema["properties"]["execution_resource_binding"]["type"] == "object"
 
 
 def test_agent_tool_registry_includes_inspect_agent_knowledge_base_route():

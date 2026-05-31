@@ -441,19 +441,18 @@ def _route_opt_in_contract_output(
     risk: dict[str, Any],
     reason: str,
 ) -> dict[str, Any]:
-    recommended_next_tools = ["apply_pending_action_route_approval_opt_in"] if status == "requires_confirmation" else []
+    recommended_next_tools = (
+        ["prepare_apply_pending_action_route_approval_opt_in"] if status == "requires_confirmation" else []
+    )
     recommended_next_tool_calls = []
     if status == "requires_confirmation" and approval_contract_hash and approval_contract:
         recommended_next_tool_calls.append(
             {
-                "tool_name": "apply_pending_action_route_approval_opt_in",
+                "tool_name": "prepare_apply_pending_action_route_approval_opt_in",
                 "visibility": "agent_internal",
-                "requires_confirmation": True,
+                "requires_confirmation": False,
                 "params": {
                     "pending_action_id": str(route_apply_preview.get("pending_action_id") or ""),
-                    "confirm_apply": True,
-                    "approval_contract_hash": approval_contract_hash,
-                    "approval_contract": approval_contract,
                 },
             }
         )

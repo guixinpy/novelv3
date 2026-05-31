@@ -33,6 +33,8 @@ HASH_PARAM_NAMES = (
     "plan_hash",
     "attempt_manifest_hash",
     "approval_contract_hash",
+    "agent_plan_approval_contract_hash",
+    "route_apply_approval_contract_hash",
     "expected_post_generation_review_hash",
 )
 

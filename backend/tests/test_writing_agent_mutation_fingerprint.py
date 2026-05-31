@@ -188,6 +188,26 @@ def test_build_mutation_fingerprint_covers_outline_window_expansion():
     assert approved["components"]["target_id"] == direct["components"]["target_id"]
 
 
+def test_build_mutation_fingerprint_covers_route_opt_in_apply():
+    direct = build_mutation_fingerprint(
+        "project-1",
+        "apply_pending_action_route_approval_opt_in",
+        {"pending_action_id": "pending-1"},
+    )
+    approved = build_mutation_fingerprint(
+        "project-1",
+        "execute_apply_pending_action_route_approval_opt_in_with_approval",
+        {"pending_action_id": "pending-1"},
+    )
+
+    assert direct["status"] == "ready"
+    assert direct["mutating"] is True
+    assert direct["components"]["target_type"] == "pending_action_route_opt_in"
+    assert direct["components"]["target_id"] == "pending_action_route_opt_in:pending-1"
+    assert approved["status"] == "ready"
+    assert approved["components"]["target_id"] == direct["components"]["target_id"]
+
+
 def test_build_mutation_fingerprint_covers_planner_revision_patch():
     first = build_mutation_fingerprint(
         "project-1",

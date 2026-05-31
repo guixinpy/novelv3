@@ -325,15 +325,34 @@ def test_write_gate_coverage_marks_world_model_proposal_apply_as_approval_redire
     }
 
 
-def test_write_gate_coverage_marks_apply_route_opt_in_as_direct_confirmation_guarded():
+def test_write_gate_coverage_marks_apply_route_opt_in_as_approval_redirected():
     output = inspect_agent_write_gate_coverage(adapter_metadata_by_name=_adapter_metadata())
-    apply_tool = _tools_by_name(output)["apply_pending_action_route_approval_opt_in"]
+    tools_by_name = _tools_by_name(output)
 
+    execute_tool = tools_by_name["execute_apply_pending_action_route_approval_opt_in_with_approval"]
+    assert execute_tool["agent_plan_gate_status"] == "enforced"
+    assert execute_tool["gate_version"] == "phase231.route_opt_in_apply_agent_plan_approval.v1"
+    assert execute_tool["gate_type"] == "stateless_agent_plan_approval"
+    assert execute_tool["risk_level"] == "low"
+    assert execute_tool["confirmation_fields"] == [
+        "agent_plan_approval_contract_hash",
+        "confirm_execute",
+        "route_apply_approval_contract_hash",
+    ]
+
+    apply_tool = tools_by_name["apply_pending_action_route_approval_opt_in"]
     assert apply_tool["mutability"] == "guarded_write"
     assert apply_tool["requires_confirmation"] is True
+    assert apply_tool["agent_plan_gate_status"] == "indirect_agent_gate_available"
+    assert apply_tool["direct_write_policy"] == "approval_required_redirect"
+    assert apply_tool["direct_write_blocked"] is True
     assert apply_tool["direct_confirmation_guard"] is True
     assert apply_tool["confirmation_fields"] == ["approval_contract_hash", "confirm_apply"]
-    assert apply_tool["risk_level"] == "medium"
+    assert apply_tool["risk_level"] == "low"
+    assert apply_tool["recommended_action"] == "route_direct_calls_to_approval_executor"
+    assert {item["consumer_tool"] for item in apply_tool["indirect_coverage"]} == {
+        "execute_apply_pending_action_route_approval_opt_in_with_approval"
+    }
 
 
 def test_write_gate_coverage_marks_batch_checkpoint_writes_as_confirmation_guarded():
@@ -659,8 +678,16 @@ def _adapter_metadata() -> dict[str, dict]:
             "tool_name": "apply_pending_action_route_approval_opt_in",
             "adapter_type": "static",
             "category": "preflight",
-            "mutability": "write",
+            "mutability": "guarded_write",
             "handler_name": "_apply_pending_action_route_approval_opt_in",
+            "write_policy": "approval_required_redirect",
+        },
+        "execute_apply_pending_action_route_approval_opt_in_with_approval": {
+            "tool_name": "execute_apply_pending_action_route_approval_opt_in_with_approval",
+            "adapter_type": "static",
+            "category": "preflight",
+            "mutability": "write",
+            "handler_name": "_execute_apply_pending_action_route_approval_opt_in_with_approval",
         },
         "record_agent_knowledge_base_candidate": {
             "tool_name": "record_agent_knowledge_base_candidate",

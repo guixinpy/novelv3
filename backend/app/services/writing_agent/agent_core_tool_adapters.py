@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import copy
 from collections.abc import Callable
 from typing import Any
 
@@ -117,6 +116,22 @@ def build_agent_core_tool_adapters(
         "apply_pending_action_route_approval_opt_in": WritingAgentToolAdapter(
             "apply_pending_action_route_approval_opt_in",
             _apply_pending_action_route_approval_opt_in(static_adapter_tool_names_provider),
+            category="preflight",
+            mutability="guarded_write",
+            write_policy="approval_required_redirect",
+        ),
+        "prepare_apply_pending_action_route_approval_opt_in": WritingAgentToolAdapter(
+            "prepare_apply_pending_action_route_approval_opt_in",
+            _prepare_apply_pending_action_route_approval_opt_in(static_adapter_tool_names_provider),
+            category="preflight",
+            mutability="read",
+        ),
+        "execute_apply_pending_action_route_approval_opt_in_with_approval": WritingAgentToolAdapter(
+            "execute_apply_pending_action_route_approval_opt_in_with_approval",
+            _execute_apply_pending_action_route_approval_opt_in_with_approval(
+                static_adapter_tool_names_provider,
+                adapter_metadata_by_name_provider,
+            ),
             category="preflight",
             mutability="write",
         ),
@@ -582,121 +597,95 @@ def _apply_pending_action_route_approval_opt_in(
         context: WritingAgentToolContext,
         tool: WritingAgentToolRequest,
     ) -> dict[str, Any]:
-        from app.models import Dialog, PendingAction
-        from app.services.writing_agent.slash_command_route import (
-            blocked_pending_action_route_approval_opt_in_apply,
-            build_pending_action_route_approval_opt_in_apply_contract,
-            completed_pending_action_route_approval_opt_in_apply,
-            verify_pending_action_route_approval_opt_in_apply_contract,
+        from app.services.writing_agent.route_opt_in_apply_execution import (
+            validate_direct_apply_route_opt_in_request,
         )
 
         pending_action_id = str(tool.params.get("pending_action_id") or "").strip()
-        if tool.params.get("confirm_apply") is not True:
-            return blocked_pending_action_route_approval_opt_in_apply(
-                pending_action_id=pending_action_id,
-                reason="confirmation_required",
-            )
-        approval_contract_hash = str(tool.params.get("approval_contract_hash") or "").strip() or None
-        if not approval_contract_hash:
-            return blocked_pending_action_route_approval_opt_in_apply(
-                pending_action_id=pending_action_id,
-                reason="approval_contract_hash_required",
-            )
         approval_contract = tool.params.get("approval_contract")
-        if not isinstance(approval_contract, dict):
-            return blocked_pending_action_route_approval_opt_in_apply(
-                pending_action_id=pending_action_id,
-                reason="approval_contract_required",
-            )
-
-        pending = context.db.query(PendingAction).filter(PendingAction.id == pending_action_id).first()
-        if pending is None:
-            return blocked_pending_action_route_approval_opt_in_apply(
-                pending_action_id=pending_action_id,
-                reason="pending_action_not_found",
-            )
-        dialog = context.db.query(Dialog).filter(Dialog.id == pending.dialog_id).first()
-        if dialog is None or dialog.project_id != context.project_id:
-            return blocked_pending_action_route_approval_opt_in_apply(
-                pending_action_id=pending_action_id,
-                reason="pending_action_not_found",
-            )
-        if pending.status != "pending" or pending.resolved_at is not None:
-            return blocked_pending_action_route_approval_opt_in_apply(
-                pending_action_id=pending.id,
-                reason="pending_action_not_pending",
-            )
-
-        route_apply_preview = _preview_pending_action_route_approval_opt_in_apply(static_adapter_tool_names_provider)(
-            context,
-            tool,
-        )
-        recomputed_contract = build_pending_action_route_approval_opt_in_apply_contract(
-            project_id=context.project_id,
-            route_apply_preview=route_apply_preview,
-            pending_status=str(pending.status or ""),
-        )
-        approval_verification = verify_pending_action_route_approval_opt_in_apply_contract(
-            approval_contract_hash=approval_contract_hash,
-            approval_contract=approval_contract,
-            recomputed_contract=recomputed_contract,
-        )
-        if approval_verification.get("status") != "ready":
-            return blocked_pending_action_route_approval_opt_in_apply(
-                pending_action_id=pending.id,
-                reason=str(approval_verification.get("reason") or "approval_contract_not_ready"),
-                route_apply_preview=route_apply_preview,
-                approval_verification=approval_verification,
-            )
-        params_after = route_apply_preview.get("params_after")
-        params_diff = route_apply_preview.get("params_diff")
-        if not isinstance(params_after, dict) or not isinstance(params_diff, dict) or not params_diff:
-            return blocked_pending_action_route_approval_opt_in_apply(
-                pending_action_id=pending.id,
-                reason="route_apply_contract_not_required",
-                route_apply_preview=route_apply_preview,
-                approval_verification=approval_verification,
-            )
-        params_before = copy.deepcopy(route_apply_preview.get("params_before") or {})
-        params_after = copy.deepcopy(params_after)
-        updated = (
-            context.db.query(PendingAction)
-            .filter(
-                PendingAction.id == pending.id,
-                PendingAction.status == "pending",
-                PendingAction.resolved_at.is_(None),
-                PendingAction.params == params_before,
-            )
-            .update({"params": params_after}, synchronize_session=False)
-        )
-        if updated != 1:
-            context.db.rollback()
-            return blocked_pending_action_route_approval_opt_in_apply(
-                pending_action_id=pending.id,
-                reason="pending_action_state_changed",
-                route_apply_preview=route_apply_preview,
-                approval_verification=approval_verification,
-            )
-        context.db.commit()
-        pending = (
-            context.db.query(PendingAction)
-            .populate_existing()
-            .filter(PendingAction.id == pending.id)
-            .first()
-        )
-        context.db.refresh(pending)
-        return completed_pending_action_route_approval_opt_in_apply(
-            pending_action_id=pending.id,
-            pending_action_type=pending.type,
-            params_before=params_before,
-            params_after=copy.deepcopy(pending.params if isinstance(pending.params, dict) else params_after),
-            params_diff=copy.deepcopy(params_diff),
-            route_apply_preview=route_apply_preview,
-            approval_verification=approval_verification,
+        return validate_direct_apply_route_opt_in_request(
+            context.db,
+            context.project_id,
+            pending_action_id=pending_action_id,
+            confirm_apply=tool.params.get("confirm_apply") is True,
+            approval_contract_hash=str(tool.params.get("approval_contract_hash") or "").strip() or None,
+            approval_contract=approval_contract if isinstance(approval_contract, dict) else None,
+            static_adapter_tool_names_provider=static_adapter_tool_names_provider,
         )
 
     apply_pending_action_route_approval_opt_in_adapter.__name__ = "_apply_pending_action_route_approval_opt_in"
     return apply_pending_action_route_approval_opt_in_adapter
+
+
+def _prepare_apply_pending_action_route_approval_opt_in(
+    static_adapter_tool_names_provider: StaticAdapterToolNamesProvider,
+) -> Callable[[WritingAgentToolContext, WritingAgentToolRequest], dict[str, Any]]:
+    def prepare_apply_pending_action_route_approval_opt_in_adapter(
+        context: WritingAgentToolContext,
+        tool: WritingAgentToolRequest,
+    ) -> dict[str, Any]:
+        from app.services.writing_agent.route_opt_in_apply_execution import (
+            prepare_apply_pending_action_route_approval_opt_in,
+        )
+
+        pending_action_id = str(tool.params.get("pending_action_id") or "").strip()
+        return prepare_apply_pending_action_route_approval_opt_in(
+            context.db,
+            context.project_id,
+            pending_action_id=pending_action_id,
+            static_adapter_tool_names_provider=static_adapter_tool_names_provider,
+        )
+
+    prepare_apply_pending_action_route_approval_opt_in_adapter.__name__ = (
+        "_prepare_apply_pending_action_route_approval_opt_in"
+    )
+    return prepare_apply_pending_action_route_approval_opt_in_adapter
+
+
+def _execute_apply_pending_action_route_approval_opt_in_with_approval(
+    static_adapter_tool_names_provider: StaticAdapterToolNamesProvider,
+    adapter_metadata_by_name_provider: AdapterMetadataByNameProvider,
+) -> Callable[[WritingAgentToolContext, WritingAgentToolRequest], dict[str, Any]]:
+    def execute_apply_pending_action_route_approval_opt_in_with_approval_adapter(
+        context: WritingAgentToolContext,
+        tool: WritingAgentToolRequest,
+    ) -> dict[str, Any]:
+        from app.services.writing_agent.route_opt_in_apply_execution import (
+            execute_apply_pending_action_route_approval_opt_in_with_approval,
+        )
+
+        route_contract = tool.params.get("route_apply_approval_contract")
+        agent_contract = tool.params.get("agent_plan_approval_contract")
+
+        def approval_metadata_provider(plan):
+            return build_approval_tool_metadata_by_name(
+                plan if isinstance(plan, dict) else None,
+                adapter_metadata_by_name=adapter_metadata_by_name_provider(),
+            )
+
+        return execute_apply_pending_action_route_approval_opt_in_with_approval(
+            context.db,
+            context.project_id,
+            pending_action_id=str(tool.params.get("pending_action_id") or "").strip(),
+            confirm_execute=tool.params.get("confirm_execute") is True,
+            route_apply_approval_contract_hash=str(
+                tool.params.get("route_apply_approval_contract_hash") or ""
+            ).strip()
+            or None,
+            route_apply_approval_contract=route_contract if isinstance(route_contract, dict) else None,
+            agent_plan_approval_contract_hash=str(
+                tool.params.get("agent_plan_approval_contract_hash") or ""
+            ).strip()
+            or None,
+            agent_plan_approval_contract=agent_contract if isinstance(agent_contract, dict) else None,
+            static_adapter_tool_names_provider=static_adapter_tool_names_provider,
+            approval_tool_metadata_provider=approval_metadata_provider,
+        )
+
+    execute_apply_pending_action_route_approval_opt_in_with_approval_adapter.__name__ = (
+        "_execute_apply_pending_action_route_approval_opt_in_with_approval"
+    )
+    return execute_apply_pending_action_route_approval_opt_in_with_approval_adapter
 
 
 def _inspect_agent_dialog_control_plane_projection(
