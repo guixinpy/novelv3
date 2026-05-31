@@ -35,6 +35,7 @@ def test_agent_core_tool_descriptors_live_in_dedicated_module():
         "inspect_agent_control_plane_readiness",
         "plan_recovery_tools",
         "plan_recommended_followups",
+        "inspect_agent_worker_dispatch",
         "inspect_agent_slash_command_route",
         "inspect_agent_dialog_route_projection",
         "inspect_agent_route_preference_projection",
@@ -59,6 +60,7 @@ def test_agent_core_tool_descriptors_live_in_dedicated_module():
     assert all(descriptor.internal for descriptor in AGENT_CORE_TOOL_DESCRIPTORS)
     assert target_type_for_tool("preview_agent_plan_approval_contract") == "agent_plan_approval_contract"
     assert target_type_for_tool("inspect_agent_write_gate_coverage") == "agent_write_gate_coverage"
+    assert target_type_for_tool("inspect_agent_worker_dispatch") == "agent_worker_dispatch"
     assert "plan_writing_agent_run" in non_blocking_report_tool_names()
     assert "preflight_writing" not in non_blocking_report_tool_names()
 

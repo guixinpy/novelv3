@@ -288,6 +288,48 @@ AGENT_CORE_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(
+        name="inspect_agent_worker_dispatch",
+        module="writing_agent",
+        category="preflight",
+        description="只读预览工具任务到 Writing Agent worker profile 的分派边界，不执行任何 worker 任务。",
+        input_schema=object_schema(
+            {
+                "worker_name": {"type": "string"},
+                "parent_run_id": {"type": "string"},
+                "tasks": {
+                    "type": "array",
+                    "items": object_schema(
+                        {
+                            "tool_name": {"type": "string"},
+                            "params": {"type": "object"},
+                            "children": {"type": "array"},
+                            "delegate_to": {"type": "string"},
+                            "delegate_to_worker": {"type": "string"},
+                        },
+                        required=("tool_name",),
+                    ),
+                },
+            },
+            required=("tasks",),
+        ),
+        output_schema=object_schema(
+            {
+                "version": {"type": "string"},
+                "status": {"type": "string"},
+                "worker": {"type": "object"},
+                "summary": {"type": "object"},
+                "task_envelopes": {"type": "array"},
+                "worker_dispatches": {"type": "array"},
+                "issues": {"type": "array"},
+            }
+        ),
+        target_type="agent_worker_dispatch",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=8,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
         name="inspect_agent_slash_command_route",
         module="writing_agent",
         category="preflight",

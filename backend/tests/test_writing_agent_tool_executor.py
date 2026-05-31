@@ -66,6 +66,7 @@ def test_agent_core_tool_adapters_live_in_dedicated_module():
         "verify_agent_plan_approval_contract",
         "plan_recovery_tools",
         "plan_recommended_followups",
+        "inspect_agent_worker_dispatch",
         "inspect_agent_health_projection",
         "inspect_agent_control_plane_readiness",
         "inspect_agent_slash_command_route",
@@ -2249,6 +2250,38 @@ async def test_tool_executor_handles_plan_recommended_followups(db_session):
     ]
     assert result.output["tools"][0]["params"] == {"chapter_index": 2}
     assert result.output["trace"]["rejected_tools"] == [{"tool_name": "not_a_tool", "reason": "not_allowed"}]
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_handles_inspect_agent_worker_dispatch(db_session):
+    project = Project(name="Worker Dispatch Tool")
+    db_session.add(project)
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-worker-dispatch"),
+        WritingAgentToolRequest(
+            tool_name="inspect_agent_worker_dispatch",
+            params={
+                "tasks": [
+                    {"tool_name": "review_chapter_quality", "params": {"chapter_index": 2}},
+                    {"tool_name": "search_agent_retrieval_context", "params": {"query": "第2章证据"}},
+                    {"tool_name": "plan_post_chapter_memory_capture", "params": {"chapter_index": 2}},
+                ],
+            },
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "ready"
+    assert result.output["summary"] == {"workers": 3, "planned_tasks": 3, "blocked_tasks": 0, "issues": 0}
+    assert [item["worker"]["name"] for item in result.output["worker_dispatches"]] == [
+        "reviewer_worker",
+        "retrieval_worker",
+        "memory_worker",
+    ]
+    assert result.output["worker_dispatches"][0]["task_envelopes"][0]["will_execute"] is False
 
 
 @pytest.mark.asyncio

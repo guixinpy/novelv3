@@ -62,6 +62,12 @@ def build_agent_core_tool_adapters(
             category="preflight",
             mutability="read",
         ),
+        "inspect_agent_worker_dispatch": WritingAgentToolAdapter(
+            "inspect_agent_worker_dispatch",
+            _inspect_agent_worker_dispatch,
+            category="preflight",
+            mutability="read",
+        ),
         "inspect_agent_health_projection": WritingAgentToolAdapter(
             "inspect_agent_health_projection",
             _inspect_agent_health_projection(adapter_metadata_by_name_provider, static_adapter_tool_names_provider),
@@ -284,6 +290,20 @@ def _plan_recommended_followups(context: WritingAgentToolContext, tool: WritingA
 
     run_id = str(tool.params.get("run_id") or "").strip() or None
     return build_recommended_followup_tool_plan(context.db, context.project_id, run_id)
+
+
+def _inspect_agent_worker_dispatch(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
+    from app.services.writing_agent.agent_worker_dispatch import (
+        preview_agent_worker_dispatch,
+        preview_agent_worker_dispatches,
+    )
+
+    worker_name = str(tool.params.get("worker_name") or "").strip()
+    parent_run_id = str(tool.params.get("parent_run_id") or context.run_id or "").strip() or None
+    tasks = _record_list(tool.params.get("tasks"))
+    if worker_name:
+        return preview_agent_worker_dispatch(worker_name, tasks, parent_run_id=parent_run_id)
+    return preview_agent_worker_dispatches(tasks, parent_run_id=parent_run_id)
 
 
 def _inspect_agent_health_projection(
@@ -847,3 +867,9 @@ def _string_list(value: object) -> list[str]:
     if not isinstance(value, list):
         return []
     return [str(item) for item in value if str(item)]
+
+
+def _record_list(value: object) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    return [dict(item) for item in value if isinstance(item, dict)]
