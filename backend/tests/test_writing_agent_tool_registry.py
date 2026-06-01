@@ -48,6 +48,7 @@ def test_agent_core_tool_descriptors_live_in_dedicated_module():
         "inspect_agent_dialog_control_plane_projection",
         "inspect_agent_intent_projection",
         "inspect_agent_reference_alignment",
+        "inspect_agent_dogfood_evidence",
         "inspect_agent_tool_contracts",
         "inspect_agent_command_contracts",
         "inspect_legacy_hermes_action_migration",
@@ -1532,10 +1533,26 @@ def test_agent_tool_registry_includes_inspect_agent_health_projection():
     assert descriptor.output_schema["properties"]["profile_policy"]["type"] == ["object", "null"]
     assert descriptor.output_schema["properties"]["agent_definition_registry"]["type"] == "object"
     assert descriptor.output_schema["properties"]["agent_worker_route_registry"]["type"] == "object"
+    assert descriptor.output_schema["properties"]["dogfood_evidence"]["type"] == "object"
     assert descriptor.output_schema["properties"]["post_chapter_memory_capture"]["type"] == ["object", "null"]
     assert descriptor.output_schema["properties"]["recommended_next_tools"]["type"] == "array"
     assert "inspect_agent_health_projection" in allowed_tool_names()
     assert "inspect_agent_health_projection" in non_blocking_report_tool_names()
+
+
+def test_agent_tool_registry_includes_inspect_agent_dogfood_evidence():
+    descriptor = get_agent_tool_descriptor("inspect_agent_dogfood_evidence")
+
+    assert descriptor is not None
+    assert descriptor.internal is True
+    assert descriptor.non_blocking_report is True
+    assert descriptor.category == "preflight"
+    assert descriptor.target_type == "agent_dogfood_evidence"
+    assert descriptor.output_schema["properties"]["capability_coverage"]["type"] == "array"
+    assert descriptor.output_schema["properties"]["evidence"]["type"] == "array"
+    assert descriptor.output_schema["properties"]["diagnostics"]["type"] == "array"
+    assert "inspect_agent_dogfood_evidence" in allowed_tool_names()
+    assert "inspect_agent_dogfood_evidence" in non_blocking_report_tool_names()
 
 
 def test_agent_tool_registry_includes_inspect_agent_world_model_route():

@@ -51,6 +51,7 @@ TOOL_WORKER_ROUTES = {
     "execute_apply_planner_revision_patch_with_approval": "revision_worker",
     "inspect_agent_trace_audit": "recovery_worker",
     "inspect_agent_job_projection": "recovery_worker",
+    "inspect_agent_dogfood_evidence": "recovery_worker",
     "plan_recovery_tools": "recovery_worker",
     "repair_longform_maintenance": "recovery_worker",
 }

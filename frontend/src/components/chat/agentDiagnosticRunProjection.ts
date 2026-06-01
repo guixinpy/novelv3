@@ -6,6 +6,7 @@ export const DIAGNOSTIC_AGENT_RUN_ACTION_TYPES = [
   'inspect_agent_health_projection',
   'inspect_agent_command_contracts',
   'inspect_agent_control_plane_readiness',
+  'inspect_agent_dogfood_evidence',
   'inspect_agent_memory_route',
   'inspect_agent_memory_tree',
   'inspect_agent_knowledge_base_route',
@@ -38,6 +39,10 @@ export const DIAGNOSTIC_AGENT_RUN_ACTION_DESCRIPTORS: Record<DiagnosticAgentRunA
   inspect_agent_control_plane_readiness: {
     type: 'inspect_agent_control_plane_readiness',
     buildView: buildControlPlaneReadinessActionResultView,
+  },
+  inspect_agent_dogfood_evidence: {
+    type: 'inspect_agent_dogfood_evidence',
+    buildView: buildDogfoodEvidenceActionResultView,
   },
   inspect_agent_memory_route: {
     type: 'inspect_agent_memory_route',
@@ -103,6 +108,17 @@ function buildControlPlaneReadinessActionResultView(actionResult: Record<string,
     type: 'inspect_agent_control_plane_readiness',
     status,
     label: controlPlaneReadinessDiagnosticsLabel(status),
+    variant: statusVariant(status),
+    ...(detailItems.length ? { detail_items: detailItems } : {}),
+  }
+}
+
+function buildDogfoodEvidenceActionResultView(actionResult: Record<string, unknown>, status: string): ActionResultView {
+  const detailItems = dogfoodEvidenceDetailItems(recordValue(actionResult.data))
+  return {
+    type: 'inspect_agent_dogfood_evidence',
+    status,
+    label: dogfoodEvidenceLabel(status),
     variant: statusVariant(status),
     ...(detailItems.length ? { detail_items: detailItems } : {}),
   }
@@ -174,6 +190,13 @@ function controlPlaneReadinessDiagnosticsLabel(status: string) {
   if (status === 'failed') return '控制平面诊断失败'
   if (status === 'running') return '控制平面诊断中'
   return `控制平面诊断: ${status || '未知状态'}`
+}
+
+function dogfoodEvidenceLabel(status: string) {
+  if (status === 'success' || status === 'completed') return 'Dogfood 证据诊断已生成'
+  if (status === 'failed') return 'Dogfood 证据诊断失败'
+  if (status === 'running') return 'Dogfood 证据诊断中'
+  return `Dogfood 证据诊断: ${status || '未知状态'}`
 }
 
 function memoryRouteLabel(status: string) {
@@ -308,6 +331,37 @@ function commandContractDiagnosticsDetailItems(data: Record<string, unknown>) {
 
 function controlPlaneReadinessDiagnosticsDetailItems(data: Record<string, unknown>) {
   return controlPlaneReadinessDetailItems(data)
+}
+
+function dogfoodEvidenceDetailItems(data: Record<string, unknown>) {
+  const items: Array<{ label: string; value: string }> = []
+  const evidenceStatus = stringValue(data.status)
+  if (evidenceStatus) {
+    items.push({ label: '证据状态', value: routeStatusLabel(evidenceStatus) })
+  }
+  const summary = recordValue(data.summary)
+  const evidenceCount = numberValue(summary.evidence_count)
+  if (evidenceCount !== null) {
+    items.push({ label: '证据记录', value: `${evidenceCount} 个` })
+  }
+  const covered = numberValue(summary.covered_capability_count)
+  const required = numberValue(summary.required_capability_count)
+  if (covered !== null && required !== null) {
+    items.push({ label: '能力覆盖', value: `${covered} / ${required}` })
+  }
+  const generatedChapterCount = numberValue(summary.generated_chapter_count)
+  if (generatedChapterCount !== null) {
+    items.push({ label: '生成章节', value: `${generatedChapterCount} 章` })
+  }
+  const missingSourceCount = numberValue(summary.missing_source_count)
+  if (missingSourceCount !== null) {
+    items.push({ label: '缺失来源', value: `${missingSourceCount} 个` })
+  }
+  const recommendedTools = Array.isArray(data.recommended_next_tools) ? data.recommended_next_tools : []
+  if (recommendedTools.length) {
+    items.push({ label: '推荐工具', value: `${recommendedTools.length} 个` })
+  }
+  return items
 }
 
 function memoryRouteDetailItems(data: Record<string, unknown>) {

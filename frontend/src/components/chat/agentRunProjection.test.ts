@@ -153,6 +153,7 @@ describe('agentRunProjection', () => {
       'inspect_agent_health_projection',
       'inspect_agent_command_contracts',
       'inspect_agent_control_plane_readiness',
+      'inspect_agent_dogfood_evidence',
       'inspect_agent_memory_route',
       'inspect_agent_memory_tree',
       'inspect_agent_knowledge_base_route',
@@ -230,6 +231,7 @@ describe('agentRunProjection', () => {
     expect(isAgentRunActionType('inspect_agent_health_projection')).toBe(true)
     expect(isAgentRunActionType('inspect_agent_command_contracts')).toBe(true)
     expect(isAgentRunActionType('inspect_agent_control_plane_readiness')).toBe(true)
+    expect(isAgentRunActionType('inspect_agent_dogfood_evidence')).toBe(true)
     expect(isAgentRunActionType('inspect_agent_memory_route')).toBe(true)
     expect(isAgentRunActionType('inspect_agent_memory_tree')).toBe(true)
     expect(isAgentRunActionType('inspect_agent_knowledge_base_route')).toBe(true)
@@ -269,6 +271,7 @@ describe('agentRunProjection', () => {
     expect(getAgentRunActionDescriptor('inspect_agent_health_projection')?.type).toBe('inspect_agent_health_projection')
     expect(getAgentRunActionDescriptor('inspect_agent_command_contracts')?.type).toBe('inspect_agent_command_contracts')
     expect(getAgentRunActionDescriptor('inspect_agent_control_plane_readiness')?.type).toBe('inspect_agent_control_plane_readiness')
+    expect(getAgentRunActionDescriptor('inspect_agent_dogfood_evidence')?.type).toBe('inspect_agent_dogfood_evidence')
     expect(getAgentRunActionDescriptor('inspect_agent_memory_route')?.type).toBe('inspect_agent_memory_route')
     expect(getAgentRunActionDescriptor('inspect_agent_memory_tree')?.type).toBe('inspect_agent_memory_tree')
     expect(getAgentRunActionDescriptor('inspect_agent_knowledge_base_route')?.type).toBe('inspect_agent_knowledge_base_route')
@@ -515,6 +518,37 @@ describe('agentRunProjection', () => {
     expect(view?.detail_items).toContainEqual({ label: '命令缺口', value: '1 个' })
     expect(view?.detail_items).toContainEqual({ label: '建议检查', value: '2 项' })
     expect(JSON.stringify(view)).not.toContain('agent_tool_contract_gaps')
+  })
+
+  it('builds fallback views for dogfood evidence diagnostics', () => {
+    const view = buildAgentRunActionResultView({
+      type: 'inspect_agent_dogfood_evidence',
+      status: 'success',
+      data: {
+        status: 'ready',
+        summary: {
+          evidence_count: 2,
+          covered_capability_count: 5,
+          required_capability_count: 5,
+          generated_chapter_count: 4,
+          missing_source_count: 0,
+        },
+        diagnostics: [{ code: 'dogfood_source_missing' }],
+        recommended_next_tools: ['inspect_agent_health_projection'],
+        evidence: [{ evidence_id: 'full_agent_native_loop_20260526' }],
+      },
+    })
+
+    expect(view?.label).toBe('Dogfood 证据诊断已生成')
+    expect(view?.variant).toBe('success')
+    expect(view?.detail_items).toContainEqual({ label: '证据状态', value: '可用' })
+    expect(view?.detail_items).toContainEqual({ label: '证据记录', value: '2 个' })
+    expect(view?.detail_items).toContainEqual({ label: '能力覆盖', value: '5 / 5' })
+    expect(view?.detail_items).toContainEqual({ label: '生成章节', value: '4 章' })
+    expect(view?.detail_items).toContainEqual({ label: '缺失来源', value: '0 个' })
+    expect(view?.detail_items).toContainEqual({ label: '推荐工具', value: '1 个' })
+    expect(JSON.stringify(view)).not.toContain('dogfood_source_missing')
+    expect(JSON.stringify(view)).not.toContain('full_agent_native_loop_20260526')
   })
 
   it('builds fallback views for agent health projection diagnostics', () => {

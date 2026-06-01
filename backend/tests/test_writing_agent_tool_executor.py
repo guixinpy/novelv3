@@ -81,6 +81,7 @@ def test_agent_core_tool_adapters_live_in_dedicated_module():
         "inspect_agent_dialog_control_plane_projection",
         "inspect_agent_intent_projection",
         "inspect_agent_reference_alignment",
+        "inspect_agent_dogfood_evidence",
         "inspect_agent_tool_contracts",
         "inspect_agent_command_contracts",
         "inspect_legacy_hermes_action_migration",
@@ -2285,8 +2286,8 @@ async def test_tool_executor_handles_inspect_agent_worker_dispatch(db_session):
     }
     assert result.output["route_registry"]["status"] == "passed"
     assert result.output["route_registry"]["summary"] == {
-        "routes": 46,
-        "ready_routes": 46,
+        "routes": 47,
+        "ready_routes": 47,
         "unrouted_allowed_tools": 0,
         "issues": 0,
     }
@@ -4102,6 +4103,18 @@ def test_tool_executor_exposes_inspect_agent_reference_alignment_adapter_metadat
     }
 
 
+def test_tool_executor_exposes_inspect_agent_dogfood_evidence_adapter_metadata():
+    metadata = writing_agent_tool_adapter_metadata("inspect_agent_dogfood_evidence")
+
+    assert metadata == {
+        "tool_name": "inspect_agent_dogfood_evidence",
+        "adapter_type": "static",
+        "category": "preflight",
+        "mutability": "read",
+        "handler_name": "_inspect_agent_dogfood_evidence",
+    }
+
+
 def test_tool_executor_exposes_inspect_agent_command_contracts_adapter_metadata():
     metadata = writing_agent_tool_adapter_metadata("inspect_agent_command_contracts")
 
@@ -4606,6 +4619,25 @@ async def test_tool_executor_handles_inspect_agent_reference_alignment(db_sessio
     assert "inspect_agent_tool_contracts" in result.output["recommended_next_tools"]
     assert "inspect_agent_write_gate_coverage" in result.output["recommended_next_tools"]
     assert result.output["trace"]["adapter_backed_tool_count"] >= 1
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_handles_inspect_agent_dogfood_evidence(db_session):
+    project = Project(name="Dogfood Evidence Projection")
+    db_session.add(project)
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-dogfood"),
+        WritingAgentToolRequest(tool_name="inspect_agent_dogfood_evidence"),
+    )
+
+    assert result.handled is True
+    assert result.output["status"] == "ready"
+    assert result.output["summary"]["covered_capability_count"] == result.output["summary"]["required_capability_count"]
+    assert "full_agent_native_loop_20260526" in {item["evidence_id"] for item in result.output["evidence"]}
+    assert "inspect_agent_health_projection" in result.output["recommended_next_tools"]
+    assert result.output["trace"]["mutability"] == "read"
 
 
 @pytest.mark.asyncio

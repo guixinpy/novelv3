@@ -14,6 +14,7 @@ from app.services.writing_agent.agent_command_contracts import inspect_agent_com
 from app.services.writing_agent.agent_context_compression_projection import inspect_agent_context_compression_projection
 from app.services.writing_agent.agent_control_plane_readiness import inspect_agent_control_plane_readiness
 from app.services.writing_agent.agent_trace_audit import inspect_agent_trace_audit
+from app.services.writing_agent.dogfood_evidence_projection import inspect_agent_dogfood_evidence
 from app.services.writing_agent.memory_activation import build_memory_activation_plan
 from app.services.writing_agent.narrative_trend_projection import inspect_narrative_trend_projection
 from app.services.writing_agent.post_chapter_memory_capture import plan_post_chapter_memory_capture
@@ -90,6 +91,7 @@ def inspect_agent_health_projection(
     reference_alignment = _reference_alignment_summary(
         inspect_reference_pattern_alignment(adapter_metadata_by_name=adapter_metadata_by_name)
     )
+    dogfood_evidence = _dogfood_evidence_summary(inspect_agent_dogfood_evidence())
 
     diagnostics = _diagnostics(
         profile_policy=profile_policy,
@@ -106,6 +108,7 @@ def inspect_agent_health_projection(
         memory_activation=memory_activation,
         post_chapter_memory_capture=post_chapter_memory_capture,
         narrative_trends=narrative_trends,
+        dogfood_evidence=dogfood_evidence,
     )
     recommended_tools = _recommended_tools(diagnostics)
     return _json_safe_output(
@@ -130,6 +133,7 @@ def inspect_agent_health_projection(
             "post_chapter_memory_capture": post_chapter_memory_capture,
             "narrative_trends": narrative_trends,
             "reference_alignment": reference_alignment,
+            "dogfood_evidence": dogfood_evidence,
             "diagnostics": diagnostics,
             "recommended_tools": recommended_tools,
             "recommended_next_tools": recommended_tools,
@@ -321,6 +325,40 @@ def _reference_alignment_summary(output: dict[str, Any]) -> dict[str, Any]:
             str(item.get("area") or "") for item in capability_alignment if isinstance(item, dict)
         ],
         "recommended_next_tools": ["inspect_agent_reference_alignment"],
+    }
+
+
+def _dogfood_evidence_summary(output: dict[str, Any]) -> dict[str, Any]:
+    summary = output.get("summary") if isinstance(output.get("summary"), dict) else {}
+    capability_coverage = output.get("capability_coverage") if isinstance(output.get("capability_coverage"), list) else []
+    diagnostics = output.get("diagnostics") if isinstance(output.get("diagnostics"), list) else []
+    return {
+        "status": str(output.get("status") or ""),
+        "version": output.get("version"),
+        "source_refs": _string_list(output.get("source_refs")),
+        "summary": {
+            "evidence_count": _non_negative_int(summary.get("evidence_count")),
+            "ready_evidence_count": _non_negative_int(summary.get("ready_evidence_count")),
+            "missing_source_count": _non_negative_int(summary.get("missing_source_count")),
+            "required_capability_count": _non_negative_int(summary.get("required_capability_count")),
+            "covered_capability_count": _non_negative_int(summary.get("covered_capability_count")),
+            "missing_capability_count": _non_negative_int(summary.get("missing_capability_count")),
+            "generated_chapter_count": _non_negative_int(summary.get("generated_chapter_count")),
+            "review_step_count": _non_negative_int(summary.get("review_step_count")),
+            "open_finding_count": _non_negative_int(summary.get("open_finding_count")),
+        },
+        "capabilities": [
+            str(item.get("capability") or "") for item in capability_coverage if isinstance(item, dict)
+        ],
+        "diagnostics": [
+            {
+                "code": str(item.get("code") or ""),
+                "severity": str(item.get("severity") or ""),
+            }
+            for item in diagnostics
+            if isinstance(item, dict)
+        ],
+        "recommended_next_tools": ["inspect_agent_dogfood_evidence"],
     }
 
 
@@ -568,6 +606,7 @@ def _diagnostics(
     memory_activation: dict[str, Any] | None,
     post_chapter_memory_capture: dict[str, Any] | None,
     narrative_trends: dict[str, Any],
+    dogfood_evidence: dict[str, Any],
 ) -> list[dict[str, Any]]:
     diagnostics: list[dict[str, Any]] = []
     if profile_policy and profile_policy.get("status") not in {"passed", ""}:
@@ -708,6 +747,18 @@ def _diagnostics(
                 "recommended_tools": _string_list(narrative_trends.get("recommended_next_tools")),
             }
         )
+    if dogfood_evidence.get("status") not in {"ready", ""}:
+        summary = dogfood_evidence.get("summary") if isinstance(dogfood_evidence.get("summary"), dict) else {}
+        diagnostics.append(
+            {
+                "code": "agent_dogfood_evidence_degraded",
+                "severity": "warning",
+                "message": "真实长篇 dogfood 证据覆盖不完整，继续生成前应先检查 pressure-test 证据面。",
+                "missing_source_count": _non_negative_int(summary.get("missing_source_count")),
+                "missing_capability_count": _non_negative_int(summary.get("missing_capability_count")),
+                "recommended_tools": _string_list(dogfood_evidence.get("recommended_next_tools")),
+            }
+        )
     route_summary = route_preference.get("summary") if isinstance(route_preference.get("summary"), dict) else {}
     if route_preference.get("status") != "ready" or _non_negative_int(route_summary.get("missing_preferred_tool_count")):
         diagnostics.append(
@@ -772,12 +823,14 @@ def _recommended_tools(diagnostics: list[dict[str, Any]]) -> list[str]:
         "agent_tool_contract_gaps": ["inspect_agent_control_plane_readiness", "inspect_agent_tool_contracts"],
         "agent_command_contract_gaps": ["inspect_agent_control_plane_readiness", "inspect_agent_command_contracts"],
         "agent_write_gate_high_risk": ["inspect_agent_write_gate_coverage"],
+        "agent_dogfood_evidence_degraded": ["inspect_agent_dogfood_evidence"],
     }
     tools: list[str] = []
     for diagnostic in diagnostics:
         tools.extend(tools_by_code.get(str(diagnostic.get("code") or ""), []))
         tools.extend(_string_list(diagnostic.get("recommended_tools")))
     tools.append("inspect_agent_reference_alignment")
+    tools.append("inspect_agent_dogfood_evidence")
     return _dedupe(tools)
 
 

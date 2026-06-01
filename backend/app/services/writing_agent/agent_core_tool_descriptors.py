@@ -67,6 +67,7 @@ _AGENT_HEALTH_PROJECTION_OUTPUT = object_schema(
         "post_chapter_memory_capture": {"type": ["object", "null"]},
         "narrative_trends": {"type": "object"},
         "reference_alignment": {"type": "object"},
+        "dogfood_evidence": {"type": "object"},
         "diagnostics": {"type": "array"},
         "recommended_tools": {"type": "array"},
         "recommended_next_tools": {"type": "array"},
@@ -92,6 +93,19 @@ _AGENT_REFERENCE_ALIGNMENT_OUTPUT = object_schema(
         "summary": {"type": "object"},
         "patterns": {"type": "array"},
         "capability_alignment": {"type": "array"},
+        "recommended_next_tools": {"type": "array"},
+        "trace": {"type": "object"},
+    }
+)
+_AGENT_DOGFOOD_EVIDENCE_OUTPUT = object_schema(
+    {
+        "status": {"type": "string"},
+        "version": {"type": "string"},
+        "source_refs": {"type": "array"},
+        "summary": {"type": "object"},
+        "capability_coverage": {"type": "array"},
+        "evidence": {"type": "array"},
+        "diagnostics": {"type": "array"},
         "recommended_next_tools": {"type": "array"},
         "trace": {"type": "object"},
     }
@@ -680,6 +694,19 @@ AGENT_CORE_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         input_schema=object_schema(),
         output_schema=_AGENT_REFERENCE_ALIGNMENT_OUTPUT,
         target_type="agent_reference_alignment",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=11,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
+        name="inspect_agent_dogfood_evidence",
+        module="writing_agent",
+        category="preflight",
+        description="只读输出真实长篇 dogfood / pressure-test 证据覆盖度，供 Agent 判断是否可继续生成与恢复。",
+        input_schema=object_schema(),
+        output_schema=_AGENT_DOGFOOD_EVIDENCE_OUTPUT,
+        target_type="agent_dogfood_evidence",
         internal=True,
         non_blocking_report=True,
         sort_key=11,

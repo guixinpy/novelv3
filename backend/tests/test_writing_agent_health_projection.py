@@ -245,6 +245,54 @@ def test_inspect_agent_health_projection_includes_control_plane_readiness(db_ses
     assert reference_alignment["summary"]["capability_area_count"] >= 9
     assert reference_alignment["recommended_next_tools"] == ["inspect_agent_reference_alignment"]
     assert "inspect_agent_reference_alignment" in output["recommended_tools"]
+    dogfood_evidence = output["dogfood_evidence"]
+    assert dogfood_evidence["status"] == "ready"
+    assert dogfood_evidence["summary"]["covered_capability_count"] == dogfood_evidence["summary"]["required_capability_count"]
+    assert dogfood_evidence["recommended_next_tools"] == ["inspect_agent_dogfood_evidence"]
+    assert "inspect_agent_dogfood_evidence" in output["recommended_tools"]
+
+
+def test_inspect_agent_health_projection_surfaces_dogfood_evidence_gap(db_session, monkeypatch):
+    project = Project(name="Agent Health Dogfood Evidence Gap")
+    db_session.add(project)
+    db_session.commit()
+    _patch_ready_sources(monkeypatch)
+    monkeypatch.setattr(agent_health_projection, "build_agent_tool_plan", _tool_plan_with_passed_profile_policy)
+    monkeypatch.setattr(
+        agent_health_projection,
+        "inspect_agent_dogfood_evidence",
+        lambda: {
+            "status": "degraded",
+            "version": "phase236.agent_dogfood_evidence.v1",
+            "summary": {
+                "evidence_count": 1,
+                "ready_evidence_count": 0,
+                "missing_source_count": 1,
+                "required_capability_count": 5,
+                "covered_capability_count": 4,
+                "missing_capability_count": 1,
+            },
+            "diagnostics": [{"code": "dogfood_source_missing", "severity": "warning"}],
+            "recommended_next_tools": ["inspect_agent_dogfood_evidence"],
+        },
+        raising=False,
+    )
+
+    output = agent_health_projection.inspect_agent_health_projection(
+        db_session,
+        project.id,
+        adapter_metadata_by_name={},
+        static_adapter_tool_names=set(),
+        action_execution_tool_names=set(),
+    )
+
+    assert output["status"] == "degraded"
+    assert output["dogfood_evidence"]["status"] == "degraded"
+    diagnostic = next(item for item in output["diagnostics"] if item["code"] == "agent_dogfood_evidence_degraded")
+    assert diagnostic["severity"] == "warning"
+    assert diagnostic["missing_source_count"] == 1
+    assert diagnostic["missing_capability_count"] == 1
+    assert "inspect_agent_dogfood_evidence" in output["recommended_tools"]
 
 
 def test_inspect_agent_health_projection_control_plane_readiness_tracks_command_gaps(db_session, monkeypatch):

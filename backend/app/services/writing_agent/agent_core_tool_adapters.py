@@ -159,6 +159,12 @@ def build_agent_core_tool_adapters(
             category="preflight",
             mutability="read",
         ),
+        "inspect_agent_dogfood_evidence": WritingAgentToolAdapter(
+            "inspect_agent_dogfood_evidence",
+            _inspect_agent_dogfood_evidence,
+            category="preflight",
+            mutability="read",
+        ),
         "inspect_agent_tool_contracts": WritingAgentToolAdapter(
             "inspect_agent_tool_contracts",
             _inspect_agent_tool_contracts(adapter_metadata_by_name_provider),
@@ -782,6 +788,15 @@ def _inspect_agent_reference_alignment(
 
     inspect_agent_reference_alignment_adapter.__name__ = "_inspect_agent_reference_alignment"
     return inspect_agent_reference_alignment_adapter
+
+
+def _inspect_agent_dogfood_evidence(
+    context: WritingAgentToolContext,
+    tool: WritingAgentToolRequest,
+) -> dict[str, Any]:
+    from app.services.writing_agent.dogfood_evidence_projection import inspect_agent_dogfood_evidence
+
+    return inspect_agent_dogfood_evidence()
 
 
 def _inspect_agent_command_contracts(
