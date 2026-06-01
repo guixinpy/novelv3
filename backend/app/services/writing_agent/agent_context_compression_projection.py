@@ -12,6 +12,9 @@ from app.services.writing_agent.longform_context_summary import summarize_longfo
 AGENT_CONTEXT_COMPRESSION_PROJECTION_VERSION = "phase225.agent_context_compression_projection.v1"
 CONTEXT_WINDOW_PRESSURE_RATIO = 0.85
 CONTEXT_GUARD_FAILURE_THRESHOLD = 3
+HEAD_PROTECTED_SECTIONS = ["project", "active_state"]
+TAIL_PROTECTED_SECTIONS = ["recent_chapters", "critical_context"]
+PRETRIM_ORDER = ["source_sections", "critical_context", "recent_chapters"]
 
 
 def inspect_agent_context_compression_projection(
@@ -45,6 +48,12 @@ def inspect_agent_context_compression_projection(
         context_guard_failure_count=context_guard_failure_count,
     )
     status = _status_for_risks(risks)
+    compression_plan = _compression_plan(
+        status=status,
+        risks=risks,
+        chapter_index=resolved_chapter_index,
+        max_chars=resolved_max_chars,
+    )
     output = {
         "status": status,
         "version": AGENT_CONTEXT_COMPRESSION_PROJECTION_VERSION,
@@ -53,8 +62,8 @@ def inspect_agent_context_compression_projection(
         "strategy": {
             "granularity": "chapter_window",
             "protect_current_chapter": True,
-            "protect_head_sections": ["project", "active_state"],
-            "protect_tail_sections": ["recent_chapters", "critical_context"],
+            "protect_head_sections": HEAD_PROTECTED_SECTIONS,
+            "protect_tail_sections": TAIL_PROTECTED_SECTIONS,
         },
         "summary": {
             "prompt_context_chars": prompt_context_chars,
@@ -64,12 +73,14 @@ def inspect_agent_context_compression_projection(
             "context_guard_failure_count": _non_negative_int(context_guard_failure_count),
         },
         "risks": risks,
+        "compression_plan": compression_plan,
         "recommended_next_tools": _recommended_next_tools(risks),
         "recovery": _recovery(
             status=status,
             risks=risks,
             chapter_index=resolved_chapter_index,
             max_chars=resolved_max_chars,
+            compression_plan=compression_plan,
         ),
         "memory_provenance": memory_provenance,
         "trace": {
@@ -148,12 +159,51 @@ def _recommended_next_tools(risks: list[dict[str, Any]]) -> list[str]:
     return _dedupe(tools)
 
 
+def _compression_plan(
+    *,
+    status: str,
+    risks: list[dict[str, Any]],
+    chapter_index: int | None,
+    max_chars: int,
+) -> dict[str, Any]:
+    target_max_chars = _compression_target_chars(max_chars) if status == "warning" else max_chars
+    plan = {
+        "status": "recommended" if status == "warning" else ("blocked" if status == "blocked" else "not_needed"),
+        "mode": "head_tail_protected_pretrim",
+        "target_max_chars": target_max_chars,
+        "protected_head_sections": HEAD_PROTECTED_SECTIONS,
+        "protected_tail_sections": TAIL_PROTECTED_SECTIONS,
+        "pretrim_order": PRETRIM_ORDER if status == "warning" else [],
+        "summary_tool": None,
+        "llm_summary_required": status == "warning",
+    }
+    if status == "warning":
+        plan["summary_tool"] = {
+            "tool_name": "summarize_longform_context",
+            "params": {
+                "chapter_index": chapter_index,
+                "max_chars": target_max_chars,
+                "include_prompt_context": False,
+            },
+        }
+    elif any(str(risk.get("code") or "") == "context_guard_open" for risk in risks):
+        plan["pretrim_order"] = PRETRIM_ORDER
+    return plan
+
+
+def _compression_target_chars(max_chars: int) -> int:
+    if not max_chars:
+        return 0
+    return max(500, int(max_chars * 0.75))
+
+
 def _recovery(
     *,
     status: str,
     risks: list[dict[str, Any]],
     chapter_index: int | None,
     max_chars: int,
+    compression_plan: dict[str, Any],
 ) -> dict[str, Any]:
     codes = [str(risk.get("code") or "") for risk in risks]
     if "context_guard_open" in codes:
@@ -173,21 +223,12 @@ def _recovery(
             ],
         }
     if status == "warning":
-        retry_max_chars = max(max_chars * 2, max_chars + 1) if max_chars else None
+        summary_tool = compression_plan.get("summary_tool") if isinstance(compression_plan.get("summary_tool"), dict) else None
         return {
             "status": "optional",
             "reason": "context_compression_window_pressure",
             "next_tools": _recommended_next_tools(risks),
-            "tools": [
-                {
-                    "tool_name": "summarize_longform_context",
-                    "params": {
-                        "chapter_index": chapter_index,
-                        "max_chars": retry_max_chars,
-                        "include_prompt_context": False,
-                    },
-                }
-            ],
+            "tools": [summary_tool] if summary_tool else [],
         }
     return {
         "status": "none",

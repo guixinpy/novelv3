@@ -24,6 +24,16 @@ def test_context_compression_projection_reports_ready_chapter_window(db_session,
     }
     assert output["summary"]["usage_ratio"] == 0.3
     assert output["risks"] == []
+    assert output["compression_plan"] == {
+        "status": "not_needed",
+        "mode": "head_tail_protected_pretrim",
+        "target_max_chars": 4000,
+        "protected_head_sections": ["project", "active_state"],
+        "protected_tail_sections": ["recent_chapters", "critical_context"],
+        "pretrim_order": [],
+        "summary_tool": None,
+        "llm_summary_required": False,
+    }
     assert output["recommended_next_tools"] == []
 
 
@@ -47,6 +57,19 @@ def test_context_compression_projection_warns_when_window_pressure_rises(db_sess
     assert output["summary"]["usage_ratio"] == 0.95
     assert [risk["code"] for risk in output["risks"]] == ["context_window_pressure", "prompt_context_truncated"]
     assert output["recommended_next_tools"] == ["summarize_longform_context", "inspect_agent_memory_route"]
+    assert output["compression_plan"] == {
+        "status": "recommended",
+        "mode": "head_tail_protected_pretrim",
+        "target_max_chars": 3000,
+        "protected_head_sections": ["project", "active_state"],
+        "protected_tail_sections": ["recent_chapters", "critical_context"],
+        "pretrim_order": ["source_sections", "critical_context", "recent_chapters"],
+        "summary_tool": {
+            "tool_name": "summarize_longform_context",
+            "params": {"chapter_index": 8, "max_chars": 3000, "include_prompt_context": False},
+        },
+        "llm_summary_required": True,
+    }
     assert output["recovery"]["status"] == "optional"
     assert output["recovery"]["tools"][0]["tool_name"] == "summarize_longform_context"
 

@@ -279,7 +279,7 @@ Agent 化缺口：
 ### 4.3 Context Compression（上下文压缩）
 
 ```
-当前状态：L1 对话历史长度限制 + 基础压缩
+当前状态：L1 对话历史长度限制 + 基础压缩；ContextCompressor 基础计划投影已具备窗口压力、ContextGuard、头尾保护预修剪和摘要工具参数
 目标状态：L2-L3 LLM 摘要压缩 + 头尾保护 + Token 预算管理
 关键文件：
   backend/app/services/writing_agent/
@@ -287,9 +287,9 @@ Agent 化缺口：
   └── longform_context_summary.py         # 长篇上下文摘要
   backend/app/services/dialog/session.py  # Session 管理含历史限制
 Agent 化缺口：
-  - 缺少智能上下文压缩（hermes-agent 的 ContextCompressor）
+  - 缺少真正 LLM 摘要写入/运行时压缩执行
   - 缺少 TokenJuice 机制（openhuman）
-  - 压缩粒度不够（整段压缩 vs 按重要性分层压缩）
+  - 压缩粒度已有基础计划，仍需按重要性分层落到实际上下文构建路径
 关联模块：Dialog、WritingAgent
 ```
 

@@ -179,6 +179,7 @@ AGENT_MEMORY_TRACE_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
                 "strategy": {"type": "object"},
                 "summary": {"type": "object"},
                 "risks": {"type": "array"},
+                "compression_plan": {"type": "object"},
                 "recommended_next_tools": {"type": "array"},
                 "recovery": {"type": "object"},
                 "memory_provenance": {"type": "object"},

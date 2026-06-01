@@ -209,7 +209,7 @@ novelv3 当前 trace + approval 体系已经较完整。权限分级已先在核
 
 | 机制 | 借鉴来源 | 优先级 | 说明 |
 |------|---------|--------|------|
-| ContextCompressor | hermes-agent | **高** | 预修剪 + LLM 摘要 + 头尾保护 |
+| ContextCompressor | hermes-agent | 已完成基础计划 | 已有头尾保护预修剪与摘要工具计划；后续补 LLM 摘要写入和运行时压缩执行 |
 | TokenJuice | openhuman | **中** | Token 耗尽前自动压缩 |
 | 断路器 | openhuman | **中** | 上下文即将溢出时的硬保护 |
 | 上下文透明化 | novelv3 已有 | 已实现 | Trace drawer 展示 context blocks |
@@ -235,6 +235,7 @@ novelv3 当前 trace + approval 体系已经较完整。权限分级已先在核
 4. **openhuman 权限分级基础版** → `ToolMutability` / `ToolPermissionLevel`，内部枚举化，公开 surface/contract 保持字符串兼容
 5. **openhuman Worker 定义配置化基础版** → YAML/TOML AgentDefinition loader + source_format 注册表审计
 6. **openclaw 孤兒恢复基础审计** → orphan worker 检测 + mark-blocked/redispatch preview
+7. **hermes-agent ContextCompressor 基础计划** → context pressure 下输出头尾保护预修剪和 summarize 工具计划
 
 ### 立即实现（当前开发周期）
 
@@ -242,16 +243,16 @@ novelv3 当前 trace + approval 体系已经较完整。权限分级已先在核
 
 ### 短期实现（1-2 个开发周期）
 
-7. **openhuman Memory Tree 分层摘要** → 完善 memory_tree.py
-8. **hermes-agent ContextCompressor** → 增强上下文压缩
-9. **openclaw 孤兒恢复写入闭环** → worker 失效清理和安全重分派执行
+8. **openhuman Memory Tree 分层摘要** → 完善 memory_tree.py
+9. **hermes-agent ContextCompressor 执行层** → LLM 摘要写入 + 运行时压缩接入
+10. **openclaw 孤兒恢复写入闭环** → worker 失效清理和安全重分派执行
 
 ### 中期实现（3-5 个开发周期）
 
-10. **hermes-agent Jittered Backoff** → 重试退避
+11. **hermes-agent Jittered Backoff** → 重试退避
 
 ### 暂缓（等待真实需求触发）
 
-11. **openhuman TokenJuice** → 等待上下文管理成为实际瓶颈
-12. **hermes-agent AST 扫描** → Python 装饰器已足够
-13. **openclaw 网关角色** → novelv3 是单用户场景
+12. **openhuman TokenJuice** → 等待上下文管理成为实际瓶颈
+13. **hermes-agent AST 扫描** → Python 装饰器已足够
+14. **openclaw 网关角色** → novelv3 是单用户场景

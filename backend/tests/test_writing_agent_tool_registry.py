@@ -102,6 +102,9 @@ def test_agent_memory_trace_tool_descriptors_live_in_dedicated_module():
     assert target_type_for_tool("search_agent_retrieval_context") == "agent_retrieval_context"
     assert target_type_for_tool("summarize_longform_context") == "longform_context_summary"
     assert target_type_for_tool("inspect_agent_context_compression_projection") == "agent_context_compression_projection"
+    context_compression_descriptor = get_agent_tool_descriptor("inspect_agent_context_compression_projection")
+    assert context_compression_descriptor is not None
+    assert context_compression_descriptor.output_schema["properties"]["compression_plan"]["type"] == "object"
     assert target_type_for_tool("inspect_agent_memory_activation_plan") == "agent_memory_activation_plan"
     assert target_type_for_tool("repair_longform_maintenance") == "longform_maintenance"
     assert target_type_for_tool("prepare_repair_longform_maintenance") == "longform_maintenance_approval"
