@@ -7,9 +7,11 @@ from typing import Any
 DOGFOOD_EVIDENCE_VERSION = "phase236.agent_dogfood_evidence.v1"
 DOGFOOD_EVIDENCE_RUN_SOURCE = "planner_trace.agent_health_projection.dogfood_evidence"
 
-_FULL_AGENT_NATIVE_DOGFOOD = "docs/superpowers/notes/long-memory-agent/2026-05-26-full-agent-native-dogfood.md"
+_FULL_AGENT_NATIVE_DOGFOOD = (
+    "docs/archive/superpowers/notes/long-memory-agent/2026-05-26-full-agent-native-dogfood.md"
+)
 _NARRATIVE_MEMORY_DOGFOOD = (
-    "docs/superpowers/notes/long-memory-agent/2026-05-26-narrative-memory-activation-dogfood.md"
+    "docs/archive/superpowers/notes/long-memory-agent/2026-05-26-narrative-memory-activation-dogfood.md"
 )
 
 _REQUIRED_CAPABILITIES: tuple[dict[str, Any], ...] = (

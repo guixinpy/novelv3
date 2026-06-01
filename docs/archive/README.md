@@ -18,6 +18,12 @@
 
 - `superpowers/specs/longform-scale/`：百万字/千章级长篇稳定性目标的设计稿。
 - `superpowers/plans/longform-scale/`：百万字/千章级长篇稳定性目标的阶段执行记录。
+- `superpowers/specs/long-memory-agent/`：长期记忆写作 Agent 目标设计稿。
+- `superpowers/plans/long-memory-agent/`：长期记忆写作 Agent 阶段计划与执行记录。
+- `superpowers/notes/long-memory-agent/`：长期记忆写作 Agent dogfood、实现切片和阶段记录。
+- `superpowers/specs/agent-native-writing/`：agent-native 写作目标设计稿。
+- `superpowers/plans/agent-native-writing/`：agent-native 写作阶段计划与执行记录。
+- `superpowers/notes/agent-native-writing/`：agent-native 写作阶段记录。
 
 ## 规则
 
