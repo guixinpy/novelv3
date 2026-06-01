@@ -238,12 +238,39 @@ openclaw、hermes-agent、openhuman 三个参考项目提供了大量可借鉴�
 
 ---
 
+## ADR-009: AgentDefinition 使用 YAML 主格式并兼容 TOML
+
+- **日期**: 2026-06-01
+- **状态**: Accepted
+
+### 上下文
+
+Worker/子代理需要配置化定义能力、工具范围和写入策略。openhuman 使用 `agent.toml` 作为内置 AgentDefinition 的数据入口；novelv3 当前已经有 `agent_definitions/*.yaml`，并且这些 YAML 已经接入 worker dispatch、profile policy 和健康审计。
+
+### 决策
+
+保留 YAML 作为 novelv3 现有 AgentDefinition 的主格式，同时在 loader 层兼容 `.toml`。注册表审计输出 `source_format`，用于区分 YAML/TOML 来源。暂不支持 JSON。
+
+### 理由
+
+- YAML 已经在当前仓库运行并被测试覆盖，迁移会制造无收益 churn
+- TOML 兼容能直接吸收 openhuman 的 `agent.toml` 模式
+- JSON 对人工维护的 worker 能力列表可读性较差，且当前没有实际需求
+- 在 loader 层兼容格式，比在运行时硬编码 worker enum 更符合数据驱动方向
+
+### 后果
+
+- 新增 AgentDefinition 时优先使用 YAML；需要导入 openhuman 风格定义时可以使用 TOML
+- loader 必须保持 YAML/TOML 字段语义一致
+- worker 注册表、route 审计和健康面板可以通过 `source_format` 识别定义来源
+
+---
+
 ## 待记录的决策
 
 以下是尚未正式记录但可能需要记录的决策：
 
 - [ ] Memory Tree 的数据结构和持久化方案
-- [ ] AgentDefinition 文件格式（TOML vs YAML vs JSON）
 - [ ] Worker 通信协议（进程内 vs 消息队列 vs HTTP）
 - [ ] 上下文压缩的策略和触发条件
 - [ ] 长篇 smoke 测试的设计原则和覆盖范围

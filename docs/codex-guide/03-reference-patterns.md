@@ -170,7 +170,7 @@ novelv3 当前 worker_dispatch 已实现基础分发。应增强：
 
 | 增强点 | 借鉴来源 | 优先级 | 说明 |
 |--------|---------|--------|------|
-| Worker 定义配置化 | openhuman | **高** | 用 AgentDefinition 文件定义 worker 的能力、工具集、模型 |
+| Worker 定义配置化 | openhuman | 已完成基础版 | YAML 为主格式，TOML 兼容 openhuman agent.toml 形态；注册表审计会输出 source_format |
 | 孤兒恢复 | openclaw | **中** | worker 进程失效后自动检测和清理 |
 | Worker 链追踪 | openclaw | **中** | 记录 worker 调用链：主 Agent → writing worker → review worker |
 | 级联 Worker | openhuman | **低** | Chat/Reasoning/Worker 三级，novelv3 场景可能不需要这么复杂 |
@@ -233,6 +233,7 @@ novelv3 当前 trace + approval 体系已经较完整。权限分级已先在核
 2. **openhuman StopHooks 策略层基础增强** → `agent_stop_hooks.py` 已含 BudgetCap、MaxTurns、ContextGuard
 3. **hermes-agent refund 机制基础版** → read 工具成功调用不消耗 charged iteration
 4. **openhuman 权限分级基础版** → `ToolMutability` / `ToolPermissionLevel`，内部枚举化，公开 surface/contract 保持字符串兼容
+5. **openhuman Worker 定义配置化基础版** → YAML/TOML AgentDefinition loader + source_format 注册表审计
 
 ### 立即实现（当前开发周期）
 
@@ -240,7 +241,6 @@ novelv3 当前 trace + approval 体系已经较完整。权限分级已先在核
 
 ### 短期实现（1-2 个开发周期）
 
-5. **openhuman Worker 定义配置化** → AgentDefinition 文件格式
 6. **openhuman Memory Tree 分层摘要** → 完善 memory_tree.py
 7. **hermes-agent ContextCompressor** → 增强上下文压缩
 8. **openclaw 孤兒恢复** → worker 失效检测和清理

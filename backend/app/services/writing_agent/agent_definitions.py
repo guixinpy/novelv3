@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import tomllib
 from pathlib import Path
 from typing import Any
 
@@ -8,6 +9,7 @@ import yaml
 AGENT_DEFINITION_VERSION = "phase229.agent_definition.v1"
 AGENT_DEFINITION_REGISTRY_AUDIT_VERSION = "phase234.agent_definition_registry_audit.v1"
 AGENT_DEFINITION_DIR = Path(__file__).with_name("agent_definitions")
+AGENT_DEFINITION_FORMATS = (("yaml", ".yaml"), ("yaml", ".yml"), ("toml", ".toml"))
 REQUIRED_FIELDS = ("name", "role", "max_depth", "allowed_tools", "write_policy")
 
 
@@ -17,13 +19,13 @@ def load_agent_definition(name: str, *, base_dir: Path | None = None) -> dict[st
         return _blocked_definition(name, reason_code="missing_agent_definition_name")
 
     definition_dir = base_dir or AGENT_DEFINITION_DIR
-    path = definition_dir / f"{definition_name}.yaml"
-    if not path.exists():
+    path, source_format = _definition_path(definition_dir, definition_name)
+    if path is None:
         return _blocked_definition(definition_name, reason_code="agent_definition_not_found")
 
-    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    data = _load_definition_data(path, source_format)
     if not isinstance(data, dict):
-        return _blocked_definition(definition_name, reason_code="agent_definition_invalid_yaml")
+        return _blocked_definition(definition_name, reason_code=f"agent_definition_invalid_{source_format}")
 
     missing_fields = [field for field in REQUIRED_FIELDS if field not in data]
     if missing_fields:
@@ -43,6 +45,7 @@ def load_agent_definition(name: str, *, base_dir: Path | None = None) -> dict[st
         "allowed_tools": allowed_tools,
         "write_policy": dict(write_policy),
         "can_dispatch_children": _can_dispatch_children(max_depth, write_policy),
+        "source_format": source_format,
         "source_path": str(path),
     }
 
@@ -84,6 +87,7 @@ def _blocked_definition(name: str, *, reason_code: str) -> dict[str, Any]:
         "allowed_tools": [],
         "write_policy": {},
         "can_dispatch_children": False,
+        "source_format": "",
         "reason_code": reason_code,
     }
 
@@ -104,6 +108,7 @@ def _definition_audit_row(profile: str, definition: dict[str, Any]) -> dict[str,
         "role": str(definition.get("role") or "unknown"),
         "can_dispatch_children": definition.get("can_dispatch_children") is True,
         "allowed_tools": list(definition.get("allowed_tools") or []),
+        "source_format": str(definition.get("source_format") or ""),
         "_issues": issues,
     }
 
@@ -123,6 +128,21 @@ def _can_dispatch_children(max_depth: int, write_policy: dict[str, Any]) -> bool
 
 def _definition_name(name: str) -> str:
     return str(name or "").strip().replace("\\", "").replace("/", "")
+
+
+def _definition_path(definition_dir: Path, definition_name: str) -> tuple[Path | None, str]:
+    for source_format, suffix in AGENT_DEFINITION_FORMATS:
+        path = definition_dir / f"{definition_name}{suffix}"
+        if path.exists():
+            return path, source_format
+    return None, ""
+
+
+def _load_definition_data(path: Path, source_format: str) -> Any:
+    content = path.read_text(encoding="utf-8")
+    if source_format == "toml":
+        return tomllib.loads(content)
+    return yaml.safe_load(content) or {}
 
 
 def _string_list(value: Any) -> list[str]:
