@@ -182,6 +182,30 @@ const agentHealthRouteRegistryChips = computed(() => {
   return chips
 })
 
+const agentHealthCreativeTrendChips = computed(() => {
+  const chips: string[] = []
+  const quality = recordValue(agentHealthProjection.value?.creative_quality)
+  const qualityStatus = stringValue(quality.status)
+  if (qualityStatus) chips.push(`质量${creativeTrendStatusLabel(qualityStatus)}`)
+  const qualityTrend = stringValue(quality.trend)
+  if (qualityTrend) chips.push(creativeQualityTrendLabel(qualityTrend))
+  const qualityWindow = recordValue(quality.window)
+  const latestChapterIndex = numberValue(qualityWindow.latest_chapter_index)
+  if (latestChapterIndex !== null) chips.push(`最新第${latestChapterIndex}章`)
+
+  const narrative = recordValue(agentHealthProjection.value?.narrative_trends)
+  const narrativeStatus = stringValue(narrative.status)
+  if (narrativeStatus && narrativeStatus !== 'ready') {
+    chips.push(`叙事${creativeTrendStatusLabel(narrativeStatus)}`)
+  }
+  const summary = recordValue(narrative.summary)
+  appendPositiveCountChip(chips, summary.style_drift_findings, '风格漂移')
+  appendPositiveCountChip(chips, summary.world_model_contradictions, '世界矛盾')
+  appendPositiveCountChip(chips, summary.overdue_foreshadowing, '伏笔逾期')
+  appendPositiveCountChip(chips, summary.pacing_risks_requiring_human_judgment, '节奏判断')
+  return chips.slice(0, 8)
+})
+
 const agentControlProjection = computed(() => {
   const projection = props.msg.meta?.agent_control
   if (!projection || typeof projection !== 'object' || Array.isArray(projection)) return null
@@ -251,6 +275,28 @@ function agentWorkerRouteRegistryStatusLabel(status: string) {
   if (status === 'passed') return '通过'
   if (status === 'needs_attention') return '需处理'
   return status || '未知'
+}
+
+function creativeTrendStatusLabel(status: string) {
+  if (status === 'ready') return '就绪'
+  if (status === 'degraded') return '需检查'
+  if (status === 'needs_attention') return '需处理'
+  if (status === 'watch') return '需关注'
+  if (status === 'needs_human_judgment') return '需人工判断'
+  return status || '未知'
+}
+
+function creativeQualityTrendLabel(trend: string) {
+  if (trend === 'risk_rising') return '风险上升'
+  if (trend === 'risk_present') return '存在风险'
+  if (trend === 'clear') return '趋势清晰'
+  if (trend === 'insufficient_data') return '样本不足'
+  return trend || '未知趋势'
+}
+
+function appendPositiveCountChip(chips: string[], value: unknown, label: string) {
+  const count = numberValue(value)
+  if (count !== null && count > 0) chips.push(`${label} ${count}`)
 }
 
 function onDecide(decision: string, comment?: string) {
@@ -362,6 +408,18 @@ function executeRecommendedFollowups() {
           <code
             v-for="chip in agentHealthRouteRegistryChips"
             :key="`worker-route:${chip}`"
+          >
+            {{ chip }}
+          </code>
+        </div>
+        <div
+          v-if="agentHealthCreativeTrendChips.length"
+          class="chat-msg__agent-health-tools"
+        >
+          <span>创作趋势</span>
+          <code
+            v-for="chip in agentHealthCreativeTrendChips"
+            :key="`creative-trend:${chip}`"
           >
             {{ chip }}
           </code>

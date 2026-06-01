@@ -118,6 +118,20 @@ describe('ChatMessage', () => {
                 { code: 'agent_tool_contract_gaps', message: 'Agent 工具契约仍存在迁移或 schema 差距。' },
               ],
               recommended_next_tools: ['inspect_agent_tool_contracts', 'inspect_agent_write_gate_coverage'],
+              creative_quality: {
+                status: 'needs_attention',
+                trend: 'risk_rising',
+                window: { latest_chapter_index: 8 },
+              },
+              narrative_trends: {
+                status: 'needs_human_judgment',
+                summary: {
+                  style_drift_findings: 1,
+                  world_model_contradictions: 0,
+                  overdue_foreshadowing: 1,
+                  pacing_risks_requiring_human_judgment: 1,
+                },
+              },
             },
           },
         },
@@ -134,6 +148,14 @@ describe('ChatMessage', () => {
     expect(card.text()).toContain('未路由 0')
     expect(card.text()).toContain('Agent 工具契约仍存在迁移或 schema 差距')
     expect(card.text()).toContain('inspect_agent_tool_contracts')
+    expect(card.text()).toContain('创作趋势')
+    expect(card.text()).toContain('质量需处理')
+    expect(card.text()).toContain('风险上升')
+    expect(card.text()).toContain('最新第8章')
+    expect(card.text()).toContain('叙事需人工判断')
+    expect(card.text()).toContain('风格漂移 1')
+    expect(card.text()).toContain('伏笔逾期 1')
+    expect(card.text()).toContain('节奏判断 1')
   })
 
   it('renders agent control projection for continue command messages', () => {
