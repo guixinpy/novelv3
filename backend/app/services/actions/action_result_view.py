@@ -203,6 +203,9 @@ def _recommended_followup_preview_detail_items(data: dict) -> list[dict[str, str
     tools = data.get("tools") if isinstance(data.get("tools"), list) else []
     if tools:
         items.append({"label": "自动后继", "value": f"{len(tools)} 个"})
+        tool_summary = _tool_name_summary(tools)
+        if tool_summary:
+            items.append({"label": "后继工具", "value": tool_summary})
     items.extend(_worker_dispatch_detail_items(data))
 
     continuation_tools = (
@@ -222,10 +225,17 @@ def _recommended_followup_preview_detail_items(data: dict) -> list[dict[str, str
 def _worker_dispatch_detail_items(data: dict) -> list[dict[str, str]]:
     dispatch = data.get("worker_dispatch") if isinstance(data.get("worker_dispatch"), dict) else {}
     summary = dispatch.get("summary") if isinstance(dispatch.get("summary"), dict) else {}
+    route_registry = dispatch.get("route_registry") if isinstance(dispatch.get("route_registry"), dict) else {}
+    route_registry_summary = (
+        route_registry.get("summary") if isinstance(route_registry.get("summary"), dict) else {}
+    )
     items = []
     worker_count = _optional_int(summary.get("workers"))
     if worker_count is not None:
         items.append({"label": "Worker 分派", "value": f"{worker_count} 个 worker"})
+    worker_summary = _worker_dispatch_summary(dispatch)
+    if worker_summary:
+        items.append({"label": "分派 Worker", "value": worker_summary})
     planned_tasks = _optional_int(summary.get("planned_tasks"))
     if planned_tasks is not None:
         items.append({"label": "分派任务", "value": f"{planned_tasks} 个任务"})
@@ -235,7 +245,52 @@ def _worker_dispatch_detail_items(data: dict) -> list[dict[str, str]]:
     issue_count = _optional_int(summary.get("issues"))
     if issue_count is not None and issue_count > 0:
         items.append({"label": "分派问题", "value": f"{issue_count} 个"})
+    route_registry_status = str(route_registry.get("status") or "").strip()
+    if route_registry_status:
+        items.append({"label": "路由审计", "value": _route_registry_status_label(route_registry_status)})
+    unrouted_allowed_tools = _optional_int(route_registry_summary.get("unrouted_allowed_tools"))
+    if unrouted_allowed_tools is not None:
+        items.append({"label": "未路由工具", "value": f"{unrouted_allowed_tools} 个"})
+    route_issue_count = _optional_int(route_registry_summary.get("issues"))
+    if route_issue_count is not None and route_issue_count > 0:
+        items.append({"label": "路由问题", "value": f"{route_issue_count} 个"})
     return items
+
+
+def _tool_name_summary(tools: list[object]) -> str:
+    names = []
+    for tool in tools:
+        if isinstance(tool, str):
+            tool_name = tool.strip()
+        elif isinstance(tool, dict):
+            tool_name = str(tool.get("tool_name") or "").strip()
+        else:
+            tool_name = ""
+        if tool_name:
+            names.append(tool_name)
+    return _compact_unique_label(names)
+
+
+def _worker_dispatch_summary(dispatch: dict) -> str:
+    dispatches = dispatch.get("worker_dispatches") if isinstance(dispatch.get("worker_dispatches"), list) else []
+    names = []
+    for item in dispatches:
+        if not isinstance(item, dict):
+            continue
+        worker = item.get("worker") if isinstance(item.get("worker"), dict) else {}
+        worker_name = str(worker.get("name") or "").strip()
+        if worker_name:
+            names.append(_agent_profile_label(worker_name))
+    return _compact_unique_label(names)
+
+
+def _compact_unique_label(values: list[str], *, limit: int = 3) -> str:
+    unique_values = list(dict.fromkeys(value for value in values if value))
+    if not unique_values:
+        return ""
+    if len(unique_values) <= limit:
+        return ", ".join(unique_values)
+    return f"{', '.join(unique_values[:limit])} 等 {len(unique_values)} 个"
 
 
 def _retrieval_context_detail_items(data: dict) -> list[dict[str, str]]:
@@ -401,6 +456,14 @@ def _agent_control_plane_status_label(status: str) -> str:
     return status or "未知"
 
 
+def _route_registry_status_label(status: str) -> str:
+    if status == "passed":
+        return "通过"
+    if status == "needs_attention":
+        return "需处理"
+    return status or "未知"
+
+
 def _agent_profile_label(profile: str) -> str:
     if profile == "orchestrator":
         return "编排主控"
@@ -408,8 +471,14 @@ def _agent_profile_label(profile: str) -> str:
         return "创作执行者"
     if profile == "reviewer_worker":
         return "审稿执行者"
+    if profile == "memory_worker":
+        return "记忆维护者"
+    if profile == "retrieval_worker":
+        return "检索取证者"
     if profile == "world_model_worker":
         return "世界模型执行者"
+    if profile == "revision_worker":
+        return "修订执行者"
     if profile == "recovery_worker":
         return "恢复维护者"
     return profile or "未标注"

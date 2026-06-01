@@ -103,6 +103,12 @@ describe('recoveryAgentRunProjection', () => {
           blocked_tasks: 0,
           issues: 0,
         },
+        worker_dispatches: [
+          {
+            worker: { name: 'memory_worker' },
+            summary: { planned_tasks: 1, blocked_tasks: 0, issues: 0 },
+          },
+        ],
         route_registry: {
           status: 'passed',
           summary: {
@@ -126,7 +132,9 @@ describe('recoveryAgentRunProjection', () => {
     expect(view?.detail_items).toContainEqual({ label: '路由原因', value: '发现上一轮推荐后继' })
     expect(view?.detail_items).toContainEqual({ label: '推荐状态', value: '已推荐' })
     expect(view?.detail_items).toContainEqual({ label: '自动后继', value: '1 个' })
+    expect(view?.detail_items).toContainEqual({ label: '后继工具', value: 'inspect_agent_memory_route' })
     expect(view?.detail_items).toContainEqual({ label: 'Worker 分派', value: '1 个 worker' })
+    expect(view?.detail_items).toContainEqual({ label: '分派 Worker', value: '记忆维护者' })
     expect(view?.detail_items).toContainEqual({ label: '分派任务', value: '1 个任务' })
     expect(view?.detail_items).toContainEqual({ label: '路由审计', value: '通过' })
     expect(view?.detail_items).toContainEqual({ label: '未路由工具', value: '0 个' })

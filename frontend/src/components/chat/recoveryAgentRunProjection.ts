@@ -267,6 +267,10 @@ function recommendedFollowupPreviewDetailItems(data: Record<string, unknown>) {
   const tools = Array.isArray(data.tools) ? data.tools : []
   if (tools.length) {
     items.push({ label: '自动后继', value: `${tools.length} 个` })
+    const toolSummary = toolNameSummary(tools)
+    if (toolSummary) {
+      items.push({ label: '后继工具', value: toolSummary })
+    }
   }
   items.push(...workerDispatchDetailItems(data))
 
@@ -295,6 +299,10 @@ function workerDispatchDetailItems(data: Record<string, unknown>) {
   if (workerCount !== null) {
     items.push({ label: 'Worker 分派', value: `${workerCount} 个 worker` })
   }
+  const workerSummary = workerDispatchSummary(dispatch)
+  if (workerSummary) {
+    items.push({ label: '分派 Worker', value: workerSummary })
+  }
   const plannedTasks = numberValue(summary.planned_tasks)
   if (plannedTasks !== null) {
     items.push({ label: '分派任务', value: `${plannedTasks} 个任务` })
@@ -320,6 +328,31 @@ function workerDispatchDetailItems(data: Record<string, unknown>) {
     items.push({ label: '路由问题', value: `${routeIssueCount} 个` })
   }
   return items
+}
+
+function toolNameSummary(tools: unknown[]) {
+  const names = tools
+    .map((tool) => {
+      if (typeof tool === 'string') return tool.trim()
+      return stringValue(recordValue(tool).tool_name)
+    })
+    .filter(Boolean)
+  return compactUniqueLabel(names)
+}
+
+function workerDispatchSummary(dispatch: Record<string, unknown>) {
+  const dispatches = Array.isArray(dispatch.worker_dispatches) ? dispatch.worker_dispatches : []
+  const names = dispatches
+    .map((item) => agentProfileLabel(stringValue(recordValue(recordValue(item).worker).name)))
+    .filter(Boolean)
+  return compactUniqueLabel(names)
+}
+
+function compactUniqueLabel(values: string[], limit = 3) {
+  const uniqueValues = [...new Set(values.filter(Boolean))]
+  if (!uniqueValues.length) return ''
+  if (uniqueValues.length <= limit) return uniqueValues.join(', ')
+  return `${uniqueValues.slice(0, limit).join(', ')} 等 ${uniqueValues.length} 个`
 }
 
 function dialogRouteDecisionDetailItems(data: Record<string, unknown>) {
@@ -496,7 +529,10 @@ function agentProfileLabel(profile: string) {
   if (profile === 'orchestrator') return '编排主控'
   if (profile === 'drafting_worker') return '创作执行者'
   if (profile === 'reviewer_worker') return '审稿执行者'
+  if (profile === 'memory_worker') return '记忆维护者'
+  if (profile === 'retrieval_worker') return '检索取证者'
   if (profile === 'world_model_worker') return '世界模型执行者'
+  if (profile === 'revision_worker') return '修订执行者'
   if (profile === 'recovery_worker') return '恢复维护者'
   return profile || '未标注'
 }

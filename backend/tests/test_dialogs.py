@@ -3250,7 +3250,17 @@ def test_get_messages_includes_action_result_view_for_recommended_followup_resul
                         "planned_tasks": 1,
                         "blocked_tasks": 0,
                         "issues": 0,
-                    }
+                    },
+                    "worker_dispatches": [
+                        {
+                            "worker": {"name": "memory_worker"},
+                            "summary": {"planned_tasks": 1, "blocked_tasks": 0, "issues": 0},
+                        }
+                    ],
+                    "route_registry": {
+                        "status": "passed",
+                        "summary": {"routes": 46, "ready_routes": 46, "unrouted_allowed_tools": 0, "issues": 0},
+                    },
                 },
                 "route_decision": {
                     "selected_route": "recommended_followups",
@@ -3273,8 +3283,12 @@ def test_get_messages_includes_action_result_view_for_recommended_followup_resul
             {"label": "路由原因", "value": "发现上一轮推荐后继"},
             {"label": "推荐状态", "value": "已推荐"},
             {"label": "自动后继", "value": "1 个"},
+            {"label": "后继工具", "value": "inspect_agent_memory_route"},
             {"label": "Worker 分派", "value": "1 个 worker"},
+            {"label": "分派 Worker", "value": "记忆维护者"},
             {"label": "分派任务", "value": "1 个任务"},
+            {"label": "路由审计", "value": "通过"},
+            {"label": "未路由工具", "value": "0 个"},
             {"label": "需确认修复", "value": "1 个"},
         ],
     }
