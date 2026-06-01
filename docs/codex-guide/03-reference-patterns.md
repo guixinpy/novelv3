@@ -90,13 +90,13 @@ openhuman 的 Memory Tree 对网文创作天然适配：
 
 ### 2.2 → novelv3 映射
 
-novelv3 当前 `_agent_loop_contract()` 已有迭代预算和相邻去重。应增强：
+novelv3 当前 `_agent_loop_contract()` 已有迭代预算、五级循环检测、StopHooks 策略层和 read 工具 refund 预算投影。后续应增强：
 
 | 增强点 | 借鉴来源 | 优先级 | 说明 |
 |--------|---------|--------|------|
-| 多级循环检测 | openclaw | **高** | 当前只有 adjacent_repeat，需加 ping-pong、poll_no_progress、global_circuit_breaker |
-| StopHooks 策略层 | openhuman | **高** | 把终止条件从循环体内抽出来，框架已搭（agent_stop_hooks.py）需丰富策略 |
-| refund 机制 | hermes-agent | **中** | 程序化工具调用（如批量填充角色信息）不计入创作迭代预算 |
+| 多级循环检测 | openclaw | 已完成 | generic_repeat、ping-pong、unknown_tool_repeat、known_poll_no_progress、global_circuit_breaker 已实现 |
+| StopHooks 策略层 | openhuman | 已完成基础版 | 已包含 critical loop、BudgetCap、MaxTurns、ContextGuard、approval、memory provenance |
+| refund 机制 | hermes-agent | 已完成基础版 | 成功 read 工具不消耗 charged iteration；后续可扩展程序化 write 白名单 |
 | ContextGuard 断路器 | openhuman | **中** | 上下文即将溢出时的硬保护 |
 
 ### 2.3 openclaw 五级循环检测（优先实现）
