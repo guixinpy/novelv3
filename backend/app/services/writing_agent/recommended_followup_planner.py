@@ -34,6 +34,9 @@ SAFE_RECOMMENDED_FOLLOWUP_TOOLS = frozenset(
         "inspect_agent_memory_tree",
         "search_agent_retrieval_context",
         "summarize_longform_context",
+        "prepare_generate_setup_execution",
+        "prepare_generate_storyline_execution",
+        "prepare_generate_outline_execution",
         "prepare_generate_chapter_execution",
         "plan_post_chapter_memory_capture",
         "prepare_record_agent_knowledge_base_candidate",
@@ -52,6 +55,9 @@ SAFE_RECOMMENDED_FOLLOWUP_TOOLS = frozenset(
 )
 LOOPING_FOLLOWUP_TOOLS = frozenset({"plan_recommended_followups"})
 APPROVAL_PREPARE_FOLLOWUP_TOOLS = {
+    "generate_setup": "prepare_generate_setup_execution",
+    "generate_storyline": "prepare_generate_storyline_execution",
+    "generate_outline": "prepare_generate_outline_execution",
     "generate_chapter": "prepare_generate_chapter_execution",
     "analyze_chapter_world_model": "prepare_analyze_chapter_world_model_execution",
 }
@@ -409,6 +415,10 @@ def _params_for_followup(
         pending_action_id = _source_pending_action_id(source_step)
         if pending_action_id:
             params["pending_action_id"] = pending_action_id
+    if "command_args" in properties:
+        command_args = _source_command_args(source_step)
+        if command_args:
+            params["command_args"] = command_args
     if tool_name == "search_agent_retrieval_context" and chapter_index:
         params.setdefault("query", f"第{chapter_index}章相关记忆与检索证据")
         params.setdefault("max_chapter_index", chapter_index)
@@ -444,6 +454,20 @@ def _source_pending_action_id(step: WritingAgentStep) -> str | None:
     step_input = step.input if isinstance(step.input, dict) else {}
     params = step_input.get("params") if isinstance(step_input.get("params"), dict) else {}
     return _optional_string(params.get("pending_action_id"))
+
+
+def _source_command_args(step: WritingAgentStep) -> str | None:
+    output = step.output if isinstance(step.output, dict) else {}
+    command_args = _optional_string(output.get("command_args"))
+    if command_args:
+        return command_args
+    envelope = output.get("agent_tool_result") if isinstance(output.get("agent_tool_result"), dict) else {}
+    envelope_output = envelope.get("output") if isinstance(envelope.get("output"), dict) else {}
+    command_args = _optional_string(envelope_output.get("command_args"))
+    if command_args:
+        return command_args
+    params = _source_step_params(step)
+    return _optional_string(params.get("command_args"))
 
 
 def _latest_recommended_recovery_state(steps: Sequence[WritingAgentStep]) -> dict[str, Any]:

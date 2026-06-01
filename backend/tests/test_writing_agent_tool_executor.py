@@ -2581,6 +2581,114 @@ async def test_plan_recommended_followups_prepares_chapter_generation_instead_of
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("write_tool", "prepare_tool"),
+    [
+        ("generate_setup", "prepare_generate_setup_execution"),
+        ("generate_storyline", "prepare_generate_storyline_execution"),
+        ("generate_outline", "prepare_generate_outline_execution"),
+    ],
+)
+async def test_plan_recommended_followups_prepares_story_assets_instead_of_writing(
+    db_session,
+    write_tool,
+    prepare_tool,
+):
+    project = Project(name="Recommended Story Asset Followup")
+    db_session.add(project)
+    db_session.flush()
+    run = WritingAgentRun(project_id=project.id, goal="规划故事资产", status="success", input={})
+    db_session.add(run)
+    db_session.flush()
+    db_session.add(
+        WritingAgentStep(
+            run_id=run.id,
+            project_id=project.id,
+            step_index=1,
+            tool_name="inspect_agent_route_preference_projection",
+            status="success",
+            output={
+                "status": "completed",
+                "agent_tool_result": {
+                    "recommendations": {
+                        "canonical_followups": [write_tool],
+                    }
+                },
+            },
+        )
+    )
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-followup-story-assets"),
+        WritingAgentToolRequest(tool_name="plan_recommended_followups", params={"run_id": run.id}),
+    )
+
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "completed"
+    assert [tool["tool_name"] for tool in result.output["tools"]] == [prepare_tool]
+    assert result.output["tools"][0]["params"] == {}
+    assert result.output["tools"][0]["planner"]["agent_profile"] == "drafting_worker"
+    assert result.output["trace"]["rejected_tools"] == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("preview_tool", "prepare_tool"),
+    [
+        ("preview_generate_setup_execution", "prepare_generate_setup_execution"),
+        ("preview_generate_storyline_execution", "prepare_generate_storyline_execution"),
+        ("preview_generate_outline_execution", "prepare_generate_outline_execution"),
+    ],
+)
+async def test_plan_recommended_followups_preserves_story_asset_command_args(
+    db_session,
+    preview_tool,
+    prepare_tool,
+):
+    project = Project(name="Recommended Story Asset Command Args")
+    db_session.add(project)
+    db_session.flush()
+    run = WritingAgentRun(project_id=project.id, goal="预览故事资产", status="success", input={})
+    db_session.add(run)
+    db_session.flush()
+    db_session.add(
+        WritingAgentStep(
+            run_id=run.id,
+            project_id=project.id,
+            step_index=1,
+            tool_name=preview_tool,
+            status="success",
+            input={"params": {"command_args": "雾港悬疑"}},
+            output={
+                "status": "completed",
+                "command_args": "雾港悬疑",
+                "agent_tool_result": {
+                    "recommendations": {
+                        "canonical_followups": [prepare_tool],
+                    }
+                },
+            },
+        )
+    )
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-followup-story-asset-preview"),
+        WritingAgentToolRequest(tool_name="plan_recommended_followups", params={"run_id": run.id}),
+    )
+
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "completed"
+    assert [tool["tool_name"] for tool in result.output["tools"]] == [prepare_tool]
+    assert result.output["tools"][0]["params"] == {"command_args": "雾港悬疑"}
+    assert result.output["tools"][0]["planner"]["agent_profile"] == "drafting_worker"
+    assert result.output["trace"]["rejected_tools"] == []
+
+
+@pytest.mark.asyncio
 async def test_plan_recommended_followups_projects_worker_dispatch_for_domain_followups(db_session):
     project = Project(name="Recommended Worker Dispatch Followup")
     db_session.add(project)
