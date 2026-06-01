@@ -2285,8 +2285,8 @@ async def test_tool_executor_handles_inspect_agent_worker_dispatch(db_session):
     }
     assert result.output["route_registry"]["status"] == "passed"
     assert result.output["route_registry"]["summary"] == {
-        "routes": 43,
-        "ready_routes": 43,
+        "routes": 46,
+        "ready_routes": 46,
         "unrouted_allowed_tools": 0,
         "issues": 0,
     }

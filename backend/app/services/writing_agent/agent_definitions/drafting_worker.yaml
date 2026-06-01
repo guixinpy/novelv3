@@ -4,12 +4,15 @@ max_depth: 0
 allowed_tools:
   - preflight_writing
   - generate_setup
+  - preview_generate_setup_execution
   - prepare_generate_setup_execution
   - execute_generate_setup_with_approval
   - generate_storyline
+  - preview_generate_storyline_execution
   - prepare_generate_storyline_execution
   - execute_generate_storyline_with_approval
   - generate_outline
+  - preview_generate_outline_execution
   - prepare_generate_outline_execution
   - execute_generate_outline_with_approval
   - generate_chapter

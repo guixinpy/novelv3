@@ -188,6 +188,24 @@ def test_worker_dispatch_routes_story_asset_approval_wrappers_to_drafting_worker
     assert [item["tool_name"] for item in dispatch["task_envelopes"]] == tool_names
 
 
+def test_worker_dispatch_routes_story_asset_previews_to_drafting_worker():
+    tool_names = [
+        "preview_generate_setup_execution",
+        "preview_generate_storyline_execution",
+        "preview_generate_outline_execution",
+    ]
+    preview = preview_agent_worker_dispatches(
+        [{"tool_name": tool_name, "params": {"command_args": "雾港悬疑"}} for tool_name in tool_names],
+        parent_run_id="run-story-assets-preview",
+    )
+
+    assert preview["status"] == "ready"
+    assert preview["summary"] == {"workers": 1, "planned_tasks": 3, "blocked_tasks": 0, "issues": 0}
+    dispatch = preview["worker_dispatches"][0]
+    assert dispatch["worker"]["name"] == "drafting_worker"
+    assert [item["tool_name"] for item in dispatch["task_envelopes"]] == tool_names
+
+
 def test_worker_dispatch_routes_memory_tree_to_memory_worker():
     preview = preview_agent_worker_dispatches(
         [
@@ -262,16 +280,19 @@ def test_worker_route_registry_audit_binds_routes_to_allowed_worker_definitions(
 
     assert audit["version"] == AGENT_WORKER_ROUTE_REGISTRY_AUDIT_VERSION
     assert audit["status"] == "passed"
-    assert audit["summary"] == {"routes": 43, "ready_routes": 43, "unrouted_allowed_tools": 0, "issues": 0}
+    assert audit["summary"] == {"routes": 46, "ready_routes": 46, "unrouted_allowed_tools": 0, "issues": 0}
     assert audit["issues"] == []
     assert audit["unrouted_allowed_tools"] == []
 
     routes_by_tool = {route["tool_name"]: route for route in audit["routes"]}
     assert routes_by_tool["preflight_writing"]["worker"] == "drafting_worker"
+    assert routes_by_tool["preview_generate_setup_execution"]["worker"] == "drafting_worker"
     assert routes_by_tool["prepare_generate_setup_execution"]["worker"] == "drafting_worker"
     assert routes_by_tool["execute_generate_setup_with_approval"]["worker"] == "drafting_worker"
+    assert routes_by_tool["preview_generate_storyline_execution"]["worker"] == "drafting_worker"
     assert routes_by_tool["prepare_generate_storyline_execution"]["worker"] == "drafting_worker"
     assert routes_by_tool["execute_generate_storyline_with_approval"]["worker"] == "drafting_worker"
+    assert routes_by_tool["preview_generate_outline_execution"]["worker"] == "drafting_worker"
     assert routes_by_tool["prepare_generate_outline_execution"]["worker"] == "drafting_worker"
     assert routes_by_tool["execute_generate_outline_with_approval"]["worker"] == "drafting_worker"
     assert routes_by_tool["inspect_agent_trace_audit"]["worker"] == "recovery_worker"
