@@ -19,6 +19,16 @@ from app.services.writing_agent.tool_registry import (
     non_blocking_report_tool_names,
     target_type_for_tool,
 )
+from app.services.writing_agent.tool_descriptor_types import (
+    ToolMutability,
+    ToolPermissionLevel,
+    descriptor_mutability,
+    descriptor_permission_level,
+)
+from app.services.writing_agent.tool_contracts import (
+    agent_tool_execution_metadata,
+    build_agent_tool_contract_snapshot,
+)
 from app.services.writing_agent.world_model_tool_descriptors import WORLD_MODEL_AGENT_TOOL_DESCRIPTORS
 
 
@@ -1651,6 +1661,51 @@ def test_agent_tool_plan_shows_chapter_generation_when_required_inputs_are_ready
     assert any(item["code"] == "missing_world_model_profile" and item["severity"] == "warning" for item in chapter_diagnostics)
 
 
+def test_agent_tool_descriptor_mutability_uses_enum_contract():
+    describe_descriptor = get_agent_tool_descriptor("describe_agent_tools")
+    generate_descriptor = get_agent_tool_descriptor("generate_chapter")
+    execute_descriptor = get_agent_tool_descriptor("apply_world_model_proposal_resolution")
+    review_descriptor = get_agent_tool_descriptor("review_longform_chapter_batch_execution")
+
+    assert describe_descriptor is not None
+    assert generate_descriptor is not None
+    assert execute_descriptor is not None
+    assert review_descriptor is not None
+    assert descriptor_mutability(describe_descriptor) is ToolMutability.READ
+    assert descriptor_mutability(generate_descriptor) is ToolMutability.WRITE
+    assert descriptor_mutability(execute_descriptor) is ToolMutability.GUARDED_WRITE
+    assert descriptor_mutability(
+        review_descriptor,
+        adapter_metadata={"mutability": "write", "adapter_type": "static"},
+    ) is ToolMutability.GUARDED_WRITE
+    assert descriptor_mutability(
+        describe_descriptor,
+        adapter_metadata={"mutability": "not_a_known_mutability", "adapter_type": "static"},
+    ) is ToolMutability.UNCLASSIFIED
+    assert descriptor_permission_level(ToolMutability.READ) is ToolPermissionLevel.READ
+    assert descriptor_permission_level("guarded_write") is ToolPermissionLevel.CONFIRM_REQUIRED
+
+
+def test_agent_tool_contracts_keep_public_mutability_strings():
+    descriptor = get_agent_tool_descriptor("generate_chapter")
+
+    assert descriptor is not None
+    execution_metadata = agent_tool_execution_metadata(descriptor)
+    assert execution_metadata["mutability"] == "write"
+    assert type(execution_metadata["mutability"]) is str
+
+    snapshot = build_agent_tool_contract_snapshot(
+        adapter_metadata_by_name={"generate_chapter": {"mutability": "write", "adapter_type": "static"}},
+        include_gap_details=False,
+    )
+    tool_contract = next(tool for tool in snapshot["tools"] if tool["name"] == "generate_chapter")
+
+    assert tool_contract["mutability"] == "write"
+    assert type(tool_contract["mutability"]) is str
+    assert tool_contract["permission_level"] == "write"
+    assert type(tool_contract["permission_level"]) is str
+
+
 def test_agent_tool_plan_exposes_agent_tool_surface_for_visible_tools(db_session):
     project = _seed_ready_project(db_session)
 
@@ -1668,7 +1723,9 @@ def test_agent_tool_plan_exposes_agent_tool_surface_for_visible_tools(db_session
     }
     preflight_surface = visible["preflight_writing"]["agent_tool_surface"]
     assert preflight_surface["mutability"] == "read"
+    assert type(preflight_surface["mutability"]) is str
     assert preflight_surface["permission_level"] == "read"
+    assert type(preflight_surface["permission_level"]) is str
 
     generate_surface = visible["generate_chapter"]["agent_tool_surface"]
     assert generate_surface["visibility"] == "agent_visible"

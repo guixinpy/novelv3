@@ -43,6 +43,7 @@
 - [x] 工具生命周期钩子：tool_lifecycle_hooks
 - [x] StopHooks 策略层：critical loop、BudgetCap、MaxTurns、ContextGuard、approval、memory provenance
 - [x] Agent loop refund 预算投影：read 工具成功调用计入 refunded_iterations，不消耗 charged iteration
+- [x] 工具权限分级基础枚举契约：ToolMutability + ToolPermissionLevel，公开 surface/contract 保持字符串兼容
 - [x] 恢复计划器：recovery_planner + recovery_policy
 - [x] 命令契约：agent_command_contracts + agent_step_binding
 
@@ -62,6 +63,7 @@
 
 - 2026-06-01: 核对代码发现五级循环检测已实现；补充 StopHooks 的显式 BudgetCap / MaxTurns 策略和测试，ContextGuard 既有策略保留。
 - 2026-06-01: 新增 Agent loop budget refund 投影，成功 read 工具调用会进入 refunded_iterations，remaining_iterations 按 charged_iterations 计算。
+- 2026-06-01: 新增工具权限/可变性基础枚举契约，descriptor 内部返回 ToolMutability，permission 映射返回 ToolPermissionLevel；agent_tool_surface 与 tool_contracts 继续输出普通字符串以兼容既有前端和审批链路。
 
 ---
 
@@ -262,4 +264,5 @@
 计划内容（待确认）：
 - 智能上下文压缩
 - 多维度语义审稿
-- 权限分级枚举化 / Worker 定义配置化
+- Worker 定义配置化
+- Memory Tree 分层摘要与语义浏览

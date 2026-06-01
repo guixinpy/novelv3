@@ -1,7 +1,22 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Any
+
+
+class ToolMutability(StrEnum):
+    READ = "read"
+    WRITE = "write"
+    GUARDED_WRITE = "guarded_write"
+    UNCLASSIFIED = "unclassified"
+
+
+class ToolPermissionLevel(StrEnum):
+    READ = "read"
+    WRITE = "write"
+    CONFIRM_REQUIRED = "confirm_required"
+    UNKNOWN = "unknown"
 
 
 READ_TOOL_NAMES = frozenset({"preflight_writing"})
@@ -75,49 +90,60 @@ def descriptor_tool_surface(
     adapter_metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     mutability = descriptor_mutability(descriptor, adapter_metadata=adapter_metadata)
+    permission_level = descriptor_permission_level(mutability)
     return {
         "visibility": "internal_only" if descriptor.internal else "agent_visible",
         "tool_scope": "agent_only" if descriptor.internal else "agent_and_legacy_action",
-        "mutability": mutability,
-        "permission_level": descriptor_permission_level(mutability),
-        "requires_confirmation": mutability == "guarded_write" or (
-            mutability not in {"read", "write"} and descriptor_requires_confirmation(descriptor)
+        "mutability": mutability.value,
+        "permission_level": permission_level.value,
+        "requires_confirmation": mutability is ToolMutability.GUARDED_WRITE or (
+            mutability not in {ToolMutability.READ, ToolMutability.WRITE} and descriptor_requires_confirmation(descriptor)
         ),
-        "parallel_safe": mutability == "read",
+        "parallel_safe": mutability is ToolMutability.READ,
     }
+
+
+def normalize_tool_mutability(value: object) -> ToolMutability:
+    if isinstance(value, ToolMutability):
+        return value
+    try:
+        return ToolMutability(str(value))
+    except ValueError:
+        return ToolMutability.UNCLASSIFIED
 
 
 def descriptor_mutability(
     descriptor: AgentToolDescriptor,
     *,
     adapter_metadata: dict[str, Any] | None = None,
-) -> str:
+) -> ToolMutability:
     if adapter_metadata and adapter_metadata.get("mutability"):
-        adapter_mutability = str(adapter_metadata["mutability"])
-        if adapter_mutability == "write" and (
+        adapter_mutability = normalize_tool_mutability(adapter_metadata["mutability"])
+        if adapter_mutability is ToolMutability.WRITE and (
             descriptor.name.startswith(GUARDED_WRITE_PREFIXES) or descriptor_requires_confirmation(descriptor)
         ):
-            return "guarded_write"
+            return ToolMutability.GUARDED_WRITE
         return adapter_mutability
     if descriptor.name in READ_TOOL_NAMES or descriptor.name.startswith(READ_PREFIXES):
-        return "read"
+        return ToolMutability.READ
     if descriptor.name.startswith(GUARDED_WRITE_PREFIXES) or descriptor_requires_confirmation(descriptor):
-        return "guarded_write"
+        return ToolMutability.GUARDED_WRITE
     if descriptor.name.startswith(WRITE_PREFIXES):
-        return "write"
+        return ToolMutability.WRITE
     if descriptor.non_blocking_report:
-        return "read"
-    return "unclassified"
+        return ToolMutability.READ
+    return ToolMutability.UNCLASSIFIED
 
 
-def descriptor_permission_level(mutability: str) -> str:
-    if mutability == "read":
-        return "read"
-    if mutability == "guarded_write":
-        return "confirm_required"
-    if mutability == "write":
-        return "write"
-    return "unknown"
+def descriptor_permission_level(mutability: ToolMutability | str) -> ToolPermissionLevel:
+    normalized = normalize_tool_mutability(mutability)
+    if normalized is ToolMutability.READ:
+        return ToolPermissionLevel.READ
+    if normalized is ToolMutability.GUARDED_WRITE:
+        return ToolPermissionLevel.CONFIRM_REQUIRED
+    if normalized is ToolMutability.WRITE:
+        return ToolPermissionLevel.WRITE
+    return ToolPermissionLevel.UNKNOWN
 
 
 def descriptor_requires_confirmation(descriptor: AgentToolDescriptor) -> bool:

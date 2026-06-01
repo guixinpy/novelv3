@@ -7,7 +7,9 @@ from app.services.writing_agent.tool_policy import report_policy_for_tool
 from app.services.writing_agent.tool_recommendations import RECOMMENDATION_OUTPUT_FIELDS
 from app.services.writing_agent.tool_descriptor_types import (
     AgentToolDescriptor,
+    ToolMutability,
     descriptor_mutability,
+    descriptor_permission_level,
     descriptor_requires_confirmation,
 )
 from app.services.writing_agent.tool_registry import list_agent_tool_descriptors
@@ -122,14 +124,14 @@ def _tool_contract(
         "internal": descriptor.internal,
         "visibility": "internal_only" if descriptor.internal else "agent_visible",
         "non_blocking_report": descriptor.non_blocking_report,
-        "mutability": mutability,
+        "mutability": mutability.value,
         "permission_level": _permission_level(mutability),
         "side_effects": _side_effects(mutability),
         "requires_confirmation": _requires_confirmation(descriptor),
         "parallel_safe": _parallel_safe(mutability),
         "resource_scope": RESOURCE_SCOPE_BY_CATEGORY.get(descriptor.category, descriptor.category),
         "memory_boundary": MEMORY_BOUNDARY_BY_CATEGORY.get(descriptor.category, "none"),
-        "trace_required": descriptor.internal or mutability in {"write", "guarded_write"},
+        "trace_required": descriptor.internal or mutability in {ToolMutability.WRITE, ToolMutability.GUARDED_WRITE},
         "execution_route": _execution_route(descriptor, adapter_metadata),
         "result_size_policy": _result_size_policy(descriptor),
         "adapter_type": adapter_metadata.get("adapter_type") if adapter_metadata else None,
@@ -156,7 +158,7 @@ def _schema_present(schema: dict[str, Any]) -> bool:
     return isinstance(schema, dict) and schema.get("type") == "object"
 
 
-def _mutability(descriptor: AgentToolDescriptor, adapter_metadata: dict[str, Any] | None) -> str:
+def _mutability(descriptor: AgentToolDescriptor, adapter_metadata: dict[str, Any] | None) -> ToolMutability:
     return descriptor_mutability(descriptor, adapter_metadata=adapter_metadata)
 
 
@@ -168,8 +170,9 @@ def agent_tool_execution_metadata(
         return {"mutability": "unclassified", "requires_confirmation": False}
     mutability = _mutability(descriptor, adapter_metadata)
     return {
-        "mutability": mutability,
-        "requires_confirmation": mutability in {"write", "guarded_write"} or _requires_confirmation(descriptor),
+        "mutability": mutability.value,
+        "requires_confirmation": mutability in {ToolMutability.WRITE, ToolMutability.GUARDED_WRITE}
+        or _requires_confirmation(descriptor),
     }
 
 
@@ -182,22 +185,16 @@ def _execution_route(descriptor: AgentToolDescriptor, adapter_metadata: dict[str
     return "legacy_action_fallback"
 
 
-def _permission_level(mutability: str) -> str:
-    if mutability == "read":
-        return "read"
-    if mutability == "guarded_write":
-        return "confirm_required"
-    if mutability == "write":
-        return "write"
-    return "unknown"
+def _permission_level(mutability: ToolMutability) -> str:
+    return descriptor_permission_level(mutability).value
 
 
-def _side_effects(mutability: str) -> list[str]:
-    if mutability == "read":
+def _side_effects(mutability: ToolMutability) -> list[str]:
+    if mutability is ToolMutability.READ:
         return []
-    if mutability == "guarded_write":
+    if mutability is ToolMutability.GUARDED_WRITE:
         return ["database_write", "requires_confirmation"]
-    if mutability == "write":
+    if mutability is ToolMutability.WRITE:
         return ["database_write"]
     return ["unknown"]
 
@@ -206,8 +203,8 @@ def _requires_confirmation(descriptor: AgentToolDescriptor) -> bool:
     return descriptor_requires_confirmation(descriptor)
 
 
-def _parallel_safe(mutability: str) -> bool:
-    return mutability == "read"
+def _parallel_safe(mutability: ToolMutability) -> bool:
+    return mutability is ToolMutability.READ
 
 
 def _result_size_policy(descriptor: AgentToolDescriptor) -> str:
@@ -218,8 +215,8 @@ def _result_size_policy(descriptor: AgentToolDescriptor) -> str:
     return "structured_summary"
 
 
-def _postconditions(descriptor: AgentToolDescriptor, mutability: str) -> list[str]:
-    if mutability == "read":
+def _postconditions(descriptor: AgentToolDescriptor, mutability: ToolMutability) -> list[str]:
+    if mutability is ToolMutability.READ:
         return ["no_state_change", "structured_result"]
     if descriptor.category == "task_queue":
         return ["task_state_updated", "traceable_result"]
@@ -230,14 +227,14 @@ def _postconditions(descriptor: AgentToolDescriptor, mutability: str) -> list[st
     return ["state_updated", "traceable_result"]
 
 
-def _recovery_tools(descriptor: AgentToolDescriptor, mutability: str) -> list[str]:
+def _recovery_tools(descriptor: AgentToolDescriptor, mutability: ToolMutability) -> list[str]:
     if descriptor.name == "plan_recovery_tools":
         return []
     if descriptor.category == "task_queue":
         return ["inspect_agent_job_projection", "plan_recovery_tools"]
     if descriptor.category == "athena_world_model":
         return ["review_world_model_proposals", "plan_world_model_proposal_resolution"]
-    if descriptor.category == "generation" or mutability != "read":
+    if descriptor.category == "generation" or mutability is not ToolMutability.READ:
         return ["plan_recovery_tools", "inspect_agent_trace_audit"]
     return []
 
@@ -279,21 +276,21 @@ def _gaps(
     adapter_metadata: dict[str, Any] | None,
     input_schema_present: bool,
     output_schema_present: bool,
-    mutability: str,
+    mutability: ToolMutability,
 ) -> list[dict[str, Any]]:
     gaps: list[dict[str, Any]] = []
     if not input_schema_present:
         gaps.append(_gap(descriptor.name, "missing_input_schema", "blocker", "工具缺少可投影的输入 schema。"))
     if not output_schema_present:
         gaps.append(_gap(descriptor.name, "missing_output_schema", "blocker", "工具缺少可投影的输出 schema。"))
-    if mutability == "unclassified":
+    if mutability is ToolMutability.UNCLASSIFIED:
         gaps.append(_gap(descriptor.name, "missing_mutability_classification", "warning", "工具缺少读写/保护写入分类。"))
     if adapter_metadata is None:
         severity = "blocker" if descriptor.internal else "warning"
         gaps.append(_gap(descriptor.name, "missing_agent_native_adapter", severity, "工具尚未接入 Agent-native 执行适配器。"))
-    if mutability in {"write", "guarded_write"} and not descriptor.availability_checks:
+    if mutability in {ToolMutability.WRITE, ToolMutability.GUARDED_WRITE} and not descriptor.availability_checks:
         gaps.append(_gap(descriptor.name, "missing_availability_checks", "warning", "写入类工具缺少可见性或依赖检查。"))
-    if mutability in {"write", "guarded_write"} and not _requires_confirmation(descriptor):
+    if mutability in {ToolMutability.WRITE, ToolMutability.GUARDED_WRITE} and not _requires_confirmation(descriptor):
         gaps.append(_gap(descriptor.name, "missing_confirmation_guard", "warning", "写入类工具缺少显式确认或哈希门禁字段。"))
     if descriptor.output_schema == {"type": "object", "properties": {"status": {"type": "string"}}, "additionalProperties": True}:
         gaps.append(_gap(descriptor.name, "output_schema_too_generic", "warning", "工具输出 schema 过宽，Agent 难以判断后置状态。"))

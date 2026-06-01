@@ -135,7 +135,7 @@ novelv3 当前工具系统（tool_registry + tool_descriptor + tool_adapter）�
 
 | 增强点 | 借鉴来源 | 优先级 | 说明 |
 |--------|---------|--------|------|
-| 权限分级 | openhuman | **高** | 从字符串标签改为枚举：Read/Write/GuardedWrite |
+| 权限分级 | openhuman | 已完成基础版 | descriptor/contract 内部使用 ToolMutability 与 ToolPermissionLevel；公开 surface 仍输出字符串以保持兼容 |
 | 工具策略层 | openclaw | **中** | 按场景动态调整工具暴露（如"审稿模式"不暴露生成工具） |
 | 自注册简化 | hermes-agent | **低** | 当前双重登记（descriptor + adapter）可考虑用装饰器简化 |
 
@@ -194,12 +194,12 @@ Main Agent (对话编排)
 
 | 能力 | 借鉴来源 | 当前状态 | 优先级 |
 |------|---------|---------|--------|
-| 工具权限分级 | openhuman PermissionLevel | 字符串标签 | **高** |
+| 工具权限分级 | openhuman PermissionLevel | 已完成基础版：内部枚举 + 公开字符串兼容 | 已完成基础版 |
 | 审批门控 | openclaw ownerOnly + hermes-agent require_confirm | 已有 approval_contract | 已基本满足 |
 | 审计日志 | openhuman | 已有 AIModelCallTrace | 已基本满足 |
 | 安全意识 | openclaw 脱敏 | 已有 trace 脱敏 | 已满足 |
 
-novelv3 当前 trace + approval 体系已经较完整。主要是权限分级需要从字符串升级为枚举。
+novelv3 当前 trace + approval 体系已经较完整。权限分级已先在核心 descriptor/contract 层升级为枚举，后续若要继续深化，应再把 planner、approval、前端展示等消费端逐步切到显式类型，而不是一次性破坏公开 JSON 契约。
 
 ---
 
@@ -231,14 +231,15 @@ novelv3 当前 trace + approval 体系已经较完整。主要是权限分级需
 
 1. **openclaw 五级循环检测** → `agent_loop_risk.py`
 2. **openhuman StopHooks 策略层基础增强** → `agent_stop_hooks.py` 已含 BudgetCap、MaxTurns、ContextGuard
+3. **hermes-agent refund 机制基础版** → read 工具成功调用不消耗 charged iteration
+4. **openhuman 权限分级基础版** → `ToolMutability` / `ToolPermissionLevel`，内部枚举化，公开 surface/contract 保持字符串兼容
 
 ### 立即实现（当前开发周期）
 
-3. **hermes-agent refund 机制基础版** → read 工具成功调用不消耗 charged iteration
+- 暂无固定单项；按代码现状、dogfood 结果和进度文档从短期清单中持续选择最高价值增量。
 
 ### 短期实现（1-2 个开发周期）
 
-4. **openhuman 权限分级** → 改为 Read/Write/GuardedWrite 枚举
 5. **openhuman Worker 定义配置化** → AgentDefinition 文件格式
 6. **openhuman Memory Tree 分层摘要** → 完善 memory_tree.py
 7. **hermes-agent ContextCompressor** → 增强上下文压缩
