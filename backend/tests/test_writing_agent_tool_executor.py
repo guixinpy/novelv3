@@ -2402,6 +2402,55 @@ async def test_plan_recommended_followups_allows_memory_loop_read_followups(db_s
 
 
 @pytest.mark.asyncio
+async def test_plan_recommended_followups_prepares_chapter_generation_instead_of_writing(db_session):
+    project = Project(name="Recommended Chapter Generation Followup")
+    db_session.add(project)
+    db_session.flush()
+    run = WritingAgentRun(project_id=project.id, goal="写前检查第3章", status="success", input={})
+    db_session.add(run)
+    db_session.flush()
+    db_session.add(
+        WritingAgentStep(
+            run_id=run.id,
+            project_id=project.id,
+            step_index=1,
+            tool_name="preflight_writing",
+            status="success",
+            chapter_index=3,
+            input={"params": {"chapter_index": 3}},
+            output={
+                "status": "success",
+                "chapter_index": 3,
+                "agent_tool_result": {
+                    "recommendations": {
+                        "canonical_followups": ["generate_chapter"],
+                    }
+                },
+            },
+        )
+    )
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-followup-chapter"),
+        WritingAgentToolRequest(tool_name="plan_recommended_followups", params={"run_id": run.id}),
+    )
+
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "completed"
+    assert [tool["tool_name"] for tool in result.output["tools"]] == ["prepare_generate_chapter_execution"]
+    assert result.output["tools"][0]["params"] == {"chapter_index": 3}
+    planner = result.output["tools"][0]["planner"]
+    assert planner["reason"] == (
+        "根据上一轮 preflight_writing 的运行时推荐规划后继工具 prepare_generate_chapter_execution。"
+    )
+    assert planner["agent_profile"] == "drafting_worker"
+    assert planner["worker_dispatch"]["worker"] == "drafting_worker"
+    assert result.output["trace"]["rejected_tools"] == []
+
+
+@pytest.mark.asyncio
 async def test_plan_recommended_followups_projects_worker_dispatch_for_domain_followups(db_session):
     project = Project(name="Recommended Worker Dispatch Followup")
     db_session.add(project)

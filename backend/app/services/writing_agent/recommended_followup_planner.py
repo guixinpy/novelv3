@@ -33,6 +33,7 @@ SAFE_RECOMMENDED_FOLLOWUP_TOOLS = frozenset(
         "inspect_agent_memory_route",
         "search_agent_retrieval_context",
         "summarize_longform_context",
+        "prepare_generate_chapter_execution",
         "plan_post_chapter_memory_capture",
         "prepare_record_agent_knowledge_base_candidate",
         "prepare_analyze_chapter_world_model_execution",
@@ -50,6 +51,7 @@ SAFE_RECOMMENDED_FOLLOWUP_TOOLS = frozenset(
 )
 LOOPING_FOLLOWUP_TOOLS = frozenset({"plan_recommended_followups"})
 APPROVAL_PREPARE_FOLLOWUP_TOOLS = {
+    "generate_chapter": "prepare_generate_chapter_execution",
     "analyze_chapter_world_model": "prepare_analyze_chapter_world_model_execution",
 }
 

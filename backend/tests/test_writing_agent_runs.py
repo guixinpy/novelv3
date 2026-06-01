@@ -1694,6 +1694,77 @@ def test_agent_run_recommended_followups_prepare_world_model_analysis_instead_of
     assert output["recommended_next_tools"] == ["execute_analyze_chapter_world_model_with_approval"]
 
 
+def test_agent_run_recommended_followups_prepare_chapter_generation_instead_of_writing(
+    client,
+    db_session,
+):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2, 3], generated_chapters=[1, 2])
+    source_run = WritingAgentRun(project_id=project.id, goal="写前检查第3章", status="success", input={})
+    db_session.add(source_run)
+    db_session.flush()
+    db_session.add(
+        WritingAgentStep(
+            run_id=source_run.id,
+            project_id=project.id,
+            step_index=1,
+            tool_name="preflight_writing",
+            status="success",
+            chapter_index=3,
+            input={"params": {"chapter_index": 3}},
+            output={
+                "status": "success",
+                "chapter_index": 3,
+                "agent_tool_result": {
+                    "recommendations": {
+                        "canonical_followups": ["generate_chapter"],
+                    }
+                },
+            },
+        )
+    )
+    db_session.commit()
+
+    preview = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "预览下一章生成后继",
+            "tools": [{"tool_name": "plan_recommended_followups", "params": {"run_id": source_run.id}}],
+        },
+    )
+    preview_output = preview.json()["steps"][0]["output"]
+
+    assert preview.status_code == 200
+    assert preview_output["status"] == "completed"
+    assert [tool["tool_name"] for tool in preview_output["tools"]] == [
+        "prepare_generate_chapter_execution"
+    ]
+    assert preview_output["tools"][0]["params"] == {"chapter_index": 3}
+    assert preview_output["trace"]["rejected_tools"] == []
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "准备第3章生成审批",
+            "input": {
+                "auto_plan": True,
+                "recommended_followup_run_id": source_run.id,
+                "execute_recommended_followups": True,
+                "confirm_execute": True,
+                "recommended_followup_plan_hash": preview_output["plan_hash"],
+            },
+        },
+    )
+
+    payload = response.json()
+    assert response.status_code == 200
+    assert payload["status"] == "success"
+    assert [step["tool_name"] for step in payload["steps"]] == ["prepare_generate_chapter_execution"]
+    output = payload["steps"][0]["output"]
+    assert output["status"] == "approval_required"
+    assert output["side_effects"] == {"executed": [], "skipped": ["generate_chapter"]}
+    assert output["recommended_next_tools"] == ["execute_generate_chapter_with_approval"]
+
+
 def test_agent_run_recommended_followups_prepare_post_chapter_memory_candidates(client, db_session):
     project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1, 2])
     source_run = WritingAgentRun(project_id=project.id, goal="生成第2章", status="success", input={})
