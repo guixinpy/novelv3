@@ -120,6 +120,7 @@ def test_agent_memory_trace_tool_adapters_live_in_dedicated_module():
         "search_agent_retrieval_context",
         "summarize_longform_context",
         "inspect_agent_context_compression_projection",
+        "build_agent_context_compression_payload",
         "inspect_agent_memory_activation_plan",
         "repair_longform_maintenance",
     ]
@@ -133,6 +134,7 @@ def test_agent_memory_trace_tool_adapters_live_in_dedicated_module():
     assert AGENT_MEMORY_TRACE_TOOL_ADAPTERS["search_agent_retrieval_context"].mutability == "read"
     assert AGENT_MEMORY_TRACE_TOOL_ADAPTERS["summarize_longform_context"].mutability == "read"
     assert AGENT_MEMORY_TRACE_TOOL_ADAPTERS["inspect_agent_context_compression_projection"].mutability == "read"
+    assert AGENT_MEMORY_TRACE_TOOL_ADAPTERS["build_agent_context_compression_payload"].mutability == "read"
     assert AGENT_MEMORY_TRACE_TOOL_ADAPTERS["inspect_agent_memory_activation_plan"].mutability == "read"
     assert AGENT_MEMORY_TRACE_TOOL_ADAPTERS["repair_longform_maintenance"].mutability == "guarded_write"
     assert (
@@ -142,6 +144,10 @@ def test_agent_memory_trace_tool_adapters_live_in_dedicated_module():
     assert (
         AGENT_MEMORY_TRACE_TOOL_ADAPTERS["inspect_agent_context_compression_projection"].handler.__name__
         == "_inspect_agent_context_compression_projection"
+    )
+    assert (
+        AGENT_MEMORY_TRACE_TOOL_ADAPTERS["build_agent_context_compression_payload"].handler.__name__
+        == "_build_agent_context_compression_payload"
     )
     assert (
         AGENT_MEMORY_TRACE_TOOL_ADAPTERS["search_agent_retrieval_context"].handler.__name__
@@ -167,6 +173,7 @@ def test_agent_memory_trace_tool_adapter_builder_adds_maintenance_approval_chain
         "search_agent_retrieval_context",
         "summarize_longform_context",
         "inspect_agent_context_compression_projection",
+        "build_agent_context_compression_payload",
         "inspect_agent_memory_activation_plan",
         "repair_longform_maintenance",
         "prepare_repair_longform_maintenance",
@@ -2290,8 +2297,8 @@ async def test_tool_executor_handles_inspect_agent_worker_dispatch(db_session):
     }
     assert result.output["route_registry"]["status"] == "passed"
     assert result.output["route_registry"]["summary"] == {
-        "routes": 49,
-        "ready_routes": 49,
+        "routes": 50,
+        "ready_routes": 50,
         "unrouted_allowed_tools": 0,
         "issues": 0,
     }
@@ -6417,6 +6424,35 @@ async def test_tool_executor_dispatches_summarize_longform_context_adapter(db_se
     assert result.handled is True
     assert result.output == {"status": "completed", "chapter_index": 14, "sections": []}
     assert calls == [(project.id, 14, "灯塔记忆", 1500, True)]
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_dispatches_build_agent_context_compression_payload_adapter(db_session, monkeypatch):
+    project = Project(name="Executor Context Compression Payload")
+    db_session.add(project)
+    db_session.commit()
+    calls: list[tuple[str, int | None, int | None, int]] = []
+
+    def fake_payload(db, project_id: str, *, chapter_index: int | None, max_chars: int | None, context_guard_failure_count: int):
+        calls.append((project_id, chapter_index, max_chars, context_guard_failure_count))
+        return {"status": "ready", "compression_payload": {"execution_mode": "dry_run"}}
+
+    monkeypatch.setattr(
+        "app.services.writing_agent.agent_context_compression_projection.build_agent_context_compression_payload",
+        fake_payload,
+    )
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(
+            tool_name="build_agent_context_compression_payload",
+            params={"chapter_index": "14", "max_chars": "1500", "context_guard_failure_count": "2"},
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output == {"status": "ready", "compression_payload": {"execution_mode": "dry_run"}}
+    assert calls == [(project.id, 14, 1500, 2)]
 
 
 @pytest.mark.asyncio

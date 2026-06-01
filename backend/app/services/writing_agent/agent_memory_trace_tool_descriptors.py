@@ -193,6 +193,37 @@ AGENT_MEMORY_TRACE_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(
+        name="build_agent_context_compression_payload",
+        module="writing_agent",
+        category="longform_memory",
+        description="基于上下文压缩投影构建只读 dry-run 压缩 payload，保留头尾保护区、摘要和预修剪证据。",
+        input_schema=object_schema(
+            {
+                "chapter_index": {"type": "integer", "minimum": 1},
+                "max_chars": {"type": "integer", "minimum": 500},
+                "context_guard_failure_count": {"type": "integer", "minimum": 0},
+            }
+        ),
+        output_schema=object_schema(
+            {
+                "status": {"type": "string"},
+                "projection": {"type": "object"},
+                "compression_plan": {"type": "object"},
+                "compression_payload": {"type": "object"},
+                "evidence": {"type": "object"},
+                "side_effects": {"type": "object"},
+                "recommended_next_tools": {"type": "array"},
+                "recovery": {"type": "object"},
+                "trace": {"type": "object"},
+            }
+        ),
+        target_type="agent_context_compression_payload",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=8,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
         name="inspect_agent_memory_activation_plan",
         module="writing_agent",
         category="longform_memory",

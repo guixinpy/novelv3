@@ -199,12 +199,13 @@
 - [x] 基础上下文压缩：对话历史长度限制
 - [x] 长篇上下文摘要：longform_context_summary
 - [x] ContextCompressor 基础计划投影：context pressure 下输出头尾保护预修剪、target_max_chars 和 summarize_longform_context 工具计划
+- [x] ContextCompressor dry-run payload：build_agent_context_compression_payload 输出头尾保护、summary 注入、pretrim evidence 和无副作用 trace
 
 ### 下一步任务
 
 | 优先级 | 任务 | 完成标准 | 状态 |
 |--------|------|---------|------|
-| P1 | 智能上下文压缩（借鉴 hermes-agent） | 预修剪 + LLM 摘要 + 头尾保护 | 🟡 进行中（基础计划） |
+| P1 | 智能上下文压缩（借鉴 hermes-agent） | 预修剪 + LLM 摘要 + 头尾保护 | 🟡 进行中（基础 payload） |
 | P2 | 端到端 Trace 链路 | 从用户意图→计划→工具调用→模型调用→结果的一条链 | 🔴 待开始 |
 | P3 | 上下文预算管理 | 可视化 Token 使用量 + 接近上限时的警告 | 🔴 待开始 |
 
@@ -214,6 +215,7 @@
 
 ### 最近完成
 
+- 2026-06-01: `build_agent_context_compression_payload` 接入 memory_worker，基于 projection 生成只读 dry-run payload，包含 protected_head、summarize_longform_context summary、protected_tail、pretrimmed_sections、side_effects 和 runtime_behavior_changed=false trace；尚未写入 LLM 摘要或替换运行时上下文构建路径。
 - 2026-06-01: `inspect_agent_context_compression_projection` 新增 compression_plan，在窗口压力下给出 head/tail protected pretrim、目标 max_chars 和 summarize_longform_context 工具计划；当前仍是只读计划，尚未写入 LLM 摘要或接入运行时压缩。
 
 ---

@@ -1,6 +1,9 @@
 from app.models import Project
 from app.services.writing_agent import agent_context_compression_projection
-from app.services.writing_agent.agent_context_compression_projection import inspect_agent_context_compression_projection
+from app.services.writing_agent.agent_context_compression_projection import (
+    build_agent_context_compression_payload,
+    inspect_agent_context_compression_projection,
+)
 
 
 def test_context_compression_projection_reports_ready_chapter_window(db_session, monkeypatch):
@@ -74,6 +77,52 @@ def test_context_compression_projection_warns_when_window_pressure_rises(db_sess
     assert output["recovery"]["tools"][0]["tool_name"] == "summarize_longform_context"
 
 
+def test_context_compression_payload_builds_head_tail_protected_dry_run(db_session, monkeypatch):
+    project = Project(name="Context Compression Payload")
+    db_session.add(project)
+    db_session.commit()
+    calls: list[dict[str, object]] = []
+
+    def fake_summary(*args, **kwargs):
+        calls.append(dict(kwargs))
+        return _context_summary(
+            prompt_context_chars=3800,
+            max_chars=kwargs.get("max_chars") or 4000,
+            diagnostics=[{"code": "prompt_context_truncated", "severity": "info"}],
+            include_prompt_context=kwargs.get("include_prompt_context") is True,
+            sections=[
+                {"key": "recent_chapters", "title": "近期章节", "item_count": 2, "items": [{"title": "第七章"}]},
+                {"key": "critical_context", "title": "关键上下文", "item_count": 3, "items": [{"title": "灯塔旧案"}]},
+            ],
+            source_sections=[
+                {"key": "recent_chapters", "title": "近期章节", "item_count": 2},
+                {"key": "critical_context", "title": "关键上下文", "item_count": 3},
+            ],
+        )
+
+    monkeypatch.setattr(agent_context_compression_projection, "summarize_longform_context", fake_summary)
+
+    output = build_agent_context_compression_payload(db_session, project.id, chapter_index=8, max_chars=4000)
+
+    assert output["status"] == "ready"
+    assert [call.get("include_prompt_context") for call in calls] == [False, True]
+    assert calls[1]["max_chars"] == 3000
+    payload = output["compression_payload"]
+    assert payload["mode"] == "head_tail_protected_pretrim"
+    assert payload["execution_mode"] == "dry_run"
+    assert payload["target_max_chars"] == 3000
+    assert [section["key"] for section in payload["protected_head"]] == ["project", "active_state"]
+    assert payload["summary"]["tool_name"] == "summarize_longform_context"
+    assert [section["key"] for section in payload["protected_tail"]] == ["recent_chapters", "critical_context"]
+    assert [section["key"] for section in payload["pretrimmed_sections"]] == [
+        "source_sections",
+        "critical_context",
+        "recent_chapters",
+    ]
+    assert output["side_effects"] == {"writes": [], "runtime_context_mutated": False}
+    assert output["trace"]["runtime_behavior_changed"] is False
+
+
 def test_context_compression_projection_blocks_after_repeated_guard_failures(db_session, monkeypatch):
     project = Project(name="Context Projection Guard")
     db_session.add(project)
@@ -113,13 +162,30 @@ def test_context_compression_projection_blocks_after_repeated_guard_failures(db_
     }
 
 
-def _context_summary(*, prompt_context_chars, max_chars, diagnostics=None):
+def _context_summary(
+    *,
+    prompt_context_chars,
+    max_chars,
+    diagnostics=None,
+    include_prompt_context=False,
+    sections=None,
+    source_sections=None,
+):
     return {
         "status": "completed",
         "chapter_index": 1,
         "prompt_context_chars": prompt_context_chars,
         "limits": {"max_chars": max_chars},
-        "sections": [],
+        "project": {"id": "project-1", "name": "测试项目", "genre": None},
+        "context_summary": {
+            "goal": "整理第8章写作上下文",
+            "active_state": {"target_outline": {"title": "第八章"}, "previous_chapter": {"title": "第七章"}},
+            "recent_chapters": [{"title": "第七章"}],
+            "critical_context": sections or [],
+        },
+        "sections": sections or [],
+        "source_sections": source_sections or [],
+        "source_section_keys": [section["key"] for section in source_sections or []],
         "diagnostics": diagnostics or [],
         "memory_provenance": {
             "version": "test.memory_provenance.v1",
@@ -130,4 +196,5 @@ def _context_summary(*, prompt_context_chars, max_chars, diagnostics=None):
             "recovery": {"status": "none", "reason": "test", "next_tools": [], "tools": []},
             "trace": {"source": "summarize_longform_context", "version": "test.memory_provenance.v1"},
         },
+        "prompt_context": "完整上下文" * 800 if include_prompt_context else None,
     }

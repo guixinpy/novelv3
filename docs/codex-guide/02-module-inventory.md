@@ -279,15 +279,15 @@ Agent 化缺口：
 ### 4.3 Context Compression（上下文压缩）
 
 ```
-当前状态：L1 对话历史长度限制 + 基础压缩；ContextCompressor 基础计划投影已具备窗口压力、ContextGuard、头尾保护预修剪和摘要工具参数
+当前状态：L1 对话历史长度限制 + 基础压缩；ContextCompressor 已具备窗口压力/ContextGuard 投影、头尾保护预修剪计划和只读 dry-run payload builder
 目标状态：L2-L3 LLM 摘要压缩 + 头尾保护 + Token 预算管理
 关键文件：
   backend/app/services/writing_agent/
-  ├── agent_context_compression_projection.py # 上下文压缩投影
+  ├── agent_context_compression_projection.py # 上下文压缩投影 + dry-run payload
   └── longform_context_summary.py         # 长篇上下文摘要
   backend/app/services/dialog/session.py  # Session 管理含历史限制
 Agent 化缺口：
-  - 缺少真正 LLM 摘要写入/运行时压缩执行
+  - 已有计划到 payload 的只读执行基础，仍缺少真正 LLM 摘要写入/运行时压缩接入
   - 缺少 TokenJuice 机制（openhuman）
   - 压缩粒度已有基础计划，仍需按重要性分层落到实际上下文构建路径
 关联模块：Dialog、WritingAgent
