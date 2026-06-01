@@ -82,6 +82,23 @@ export function buildAgentRunExecutionFeedback(run: WritingAgentRunDetail): Agen
   }
 }
 
+function recommendedFollowupExecutionDetailItems(run: WritingAgentRunDetail) {
+  const steps = Array.isArray(run.steps) ? run.steps : []
+  const items: Array<{ label: string; value: string }> = []
+  if (steps.length) {
+    items.push({ label: '执行步骤', value: `${steps.length} 个` })
+  }
+  const toolNames = uniqueStrings(steps.map((step) => stringValue(step.tool_name)).filter(Boolean))
+  if (toolNames.length) {
+    items.push({ label: '执行工具', value: compactToolList(toolNames) })
+  }
+  const nextFollowups = latestStepCanonicalFollowups(steps)
+  if (nextFollowups.length) {
+    items.push({ label: '后继建议', value: `${nextFollowups.length} 项` })
+  }
+  return items
+}
+
 export function buildRecommendedFollowupExecutionFeedback(run: WritingAgentRunDetail): AgentRunFeedbackMessage {
   const status = String(run.status || '')
   const label = recommendedFollowupExecutionStatusLabel(status)
@@ -93,6 +110,7 @@ export function buildRecommendedFollowupExecutionFeedback(run: WritingAgentRunDe
   if (errorSummary) {
     detailItems.push({ label: '错误摘要', value: errorSummary })
   }
+  detailItems.push(...recommendedFollowupExecutionDetailItems(run))
   detailItems.push(...agentDiscoveryDetailItems(run as unknown as Record<string, unknown>))
   return {
     role: 'system',
@@ -512,6 +530,30 @@ function profilePolicyAuditLabel(audit: Record<string, unknown>) {
     return issueCount !== null ? `需关注：${issueCount} 个问题` : '需关注'
   }
   return status
+}
+
+function latestStepCanonicalFollowups(steps: WritingAgentRunDetail['steps']) {
+  for (let index = steps.length - 1; index >= 0; index -= 1) {
+    const output = recordValue(steps[index]?.output)
+    const envelope = recordValue(output.agent_tool_result)
+    const recommendations = recordValue(envelope.recommendations)
+    const followups = Array.isArray(recommendations.canonical_followups)
+      ? recommendations.canonical_followups
+      : []
+    const normalized = uniqueStrings(followups.map((item) => stringValue(item)).filter(Boolean))
+    if (normalized.length) return normalized
+  }
+  return []
+}
+
+function uniqueStrings(values: string[]) {
+  return Array.from(new Set(values))
+}
+
+function compactToolList(values: string[]) {
+  const visible = values.slice(0, 3)
+  const hidden = values.length - visible.length
+  return hidden > 0 ? `${visible.join(', ')}, +${hidden}` : visible.join(', ')
 }
 
 function recordValue(value: unknown): Record<string, unknown> {

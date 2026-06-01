@@ -273,6 +273,56 @@ describe('recoveryAgentRunProjection', () => {
     expect(JSON.stringify(message)).not.toContain('inspect_agent_health_projection')
   })
 
+  it('builds recommended followup execution feedback with executed tools and next suggestions', () => {
+    const message = buildRecommendedFollowupExecutionFeedback({
+      id: 'run-followups-executed',
+      project_id: 'project-1',
+      goal: '执行推荐后继',
+      status: 'success',
+      entrypoint: 'ui_recommended_followup_execute',
+      input: { recommended_followup_plan_hash: 'followup-plan-hash-secret' },
+      output: null,
+      error: null,
+      steps: [
+        {
+          id: 'step-summary',
+          run_id: 'run-followups-executed',
+          project_id: 'project-1',
+          step_index: 1,
+          tool_name: 'summarize_longform_context',
+          status: 'success',
+          input: {},
+          output: {},
+        },
+        {
+          id: 'step-preflight',
+          run_id: 'run-followups-executed',
+          project_id: 'project-1',
+          step_index: 2,
+          tool_name: 'preflight_writing',
+          status: 'success',
+          input: {},
+          output: {
+            agent_tool_result: {
+              recommendations: {
+                canonical_followups: ['generate_chapter'],
+              },
+            },
+          },
+        },
+      ],
+    })
+
+    expect(message.action_result_view.label).toBe('推荐后继执行已完成')
+    expect(message.action_result_view.detail_items).toContainEqual({ label: '执行步骤', value: '2 个' })
+    expect(message.action_result_view.detail_items).toContainEqual({
+      label: '执行工具',
+      value: 'summarize_longform_context, preflight_writing',
+    })
+    expect(message.action_result_view.detail_items).toContainEqual({ label: '后继建议', value: '1 项' })
+    expect(JSON.stringify(message)).not.toContain('followup-plan-hash-secret')
+  })
+
   it('builds failed recovery execution feedback with an error summary', () => {
     const message = buildAgentRunExecutionFeedback({
       id: 'run-failed',
