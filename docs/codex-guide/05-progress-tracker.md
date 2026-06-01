@@ -133,13 +133,14 @@
 - [x] 批量执行框架：batch_enqueue + batch_execution + batch_preflight
 - [x] 队列检查器：batch_queue_inspector
 - [x] Worker 链追踪：worker_route_registry_projection 含 chain alignment 记录
+- [x] 孤兒 Worker 恢复基础审计：agent_worker_recovery 检测 active worker run 的 missing/terminal parent，并输出清理与重分派 preview
 
 ### 下一步任务
 
 | 优先级 | 任务 | 完成标准 | 状态 |
 |--------|------|---------|------|
 | P1 | Worker 定义配置化 | AgentDefinition 文件格式标准化，支持 TOML/YAML | ✅ 已完成（基础版） |
-| P2 | 孤兒 Worker 恢复 | Worker 失效后自动检测、清理、重新分配 | 🔴 待开始 |
+| P2 | 孤兒 Worker 恢复 | Worker 失效后自动检测、清理、重新分配 | 🟡 进行中（检测 + preview） |
 | P3 | Worker 并行度控制 | 基于系统资源的 worker 并发限制 | 🔴 待开始 |
 
 ### 阻塞项
@@ -149,6 +150,7 @@
 ### 最近完成
 
 - 2026-06-01: 标准化 AgentDefinition loader，保留现有 YAML 定义并新增 TOML 读取能力；定义注册表审计输出 source_format，用于后续吸收 openhuman agent.toml 形态而不迁移当前文件。
+- 2026-06-01: 新增 orphan worker 恢复基础审计，`inspect_agent_worker_dispatch` 会附带 orphan_recovery，自动检测 parent/source run 缺失或失败取消的 active worker run，并给出 mark-blocked 与 redispatch preview。
 
 ---
 
@@ -269,4 +271,4 @@
 - 智能上下文压缩
 - 多维度语义审稿
 - Memory Tree 分层摘要与语义浏览
-- 孤兒 Worker 恢复
+- 孤兒 Worker 写入式清理与安全重分派执行

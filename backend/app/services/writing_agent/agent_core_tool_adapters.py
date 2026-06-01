@@ -303,13 +303,18 @@ def _inspect_agent_worker_dispatch(context: WritingAgentToolContext, tool: Writi
         preview_agent_worker_dispatch,
         preview_agent_worker_dispatches,
     )
+    from app.services.writing_agent.agent_worker_recovery import inspect_agent_worker_orphan_recovery
 
     worker_name = str(tool.params.get("worker_name") or "").strip()
     parent_run_id = str(tool.params.get("parent_run_id") or context.run_id or "").strip() or None
     tasks = _record_list(tool.params.get("tasks"))
+    orphan_recovery = inspect_agent_worker_orphan_recovery(context.db, context.project_id)
     if worker_name:
-        return preview_agent_worker_dispatch(worker_name, tasks, parent_run_id=parent_run_id)
-    return preview_agent_worker_dispatches(tasks, parent_run_id=parent_run_id)
+        output = preview_agent_worker_dispatch(worker_name, tasks, parent_run_id=parent_run_id)
+    else:
+        output = preview_agent_worker_dispatches(tasks, parent_run_id=parent_run_id)
+    output["orphan_recovery"] = orphan_recovery
+    return output
 
 
 def _inspect_agent_health_projection(

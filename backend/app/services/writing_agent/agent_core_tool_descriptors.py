@@ -337,6 +337,7 @@ AGENT_CORE_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
                 "summary": {"type": "object"},
                 "definition_registry": {"type": "object"},
                 "route_registry": {"type": "object"},
+                "orphan_recovery": {"type": "object"},
                 "task_envelopes": {"type": "array"},
                 "worker_dispatches": {"type": "array"},
                 "issues": {"type": "array"},
