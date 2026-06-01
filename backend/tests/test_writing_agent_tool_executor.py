@@ -4569,11 +4569,23 @@ async def test_tool_executor_handles_inspect_agent_reference_alignment(db_sessio
     )
     worker_decision_ids = {decision["decision_id"] for decision in worker_pattern["novelv3_decisions"]}
     assert "yaml_worker_definition_registry" in worker_decision_ids
+    assert "story_asset_worker_chain" in worker_decision_ids
+    story_asset_decision = next(
+        decision for decision in worker_pattern["novelv3_decisions"] if decision["decision_id"] == "story_asset_worker_chain"
+    )
+    assert story_asset_decision["status"] == "implemented"
+    assert {
+        "preview_generate_setup_execution",
+        "prepare_generate_storyline_execution",
+        "execute_generate_outline_with_approval",
+        "inspect_agent_worker_dispatch",
+    }.issubset(set(story_asset_decision["evidence_tools"]))
     assert "inspect_agent_worker_dispatch" in worker_pattern["recommended_next_tools"]
     capability_areas = {item["area"] for item in result.output["capability_alignment"]}
     assert {
         "Hermes/dialog",
         "Athena/world_model",
+        "story_assets",
         "retrieval",
         "knowledge_base",
         "review",
@@ -4582,6 +4594,15 @@ async def test_tool_executor_handles_inspect_agent_reference_alignment(db_sessio
         "frontend",
         "long_memory",
     }.issubset(capability_areas)
+    story_asset_area = next(
+        item for item in result.output["capability_alignment"] if item["area"] == "story_assets"
+    )
+    assert story_asset_area["status"] == "implemented"
+    assert {
+        "preview_generate_setup_execution",
+        "prepare_generate_storyline_execution",
+        "execute_generate_outline_with_approval",
+    }.issubset(set(story_asset_area["adapter_backed_tools"]))
     assert "inspect_agent_tool_contracts" in result.output["recommended_next_tools"]
     assert "inspect_agent_write_gate_coverage" in result.output["recommended_next_tools"]
     assert result.output["trace"]["adapter_backed_tool_count"] >= 1
