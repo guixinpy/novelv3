@@ -2071,6 +2071,98 @@ def test_chat_text_low_detail_continue_previews_latest_recommended_followups(cli
     assert route_trace.trace_metadata["source_run_id"] == source_run.id
 
 
+def test_chat_text_low_detail_continue_exposes_post_approval_followup_worker_audit(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Test"})
+    pid = r.json()["id"]
+    db_session.add(Setup(project_id=pid, status="generated", world_building={}, characters=[], core_concept={}))
+    db_session.add(Storyline(project_id=pid, status="generated", plotlines=[], foreshadowing=[]))
+    db_session.add(
+        Outline(
+            project_id=pid,
+            status="generated",
+            total_chapters=20,
+            chapters=[{"chapter_index": 3, "title": "旧灯塔", "summary": "林舟回收灯塔线索。"}],
+        )
+    )
+    continuation_tools = [
+        {"tool_name": "summarize_longform_context", "params": {"chapter_index": 3}},
+        {"tool_name": "preflight_writing", "params": {"chapter_index": 3}},
+    ]
+    source_run = WritingAgentRun(
+        project_id=pid,
+        goal="沉淀第3章写后记忆",
+        status="success",
+        entrypoint="api",
+        input={},
+    )
+    db_session.add(source_run)
+    db_session.flush()
+    db_session.add(
+        WritingAgentStep(
+            run_id=source_run.id,
+            project_id=pid,
+            step_index=1,
+            tool_name="execute_record_agent_knowledge_base_candidate_with_approval",
+            status="success",
+            chapter_index=3,
+            input={"params": {"chapter_index": 3}},
+            output={
+                "status": "success",
+                "chapter_index": 3,
+                "post_approval_continuation_tools": continuation_tools,
+                "agent_tool_result": {
+                    "recommendations": {
+                        "source_fields": ["recommended_next_tools", "post_approval_continuation_tools"],
+                        "canonical_followups": ["summarize_longform_context", "preflight_writing"],
+                        "post_approval_continuation_tools": continuation_tools,
+                        "provenance_recovery_tools": [],
+                        "provenance_write_tools": [],
+                    }
+                },
+            },
+        )
+    )
+    db_session.commit()
+
+    r2 = client.post("/api/v1/dialog/chat", json={
+        "project_id": pid,
+        "input_type": "text",
+        "text": "继续吧",
+    })
+
+    assert r2.status_code == 200
+    body = r2.json()
+    dialog = db_session.query(Dialog).filter_by(project_id=pid, dialog_type="hermes").one()
+    followup_run = (
+        db_session.query(WritingAgentRun)
+        .filter(WritingAgentRun.project_id == pid, WritingAgentRun.entrypoint == "dialog_auto_plan")
+        .one()
+    )
+    assistant_message = (
+        db_session.query(DialogMessage)
+        .filter(DialogMessage.dialog_id == dialog.id, DialogMessage.role == "assistant")
+        .order_by(DialogMessage.created_at.desc(), DialogMessage.id.desc())
+        .first()
+    )
+    action_data = assistant_message.action_result["data"]
+    assert body["meta"]["agent_run_id"] == followup_run.id
+    assert body["meta"]["source_run_id"] == source_run.id
+    assert action_data["source_run_id"] == source_run.id
+    assert action_data["recommended_followups"]["post_approval_continuation_tools"] == continuation_tools
+    assert [tool["tool_name"] for tool in action_data["tools"]] == [
+        "summarize_longform_context",
+        "preflight_writing",
+    ]
+    assert [tool["params"] for tool in action_data["tools"]] == [
+        {"chapter_index": 3},
+        {"chapter_index": 3},
+    ]
+    assert action_data["worker_dispatch"]["summary"]["workers"] == 1
+    assert action_data["worker_dispatch"]["summary"]["planned_tasks"] == 1
+    assert action_data["worker_dispatch"]["route_registry"]["status"] == "passed"
+    assert action_data["route_decision"] == body["meta"]["dialog_route_decision"]
+
+
 def test_chat_text_low_detail_continue_uses_first_unwritten_outline_chapter(client, db_session):
     r = client.post("/api/v1/projects", json={"name": "Test"})
     pid = r.json()["id"]
