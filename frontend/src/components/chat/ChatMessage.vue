@@ -15,6 +15,7 @@ const emit = defineEmits<{
   safetyAction: [action: any]
   openTrace: [traceId: string]
   openAgentRun: [runId: string]
+  executeRecommendedFollowups: [payload: { sourceRunId: string; planHash: string }]
 }>()
 
 const roleName = computed(() => {
@@ -84,6 +85,21 @@ const resultDetailItems = computed(() => {
 })
 
 const agentRunId = computed(() => getAgentRunIdFromMessage(props.msg))
+
+const recommendedFollowupExecutePayload = computed(() => {
+  if (!props.isLatest || props.loading) return null
+  const actionResult = recordValue(props.msg.action_result)
+  const actionType = stringValue(actionResult.type)
+  const status = stringValue(actionResult.status)
+  if (actionType !== 'plan_recommended_followups' || !['success', 'completed'].includes(status)) return null
+  const data = recordValue(actionResult.data)
+  const executionPolicy = recordValue(data.execution_policy)
+  if (executionPolicy.requires_followup_run !== true) return null
+  const sourceRunId = stringValue(data.source_run_id)
+  const planHash = stringValue(data.plan_hash)
+  if (!sourceRunId || !planHash) return null
+  return { sourceRunId, planHash }
+})
 
 const summaryTitle = computed(() => {
   const title = props.msg.meta?.title
@@ -223,6 +239,14 @@ function numberValue(value: unknown) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 
+function recordValue(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
+}
+
+function stringValue(value: unknown) {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
 function agentWorkerRouteRegistryStatusLabel(status: string) {
   if (status === 'passed') return '通过'
   if (status === 'needs_attention') return '需处理'
@@ -245,6 +269,11 @@ function openTrace() {
 function openAgentRun() {
   if (!agentRunId.value) return
   emit('openAgentRun', agentRunId.value)
+}
+
+function executeRecommendedFollowups() {
+  if (!recommendedFollowupExecutePayload.value) return
+  emit('executeRecommendedFollowups', recommendedFollowupExecutePayload.value)
 }
 </script>
 
@@ -399,15 +428,30 @@ function openAgentRun() {
             <dd>{{ item.value }}</dd>
           </div>
         </dl>
-        <button
-          v-if="agentRunId"
-          type="button"
-          class="chat-msg__result-action"
-          data-testid="open-agent-run"
-          @click="openAgentRun"
+        <div
+          v-if="recommendedFollowupExecutePayload || agentRunId"
+          class="chat-msg__result-actions"
         >
-          查看运行
-        </button>
+          <button
+            v-if="recommendedFollowupExecutePayload"
+            type="button"
+            class="chat-msg__result-action"
+            data-testid="execute-recommended-followups"
+            :disabled="loading"
+            @click="executeRecommendedFollowups"
+          >
+            执行后继
+          </button>
+          <button
+            v-if="agentRunId"
+            type="button"
+            class="chat-msg__result-action"
+            data-testid="open-agent-run"
+            @click="openAgentRun"
+          >
+            查看运行
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -683,8 +727,14 @@ function openAgentRun() {
   overflow-wrap: anywhere;
 }
 
-.chat-msg__result-action {
+.chat-msg__result-actions {
   margin-top: var(--space-2);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.chat-msg__result-action {
   height: 26px;
   padding: 0 var(--space-2);
   border: 1px solid currentColor;

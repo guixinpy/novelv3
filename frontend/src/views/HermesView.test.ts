@@ -89,8 +89,8 @@ async function mountHermesView(path = '/projects/project-1/hermes') {
       stubs: {
         ChatMessageList: {
           props: ['messages'],
-          emits: ['openAgentRun', 'safetyAction'],
-          template: '<div data-testid="chat-message-list"><button data-testid="stub-open-agent-run" @click="$emit(\'openAgentRun\', \'run-1\')">open run</button><button data-testid="stub-safety-action" @click="$emit(\'safetyAction\', { kind: \'prepare_route_upgrade_contract\', label: \'生成审批契约\', pending_action_id: \'action-1\', auto_execute: false, guarded_apply: false })">safety</button><span data-testid="stub-last-message">{{ messages[messages.length - 1]?.content }}</span></div>',
+          emits: ['openAgentRun', 'safetyAction', 'executeRecommendedFollowups'],
+          template: '<div data-testid="chat-message-list"><button data-testid="stub-open-agent-run" @click="$emit(\'openAgentRun\', \'run-1\')">open run</button><button data-testid="stub-safety-action" @click="$emit(\'safetyAction\', { kind: \'prepare_route_upgrade_contract\', label: \'生成审批契约\', pending_action_id: \'action-1\', auto_execute: false, guarded_apply: false })">safety</button><button data-testid="stub-chat-execute-followups" @click="$emit(\'executeRecommendedFollowups\', { sourceRunId: \'source-run-chat\', planHash: \'followup-plan-hash-chat\' })">chat execute followups</button><span data-testid="stub-last-message">{{ messages[messages.length - 1]?.content }}</span></div>',
         },
         ChatInput: {
           props: ['commands'],
@@ -545,6 +545,40 @@ describe('HermesView', () => {
     expect(wrapper.get('[data-testid="agent-run-drawer"]').text()).toContain('run-followups-executed')
     expect(wrapper.get('[data-testid="stub-last-message"]').text()).toContain('推荐后继执行已创建')
     expect(wrapper.get('[data-testid="stub-last-message"]').text()).not.toContain('followup-plan-hash-1')
+
+    wrapper.unmount()
+  })
+
+  it('creates a confirmed recommended followup execution run from the chat action card', async () => {
+    vi.mocked((api as any).createAgentRun).mockResolvedValueOnce({
+      id: 'run-chat-followups-executed',
+      project_id: 'project-1',
+      goal: '执行推荐后继',
+      status: 'success',
+      entrypoint: 'ui_recommended_followup_execute',
+      input: {},
+      output: null,
+      error: null,
+      steps: [],
+    })
+    const wrapper = await mountHermesView()
+
+    await wrapper.get('[data-testid="stub-chat-execute-followups"]').trigger('click')
+    await flushPromises()
+
+    expect((api as any).createAgentRun).toHaveBeenCalledWith('project-1', {
+      goal: '执行推荐后继工具链',
+      entrypoint: 'ui_recommended_followup_execute',
+      input: {
+        auto_plan: true,
+        recommended_followup_run_id: 'source-run-chat',
+        execute_recommended_followups: true,
+        confirm_execute: true,
+        recommended_followup_plan_hash: 'followup-plan-hash-chat',
+      },
+    })
+    expect(wrapper.get('[data-testid="stub-last-message"]').text()).toContain('推荐后继执行已创建')
+    expect(wrapper.get('[data-testid="stub-last-message"]').text()).not.toContain('followup-plan-hash-chat')
 
     wrapper.unmount()
   })

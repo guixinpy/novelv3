@@ -628,6 +628,7 @@ async function applyRouteUpgradeFromRun(payload: RouteUpgradeApplyPayload) {
         @safety-action="onSafetyAction"
         @open-trace="openTrace"
         @open-agent-run="openAgentRun"
+        @execute-recommended-followups="executeRecommendedFollowupsFromRun"
       />
       <ChatInput
         :loading="chat.loading"

@@ -52,6 +52,45 @@ describe('ChatMessageList', () => {
     expect(wrapper.emitted('openAgentRun')).toEqual([['run-list-1']])
   })
 
+  it('forwards executeRecommendedFollowups from child messages', async () => {
+    const wrapper = mount(ChatMessageList, {
+      props: {
+        messages: [
+          {
+            role: 'assistant',
+            content: '推荐后继预览已生成。',
+            action_result: {
+              type: 'plan_recommended_followups',
+              status: 'success',
+              data: {
+                agent_run_id: 'preview-run-1',
+                source_run_id: 'source-run-2',
+                plan_hash: 'followup-plan-hash-1',
+                execution_policy: {
+                  requires_followup_run: true,
+                  requires_plan_hash: true,
+                },
+              },
+            },
+            action_result_view: {
+              type: 'plan_recommended_followups',
+              status: 'success',
+              label: '推荐后继预览已生成',
+              variant: 'success',
+            },
+          },
+        ],
+        loading: false,
+      },
+    })
+
+    await wrapper.get('[data-testid="execute-recommended-followups"]').trigger('click')
+
+    expect(wrapper.emitted('executeRecommendedFollowups')).toEqual([
+      [{ sourceRunId: 'source-run-2', planHash: 'followup-plan-hash-1' }],
+    ])
+  })
+
   it('forwards pending action safety actions from child messages', async () => {
     const wrapper = mount(ChatMessageList, {
       props: {

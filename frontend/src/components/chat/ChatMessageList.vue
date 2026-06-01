@@ -12,6 +12,7 @@ const emit = defineEmits<{
   safetyAction: [action: any]
   openTrace: [traceId: string]
   openAgentRun: [runId: string]
+  executeRecommendedFollowups: [payload: { sourceRunId: string; planHash: string }]
 }>()
 
 const container = ref<HTMLElement | null>(null)
@@ -39,6 +40,7 @@ watch(() => props.loading, scrollToBottom)
       @safety-action="(action) => emit('safetyAction', action)"
       @open-trace="(traceId) => emit('openTrace', traceId)"
       @open-agent-run="(runId) => emit('openAgentRun', runId)"
+      @execute-recommended-followups="(payload) => emit('executeRecommendedFollowups', payload)"
     />
     <div v-if="loading" class="chat-message-list__loading">
       <span class="chat-message-list__dots">

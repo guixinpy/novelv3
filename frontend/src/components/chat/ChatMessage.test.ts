@@ -618,6 +618,45 @@ describe('ChatMessage', () => {
     expect(wrapper.emitted('openAgentRun')).toEqual([['run-executed']])
   })
 
+  it('emits executeRecommendedFollowups from recommended followup preview action results', async () => {
+    const wrapper = mount(ChatMessage, {
+      props: {
+        msg: {
+          role: 'assistant',
+          message_type: 'plain',
+          content: '上一轮 Agent 运行给出了推荐后继，我已先规划后继工具链。',
+          action_result: {
+            type: 'plan_recommended_followups',
+            status: 'success',
+            data: {
+              agent_run_id: 'preview-run-1',
+              source_run_id: 'source-run-2',
+              plan_hash: 'followup-plan-hash-1',
+              execution_policy: {
+                requires_followup_run: true,
+                requires_plan_hash: true,
+              },
+            },
+          },
+          action_result_view: {
+            type: 'plan_recommended_followups',
+            status: 'success',
+            label: '推荐后继预览已生成',
+            variant: 'success',
+          },
+        },
+        isLatest: true,
+        loading: false,
+      },
+    })
+
+    await wrapper.get('[data-testid="execute-recommended-followups"]').trigger('click')
+
+    expect(wrapper.emitted('executeRecommendedFollowups')).toEqual([
+      [{ sourceRunId: 'source-run-2', planHash: 'followup-plan-hash-1' }],
+    ])
+  })
+
   it('renders pending chapter conflict as a warning before confirmation', () => {
     const wrapper = mount(ChatMessage, {
       props: {
