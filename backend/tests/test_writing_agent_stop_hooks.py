@@ -28,6 +28,107 @@ def test_stop_hooks_block_critical_loop_risk():
     assert decision["hooks"][0]["detector"] == "generic_repeat"
 
 
+def test_stop_hooks_block_explicit_budget_cap():
+    run = WritingAgentRun(
+        project_id="project-1",
+        goal="budget",
+        status="running",
+        input={"agent_loop_budget": {"max_iterations": 2}},
+    )
+    steps = [
+        WritingAgentStep(
+            project_id="project-1",
+            run_id="run-1",
+            step_index=1,
+            tool_name="describe_agent_tools",
+            status="success",
+            output={"status": "completed"},
+        ),
+        WritingAgentStep(
+            project_id="project-1",
+            run_id="run-1",
+            step_index=2,
+            tool_name="inspect_agent_memory_route",
+            status="success",
+            output={"status": "completed"},
+        ),
+    ]
+
+    decision = evaluate_agent_stop_hooks(run, steps, steps[-1].output)
+
+    assert decision["status"] == "blocked"
+    assert decision["reason"] == "budget_cap_reached"
+    assert decision["severity"] == "error"
+    assert decision["allow_continue"] is False
+    assert decision["recommended_tools"] == ["inspect_agent_health_projection", "inspect_agent_trace_audit"]
+    assert decision["hooks"][0]["code"] == "budget_cap_reached"
+    assert decision["hooks"][0]["max_iterations"] == 2
+    assert decision["hooks"][0]["used_iterations"] == 2
+
+
+def test_stop_hooks_block_explicit_max_turns():
+    run = WritingAgentRun(
+        project_id="project-1",
+        goal="turn cap",
+        status="running",
+        input={"agent_loop_limits": {"max_turns": 2}},
+    )
+    steps = [
+        WritingAgentStep(
+            project_id="project-1",
+            run_id="run-1",
+            step_index=1,
+            tool_name="describe_agent_tools",
+            status="success",
+            output={"status": "completed"},
+        ),
+        WritingAgentStep(
+            project_id="project-1",
+            run_id="run-1",
+            step_index=2,
+            tool_name="inspect_agent_memory_route",
+            status="success",
+            output={"status": "completed"},
+        ),
+    ]
+
+    decision = evaluate_agent_stop_hooks(run, steps, steps[-1].output)
+
+    assert decision["status"] == "blocked"
+    assert decision["reason"] == "max_turns_reached"
+    assert decision["severity"] == "error"
+    assert decision["allow_continue"] is False
+    assert decision["recommended_tools"] == ["inspect_agent_health_projection", "inspect_agent_trace_audit"]
+    assert decision["hooks"][0]["code"] == "max_turns_reached"
+    assert decision["hooks"][0]["max_turns"] == 2
+    assert decision["hooks"][0]["used_turns"] == 2
+
+
+def test_stop_hooks_ignore_implicit_planned_step_count_as_budget_cap():
+    run = WritingAgentRun(
+        project_id="project-1",
+        goal="default budget",
+        status="success",
+        input={"tools": [{"tool_name": "describe_agent_tools", "params": {}}]},
+    )
+    steps = [
+        WritingAgentStep(
+            project_id="project-1",
+            run_id="run-1",
+            step_index=1,
+            tool_name="describe_agent_tools",
+            status="success",
+            output={"status": "completed"},
+        )
+    ]
+
+    decision = evaluate_agent_stop_hooks(run, steps, steps[-1].output)
+
+    assert decision["status"] == "clear"
+    assert decision["reason"] == "no_stop_hook_triggered"
+    assert decision["allow_continue"] is True
+
+
 def test_stop_hooks_block_missing_approval_contract():
     run = WritingAgentRun(project_id="project-1", goal="approval", status="blocked", input={})
     output = {"status": "blocked", "reason": "agent_plan_approval_verification_missing"}

@@ -179,7 +179,7 @@
 | 上下文管理 | hermes-agent + openhuman | ContextCompressor + TokenJuice |
 | 恢复机制 | hermes-agent | checkpoint resume + jittered backoff |
 
-详细分析见 [03-参考项目模式映射](./03-reference-patterns.md) 和 `docs/agent-native-guide/01-reference-patterns-report.md`。
+详细分析见 [03-参考项目模式映射](./03-reference-patterns.md) 和 `docs/archive/others/01-reference-patterns-report.md`。
 
 ---
 

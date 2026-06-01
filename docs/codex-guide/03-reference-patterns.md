@@ -3,7 +3,7 @@
 > **最后更新**: 2026-06-01
 > **版本**: v1.0
 > **前置阅读**: [01-愿景与架构目标](./01-vision.md)
-> **关联文档**: `docs/agent-native-guide/01-reference-patterns-report.md`（原始完整报告）
+> **关联文档**: `docs/archive/others/01-reference-patterns-report.md`（原始完整报告）
 
 ---
 
@@ -109,7 +109,7 @@ Level 4: known_poll_no_progress — 轮询工具连续多次无进展
 Level 5: global_circuit_breaker — 单次运行超过 30 个工具调用，硬终止
 ```
 
-novelv3 当前已有 Level 1（adjacent_repeat），Level 2-5 待实现。
+novelv3 当前已实现五级检测：generic_repeat、ping-pong、unknown_tool_repeat、known_poll_no_progress、global_circuit_breaker。后续重点是让这些检测更深入地参与运行中断和恢复计划。
 
 ### 2.4 关键架构认知
 
@@ -227,22 +227,25 @@ novelv3 当前 trace + approval 体系已经较完整。主要是权限分级需
 
 ## 七、优先级汇总
 
+### 已完成（当前代码具备）
+
+1. **openclaw 五级循环检测** → `agent_loop_risk.py`
+2. **openhuman StopHooks 策略层基础增强** → `agent_stop_hooks.py` 已含 BudgetCap、MaxTurns、ContextGuard
+
 ### 立即实现（当前开发周期）
 
-1. **openclaw 五级循环检测** → 增强 agent_loop_risk.py
-2. **openhuman 权限分级** → 改为 Read/Write/GuardedWrite 枚举
-3. **openhuman Worker 定义配置化** → AgentDefinition 文件格式
+3. **openhuman 权限分级** → 改为 Read/Write/GuardedWrite 枚举
+4. **openhuman Worker 定义配置化** → AgentDefinition 文件格式
+5. **hermes-agent refund 机制** → 程序化工具不计入预算
 
 ### 短期实现（1-2 个开发周期）
 
-4. **openhuman Memory Tree 分层摘要** → 完善 memory_tree.py
-5. **hermes-agent ContextCompressor** → 增强上下文压缩
-6. **openclaw 孤兒恢复** → worker 失效检测和清理
+6. **openhuman Memory Tree 分层摘要** → 完善 memory_tree.py
+7. **hermes-agent ContextCompressor** → 增强上下文压缩
+8. **openclaw 孤兒恢复** → worker 失效检测和清理
 
 ### 中期实现（3-5 个开发周期）
 
-7. **hermes-agent refund 机制** → 程序化工具不计入预算
-8. **openhuman StopHooks 策略层** → 丰富 agent_stop_hooks.py
 9. **hermes-agent Jittered Backoff** → 重试退避
 
 ### 暂缓（等待真实需求触发）

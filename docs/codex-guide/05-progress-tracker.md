@@ -39,7 +39,7 @@
 - [x] 基础迭代循环：`_agent_loop_contract()` 含 iteration budget 和相邻去重
 - [x] 工具注册/发现/调用：tool_registry + tool_descriptor + tool_adapter + tool_executor
 - [x] 工具生命周期钩子：tool_lifecycle_hooks
-- [x] 基础 StopHooks 框架：agent_stop_hooks.py（策略层已有框架）
+- [x] StopHooks 策略层：critical loop、BudgetCap、MaxTurns、ContextGuard、approval、memory provenance
 - [x] 恢复计划器：recovery_planner + recovery_policy
 - [x] 命令契约：agent_command_contracts + agent_step_binding
 
@@ -47,13 +47,17 @@
 
 | 优先级 | 任务 | 完成标准 | 状态 |
 |--------|------|---------|------|
-| P0 | openclaw 五级循环检测（L2-L5） | ping-pong、poll_no_progress、global_circuit_breaker 全部可用 | 🔴 待开始 |
-| P1 | 丰富 StopHooks 策略 | 至少包含 BudgetCap、MaxTurns、ContextGuard 三种策略 | 🔴 待开始 |
+| P0 | openclaw 五级循环检测（L2-L5） | ping-pong、poll_no_progress、global_circuit_breaker 全部可用 | ✅ 已完成 |
+| P1 | 丰富 StopHooks 策略 | 至少包含 BudgetCap、MaxTurns、ContextGuard 三种策略 | ✅ 已完成 |
 | P2 | refund 机制（借鉴 hermes-agent） | 程序化工具调用可退还迭代预算 | 🔴 待开始 |
 
 ### 阻塞项
 
 - 无
+
+### 最近完成
+
+- 2026-06-01: 核对代码发现五级循环检测已实现；补充 StopHooks 的显式 BudgetCap / MaxTurns 策略和测试，ContextGuard 既有策略保留。
 
 ---
 
@@ -247,12 +251,11 @@
 - 写作质量诊断
 - 参考模式投影
 
-当前 commit: `a29a1370` (Expose dogfood evidence in agent runs)
+当前工作分支: `codex/agent-loop-risk`
 
-### 下一阶段预览: Agent 循环增强
+### 下一阶段预览: Agent 循环增强后续
 
 计划内容（待确认）：
-- openclaw 五级循环检测
-- StopHooks 策略层丰富
+- refund 机制（程序化工具调用退还迭代预算）
 - 智能上下文压缩
 - 多维度语义审稿

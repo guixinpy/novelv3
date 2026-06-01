@@ -24,6 +24,8 @@ def evaluate_agent_stop_hooks(
         hook
         for hook in (
             _critical_loop_hook(run, steps),
+            _budget_cap_hook(run, steps),
+            _max_turns_hook(run, steps),
             _missing_approval_hook(output),
             _memory_provenance_hook(output),
             _context_guard_hook(output),
@@ -74,6 +76,56 @@ def _critical_loop_hook(run: WritingAgentRun, steps: list[WritingAgentStep]) -> 
             _string_list(action.get("recommended_tools")) + ["inspect_agent_trace_audit"]
         ),
         "evidence": risk.get("detectors") if isinstance(risk.get("detectors"), list) else [],
+    }
+
+
+def _budget_cap_hook(run: WritingAgentRun, steps: list[WritingAgentStep]) -> dict[str, Any] | None:
+    if str(run.status or "").strip() not in {"pending", "running"}:
+        return None
+    max_iterations = _configured_positive_int(
+        run,
+        ("agent_loop_budget", "max_iterations"),
+        ("loop_budget", "max_iterations"),
+        ("max_iterations",),
+    )
+    if max_iterations is None:
+        return None
+    used_iterations = len(steps)
+    if used_iterations < max_iterations:
+        return None
+    return {
+        "code": "budget_cap_reached",
+        "reason": "budget_cap_reached",
+        "severity": "error",
+        "allow_continue": False,
+        "max_iterations": max_iterations,
+        "used_iterations": used_iterations,
+        "recommended_tools": ["inspect_agent_health_projection", "inspect_agent_trace_audit"],
+    }
+
+
+def _max_turns_hook(run: WritingAgentRun, steps: list[WritingAgentStep]) -> dict[str, Any] | None:
+    if str(run.status or "").strip() not in {"pending", "running"}:
+        return None
+    max_turns = _configured_positive_int(
+        run,
+        ("agent_loop_limits", "max_turns"),
+        ("loop_limits", "max_turns"),
+        ("max_turns",),
+    )
+    if max_turns is None:
+        return None
+    used_turns = len(steps)
+    if used_turns < max_turns:
+        return None
+    return {
+        "code": "max_turns_reached",
+        "reason": "max_turns_reached",
+        "severity": "error",
+        "allow_continue": False,
+        "max_turns": max_turns,
+        "used_turns": used_turns,
+        "recommended_tools": ["inspect_agent_health_projection", "inspect_agent_trace_audit"],
     }
 
 
@@ -132,6 +184,29 @@ def _planned_tool_rows(run: WritingAgentRun) -> list[dict[str, Any]]:
     run_input = run.input if isinstance(run.input, dict) else {}
     tools = run_input.get("tools") if isinstance(run_input.get("tools"), list) else []
     return [tool for tool in tools if isinstance(tool, dict)]
+
+
+def _configured_positive_int(run: WritingAgentRun, *paths: tuple[str, ...]) -> int | None:
+    run_input = run.input if isinstance(run.input, dict) else {}
+    for path in paths:
+        current: object = run_input
+        for key in path:
+            if not isinstance(current, dict):
+                current = None
+                break
+            current = current.get(key)
+        parsed = _positive_int(current)
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def _positive_int(value: object) -> int | None:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
 
 
 def _string_list(value: object) -> list[str]:

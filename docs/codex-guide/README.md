@@ -93,7 +93,7 @@ novelv3/
 │   └── router/           # 前端路由
 ├── docs/
 │   ├── codex-guide/      # ★ 本目录——开发指导文档
-│   ├── agent-native-guide/ # 参考项目模式提取报告
+│   ├── archive/others/    # 参考项目模式提取报告等历史材料
 │   ├── archive/          # 历史归档
 │   └── superpowers/      # 当前活跃的设计/计划
 ├── references/agent-projects/  # 本地参考源码快照
@@ -122,7 +122,7 @@ novelv3/
 | **hermes-agent** | Python | Agent 运行循环、上下文压缩、迭代预算 refund 机制 |
 | **openhuman** | Rust+TS | Memory Tree 分层记忆、StopHooks 策略层、AgentDefinition |
 
-源码快照位于 `references/agent-projects/`，详细模式分析见 `docs/agent-native-guide/`。
+源码快照位于 `references/agent-projects/`，原始模式分析报告已归档到 `docs/archive/others/01-reference-patterns-report.md`。
 
 ---
 

@@ -234,7 +234,7 @@ openclaw、hermes-agent、openhuman 三个参考项目提供了大量可借鉴�
 
 - `references/agent-projects/` 需要手动更新
 - 提取模式需要人工做适配判断
-- `docs/agent-native-guide/01-reference-patterns-report.md` 是模式提取的主要输出
+- `docs/archive/others/01-reference-patterns-report.md` 是模式提取的主要输出
 
 ---
 

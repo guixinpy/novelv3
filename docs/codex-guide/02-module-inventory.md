@@ -59,8 +59,8 @@ Agent 化成熟度等级定义见 [01-愿景与架构目标](./01-vision.md#四a
   ├── ...（大量工具 descriptor/adapter/execution）...
   └── agent_definitions.py
 Agent 化缺口：
-  - 循环检测目前主要是相邻去重，缺少 ping-pong/poll_no_progress/熔断
-  - StopHooks 框架已有但策略层不够丰富
+  - 五级循环检测已具备 generic_repeat、ping-pong、unknown_tool_repeat、known_poll_no_progress、global_circuit_breaker
+  - StopHooks 已具备 critical loop、BudgetCap、MaxTurns、ContextGuard、approval、memory provenance 策略；后续可继续扩展为真正的运行中断控制点
   - Worker dispatch 已实现基础分发，子 Agent 孤兒恢复待完善
   - 缺少 refund 机制（借鉴 hermes-agent）
 关联模块：Hermes、Athena、Retrieval、TaskQueue、Trace、Memory
