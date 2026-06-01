@@ -7,6 +7,7 @@ export const DIAGNOSTIC_AGENT_RUN_ACTION_TYPES = [
   'inspect_agent_command_contracts',
   'inspect_agent_control_plane_readiness',
   'inspect_agent_memory_route',
+  'inspect_agent_memory_tree',
   'inspect_agent_knowledge_base_route',
 ] as const
 
@@ -41,6 +42,10 @@ export const DIAGNOSTIC_AGENT_RUN_ACTION_DESCRIPTORS: Record<DiagnosticAgentRunA
   inspect_agent_memory_route: {
     type: 'inspect_agent_memory_route',
     buildView: buildMemoryRouteActionResultView,
+  },
+  inspect_agent_memory_tree: {
+    type: 'inspect_agent_memory_tree',
+    buildView: buildMemoryTreeActionResultView,
   },
   inspect_agent_knowledge_base_route: {
     type: 'inspect_agent_knowledge_base_route',
@@ -114,6 +119,17 @@ function buildMemoryRouteActionResultView(actionResult: Record<string, unknown>,
   }
 }
 
+function buildMemoryTreeActionResultView(actionResult: Record<string, unknown>, status: string): ActionResultView {
+  const detailItems = memoryTreeDetailItems(recordValue(actionResult.data))
+  return {
+    type: 'inspect_agent_memory_tree',
+    status,
+    label: memoryTreeLabel(status),
+    variant: statusVariant(status),
+    ...(detailItems.length ? { detail_items: detailItems } : {}),
+  }
+}
+
 function buildKnowledgeBaseRouteActionResultView(actionResult: Record<string, unknown>, status: string): ActionResultView {
   const detailItems = knowledgeBaseRouteDetailItems(recordValue(actionResult.data))
   return {
@@ -165,6 +181,13 @@ function memoryRouteLabel(status: string) {
   if (status === 'failed') return '记忆路由诊断失败'
   if (status === 'running') return '记忆路由诊断中'
   return `记忆路由诊断: ${status || '未知状态'}`
+}
+
+function memoryTreeLabel(status: string) {
+  if (status === 'success' || status === 'completed') return '记忆树投影已生成'
+  if (status === 'failed') return '记忆树投影失败'
+  if (status === 'running') return '记忆树投影中'
+  return `记忆树投影: ${status || '未知状态'}`
 }
 
 function knowledgeBaseRouteLabel(status: string) {
@@ -310,6 +333,70 @@ function memoryRouteDetailItems(data: Record<string, unknown>) {
   }
   items.push(...memoryProvenanceDetailItems(recordValue(data.memory_provenance)))
   items.push(...diagnosticAndRecommendationItems(data, route))
+  return items
+}
+
+function memoryTreeDetailItems(data: Record<string, unknown>) {
+  const items: Array<{ label: string; value: string }> = []
+  const projectionStatus = stringValue(data.status)
+  if (projectionStatus) {
+    items.push({ label: '投影状态', value: routeStatusLabel(projectionStatus) })
+  }
+
+  const levels = Array.isArray(data.levels) ? data.levels : []
+  if (levels.length) {
+    items.push({ label: '层级', value: `${levels.length} 层` })
+  }
+  const roots = Array.isArray(data.roots) ? data.roots : []
+  if (roots.length) {
+    items.push({ label: '根节点', value: `${roots.length} 个` })
+  }
+  const nodes = Array.isArray(data.nodes) ? data.nodes : []
+  if (nodes.length) {
+    items.push({ label: '返回节点', value: `${nodes.length} 个` })
+  }
+
+  const summary = recordValue(data.summary)
+  const volumeNodes = numberValue(summary.volume_nodes)
+  if (volumeNodes !== null) {
+    items.push({ label: '卷', value: `${volumeNodes} 个` })
+  }
+  const chapterNodes = numberValue(summary.chapter_nodes)
+  if (chapterNodes !== null) {
+    items.push({ label: '章节', value: `${chapterNodes} 个` })
+  }
+  const sceneNodes = numberValue(summary.scene_nodes)
+  if (sceneNodes !== null) {
+    items.push({ label: '场景', value: `${sceneNodes} 个` })
+  }
+  const beatNodes = numberValue(summary.beat_nodes)
+  if (beatNodes !== null) {
+    items.push({ label: '节拍', value: `${beatNodes} 个` })
+  }
+
+  const filters = recordValue(data.filters)
+  const filterLevel = stringValue(filters.level)
+  if (filterLevel) {
+    items.push({ label: '筛选层级', value: memoryTreeLevelLabel(filterLevel) })
+  }
+  const filterNodeId = stringValue(filters.node_id)
+  if (filterNodeId) {
+    items.push({ label: '筛选节点', value: filterNodeId })
+  }
+  const filterChapterIndex = numberValue(filters.chapter_index)
+  if (filterChapterIndex !== null) {
+    items.push({ label: '筛选章节', value: `第${filterChapterIndex}章` })
+  }
+  const filterQuery = stringValue(filters.query)
+  if (filterQuery) {
+    items.push({ label: '查询', value: filterQuery })
+  }
+
+  const trace = recordValue(data.trace)
+  const sourceTables = Array.isArray(trace.source_tables) ? trace.source_tables : []
+  if (sourceTables.length) {
+    items.push({ label: '来源表', value: `${sourceTables.length} 个` })
+  }
   return items
 }
 
@@ -463,6 +550,14 @@ function routeStatusLabel(status: string) {
   if (status === 'needs_attention') return '需处理'
   if (status === 'blocked') return '已阻塞'
   return status || '未知'
+}
+
+function memoryTreeLevelLabel(level: string) {
+  if (level === 'volume') return '卷'
+  if (level === 'chapter') return '章节'
+  if (level === 'scene') return '场景'
+  if (level === 'beat') return '节拍'
+  return level
 }
 
 function statusVariant(status: string) {

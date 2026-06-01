@@ -154,6 +154,7 @@ describe('agentRunProjection', () => {
       'inspect_agent_command_contracts',
       'inspect_agent_control_plane_readiness',
       'inspect_agent_memory_route',
+      'inspect_agent_memory_tree',
       'inspect_agent_knowledge_base_route',
     ])
     for (const type of DIAGNOSTIC_AGENT_RUN_ACTION_TYPES) {
@@ -230,6 +231,7 @@ describe('agentRunProjection', () => {
     expect(isAgentRunActionType('inspect_agent_command_contracts')).toBe(true)
     expect(isAgentRunActionType('inspect_agent_control_plane_readiness')).toBe(true)
     expect(isAgentRunActionType('inspect_agent_memory_route')).toBe(true)
+    expect(isAgentRunActionType('inspect_agent_memory_tree')).toBe(true)
     expect(isAgentRunActionType('inspect_agent_knowledge_base_route')).toBe(true)
     expect(isAgentRunActionType('review_chapter_quality')).toBe(true)
     expect(isAgentRunActionType('review_chapter_continuity')).toBe(true)
@@ -268,6 +270,7 @@ describe('agentRunProjection', () => {
     expect(getAgentRunActionDescriptor('inspect_agent_command_contracts')?.type).toBe('inspect_agent_command_contracts')
     expect(getAgentRunActionDescriptor('inspect_agent_control_plane_readiness')?.type).toBe('inspect_agent_control_plane_readiness')
     expect(getAgentRunActionDescriptor('inspect_agent_memory_route')?.type).toBe('inspect_agent_memory_route')
+    expect(getAgentRunActionDescriptor('inspect_agent_memory_tree')?.type).toBe('inspect_agent_memory_tree')
     expect(getAgentRunActionDescriptor('inspect_agent_knowledge_base_route')?.type).toBe('inspect_agent_knowledge_base_route')
     expect(getAgentRunActionDescriptor('review_chapter_quality')?.type).toBe('review_chapter_quality')
     expect(getAgentRunActionDescriptor('review_chapter_continuity')?.type).toBe('review_chapter_continuity')
@@ -608,6 +611,59 @@ describe('agentRunProjection', () => {
     expect(view?.detail_items).toContainEqual({ label: '推荐工具', value: '1 个' })
     expect(JSON.stringify(view)).not.toContain('LongformMemory')
     expect(JSON.stringify(view)).not.toContain('longform_memory_needs_maintenance')
+  })
+
+  it('builds fallback views for memory tree diagnostics without leaking node provenance', () => {
+    const view = buildAgentRunActionResultView({
+      type: 'inspect_agent_memory_tree',
+      status: 'success',
+      data: {
+        status: 'ready',
+        levels: ['volume', 'chapter', 'scene', 'beat'],
+        filters: {
+          level: 'scene',
+          node_id: null,
+          chapter_index: 8,
+          query: '雨巷',
+        },
+        summary: {
+          volume_nodes: 1,
+          chapter_nodes: 12,
+          scene_nodes: 18,
+          beat_nodes: 42,
+        },
+        roots: ['volume:1'],
+        nodes: [
+          {
+            id: 'scene:memory-1',
+            level: 'scene',
+            title: '雨巷伏笔回收',
+            source_refs: [{ source_type: 'longform_memory', source_id: 'memory-1' }],
+          },
+        ],
+        trace: {
+          source_tables: ['chapter_contents', 'longform_memories'],
+        },
+      },
+    })
+
+    expect(view?.label).toBe('记忆树投影已生成')
+    expect(view?.variant).toBe('success')
+    expect(view?.detail_items).toContainEqual({ label: '投影状态', value: '可用' })
+    expect(view?.detail_items).toContainEqual({ label: '层级', value: '4 层' })
+    expect(view?.detail_items).toContainEqual({ label: '根节点', value: '1 个' })
+    expect(view?.detail_items).toContainEqual({ label: '返回节点', value: '1 个' })
+    expect(view?.detail_items).toContainEqual({ label: '卷', value: '1 个' })
+    expect(view?.detail_items).toContainEqual({ label: '章节', value: '12 个' })
+    expect(view?.detail_items).toContainEqual({ label: '场景', value: '18 个' })
+    expect(view?.detail_items).toContainEqual({ label: '节拍', value: '42 个' })
+    expect(view?.detail_items).toContainEqual({ label: '筛选层级', value: '场景' })
+    expect(view?.detail_items).toContainEqual({ label: '筛选章节', value: '第8章' })
+    expect(view?.detail_items).toContainEqual({ label: '查询', value: '雨巷' })
+    expect(view?.detail_items).toContainEqual({ label: '来源表', value: '2 个' })
+    expect(JSON.stringify(view)).not.toContain('memory-1')
+    expect(JSON.stringify(view)).not.toContain('longform_memory')
+    expect(JSON.stringify(view)).not.toContain('雨巷伏笔回收')
   })
 
   it('builds fallback views for knowledge base route diagnostics', () => {
