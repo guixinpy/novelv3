@@ -38,6 +38,8 @@ TOOL_WORKER_ROUTES = {
     "create_revision_draft": "revision_worker",
     "apply_planner_revision_patch": "revision_worker",
     "execute_apply_planner_revision_patch_with_approval": "revision_worker",
+    "inspect_agent_trace_audit": "recovery_worker",
+    "inspect_agent_job_projection": "recovery_worker",
     "plan_recovery_tools": "recovery_worker",
     "repair_longform_maintenance": "recovery_worker",
 }
@@ -96,11 +98,14 @@ def agent_worker_profile_for_tool(tool_name: str) -> str | None:
 
 
 def inspect_agent_worker_route_registry() -> dict[str, Any]:
+    definition_registry = inspect_agent_definition_registry()
     routes = [
         _route_audit_row(tool_name, worker_name, load_agent_definition(worker_name))
         for tool_name, worker_name in sorted(TOOL_WORKER_ROUTES.items())
     ]
+    unrouted_allowed_tools = _unrouted_allowed_tool_rows(definition_registry, set(TOOL_WORKER_ROUTES))
     issues = [issue for route in routes for issue in route.pop("_issues", [])]
+    issues.extend(issue for tool in unrouted_allowed_tools for issue in tool.pop("_issues", []))
     ready_routes = sum(
         1
         for route in routes
@@ -114,9 +119,11 @@ def inspect_agent_worker_route_registry() -> dict[str, Any]:
         "summary": {
             "routes": len(routes),
             "ready_routes": ready_routes,
+            "unrouted_allowed_tools": len(unrouted_allowed_tools),
             "issues": len(issues),
         },
         "routes": routes,
+        "unrouted_allowed_tools": unrouted_allowed_tools,
         "issues": issues,
     }
 
@@ -240,6 +247,45 @@ def _route_audit_row(tool_name: str, worker_name: str, definition: dict[str, Any
         "can_dispatch_children": can_dispatch_children,
         "_issues": issues,
     }
+
+
+def _unrouted_allowed_tool_rows(
+    definition_registry: dict[str, Any],
+    routed_tool_names: set[str],
+) -> list[dict[str, Any]]:
+    raw_definitions = definition_registry.get("definitions")
+    definitions = raw_definitions if isinstance(raw_definitions, list) else []
+    profiles_by_tool: dict[str, list[str]] = {}
+    for definition in definitions:
+        if not isinstance(definition, dict) or definition.get("status") != "ready":
+            continue
+        profile = str(definition.get("profile") or "").strip()
+        for tool_name in definition.get("allowed_tools") or []:
+            cleaned_tool_name = str(tool_name or "").strip()
+            if cleaned_tool_name:
+                profiles_by_tool.setdefault(cleaned_tool_name, []).append(profile)
+
+    rows: list[dict[str, Any]] = []
+    for tool_name, profiles in sorted(profiles_by_tool.items()):
+        if tool_name in routed_tool_names:
+            continue
+        worker_profiles = sorted(profile for profile in profiles if profile)
+        rows.append(
+            {
+                "tool_name": tool_name,
+                "worker_profiles": worker_profiles,
+                "_issues": [
+                    {
+                        "code": "worker_allowed_tool_missing_route",
+                        "severity": "error",
+                        "tool_name": tool_name,
+                        "worker": worker_profiles[0] if worker_profiles else "",
+                        "worker_profiles": worker_profiles,
+                    }
+                ],
+            }
+        )
+    return rows
 
 
 def _issue(code: str, *, worker_name: str, tool_name: str) -> dict[str, Any]:

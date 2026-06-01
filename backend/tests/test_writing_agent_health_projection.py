@@ -89,8 +89,9 @@ def test_inspect_agent_health_projection_surfaces_worker_route_registry_issue(db
         lambda: {
             "version": "phase235.agent_worker_route_registry_audit.v1",
             "status": "needs_attention",
-            "summary": {"routes": 33, "ready_routes": 32, "issues": 1},
+            "summary": {"routes": 35, "ready_routes": 34, "unrouted_allowed_tools": 0, "issues": 1},
             "routes": [],
+            "unrouted_allowed_tools": [],
             "issues": [
                 {
                     "code": "worker_route_tool_not_allowed",

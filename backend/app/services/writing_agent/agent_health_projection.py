@@ -221,6 +221,7 @@ def _agent_worker_route_registry_summary(output: dict[str, Any]) -> dict[str, An
         "summary": {
             "routes": _non_negative_int(summary.get("routes")),
             "ready_routes": _non_negative_int(summary.get("ready_routes")),
+            "unrouted_allowed_tools": _non_negative_int(summary.get("unrouted_allowed_tools")),
             "issues": _non_negative_int(summary.get("issues")),
         },
         "issues": [_agent_worker_route_registry_issue_summary(issue) for issue in issues if isinstance(issue, dict)],
