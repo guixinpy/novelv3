@@ -410,6 +410,80 @@ const routeUpgradeContractOutput = computed(() => {
   }
   return null
 })
+const preparedApprovalOutput = computed(() => {
+  for (let index = steps.value.length - 1; index >= 0; index -= 1) {
+    const output = recordValue(steps.value[index]?.output)
+    if (stringValue(output.status) !== 'approval_required') continue
+    if (!Object.keys(recordValue(output.agent_plan)).length) continue
+    if (!Object.keys(recordValue(output.agent_plan_approval_contract)).length) continue
+    if (!stringList(output.recommended_next_tools).length) continue
+    return output
+  }
+  return null
+})
+const preparedApprovalAgentPlan = computed(() => recordValue(preparedApprovalOutput.value?.agent_plan))
+const preparedApprovalContract = computed(() => recordValue(preparedApprovalOutput.value?.agent_plan_approval_contract))
+const preparedApprovalContractHash = computed(() => (
+  stringValue(preparedApprovalOutput.value?.agent_plan_approval_contract_hash) ||
+  stringValue(recordValue(preparedApprovalContract.value.approval).approval_contract_hash)
+))
+const preparedApprovalNextTools = computed(() => stringList(preparedApprovalOutput.value?.recommended_next_tools))
+const preparedApprovalExecuteTool = computed(() => (
+  preparedApprovalNextTools.value.find((tool) => tool.endsWith('_with_approval')) || ''
+))
+const preparedApprovalPlanTrace = computed(() => recordValue(preparedApprovalAgentPlan.value.trace))
+const preparedApprovalPlanId = computed(() => stringValue(preparedApprovalPlanTrace.value.plan_id))
+const preparedApprovalPlannerVersion = computed(() => (
+  stringValue(preparedApprovalPlanTrace.value.planner_version) ||
+  stringValue(preparedApprovalOutput.value?.prepare_version)
+))
+const preparedApprovalPlanSteps = computed(() => recordList(preparedApprovalAgentPlan.value.steps))
+const preparedApprovalPlanStep = computed(() => preparedApprovalPlanSteps.value[0] || {})
+const preparedApprovalBaseParams = computed(() => recordValue(preparedApprovalPlanStep.value.params))
+const preparedApprovalChapterIndex = computed(() => (
+  numberValue(preparedApprovalOutput.value?.chapter_index) ??
+  numberValue(preparedApprovalBaseParams.value.chapter_index)
+))
+const preparedApprovalTargetLabel = computed(() => {
+  const chapter = preparedApprovalChapterIndex.value
+  if (chapter !== null) return `第${chapter}章`
+  return preparedApprovalExecuteToolLabel(preparedApprovalExecuteTool.value)
+})
+const preparedApprovalExecutePayload = computed<PlannerPlanExecutePayload | null>(() => {
+  if (props.run?.status !== 'success') return null
+  if (!props.run?.id || !preparedApprovalPlanId.value || !preparedApprovalExecuteTool.value) return null
+  if (!preparedApprovalContractHash.value || !Object.keys(preparedApprovalContract.value).length) return null
+  if (!Object.keys(preparedApprovalAgentPlan.value).length) return null
+  return {
+    sourceRunId: props.run.id,
+    sourcePlanId: preparedApprovalPlanId.value,
+    goal: `执行已审批工具：${preparedApprovalExecuteToolLabel(preparedApprovalExecuteTool.value)}`,
+    tools: [
+      {
+        tool_name: preparedApprovalExecuteTool.value,
+        params: {
+          ...preparedApprovalBaseParams.value,
+          confirm_execute: true,
+          approval_contract_hash: preparedApprovalContractHash.value,
+          approval_contract: preparedApprovalContract.value,
+        },
+        planner: {
+          plan_id: preparedApprovalPlanId.value,
+          planner_version: preparedApprovalPlannerVersion.value,
+          mutability: 'write',
+          requires_confirmation: true,
+          reason: '确认执行已准备的写入工具。',
+        },
+      },
+    ],
+    planner: {
+      ...preparedApprovalAgentPlan.value,
+      approval_contract: preparedApprovalContract.value,
+    },
+    approvalContractHash: preparedApprovalContractHash.value,
+    approvalContract: preparedApprovalContract.value,
+  }
+})
 const routeUpgradeStatus = computed(() => stringValue(routeUpgradeContractOutput.value?.status))
 const routeUpgradeRequiredConfirmation = computed(() => routeUpgradeContractOutput.value?.required_confirmation === true)
 const routeUpgradeContract = computed(() => recordValue(routeUpgradeContractOutput.value?.approval_contract))
@@ -468,6 +542,11 @@ function applyRouteUpgrade() {
     approvalContractHash: routeUpgradeContractHash.value,
     approvalContract: routeUpgradeContract.value,
   })
+}
+
+function executePreparedApproval() {
+  if (!preparedApprovalExecutePayload.value) return
+  emit('executePlannerPlan', preparedApprovalExecutePayload.value)
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -598,6 +677,14 @@ function routeUpgradeStatusLabel(status: unknown) {
   if (value === 'not_required') return '无需处理'
   if (value === 'success') return '成功'
   return value || '未知'
+}
+
+function preparedApprovalExecuteToolLabel(toolName: string) {
+  if (toolName === 'execute_generate_chapter_with_approval') return '生成正文'
+  if (toolName === 'execute_analyze_chapter_world_model_with_approval') return '分析世界模型'
+  if (toolName === 'execute_record_agent_knowledge_base_candidate_with_approval') return '写入知识库候选'
+  if (toolName === 'execute_repair_longform_maintenance_with_approval') return '修复长篇维护'
+  return toolName || '写入工具'
 }
 
 function postChapterMemoryCaptureStatusLabel(status: unknown) {
@@ -1208,6 +1295,38 @@ function missingDependencyTool(value: Record<string, unknown>) {
         </section>
 
         <section
+          v-if="preparedApprovalExecutePayload"
+          class="agent-run-drawer__prepared-approval"
+          aria-label="Prepared write approval"
+        >
+          <h4>待审批写入</h4>
+          <dl class="agent-run-drawer__facts">
+            <div>
+              <dt>目标</dt>
+              <dd>{{ preparedApprovalTargetLabel }}</dd>
+            </div>
+            <div>
+              <dt>执行工具</dt>
+              <dd>{{ preparedApprovalExecuteTool }}</dd>
+            </div>
+            <div>
+              <dt>确认要求</dt>
+              <dd>需要确认</dd>
+            </div>
+          </dl>
+          <div class="agent-run-drawer__actions">
+            <button
+              type="button"
+              class="agent-run-drawer__execute"
+              data-testid="execute-prepared-approval"
+              @click="executePreparedApproval"
+            >
+              确认执行写入
+            </button>
+          </div>
+        </section>
+
+        <section
           v-if="routeUpgradeContractOutput"
           class="agent-run-drawer__route-upgrade"
           aria-label="Route upgrade approval"
@@ -1300,6 +1419,7 @@ function missingDependencyTool(value: Record<string, unknown>) {
 .agent-run-drawer__memory-loop h4,
 .agent-run-drawer__recovery h4,
 .agent-run-drawer__followups h4,
+.agent-run-drawer__prepared-approval h4,
 .agent-run-drawer__steps h4 {
   margin: 0;
   color: var(--color-text-primary);
@@ -1364,6 +1484,15 @@ function missingDependencyTool(value: Record<string, unknown>) {
 }
 
 .agent-run-drawer__followups {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-secondary);
+}
+
+.agent-run-drawer__prepared-approval {
   display: grid;
   gap: var(--space-3);
   padding: var(--space-3);

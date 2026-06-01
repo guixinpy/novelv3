@@ -1231,6 +1231,118 @@ describe('AgentRunDrawer', () => {
     ]])
   })
 
+  it('renders prepared chapter generation approval from recommended followup execution', async () => {
+    const approvalContract = {
+      status: 'requires_confirmation',
+      approval: { approval_contract_hash: 'approval:chapter-3' },
+    }
+    const agentPlan = {
+      project_id: 'project-1',
+      intent_class: 'direct_generate_chapter',
+      trace: {
+        plan_id: 'direct-generate:project-1:chapter:3',
+        planner_version: 'phase114.generate_chapter_execution_prepare.v1',
+      },
+      steps: [
+        {
+          step_index: 1,
+          step_id: 'direct-generate:project-1:chapter:3',
+          tool_name: 'generate_chapter',
+          params: { chapter_index: 3 },
+          mutability: 'guarded_write',
+          requires_confirmation: true,
+          reason: '直接生成指定章节正文。',
+        },
+      ],
+    }
+    const wrapper = mount(AgentRunDrawer, {
+      attachTo: document.body,
+      props: {
+        open: true,
+        loading: false,
+        error: '',
+        run: {
+          id: 'run-followup-exec',
+          project_id: 'project-1',
+          goal: '执行推荐后继工具链',
+          status: 'success',
+          entrypoint: 'ui_recommended_followup_execute',
+          input: {},
+          output: null,
+          error: null,
+          steps: [
+            {
+              id: 'step-prepare',
+              run_id: 'run-followup-exec',
+              project_id: 'project-1',
+              step_index: 1,
+              tool_name: 'prepare_generate_chapter_execution',
+              status: 'success',
+              input: {},
+              output: {
+                status: 'approval_required',
+                prepare_version: 'phase114.generate_chapter_execution_prepare.v1',
+                chapter_index: 3,
+                agent_plan: agentPlan,
+                agent_plan_approval_contract: approvalContract,
+                agent_plan_approval_contract_hash: 'approval:chapter-3',
+                required_confirmation: {
+                  confirm_execute: true,
+                  approval_contract_hash: 'approval:chapter-3',
+                },
+                recommended_next_tools: ['execute_generate_chapter_with_approval'],
+                side_effects: { executed: [], skipped: ['generate_chapter'] },
+              },
+            },
+          ],
+        },
+      },
+    })
+
+    const text = document.body.textContent || ''
+    expect(text).toContain('待审批写入')
+    expect(text).toContain('第3章')
+    expect(text).toContain('execute_generate_chapter_with_approval')
+    expect(text).not.toContain('approval:chapter-3')
+    expect(text).not.toContain('agent_plan_approval_contract')
+
+    const button = document.body.querySelector('[data-testid="execute-prepared-approval"]') as HTMLButtonElement
+    expect(button).not.toBeNull()
+    await button.click()
+
+    expect(wrapper.emitted('executePlannerPlan')).toEqual([[
+      {
+        sourceRunId: 'run-followup-exec',
+        sourcePlanId: 'direct-generate:project-1:chapter:3',
+        goal: '执行已审批工具：生成正文',
+        tools: [
+          {
+            tool_name: 'execute_generate_chapter_with_approval',
+            params: {
+              chapter_index: 3,
+              confirm_execute: true,
+              approval_contract_hash: 'approval:chapter-3',
+              approval_contract: approvalContract,
+            },
+            planner: {
+              plan_id: 'direct-generate:project-1:chapter:3',
+              planner_version: 'phase114.generate_chapter_execution_prepare.v1',
+              mutability: 'write',
+              requires_confirmation: true,
+              reason: '确认执行已准备的写入工具。',
+            },
+          },
+        ],
+        planner: {
+          ...agentPlan,
+          approval_contract: approvalContract,
+        },
+        approvalContractHash: 'approval:chapter-3',
+        approvalContract,
+      },
+    ]])
+  })
+
   it('does not render route upgrade apply when contract preview is not confirmable', () => {
     mount(AgentRunDrawer, {
       attachTo: document.body,
