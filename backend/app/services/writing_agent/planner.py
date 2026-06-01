@@ -500,6 +500,9 @@ def _planner_health_projection(
         "reference_alignment": output.get("reference_alignment")
         if isinstance(output.get("reference_alignment"), dict)
         else {},
+        "dogfood_evidence": output.get("dogfood_evidence")
+        if isinstance(output.get("dogfood_evidence"), dict)
+        else {},
         "recommended_tools": output.get("recommended_tools") if isinstance(output.get("recommended_tools"), list) else [],
     }
 

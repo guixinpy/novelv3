@@ -49,6 +49,7 @@ from app.services.writing_agent.tool_contracts import agent_tool_execution_metad
 from app.services.writing_agent.tool_request_validation import validate_writing_agent_tool_request
 from app.services.writing_agent.command_contract_projection import command_contracts_from_run_input
 from app.services.writing_agent.control_plane_readiness_projection import control_plane_readiness_from_run_input
+from app.services.writing_agent.dogfood_evidence_projection import dogfood_evidence_from_run_input
 from app.services.writing_agent.worker_route_registry_projection import worker_route_registry_from_run_input
 from app.services.writing_agent.recommended_followup_planner import (
     FOLLOWUP_PLANNER_VERSION,
@@ -776,6 +777,7 @@ def detail_payload(detail: dict[str, Any]) -> dict[str, Any]:
         "agent_command_contracts": command_contracts_from_run_input(run.input),
         "agent_control_plane_readiness": control_plane_readiness_from_run_input(run.input),
         "agent_worker_route_registry": worker_route_registry_from_run_input(run.input),
+        "agent_dogfood_evidence": dogfood_evidence_from_run_input(run.input),
         "steps": steps,
     }
 

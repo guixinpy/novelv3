@@ -50,6 +50,11 @@ def test_planner_defaults_ready_next_chapter_to_approval_prepare(db_session):
     assert route_registry["summary"]["unrouted_allowed_tools"] == 0
     assert plan["trace"]["agent_health_projection"]["reference_alignment"]["summary"]["source_count"] == 3
     assert "inspect_agent_reference_alignment" in plan["trace"]["agent_health_projection"]["recommended_tools"]
+    dogfood_evidence = plan["trace"]["agent_health_projection"]["dogfood_evidence"]
+    assert dogfood_evidence["status"] == "ready"
+    assert dogfood_evidence["summary"]["covered_capability_count"] == dogfood_evidence["summary"]["required_capability_count"]
+    assert dogfood_evidence["summary"]["generated_chapter_count"] >= 4
+    assert "inspect_agent_dogfood_evidence" in plan["trace"]["agent_health_projection"]["recommended_tools"]
     assert "profile_policy" not in plan["trace"]["agent_health_projection"]
     first_step = plan["steps"][0]
     assert first_step["params"] == {"chapter_index": 2, "agent_profile": "drafting_worker"}

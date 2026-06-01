@@ -253,6 +253,23 @@ describe('AgentRunDrawer', () => {
               issues: 0,
             },
           },
+          agent_dogfood_evidence: {
+            source: 'planner_trace.agent_health_projection.dogfood_evidence',
+            status: 'ready',
+            version: 'phase236.agent_dogfood_evidence.v1',
+            summary: {
+              evidence_count: 2,
+              ready_evidence_count: 2,
+              missing_source_count: 0,
+              required_capability_count: 5,
+              covered_capability_count: 5,
+              missing_capability_count: 0,
+              generated_chapter_count: 4,
+              review_step_count: 5,
+              open_finding_count: 2,
+            },
+            recommended_next_tools: ['inspect_agent_dogfood_evidence'],
+          },
           steps: [],
         },
       },
@@ -274,10 +291,18 @@ describe('AgentRunDrawer', () => {
     expect(text).toContain('Worker 路由')
     expect(text).toContain('通过')
     expect(text).toContain('未路由工具')
+    expect(text).toContain('Dogfood 证据')
+    expect(text).toContain('能力覆盖')
+    expect(text).toContain('5 / 5')
+    expect(text).toContain('生成章节')
+    expect(text).toContain('4')
+    expect(text).toContain('缺失来源')
     expect(text).toContain('1')
     expect(text).not.toContain('planner_trace.agent_health_projection.control_plane_readiness')
     expect(text).not.toContain('planner_trace.agent_health_projection.agent_worker_route_registry')
+    expect(text).not.toContain('planner_trace.agent_health_projection.dogfood_evidence')
     expect(text).not.toContain('inspect_agent_health_projection')
+    expect(text).not.toContain('inspect_agent_dogfood_evidence')
   })
 
   it('renders planner trace and reference pattern projection for auditable dialog runs', () => {

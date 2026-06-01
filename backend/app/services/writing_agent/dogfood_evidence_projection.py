@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 DOGFOOD_EVIDENCE_VERSION = "phase236.agent_dogfood_evidence.v1"
+DOGFOOD_EVIDENCE_RUN_SOURCE = "planner_trace.agent_health_projection.dogfood_evidence"
 
 _FULL_AGENT_NATIVE_DOGFOOD = "docs/superpowers/notes/long-memory-agent/2026-05-26-full-agent-native-dogfood.md"
 _NARRATIVE_MEMORY_DOGFOOD = (
@@ -165,6 +166,36 @@ def inspect_agent_dogfood_evidence() -> dict[str, Any]:
     )
 
 
+def dogfood_evidence_from_run_input(run_input: object) -> dict[str, Any] | None:
+    if not isinstance(run_input, dict):
+        return None
+    planner = run_input.get("planner") if isinstance(run_input.get("planner"), dict) else {}
+    trace = planner.get("trace") if isinstance(planner.get("trace"), dict) else {}
+    health = trace.get("agent_health_projection") if isinstance(trace.get("agent_health_projection"), dict) else {}
+    evidence = health.get("dogfood_evidence") if isinstance(health.get("dogfood_evidence"), dict) else {}
+    summary = evidence.get("summary") if isinstance(evidence.get("summary"), dict) else {}
+    if not summary:
+        return None
+    return {
+        "source": DOGFOOD_EVIDENCE_RUN_SOURCE,
+        "status": str(evidence.get("status") or "unknown"),
+        "version": evidence.get("version"),
+        "source_refs": _string_list(evidence.get("source_refs")),
+        "summary": {
+            "evidence_count": _non_negative_int(summary.get("evidence_count")),
+            "ready_evidence_count": _non_negative_int(summary.get("ready_evidence_count")),
+            "missing_source_count": _non_negative_int(summary.get("missing_source_count")),
+            "required_capability_count": _non_negative_int(summary.get("required_capability_count")),
+            "covered_capability_count": _non_negative_int(summary.get("covered_capability_count")),
+            "missing_capability_count": _non_negative_int(summary.get("missing_capability_count")),
+            "generated_chapter_count": _non_negative_int(summary.get("generated_chapter_count")),
+            "review_step_count": _non_negative_int(summary.get("review_step_count")),
+            "open_finding_count": _non_negative_int(summary.get("open_finding_count")),
+        },
+        "recommended_next_tools": _string_list(evidence.get("recommended_next_tools")),
+    }
+
+
 def _evidence_with_source_status(record: dict[str, Any]) -> dict[str, Any]:
     source_ref = str(record.get("source_ref") or "")
     output = dict(record)
@@ -253,6 +284,22 @@ def _dedupe(values: list[str]) -> list[str]:
     return result
 
 
+def _string_list(value: object) -> list[str]:
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if value is None:
+        return []
+    cleaned = str(value).strip()
+    return [cleaned] if cleaned else []
+
+
+def _non_negative_int(value: object) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return 0
+    return max(parsed, 0)
+
+
 def _json_safe_output(output: dict[str, Any]) -> dict[str, Any]:
     return json.loads(json.dumps(output, ensure_ascii=False, default=str))
-

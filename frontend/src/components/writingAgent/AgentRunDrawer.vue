@@ -197,6 +197,21 @@ const agentWorkerRouteUnroutedToolCount = computed(() => (
   numberValue(agentWorkerRouteRegistrySummary.value.unrouted_allowed_tools)
 ))
 const agentWorkerRouteIssueCount = computed(() => numberValue(agentWorkerRouteRegistrySummary.value.issues))
+const agentDogfoodEvidence = computed(() => recordValue(props.run?.agent_dogfood_evidence))
+const agentDogfoodEvidenceSummary = computed(() => recordValue(agentDogfoodEvidence.value.summary))
+const agentDogfoodEvidenceStatus = computed(() => stringValue(agentDogfoodEvidence.value.status))
+const agentDogfoodCoveredCapabilityCount = computed(() => (
+  numberValue(agentDogfoodEvidenceSummary.value.covered_capability_count)
+))
+const agentDogfoodRequiredCapabilityCount = computed(() => (
+  numberValue(agentDogfoodEvidenceSummary.value.required_capability_count)
+))
+const agentDogfoodGeneratedChapterCount = computed(() => (
+  numberValue(agentDogfoodEvidenceSummary.value.generated_chapter_count)
+))
+const agentDogfoodMissingSourceCount = computed(() => (
+  numberValue(agentDogfoodEvidenceSummary.value.missing_source_count)
+))
 const agentProfile = computed(() => (
   stringValue(props.run?.agent_profile) ||
   stringValue(agentProfileDefinition.value.profile) ||
@@ -607,6 +622,13 @@ function routeRegistryStatusLabel(status: unknown) {
   return value || '未知'
 }
 
+function dogfoodEvidenceStatusLabel(status: unknown) {
+  const value = stringValue(status)
+  if (value === 'ready') return '可用'
+  if (value === 'degraded') return '需检查'
+  return value || '未知'
+}
+
 function plannerIntentLabel(intent: unknown) {
   const value = stringValue(intent)
   if (value === 'setup_project') return '基础设定'
@@ -944,6 +966,22 @@ function missingDependencyTool(value: Record<string, unknown>) {
             <div v-if="agentWorkerRouteIssueCount !== null && agentWorkerRouteIssueCount > 0">
               <dt>路由问题</dt>
               <dd>{{ agentWorkerRouteIssueCount }}</dd>
+            </div>
+            <div v-if="agentDogfoodEvidenceStatus">
+              <dt>Dogfood 证据</dt>
+              <dd>{{ dogfoodEvidenceStatusLabel(agentDogfoodEvidenceStatus) }}</dd>
+            </div>
+            <div v-if="agentDogfoodCoveredCapabilityCount !== null && agentDogfoodRequiredCapabilityCount !== null">
+              <dt>能力覆盖</dt>
+              <dd>{{ agentDogfoodCoveredCapabilityCount }} / {{ agentDogfoodRequiredCapabilityCount }}</dd>
+            </div>
+            <div v-if="agentDogfoodGeneratedChapterCount !== null">
+              <dt>生成章节</dt>
+              <dd>{{ agentDogfoodGeneratedChapterCount }}</dd>
+            </div>
+            <div v-if="agentDogfoodMissingSourceCount !== null">
+              <dt>缺失来源</dt>
+              <dd>{{ agentDogfoodMissingSourceCount }}</dd>
             </div>
             <div v-if="recoverySourceRunId">
               <dt>来源运行</dt>

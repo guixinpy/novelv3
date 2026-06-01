@@ -721,6 +721,13 @@ def test_agent_run_detail_exposes_agent_profile_projection_for_auto_plan(client)
     assert route_registry["status"] == "passed"
     assert route_registry["summary"]["routes"] == 47
     assert route_registry["summary"]["unrouted_allowed_tools"] == 0
+    dogfood_evidence = payload["agent_dogfood_evidence"]
+    assert dogfood_evidence["source"] == "planner_trace.agent_health_projection.dogfood_evidence"
+    assert dogfood_evidence["status"] == "ready"
+    assert dogfood_evidence["summary"]["covered_capability_count"] == (
+        dogfood_evidence["summary"]["required_capability_count"]
+    )
+    assert dogfood_evidence["summary"]["generated_chapter_count"] >= 4
     health = payload["output"]["continuation_state"]["profile_policy_health"]
     assert health == {
         "status": "passed",
@@ -742,6 +749,7 @@ def test_agent_run_detail_exposes_agent_profile_projection_for_auto_plan(client)
     assert detail_payload["agent_command_contracts"] == command_contracts
     assert detail_payload["agent_control_plane_readiness"] == control_plane
     assert detail_payload["agent_worker_route_registry"] == route_registry
+    assert detail_payload["agent_dogfood_evidence"] == dogfood_evidence
 
 
 def test_agent_run_output_exposes_agent_loop_contract_for_success(client):

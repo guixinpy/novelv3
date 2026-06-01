@@ -401,6 +401,7 @@ export interface WritingAgentRunDetail {
   agent_command_contracts?: Record<string, unknown> | null
   agent_control_plane_readiness?: Record<string, unknown> | null
   agent_worker_route_registry?: Record<string, unknown> | null
+  agent_dogfood_evidence?: Record<string, unknown> | null
   created_at?: string | null
   started_at?: string | null
   finished_at?: string | null
