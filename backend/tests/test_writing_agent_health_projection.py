@@ -77,6 +77,51 @@ def test_inspect_agent_health_projection_surfaces_agent_definition_registry_issu
     assert "inspect_agent_worker_dispatch" in output["recommended_tools"]
 
 
+def test_inspect_agent_health_projection_surfaces_worker_route_registry_issue(db_session, monkeypatch):
+    project = Project(name="Agent Health Worker Route Registry")
+    db_session.add(project)
+    db_session.commit()
+    _patch_ready_sources(monkeypatch)
+    monkeypatch.setattr(agent_health_projection, "build_agent_tool_plan", _tool_plan_with_passed_profile_policy)
+    monkeypatch.setattr(
+        agent_health_projection,
+        "inspect_agent_worker_route_registry",
+        lambda: {
+            "version": "phase235.agent_worker_route_registry_audit.v1",
+            "status": "needs_attention",
+            "summary": {"routes": 33, "ready_routes": 32, "issues": 1},
+            "routes": [],
+            "issues": [
+                {
+                    "code": "worker_route_tool_not_allowed",
+                    "severity": "error",
+                    "tool_name": "inspect_agent_memory_activation_plan",
+                    "worker": "retrieval_worker",
+                }
+            ],
+        },
+        raising=False,
+    )
+
+    output = agent_health_projection.inspect_agent_health_projection(
+        db_session,
+        project.id,
+        adapter_metadata_by_name={},
+        static_adapter_tool_names=set(),
+        action_execution_tool_names=set(),
+    )
+
+    assert output["status"] == "needs_attention"
+    assert output["agent_worker_route_registry"]["status"] == "needs_attention"
+    assert output["agent_worker_route_registry"]["summary"]["issues"] == 1
+    diagnostic = next(
+        item for item in output["diagnostics"] if item["code"] == "agent_worker_route_registry_needs_attention"
+    )
+    assert diagnostic["severity"] == "error"
+    assert diagnostic["issue_count"] == 1
+    assert "inspect_agent_worker_dispatch" in output["recommended_tools"]
+
+
 def test_inspect_agent_health_projection_imports_trace_profile_policy_status(db_session, monkeypatch):
     project = Project(name="Agent Health Trace Audit")
     db_session.add(project)

@@ -6,6 +6,8 @@ from app.services.writing_agent.agent_definitions import (
 )
 from app.services.writing_agent.agent_worker_dispatch import (
     AGENT_WORKER_DISPATCH_VERSION,
+    AGENT_WORKER_ROUTE_REGISTRY_AUDIT_VERSION,
+    inspect_agent_worker_route_registry,
     preview_agent_worker_dispatch,
     preview_agent_worker_dispatches,
 )
@@ -171,3 +173,20 @@ def test_agent_definition_registry_audit_binds_worker_profiles_to_yaml_leaf_defi
     assert {row["profile"] for row in audit["definitions"]} == set(audit["worker_profiles"])
     assert all(row["status"] == "ready" for row in audit["definitions"])
     assert all(row["can_dispatch_children"] is False for row in audit["definitions"])
+
+
+def test_worker_route_registry_audit_binds_routes_to_allowed_worker_definitions():
+    audit = inspect_agent_worker_route_registry()
+
+    assert audit["version"] == AGENT_WORKER_ROUTE_REGISTRY_AUDIT_VERSION
+    assert audit["status"] == "passed"
+    assert audit["summary"] == {"routes": 33, "ready_routes": 33, "issues": 0}
+    assert audit["issues"] == []
+
+    routes_by_tool = {route["tool_name"]: route for route in audit["routes"]}
+    assert routes_by_tool["inspect_agent_memory_activation_plan"]["worker"] == "memory_worker"
+    assert routes_by_tool["inspect_agent_context_compression_projection"]["worker"] == "memory_worker"
+    assert [route["tool_name"] for route in audit["routes"]] == sorted(routes_by_tool)
+    assert all(route["definition_status"] == "ready" for route in audit["routes"])
+    assert all(route["tool_allowed"] is True for route in audit["routes"])
+    assert all(route["can_dispatch_children"] is False for route in audit["routes"])

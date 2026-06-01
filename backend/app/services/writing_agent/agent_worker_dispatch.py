@@ -5,6 +5,7 @@ from typing import Any
 from app.services.writing_agent.agent_definitions import inspect_agent_definition_registry, load_agent_definition
 
 AGENT_WORKER_DISPATCH_VERSION = "phase230.agent_worker_dispatch.v1"
+AGENT_WORKER_ROUTE_REGISTRY_AUDIT_VERSION = "phase235.agent_worker_route_registry_audit.v1"
 TOOL_WORKER_ROUTES = {
     "generate_setup": "drafting_worker",
     "generate_storyline": "drafting_worker",
@@ -94,6 +95,32 @@ def agent_worker_profile_for_tool(tool_name: str) -> str | None:
     return TOOL_WORKER_ROUTES.get(str(tool_name or "").strip()) or None
 
 
+def inspect_agent_worker_route_registry() -> dict[str, Any]:
+    routes = [
+        _route_audit_row(tool_name, worker_name, load_agent_definition(worker_name))
+        for tool_name, worker_name in sorted(TOOL_WORKER_ROUTES.items())
+    ]
+    issues = [issue for route in routes for issue in route.pop("_issues", [])]
+    ready_routes = sum(
+        1
+        for route in routes
+        if route["definition_status"] == "ready"
+        and route["tool_allowed"] is True
+        and route["can_dispatch_children"] is False
+    )
+    return {
+        "version": AGENT_WORKER_ROUTE_REGISTRY_AUDIT_VERSION,
+        "status": "passed" if not issues else "needs_attention",
+        "summary": {
+            "routes": len(routes),
+            "ready_routes": ready_routes,
+            "issues": len(issues),
+        },
+        "routes": routes,
+        "issues": issues,
+    }
+
+
 def preview_agent_worker_dispatches(
     tasks: list[dict[str, Any]],
     *,
@@ -130,6 +157,7 @@ def preview_agent_worker_dispatches(
             "issues": len(issues),
         },
         "definition_registry": inspect_agent_definition_registry(),
+        "route_registry": inspect_agent_worker_route_registry(),
         "worker_dispatches": worker_dispatches,
         "issues": issues,
     }
@@ -186,7 +214,32 @@ def _with_definition_registry(
 ) -> dict[str, Any]:
     if include_definition_registry:
         output["definition_registry"] = inspect_agent_definition_registry()
+        output["route_registry"] = inspect_agent_worker_route_registry()
     return output
+
+
+def _route_audit_row(tool_name: str, worker_name: str, definition: dict[str, Any]) -> dict[str, Any]:
+    definition_status = str(definition.get("status") or "unknown")
+    can_dispatch_children = definition.get("can_dispatch_children") is True
+    allowed_tools = set(definition.get("allowed_tools") or [])
+    tool_allowed = definition_status == "ready" and tool_name in allowed_tools
+    issues: list[dict[str, Any]] = []
+
+    if definition_status != "ready":
+        issues.append(_issue("worker_route_definition_not_ready", worker_name=worker_name, tool_name=tool_name))
+    elif not tool_allowed:
+        issues.append(_issue("worker_route_tool_not_allowed", worker_name=worker_name, tool_name=tool_name))
+    if can_dispatch_children:
+        issues.append(_issue("worker_route_target_can_dispatch_children", worker_name=worker_name, tool_name=tool_name))
+
+    return {
+        "tool_name": tool_name,
+        "worker": worker_name,
+        "definition_status": definition_status,
+        "tool_allowed": tool_allowed,
+        "can_dispatch_children": can_dispatch_children,
+        "_issues": issues,
+    }
 
 
 def _issue(code: str, *, worker_name: str, tool_name: str) -> dict[str, Any]:

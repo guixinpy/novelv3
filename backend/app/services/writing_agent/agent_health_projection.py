@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Project, WritingAgentRun, WritingAgentStep
 from app.services.writing_agent.agent_definitions import inspect_agent_definition_registry
+from app.services.writing_agent.agent_worker_dispatch import inspect_agent_worker_route_registry
 from app.services.writing_agent.agent_loop_risk import build_agent_loop_risk
 from app.services.writing_agent.agent_command_contracts import inspect_agent_command_contracts
 from app.services.writing_agent.agent_context_compression_projection import inspect_agent_context_compression_projection
@@ -55,6 +56,7 @@ def inspect_agent_health_projection(
     )
     profile_policy = _profile_policy_audit_summary(_profile_policy_audit_from_tool_plan(resolved_tool_plan))
     agent_definition_registry = _agent_definition_registry_summary(inspect_agent_definition_registry())
+    agent_worker_route_registry = _agent_worker_route_registry_summary(inspect_agent_worker_route_registry())
     route_preference = _route_preference_summary(
         inspect_agent_route_preference_projection(
             source=source,
@@ -92,6 +94,7 @@ def inspect_agent_health_projection(
     diagnostics = _diagnostics(
         profile_policy=profile_policy,
         agent_definition_registry=agent_definition_registry,
+        agent_worker_route_registry=agent_worker_route_registry,
         route_preference=route_preference,
         tool_contracts=tool_contracts,
         command_contracts=command_contracts,
@@ -113,6 +116,7 @@ def inspect_agent_health_projection(
             "selector": {"run_id": run_id, "source": source, "chapter_index": chapter_index},
             "profile_policy": profile_policy,
             "agent_definition_registry": agent_definition_registry,
+            "agent_worker_route_registry": agent_worker_route_registry,
             "route_preference": route_preference,
             "tool_contracts": tool_contracts,
             "command_contracts": command_contracts,
@@ -205,6 +209,30 @@ def _agent_definition_registry_issue_summary(issue: dict[str, Any]) -> dict[str,
         "severity": str(issue.get("severity") or ""),
         "profile": str(issue.get("profile") or ""),
         "definition_name": str(issue.get("definition_name") or ""),
+    }
+
+
+def _agent_worker_route_registry_summary(output: dict[str, Any]) -> dict[str, Any]:
+    summary = output.get("summary") if isinstance(output.get("summary"), dict) else {}
+    issues = output.get("issues") if isinstance(output.get("issues"), list) else []
+    return {
+        "version": str(output.get("version") or ""),
+        "status": str(output.get("status") or ""),
+        "summary": {
+            "routes": _non_negative_int(summary.get("routes")),
+            "ready_routes": _non_negative_int(summary.get("ready_routes")),
+            "issues": _non_negative_int(summary.get("issues")),
+        },
+        "issues": [_agent_worker_route_registry_issue_summary(issue) for issue in issues if isinstance(issue, dict)],
+    }
+
+
+def _agent_worker_route_registry_issue_summary(issue: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "code": str(issue.get("code") or ""),
+        "severity": str(issue.get("severity") or ""),
+        "tool_name": str(issue.get("tool_name") or ""),
+        "worker": str(issue.get("worker") or ""),
     }
 
 
@@ -527,6 +555,7 @@ def _diagnostics(
     *,
     profile_policy: dict[str, Any] | None,
     agent_definition_registry: dict[str, Any],
+    agent_worker_route_registry: dict[str, Any],
     route_preference: dict[str, Any],
     tool_contracts: dict[str, Any],
     command_contracts: dict[str, Any],
@@ -556,6 +585,16 @@ def _diagnostics(
                 "severity": "error",
                 "message": "Worker profile 与 YAML AgentDefinition 注册表存在一致性风险，继续分派前应检查 worker 定义。",
                 "issue_count": agent_definition_registry.get("summary", {}).get("issues", 0),
+                "recommended_tools": ["inspect_agent_worker_dispatch", "describe_agent_tools"],
+            }
+        )
+    if agent_worker_route_registry.get("status") not in {"passed", ""}:
+        diagnostics.append(
+            {
+                "code": "agent_worker_route_registry_needs_attention",
+                "severity": "error",
+                "message": "Worker route table 与 YAML AgentDefinition 允许工具存在一致性风险，继续分派前应检查路由注册表。",
+                "issue_count": agent_worker_route_registry.get("summary", {}).get("issues", 0),
                 "recommended_tools": ["inspect_agent_worker_dispatch", "describe_agent_tools"],
             }
         )
@@ -726,6 +765,7 @@ def _recommended_tools(diagnostics: list[dict[str, Any]]) -> list[str]:
     tools_by_code = {
         "agent_profile_policy_needs_attention": ["describe_agent_tools"],
         "agent_definition_registry_needs_attention": ["inspect_agent_worker_dispatch", "describe_agent_tools"],
+        "agent_worker_route_registry_needs_attention": ["inspect_agent_worker_dispatch", "describe_agent_tools"],
         "latest_run_profile_policy_needs_attention": ["inspect_agent_trace_audit"],
         "agent_route_preference_degraded": ["inspect_agent_route_preference_projection"],
         "agent_tool_contract_gaps": ["inspect_agent_control_plane_readiness", "inspect_agent_tool_contracts"],
