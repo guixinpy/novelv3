@@ -719,7 +719,7 @@ def test_agent_run_detail_exposes_agent_profile_projection_for_auto_plan(client)
     route_registry = payload["agent_worker_route_registry"]
     assert route_registry["source"] == "planner_trace.agent_health_projection.agent_worker_route_registry"
     assert route_registry["status"] == "passed"
-    assert route_registry["summary"]["routes"] == 35
+    assert route_registry["summary"]["routes"] == 36
     assert route_registry["summary"]["unrouted_allowed_tools"] == 0
     health = payload["output"]["continuation_state"]["profile_policy_health"]
     assert health == {

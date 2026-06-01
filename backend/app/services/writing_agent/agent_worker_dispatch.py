@@ -24,6 +24,7 @@ TOOL_WORKER_ROUTES = {
     "record_agent_knowledge_base_candidate": "memory_worker",
     "execute_record_agent_knowledge_base_candidate_with_approval": "memory_worker",
     "inspect_agent_memory_route": "memory_worker",
+    "inspect_agent_memory_tree": "memory_worker",
     "inspect_agent_knowledge_base_route": "memory_worker",
     "inspect_agent_world_model_route": "world_model_worker",
     "prepare_analyze_chapter_world_model_execution": "world_model_worker",
