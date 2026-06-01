@@ -303,6 +303,10 @@ const recommendedFollowupWriteTools = computed(() => {
   const tools = recommendedFollowupState.value.provenance_write_tools
   return Array.isArray(tools) ? tools.filter(isRecord) : []
 })
+const recommendedFollowupContinuationTools = computed(() => {
+  const tools = recommendedFollowupState.value.post_approval_continuation_tools
+  return Array.isArray(tools) ? tools.filter(isRecord) : []
+})
 const memoryActivationOutput = computed(() => {
   const directOutput = latestToolOutput('inspect_agent_memory_activation_plan')
   if (directOutput) return directOutput
@@ -719,6 +723,11 @@ function workerDispatchTaskLabel(dispatch: Record<string, unknown>) {
   return parts.join(' · ')
 }
 
+function toolChapterLabel(tool: Record<string, unknown>) {
+  const params = recordValue(tool.params)
+  return chapterIndexLabel(params.chapter_index)
+}
+
 function missingDependencyCode(value: Record<string, unknown>) {
   return stringValue(value.code) || stringValue(value.reason) || 'unknown_dependency'
 }
@@ -1115,6 +1124,10 @@ function missingDependencyTool(value: Record<string, unknown>) {
               <dt>需确认修复</dt>
               <dd>{{ recommendedFollowupWriteTools.length }} 个</dd>
             </div>
+            <div v-if="recommendedFollowupContinuationTools.length">
+              <dt>写后续跑</dt>
+              <dd>{{ recommendedFollowupContinuationTools.length }} 个工具</dd>
+            </div>
             <div v-if="recommendedFollowupWorkerCount !== null">
               <dt>Worker 分派</dt>
               <dd>{{ recommendedFollowupWorkerCount }} 个 worker</dd>
@@ -1157,6 +1170,18 @@ function missingDependencyTool(value: Record<string, unknown>) {
             >
               <strong>{{ workerDispatchName(dispatch) }}</strong>
               <span v-if="workerDispatchTaskLabel(dispatch)">{{ workerDispatchTaskLabel(dispatch) }}</span>
+            </li>
+          </ul>
+          <ul
+            v-if="recommendedFollowupContinuationTools.length"
+            class="agent-run-drawer__tools"
+          >
+            <li
+              v-for="(tool, index) in recommendedFollowupContinuationTools"
+              :key="`continuation:${tool.tool_name || 'tool'}:${index}`"
+            >
+              {{ tool.tool_name }}
+              <span v-if="toolChapterLabel(tool)">{{ toolChapterLabel(tool) }}</span>
             </li>
           </ul>
           <ul

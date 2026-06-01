@@ -89,6 +89,10 @@ describe('recoveryAgentRunProjection', () => {
       source_run_id: 'source-run-abcdef',
       recommended_followups: {
         status: 'recommended',
+        post_approval_continuation_tools: [
+          { tool_name: 'summarize_longform_context', params: { chapter_index: 3 } },
+          { tool_name: 'preflight_writing', params: { chapter_index: 3 } },
+        ],
         provenance_write_tools: [{ tool_name: 'repair_longform_maintenance', params: {} }],
       },
       tools: [{ tool_name: 'inspect_agent_memory_route' }],
@@ -126,6 +130,7 @@ describe('recoveryAgentRunProjection', () => {
     expect(view?.detail_items).toContainEqual({ label: '分派任务', value: '1 个任务' })
     expect(view?.detail_items).toContainEqual({ label: '路由审计', value: '通过' })
     expect(view?.detail_items).toContainEqual({ label: '未路由工具', value: '0 个' })
+    expect(view?.detail_items).toContainEqual({ label: '写后续跑', value: '2 个工具' })
     expect(view?.detail_items).toContainEqual({ label: '需确认修复', value: '1 个' })
     expect(JSON.stringify(view)).not.toContain('repair_longform_maintenance')
   })

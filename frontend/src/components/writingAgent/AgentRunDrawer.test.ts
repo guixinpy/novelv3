@@ -1048,6 +1048,69 @@ describe('AgentRunDrawer', () => {
     ])
   })
 
+  it('shows post-approval continuation tools in recommended followup policy', () => {
+    mount(AgentRunDrawer, {
+      attachTo: document.body,
+      props: {
+        open: true,
+        loading: false,
+        error: '',
+        run: {
+          id: 'run-followup-continuation',
+          project_id: 'project-1',
+          goal: '预览知识沉淀后的继续写作链路',
+          status: 'success',
+          entrypoint: 'dialog_auto_plan',
+          input: {},
+          output: null,
+          error: null,
+          steps: [
+            {
+              id: 'step-followup-continuation',
+              run_id: 'run-followup-continuation',
+              project_id: 'project-1',
+              step_index: 1,
+              tool_name: 'plan_recommended_followups',
+              status: 'success',
+              input: {},
+              output: {
+                status: 'completed',
+                source_run_id: 'source-run-memory-write',
+                plan_hash: 'followup-plan-hash-continuation',
+                recommended_followups: {
+                  status: 'recommended',
+                  post_approval_continuation_tools: [
+                    { tool_name: 'summarize_longform_context', params: { chapter_index: 3 } },
+                    { tool_name: 'preflight_writing', params: { chapter_index: 3 } },
+                  ],
+                },
+                tools: [
+                  { tool_name: 'summarize_longform_context', params: { chapter_index: 3 } },
+                  { tool_name: 'preflight_writing', params: { chapter_index: 3 } },
+                ],
+                execution_policy: {
+                  mode: 'preview',
+                  status: 'preview_only',
+                  requires_followup_run: true,
+                  requires_confirmation: true,
+                  requires_plan_hash: true,
+                },
+              },
+            },
+          ],
+        },
+      },
+    })
+
+    const text = document.body.textContent || ''
+    expect(text).toContain('推荐后继策略')
+    expect(text).toContain('写后续跑')
+    expect(text).toContain('2 个工具')
+    expect(text).toContain('summarize_longform_context')
+    expect(text).toContain('preflight_writing')
+    expect(text).toContain('第3章')
+  })
+
   it('emits confirmed recovery execution payload when preview is executable', async () => {
     const wrapper = mount(AgentRunDrawer, {
       attachTo: document.body,

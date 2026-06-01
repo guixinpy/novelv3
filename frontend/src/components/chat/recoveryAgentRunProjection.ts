@@ -252,6 +252,13 @@ function recommendedFollowupPreviewDetailItems(data: Record<string, unknown>) {
   }
   items.push(...workerDispatchDetailItems(data))
 
+  const continuationTools = Array.isArray(followups.post_approval_continuation_tools)
+    ? followups.post_approval_continuation_tools
+    : []
+  if (continuationTools.length) {
+    items.push({ label: '写后续跑', value: `${continuationTools.length} 个工具` })
+  }
+
   const writeTools = Array.isArray(followups.provenance_write_tools) ? followups.provenance_write_tools : []
   if (writeTools.length) {
     items.push({ label: '需确认修复', value: `${writeTools.length} 个` })
