@@ -23,6 +23,7 @@ import {
   MEMORY_LOOP_AGENT_RUN_ACTION_TYPES,
 } from './memoryLoopAgentRunProjection'
 import {
+  buildPlannerContinuationExecutionFeedback,
   PLANNER_AGENT_RUN_ACTION_DESCRIPTORS,
   PLANNER_AGENT_RUN_ACTION_TYPES,
 } from './plannerAgentRunProjection'
@@ -87,6 +88,47 @@ describe('agentRunProjection', () => {
       expect(PLANNER_AGENT_RUN_ACTION_DESCRIPTORS[type]?.type).toBe(type)
       expect(typeof PLANNER_AGENT_RUN_ACTION_DESCRIPTORS[type]?.buildView).toBe('function')
     }
+  })
+
+  it('builds planner continuation feedback with generated chapter followup suggestions', () => {
+    const feedback = buildPlannerContinuationExecutionFeedback({
+      id: 'run-generate-approved',
+      project_id: 'project-1',
+      goal: '执行已审批工具：生成正文',
+      status: 'success',
+      entrypoint: 'ui_planner_continuation_execute',
+      input: {},
+      output: null,
+      error: null,
+      steps: [
+        {
+          id: 'step-generate',
+          run_id: 'run-generate-approved',
+          project_id: 'project-1',
+          step_index: 1,
+          tool_name: 'execute_generate_chapter_with_approval',
+          status: 'success',
+          input: {},
+          output: {
+            status: 'success',
+            chapter_index: 3,
+            recommended_next_tools: [
+              'plan_post_chapter_memory_capture',
+              'review_chapter_quality',
+            ],
+          },
+        },
+      ],
+    })
+
+    expect(feedback.action_result_view.detail_items).toContainEqual({
+      label: '执行工具',
+      value: 'execute_generate_chapter_with_approval',
+    })
+    expect(feedback.action_result_view.detail_items).toContainEqual({
+      label: '后继建议',
+      value: '2 项',
+    })
   })
 
   it('exposes longform action descriptors from a dedicated module', () => {

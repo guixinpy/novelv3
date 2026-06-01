@@ -92,6 +92,18 @@ function plannerContinuationDetailItems(data: Record<string, unknown>) {
   if (steps.length) {
     items.push({ label: '工具步骤', value: `${steps.length} 个` })
   }
+  const toolNames = uniqueStrings(
+    steps
+      .map((step) => stringValue(recordValue(step).tool_name))
+      .filter(Boolean),
+  )
+  if (toolNames.length) {
+    items.push({ label: '执行工具', value: compactToolList(toolNames) })
+  }
+  const nextFollowups = latestStepRecommendedNextTools(steps)
+  if (nextFollowups.length) {
+    items.push({ label: '后继建议', value: `${nextFollowups.length} 项` })
+  }
   return items
 }
 
@@ -115,6 +127,35 @@ function plannerContinuationVariant(status: string) {
   if (status === 'success') return 'success'
   if (status === 'failed' || status === 'blocked') return 'error'
   return 'neutral'
+}
+
+function latestStepRecommendedNextTools(steps: unknown[]) {
+  for (let index = steps.length - 1; index >= 0; index -= 1) {
+    const step = recordValue(steps[index])
+    const output = recordValue(step.output)
+    const direct = Array.isArray(output.recommended_next_tools) ? output.recommended_next_tools : []
+    const directTools = uniqueStrings(direct.map((item) => stringValue(item)).filter(Boolean))
+    if (directTools.length) return directTools
+
+    const envelope = recordValue(output.agent_tool_result)
+    const recommendations = recordValue(envelope.recommendations)
+    const canonical = Array.isArray(recommendations.canonical_followups)
+      ? recommendations.canonical_followups
+      : []
+    const canonicalTools = uniqueStrings(canonical.map((item) => stringValue(item)).filter(Boolean))
+    if (canonicalTools.length) return canonicalTools
+  }
+  return []
+}
+
+function uniqueStrings(values: string[]) {
+  return Array.from(new Set(values))
+}
+
+function compactToolList(values: string[]) {
+  const visible = values.slice(0, 3)
+  const hidden = values.length - visible.length
+  return hidden > 0 ? `${visible.join(', ')}, +${hidden}` : visible.join(', ')
 }
 
 function recordValue(value: unknown): Record<string, unknown> {
