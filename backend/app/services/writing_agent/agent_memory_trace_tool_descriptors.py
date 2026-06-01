@@ -85,6 +85,7 @@ AGENT_MEMORY_TRACE_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
                 "retrieval": {"type": "object"},
                 "diagnostics": {"type": "array"},
                 "context_summary": {"type": "object"},
+                "recommended_next_tools": {"type": "array"},
             }
         ),
         target_type="agent_memory_route",

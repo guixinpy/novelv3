@@ -80,6 +80,60 @@ def test_inspect_agent_memory_route_is_ready_for_empty_project(db_session):
     assert provenance["recovery"]["next_tools"] == []
 
 
+def test_inspect_agent_memory_route_recommends_memory_tree_for_existing_chapter_memory(db_session, monkeypatch):
+    project = Project(name="Memory Route Tree Drilldown")
+    db_session.add(project)
+    db_session.commit()
+
+    monkeypatch.setattr(
+        "app.services.writing_agent.agent_memory_route.get_longform_memory_diagnostics",
+        lambda db, project_id: {
+            "project_id": project_id,
+            "chapter_count": 12,
+            "current_word_count": 24000,
+            "counts_by_type": {"chapter": 12, "arc": 1, "global": 1},
+            "total_memories": 14,
+            "latest_updated_at": None,
+        },
+    )
+    monkeypatch.setattr(
+        "app.services.writing_agent.agent_memory_route.get_longform_maintenance_diagnostics",
+        lambda db, project_id, limit=20: {
+            "project_id": project_id,
+            "ready_for_writing": True,
+            "issue_count": 0,
+            "recommendations": [],
+        },
+    )
+    monkeypatch.setattr(
+        "app.services.writing_agent.agent_memory_route.get_retrieval_diagnostics",
+        lambda db, project_id: {
+            "project_id": project_id,
+            "total_documents": 4,
+            "total_chunks": 20,
+            "total_terms": 120,
+            "total_embeddings": 0,
+            "documents_by_source_type": {"chapter": 4},
+        },
+    )
+
+    output = inspect_agent_memory_route(
+        db_session,
+        project.id,
+        chapter_index=13,
+        query="检查当前章节记忆树",
+        include_context_summary=False,
+    )
+
+    assert output["route"]["status"] == "ready"
+    assert output["route"]["recommended_tools"] == [
+        "inspect_agent_memory_tree",
+        "summarize_longform_context",
+        "preflight_writing",
+    ]
+    assert output["recommended_next_tools"] == output["route"]["recommended_tools"]
+
+
 def test_inspect_agent_memory_route_reports_degraded_retrieval_coverage(db_session, monkeypatch):
     project = Project(name="Memory Route Degraded Retrieval")
     db_session.add(project)

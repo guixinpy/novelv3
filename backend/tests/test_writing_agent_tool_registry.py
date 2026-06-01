@@ -1484,6 +1484,7 @@ def test_agent_tool_registry_includes_inspect_agent_memory_route():
     assert descriptor.target_type == "agent_memory_route"
     assert descriptor.input_schema["properties"]["chapter_index"]["minimum"] == 1
     assert descriptor.input_schema["properties"]["include_context_summary"]["type"] == "boolean"
+    assert descriptor.output_schema["properties"]["recommended_next_tools"]["type"] == "array"
     assert "inspect_agent_memory_route" in allowed_tool_names()
     assert "inspect_agent_memory_route" in non_blocking_report_tool_names()
 

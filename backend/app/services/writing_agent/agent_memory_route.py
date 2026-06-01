@@ -34,6 +34,7 @@ def inspect_agent_memory_route(
         include_context_summary=include_context_summary,
     )
     route = _route_decision(
+        longform_memory=longform_memory,
         maintenance=maintenance,
         retrieval=retrieval,
         chapter_index=chapter_index,
@@ -52,6 +53,7 @@ def inspect_agent_memory_route(
         "chapter_index": chapter_index,
         "query": _clean_query(query),
         "route": route,
+        "recommended_next_tools": list(route.get("recommended_tools") or []),
         "longform_memory": longform_memory,
         "longform_maintenance": maintenance,
         "retrieval": retrieval,
@@ -76,6 +78,7 @@ def inspect_agent_memory_route(
 
 def _route_decision(
     *,
+    longform_memory: dict[str, Any],
     maintenance: dict[str, Any],
     retrieval: dict[str, Any],
     chapter_index: int | None,
@@ -83,6 +86,10 @@ def _route_decision(
 ) -> dict[str, Any]:
     ready_for_writing = maintenance.get("ready_for_writing") is not False
     retrieval_document_count = int(retrieval.get("total_documents") or 0)
+    has_existing_memory = (
+        int(longform_memory.get("chapter_count") or 0) > 0
+        or int(longform_memory.get("total_memories") or 0) > 0
+    )
     if not ready_for_writing:
         return {
             "status": "blocked",
@@ -92,6 +99,8 @@ def _route_decision(
         }
 
     recommended_tools: list[str] = []
+    if chapter_index and has_existing_memory:
+        recommended_tools.append("inspect_agent_memory_tree")
     if chapter_index and not include_context_summary:
         recommended_tools.append("summarize_longform_context")
     if chapter_index:
