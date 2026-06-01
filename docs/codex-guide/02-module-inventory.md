@@ -279,7 +279,7 @@ Agent 化缺口：
 ### 4.3 Context Compression（上下文压缩）
 
 ```
-当前状态：L1 对话历史长度限制 + 基础压缩；ContextCompressor 已具备窗口压力/ContextGuard 投影、头尾保护预修剪计划和只读 dry-run payload builder
+当前状态：L1 对话历史长度限制 + 基础压缩；ContextCompressor 已具备窗口压力/ContextGuard 投影、头尾保护预修剪计划、只读 dry-run payload builder 和推荐恢复入口
 目标状态：L2-L3 LLM 摘要压缩 + 头尾保护 + Token 预算管理
 关键文件：
   backend/app/services/writing_agent/

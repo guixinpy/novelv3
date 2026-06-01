@@ -492,11 +492,11 @@ def test_inspect_agent_health_projection_reports_context_compression_warning(db_
             "strategy": {"granularity": "chapter_window"},
             "summary": {"usage_ratio": 0.95, "prompt_context_chars": 3800, "max_chars": 4000},
             "risks": [{"code": "context_window_pressure", "severity": "warning"}],
-            "recommended_next_tools": ["summarize_longform_context", "inspect_agent_memory_route"],
+            "recommended_next_tools": ["build_agent_context_compression_payload", "inspect_agent_memory_route"],
             "recovery": {
                 "status": "optional",
                 "reason": "context_compression_window_pressure",
-                "next_tools": ["summarize_longform_context", "inspect_agent_memory_route"],
+                "next_tools": ["build_agent_context_compression_payload", "inspect_agent_memory_route"],
                 "tools": [],
             },
         },
@@ -516,7 +516,7 @@ def test_inspect_agent_health_projection_reports_context_compression_warning(db_
     diagnostic = next(item for item in output["diagnostics"] if item["code"] == "agent_context_compression_warning")
     assert diagnostic["severity"] == "warning"
     assert diagnostic["risk_codes"] == ["context_window_pressure"]
-    assert "summarize_longform_context" in output["recommended_tools"]
+    assert "build_agent_context_compression_payload" in output["recommended_tools"]
     assert "inspect_agent_memory_route" in output["recommended_tools"]
 
 

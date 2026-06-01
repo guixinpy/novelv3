@@ -54,6 +54,7 @@ def inspect_agent_context_compression_projection(
         risks=risks,
         chapter_index=resolved_chapter_index,
         max_chars=resolved_max_chars,
+        context_guard_failure_count=context_guard_failure_count,
     )
     output = {
         "status": status,
@@ -236,7 +237,7 @@ def _recommended_next_tools(risks: list[dict[str, Any]]) -> list[str]:
         return ["inspect_agent_memory_route"]
     tools: list[str] = []
     if "context_window_pressure" in codes:
-        tools.append("summarize_longform_context")
+        tools.append("build_agent_context_compression_payload")
     if "prompt_context_truncated" in codes:
         tools.append("inspect_agent_memory_route")
     return _dedupe(tools)
@@ -248,6 +249,7 @@ def _compression_plan(
     risks: list[dict[str, Any]],
     chapter_index: int | None,
     max_chars: int,
+    context_guard_failure_count: int,
 ) -> dict[str, Any]:
     target_max_chars = _compression_target_chars(max_chars) if status == "warning" else max_chars
     plan = {
@@ -258,6 +260,7 @@ def _compression_plan(
         "protected_tail_sections": TAIL_PROTECTED_SECTIONS,
         "pretrim_order": PRETRIM_ORDER if status == "warning" else [],
         "summary_tool": None,
+        "payload_tool": None,
         "llm_summary_required": status == "warning",
     }
     if status == "warning":
@@ -267,6 +270,14 @@ def _compression_plan(
                 "chapter_index": chapter_index,
                 "max_chars": target_max_chars,
                 "include_prompt_context": False,
+            },
+        }
+        plan["payload_tool"] = {
+            "tool_name": "build_agent_context_compression_payload",
+            "params": {
+                "chapter_index": chapter_index,
+                "max_chars": max_chars,
+                "context_guard_failure_count": _non_negative_int(context_guard_failure_count),
             },
         }
     elif any(str(risk.get("code") or "") == "context_guard_open" for risk in risks):
@@ -307,11 +318,12 @@ def _recovery(
         }
     if status == "warning":
         summary_tool = compression_plan.get("summary_tool") if isinstance(compression_plan.get("summary_tool"), dict) else None
+        payload_tool = compression_plan.get("payload_tool") if isinstance(compression_plan.get("payload_tool"), dict) else None
         return {
             "status": "optional",
             "reason": "context_compression_window_pressure",
             "next_tools": _recommended_next_tools(risks),
-            "tools": [summary_tool] if summary_tool else [],
+            "tools": [payload_tool or summary_tool] if (payload_tool or summary_tool) else [],
         }
     return {
         "status": "none",

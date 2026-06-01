@@ -35,6 +35,7 @@ def test_context_compression_projection_reports_ready_chapter_window(db_session,
         "protected_tail_sections": ["recent_chapters", "critical_context"],
         "pretrim_order": [],
         "summary_tool": None,
+        "payload_tool": None,
         "llm_summary_required": False,
     }
     assert output["recommended_next_tools"] == []
@@ -59,7 +60,10 @@ def test_context_compression_projection_warns_when_window_pressure_rises(db_sess
     assert output["status"] == "warning"
     assert output["summary"]["usage_ratio"] == 0.95
     assert [risk["code"] for risk in output["risks"]] == ["context_window_pressure", "prompt_context_truncated"]
-    assert output["recommended_next_tools"] == ["summarize_longform_context", "inspect_agent_memory_route"]
+    assert output["recommended_next_tools"] == [
+        "build_agent_context_compression_payload",
+        "inspect_agent_memory_route",
+    ]
     assert output["compression_plan"] == {
         "status": "recommended",
         "mode": "head_tail_protected_pretrim",
@@ -71,10 +75,16 @@ def test_context_compression_projection_warns_when_window_pressure_rises(db_sess
             "tool_name": "summarize_longform_context",
             "params": {"chapter_index": 8, "max_chars": 3000, "include_prompt_context": False},
         },
+        "payload_tool": {
+            "tool_name": "build_agent_context_compression_payload",
+            "params": {"chapter_index": 8, "max_chars": 4000, "context_guard_failure_count": 0},
+        },
         "llm_summary_required": True,
     }
     assert output["recovery"]["status"] == "optional"
-    assert output["recovery"]["tools"][0]["tool_name"] == "summarize_longform_context"
+    assert [tool["tool_name"] for tool in output["recovery"]["tools"]] == [
+        "build_agent_context_compression_payload"
+    ]
 
 
 def test_context_compression_payload_builds_head_tail_protected_dry_run(db_session, monkeypatch):
