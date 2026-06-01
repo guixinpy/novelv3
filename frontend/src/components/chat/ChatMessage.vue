@@ -149,6 +149,23 @@ const agentHealthRecommendedTools = computed(() => {
     .slice(0, 5)
 })
 
+const agentHealthRouteRegistryChips = computed(() => {
+  const registry = agentHealthProjection.value?.agent_worker_route_registry
+  if (!registry || typeof registry !== 'object' || Array.isArray(registry)) return []
+  const record = registry as Record<string, unknown>
+  const summary = record.summary && typeof record.summary === 'object' && !Array.isArray(record.summary)
+    ? record.summary as Record<string, unknown>
+    : {}
+  const chips: string[] = []
+  const status = typeof record.status === 'string' ? record.status.trim() : ''
+  if (status) chips.push(agentWorkerRouteRegistryStatusLabel(status))
+  const unroutedAllowedTools = numberValue(summary.unrouted_allowed_tools)
+  if (unroutedAllowedTools !== null) chips.push(`未路由 ${unroutedAllowedTools}`)
+  const issueCount = numberValue(summary.issues)
+  if (issueCount !== null && issueCount > 0) chips.push(`问题 ${issueCount}`)
+  return chips
+})
+
 const agentControlProjection = computed(() => {
   const projection = props.msg.meta?.agent_control
   if (!projection || typeof projection !== 'object' || Array.isArray(projection)) return null
@@ -200,6 +217,16 @@ const messageTime = computed(() => {
 function formatMessageTime(value: unknown) {
   if (typeof value !== 'string' || !value.trim()) return ''
   return value.trim().replace('T', ' ').slice(0, 16)
+}
+
+function numberValue(value: unknown) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function agentWorkerRouteRegistryStatusLabel(status: string) {
+  if (status === 'passed') return '通过'
+  if (status === 'needs_attention') return '需处理'
+  return status || '未知'
 }
 
 function onDecide(decision: string, comment?: string) {
@@ -298,6 +325,18 @@ function openAgentRun() {
             {{ diagnostic.message }}
           </li>
         </ul>
+        <div
+          v-if="agentHealthRouteRegistryChips.length"
+          class="chat-msg__agent-health-tools"
+        >
+          <span>Worker 路由</span>
+          <code
+            v-for="chip in agentHealthRouteRegistryChips"
+            :key="`worker-route:${chip}`"
+          >
+            {{ chip }}
+          </code>
+        </div>
         <div
           v-if="agentHealthRecommendedTools.length"
           class="chat-msg__agent-health-tools"

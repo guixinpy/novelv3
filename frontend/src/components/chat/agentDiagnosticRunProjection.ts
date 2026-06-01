@@ -261,6 +261,7 @@ function agentHealthProjectionDetailItems(data: Record<string, unknown>) {
   if (profilePolicyIssueCount !== null) {
     items.push({ label: '策略问题', value: `${profilePolicyIssueCount} 个` })
   }
+  items.push(...workerRouteRegistryDetailItems(recordValue(data.agent_worker_route_registry)))
 
   const diagnostics = Array.isArray(data.diagnostics) ? data.diagnostics : []
   if (diagnostics.length) {
@@ -413,9 +414,33 @@ function controlPlaneReadinessDetailItems(readiness: Record<string, unknown>) {
   return items
 }
 
+function workerRouteRegistryDetailItems(registry: Record<string, unknown>) {
+  const summary = recordValue(registry.summary)
+  const items: Array<{ label: string; value: string }> = []
+  const status = stringValue(registry.status)
+  if (status) {
+    items.push({ label: '路由审计', value: routeRegistryStatusLabel(status) })
+  }
+  const unroutedAllowedTools = numberValue(summary.unrouted_allowed_tools)
+  if (unroutedAllowedTools !== null) {
+    items.push({ label: '未路由工具', value: `${unroutedAllowedTools} 个` })
+  }
+  const issueCount = numberValue(summary.issues)
+  if (issueCount !== null && issueCount > 0) {
+    items.push({ label: '路由问题', value: `${issueCount} 个` })
+  }
+  return items
+}
+
 function agentControlPlaneStatusLabel(status: string) {
   if (status === 'ready') return '可继续编排'
   if (status === 'degraded') return '需检查'
+  if (status === 'needs_attention') return '需处理'
+  return status || '未知'
+}
+
+function routeRegistryStatusLabel(status: string) {
+  if (status === 'passed') return '通过'
   if (status === 'needs_attention') return '需处理'
   return status || '未知'
 }

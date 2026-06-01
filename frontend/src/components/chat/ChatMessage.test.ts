@@ -105,6 +105,15 @@ describe('ChatMessage', () => {
             command_name: 'status',
             agent_health_projection: {
               status: 'degraded',
+              agent_worker_route_registry: {
+                status: 'passed',
+                summary: {
+                  routes: 35,
+                  ready_routes: 35,
+                  unrouted_allowed_tools: 0,
+                  issues: 0,
+                },
+              },
               diagnostics: [
                 { code: 'agent_tool_contract_gaps', message: 'Agent 工具契约仍存在迁移或 schema 差距。' },
               ],
@@ -120,6 +129,9 @@ describe('ChatMessage', () => {
     const card = wrapper.get('[data-testid="agent-health-card"]')
     expect(card.text()).toContain('Agent 状态')
     expect(card.text()).toContain('部分降级')
+    expect(card.text()).toContain('Worker 路由')
+    expect(card.text()).toContain('通过')
+    expect(card.text()).toContain('未路由 0')
     expect(card.text()).toContain('Agent 工具契约仍存在迁移或 schema 差距')
     expect(card.text()).toContain('inspect_agent_tool_contracts')
   })

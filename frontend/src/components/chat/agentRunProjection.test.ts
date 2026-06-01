@@ -498,6 +498,15 @@ describe('agentRunProjection', () => {
           summary: { issues: 2 },
           issues: [{ code: 'delegate_target_missing_definition', target: 'ghost_worker' }],
         },
+        agent_worker_route_registry: {
+          status: 'passed',
+          summary: {
+            routes: 35,
+            ready_routes: 35,
+            unrouted_allowed_tools: 0,
+            issues: 0,
+          },
+        },
         diagnostics: [{ code: 'agent_profile_policy_needs_attention' }],
         recommended_tools: ['describe_agent_tools', 'inspect_agent_trace_audit'],
       },
@@ -512,6 +521,8 @@ describe('agentRunProjection', () => {
     expect(view?.detail_items).toContainEqual({ label: '契约缺口', value: '1 个' })
     expect(view?.detail_items).toContainEqual({ label: 'Profile 策略', value: '需处理' })
     expect(view?.detail_items).toContainEqual({ label: '策略问题', value: '2 个' })
+    expect(view?.detail_items).toContainEqual({ label: '路由审计', value: '通过' })
+    expect(view?.detail_items).toContainEqual({ label: '未路由工具', value: '0 个' })
     expect(view?.detail_items).toContainEqual({ label: '诊断项', value: '1 个' })
     expect(view?.detail_items).toContainEqual({ label: '推荐工具', value: '2 个' })
     expect(JSON.stringify(view)).not.toContain('delegate_target_missing_definition')
