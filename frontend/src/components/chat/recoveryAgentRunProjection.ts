@@ -263,6 +263,8 @@ function recommendedFollowupPreviewDetailItems(data: Record<string, unknown>) {
 function workerDispatchDetailItems(data: Record<string, unknown>) {
   const dispatch = recordValue(data.worker_dispatch)
   const summary = recordValue(dispatch.summary)
+  const routeRegistry = recordValue(dispatch.route_registry)
+  const routeRegistrySummary = recordValue(routeRegistry.summary)
   const items: Array<{ label: string; value: string }> = []
   const workerCount = numberValue(summary.workers)
   if (workerCount !== null) {
@@ -279,6 +281,18 @@ function workerDispatchDetailItems(data: Record<string, unknown>) {
   const issueCount = numberValue(summary.issues)
   if (issueCount !== null && issueCount > 0) {
     items.push({ label: '分派问题', value: `${issueCount} 个` })
+  }
+  const routeRegistryStatus = stringValue(routeRegistry.status)
+  if (routeRegistryStatus) {
+    items.push({ label: '路由审计', value: routeRegistryStatusLabel(routeRegistryStatus) })
+  }
+  const unroutedAllowedTools = numberValue(routeRegistrySummary.unrouted_allowed_tools)
+  if (unroutedAllowedTools !== null) {
+    items.push({ label: '未路由工具', value: `${unroutedAllowedTools} 个` })
+  }
+  const routeIssueCount = numberValue(routeRegistrySummary.issues)
+  if (routeIssueCount !== null && routeIssueCount > 0) {
+    items.push({ label: '路由问题', value: `${routeIssueCount} 个` })
   }
   return items
 }
@@ -408,6 +422,12 @@ function controlPlaneReadinessDetailItems(readiness: Record<string, unknown>) {
 function agentControlPlaneStatusLabel(status: string) {
   if (status === 'ready') return '可继续编排'
   if (status === 'degraded') return '需检查'
+  if (status === 'needs_attention') return '需处理'
+  return status || '未知'
+}
+
+function routeRegistryStatusLabel(status: string) {
+  if (status === 'passed') return '通过'
   if (status === 'needs_attention') return '需处理'
   return status || '未知'
 }

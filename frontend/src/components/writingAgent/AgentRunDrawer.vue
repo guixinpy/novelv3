@@ -268,6 +268,12 @@ const recommendedFollowupWorkerDispatch = computed(() => recordValue(recommended
 const recommendedFollowupWorkerDispatchSummary = computed(() => (
   recordValue(recommendedFollowupWorkerDispatch.value.summary)
 ))
+const recommendedFollowupRouteRegistry = computed(() => (
+  recordValue(recommendedFollowupWorkerDispatch.value.route_registry)
+))
+const recommendedFollowupRouteRegistrySummary = computed(() => (
+  recordValue(recommendedFollowupRouteRegistry.value.summary)
+))
 const recommendedFollowupWorkerDispatches = computed(() => (
   recordList(recommendedFollowupWorkerDispatch.value.worker_dispatches)
 ))
@@ -276,6 +282,15 @@ const recommendedFollowupWorkerCount = computed(() => (
 ))
 const recommendedFollowupPlannedTaskCount = computed(() => (
   numberValue(recommendedFollowupWorkerDispatchSummary.value.planned_tasks)
+))
+const recommendedFollowupRouteRegistryStatus = computed(() => (
+  stringValue(recommendedFollowupRouteRegistry.value.status)
+))
+const recommendedFollowupUnroutedToolCount = computed(() => (
+  numberValue(recommendedFollowupRouteRegistrySummary.value.unrouted_allowed_tools)
+))
+const recommendedFollowupRouteIssueCount = computed(() => (
+  numberValue(recommendedFollowupRouteRegistrySummary.value.issues)
 ))
 const recommendedFollowupWriteTools = computed(() => {
   const tools = recommendedFollowupState.value.provenance_write_tools
@@ -332,7 +347,8 @@ const hasRecommendedFollowupPolicy = computed(() => Boolean(
   (
     recommendedFollowupTools.value.length ||
     recommendedFollowupWriteTools.value.length ||
-    recommendedFollowupWorkerDispatches.value.length
+    recommendedFollowupWorkerDispatches.value.length ||
+    Object.keys(recommendedFollowupRouteRegistry.value).length
   ),
 ))
 const runKindLabel = computed(() => {
@@ -490,6 +506,13 @@ function agentControlPlaneStatusLabel(status: unknown) {
   const value = stringValue(status)
   if (value === 'ready') return '可继续编排'
   if (value === 'degraded') return '需检查'
+  if (value === 'needs_attention') return '需处理'
+  return value || '未知'
+}
+
+function routeRegistryStatusLabel(status: unknown) {
+  const value = stringValue(status)
+  if (value === 'passed') return '通过'
   if (value === 'needs_attention') return '需处理'
   return value || '未知'
 }
@@ -1080,6 +1103,18 @@ function missingDependencyTool(value: Record<string, unknown>) {
             <div v-if="recommendedFollowupPlannedTaskCount !== null">
               <dt>分派任务</dt>
               <dd>{{ recommendedFollowupPlannedTaskCount }} 个任务</dd>
+            </div>
+            <div v-if="recommendedFollowupRouteRegistryStatus">
+              <dt>路由审计</dt>
+              <dd>{{ routeRegistryStatusLabel(recommendedFollowupRouteRegistryStatus) }}</dd>
+            </div>
+            <div v-if="recommendedFollowupUnroutedToolCount !== null">
+              <dt>未路由工具</dt>
+              <dd>{{ recommendedFollowupUnroutedToolCount }} 个</dd>
+            </div>
+            <div v-if="recommendedFollowupRouteIssueCount !== null && recommendedFollowupRouteIssueCount > 0">
+              <dt>路由问题</dt>
+              <dd>{{ recommendedFollowupRouteIssueCount }} 个</dd>
             </div>
           </dl>
           <ul

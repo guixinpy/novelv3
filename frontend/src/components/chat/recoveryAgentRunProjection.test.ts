@@ -99,6 +99,15 @@ describe('recoveryAgentRunProjection', () => {
           blocked_tasks: 0,
           issues: 0,
         },
+        route_registry: {
+          status: 'passed',
+          summary: {
+            routes: 35,
+            ready_routes: 35,
+            unrouted_allowed_tools: 0,
+            issues: 0,
+          },
+        },
       },
       route_decision: {
         selected_route: 'recommended_followups',
@@ -115,6 +124,8 @@ describe('recoveryAgentRunProjection', () => {
     expect(view?.detail_items).toContainEqual({ label: '自动后继', value: '1 个' })
     expect(view?.detail_items).toContainEqual({ label: 'Worker 分派', value: '1 个 worker' })
     expect(view?.detail_items).toContainEqual({ label: '分派任务', value: '1 个任务' })
+    expect(view?.detail_items).toContainEqual({ label: '路由审计', value: '通过' })
+    expect(view?.detail_items).toContainEqual({ label: '未路由工具', value: '0 个' })
     expect(view?.detail_items).toContainEqual({ label: '需确认修复', value: '1 个' })
     expect(JSON.stringify(view)).not.toContain('repair_longform_maintenance')
   })

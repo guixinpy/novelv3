@@ -807,6 +807,15 @@ describe('AgentRunDrawer', () => {
                     blocked_tasks: 0,
                     issues: 0,
                   },
+                  route_registry: {
+                    status: 'passed',
+                    summary: {
+                      routes: 35,
+                      ready_routes: 35,
+                      unrouted_allowed_tools: 0,
+                      issues: 0,
+                    },
+                  },
                   worker_dispatches: [
                     {
                       worker: { name: 'reviewer_worker' },
@@ -833,6 +842,9 @@ describe('AgentRunDrawer', () => {
     expect(text).toContain('Worker 分派')
     expect(text).toContain('3 个 worker')
     expect(text).toContain('3 个任务')
+    expect(text).toContain('路由审计')
+    expect(text).toContain('通过')
+    expect(text).toContain('未路由工具')
     expect(text).toContain('审稿执行者')
     expect(text).toContain('检索取证者')
     expect(text).toContain('记忆维护者')
