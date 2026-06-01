@@ -2285,8 +2285,8 @@ async def test_tool_executor_handles_inspect_agent_worker_dispatch(db_session):
     }
     assert result.output["route_registry"]["status"] == "passed"
     assert result.output["route_registry"]["summary"] == {
-        "routes": 36,
-        "ready_routes": 36,
+        "routes": 37,
+        "ready_routes": 37,
         "unrouted_allowed_tools": 0,
         "issues": 0,
     }
@@ -2452,6 +2452,82 @@ async def test_plan_recommended_followups_allows_memory_tree_drilldown(db_sessio
         "issues": 0,
     }
     assert result.output["trace"]["worker_profiles"] == ["memory_worker"]
+    assert result.output["trace"]["rejected_tools"] == []
+
+
+@pytest.mark.asyncio
+async def test_plan_recommended_followups_allows_knowledge_route_read_chain(db_session):
+    project = Project(name="Recommended Knowledge Route Chain")
+    db_session.add(project)
+    db_session.flush()
+    run = WritingAgentRun(project_id=project.id, goal="检查第8章知识库", status="success", input={})
+    db_session.add(run)
+    db_session.flush()
+    db_session.add(
+        WritingAgentStep(
+            run_id=run.id,
+            project_id=project.id,
+            step_index=1,
+            tool_name="inspect_agent_knowledge_base_route",
+            status="success",
+            chapter_index=8,
+            input={"params": {"chapter_index": 8}},
+            output={
+                "status": "completed",
+                "chapter_index": 8,
+                "recommended_next_tools": [
+                    "summarize_longform_context",
+                    "preflight_writing",
+                    "review_chapter_quality",
+                ],
+                "agent_tool_result": {
+                    "recommendations": {
+                        "canonical_followups": [
+                            "summarize_longform_context",
+                            "preflight_writing",
+                            "review_chapter_quality",
+                        ],
+                    }
+                },
+            },
+        )
+    )
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-followup-knowledge-route"),
+        WritingAgentToolRequest(tool_name="plan_recommended_followups", params={"run_id": run.id}),
+    )
+
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "completed"
+    assert [tool["tool_name"] for tool in result.output["tools"]] == [
+        "summarize_longform_context",
+        "preflight_writing",
+        "review_chapter_quality",
+    ]
+    assert [tool["params"] for tool in result.output["tools"]] == [
+        {"chapter_index": 8},
+        {"chapter_index": 8},
+        {"chapter_index": 8},
+    ]
+    assert [tool["planner"].get("agent_profile") for tool in result.output["tools"]] == [
+        "memory_worker",
+        "drafting_worker",
+        "reviewer_worker",
+    ]
+    assert result.output["worker_dispatch"]["summary"] == {
+        "workers": 3,
+        "planned_tasks": 3,
+        "blocked_tasks": 0,
+        "issues": 0,
+    }
+    assert result.output["trace"]["worker_profiles"] == [
+        "memory_worker",
+        "drafting_worker",
+        "reviewer_worker",
+    ]
     assert result.output["trace"]["rejected_tools"] == []
 
 

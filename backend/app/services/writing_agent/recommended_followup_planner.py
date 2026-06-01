@@ -281,6 +281,7 @@ def _tool_requests_from_followups(
             if effective_tool_name not in SAFE_RECOMMENDED_FOLLOWUP_TOOLS and not _is_safe_parameterized_followup(
                 effective_tool_name,
                 provenance_tool,
+                source_step=source_step,
             ):
                 rejected_tools.append({"tool_name": tool_name, "reason": "requires_confirmation"})
                 continue
@@ -483,11 +484,21 @@ def _is_distinct_provenance_retry(source_step: WritingAgentStep, provenance_tool
     return _stable_json(params) != _stable_json(_source_step_params(source_step))
 
 
-def _is_safe_parameterized_followup(tool_name: str, provenance_tool: dict[str, Any] | None) -> bool:
-    if tool_name != "preflight_writing" or provenance_tool is None:
+def _is_safe_parameterized_followup(
+    tool_name: str,
+    provenance_tool: dict[str, Any] | None,
+    *,
+    source_step: WritingAgentStep,
+) -> bool:
+    if tool_name != "preflight_writing":
         return False
-    params = provenance_tool.get("params") if isinstance(provenance_tool.get("params"), dict) else {}
-    return _optional_int(params.get("chapter_index")) is not None
+    if provenance_tool is not None:
+        params = provenance_tool.get("params") if isinstance(provenance_tool.get("params"), dict) else {}
+        return _optional_int(params.get("chapter_index")) is not None
+    return source_step.tool_name in {
+        "inspect_agent_knowledge_base_route",
+        "inspect_agent_memory_route",
+    } and _source_chapter_index(source_step) is not None
 
 
 def _source_step_params(step: WritingAgentStep) -> dict[str, Any]:

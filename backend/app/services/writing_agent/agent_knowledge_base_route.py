@@ -60,6 +60,7 @@ def inspect_agent_knowledge_base_route(
             "chapter_index": chapter_index,
             "query": _clean_query(query),
             "route": route,
+            "recommended_next_tools": list(route.get("recommended_tools") or []),
             "author_preferences": author_preferences,
             "project_strategy": project_strategy,
             "learned_rules": learned_rules,

@@ -16,6 +16,7 @@ def test_inspect_agent_knowledge_base_route_reports_sparse_project_memory(db_ses
     assert output["status"] == "completed"
     assert output["route"]["status"] == "sparse"
     assert output["route"]["reason"] == "knowledge_base_sparse"
+    assert output["recommended_next_tools"] == output["route"]["recommended_tools"]
     assert output["author_preferences"]["status"] == "empty"
     assert output["learned_rules"]["total"] == 0
     assert output["project_strategy"]["name"] == "Sparse Knowledge"

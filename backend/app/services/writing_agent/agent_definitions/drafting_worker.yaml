@@ -2,6 +2,7 @@ name: drafting_worker
 role: worker
 max_depth: 0
 allowed_tools:
+  - preflight_writing
   - generate_setup
   - generate_storyline
   - generate_outline

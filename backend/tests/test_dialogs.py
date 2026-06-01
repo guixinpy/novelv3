@@ -2134,9 +2134,9 @@ def test_chat_text_low_detail_continue_exposes_post_approval_followup_worker_aud
     body = r2.json()
     assert body["action_result"]["type"] == "plan_recommended_followups"
     assert body["action_result"]["status"] == "success"
-    assert body["action_result"]["data"]["worker_dispatch"]["summary"]["planned_tasks"] == 1
+    assert body["action_result"]["data"]["worker_dispatch"]["summary"]["planned_tasks"] == 2
     assert body["action_result_view"]["label"] == "推荐后继预览已生成"
-    assert {"label": "Worker 分派", "value": "1 个 worker"} in body["action_result_view"]["detail_items"]
+    assert {"label": "Worker 分派", "value": "2 个 worker"} in body["action_result_view"]["detail_items"]
     assert {"label": "写后续跑", "value": "2 个工具"} in body["action_result_view"]["detail_items"]
     dialog = db_session.query(Dialog).filter_by(project_id=pid, dialog_type="hermes").one()
     followup_run = (
@@ -2163,8 +2163,8 @@ def test_chat_text_low_detail_continue_exposes_post_approval_followup_worker_aud
         {"chapter_index": 3},
         {"chapter_index": 3},
     ]
-    assert action_data["worker_dispatch"]["summary"]["workers"] == 1
-    assert action_data["worker_dispatch"]["summary"]["planned_tasks"] == 1
+    assert action_data["worker_dispatch"]["summary"]["workers"] == 2
+    assert action_data["worker_dispatch"]["summary"]["planned_tasks"] == 2
     assert action_data["worker_dispatch"]["route_registry"]["status"] == "passed"
     assert action_data["route_decision"] == body["meta"]["dialog_route_decision"]
 

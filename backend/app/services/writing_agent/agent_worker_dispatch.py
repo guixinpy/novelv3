@@ -7,6 +7,7 @@ from app.services.writing_agent.agent_definitions import inspect_agent_definitio
 AGENT_WORKER_DISPATCH_VERSION = "phase230.agent_worker_dispatch.v1"
 AGENT_WORKER_ROUTE_REGISTRY_AUDIT_VERSION = "phase235.agent_worker_route_registry_audit.v1"
 TOOL_WORKER_ROUTES = {
+    "preflight_writing": "drafting_worker",
     "generate_setup": "drafting_worker",
     "generate_storyline": "drafting_worker",
     "generate_outline": "drafting_worker",

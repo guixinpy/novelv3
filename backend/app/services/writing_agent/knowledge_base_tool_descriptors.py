@@ -56,6 +56,7 @@ KNOWLEDGE_BASE_AGENT_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
                 "learned_rules": {"type": "object"},
                 "reference_patterns": {"type": "object"},
                 "diagnostics": {"type": "array"},
+                "recommended_next_tools": {"type": "array"},
             }
         ),
         target_type="agent_knowledge_base_route",
