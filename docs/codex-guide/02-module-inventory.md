@@ -140,7 +140,7 @@ Agent 化缺口：
 ### 2.2 Memory Tree（分层记忆树）
 
 ```
-当前状态：L1-L2 框架已搭建（memory_tree.py），基础分层摘要
+当前状态：L2 框架 + 卷/章摘要持久化基础版，摘要写入 LongformMemory 后再投影回 Memory Tree
 目标状态：L3 卷→章→节→段落分层，支持语义浏览和按需展开
 关键文件：
   backend/app/services/writing_agent/
@@ -151,10 +151,10 @@ Agent 化缺口：
   ├── longform_context_summary.py         # 长篇上下文摘要
   └── post_chapter_memory_capture.py      # 章节后记忆捕获
 Agent 化缺口：
-  - 完整的分层摘要树（当前可能只到章级）
-  - 语义导航（Agent 自主浏览 Memory Tree）
+  - 更细粒度的分层摘要树（当前持久化到卷/章两级）
+  - 语义导航（Agent 自主浏览 Memory Tree、语义搜索、按需展开）
   - 与 Retrieval 的深度整合
-  - 跨 session 持久化和恢复
+  - LLM 摘要质量与真实长篇数据验证
 关联模块：Retrieval、Athena、Writing
 ```
 
@@ -307,7 +307,7 @@ Agent 化缺口：
   backend/alembic/versions/              # 迁移历史
   backend/app/schemas/                   # Pydantic API schema
 Agent 化缺口：
-  - 部分新功能的模型尚未建立（Memory Tree 持久化等）
+  - 部分新功能的模型尚未建立；Memory Tree 基础持久化复用 LongformMemory，后续若扩展节/段落或向量索引再补迁移
 关联模块：所有模块
 ```
 

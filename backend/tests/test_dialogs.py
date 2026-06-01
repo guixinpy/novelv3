@@ -3259,7 +3259,7 @@ def test_get_messages_includes_action_result_view_for_recommended_followup_resul
                     ],
                     "route_registry": {
                         "status": "passed",
-                        "summary": {"routes": 47, "ready_routes": 47, "unrouted_allowed_tools": 0, "issues": 0},
+                        "summary": {"routes": 48, "ready_routes": 48, "unrouted_allowed_tools": 0, "issues": 0},
                     },
                 },
                 "route_decision": {

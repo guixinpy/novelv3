@@ -7,7 +7,11 @@ from sqlalchemy.orm import Session
 from app.models import ChapterContent, LongformMemory, Outline, Storyline
 
 MEMORY_TREE_VERSION = "phase231.memory_tree.v1"
+MEMORY_TREE_SUMMARY_MATERIALIZATION_VERSION = "phase237.memory_tree_summary_materialization.v1"
 MEMORY_TREE_LEVELS = ["volume", "chapter", "scene", "beat"]
+MEMORY_TREE_VOLUME_SUMMARY_TYPE = "memory_tree_volume_summary"
+MEMORY_TREE_CHAPTER_SUMMARY_TYPE = "memory_tree_chapter_summary"
+MEMORY_TREE_SUMMARY_TYPES = (MEMORY_TREE_VOLUME_SUMMARY_TYPE, MEMORY_TREE_CHAPTER_SUMMARY_TYPE)
 
 
 def inspect_agent_memory_tree(
@@ -57,6 +61,90 @@ def inspect_agent_memory_tree(
     }
 
 
+def materialize_agent_memory_tree_summaries(
+    db: Session,
+    project_id: str,
+    *,
+    chapter_index: int | None = None,
+) -> dict[str, Any]:
+    chapters = _chapters(db, project_id)
+    if chapter_index is not None:
+        chapters = [chapter for chapter in chapters if int(chapter.chapter_index) == int(chapter_index)]
+    outline = _outline(db, project_id)
+    storyline = _storyline(db, project_id)
+    outline_by_chapter = _outline_by_chapter(outline)
+    created = 0
+    updated = 0
+    volume_records: list[LongformMemory] = []
+    chapter_records: list[LongformMemory] = []
+
+    chapters_by_volume: dict[int, list[ChapterContent]] = {}
+    for chapter in chapters:
+        chapters_by_volume.setdefault(_volume_index(chapter.chapter_index), []).append(chapter)
+
+    for volume_index, volume_chapters in sorted(chapters_by_volume.items()):
+        record, was_created = _upsert_summary_memory(
+            db,
+            project_id=project_id,
+            memory_type=MEMORY_TREE_VOLUME_SUMMARY_TYPE,
+            scope_key=f"volume:{volume_index}",
+            start_chapter_index=min(int(chapter.chapter_index) for chapter in volume_chapters),
+            end_chapter_index=max(int(chapter.chapter_index) for chapter in volume_chapters),
+            title=f"Volume {volume_index}",
+            summary=_volume_summary(volume_index, chapters=volume_chapters, outline=outline, storyline=storyline),
+            metadata={"level": "volume", "volume_index": volume_index},
+        )
+        volume_records.append(record)
+        if was_created:
+            created += 1
+        else:
+            updated += 1
+
+    for chapter in chapters:
+        chapter_index_value = int(chapter.chapter_index)
+        record, was_created = _upsert_summary_memory(
+            db,
+            project_id=project_id,
+            memory_type=MEMORY_TREE_CHAPTER_SUMMARY_TYPE,
+            scope_key=f"chapter:{chapter_index_value}",
+            start_chapter_index=chapter_index_value,
+            end_chapter_index=chapter_index_value,
+            title=chapter.title or f"Chapter {chapter_index_value}",
+            summary=_chapter_summary(chapter, outline_by_chapter.get(chapter_index_value)),
+            metadata={"level": "chapter", "chapter_index": chapter_index_value},
+        )
+        chapter_records.append(record)
+        if was_created:
+            created += 1
+        else:
+            updated += 1
+
+    db.commit()
+    return {
+        "version": MEMORY_TREE_SUMMARY_MATERIALIZATION_VERSION,
+        "status": "completed",
+        "project_id": project_id,
+        "summary": {
+            "volume_summary_nodes": len(volume_records),
+            "chapter_summary_nodes": len(chapter_records),
+            "created_nodes": created,
+            "updated_nodes": updated,
+        },
+        "nodes": [
+            _summary_record_projection(record)
+            for record in sorted(
+                [*volume_records, *chapter_records],
+                key=lambda item: (item.start_chapter_index or 0, item.memory_type, item.scope_key),
+            )
+        ],
+        "trace": {
+            "source": "materialize_agent_memory_tree_summaries",
+            "storage": "longform_memories",
+            "memory_types": list(MEMORY_TREE_SUMMARY_TYPES),
+        },
+    }
+
+
 def _build_nodes(
     *,
     chapters: list[ChapterContent],
@@ -68,15 +156,27 @@ def _build_nodes(
     nodes_by_id: dict[str, dict[str, Any]] = {}
     outline_by_chapter = _outline_by_chapter(outline)
     chapter_by_index = {int(chapter.chapter_index): chapter for chapter in chapters}
+    summary_by_scope = _summary_memories_by_scope(memories)
 
     for volume_index in sorted({_volume_index(chapter.chapter_index) for chapter in chapters} or {1}):
-        volume_node = _volume_node(volume_index, outline=outline, storyline=storyline)
+        volume_node = _volume_node(
+            volume_index,
+            outline=outline,
+            storyline=storyline,
+            summary_memory=summary_by_scope.get((MEMORY_TREE_VOLUME_SUMMARY_TYPE, f"volume:{volume_index}")),
+        )
         nodes.append(volume_node)
         nodes_by_id[volume_node["id"]] = volume_node
 
     for chapter in chapters:
         volume_id = f"volume:{_volume_index(chapter.chapter_index)}"
-        chapter_node = _chapter_node(chapter, outline=outline, outline_item=outline_by_chapter.get(chapter.chapter_index))
+        chapter_index = int(chapter.chapter_index)
+        chapter_node = _chapter_node(
+            chapter,
+            outline=outline,
+            outline_item=outline_by_chapter.get(chapter_index),
+            summary_memory=summary_by_scope.get((MEMORY_TREE_CHAPTER_SUMMARY_TYPE, f"chapter:{chapter_index}")),
+        )
         nodes.append(chapter_node)
         nodes_by_id[chapter_node["id"]] = chapter_node
         _append_child(nodes_by_id, volume_id, chapter_node["id"])
@@ -100,36 +200,56 @@ def _build_nodes(
     return nodes
 
 
-def _volume_node(volume_index: int, *, outline: Outline | None, storyline: Storyline | None) -> dict[str, Any]:
+def _volume_node(
+    volume_index: int,
+    *,
+    outline: Outline | None,
+    storyline: Storyline | None,
+    summary_memory: LongformMemory | None,
+) -> dict[str, Any]:
     source_refs: list[dict[str, str]] = []
     if outline is not None:
         source_refs.append({"source_type": "outline", "source_id": outline.id})
     if storyline is not None:
         source_refs.append({"source_type": "storyline", "source_id": storyline.id})
+    if summary_memory is not None:
+        source_refs.append({"source_type": "longform_memory", "source_id": summary_memory.id})
     return {
         "id": f"volume:{volume_index}",
         "level": "volume",
         "parent_id": None,
         "chapter_index": None,
         "title": f"Volume {volume_index}",
-        "summary": "",
+        "summary": summary_memory.summary if summary_memory is not None else "",
         "source_refs": source_refs,
         "children": [],
     }
 
 
-def _chapter_node(chapter: ChapterContent, *, outline: Outline | None, outline_item: dict[str, Any] | None) -> dict[str, Any]:
+def _chapter_node(
+    chapter: ChapterContent,
+    *,
+    outline: Outline | None,
+    outline_item: dict[str, Any] | None,
+    summary_memory: LongformMemory | None,
+) -> dict[str, Any]:
     chapter_index = int(chapter.chapter_index)
     source_refs = [{"source_type": "chapter_content", "source_id": chapter.id}]
     if outline is not None and outline_item is not None:
         source_refs.append({"source_type": "outline", "source_id": outline.id})
+    if summary_memory is not None:
+        source_refs.append({"source_type": "longform_memory", "source_id": summary_memory.id})
     return {
         "id": f"chapter:{chapter_index}",
         "level": "chapter",
         "parent_id": f"volume:{_volume_index(chapter_index)}",
         "chapter_index": chapter_index,
         "title": chapter.title or str((outline_item or {}).get("title") or f"Chapter {chapter_index}"),
-        "summary": str((outline_item or {}).get("summary") or ""),
+        "summary": (
+            summary_memory.summary
+            if summary_memory is not None
+            else str((outline_item or {}).get("summary") or "")
+        ),
         "source_refs": source_refs,
         "children": [],
     }
@@ -235,7 +355,7 @@ def _memories(db: Session, project_id: str) -> list[LongformMemory]:
     return (
         db.query(LongformMemory)
         .filter(LongformMemory.project_id == project_id)
-        .filter(LongformMemory.memory_type.in_(("scene", "beat")))
+        .filter(LongformMemory.memory_type.in_(("scene", "beat", *MEMORY_TREE_SUMMARY_TYPES)))
         .order_by(
             LongformMemory.start_chapter_index.asc(),
             LongformMemory.memory_type.desc(),
@@ -243,6 +363,14 @@ def _memories(db: Session, project_id: str) -> list[LongformMemory]:
         )
         .all()
     )
+
+
+def _summary_memories_by_scope(memories: list[LongformMemory]) -> dict[tuple[str, str], LongformMemory]:
+    return {
+        (memory.memory_type, memory.scope_key): memory
+        for memory in memories
+        if memory.memory_type in MEMORY_TREE_SUMMARY_TYPES
+    }
 
 
 def _memory_chapter_index(memory: LongformMemory) -> int | None:
@@ -270,3 +398,91 @@ def _optional_int(value: Any) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def _volume_summary(
+    volume_index: int,
+    *,
+    chapters: list[ChapterContent],
+    outline: Outline | None,
+    storyline: Storyline | None,
+) -> str:
+    chapter_indexes = [int(chapter.chapter_index) for chapter in chapters]
+    parts = [f"Volume {volume_index} covers chapters {min(chapter_indexes)}-{max(chapter_indexes)}."]
+    plotlines = storyline.plotlines if storyline is not None and isinstance(storyline.plotlines, list) else []
+    plot_titles = [
+        str(item.get("title") or item.get("name") or "").strip()
+        for item in plotlines
+        if isinstance(item, dict)
+    ]
+    plot_titles = [title for title in plot_titles if title]
+    if plot_titles:
+        parts.append("Main plotlines: " + "; ".join(plot_titles[:3]) + ".")
+    outline_items = _outline_by_chapter(outline)
+    chapter_summaries = [
+        str((outline_items.get(index) or {}).get("summary") or "").strip()
+        for index in chapter_indexes
+    ]
+    chapter_summaries = [summary for summary in chapter_summaries if summary]
+    if chapter_summaries:
+        parts.append("Chapter summaries: " + "; ".join(chapter_summaries[:5]) + ".")
+    return " ".join(parts)
+
+
+def _chapter_summary(chapter: ChapterContent, outline_item: dict[str, Any] | None) -> str:
+    outline_summary = str((outline_item or {}).get("summary") or "").strip()
+    title = chapter.title or str((outline_item or {}).get("title") or f"Chapter {chapter.chapter_index}")
+    content = str(chapter.content or "").strip().replace("\n", " ")
+    content_preview = content[:160]
+    if outline_summary and content_preview:
+        return f"{title}: {outline_summary} Content points: {content_preview}"
+    if outline_summary:
+        return f"{title}: {outline_summary}"
+    return f"{title}: {content_preview}" if content_preview else str(title)
+
+
+def _upsert_summary_memory(
+    db: Session,
+    *,
+    project_id: str,
+    memory_type: str,
+    scope_key: str,
+    start_chapter_index: int,
+    end_chapter_index: int,
+    title: str,
+    summary: str,
+    metadata: dict[str, Any],
+) -> tuple[LongformMemory, bool]:
+    record = (
+        db.query(LongformMemory)
+        .filter(
+            LongformMemory.project_id == project_id,
+            LongformMemory.memory_type == memory_type,
+            LongformMemory.scope_key == scope_key,
+        )
+        .first()
+    )
+    created = record is None
+    if record is None:
+        record = LongformMemory(project_id=project_id, memory_type=memory_type, scope_key=scope_key)
+        db.add(record)
+    record.start_chapter_index = start_chapter_index
+    record.end_chapter_index = end_chapter_index
+    record.title = title
+    record.summary = summary
+    record.status = "current"
+    record.memory_metadata = metadata
+    db.flush()
+    return record, created
+
+
+def _summary_record_projection(record: LongformMemory) -> dict[str, Any]:
+    return {
+        "id": record.id,
+        "memory_type": record.memory_type,
+        "scope_key": record.scope_key,
+        "start_chapter_index": record.start_chapter_index,
+        "end_chapter_index": record.end_chapter_index,
+        "title": record.title,
+        "summary": record.summary,
+    }

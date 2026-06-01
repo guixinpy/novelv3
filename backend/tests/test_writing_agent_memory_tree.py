@@ -2,7 +2,13 @@ import pytest
 
 from app.models import ChapterContent, LongformMemory, Outline, Project, Storyline
 from app.schemas.writing_agent import WritingAgentToolRequest
-from app.services.writing_agent.memory_tree import MEMORY_TREE_VERSION, inspect_agent_memory_tree
+from app.services.writing_agent.memory_tree import (
+    MEMORY_TREE_CHAPTER_SUMMARY_TYPE,
+    MEMORY_TREE_VERSION,
+    MEMORY_TREE_VOLUME_SUMMARY_TYPE,
+    inspect_agent_memory_tree,
+    materialize_agent_memory_tree_summaries,
+)
 from app.services.writing_agent.tool_adapter_types import WritingAgentToolContext
 from app.services.writing_agent.tool_executor import execute_writing_agent_tool, writing_agent_tool_adapter_metadata
 from app.services.writing_agent.tool_registry import get_agent_tool_descriptor
@@ -41,6 +47,66 @@ def test_memory_tree_projects_volume_chapter_scene_and_beat_nodes(db_session):
     assert tree["trace"]["source_tables"] == ["chapter_contents", "outlines", "storylines", "longform_memories"]
 
 
+def test_memory_tree_materializes_volume_and_chapter_summary_nodes(db_session):
+    project, refs = _seed_memory_tree_project(db_session)
+
+    result = materialize_agent_memory_tree_summaries(db_session, project.id)
+
+    assert result["status"] == "completed"
+    assert result["summary"] == {
+        "volume_summary_nodes": 1,
+        "chapter_summary_nodes": 2,
+        "created_nodes": 3,
+        "updated_nodes": 0,
+    }
+    records = {
+        (memory.memory_type, memory.scope_key): memory
+        for memory in db_session.query(LongformMemory).filter(LongformMemory.project_id == project.id).all()
+    }
+    volume_record = records[(MEMORY_TREE_VOLUME_SUMMARY_TYPE, "volume:1")]
+    chapter_record = records[(MEMORY_TREE_CHAPTER_SUMMARY_TYPE, "chapter:1")]
+
+    assert volume_record.start_chapter_index == 1
+    assert volume_record.end_chapter_index == 2
+    assert "空白信主线" in volume_record.summary
+    assert chapter_record.start_chapter_index == 1
+    assert chapter_record.end_chapter_index == 1
+    assert "收到空白信" in chapter_record.summary
+
+    tree = inspect_agent_memory_tree(db_session, project.id)
+    nodes = {node["id"]: node for node in tree["nodes"]}
+
+    assert nodes["volume:1"]["summary"] == volume_record.summary
+    assert {"source_type": "longform_memory", "source_id": volume_record.id} in nodes["volume:1"]["source_refs"]
+    assert nodes["chapter:1"]["summary"] == chapter_record.summary
+    assert {"source_type": "longform_memory", "source_id": chapter_record.id} in nodes["chapter:1"]["source_refs"]
+    assert {"source_type": "chapter_content", "source_id": refs["chapter_1_id"]} in nodes["chapter:1"]["source_refs"]
+
+
+@pytest.mark.asyncio
+async def test_record_agent_memory_tree_summaries_tool_persists_summary_nodes(db_session):
+    project, _refs = _seed_memory_tree_project(db_session)
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-memory-tree-materialize"),
+        WritingAgentToolRequest(tool_name="record_agent_memory_tree_summaries", params={}),
+    )
+
+    assert result.handled is True
+    assert result.output["status"] == "completed"
+    assert result.output["summary"]["volume_summary_nodes"] == 1
+    assert result.output["summary"]["chapter_summary_nodes"] == 2
+    assert (
+        db_session.query(LongformMemory)
+        .filter(
+            LongformMemory.project_id == project.id,
+            LongformMemory.memory_type == MEMORY_TREE_CHAPTER_SUMMARY_TYPE,
+        )
+        .count()
+        == 2
+    )
+
+
 @pytest.mark.asyncio
 async def test_inspect_agent_memory_tree_tool_supports_drilldown_filters(db_session):
     project, refs = _seed_memory_tree_project(db_session)
@@ -77,6 +143,23 @@ def test_memory_tree_tool_is_registered_with_read_metadata():
         "category": "longform_memory",
         "mutability": "read",
         "handler_name": "_inspect_agent_memory_tree",
+    }
+
+
+def test_memory_tree_summary_tool_is_registered_with_write_metadata():
+    descriptor = get_agent_tool_descriptor("record_agent_memory_tree_summaries")
+    metadata = writing_agent_tool_adapter_metadata("record_agent_memory_tree_summaries")
+
+    assert descriptor is not None
+    assert descriptor.category == "longform_memory"
+    assert descriptor.target_type == "agent_memory_tree_summary"
+    assert descriptor.output_schema["properties"]["summary"]["type"] == "object"
+    assert metadata == {
+        "tool_name": "record_agent_memory_tree_summaries",
+        "adapter_type": "static",
+        "category": "longform_memory",
+        "mutability": "write",
+        "handler_name": "_record_agent_memory_tree_summaries",
     }
 
 

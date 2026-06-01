@@ -74,6 +74,7 @@
 - [x] Athena 世界模型：结构化实体 + 事件账本 + 提案审批 + layered checker (L0-L4)
 - [x] Retrieval 检索：本地 hash embedding + 可切换远程 + lexical/vector score
 - [x] Memory Tree 框架：memory_tree.py + 工具适配器
+- [x] Memory Tree 卷/章摘要持久化基础版：record_agent_memory_tree_summaries 写入 LongformMemory 摘要节点
 - [x] 记忆激活：memory_activation.py
 - [x] 知识库候选：knowledge_base_candidates + 执行
 - [x] 世界模型分析执行：world_model_analysis_execution
@@ -82,14 +83,18 @@
 
 | 优先级 | 任务 | 完成标准 | 状态 |
 |--------|------|---------|------|
-| P0 | Memory Tree 分层摘要（卷→章两级） | 能生成并持久化卷级和章级摘要节点 | 🔴 待开始 |
-| P1 | Memory Tree 语义浏览 | Agent 能通过工具浏览 Tree：展开/收起/搜索 | 🔴 待开始 |
+| P0 | Memory Tree 分层摘要（卷→章两级） | 能生成并持久化卷级和章级摘要节点 | ✅ 已完成（基础版） |
+| P1 | Memory Tree 语义浏览 | Agent 能通过工具浏览 Tree：展开/收起/搜索 | 🟡 进行中（已有 inspect 过滤，待语义浏览增强） |
 | P2 | 世界模型 L5 语义检查 | 至少实现一个 LLM 驱动的语义一致性检查 | 🔴 待开始 |
 | P3 | 检索策略智能化 | Agent 根据上下文自主选择检索策略 | 🔴 待开始 |
 
 ### 阻塞项
 
-- Memory Tree 的分层摘要需要真实的长篇小说数据来验证效果
+- Memory Tree 摘要质量仍需真实长篇小说数据验证；当前基础版是确定性摘要写入，不等同于 LLM 语义归纳。
+
+### 最近完成
+
+- 2026-06-01: 新增 record_agent_memory_tree_summaries，按卷/章 materialize Memory Tree 摘要到 LongformMemory，并接入 memory_worker 路由与工具契约测试。
 
 ---
 
@@ -263,6 +268,7 @@
 
 主要产出：
 - Memory Tree 框架 + 工具适配器
+- Memory Tree 卷/章摘要持久化基础版
 - 记忆激活机制
 - Followup 机制完善
 - 写作质量诊断
@@ -275,5 +281,5 @@
 计划内容（待确认）：
 - 智能上下文压缩
 - 多维度语义审稿
-- Memory Tree 分层摘要与语义浏览
+- Memory Tree 语义浏览与 LLM 摘要质量增强
 - 孤兒 Worker 写入式清理与安全重分派执行

@@ -224,6 +224,24 @@ def test_worker_dispatch_routes_memory_tree_to_memory_worker():
     assert dispatch["task_envelopes"][0]["tool_name"] == "inspect_agent_memory_tree"
 
 
+def test_worker_dispatch_routes_memory_tree_summary_materialization_to_memory_worker():
+    preview = preview_agent_worker_dispatches(
+        [
+            {
+                "tool_name": "record_agent_memory_tree_summaries",
+                "params": {"chapter_index": 2},
+            }
+        ],
+        parent_run_id="run-memory-tree-summary",
+    )
+
+    assert preview["status"] == "ready"
+    assert preview["summary"] == {"workers": 1, "planned_tasks": 1, "blocked_tasks": 0, "issues": 0}
+    dispatch = preview["worker_dispatches"][0]
+    assert dispatch["worker"]["name"] == "memory_worker"
+    assert dispatch["task_envelopes"][0]["tool_name"] == "record_agent_memory_tree_summaries"
+
+
 def test_worker_dispatch_routes_observability_and_dogfood_evidence_to_recovery_worker():
     preview = preview_agent_worker_dispatches(
         [
@@ -285,7 +303,7 @@ def test_worker_route_registry_audit_binds_routes_to_allowed_worker_definitions(
 
     assert audit["version"] == AGENT_WORKER_ROUTE_REGISTRY_AUDIT_VERSION
     assert audit["status"] == "passed"
-    assert audit["summary"] == {"routes": 47, "ready_routes": 47, "unrouted_allowed_tools": 0, "issues": 0}
+    assert audit["summary"] == {"routes": 48, "ready_routes": 48, "unrouted_allowed_tools": 0, "issues": 0}
     assert audit["issues"] == []
     assert audit["unrouted_allowed_tools"] == []
 
@@ -306,6 +324,7 @@ def test_worker_route_registry_audit_binds_routes_to_allowed_worker_definitions(
     assert routes_by_tool["inspect_agent_memory_activation_plan"]["worker"] == "memory_worker"
     assert routes_by_tool["inspect_agent_context_compression_projection"]["worker"] == "memory_worker"
     assert routes_by_tool["inspect_agent_memory_tree"]["worker"] == "memory_worker"
+    assert routes_by_tool["record_agent_memory_tree_summaries"]["worker"] == "memory_worker"
     assert [route["tool_name"] for route in audit["routes"]] == sorted(routes_by_tool)
     assert all(route["definition_status"] == "ready" for route in audit["routes"])
     assert all(route["tool_allowed"] is True for route in audit["routes"])

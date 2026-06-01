@@ -19,12 +19,28 @@ def _inspect_agent_memory_tree(context: WritingAgentToolContext, tool: WritingAg
     )
 
 
+def _record_agent_memory_tree_summaries(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
+    from app.services.writing_agent.memory_tree import materialize_agent_memory_tree_summaries
+
+    return materialize_agent_memory_tree_summaries(
+        context.db,
+        context.project_id,
+        chapter_index=_optional_int(tool.params.get("chapter_index")),
+    )
+
+
 MEMORY_TREE_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
     "inspect_agent_memory_tree": WritingAgentToolAdapter(
         "inspect_agent_memory_tree",
         _inspect_agent_memory_tree,
         category="longform_memory",
         mutability="read",
+    ),
+    "record_agent_memory_tree_summaries": WritingAgentToolAdapter(
+        "record_agent_memory_tree_summaries",
+        _record_agent_memory_tree_summaries,
+        category="longform_memory",
+        mutability="write",
     ),
 }
 

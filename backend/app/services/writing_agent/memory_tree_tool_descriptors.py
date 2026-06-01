@@ -34,4 +34,28 @@ MEMORY_TREE_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         sort_key=8,
         availability_checks=("project_exists",),
     ),
+    AgentToolDescriptor(
+        name="record_agent_memory_tree_summaries",
+        module="writing_agent",
+        category="longform_memory",
+        description="生成并持久化 Memory Tree 的卷级和章级摘要节点，写入 LongformMemory 供后续浏览和检索使用。",
+        input_schema=object_schema(
+            {
+                "chapter_index": {"type": "integer", "minimum": 1},
+            }
+        ),
+        output_schema=object_schema(
+            {
+                "status": {"type": "string"},
+                "summary": {"type": "object"},
+                "nodes": {"type": "array"},
+                "trace": {"type": "object"},
+            }
+        ),
+        target_type="agent_memory_tree_summary",
+        internal=True,
+        non_blocking_report=False,
+        sort_key=8,
+        availability_checks=("project_exists",),
+    ),
 )

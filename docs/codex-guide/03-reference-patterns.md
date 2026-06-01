@@ -53,6 +53,7 @@ openhuman 的 Memory Tree 对网文创作天然适配：
 - **卷→章→节→段落** 的层级结构本身就是一棵树
 - 节点被分块、打分、汇总到分层摘要中
 - Agent 可以浏览顶层概览，或在感兴趣的话题上 drill-down
+- 当前 novelv3 已落地卷/章两级基础版：`record_agent_memory_tree_summaries` 将摘要 materialize 为 `LongformMemory`，`inspect_agent_memory_tree` 再把持久化摘要投影回树节点
 
 **已知 tradeoff**（来自 openhuman 实际运行经验）：
 - 语义召回需要将检索到的记忆注入上下文
@@ -236,6 +237,7 @@ novelv3 当前 trace + approval 体系已经较完整。权限分级已先在核
 5. **openhuman Worker 定义配置化基础版** → YAML/TOML AgentDefinition loader + source_format 注册表审计
 6. **openclaw 孤兒恢复基础审计** → orphan worker 检测 + mark-blocked/redispatch preview
 7. **hermes-agent ContextCompressor 基础计划** → context pressure 下输出头尾保护预修剪和 summarize 工具计划
+8. **openhuman Memory Tree 分层摘要基础版** → 卷/章摘要写入 LongformMemory，并通过 memory_worker 暴露 materialize 工具
 
 ### 立即实现（当前开发周期）
 
@@ -243,16 +245,16 @@ novelv3 当前 trace + approval 体系已经较完整。权限分级已先在核
 
 ### 短期实现（1-2 个开发周期）
 
-8. **openhuman Memory Tree 分层摘要** → 完善 memory_tree.py
-9. **hermes-agent ContextCompressor 执行层** → LLM 摘要写入 + 运行时压缩接入
-10. **openclaw 孤兒恢复写入闭环** → worker 失效清理和安全重分派执行
+9. **openhuman Memory Tree 语义浏览/摘要增强** → 从基础持久化推进到语义搜索、按需展开和 LLM 摘要质量提升
+10. **hermes-agent ContextCompressor 执行层** → LLM 摘要写入 + 运行时压缩接入
+11. **openclaw 孤兒恢复写入闭环** → worker 失效清理和安全重分派执行
 
 ### 中期实现（3-5 个开发周期）
 
-11. **hermes-agent Jittered Backoff** → 重试退避
+12. **hermes-agent Jittered Backoff** → 重试退避
 
 ### 暂缓（等待真实需求触发）
 
-12. **openhuman TokenJuice** → 等待上下文管理成为实际瓶颈
-13. **hermes-agent AST 扫描** → Python 装饰器已足够
-14. **openclaw 网关角色** → novelv3 是单用户场景
+13. **openhuman TokenJuice** → 等待上下文管理成为实际瓶颈
+14. **hermes-agent AST 扫描** → Python 装饰器已足够
+15. **openclaw 网关角色** → novelv3 是单用户场景
