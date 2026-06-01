@@ -190,6 +190,13 @@ const agentControlPlaneRecommendedCheckCount = computed(() => (
     ? agentControlPlaneReadiness.value.recommended_next_tools.length
     : 0
 ))
+const agentWorkerRouteRegistry = computed(() => recordValue(props.run?.agent_worker_route_registry))
+const agentWorkerRouteRegistrySummary = computed(() => recordValue(agentWorkerRouteRegistry.value.summary))
+const agentWorkerRouteRegistryStatus = computed(() => stringValue(agentWorkerRouteRegistry.value.status))
+const agentWorkerRouteUnroutedToolCount = computed(() => (
+  numberValue(agentWorkerRouteRegistrySummary.value.unrouted_allowed_tools)
+))
+const agentWorkerRouteIssueCount = computed(() => numberValue(agentWorkerRouteRegistrySummary.value.issues))
 const agentProfile = computed(() => (
   stringValue(props.run?.agent_profile) ||
   stringValue(agentProfileDefinition.value.profile) ||
@@ -829,6 +836,18 @@ function missingDependencyTool(value: Record<string, unknown>) {
             <div v-if="agentControlPlaneRecommendedCheckCount > 0">
               <dt>建议检查</dt>
               <dd>{{ agentControlPlaneRecommendedCheckCount }}</dd>
+            </div>
+            <div v-if="agentWorkerRouteRegistryStatus">
+              <dt>Worker 路由</dt>
+              <dd>{{ routeRegistryStatusLabel(agentWorkerRouteRegistryStatus) }}</dd>
+            </div>
+            <div v-if="agentWorkerRouteUnroutedToolCount !== null">
+              <dt>未路由工具</dt>
+              <dd>{{ agentWorkerRouteUnroutedToolCount }}</dd>
+            </div>
+            <div v-if="agentWorkerRouteIssueCount !== null && agentWorkerRouteIssueCount > 0">
+              <dt>路由问题</dt>
+              <dd>{{ agentWorkerRouteIssueCount }}</dd>
             </div>
             <div v-if="recoverySourceRunId">
               <dt>来源运行</dt>

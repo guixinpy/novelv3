@@ -242,6 +242,17 @@ describe('AgentRunDrawer', () => {
             },
             recommended_next_tools: ['inspect_agent_health_projection'],
           },
+          agent_worker_route_registry: {
+            source: 'planner_trace.agent_health_projection.agent_worker_route_registry',
+            status: 'passed',
+            version: 'phase235.agent_worker_route_registry_audit.v1',
+            summary: {
+              routes: 35,
+              ready_routes: 35,
+              unrouted_allowed_tools: 0,
+              issues: 0,
+            },
+          },
           steps: [],
         },
       },
@@ -260,8 +271,12 @@ describe('AgentRunDrawer', () => {
     expect(text).toContain('工具缺口')
     expect(text).toContain('命令缺口')
     expect(text).toContain('建议检查')
+    expect(text).toContain('Worker 路由')
+    expect(text).toContain('通过')
+    expect(text).toContain('未路由工具')
     expect(text).toContain('1')
     expect(text).not.toContain('planner_trace.agent_health_projection.control_plane_readiness')
+    expect(text).not.toContain('planner_trace.agent_health_projection.agent_worker_route_registry')
     expect(text).not.toContain('inspect_agent_health_projection')
   })
 

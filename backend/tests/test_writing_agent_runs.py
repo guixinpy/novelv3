@@ -640,6 +640,11 @@ def test_agent_run_detail_exposes_agent_profile_projection_for_auto_plan(client)
     assert control_plane["source"] == "planner_trace.agent_health_projection.control_plane_readiness"
     assert control_plane["summary"]["agent_control_commands"] == 2
     assert isinstance(control_plane["summary"]["total_gap_count"], int)
+    route_registry = payload["agent_worker_route_registry"]
+    assert route_registry["source"] == "planner_trace.agent_health_projection.agent_worker_route_registry"
+    assert route_registry["status"] == "passed"
+    assert route_registry["summary"]["routes"] == 35
+    assert route_registry["summary"]["unrouted_allowed_tools"] == 0
     health = payload["output"]["continuation_state"]["profile_policy_health"]
     assert health == {
         "status": "passed",
@@ -660,6 +665,7 @@ def test_agent_run_detail_exposes_agent_profile_projection_for_auto_plan(client)
     assert detail_payload["agent_profile_policy_audit"] == audit
     assert detail_payload["agent_command_contracts"] == command_contracts
     assert detail_payload["agent_control_plane_readiness"] == control_plane
+    assert detail_payload["agent_worker_route_registry"] == route_registry
 
 
 def test_agent_run_output_exposes_agent_loop_contract_for_success(client):

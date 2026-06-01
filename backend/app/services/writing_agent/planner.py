@@ -494,6 +494,9 @@ def _planner_health_projection(
         "control_plane_readiness": output.get("control_plane_readiness")
         if isinstance(output.get("control_plane_readiness"), dict)
         else {},
+        "agent_worker_route_registry": output.get("agent_worker_route_registry")
+        if isinstance(output.get("agent_worker_route_registry"), dict)
+        else {},
         "reference_alignment": output.get("reference_alignment")
         if isinstance(output.get("reference_alignment"), dict)
         else {},

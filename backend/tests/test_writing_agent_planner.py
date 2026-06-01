@@ -44,6 +44,10 @@ def test_planner_defaults_ready_next_chapter_to_approval_prepare(db_session):
         plan["trace"]["agent_health_projection"]["control_plane_readiness"]["summary"]["total_gap_count"],
         int,
     )
+    route_registry = plan["trace"]["agent_health_projection"]["agent_worker_route_registry"]
+    assert route_registry["status"] == "passed"
+    assert route_registry["summary"]["routes"] == 35
+    assert route_registry["summary"]["unrouted_allowed_tools"] == 0
     assert plan["trace"]["agent_health_projection"]["reference_alignment"]["summary"]["source_count"] == 3
     assert "inspect_agent_reference_alignment" in plan["trace"]["agent_health_projection"]["recommended_tools"]
     assert "profile_policy" not in plan["trace"]["agent_health_projection"]
