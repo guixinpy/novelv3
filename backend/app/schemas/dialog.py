@@ -63,6 +63,8 @@ class ChatOut(BaseModel):
     message_type: str | None = None
     meta: dict | None = None
     trace_id: str | None = None
+    action_result: dict | None = None
+    action_result_view: dict | None = None
     pending_action: PendingActionOut | None = None
     ui_hint: UiHintOut | None = None
     refresh_targets: list[str] = Field(default_factory=list)

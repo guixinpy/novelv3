@@ -240,6 +240,8 @@ export interface ChatResponse {
   project_diagnosis: ProjectDiagnosis
   message_type?: ChatMessageType | null
   meta?: Record<string, unknown> | null
+  action_result?: Record<string, unknown> | null
+  action_result_view?: ActionResultView | null
   trace_id?: string | null
 }
 

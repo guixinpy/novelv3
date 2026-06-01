@@ -205,6 +205,14 @@ def _recommended_followup_preview_detail_items(data: dict) -> list[dict[str, str
         items.append({"label": "自动后继", "value": f"{len(tools)} 个"})
     items.extend(_worker_dispatch_detail_items(data))
 
+    continuation_tools = (
+        followups.get("post_approval_continuation_tools")
+        if isinstance(followups.get("post_approval_continuation_tools"), list)
+        else []
+    )
+    if continuation_tools:
+        items.append({"label": "写后续跑", "value": f"{len(continuation_tools)} 个工具"})
+
     write_tools = followups.get("provenance_write_tools") if isinstance(followups.get("provenance_write_tools"), list) else []
     if write_tools:
         items.append({"label": "需确认修复", "value": f"{len(write_tools)} 个"})

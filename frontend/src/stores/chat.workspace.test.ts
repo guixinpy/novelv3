@@ -54,7 +54,7 @@ describe('chat workspace polling', () => {
       },
       ui_hint: null,
       refresh_targets: [],
-    } as any)
+    })
     vi.mocked(api.getDiagnosis).mockResolvedValue({
       missing_items: [],
       completed_items: [],
@@ -1244,6 +1244,53 @@ describe('chat workspace polling', () => {
         trace_id: 'trace-send-1',
       },
     ])
+  })
+
+  it('sendText 会把对话响应里的 action_result_view 写入 assistant 消息', async () => {
+    const store = useChatStore()
+    store.projectId = 'project-1'
+
+    vi.mocked(api.sendChat).mockResolvedValue({
+      message: '上一轮 Agent 运行给出了推荐后继，我已先规划后继工具链。',
+      pending_action: null,
+      ui_hint: null,
+      refresh_targets: [],
+      project_diagnosis: {
+        missing_items: [],
+        completed_items: [],
+        suggested_next_step: null,
+      },
+      action_result: {
+        type: 'plan_recommended_followups',
+        status: 'success',
+        data: {
+          agent_run_id: 'run-followup',
+          worker_dispatch: { summary: { workers: 1, planned_tasks: 1 } },
+        },
+      },
+      action_result_view: {
+        type: 'plan_recommended_followups',
+        status: 'success',
+        label: '推荐后继预览已生成',
+        variant: 'success',
+        detail_items: [{ label: 'Worker 分派', value: '1 个 worker' }],
+      },
+    } as any)
+
+    await store.sendText('继续吧')
+
+    expect(store.messages.slice(-1)[0]).toMatchObject({
+      role: 'assistant',
+      content: '上一轮 Agent 运行给出了推荐后继，我已先规划后继工具链。',
+      action_result: {
+        type: 'plan_recommended_followups',
+        status: 'success',
+      },
+      action_result_view: {
+        label: '推荐后继预览已生成',
+        detail_items: [{ label: 'Worker 分派', value: '1 个 worker' }],
+      },
+    })
   })
 
   it('sendButtonAction 会把响应 trace_id 写入 assistant 消息', async () => {

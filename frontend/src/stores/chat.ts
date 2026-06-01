@@ -243,6 +243,8 @@ export const useChatStore = defineStore('chat', () => {
         meta: res.meta || null,
         pending_action: res.pending_action || null,
         diagnosis: res.project_diagnosis || null,
+        ...(res.action_result ? { action_result: res.action_result } : {}),
+        ...(res.action_result_view ? { action_result_view: res.action_result_view } : {}),
         trace_id: res.trace_id || null,
       }
       messages.value.push(msg)
@@ -281,6 +283,8 @@ export const useChatStore = defineStore('chat', () => {
         meta: res.meta || null,
         pending_action: res.pending_action || null,
         diagnosis: res.project_diagnosis || null,
+        ...(res.action_result ? { action_result: res.action_result } : {}),
+        ...(res.action_result_view ? { action_result_view: res.action_result_view } : {}),
         trace_id: res.trace_id || null,
       }
       messages.value.push(msg)
@@ -372,6 +376,8 @@ export const useChatStore = defineStore('chat', () => {
           meta: res.meta || null,
           pending_action: res.pending_action || null,
           diagnosis: res.project_diagnosis || null,
+          ...(res.action_result ? { action_result: res.action_result } : {}),
+          ...(res.action_result_view ? { action_result_view: res.action_result_view } : {}),
           trace_id: res.trace_id || null,
         }
         messages.value.push(msg)

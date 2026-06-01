@@ -363,6 +363,8 @@ async def _handle_dialog_recovery_preview(
     return ChatOut(
         message=reply,
         meta=response_meta,
+        action_result=action_result,
+        action_result_view=action_result_view(action_result),
         pending_action=None,
         ui_hint=_build_chat_idle_hint("恢复预览已生成"),
         refresh_targets=[],
@@ -442,6 +444,8 @@ async def _handle_dialog_recommended_followup_preview(
     return ChatOut(
         message=reply,
         meta=response_meta,
+        action_result=action_result,
+        action_result_view=action_result_view(action_result),
         pending_action=None,
         ui_hint=_build_chat_idle_hint("推荐后继预览已生成"),
         refresh_targets=[],
