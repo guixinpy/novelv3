@@ -34,6 +34,7 @@ from app.services.writing_agent.chapter_generation_tool import (
 from app.services.writing_agent.approval_contract import verify_agent_plan_approval_contract
 from app.services.writing_agent.approval_tool_metadata import build_approval_tool_metadata_by_name
 from app.services.writing_agent.agent_step_binding import summarize_resource_binding
+from app.services.writing_agent.agent_loop_budget import build_agent_loop_budget
 from app.services.writing_agent.agent_loop_risk import build_agent_loop_risk
 from app.services.writing_agent.agent_stop_hooks import evaluate_agent_stop_hooks
 from app.services.writing_agent.memory_activation import build_memory_activation_plan
@@ -1108,11 +1109,7 @@ def _agent_loop_contract(
         "version": AGENT_LOOP_CONTRACT_VERSION,
         "loop_kind": "sequential_tool_plan",
         "status": status,
-        "budget": {
-            "max_iterations": max_iterations,
-            "used_iterations": used_iterations,
-            "remaining_iterations": max(0, max_iterations - used_iterations),
-        },
+        "budget": build_agent_loop_budget(steps, max_iterations=max_iterations),
         "exit_reason": exit_reason,
         "requires_user_action": exit_reason in {"blocked", "tool_failed", "cancelled"},
         "loop_risk": build_agent_loop_risk(

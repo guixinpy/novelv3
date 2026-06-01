@@ -234,12 +234,12 @@ novelv3 当前 trace + approval 体系已经较完整。主要是权限分级需
 
 ### 立即实现（当前开发周期）
 
-3. **openhuman 权限分级** → 改为 Read/Write/GuardedWrite 枚举
-4. **openhuman Worker 定义配置化** → AgentDefinition 文件格式
-5. **hermes-agent refund 机制** → 程序化工具不计入预算
+3. **hermes-agent refund 机制基础版** → read 工具成功调用不消耗 charged iteration
 
 ### 短期实现（1-2 个开发周期）
 
+4. **openhuman 权限分级** → 改为 Read/Write/GuardedWrite 枚举
+5. **openhuman Worker 定义配置化** → AgentDefinition 文件格式
 6. **openhuman Memory Tree 分层摘要** → 完善 memory_tree.py
 7. **hermes-agent ContextCompressor** → 增强上下文压缩
 8. **openclaw 孤兒恢复** → worker 失效检测和清理

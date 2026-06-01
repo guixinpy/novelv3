@@ -771,7 +771,14 @@ def test_agent_run_output_exposes_agent_loop_contract_for_success(client):
     assert agent_loop["budget"] == {
         "max_iterations": 1,
         "used_iterations": 1,
-        "remaining_iterations": 0,
+        "charged_iterations": 0,
+        "refunded_iterations": 1,
+        "remaining_iterations": 1,
+        "refund_policy": {
+            "version": "phase227.agent_loop_budget_refund.v1",
+            "refundable_mutability": ["read"],
+            "refundable_statuses": ["success"],
+        },
     }
     assert agent_loop["exit_reason"] == "completed"
     assert agent_loop["requires_user_action"] is False

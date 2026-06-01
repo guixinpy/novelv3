@@ -16,6 +16,8 @@
 3. 下一步应该做什么
 4. 有哪些阻塞项
 
+注意：本文档记录的是当前认知和推进状态，不是不可变路线图。若代码现状、真实生成验证或参考项目适配分析表明原有方向不优，应以实际判断推进，并在本文件中同步修正状态、优先级和理由。
+
 ### 轨道说明
 
 项目按以下 7 条轨道并行推进：
@@ -40,6 +42,7 @@
 - [x] 工具注册/发现/调用：tool_registry + tool_descriptor + tool_adapter + tool_executor
 - [x] 工具生命周期钩子：tool_lifecycle_hooks
 - [x] StopHooks 策略层：critical loop、BudgetCap、MaxTurns、ContextGuard、approval、memory provenance
+- [x] Agent loop refund 预算投影：read 工具成功调用计入 refunded_iterations，不消耗 charged iteration
 - [x] 恢复计划器：recovery_planner + recovery_policy
 - [x] 命令契约：agent_command_contracts + agent_step_binding
 
@@ -49,7 +52,7 @@
 |--------|------|---------|------|
 | P0 | openclaw 五级循环检测（L2-L5） | ping-pong、poll_no_progress、global_circuit_breaker 全部可用 | ✅ 已完成 |
 | P1 | 丰富 StopHooks 策略 | 至少包含 BudgetCap、MaxTurns、ContextGuard 三种策略 | ✅ 已完成 |
-| P2 | refund 机制（借鉴 hermes-agent） | 程序化工具调用可退还迭代预算 | 🔴 待开始 |
+| P2 | refund 机制（借鉴 hermes-agent） | 程序化工具调用可退还迭代预算 | ✅ 已完成（基础版） |
 
 ### 阻塞项
 
@@ -58,6 +61,7 @@
 ### 最近完成
 
 - 2026-06-01: 核对代码发现五级循环检测已实现；补充 StopHooks 的显式 BudgetCap / MaxTurns 策略和测试，ContextGuard 既有策略保留。
+- 2026-06-01: 新增 Agent loop budget refund 投影，成功 read 工具调用会进入 refunded_iterations，remaining_iterations 按 charged_iterations 计算。
 
 ---
 
@@ -256,6 +260,6 @@
 ### 下一阶段预览: Agent 循环增强后续
 
 计划内容（待确认）：
-- refund 机制（程序化工具调用退还迭代预算）
 - 智能上下文压缩
 - 多维度语义审稿
+- 权限分级枚举化 / Worker 定义配置化
