@@ -238,6 +238,7 @@ novelv3 当前 trace + approval 体系已经较完整。权限分级已先在核
 6. **openclaw 孤兒恢复基础审计** → orphan worker 检测 + mark-blocked/redispatch preview
 7. **hermes-agent ContextCompressor 基础计划** → context pressure 下输出头尾保护预修剪和 summarize 工具计划
 8. **openhuman Memory Tree 分层摘要基础版** → 卷/章摘要写入 LongformMemory，并通过 memory_worker 暴露 materialize 工具
+9. **openhuman Memory Tree 基础浏览** → `inspect_agent_memory_tree` 支持按节点展开、深度裁剪和搜索命中祖先上下文
 
 ### 立即实现（当前开发周期）
 
@@ -245,16 +246,16 @@ novelv3 当前 trace + approval 体系已经较完整。权限分级已先在核
 
 ### 短期实现（1-2 个开发周期）
 
-9. **openhuman Memory Tree 语义浏览/摘要增强** → 从基础持久化推进到语义搜索、按需展开和 LLM 摘要质量提升
-10. **hermes-agent ContextCompressor 执行层** → LLM 摘要写入 + 运行时压缩接入
-11. **openclaw 孤兒恢复写入闭环** → worker 失效清理和安全重分派执行
+10. **openhuman Memory Tree 语义召回/摘要增强** → 从文本匹配和基础浏览推进到向量召回、按需展开和 LLM 摘要质量提升
+11. **hermes-agent ContextCompressor 执行层** → LLM 摘要写入 + 运行时压缩接入
+12. **openclaw 孤兒恢复写入闭环** → worker 失效清理和安全重分派执行
 
 ### 中期实现（3-5 个开发周期）
 
-12. **hermes-agent Jittered Backoff** → 重试退避
+13. **hermes-agent Jittered Backoff** → 重试退避
 
 ### 暂缓（等待真实需求触发）
 
-13. **openhuman TokenJuice** → 等待上下文管理成为实际瓶颈
-14. **hermes-agent AST 扫描** → Python 装饰器已足够
-15. **openclaw 网关角色** → novelv3 是单用户场景
+14. **openhuman TokenJuice** → 等待上下文管理成为实际瓶颈
+15. **hermes-agent AST 扫描** → Python 装饰器已足够
+16. **openclaw 网关角色** → novelv3 是单用户场景

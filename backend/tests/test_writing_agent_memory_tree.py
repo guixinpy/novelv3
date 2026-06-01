@@ -83,6 +83,29 @@ def test_memory_tree_materializes_volume_and_chapter_summary_nodes(db_session):
     assert {"source_type": "chapter_content", "source_id": refs["chapter_1_id"]} in nodes["chapter:1"]["source_refs"]
 
 
+def test_memory_tree_expands_node_with_depth_and_ancestors(db_session):
+    project, refs = _seed_memory_tree_project(db_session)
+
+    tree = inspect_agent_memory_tree(
+        db_session,
+        project.id,
+        expand_node_id="chapter:1",
+        max_depth=1,
+        include_ancestors=True,
+    )
+
+    assert [node["id"] for node in tree["nodes"]] == [
+        "volume:1",
+        "chapter:1",
+        f"scene:{refs['scene_memory_id']}",
+    ]
+    assert tree["navigation"]["mode"] == "expanded_subtree"
+    assert tree["navigation"]["expanded_node_id"] == "chapter:1"
+    assert tree["navigation"]["max_depth"] == 1
+    assert tree["navigation"]["ancestor_node_ids"] == ["volume:1"]
+    assert tree["navigation"]["descendant_node_ids"] == [f"scene:{refs['scene_memory_id']}"]
+
+
 @pytest.mark.asyncio
 async def test_record_agent_memory_tree_summaries_tool_persists_summary_nodes(db_session):
     project, _refs = _seed_memory_tree_project(db_session)
@@ -125,9 +148,40 @@ async def test_inspect_agent_memory_tree_tool_supports_drilldown_filters(db_sess
     assert result.output["filters"] == {
         "level": "scene",
         "node_id": None,
+        "expand_node_id": None,
         "chapter_index": 1,
         "query": "雨巷",
+        "include_ancestors": False,
+        "max_depth": None,
     }
+
+
+@pytest.mark.asyncio
+async def test_inspect_agent_memory_tree_tool_search_can_include_ancestor_context(db_session):
+    project, refs = _seed_memory_tree_project(db_session)
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-memory-tree-search"),
+        WritingAgentToolRequest(
+            tool_name="inspect_agent_memory_tree",
+            params={"query": "后续调查", "include_ancestors": True},
+        ),
+    )
+
+    assert result.handled is True
+    assert [node["id"] for node in result.output["nodes"]] == [
+        "volume:1",
+        "chapter:1",
+        f"scene:{refs['scene_memory_id']}",
+        f"beat:{refs['beat_memory_id']}",
+    ]
+    assert result.output["navigation"]["mode"] == "search_with_ancestors"
+    assert result.output["navigation"]["matched_node_ids"] == [f"beat:{refs['beat_memory_id']}"]
+    assert result.output["navigation"]["ancestor_node_ids"] == [
+        "volume:1",
+        "chapter:1",
+        f"scene:{refs['scene_memory_id']}",
+    ]
 
 
 def test_memory_tree_tool_is_registered_with_read_metadata():
@@ -137,6 +191,9 @@ def test_memory_tree_tool_is_registered_with_read_metadata():
     assert descriptor is not None
     assert descriptor.category == "longform_memory"
     assert descriptor.target_type == "agent_memory_tree"
+    assert descriptor.input_schema["properties"]["expand_node_id"]["type"] == "string"
+    assert descriptor.input_schema["properties"]["include_ancestors"]["type"] == "boolean"
+    assert descriptor.input_schema["properties"]["max_depth"]["type"] == "integer"
     assert metadata == {
         "tool_name": "inspect_agent_memory_tree",
         "adapter_type": "static",

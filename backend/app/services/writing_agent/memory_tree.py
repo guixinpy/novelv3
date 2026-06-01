@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.models import ChapterContent, LongformMemory, Outline, Storyline
 
-MEMORY_TREE_VERSION = "phase231.memory_tree.v1"
+MEMORY_TREE_VERSION = "phase238.memory_tree_browsing.v1"
 MEMORY_TREE_SUMMARY_MATERIALIZATION_VERSION = "phase237.memory_tree_summary_materialization.v1"
 MEMORY_TREE_LEVELS = ["volume", "chapter", "scene", "beat"]
 MEMORY_TREE_VOLUME_SUMMARY_TYPE = "memory_tree_volume_summary"
@@ -20,8 +20,11 @@ def inspect_agent_memory_tree(
     *,
     level: str | None = None,
     node_id: str | None = None,
+    expand_node_id: str | None = None,
     chapter_index: int | None = None,
     query: str | None = None,
+    include_ancestors: bool = False,
+    max_depth: int | None = None,
 ) -> dict[str, Any]:
     chapters = _chapters(db, project_id)
     outline = _outline(db, project_id)
@@ -33,12 +36,15 @@ def inspect_agent_memory_tree(
         storyline=storyline,
         memories=memories,
     )
-    nodes = _filter_nodes(
+    nodes, navigation = _select_nodes(
         all_nodes,
         level=level,
         node_id=node_id,
+        expand_node_id=expand_node_id,
         chapter_index=chapter_index,
         query=query,
+        include_ancestors=include_ancestors,
+        max_depth=max_depth,
     )
     return {
         "version": MEMORY_TREE_VERSION,
@@ -48,9 +54,13 @@ def inspect_agent_memory_tree(
         "filters": {
             "level": level,
             "node_id": node_id,
+            "expand_node_id": expand_node_id,
             "chapter_index": chapter_index,
             "query": query,
+            "include_ancestors": include_ancestors,
+            "max_depth": max_depth,
         },
+        "navigation": navigation,
         "summary": _summary(all_nodes),
         "roots": [node["id"] for node in all_nodes if node["level"] == "volume"],
         "nodes": nodes,
@@ -58,6 +68,60 @@ def inspect_agent_memory_tree(
             "source_tables": ["chapter_contents", "outlines", "storylines", "longform_memories"],
             "projection": "in_memory",
         },
+    }
+
+
+def _select_nodes(
+    nodes: list[dict[str, Any]],
+    *,
+    level: str | None,
+    node_id: str | None,
+    expand_node_id: str | None,
+    chapter_index: int | None,
+    query: str | None,
+    include_ancestors: bool,
+    max_depth: int | None,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    nodes_by_id = {node["id"]: node for node in nodes}
+    normalised_max_depth = _normalise_max_depth(max_depth)
+    ancestor_node_ids: list[str] = []
+    descendant_node_ids: list[str] = []
+
+    if expand_node_id:
+        matched_node_ids = [expand_node_id] if expand_node_id in nodes_by_id else []
+        descendant_node_ids = _descendant_node_ids(
+            nodes_by_id,
+            expand_node_id,
+            max_depth=normalised_max_depth,
+        )
+        selected_node_ids = set(matched_node_ids) | set(descendant_node_ids)
+        if include_ancestors:
+            ancestor_node_ids = _ancestor_node_ids(nodes_by_id, matched_node_ids)
+            selected_node_ids.update(ancestor_node_ids)
+        mode = "expanded_subtree"
+    else:
+        matched_nodes = _filter_nodes(
+            nodes,
+            level=level,
+            node_id=node_id,
+            chapter_index=chapter_index,
+            query=query,
+        )
+        matched_node_ids = [node["id"] for node in matched_nodes]
+        selected_node_ids = set(matched_node_ids)
+        if include_ancestors:
+            ancestor_node_ids = _ancestor_node_ids(nodes_by_id, matched_node_ids)
+            selected_node_ids.update(ancestor_node_ids)
+        mode = "search_with_ancestors" if query and include_ancestors else "filtered"
+
+    return [node for node in nodes if node["id"] in selected_node_ids], {
+        "mode": mode,
+        "matched_node_ids": matched_node_ids,
+        "expanded_node_id": expand_node_id,
+        "include_ancestors": include_ancestors,
+        "max_depth": normalised_max_depth,
+        "ancestor_node_ids": ancestor_node_ids,
+        "descendant_node_ids": descendant_node_ids,
     }
 
 
@@ -312,6 +376,47 @@ def _filter_nodes(
     return filtered
 
 
+def _ancestor_node_ids(nodes_by_id: dict[str, dict[str, Any]], node_ids: list[str]) -> list[str]:
+    ancestor_ids: list[str] = []
+    seen: set[str] = set()
+    for node_id in node_ids:
+        node = nodes_by_id.get(node_id)
+        if node is None:
+            continue
+        path: list[str] = []
+        parent_id = node.get("parent_id")
+        while parent_id and parent_id in nodes_by_id:
+            path.append(parent_id)
+            parent_id = nodes_by_id[parent_id].get("parent_id")
+        for ancestor_id in reversed(path):
+            if ancestor_id not in seen:
+                ancestor_ids.append(ancestor_id)
+                seen.add(ancestor_id)
+    return ancestor_ids
+
+
+def _descendant_node_ids(
+    nodes_by_id: dict[str, dict[str, Any]],
+    node_id: str,
+    *,
+    max_depth: int | None,
+) -> list[str]:
+    if node_id not in nodes_by_id:
+        return []
+    descendant_ids: list[str] = []
+    queue = [(child_id, 1) for child_id in nodes_by_id[node_id].get("children", [])]
+    while queue:
+        current_id, depth = queue.pop(0)
+        if current_id not in nodes_by_id:
+            continue
+        if max_depth is not None and depth > max_depth:
+            continue
+        descendant_ids.append(current_id)
+        if max_depth is None or depth < max_depth:
+            queue.extend((child_id, depth + 1) for child_id in nodes_by_id[current_id].get("children", []))
+    return descendant_ids
+
+
 def _summary(nodes: list[dict[str, Any]]) -> dict[str, int]:
     return {
         "volume_nodes": sum(1 for node in nodes if node["level"] == "volume"),
@@ -398,6 +503,12 @@ def _optional_int(value: Any) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def _normalise_max_depth(value: int | None) -> int | None:
+    if value is None:
+        return None
+    return max(0, int(value))
 
 
 def _volume_summary(

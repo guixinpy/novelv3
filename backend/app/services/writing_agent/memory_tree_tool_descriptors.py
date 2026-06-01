@@ -13,8 +13,11 @@ MEMORY_TREE_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
             {
                 "level": {"type": "string", "enum": ["volume", "chapter", "scene", "beat"]},
                 "node_id": {"type": "string"},
+                "expand_node_id": {"type": "string"},
                 "chapter_index": {"type": "integer", "minimum": 1},
                 "query": {"type": "string"},
+                "include_ancestors": {"type": "boolean"},
+                "max_depth": {"type": "integer", "minimum": 0},
             }
         ),
         output_schema=object_schema(
@@ -22,6 +25,7 @@ MEMORY_TREE_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
                 "status": {"type": "string"},
                 "levels": {"type": "array"},
                 "filters": {"type": "object"},
+                "navigation": {"type": "object"},
                 "summary": {"type": "object"},
                 "roots": {"type": "array"},
                 "nodes": {"type": "array"},

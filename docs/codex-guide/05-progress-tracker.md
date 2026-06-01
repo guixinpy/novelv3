@@ -75,6 +75,7 @@
 - [x] Retrieval 检索：本地 hash embedding + 可切换远程 + lexical/vector score
 - [x] Memory Tree 框架：memory_tree.py + 工具适配器
 - [x] Memory Tree 卷/章摘要持久化基础版：record_agent_memory_tree_summaries 写入 LongformMemory 摘要节点
+- [x] Memory Tree 基础浏览：inspect_agent_memory_tree 支持 expand_node_id、max_depth、include_ancestors，用于展开/收起/搜索上下文
 - [x] 记忆激活：memory_activation.py
 - [x] 知识库候选：knowledge_base_candidates + 执行
 - [x] 世界模型分析执行：world_model_analysis_execution
@@ -84,9 +85,10 @@
 | 优先级 | 任务 | 完成标准 | 状态 |
 |--------|------|---------|------|
 | P0 | Memory Tree 分层摘要（卷→章两级） | 能生成并持久化卷级和章级摘要节点 | ✅ 已完成（基础版） |
-| P1 | Memory Tree 语义浏览 | Agent 能通过工具浏览 Tree：展开/收起/搜索 | 🟡 进行中（已有 inspect 过滤，待语义浏览增强） |
+| P1 | Memory Tree 语义浏览 | Agent 能通过工具浏览 Tree：展开/收起/搜索 | ✅ 已完成（基础浏览） |
 | P2 | 世界模型 L5 语义检查 | 至少实现一个 LLM 驱动的语义一致性检查 | 🔴 待开始 |
 | P3 | 检索策略智能化 | Agent 根据上下文自主选择检索策略 | 🔴 待开始 |
+| P4 | Memory Tree 语义召回/摘要质量增强 | 接入向量/LLM 摘要或真实长篇验证，不只依赖确定性摘要和文本匹配 | 🔴 待开始 |
 
 ### 阻塞项
 
@@ -95,6 +97,7 @@
 ### 最近完成
 
 - 2026-06-01: 新增 record_agent_memory_tree_summaries，按卷/章 materialize Memory Tree 摘要到 LongformMemory，并接入 memory_worker 路由与工具契约测试。
+- 2026-06-01: 增强 inspect_agent_memory_tree 浏览能力，支持按节点展开、max_depth 收起、搜索命中时返回祖先上下文，供 Agent 渐进浏览 Memory Tree。
 
 ---
 
@@ -281,5 +284,5 @@
 计划内容（待确认）：
 - 智能上下文压缩
 - 多维度语义审稿
-- Memory Tree 语义浏览与 LLM 摘要质量增强
+- Memory Tree 语义召回与 LLM 摘要质量增强
 - 孤兒 Worker 写入式清理与安全重分派执行
