@@ -55,6 +55,7 @@ TOOL_WORKER_ROUTES = {
     "inspect_agent_dogfood_evidence": "recovery_worker",
     "plan_recovery_tools": "recovery_worker",
     "repair_longform_maintenance": "recovery_worker",
+    "apply_agent_worker_orphan_recovery": "recovery_worker",
 }
 
 

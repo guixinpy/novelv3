@@ -7,6 +7,7 @@ allowed_tools:
   - inspect_agent_job_projection
   - inspect_agent_trace_audit
   - inspect_agent_dogfood_evidence
+  - apply_agent_worker_orphan_recovery
 write_policy:
   mode: guarded_recovery
   allow_writes: true

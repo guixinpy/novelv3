@@ -67,6 +67,7 @@ def test_agent_core_tool_adapters_live_in_dedicated_module():
         "plan_recovery_tools",
         "plan_recommended_followups",
         "inspect_agent_worker_dispatch",
+        "apply_agent_worker_orphan_recovery",
         "inspect_agent_health_projection",
         "inspect_agent_control_plane_readiness",
         "inspect_agent_slash_command_route",
@@ -92,16 +93,19 @@ def test_agent_core_tool_adapters_live_in_dedicated_module():
     assert {adapter.category for adapter in adapters.values()} == {"preflight"}
     assert adapters["apply_pending_action_route_approval_opt_in"].mutability == "guarded_write"
     assert adapters["apply_pending_action_route_approval_opt_in"].write_policy == "approval_required_redirect"
+    assert adapters["apply_agent_worker_orphan_recovery"].mutability == "guarded_write"
+    assert adapters["apply_agent_worker_orphan_recovery"].write_policy == "confirmation_required"
     assert adapters["prepare_apply_pending_action_route_approval_opt_in"].mutability == "read"
     assert adapters["execute_apply_pending_action_route_approval_opt_in_with_approval"].mutability == "write"
     assert {
         adapter.mutability
         for name, adapter in adapters.items()
         if name
-        not in {
-            "apply_pending_action_route_approval_opt_in",
-            "execute_apply_pending_action_route_approval_opt_in_with_approval",
-        }
+            not in {
+                "apply_pending_action_route_approval_opt_in",
+                "apply_agent_worker_orphan_recovery",
+                "execute_apply_pending_action_route_approval_opt_in_with_approval",
+            }
     } == {"read"}
     assert adapters["verify_agent_plan_approval_contract"].handler.__name__ == "_verify_agent_plan_approval_contract"
     assert adapters["inspect_agent_intent_projection"].handler.__name__ == "_inspect_agent_intent_projection"
@@ -2286,8 +2290,8 @@ async def test_tool_executor_handles_inspect_agent_worker_dispatch(db_session):
     }
     assert result.output["route_registry"]["status"] == "passed"
     assert result.output["route_registry"]["summary"] == {
-        "routes": 48,
-        "ready_routes": 48,
+        "routes": 49,
+        "ready_routes": 49,
         "unrouted_allowed_tools": 0,
         "issues": 0,
     }

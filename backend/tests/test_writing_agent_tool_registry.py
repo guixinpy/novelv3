@@ -46,6 +46,7 @@ def test_agent_core_tool_descriptors_live_in_dedicated_module():
         "plan_recovery_tools",
         "plan_recommended_followups",
         "inspect_agent_worker_dispatch",
+        "apply_agent_worker_orphan_recovery",
         "inspect_agent_slash_command_route",
         "inspect_agent_dialog_route_projection",
         "inspect_agent_route_preference_projection",

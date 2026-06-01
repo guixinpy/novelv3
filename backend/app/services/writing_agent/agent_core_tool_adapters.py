@@ -68,6 +68,13 @@ def build_agent_core_tool_adapters(
             category="preflight",
             mutability="read",
         ),
+        "apply_agent_worker_orphan_recovery": WritingAgentToolAdapter(
+            "apply_agent_worker_orphan_recovery",
+            _apply_agent_worker_orphan_recovery,
+            category="preflight",
+            mutability="guarded_write",
+            write_policy="confirmation_required",
+        ),
         "inspect_agent_health_projection": WritingAgentToolAdapter(
             "inspect_agent_health_projection",
             _inspect_agent_health_projection(adapter_metadata_by_name_provider, static_adapter_tool_names_provider),
@@ -315,6 +322,22 @@ def _inspect_agent_worker_dispatch(context: WritingAgentToolContext, tool: Writi
         output = preview_agent_worker_dispatches(tasks, parent_run_id=parent_run_id)
     output["orphan_recovery"] = orphan_recovery
     return output
+
+
+def _apply_agent_worker_orphan_recovery(
+    context: WritingAgentToolContext,
+    tool: WritingAgentToolRequest,
+) -> dict[str, Any]:
+    from app.services.writing_agent.agent_worker_recovery import apply_agent_worker_orphan_recovery
+
+    return apply_agent_worker_orphan_recovery(
+        context.db,
+        context.project_id,
+        confirm_apply=tool.params.get("confirm_apply") is True,
+        confirm_redispatch=tool.params.get("confirm_redispatch") is True,
+        run_ids=_string_list(tool.params.get("run_ids")),
+        limit=_optional_int(tool.params.get("limit")),
+    )
 
 
 def _inspect_agent_health_projection(

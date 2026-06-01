@@ -350,6 +350,39 @@ AGENT_CORE_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(
+        name="apply_agent_worker_orphan_recovery",
+        module="writing_agent",
+        category="preflight",
+        description="确认后清理孤兒 worker run：将仍 active 的孤兒 run 标记为 blocked，并可安全创建 pending redispatch run。",
+        input_schema=object_schema(
+            {
+                "confirm_apply": {"type": "boolean"},
+                "confirm_redispatch": {"type": "boolean"},
+                "run_ids": {"type": "array", "items": {"type": "string"}},
+                "limit": {"type": "integer", "minimum": 1},
+            },
+            required=("confirm_apply",),
+        ),
+        output_schema=object_schema(
+            {
+                "version": {"type": "string"},
+                "status": {"type": "string"},
+                "reason": {"type": "string"},
+                "write_performed": {"type": "boolean"},
+                "summary": {"type": "object"},
+                "orphan_worker_runs": {"type": "array"},
+                "side_effects": {"type": "object"},
+                "recommended_next_tools": {"type": "array"},
+                "trace": {"type": "object"},
+            }
+        ),
+        target_type="agent_worker_orphan_recovery_apply",
+        internal=True,
+        non_blocking_report=False,
+        sort_key=8,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
         name="inspect_agent_slash_command_route",
         module="writing_agent",
         category="preflight",

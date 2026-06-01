@@ -257,18 +257,23 @@ def test_worker_dispatch_routes_observability_and_dogfood_evidence_to_recovery_w
                 "tool_name": "inspect_agent_dogfood_evidence",
                 "params": {},
             },
+            {
+                "tool_name": "apply_agent_worker_orphan_recovery",
+                "params": {"confirm_apply": True},
+            },
         ],
         parent_run_id="run-recovery-observability",
     )
 
     assert preview["status"] == "ready"
-    assert preview["summary"] == {"workers": 1, "planned_tasks": 3, "blocked_tasks": 0, "issues": 0}
+    assert preview["summary"] == {"workers": 1, "planned_tasks": 4, "blocked_tasks": 0, "issues": 0}
     dispatch = preview["worker_dispatches"][0]
     assert dispatch["worker"]["name"] == "recovery_worker"
     assert [item["tool_name"] for item in dispatch["task_envelopes"]] == [
         "inspect_agent_trace_audit",
         "inspect_agent_job_projection",
         "inspect_agent_dogfood_evidence",
+        "apply_agent_worker_orphan_recovery",
     ]
 
 
@@ -303,7 +308,7 @@ def test_worker_route_registry_audit_binds_routes_to_allowed_worker_definitions(
 
     assert audit["version"] == AGENT_WORKER_ROUTE_REGISTRY_AUDIT_VERSION
     assert audit["status"] == "passed"
-    assert audit["summary"] == {"routes": 48, "ready_routes": 48, "unrouted_allowed_tools": 0, "issues": 0}
+    assert audit["summary"] == {"routes": 49, "ready_routes": 49, "unrouted_allowed_tools": 0, "issues": 0}
     assert audit["issues"] == []
     assert audit["unrouted_allowed_tools"] == []
 
@@ -321,6 +326,7 @@ def test_worker_route_registry_audit_binds_routes_to_allowed_worker_definitions(
     assert routes_by_tool["inspect_agent_trace_audit"]["worker"] == "recovery_worker"
     assert routes_by_tool["inspect_agent_job_projection"]["worker"] == "recovery_worker"
     assert routes_by_tool["inspect_agent_dogfood_evidence"]["worker"] == "recovery_worker"
+    assert routes_by_tool["apply_agent_worker_orphan_recovery"]["worker"] == "recovery_worker"
     assert routes_by_tool["inspect_agent_memory_activation_plan"]["worker"] == "memory_worker"
     assert routes_by_tool["inspect_agent_context_compression_projection"]["worker"] == "memory_worker"
     assert routes_by_tool["inspect_agent_memory_tree"]["worker"] == "memory_worker"

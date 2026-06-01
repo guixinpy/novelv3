@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -8,6 +9,7 @@ from app.models import BackgroundTask, WritingAgentRun
 from app.services.writing_agent.agent_definitions import load_agent_definition
 
 AGENT_WORKER_ORPHAN_RECOVERY_VERSION = "phase236.agent_worker_orphan_recovery.v1"
+AGENT_WORKER_ORPHAN_RECOVERY_APPLY_VERSION = "phase239.agent_worker_orphan_recovery_apply.v1"
 ACTIVE_WORKER_RUN_STATUSES = ("pending", "running")
 FAILED_PARENT_STATUSES = ("failed", "cancelled")
 FAILED_TASK_STATUSES = ("failed", "cancelled")
@@ -35,6 +37,92 @@ def inspect_agent_worker_orphan_recovery(
         "orphan_worker_runs": orphan_runs,
         "recovery_actions": recovery_actions,
         "recommended_tools": ["inspect_agent_trace_audit", "plan_recovery_tools"] if orphan_runs else [],
+    }
+
+
+def apply_agent_worker_orphan_recovery(
+    db: Session,
+    project_id: str,
+    *,
+    confirm_apply: bool,
+    confirm_redispatch: bool = False,
+    run_ids: list[str] | None = None,
+    limit: int | None = None,
+) -> dict[str, Any]:
+    inspection = inspect_agent_worker_orphan_recovery(db, project_id, limit=limit)
+    candidates = _filtered_candidates(inspection.get("orphan_worker_runs"), run_ids)
+    if not confirm_apply:
+        return {
+            "version": AGENT_WORKER_ORPHAN_RECOVERY_APPLY_VERSION,
+            "status": "blocked",
+            "reason": "confirmation_required",
+            "write_performed": False,
+            "summary": {
+                "orphan_worker_runs": len(candidates),
+                "marked_blocked_runs": 0,
+                "redispatched_runs": 0,
+            },
+            "orphan_worker_runs": candidates,
+            "side_effects": {"marked_blocked_runs": [], "redispatched_runs": []},
+            "recommended_next_tools": ["inspect_agent_worker_dispatch"] if candidates else [],
+            "trace": {"source": "apply_agent_worker_orphan_recovery", "confirmed": False},
+        }
+
+    marked_blocked_runs: list[dict[str, Any]] = []
+    redispatched_runs: list[dict[str, Any]] = []
+    for candidate in candidates:
+        run = _run_by_id(db, project_id=project_id, run_id=str(candidate.get("run_id") or ""))
+        if run is None or str(run.status) not in ACTIVE_WORKER_RUN_STATUSES:
+            continue
+        previous_status = str(run.status)
+        reason_code = str(candidate.get("reason_code") or "worker_orphan_recovered")
+        run.status = "blocked"
+        run.error = reason_code
+        run.finished_at = datetime.now(UTC)
+        run.output = _blocked_worker_output(run.output, candidate)
+        marked_blocked_runs.append(
+            {
+                "run_id": run.id,
+                "previous_status": previous_status,
+                "new_status": "blocked",
+                "reason_code": reason_code,
+            }
+        )
+        redispatch_tasks = candidate.get("redispatch_tasks") if isinstance(candidate.get("redispatch_tasks"), list) else []
+        if confirm_redispatch and redispatch_tasks:
+            redispatched_run = _create_redispatch_run(db, project_id=project_id, candidate=candidate, tasks=redispatch_tasks)
+            redispatched_runs.append(
+                {
+                    "run_id": redispatched_run.id,
+                    "status": redispatched_run.status,
+                    "source_worker_run_id": run.id,
+                    "parent_run_id": candidate.get("parent_run_id"),
+                    "task_count": len(redispatch_tasks),
+                }
+            )
+
+    db.commit()
+    return {
+        "version": AGENT_WORKER_ORPHAN_RECOVERY_APPLY_VERSION,
+        "status": "completed",
+        "reason": "applied",
+        "write_performed": bool(marked_blocked_runs or redispatched_runs),
+        "summary": {
+            "orphan_worker_runs": len(candidates),
+            "marked_blocked_runs": len(marked_blocked_runs),
+            "redispatched_runs": len(redispatched_runs),
+        },
+        "orphan_worker_runs": candidates,
+        "side_effects": {
+            "marked_blocked_runs": marked_blocked_runs,
+            "redispatched_runs": redispatched_runs,
+        },
+        "recommended_next_tools": ["inspect_agent_worker_dispatch"],
+        "trace": {
+            "source": "apply_agent_worker_orphan_recovery",
+            "confirmed": True,
+            "redispatch_confirmed": confirm_redispatch,
+        },
     }
 
 
@@ -186,3 +274,63 @@ def _scan_limit(limit: int | None) -> int:
     if limit is None:
         return DEFAULT_ORPHAN_SCAN_LIMIT
     return min(max(int(limit), 1), 100)
+
+
+def _filtered_candidates(value: object, run_ids: list[str] | None) -> list[dict[str, Any]]:
+    candidates = [dict(item) for item in value if isinstance(item, dict)] if isinstance(value, list) else []
+    requested_run_ids = {str(run_id or "").strip() for run_id in run_ids or [] if str(run_id or "").strip()}
+    if not requested_run_ids:
+        return candidates
+    return [candidate for candidate in candidates if str(candidate.get("run_id") or "") in requested_run_ids]
+
+
+def _blocked_worker_output(output: object, candidate: dict[str, Any]) -> dict[str, Any]:
+    current = dict(output) if isinstance(output, dict) else {}
+    current["orphan_recovery"] = {
+        "version": AGENT_WORKER_ORPHAN_RECOVERY_APPLY_VERSION,
+        "status": "blocked",
+        "run_id": candidate.get("run_id"),
+        "agent_profile": candidate.get("agent_profile"),
+        "reason_code": candidate.get("reason_code"),
+        "parent_run_id": candidate.get("parent_run_id"),
+        "parent_status": candidate.get("parent_status"),
+        "background_task_id": candidate.get("background_task_id"),
+        "background_task_status": candidate.get("background_task_status"),
+    }
+    return current
+
+
+def _create_redispatch_run(
+    db: Session,
+    *,
+    project_id: str,
+    candidate: dict[str, Any],
+    tasks: list[dict[str, Any]],
+) -> WritingAgentRun:
+    run = WritingAgentRun(
+        project_id=project_id,
+        goal=f"Redispatch orphan {candidate.get('agent_profile') or 'worker'} tasks",
+        status="pending",
+        entrypoint="agent_worker_recovery",
+        input={
+            "tools": tasks,
+            "orphan_recovery": {
+                "version": AGENT_WORKER_ORPHAN_RECOVERY_APPLY_VERSION,
+                "source_worker_run_id": candidate.get("run_id"),
+                "parent_run_id": candidate.get("parent_run_id"),
+                "reason_code": candidate.get("reason_code"),
+            },
+            "planner": {
+                "agent_profile": "orchestrator",
+                "source_run_id": candidate.get("parent_run_id"),
+                "worker_recovery": {
+                    "source_worker_run_id": candidate.get("run_id"),
+                    "source_agent_profile": candidate.get("agent_profile"),
+                    "reason_code": candidate.get("reason_code"),
+                },
+            },
+        },
+    )
+    db.add(run)
+    db.flush()
+    return run
