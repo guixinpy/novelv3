@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -19,7 +20,12 @@ EXECUTE_RECORD_KNOWLEDGE_BASE_CANDIDATE_WITH_APPROVAL_VERSION = (
     "phase189.knowledge_base_candidate_with_approval_execute.v1"
 )
 APPROVAL_GATE_VERSION = "phase189.knowledge_base_candidate_agent_plan_approval.v1"
-_APPROVAL_PARAM_NAMES = {"confirm_execute", "approval_contract_hash", "approval_contract"}
+_APPROVAL_PARAM_NAMES = {
+    "confirm_execute",
+    "approval_contract_hash",
+    "approval_contract",
+    "post_approval_continuation_tools",
+}
 
 
 def prepare_record_agent_knowledge_base_candidate(
@@ -36,6 +42,7 @@ def prepare_record_agent_knowledge_base_candidate(
     approval_contract = build_agent_plan_approval_contract(agent_plan)
     approval_hash = str(((approval_contract.get("approval") or {}).get("approval_contract_hash")) or "")
     first_step = agent_plan["steps"][0]
+    post_approval_continuation_tools = _post_approval_continuation_tools(action_params)
     return {
         "status": "approval_required",
         "prepare_version": PREPARE_RECORD_KNOWLEDGE_BASE_CANDIDATE_VERSION,
@@ -53,12 +60,14 @@ def prepare_record_agent_knowledge_base_candidate(
         },
         "side_effects": {"executed": [], "skipped": ["record_agent_knowledge_base_candidate"]},
         "recommended_next_tools": ["execute_record_agent_knowledge_base_candidate_with_approval"],
+        "post_approval_continuation_tools": post_approval_continuation_tools,
         "trace": {
             "selected_tools": ["prepare_record_agent_knowledge_base_candidate"],
             "rejected_tools": [
                 {"tool_name": "record_agent_knowledge_base_candidate", "reason": "approval_required_before_write"}
             ],
             "approval_gate_version": APPROVAL_GATE_VERSION,
+            "post_approval_continuation_count": len(post_approval_continuation_tools),
         },
     }
 
@@ -143,6 +152,10 @@ def execute_record_agent_knowledge_base_candidate_with_approval(
             },
         )
 
+    post_approval_continuation_tools = _post_approval_continuation_tools(action_params)
+    recommended_next_tools = _continuation_tool_names(post_approval_continuation_tools) or [
+        "inspect_agent_knowledge_base_route"
+    ]
     return {
         "status": "success",
         "execute_version": EXECUTE_RECORD_KNOWLEDGE_BASE_CANDIDATE_WITH_APPROVAL_VERSION,
@@ -160,10 +173,12 @@ def execute_record_agent_knowledge_base_candidate_with_approval(
             "execution_route": "static_adapter",
         },
         "side_effects": {"executed": ["record_agent_knowledge_base_candidate"], "skipped": []},
-        "recommended_next_tools": ["inspect_agent_knowledge_base_route"],
+        "recommended_next_tools": recommended_next_tools,
+        "post_approval_continuation_tools": post_approval_continuation_tools,
         "trace": {
             "selected_tools": ["execute_record_agent_knowledge_base_candidate_with_approval"],
             "approval_gate_version": APPROVAL_GATE_VERSION,
+            "post_approval_continuation_count": len(post_approval_continuation_tools),
         },
     }
 
@@ -235,6 +250,39 @@ def _target_id_from_plan(agent_plan: dict[str, Any]) -> str:
     return str(components.get("target_id") or "")
 
 
+def _post_approval_continuation_tools(action_params: dict[str, Any] | None) -> list[dict[str, Any]]:
+    raw_tools = (action_params or {}).get("post_approval_continuation_tools")
+    if not isinstance(raw_tools, list):
+        return []
+    tools: list[dict[str, Any]] = []
+    for item in raw_tools:
+        if not isinstance(item, dict):
+            continue
+        tool_name = str(item.get("tool_name") or "").strip()
+        if not tool_name:
+            continue
+        params = item.get("params") if isinstance(item.get("params"), dict) else {}
+        tool: dict[str, Any] = {"tool_name": tool_name, "params": dict(params)}
+        for field in ("reason", "expected_output"):
+            value = str(item.get(field) or "").strip()
+            if value:
+                tool[field] = value
+        tools.append(tool)
+    return _json_safe_output({"tools": tools})["tools"]
+
+
+def _continuation_tool_names(tools: list[dict[str, Any]]) -> list[str]:
+    seen: set[str] = set()
+    names: list[str] = []
+    for tool in tools:
+        tool_name = str(tool.get("tool_name") or "").strip()
+        if not tool_name or tool_name in seen:
+            continue
+        seen.add(tool_name)
+        names.append(tool_name)
+    return names
+
+
 def _blocked_output(
     project_id: str,
     *,
@@ -274,3 +322,7 @@ def _string_list(value: object) -> list[str]:
         return [str(item).strip() for item in value if str(item).strip()]
     cleaned = str(value or "").strip()
     return [cleaned] if cleaned else []
+
+
+def _json_safe_output(output: dict[str, Any]) -> dict[str, Any]:
+    return json.loads(json.dumps(output, ensure_ascii=False, default=str))

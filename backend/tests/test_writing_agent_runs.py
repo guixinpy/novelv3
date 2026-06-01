@@ -1812,6 +1812,77 @@ def test_agent_run_recommended_followups_prepare_post_chapter_memory_candidates(
     assert all(step["output"]["side_effects"]["executed"] == [] for step in candidate_prepare_payload["steps"])
 
 
+def test_agent_run_plans_post_approval_knowledge_candidate_continuation(client, db_session):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2, 3], generated_chapters=[1, 2])
+    candidate_params = {
+        "memory_type": "writing_pattern",
+        "title": "第2章写作沉淀：雾港线索2",
+        "summary": "后续章节应延续旧灯塔调查压力，并在章末保留可追踪的行动钩子。",
+        "source_refs": ["chapter_content:2"],
+        "confidence": 0.76,
+        "status": "candidate",
+        "tags": ["post-chapter-capture", "chapter:2"],
+    }
+    continuation_tools = [
+        {"tool_name": "summarize_longform_context", "params": {"chapter_index": 3}},
+        {"tool_name": "preflight_writing", "params": {"chapter_index": 3}},
+    ]
+    prepare_response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "准备写后知识候选审批",
+            "tools": [{"tool_name": "prepare_record_agent_knowledge_base_candidate", "params": candidate_params}],
+        },
+    )
+    prepare_output = prepare_response.json()["steps"][0]["output"]
+
+    execute_response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "执行写后知识候选审批",
+            "tools": [
+                {
+                    "tool_name": "execute_record_agent_knowledge_base_candidate_with_approval",
+                    "params": {
+                        **candidate_params,
+                        "confirm_execute": True,
+                        "approval_contract_hash": prepare_output["agent_plan_approval_contract_hash"],
+                        "approval_contract": prepare_output["agent_plan_approval_contract"],
+                        "post_approval_continuation_tools": continuation_tools,
+                    },
+                }
+            ],
+        },
+    )
+    execute_payload = execute_response.json()
+    execute_run_id = execute_payload["id"]
+
+    preview_response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "预览知识沉淀后的继续写作链路",
+            "tools": [{"tool_name": "plan_recommended_followups", "params": {"run_id": execute_run_id}}],
+        },
+    )
+
+    output = preview_response.json()["steps"][0]["output"]
+    assert prepare_response.status_code == 200
+    assert execute_response.status_code == 200
+    assert preview_response.status_code == 200
+    assert execute_payload["steps"][0]["output"]["recommended_next_tools"] == [
+        "summarize_longform_context",
+        "preflight_writing",
+    ]
+    assert output["status"] == "completed"
+    assert output["recommended_followups"]["source_fields"] == [
+        "recommended_next_tools",
+        "post_approval_continuation_tools",
+    ]
+    assert output["recommended_followups"]["post_approval_continuation_tools"] == continuation_tools
+    assert [tool["tool_name"] for tool in output["tools"]] == ["summarize_longform_context", "preflight_writing"]
+    assert [tool["params"] for tool in output["tools"]] == [{"chapter_index": 3}, {"chapter_index": 3}]
+
+
 def test_agent_run_auto_plan_rejects_recommended_followup_hash_mismatch(client, db_session):
     project_id, source_run = _seed_recommended_followup_source_run(db_session, ["review_chapter_quality"])
 

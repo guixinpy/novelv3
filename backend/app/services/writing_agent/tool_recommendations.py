@@ -27,6 +27,10 @@ def normalize_tool_recommendations(
     if provenance_tools:
         source_fields.append("memory_provenance.recovery.tools")
         raw_recommendations.extend(_recommendation_value(tool) for tool in provenance_tools)
+    post_approval_continuation_tools = _post_approval_continuation_tools(output)
+    if post_approval_continuation_tools:
+        source_fields.append("post_approval_continuation_tools")
+        raw_recommendations.extend(_recommendation_value(tool) for tool in post_approval_continuation_tools)
     provenance_write_tools = _provenance_write_tools(output)
     if provenance_write_tools:
         source_fields.append("memory_provenance.recovery.write_tools")
@@ -45,6 +49,7 @@ def normalize_tool_recommendations(
         "policy_followups": policy_followups,
         "canonical_followups": _dedupe(runtime_followups + policy_followups),
         "provenance_recovery_tools": provenance_tools,
+        "post_approval_continuation_tools": post_approval_continuation_tools,
         "provenance_write_tools": provenance_write_tools,
     }
 
@@ -86,6 +91,27 @@ def _provenance_recovery_tools(output: Mapping[str, object]) -> list[dict[str, o
 
 def _provenance_write_tools(output: Mapping[str, object]) -> list[dict[str, object]]:
     return _provenance_tool_requests(output, field="write_tools")
+
+
+def _post_approval_continuation_tools(output: Mapping[str, object]) -> list[dict[str, object]]:
+    value = output.get("post_approval_continuation_tools")
+    if not isinstance(value, list):
+        return []
+    results: list[dict[str, object]] = []
+    for item in value:
+        if not isinstance(item, Mapping):
+            continue
+        tool_name = item.get("tool_name")
+        if not isinstance(tool_name, str) or not tool_name.strip():
+            continue
+        params = item.get("params")
+        results.append(
+            {
+                "tool_name": tool_name.strip(),
+                "params": dict(params) if isinstance(params, Mapping) else {},
+            }
+        )
+    return results
 
 
 def _provenance_tool_requests(output: Mapping[str, object], *, field: str) -> list[dict[str, object]]:

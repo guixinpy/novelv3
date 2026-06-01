@@ -143,7 +143,7 @@ def build_recommended_followup_tool_plan(db: Session, project_id: str, run_id: s
         state["canonical_followups"],
         source_step=step,
         source_run_id=run_id,
-        provenance_tools=state["provenance_recovery_tools"],
+        provenance_tools=state["provenance_recovery_tools"] + state["post_approval_continuation_tools"],
     )
     selected_tools = [str(tool.get("tool_name") or "") for tool in tools]
     worker_profiles = [
@@ -235,6 +235,9 @@ def _followup_state_from_recommendations(
         "canonical_followups": canonical_followups,
         "non_tool_recommendations": _string_list(recommendations.get("non_tool_recommendations")),
         "provenance_recovery_tools": _tool_request_list(recommendations.get("provenance_recovery_tools")),
+        "post_approval_continuation_tools": _tool_request_list(
+            recommendations.get("post_approval_continuation_tools")
+        ),
         "provenance_write_tools": _tool_request_list(recommendations.get("provenance_write_tools")),
         "next_tool": allowed_followups[0] if allowed_followups else None,
     }
@@ -272,7 +275,10 @@ def _tool_requests_from_followups(
             if effective_tool_name not in allowed:
                 rejected_tools.append({"tool_name": tool_name, "reason": "not_allowed"})
                 continue
-            if effective_tool_name not in SAFE_RECOMMENDED_FOLLOWUP_TOOLS:
+            if effective_tool_name not in SAFE_RECOMMENDED_FOLLOWUP_TOOLS and not _is_safe_parameterized_followup(
+                effective_tool_name,
+                provenance_tool,
+            ):
                 rejected_tools.append({"tool_name": tool_name, "reason": "requires_confirmation"})
                 continue
             selected_index = len(tools) + 1
@@ -472,6 +478,13 @@ def _is_distinct_provenance_retry(source_step: WritingAgentStep, provenance_tool
         return False
     params = provenance_tool.get("params") if isinstance(provenance_tool.get("params"), dict) else {}
     return _stable_json(params) != _stable_json(_source_step_params(source_step))
+
+
+def _is_safe_parameterized_followup(tool_name: str, provenance_tool: dict[str, Any] | None) -> bool:
+    if tool_name != "preflight_writing" or provenance_tool is None:
+        return False
+    params = provenance_tool.get("params") if isinstance(provenance_tool.get("params"), dict) else {}
+    return _optional_int(params.get("chapter_index")) is not None
 
 
 def _source_step_params(step: WritingAgentStep) -> dict[str, Any]:

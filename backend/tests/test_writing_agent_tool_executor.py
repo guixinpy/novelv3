@@ -5312,6 +5312,8 @@ async def test_tool_executor_executes_record_knowledge_candidate_with_approval(d
     assert result.output["execution_resource_binding"]["status"] == "ready"
     assert result.output["execution_resource_binding"]["expected"]["tool_name"] == "record_agent_knowledge_base_candidate"
     assert result.output["side_effects"] == {"executed": ["record_agent_knowledge_base_candidate"], "skipped": []}
+    assert result.output["recommended_next_tools"] == ["summarize_longform_context", "preflight_writing"]
+    assert result.output["post_approval_continuation_tools"][0]["params"] == {"chapter_index": 2}
     assert result.output["candidate"]["title"] == "低细节续写可行"
 
     db_session.refresh(project)

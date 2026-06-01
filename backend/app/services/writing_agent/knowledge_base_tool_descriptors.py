@@ -28,6 +28,7 @@ _KNOWLEDGE_CANDIDATE_PREPARE_OUTPUT = object_schema(
         "required_confirmation": {"type": "object"},
         "side_effects": {"type": "object"},
         "recommended_next_tools": {"type": "array"},
+        "post_approval_continuation_tools": {"type": "array"},
         "trace": {"type": "object"},
     }
 )
@@ -136,6 +137,7 @@ KNOWLEDGE_BASE_AGENT_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
                 "confirm_execute": {"type": "boolean"},
                 "approval_contract_hash": {"type": "string"},
                 "approval_contract": {"type": "object"},
+                "post_approval_continuation_tools": {"type": "array"},
             },
             required=(
                 "memory_type",
@@ -162,6 +164,7 @@ KNOWLEDGE_BASE_AGENT_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
                 "evidence": {"type": "object"},
                 "side_effects": {"type": "object"},
                 "recommended_next_tools": {"type": "array"},
+                "post_approval_continuation_tools": {"type": "array"},
                 "trace": {"type": "object"},
             }
         ),
