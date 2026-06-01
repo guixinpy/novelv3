@@ -275,6 +275,82 @@ def test_planner_continuation_executes_confirmed_write_tool_after_contract_verif
     assert action_params == {"chapter_index": 2}
 
 
+def test_planner_continuation_executes_prepared_generate_chapter_contract(
+    client,
+    db_session,
+    monkeypatch,
+):
+    from app.services.writing_agent.chapter_generation_execution import prepare_generate_chapter_execution
+
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2, 3], generated_chapters=[1, 2])
+    calls = []
+
+    async def fake_execute(self, action_type, project_id, *, command_args=None, action_params=None):
+        calls.append((action_type, project_id, command_args, action_params))
+        return {"status": "success", "chapter_index": 3, "trace_id": "trace-generated-3"}
+
+    monkeypatch.setattr("app.services.actions.action_execution_service.ActionExecutionService.execute", fake_execute)
+    prepared = prepare_generate_chapter_execution(db_session, project.id, chapter_index=3)
+    approval_hash = prepared["agent_plan_approval_contract_hash"]
+    approval_contract = prepared["agent_plan_approval_contract"]
+    agent_plan = prepared["agent_plan"]
+    plan_id = agent_plan["trace"]["plan_id"]
+    params = {
+        **agent_plan["steps"][0]["params"],
+        "confirm_execute": True,
+        "approval_contract_hash": approval_hash,
+        "approval_contract": approval_contract,
+    }
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "执行已审批工具：生成正文",
+            "entrypoint": "ui_planner_continuation_execute",
+            "tools": [
+                {
+                    "tool_name": "execute_generate_chapter_with_approval",
+                    "params": params,
+                    "planner": {
+                        "plan_id": plan_id,
+                        "planner_version": prepared["prepare_version"],
+                        "mutability": "write",
+                        "requires_confirmation": True,
+                        "reason": "确认执行已准备的写入工具。",
+                    },
+                }
+            ],
+            "input": {
+                "planner_continuation": True,
+                "source_run_id": "run-followup-exec",
+                "source_plan_id": plan_id,
+                "confirm_execute": True,
+                "approval_contract_hash": approval_hash,
+                "approval_contract": approval_contract,
+                "planner": {
+                    **agent_plan,
+                    "approval_contract": approval_contract,
+                },
+            },
+        },
+    )
+
+    payload = response.json()
+    assert response.status_code == 200
+    assert payload["status"] == "success"
+    step = payload["steps"][0]
+    assert step["tool_name"] == "execute_generate_chapter_with_approval"
+    assert step["status"] == "success"
+    assert step["output"]["planner_continuation_approval"]["approval_contract_hash"] == approval_hash
+    assert step["output"]["agent_plan_approval_verification"]["status"] == "ready"
+    assert calls
+    action_type, called_project_id, command_args, action_params = calls[0]
+    assert action_type == "generate_chapter"
+    assert called_project_id == project.id
+    assert "上一章状态卡" in command_args
+    assert action_params == {"chapter_index": 3}
+
+
 def test_planner_continuation_blocks_write_tool_on_approval_hash_mismatch(client, db_session, monkeypatch):
     project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1])
     calls = []
