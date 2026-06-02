@@ -1119,6 +1119,113 @@ describe('HermesView', () => {
     wrapper.unmount()
   })
 
+  it('starts a retrieval evidence run from a memory tree workspace node', async () => {
+    vi.mocked((api as any).createAgentRun)
+      .mockImplementationOnce(async () => ({
+        id: 'run-memory-tree-workspace',
+        project_id: 'project-1',
+        goal: '搜索 Memory Tree：灯塔旧回声',
+        status: 'success',
+        entrypoint: 'ui_memory_tree_workspace_search',
+        input: {},
+        output: null,
+        error: null,
+        steps: [
+          {
+            id: 'step-memory-tree-workspace',
+            tool_name: 'inspect_agent_memory_tree',
+            status: 'success',
+            output: {
+              status: 'ready',
+              summary: {
+                volume_nodes: 0,
+                chapter_nodes: 1,
+                scene_nodes: 0,
+                beat_nodes: 0,
+              },
+              nodes: [
+                {
+                  id: 'chapter:2',
+                  level: 'chapter',
+                  chapter_index: 2,
+                  title: '灯塔旧回声',
+                  summary: '主角在灯塔发现旧回声线索。',
+                  children: [],
+                  source_refs: [{ source_type: 'chapter_content', source_id: 'chapter-content-2' }],
+                },
+              ],
+            },
+          },
+        ],
+      }))
+      .mockImplementationOnce(async () => ({
+        id: 'run-memory-tree-retrieval',
+        project_id: 'project-1',
+        goal: '检索 Memory Tree 证据：灯塔旧回声',
+        status: 'success',
+        entrypoint: 'ui_memory_tree_workspace_retrieval',
+        input: {},
+        output: null,
+        error: null,
+        steps: [
+          {
+            id: 'step-memory-tree-retrieval',
+            tool_name: 'search_agent_retrieval_context',
+            status: 'success',
+            output: {
+              status: 'completed',
+              query: '灯塔旧回声',
+              summary: { total: 2, returned: 2 },
+              items: [],
+            },
+          },
+        ],
+      }))
+    const wrapper = await mountHermesView()
+
+    const openWorkspace = document.querySelector('[data-testid="memory-tree-workspace-open"]') as HTMLButtonElement
+    openWorkspace.click()
+    await flushPromises()
+
+    await wrapper.get('[data-testid="memory-tree-workspace-query"]').setValue('灯塔旧回声')
+    await wrapper.get('[data-testid="memory-tree-workspace-search"]').trigger('submit')
+    await flushPromises()
+
+    const retrievalLink = wrapper.get('[data-testid="memory-tree-workspace-search-retrieval"]')
+    expect(retrievalLink.text()).toContain('检索证据')
+    await retrievalLink.trigger('click')
+    await flushPromises()
+
+    const retrievalRequest = vi.mocked((api as any).createAgentRun).mock.calls[1][1]
+    expect(retrievalRequest).toEqual({
+      goal: '检索 Memory Tree 证据：灯塔旧回声',
+      entrypoint: 'ui_memory_tree_workspace_retrieval',
+      tools: [
+        {
+          tool_name: 'search_agent_retrieval_context',
+          params: {
+            query: '灯塔旧回声',
+            limit: 8,
+            max_chapter_index: 2,
+          },
+        },
+      ],
+      input: {
+        memory_tree_workspace_retrieval: true,
+        source_run_id: 'run-memory-tree-workspace',
+        source_node_label: '灯塔旧回声',
+        query: '灯塔旧回声',
+        max_chapter_index: 2,
+      },
+    })
+    expect(JSON.stringify(retrievalRequest)).not.toContain('chapter:2')
+    expect(JSON.stringify(retrievalRequest)).not.toContain('chapter-content-2')
+    expect(wrapper.get('[data-testid="agent-run-drawer"]').text()).toContain('run-memory-tree-retrieval')
+    expect(wrapper.get('[data-testid="memory-tree-workspace"]').text()).toContain('检索证据：灯塔旧回声')
+
+    wrapper.unmount()
+  })
+
   it('creates a read-only memory tree expand run from a subnav result node', async () => {
     const searchRun = {
       id: 'run-memory-tree-search',

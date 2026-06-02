@@ -79,10 +79,12 @@ type MemoryTreePanelResultRow = {
   chapterLabel: string
   summary: string
   relevanceLabel: string
+  retrievalQuery: string
   expandNodeId: string
   chapterIndex: number | null
   canExpand: boolean
   canOpenChapter: boolean
+  canSearchRetrieval: boolean
   depth: number
 }
 
@@ -148,7 +150,10 @@ const memoryTreePanelResultRows = computed<MemoryTreePanelResultRow[]>(() => (
     const level = stringValue(node.level)
     const relevance = recordValue(node.relevance)
     const score = numberValue(relevance.score)
-    const title = safeMemoryTreeDisplayValue(node.title) || '未命名节点'
+    const safeTitle = safeMemoryTreeDisplayValue(node.title)
+    const title = safeTitle || '未命名节点'
+    const summary = safeMemoryTreeDisplayValue(node.summary)
+    const retrievalQuery = safeTitle || summary
     const expandNodeId = stringValue(node.id)
     const chapterIndex = numberValue(node.chapter_index)
     const canExpand = Boolean(expandNodeId) && stringList(node.children).length > 0
@@ -157,12 +162,14 @@ const memoryTreePanelResultRows = computed<MemoryTreePanelResultRow[]>(() => (
       levelLabel: memoryTreeLevelLabel(level),
       title,
       chapterLabel: chapterIndexLabel(node.chapter_index),
-      summary: safeMemoryTreeDisplayValue(node.summary),
+      summary,
       relevanceLabel: score !== null ? `相关度 ${score.toFixed(2)}` : '',
+      retrievalQuery,
       expandNodeId,
       chapterIndex,
       canExpand,
       canOpenChapter: chapterIndex !== null && chapterIndex > 0,
+      canSearchRetrieval: Boolean(retrievalQuery),
       depth,
     }
   })
@@ -527,6 +534,51 @@ async function openMemoryTreeChapter(row: MemoryTreePanelResultRow) {
     workspace.applyUserPanel('content', `从 Memory Tree 打开第${row.chapterIndex}章`)
   } catch (err) {
     memoryTreePanelError.value = err instanceof Error ? err.message : '加载章节失败'
+  } finally {
+    memoryTreePanelLoading.value = false
+  }
+}
+
+async function searchMemoryTreeRetrieval(row: MemoryTreePanelResultRow) {
+  if (!row.canSearchRetrieval || !row.retrievalQuery || memoryTreePanelLoading.value) return
+  memoryTreePanelError.value = ''
+  memoryTreePanelLoading.value = true
+  agentRunError.value = ''
+  const params: Record<string, unknown> = {
+    query: row.retrievalQuery,
+    limit: 8,
+  }
+  const input: Record<string, unknown> = {
+    memory_tree_workspace_retrieval: true,
+    source_run_id: activeAgentRun.value?.id || '',
+    source_node_label: row.title,
+    query: row.retrievalQuery,
+  }
+  if (row.chapterIndex !== null && row.chapterIndex > 0) {
+    params.max_chapter_index = row.chapterIndex
+    input.max_chapter_index = row.chapterIndex
+  }
+  try {
+    const run = await api.createAgentRun(pid.value, {
+      goal: `检索 Memory Tree 证据：${row.retrievalQuery}`,
+      entrypoint: 'ui_memory_tree_workspace_retrieval',
+      tools: [
+        {
+          tool_name: 'search_agent_retrieval_context',
+          params,
+        },
+      ],
+      input,
+    })
+    activeAgentRunId.value = run.id
+    activeAgentRun.value = run
+    projectWorkspace.appendMemoryTreeHistory(pid.value, {
+      key: `${run.id}:workspace-retrieval:${memoryTreeNavigationHistory.value.length}`,
+      label: `检索证据：${row.retrievalQuery}`,
+      runId: run.id,
+    })
+  } catch (err) {
+    memoryTreePanelError.value = err instanceof Error ? err.message : '检索 Memory Tree 证据失败'
   } finally {
     memoryTreePanelLoading.value = false
   }
@@ -1096,6 +1148,15 @@ async function applyRouteUpgradeFromRun(payload: RouteUpgradeApplyPayload) {
                 <span v-if="row.relevanceLabel">{{ row.relevanceLabel }}</span>
               </div>
               <p v-if="row.summary">{{ row.summary }}</p>
+              <button
+                v-if="row.canSearchRetrieval"
+                type="button"
+                data-testid="memory-tree-workspace-search-retrieval"
+                :disabled="memoryTreePanelLoading"
+                @click="searchMemoryTreeRetrieval(row)"
+              >
+                检索证据
+              </button>
               <button
                 v-if="row.canOpenChapter"
                 type="button"
