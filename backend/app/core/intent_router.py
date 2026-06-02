@@ -23,6 +23,8 @@ _INTENT_RULE_IDS = (
     "longform_context_summary_intent",
     "context_compression_intent",
     "worker_dispatch_intent",
+    "agent_job_projection_intent",
+    "chapter_conflict_recovery_intent",
     "trace_audit_intent",
     "write_gate_coverage_intent",
     "tool_contracts_intent",
@@ -407,6 +409,34 @@ class IntentRouter:
                 extracted_params=extracted_params,
                 match_evidence=[{"kind": "pattern", "name": "worker_dispatch_phrase"}],
                 preconditions=[{"code": "worker_dispatch_read_available", "passed": True}],
+            )
+
+        if _is_agent_job_projection_intent(text):
+            extracted_params = _agent_job_projection_params(text)
+            return self._matched_projection(
+                text,
+                dialog_state,
+                pending_action_id,
+                diagnosis,
+                rule_id="agent_job_projection_intent",
+                candidate=ActionCandidate("inspect_agent_job_projection", extracted_params),
+                extracted_params=extracted_params,
+                match_evidence=[{"kind": "pattern", "name": "agent_job_projection_phrase"}],
+                preconditions=[{"code": "agent_job_projection_read_available", "passed": True}],
+            )
+
+        if _is_chapter_conflict_recovery_intent(text):
+            extracted_params = _chapter_conflict_recovery_params(text)
+            return self._matched_projection(
+                text,
+                dialog_state,
+                pending_action_id,
+                diagnosis,
+                rule_id="chapter_conflict_recovery_intent",
+                candidate=ActionCandidate("plan_chapter_conflict_recovery", extracted_params),
+                extracted_params=extracted_params,
+                match_evidence=[{"kind": "pattern", "name": "chapter_conflict_recovery_phrase"}],
+                preconditions=[{"code": "chapter_conflict_recovery_read_available", "passed": True}],
             )
 
         if _is_tool_contracts_intent(text):
@@ -1092,6 +1122,97 @@ def _worker_dispatch_worker_name(text: str) -> str | None:
         if worker_name in text:
             return worker_name
     return None
+
+
+def _is_agent_job_projection_intent(text: str) -> bool:
+    job_phrase = r"(任务队列|后台任务|任务投影|job\s*projection|agent\s*job|job\s*投影|task\s*queue)"
+    return bool(
+        re.search(rf"{job_phrase}.*(检查|诊断|查看|状态|进度|恢复|chapter|章节|task|limit)", text)
+        or re.search(rf"(检查|诊断|查看|状态|进度|恢复|chapter|章节|task|limit).*{job_phrase}", text)
+        or re.search(r"(running|failed|queued|completed|blocked|cancelled).*(任务队列|后台任务|task\s*queue)", text)
+    )
+
+
+def _agent_job_projection_params(text: str) -> dict[str, Any]:
+    params: dict[str, Any] = {}
+    chapter_index = parse_chapter_index(text)
+    if chapter_index is not None:
+        params["chapter_index"] = chapter_index
+    task_id = _task_queue_task_id(text)
+    if task_id:
+        params["task_id"] = task_id
+    task_type = _task_queue_task_type(text)
+    if task_type:
+        params["task_type"] = task_type
+    status = _task_queue_status(text)
+    if status:
+        params["status"] = status
+    limit = _numeric_option(text, r"limit|限制|最多")
+    if limit is not None:
+        params["limit"] = limit
+    return params
+
+
+def _task_queue_task_id(text: str) -> str | None:
+    match = re.search(r"(?:task_id|task\s*id|任务\s*id)\s*[:=：]?\s*([a-z0-9][a-z0-9_-]{2,})", text)
+    if match:
+        return match.group(1)
+    match = re.search(r"\b(task[-_][a-z0-9_-]{2,})\b", text)
+    if match:
+        return match.group(1)
+    return None
+
+
+_TASK_QUEUE_EXCLUDED_SNAKE_CASE_TOKENS = {
+    "task_id",
+    "run_id",
+    "source_type",
+    "max_chars",
+    "max_chapter_index",
+    "candidate_limit",
+}
+
+
+def _task_queue_task_type(text: str) -> str | None:
+    match = re.search(r"(?:task_type|task\s*type|任务类型)\s*[:=：]?\s*([a-z][a-z0-9_]{2,80})", text)
+    if match:
+        return match.group(1)
+    for match in re.finditer(r"\b([a-z][a-z0-9_]{2,80})\b", text):
+        token = match.group(1).strip().lower()
+        if "_" in token and token not in _TASK_QUEUE_EXCLUDED_SNAKE_CASE_TOKENS:
+            return token
+    return None
+
+
+def _task_queue_status(text: str) -> str | None:
+    status_patterns = (
+        ("failed", r"\bfailed\b|失败|报错"),
+        ("running", r"\brunning\b|执行中|运行中|进行中"),
+        ("queued", r"\bqueued\b|排队|待执行|等待中"),
+        ("pending", r"\bpending\b|待处理|未开始"),
+        ("completed", r"\bcompleted\b|完成|已完成"),
+        ("blocked", r"\bblocked\b|阻塞"),
+        ("cancelled", r"\bcancelled\b|\bcanceled\b|取消|已取消"),
+    )
+    for status, pattern in status_patterns:
+        if re.search(pattern, text):
+            return status
+    return None
+
+
+def _is_chapter_conflict_recovery_intent(text: str) -> bool:
+    return bool(
+        re.search(r"(章节冲突|章节占用|chapter\s*conflict|conflict\s*recovery).*(规划|计划|恢复|解决|检查|诊断)", text)
+        or re.search(r"(规划|计划|恢复|解决|检查|诊断).*(章节冲突|章节占用|chapter\s*conflict|conflict\s*recovery)", text)
+    )
+
+
+def _chapter_conflict_recovery_params(text: str) -> dict[str, Any]:
+    params: dict[str, Any] = {}
+    chapter_index = parse_chapter_index(text)
+    if chapter_index is not None:
+        params["chapter_index"] = chapter_index
+    return params
 
 
 def _is_tool_contracts_intent(text: str) -> bool:

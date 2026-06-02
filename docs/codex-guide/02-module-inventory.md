@@ -112,7 +112,7 @@ Agent 化缺口：
   ├── session.py                          # 对话 session 管理
   └── messages.py                         # 消息管理
 Agent 化缺口：
-  - 意图路由覆盖不完整（部分写作意图尚未接入；Agent Health、Control Plane 就绪度、Dialog Control Plane Projection、Mutation Fingerprints、Tool Contracts、Command Contracts、Slash Command Route、Dialog Route Projection、Intent Projection、Reference Alignment、Dogfood Evidence、Route Preference、Memory Tree 只读浏览、Memory Route、Memory Activation Plan、World Model Route、Retrieval Context、Longform Context Summary、ContextCompressor 自检、Worker Dispatch/孤儿恢复审计、Trace Audit 与 Write Gate Coverage 已可由自然语言投影到对应只读工具）
+  - 意图路由覆盖不完整（部分写作意图尚未接入；Agent Health、Control Plane 就绪度、Dialog Control Plane Projection、Mutation Fingerprints、Tool Contracts、Command Contracts、Slash Command Route、Dialog Route Projection、Intent Projection、Reference Alignment、Dogfood Evidence、Route Preference、Memory Tree 只读浏览、Memory Route、Memory Activation Plan、World Model Route、Retrieval Context、Longform Context Summary、ContextCompressor 自检、Worker Dispatch/孤儿恢复审计、Agent Job Projection、Chapter Conflict Recovery、Trace Audit 与 Write Gate Coverage 已可由自然语言投影到对应只读工具）
   - 缺少 LLM 驱动的"模糊意图"解析
   - pending_action 机制未与 Agent tool approval 统一
 关联模块：WritingAgent、Athena、前端 Chat
@@ -260,7 +260,7 @@ Agent 化缺口：
 ### 4.1 Task Queue（任务队列）
 
 ```
-当前状态：L1 进程内异步任务（BackgroundTask），支持 pending/running/completed/failed
+当前状态：L1 进程内异步任务（BackgroundTask），支持 pending/running/completed/failed；Agent Job Projection 可由自然语言只读意图触达
 目标状态：L2-L3 健壮的任务队列（考虑 Celery/RQ/Arq），支持优先级、重试、可观测
 关键文件：
   backend/app/services/tasks/
@@ -276,6 +276,7 @@ Agent 化缺口：
   ├── batch_preflight.py                  # 批量预检
   └── batch_queue_inspector.py            # 队列检查器
 Agent 化缺口：
+  - 后台任务队列已有只读投影和自然语言入口，可按章节、任务类型、状态和 limit 检查任务进度与恢复建议
   - 目前是进程内任务，非生产级队列
   - 缺少任务优先级和依赖管理
   - Worker 崩溃后缺少自动恢复
@@ -343,7 +344,7 @@ Agent 化缺口：
 ### 5.2 Version & Recovery（版本与恢复）
 
 ```
-当前状态：L2 Version + rollback + ChapterRevision 已实现
+当前状态：L2 Version + rollback + ChapterRevision 已实现；章节冲突恢复计划可由自然语言只读意图触达
 目标状态：L2-L3 更细粒度的操作回滚（不只是内容，还包括世界模型变更）
 关键文件：
   backend/app/services/writing/
@@ -354,6 +355,7 @@ Agent 化缺口：
   ├── chapter_conflict_recovery_planner.py # 章节冲突恢复
   └── direct_generation_write_guard.py    # 生成写入守卫
 Agent 化缺口：
+  - 章节冲突恢复已有只读计划器和自然语言入口，可根据章节占用投影生成恢复工具计划
   - 世界模型变更的回滚（提案级别的回滚）
   - 跨模块的原子化操作和回滚
 关联模块：WritingAgent、Athena

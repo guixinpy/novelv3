@@ -141,6 +141,8 @@
 - [x] Longform Context Summary 只读摘要意图：自然语言“汇总第3章长篇上下文 query=灯塔旧回声 max_chars 2000”可投影为 summarize_longform_context 只读工具计划
 - [x] ContextCompressor 只读自检意图：自然语言“检查上下文压缩/预算/窗口压力”可投影为 inspect_agent_context_compression_projection 只读工具计划
 - [x] Worker Dispatch 只读审计意图：自然语言“检查 worker 分发/孤儿恢复”可投影为 inspect_agent_worker_dispatch 只读工具计划
+- [x] Agent Job Projection 只读诊断意图：自然语言“检查第3章 generate_chapter failed 任务队列 limit 8”可投影为 inspect_agent_job_projection 只读工具计划
+- [x] Chapter Conflict Recovery 只读恢复计划意图：自然语言“规划第3章章节冲突恢复”可投影为 plan_chapter_conflict_recovery 只读工具计划
 - [x] Trace Audit 只读审计意图：自然语言“检查 run trace/执行链路/失败原因”可投影为 inspect_agent_trace_audit 只读工具计划
 - [x] Write Gate Coverage 只读审计意图：自然语言“检查写入工具的审批门禁覆盖”可投影为 inspect_agent_write_gate_coverage 只读工具计划
 - [x] Mutation Fingerprints 只读审计意图：自然语言“检查 generate_chapter 第4章写入变更指纹”可投影为 inspect_agent_mutation_fingerprints 只读工具计划
@@ -174,6 +176,7 @@
 
 ### 最近完成
 
+- 2026-06-02: `IntentRouter` 新增 `agent_job_projection_intent` 与 `chapter_conflict_recovery_intent`，可将“检查第3章 generate_chapter failed 任务队列 limit 8”和“规划第3章章节冲突恢复”等自然语言分别投影为 `inspect_agent_job_projection` / `plan_chapter_conflict_recovery` action；`plan_dialog_intent_agent_run` 对两者生成无需审批的 read tool 计划，并保留 chapter_index、task_type、status、limit。
 - 2026-06-02: `IntentRouter` 新增 `knowledge_base_route_intent`，可将“检查第4章知识库路由 query=写法偏好 limit 9”等自然语言投影为 `inspect_knowledge_base_route` action；`plan_dialog_intent_agent_run` 对该只读 action 生成无需审批的 `inspect_agent_knowledge_base_route` 工具计划，并保留 chapter_index、query、limit，避免被宽泛“检查”审稿意图抢占。
 - 2026-06-02: `IntentRouter` 新增 `retrieval_context_intent` 与 `longform_context_summary_intent`，可将“检索第3章前的上下文证据 query=灯塔旧回声 limit 5”和“汇总第3章长篇上下文 query=灯塔旧回声 max_chars 2000 include_prompt_context”等自然语言分别投影为 `search_retrieval_context` / `summarize_longform_context` action；`plan_dialog_intent_agent_run` 对两者生成无需审批的 read tool 计划。
 - 2026-06-02: `IntentRouter` 新增 `world_model_route_intent`，可将“检查第2章 char.hero 世界模型路由 limit 7”等自然语言投影为 `inspect_world_model_route` action；`plan_dialog_intent_agent_run` 对该只读 action 生成无需审批的 `inspect_agent_world_model_route` 工具计划，并保留 chapter_index、subject_ref、limit。
@@ -213,6 +216,7 @@
 - [x] 孤兒 Worker 恢复基础审计：agent_worker_recovery 检测 active worker run 的 missing/terminal parent，并输出清理与重分派 preview
 - [x] 孤兒 Worker 恢复写入闭环基础版：apply_agent_worker_orphan_recovery 确认后标记 orphan worker blocked，并可创建 pending redispatch run
 - [x] Worker 分发/孤兒恢复只读入口：自然语言“检查 worker 分发/孤儿恢复”可直接规划到 inspect_agent_worker_dispatch
+- [x] Agent Job Projection/章节冲突恢复只读入口：自然语言可直接规划到 inspect_agent_job_projection 和 plan_chapter_conflict_recovery，检查后台任务队列、章节占用与恢复工具计划
 
 ### 下一步任务
 
@@ -228,6 +232,7 @@
 
 ### 最近完成
 
+- 2026-06-02: `inspect_agent_job_projection` 与 `plan_chapter_conflict_recovery` 接入对话只读意图链路：Agent 可从自然语言直接检查后台任务队列、筛选章节/任务类型/状态，并为章节占用冲突生成只读恢复计划。
 - 2026-06-02: `inspect_agent_worker_dispatch` 接入对话只读意图链路：自然语言“检查 worker 分发/孤儿恢复”会经 `worker_dispatch_intent` 生成无需审批的 read tool 计划，保留显式 worker_name 并默认提供空 tasks 以执行纯审计预览。
 - 2026-06-01: 标准化 AgentDefinition loader，保留现有 YAML 定义并新增 TOML 读取能力；定义注册表审计输出 source_format，用于后续吸收 openhuman agent.toml 形态而不迁移当前文件。
 - 2026-06-01: 新增 orphan worker 恢复基础审计，`inspect_agent_worker_dispatch` 会附带 orphan_recovery，自动检测 parent/source run 缺失或失败取消的 active worker run，并给出 mark-blocked 与 redispatch preview。

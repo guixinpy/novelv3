@@ -2217,6 +2217,98 @@ async def test_tool_executor_handles_dialog_intent_agent_plan_for_worker_dispatc
 
 
 @pytest.mark.asyncio
+async def test_tool_executor_handles_dialog_intent_agent_plan_for_agent_job_projection_read(db_session):
+    project = Project(name="Dialog Intent Agent Job Projection Plan")
+    db_session.add(project)
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(
+            db=db_session,
+            project_id=project.id,
+            run_id="run-dialog-intent-agent-job-projection-plan",
+        ),
+        WritingAgentToolRequest(
+            tool_name="plan_dialog_intent_agent_run",
+            params={"text": "检查第3章 generate_chapter failed 任务队列 limit 8"},
+        ),
+    )
+
+    expected_params = {"chapter_index": 3, "task_type": "generate_chapter", "status": "failed", "limit": 8}
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "completed"
+    assert result.output["intent_projection"]["rule_id"] == "agent_job_projection_intent"
+    assert result.output["planner"]["intent_class"] == "inspect_agent_job_projection"
+    assert result.output["planner"]["mapped_from_action_type"] == "inspect_agent_job_projection"
+    assert result.output["planner"]["chapter_index"] == 3
+    assert result.output["plan"] == {
+        "status": "completed",
+        "intent_class": "inspect_agent_job_projection",
+        "steps": [
+            {
+                "step_index": 1,
+                "tool_name": "inspect_agent_job_projection",
+                "params": expected_params,
+                "mutability": "read",
+                "requires_confirmation": False,
+            }
+        ],
+        "tools": [{"tool_name": "inspect_agent_job_projection", "params": expected_params}],
+        "approval_contract": {"status": "not_required", "write_steps": []},
+    }
+    assert result.output["tools"] == [{"tool_name": "inspect_agent_job_projection", "params": expected_params}]
+    assert result.output["approval_contract"] == {"status": "not_required", "write_steps": []}
+    assert result.output["trace"]["reason"] == "planned_direct_read_tool_from_intent_projection"
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_handles_dialog_intent_agent_plan_for_chapter_conflict_recovery_read(db_session):
+    project = Project(name="Dialog Intent Chapter Conflict Recovery Plan")
+    db_session.add(project)
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(
+            db=db_session,
+            project_id=project.id,
+            run_id="run-dialog-intent-chapter-conflict-recovery-plan",
+        ),
+        WritingAgentToolRequest(
+            tool_name="plan_dialog_intent_agent_run",
+            params={"text": "规划第3章章节冲突恢复"},
+        ),
+    )
+
+    expected_params = {"chapter_index": 3}
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "completed"
+    assert result.output["intent_projection"]["rule_id"] == "chapter_conflict_recovery_intent"
+    assert result.output["planner"]["intent_class"] == "plan_chapter_conflict_recovery"
+    assert result.output["planner"]["mapped_from_action_type"] == "plan_chapter_conflict_recovery"
+    assert result.output["planner"]["chapter_index"] == 3
+    assert result.output["plan"] == {
+        "status": "completed",
+        "intent_class": "plan_chapter_conflict_recovery",
+        "steps": [
+            {
+                "step_index": 1,
+                "tool_name": "plan_chapter_conflict_recovery",
+                "params": expected_params,
+                "mutability": "read",
+                "requires_confirmation": False,
+            }
+        ],
+        "tools": [{"tool_name": "plan_chapter_conflict_recovery", "params": expected_params}],
+        "approval_contract": {"status": "not_required", "write_steps": []},
+    }
+    assert result.output["tools"] == [{"tool_name": "plan_chapter_conflict_recovery", "params": expected_params}]
+    assert result.output["approval_contract"] == {"status": "not_required", "write_steps": []}
+    assert result.output["trace"]["reason"] == "planned_direct_read_tool_from_intent_projection"
+
+
+@pytest.mark.asyncio
 async def test_tool_executor_handles_dialog_intent_agent_plan_for_trace_audit_read(db_session):
     project = Project(name="Dialog Intent Trace Audit Plan")
     db_session.add(project)
