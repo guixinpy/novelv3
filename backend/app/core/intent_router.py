@@ -17,6 +17,7 @@ _INTENT_RULE_IDS = (
     "memory_tree_intent",
     "memory_route_intent",
     "memory_activation_plan_intent",
+    "world_model_route_intent",
     "context_compression_intent",
     "worker_dispatch_intent",
     "trace_audit_intent",
@@ -319,6 +320,20 @@ class IntentRouter:
                 extracted_params=extracted_params,
                 match_evidence=[{"kind": "pattern", "name": "memory_activation_plan_phrase"}],
                 preconditions=[{"code": "memory_activation_plan_read_available", "passed": True}],
+            )
+
+        if _is_world_model_route_intent(text):
+            extracted_params = _world_model_route_params(text)
+            return self._matched_projection(
+                text,
+                dialog_state,
+                pending_action_id,
+                diagnosis,
+                rule_id="world_model_route_intent",
+                candidate=ActionCandidate("inspect_world_model_route", extracted_params),
+                extracted_params=extracted_params,
+                match_evidence=[{"kind": "pattern", "name": "world_model_route_phrase"}],
+                preconditions=[{"code": "world_model_route_read_available", "passed": True}],
             )
 
         if _is_context_compression_intent(text):
@@ -796,6 +811,49 @@ def _memory_activation_plan_params(text: str) -> dict[str, Any]:
     if query:
         params["query"] = query
     return params
+
+
+def _is_world_model_route_intent(text: str) -> bool:
+    world_route_phrase = r"(世界模型路由|世界模型状态|world\s*model\s*route|athena\s*route)"
+    return bool(
+        re.search(rf"{world_route_phrase}.*(检查|诊断|路由|状态|事实|提案|profile)", text)
+        or re.search(rf"(检查|诊断|路由|状态|事实|提案|profile).*{world_route_phrase}", text)
+    )
+
+
+def _world_model_route_params(text: str) -> dict[str, Any]:
+    params: dict[str, Any] = {}
+    chapter_index = parse_chapter_index(text)
+    if chapter_index is not None:
+        params["chapter_index"] = chapter_index
+    subject_ref = _world_model_subject_ref(text)
+    if subject_ref:
+        params["subject_ref"] = subject_ref
+    limit = _world_model_route_limit(text)
+    if limit is not None:
+        params["limit"] = limit
+    return params
+
+
+def _world_model_subject_ref(text: str) -> str | None:
+    match = re.search(r"(?:subject_ref|subject|主体|对象)\s*[:=：]?\s*([a-z][a-z0-9_-]*\.[a-z0-9_.-]+)", text)
+    if match:
+        return match.group(1)
+    match = re.search(r"\b([a-z][a-z0-9_-]*\.[a-z0-9_.-]+)\b", text)
+    if match:
+        return match.group(1)
+    return None
+
+
+def _world_model_route_limit(text: str) -> int | None:
+    match = re.search(r"(?:limit|限制|最多)\s*[:=：]?\s*(\d{1,3})", text)
+    if not match:
+        return None
+    try:
+        value = int(match.group(1))
+    except (TypeError, ValueError):
+        return None
+    return value if value > 0 else None
 
 
 def _labeled_query(text: str, label_pattern: str) -> str | None:

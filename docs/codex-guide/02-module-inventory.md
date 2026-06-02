@@ -82,6 +82,7 @@ Agent 化缺口：
   - Intent Projection 已有只读审计和自然语言只读入口，可直接检查指定自然语言输入经 IntentRouter 的规则匹配投影
   - Memory Route 已有只读诊断和自然语言只读入口，可直接检查长篇记忆、检索索引、维护状态与上下文摘要路由
   - Memory Activation Plan 已有只读诊断和自然语言只读入口，可直接检查指定章节的写前记忆激活计划
+  - World Model Route 已有只读诊断和自然语言只读入口，可直接检查指定章节/subject_ref 的世界模型 profile、事实和待审提案压力
   - Dialog Control Plane Projection 已有只读审计和自然语言只读入口，可直接检查 generate_chapter 等 pending action 的当前运行工具与推荐审批工具链
   - Mutation Fingerprints 已有只读审计和自然语言只读入口，可直接检查 generate_chapter 等写入工具的稳定变更指纹
   - 写入门禁覆盖已有只读审计和自然语言只读入口，可直接检查写入工具的 Agent 计划审批 gate coverage
@@ -110,7 +111,7 @@ Agent 化缺口：
   ├── session.py                          # 对话 session 管理
   └── messages.py                         # 消息管理
 Agent 化缺口：
-  - 意图路由覆盖不完整（部分写作意图尚未接入；Agent Health、Control Plane 就绪度、Dialog Control Plane Projection、Mutation Fingerprints、Tool Contracts、Command Contracts、Slash Command Route、Dialog Route Projection、Intent Projection、Reference Alignment、Dogfood Evidence、Route Preference、Memory Tree 只读浏览、Memory Route、Memory Activation Plan、ContextCompressor 自检、Worker Dispatch/孤儿恢复审计、Trace Audit 与 Write Gate Coverage 已可由自然语言投影到对应只读工具）
+  - 意图路由覆盖不完整（部分写作意图尚未接入；Agent Health、Control Plane 就绪度、Dialog Control Plane Projection、Mutation Fingerprints、Tool Contracts、Command Contracts、Slash Command Route、Dialog Route Projection、Intent Projection、Reference Alignment、Dogfood Evidence、Route Preference、Memory Tree 只读浏览、Memory Route、Memory Activation Plan、World Model Route、ContextCompressor 自检、Worker Dispatch/孤儿恢复审计、Trace Audit 与 Write Gate Coverage 已可由自然语言投影到对应只读工具）
   - 缺少 LLM 驱动的"模糊意图"解析
   - pending_action 机制未与 Agent tool approval 统一
 关联模块：WritingAgent、Athena、前端 Chat
@@ -119,7 +120,7 @@ Agent 化缺口：
 ### 1.3 Athena（世界模型）
 
 ```
-当前状态：L2 结构化世界实体 + 事件账本 + 提案审批 + layered checker（L0-L4 已实现，L5-L6 预留）
+当前状态：L2 结构化世界实体 + 事件账本 + 提案审批 + layered checker（L0-L4 已实现，L5-L6 预留）；World Model Route 可由自然语言只读意图触达
 目标状态：L3 LLM 驱动的语义一致性检查 + 主动矛盾发现
 关键文件：
   backend/app/core/athena_*.py            # 世界模型核心服务（多个文件）
@@ -133,6 +134,7 @@ Agent 化缺口：
   └── world_model_tool_*.py              # 世界模型工具适配器
 Agent 化缺口：
   - L5 语义检查和 L6 治理检查仍是预留层
+  - 世界模型路由已有只读诊断和自然语言入口，可检查 profile、确认事实、待审提案压力和下一步建议
   - 章节事实抽取质量需要持续改进
   - 缺少 LLM 驱动的"跨章节叙事一致性"检查
   - 世界模型分析需要更多真实长篇压测

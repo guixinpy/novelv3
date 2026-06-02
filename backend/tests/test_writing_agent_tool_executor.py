@@ -1942,6 +1942,48 @@ async def test_tool_executor_handles_dialog_intent_agent_plan_for_memory_activat
 
 
 @pytest.mark.asyncio
+async def test_tool_executor_handles_dialog_intent_agent_plan_for_world_model_route_read(db_session):
+    project = Project(name="Dialog Intent World Model Route Plan")
+    db_session.add(project)
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-dialog-intent-world-model-route"),
+        WritingAgentToolRequest(
+            tool_name="plan_dialog_intent_agent_run",
+            params={"text": "检查第2章 char.hero 世界模型路由 limit 7"},
+        ),
+    )
+
+    expected_params = {"chapter_index": 2, "subject_ref": "char.hero", "limit": 7}
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "completed"
+    assert result.output["intent_projection"]["rule_id"] == "world_model_route_intent"
+    assert result.output["planner"]["intent_class"] == "inspect_world_model_route"
+    assert result.output["planner"]["mapped_from_action_type"] == "inspect_world_model_route"
+    assert result.output["planner"]["chapter_index"] == 2
+    assert result.output["plan"] == {
+        "status": "completed",
+        "intent_class": "inspect_world_model_route",
+        "steps": [
+            {
+                "step_index": 1,
+                "tool_name": "inspect_agent_world_model_route",
+                "params": expected_params,
+                "mutability": "read",
+                "requires_confirmation": False,
+            }
+        ],
+        "tools": [{"tool_name": "inspect_agent_world_model_route", "params": expected_params}],
+        "approval_contract": {"status": "not_required", "write_steps": []},
+    }
+    assert result.output["tools"] == [{"tool_name": "inspect_agent_world_model_route", "params": expected_params}]
+    assert result.output["approval_contract"] == {"status": "not_required", "write_steps": []}
+    assert result.output["trace"]["reason"] == "planned_direct_read_tool_from_intent_projection"
+
+
+@pytest.mark.asyncio
 async def test_tool_executor_handles_dialog_intent_agent_plan_for_context_compression_read(db_session):
     project = Project(name="Dialog Intent Context Compression Plan")
     db_session.add(project)
