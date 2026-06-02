@@ -36,6 +36,7 @@ _ACTION_TO_DIRECT_READ_TOOL = {
     "inspect_memory_tree": "inspect_agent_memory_tree",
     "inspect_memory_route": "inspect_agent_memory_route",
     "inspect_memory_activation_plan": "inspect_agent_memory_activation_plan",
+    "inspect_knowledge_base_route": "inspect_agent_knowledge_base_route",
     "inspect_world_model_route": "inspect_agent_world_model_route",
     "search_retrieval_context": "search_agent_retrieval_context",
     "summarize_longform_context": "summarize_longform_context",

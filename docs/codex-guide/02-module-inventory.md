@@ -187,7 +187,7 @@ Agent 化缺口：
 ### 2.3 Knowledge Base（知识库）
 
 ```
-当前状态：L1-L2 基本知识条目管理 + 候选生成
+当前状态：L1-L2 基本知识条目管理 + 候选生成；Knowledge Base Route 可由自然语言只读意图触达
 目标状态：L2-L3 Agent 可自主拓展知识库（从章节中提取、从用户反馈中学习）
 关键文件：
   backend/app/services/writing_agent/
@@ -197,6 +197,7 @@ Agent 化缺口：
   ├── knowledge_base_tool_adapters.py     # 知识库工具适配器
   └── knowledge_base_tool_descriptors.py  # 知识库工具描述符
 Agent 化缺口：
+  - 知识库路由已有只读诊断和自然语言入口，可检查作者偏好、项目策略、学习规则、知识库候选和写法参考
   - 自动从章节中提取知识
   - 知识的时效性管理（某些知识在特定章节后才成立）
 关联模块：Athena、Retrieval、Memory Tree

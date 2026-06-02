@@ -17,6 +17,7 @@ _INTENT_RULE_IDS = (
     "memory_tree_intent",
     "memory_route_intent",
     "memory_activation_plan_intent",
+    "knowledge_base_route_intent",
     "world_model_route_intent",
     "retrieval_context_intent",
     "longform_context_summary_intent",
@@ -322,6 +323,20 @@ class IntentRouter:
                 extracted_params=extracted_params,
                 match_evidence=[{"kind": "pattern", "name": "memory_activation_plan_phrase"}],
                 preconditions=[{"code": "memory_activation_plan_read_available", "passed": True}],
+            )
+
+        if _is_knowledge_base_route_intent(text):
+            extracted_params = _knowledge_base_route_params(text)
+            return self._matched_projection(
+                text,
+                dialog_state,
+                pending_action_id,
+                diagnosis,
+                rule_id="knowledge_base_route_intent",
+                candidate=ActionCandidate("inspect_knowledge_base_route", extracted_params),
+                extracted_params=extracted_params,
+                match_evidence=[{"kind": "pattern", "name": "knowledge_base_route_phrase"}],
+                preconditions=[{"code": "knowledge_base_route_read_available", "passed": True}],
             )
 
         if _is_world_model_route_intent(text):
@@ -840,6 +855,31 @@ def _memory_activation_plan_params(text: str) -> dict[str, Any]:
     )
     if query:
         params["query"] = query
+    return params
+
+
+def _is_knowledge_base_route_intent(text: str) -> bool:
+    knowledge_route_phrase = r"(知识库路由|知识库状态|创作记忆|knowledge\s*base\s*route|knowledge_base_route)"
+    return bool(
+        re.search(rf"{knowledge_route_phrase}.*(检查|诊断|路由|状态|读取|query|limit)", text)
+        or re.search(rf"(检查|诊断|路由|状态|读取|query|limit).*{knowledge_route_phrase}", text)
+    )
+
+
+def _knowledge_base_route_params(text: str) -> dict[str, Any]:
+    params: dict[str, Any] = {}
+    chapter_index = parse_chapter_index(text)
+    if chapter_index is not None:
+        params["chapter_index"] = chapter_index
+    query = _parameter_query(text) or _labeled_query(
+        text,
+        r"(?:知识库路由|知识库状态|创作记忆|knowledge\s*base\s*route|knowledge_base_route)",
+    )
+    if query:
+        params["query"] = query
+    limit = _numeric_option(text, r"limit|限制|最多")
+    if limit is not None:
+        params["limit"] = limit
     return params
 
 
