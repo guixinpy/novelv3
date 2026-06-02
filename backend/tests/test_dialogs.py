@@ -842,6 +842,38 @@ def test_intent_router_projection_explains_write_gate_coverage_route():
     assert projection["extracted_params"] == {}
 
 
+def test_intent_router_projection_explains_legacy_hermes_migration_route():
+    router = IntentRouter()
+    diag = ProjectDiagnosisOut(
+        missing_items=[],
+        completed_items=["setup", "storyline", "outline", "content"],
+        suggested_next_step="preview_chapter",
+    )
+
+    projection = router.project("检查 legacy Hermes action 迁移路线", "chatting", None, diag).to_dict()
+
+    assert projection["status"] == "matched"
+    assert projection["rule_id"] == "legacy_hermes_migration_intent"
+    assert projection["decision"]["rule_id"] == "legacy_hermes_migration_intent"
+    assert projection["decision"]["match_evidence"] == [{"kind": "pattern", "name": "legacy_hermes_migration_phrase"}]
+    assert projection["candidate"] == {
+        "type": "inspect_legacy_hermes_migration",
+        "params": {},
+    }
+    assert projection["agent_route"] == _expected_agent_route(
+        "text_intent",
+        "inspect_legacy_hermes_migration",
+        "inspect_legacy_hermes_action_migration",
+        requires_confirmation=False,
+    )
+    assert projection["tool_selection"] == {
+        "selected_tool": "inspect_legacy_hermes_action_migration",
+        "why_this_tool": "dialog_action_to_agent_tool.inspect_legacy_hermes_migration",
+        "availability_checked": False,
+    }
+    assert projection["extracted_params"] == {}
+
+
 def test_intent_router_projection_explains_tool_contracts_route():
     router = IntentRouter()
     diag = ProjectDiagnosisOut(

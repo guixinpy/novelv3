@@ -2594,6 +2594,51 @@ async def test_tool_executor_handles_dialog_intent_agent_plan_for_trace_audit_re
 
 
 @pytest.mark.asyncio
+async def test_tool_executor_handles_dialog_intent_agent_plan_for_legacy_hermes_migration_read(db_session):
+    project = Project(name="Dialog Intent Legacy Hermes Migration Plan")
+    db_session.add(project)
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(
+            db=db_session,
+            project_id=project.id,
+            run_id="run-dialog-intent-legacy-hermes-migration-plan",
+        ),
+        WritingAgentToolRequest(
+            tool_name="plan_dialog_intent_agent_run",
+            params={"text": "检查 legacy Hermes action 迁移路线"},
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "completed"
+    assert result.output["intent_projection"]["rule_id"] == "legacy_hermes_migration_intent"
+    assert result.output["planner"]["intent_class"] == "inspect_legacy_hermes_migration"
+    assert result.output["planner"]["mapped_from_action_type"] == "inspect_legacy_hermes_migration"
+    assert result.output["planner"]["chapter_index"] is None
+    assert result.output["plan"] == {
+        "status": "completed",
+        "intent_class": "inspect_legacy_hermes_migration",
+        "steps": [
+            {
+                "step_index": 1,
+                "tool_name": "inspect_legacy_hermes_action_migration",
+                "params": {},
+                "mutability": "read",
+                "requires_confirmation": False,
+            }
+        ],
+        "tools": [{"tool_name": "inspect_legacy_hermes_action_migration", "params": {}}],
+        "approval_contract": {"status": "not_required", "write_steps": []},
+    }
+    assert result.output["tools"] == [{"tool_name": "inspect_legacy_hermes_action_migration", "params": {}}]
+    assert result.output["approval_contract"] == {"status": "not_required", "write_steps": []}
+    assert result.output["trace"]["reason"] == "planned_direct_read_tool_from_intent_projection"
+
+
+@pytest.mark.asyncio
 async def test_tool_executor_handles_dialog_intent_agent_plan_for_write_gate_coverage_read(db_session):
     project = Project(name="Dialog Intent Write Gate Coverage Plan")
     db_session.add(project)

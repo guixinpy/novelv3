@@ -32,6 +32,7 @@ _INTENT_RULE_IDS = (
     "chapter_conflict_recovery_intent",
     "trace_audit_intent",
     "write_gate_coverage_intent",
+    "legacy_hermes_migration_intent",
     "tool_contracts_intent",
     "command_contracts_intent",
     "slash_command_route_intent",
@@ -512,6 +513,19 @@ class IntentRouter:
                 extracted_params=extracted_params,
                 match_evidence=[{"kind": "pattern", "name": "chapter_conflict_recovery_phrase"}],
                 preconditions=[{"code": "chapter_conflict_recovery_read_available", "passed": True}],
+            )
+
+        if _is_legacy_hermes_migration_intent(text):
+            return self._matched_projection(
+                text,
+                dialog_state,
+                pending_action_id,
+                diagnosis,
+                rule_id="legacy_hermes_migration_intent",
+                candidate=ActionCandidate("inspect_legacy_hermes_migration", {}),
+                extracted_params={},
+                match_evidence=[{"kind": "pattern", "name": "legacy_hermes_migration_phrase"}],
+                preconditions=[{"code": "legacy_hermes_migration_read_available", "passed": True}],
             )
 
         if _is_tool_contracts_intent(text):
@@ -1388,6 +1402,15 @@ def _chapter_conflict_recovery_params(text: str) -> dict[str, Any]:
     if chapter_index is not None:
         params["chapter_index"] = chapter_index
     return params
+
+
+def _is_legacy_hermes_migration_intent(text: str) -> bool:
+    legacy_phrase = r"(legacy\s*hermes|hermes\s*legacy|legacy\s*action|hermes\s*action|旧版\s*hermes|旧\s*hermes)"
+    migration_phrase = r"(迁移|migration|路线图|路线|agent[-_\s]*native|审批链|approval)"
+    return bool(
+        re.search(rf"{legacy_phrase}.*{migration_phrase}", text)
+        or re.search(rf"{migration_phrase}.*{legacy_phrase}", text)
+    )
 
 
 def _is_tool_contracts_intent(text: str) -> bool:
