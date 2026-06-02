@@ -21,6 +21,7 @@ _INTENT_RULE_IDS = (
     "write_gate_coverage_intent",
     "tool_contracts_intent",
     "command_contracts_intent",
+    "slash_command_route_intent",
     "reference_alignment_intent",
     "dogfood_evidence_intent",
     "route_preference_intent",
@@ -338,6 +339,20 @@ class IntentRouter:
                 extracted_params={},
                 match_evidence=[{"kind": "pattern", "name": "command_contracts_phrase"}],
                 preconditions=[{"code": "command_contracts_read_available", "passed": True}],
+            )
+
+        if _is_slash_command_route_intent(text):
+            extracted_params = _slash_command_route_params(text)
+            return self._matched_projection(
+                text,
+                dialog_state,
+                pending_action_id,
+                diagnosis,
+                rule_id="slash_command_route_intent",
+                candidate=ActionCandidate("inspect_slash_command_route", extracted_params),
+                extracted_params=extracted_params,
+                match_evidence=[{"kind": "pattern", "name": "slash_command_route_phrase"}],
+                preconditions=[{"code": "slash_command_route_read_available", "passed": True}],
             )
 
         if _is_reference_alignment_intent(text):
@@ -729,6 +744,8 @@ def _is_tool_contracts_intent(text: str) -> bool:
 def _is_command_contracts_intent(text: str) -> bool:
     if re.search(r"(控制面|control\s*plane)", text):
         return False
+    if _is_slash_command_route_intent(text):
+        return False
     return bool(
         re.search(
             r"(命令契约|command\s*contract|slash\s*command|斜杠命令).*(覆盖|coverage|投影|projection|依赖|缺口|gap|快照|snapshot|检查|自检|诊断)",
@@ -739,6 +756,31 @@ def _is_command_contracts_intent(text: str) -> bool:
             text,
         )
     )
+
+
+def _is_slash_command_route_intent(text: str) -> bool:
+    return bool(
+        re.search(r"(斜杠命令|slash\s*command|/\w+).*(路由|route|映射)", text)
+        or re.search(r"(路由|route|映射).*(斜杠命令|slash\s*command|/\w+)", text)
+    )
+
+
+def _slash_command_route_params(text: str) -> dict[str, Any]:
+    params: dict[str, Any] = {}
+    command_name = _slash_command_name(text)
+    if command_name:
+        params["command_name"] = command_name
+    return params
+
+
+def _slash_command_name(text: str) -> str | None:
+    match = re.search(r"/([a-z][a-z0-9_-]{1,40})\b", text)
+    if match:
+        return match.group(1).lower()
+    match = re.search(r"\b(continue|status|clear|compact|setup|storyline|outline|chapter)\s*(?:命令|command)\b", text)
+    if match:
+        return match.group(1).lower()
+    return None
 
 
 def _is_reference_alignment_intent(text: str) -> bool:
