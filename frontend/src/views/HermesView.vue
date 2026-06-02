@@ -80,7 +80,9 @@ type MemoryTreePanelResultRow = {
   summary: string
   relevanceLabel: string
   expandNodeId: string
+  chapterIndex: number | null
   canExpand: boolean
+  canOpenChapter: boolean
   depth: number
 }
 
@@ -148,6 +150,7 @@ const memoryTreePanelResultRows = computed<MemoryTreePanelResultRow[]>(() => (
     const score = numberValue(relevance.score)
     const title = safeMemoryTreeDisplayValue(node.title) || '未命名节点'
     const expandNodeId = stringValue(node.id)
+    const chapterIndex = numberValue(node.chapter_index)
     const canExpand = Boolean(expandNodeId) && stringList(node.children).length > 0
     return {
       key: `memory-tree-panel-result:${index}`,
@@ -157,7 +160,9 @@ const memoryTreePanelResultRows = computed<MemoryTreePanelResultRow[]>(() => (
       summary: safeMemoryTreeDisplayValue(node.summary),
       relevanceLabel: score !== null ? `相关度 ${score.toFixed(2)}` : '',
       expandNodeId,
+      chapterIndex,
       canExpand,
+      canOpenChapter: chapterIndex !== null && chapterIndex > 0,
       depth,
     }
   })
@@ -511,6 +516,20 @@ function openMemoryTreeWorkspace() {
 
 function closeMemoryTreeWorkspace() {
   workspace.applyUserPanel('overview', '返回 Hermes 对话')
+}
+
+async function openMemoryTreeChapter(row: MemoryTreePanelResultRow) {
+  if (!row.canOpenChapter || row.chapterIndex === null || memoryTreePanelLoading.value) return
+  memoryTreePanelError.value = ''
+  memoryTreePanelLoading.value = true
+  try {
+    await project.loadChapter(pid.value, row.chapterIndex)
+    workspace.applyUserPanel('content', `从 Memory Tree 打开第${row.chapterIndex}章`)
+  } catch (err) {
+    memoryTreePanelError.value = err instanceof Error ? err.message : '加载章节失败'
+  } finally {
+    memoryTreePanelLoading.value = false
+  }
 }
 
 async function submitMemoryTreeSearch(source: 'panel' | 'workspace') {
@@ -1077,6 +1096,15 @@ async function applyRouteUpgradeFromRun(payload: RouteUpgradeApplyPayload) {
                 <span v-if="row.relevanceLabel">{{ row.relevanceLabel }}</span>
               </div>
               <p v-if="row.summary">{{ row.summary }}</p>
+              <button
+                v-if="row.canOpenChapter"
+                type="button"
+                data-testid="memory-tree-workspace-open-chapter"
+                :disabled="memoryTreePanelLoading"
+                @click="openMemoryTreeChapter(row)"
+              >
+                查看章节
+              </button>
               <button
                 v-if="row.canExpand"
                 type="button"

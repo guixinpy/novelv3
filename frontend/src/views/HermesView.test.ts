@@ -1052,6 +1052,73 @@ describe('HermesView', () => {
     wrapper.unmount()
   })
 
+  it('deep-links from a memory tree workspace chapter node to the content panel', async () => {
+    vi.mocked(api.getChapter).mockResolvedValueOnce({
+      ...regeneratedChapter,
+      id: 'chapter-2',
+      chapter_index: 2,
+      title: '灯塔旧回声',
+      content: '第二章正文',
+    } as any)
+    vi.mocked((api as any).createAgentRun).mockImplementation(async () => ({
+      id: 'run-memory-tree-workspace',
+      project_id: 'project-1',
+      goal: '搜索 Memory Tree：灯塔旧回声',
+      status: 'success',
+      entrypoint: 'ui_memory_tree_workspace_search',
+      input: {},
+      output: null,
+      error: null,
+      steps: [
+        {
+          id: 'step-memory-tree-workspace',
+          tool_name: 'inspect_agent_memory_tree',
+          status: 'success',
+          output: {
+            status: 'ready',
+            summary: {
+              volume_nodes: 0,
+              chapter_nodes: 1,
+              scene_nodes: 0,
+              beat_nodes: 0,
+            },
+            nodes: [
+              {
+                id: 'chapter:2',
+                level: 'chapter',
+                chapter_index: 2,
+                title: '灯塔旧回声',
+                summary: '主角在灯塔发现旧回声线索。',
+                children: [],
+                source_refs: [{ source_type: 'chapter_content', source_id: 'chapter-content-2' }],
+              },
+            ],
+          },
+        },
+      ],
+    }))
+    const wrapper = await mountHermesView()
+
+    const openWorkspace = document.querySelector('[data-testid="memory-tree-workspace-open"]') as HTMLButtonElement
+    openWorkspace.click()
+    await flushPromises()
+
+    await wrapper.get('[data-testid="memory-tree-workspace-query"]').setValue('灯塔旧回声')
+    await wrapper.get('[data-testid="memory-tree-workspace-search"]').trigger('submit')
+    await flushPromises()
+
+    const chapterLink = wrapper.get('[data-testid="memory-tree-workspace-open-chapter"]')
+    expect(chapterLink.text()).toContain('查看章节')
+    await chapterLink.trigger('click')
+    await flushPromises()
+
+    expect(api.getChapter).toHaveBeenCalledWith('project-1', 2)
+    expect(wrapper.find('[data-testid="memory-tree-workspace"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="chat-message-list"]').exists()).toBe(true)
+
+    wrapper.unmount()
+  })
+
   it('creates a read-only memory tree expand run from a subnav result node', async () => {
     const searchRun = {
       id: 'run-memory-tree-search',
