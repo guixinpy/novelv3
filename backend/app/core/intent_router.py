@@ -36,6 +36,7 @@ _INTENT_RULE_IDS = (
     "route_approval_opt_in_plan_intent",
     "route_approval_opt_in_apply_preview_intent",
     "route_approval_opt_in_apply_contract_intent",
+    "route_approval_opt_in_apply_prepare_intent",
     "tool_contracts_intent",
     "command_contracts_intent",
     "slash_command_route_intent",
@@ -543,6 +544,20 @@ class IntentRouter:
                 extracted_params=extracted_params,
                 match_evidence=[{"kind": "pattern", "name": "route_approval_opt_in_apply_contract_phrase"}],
                 preconditions=[{"code": "route_approval_opt_in_apply_contract_read_available", "passed": True}],
+            )
+
+        if _is_route_approval_opt_in_apply_prepare_intent(text):
+            extracted_params = _route_approval_opt_in_params(text)
+            return self._matched_projection(
+                text,
+                dialog_state,
+                pending_action_id,
+                diagnosis,
+                rule_id="route_approval_opt_in_apply_prepare_intent",
+                candidate=ActionCandidate("prepare_route_approval_opt_in_apply", extracted_params),
+                extracted_params=extracted_params,
+                match_evidence=[{"kind": "pattern", "name": "route_approval_opt_in_apply_prepare_phrase"}],
+                preconditions=[{"code": "route_approval_opt_in_apply_prepare_read_available", "passed": True}],
             )
 
         if _is_route_approval_opt_in_apply_preview_intent(text):
@@ -1463,13 +1478,23 @@ def _is_route_approval_opt_in_apply_contract_intent(text: str) -> bool:
 
 
 def _is_route_approval_opt_in_apply_preview_intent(text: str) -> bool:
-    if _is_route_approval_opt_in_apply_contract_intent(text):
+    if _is_route_approval_opt_in_apply_contract_intent(text) or _is_route_approval_opt_in_apply_prepare_intent(text):
         return False
     return _is_route_approval_opt_in_phrase(text) and bool(re.search(r"(预览|preview|diff|应用|apply|patch)", text))
 
 
+def _is_route_approval_opt_in_apply_prepare_intent(text: str) -> bool:
+    return _is_route_approval_opt_in_phrase(text) and bool(
+        re.search(r"(执行审批|计划审批|agent\s*plan|approval\s*gate|with\s*approval|prepare[-_\s]*apply|prepare\s*tool)", text)
+    )
+
+
 def _is_route_approval_opt_in_plan_intent(text: str) -> bool:
-    if _is_route_approval_opt_in_apply_contract_intent(text) or _is_route_approval_opt_in_apply_preview_intent(text):
+    if (
+        _is_route_approval_opt_in_apply_contract_intent(text)
+        or _is_route_approval_opt_in_apply_prepare_intent(text)
+        or _is_route_approval_opt_in_apply_preview_intent(text)
+    ):
         return False
     return _is_route_approval_opt_in_phrase(text) and bool(re.search(r"(规划|计划|plan|准备|检查|诊断)", text))
 

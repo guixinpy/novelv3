@@ -51,6 +51,7 @@ SAFE_RECOMMENDED_FOLLOWUP_TOOLS = frozenset(
         "draft_world_model_proposal_resolution_decisions",
         "draft_high_value_world_proposal_resolution_decisions",
         "preview_pending_action_route_approval_opt_in_apply_contract",
+        "prepare_apply_pending_action_route_approval_opt_in",
     }
 )
 LOOPING_FOLLOWUP_TOOLS = frozenset({"plan_recommended_followups"})

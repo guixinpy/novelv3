@@ -155,6 +155,7 @@
 - [x] Legacy Hermes Migration 只读审计意图：自然语言“检查 legacy Hermes action 迁移路线”可投影为 inspect_legacy_hermes_action_migration 只读工具计划
 - [x] Route Approval Opt-in 只读规划意图：自然语言“规划 pending-action-123 的 Agent 审批链 opt-in”可投影为 plan_agent_route_approval_opt_in 只读工具计划
 - [x] Pending Action Route Opt-in Apply Preview/Contract 只读意图：自然语言“预览/生成 pending-action-123 的 Agent 审批链 opt-in 应用/契约”可投影为 preview_pending_action_route_approval_opt_in_apply / preview_pending_action_route_approval_opt_in_apply_contract 只读工具计划
+- [x] Pending Action Route Opt-in Apply Prepare 只读意图：自然语言“准备 pending-action-123 的 Agent 审批链 opt-in 执行审批”可投影为 prepare_apply_pending_action_route_approval_opt_in 只读工具计划，contract preview 的 recommended followup 也可进入该 prepare 工具
 - [x] Mutation Fingerprints 只读审计意图：自然语言“检查 generate_chapter 第4章写入变更指纹”可投影为 inspect_agent_mutation_fingerprints 只读工具计划
 - [x] Tool Contracts 只读自检意图：自然语言“检查工具契约覆盖率/迁移差距”可投影为 inspect_agent_tool_contracts 只读工具计划
 - [x] Command Contracts 只读自检意图：自然语言“检查命令契约缺口/slash command 投影”可投影为 inspect_agent_command_contracts 只读工具计划
@@ -178,7 +179,7 @@
 |--------|------|---------|------|
 | P1 | 意图路由覆盖扩展 | 覆盖所有已实现的 Agent 工具对应的用户意图 | 🟡 进行中（read tool intents） |
 | P2 | 模糊意图 LLM 解析 | 用户自然语言模糊描述 → LLM 解析为具体意图 | 🔴 待开始 |
-| P3 | pending_action 与 Agent tool approval 统一 | 两套审批机制合并为一个 | 🟡 进行中（read plan/preview/contract chain） |
+| P3 | pending_action 与 Agent tool approval 统一 | 两套审批机制合并为一个 | 🟡 进行中（read plan/preview/contract/prepare chain） |
 
 ### 阻塞项
 
@@ -186,6 +187,7 @@
 
 ### 最近完成
 
+- 2026-06-02: `IntentRouter` 新增 `route_approval_opt_in_apply_prepare_intent`，可将“准备 pending-action-123 的 Agent 审批链 opt-in 执行审批”自然语言直达 `prepare_apply_pending_action_route_approval_opt_in` read tool；`plan_recommended_followups` 现在会接受 contract preview 推荐的 `prepare_apply_pending_action_route_approval_opt_in`，但 direct `apply_pending_action_route_approval_opt_in` 和审批后的 execute 工具仍保持写入门禁。
 - 2026-06-02: `IntentRouter` 新增 `route_approval_opt_in_plan_intent` / `route_approval_opt_in_apply_preview_intent` / `route_approval_opt_in_apply_contract_intent`，可将 pending-action 的 Agent 审批链 opt-in 规划、应用预览和契约生成自然语言直达 read tool；`apply_pending_action_route_approval_opt_in` 仍保持 guarded write。
 - 2026-06-02: `IntentRouter` 新增 `legacy_hermes_migration_intent`，可将“检查 legacy Hermes action 迁移路线”等自然语言投影为 `inspect_legacy_hermes_migration` action；`plan_dialog_intent_agent_run` 对该只读 action 生成无需审批的 `inspect_legacy_hermes_action_migration` 工具计划，用于审计 legacy setup/storyline/outline 生成动作迁移到 Agent-native preview/approval/execute 工具链的覆盖状态。
 - 2026-06-02: `IntentRouter` 新增 `context_compression_payload_intent`，可将“构建第3章上下文压缩 dry-run payload max_chars 2000 context_guard_failure_count 2”等自然语言投影为 `build_context_compression_payload` action；`plan_dialog_intent_agent_run` 对该只读 action 生成无需审批的 `build_agent_context_compression_payload` 工具计划，并保留 chapter_index、max_chars 与 context_guard_failure_count，补齐 ContextCompressor 从自检投影到 payload builder 的对话直达入口。

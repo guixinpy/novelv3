@@ -52,6 +52,7 @@ _ACTION_TO_DIRECT_READ_TOOL = {
     "plan_route_approval_opt_in": "plan_agent_route_approval_opt_in",
     "preview_route_approval_opt_in_apply": "preview_pending_action_route_approval_opt_in_apply",
     "preview_route_approval_opt_in_apply_contract": "preview_pending_action_route_approval_opt_in_apply_contract",
+    "prepare_route_approval_opt_in_apply": "prepare_apply_pending_action_route_approval_opt_in",
     "inspect_tool_contracts": "inspect_agent_tool_contracts",
     "inspect_command_contracts": "inspect_agent_command_contracts",
     "inspect_slash_command_route": "inspect_agent_slash_command_route",

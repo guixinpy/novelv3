@@ -2783,6 +2783,56 @@ async def test_tool_executor_handles_dialog_intent_agent_plan_for_route_approval
 
 
 @pytest.mark.asyncio
+async def test_tool_executor_handles_dialog_intent_agent_plan_for_route_approval_opt_in_prepare_read(db_session):
+    project = Project(name="Dialog Intent Route Approval Opt In Prepare")
+    db_session.add(project)
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(
+            db=db_session,
+            project_id=project.id,
+            run_id="run-dialog-intent-route-approval-opt-in-prepare",
+        ),
+        WritingAgentToolRequest(
+            tool_name="plan_dialog_intent_agent_run",
+            params={"text": "准备 pending-action-123 的 Agent 审批链 opt-in 执行审批"},
+        ),
+    )
+
+    expected_params = {"pending_action_id": "pending-action-123"}
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "completed"
+    assert result.output["intent_projection"]["rule_id"] == "route_approval_opt_in_apply_prepare_intent"
+    assert result.output["planner"]["intent_class"] == "prepare_route_approval_opt_in_apply"
+    assert result.output["planner"]["mapped_from_action_type"] == "prepare_route_approval_opt_in_apply"
+    assert result.output["planner"]["chapter_index"] is None
+    assert result.output["plan"] == {
+        "status": "completed",
+        "intent_class": "prepare_route_approval_opt_in_apply",
+        "steps": [
+            {
+                "step_index": 1,
+                "tool_name": "prepare_apply_pending_action_route_approval_opt_in",
+                "params": expected_params,
+                "mutability": "read",
+                "requires_confirmation": False,
+            }
+        ],
+        "tools": [
+            {"tool_name": "prepare_apply_pending_action_route_approval_opt_in", "params": expected_params}
+        ],
+        "approval_contract": {"status": "not_required", "write_steps": []},
+    }
+    assert result.output["tools"] == [
+        {"tool_name": "prepare_apply_pending_action_route_approval_opt_in", "params": expected_params}
+    ]
+    assert result.output["approval_contract"] == {"status": "not_required", "write_steps": []}
+    assert result.output["trace"]["reason"] == "planned_direct_read_tool_from_intent_projection"
+
+
+@pytest.mark.asyncio
 async def test_tool_executor_handles_dialog_intent_agent_plan_for_write_gate_coverage_read(db_session):
     project = Project(name="Dialog Intent Write Gate Coverage Plan")
     db_session.add(project)
@@ -4547,6 +4597,50 @@ async def test_plan_recommended_followups_keeps_route_opt_in_apply_guarded(db_se
     assert result.output["trace"]["rejected_tools"] == [
         {"tool_name": "apply_pending_action_route_approval_opt_in", "reason": "requires_confirmation"}
     ]
+
+
+@pytest.mark.asyncio
+async def test_plan_recommended_followups_plans_route_opt_in_prepare_after_contract_preview(db_session):
+    project = Project(name="Recommended Route Opt In Prepare")
+    db_session.add(project)
+    db_session.flush()
+    run = WritingAgentRun(project_id=project.id, goal="准备 route opt-in 审批", status="success", input={})
+    db_session.add(run)
+    db_session.flush()
+    db_session.add(
+        WritingAgentStep(
+            run_id=run.id,
+            project_id=project.id,
+            step_index=1,
+            tool_name="preview_pending_action_route_approval_opt_in_apply_contract",
+            status="success",
+            input={"params": {"pending_action_id": "pending-route-1"}},
+            output={
+                "status": "requires_confirmation",
+                "pending_action_id": "pending-route-1",
+                "agent_tool_result": {
+                    "recommendations": {
+                        "canonical_followups": ["prepare_apply_pending_action_route_approval_opt_in"],
+                    }
+                },
+            },
+        )
+    )
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-followup-route-prepare"),
+        WritingAgentToolRequest(tool_name="plan_recommended_followups", params={"run_id": run.id}),
+    )
+
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "completed"
+    assert [tool["tool_name"] for tool in result.output["tools"]] == [
+        "prepare_apply_pending_action_route_approval_opt_in"
+    ]
+    assert result.output["tools"][0]["params"] == {"pending_action_id": "pending-route-1"}
+    assert result.output["trace"]["rejected_tools"] == []
 
 
 @pytest.mark.asyncio
