@@ -38,6 +38,7 @@ Agent 化成熟度等级定义见 [01-愿景与架构目标](./01-vision.md#四a
   ├── tool_registry.py                    # 工具注册中心
   ├── tool_executor.py                    # 工具执行器
   ├── tool_policy.py                      # 工具策略（权限/循环检测）
+  ├── tool_contracts.py                   # 工具契约快照与迁移差距
   ├── tool_lifecycle_hooks.py             # 工具生命周期钩子
   ├── tool_recommendations.py             # 工具推荐
   ├── agent_loop_risk.py                  # 循环风险检测
@@ -66,6 +67,7 @@ Agent 化缺口：
   - 五级循环检测已具备 generic_repeat、ping-pong、unknown_tool_repeat、known_poll_no_progress、global_circuit_breaker
   - StopHooks 已具备 critical loop、BudgetCap、MaxTurns、ContextGuard、approval、memory provenance 策略；后续可继续扩展为真正的运行中断控制点
   - Agent loop budget 已具备 read 工具 refund 投影（used/charged/refunded/remaining iterations）
+  - 工具契约快照已有只读审计和自然语言只读入口，可直接检查工具契约覆盖率、迁移差距和 reference alignment
   - 写入门禁覆盖已有只读审计和自然语言只读入口，可直接检查写入工具的 Agent 计划审批 gate coverage
   - Worker dispatch 已实现基础分发，子 Agent 孤兒恢复已有只读审计、自然语言只读入口、确认式 blocked 清理和 pending redispatch run 创建
   - 后续可继续扩展 refund 规则，例如对白名单程序化 write 工具或批处理子步骤细分计费
@@ -92,7 +94,7 @@ Agent 化缺口：
   ├── session.py                          # 对话 session 管理
   └── messages.py                         # 消息管理
 Agent 化缺口：
-  - 意图路由覆盖不完整（部分写作意图尚未接入；Agent Health、Control Plane 就绪度、Memory Tree 只读浏览、ContextCompressor 自检、Worker Dispatch/孤儿恢复审计、Trace Audit 与 Write Gate Coverage 已可由自然语言投影到对应只读工具）
+  - 意图路由覆盖不完整（部分写作意图尚未接入；Agent Health、Control Plane 就绪度、Tool Contracts、Memory Tree 只读浏览、ContextCompressor 自检、Worker Dispatch/孤儿恢复审计、Trace Audit 与 Write Gate Coverage 已可由自然语言投影到对应只读工具）
   - 缺少 LLM 驱动的"模糊意图"解析
   - pending_action 机制未与 Agent tool approval 统一
 关联模块：WritingAgent、Athena、前端 Chat

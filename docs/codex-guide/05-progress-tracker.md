@@ -44,6 +44,7 @@
 - [x] StopHooks 策略层：critical loop、BudgetCap、MaxTurns、ContextGuard、approval、memory provenance
 - [x] Agent loop refund 预算投影：read 工具成功调用计入 refunded_iterations，不消耗 charged iteration
 - [x] 工具权限分级基础枚举契约：ToolMutability + ToolPermissionLevel，公开 surface/contract 保持字符串兼容
+- [x] 工具契约快照：inspect_agent_tool_contracts 聚合工具契约覆盖率、迁移差距和 reference alignment
 - [x] 恢复计划器：recovery_planner + recovery_policy
 - [x] 命令契约：agent_command_contracts + agent_step_binding
 - [x] 控制面就绪度：inspect_agent_control_plane_readiness 聚合工具契约与命令契约
@@ -63,6 +64,7 @@
 
 ### 最近完成
 
+- 2026-06-02: `inspect_agent_tool_contracts` 接入对话只读意图链路：自然语言“检查工具契约覆盖率/迁移差距”会经 `tool_contracts_intent` 直接生成无需审批的 read tool 计划；含“控制面/control plane”的短语仍保留给 `inspect_agent_control_plane_readiness` 综合就绪度入口。
 - 2026-06-02: `inspect_agent_write_gate_coverage` 接入对话只读意图链路：自然语言“检查写入工具的审批门禁覆盖/写入门禁缺口”会经 `write_gate_coverage_intent` 生成无需审批的 read tool 计划，供 Agent 在执行写入前快速审计 gate coverage。
 - 2026-06-01: 核对代码发现五级循环检测已实现；补充 StopHooks 的显式 BudgetCap / MaxTurns 策略和测试，ContextGuard 既有策略保留。
 - 2026-06-01: 新增 Agent loop budget refund 投影，成功 read 工具调用会进入 refunded_iterations，remaining_iterations 按 charged_iterations 计算。
@@ -121,6 +123,7 @@
 - [x] Worker Dispatch 只读审计意图：自然语言“检查 worker 分发/孤儿恢复”可投影为 inspect_agent_worker_dispatch 只读工具计划
 - [x] Trace Audit 只读审计意图：自然语言“检查 run trace/执行链路/失败原因”可投影为 inspect_agent_trace_audit 只读工具计划
 - [x] Write Gate Coverage 只读审计意图：自然语言“检查写入工具的审批门禁覆盖”可投影为 inspect_agent_write_gate_coverage 只读工具计划
+- [x] Tool Contracts 只读自检意图：自然语言“检查工具契约覆盖率/迁移差距”可投影为 inspect_agent_tool_contracts 只读工具计划
 - [x] Agent Health 只读自检意图：自然语言“检查 Agent 健康/工具诊断”可投影为 inspect_agent_health_projection 只读工具计划
 - [x] Control Plane 只读自检意图：自然语言“检查控制面就绪度/工具契约/命令契约”可投影为 inspect_agent_control_plane_readiness 只读工具计划
 - [x] 审批流：approval_contract + approval_verification_event
@@ -142,6 +145,7 @@
 
 ### 最近完成
 
+- 2026-06-02: `IntentRouter` 新增 `tool_contracts_intent`，可将“检查工具契约覆盖率/迁移差距”等自然语言投影为 `inspect_tool_contracts` action；`plan_dialog_intent_agent_run` 对该只读 action 直接生成 `inspect_agent_tool_contracts` 工具计划，approval_contract 为 not_required，并通过规则 guard 避免抢占含“控制面”的 readiness 查询。
 - 2026-06-02: `IntentRouter` 新增 `write_gate_coverage_intent`，可将“检查写入工具的审批门禁覆盖/写入门禁缺口”等自然语言投影为 `inspect_write_gate_coverage` action；`plan_dialog_intent_agent_run` 对该只读 action 直接生成 `inspect_agent_write_gate_coverage` 工具计划，approval_contract 为 not_required。
 - 2026-06-02: `IntentRouter` 新增 `trace_audit_intent`，可将“检查 run trace/执行链路/失败原因”等自然语言投影为 `inspect_trace_audit` action，并抽取 run_id / chapter_index；`plan_dialog_intent_agent_run` 对该只读 action 直接生成 `inspect_agent_trace_audit` 工具计划，approval_contract 为 not_required。
 - 2026-06-02: `IntentRouter` 新增 `control_plane_readiness_intent`，可将“检查 Agent 控制面就绪度/工具契约/命令契约”等自然语言投影为 `inspect_control_plane_readiness` action；`plan_dialog_intent_agent_run` 对该只读 action 直接生成 `inspect_agent_control_plane_readiness` 工具计划，approval_contract 为 not_required。

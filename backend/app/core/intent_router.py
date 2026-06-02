@@ -19,6 +19,7 @@ _INTENT_RULE_IDS = (
     "worker_dispatch_intent",
     "trace_audit_intent",
     "write_gate_coverage_intent",
+    "tool_contracts_intent",
     "agent_health_intent",
     "control_plane_readiness_intent",
     "query_diagnosis_intent",
@@ -307,6 +308,19 @@ class IntentRouter:
                 extracted_params=extracted_params,
                 match_evidence=[{"kind": "pattern", "name": "worker_dispatch_phrase"}],
                 preconditions=[{"code": "worker_dispatch_read_available", "passed": True}],
+            )
+
+        if _is_tool_contracts_intent(text):
+            return self._matched_projection(
+                text,
+                dialog_state,
+                pending_action_id,
+                diagnosis,
+                rule_id="tool_contracts_intent",
+                candidate=ActionCandidate("inspect_tool_contracts", {}),
+                extracted_params={},
+                match_evidence=[{"kind": "pattern", "name": "tool_contracts_phrase"}],
+                preconditions=[{"code": "tool_contracts_read_available", "passed": True}],
             )
 
         if _is_control_plane_readiness_intent(text):
@@ -644,6 +658,15 @@ def _worker_dispatch_worker_name(text: str) -> str | None:
         if worker_name in text:
             return worker_name
     return None
+
+
+def _is_tool_contracts_intent(text: str) -> bool:
+    if re.search(r"(控制面|control\s*plane)", text):
+        return False
+    return bool(
+        re.search(r"(工具契约|tool\s*contract).*(覆盖|coverage|迁移|差距|gap|缺口|快照|snapshot|检查|自检|诊断)", text)
+        or re.search(r"(覆盖|coverage|迁移|差距|gap|缺口|快照|snapshot|检查|自检|诊断).*(工具契约|tool\s*contract)", text)
+    )
 
 
 def _is_control_plane_readiness_intent(text: str) -> bool:
