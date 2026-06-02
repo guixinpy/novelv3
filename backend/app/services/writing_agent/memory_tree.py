@@ -12,6 +12,7 @@ MEMORY_TREE_LEVELS = ["volume", "chapter", "scene", "beat"]
 MEMORY_TREE_VOLUME_SUMMARY_TYPE = "memory_tree_volume_summary"
 MEMORY_TREE_CHAPTER_SUMMARY_TYPE = "memory_tree_chapter_summary"
 MEMORY_TREE_SUMMARY_TYPES = (MEMORY_TREE_VOLUME_SUMMARY_TYPE, MEMORY_TREE_CHAPTER_SUMMARY_TYPE)
+MIN_SEMANTIC_RELEVANCE_SCORE = 0.5
 
 
 def inspect_agent_memory_tree(
@@ -370,7 +371,12 @@ def _filter_nodes(
     exact_matches = [node for node in filtered if _exact_query_match(node, query_text)]
     if exact_matches:
         return exact_matches, {}, False
-    semantic_matches = _semantic_node_matches(filtered, query_text)
+    semantic_matches = _semantic_node_matches(
+        filtered,
+        query_text,
+        all_nodes=nodes,
+        rollup_descendants=bool(level or node_id or chapter_index is not None),
+    )
     return [item["node"] for item in semantic_matches], {
         str(item["node"]["id"]): item["relevance"] for item in semantic_matches
     }, bool(semantic_matches)
@@ -397,14 +403,32 @@ def _exact_query_match(node: dict[str, Any], query_text: str) -> bool:
     return query_text in str(node.get("title") or "").lower() or query_text in str(node.get("summary") or "").lower()
 
 
-def _semantic_node_matches(nodes: list[dict[str, Any]], query_text: str) -> list[dict[str, Any]]:
+def _semantic_node_matches(
+    nodes: list[dict[str, Any]],
+    query_text: str,
+    *,
+    all_nodes: list[dict[str, Any]],
+    rollup_descendants: bool,
+) -> list[dict[str, Any]]:
     query_terms = _query_terms(query_text)
     if not query_terms:
         return []
+    nodes_by_id = {str(node.get("id") or ""): node for node in all_nodes}
     matches: list[dict[str, Any]] = []
     for node in nodes:
         relevance = _node_relevance(node, query_terms=query_terms, query_text=query_text)
-        if relevance["score"] <= 0:
+        descendant_relevance = (
+            _descendant_relevance(
+                node,
+                nodes_by_id=nodes_by_id,
+                query_terms=query_terms,
+                query_text=query_text,
+            )
+            if rollup_descendants
+            else _empty_relevance(query_text)
+        )
+        relevance = _merge_relevance(relevance, descendant_relevance, query_text=query_text)
+        if float(relevance["score"]) < MIN_SEMANTIC_RELEVANCE_SCORE:
             continue
         matches.append({"node": node, "relevance": relevance})
     return sorted(
@@ -455,6 +479,92 @@ def _node_relevance(
         "matched_terms": matched_terms,
         "matched_fields": matched_fields,
         "match_reasons": ["semantic_token_overlap"],
+    }
+
+
+def _descendant_relevance(
+    node: dict[str, Any],
+    *,
+    nodes_by_id: dict[str, dict[str, Any]],
+    query_terms: list[str],
+    query_text: str,
+) -> dict[str, Any]:
+    node_id = str(node.get("id") or "")
+    descendant_matches: list[dict[str, Any]] = []
+    for descendant_id in _descendant_node_ids(nodes_by_id, node_id, max_depth=None):
+        descendant = nodes_by_id.get(descendant_id)
+        if descendant is None:
+            continue
+        relevance = _node_relevance(descendant, query_terms=query_terms, query_text=query_text)
+        if float(relevance["score"]) < MIN_SEMANTIC_RELEVANCE_SCORE:
+            continue
+        descendant_matches.append({"node_id": descendant_id, "relevance": relevance})
+    if not descendant_matches:
+        return _empty_relevance(query_text)
+    descendant_matches = sorted(
+        descendant_matches,
+        key=lambda item: (
+            -float(item["relevance"]["score"]),
+            str(item["node_id"]),
+        ),
+    )
+    matched_terms: list[str] = []
+    matched_fields: list[str] = []
+    matched_descendant_ids: list[str] = []
+    for match in descendant_matches:
+        relevance = match["relevance"]
+        matched_descendant_ids.append(str(match["node_id"]))
+        for term in relevance.get("matched_terms") or []:
+            if term not in matched_terms:
+                matched_terms.append(str(term))
+        for field in relevance.get("matched_fields") or []:
+            descendant_field = f"descendant.{field}"
+            if descendant_field not in matched_fields:
+                matched_fields.append(descendant_field)
+    top_score = float(descendant_matches[0]["relevance"]["score"])
+    return {
+        "score": round(top_score * 0.95, 4),
+        "query": query_text,
+        "matched_terms": matched_terms,
+        "matched_fields": matched_fields,
+        "match_reasons": ["descendant_semantic_match"],
+        "matched_descendant_ids": matched_descendant_ids,
+    }
+
+
+def _merge_relevance(
+    direct: dict[str, Any],
+    descendant: dict[str, Any],
+    *,
+    query_text: str,
+) -> dict[str, Any]:
+    if float(direct.get("score") or 0) <= 0 and float(descendant.get("score") or 0) <= 0:
+        return _empty_relevance(query_text)
+    if float(descendant.get("score") or 0) > float(direct.get("score") or 0):
+        base = dict(descendant)
+    else:
+        base = dict(direct)
+    return {
+        "score": base.get("score") or 0,
+        "query": query_text,
+        "matched_terms": _dedupe([str(term) for term in base.get("matched_terms") or []]),
+        "matched_fields": _dedupe([str(field) for field in base.get("matched_fields") or []]),
+        "match_reasons": _dedupe([str(reason) for reason in base.get("match_reasons") or []]),
+        **(
+            {"matched_descendant_ids": _dedupe([str(node_id) for node_id in base.get("matched_descendant_ids") or []])}
+            if base.get("matched_descendant_ids")
+            else {}
+        ),
+    }
+
+
+def _empty_relevance(query_text: str) -> dict[str, Any]:
+    return {
+        "score": 0,
+        "query": query_text,
+        "matched_terms": [],
+        "matched_fields": [],
+        "match_reasons": [],
     }
 
 
@@ -510,6 +620,16 @@ def _recommended_drilldowns(
     relevance = relevance_by_id.get(str(top_node.get("id") or ""))
     if not relevance:
         return []
+    if relevance.get("matched_descendant_ids"):
+        return [
+            {
+                "node_id": top_node["id"],
+                "expand_node_id": top_node["id"],
+                "reason": "descendant_relevance",
+                "score": relevance["score"],
+                "matched_descendant_ids": [str(node_id) for node_id in relevance.get("matched_descendant_ids") or []],
+            }
+        ]
     return [
         {
             "node_id": top_node["id"],

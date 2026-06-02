@@ -135,6 +135,37 @@ def test_memory_tree_semantic_search_scores_cross_field_matches_and_recommends_d
     ]
 
 
+def test_memory_tree_semantic_search_rolls_up_descendant_matches_to_filtered_level(db_session):
+    project, refs = _seed_memory_tree_project(db_session)
+    beat_node_id = f"beat:{refs['beat_memory_id']}"
+
+    tree = inspect_agent_memory_tree(
+        db_session,
+        project.id,
+        level="chapter",
+        query="后续调查",
+    )
+
+    assert [node["id"] for node in tree["nodes"]] == ["chapter:1"]
+    chapter_node = tree["nodes"][0]
+    assert chapter_node["relevance"]["score"] > 0
+    assert "descendant_semantic_match" in chapter_node["relevance"]["match_reasons"]
+    assert chapter_node["relevance"]["matched_descendant_ids"] == [beat_node_id]
+    assert "descendant.summary" in chapter_node["relevance"]["matched_fields"]
+    assert set(chapter_node["relevance"]["matched_terms"]) >= {"后", "续", "调", "查"}
+    assert tree["navigation"]["mode"] == "semantic_search"
+    assert tree["navigation"]["matched_node_ids"] == ["chapter:1"]
+    assert tree["navigation"]["recommended_drilldowns"] == [
+        {
+            "node_id": "chapter:1",
+            "expand_node_id": "chapter:1",
+            "reason": "descendant_relevance",
+            "score": chapter_node["relevance"]["score"],
+            "matched_descendant_ids": [beat_node_id],
+        }
+    ]
+
+
 @pytest.mark.asyncio
 async def test_record_agent_memory_tree_summaries_tool_persists_summary_nodes(db_session):
     project, _refs = _seed_memory_tree_project(db_session)

@@ -140,7 +140,7 @@ Agent 化缺口：
 ### 2.2 Memory Tree（分层记忆树）
 
 ```
-当前状态：L2 框架 + 卷/章摘要持久化基础版 + 基础浏览，摘要写入 LongformMemory 后再投影回 Memory Tree；query 支持精确匹配失败后的确定性语义评分与 drilldown 推荐，并可进入写前 memory_activation
+当前状态：L2 框架 + 卷/章摘要持久化基础版 + 基础浏览，摘要写入 LongformMemory 后再投影回 Memory Tree；query 支持精确匹配失败后的确定性语义评分、层级后代匹配回流与 drilldown 推荐，并可进入写前 memory_activation
 目标状态：L3 卷→章→节→段落分层，支持语义浏览和按需展开
 关键文件：
   backend/app/services/writing_agent/
@@ -152,7 +152,7 @@ Agent 化缺口：
   └── post_chapter_memory_capture.py      # 章节后记忆捕获
 Agent 化缺口：
   - 更细粒度的分层摘要树（当前持久化到卷/章两级）
-  - 更强语义导航（当前已支持按节点展开、深度裁剪、搜索祖先上下文、确定性 token-overlap 召回和写前激活消费；后续接入向量/LLM 语义搜索）
+  - 更强语义导航（当前已支持按节点展开、深度裁剪、搜索祖先上下文、确定性 token-overlap 召回、后代强匹配回流到过滤层级、弱匹配降噪和写前激活消费；后续接入向量/LLM 语义搜索）
   - 与 Retrieval 的深度整合
   - LLM 摘要质量与真实长篇数据验证
 关联模块：Retrieval、Athena、Writing
