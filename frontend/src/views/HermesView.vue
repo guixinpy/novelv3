@@ -66,10 +66,6 @@ type PlannerPlanExecutePayload = {
   approvalContractHash?: string
   approvalContract?: Record<string, unknown>
 }
-type MemoryTreeNavigationHistoryItem = {
-  key: string
-  label: string
-}
 type RouteUpgradeApplyPayload = {
   sourceRunId: string
   pendingActionId: string
@@ -99,9 +95,9 @@ const activeAgentRunId = ref<string | null>(null)
 const activeAgentRun = ref<WritingAgentRunDetail | null>(null)
 const agentRunLoading = ref(false)
 const agentRunError = ref('')
-const memoryTreeNavigationHistory = ref<MemoryTreeNavigationHistoryItem[]>([])
 const writingControlLoading = ref(false)
 const chatCommands = ref<ChatCommandDefinition[]>(chatCommandRegistry)
+const memoryTreeNavigationHistory = computed(() => projectWorkspace.memoryTreeHistoryForProject(pid.value))
 
 // Project stats
 const totalWords = computed(() => {
@@ -412,10 +408,9 @@ function closeTrace() {
   modelTrace.closeTrace()
 }
 
-async function openAgentRun(runId: string, options: { preserveMemoryTreeHistory?: boolean } = {}) {
+async function openAgentRun(runId: string) {
   const targetRunId = String(runId || '').trim()
   if (!targetRunId) return
-  if (!options.preserveMemoryTreeHistory) memoryTreeNavigationHistory.value = []
   activeAgentRunId.value = targetRunId
   activeAgentRun.value = null
   agentRunError.value = ''
@@ -431,7 +426,7 @@ async function openAgentRun(runId: string, options: { preserveMemoryTreeHistory?
 
 async function refreshAgentRun() {
   if (!activeAgentRunId.value) return
-  await openAgentRun(activeAgentRunId.value, { preserveMemoryTreeHistory: true })
+  await openAgentRun(activeAgentRunId.value)
 }
 
 function closeAgentRun() {
@@ -439,7 +434,6 @@ function closeAgentRun() {
   activeAgentRun.value = null
   agentRunError.value = ''
   agentRunLoading.value = false
-  memoryTreeNavigationHistory.value = []
 }
 
 async function executeRecoveryFromRun(payload: RecoveryExecutePayload) {
@@ -523,15 +517,10 @@ async function executePlannerPlanFromRun(payload: PlannerPlanExecutePayload) {
     activeAgentRunId.value = run.id
     activeAgentRun.value = run
     if (memoryTreeHistoryLabel) {
-      memoryTreeNavigationHistory.value = [
-        ...memoryTreeNavigationHistory.value,
-        {
-          key: `${run.id}:${payload.sourcePlanId}:${memoryTreeNavigationHistory.value.length}`,
-          label: memoryTreeHistoryLabel,
-        },
-      ].slice(-8)
-    } else {
-      memoryTreeNavigationHistory.value = []
+      projectWorkspace.appendMemoryTreeHistory(pid.value, {
+        key: `${run.id}:${payload.sourcePlanId}:${memoryTreeNavigationHistory.value.length}`,
+        label: memoryTreeHistoryLabel,
+      })
     }
     chat.appendPlannerContinuationFeedback(run)
   } catch (err) {

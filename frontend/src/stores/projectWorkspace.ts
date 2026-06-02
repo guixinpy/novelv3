@@ -9,6 +9,12 @@ export interface ProjectWorkspaceState {
   dirtyTargets: Set<RefreshTarget>
   lastWorkspaceRouteByProject: Record<string, string>
   lastManuscriptChapterByProject: Record<string, number>
+  memoryTreeHistoryByProject: Record<string, MemoryTreeNavigationHistoryItem[]>
+}
+
+export interface MemoryTreeNavigationHistoryItem {
+  key: string
+  label: string
 }
 
 export function createProjectWorkspaceState(): ProjectWorkspaceState {
@@ -18,6 +24,7 @@ export function createProjectWorkspaceState(): ProjectWorkspaceState {
     dirtyTargets: new Set<RefreshTarget>(),
     lastWorkspaceRouteByProject: {},
     lastManuscriptChapterByProject: {},
+    memoryTreeHistoryByProject: {},
   }
 }
 
@@ -48,6 +55,44 @@ export function rememberManuscriptChapter(state: ProjectWorkspaceState, projectI
   state.lastManuscriptChapterByProject[projectId] = chapterIndex
 }
 
+export function memoryTreeHistoryForProject(state: ProjectWorkspaceState, projectId: string) {
+  return state.memoryTreeHistoryByProject[projectId] || []
+}
+
+export function appendMemoryTreeHistory(
+  state: ProjectWorkspaceState,
+  projectId: string,
+  item: MemoryTreeNavigationHistoryItem,
+  limit = 8,
+) {
+  const targetProjectId = cleanMemoryTreeHistoryText(projectId)
+  const label = safeMemoryTreeHistoryLabel(item.label)
+  if (!targetProjectId || !label) return
+  const key = cleanMemoryTreeHistoryText(item.key) || `memory-tree-history:${Date.now()}`
+  state.memoryTreeHistoryByProject[targetProjectId] = [
+    ...memoryTreeHistoryForProject(state, targetProjectId),
+    { key, label },
+  ].slice(-Math.max(1, limit))
+}
+
+export function clearMemoryTreeHistory(state: ProjectWorkspaceState, projectId: string) {
+  const targetProjectId = cleanMemoryTreeHistoryText(projectId)
+  if (!targetProjectId) return
+  delete state.memoryTreeHistoryByProject[targetProjectId]
+}
+
+function safeMemoryTreeHistoryLabel(label: unknown) {
+  const value = cleanMemoryTreeHistoryText(label)
+  if (!value) return ''
+  if (/[A-Za-z_]+:[A-Za-z0-9_-]+/.test(value)) return ''
+  if (/source_refs|source_id|approval_contract|approval:|chapter-content-\d+|memory-\d+/i.test(value)) return ''
+  return value.slice(0, 64)
+}
+
+function cleanMemoryTreeHistoryText(value: unknown) {
+  return typeof value === 'string' ? value.trim().replace(/\s+/g, ' ') : ''
+}
+
 export const useProjectWorkspaceStore = defineStore('projectWorkspace', () => {
   const state = reactive(createProjectWorkspaceState())
 
@@ -58,5 +103,10 @@ export const useProjectWorkspaceStore = defineStore('projectWorkspace', () => {
     consumeDirty: (target: RefreshTarget) => consumeDirty(state, target),
     rememberWorkspaceRoute: (projectId: string, route: string) => rememberWorkspaceRoute(state, projectId, route),
     rememberManuscriptChapter: (projectId: string, chapterIndex: number) => rememberManuscriptChapter(state, projectId, chapterIndex),
+    memoryTreeHistoryForProject: (projectId: string) => memoryTreeHistoryForProject(state, projectId),
+    appendMemoryTreeHistory: (projectId: string, item: MemoryTreeNavigationHistoryItem, limit?: number) => (
+      appendMemoryTreeHistory(state, projectId, item, limit)
+    ),
+    clearMemoryTreeHistory: (projectId: string) => clearMemoryTreeHistory(state, projectId),
   }
 })
