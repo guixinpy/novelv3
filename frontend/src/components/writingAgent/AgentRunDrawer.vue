@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import BaseModal from '../base/BaseModal.vue'
 import type { WritingAgentRunDetail } from '../../api/types'
 
@@ -41,6 +41,7 @@ const emit = defineEmits<{
   }]
 }>()
 
+const memoryTreeSearchQueryInput = ref('')
 const steps = computed(() => props.run?.steps || [])
 const runInput = computed(() => (isRecord(props.run?.input) ? props.run.input : {}))
 const inputPlannerOutput = computed(() => recordValue(runInput.value.planner))
@@ -505,6 +506,45 @@ const memoryTreeDrilldownActions = computed<MemoryTreeDrilldownAction[]>(() => {
   }
   return actions
 })
+const memoryTreeSearchAction = computed<MemoryTreeDrilldownAction | null>(() => {
+  const runId = props.run?.id
+  const query = memoryTreeSearchQueryInput.value.trim()
+  if (!runId || props.run?.status !== 'success' || !query) return null
+  const planId = 'memory-tree-search:manual'
+  const toolRequest: Record<string, unknown> = {
+    tool_name: 'inspect_agent_memory_tree',
+    params: {
+      query,
+      include_ancestors: true,
+    },
+    planner: {
+      step_id: planId,
+      plan_id: planId,
+      mutability: 'read',
+      requires_confirmation: false,
+    },
+  }
+  return {
+    key: planId,
+    label: `搜索 Memory Tree：${query}`,
+    payload: {
+      sourceRunId: runId,
+      sourcePlanId: planId,
+      goal: `搜索 Memory Tree：${query}`,
+      tools: [toolRequest],
+      planner: {
+        status: 'completed',
+        intent_class: 'inspect_memory_tree',
+        approval_contract: { status: 'not_required', write_steps: [] },
+        trace: {
+          plan_id: planId,
+          selected_tools: ['inspect_agent_memory_tree'],
+        },
+        tools: [toolRequest],
+      },
+    },
+  }
+})
 const hasMemoryLoopProjection = computed(() => Boolean(
   memoryActivationOutput.value || retrievalContextOutput.value || postChapterMemoryOutput.value,
 ))
@@ -707,6 +747,11 @@ function executePreparedApproval() {
 
 function executeMemoryTreeDrilldown(action: MemoryTreeDrilldownAction) {
   emit('executePlannerPlan', action.payload)
+}
+
+function executeMemoryTreeSearch() {
+  if (!memoryTreeSearchAction.value) return
+  emit('executePlannerPlan', memoryTreeSearchAction.value.payload)
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -1479,6 +1524,25 @@ function missingDependencyTool(value: Record<string, unknown>) {
               {{ action.label }}
             </button>
           </div>
+          <form
+            class="agent-run-drawer__memory-tree-search"
+            @submit.prevent="executeMemoryTreeSearch"
+          >
+            <input
+              v-model="memoryTreeSearchQueryInput"
+              type="search"
+              data-testid="memory-tree-search-input"
+              placeholder="搜索记忆树"
+            >
+            <button
+              type="submit"
+              class="agent-run-drawer__ghost"
+              data-testid="memory-tree-search-submit"
+              :disabled="!memoryTreeSearchAction"
+            >
+              搜索
+            </button>
+          </form>
         </section>
 
         <section
@@ -1965,6 +2029,28 @@ function missingDependencyTool(value: Record<string, unknown>) {
   color: var(--color-text-secondary);
   line-height: var(--leading-normal);
   overflow-wrap: anywhere;
+}
+
+.agent-run-drawer__memory-tree-search {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  gap: var(--space-2);
+}
+
+.agent-run-drawer__memory-tree-search input {
+  min-width: 0;
+  min-height: 30px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-white);
+  color: var(--color-text-primary);
+  font-size: var(--text-xs);
+}
+
+.agent-run-drawer__memory-tree-search input:focus {
+  outline: 2px solid var(--color-primary-soft);
+  border-color: var(--color-primary);
 }
 
 .agent-run-drawer__blockers li {

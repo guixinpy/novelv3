@@ -1379,6 +1379,107 @@ describe('AgentRunDrawer', () => {
     ]])
   })
 
+  it('emits a read-only memory tree search planner continuation from query input', async () => {
+    const wrapper = mount(AgentRunDrawer, {
+      attachTo: document.body,
+      props: {
+        open: true,
+        loading: false,
+        error: '',
+        run: {
+          id: 'run-memory-tree-search',
+          project_id: 'project-1',
+          goal: '浏览记忆树',
+          status: 'success',
+          entrypoint: 'dialog_auto_plan',
+          input: {},
+          output: null,
+          error: null,
+          steps: [
+            {
+              id: 'step-memory-tree',
+              run_id: 'run-memory-tree-search',
+              project_id: 'project-1',
+              step_index: 1,
+              tool_name: 'inspect_agent_memory_tree',
+              status: 'success',
+              input: {},
+              output: {
+                status: 'ready',
+                filters: {},
+                navigation: { mode: 'filtered' },
+                nodes: [
+                  {
+                    id: 'volume:1',
+                    level: 'volume',
+                    title: 'Volume 1',
+                    summary: '雾港开篇卷。',
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      },
+    })
+
+    const input = document.body.querySelector('[data-testid="memory-tree-search-input"]') as HTMLInputElement
+    expect(input).not.toBeNull()
+    input.value = '雨巷伏笔'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    await wrapper.vm.$nextTick()
+    const button = document.body.querySelector('[data-testid="memory-tree-search-submit"]') as HTMLButtonElement
+    expect(button).not.toBeNull()
+    await button.click()
+
+    expect(wrapper.emitted('executePlannerPlan')).toEqual([[
+      {
+        sourceRunId: 'run-memory-tree-search',
+        sourcePlanId: 'memory-tree-search:manual',
+        goal: '搜索 Memory Tree：雨巷伏笔',
+        tools: [
+          {
+            tool_name: 'inspect_agent_memory_tree',
+            params: {
+              query: '雨巷伏笔',
+              include_ancestors: true,
+            },
+            planner: {
+              step_id: 'memory-tree-search:manual',
+              plan_id: 'memory-tree-search:manual',
+              mutability: 'read',
+              requires_confirmation: false,
+            },
+          },
+        ],
+        planner: {
+          status: 'completed',
+          intent_class: 'inspect_memory_tree',
+          approval_contract: { status: 'not_required', write_steps: [] },
+          trace: {
+            plan_id: 'memory-tree-search:manual',
+            selected_tools: ['inspect_agent_memory_tree'],
+          },
+          tools: [
+            {
+              tool_name: 'inspect_agent_memory_tree',
+              params: {
+                query: '雨巷伏笔',
+                include_ancestors: true,
+              },
+              planner: {
+                step_id: 'memory-tree-search:manual',
+                plan_id: 'memory-tree-search:manual',
+                mutability: 'read',
+                requires_confirmation: false,
+              },
+            },
+          ],
+        },
+      },
+    ]])
+  })
+
   it('emits confirmed recommended followup execution payload when preview has executable tools', async () => {
     const wrapper = mount(AgentRunDrawer, {
       attachTo: document.body,
