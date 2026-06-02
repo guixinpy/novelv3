@@ -100,9 +100,9 @@ async function mountHermesView(path = '/projects/project-1/hermes') {
         VersionsModal: { template: '<div />' },
         ModelTraceDrawer: { template: '<div />' },
         AgentRunDrawer: {
-          props: ['open', 'run'],
+          props: ['open', 'run', 'memoryTreeHistory'],
           emits: ['executeRecovery', 'executeRecommendedFollowups', 'executePlannerPlan', 'refresh', 'applyRouteUpgrade'],
-          template: '<div v-if="open" data-testid="agent-run-drawer">{{ run && run.id }}<button data-testid="stub-execute-recovery" @click="$emit(\'executeRecovery\', { sourceRunId: \'source-run-1\', planHash: \'plan-hash-1\' })">execute</button><button data-testid="stub-execute-followups" @click="$emit(\'executeRecommendedFollowups\', { sourceRunId: \'source-run-2\', planHash: \'followup-plan-hash-1\' })">execute followups</button><button data-testid="stub-execute-planner-plan" @click="$emit(\'executePlannerPlan\', { sourceRunId: run && run.id, sourcePlanId: \'plan:review-12\', goal: \'执行规划工具链：审稿章节\', tools: [{ tool_name: \'review_chapter_quality\', params: { chapter_index: 12 }, planner: { plan_id: \'plan:review-12\' } }], planner: { trace: { plan_id: \'plan:review-12\' }, approval_contract: { status: \'not_required\' }, tools: [{ tool_name: \'review_chapter_quality\', params: { chapter_index: 12 }, planner: { plan_id: \'plan:review-12\' } }] } })">execute planner</button><button data-testid="stub-execute-planner-plan-approved" @click="$emit(\'executePlannerPlan\', { sourceRunId: run && run.id, sourcePlanId: \'plan:chapter-2\', goal: \'执行规划工具链：续写下一章\', tools: [{ tool_name: \'generate_chapter\', params: { chapter_index: 2 }, planner: { plan_id: \'plan:chapter-2\', mutability: \'write\', requires_confirmation: true } }], planner: { trace: { plan_id: \'plan:chapter-2\' }, approval_contract: { status: \'requires_confirmation\', approval: { approval_contract_hash: \'approval:secret\' } }, tools: [{ tool_name: \'generate_chapter\', params: { chapter_index: 2 }, planner: { plan_id: \'plan:chapter-2\', mutability: \'write\', requires_confirmation: true } }] }, approvalContractHash: \'approval:secret\', approvalContract: { status: \'requires_confirmation\', approval: { approval_contract_hash: \'approval:secret\' } } })">execute approved planner</button><button data-testid="stub-execute-planner-plan-stale" @click="$emit(\'executePlannerPlan\', { sourceRunId: \'stale-run\', sourcePlanId: \'plan:review-12\', goal: \'执行规划工具链：审稿章节\', tools: [{ tool_name: \'review_chapter_quality\', params: { chapter_index: 12 } }], planner: { trace: { plan_id: \'plan:review-12\' }, approval_contract: { status: \'not_required\' } } })">stale planner</button><button data-testid="stub-refresh-agent-run" @click="$emit(\'refresh\')">refresh</button><button data-testid="stub-apply-route-upgrade" @click="$emit(\'applyRouteUpgrade\', { sourceRunId: run && run.id, pendingActionId: \'action-1\', approvalContractHash: \'approval:secret\', approvalContract: { approval: { approval_contract_hash: \'approval:secret\' } } })">apply route</button><button data-testid="stub-apply-route-upgrade-stale" @click="$emit(\'applyRouteUpgrade\', { sourceRunId: \'stale-run\', pendingActionId: \'action-1\', approvalContractHash: \'approval:secret\', approvalContract: { approval: { approval_contract_hash: \'approval:secret\' } } })">stale route</button></div>',
+          template: '<div v-if="open" data-testid="agent-run-drawer">{{ run && run.id }}<span data-testid="stub-memory-tree-history">{{ (memoryTreeHistory || []).map((item) => item.label).join("|") }}</span><button data-testid="stub-execute-recovery" @click="$emit(\'executeRecovery\', { sourceRunId: \'source-run-1\', planHash: \'plan-hash-1\' })">execute</button><button data-testid="stub-execute-followups" @click="$emit(\'executeRecommendedFollowups\', { sourceRunId: \'source-run-2\', planHash: \'followup-plan-hash-1\' })">execute followups</button><button data-testid="stub-execute-planner-plan" @click="$emit(\'executePlannerPlan\', { sourceRunId: run && run.id, sourcePlanId: \'plan:review-12\', goal: \'执行规划工具链：审稿章节\', tools: [{ tool_name: \'review_chapter_quality\', params: { chapter_index: 12 }, planner: { plan_id: \'plan:review-12\' } }], planner: { trace: { plan_id: \'plan:review-12\' }, approval_contract: { status: \'not_required\' }, tools: [{ tool_name: \'review_chapter_quality\', params: { chapter_index: 12 }, planner: { plan_id: \'plan:review-12\' } }] } })">execute planner</button><button data-testid="stub-execute-memory-tree-plan" @click="$emit(\'executePlannerPlan\', { sourceRunId: run && run.id, sourcePlanId: \'memory-tree-node-expand:0\', goal: \'展开 Memory Tree：第2章\', tools: [{ tool_name: \'inspect_agent_memory_tree\', params: { expand_node_id: \'scene:memory-3\', include_ancestors: true, max_depth: 1 }, planner: { plan_id: \'memory-tree-node-expand:0\', mutability: \'read\', requires_confirmation: false } }], planner: { trace: { plan_id: \'memory-tree-node-expand:0\' }, approval_contract: { status: \'not_required\' }, tools: [{ tool_name: \'inspect_agent_memory_tree\', params: { expand_node_id: \'scene:memory-3\', include_ancestors: true, max_depth: 1 }, planner: { plan_id: \'memory-tree-node-expand:0\', mutability: \'read\', requires_confirmation: false } }] } })">memory tree</button><button data-testid="stub-execute-planner-plan-approved" @click="$emit(\'executePlannerPlan\', { sourceRunId: run && run.id, sourcePlanId: \'plan:chapter-2\', goal: \'执行规划工具链：续写下一章\', tools: [{ tool_name: \'generate_chapter\', params: { chapter_index: 2 }, planner: { plan_id: \'plan:chapter-2\', mutability: \'write\', requires_confirmation: true } }], planner: { trace: { plan_id: \'plan:chapter-2\' }, approval_contract: { status: \'requires_confirmation\', approval: { approval_contract_hash: \'approval:secret\' } }, tools: [{ tool_name: \'generate_chapter\', params: { chapter_index: 2 }, planner: { plan_id: \'plan:chapter-2\', mutability: \'write\', requires_confirmation: true } }] }, approvalContractHash: \'approval:secret\', approvalContract: { status: \'requires_confirmation\', approval: { approval_contract_hash: \'approval:secret\' } } })">execute approved planner</button><button data-testid="stub-execute-planner-plan-stale" @click="$emit(\'executePlannerPlan\', { sourceRunId: \'stale-run\', sourcePlanId: \'plan:review-12\', goal: \'执行规划工具链：审稿章节\', tools: [{ tool_name: \'review_chapter_quality\', params: { chapter_index: 12 } }], planner: { trace: { plan_id: \'plan:review-12\' }, approval_contract: { status: \'not_required\' } } })">stale planner</button><button data-testid="stub-refresh-agent-run" @click="$emit(\'refresh\')">refresh</button><button data-testid="stub-apply-route-upgrade" @click="$emit(\'applyRouteUpgrade\', { sourceRunId: run && run.id, pendingActionId: \'action-1\', approvalContractHash: \'approval:secret\', approvalContract: { approval: { approval_contract_hash: \'approval:secret\' } } })">apply route</button><button data-testid="stub-apply-route-upgrade-stale" @click="$emit(\'applyRouteUpgrade\', { sourceRunId: \'stale-run\', pendingActionId: \'action-1\', approvalContractHash: \'approval:secret\', approvalContract: { approval: { approval_contract_hash: \'approval:secret\' } } })">stale route</button></div>',
         },
       },
     },
@@ -632,6 +632,81 @@ describe('HermesView', () => {
     expect(wrapper.get('[data-testid="agent-run-drawer"]').text()).toContain('run-planner-executed')
     expect(wrapper.get('[data-testid="stub-last-message"]').text()).toContain('规划工具链执行已创建')
     expect(wrapper.get('[data-testid="stub-last-message"]').text()).not.toContain('approval_contract')
+
+    wrapper.unmount()
+  })
+
+  it('preserves safe memory tree navigation history after a planner continuation run', async () => {
+    vi.mocked((api as any).createAgentRun).mockResolvedValueOnce({
+      id: 'run-memory-tree-result',
+      project_id: 'project-1',
+      goal: '展开 Memory Tree：第2章',
+      status: 'success',
+      entrypoint: 'ui_planner_continuation_execute',
+      input: {},
+      output: null,
+      error: null,
+      steps: [
+        {
+          id: 'step-memory-tree',
+          tool_name: 'inspect_agent_memory_tree',
+          status: 'success',
+        },
+      ],
+    })
+    const wrapper = await mountHermesView()
+
+    await wrapper.get('[data-testid="stub-open-agent-run"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="stub-execute-memory-tree-plan"]').trigger('click')
+    await flushPromises()
+
+    expect((api as any).createAgentRun).toHaveBeenCalledWith('project-1', {
+      goal: '展开 Memory Tree：第2章',
+      entrypoint: 'ui_planner_continuation_execute',
+      tools: [
+        {
+          tool_name: 'inspect_agent_memory_tree',
+          params: {
+            expand_node_id: 'scene:memory-3',
+            include_ancestors: true,
+            max_depth: 1,
+          },
+          planner: {
+            plan_id: 'memory-tree-node-expand:0',
+            mutability: 'read',
+            requires_confirmation: false,
+          },
+        },
+      ],
+      input: {
+        planner_continuation: true,
+        source_run_id: 'run-1',
+        source_plan_id: 'memory-tree-node-expand:0',
+        planner: {
+          trace: { plan_id: 'memory-tree-node-expand:0' },
+          approval_contract: { status: 'not_required' },
+          tools: [
+            {
+              tool_name: 'inspect_agent_memory_tree',
+              params: {
+                expand_node_id: 'scene:memory-3',
+                include_ancestors: true,
+                max_depth: 1,
+              },
+              planner: {
+                plan_id: 'memory-tree-node-expand:0',
+                mutability: 'read',
+                requires_confirmation: false,
+              },
+            },
+          ],
+        },
+      },
+    })
+    expect(wrapper.get('[data-testid="agent-run-drawer"]').text()).toContain('run-memory-tree-result')
+    expect(wrapper.get('[data-testid="stub-memory-tree-history"]').text()).toContain('节点展开：第2章')
+    expect(wrapper.get('[data-testid="agent-run-drawer"]').text()).not.toContain('scene:memory-3')
 
     wrapper.unmount()
   })

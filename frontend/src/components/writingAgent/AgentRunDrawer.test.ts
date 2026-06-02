@@ -1483,6 +1483,67 @@ describe('AgentRunDrawer', () => {
     ]])
   })
 
+  it('renders memory tree navigation history without exposing internal node ids', () => {
+    mount(AgentRunDrawer, {
+      attachTo: document.body,
+      props: {
+        open: true,
+        loading: false,
+        error: '',
+        memoryTreeHistory: [
+          {
+            key: 'run-memory-tree-result:memory-tree-node-expand:0',
+            label: '节点展开：第2章',
+          },
+        ],
+        run: {
+          id: 'run-memory-tree-result',
+          project_id: 'project-1',
+          goal: '展开 Memory Tree：第2章',
+          status: 'success',
+          entrypoint: 'ui_planner_continuation_execute',
+          input: {},
+          output: null,
+          error: null,
+          steps: [
+            {
+              id: 'step-memory-tree',
+              run_id: 'run-memory-tree-result',
+              project_id: 'project-1',
+              step_index: 1,
+              tool_name: 'inspect_agent_memory_tree',
+              status: 'success',
+              input: {
+                expand_node_id: 'scene:memory-3',
+                include_ancestors: true,
+                max_depth: 1,
+              },
+              output: {
+                status: 'ready',
+                filters: {},
+                navigation: { mode: 'expanded_subtree' },
+                nodes: [
+                  {
+                    id: 'scene:memory-3',
+                    level: 'scene',
+                    chapter_index: 2,
+                    summary: '补充场景摘要。',
+                    children: ['beat:memory-4'],
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      },
+    })
+
+    const text = document.body.textContent || ''
+    expect(text).toContain('浏览历史')
+    expect(text).toContain('节点展开：第2章')
+    expect(text).not.toContain('scene:memory-3')
+  })
+
   it('emits a read-only memory tree search planner continuation from query input', async () => {
     const wrapper = mount(AgentRunDrawer, {
       attachTo: document.body,

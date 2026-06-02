@@ -66,6 +66,10 @@ type PlannerPlanExecutePayload = {
   approvalContractHash?: string
   approvalContract?: Record<string, unknown>
 }
+type MemoryTreeNavigationHistoryItem = {
+  key: string
+  label: string
+}
 type RouteUpgradeApplyPayload = {
   sourceRunId: string
   pendingActionId: string
@@ -95,6 +99,7 @@ const activeAgentRunId = ref<string | null>(null)
 const activeAgentRun = ref<WritingAgentRunDetail | null>(null)
 const agentRunLoading = ref(false)
 const agentRunError = ref('')
+const memoryTreeNavigationHistory = ref<MemoryTreeNavigationHistoryItem[]>([])
 const writingControlLoading = ref(false)
 const chatCommands = ref<ChatCommandDefinition[]>(chatCommandRegistry)
 
@@ -407,9 +412,10 @@ function closeTrace() {
   modelTrace.closeTrace()
 }
 
-async function openAgentRun(runId: string) {
+async function openAgentRun(runId: string, options: { preserveMemoryTreeHistory?: boolean } = {}) {
   const targetRunId = String(runId || '').trim()
   if (!targetRunId) return
+  if (!options.preserveMemoryTreeHistory) memoryTreeNavigationHistory.value = []
   activeAgentRunId.value = targetRunId
   activeAgentRun.value = null
   agentRunError.value = ''
@@ -425,7 +431,7 @@ async function openAgentRun(runId: string) {
 
 async function refreshAgentRun() {
   if (!activeAgentRunId.value) return
-  await openAgentRun(activeAgentRunId.value)
+  await openAgentRun(activeAgentRunId.value, { preserveMemoryTreeHistory: true })
 }
 
 function closeAgentRun() {
@@ -433,6 +439,7 @@ function closeAgentRun() {
   activeAgentRun.value = null
   agentRunError.value = ''
   agentRunLoading.value = false
+  memoryTreeNavigationHistory.value = []
 }
 
 async function executeRecoveryFromRun(payload: RecoveryExecutePayload) {
@@ -489,6 +496,7 @@ async function executePlannerPlanFromRun(payload: PlannerPlanExecutePayload) {
   const tools = normalizePlannerToolRequests(payload.tools)
   if (!payload.sourceRunId || !payload.sourcePlanId || !tools.length || !payload.planner) return
   if (payload.sourceRunId !== activeAgentRunId.value || payload.sourceRunId !== activeAgentRun.value?.id) return
+  const memoryTreeHistoryLabel = memoryTreeContinuationHistoryLabel(payload, tools)
   const approvalContract = recordValue(payload.approvalContract)
   const approvalBinding = payload.approvalContractHash && Object.keys(approvalContract).length
     ? {
@@ -514,6 +522,17 @@ async function executePlannerPlanFromRun(payload: PlannerPlanExecutePayload) {
     })
     activeAgentRunId.value = run.id
     activeAgentRun.value = run
+    if (memoryTreeHistoryLabel) {
+      memoryTreeNavigationHistory.value = [
+        ...memoryTreeNavigationHistory.value,
+        {
+          key: `${run.id}:${payload.sourcePlanId}:${memoryTreeNavigationHistory.value.length}`,
+          label: memoryTreeHistoryLabel,
+        },
+      ].slice(-8)
+    } else {
+      memoryTreeNavigationHistory.value = []
+    }
     chat.appendPlannerContinuationFeedback(run)
   } catch (err) {
     agentRunError.value = err instanceof Error ? err.message : '执行规划工具链失败'
@@ -535,6 +554,30 @@ function normalizePlannerToolRequests(tools: Array<Record<string, unknown>>): Wr
     if (Object.keys(planner).length) request.planner = planner
     return [request]
   })
+}
+
+function memoryTreeContinuationHistoryLabel(
+  payload: PlannerPlanExecutePayload,
+  tools: WritingAgentToolRequest[],
+) {
+  const memoryTreeTool = tools.find((tool) => tool.tool_name === 'inspect_agent_memory_tree')
+  if (!memoryTreeTool) return ''
+  const params = recordValue(memoryTreeTool.params)
+  const query = safeMemoryTreeDisplayValue(params.query)
+  if (query) return `搜索：${query}`
+  const goalLabel = safeMemoryTreeDisplayValue(String(payload.goal || '').replace(/^(展开|搜索) Memory Tree：/, ''))
+  const prefix = payload.sourcePlanId.includes('search')
+    ? '搜索'
+    : payload.sourcePlanId.includes('drilldown') ? '推荐展开' : '节点展开'
+  return goalLabel ? `${prefix}：${goalLabel}` : prefix
+}
+
+function safeMemoryTreeDisplayValue(value: unknown) {
+  const normalized = stringValue(value).replace(/\s+/g, ' ')
+  if (!normalized) return ''
+  if (/[A-Za-z_]+:[A-Za-z0-9_-]+/.test(normalized)) return ''
+  if (/source_refs|source_id|approval_contract|approval:|chapter-content-\d+|memory-\d+/i.test(normalized)) return ''
+  return normalized.slice(0, 48)
 }
 
 function recordValue(value: unknown): Record<string, unknown> {
@@ -669,6 +712,7 @@ async function applyRouteUpgradeFromRun(payload: RouteUpgradeApplyPayload) {
       :loading="agentRunLoading"
       :error="agentRunError"
       :pending-action-id="chat.pendingAction?.id || null"
+      :memory-tree-history="memoryTreeNavigationHistory"
       @close="closeAgentRun"
       @refresh="refreshAgentRun"
       @execute-recovery="executeRecoveryFromRun"

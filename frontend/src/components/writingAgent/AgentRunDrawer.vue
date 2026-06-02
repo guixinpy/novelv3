@@ -19,12 +19,18 @@ type MemoryTreeDrilldownAction = {
   payload: PlannerPlanExecutePayload
 }
 
+type MemoryTreeNavigationHistoryItem = {
+  key: string
+  label: string
+}
+
 const props = defineProps<{
   open: boolean
   loading: boolean
   error: string
   run: WritingAgentRunDetail | null
   pendingActionId?: string | null
+  memoryTreeHistory?: MemoryTreeNavigationHistoryItem[]
 }>()
 
 const emit = defineEmits<{
@@ -432,6 +438,14 @@ const memoryTreeQuery = computed(() => stringValue(memoryTreeFilters.value.query
 const memoryTreeFilterLevel = computed(() => stringValue(memoryTreeFilters.value.level))
 const memoryTreeRecommendedDrilldownCount = computed(() => (
   recordList(memoryTreeNavigation.value.recommended_drilldowns).length
+))
+const memoryTreeHistoryRows = computed(() => (
+  (props.memoryTreeHistory || [])
+    .map((item, index) => ({
+      key: stringValue(item.key) || `memory-tree-history:${index}`,
+      label: safeMemoryTreeDisplayLabel(item.label),
+    }))
+    .filter((item) => Boolean(item.label))
 ))
 const memoryTreeNodeRows = computed(() => (
   memoryTreeNodes.value.map((node, index) => {
@@ -978,6 +992,14 @@ function memoryTreeNavigationModeLabel(mode: unknown) {
   return value || '未知'
 }
 
+function safeMemoryTreeDisplayLabel(label: unknown) {
+  const value = stringValue(label).replace(/\s+/g, ' ')
+  if (!value) return ''
+  if (/[A-Za-z_]+:[A-Za-z0-9_-]+/.test(value)) return ''
+  if (/source_refs|source_id|approval_contract|approval:|chapter-content-\d+|memory-\d+/i.test(value)) return ''
+  return value.slice(0, 64)
+}
+
 function retrievalSourceTypeLabel(sourceType: string) {
   if (sourceType === 'knowledge_base_candidate') return '知识库候选'
   if (sourceType === 'longform_memory') return '长篇记忆'
@@ -1504,6 +1526,21 @@ function missingDependencyTool(value: Record<string, unknown>) {
               <dd>推荐展开 {{ memoryTreeRecommendedDrilldownCount }}</dd>
             </div>
           </dl>
+          <div
+            v-if="memoryTreeHistoryRows.length"
+            class="agent-run-drawer__memory-tree-history"
+          >
+            <span>浏览历史</span>
+            <ol>
+              <li
+                v-for="item in memoryTreeHistoryRows"
+                :key="item.key"
+                data-testid="memory-tree-history-item"
+              >
+                {{ item.label }}
+              </li>
+            </ol>
+          </div>
           <ol
             v-if="memoryTreeNodeRows.length"
             class="agent-run-drawer__memory-tree-nodes"
@@ -2059,6 +2096,37 @@ function missingDependencyTool(value: Record<string, unknown>) {
   margin: 0;
   color: var(--color-text-secondary);
   line-height: var(--leading-normal);
+  overflow-wrap: anywhere;
+}
+
+.agent-run-drawer__memory-tree-history {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.agent-run-drawer__memory-tree-history > span {
+  color: var(--color-text-tertiary);
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+}
+
+.agent-run-drawer__memory-tree-history ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.agent-run-drawer__memory-tree-history li {
+  max-width: 100%;
+  padding: 2px var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-white);
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
   overflow-wrap: anywhere;
 }
 

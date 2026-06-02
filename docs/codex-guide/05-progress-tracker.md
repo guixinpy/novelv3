@@ -342,7 +342,7 @@
 - [x] 对话界面含 action cards + followup + trace 入口
 - [x] Recommended followup fallback view 可展示 pending confirmation handoff，且 pending-only 计划不会显示“执行后继”自动执行按钮
 - [x] AgentRunDrawer 执行计划进度摘要：展示计划工具数、已执行、已完成、进行中、下一步工具和逐项计划工具状态
-- [x] AgentRunDrawer Memory Tree 投影：展示 inspect_agent_memory_tree 的状态、查询条件、导航模式、推荐展开数和节点列表，并可通过自由查询、推荐 drilldown 或返回节点展开发起只读浏览 run
+- [x] AgentRunDrawer Memory Tree 投影：展示 inspect_agent_memory_tree 的状态、查询条件、导航模式、推荐展开数、节点列表和临时浏览历史，并可通过自由查询、推荐 drilldown 或返回节点展开发起只读浏览 run
 - [x] Athena 世界模型面板（实体 + 提案审阅）
 - [x] Model Trace 抽屉
 - [x] 前端请求隔离（request lane + project scope version）
@@ -353,7 +353,7 @@
 | 优先级 | 任务 | 完成标准 | 状态 |
 |--------|------|---------|------|
 | P1 | Agent 执行计划可视化 | 对话中展示当前执行计划、工具调用进度 | 🟡 进行中（Drawer per-tool progress + followup pending confirmation fallback） |
-| P2 | Memory Tree 可视化 | 前端展示分层摘要树、支持浏览和搜索 | 🟡 进行中（Drawer read-only projection + free search + recommended/node drilldown；独立面板待补） |
+| P2 | Memory Tree 可视化 | 前端展示分层摘要树、支持浏览和搜索 | 🟡 进行中（Drawer read-only projection + free search + recommended/node drilldown + temporary history；独立面板待补） |
 | P3 | 面板整合 | Athena 面板、Memory 面板、Trace 面板的统一导航 | 🔴 待开始 |
 
 ### 最近完成
@@ -365,10 +365,11 @@
 - 2026-06-02: `AgentRunDrawer` 的 Memory Tree 投影新增“展开推荐节点”只读 continuation，基于 `navigation.recommended_drilldowns` 创建 `inspect_agent_memory_tree` read plan（expand_node_id + include_ancestors + max_depth），让搜索结果可继续按需展开而无需写入审批。
 - 2026-06-02: `AgentRunDrawer` 的 Memory Tree 投影新增自由搜索输入，提交后创建 `inspect_agent_memory_tree` 只读 continuation（query + include_ancestors），让用户不离开运行详情即可继续搜索分层记忆树。
 - 2026-06-02: `AgentRunDrawer` 的 Memory Tree 投影新增“展开节点”只读 continuation，对返回结果中带 children 的节点创建 `inspect_agent_memory_tree` read plan（expand_node_id + include_ancestors + max_depth），让用户不依赖推荐 drilldown 也能继续浏览任意已返回分支，按钮标签仍避免泄露内部 node id。
+- 2026-06-02: `HermesView` 为 `inspect_agent_memory_tree` planner continuation 增加临时浏览历史状态，并将安全标签传回 `AgentRunDrawer` 展示；历史只记录“搜索/推荐展开/节点展开”等清洗后的行为标签，不显示 run id、node id、source id 或 approval hash，刷新当前 run 会保留，打开其他 run 或关闭 Drawer 会清空。
 
 ### 阻塞项
 
-- 独立 Memory Tree 面板仍需要前端交互契约：将 Drawer 的只读投影/自由搜索/推荐展开/节点展开沉淀为可持久的面板状态、展开历史和跨面板导航。
+- 独立 Memory Tree 面板仍需要前端交互契约：将 Drawer 的只读投影/自由搜索/推荐展开/节点展开/临时浏览历史沉淀为可持久的面板状态、展开历史和跨面板导航。
 
 ---
 
