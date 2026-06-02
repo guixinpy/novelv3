@@ -115,6 +115,7 @@
 - [x] 对话意图计划器：DialogIntentPlanner → WritingAgentPlan
 - [x] Memory Tree 只读浏览意图：自然语言“浏览/搜索记忆树”可投影为 inspect_agent_memory_tree 只读工具计划
 - [x] ContextCompressor 只读自检意图：自然语言“检查上下文压缩/预算/窗口压力”可投影为 inspect_agent_context_compression_projection 只读工具计划
+- [x] Worker Dispatch 只读审计意图：自然语言“检查 worker 分发/孤儿恢复”可投影为 inspect_agent_worker_dispatch 只读工具计划
 - [x] 审批流：approval_contract + approval_verification_event
 - [x] Followup 机制：recommended_followup_planner + 前端 action cards
 - [x] 斜杠命令路由：slash_command_route
@@ -134,6 +135,7 @@
 
 ### 最近完成
 
+- 2026-06-02: `IntentRouter` 新增 `worker_dispatch_intent`，可将“检查 worker 分发/孤儿恢复/子代理调度”等自然语言投影为 `inspect_worker_dispatch` action，并抽取显式 worker_name；`plan_dialog_intent_agent_run` 对该只读 action 直接生成 `inspect_agent_worker_dispatch` 工具计划，approval_contract 为 not_required。
 - 2026-06-02: `IntentRouter` 新增 `context_compression_intent`，可将“检查第 N 章上下文压缩/预算/窗口压力”等自然语言投影为 `inspect_context_compression` action，并抽取 chapter_index / max_chars；`plan_dialog_intent_agent_run` 对该只读 action 直接生成 `inspect_agent_context_compression_projection` 工具计划，approval_contract 为 not_required。
 - 2026-06-02: `IntentRouter` 新增 `memory_tree_intent`，可将“浏览/查看/搜索/检索记忆树/长期记忆”等自然语言投影为 `inspect_memory_tree` action，抽取 query、level、chapter_index 并默认 include_ancestors；`plan_dialog_intent_agent_run` 对该只读 action 直接生成 `inspect_agent_memory_tree` 工具计划，approval_contract 为 not_required。
 - 2026-05-27: dialog-driven-agent-orchestration plan executed — 审稿和恢复意图路由 + planner 分支
@@ -153,6 +155,7 @@
 - [x] Worker 链追踪：worker_route_registry_projection 含 chain alignment 记录
 - [x] 孤兒 Worker 恢复基础审计：agent_worker_recovery 检测 active worker run 的 missing/terminal parent，并输出清理与重分派 preview
 - [x] 孤兒 Worker 恢复写入闭环基础版：apply_agent_worker_orphan_recovery 确认后标记 orphan worker blocked，并可创建 pending redispatch run
+- [x] Worker 分发/孤兒恢复只读入口：自然语言“检查 worker 分发/孤儿恢复”可直接规划到 inspect_agent_worker_dispatch
 
 ### 下一步任务
 
@@ -168,6 +171,7 @@
 
 ### 最近完成
 
+- 2026-06-02: `inspect_agent_worker_dispatch` 接入对话只读意图链路：自然语言“检查 worker 分发/孤儿恢复”会经 `worker_dispatch_intent` 生成无需审批的 read tool 计划，保留显式 worker_name 并默认提供空 tasks 以执行纯审计预览。
 - 2026-06-01: 标准化 AgentDefinition loader，保留现有 YAML 定义并新增 TOML 读取能力；定义注册表审计输出 source_format，用于后续吸收 openhuman agent.toml 形态而不迁移当前文件。
 - 2026-06-01: 新增 orphan worker 恢复基础审计，`inspect_agent_worker_dispatch` 会附带 orphan_recovery，自动检测 parent/source run 缺失或失败取消的 active worker run，并给出 mark-blocked 与 redispatch preview。
 - 2026-06-01: 新增 `apply_agent_worker_orphan_recovery` guarded write 工具，确认后将 orphan worker run 标记为 blocked；若父 run 已失败且原始工具链可恢复，可创建新的 pending redispatch run。

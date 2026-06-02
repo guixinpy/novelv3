@@ -290,6 +290,56 @@ def test_intent_router_context_guard_phrase_is_case_insensitive():
     }
 
 
+def test_intent_router_projection_explains_worker_dispatch_route():
+    router = IntentRouter()
+    diag = ProjectDiagnosisOut(
+        missing_items=[],
+        completed_items=["setup", "storyline", "outline", "content"],
+        suggested_next_step="preview_chapter",
+    )
+
+    projection = router.project("检查 reviewer_worker 的 worker 分发和孤儿恢复", "chatting", None, diag).to_dict()
+
+    assert projection["status"] == "matched"
+    assert projection["rule_id"] == "worker_dispatch_intent"
+    assert projection["decision"]["rule_id"] == "worker_dispatch_intent"
+    assert projection["decision"]["match_evidence"] == [{"kind": "pattern", "name": "worker_dispatch_phrase"}]
+    assert projection["candidate"] == {
+        "type": "inspect_worker_dispatch",
+        "params": {"worker_name": "reviewer_worker", "tasks": []},
+    }
+    assert projection["agent_route"] == _expected_agent_route(
+        "text_intent",
+        "inspect_worker_dispatch",
+        "inspect_agent_worker_dispatch",
+        requires_confirmation=False,
+    )
+    assert projection["tool_selection"] == {
+        "selected_tool": "inspect_agent_worker_dispatch",
+        "why_this_tool": "dialog_action_to_agent_tool.inspect_worker_dispatch",
+        "availability_checked": False,
+    }
+    assert projection["extracted_params"] == {"worker_name": "reviewer_worker", "tasks": []}
+
+
+def test_intent_router_orphan_recovery_phrase_routes_to_worker_dispatch():
+    router = IntentRouter()
+    diag = ProjectDiagnosisOut(
+        missing_items=[],
+        completed_items=["setup", "storyline", "outline", "content"],
+        suggested_next_step="preview_chapter",
+    )
+
+    projection = router.project("检查孤儿恢复审计", "chatting", None, diag).to_dict()
+
+    assert projection["status"] == "matched"
+    assert projection["rule_id"] == "worker_dispatch_intent"
+    assert projection["candidate"] == {
+        "type": "inspect_worker_dispatch",
+        "params": {"tasks": []},
+    }
+
+
 def test_intent_router_chapter_phrase_with_memory_clue_does_not_route_to_memory_tree():
     router = IntentRouter()
     diagnosis = ProjectDiagnosisOut(

@@ -63,7 +63,7 @@ Agent 化缺口：
   - 五级循环检测已具备 generic_repeat、ping-pong、unknown_tool_repeat、known_poll_no_progress、global_circuit_breaker
   - StopHooks 已具备 critical loop、BudgetCap、MaxTurns、ContextGuard、approval、memory provenance 策略；后续可继续扩展为真正的运行中断控制点
   - Agent loop budget 已具备 read 工具 refund 投影（used/charged/refunded/remaining iterations）
-  - Worker dispatch 已实现基础分发，子 Agent 孤兒恢复已有只读审计、确认式 blocked 清理和 pending redispatch run 创建
+  - Worker dispatch 已实现基础分发，子 Agent 孤兒恢复已有只读审计、自然语言只读入口、确认式 blocked 清理和 pending redispatch run 创建
   - 后续可继续扩展 refund 规则，例如对白名单程序化 write 工具或批处理子步骤细分计费
 关联模块：Hermes、Athena、Retrieval、TaskQueue、Trace、Memory
 ```
@@ -88,7 +88,7 @@ Agent 化缺口：
   ├── session.py                          # 对话 session 管理
   └── messages.py                         # 消息管理
 Agent 化缺口：
-  - 意图路由覆盖不完整（部分写作意图尚未接入；Memory Tree 只读浏览与 ContextCompressor 自检已可由自然语言投影到对应只读工具）
+  - 意图路由覆盖不完整（部分写作意图尚未接入；Memory Tree 只读浏览、ContextCompressor 自检与 Worker Dispatch/孤儿恢复审计已可由自然语言投影到对应只读工具）
   - 缺少 LLM 驱动的"模糊意图"解析
   - pending_action 机制未与 Agent tool approval 统一
 关联模块：WritingAgent、Athena、前端 Chat

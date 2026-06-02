@@ -16,6 +16,7 @@ _INTENT_RULE_IDS = (
     "recovery_intent",
     "memory_tree_intent",
     "context_compression_intent",
+    "worker_dispatch_intent",
     "query_diagnosis_intent",
 )
 
@@ -290,6 +291,20 @@ class IntentRouter:
                 preconditions=[{"code": "context_compression_read_available", "passed": True}],
             )
 
+        if _is_worker_dispatch_intent(text):
+            extracted_params = _worker_dispatch_params(text)
+            return self._matched_projection(
+                text,
+                dialog_state,
+                pending_action_id,
+                diagnosis,
+                rule_id="worker_dispatch_intent",
+                candidate=ActionCandidate("inspect_worker_dispatch", extracted_params),
+                extracted_params=extracted_params,
+                match_evidence=[{"kind": "pattern", "name": "worker_dispatch_phrase"}],
+                preconditions=[{"code": "worker_dispatch_read_available", "passed": True}],
+            )
+
         if re.search(r"创建.*(主角|人物|设定|世界观)", text) or re.search(r"生成.*设定", text):
             if "setup" in diagnosis.missing_items or "setup" in diagnosis.completed_items:
                 return self._matched_projection(
@@ -536,6 +551,40 @@ def _context_compression_max_chars(text: str) -> int | None:
             continue
         if value >= 500:
             return value
+    return None
+
+
+_WORKER_NAMES = (
+    "drafting_worker",
+    "reviewer_worker",
+    "revision_worker",
+    "memory_worker",
+    "retrieval_worker",
+    "world_model_worker",
+    "recovery_worker",
+)
+
+
+def _is_worker_dispatch_intent(text: str) -> bool:
+    return bool(
+        re.search(r"(worker|子代理|子agent|子 agent).*(分发|分派|调度|恢复|孤儿|孤兒|orphan|审计)", text)
+        or re.search(r"(分发|分派|调度|恢复|孤儿|孤兒|orphan|审计).*(worker|子代理|子agent|子 agent)", text)
+        or re.search(r"(孤儿|孤兒|orphan).*(恢复|审计|清理|recovery)", text)
+    )
+
+
+def _worker_dispatch_params(text: str) -> dict[str, Any]:
+    params: dict[str, Any] = {"tasks": []}
+    worker_name = _worker_dispatch_worker_name(text)
+    if worker_name:
+        params["worker_name"] = worker_name
+    return params
+
+
+def _worker_dispatch_worker_name(text: str) -> str | None:
+    for worker_name in _WORKER_NAMES:
+        if worker_name in text:
+            return worker_name
     return None
 
 
