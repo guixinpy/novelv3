@@ -1226,6 +1226,111 @@ describe('HermesView', () => {
     wrapper.unmount()
   })
 
+  it('starts a trace audit run from a memory tree workspace chapter node', async () => {
+    vi.mocked((api as any).createAgentRun)
+      .mockImplementationOnce(async () => ({
+        id: 'run-memory-tree-workspace',
+        project_id: 'project-1',
+        goal: '搜索 Memory Tree：灯塔旧回声',
+        status: 'success',
+        entrypoint: 'ui_memory_tree_workspace_search',
+        input: {},
+        output: null,
+        error: null,
+        steps: [
+          {
+            id: 'step-memory-tree-workspace',
+            tool_name: 'inspect_agent_memory_tree',
+            status: 'success',
+            output: {
+              status: 'ready',
+              summary: {
+                volume_nodes: 0,
+                chapter_nodes: 1,
+                scene_nodes: 0,
+                beat_nodes: 0,
+              },
+              nodes: [
+                {
+                  id: 'chapter:2',
+                  level: 'chapter',
+                  chapter_index: 2,
+                  title: '灯塔旧回声',
+                  summary: '主角在灯塔发现旧回声线索。',
+                  children: [],
+                  source_refs: [{ source_type: 'chapter_content', source_id: 'chapter-content-2' }],
+                },
+              ],
+            },
+          },
+        ],
+      }))
+      .mockImplementationOnce(async () => ({
+        id: 'run-memory-tree-trace-audit',
+        project_id: 'project-1',
+        goal: '审计 Memory Tree 章节 Trace：第2章',
+        status: 'success',
+        entrypoint: 'ui_memory_tree_workspace_trace_audit',
+        input: {},
+        output: null,
+        error: null,
+        steps: [
+          {
+            id: 'step-memory-tree-trace-audit',
+            tool_name: 'inspect_agent_trace_audit',
+            status: 'success',
+            output: {
+              status: 'completed',
+              audit: { status: 'healthy', step_count: 2, trace_count: 1 },
+              run: null,
+              steps: [],
+              traces: [],
+            },
+          },
+        ],
+      }))
+    const wrapper = await mountHermesView()
+
+    const openWorkspace = document.querySelector('[data-testid="memory-tree-workspace-open"]') as HTMLButtonElement
+    openWorkspace.click()
+    await flushPromises()
+
+    await wrapper.get('[data-testid="memory-tree-workspace-query"]').setValue('灯塔旧回声')
+    await wrapper.get('[data-testid="memory-tree-workspace-search"]').trigger('submit')
+    await flushPromises()
+
+    const traceAuditLink = wrapper.get('[data-testid="memory-tree-workspace-audit-trace"]')
+    expect(traceAuditLink.text()).toContain('审计 Trace')
+    await traceAuditLink.trigger('click')
+    await flushPromises()
+
+    const traceAuditRequest = vi.mocked((api as any).createAgentRun).mock.calls[1][1]
+    expect(traceAuditRequest).toEqual({
+      goal: '审计 Memory Tree 章节 Trace：第2章',
+      entrypoint: 'ui_memory_tree_workspace_trace_audit',
+      tools: [
+        {
+          tool_name: 'inspect_agent_trace_audit',
+          params: {
+            chapter_index: 2,
+            limit: 20,
+          },
+        },
+      ],
+      input: {
+        memory_tree_workspace_trace_audit: true,
+        source_node_label: '灯塔旧回声',
+        chapter_index: 2,
+      },
+    })
+    expect(JSON.stringify(traceAuditRequest)).not.toContain('chapter:2')
+    expect(JSON.stringify(traceAuditRequest)).not.toContain('chapter-content-2')
+    expect(wrapper.get('[data-testid="agent-run-drawer"]').text()).toContain('run-memory-tree-trace-audit')
+    expect(wrapper.get('[data-testid="memory-tree-workspace"]').text()).toContain('审计 Trace：第2章')
+
+    wrapper.unmount()
+  })
+
   it('creates a read-only memory tree expand run from a subnav result node', async () => {
     const searchRun = {
       id: 'run-memory-tree-search',

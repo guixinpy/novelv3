@@ -85,6 +85,7 @@ type MemoryTreePanelResultRow = {
   canExpand: boolean
   canOpenChapter: boolean
   canSearchRetrieval: boolean
+  canAuditTrace: boolean
   depth: number
 }
 
@@ -170,6 +171,7 @@ const memoryTreePanelResultRows = computed<MemoryTreePanelResultRow[]>(() => (
       canExpand,
       canOpenChapter: chapterIndex !== null && chapterIndex > 0,
       canSearchRetrieval: Boolean(retrievalQuery),
+      canAuditTrace: chapterIndex !== null && chapterIndex > 0,
       depth,
     }
   })
@@ -579,6 +581,45 @@ async function searchMemoryTreeRetrieval(row: MemoryTreePanelResultRow) {
     })
   } catch (err) {
     memoryTreePanelError.value = err instanceof Error ? err.message : '检索 Memory Tree 证据失败'
+  } finally {
+    memoryTreePanelLoading.value = false
+  }
+}
+
+async function auditMemoryTreeTrace(row: MemoryTreePanelResultRow) {
+  if (!row.canAuditTrace || row.chapterIndex === null || memoryTreePanelLoading.value) return
+  memoryTreePanelError.value = ''
+  memoryTreePanelLoading.value = true
+  agentRunError.value = ''
+  const chapterLabel = chapterIndexLabel(row.chapterIndex) || row.title
+  try {
+    const run = await api.createAgentRun(pid.value, {
+      goal: `审计 Memory Tree 章节 Trace：${chapterLabel}`,
+      entrypoint: 'ui_memory_tree_workspace_trace_audit',
+      tools: [
+        {
+          tool_name: 'inspect_agent_trace_audit',
+          params: {
+            chapter_index: row.chapterIndex,
+            limit: 20,
+          },
+        },
+      ],
+      input: {
+        memory_tree_workspace_trace_audit: true,
+        source_node_label: row.title,
+        chapter_index: row.chapterIndex,
+      },
+    })
+    activeAgentRunId.value = run.id
+    activeAgentRun.value = run
+    projectWorkspace.appendMemoryTreeHistory(pid.value, {
+      key: `${run.id}:workspace-trace-audit:${memoryTreeNavigationHistory.value.length}`,
+      label: `审计 Trace：${chapterLabel}`,
+      runId: run.id,
+    })
+  } catch (err) {
+    memoryTreePanelError.value = err instanceof Error ? err.message : '审计 Memory Tree Trace 失败'
   } finally {
     memoryTreePanelLoading.value = false
   }
@@ -1156,6 +1197,15 @@ async function applyRouteUpgradeFromRun(payload: RouteUpgradeApplyPayload) {
                 @click="searchMemoryTreeRetrieval(row)"
               >
                 检索证据
+              </button>
+              <button
+                v-if="row.canAuditTrace"
+                type="button"
+                data-testid="memory-tree-workspace-audit-trace"
+                :disabled="memoryTreePanelLoading"
+                @click="auditMemoryTreeTrace(row)"
+              >
+                审计 Trace
               </button>
               <button
                 v-if="row.canOpenChapter"
