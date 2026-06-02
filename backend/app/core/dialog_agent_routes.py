@@ -10,6 +10,7 @@ _READ_ONLY_AGENT_TOOLS = {
     "inspect_agent_memory_tree",
     "inspect_agent_context_compression_projection",
     "inspect_agent_worker_dispatch",
+    "inspect_agent_trace_audit",
 }
 
 DialogAgentRouteSource = Literal["slash_command", "text_intent", "button_action"]
@@ -26,6 +27,7 @@ _DIALOG_ACTION_TO_AGENT_TOOL: dict[str, str] = {
     "inspect_memory_tree": "inspect_agent_memory_tree",
     "inspect_context_compression": "inspect_agent_context_compression_projection",
     "inspect_worker_dispatch": "inspect_agent_worker_dispatch",
+    "inspect_trace_audit": "inspect_agent_trace_audit",
     "generate_setup": "generate_setup",
     "generate_storyline": "generate_storyline",
     "generate_outline": "generate_outline",

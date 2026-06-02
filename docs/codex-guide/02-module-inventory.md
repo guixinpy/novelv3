@@ -90,7 +90,7 @@ Agent 化缺口：
   ├── session.py                          # 对话 session 管理
   └── messages.py                         # 消息管理
 Agent 化缺口：
-  - 意图路由覆盖不完整（部分写作意图尚未接入；Agent Health、Control Plane 就绪度、Memory Tree 只读浏览、ContextCompressor 自检与 Worker Dispatch/孤儿恢复审计已可由自然语言投影到对应只读工具）
+  - 意图路由覆盖不完整（部分写作意图尚未接入；Agent Health、Control Plane 就绪度、Memory Tree 只读浏览、ContextCompressor 自检、Worker Dispatch/孤儿恢复审计与 Trace Audit 已可由自然语言投影到对应只读工具）
   - 缺少 LLM 驱动的"模糊意图"解析
   - pending_action 机制未与 Agent tool approval 统一
 关联模块：WritingAgent、Athena、前端 Chat
@@ -260,7 +260,7 @@ Agent 化缺口：
 ### 4.2 Trace & Audit（追踪与审计）
 
 ```
-当前状态：L2 AIModelCallTrace 记录每次 AI 调用的详细信息
+当前状态：L2 AIModelCallTrace 记录每次 AI 调用的详细信息；inspect_agent_trace_audit 已可由自然语言只读意图触达，用于审计 run/step/model trace/context blocks
 目标状态：L3 全链路 trace（用户意图→计划→工具调用→模型调用→结果）
 关键文件：
   backend/app/core/model_call_trace.py    # Model Call Trace 核心
@@ -273,7 +273,7 @@ Agent 化缺口：
   frontend/src/components/modelTrace/     # 前端 Trace 抽屉
   frontend/src/stores/modelTraces.ts     # 前端 Trace Store
 Agent 化缺口：
-  - trace 目前以单次模型调用为单位，缺少"用户请求→最终结果"的端到端链路
+  - trace 仍缺少"用户请求→最终结果"的完整端到端聚合链路；当前自然语言入口已能把 run trace/执行链路审计路由到 inspect_agent_trace_audit
   - 缺少 trace 的聚合分析和异常检测
 关联模块：所有 AI 调用模块
 ```

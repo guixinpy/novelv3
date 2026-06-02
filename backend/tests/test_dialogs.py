@@ -322,6 +322,38 @@ def test_intent_router_projection_explains_worker_dispatch_route():
     assert projection["extracted_params"] == {"worker_name": "reviewer_worker", "tasks": []}
 
 
+def test_intent_router_projection_explains_trace_audit_route():
+    router = IntentRouter()
+    diag = ProjectDiagnosisOut(
+        missing_items=[],
+        completed_items=["setup", "storyline", "outline", "content"],
+        suggested_next_step="preview_chapter",
+    )
+
+    projection = router.project("检查 run-abc123 的 trace 审计链路", "chatting", None, diag).to_dict()
+
+    assert projection["status"] == "matched"
+    assert projection["rule_id"] == "trace_audit_intent"
+    assert projection["decision"]["rule_id"] == "trace_audit_intent"
+    assert projection["decision"]["match_evidence"] == [{"kind": "pattern", "name": "trace_audit_phrase"}]
+    assert projection["candidate"] == {
+        "type": "inspect_trace_audit",
+        "params": {"run_id": "run-abc123"},
+    }
+    assert projection["agent_route"] == _expected_agent_route(
+        "text_intent",
+        "inspect_trace_audit",
+        "inspect_agent_trace_audit",
+        requires_confirmation=False,
+    )
+    assert projection["tool_selection"] == {
+        "selected_tool": "inspect_agent_trace_audit",
+        "why_this_tool": "dialog_action_to_agent_tool.inspect_trace_audit",
+        "availability_checked": False,
+    }
+    assert projection["extracted_params"] == {"run_id": "run-abc123"}
+
+
 def test_intent_router_orphan_recovery_phrase_routes_to_worker_dispatch():
     router = IntentRouter()
     diag = ProjectDiagnosisOut(

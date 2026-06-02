@@ -17,6 +17,7 @@ _INTENT_RULE_IDS = (
     "memory_tree_intent",
     "context_compression_intent",
     "worker_dispatch_intent",
+    "trace_audit_intent",
     "agent_health_intent",
     "control_plane_readiness_intent",
     "query_diagnosis_intent",
@@ -318,6 +319,20 @@ class IntentRouter:
                 extracted_params={},
                 match_evidence=[{"kind": "pattern", "name": "control_plane_readiness_phrase"}],
                 preconditions=[{"code": "control_plane_readiness_read_available", "passed": True}],
+            )
+
+        if _is_trace_audit_intent(text):
+            extracted_params = _trace_audit_params(text)
+            return self._matched_projection(
+                text,
+                dialog_state,
+                pending_action_id,
+                diagnosis,
+                rule_id="trace_audit_intent",
+                candidate=ActionCandidate("inspect_trace_audit", extracted_params),
+                extracted_params=extracted_params,
+                match_evidence=[{"kind": "pattern", "name": "trace_audit_phrase"}],
+                preconditions=[{"code": "trace_audit_read_available", "passed": True}],
             )
 
         if _is_agent_health_intent(text):
@@ -624,6 +639,35 @@ def _is_control_plane_readiness_intent(text: str) -> bool:
         or re.search(r"(工具契约|命令契约|tool\s*contract|command\s*contract).*(就绪|缺口|自检|诊断|检查)", text)
         or re.search(r"(就绪|缺口|自检|诊断|检查).*(工具契约|命令契约|tool\s*contract|command\s*contract)", text)
     )
+
+
+def _is_trace_audit_intent(text: str) -> bool:
+    return bool(
+        re.search(r"(trace|追踪|执行链|链路).*(审计|检查|查看|分析|失败原因)", text)
+        or re.search(r"(审计|检查|查看|分析).*(trace|追踪|执行链|链路)", text)
+        or re.search(r"\brun[-_\w]+\b.*(trace|追踪|审计|执行链|链路|失败原因)", text)
+    )
+
+
+def _trace_audit_params(text: str) -> dict[str, Any]:
+    params: dict[str, Any] = {}
+    run_id = _trace_audit_run_id(text)
+    if run_id:
+        params["run_id"] = run_id
+    chapter_index = parse_chapter_index(text)
+    if chapter_index is not None:
+        params["chapter_index"] = chapter_index
+    return params
+
+
+def _trace_audit_run_id(text: str) -> str | None:
+    match = re.search(r"\b(run[-_a-z0-9]+)\b", text)
+    if match:
+        return match.group(1)
+    match = re.search(r"(?:run_id|run\s*id)\s*[:=：]?\s*([a-z0-9][a-z0-9_-]{2,})", text)
+    if match:
+        return match.group(1)
+    return None
 
 
 def _is_agent_health_intent(text: str) -> bool:
