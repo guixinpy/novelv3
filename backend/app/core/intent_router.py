@@ -18,6 +18,7 @@ _INTENT_RULE_IDS = (
     "memory_route_intent",
     "memory_activation_plan_intent",
     "knowledge_base_route_intent",
+    "post_chapter_memory_capture_intent",
     "world_model_route_intent",
     "retrieval_context_intent",
     "longform_context_summary_intent",
@@ -339,6 +340,20 @@ class IntentRouter:
                 extracted_params=extracted_params,
                 match_evidence=[{"kind": "pattern", "name": "knowledge_base_route_phrase"}],
                 preconditions=[{"code": "knowledge_base_route_read_available", "passed": True}],
+            )
+
+        if _is_post_chapter_memory_capture_intent(text):
+            extracted_params = _post_chapter_memory_capture_params(text)
+            return self._matched_projection(
+                text,
+                dialog_state,
+                pending_action_id,
+                diagnosis,
+                rule_id="post_chapter_memory_capture_intent",
+                candidate=ActionCandidate("plan_post_chapter_memory_capture", extracted_params),
+                extracted_params=extracted_params,
+                match_evidence=[{"kind": "pattern", "name": "post_chapter_memory_capture_phrase"}],
+                preconditions=[{"code": "post_chapter_memory_capture_read_available", "passed": True}],
             )
 
         if _is_world_model_route_intent(text):
@@ -910,6 +925,22 @@ def _knowledge_base_route_params(text: str) -> dict[str, Any]:
     limit = _numeric_option(text, r"limit|限制|最多")
     if limit is not None:
         params["limit"] = limit
+    return params
+
+
+def _is_post_chapter_memory_capture_intent(text: str) -> bool:
+    capture_phrase = r"(写后记忆|章节后记忆|章后记忆|post[-_\s]*chapter\s*memory|memory\s*capture|记忆沉淀)"
+    return bool(
+        re.search(rf"{capture_phrase}.*(规划|计划|捕获|沉淀|候选|知识库|记忆)", text)
+        or re.search(rf"(规划|计划|捕获|沉淀|候选|知识库|记忆).*{capture_phrase}", text)
+    )
+
+
+def _post_chapter_memory_capture_params(text: str) -> dict[str, Any]:
+    params: dict[str, Any] = {}
+    chapter_index = parse_chapter_index(text)
+    if chapter_index is not None:
+        params["chapter_index"] = chapter_index
     return params
 
 

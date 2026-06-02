@@ -91,6 +91,7 @@
 - [x] Memory Route 对话入口：自然语言“检查第 N 章长篇记忆路由/检索维护状态”可投影为 inspect_agent_memory_route 只读工具计划
 - [x] Memory Activation Plan 对话入口：自然语言“检查第 N 章记忆激活计划：<query>”可投影为 inspect_agent_memory_activation_plan 只读工具计划
 - [x] Knowledge Base Route 对话入口：自然语言“检查第 N 章知识库路由 query=<query> limit <n>”可投影为 inspect_agent_knowledge_base_route 只读工具计划
+- [x] Post Chapter Memory Capture 对话入口：自然语言“规划第 N 章写后记忆沉淀”可投影为 plan_post_chapter_memory_capture 只读工具计划
 - [x] Retrieval Context 对话入口：自然语言“检索第 N 章前的上下文证据 query=<query> limit <n>”可投影为 search_agent_retrieval_context 只读工具计划
 - [x] Longform Context Summary 对话入口：自然语言“汇总第 N 章长篇上下文 query=<query> max_chars <n>”可投影为 summarize_longform_context 只读工具计划
 - [x] 记忆激活：memory_activation.py
@@ -114,6 +115,7 @@
 
 ### 最近完成
 
+- 2026-06-02: `plan_post_chapter_memory_capture` 接入对话只读意图链路：Agent 可从自然语言直接规划章节后长期记忆/知识库候选沉淀，保留 chapter_index，并在有审稿证据时继续推荐 `prepare_record_agent_knowledge_base_candidate`。
 - 2026-06-02: `inspect_agent_knowledge_base_route` 接入对话只读意图链路：Agent 可从自然语言直接读取作者偏好、项目策略、学习规则、知识库候选和写法参考路由，支持 chapter_index、query、limit 的确定性抽取。
 - 2026-06-02: `search_agent_retrieval_context` 与 `summarize_longform_context` 接入对话只读意图链路：Agent 可从自然语言直接检索上下文证据或汇总指定章节长篇上下文，支持 query、limit、max_chapter_index、max_chars 和 include_prompt_context 等确定性参数抽取。
 - 2026-06-02: `inspect_agent_world_model_route` 接入对话只读意图链路：Agent 可从自然语言直接诊断世界模型 profile、确认事实、待审提案压力和推荐后续动作，并支持 chapter_index、subject_ref、limit 的确定性抽取。
@@ -136,6 +138,7 @@
 - [x] Memory Route 只读诊断意图：自然语言“检查第3章长篇记忆路由，包含上下文摘要”可投影为 inspect_agent_memory_route 只读工具计划
 - [x] Memory Activation Plan 只读诊断意图：自然语言“检查第3章记忆激活计划：灯塔旧回声”可投影为 inspect_agent_memory_activation_plan 只读工具计划
 - [x] Knowledge Base Route 只读诊断意图：自然语言“检查第4章知识库路由 query=写法偏好 limit 9”可投影为 inspect_agent_knowledge_base_route 只读工具计划
+- [x] Post Chapter Memory Capture 只读规划意图：自然语言“规划第4章写后记忆沉淀”可投影为 plan_post_chapter_memory_capture 只读工具计划
 - [x] World Model Route 只读诊断意图：自然语言“检查第2章 char.hero 世界模型路由 limit 7”可投影为 inspect_agent_world_model_route 只读工具计划
 - [x] Retrieval Context 只读检索意图：自然语言“检索第3章前的上下文证据 query=灯塔旧回声 limit 5”可投影为 search_agent_retrieval_context 只读工具计划
 - [x] Longform Context Summary 只读摘要意图：自然语言“汇总第3章长篇上下文 query=灯塔旧回声 max_chars 2000”可投影为 summarize_longform_context 只读工具计划
@@ -176,6 +179,7 @@
 
 ### 最近完成
 
+- 2026-06-02: `IntentRouter` 新增 `post_chapter_memory_capture_intent`，可将“规划第4章写后记忆沉淀”等自然语言投影为 `plan_post_chapter_memory_capture` action；`plan_dialog_intent_agent_run` 对该只读 action 生成无需审批的工具计划，并保留 chapter_index，打通写后知识沉淀规划的对话入口。
 - 2026-06-02: `IntentRouter` 新增 `agent_job_projection_intent` 与 `chapter_conflict_recovery_intent`，可将“检查第3章 generate_chapter failed 任务队列 limit 8”和“规划第3章章节冲突恢复”等自然语言分别投影为 `inspect_agent_job_projection` / `plan_chapter_conflict_recovery` action；`plan_dialog_intent_agent_run` 对两者生成无需审批的 read tool 计划，并保留 chapter_index、task_type、status、limit。
 - 2026-06-02: `IntentRouter` 新增 `knowledge_base_route_intent`，可将“检查第4章知识库路由 query=写法偏好 limit 9”等自然语言投影为 `inspect_knowledge_base_route` action；`plan_dialog_intent_agent_run` 对该只读 action 生成无需审批的 `inspect_agent_knowledge_base_route` 工具计划，并保留 chapter_index、query、limit，避免被宽泛“检查”审稿意图抢占。
 - 2026-06-02: `IntentRouter` 新增 `retrieval_context_intent` 与 `longform_context_summary_intent`，可将“检索第3章前的上下文证据 query=灯塔旧回声 limit 5”和“汇总第3章长篇上下文 query=灯塔旧回声 max_chars 2000 include_prompt_context”等自然语言分别投影为 `search_retrieval_context` / `summarize_longform_context` action；`plan_dialog_intent_agent_run` 对两者生成无需审批的 read tool 计划。

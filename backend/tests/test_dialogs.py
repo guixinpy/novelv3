@@ -341,6 +341,41 @@ def test_intent_router_projection_explains_knowledge_base_route():
     assert projection["extracted_params"] == expected_params
 
 
+def test_intent_router_projection_explains_post_chapter_memory_capture_route():
+    router = IntentRouter()
+    diag = ProjectDiagnosisOut(
+        missing_items=[],
+        completed_items=["setup", "storyline", "outline", "content"],
+        suggested_next_step="preview_chapter",
+    )
+
+    projection = router.project("规划第4章写后记忆沉淀", "chatting", None, diag).to_dict()
+
+    expected_params = {"chapter_index": 4}
+    assert projection["status"] == "matched"
+    assert projection["rule_id"] == "post_chapter_memory_capture_intent"
+    assert projection["decision"]["rule_id"] == "post_chapter_memory_capture_intent"
+    assert projection["decision"]["match_evidence"] == [
+        {"kind": "pattern", "name": "post_chapter_memory_capture_phrase"}
+    ]
+    assert projection["candidate"] == {
+        "type": "plan_post_chapter_memory_capture",
+        "params": expected_params,
+    }
+    assert projection["agent_route"] == _expected_agent_route(
+        "text_intent",
+        "plan_post_chapter_memory_capture",
+        "plan_post_chapter_memory_capture",
+        requires_confirmation=False,
+    )
+    assert projection["tool_selection"] == {
+        "selected_tool": "plan_post_chapter_memory_capture",
+        "why_this_tool": "dialog_action_to_agent_tool.plan_post_chapter_memory_capture",
+        "availability_checked": False,
+    }
+    assert projection["extracted_params"] == expected_params
+
+
 def test_intent_router_projection_explains_world_model_route():
     router = IntentRouter()
     diag = ProjectDiagnosisOut(
