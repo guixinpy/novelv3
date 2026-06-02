@@ -30,6 +30,9 @@ _ACTION_TO_PLANNER_INTENT = {
 _ACTION_TO_CHAPTER_GENERATION_ROUTE = {
     "preview_chapter": CHAPTER_GENERATION_ROUTE_APPROVED_PREPARE,
 }
+_ACTION_TO_DIRECT_READ_TOOL = {
+    "inspect_memory_tree": "inspect_agent_memory_tree",
+}
 
 
 def plan_dialog_intent_agent_run(
@@ -52,11 +55,20 @@ def plan_dialog_intent_agent_run(
     candidate = intent_projection.get("candidate") if isinstance(intent_projection.get("candidate"), dict) else None
     action_type = str(candidate.get("type") or "").strip() if candidate else ""
     planner_intent = _ACTION_TO_PLANNER_INTENT.get(action_type)
+    direct_read_tool = _ACTION_TO_DIRECT_READ_TOOL.get(action_type)
 
     if not candidate:
         return _empty_plan(
             status="no_plan",
             reason="intent_not_matched",
+            intent_projection=intent_projection,
+            projection_id=projection_id,
+        )
+    if direct_read_tool:
+        return _direct_read_tool_plan(
+            action_type=action_type,
+            tool_name=direct_read_tool,
+            params=candidate.get("params") if isinstance(candidate.get("params"), dict) else {},
             intent_projection=intent_projection,
             projection_id=projection_id,
         )
@@ -106,6 +118,58 @@ def plan_dialog_intent_agent_run(
             "selected_tool": intent_projection.get("tool_selection", {}).get("selected_tool"),
             "missing_dependencies": plan.get("trace", {}).get("missing_dependencies", []),
             "risk_flags": plan.get("trace", {}).get("risk_flags", []),
+            "reference_pattern_version": REFERENCE_PATTERN_PROJECTION_VERSION,
+            "reference_patterns": build_reference_pattern_projection(),
+        },
+    }
+
+
+def _direct_read_tool_plan(
+    *,
+    action_type: str,
+    tool_name: str,
+    params: dict[str, Any],
+    intent_projection: dict[str, Any],
+    projection_id: str,
+) -> dict[str, Any]:
+    planner_intent = action_type
+    tool_request = {"tool_name": tool_name, "params": dict(params)}
+    plan = {
+        "status": "completed",
+        "intent_class": planner_intent,
+        "steps": [
+            {
+                "step_index": 1,
+                "tool_name": tool_name,
+                "params": dict(params),
+                "mutability": "read",
+                "requires_confirmation": False,
+            }
+        ],
+        "tools": [tool_request],
+        "approval_contract": {"status": "not_required", "write_steps": []},
+    }
+    return {
+        "status": "completed",
+        "version": DIALOG_INTENT_AGENT_PLAN_VERSION,
+        "intent_projection": intent_projection,
+        "planner": {
+            "plan_id": None,
+            "intent_class": planner_intent,
+            "mapped_from_action_type": action_type,
+            "mapped_from_rule_id": intent_projection.get("rule_id"),
+            "chapter_index": _optional_int(params.get("chapter_index")),
+        },
+        "plan": plan,
+        "tools": [tool_request],
+        "approval_contract": plan["approval_contract"],
+        "trace": {
+            "reason": "planned_direct_read_tool_from_intent_projection",
+            "projection_id": projection_id,
+            "plan_id": None,
+            "selected_tool": tool_name,
+            "missing_dependencies": [],
+            "risk_flags": [],
             "reference_pattern_version": REFERENCE_PATTERN_PROJECTION_VERSION,
             "reference_patterns": build_reference_pattern_projection(),
         },

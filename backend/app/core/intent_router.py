@@ -3,7 +3,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from app.core.dialog_agent_routes import build_dialog_agent_route
+from app.core.dialog_agent_routes import build_dialog_agent_route, dialog_action_to_agent_tool_name
 from app.schemas import ProjectDiagnosisOut
 
 INTENT_PROJECTION_VERSION = "phase105.intent_projection.v1"
@@ -14,6 +14,7 @@ _INTENT_RULE_IDS = (
     "chapter_intent",
     "review_intent",
     "recovery_intent",
+    "memory_tree_intent",
     "query_diagnosis_intent",
 )
 
@@ -44,7 +45,7 @@ class IntentProjection:
 
     def to_dict(self) -> dict[str, Any]:
         agent_route = None
-        if self.candidate is not None and self.candidate.type.startswith("preview_"):
+        if self.candidate is not None and dialog_action_to_agent_tool_name(self.candidate.type):
             agent_route = build_dialog_agent_route(self.candidate.type, source="text_intent")
         agent_tool_name = agent_route.get("agent_tool_name") if agent_route is not None else None
         input_hash = hashlib.sha256(self.normalized_text.encode("utf-8")).hexdigest()
@@ -260,6 +261,20 @@ class IntentRouter:
                 preconditions=[{"code": "recovery_preview_available", "passed": True}],
             )
 
+        if _is_memory_tree_intent(text):
+            extracted_params = _memory_tree_params(text)
+            return self._matched_projection(
+                text,
+                dialog_state,
+                pending_action_id,
+                diagnosis,
+                rule_id="memory_tree_intent",
+                candidate=ActionCandidate("inspect_memory_tree", extracted_params),
+                extracted_params=extracted_params,
+                match_evidence=[{"kind": "pattern", "name": "memory_tree_phrase"}],
+                preconditions=[{"code": "memory_tree_read_available", "passed": True}],
+            )
+
         if re.search(r"创建.*(主角|人物|设定|世界观)", text) or re.search(r"生成.*设定", text):
             if "setup" in diagnosis.missing_items or "setup" in diagnosis.completed_items:
                 return self._matched_projection(
@@ -433,6 +448,44 @@ def _is_low_detail_chapter_continue(text: str) -> bool:
             text,
         )
     )
+
+
+def _is_memory_tree_intent(text: str) -> bool:
+    return bool(
+        re.search(r"(记忆树|分层记忆|长期记忆).*(浏览|查看|搜索|检索|展开|线索)", text)
+        or re.search(r"(浏览|查看|搜索|检索|展开).*(记忆树|分层记忆|长期记忆|记忆)", text)
+    )
+
+
+def _memory_tree_params(text: str) -> dict[str, Any]:
+    query = _memory_tree_query(text)
+    params: dict[str, Any] = {"query": query, "include_ancestors": True}
+    level = _memory_tree_level(text)
+    if level:
+        params["level"] = level
+    chapter_index = parse_chapter_index(text)
+    if chapter_index is not None:
+        params["chapter_index"] = chapter_index
+    return params
+
+
+def _memory_tree_query(text: str) -> str:
+    query = re.sub(r"(浏览|查看|搜索|检索|展开|帮我|请|一下)", "", text).strip()
+    query = re.sub(r"(记忆树|分层记忆|长期记忆|记忆)", "", query).strip()
+    query = re.sub(r"^(里|中|内|关于|有关|的)+", "", query).strip()
+    return query or text
+
+
+def _memory_tree_level(text: str) -> str | None:
+    if re.search(r"(卷级|卷)", text):
+        return "volume"
+    if re.search(r"(章级|章节|第\s*[\d零〇一二两三四五六七八九十]+\s*章)", text):
+        return "chapter"
+    if re.search(r"(场景|scene)", text):
+        return "scene"
+    if re.search(r"(beat|节拍|情节拍)", text):
+        return "beat"
+    return None
 
 
 def _rejected_candidates(selected_rule_id: str | None, *, matched: bool) -> list[dict[str, str]]:

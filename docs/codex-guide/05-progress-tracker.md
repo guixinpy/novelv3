@@ -113,6 +113,7 @@
 
 - [x] 意图路由：IntentRouter 支持基础写作意图（设定/大纲/正文/审稿/恢复）
 - [x] 对话意图计划器：DialogIntentPlanner → WritingAgentPlan
+- [x] Memory Tree 只读浏览意图：自然语言“浏览/搜索记忆树”可投影为 inspect_agent_memory_tree 只读工具计划
 - [x] 审批流：approval_contract + approval_verification_event
 - [x] Followup 机制：recommended_followup_planner + 前端 action cards
 - [x] 斜杠命令路由：slash_command_route
@@ -122,7 +123,7 @@
 
 | 优先级 | 任务 | 完成标准 | 状态 |
 |--------|------|---------|------|
-| P1 | 意图路由覆盖扩展 | 覆盖所有已实现的 Agent 工具对应的用户意图 | 🟡 进行中 |
+| P1 | 意图路由覆盖扩展 | 覆盖所有已实现的 Agent 工具对应的用户意图 | 🟡 进行中（Memory Tree read intent） |
 | P2 | 模糊意图 LLM 解析 | 用户自然语言模糊描述 → LLM 解析为具体意图 | 🔴 待开始 |
 | P3 | pending_action 与 Agent tool approval 统一 | 两套审批机制合并为一个 | 🔴 待开始 |
 
@@ -132,6 +133,7 @@
 
 ### 最近完成
 
+- 2026-06-02: `IntentRouter` 新增 `memory_tree_intent`，可将“浏览/查看/搜索/检索记忆树/长期记忆”等自然语言投影为 `inspect_memory_tree` action，抽取 query、level、chapter_index 并默认 include_ancestors；`plan_dialog_intent_agent_run` 对该只读 action 直接生成 `inspect_agent_memory_tree` 工具计划，approval_contract 为 not_required。
 - 2026-05-27: dialog-driven-agent-orchestration plan executed — 审稿和恢复意图路由 + planner 分支
 - 2026-05-27: 基础 followup 机制（含 memory tree route / story asset / chapter generation followups）
 

@@ -14,6 +14,7 @@ _DIALOG_ACTION_TO_AGENT_TOOL: dict[str, str] = {
     "preview_chapter": "generate_chapter",
     "preview_review": "plan_writing_agent_run",
     "preview_recovery": "plan_writing_agent_run",
+    "inspect_memory_tree": "inspect_agent_memory_tree",
     "generate_setup": "generate_setup",
     "generate_storyline": "generate_storyline",
     "generate_outline": "generate_outline",
@@ -57,7 +58,7 @@ def build_dialog_agent_route(
         "action_type": normalized_action_type,
         "agent_action_type": agent_tool_name,
         "agent_tool_name": agent_tool_name,
-        "requires_confirmation": True,
+        "requires_confirmation": agent_tool_name not in {"inspect_agent_memory_tree"},
         "entrypoint": "dialog_pending_action",
     }
     normalized_command_name = (command_name or "").strip().lower()

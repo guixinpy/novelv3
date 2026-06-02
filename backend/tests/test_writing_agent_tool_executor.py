@@ -1809,6 +1809,53 @@ async def test_tool_executor_dialog_intent_agent_plan_returns_no_plan_for_unmatc
 
 
 @pytest.mark.asyncio
+async def test_tool_executor_handles_dialog_intent_agent_plan_for_memory_tree_read(db_session):
+    project = Project(name="Dialog Intent Memory Tree Plan")
+    db_session.add(project)
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-dialog-intent-memory-tree-plan"),
+        WritingAgentToolRequest(
+            tool_name="plan_dialog_intent_agent_run",
+            params={"text": "浏览记忆树里灯塔旧回声"},
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "completed"
+    assert result.output["intent_projection"]["rule_id"] == "memory_tree_intent"
+    assert result.output["planner"]["intent_class"] == "inspect_memory_tree"
+    assert result.output["planner"]["mapped_from_action_type"] == "inspect_memory_tree"
+    assert result.output["plan"] == {
+        "status": "completed",
+        "intent_class": "inspect_memory_tree",
+        "steps": [
+            {
+                "step_index": 1,
+                "tool_name": "inspect_agent_memory_tree",
+                "params": {"query": "灯塔旧回声", "include_ancestors": True},
+                "mutability": "read",
+                "requires_confirmation": False,
+            }
+        ],
+        "tools": [
+            {
+                "tool_name": "inspect_agent_memory_tree",
+                "params": {"query": "灯塔旧回声", "include_ancestors": True},
+            }
+        ],
+        "approval_contract": {"status": "not_required", "write_steps": []},
+    }
+    assert result.output["tools"] == [
+        {"tool_name": "inspect_agent_memory_tree", "params": {"query": "灯塔旧回声", "include_ancestors": True}}
+    ]
+    assert result.output["approval_contract"] == {"status": "not_required", "write_steps": []}
+    assert result.output["trace"]["reason"] == "planned_direct_read_tool_from_intent_projection"
+
+
+@pytest.mark.asyncio
 async def test_tool_executor_handles_dialog_intent_agent_plan_for_chapter(db_session):
     project = Project(name="Dialog Intent Chapter Plan")
     db_session.add(project)

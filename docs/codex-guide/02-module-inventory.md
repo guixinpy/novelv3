@@ -88,7 +88,7 @@ Agent 化缺口：
   ├── session.py                          # 对话 session 管理
   └── messages.py                         # 消息管理
 Agent 化缺口：
-  - 意图路由覆盖不完整（部分写作意图尚未接入）
+  - 意图路由覆盖不完整（部分写作意图尚未接入；Memory Tree 只读浏览已可由自然语言投影到 inspect_agent_memory_tree）
   - 缺少 LLM 驱动的"模糊意图"解析
   - pending_action 机制未与 Agent tool approval 统一
 关联模块：WritingAgent、Athena、前端 Chat
@@ -152,7 +152,7 @@ Agent 化缺口：
   └── post_chapter_memory_capture.py      # 章节后记忆捕获
 Agent 化缺口：
   - 更细粒度的分层摘要树（当前持久化到卷/章两级）
-  - 更强语义导航（当前已支持按节点展开、深度裁剪、搜索祖先上下文、确定性 token-overlap 召回、后代强匹配回流到过滤层级、弱匹配降噪和写前激活消费；后续接入向量/LLM 语义搜索）
+  - 更强语义导航（当前已支持按节点展开、深度裁剪、搜索祖先上下文、确定性 token-overlap 召回、后代强匹配回流到过滤层级、弱匹配降噪、写前激活消费和自然语言只读浏览入口；后续接入向量/LLM 语义搜索）
   - 与 Retrieval 的深度整合
   - LLM 摘要质量与真实长篇数据验证
 关联模块：Retrieval、Athena、Writing

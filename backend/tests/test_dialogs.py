@@ -46,14 +46,21 @@ from app.services.dialog.messages import DialogMessageService
 ORIGINAL_SESSION_COMMIT = OrmSession.commit
 
 
-def _expected_agent_route(source: str, action_type: str, agent_tool_name: str, *, command_name: str | None = None):
+def _expected_agent_route(
+    source: str,
+    action_type: str,
+    agent_tool_name: str,
+    *,
+    command_name: str | None = None,
+    requires_confirmation: bool = True,
+):
     route = {
         "version": DIALOG_AGENT_ROUTE_VERSION,
         "source": source,
         "action_type": action_type,
         "agent_action_type": agent_tool_name,
         "agent_tool_name": agent_tool_name,
-        "requires_confirmation": True,
+        "requires_confirmation": requires_confirmation,
         "entrypoint": "dialog_pending_action",
     }
     if command_name is not None:
@@ -199,6 +206,53 @@ def test_intent_router_projection_explains_chapter_route():
     assert projection["extracted_params"] == {"chapter_index": 3, "chapter_index_source": "explicit_user"}
     assert {"code": "outline_completed", "passed": True} in projection["preconditions"]
     assert projection["trace"]["projection_id"].startswith("intent:")
+
+
+def test_intent_router_projection_explains_memory_tree_route():
+    router = IntentRouter()
+    diag = ProjectDiagnosisOut(
+        missing_items=[],
+        completed_items=["setup", "storyline", "outline", "content"],
+        suggested_next_step="preview_chapter",
+    )
+
+    projection = router.project("浏览记忆树里灯塔旧回声", "chatting", None, diag).to_dict()
+
+    assert projection["status"] == "matched"
+    assert projection["rule_id"] == "memory_tree_intent"
+    assert projection["decision"]["rule_id"] == "memory_tree_intent"
+    assert projection["decision"]["match_evidence"] == [{"kind": "pattern", "name": "memory_tree_phrase"}]
+    assert projection["candidate"] == {
+        "type": "inspect_memory_tree",
+        "params": {"query": "灯塔旧回声", "include_ancestors": True},
+    }
+    assert projection["agent_route"] == _expected_agent_route(
+        "text_intent",
+        "inspect_memory_tree",
+        "inspect_agent_memory_tree",
+        requires_confirmation=False,
+    )
+    assert projection["tool_selection"] == {
+        "selected_tool": "inspect_agent_memory_tree",
+        "why_this_tool": "dialog_action_to_agent_tool.inspect_memory_tree",
+        "availability_checked": False,
+    }
+    assert projection["extracted_params"] == {"query": "灯塔旧回声", "include_ancestors": True}
+
+
+def test_intent_router_chapter_phrase_with_memory_clue_does_not_route_to_memory_tree():
+    router = IntentRouter()
+    diagnosis = ProjectDiagnosisOut(
+        missing_items=["content"],
+        completed_items=["setup", "storyline", "outline"],
+        suggested_next_step="preview_chapter",
+    )
+
+    candidate = router.resolve("请生成第2章正文，承接上一章记忆线索", "chatting", None, diagnosis)
+
+    assert candidate is not None
+    assert candidate.type == "preview_chapter"
+    assert candidate.params["chapter_index"] == 2
 
 
 def test_intent_router_low_detail_continue_uses_chapter_when_outline_ready():
