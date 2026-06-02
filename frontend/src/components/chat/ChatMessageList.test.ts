@@ -70,6 +70,7 @@ describe('ChatMessageList', () => {
                   requires_followup_run: true,
                   requires_plan_hash: true,
                 },
+                tools: [{ tool_name: 'inspect_agent_memory_route' }],
               },
             },
             action_result_view: {

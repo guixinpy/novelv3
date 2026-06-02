@@ -95,6 +95,8 @@ const recommendedFollowupExecutePayload = computed(() => {
   const data = recordValue(actionResult.data)
   const executionPolicy = recordValue(data.execution_policy)
   if (executionPolicy.requires_followup_run !== true) return null
+  const tools = Array.isArray(data.tools) ? data.tools : []
+  if (!tools.length) return null
   const sourceRunId = stringValue(data.source_run_id)
   const planHash = stringValue(data.plan_hash)
   if (!sourceRunId || !planHash) return null

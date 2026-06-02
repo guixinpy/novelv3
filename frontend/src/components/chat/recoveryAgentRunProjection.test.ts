@@ -143,6 +143,40 @@ describe('recoveryAgentRunProjection', () => {
     expect(JSON.stringify(view)).not.toContain('repair_longform_maintenance')
   })
 
+  it('builds fallback views for pending confirmation followup handoffs', () => {
+    const view = buildRecoveryView('plan_recommended_followups', 'success', {
+      status: 'ready',
+      source_run_id: 'source-run-handoff',
+      recommended_followups: {
+        status: 'recommended',
+      },
+      tools: [],
+      pending_confirmation_tool_calls: [
+        {
+          tool_name: 'execute_apply_pending_action_route_approval_opt_in_with_approval',
+          visibility: 'agent_internal',
+          requires_confirmation: true,
+          params: {
+            pending_action_id: 'pending-route-1',
+            route_apply_approval_contract_hash: 'approval:route',
+          },
+        },
+      ],
+      execution_policy: {
+        pending_confirmation_tool_calls: 1,
+      },
+    })
+
+    expect(view?.label).toBe('推荐后继预览已生成')
+    expect(view?.detail_items).toContainEqual({ label: '待确认后继', value: '1 个工具' })
+    expect(view?.detail_items).toContainEqual({
+      label: '待确认工具',
+      value: 'execute_apply_pending_action_route_approval_opt_in_with_approval',
+    })
+    expect(JSON.stringify(view)).not.toContain('approval:route')
+    expect(JSON.stringify(view)).not.toContain('pending-route-1')
+  })
+
   it('builds fallback views with declared delegate profile targets', () => {
     const view = buildRecoveryView('plan_recovery_tools', 'success', {
       agent_profile: 'orchestrator',

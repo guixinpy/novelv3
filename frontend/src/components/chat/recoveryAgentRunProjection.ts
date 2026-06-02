@@ -272,6 +272,16 @@ function recommendedFollowupPreviewDetailItems(data: Record<string, unknown>) {
       items.push({ label: '后继工具', value: toolSummary })
     }
   }
+  const pendingConfirmationCalls = Array.isArray(data.pending_confirmation_tool_calls)
+    ? data.pending_confirmation_tool_calls
+    : []
+  if (pendingConfirmationCalls.length) {
+    items.push({ label: '待确认后继', value: `${pendingConfirmationCalls.length} 个工具` })
+    const toolSummary = toolNameSummary(pendingConfirmationCalls)
+    if (toolSummary) {
+      items.push({ label: '待确认工具', value: toolSummary })
+    }
+  }
   items.push(...workerDispatchDetailItems(data))
 
   const continuationTools = Array.isArray(followups.post_approval_continuation_tools)

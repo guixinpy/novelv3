@@ -155,7 +155,7 @@
 - [x] Legacy Hermes Migration 只读审计意图：自然语言“检查 legacy Hermes action 迁移路线”可投影为 inspect_legacy_hermes_action_migration 只读工具计划
 - [x] Route Approval Opt-in 只读规划意图：自然语言“规划 pending-action-123 的 Agent 审批链 opt-in”可投影为 plan_agent_route_approval_opt_in 只读工具计划
 - [x] Pending Action Route Opt-in Apply Preview/Contract 只读意图：自然语言“预览/生成 pending-action-123 的 Agent 审批链 opt-in 应用/契约”可投影为 preview_pending_action_route_approval_opt_in_apply / preview_pending_action_route_approval_opt_in_apply_contract 只读工具计划
-- [x] Pending Action Route Opt-in Apply Prepare 只读意图：自然语言“准备 pending-action-123 的 Agent 审批链 opt-in 执行审批”可投影为 prepare_apply_pending_action_route_approval_opt_in 只读工具计划，contract preview 的 recommended followup 也可进入该 prepare 工具，prepare 输出携带仍需确认的 execute-with-approval 调用骨架，并在 followup planner 中保留为 pending confirmation
+- [x] Pending Action Route Opt-in Apply Prepare 只读意图：自然语言“准备 pending-action-123 的 Agent 审批链 opt-in 执行审批”可投影为 prepare_apply_pending_action_route_approval_opt_in 只读工具计划，contract preview 的 recommended followup 也可进入该 prepare 工具，prepare 输出携带仍需确认的 execute-with-approval 调用骨架，并在 followup planner、dialog action result 和前端 fallback projection 中保留为 pending confirmation
 - [x] Mutation Fingerprints 只读审计意图：自然语言“检查 generate_chapter 第4章写入变更指纹”可投影为 inspect_agent_mutation_fingerprints 只读工具计划
 - [x] Tool Contracts 只读自检意图：自然语言“检查工具契约覆盖率/迁移差距”可投影为 inspect_agent_tool_contracts 只读工具计划
 - [x] Command Contracts 只读自检意图：自然语言“检查命令契约缺口/slash command 投影”可投影为 inspect_agent_command_contracts 只读工具计划
@@ -340,6 +340,7 @@
 ### 当前状态
 
 - [x] 对话界面含 action cards + followup + trace 入口
+- [x] Recommended followup fallback view 可展示 pending confirmation handoff，且 pending-only 计划不会显示“执行后继”自动执行按钮
 - [x] Athena 世界模型面板（实体 + 提案审阅）
 - [x] Model Trace 抽屉
 - [x] 前端请求隔离（request lane + project scope version）
@@ -349,9 +350,13 @@
 
 | 优先级 | 任务 | 完成标准 | 状态 |
 |--------|------|---------|------|
-| P1 | Agent 执行计划可视化 | 对话中展示当前执行计划、工具调用进度 | 🔴 待开始 |
+| P1 | Agent 执行计划可视化 | 对话中展示当前执行计划、工具调用进度 | 🟡 进行中（followup pending confirmation fallback） |
 | P2 | Memory Tree 可视化 | 前端展示分层摘要树、支持浏览和搜索 | 🔴 待开始 |
 | P3 | 面板整合 | Athena 面板、Memory 面板、Trace 面板的统一导航 | 🔴 待开始 |
+
+### 最近完成
+
+- 2026-06-02: `recoveryAgentRunProjection` 的 recommended followup fallback view 新增“待确认后继/待确认工具”摘要，只展示工具名、不泄露 pending action id 或 approval contract hash；`ChatMessage` 仅在存在自动后继 `tools` 时显示“执行后继”按钮，pending-only handoff 保持人工确认路径。
 
 ### 阻塞项
 

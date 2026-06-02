@@ -658,6 +658,7 @@ describe('ChatMessage', () => {
                 requires_followup_run: true,
                 requires_plan_hash: true,
               },
+              tools: [{ tool_name: 'inspect_agent_memory_route' }],
             },
           },
           action_result_view: {
@@ -677,6 +678,44 @@ describe('ChatMessage', () => {
     expect(wrapper.emitted('executeRecommendedFollowups')).toEqual([
       [{ sourceRunId: 'source-run-2', planHash: 'followup-plan-hash-1' }],
     ])
+  })
+
+  it('does not offer recommended followup execution when only confirmation handoffs remain', () => {
+    const wrapper = mount(ChatMessage, {
+      props: {
+        msg: {
+          role: 'assistant',
+          message_type: 'plain',
+          content: '上一轮 Agent 运行给出了推荐后继，我已先规划后继工具链。',
+          action_result: {
+            type: 'plan_recommended_followups',
+            status: 'success',
+            data: {
+              agent_run_id: 'preview-run-1',
+              source_run_id: 'source-run-2',
+              plan_hash: 'followup-plan-hash-1',
+              tools: [],
+              pending_confirmation_tool_calls: [
+                {
+                  tool_name: 'execute_apply_pending_action_route_approval_opt_in_with_approval',
+                  requires_confirmation: true,
+                },
+              ],
+              execution_policy: {
+                requires_followup_run: true,
+                pending_confirmation_tool_calls: 1,
+              },
+            },
+          },
+        },
+        isLatest: true,
+        loading: false,
+      },
+    })
+
+    expect(wrapper.find('[data-testid="execute-recommended-followups"]').exists()).toBe(false)
+    expect(wrapper.text()).toContain('待确认后继')
+    expect(wrapper.text()).toContain('1 个工具')
   })
 
   it('renders pending chapter conflict as a warning before confirmation', () => {
