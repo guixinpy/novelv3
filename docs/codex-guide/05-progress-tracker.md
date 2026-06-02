@@ -46,6 +46,7 @@
 - [x] 工具权限分级基础枚举契约：ToolMutability + ToolPermissionLevel，公开 surface/contract 保持字符串兼容
 - [x] 恢复计划器：recovery_planner + recovery_policy
 - [x] 命令契约：agent_command_contracts + agent_step_binding
+- [x] 控制面就绪度：inspect_agent_control_plane_readiness 聚合工具契约与命令契约
 
 ### 下一步任务
 
@@ -117,6 +118,7 @@
 - [x] ContextCompressor 只读自检意图：自然语言“检查上下文压缩/预算/窗口压力”可投影为 inspect_agent_context_compression_projection 只读工具计划
 - [x] Worker Dispatch 只读审计意图：自然语言“检查 worker 分发/孤儿恢复”可投影为 inspect_agent_worker_dispatch 只读工具计划
 - [x] Agent Health 只读自检意图：自然语言“检查 Agent 健康/工具诊断”可投影为 inspect_agent_health_projection 只读工具计划
+- [x] Control Plane 只读自检意图：自然语言“检查控制面就绪度/工具契约/命令契约”可投影为 inspect_agent_control_plane_readiness 只读工具计划
 - [x] 审批流：approval_contract + approval_verification_event
 - [x] Followup 机制：recommended_followup_planner + 前端 action cards
 - [x] 斜杠命令路由：slash_command_route
@@ -136,6 +138,7 @@
 
 ### 最近完成
 
+- 2026-06-02: `IntentRouter` 新增 `control_plane_readiness_intent`，可将“检查 Agent 控制面就绪度/工具契约/命令契约”等自然语言投影为 `inspect_control_plane_readiness` action；`plan_dialog_intent_agent_run` 对该只读 action 直接生成 `inspect_agent_control_plane_readiness` 工具计划，approval_contract 为 not_required。
 - 2026-06-02: `IntentRouter` 新增 `agent_health_intent`，可将“检查 Agent 健康/工具诊断”等自然语言投影为 `inspect_agent_health` action，并抽取 chapter_index；`plan_dialog_intent_agent_run` 对该只读 action 直接生成 `inspect_agent_health_projection` 工具计划，approval_contract 为 not_required。
 - 2026-06-02: `IntentRouter` 新增 `worker_dispatch_intent`，可将“检查 worker 分发/孤儿恢复/子代理调度”等自然语言投影为 `inspect_worker_dispatch` action，并抽取显式 worker_name；`plan_dialog_intent_agent_run` 对该只读 action 直接生成 `inspect_agent_worker_dispatch` 工具计划，approval_contract 为 not_required。
 - 2026-06-02: `IntentRouter` 新增 `context_compression_intent`，可将“检查第 N 章上下文压缩/预算/窗口压力”等自然语言投影为 `inspect_context_compression` action，并抽取 chapter_index / max_chars；`plan_dialog_intent_agent_run` 对该只读 action 直接生成 `inspect_agent_context_compression_projection` 工具计划，approval_contract 为 not_required。

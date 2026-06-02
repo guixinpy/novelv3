@@ -43,6 +43,7 @@ Agent 化成熟度等级定义见 [01-愿景与架构目标](./01-vision.md#四a
   ├── agent_loop_risk.py                  # 循环风险检测
   ├── agent_stop_hooks.py                 # 停止条件策略层
   ├── agent_health_projection.py          # Agent 健康自检投影
+  ├── agent_control_plane_readiness.py    # 控制面就绪度自检
   ├── agent_step_binding.py               # Agent step 绑定
   ├── agent_command_catalog.py            # 命令目录
   ├── agent_command_contracts.py          # 命令契约
@@ -89,7 +90,7 @@ Agent 化缺口：
   ├── session.py                          # 对话 session 管理
   └── messages.py                         # 消息管理
 Agent 化缺口：
-  - 意图路由覆盖不完整（部分写作意图尚未接入；Agent Health、Memory Tree 只读浏览、ContextCompressor 自检与 Worker Dispatch/孤儿恢复审计已可由自然语言投影到对应只读工具）
+  - 意图路由覆盖不完整（部分写作意图尚未接入；Agent Health、Control Plane 就绪度、Memory Tree 只读浏览、ContextCompressor 自检与 Worker Dispatch/孤儿恢复审计已可由自然语言投影到对应只读工具）
   - 缺少 LLM 驱动的"模糊意图"解析
   - pending_action 机制未与 Agent tool approval 统一
 关联模块：WritingAgent、Athena、前端 Chat

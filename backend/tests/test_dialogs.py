@@ -372,6 +372,38 @@ def test_intent_router_projection_explains_agent_health_route():
     assert projection["extracted_params"] == {"chapter_index": 3}
 
 
+def test_intent_router_projection_explains_control_plane_readiness_route():
+    router = IntentRouter()
+    diag = ProjectDiagnosisOut(
+        missing_items=[],
+        completed_items=["setup", "storyline", "outline", "content"],
+        suggested_next_step="preview_chapter",
+    )
+
+    projection = router.project("检查 Agent 控制面就绪度和工具契约", "chatting", None, diag).to_dict()
+
+    assert projection["status"] == "matched"
+    assert projection["rule_id"] == "control_plane_readiness_intent"
+    assert projection["decision"]["rule_id"] == "control_plane_readiness_intent"
+    assert projection["decision"]["match_evidence"] == [{"kind": "pattern", "name": "control_plane_readiness_phrase"}]
+    assert projection["candidate"] == {
+        "type": "inspect_control_plane_readiness",
+        "params": {},
+    }
+    assert projection["agent_route"] == _expected_agent_route(
+        "text_intent",
+        "inspect_control_plane_readiness",
+        "inspect_agent_control_plane_readiness",
+        requires_confirmation=False,
+    )
+    assert projection["tool_selection"] == {
+        "selected_tool": "inspect_agent_control_plane_readiness",
+        "why_this_tool": "dialog_action_to_agent_tool.inspect_control_plane_readiness",
+        "availability_checked": False,
+    }
+    assert projection["extracted_params"] == {}
+
+
 def test_intent_router_chapter_phrase_with_memory_clue_does_not_route_to_memory_tree():
     router = IntentRouter()
     diagnosis = ProjectDiagnosisOut(
