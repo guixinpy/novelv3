@@ -81,6 +81,7 @@ type MemoryTreePanelResultRow = {
   relevanceLabel: string
   expandNodeId: string
   canExpand: boolean
+  depth: number
 }
 
 const route = useRoute()
@@ -138,13 +139,13 @@ const memoryTreePanelExpandedNodeLabel = computed(() => {
 })
 const memoryTreePanelNodeCount = computed(() => memoryTreePanelNodes.value.length)
 const memoryTreePanelResultRows = computed<MemoryTreePanelResultRow[]>(() => (
-  memoryTreePanelNodes.value.slice(0, 3).map((node, index) => {
+  orderMemoryTreePanelNodes(memoryTreePanelNodes.value).map(({ node, depth }, index) => {
     const level = stringValue(node.level)
     const relevance = recordValue(node.relevance)
     const score = numberValue(relevance.score)
     const title = safeMemoryTreeDisplayValue(node.title) || '未命名节点'
     const expandNodeId = stringValue(node.id)
-    const canExpand = Boolean(expandNodeId) && Array.isArray(node.children) && node.children.length > 0
+    const canExpand = Boolean(expandNodeId) && stringList(node.children).length > 0
     return {
       key: `memory-tree-panel-result:${index}`,
       levelLabel: memoryTreeLevelLabel(level),
@@ -154,6 +155,7 @@ const memoryTreePanelResultRows = computed<MemoryTreePanelResultRow[]>(() => (
       relevanceLabel: score !== null ? `相关度 ${score.toFixed(2)}` : '',
       expandNodeId,
       canExpand,
+      depth,
     }
   })
 ))
@@ -724,6 +726,11 @@ function recordList(value: unknown) {
   ))
 }
 
+function stringList(value: unknown) {
+  if (!Array.isArray(value)) return []
+  return value.map(stringValue).filter(Boolean)
+}
+
 function stringValue(value: unknown) {
   return typeof value === 'string' ? value.trim() : ''
 }
@@ -756,6 +763,51 @@ function latestRunToolOutput(run: WritingAgentRunDetail | null, toolName: string
     if (Object.keys(output).length) return output
   }
   return null
+}
+
+function orderMemoryTreePanelNodes(nodes: Record<string, unknown>[]) {
+  const indexedRows = nodes.map((node, index) => ({
+    id: stringValue(node.id),
+    node,
+    index,
+  }))
+  const rowsById = new Map<string, typeof indexedRows[number]>()
+  const childrenById = new Map<string, string[]>()
+  const appendChild = (parentId: string, childId: string) => {
+    if (!parentId || !childId || !rowsById.has(parentId) || !rowsById.has(childId)) return
+    const childIds = childrenById.get(parentId) || []
+    if (!childIds.includes(childId)) childIds.push(childId)
+    childrenById.set(parentId, childIds)
+  }
+
+  for (const row of indexedRows) {
+    if (row.id && !rowsById.has(row.id)) rowsById.set(row.id, row)
+  }
+  for (const row of indexedRows) {
+    if (!row.id) continue
+    appendChild(stringValue(row.node.parent_id), row.id)
+    for (const childId of stringList(row.node.children)) appendChild(row.id, childId)
+  }
+
+  const visited = new Set<number>()
+  const orderedRows: Array<{ node: Record<string, unknown>; depth: number }> = []
+  const visit = (row: typeof indexedRows[number], depth: number) => {
+    if (visited.has(row.index)) return
+    visited.add(row.index)
+    orderedRows.push({ node: row.node, depth })
+    if (!row.id) return
+    for (const childId of childrenById.get(row.id) || []) {
+      const child = rowsById.get(childId)
+      if (child) visit(child, depth + 1)
+    }
+  }
+
+  for (const row of indexedRows) {
+    const parentId = stringValue(row.node.parent_id)
+    if (!row.id || !parentId || !rowsById.has(parentId)) visit(row, 0)
+  }
+  for (const row of indexedRows) visit(row, 0)
+  return orderedRows
 }
 
 async function applyRouteUpgradeFromRun(payload: RouteUpgradeApplyPayload) {
@@ -874,6 +926,8 @@ async function applyRouteUpgradeFromRun(payload: RouteUpgradeApplyPayload) {
               <li
                 v-for="row in memoryTreePanelResultRows"
                 :key="row.key"
+                :data-depth="row.depth"
+                :style="{ '--memory-tree-depth': row.depth }"
                 data-testid="memory-tree-panel-result-node"
               >
                 <span class="hermes-memory-tree-panel__result-level">{{ row.levelLabel }}</span>
@@ -1161,6 +1215,7 @@ async function applyRouteUpgradeFromRun(payload: RouteUpgradeApplyPayload) {
   display: grid;
   grid-template-columns: 2.5rem minmax(0, 1fr);
   gap: var(--space-2);
+  padding-left: calc(var(--space-2) * var(--memory-tree-depth, 0));
   padding-top: var(--space-1);
   padding-bottom: var(--space-1);
   border-top: 1px solid var(--color-border);

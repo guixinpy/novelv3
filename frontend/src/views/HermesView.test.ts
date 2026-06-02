@@ -849,6 +849,98 @@ describe('HermesView', () => {
     wrapper.unmount()
   })
 
+  it('renders returned memory tree nodes as a safe hierarchy in the subnav panel', async () => {
+    vi.mocked((api as any).createAgentRun).mockResolvedValueOnce({
+      id: 'run-memory-tree-hierarchy',
+      project_id: 'project-1',
+      goal: '搜索 Memory Tree：灯塔旧回声',
+      status: 'success',
+      entrypoint: 'ui_memory_tree_panel_search',
+      input: {},
+      output: null,
+      error: null,
+      steps: [
+        {
+          id: 'step-memory-tree-hierarchy',
+          tool_name: 'inspect_agent_memory_tree',
+          status: 'success',
+          output: {
+            status: 'ready',
+            summary: {
+              volume_nodes: 1,
+              chapter_nodes: 1,
+              scene_nodes: 1,
+              beat_nodes: 1,
+            },
+            nodes: [
+              {
+                id: 'volume:1',
+                level: 'volume',
+                title: '第一卷',
+                children: ['chapter:2'],
+              },
+              {
+                id: 'chapter:2',
+                level: 'chapter',
+                parent_id: 'volume:1',
+                chapter_index: 2,
+                title: '灯塔旧回声',
+                summary: '主角在灯塔发现旧回声线索。',
+                children: ['scene:memory-3'],
+                source_refs: [{ source_type: 'chapter_content', source_id: 'chapter-content-2' }],
+              },
+              {
+                id: 'scene:memory-3',
+                level: 'scene',
+                parent_id: 'chapter:2',
+                chapter_index: 2,
+                summary: '补充场景摘要。',
+                children: ['beat:memory-4'],
+              },
+              {
+                id: 'beat:memory-4',
+                level: 'beat',
+                parent_id: 'scene:memory-3',
+                chapter_index: 2,
+                summary: '节拍摘要。',
+              },
+            ],
+          },
+        },
+      ],
+    })
+    const wrapper = await mountHermesView()
+
+    const input = document.querySelector('[data-testid="memory-tree-panel-query"]') as HTMLInputElement
+    input.value = '灯塔旧回声'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    await flushPromises()
+    const searchButton = document.querySelector('[data-testid="memory-tree-panel-search"]') as HTMLButtonElement
+    searchButton.click()
+    await flushPromises()
+
+    const resultRows = Array.from(document.querySelectorAll('[data-testid="memory-tree-panel-result-node"]'))
+    expect(resultRows).toHaveLength(4)
+    expect(resultRows.map((row) => row.getAttribute('data-depth'))).toEqual(['0', '1', '2', '3'])
+    expect(resultRows[0].textContent).toContain('卷')
+    expect(resultRows[0].textContent).toContain('第一卷')
+    expect(resultRows[1].textContent).toContain('章节')
+    expect(resultRows[1].textContent).toContain('灯塔旧回声')
+    expect(resultRows[2].textContent).toContain('场景')
+    expect(resultRows[2].textContent).toContain('补充场景摘要。')
+    expect(resultRows[3].textContent).toContain('节拍')
+    expect(resultRows[3].textContent).toContain('节拍摘要。')
+    const panel = document.querySelector('[data-testid="memory-tree-history-panel"]') as HTMLElement
+    expect(panel.textContent).not.toContain('volume:1')
+    expect(panel.textContent).not.toContain('chapter:2')
+    expect(panel.textContent).not.toContain('scene:memory-3')
+    expect(panel.textContent).not.toContain('beat:memory-4')
+    expect(panel.textContent).not.toContain('chapter-content-2')
+    expect(panel.textContent).not.toContain('source_refs')
+
+    wrapper.unmount()
+  })
+
   it('creates a read-only memory tree expand run from a subnav result node', async () => {
     const searchRun = {
       id: 'run-memory-tree-search',
