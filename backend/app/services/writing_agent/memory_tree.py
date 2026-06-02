@@ -86,6 +86,9 @@ def _select_nodes(
     normalised_max_depth = _normalise_max_depth(max_depth)
     ancestor_node_ids: list[str] = []
     descendant_node_ids: list[str] = []
+    relevance_by_id: dict[str, dict[str, Any]] = {}
+    recommended_drilldowns: list[dict[str, Any]] = []
+    semantic_search = False
 
     if expand_node_id:
         matched_node_ids = [expand_node_id] if expand_node_id in nodes_by_id else []
@@ -100,7 +103,7 @@ def _select_nodes(
             selected_node_ids.update(ancestor_node_ids)
         mode = "expanded_subtree"
     else:
-        matched_nodes = _filter_nodes(
+        matched_nodes, relevance_by_id, semantic_search = _filter_nodes(
             nodes,
             level=level,
             node_id=node_id,
@@ -112,9 +115,10 @@ def _select_nodes(
         if include_ancestors:
             ancestor_node_ids = _ancestor_node_ids(nodes_by_id, matched_node_ids)
             selected_node_ids.update(ancestor_node_ids)
-        mode = "search_with_ancestors" if query and include_ancestors else "filtered"
+        mode = _navigation_mode(query=query, include_ancestors=include_ancestors, semantic_search=semantic_search)
+        recommended_drilldowns = _recommended_drilldowns(matched_nodes, relevance_by_id)
 
-    return [node for node in nodes if node["id"] in selected_node_ids], {
+    return [_navigation_node(node, relevance_by_id) for node in nodes if node["id"] in selected_node_ids], {
         "mode": mode,
         "matched_node_ids": matched_node_ids,
         "expanded_node_id": expand_node_id,
@@ -122,6 +126,7 @@ def _select_nodes(
         "max_depth": normalised_max_depth,
         "ancestor_node_ids": ancestor_node_ids,
         "descendant_node_ids": descendant_node_ids,
+        "recommended_drilldowns": recommended_drilldowns,
     }
 
 
@@ -357,8 +362,27 @@ def _filter_nodes(
     node_id: str | None,
     chapter_index: int | None,
     query: str | None,
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]], bool]:
     query_text = str(query or "").strip().lower()
+    filtered = _candidate_nodes(nodes, level=level, node_id=node_id, chapter_index=chapter_index)
+    if not query_text:
+        return filtered, {}, False
+    exact_matches = [node for node in filtered if _exact_query_match(node, query_text)]
+    if exact_matches:
+        return exact_matches, {}, False
+    semantic_matches = _semantic_node_matches(filtered, query_text)
+    return [item["node"] for item in semantic_matches], {
+        str(item["node"]["id"]): item["relevance"] for item in semantic_matches
+    }, bool(semantic_matches)
+
+
+def _candidate_nodes(
+    nodes: list[dict[str, Any]],
+    *,
+    level: str | None,
+    node_id: str | None,
+    chapter_index: int | None,
+) -> list[dict[str, Any]]:
     filtered = nodes
     if level:
         filtered = [node for node in filtered if node["level"] == level]
@@ -366,14 +390,152 @@ def _filter_nodes(
         filtered = [node for node in filtered if node["id"] == node_id]
     if chapter_index is not None:
         filtered = [node for node in filtered if node["chapter_index"] == chapter_index]
-    if query_text:
-        filtered = [
-            node
-            for node in filtered
-            if query_text in str(node.get("title") or "").lower()
-            or query_text in str(node.get("summary") or "").lower()
-        ]
     return filtered
+
+
+def _exact_query_match(node: dict[str, Any], query_text: str) -> bool:
+    return query_text in str(node.get("title") or "").lower() or query_text in str(node.get("summary") or "").lower()
+
+
+def _semantic_node_matches(nodes: list[dict[str, Any]], query_text: str) -> list[dict[str, Any]]:
+    query_terms = _query_terms(query_text)
+    if not query_terms:
+        return []
+    matches: list[dict[str, Any]] = []
+    for node in nodes:
+        relevance = _node_relevance(node, query_terms=query_terms, query_text=query_text)
+        if relevance["score"] <= 0:
+            continue
+        matches.append({"node": node, "relevance": relevance})
+    return sorted(
+        matches,
+        key=lambda item: (
+            -float(item["relevance"]["score"]),
+            _level_rank(str(item["node"].get("level") or "")),
+            str(item["node"].get("id") or ""),
+        ),
+    )
+
+
+def _node_relevance(
+    node: dict[str, Any],
+    *,
+    query_terms: list[str],
+    query_text: str,
+) -> dict[str, Any]:
+    field_values = {
+        "title": str(node.get("title") or "").lower(),
+        "summary": str(node.get("summary") or "").lower(),
+        "scope_key": str(node.get("scope_key") or "").lower(),
+    }
+    matched_terms: list[str] = []
+    matched_fields: list[str] = []
+    for field_name, value in field_values.items():
+        field_matched = [term for term in query_terms if term and term in value]
+        if not field_matched:
+            continue
+        matched_fields.append(field_name)
+        for term in field_matched:
+            if term not in matched_terms:
+                matched_terms.append(term)
+    if not matched_terms:
+        return {
+            "score": 0,
+            "query": query_text,
+            "matched_terms": [],
+            "matched_fields": [],
+            "match_reasons": [],
+        }
+    field_bonus = 0.1 * len(matched_fields)
+    title_bonus = 0.1 if "title" in matched_fields else 0
+    score = round((len(matched_terms) / len(query_terms)) + field_bonus + title_bonus, 4)
+    return {
+        "score": score,
+        "query": query_text,
+        "matched_terms": matched_terms,
+        "matched_fields": matched_fields,
+        "match_reasons": ["semantic_token_overlap"],
+    }
+
+
+def _query_terms(query_text: str) -> list[str]:
+    terms: list[str] = []
+    word = ""
+    for char in query_text:
+        if _is_cjk(char):
+            if word:
+                terms.append(word)
+                word = ""
+            terms.append(char)
+        elif char.isalnum():
+            word += char
+        elif word:
+            terms.append(word)
+            word = ""
+    if word:
+        terms.append(word)
+    return _dedupe([term.lower() for term in terms if term.strip()])
+
+
+def _is_cjk(char: str) -> bool:
+    return "\u4e00" <= char <= "\u9fff"
+
+
+def _navigation_mode(*, query: str | None, include_ancestors: bool, semantic_search: bool) -> str:
+    if not query:
+        return "filtered"
+    if semantic_search and include_ancestors:
+        return "semantic_search_with_ancestors"
+    if semantic_search:
+        return "semantic_search"
+    return "search_with_ancestors" if include_ancestors else "filtered"
+
+
+def _navigation_node(node: dict[str, Any], relevance_by_id: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    relevance = relevance_by_id.get(str(node.get("id") or ""))
+    if not relevance:
+        return node
+    output = dict(node)
+    output["relevance"] = relevance
+    return output
+
+
+def _recommended_drilldowns(
+    matched_nodes: list[dict[str, Any]],
+    relevance_by_id: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    if not relevance_by_id or not matched_nodes:
+        return []
+    top_node = matched_nodes[0]
+    relevance = relevance_by_id.get(str(top_node.get("id") or ""))
+    if not relevance:
+        return []
+    return [
+        {
+            "node_id": top_node["id"],
+            "expand_node_id": top_node["id"],
+            "reason": "highest_relevance",
+            "score": relevance["score"],
+        }
+    ]
+
+
+def _level_rank(level: str) -> int:
+    try:
+        return MEMORY_TREE_LEVELS.index(level)
+    except ValueError:
+        return len(MEMORY_TREE_LEVELS)
+
+
+def _dedupe(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        result.append(value)
+    return result
 
 
 def _ancestor_node_ids(nodes_by_id: dict[str, dict[str, Any]], node_ids: list[str]) -> list[str]:

@@ -106,6 +106,35 @@ def test_memory_tree_expands_node_with_depth_and_ancestors(db_session):
     assert tree["navigation"]["descendant_node_ids"] == [f"scene:{refs['scene_memory_id']}"]
 
 
+def test_memory_tree_semantic_search_scores_cross_field_matches_and_recommends_drilldown(db_session):
+    project, _refs = _seed_memory_tree_project(db_session)
+
+    tree = inspect_agent_memory_tree(
+        db_session,
+        project.id,
+        query="灯塔旧回声",
+        include_ancestors=True,
+    )
+
+    assert [node["id"] for node in tree["nodes"]] == ["volume:1", "chapter:2"]
+    chapter_node = next(node for node in tree["nodes"] if node["id"] == "chapter:2")
+    assert chapter_node["relevance"]["score"] > 0
+    assert chapter_node["relevance"]["matched_fields"] == ["title", "summary"]
+    assert set(chapter_node["relevance"]["matched_terms"]) >= {"灯", "塔", "旧", "回", "声"}
+    assert "semantic_token_overlap" in chapter_node["relevance"]["match_reasons"]
+    assert tree["navigation"]["mode"] == "semantic_search_with_ancestors"
+    assert tree["navigation"]["matched_node_ids"] == ["chapter:2"]
+    assert tree["navigation"]["ancestor_node_ids"] == ["volume:1"]
+    assert tree["navigation"]["recommended_drilldowns"] == [
+        {
+            "node_id": "chapter:2",
+            "expand_node_id": "chapter:2",
+            "reason": "highest_relevance",
+            "score": chapter_node["relevance"]["score"],
+        }
+    ]
+
+
 @pytest.mark.asyncio
 async def test_record_agent_memory_tree_summaries_tool_persists_summary_nodes(db_session):
     project, _refs = _seed_memory_tree_project(db_session)
