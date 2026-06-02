@@ -77,6 +77,7 @@
 - [x] Memory Tree 卷/章摘要持久化基础版：record_agent_memory_tree_summaries 写入 LongformMemory 摘要节点
 - [x] Memory Tree 基础浏览：inspect_agent_memory_tree 支持 expand_node_id、max_depth、include_ancestors，用于展开/收起/搜索上下文
 - [x] Memory Tree 语义召回基础：query 精确匹配失败时返回 relevance score、matched_terms / matched_fields 和 recommended_drilldowns
+- [x] Memory Tree 写前激活：build_memory_activation_plan 可将高 relevance Memory Tree 节点纳入 activation.memory_tree，并保留未来章节防泄漏
 - [x] 记忆激活：memory_activation.py
 - [x] 知识库候选：knowledge_base_candidates + 执行
 - [x] 世界模型分析执行：world_model_analysis_execution
@@ -89,7 +90,7 @@
 | P1 | Memory Tree 语义浏览 | Agent 能通过工具浏览 Tree：展开/收起/搜索 | ✅ 已完成（基础浏览） |
 | P2 | 世界模型 L5 语义检查 | 至少实现一个 LLM 驱动的语义一致性检查 | 🔴 待开始 |
 | P3 | 检索策略智能化 | Agent 根据上下文自主选择检索策略 | 🔴 待开始 |
-| P4 | Memory Tree 语义召回/摘要质量增强 | 接入向量/LLM 摘要或真实长篇验证，不只依赖确定性摘要和文本匹配 | 🟡 进行中（确定性 relevance 基础） |
+| P4 | Memory Tree 语义召回/摘要质量增强 | 接入向量/LLM 摘要或真实长篇验证，不只依赖确定性摘要和文本匹配 | 🟡 进行中（确定性 relevance + 写前激活基础） |
 
 ### 阻塞项
 
@@ -100,6 +101,7 @@
 - 2026-06-01: 新增 record_agent_memory_tree_summaries，按卷/章 materialize Memory Tree 摘要到 LongformMemory，并接入 memory_worker 路由与工具契约测试。
 - 2026-06-01: 增强 inspect_agent_memory_tree 浏览能力，支持按节点展开、max_depth 收起、搜索命中时返回祖先上下文，供 Agent 渐进浏览 Memory Tree。
 - 2026-06-02: 增强 `inspect_agent_memory_tree` 查询召回：精确 title/summary 匹配无结果时，使用确定性 token overlap relevance 召回跨字段节点，返回 score、matched_terms、matched_fields、match_reasons，并在 navigation 中给出最高相关节点的 recommended_drilldowns；这仍是向量/LLM 召回前的可审计基础层。
+- 2026-06-02: `build_memory_activation_plan` 新增 `activation.memory_tree` 桶，query 命中高 relevance Memory Tree 节点时写入 prompt block、activated_counts 和 memory_provenance；过滤 `chapter_index >= target_chapter` 的节点，避免未来章节泄漏。
 
 ---
 

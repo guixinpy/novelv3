@@ -17,6 +17,7 @@ from app.prompting.providers.knowledge_base import (
     PROMPT_SAFE_STATUSES,
 )
 from app.services.writing_agent.memory_provenance_contract import build_memory_provenance, count_window
+from app.services.writing_agent.memory_tree import inspect_agent_memory_tree
 
 MEMORY_ACTIVATION_VERSION = "phase241.memory_activation.v1"
 MEMORY_ACTIVATION_PROVENANCE_VERSION = "phase241.memory_activation_provenance.v1"
@@ -27,6 +28,8 @@ WORLD_MODEL_ITEM_LIMIT = 5
 SUMMARY_LIMIT = 220
 PROMPT_BLOCK_LIMIT = 1800
 KNOWLEDGE_BASE_ITEM_LIMIT = DEFAULT_CANDIDATE_LIMIT
+MEMORY_TREE_ITEM_LIMIT = 3
+MEMORY_TREE_RELEVANCE_THRESHOLD = 0.75
 
 
 def build_memory_activation_plan(
@@ -40,6 +43,7 @@ def build_memory_activation_plan(
     target_chapter = max(1, int(chapter_index or 1))
     longform_items = _longform_items(db, project_id, target_chapter)
     foreshadowing = _foreshadowing_items(db, project_id, target_chapter)
+    memory_tree = _memory_tree_items(db, project_id, target_chapter, query)
     world_model = _world_model_items(db, project_id, target_chapter)
     knowledge_base = _knowledge_base_items(project)
     style = _style_items(project)
@@ -50,6 +54,7 @@ def build_memory_activation_plan(
     activation = {
         "longform": longform_items,
         "foreshadowing": foreshadowing,
+        "memory_tree": memory_tree,
         "world_model": world_model,
         "knowledge_base": knowledge_base,
         "style": style,
@@ -183,6 +188,64 @@ def _foreshadowing_items(db: Session, project_id: str, chapter_index: int) -> li
     return sorted(items, key=lambda item: (item.get("introduced_chapter") or 0, item["title"]))[:FORESHADOWING_ITEM_LIMIT]
 
 
+def _memory_tree_items(
+    db: Session,
+    project_id: str,
+    chapter_index: int,
+    query: str | None,
+) -> list[dict[str, Any]]:
+    query_text = str(query or "").strip()
+    if not query_text:
+        return []
+    tree = inspect_agent_memory_tree(
+        db,
+        project_id,
+        query=query_text,
+        include_ancestors=True,
+    )
+    nodes = tree.get("nodes") if isinstance(tree.get("nodes"), list) else []
+    items: list[dict[str, Any]] = []
+    for node in nodes:
+        if not isinstance(node, dict):
+            continue
+        relevance = node.get("relevance") if isinstance(node.get("relevance"), dict) else None
+        if not relevance or _relevance_score(relevance) < MEMORY_TREE_RELEVANCE_THRESHOLD:
+            continue
+        node_chapter_index = _optional_int(node.get("chapter_index"))
+        if node_chapter_index is not None and node_chapter_index >= chapter_index:
+            continue
+        items.append(_memory_tree_item(node, relevance))
+    return sorted(items, key=lambda item: (-float(item["relevance"]["score"]), item["node_id"]))[
+        :MEMORY_TREE_ITEM_LIMIT
+    ]
+
+
+def _memory_tree_item(node: dict[str, Any], relevance: dict[str, Any]) -> dict[str, Any]:
+    node_id = str(node.get("id") or "").strip()
+    return {
+        "kind": "memory_tree_node",
+        "node_id": node_id,
+        "level": str(node.get("level") or ""),
+        "chapter_index": node.get("chapter_index"),
+        "title": str(node.get("title") or node_id),
+        "summary": _limit_text(node.get("summary"), SUMMARY_LIMIT),
+        "relevance": {
+            "score": _relevance_score(relevance),
+            "matched_terms": [str(term) for term in relevance.get("matched_terms") or []],
+            "matched_fields": [str(field) for field in relevance.get("matched_fields") or []],
+            "match_reasons": [str(reason) for reason in relevance.get("match_reasons") or []],
+        },
+        "source_ref": f"memory_tree:{node_id}",
+    }
+
+
+def _relevance_score(relevance: dict[str, Any]) -> float:
+    try:
+        return float(relevance.get("score") or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def _world_model_items(db: Session, project_id: str, chapter_index: int) -> list[dict[str, Any]]:
     rows = (
         db.query(WorldProposalItem)
@@ -302,6 +365,7 @@ def _prompt_block(
     for title, key in [
         ("既往长篇记忆", "longform"),
         ("未闭合伏笔", "foreshadowing"),
+        ("Memory Tree 相关节点", "memory_tree"),
         ("世界模型状态", "world_model"),
         ("知识库写作经验", "knowledge_base"),
         ("风格锚点", "style"),
@@ -369,6 +433,8 @@ def _limit_for_key(key: str) -> int:
         return LONGFORM_ITEM_LIMIT
     if key == "foreshadowing":
         return FORESHADOWING_ITEM_LIMIT
+    if key == "memory_tree":
+        return MEMORY_TREE_ITEM_LIMIT
     if key == "world_model":
         return WORLD_MODEL_ITEM_LIMIT
     if key == "knowledge_base":

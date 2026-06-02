@@ -53,7 +53,7 @@ openhuman 的 Memory Tree 对网文创作天然适配：
 - **卷→章→节→段落** 的层级结构本身就是一棵树
 - 节点被分块、打分、汇总到分层摘要中
 - Agent 可以浏览顶层概览，或在感兴趣的话题上 drill-down
-- 当前 novelv3 已落地卷/章两级基础版：`record_agent_memory_tree_summaries` 将摘要 materialize 为 `LongformMemory`，`inspect_agent_memory_tree` 再把持久化摘要投影回树节点，并在精确匹配失败时用确定性 relevance 评分给出 drill-down 推荐
+- 当前 novelv3 已落地卷/章两级基础版：`record_agent_memory_tree_summaries` 将摘要 materialize 为 `LongformMemory`，`inspect_agent_memory_tree` 再把持久化摘要投影回树节点，并在精确匹配失败时用确定性 relevance 评分给出 drill-down 推荐；高相关节点会进入 `build_memory_activation_plan` 的写前激活桶
 
 **已知 tradeoff**（来自 openhuman 实际运行经验）：
 - 语义召回需要将检索到的记忆注入上下文
@@ -238,7 +238,7 @@ novelv3 当前 trace + approval 体系已经较完整。权限分级已先在核
 6. **openclaw 孤兒恢复基础审计** → orphan worker 检测 + mark-blocked/redispatch preview
 7. **hermes-agent ContextCompressor 基础 payload** → context pressure 下输出头尾保护预修剪、summarize 工具计划、只读 dry-run payload 和推荐恢复入口
 8. **openhuman Memory Tree 分层摘要基础版** → 卷/章摘要写入 LongformMemory，并通过 memory_worker 暴露 materialize 工具
-9. **openhuman Memory Tree 基础浏览** → `inspect_agent_memory_tree` 支持按节点展开、深度裁剪、搜索命中祖先上下文和确定性 relevance drill-down 推荐
+9. **openhuman Memory Tree 基础浏览/激活** → `inspect_agent_memory_tree` 支持按节点展开、深度裁剪、搜索命中祖先上下文和确定性 relevance drill-down 推荐，并被 `build_memory_activation_plan` 消费
 10. **openclaw 孤兒恢复写入闭环基础版** → `apply_agent_worker_orphan_recovery` 确认式标记 blocked，并创建 pending redispatch run
 
 ### 立即实现（当前开发周期）

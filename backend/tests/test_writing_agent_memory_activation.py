@@ -195,6 +195,85 @@ def test_memory_activation_selects_prior_memory_and_foreshadowing_without_future
     assert output["trace"]["runtime_behavior_changed"] is False
 
 
+def test_memory_activation_includes_relevant_memory_tree_drilldown_without_future_leak(db_session):
+    project = Project(name="Memory Tree Activation")
+    db_session.add(project)
+    db_session.flush()
+    db_session.add_all(
+        [
+            ChapterContent(
+                project_id=project.id,
+                chapter_index=1,
+                title="雾港来信",
+                content="林深在旧灯塔收到空白信。",
+                word_count=20,
+                status="generated",
+            ),
+            ChapterContent(
+                project_id=project.id,
+                chapter_index=2,
+                title="灯塔回声",
+                content="顾衍追查旧回声。",
+                word_count=20,
+                status="generated",
+            ),
+            ChapterContent(
+                project_id=project.id,
+                chapter_index=4,
+                title="未来灯塔真相",
+                content="未来才揭示灯塔旧回声来自潮下车站。",
+                word_count=20,
+                status="generated",
+            ),
+        ]
+    )
+    db_session.add_all(
+        [
+            LongformMemory(
+                project_id=project.id,
+                memory_type="chapter",
+                scope_key="chapter:2",
+                start_chapter_index=2,
+                end_chapter_index=2,
+                title="灯塔回声",
+                summary="顾衍确认旧回声与灯塔地下室有关。",
+                status="current",
+            ),
+            LongformMemory(
+                project_id=project.id,
+                memory_type="chapter",
+                scope_key="chapter:4",
+                start_chapter_index=4,
+                end_chapter_index=4,
+                title="未来灯塔真相",
+                summary="潮下车站是未来才揭示的地点。",
+                status="current",
+            ),
+        ]
+    )
+    db_session.commit()
+
+    output = build_memory_activation_plan(db_session, project.id, chapter_index=3, query="灯塔旧回声")
+
+    memory_tree = output["activation"]["memory_tree"]
+    assert [item["node_id"] for item in memory_tree] == ["chapter:2"]
+    assert memory_tree[0]["kind"] == "memory_tree_node"
+    assert memory_tree[0]["relevance"]["score"] > 0.75
+    assert "semantic_token_overlap" in memory_tree[0]["relevance"]["match_reasons"]
+    assert output["coverage"]["activated_counts"]["memory_tree"] == 1
+    assert "灯塔回声" in output["prompt_block"]
+    assert "未来灯塔真相" not in output["prompt_block"]
+    assert output["memory_provenance"]["windows"]["memory_tree"] == {
+        "total": 1,
+        "returned": 1,
+        "limit": 3,
+        "has_more": False,
+    }
+    source_refs = {source["source_ref"] for source in output["memory_provenance"]["sources"]}
+    assert "memory_tree:chapter:2" in source_refs
+    assert "memory_tree:chapter:4" not in source_refs
+
+
 def test_memory_activation_reports_coverage_debt_for_missing_memory(db_session):
     project = Project(name="Memory Debt")
     db_session.add(project)
