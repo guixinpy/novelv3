@@ -849,6 +849,132 @@ describe('HermesView', () => {
     wrapper.unmount()
   })
 
+  it('creates a read-only memory tree expand run from a subnav result node', async () => {
+    const searchRun = {
+      id: 'run-memory-tree-search',
+      project_id: 'project-1',
+      goal: '搜索 Memory Tree：灯塔旧回声',
+      status: 'success',
+      entrypoint: 'ui_memory_tree_panel_search',
+      input: {},
+      output: null,
+      error: null,
+      steps: [
+        {
+          id: 'step-memory-tree-search',
+          tool_name: 'inspect_agent_memory_tree',
+          status: 'success',
+          output: {
+            status: 'ready',
+            summary: {
+              volume_nodes: 1,
+              chapter_nodes: 1,
+              scene_nodes: 1,
+              beat_nodes: 0,
+            },
+            nodes: [
+              {
+                id: 'chapter:2',
+                level: 'chapter',
+                chapter_index: 2,
+                title: '灯塔旧回声',
+                summary: '主角在灯塔发现旧回声线索。',
+                children: ['scene:memory-3'],
+                source_refs: [{ source_type: 'chapter_content', source_id: 'chapter-content-2' }],
+              },
+            ],
+          },
+        },
+      ],
+    }
+    const expandedRun = {
+      id: 'run-memory-tree-expanded',
+      project_id: 'project-1',
+      goal: '展开 Memory Tree：灯塔旧回声',
+      status: 'success',
+      entrypoint: 'ui_memory_tree_panel_expand',
+      input: {},
+      output: null,
+      error: null,
+      steps: [
+        {
+          id: 'step-memory-tree-expanded',
+          tool_name: 'inspect_agent_memory_tree',
+          status: 'success',
+          output: {
+            status: 'ready',
+            navigation: {
+              mode: 'expanded_subtree',
+              expanded_node_id: 'chapter:2',
+            },
+            nodes: [
+              {
+                id: 'chapter:2',
+                level: 'chapter',
+                chapter_index: 2,
+                title: '灯塔旧回声',
+                summary: '主角在灯塔发现旧回声线索。',
+                children: ['scene:memory-3'],
+              },
+              {
+                id: 'scene:memory-3',
+                level: 'scene',
+                chapter_index: 2,
+                summary: '补充场景摘要。',
+              },
+            ],
+          },
+        },
+      ],
+    }
+    vi.mocked((api as any).createAgentRun).mockImplementation(async (_projectId: string, payload: any) => (
+      payload.entrypoint === 'ui_memory_tree_panel_expand' ? expandedRun : searchRun
+    ))
+    const wrapper = await mountHermesView()
+
+    const input = document.querySelector('[data-testid="memory-tree-panel-query"]') as HTMLInputElement
+    input.value = '灯塔旧回声'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    await flushPromises()
+    const searchButton = document.querySelector('[data-testid="memory-tree-panel-search"]') as HTMLButtonElement
+    searchButton.click()
+    await flushPromises()
+
+    const expandButton = document.querySelector('[data-testid="memory-tree-panel-result-expand"]') as HTMLButtonElement
+    expect(expandButton).not.toBeNull()
+    expandButton.click()
+    await flushPromises()
+
+    expect((api as any).createAgentRun).toHaveBeenNthCalledWith(2, 'project-1', {
+      goal: '展开 Memory Tree：灯塔旧回声',
+      entrypoint: 'ui_memory_tree_panel_expand',
+      tools: [
+        {
+          tool_name: 'inspect_agent_memory_tree',
+          params: {
+            expand_node_id: 'chapter:2',
+            include_ancestors: true,
+            max_depth: 1,
+          },
+        },
+      ],
+      input: {
+        memory_tree_panel_expand: true,
+        source_run_id: 'run-memory-tree-search',
+        expand_node_label: '灯塔旧回声',
+      },
+    })
+    expect(wrapper.get('[data-testid="agent-run-drawer"]').text()).toContain('run-memory-tree-expanded')
+    expect(wrapper.get('[data-testid="stub-memory-tree-history"]').text()).toContain('节点展开：灯塔旧回声')
+    const panel = document.querySelector('[data-testid="memory-tree-history-panel"]') as HTMLElement
+    expect(panel.textContent).toContain('当前展开：灯塔旧回声')
+    expect(panel.textContent).not.toContain('chapter:2')
+    expect(panel.textContent).not.toContain('scene:memory-3')
+    expect(panel.textContent).not.toContain('chapter-content-2')
+
+    wrapper.unmount()
+  })
+
   it('creates a confirmed planner continuation run with approval contract binding', async () => {
     vi.mocked((api as any).createAgentRun).mockResolvedValueOnce({
       id: 'run-planner-approved-executed',

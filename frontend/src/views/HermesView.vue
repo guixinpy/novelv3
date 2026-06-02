@@ -72,6 +72,16 @@ type RouteUpgradeApplyPayload = {
   approvalContractHash: string
   approvalContract: Record<string, unknown>
 }
+type MemoryTreePanelResultRow = {
+  key: string
+  levelLabel: string
+  title: string
+  chapterLabel: string
+  summary: string
+  relevanceLabel: string
+  expandNodeId: string
+  canExpand: boolean
+}
 
 const route = useRoute()
 const router = useRouter()
@@ -118,13 +128,23 @@ const memoryTreePanelSummaryLabel = computed(() => {
     .join(' / ')
 })
 const memoryTreePanelNodes = computed(() => recordList(memoryTreePanelOutput.value?.nodes))
+const memoryTreePanelNavigation = computed(() => recordValue(memoryTreePanelOutput.value?.navigation))
+const memoryTreePanelExpandedNodeId = computed(() => stringValue(memoryTreePanelNavigation.value.expanded_node_id))
+const memoryTreePanelExpandedNodeLabel = computed(() => {
+  const expandedNodeId = memoryTreePanelExpandedNodeId.value
+  if (!expandedNodeId) return ''
+  const node = memoryTreePanelNodes.value.find((item) => stringValue(item.id) === expandedNodeId)
+  return safeMemoryTreeDisplayValue(node?.title) || chapterIndexLabel(node?.chapter_index) || '当前节点'
+})
 const memoryTreePanelNodeCount = computed(() => memoryTreePanelNodes.value.length)
-const memoryTreePanelResultRows = computed(() => (
+const memoryTreePanelResultRows = computed<MemoryTreePanelResultRow[]>(() => (
   memoryTreePanelNodes.value.slice(0, 3).map((node, index) => {
     const level = stringValue(node.level)
     const relevance = recordValue(node.relevance)
     const score = numberValue(relevance.score)
     const title = safeMemoryTreeDisplayValue(node.title) || '未命名节点'
+    const expandNodeId = stringValue(node.id)
+    const canExpand = Boolean(expandNodeId) && Array.isArray(node.children) && node.children.length > 0
     return {
       key: `memory-tree-panel-result:${index}`,
       levelLabel: memoryTreeLevelLabel(level),
@@ -132,6 +152,8 @@ const memoryTreePanelResultRows = computed(() => (
       chapterLabel: chapterIndexLabel(node.chapter_index),
       summary: safeMemoryTreeDisplayValue(node.summary),
       relevanceLabel: score !== null ? `相关度 ${score.toFixed(2)}` : '',
+      expandNodeId,
+      canExpand,
     }
   })
 ))
@@ -518,6 +540,45 @@ async function submitMemoryTreePanelSearch() {
   }
 }
 
+async function expandMemoryTreePanelNode(row: MemoryTreePanelResultRow) {
+  if (!row.canExpand || !row.expandNodeId || memoryTreePanelLoading.value) return
+  memoryTreePanelError.value = ''
+  memoryTreePanelLoading.value = true
+  agentRunError.value = ''
+  try {
+    const run = await api.createAgentRun(pid.value, {
+      goal: `展开 Memory Tree：${row.title}`,
+      entrypoint: 'ui_memory_tree_panel_expand',
+      tools: [
+        {
+          tool_name: 'inspect_agent_memory_tree',
+          params: {
+            expand_node_id: row.expandNodeId,
+            include_ancestors: true,
+            max_depth: 1,
+          },
+        },
+      ],
+      input: {
+        memory_tree_panel_expand: true,
+        source_run_id: activeAgentRun.value?.id || '',
+        expand_node_label: row.title,
+      },
+    })
+    activeAgentRunId.value = run.id
+    activeAgentRun.value = run
+    projectWorkspace.appendMemoryTreeHistory(pid.value, {
+      key: `${run.id}:panel-expand:${memoryTreeNavigationHistory.value.length}`,
+      label: `节点展开：${row.title}`,
+      runId: run.id,
+    })
+  } catch (err) {
+    memoryTreePanelError.value = err instanceof Error ? err.message : '展开 Memory Tree 失败'
+  } finally {
+    memoryTreePanelLoading.value = false
+  }
+}
+
 async function executeRecoveryFromRun(payload: RecoveryExecutePayload) {
   agentRunError.value = ''
   agentRunLoading.value = true
@@ -802,6 +863,13 @@ async function applyRouteUpgradeFromRun(payload: RouteUpgradeApplyPayload) {
             <p v-if="memoryTreePanelSummaryLabel" class="hermes-memory-tree-panel__result-summary">
               {{ memoryTreePanelSummaryLabel }}
             </p>
+            <p
+              v-if="memoryTreePanelExpandedNodeLabel"
+              class="hermes-memory-tree-panel__expanded-state"
+              data-testid="memory-tree-panel-expanded-state"
+            >
+              当前展开：{{ memoryTreePanelExpandedNodeLabel }}
+            </p>
             <ol class="hermes-memory-tree-panel__result-list">
               <li
                 v-for="row in memoryTreePanelResultRows"
@@ -816,6 +884,16 @@ async function applyRouteUpgradeFromRun(payload: RouteUpgradeApplyPayload) {
                     <span v-if="row.relevanceLabel">{{ row.relevanceLabel }}</span>
                   </div>
                   <p v-if="row.summary">{{ row.summary }}</p>
+                  <button
+                    v-if="row.canExpand"
+                    type="button"
+                    class="hermes-memory-tree-panel__result-expand"
+                    data-testid="memory-tree-panel-result-expand"
+                    :disabled="memoryTreePanelLoading"
+                    @click="expandMemoryTreePanelNode(row)"
+                  >
+                    展开
+                  </button>
                 </div>
               </li>
             </ol>
@@ -1059,6 +1137,18 @@ async function applyRouteUpgradeFromRun(payload: RouteUpgradeApplyPayload) {
   overflow-wrap: anywhere;
 }
 
+.hermes-memory-tree-panel__expanded-state {
+  margin: 0;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-muted);
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 .hermes-memory-tree-panel__result-list {
   display: grid;
   gap: var(--space-1);
@@ -1111,6 +1201,29 @@ async function applyRouteUpgradeFromRun(payload: RouteUpgradeApplyPayload) {
   font-size: var(--text-xs);
   line-height: 1.45;
   overflow-wrap: anywhere;
+}
+
+.hermes-memory-tree-panel__result-expand {
+  justify-self: start;
+  min-height: 24px;
+  margin-top: 2px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-white);
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+  line-height: 1;
+}
+
+.hermes-memory-tree-panel__result-expand:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  color: var(--color-text-primary);
+}
+
+.hermes-memory-tree-panel__result-expand:disabled {
+  cursor: default;
+  opacity: 0.55;
 }
 
 .hermes-memory-tree-panel__list {
