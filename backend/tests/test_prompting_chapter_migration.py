@@ -469,6 +469,121 @@ def test_chapter_budget_preserves_user_request_length_and_target_under_pressure(
     assert budget["omitted_blocks"] > 0 or budget["omitted_block_keys"]
 
 
+def test_chapter_payload_applies_longform_context_compression_under_pressure(monkeypatch, db_session):
+    project = _project(
+        db_session,
+        id="chapter-prompt-longform-compression",
+        genre="硬科幻",
+        style_config=None,
+    )
+    setup = _setup(db_session, project.id)
+    raw_longform_context = "RAW_LONGFORM_CONTEXT_SHOULD_NOT_APPEAR\n" * 40
+    compressed_longform_context = "【压缩长篇记忆】\nCOMPRESSED_LONGFORM_CONTEXT_FOR_PROMPT"
+    compression_calls = []
+
+    def fake_longform_context_block(db, *, project_id, chapter_index, user_query=None):
+        return (
+            {
+                "key": "longform_memory_context",
+                "kind": "longform_context",
+                "title": "长篇记忆上下文",
+                "content": raw_longform_context,
+                "sources": [
+                    {
+                        "source_type": "LongformMemory",
+                        "source_id": project_id,
+                        "label": "raw longform",
+                        "source_ref": f"chapter:{chapter_index}:longform_context",
+                        "metadata": {"chapter_index": chapter_index, "section_keys": ["recent_chapters"]},
+                    }
+                ],
+                "char_count": len(raw_longform_context),
+                "token_estimate": 100,
+                "original_char_count": len(raw_longform_context),
+                "truncated": False,
+                "metadata": {"chapter_index": chapter_index, "section_keys": ["recent_chapters"]},
+            },
+            {"prompt_context": raw_longform_context},
+            None,
+        )
+
+    def fake_context_compression_payload(
+        db,
+        project_id,
+        *,
+        chapter_index=None,
+        max_chars=None,
+        context_guard_failure_count=0,
+    ):
+        compression_calls.append(
+            {
+                "project_id": project_id,
+                "chapter_index": chapter_index,
+                "max_chars": max_chars,
+                "context_guard_failure_count": context_guard_failure_count,
+            }
+        )
+        return {
+            "status": "ready",
+            "compression_payload": {
+                "execution_mode": "dry_run",
+                "target_max_chars": 375,
+                "original_prompt_context_chars": len(raw_longform_context),
+                "compressed_context_chars": len(compressed_longform_context),
+                "compression_ratio": 0.03,
+                "compressed_context": compressed_longform_context,
+                "pretrimmed_sections": [{"key": "recent_chapters"}],
+            },
+            "projection": {"status": "warning"},
+            "compression_plan": {"status": "recommended"},
+            "side_effects": {"writes": [], "runtime_context_mutated": False},
+            "trace": {"source": "test_payload"},
+        }
+
+    monkeypatch.setattr("app.api.chapters.CHAPTER_CONTEXT_CHAR_BUDGET", 500)
+    monkeypatch.setattr("app.prompting.providers.chapter.build_longform_context_block", fake_longform_context_block)
+    monkeypatch.setattr(
+        "app.prompting.providers.chapter.build_agent_context_compression_payload",
+        fake_context_compression_payload,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "app.prompting.providers.athena.build_chapter_context_package",
+        lambda **kwargs: {
+            "chapter_index": kwargs["chapter_index"],
+            "profile_version": None,
+            "project_profile_version_id": None,
+            "sections": [],
+            "prompt_context": "",
+        },
+    )
+    monkeypatch.setattr(
+        "app.prompting.providers.retrieval.build_chapter_retrieval_context",
+        lambda **kwargs: None,
+    )
+
+    payload = chapters._build_chapter_call_payload(db_session, project, setup, 9, "")
+
+    message = payload["messages"][0]["content"]
+    assert compressed_longform_context in message
+    assert "RAW_LONGFORM_CONTEXT_SHOULD_NOT_APPEAR" not in message
+    assert compression_calls == [
+        {
+            "project_id": project.id,
+            "chapter_index": 9,
+            "max_chars": 500,
+            "context_guard_failure_count": 0,
+        }
+    ]
+    blocks_by_key = {block["key"]: block for block in payload["context_blocks"]}
+    longform_block = blocks_by_key["longform_memory_context"]
+    assert longform_block["kind"] == "longform_context_compressed"
+    assert longform_block["content"] == compressed_longform_context
+    assert longform_block["metadata"]["context_compression"]["status"] == "applied"
+    assert longform_block["metadata"]["context_compression"]["source"] == "build_agent_context_compression_payload"
+    assert longform_block["metadata"]["context_compression"]["target_max_chars"] == 375
+
+
 def test_chapter_budget_bounds_oversized_user_feedback(monkeypatch, db_session):
     project = _project(
         db_session,

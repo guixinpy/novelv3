@@ -1,5 +1,6 @@
 import json
 import re
+from typing import Any
 
 from sqlalchemy.orm import Session
 
@@ -17,6 +18,10 @@ from app.prompting.providers.storyline import (
     SetupContextSnapshot,
     TRUNCATED_SETUP_CONTEXT_MARKER,
     normalise_json_text,
+)
+from app.services.writing_agent.agent_context_compression_projection import (
+    CONTEXT_WINDOW_PRESSURE_RATIO,
+    build_agent_context_compression_payload,
 )
 
 CHAPTER_CONTEXT_CHAR_BUDGET = 24000
@@ -55,6 +60,8 @@ def build_chapter_prompt_context_blocks(
     setup: Setup | SetupContextSnapshot,
     chapter_index: int,
     extra_feedback: str,
+    *,
+    max_context_chars: int | None = None,
 ) -> tuple[list[dict], list[dict]]:
     model_blocks: list[dict] = [
         _prioritized(
@@ -129,6 +136,13 @@ def build_chapter_prompt_context_blocks(
         user_query=extra_feedback,
     )
     if longform_block:
+        longform_block = _compress_longform_context_block_if_needed(
+            db,
+            project_id=project.id,
+            chapter_index=chapter_index,
+            longform_block=longform_block,
+            max_context_chars=max_context_chars,
+        )
         model_blocks.append(_prioritized(longform_block, PRIORITY_LONGFORM_CONTEXT))
     if longform_error_block:
         trace_only_blocks.append(longform_error_block)
@@ -215,6 +229,145 @@ def build_chapter_trace_context_blocks(
             content=rendered_prompt,
         ),
     ]
+
+
+def _compress_longform_context_block_if_needed(
+    db: Session,
+    *,
+    project_id: str,
+    chapter_index: int,
+    longform_block: dict,
+    max_context_chars: int | None,
+) -> dict:
+    if not _longform_context_needs_compression(longform_block, max_context_chars=max_context_chars):
+        return longform_block
+
+    compression_output = build_agent_context_compression_payload(
+        db,
+        project_id,
+        chapter_index=chapter_index,
+        max_chars=max_context_chars,
+        context_guard_failure_count=0,
+    )
+    if compression_output.get("status") != "ready":
+        return longform_block
+    compression_payload = (
+        compression_output.get("compression_payload")
+        if isinstance(compression_output.get("compression_payload"), dict)
+        else {}
+    )
+    compressed_context = compression_payload.get("compressed_context")
+    if not isinstance(compressed_context, str) or not compressed_context.strip():
+        return longform_block
+
+    compressed_block = build_context_block(
+        key=str(longform_block.get("key") or "longform_memory_context"),
+        kind="longform_context_compressed",
+        title="长篇记忆上下文（压缩）",
+        content=compressed_context,
+        sources=_compressed_longform_sources(
+            longform_block,
+            project_id=project_id,
+            chapter_index=chapter_index,
+            compression_payload=compression_payload,
+        ),
+    )
+    compressed_block["metadata"] = {
+        **_dict_metadata(longform_block.get("metadata")),
+        "context_compression": _context_compression_metadata(
+            compression_output,
+            compression_payload=compression_payload,
+        ),
+    }
+    return compressed_block
+
+
+def _longform_context_needs_compression(block: dict, *, max_context_chars: int | None) -> bool:
+    if not max_context_chars or max_context_chars <= 0:
+        return False
+    content_chars = len(str(block.get("content") or ""))
+    original_chars = _safe_int(block.get("original_char_count"))
+    pressure_chars = max(content_chars, original_chars)
+    return pressure_chars >= int(max_context_chars * CONTEXT_WINDOW_PRESSURE_RATIO)
+
+
+def _compressed_longform_sources(
+    longform_block: dict,
+    *,
+    project_id: str,
+    chapter_index: int,
+    compression_payload: dict[str, Any],
+) -> list[dict[str, Any]]:
+    sources = longform_block.get("sources") if isinstance(longform_block.get("sources"), list) else []
+    return [
+        *[source for source in sources if isinstance(source, dict)],
+        {
+            "source_type": "ContextCompressor",
+            "source_id": project_id,
+            "label": "章节长篇上下文压缩",
+            "source_ref": f"chapter:{chapter_index}:context_compression",
+            "metadata": {
+                "chapter_index": chapter_index,
+                "target_max_chars": _safe_int(compression_payload.get("target_max_chars")),
+                "execution_mode": compression_payload.get("execution_mode"),
+            },
+        },
+    ]
+
+
+def _context_compression_metadata(
+    compression_output: dict[str, Any],
+    *,
+    compression_payload: dict[str, Any],
+) -> dict[str, Any]:
+    projection = (
+        compression_output.get("projection")
+        if isinstance(compression_output.get("projection"), dict)
+        else {}
+    )
+    compression_plan = (
+        compression_output.get("compression_plan")
+        if isinstance(compression_output.get("compression_plan"), dict)
+        else {}
+    )
+    return {
+        "status": "applied",
+        "source": "build_agent_context_compression_payload",
+        "execution_mode": compression_payload.get("execution_mode"),
+        "target_max_chars": _safe_int(compression_payload.get("target_max_chars")),
+        "original_prompt_context_chars": _safe_int(compression_payload.get("original_prompt_context_chars")),
+        "compressed_context_chars": _safe_int(compression_payload.get("compressed_context_chars")),
+        "compression_ratio": compression_payload.get("compression_ratio"),
+        "projection_status": projection.get("status"),
+        "compression_plan_status": compression_plan.get("status"),
+        "pretrimmed_section_keys": _pretrimmed_section_keys(
+            compression_payload.get("pretrimmed_sections")
+        ),
+        "side_effects": compression_output.get("side_effects") or {},
+    }
+
+
+def _pretrimmed_section_keys(sections: Any) -> list[str]:
+    if not isinstance(sections, list):
+        return []
+    return [
+        str(section.get("key"))
+        for section in sections
+        if isinstance(section, dict) and section.get("key")
+    ]
+
+
+def _dict_metadata(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _safe_int(value: Any) -> int:
+    if isinstance(value, bool):
+        return 0
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
 
 
 def chapter_max_tokens(extra_feedback: str, *, project: Project | None = None) -> int:

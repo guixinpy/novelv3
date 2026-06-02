@@ -150,6 +150,7 @@ def _build_chapter_call_payload(
         setup,
         chapter_index,
         extra_feedback,
+        max_context_chars=CHAPTER_CONTEXT_CHAR_BUDGET,
     )
     build_result = prompt_assembler.build(
         "chapter.generate",
