@@ -198,6 +198,17 @@ def _preflight_recovery(output: dict[str, Any], planner: dict[str, Any]) -> dict
             "requires_user_input": True,
             "message": str(issue.get("message") or "章节字数策略连续偏离，建议先复核项目目标。"),
         }
+    suggested_tool = str(issue.get("suggested_tool") or "").strip()
+    if suggested_tool:
+        suggested_params = issue.get("suggested_params") if isinstance(issue.get("suggested_params"), dict) else {}
+        return {
+            **base,
+            "action": "run_tool",
+            "next_tool": suggested_tool,
+            "next_params": suggested_params,
+            "requires_user_input": False,
+            "message": str(issue.get("message") or f"建议先运行 {suggested_tool} 后再继续。"),
+        }
 
     return {
         **base,

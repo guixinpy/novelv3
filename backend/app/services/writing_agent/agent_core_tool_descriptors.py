@@ -8,6 +8,23 @@ _CHAPTER_PARAMS = object_schema(
         "chapter_index": {"type": "integer", "minimum": 1},
     }
 )
+_PREFLIGHT_WRITING_INPUT = object_schema(
+    {
+        "chapter_index": {"type": "integer", "minimum": 1},
+        "max_context_chars": {"type": "integer", "minimum": 500},
+        "context_guard_failure_count": {"type": "integer", "minimum": 0},
+    }
+)
+_PREFLIGHT_WRITING_OUTPUT = object_schema(
+    {
+        "status": {"type": "string"},
+        "chapter_index": {"type": "integer"},
+        "checks": {"type": "object"},
+        "issues": {"type": "array"},
+        "recommended_next_tools": {"type": "array"},
+        "context_compression_payload_preview": {"type": ["object", "null"]},
+    }
+)
 _DESCRIBE_AGENT_TOOLS_INPUT = object_schema(
     {
         "chapter_index": {"type": "integer", "minimum": 1},
@@ -870,9 +887,9 @@ AGENT_CORE_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         name="preflight_writing",
         module="writing_agent",
         category="preflight",
-        description="检查指定章节生成前的设定、大纲、前文、世界模型、检索和字数策略状态。",
-        input_schema=_CHAPTER_PARAMS,
-        output_schema=object_schema({"status": {"type": "string"}}),
+        description="检查指定章节生成前的设定、大纲、前文、世界模型、检索、字数策略和上下文压缩状态。",
+        input_schema=_PREFLIGHT_WRITING_INPUT,
+        output_schema=_PREFLIGHT_WRITING_OUTPUT,
         target_type="preflight",
         internal=True,
         sort_key=10,

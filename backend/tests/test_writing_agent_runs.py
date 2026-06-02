@@ -4738,6 +4738,169 @@ def test_agent_preflight_reports_memory_activation_plan(client, db_session):
     assert "潮下车站" not in activation["prompt_preview"]
 
 
+def test_agent_preflight_reports_context_compression_preview_under_window_pressure(client, db_session, monkeypatch):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2, 3], generated_chapters=[1, 2])
+    import_setup_to_world_model(db_session, project.id)
+    calls: list[tuple[str, str, int, int | None, int]] = []
+
+    def fake_projection(db, project_id: str, *, chapter_index: int, max_chars: int | None, context_guard_failure_count: int):
+        calls.append(("projection", project_id, chapter_index, max_chars, context_guard_failure_count))
+        return {
+            "status": "warning",
+            "summary": {"prompt_context_chars": 475, "max_chars": max_chars, "usage_ratio": 0.95},
+            "risks": [{"code": "context_window_pressure", "severity": "warning"}],
+            "compression_plan": {
+                "status": "recommended",
+                "target_max_chars": 500,
+                "payload_tool": {
+                    "tool_name": "build_agent_context_compression_payload",
+                    "params": {
+                        "chapter_index": chapter_index,
+                        "max_chars": max_chars,
+                        "context_guard_failure_count": context_guard_failure_count,
+                    },
+                },
+            },
+            "recommended_next_tools": ["build_agent_context_compression_payload"],
+            "recovery": {"status": "optional", "tools": []},
+            "trace": {"source": "test_projection"},
+        }
+
+    def fake_payload(db, project_id: str, *, chapter_index: int, max_chars: int | None, context_guard_failure_count: int):
+        calls.append(("payload", project_id, chapter_index, max_chars, context_guard_failure_count))
+        return {
+            "status": "ready",
+            "version": "test.context_payload.v1",
+            "chapter_index": chapter_index,
+            "projection": {"status": "warning"},
+            "compression_plan": {"status": "recommended", "target_max_chars": 500},
+            "compression_payload": {
+                "execution_mode": "dry_run",
+                "target_max_chars": 500,
+                "compressed_context_chars": 360,
+                "compressed_context": "压缩后的上下文正文不应出现在 preflight preview 中。",
+            },
+            "side_effects": {"writes": [], "runtime_context_mutated": False},
+            "recommended_next_tools": ["build_agent_context_compression_payload"],
+            "recovery": {"status": "optional", "tools": []},
+            "trace": {"source": "test_payload"},
+        }
+
+    monkeypatch.setattr(
+        "app.services.writing_agent.run_service.inspect_agent_context_compression_projection",
+        fake_projection,
+    )
+    monkeypatch.setattr(
+        "app.services.writing_agent.run_service.build_agent_context_compression_payload",
+        fake_payload,
+    )
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "检查第3章压缩预检",
+            "tools": [
+                {
+                    "tool_name": "preflight_writing",
+                    "params": {"chapter_index": 3, "max_context_chars": 500},
+                }
+            ],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    compression = output["checks"]["context_compression"]
+    preview = output["context_compression_payload_preview"]
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    assert output["status"] == "ready"
+    assert compression["status"] == "warning"
+    assert compression["summary"]["max_chars"] == 500
+    assert compression["compression_plan"]["status"] == "recommended"
+    assert "build_agent_context_compression_payload" in output["recommended_next_tools"]
+    assert any(issue["code"] == "context_compression_window_pressure" for issue in output["issues"])
+    assert preview["status"] == "ready"
+    assert preview["side_effects"] == {"writes": [], "runtime_context_mutated": False}
+    assert preview["compression_payload"]["execution_mode"] == "dry_run"
+    assert preview["compression_payload"]["target_max_chars"] == 500
+    assert "compressed_context" not in preview["compression_payload"]
+    assert calls == [
+        ("projection", project.id, 3, 500, 0),
+        ("payload", project.id, 3, 500, 0),
+    ]
+
+
+def test_agent_preflight_blocks_and_recovers_when_context_compression_guard_is_open(
+    client,
+    db_session,
+    monkeypatch,
+):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2, 3], generated_chapters=[1, 2])
+    import_setup_to_world_model(db_session, project.id)
+
+    def fake_projection(db, project_id: str, *, chapter_index: int, max_chars: int | None, context_guard_failure_count: int):
+        return {
+            "status": "blocked",
+            "summary": {
+                "prompt_context_chars": 3000,
+                "max_chars": max_chars,
+                "context_guard_failure_count": context_guard_failure_count,
+            },
+            "risks": [{"code": "context_guard_open", "severity": "error"}],
+            "compression_plan": {"status": "blocked"},
+            "recommended_next_tools": ["inspect_agent_memory_route"],
+            "recovery": {
+                "status": "recommended",
+                "tools": [
+                    {
+                        "tool_name": "inspect_agent_memory_route",
+                        "params": {
+                            "chapter_index": chapter_index,
+                            "query": f"上下文压缩连续失败，诊断第{chapter_index}章长篇记忆、检索覆盖和压缩窗口。",
+                            "include_context_summary": False,
+                        },
+                    }
+                ],
+            },
+            "trace": {"source": "test_guard"},
+        }
+
+    monkeypatch.setattr(
+        "app.services.writing_agent.run_service.inspect_agent_context_compression_projection",
+        fake_projection,
+    )
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "检查第3章压缩断路器",
+            "tools": [
+                {
+                    "tool_name": "preflight_writing",
+                    "params": {"chapter_index": 3, "max_context_chars": 500, "context_guard_failure_count": 3},
+                }
+            ],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    recovery = output["agent_tool_result"]["recovery"]
+    assert response.status_code == 200
+    assert response.json()["status"] == "blocked"
+    assert output["status"] == "blocked"
+    assert output["checks"]["context_compression"]["status"] == "blocked"
+    assert output["issues"][-1]["code"] == "context_compression_guard_open"
+    assert output["issues"][-1]["suggested_tool"] == "inspect_agent_memory_route"
+    assert recovery["status"] == "recommended"
+    assert recovery["next_tool"] == "inspect_agent_memory_route"
+    assert recovery["next_params"] == {
+        "chapter_index": 3,
+        "query": "上下文压缩连续失败，诊断第3章长篇记忆、检索覆盖和压缩窗口。",
+        "include_context_summary": False,
+    }
+    assert recovery["requires_user_input"] is False
+
+
 def test_agent_preflight_blocks_when_generated_chapter_outline_gap_exists(client, db_session):
     project = _seed_longform_project(db_session, outline_chapters=[1, 3, 4], generated_chapters=[1, 2, 3])
     for chapter in db_session.query(ChapterContent).filter(ChapterContent.project_id == project.id):

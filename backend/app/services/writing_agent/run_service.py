@@ -37,6 +37,10 @@ from app.services.writing_agent.agent_step_binding import summarize_resource_bin
 from app.services.writing_agent.agent_loop_budget import build_agent_loop_budget
 from app.services.writing_agent.agent_loop_risk import build_agent_loop_risk
 from app.services.writing_agent.agent_stop_hooks import evaluate_agent_stop_hooks
+from app.services.writing_agent.agent_context_compression_projection import (
+    build_agent_context_compression_payload,
+    inspect_agent_context_compression_projection,
+)
 from app.services.writing_agent.memory_activation import build_memory_activation_plan
 from app.services.writing_agent.tool_adapter_types import WritingAgentToolContext
 from app.services.writing_agent.tool_executor import (
@@ -536,8 +540,12 @@ class WritingAgentRunService:
 
     def _preflight_writing(self, project_id: str, params: dict[str, Any]) -> dict[str, Any]:
         chapter_index = int(params.get("chapter_index") or 1)
+        max_context_chars = _optional_positive_int(params.get("max_context_chars") or params.get("max_chars"))
+        context_guard_failure_count = _optional_non_negative_int(params.get("context_guard_failure_count")) or 0
         checks: dict[str, dict[str, Any]] = {}
         issues: list[dict[str, Any]] = []
+        recommended_next_tools: list[str] = []
+        context_compression_payload_preview: dict[str, Any] | None = None
 
         setup = (
             self.db.query(Setup.id)
@@ -618,6 +626,55 @@ class WritingAgentRunService:
 
         checks["memory_activation"] = _memory_activation_check(self.db, project_id, chapter_index)
         checks["longform_maintenance"] = _longform_maintenance_check(self.db, project_id)
+        context_compression = _context_compression_check(
+            self.db,
+            project_id,
+            chapter_index=chapter_index,
+            max_context_chars=max_context_chars,
+            context_guard_failure_count=context_guard_failure_count,
+        )
+        checks["context_compression"] = context_compression
+        recommended_next_tools.extend(_string_list(context_compression.get("recommended_next_tools")))
+        if context_compression.get("status") == "warning":
+            context_compression_payload_preview = _context_compression_payload_preview(
+                build_agent_context_compression_payload(
+                    self.db,
+                    project_id,
+                    chapter_index=chapter_index,
+                    max_chars=max_context_chars,
+                    context_guard_failure_count=context_guard_failure_count,
+                )
+            )
+            issues.append(
+                _issue(
+                    "context_compression_window_pressure",
+                    "warning",
+                    "章节上下文接近摘要窗口上限，建议先构建只读压缩 payload 再继续生成。",
+                    extra={
+                        "suggested_tool": "build_agent_context_compression_payload",
+                        "suggested_params": {
+                            "chapter_index": chapter_index,
+                            "max_chars": max_context_chars,
+                            "context_guard_failure_count": context_guard_failure_count,
+                        },
+                    },
+                )
+            )
+        elif context_compression.get("status") == "blocked":
+            recovery = context_compression.get("recovery") if isinstance(context_compression.get("recovery"), dict) else {}
+            tools = recovery.get("tools") if isinstance(recovery.get("tools"), list) else []
+            suggested = tools[0] if tools and isinstance(tools[0], dict) else {}
+            issues.append(
+                _issue(
+                    "context_compression_guard_open",
+                    "blocker",
+                    "上下文压缩连续失败，需先诊断长篇记忆与压缩窗口后再生成。",
+                    extra={
+                        "suggested_tool": suggested.get("tool_name") or "inspect_agent_memory_route",
+                        "suggested_params": suggested.get("params") if isinstance(suggested.get("params"), dict) else {},
+                    },
+                )
+            )
         checks["length_policy"] = _length_policy_check(self.db, project_id)
         length_policy_status = checks["length_policy"].get("status")
         if length_policy_status == "blocked":
@@ -647,12 +704,16 @@ class WritingAgentRunService:
         checks["retrieval"] = _retrieval_check(self.db, project_id)
 
         blocker_count = sum(1 for issue in issues if issue["severity"] == "blocker")
-        return {
+        output = {
             "status": "blocked" if blocker_count else "ready",
             "chapter_index": chapter_index,
             "checks": checks,
             "issues": issues,
+            "recommended_next_tools": _dedupe_strings(recommended_next_tools),
         }
+        if context_compression_payload_preview is not None:
+            output["context_compression_payload_preview"] = context_compression_payload_preview
+        return output
 
     def _find_target_id(self, step: WritingAgentStep) -> str | None:
         if step.tool_name in {"generate_setup", "execute_generate_setup_with_approval"}:
@@ -1770,6 +1831,26 @@ def _memory_activation_check(db: Session, project_id: str, chapter_index: int) -
         return {"status": "unknown", "error": str(exc)}
 
 
+def _context_compression_check(
+    db: Session,
+    project_id: str,
+    *,
+    chapter_index: int,
+    max_context_chars: int | None,
+    context_guard_failure_count: int,
+) -> dict[str, Any]:
+    try:
+        return inspect_agent_context_compression_projection(
+            db,
+            project_id,
+            chapter_index=chapter_index,
+            max_chars=max_context_chars,
+            context_guard_failure_count=context_guard_failure_count,
+        )
+    except Exception as exc:
+        return {"status": "unknown", "error": str(exc)}
+
+
 def _retrieval_check(db: Session, project_id: str) -> dict[str, Any]:
     try:
         from app.core.athena_retrieval import get_retrieval_diagnostics
@@ -1786,6 +1867,59 @@ def _retrieval_check(db: Session, project_id: str) -> dict[str, Any]:
 
 def _issue(code: str, severity: str, message: str, *, extra: dict[str, Any] | None = None) -> dict[str, Any]:
     return {"code": code, "severity": severity, "message": message, **(extra or {})}
+
+
+def _context_compression_payload_preview(payload: dict[str, Any]) -> dict[str, Any]:
+    preview = {
+        "status": payload.get("status"),
+        "version": payload.get("version"),
+        "chapter_index": payload.get("chapter_index"),
+        "projection": payload.get("projection") if isinstance(payload.get("projection"), dict) else {},
+        "compression_plan": payload.get("compression_plan") if isinstance(payload.get("compression_plan"), dict) else {},
+        "side_effects": payload.get("side_effects") if isinstance(payload.get("side_effects"), dict) else {},
+        "recommended_next_tools": _string_list(payload.get("recommended_next_tools")),
+        "recovery": payload.get("recovery") if isinstance(payload.get("recovery"), dict) else {},
+        "trace": payload.get("trace") if isinstance(payload.get("trace"), dict) else {},
+    }
+    compression_payload = payload.get("compression_payload")
+    if isinstance(compression_payload, dict):
+        compact_payload = dict(compression_payload)
+        compact_payload.pop("compressed_context", None)
+        preview["compression_payload"] = compact_payload
+    else:
+        preview["compression_payload"] = None
+    return preview
+
+
+def _optional_positive_int(value: object) -> int | None:
+    parsed = _optional_int(value)
+    if parsed is None or parsed <= 0:
+        return None
+    return parsed
+
+
+def _optional_non_negative_int(value: object) -> int | None:
+    parsed = _optional_int(value)
+    if parsed is None or parsed < 0:
+        return None
+    return parsed
+
+
+def _string_list(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value if isinstance(item, str) and item]
+
+
+def _dedupe_strings(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        result.append(value)
+    return result
 
 
 def _chapter_index_list_label(chapter_indexes: list[int]) -> str:

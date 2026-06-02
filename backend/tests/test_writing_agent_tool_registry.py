@@ -75,6 +75,14 @@ def test_agent_core_tool_descriptors_live_in_dedicated_module():
     assert target_type_for_tool("inspect_agent_worker_dispatch") == "agent_worker_dispatch"
     assert "plan_writing_agent_run" in non_blocking_report_tool_names()
     assert "preflight_writing" not in non_blocking_report_tool_names()
+    preflight = get_agent_tool_descriptor("preflight_writing")
+    assert preflight is not None
+    assert preflight.input_schema["properties"]["max_context_chars"]["minimum"] == 500
+    assert preflight.input_schema["properties"]["context_guard_failure_count"]["minimum"] == 0
+    assert preflight.output_schema["properties"]["context_compression_payload_preview"]["type"] == [
+        "object",
+        "null",
+    ]
 
 
 def test_agent_memory_trace_tool_descriptors_live_in_dedicated_module():
