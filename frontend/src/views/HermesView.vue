@@ -103,6 +103,38 @@ const memoryTreePanelLoading = ref(false)
 const memoryTreePanelError = ref('')
 const memoryTreePanelSearchText = computed(() => safeMemoryTreeDisplayValue(memoryTreePanelQuery.value))
 const canSearchMemoryTreePanel = computed(() => Boolean(memoryTreePanelSearchText.value) && !memoryTreePanelLoading.value)
+const memoryTreePanelOutput = computed(() => latestRunToolOutput(activeAgentRun.value, 'inspect_agent_memory_tree'))
+const memoryTreePanelSummary = computed(() => recordValue(memoryTreePanelOutput.value?.summary))
+const memoryTreePanelSummaryLabel = computed(() => {
+  const counts = [
+    ['卷', numberValue(memoryTreePanelSummary.value.volume_nodes)],
+    ['章节', numberValue(memoryTreePanelSummary.value.chapter_nodes)],
+    ['场景', numberValue(memoryTreePanelSummary.value.scene_nodes)],
+    ['节拍', numberValue(memoryTreePanelSummary.value.beat_nodes)],
+  ]
+  return counts
+    .filter((item): item is [string, number] => item[1] !== null)
+    .map(([label, count]) => `${label} ${count}`)
+    .join(' / ')
+})
+const memoryTreePanelNodes = computed(() => recordList(memoryTreePanelOutput.value?.nodes))
+const memoryTreePanelNodeCount = computed(() => memoryTreePanelNodes.value.length)
+const memoryTreePanelResultRows = computed(() => (
+  memoryTreePanelNodes.value.slice(0, 3).map((node, index) => {
+    const level = stringValue(node.level)
+    const relevance = recordValue(node.relevance)
+    const score = numberValue(relevance.score)
+    const title = safeMemoryTreeDisplayValue(node.title) || '未命名节点'
+    return {
+      key: `memory-tree-panel-result:${index}`,
+      levelLabel: memoryTreeLevelLabel(level),
+      title,
+      chapterLabel: chapterIndexLabel(node.chapter_index),
+      summary: safeMemoryTreeDisplayValue(node.summary),
+      relevanceLabel: score !== null ? `相关度 ${score.toFixed(2)}` : '',
+    }
+  })
+))
 
 // Project stats
 const totalWords = computed(() => {
@@ -624,8 +656,45 @@ function recordValue(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
 }
 
+function recordList(value: unknown) {
+  if (!Array.isArray(value)) return []
+  return value.filter((item): item is Record<string, unknown> => (
+    item !== null && typeof item === 'object' && !Array.isArray(item)
+  ))
+}
+
 function stringValue(value: unknown) {
   return typeof value === 'string' ? value.trim() : ''
+}
+
+function numberValue(value: unknown) {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  return null
+}
+
+function chapterIndexLabel(value: unknown) {
+  const chapterIndex = numberValue(value)
+  return chapterIndex !== null ? `第${chapterIndex}章` : ''
+}
+
+function memoryTreeLevelLabel(level: unknown) {
+  const value = stringValue(level)
+  if (value === 'volume') return '卷'
+  if (value === 'chapter') return '章节'
+  if (value === 'scene') return '场景'
+  if (value === 'beat') return '节拍'
+  return value || '节点'
+}
+
+function latestRunToolOutput(run: WritingAgentRunDetail | null, toolName: string) {
+  const steps = Array.isArray(run?.steps) ? run.steps : []
+  for (let index = steps.length - 1; index >= 0; index -= 1) {
+    const step = steps[index]
+    if (step?.tool_name !== toolName) continue
+    const output = recordValue(step.output)
+    if (Object.keys(output).length) return output
+  }
+  return null
 }
 
 async function applyRouteUpgradeFromRun(payload: RouteUpgradeApplyPayload) {
@@ -720,6 +789,37 @@ async function applyRouteUpgradeFromRun(payload: RouteUpgradeApplyPayload) {
           <p v-if="memoryTreePanelError" class="hermes-memory-tree-panel__error">
             {{ memoryTreePanelError }}
           </p>
+          <section
+            v-if="memoryTreePanelResultRows.length"
+            class="hermes-memory-tree-panel__results"
+            data-testid="memory-tree-panel-results"
+            aria-label="Memory Tree 最近结果"
+          >
+            <header class="hermes-memory-tree-panel__results-header">
+              <span>最近结果</span>
+              <strong>返回 {{ memoryTreePanelNodeCount }} 个</strong>
+            </header>
+            <p v-if="memoryTreePanelSummaryLabel" class="hermes-memory-tree-panel__result-summary">
+              {{ memoryTreePanelSummaryLabel }}
+            </p>
+            <ol class="hermes-memory-tree-panel__result-list">
+              <li
+                v-for="row in memoryTreePanelResultRows"
+                :key="row.key"
+                data-testid="memory-tree-panel-result-node"
+              >
+                <span class="hermes-memory-tree-panel__result-level">{{ row.levelLabel }}</span>
+                <div class="hermes-memory-tree-panel__result-content">
+                  <div>
+                    <strong>{{ row.title }}</strong>
+                    <span v-if="row.chapterLabel">{{ row.chapterLabel }}</span>
+                    <span v-if="row.relevanceLabel">{{ row.relevanceLabel }}</span>
+                  </div>
+                  <p v-if="row.summary">{{ row.summary }}</p>
+                </div>
+              </li>
+            </ol>
+          </section>
           <ol v-if="memoryTreeNavigationHistory.length" class="hermes-memory-tree-panel__list">
             <li
               v-for="item in memoryTreeNavigationHistory"
@@ -924,6 +1024,93 @@ async function applyRouteUpgradeFromRun(payload: RouteUpgradeApplyPayload) {
 
 .hermes-memory-tree-panel__empty {
   color: var(--color-text-tertiary);
+}
+
+.hermes-memory-tree-panel__results {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-white);
+}
+
+.hermes-memory-tree-panel__results-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  color: var(--color-text-tertiary);
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+}
+
+.hermes-memory-tree-panel__results-header strong {
+  color: var(--color-text-secondary);
+  font-weight: var(--font-medium);
+  white-space: nowrap;
+}
+
+.hermes-memory-tree-panel__result-summary {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.hermes-memory-tree-panel__result-list {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hermes-memory-tree-panel__result-list li {
+  display: grid;
+  grid-template-columns: 2.5rem minmax(0, 1fr);
+  gap: var(--space-2);
+  padding-top: var(--space-1);
+  padding-bottom: var(--space-1);
+  border-top: 1px solid var(--color-border);
+}
+
+.hermes-memory-tree-panel__result-level {
+  color: var(--color-text-tertiary);
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  white-space: nowrap;
+}
+
+.hermes-memory-tree-panel__result-content {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.hermes-memory-tree-panel__result-content div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  align-items: baseline;
+  min-width: 0;
+}
+
+.hermes-memory-tree-panel__result-content strong {
+  min-width: 0;
+  color: var(--color-text-primary);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+
+.hermes-memory-tree-panel__result-content span,
+.hermes-memory-tree-panel__result-content p {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .hermes-memory-tree-panel__list {

@@ -342,7 +342,7 @@
 - [x] 对话界面含 action cards + followup + trace 入口
 - [x] Recommended followup fallback view 可展示 pending confirmation handoff，且 pending-only 计划不会显示“执行后继”自动执行按钮
 - [x] AgentRunDrawer 执行计划进度摘要：展示计划工具数、已执行、已完成、进行中、下一步工具和逐项计划工具状态
-- [x] AgentRunDrawer Memory Tree 投影：展示 inspect_agent_memory_tree 的状态、查询条件、导航模式、推荐展开数、节点列表和项目级会话浏览历史，并可通过自由查询、推荐 drilldown 或返回节点展开发起只读浏览 run；Hermes 子导航常驻 Memory Tree 面板可直接提交只读搜索 run，并可从历史入口重新打开对应 run
+- [x] AgentRunDrawer Memory Tree 投影：展示 inspect_agent_memory_tree 的状态、查询条件、导航模式、推荐展开数、节点列表和项目级会话浏览历史，并可通过自由查询、推荐 drilldown 或返回节点展开发起只读浏览 run；Hermes 子导航常驻 Memory Tree 面板可直接提交只读搜索 run、展示最近结果摘要，并可从历史入口重新打开对应 run
 - [x] Athena 世界模型面板（实体 + 提案审阅）
 - [x] Model Trace 抽屉
 - [x] 前端请求隔离（request lane + project scope version）
@@ -353,7 +353,7 @@
 | 优先级 | 任务 | 完成标准 | 状态 |
 |--------|------|---------|------|
 | P1 | Agent 执行计划可视化 | 对话中展示当前执行计划、工具调用进度 | 🟡 进行中（Drawer per-tool progress + followup pending confirmation fallback） |
-| P2 | Memory Tree 可视化 | 前端展示分层摘要树、支持浏览和搜索 | 🟡 进行中（Drawer read-only projection + free search + recommended/node drilldown + project-scoped history + subnav search/history panel；完整独立面板待补） |
+| P2 | Memory Tree 可视化 | 前端展示分层摘要树、支持浏览和搜索 | 🟡 进行中（Drawer read-only projection + free search + recommended/node drilldown + project-scoped history + subnav search/history/results panel；完整独立面板待补） |
 | P3 | 面板整合 | Athena 面板、Memory 面板、Trace 面板的统一导航 | 🔴 待开始 |
 
 ### 最近完成
@@ -368,10 +368,11 @@
 - 2026-06-02: `projectWorkspace` 新增按项目隔离的 Memory Tree 浏览历史状态，`HermesView` 在 `inspect_agent_memory_tree` planner continuation 成功后写入清洗后的“搜索/推荐展开/节点展开”行为标签并传回 `AgentRunDrawer`；历史不显示 node id、source id 或 approval hash，关闭 Drawer 后重新打开同项目 run 仍可恢复，跨项目隔离且只保留最近 8 条。
 - 2026-06-02: `HermesView` 子导航新增 Memory Tree 历史入口，读取项目级浏览历史并以安全标签展示；点击历史项会用隐藏的 runId 重新打开对应 Agent run，不在面板中显示 run id 或 node id，这是独立 Memory Tree 面板前的可导航入口层。
 - 2026-06-02: `HermesView` 子导航 Memory Tree 面板改为常驻，并新增只读搜索表单；提交后创建 `inspect_agent_memory_tree` Agent run（query + include_ancestors + max_depth），打开 Drawer 展示结果，同时写入同项目安全历史标签，不显示 approval、source id 或 node id。
+- 2026-06-02: `HermesView` 子导航 Memory Tree 面板新增最近结果摘要，读取当前活动 run 的最新 `inspect_agent_memory_tree` 输出，展示返回节点数、卷/章/场景/节拍概况和最多 3 条安全节点摘要；面板继续过滤 source id、node id、approval 等内部字段。
 
 ### 阻塞项
 
-- 独立 Memory Tree 面板仍需要前端交互契约：当前已有 Drawer 只读投影、自由搜索、推荐展开、节点展开、项目级会话浏览历史和子导航搜索/历史入口；仍需补面板内结果列表、展开状态和跨面板导航。
+- 独立 Memory Tree 面板仍需要前端交互契约：当前已有 Drawer 只读投影、自由搜索、推荐展开、节点展开、项目级会话浏览历史和子导航搜索/历史/最近结果摘要；仍需补面板内树展开状态和跨面板导航。
 
 ---
 

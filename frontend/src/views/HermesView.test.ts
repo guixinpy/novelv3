@@ -754,6 +754,42 @@ describe('HermesView', () => {
           id: 'step-memory-tree-search',
           tool_name: 'inspect_agent_memory_tree',
           status: 'success',
+          output: {
+            status: 'ready',
+            filters: {
+              query: '灯塔旧回声',
+              include_ancestors: true,
+            },
+            summary: {
+              volume_nodes: 1,
+              chapter_nodes: 1,
+              scene_nodes: 1,
+              beat_nodes: 0,
+            },
+            nodes: [
+              {
+                id: 'chapter:2',
+                level: 'chapter',
+                chapter_index: 2,
+                title: '灯塔旧回声',
+                summary: '主角在灯塔发现旧回声线索。',
+                source_refs: [
+                  { source_type: 'chapter_content', source_id: 'chapter-content-2' },
+                  { source_type: 'longform_memory', source_id: 'memory-2' },
+                ],
+                relevance: {
+                  score: 1.2,
+                },
+              },
+              {
+                id: 'scene:memory-3',
+                level: 'scene',
+                chapter_index: 2,
+                summary: '补充场景摘要。',
+                source_refs: [{ source_type: 'longform_memory', source_id: 'memory-3' }],
+              },
+            ],
+          },
         },
       ],
     })
@@ -791,7 +827,24 @@ describe('HermesView', () => {
     expect(wrapper.get('[data-testid="agent-run-drawer"]').text()).toContain('run-memory-tree-search')
     expect(wrapper.get('[data-testid="stub-memory-tree-history"]').text()).toContain('搜索：灯塔旧回声')
     expect(panel.textContent).toContain('搜索：灯塔旧回声')
+    const resultPanel = document.querySelector('[data-testid="memory-tree-panel-results"]') as HTMLElement
+    expect(resultPanel).not.toBeNull()
+    expect(resultPanel.textContent).toContain('返回 2 个')
+    expect(resultPanel.textContent).toContain('卷 1 / 章节 1 / 场景 1 / 节拍 0')
+    const resultNodes = Array.from(document.querySelectorAll('[data-testid="memory-tree-panel-result-node"]'))
+    expect(resultNodes).toHaveLength(2)
+    expect(resultNodes[0].textContent).toContain('章节')
+    expect(resultNodes[0].textContent).toContain('第2章')
+    expect(resultNodes[0].textContent).toContain('灯塔旧回声')
+    expect(resultNodes[0].textContent).toContain('主角在灯塔发现旧回声线索。')
+    expect(resultNodes[0].textContent).toContain('相关度 1.20')
+    expect(resultNodes[1].textContent).toContain('场景')
+    expect(resultNodes[1].textContent).toContain('补充场景摘要。')
     expect(panel.textContent).not.toContain('approval')
+    expect(panel.textContent).not.toContain('chapter-content-2')
+    expect(panel.textContent).not.toContain('memory-2')
+    expect(panel.textContent).not.toContain('scene:memory-3')
+    expect(panel.textContent).not.toContain('source_refs')
 
     wrapper.unmount()
   })
