@@ -15,6 +15,7 @@ _INTENT_RULE_IDS = (
     "review_intent",
     "recovery_intent",
     "memory_tree_intent",
+    "context_compression_intent",
     "query_diagnosis_intent",
 )
 
@@ -275,6 +276,20 @@ class IntentRouter:
                 preconditions=[{"code": "memory_tree_read_available", "passed": True}],
             )
 
+        if _is_context_compression_intent(text):
+            extracted_params = _context_compression_params(text)
+            return self._matched_projection(
+                text,
+                dialog_state,
+                pending_action_id,
+                diagnosis,
+                rule_id="context_compression_intent",
+                candidate=ActionCandidate("inspect_context_compression", extracted_params),
+                extracted_params=extracted_params,
+                match_evidence=[{"kind": "pattern", "name": "context_compression_phrase"}],
+                preconditions=[{"code": "context_compression_read_available", "passed": True}],
+            )
+
         if re.search(r"创建.*(主角|人物|设定|世界观)", text) or re.search(r"生成.*设定", text):
             if "setup" in diagnosis.missing_items or "setup" in diagnosis.completed_items:
                 return self._matched_projection(
@@ -485,6 +500,42 @@ def _memory_tree_level(text: str) -> str | None:
         return "scene"
     if re.search(r"(beat|节拍|情节拍)", text):
         return "beat"
+    return None
+
+
+def _is_context_compression_intent(text: str) -> bool:
+    return bool(
+        re.search(r"(上下文|context|token).*(压缩|预算|窗口|压力|断路器|guard)", text)
+        or re.search(r"(压缩|预算|窗口|压力|断路器|guard).*(上下文|context|token)", text)
+    )
+
+
+def _context_compression_params(text: str) -> dict[str, Any]:
+    params: dict[str, Any] = {}
+    chapter_index = parse_chapter_index(text)
+    if chapter_index is not None:
+        params["chapter_index"] = chapter_index
+    max_chars = _context_compression_max_chars(text)
+    if max_chars is not None:
+        params["max_chars"] = max_chars
+    return params
+
+
+def _context_compression_max_chars(text: str) -> int | None:
+    patterns = [
+        r"(?:上下文|窗口|预算|max_chars|max|token)\D{0,8}(\d{3,6})",
+        r"(\d{3,6})\s*(?:字|字符|token).*(?:上下文|窗口|预算)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if not match:
+            continue
+        try:
+            value = int(match.group(1))
+        except (TypeError, ValueError):
+            continue
+        if value >= 500:
+            return value
     return None
 
 

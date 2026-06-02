@@ -88,7 +88,7 @@ Agent 化缺口：
   ├── session.py                          # 对话 session 管理
   └── messages.py                         # 消息管理
 Agent 化缺口：
-  - 意图路由覆盖不完整（部分写作意图尚未接入；Memory Tree 只读浏览已可由自然语言投影到 inspect_agent_memory_tree）
+  - 意图路由覆盖不完整（部分写作意图尚未接入；Memory Tree 只读浏览与 ContextCompressor 自检已可由自然语言投影到对应只读工具）
   - 缺少 LLM 驱动的"模糊意图"解析
   - pending_action 机制未与 Agent tool approval 统一
 关联模块：WritingAgent、Athena、前端 Chat
@@ -279,7 +279,7 @@ Agent 化缺口：
 ### 4.3 Context Compression（上下文压缩）
 
 ```
-当前状态：L1 对话历史长度限制 + 基础压缩；ContextCompressor 已具备窗口压力/ContextGuard 投影、头尾保护预修剪计划、只读 dry-run payload builder、推荐恢复入口，并已接入 preflight_writing 运行时检查、ready payload 后续持久摘要推荐、preflight 持久摘要优先复用、章节生成 longform prompt block 压缩、LongformMemory 持久摘要工件写入与章节 prompt 自动复用
+当前状态：L1 对话历史长度限制 + 基础压缩；ContextCompressor 已具备窗口压力/ContextGuard 投影、头尾保护预修剪计划、只读 dry-run payload builder、推荐恢复入口，并已接入 preflight_writing 运行时检查、自然语言只读自检入口、ready payload 后续持久摘要推荐、preflight 持久摘要优先复用、章节生成 longform prompt block 压缩、LongformMemory 持久摘要工件写入与章节 prompt 自动复用
 目标状态：L2-L3 LLM 摘要压缩 + 头尾保护 + Token 预算管理
 关键文件：
   backend/app/services/writing_agent/
@@ -289,7 +289,7 @@ Agent 化缺口：
   backend/app/prompting/providers/chapter.py # 章节 prompt longform block 压力触发压缩替换
   backend/app/services/dialog/session.py  # Session 管理含历史限制
 Agent 化缺口：
-  - 已有计划到 payload、preflight runtime gate、ready payload 写入推荐、preflight/章节 prompt 持久摘要复用、章节 prompt block 替换、持久摘要工件写入基础，仍缺少真正 LLM 摘要质量闭环
+  - 已有计划到 payload、preflight runtime gate、自然语言只读自检、ready payload 写入推荐、preflight/章节 prompt 持久摘要复用、章节 prompt block 替换、持久摘要工件写入基础，仍缺少真正 LLM 摘要质量闭环
   - 缺少 TokenJuice 机制（openhuman）
   - 压缩粒度已有 longform block、持久工件和章节 prompt 复用入口，仍需按重要性继续分层到更多上下文构建路径
 关联模块：Dialog、WritingAgent
