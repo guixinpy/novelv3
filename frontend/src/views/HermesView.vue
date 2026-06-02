@@ -86,6 +86,7 @@ type MemoryTreePanelResultRow = {
   canOpenChapter: boolean
   canSearchRetrieval: boolean
   canSummarizeContext: boolean
+  canCheckActivation: boolean
   canAuditTrace: boolean
   canCheckWorldModel: boolean
   depth: number
@@ -174,6 +175,7 @@ const memoryTreePanelResultRows = computed<MemoryTreePanelResultRow[]>(() => (
       canOpenChapter: chapterIndex !== null && chapterIndex > 0,
       canSearchRetrieval: Boolean(retrievalQuery),
       canSummarizeContext: Boolean(retrievalQuery) && chapterIndex !== null && chapterIndex > 0,
+      canCheckActivation: Boolean(retrievalQuery) && chapterIndex !== null && chapterIndex > 0,
       canAuditTrace: chapterIndex !== null && chapterIndex > 0,
       canCheckWorldModel: Boolean(retrievalQuery),
       depth,
@@ -627,6 +629,46 @@ async function summarizeMemoryTreeContext(row: MemoryTreePanelResultRow) {
     })
   } catch (err) {
     memoryTreePanelError.value = err instanceof Error ? err.message : '汇总 Memory Tree 长篇上下文失败'
+  } finally {
+    memoryTreePanelLoading.value = false
+  }
+}
+
+async function checkMemoryTreeActivation(row: MemoryTreePanelResultRow) {
+  if (!row.canCheckActivation || !row.retrievalQuery || row.chapterIndex === null || memoryTreePanelLoading.value) return
+  memoryTreePanelError.value = ''
+  memoryTreePanelLoading.value = true
+  agentRunError.value = ''
+  try {
+    const run = await api.createAgentRun(pid.value, {
+      goal: `检查 Memory Tree 写前记忆激活：${row.retrievalQuery}`,
+      entrypoint: 'ui_memory_tree_workspace_memory_activation',
+      tools: [
+        {
+          tool_name: 'inspect_agent_memory_activation_plan',
+          params: {
+            chapter_index: row.chapterIndex,
+            query: row.retrievalQuery,
+          },
+        },
+      ],
+      input: {
+        memory_tree_workspace_memory_activation: true,
+        source_run_id: activeAgentRun.value?.id || '',
+        source_node_label: row.title,
+        chapter_index: row.chapterIndex,
+        query: row.retrievalQuery,
+      },
+    })
+    activeAgentRunId.value = run.id
+    activeAgentRun.value = run
+    projectWorkspace.appendMemoryTreeHistory(pid.value, {
+      key: `${run.id}:workspace-memory-activation:${memoryTreeNavigationHistory.value.length}`,
+      label: `记忆激活：${row.retrievalQuery}`,
+      runId: run.id,
+    })
+  } catch (err) {
+    memoryTreePanelError.value = err instanceof Error ? err.message : '检查 Memory Tree 记忆激活失败'
   } finally {
     memoryTreePanelLoading.value = false
   }
@@ -1296,6 +1338,15 @@ async function applyRouteUpgradeFromRun(payload: RouteUpgradeApplyPayload) {
                 @click="summarizeMemoryTreeContext(row)"
               >
                 汇总上下文
+              </button>
+              <button
+                v-if="row.canCheckActivation"
+                type="button"
+                data-testid="memory-tree-workspace-check-activation"
+                :disabled="memoryTreePanelLoading"
+                @click="checkMemoryTreeActivation(row)"
+              >
+                检查激活
               </button>
               <button
                 v-if="row.canCheckWorldModel"

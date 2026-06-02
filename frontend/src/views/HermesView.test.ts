@@ -1335,6 +1335,113 @@ describe('HermesView', () => {
     wrapper.unmount()
   })
 
+  it('starts a memory activation plan run from a memory tree workspace node', async () => {
+    vi.mocked((api as any).createAgentRun)
+      .mockImplementationOnce(async () => ({
+        id: 'run-memory-tree-workspace',
+        project_id: 'project-1',
+        goal: '搜索 Memory Tree：灯塔旧回声',
+        status: 'success',
+        entrypoint: 'ui_memory_tree_workspace_search',
+        input: {},
+        output: null,
+        error: null,
+        steps: [
+          {
+            id: 'step-memory-tree-workspace',
+            tool_name: 'inspect_agent_memory_tree',
+            status: 'success',
+            output: {
+              status: 'ready',
+              summary: {
+                volume_nodes: 0,
+                chapter_nodes: 1,
+                scene_nodes: 0,
+                beat_nodes: 0,
+              },
+              nodes: [
+                {
+                  id: 'chapter:2',
+                  level: 'chapter',
+                  chapter_index: 2,
+                  title: '灯塔旧回声',
+                  summary: '主角在灯塔发现旧回声线索。',
+                  children: [],
+                  source_refs: [{ source_type: 'chapter_content', source_id: 'chapter-content-2' }],
+                },
+              ],
+            },
+          },
+        ],
+      }))
+      .mockImplementationOnce(async () => ({
+        id: 'run-memory-tree-activation',
+        project_id: 'project-1',
+        goal: '检查 Memory Tree 写前记忆激活：灯塔旧回声',
+        status: 'success',
+        entrypoint: 'ui_memory_tree_workspace_memory_activation',
+        input: {},
+        output: null,
+        error: null,
+        steps: [
+          {
+            id: 'step-memory-tree-activation',
+            tool_name: 'inspect_agent_memory_activation_plan',
+            status: 'success',
+            output: {
+              status: 'ready',
+              activation: { memory_tree: [{ title: '灯塔旧回声' }] },
+              coverage: { memory_tree: 1 },
+              risks: [],
+              recommended_next_tools: ['summarize_longform_context'],
+            },
+          },
+        ],
+      }))
+    const wrapper = await mountHermesView()
+
+    const openWorkspace = document.querySelector('[data-testid="memory-tree-workspace-open"]') as HTMLButtonElement
+    openWorkspace.click()
+    await flushPromises()
+
+    await wrapper.get('[data-testid="memory-tree-workspace-query"]').setValue('灯塔旧回声')
+    await wrapper.get('[data-testid="memory-tree-workspace-search"]').trigger('submit')
+    await flushPromises()
+
+    const activationLink = wrapper.get('[data-testid="memory-tree-workspace-check-activation"]')
+    expect(activationLink.text()).toContain('检查激活')
+    await activationLink.trigger('click')
+    await flushPromises()
+
+    const activationRequest = vi.mocked((api as any).createAgentRun).mock.calls[1][1]
+    expect(activationRequest).toEqual({
+      goal: '检查 Memory Tree 写前记忆激活：灯塔旧回声',
+      entrypoint: 'ui_memory_tree_workspace_memory_activation',
+      tools: [
+        {
+          tool_name: 'inspect_agent_memory_activation_plan',
+          params: {
+            chapter_index: 2,
+            query: '灯塔旧回声',
+          },
+        },
+      ],
+      input: {
+        memory_tree_workspace_memory_activation: true,
+        source_run_id: 'run-memory-tree-workspace',
+        source_node_label: '灯塔旧回声',
+        chapter_index: 2,
+        query: '灯塔旧回声',
+      },
+    })
+    expect(JSON.stringify(activationRequest)).not.toContain('chapter:2')
+    expect(JSON.stringify(activationRequest)).not.toContain('chapter-content-2')
+    expect(wrapper.get('[data-testid="agent-run-drawer"]').text()).toContain('run-memory-tree-activation')
+    expect(wrapper.get('[data-testid="memory-tree-workspace"]').text()).toContain('记忆激活：灯塔旧回声')
+
+    wrapper.unmount()
+  })
+
   it('starts a trace audit run from a memory tree workspace chapter node', async () => {
     vi.mocked((api as any).createAgentRun)
       .mockImplementationOnce(async () => ({
