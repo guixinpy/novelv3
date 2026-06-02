@@ -627,6 +627,7 @@ AGENT_CORE_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
                 "agent_plan_approval_contract_hash": {"type": "string"},
                 "required_confirmation": {"type": "object"},
                 "recommended_next_tools": {"type": "array"},
+                "recommended_next_tool_calls": {"type": "array"},
             }
         ),
         target_type="agent_route_approval_opt_in_apply_approval",

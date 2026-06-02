@@ -84,6 +84,21 @@ def prepare_apply_pending_action_route_approval_opt_in(
         },
         "side_effects": {"executed": [], "skipped": [DIRECT_TOOL]},
         "recommended_next_tools": [EXECUTE_TOOL],
+        "recommended_next_tool_calls": [
+            {
+                "tool_name": EXECUTE_TOOL,
+                "visibility": "agent_internal",
+                "requires_confirmation": True,
+                "params": {
+                    "pending_action_id": pending_action_id,
+                    "confirm_execute": True,
+                    "route_apply_approval_contract_hash": route_contract["approval_contract_hash"],
+                    "route_apply_approval_contract": route_contract["approval_contract"],
+                    "agent_plan_approval_contract_hash": approval_hash,
+                    "agent_plan_approval_contract": approval_contract,
+                },
+            }
+        ],
         "trace": {
             "selected_tools": [PREPARE_TOOL],
             "rejected_tools": [{"tool_name": DIRECT_TOOL, "reason": "approval_required_before_write"}],

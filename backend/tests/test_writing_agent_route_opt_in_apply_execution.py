@@ -88,6 +88,21 @@ def test_prepare_apply_route_opt_in_returns_route_and_agent_approval_contracts(d
     assert output["side_effects"]["executed"] == []
     assert output["side_effects"]["skipped"] == ["apply_pending_action_route_approval_opt_in"]
     assert output["recommended_next_tools"] == ["execute_apply_pending_action_route_approval_opt_in_with_approval"]
+    assert output["recommended_next_tool_calls"] == [
+        {
+            "tool_name": "execute_apply_pending_action_route_approval_opt_in_with_approval",
+            "visibility": "agent_internal",
+            "requires_confirmation": True,
+            "params": {
+                "pending_action_id": pending.id,
+                "confirm_execute": True,
+                "route_apply_approval_contract_hash": output["route_apply_approval_contract_hash"],
+                "route_apply_approval_contract": output["route_apply_approval_contract"],
+                "agent_plan_approval_contract_hash": output["agent_plan_approval_contract_hash"],
+                "agent_plan_approval_contract": output["agent_plan_approval_contract"],
+            },
+        }
+    ]
 
 
 def test_execute_apply_route_opt_in_with_approval_blocks_without_agent_confirmation(db_session):
