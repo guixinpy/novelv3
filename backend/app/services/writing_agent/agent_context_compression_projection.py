@@ -303,6 +303,84 @@ def record_agent_context_compression_summary(
     )
 
 
+def load_agent_context_compression_summary(
+    db: Session,
+    project_id: str,
+    *,
+    chapter_index: int | None = None,
+    max_chars: int | None = None,
+) -> dict[str, Any]:
+    _require_project(db, project_id)
+    resolved_chapter_index = _optional_int(chapter_index)
+    if resolved_chapter_index is None:
+        return _json_safe_output(
+            {
+                "status": "missing",
+                "version": AGENT_CONTEXT_COMPRESSION_SUMMARY_RECORD_VERSION,
+                "project_id": project_id,
+                "chapter_index": None,
+                "reason": "missing_chapter_index",
+                "record": None,
+                "compression_payload": None,
+                "side_effects": {"writes": [], "runtime_context_mutated": False},
+                "trace": {"source": "load_agent_context_compression_summary"},
+            }
+        )
+    scope_key = _context_compression_summary_scope_key(
+        chapter_index=resolved_chapter_index,
+        max_chars=max_chars,
+    )
+    record = (
+        db.query(LongformMemory)
+        .filter(
+            LongformMemory.project_id == project_id,
+            LongformMemory.memory_type == CONTEXT_COMPRESSION_SUMMARY_MEMORY_TYPE,
+            LongformMemory.scope_key == scope_key,
+            LongformMemory.status == "current",
+        )
+        .first()
+    )
+    if record is None or not str(record.summary or "").strip():
+        return _json_safe_output(
+            {
+                "status": "missing",
+                "version": AGENT_CONTEXT_COMPRESSION_SUMMARY_RECORD_VERSION,
+                "project_id": project_id,
+                "chapter_index": resolved_chapter_index,
+                "reason": "context_compression_summary_not_found",
+                "record": None,
+                "compression_payload": None,
+                "side_effects": {"writes": [], "runtime_context_mutated": False},
+                "trace": {
+                    "source": "load_agent_context_compression_summary",
+                    "scope_key": scope_key,
+                },
+            }
+        )
+    metadata = record.memory_metadata if isinstance(record.memory_metadata, dict) else {}
+    return _json_safe_output(
+        {
+            "status": "ready",
+            "version": AGENT_CONTEXT_COMPRESSION_SUMMARY_RECORD_VERSION,
+            "project_id": project_id,
+            "chapter_index": resolved_chapter_index,
+            "record": _summary_record_projection(record),
+            "compression_payload": _compression_payload_from_summary_record(record, metadata=metadata),
+            "projection": metadata.get("projection") if isinstance(metadata.get("projection"), dict) else {},
+            "compression_plan": (
+                metadata.get("compression_plan") if isinstance(metadata.get("compression_plan"), dict) else {}
+            ),
+            "side_effects": {"writes": [], "runtime_context_mutated": False},
+            "trace": {
+                "source": "load_agent_context_compression_summary",
+                "scope_key": scope_key,
+                "storage": "longform_memories",
+                "runtime_behavior_changed": False,
+            },
+        }
+    )
+
+
 def _require_project(db: Session, project_id: str) -> None:
     if db.query(Project.id).filter(Project.id == project_id).first() is None:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -617,6 +695,29 @@ def _summary_record_projection(record: LongformMemory) -> dict[str, Any]:
         "title": record.title,
         "summary": record.summary,
         "metadata": record.memory_metadata if isinstance(record.memory_metadata, dict) else {},
+    }
+
+
+def _compression_payload_from_summary_record(record: LongformMemory, *, metadata: dict[str, Any]) -> dict[str, Any]:
+    summary = str(record.summary or "")
+    return {
+        "mode": "head_tail_protected_pretrim",
+        "execution_mode": str(metadata.get("execution_mode") or "persistent_summary"),
+        "target_max_chars": _non_negative_int(metadata.get("target_max_chars")),
+        "original_prompt_context_chars": _non_negative_int(metadata.get("original_prompt_context_chars")),
+        "compressed_context_chars": _non_negative_int(metadata.get("compressed_context_chars")) or len(summary),
+        "compression_ratio": metadata.get("compression_ratio"),
+        "pretrimmed_sections": [
+            {"key": key, "reason": "persisted_context_compression_summary"}
+            for key in _string_list(metadata.get("pretrimmed_section_keys"))
+        ],
+        "compressed_context": summary,
+        "source_prompt_context_included": False,
+        "trace": {
+            "source": "record_agent_context_compression_summary",
+            "record_id": record.id,
+            "scope_key": record.scope_key,
+        },
     }
 
 

@@ -22,6 +22,7 @@ from app.prompting.providers.storyline import (
 from app.services.writing_agent.agent_context_compression_projection import (
     CONTEXT_WINDOW_PRESSURE_RATIO,
     build_agent_context_compression_payload,
+    load_agent_context_compression_summary,
 )
 
 CHAPTER_CONTEXT_CHAR_BUDGET = 24000
@@ -242,6 +243,33 @@ def _compress_longform_context_block_if_needed(
     if not _longform_context_needs_compression(longform_block, max_context_chars=max_context_chars):
         return longform_block
 
+    persisted_summary = load_agent_context_compression_summary(
+        db,
+        project_id,
+        chapter_index=chapter_index,
+        max_chars=max_context_chars,
+    )
+    if persisted_summary.get("status") == "ready":
+        compression_payload = (
+            persisted_summary.get("compression_payload")
+            if isinstance(persisted_summary.get("compression_payload"), dict)
+            else {}
+        )
+        compressed_context = compression_payload.get("compressed_context")
+        if isinstance(compressed_context, str) and compressed_context.strip():
+            return _compressed_longform_context_block(
+                longform_block,
+                project_id=project_id,
+                chapter_index=chapter_index,
+                compressed_context=compressed_context,
+                compression_output=persisted_summary,
+                compression_payload=compression_payload,
+                metadata_source="context_compression_summary_record",
+                summary_record=persisted_summary.get("record")
+                if isinstance(persisted_summary.get("record"), dict)
+                else None,
+            )
+
     compression_output = build_agent_context_compression_payload(
         db,
         project_id,
@@ -260,6 +288,28 @@ def _compress_longform_context_block_if_needed(
     if not isinstance(compressed_context, str) or not compressed_context.strip():
         return longform_block
 
+    return _compressed_longform_context_block(
+        longform_block,
+        project_id=project_id,
+        chapter_index=chapter_index,
+        compressed_context=compressed_context,
+        compression_output=compression_output,
+        compression_payload=compression_payload,
+        metadata_source="build_agent_context_compression_payload",
+    )
+
+
+def _compressed_longform_context_block(
+    longform_block: dict,
+    *,
+    project_id: str,
+    chapter_index: int,
+    compressed_context: str,
+    compression_output: dict[str, Any],
+    compression_payload: dict[str, Any],
+    metadata_source: str,
+    summary_record: dict[str, Any] | None = None,
+) -> dict:
     compressed_block = build_context_block(
         key=str(longform_block.get("key") or "longform_memory_context"),
         kind="longform_context_compressed",
@@ -270,6 +320,7 @@ def _compress_longform_context_block_if_needed(
             project_id=project_id,
             chapter_index=chapter_index,
             compression_payload=compression_payload,
+            summary_record=summary_record,
         ),
     )
     compressed_block["metadata"] = {
@@ -277,6 +328,7 @@ def _compress_longform_context_block_if_needed(
         "context_compression": _context_compression_metadata(
             compression_output,
             compression_payload=compression_payload,
+            source=metadata_source,
         ),
     }
     return compressed_block
@@ -297,9 +349,10 @@ def _compressed_longform_sources(
     project_id: str,
     chapter_index: int,
     compression_payload: dict[str, Any],
+    summary_record: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     sources = longform_block.get("sources") if isinstance(longform_block.get("sources"), list) else []
-    return [
+    output = [
         *[source for source in sources if isinstance(source, dict)],
         {
             "source_type": "ContextCompressor",
@@ -313,12 +366,27 @@ def _compressed_longform_sources(
             },
         },
     ]
+    if summary_record:
+        output.append(
+            {
+                "source_type": "LongformMemory",
+                "source_id": str(summary_record.get("id") or ""),
+                "label": str(summary_record.get("title") or "上下文压缩摘要"),
+                "source_ref": str(summary_record.get("scope_key") or ""),
+                "metadata": {
+                    "memory_type": summary_record.get("memory_type"),
+                    "chapter_index": chapter_index,
+                },
+            }
+        )
+    return output
 
 
 def _context_compression_metadata(
     compression_output: dict[str, Any],
     *,
     compression_payload: dict[str, Any],
+    source: str = "build_agent_context_compression_payload",
 ) -> dict[str, Any]:
     projection = (
         compression_output.get("projection")
@@ -332,7 +400,7 @@ def _context_compression_metadata(
     )
     return {
         "status": "applied",
-        "source": "build_agent_context_compression_payload",
+        "source": source,
         "execution_mode": compression_payload.get("execution_mode"),
         "target_max_chars": _safe_int(compression_payload.get("target_max_chars")),
         "original_prompt_context_chars": _safe_int(compression_payload.get("original_prompt_context_chars")),
