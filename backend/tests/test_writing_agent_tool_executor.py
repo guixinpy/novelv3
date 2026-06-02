@@ -2009,6 +2009,56 @@ async def test_tool_executor_handles_dialog_intent_agent_plan_for_trace_audit_re
 
 
 @pytest.mark.asyncio
+async def test_tool_executor_handles_dialog_intent_agent_plan_for_write_gate_coverage_read(db_session):
+    project = Project(name="Dialog Intent Write Gate Coverage Plan")
+    db_session.add(project)
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(
+            db=db_session,
+            project_id=project.id,
+            run_id="run-dialog-intent-write-gate-coverage-plan",
+        ),
+        WritingAgentToolRequest(
+            tool_name="plan_dialog_intent_agent_run",
+            params={"text": "检查写入工具的审批门禁覆盖"},
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "completed"
+    assert result.output["intent_projection"]["rule_id"] == "write_gate_coverage_intent"
+    assert result.output["planner"]["intent_class"] == "inspect_write_gate_coverage"
+    assert result.output["planner"]["mapped_from_action_type"] == "inspect_write_gate_coverage"
+    assert result.output["planner"]["chapter_index"] is None
+    assert result.output["plan"] == {
+        "status": "completed",
+        "intent_class": "inspect_write_gate_coverage",
+        "steps": [
+            {
+                "step_index": 1,
+                "tool_name": "inspect_agent_write_gate_coverage",
+                "params": {},
+                "mutability": "read",
+                "requires_confirmation": False,
+            }
+        ],
+        "tools": [
+            {
+                "tool_name": "inspect_agent_write_gate_coverage",
+                "params": {},
+            }
+        ],
+        "approval_contract": {"status": "not_required", "write_steps": []},
+    }
+    assert result.output["tools"] == [{"tool_name": "inspect_agent_write_gate_coverage", "params": {}}]
+    assert result.output["approval_contract"] == {"status": "not_required", "write_steps": []}
+    assert result.output["trace"]["reason"] == "planned_direct_read_tool_from_intent_projection"
+
+
+@pytest.mark.asyncio
 async def test_tool_executor_handles_dialog_intent_agent_plan_for_agent_health_read(db_session):
     project = Project(name="Dialog Intent Agent Health Plan")
     db_session.add(project)

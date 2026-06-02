@@ -18,6 +18,7 @@ _INTENT_RULE_IDS = (
     "context_compression_intent",
     "worker_dispatch_intent",
     "trace_audit_intent",
+    "write_gate_coverage_intent",
     "agent_health_intent",
     "control_plane_readiness_intent",
     "query_diagnosis_intent",
@@ -333,6 +334,19 @@ class IntentRouter:
                 extracted_params=extracted_params,
                 match_evidence=[{"kind": "pattern", "name": "trace_audit_phrase"}],
                 preconditions=[{"code": "trace_audit_read_available", "passed": True}],
+            )
+
+        if _is_write_gate_coverage_intent(text):
+            return self._matched_projection(
+                text,
+                dialog_state,
+                pending_action_id,
+                diagnosis,
+                rule_id="write_gate_coverage_intent",
+                candidate=ActionCandidate("inspect_write_gate_coverage", {}),
+                extracted_params={},
+                match_evidence=[{"kind": "pattern", "name": "write_gate_coverage_phrase"}],
+                preconditions=[{"code": "write_gate_coverage_read_available", "passed": True}],
             )
 
         if _is_agent_health_intent(text):
@@ -668,6 +682,14 @@ def _trace_audit_run_id(text: str) -> str | None:
     if match:
         return match.group(1)
     return None
+
+
+def _is_write_gate_coverage_intent(text: str) -> bool:
+    return bool(
+        re.search(r"(写入|写工具|write).*(门禁|gate|审批|approval).*(覆盖|coverage|缺口|风险|检查|审计)", text)
+        or re.search(r"(门禁|gate|审批|approval).*(覆盖|coverage|缺口|风险).*(写入|写工具|write)", text)
+        or re.search(r"(write\s*gate|写入门禁|审批门禁).*(覆盖|coverage|缺口|自检|审计|检查)", text)
+    )
 
 
 def _is_agent_health_intent(text: str) -> bool:

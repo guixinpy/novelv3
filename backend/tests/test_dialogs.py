@@ -354,6 +354,38 @@ def test_intent_router_projection_explains_trace_audit_route():
     assert projection["extracted_params"] == {"run_id": "run-abc123"}
 
 
+def test_intent_router_projection_explains_write_gate_coverage_route():
+    router = IntentRouter()
+    diag = ProjectDiagnosisOut(
+        missing_items=[],
+        completed_items=["setup", "storyline", "outline", "content"],
+        suggested_next_step="preview_chapter",
+    )
+
+    projection = router.project("检查写入工具的审批门禁覆盖", "chatting", None, diag).to_dict()
+
+    assert projection["status"] == "matched"
+    assert projection["rule_id"] == "write_gate_coverage_intent"
+    assert projection["decision"]["rule_id"] == "write_gate_coverage_intent"
+    assert projection["decision"]["match_evidence"] == [{"kind": "pattern", "name": "write_gate_coverage_phrase"}]
+    assert projection["candidate"] == {
+        "type": "inspect_write_gate_coverage",
+        "params": {},
+    }
+    assert projection["agent_route"] == _expected_agent_route(
+        "text_intent",
+        "inspect_write_gate_coverage",
+        "inspect_agent_write_gate_coverage",
+        requires_confirmation=False,
+    )
+    assert projection["tool_selection"] == {
+        "selected_tool": "inspect_agent_write_gate_coverage",
+        "why_this_tool": "dialog_action_to_agent_tool.inspect_write_gate_coverage",
+        "availability_checked": False,
+    }
+    assert projection["extracted_params"] == {}
+
+
 def test_intent_router_orphan_recovery_phrase_routes_to_worker_dispatch():
     router = IntentRouter()
     diag = ProjectDiagnosisOut(
