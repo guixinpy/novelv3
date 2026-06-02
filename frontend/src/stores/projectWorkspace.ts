@@ -15,6 +15,7 @@ export interface ProjectWorkspaceState {
 export interface MemoryTreeNavigationHistoryItem {
   key: string
   label: string
+  runId?: string
 }
 
 export function createProjectWorkspaceState(): ProjectWorkspaceState {
@@ -69,9 +70,10 @@ export function appendMemoryTreeHistory(
   const label = safeMemoryTreeHistoryLabel(item.label)
   if (!targetProjectId || !label) return
   const key = cleanMemoryTreeHistoryText(item.key) || `memory-tree-history:${Date.now()}`
+  const runId = cleanMemoryTreeHistoryText(item.runId)
   state.memoryTreeHistoryByProject[targetProjectId] = [
     ...memoryTreeHistoryForProject(state, targetProjectId),
-    { key, label },
+    runId ? { key, label, runId } : { key, label },
   ].slice(-Math.max(1, limit))
 }
 

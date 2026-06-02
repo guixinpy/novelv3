@@ -707,14 +707,33 @@ describe('HermesView', () => {
     expect(wrapper.get('[data-testid="agent-run-drawer"]').text()).toContain('run-memory-tree-result')
     expect(wrapper.get('[data-testid="stub-memory-tree-history"]').text()).toContain('节点展开：第2章')
     expect(wrapper.get('[data-testid="agent-run-drawer"]').text()).not.toContain('scene:memory-3')
+    const memoryTreePanel = document.querySelector('[data-testid="memory-tree-history-panel"]') as HTMLElement
+    expect(memoryTreePanel).not.toBeNull()
+    expect(memoryTreePanel.textContent).toContain('Memory Tree')
+    expect(memoryTreePanel.textContent).toContain('节点展开：第2章')
+    expect(memoryTreePanel.textContent).not.toContain('scene:memory-3')
 
     await wrapper.get('[data-testid="stub-close-agent-run"]').trigger('click')
     await flushPromises()
     expect(wrapper.find('[data-testid="agent-run-drawer"]').exists()).toBe(false)
 
-    await wrapper.get('[data-testid="stub-open-agent-run"]').trigger('click')
+    vi.mocked(api.getAgentRun).mockResolvedValueOnce({
+      id: 'run-memory-tree-result',
+      project_id: 'project-1',
+      goal: '展开 Memory Tree：第2章',
+      status: 'success',
+      entrypoint: 'ui_planner_continuation_execute',
+      input: {},
+      output: null,
+      error: null,
+      steps: [],
+    } as any)
+    const historyButton = document.querySelector('[data-testid="memory-tree-history-open"]') as HTMLButtonElement
+    expect(historyButton).not.toBeNull()
+    historyButton.click()
     await flushPromises()
-    expect(wrapper.get('[data-testid="agent-run-drawer"]').text()).toContain('run-1')
+    expect(api.getAgentRun).toHaveBeenCalledWith('project-1', 'run-memory-tree-result')
+    expect(wrapper.get('[data-testid="agent-run-drawer"]').text()).toContain('run-memory-tree-result')
     expect(wrapper.get('[data-testid="stub-memory-tree-history"]').text()).toContain('节点展开：第2章')
 
     wrapper.unmount()

@@ -436,6 +436,11 @@ function closeAgentRun() {
   agentRunLoading.value = false
 }
 
+function openMemoryTreeHistoryRun(runId: string | undefined) {
+  if (!runId) return
+  void openAgentRun(runId)
+}
+
 async function executeRecoveryFromRun(payload: RecoveryExecutePayload) {
   agentRunError.value = ''
   agentRunLoading.value = true
@@ -520,6 +525,7 @@ async function executePlannerPlanFromRun(payload: PlannerPlanExecutePayload) {
       projectWorkspace.appendMemoryTreeHistory(pid.value, {
         key: `${run.id}:${payload.sourcePlanId}:${memoryTreeNavigationHistory.value.length}`,
         label: memoryTreeHistoryLabel,
+        runId: run.id,
       })
     }
     chat.appendPlannerContinuationFeedback(run)
@@ -640,6 +646,32 @@ async function applyRouteUpgradeFromRun(payload: RouteUpgradeApplyPayload) {
           @tool="onDashboardTool"
           @writing-control="onWritingControl"
         />
+        <section
+          v-if="memoryTreeNavigationHistory.length"
+          class="hermes-memory-tree-panel"
+          data-testid="memory-tree-history-panel"
+          aria-label="Memory Tree 浏览历史"
+        >
+          <header class="hermes-memory-tree-panel__header">
+            <span>Memory Tree</span>
+            <strong>{{ memoryTreeNavigationHistory.length }}</strong>
+          </header>
+          <ol class="hermes-memory-tree-panel__list">
+            <li
+              v-for="item in memoryTreeNavigationHistory"
+              :key="item.key"
+            >
+              <button
+                type="button"
+                data-testid="memory-tree-history-open"
+                :disabled="!item.runId"
+                @click="openMemoryTreeHistoryRun(item.runId)"
+              >
+                {{ item.label }}
+              </button>
+            </li>
+          </ol>
+        </section>
         <button
           v-if="selectedChapterTraceId"
           type="button"
@@ -744,6 +776,62 @@ async function applyRouteUpgradeFromRun(payload: RouteUpgradeApplyPayload) {
 .hermes-subnav {
   display: flex;
   flex-direction: column;
+}
+
+.hermes-memory-tree-panel {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-secondary);
+}
+
+.hermes-memory-tree-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+}
+
+.hermes-memory-tree-panel__header strong {
+  color: var(--color-text-tertiary);
+  font-weight: var(--font-medium);
+}
+
+.hermes-memory-tree-panel__list {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hermes-memory-tree-panel__list button {
+  width: 100%;
+  min-height: 28px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-white);
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.hermes-memory-tree-panel__list button:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  color: var(--color-text-primary);
+}
+
+.hermes-memory-tree-panel__list button:disabled {
+  cursor: default;
+  opacity: 0.55;
 }
 
 .hermes-subnav__trace {

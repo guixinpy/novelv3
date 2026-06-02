@@ -32,14 +32,14 @@ describe('project workspace session', () => {
   it('keeps bounded memory tree history by project', () => {
     const state = createProjectWorkspaceState()
 
-    appendMemoryTreeHistory(state, 'p1', { key: 'run-1:search', label: '搜索：灯塔旧回声' }, 2)
-    appendMemoryTreeHistory(state, 'p1', { key: 'run-2:expand', label: '节点展开：第2章' }, 2)
-    appendMemoryTreeHistory(state, 'p1', { key: 'run-3:expand', label: '推荐展开：第3章' }, 2)
+    appendMemoryTreeHistory(state, 'p1', { key: 'run-1:search', label: '搜索：灯塔旧回声', runId: 'run-1' }, 2)
+    appendMemoryTreeHistory(state, 'p1', { key: 'run-2:expand', label: '节点展开：第2章', runId: 'run-2' }, 2)
+    appendMemoryTreeHistory(state, 'p1', { key: 'run-3:expand', label: '推荐展开：第3章', runId: 'run-3' }, 2)
     appendMemoryTreeHistory(state, 'p2', { key: 'run-4:search', label: '搜索：雨巷伏笔' }, 2)
 
     expect(memoryTreeHistoryForProject(state, 'p1')).toEqual([
-      { key: 'run-2:expand', label: '节点展开：第2章' },
-      { key: 'run-3:expand', label: '推荐展开：第3章' },
+      { key: 'run-2:expand', label: '节点展开：第2章', runId: 'run-2' },
+      { key: 'run-3:expand', label: '推荐展开：第3章', runId: 'run-3' },
     ])
     expect(memoryTreeHistoryForProject(state, 'p2')).toEqual([
       { key: 'run-4:search', label: '搜索：雨巷伏笔' },
