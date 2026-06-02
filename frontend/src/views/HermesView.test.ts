@@ -1552,6 +1552,112 @@ describe('HermesView', () => {
     wrapper.unmount()
   })
 
+  it('starts a post-chapter memory capture plan run from a memory tree workspace node', async () => {
+    vi.mocked((api as any).createAgentRun)
+      .mockImplementationOnce(async () => ({
+        id: 'run-memory-tree-workspace',
+        project_id: 'project-1',
+        goal: '搜索 Memory Tree：灯塔旧回声',
+        status: 'success',
+        entrypoint: 'ui_memory_tree_workspace_search',
+        input: {},
+        output: null,
+        error: null,
+        steps: [
+          {
+            id: 'step-memory-tree-workspace',
+            tool_name: 'inspect_agent_memory_tree',
+            status: 'success',
+            output: {
+              status: 'ready',
+              summary: {
+                volume_nodes: 0,
+                chapter_nodes: 1,
+                scene_nodes: 0,
+                beat_nodes: 0,
+              },
+              nodes: [
+                {
+                  id: 'chapter:2',
+                  level: 'chapter',
+                  chapter_index: 2,
+                  title: '灯塔旧回声',
+                  summary: '主角在灯塔发现旧回声线索。',
+                  children: [],
+                  source_refs: [{ source_type: 'chapter_content', source_id: 'chapter-content-2' }],
+                },
+              ],
+            },
+          },
+        ],
+      }))
+      .mockImplementationOnce(async () => ({
+        id: 'run-memory-tree-post-capture',
+        project_id: 'project-1',
+        goal: '规划 Memory Tree 写后记忆沉淀：第2章',
+        status: 'success',
+        entrypoint: 'ui_memory_tree_workspace_post_chapter_capture',
+        input: {},
+        output: null,
+        error: null,
+        steps: [
+          {
+            id: 'step-memory-tree-post-capture',
+            tool_name: 'plan_post_chapter_memory_capture',
+            status: 'success',
+            output: {
+              status: 'ready',
+              chapter_index: 2,
+              capture_status: 'needs_review',
+              summary: { candidate_count: 1 },
+              candidates: [],
+              recommended_next_tools: ['prepare_record_agent_knowledge_base_candidate'],
+            },
+          },
+        ],
+      }))
+    const wrapper = await mountHermesView()
+
+    const openWorkspace = document.querySelector('[data-testid="memory-tree-workspace-open"]') as HTMLButtonElement
+    openWorkspace.click()
+    await flushPromises()
+
+    await wrapper.get('[data-testid="memory-tree-workspace-query"]').setValue('灯塔旧回声')
+    await wrapper.get('[data-testid="memory-tree-workspace-search"]').trigger('submit')
+    await flushPromises()
+
+    const captureLink = wrapper.get('[data-testid="memory-tree-workspace-plan-memory-capture"]')
+    expect(captureLink.text()).toContain('规划沉淀')
+    await captureLink.trigger('click')
+    await flushPromises()
+
+    const captureRequest = vi.mocked((api as any).createAgentRun).mock.calls[1][1]
+    expect(captureRequest).toEqual({
+      goal: '规划 Memory Tree 写后记忆沉淀：第2章',
+      entrypoint: 'ui_memory_tree_workspace_post_chapter_capture',
+      tools: [
+        {
+          tool_name: 'plan_post_chapter_memory_capture',
+          params: {
+            chapter_index: 2,
+          },
+        },
+      ],
+      input: {
+        memory_tree_workspace_post_chapter_capture: true,
+        source_run_id: 'run-memory-tree-workspace',
+        source_node_label: '灯塔旧回声',
+        chapter_index: 2,
+      },
+    })
+    expect(JSON.stringify(captureRequest)).not.toContain('chapter:2')
+    expect(JSON.stringify(captureRequest)).not.toContain('chapter-content-2')
+    expect(wrapper.get('[data-testid="agent-run-drawer"]').text()).toContain('run-memory-tree-post-capture')
+    expect(wrapper.get('[data-testid="memory-tree-workspace"]').text()).toContain('沉淀规划：第2章')
+
+    wrapper.unmount()
+  })
+
   it('starts a trace audit run from a memory tree workspace chapter node', async () => {
     vi.mocked((api as any).createAgentRun)
       .mockImplementationOnce(async () => ({

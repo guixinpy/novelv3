@@ -88,6 +88,7 @@ type MemoryTreePanelResultRow = {
   canSummarizeContext: boolean
   canCheckActivation: boolean
   canCheckKnowledgeBase: boolean
+  canPlanMemoryCapture: boolean
   canAuditTrace: boolean
   canCheckWorldModel: boolean
   depth: number
@@ -178,6 +179,7 @@ const memoryTreePanelResultRows = computed<MemoryTreePanelResultRow[]>(() => (
       canSummarizeContext: Boolean(retrievalQuery) && chapterIndex !== null && chapterIndex > 0,
       canCheckActivation: Boolean(retrievalQuery) && chapterIndex !== null && chapterIndex > 0,
       canCheckKnowledgeBase: Boolean(retrievalQuery) && chapterIndex !== null && chapterIndex > 0,
+      canPlanMemoryCapture: chapterIndex !== null && chapterIndex > 0,
       canAuditTrace: chapterIndex !== null && chapterIndex > 0,
       canCheckWorldModel: Boolean(retrievalQuery),
       depth,
@@ -712,6 +714,45 @@ async function checkMemoryTreeKnowledgeBase(row: MemoryTreePanelResultRow) {
     })
   } catch (err) {
     memoryTreePanelError.value = err instanceof Error ? err.message : '检查 Memory Tree 知识库失败'
+  } finally {
+    memoryTreePanelLoading.value = false
+  }
+}
+
+async function planMemoryTreePostChapterCapture(row: MemoryTreePanelResultRow) {
+  if (!row.canPlanMemoryCapture || row.chapterIndex === null || memoryTreePanelLoading.value) return
+  memoryTreePanelError.value = ''
+  memoryTreePanelLoading.value = true
+  agentRunError.value = ''
+  const chapterLabel = chapterIndexLabel(row.chapterIndex) || row.title
+  try {
+    const run = await api.createAgentRun(pid.value, {
+      goal: `规划 Memory Tree 写后记忆沉淀：${chapterLabel}`,
+      entrypoint: 'ui_memory_tree_workspace_post_chapter_capture',
+      tools: [
+        {
+          tool_name: 'plan_post_chapter_memory_capture',
+          params: {
+            chapter_index: row.chapterIndex,
+          },
+        },
+      ],
+      input: {
+        memory_tree_workspace_post_chapter_capture: true,
+        source_run_id: activeAgentRun.value?.id || '',
+        source_node_label: row.title,
+        chapter_index: row.chapterIndex,
+      },
+    })
+    activeAgentRunId.value = run.id
+    activeAgentRun.value = run
+    projectWorkspace.appendMemoryTreeHistory(pid.value, {
+      key: `${run.id}:workspace-post-chapter-capture:${memoryTreeNavigationHistory.value.length}`,
+      label: `沉淀规划：${chapterLabel}`,
+      runId: run.id,
+    })
+  } catch (err) {
+    memoryTreePanelError.value = err instanceof Error ? err.message : '规划 Memory Tree 写后记忆沉淀失败'
   } finally {
     memoryTreePanelLoading.value = false
   }
@@ -1399,6 +1440,15 @@ async function applyRouteUpgradeFromRun(payload: RouteUpgradeApplyPayload) {
                 @click="checkMemoryTreeKnowledgeBase(row)"
               >
                 检查知识库
+              </button>
+              <button
+                v-if="row.canPlanMemoryCapture"
+                type="button"
+                data-testid="memory-tree-workspace-plan-memory-capture"
+                :disabled="memoryTreePanelLoading"
+                @click="planMemoryTreePostChapterCapture(row)"
+              >
+                规划沉淀
               </button>
               <button
                 v-if="row.canCheckWorldModel"

@@ -91,7 +91,7 @@
 - [x] Memory Route 对话入口：自然语言“检查第 N 章长篇记忆路由/检索维护状态”可投影为 inspect_agent_memory_route 只读工具计划
 - [x] Memory Activation Plan 对话入口：自然语言“检查第 N 章记忆激活计划：<query>”可投影为 inspect_agent_memory_activation_plan 只读工具计划
 - [x] Knowledge Base Route 对话入口：自然语言“检查第 N 章知识库路由 query=<query> limit <n>”可投影为 inspect_agent_knowledge_base_route 只读工具计划
-- [x] Post Chapter Memory Capture 对话入口：自然语言“规划第 N 章写后记忆沉淀”可投影为 plan_post_chapter_memory_capture 只读工具计划
+- [x] Post Chapter Memory Capture 对话入口：自然语言“规划第 N 章写后记忆沉淀”可投影为 plan_post_chapter_memory_capture 只读工具计划，Memory Tree 工作区 chapter 节点也可直接创建对应只读 run
 - [x] Retrieval Context 对话入口：自然语言“检索第 N 章前的上下文证据 query=<query> limit <n>”可投影为 search_agent_retrieval_context 只读工具计划
 - [x] Longform Context Summary 对话入口：自然语言“汇总第 N 章长篇上下文 query=<query> max_chars <n>”可投影为 summarize_longform_context 只读工具计划
 - [x] 记忆激活：memory_activation.py
@@ -342,7 +342,7 @@
 - [x] 对话界面含 action cards + followup + trace 入口
 - [x] Recommended followup fallback view 可展示 pending confirmation handoff，且 pending-only 计划不会显示“执行后继”自动执行按钮
 - [x] AgentRunDrawer 执行计划进度摘要：展示计划工具数、已执行、已完成、进行中、下一步工具和逐项计划工具状态
-- [x] AgentRunDrawer Memory Tree 投影：展示 inspect_agent_memory_tree 的状态、查询条件、导航模式、推荐展开数、节点列表和项目级会话浏览历史，并可通过自由查询、推荐 drilldown 或返回节点展开发起只读浏览 run；Hermes 已注册 Memory 主工作区，子导航常驻 Memory Tree 面板可切入工作区、直接提交只读搜索 run、按 parent/children 展示当前返回节点层级树、从结果节点发起只读展开并显示当前展开节点，也可从历史入口重新打开对应 run；工作区中带 chapter_index 的节点可跳转并加载正文章节，也可从安全节点标签发起 Retrieval 证据只读 run、Longform Context Summary 只读 run、Memory Activation Plan 只读 run、Knowledge Base Route 只读 run、Trace Audit 章节审计 run 或 Athena 世界模型路由 run
+- [x] AgentRunDrawer Memory Tree 投影：展示 inspect_agent_memory_tree 的状态、查询条件、导航模式、推荐展开数、节点列表和项目级会话浏览历史，并可通过自由查询、推荐 drilldown 或返回节点展开发起只读浏览 run；Hermes 已注册 Memory 主工作区，子导航常驻 Memory Tree 面板可切入工作区、直接提交只读搜索 run、按 parent/children 展示当前返回节点层级树、从结果节点发起只读展开并显示当前展开节点，也可从历史入口重新打开对应 run；工作区中带 chapter_index 的节点可跳转并加载正文章节，也可从安全节点标签发起 Retrieval 证据只读 run、Longform Context Summary 只读 run、Memory Activation Plan 只读 run、Knowledge Base Route 只读 run、Post Chapter Memory Capture 写后记忆沉淀规划 run、Trace Audit 章节审计 run 或 Athena 世界模型路由 run
 - [x] Athena 世界模型面板（实体 + 提案审阅）
 - [x] Model Trace 抽屉
 - [x] 前端请求隔离（request lane + project scope version）
@@ -353,8 +353,8 @@
 | 优先级 | 任务 | 完成标准 | 状态 |
 |--------|------|---------|------|
 | P1 | Agent 执行计划可视化 | 对话中展示当前执行计划、工具调用进度 | 🟡 进行中（Drawer per-tool progress + followup pending confirmation fallback） |
-| P2 | Memory Tree 可视化 | 前端展示分层摘要树、支持浏览和搜索 | 🟡 进行中（Drawer read-only projection + free search + recommended/node drilldown + project-scoped history + Hermes Memory workspace + subnav search/history/hierarchical results/expand state + chapter/retrieval/context-summary/memory-activation/knowledge-base/trace/athena deep-link；更完整树工作区能力待补） |
-| P3 | 面板整合 | Athena 面板、Memory 面板、Trace 面板的统一导航 | 🟡 进行中（Memory workspace → content/retrieval/longform context summary/memory activation/knowledge base/trace audit/athena world model route；更完整导航体验待补） |
+| P2 | Memory Tree 可视化 | 前端展示分层摘要树、支持浏览和搜索 | 🟡 进行中（Drawer read-only projection + free search + recommended/node drilldown + project-scoped history + Hermes Memory workspace + subnav search/history/hierarchical results/expand state + chapter/retrieval/context-summary/memory-activation/knowledge-base/post-capture/trace/athena deep-link；更完整树工作区能力待补） |
+| P3 | 面板整合 | Athena 面板、Memory 面板、Trace 面板的统一导航 | 🟡 进行中（Memory workspace → content/retrieval/longform context summary/memory activation/knowledge base/post chapter memory capture/trace audit/athena world model route；更完整导航体验待补） |
 
 ### 最近完成
 
@@ -377,12 +377,13 @@
 - 2026-06-02: `HermesView` Memory Tree 工作区中带 `chapter_index` 的结果节点新增“汇总上下文”深链，创建 `summarize_longform_context` 只读 Agent run（chapter_index + query + max_chars + include_prompt_context），打开 Drawer 展示长篇上下文摘要结果，并写入安全浏览历史；测试覆盖请求参数、Drawer 切换和不泄露 node id/source id。
 - 2026-06-02: `HermesView` Memory Tree 工作区中带 `chapter_index` 的结果节点新增“检查激活”深链，创建 `inspect_agent_memory_activation_plan` 只读 Agent run（chapter_index + query），打开 Drawer 展示写前记忆激活计划，并写入安全浏览历史；测试覆盖请求参数、Drawer 切换和不泄露 node id/source id。
 - 2026-06-02: `HermesView` Memory Tree 工作区中带 `chapter_index` 的结果节点新增“检查知识库”深链，创建 `inspect_agent_knowledge_base_route` 只读 Agent run（chapter_index + query + limit），打开 Drawer 展示作者偏好/项目策略/学习规则/写法参考路由，并写入安全浏览历史；测试覆盖请求参数、Drawer 切换和不泄露 node id/source id。
+- 2026-06-02: `HermesView` Memory Tree 工作区中带 `chapter_index` 的结果节点新增“规划沉淀”深链，创建 `plan_post_chapter_memory_capture` 只读 Agent run（chapter_index），打开 Drawer 展示写后记忆沉淀候选规划，并写入安全浏览历史；测试覆盖请求参数、Drawer 切换和不泄露 node id/source id。
 - 2026-06-02: `HermesView` Memory Tree 工作区中带 `chapter_index` 的结果节点新增“审计 Trace”深链，创建 `inspect_agent_trace_audit` 只读 Agent run（chapter_index + limit），打开 Drawer 展示 Trace Audit run，并写入安全浏览历史；测试覆盖请求参数、Drawer 切换和不泄露 node id/source id。
 - 2026-06-02: `HermesView` Memory Tree 工作区结果节点新增“检查世界模型”深链，基于安全标题或摘要创建 `inspect_agent_world_model_route` 只读 Agent run（subject_ref + limit，并在可用时带 chapter_index），打开 Drawer 展示 Athena 世界模型路由结果，并写入安全浏览历史；测试覆盖请求参数、Drawer 切换和不泄露 node id/source id。
 
 ### 阻塞项
 
-- 独立 Memory Tree 面板仍需要前端交互契约：当前已有 Drawer 只读投影、自由搜索、推荐展开、节点展开、项目级会话浏览历史、Hermes Memory 主工作区、子导航搜索/历史/当前返回节点层级树/结果节点展开与当前展开状态、章节正文深链基础、Retrieval 证据只读 run 深链、Longform Context Summary 只读 run 深链、Memory Activation Plan 只读 run 深链、Knowledge Base Route 只读 run 深链、Trace Audit 只读 run 深链，以及 Athena 世界模型路由深链；仍需补更完整树工作区能力和真实长篇数据下的可视化验证。
+- 独立 Memory Tree 面板仍需要前端交互契约：当前已有 Drawer 只读投影、自由搜索、推荐展开、节点展开、项目级会话浏览历史、Hermes Memory 主工作区、子导航搜索/历史/当前返回节点层级树/结果节点展开与当前展开状态、章节正文深链基础、Retrieval 证据只读 run 深链、Longform Context Summary 只读 run 深链、Memory Activation Plan 只读 run 深链、Knowledge Base Route 只读 run 深链、Post Chapter Memory Capture 只读 run 深链、Trace Audit 只读 run 深链，以及 Athena 世界模型路由深链；仍需补更完整树工作区能力和真实长篇数据下的可视化验证。
 
 ---
 
