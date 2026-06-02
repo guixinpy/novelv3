@@ -191,7 +191,7 @@ Agent 化缺口：
 ### 2.3 Knowledge Base（知识库）
 
 ```
-当前状态：L1-L2 基本知识条目管理 + 候选生成；Knowledge Base Route 与写后记忆捕获计划可由自然语言只读意图触达
+当前状态：L1-L2 基本知识条目管理 + 候选生成；Knowledge Base Route 与写后记忆捕获计划可由自然语言只读意图触达；AgentRunDrawer 可从写后记忆捕获候选的 next_tool_call 发起 prepare_record_agent_knowledge_base_candidate 只读审批准备 continuation
 目标状态：L2-L3 Agent 可自主拓展知识库（从章节中提取、从用户反馈中学习）
 关键文件：
   backend/app/services/writing_agent/
@@ -202,7 +202,7 @@ Agent 化缺口：
   └── knowledge_base_tool_descriptors.py  # 知识库工具描述符
 Agent 化缺口：
   - 知识库路由已有只读诊断和自然语言入口，可检查作者偏好、项目策略、学习规则、知识库候选和写法参考
-  - 写后记忆捕获已有只读规划和自然语言入口，可根据已生成章节与审稿证据规划知识库候选沉淀
+  - 写后记忆捕获已有只读规划和自然语言入口，可根据已生成章节与审稿证据规划知识库候选沉淀，前端可从规划候选继续准备知识库候选写入审批
   - 自动从章节中提取知识
   - 知识的时效性管理（某些知识在特定章节后才成立）
 关联模块：Athena、Retrieval、Memory Tree
@@ -374,7 +374,7 @@ Agent 化缺口：
 ### 6.1 Chat View（对话视图）
 
 ```
-当前状态：L2 对话界面含 action cards、followup、trace 入口，AgentRunDrawer 可展示计划工具/执行进度/下一步、逐项工具状态和 Memory Tree 只读节点投影，并支持自由搜索、推荐 drilldown 或返回节点展开继续发起只读浏览 run；projectWorkspace 会在同一项目内保留安全的 Memory Tree 浏览历史，Hermes 已注册 Memory 主工作区，子导航常驻 Memory Tree 面板可切入工作区、直接搜索、按 parent/children 展示当前返回节点层级树、从结果节点发起只读展开并显示当前展开节点，也可从历史入口重新打开对应 run；Memory Tree 工作区中带 chapter_index 的节点可跳转并加载正文章节，也可从安全节点标签发起 Retrieval 证据只读 run、Longform Context Summary 只读 run、Memory Activation Plan 只读 run、Knowledge Base Route 只读 run、Post Chapter Memory Capture 写后记忆沉淀规划 run、Trace Audit 章节审计 run 或 Athena 世界模型路由 run；recommended followup fallback view 可展示待确认后继并阻止 pending-only 自动执行
+当前状态：L2 对话界面含 action cards、followup、trace 入口，AgentRunDrawer 可展示计划工具/执行进度/下一步、逐项工具状态和 Memory Tree 只读节点投影，并支持自由搜索、推荐 drilldown 或返回节点展开继续发起只读浏览 run；projectWorkspace 会在同一项目内保留安全的 Memory Tree 浏览历史，Hermes 已注册 Memory 主工作区，子导航常驻 Memory Tree 面板可切入工作区、直接搜索、按 parent/children 展示当前返回节点层级树、从结果节点发起只读展开并显示当前展开节点，也可从历史入口重新打开对应 run；Memory Tree 工作区中带 chapter_index 的节点可跳转并加载正文章节，也可从安全节点标签发起 Retrieval 证据只读 run、Longform Context Summary 只读 run、Memory Activation Plan 只读 run、Knowledge Base Route 只读 run、Post Chapter Memory Capture 写后记忆沉淀规划 run、Trace Audit 章节审计 run 或 Athena 世界模型路由 run；AgentRunDrawer 的写后记忆候选可继续准备知识库候选写入审批 run；recommended followup fallback view 可展示待确认后继并阻止 pending-only 自动执行
 目标状态：L2-L3 更丰富的 Agent 状态可视化（当前执行计划、工具调用进度等）
 关键文件：
   frontend/src/views/                     # 页面视图
@@ -383,7 +383,7 @@ Agent 化缺口：
 Agent 化缺口：
   - Agent 执行计划的可视化仍需继续增强（已具备计划工具/已执行/已完成/进行中/下一步摘要和逐项工具状态）
   - 工具调用进度实时展示（当前是 Drawer 详情内静态状态映射，仍缺流式刷新）
-  - World Model / Memory 面板的整合（Memory Tree 当前已有 Drawer 只读投影、自由搜索、推荐展开、返回节点展开、项目级会话浏览历史、Hermes Memory 主工作区、子导航搜索/历史/当前返回节点层级树/结果节点展开与当前展开状态、章节正文深链基础、Retrieval 证据只读 run 深链、Longform Context Summary 只读 run 深链、Memory Activation Plan 只读 run 深链、Knowledge Base Route 只读 run 深链、Post Chapter Memory Capture 只读 run 深链、Trace Audit 只读 run 深链，以及 Athena 世界模型路由深链；仍缺更完整独立树工作区能力）
+  - World Model / Memory 面板的整合（Memory Tree 当前已有 Drawer 只读投影、自由搜索、推荐展开、返回节点展开、项目级会话浏览历史、Hermes Memory 主工作区、子导航搜索/历史/当前返回节点层级树/结果节点展开与当前展开状态、章节正文深链基础、Retrieval 证据只读 run 深链、Longform Context Summary 只读 run 深链、Memory Activation Plan 只读 run 深链、Knowledge Base Route 只读 run 深链、Post Chapter Memory Capture 只读 run 深链、写后记忆候选 prepare approval continuation、Trace Audit 只读 run 深链，以及 Athena 世界模型路由深链；仍缺更完整独立树工作区能力）
 关联模块：Dialog Control Plane、Trace
 ```
 

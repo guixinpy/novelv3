@@ -1132,6 +1132,136 @@ describe('AgentRunDrawer', () => {
     expect(text).not.toContain('memory_provenance')
   })
 
+  it('emits a prepare candidate continuation from post-chapter memory capture candidates', async () => {
+    const wrapper = mount(AgentRunDrawer, {
+      attachTo: document.body,
+      props: {
+        open: true,
+        loading: false,
+        error: '',
+        run: {
+          id: 'run-post-memory-capture',
+          project_id: 'project-1',
+          goal: '规划第3章写后记忆沉淀',
+          status: 'success',
+          entrypoint: 'ui_memory_tree_workspace_post_chapter_capture',
+          input: {},
+          output: null,
+          error: null,
+          steps: [
+            {
+              id: 'step-post-memory',
+              run_id: 'run-post-memory-capture',
+              project_id: 'project-1',
+              step_index: 0,
+              tool_name: 'plan_post_chapter_memory_capture',
+              status: 'success',
+              input: { chapter_index: 3 },
+              output: {
+                status: 'completed',
+                chapter_index: 3,
+                capture_status: 'ready',
+                summary: {
+                  chapter_available: true,
+                  review_step_count: 1,
+                  candidate_count: 1,
+                },
+                candidates: [
+                  {
+                    memory_type: 'writing_pattern',
+                    title: '第3章写作沉淀：雾港追踪',
+                    evidence: { chapter_content_id: 'chapter-content-3' },
+                    next_tool_call: {
+                      tool_name: 'prepare_record_agent_knowledge_base_candidate',
+                      params: {
+                        memory_type: 'writing_pattern',
+                        title: '第3章写作沉淀：雾港追踪',
+                        summary: '第3章结尾形成雾港追踪线索，后续章节应延续。',
+                        source_refs: ['chapter_content:chapter-content-3'],
+                        confidence: 0.72,
+                        status: 'candidate',
+                        tags: ['post-chapter-capture', 'chapter:3'],
+                      },
+                    },
+                  },
+                ],
+                recommended_next_tools: ['prepare_record_agent_knowledge_base_candidate'],
+              },
+            },
+          ],
+        },
+      },
+    })
+
+    const button = document.body.querySelector('[data-testid="post-memory-candidate-prepare"]') as HTMLButtonElement
+    expect(button).not.toBeNull()
+    expect(button.textContent).toContain('准备候选')
+    expect(button.textContent).toContain('第3章写作沉淀')
+    expect(document.body.textContent).not.toContain('chapter_content:chapter-content-3')
+    expect(document.body.textContent).not.toContain('chapter-content-3')
+
+    await button.click()
+
+    expect(wrapper.emitted('executePlannerPlan')).toEqual([[
+      {
+        sourceRunId: 'run-post-memory-capture',
+        sourcePlanId: 'post-memory-candidate-prepare:0',
+        goal: '准备写后记忆候选审批：第3章写作沉淀：雾港追踪',
+        tools: [
+          {
+            tool_name: 'prepare_record_agent_knowledge_base_candidate',
+            params: {
+              memory_type: 'writing_pattern',
+              title: '第3章写作沉淀：雾港追踪',
+              summary: '第3章结尾形成雾港追踪线索，后续章节应延续。',
+              source_refs: ['chapter_content:chapter-content-3'],
+              confidence: 0.72,
+              status: 'candidate',
+              tags: ['post-chapter-capture', 'chapter:3'],
+            },
+            planner: {
+              step_id: 'post-memory-candidate-prepare:0',
+              plan_id: 'post-memory-candidate-prepare:0',
+              mutability: 'read',
+              requires_confirmation: false,
+              reason: '准备写后记忆候选审批，不直接写入知识库。',
+            },
+          },
+        ],
+        planner: {
+          status: 'completed',
+          intent_class: 'prepare_knowledge_base_candidate',
+          approval_contract: { status: 'not_required', write_steps: [] },
+          trace: {
+            plan_id: 'post-memory-candidate-prepare:0',
+            selected_tools: ['prepare_record_agent_knowledge_base_candidate'],
+          },
+          tools: [
+            {
+              tool_name: 'prepare_record_agent_knowledge_base_candidate',
+              params: {
+                memory_type: 'writing_pattern',
+                title: '第3章写作沉淀：雾港追踪',
+                summary: '第3章结尾形成雾港追踪线索，后续章节应延续。',
+                source_refs: ['chapter_content:chapter-content-3'],
+                confidence: 0.72,
+                status: 'candidate',
+                tags: ['post-chapter-capture', 'chapter:3'],
+              },
+              planner: {
+                step_id: 'post-memory-candidate-prepare:0',
+                plan_id: 'post-memory-candidate-prepare:0',
+                mutability: 'read',
+                requires_confirmation: false,
+                reason: '准备写后记忆候选审批，不直接写入知识库。',
+              },
+            },
+          ],
+        },
+      },
+    ]])
+  })
+
   it('renders memory tree projection nodes from inspect output', () => {
     mount(AgentRunDrawer, {
       attachTo: document.body,

@@ -13,11 +13,13 @@ type PlannerPlanExecutePayload = {
   approvalContract?: Record<string, unknown>
 }
 
-type MemoryTreeDrilldownAction = {
+type PlannerContinuationAction = {
   key: string
   label: string
   payload: PlannerPlanExecutePayload
 }
+
+type MemoryTreeDrilldownAction = PlannerContinuationAction
 
 type MemoryTreeNavigationHistoryItem = {
   key: string
@@ -413,6 +415,7 @@ const postChapterMemoryCaptureStatus = computed(() => stringValue(postChapterMem
 const postChapterMemoryCandidateCount = computed(() => numberValue(postChapterMemorySummary.value.candidate_count))
 const postChapterMemoryReviewStepCount = computed(() => numberValue(postChapterMemorySummary.value.review_step_count))
 const postChapterMemoryRecommendedTools = computed(() => stringList(postChapterMemoryOutput.value?.recommended_next_tools))
+const postChapterMemoryCandidates = computed(() => recordList(postChapterMemoryOutput.value?.candidates))
 const memoryTreeOutput = computed(() => latestToolOutput('inspect_agent_memory_tree'))
 const memoryTreeSummary = computed(() => recordValue(memoryTreeOutput.value?.summary))
 const memoryTreeSummaryLabel = computed(() => {
@@ -505,6 +508,70 @@ function createMemoryTreeReadPayload(
     },
   }
 }
+
+function createPostMemoryCandidatePreparePayload(
+  runId: string,
+  planId: string,
+  goal: string,
+  params: Record<string, unknown>,
+): PlannerPlanExecutePayload {
+  const toolRequest: Record<string, unknown> = {
+    tool_name: 'prepare_record_agent_knowledge_base_candidate',
+    params,
+    planner: {
+      step_id: planId,
+      plan_id: planId,
+      mutability: 'read',
+      requires_confirmation: false,
+      reason: '准备写后记忆候选审批，不直接写入知识库。',
+    },
+  }
+  return {
+    sourceRunId: runId,
+    sourcePlanId: planId,
+    goal,
+    tools: [toolRequest],
+    planner: {
+      status: 'completed',
+      intent_class: 'prepare_knowledge_base_candidate',
+      approval_contract: { status: 'not_required', write_steps: [] },
+      trace: {
+        plan_id: planId,
+        selected_tools: ['prepare_record_agent_knowledge_base_candidate'],
+      },
+      tools: [toolRequest],
+    },
+  }
+}
+
+const postChapterMemoryCandidatePrepareActions = computed<PlannerContinuationAction[]>(() => {
+  const runId = props.run?.id
+  if (!runId || props.run?.status !== 'success') return []
+  const actions: PlannerContinuationAction[] = []
+  for (const [index, candidate] of postChapterMemoryCandidates.value.entries()) {
+    const nextToolCall = recordValue(candidate.next_tool_call)
+    if (stringValue(nextToolCall.tool_name) !== 'prepare_record_agent_knowledge_base_candidate') continue
+    const params = recordValue(nextToolCall.params)
+    if (!Object.keys(params).length) continue
+    const planId = `post-memory-candidate-prepare:${index}`
+    const candidateLabel = (
+      safePostMemoryCandidateLabel(candidate.title) ||
+      safePostMemoryCandidateLabel(params.title) ||
+      `候选 ${index + 1}`
+    )
+    actions.push({
+      key: planId,
+      label: `准备候选：${candidateLabel}`,
+      payload: createPostMemoryCandidatePreparePayload(
+        runId,
+        planId,
+        `准备写后记忆候选审批：${candidateLabel}`,
+        params,
+      ),
+    })
+  }
+  return actions
+})
 
 function memoryTreeNodeActionLabel(node: Record<string, unknown>) {
   return stringValue(node.title) || chapterIndexLabel(node.chapter_index) || memoryTreeLevelLabel(node.level)
@@ -784,6 +851,10 @@ function executeMemoryTreeSearch() {
   emit('executePlannerPlan', memoryTreeSearchAction.value.payload)
 }
 
+function executePostMemoryCandidatePrepare(action: PlannerContinuationAction) {
+  emit('executePlannerPlan', action.payload)
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value))
 }
@@ -997,6 +1068,14 @@ function safeMemoryTreeDisplayLabel(label: unknown) {
   if (!value) return ''
   if (/[A-Za-z_]+:[A-Za-z0-9_-]+/.test(value)) return ''
   if (/source_refs|source_id|approval_contract|approval:|chapter-content-\d+|memory-\d+/i.test(value)) return ''
+  return value.slice(0, 64)
+}
+
+function safePostMemoryCandidateLabel(label: unknown) {
+  const value = stringValue(label).replace(/\s+/g, ' ')
+  if (!value) return ''
+  if (/[A-Za-z_]+:[A-Za-z0-9_-]+/.test(value)) return ''
+  if (/source_refs|source_id|approval_contract|approval:|chapter-content-\d+|writing_agent_step:/i.test(value)) return ''
   return value.slice(0, 64)
 }
 
@@ -1484,6 +1563,21 @@ function missingDependencyTool(value: Record<string, unknown>) {
               {{ tool }}
             </li>
           </ul>
+          <div
+            v-if="postChapterMemoryCandidatePrepareActions.length"
+            class="agent-run-drawer__actions"
+          >
+            <button
+              v-for="action in postChapterMemoryCandidatePrepareActions"
+              :key="action.key"
+              type="button"
+              class="agent-run-drawer__ghost"
+              data-testid="post-memory-candidate-prepare"
+              @click="executePostMemoryCandidatePrepare(action)"
+            >
+              {{ action.label }}
+            </button>
+          </div>
         </section>
 
         <section
