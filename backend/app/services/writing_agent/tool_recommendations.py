@@ -31,6 +31,10 @@ def normalize_tool_recommendations(
     if post_approval_continuation_tools:
         source_fields.append("post_approval_continuation_tools")
         raw_recommendations.extend(_recommendation_value(tool) for tool in post_approval_continuation_tools)
+    recommended_next_tool_calls = _recommended_next_tool_calls(output)
+    if recommended_next_tool_calls:
+        source_fields.append("recommended_next_tool_calls")
+        raw_recommendations.extend(_recommendation_value(tool) for tool in recommended_next_tool_calls)
     provenance_write_tools = _provenance_write_tools(output)
     if provenance_write_tools:
         source_fields.append("memory_provenance.recovery.write_tools")
@@ -50,6 +54,7 @@ def normalize_tool_recommendations(
         "canonical_followups": _dedupe(runtime_followups + policy_followups),
         "provenance_recovery_tools": provenance_tools,
         "post_approval_continuation_tools": post_approval_continuation_tools,
+        "recommended_next_tool_calls": recommended_next_tool_calls,
         "provenance_write_tools": provenance_write_tools,
     }
 
@@ -111,6 +116,31 @@ def _post_approval_continuation_tools(output: Mapping[str, object]) -> list[dict
                 "params": dict(params) if isinstance(params, Mapping) else {},
             }
         )
+    return results
+
+
+def _recommended_next_tool_calls(output: Mapping[str, object]) -> list[dict[str, object]]:
+    value = output.get("recommended_next_tool_calls")
+    if not isinstance(value, list):
+        return []
+    results: list[dict[str, object]] = []
+    for item in value:
+        if not isinstance(item, Mapping):
+            continue
+        tool_name = item.get("tool_name")
+        if not isinstance(tool_name, str) or not tool_name.strip():
+            continue
+        params = item.get("params")
+        normalized: dict[str, object] = {
+            "tool_name": tool_name.strip(),
+            "params": dict(params) if isinstance(params, Mapping) else {},
+        }
+        visibility = item.get("visibility")
+        if isinstance(visibility, str) and visibility.strip():
+            normalized["visibility"] = visibility.strip()
+        if "requires_confirmation" in item:
+            normalized["requires_confirmation"] = item.get("requires_confirmation") is True
+        results.append(normalized)
     return results
 
 

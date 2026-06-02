@@ -105,3 +105,30 @@ def test_normalize_tool_recommendations_separates_provenance_read_and_write_tool
         }
     ]
     assert result["provenance_write_tools"] == [{"tool_name": "prepare_repair_longform_maintenance", "params": {}}]
+
+
+def test_normalize_tool_recommendations_preserves_confirmation_required_tool_calls_for_audit():
+    execute_call = {
+        "tool_name": "execute_apply_pending_action_route_approval_opt_in_with_approval",
+        "visibility": "agent_internal",
+        "requires_confirmation": True,
+        "params": {
+            "pending_action_id": "pending-route-1",
+            "confirm_execute": True,
+            "route_apply_approval_contract_hash": "approval:route",
+            "route_apply_approval_contract": {"status": "requires_confirmation"},
+            "agent_plan_approval_contract_hash": "approval:agent",
+            "agent_plan_approval_contract": {"status": "requires_confirmation"},
+        },
+    }
+
+    result = normalize_tool_recommendations(
+        "prepare_apply_pending_action_route_approval_opt_in",
+        {"recommended_next_tools": ["execute_apply_pending_action_route_approval_opt_in_with_approval"], "recommended_next_tool_calls": [execute_call]},
+        allowed_tools={"execute_apply_pending_action_route_approval_opt_in_with_approval"},
+    )
+
+    assert result["source_fields"] == ["recommended_next_tools", "recommended_next_tool_calls"]
+    assert result["runtime_followups"] == ["execute_apply_pending_action_route_approval_opt_in_with_approval"]
+    assert result["canonical_followups"] == ["execute_apply_pending_action_route_approval_opt_in_with_approval"]
+    assert result["recommended_next_tool_calls"] == [execute_call]

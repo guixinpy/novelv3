@@ -155,7 +155,7 @@
 - [x] Legacy Hermes Migration 只读审计意图：自然语言“检查 legacy Hermes action 迁移路线”可投影为 inspect_legacy_hermes_action_migration 只读工具计划
 - [x] Route Approval Opt-in 只读规划意图：自然语言“规划 pending-action-123 的 Agent 审批链 opt-in”可投影为 plan_agent_route_approval_opt_in 只读工具计划
 - [x] Pending Action Route Opt-in Apply Preview/Contract 只读意图：自然语言“预览/生成 pending-action-123 的 Agent 审批链 opt-in 应用/契约”可投影为 preview_pending_action_route_approval_opt_in_apply / preview_pending_action_route_approval_opt_in_apply_contract 只读工具计划
-- [x] Pending Action Route Opt-in Apply Prepare 只读意图：自然语言“准备 pending-action-123 的 Agent 审批链 opt-in 执行审批”可投影为 prepare_apply_pending_action_route_approval_opt_in 只读工具计划，contract preview 的 recommended followup 也可进入该 prepare 工具，prepare 输出携带仍需确认的 execute-with-approval 调用骨架
+- [x] Pending Action Route Opt-in Apply Prepare 只读意图：自然语言“准备 pending-action-123 的 Agent 审批链 opt-in 执行审批”可投影为 prepare_apply_pending_action_route_approval_opt_in 只读工具计划，contract preview 的 recommended followup 也可进入该 prepare 工具，prepare 输出携带仍需确认的 execute-with-approval 调用骨架，并在 followup planner 中保留为 pending confirmation
 - [x] Mutation Fingerprints 只读审计意图：自然语言“检查 generate_chapter 第4章写入变更指纹”可投影为 inspect_agent_mutation_fingerprints 只读工具计划
 - [x] Tool Contracts 只读自检意图：自然语言“检查工具契约覆盖率/迁移差距”可投影为 inspect_agent_tool_contracts 只读工具计划
 - [x] Command Contracts 只读自检意图：自然语言“检查命令契约缺口/slash command 投影”可投影为 inspect_agent_command_contracts 只读工具计划
@@ -179,7 +179,7 @@
 |--------|------|---------|------|
 | P1 | 意图路由覆盖扩展 | 覆盖所有已实现的 Agent 工具对应的用户意图 | 🟡 进行中（read tool intents） |
 | P2 | 模糊意图 LLM 解析 | 用户自然语言模糊描述 → LLM 解析为具体意图 | 🔴 待开始 |
-| P3 | pending_action 与 Agent tool approval 统一 | 两套审批机制合并为一个 | 🟡 进行中（read plan/preview/contract/prepare/execute handoff chain） |
+| P3 | pending_action 与 Agent tool approval 统一 | 两套审批机制合并为一个 | 🟡 进行中（read plan/preview/contract/prepare/execute handoff + followup visibility） |
 
 ### 阻塞项
 
@@ -187,6 +187,7 @@
 
 ### 最近完成
 
+- 2026-06-02: `normalize_tool_recommendations` 新增 `recommended_next_tool_calls` 保留逻辑，`plan_recommended_followups` 会把 `requires_confirmation=true` 的 execute-with-approval 调用暴露为 `pending_confirmation_tool_calls` 和 execution policy 计数；该调用不会进入 `tools` 自动执行列表，仍由写入门禁与确认流程控制。
 - 2026-06-02: `prepare_apply_pending_action_route_approval_opt_in` 输出新增 `recommended_next_tool_calls`，将 `execute_apply_pending_action_route_approval_opt_in_with_approval` 的 `pending_action_id`、route apply contract/hash 与 Agent plan approval contract/hash 组织成 `requires_confirmation=true` 的调用骨架；descriptor schema 同步公开该字段，便于 Agent 在不自动写入的前提下审计 execute handoff。
 - 2026-06-02: `IntentRouter` 新增 `route_approval_opt_in_apply_prepare_intent`，可将“准备 pending-action-123 的 Agent 审批链 opt-in 执行审批”自然语言直达 `prepare_apply_pending_action_route_approval_opt_in` read tool；`plan_recommended_followups` 现在会接受 contract preview 推荐的 `prepare_apply_pending_action_route_approval_opt_in`，但 direct `apply_pending_action_route_approval_opt_in` 和审批后的 execute 工具仍保持写入门禁。
 - 2026-06-02: `IntentRouter` 新增 `route_approval_opt_in_plan_intent` / `route_approval_opt_in_apply_preview_intent` / `route_approval_opt_in_apply_contract_intent`，可将 pending-action 的 Agent 审批链 opt-in 规划、应用预览和契约生成自然语言直达 read tool；`apply_pending_action_route_approval_opt_in` 仍保持 guarded write。

@@ -4644,6 +4644,72 @@ async def test_plan_recommended_followups_plans_route_opt_in_prepare_after_contr
 
 
 @pytest.mark.asyncio
+async def test_plan_recommended_followups_surfaces_route_opt_in_execute_handoff_after_prepare(db_session):
+    project = Project(name="Recommended Route Opt In Execute Handoff")
+    db_session.add(project)
+    db_session.flush()
+    run = WritingAgentRun(project_id=project.id, goal="执行 route opt-in handoff", status="success", input={})
+    db_session.add(run)
+    db_session.flush()
+    execute_call = {
+        "tool_name": "execute_apply_pending_action_route_approval_opt_in_with_approval",
+        "visibility": "agent_internal",
+        "requires_confirmation": True,
+        "params": {
+            "pending_action_id": "pending-route-1",
+            "confirm_execute": True,
+            "route_apply_approval_contract_hash": "approval:route",
+            "route_apply_approval_contract": {"status": "requires_confirmation"},
+            "agent_plan_approval_contract_hash": "approval:agent",
+            "agent_plan_approval_contract": {"status": "requires_confirmation"},
+        },
+    }
+    db_session.add(
+        WritingAgentStep(
+            run_id=run.id,
+            project_id=project.id,
+            step_index=1,
+            tool_name="prepare_apply_pending_action_route_approval_opt_in",
+            status="success",
+            input={"params": {"pending_action_id": "pending-route-1"}},
+            output={
+                "status": "approval_required",
+                "pending_action_id": "pending-route-1",
+                "recommended_next_tools": ["execute_apply_pending_action_route_approval_opt_in_with_approval"],
+                "recommended_next_tool_calls": [execute_call],
+                "agent_tool_result": {
+                    "recommendations": {
+                        "canonical_followups": ["execute_apply_pending_action_route_approval_opt_in_with_approval"],
+                        "runtime_followups": ["execute_apply_pending_action_route_approval_opt_in_with_approval"],
+                        "recommended_next_tool_calls": [execute_call],
+                    }
+                },
+            },
+        )
+    )
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-followup-route-execute-handoff"),
+        WritingAgentToolRequest(tool_name="plan_recommended_followups", params={"run_id": run.id}),
+    )
+
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "ready"
+    assert result.output["tools"] == []
+    assert result.output["recommended_followups"]["recommended_next_tool_calls"] == [execute_call]
+    assert result.output["pending_confirmation_tool_calls"] == [execute_call]
+    assert result.output["execution_policy"]["pending_confirmation_tool_calls"] == 1
+    assert result.output["trace"]["rejected_tools"] == [
+        {
+            "tool_name": "execute_apply_pending_action_route_approval_opt_in_with_approval",
+            "reason": "requires_confirmation",
+        }
+    ]
+
+
+@pytest.mark.asyncio
 async def test_plan_recommended_followups_blocks_when_source_run_requires_recovery(db_session):
     project = Project(name="Recommended Followup Recovery First")
     db_session.add(project)

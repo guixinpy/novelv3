@@ -149,6 +149,9 @@ def build_recommended_followup_tool_plan(db: Session, project_id: str, run_id: s
 
     step, recommendations = source
     state = _followup_state_from_recommendations(step, recommendations)
+    pending_confirmation_tool_calls = [
+        tool_call for tool_call in state["recommended_next_tool_calls"] if tool_call.get("requires_confirmation") is True
+    ]
     tools, rejected_tools = _tool_requests_from_followups(
         state["canonical_followups"],
         source_step=step,
@@ -176,6 +179,7 @@ def build_recommended_followup_tool_plan(db: Session, project_id: str, run_id: s
         "source_step_index": step.step_index,
         "source_tool": step.tool_name,
         "tools": tools,
+        "pending_confirmation_tool_calls": pending_confirmation_tool_calls,
     }
     return {
         "status": "completed" if tools else "ready",
@@ -198,12 +202,14 @@ def build_recommended_followup_tool_plan(db: Session, project_id: str, run_id: s
         },
         "recommended_followups": state,
         "tools": tools,
+        "pending_confirmation_tool_calls": pending_confirmation_tool_calls,
         "worker_dispatch": worker_dispatch,
         "execution_policy": {
             "mode": "preview",
             "status": "preview_only" if tools else "no_executable_followup",
             "auto_execute": False,
             "requires_followup_run": True,
+            "pending_confirmation_tool_calls": len(pending_confirmation_tool_calls),
         },
         "trace": {
             "selected_tools": selected_tools,
@@ -248,6 +254,7 @@ def _followup_state_from_recommendations(
         "post_approval_continuation_tools": _tool_request_list(
             recommendations.get("post_approval_continuation_tools")
         ),
+        "recommended_next_tool_calls": _tool_request_list(recommendations.get("recommended_next_tool_calls")),
         "provenance_write_tools": _tool_request_list(recommendations.get("provenance_write_tools")),
         "next_tool": allowed_followups[0] if allowed_followups else None,
     }
@@ -543,7 +550,13 @@ def _tool_request_list(value: object) -> list[dict[str, Any]]:
         if not tool_name:
             continue
         params = item.get("params") if isinstance(item.get("params"), dict) else {}
-        results.append({"tool_name": tool_name, "params": dict(params)})
+        normalized: dict[str, Any] = {"tool_name": tool_name, "params": dict(params)}
+        visibility = _optional_string(item.get("visibility"))
+        if visibility:
+            normalized["visibility"] = visibility
+        if "requires_confirmation" in item:
+            normalized["requires_confirmation"] = item.get("requires_confirmation") is True
+        results.append(normalized)
     return results
 
 
