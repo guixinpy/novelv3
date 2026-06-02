@@ -342,7 +342,7 @@
 - [x] 对话界面含 action cards + followup + trace 入口
 - [x] Recommended followup fallback view 可展示 pending confirmation handoff，且 pending-only 计划不会显示“执行后继”自动执行按钮
 - [x] AgentRunDrawer 执行计划进度摘要：展示计划工具数、已执行、已完成、进行中、下一步工具和逐项计划工具状态
-- [x] AgentRunDrawer Memory Tree 投影：展示 inspect_agent_memory_tree 的状态、查询条件、导航模式、推荐展开数、节点列表和项目级会话浏览历史，并可通过自由查询、推荐 drilldown 或返回节点展开发起只读浏览 run；Hermes 已注册 Memory 主工作区，子导航常驻 Memory Tree 面板可切入工作区、直接提交只读搜索 run、按 parent/children 展示当前返回节点层级树、从结果节点发起只读展开并显示当前展开节点，也可从历史入口重新打开对应 run；工作区中带 chapter_index 的节点可跳转并加载正文章节，也可从安全节点标签发起 Retrieval 证据只读 run、Trace Audit 章节审计 run 或 Athena 世界模型路由 run
+- [x] AgentRunDrawer Memory Tree 投影：展示 inspect_agent_memory_tree 的状态、查询条件、导航模式、推荐展开数、节点列表和项目级会话浏览历史，并可通过自由查询、推荐 drilldown 或返回节点展开发起只读浏览 run；Hermes 已注册 Memory 主工作区，子导航常驻 Memory Tree 面板可切入工作区、直接提交只读搜索 run、按 parent/children 展示当前返回节点层级树、从结果节点发起只读展开并显示当前展开节点，也可从历史入口重新打开对应 run；工作区中带 chapter_index 的节点可跳转并加载正文章节，也可从安全节点标签发起 Retrieval 证据只读 run、Longform Context Summary 只读 run、Trace Audit 章节审计 run 或 Athena 世界模型路由 run
 - [x] Athena 世界模型面板（实体 + 提案审阅）
 - [x] Model Trace 抽屉
 - [x] 前端请求隔离（request lane + project scope version）
@@ -353,8 +353,8 @@
 | 优先级 | 任务 | 完成标准 | 状态 |
 |--------|------|---------|------|
 | P1 | Agent 执行计划可视化 | 对话中展示当前执行计划、工具调用进度 | 🟡 进行中（Drawer per-tool progress + followup pending confirmation fallback） |
-| P2 | Memory Tree 可视化 | 前端展示分层摘要树、支持浏览和搜索 | 🟡 进行中（Drawer read-only projection + free search + recommended/node drilldown + project-scoped history + Hermes Memory workspace + subnav search/history/hierarchical results/expand state + chapter/retrieval/trace/athena deep-link；更完整树工作区能力待补） |
-| P3 | 面板整合 | Athena 面板、Memory 面板、Trace 面板的统一导航 | 🟡 进行中（Memory workspace → content/retrieval/trace audit/athena world model route；更完整导航体验待补） |
+| P2 | Memory Tree 可视化 | 前端展示分层摘要树、支持浏览和搜索 | 🟡 进行中（Drawer read-only projection + free search + recommended/node drilldown + project-scoped history + Hermes Memory workspace + subnav search/history/hierarchical results/expand state + chapter/retrieval/context-summary/trace/athena deep-link；更完整树工作区能力待补） |
+| P3 | 面板整合 | Athena 面板、Memory 面板、Trace 面板的统一导航 | 🟡 进行中（Memory workspace → content/retrieval/longform context summary/trace audit/athena world model route；更完整导航体验待补） |
 
 ### 最近完成
 
@@ -374,12 +374,13 @@
 - 2026-06-02: `WorkspacePanel` 新增 `memory`，`HermesView` 子导航 Memory Tree 区可切入主区 Memory Tree 工作区；主工作区支持只读搜索、层级树结果、节点展开、当前展开状态和安全浏览历史，形成从对话/子导航到 Memory Tree 工作区的基础跨面板导航。
 - 2026-06-02: `HermesView` Memory Tree 工作区中带 `chapter_index` 的结果节点新增“查看章节”深链，点击后通过 `project.loadChapter` 加载对应章节并切回正文面板；测试覆盖按钮存在、章节加载参数和离开 Memory Tree 工作区。
 - 2026-06-02: `HermesView` Memory Tree 工作区结果节点新增“检索证据”深链，基于安全标题或摘要创建 `search_agent_retrieval_context` 只读 Agent run（含 `limit=8` 和可用的 `max_chapter_index`），打开 Drawer 展示 Retrieval 投影，并写入安全浏览历史；测试覆盖请求参数、Drawer 切换和不泄露 node id/source id。
+- 2026-06-02: `HermesView` Memory Tree 工作区中带 `chapter_index` 的结果节点新增“汇总上下文”深链，创建 `summarize_longform_context` 只读 Agent run（chapter_index + query + max_chars + include_prompt_context），打开 Drawer 展示长篇上下文摘要结果，并写入安全浏览历史；测试覆盖请求参数、Drawer 切换和不泄露 node id/source id。
 - 2026-06-02: `HermesView` Memory Tree 工作区中带 `chapter_index` 的结果节点新增“审计 Trace”深链，创建 `inspect_agent_trace_audit` 只读 Agent run（chapter_index + limit），打开 Drawer 展示 Trace Audit run，并写入安全浏览历史；测试覆盖请求参数、Drawer 切换和不泄露 node id/source id。
 - 2026-06-02: `HermesView` Memory Tree 工作区结果节点新增“检查世界模型”深链，基于安全标题或摘要创建 `inspect_agent_world_model_route` 只读 Agent run（subject_ref + limit，并在可用时带 chapter_index），打开 Drawer 展示 Athena 世界模型路由结果，并写入安全浏览历史；测试覆盖请求参数、Drawer 切换和不泄露 node id/source id。
 
 ### 阻塞项
 
-- 独立 Memory Tree 面板仍需要前端交互契约：当前已有 Drawer 只读投影、自由搜索、推荐展开、节点展开、项目级会话浏览历史、Hermes Memory 主工作区、子导航搜索/历史/当前返回节点层级树/结果节点展开与当前展开状态、章节正文深链基础、Retrieval 证据只读 run 深链、Trace Audit 只读 run 深链，以及 Athena 世界模型路由深链；仍需补更完整树工作区能力和真实长篇数据下的可视化验证。
+- 独立 Memory Tree 面板仍需要前端交互契约：当前已有 Drawer 只读投影、自由搜索、推荐展开、节点展开、项目级会话浏览历史、Hermes Memory 主工作区、子导航搜索/历史/当前返回节点层级树/结果节点展开与当前展开状态、章节正文深链基础、Retrieval 证据只读 run 深链、Longform Context Summary 只读 run 深链、Trace Audit 只读 run 深链，以及 Athena 世界模型路由深链；仍需补更完整树工作区能力和真实长篇数据下的可视化验证。
 
 ---
 

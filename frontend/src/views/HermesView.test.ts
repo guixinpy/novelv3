@@ -1226,6 +1226,115 @@ describe('HermesView', () => {
     wrapper.unmount()
   })
 
+  it('starts a longform context summary run from a memory tree workspace node', async () => {
+    vi.mocked((api as any).createAgentRun)
+      .mockImplementationOnce(async () => ({
+        id: 'run-memory-tree-workspace',
+        project_id: 'project-1',
+        goal: '搜索 Memory Tree：灯塔旧回声',
+        status: 'success',
+        entrypoint: 'ui_memory_tree_workspace_search',
+        input: {},
+        output: null,
+        error: null,
+        steps: [
+          {
+            id: 'step-memory-tree-workspace',
+            tool_name: 'inspect_agent_memory_tree',
+            status: 'success',
+            output: {
+              status: 'ready',
+              summary: {
+                volume_nodes: 0,
+                chapter_nodes: 1,
+                scene_nodes: 0,
+                beat_nodes: 0,
+              },
+              nodes: [
+                {
+                  id: 'chapter:2',
+                  level: 'chapter',
+                  chapter_index: 2,
+                  title: '灯塔旧回声',
+                  summary: '主角在灯塔发现旧回声线索。',
+                  children: [],
+                  source_refs: [{ source_type: 'chapter_content', source_id: 'chapter-content-2' }],
+                },
+              ],
+            },
+          },
+        ],
+      }))
+      .mockImplementationOnce(async () => ({
+        id: 'run-memory-tree-context-summary',
+        project_id: 'project-1',
+        goal: '汇总 Memory Tree 长篇上下文：灯塔旧回声',
+        status: 'success',
+        entrypoint: 'ui_memory_tree_workspace_context_summary',
+        input: {},
+        output: null,
+        error: null,
+        steps: [
+          {
+            id: 'step-memory-tree-context-summary',
+            tool_name: 'summarize_longform_context',
+            status: 'success',
+            output: {
+              status: 'ready',
+              chapter_index: 2,
+              context_summary: { total_chars: 1200, selected_chars: 900 },
+              sections: [],
+              source_sections: [],
+            },
+          },
+        ],
+      }))
+    const wrapper = await mountHermesView()
+
+    const openWorkspace = document.querySelector('[data-testid="memory-tree-workspace-open"]') as HTMLButtonElement
+    openWorkspace.click()
+    await flushPromises()
+
+    await wrapper.get('[data-testid="memory-tree-workspace-query"]').setValue('灯塔旧回声')
+    await wrapper.get('[data-testid="memory-tree-workspace-search"]').trigger('submit')
+    await flushPromises()
+
+    const contextSummaryLink = wrapper.get('[data-testid="memory-tree-workspace-summarize-context"]')
+    expect(contextSummaryLink.text()).toContain('汇总上下文')
+    await contextSummaryLink.trigger('click')
+    await flushPromises()
+
+    const contextSummaryRequest = vi.mocked((api as any).createAgentRun).mock.calls[1][1]
+    expect(contextSummaryRequest).toEqual({
+      goal: '汇总 Memory Tree 长篇上下文：灯塔旧回声',
+      entrypoint: 'ui_memory_tree_workspace_context_summary',
+      tools: [
+        {
+          tool_name: 'summarize_longform_context',
+          params: {
+            chapter_index: 2,
+            query: '灯塔旧回声',
+            max_chars: 2000,
+            include_prompt_context: true,
+          },
+        },
+      ],
+      input: {
+        memory_tree_workspace_context_summary: true,
+        source_run_id: 'run-memory-tree-workspace',
+        source_node_label: '灯塔旧回声',
+        chapter_index: 2,
+        query: '灯塔旧回声',
+      },
+    })
+    expect(JSON.stringify(contextSummaryRequest)).not.toContain('chapter:2')
+    expect(JSON.stringify(contextSummaryRequest)).not.toContain('chapter-content-2')
+    expect(wrapper.get('[data-testid="agent-run-drawer"]').text()).toContain('run-memory-tree-context-summary')
+    expect(wrapper.get('[data-testid="memory-tree-workspace"]').text()).toContain('汇总上下文：灯塔旧回声')
+
+    wrapper.unmount()
+  })
+
   it('starts a trace audit run from a memory tree workspace chapter node', async () => {
     vi.mocked((api as any).createAgentRun)
       .mockImplementationOnce(async () => ({

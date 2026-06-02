@@ -85,6 +85,7 @@ type MemoryTreePanelResultRow = {
   canExpand: boolean
   canOpenChapter: boolean
   canSearchRetrieval: boolean
+  canSummarizeContext: boolean
   canAuditTrace: boolean
   canCheckWorldModel: boolean
   depth: number
@@ -172,6 +173,7 @@ const memoryTreePanelResultRows = computed<MemoryTreePanelResultRow[]>(() => (
       canExpand,
       canOpenChapter: chapterIndex !== null && chapterIndex > 0,
       canSearchRetrieval: Boolean(retrievalQuery),
+      canSummarizeContext: Boolean(retrievalQuery) && chapterIndex !== null && chapterIndex > 0,
       canAuditTrace: chapterIndex !== null && chapterIndex > 0,
       canCheckWorldModel: Boolean(retrievalQuery),
       depth,
@@ -583,6 +585,48 @@ async function searchMemoryTreeRetrieval(row: MemoryTreePanelResultRow) {
     })
   } catch (err) {
     memoryTreePanelError.value = err instanceof Error ? err.message : '检索 Memory Tree 证据失败'
+  } finally {
+    memoryTreePanelLoading.value = false
+  }
+}
+
+async function summarizeMemoryTreeContext(row: MemoryTreePanelResultRow) {
+  if (!row.canSummarizeContext || !row.retrievalQuery || row.chapterIndex === null || memoryTreePanelLoading.value) return
+  memoryTreePanelError.value = ''
+  memoryTreePanelLoading.value = true
+  agentRunError.value = ''
+  try {
+    const run = await api.createAgentRun(pid.value, {
+      goal: `汇总 Memory Tree 长篇上下文：${row.retrievalQuery}`,
+      entrypoint: 'ui_memory_tree_workspace_context_summary',
+      tools: [
+        {
+          tool_name: 'summarize_longform_context',
+          params: {
+            chapter_index: row.chapterIndex,
+            query: row.retrievalQuery,
+            max_chars: 2000,
+            include_prompt_context: true,
+          },
+        },
+      ],
+      input: {
+        memory_tree_workspace_context_summary: true,
+        source_run_id: activeAgentRun.value?.id || '',
+        source_node_label: row.title,
+        chapter_index: row.chapterIndex,
+        query: row.retrievalQuery,
+      },
+    })
+    activeAgentRunId.value = run.id
+    activeAgentRun.value = run
+    projectWorkspace.appendMemoryTreeHistory(pid.value, {
+      key: `${run.id}:workspace-context-summary:${memoryTreeNavigationHistory.value.length}`,
+      label: `汇总上下文：${row.retrievalQuery}`,
+      runId: run.id,
+    })
+  } catch (err) {
+    memoryTreePanelError.value = err instanceof Error ? err.message : '汇总 Memory Tree 长篇上下文失败'
   } finally {
     memoryTreePanelLoading.value = false
   }
@@ -1243,6 +1287,15 @@ async function applyRouteUpgradeFromRun(payload: RouteUpgradeApplyPayload) {
                 @click="searchMemoryTreeRetrieval(row)"
               >
                 检索证据
+              </button>
+              <button
+                v-if="row.canSummarizeContext"
+                type="button"
+                data-testid="memory-tree-workspace-summarize-context"
+                :disabled="memoryTreePanelLoading"
+                @click="summarizeMemoryTreeContext(row)"
+              >
+                汇总上下文
               </button>
               <button
                 v-if="row.canCheckWorldModel"
