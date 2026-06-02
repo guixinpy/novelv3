@@ -116,6 +116,7 @@
 - [x] Memory Tree 只读浏览意图：自然语言“浏览/搜索记忆树”可投影为 inspect_agent_memory_tree 只读工具计划
 - [x] ContextCompressor 只读自检意图：自然语言“检查上下文压缩/预算/窗口压力”可投影为 inspect_agent_context_compression_projection 只读工具计划
 - [x] Worker Dispatch 只读审计意图：自然语言“检查 worker 分发/孤儿恢复”可投影为 inspect_agent_worker_dispatch 只读工具计划
+- [x] Agent Health 只读自检意图：自然语言“检查 Agent 健康/工具诊断”可投影为 inspect_agent_health_projection 只读工具计划
 - [x] 审批流：approval_contract + approval_verification_event
 - [x] Followup 机制：recommended_followup_planner + 前端 action cards
 - [x] 斜杠命令路由：slash_command_route
@@ -135,6 +136,7 @@
 
 ### 最近完成
 
+- 2026-06-02: `IntentRouter` 新增 `agent_health_intent`，可将“检查 Agent 健康/工具诊断”等自然语言投影为 `inspect_agent_health` action，并抽取 chapter_index；`plan_dialog_intent_agent_run` 对该只读 action 直接生成 `inspect_agent_health_projection` 工具计划，approval_contract 为 not_required。
 - 2026-06-02: `IntentRouter` 新增 `worker_dispatch_intent`，可将“检查 worker 分发/孤儿恢复/子代理调度”等自然语言投影为 `inspect_worker_dispatch` action，并抽取显式 worker_name；`plan_dialog_intent_agent_run` 对该只读 action 直接生成 `inspect_agent_worker_dispatch` 工具计划，approval_contract 为 not_required。
 - 2026-06-02: `IntentRouter` 新增 `context_compression_intent`，可将“检查第 N 章上下文压缩/预算/窗口压力”等自然语言投影为 `inspect_context_compression` action，并抽取 chapter_index / max_chars；`plan_dialog_intent_agent_run` 对该只读 action 直接生成 `inspect_agent_context_compression_projection` 工具计划，approval_contract 为 not_required。
 - 2026-06-02: `IntentRouter` 新增 `memory_tree_intent`，可将“浏览/查看/搜索/检索记忆树/长期记忆”等自然语言投影为 `inspect_memory_tree` action，抽取 query、level、chapter_index 并默认 include_ancestors；`plan_dialog_intent_agent_run` 对该只读 action 直接生成 `inspect_agent_memory_tree` 工具计划，approval_contract 为 not_required。

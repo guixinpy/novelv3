@@ -31,6 +31,7 @@ _ACTION_TO_CHAPTER_GENERATION_ROUTE = {
     "preview_chapter": CHAPTER_GENERATION_ROUTE_APPROVED_PREPARE,
 }
 _ACTION_TO_DIRECT_READ_TOOL = {
+    "inspect_agent_health": "inspect_agent_health_projection",
     "inspect_memory_tree": "inspect_agent_memory_tree",
     "inspect_context_compression": "inspect_agent_context_compression_projection",
     "inspect_worker_dispatch": "inspect_agent_worker_dispatch",

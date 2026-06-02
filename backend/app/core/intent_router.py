@@ -17,6 +17,7 @@ _INTENT_RULE_IDS = (
     "memory_tree_intent",
     "context_compression_intent",
     "worker_dispatch_intent",
+    "agent_health_intent",
     "query_diagnosis_intent",
 )
 
@@ -305,6 +306,20 @@ class IntentRouter:
                 preconditions=[{"code": "worker_dispatch_read_available", "passed": True}],
             )
 
+        if _is_agent_health_intent(text):
+            extracted_params = _agent_health_params(text)
+            return self._matched_projection(
+                text,
+                dialog_state,
+                pending_action_id,
+                diagnosis,
+                rule_id="agent_health_intent",
+                candidate=ActionCandidate("inspect_agent_health", extracted_params),
+                extracted_params=extracted_params,
+                match_evidence=[{"kind": "pattern", "name": "agent_health_phrase"}],
+                preconditions=[{"code": "agent_health_read_available", "passed": True}],
+            )
+
         if re.search(r"创建.*(主角|人物|设定|世界观)", text) or re.search(r"生成.*设定", text):
             if "setup" in diagnosis.missing_items or "setup" in diagnosis.completed_items:
                 return self._matched_projection(
@@ -586,6 +601,21 @@ def _worker_dispatch_worker_name(text: str) -> str | None:
         if worker_name in text:
             return worker_name
     return None
+
+
+def _is_agent_health_intent(text: str) -> bool:
+    return bool(
+        re.search(r"(agent|工具|tool|health).*(健康|自检|诊断|health)", text)
+        or re.search(r"(健康|自检|诊断|health).*(agent|工具|tool)", text)
+    )
+
+
+def _agent_health_params(text: str) -> dict[str, Any]:
+    params: dict[str, Any] = {}
+    chapter_index = parse_chapter_index(text)
+    if chapter_index is not None:
+        params["chapter_index"] = chapter_index
+    return params
 
 
 def _rejected_candidates(selected_rule_id: str | None, *, matched: bool) -> list[dict[str, str]]:

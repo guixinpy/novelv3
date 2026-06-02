@@ -5,6 +5,7 @@ from typing import Literal
 DIALOG_AGENT_ROUTE_VERSION = "phase104.dialog_agent_route.v1"
 DIALOG_AGENT_ROUTE_APPROVAL_CHAIN_OPT_IN_KEY = "use_agent_approval_chain"
 _READ_ONLY_AGENT_TOOLS = {
+    "inspect_agent_health_projection",
     "inspect_agent_memory_tree",
     "inspect_agent_context_compression_projection",
     "inspect_agent_worker_dispatch",
@@ -19,6 +20,7 @@ _DIALOG_ACTION_TO_AGENT_TOOL: dict[str, str] = {
     "preview_chapter": "generate_chapter",
     "preview_review": "plan_writing_agent_run",
     "preview_recovery": "plan_writing_agent_run",
+    "inspect_agent_health": "inspect_agent_health_projection",
     "inspect_memory_tree": "inspect_agent_memory_tree",
     "inspect_context_compression": "inspect_agent_context_compression_projection",
     "inspect_worker_dispatch": "inspect_agent_worker_dispatch",
