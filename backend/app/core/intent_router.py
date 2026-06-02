@@ -23,6 +23,7 @@ _INTENT_RULE_IDS = (
     "command_contracts_intent",
     "slash_command_route_intent",
     "dialog_route_projection_intent",
+    "intent_projection_intent",
     "reference_alignment_intent",
     "dogfood_evidence_intent",
     "route_preference_intent",
@@ -368,6 +369,20 @@ class IntentRouter:
                 extracted_params=extracted_params,
                 match_evidence=[{"kind": "pattern", "name": "dialog_route_projection_phrase"}],
                 preconditions=[{"code": "dialog_route_projection_read_available", "passed": True}],
+            )
+
+        if _is_intent_projection_intent(text):
+            extracted_params = _intent_projection_params(text)
+            return self._matched_projection(
+                text,
+                dialog_state,
+                pending_action_id,
+                diagnosis,
+                rule_id="intent_projection_intent",
+                candidate=ActionCandidate("inspect_intent_projection", extracted_params),
+                extracted_params=extracted_params,
+                match_evidence=[{"kind": "pattern", "name": "intent_projection_phrase"}],
+                preconditions=[{"code": "intent_projection_read_available", "passed": True}],
             )
 
         if _is_reference_alignment_intent(text):
@@ -819,6 +834,27 @@ def _dialog_route_projection_params(text: str) -> dict[str, Any]:
     if source:
         params["source"] = source
     return params
+
+
+def _is_intent_projection_intent(text: str) -> bool:
+    return bool(
+        re.search(r"(意图投影|意图路由投影|自然语言意图投影|intent\s*projection).*(检查|诊断|投影|解释)", text)
+        or re.search(r"(检查|诊断|投影|解释).*(意图投影|意图路由投影|自然语言意图投影|intent\s*projection)", text)
+    )
+
+
+def _intent_projection_params(text: str) -> dict[str, Any]:
+    return {"text": _intent_projection_text(text)}
+
+
+def _intent_projection_text(text: str) -> str:
+    match = re.search(
+        r"(?:意图投影|意图路由投影|自然语言意图投影|intent\s*projection)\s*[:：]\s*(.+)$",
+        text,
+    )
+    if match:
+        return match.group(1).strip()
+    return text
 
 
 def _is_reference_alignment_intent(text: str) -> bool:

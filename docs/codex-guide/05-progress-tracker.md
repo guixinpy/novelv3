@@ -129,6 +129,7 @@
 - [x] Command Contracts 只读自检意图：自然语言“检查命令契约缺口/slash command 投影”可投影为 inspect_agent_command_contracts 只读工具计划
 - [x] Slash Command Route 只读审计意图：自然语言“检查 /continue 斜杠命令路由”可投影为 inspect_agent_slash_command_route 只读工具计划
 - [x] Dialog Route Projection 只读审计意图：自然语言“检查 button action 统一对话路由投影”可投影为 inspect_agent_dialog_route_projection 只读工具计划
+- [x] Intent Projection 只读审计意图：自然语言“检查意图投影：<待分析文本>”可投影为 inspect_agent_intent_projection 只读工具计划
 - [x] Reference Alignment 只读审计意图：自然语言“检查参考项目模式对齐/开源项目适配”可投影为 inspect_agent_reference_alignment 只读工具计划
 - [x] Dogfood Evidence 只读审计意图：自然语言“检查 dogfood pressure-test 证据覆盖”可投影为 inspect_agent_dogfood_evidence 只读工具计划
 - [x] Route Preference 只读审计意图：自然语言“检查 text_intent 路由偏好/Agent 审批链迁移建议”可投影为 inspect_agent_route_preference_projection 只读工具计划
@@ -155,6 +156,7 @@
 
 - 2026-06-02: `IntentRouter` 新增 `route_preference_intent`，可将“检查 text_intent 路由偏好/Agent 审批链迁移建议”等自然语言投影为 `inspect_route_preference` action，并确定性抽取 `source`；`plan_dialog_intent_agent_run` 对该只读 action 直接生成 `inspect_agent_route_preference_projection` 工具计划，approval_contract 为 not_required。
 - 2026-06-02: `IntentRouter` 新增 `dialog_route_projection_intent`，可将“检查 button action 统一对话路由投影”等自然语言投影为 `inspect_dialog_route` action，并确定性抽取 `source`；`plan_dialog_intent_agent_run` 对该只读 action 直接生成 `inspect_agent_dialog_route_projection` 工具计划，approval_contract 为 not_required，且与 route preference/审批链迁移建议入口保持语义边界。
+- 2026-06-02: `IntentRouter` 新增 `intent_projection_intent`，可将“检查意图投影：<待分析文本>”投影为 `inspect_intent_projection` action，并把冒号后的待分析文本传给 `inspect_agent_intent_projection`；`plan_dialog_intent_agent_run` 对该只读 action 生成无需审批的工具计划，便于持续审计自然语言规则匹配。
 - 2026-06-02: `IntentRouter` 新增 `dogfood_evidence_intent`，可将“检查 dogfood pressure-test 证据覆盖/真实长篇自吃证据”等自然语言投影为 `inspect_dogfood_evidence` action；`plan_dialog_intent_agent_run` 对该只读 action 直接生成 `inspect_agent_dogfood_evidence` 工具计划，approval_contract 为 not_required，并放在宽泛 review 规则之前避免被“检查”类审稿意图抢占。
 - 2026-06-02: `IntentRouter` 新增 `slash_command_route_intent`，可将“检查 /continue 斜杠命令路由”等自然语言投影为 `inspect_slash_command_route` action，并确定性抽取 `command_name`；`plan_dialog_intent_agent_run` 对该只读 action 直接生成 `inspect_agent_slash_command_route` 工具计划，approval_contract 为 not_required，并通过 command contracts guard 避免被更泛的 slash command 契约查询抢占。
 - 2026-06-02: `IntentRouter` 新增 `reference_alignment_intent`，可将“检查参考项目模式对齐/开源项目适配”等自然语言投影为 `inspect_reference_alignment` action；`plan_dialog_intent_agent_run` 对该只读 action 直接生成 `inspect_agent_reference_alignment` 工具计划，approval_contract 为 not_required，并放在宽泛 review 规则之前避免被“检查”类审稿意图抢占。
