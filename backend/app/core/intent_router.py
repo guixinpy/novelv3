@@ -24,6 +24,7 @@ _INTENT_RULE_IDS = (
     "slash_command_route_intent",
     "dialog_route_projection_intent",
     "intent_projection_intent",
+    "dialog_control_plane_projection_intent",
     "reference_alignment_intent",
     "dogfood_evidence_intent",
     "route_preference_intent",
@@ -383,6 +384,20 @@ class IntentRouter:
                 extracted_params=extracted_params,
                 match_evidence=[{"kind": "pattern", "name": "intent_projection_phrase"}],
                 preconditions=[{"code": "intent_projection_read_available", "passed": True}],
+            )
+
+        if _is_dialog_control_plane_projection_intent(text):
+            extracted_params = _dialog_control_plane_projection_params(text)
+            return self._matched_projection(
+                text,
+                dialog_state,
+                pending_action_id,
+                diagnosis,
+                rule_id="dialog_control_plane_projection_intent",
+                candidate=ActionCandidate("inspect_dialog_control_plane", extracted_params),
+                extracted_params=extracted_params,
+                match_evidence=[{"kind": "pattern", "name": "dialog_control_plane_projection_phrase"}],
+                preconditions=[{"code": "dialog_control_plane_projection_read_available", "passed": True}],
             )
 
         if _is_reference_alignment_intent(text):
@@ -855,6 +870,53 @@ def _intent_projection_text(text: str) -> str:
     if match:
         return match.group(1).strip()
     return text
+
+
+def _is_dialog_control_plane_projection_intent(text: str) -> bool:
+    return bool(
+        re.search(
+            r"(对话控制面|dialog\s*control\s*plane|pending\s*action\s*control).*(投影|检查|诊断|审批链|工具链)",
+            text,
+        )
+        or re.search(
+            r"(投影|检查|诊断|审批链|工具链).*(对话控制面|dialog\s*control\s*plane|pending\s*action\s*control)",
+            text,
+        )
+    )
+
+
+def _dialog_control_plane_projection_params(text: str) -> dict[str, Any]:
+    params: dict[str, Any] = {}
+    action_type = _dialog_control_plane_action_type(text)
+    if action_type:
+        params["action_type"] = action_type
+    return params
+
+
+def _dialog_control_plane_action_type(text: str) -> str | None:
+    for action_type in (
+        "generate_setup",
+        "generate_storyline",
+        "generate_outline",
+        "generate_chapter",
+        "review_chapter",
+        "recover_blocked_run",
+    ):
+        if action_type in text:
+            return action_type
+    if re.search(r"(设定|setup)", text):
+        return "generate_setup"
+    if re.search(r"(故事线|storyline)", text):
+        return "generate_storyline"
+    if re.search(r"(大纲|outline)", text):
+        return "generate_outline"
+    if re.search(r"(正文|章节|chapter)", text):
+        return "generate_chapter"
+    if re.search(r"(审稿|review)", text):
+        return "review_chapter"
+    if re.search(r"(恢复|recover)", text):
+        return "recover_blocked_run"
+    return None
 
 
 def _is_reference_alignment_intent(text: str) -> bool:

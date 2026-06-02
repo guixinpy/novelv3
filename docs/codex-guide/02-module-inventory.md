@@ -77,6 +77,7 @@ Agent 化缺口：
   - Slash Command Route 已有只读审计和自然语言只读入口，可直接检查 `/continue` 等斜杠命令到 Agent 工具的路由投影
   - Dialog Route Projection 已有只读审计和自然语言只读入口，可直接检查 text_intent/button_action/slash_command 的统一对话路由投影
   - Intent Projection 已有只读审计和自然语言只读入口，可直接检查指定自然语言输入经 IntentRouter 的规则匹配投影
+  - Dialog Control Plane Projection 已有只读审计和自然语言只读入口，可直接检查 generate_chapter 等 pending action 的当前运行工具与推荐审批工具链
   - 写入门禁覆盖已有只读审计和自然语言只读入口，可直接检查写入工具的 Agent 计划审批 gate coverage
   - Worker dispatch 已实现基础分发，子 Agent 孤兒恢复已有只读审计、自然语言只读入口、确认式 blocked 清理和 pending redispatch run 创建
   - 后续可继续扩展 refund 规则，例如对白名单程序化 write 工具或批处理子步骤细分计费
@@ -103,7 +104,7 @@ Agent 化缺口：
   ├── session.py                          # 对话 session 管理
   └── messages.py                         # 消息管理
 Agent 化缺口：
-  - 意图路由覆盖不完整（部分写作意图尚未接入；Agent Health、Control Plane 就绪度、Tool Contracts、Command Contracts、Slash Command Route、Dialog Route Projection、Intent Projection、Reference Alignment、Dogfood Evidence、Route Preference、Memory Tree 只读浏览、ContextCompressor 自检、Worker Dispatch/孤儿恢复审计、Trace Audit 与 Write Gate Coverage 已可由自然语言投影到对应只读工具）
+  - 意图路由覆盖不完整（部分写作意图尚未接入；Agent Health、Control Plane 就绪度、Dialog Control Plane Projection、Tool Contracts、Command Contracts、Slash Command Route、Dialog Route Projection、Intent Projection、Reference Alignment、Dogfood Evidence、Route Preference、Memory Tree 只读浏览、ContextCompressor 自检、Worker Dispatch/孤儿恢复审计、Trace Audit 与 Write Gate Coverage 已可由自然语言投影到对应只读工具）
   - 缺少 LLM 驱动的"模糊意图"解析
   - pending_action 机制未与 Agent tool approval 统一
 关联模块：WritingAgent、Athena、前端 Chat
