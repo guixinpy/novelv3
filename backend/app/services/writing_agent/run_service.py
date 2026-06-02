@@ -40,6 +40,7 @@ from app.services.writing_agent.agent_stop_hooks import evaluate_agent_stop_hook
 from app.services.writing_agent.agent_context_compression_projection import (
     build_agent_context_compression_payload,
     inspect_agent_context_compression_projection,
+    load_agent_context_compression_summary,
 )
 from app.services.writing_agent.memory_activation import build_memory_activation_plan
 from app.services.writing_agent.tool_adapter_types import WritingAgentToolContext
@@ -634,47 +635,77 @@ class WritingAgentRunService:
             context_guard_failure_count=context_guard_failure_count,
         )
         checks["context_compression"] = context_compression
-        recommended_next_tools.extend(_string_list(context_compression.get("recommended_next_tools")))
+        context_compression_recommended_tools = _string_list(context_compression.get("recommended_next_tools"))
         if context_compression.get("status") == "warning":
-            context_compression_payload = build_agent_context_compression_payload(
+            persisted_summary = load_agent_context_compression_summary(
                 self.db,
                 project_id,
                 chapter_index=chapter_index,
                 max_chars=max_context_chars,
-                context_guard_failure_count=context_guard_failure_count,
             )
-            summary_record_tools = _context_compression_summary_record_tools(context_compression_payload)
-            recommended_next_tools.extend(summary_record_tools)
-            context_compression_payload_preview = _context_compression_payload_preview(
-                context_compression_payload
-            )
-            if summary_record_tools:
-                context_compression_payload_preview["recommended_next_tools"] = _dedupe_strings(
-                    _string_list(context_compression_payload_preview.get("recommended_next_tools"))
-                    + summary_record_tools
-                )
-            issues.append(
-                _issue(
-                    "context_compression_window_pressure",
-                    "warning",
-                    "章节上下文接近摘要窗口上限，建议先构建只读压缩 payload 再继续生成。",
-                    extra={
-                        "suggested_tool": "build_agent_context_compression_payload",
-                        "suggested_params": {
-                            "chapter_index": chapter_index,
-                            "max_chars": max_context_chars,
-                            "context_guard_failure_count": context_guard_failure_count,
+            if _context_compression_payload_has_context(persisted_summary):
+                persisted_summary_next_tools = ["prepare_generate_chapter_execution"]
+                recommended_next_tools.extend(persisted_summary_next_tools)
+                context_compression_payload_preview = _context_compression_payload_preview(persisted_summary)
+                context_compression_payload_preview["recommended_next_tools"] = persisted_summary_next_tools
+                issues.append(
+                    _issue(
+                        "context_compression_summary_available",
+                        "warning",
+                        "章节上下文接近摘要窗口上限，已找到可复用的持久压缩摘要，可进入章节生成准备。",
+                        extra={
+                            "suggested_tool": "prepare_generate_chapter_execution",
+                            "suggested_params": {"chapter_index": chapter_index},
+                            "summary_scope_key": (
+                                persisted_summary.get("record", {}).get("scope_key")
+                                if isinstance(persisted_summary.get("record"), dict)
+                                else None
+                            ),
                         },
-                        "followup_tool": "record_agent_context_compression_summary",
-                        "followup_params": {
-                            "chapter_index": chapter_index,
-                            "max_chars": max_context_chars,
-                            "context_guard_failure_count": context_guard_failure_count,
-                        },
-                    },
+                    )
                 )
-            )
+            else:
+                recommended_next_tools.extend(context_compression_recommended_tools)
+                context_compression_payload = build_agent_context_compression_payload(
+                    self.db,
+                    project_id,
+                    chapter_index=chapter_index,
+                    max_chars=max_context_chars,
+                    context_guard_failure_count=context_guard_failure_count,
+                )
+                summary_record_tools = _context_compression_summary_record_tools(context_compression_payload)
+                recommended_next_tools.extend(summary_record_tools)
+                context_compression_payload_preview = _context_compression_payload_preview(
+                    context_compression_payload
+                )
+                if summary_record_tools:
+                    context_compression_payload_preview["recommended_next_tools"] = _dedupe_strings(
+                        _string_list(context_compression_payload_preview.get("recommended_next_tools"))
+                        + summary_record_tools
+                    )
+                issues.append(
+                    _issue(
+                        "context_compression_window_pressure",
+                        "warning",
+                        "章节上下文接近摘要窗口上限，建议先构建只读压缩 payload 再继续生成。",
+                        extra={
+                            "suggested_tool": "build_agent_context_compression_payload",
+                            "suggested_params": {
+                                "chapter_index": chapter_index,
+                                "max_chars": max_context_chars,
+                                "context_guard_failure_count": context_guard_failure_count,
+                            },
+                            "followup_tool": "record_agent_context_compression_summary",
+                            "followup_params": {
+                                "chapter_index": chapter_index,
+                                "max_chars": max_context_chars,
+                                "context_guard_failure_count": context_guard_failure_count,
+                            },
+                        },
+                    )
+                )
         elif context_compression.get("status") == "blocked":
+            recommended_next_tools.extend(context_compression_recommended_tools)
             recovery = context_compression.get("recovery") if isinstance(context_compression.get("recovery"), dict) else {}
             tools = recovery.get("tools") if isinstance(recovery.get("tools"), list) else []
             suggested = tools[0] if tools and isinstance(tools[0], dict) else {}
@@ -689,6 +720,8 @@ class WritingAgentRunService:
                     },
                 )
             )
+        else:
+            recommended_next_tools.extend(context_compression_recommended_tools)
         checks["length_policy"] = _length_policy_check(self.db, project_id)
         length_policy_status = checks["length_policy"].get("status")
         if length_policy_status == "blocked":
@@ -1902,19 +1935,32 @@ def _context_compression_payload_preview(payload: dict[str, Any]) -> dict[str, A
         preview["compression_payload"] = compact_payload
     else:
         preview["compression_payload"] = None
+    record = payload.get("record")
+    if isinstance(record, dict):
+        compact_record = dict(record)
+        compact_record.pop("summary", None)
+        preview["record"] = compact_record
     return preview
 
 
 def _context_compression_summary_record_tools(payload: dict[str, Any]) -> list[str]:
     if payload.get("status") != "ready":
         return []
-    compression_payload = payload.get("compression_payload")
-    if not isinstance(compression_payload, dict):
-        return []
-    compressed_context = compression_payload.get("compressed_context")
-    if not isinstance(compressed_context, str) or not compressed_context.strip():
+    if not _context_compression_payload_has_context(payload):
         return []
     return ["record_agent_context_compression_summary"]
+
+
+def _context_compression_payload_has_context(payload: dict[str, Any]) -> bool:
+    if payload.get("status") != "ready":
+        return False
+    compression_payload = payload.get("compression_payload")
+    if not isinstance(compression_payload, dict):
+        return False
+    compressed_context = compression_payload.get("compressed_context")
+    if not isinstance(compressed_context, str) or not compressed_context.strip():
+        return False
+    return True
 
 
 def _optional_positive_int(value: object) -> int | None:

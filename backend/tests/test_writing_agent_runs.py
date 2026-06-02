@@ -4837,6 +4837,107 @@ def test_agent_preflight_reports_context_compression_preview_under_window_pressu
     ]
 
 
+def test_agent_preflight_reuses_persisted_context_compression_summary_under_window_pressure(
+    client,
+    db_session,
+    monkeypatch,
+):
+    project = _seed_longform_project(db_session, outline_chapters=[1, 2, 3], generated_chapters=[1, 2])
+    import_setup_to_world_model(db_session, project.id)
+    persisted_context = "【已持久化上下文压缩摘要】\n第3章应沿用此前压缩出的关键旧案与近期章节。"
+    db_session.add(
+        LongformMemory(
+            project_id=project.id,
+            memory_type="context_compression_summary",
+            scope_key="context_compression:chapter:3:max_chars:500",
+            start_chapter_index=3,
+            end_chapter_index=3,
+            title="第3章上下文压缩摘要",
+            summary=persisted_context,
+            status="current",
+            memory_metadata={
+                "source": "record_agent_context_compression_summary",
+                "execution_mode": "dry_run",
+                "target_max_chars": 375,
+                "original_prompt_context_chars": 475,
+                "compressed_context_chars": len(persisted_context),
+                "compression_ratio": 0.2,
+                "pretrimmed_section_keys": ["recent_chapters"],
+                "projection": {"status": "warning"},
+                "compression_plan": {"status": "recommended", "target_max_chars": 375},
+            },
+        )
+    )
+    db_session.commit()
+    calls: list[tuple[str, str, int, int | None, int]] = []
+
+    def fake_projection(db, project_id: str, *, chapter_index: int, max_chars: int | None, context_guard_failure_count: int):
+        calls.append(("projection", project_id, chapter_index, max_chars, context_guard_failure_count))
+        return {
+            "status": "warning",
+            "summary": {"prompt_context_chars": 475, "max_chars": max_chars, "usage_ratio": 0.95},
+            "risks": [{"code": "context_window_pressure", "severity": "warning"}],
+            "compression_plan": {
+                "status": "recommended",
+                "target_max_chars": 375,
+                "payload_tool": {
+                    "tool_name": "build_agent_context_compression_payload",
+                    "params": {
+                        "chapter_index": chapter_index,
+                        "max_chars": max_chars,
+                        "context_guard_failure_count": context_guard_failure_count,
+                    },
+                },
+            },
+            "recommended_next_tools": ["build_agent_context_compression_payload"],
+            "recovery": {"status": "optional", "tools": []},
+            "trace": {"source": "test_projection"},
+        }
+
+    def fail_payload(*args, **kwargs):
+        raise AssertionError("preflight should reuse persisted context compression summary")
+
+    monkeypatch.setattr(
+        "app.services.writing_agent.run_service.inspect_agent_context_compression_projection",
+        fake_projection,
+    )
+    monkeypatch.setattr(
+        "app.services.writing_agent.run_service.build_agent_context_compression_payload",
+        fail_payload,
+    )
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "检查第3章压缩预检",
+            "tools": [
+                {
+                    "tool_name": "preflight_writing",
+                    "params": {"chapter_index": 3, "max_context_chars": 500},
+                }
+            ],
+        },
+    )
+
+    output = response.json()["steps"][0]["output"]
+    preview = output["context_compression_payload_preview"]
+    issue = next(item for item in output["issues"] if item["code"] == "context_compression_summary_available")
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    assert output["status"] == "ready"
+    assert output["recommended_next_tools"] == ["prepare_generate_chapter_execution"]
+    assert issue["suggested_tool"] == "prepare_generate_chapter_execution"
+    assert issue["suggested_params"] == {"chapter_index": 3}
+    assert preview["trace"]["source"] == "load_agent_context_compression_summary"
+    assert preview["record"]["scope_key"] == "context_compression:chapter:3:max_chars:500"
+    assert "summary" not in preview["record"]
+    assert preview["compression_payload"]["execution_mode"] == "dry_run"
+    assert preview["compression_payload"]["target_max_chars"] == 375
+    assert "compressed_context" not in preview["compression_payload"]
+    assert preview["recommended_next_tools"] == ["prepare_generate_chapter_execution"]
+    assert calls == [("projection", project.id, 3, 500, 0)]
+
+
 def test_agent_preflight_blocks_and_recovers_when_context_compression_guard_is_open(
     client,
     db_session,
