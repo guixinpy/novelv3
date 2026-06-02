@@ -98,6 +98,11 @@ const agentRunError = ref('')
 const writingControlLoading = ref(false)
 const chatCommands = ref<ChatCommandDefinition[]>(chatCommandRegistry)
 const memoryTreeNavigationHistory = computed(() => projectWorkspace.memoryTreeHistoryForProject(pid.value))
+const memoryTreePanelQuery = ref('')
+const memoryTreePanelLoading = ref(false)
+const memoryTreePanelError = ref('')
+const memoryTreePanelSearchText = computed(() => safeMemoryTreeDisplayValue(memoryTreePanelQuery.value))
+const canSearchMemoryTreePanel = computed(() => Boolean(memoryTreePanelSearchText.value) && !memoryTreePanelLoading.value)
 
 // Project stats
 const totalWords = computed(() => {
@@ -441,6 +446,46 @@ function openMemoryTreeHistoryRun(runId: string | undefined) {
   void openAgentRun(runId)
 }
 
+async function submitMemoryTreePanelSearch() {
+  const query = memoryTreePanelSearchText.value
+  if (!query || memoryTreePanelLoading.value) return
+  memoryTreePanelError.value = ''
+  memoryTreePanelLoading.value = true
+  agentRunError.value = ''
+  try {
+    const run = await api.createAgentRun(pid.value, {
+      goal: `搜索 Memory Tree：${query}`,
+      entrypoint: 'ui_memory_tree_panel_search',
+      tools: [
+        {
+          tool_name: 'inspect_agent_memory_tree',
+          params: {
+            query,
+            include_ancestors: true,
+            max_depth: 2,
+          },
+        },
+      ],
+      input: {
+        memory_tree_panel_search: true,
+        query,
+      },
+    })
+    activeAgentRunId.value = run.id
+    activeAgentRun.value = run
+    projectWorkspace.appendMemoryTreeHistory(pid.value, {
+      key: `${run.id}:panel-search:${memoryTreeNavigationHistory.value.length}`,
+      label: `搜索：${query}`,
+      runId: run.id,
+    })
+    memoryTreePanelQuery.value = ''
+  } catch (err) {
+    memoryTreePanelError.value = err instanceof Error ? err.message : '搜索 Memory Tree 失败'
+  } finally {
+    memoryTreePanelLoading.value = false
+  }
+}
+
 async function executeRecoveryFromRun(payload: RecoveryExecutePayload) {
   agentRunError.value = ''
   agentRunLoading.value = true
@@ -647,7 +692,6 @@ async function applyRouteUpgradeFromRun(payload: RouteUpgradeApplyPayload) {
           @writing-control="onWritingControl"
         />
         <section
-          v-if="memoryTreeNavigationHistory.length"
           class="hermes-memory-tree-panel"
           data-testid="memory-tree-history-panel"
           aria-label="Memory Tree 浏览历史"
@@ -656,7 +700,27 @@ async function applyRouteUpgradeFromRun(payload: RouteUpgradeApplyPayload) {
             <span>Memory Tree</span>
             <strong>{{ memoryTreeNavigationHistory.length }}</strong>
           </header>
-          <ol class="hermes-memory-tree-panel__list">
+          <form class="hermes-memory-tree-panel__search" @submit.prevent="submitMemoryTreePanelSearch">
+            <input
+              v-model="memoryTreePanelQuery"
+              type="search"
+              data-testid="memory-tree-panel-query"
+              aria-label="搜索 Memory Tree"
+              placeholder="搜索长期记忆"
+              :disabled="memoryTreePanelLoading"
+            />
+            <button
+              type="submit"
+              data-testid="memory-tree-panel-search"
+              :disabled="!canSearchMemoryTreePanel"
+            >
+              {{ memoryTreePanelLoading ? '搜索中' : '搜索' }}
+            </button>
+          </form>
+          <p v-if="memoryTreePanelError" class="hermes-memory-tree-panel__error">
+            {{ memoryTreePanelError }}
+          </p>
+          <ol v-if="memoryTreeNavigationHistory.length" class="hermes-memory-tree-panel__list">
             <li
               v-for="item in memoryTreeNavigationHistory"
               :key="item.key"
@@ -671,6 +735,7 @@ async function applyRouteUpgradeFromRun(payload: RouteUpgradeApplyPayload) {
               </button>
             </li>
           </ol>
+          <p v-else class="hermes-memory-tree-panel__empty">暂无浏览历史</p>
         </section>
         <button
           v-if="selectedChapterTraceId"
@@ -801,6 +866,64 @@ async function applyRouteUpgradeFromRun(payload: RouteUpgradeApplyPayload) {
 .hermes-memory-tree-panel__header strong {
   color: var(--color-text-tertiary);
   font-weight: var(--font-medium);
+}
+
+.hermes-memory-tree-panel__search {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 56px;
+  gap: var(--space-1);
+}
+
+.hermes-memory-tree-panel__search input,
+.hermes-memory-tree-panel__search button {
+  min-height: 30px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+}
+
+.hermes-memory-tree-panel__search input {
+  min-width: 0;
+  padding: 0 var(--space-2);
+  background: var(--color-bg-white);
+  color: var(--color-text-primary);
+}
+
+.hermes-memory-tree-panel__search input::placeholder {
+  color: var(--color-text-tertiary);
+}
+
+.hermes-memory-tree-panel__search input:focus {
+  border-color: var(--color-primary);
+  outline: none;
+}
+
+.hermes-memory-tree-panel__search button {
+  padding: 0 var(--space-2);
+  background: var(--color-text-primary);
+  color: var(--color-bg-white);
+  font-weight: var(--font-medium);
+  white-space: nowrap;
+}
+
+.hermes-memory-tree-panel__search button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.hermes-memory-tree-panel__error,
+.hermes-memory-tree-panel__empty {
+  margin: 0;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+}
+
+.hermes-memory-tree-panel__error {
+  color: var(--color-danger);
+}
+
+.hermes-memory-tree-panel__empty {
+  color: var(--color-text-tertiary);
 }
 
 .hermes-memory-tree-panel__list {
