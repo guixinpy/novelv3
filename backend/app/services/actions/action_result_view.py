@@ -206,6 +206,16 @@ def _recommended_followup_preview_detail_items(data: dict) -> list[dict[str, str
         tool_summary = _tool_name_summary(tools)
         if tool_summary:
             items.append({"label": "后继工具", "value": tool_summary})
+    pending_confirmation_calls = (
+        data.get("pending_confirmation_tool_calls")
+        if isinstance(data.get("pending_confirmation_tool_calls"), list)
+        else []
+    )
+    if pending_confirmation_calls:
+        items.append({"label": "待确认后继", "value": f"{len(pending_confirmation_calls)} 个工具"})
+        tool_summary = _tool_name_summary(pending_confirmation_calls)
+        if tool_summary:
+            items.append({"label": "待确认工具", "value": tool_summary})
     items.extend(_worker_dispatch_detail_items(data))
 
     continuation_tools = (

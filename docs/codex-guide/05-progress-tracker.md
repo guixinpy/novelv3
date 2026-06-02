@@ -179,7 +179,7 @@
 |--------|------|---------|------|
 | P1 | 意图路由覆盖扩展 | 覆盖所有已实现的 Agent 工具对应的用户意图 | 🟡 进行中（read tool intents） |
 | P2 | 模糊意图 LLM 解析 | 用户自然语言模糊描述 → LLM 解析为具体意图 | 🔴 待开始 |
-| P3 | pending_action 与 Agent tool approval 统一 | 两套审批机制合并为一个 | 🟡 进行中（read plan/preview/contract/prepare/execute handoff + followup visibility） |
+| P3 | pending_action 与 Agent tool approval 统一 | 两套审批机制合并为一个 | 🟡 进行中（read plan/preview/contract/prepare/execute handoff + dialog followup visibility） |
 
 ### 阻塞项
 
@@ -187,6 +187,7 @@
 
 ### 最近完成
 
+- 2026-06-02: `dialog` recommended followup preview 透传 `pending_confirmation_tool_calls`，`action_result_view` 新增“待确认后继/待确认工具”摘要；execute handoff 在对话层可见但仍不进入自动执行工具列表。
 - 2026-06-02: `normalize_tool_recommendations` 新增 `recommended_next_tool_calls` 保留逻辑，`plan_recommended_followups` 会把 `requires_confirmation=true` 的 execute-with-approval 调用暴露为 `pending_confirmation_tool_calls` 和 execution policy 计数；该调用不会进入 `tools` 自动执行列表，仍由写入门禁与确认流程控制。
 - 2026-06-02: `prepare_apply_pending_action_route_approval_opt_in` 输出新增 `recommended_next_tool_calls`，将 `execute_apply_pending_action_route_approval_opt_in_with_approval` 的 `pending_action_id`、route apply contract/hash 与 Agent plan approval contract/hash 组织成 `requires_confirmation=true` 的调用骨架；descriptor schema 同步公开该字段，便于 Agent 在不自动写入的前提下审计 execute handoff。
 - 2026-06-02: `IntentRouter` 新增 `route_approval_opt_in_apply_prepare_intent`，可将“准备 pending-action-123 的 Agent 审批链 opt-in 执行审批”自然语言直达 `prepare_apply_pending_action_route_approval_opt_in` read tool；`plan_recommended_followups` 现在会接受 contract preview 推荐的 `prepare_apply_pending_action_route_approval_opt_in`，但 direct `apply_pending_action_route_approval_opt_in` 和审批后的 execute 工具仍保持写入门禁。

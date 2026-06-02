@@ -3321,6 +3321,95 @@ def test_chat_text_low_detail_continue_previews_latest_recommended_followups(cli
     assert route_trace.trace_metadata["source_run_id"] == source_run.id
 
 
+def test_chat_text_low_detail_continue_surfaces_pending_confirmation_followup_handoff(client, db_session):
+    r = client.post("/api/v1/projects", json={"name": "Test"})
+    pid = r.json()["id"]
+    db_session.add(Setup(project_id=pid, status="generated", world_building={}, characters=[], core_concept={}))
+    db_session.add(Storyline(project_id=pid, status="generated", plotlines=[], foreshadowing=[]))
+    db_session.add(
+        Outline(
+            project_id=pid,
+            status="generated",
+            total_chapters=20,
+            chapters=[{"chapter_index": 1, "title": "旧灯塔", "summary": "林舟开始调查。"}],
+        )
+    )
+    source_run = WritingAgentRun(
+        project_id=pid,
+        goal="准备 route opt-in handoff",
+        status="success",
+        entrypoint="api",
+        input={},
+    )
+    db_session.add(source_run)
+    db_session.flush()
+    execute_call = {
+        "tool_name": "execute_apply_pending_action_route_approval_opt_in_with_approval",
+        "visibility": "agent_internal",
+        "requires_confirmation": True,
+        "params": {
+            "pending_action_id": "pending-route-1",
+            "confirm_execute": True,
+            "route_apply_approval_contract_hash": "approval:route",
+            "route_apply_approval_contract": {"status": "requires_confirmation"},
+            "agent_plan_approval_contract_hash": "approval:agent",
+            "agent_plan_approval_contract": {"status": "requires_confirmation"},
+        },
+    }
+    db_session.add(
+        WritingAgentStep(
+            run_id=source_run.id,
+            project_id=pid,
+            step_index=1,
+            tool_name="prepare_apply_pending_action_route_approval_opt_in",
+            status="success",
+            input={"params": {"pending_action_id": "pending-route-1"}},
+            output={
+                "status": "approval_required",
+                "pending_action_id": "pending-route-1",
+                "recommended_next_tools": ["execute_apply_pending_action_route_approval_opt_in_with_approval"],
+                "recommended_next_tool_calls": [execute_call],
+                "agent_tool_result": {
+                    "recommendations": {
+                        "source_fields": ["recommended_next_tools", "recommended_next_tool_calls"],
+                        "canonical_followups": ["execute_apply_pending_action_route_approval_opt_in_with_approval"],
+                        "runtime_followups": ["execute_apply_pending_action_route_approval_opt_in_with_approval"],
+                        "recommended_next_tool_calls": [execute_call],
+                        "provenance_recovery_tools": [],
+                        "provenance_write_tools": [],
+                    }
+                },
+            },
+        )
+    )
+    db_session.commit()
+
+    r2 = client.post("/api/v1/dialog/chat", json={
+        "project_id": pid,
+        "input_type": "text",
+        "text": "继续吧",
+    })
+
+    assert r2.status_code == 200
+    body = r2.json()
+    assert body["pending_action"] is None
+    assert body["action_result"]["type"] == "plan_recommended_followups"
+    action_data = body["action_result"]["data"]
+    assert action_data["tools"] == []
+    assert action_data["pending_confirmation_tool_calls"] == [execute_call]
+    assert action_data["execution_policy"]["pending_confirmation_tool_calls"] == 1
+    assert {"label": "待确认后继", "value": "1 个工具"} in body["action_result_view"]["detail_items"]
+
+    dialog = db_session.query(Dialog).filter_by(project_id=pid, dialog_type="hermes").one()
+    assistant_message = (
+        db_session.query(DialogMessage)
+        .filter(DialogMessage.dialog_id == dialog.id, DialogMessage.role == "assistant")
+        .order_by(DialogMessage.created_at.desc(), DialogMessage.id.desc())
+        .first()
+    )
+    assert assistant_message.action_result["data"]["pending_confirmation_tool_calls"] == [execute_call]
+
+
 def test_chat_text_low_detail_continue_exposes_post_approval_followup_worker_audit(client, db_session):
     r = client.post("/api/v1/projects", json={"name": "Test"})
     pid = r.json()["id"]

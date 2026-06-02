@@ -414,6 +414,7 @@ async def _handle_dialog_recommended_followup_preview(
             "source_run_id": output.get("source_run_id") or source_run_id,
             "recommended_followups": output.get("recommended_followups"),
             "tools": output.get("tools"),
+            "pending_confirmation_tool_calls": output.get("pending_confirmation_tool_calls"),
             "worker_dispatch": output.get("worker_dispatch"),
             "execution_policy": output.get("execution_policy"),
             **({"route_decision": route_decision} if route_decision else {}),
