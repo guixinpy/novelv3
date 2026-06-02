@@ -83,6 +83,7 @@ Agent 化缺口：
   - Memory Route 已有只读诊断和自然语言只读入口，可直接检查长篇记忆、检索索引、维护状态与上下文摘要路由
   - Memory Activation Plan 已有只读诊断和自然语言只读入口，可直接检查指定章节的写前记忆激活计划
   - World Model Route 已有只读诊断和自然语言只读入口，可直接检查指定章节/subject_ref 的世界模型 profile、事实和待审提案压力
+  - Retrieval Context 与 Longform Context Summary 已有只读工具和自然语言只读入口，可直接检索上下文证据并汇总指定章节长篇上下文
   - Dialog Control Plane Projection 已有只读审计和自然语言只读入口，可直接检查 generate_chapter 等 pending action 的当前运行工具与推荐审批工具链
   - Mutation Fingerprints 已有只读审计和自然语言只读入口，可直接检查 generate_chapter 等写入工具的稳定变更指纹
   - 写入门禁覆盖已有只读审计和自然语言只读入口，可直接检查写入工具的 Agent 计划审批 gate coverage
@@ -111,7 +112,7 @@ Agent 化缺口：
   ├── session.py                          # 对话 session 管理
   └── messages.py                         # 消息管理
 Agent 化缺口：
-  - 意图路由覆盖不完整（部分写作意图尚未接入；Agent Health、Control Plane 就绪度、Dialog Control Plane Projection、Mutation Fingerprints、Tool Contracts、Command Contracts、Slash Command Route、Dialog Route Projection、Intent Projection、Reference Alignment、Dogfood Evidence、Route Preference、Memory Tree 只读浏览、Memory Route、Memory Activation Plan、World Model Route、ContextCompressor 自检、Worker Dispatch/孤儿恢复审计、Trace Audit 与 Write Gate Coverage 已可由自然语言投影到对应只读工具）
+  - 意图路由覆盖不完整（部分写作意图尚未接入；Agent Health、Control Plane 就绪度、Dialog Control Plane Projection、Mutation Fingerprints、Tool Contracts、Command Contracts、Slash Command Route、Dialog Route Projection、Intent Projection、Reference Alignment、Dogfood Evidence、Route Preference、Memory Tree 只读浏览、Memory Route、Memory Activation Plan、World Model Route、Retrieval Context、Longform Context Summary、ContextCompressor 自检、Worker Dispatch/孤儿恢复审计、Trace Audit 与 Write Gate Coverage 已可由自然语言投影到对应只读工具）
   - 缺少 LLM 驱动的"模糊意图"解析
   - pending_action 机制未与 Agent tool approval 统一
 关联模块：WritingAgent、Athena、前端 Chat
@@ -148,7 +149,7 @@ Agent 化缺口：
 ### 2.1 Retrieval System（检索系统）
 
 ```
-当前状态：L2 本地 hash embedding + 可切换远程 embedding，支持 lexical + vector score
+当前状态：L2 本地 hash embedding + 可切换远程 embedding，支持 lexical + vector score；Retrieval Context 可由自然语言只读意图触达
 目标状态：L3 混合检索（语义+全文+Memory Tree）+ 主动预取
 关键文件：
   backend/app/core/athena_retrieval.py    # Athena 检索
@@ -156,6 +157,7 @@ Agent 化缺口：
   backend/app/models/ 中的 retrieval_*.py # 检索相关模型
 Agent 化缺口：
   - 默认 embedding 质量有限
+  - 检索上下文已有只读工具和自然语言入口，可按 query、limit、source_type、max_chapter_index 检索证据
   - 缺少主动预取（在章节生成前预测需要的上下文）
   - 检索策略不够智能（固定规则 vs LLM 选择检索策略）
 关联模块：Athena、Memory Tree、Writing
@@ -164,7 +166,7 @@ Agent 化缺口：
 ### 2.2 Memory Tree（分层记忆树）
 
 ```
-当前状态：L2 框架 + 卷/章摘要持久化基础版 + 基础浏览，摘要写入 LongformMemory 后再投影回 Memory Tree；query 支持精确匹配失败后的确定性语义评分、层级后代匹配回流与 drilldown 推荐，并可进入写前 memory_activation
+当前状态：L2 框架 + 卷/章摘要持久化基础版 + 基础浏览，摘要写入 LongformMemory 后再投影回 Memory Tree；query 支持精确匹配失败后的确定性语义评分、层级后代匹配回流与 drilldown 推荐，并可进入写前 memory_activation；Longform Context Summary 可由自然语言只读意图触达
 目标状态：L3 卷→章→节→段落分层，支持语义浏览和按需展开
 关键文件：
   backend/app/services/writing_agent/

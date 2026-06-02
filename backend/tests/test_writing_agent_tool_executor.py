@@ -1984,6 +1984,95 @@ async def test_tool_executor_handles_dialog_intent_agent_plan_for_world_model_ro
 
 
 @pytest.mark.asyncio
+async def test_tool_executor_handles_dialog_intent_agent_plan_for_retrieval_context_read(db_session):
+    project = Project(name="Dialog Intent Retrieval Context Plan")
+    db_session.add(project)
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-dialog-intent-retrieval-context"),
+        WritingAgentToolRequest(
+            tool_name="plan_dialog_intent_agent_run",
+            params={"text": "检索第3章前的上下文证据 query=灯塔旧回声 limit 5"},
+        ),
+    )
+
+    expected_params = {"query": "灯塔旧回声", "limit": 5, "max_chapter_index": 3}
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "completed"
+    assert result.output["intent_projection"]["rule_id"] == "retrieval_context_intent"
+    assert result.output["planner"]["intent_class"] == "search_retrieval_context"
+    assert result.output["planner"]["mapped_from_action_type"] == "search_retrieval_context"
+    assert result.output["planner"]["chapter_index"] is None
+    assert result.output["plan"] == {
+        "status": "completed",
+        "intent_class": "search_retrieval_context",
+        "steps": [
+            {
+                "step_index": 1,
+                "tool_name": "search_agent_retrieval_context",
+                "params": expected_params,
+                "mutability": "read",
+                "requires_confirmation": False,
+            }
+        ],
+        "tools": [{"tool_name": "search_agent_retrieval_context", "params": expected_params}],
+        "approval_contract": {"status": "not_required", "write_steps": []},
+    }
+    assert result.output["tools"] == [{"tool_name": "search_agent_retrieval_context", "params": expected_params}]
+    assert result.output["approval_contract"] == {"status": "not_required", "write_steps": []}
+    assert result.output["trace"]["reason"] == "planned_direct_read_tool_from_intent_projection"
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_handles_dialog_intent_agent_plan_for_longform_context_summary_read(db_session):
+    project = Project(name="Dialog Intent Longform Context Summary Plan")
+    db_session.add(project)
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-dialog-intent-longform-context"),
+        WritingAgentToolRequest(
+            tool_name="plan_dialog_intent_agent_run",
+            params={"text": "汇总第3章长篇上下文 query=灯塔旧回声 max_chars 2000 include_prompt_context"},
+        ),
+    )
+
+    expected_params = {
+        "chapter_index": 3,
+        "query": "灯塔旧回声",
+        "max_chars": 2000,
+        "include_prompt_context": True,
+    }
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "completed"
+    assert result.output["intent_projection"]["rule_id"] == "longform_context_summary_intent"
+    assert result.output["planner"]["intent_class"] == "summarize_longform_context"
+    assert result.output["planner"]["mapped_from_action_type"] == "summarize_longform_context"
+    assert result.output["planner"]["chapter_index"] == 3
+    assert result.output["plan"] == {
+        "status": "completed",
+        "intent_class": "summarize_longform_context",
+        "steps": [
+            {
+                "step_index": 1,
+                "tool_name": "summarize_longform_context",
+                "params": expected_params,
+                "mutability": "read",
+                "requires_confirmation": False,
+            }
+        ],
+        "tools": [{"tool_name": "summarize_longform_context", "params": expected_params}],
+        "approval_contract": {"status": "not_required", "write_steps": []},
+    }
+    assert result.output["tools"] == [{"tool_name": "summarize_longform_context", "params": expected_params}]
+    assert result.output["approval_contract"] == {"status": "not_required", "write_steps": []}
+    assert result.output["trace"]["reason"] == "planned_direct_read_tool_from_intent_projection"
+
+
+@pytest.mark.asyncio
 async def test_tool_executor_handles_dialog_intent_agent_plan_for_context_compression_read(db_session):
     project = Project(name="Dialog Intent Context Compression Plan")
     db_session.add(project)

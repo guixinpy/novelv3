@@ -18,6 +18,8 @@ _INTENT_RULE_IDS = (
     "memory_route_intent",
     "memory_activation_plan_intent",
     "world_model_route_intent",
+    "retrieval_context_intent",
+    "longform_context_summary_intent",
     "context_compression_intent",
     "worker_dispatch_intent",
     "trace_audit_intent",
@@ -334,6 +336,34 @@ class IntentRouter:
                 extracted_params=extracted_params,
                 match_evidence=[{"kind": "pattern", "name": "world_model_route_phrase"}],
                 preconditions=[{"code": "world_model_route_read_available", "passed": True}],
+            )
+
+        if _is_retrieval_context_intent(text):
+            extracted_params = _retrieval_context_params(text)
+            return self._matched_projection(
+                text,
+                dialog_state,
+                pending_action_id,
+                diagnosis,
+                rule_id="retrieval_context_intent",
+                candidate=ActionCandidate("search_retrieval_context", extracted_params),
+                extracted_params=extracted_params,
+                match_evidence=[{"kind": "pattern", "name": "retrieval_context_phrase"}],
+                preconditions=[{"code": "retrieval_context_read_available", "passed": True}],
+            )
+
+        if _is_longform_context_summary_intent(text):
+            extracted_params = _longform_context_summary_params(text)
+            return self._matched_projection(
+                text,
+                dialog_state,
+                pending_action_id,
+                diagnosis,
+                rule_id="longform_context_summary_intent",
+                candidate=ActionCandidate("summarize_longform_context", extracted_params),
+                extracted_params=extracted_params,
+                match_evidence=[{"kind": "pattern", "name": "longform_context_summary_phrase"}],
+                preconditions=[{"code": "longform_context_summary_read_available", "passed": True}],
             )
 
         if _is_context_compression_intent(text):
@@ -854,6 +884,96 @@ def _world_model_route_limit(text: str) -> int | None:
     except (TypeError, ValueError):
         return None
     return value if value > 0 else None
+
+
+def _is_retrieval_context_intent(text: str) -> bool:
+    retrieval_phrase = r"(检索上下文|上下文证据|检索证据|retrieval\s*context|search\s*retrieval)"
+    return bool(
+        re.search(rf"{retrieval_phrase}.*(检索|搜索|取证|证据|query|limit)", text)
+        or re.search(rf"(检索|搜索|取证|证据|query|limit).*{retrieval_phrase}", text)
+    )
+
+
+def _retrieval_context_params(text: str) -> dict[str, Any]:
+    params: dict[str, Any] = {}
+    query = _parameter_query(text) or _labeled_query(
+        text,
+        r"(?:检索上下文|上下文证据|检索证据|retrieval\s*context|search\s*retrieval)",
+    )
+    if query:
+        params["query"] = query
+    limit = _numeric_option(text, r"limit|限制|最多")
+    if limit is not None:
+        params["limit"] = limit
+    source_type = _source_type_param(text)
+    if source_type:
+        params["source_type"] = source_type
+    max_chapter_index = _numeric_option(text, r"max_chapter_index|max\s*chapter(?:\s*index)?")
+    if max_chapter_index is None and re.search(r"(前|之前|以前|以内|上限|max)", text):
+        max_chapter_index = parse_chapter_index(text)
+    if max_chapter_index is not None:
+        params["max_chapter_index"] = max_chapter_index
+    candidate_limit = _numeric_option(text, r"candidate_limit|候选")
+    if candidate_limit is not None:
+        params["candidate_limit"] = candidate_limit
+    return params
+
+
+def _is_longform_context_summary_intent(text: str) -> bool:
+    summary_phrase = r"(长篇上下文(?:摘要)?|上下文摘要|longform\s*context(?:\s*summary)?|context\s*summary)"
+    return bool(
+        re.search(rf"{summary_phrase}.*(汇总|摘要|总结|读取|生成|query|max_chars|prompt)", text)
+        or re.search(rf"(汇总|摘要|总结|读取|生成|query|max_chars|prompt).*{summary_phrase}", text)
+    )
+
+
+def _longform_context_summary_params(text: str) -> dict[str, Any]:
+    params: dict[str, Any] = {}
+    chapter_index = parse_chapter_index(text)
+    if chapter_index is not None:
+        params["chapter_index"] = chapter_index
+    query = _parameter_query(text) or _labeled_query(
+        text,
+        r"(?:长篇上下文(?:摘要)?|上下文摘要|longform\s*context(?:\s*summary)?|context\s*summary)",
+    )
+    if query:
+        params["query"] = query
+    max_chars = _numeric_option(text, r"max_chars|max\s*chars|最大字符|最多字符")
+    if max_chars is not None:
+        params["max_chars"] = max_chars
+    if re.search(r"(include_prompt_context|prompt\s*context|prompt\s*上下文|包含\s*prompt)", text):
+        params["include_prompt_context"] = True
+    return params
+
+
+def _parameter_query(text: str) -> str | None:
+    match = re.search(
+        r"(?:query|查询|检索词|关键词)\s*[:=：]\s*(.+?)(?=\s+(?:limit|限制|最多|max_chars|max\s*chars|"
+        r"max_chapter_index|max\s*chapter|candidate_limit|source_type|include_prompt_context|prompt\s*context)\b|$)",
+        text,
+    )
+    if not match:
+        return None
+    value = match.group(1).strip().rstrip("，,；;。")
+    return value or None
+
+
+def _numeric_option(text: str, option_pattern: str) -> int | None:
+    match = re.search(rf"(?:{option_pattern})\s*[:=：]?\s*(\d{{1,6}})", text)
+    if not match:
+        return None
+    try:
+        value = int(match.group(1))
+    except (TypeError, ValueError):
+        return None
+    return value if value > 0 else None
+
+
+def _source_type_param(text: str) -> str | None:
+    match = re.search(r"(?:source_type|source type|来源类型)\s*[:=：]?\s*([a-z][a-z0-9_-]{2,40})", text)
+    if match:
+        return match.group(1)
+    return None
 
 
 def _labeled_query(text: str, label_pattern: str) -> str | None:

@@ -341,6 +341,84 @@ def test_intent_router_projection_explains_world_model_route():
     assert projection["extracted_params"] == expected_params
 
 
+def test_intent_router_projection_explains_retrieval_context_route():
+    router = IntentRouter()
+    diag = ProjectDiagnosisOut(
+        missing_items=[],
+        completed_items=["setup", "storyline", "outline", "content"],
+        suggested_next_step="preview_chapter",
+    )
+
+    projection = router.project("检索第3章前的上下文证据 query=灯塔旧回声 limit 5", "chatting", None, diag).to_dict()
+
+    expected_params = {"query": "灯塔旧回声", "limit": 5, "max_chapter_index": 3}
+    assert projection["status"] == "matched"
+    assert projection["rule_id"] == "retrieval_context_intent"
+    assert projection["decision"]["rule_id"] == "retrieval_context_intent"
+    assert projection["decision"]["match_evidence"] == [{"kind": "pattern", "name": "retrieval_context_phrase"}]
+    assert projection["candidate"] == {
+        "type": "search_retrieval_context",
+        "params": expected_params,
+    }
+    assert projection["agent_route"] == _expected_agent_route(
+        "text_intent",
+        "search_retrieval_context",
+        "search_agent_retrieval_context",
+        requires_confirmation=False,
+    )
+    assert projection["tool_selection"] == {
+        "selected_tool": "search_agent_retrieval_context",
+        "why_this_tool": "dialog_action_to_agent_tool.search_retrieval_context",
+        "availability_checked": False,
+    }
+    assert projection["extracted_params"] == expected_params
+
+
+def test_intent_router_projection_explains_longform_context_summary_route():
+    router = IntentRouter()
+    diag = ProjectDiagnosisOut(
+        missing_items=[],
+        completed_items=["setup", "storyline", "outline", "content"],
+        suggested_next_step="preview_chapter",
+    )
+
+    projection = router.project(
+        "汇总第3章长篇上下文 query=灯塔旧回声 max_chars 2000 include_prompt_context",
+        "chatting",
+        None,
+        diag,
+    ).to_dict()
+
+    expected_params = {
+        "chapter_index": 3,
+        "query": "灯塔旧回声",
+        "max_chars": 2000,
+        "include_prompt_context": True,
+    }
+    assert projection["status"] == "matched"
+    assert projection["rule_id"] == "longform_context_summary_intent"
+    assert projection["decision"]["rule_id"] == "longform_context_summary_intent"
+    assert projection["decision"]["match_evidence"] == [
+        {"kind": "pattern", "name": "longform_context_summary_phrase"}
+    ]
+    assert projection["candidate"] == {
+        "type": "summarize_longform_context",
+        "params": expected_params,
+    }
+    assert projection["agent_route"] == _expected_agent_route(
+        "text_intent",
+        "summarize_longform_context",
+        "summarize_longform_context",
+        requires_confirmation=False,
+    )
+    assert projection["tool_selection"] == {
+        "selected_tool": "summarize_longform_context",
+        "why_this_tool": "dialog_action_to_agent_tool.summarize_longform_context",
+        "availability_checked": False,
+    }
+    assert projection["extracted_params"] == expected_params
+
+
 def test_intent_router_projection_explains_context_compression_route():
     router = IntentRouter()
     diag = ProjectDiagnosisOut(
