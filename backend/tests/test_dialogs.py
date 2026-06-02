@@ -409,6 +409,76 @@ def test_intent_router_projection_explains_world_model_route():
     assert projection["extracted_params"] == expected_params
 
 
+def test_intent_router_projection_explains_world_model_proposal_review_route():
+    router = IntentRouter()
+    diag = ProjectDiagnosisOut(
+        missing_items=[],
+        completed_items=["setup", "storyline", "outline", "content"],
+        suggested_next_step="preview_chapter",
+    )
+
+    projection = router.project("检查世界模型提案队列 limit 20", "chatting", None, diag).to_dict()
+
+    expected_params = {"limit": 20}
+    assert projection["status"] == "matched"
+    assert projection["rule_id"] == "world_model_proposal_review_intent"
+    assert projection["decision"]["rule_id"] == "world_model_proposal_review_intent"
+    assert projection["decision"]["match_evidence"] == [
+        {"kind": "pattern", "name": "world_model_proposal_review_phrase"}
+    ]
+    assert projection["candidate"] == {
+        "type": "review_world_model_proposals",
+        "params": expected_params,
+    }
+    assert projection["agent_route"] == _expected_agent_route(
+        "text_intent",
+        "review_world_model_proposals",
+        "review_world_model_proposals",
+        requires_confirmation=False,
+    )
+    assert projection["tool_selection"] == {
+        "selected_tool": "review_world_model_proposals",
+        "why_this_tool": "dialog_action_to_agent_tool.review_world_model_proposals",
+        "availability_checked": False,
+    }
+    assert projection["extracted_params"] == expected_params
+
+
+def test_intent_router_projection_explains_world_model_proposal_resolution_plan_route():
+    router = IntentRouter()
+    diag = ProjectDiagnosisOut(
+        missing_items=[],
+        completed_items=["setup", "storyline", "outline", "content"],
+        suggested_next_step="preview_chapter",
+    )
+
+    projection = router.project("规划世界模型提案解决方案 offset 2 limit 7", "chatting", None, diag).to_dict()
+
+    expected_params = {"offset": 2, "limit": 7}
+    assert projection["status"] == "matched"
+    assert projection["rule_id"] == "world_model_proposal_resolution_plan_intent"
+    assert projection["decision"]["rule_id"] == "world_model_proposal_resolution_plan_intent"
+    assert projection["decision"]["match_evidence"] == [
+        {"kind": "pattern", "name": "world_model_proposal_resolution_plan_phrase"}
+    ]
+    assert projection["candidate"] == {
+        "type": "plan_world_model_proposal_resolution",
+        "params": expected_params,
+    }
+    assert projection["agent_route"] == _expected_agent_route(
+        "text_intent",
+        "plan_world_model_proposal_resolution",
+        "plan_world_model_proposal_resolution",
+        requires_confirmation=False,
+    )
+    assert projection["tool_selection"] == {
+        "selected_tool": "plan_world_model_proposal_resolution",
+        "why_this_tool": "dialog_action_to_agent_tool.plan_world_model_proposal_resolution",
+        "availability_checked": False,
+    }
+    assert projection["extracted_params"] == expected_params
+
+
 def test_intent_router_projection_explains_retrieval_context_route():
     router = IntentRouter()
     diag = ProjectDiagnosisOut(

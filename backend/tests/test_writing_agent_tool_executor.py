@@ -2072,6 +2072,98 @@ async def test_tool_executor_handles_dialog_intent_agent_plan_for_world_model_ro
 
 
 @pytest.mark.asyncio
+async def test_tool_executor_handles_dialog_intent_agent_plan_for_world_model_proposal_review_read(db_session):
+    project = Project(name="Dialog Intent World Model Proposal Review Plan")
+    db_session.add(project)
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(
+            db=db_session,
+            project_id=project.id,
+            run_id="run-dialog-intent-world-model-proposal-review",
+        ),
+        WritingAgentToolRequest(
+            tool_name="plan_dialog_intent_agent_run",
+            params={"text": "检查世界模型提案队列 limit 20"},
+        ),
+    )
+
+    expected_params = {"limit": 20}
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "completed"
+    assert result.output["intent_projection"]["rule_id"] == "world_model_proposal_review_intent"
+    assert result.output["planner"]["intent_class"] == "review_world_model_proposals"
+    assert result.output["planner"]["mapped_from_action_type"] == "review_world_model_proposals"
+    assert result.output["planner"]["chapter_index"] is None
+    assert result.output["plan"] == {
+        "status": "completed",
+        "intent_class": "review_world_model_proposals",
+        "steps": [
+            {
+                "step_index": 1,
+                "tool_name": "review_world_model_proposals",
+                "params": expected_params,
+                "mutability": "read",
+                "requires_confirmation": False,
+            }
+        ],
+        "tools": [{"tool_name": "review_world_model_proposals", "params": expected_params}],
+        "approval_contract": {"status": "not_required", "write_steps": []},
+    }
+    assert result.output["tools"] == [{"tool_name": "review_world_model_proposals", "params": expected_params}]
+    assert result.output["approval_contract"] == {"status": "not_required", "write_steps": []}
+    assert result.output["trace"]["reason"] == "planned_direct_read_tool_from_intent_projection"
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_handles_dialog_intent_agent_plan_for_world_model_proposal_resolution_read(db_session):
+    project = Project(name="Dialog Intent World Model Proposal Resolution Plan")
+    db_session.add(project)
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(
+            db=db_session,
+            project_id=project.id,
+            run_id="run-dialog-intent-world-model-proposal-resolution",
+        ),
+        WritingAgentToolRequest(
+            tool_name="plan_dialog_intent_agent_run",
+            params={"text": "规划世界模型提案解决方案 offset 2 limit 7"},
+        ),
+    )
+
+    expected_params = {"offset": 2, "limit": 7}
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "completed"
+    assert result.output["intent_projection"]["rule_id"] == "world_model_proposal_resolution_plan_intent"
+    assert result.output["planner"]["intent_class"] == "plan_world_model_proposal_resolution"
+    assert result.output["planner"]["mapped_from_action_type"] == "plan_world_model_proposal_resolution"
+    assert result.output["planner"]["chapter_index"] is None
+    assert result.output["plan"] == {
+        "status": "completed",
+        "intent_class": "plan_world_model_proposal_resolution",
+        "steps": [
+            {
+                "step_index": 1,
+                "tool_name": "plan_world_model_proposal_resolution",
+                "params": expected_params,
+                "mutability": "read",
+                "requires_confirmation": False,
+            }
+        ],
+        "tools": [{"tool_name": "plan_world_model_proposal_resolution", "params": expected_params}],
+        "approval_contract": {"status": "not_required", "write_steps": []},
+    }
+    assert result.output["tools"] == [{"tool_name": "plan_world_model_proposal_resolution", "params": expected_params}]
+    assert result.output["approval_contract"] == {"status": "not_required", "write_steps": []}
+    assert result.output["trace"]["reason"] == "planned_direct_read_tool_from_intent_projection"
+
+
+@pytest.mark.asyncio
 async def test_tool_executor_handles_dialog_intent_agent_plan_for_retrieval_context_read(db_session):
     project = Project(name="Dialog Intent Retrieval Context Plan")
     db_session.add(project)

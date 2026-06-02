@@ -83,6 +83,7 @@ Agent 化缺口：
   - Memory Route 已有只读诊断和自然语言只读入口，可直接检查长篇记忆、检索索引、维护状态与上下文摘要路由
   - Memory Activation Plan 已有只读诊断和自然语言只读入口，可直接检查指定章节的写前记忆激活计划
   - World Model Route 已有只读诊断和自然语言只读入口，可直接检查指定章节/subject_ref 的世界模型 profile、事实和待审提案压力
+  - World Model Proposal Review/Resolution Plan 已有只读入口，可直接检查待审世界模型提案队列并生成提案处理计划
   - Retrieval Context 与 Longform Context Summary 已有只读工具和自然语言只读入口，可直接检索上下文证据并汇总指定章节长篇上下文
   - Dialog Control Plane Projection 已有只读审计和自然语言只读入口，可直接检查 generate_chapter 等 pending action 的当前运行工具与推荐审批工具链
   - Mutation Fingerprints 已有只读审计和自然语言只读入口，可直接检查 generate_chapter 等写入工具的稳定变更指纹
@@ -112,7 +113,7 @@ Agent 化缺口：
   ├── session.py                          # 对话 session 管理
   └── messages.py                         # 消息管理
 Agent 化缺口：
-  - 意图路由覆盖不完整（部分写作意图尚未接入；Agent Health、Control Plane 就绪度、Dialog Control Plane Projection、Mutation Fingerprints、Tool Contracts、Command Contracts、Slash Command Route、Dialog Route Projection、Intent Projection、Reference Alignment、Dogfood Evidence、Route Preference、Memory Tree 只读浏览、Memory Route、Memory Activation Plan、World Model Route、Retrieval Context、Longform Context Summary、ContextCompressor 自检、Worker Dispatch/孤儿恢复审计、Agent Job Projection、Chapter Conflict Recovery、Trace Audit 与 Write Gate Coverage 已可由自然语言投影到对应只读工具）
+  - 意图路由覆盖不完整（部分写作意图尚未接入；Agent Health、Control Plane 就绪度、Dialog Control Plane Projection、Mutation Fingerprints、Tool Contracts、Command Contracts、Slash Command Route、Dialog Route Projection、Intent Projection、Reference Alignment、Dogfood Evidence、Route Preference、Memory Tree 只读浏览、Memory Route、Memory Activation Plan、World Model Route、World Model Proposal Review/Resolution Plan、Retrieval Context、Longform Context Summary、ContextCompressor 自检、Worker Dispatch/孤儿恢复审计、Agent Job Projection、Chapter Conflict Recovery、Trace Audit 与 Write Gate Coverage 已可由自然语言投影到对应只读工具）
   - 缺少 LLM 驱动的"模糊意图"解析
   - pending_action 机制未与 Agent tool approval 统一
 关联模块：WritingAgent、Athena、前端 Chat
@@ -121,7 +122,7 @@ Agent 化缺口：
 ### 1.3 Athena（世界模型）
 
 ```
-当前状态：L2 结构化世界实体 + 事件账本 + 提案审批 + layered checker（L0-L4 已实现，L5-L6 预留）；World Model Route 可由自然语言只读意图触达
+当前状态：L2 结构化世界实体 + 事件账本 + 提案审批 + layered checker（L0-L4 已实现，L5-L6 预留）；World Model Route 与提案队列/解决规划可由自然语言只读意图触达
 目标状态：L3 LLM 驱动的语义一致性检查 + 主动矛盾发现
 关键文件：
   backend/app/core/athena_*.py            # 世界模型核心服务（多个文件）
@@ -136,6 +137,7 @@ Agent 化缺口：
 Agent 化缺口：
   - L5 语义检查和 L6 治理检查仍是预留层
   - 世界模型路由已有只读诊断和自然语言入口，可检查 profile、确认事实、待审提案压力和下一步建议
+  - 世界模型提案队列审阅和提案解决规划已有自然语言只读入口，可在应用决议前先查看待处理提案并生成 offset/limit 范围内的处理计划
   - 章节事实抽取质量需要持续改进
   - 缺少 LLM 驱动的"跨章节叙事一致性"检查
   - 世界模型分析需要更多真实长篇压测

@@ -20,6 +20,8 @@ _INTENT_RULE_IDS = (
     "knowledge_base_route_intent",
     "post_chapter_memory_capture_intent",
     "world_model_route_intent",
+    "world_model_proposal_review_intent",
+    "world_model_proposal_resolution_plan_intent",
     "retrieval_context_intent",
     "longform_context_summary_intent",
     "context_compression_intent",
@@ -369,6 +371,34 @@ class IntentRouter:
                 extracted_params=extracted_params,
                 match_evidence=[{"kind": "pattern", "name": "world_model_route_phrase"}],
                 preconditions=[{"code": "world_model_route_read_available", "passed": True}],
+            )
+
+        if _is_world_model_proposal_resolution_plan_intent(text):
+            extracted_params = _world_model_proposal_queue_params(text)
+            return self._matched_projection(
+                text,
+                dialog_state,
+                pending_action_id,
+                diagnosis,
+                rule_id="world_model_proposal_resolution_plan_intent",
+                candidate=ActionCandidate("plan_world_model_proposal_resolution", extracted_params),
+                extracted_params=extracted_params,
+                match_evidence=[{"kind": "pattern", "name": "world_model_proposal_resolution_plan_phrase"}],
+                preconditions=[{"code": "world_model_proposal_resolution_plan_read_available", "passed": True}],
+            )
+
+        if _is_world_model_proposal_review_intent(text):
+            extracted_params = _world_model_proposal_queue_params(text)
+            return self._matched_projection(
+                text,
+                dialog_state,
+                pending_action_id,
+                diagnosis,
+                rule_id="world_model_proposal_review_intent",
+                candidate=ActionCandidate("review_world_model_proposals", extracted_params),
+                extracted_params=extracted_params,
+                match_evidence=[{"kind": "pattern", "name": "world_model_proposal_review_phrase"}],
+                preconditions=[{"code": "world_model_proposal_review_read_available", "passed": True}],
             )
 
         if _is_retrieval_context_intent(text):
@@ -1000,6 +1030,42 @@ def _world_model_route_limit(text: str) -> int | None:
     except (TypeError, ValueError):
         return None
     return value if value > 0 else None
+
+
+def _is_world_model_proposal_review_intent(text: str) -> bool:
+    proposal_phrase = r"(世界模型提案|athena\s*提案|world\s*model\s*proposals?|world_model_proposals?)"
+    return bool(
+        re.search(
+            rf"{proposal_phrase}.*(检查|查看|浏览|审查|队列|待处理|冲突|摘要|review|queue|limit|offset)",
+            text,
+        )
+        or re.search(
+            rf"(检查|查看|浏览|审查|队列|待处理|冲突|摘要|review|queue|limit|offset).*{proposal_phrase}",
+            text,
+        )
+    )
+
+
+def _is_world_model_proposal_resolution_plan_intent(text: str) -> bool:
+    proposal_phrase = r"(世界模型提案|athena\s*提案|world\s*model\s*proposals?|world_model_proposals?)"
+    plan_phrase = r"(规划|计划|方案|plan)"
+    resolution_phrase = r"(解决|处理|决议|resolution|resolve)"
+    return bool(
+        re.search(rf"{proposal_phrase}.*{resolution_phrase}.*{plan_phrase}", text)
+        or re.search(rf"{plan_phrase}.*{proposal_phrase}.*{resolution_phrase}", text)
+        or re.search(rf"{resolution_phrase}.*{proposal_phrase}.*{plan_phrase}", text)
+    )
+
+
+def _world_model_proposal_queue_params(text: str) -> dict[str, Any]:
+    params: dict[str, Any] = {}
+    offset = _numeric_option(text, r"offset|偏移")
+    if offset is not None:
+        params["offset"] = offset
+    limit = _numeric_option(text, r"limit|限制|最多")
+    if limit is not None:
+        params["limit"] = limit
+    return params
 
 
 def _is_retrieval_context_intent(text: str) -> bool:

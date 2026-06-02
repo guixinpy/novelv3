@@ -140,6 +140,8 @@
 - [x] Knowledge Base Route 只读诊断意图：自然语言“检查第4章知识库路由 query=写法偏好 limit 9”可投影为 inspect_agent_knowledge_base_route 只读工具计划
 - [x] Post Chapter Memory Capture 只读规划意图：自然语言“规划第4章写后记忆沉淀”可投影为 plan_post_chapter_memory_capture 只读工具计划
 - [x] World Model Route 只读诊断意图：自然语言“检查第2章 char.hero 世界模型路由 limit 7”可投影为 inspect_agent_world_model_route 只读工具计划
+- [x] World Model Proposal Review 只读队列意图：自然语言“检查世界模型提案队列 limit 20”可投影为 review_world_model_proposals 只读工具计划
+- [x] World Model Proposal Resolution Plan 只读规划意图：自然语言“规划世界模型提案解决方案 offset 2 limit 7”可投影为 plan_world_model_proposal_resolution 只读工具计划
 - [x] Retrieval Context 只读检索意图：自然语言“检索第3章前的上下文证据 query=灯塔旧回声 limit 5”可投影为 search_agent_retrieval_context 只读工具计划
 - [x] Longform Context Summary 只读摘要意图：自然语言“汇总第3章长篇上下文 query=灯塔旧回声 max_chars 2000”可投影为 summarize_longform_context 只读工具计划
 - [x] ContextCompressor 只读自检意图：自然语言“检查上下文压缩/预算/窗口压力”可投影为 inspect_agent_context_compression_projection 只读工具计划
@@ -180,6 +182,7 @@
 
 ### 最近完成
 
+- 2026-06-02: `IntentRouter` 新增 `world_model_proposal_review_intent` 与 `world_model_proposal_resolution_plan_intent`，可将“检查世界模型提案队列 limit 20”和“规划世界模型提案解决方案 offset 2 limit 7”等自然语言分别投影为 `review_world_model_proposals` / `plan_world_model_proposal_resolution` action；`plan_dialog_intent_agent_run` 对两者生成无需审批的 read tool 计划，并保留 offset/limit，便于 Agent 在应用世界模型提案决议前先完成队列审阅和处理规划。
 - 2026-06-02: `IntentRouter` 新增 `agent_event_projection_intent`，可将“检查 task-abc123 的 Agent 事件投影 limit 12”等自然语言投影为 `inspect_agent_event_projection` action；`plan_dialog_intent_agent_run` 对该只读 action 生成无需审批的工具计划，并保留 task_id/run_id/limit，补强后台任务与 Agent run/step 的事件流审计入口。
 - 2026-06-02: `IntentRouter` 新增 `post_chapter_memory_capture_intent`，可将“规划第4章写后记忆沉淀”等自然语言投影为 `plan_post_chapter_memory_capture` action；`plan_dialog_intent_agent_run` 对该只读 action 生成无需审批的工具计划，并保留 chapter_index，打通写后知识沉淀规划的对话入口。
 - 2026-06-02: `IntentRouter` 新增 `agent_job_projection_intent` 与 `chapter_conflict_recovery_intent`，可将“检查第3章 generate_chapter failed 任务队列 limit 8”和“规划第3章章节冲突恢复”等自然语言分别投影为 `inspect_agent_job_projection` / `plan_chapter_conflict_recovery` action；`plan_dialog_intent_agent_run` 对两者生成无需审批的 read tool 计划，并保留 chapter_index、task_type、status、limit。
