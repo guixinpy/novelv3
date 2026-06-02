@@ -124,6 +124,64 @@ describe('AgentRunDrawer', () => {
     expect(text).toContain('prepare_generate_chapter_execution')
   })
 
+  it('renders per-tool execution status for planned tools', () => {
+    mount(AgentRunDrawer, {
+      attachTo: document.body,
+      props: {
+        open: true,
+        loading: false,
+        error: '',
+        run: {
+          id: 'run-progress-list',
+          project_id: 'project-1',
+          goal: '执行章节生成工具链',
+          status: 'running',
+          entrypoint: 'ui_planner_continuation_execute',
+          input: {
+            tools: [
+              { tool_name: 'summarize_longform_context' },
+              { tool_name: 'preflight_writing' },
+              { tool_name: 'prepare_generate_chapter_execution' },
+            ],
+          },
+          output: null,
+          error: null,
+          steps: [
+            {
+              id: 'step-summary',
+              run_id: 'run-progress-list',
+              project_id: 'project-1',
+              step_index: 1,
+              tool_name: 'summarize_longform_context',
+              status: 'success',
+              input: {},
+              output: {},
+            },
+            {
+              id: 'step-preflight',
+              run_id: 'run-progress-list',
+              project_id: 'project-1',
+              step_index: 2,
+              tool_name: 'preflight_writing',
+              status: 'running',
+              input: {},
+              output: {},
+            },
+          ],
+        },
+      },
+    })
+
+    const rows = Array.from(document.body.querySelectorAll('[data-testid="execution-plan-tool"]'))
+    expect(rows).toHaveLength(3)
+    expect(rows[0].textContent).toContain('summarize_longform_context')
+    expect(rows[0].textContent).toContain('已完成')
+    expect(rows[1].textContent).toContain('preflight_writing')
+    expect(rows[1].textContent).toContain('进行中')
+    expect(rows[2].textContent).toContain('prepare_generate_chapter_execution')
+    expect(rows[2].textContent).toContain('待执行')
+  })
+
   it('renders agent profile scoped tool discovery summary', () => {
     mount(AgentRunDrawer, {
       attachTo: document.body,

@@ -112,6 +112,18 @@ const executionPlanNextTool = computed(() => {
   const next = executionPlanTools.value[executionPlanExecutedCount.value]
   return stringValue(next?.tool_name)
 })
+const executionPlanToolRows = computed(() => (
+  executionPlanTools.value.map((tool, index) => {
+    const step = steps.value[index]
+    const status = stringValue(step?.status) || 'pending'
+    return {
+      key: `${stringValue(tool.tool_name) || 'tool'}:${index}`,
+      toolName: stringValue(tool.tool_name),
+      status,
+      statusLabel: executionPlanToolStatusLabel(status),
+    }
+  })
+))
 const hasExecutionPlanProgress = computed(() => (
   executionPlanToolCount.value > 0 || steps.value.length > 0
 ))
@@ -673,6 +685,16 @@ function plannerStatusLabel(status: unknown) {
   return value || '未知'
 }
 
+function executionPlanToolStatusLabel(status: unknown) {
+  const value = stringValue(status)
+  if (value === 'success' || value === 'completed') return '已完成'
+  if (value === 'running') return '进行中'
+  if (value === 'failed') return '失败'
+  if (value === 'blocked') return '已阻止'
+  if (value === 'pending') return '待执行'
+  return value || '待执行'
+}
+
 function plannerApprovalStatusLabel(status: unknown) {
   const value = stringValue(status)
   if (value === 'not_required') return '无需审批'
@@ -1045,6 +1067,19 @@ function missingDependencyTool(value: Record<string, unknown>) {
               <dd>{{ executionPlanNextTool }}</dd>
             </div>
           </dl>
+          <ol
+            v-if="executionPlanToolRows.length"
+            class="agent-run-drawer__execution-tools"
+          >
+            <li
+              v-for="row in executionPlanToolRows"
+              :key="row.key"
+              data-testid="execution-plan-tool"
+            >
+              <span>{{ row.toolName }}</span>
+              <strong>{{ row.statusLabel }}</strong>
+            </li>
+          </ol>
         </section>
 
         <section
@@ -1615,6 +1650,7 @@ function missingDependencyTool(value: Record<string, unknown>) {
 .agent-run-drawer__tools,
 .agent-run-drawer__write-tools,
 .agent-run-drawer__worker-dispatches,
+.agent-run-drawer__execution-tools,
 .agent-run-drawer__planner-signals,
 .agent-run-drawer__reference-patterns {
   display: grid;
@@ -1622,6 +1658,31 @@ function missingDependencyTool(value: Record<string, unknown>) {
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+.agent-run-drawer__execution-tools li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-white);
+  color: var(--color-text-primary);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+
+.agent-run-drawer__execution-tools span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.agent-run-drawer__execution-tools strong {
+  flex: 0 0 auto;
+  color: var(--color-text-secondary);
+  font-weight: var(--font-semibold);
 }
 
 .agent-run-drawer__blockers li {
