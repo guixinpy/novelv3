@@ -373,15 +373,15 @@ Agent 化缺口：
 ### 6.1 Chat View（对话视图）
 
 ```
-当前状态：L2 对话界面含 action cards、followup、trace 入口，recommended followup fallback view 可展示待确认后继并阻止 pending-only 自动执行
+当前状态：L2 对话界面含 action cards、followup、trace 入口，AgentRunDrawer 可展示计划工具/执行进度/下一步，recommended followup fallback view 可展示待确认后继并阻止 pending-only 自动执行
 目标状态：L2-L3 更丰富的 Agent 状态可视化（当前执行计划、工具调用进度等）
 关键文件：
   frontend/src/views/                     # 页面视图
   frontend/src/components/                # 包含聊天组件、modelTrace 等
   frontend/src/stores/                    # Pinia 状态管理
 Agent 化缺口：
-  - Agent 执行计划的可视化不够（recommended followup 已能区分自动后继与待确认后继；仍缺运行中步骤进度）
-  - 工具调用进度实时展示
+  - Agent 执行计划的可视化仍需继续增强（已具备计划工具/已执行/已完成/进行中/下一步摘要）
+  - 工具调用进度实时展示（当前是 Drawer 详情内静态摘要，仍缺流式刷新）
   - World Model / Memory 面板的整合
 关联模块：Dialog Control Plane、Trace
 ```

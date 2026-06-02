@@ -92,6 +92,29 @@ const plannerToolRequests = computed(() => {
   const nested = toolRequestList(nestedPlanOutput.value.tools)
   return nested
 })
+const executionPlanTools = computed(() => {
+  const inputTools = toolRequestList(runInput.value.tools)
+  if (inputTools.length) return inputTools
+  return plannerToolRequests.value
+})
+const executionPlanToolCount = computed(() => executionPlanTools.value.length)
+const executionPlanExecutedCount = computed(() => (
+  executionPlanToolCount.value > 0 ? Math.min(steps.value.length, executionPlanToolCount.value) : steps.value.length
+))
+const executionPlanCompletedCount = computed(() => (
+  steps.value.filter((step) => ['success', 'completed'].includes(stringValue(step.status))).length
+))
+const executionPlanRunningCount = computed(() => (
+  steps.value.filter((step) => stringValue(step.status) === 'running').length
+))
+const executionPlanNextTool = computed(() => {
+  if (!executionPlanTools.value.length) return ''
+  const next = executionPlanTools.value[executionPlanExecutedCount.value]
+  return stringValue(next?.tool_name)
+})
+const hasExecutionPlanProgress = computed(() => (
+  executionPlanToolCount.value > 0 || steps.value.length > 0
+))
 const plannerSelectedTools = computed(() => {
   const traced = uniqueStrings(toolNameList(plannerTrace.value.selected_tools))
   if (traced.length) return traced
@@ -995,6 +1018,36 @@ function missingDependencyTool(value: Record<string, unknown>) {
         </section>
 
         <section
+          v-if="hasExecutionPlanProgress"
+          class="agent-run-drawer__execution-plan"
+          aria-label="Agent execution plan progress"
+        >
+          <h4>执行计划</h4>
+          <dl class="agent-run-drawer__facts">
+            <div v-if="executionPlanToolCount > 0">
+              <dt>计划工具</dt>
+              <dd>{{ executionPlanToolCount }} 个</dd>
+            </div>
+            <div v-if="executionPlanToolCount > 0">
+              <dt>已执行</dt>
+              <dd>{{ executionPlanExecutedCount }} / {{ executionPlanToolCount }}</dd>
+            </div>
+            <div v-if="executionPlanCompletedCount > 0">
+              <dt>已完成</dt>
+              <dd>{{ executionPlanCompletedCount }} 个</dd>
+            </div>
+            <div v-if="executionPlanRunningCount > 0">
+              <dt>进行中</dt>
+              <dd>{{ executionPlanRunningCount }} 个</dd>
+            </div>
+            <div v-if="executionPlanNextTool">
+              <dt>下一步</dt>
+              <dd>{{ executionPlanNextTool }}</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section
           v-if="hasPlannerProjection"
           class="agent-run-drawer__planner"
           aria-label="Agent planner projection"
@@ -1453,6 +1506,7 @@ function missingDependencyTool(value: Record<string, unknown>) {
 }
 
 .agent-run-drawer__summary h4,
+.agent-run-drawer__execution-plan h4,
 .agent-run-drawer__planner h4,
 .agent-run-drawer__memory-loop h4,
 .agent-run-drawer__recovery h4,
@@ -1495,6 +1549,15 @@ function missingDependencyTool(value: Record<string, unknown>) {
 }
 
 .agent-run-drawer__planner {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-secondary);
+}
+
+.agent-run-drawer__execution-plan {
   display: grid;
   gap: var(--space-3);
   padding: var(--space-3);
