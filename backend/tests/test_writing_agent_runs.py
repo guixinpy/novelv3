@@ -4817,13 +4817,20 @@ def test_agent_preflight_reports_context_compression_preview_under_window_pressu
     assert compression["status"] == "warning"
     assert compression["summary"]["max_chars"] == 500
     assert compression["compression_plan"]["status"] == "recommended"
-    assert "build_agent_context_compression_payload" in output["recommended_next_tools"]
+    assert output["recommended_next_tools"] == [
+        "build_agent_context_compression_payload",
+        "record_agent_context_compression_summary",
+    ]
     assert any(issue["code"] == "context_compression_window_pressure" for issue in output["issues"])
     assert preview["status"] == "ready"
     assert preview["side_effects"] == {"writes": [], "runtime_context_mutated": False}
     assert preview["compression_payload"]["execution_mode"] == "dry_run"
     assert preview["compression_payload"]["target_max_chars"] == 500
     assert "compressed_context" not in preview["compression_payload"]
+    assert preview["recommended_next_tools"] == [
+        "build_agent_context_compression_payload",
+        "record_agent_context_compression_summary",
+    ]
     assert calls == [
         ("projection", project.id, 3, 500, 0),
         ("payload", project.id, 3, 500, 0),

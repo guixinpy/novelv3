@@ -208,12 +208,13 @@
 - [x] ContextCompressor 章节 prompt block 压缩：章节生成上下文构建在 longform 压力下用 dry-run compressed_context 替换原始 longform block，并在 trace metadata 记录压缩来源
 - [x] ContextCompressor 持久摘要写入工具：record_agent_context_compression_summary 将 ready payload 的 compressed_context 幂等写入 LongformMemory，作为后续恢复、审计和复用工件
 - [x] ContextCompressor 持久摘要自动复用：章节生成在 longform 压力下优先复用同章节同预算的 context_compression_summary，未命中再回退 dry-run payload builder
+- [x] ContextCompressor preflight 持久摘要推荐链：preflight_writing 在窗口压力且 payload ready 时推荐 record_agent_context_compression_summary，并在 preview 中暴露该后续工具
 
 ### 下一步任务
 
 | 优先级 | 任务 | 完成标准 | 状态 |
 |--------|------|---------|------|
-| P1 | 智能上下文压缩（借鉴 hermes-agent） | 预修剪 + LLM 摘要 + 头尾保护 | 🟡 进行中（persistent artifact reuse） |
+| P1 | 智能上下文压缩（借鉴 hermes-agent） | 预修剪 + LLM 摘要 + 头尾保护 | 🟡 进行中（persistent artifact loop） |
 | P2 | 端到端 Trace 链路 | 从用户意图→计划→工具调用→模型调用→结果的一条链 | 🔴 待开始 |
 | P3 | 上下文预算管理 | 可视化 Token 使用量 + 接近上限时的警告 | 🔴 待开始 |
 
@@ -223,6 +224,7 @@
 
 ### 最近完成
 
+- 2026-06-02: `preflight_writing` 在 context window pressure 且 `build_agent_context_compression_payload` 返回 ready `compressed_context` 时，将 `record_agent_context_compression_summary` 追加到顶层 `recommended_next_tools` 和 `context_compression_payload_preview.recommended_next_tools`，并在 warning issue 中带上 followup_tool/followup_params，避免 Agent 停在只读 payload 预览而不产出可复用持久工件。
 - 2026-06-02: 章节生成 longform block 压缩路径新增持久工件复用：压力触发后先通过 `load_agent_context_compression_summary` 查找 `context_compression:chapter:{n}:max_chars:{budget}`，命中则直接用 `LongformMemory.summary` 注入 prompt，并在 trace metadata 标记 `context_compression_summary_record`；未命中仍回退 `build_agent_context_compression_payload`。
 - 2026-06-02: 新增 `record_agent_context_compression_summary`，基于 `build_agent_context_compression_payload` 的 ready payload 将 `compressed_context` 以 `context_compression_summary` 类型写入 `LongformMemory`，scope 为 `context_compression:chapter:{n}:max_chars:{budget}`，同章节同预算幂等更新；同步 memory_worker 工具定义、adapter、worker route 和 registry 契约。
 - 2026-06-02: 章节生成 prompt 构建路径接入 ContextCompressor：`build_chapter_prompt_context_blocks` 支持 `max_context_chars`，在 longform 原始长度达到窗口压力阈值时调用 `build_agent_context_compression_payload`，用 dry-run `compressed_context` 替换 `longform_memory_context`，并在 trace block metadata 记录 applied 状态、target_max_chars、compression_ratio、pretrimmed section keys 和 side_effects；仍未写入持久 LLM 摘要。

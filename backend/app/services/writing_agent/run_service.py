@@ -636,15 +636,23 @@ class WritingAgentRunService:
         checks["context_compression"] = context_compression
         recommended_next_tools.extend(_string_list(context_compression.get("recommended_next_tools")))
         if context_compression.get("status") == "warning":
-            context_compression_payload_preview = _context_compression_payload_preview(
-                build_agent_context_compression_payload(
-                    self.db,
-                    project_id,
-                    chapter_index=chapter_index,
-                    max_chars=max_context_chars,
-                    context_guard_failure_count=context_guard_failure_count,
-                )
+            context_compression_payload = build_agent_context_compression_payload(
+                self.db,
+                project_id,
+                chapter_index=chapter_index,
+                max_chars=max_context_chars,
+                context_guard_failure_count=context_guard_failure_count,
             )
+            summary_record_tools = _context_compression_summary_record_tools(context_compression_payload)
+            recommended_next_tools.extend(summary_record_tools)
+            context_compression_payload_preview = _context_compression_payload_preview(
+                context_compression_payload
+            )
+            if summary_record_tools:
+                context_compression_payload_preview["recommended_next_tools"] = _dedupe_strings(
+                    _string_list(context_compression_payload_preview.get("recommended_next_tools"))
+                    + summary_record_tools
+                )
             issues.append(
                 _issue(
                     "context_compression_window_pressure",
@@ -653,6 +661,12 @@ class WritingAgentRunService:
                     extra={
                         "suggested_tool": "build_agent_context_compression_payload",
                         "suggested_params": {
+                            "chapter_index": chapter_index,
+                            "max_chars": max_context_chars,
+                            "context_guard_failure_count": context_guard_failure_count,
+                        },
+                        "followup_tool": "record_agent_context_compression_summary",
+                        "followup_params": {
                             "chapter_index": chapter_index,
                             "max_chars": max_context_chars,
                             "context_guard_failure_count": context_guard_failure_count,
@@ -1889,6 +1903,18 @@ def _context_compression_payload_preview(payload: dict[str, Any]) -> dict[str, A
     else:
         preview["compression_payload"] = None
     return preview
+
+
+def _context_compression_summary_record_tools(payload: dict[str, Any]) -> list[str]:
+    if payload.get("status") != "ready":
+        return []
+    compression_payload = payload.get("compression_payload")
+    if not isinstance(compression_payload, dict):
+        return []
+    compressed_context = compression_payload.get("compressed_context")
+    if not isinstance(compressed_context, str) or not compressed_context.strip():
+        return []
+    return ["record_agent_context_compression_summary"]
 
 
 def _optional_positive_int(value: object) -> int | None:

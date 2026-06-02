@@ -210,7 +210,7 @@ novelv3 当前 trace + approval 体系已经较完整。权限分级已先在核
 
 | 机制 | 借鉴来源 | 优先级 | 说明 |
 |------|---------|--------|------|
-| ContextCompressor | hermes-agent | 进行中：持久工件复用 | 已有头尾保护预修剪、摘要工具计划、dry-run payload builder、压力场景推荐入口，并在 preflight_writing 中输出压缩检查与 payload preview；章节生成 longform block 已能在压力下替换为 compressed_context，ready payload 可显式写入 LongformMemory，章节 prompt 也能优先复用同章节同预算持久摘要；后续补真正 LLM 摘要质量闭环和更多上下文路径分层压缩 |
+| ContextCompressor | hermes-agent | 进行中：持久工件闭环 | 已有头尾保护预修剪、摘要工具计划、dry-run payload builder、压力场景推荐入口，并在 preflight_writing 中输出压缩检查与 payload preview；ready payload 会继续推荐写入 `record_agent_context_compression_summary`，章节生成 longform block 已能在压力下替换为 compressed_context，ready payload 可显式写入 LongformMemory，章节 prompt 也能优先复用同章节同预算持久摘要；后续补真正 LLM 摘要质量闭环和更多上下文路径分层压缩 |
 | TokenJuice | openhuman | **中** | Token 耗尽前自动压缩 |
 | 断路器 | openhuman | **中** | 上下文即将溢出时的硬保护 |
 | 上下文透明化 | novelv3 已有 | 已实现 | Trace drawer 展示 context blocks |
@@ -236,7 +236,7 @@ novelv3 当前 trace + approval 体系已经较完整。权限分级已先在核
 4. **openhuman 权限分级基础版** → `ToolMutability` / `ToolPermissionLevel`，内部枚举化，公开 surface/contract 保持字符串兼容
 5. **openhuman Worker 定义配置化基础版** → YAML/TOML AgentDefinition loader + source_format 注册表审计
 6. **openclaw 孤兒恢复基础审计** → orphan worker 检测 + mark-blocked/redispatch preview
-7. **hermes-agent ContextCompressor persistent artifact reuse** → context pressure 下输出头尾保护预修剪、summarize 工具计划、只读 dry-run payload、推荐恢复入口，在 `preflight_writing` 暴露压缩检查与 payload preview，在章节生成 longform block 中替换为 `compressed_context`，可通过 `record_agent_context_compression_summary` 写入 LongformMemory 持久工件，并在章节 prompt 中优先复用匹配持久摘要
+7. **hermes-agent ContextCompressor persistent artifact loop** → context pressure 下输出头尾保护预修剪、summarize 工具计划、只读 dry-run payload、推荐恢复入口，在 `preflight_writing` 暴露压缩检查与 payload preview，并在 ready payload 后推荐 `record_agent_context_compression_summary`；章节生成 longform block 可替换为 `compressed_context`，写入 LongformMemory 持久工件后会在章节 prompt 中优先复用匹配持久摘要
 8. **openhuman Memory Tree 分层摘要基础版** → 卷/章摘要写入 LongformMemory，并通过 memory_worker 暴露 materialize 工具
 9. **openhuman Memory Tree 基础浏览/激活** → `inspect_agent_memory_tree` 支持按节点展开、深度裁剪、搜索命中祖先上下文和确定性 relevance drill-down 推荐，并被 `build_memory_activation_plan` 消费
 10. **openclaw 孤兒恢复写入闭环基础版** → `apply_agent_worker_orphan_recovery` 确认式标记 blocked，并创建 pending redispatch run
@@ -248,7 +248,7 @@ novelv3 当前 trace + approval 体系已经较完整。权限分级已先在核
 ### 短期实现（1-2 个开发周期）
 
 11. **openhuman Memory Tree 语义召回/摘要增强** → 从文本匹配和基础浏览推进到向量召回、按需展开和 LLM 摘要质量提升
-12. **hermes-agent ContextCompressor 摘要质量与分层压缩** → 基于持久压缩摘要复用继续推进 LLM 摘要质量闭环 + 更多实际上下文构建路径按重要性分层压缩
+12. **hermes-agent ContextCompressor 摘要质量与分层压缩** → 基于持久压缩摘要推荐/写入/复用闭环继续推进 LLM 摘要质量闭环 + 更多实际上下文构建路径按重要性分层压缩
 13. **openclaw 孤兒恢复后台执行整合** → 将 pending redispatch run 接入后台执行/前端审批入口
 
 ### 中期实现（3-5 个开发周期）
