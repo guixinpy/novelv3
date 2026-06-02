@@ -400,9 +400,52 @@ const postChapterMemoryCaptureStatus = computed(() => stringValue(postChapterMem
 const postChapterMemoryCandidateCount = computed(() => numberValue(postChapterMemorySummary.value.candidate_count))
 const postChapterMemoryReviewStepCount = computed(() => numberValue(postChapterMemorySummary.value.review_step_count))
 const postChapterMemoryRecommendedTools = computed(() => stringList(postChapterMemoryOutput.value?.recommended_next_tools))
+const memoryTreeOutput = computed(() => latestToolOutput('inspect_agent_memory_tree'))
+const memoryTreeSummary = computed(() => recordValue(memoryTreeOutput.value?.summary))
+const memoryTreeSummaryLabel = computed(() => {
+  const counts = [
+    ['卷', numberValue(memoryTreeSummary.value.volume_nodes)],
+    ['章节', numberValue(memoryTreeSummary.value.chapter_nodes)],
+    ['场景', numberValue(memoryTreeSummary.value.scene_nodes)],
+    ['节拍', numberValue(memoryTreeSummary.value.beat_nodes)],
+  ]
+  return counts
+    .filter((item): item is [string, number] => item[1] !== null)
+    .map(([label, count]) => `${label} ${count}`)
+    .join(' / ')
+})
+const memoryTreeFilters = computed(() => recordValue(memoryTreeOutput.value?.filters))
+const memoryTreeNavigation = computed(() => recordValue(memoryTreeOutput.value?.navigation))
+const memoryTreeNodes = computed(() => recordList(memoryTreeOutput.value?.nodes))
+const memoryTreeLevelCount = computed(() => (
+  Array.isArray(memoryTreeOutput.value?.levels) ? memoryTreeOutput.value.levels.length : null
+))
+const memoryTreeNodeCount = computed(() => memoryTreeNodes.value.length)
+const memoryTreeQuery = computed(() => stringValue(memoryTreeFilters.value.query))
+const memoryTreeFilterLevel = computed(() => stringValue(memoryTreeFilters.value.level))
+const memoryTreeRecommendedDrilldownCount = computed(() => (
+  recordList(memoryTreeNavigation.value.recommended_drilldowns).length
+))
+const memoryTreeNodeRows = computed(() => (
+  memoryTreeNodes.value.map((node, index) => {
+    const level = stringValue(node.level)
+    const relevance = recordValue(node.relevance)
+    const score = numberValue(relevance.score)
+    return {
+      key: `${stringValue(node.id) || level || 'node'}:${index}`,
+      levelLabel: memoryTreeLevelLabel(level),
+      title: stringValue(node.title) || '未命名节点',
+      chapterLabel: chapterIndexLabel(node.chapter_index),
+      summary: stringValue(node.summary),
+      relevanceLabel: score !== null ? `相关度 ${score.toFixed(2)}` : '',
+      depth: memoryTreeLevelDepth(level),
+    }
+  })
+))
 const hasMemoryLoopProjection = computed(() => Boolean(
   memoryActivationOutput.value || retrievalContextOutput.value || postChapterMemoryOutput.value,
 ))
+const hasMemoryTreeProjection = computed(() => Boolean(memoryTreeOutput.value))
 const hasRecommendedFollowupPolicy = computed(() => Boolean(
   recommendedFollowupPreview.value &&
   (
@@ -767,6 +810,43 @@ function memoryActivationStatusLabel(status: unknown) {
   if (value === 'ready') return '已激活'
   if (value === 'degraded') return '降级激活'
   if (value === 'blocked') return '已阻止'
+  return value || '未知'
+}
+
+function memoryTreeStatusLabel(status: unknown) {
+  const value = stringValue(status)
+  if (value === 'ready') return '可用'
+  if (value === 'success' || value === 'completed') return '已完成'
+  if (value === 'running') return '生成中'
+  if (value === 'failed') return '失败'
+  if (value === 'blocked') return '已阻止'
+  return value || '未知'
+}
+
+function memoryTreeLevelLabel(level: unknown) {
+  const value = stringValue(level)
+  if (value === 'volume') return '卷'
+  if (value === 'chapter') return '章节'
+  if (value === 'scene') return '场景'
+  if (value === 'beat') return '节拍'
+  return value || '节点'
+}
+
+function memoryTreeLevelDepth(level: unknown) {
+  const value = stringValue(level)
+  if (value === 'chapter') return 1
+  if (value === 'scene') return 2
+  if (value === 'beat') return 3
+  return 0
+}
+
+function memoryTreeNavigationModeLabel(mode: unknown) {
+  const value = stringValue(mode)
+  if (value === 'semantic_search_with_ancestors') return '语义搜索 + 祖先'
+  if (value === 'semantic_search') return '语义搜索'
+  if (value === 'search_with_ancestors') return '搜索 + 祖先'
+  if (value === 'expanded_subtree') return '展开子树'
+  if (value === 'filtered') return '筛选'
   return value || '未知'
 }
 
@@ -1257,6 +1337,69 @@ function missingDependencyTool(value: Record<string, unknown>) {
         </section>
 
         <section
+          v-if="hasMemoryTreeProjection"
+          class="agent-run-drawer__memory-tree"
+          aria-label="Agent memory tree projection"
+        >
+          <h4>Memory Tree 投影</h4>
+          <dl class="agent-run-drawer__facts">
+            <div>
+              <dt>状态</dt>
+              <dd>{{ memoryTreeStatusLabel(memoryTreeOutput?.status) }}</dd>
+            </div>
+            <div v-if="memoryTreeLevelCount !== null">
+              <dt>层级</dt>
+              <dd>{{ memoryTreeLevelCount }} 层</dd>
+            </div>
+            <div>
+              <dt>返回节点</dt>
+              <dd>返回 {{ memoryTreeNodeCount }} 个</dd>
+            </div>
+            <div v-if="memoryTreeSummaryLabel">
+              <dt>节点概况</dt>
+              <dd>{{ memoryTreeSummaryLabel }}</dd>
+            </div>
+            <div v-if="memoryTreeFilterLevel">
+              <dt>筛选层级</dt>
+              <dd>{{ memoryTreeLevelLabel(memoryTreeFilterLevel) }}</dd>
+            </div>
+            <div v-if="memoryTreeQuery">
+              <dt>查询</dt>
+              <dd>{{ memoryTreeQuery }}</dd>
+            </div>
+            <div v-if="memoryTreeNavigation.mode">
+              <dt>导航模式</dt>
+              <dd>{{ memoryTreeNavigationModeLabel(memoryTreeNavigation.mode) }}</dd>
+            </div>
+            <div v-if="memoryTreeRecommendedDrilldownCount">
+              <dt>推荐展开</dt>
+              <dd>推荐展开 {{ memoryTreeRecommendedDrilldownCount }}</dd>
+            </div>
+          </dl>
+          <ol
+            v-if="memoryTreeNodeRows.length"
+            class="agent-run-drawer__memory-tree-nodes"
+          >
+            <li
+              v-for="row in memoryTreeNodeRows"
+              :key="row.key"
+              :style="{ paddingInlineStart: `${8 + row.depth * 12}px` }"
+              data-testid="memory-tree-node"
+            >
+              <span class="agent-run-drawer__memory-tree-level">{{ row.levelLabel }}</span>
+              <div class="agent-run-drawer__memory-tree-content">
+                <div class="agent-run-drawer__memory-tree-title">
+                  <strong>{{ row.title }}</strong>
+                  <span v-if="row.chapterLabel">{{ row.chapterLabel }}</span>
+                  <span v-if="row.relevanceLabel">{{ row.relevanceLabel }}</span>
+                </div>
+                <p v-if="row.summary">{{ row.summary }}</p>
+              </div>
+            </li>
+          </ol>
+        </section>
+
+        <section
           v-if="hasRecoveryPolicy"
           class="agent-run-drawer__recovery"
           aria-label="Recovery policy"
@@ -1544,6 +1687,7 @@ function missingDependencyTool(value: Record<string, unknown>) {
 .agent-run-drawer__execution-plan h4,
 .agent-run-drawer__planner h4,
 .agent-run-drawer__memory-loop h4,
+.agent-run-drawer__memory-tree h4,
 .agent-run-drawer__recovery h4,
 .agent-run-drawer__followups h4,
 .agent-run-drawer__prepared-approval h4,
@@ -1610,6 +1754,15 @@ function missingDependencyTool(value: Record<string, unknown>) {
   background: var(--color-bg-secondary);
 }
 
+.agent-run-drawer__memory-tree {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-secondary);
+}
+
 .agent-run-drawer__recovery {
   display: grid;
   gap: var(--space-3);
@@ -1651,6 +1804,7 @@ function missingDependencyTool(value: Record<string, unknown>) {
 .agent-run-drawer__write-tools,
 .agent-run-drawer__worker-dispatches,
 .agent-run-drawer__execution-tools,
+.agent-run-drawer__memory-tree-nodes,
 .agent-run-drawer__planner-signals,
 .agent-run-drawer__reference-patterns {
   display: grid;
@@ -1683,6 +1837,52 @@ function missingDependencyTool(value: Record<string, unknown>) {
   flex: 0 0 auto;
   color: var(--color-text-secondary);
   font-weight: var(--font-semibold);
+}
+
+.agent-run-drawer__memory-tree-nodes li {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--space-2);
+  align-items: start;
+  padding-top: var(--space-2);
+  padding-right: var(--space-2);
+  padding-bottom: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-white);
+  font-size: var(--text-xs);
+}
+
+.agent-run-drawer__memory-tree-level {
+  color: var(--color-text-tertiary);
+  font-weight: var(--font-semibold);
+  white-space: nowrap;
+}
+
+.agent-run-drawer__memory-tree-content {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.agent-run-drawer__memory-tree-title {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: baseline;
+}
+
+.agent-run-drawer__memory-tree-title strong {
+  color: var(--color-text-primary);
+  overflow-wrap: anywhere;
+}
+
+.agent-run-drawer__memory-tree-title span,
+.agent-run-drawer__memory-tree-content p {
+  margin: 0;
+  color: var(--color-text-secondary);
+  line-height: var(--leading-normal);
+  overflow-wrap: anywhere;
 }
 
 .agent-run-drawer__blockers li {

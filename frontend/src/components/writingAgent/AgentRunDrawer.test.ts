@@ -1132,6 +1132,136 @@ describe('AgentRunDrawer', () => {
     expect(text).not.toContain('memory_provenance')
   })
 
+  it('renders memory tree projection nodes from inspect output', () => {
+    mount(AgentRunDrawer, {
+      attachTo: document.body,
+      props: {
+        open: true,
+        loading: false,
+        error: '',
+        run: {
+          id: 'run-memory-tree',
+          project_id: 'project-1',
+          goal: '浏览记忆树中的灯塔旧回声',
+          status: 'success',
+          entrypoint: 'dialog_auto_plan',
+          input: {},
+          output: null,
+          error: null,
+          steps: [
+            {
+              id: 'step-memory-tree',
+              run_id: 'run-memory-tree',
+              project_id: 'project-1',
+              step_index: 1,
+              tool_name: 'inspect_agent_memory_tree',
+              status: 'success',
+              input: { query: '灯塔旧回声', include_ancestors: true },
+              output: {
+                status: 'ready',
+                levels: ['volume', 'chapter', 'scene', 'beat'],
+                filters: {
+                  level: 'chapter',
+                  query: '灯塔旧回声',
+                  include_ancestors: true,
+                },
+                summary: {
+                  volume_nodes: 1,
+                  chapter_nodes: 12,
+                  scene_nodes: 18,
+                  beat_nodes: 42,
+                },
+                navigation: {
+                  mode: 'semantic_search_with_ancestors',
+                  matched_node_ids: ['chapter:2'],
+                  ancestor_node_ids: ['volume:1'],
+                  recommended_drilldowns: [
+                    {
+                      node_id: 'chapter:2',
+                      expand_node_id: 'chapter:2',
+                      reason: 'highest_relevance',
+                      score: 1.2,
+                    },
+                  ],
+                },
+                nodes: [
+                  {
+                    id: 'volume:1',
+                    level: 'volume',
+                    parent_id: null,
+                    chapter_index: null,
+                    title: 'Volume 1',
+                    summary: '雾港开篇卷。',
+                    source_refs: [{ source_type: 'outline', source_id: 'outline-1' }],
+                    children: ['chapter:2'],
+                  },
+                  {
+                    id: 'chapter:2',
+                    level: 'chapter',
+                    parent_id: 'volume:1',
+                    chapter_index: 2,
+                    title: '灯塔旧回声',
+                    summary: '主角在灯塔发现旧回声线索。',
+                    source_refs: [
+                      { source_type: 'chapter_content', source_id: 'chapter-content-2' },
+                      { source_type: 'longform_memory', source_id: 'memory-2' },
+                    ],
+                    children: [],
+                    relevance: {
+                      score: 1.2,
+                      matched_terms: ['灯', '塔', '旧', '回', '声'],
+                    },
+                  },
+                  {
+                    id: 'scene:memory-3',
+                    level: 'scene',
+                    parent_id: 'chapter:2',
+                    chapter_index: 2,
+                    summary: '补充场景摘要。',
+                    source_refs: [{ source_type: 'longform_memory', source_id: 'memory-3' }],
+                    children: [],
+                  },
+                ],
+                trace: {
+                  source_tables: ['chapter_contents', 'longform_memories'],
+                },
+              },
+            },
+          ],
+        },
+      },
+    })
+
+    const text = document.body.textContent || ''
+    expect(text).toContain('Memory Tree 投影')
+    expect(text).toContain('可用')
+    expect(text).toContain('4 层')
+    expect(text).toContain('返回 3 个')
+    expect(text).toContain('卷 1 / 章节 12 / 场景 18 / 节拍 42')
+    expect(text).toContain('查询')
+    expect(text).toContain('灯塔旧回声')
+    expect(text).toContain('语义搜索 + 祖先')
+    expect(text).toContain('推荐展开 1')
+
+    const nodes = Array.from(document.body.querySelectorAll('[data-testid="memory-tree-node"]'))
+    expect(nodes).toHaveLength(3)
+    expect(nodes[0].textContent).toContain('卷')
+    expect(nodes[0].textContent).toContain('Volume 1')
+    expect(nodes[1].textContent).toContain('章节')
+    expect(nodes[1].textContent).toContain('第2章')
+    expect(nodes[1].textContent).toContain('灯塔旧回声')
+    expect(nodes[1].textContent).toContain('主角在灯塔发现旧回声线索。')
+    expect(nodes[1].textContent).toContain('相关度 1.20')
+    expect(nodes[2].textContent).toContain('场景')
+    expect(nodes[2].textContent).toContain('未命名节点')
+    expect(nodes[2].textContent).toContain('补充场景摘要。')
+    expect(text).not.toContain('chapter-content-2')
+    expect(text).not.toContain('memory-2')
+    expect(text).not.toContain('scene:memory-3')
+    expect(text).not.toContain('memory-3')
+    expect(text).not.toContain('source_refs')
+  })
+
   it('emits confirmed recommended followup execution payload when preview has executable tools', async () => {
     const wrapper = mount(AgentRunDrawer, {
       attachTo: document.body,
