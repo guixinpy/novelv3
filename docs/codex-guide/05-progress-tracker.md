@@ -50,6 +50,7 @@
 - [x] 命令契约快照：inspect_agent_command_contracts 聚合 slash command 投影、依赖工具和缺口
 - [x] 控制面就绪度：inspect_agent_control_plane_readiness 聚合工具契约与命令契约
 - [x] 写入门禁覆盖审计：inspect_agent_write_gate_coverage 聚合写入工具的 Agent 计划审批门禁覆盖
+- [x] 写入变更指纹审计：inspect_agent_mutation_fingerprints 计算计划写入工具的稳定 mutation fingerprint，用于恢复、审批和冲突诊断
 
 ### 下一步任务
 
@@ -65,6 +66,7 @@
 
 ### 最近完成
 
+- 2026-06-02: `inspect_agent_mutation_fingerprints` 接入对话只读意图链路：自然语言“检查 generate_chapter 第4章写入变更指纹”会经 `mutation_fingerprints_intent` 生成无需审批的 read tool 计划，并把显式工具名与章节号整理为 `tools[{tool_name, params}]`。
 - 2026-06-02: `inspect_agent_command_contracts` 接入对话只读意图链路：自然语言“检查命令契约缺口/slash command 投影”会经 `command_contracts_intent` 直接生成无需审批的 read tool 计划；含“控制面/control plane”的短语仍保留给 `inspect_agent_control_plane_readiness` 综合就绪度入口。
 - 2026-06-02: `inspect_agent_tool_contracts` 接入对话只读意图链路：自然语言“检查工具契约覆盖率/迁移差距”会经 `tool_contracts_intent` 直接生成无需审批的 read tool 计划；含“控制面/control plane”的短语仍保留给 `inspect_agent_control_plane_readiness` 综合就绪度入口。
 - 2026-06-02: `inspect_agent_write_gate_coverage` 接入对话只读意图链路：自然语言“检查写入工具的审批门禁覆盖/写入门禁缺口”会经 `write_gate_coverage_intent` 生成无需审批的 read tool 计划，供 Agent 在执行写入前快速审计 gate coverage。
@@ -125,6 +127,7 @@
 - [x] Worker Dispatch 只读审计意图：自然语言“检查 worker 分发/孤儿恢复”可投影为 inspect_agent_worker_dispatch 只读工具计划
 - [x] Trace Audit 只读审计意图：自然语言“检查 run trace/执行链路/失败原因”可投影为 inspect_agent_trace_audit 只读工具计划
 - [x] Write Gate Coverage 只读审计意图：自然语言“检查写入工具的审批门禁覆盖”可投影为 inspect_agent_write_gate_coverage 只读工具计划
+- [x] Mutation Fingerprints 只读审计意图：自然语言“检查 generate_chapter 第4章写入变更指纹”可投影为 inspect_agent_mutation_fingerprints 只读工具计划
 - [x] Tool Contracts 只读自检意图：自然语言“检查工具契约覆盖率/迁移差距”可投影为 inspect_agent_tool_contracts 只读工具计划
 - [x] Command Contracts 只读自检意图：自然语言“检查命令契约缺口/slash command 投影”可投影为 inspect_agent_command_contracts 只读工具计划
 - [x] Slash Command Route 只读审计意图：自然语言“检查 /continue 斜杠命令路由”可投影为 inspect_agent_slash_command_route 只读工具计划
@@ -155,6 +158,7 @@
 
 ### 最近完成
 
+- 2026-06-02: `IntentRouter` 新增 `mutation_fingerprints_intent`，可将“检查 generate_chapter 第4章写入变更指纹”等自然语言投影为 `inspect_mutation_fingerprints` action，并确定性抽取显式 snake_case 工具名与章节号；`plan_dialog_intent_agent_run` 对该只读 action 直接生成 `inspect_agent_mutation_fingerprints` 工具计划，approval_contract 为 not_required，并放在宽泛 review 规则之前避免被“检查”类审稿意图抢占。
 - 2026-06-02: `IntentRouter` 新增 `route_preference_intent`，可将“检查 text_intent 路由偏好/Agent 审批链迁移建议”等自然语言投影为 `inspect_route_preference` action，并确定性抽取 `source`；`plan_dialog_intent_agent_run` 对该只读 action 直接生成 `inspect_agent_route_preference_projection` 工具计划，approval_contract 为 not_required。
 - 2026-06-02: `IntentRouter` 新增 `dialog_route_projection_intent`，可将“检查 button action 统一对话路由投影”等自然语言投影为 `inspect_dialog_route` action，并确定性抽取 `source`；`plan_dialog_intent_agent_run` 对该只读 action 直接生成 `inspect_agent_dialog_route_projection` 工具计划，approval_contract 为 not_required，且与 route preference/审批链迁移建议入口保持语义边界。
 - 2026-06-02: `IntentRouter` 新增 `intent_projection_intent`，可将“检查意图投影：<待分析文本>”投影为 `inspect_intent_projection` action，并把冒号后的待分析文本传给 `inspect_agent_intent_projection`；`plan_dialog_intent_agent_run` 对该只读 action 生成无需审批的工具计划，便于持续审计自然语言规则匹配。

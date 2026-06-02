@@ -2520,6 +2520,57 @@ async def test_tool_executor_handles_dialog_intent_agent_plan_for_dialog_control
 
 
 @pytest.mark.asyncio
+async def test_tool_executor_handles_dialog_intent_agent_plan_for_mutation_fingerprints_read(db_session):
+    project = Project(name="Dialog Intent Mutation Fingerprints Plan")
+    db_session.add(project)
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(
+            db=db_session,
+            project_id=project.id,
+            run_id="run-dialog-intent-mutation-fingerprints-plan",
+        ),
+        WritingAgentToolRequest(
+            tool_name="plan_dialog_intent_agent_run",
+            params={"text": "检查 generate_chapter 第4章写入变更指纹"},
+        ),
+    )
+
+    expected_params = {"tools": [{"tool_name": "generate_chapter", "params": {"chapter_index": 4}}]}
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "completed"
+    assert result.output["intent_projection"]["rule_id"] == "mutation_fingerprints_intent"
+    assert result.output["planner"]["intent_class"] == "inspect_mutation_fingerprints"
+    assert result.output["planner"]["mapped_from_action_type"] == "inspect_mutation_fingerprints"
+    assert result.output["planner"]["chapter_index"] is None
+    assert result.output["plan"] == {
+        "status": "completed",
+        "intent_class": "inspect_mutation_fingerprints",
+        "steps": [
+            {
+                "step_index": 1,
+                "tool_name": "inspect_agent_mutation_fingerprints",
+                "params": expected_params,
+                "mutability": "read",
+                "requires_confirmation": False,
+            }
+        ],
+        "tools": [
+            {
+                "tool_name": "inspect_agent_mutation_fingerprints",
+                "params": expected_params,
+            }
+        ],
+        "approval_contract": {"status": "not_required", "write_steps": []},
+    }
+    assert result.output["tools"] == [{"tool_name": "inspect_agent_mutation_fingerprints", "params": expected_params}]
+    assert result.output["approval_contract"] == {"status": "not_required", "write_steps": []}
+    assert result.output["trace"]["reason"] == "planned_direct_read_tool_from_intent_projection"
+
+
+@pytest.mark.asyncio
 async def test_tool_executor_handles_dialog_intent_agent_plan_for_agent_health_read(db_session):
     project = Project(name="Dialog Intent Agent Health Plan")
     db_session.add(project)

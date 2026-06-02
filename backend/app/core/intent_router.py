@@ -25,6 +25,7 @@ _INTENT_RULE_IDS = (
     "dialog_route_projection_intent",
     "intent_projection_intent",
     "dialog_control_plane_projection_intent",
+    "mutation_fingerprints_intent",
     "reference_alignment_intent",
     "dogfood_evidence_intent",
     "route_preference_intent",
@@ -398,6 +399,20 @@ class IntentRouter:
                 extracted_params=extracted_params,
                 match_evidence=[{"kind": "pattern", "name": "dialog_control_plane_projection_phrase"}],
                 preconditions=[{"code": "dialog_control_plane_projection_read_available", "passed": True}],
+            )
+
+        if _is_mutation_fingerprints_intent(text):
+            extracted_params = _mutation_fingerprints_params(text)
+            return self._matched_projection(
+                text,
+                dialog_state,
+                pending_action_id,
+                diagnosis,
+                rule_id="mutation_fingerprints_intent",
+                candidate=ActionCandidate("inspect_mutation_fingerprints", extracted_params),
+                extracted_params=extracted_params,
+                match_evidence=[{"kind": "pattern", "name": "mutation_fingerprints_phrase"}],
+                preconditions=[{"code": "mutation_fingerprints_read_available", "passed": True}],
             )
 
         if _is_reference_alignment_intent(text):
@@ -917,6 +932,71 @@ def _dialog_control_plane_action_type(text: str) -> str | None:
     if re.search(r"(恢复|recover)", text):
         return "recover_blocked_run"
     return None
+
+
+_MUTATION_FINGERPRINT_EXCLUDED_TOOL_TOKENS = {
+    "mutation_fingerprint",
+    "mutation_fingerprints",
+    "write_fingerprint",
+    "write_fingerprints",
+}
+
+_MUTATION_FINGERPRINT_CHAPTER_INDEX_TOOLS = {
+    "execute_generate_chapter_with_approval",
+    "generate_chapter",
+    "generate_chapter_range",
+    "expand_outline_window",
+    "execute_expand_outline_window_with_approval",
+    "analyze_chapter_world_model",
+    "backfill_outline_gaps",
+    "create_revision_draft",
+    "apply_planner_revision_patch",
+    "execute_apply_planner_revision_patch_with_approval",
+    "expand_chapter_to_target",
+    "execute_expand_chapter_to_target_with_approval",
+    "compress_chapter_to_target",
+    "execute_compress_chapter_to_target_with_approval",
+}
+
+
+def _is_mutation_fingerprints_intent(text: str) -> bool:
+    fingerprint_phrase = r"(变更指纹|写入指纹|mutation\s*fingerprints?|write\s*fingerprints?)"
+    return bool(
+        re.search(rf"{fingerprint_phrase}.*(检查|诊断|审计|计算|工具|tool|写入|write)", text)
+        or re.search(rf"(检查|诊断|审计|计算|工具|tool|写入|write).*{fingerprint_phrase}", text)
+        or re.search(r"(写入|write|mutating|工具|tool).*(指纹|fingerprint)", text)
+    )
+
+
+def _mutation_fingerprints_params(text: str) -> dict[str, Any]:
+    tool_names = _mutation_fingerprint_tool_names(text)
+    if not tool_names:
+        return {}
+
+    chapter_index = parse_chapter_index(text)
+    tools: list[dict[str, Any]] = []
+    for tool_name in tool_names:
+        params: dict[str, Any] = {}
+        if chapter_index is not None and tool_name in _MUTATION_FINGERPRINT_CHAPTER_INDEX_TOOLS:
+            params["chapter_index"] = chapter_index
+        tools.append({"tool_name": tool_name, "params": params})
+    return {"tools": tools}
+
+
+def _mutation_fingerprint_tool_names(text: str) -> list[str]:
+    names: list[str] = []
+    for match in re.finditer(r"\b([a-z][a-z0-9_]{2,80})\b", text):
+        name = match.group(1).strip().lower()
+        if "_" not in name or name in _MUTATION_FINGERPRINT_EXCLUDED_TOOL_TOKENS or name in names:
+            continue
+        names.append(name)
+    if names:
+        return names
+
+    action_type = _dialog_control_plane_action_type(text)
+    if action_type in {"generate_setup", "generate_storyline", "generate_outline", "generate_chapter"}:
+        return [action_type]
+    return []
 
 
 def _is_reference_alignment_intent(text: str) -> bool:

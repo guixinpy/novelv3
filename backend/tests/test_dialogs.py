@@ -676,6 +676,41 @@ def test_intent_router_projection_explains_dialog_control_plane_projection_route
     assert projection["extracted_params"] == {"action_type": "generate_chapter"}
 
 
+def test_intent_router_projection_explains_mutation_fingerprints_route():
+    router = IntentRouter()
+    diag = ProjectDiagnosisOut(
+        missing_items=[],
+        completed_items=["setup", "storyline", "outline", "content"],
+        suggested_next_step="preview_chapter",
+    )
+
+    projection = router.project("检查 generate_chapter 第4章写入变更指纹", "chatting", None, diag).to_dict()
+
+    expected_params = {"tools": [{"tool_name": "generate_chapter", "params": {"chapter_index": 4}}]}
+    assert projection["status"] == "matched"
+    assert projection["rule_id"] == "mutation_fingerprints_intent"
+    assert projection["decision"]["rule_id"] == "mutation_fingerprints_intent"
+    assert projection["decision"]["match_evidence"] == [
+        {"kind": "pattern", "name": "mutation_fingerprints_phrase"}
+    ]
+    assert projection["candidate"] == {
+        "type": "inspect_mutation_fingerprints",
+        "params": expected_params,
+    }
+    assert projection["agent_route"] == _expected_agent_route(
+        "text_intent",
+        "inspect_mutation_fingerprints",
+        "inspect_agent_mutation_fingerprints",
+        requires_confirmation=False,
+    )
+    assert projection["tool_selection"] == {
+        "selected_tool": "inspect_agent_mutation_fingerprints",
+        "why_this_tool": "dialog_action_to_agent_tool.inspect_mutation_fingerprints",
+        "availability_checked": False,
+    }
+    assert projection["extracted_params"] == expected_params
+
+
 def test_intent_router_orphan_recovery_phrase_routes_to_worker_dispatch():
     router = IntentRouter()
     diag = ProjectDiagnosisOut(
