@@ -39,6 +39,7 @@ _ACTION_TO_DIRECT_READ_TOOL = {
     "inspect_trace_audit": "inspect_agent_trace_audit",
     "inspect_write_gate_coverage": "inspect_agent_write_gate_coverage",
     "inspect_tool_contracts": "inspect_agent_tool_contracts",
+    "inspect_command_contracts": "inspect_agent_command_contracts",
 }
 
 

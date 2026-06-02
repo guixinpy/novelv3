@@ -20,6 +20,7 @@ _INTENT_RULE_IDS = (
     "trace_audit_intent",
     "write_gate_coverage_intent",
     "tool_contracts_intent",
+    "command_contracts_intent",
     "agent_health_intent",
     "control_plane_readiness_intent",
     "query_diagnosis_intent",
@@ -321,6 +322,19 @@ class IntentRouter:
                 extracted_params={},
                 match_evidence=[{"kind": "pattern", "name": "tool_contracts_phrase"}],
                 preconditions=[{"code": "tool_contracts_read_available", "passed": True}],
+            )
+
+        if _is_command_contracts_intent(text):
+            return self._matched_projection(
+                text,
+                dialog_state,
+                pending_action_id,
+                diagnosis,
+                rule_id="command_contracts_intent",
+                candidate=ActionCandidate("inspect_command_contracts", {}),
+                extracted_params={},
+                match_evidence=[{"kind": "pattern", "name": "command_contracts_phrase"}],
+                preconditions=[{"code": "command_contracts_read_available", "passed": True}],
             )
 
         if _is_control_plane_readiness_intent(text):
@@ -666,6 +680,21 @@ def _is_tool_contracts_intent(text: str) -> bool:
     return bool(
         re.search(r"(工具契约|tool\s*contract).*(覆盖|coverage|迁移|差距|gap|缺口|快照|snapshot|检查|自检|诊断)", text)
         or re.search(r"(覆盖|coverage|迁移|差距|gap|缺口|快照|snapshot|检查|自检|诊断).*(工具契约|tool\s*contract)", text)
+    )
+
+
+def _is_command_contracts_intent(text: str) -> bool:
+    if re.search(r"(控制面|control\s*plane)", text):
+        return False
+    return bool(
+        re.search(
+            r"(命令契约|command\s*contract|slash\s*command|斜杠命令).*(覆盖|coverage|投影|projection|依赖|缺口|gap|快照|snapshot|检查|自检|诊断)",
+            text,
+        )
+        or re.search(
+            r"(覆盖|coverage|投影|projection|依赖|缺口|gap|快照|snapshot|检查|自检|诊断).*(命令契约|command\s*contract|slash\s*command|斜杠命令)",
+            text,
+        )
     )
 
 
