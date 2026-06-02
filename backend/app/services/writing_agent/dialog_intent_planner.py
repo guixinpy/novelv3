@@ -41,6 +41,7 @@ _ACTION_TO_DIRECT_READ_TOOL = {
     "inspect_tool_contracts": "inspect_agent_tool_contracts",
     "inspect_command_contracts": "inspect_agent_command_contracts",
     "inspect_slash_command_route": "inspect_agent_slash_command_route",
+    "inspect_dialog_route": "inspect_agent_dialog_route_projection",
     "inspect_reference_alignment": "inspect_agent_reference_alignment",
     "inspect_dogfood_evidence": "inspect_agent_dogfood_evidence",
     "inspect_route_preference": "inspect_agent_route_preference_projection",

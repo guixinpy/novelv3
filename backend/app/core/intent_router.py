@@ -22,6 +22,7 @@ _INTENT_RULE_IDS = (
     "tool_contracts_intent",
     "command_contracts_intent",
     "slash_command_route_intent",
+    "dialog_route_projection_intent",
     "reference_alignment_intent",
     "dogfood_evidence_intent",
     "route_preference_intent",
@@ -353,6 +354,20 @@ class IntentRouter:
                 extracted_params=extracted_params,
                 match_evidence=[{"kind": "pattern", "name": "slash_command_route_phrase"}],
                 preconditions=[{"code": "slash_command_route_read_available", "passed": True}],
+            )
+
+        if _is_dialog_route_projection_intent(text):
+            extracted_params = _dialog_route_projection_params(text)
+            return self._matched_projection(
+                text,
+                dialog_state,
+                pending_action_id,
+                diagnosis,
+                rule_id="dialog_route_projection_intent",
+                candidate=ActionCandidate("inspect_dialog_route", extracted_params),
+                extracted_params=extracted_params,
+                match_evidence=[{"kind": "pattern", "name": "dialog_route_projection_phrase"}],
+                preconditions=[{"code": "dialog_route_projection_read_available", "passed": True}],
             )
 
         if _is_reference_alignment_intent(text):
@@ -781,6 +796,29 @@ def _slash_command_name(text: str) -> str | None:
     if match:
         return match.group(1).lower()
     return None
+
+
+def _is_dialog_route_projection_intent(text: str) -> bool:
+    if _is_route_preference_intent(text):
+        return False
+    return bool(
+        re.search(
+            r"(对话路由|dialog\s*route|统一路由|路由投影|route\s*projection).*(投影|检查|诊断|映射|统一)",
+            text,
+        )
+        or re.search(
+            r"(投影|检查|诊断|映射|统一).*(对话路由|dialog\s*route|统一路由|路由投影|route\s*projection)",
+            text,
+        )
+    )
+
+
+def _dialog_route_projection_params(text: str) -> dict[str, Any]:
+    params: dict[str, Any] = {}
+    source = _dialog_route_source(text)
+    if source:
+        params["source"] = source
+    return params
 
 
 def _is_reference_alignment_intent(text: str) -> bool:

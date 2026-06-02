@@ -578,6 +578,38 @@ def test_intent_router_projection_explains_route_preference_route():
     assert projection["extracted_params"] == {"source": "text_intent"}
 
 
+def test_intent_router_projection_explains_dialog_route_projection():
+    router = IntentRouter()
+    diag = ProjectDiagnosisOut(
+        missing_items=[],
+        completed_items=["setup", "storyline", "outline", "content"],
+        suggested_next_step="preview_chapter",
+    )
+
+    projection = router.project("检查 button action 统一对话路由投影", "chatting", None, diag).to_dict()
+
+    assert projection["status"] == "matched"
+    assert projection["rule_id"] == "dialog_route_projection_intent"
+    assert projection["decision"]["rule_id"] == "dialog_route_projection_intent"
+    assert projection["decision"]["match_evidence"] == [{"kind": "pattern", "name": "dialog_route_projection_phrase"}]
+    assert projection["candidate"] == {
+        "type": "inspect_dialog_route",
+        "params": {"source": "button_action"},
+    }
+    assert projection["agent_route"] == _expected_agent_route(
+        "text_intent",
+        "inspect_dialog_route",
+        "inspect_agent_dialog_route_projection",
+        requires_confirmation=False,
+    )
+    assert projection["tool_selection"] == {
+        "selected_tool": "inspect_agent_dialog_route_projection",
+        "why_this_tool": "dialog_action_to_agent_tool.inspect_dialog_route",
+        "availability_checked": False,
+    }
+    assert projection["extracted_params"] == {"source": "button_action"}
+
+
 def test_intent_router_orphan_recovery_phrase_routes_to_worker_dispatch():
     router = IntentRouter()
     diag = ProjectDiagnosisOut(
