@@ -169,7 +169,7 @@ Agent 化缺口：
 ### 2.2 Memory Tree（分层记忆树）
 
 ```
-当前状态：L2 框架 + 卷/章摘要持久化基础版 + 基础浏览，摘要写入 LongformMemory 后再投影回 Memory Tree；query 支持精确匹配失败后的确定性语义评分、层级后代匹配回流与 drilldown 推荐，并可进入写前 memory_activation；Longform Context Summary 可由自然语言只读意图触达；AgentRunDrawer 可展示 inspect_agent_memory_tree 的只读节点投影、查询条件、导航模式和推荐展开数
+当前状态：L2 框架 + 卷/章摘要持久化基础版 + 基础浏览，摘要写入 LongformMemory 后再投影回 Memory Tree；query 支持精确匹配失败后的确定性语义评分、层级后代匹配回流与 drilldown 推荐，并可进入写前 memory_activation；Longform Context Summary 可由自然语言只读意图触达；AgentRunDrawer 可展示 inspect_agent_memory_tree 的只读节点投影、查询条件、导航模式和推荐展开数，并可从推荐 drilldown 创建新的只读展开 run
 目标状态：L3 卷→章→节→段落分层，支持语义浏览和按需展开
 关键文件：
   backend/app/services/writing_agent/
@@ -182,7 +182,7 @@ Agent 化缺口：
 Agent 化缺口：
   - 更细粒度的分层摘要树（当前持久化到卷/章两级）
   - 更强语义导航（当前已支持按节点展开、深度裁剪、搜索祖先上下文、确定性 token-overlap 召回、后代强匹配回流到过滤层级、弱匹配降噪、写前激活消费和自然语言只读浏览入口；后续接入向量/LLM 语义搜索）
-  - 前端独立 Memory Tree 面板与可交互展开/搜索尚未完成（当前仅运行详情 Drawer 的只读投影）
+  - 前端独立 Memory Tree 面板与自由搜索尚未完成（当前仅运行详情 Drawer 的只读投影和推荐 drilldown 展开）
   - 与 Retrieval 的深度整合
   - LLM 摘要质量与真实长篇数据验证
 关联模块：Retrieval、Athena、Writing
@@ -374,7 +374,7 @@ Agent 化缺口：
 ### 6.1 Chat View（对话视图）
 
 ```
-当前状态：L2 对话界面含 action cards、followup、trace 入口，AgentRunDrawer 可展示计划工具/执行进度/下一步、逐项工具状态和 Memory Tree 只读节点投影，recommended followup fallback view 可展示待确认后继并阻止 pending-only 自动执行
+当前状态：L2 对话界面含 action cards、followup、trace 入口，AgentRunDrawer 可展示计划工具/执行进度/下一步、逐项工具状态和 Memory Tree 只读节点投影，并支持从推荐 drilldown 继续发起只读展开 run；recommended followup fallback view 可展示待确认后继并阻止 pending-only 自动执行
 目标状态：L2-L3 更丰富的 Agent 状态可视化（当前执行计划、工具调用进度等）
 关键文件：
   frontend/src/views/                     # 页面视图
@@ -383,7 +383,7 @@ Agent 化缺口：
 Agent 化缺口：
   - Agent 执行计划的可视化仍需继续增强（已具备计划工具/已执行/已完成/进行中/下一步摘要和逐项工具状态）
   - 工具调用进度实时展示（当前是 Drawer 详情内静态状态映射，仍缺流式刷新）
-  - World Model / Memory 面板的整合（Memory Tree 当前仅 Drawer 只读投影，仍缺独立可交互面板）
+  - World Model / Memory 面板的整合（Memory Tree 当前仅 Drawer 只读投影和推荐展开，仍缺独立可交互面板）
 关联模块：Dialog Control Plane、Trace
 ```
 

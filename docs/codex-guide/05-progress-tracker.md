@@ -342,7 +342,7 @@
 - [x] 对话界面含 action cards + followup + trace 入口
 - [x] Recommended followup fallback view 可展示 pending confirmation handoff，且 pending-only 计划不会显示“执行后继”自动执行按钮
 - [x] AgentRunDrawer 执行计划进度摘要：展示计划工具数、已执行、已完成、进行中、下一步工具和逐项计划工具状态
-- [x] AgentRunDrawer Memory Tree 投影：展示 inspect_agent_memory_tree 的状态、查询条件、导航模式、推荐展开数和节点列表
+- [x] AgentRunDrawer Memory Tree 投影：展示 inspect_agent_memory_tree 的状态、查询条件、导航模式、推荐展开数和节点列表，并可从推荐 drilldown 发起只读展开 run
 - [x] Athena 世界模型面板（实体 + 提案审阅）
 - [x] Model Trace 抽屉
 - [x] 前端请求隔离（request lane + project scope version）
@@ -353,7 +353,7 @@
 | 优先级 | 任务 | 完成标准 | 状态 |
 |--------|------|---------|------|
 | P1 | Agent 执行计划可视化 | 对话中展示当前执行计划、工具调用进度 | 🟡 进行中（Drawer per-tool progress + followup pending confirmation fallback） |
-| P2 | Memory Tree 可视化 | 前端展示分层摘要树、支持浏览和搜索 | 🟡 进行中（Drawer read-only projection；独立面板与交互搜索待补） |
+| P2 | Memory Tree 可视化 | 前端展示分层摘要树、支持浏览和搜索 | 🟡 进行中（Drawer read-only projection + recommended drilldown；独立面板与自由搜索待补） |
 | P3 | 面板整合 | Athena 面板、Memory 面板、Trace 面板的统一导航 | 🔴 待开始 |
 
 ### 最近完成
@@ -362,10 +362,11 @@
 - 2026-06-02: `AgentRunDrawer` 新增执行计划进度摘要，从 `run.input.tools` 或 planner 输出推导计划工具数，并按 steps 展示已执行、已完成、进行中和下一步工具；这是 T7 Agent 执行计划可视化的静态详情层进展，后续仍需补流式工具调用进度。
 - 2026-06-02: `AgentRunDrawer` 执行计划卡片新增逐项计划工具状态列表，将计划工具与当前 step 顺序映射为“已完成/进行中/待执行/失败/已阻止”，让运行详情不再只能靠原始 step 列表推断工具调用进度。
 - 2026-06-02: `AgentRunDrawer` 新增 Memory Tree 只读投影区，消费 `inspect_agent_memory_tree` 工具输出并展示状态、层级、返回节点、查询条件、导航模式、推荐 drilldown 和节点摘要，同时避免泄露 source_refs/source_id。
+- 2026-06-02: `AgentRunDrawer` 的 Memory Tree 投影新增“展开推荐节点”只读 continuation，基于 `navigation.recommended_drilldowns` 创建 `inspect_agent_memory_tree` read plan（expand_node_id + include_ancestors + max_depth），让搜索结果可继续按需展开而无需写入审批。
 
 ### 阻塞项
 
-- 独立 Memory Tree 面板仍需要前端交互契约：从 Drawer 的只读投影推进到可输入 query、按节点展开和跨面板导航。
+- 独立 Memory Tree 面板仍需要前端交互契约：从 Drawer 的只读投影/推荐展开推进到可输入 query、任意节点展开和跨面板导航。
 
 ---
 

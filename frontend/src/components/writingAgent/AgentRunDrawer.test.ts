@@ -1262,6 +1262,123 @@ describe('AgentRunDrawer', () => {
     expect(text).not.toContain('source_refs')
   })
 
+  it('emits a read-only memory tree drilldown planner continuation from recommended drilldowns', async () => {
+    const wrapper = mount(AgentRunDrawer, {
+      attachTo: document.body,
+      props: {
+        open: true,
+        loading: false,
+        error: '',
+        run: {
+          id: 'run-memory-tree',
+          project_id: 'project-1',
+          goal: '浏览记忆树中的灯塔旧回声',
+          status: 'success',
+          entrypoint: 'dialog_auto_plan',
+          input: {},
+          output: null,
+          error: null,
+          steps: [
+            {
+              id: 'step-memory-tree',
+              run_id: 'run-memory-tree',
+              project_id: 'project-1',
+              step_index: 1,
+              tool_name: 'inspect_agent_memory_tree',
+              status: 'success',
+              input: { query: '灯塔旧回声', include_ancestors: true },
+              output: {
+                status: 'ready',
+                filters: {
+                  query: '灯塔旧回声',
+                  include_ancestors: true,
+                },
+                navigation: {
+                  mode: 'semantic_search_with_ancestors',
+                  recommended_drilldowns: [
+                    {
+                      node_id: 'chapter:2',
+                      expand_node_id: 'chapter:2',
+                      reason: 'highest_relevance',
+                      score: 1.2,
+                    },
+                  ],
+                },
+                nodes: [
+                  {
+                    id: 'chapter:2',
+                    level: 'chapter',
+                    chapter_index: 2,
+                    title: '灯塔旧回声',
+                    summary: '主角在灯塔发现旧回声线索。',
+                    children: ['scene:memory-3'],
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      },
+    })
+
+    const button = document.body.querySelector('[data-testid="memory-tree-drilldown"]') as HTMLButtonElement
+    expect(button).not.toBeNull()
+    expect(button.textContent).toContain('展开推荐节点')
+    expect(button.textContent).toContain('灯塔旧回声')
+    expect(document.body.textContent).not.toContain('chapter:2')
+
+    await button.click()
+
+    expect(wrapper.emitted('executePlannerPlan')).toEqual([[
+      {
+        sourceRunId: 'run-memory-tree',
+        sourcePlanId: 'memory-tree-drilldown:0',
+        goal: '展开 Memory Tree：灯塔旧回声',
+        tools: [
+          {
+            tool_name: 'inspect_agent_memory_tree',
+            params: {
+              expand_node_id: 'chapter:2',
+              include_ancestors: true,
+              max_depth: 1,
+            },
+            planner: {
+              step_id: 'memory-tree-drilldown:0',
+              plan_id: 'memory-tree-drilldown:0',
+              mutability: 'read',
+              requires_confirmation: false,
+            },
+          },
+        ],
+        planner: {
+          status: 'completed',
+          intent_class: 'inspect_memory_tree',
+          approval_contract: { status: 'not_required', write_steps: [] },
+          trace: {
+            plan_id: 'memory-tree-drilldown:0',
+            selected_tools: ['inspect_agent_memory_tree'],
+          },
+          tools: [
+            {
+              tool_name: 'inspect_agent_memory_tree',
+              params: {
+                expand_node_id: 'chapter:2',
+                include_ancestors: true,
+                max_depth: 1,
+              },
+              planner: {
+                step_id: 'memory-tree-drilldown:0',
+                plan_id: 'memory-tree-drilldown:0',
+                mutability: 'read',
+                requires_confirmation: false,
+              },
+            },
+          ],
+        },
+      },
+    ]])
+  })
+
   it('emits confirmed recommended followup execution payload when preview has executable tools', async () => {
     const wrapper = mount(AgentRunDrawer, {
       attachTo: document.body,

@@ -13,6 +13,12 @@ type PlannerPlanExecutePayload = {
   approvalContract?: Record<string, unknown>
 }
 
+type MemoryTreeDrilldownAction = {
+  key: string
+  label: string
+  payload: PlannerPlanExecutePayload
+}
+
 const props = defineProps<{
   open: boolean
   loading: boolean
@@ -442,6 +448,63 @@ const memoryTreeNodeRows = computed(() => (
     }
   })
 ))
+const memoryTreeNodesById = computed(() => {
+  const nodesById: Record<string, Record<string, unknown>> = {}
+  for (const node of memoryTreeNodes.value) {
+    const nodeId = stringValue(node.id)
+    if (nodeId) nodesById[nodeId] = node
+  }
+  return nodesById
+})
+const memoryTreeDrilldownActions = computed<MemoryTreeDrilldownAction[]>(() => {
+  const runId = props.run?.id
+  if (!runId || props.run?.status !== 'success') return []
+  const actions: MemoryTreeDrilldownAction[] = []
+  for (const [index, drilldown] of recordList(memoryTreeNavigation.value.recommended_drilldowns).entries()) {
+    const expandNodeId = stringValue(drilldown.expand_node_id) || stringValue(drilldown.node_id)
+    if (!expandNodeId) continue
+    const planId = `memory-tree-drilldown:${index}`
+    const node = memoryTreeNodesById.value[expandNodeId] || {}
+    const nodeTitle = stringValue(node.title)
+    const nodeLabel = nodeTitle || chapterIndexLabel(node.chapter_index) || memoryTreeLevelLabel(node.level)
+    const params = {
+      expand_node_id: expandNodeId,
+      include_ancestors: true,
+      max_depth: 1,
+    }
+    const toolRequest: Record<string, unknown> = {
+      tool_name: 'inspect_agent_memory_tree',
+      params,
+      planner: {
+        step_id: planId,
+        plan_id: planId,
+        mutability: 'read',
+        requires_confirmation: false,
+      },
+    }
+    actions.push({
+      key: planId,
+      label: nodeLabel ? `展开推荐节点：${nodeLabel}` : '展开推荐节点',
+      payload: {
+        sourceRunId: runId,
+        sourcePlanId: planId,
+        goal: `展开 Memory Tree：${nodeLabel || '推荐节点'}`,
+        tools: [toolRequest],
+        planner: {
+          status: 'completed',
+          intent_class: 'inspect_memory_tree',
+          approval_contract: { status: 'not_required', write_steps: [] },
+          trace: {
+            plan_id: planId,
+            selected_tools: ['inspect_agent_memory_tree'],
+          },
+          tools: [toolRequest],
+        },
+      },
+    })
+  }
+  return actions
+})
 const hasMemoryLoopProjection = computed(() => Boolean(
   memoryActivationOutput.value || retrievalContextOutput.value || postChapterMemoryOutput.value,
 ))
@@ -640,6 +703,10 @@ function applyRouteUpgrade() {
 function executePreparedApproval() {
   if (!preparedApprovalExecutePayload.value) return
   emit('executePlannerPlan', preparedApprovalExecutePayload.value)
+}
+
+function executeMemoryTreeDrilldown(action: MemoryTreeDrilldownAction) {
+  emit('executePlannerPlan', action.payload)
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -1397,6 +1464,21 @@ function missingDependencyTool(value: Record<string, unknown>) {
               </div>
             </li>
           </ol>
+          <div
+            v-if="memoryTreeDrilldownActions.length"
+            class="agent-run-drawer__actions"
+          >
+            <button
+              v-for="action in memoryTreeDrilldownActions"
+              :key="action.key"
+              type="button"
+              class="agent-run-drawer__ghost"
+              data-testid="memory-tree-drilldown"
+              @click="executeMemoryTreeDrilldown(action)"
+            >
+              {{ action.label }}
+            </button>
+          </div>
         </section>
 
         <section
