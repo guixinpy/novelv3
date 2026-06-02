@@ -86,6 +86,7 @@ type MemoryTreePanelResultRow = {
   canOpenChapter: boolean
   canSearchRetrieval: boolean
   canAuditTrace: boolean
+  canCheckWorldModel: boolean
   depth: number
 }
 
@@ -172,6 +173,7 @@ const memoryTreePanelResultRows = computed<MemoryTreePanelResultRow[]>(() => (
       canOpenChapter: chapterIndex !== null && chapterIndex > 0,
       canSearchRetrieval: Boolean(retrievalQuery),
       canAuditTrace: chapterIndex !== null && chapterIndex > 0,
+      canCheckWorldModel: Boolean(retrievalQuery),
       depth,
     }
   })
@@ -620,6 +622,50 @@ async function auditMemoryTreeTrace(row: MemoryTreePanelResultRow) {
     })
   } catch (err) {
     memoryTreePanelError.value = err instanceof Error ? err.message : '审计 Memory Tree Trace 失败'
+  } finally {
+    memoryTreePanelLoading.value = false
+  }
+}
+
+async function checkMemoryTreeWorldModel(row: MemoryTreePanelResultRow) {
+  if (!row.canCheckWorldModel || !row.retrievalQuery || memoryTreePanelLoading.value) return
+  memoryTreePanelError.value = ''
+  memoryTreePanelLoading.value = true
+  agentRunError.value = ''
+  const params: Record<string, unknown> = {
+    subject_ref: row.retrievalQuery,
+    limit: 20,
+  }
+  const input: Record<string, unknown> = {
+    memory_tree_workspace_world_model: true,
+    source_node_label: row.title,
+    subject_ref: row.retrievalQuery,
+  }
+  if (row.chapterIndex !== null && row.chapterIndex > 0) {
+    params.chapter_index = row.chapterIndex
+    input.chapter_index = row.chapterIndex
+  }
+  try {
+    const run = await api.createAgentRun(pid.value, {
+      goal: `检查 Memory Tree 世界模型：${row.retrievalQuery}`,
+      entrypoint: 'ui_memory_tree_workspace_world_model',
+      tools: [
+        {
+          tool_name: 'inspect_agent_world_model_route',
+          params,
+        },
+      ],
+      input,
+    })
+    activeAgentRunId.value = run.id
+    activeAgentRun.value = run
+    projectWorkspace.appendMemoryTreeHistory(pid.value, {
+      key: `${run.id}:workspace-world-model:${memoryTreeNavigationHistory.value.length}`,
+      label: `世界模型：${row.retrievalQuery}`,
+      runId: run.id,
+    })
+  } catch (err) {
+    memoryTreePanelError.value = err instanceof Error ? err.message : '检查 Memory Tree 世界模型失败'
   } finally {
     memoryTreePanelLoading.value = false
   }
@@ -1197,6 +1243,15 @@ async function applyRouteUpgradeFromRun(payload: RouteUpgradeApplyPayload) {
                 @click="searchMemoryTreeRetrieval(row)"
               >
                 检索证据
+              </button>
+              <button
+                v-if="row.canCheckWorldModel"
+                type="button"
+                data-testid="memory-tree-workspace-check-world-model"
+                :disabled="memoryTreePanelLoading"
+                @click="checkMemoryTreeWorldModel(row)"
+              >
+                检查世界模型
               </button>
               <button
                 v-if="row.canAuditTrace"

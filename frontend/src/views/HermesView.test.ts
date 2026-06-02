@@ -1331,6 +1331,113 @@ describe('HermesView', () => {
     wrapper.unmount()
   })
 
+  it('starts a world model route run from a memory tree workspace node', async () => {
+    vi.mocked((api as any).createAgentRun)
+      .mockImplementationOnce(async () => ({
+        id: 'run-memory-tree-workspace',
+        project_id: 'project-1',
+        goal: '搜索 Memory Tree：灯塔旧回声',
+        status: 'success',
+        entrypoint: 'ui_memory_tree_workspace_search',
+        input: {},
+        output: null,
+        error: null,
+        steps: [
+          {
+            id: 'step-memory-tree-workspace',
+            tool_name: 'inspect_agent_memory_tree',
+            status: 'success',
+            output: {
+              status: 'ready',
+              summary: {
+                volume_nodes: 0,
+                chapter_nodes: 1,
+                scene_nodes: 0,
+                beat_nodes: 0,
+              },
+              nodes: [
+                {
+                  id: 'chapter:2',
+                  level: 'chapter',
+                  chapter_index: 2,
+                  title: '灯塔旧回声',
+                  summary: '主角在灯塔发现旧回声线索。',
+                  children: [],
+                  source_refs: [{ source_type: 'chapter_content', source_id: 'chapter-content-2' }],
+                },
+              ],
+            },
+          },
+        ],
+      }))
+      .mockImplementationOnce(async () => ({
+        id: 'run-memory-tree-world-model',
+        project_id: 'project-1',
+        goal: '检查 Memory Tree 世界模型：灯塔旧回声',
+        status: 'success',
+        entrypoint: 'ui_memory_tree_workspace_world_model',
+        input: {},
+        output: null,
+        error: null,
+        steps: [
+          {
+            id: 'step-memory-tree-world-model',
+            tool_name: 'inspect_agent_world_model_route',
+            status: 'success',
+            output: {
+              status: 'completed',
+              route: { status: 'ready', reason: 'world_model_available' },
+              fact_summary: { total_confirmed_facts: 3, returned_facts: 2 },
+              facts: [],
+              proposal_pressure: { status: 'clear', total_items: 0 },
+            },
+          },
+        ],
+      }))
+    const wrapper = await mountHermesView()
+
+    const openWorkspace = document.querySelector('[data-testid="memory-tree-workspace-open"]') as HTMLButtonElement
+    openWorkspace.click()
+    await flushPromises()
+
+    await wrapper.get('[data-testid="memory-tree-workspace-query"]').setValue('灯塔旧回声')
+    await wrapper.get('[data-testid="memory-tree-workspace-search"]').trigger('submit')
+    await flushPromises()
+
+    const worldModelLink = wrapper.get('[data-testid="memory-tree-workspace-check-world-model"]')
+    expect(worldModelLink.text()).toContain('检查世界模型')
+    await worldModelLink.trigger('click')
+    await flushPromises()
+
+    const worldModelRequest = vi.mocked((api as any).createAgentRun).mock.calls[1][1]
+    expect(worldModelRequest).toEqual({
+      goal: '检查 Memory Tree 世界模型：灯塔旧回声',
+      entrypoint: 'ui_memory_tree_workspace_world_model',
+      tools: [
+        {
+          tool_name: 'inspect_agent_world_model_route',
+          params: {
+            subject_ref: '灯塔旧回声',
+            chapter_index: 2,
+            limit: 20,
+          },
+        },
+      ],
+      input: {
+        memory_tree_workspace_world_model: true,
+        source_node_label: '灯塔旧回声',
+        subject_ref: '灯塔旧回声',
+        chapter_index: 2,
+      },
+    })
+    expect(JSON.stringify(worldModelRequest)).not.toContain('chapter:2')
+    expect(JSON.stringify(worldModelRequest)).not.toContain('chapter-content-2')
+    expect(wrapper.get('[data-testid="agent-run-drawer"]').text()).toContain('run-memory-tree-world-model')
+    expect(wrapper.get('[data-testid="memory-tree-workspace"]').text()).toContain('世界模型：灯塔旧回声')
+
+    wrapper.unmount()
+  })
+
   it('creates a read-only memory tree expand run from a subnav result node', async () => {
     const searchRun = {
       id: 'run-memory-tree-search',
