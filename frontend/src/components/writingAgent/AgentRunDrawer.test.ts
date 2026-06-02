@@ -1379,6 +1379,110 @@ describe('AgentRunDrawer', () => {
     ]])
   })
 
+  it('emits a read-only memory tree expansion from a returned node with children', async () => {
+    const wrapper = mount(AgentRunDrawer, {
+      attachTo: document.body,
+      props: {
+        open: true,
+        loading: false,
+        error: '',
+        run: {
+          id: 'run-memory-tree-node-expand',
+          project_id: 'project-1',
+          goal: '浏览记忆树节点',
+          status: 'success',
+          entrypoint: 'dialog_auto_plan',
+          input: {},
+          output: null,
+          error: null,
+          steps: [
+            {
+              id: 'step-memory-tree',
+              run_id: 'run-memory-tree-node-expand',
+              project_id: 'project-1',
+              step_index: 1,
+              tool_name: 'inspect_agent_memory_tree',
+              status: 'success',
+              input: {},
+              output: {
+                status: 'ready',
+                filters: {},
+                navigation: { mode: 'filtered' },
+                nodes: [
+                  {
+                    id: 'scene:memory-3',
+                    level: 'scene',
+                    parent_id: 'chapter:2',
+                    chapter_index: 2,
+                    summary: '补充场景摘要。',
+                    children: ['beat:memory-4'],
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      },
+    })
+
+    const button = document.body.querySelector('[data-testid="memory-tree-node-expand"]') as HTMLButtonElement
+    expect(button).not.toBeNull()
+    expect(button.textContent).toContain('展开节点')
+    expect(button.textContent).toContain('第2章')
+    expect(document.body.textContent).not.toContain('scene:memory-3')
+
+    await button.click()
+
+    expect(wrapper.emitted('executePlannerPlan')).toEqual([[
+      {
+        sourceRunId: 'run-memory-tree-node-expand',
+        sourcePlanId: 'memory-tree-node-expand:0',
+        goal: '展开 Memory Tree：第2章',
+        tools: [
+          {
+            tool_name: 'inspect_agent_memory_tree',
+            params: {
+              expand_node_id: 'scene:memory-3',
+              include_ancestors: true,
+              max_depth: 1,
+            },
+            planner: {
+              step_id: 'memory-tree-node-expand:0',
+              plan_id: 'memory-tree-node-expand:0',
+              mutability: 'read',
+              requires_confirmation: false,
+            },
+          },
+        ],
+        planner: {
+          status: 'completed',
+          intent_class: 'inspect_memory_tree',
+          approval_contract: { status: 'not_required', write_steps: [] },
+          trace: {
+            plan_id: 'memory-tree-node-expand:0',
+            selected_tools: ['inspect_agent_memory_tree'],
+          },
+          tools: [
+            {
+              tool_name: 'inspect_agent_memory_tree',
+              params: {
+                expand_node_id: 'scene:memory-3',
+                include_ancestors: true,
+                max_depth: 1,
+              },
+              planner: {
+                step_id: 'memory-tree-node-expand:0',
+                plan_id: 'memory-tree-node-expand:0',
+                mutability: 'read',
+                requires_confirmation: false,
+              },
+            },
+          ],
+        },
+      },
+    ]])
+  })
+
   it('emits a read-only memory tree search planner continuation from query input', async () => {
     const wrapper = mount(AgentRunDrawer, {
       attachTo: document.body,

@@ -457,6 +457,73 @@ const memoryTreeNodesById = computed(() => {
   }
   return nodesById
 })
+
+function createMemoryTreeReadPayload(
+  runId: string,
+  planId: string,
+  goal: string,
+  params: Record<string, unknown>,
+): PlannerPlanExecutePayload {
+  const toolRequest: Record<string, unknown> = {
+    tool_name: 'inspect_agent_memory_tree',
+    params,
+    planner: {
+      step_id: planId,
+      plan_id: planId,
+      mutability: 'read',
+      requires_confirmation: false,
+    },
+  }
+  return {
+    sourceRunId: runId,
+    sourcePlanId: planId,
+    goal,
+    tools: [toolRequest],
+    planner: {
+      status: 'completed',
+      intent_class: 'inspect_memory_tree',
+      approval_contract: { status: 'not_required', write_steps: [] },
+      trace: {
+        plan_id: planId,
+        selected_tools: ['inspect_agent_memory_tree'],
+      },
+      tools: [toolRequest],
+    },
+  }
+}
+
+function memoryTreeNodeActionLabel(node: Record<string, unknown>) {
+  return stringValue(node.title) || chapterIndexLabel(node.chapter_index) || memoryTreeLevelLabel(node.level)
+}
+
+const memoryTreeNodeExpandActions = computed<MemoryTreeDrilldownAction[]>(() => {
+  const runId = props.run?.id
+  if (!runId || props.run?.status !== 'success') return []
+  const actions: MemoryTreeDrilldownAction[] = []
+  for (const [index, node] of memoryTreeNodes.value.entries()) {
+    const expandNodeId = stringValue(node.id)
+    const children = Array.isArray(node.children) ? node.children : []
+    if (!expandNodeId || children.length === 0) continue
+    const planId = `memory-tree-node-expand:${index}`
+    const nodeLabel = memoryTreeNodeActionLabel(node)
+    actions.push({
+      key: planId,
+      label: nodeLabel ? `展开节点：${nodeLabel}` : '展开节点',
+      payload: createMemoryTreeReadPayload(
+        runId,
+        planId,
+        `展开 Memory Tree：${nodeLabel || '节点'}`,
+        {
+          expand_node_id: expandNodeId,
+          include_ancestors: true,
+          max_depth: 1,
+        },
+      ),
+    })
+  }
+  return actions
+})
+
 const memoryTreeDrilldownActions = computed<MemoryTreeDrilldownAction[]>(() => {
   const runId = props.run?.id
   if (!runId || props.run?.status !== 'success') return []
@@ -466,42 +533,16 @@ const memoryTreeDrilldownActions = computed<MemoryTreeDrilldownAction[]>(() => {
     if (!expandNodeId) continue
     const planId = `memory-tree-drilldown:${index}`
     const node = memoryTreeNodesById.value[expandNodeId] || {}
-    const nodeTitle = stringValue(node.title)
-    const nodeLabel = nodeTitle || chapterIndexLabel(node.chapter_index) || memoryTreeLevelLabel(node.level)
+    const nodeLabel = memoryTreeNodeActionLabel(node)
     const params = {
       expand_node_id: expandNodeId,
       include_ancestors: true,
       max_depth: 1,
     }
-    const toolRequest: Record<string, unknown> = {
-      tool_name: 'inspect_agent_memory_tree',
-      params,
-      planner: {
-        step_id: planId,
-        plan_id: planId,
-        mutability: 'read',
-        requires_confirmation: false,
-      },
-    }
     actions.push({
       key: planId,
       label: nodeLabel ? `展开推荐节点：${nodeLabel}` : '展开推荐节点',
-      payload: {
-        sourceRunId: runId,
-        sourcePlanId: planId,
-        goal: `展开 Memory Tree：${nodeLabel || '推荐节点'}`,
-        tools: [toolRequest],
-        planner: {
-          status: 'completed',
-          intent_class: 'inspect_memory_tree',
-          approval_contract: { status: 'not_required', write_steps: [] },
-          trace: {
-            plan_id: planId,
-            selected_tools: ['inspect_agent_memory_tree'],
-          },
-          tools: [toolRequest],
-        },
-      },
+      payload: createMemoryTreeReadPayload(runId, planId, `展开 Memory Tree：${nodeLabel || '推荐节点'}`, params),
     })
   }
   return actions
@@ -511,38 +552,13 @@ const memoryTreeSearchAction = computed<MemoryTreeDrilldownAction | null>(() => 
   const query = memoryTreeSearchQueryInput.value.trim()
   if (!runId || props.run?.status !== 'success' || !query) return null
   const planId = 'memory-tree-search:manual'
-  const toolRequest: Record<string, unknown> = {
-    tool_name: 'inspect_agent_memory_tree',
-    params: {
-      query,
-      include_ancestors: true,
-    },
-    planner: {
-      step_id: planId,
-      plan_id: planId,
-      mutability: 'read',
-      requires_confirmation: false,
-    },
-  }
   return {
     key: planId,
     label: `搜索 Memory Tree：${query}`,
-    payload: {
-      sourceRunId: runId,
-      sourcePlanId: planId,
-      goal: `搜索 Memory Tree：${query}`,
-      tools: [toolRequest],
-      planner: {
-        status: 'completed',
-        intent_class: 'inspect_memory_tree',
-        approval_contract: { status: 'not_required', write_steps: [] },
-        trace: {
-          plan_id: planId,
-          selected_tools: ['inspect_agent_memory_tree'],
-        },
-        tools: [toolRequest],
-      },
-    },
+    payload: createMemoryTreeReadPayload(runId, planId, `搜索 Memory Tree：${query}`, {
+      query,
+      include_ancestors: true,
+    }),
   }
 })
 const hasMemoryLoopProjection = computed(() => Boolean(
@@ -1509,6 +1525,21 @@ function missingDependencyTool(value: Record<string, unknown>) {
               </div>
             </li>
           </ol>
+          <div
+            v-if="memoryTreeNodeExpandActions.length"
+            class="agent-run-drawer__actions"
+          >
+            <button
+              v-for="action in memoryTreeNodeExpandActions"
+              :key="action.key"
+              type="button"
+              class="agent-run-drawer__ghost"
+              data-testid="memory-tree-node-expand"
+              @click="executeMemoryTreeDrilldown(action)"
+            >
+              {{ action.label }}
+            </button>
+          </div>
           <div
             v-if="memoryTreeDrilldownActions.length"
             class="agent-run-drawer__actions"
