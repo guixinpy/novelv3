@@ -88,6 +88,8 @@
 - [x] Memory Tree 语义召回基础：query 精确匹配失败时返回 relevance score、matched_terms / matched_fields 和 recommended_drilldowns
 - [x] Memory Tree 层级语义回流：过滤到 volume/chapter 等上层节点时，可用 scene/beat 后代强匹配回流召回父节点，并抑制低分单字噪声
 - [x] Memory Tree 写前激活：build_memory_activation_plan 可将高 relevance Memory Tree 节点纳入 activation.memory_tree，并保留未来章节防泄漏
+- [x] Memory Route 对话入口：自然语言“检查第 N 章长篇记忆路由/检索维护状态”可投影为 inspect_agent_memory_route 只读工具计划
+- [x] Memory Activation Plan 对话入口：自然语言“检查第 N 章记忆激活计划：<query>”可投影为 inspect_agent_memory_activation_plan 只读工具计划
 - [x] 记忆激活：memory_activation.py
 - [x] 知识库候选：knowledge_base_candidates + 执行
 - [x] 世界模型分析执行：world_model_analysis_execution
@@ -108,6 +110,7 @@
 
 ### 最近完成
 
+- 2026-06-02: `inspect_agent_memory_route` 与 `inspect_agent_memory_activation_plan` 接入对话只读意图链路：Agent 可从自然语言直接诊断长篇记忆/检索维护路由、上下文摘要开关和指定章节写前激活计划，不再只能依赖其他工具的 recommended_next_tools 间接触达。
 - 2026-06-02: `inspect_agent_memory_tree` 语义召回新增层级回流：当调用方限定 `level` / `node_id` / `chapter_index` 后，候选上层节点会检查 scene/beat 后代的强匹配，将 `descendant_semantic_match`、`matched_descendant_ids` 和 `descendant.*` matched_fields 写入 relevance，并把 recommended_drilldowns 标为 `descendant_relevance`；同时引入最低 semantic relevance 阈值，避免单个汉字造成弱召回噪声。
 - 2026-06-01: 新增 record_agent_memory_tree_summaries，按卷/章 materialize Memory Tree 摘要到 LongformMemory，并接入 memory_worker 路由与工具契约测试。
 - 2026-06-01: 增强 inspect_agent_memory_tree 浏览能力，支持按节点展开、max_depth 收起、搜索命中时返回祖先上下文，供 Agent 渐进浏览 Memory Tree。
@@ -123,6 +126,8 @@
 - [x] 意图路由：IntentRouter 支持基础写作意图（设定/大纲/正文/审稿/恢复）
 - [x] 对话意图计划器：DialogIntentPlanner → WritingAgentPlan
 - [x] Memory Tree 只读浏览意图：自然语言“浏览/搜索记忆树”可投影为 inspect_agent_memory_tree 只读工具计划
+- [x] Memory Route 只读诊断意图：自然语言“检查第3章长篇记忆路由，包含上下文摘要”可投影为 inspect_agent_memory_route 只读工具计划
+- [x] Memory Activation Plan 只读诊断意图：自然语言“检查第3章记忆激活计划：灯塔旧回声”可投影为 inspect_agent_memory_activation_plan 只读工具计划
 - [x] ContextCompressor 只读自检意图：自然语言“检查上下文压缩/预算/窗口压力”可投影为 inspect_agent_context_compression_projection 只读工具计划
 - [x] Worker Dispatch 只读审计意图：自然语言“检查 worker 分发/孤儿恢复”可投影为 inspect_agent_worker_dispatch 只读工具计划
 - [x] Trace Audit 只读审计意图：自然语言“检查 run trace/执行链路/失败原因”可投影为 inspect_agent_trace_audit 只读工具计划
@@ -158,6 +163,7 @@
 
 ### 最近完成
 
+- 2026-06-02: `IntentRouter` 新增 `memory_route_intent` 与 `memory_activation_plan_intent`，可将“检查第3章长篇记忆路由，包含上下文摘要”和“检查第3章记忆激活计划：灯塔旧回声”等自然语言分别投影为 `inspect_memory_route` / `inspect_memory_activation_plan` action；`plan_dialog_intent_agent_run` 对两者生成无需审批的 read tool 计划，并保留 chapter_index、include_context_summary 与冒号后的 query。
 - 2026-06-02: `IntentRouter` 新增 `mutation_fingerprints_intent`，可将“检查 generate_chapter 第4章写入变更指纹”等自然语言投影为 `inspect_mutation_fingerprints` action，并确定性抽取显式 snake_case 工具名与章节号；`plan_dialog_intent_agent_run` 对该只读 action 直接生成 `inspect_agent_mutation_fingerprints` 工具计划，approval_contract 为 not_required，并放在宽泛 review 规则之前避免被“检查”类审稿意图抢占。
 - 2026-06-02: `IntentRouter` 新增 `route_preference_intent`，可将“检查 text_intent 路由偏好/Agent 审批链迁移建议”等自然语言投影为 `inspect_route_preference` action，并确定性抽取 `source`；`plan_dialog_intent_agent_run` 对该只读 action 直接生成 `inspect_agent_route_preference_projection` 工具计划，approval_contract 为 not_required。
 - 2026-06-02: `IntentRouter` 新增 `dialog_route_projection_intent`，可将“检查 button action 统一对话路由投影”等自然语言投影为 `inspect_dialog_route` action，并确定性抽取 `source`；`plan_dialog_intent_agent_run` 对该只读 action 直接生成 `inspect_agent_dialog_route_projection` 工具计划，approval_contract 为 not_required，且与 route preference/审批链迁移建议入口保持语义边界。

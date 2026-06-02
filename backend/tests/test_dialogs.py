@@ -240,6 +240,74 @@ def test_intent_router_projection_explains_memory_tree_route():
     assert projection["extracted_params"] == {"query": "灯塔旧回声", "include_ancestors": True}
 
 
+def test_intent_router_projection_explains_memory_route():
+    router = IntentRouter()
+    diag = ProjectDiagnosisOut(
+        missing_items=[],
+        completed_items=["setup", "storyline", "outline", "content"],
+        suggested_next_step="preview_chapter",
+    )
+
+    projection = router.project("检查第3章长篇记忆路由，包含上下文摘要", "chatting", None, diag).to_dict()
+
+    expected_params = {"chapter_index": 3, "include_context_summary": True}
+    assert projection["status"] == "matched"
+    assert projection["rule_id"] == "memory_route_intent"
+    assert projection["decision"]["rule_id"] == "memory_route_intent"
+    assert projection["decision"]["match_evidence"] == [{"kind": "pattern", "name": "memory_route_phrase"}]
+    assert projection["candidate"] == {
+        "type": "inspect_memory_route",
+        "params": expected_params,
+    }
+    assert projection["agent_route"] == _expected_agent_route(
+        "text_intent",
+        "inspect_memory_route",
+        "inspect_agent_memory_route",
+        requires_confirmation=False,
+    )
+    assert projection["tool_selection"] == {
+        "selected_tool": "inspect_agent_memory_route",
+        "why_this_tool": "dialog_action_to_agent_tool.inspect_memory_route",
+        "availability_checked": False,
+    }
+    assert projection["extracted_params"] == expected_params
+
+
+def test_intent_router_projection_explains_memory_activation_plan_route():
+    router = IntentRouter()
+    diag = ProjectDiagnosisOut(
+        missing_items=[],
+        completed_items=["setup", "storyline", "outline", "content"],
+        suggested_next_step="preview_chapter",
+    )
+
+    projection = router.project("检查第3章记忆激活计划：灯塔旧回声", "chatting", None, diag).to_dict()
+
+    expected_params = {"chapter_index": 3, "query": "灯塔旧回声"}
+    assert projection["status"] == "matched"
+    assert projection["rule_id"] == "memory_activation_plan_intent"
+    assert projection["decision"]["rule_id"] == "memory_activation_plan_intent"
+    assert projection["decision"]["match_evidence"] == [
+        {"kind": "pattern", "name": "memory_activation_plan_phrase"}
+    ]
+    assert projection["candidate"] == {
+        "type": "inspect_memory_activation_plan",
+        "params": expected_params,
+    }
+    assert projection["agent_route"] == _expected_agent_route(
+        "text_intent",
+        "inspect_memory_activation_plan",
+        "inspect_agent_memory_activation_plan",
+        requires_confirmation=False,
+    )
+    assert projection["tool_selection"] == {
+        "selected_tool": "inspect_agent_memory_activation_plan",
+        "why_this_tool": "dialog_action_to_agent_tool.inspect_memory_activation_plan",
+        "availability_checked": False,
+    }
+    assert projection["extracted_params"] == expected_params
+
+
 def test_intent_router_projection_explains_context_compression_route():
     router = IntentRouter()
     diag = ProjectDiagnosisOut(

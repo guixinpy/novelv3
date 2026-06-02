@@ -15,6 +15,8 @@ _INTENT_RULE_IDS = (
     "review_intent",
     "recovery_intent",
     "memory_tree_intent",
+    "memory_route_intent",
+    "memory_activation_plan_intent",
     "context_compression_intent",
     "worker_dispatch_intent",
     "trace_audit_intent",
@@ -289,6 +291,34 @@ class IntentRouter:
                 extracted_params=extracted_params,
                 match_evidence=[{"kind": "pattern", "name": "memory_tree_phrase"}],
                 preconditions=[{"code": "memory_tree_read_available", "passed": True}],
+            )
+
+        if _is_memory_route_intent(text):
+            extracted_params = _memory_route_params(text)
+            return self._matched_projection(
+                text,
+                dialog_state,
+                pending_action_id,
+                diagnosis,
+                rule_id="memory_route_intent",
+                candidate=ActionCandidate("inspect_memory_route", extracted_params),
+                extracted_params=extracted_params,
+                match_evidence=[{"kind": "pattern", "name": "memory_route_phrase"}],
+                preconditions=[{"code": "memory_route_read_available", "passed": True}],
+            )
+
+        if _is_memory_activation_plan_intent(text):
+            extracted_params = _memory_activation_plan_params(text)
+            return self._matched_projection(
+                text,
+                dialog_state,
+                pending_action_id,
+                diagnosis,
+                rule_id="memory_activation_plan_intent",
+                candidate=ActionCandidate("inspect_memory_activation_plan", extracted_params),
+                extracted_params=extracted_params,
+                match_evidence=[{"kind": "pattern", "name": "memory_activation_plan_phrase"}],
+                preconditions=[{"code": "memory_activation_plan_read_available", "passed": True}],
             )
 
         if _is_context_compression_intent(text):
@@ -720,6 +750,60 @@ def _memory_tree_level(text: str) -> str | None:
     if re.search(r"(beat|节拍|情节拍)", text):
         return "beat"
     return None
+
+
+def _is_memory_route_intent(text: str) -> bool:
+    memory_route_phrase = r"(长篇记忆路由|记忆路由|memory\s*route|longform\s*memory\s*route|检索维护)"
+    return bool(
+        re.search(rf"{memory_route_phrase}.*(检查|诊断|路由|状态|覆盖|上下文摘要|context\s*summary)", text)
+        or re.search(rf"(检查|诊断|路由|状态|覆盖|上下文摘要|context\s*summary).*{memory_route_phrase}", text)
+    )
+
+
+def _memory_route_params(text: str) -> dict[str, Any]:
+    params: dict[str, Any] = {}
+    chapter_index = parse_chapter_index(text)
+    if chapter_index is not None:
+        params["chapter_index"] = chapter_index
+    query = _labeled_query(
+        text,
+        r"(?:长篇记忆路由|记忆路由|memory\s*route|longform\s*memory\s*route|检索维护)",
+    )
+    if query:
+        params["query"] = query
+    if re.search(r"(包含|带上|include|with).*(上下文摘要|context\s*summary)|include_context_summary", text):
+        params["include_context_summary"] = True
+    return params
+
+
+def _is_memory_activation_plan_intent(text: str) -> bool:
+    activation_phrase = r"(记忆激活(?:计划)?|memory\s*activation(?:\s*plan)?|activation\s*plan)"
+    return bool(
+        re.search(rf"{activation_phrase}.*(检查|诊断|计划|生成|查看|激活)", text)
+        or re.search(rf"(检查|诊断|计划|生成|查看|激活).*{activation_phrase}", text)
+    )
+
+
+def _memory_activation_plan_params(text: str) -> dict[str, Any]:
+    params: dict[str, Any] = {}
+    chapter_index = parse_chapter_index(text)
+    if chapter_index is not None:
+        params["chapter_index"] = chapter_index
+    query = _labeled_query(
+        text,
+        r"(?:记忆激活(?:计划)?|memory\s*activation(?:\s*plan)?|activation\s*plan)",
+    )
+    if query:
+        params["query"] = query
+    return params
+
+
+def _labeled_query(text: str, label_pattern: str) -> str | None:
+    match = re.search(rf"{label_pattern}\s*[:：]\s*(.+)$", text)
+    if not match:
+        return None
+    value = match.group(1).strip()
+    return value or None
 
 
 def _is_context_compression_intent(text: str) -> bool:
