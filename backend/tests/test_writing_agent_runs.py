@@ -719,7 +719,7 @@ def test_agent_run_detail_exposes_agent_profile_projection_for_auto_plan(client)
     route_registry = payload["agent_worker_route_registry"]
     assert route_registry["source"] == "planner_trace.agent_health_projection.agent_worker_route_registry"
     assert route_registry["status"] == "passed"
-    assert route_registry["summary"]["routes"] == 50
+    assert route_registry["summary"]["routes"] == 51
     assert route_registry["summary"]["unrouted_allowed_tools"] == 0
     dogfood_evidence = payload["agent_dogfood_evidence"]
     assert dogfood_evidence["source"] == "planner_trace.agent_health_projection.dogfood_evidence"

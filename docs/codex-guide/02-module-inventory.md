@@ -279,19 +279,19 @@ Agent 化缺口：
 ### 4.3 Context Compression（上下文压缩）
 
 ```
-当前状态：L1 对话历史长度限制 + 基础压缩；ContextCompressor 已具备窗口压力/ContextGuard 投影、头尾保护预修剪计划、只读 dry-run payload builder、推荐恢复入口，并已接入 preflight_writing 运行时检查与章节生成 longform prompt block 压缩
+当前状态：L1 对话历史长度限制 + 基础压缩；ContextCompressor 已具备窗口压力/ContextGuard 投影、头尾保护预修剪计划、只读 dry-run payload builder、推荐恢复入口，并已接入 preflight_writing 运行时检查、章节生成 longform prompt block 压缩和 LongformMemory 持久摘要工件写入
 目标状态：L2-L3 LLM 摘要压缩 + 头尾保护 + Token 预算管理
 关键文件：
   backend/app/services/writing_agent/
-  ├── agent_context_compression_projection.py # 上下文压缩投影 + dry-run payload
+  ├── agent_context_compression_projection.py # 上下文压缩投影 + dry-run payload + 持久摘要写入
   ├── run_service.py                       # preflight_writing 暴露压缩检查/preview
   └── longform_context_summary.py         # 长篇上下文摘要
   backend/app/prompting/providers/chapter.py # 章节 prompt longform block 压力触发压缩替换
   backend/app/services/dialog/session.py  # Session 管理含历史限制
 Agent 化缺口：
-  - 已有计划到 payload、preflight runtime gate 和章节 prompt block 替换基础，仍缺少真正持久化 LLM 摘要写入
+  - 已有计划到 payload、preflight runtime gate、章节 prompt block 替换和持久摘要工件写入基础，仍缺少自动复用持久工件与真正 LLM 摘要质量闭环
   - 缺少 TokenJuice 机制（openhuman）
-  - 压缩粒度已有 longform block 入口，仍需按重要性继续分层到更多上下文构建路径
+  - 压缩粒度已有 longform block 和持久工件入口，仍需按重要性继续分层到更多上下文构建路径
 关联模块：Dialog、WritingAgent
 ```
 

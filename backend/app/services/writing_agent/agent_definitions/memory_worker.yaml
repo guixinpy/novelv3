@@ -11,6 +11,7 @@ allowed_tools:
   - summarize_longform_context
   - inspect_agent_context_compression_projection
   - build_agent_context_compression_payload
+  - record_agent_context_compression_summary
   - inspect_agent_memory_activation_plan
   - plan_post_chapter_memory_capture
   - prepare_record_agent_knowledge_base_candidate

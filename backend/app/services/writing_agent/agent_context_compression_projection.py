@@ -6,11 +6,13 @@ from typing import Any
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from app.models import Project
+from app.models import LongformMemory, Project
 from app.services.writing_agent.longform_context_summary import summarize_longform_context
 
 AGENT_CONTEXT_COMPRESSION_PROJECTION_VERSION = "phase225.agent_context_compression_projection.v1"
 AGENT_CONTEXT_COMPRESSION_PAYLOAD_VERSION = "phase236.agent_context_compression_payload.v1"
+AGENT_CONTEXT_COMPRESSION_SUMMARY_RECORD_VERSION = "phase242.agent_context_compression_summary_record.v1"
+CONTEXT_COMPRESSION_SUMMARY_MEMORY_TYPE = "context_compression_summary"
 CONTEXT_WINDOW_PRESSURE_RATIO = 0.85
 CONTEXT_GUARD_FAILURE_THRESHOLD = 3
 HEAD_PROTECTED_SECTIONS = ["project", "active_state"]
@@ -175,6 +177,130 @@ def build_agent_context_compression_payload(
         },
     }
     return _json_safe_output(output)
+
+
+def record_agent_context_compression_summary(
+    db: Session,
+    project_id: str,
+    *,
+    chapter_index: int | None = None,
+    max_chars: int | None = None,
+    context_guard_failure_count: int = 0,
+) -> dict[str, Any]:
+    _require_project(db, project_id)
+    payload_output = build_agent_context_compression_payload(
+        db,
+        project_id,
+        chapter_index=chapter_index,
+        max_chars=max_chars,
+        context_guard_failure_count=context_guard_failure_count,
+    )
+    compression_payload = (
+        payload_output.get("compression_payload")
+        if isinstance(payload_output.get("compression_payload"), dict)
+        else {}
+    )
+    compressed_context = compression_payload.get("compressed_context")
+    resolved_chapter_index = _optional_int(payload_output.get("chapter_index")) or chapter_index
+    if (
+        payload_output.get("status") != "ready"
+        or not isinstance(compressed_context, str)
+        or not compressed_context.strip()
+        or resolved_chapter_index is None
+    ):
+        return _json_safe_output(
+            {
+                "status": "skipped",
+                "version": AGENT_CONTEXT_COMPRESSION_SUMMARY_RECORD_VERSION,
+                "project_id": project_id,
+                "chapter_index": resolved_chapter_index,
+                "reason": "compression_payload_not_ready",
+                "payload_status": payload_output.get("status"),
+                "record": None,
+                "summary": {
+                    "created_nodes": 0,
+                    "updated_nodes": 0,
+                    "memory_type": CONTEXT_COMPRESSION_SUMMARY_MEMORY_TYPE,
+                },
+                "side_effects": {"writes": [], "runtime_context_mutated": False},
+                "recommended_next_tools": payload_output.get("recommended_next_tools") or [],
+                "recovery": payload_output.get("recovery") or {},
+                "trace": {
+                    "source": "record_agent_context_compression_summary",
+                    "payload_trace": payload_output.get("trace") or {},
+                    "runtime_behavior_changed": False,
+                },
+            }
+        )
+
+    scope_key = _context_compression_summary_scope_key(
+        chapter_index=resolved_chapter_index,
+        max_chars=max_chars,
+    )
+    record = (
+        db.query(LongformMemory)
+        .filter(
+            LongformMemory.project_id == project_id,
+            LongformMemory.memory_type == CONTEXT_COMPRESSION_SUMMARY_MEMORY_TYPE,
+            LongformMemory.scope_key == scope_key,
+        )
+        .first()
+    )
+    created = record is None
+    if record is None:
+        record = LongformMemory(
+            project_id=project_id,
+            memory_type=CONTEXT_COMPRESSION_SUMMARY_MEMORY_TYPE,
+            scope_key=scope_key,
+        )
+        db.add(record)
+    record.start_chapter_index = int(resolved_chapter_index)
+    record.end_chapter_index = int(resolved_chapter_index)
+    record.title = f"第{resolved_chapter_index}章上下文压缩摘要"
+    record.summary = compressed_context
+    record.status = "current"
+    record.memory_metadata = _context_compression_summary_metadata(
+        payload_output,
+        compression_payload=compression_payload,
+        requested_max_chars=max_chars,
+    )
+    db.flush()
+    projection = _summary_record_projection(record)
+    db.commit()
+    action = "create" if created else "update"
+    return _json_safe_output(
+        {
+            "status": "completed",
+            "version": AGENT_CONTEXT_COMPRESSION_SUMMARY_RECORD_VERSION,
+            "project_id": project_id,
+            "chapter_index": resolved_chapter_index,
+            "record": projection,
+            "summary": {
+                "created_nodes": 1 if created else 0,
+                "updated_nodes": 0 if created else 1,
+                "memory_type": CONTEXT_COMPRESSION_SUMMARY_MEMORY_TYPE,
+            },
+            "side_effects": {
+                "writes": [
+                    {
+                        "table": "longform_memories",
+                        "action": action,
+                        "id": projection["id"],
+                        "memory_type": CONTEXT_COMPRESSION_SUMMARY_MEMORY_TYPE,
+                        "scope_key": scope_key,
+                    }
+                ],
+                "runtime_context_mutated": False,
+            },
+            "recommended_next_tools": ["inspect_agent_memory_route", "preflight_writing"],
+            "trace": {
+                "source": "record_agent_context_compression_summary",
+                "payload_trace": payload_output.get("trace") or {},
+                "storage": "longform_memories",
+                "runtime_behavior_changed": False,
+            },
+        }
+    )
 
 
 def _require_project(db: Session, project_id: str) -> None:
@@ -429,6 +555,68 @@ def _projection_snapshot(projection: dict[str, Any]) -> dict[str, Any]:
         "summary": projection.get("summary") or {},
         "risks": projection.get("risks") or [],
         "recommended_next_tools": projection.get("recommended_next_tools") or [],
+    }
+
+
+def _context_compression_summary_scope_key(*, chapter_index: int, max_chars: int | None) -> str:
+    budget = _non_negative_int(max_chars) or "default"
+    return f"context_compression:chapter:{int(chapter_index)}:max_chars:{budget}"
+
+
+def _context_compression_summary_metadata(
+    payload_output: dict[str, Any],
+    *,
+    compression_payload: dict[str, Any],
+    requested_max_chars: int | None,
+) -> dict[str, Any]:
+    evidence = payload_output.get("evidence") if isinstance(payload_output.get("evidence"), dict) else {}
+    return {
+        "source": "record_agent_context_compression_summary",
+        "payload_version": payload_output.get("version"),
+        "payload_status": payload_output.get("status"),
+        "execution_mode": compression_payload.get("execution_mode"),
+        "requested_max_chars": _non_negative_int(requested_max_chars),
+        "target_max_chars": _non_negative_int(compression_payload.get("target_max_chars")),
+        "original_prompt_context_chars": _non_negative_int(compression_payload.get("original_prompt_context_chars")),
+        "compressed_context_chars": _non_negative_int(compression_payload.get("compressed_context_chars")),
+        "compression_ratio": compression_payload.get("compression_ratio"),
+        "pretrimmed_section_keys": _pretrimmed_section_keys(compression_payload.get("pretrimmed_sections")),
+        "source_section_keys": _string_list(evidence.get("source_section_keys")),
+        "projection": payload_output.get("projection") if isinstance(payload_output.get("projection"), dict) else {},
+        "compression_plan": (
+            payload_output.get("compression_plan")
+            if isinstance(payload_output.get("compression_plan"), dict)
+            else {}
+        ),
+    }
+
+
+def _pretrimmed_section_keys(sections: Any) -> list[str]:
+    if not isinstance(sections, list):
+        return []
+    return [
+        str(section.get("key"))
+        for section in sections
+        if isinstance(section, dict) and section.get("key")
+    ]
+
+
+def _string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value if str(item or "").strip()]
+
+
+def _summary_record_projection(record: LongformMemory) -> dict[str, Any]:
+    return {
+        "id": record.id,
+        "memory_type": record.memory_type,
+        "scope_key": record.scope_key,
+        "start_chapter_index": record.start_chapter_index,
+        "end_chapter_index": record.end_chapter_index,
+        "title": record.title,
+        "summary": record.summary,
+        "metadata": record.memory_metadata if isinstance(record.memory_metadata, dict) else {},
     }
 
 

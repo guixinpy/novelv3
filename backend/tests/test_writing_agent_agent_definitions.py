@@ -142,17 +142,22 @@ def test_worker_dispatch_routes_context_compression_to_memory_worker():
                 "tool_name": "build_agent_context_compression_payload",
                 "params": {"chapter_index": 8},
             },
+            {
+                "tool_name": "record_agent_context_compression_summary",
+                "params": {"chapter_index": 8},
+            },
         ],
         parent_run_id="run-context-compression",
     )
 
     assert preview["status"] == "ready"
-    assert preview["summary"] == {"workers": 1, "planned_tasks": 2, "blocked_tasks": 0, "issues": 0}
+    assert preview["summary"] == {"workers": 1, "planned_tasks": 3, "blocked_tasks": 0, "issues": 0}
     dispatch = preview["worker_dispatches"][0]
     assert dispatch["worker"]["name"] == "memory_worker"
     assert [item["tool_name"] for item in dispatch["task_envelopes"]] == [
         "inspect_agent_context_compression_projection",
         "build_agent_context_compression_payload",
+        "record_agent_context_compression_summary",
     ]
 
 
@@ -315,7 +320,7 @@ def test_worker_route_registry_audit_binds_routes_to_allowed_worker_definitions(
 
     assert audit["version"] == AGENT_WORKER_ROUTE_REGISTRY_AUDIT_VERSION
     assert audit["status"] == "passed"
-    assert audit["summary"] == {"routes": 50, "ready_routes": 50, "unrouted_allowed_tools": 0, "issues": 0}
+    assert audit["summary"] == {"routes": 51, "ready_routes": 51, "unrouted_allowed_tools": 0, "issues": 0}
     assert audit["issues"] == []
     assert audit["unrouted_allowed_tools"] == []
 
@@ -337,6 +342,7 @@ def test_worker_route_registry_audit_binds_routes_to_allowed_worker_definitions(
     assert routes_by_tool["inspect_agent_memory_activation_plan"]["worker"] == "memory_worker"
     assert routes_by_tool["inspect_agent_context_compression_projection"]["worker"] == "memory_worker"
     assert routes_by_tool["build_agent_context_compression_payload"]["worker"] == "memory_worker"
+    assert routes_by_tool["record_agent_context_compression_summary"]["worker"] == "memory_worker"
     assert routes_by_tool["inspect_agent_memory_tree"]["worker"] == "memory_worker"
     assert routes_by_tool["record_agent_memory_tree_summaries"]["worker"] == "memory_worker"
     assert [route["tool_name"] for route in audit["routes"]] == sorted(routes_by_tool)

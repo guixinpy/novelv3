@@ -206,12 +206,13 @@
 - [x] ContextCompressor dry-run payload：build_agent_context_compression_payload 输出头尾保护、summary 注入、pretrim evidence 和无副作用 trace，并成为 context pressure 的推荐恢复入口
 - [x] ContextCompressor preflight runtime gate：preflight_writing 输出 context_compression 检查、warning issue、recommended_next_tools 和裁剪后的 payload preview；ContextGuard opened 时作为 blocker 处理
 - [x] ContextCompressor 章节 prompt block 压缩：章节生成上下文构建在 longform 压力下用 dry-run compressed_context 替换原始 longform block，并在 trace metadata 记录压缩来源
+- [x] ContextCompressor 持久摘要写入工具：record_agent_context_compression_summary 将 ready payload 的 compressed_context 幂等写入 LongformMemory，作为后续恢复、审计和复用工件
 
 ### 下一步任务
 
 | 优先级 | 任务 | 完成标准 | 状态 |
 |--------|------|---------|------|
-| P1 | 智能上下文压缩（借鉴 hermes-agent） | 预修剪 + LLM 摘要 + 头尾保护 | 🟡 进行中（chapter prompt block compression） |
+| P1 | 智能上下文压缩（借鉴 hermes-agent） | 预修剪 + LLM 摘要 + 头尾保护 | 🟡 进行中（persistent compression artifact） |
 | P2 | 端到端 Trace 链路 | 从用户意图→计划→工具调用→模型调用→结果的一条链 | 🔴 待开始 |
 | P3 | 上下文预算管理 | 可视化 Token 使用量 + 接近上限时的警告 | 🔴 待开始 |
 
@@ -221,6 +222,7 @@
 
 ### 最近完成
 
+- 2026-06-02: 新增 `record_agent_context_compression_summary`，基于 `build_agent_context_compression_payload` 的 ready payload 将 `compressed_context` 以 `context_compression_summary` 类型写入 `LongformMemory`，scope 为 `context_compression:chapter:{n}:max_chars:{budget}`，同章节同预算幂等更新；同步 memory_worker 工具定义、adapter、worker route 和 registry 契约。当前仍未自动复用该持久工件，也未完成真正 LLM 摘要质量闭环。
 - 2026-06-02: 章节生成 prompt 构建路径接入 ContextCompressor：`build_chapter_prompt_context_blocks` 支持 `max_context_chars`，在 longform 原始长度达到窗口压力阈值时调用 `build_agent_context_compression_payload`，用 dry-run `compressed_context` 替换 `longform_memory_context`，并在 trace block metadata 记录 applied 状态、target_max_chars、compression_ratio、pretrimmed section keys 和 side_effects；仍未写入持久 LLM 摘要。
 - 2026-06-02: `preflight_writing` 接入 ContextCompressor 运行时检查：支持 `max_context_chars` / `context_guard_failure_count` 参数，输出 `checks.context_compression`、warning issue、`recommended_next_tools` 和裁剪后的 `context_compression_payload_preview`；该 preview 保持只读 dry-run，不包含完整 `compressed_context`，尚未替换最终生成 prompt。
 - 2026-06-01: `build_agent_context_compression_payload` 接入 memory_worker，基于 projection 生成只读 dry-run payload，包含 protected_head、summarize_longform_context summary、protected_tail、pretrimmed_sections、side_effects 和 runtime_behavior_changed=false trace；尚未写入 LLM 摘要或替换运行时上下文构建路径。

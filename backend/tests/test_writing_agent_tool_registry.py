@@ -95,6 +95,7 @@ def test_agent_memory_trace_tool_descriptors_live_in_dedicated_module():
         "summarize_longform_context",
         "inspect_agent_context_compression_projection",
         "build_agent_context_compression_payload",
+        "record_agent_context_compression_summary",
         "inspect_agent_memory_activation_plan",
         "repair_longform_maintenance",
         "prepare_repair_longform_maintenance",
@@ -1624,6 +1625,22 @@ def test_agent_tool_registry_includes_build_agent_context_compression_payload():
     assert descriptor.output_schema["properties"]["side_effects"]["type"] == "object"
     assert "build_agent_context_compression_payload" in allowed_tool_names()
     assert "build_agent_context_compression_payload" in non_blocking_report_tool_names()
+
+
+def test_agent_tool_registry_includes_record_agent_context_compression_summary():
+    descriptor = get_agent_tool_descriptor("record_agent_context_compression_summary")
+
+    assert descriptor is not None
+    assert descriptor.internal is True
+    assert descriptor.non_blocking_report is False
+    assert descriptor.category == "longform_memory"
+    assert descriptor.target_type == "agent_context_compression_summary"
+    assert descriptor.input_schema["properties"]["chapter_index"]["minimum"] == 1
+    assert descriptor.input_schema["properties"]["max_chars"]["minimum"] == 500
+    assert descriptor.output_schema["properties"]["record"]["type"] == ["object", "null"]
+    assert descriptor.output_schema["properties"]["side_effects"]["type"] == "object"
+    assert "record_agent_context_compression_summary" in allowed_tool_names()
+    assert "record_agent_context_compression_summary" not in non_blocking_report_tool_names()
 
 
 def test_agent_tool_registry_includes_repair_longform_maintenance():

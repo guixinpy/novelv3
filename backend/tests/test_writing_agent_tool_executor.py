@@ -121,6 +121,7 @@ def test_agent_memory_trace_tool_adapters_live_in_dedicated_module():
         "summarize_longform_context",
         "inspect_agent_context_compression_projection",
         "build_agent_context_compression_payload",
+        "record_agent_context_compression_summary",
         "inspect_agent_memory_activation_plan",
         "repair_longform_maintenance",
     ]
@@ -135,6 +136,7 @@ def test_agent_memory_trace_tool_adapters_live_in_dedicated_module():
     assert AGENT_MEMORY_TRACE_TOOL_ADAPTERS["summarize_longform_context"].mutability == "read"
     assert AGENT_MEMORY_TRACE_TOOL_ADAPTERS["inspect_agent_context_compression_projection"].mutability == "read"
     assert AGENT_MEMORY_TRACE_TOOL_ADAPTERS["build_agent_context_compression_payload"].mutability == "read"
+    assert AGENT_MEMORY_TRACE_TOOL_ADAPTERS["record_agent_context_compression_summary"].mutability == "write"
     assert AGENT_MEMORY_TRACE_TOOL_ADAPTERS["inspect_agent_memory_activation_plan"].mutability == "read"
     assert AGENT_MEMORY_TRACE_TOOL_ADAPTERS["repair_longform_maintenance"].mutability == "guarded_write"
     assert (
@@ -148,6 +150,10 @@ def test_agent_memory_trace_tool_adapters_live_in_dedicated_module():
     assert (
         AGENT_MEMORY_TRACE_TOOL_ADAPTERS["build_agent_context_compression_payload"].handler.__name__
         == "_build_agent_context_compression_payload"
+    )
+    assert (
+        AGENT_MEMORY_TRACE_TOOL_ADAPTERS["record_agent_context_compression_summary"].handler.__name__
+        == "_record_agent_context_compression_summary"
     )
     assert (
         AGENT_MEMORY_TRACE_TOOL_ADAPTERS["search_agent_retrieval_context"].handler.__name__
@@ -174,6 +180,7 @@ def test_agent_memory_trace_tool_adapter_builder_adds_maintenance_approval_chain
         "summarize_longform_context",
         "inspect_agent_context_compression_projection",
         "build_agent_context_compression_payload",
+        "record_agent_context_compression_summary",
         "inspect_agent_memory_activation_plan",
         "repair_longform_maintenance",
         "prepare_repair_longform_maintenance",
@@ -2297,8 +2304,8 @@ async def test_tool_executor_handles_inspect_agent_worker_dispatch(db_session):
     }
     assert result.output["route_registry"]["status"] == "passed"
     assert result.output["route_registry"]["summary"] == {
-        "routes": 50,
-        "ready_routes": 50,
+        "routes": 51,
+        "ready_routes": 51,
         "unrouted_allowed_tools": 0,
         "issues": 0,
     }

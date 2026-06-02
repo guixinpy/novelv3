@@ -224,6 +224,34 @@ AGENT_MEMORY_TRACE_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(
+        name="record_agent_context_compression_summary",
+        module="writing_agent",
+        category="longform_memory",
+        description="将 ContextCompressor 生成的压缩上下文摘要显式写入 LongformMemory，作为后续恢复、审计和上下文复用的持久工件。",
+        input_schema=object_schema(
+            {
+                "chapter_index": {"type": "integer", "minimum": 1},
+                "max_chars": {"type": "integer", "minimum": 500},
+                "context_guard_failure_count": {"type": "integer", "minimum": 0},
+            }
+        ),
+        output_schema=object_schema(
+            {
+                "status": {"type": "string"},
+                "record": {"type": ["object", "null"]},
+                "summary": {"type": "object"},
+                "side_effects": {"type": "object"},
+                "recommended_next_tools": {"type": "array"},
+                "trace": {"type": "object"},
+            }
+        ),
+        target_type="agent_context_compression_summary",
+        internal=True,
+        non_blocking_report=False,
+        sort_key=8,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
         name="inspect_agent_memory_activation_plan",
         module="writing_agent",
         category="longform_memory",

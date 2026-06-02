@@ -95,6 +95,23 @@ def _build_agent_context_compression_payload(
     )
 
 
+def _record_agent_context_compression_summary(
+    context: WritingAgentToolContext,
+    tool: WritingAgentToolRequest,
+) -> dict[str, Any]:
+    from app.services.writing_agent.agent_context_compression_projection import (
+        record_agent_context_compression_summary,
+    )
+
+    return record_agent_context_compression_summary(
+        context.db,
+        context.project_id,
+        chapter_index=_optional_int(tool.params.get("chapter_index")),
+        max_chars=_optional_int(tool.params.get("max_chars")),
+        context_guard_failure_count=_optional_int(tool.params.get("context_guard_failure_count")) or 0,
+    )
+
+
 def _inspect_agent_memory_activation_plan(
     context: WritingAgentToolContext,
     tool: WritingAgentToolRequest,
@@ -230,6 +247,12 @@ AGENT_MEMORY_TRACE_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
         _build_agent_context_compression_payload,
         category="longform_memory",
         mutability="read",
+    ),
+    "record_agent_context_compression_summary": WritingAgentToolAdapter(
+        "record_agent_context_compression_summary",
+        _record_agent_context_compression_summary,
+        category="longform_memory",
+        mutability="write",
     ),
     "inspect_agent_memory_activation_plan": WritingAgentToolAdapter(
         "inspect_agent_memory_activation_plan",

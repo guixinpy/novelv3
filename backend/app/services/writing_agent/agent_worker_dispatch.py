@@ -29,6 +29,7 @@ TOOL_WORKER_ROUTES = {
     "summarize_longform_context": "memory_worker",
     "inspect_agent_context_compression_projection": "memory_worker",
     "build_agent_context_compression_payload": "memory_worker",
+    "record_agent_context_compression_summary": "memory_worker",
     "inspect_agent_memory_activation_plan": "memory_worker",
     "plan_post_chapter_memory_capture": "memory_worker",
     "prepare_record_agent_knowledge_base_candidate": "memory_worker",

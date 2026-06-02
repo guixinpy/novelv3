@@ -1,4 +1,4 @@
-from app.models import Project
+from app.models import LongformMemory, Project
 from app.services.writing_agent import agent_context_compression_projection
 from app.services.writing_agent.agent_context_compression_projection import (
     build_agent_context_compression_payload,
@@ -131,6 +131,106 @@ def test_context_compression_payload_builds_head_tail_protected_dry_run(db_sessi
     ]
     assert output["side_effects"] == {"writes": [], "runtime_context_mutated": False}
     assert output["trace"]["runtime_behavior_changed"] is False
+
+
+def test_context_compression_summary_record_persists_compressed_payload(db_session, monkeypatch):
+    project = Project(name="Context Compression Summary Record")
+    db_session.add(project)
+    db_session.commit()
+    compressed_context = "【压缩长篇记忆】\n保留当前目标、关键旧案和近期章节尾部。"
+
+    def fake_payload(db, project_id, *, chapter_index=None, max_chars=None, context_guard_failure_count=0):
+        return {
+            "status": "ready",
+            "project_id": project_id,
+            "chapter_index": chapter_index,
+            "compression_payload": {
+                "execution_mode": "dry_run",
+                "target_max_chars": 3000,
+                "original_prompt_context_chars": 3800,
+                "compressed_context_chars": len(compressed_context),
+                "compression_ratio": 0.02,
+                "compressed_context": compressed_context,
+                "pretrimmed_sections": [{"key": "recent_chapters"}, {"key": "critical_context"}],
+            },
+            "projection": {"status": "warning"},
+            "compression_plan": {"status": "recommended"},
+            "evidence": {"source_section_keys": ["recent_chapters", "critical_context"]},
+            "side_effects": {"writes": [], "runtime_context_mutated": False},
+            "trace": {"source": "test_payload"},
+        }
+
+    monkeypatch.setattr(agent_context_compression_projection, "build_agent_context_compression_payload", fake_payload)
+
+    output = agent_context_compression_projection.record_agent_context_compression_summary(
+        db_session,
+        project.id,
+        chapter_index=8,
+        max_chars=4000,
+    )
+
+    assert output["status"] == "completed"
+    assert output["summary"] == {
+        "created_nodes": 1,
+        "updated_nodes": 0,
+        "memory_type": "context_compression_summary",
+    }
+    assert output["record"]["scope_key"] == "context_compression:chapter:8:max_chars:4000"
+    assert output["record"]["summary"] == compressed_context
+    assert output["record"]["metadata"]["target_max_chars"] == 3000
+    assert output["record"]["metadata"]["source_section_keys"] == ["recent_chapters", "critical_context"]
+    assert output["side_effects"]["writes"][0]["table"] == "longform_memories"
+
+    record = (
+        db_session.query(LongformMemory)
+        .filter(
+            LongformMemory.project_id == project.id,
+            LongformMemory.memory_type == "context_compression_summary",
+            LongformMemory.scope_key == "context_compression:chapter:8:max_chars:4000",
+        )
+        .one()
+    )
+    assert record.start_chapter_index == 8
+    assert record.end_chapter_index == 8
+    assert record.title == "第8章上下文压缩摘要"
+    assert record.summary == compressed_context
+    assert record.memory_metadata["compression_ratio"] == 0.02
+
+
+def test_context_compression_summary_record_skips_when_payload_not_ready(db_session, monkeypatch):
+    project = Project(name="Context Compression Summary Skip")
+    db_session.add(project)
+    db_session.commit()
+
+    monkeypatch.setattr(
+        agent_context_compression_projection,
+        "build_agent_context_compression_payload",
+        lambda *args, **kwargs: {
+            "status": "not_needed",
+            "compression_payload": None,
+            "side_effects": {"writes": [], "runtime_context_mutated": False},
+            "recommended_next_tools": [],
+            "recovery": {},
+            "trace": {"source": "test_payload"},
+        },
+    )
+
+    output = agent_context_compression_projection.record_agent_context_compression_summary(
+        db_session,
+        project.id,
+        chapter_index=8,
+        max_chars=4000,
+    )
+
+    assert output["status"] == "skipped"
+    assert output["reason"] == "compression_payload_not_ready"
+    assert output["side_effects"] == {"writes": [], "runtime_context_mutated": False}
+    assert (
+        db_session.query(LongformMemory)
+        .filter(LongformMemory.project_id == project.id, LongformMemory.memory_type == "context_compression_summary")
+        .count()
+        == 0
+    )
 
 
 def test_context_compression_projection_blocks_after_repeated_guard_failures(db_session, monkeypatch):
