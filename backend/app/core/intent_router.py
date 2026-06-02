@@ -24,6 +24,7 @@ _INTENT_RULE_IDS = (
     "longform_context_summary_intent",
     "context_compression_intent",
     "worker_dispatch_intent",
+    "agent_event_projection_intent",
     "agent_job_projection_intent",
     "chapter_conflict_recovery_intent",
     "trace_audit_intent",
@@ -424,6 +425,20 @@ class IntentRouter:
                 extracted_params=extracted_params,
                 match_evidence=[{"kind": "pattern", "name": "worker_dispatch_phrase"}],
                 preconditions=[{"code": "worker_dispatch_read_available", "passed": True}],
+            )
+
+        if _is_agent_event_projection_intent(text):
+            extracted_params = _agent_event_projection_params(text)
+            return self._matched_projection(
+                text,
+                dialog_state,
+                pending_action_id,
+                diagnosis,
+                rule_id="agent_event_projection_intent",
+                candidate=ActionCandidate("inspect_agent_event_projection", extracted_params),
+                extracted_params=extracted_params,
+                match_evidence=[{"kind": "pattern", "name": "agent_event_projection_phrase"}],
+                preconditions=[{"code": "agent_event_projection_read_available", "passed": True}],
             )
 
         if _is_agent_job_projection_intent(text):
@@ -1153,6 +1168,28 @@ def _worker_dispatch_worker_name(text: str) -> str | None:
         if worker_name in text:
             return worker_name
     return None
+
+
+def _is_agent_event_projection_intent(text: str) -> bool:
+    event_phrase = r"(事件投影|事件流|agent\s*event|event\s*projection|tool\s*event|工具事件)"
+    return bool(
+        re.search(rf"{event_phrase}.*(检查|诊断|查看|审计|task|run|limit)", text)
+        or re.search(rf"(检查|诊断|查看|审计|task|run|limit).*{event_phrase}", text)
+    )
+
+
+def _agent_event_projection_params(text: str) -> dict[str, Any]:
+    params: dict[str, Any] = {}
+    task_id = _task_queue_task_id(text)
+    if task_id:
+        params["task_id"] = task_id
+    run_id = _trace_audit_run_id(text)
+    if run_id:
+        params["run_id"] = run_id
+    limit = _numeric_option(text, r"limit|限制|最多")
+    if limit is not None:
+        params["limit"] = limit
+    return params
 
 
 def _is_agent_job_projection_intent(text: str) -> bool:

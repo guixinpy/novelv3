@@ -602,6 +602,39 @@ def test_intent_router_projection_explains_agent_job_projection_route():
     assert projection["extracted_params"] == expected_params
 
 
+def test_intent_router_projection_explains_agent_event_projection_route():
+    router = IntentRouter()
+    diag = ProjectDiagnosisOut(
+        missing_items=[],
+        completed_items=["setup", "storyline", "outline", "content"],
+        suggested_next_step="preview_chapter",
+    )
+
+    projection = router.project("检查 task-abc123 的 Agent 事件投影 limit 12", "chatting", None, diag).to_dict()
+
+    expected_params = {"task_id": "task-abc123", "limit": 12}
+    assert projection["status"] == "matched"
+    assert projection["rule_id"] == "agent_event_projection_intent"
+    assert projection["decision"]["rule_id"] == "agent_event_projection_intent"
+    assert projection["decision"]["match_evidence"] == [{"kind": "pattern", "name": "agent_event_projection_phrase"}]
+    assert projection["candidate"] == {
+        "type": "inspect_agent_event_projection",
+        "params": expected_params,
+    }
+    assert projection["agent_route"] == _expected_agent_route(
+        "text_intent",
+        "inspect_agent_event_projection",
+        "inspect_agent_event_projection",
+        requires_confirmation=False,
+    )
+    assert projection["tool_selection"] == {
+        "selected_tool": "inspect_agent_event_projection",
+        "why_this_tool": "dialog_action_to_agent_tool.inspect_agent_event_projection",
+        "availability_checked": False,
+    }
+    assert projection["extracted_params"] == expected_params
+
+
 def test_intent_router_projection_explains_chapter_conflict_recovery_route():
     router = IntentRouter()
     diag = ProjectDiagnosisOut(

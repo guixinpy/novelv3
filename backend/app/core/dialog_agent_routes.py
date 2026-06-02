@@ -29,6 +29,7 @@ _READ_ONLY_AGENT_TOOLS = {
     "inspect_agent_reference_alignment",
     "inspect_agent_dogfood_evidence",
     "inspect_agent_route_preference_projection",
+    "inspect_agent_event_projection",
     "inspect_agent_job_projection",
     "plan_chapter_conflict_recovery",
 }
@@ -66,6 +67,7 @@ _DIALOG_ACTION_TO_AGENT_TOOL: dict[str, str] = {
     "inspect_reference_alignment": "inspect_agent_reference_alignment",
     "inspect_dogfood_evidence": "inspect_agent_dogfood_evidence",
     "inspect_route_preference": "inspect_agent_route_preference_projection",
+    "inspect_agent_event_projection": "inspect_agent_event_projection",
     "inspect_agent_job_projection": "inspect_agent_job_projection",
     "plan_chapter_conflict_recovery": "plan_chapter_conflict_recovery",
     "generate_setup": "generate_setup",

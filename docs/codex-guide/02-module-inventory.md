@@ -261,7 +261,7 @@ Agent 化缺口：
 ### 4.1 Task Queue（任务队列）
 
 ```
-当前状态：L1 进程内异步任务（BackgroundTask），支持 pending/running/completed/failed；Agent Job Projection 可由自然语言只读意图触达
+当前状态：L1 进程内异步任务（BackgroundTask），支持 pending/running/completed/failed；Agent Event/Job Projection 可由自然语言只读意图触达
 目标状态：L2-L3 健壮的任务队列（考虑 Celery/RQ/Arq），支持优先级、重试、可观测
 关键文件：
   backend/app/services/tasks/
@@ -277,6 +277,7 @@ Agent 化缺口：
   ├── batch_preflight.py                  # 批量预检
   └── batch_queue_inspector.py            # 队列检查器
 Agent 化缺口：
+  - 任务事件投影已有只读工具和自然语言入口，可按 task_id/run_id/limit 查看后台任务、Agent run 与 step 推导出的事件流
   - 后台任务队列已有只读投影和自然语言入口，可按章节、任务类型、状态和 limit 检查任务进度与恢复建议
   - 目前是进程内任务，非生产级队列
   - 缺少任务优先级和依赖管理
