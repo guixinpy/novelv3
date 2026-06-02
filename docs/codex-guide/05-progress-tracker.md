@@ -127,6 +127,7 @@
 - [x] Write Gate Coverage 只读审计意图：自然语言“检查写入工具的审批门禁覆盖”可投影为 inspect_agent_write_gate_coverage 只读工具计划
 - [x] Tool Contracts 只读自检意图：自然语言“检查工具契约覆盖率/迁移差距”可投影为 inspect_agent_tool_contracts 只读工具计划
 - [x] Command Contracts 只读自检意图：自然语言“检查命令契约缺口/slash command 投影”可投影为 inspect_agent_command_contracts 只读工具计划
+- [x] Reference Alignment 只读审计意图：自然语言“检查参考项目模式对齐/开源项目适配”可投影为 inspect_agent_reference_alignment 只读工具计划
 - [x] Agent Health 只读自检意图：自然语言“检查 Agent 健康/工具诊断”可投影为 inspect_agent_health_projection 只读工具计划
 - [x] Control Plane 只读自检意图：自然语言“检查控制面就绪度/工具契约/命令契约”可投影为 inspect_agent_control_plane_readiness 只读工具计划
 - [x] 审批流：approval_contract + approval_verification_event
@@ -148,6 +149,7 @@
 
 ### 最近完成
 
+- 2026-06-02: `IntentRouter` 新增 `reference_alignment_intent`，可将“检查参考项目模式对齐/开源项目适配”等自然语言投影为 `inspect_reference_alignment` action；`plan_dialog_intent_agent_run` 对该只读 action 直接生成 `inspect_agent_reference_alignment` 工具计划，approval_contract 为 not_required，并放在宽泛 review 规则之前避免被“检查”类审稿意图抢占。
 - 2026-06-02: `IntentRouter` 新增 `command_contracts_intent`，可将“检查命令契约缺口/slash command 投影”等自然语言投影为 `inspect_command_contracts` action；`plan_dialog_intent_agent_run` 对该只读 action 直接生成 `inspect_agent_command_contracts` 工具计划，approval_contract 为 not_required，并通过规则 guard 避免抢占含“控制面”的 readiness 查询。
 - 2026-06-02: `IntentRouter` 新增 `tool_contracts_intent`，可将“检查工具契约覆盖率/迁移差距”等自然语言投影为 `inspect_tool_contracts` action；`plan_dialog_intent_agent_run` 对该只读 action 直接生成 `inspect_agent_tool_contracts` 工具计划，approval_contract 为 not_required，并通过规则 guard 避免抢占含“控制面”的 readiness 查询。
 - 2026-06-02: `IntentRouter` 新增 `write_gate_coverage_intent`，可将“检查写入工具的审批门禁覆盖/写入门禁缺口”等自然语言投影为 `inspect_write_gate_coverage` action；`plan_dialog_intent_agent_run` 对该只读 action 直接生成 `inspect_agent_write_gate_coverage` 工具计划，approval_contract 为 not_required。
@@ -328,6 +330,7 @@
 - Followup 机制完善
 - 写作质量诊断
 - 参考模式投影
+- Reference Alignment 自然语言只读入口
 
 当前工作分支: `codex/agent-loop-risk`
 

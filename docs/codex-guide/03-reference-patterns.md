@@ -21,6 +21,8 @@ novelv3 以三个本地参考项目为工程学习对象：
 
 **原则**：参考项目只提供模式启发，不提供优先级。模式必须先映射到 novelv3 当前缺口，再决定是否实现。不得因为参考项目存在某模式就默认需要重建同等复杂度。
 
+当前 `inspect_agent_reference_alignment` 会把 openclaw、hermes-agent、openhuman 的可复用模式、novelv3 已采纳决策和下一步工具建议投影为只读审计结果；自然语言“检查参考项目模式对齐/开源项目适配”已可直接规划到该工具。
+
 ---
 
 ## 一、Agent 记忆系统
@@ -240,6 +242,7 @@ novelv3 当前 trace + approval 体系已经较完整。权限分级已先在核
 8. **openhuman Memory Tree 分层摘要基础版** → 卷/章摘要写入 LongformMemory，并通过 memory_worker 暴露 materialize 工具
 9. **openhuman Memory Tree 基础浏览/激活** → `inspect_agent_memory_tree` 支持按节点展开、深度裁剪、搜索命中祖先上下文、确定性 relevance drill-down、过滤层级的后代强匹配回流与弱匹配降噪，可由自然语言只读意图直接规划，并被 `build_memory_activation_plan` 消费
 10. **openclaw 孤兒恢复写入闭环基础版** → `apply_agent_worker_orphan_recovery` 确认式标记 blocked，并创建 pending redispatch run
+11. **Reference Alignment 只读审计入口** → `inspect_agent_reference_alignment` 将三参考项目模式、已采纳决策和下一步建议投影为可审计结果，并可由自然语言只读意图直接规划
 
 ### 立即实现（当前开发周期）
 

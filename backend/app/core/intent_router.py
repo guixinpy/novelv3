@@ -21,6 +21,7 @@ _INTENT_RULE_IDS = (
     "write_gate_coverage_intent",
     "tool_contracts_intent",
     "command_contracts_intent",
+    "reference_alignment_intent",
     "agent_health_intent",
     "control_plane_readiness_intent",
     "query_diagnosis_intent",
@@ -335,6 +336,19 @@ class IntentRouter:
                 extracted_params={},
                 match_evidence=[{"kind": "pattern", "name": "command_contracts_phrase"}],
                 preconditions=[{"code": "command_contracts_read_available", "passed": True}],
+            )
+
+        if _is_reference_alignment_intent(text):
+            return self._matched_projection(
+                text,
+                dialog_state,
+                pending_action_id,
+                diagnosis,
+                rule_id="reference_alignment_intent",
+                candidate=ActionCandidate("inspect_reference_alignment", {}),
+                extracted_params={},
+                match_evidence=[{"kind": "pattern", "name": "reference_alignment_phrase"}],
+                preconditions=[{"code": "reference_alignment_read_available", "passed": True}],
             )
 
         if _is_control_plane_readiness_intent(text):
@@ -693,6 +707,19 @@ def _is_command_contracts_intent(text: str) -> bool:
         )
         or re.search(
             r"(覆盖|coverage|投影|projection|依赖|缺口|gap|快照|snapshot|检查|自检|诊断).*(命令契约|command\s*contract|slash\s*command|斜杠命令)",
+            text,
+        )
+    )
+
+
+def _is_reference_alignment_intent(text: str) -> bool:
+    return bool(
+        re.search(
+            r"(参考项目|参考模式|开源项目|openclaw|hermes-agent|openhuman).*(对齐|适配|映射|alignment|pattern|模式|建议|检查|审计)",
+            text,
+        )
+        or re.search(
+            r"(对齐|适配|映射|alignment|pattern|模式|建议|检查|审计).*(参考项目|参考模式|开源项目|openclaw|hermes-agent|openhuman)",
             text,
         )
     )
