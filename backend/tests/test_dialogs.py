@@ -874,6 +874,121 @@ def test_intent_router_projection_explains_legacy_hermes_migration_route():
     assert projection["extracted_params"] == {}
 
 
+def test_intent_router_projection_explains_route_approval_opt_in_plan_route():
+    router = IntentRouter()
+    diag = ProjectDiagnosisOut(
+        missing_items=[],
+        completed_items=["setup", "storyline", "outline", "content"],
+        suggested_next_step="preview_chapter",
+    )
+
+    projection = router.project("规划 pending-action-123 的 Agent 审批链 opt-in", "chatting", None, diag).to_dict()
+
+    expected_params = {"pending_action_id": "pending-action-123"}
+    assert projection["status"] == "matched"
+    assert projection["rule_id"] == "route_approval_opt_in_plan_intent"
+    assert projection["decision"]["rule_id"] == "route_approval_opt_in_plan_intent"
+    assert projection["decision"]["match_evidence"] == [
+        {"kind": "pattern", "name": "route_approval_opt_in_plan_phrase"}
+    ]
+    assert projection["candidate"] == {
+        "type": "plan_route_approval_opt_in",
+        "params": expected_params,
+    }
+    assert projection["agent_route"] == _expected_agent_route(
+        "text_intent",
+        "plan_route_approval_opt_in",
+        "plan_agent_route_approval_opt_in",
+        requires_confirmation=False,
+    )
+    assert projection["tool_selection"] == {
+        "selected_tool": "plan_agent_route_approval_opt_in",
+        "why_this_tool": "dialog_action_to_agent_tool.plan_route_approval_opt_in",
+        "availability_checked": False,
+    }
+    assert projection["extracted_params"] == expected_params
+
+
+def test_intent_router_projection_explains_route_approval_opt_in_apply_preview_route():
+    router = IntentRouter()
+    diag = ProjectDiagnosisOut(
+        missing_items=[],
+        completed_items=["setup", "storyline", "outline", "content"],
+        suggested_next_step="preview_chapter",
+    )
+
+    projection = router.project(
+        "预览 pending-action-123 的 Agent 审批链 opt-in 应用",
+        "chatting",
+        None,
+        diag,
+    ).to_dict()
+
+    expected_params = {"pending_action_id": "pending-action-123"}
+    assert projection["status"] == "matched"
+    assert projection["rule_id"] == "route_approval_opt_in_apply_preview_intent"
+    assert projection["decision"]["rule_id"] == "route_approval_opt_in_apply_preview_intent"
+    assert projection["decision"]["match_evidence"] == [
+        {"kind": "pattern", "name": "route_approval_opt_in_apply_preview_phrase"}
+    ]
+    assert projection["candidate"] == {
+        "type": "preview_route_approval_opt_in_apply",
+        "params": expected_params,
+    }
+    assert projection["agent_route"] == _expected_agent_route(
+        "text_intent",
+        "preview_route_approval_opt_in_apply",
+        "preview_pending_action_route_approval_opt_in_apply",
+        requires_confirmation=False,
+    )
+    assert projection["tool_selection"] == {
+        "selected_tool": "preview_pending_action_route_approval_opt_in_apply",
+        "why_this_tool": "dialog_action_to_agent_tool.preview_route_approval_opt_in_apply",
+        "availability_checked": False,
+    }
+    assert projection["extracted_params"] == expected_params
+
+
+def test_intent_router_projection_explains_route_approval_opt_in_apply_contract_route():
+    router = IntentRouter()
+    diag = ProjectDiagnosisOut(
+        missing_items=[],
+        completed_items=["setup", "storyline", "outline", "content"],
+        suggested_next_step="preview_chapter",
+    )
+
+    projection = router.project(
+        "生成 pending-action-123 的 Agent 审批链 opt-in 契约",
+        "chatting",
+        None,
+        diag,
+    ).to_dict()
+
+    expected_params = {"pending_action_id": "pending-action-123"}
+    assert projection["status"] == "matched"
+    assert projection["rule_id"] == "route_approval_opt_in_apply_contract_intent"
+    assert projection["decision"]["rule_id"] == "route_approval_opt_in_apply_contract_intent"
+    assert projection["decision"]["match_evidence"] == [
+        {"kind": "pattern", "name": "route_approval_opt_in_apply_contract_phrase"}
+    ]
+    assert projection["candidate"] == {
+        "type": "preview_route_approval_opt_in_apply_contract",
+        "params": expected_params,
+    }
+    assert projection["agent_route"] == _expected_agent_route(
+        "text_intent",
+        "preview_route_approval_opt_in_apply_contract",
+        "preview_pending_action_route_approval_opt_in_apply_contract",
+        requires_confirmation=False,
+    )
+    assert projection["tool_selection"] == {
+        "selected_tool": "preview_pending_action_route_approval_opt_in_apply_contract",
+        "why_this_tool": "dialog_action_to_agent_tool.preview_route_approval_opt_in_apply_contract",
+        "availability_checked": False,
+    }
+    assert projection["extracted_params"] == expected_params
+
+
 def test_intent_router_projection_explains_tool_contracts_route():
     router = IntentRouter()
     diag = ProjectDiagnosisOut(

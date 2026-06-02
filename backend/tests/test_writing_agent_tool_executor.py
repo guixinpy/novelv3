@@ -2639,6 +2639,150 @@ async def test_tool_executor_handles_dialog_intent_agent_plan_for_legacy_hermes_
 
 
 @pytest.mark.asyncio
+async def test_tool_executor_handles_dialog_intent_agent_plan_for_route_approval_opt_in_plan_read(db_session):
+    project = Project(name="Dialog Intent Route Approval Opt In Plan")
+    db_session.add(project)
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(
+            db=db_session,
+            project_id=project.id,
+            run_id="run-dialog-intent-route-approval-opt-in-plan",
+        ),
+        WritingAgentToolRequest(
+            tool_name="plan_dialog_intent_agent_run",
+            params={"text": "规划 pending-action-123 的 Agent 审批链 opt-in"},
+        ),
+    )
+
+    expected_params = {"pending_action_id": "pending-action-123"}
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "completed"
+    assert result.output["intent_projection"]["rule_id"] == "route_approval_opt_in_plan_intent"
+    assert result.output["planner"]["intent_class"] == "plan_route_approval_opt_in"
+    assert result.output["planner"]["mapped_from_action_type"] == "plan_route_approval_opt_in"
+    assert result.output["planner"]["chapter_index"] is None
+    assert result.output["plan"] == {
+        "status": "completed",
+        "intent_class": "plan_route_approval_opt_in",
+        "steps": [
+            {
+                "step_index": 1,
+                "tool_name": "plan_agent_route_approval_opt_in",
+                "params": expected_params,
+                "mutability": "read",
+                "requires_confirmation": False,
+            }
+        ],
+        "tools": [{"tool_name": "plan_agent_route_approval_opt_in", "params": expected_params}],
+        "approval_contract": {"status": "not_required", "write_steps": []},
+    }
+    assert result.output["tools"] == [{"tool_name": "plan_agent_route_approval_opt_in", "params": expected_params}]
+    assert result.output["approval_contract"] == {"status": "not_required", "write_steps": []}
+    assert result.output["trace"]["reason"] == "planned_direct_read_tool_from_intent_projection"
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_handles_dialog_intent_agent_plan_for_route_approval_opt_in_preview_read(db_session):
+    project = Project(name="Dialog Intent Route Approval Opt In Preview")
+    db_session.add(project)
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(
+            db=db_session,
+            project_id=project.id,
+            run_id="run-dialog-intent-route-approval-opt-in-preview",
+        ),
+        WritingAgentToolRequest(
+            tool_name="plan_dialog_intent_agent_run",
+            params={"text": "预览 pending-action-123 的 Agent 审批链 opt-in 应用"},
+        ),
+    )
+
+    expected_params = {"pending_action_id": "pending-action-123"}
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "completed"
+    assert result.output["intent_projection"]["rule_id"] == "route_approval_opt_in_apply_preview_intent"
+    assert result.output["planner"]["intent_class"] == "preview_route_approval_opt_in_apply"
+    assert result.output["planner"]["mapped_from_action_type"] == "preview_route_approval_opt_in_apply"
+    assert result.output["planner"]["chapter_index"] is None
+    assert result.output["plan"] == {
+        "status": "completed",
+        "intent_class": "preview_route_approval_opt_in_apply",
+        "steps": [
+            {
+                "step_index": 1,
+                "tool_name": "preview_pending_action_route_approval_opt_in_apply",
+                "params": expected_params,
+                "mutability": "read",
+                "requires_confirmation": False,
+            }
+        ],
+        "tools": [{"tool_name": "preview_pending_action_route_approval_opt_in_apply", "params": expected_params}],
+        "approval_contract": {"status": "not_required", "write_steps": []},
+    }
+    assert result.output["tools"] == [
+        {"tool_name": "preview_pending_action_route_approval_opt_in_apply", "params": expected_params}
+    ]
+    assert result.output["approval_contract"] == {"status": "not_required", "write_steps": []}
+    assert result.output["trace"]["reason"] == "planned_direct_read_tool_from_intent_projection"
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_handles_dialog_intent_agent_plan_for_route_approval_opt_in_contract_read(db_session):
+    project = Project(name="Dialog Intent Route Approval Opt In Contract")
+    db_session.add(project)
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(
+            db=db_session,
+            project_id=project.id,
+            run_id="run-dialog-intent-route-approval-opt-in-contract",
+        ),
+        WritingAgentToolRequest(
+            tool_name="plan_dialog_intent_agent_run",
+            params={"text": "生成 pending-action-123 的 Agent 审批链 opt-in 契约"},
+        ),
+    )
+
+    expected_params = {"pending_action_id": "pending-action-123"}
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "completed"
+    assert result.output["intent_projection"]["rule_id"] == "route_approval_opt_in_apply_contract_intent"
+    assert result.output["planner"]["intent_class"] == "preview_route_approval_opt_in_apply_contract"
+    assert result.output["planner"]["mapped_from_action_type"] == "preview_route_approval_opt_in_apply_contract"
+    assert result.output["planner"]["chapter_index"] is None
+    assert result.output["plan"] == {
+        "status": "completed",
+        "intent_class": "preview_route_approval_opt_in_apply_contract",
+        "steps": [
+            {
+                "step_index": 1,
+                "tool_name": "preview_pending_action_route_approval_opt_in_apply_contract",
+                "params": expected_params,
+                "mutability": "read",
+                "requires_confirmation": False,
+            }
+        ],
+        "tools": [
+            {"tool_name": "preview_pending_action_route_approval_opt_in_apply_contract", "params": expected_params}
+        ],
+        "approval_contract": {"status": "not_required", "write_steps": []},
+    }
+    assert result.output["tools"] == [
+        {"tool_name": "preview_pending_action_route_approval_opt_in_apply_contract", "params": expected_params}
+    ]
+    assert result.output["approval_contract"] == {"status": "not_required", "write_steps": []}
+    assert result.output["trace"]["reason"] == "planned_direct_read_tool_from_intent_projection"
+
+
+@pytest.mark.asyncio
 async def test_tool_executor_handles_dialog_intent_agent_plan_for_write_gate_coverage_read(db_session):
     project = Project(name="Dialog Intent Write Gate Coverage Plan")
     db_session.add(project)

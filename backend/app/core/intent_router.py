@@ -33,6 +33,9 @@ _INTENT_RULE_IDS = (
     "trace_audit_intent",
     "write_gate_coverage_intent",
     "legacy_hermes_migration_intent",
+    "route_approval_opt_in_plan_intent",
+    "route_approval_opt_in_apply_preview_intent",
+    "route_approval_opt_in_apply_contract_intent",
     "tool_contracts_intent",
     "command_contracts_intent",
     "slash_command_route_intent",
@@ -526,6 +529,48 @@ class IntentRouter:
                 extracted_params={},
                 match_evidence=[{"kind": "pattern", "name": "legacy_hermes_migration_phrase"}],
                 preconditions=[{"code": "legacy_hermes_migration_read_available", "passed": True}],
+            )
+
+        if _is_route_approval_opt_in_apply_contract_intent(text):
+            extracted_params = _route_approval_opt_in_params(text)
+            return self._matched_projection(
+                text,
+                dialog_state,
+                pending_action_id,
+                diagnosis,
+                rule_id="route_approval_opt_in_apply_contract_intent",
+                candidate=ActionCandidate("preview_route_approval_opt_in_apply_contract", extracted_params),
+                extracted_params=extracted_params,
+                match_evidence=[{"kind": "pattern", "name": "route_approval_opt_in_apply_contract_phrase"}],
+                preconditions=[{"code": "route_approval_opt_in_apply_contract_read_available", "passed": True}],
+            )
+
+        if _is_route_approval_opt_in_apply_preview_intent(text):
+            extracted_params = _route_approval_opt_in_params(text)
+            return self._matched_projection(
+                text,
+                dialog_state,
+                pending_action_id,
+                diagnosis,
+                rule_id="route_approval_opt_in_apply_preview_intent",
+                candidate=ActionCandidate("preview_route_approval_opt_in_apply", extracted_params),
+                extracted_params=extracted_params,
+                match_evidence=[{"kind": "pattern", "name": "route_approval_opt_in_apply_preview_phrase"}],
+                preconditions=[{"code": "route_approval_opt_in_apply_preview_read_available", "passed": True}],
+            )
+
+        if _is_route_approval_opt_in_plan_intent(text):
+            extracted_params = _route_approval_opt_in_params(text)
+            return self._matched_projection(
+                text,
+                dialog_state,
+                pending_action_id,
+                diagnosis,
+                rule_id="route_approval_opt_in_plan_intent",
+                candidate=ActionCandidate("plan_route_approval_opt_in", extracted_params),
+                extracted_params=extracted_params,
+                match_evidence=[{"kind": "pattern", "name": "route_approval_opt_in_plan_phrase"}],
+                preconditions=[{"code": "route_approval_opt_in_plan_read_available", "passed": True}],
             )
 
         if _is_tool_contracts_intent(text):
@@ -1411,6 +1456,64 @@ def _is_legacy_hermes_migration_intent(text: str) -> bool:
         re.search(rf"{legacy_phrase}.*{migration_phrase}", text)
         or re.search(rf"{migration_phrase}.*{legacy_phrase}", text)
     )
+
+
+def _is_route_approval_opt_in_apply_contract_intent(text: str) -> bool:
+    return _is_route_approval_opt_in_phrase(text) and bool(re.search(r"(契约|contract|hash|哈希)", text))
+
+
+def _is_route_approval_opt_in_apply_preview_intent(text: str) -> bool:
+    if _is_route_approval_opt_in_apply_contract_intent(text):
+        return False
+    return _is_route_approval_opt_in_phrase(text) and bool(re.search(r"(预览|preview|diff|应用|apply|patch)", text))
+
+
+def _is_route_approval_opt_in_plan_intent(text: str) -> bool:
+    if _is_route_approval_opt_in_apply_contract_intent(text) or _is_route_approval_opt_in_apply_preview_intent(text):
+        return False
+    return _is_route_approval_opt_in_phrase(text) and bool(re.search(r"(规划|计划|plan|准备|检查|诊断)", text))
+
+
+def _is_route_approval_opt_in_phrase(text: str) -> bool:
+    approval_phrase = bool(re.search(r"(审批链|approval\s*chain|route\s*approval|agent\s*approval)", text))
+    opt_in_phrase = bool(re.search(r"opt[-_\s]*in", text))
+    pending_action_phrase = bool(
+        re.search(r"(pending[-_\s]*action|pending_action|待处理动作|\bpending[-_][a-z0-9_-]{2,}\b)", text)
+    )
+    route_params_phrase = bool(
+        _dialog_control_plane_action_type(text) or _dialog_route_source(text) or _slash_command_name(text)
+    )
+    return approval_phrase and opt_in_phrase and (pending_action_phrase or route_params_phrase)
+
+
+def _route_approval_opt_in_params(text: str) -> dict[str, Any]:
+    params: dict[str, Any] = {}
+    pending_action_id = _pending_action_id(text)
+    if pending_action_id:
+        params["pending_action_id"] = pending_action_id
+    action_type = _dialog_control_plane_action_type(text)
+    if action_type:
+        params["action_type"] = action_type
+    source = _dialog_route_source(text)
+    if source:
+        params["source"] = source
+    command_name = _slash_command_name(text)
+    if command_name:
+        params["command_name"] = command_name
+    return params
+
+
+def _pending_action_id(text: str) -> str | None:
+    match = re.search(
+        r"(?:pending_action_id|pending\s*action\s*id|待处理动作\s*id)\s*[:=：]?\s*([a-z0-9][a-z0-9_-]{2,})",
+        text,
+    )
+    if match:
+        return match.group(1)
+    match = re.search(r"\b(pending[-_][a-z0-9_-]{2,})\b", text)
+    if match:
+        return match.group(1)
+    return None
 
 
 def _is_tool_contracts_intent(text: str) -> bool:
