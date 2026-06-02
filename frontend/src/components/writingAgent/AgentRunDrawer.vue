@@ -20,6 +20,7 @@ type PlannerContinuationAction = {
 }
 
 type MemoryTreeDrilldownAction = PlannerContinuationAction
+type KnowledgeBaseCandidateRouteAction = PlannerContinuationAction
 
 type MemoryTreeNavigationHistoryItem = {
   key: string
@@ -427,6 +428,10 @@ const knowledgeBaseCandidateExecutionType = computed(() => (
 const knowledgeBaseCandidateExecutionCount = computed(() => (
   numberValue(knowledgeBaseCandidateExecutionOutput.value?.candidate_count)
 ))
+const knowledgeBaseCandidateExecutionChapterIndex = computed(() => (
+  numberValue(knowledgeBaseCandidateExecutionCandidate.value.chapter_index) ??
+  numberValue(knowledgeBaseCandidateExecutionOutput.value?.chapter_index)
+))
 const knowledgeBaseCandidateExecutionRecommendedTools = computed(() => (
   stringList(knowledgeBaseCandidateExecutionOutput.value?.recommended_next_tools)
 ))
@@ -558,6 +563,40 @@ function createPostMemoryCandidatePreparePayload(
   }
 }
 
+function createKnowledgeBaseRouteReadPayload(
+  runId: string,
+  planId: string,
+  goal: string,
+  params: Record<string, unknown>,
+): PlannerPlanExecutePayload {
+  const toolRequest: Record<string, unknown> = {
+    tool_name: 'inspect_agent_knowledge_base_route',
+    params,
+    planner: {
+      step_id: planId,
+      plan_id: planId,
+      mutability: 'read',
+      requires_confirmation: false,
+    },
+  }
+  return {
+    sourceRunId: runId,
+    sourcePlanId: planId,
+    goal,
+    tools: [toolRequest],
+    planner: {
+      status: 'completed',
+      intent_class: 'inspect_knowledge_base_route',
+      approval_contract: { status: 'not_required', write_steps: [] },
+      trace: {
+        plan_id: planId,
+        selected_tools: ['inspect_agent_knowledge_base_route'],
+      },
+      tools: [toolRequest],
+    },
+  }
+}
+
 const postChapterMemoryCandidatePrepareActions = computed<PlannerContinuationAction[]>(() => {
   const runId = props.run?.id
   if (!runId || props.run?.status !== 'success') return []
@@ -585,6 +624,30 @@ const postChapterMemoryCandidatePrepareActions = computed<PlannerContinuationAct
     })
   }
   return actions
+})
+
+const knowledgeBaseCandidateRouteActions = computed<KnowledgeBaseCandidateRouteAction[]>(() => {
+  const runId = props.run?.id
+  if (!runId || props.run?.status !== 'success') return []
+  if (!knowledgeBaseCandidateExecutionRecommendedTools.value.includes('inspect_agent_knowledge_base_route')) return []
+  const title = knowledgeBaseCandidateExecutionTitle.value
+  const params: Record<string, unknown> = {
+    query: title,
+    limit: 8,
+  }
+  const chapterIndex = knowledgeBaseCandidateExecutionChapterIndex.value
+  if (chapterIndex !== null) params.chapter_index = chapterIndex
+  const planId = 'knowledge-candidate-route:0'
+  return [{
+    key: planId,
+    label: `检查知识库：${title}`,
+    payload: createKnowledgeBaseRouteReadPayload(
+      runId,
+      planId,
+      `检查知识库写入结果：${title}`,
+      params,
+    ),
+  }]
 })
 
 function memoryTreeNodeActionLabel(node: Record<string, unknown>) {
@@ -870,6 +933,10 @@ function executeMemoryTreeSearch() {
 }
 
 function executePostMemoryCandidatePrepare(action: PlannerContinuationAction) {
+  emit('executePlannerPlan', action.payload)
+}
+
+function executeKnowledgeBaseCandidateRoute(action: KnowledgeBaseCandidateRouteAction) {
   emit('executePlannerPlan', action.payload)
 }
 
@@ -1639,6 +1706,21 @@ function missingDependencyTool(value: Record<string, unknown>) {
               {{ tool }}
             </li>
           </ul>
+          <div
+            v-if="knowledgeBaseCandidateRouteActions.length"
+            class="agent-run-drawer__actions"
+          >
+            <button
+              v-for="action in knowledgeBaseCandidateRouteActions"
+              :key="action.key"
+              type="button"
+              class="agent-run-drawer__ghost"
+              data-testid="knowledge-candidate-route"
+              @click="executeKnowledgeBaseCandidateRoute(action)"
+            >
+              {{ action.label }}
+            </button>
+          </div>
         </section>
 
         <section

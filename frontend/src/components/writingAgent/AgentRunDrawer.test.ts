@@ -2319,6 +2319,116 @@ describe('AgentRunDrawer', () => {
     expect(text).not.toContain('agent_plan_approval_verification')
   })
 
+  it('emits a read-only knowledge base route continuation after candidate execution', async () => {
+    const wrapper = mount(AgentRunDrawer, {
+      attachTo: document.body,
+      props: {
+        open: true,
+        loading: false,
+        error: '',
+        run: {
+          id: 'run-candidate-execute-route',
+          project_id: 'project-1',
+          goal: '执行已审批知识库候选写入',
+          status: 'success',
+          entrypoint: 'ui_planner_continuation_execute',
+          input: {},
+          output: null,
+          error: null,
+          steps: [
+            {
+              id: 'step-candidate-execute',
+              run_id: 'run-candidate-execute-route',
+              project_id: 'project-1',
+              step_index: 1,
+              tool_name: 'execute_record_agent_knowledge_base_candidate_with_approval',
+              status: 'success',
+              input: {
+                title: '第3章写作沉淀：雾港追踪',
+                approval_contract_hash: 'approval:candidate-secret',
+              },
+              output: {
+                status: 'success',
+                candidate_count: 1,
+                candidate: {
+                  id: 'candidate-secret-id',
+                  title: '第3章写作沉淀：雾港追踪',
+                  memory_type: 'writing_pattern',
+                  chapter_index: 3,
+                  source_refs: ['chapter_content:chapter-content-3'],
+                },
+                recommended_next_tools: ['inspect_agent_knowledge_base_route'],
+                agent_plan_approval_verification: {
+                  status: 'ready',
+                  approval_contract_hash: 'approval:candidate-secret',
+                },
+              },
+            },
+          ],
+        },
+      },
+    })
+
+    const button = document.body.querySelector('[data-testid="knowledge-candidate-route"]') as HTMLButtonElement
+    expect(button).not.toBeNull()
+    expect(button.textContent).toContain('检查知识库')
+    expect(button.textContent).toContain('第3章写作沉淀：雾港追踪')
+    expect(document.body.textContent).not.toContain('candidate-secret-id')
+    expect(document.body.textContent).not.toContain('chapter-content-3')
+    expect(document.body.textContent).not.toContain('approval:candidate-secret')
+
+    await button.click()
+
+    expect(wrapper.emitted('executePlannerPlan')).toEqual([[
+      {
+        sourceRunId: 'run-candidate-execute-route',
+        sourcePlanId: 'knowledge-candidate-route:0',
+        goal: '检查知识库写入结果：第3章写作沉淀：雾港追踪',
+        tools: [
+          {
+            tool_name: 'inspect_agent_knowledge_base_route',
+            params: {
+              chapter_index: 3,
+              query: '第3章写作沉淀：雾港追踪',
+              limit: 8,
+            },
+            planner: {
+              step_id: 'knowledge-candidate-route:0',
+              plan_id: 'knowledge-candidate-route:0',
+              mutability: 'read',
+              requires_confirmation: false,
+            },
+          },
+        ],
+        planner: {
+          status: 'completed',
+          intent_class: 'inspect_knowledge_base_route',
+          approval_contract: { status: 'not_required', write_steps: [] },
+          trace: {
+            plan_id: 'knowledge-candidate-route:0',
+            selected_tools: ['inspect_agent_knowledge_base_route'],
+          },
+          tools: [
+            {
+              tool_name: 'inspect_agent_knowledge_base_route',
+              params: {
+                chapter_index: 3,
+                query: '第3章写作沉淀：雾港追踪',
+                limit: 8,
+              },
+              planner: {
+                step_id: 'knowledge-candidate-route:0',
+                plan_id: 'knowledge-candidate-route:0',
+                mutability: 'read',
+                requires_confirmation: false,
+              },
+            },
+          ],
+        },
+      },
+    ]])
+  })
+
   it('does not render route upgrade apply when contract preview is not confirmable', () => {
     mount(AgentRunDrawer, {
       attachTo: document.body,
