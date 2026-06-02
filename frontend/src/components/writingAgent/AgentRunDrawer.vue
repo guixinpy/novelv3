@@ -416,6 +416,20 @@ const postChapterMemoryCandidateCount = computed(() => numberValue(postChapterMe
 const postChapterMemoryReviewStepCount = computed(() => numberValue(postChapterMemorySummary.value.review_step_count))
 const postChapterMemoryRecommendedTools = computed(() => stringList(postChapterMemoryOutput.value?.recommended_next_tools))
 const postChapterMemoryCandidates = computed(() => recordList(postChapterMemoryOutput.value?.candidates))
+const knowledgeBaseCandidateExecutionOutput = computed(() => latestToolOutput('execute_record_agent_knowledge_base_candidate_with_approval'))
+const knowledgeBaseCandidateExecutionCandidate = computed(() => recordValue(knowledgeBaseCandidateExecutionOutput.value?.candidate))
+const knowledgeBaseCandidateExecutionTitle = computed(() => (
+  safePostMemoryCandidateLabel(knowledgeBaseCandidateExecutionCandidate.value.title) || '知识库候选'
+))
+const knowledgeBaseCandidateExecutionType = computed(() => (
+  knowledgeBaseCandidateTypeLabel(knowledgeBaseCandidateExecutionCandidate.value.memory_type)
+))
+const knowledgeBaseCandidateExecutionCount = computed(() => (
+  numberValue(knowledgeBaseCandidateExecutionOutput.value?.candidate_count)
+))
+const knowledgeBaseCandidateExecutionRecommendedTools = computed(() => (
+  stringList(knowledgeBaseCandidateExecutionOutput.value?.recommended_next_tools)
+))
 const memoryTreeOutput = computed(() => latestToolOutput('inspect_agent_memory_tree'))
 const memoryTreeSummary = computed(() => recordValue(memoryTreeOutput.value?.summary))
 const memoryTreeSummaryLabel = computed(() => {
@@ -645,6 +659,7 @@ const memoryTreeSearchAction = computed<MemoryTreeDrilldownAction | null>(() => 
 const hasMemoryLoopProjection = computed(() => Boolean(
   memoryActivationOutput.value || retrievalContextOutput.value || postChapterMemoryOutput.value,
 ))
+const hasKnowledgeBaseCandidateExecutionProjection = computed(() => Boolean(knowledgeBaseCandidateExecutionOutput.value))
 const hasMemoryTreeProjection = computed(() => Boolean(memoryTreeOutput.value))
 const hasRecommendedFollowupPolicy = computed(() => Boolean(
   recommendedFollowupPreview.value &&
@@ -1011,6 +1026,16 @@ function preparedApprovalExecuteToolLabel(toolName: string) {
   if (toolName === 'execute_record_agent_knowledge_base_candidate_with_approval') return '写入知识库候选'
   if (toolName === 'execute_repair_longform_maintenance_with_approval') return '修复长篇维护'
   return toolName || '写入工具'
+}
+
+function knowledgeBaseCandidateTypeLabel(memoryType: unknown) {
+  const value = stringValue(memoryType)
+  if (value === 'writing_pattern') return '写法模式'
+  if (value === 'self_optimization_lesson') return '自优化经验'
+  if (value === 'author_preference') return '作者偏好'
+  if (value === 'project_policy') return '项目策略'
+  if (value === 'learned_rule') return '学习规则'
+  return value || '知识库候选'
 }
 
 function postChapterMemoryCaptureStatusLabel(status: unknown) {
@@ -1584,6 +1609,39 @@ function missingDependencyTool(value: Record<string, unknown>) {
         </section>
 
         <section
+          v-if="hasKnowledgeBaseCandidateExecutionProjection"
+          class="agent-run-drawer__knowledge-candidate"
+          aria-label="Knowledge base candidate execution"
+        >
+          <h4>知识库候选写入</h4>
+          <dl class="agent-run-drawer__facts">
+            <div>
+              <dt>候选</dt>
+              <dd>{{ knowledgeBaseCandidateExecutionTitle }}</dd>
+            </div>
+            <div>
+              <dt>类型</dt>
+              <dd>{{ knowledgeBaseCandidateExecutionType }}</dd>
+            </div>
+            <div v-if="knowledgeBaseCandidateExecutionCount !== null">
+              <dt>数量</dt>
+              <dd>候选 {{ knowledgeBaseCandidateExecutionCount }}</dd>
+            </div>
+          </dl>
+          <ul
+            v-if="knowledgeBaseCandidateExecutionRecommendedTools.length"
+            class="agent-run-drawer__tools"
+          >
+            <li
+              v-for="tool in knowledgeBaseCandidateExecutionRecommendedTools"
+              :key="`knowledge-candidate-next:${tool}`"
+            >
+              {{ tool }}
+            </li>
+          </ul>
+        </section>
+
+        <section
           v-if="hasMemoryTreeProjection"
           class="agent-run-drawer__memory-tree"
           aria-label="Agent memory tree projection"
@@ -1998,6 +2056,7 @@ function missingDependencyTool(value: Record<string, unknown>) {
 .agent-run-drawer__execution-plan h4,
 .agent-run-drawer__planner h4,
 .agent-run-drawer__memory-loop h4,
+.agent-run-drawer__knowledge-candidate h4,
 .agent-run-drawer__memory-tree h4,
 .agent-run-drawer__recovery h4,
 .agent-run-drawer__followups h4,
@@ -2057,6 +2116,15 @@ function missingDependencyTool(value: Record<string, unknown>) {
 }
 
 .agent-run-drawer__memory-loop {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-secondary);
+}
+
+.agent-run-drawer__knowledge-candidate {
   display: grid;
   gap: var(--space-3);
   padding: var(--space-3);

@@ -2254,6 +2254,71 @@ describe('AgentRunDrawer', () => {
     ]])
   })
 
+  it('renders knowledge base candidate execution success without internal ids', () => {
+    mount(AgentRunDrawer, {
+      attachTo: document.body,
+      props: {
+        open: true,
+        loading: false,
+        error: '',
+        run: {
+          id: 'run-candidate-execute',
+          project_id: 'project-1',
+          goal: '执行已审批知识库候选写入',
+          status: 'success',
+          entrypoint: 'ui_planner_continuation_execute',
+          input: {},
+          output: null,
+          error: null,
+          steps: [
+            {
+              id: 'step-candidate-execute',
+              run_id: 'run-candidate-execute',
+              project_id: 'project-1',
+              step_index: 1,
+              tool_name: 'execute_record_agent_knowledge_base_candidate_with_approval',
+              status: 'success',
+              input: {
+                title: '第3章写作沉淀：雾港追踪',
+                approval_contract_hash: 'approval:candidate-secret',
+              },
+              output: {
+                status: 'success',
+                execute_version: 'phase189.knowledge_base_candidate_with_approval_execute.v1',
+                target_type: 'agent_knowledge_base_candidate',
+                candidate_count: 1,
+                candidate: {
+                  id: 'candidate-secret-id',
+                  title: '第3章写作沉淀：雾港追踪',
+                  memory_type: 'writing_pattern',
+                  source_refs: ['chapter_content:chapter-content-3'],
+                },
+                side_effects: { executed: ['record_agent_knowledge_base_candidate'], skipped: [] },
+                recommended_next_tools: ['inspect_agent_knowledge_base_route'],
+                agent_plan_approval_verification: {
+                  status: 'ready',
+                  approval_contract_hash: 'approval:candidate-secret',
+                },
+              },
+            },
+          ],
+        },
+      },
+    })
+
+    const text = document.body.textContent || ''
+    expect(text).toContain('知识库候选写入')
+    expect(text).toContain('第3章写作沉淀：雾港追踪')
+    expect(text).toContain('写法模式')
+    expect(text).toContain('候选 1')
+    expect(text).toContain('inspect_agent_knowledge_base_route')
+    expect(text).not.toContain('candidate-secret-id')
+    expect(text).not.toContain('chapter_content:chapter-content-3')
+    expect(text).not.toContain('chapter-content-3')
+    expect(text).not.toContain('approval:candidate-secret')
+    expect(text).not.toContain('agent_plan_approval_verification')
+  })
+
   it('does not render route upgrade apply when contract preview is not confirmable', () => {
     mount(AgentRunDrawer, {
       attachTo: document.body,
