@@ -22,6 +22,7 @@ _INTENT_RULE_IDS = (
     "tool_contracts_intent",
     "command_contracts_intent",
     "reference_alignment_intent",
+    "dogfood_evidence_intent",
     "agent_health_intent",
     "control_plane_readiness_intent",
     "query_diagnosis_intent",
@@ -349,6 +350,19 @@ class IntentRouter:
                 extracted_params={},
                 match_evidence=[{"kind": "pattern", "name": "reference_alignment_phrase"}],
                 preconditions=[{"code": "reference_alignment_read_available", "passed": True}],
+            )
+
+        if _is_dogfood_evidence_intent(text):
+            return self._matched_projection(
+                text,
+                dialog_state,
+                pending_action_id,
+                diagnosis,
+                rule_id="dogfood_evidence_intent",
+                candidate=ActionCandidate("inspect_dogfood_evidence", {}),
+                extracted_params={},
+                match_evidence=[{"kind": "pattern", "name": "dogfood_evidence_phrase"}],
+                preconditions=[{"code": "dogfood_evidence_read_available", "passed": True}],
             )
 
         if _is_control_plane_readiness_intent(text):
@@ -720,6 +734,19 @@ def _is_reference_alignment_intent(text: str) -> bool:
         )
         or re.search(
             r"(对齐|适配|映射|alignment|pattern|模式|建议|检查|审计).*(参考项目|参考模式|开源项目|openclaw|hermes-agent|openhuman)",
+            text,
+        )
+    )
+
+
+def _is_dogfood_evidence_intent(text: str) -> bool:
+    return bool(
+        re.search(
+            r"(dogfood|pressure[-\s]*test|自吃|自测|真实长篇).*(证据|覆盖|coverage|审计|检查|诊断)",
+            text,
+        )
+        or re.search(
+            r"(证据|覆盖|coverage|审计|检查|诊断).*(dogfood|pressure[-\s]*test|自吃|自测|真实长篇)",
             text,
         )
     )
