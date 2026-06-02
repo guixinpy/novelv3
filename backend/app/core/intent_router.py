@@ -23,6 +23,7 @@ _INTENT_RULE_IDS = (
     "command_contracts_intent",
     "reference_alignment_intent",
     "dogfood_evidence_intent",
+    "route_preference_intent",
     "agent_health_intent",
     "control_plane_readiness_intent",
     "query_diagnosis_intent",
@@ -363,6 +364,20 @@ class IntentRouter:
                 extracted_params={},
                 match_evidence=[{"kind": "pattern", "name": "dogfood_evidence_phrase"}],
                 preconditions=[{"code": "dogfood_evidence_read_available", "passed": True}],
+            )
+
+        if _is_route_preference_intent(text):
+            extracted_params = _route_preference_params(text)
+            return self._matched_projection(
+                text,
+                dialog_state,
+                pending_action_id,
+                diagnosis,
+                rule_id="route_preference_intent",
+                candidate=ActionCandidate("inspect_route_preference", extracted_params),
+                extracted_params=extracted_params,
+                match_evidence=[{"kind": "pattern", "name": "route_preference_phrase"}],
+                preconditions=[{"code": "route_preference_read_available", "passed": True}],
             )
 
         if _is_control_plane_readiness_intent(text):
@@ -750,6 +765,37 @@ def _is_dogfood_evidence_intent(text: str) -> bool:
             text,
         )
     )
+
+
+def _is_route_preference_intent(text: str) -> bool:
+    return bool(
+        re.search(
+            r"(路由偏好|route\s*preference|审批链|approval\s*chain).*(迁移|建议|投影|检查|诊断|偏好|opt[-_\s]*in)",
+            text,
+        )
+        or re.search(
+            r"(迁移|建议|投影|检查|诊断|偏好|opt[-_\s]*in).*(路由偏好|route\s*preference|审批链|approval\s*chain)",
+            text,
+        )
+    )
+
+
+def _route_preference_params(text: str) -> dict[str, Any]:
+    params: dict[str, Any] = {}
+    source = _dialog_route_source(text)
+    if source:
+        params["source"] = source
+    return params
+
+
+def _dialog_route_source(text: str) -> str | None:
+    if re.search(r"(slash[_\s-]*command|斜杠命令|/命令)", text):
+        return "slash_command"
+    if re.search(r"(text[_\s-]*intent|自然语言|文本意图|文字意图)", text):
+        return "text_intent"
+    if re.search(r"(button[_\s-]*action|按钮|action\s*card|操作卡片)", text):
+        return "button_action"
+    return None
 
 
 def _is_control_plane_readiness_intent(text: str) -> bool:

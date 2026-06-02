@@ -16,6 +16,7 @@ _READ_ONLY_AGENT_TOOLS = {
     "inspect_agent_command_contracts",
     "inspect_agent_reference_alignment",
     "inspect_agent_dogfood_evidence",
+    "inspect_agent_route_preference_projection",
 }
 
 DialogAgentRouteSource = Literal["slash_command", "text_intent", "button_action"]
@@ -38,6 +39,7 @@ _DIALOG_ACTION_TO_AGENT_TOOL: dict[str, str] = {
     "inspect_command_contracts": "inspect_agent_command_contracts",
     "inspect_reference_alignment": "inspect_agent_reference_alignment",
     "inspect_dogfood_evidence": "inspect_agent_dogfood_evidence",
+    "inspect_route_preference": "inspect_agent_route_preference_projection",
     "generate_setup": "generate_setup",
     "generate_storyline": "generate_storyline",
     "generate_outline": "generate_outline",
