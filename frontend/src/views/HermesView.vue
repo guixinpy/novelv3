@@ -110,10 +110,13 @@ const writingControlLoading = ref(false)
 const chatCommands = ref<ChatCommandDefinition[]>(chatCommandRegistry)
 const memoryTreeNavigationHistory = computed(() => projectWorkspace.memoryTreeHistoryForProject(pid.value))
 const memoryTreePanelQuery = ref('')
+const memoryTreeWorkspaceQuery = ref('')
 const memoryTreePanelLoading = ref(false)
 const memoryTreePanelError = ref('')
 const memoryTreePanelSearchText = computed(() => safeMemoryTreeDisplayValue(memoryTreePanelQuery.value))
+const memoryTreeWorkspaceSearchText = computed(() => safeMemoryTreeDisplayValue(memoryTreeWorkspaceQuery.value))
 const canSearchMemoryTreePanel = computed(() => Boolean(memoryTreePanelSearchText.value) && !memoryTreePanelLoading.value)
+const canSearchMemoryTreeWorkspace = computed(() => Boolean(memoryTreeWorkspaceSearchText.value) && !memoryTreePanelLoading.value)
 const memoryTreePanelOutput = computed(() => latestRunToolOutput(activeAgentRun.value, 'inspect_agent_memory_tree'))
 const memoryTreePanelSummary = computed(() => recordValue(memoryTreePanelOutput.value?.summary))
 const memoryTreePanelSummaryLabel = computed(() => {
@@ -502,8 +505,16 @@ function openMemoryTreeHistoryRun(runId: string | undefined) {
   void openAgentRun(runId)
 }
 
-async function submitMemoryTreePanelSearch() {
-  const query = memoryTreePanelSearchText.value
+function openMemoryTreeWorkspace() {
+  workspace.applyUserPanel('memory', '打开 Memory Tree 工作区')
+}
+
+function closeMemoryTreeWorkspace() {
+  workspace.applyUserPanel('overview', '返回 Hermes 对话')
+}
+
+async function submitMemoryTreeSearch(source: 'panel' | 'workspace') {
+  const query = source === 'workspace' ? memoryTreeWorkspaceSearchText.value : memoryTreePanelSearchText.value
   if (!query || memoryTreePanelLoading.value) return
   memoryTreePanelError.value = ''
   memoryTreePanelLoading.value = true
@@ -511,7 +522,7 @@ async function submitMemoryTreePanelSearch() {
   try {
     const run = await api.createAgentRun(pid.value, {
       goal: `搜索 Memory Tree：${query}`,
-      entrypoint: 'ui_memory_tree_panel_search',
+      entrypoint: source === 'workspace' ? 'ui_memory_tree_workspace_search' : 'ui_memory_tree_panel_search',
       tools: [
         {
           tool_name: 'inspect_agent_memory_tree',
@@ -522,7 +533,10 @@ async function submitMemoryTreePanelSearch() {
           },
         },
       ],
-      input: {
+      input: source === 'workspace' ? {
+        memory_tree_workspace_search: true,
+        query,
+      } : {
         memory_tree_panel_search: true,
         query,
       },
@@ -534,12 +548,24 @@ async function submitMemoryTreePanelSearch() {
       label: `搜索：${query}`,
       runId: run.id,
     })
-    memoryTreePanelQuery.value = ''
+    if (source === 'workspace') {
+      memoryTreeWorkspaceQuery.value = ''
+    } else {
+      memoryTreePanelQuery.value = ''
+    }
   } catch (err) {
     memoryTreePanelError.value = err instanceof Error ? err.message : '搜索 Memory Tree 失败'
   } finally {
     memoryTreePanelLoading.value = false
   }
+}
+
+async function submitMemoryTreePanelSearch() {
+  await submitMemoryTreeSearch('panel')
+}
+
+async function submitMemoryTreeWorkspaceSearch() {
+  await submitMemoryTreeSearch('workspace')
 }
 
 async function expandMemoryTreePanelNode(row: MemoryTreePanelResultRow) {
@@ -880,7 +906,16 @@ async function applyRouteUpgradeFromRun(payload: RouteUpgradeApplyPayload) {
         >
           <header class="hermes-memory-tree-panel__header">
             <span>Memory Tree</span>
-            <strong>{{ memoryTreeNavigationHistory.length }}</strong>
+            <div>
+              <button
+                type="button"
+                data-testid="memory-tree-workspace-open"
+                @click="openMemoryTreeWorkspace"
+              >
+                工作区
+              </button>
+              <strong>{{ memoryTreeNavigationHistory.length }}</strong>
+            </div>
           </header>
           <form class="hermes-memory-tree-panel__search" @submit.prevent="submitMemoryTreePanelSearch">
             <input
@@ -980,8 +1015,105 @@ async function applyRouteUpgradeFromRun(payload: RouteUpgradeApplyPayload) {
       </div>
     </Teleport>
 
+    <section
+      v-if="workspace.panel === 'memory'"
+      class="hermes-memory-tree-workspace"
+      data-testid="memory-tree-workspace"
+      aria-label="Memory Tree 工作区"
+    >
+      <header class="hermes-memory-tree-workspace__header">
+        <div>
+          <span>Memory Tree 工作区</span>
+          <strong>返回 {{ memoryTreePanelNodeCount }} 个</strong>
+        </div>
+        <button type="button" data-testid="memory-tree-workspace-back" @click="closeMemoryTreeWorkspace">
+          返回对话
+        </button>
+      </header>
+      <form
+        class="hermes-memory-tree-workspace__search"
+        data-testid="memory-tree-workspace-search"
+        @submit.prevent="submitMemoryTreeWorkspaceSearch"
+      >
+        <input
+          v-model="memoryTreeWorkspaceQuery"
+          type="search"
+          data-testid="memory-tree-workspace-query"
+          aria-label="搜索 Memory Tree 工作区"
+          placeholder="搜索长期记忆节点"
+          :disabled="memoryTreePanelLoading"
+        />
+        <button type="submit" :disabled="!canSearchMemoryTreeWorkspace">
+          {{ memoryTreePanelLoading ? '搜索中' : '搜索' }}
+        </button>
+      </form>
+      <p v-if="memoryTreePanelError" class="hermes-memory-tree-workspace__error">
+        {{ memoryTreePanelError }}
+      </p>
+      <section class="hermes-memory-tree-workspace__tree" aria-label="Memory Tree 当前结果">
+        <div class="hermes-memory-tree-workspace__tree-header">
+          <span>当前层级树</span>
+          <strong v-if="memoryTreePanelSummaryLabel">{{ memoryTreePanelSummaryLabel }}</strong>
+        </div>
+        <p
+          v-if="memoryTreePanelExpandedNodeLabel"
+          class="hermes-memory-tree-workspace__expanded-state"
+        >
+          当前展开：{{ memoryTreePanelExpandedNodeLabel }}
+        </p>
+        <ol v-if="memoryTreePanelResultRows.length" class="hermes-memory-tree-workspace__list">
+          <li
+            v-for="row in memoryTreePanelResultRows"
+            :key="row.key"
+            :data-depth="row.depth"
+            :style="{ '--memory-tree-depth': row.depth }"
+            data-testid="memory-tree-workspace-node"
+          >
+            <span class="hermes-memory-tree-workspace__level">{{ row.levelLabel }}</span>
+            <div class="hermes-memory-tree-workspace__node-content">
+              <div>
+                <strong>{{ row.title }}</strong>
+                <span v-if="row.chapterLabel">{{ row.chapterLabel }}</span>
+                <span v-if="row.relevanceLabel">{{ row.relevanceLabel }}</span>
+              </div>
+              <p v-if="row.summary">{{ row.summary }}</p>
+              <button
+                v-if="row.canExpand"
+                type="button"
+                data-testid="memory-tree-workspace-result-expand"
+                :disabled="memoryTreePanelLoading"
+                @click="expandMemoryTreePanelNode(row)"
+              >
+                展开
+              </button>
+            </div>
+          </li>
+        </ol>
+        <p v-else class="hermes-memory-tree-workspace__empty">先搜索或从历史打开一次 Memory Tree 浏览结果</p>
+      </section>
+      <section class="hermes-memory-tree-workspace__history" aria-label="Memory Tree 浏览历史">
+        <header>
+          <span>浏览历史</span>
+          <strong>{{ memoryTreeNavigationHistory.length }}</strong>
+        </header>
+        <ol v-if="memoryTreeNavigationHistory.length">
+          <li v-for="item in memoryTreeNavigationHistory" :key="item.key">
+            <button
+              type="button"
+              data-testid="memory-tree-workspace-history-open"
+              :disabled="!item.runId"
+              @click="openMemoryTreeHistoryRun(item.runId)"
+            >
+              {{ item.label }}
+            </button>
+          </li>
+        </ol>
+        <p v-else>暂无浏览历史</p>
+      </section>
+    </section>
+
     <!-- Main content: Chat interface -->
-    <div class="hermes-view__chat">
+    <div v-else class="hermes-view__chat">
       <ChatMessageList
         :messages="chat.messages"
         :loading="chat.loading"
@@ -1061,6 +1193,215 @@ async function applyRouteUpgradeFromRun(payload: RouteUpgradeApplyPayload) {
   min-height: 0;
 }
 
+.hermes-memory-tree-workspace {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  gap: var(--space-3);
+  flex: 1;
+  min-height: 0;
+  padding: var(--space-4);
+  overflow: hidden;
+  background: var(--color-bg-secondary);
+}
+
+.hermes-memory-tree-workspace__header,
+.hermes-memory-tree-workspace__tree-header,
+.hermes-memory-tree-workspace__history header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.hermes-memory-tree-workspace__header div,
+.hermes-memory-tree-workspace__tree-header,
+.hermes-memory-tree-workspace__history header {
+  min-width: 0;
+}
+
+.hermes-memory-tree-workspace__header span,
+.hermes-memory-tree-workspace__tree-header span,
+.hermes-memory-tree-workspace__history header span {
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+}
+
+.hermes-memory-tree-workspace__header strong,
+.hermes-memory-tree-workspace__tree-header strong,
+.hermes-memory-tree-workspace__history header strong {
+  color: var(--color-text-tertiary);
+  font-size: var(--text-xs);
+  font-weight: var(--font-medium);
+}
+
+.hermes-memory-tree-workspace__header button,
+.hermes-memory-tree-workspace__search button,
+.hermes-memory-tree-workspace__node-content button,
+.hermes-memory-tree-workspace__history button {
+  min-height: 30px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-white);
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+}
+
+.hermes-memory-tree-workspace__header button,
+.hermes-memory-tree-workspace__search button {
+  padding: 0 var(--space-3);
+  white-space: nowrap;
+}
+
+.hermes-memory-tree-workspace__search {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 72px;
+  gap: var(--space-2);
+}
+
+.hermes-memory-tree-workspace__search input {
+  min-width: 0;
+  min-height: 34px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-white);
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+}
+
+.hermes-memory-tree-workspace__search input:focus {
+  border-color: var(--color-primary);
+  outline: none;
+}
+
+.hermes-memory-tree-workspace__search button {
+  background: var(--color-text-primary);
+  color: var(--color-bg-white);
+}
+
+.hermes-memory-tree-workspace__search button:disabled,
+.hermes-memory-tree-workspace__node-content button:disabled,
+.hermes-memory-tree-workspace__history button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.hermes-memory-tree-workspace__error,
+.hermes-memory-tree-workspace__empty,
+.hermes-memory-tree-workspace__history p {
+  margin: 0;
+  color: var(--color-text-tertiary);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+}
+
+.hermes-memory-tree-workspace__error {
+  color: var(--color-danger);
+}
+
+.hermes-memory-tree-workspace__tree,
+.hermes-memory-tree-workspace__history {
+  display: grid;
+  gap: var(--space-2);
+  min-height: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-white);
+}
+
+.hermes-memory-tree-workspace__tree {
+  overflow: auto;
+}
+
+.hermes-memory-tree-workspace__expanded-state {
+  margin: 0;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-muted);
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+  line-height: 1.45;
+}
+
+.hermes-memory-tree-workspace__list,
+.hermes-memory-tree-workspace__history ol {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hermes-memory-tree-workspace__list li {
+  display: grid;
+  grid-template-columns: 3rem minmax(0, 1fr);
+  gap: var(--space-2);
+  padding: var(--space-2) 0 var(--space-2) calc(var(--space-3) * var(--memory-tree-depth, 0));
+  border-top: 1px solid var(--color-border);
+}
+
+.hermes-memory-tree-workspace__level {
+  color: var(--color-text-tertiary);
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  white-space: nowrap;
+}
+
+.hermes-memory-tree-workspace__node-content {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.hermes-memory-tree-workspace__node-content div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  align-items: baseline;
+}
+
+.hermes-memory-tree-workspace__node-content strong {
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.hermes-memory-tree-workspace__node-content span,
+.hermes-memory-tree-workspace__node-content p {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.hermes-memory-tree-workspace__node-content button {
+  justify-self: start;
+  padding: 0 var(--space-2);
+}
+
+.hermes-memory-tree-workspace__history {
+  max-height: 180px;
+  overflow: auto;
+}
+
+.hermes-memory-tree-workspace__history button {
+  width: 100%;
+  padding: 0 var(--space-2);
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.hermes-memory-tree-workspace__header button:hover:not(:disabled),
+.hermes-memory-tree-workspace__node-content button:hover:not(:disabled),
+.hermes-memory-tree-workspace__history button:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  color: var(--color-text-primary);
+}
+
 .hermes-view__loading {
   display: flex;
   align-items: center;
@@ -1098,6 +1439,27 @@ async function applyRouteUpgradeFromRun(payload: RouteUpgradeApplyPayload) {
 .hermes-memory-tree-panel__header strong {
   color: var(--color-text-tertiary);
   font-weight: var(--font-medium);
+}
+
+.hermes-memory-tree-panel__header div {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.hermes-memory-tree-panel__header button {
+  min-height: 24px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-white);
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+}
+
+.hermes-memory-tree-panel__header button:hover {
+  border-color: var(--color-primary);
+  color: var(--color-text-primary);
 }
 
 .hermes-memory-tree-panel__search {

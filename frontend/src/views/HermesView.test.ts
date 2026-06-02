@@ -941,6 +941,117 @@ describe('HermesView', () => {
     wrapper.unmount()
   })
 
+  it('opens a dedicated memory tree workspace and searches from the main panel', async () => {
+    vi.mocked((api as any).createAgentRun).mockImplementation(async () => ({
+      id: 'run-memory-tree-workspace',
+      project_id: 'project-1',
+      goal: '搜索 Memory Tree：灯塔旧回声',
+      status: 'success',
+      entrypoint: 'ui_memory_tree_workspace_search',
+      input: {},
+      output: null,
+      error: null,
+      steps: [
+        {
+          id: 'step-memory-tree-workspace',
+          tool_name: 'inspect_agent_memory_tree',
+          status: 'success',
+          output: {
+            status: 'ready',
+            summary: {
+              volume_nodes: 1,
+              chapter_nodes: 1,
+              scene_nodes: 1,
+              beat_nodes: 1,
+            },
+            nodes: [
+              {
+                id: 'volume:1',
+                level: 'volume',
+                title: '第一卷',
+                children: ['chapter:2'],
+              },
+              {
+                id: 'chapter:2',
+                level: 'chapter',
+                parent_id: 'volume:1',
+                chapter_index: 2,
+                title: '灯塔旧回声',
+                summary: '主角在灯塔发现旧回声线索。',
+                children: ['scene:memory-3'],
+                source_refs: [{ source_type: 'chapter_content', source_id: 'chapter-content-2' }],
+              },
+              {
+                id: 'scene:memory-3',
+                level: 'scene',
+                parent_id: 'chapter:2',
+                chapter_index: 2,
+                summary: '补充场景摘要。',
+                children: ['beat:memory-4'],
+              },
+              {
+                id: 'beat:memory-4',
+                level: 'beat',
+                parent_id: 'scene:memory-3',
+                chapter_index: 2,
+                summary: '节拍摘要。',
+              },
+            ],
+          },
+        },
+      ],
+    }))
+    const wrapper = await mountHermesView()
+
+    const openWorkspace = document.querySelector('[data-testid="memory-tree-workspace-open"]') as HTMLButtonElement
+    expect(openWorkspace).not.toBeNull()
+    openWorkspace.click()
+    await flushPromises()
+
+    const workspacePanel = wrapper.get('[data-testid="memory-tree-workspace"]')
+    expect(workspacePanel.text()).toContain('Memory Tree 工作区')
+    const workspaceInput = wrapper.get('[data-testid="memory-tree-workspace-query"]')
+    await workspaceInput.setValue('灯塔旧回声')
+    await wrapper.get('[data-testid="memory-tree-workspace-search"]').trigger('submit')
+    await flushPromises()
+
+    expect((api as any).createAgentRun).toHaveBeenCalledWith('project-1', {
+      goal: '搜索 Memory Tree：灯塔旧回声',
+      entrypoint: 'ui_memory_tree_workspace_search',
+      tools: [
+        {
+          tool_name: 'inspect_agent_memory_tree',
+          params: {
+            query: '灯塔旧回声',
+            include_ancestors: true,
+            max_depth: 2,
+          },
+        },
+      ],
+      input: {
+        memory_tree_workspace_search: true,
+        query: '灯塔旧回声',
+      },
+    })
+    expect(wrapper.get('[data-testid="agent-run-drawer"]').text()).toContain('run-memory-tree-workspace')
+    const workspaceRows = wrapper.findAll('[data-testid="memory-tree-workspace-node"]')
+    expect(workspaceRows).toHaveLength(4)
+    expect(workspaceRows.map((row) => row.attributes('data-depth'))).toEqual(['0', '1', '2', '3'])
+    expect(workspaceRows[0].text()).toContain('第一卷')
+    expect(workspaceRows[1].text()).toContain('灯塔旧回声')
+    expect(workspaceRows[2].text()).toContain('补充场景摘要。')
+    expect(workspaceRows[3].text()).toContain('节拍摘要。')
+    expect(workspacePanel.text()).toContain('搜索：灯塔旧回声')
+    expect(workspacePanel.text()).not.toContain('volume:1')
+    expect(workspacePanel.text()).not.toContain('chapter:2')
+    expect(workspacePanel.text()).not.toContain('scene:memory-3')
+    expect(workspacePanel.text()).not.toContain('beat:memory-4')
+    expect(workspacePanel.text()).not.toContain('chapter-content-2')
+    expect(workspacePanel.text()).not.toContain('source_refs')
+
+    wrapper.unmount()
+  })
+
   it('creates a read-only memory tree expand run from a subnav result node', async () => {
     const searchRun = {
       id: 'run-memory-tree-search',

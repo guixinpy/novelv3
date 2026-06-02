@@ -7,6 +7,7 @@ export type WorkspacePanel =
   | 'storyline'
   | 'outline'
   | 'content'
+  | 'memory'
   | 'topology'
   | 'versions'
   | 'preferences'
