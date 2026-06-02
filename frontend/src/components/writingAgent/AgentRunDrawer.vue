@@ -738,6 +738,9 @@ const preparedApprovalChapterIndex = computed(() => (
   numberValue(preparedApprovalBaseParams.value.chapter_index)
 ))
 const preparedApprovalTargetLabel = computed(() => {
+  if (preparedApprovalExecuteTool.value === 'execute_record_agent_knowledge_base_candidate_with_approval') {
+    return safePostMemoryCandidateLabel(preparedApprovalBaseParams.value.title) || '知识库候选'
+  }
   const chapter = preparedApprovalChapterIndex.value
   if (chapter !== null) return `第${chapter}章`
   return preparedApprovalExecuteToolLabel(preparedApprovalExecuteTool.value)

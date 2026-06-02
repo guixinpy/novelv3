@@ -2131,6 +2131,129 @@ describe('AgentRunDrawer', () => {
     ]])
   })
 
+  it('renders prepared knowledge base candidate approval with candidate title', async () => {
+    const approvalContract = {
+      status: 'requires_confirmation',
+      approval: { approval_contract_hash: 'approval:candidate-secret' },
+    }
+    const candidateParams = {
+      memory_type: 'writing_pattern',
+      title: '第3章写作沉淀：雾港追踪',
+      summary: '第3章结尾形成雾港追踪线索，后续章节应延续。',
+      source_refs: ['chapter_content:chapter-content-3'],
+      confidence: 0.72,
+      status: 'candidate',
+      tags: ['post-chapter-capture', 'chapter:3'],
+    }
+    const agentPlan = {
+      project_id: 'project-1',
+      intent_class: 'record_agent_knowledge_base_candidate',
+      trace: {
+        plan_id: 'knowledge-base-candidate:project-1:abc123',
+        planner_version: 'phase189.knowledge_base_candidate_prepare.v1',
+      },
+      steps: [
+        {
+          step_index: 1,
+          step_id: 'knowledge-base-candidate:project-1:abc123',
+          tool_name: 'record_agent_knowledge_base_candidate',
+          approval_executor_tool_name: 'execute_record_agent_knowledge_base_candidate_with_approval',
+          params: candidateParams,
+          mutability: 'write',
+          requires_confirmation: true,
+          reason: '记录长期写作知识库候选项。',
+        },
+      ],
+    }
+    const wrapper = mount(AgentRunDrawer, {
+      attachTo: document.body,
+      props: {
+        open: true,
+        loading: false,
+        error: '',
+        run: {
+          id: 'run-candidate-prepare',
+          project_id: 'project-1',
+          goal: '准备写后记忆候选审批',
+          status: 'success',
+          entrypoint: 'ui_planner_continuation_execute',
+          input: {},
+          output: null,
+          error: null,
+          steps: [
+            {
+              id: 'step-candidate-prepare',
+              run_id: 'run-candidate-prepare',
+              project_id: 'project-1',
+              step_index: 1,
+              tool_name: 'prepare_record_agent_knowledge_base_candidate',
+              status: 'success',
+              input: candidateParams,
+              output: {
+                status: 'approval_required',
+                prepare_version: 'phase189.knowledge_base_candidate_prepare.v1',
+                target_type: 'agent_knowledge_base_candidate',
+                agent_plan: agentPlan,
+                agent_plan_approval_contract: approvalContract,
+                agent_plan_approval_contract_hash: 'approval:candidate-secret',
+                required_confirmation: {
+                  confirm_execute: true,
+                  approval_contract_hash: 'approval:candidate-secret',
+                },
+                recommended_next_tools: ['execute_record_agent_knowledge_base_candidate_with_approval'],
+                side_effects: { executed: [], skipped: ['record_agent_knowledge_base_candidate'] },
+              },
+            },
+          ],
+        },
+      },
+    })
+
+    const text = document.body.textContent || ''
+    expect(text).toContain('待审批写入')
+    expect(text).toContain('第3章写作沉淀：雾港追踪')
+    expect(text).toContain('execute_record_agent_knowledge_base_candidate_with_approval')
+    expect(text).not.toContain('chapter_content:chapter-content-3')
+    expect(text).not.toContain('chapter-content-3')
+    expect(text).not.toContain('approval:candidate-secret')
+
+    const button = document.body.querySelector('[data-testid="execute-prepared-approval"]') as HTMLButtonElement
+    expect(button).not.toBeNull()
+    await button.click()
+
+    expect(wrapper.emitted('executePlannerPlan')).toEqual([[
+      {
+        sourceRunId: 'run-candidate-prepare',
+        sourcePlanId: 'knowledge-base-candidate:project-1:abc123',
+        goal: '执行已审批工具：写入知识库候选',
+        tools: [
+          {
+            tool_name: 'execute_record_agent_knowledge_base_candidate_with_approval',
+            params: {
+              ...candidateParams,
+              confirm_execute: true,
+              approval_contract_hash: 'approval:candidate-secret',
+              approval_contract: approvalContract,
+            },
+            planner: {
+              plan_id: 'knowledge-base-candidate:project-1:abc123',
+              planner_version: 'phase189.knowledge_base_candidate_prepare.v1',
+              mutability: 'write',
+              requires_confirmation: true,
+              reason: '确认执行已准备的写入工具。',
+            },
+          },
+        ],
+        planner: {
+          ...agentPlan,
+          approval_contract: approvalContract,
+        },
+        approvalContractHash: 'approval:candidate-secret',
+        approvalContract,
+      },
+    ]])
+  })
+
   it('does not render route upgrade apply when contract preview is not confirmable', () => {
     mount(AgentRunDrawer, {
       attachTo: document.body,
