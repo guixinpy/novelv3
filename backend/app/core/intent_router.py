@@ -24,6 +24,7 @@ _INTENT_RULE_IDS = (
     "world_model_proposal_resolution_plan_intent",
     "retrieval_context_intent",
     "longform_context_summary_intent",
+    "context_compression_payload_intent",
     "context_compression_intent",
     "worker_dispatch_intent",
     "agent_event_projection_intent",
@@ -427,6 +428,20 @@ class IntentRouter:
                 extracted_params=extracted_params,
                 match_evidence=[{"kind": "pattern", "name": "longform_context_summary_phrase"}],
                 preconditions=[{"code": "longform_context_summary_read_available", "passed": True}],
+            )
+
+        if _is_context_compression_payload_intent(text):
+            extracted_params = _context_compression_payload_params(text)
+            return self._matched_projection(
+                text,
+                dialog_state,
+                pending_action_id,
+                diagnosis,
+                rule_id="context_compression_payload_intent",
+                candidate=ActionCandidate("build_context_compression_payload", extracted_params),
+                extracted_params=extracted_params,
+                match_evidence=[{"kind": "pattern", "name": "context_compression_payload_phrase"}],
+                preconditions=[{"code": "context_compression_payload_read_available", "passed": True}],
             )
 
         if _is_context_compression_intent(text):
@@ -1164,6 +1179,32 @@ def _labeled_query(text: str, label_pattern: str) -> str | None:
         return None
     value = match.group(1).strip()
     return value or None
+
+
+def _is_context_compression_payload_intent(text: str) -> bool:
+    return bool(
+        (
+            re.search(r"(上下文|context|token).*(压缩|compression)", text)
+            or re.search(r"(压缩|compression).*(上下文|context|token)", text)
+        )
+        and re.search(
+            r"(payload|dry[-_\s]*run|载荷|负载|payload\s*builder|build_agent_context_compression_payload)",
+            text,
+        )
+        and re.search(r"(构建|生成|build|准备|创建|产出)", text)
+    )
+
+
+def _context_compression_payload_params(text: str) -> dict[str, Any]:
+    params = _context_compression_params(text)
+    failure_count = _numeric_option(
+        text,
+        r"context_guard_failure_count|contextguard\s*失败|context\s*guard\s*failure(?:\s*count)?|"
+        r"guard\s*failure(?:s)?|失败次数",
+    )
+    if failure_count is not None:
+        params["context_guard_failure_count"] = failure_count
+    return params
 
 
 def _is_context_compression_intent(text: str) -> bool:

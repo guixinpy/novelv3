@@ -589,6 +589,46 @@ def test_intent_router_projection_explains_context_compression_route():
     assert projection["extracted_params"] == {"chapter_index": 3}
 
 
+def test_intent_router_projection_explains_context_compression_payload_route():
+    router = IntentRouter()
+    diag = ProjectDiagnosisOut(
+        missing_items=[],
+        completed_items=["setup", "storyline", "outline", "content"],
+        suggested_next_step="preview_chapter",
+    )
+
+    projection = router.project(
+        "构建第3章上下文压缩 dry-run payload max_chars 2000 context_guard_failure_count 2",
+        "chatting",
+        None,
+        diag,
+    ).to_dict()
+
+    expected_params = {"chapter_index": 3, "max_chars": 2000, "context_guard_failure_count": 2}
+    assert projection["status"] == "matched"
+    assert projection["rule_id"] == "context_compression_payload_intent"
+    assert projection["decision"]["rule_id"] == "context_compression_payload_intent"
+    assert projection["decision"]["match_evidence"] == [
+        {"kind": "pattern", "name": "context_compression_payload_phrase"}
+    ]
+    assert projection["candidate"] == {
+        "type": "build_context_compression_payload",
+        "params": expected_params,
+    }
+    assert projection["agent_route"] == _expected_agent_route(
+        "text_intent",
+        "build_context_compression_payload",
+        "build_agent_context_compression_payload",
+        requires_confirmation=False,
+    )
+    assert projection["tool_selection"] == {
+        "selected_tool": "build_agent_context_compression_payload",
+        "why_this_tool": "dialog_action_to_agent_tool.build_context_compression_payload",
+        "availability_checked": False,
+    }
+    assert projection["extracted_params"] == expected_params
+
+
 def test_intent_router_context_guard_phrase_is_case_insensitive():
     router = IntentRouter()
     diag = ProjectDiagnosisOut(

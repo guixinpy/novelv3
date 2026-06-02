@@ -44,6 +44,7 @@ _ACTION_TO_DIRECT_READ_TOOL = {
     "search_retrieval_context": "search_agent_retrieval_context",
     "summarize_longform_context": "summarize_longform_context",
     "inspect_context_compression": "inspect_agent_context_compression_projection",
+    "build_context_compression_payload": "build_agent_context_compression_payload",
     "inspect_worker_dispatch": "inspect_agent_worker_dispatch",
     "inspect_trace_audit": "inspect_agent_trace_audit",
     "inspect_write_gate_coverage": "inspect_agent_write_gate_coverage",

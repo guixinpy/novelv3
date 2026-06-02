@@ -145,6 +145,7 @@
 - [x] Retrieval Context 只读检索意图：自然语言“检索第3章前的上下文证据 query=灯塔旧回声 limit 5”可投影为 search_agent_retrieval_context 只读工具计划
 - [x] Longform Context Summary 只读摘要意图：自然语言“汇总第3章长篇上下文 query=灯塔旧回声 max_chars 2000”可投影为 summarize_longform_context 只读工具计划
 - [x] ContextCompressor 只读自检意图：自然语言“检查上下文压缩/预算/窗口压力”可投影为 inspect_agent_context_compression_projection 只读工具计划
+- [x] ContextCompressor dry-run payload 只读意图：自然语言“构建第3章上下文压缩 dry-run payload max_chars 2000 context_guard_failure_count 2”可投影为 build_agent_context_compression_payload 只读工具计划
 - [x] Worker Dispatch 只读审计意图：自然语言“检查 worker 分发/孤儿恢复”可投影为 inspect_agent_worker_dispatch 只读工具计划
 - [x] Agent Event Projection 只读审计意图：自然语言“检查 task-abc123 的 Agent 事件投影 limit 12”可投影为 inspect_agent_event_projection 只读工具计划
 - [x] Agent Job Projection 只读诊断意图：自然语言“检查第3章 generate_chapter failed 任务队列 limit 8”可投影为 inspect_agent_job_projection 只读工具计划
@@ -182,6 +183,7 @@
 
 ### 最近完成
 
+- 2026-06-02: `IntentRouter` 新增 `context_compression_payload_intent`，可将“构建第3章上下文压缩 dry-run payload max_chars 2000 context_guard_failure_count 2”等自然语言投影为 `build_context_compression_payload` action；`plan_dialog_intent_agent_run` 对该只读 action 生成无需审批的 `build_agent_context_compression_payload` 工具计划，并保留 chapter_index、max_chars 与 context_guard_failure_count，补齐 ContextCompressor 从自检投影到 payload builder 的对话直达入口。
 - 2026-06-02: `IntentRouter` 新增 `world_model_proposal_review_intent` 与 `world_model_proposal_resolution_plan_intent`，可将“检查世界模型提案队列 limit 20”和“规划世界模型提案解决方案 offset 2 limit 7”等自然语言分别投影为 `review_world_model_proposals` / `plan_world_model_proposal_resolution` action；`plan_dialog_intent_agent_run` 对两者生成无需审批的 read tool 计划，并保留 offset/limit，便于 Agent 在应用世界模型提案决议前先完成队列审阅和处理规划。
 - 2026-06-02: `IntentRouter` 新增 `agent_event_projection_intent`，可将“检查 task-abc123 的 Agent 事件投影 limit 12”等自然语言投影为 `inspect_agent_event_projection` action；`plan_dialog_intent_agent_run` 对该只读 action 生成无需审批的工具计划，并保留 task_id/run_id/limit，补强后台任务与 Agent run/step 的事件流审计入口。
 - 2026-06-02: `IntentRouter` 新增 `post_chapter_memory_capture_intent`，可将“规划第4章写后记忆沉淀”等自然语言投影为 `plan_post_chapter_memory_capture` action；`plan_dialog_intent_agent_run` 对该只读 action 生成无需审批的工具计划，并保留 chapter_index，打通写后知识沉淀规划的对话入口。
@@ -310,6 +312,7 @@
 ### 最近完成
 
 - 2026-06-02: `inspect_agent_trace_audit` 接入对话只读意图链路：自然语言“检查 run trace/执行链路/失败原因”会经 `trace_audit_intent` 生成无需审批的 read tool 计划，支持 run_id 和 chapter_index 的确定性抽取；这补强了端到端 Trace 链路的入口，但完整“用户意图→计划→工具调用→模型调用→结果”聚合仍未完成。
+- 2026-06-02: `build_agent_context_compression_payload` 接入对话只读意图链路：自然语言可直接构建指定章节/预算/ContextGuard 失败次数下的 dry-run payload，跳过泛化压缩自检入口但保留投影快照、pretrim evidence 和无副作用 trace。
 - 2026-06-02: `preflight_writing` 的 context window pressure 分支接入 `load_agent_context_compression_summary`：若同章节同预算的 `context_compression_summary` 已存在且含可用 compressed_context，则不再调用 `build_agent_context_compression_payload`，改为输出脱敏 `context_compression_payload_preview`（移除 compression_payload.compressed_context 与 record.summary），并将下一步推荐为 `prepare_generate_chapter_execution`。
 - 2026-06-02: `preflight_writing` 在 context window pressure 且 `build_agent_context_compression_payload` 返回 ready `compressed_context` 时，将 `record_agent_context_compression_summary` 追加到顶层 `recommended_next_tools` 和 `context_compression_payload_preview.recommended_next_tools`，并在 warning issue 中带上 followup_tool/followup_params，避免 Agent 停在只读 payload 预览而不产出可复用持久工件。
 - 2026-06-02: 章节生成 longform block 压缩路径新增持久工件复用：压力触发后先通过 `load_agent_context_compression_summary` 查找 `context_compression:chapter:{n}:max_chars:{budget}`，命中则直接用 `LongformMemory.summary` 注入 prompt，并在 trace metadata 标记 `context_compression_summary_record`；未命中仍回退 `build_agent_context_compression_payload`。

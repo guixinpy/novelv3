@@ -212,7 +212,7 @@ novelv3 当前 trace + approval 体系已经较完整。权限分级已先在核
 
 | 机制 | 借鉴来源 | 优先级 | 说明 |
 |------|---------|--------|------|
-| ContextCompressor | hermes-agent | 进行中：持久工件闭环 | 已有头尾保护预修剪、摘要工具计划、dry-run payload builder、压力场景推荐入口，并在 preflight_writing 中输出压缩检查与 payload preview；自然语言“检查上下文压缩/预算/窗口压力”可直接规划到只读压缩投影工具；ready payload 会继续推荐写入 `record_agent_context_compression_summary`，preflight 与章节生成 longform block 都能优先复用同章节同预算持久摘要，章节生成缺摘要时仍可在压力下替换为 compressed_context；后续补真正 LLM 摘要质量闭环和更多上下文路径分层压缩 |
+| ContextCompressor | hermes-agent | 进行中：持久工件闭环 | 已有头尾保护预修剪、摘要工具计划、dry-run payload builder、压力场景推荐入口，并在 preflight_writing 中输出压缩检查与 payload preview；自然语言“检查上下文压缩/预算/窗口压力”可直接规划到只读压缩投影工具，“构建上下文压缩 dry-run payload”可直达 `build_agent_context_compression_payload`；ready payload 会继续推荐写入 `record_agent_context_compression_summary`，preflight 与章节生成 longform block 都能优先复用同章节同预算持久摘要，章节生成缺摘要时仍可在压力下替换为 compressed_context；后续补真正 LLM 摘要质量闭环和更多上下文路径分层压缩 |
 | TokenJuice | openhuman | **中** | Token 耗尽前自动压缩 |
 | 断路器 | openhuman | **中** | 上下文即将溢出时的硬保护 |
 | 上下文透明化 | novelv3 已有 | 已实现 | Trace drawer 展示 context blocks |
@@ -238,7 +238,7 @@ novelv3 当前 trace + approval 体系已经较完整。权限分级已先在核
 4. **openhuman 权限分级基础版** → `ToolMutability` / `ToolPermissionLevel`，内部枚举化，公开 surface/contract 保持字符串兼容
 5. **openhuman Worker 定义配置化基础版** → YAML/TOML AgentDefinition loader + source_format 注册表审计
 6. **openclaw 孤兒恢复基础审计** → orphan worker 检测 + mark-blocked/redispatch preview，并可由自然语言只读意图直接规划到 `inspect_agent_worker_dispatch`
-7. **hermes-agent ContextCompressor persistent artifact loop** → context pressure 下输出头尾保护预修剪、summarize 工具计划、只读 dry-run payload、推荐恢复入口，在 `preflight_writing` 暴露压缩检查与 payload preview；自然语言“检查上下文压缩/预算/窗口压力”可直接规划到只读压缩投影工具；ready payload 后推荐 `record_agent_context_compression_summary`；写入 LongformMemory 持久工件后，preflight 与章节 prompt 均会优先复用匹配摘要，缺摘要时章节生成 longform block 仍可替换为 `compressed_context`
+7. **hermes-agent ContextCompressor persistent artifact loop** → context pressure 下输出头尾保护预修剪、summarize 工具计划、只读 dry-run payload、推荐恢复入口，在 `preflight_writing` 暴露压缩检查与 payload preview；自然语言“检查上下文压缩/预算/窗口压力”可直接规划到只读压缩投影工具，“构建上下文压缩 dry-run payload”可直达 `build_agent_context_compression_payload`；ready payload 后推荐 `record_agent_context_compression_summary`；写入 LongformMemory 持久工件后，preflight 与章节 prompt 均会优先复用匹配摘要，缺摘要时章节生成 longform block 仍可替换为 `compressed_context`
 8. **openhuman Memory Tree 分层摘要基础版** → 卷/章摘要写入 LongformMemory，并通过 memory_worker 暴露 materialize 工具
 9. **openhuman Memory Tree 基础浏览/激活** → `inspect_agent_memory_tree` 支持按节点展开、深度裁剪、搜索命中祖先上下文、确定性 relevance drill-down、过滤层级的后代强匹配回流与弱匹配降噪，可由自然语言只读意图直接规划，并被 `build_memory_activation_plan` 消费
 10. **openclaw 孤兒恢复写入闭环基础版** → `apply_agent_worker_orphan_recovery` 确认式标记 blocked，并创建 pending redispatch run
