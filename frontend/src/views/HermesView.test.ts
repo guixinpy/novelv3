@@ -1442,6 +1442,116 @@ describe('HermesView', () => {
     wrapper.unmount()
   })
 
+  it('starts a knowledge base route run from a memory tree workspace node', async () => {
+    vi.mocked((api as any).createAgentRun)
+      .mockImplementationOnce(async () => ({
+        id: 'run-memory-tree-workspace',
+        project_id: 'project-1',
+        goal: '搜索 Memory Tree：灯塔旧回声',
+        status: 'success',
+        entrypoint: 'ui_memory_tree_workspace_search',
+        input: {},
+        output: null,
+        error: null,
+        steps: [
+          {
+            id: 'step-memory-tree-workspace',
+            tool_name: 'inspect_agent_memory_tree',
+            status: 'success',
+            output: {
+              status: 'ready',
+              summary: {
+                volume_nodes: 0,
+                chapter_nodes: 1,
+                scene_nodes: 0,
+                beat_nodes: 0,
+              },
+              nodes: [
+                {
+                  id: 'chapter:2',
+                  level: 'chapter',
+                  chapter_index: 2,
+                  title: '灯塔旧回声',
+                  summary: '主角在灯塔发现旧回声线索。',
+                  children: [],
+                  source_refs: [{ source_type: 'chapter_content', source_id: 'chapter-content-2' }],
+                },
+              ],
+            },
+          },
+        ],
+      }))
+      .mockImplementationOnce(async () => ({
+        id: 'run-memory-tree-knowledge-base',
+        project_id: 'project-1',
+        goal: '检查 Memory Tree 知识库：灯塔旧回声',
+        status: 'success',
+        entrypoint: 'ui_memory_tree_workspace_knowledge_base',
+        input: {},
+        output: null,
+        error: null,
+        steps: [
+          {
+            id: 'step-memory-tree-knowledge-base',
+            tool_name: 'inspect_agent_knowledge_base_route',
+            status: 'success',
+            output: {
+              status: 'ready',
+              route: { status: 'ready', reason: 'knowledge_base_available' },
+              author_preferences: { items: [] },
+              project_strategy: { items: [] },
+              learned_rules: { items: [] },
+              reference_patterns: { items: [] },
+              recommended_next_tools: ['summarize_longform_context'],
+            },
+          },
+        ],
+      }))
+    const wrapper = await mountHermesView()
+
+    const openWorkspace = document.querySelector('[data-testid="memory-tree-workspace-open"]') as HTMLButtonElement
+    openWorkspace.click()
+    await flushPromises()
+
+    await wrapper.get('[data-testid="memory-tree-workspace-query"]').setValue('灯塔旧回声')
+    await wrapper.get('[data-testid="memory-tree-workspace-search"]').trigger('submit')
+    await flushPromises()
+
+    const knowledgeBaseLink = wrapper.get('[data-testid="memory-tree-workspace-check-knowledge-base"]')
+    expect(knowledgeBaseLink.text()).toContain('检查知识库')
+    await knowledgeBaseLink.trigger('click')
+    await flushPromises()
+
+    const knowledgeBaseRequest = vi.mocked((api as any).createAgentRun).mock.calls[1][1]
+    expect(knowledgeBaseRequest).toEqual({
+      goal: '检查 Memory Tree 知识库：灯塔旧回声',
+      entrypoint: 'ui_memory_tree_workspace_knowledge_base',
+      tools: [
+        {
+          tool_name: 'inspect_agent_knowledge_base_route',
+          params: {
+            chapter_index: 2,
+            query: '灯塔旧回声',
+            limit: 8,
+          },
+        },
+      ],
+      input: {
+        memory_tree_workspace_knowledge_base: true,
+        source_run_id: 'run-memory-tree-workspace',
+        source_node_label: '灯塔旧回声',
+        chapter_index: 2,
+        query: '灯塔旧回声',
+      },
+    })
+    expect(JSON.stringify(knowledgeBaseRequest)).not.toContain('chapter:2')
+    expect(JSON.stringify(knowledgeBaseRequest)).not.toContain('chapter-content-2')
+    expect(wrapper.get('[data-testid="agent-run-drawer"]').text()).toContain('run-memory-tree-knowledge-base')
+    expect(wrapper.get('[data-testid="memory-tree-workspace"]').text()).toContain('知识库：灯塔旧回声')
+
+    wrapper.unmount()
+  })
+
   it('starts a trace audit run from a memory tree workspace chapter node', async () => {
     vi.mocked((api as any).createAgentRun)
       .mockImplementationOnce(async () => ({

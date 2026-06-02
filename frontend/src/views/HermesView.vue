@@ -87,6 +87,7 @@ type MemoryTreePanelResultRow = {
   canSearchRetrieval: boolean
   canSummarizeContext: boolean
   canCheckActivation: boolean
+  canCheckKnowledgeBase: boolean
   canAuditTrace: boolean
   canCheckWorldModel: boolean
   depth: number
@@ -176,6 +177,7 @@ const memoryTreePanelResultRows = computed<MemoryTreePanelResultRow[]>(() => (
       canSearchRetrieval: Boolean(retrievalQuery),
       canSummarizeContext: Boolean(retrievalQuery) && chapterIndex !== null && chapterIndex > 0,
       canCheckActivation: Boolean(retrievalQuery) && chapterIndex !== null && chapterIndex > 0,
+      canCheckKnowledgeBase: Boolean(retrievalQuery) && chapterIndex !== null && chapterIndex > 0,
       canAuditTrace: chapterIndex !== null && chapterIndex > 0,
       canCheckWorldModel: Boolean(retrievalQuery),
       depth,
@@ -669,6 +671,47 @@ async function checkMemoryTreeActivation(row: MemoryTreePanelResultRow) {
     })
   } catch (err) {
     memoryTreePanelError.value = err instanceof Error ? err.message : '检查 Memory Tree 记忆激活失败'
+  } finally {
+    memoryTreePanelLoading.value = false
+  }
+}
+
+async function checkMemoryTreeKnowledgeBase(row: MemoryTreePanelResultRow) {
+  if (!row.canCheckKnowledgeBase || !row.retrievalQuery || row.chapterIndex === null || memoryTreePanelLoading.value) return
+  memoryTreePanelError.value = ''
+  memoryTreePanelLoading.value = true
+  agentRunError.value = ''
+  try {
+    const run = await api.createAgentRun(pid.value, {
+      goal: `检查 Memory Tree 知识库：${row.retrievalQuery}`,
+      entrypoint: 'ui_memory_tree_workspace_knowledge_base',
+      tools: [
+        {
+          tool_name: 'inspect_agent_knowledge_base_route',
+          params: {
+            chapter_index: row.chapterIndex,
+            query: row.retrievalQuery,
+            limit: 8,
+          },
+        },
+      ],
+      input: {
+        memory_tree_workspace_knowledge_base: true,
+        source_run_id: activeAgentRun.value?.id || '',
+        source_node_label: row.title,
+        chapter_index: row.chapterIndex,
+        query: row.retrievalQuery,
+      },
+    })
+    activeAgentRunId.value = run.id
+    activeAgentRun.value = run
+    projectWorkspace.appendMemoryTreeHistory(pid.value, {
+      key: `${run.id}:workspace-knowledge-base:${memoryTreeNavigationHistory.value.length}`,
+      label: `知识库：${row.retrievalQuery}`,
+      runId: run.id,
+    })
+  } catch (err) {
+    memoryTreePanelError.value = err instanceof Error ? err.message : '检查 Memory Tree 知识库失败'
   } finally {
     memoryTreePanelLoading.value = false
   }
@@ -1347,6 +1390,15 @@ async function applyRouteUpgradeFromRun(payload: RouteUpgradeApplyPayload) {
                 @click="checkMemoryTreeActivation(row)"
               >
                 检查激活
+              </button>
+              <button
+                v-if="row.canCheckKnowledgeBase"
+                type="button"
+                data-testid="memory-tree-workspace-check-knowledge-base"
+                :disabled="memoryTreePanelLoading"
+                @click="checkMemoryTreeKnowledgeBase(row)"
+              >
+                检查知识库
               </button>
               <button
                 v-if="row.canCheckWorldModel"
