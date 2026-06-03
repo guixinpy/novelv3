@@ -458,6 +458,75 @@ const retrievalPrimarySourceLabel = computed(() => {
   return [title, chapter || sourceType].filter(Boolean).join(' · ')
 })
 const retrievalRecommendedTools = computed(() => stringList(retrievalContextOutput.value?.recommended_next_tools))
+const longformContextOutput = computed(() => latestToolOutput('summarize_longform_context'))
+const longformContextSummary = computed(() => recordValue(longformContextOutput.value?.context_summary))
+const longformContextActiveState = computed(() => recordValue(longformContextSummary.value.active_state))
+const longformContextTargetOutline = computed(() => recordValue(longformContextActiveState.value.target_outline))
+const longformContextDecision = computed(() => recordValue(longformContextOutput.value?.decision))
+const longformContextProgress = computed(() => recordValue(longformContextOutput.value?.progress))
+const longformContextLimits = computed(() => recordValue(longformContextOutput.value?.limits))
+const longformContextProvenance = computed(() => recordValue(longformContextOutput.value?.memory_provenance))
+const longformContextPromptWindow = computed(() => recordValue(longformContextProvenance.value.prompt_context))
+const longformContextDiagnostics = computed(() => recordList(longformContextOutput.value?.diagnostics))
+const longformContextStatus = computed(() => stringValue(longformContextOutput.value?.status))
+const longformContextChapterLabel = computed(() => chapterIndexLabel(longformContextOutput.value?.chapter_index))
+const longformContextGoal = computed(() => safeLongformContextText(longformContextSummary.value.goal))
+const longformContextOutlineTitle = computed(() => safeLongformContextText(longformContextTargetOutline.value.title))
+const longformContextOutlineSummary = computed(() => safeLongformContextText(longformContextTargetOutline.value.summary))
+const longformContextGeneratedChapterCount = computed(() => numberValue(longformContextProgress.value.generated_chapter_count))
+const longformContextLatestChapterLabel = computed(() => chapterIndexLabel(longformContextProgress.value.latest_generated_chapter_index))
+const longformContextGeneratedWordCount = computed(() => numberValue(longformContextProgress.value.generated_word_count))
+const longformContextPromptChars = computed(() => (
+  numberValue(longformContextOutput.value?.prompt_context_chars) ??
+  numberValue(longformContextPromptWindow.value.chars)
+))
+const longformContextBudgetChars = computed(() => (
+  numberValue(longformContextLimits.value.max_chars) ??
+  numberValue(longformContextPromptWindow.value.max_chars)
+))
+const longformContextProvenanceStatus = computed(() => stringValue(longformContextProvenance.value.status))
+const longformContextGenerationLabel = computed(() => {
+  if (longformContextOutput.value?.should_generate_next_chapter === true) return '可用于生成'
+  if (longformContextOutput.value?.should_generate_next_chapter === false) return '暂不生成'
+  const decisionStatus = stringValue(longformContextDecision.value.status)
+  if (decisionStatus === 'ready') return '可用于生成'
+  if (decisionStatus === 'blocked') return '已阻塞'
+  return safeLongformContextText(longformContextDecision.value.message) || decisionStatus
+})
+const longformContextRecommendedActions = computed(() => stringList(longformContextOutput.value?.recommended_actions))
+const longformContextSectionRows = computed(() => (
+  recordList(longformContextOutput.value?.sections)
+    .slice(0, 4)
+    .map((section, sectionIndex) => {
+      const title = safeLongformContextText(section.title) || '上下文分区'
+      const itemCount = numberValue(section.item_count)
+      const items = recordList(section.items)
+        .slice(0, 2)
+        .map((item, itemIndex) => ({
+          key: `longform-context-section:${sectionIndex}:item:${itemIndex}`,
+          title: safeLongformContextText(item.title),
+          summary: safeLongformContextText(item.summary),
+        }))
+        .filter((item) => Boolean(item.title || item.summary))
+      return {
+        key: `longform-context-section:${sectionIndex}`,
+        title,
+        itemCount,
+        items,
+      }
+    })
+    .filter((section) => Boolean(section.title || section.items.length))
+))
+const longformContextDiagnosticRows = computed(() => (
+  longformContextDiagnostics.value
+    .slice(0, 4)
+    .map((item, index) => ({
+      key: `longform-context-diagnostic:${index}`,
+      code: safeLongformContextText(item.code),
+      message: safeLongformContextText(item.message),
+    }))
+    .filter((item) => Boolean(item.code || item.message))
+))
 const memoryRouteOutput = computed(() => latestToolOutput('inspect_agent_memory_route'))
 const memoryRoute = computed(() => recordValue(memoryRouteOutput.value?.route))
 const memoryRouteLongformMemory = computed(() => recordValue(memoryRouteOutput.value?.longform_memory))
@@ -1035,6 +1104,7 @@ const hasMemoryLoopProjection = computed(() => Boolean(
   memoryActivationOutput.value || retrievalContextOutput.value || postChapterMemoryOutput.value,
 ))
 const hasMemoryActivationProjection = computed(() => Boolean(memoryActivationOutput.value))
+const hasLongformContextProjection = computed(() => Boolean(longformContextOutput.value))
 const hasMemoryRouteProjection = computed(() => Boolean(memoryRouteOutput.value))
 const hasKnowledgeBaseRouteProjection = computed(() => Boolean(knowledgeBaseRouteOutput.value))
 const hasWorldModelRouteProjection = computed(() => Boolean(worldModelRouteOutput.value))
@@ -1495,6 +1565,7 @@ function memoryRouteProvenanceStatusLabel(status: unknown) {
   const value = stringValue(status)
   if (value === 'available') return '可用'
   if (value === 'degraded') return '降级'
+  if (value === 'truncated') return '截断'
   if (value === 'sparse') return '稀疏'
   if (value === 'blocked') return '已阻塞'
   return value || '未知'
@@ -1522,6 +1593,14 @@ function safeMemoryActivationText(label: unknown) {
   if (/[A-Za-z_]+:[A-Za-z0-9_.:-]+/.test(value)) return ''
   if (/project-secret|memory-secret|candidate-secret|world-secret|source_refs?|source_type|source_id|memory_id|candidate_id|proposal_item_id|node_id|approval_contract|char\.[A-Za-z0-9_.-]+|style_config\.|phase\d+\.memory_activation|build_memory_activation_plan|future_leak_guard|end_chapter_index_before_target|Writing Agent 长记忆激活|prompt-only raw context/i.test(value)) return ''
   return value.slice(0, 96)
+}
+
+function safeLongformContextText(label: unknown) {
+  const value = stringValue(label).replace(/\s+/g, ' ')
+  if (!value) return ''
+  if (/[A-Za-z_]+:[A-Za-z0-9_.:-]+/.test(value)) return ''
+  if (/project-secret|memory-secret|memory-overflow|chapter-content-\d+|source_refs?|source_type|source_id|memory_id|source_sections?|source_section_keys|longform_context_package|phase\d+\.longform_memory_provenance|phase\d+\.longform_context_summary|build_longform_context_package|Athena\/world_model|retrieved_memory_rollups_and_generation_context|raw prompt context/i.test(value)) return ''
+  return value.slice(0, 120)
 }
 
 function safeMemoryRouteText(label: unknown) {
@@ -2155,6 +2234,109 @@ function missingDependencyTool(value: Record<string, unknown>) {
               {{ action.label }}
             </button>
           </div>
+        </section>
+
+        <section
+          v-if="hasLongformContextProjection"
+          class="agent-run-drawer__longform-context"
+          aria-label="Agent longform context summary projection"
+        >
+          <h4>长篇上下文摘要</h4>
+          <dl class="agent-run-drawer__facts">
+            <div>
+              <dt>状态</dt>
+              <dd>{{ executionPlanToolStatusLabel(longformContextStatus) }}</dd>
+            </div>
+            <div v-if="longformContextChapterLabel">
+              <dt>章节</dt>
+              <dd>{{ longformContextChapterLabel }}</dd>
+            </div>
+            <div v-if="longformContextGoal">
+              <dt>目标</dt>
+              <dd>{{ longformContextGoal }}</dd>
+            </div>
+            <div v-if="longformContextGenerationLabel">
+              <dt>生成判断</dt>
+              <dd>{{ longformContextGenerationLabel }}</dd>
+            </div>
+            <div v-if="longformContextGeneratedChapterCount !== null">
+              <dt>已生成</dt>
+              <dd>已生成 {{ longformContextGeneratedChapterCount }}</dd>
+            </div>
+            <div v-if="longformContextLatestChapterLabel">
+              <dt>最新章节</dt>
+              <dd>最新章节 {{ longformContextLatestChapterLabel }}</dd>
+            </div>
+            <div v-if="longformContextGeneratedWordCount !== null">
+              <dt>字数</dt>
+              <dd>字数 {{ longformContextGeneratedWordCount }}</dd>
+            </div>
+            <div v-if="longformContextPromptChars !== null">
+              <dt>上下文字符</dt>
+              <dd>上下文字符 {{ longformContextPromptChars }}</dd>
+            </div>
+            <div v-if="longformContextBudgetChars !== null">
+              <dt>预算</dt>
+              <dd>预算 {{ longformContextBudgetChars }}</dd>
+            </div>
+            <div v-if="longformContextProvenanceStatus">
+              <dt>来源覆盖</dt>
+              <dd>{{ memoryRouteProvenanceStatusLabel(longformContextProvenanceStatus) }}</dd>
+            </div>
+            <div v-if="longformContextOutlineTitle">
+              <dt>目标大纲</dt>
+              <dd>{{ longformContextOutlineTitle }}</dd>
+            </div>
+            <div v-if="longformContextOutlineSummary">
+              <dt>大纲摘要</dt>
+              <dd>{{ longformContextOutlineSummary }}</dd>
+            </div>
+          </dl>
+          <ul
+            v-if="longformContextRecommendedActions.length"
+            class="agent-run-drawer__tools"
+          >
+            <li
+              v-for="action in longformContextRecommendedActions"
+              :key="`longform-context-action:${action}`"
+            >
+              {{ action }}
+            </li>
+          </ul>
+          <ul
+            v-if="longformContextSectionRows.length"
+            class="agent-run-drawer__reference-patterns"
+          >
+            <li
+              v-for="section in longformContextSectionRows"
+              :key="section.key"
+            >
+              <div>
+                <strong>
+                  {{ section.itemCount !== null ? `${section.title} ${section.itemCount}` : section.title }}
+                </strong>
+              </div>
+              <template
+                v-for="item in section.items"
+                :key="item.key"
+              >
+                <p v-if="item.title"><strong>{{ item.title }}</strong></p>
+                <p v-if="item.summary && item.summary !== item.title">{{ item.summary }}</p>
+              </template>
+            </li>
+          </ul>
+          <ul
+            v-if="longformContextDiagnosticRows.length"
+            class="agent-run-drawer__planner-signals"
+          >
+            <li
+              v-for="diagnostic in longformContextDiagnosticRows"
+              :key="diagnostic.key"
+            >
+              <strong v-if="diagnostic.code">{{ diagnostic.code }}</strong>
+              <span v-if="diagnostic.message">{{ diagnostic.message }}</span>
+            </li>
+          </ul>
         </section>
 
         <section
@@ -3101,6 +3283,7 @@ function missingDependencyTool(value: Record<string, unknown>) {
 .agent-run-drawer__execution-plan h4,
 .agent-run-drawer__planner h4,
 .agent-run-drawer__memory-loop h4,
+.agent-run-drawer__longform-context h4,
 .agent-run-drawer__memory-activation h4,
 .agent-run-drawer__memory-route h4,
 .agent-run-drawer__knowledge-route h4,
@@ -3166,6 +3349,15 @@ function missingDependencyTool(value: Record<string, unknown>) {
 }
 
 .agent-run-drawer__memory-loop {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-secondary);
+}
+
+.agent-run-drawer__longform-context {
   display: grid;
   gap: var(--space-3);
   padding: var(--space-3);
