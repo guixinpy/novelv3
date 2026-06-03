@@ -19,9 +19,11 @@ from app.services.writing_agent.control_plane_readiness_projection import (
 )
 
 AGENT_TRACE_AUDIT_VERSION = "phase73.agent_trace_audit.v1"
-TRACE_ANOMALY_TRENDS_VERSION = "phase74.agent_trace_anomaly_trends.v1"
+TRACE_ANOMALY_TRENDS_VERSION = "phase75.agent_trace_anomaly_trends_baseline.v1"
 DEFAULT_AUDIT_LIMIT = 20
 MAX_AUDIT_LIMIT = 100
+TRACE_ANOMALY_AFFECTED_RATE_DELTA_THRESHOLD = 0.5
+TRACE_ANOMALY_CRITICAL_RATE_DELTA_THRESHOLD = 0.25
 TRACE_EXPECTED_TOOL_NAMES = {
     "generate_chapter",
     "expand_chapter",
@@ -44,67 +46,46 @@ def inspect_agent_trace_anomaly_trends(
     project_id: str,
     *,
     limit: int | None = None,
+    baseline_limit: int | None = None,
     chapter_index: int | None = None,
 ) -> dict[str, Any]:
     _require_project(db, project_id)
     clamped_limit = _clamp_limit(limit)
-    runs = _recent_runs_for_anomaly_trends(db, project_id, limit=clamped_limit, chapter_index=chapter_index)
-    run_rows: list[dict[str, Any]] = []
-    severity_counts: Counter[str] = Counter()
-    issue_counts: Counter[str] = Counter()
-    affected_run_count = 0
-
-    for index, run in enumerate(runs, start=1):
-        audit_output = inspect_agent_trace_audit(db, project_id, run_id=run.id, limit=MAX_AUDIT_LIMIT)
-        anomaly = audit_output.get("anomaly_summary") if isinstance(audit_output.get("anomaly_summary"), dict) else {}
-        issue_count = _non_negative_int(anomaly.get("issue_count"))
-        if issue_count <= 0:
-            continue
-        affected_run_count += 1
-        run_severity_counts = _severity_counts(anomaly.get("severity_counts"))
-        severity_counts.update(run_severity_counts)
-        run_issue_counts = _issue_counts(anomaly.get("issues"))
-        issue_counts.update(run_issue_counts)
-        run_rows.append(
-            {
-                "run_index": index,
-                "goal": str(run.goal or ""),
-                "status": str(run.status or ""),
-                "entrypoint": str(run.entrypoint or ""),
-                "chapter_index": _anomaly_run_chapter_index(anomaly, audit_output.get("steps")),
-                "anomaly_status": str(anomaly.get("status") or "clear"),
-                "issue_count": issue_count,
-                "critical_issue_count": run_severity_counts["critical"],
-                "warning_issue_count": run_severity_counts["warning"],
-                "info_issue_count": run_severity_counts["info"],
-                "top_issue_codes": _top_issue_codes(run_issue_counts),
-            }
-        )
-
-    trend = {
-        "status": _trend_status(severity_counts),
-        "run_count": len(runs),
-        "affected_run_count": affected_run_count,
-        "issue_count": sum(issue_counts.values()),
-        "severity_counts": {
-            "critical": severity_counts["critical"],
-            "warning": severity_counts["warning"],
-            "info": severity_counts["info"],
-        },
-        "issue_counts": dict(sorted(issue_counts.items())),
-        "dominant_issue_code": _dominant_issue_code(issue_counts),
-    }
+    clamped_baseline_limit = _clamp_limit(baseline_limit) if baseline_limit is not None else clamped_limit
+    recent_runs = _recent_runs_for_anomaly_trends(
+        db,
+        project_id,
+        limit=clamped_limit,
+        chapter_index=chapter_index,
+    )
+    baseline_runs = _recent_runs_for_anomaly_trends(
+        db,
+        project_id,
+        limit=clamped_baseline_limit,
+        chapter_index=chapter_index,
+        offset=clamped_limit,
+    )
+    trend, run_rows = _anomaly_trend_window_summary(db, project_id, recent_runs, include_rows=True)
+    baseline, _baseline_rows = _anomaly_trend_window_summary(db, project_id, baseline_runs, include_rows=False)
+    comparison = _trace_anomaly_trend_comparison(trend, baseline)
+    thresholds = _trace_anomaly_trend_thresholds()
+    threshold_signals = _trace_anomaly_threshold_signals(trend, baseline, comparison, thresholds)
     return _json_safe_output(
         {
             "status": "completed",
             "project_id": project_id,
             "filters": {
                 "limit": clamped_limit,
+                "baseline_limit": clamped_baseline_limit,
                 "chapter_index": chapter_index,
             },
             "trend": trend,
+            "baseline": baseline,
+            "comparison": comparison,
+            "thresholds": thresholds,
+            "threshold_signals": threshold_signals,
             "runs": run_rows,
-            "recommended_next_tools": _trace_anomaly_trend_recommendations(severity_counts),
+            "recommended_next_tools": _trace_anomaly_trend_recommendations(_severity_counts(trend.get("severity_counts"))),
             "trace": _anomaly_trends_trace_metadata(),
         }
     )
@@ -255,6 +236,7 @@ def _recent_runs_for_anomaly_trends(
     *,
     limit: int,
     chapter_index: int | None,
+    offset: int = 0,
 ) -> list[WritingAgentRun]:
     query = db.query(WritingAgentRun).filter(WritingAgentRun.project_id == project_id)
     if chapter_index is not None:
@@ -264,7 +246,7 @@ def _recent_runs_for_anomaly_trends(
             .distinct()
         )
         query = query.filter(WritingAgentRun.id.in_(run_ids))
-    return query.order_by(WritingAgentRun.created_at.desc(), WritingAgentRun.id.desc()).limit(limit).all()
+    return query.order_by(WritingAgentRun.created_at.desc(), WritingAgentRun.id.desc()).offset(offset).limit(limit).all()
 
 
 def _require_project(db: Session, project_id: str) -> None:
@@ -1050,6 +1032,68 @@ def _severity_counts(value: Any) -> Counter[str]:
     return counts
 
 
+def _anomaly_trend_window_summary(
+    db: Session,
+    project_id: str,
+    runs: list[WritingAgentRun],
+    *,
+    include_rows: bool,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    run_rows: list[dict[str, Any]] = []
+    severity_counts: Counter[str] = Counter()
+    issue_counts: Counter[str] = Counter()
+    affected_run_count = 0
+
+    for index, run in enumerate(runs, start=1):
+        audit_output = inspect_agent_trace_audit(db, project_id, run_id=run.id, limit=MAX_AUDIT_LIMIT)
+        anomaly = audit_output.get("anomaly_summary") if isinstance(audit_output.get("anomaly_summary"), dict) else {}
+        issue_count = _non_negative_int(anomaly.get("issue_count"))
+        if issue_count <= 0:
+            continue
+        affected_run_count += 1
+        run_severity_counts = _severity_counts(anomaly.get("severity_counts"))
+        severity_counts.update(run_severity_counts)
+        run_issue_counts = _issue_counts(anomaly.get("issues"))
+        issue_counts.update(run_issue_counts)
+        if include_rows:
+            run_rows.append(
+                {
+                    "run_index": index,
+                    "goal": str(run.goal or ""),
+                    "status": str(run.status or ""),
+                    "entrypoint": str(run.entrypoint or ""),
+                    "chapter_index": _anomaly_run_chapter_index(anomaly, audit_output.get("steps")),
+                    "anomaly_status": str(anomaly.get("status") or "clear"),
+                    "issue_count": issue_count,
+                    "critical_issue_count": run_severity_counts["critical"],
+                    "warning_issue_count": run_severity_counts["warning"],
+                    "info_issue_count": run_severity_counts["info"],
+                    "top_issue_codes": _top_issue_codes(run_issue_counts),
+                }
+            )
+
+    issue_count = sum(issue_counts.values())
+    run_count = len(runs)
+    return (
+        {
+            "status": _trend_status(severity_counts),
+            "run_count": run_count,
+            "affected_run_count": affected_run_count,
+            "issue_count": issue_count,
+            "affected_run_rate": _safe_rate(affected_run_count, run_count),
+            "issue_rate": _safe_rate(issue_count, run_count),
+            "severity_counts": {
+                "critical": severity_counts["critical"],
+                "warning": severity_counts["warning"],
+                "info": severity_counts["info"],
+            },
+            "issue_counts": dict(sorted(issue_counts.items())),
+            "dominant_issue_code": _dominant_issue_code(issue_counts),
+        },
+        run_rows,
+    )
+
+
 def _issue_counts(issues: Any) -> Counter[str]:
     counts: Counter[str] = Counter()
     for issue in _record_list(issues):
@@ -1076,6 +1120,87 @@ def _trend_status(severity_counts: Counter[str]) -> str:
     if severity_counts["info"] > 0:
         return "informational"
     return "clear"
+
+
+def _safe_rate(numerator: int, denominator: int) -> float:
+    if denominator <= 0:
+        return 0.0
+    return round(numerator / denominator, 2)
+
+
+def _safe_delta(left: float, right: float) -> float:
+    return round(left - right, 2)
+
+
+def _critical_issue_rate(summary: dict[str, Any]) -> float:
+    run_count = _non_negative_int(summary.get("run_count"))
+    severity_counts = _severity_counts(summary.get("severity_counts"))
+    return _safe_rate(severity_counts["critical"], run_count)
+
+
+def _trace_anomaly_trend_comparison(
+    trend: dict[str, Any],
+    baseline: dict[str, Any],
+) -> dict[str, float]:
+    return {
+        "affected_run_rate_delta": _safe_delta(
+            float(trend.get("affected_run_rate") or 0.0),
+            float(baseline.get("affected_run_rate") or 0.0),
+        ),
+        "issue_rate_delta": _safe_delta(
+            float(trend.get("issue_rate") or 0.0),
+            float(baseline.get("issue_rate") or 0.0),
+        ),
+        "critical_issue_rate_delta": _safe_delta(
+            _critical_issue_rate(trend),
+            _critical_issue_rate(baseline),
+        ),
+    }
+
+
+def _trace_anomaly_trend_thresholds() -> dict[str, float]:
+    return {
+        "affected_run_rate_delta": TRACE_ANOMALY_AFFECTED_RATE_DELTA_THRESHOLD,
+        "critical_issue_rate_delta": TRACE_ANOMALY_CRITICAL_RATE_DELTA_THRESHOLD,
+    }
+
+
+def _trace_anomaly_threshold_signals(
+    trend: dict[str, Any],
+    baseline: dict[str, Any],
+    comparison: dict[str, float],
+    thresholds: dict[str, float],
+) -> list[dict[str, Any]]:
+    signals: list[dict[str, Any]] = []
+    affected_delta = comparison["affected_run_rate_delta"]
+    affected_threshold = thresholds["affected_run_rate_delta"]
+    if affected_delta >= affected_threshold:
+        signals.append(
+            {
+                "code": "affected_run_rate_spike",
+                "severity": "warning",
+                "title": "受影响运行率升高",
+                "recent_value": float(trend.get("affected_run_rate") or 0.0),
+                "baseline_value": float(baseline.get("affected_run_rate") or 0.0),
+                "delta": affected_delta,
+                "threshold": affected_threshold,
+            }
+        )
+    critical_delta = comparison["critical_issue_rate_delta"]
+    critical_threshold = thresholds["critical_issue_rate_delta"]
+    if critical_delta >= critical_threshold:
+        signals.append(
+            {
+                "code": "critical_issue_rate_spike",
+                "severity": "critical",
+                "title": "严重异常率升高",
+                "recent_value": _critical_issue_rate(trend),
+                "baseline_value": _critical_issue_rate(baseline),
+                "delta": critical_delta,
+                "threshold": critical_threshold,
+            }
+        )
+    return signals
 
 
 def _trace_anomaly_trend_recommendations(severity_counts: Counter[str]) -> list[str]:

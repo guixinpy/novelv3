@@ -995,7 +995,10 @@ def test_agent_tool_registry_includes_inspect_agent_trace_anomaly_trends():
     assert descriptor.category == "trace"
     assert descriptor.target_type == "agent_trace_anomaly_trends"
     assert descriptor.input_schema["properties"]["limit"]["minimum"] == 1
+    assert descriptor.input_schema["properties"]["baseline_limit"]["minimum"] == 1
     assert descriptor.input_schema["properties"]["chapter_index"] == {"type": "integer", "minimum": 1}
+    assert descriptor.output_schema["properties"]["baseline"] == {"type": "object"}
+    assert descriptor.output_schema["properties"]["threshold_signals"] == {"type": "array"}
     assert "inspect_agent_trace_anomaly_trends" in allowed_tool_names()
     assert "inspect_agent_trace_anomaly_trends" in non_blocking_report_tool_names()
 

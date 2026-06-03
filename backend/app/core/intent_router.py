@@ -1900,6 +1900,9 @@ def _trace_anomaly_trends_params(text: str) -> dict[str, Any]:
     limit = _limit_param(text)
     if limit is not None:
         params["limit"] = limit
+    baseline_limit = _baseline_limit_param(text)
+    if baseline_limit is not None:
+        params["baseline_limit"] = baseline_limit
     return params
 
 
@@ -1928,6 +1931,19 @@ def _limit_param(text: str) -> int | None:
     match = re.search(r"\blimit\s*[:=：]?\s*(\d+)", text, re.IGNORECASE)
     if not match:
         match = re.search(r"(?:最近|返回|前)\s*(\d+)\s*(?:个|条|次)?", text)
+    if not match:
+        return None
+    try:
+        parsed = int(match.group(1))
+    except ValueError:
+        return None
+    return parsed if parsed > 0 else None
+
+
+def _baseline_limit_param(text: str) -> int | None:
+    match = re.search(r"\b(?:baseline|base)\s*[:=：]?\s*(\d+)", text, re.IGNORECASE)
+    if not match:
+        match = re.search(r"(?:基线|历史|对照)\s*(\d+)\s*(?:个|条|次)?", text)
     if not match:
         return None
     try:

@@ -292,7 +292,7 @@ Agent 化缺口：
 ### 4.2 Trace & Audit（追踪与审计）
 
 ```
-当前状态：L2-L3 AIModelCallTrace 记录每次 AI 调用的详细信息；inspect_agent_trace_audit 已可由自然语言只读意图触达，用于审计 run/step/model trace/context blocks，并输出安全 intent_chain 摘要（规则、意图、计划工具、执行匹配数）、end_to_end_chain 摘要（意图→计划→执行→模型 Trace→结果消息覆盖）和 anomaly_summary 摘要（失败步骤、失败模型 Trace、缺 Trace 绑定、未执行计划、缺结果消息、截断上下文）；inspect_agent_trace_anomaly_trends 已可按最近 run 和可选章节聚合异常状态、严重度、问题类型、受影响 run 摘要和推荐后续；AgentRunDrawer 可展示 Trace Audit 与 Trace Anomaly Trends 安全摘要、intent_chain 意图链路、端到端链路、异常摘要、失败原因、推荐动作、事件链、上下文块和模型 Trace 概览
+当前状态：L2-L3 AIModelCallTrace 记录每次 AI 调用的详细信息；inspect_agent_trace_audit 已可由自然语言只读意图触达，用于审计 run/step/model trace/context blocks，并输出安全 intent_chain 摘要（规则、意图、计划工具、执行匹配数）、end_to_end_chain 摘要（意图→计划→执行→模型 Trace→结果消息覆盖）和 anomaly_summary 摘要（失败步骤、失败模型 Trace、缺 Trace 绑定、未执行计划、缺结果消息、截断上下文）；inspect_agent_trace_anomaly_trends 已可按最近 run、可选章节与 baseline window 聚合异常状态、严重度、问题类型、受影响 run 摘要、基线对比、阈值信号和推荐后续；AgentRunDrawer 可展示 Trace Audit 与 Trace Anomaly Trends 安全摘要、intent_chain 意图链路、端到端链路、异常摘要、趋势基线、阈值信号、失败原因、推荐动作、事件链、上下文块和模型 Trace 概览
 目标状态：L3 全链路 trace（用户意图→计划→工具调用→模型调用→结果）
 关键文件：
   backend/app/core/model_call_trace.py    # Model Call Trace 核心
@@ -307,8 +307,8 @@ Agent 化缺口：
 Agent 化缺口：
   - trace 已有"用户意图→计划工具→执行 step→模型 trace→result_message"的后端 end_to_end_chain 安全摘要和 Drawer 展示
   - trace 已有单 run anomaly_summary 安全异常摘要，可聚合失败步骤、失败模型 Trace、缺 Trace 绑定、未执行计划、缺结果消息和截断上下文，并在 Drawer 展示
-  - trace 已有最近 run anomaly trends 安全聚合，可统计受影响 run、严重度、问题类型和推荐后续，并在 Drawer 展示
-  - 仍缺更长期的 trace 趋势基线、异常阈值和真实 dogfood 数据验证
+  - trace 已有最近 run anomaly trends 安全聚合，可统计受影响 run、严重度、问题类型、baseline window、rate delta、阈值信号和推荐后续，并在 Drawer 展示
+  - 仍缺真实 dogfood 数据下的趋势阈值校准与误报/漏报验证
 关联模块：所有 AI 调用模块
 ```
 
@@ -429,5 +429,6 @@ Data & Recovery ─── (横切关注点，覆盖所有写入操作)
 | 日期 | 模块 | 变更 |
 |------|------|------|
 | 2026-06-01 | 全部 | 初始版本 |
+| 2026-06-03 | Trace & Audit | inspect_agent_trace_anomaly_trends 新增 baseline window、rate delta 与阈值信号，并在 AgentRunDrawer 展示基线/阈值安全摘要 |
 | 2026-06-03 | Trace & Audit | 新增 inspect_agent_trace_anomaly_trends 最近 run 异常趋势只读聚合、自然语言入口、recovery_worker 路由和 AgentRunDrawer 安全摘要 |
 | 2026-06-03 | Trace & Audit | inspect_agent_trace_audit 新增 intent_chain、end_to_end_chain 与 anomaly_summary 安全摘要，并在 AgentRunDrawer 展示意图规则、计划工具、执行匹配、模型 Trace、结果消息覆盖和单 run 异常聚合 |

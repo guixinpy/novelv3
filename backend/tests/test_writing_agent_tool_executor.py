@@ -2515,11 +2515,11 @@ async def test_tool_executor_handles_dialog_intent_agent_plan_for_trace_anomaly_
         ),
         WritingAgentToolRequest(
             tool_name="plan_dialog_intent_agent_run",
-            params={"text": "检查第4章 Trace 异常趋势 limit 9"},
+            params={"text": "检查第4章 Trace 异常趋势 limit 9 baseline 6"},
         ),
     )
 
-    expected_params = {"chapter_index": 4, "limit": 9}
+    expected_params = {"chapter_index": 4, "limit": 9, "baseline_limit": 6}
     assert result.handled is True
     assert result.output is not None
     assert result.output["status"] == "completed"
@@ -8402,7 +8402,7 @@ async def test_tool_executor_dispatches_inspect_agent_trace_anomaly_trends_adapt
     project = Project(name="Executor Trace Anomaly Trends")
     db_session.add(project)
     db_session.commit()
-    calls: list[tuple[str, int | None, int | None]] = []
+    calls: list[tuple[str, int | None, int | None, int | None]] = []
 
     def fake_trends(
         db,
@@ -8410,8 +8410,9 @@ async def test_tool_executor_dispatches_inspect_agent_trace_anomaly_trends_adapt
         *,
         limit: int | None,
         chapter_index: int | None,
+        baseline_limit: int | None,
     ):
-        calls.append((project_id, limit, chapter_index))
+        calls.append((project_id, limit, chapter_index, baseline_limit))
         return {"status": "completed", "trend": {"status": "clear"}}
 
     monkeypatch.setattr(
@@ -8423,13 +8424,13 @@ async def test_tool_executor_dispatches_inspect_agent_trace_anomaly_trends_adapt
         WritingAgentToolContext(db=db_session, project_id=project.id),
         WritingAgentToolRequest(
             tool_name="inspect_agent_trace_anomaly_trends",
-            params={"limit": "9", "chapter_index": "4"},
+            params={"limit": "9", "chapter_index": "4", "baseline_limit": "6"},
         ),
     )
 
     assert result.handled is True
     assert result.output == {"status": "completed", "trend": {"status": "clear"}}
-    assert calls == [(project.id, 9, 4)]
+    assert calls == [(project.id, 9, 4, 6)]
 
 
 @pytest.mark.asyncio

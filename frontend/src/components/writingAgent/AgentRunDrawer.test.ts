@@ -4715,6 +4715,8 @@ describe('AgentRunDrawer', () => {
                   run_count: 3,
                   affected_run_count: 2,
                   issue_count: 6,
+                  affected_run_rate: 0.67,
+                  issue_rate: 2,
                   severity_counts: { critical: 2, warning: 3, info: 1 },
                   issue_counts: {
                     failed_model_trace: 1,
@@ -4727,6 +4729,49 @@ describe('AgentRunDrawer', () => {
                   dominant_issue_code: 'failed_model_trace',
                   project_id: 'project-secret-id',
                 },
+                baseline: {
+                  status: 'clear',
+                  run_count: 2,
+                  affected_run_count: 0,
+                  issue_count: 0,
+                  affected_run_rate: 0,
+                  issue_rate: 0,
+                  severity_counts: { critical: 0, warning: 0, info: 0 },
+                  issue_counts: {},
+                  dominant_issue_code: '',
+                  run_id: 'baseline-run-secret-id',
+                },
+                comparison: {
+                  affected_run_rate_delta: 0.67,
+                  issue_rate_delta: 2,
+                  critical_issue_rate_delta: 0.67,
+                },
+                thresholds: {
+                  affected_run_rate_delta: 0.5,
+                  critical_issue_rate_delta: 0.25,
+                },
+                threshold_signals: [
+                  {
+                    code: 'affected_run_rate_spike',
+                    severity: 'warning',
+                    title: '受影响运行率升高',
+                    recent_value: 0.67,
+                    baseline_value: 0,
+                    delta: 0.67,
+                    threshold: 0.5,
+                    trace_id: 'signal-trace-secret-id',
+                  },
+                  {
+                    code: 'critical_issue_rate_spike',
+                    severity: 'critical',
+                    title: '严重异常率升高',
+                    recent_value: 0.67,
+                    baseline_value: 0,
+                    delta: 0.67,
+                    threshold: 0.25,
+                    step_id: 'signal-step-secret-id',
+                  },
+                ],
                 runs: [
                   {
                     run_index: 1,
@@ -4782,6 +4827,14 @@ describe('AgentRunDrawer', () => {
     expect(text).toContain('严重 2')
     expect(text).toContain('警告 3')
     expect(text).toContain('提示 1')
+    expect(text).toContain('基线运行 2')
+    expect(text).toContain('基线受影响 0')
+    expect(text).toContain('异常率 +67%')
+    expect(text).toContain('问题率 +200%')
+    expect(text).toContain('受影响运行率升高')
+    expect(text).toContain('严重异常率升高')
+    expect(text).toContain('阈值 50%')
+    expect(text).toContain('阈值 25%')
     expect(text).toContain('主要问题')
     expect(text).toContain('模型 Trace 失败')
     expect(text).toContain('工具步骤失败')
@@ -4798,6 +4851,9 @@ describe('AgentRunDrawer', () => {
     expect(text).not.toContain('step-trend-secret-id')
     expect(text).not.toContain('project-secret-id')
     expect(text).not.toContain('trend-secret-context-key')
+    expect(text).not.toContain('baseline-run-secret-id')
+    expect(text).not.toContain('signal-trace-secret-id')
+    expect(text).not.toContain('signal-step-secret-id')
   })
 
   it('does not render route upgrade apply when contract preview is not confirmable', () => {

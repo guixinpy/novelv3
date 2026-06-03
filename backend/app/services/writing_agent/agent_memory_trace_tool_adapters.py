@@ -32,6 +32,7 @@ def _inspect_agent_trace_anomaly_trends(
         context.db,
         context.project_id,
         limit=_optional_int(tool.params.get("limit")),
+        baseline_limit=_optional_int(tool.params.get("baseline_limit")),
         chapter_index=_optional_int(tool.params.get("chapter_index")),
     )
 

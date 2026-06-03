@@ -923,9 +923,12 @@ const traceAuditTraces = computed(() => recordList(traceAuditOutput.value?.trace
 const traceAuditEventChain = computed(() => recordList(traceAuditOutput.value?.event_chain))
 const traceAuditRecommendedActions = computed(() => recordList(traceAuditOutput.value?.recommended_actions))
 const traceAnomalyTrend = computed(() => recordValue(traceAnomalyTrendsOutput.value?.trend))
+const traceAnomalyTrendBaseline = computed(() => recordValue(traceAnomalyTrendsOutput.value?.baseline))
+const traceAnomalyTrendComparison = computed(() => recordValue(traceAnomalyTrendsOutput.value?.comparison))
 const traceAnomalyTrendFilters = computed(() => recordValue(traceAnomalyTrendsOutput.value?.filters))
 const traceAnomalyTrendIssueCounts = computed(() => recordValue(traceAnomalyTrend.value.issue_counts))
 const traceAnomalyTrendSeverityCounts = computed(() => recordValue(traceAnomalyTrend.value.severity_counts))
+const traceAnomalyTrendThresholdSignals = computed(() => recordList(traceAnomalyTrendsOutput.value?.threshold_signals))
 const traceAnomalyTrendRecommendedTools = computed(() => stringList(traceAnomalyTrendsOutput.value?.recommended_next_tools))
 const traceAuditRunGoal = computed(() => safeTraceAuditText(traceAuditRun.value.goal))
 const traceAuditStepCount = computed(() => numberValue(traceAudit.value.step_count))
@@ -979,6 +982,16 @@ const traceAnomalyTrendWarningCount = computed(() => numberValue(traceAnomalyTre
 const traceAnomalyTrendInfoCount = computed(() => numberValue(traceAnomalyTrendSeverityCounts.value.info))
 const traceAnomalyTrendDominantIssueLabel = computed(() => (
   traceAuditAnomalyCodeLabel(traceAnomalyTrend.value.dominant_issue_code)
+))
+const traceAnomalyTrendBaselineRunCount = computed(() => numberValue(traceAnomalyTrendBaseline.value.run_count))
+const traceAnomalyTrendBaselineAffectedRunCount = computed(() => (
+  numberValue(traceAnomalyTrendBaseline.value.affected_run_count)
+))
+const traceAnomalyTrendAffectedRunRateDeltaLabel = computed(() => (
+  signedPercentLabel(traceAnomalyTrendComparison.value.affected_run_rate_delta)
+))
+const traceAnomalyTrendIssueRateDeltaLabel = computed(() => (
+  signedPercentLabel(traceAnomalyTrendComparison.value.issue_rate_delta)
 ))
 const traceAuditFailureTool = computed(() => safeTraceAuditText(traceAuditFailure.value.tool_name))
 const traceAuditFailureReason = computed(() => safeTraceAuditText(traceAuditFailure.value.reason_code))
@@ -1087,6 +1100,28 @@ const traceAnomalyTrendRunRows = computed(() => (
       }
     })
     .filter((row) => Boolean(row.title || row.statusLabel || row.meta || row.issueLabel))
+))
+const traceAnomalyTrendThresholdSignalRows = computed(() => (
+  traceAnomalyTrendThresholdSignals.value
+    .slice(0, 5)
+    .map((signal, index) => {
+      const delta = signedPercentLabel(signal.delta)
+      const threshold = percentLabel(signal.threshold)
+      const recent = percentLabel(signal.recent_value)
+      const baseline = percentLabel(signal.baseline_value)
+      return {
+        key: `trace-anomaly-threshold-signal:${index}`,
+        title: safeTraceAuditText(signal.title) || traceAnomalyThresholdSignalLabel(signal.code),
+        severityLabel: traceAuditAnomalySeverityLabel(signal.severity),
+        meta: [
+          delta ? `变化 ${delta}` : '',
+          threshold ? `阈值 ${threshold}` : '',
+          recent ? `当前 ${recent}` : '',
+          baseline ? `基线 ${baseline}` : '',
+        ].filter(Boolean).join(' · '),
+      }
+    })
+    .filter((row) => Boolean(row.title || row.severityLabel || row.meta))
 ))
 const traceAuditStepRows = computed(() => (
   traceAuditSteps.value
@@ -1542,8 +1577,10 @@ const hasTraceAnomalyTrendsProjection = computed(() => Boolean(
   (
     traceAnomalyTrendStatus.value ||
     traceAnomalyTrendRunCount.value !== null ||
+    traceAnomalyTrendBaselineRunCount.value !== null ||
     traceAnomalyTrendIssueRows.value.length ||
-    traceAnomalyTrendRunRows.value.length
+    traceAnomalyTrendRunRows.value.length ||
+    traceAnomalyTrendThresholdSignalRows.value.length
   ),
 ))
 const hasKnowledgeBaseCandidateExecutionProjection = computed(() => Boolean(knowledgeBaseCandidateExecutionOutput.value))
@@ -1778,6 +1815,19 @@ function numberValue(value: unknown) {
 
 function booleanLabel(value: unknown, trueLabel: string, falseLabel: string) {
   return value === true ? trueLabel : falseLabel
+}
+
+function percentLabel(value: unknown) {
+  const numericValue = numberValue(value)
+  if (numericValue === null) return ''
+  return `${Math.round(numericValue * 100)}%`
+}
+
+function signedPercentLabel(value: unknown) {
+  const numericValue = numberValue(value)
+  if (numericValue === null) return ''
+  const percent = Math.round(numericValue * 100)
+  return `${percent > 0 ? '+' : ''}${percent}%`
 }
 
 function agentProfileLabel(profile: unknown) {
@@ -2248,6 +2298,13 @@ function traceAuditAnomalyCodeLabel(code: unknown) {
   if (value === 'planned_tool_not_executed') return '计划工具未执行'
   if (value === 'missing_result_message') return '结果消息缺失'
   if (value === 'truncated_context_block') return '上下文块已截断'
+  return safeTraceAuditText(value)
+}
+
+function traceAnomalyThresholdSignalLabel(code: unknown) {
+  const value = stringValue(code)
+  if (value === 'affected_run_rate_spike') return '受影响运行率升高'
+  if (value === 'critical_issue_rate_spike') return '严重异常率升高'
   return safeTraceAuditText(value)
 }
 
@@ -4034,7 +4091,35 @@ function missingDependencyTool(value: Record<string, unknown>) {
               <dt>主要问题</dt>
               <dd>主要问题 {{ traceAnomalyTrendDominantIssueLabel }}</dd>
             </div>
+            <div v-if="traceAnomalyTrendBaselineRunCount !== null">
+              <dt>基线运行</dt>
+              <dd>基线运行 {{ traceAnomalyTrendBaselineRunCount }}</dd>
+            </div>
+            <div v-if="traceAnomalyTrendBaselineAffectedRunCount !== null">
+              <dt>基线受影响</dt>
+              <dd>基线受影响 {{ traceAnomalyTrendBaselineAffectedRunCount }}</dd>
+            </div>
+            <div v-if="traceAnomalyTrendAffectedRunRateDeltaLabel">
+              <dt>异常率</dt>
+              <dd>异常率 {{ traceAnomalyTrendAffectedRunRateDeltaLabel }}</dd>
+            </div>
+            <div v-if="traceAnomalyTrendIssueRateDeltaLabel">
+              <dt>问题率</dt>
+              <dd>问题率 {{ traceAnomalyTrendIssueRateDeltaLabel }}</dd>
+            </div>
           </dl>
+          <ul
+            v-if="traceAnomalyTrendThresholdSignalRows.length"
+            class="agent-run-drawer__planner-signals"
+          >
+            <li
+              v-for="row in traceAnomalyTrendThresholdSignalRows"
+              :key="row.key"
+            >
+              <strong>{{ row.title }}</strong>
+              <span>{{ [row.severityLabel, row.meta].filter(Boolean).join(' · ') }}</span>
+            </li>
+          </ul>
           <ul
             v-if="traceAnomalyTrendIssueRows.length"
             class="agent-run-drawer__execution-tools"

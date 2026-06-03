@@ -741,6 +741,8 @@ def test_inspect_agent_trace_anomaly_trends_aggregates_recent_runs_safely(db_ses
         "run_count": 3,
         "affected_run_count": 2,
         "issue_count": 6,
+        "affected_run_rate": 0.67,
+        "issue_rate": 2.0,
         "severity_counts": {"critical": 2, "warning": 3, "info": 1},
         "issue_counts": {
             "failed_tool_step": 1,
@@ -752,7 +754,7 @@ def test_inspect_agent_trace_anomaly_trends_aggregates_recent_runs_safely(db_ses
         },
         "dominant_issue_code": "failed_model_trace",
     }
-    assert output["filters"] == {"limit": 5, "chapter_index": None}
+    assert output["filters"] == {"limit": 5, "baseline_limit": 5, "chapter_index": None}
     assert output["runs"] == [
         {
             "run_index": 1,
@@ -790,7 +792,7 @@ def test_inspect_agent_trace_anomaly_trends_aggregates_recent_runs_safely(db_ses
     assert output["recommended_next_tools"] == ["inspect_agent_trace_audit", "plan_recovery_tools"]
     assert output["trace"] == {
         "source": "inspect_agent_trace_anomaly_trends",
-        "version": "phase74.agent_trace_anomaly_trends.v1",
+        "version": "phase75.agent_trace_anomaly_trends_baseline.v1",
         "mutability": "read",
     }
     assert "run-trend-secret" not in str(output)
@@ -799,6 +801,130 @@ def test_inspect_agent_trace_anomaly_trends_aggregates_recent_runs_safely(db_ses
     assert "trend-secret-context-key" not in str(output)
     assert "trend-source-secret" not in str(output)
     assert "不应进入趋势摘要" not in str(output)
+
+
+def test_inspect_agent_trace_anomaly_trends_compares_baseline_thresholds_safely(db_session):
+    project = Project(name="Trace Anomaly Trend Baseline")
+    db_session.add(project)
+    db_session.flush()
+    base_time = datetime(2026, 6, 3, 9, 0, tzinfo=timezone.utc)
+    recent_runs = [
+        WritingAgentRun(
+            id=f"run-baseline-secret-recent-{index}",
+            project_id=project.id,
+            goal=f"预检第{index}章",
+            status="success",
+            entrypoint="dialog_auto_plan",
+            created_at=base_time + timedelta(minutes=10 + index),
+        )
+        for index in (1, 2)
+    ]
+    baseline_runs = [
+        WritingAgentRun(
+            id=f"run-baseline-secret-clear-{index}",
+            project_id=project.id,
+            goal=f"历史预检第{index}章",
+            status="success",
+            entrypoint="dialog_auto_plan",
+            created_at=base_time + timedelta(minutes=index),
+        )
+        for index in (1, 2)
+    ]
+    db_session.add_all(recent_runs + baseline_runs)
+    db_session.flush()
+    baseline_traces = [
+        AIModelCallTrace(
+            id=f"trace-baseline-secret-clear-{index}",
+            project_id=project.id,
+            trace_type="preflight",
+            status="success",
+            model="local",
+            chapter_index=index,
+            context_blocks=[],
+        )
+        for index in (1, 2)
+    ]
+    db_session.add_all(baseline_traces)
+    db_session.flush()
+    db_session.add_all(
+        [
+            WritingAgentStep(
+                id=f"step-baseline-secret-recent-{index}",
+                run_id=run.id,
+                project_id=project.id,
+                step_index=1,
+                tool_name="preflight_writing",
+                status="success",
+                output={"status": "ready"},
+                chapter_index=index,
+            )
+            for index, run in enumerate(recent_runs, start=1)
+        ]
+        + [
+            WritingAgentStep(
+                id=f"step-baseline-secret-clear-{index}",
+                run_id=run.id,
+                project_id=project.id,
+                step_index=1,
+                tool_name="preflight_writing",
+                status="success",
+                output={"status": "ready", "trace_id": trace.id},
+                trace_id=trace.id,
+                chapter_index=index,
+            )
+            for index, (run, trace) in enumerate(zip(baseline_runs, baseline_traces, strict=True), start=1)
+        ]
+    )
+    db_session.commit()
+
+    output = inspect_agent_trace_anomaly_trends(db_session, project.id, limit=2, baseline_limit=2)
+
+    assert output["filters"] == {"limit": 2, "baseline_limit": 2, "chapter_index": None}
+    assert output["trend"] == {
+        "status": "needs_attention",
+        "run_count": 2,
+        "affected_run_count": 2,
+        "issue_count": 2,
+        "affected_run_rate": 1.0,
+        "issue_rate": 1.0,
+        "severity_counts": {"critical": 0, "warning": 2, "info": 0},
+        "issue_counts": {"missing_trace_binding": 2},
+        "dominant_issue_code": "missing_trace_binding",
+    }
+    assert output["baseline"] == {
+        "status": "clear",
+        "run_count": 2,
+        "affected_run_count": 0,
+        "issue_count": 0,
+        "affected_run_rate": 0.0,
+        "issue_rate": 0.0,
+        "severity_counts": {"critical": 0, "warning": 0, "info": 0},
+        "issue_counts": {},
+        "dominant_issue_code": "",
+    }
+    assert output["comparison"] == {
+        "affected_run_rate_delta": 1.0,
+        "issue_rate_delta": 1.0,
+        "critical_issue_rate_delta": 0.0,
+    }
+    assert output["thresholds"] == {
+        "affected_run_rate_delta": 0.5,
+        "critical_issue_rate_delta": 0.25,
+    }
+    assert output["threshold_signals"] == [
+        {
+            "code": "affected_run_rate_spike",
+            "severity": "warning",
+            "title": "受影响运行率升高",
+            "recent_value": 1.0,
+            "baseline_value": 0.0,
+            "delta": 1.0,
+            "threshold": 0.5,
+        }
+    ]
+    assert "run-baseline-secret" not in str(output)
+    assert "trace-baseline-secret" not in str(output)
+    assert "step-baseline-secret" not in str(output)
 
 
 def test_inspect_agent_trace_audit_exposes_recommended_recovery_for_blocked_run(db_session):

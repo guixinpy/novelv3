@@ -72,6 +72,7 @@ AGENT_MEMORY_TRACE_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         input_schema=object_schema(
             {
                 "limit": {"type": "integer", "minimum": 1},
+                "baseline_limit": {"type": "integer", "minimum": 1},
                 "chapter_index": {"type": "integer", "minimum": 1},
             }
         ),
@@ -80,6 +81,10 @@ AGENT_MEMORY_TRACE_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
                 "status": {"type": "string"},
                 "filters": {"type": "object"},
                 "trend": {"type": "object"},
+                "baseline": {"type": "object"},
+                "comparison": {"type": "object"},
+                "thresholds": {"type": "object"},
+                "threshold_signals": {"type": "array"},
                 "runs": {"type": "array"},
                 "recommended_next_tools": {"type": "array"},
                 "trace": {"type": "object"},

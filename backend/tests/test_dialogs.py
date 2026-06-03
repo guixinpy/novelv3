@@ -858,9 +858,9 @@ def test_intent_router_projection_explains_trace_anomaly_trends_route():
         suggested_next_step="preview_chapter",
     )
 
-    projection = router.project("检查第4章 Trace 异常趋势 limit 9", "chatting", None, diag).to_dict()
+    projection = router.project("检查第4章 Trace 异常趋势 limit 9 baseline 6", "chatting", None, diag).to_dict()
 
-    expected_params = {"chapter_index": 4, "limit": 9}
+    expected_params = {"chapter_index": 4, "limit": 9, "baseline_limit": 6}
     assert projection["status"] == "matched"
     assert projection["rule_id"] == "trace_anomaly_trends_intent"
     assert projection["decision"]["rule_id"] == "trace_anomaly_trends_intent"
