@@ -598,6 +598,59 @@ const contextCompressionRiskRows = computed(() => (
     }))
     .filter((risk) => Boolean(risk.code || risk.message))
 ))
+const preflightBudgetStep = computed(() => latestToolStep('preflight_writing'))
+const preflightBudgetOutput = computed(() => recordValue(preflightBudgetStep.value?.output))
+const preflightBudgetChecks = computed(() => recordValue(preflightBudgetOutput.value.checks))
+const preflightBudgetCompression = computed(() => recordValue(preflightBudgetChecks.value.context_compression))
+const preflightBudgetSummary = computed(() => recordValue(preflightBudgetCompression.value.summary))
+const preflightBudgetPlan = computed(() => recordValue(preflightBudgetCompression.value.compression_plan))
+const preflightBudgetPreview = computed(() => recordValue(preflightBudgetOutput.value.context_compression_payload_preview))
+const preflightBudgetPayload = computed(() => recordValue(preflightBudgetPreview.value.compression_payload))
+const preflightBudgetIssues = computed(() => recordList(preflightBudgetOutput.value.issues))
+const preflightBudgetRecommendedTools = computed(() => {
+  const seen = new Set<string>()
+  return [
+    ...stringList(preflightBudgetOutput.value.recommended_next_tools),
+    ...stringList(preflightBudgetPreview.value.recommended_next_tools),
+  ].filter((tool) => {
+    if (seen.has(tool)) return false
+    seen.add(tool)
+    return true
+  })
+})
+const preflightBudgetChapterLabel = computed(() => (
+  chapterIndexLabel(preflightBudgetCompression.value.chapter_index) ||
+  chapterIndexLabel(preflightBudgetOutput.value.chapter_index) ||
+  chapterIndexLabel(recordValue(preflightBudgetStep.value?.input).chapter_index)
+))
+const preflightBudgetPromptChars = computed(() => numberValue(preflightBudgetSummary.value.prompt_context_chars))
+const preflightBudgetMaxChars = computed(() => numberValue(preflightBudgetSummary.value.max_chars))
+const preflightBudgetUsageLabel = computed(() => {
+  const ratio = numberValue(preflightBudgetSummary.value.usage_ratio)
+  if (ratio === null) return ''
+  return `使用率 ${Math.round(ratio * 100)}%`
+})
+const preflightBudgetTargetMaxChars = computed(() => (
+  numberValue(preflightBudgetPlan.value.target_max_chars) ??
+  numberValue(preflightBudgetPayload.value.target_max_chars)
+))
+const preflightBudgetPreviewLabel = computed(() => {
+  if (!Object.keys(preflightBudgetPreview.value).length) return ''
+  return contextCompressionStatusLabel(preflightBudgetPreview.value.status)
+})
+const preflightBudgetCompressedChars = computed(() => numberValue(preflightBudgetPayload.value.compressed_context_chars))
+const preflightBudgetIssueRows = computed(() => (
+  preflightBudgetIssues.value
+    .filter((issue) => stringValue(issue.code).startsWith('context_compression'))
+    .slice(0, 4)
+    .map((issue, index) => ({
+      key: `preflight-budget-issue:${index}`,
+      code: safeContextCompressionText(issue.code),
+      severity: contextCompressionSeverityLabel(issue.severity),
+      message: safeContextCompressionText(issue.message),
+    }))
+    .filter((issue) => Boolean(issue.code || issue.message))
+))
 const memoryRouteOutput = computed(() => latestToolOutput('inspect_agent_memory_route'))
 const memoryRoute = computed(() => recordValue(memoryRouteOutput.value?.route))
 const memoryRouteLongformMemory = computed(() => recordValue(memoryRouteOutput.value?.longform_memory))
@@ -1296,6 +1349,7 @@ const hasPostChapterMemoryProjection = computed(() => Boolean(postChapterMemoryO
 const hasMemoryActivationProjection = computed(() => Boolean(memoryActivationOutput.value))
 const hasLongformContextProjection = computed(() => Boolean(longformContextOutput.value))
 const hasContextCompressionProjection = computed(() => Boolean(contextCompressionOutput.value))
+const hasPreflightBudgetProjection = computed(() => Boolean(Object.keys(preflightBudgetCompression.value).length))
 const hasMemoryRouteProjection = computed(() => Boolean(memoryRouteOutput.value))
 const hasKnowledgeBaseRouteProjection = computed(() => Boolean(knowledgeBaseRouteOutput.value))
 const hasWorldModelRouteProjection = computed(() => Boolean(worldModelRouteOutput.value))
@@ -2003,6 +2057,15 @@ function recordValue(value: unknown): Record<string, unknown> {
 function recordList(value: unknown) {
   if (!Array.isArray(value)) return []
   return value.filter(isRecord)
+}
+
+function latestToolStep(toolName: string) {
+  for (let index = steps.value.length - 1; index >= 0; index -= 1) {
+    const step = steps.value[index]
+    if (step?.tool_name !== toolName) continue
+    return step
+  }
+  return null
 }
 
 function latestToolOutput(toolName: string) {
@@ -2815,6 +2878,72 @@ function missingDependencyTool(value: Record<string, unknown>) {
               <strong v-if="risk.code">{{ risk.code }}</strong>
               <span v-if="risk.severity">{{ risk.severity }}</span>
               <span v-if="risk.message">{{ risk.message }}</span>
+            </li>
+          </ul>
+        </section>
+
+        <section
+          v-if="hasPreflightBudgetProjection"
+          class="agent-run-drawer__context-budget"
+          aria-label="Agent preflight context budget"
+        >
+          <h4>上下文预算</h4>
+          <dl class="agent-run-drawer__facts">
+            <div>
+              <dt>状态</dt>
+              <dd>{{ contextCompressionStatusLabel(preflightBudgetCompression.status) }}</dd>
+            </div>
+            <div v-if="preflightBudgetChapterLabel">
+              <dt>章节</dt>
+              <dd>{{ preflightBudgetChapterLabel }}</dd>
+            </div>
+            <div v-if="preflightBudgetPromptChars !== null">
+              <dt>上下文</dt>
+              <dd>上下文字符 {{ preflightBudgetPromptChars }}</dd>
+            </div>
+            <div v-if="preflightBudgetMaxChars !== null">
+              <dt>预算</dt>
+              <dd>预算 {{ preflightBudgetMaxChars }}</dd>
+            </div>
+            <div v-if="preflightBudgetUsageLabel">
+              <dt>使用率</dt>
+              <dd>{{ preflightBudgetUsageLabel }}</dd>
+            </div>
+            <div v-if="preflightBudgetTargetMaxChars !== null">
+              <dt>目标</dt>
+              <dd>目标 {{ preflightBudgetTargetMaxChars }}</dd>
+            </div>
+            <div v-if="preflightBudgetPreviewLabel">
+              <dt>预览</dt>
+              <dd>压缩预览 {{ preflightBudgetPreviewLabel }}</dd>
+            </div>
+            <div v-if="preflightBudgetCompressedChars !== null">
+              <dt>压缩</dt>
+              <dd>压缩字符 {{ preflightBudgetCompressedChars }}</dd>
+            </div>
+          </dl>
+          <ul
+            v-if="preflightBudgetRecommendedTools.length"
+            class="agent-run-drawer__tools"
+          >
+            <li
+              v-for="tool in preflightBudgetRecommendedTools"
+              :key="`preflight-budget-tool:${tool}`"
+            >
+              {{ tool }}
+            </li>
+          </ul>
+          <ul
+            v-if="preflightBudgetIssueRows.length"
+            class="agent-run-drawer__planner-signals"
+          >
+            <li
+              v-for="issue in preflightBudgetIssueRows"
+              :key="issue.key"
+            >
+              <strong v-if="issue.code">{{ issue.code }}</strong>
+              <span v-if="issue.severity">{{ issue.severity }}</span>
+              <span v-if="issue.message">{{ issue.message }}</span>
             </li>
           </ul>
         </section>
@@ -3923,6 +4052,7 @@ function missingDependencyTool(value: Record<string, unknown>) {
 .agent-run-drawer__retrieval-context h4,
 .agent-run-drawer__longform-context h4,
 .agent-run-drawer__context-compression h4,
+.agent-run-drawer__context-budget h4,
 .agent-run-drawer__memory-activation h4,
 .agent-run-drawer__memory-route h4,
 .agent-run-drawer__knowledge-route h4,
@@ -4026,6 +4156,15 @@ function missingDependencyTool(value: Record<string, unknown>) {
 }
 
 .agent-run-drawer__context-compression {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-secondary);
+}
+
+.agent-run-drawer__context-budget {
   display: grid;
   gap: var(--space-3);
   padding: var(--space-3);

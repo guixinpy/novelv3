@@ -307,6 +307,7 @@
 - [x] ContextCompressor 持久摘要自动复用：章节生成在 longform 压力下优先复用同章节同预算的 context_compression_summary，未命中再回退 dry-run payload builder
 - [x] ContextCompressor preflight 持久摘要推荐链：preflight_writing 在窗口压力且 payload ready 时推荐 record_agent_context_compression_summary，并在 preview 中暴露该后续工具
 - [x] ContextCompressor preflight 持久摘要复用：preflight_writing 在窗口压力下先查同章节同预算 context_compression_summary，命中时暴露脱敏 preview 并推荐 prepare_generate_chapter_execution
+- [x] preflight 上下文预算 Drawer 投影：AgentRunDrawer 可从 preflight_writing 的 context_compression 检查展示状态、章节、上下文字符/预算/使用率、目标预算、压缩 preview 状态、压缩字符、推荐工具和压力 issue，并隐藏 compressed_context、summary、scope_key、trace/version 与内部 suggested_params
 
 ### 下一步任务
 
@@ -314,7 +315,7 @@
 |--------|------|---------|------|
 | P1 | 智能上下文压缩（借鉴 hermes-agent） | 预修剪 + LLM 摘要 + 头尾保护 | 🟡 进行中（preflight persistent reuse） |
 | P2 | 端到端 Trace 链路 | 从用户意图→计划→工具调用→模型调用→结果的一条链 | 🔴 待开始 |
-| P3 | 上下文预算管理 | 可视化 Token 使用量 + 接近上限时的警告 | 🔴 待开始 |
+| P3 | 上下文预算管理 | 可视化 Token 使用量 + 接近上限时的警告 | 🟡 进行中（preflight Drawer budget warning） |
 
 ### 阻塞项
 
@@ -322,6 +323,7 @@
 
 ### 最近完成
 
+- 2026-06-03: `AgentRunDrawer` 新增 preflight 上下文预算安全投影，消费 `preflight_writing` 输出的 `checks.context_compression` 与脱敏 `context_compression_payload_preview`，展示状态、章节、上下文字符/预算/使用率、目标预算、压缩 preview 状态、压缩字符、推荐后续工具和 `context_compression_*` 压力 issue，同时隐藏 `compressed_context`、持久摘要正文、scope key、trace/version、`context_guard_failure_count` 与 `suggested_params` 等内部字段。
 - 2026-06-03: `AgentRunDrawer` 新增 ContextCompressor Projection 安全投影，消费 `inspect_agent_context_compression_projection` 输出并展示状态、章节、粒度、保护当前章节判断、上下文字符/预算/使用率、截断分区、Guard 失败次数、目标预算、头尾保护计数、预修剪计数、LLM 摘要需求、推荐工具和风险摘要，同时隐藏 project id、memory_provenance、trace/version、source_ref/source_type/source id、`include_prompt_context` 与 `context_guard_failure_count` 等内部参数。
 - 2026-06-03: `AgentRunDrawer` 新增 Trace Audit 安全投影，消费 `inspect_agent_trace_audit` 输出并展示审计状态、目标、步骤/Trace/事件/上下文/控制面缺口、失败摘要、推荐动作、事件链、上下文块、工具步骤和模型 Trace 概览，同时隐藏 run/step/trace/message/task/source id 与内部上下文 key。
 - 2026-06-02: `inspect_agent_trace_audit` 接入对话只读意图链路：自然语言“检查 run trace/执行链路/失败原因”会经 `trace_audit_intent` 生成无需审批的 read tool 计划，支持 run_id 和 chapter_index 的确定性抽取；这补强了端到端 Trace 链路的入口，但完整“用户意图→计划→工具调用→模型调用→结果”聚合仍未完成。
@@ -346,6 +348,7 @@
 - [x] Recommended followup fallback view 可展示 pending confirmation handoff，且 pending-only 计划不会显示“执行后继”自动执行按钮
 - [x] AgentRunDrawer 执行计划进度摘要：展示计划工具数、已执行、已完成、进行中、下一步工具和逐项计划工具状态
 - [x] AgentRunDrawer Memory Tree 投影：展示 inspect_agent_memory_tree 的状态、查询条件、导航模式、推荐展开数、节点列表和项目级会话浏览历史，并可通过自由查询、推荐 drilldown 或返回节点展开发起只读浏览 run；Hermes 已注册 Memory 主工作区，子导航常驻 Memory Tree 面板可切入工作区、直接提交只读搜索 run、按 parent/children 展示当前返回节点层级树、从结果节点发起只读展开并显示当前展开节点，也可从历史入口重新打开对应 run；工作区中带 chapter_index 的节点可跳转并加载正文章节，也可从安全节点标签发起 Retrieval 证据只读 run、Longform Context Summary 只读 run、Memory Activation Plan 只读 run、Knowledge Base Route 只读 run、Post Chapter Memory Capture 写后记忆沉淀规划 run、Trace Audit 章节审计 run 或 Athena 世界模型路由 run；Retrieval Context run、Longform Context Summary run、Post Chapter Memory Capture run、Memory Activation Plan run、Memory Route run、Knowledge Base Route run、Trace Audit run、World Model Route run、World Model Proposal Review run 与 World Model Proposal Resolution Plan run 可在 Drawer 展示安全摘要；写后记忆捕获候选可在 Drawer 中继续准备知识库候选写入审批，并在待审批写入区显示候选标题、触发已审批执行 payload，执行成功后展示写入结果和推荐下一步工具，并可继续只读检查 Knowledge Base Route
+- [x] AgentRunDrawer preflight 上下文预算投影：展示 preflight_writing 的 context_compression 预算状态、使用率、压缩 preview、推荐后续和压力 issue，同时隐藏 payload/trace 内部字段
 - [x] Athena 世界模型面板（实体 + 提案审阅）
 - [x] Model Trace 抽屉
 - [x] 前端请求隔离（request lane + project scope version）
@@ -361,6 +364,7 @@
 
 ### 最近完成
 
+- 2026-06-03: `AgentRunDrawer` 新增 preflight 上下文预算安全投影，消费 `preflight_writing` 输出的 context_compression 检查和脱敏 preview，展示预算压力、目标预算、压缩字符、推荐工具和压力 issue，同时隐藏压缩正文、持久摘要正文、scope key、trace/version 与内部 suggested params。
 - 2026-06-03: `AgentRunDrawer` 新增 ContextCompressor Projection 安全投影，消费 `inspect_agent_context_compression_projection` 输出并展示状态、章节、粒度、保护策略、上下文字符/预算/使用率、截断分区、Guard 失败次数、目标预算、头尾保护计数、预修剪计数、LLM 摘要需求、推荐工具和风险摘要，同时隐藏 project id、memory_provenance、trace/version、source_ref/source_type/source id 和 payload params。
 - 2026-06-03: `AgentRunDrawer` 新增 World Model Proposal Resolution Plan 安全投影，消费 `plan_world_model_proposal_resolution` 输出并展示计划状态、人工确认需求、自动应用判断、生成阻断判断、返回/总待审数量、高优先级步骤数、批量步骤数、风险计数、审阅模式计数、推荐动作/后续工具和最多 5 条安全步骤摘要，同时隐藏 project/profile/cluster/item/bundle id、profile_version、item_ids、bundle_ids、allowed_actions、plan_only 和 report_only 内部字段。
 - 2026-06-03: `AgentRunDrawer` 新增 World Model Proposal Review 安全投影，消费 `review_world_model_proposals` 输出并展示队列状态、生成阻断判断、返回/总待审数量、分页状态、风险计数、审阅模式计数、推荐动作和最多若干提案簇摘要，同时隐藏 project/profile/cluster/item/bundle id、profile_version、item_ids、bundle_ids 和 report_only 内部字段。
