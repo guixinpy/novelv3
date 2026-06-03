@@ -4416,6 +4416,120 @@ describe('AgentRunDrawer', () => {
     expect(text).not.toContain('source_plan_id')
   })
 
+  it('renders trace audit end-to-end chain summary without trace internals', () => {
+    mount(AgentRunDrawer, {
+      attachTo: document.body,
+      props: {
+        open: true,
+        loading: false,
+        error: '',
+        run: {
+          id: 'drawer-trace-e2e-run',
+          project_id: 'project-1',
+          goal: '审计第3章端到端链路',
+          status: 'success',
+          entrypoint: 'dialog_auto_plan',
+          input: {},
+          output: null,
+          error: null,
+          steps: [
+            {
+              id: 'step-trace-e2e-wrapper',
+              run_id: 'drawer-trace-e2e-run',
+              project_id: 'project-1',
+              step_index: 1,
+              tool_name: 'inspect_agent_trace_audit',
+              status: 'success',
+              input: { run_id: 'audited-run-secret-id' },
+              output: {
+                status: 'completed',
+                audit: {
+                  status: 'completed',
+                  reason: 'run_completed',
+                  step_count: 1,
+                  trace_count: 1,
+                  event_chain_count: 2,
+                  context_block_count: 0,
+                  end_to_end_chain_status: 'complete',
+                },
+                run: {
+                  id: 'audited-run-secret-id',
+                  goal: '预检第3章上下文预算',
+                  status: 'success',
+                },
+                end_to_end_chain: {
+                  status: 'complete',
+                  coverage: {
+                    intent: true,
+                    planned_tools: true,
+                    executed_tools: true,
+                    model_traces: true,
+                    result_message: true,
+                  },
+                  intent_chain_status: 'available',
+                  planned_tool_count: 1,
+                  executed_tool_count: 1,
+                  matched_tool_count: 1,
+                  tool_step_count: 1,
+                  model_trace_count: 1,
+                  result_message: {
+                    status: 'available',
+                    action_type: 'preflight_writing',
+                    action_status: 'success',
+                    message_id: 'message-secret-id',
+                  },
+                  segments: [
+                    {
+                      stage: 'intent',
+                      status: 'available',
+                      rule_id: 'preflight_context_budget_intent',
+                      intent_class: 'preflight_context_budget',
+                      chapter_index: 3,
+                      trace_id: 'trace-secret-id',
+                    },
+                    { stage: 'planned_tools', status: 'available', count: 1 },
+                    { stage: 'executed_tools', status: 'available', count: 1 },
+                    { stage: 'model_traces', status: 'available', count: 1 },
+                    {
+                      stage: 'result_message',
+                      status: 'available',
+                      action_type: 'preflight_writing',
+                      action_status: 'success',
+                      message_id: 'message-secret-id',
+                    },
+                  ],
+                },
+                event_chain: [],
+                context: { total_blocks: 0, blocks: [] },
+                steps: [],
+                traces: [],
+                recommended_actions: [],
+              },
+            },
+          ],
+        },
+      },
+    })
+
+    const text = document.body.textContent || ''
+    expect(text).toContain('端到端链路')
+    expect(text).toContain('完整')
+    expect(text).toContain('计划工具 1')
+    expect(text).toContain('执行步骤 1')
+    expect(text).toContain('模型 Trace 1')
+    expect(text).toContain('结果消息')
+    expect(text).toContain('preflight_writing')
+    expect(text).toContain('成功')
+    expect(text).toContain('意图')
+    expect(text).toContain('计划工具')
+    expect(text).toContain('执行工具')
+    expect(text).toContain('模型 Trace')
+    expect(text).toContain('结果消息')
+    expect(text).not.toContain('audited-run-secret-id')
+    expect(text).not.toContain('trace-secret-id')
+    expect(text).not.toContain('message-secret-id')
+  })
+
   it('does not render route upgrade apply when contract preview is not confirmable', () => {
     mount(AgentRunDrawer, {
       attachTo: document.body,

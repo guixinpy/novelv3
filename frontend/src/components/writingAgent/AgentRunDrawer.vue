@@ -915,6 +915,7 @@ const traceAuditRun = computed(() => recordValue(traceAuditOutput.value?.run))
 const traceAuditFailure = computed(() => recordValue(traceAuditOutput.value?.failure))
 const traceAuditContext = computed(() => recordValue(traceAuditOutput.value?.context))
 const traceAuditIntentChain = computed(() => recordValue(traceAuditOutput.value?.intent_chain))
+const traceAuditEndToEndChain = computed(() => recordValue(traceAuditOutput.value?.end_to_end_chain))
 const traceAuditSteps = computed(() => recordList(traceAuditOutput.value?.steps))
 const traceAuditTraces = computed(() => recordList(traceAuditOutput.value?.traces))
 const traceAuditEventChain = computed(() => recordList(traceAuditOutput.value?.event_chain))
@@ -932,6 +933,17 @@ const traceAuditIntentChainChapterLabel = computed(() => chapterIndexLabel(trace
 const traceAuditIntentChainPlannedCount = computed(() => numberValue(traceAuditIntentChain.value.planned_tool_count))
 const traceAuditIntentChainExecutedCount = computed(() => numberValue(traceAuditIntentChain.value.executed_tool_count))
 const traceAuditIntentChainMatchedCount = computed(() => numberValue(traceAuditIntentChain.value.matched_tool_count))
+const traceAuditEndToEndStatus = computed(() => stringValue(traceAuditEndToEndChain.value.status))
+const traceAuditEndToEndPlannedCount = computed(() => numberValue(traceAuditEndToEndChain.value.planned_tool_count))
+const traceAuditEndToEndToolStepCount = computed(() => numberValue(traceAuditEndToEndChain.value.tool_step_count))
+const traceAuditEndToEndModelTraceCount = computed(() => numberValue(traceAuditEndToEndChain.value.model_trace_count))
+const traceAuditEndToEndResultMessage = computed(() => recordValue(traceAuditEndToEndChain.value.result_message))
+const traceAuditEndToEndResultActionType = computed(() => (
+  safeTraceAuditText(traceAuditEndToEndResultMessage.value.action_type)
+))
+const traceAuditEndToEndResultStatusLabel = computed(() => (
+  traceAuditActionStatusLabel(traceAuditEndToEndResultMessage.value.action_status)
+))
 const traceAuditFailureTool = computed(() => safeTraceAuditText(traceAuditFailure.value.tool_name))
 const traceAuditFailureReason = computed(() => safeTraceAuditText(traceAuditFailure.value.reason_code))
 const traceAuditFailureMessage = computed(() => safeTraceAuditText(traceAuditFailure.value.message))
@@ -947,6 +959,28 @@ const traceAuditIntentChainRows = computed(() => (
       }
     })
     .filter((row) => Boolean(row.toolName || row.statusLabel || row.stepLabel))
+))
+const traceAuditEndToEndSegmentRows = computed(() => (
+  recordList(traceAuditEndToEndChain.value.segments)
+    .map((segment, index) => {
+      const count = numberValue(segment.count)
+      const chapterLabel = chapterIndexLabel(segment.chapter_index)
+      const status = stringValue(segment.status)
+      const actionStatus = stringValue(segment.action_status)
+      return {
+        key: `trace-audit-e2e:${index}`,
+        stageLabel: traceAuditEndToEndStageLabel(segment.stage),
+        statusLabel: traceAuditAvailabilityLabel(status),
+        meta: [
+          count !== null ? `${count}` : '',
+          chapterLabel,
+          safeTraceAuditText(segment.intent_class),
+          safeTraceAuditText(segment.action_type),
+          actionStatus ? traceAuditActionStatusLabel(actionStatus) : '',
+        ].filter(Boolean).join(' · '),
+      }
+    })
+    .filter((row) => Boolean(row.stageLabel || row.statusLabel || row.meta))
 ))
 const traceAuditStepRows = computed(() => (
   traceAuditSteps.value
@@ -1383,6 +1417,14 @@ const hasTraceAuditIntentChain = computed(() => Boolean(
   traceAuditIntentChainClass.value ||
   traceAuditIntentChainChapterLabel.value ||
   traceAuditIntentChainRows.value.length,
+))
+const hasTraceAuditEndToEndChain = computed(() => Boolean(
+  traceAuditEndToEndStatus.value ||
+  traceAuditEndToEndPlannedCount.value !== null ||
+  traceAuditEndToEndToolStepCount.value !== null ||
+  traceAuditEndToEndModelTraceCount.value !== null ||
+  traceAuditEndToEndResultActionType.value ||
+  traceAuditEndToEndSegmentRows.value.length,
 ))
 const hasKnowledgeBaseCandidateExecutionProjection = computed(() => Boolean(knowledgeBaseCandidateExecutionOutput.value))
 const hasMemoryTreeProjection = computed(() => Boolean(memoryTreeOutput.value))
@@ -2024,6 +2066,41 @@ function traceAuditStatusLabel(status: unknown) {
   if (value === 'cancelled') return '已取消'
   if (value === 'needs_attention') return '需处理'
   return value || '未知'
+}
+
+function traceAuditEndToEndStatusLabel(status: unknown) {
+  const value = stringValue(status)
+  if (value === 'complete') return '完整'
+  if (value === 'partial') return '部分'
+  if (value === 'missing') return '缺失'
+  return traceAuditStatusLabel(value)
+}
+
+function traceAuditAvailabilityLabel(status: unknown) {
+  const value = stringValue(status)
+  if (value === 'available') return '可用'
+  if (value === 'missing') return '缺失'
+  return traceAuditStatusLabel(value)
+}
+
+function traceAuditActionStatusLabel(status: unknown) {
+  const value = stringValue(status)
+  if (value === 'success' || value === 'completed') return '成功'
+  if (value === 'ready') return '可用'
+  if (value === 'failed') return '失败'
+  if (value === 'blocked') return '阻塞'
+  if (value === 'running') return '运行中'
+  return value
+}
+
+function traceAuditEndToEndStageLabel(stage: unknown) {
+  const value = stringValue(stage)
+  if (value === 'intent') return '意图'
+  if (value === 'planned_tools') return '计划工具'
+  if (value === 'executed_tools') return '执行工具'
+  if (value === 'model_traces') return '模型 Trace'
+  if (value === 'result_message') return '结果消息'
+  return safeTraceAuditText(value)
 }
 
 function traceAuditEventLabel(event: Record<string, unknown>) {
@@ -3588,6 +3665,48 @@ function missingDependencyTool(value: Record<string, unknown>) {
               </li>
             </ul>
           </div>
+          <div
+            v-if="hasTraceAuditEndToEndChain"
+            class="agent-run-drawer__trace-audit-end-to-end"
+          >
+            <strong>端到端链路</strong>
+            <dl class="agent-run-drawer__facts">
+              <div v-if="traceAuditEndToEndStatus">
+                <dt>状态</dt>
+                <dd>{{ traceAuditEndToEndStatusLabel(traceAuditEndToEndStatus) }}</dd>
+              </div>
+              <div v-if="traceAuditEndToEndPlannedCount !== null">
+                <dt>计划工具</dt>
+                <dd>计划工具 {{ traceAuditEndToEndPlannedCount }}</dd>
+              </div>
+              <div v-if="traceAuditEndToEndToolStepCount !== null">
+                <dt>执行步骤</dt>
+                <dd>执行步骤 {{ traceAuditEndToEndToolStepCount }}</dd>
+              </div>
+              <div v-if="traceAuditEndToEndModelTraceCount !== null">
+                <dt>模型 Trace</dt>
+                <dd>模型 Trace {{ traceAuditEndToEndModelTraceCount }}</dd>
+              </div>
+              <div v-if="traceAuditEndToEndResultActionType || traceAuditEndToEndResultStatusLabel">
+                <dt>结果消息</dt>
+                <dd>
+                  {{ [traceAuditEndToEndResultActionType, traceAuditEndToEndResultStatusLabel].filter(Boolean).join(' · ') }}
+                </dd>
+              </div>
+            </dl>
+            <ul
+              v-if="traceAuditEndToEndSegmentRows.length"
+              class="agent-run-drawer__execution-tools"
+            >
+              <li
+                v-for="row in traceAuditEndToEndSegmentRows"
+                :key="row.key"
+              >
+                <span>{{ row.stageLabel }}</span>
+                <strong>{{ [row.statusLabel, row.meta].filter(Boolean).join(' · ') }}</strong>
+              </li>
+            </ul>
+          </div>
           <ul
             v-if="traceAuditRecommendedActionRows.length"
             class="agent-run-drawer__tools"
@@ -4558,6 +4677,20 @@ function missingDependencyTool(value: Record<string, unknown>) {
 }
 
 .agent-run-drawer__trace-audit-intent > strong {
+  color: var(--color-text-primary);
+}
+
+.agent-run-drawer__trace-audit-end-to-end {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-white);
+  font-size: var(--text-xs);
+}
+
+.agent-run-drawer__trace-audit-end-to-end > strong {
   color: var(--color-text-primary);
 }
 

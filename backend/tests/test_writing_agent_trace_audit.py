@@ -324,6 +324,131 @@ def test_inspect_agent_trace_audit_includes_safe_intent_chain_summary(db_session
     assert "max_context_chars" not in str(output["intent_chain"])
 
 
+def test_inspect_agent_trace_audit_includes_end_to_end_chain_summary(db_session):
+    project = Project(name="Trace End To End Chain")
+    db_session.add(project)
+    db_session.flush()
+    dialog = Dialog(project_id=project.id, dialog_type="hermes", state="running")
+    db_session.add(dialog)
+    db_session.flush()
+    planner_output = {
+        "status": "completed",
+        "intent_projection": {
+            "rule_id": "preflight_context_budget_intent",
+            "candidate": {
+                "type": "preflight_context_budget",
+                "params": {
+                    "chapter_index": 3,
+                    "max_context_chars": 1200,
+                },
+            },
+        },
+        "planner": {
+            "intent_class": "preflight_context_budget",
+            "mapped_from_action_type": "preflight_context_budget",
+            "mapped_from_rule_id": "preflight_context_budget_intent",
+            "chapter_index": 3,
+        },
+        "plan": {"tools": [{"tool_name": "preflight_writing"}]},
+    }
+    run = WritingAgentRun(
+        project_id=project.id,
+        goal="预检第3章上下文预算",
+        status="success",
+        entrypoint="dialog_auto_plan",
+        input={"planner": planner_output},
+        output={"status": "success"},
+        dialog_id=dialog.id,
+    )
+    db_session.add(run)
+    db_session.flush()
+    trace = AIModelCallTrace(
+        id="trace-e2e-secret",
+        project_id=project.id,
+        trace_type="preflight_context_budget",
+        status="success",
+        model="local-preflight-model",
+        chapter_index=3,
+        context_blocks=[{"key": "budget-secret-key", "content": "不应进入闭环摘要。"}],
+    )
+    db_session.add(trace)
+    db_session.flush()
+    db_session.add(
+        WritingAgentStep(
+            run_id=run.id,
+            project_id=project.id,
+            step_index=1,
+            tool_name="preflight_writing",
+            status="success",
+            input={"params": {"chapter_index": 3, "max_context_chars": 1200}},
+            output={"status": "ready", "trace_id": trace.id},
+            trace_id=trace.id,
+            chapter_index=3,
+        )
+    )
+    result_message = DialogMessage(
+        dialog_id=dialog.id,
+        role="system",
+        content="第3章上下文预算预检完成。",
+        action_result={
+            "type": "preflight_writing",
+            "status": "success",
+            "data": {"agent_run_id": run.id, "status": "success", "trace_id": trace.id},
+        },
+    )
+    db_session.add(result_message)
+    db_session.flush()
+    run.response_message_id = result_message.id
+    db_session.commit()
+
+    output = inspect_agent_trace_audit(db_session, project.id, run_id=run.id)
+
+    assert output["audit"]["end_to_end_chain_status"] == "complete"
+    assert output["end_to_end_chain"] == {
+        "status": "complete",
+        "coverage": {
+            "intent": True,
+            "planned_tools": True,
+            "executed_tools": True,
+            "model_traces": True,
+            "result_message": True,
+        },
+        "intent_chain_status": "available",
+        "planned_tool_count": 1,
+        "executed_tool_count": 1,
+        "matched_tool_count": 1,
+        "tool_step_count": 1,
+        "model_trace_count": 1,
+        "result_message": {
+            "status": "available",
+            "action_type": "preflight_writing",
+            "action_status": "success",
+        },
+        "segments": [
+            {
+                "stage": "intent",
+                "status": "available",
+                "rule_id": "preflight_context_budget_intent",
+                "intent_class": "preflight_context_budget",
+                "chapter_index": 3,
+            },
+            {"stage": "planned_tools", "status": "available", "count": 1},
+            {"stage": "executed_tools", "status": "available", "count": 1},
+            {"stage": "model_traces", "status": "available", "count": 1},
+            {
+                "stage": "result_message",
+                "status": "available",
+                "action_type": "preflight_writing",
+                "action_status": "success",
+            },
+        ],
+    }
+    assert "trace-e2e-secret" not in str(output["end_to_end_chain"])
+    assert "budget-secret-key" not in str(output["end_to_end_chain"])
+    assert "max_context_chars" not in str(output["end_to_end_chain"])
+    assert result_message.id not in str(output["end_to_end_chain"])
+
+
 def test_inspect_agent_trace_audit_exposes_recommended_recovery_for_blocked_run(db_session):
     project = Project(name="Trace Audit Blocked")
     db_session.add(project)

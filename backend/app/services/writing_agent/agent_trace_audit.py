@@ -77,6 +77,12 @@ def inspect_agent_trace_audit(
     control_plane_readiness = control_plane_readiness_from_run_input(run.input)
     command_contracts = command_contracts_from_run_input(run.input)
     intent_chain = _intent_chain_summary(run, steps)
+    end_to_end_chain = _end_to_end_chain_summary(
+        intent_chain,
+        steps=steps,
+        trace_items=trace_items,
+        dialog_events=dialog_events,
+    )
     recommended_actions = _recommended_actions(
         steps,
         failure=failure,
@@ -95,6 +101,7 @@ def inspect_agent_trace_audit(
         "intent_chain_status": intent_chain["status"],
         "planned_tool_count": intent_chain["planned_tool_count"],
         "matched_planned_tool_count": intent_chain["matched_tool_count"],
+        "end_to_end_chain_status": end_to_end_chain["status"],
     }
     if profile_policy_audit is not None:
         profile_policy_summary = (
@@ -132,6 +139,7 @@ def inspect_agent_trace_audit(
             "event_chain": event_chain,
             "context": context,
             "intent_chain": intent_chain,
+            "end_to_end_chain": end_to_end_chain,
             "failure": failure,
             "recommended_actions": recommended_actions,
             "profile_policy_audit": profile_policy_audit,
@@ -687,6 +695,113 @@ def _intent_chain_summary(run: WritingAgentRun, steps: list[WritingAgentStep]) -
     if summary["status"] == "missing":
         summary["reason"] = "intent_plan_not_recorded"
     return summary
+
+
+def _end_to_end_chain_summary(
+    intent_chain: dict[str, Any],
+    *,
+    steps: list[WritingAgentStep],
+    trace_items: list[dict[str, Any]],
+    dialog_events: dict[str, Any],
+) -> dict[str, Any]:
+    planned_tool_count = _non_negative_int(intent_chain.get("planned_tool_count"))
+    executed_tool_count = _non_negative_int(intent_chain.get("executed_tool_count"))
+    matched_tool_count = _non_negative_int(intent_chain.get("matched_tool_count"))
+    tool_step_count = len(steps)
+    model_trace_count = len(trace_items)
+    result_message = (
+        dialog_events.get("result_message") if isinstance(dialog_events.get("result_message"), dict) else None
+    )
+    result_summary = _result_message_chain_summary(result_message)
+    coverage = {
+        "intent": intent_chain.get("status") == "available",
+        "planned_tools": planned_tool_count > 0,
+        "executed_tools": tool_step_count > 0,
+        "model_traces": model_trace_count > 0,
+        "result_message": result_summary is not None,
+    }
+    if all(coverage.values()):
+        status = "complete"
+    elif any(coverage.values()):
+        status = "partial"
+    else:
+        status = "missing"
+
+    return {
+        "status": status,
+        "coverage": coverage,
+        "intent_chain_status": str(intent_chain.get("status") or "missing"),
+        "planned_tool_count": planned_tool_count,
+        "executed_tool_count": executed_tool_count,
+        "matched_tool_count": matched_tool_count,
+        "tool_step_count": tool_step_count,
+        "model_trace_count": model_trace_count,
+        "result_message": result_summary,
+        "segments": _end_to_end_chain_segments(
+            intent_chain,
+            planned_tool_count=planned_tool_count,
+            executed_tool_count=executed_tool_count,
+            model_trace_count=model_trace_count,
+            result_summary=result_summary,
+        ),
+    }
+
+
+def _result_message_chain_summary(value: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    action_type = str(value.get("action_type") or "").strip()
+    action_status = str(value.get("action_status") or "").strip()
+    if not action_type and not action_status:
+        return None
+    return {
+        "status": "available",
+        "action_type": action_type,
+        "action_status": action_status,
+    }
+
+
+def _end_to_end_chain_segments(
+    intent_chain: dict[str, Any],
+    *,
+    planned_tool_count: int,
+    executed_tool_count: int,
+    model_trace_count: int,
+    result_summary: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    intent_status = "available" if intent_chain.get("status") == "available" else "missing"
+    result_segment = {
+        "stage": "result_message",
+        "status": "available" if result_summary is not None else "missing",
+    }
+    if result_summary is not None:
+        result_segment["action_type"] = result_summary["action_type"]
+        result_segment["action_status"] = result_summary["action_status"]
+    return [
+        {
+            "stage": "intent",
+            "status": intent_status,
+            "rule_id": str(intent_chain.get("rule_id") or ""),
+            "intent_class": str(intent_chain.get("intent_class") or ""),
+            "chapter_index": intent_chain.get("chapter_index"),
+        },
+        {
+            "stage": "planned_tools",
+            "status": "available" if planned_tool_count > 0 else "missing",
+            "count": planned_tool_count,
+        },
+        {
+            "stage": "executed_tools",
+            "status": "available" if executed_tool_count > 0 else "missing",
+            "count": executed_tool_count,
+        },
+        {
+            "stage": "model_traces",
+            "status": "available" if model_trace_count > 0 else "missing",
+            "count": model_trace_count,
+        },
+        result_segment,
+    ]
 
 
 def _planner_from_run(run: WritingAgentRun) -> dict[str, Any] | None:
