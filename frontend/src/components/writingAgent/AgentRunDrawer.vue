@@ -459,6 +459,71 @@ const knowledgeBaseDiagnosticRows = computed(() => (
     }))
     .filter((item) => Boolean(item.message))
 ))
+const worldModelRouteOutput = computed(() => latestToolOutput('inspect_agent_world_model_route'))
+const worldModelRoute = computed(() => recordValue(worldModelRouteOutput.value?.route))
+const worldModelFactSummary = computed(() => recordValue(worldModelRouteOutput.value?.fact_summary))
+const worldModelProposalPressure = computed(() => recordValue(worldModelRouteOutput.value?.proposal_pressure))
+const worldModelFacts = computed(() => recordList(worldModelRouteOutput.value?.facts))
+const worldModelDiagnostics = computed(() => recordList(worldModelRouteOutput.value?.diagnostics))
+const worldModelRecommendedActions = computed(() => stringList(worldModelRouteOutput.value?.recommended_actions))
+const worldModelRouteChapterLabel = computed(() => chapterIndexLabel(worldModelRouteOutput.value?.chapter_index))
+const worldModelRouteSubject = computed(() => safeWorldModelRouteText(worldModelRouteOutput.value?.subject_ref))
+const worldModelRouteGenerationLabel = computed(() => (
+  worldModelRoute.value.can_use_world_model === true ? '可用于生成' : '不可用于生成'
+))
+const worldModelConfirmedFactReturned = computed(() => numberValue(worldModelFactSummary.value.returned_facts))
+const worldModelConfirmedFactTotal = computed(() => numberValue(worldModelFactSummary.value.total_confirmed_facts))
+const worldModelPendingProposalCount = computed(() => (
+  numberValue(worldModelRoute.value.pending_proposal_count) ??
+  numberValue(worldModelProposalPressure.value.total_items)
+))
+const worldModelHighRiskCount = computed(() => numberValue(recordValue(worldModelProposalPressure.value.risk_counts).high))
+const worldModelMediumRiskCount = computed(() => numberValue(recordValue(worldModelProposalPressure.value.risk_counts).medium))
+const worldModelFactRows = computed(() => (
+  worldModelFacts.value
+    .map((fact, index) => {
+      const confidence = numberValue(fact.confidence)
+      return {
+        key: `world-model-fact:${index}`,
+        subject: safeWorldModelRouteText(fact.subject_ref),
+        predicate: safeWorldModelRouteText(fact.predicate),
+        object: safeWorldModelRouteText(fact.object_ref_or_value),
+        chapterLabel: chapterIndexLabel(fact.chapter_index),
+        confidenceLabel: confidence !== null ? `置信 ${confidence}` : '',
+      }
+    })
+    .filter((row) => Boolean(row.subject || row.predicate || row.object))
+))
+const worldModelProposalClusterRows = computed(() => (
+  recordList(worldModelProposalPressure.value.clusters)
+    .map((cluster, index) => {
+      const subjects = stringList(cluster.subject_refs)
+        .map((subject) => safeWorldModelRouteText(subject))
+        .filter(Boolean)
+      const candidateCount = numberValue(cluster.candidate_count)
+      return {
+        key: `world-model-cluster:${index}`,
+        title: [subjects.join(', '), safeWorldModelRouteText(cluster.predicate)].filter(Boolean).join(' · ') || '待审提案',
+        meta: [
+          worldModelRiskLabel(cluster.risk_level),
+          worldModelReviewModeLabel(cluster.review_mode),
+          candidateCount !== null ? `${candidateCount} 个候选` : '',
+          worldModelChapterRangeLabel(cluster.chapter_range),
+        ].filter(Boolean).join(' · '),
+        reason: safeWorldModelRouteText(cluster.reason),
+      }
+    })
+    .filter((row) => Boolean(row.title || row.meta || row.reason))
+))
+const worldModelDiagnosticRows = computed(() => (
+  worldModelDiagnostics.value
+    .map((item, index) => ({
+      key: `world-model-diagnostic:${index}`,
+      code: safeWorldModelRouteText(item.code),
+      message: safeWorldModelRouteText(item.message),
+    }))
+    .filter((item) => Boolean(item.code || item.message))
+))
 const traceAuditOutput = computed(() => latestToolOutput('inspect_agent_trace_audit'))
 const traceAudit = computed(() => recordValue(traceAuditOutput.value?.audit))
 const traceAuditRun = computed(() => recordValue(traceAuditOutput.value?.run))
@@ -872,6 +937,7 @@ const hasMemoryLoopProjection = computed(() => Boolean(
   memoryActivationOutput.value || retrievalContextOutput.value || postChapterMemoryOutput.value,
 ))
 const hasKnowledgeBaseRouteProjection = computed(() => Boolean(knowledgeBaseRouteOutput.value))
+const hasWorldModelRouteProjection = computed(() => Boolean(worldModelRouteOutput.value))
 const hasTraceAuditProjection = computed(() => Boolean(traceAuditOutput.value))
 const hasKnowledgeBaseCandidateExecutionProjection = computed(() => Boolean(knowledgeBaseCandidateExecutionOutput.value))
 const hasMemoryTreeProjection = computed(() => Boolean(memoryTreeOutput.value))
@@ -1333,6 +1399,14 @@ function safeKnowledgeBaseRouteText(label: unknown) {
   return value.slice(0, 96)
 }
 
+function safeWorldModelRouteText(label: unknown) {
+  const value = stringValue(label).replace(/\s+/g, ' ')
+  if (!value) return ''
+  if (/[A-Za-z_]+:[A-Za-z0-9_.-]+/.test(value)) return ''
+  if (/(project|profile|fact|cluster|item|bundle)-secret|source_refs?|source_id|evidence_refs?|approval_contract|approval:|world_profile:/i.test(value)) return ''
+  return value.slice(0, 96)
+}
+
 function safeTraceAuditText(label: unknown) {
   const value = stringValue(label).replace(/\s+/g, ' ')
   if (!value) return ''
@@ -1347,6 +1421,40 @@ function knowledgeBaseRouteStatusLabel(status: unknown) {
   if (value === 'sparse') return '稀疏'
   if (value === 'completed') return '已完成'
   return value || '未知'
+}
+
+function worldModelRouteStatusLabel(status: unknown) {
+  const value = stringValue(status)
+  if (value === 'ready') return '可用'
+  if (value === 'blocked') return '已阻塞'
+  if (value === 'completed' || value === 'success') return '已完成'
+  if (value === 'missing_profile') return '缺少 Profile'
+  return value || '未知'
+}
+
+function worldModelRiskLabel(risk: unknown) {
+  const value = stringValue(risk)
+  if (value === 'high') return '高风险'
+  if (value === 'medium') return '中风险'
+  if (value === 'low') return '低风险'
+  return value
+}
+
+function worldModelReviewModeLabel(mode: unknown) {
+  const value = stringValue(mode)
+  if (value === 'individual') return '逐项审阅'
+  if (value === 'batch') return '批量审阅'
+  return value
+}
+
+function worldModelChapterRangeLabel(rangeValue: unknown) {
+  const range = recordValue(rangeValue)
+  const start = numberValue(range.start)
+  const end = numberValue(range.end)
+  if (start !== null && end !== null && start !== end) return `第${start}-${end}章`
+  if (start !== null) return chapterIndexLabel(start)
+  if (end !== null) return chapterIndexLabel(end)
+  return ''
 }
 
 function traceAuditStatusLabel(status: unknown) {
@@ -2002,6 +2110,99 @@ function missingDependencyTool(value: Record<string, unknown>) {
         </section>
 
         <section
+          v-if="hasWorldModelRouteProjection"
+          class="agent-run-drawer__world-model-route"
+          aria-label="World model route projection"
+        >
+          <h4>世界模型路由</h4>
+          <dl class="agent-run-drawer__facts">
+            <div>
+              <dt>状态</dt>
+              <dd>{{ worldModelRouteStatusLabel(worldModelRoute.status) }}</dd>
+            </div>
+            <div>
+              <dt>生成</dt>
+              <dd>{{ worldModelRouteGenerationLabel }}</dd>
+            </div>
+            <div v-if="worldModelRouteChapterLabel">
+              <dt>章节</dt>
+              <dd>{{ worldModelRouteChapterLabel }}</dd>
+            </div>
+            <div v-if="worldModelRouteSubject">
+              <dt>主体</dt>
+              <dd>{{ worldModelRouteSubject }}</dd>
+            </div>
+            <div v-if="countRangeLabel(worldModelConfirmedFactReturned, worldModelConfirmedFactTotal)">
+              <dt>确认事实</dt>
+              <dd>确认事实 {{ countRangeLabel(worldModelConfirmedFactReturned, worldModelConfirmedFactTotal) }}</dd>
+            </div>
+            <div v-if="worldModelPendingProposalCount !== null">
+              <dt>待审提案</dt>
+              <dd>待审提案 {{ worldModelPendingProposalCount }}</dd>
+            </div>
+            <div v-if="worldModelHighRiskCount !== null && worldModelHighRiskCount > 0">
+              <dt>高风险</dt>
+              <dd>高风险 {{ worldModelHighRiskCount }}</dd>
+            </div>
+            <div v-if="worldModelMediumRiskCount !== null && worldModelMediumRiskCount > 0">
+              <dt>中风险</dt>
+              <dd>中风险 {{ worldModelMediumRiskCount }}</dd>
+            </div>
+          </dl>
+          <ul
+            v-if="worldModelRecommendedActions.length"
+            class="agent-run-drawer__tools"
+          >
+            <li
+              v-for="action in worldModelRecommendedActions"
+              :key="`world-model-action:${action}`"
+            >
+              {{ action }}
+            </li>
+          </ul>
+          <ul
+            v-if="worldModelFactRows.length"
+            class="agent-run-drawer__reference-patterns"
+          >
+            <li
+              v-for="row in worldModelFactRows"
+              :key="row.key"
+            >
+              <div>
+                <strong>{{ [row.subject, row.predicate].filter(Boolean).join(' · ') || '世界事实' }}</strong>
+                <span>{{ [row.chapterLabel, row.confidenceLabel].filter(Boolean).join(' · ') }}</span>
+              </div>
+              <p v-if="row.object">{{ row.object }}</p>
+            </li>
+          </ul>
+          <ul
+            v-if="worldModelProposalClusterRows.length"
+            class="agent-run-drawer__planner-signals"
+          >
+            <li
+              v-for="row in worldModelProposalClusterRows"
+              :key="row.key"
+            >
+              <strong>{{ row.title }}</strong>
+              <span v-if="row.meta">{{ row.meta }}</span>
+              <span v-if="row.reason">{{ row.reason }}</span>
+            </li>
+          </ul>
+          <ul
+            v-if="worldModelDiagnosticRows.length"
+            class="agent-run-drawer__planner-signals"
+          >
+            <li
+              v-for="row in worldModelDiagnosticRows"
+              :key="row.key"
+            >
+              <strong v-if="row.code">{{ row.code }}</strong>
+              <span v-if="row.message">{{ row.message }}</span>
+            </li>
+          </ul>
+        </section>
+
+        <section
           v-if="hasTraceAuditProjection"
           class="agent-run-drawer__trace-audit"
           aria-label="Agent trace audit projection"
@@ -2579,6 +2780,7 @@ function missingDependencyTool(value: Record<string, unknown>) {
 .agent-run-drawer__planner h4,
 .agent-run-drawer__memory-loop h4,
 .agent-run-drawer__knowledge-route h4,
+.agent-run-drawer__world-model-route h4,
 .agent-run-drawer__trace-audit h4,
 .agent-run-drawer__knowledge-candidate h4,
 .agent-run-drawer__memory-tree h4,
@@ -2649,6 +2851,15 @@ function missingDependencyTool(value: Record<string, unknown>) {
 }
 
 .agent-run-drawer__knowledge-route {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-secondary);
+}
+
+.agent-run-drawer__world-model-route {
   display: grid;
   gap: var(--space-3);
   padding: var(--space-3);
