@@ -84,7 +84,7 @@ Agent 化缺口：
   - Memory Route 已有只读诊断、自然语言只读入口和 Drawer 安全投影，可直接检查长篇记忆、检索索引、维护状态与上下文摘要路由
   - Memory Activation Plan 已有只读诊断、自然语言只读入口和 Drawer 安全投影，可直接检查指定章节的写前记忆激活计划
   - World Model Route 已有只读诊断、自然语言只读入口和 Drawer 安全投影，可直接检查指定章节/subject_ref 的世界模型 profile、事实和待审提案压力
-  - World Model Proposal Review 已有只读入口和 Drawer 安全投影，可直接检查待审世界模型提案队列、风险/审阅模式统计、推荐动作和提案簇摘要；Resolution Plan 已有只读入口，可生成提案处理计划
+  - World Model Proposal Review/Resolution Plan 已有只读入口和 Drawer 安全投影，可直接检查待审世界模型提案队列、风险/审阅模式统计、推荐动作、提案簇摘要，并生成带高优先级/批量步骤统计和安全步骤摘要的提案处理计划
   - Retrieval Context 与 Longform Context Summary 已有只读工具和自然语言只读入口，可直接检索上下文证据并汇总指定章节长篇上下文；Retrieval Context run 可在 AgentRunDrawer 展示查询/过滤条件、返回窗口、证据条目、来源覆盖和推荐后续的安全摘要；Longform Context Summary run 可展示章节目标、生成进度、来源覆盖、预算截断、分区条目和诊断安全摘要
   - Dialog Control Plane Projection 已有只读审计和自然语言只读入口，可直接检查 generate_chapter 等 pending action 的当前运行工具与推荐审批工具链
   - Mutation Fingerprints 已有只读审计和自然语言只读入口，可直接检查 generate_chapter 等写入工具的稳定变更指纹
@@ -123,7 +123,7 @@ Agent 化缺口：
 ### 1.3 Athena（世界模型）
 
 ```
-当前状态：L2 结构化世界实体 + 事件账本 + 提案审批 + layered checker（L0-L4 已实现，L5-L6 预留）；World Model Route 与提案队列/解决规划可由自然语言只读意图触达，AgentRunDrawer 可展示 World Model Route 安全摘要、确认事实、待审提案压力、推荐动作和诊断信息，也可展示 review_world_model_proposals 的待审队列状态、风险/审阅模式统计、推荐动作和提案簇安全摘要
+当前状态：L2 结构化世界实体 + 事件账本 + 提案审批 + layered checker（L0-L4 已实现，L5-L6 预留）；World Model Route 与提案队列/解决规划可由自然语言只读意图触达，AgentRunDrawer 可展示 World Model Route 安全摘要、确认事实、待审提案压力、推荐动作和诊断信息，也可展示 review_world_model_proposals 的待审队列状态、风险/审阅模式统计、推荐动作和提案簇安全摘要，以及 plan_world_model_proposal_resolution 的处理计划状态、人工确认/自动应用判断、高优先级/批量步骤计数、推荐动作/后续工具和安全步骤摘要
 目标状态：L3 LLM 驱动的语义一致性检查 + 主动矛盾发现
 关键文件：
   backend/app/core/athena_*.py            # 世界模型核心服务（多个文件）
@@ -137,8 +137,8 @@ Agent 化缺口：
   └── world_model_tool_*.py              # 世界模型工具适配器
 Agent 化缺口：
   - L5 语义检查和 L6 治理检查仍是预留层
-  - 世界模型路由已有只读诊断、自然语言入口和 Drawer 安全投影，可检查 profile、确认事实、待审提案压力和下一步建议；提案队列 review run 已有 Drawer 安全投影，可检查待审数量、风险/审阅模式统计、推荐动作和提案簇摘要
-  - 世界模型提案队列审阅和提案解决规划已有自然语言只读入口，可在应用决议前先查看待处理提案并生成 offset/limit 范围内的处理计划
+  - 世界模型路由已有只读诊断、自然语言入口和 Drawer 安全投影，可检查 profile、确认事实、待审提案压力和下一步建议；提案队列 review run 与 resolution plan run 已有 Drawer 安全投影，可检查待审数量、风险/审阅模式统计、推荐动作、提案簇摘要和处理步骤摘要
+  - 世界模型提案队列审阅和提案解决规划已有自然语言只读入口，可在应用决议前先查看待处理提案并生成 offset/limit 范围内的处理计划；Drawer 会隐藏 project/profile/cluster/item/bundle id 与 allowed_actions/plan_only/report_only 等内部字段
   - 章节事实抽取质量需要持续改进
   - 缺少 LLM 驱动的"跨章节叙事一致性"检查
   - 世界模型分析需要更多真实长篇压测
