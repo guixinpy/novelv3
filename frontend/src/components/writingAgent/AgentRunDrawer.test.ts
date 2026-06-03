@@ -4802,6 +4802,19 @@ describe('AgentRunDrawer', () => {
                     info_only_signal_count: 1,
                     trace_id: 'calibration-fp-secret-trace',
                   },
+                  policy: {
+                    status: 'review_required',
+                    decision: 'raise_affected_run_rate_delta_threshold',
+                    reviewed_run_count: 8,
+                    minimum_review_run_count: 4,
+                    promotion_candidate: false,
+                    recommended_thresholds: {
+                      affected_run_rate_delta: 0.67,
+                      critical_issue_rate_delta: 0.25,
+                    },
+                    recommended_next_tools: ['inspect_agent_trace_audit', 'inspect_agent_dogfood_evidence'],
+                    run_id: 'threshold-policy-secret-run',
+                  },
                   recommended_next_tools: ['inspect_agent_trace_audit'],
                   project_id: 'calibration-project-secret-id',
                 },
@@ -4879,6 +4892,11 @@ describe('AgentRunDrawer', () => {
     expect(text).toContain('误报 guard')
     expect(text).toContain('仅提示级异常触发')
     expect(text).toContain('提示信号 1')
+    expect(text).toContain('固化策略')
+    expect(text).toContain('需复核')
+    expect(text).toContain('提高异常阈值')
+    expect(text).toContain('复核样本 8/4')
+    expect(text).toContain('不可固化')
     expect(text).toContain('主要问题')
     expect(text).toContain('模型 Trace 失败')
     expect(text).toContain('工具步骤失败')
@@ -4902,6 +4920,7 @@ describe('AgentRunDrawer', () => {
     expect(text).not.toContain('calibration-sample-secret-id')
     expect(text).not.toContain('calibration-fn-secret-step')
     expect(text).not.toContain('calibration-fp-secret-trace')
+    expect(text).not.toContain('threshold-policy-secret-run')
   })
 
   it('does not render route upgrade apply when contract preview is not confirmable', () => {

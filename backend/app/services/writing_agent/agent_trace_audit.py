@@ -19,12 +19,13 @@ from app.services.writing_agent.control_plane_readiness_projection import (
 )
 
 AGENT_TRACE_AUDIT_VERSION = "phase73.agent_trace_audit.v1"
-TRACE_ANOMALY_TRENDS_VERSION = "phase76.agent_trace_anomaly_trends_calibration.v1"
+TRACE_ANOMALY_TRENDS_VERSION = "phase77.agent_trace_anomaly_trends_policy.v1"
 DEFAULT_AUDIT_LIMIT = 20
 MAX_AUDIT_LIMIT = 100
 TRACE_ANOMALY_AFFECTED_RATE_DELTA_THRESHOLD = 0.5
 TRACE_ANOMALY_CRITICAL_RATE_DELTA_THRESHOLD = 0.25
 TRACE_ANOMALY_CALIBRATION_MIN_RUN_COUNT = 2
+TRACE_ANOMALY_POLICY_MIN_REVIEW_RUN_COUNT = 4
 TRACE_EXPECTED_TOOL_NAMES = {
     "generate_chapter",
     "expand_chapter",
@@ -1226,6 +1227,13 @@ def _trace_anomaly_threshold_calibration(
         "minimum_run_count": TRACE_ANOMALY_CALIBRATION_MIN_RUN_COUNT,
     }
     if recent_run_count < TRACE_ANOMALY_CALIBRATION_MIN_RUN_COUNT or baseline_run_count < TRACE_ANOMALY_CALIBRATION_MIN_RUN_COUNT:
+        policy = _trace_anomaly_threshold_policy(
+            sample,
+            suggested_thresholds,
+            false_negative_triggered=False,
+            false_positive_triggered=False,
+            insufficient_data=True,
+        )
         return {
             "status": "insufficient_data",
             "sample": sample,
@@ -1243,6 +1251,7 @@ def _trace_anomaly_threshold_calibration(
                 "reason": "insufficient_window_data",
                 "info_only_signal_count": 0,
             },
+            "policy": policy,
             "recommended_next_tools": [],
         }
 
@@ -1297,6 +1306,13 @@ def _trace_anomaly_threshold_calibration(
         }
 
     needs_tuning = false_negative_triggered or false_positive_triggered
+    policy = _trace_anomaly_threshold_policy(
+        sample,
+        suggested_thresholds,
+        false_negative_triggered=false_negative_triggered,
+        false_positive_triggered=false_positive_triggered,
+        insufficient_data=False,
+    )
     return {
         "status": "needs_tuning" if needs_tuning else "calibrated",
         "sample": sample,
@@ -1305,7 +1321,57 @@ def _trace_anomaly_threshold_calibration(
         "suggested_thresholds": suggested_thresholds,
         "false_negative_guard": false_negative_guard,
         "false_positive_guard": false_positive_guard,
+        "policy": policy,
         "recommended_next_tools": ["inspect_agent_trace_audit"] if needs_tuning else [],
+    }
+
+
+def _trace_anomaly_threshold_policy(
+    sample: dict[str, int],
+    suggested_thresholds: dict[str, float],
+    *,
+    false_negative_triggered: bool,
+    false_positive_triggered: bool,
+    insufficient_data: bool,
+) -> dict[str, Any]:
+    reviewed_run_count = _non_negative_int(sample.get("recent_run_count")) + _non_negative_int(
+        sample.get("baseline_run_count")
+    )
+    base = {
+        "reviewed_run_count": reviewed_run_count,
+        "minimum_review_run_count": TRACE_ANOMALY_POLICY_MIN_REVIEW_RUN_COUNT,
+        "recommended_thresholds": dict(suggested_thresholds),
+    }
+    if insufficient_data or reviewed_run_count < TRACE_ANOMALY_POLICY_MIN_REVIEW_RUN_COUNT:
+        return {
+            "status": "collecting_samples",
+            "decision": "collect_more_samples",
+            "promotion_candidate": False,
+            **base,
+            "recommended_next_tools": ["inspect_agent_dogfood_evidence"],
+        }
+    if false_negative_triggered:
+        return {
+            "status": "review_required",
+            "decision": "lower_affected_run_rate_delta_threshold",
+            "promotion_candidate": False,
+            **base,
+            "recommended_next_tools": ["inspect_agent_trace_audit", "inspect_agent_dogfood_evidence"],
+        }
+    if false_positive_triggered:
+        return {
+            "status": "review_required",
+            "decision": "raise_affected_run_rate_delta_threshold",
+            "promotion_candidate": False,
+            **base,
+            "recommended_next_tools": ["inspect_agent_trace_audit", "inspect_agent_dogfood_evidence"],
+        }
+    return {
+        "status": "eligible_for_promotion",
+        "decision": "keep_current_thresholds",
+        "promotion_candidate": True,
+        **base,
+        "recommended_next_tools": ["inspect_agent_dogfood_evidence"],
     }
 
 

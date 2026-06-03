@@ -37,8 +37,10 @@ def test_inspect_agent_dogfood_evidence_surfaces_api_loop_and_memory_activation(
         "trace_anomaly_trend_regression_count": 2,
         "threshold_signal_count": 2,
         "threshold_calibration_projection_count": 1,
+        "threshold_policy_projection_count": 1,
         "drawer_projection_regression_count": 1,
         "drawer_calibration_projection_count": 1,
+        "drawer_policy_projection_count": 1,
         "false_positive_guard_count": 1,
         "false_negative_guard_count": 1,
     }

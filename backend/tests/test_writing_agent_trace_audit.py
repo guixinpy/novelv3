@@ -792,7 +792,7 @@ def test_inspect_agent_trace_anomaly_trends_aggregates_recent_runs_safely(db_ses
     assert output["recommended_next_tools"] == ["inspect_agent_trace_audit", "plan_recovery_tools"]
     assert output["trace"] == {
         "source": "inspect_agent_trace_anomaly_trends",
-        "version": "phase76.agent_trace_anomaly_trends_calibration.v1",
+        "version": "phase77.agent_trace_anomaly_trends_policy.v1",
         "mutability": "read",
     }
     assert "run-trend-secret" not in str(output)
@@ -910,6 +910,18 @@ def test_inspect_agent_trace_anomaly_trends_compares_baseline_thresholds_safely(
     assert output["thresholds"] == {
         "affected_run_rate_delta": 0.5,
         "critical_issue_rate_delta": 0.25,
+    }
+    assert output["calibration"]["policy"] == {
+        "status": "eligible_for_promotion",
+        "decision": "keep_current_thresholds",
+        "reviewed_run_count": 4,
+        "minimum_review_run_count": 4,
+        "promotion_candidate": True,
+        "recommended_thresholds": {
+            "affected_run_rate_delta": 0.5,
+            "critical_issue_rate_delta": 0.25,
+        },
+        "recommended_next_tools": ["inspect_agent_dogfood_evidence"],
     }
     assert output["threshold_signals"] == [
         {
@@ -1046,6 +1058,18 @@ def test_inspect_agent_trace_anomaly_trends_calibrates_false_negative_guard(db_s
             "reason": "no_threshold_signal",
             "info_only_signal_count": 0,
         },
+        "policy": {
+            "status": "review_required",
+            "decision": "lower_affected_run_rate_delta_threshold",
+            "reviewed_run_count": 8,
+            "minimum_review_run_count": 4,
+            "promotion_candidate": False,
+            "recommended_thresholds": {
+                "affected_run_rate_delta": 0.25,
+                "critical_issue_rate_delta": 0.25,
+            },
+            "recommended_next_tools": ["inspect_agent_trace_audit", "inspect_agent_dogfood_evidence"],
+        },
         "recommended_next_tools": ["inspect_agent_trace_audit"],
     }
     assert "run-calibration-secret" not in str(output)
@@ -1158,6 +1182,18 @@ def test_inspect_agent_trace_anomaly_trends_calibrates_false_positive_guard(db_s
     }
     assert output["calibration"]["suggested_thresholds"]["affected_run_rate_delta"] == 1.0
     assert output["calibration"]["false_negative_guard"]["status"] == "passed"
+    assert output["calibration"]["policy"] == {
+        "status": "review_required",
+        "decision": "raise_affected_run_rate_delta_threshold",
+        "reviewed_run_count": 8,
+        "minimum_review_run_count": 4,
+        "promotion_candidate": False,
+        "recommended_thresholds": {
+            "affected_run_rate_delta": 1.0,
+            "critical_issue_rate_delta": 0.25,
+        },
+        "recommended_next_tools": ["inspect_agent_trace_audit", "inspect_agent_dogfood_evidence"],
+    }
     assert output["calibration"]["recommended_next_tools"] == ["inspect_agent_trace_audit"]
     assert "run-calibration-fp-secret" not in str(output)
     assert "trace-calibration-fp-secret" not in str(output)

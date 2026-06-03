@@ -940,6 +940,7 @@ const traceAnomalyTrendCalibrationFalseNegativeGuard = computed(() => (
 const traceAnomalyTrendCalibrationFalsePositiveGuard = computed(() => (
   recordValue(traceAnomalyTrendCalibration.value.false_positive_guard)
 ))
+const traceAnomalyTrendCalibrationPolicy = computed(() => recordValue(traceAnomalyTrendCalibration.value.policy))
 const traceAnomalyTrendRecommendedTools = computed(() => stringList(traceAnomalyTrendsOutput.value?.recommended_next_tools))
 const traceAuditRunGoal = computed(() => safeTraceAuditText(traceAuditRun.value.goal))
 const traceAuditStepCount = computed(() => numberValue(traceAudit.value.step_count))
@@ -1021,6 +1022,21 @@ const traceAnomalyTrendCalibrationSuggestedAffectedThresholdLabel = computed(() 
 ))
 const traceAnomalyTrendCalibrationSuggestedCriticalThresholdLabel = computed(() => (
   percentLabel(traceAnomalyTrendCalibrationSuggestedThresholds.value.critical_issue_rate_delta)
+))
+const traceAnomalyTrendCalibrationPolicyStatusLabel = computed(() => (
+  traceAnomalyPolicyStatusLabel(traceAnomalyTrendCalibrationPolicy.value.status)
+))
+const traceAnomalyTrendCalibrationPolicyDecisionLabel = computed(() => (
+  traceAnomalyPolicyDecisionLabel(traceAnomalyTrendCalibrationPolicy.value.decision)
+))
+const traceAnomalyTrendCalibrationPolicyReviewedRunCount = computed(() => (
+  numberValue(traceAnomalyTrendCalibrationPolicy.value.reviewed_run_count)
+))
+const traceAnomalyTrendCalibrationPolicyMinimumRunCount = computed(() => (
+  numberValue(traceAnomalyTrendCalibrationPolicy.value.minimum_review_run_count)
+))
+const traceAnomalyTrendCalibrationPolicyPromotionLabel = computed(() => (
+  traceAnomalyPolicyPromotionLabel(traceAnomalyTrendCalibrationPolicy.value.promotion_candidate)
 ))
 const traceAuditFailureTool = computed(() => safeTraceAuditText(traceAuditFailure.value.tool_name))
 const traceAuditFailureReason = computed(() => safeTraceAuditText(traceAuditFailure.value.reason_code))
@@ -1644,7 +1660,8 @@ const hasTraceAnomalyTrendsProjection = computed(() => Boolean(
     traceAnomalyTrendRunRows.value.length ||
     traceAnomalyTrendThresholdSignalRows.value.length ||
     traceAnomalyTrendCalibrationStatusLabel.value ||
-    traceAnomalyTrendCalibrationGuardRows.value.length
+    traceAnomalyTrendCalibrationGuardRows.value.length ||
+    traceAnomalyTrendCalibrationPolicyStatusLabel.value
   ),
 ))
 const hasKnowledgeBaseCandidateExecutionProjection = computed(() => Boolean(knowledgeBaseCandidateExecutionOutput.value))
@@ -2397,6 +2414,29 @@ function traceAnomalyCalibrationGuardReasonLabel(reason: unknown) {
   if (value === 'no_actionable_anomaly') return '无可行动异常'
   if (value === 'actionable_threshold_signal') return '可行动阈值信号'
   if (value === 'insufficient_window_data') return '样本不足'
+  return ''
+}
+
+function traceAnomalyPolicyStatusLabel(status: unknown) {
+  const value = stringValue(status)
+  if (value === 'review_required') return '需复核'
+  if (value === 'eligible_for_promotion') return '可固化'
+  if (value === 'collecting_samples') return '收集样本'
+  return traceAuditStatusLabel(value)
+}
+
+function traceAnomalyPolicyDecisionLabel(decision: unknown) {
+  const value = stringValue(decision)
+  if (value === 'lower_affected_run_rate_delta_threshold') return '降低异常阈值'
+  if (value === 'raise_affected_run_rate_delta_threshold') return '提高异常阈值'
+  if (value === 'keep_current_thresholds') return '保留当前阈值'
+  if (value === 'collect_more_samples') return '继续收集样本'
+  return ''
+}
+
+function traceAnomalyPolicyPromotionLabel(value: unknown) {
+  if (value === true) return '可固化'
+  if (value === false) return '不可固化'
   return ''
 }
 
@@ -4240,6 +4280,27 @@ function missingDependencyTool(value: Record<string, unknown>) {
             <div v-if="traceAnomalyTrendCalibrationSuggestedCriticalThresholdLabel">
               <dt>建议严重阈值</dt>
               <dd>建议严重阈值 {{ traceAnomalyTrendCalibrationSuggestedCriticalThresholdLabel }}</dd>
+            </div>
+            <div v-if="traceAnomalyTrendCalibrationPolicyStatusLabel">
+              <dt>固化策略</dt>
+              <dd>{{ traceAnomalyTrendCalibrationPolicyStatusLabel }}</dd>
+            </div>
+            <div v-if="traceAnomalyTrendCalibrationPolicyDecisionLabel">
+              <dt>策略决策</dt>
+              <dd>{{ traceAnomalyTrendCalibrationPolicyDecisionLabel }}</dd>
+            </div>
+            <div
+              v-if="
+                traceAnomalyTrendCalibrationPolicyReviewedRunCount !== null &&
+                traceAnomalyTrendCalibrationPolicyMinimumRunCount !== null
+              "
+            >
+              <dt>复核样本</dt>
+              <dd>复核样本 {{ traceAnomalyTrendCalibrationPolicyReviewedRunCount }}/{{ traceAnomalyTrendCalibrationPolicyMinimumRunCount }}</dd>
+            </div>
+            <div v-if="traceAnomalyTrendCalibrationPolicyPromotionLabel">
+              <dt>固化候选</dt>
+              <dd>{{ traceAnomalyTrendCalibrationPolicyPromotionLabel }}</dd>
             </div>
           </dl>
           <ul
