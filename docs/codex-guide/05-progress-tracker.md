@@ -146,6 +146,7 @@
 - [x] Longform Context Summary 只读摘要意图：自然语言“汇总第3章长篇上下文 query=灯塔旧回声 max_chars 2000”可投影为 summarize_longform_context 只读工具计划，Longform Context Summary run 可在 AgentRunDrawer 展示安全摘要
 - [x] ContextCompressor 只读自检意图：自然语言“检查上下文压缩/预算/窗口压力”可投影为 inspect_agent_context_compression_projection 只读工具计划，ContextCompressor Projection run 可在 AgentRunDrawer 展示安全摘要
 - [x] ContextCompressor dry-run payload 只读意图：自然语言“构建第3章上下文压缩 dry-run payload max_chars 2000 context_guard_failure_count 2”可投影为 build_agent_context_compression_payload 只读工具计划
+- [x] preflight 上下文预算只读意图：自然语言“预检第3章上下文预算 max_context_chars 500 context_guard_failure_count 2”可投影为 preflight_writing 只读工具计划，并保留 max_context_chars / context_guard_failure_count，预算结果可在 AgentRunDrawer 展示安全摘要
 - [x] Worker Dispatch 只读审计意图：自然语言“检查 worker 分发/孤儿恢复”可投影为 inspect_agent_worker_dispatch 只读工具计划
 - [x] Agent Event Projection 只读审计意图：自然语言“检查 task-abc123 的 Agent 事件投影 limit 12”可投影为 inspect_agent_event_projection 只读工具计划
 - [x] Agent Job Projection 只读诊断意图：自然语言“检查第3章 generate_chapter failed 任务队列 limit 8”可投影为 inspect_agent_job_projection 只读工具计划
@@ -187,6 +188,7 @@
 
 ### 最近完成
 
+- 2026-06-03: `IntentRouter` 新增 `preflight_context_budget_intent`，可将“预检第3章上下文预算 max_context_chars 500 context_guard_failure_count 2”等自然语言投影为 `preflight_context_budget` action；`plan_dialog_intent_agent_run` 对该只读 action 生成无需审批的 `preflight_writing` 工具计划，并保留 chapter_index、max_context_chars 与 context_guard_failure_count，补齐从对话到 preflight 预算 Drawer 安全摘要的直达链路。
 - 2026-06-02: `dialog` recommended followup preview 透传 `pending_confirmation_tool_calls`，`action_result_view` 新增“待确认后继/待确认工具”摘要；execute handoff 在对话层可见但仍不进入自动执行工具列表。
 - 2026-06-02: `normalize_tool_recommendations` 新增 `recommended_next_tool_calls` 保留逻辑，`plan_recommended_followups` 会把 `requires_confirmation=true` 的 execute-with-approval 调用暴露为 `pending_confirmation_tool_calls` 和 execution policy 计数；该调用不会进入 `tools` 自动执行列表，仍由写入门禁与确认流程控制。
 - 2026-06-02: `prepare_apply_pending_action_route_approval_opt_in` 输出新增 `recommended_next_tool_calls`，将 `execute_apply_pending_action_route_approval_opt_in_with_approval` 的 `pending_action_id`、route apply contract/hash 与 Agent plan approval contract/hash 组织成 `requires_confirmation=true` 的调用骨架；descriptor schema 同步公开该字段，便于 Agent 在不自动写入的前提下审计 execute handoff。
@@ -308,6 +310,7 @@
 - [x] ContextCompressor preflight 持久摘要推荐链：preflight_writing 在窗口压力且 payload ready 时推荐 record_agent_context_compression_summary，并在 preview 中暴露该后续工具
 - [x] ContextCompressor preflight 持久摘要复用：preflight_writing 在窗口压力下先查同章节同预算 context_compression_summary，命中时暴露脱敏 preview 并推荐 prepare_generate_chapter_execution
 - [x] preflight 上下文预算 Drawer 投影：AgentRunDrawer 可从 preflight_writing 的 context_compression 检查展示状态、章节、上下文字符/预算/使用率、目标预算、压缩 preview 状态、压缩字符、推荐工具和压力 issue，并隐藏 compressed_context、summary、scope_key、trace/version 与内部 suggested_params
+- [x] preflight 上下文预算自然语言入口：IntentRouter 可将“预检第 N 章上下文预算 max_context_chars <n> context_guard_failure_count <n>”规划为无需审批的 preflight_writing read plan
 
 ### 下一步任务
 
@@ -315,7 +318,7 @@
 |--------|------|---------|------|
 | P1 | 智能上下文压缩（借鉴 hermes-agent） | 预修剪 + LLM 摘要 + 头尾保护 | 🟡 进行中（preflight persistent reuse） |
 | P2 | 端到端 Trace 链路 | 从用户意图→计划→工具调用→模型调用→结果的一条链 | 🔴 待开始 |
-| P3 | 上下文预算管理 | 可视化 Token 使用量 + 接近上限时的警告 | 🟡 进行中（preflight Drawer budget warning） |
+| P3 | 上下文预算管理 | 可视化 Token 使用量 + 接近上限时的警告 | 🟡 进行中（preflight intent + Drawer budget warning） |
 
 ### 阻塞项
 
@@ -323,6 +326,7 @@
 
 ### 最近完成
 
+- 2026-06-03: `IntentRouter` / `plan_dialog_intent_agent_run` 新增 preflight 上下文预算只读入口，自然语言可直达 `preflight_writing` 并保留 `chapter_index`、`max_context_chars` 与 `context_guard_failure_count`，让预算压力检查能从对话直接进入 AgentRunDrawer 的预算安全摘要。
 - 2026-06-03: `AgentRunDrawer` 新增 preflight 上下文预算安全投影，消费 `preflight_writing` 输出的 `checks.context_compression` 与脱敏 `context_compression_payload_preview`，展示状态、章节、上下文字符/预算/使用率、目标预算、压缩 preview 状态、压缩字符、推荐后续工具和 `context_compression_*` 压力 issue，同时隐藏 `compressed_context`、持久摘要正文、scope key、trace/version、`context_guard_failure_count` 与 `suggested_params` 等内部字段。
 - 2026-06-03: `AgentRunDrawer` 新增 ContextCompressor Projection 安全投影，消费 `inspect_agent_context_compression_projection` 输出并展示状态、章节、粒度、保护当前章节判断、上下文字符/预算/使用率、截断分区、Guard 失败次数、目标预算、头尾保护计数、预修剪计数、LLM 摘要需求、推荐工具和风险摘要，同时隐藏 project id、memory_provenance、trace/version、source_ref/source_type/source id、`include_prompt_context` 与 `context_guard_failure_count` 等内部参数。
 - 2026-06-03: `AgentRunDrawer` 新增 Trace Audit 安全投影，消费 `inspect_agent_trace_audit` 输出并展示审计状态、目标、步骤/Trace/事件/上下文/控制面缺口、失败摘要、推荐动作、事件链、上下文块、工具步骤和模型 Trace 概览，同时隐藏 run/step/trace/message/task/source id 与内部上下文 key。

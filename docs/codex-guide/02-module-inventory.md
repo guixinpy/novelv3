@@ -114,7 +114,7 @@ Agent 化缺口：
   ├── session.py                          # 对话 session 管理
   └── messages.py                         # 消息管理
 Agent 化缺口：
-  - 意图路由覆盖不完整（部分写作意图尚未接入；Agent Health、Control Plane 就绪度、Dialog Control Plane Projection、Mutation Fingerprints、Tool Contracts、Command Contracts、Slash Command Route、Dialog Route Projection、Intent Projection、Reference Alignment、Dogfood Evidence、Route Preference、Legacy Hermes Migration、Route Approval Opt-in/Pending Action approval opt-in、Memory Tree 只读浏览、Memory Route、Memory Activation Plan、World Model Route、World Model Proposal Review/Resolution Plan、Retrieval Context、Longform Context Summary、ContextCompressor 自检与 dry-run payload、Worker Dispatch/孤儿恢复审计、Agent Job Projection、Chapter Conflict Recovery、Trace Audit 与 Write Gate Coverage 已可由自然语言投影到对应只读工具）
+  - 意图路由覆盖不完整（部分写作意图尚未接入；Agent Health、Control Plane 就绪度、Dialog Control Plane Projection、Mutation Fingerprints、Tool Contracts、Command Contracts、Slash Command Route、Dialog Route Projection、Intent Projection、Reference Alignment、Dogfood Evidence、Route Preference、Legacy Hermes Migration、Route Approval Opt-in/Pending Action approval opt-in、Memory Tree 只读浏览、Memory Route、Memory Activation Plan、World Model Route、World Model Proposal Review/Resolution Plan、Retrieval Context、Longform Context Summary、ContextCompressor 自检、dry-run payload 与 preflight 上下文预算预检、Worker Dispatch/孤儿恢复审计、Agent Job Projection、Chapter Conflict Recovery、Trace Audit 与 Write Gate Coverage 已可由自然语言投影到对应只读工具）
   - 缺少 LLM 驱动的"模糊意图"解析
   - pending_action 机制未与 Agent tool approval 统一；已有 legacy Hermes action 迁移路线图只读审计和 pending action route approval opt-in plan/preview/contract/prepare 自然语言只读链路，可先检查 setup/storyline/outline 生成动作的 Agent-native preview/approval/execute 覆盖，预览 pending_action 迁入 Agent 审批链的应用差异与确认契约，进入 Agent plan approval prepare，并在 recommended followup/dialog action result 视图中保留带双契约参数、仍需确认的 execute-with-approval handoff
 关联模块：WritingAgent、Athena、前端 Chat
@@ -313,7 +313,7 @@ Agent 化缺口：
 ### 4.3 Context Compression（上下文压缩）
 
 ```
-当前状态：L1 对话历史长度限制 + 基础压缩；ContextCompressor 已具备窗口压力/ContextGuard 投影、头尾保护预修剪计划、只读 dry-run payload builder、推荐恢复入口，并已接入 preflight_writing 运行时检查、自然语言只读自检入口、自然语言 dry-run payload 直达入口、AgentRunDrawer 安全摘要、preflight 上下文预算安全摘要、ready payload 后续持久摘要推荐、preflight 持久摘要优先复用、章节生成 longform prompt block 压缩、LongformMemory 持久摘要工件写入与章节 prompt 自动复用
+当前状态：L1 对话历史长度限制 + 基础压缩；ContextCompressor 已具备窗口压力/ContextGuard 投影、头尾保护预修剪计划、只读 dry-run payload builder、推荐恢复入口，并已接入 preflight_writing 运行时检查、自然语言只读自检入口、自然语言 dry-run payload 直达入口、自然语言 preflight 上下文预算预检入口、AgentRunDrawer 安全摘要、preflight 上下文预算安全摘要、ready payload 后续持久摘要推荐、preflight 持久摘要优先复用、章节生成 longform prompt block 压缩、LongformMemory 持久摘要工件写入与章节 prompt 自动复用
 目标状态：L2-L3 LLM 摘要压缩 + 头尾保护 + Token 预算管理
 关键文件：
   backend/app/services/writing_agent/
@@ -323,7 +323,7 @@ Agent 化缺口：
   backend/app/prompting/providers/chapter.py # 章节 prompt longform block 压力触发压缩替换
   backend/app/services/dialog/session.py  # Session 管理含历史限制
 Agent 化缺口：
-  - 已有计划到 payload、preflight runtime gate、自然语言只读自检与 dry-run payload 直达、Drawer 安全摘要、preflight 预算警告摘要、ready payload 写入推荐、preflight/章节 prompt 持久摘要复用、章节 prompt block 替换、持久摘要工件写入基础，仍缺少真正 LLM 摘要质量闭环
+  - 已有计划到 payload、preflight runtime gate、自然语言只读自检、dry-run payload 与 preflight 预算预检直达、Drawer 安全摘要、preflight 预算警告摘要、ready payload 写入推荐、preflight/章节 prompt 持久摘要复用、章节 prompt block 替换、持久摘要工件写入基础，仍缺少真正 LLM 摘要质量闭环
   - 缺少 TokenJuice 机制（openhuman）
   - 压缩粒度已有 longform block、持久工件和章节 prompt 复用入口，仍需按重要性继续分层到更多上下文构建路径
 关联模块：Dialog、WritingAgent

@@ -25,6 +25,7 @@ _INTENT_RULE_IDS = (
     "retrieval_context_intent",
     "longform_context_summary_intent",
     "context_compression_payload_intent",
+    "preflight_context_budget_intent",
     "context_compression_intent",
     "worker_dispatch_intent",
     "agent_event_projection_intent",
@@ -447,6 +448,20 @@ class IntentRouter:
                 extracted_params=extracted_params,
                 match_evidence=[{"kind": "pattern", "name": "context_compression_payload_phrase"}],
                 preconditions=[{"code": "context_compression_payload_read_available", "passed": True}],
+            )
+
+        if _is_preflight_context_budget_intent(text):
+            extracted_params = _preflight_context_budget_params(text)
+            return self._matched_projection(
+                text,
+                dialog_state,
+                pending_action_id,
+                diagnosis,
+                rule_id="preflight_context_budget_intent",
+                candidate=ActionCandidate("preflight_context_budget", extracted_params),
+                extracted_params=extracted_params,
+                match_evidence=[{"kind": "pattern", "name": "preflight_context_budget_phrase"}],
+                preconditions=[{"code": "preflight_context_budget_read_available", "passed": True}],
             )
 
         if _is_context_compression_intent(text):
@@ -1271,6 +1286,39 @@ def _is_context_compression_payload_intent(text: str) -> bool:
 
 def _context_compression_payload_params(text: str) -> dict[str, Any]:
     params = _context_compression_params(text)
+    failure_count = _numeric_option(
+        text,
+        r"context_guard_failure_count|contextguard\s*失败|context\s*guard\s*failure(?:\s*count)?|"
+        r"guard\s*failure(?:s)?|失败次数",
+    )
+    if failure_count is not None:
+        params["context_guard_failure_count"] = failure_count
+    return params
+
+
+def _is_preflight_context_budget_intent(text: str) -> bool:
+    has_preflight = bool(re.search(r"(预检|写前检查|生成前检查|preflight)", text))
+    has_context_budget = bool(
+        re.search(r"(上下文|context|token).*(预算|窗口|压力|压缩|guard|断路器)", text)
+        or re.search(r"(预算|窗口|压力|压缩|guard|断路器).*(上下文|context|token)", text)
+    )
+    return has_preflight and has_context_budget
+
+
+def _preflight_context_budget_params(text: str) -> dict[str, Any]:
+    params: dict[str, Any] = {}
+    chapter_index = parse_chapter_index(text)
+    if chapter_index is not None:
+        params["chapter_index"] = chapter_index
+    max_context_chars = (
+        _numeric_option(
+            text,
+            r"max_context_chars|max\s*context\s*chars|context\s*budget|上下文预算|窗口预算|预算字符|最大上下文",
+        )
+        or _context_compression_max_chars(text)
+    )
+    if max_context_chars is not None:
+        params["max_context_chars"] = max_context_chars
     failure_count = _numeric_option(
         text,
         r"context_guard_failure_count|contextguard\s*失败|context\s*guard\s*failure(?:\s*count)?|"

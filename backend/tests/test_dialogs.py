@@ -629,6 +629,46 @@ def test_intent_router_projection_explains_context_compression_payload_route():
     assert projection["extracted_params"] == expected_params
 
 
+def test_intent_router_projection_explains_preflight_context_budget_route():
+    router = IntentRouter()
+    diag = ProjectDiagnosisOut(
+        missing_items=[],
+        completed_items=["setup", "storyline", "outline", "content"],
+        suggested_next_step="preview_chapter",
+    )
+
+    projection = router.project(
+        "预检第3章上下文预算 max_context_chars 500 context_guard_failure_count 2",
+        "chatting",
+        None,
+        diag,
+    ).to_dict()
+
+    expected_params = {"chapter_index": 3, "max_context_chars": 500, "context_guard_failure_count": 2}
+    assert projection["status"] == "matched"
+    assert projection["rule_id"] == "preflight_context_budget_intent"
+    assert projection["decision"]["rule_id"] == "preflight_context_budget_intent"
+    assert projection["decision"]["match_evidence"] == [
+        {"kind": "pattern", "name": "preflight_context_budget_phrase"}
+    ]
+    assert projection["candidate"] == {
+        "type": "preflight_context_budget",
+        "params": expected_params,
+    }
+    assert projection["agent_route"] == _expected_agent_route(
+        "text_intent",
+        "preflight_context_budget",
+        "preflight_writing",
+        requires_confirmation=False,
+    )
+    assert projection["tool_selection"] == {
+        "selected_tool": "preflight_writing",
+        "why_this_tool": "dialog_action_to_agent_tool.preflight_context_budget",
+        "availability_checked": False,
+    }
+    assert projection["extracted_params"] == expected_params
+
+
 def test_intent_router_context_guard_phrase_is_case_insensitive():
     router = IntentRouter()
     diag = ProjectDiagnosisOut(
