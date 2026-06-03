@@ -914,6 +914,7 @@ const traceAudit = computed(() => recordValue(traceAuditOutput.value?.audit))
 const traceAuditRun = computed(() => recordValue(traceAuditOutput.value?.run))
 const traceAuditFailure = computed(() => recordValue(traceAuditOutput.value?.failure))
 const traceAuditContext = computed(() => recordValue(traceAuditOutput.value?.context))
+const traceAuditIntentChain = computed(() => recordValue(traceAuditOutput.value?.intent_chain))
 const traceAuditSteps = computed(() => recordList(traceAuditOutput.value?.steps))
 const traceAuditTraces = computed(() => recordList(traceAuditOutput.value?.traces))
 const traceAuditEventChain = computed(() => recordList(traceAuditOutput.value?.event_chain))
@@ -924,9 +925,29 @@ const traceAuditTraceCount = computed(() => numberValue(traceAudit.value.trace_c
 const traceAuditEventCount = computed(() => numberValue(traceAudit.value.event_chain_count))
 const traceAuditContextBlockCount = computed(() => numberValue(traceAudit.value.context_block_count))
 const traceAuditControlPlaneGapCount = computed(() => numberValue(traceAudit.value.control_plane_gap_count))
+const traceAuditIntentChainStatus = computed(() => stringValue(traceAuditIntentChain.value.status))
+const traceAuditIntentChainRuleId = computed(() => safeTraceAuditText(traceAuditIntentChain.value.rule_id))
+const traceAuditIntentChainClass = computed(() => safeTraceAuditText(traceAuditIntentChain.value.intent_class))
+const traceAuditIntentChainChapterLabel = computed(() => chapterIndexLabel(traceAuditIntentChain.value.chapter_index))
+const traceAuditIntentChainPlannedCount = computed(() => numberValue(traceAuditIntentChain.value.planned_tool_count))
+const traceAuditIntentChainExecutedCount = computed(() => numberValue(traceAuditIntentChain.value.executed_tool_count))
+const traceAuditIntentChainMatchedCount = computed(() => numberValue(traceAuditIntentChain.value.matched_tool_count))
 const traceAuditFailureTool = computed(() => safeTraceAuditText(traceAuditFailure.value.tool_name))
 const traceAuditFailureReason = computed(() => safeTraceAuditText(traceAuditFailure.value.reason_code))
 const traceAuditFailureMessage = computed(() => safeTraceAuditText(traceAuditFailure.value.message))
+const traceAuditIntentChainRows = computed(() => (
+  recordList(traceAuditIntentChain.value.planned_tools)
+    .map((tool, index) => {
+      const stepIndex = numberValue(tool.step_index)
+      return {
+        key: `trace-audit-intent-tool:${index}`,
+        toolName: safeTraceAuditText(tool.tool_name) || '计划工具',
+        statusLabel: traceAuditStatusLabel(tool.status),
+        stepLabel: stepIndex !== null ? `#${stepIndex}` : '',
+      }
+    })
+    .filter((row) => Boolean(row.toolName || row.statusLabel || row.stepLabel))
+))
 const traceAuditStepRows = computed(() => (
   traceAuditSteps.value
     .map((step, index) => {
@@ -1356,6 +1377,13 @@ const hasWorldModelRouteProjection = computed(() => Boolean(worldModelRouteOutpu
 const hasWorldModelProposalReviewProjection = computed(() => Boolean(worldModelProposalReviewOutput.value))
 const hasWorldModelResolutionPlanProjection = computed(() => Boolean(worldModelResolutionPlanOutput.value))
 const hasTraceAuditProjection = computed(() => Boolean(traceAuditOutput.value))
+const hasTraceAuditIntentChain = computed(() => Boolean(
+  traceAuditIntentChainStatus.value === 'available' ||
+  traceAuditIntentChainRuleId.value ||
+  traceAuditIntentChainClass.value ||
+  traceAuditIntentChainChapterLabel.value ||
+  traceAuditIntentChainRows.value.length,
+))
 const hasKnowledgeBaseCandidateExecutionProjection = computed(() => Boolean(knowledgeBaseCandidateExecutionOutput.value))
 const hasMemoryTreeProjection = computed(() => Boolean(memoryTreeOutput.value))
 const hasRecommendedFollowupPolicy = computed(() => Boolean(
@@ -1991,6 +2019,7 @@ function traceAuditStatusLabel(status: unknown) {
   if (value === 'blocked') return '阻塞'
   if (value === 'failed') return '失败'
   if (value === 'running') return '运行中'
+  if (value === 'executed') return '已执行'
   if (value === 'pending') return '等待中'
   if (value === 'cancelled') return '已取消'
   if (value === 'needs_attention') return '需处理'
@@ -3515,6 +3544,50 @@ function missingDependencyTool(value: Record<string, unknown>) {
             <span v-if="traceAuditFailureReason">{{ traceAuditFailureReason }}</span>
             <p v-if="traceAuditFailureMessage">{{ traceAuditFailureMessage }}</p>
           </div>
+          <div
+            v-if="hasTraceAuditIntentChain"
+            class="agent-run-drawer__trace-audit-intent"
+          >
+            <strong>意图链路</strong>
+            <dl class="agent-run-drawer__facts">
+              <div v-if="traceAuditIntentChainRuleId">
+                <dt>规则</dt>
+                <dd>{{ traceAuditIntentChainRuleId }}</dd>
+              </div>
+              <div v-if="traceAuditIntentChainClass">
+                <dt>意图</dt>
+                <dd>{{ traceAuditIntentChainClass }}</dd>
+              </div>
+              <div v-if="traceAuditIntentChainChapterLabel">
+                <dt>章节</dt>
+                <dd>{{ traceAuditIntentChainChapterLabel }}</dd>
+              </div>
+              <div v-if="traceAuditIntentChainPlannedCount !== null">
+                <dt>计划工具</dt>
+                <dd>计划工具 {{ traceAuditIntentChainPlannedCount }}</dd>
+              </div>
+              <div v-if="traceAuditIntentChainExecutedCount !== null">
+                <dt>已执行</dt>
+                <dd>已执行 {{ traceAuditIntentChainExecutedCount }}</dd>
+              </div>
+              <div v-if="traceAuditIntentChainMatchedCount !== null">
+                <dt>已匹配</dt>
+                <dd>已匹配 {{ traceAuditIntentChainMatchedCount }}</dd>
+              </div>
+            </dl>
+            <ul
+              v-if="traceAuditIntentChainRows.length"
+              class="agent-run-drawer__execution-tools"
+            >
+              <li
+                v-for="row in traceAuditIntentChainRows"
+                :key="row.key"
+              >
+                <span>{{ row.toolName }}</span>
+                <strong>{{ [row.stepLabel, row.statusLabel].filter(Boolean).join(' · ') }}</strong>
+              </li>
+            </ul>
+          </div>
           <ul
             v-if="traceAuditRecommendedActionRows.length"
             class="agent-run-drawer__tools"
@@ -4472,6 +4545,20 @@ function missingDependencyTool(value: Record<string, unknown>) {
   color: var(--color-text-secondary);
   line-height: var(--leading-normal);
   overflow-wrap: anywhere;
+}
+
+.agent-run-drawer__trace-audit-intent {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-white);
+  font-size: var(--text-xs);
+}
+
+.agent-run-drawer__trace-audit-intent > strong {
+  color: var(--color-text-primary);
 }
 
 .agent-run-drawer__tools li {

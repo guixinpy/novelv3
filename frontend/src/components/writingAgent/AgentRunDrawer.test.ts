@@ -4310,6 +4310,112 @@ describe('AgentRunDrawer', () => {
     expect(text).not.toContain('longform-secret-key')
   })
 
+  it('renders trace audit intent chain summary without planner internals', () => {
+    mount(AgentRunDrawer, {
+      attachTo: document.body,
+      props: {
+        open: true,
+        loading: false,
+        error: '',
+        run: {
+          id: 'drawer-trace-intent-chain-run',
+          project_id: 'project-1',
+          goal: '审计第3章预算预检链路',
+          status: 'success',
+          entrypoint: 'dialog_auto_plan',
+          input: {},
+          output: null,
+          error: null,
+          steps: [
+            {
+              id: 'step-trace-intent-chain-wrapper',
+              run_id: 'drawer-trace-intent-chain-run',
+              project_id: 'project-1',
+              step_index: 1,
+              tool_name: 'inspect_agent_trace_audit',
+              status: 'success',
+              input: { run_id: 'audited-run-secret-id' },
+              output: {
+                status: 'completed',
+                audit: {
+                  status: 'completed',
+                  reason: 'run_completed',
+                  step_count: 1,
+                  trace_count: 0,
+                  event_chain_count: 1,
+                  context_block_count: 0,
+                  intent_chain_status: 'available',
+                  planned_tool_count: 1,
+                  matched_planned_tool_count: 1,
+                },
+                run: {
+                  id: 'audited-run-secret-id',
+                  goal: '预检第3章上下文预算',
+                  status: 'success',
+                },
+                intent_chain: {
+                  status: 'available',
+                  source: 'run_input_planner',
+                  rule_id: 'preflight_context_budget_intent',
+                  intent_class: 'preflight_context_budget',
+                  mapped_from_action_type: 'preflight_context_budget',
+                  chapter_index: 3,
+                  planned_tool_count: 1,
+                  executed_tool_count: 1,
+                  matched_tool_count: 1,
+                  planned_tools: [
+                    {
+                      tool_name: 'preflight_writing',
+                      status: 'executed',
+                      step_index: 1,
+                      source_plan_id: 'plan-secret-id',
+                      params: {
+                        chapter_index: 3,
+                        max_context_chars: 1200,
+                      },
+                    },
+                  ],
+                },
+                event_chain: [
+                  {
+                    event_type: 'tool_step',
+                    step_id: 'step-secret-id',
+                    step_index: 1,
+                    tool_name: 'preflight_writing',
+                    status: 'success',
+                  },
+                ],
+                context: { total_blocks: 0, blocks: [] },
+                steps: [],
+                traces: [],
+                recommended_actions: [],
+              },
+            },
+          ],
+        },
+      },
+    })
+
+    const text = document.body.textContent || ''
+    expect(text).toContain('意图链路')
+    expect(text).toContain('preflight_context_budget_intent')
+    expect(text).toContain('preflight_context_budget')
+    expect(text).toContain('第3章')
+    expect(text).toContain('计划工具 1')
+    expect(text).toContain('已执行 1')
+    expect(text).toContain('已匹配 1')
+    expect(text).toContain('preflight_writing')
+    expect(text).toContain('#1')
+    expect(text).toContain('已执行')
+    expect(text).not.toContain('audited-run-secret-id')
+    expect(text).not.toContain('step-secret-id')
+    expect(text).not.toContain('plan-secret-id')
+    expect(text).not.toContain('max_context_chars')
+    expect(text).not.toContain('1200')
+    expect(text).not.toContain('run_input_planner')
+    expect(text).not.toContain('source_plan_id')
+  })
+
   it('does not render route upgrade apply when contract preview is not confirmable', () => {
     mount(AgentRunDrawer, {
       attachTo: document.body,
