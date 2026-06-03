@@ -297,7 +297,7 @@
 - [x] Model Call Trace：AIModelCallTrace 含 context blocks + sources
 - [x] 前端 Trace 抽屉：ModelTraceDrawer + modelTraces store
 - [x] Trace 脱敏：API key、Bearer token、password 等自动脱敏
-- [x] Trace Audit 自然语言只读入口：自然语言“检查 run trace/执行链路/失败原因”可直接规划到 inspect_agent_trace_audit，AgentRunDrawer 可展示安全摘要、失败原因、推荐动作、事件链、上下文块和模型 Trace 概览
+- [x] Trace Audit 自然语言只读入口：自然语言“检查 run trace/执行链路/失败原因”可直接规划到 inspect_agent_trace_audit，后端可输出安全 intent_chain 摘要（意图规则、计划工具、执行匹配），AgentRunDrawer 可展示安全摘要、失败原因、推荐动作、事件链、上下文块和模型 Trace 概览
 - [x] 基础上下文压缩：对话历史长度限制
 - [x] 长篇上下文摘要：longform_context_summary
 - [x] ContextCompressor 基础计划投影：context pressure 下输出头尾保护预修剪、target_max_chars 和 summarize_longform_context 工具计划
@@ -317,7 +317,7 @@
 | 优先级 | 任务 | 完成标准 | 状态 |
 |--------|------|---------|------|
 | P1 | 智能上下文压缩（借鉴 hermes-agent） | 预修剪 + LLM 摘要 + 头尾保护 | 🟡 进行中（preflight persistent reuse） |
-| P2 | 端到端 Trace 链路 | 从用户意图→计划→工具调用→模型调用→结果的一条链 | 🔴 待开始 |
+| P2 | 端到端 Trace 链路 | 从用户意图→计划→工具调用→模型调用→结果的一条链 | 🟡 进行中（后端 intent_chain 摘要已覆盖意图→计划→执行匹配；仍缺 Drawer 展示和模型调用/结果闭环） |
 | P3 | 上下文预算管理 | 可视化 Token 使用量 + 接近上限时的警告 | 🟡 进行中（preflight intent + Drawer budget warning） |
 
 ### 阻塞项
@@ -326,6 +326,7 @@
 
 ### 最近完成
 
+- 2026-06-03: `inspect_agent_trace_audit` 新增后端 `intent_chain` 安全摘要，从 `run.input.planner` 白名单提取意图规则、intent class、章节号和计划工具，并与实际 `WritingAgentStep` 匹配输出 planned/executed/matched 计数；摘要不暴露原始 params、上下文正文或内部 id。
 - 2026-06-03: `IntentRouter` / `plan_dialog_intent_agent_run` 新增 preflight 上下文预算只读入口，自然语言可直达 `preflight_writing` 并保留 `chapter_index`、`max_context_chars` 与 `context_guard_failure_count`，让预算压力检查能从对话直接进入 AgentRunDrawer 的预算安全摘要。
 - 2026-06-03: `AgentRunDrawer` 新增 preflight 上下文预算安全投影，消费 `preflight_writing` 输出的 `checks.context_compression` 与脱敏 `context_compression_payload_preview`，展示状态、章节、上下文字符/预算/使用率、目标预算、压缩 preview 状态、压缩字符、推荐后续工具和 `context_compression_*` 压力 issue，同时隐藏 `compressed_context`、持久摘要正文、scope key、trace/version、`context_guard_failure_count` 与 `suggested_params` 等内部字段。
 - 2026-06-03: `AgentRunDrawer` 新增 ContextCompressor Projection 安全投影，消费 `inspect_agent_context_compression_projection` 输出并展示状态、章节、粒度、保护当前章节判断、上下文字符/预算/使用率、截断分区、Guard 失败次数、目标预算、头尾保护计数、预修剪计数、LLM 摘要需求、推荐工具和风险摘要，同时隐藏 project id、memory_provenance、trace/version、source_ref/source_type/source id、`include_prompt_context` 与 `context_guard_failure_count` 等内部参数。

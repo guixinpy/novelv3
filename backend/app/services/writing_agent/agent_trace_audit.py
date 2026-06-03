@@ -76,6 +76,7 @@ def inspect_agent_trace_audit(
     profile_policy_audit = _profile_policy_audit_summary(_profile_policy_audit_from_steps(steps))
     control_plane_readiness = control_plane_readiness_from_run_input(run.input)
     command_contracts = command_contracts_from_run_input(run.input)
+    intent_chain = _intent_chain_summary(run, steps)
     recommended_actions = _recommended_actions(
         steps,
         failure=failure,
@@ -91,6 +92,9 @@ def inspect_agent_trace_audit(
         "approval_event_count": len(approval_events),
         "event_chain_count": len(event_chain),
         "context_block_count": context["total_blocks"],
+        "intent_chain_status": intent_chain["status"],
+        "planned_tool_count": intent_chain["planned_tool_count"],
+        "matched_planned_tool_count": intent_chain["matched_tool_count"],
     }
     if profile_policy_audit is not None:
         profile_policy_summary = (
@@ -127,6 +131,7 @@ def inspect_agent_trace_audit(
             "approval_events": approval_events,
             "event_chain": event_chain,
             "context": context,
+            "intent_chain": intent_chain,
             "failure": failure,
             "recommended_actions": recommended_actions,
             "profile_policy_audit": profile_policy_audit,
@@ -616,6 +621,99 @@ def _context_summary(traces: list[AIModelCallTrace]) -> dict[str, Any]:
                 }
             )
     return {"total_blocks": len(blocks), "blocks": blocks}
+
+
+def _intent_chain_summary(run: WritingAgentRun, steps: list[WritingAgentStep]) -> dict[str, Any]:
+    planner = _planner_from_run(run)
+    if planner is None:
+        return {
+            "status": "missing",
+            "reason": "planner_not_recorded",
+            "planned_tool_count": 0,
+            "executed_tool_count": 0,
+            "matched_tool_count": 0,
+            "planned_tools": [],
+        }
+
+    planned_tool_names = _planned_tool_names(planner)
+    step_by_tool_name: dict[str, WritingAgentStep] = {}
+    for step in steps:
+        if step.tool_name not in step_by_tool_name:
+            step_by_tool_name[step.tool_name] = step
+
+    planned_tools = []
+    matched_tool_count = 0
+    for tool_name in planned_tool_names:
+        matched_step = step_by_tool_name.get(tool_name)
+        if matched_step is not None:
+            matched_tool_count += 1
+        planned_tools.append(
+            {
+                "tool_name": tool_name,
+                "status": "executed" if matched_step is not None else "pending",
+                "step_index": matched_step.step_index if matched_step is not None else None,
+            }
+        )
+
+    intent_projection = (
+        planner.get("intent_projection") if isinstance(planner.get("intent_projection"), dict) else {}
+    )
+    candidate = (
+        intent_projection.get("candidate") if isinstance(intent_projection.get("candidate"), dict) else {}
+    )
+    planner_summary = planner.get("planner") if isinstance(planner.get("planner"), dict) else {}
+    rule_id = str(intent_projection.get("rule_id") or planner_summary.get("mapped_from_rule_id") or "").strip()
+    intent_class = str(planner_summary.get("intent_class") or candidate.get("type") or "").strip()
+    mapped_from_action_type = str(
+        planner_summary.get("mapped_from_action_type") or candidate.get("type") or ""
+    ).strip()
+    chapter_index = _optional_int(planner_summary.get("chapter_index") or candidate.get("chapter_index"))
+    params = candidate.get("params") if isinstance(candidate.get("params"), dict) else {}
+    if chapter_index is None:
+        chapter_index = _optional_int(params.get("chapter_index"))
+
+    summary: dict[str, Any] = {
+        "status": "available" if rule_id or intent_class or planned_tools else "missing",
+        "source": "run_input_planner",
+        "rule_id": rule_id,
+        "intent_class": intent_class,
+        "mapped_from_action_type": mapped_from_action_type,
+        "chapter_index": chapter_index,
+        "planned_tool_count": len(planned_tools),
+        "executed_tool_count": matched_tool_count,
+        "matched_tool_count": matched_tool_count,
+        "planned_tools": planned_tools,
+    }
+    if summary["status"] == "missing":
+        summary["reason"] = "intent_plan_not_recorded"
+    return summary
+
+
+def _planner_from_run(run: WritingAgentRun) -> dict[str, Any] | None:
+    run_input = run.input if isinstance(run.input, dict) else {}
+    planner = run_input.get("planner")
+    return planner if isinstance(planner, dict) else None
+
+
+def _planned_tool_names(planner: dict[str, Any]) -> list[str]:
+    raw_tools = planner.get("tools") if isinstance(planner.get("tools"), list) else None
+    plan = planner.get("plan") if isinstance(planner.get("plan"), dict) else {}
+    if raw_tools is None:
+        raw_tools = plan.get("tools") if isinstance(plan.get("tools"), list) else None
+    if raw_tools is None:
+        raw_tools = plan.get("steps") if isinstance(plan.get("steps"), list) else []
+
+    tool_names: list[str] = []
+    for item in raw_tools:
+        if isinstance(item, str):
+            tool_name = item.strip()
+        elif isinstance(item, dict):
+            tool_name = str(item.get("tool_name") or item.get("name") or "").strip()
+        else:
+            tool_name = ""
+        if tool_name:
+            tool_names.append(tool_name)
+    return tool_names
 
 
 def _failure_summary(run: WritingAgentRun, steps: list[WritingAgentStep]) -> dict[str, Any] | None:

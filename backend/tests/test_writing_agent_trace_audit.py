@@ -240,6 +240,90 @@ def test_inspect_agent_trace_audit_includes_command_contracts(db_session):
     ]
 
 
+def test_inspect_agent_trace_audit_includes_safe_intent_chain_summary(db_session):
+    project = Project(name="Trace Intent Chain")
+    db_session.add(project)
+    db_session.flush()
+    planner_output = {
+        "status": "completed",
+        "intent_projection": {
+            "rule_id": "preflight_context_budget_intent",
+            "candidate": {
+                "type": "preflight_context_budget",
+                "params": {
+                    "chapter_index": 3,
+                    "max_context_chars": 1200,
+                },
+            },
+        },
+        "planner": {
+            "intent_class": "preflight_context_budget",
+            "mapped_from_action_type": "preflight_context_budget",
+            "mapped_from_rule_id": "preflight_context_budget_intent",
+            "chapter_index": 3,
+        },
+        "plan": {
+            "tools": [
+                {
+                    "tool_name": "preflight_writing",
+                    "params": {
+                        "chapter_index": 3,
+                        "max_context_chars": 1200,
+                    },
+                }
+            ]
+        },
+    }
+    run = WritingAgentRun(
+        project_id=project.id,
+        goal="检查第3章上下文预算",
+        status="success",
+        entrypoint="dialog_auto_plan",
+        input={"planner": planner_output},
+        output={"status": "success"},
+    )
+    db_session.add(run)
+    db_session.flush()
+    db_session.add(
+        WritingAgentStep(
+            run_id=run.id,
+            project_id=project.id,
+            step_index=1,
+            tool_name="preflight_writing",
+            status="success",
+            input={"params": {"chapter_index": 3, "max_context_chars": 1200}},
+            output={"status": "ready"},
+            chapter_index=3,
+        )
+    )
+    db_session.commit()
+
+    output = inspect_agent_trace_audit(db_session, project.id, run_id=run.id)
+
+    assert output["audit"]["intent_chain_status"] == "available"
+    assert output["audit"]["planned_tool_count"] == 1
+    assert output["audit"]["matched_planned_tool_count"] == 1
+    assert output["intent_chain"] == {
+        "status": "available",
+        "source": "run_input_planner",
+        "rule_id": "preflight_context_budget_intent",
+        "intent_class": "preflight_context_budget",
+        "mapped_from_action_type": "preflight_context_budget",
+        "chapter_index": 3,
+        "planned_tool_count": 1,
+        "executed_tool_count": 1,
+        "matched_tool_count": 1,
+        "planned_tools": [
+            {
+                "tool_name": "preflight_writing",
+                "status": "executed",
+                "step_index": 1,
+            }
+        ],
+    }
+    assert "max_context_chars" not in str(output["intent_chain"])
+
+
 def test_inspect_agent_trace_audit_exposes_recommended_recovery_for_blocked_run(db_session):
     project = Project(name="Trace Audit Blocked")
     db_session.add(project)

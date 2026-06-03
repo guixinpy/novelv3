@@ -292,7 +292,7 @@ Agent 化缺口：
 ### 4.2 Trace & Audit（追踪与审计）
 
 ```
-当前状态：L2 AIModelCallTrace 记录每次 AI 调用的详细信息；inspect_agent_trace_audit 已可由自然语言只读意图触达，用于审计 run/step/model trace/context blocks；AgentRunDrawer 可展示 Trace Audit 安全摘要、失败原因、推荐动作、事件链、上下文块和模型 Trace 概览
+当前状态：L2 AIModelCallTrace 记录每次 AI 调用的详细信息；inspect_agent_trace_audit 已可由自然语言只读意图触达，用于审计 run/step/model trace/context blocks，并从 run.input.planner 输出安全 intent_chain 摘要（规则、意图、计划工具、执行匹配数）；AgentRunDrawer 可展示 Trace Audit 安全摘要、失败原因、推荐动作、事件链、上下文块和模型 Trace 概览
 目标状态：L3 全链路 trace（用户意图→计划→工具调用→模型调用→结果）
 关键文件：
   backend/app/core/model_call_trace.py    # Model Call Trace 核心
@@ -305,7 +305,7 @@ Agent 化缺口：
   frontend/src/components/modelTrace/     # 前端 Trace 抽屉
   frontend/src/stores/modelTraces.ts     # 前端 Trace Store
 Agent 化缺口：
-  - trace 仍缺少"用户请求→最终结果"的完整端到端聚合链路；当前自然语言入口与 Drawer 安全摘要已能把 run trace/执行链路审计路由到 inspect_agent_trace_audit 并可读展示
+  - trace 已有"用户意图→计划工具→执行 step"的后端 intent_chain 安全摘要，但仍缺少把该摘要接入 Drawer、并与模型调用 trace/result_message 做成完整端到端聚合链路
   - 缺少 trace 的聚合分析和异常检测
 关联模块：所有 AI 调用模块
 ```
@@ -427,3 +427,4 @@ Data & Recovery ─── (横切关注点，覆盖所有写入操作)
 | 日期 | 模块 | 变更 |
 |------|------|------|
 | 2026-06-01 | 全部 | 初始版本 |
+| 2026-06-03 | Trace & Audit | inspect_agent_trace_audit 新增 intent_chain 后端安全摘要，用于审计意图规则、计划工具和执行匹配 |
