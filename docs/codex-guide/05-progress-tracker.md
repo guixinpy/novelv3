@@ -166,7 +166,7 @@
 - [x] Intent Projection 只读审计意图：自然语言“检查意图投影：<待分析文本>”可投影为 inspect_agent_intent_projection 只读工具计划
 - [x] Dialog Control Plane 只读审计意图：自然语言“检查 generate_chapter 对话控制面投影”可投影为 inspect_agent_dialog_control_plane_projection 只读工具计划
 - [x] Reference Alignment 只读审计意图：自然语言“检查参考项目模式对齐/开源项目适配”可投影为 inspect_agent_reference_alignment 只读工具计划
-- [x] Dogfood Evidence 只读审计意图：自然语言“检查 dogfood pressure-test 证据覆盖”可投影为 inspect_agent_dogfood_evidence 只读工具计划
+- [x] Dogfood Evidence 只读审计意图：自然语言“检查 dogfood pressure-test 证据覆盖”可投影为 inspect_agent_dogfood_evidence 只读工具计划，并覆盖 Trace anomaly threshold calibration readiness 证据
 - [x] Route Preference 只读审计意图：自然语言“检查 text_intent 路由偏好/Agent 审批链迁移建议”可投影为 inspect_agent_route_preference_projection 只读工具计划
 - [x] Agent Health 只读自检意图：自然语言“检查 Agent 健康/工具诊断”可投影为 inspect_agent_health_projection 只读工具计划
 - [x] Control Plane 只读自检意图：自然语言“检查控制面就绪度/工具契约/命令契约”可投影为 inspect_agent_control_plane_readiness 只读工具计划
@@ -275,7 +275,7 @@
 - [x] 审稿修订工具：review_revision_tool_adapters/descriptors
 - [x] 修订执行：revision_draft_execution + revision_patch_execution
 - [x] 生成后审稿：batch_post_generation_review
-- [x] 写作质量诊断：dogfood_evidence_projection，可由自然语言“检查 dogfood pressure-test 证据覆盖”直接规划到 inspect_agent_dogfood_evidence
+- [x] 写作质量诊断：dogfood_evidence_projection，可由自然语言“检查 dogfood pressure-test 证据覆盖”直接规划到 inspect_agent_dogfood_evidence，并暴露 Trace anomaly threshold calibration readiness 覆盖与真实运行校准缺口
 
 ### 下一步任务
 
@@ -321,7 +321,7 @@
 | P1 | 智能上下文压缩（借鉴 hermes-agent） | 预修剪 + LLM 摘要 + 头尾保护 | 🟡 进行中（preflight persistent reuse） |
 | P2 | 端到端 Trace 链路 | 从用户意图→计划→工具调用→模型调用→结果的一条链 | ✅ 已完成（Trace Audit end_to_end_chain + Drawer 覆盖意图→计划→执行→模型 Trace→结果消息） |
 | P3 | 上下文预算管理 | 可视化 Token 使用量 + 接近上限时的警告 | 🟡 进行中（preflight intent + Drawer budget warning） |
-| P4 | Trace 聚合异常检测 | 单 run 异常摘要 + 跨 run 趋势和异常统计 | 🟡 进行中（单 run anomaly_summary + 最近 run anomaly trends + baseline/threshold signals + Drawer 已完成；真实 dogfood 阈值校准待补） |
+| P4 | Trace 聚合异常检测 | 单 run 异常摘要 + 跨 run 趋势和异常统计 | 🟡 进行中（单 run anomaly_summary + 最近 run anomaly trends + baseline/threshold signals + Drawer + dogfood calibration readiness evidence 已完成；真实 dogfood 阈值调参与误报/漏报验证待补） |
 
 ### 阻塞项
 
@@ -329,6 +329,7 @@
 
 ### 最近完成
 
+- 2026-06-03: `inspect_agent_dogfood_evidence` 新增 Trace anomaly threshold calibration readiness capability/evidence，记录 Trace Anomaly Trends baseline/threshold regression、Drawer 投影和误报/漏报 guard 覆盖，并把真实 dogfood 运行阈值调参保留为 open finding。
 - 2026-06-03: `inspect_agent_trace_anomaly_trends` 新增 baseline window 与阈值信号，`baseline_limit` 默认跟随 `limit`，可从自然语言 `baseline 6` 抽取；输出最近窗口、基线窗口、affected/issue/critical rate delta、阈值配置和 `affected_run_rate_spike` / `critical_issue_rate_spike` 安全信号，不暴露 run/step/trace id。
 - 2026-06-03: `AgentRunDrawer` 的 Trace Anomaly Trends 安全投影新增基线与阈值展示，显示基线运行数、基线受影响数、异常率/问题率 delta、阈值信号标题、严重度和阈值，同时隐藏 signal 内部 trace/step id。
 - 2026-06-03: `inspect_agent_trace_anomaly_trends` 新增最近 run 安全异常趋势聚合，按可选 `chapter_index` 与 `limit` 汇总受影响 run、严重/警告/提示计数、问题类型计数、主要问题和推荐后续工具；`IntentRouter` / `plan_dialog_intent_agent_run` 可将“检查第4章 Trace 异常趋势 limit 9”规划为无需审批的只读工具计划，并由 `recovery_worker` 执行。

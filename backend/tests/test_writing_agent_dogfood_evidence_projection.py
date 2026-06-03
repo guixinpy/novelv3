@@ -20,6 +20,7 @@ def test_inspect_agent_dogfood_evidence_surfaces_api_loop_and_memory_activation(
         "long_memory_activation",
         "world_model_recovery",
         "observability_snapshot",
+        "trace_anomaly_threshold_calibration",
     }.issubset({item["capability"] for item in output["capability_coverage"]})
     evidence_by_id = {item["evidence_id"]: item for item in output["evidence"]}
     full_loop = evidence_by_id["full_agent_native_loop_20260526"]
@@ -30,6 +31,22 @@ def test_inspect_agent_dogfood_evidence_surfaces_api_loop_and_memory_activation(
     memory_activation = evidence_by_id["narrative_memory_activation_20260526"]
     assert memory_activation["metrics"]["retrieval_document_refresh_count"] == 6
     assert "inspect_agent_memory_activation_plan" in memory_activation["proven_tools"]
+    trace_calibration = evidence_by_id["trace_anomaly_threshold_calibration_20260603"]
+    assert trace_calibration["runtime_path"] == "pytest_vitest_docs"
+    assert trace_calibration["metrics"] == {
+        "trace_anomaly_trend_regression_count": 2,
+        "threshold_signal_count": 2,
+        "drawer_projection_regression_count": 1,
+        "false_positive_guard_count": 1,
+        "false_negative_guard_count": 1,
+    }
+    assert "inspect_agent_trace_anomaly_trends" in trace_calibration["proven_tools"]
+    assert "AgentRunDrawer Trace Anomaly Trends" in trace_calibration["title"]
+    calibration_coverage = {
+        item["capability"]: item for item in output["capability_coverage"]
+    }["trace_anomaly_threshold_calibration"]
+    assert calibration_coverage["status"] == "covered"
+    assert calibration_coverage["evidence_ids"] == ["trace_anomaly_threshold_calibration_20260603"]
+    assert "inspect_agent_trace_anomaly_trends" in calibration_coverage["proven_tools"]
     assert "inspect_agent_health_projection" in output["recommended_next_tools"]
     assert output["trace"]["runtime_behavior_changed"] is False
-

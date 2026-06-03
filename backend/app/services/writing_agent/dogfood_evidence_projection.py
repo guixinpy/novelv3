@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-DOGFOOD_EVIDENCE_VERSION = "phase236.agent_dogfood_evidence.v1"
+DOGFOOD_EVIDENCE_VERSION = "phase237.agent_dogfood_evidence_trace_calibration.v1"
 DOGFOOD_EVIDENCE_RUN_SOURCE = "planner_trace.agent_health_projection.dogfood_evidence"
 
 _FULL_AGENT_NATIVE_DOGFOOD = (
@@ -13,6 +13,7 @@ _FULL_AGENT_NATIVE_DOGFOOD = (
 _NARRATIVE_MEMORY_DOGFOOD = (
     "docs/archive/superpowers/notes/long-memory-agent/2026-05-26-narrative-memory-activation-dogfood.md"
 )
+_TRACE_ANOMALY_CALIBRATION_TEST = "backend/tests/test_writing_agent_trace_audit.py"
 
 _REQUIRED_CAPABILITIES: tuple[dict[str, Any], ...] = (
     {
@@ -44,6 +45,11 @@ _REQUIRED_CAPABILITIES: tuple[dict[str, Any], ...] = (
         "capability": "observability_snapshot",
         "label": "Health, event, memory tree, and context snapshot",
         "required_for": "Prove longform dogfood can be audited without reading raw notes manually.",
+    },
+    {
+        "capability": "trace_anomaly_threshold_calibration",
+        "label": "Trace anomaly threshold calibration readiness",
+        "required_for": "Prove Trace anomaly trends expose baseline, threshold, and false-positive/false-negative guard evidence before real dogfood calibration.",
     },
 )
 
@@ -127,6 +133,34 @@ _EVIDENCE_RECORDS: tuple[dict[str, Any], ...] = (
             "inspect_agent_health_projection",
         ],
         "open_findings": ["agent_write_gate_high_risk_residue"],
+    },
+    {
+        "evidence_id": "trace_anomaly_threshold_calibration_20260603",
+        "title": "AgentRunDrawer Trace Anomaly Trends Calibration",
+        "source_ref": _TRACE_ANOMALY_CALIBRATION_TEST,
+        "verified_on": "2026-06-03",
+        "runtime_path": "pytest_vitest_docs",
+        "project_id": "",
+        "chapter_indexes": [],
+        "capabilities": ["trace_anomaly_threshold_calibration", "observability_snapshot"],
+        "loop": ["aggregate_recent_trace_runs", "compare_baseline_window", "emit_threshold_signals", "project_drawer_summary"],
+        "metrics": {
+            "trace_anomaly_trend_regression_count": 2,
+            "threshold_signal_count": 2,
+            "drawer_projection_regression_count": 1,
+            "false_positive_guard_count": 1,
+            "false_negative_guard_count": 1,
+        },
+        "proven_tools": [
+            "inspect_agent_trace_audit",
+            "inspect_agent_trace_anomaly_trends",
+            "plan_dialog_intent_agent_run",
+        ],
+        "supporting_source_refs": [
+            "frontend/src/components/writingAgent/AgentRunDrawer.test.ts",
+            "docs/codex-guide/05-progress-tracker.md",
+        ],
+        "open_findings": ["trace_anomaly_threshold_real_dogfood_calibration"],
     },
 )
 

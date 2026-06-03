@@ -202,7 +202,7 @@ Main Agent (对话编排)
 | 审计日志 | openhuman | 已有 AIModelCallTrace | 已基本满足 |
 | 安全意识 | openclaw 脱敏 | 已有 trace 脱敏 | 已满足 |
 
-novelv3 当前 trace + approval 体系已经较完整。权限分级已先在核心 descriptor/contract 层升级为枚举，Agent Health、Control Plane、Tool Contracts、Command Contracts、Trace Audit、Trace Anomaly Trends 与 Write Gate Coverage 只读自检/审计也已可由自然语言直接规划到 `inspect_agent_health_projection` / `inspect_agent_control_plane_readiness` / `inspect_agent_tool_contracts` / `inspect_agent_command_contracts` / `inspect_agent_trace_audit` / `inspect_agent_trace_anomaly_trends` / `inspect_agent_write_gate_coverage`；Trace Anomaly Trends 已有 baseline window、rate delta 与阈值信号的安全投影。后续若要继续深化，应再把 planner、approval、前端展示等消费端逐步切到显式类型，而不是一次性破坏公开 JSON 契约。
+novelv3 当前 trace + approval 体系已经较完整。权限分级已先在核心 descriptor/contract 层升级为枚举，Agent Health、Control Plane、Tool Contracts、Command Contracts、Trace Audit、Trace Anomaly Trends 与 Write Gate Coverage 只读自检/审计也已可由自然语言直接规划到 `inspect_agent_health_projection` / `inspect_agent_control_plane_readiness` / `inspect_agent_tool_contracts` / `inspect_agent_command_contracts` / `inspect_agent_trace_audit` / `inspect_agent_trace_anomaly_trends` / `inspect_agent_write_gate_coverage`；Trace Anomaly Trends 已有 baseline window、rate delta 与阈值信号的安全投影，Dogfood Evidence 也已记录其 threshold calibration readiness 证据和真实运行校准缺口。后续若要继续深化，应再把 planner、approval、前端展示等消费端逐步切到显式类型，而不是一次性破坏公开 JSON 契约。
 
 ---
 
