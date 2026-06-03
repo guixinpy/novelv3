@@ -441,6 +441,10 @@ const memoryActivationRows = computed(() => {
 const retrievalContextOutput = computed(() => latestToolOutput('search_agent_retrieval_context'))
 const retrievalContextSummary = computed(() => recordValue(retrievalContextOutput.value?.summary))
 const retrievalContextItems = computed(() => recordList(retrievalContextOutput.value?.items))
+const retrievalContextFilters = computed(() => recordValue(retrievalContextOutput.value?.filters))
+const retrievalContextProvenance = computed(() => recordValue(retrievalContextOutput.value?.memory_provenance))
+const retrievalContextStatus = computed(() => stringValue(retrievalContextOutput.value?.status))
+const retrievalContextQuery = computed(() => safeRetrievalContextText(retrievalContextOutput.value?.query))
 const retrievalContextCoverageLabel = computed(() => {
   const returned = numberValue(retrievalContextSummary.value.returned)
   const total = numberValue(retrievalContextSummary.value.total)
@@ -458,6 +462,36 @@ const retrievalPrimarySourceLabel = computed(() => {
   return [title, chapter || sourceType].filter(Boolean).join(' · ')
 })
 const retrievalRecommendedTools = computed(() => stringList(retrievalContextOutput.value?.recommended_next_tools))
+const retrievalContextLimit = computed(() => numberValue(retrievalContextFilters.value.limit))
+const retrievalContextCandidateLimit = computed(() => numberValue(retrievalContextFilters.value.candidate_limit))
+const retrievalContextMaxChapterLabel = computed(() => {
+  const chapter = numberValue(retrievalContextFilters.value.max_chapter_index)
+  return chapter !== null ? `第${chapter}章前` : ''
+})
+const retrievalContextFilterSourceTypeLabel = computed(() => (
+  retrievalSourceTypeLabel(stringValue(retrievalContextFilters.value.source_type))
+))
+const retrievalContextProvenanceStatus = computed(() => stringValue(retrievalContextProvenance.value.status))
+const retrievalContextRows = computed(() => (
+  retrievalContextItems.value
+    .slice(0, 5)
+    .map((item, index) => {
+      const score = numberValue(item.score)
+      return {
+        key: `retrieval-context-item:${index}`,
+        title: safeRetrievalContextText(item.title) || '检索证据',
+        sourceType: retrievalSourceTypeLabel(stringValue(item.source_type)),
+        chapterLabel: chapterIndexLabel(item.chapter_index),
+        scoreLabel: score !== null ? `分数 ${score}` : '',
+        snippet: (
+          safeRetrievalContextText(item.snippet) ||
+          safeRetrievalContextText(item.content) ||
+          safeRetrievalContextText(item.summary)
+        ),
+      }
+    })
+    .filter((item) => Boolean(item.title || item.snippet))
+))
 const longformContextOutput = computed(() => latestToolOutput('summarize_longform_context'))
 const longformContextSummary = computed(() => recordValue(longformContextOutput.value?.context_summary))
 const longformContextActiveState = computed(() => recordValue(longformContextSummary.value.active_state))
@@ -1103,6 +1137,7 @@ const memoryTreeSearchAction = computed<MemoryTreeDrilldownAction | null>(() => 
 const hasMemoryLoopProjection = computed(() => Boolean(
   memoryActivationOutput.value || retrievalContextOutput.value || postChapterMemoryOutput.value,
 ))
+const hasRetrievalContextProjection = computed(() => Boolean(retrievalContextOutput.value))
 const hasMemoryActivationProjection = computed(() => Boolean(memoryActivationOutput.value))
 const hasLongformContextProjection = computed(() => Boolean(longformContextOutput.value))
 const hasMemoryRouteProjection = computed(() => Boolean(memoryRouteOutput.value))
@@ -1593,6 +1628,14 @@ function safeMemoryActivationText(label: unknown) {
   if (/[A-Za-z_]+:[A-Za-z0-9_.:-]+/.test(value)) return ''
   if (/project-secret|memory-secret|candidate-secret|world-secret|source_refs?|source_type|source_id|memory_id|candidate_id|proposal_item_id|node_id|approval_contract|char\.[A-Za-z0-9_.-]+|style_config\.|phase\d+\.memory_activation|build_memory_activation_plan|future_leak_guard|end_chapter_index_before_target|Writing Agent 长记忆激活|prompt-only raw context/i.test(value)) return ''
   return value.slice(0, 96)
+}
+
+function safeRetrievalContextText(label: unknown) {
+  const value = stringValue(label).replace(/\s+/g, ' ')
+  if (!value) return ''
+  if (/[A-Za-z_]+:[A-Za-z0-9_.:-]+/.test(value)) return ''
+  if (/project-secret|candidate-secret|memory-secret|retrieval-secret|source_refs?|source_type|source_id|memory_id|candidate_id|retrieval_internal|retrieval-vector|query_vector_cache_key|memory_provenance|retrieval_items|phase\d+\.agent_retrieval_context/i.test(value)) return ''
+  return value.slice(0, 120)
 }
 
 function safeLongformContextText(label: unknown) {
@@ -2234,6 +2277,76 @@ function missingDependencyTool(value: Record<string, unknown>) {
               {{ action.label }}
             </button>
           </div>
+        </section>
+
+        <section
+          v-if="hasRetrievalContextProjection"
+          class="agent-run-drawer__retrieval-context"
+          aria-label="Agent retrieval context projection"
+        >
+          <h4>检索证据摘要</h4>
+          <dl class="agent-run-drawer__facts">
+            <div>
+              <dt>状态</dt>
+              <dd>{{ executionPlanToolStatusLabel(retrievalContextStatus) }}</dd>
+            </div>
+            <div v-if="retrievalContextQuery">
+              <dt>查询</dt>
+              <dd>{{ retrievalContextQuery }}</dd>
+            </div>
+            <div v-if="retrievalContextCoverageLabel">
+              <dt>返回</dt>
+              <dd>{{ retrievalContextCoverageLabel }}</dd>
+            </div>
+            <div v-if="retrievalContextLimit !== null">
+              <dt>限制</dt>
+              <dd>限制 {{ retrievalContextLimit }}</dd>
+            </div>
+            <div v-if="retrievalContextCandidateLimit !== null">
+              <dt>候选</dt>
+              <dd>候选 {{ retrievalContextCandidateLimit }}</dd>
+            </div>
+            <div v-if="retrievalContextMaxChapterLabel">
+              <dt>章节窗口</dt>
+              <dd>{{ retrievalContextMaxChapterLabel }}</dd>
+            </div>
+            <div v-if="retrievalContextFilterSourceTypeLabel">
+              <dt>来源类型</dt>
+              <dd>{{ retrievalContextFilterSourceTypeLabel }}</dd>
+            </div>
+            <div v-if="retrievalContextProvenanceStatus">
+              <dt>来源覆盖</dt>
+              <dd>{{ memoryRouteProvenanceStatusLabel(retrievalContextProvenanceStatus) }}</dd>
+            </div>
+          </dl>
+          <ul
+            v-if="retrievalRecommendedTools.length"
+            class="agent-run-drawer__tools"
+          >
+            <li
+              v-for="tool in retrievalRecommendedTools"
+              :key="`retrieval-context-next:${tool}`"
+            >
+              {{ tool }}
+            </li>
+          </ul>
+          <ul
+            v-if="retrievalContextRows.length"
+            class="agent-run-drawer__reference-patterns"
+          >
+            <li
+              v-for="item in retrievalContextRows"
+              :key="item.key"
+            >
+              <div>
+                <strong>{{ item.title }}</strong>
+                <span v-if="item.sourceType">{{ item.sourceType }}</span>
+                <span v-if="item.chapterLabel">{{ item.chapterLabel }}</span>
+                <span v-if="item.scoreLabel">{{ item.scoreLabel }}</span>
+              </div>
+              <p v-if="item.snippet">{{ item.snippet }}</p>
+            </li>
+          </ul>
         </section>
 
         <section
@@ -3283,6 +3396,7 @@ function missingDependencyTool(value: Record<string, unknown>) {
 .agent-run-drawer__execution-plan h4,
 .agent-run-drawer__planner h4,
 .agent-run-drawer__memory-loop h4,
+.agent-run-drawer__retrieval-context h4,
 .agent-run-drawer__longform-context h4,
 .agent-run-drawer__memory-activation h4,
 .agent-run-drawer__memory-route h4,
@@ -3349,6 +3463,15 @@ function missingDependencyTool(value: Record<string, unknown>) {
 }
 
 .agent-run-drawer__memory-loop {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-secondary);
+}
+
+.agent-run-drawer__retrieval-context {
   display: grid;
   gap: var(--space-3);
   padding: var(--space-3);
