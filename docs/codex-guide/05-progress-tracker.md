@@ -297,7 +297,7 @@
 - [x] Model Call Trace：AIModelCallTrace 含 context blocks + sources
 - [x] 前端 Trace 抽屉：ModelTraceDrawer + modelTraces store
 - [x] Trace 脱敏：API key、Bearer token、password 等自动脱敏
-- [x] Trace Audit 自然语言只读入口：自然语言“检查 run trace/执行链路/失败原因”可直接规划到 inspect_agent_trace_audit，后端可输出安全 intent_chain 摘要（意图规则、计划工具、执行匹配）和 end_to_end_chain 摘要（意图→计划→执行→模型 Trace→结果消息覆盖），AgentRunDrawer 可展示安全摘要、intent_chain 意图链路、端到端链路、失败原因、推荐动作、事件链、上下文块和模型 Trace 概览
+- [x] Trace Audit 自然语言只读入口：自然语言“检查 run trace/执行链路/失败原因”可直接规划到 inspect_agent_trace_audit，后端可输出安全 intent_chain 摘要（意图规则、计划工具、执行匹配）、end_to_end_chain 摘要（意图→计划→执行→模型 Trace→结果消息覆盖）和 anomaly_summary 摘要（失败步骤、失败模型 Trace、缺 Trace 绑定、未执行计划、缺结果消息、截断上下文），AgentRunDrawer 可展示安全摘要、intent_chain 意图链路、端到端链路、异常摘要、失败原因、推荐动作、事件链、上下文块和模型 Trace 概览
 - [x] 基础上下文压缩：对话历史长度限制
 - [x] 长篇上下文摘要：longform_context_summary
 - [x] ContextCompressor 基础计划投影：context pressure 下输出头尾保护预修剪、target_max_chars 和 summarize_longform_context 工具计划
@@ -319,6 +319,7 @@
 | P1 | 智能上下文压缩（借鉴 hermes-agent） | 预修剪 + LLM 摘要 + 头尾保护 | 🟡 进行中（preflight persistent reuse） |
 | P2 | 端到端 Trace 链路 | 从用户意图→计划→工具调用→模型调用→结果的一条链 | ✅ 已完成（Trace Audit end_to_end_chain + Drawer 覆盖意图→计划→执行→模型 Trace→结果消息） |
 | P3 | 上下文预算管理 | 可视化 Token 使用量 + 接近上限时的警告 | 🟡 进行中（preflight intent + Drawer budget warning） |
+| P4 | Trace 聚合异常检测 | 单 run 异常摘要 + 跨 run 趋势和异常统计 | 🟡 进行中（单 run anomaly_summary + Drawer 已完成；跨 run 聚合待补） |
 
 ### 阻塞项
 
@@ -326,6 +327,7 @@
 
 ### 最近完成
 
+- 2026-06-03: `inspect_agent_trace_audit` 新增 `anomaly_summary` 单 run 安全异常摘要，聚合 failed/blocked step、failed model trace、缺 Trace 绑定、未执行计划工具、缺 result_message 和截断上下文；`AgentRunDrawer` 新增异常摘要展示，同时隐藏 run/step/trace/message/source id、context key 与原始上下文正文。
 - 2026-06-03: `inspect_agent_trace_audit` 新增 `end_to_end_chain` 安全摘要，按 intent、planned_tools、executed_tools、model_traces、result_message 五段输出覆盖状态、计数和 result action/status；`AgentRunDrawer` 新增端到端链路展示，同时隐藏 trace/message/run/step id 和原始参数。
 - 2026-06-03: `AgentRunDrawer` 的 Trace Audit 安全投影新增 `intent_chain` 意图链路摘要，展示规则、intent class、章节、planned/executed/matched 计数和计划工具状态，同时隐藏 planner source、原始 params、source_plan_id、run/step 内部 id。
 - 2026-06-03: `inspect_agent_trace_audit` 新增后端 `intent_chain` 安全摘要，从 `run.input.planner` 白名单提取意图规则、intent class、章节号和计划工具，并与实际 `WritingAgentStep` 匹配输出 planned/executed/matched 计数；摘要不暴露原始 params、上下文正文或内部 id。
@@ -371,6 +373,7 @@
 
 ### 最近完成
 
+- 2026-06-03: `AgentRunDrawer` 的 Trace Audit 安全投影新增 `anomaly_summary` 异常摘要区，展示单 run 的问题数、严重/警告/提示计数、失败步骤、失败 Trace、缺 Trace、未执行计划、缺结果消息、截断上下文和最多 8 条安全问题摘要，同时隐藏 run/step/trace/message/source id、context key 和上下文正文。
 - 2026-06-03: `AgentRunDrawer` 新增 preflight 上下文预算安全投影，消费 `preflight_writing` 输出的 context_compression 检查和脱敏 preview，展示预算压力、目标预算、压缩字符、推荐工具和压力 issue，同时隐藏压缩正文、持久摘要正文、scope key、trace/version 与内部 suggested params。
 - 2026-06-03: `AgentRunDrawer` 新增 ContextCompressor Projection 安全投影，消费 `inspect_agent_context_compression_projection` 输出并展示状态、章节、粒度、保护策略、上下文字符/预算/使用率、截断分区、Guard 失败次数、目标预算、头尾保护计数、预修剪计数、LLM 摘要需求、推荐工具和风险摘要，同时隐藏 project id、memory_provenance、trace/version、source_ref/source_type/source id 和 payload params。
 - 2026-06-03: `AgentRunDrawer` 新增 World Model Proposal Resolution Plan 安全投影，消费 `plan_world_model_proposal_resolution` 输出并展示计划状态、人工确认需求、自动应用判断、生成阻断判断、返回/总待审数量、高优先级步骤数、批量步骤数、风险计数、审阅模式计数、推荐动作/后续工具和最多 5 条安全步骤摘要，同时隐藏 project/profile/cluster/item/bundle id、profile_version、item_ids、bundle_ids、allowed_actions、plan_only 和 report_only 内部字段。

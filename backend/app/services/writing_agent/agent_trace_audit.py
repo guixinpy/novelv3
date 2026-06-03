@@ -20,6 +20,21 @@ from app.services.writing_agent.control_plane_readiness_projection import (
 AGENT_TRACE_AUDIT_VERSION = "phase73.agent_trace_audit.v1"
 DEFAULT_AUDIT_LIMIT = 20
 MAX_AUDIT_LIMIT = 100
+TRACE_EXPECTED_TOOL_NAMES = {
+    "generate_chapter",
+    "expand_chapter",
+    "preflight_writing",
+    "summarize_longform_context",
+    "generate_setup",
+    "generate_storyline",
+    "generate_outline",
+    "backfill_outline",
+    "expand_outline_window",
+    "draft_revision",
+    "apply_revision_patch",
+    "review_chapter",
+    "batch_post_generation_review",
+}
 
 
 def inspect_agent_trace_audit(
@@ -83,6 +98,14 @@ def inspect_agent_trace_audit(
         trace_items=trace_items,
         dialog_events=dialog_events,
     )
+    anomaly_summary = _trace_anomaly_summary(
+        run,
+        steps=steps,
+        trace_items=trace_items,
+        context=context,
+        intent_chain=intent_chain,
+        end_to_end_chain=end_to_end_chain,
+    )
     recommended_actions = _recommended_actions(
         steps,
         failure=failure,
@@ -102,6 +125,8 @@ def inspect_agent_trace_audit(
         "planned_tool_count": intent_chain["planned_tool_count"],
         "matched_planned_tool_count": intent_chain["matched_tool_count"],
         "end_to_end_chain_status": end_to_end_chain["status"],
+        "anomaly_status": anomaly_summary["status"],
+        "anomaly_issue_count": anomaly_summary["issue_count"],
     }
     if profile_policy_audit is not None:
         profile_policy_summary = (
@@ -140,6 +165,7 @@ def inspect_agent_trace_audit(
             "context": context,
             "intent_chain": intent_chain,
             "end_to_end_chain": end_to_end_chain,
+            "anomaly_summary": anomaly_summary,
             "failure": failure,
             "recommended_actions": recommended_actions,
             "profile_policy_audit": profile_policy_audit,
@@ -802,6 +828,152 @@ def _end_to_end_chain_segments(
         },
         result_segment,
     ]
+
+
+def _trace_anomaly_summary(
+    run: WritingAgentRun,
+    *,
+    steps: list[WritingAgentStep],
+    trace_items: list[dict[str, Any]],
+    context: dict[str, Any],
+    intent_chain: dict[str, Any],
+    end_to_end_chain: dict[str, Any],
+) -> dict[str, Any]:
+    issues: list[dict[str, Any]] = []
+
+    failed_steps = [step for step in steps if step.status in {"blocked", "failed"}]
+    for step in failed_steps:
+        issues.append(
+            {
+                "code": "failed_tool_step",
+                "severity": "critical",
+                "tool_name": step.tool_name,
+                "status": step.status,
+                "step_index": step.step_index,
+                "chapter_index": step.chapter_index,
+            }
+        )
+
+    failed_traces = [
+        trace
+        for trace in trace_items
+        if str(trace.get("status") or "").strip().lower() in {"blocked", "failed", "error"}
+    ]
+    for trace in failed_traces:
+        issues.append(
+            {
+                "code": "failed_model_trace",
+                "severity": "critical",
+                "trace_type": str(trace.get("trace_type") or ""),
+                "status": str(trace.get("status") or ""),
+                "chapter_index": trace.get("chapter_index"),
+                "error_recorded": bool(str(trace.get("error_message") or "").strip()),
+            }
+        )
+
+    missing_trace_steps = [step for step in steps if _step_expected_trace(step) and not step.trace_id]
+    for step in missing_trace_steps:
+        issues.append(
+            {
+                "code": "missing_trace_binding",
+                "severity": "warning",
+                "tool_name": step.tool_name,
+                "status": step.status,
+                "step_index": step.step_index,
+                "chapter_index": step.chapter_index,
+            }
+        )
+
+    unmatched_planned_tools = [
+        tool
+        for tool in _safe_planned_tools(intent_chain)
+        if str(tool.get("status") or "").strip() not in {"executed", "completed", "success"}
+    ]
+    for tool in unmatched_planned_tools:
+        issues.append(
+            {
+                "code": "planned_tool_not_executed",
+                "severity": "warning",
+                "tool_name": str(tool.get("tool_name") or ""),
+            }
+        )
+
+    result_missing = bool(run.dialog_id and not _record_has_result_message(end_to_end_chain))
+    if result_missing:
+        issues.append(
+            {
+                "code": "missing_result_message",
+                "severity": "warning",
+                "stage": "result_message",
+            }
+        )
+
+    truncated_context_blocks = [
+        block for block in _record_list(context.get("blocks")) if block.get("truncated") is True
+    ]
+    for block in truncated_context_blocks:
+        issues.append(
+            {
+                "code": "truncated_context_block",
+                "severity": "info",
+                "kind": str(block.get("kind") or ""),
+                "title": str(block.get("title") or ""),
+                "char_count": _non_negative_int(block.get("char_count")),
+                "source_count": _non_negative_int(block.get("source_count")),
+            }
+        )
+
+    severity_counts = {
+        "critical": sum(1 for issue in issues if issue.get("severity") == "critical"),
+        "warning": sum(1 for issue in issues if issue.get("severity") == "warning"),
+        "info": sum(1 for issue in issues if issue.get("severity") == "info"),
+    }
+    if severity_counts["critical"] > 0:
+        status = "failed"
+    elif severity_counts["warning"] > 0:
+        status = "needs_attention"
+    elif severity_counts["info"] > 0:
+        status = "informational"
+    else:
+        status = "clear"
+
+    return {
+        "status": status,
+        "issue_count": len(issues),
+        "severity_counts": severity_counts,
+        "failed_step_count": len(failed_steps),
+        "failed_trace_count": len(failed_traces),
+        "missing_trace_binding_count": len(missing_trace_steps),
+        "unmatched_planned_tool_count": len(unmatched_planned_tools),
+        "missing_result_message": result_missing,
+        "truncated_context_block_count": len(truncated_context_blocks),
+        "issues": issues,
+    }
+
+
+def _step_expected_trace(step: WritingAgentStep) -> bool:
+    return str(step.tool_name or "").strip() in TRACE_EXPECTED_TOOL_NAMES
+
+
+def _safe_planned_tools(intent_chain: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        tool
+        for tool in _record_list(intent_chain.get("planned_tools"))
+        if str(tool.get("tool_name") or "").strip()
+    ]
+
+
+def _record_has_result_message(end_to_end_chain: dict[str, Any]) -> bool:
+    coverage = end_to_end_chain.get("coverage") if isinstance(end_to_end_chain.get("coverage"), dict) else {}
+    if coverage.get("result_message") is True:
+        return True
+    return isinstance(end_to_end_chain.get("result_message"), dict)
+
+
+def _record_list(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, dict)]
 
 
 def _planner_from_run(run: WritingAgentRun) -> dict[str, Any] | None:

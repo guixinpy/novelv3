@@ -449,6 +449,165 @@ def test_inspect_agent_trace_audit_includes_end_to_end_chain_summary(db_session)
     assert result_message.id not in str(output["end_to_end_chain"])
 
 
+def test_inspect_agent_trace_audit_includes_safe_anomaly_summary(db_session):
+    project = Project(name="Trace Anomaly Summary")
+    db_session.add(project)
+    db_session.flush()
+    dialog = Dialog(project_id=project.id, dialog_type="hermes", state="running")
+    db_session.add(dialog)
+    db_session.flush()
+    planner_output = {
+        "status": "completed",
+        "intent_projection": {
+            "rule_id": "generate_chapter_intent",
+            "candidate": {
+                "type": "generate_chapter",
+                "params": {
+                    "chapter_index": 4,
+                    "secret_context_key": "should-not-leak",
+                },
+            },
+        },
+        "planner": {
+            "intent_class": "generate_chapter",
+            "mapped_from_action_type": "generate_chapter",
+            "mapped_from_rule_id": "generate_chapter_intent",
+            "chapter_index": 4,
+        },
+        "plan": {
+            "tools": [
+                {"tool_name": "generate_chapter"},
+                {"tool_name": "inspect_agent_memory_route"},
+            ]
+        },
+    }
+    run = WritingAgentRun(
+        project_id=project.id,
+        goal="生成第4章",
+        status="success",
+        entrypoint="dialog_auto_plan",
+        input={"planner": planner_output},
+        output={"status": "success"},
+        dialog_id=dialog.id,
+    )
+    db_session.add(run)
+    db_session.flush()
+    failed_trace = AIModelCallTrace(
+        id="trace-anomaly-secret-id",
+        project_id=project.id,
+        trace_type="chapter_generation",
+        status="failed",
+        model="deepseek-chat",
+        chapter_index=4,
+        error_message="provider timeout with secret trace id",
+        context_blocks=[
+            {
+                "key": "secret-context-key",
+                "kind": "longform_memory",
+                "title": "长篇记忆",
+                "content": "这段上下文不应进入异常摘要。",
+                "sources": [{"source_id": "source-secret-id"}],
+                "truncated": True,
+            }
+        ],
+    )
+    db_session.add(failed_trace)
+    db_session.flush()
+    db_session.add_all(
+        [
+            WritingAgentStep(
+                run_id=run.id,
+                project_id=project.id,
+                step_index=1,
+                tool_name="generate_chapter",
+                status="failed",
+                input={"params": {"chapter_index": 4}},
+                output={"status": "failed", "trace_id": failed_trace.id},
+                trace_id=failed_trace.id,
+                chapter_index=4,
+            ),
+            WritingAgentStep(
+                id="step-anomaly-secret-id",
+                run_id=run.id,
+                project_id=project.id,
+                step_index=2,
+                tool_name="preflight_writing",
+                status="success",
+                input={"params": {"chapter_index": 4}},
+                output={"status": "ready"},
+                chapter_index=4,
+            ),
+        ]
+    )
+    db_session.commit()
+
+    output = inspect_agent_trace_audit(db_session, project.id, run_id=run.id)
+
+    assert output["audit"]["anomaly_status"] == "failed"
+    assert output["audit"]["anomaly_issue_count"] == 6
+    assert output["anomaly_summary"] == {
+        "status": "failed",
+        "issue_count": 6,
+        "severity_counts": {"critical": 2, "warning": 3, "info": 1},
+        "failed_step_count": 1,
+        "failed_trace_count": 1,
+        "missing_trace_binding_count": 1,
+        "unmatched_planned_tool_count": 1,
+        "missing_result_message": True,
+        "truncated_context_block_count": 1,
+        "issues": [
+            {
+                "code": "failed_tool_step",
+                "severity": "critical",
+                "tool_name": "generate_chapter",
+                "status": "failed",
+                "step_index": 1,
+                "chapter_index": 4,
+            },
+            {
+                "code": "failed_model_trace",
+                "severity": "critical",
+                "trace_type": "chapter_generation",
+                "status": "failed",
+                "chapter_index": 4,
+                "error_recorded": True,
+            },
+            {
+                "code": "missing_trace_binding",
+                "severity": "warning",
+                "tool_name": "preflight_writing",
+                "status": "success",
+                "step_index": 2,
+                "chapter_index": 4,
+            },
+            {
+                "code": "planned_tool_not_executed",
+                "severity": "warning",
+                "tool_name": "inspect_agent_memory_route",
+            },
+            {
+                "code": "missing_result_message",
+                "severity": "warning",
+                "stage": "result_message",
+            },
+            {
+                "code": "truncated_context_block",
+                "severity": "info",
+                "kind": "longform_memory",
+                "title": "长篇记忆",
+                "char_count": 14,
+                "source_count": 1,
+            },
+        ],
+    }
+    assert "trace-anomaly-secret-id" not in str(output["anomaly_summary"])
+    assert "step-anomaly-secret-id" not in str(output["anomaly_summary"])
+    assert "secret-context-key" not in str(output["anomaly_summary"])
+    assert "source-secret-id" not in str(output["anomaly_summary"])
+    assert "should-not-leak" not in str(output["anomaly_summary"])
+    assert "这段上下文不应进入异常摘要" not in str(output["anomaly_summary"])
+
+
 def test_inspect_agent_trace_audit_exposes_recommended_recovery_for_blocked_run(db_session):
     project = Project(name="Trace Audit Blocked")
     db_session.add(project)

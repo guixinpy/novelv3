@@ -916,6 +916,7 @@ const traceAuditFailure = computed(() => recordValue(traceAuditOutput.value?.fai
 const traceAuditContext = computed(() => recordValue(traceAuditOutput.value?.context))
 const traceAuditIntentChain = computed(() => recordValue(traceAuditOutput.value?.intent_chain))
 const traceAuditEndToEndChain = computed(() => recordValue(traceAuditOutput.value?.end_to_end_chain))
+const traceAuditAnomalySummary = computed(() => recordValue(traceAuditOutput.value?.anomaly_summary))
 const traceAuditSteps = computed(() => recordList(traceAuditOutput.value?.steps))
 const traceAuditTraces = computed(() => recordList(traceAuditOutput.value?.traces))
 const traceAuditEventChain = computed(() => recordList(traceAuditOutput.value?.event_chain))
@@ -943,6 +944,24 @@ const traceAuditEndToEndResultActionType = computed(() => (
 ))
 const traceAuditEndToEndResultStatusLabel = computed(() => (
   traceAuditActionStatusLabel(traceAuditEndToEndResultMessage.value.action_status)
+))
+const traceAuditAnomalyStatus = computed(() => stringValue(traceAuditAnomalySummary.value.status))
+const traceAuditAnomalyIssueCount = computed(() => numberValue(traceAuditAnomalySummary.value.issue_count))
+const traceAuditAnomalySeverityCounts = computed(() => recordValue(traceAuditAnomalySummary.value.severity_counts))
+const traceAuditAnomalyCriticalCount = computed(() => numberValue(traceAuditAnomalySeverityCounts.value.critical))
+const traceAuditAnomalyWarningCount = computed(() => numberValue(traceAuditAnomalySeverityCounts.value.warning))
+const traceAuditAnomalyInfoCount = computed(() => numberValue(traceAuditAnomalySeverityCounts.value.info))
+const traceAuditAnomalyFailedStepCount = computed(() => numberValue(traceAuditAnomalySummary.value.failed_step_count))
+const traceAuditAnomalyFailedTraceCount = computed(() => numberValue(traceAuditAnomalySummary.value.failed_trace_count))
+const traceAuditAnomalyMissingTraceCount = computed(() => (
+  numberValue(traceAuditAnomalySummary.value.missing_trace_binding_count)
+))
+const traceAuditAnomalyUnmatchedPlanCount = computed(() => (
+  numberValue(traceAuditAnomalySummary.value.unmatched_planned_tool_count)
+))
+const traceAuditAnomalyMissingResultMessage = computed(() => traceAuditAnomalySummary.value.missing_result_message === true)
+const traceAuditAnomalyTruncatedContextCount = computed(() => (
+  numberValue(traceAuditAnomalySummary.value.truncated_context_block_count)
 ))
 const traceAuditFailureTool = computed(() => safeTraceAuditText(traceAuditFailure.value.tool_name))
 const traceAuditFailureReason = computed(() => safeTraceAuditText(traceAuditFailure.value.reason_code))
@@ -981,6 +1000,34 @@ const traceAuditEndToEndSegmentRows = computed(() => (
       }
     })
     .filter((row) => Boolean(row.stageLabel || row.statusLabel || row.meta))
+))
+const traceAuditAnomalyIssueRows = computed(() => (
+  recordList(traceAuditAnomalySummary.value.issues)
+    .slice(0, 8)
+    .map((issue, index) => {
+      const stepIndex = numberValue(issue.step_index)
+      const charCount = numberValue(issue.char_count)
+      const sourceCount = numberValue(issue.source_count)
+      return {
+        key: `trace-audit-anomaly:${index}`,
+        label: traceAuditAnomalyCodeLabel(issue.code),
+        severityLabel: traceAuditAnomalySeverityLabel(issue.severity),
+        meta: [
+          safeTraceAuditText(issue.tool_name),
+          safeTraceAuditText(issue.trace_type),
+          traceAuditEndToEndStageLabel(issue.stage),
+          safeTraceAuditText(issue.kind),
+          traceAuditStatusLabel(issue.status),
+          stepIndex !== null ? `#${stepIndex}` : '',
+          chapterIndexLabel(issue.chapter_index),
+          issue.error_recorded === true ? '已记录错误' : '',
+          charCount !== null ? `${charCount} 字` : '',
+          sourceCount !== null ? `来源 ${sourceCount}` : '',
+        ].filter(Boolean).join(' · '),
+        title: safeTraceAuditText(issue.title),
+      }
+    })
+    .filter((row) => Boolean(row.label || row.severityLabel || row.meta || row.title))
 ))
 const traceAuditStepRows = computed(() => (
   traceAuditSteps.value
@@ -1425,6 +1472,11 @@ const hasTraceAuditEndToEndChain = computed(() => Boolean(
   traceAuditEndToEndModelTraceCount.value !== null ||
   traceAuditEndToEndResultActionType.value ||
   traceAuditEndToEndSegmentRows.value.length,
+))
+const hasTraceAuditAnomalySummary = computed(() => Boolean(
+  traceAuditAnomalyStatus.value ||
+  traceAuditAnomalyIssueCount.value !== null ||
+  traceAuditAnomalyIssueRows.value.length,
 ))
 const hasKnowledgeBaseCandidateExecutionProjection = computed(() => Boolean(knowledgeBaseCandidateExecutionOutput.value))
 const hasMemoryTreeProjection = computed(() => Boolean(memoryTreeOutput.value))
@@ -2068,6 +2120,22 @@ function traceAuditStatusLabel(status: unknown) {
   return value || '未知'
 }
 
+function traceAuditAnomalyStatusLabel(status: unknown) {
+  const value = stringValue(status)
+  if (value === 'clear') return '正常'
+  if (value === 'informational') return '提示'
+  if (value === 'needs_attention') return '需处理'
+  return traceAuditStatusLabel(value)
+}
+
+function traceAuditAnomalySeverityLabel(severity: unknown) {
+  const value = stringValue(severity)
+  if (value === 'critical') return '严重'
+  if (value === 'warning') return '警告'
+  if (value === 'info') return '提示'
+  return safeTraceAuditText(value)
+}
+
 function traceAuditEndToEndStatusLabel(status: unknown) {
   const value = stringValue(status)
   if (value === 'complete') return '完整'
@@ -2095,11 +2163,23 @@ function traceAuditActionStatusLabel(status: unknown) {
 
 function traceAuditEndToEndStageLabel(stage: unknown) {
   const value = stringValue(stage)
+  if (!value) return ''
   if (value === 'intent') return '意图'
   if (value === 'planned_tools') return '计划工具'
   if (value === 'executed_tools') return '执行工具'
   if (value === 'model_traces') return '模型 Trace'
   if (value === 'result_message') return '结果消息'
+  return safeTraceAuditText(value)
+}
+
+function traceAuditAnomalyCodeLabel(code: unknown) {
+  const value = stringValue(code)
+  if (value === 'failed_tool_step') return '工具步骤失败'
+  if (value === 'failed_model_trace') return '模型 Trace 失败'
+  if (value === 'missing_trace_binding') return '缺少 Trace 绑定'
+  if (value === 'planned_tool_not_executed') return '计划工具未执行'
+  if (value === 'missing_result_message') return '结果消息缺失'
+  if (value === 'truncated_context_block') return '上下文块已截断'
   return safeTraceAuditText(value)
 }
 
@@ -3622,6 +3702,72 @@ function missingDependencyTool(value: Record<string, unknown>) {
             <p v-if="traceAuditFailureMessage">{{ traceAuditFailureMessage }}</p>
           </div>
           <div
+            v-if="hasTraceAuditAnomalySummary"
+            class="agent-run-drawer__trace-audit-anomaly"
+          >
+            <strong>异常摘要</strong>
+            <dl class="agent-run-drawer__facts">
+              <div v-if="traceAuditAnomalyStatus">
+                <dt>状态</dt>
+                <dd>{{ traceAuditAnomalyStatusLabel(traceAuditAnomalyStatus) }}</dd>
+              </div>
+              <div v-if="traceAuditAnomalyIssueCount !== null">
+                <dt>问题</dt>
+                <dd>问题 {{ traceAuditAnomalyIssueCount }}</dd>
+              </div>
+              <div v-if="traceAuditAnomalyCriticalCount !== null">
+                <dt>严重</dt>
+                <dd>严重 {{ traceAuditAnomalyCriticalCount }}</dd>
+              </div>
+              <div v-if="traceAuditAnomalyWarningCount !== null">
+                <dt>警告</dt>
+                <dd>警告 {{ traceAuditAnomalyWarningCount }}</dd>
+              </div>
+              <div v-if="traceAuditAnomalyInfoCount !== null">
+                <dt>提示</dt>
+                <dd>提示 {{ traceAuditAnomalyInfoCount }}</dd>
+              </div>
+              <div v-if="traceAuditAnomalyFailedStepCount !== null">
+                <dt>失败步骤</dt>
+                <dd>失败步骤 {{ traceAuditAnomalyFailedStepCount }}</dd>
+              </div>
+              <div v-if="traceAuditAnomalyFailedTraceCount !== null">
+                <dt>失败 Trace</dt>
+                <dd>失败 Trace {{ traceAuditAnomalyFailedTraceCount }}</dd>
+              </div>
+              <div v-if="traceAuditAnomalyMissingTraceCount !== null">
+                <dt>缺 Trace</dt>
+                <dd>缺 Trace {{ traceAuditAnomalyMissingTraceCount }}</dd>
+              </div>
+              <div v-if="traceAuditAnomalyUnmatchedPlanCount !== null">
+                <dt>未执行计划</dt>
+                <dd>未执行计划 {{ traceAuditAnomalyUnmatchedPlanCount }}</dd>
+              </div>
+              <div v-if="traceAuditAnomalyMissingResultMessage">
+                <dt>结果消息</dt>
+                <dd>缺结果消息</dd>
+              </div>
+              <div v-if="traceAuditAnomalyTruncatedContextCount !== null">
+                <dt>截断上下文</dt>
+                <dd>截断上下文 {{ traceAuditAnomalyTruncatedContextCount }}</dd>
+              </div>
+            </dl>
+            <ul
+              v-if="traceAuditAnomalyIssueRows.length"
+              class="agent-run-drawer__planner-signals"
+            >
+              <li
+                v-for="row in traceAuditAnomalyIssueRows"
+                :key="row.key"
+              >
+                <strong>{{ row.label }}</strong>
+                <span v-if="row.severityLabel">{{ row.severityLabel }}</span>
+                <span v-if="row.meta">{{ row.meta }}</span>
+                <span v-if="row.title">{{ row.title }}</span>
+              </li>
+            </ul>
+          </div>
+          <div
             v-if="hasTraceAuditIntentChain"
             class="agent-run-drawer__trace-audit-intent"
           >
@@ -4677,6 +4823,20 @@ function missingDependencyTool(value: Record<string, unknown>) {
 }
 
 .agent-run-drawer__trace-audit-intent > strong {
+  color: var(--color-text-primary);
+}
+
+.agent-run-drawer__trace-audit-anomaly {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-white);
+  font-size: var(--text-xs);
+}
+
+.agent-run-drawer__trace-audit-anomaly > strong {
   color: var(--color-text-primary);
 }
 
