@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections import Counter
 from typing import Any
 
 from fastapi import HTTPException
@@ -18,6 +19,7 @@ from app.services.writing_agent.control_plane_readiness_projection import (
 )
 
 AGENT_TRACE_AUDIT_VERSION = "phase73.agent_trace_audit.v1"
+TRACE_ANOMALY_TRENDS_VERSION = "phase74.agent_trace_anomaly_trends.v1"
 DEFAULT_AUDIT_LIMIT = 20
 MAX_AUDIT_LIMIT = 100
 TRACE_EXPECTED_TOOL_NAMES = {
@@ -35,6 +37,77 @@ TRACE_EXPECTED_TOOL_NAMES = {
     "review_chapter",
     "batch_post_generation_review",
 }
+
+
+def inspect_agent_trace_anomaly_trends(
+    db: Session,
+    project_id: str,
+    *,
+    limit: int | None = None,
+    chapter_index: int | None = None,
+) -> dict[str, Any]:
+    _require_project(db, project_id)
+    clamped_limit = _clamp_limit(limit)
+    runs = _recent_runs_for_anomaly_trends(db, project_id, limit=clamped_limit, chapter_index=chapter_index)
+    run_rows: list[dict[str, Any]] = []
+    severity_counts: Counter[str] = Counter()
+    issue_counts: Counter[str] = Counter()
+    affected_run_count = 0
+
+    for index, run in enumerate(runs, start=1):
+        audit_output = inspect_agent_trace_audit(db, project_id, run_id=run.id, limit=MAX_AUDIT_LIMIT)
+        anomaly = audit_output.get("anomaly_summary") if isinstance(audit_output.get("anomaly_summary"), dict) else {}
+        issue_count = _non_negative_int(anomaly.get("issue_count"))
+        if issue_count <= 0:
+            continue
+        affected_run_count += 1
+        run_severity_counts = _severity_counts(anomaly.get("severity_counts"))
+        severity_counts.update(run_severity_counts)
+        run_issue_counts = _issue_counts(anomaly.get("issues"))
+        issue_counts.update(run_issue_counts)
+        run_rows.append(
+            {
+                "run_index": index,
+                "goal": str(run.goal or ""),
+                "status": str(run.status or ""),
+                "entrypoint": str(run.entrypoint or ""),
+                "chapter_index": _anomaly_run_chapter_index(anomaly, audit_output.get("steps")),
+                "anomaly_status": str(anomaly.get("status") or "clear"),
+                "issue_count": issue_count,
+                "critical_issue_count": run_severity_counts["critical"],
+                "warning_issue_count": run_severity_counts["warning"],
+                "info_issue_count": run_severity_counts["info"],
+                "top_issue_codes": _top_issue_codes(run_issue_counts),
+            }
+        )
+
+    trend = {
+        "status": _trend_status(severity_counts),
+        "run_count": len(runs),
+        "affected_run_count": affected_run_count,
+        "issue_count": sum(issue_counts.values()),
+        "severity_counts": {
+            "critical": severity_counts["critical"],
+            "warning": severity_counts["warning"],
+            "info": severity_counts["info"],
+        },
+        "issue_counts": dict(sorted(issue_counts.items())),
+        "dominant_issue_code": _dominant_issue_code(issue_counts),
+    }
+    return _json_safe_output(
+        {
+            "status": "completed",
+            "project_id": project_id,
+            "filters": {
+                "limit": clamped_limit,
+                "chapter_index": chapter_index,
+            },
+            "trend": trend,
+            "runs": run_rows,
+            "recommended_next_tools": _trace_anomaly_trend_recommendations(severity_counts),
+            "trace": _anomaly_trends_trace_metadata(),
+        }
+    )
 
 
 def inspect_agent_trace_audit(
@@ -174,6 +247,24 @@ def inspect_agent_trace_audit(
             "trace": _audit_trace_metadata(),
         }
     )
+
+
+def _recent_runs_for_anomaly_trends(
+    db: Session,
+    project_id: str,
+    *,
+    limit: int,
+    chapter_index: int | None,
+) -> list[WritingAgentRun]:
+    query = db.query(WritingAgentRun).filter(WritingAgentRun.project_id == project_id)
+    if chapter_index is not None:
+        run_ids = (
+            db.query(WritingAgentStep.run_id)
+            .filter(WritingAgentStep.project_id == project_id, WritingAgentStep.chapter_index == chapter_index)
+            .distinct()
+        )
+        query = query.filter(WritingAgentRun.id.in_(run_ids))
+    return query.order_by(WritingAgentRun.created_at.desc(), WritingAgentRun.id.desc()).limit(limit).all()
 
 
 def _require_project(db: Session, project_id: str) -> None:
@@ -951,6 +1042,62 @@ def _trace_anomaly_summary(
     }
 
 
+def _severity_counts(value: Any) -> Counter[str]:
+    counts: Counter[str] = Counter()
+    source = value if isinstance(value, dict) else {}
+    for severity in ("critical", "warning", "info"):
+        counts[severity] = _non_negative_int(source.get(severity))
+    return counts
+
+
+def _issue_counts(issues: Any) -> Counter[str]:
+    counts: Counter[str] = Counter()
+    for issue in _record_list(issues):
+        code = str(issue.get("code") or "").strip()
+        if code:
+            counts[code] += 1
+    return counts
+
+
+def _top_issue_codes(counts: Counter[str]) -> list[str]:
+    return [code for code, _count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))[:5]]
+
+
+def _dominant_issue_code(counts: Counter[str]) -> str:
+    top_codes = _top_issue_codes(counts)
+    return top_codes[0] if top_codes else ""
+
+
+def _trend_status(severity_counts: Counter[str]) -> str:
+    if severity_counts["critical"] > 0:
+        return "failed"
+    if severity_counts["warning"] > 0:
+        return "needs_attention"
+    if severity_counts["info"] > 0:
+        return "informational"
+    return "clear"
+
+
+def _trace_anomaly_trend_recommendations(severity_counts: Counter[str]) -> list[str]:
+    if severity_counts["critical"] > 0:
+        return ["inspect_agent_trace_audit", "plan_recovery_tools"]
+    if severity_counts["warning"] > 0 or severity_counts["info"] > 0:
+        return ["inspect_agent_trace_audit"]
+    return []
+
+
+def _anomaly_run_chapter_index(anomaly: dict[str, Any], steps: Any) -> int | None:
+    for issue in _record_list(anomaly.get("issues")):
+        chapter_index = _optional_int(issue.get("chapter_index"))
+        if chapter_index is not None:
+            return chapter_index
+    for step in _record_list(steps):
+        chapter_index = _optional_int(step.get("chapter_index"))
+        if chapter_index is not None:
+            return chapter_index
+    return None
+
+
 def _step_expected_trace(step: WritingAgentStep) -> bool:
     return str(step.tool_name or "").strip() in TRACE_EXPECTED_TOOL_NAMES
 
@@ -1135,6 +1282,14 @@ def _audit_trace_metadata() -> dict[str, Any]:
     return {
         "source": "inspect_agent_trace_audit",
         "version": AGENT_TRACE_AUDIT_VERSION,
+        "mutability": "read",
+    }
+
+
+def _anomaly_trends_trace_metadata() -> dict[str, Any]:
+    return {
+        "source": "inspect_agent_trace_anomaly_trends",
+        "version": TRACE_ANOMALY_TRENDS_VERSION,
         "mutability": "read",
     }
 

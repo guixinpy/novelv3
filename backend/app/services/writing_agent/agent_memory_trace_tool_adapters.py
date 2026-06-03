@@ -22,6 +22,20 @@ def _inspect_agent_trace_audit(context: WritingAgentToolContext, tool: WritingAg
     )
 
 
+def _inspect_agent_trace_anomaly_trends(
+    context: WritingAgentToolContext,
+    tool: WritingAgentToolRequest,
+) -> dict[str, Any]:
+    from app.services.writing_agent.agent_trace_audit import inspect_agent_trace_anomaly_trends
+
+    return inspect_agent_trace_anomaly_trends(
+        context.db,
+        context.project_id,
+        limit=_optional_int(tool.params.get("limit")),
+        chapter_index=_optional_int(tool.params.get("chapter_index")),
+    )
+
+
 def _inspect_agent_memory_route(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
     from app.services.writing_agent.agent_memory_route import inspect_agent_memory_route
 
@@ -215,6 +229,12 @@ AGENT_MEMORY_TRACE_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
     "inspect_agent_trace_audit": WritingAgentToolAdapter(
         "inspect_agent_trace_audit",
         _inspect_agent_trace_audit,
+        category="trace",
+        mutability="read",
+    ),
+    "inspect_agent_trace_anomaly_trends": WritingAgentToolAdapter(
+        "inspect_agent_trace_anomaly_trends",
+        _inspect_agent_trace_anomaly_trends,
         category="trace",
         mutability="read",
     ),

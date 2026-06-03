@@ -152,6 +152,7 @@
 - [x] Agent Job Projection 只读诊断意图：自然语言“检查第3章 generate_chapter failed 任务队列 limit 8”可投影为 inspect_agent_job_projection 只读工具计划
 - [x] Chapter Conflict Recovery 只读恢复计划意图：自然语言“规划第3章章节冲突恢复”可投影为 plan_chapter_conflict_recovery 只读工具计划
 - [x] Trace Audit 只读审计意图：自然语言“检查 run trace/执行链路/失败原因”可投影为 inspect_agent_trace_audit 只读工具计划，Trace Audit run 可在 AgentRunDrawer 展示安全摘要
+- [x] Trace Anomaly Trends 只读审计意图：自然语言“检查第4章 Trace 异常趋势 limit 9”可投影为 inspect_agent_trace_anomaly_trends 只读工具计划，Trace Anomaly Trends run 可在 AgentRunDrawer 展示安全摘要
 - [x] Write Gate Coverage 只读审计意图：自然语言“检查写入工具的审批门禁覆盖”可投影为 inspect_agent_write_gate_coverage 只读工具计划
 - [x] Legacy Hermes Migration 只读审计意图：自然语言“检查 legacy Hermes action 迁移路线”可投影为 inspect_legacy_hermes_action_migration 只读工具计划
 - [x] Route Approval Opt-in 只读规划意图：自然语言“规划 pending-action-123 的 Agent 审批链 opt-in”可投影为 plan_agent_route_approval_opt_in 只读工具计划
@@ -298,6 +299,7 @@
 - [x] 前端 Trace 抽屉：ModelTraceDrawer + modelTraces store
 - [x] Trace 脱敏：API key、Bearer token、password 等自动脱敏
 - [x] Trace Audit 自然语言只读入口：自然语言“检查 run trace/执行链路/失败原因”可直接规划到 inspect_agent_trace_audit，后端可输出安全 intent_chain 摘要（意图规则、计划工具、执行匹配）、end_to_end_chain 摘要（意图→计划→执行→模型 Trace→结果消息覆盖）和 anomaly_summary 摘要（失败步骤、失败模型 Trace、缺 Trace 绑定、未执行计划、缺结果消息、截断上下文），AgentRunDrawer 可展示安全摘要、intent_chain 意图链路、端到端链路、异常摘要、失败原因、推荐动作、事件链、上下文块和模型 Trace 概览
+- [x] Trace Anomaly Trends 自然语言只读入口：自然语言“检查第 N 章 Trace 异常趋势 limit <n>”可直接规划到 inspect_agent_trace_anomaly_trends，后端可聚合最近 run 的受影响数量、严重度、问题类型、主要问题和推荐后续，AgentRunDrawer 可展示安全摘要并隐藏 raw run/step/trace/context 内部字段
 - [x] 基础上下文压缩：对话历史长度限制
 - [x] 长篇上下文摘要：longform_context_summary
 - [x] ContextCompressor 基础计划投影：context pressure 下输出头尾保护预修剪、target_max_chars 和 summarize_longform_context 工具计划
@@ -319,7 +321,7 @@
 | P1 | 智能上下文压缩（借鉴 hermes-agent） | 预修剪 + LLM 摘要 + 头尾保护 | 🟡 进行中（preflight persistent reuse） |
 | P2 | 端到端 Trace 链路 | 从用户意图→计划→工具调用→模型调用→结果的一条链 | ✅ 已完成（Trace Audit end_to_end_chain + Drawer 覆盖意图→计划→执行→模型 Trace→结果消息） |
 | P3 | 上下文预算管理 | 可视化 Token 使用量 + 接近上限时的警告 | 🟡 进行中（preflight intent + Drawer budget warning） |
-| P4 | Trace 聚合异常检测 | 单 run 异常摘要 + 跨 run 趋势和异常统计 | 🟡 进行中（单 run anomaly_summary + Drawer 已完成；跨 run 聚合待补） |
+| P4 | Trace 聚合异常检测 | 单 run 异常摘要 + 跨 run 趋势和异常统计 | 🟡 进行中（单 run anomaly_summary + 最近 run anomaly trends + Drawer 已完成；长期基线/阈值待补） |
 
 ### 阻塞项
 
@@ -327,6 +329,8 @@
 
 ### 最近完成
 
+- 2026-06-03: `inspect_agent_trace_anomaly_trends` 新增最近 run 安全异常趋势聚合，按可选 `chapter_index` 与 `limit` 汇总受影响 run、严重/警告/提示计数、问题类型计数、主要问题和推荐后续工具；`IntentRouter` / `plan_dialog_intent_agent_run` 可将“检查第4章 Trace 异常趋势 limit 9”规划为无需审批的只读工具计划，并由 `recovery_worker` 执行。
+- 2026-06-03: `AgentRunDrawer` 新增 Trace Anomaly Trends 安全投影，展示趋势状态、章节、运行/受影响/问题/严重度计数、主要问题、问题类型、受影响 run 摘要和推荐下一步工具，同时隐藏 project id、run/step/trace id、context key 与原始上下文字段。
 - 2026-06-03: `inspect_agent_trace_audit` 新增 `anomaly_summary` 单 run 安全异常摘要，聚合 failed/blocked step、failed model trace、缺 Trace 绑定、未执行计划工具、缺 result_message 和截断上下文；`AgentRunDrawer` 新增异常摘要展示，同时隐藏 run/step/trace/message/source id、context key 与原始上下文正文。
 - 2026-06-03: `inspect_agent_trace_audit` 新增 `end_to_end_chain` 安全摘要，按 intent、planned_tools、executed_tools、model_traces、result_message 五段输出覆盖状态、计数和 result action/status；`AgentRunDrawer` 新增端到端链路展示，同时隐藏 trace/message/run/step id 和原始参数。
 - 2026-06-03: `AgentRunDrawer` 的 Trace Audit 安全投影新增 `intent_chain` 意图链路摘要，展示规则、intent class、章节、planned/executed/matched 计数和计划工具状态，同时隐藏 planner source、原始 params、source_plan_id、run/step 内部 id。
@@ -358,6 +362,7 @@
 - [x] AgentRunDrawer 执行计划进度摘要：展示计划工具数、已执行、已完成、进行中、下一步工具和逐项计划工具状态
 - [x] AgentRunDrawer Memory Tree 投影：展示 inspect_agent_memory_tree 的状态、查询条件、导航模式、推荐展开数、节点列表和项目级会话浏览历史，并可通过自由查询、推荐 drilldown 或返回节点展开发起只读浏览 run；Hermes 已注册 Memory 主工作区，子导航常驻 Memory Tree 面板可切入工作区、直接提交只读搜索 run、按 parent/children 展示当前返回节点层级树、从结果节点发起只读展开并显示当前展开节点，也可从历史入口重新打开对应 run；工作区中带 chapter_index 的节点可跳转并加载正文章节，也可从安全节点标签发起 Retrieval 证据只读 run、Longform Context Summary 只读 run、Memory Activation Plan 只读 run、Knowledge Base Route 只读 run、Post Chapter Memory Capture 写后记忆沉淀规划 run、Trace Audit 章节审计 run 或 Athena 世界模型路由 run；Retrieval Context run、Longform Context Summary run、Post Chapter Memory Capture run、Memory Activation Plan run、Memory Route run、Knowledge Base Route run、Trace Audit run、World Model Route run、World Model Proposal Review run 与 World Model Proposal Resolution Plan run 可在 Drawer 展示安全摘要；写后记忆捕获候选可在 Drawer 中继续准备知识库候选写入审批，并在待审批写入区显示候选标题、触发已审批执行 payload，执行成功后展示写入结果和推荐下一步工具，并可继续只读检查 Knowledge Base Route
 - [x] AgentRunDrawer preflight 上下文预算投影：展示 preflight_writing 的 context_compression 预算状态、使用率、压缩 preview、推荐后续和压力 issue，同时隐藏 payload/trace 内部字段
+- [x] AgentRunDrawer Trace Anomaly Trends 投影：展示 inspect_agent_trace_anomaly_trends 的趋势状态、运行/受影响/问题/严重度计数、问题类型、受影响 run 摘要和推荐后续，同时隐藏 project/run/step/trace/context 内部字段
 - [x] Athena 世界模型面板（实体 + 提案审阅）
 - [x] Model Trace 抽屉
 - [x] 前端请求隔离（request lane + project scope version）
@@ -368,11 +373,12 @@
 | 优先级 | 任务 | 完成标准 | 状态 |
 |--------|------|---------|------|
 | P1 | Agent 执行计划可视化 | 对话中展示当前执行计划、工具调用进度 | 🟡 进行中（Drawer per-tool progress + followup pending confirmation fallback） |
-| P2 | Memory Tree 可视化 | 前端展示分层摘要树、支持浏览和搜索 | 🟡 进行中（Drawer read-only projection + free search + recommended/node drilldown + project-scoped history + Hermes Memory workspace + subnav search/history/hierarchical results/expand state + chapter/retrieval drawer projection/context-summary drawer projection/context-compression drawer projection/post-capture drawer projection/memory-route drawer projection/memory-activation drawer projection/knowledge-base/trace audit drawer projection/world model route drawer projection/world proposal review drawer projection/world proposal resolution drawer projection；更完整树工作区能力待补） |
-| P3 | 面板整合 | Athena 面板、Memory 面板、Trace 面板的统一导航 | 🟡 进行中（Memory workspace → content/retrieval drawer projection/longform context summary drawer projection/context compression drawer projection/post chapter memory capture drawer projection/memory route drawer projection/memory activation drawer projection/knowledge base route drawer projection/knowledge candidate prepare approval/execute approval payload/execution result projection/knowledge base route verification/trace audit drawer projection/world model route drawer projection/world proposal review drawer projection/world proposal resolution drawer projection；更完整导航体验待补） |
+| P2 | Memory Tree 可视化 | 前端展示分层摘要树、支持浏览和搜索 | 🟡 进行中（Drawer read-only projection + free search + recommended/node drilldown + project-scoped history + Hermes Memory workspace + subnav search/history/hierarchical results/expand state + chapter/retrieval drawer projection/context-summary drawer projection/context-compression drawer projection/post-capture drawer projection/memory-route drawer projection/memory-activation drawer projection/knowledge-base/trace audit/anomaly trends drawer projection/world model route drawer projection/world proposal review drawer projection/world proposal resolution drawer projection；更完整树工作区能力待补） |
+| P3 | 面板整合 | Athena 面板、Memory 面板、Trace 面板的统一导航 | 🟡 进行中（Memory workspace → content/retrieval drawer projection/longform context summary drawer projection/context compression drawer projection/post chapter memory capture drawer projection/memory route drawer projection/memory activation drawer projection/knowledge base route drawer projection/knowledge candidate prepare approval/execute approval payload/execution result projection/knowledge base route verification/trace audit/anomaly trends drawer projection/world model route drawer projection/world proposal review drawer projection/world proposal resolution drawer projection；更完整导航体验待补） |
 
 ### 最近完成
 
+- 2026-06-03: `AgentRunDrawer` 新增 Trace Anomaly Trends 安全投影，消费 `inspect_agent_trace_anomaly_trends` 输出并展示趋势状态、章节、运行/受影响/问题/严重度计数、主要问题、问题类型、受影响 run 摘要和推荐后续工具，同时隐藏 project id、run/step/trace id、context key 和原始上下文字段。
 - 2026-06-03: `AgentRunDrawer` 的 Trace Audit 安全投影新增 `anomaly_summary` 异常摘要区，展示单 run 的问题数、严重/警告/提示计数、失败步骤、失败 Trace、缺 Trace、未执行计划、缺结果消息、截断上下文和最多 8 条安全问题摘要，同时隐藏 run/step/trace/message/source id、context key 和上下文正文。
 - 2026-06-03: `AgentRunDrawer` 新增 preflight 上下文预算安全投影，消费 `preflight_writing` 输出的 context_compression 检查和脱敏 preview，展示预算压力、目标预算、压缩字符、推荐工具和压力 issue，同时隐藏压缩正文、持久摘要正文、scope key、trace/version 与内部 suggested params。
 - 2026-06-03: `AgentRunDrawer` 新增 ContextCompressor Projection 安全投影，消费 `inspect_agent_context_compression_projection` 输出并展示状态、章节、粒度、保护策略、上下文字符/预算/使用率、截断分区、Guard 失败次数、目标预算、头尾保护计数、预修剪计数、LLM 摘要需求、推荐工具和风险摘要，同时隐藏 project id、memory_provenance、trace/version、source_ref/source_type/source id 和 payload params。

@@ -90,6 +90,7 @@ def test_agent_memory_trace_tool_descriptors_live_in_dedicated_module():
 
     assert names == [
         "inspect_agent_trace_audit",
+        "inspect_agent_trace_anomaly_trends",
         "inspect_agent_memory_route",
         "search_agent_retrieval_context",
         "summarize_longform_context",
@@ -983,6 +984,20 @@ def test_agent_tool_registry_includes_inspect_agent_job_projection():
     assert descriptor.input_schema["properties"]["limit"]["minimum"] == 1
     assert "inspect_agent_job_projection" in allowed_tool_names()
     assert "inspect_agent_job_projection" in non_blocking_report_tool_names()
+
+
+def test_agent_tool_registry_includes_inspect_agent_trace_anomaly_trends():
+    descriptor = get_agent_tool_descriptor("inspect_agent_trace_anomaly_trends")
+
+    assert descriptor is not None
+    assert descriptor.internal is True
+    assert descriptor.non_blocking_report is True
+    assert descriptor.category == "trace"
+    assert descriptor.target_type == "agent_trace_anomaly_trends"
+    assert descriptor.input_schema["properties"]["limit"]["minimum"] == 1
+    assert descriptor.input_schema["properties"]["chapter_index"] == {"type": "integer", "minimum": 1}
+    assert "inspect_agent_trace_anomaly_trends" in allowed_tool_names()
+    assert "inspect_agent_trace_anomaly_trends" in non_blocking_report_tool_names()
 
 
 def test_agent_tool_registry_inspect_agent_job_projection_accepts_chapter_index():

@@ -4682,6 +4682,124 @@ describe('AgentRunDrawer', () => {
     expect(text).not.toContain('这段上下文不应进入异常摘要')
   })
 
+  it('renders trace anomaly trends without raw run internals', () => {
+    mount(AgentRunDrawer, {
+      attachTo: document.body,
+      props: {
+        open: true,
+        loading: false,
+        error: '',
+        run: {
+          id: 'drawer-trace-trends-run',
+          project_id: 'project-1',
+          goal: '检查 Trace 异常趋势',
+          status: 'success',
+          entrypoint: 'dialog_auto_plan',
+          input: {},
+          output: null,
+          error: null,
+          steps: [
+            {
+              id: 'step-trace-trends-wrapper',
+              run_id: 'drawer-trace-trends-run',
+              project_id: 'project-1',
+              step_index: 1,
+              tool_name: 'inspect_agent_trace_anomaly_trends',
+              status: 'success',
+              input: { limit: 9, chapter_index: 4 },
+              output: {
+                status: 'completed',
+                filters: { limit: 9, chapter_index: 4 },
+                trend: {
+                  status: 'failed',
+                  run_count: 3,
+                  affected_run_count: 2,
+                  issue_count: 6,
+                  severity_counts: { critical: 2, warning: 3, info: 1 },
+                  issue_counts: {
+                    failed_model_trace: 1,
+                    failed_tool_step: 1,
+                    missing_trace_binding: 1,
+                    missing_result_message: 1,
+                    planned_tool_not_executed: 1,
+                    truncated_context_block: 1,
+                  },
+                  dominant_issue_code: 'failed_model_trace',
+                  project_id: 'project-secret-id',
+                },
+                runs: [
+                  {
+                    run_index: 1,
+                    goal: '生成第5章',
+                    status: 'success',
+                    entrypoint: 'dialog_auto_plan',
+                    chapter_index: 5,
+                    anomaly_status: 'failed',
+                    issue_count: 5,
+                    critical_issue_count: 2,
+                    warning_issue_count: 2,
+                    info_issue_count: 1,
+                    top_issue_codes: ['failed_model_trace', 'failed_tool_step'],
+                    run_id: 'run-trend-secret-id',
+                    trace_id: 'trace-trend-secret-id',
+                  },
+                  {
+                    run_index: 2,
+                    goal: '预检第4章',
+                    status: 'success',
+                    entrypoint: 'dialog_auto_plan',
+                    chapter_index: 4,
+                    anomaly_status: 'needs_attention',
+                    issue_count: 1,
+                    critical_issue_count: 0,
+                    warning_issue_count: 1,
+                    info_issue_count: 0,
+                    top_issue_codes: ['missing_trace_binding'],
+                    step_id: 'step-trend-secret-id',
+                  },
+                ],
+                recommended_next_tools: ['inspect_agent_trace_audit', 'plan_recovery_tools'],
+                trace: {
+                  source: 'inspect_agent_trace_anomaly_trends',
+                  version: 'phase74.agent_trace_anomaly_trends.v1',
+                  mutability: 'read',
+                  context_key: 'trend-secret-context-key',
+                },
+              },
+            },
+          ],
+        },
+      },
+    })
+
+    const text = document.body.textContent || ''
+    expect(text).toContain('Trace 异常趋势')
+    expect(text).toContain('失败')
+    expect(text).toContain('第4章')
+    expect(text).toContain('运行 3')
+    expect(text).toContain('受影响 2')
+    expect(text).toContain('问题 6')
+    expect(text).toContain('严重 2')
+    expect(text).toContain('警告 3')
+    expect(text).toContain('提示 1')
+    expect(text).toContain('主要问题')
+    expect(text).toContain('模型 Trace 失败')
+    expect(text).toContain('工具步骤失败')
+    expect(text).toContain('缺少 Trace 绑定')
+    expect(text).toContain('结果消息缺失')
+    expect(text).toContain('计划工具未执行')
+    expect(text).toContain('上下文块已截断')
+    expect(text).toContain('生成第5章')
+    expect(text).toContain('预检第4章')
+    expect(text).toContain('inspect_agent_trace_audit')
+    expect(text).toContain('plan_recovery_tools')
+    expect(text).not.toContain('run-trend-secret-id')
+    expect(text).not.toContain('trace-trend-secret-id')
+    expect(text).not.toContain('step-trend-secret-id')
+    expect(text).not.toContain('project-secret-id')
+    expect(text).not.toContain('trend-secret-context-key')
+  })
+
   it('does not render route upgrade apply when contract preview is not confirmable', () => {
     mount(AgentRunDrawer, {
       attachTo: document.body,

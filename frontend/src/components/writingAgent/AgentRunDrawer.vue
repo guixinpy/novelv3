@@ -910,6 +910,7 @@ const worldModelResolutionStepRows = computed(() => (
     .filter((row) => Boolean(row.title || row.meta || row.reason))
 ))
 const traceAuditOutput = computed(() => latestToolOutput('inspect_agent_trace_audit'))
+const traceAnomalyTrendsOutput = computed(() => latestToolOutput('inspect_agent_trace_anomaly_trends'))
 const traceAudit = computed(() => recordValue(traceAuditOutput.value?.audit))
 const traceAuditRun = computed(() => recordValue(traceAuditOutput.value?.run))
 const traceAuditFailure = computed(() => recordValue(traceAuditOutput.value?.failure))
@@ -921,6 +922,11 @@ const traceAuditSteps = computed(() => recordList(traceAuditOutput.value?.steps)
 const traceAuditTraces = computed(() => recordList(traceAuditOutput.value?.traces))
 const traceAuditEventChain = computed(() => recordList(traceAuditOutput.value?.event_chain))
 const traceAuditRecommendedActions = computed(() => recordList(traceAuditOutput.value?.recommended_actions))
+const traceAnomalyTrend = computed(() => recordValue(traceAnomalyTrendsOutput.value?.trend))
+const traceAnomalyTrendFilters = computed(() => recordValue(traceAnomalyTrendsOutput.value?.filters))
+const traceAnomalyTrendIssueCounts = computed(() => recordValue(traceAnomalyTrend.value.issue_counts))
+const traceAnomalyTrendSeverityCounts = computed(() => recordValue(traceAnomalyTrend.value.severity_counts))
+const traceAnomalyTrendRecommendedTools = computed(() => stringList(traceAnomalyTrendsOutput.value?.recommended_next_tools))
 const traceAuditRunGoal = computed(() => safeTraceAuditText(traceAuditRun.value.goal))
 const traceAuditStepCount = computed(() => numberValue(traceAudit.value.step_count))
 const traceAuditTraceCount = computed(() => numberValue(traceAudit.value.trace_count))
@@ -962,6 +968,17 @@ const traceAuditAnomalyUnmatchedPlanCount = computed(() => (
 const traceAuditAnomalyMissingResultMessage = computed(() => traceAuditAnomalySummary.value.missing_result_message === true)
 const traceAuditAnomalyTruncatedContextCount = computed(() => (
   numberValue(traceAuditAnomalySummary.value.truncated_context_block_count)
+))
+const traceAnomalyTrendStatus = computed(() => stringValue(traceAnomalyTrend.value.status))
+const traceAnomalyTrendChapterLabel = computed(() => chapterIndexLabel(traceAnomalyTrendFilters.value.chapter_index))
+const traceAnomalyTrendRunCount = computed(() => numberValue(traceAnomalyTrend.value.run_count))
+const traceAnomalyTrendAffectedRunCount = computed(() => numberValue(traceAnomalyTrend.value.affected_run_count))
+const traceAnomalyTrendIssueCount = computed(() => numberValue(traceAnomalyTrend.value.issue_count))
+const traceAnomalyTrendCriticalCount = computed(() => numberValue(traceAnomalyTrendSeverityCounts.value.critical))
+const traceAnomalyTrendWarningCount = computed(() => numberValue(traceAnomalyTrendSeverityCounts.value.warning))
+const traceAnomalyTrendInfoCount = computed(() => numberValue(traceAnomalyTrendSeverityCounts.value.info))
+const traceAnomalyTrendDominantIssueLabel = computed(() => (
+  traceAuditAnomalyCodeLabel(traceAnomalyTrend.value.dominant_issue_code)
 ))
 const traceAuditFailureTool = computed(() => safeTraceAuditText(traceAuditFailure.value.tool_name))
 const traceAuditFailureReason = computed(() => safeTraceAuditText(traceAuditFailure.value.reason_code))
@@ -1028,6 +1045,48 @@ const traceAuditAnomalyIssueRows = computed(() => (
       }
     })
     .filter((row) => Boolean(row.label || row.severityLabel || row.meta || row.title))
+))
+const traceAnomalyTrendIssueRows = computed(() => (
+  Object.entries(traceAnomalyTrendIssueCounts.value)
+    .map(([code, count]) => ({
+      key: `trace-anomaly-trend-issue:${code}`,
+      label: traceAuditAnomalyCodeLabel(code),
+      count: numberValue(count),
+    }))
+    .filter((row) => Boolean(row.label && row.count !== null))
+    .sort((left, right) => (right.count ?? 0) - (left.count ?? 0) || left.label.localeCompare(right.label))
+))
+const traceAnomalyTrendRunRows = computed(() => (
+  recordList(traceAnomalyTrendsOutput.value?.runs)
+    .slice(0, 6)
+    .map((run, index) => {
+      const runIndex = numberValue(run.run_index)
+      const issueCount = numberValue(run.issue_count)
+      const criticalCount = numberValue(run.critical_issue_count)
+      const warningCount = numberValue(run.warning_issue_count)
+      const infoCount = numberValue(run.info_issue_count)
+      const topIssues = stringList(run.top_issue_codes)
+        .map((code) => traceAuditAnomalyCodeLabel(code))
+        .filter(Boolean)
+      return {
+        key: `trace-anomaly-trend-run:${runIndex ?? index}`,
+        title: [runIndex !== null ? `#${runIndex}` : '', safeTraceAuditText(run.goal) || 'Agent run']
+          .filter(Boolean)
+          .join(' '),
+        statusLabel: traceAuditAnomalyStatusLabel(run.anomaly_status),
+        meta: [
+          chapterIndexLabel(run.chapter_index),
+          issueCount !== null ? `问题 ${issueCount}` : '',
+          criticalCount !== null ? `严重 ${criticalCount}` : '',
+          warningCount !== null ? `警告 ${warningCount}` : '',
+          infoCount !== null ? `提示 ${infoCount}` : '',
+          safeTraceAuditText(run.entrypoint),
+          traceAuditStatusLabel(run.status),
+        ].filter(Boolean).join(' · '),
+        issueLabel: topIssues.join(' · '),
+      }
+    })
+    .filter((row) => Boolean(row.title || row.statusLabel || row.meta || row.issueLabel))
 ))
 const traceAuditStepRows = computed(() => (
   traceAuditSteps.value
@@ -1477,6 +1536,15 @@ const hasTraceAuditAnomalySummary = computed(() => Boolean(
   traceAuditAnomalyStatus.value ||
   traceAuditAnomalyIssueCount.value !== null ||
   traceAuditAnomalyIssueRows.value.length,
+))
+const hasTraceAnomalyTrendsProjection = computed(() => Boolean(
+  traceAnomalyTrendsOutput.value &&
+  (
+    traceAnomalyTrendStatus.value ||
+    traceAnomalyTrendRunCount.value !== null ||
+    traceAnomalyTrendIssueRows.value.length ||
+    traceAnomalyTrendRunRows.value.length
+  ),
 ))
 const hasKnowledgeBaseCandidateExecutionProjection = computed(() => Boolean(knowledgeBaseCandidateExecutionOutput.value))
 const hasMemoryTreeProjection = computed(() => Boolean(memoryTreeOutput.value))
@@ -3924,6 +3992,88 @@ function missingDependencyTool(value: Record<string, unknown>) {
         </section>
 
         <section
+          v-if="hasTraceAnomalyTrendsProjection"
+          class="agent-run-drawer__trace-anomaly-trends"
+          aria-label="Trace anomaly trends projection"
+        >
+          <h4>Trace 异常趋势</h4>
+          <dl class="agent-run-drawer__facts">
+            <div v-if="traceAnomalyTrendStatus">
+              <dt>状态</dt>
+              <dd>{{ traceAuditAnomalyStatusLabel(traceAnomalyTrendStatus) }}</dd>
+            </div>
+            <div v-if="traceAnomalyTrendChapterLabel">
+              <dt>章节</dt>
+              <dd>{{ traceAnomalyTrendChapterLabel }}</dd>
+            </div>
+            <div v-if="traceAnomalyTrendRunCount !== null">
+              <dt>运行</dt>
+              <dd>运行 {{ traceAnomalyTrendRunCount }}</dd>
+            </div>
+            <div v-if="traceAnomalyTrendAffectedRunCount !== null">
+              <dt>受影响</dt>
+              <dd>受影响 {{ traceAnomalyTrendAffectedRunCount }}</dd>
+            </div>
+            <div v-if="traceAnomalyTrendIssueCount !== null">
+              <dt>问题</dt>
+              <dd>问题 {{ traceAnomalyTrendIssueCount }}</dd>
+            </div>
+            <div v-if="traceAnomalyTrendCriticalCount !== null">
+              <dt>严重</dt>
+              <dd>严重 {{ traceAnomalyTrendCriticalCount }}</dd>
+            </div>
+            <div v-if="traceAnomalyTrendWarningCount !== null">
+              <dt>警告</dt>
+              <dd>警告 {{ traceAnomalyTrendWarningCount }}</dd>
+            </div>
+            <div v-if="traceAnomalyTrendInfoCount !== null">
+              <dt>提示</dt>
+              <dd>提示 {{ traceAnomalyTrendInfoCount }}</dd>
+            </div>
+            <div v-if="traceAnomalyTrendDominantIssueLabel">
+              <dt>主要问题</dt>
+              <dd>主要问题 {{ traceAnomalyTrendDominantIssueLabel }}</dd>
+            </div>
+          </dl>
+          <ul
+            v-if="traceAnomalyTrendIssueRows.length"
+            class="agent-run-drawer__execution-tools"
+          >
+            <li
+              v-for="row in traceAnomalyTrendIssueRows"
+              :key="row.key"
+            >
+              <span>{{ row.label }}</span>
+              <strong>{{ row.count }}</strong>
+            </li>
+          </ul>
+          <ul
+            v-if="traceAnomalyTrendRunRows.length"
+            class="agent-run-drawer__planner-signals"
+          >
+            <li
+              v-for="row in traceAnomalyTrendRunRows"
+              :key="row.key"
+            >
+              <strong>{{ row.title }}</strong>
+              <span>{{ [row.statusLabel, row.meta].filter(Boolean).join(' · ') }}</span>
+              <span v-if="row.issueLabel">{{ row.issueLabel }}</span>
+            </li>
+          </ul>
+          <ul
+            v-if="traceAnomalyTrendRecommendedTools.length"
+            class="agent-run-drawer__tools"
+          >
+            <li
+              v-for="toolName in traceAnomalyTrendRecommendedTools"
+              :key="toolName"
+            >
+              {{ toolName }}
+            </li>
+          </ul>
+        </section>
+
+        <section
           v-if="hasKnowledgeBaseCandidateExecutionProjection"
           class="agent-run-drawer__knowledge-candidate"
           aria-label="Knowledge base candidate execution"
@@ -4398,6 +4548,7 @@ function missingDependencyTool(value: Record<string, unknown>) {
 .agent-run-drawer__world-proposal-review h4,
 .agent-run-drawer__world-proposal-resolution h4,
 .agent-run-drawer__trace-audit h4,
+.agent-run-drawer__trace-anomaly-trends h4,
 .agent-run-drawer__knowledge-candidate h4,
 .agent-run-drawer__memory-tree h4,
 .agent-run-drawer__recovery h4,
@@ -4566,6 +4717,15 @@ function missingDependencyTool(value: Record<string, unknown>) {
 }
 
 .agent-run-drawer__trace-audit {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-secondary);
+}
+
+.agent-run-drawer__trace-anomaly-trends {
   display: grid;
   gap: var(--space-3);
   padding: var(--space-3);

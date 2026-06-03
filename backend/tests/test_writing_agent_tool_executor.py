@@ -116,6 +116,7 @@ def test_agent_memory_trace_tool_adapters_live_in_dedicated_module():
 
     assert names == [
         "inspect_agent_trace_audit",
+        "inspect_agent_trace_anomaly_trends",
         "inspect_agent_memory_route",
         "search_agent_retrieval_context",
         "summarize_longform_context",
@@ -132,6 +133,7 @@ def test_agent_memory_trace_tool_adapters_live_in_dedicated_module():
         "maintenance",
     }
     assert AGENT_MEMORY_TRACE_TOOL_ADAPTERS["inspect_agent_trace_audit"].mutability == "read"
+    assert AGENT_MEMORY_TRACE_TOOL_ADAPTERS["inspect_agent_trace_anomaly_trends"].mutability == "read"
     assert AGENT_MEMORY_TRACE_TOOL_ADAPTERS["search_agent_retrieval_context"].mutability == "read"
     assert AGENT_MEMORY_TRACE_TOOL_ADAPTERS["summarize_longform_context"].mutability == "read"
     assert AGENT_MEMORY_TRACE_TOOL_ADAPTERS["inspect_agent_context_compression_projection"].mutability == "read"
@@ -175,6 +177,7 @@ def test_agent_memory_trace_tool_adapter_builder_adds_maintenance_approval_chain
 
     assert names == [
         "inspect_agent_trace_audit",
+        "inspect_agent_trace_anomaly_trends",
         "inspect_agent_memory_route",
         "search_agent_retrieval_context",
         "summarize_longform_context",
@@ -2499,6 +2502,52 @@ async def test_tool_executor_handles_dialog_intent_agent_plan_for_agent_job_proj
 
 
 @pytest.mark.asyncio
+async def test_tool_executor_handles_dialog_intent_agent_plan_for_trace_anomaly_trends_read(db_session):
+    project = Project(name="Dialog Intent Trace Anomaly Trends Plan")
+    db_session.add(project)
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(
+            db=db_session,
+            project_id=project.id,
+            run_id="run-dialog-intent-trace-anomaly-trends-plan",
+        ),
+        WritingAgentToolRequest(
+            tool_name="plan_dialog_intent_agent_run",
+            params={"text": "检查第4章 Trace 异常趋势 limit 9"},
+        ),
+    )
+
+    expected_params = {"chapter_index": 4, "limit": 9}
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "completed"
+    assert result.output["intent_projection"]["rule_id"] == "trace_anomaly_trends_intent"
+    assert result.output["planner"]["intent_class"] == "inspect_trace_anomaly_trends"
+    assert result.output["planner"]["mapped_from_action_type"] == "inspect_trace_anomaly_trends"
+    assert result.output["planner"]["chapter_index"] == 4
+    assert result.output["plan"] == {
+        "status": "completed",
+        "intent_class": "inspect_trace_anomaly_trends",
+        "steps": [
+            {
+                "step_index": 1,
+                "tool_name": "inspect_agent_trace_anomaly_trends",
+                "params": expected_params,
+                "mutability": "read",
+                "requires_confirmation": False,
+            }
+        ],
+        "tools": [{"tool_name": "inspect_agent_trace_anomaly_trends", "params": expected_params}],
+        "approval_contract": {"status": "not_required", "write_steps": []},
+    }
+    assert result.output["tools"] == [{"tool_name": "inspect_agent_trace_anomaly_trends", "params": expected_params}]
+    assert result.output["approval_contract"] == {"status": "not_required", "write_steps": []}
+    assert result.output["trace"]["reason"] == "planned_direct_read_tool_from_intent_projection"
+
+
+@pytest.mark.asyncio
 async def test_tool_executor_handles_dialog_intent_agent_plan_for_agent_event_projection_read(db_session):
     project = Project(name="Dialog Intent Agent Event Projection Plan")
     db_session.add(project)
@@ -4034,8 +4083,8 @@ async def test_tool_executor_handles_inspect_agent_worker_dispatch(db_session):
     }
     assert result.output["route_registry"]["status"] == "passed"
     assert result.output["route_registry"]["summary"] == {
-        "routes": 51,
-        "ready_routes": 51,
+        "routes": 52,
+        "ready_routes": 52,
         "unrouted_allowed_tools": 0,
         "issues": 0,
     }
@@ -6769,6 +6818,18 @@ def test_tool_executor_exposes_inspect_agent_job_projection_adapter_metadata():
     }
 
 
+def test_tool_executor_exposes_inspect_agent_trace_anomaly_trends_adapter_metadata():
+    metadata = writing_agent_tool_adapter_metadata("inspect_agent_trace_anomaly_trends")
+
+    assert metadata == {
+        "tool_name": "inspect_agent_trace_anomaly_trends",
+        "adapter_type": "static",
+        "category": "trace",
+        "mutability": "read",
+        "handler_name": "_inspect_agent_trace_anomaly_trends",
+    }
+
+
 def test_tool_executor_exposes_inspect_agent_knowledge_base_route_adapter_metadata():
     metadata = writing_agent_tool_adapter_metadata("inspect_agent_knowledge_base_route")
 
@@ -8334,6 +8395,41 @@ async def test_tool_executor_dispatches_inspect_agent_trace_audit_adapter(db_ses
     assert result.handled is True
     assert result.output == {"status": "completed", "audit": {"status": "completed"}}
     assert calls == [(project.id, "run-1", 12, "task-1", 7)]
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_dispatches_inspect_agent_trace_anomaly_trends_adapter(db_session, monkeypatch):
+    project = Project(name="Executor Trace Anomaly Trends")
+    db_session.add(project)
+    db_session.commit()
+    calls: list[tuple[str, int | None, int | None]] = []
+
+    def fake_trends(
+        db,
+        project_id: str,
+        *,
+        limit: int | None,
+        chapter_index: int | None,
+    ):
+        calls.append((project_id, limit, chapter_index))
+        return {"status": "completed", "trend": {"status": "clear"}}
+
+    monkeypatch.setattr(
+        "app.services.writing_agent.agent_trace_audit.inspect_agent_trace_anomaly_trends",
+        fake_trends,
+    )
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(
+            tool_name="inspect_agent_trace_anomaly_trends",
+            params={"limit": "9", "chapter_index": "4"},
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output == {"status": "completed", "trend": {"status": "clear"}}
+    assert calls == [(project.id, 9, 4)]
 
 
 @pytest.mark.asyncio

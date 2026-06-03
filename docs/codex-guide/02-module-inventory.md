@@ -114,7 +114,7 @@ Agent 化缺口：
   ├── session.py                          # 对话 session 管理
   └── messages.py                         # 消息管理
 Agent 化缺口：
-  - 意图路由覆盖不完整（部分写作意图尚未接入；Agent Health、Control Plane 就绪度、Dialog Control Plane Projection、Mutation Fingerprints、Tool Contracts、Command Contracts、Slash Command Route、Dialog Route Projection、Intent Projection、Reference Alignment、Dogfood Evidence、Route Preference、Legacy Hermes Migration、Route Approval Opt-in/Pending Action approval opt-in、Memory Tree 只读浏览、Memory Route、Memory Activation Plan、World Model Route、World Model Proposal Review/Resolution Plan、Retrieval Context、Longform Context Summary、ContextCompressor 自检、dry-run payload 与 preflight 上下文预算预检、Worker Dispatch/孤儿恢复审计、Agent Job Projection、Chapter Conflict Recovery、Trace Audit 与 Write Gate Coverage 已可由自然语言投影到对应只读工具）
+  - 意图路由覆盖不完整（部分写作意图尚未接入；Agent Health、Control Plane 就绪度、Dialog Control Plane Projection、Mutation Fingerprints、Tool Contracts、Command Contracts、Slash Command Route、Dialog Route Projection、Intent Projection、Reference Alignment、Dogfood Evidence、Route Preference、Legacy Hermes Migration、Route Approval Opt-in/Pending Action approval opt-in、Memory Tree 只读浏览、Memory Route、Memory Activation Plan、World Model Route、World Model Proposal Review/Resolution Plan、Retrieval Context、Longform Context Summary、ContextCompressor 自检、dry-run payload 与 preflight 上下文预算预检、Worker Dispatch/孤儿恢复审计、Agent Job Projection、Chapter Conflict Recovery、Trace Audit、Trace Anomaly Trends 与 Write Gate Coverage 已可由自然语言投影到对应只读工具）
   - 缺少 LLM 驱动的"模糊意图"解析
   - pending_action 机制未与 Agent tool approval 统一；已有 legacy Hermes action 迁移路线图只读审计和 pending action route approval opt-in plan/preview/contract/prepare 自然语言只读链路，可先检查 setup/storyline/outline 生成动作的 Agent-native preview/approval/execute 覆盖，预览 pending_action 迁入 Agent 审批链的应用差异与确认契约，进入 Agent plan approval prepare，并在 recommended followup/dialog action result 视图中保留带双契约参数、仍需确认的 execute-with-approval handoff
 关联模块：WritingAgent、Athena、前端 Chat
@@ -292,7 +292,7 @@ Agent 化缺口：
 ### 4.2 Trace & Audit（追踪与审计）
 
 ```
-当前状态：L2-L3 AIModelCallTrace 记录每次 AI 调用的详细信息；inspect_agent_trace_audit 已可由自然语言只读意图触达，用于审计 run/step/model trace/context blocks，并输出安全 intent_chain 摘要（规则、意图、计划工具、执行匹配数）、end_to_end_chain 摘要（意图→计划→执行→模型 Trace→结果消息覆盖）和 anomaly_summary 摘要（失败步骤、失败模型 Trace、缺 Trace 绑定、未执行计划、缺结果消息、截断上下文）；AgentRunDrawer 可展示 Trace Audit 安全摘要、intent_chain 意图链路、端到端链路、异常摘要、失败原因、推荐动作、事件链、上下文块和模型 Trace 概览
+当前状态：L2-L3 AIModelCallTrace 记录每次 AI 调用的详细信息；inspect_agent_trace_audit 已可由自然语言只读意图触达，用于审计 run/step/model trace/context blocks，并输出安全 intent_chain 摘要（规则、意图、计划工具、执行匹配数）、end_to_end_chain 摘要（意图→计划→执行→模型 Trace→结果消息覆盖）和 anomaly_summary 摘要（失败步骤、失败模型 Trace、缺 Trace 绑定、未执行计划、缺结果消息、截断上下文）；inspect_agent_trace_anomaly_trends 已可按最近 run 和可选章节聚合异常状态、严重度、问题类型、受影响 run 摘要和推荐后续；AgentRunDrawer 可展示 Trace Audit 与 Trace Anomaly Trends 安全摘要、intent_chain 意图链路、端到端链路、异常摘要、失败原因、推荐动作、事件链、上下文块和模型 Trace 概览
 目标状态：L3 全链路 trace（用户意图→计划→工具调用→模型调用→结果）
 关键文件：
   backend/app/core/model_call_trace.py    # Model Call Trace 核心
@@ -307,7 +307,8 @@ Agent 化缺口：
 Agent 化缺口：
   - trace 已有"用户意图→计划工具→执行 step→模型 trace→result_message"的后端 end_to_end_chain 安全摘要和 Drawer 展示
   - trace 已有单 run anomaly_summary 安全异常摘要，可聚合失败步骤、失败模型 Trace、缺 Trace 绑定、未执行计划、缺结果消息和截断上下文，并在 Drawer 展示
-  - 仍缺跨 run 的 trace 聚合分析、趋势统计和异常检测
+  - trace 已有最近 run anomaly trends 安全聚合，可统计受影响 run、严重度、问题类型和推荐后续，并在 Drawer 展示
+  - 仍缺更长期的 trace 趋势基线、异常阈值和真实 dogfood 数据验证
 关联模块：所有 AI 调用模块
 ```
 
@@ -375,7 +376,7 @@ Agent 化缺口：
 ### 6.1 Chat View（对话视图）
 
 ```
-当前状态：L2 对话界面含 action cards、followup、trace 入口，AgentRunDrawer 可展示计划工具/执行进度/下一步、逐项工具状态、Retrieval Context 安全摘要、Memory Activation Plan 安全摘要、Memory Route 安全摘要、Longform Context Summary 安全摘要、Post Chapter Memory Capture 安全摘要、Knowledge Base Route 安全摘要、Trace Audit 安全摘要、World Model Route 安全摘要和 Memory Tree 只读节点投影，并支持自由搜索、推荐 drilldown 或返回节点展开继续发起只读浏览 run；projectWorkspace 会在同一项目内保留安全的 Memory Tree 浏览历史，Hermes 已注册 Memory 主工作区，子导航常驻 Memory Tree 面板可切入工作区、直接搜索、按 parent/children 展示当前返回节点层级树、从结果节点发起只读展开并显示当前展开节点，也可从历史入口重新打开对应 run；Memory Tree 工作区中带 chapter_index 的节点可跳转并加载正文章节，也可从安全节点标签发起 Retrieval 证据只读 run、Longform Context Summary 只读 run、Memory Activation Plan 只读 run、Knowledge Base Route 只读 run、Post Chapter Memory Capture 写后记忆沉淀规划 run、Trace Audit 章节审计 run 或 Athena 世界模型路由 run；AgentRunDrawer 的写后记忆候选可继续准备知识库候选写入审批 run，并在待审批写入区展示候选标题、触发 execute_record_agent_knowledge_base_candidate_with_approval；执行成功后展示知识库候选写入结果与推荐下一步工具，并可发起只读 Knowledge Base Route 检查；recommended followup fallback view 可展示待确认后继并阻止 pending-only 自动执行
+当前状态：L2 对话界面含 action cards、followup、trace 入口，AgentRunDrawer 可展示计划工具/执行进度/下一步、逐项工具状态、Retrieval Context 安全摘要、Memory Activation Plan 安全摘要、Memory Route 安全摘要、Longform Context Summary 安全摘要、Post Chapter Memory Capture 安全摘要、Knowledge Base Route 安全摘要、Trace Audit 安全摘要、Trace Anomaly Trends 安全摘要、World Model Route 安全摘要和 Memory Tree 只读节点投影，并支持自由搜索、推荐 drilldown 或返回节点展开继续发起只读浏览 run；projectWorkspace 会在同一项目内保留安全的 Memory Tree 浏览历史，Hermes 已注册 Memory 主工作区，子导航常驻 Memory Tree 面板可切入工作区、直接搜索、按 parent/children 展示当前返回节点层级树、从结果节点发起只读展开并显示当前展开节点，也可从历史入口重新打开对应 run；Memory Tree 工作区中带 chapter_index 的节点可跳转并加载正文章节，也可从安全节点标签发起 Retrieval 证据只读 run、Longform Context Summary 只读 run、Memory Activation Plan 只读 run、Knowledge Base Route 只读 run、Post Chapter Memory Capture 写后记忆沉淀规划 run、Trace Audit 章节审计 run 或 Athena 世界模型路由 run；AgentRunDrawer 的写后记忆候选可继续准备知识库候选写入审批 run，并在待审批写入区展示候选标题、触发 execute_record_agent_knowledge_base_candidate_with_approval；执行成功后展示知识库候选写入结果与推荐下一步工具，并可发起只读 Knowledge Base Route 检查；recommended followup fallback view 可展示待确认后继并阻止 pending-only 自动执行
 目标状态：L2-L3 更丰富的 Agent 状态可视化（当前执行计划、工具调用进度等）
 关键文件：
   frontend/src/views/                     # 页面视图
@@ -428,4 +429,5 @@ Data & Recovery ─── (横切关注点，覆盖所有写入操作)
 | 日期 | 模块 | 变更 |
 |------|------|------|
 | 2026-06-01 | 全部 | 初始版本 |
+| 2026-06-03 | Trace & Audit | 新增 inspect_agent_trace_anomaly_trends 最近 run 异常趋势只读聚合、自然语言入口、recovery_worker 路由和 AgentRunDrawer 安全摘要 |
 | 2026-06-03 | Trace & Audit | inspect_agent_trace_audit 新增 intent_chain、end_to_end_chain 与 anomaly_summary 安全摘要，并在 AgentRunDrawer 展示意图规则、计划工具、执行匹配、模型 Trace、结果消息覆盖和单 run 异常聚合 |

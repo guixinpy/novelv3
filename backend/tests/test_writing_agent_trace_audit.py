@@ -1,6 +1,8 @@
+from datetime import datetime, timedelta, timezone
+
 from app.models import AIModelCallTrace, Dialog, DialogMessage, Project, WritingAgentRun, WritingAgentStep
 from app.schemas.writing_agent import WritingAgentStepOut
-from app.services.writing_agent.agent_trace_audit import inspect_agent_trace_audit
+from app.services.writing_agent.agent_trace_audit import inspect_agent_trace_anomaly_trends, inspect_agent_trace_audit
 
 
 def test_writing_agent_step_binding_fields_are_modelled():
@@ -606,6 +608,197 @@ def test_inspect_agent_trace_audit_includes_safe_anomaly_summary(db_session):
     assert "source-secret-id" not in str(output["anomaly_summary"])
     assert "should-not-leak" not in str(output["anomaly_summary"])
     assert "这段上下文不应进入异常摘要" not in str(output["anomaly_summary"])
+
+
+def test_inspect_agent_trace_anomaly_trends_aggregates_recent_runs_safely(db_session):
+    project = Project(name="Trace Anomaly Trends")
+    db_session.add(project)
+    db_session.flush()
+    base_time = datetime(2026, 6, 3, 8, 0, tzinfo=timezone.utc)
+    dialog = Dialog(project_id=project.id, dialog_type="hermes", state="running")
+    db_session.add(dialog)
+    db_session.flush()
+
+    noisy_run = WritingAgentRun(
+        id="run-trend-secret-noisy",
+        project_id=project.id,
+        goal="生成第5章",
+        status="success",
+        entrypoint="dialog_auto_plan",
+        dialog_id=dialog.id,
+        input={
+            "planner": {
+                "intent_projection": {
+                    "rule_id": "generate_chapter_intent",
+                    "candidate": {"type": "generate_chapter", "params": {"chapter_index": 5}},
+                },
+                "planner": {
+                    "intent_class": "generate_chapter",
+                    "mapped_from_rule_id": "generate_chapter_intent",
+                    "chapter_index": 5,
+                },
+                "plan": {
+                    "tools": [
+                        {"tool_name": "generate_chapter"},
+                        {"tool_name": "inspect_agent_memory_route"},
+                    ]
+                },
+            }
+        },
+        created_at=base_time + timedelta(minutes=2),
+    )
+    missing_trace_run = WritingAgentRun(
+        id="run-trend-secret-missing-trace",
+        project_id=project.id,
+        goal="预检第4章",
+        status="success",
+        entrypoint="dialog_auto_plan",
+        created_at=base_time + timedelta(minutes=1),
+    )
+    clear_run = WritingAgentRun(
+        id="run-trend-secret-clear",
+        project_id=project.id,
+        goal="检查第3章记忆",
+        status="success",
+        entrypoint="dialog_auto_plan",
+        created_at=base_time,
+    )
+    db_session.add_all([noisy_run, missing_trace_run, clear_run])
+    db_session.flush()
+    failed_trace = AIModelCallTrace(
+        id="trace-trend-secret-failed",
+        project_id=project.id,
+        trace_type="chapter_generation",
+        status="failed",
+        model="deepseek-chat",
+        chapter_index=5,
+        error_message="provider timeout secret",
+        context_blocks=[
+            {
+                "key": "trend-secret-context-key",
+                "kind": "longform_memory",
+                "title": "长篇记忆",
+                "content": "不应进入趋势摘要。",
+                "sources": [{"source_id": "trend-source-secret"}],
+                "truncated": True,
+            }
+        ],
+    )
+    clear_trace = AIModelCallTrace(
+        id="trace-trend-secret-clear",
+        project_id=project.id,
+        trace_type="memory_route",
+        status="success",
+        model="local",
+        chapter_index=3,
+        context_blocks=[],
+    )
+    db_session.add_all([failed_trace, clear_trace])
+    db_session.flush()
+    db_session.add_all(
+        [
+            WritingAgentStep(
+                id="step-trend-secret-failed",
+                run_id=noisy_run.id,
+                project_id=project.id,
+                step_index=1,
+                tool_name="generate_chapter",
+                status="failed",
+                output={"status": "failed", "trace_id": failed_trace.id},
+                trace_id=failed_trace.id,
+                chapter_index=5,
+            ),
+            WritingAgentStep(
+                id="step-trend-secret-missing-trace",
+                run_id=missing_trace_run.id,
+                project_id=project.id,
+                step_index=1,
+                tool_name="preflight_writing",
+                status="success",
+                output={"status": "ready"},
+                chapter_index=4,
+            ),
+            WritingAgentStep(
+                id="step-trend-secret-clear",
+                run_id=clear_run.id,
+                project_id=project.id,
+                step_index=1,
+                tool_name="inspect_agent_memory_route",
+                status="success",
+                output={"status": "completed", "trace_id": clear_trace.id},
+                trace_id=clear_trace.id,
+                chapter_index=3,
+            ),
+        ]
+    )
+    db_session.commit()
+
+    output = inspect_agent_trace_anomaly_trends(db_session, project.id, limit=5)
+
+    assert output["status"] == "completed"
+    assert output["trend"] == {
+        "status": "failed",
+        "run_count": 3,
+        "affected_run_count": 2,
+        "issue_count": 6,
+        "severity_counts": {"critical": 2, "warning": 3, "info": 1},
+        "issue_counts": {
+            "failed_tool_step": 1,
+            "failed_model_trace": 1,
+            "missing_trace_binding": 1,
+            "missing_result_message": 1,
+            "planned_tool_not_executed": 1,
+            "truncated_context_block": 1,
+        },
+        "dominant_issue_code": "failed_model_trace",
+    }
+    assert output["filters"] == {"limit": 5, "chapter_index": None}
+    assert output["runs"] == [
+        {
+            "run_index": 1,
+            "goal": "生成第5章",
+            "status": "success",
+            "entrypoint": "dialog_auto_plan",
+            "chapter_index": 5,
+            "anomaly_status": "failed",
+            "issue_count": 5,
+            "critical_issue_count": 2,
+            "warning_issue_count": 2,
+            "info_issue_count": 1,
+            "top_issue_codes": [
+                "failed_model_trace",
+                "failed_tool_step",
+                "missing_result_message",
+                "planned_tool_not_executed",
+                "truncated_context_block",
+            ],
+        },
+        {
+            "run_index": 2,
+            "goal": "预检第4章",
+            "status": "success",
+            "entrypoint": "dialog_auto_plan",
+            "chapter_index": 4,
+            "anomaly_status": "needs_attention",
+            "issue_count": 1,
+            "critical_issue_count": 0,
+            "warning_issue_count": 1,
+            "info_issue_count": 0,
+            "top_issue_codes": ["missing_trace_binding"],
+        },
+    ]
+    assert output["recommended_next_tools"] == ["inspect_agent_trace_audit", "plan_recovery_tools"]
+    assert output["trace"] == {
+        "source": "inspect_agent_trace_anomaly_trends",
+        "version": "phase74.agent_trace_anomaly_trends.v1",
+        "mutability": "read",
+    }
+    assert "run-trend-secret" not in str(output)
+    assert "trace-trend-secret" not in str(output)
+    assert "step-trend-secret" not in str(output)
+    assert "trend-secret-context-key" not in str(output)
+    assert "trend-source-secret" not in str(output)
+    assert "不应进入趋势摘要" not in str(output)
 
 
 def test_inspect_agent_trace_audit_exposes_recommended_recovery_for_blocked_run(db_session):

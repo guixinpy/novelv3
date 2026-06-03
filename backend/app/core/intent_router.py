@@ -31,6 +31,7 @@ _INTENT_RULE_IDS = (
     "agent_event_projection_intent",
     "agent_job_projection_intent",
     "chapter_conflict_recovery_intent",
+    "trace_anomaly_trends_intent",
     "trace_audit_intent",
     "write_gate_coverage_intent",
     "legacy_hermes_migration_intent",
@@ -750,6 +751,20 @@ class IntentRouter:
                 extracted_params={},
                 match_evidence=[{"kind": "pattern", "name": "control_plane_readiness_phrase"}],
                 preconditions=[{"code": "control_plane_readiness_read_available", "passed": True}],
+            )
+
+        if _is_trace_anomaly_trends_intent(text):
+            extracted_params = _trace_anomaly_trends_params(text)
+            return self._matched_projection(
+                text,
+                dialog_state,
+                pending_action_id,
+                diagnosis,
+                rule_id="trace_anomaly_trends_intent",
+                candidate=ActionCandidate("inspect_trace_anomaly_trends", extracted_params),
+                extracted_params=extracted_params,
+                match_evidence=[{"kind": "pattern", "name": "trace_anomaly_trends_phrase"}],
+                preconditions=[{"code": "trace_anomaly_trends_read_available", "passed": True}],
             )
 
         if _is_trace_audit_intent(text):
@@ -1870,6 +1885,24 @@ def _is_trace_audit_intent(text: str) -> bool:
     )
 
 
+def _is_trace_anomaly_trends_intent(text: str) -> bool:
+    return bool(
+        re.search(r"(trace|追踪|执行链|链路).*(异常|anomal|趋势|trend|聚合|统计)", text)
+        or re.search(r"(异常|anomal|趋势|trend|聚合|统计).*(trace|追踪|执行链|链路)", text)
+    )
+
+
+def _trace_anomaly_trends_params(text: str) -> dict[str, Any]:
+    params: dict[str, Any] = {}
+    chapter_index = parse_chapter_index(text)
+    if chapter_index is not None:
+        params["chapter_index"] = chapter_index
+    limit = _limit_param(text)
+    if limit is not None:
+        params["limit"] = limit
+    return params
+
+
 def _trace_audit_params(text: str) -> dict[str, Any]:
     params: dict[str, Any] = {}
     run_id = _trace_audit_run_id(text)
@@ -1889,6 +1922,19 @@ def _trace_audit_run_id(text: str) -> str | None:
     if match:
         return match.group(1)
     return None
+
+
+def _limit_param(text: str) -> int | None:
+    match = re.search(r"\blimit\s*[:=：]?\s*(\d+)", text, re.IGNORECASE)
+    if not match:
+        match = re.search(r"(?:最近|返回|前)\s*(\d+)\s*(?:个|条|次)?", text)
+    if not match:
+        return None
+    try:
+        parsed = int(match.group(1))
+    except ValueError:
+        return None
+    return parsed if parsed > 0 else None
 
 
 def _is_write_gate_coverage_intent(text: str) -> bool:

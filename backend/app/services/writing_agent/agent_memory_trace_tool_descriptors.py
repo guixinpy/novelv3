@@ -65,6 +65,33 @@ AGENT_MEMORY_TRACE_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(
+        name="inspect_agent_trace_anomaly_trends",
+        module="writing_agent",
+        category="trace",
+        description="跨最近多个 Writing Agent run 聚合 Trace 异常摘要，帮助 Agent 识别失败步骤、模型 Trace、缺失绑定和结果消息等趋势。",
+        input_schema=object_schema(
+            {
+                "limit": {"type": "integer", "minimum": 1},
+                "chapter_index": {"type": "integer", "minimum": 1},
+            }
+        ),
+        output_schema=object_schema(
+            {
+                "status": {"type": "string"},
+                "filters": {"type": "object"},
+                "trend": {"type": "object"},
+                "runs": {"type": "array"},
+                "recommended_next_tools": {"type": "array"},
+                "trace": {"type": "object"},
+            }
+        ),
+        target_type="agent_trace_anomaly_trends",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=6,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
         name="inspect_agent_memory_route",
         module="writing_agent",
         category="longform_memory",
