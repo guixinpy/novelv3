@@ -36,10 +36,13 @@ def test_inspect_agent_dogfood_evidence_surfaces_api_loop_and_memory_activation(
     assert trace_calibration["metrics"] == {
         "trace_anomaly_trend_regression_count": 2,
         "threshold_signal_count": 2,
+        "threshold_calibration_projection_count": 1,
         "drawer_projection_regression_count": 1,
+        "drawer_calibration_projection_count": 1,
         "false_positive_guard_count": 1,
         "false_negative_guard_count": 1,
     }
+    assert trace_calibration["open_findings"] == ["trace_anomaly_threshold_real_dogfood_sample_collection"]
     assert "inspect_agent_trace_anomaly_trends" in trace_calibration["proven_tools"]
     assert "AgentRunDrawer Trace Anomaly Trends" in trace_calibration["title"]
     calibration_coverage = {

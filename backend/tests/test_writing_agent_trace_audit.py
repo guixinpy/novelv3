@@ -792,7 +792,7 @@ def test_inspect_agent_trace_anomaly_trends_aggregates_recent_runs_safely(db_ses
     assert output["recommended_next_tools"] == ["inspect_agent_trace_audit", "plan_recovery_tools"]
     assert output["trace"] == {
         "source": "inspect_agent_trace_anomaly_trends",
-        "version": "phase75.agent_trace_anomaly_trends_baseline.v1",
+        "version": "phase76.agent_trace_anomaly_trends_calibration.v1",
         "mutability": "read",
     }
     assert "run-trend-secret" not in str(output)
@@ -925,6 +925,245 @@ def test_inspect_agent_trace_anomaly_trends_compares_baseline_thresholds_safely(
     assert "run-baseline-secret" not in str(output)
     assert "trace-baseline-secret" not in str(output)
     assert "step-baseline-secret" not in str(output)
+
+
+def test_inspect_agent_trace_anomaly_trends_calibrates_false_negative_guard(db_session):
+    project = Project(name="Trace Anomaly Threshold False Negative")
+    db_session.add(project)
+    db_session.flush()
+    base_time = datetime(2026, 6, 3, 10, 0, tzinfo=timezone.utc)
+    recent_runs = [
+        WritingAgentRun(
+            id=f"run-calibration-secret-recent-{index}",
+            project_id=project.id,
+            goal=f"预检第{index}章",
+            status="success",
+            entrypoint="dialog_auto_plan",
+            created_at=base_time + timedelta(minutes=20 + index),
+        )
+        for index in (1, 2, 3, 4)
+    ]
+    baseline_runs = [
+        WritingAgentRun(
+            id=f"run-calibration-secret-baseline-{index}",
+            project_id=project.id,
+            goal=f"历史预检第{index}章",
+            status="success",
+            entrypoint="dialog_auto_plan",
+            created_at=base_time + timedelta(minutes=index),
+        )
+        for index in (1, 2, 3, 4)
+    ]
+    db_session.add_all(recent_runs + baseline_runs)
+    db_session.flush()
+    clear_traces = [
+        AIModelCallTrace(
+            id=f"trace-calibration-secret-clear-{index}",
+            project_id=project.id,
+            trace_type="preflight",
+            status="success",
+            model="local",
+            chapter_index=index,
+            context_blocks=[],
+        )
+        for index in (1, 2, 3, 4, 5, 6, 7)
+    ]
+    db_session.add_all(clear_traces)
+    db_session.flush()
+    db_session.add_all(
+        [
+            WritingAgentStep(
+                id="step-calibration-secret-recent-warning",
+                run_id=recent_runs[0].id,
+                project_id=project.id,
+                step_index=1,
+                tool_name="preflight_writing",
+                status="success",
+                output={"status": "ready"},
+                chapter_index=1,
+            )
+        ]
+        + [
+            WritingAgentStep(
+                id=f"step-calibration-secret-recent-clear-{index}",
+                run_id=run.id,
+                project_id=project.id,
+                step_index=1,
+                tool_name="preflight_writing",
+                status="success",
+                output={"status": "ready", "trace_id": trace.id},
+                trace_id=trace.id,
+                chapter_index=index,
+            )
+            for index, (run, trace) in enumerate(
+                zip(recent_runs[1:], clear_traces[:3], strict=True),
+                start=2,
+            )
+        ]
+        + [
+            WritingAgentStep(
+                id=f"step-calibration-secret-baseline-clear-{index}",
+                run_id=run.id,
+                project_id=project.id,
+                step_index=1,
+                tool_name="preflight_writing",
+                status="success",
+                output={"status": "ready", "trace_id": trace.id},
+                trace_id=trace.id,
+                chapter_index=index,
+            )
+            for index, (run, trace) in enumerate(
+                zip(baseline_runs, clear_traces[3:], strict=True),
+                start=1,
+            )
+        ]
+    )
+    db_session.commit()
+
+    output = inspect_agent_trace_anomaly_trends(db_session, project.id, limit=4, baseline_limit=4)
+
+    assert output["threshold_signals"] == []
+    assert output["calibration"] == {
+        "status": "needs_tuning",
+        "sample": {"recent_run_count": 4, "baseline_run_count": 4, "minimum_run_count": 2},
+        "current_signal_count": 0,
+        "current_thresholds": {
+            "affected_run_rate_delta": 0.5,
+            "critical_issue_rate_delta": 0.25,
+        },
+        "suggested_thresholds": {
+            "affected_run_rate_delta": 0.25,
+            "critical_issue_rate_delta": 0.25,
+        },
+        "false_negative_guard": {
+            "status": "triggered",
+            "reason": "recent_anomalies_below_current_threshold",
+            "missed_affected_run_count": 1,
+            "missed_issue_count": 1,
+        },
+        "false_positive_guard": {
+            "status": "passed",
+            "reason": "no_threshold_signal",
+            "info_only_signal_count": 0,
+        },
+        "recommended_next_tools": ["inspect_agent_trace_audit"],
+    }
+    assert "run-calibration-secret" not in str(output)
+    assert "trace-calibration-secret" not in str(output)
+    assert "step-calibration-secret" not in str(output)
+
+
+def test_inspect_agent_trace_anomaly_trends_calibrates_false_positive_guard(db_session):
+    project = Project(name="Trace Anomaly Threshold False Positive")
+    db_session.add(project)
+    db_session.flush()
+    base_time = datetime(2026, 6, 3, 11, 0, tzinfo=timezone.utc)
+    recent_runs = [
+        WritingAgentRun(
+            id=f"run-calibration-fp-secret-recent-{index}",
+            project_id=project.id,
+            goal=f"汇总第{index}章上下文",
+            status="success",
+            entrypoint="dialog_auto_plan",
+            created_at=base_time + timedelta(minutes=20 + index),
+        )
+        for index in (1, 2, 3, 4)
+    ]
+    baseline_runs = [
+        WritingAgentRun(
+            id=f"run-calibration-fp-secret-baseline-{index}",
+            project_id=project.id,
+            goal=f"历史汇总第{index}章上下文",
+            status="success",
+            entrypoint="dialog_auto_plan",
+            created_at=base_time + timedelta(minutes=index),
+        )
+        for index in (1, 2, 3, 4)
+    ]
+    db_session.add_all(recent_runs + baseline_runs)
+    db_session.flush()
+    recent_traces = [
+        AIModelCallTrace(
+            id=f"trace-calibration-fp-secret-recent-{index}",
+            project_id=project.id,
+            trace_type="longform_context_summary",
+            status="success",
+            model="local",
+            chapter_index=index,
+            context_blocks=[
+                {
+                    "key": f"calibration-fp-secret-context-{index}",
+                    "kind": "longform_memory",
+                    "title": "长篇摘要",
+                    "content": "不应进入校准摘要。",
+                    "truncated": True,
+                }
+            ],
+        )
+        for index in (1, 2, 3, 4)
+    ]
+    baseline_traces = [
+        AIModelCallTrace(
+            id=f"trace-calibration-fp-secret-baseline-{index}",
+            project_id=project.id,
+            trace_type="longform_context_summary",
+            status="success",
+            model="local",
+            chapter_index=index,
+            context_blocks=[],
+        )
+        for index in (1, 2, 3, 4)
+    ]
+    db_session.add_all(recent_traces + baseline_traces)
+    db_session.flush()
+    db_session.add_all(
+        [
+            WritingAgentStep(
+                id=f"step-calibration-fp-secret-recent-{index}",
+                run_id=run.id,
+                project_id=project.id,
+                step_index=1,
+                tool_name="summarize_longform_context",
+                status="success",
+                output={"status": "completed", "trace_id": trace.id},
+                trace_id=trace.id,
+                chapter_index=index,
+            )
+            for index, (run, trace) in enumerate(zip(recent_runs, recent_traces, strict=True), start=1)
+        ]
+        + [
+            WritingAgentStep(
+                id=f"step-calibration-fp-secret-baseline-{index}",
+                run_id=run.id,
+                project_id=project.id,
+                step_index=1,
+                tool_name="summarize_longform_context",
+                status="success",
+                output={"status": "completed", "trace_id": trace.id},
+                trace_id=trace.id,
+                chapter_index=index,
+            )
+            for index, (run, trace) in enumerate(zip(baseline_runs, baseline_traces, strict=True), start=1)
+        ]
+    )
+    db_session.commit()
+
+    output = inspect_agent_trace_anomaly_trends(db_session, project.id, limit=4, baseline_limit=4)
+
+    assert output["threshold_signals"][0]["code"] == "affected_run_rate_spike"
+    assert output["calibration"]["false_positive_guard"] == {
+        "status": "triggered",
+        "reason": "threshold_signal_has_only_info_anomalies",
+        "info_only_signal_count": 1,
+    }
+    assert output["calibration"]["suggested_thresholds"]["affected_run_rate_delta"] == 1.0
+    assert output["calibration"]["false_negative_guard"]["status"] == "passed"
+    assert output["calibration"]["recommended_next_tools"] == ["inspect_agent_trace_audit"]
+    assert "run-calibration-fp-secret" not in str(output)
+    assert "trace-calibration-fp-secret" not in str(output)
+    assert "step-calibration-fp-secret" not in str(output)
+    assert "calibration-fp-secret-context" not in str(output)
+    assert "不应进入校准摘要" not in str(output)
 
 
 def test_inspect_agent_trace_audit_exposes_recommended_recovery_for_blocked_run(db_session):

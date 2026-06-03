@@ -85,6 +85,7 @@ AGENT_MEMORY_TRACE_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
                 "comparison": {"type": "object"},
                 "thresholds": {"type": "object"},
                 "threshold_signals": {"type": "array"},
+                "calibration": {"type": "object"},
                 "runs": {"type": "array"},
                 "recommended_next_tools": {"type": "array"},
                 "trace": {"type": "object"},

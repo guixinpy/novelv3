@@ -19,11 +19,12 @@ from app.services.writing_agent.control_plane_readiness_projection import (
 )
 
 AGENT_TRACE_AUDIT_VERSION = "phase73.agent_trace_audit.v1"
-TRACE_ANOMALY_TRENDS_VERSION = "phase75.agent_trace_anomaly_trends_baseline.v1"
+TRACE_ANOMALY_TRENDS_VERSION = "phase76.agent_trace_anomaly_trends_calibration.v1"
 DEFAULT_AUDIT_LIMIT = 20
 MAX_AUDIT_LIMIT = 100
 TRACE_ANOMALY_AFFECTED_RATE_DELTA_THRESHOLD = 0.5
 TRACE_ANOMALY_CRITICAL_RATE_DELTA_THRESHOLD = 0.25
+TRACE_ANOMALY_CALIBRATION_MIN_RUN_COUNT = 2
 TRACE_EXPECTED_TOOL_NAMES = {
     "generate_chapter",
     "expand_chapter",
@@ -70,6 +71,7 @@ def inspect_agent_trace_anomaly_trends(
     comparison = _trace_anomaly_trend_comparison(trend, baseline)
     thresholds = _trace_anomaly_trend_thresholds()
     threshold_signals = _trace_anomaly_threshold_signals(trend, baseline, comparison, thresholds)
+    calibration = _trace_anomaly_threshold_calibration(trend, baseline, comparison, thresholds, threshold_signals)
     return _json_safe_output(
         {
             "status": "completed",
@@ -84,6 +86,7 @@ def inspect_agent_trace_anomaly_trends(
             "comparison": comparison,
             "thresholds": thresholds,
             "threshold_signals": threshold_signals,
+            "calibration": calibration,
             "runs": run_rows,
             "recommended_next_tools": _trace_anomaly_trend_recommendations(_severity_counts(trend.get("severity_counts"))),
             "trace": _anomaly_trends_trace_metadata(),
@@ -1201,6 +1204,117 @@ def _trace_anomaly_threshold_signals(
             }
         )
     return signals
+
+
+def _trace_anomaly_threshold_calibration(
+    trend: dict[str, Any],
+    baseline: dict[str, Any],
+    comparison: dict[str, float],
+    thresholds: dict[str, float],
+    threshold_signals: list[dict[str, Any]],
+) -> dict[str, Any]:
+    recent_run_count = _non_negative_int(trend.get("run_count"))
+    baseline_run_count = _non_negative_int(baseline.get("run_count"))
+    current_thresholds = {
+        "affected_run_rate_delta": float(thresholds.get("affected_run_rate_delta") or 0.0),
+        "critical_issue_rate_delta": float(thresholds.get("critical_issue_rate_delta") or 0.0),
+    }
+    suggested_thresholds = dict(current_thresholds)
+    sample = {
+        "recent_run_count": recent_run_count,
+        "baseline_run_count": baseline_run_count,
+        "minimum_run_count": TRACE_ANOMALY_CALIBRATION_MIN_RUN_COUNT,
+    }
+    if recent_run_count < TRACE_ANOMALY_CALIBRATION_MIN_RUN_COUNT or baseline_run_count < TRACE_ANOMALY_CALIBRATION_MIN_RUN_COUNT:
+        return {
+            "status": "insufficient_data",
+            "sample": sample,
+            "current_signal_count": len(threshold_signals),
+            "current_thresholds": current_thresholds,
+            "suggested_thresholds": suggested_thresholds,
+            "false_negative_guard": {
+                "status": "skipped",
+                "reason": "insufficient_window_data",
+                "missed_affected_run_count": 0,
+                "missed_issue_count": 0,
+            },
+            "false_positive_guard": {
+                "status": "skipped",
+                "reason": "insufficient_window_data",
+                "info_only_signal_count": 0,
+            },
+            "recommended_next_tools": [],
+        }
+
+    severity_counts = _severity_counts(trend.get("severity_counts"))
+    actionable_issue_count = severity_counts["critical"] + severity_counts["warning"]
+    affected_delta = float(comparison.get("affected_run_rate_delta") or 0.0)
+    critical_delta = float(comparison.get("critical_issue_rate_delta") or 0.0)
+    false_negative_triggered = not threshold_signals and actionable_issue_count > 0 and affected_delta > 0
+    if false_negative_triggered:
+        suggested_thresholds["affected_run_rate_delta"] = _calibrated_threshold(
+            current_thresholds["affected_run_rate_delta"],
+            affected_delta,
+            prefer_lower=True,
+        )
+        if severity_counts["critical"] > 0 and critical_delta > 0:
+            suggested_thresholds["critical_issue_rate_delta"] = _calibrated_threshold(
+                current_thresholds["critical_issue_rate_delta"],
+                critical_delta,
+                prefer_lower=True,
+            )
+        false_negative_guard = {
+            "status": "triggered",
+            "reason": "recent_anomalies_below_current_threshold",
+            "missed_affected_run_count": _non_negative_int(trend.get("affected_run_count")),
+            "missed_issue_count": actionable_issue_count,
+        }
+    else:
+        false_negative_guard = {
+            "status": "passed",
+            "reason": "threshold_signal_present" if threshold_signals else "no_actionable_anomaly",
+            "missed_affected_run_count": 0,
+            "missed_issue_count": 0,
+        }
+
+    false_positive_triggered = bool(threshold_signals) and actionable_issue_count == 0 and severity_counts["info"] > 0
+    if false_positive_triggered:
+        suggested_thresholds["affected_run_rate_delta"] = _calibrated_threshold(
+            current_thresholds["affected_run_rate_delta"],
+            affected_delta,
+            prefer_lower=False,
+        )
+        false_positive_guard = {
+            "status": "triggered",
+            "reason": "threshold_signal_has_only_info_anomalies",
+            "info_only_signal_count": len(threshold_signals),
+        }
+    else:
+        false_positive_guard = {
+            "status": "passed",
+            "reason": "no_threshold_signal" if not threshold_signals else "actionable_threshold_signal",
+            "info_only_signal_count": 0,
+        }
+
+    needs_tuning = false_negative_triggered or false_positive_triggered
+    return {
+        "status": "needs_tuning" if needs_tuning else "calibrated",
+        "sample": sample,
+        "current_signal_count": len(threshold_signals),
+        "current_thresholds": current_thresholds,
+        "suggested_thresholds": suggested_thresholds,
+        "false_negative_guard": false_negative_guard,
+        "false_positive_guard": false_positive_guard,
+        "recommended_next_tools": ["inspect_agent_trace_audit"] if needs_tuning else [],
+    }
+
+
+def _calibrated_threshold(current: float, observed_delta: float, *, prefer_lower: bool) -> float:
+    if observed_delta <= 0:
+        return current
+    if prefer_lower:
+        return round(max(0.01, min(current, observed_delta)), 2)
+    return round(max(current, observed_delta), 2)
 
 
 def _trace_anomaly_trend_recommendations(severity_counts: Counter[str]) -> list[str]:

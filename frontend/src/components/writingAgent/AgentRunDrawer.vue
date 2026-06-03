@@ -929,6 +929,17 @@ const traceAnomalyTrendFilters = computed(() => recordValue(traceAnomalyTrendsOu
 const traceAnomalyTrendIssueCounts = computed(() => recordValue(traceAnomalyTrend.value.issue_counts))
 const traceAnomalyTrendSeverityCounts = computed(() => recordValue(traceAnomalyTrend.value.severity_counts))
 const traceAnomalyTrendThresholdSignals = computed(() => recordList(traceAnomalyTrendsOutput.value?.threshold_signals))
+const traceAnomalyTrendCalibration = computed(() => recordValue(traceAnomalyTrendsOutput.value?.calibration))
+const traceAnomalyTrendCalibrationSample = computed(() => recordValue(traceAnomalyTrendCalibration.value.sample))
+const traceAnomalyTrendCalibrationSuggestedThresholds = computed(() => (
+  recordValue(traceAnomalyTrendCalibration.value.suggested_thresholds)
+))
+const traceAnomalyTrendCalibrationFalseNegativeGuard = computed(() => (
+  recordValue(traceAnomalyTrendCalibration.value.false_negative_guard)
+))
+const traceAnomalyTrendCalibrationFalsePositiveGuard = computed(() => (
+  recordValue(traceAnomalyTrendCalibration.value.false_positive_guard)
+))
 const traceAnomalyTrendRecommendedTools = computed(() => stringList(traceAnomalyTrendsOutput.value?.recommended_next_tools))
 const traceAuditRunGoal = computed(() => safeTraceAuditText(traceAuditRun.value.goal))
 const traceAuditStepCount = computed(() => numberValue(traceAudit.value.step_count))
@@ -992,6 +1003,24 @@ const traceAnomalyTrendAffectedRunRateDeltaLabel = computed(() => (
 ))
 const traceAnomalyTrendIssueRateDeltaLabel = computed(() => (
   signedPercentLabel(traceAnomalyTrendComparison.value.issue_rate_delta)
+))
+const traceAnomalyTrendCalibrationStatusLabel = computed(() => (
+  traceAnomalyCalibrationStatusLabel(traceAnomalyTrendCalibration.value.status)
+))
+const traceAnomalyTrendCalibrationRecentRunCount = computed(() => (
+  numberValue(traceAnomalyTrendCalibrationSample.value.recent_run_count)
+))
+const traceAnomalyTrendCalibrationBaselineRunCount = computed(() => (
+  numberValue(traceAnomalyTrendCalibrationSample.value.baseline_run_count)
+))
+const traceAnomalyTrendCalibrationCurrentSignalCount = computed(() => (
+  numberValue(traceAnomalyTrendCalibration.value.current_signal_count)
+))
+const traceAnomalyTrendCalibrationSuggestedAffectedThresholdLabel = computed(() => (
+  percentLabel(traceAnomalyTrendCalibrationSuggestedThresholds.value.affected_run_rate_delta)
+))
+const traceAnomalyTrendCalibrationSuggestedCriticalThresholdLabel = computed(() => (
+  percentLabel(traceAnomalyTrendCalibrationSuggestedThresholds.value.critical_issue_rate_delta)
 ))
 const traceAuditFailureTool = computed(() => safeTraceAuditText(traceAuditFailure.value.tool_name))
 const traceAuditFailureReason = computed(() => safeTraceAuditText(traceAuditFailure.value.reason_code))
@@ -1122,6 +1151,39 @@ const traceAnomalyTrendThresholdSignalRows = computed(() => (
       }
     })
     .filter((row) => Boolean(row.title || row.severityLabel || row.meta))
+))
+const traceAnomalyTrendCalibrationGuardRows = computed(() => (
+  [
+    {
+      key: 'trace-anomaly-calibration-fn',
+      title: '漏报 guard',
+      statusLabel: traceAnomalyCalibrationGuardStatusLabel(
+        traceAnomalyTrendCalibrationFalseNegativeGuard.value.status,
+      ),
+      meta: [
+        traceAnomalyCalibrationGuardReasonLabel(traceAnomalyTrendCalibrationFalseNegativeGuard.value.reason),
+        numberValue(traceAnomalyTrendCalibrationFalseNegativeGuard.value.missed_affected_run_count) !== null
+          ? `漏过运行 ${numberValue(traceAnomalyTrendCalibrationFalseNegativeGuard.value.missed_affected_run_count)}`
+          : '',
+        numberValue(traceAnomalyTrendCalibrationFalseNegativeGuard.value.missed_issue_count) !== null
+          ? `漏过问题 ${numberValue(traceAnomalyTrendCalibrationFalseNegativeGuard.value.missed_issue_count)}`
+          : '',
+      ].filter(Boolean).join(' · '),
+    },
+    {
+      key: 'trace-anomaly-calibration-fp',
+      title: '误报 guard',
+      statusLabel: traceAnomalyCalibrationGuardStatusLabel(
+        traceAnomalyTrendCalibrationFalsePositiveGuard.value.status,
+      ),
+      meta: [
+        traceAnomalyCalibrationGuardReasonLabel(traceAnomalyTrendCalibrationFalsePositiveGuard.value.reason),
+        numberValue(traceAnomalyTrendCalibrationFalsePositiveGuard.value.info_only_signal_count) !== null
+          ? `提示信号 ${numberValue(traceAnomalyTrendCalibrationFalsePositiveGuard.value.info_only_signal_count)}`
+          : '',
+      ].filter(Boolean).join(' · '),
+    },
+  ].filter((row) => Boolean(row.statusLabel || row.meta))
 ))
 const traceAuditStepRows = computed(() => (
   traceAuditSteps.value
@@ -1580,7 +1642,9 @@ const hasTraceAnomalyTrendsProjection = computed(() => Boolean(
     traceAnomalyTrendBaselineRunCount.value !== null ||
     traceAnomalyTrendIssueRows.value.length ||
     traceAnomalyTrendRunRows.value.length ||
-    traceAnomalyTrendThresholdSignalRows.value.length
+    traceAnomalyTrendThresholdSignalRows.value.length ||
+    traceAnomalyTrendCalibrationStatusLabel.value ||
+    traceAnomalyTrendCalibrationGuardRows.value.length
   ),
 ))
 const hasKnowledgeBaseCandidateExecutionProjection = computed(() => Boolean(knowledgeBaseCandidateExecutionOutput.value))
@@ -2306,6 +2370,34 @@ function traceAnomalyThresholdSignalLabel(code: unknown) {
   if (value === 'affected_run_rate_spike') return '受影响运行率升高'
   if (value === 'critical_issue_rate_spike') return '严重异常率升高'
   return safeTraceAuditText(value)
+}
+
+function traceAnomalyCalibrationStatusLabel(status: unknown) {
+  const value = stringValue(status)
+  if (value === 'needs_tuning') return '需要调参'
+  if (value === 'calibrated') return '已校准'
+  if (value === 'insufficient_data') return '样本不足'
+  return traceAuditStatusLabel(value)
+}
+
+function traceAnomalyCalibrationGuardStatusLabel(status: unknown) {
+  const value = stringValue(status)
+  if (value === 'triggered') return '触发'
+  if (value === 'passed') return '通过'
+  if (value === 'skipped') return '跳过'
+  return traceAuditStatusLabel(value)
+}
+
+function traceAnomalyCalibrationGuardReasonLabel(reason: unknown) {
+  const value = stringValue(reason)
+  if (value === 'recent_anomalies_below_current_threshold') return '近期异常低于当前阈值'
+  if (value === 'threshold_signal_has_only_info_anomalies') return '仅提示级异常触发'
+  if (value === 'threshold_signal_present') return '阈值信号已触发'
+  if (value === 'no_threshold_signal') return '无阈值信号'
+  if (value === 'no_actionable_anomaly') return '无可行动异常'
+  if (value === 'actionable_threshold_signal') return '可行动阈值信号'
+  if (value === 'insufficient_window_data') return '样本不足'
+  return ''
 }
 
 function traceAuditEventLabel(event: Record<string, unknown>) {
@@ -4118,6 +4210,48 @@ function missingDependencyTool(value: Record<string, unknown>) {
             >
               <strong>{{ row.title }}</strong>
               <span>{{ [row.severityLabel, row.meta].filter(Boolean).join(' · ') }}</span>
+            </li>
+          </ul>
+          <dl
+            v-if="traceAnomalyTrendCalibrationStatusLabel || traceAnomalyTrendCalibrationCurrentSignalCount !== null"
+            class="agent-run-drawer__facts"
+          >
+            <div v-if="traceAnomalyTrendCalibrationStatusLabel">
+              <dt>校准</dt>
+              <dd>{{ traceAnomalyTrendCalibrationStatusLabel }}</dd>
+            </div>
+            <div
+              v-if="
+                traceAnomalyTrendCalibrationRecentRunCount !== null &&
+                traceAnomalyTrendCalibrationBaselineRunCount !== null
+              "
+            >
+              <dt>样本</dt>
+              <dd>样本 {{ traceAnomalyTrendCalibrationRecentRunCount }}/{{ traceAnomalyTrendCalibrationBaselineRunCount }}</dd>
+            </div>
+            <div v-if="traceAnomalyTrendCalibrationCurrentSignalCount !== null">
+              <dt>当前信号</dt>
+              <dd>当前信号 {{ traceAnomalyTrendCalibrationCurrentSignalCount }}</dd>
+            </div>
+            <div v-if="traceAnomalyTrendCalibrationSuggestedAffectedThresholdLabel">
+              <dt>建议异常阈值</dt>
+              <dd>建议异常阈值 {{ traceAnomalyTrendCalibrationSuggestedAffectedThresholdLabel }}</dd>
+            </div>
+            <div v-if="traceAnomalyTrendCalibrationSuggestedCriticalThresholdLabel">
+              <dt>建议严重阈值</dt>
+              <dd>建议严重阈值 {{ traceAnomalyTrendCalibrationSuggestedCriticalThresholdLabel }}</dd>
+            </div>
+          </dl>
+          <ul
+            v-if="traceAnomalyTrendCalibrationGuardRows.length"
+            class="agent-run-drawer__planner-signals"
+          >
+            <li
+              v-for="row in traceAnomalyTrendCalibrationGuardRows"
+              :key="row.key"
+            >
+              <strong>{{ row.title }}</strong>
+              <span>{{ [row.statusLabel, row.meta].filter(Boolean).join(' · ') }}</span>
             </li>
           </ul>
           <ul

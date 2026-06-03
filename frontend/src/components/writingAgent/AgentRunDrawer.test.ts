@@ -4772,6 +4772,39 @@ describe('AgentRunDrawer', () => {
                     step_id: 'signal-step-secret-id',
                   },
                 ],
+                calibration: {
+                  status: 'needs_tuning',
+                  sample: {
+                    recent_run_count: 4,
+                    baseline_run_count: 4,
+                    minimum_run_count: 2,
+                    run_id: 'calibration-sample-secret-id',
+                  },
+                  current_signal_count: 2,
+                  current_thresholds: {
+                    affected_run_rate_delta: 0.5,
+                    critical_issue_rate_delta: 0.25,
+                  },
+                  suggested_thresholds: {
+                    affected_run_rate_delta: 0.67,
+                    critical_issue_rate_delta: 0.25,
+                  },
+                  false_negative_guard: {
+                    status: 'passed',
+                    reason: 'threshold_signal_present',
+                    missed_affected_run_count: 0,
+                    missed_issue_count: 0,
+                    step_id: 'calibration-fn-secret-step',
+                  },
+                  false_positive_guard: {
+                    status: 'triggered',
+                    reason: 'threshold_signal_has_only_info_anomalies',
+                    info_only_signal_count: 1,
+                    trace_id: 'calibration-fp-secret-trace',
+                  },
+                  recommended_next_tools: ['inspect_agent_trace_audit'],
+                  project_id: 'calibration-project-secret-id',
+                },
                 runs: [
                   {
                     run_index: 1,
@@ -4835,6 +4868,17 @@ describe('AgentRunDrawer', () => {
     expect(text).toContain('严重异常率升高')
     expect(text).toContain('阈值 50%')
     expect(text).toContain('阈值 25%')
+    expect(text).toContain('校准')
+    expect(text).toContain('需要调参')
+    expect(text).toContain('样本 4/4')
+    expect(text).toContain('当前信号 2')
+    expect(text).toContain('建议异常阈值 67%')
+    expect(text).toContain('建议严重阈值 25%')
+    expect(text).toContain('漏报 guard')
+    expect(text).toContain('阈值信号已触发')
+    expect(text).toContain('误报 guard')
+    expect(text).toContain('仅提示级异常触发')
+    expect(text).toContain('提示信号 1')
     expect(text).toContain('主要问题')
     expect(text).toContain('模型 Trace 失败')
     expect(text).toContain('工具步骤失败')
@@ -4854,6 +4898,10 @@ describe('AgentRunDrawer', () => {
     expect(text).not.toContain('baseline-run-secret-id')
     expect(text).not.toContain('signal-trace-secret-id')
     expect(text).not.toContain('signal-step-secret-id')
+    expect(text).not.toContain('calibration-project-secret-id')
+    expect(text).not.toContain('calibration-sample-secret-id')
+    expect(text).not.toContain('calibration-fn-secret-step')
+    expect(text).not.toContain('calibration-fp-secret-trace')
   })
 
   it('does not render route upgrade apply when contract preview is not confirmable', () => {

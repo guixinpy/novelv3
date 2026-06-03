@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-DOGFOOD_EVIDENCE_VERSION = "phase237.agent_dogfood_evidence_trace_calibration.v1"
+DOGFOOD_EVIDENCE_VERSION = "phase238.agent_dogfood_evidence_trace_calibration_runtime.v1"
 DOGFOOD_EVIDENCE_RUN_SOURCE = "planner_trace.agent_health_projection.dogfood_evidence"
 
 _FULL_AGENT_NATIVE_DOGFOOD = (
@@ -48,8 +48,8 @@ _REQUIRED_CAPABILITIES: tuple[dict[str, Any], ...] = (
     },
     {
         "capability": "trace_anomaly_threshold_calibration",
-        "label": "Trace anomaly threshold calibration readiness",
-        "required_for": "Prove Trace anomaly trends expose baseline, threshold, and false-positive/false-negative guard evidence before real dogfood calibration.",
+        "label": "Trace anomaly threshold calibration",
+        "required_for": "Prove Trace anomaly trends expose baseline, threshold, calibration, and false-positive/false-negative guard evidence before long-running dogfood sample review.",
     },
 )
 
@@ -147,7 +147,9 @@ _EVIDENCE_RECORDS: tuple[dict[str, Any], ...] = (
         "metrics": {
             "trace_anomaly_trend_regression_count": 2,
             "threshold_signal_count": 2,
+            "threshold_calibration_projection_count": 1,
             "drawer_projection_regression_count": 1,
+            "drawer_calibration_projection_count": 1,
             "false_positive_guard_count": 1,
             "false_negative_guard_count": 1,
         },
@@ -160,7 +162,7 @@ _EVIDENCE_RECORDS: tuple[dict[str, Any], ...] = (
             "frontend/src/components/writingAgent/AgentRunDrawer.test.ts",
             "docs/codex-guide/05-progress-tracker.md",
         ],
-        "open_findings": ["trace_anomaly_threshold_real_dogfood_calibration"],
+        "open_findings": ["trace_anomaly_threshold_real_dogfood_sample_collection"],
     },
 )
 
