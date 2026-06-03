@@ -1,6 +1,6 @@
 # 02 · 模块清单与状态
 
-> **最后更新**: 2026-06-02
+> **最后更新**: 2026-06-03
 > **版本**: v1.0
 > **用途**: 快速了解任何模块的当前状态、目标状态和关键文件路径
 
@@ -82,7 +82,7 @@ Agent 化缺口：
   - Dialog Route Projection 已有只读审计和自然语言只读入口，可直接检查 text_intent/button_action/slash_command 的统一对话路由投影
   - Intent Projection 已有只读审计和自然语言只读入口，可直接检查指定自然语言输入经 IntentRouter 的规则匹配投影
   - Memory Route 已有只读诊断、自然语言只读入口和 Drawer 安全投影，可直接检查长篇记忆、检索索引、维护状态与上下文摘要路由
-  - Memory Activation Plan 已有只读诊断和自然语言只读入口，可直接检查指定章节的写前记忆激活计划
+  - Memory Activation Plan 已有只读诊断、自然语言只读入口和 Drawer 安全投影，可直接检查指定章节的写前记忆激活计划
   - World Model Route 已有只读诊断、自然语言只读入口和 Drawer 安全投影，可直接检查指定章节/subject_ref 的世界模型 profile、事实和待审提案压力
   - World Model Proposal Review/Resolution Plan 已有只读入口，可直接检查待审世界模型提案队列并生成提案处理计划
   - Retrieval Context 与 Longform Context Summary 已有只读工具和自然语言只读入口，可直接检索上下文证据并汇总指定章节长篇上下文
@@ -169,7 +169,7 @@ Agent 化缺口：
 ### 2.2 Memory Tree（分层记忆树）
 
 ```
-当前状态：L2 框架 + 卷/章摘要持久化基础版 + 基础浏览，摘要写入 LongformMemory 后再投影回 Memory Tree；query 支持精确匹配失败后的确定性语义评分、层级后代匹配回流与 drilldown 推荐，并可进入写前 memory_activation；Memory Route 与 Longform Context Summary 可由自然语言只读意图触达；AgentRunDrawer 可展示 inspect_agent_memory_route 的长篇记忆/检索/维护安全摘要，也可展示 inspect_agent_memory_tree 的只读节点投影、查询条件、导航模式和推荐展开数，并可从推荐 drilldown、带 children 的返回节点或自由查询创建新的只读浏览 run；projectWorkspace 会按项目保留 Memory Tree continuation 浏览历史，Hermes 已注册 Memory 主工作区，子导航常驻 Memory Tree 面板可切入工作区、直接提交只读搜索 run、按 parent/children 展示当前返回节点层级树、从带 children 的结果节点发起只读展开 run 并显示当前展开节点，也可从历史入口重新打开对应 run；工作区中带 chapter_index 的节点可跳转并加载正文章节，也可从安全节点标签发起 search_agent_retrieval_context 只读检索证据 run、summarize_longform_context 长篇上下文摘要 run、inspect_agent_memory_activation_plan 写前记忆激活计划 run、inspect_agent_knowledge_base_route 知识库路由 run、plan_post_chapter_memory_capture 写后记忆沉淀规划 run、inspect_agent_trace_audit 章节 Trace 审计 run（Drawer 可展示安全摘要）或 inspect_agent_world_model_route Athena 世界模型路由 run（Drawer 可展示安全摘要）
+当前状态：L2 框架 + 卷/章摘要持久化基础版 + 基础浏览，摘要写入 LongformMemory 后再投影回 Memory Tree；query 支持精确匹配失败后的确定性语义评分、层级后代匹配回流与 drilldown 推荐，并可进入写前 memory_activation；Memory Route 与 Longform Context Summary 可由自然语言只读意图触达；AgentRunDrawer 可展示 inspect_agent_memory_route 的长篇记忆/检索/维护安全摘要、inspect_agent_memory_activation_plan 的写前激活安全摘要，也可展示 inspect_agent_memory_tree 的只读节点投影、查询条件、导航模式和推荐展开数，并可从推荐 drilldown、带 children 的返回节点或自由查询创建新的只读浏览 run；projectWorkspace 会按项目保留 Memory Tree continuation 浏览历史，Hermes 已注册 Memory 主工作区，子导航常驻 Memory Tree 面板可切入工作区、直接提交只读搜索 run、按 parent/children 展示当前返回节点层级树、从带 children 的结果节点发起只读展开 run 并显示当前展开节点，也可从历史入口重新打开对应 run；工作区中带 chapter_index 的节点可跳转并加载正文章节，也可从安全节点标签发起 search_agent_retrieval_context 只读检索证据 run、summarize_longform_context 长篇上下文摘要 run、inspect_agent_memory_activation_plan 写前记忆激活计划 run、inspect_agent_knowledge_base_route 知识库路由 run、plan_post_chapter_memory_capture 写后记忆沉淀规划 run、inspect_agent_trace_audit 章节 Trace 审计 run（Drawer 可展示安全摘要）或 inspect_agent_world_model_route Athena 世界模型路由 run（Drawer 可展示安全摘要）
 目标状态：L3 卷→章→节→段落分层，支持语义浏览和按需展开
 关键文件：
   backend/app/services/writing_agent/
@@ -182,7 +182,7 @@ Agent 化缺口：
 Agent 化缺口：
   - 更细粒度的分层摘要树（当前持久化到卷/章两级）
   - 更强语义导航（当前已支持按节点展开、深度裁剪、搜索祖先上下文、确定性 token-overlap 召回、后代强匹配回流到过滤层级、弱匹配降噪、写前激活消费和自然语言只读浏览入口；后续接入向量/LLM 语义搜索）
-  - 前端独立 Memory Tree 面板已具备 Hermes Memory 主工作区、子导航只读搜索、历史入口、当前返回节点层级树、安全摘要、结果节点只读展开、当前展开状态、章节正文深链基础、Retrieval 证据只读 run 深链、Longform Context Summary 只读 run 深链、Memory Activation Plan 只读 run 深链、Memory Route Drawer 安全摘要、Knowledge Base Route 只读 run 深链、Post Chapter Memory Capture 只读 run 深链、Trace Audit 只读 run 深链与 Drawer 安全摘要，以及 Athena 世界模型路由深链与 Drawer 安全摘要；仍缺更完整的独立树工作区能力
+  - 前端独立 Memory Tree 面板已具备 Hermes Memory 主工作区、子导航只读搜索、历史入口、当前返回节点层级树、安全摘要、结果节点只读展开、当前展开状态、章节正文深链基础、Retrieval 证据只读 run 深链、Longform Context Summary 只读 run 深链、Memory Activation Plan 只读 run 深链与 Drawer 安全摘要、Memory Route Drawer 安全摘要、Knowledge Base Route 只读 run 深链、Post Chapter Memory Capture 只读 run 深链、Trace Audit 只读 run 深链与 Drawer 安全摘要，以及 Athena 世界模型路由深链与 Drawer 安全摘要；仍缺更完整的独立树工作区能力
   - 与 Retrieval 的深度整合
   - LLM 摘要质量与真实长篇数据验证
 关联模块：Retrieval、Athena、Writing
@@ -374,7 +374,7 @@ Agent 化缺口：
 ### 6.1 Chat View（对话视图）
 
 ```
-当前状态：L2 对话界面含 action cards、followup、trace 入口，AgentRunDrawer 可展示计划工具/执行进度/下一步、逐项工具状态、Memory Route 安全摘要、Knowledge Base Route 安全摘要、Trace Audit 安全摘要、World Model Route 安全摘要和 Memory Tree 只读节点投影，并支持自由搜索、推荐 drilldown 或返回节点展开继续发起只读浏览 run；projectWorkspace 会在同一项目内保留安全的 Memory Tree 浏览历史，Hermes 已注册 Memory 主工作区，子导航常驻 Memory Tree 面板可切入工作区、直接搜索、按 parent/children 展示当前返回节点层级树、从结果节点发起只读展开并显示当前展开节点，也可从历史入口重新打开对应 run；Memory Tree 工作区中带 chapter_index 的节点可跳转并加载正文章节，也可从安全节点标签发起 Retrieval 证据只读 run、Longform Context Summary 只读 run、Memory Activation Plan 只读 run、Knowledge Base Route 只读 run、Post Chapter Memory Capture 写后记忆沉淀规划 run、Trace Audit 章节审计 run 或 Athena 世界模型路由 run；AgentRunDrawer 的写后记忆候选可继续准备知识库候选写入审批 run，并在待审批写入区展示候选标题、触发 execute_record_agent_knowledge_base_candidate_with_approval；执行成功后展示知识库候选写入结果与推荐下一步工具，并可发起只读 Knowledge Base Route 检查；recommended followup fallback view 可展示待确认后继并阻止 pending-only 自动执行
+当前状态：L2 对话界面含 action cards、followup、trace 入口，AgentRunDrawer 可展示计划工具/执行进度/下一步、逐项工具状态、Memory Activation Plan 安全摘要、Memory Route 安全摘要、Knowledge Base Route 安全摘要、Trace Audit 安全摘要、World Model Route 安全摘要和 Memory Tree 只读节点投影，并支持自由搜索、推荐 drilldown 或返回节点展开继续发起只读浏览 run；projectWorkspace 会在同一项目内保留安全的 Memory Tree 浏览历史，Hermes 已注册 Memory 主工作区，子导航常驻 Memory Tree 面板可切入工作区、直接搜索、按 parent/children 展示当前返回节点层级树、从结果节点发起只读展开并显示当前展开节点，也可从历史入口重新打开对应 run；Memory Tree 工作区中带 chapter_index 的节点可跳转并加载正文章节，也可从安全节点标签发起 Retrieval 证据只读 run、Longform Context Summary 只读 run、Memory Activation Plan 只读 run、Knowledge Base Route 只读 run、Post Chapter Memory Capture 写后记忆沉淀规划 run、Trace Audit 章节审计 run 或 Athena 世界模型路由 run；AgentRunDrawer 的写后记忆候选可继续准备知识库候选写入审批 run，并在待审批写入区展示候选标题、触发 execute_record_agent_knowledge_base_candidate_with_approval；执行成功后展示知识库候选写入结果与推荐下一步工具，并可发起只读 Knowledge Base Route 检查；recommended followup fallback view 可展示待确认后继并阻止 pending-only 自动执行
 目标状态：L2-L3 更丰富的 Agent 状态可视化（当前执行计划、工具调用进度等）
 关键文件：
   frontend/src/views/                     # 页面视图
@@ -383,7 +383,7 @@ Agent 化缺口：
 Agent 化缺口：
   - Agent 执行计划的可视化仍需继续增强（已具备计划工具/已执行/已完成/进行中/下一步摘要和逐项工具状态）
   - 工具调用进度实时展示（当前是 Drawer 详情内静态状态映射，仍缺流式刷新）
-  - World Model / Memory 面板的整合（Memory Tree 当前已有 Drawer 只读投影、自由搜索、推荐展开、返回节点展开、项目级会话浏览历史、Hermes Memory 主工作区、子导航搜索/历史/当前返回节点层级树/结果节点展开与当前展开状态、章节正文深链基础、Retrieval 证据只读 run 深链、Longform Context Summary 只读 run 深链、Memory Activation Plan 只读 run 深链、Memory Route Drawer 安全摘要、Knowledge Base Route 只读 run 深链与 Drawer 安全摘要、Post Chapter Memory Capture 只读 run 深链、写后记忆候选 prepare approval continuation、execute approval payload、执行成功投影与写入后 Knowledge Base Route 只读检查、Trace Audit 只读 run 深链与 Drawer 安全摘要，以及 Athena 世界模型路由深链与 Drawer 安全摘要；仍缺更完整独立树工作区能力）
+  - World Model / Memory 面板的整合（Memory Tree 当前已有 Drawer 只读投影、自由搜索、推荐展开、返回节点展开、项目级会话浏览历史、Hermes Memory 主工作区、子导航搜索/历史/当前返回节点层级树/结果节点展开与当前展开状态、章节正文深链基础、Retrieval 证据只读 run 深链、Longform Context Summary 只读 run 深链、Memory Activation Plan 只读 run 深链与 Drawer 安全摘要、Memory Route Drawer 安全摘要、Knowledge Base Route 只读 run 深链与 Drawer 安全摘要、Post Chapter Memory Capture 只读 run 深链、写后记忆候选 prepare approval continuation、execute approval payload、执行成功投影与写入后 Knowledge Base Route 只读检查、Trace Audit 只读 run 深链与 Drawer 安全摘要，以及 Athena 世界模型路由深链与 Drawer 安全摘要；仍缺更完整独立树工作区能力）
 关联模块：Dialog Control Plane、Trace
 ```
 

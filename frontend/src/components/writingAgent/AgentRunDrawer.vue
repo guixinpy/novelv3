@@ -389,6 +389,55 @@ const memoryActivationCounts = computed(() => {
 })
 const memoryActivationLongformCount = computed(() => numberValue(memoryActivationCounts.value.longform))
 const memoryActivationKnowledgeBaseCount = computed(() => numberValue(memoryActivationCounts.value.knowledge_base))
+const memoryActivationForeshadowingCount = computed(() => numberValue(memoryActivationCounts.value.foreshadowing))
+const memoryActivationMemoryTreeCount = computed(() => numberValue(memoryActivationCounts.value.memory_tree))
+const memoryActivationWorldModelCount = computed(() => numberValue(memoryActivationCounts.value.world_model))
+const memoryActivationStyleCount = computed(() => numberValue(memoryActivationCounts.value.style))
+const memoryActivationCoverage = computed(() => recordValue(memoryActivationOutput.value?.coverage))
+const memoryActivationCoverageDebt = computed(() => recordValue(memoryActivationCoverage.value.memory_coverage_debt))
+const memoryActivationProvenance = computed(() => recordValue(memoryActivationOutput.value?.memory_provenance))
+const memoryActivationProvenanceStatus = computed(() => stringValue(memoryActivationProvenance.value.status))
+const memoryActivationChapterLabel = computed(() => chapterIndexLabel(memoryActivationOutput.value?.chapter_index))
+const memoryActivationQuery = computed(() => safeMemoryActivationText(memoryActivationOutput.value?.query))
+const memoryActivationRecommendedTools = computed(() => stringList(memoryActivationOutput.value?.recommended_next_tools))
+const memoryActivationCoverageIssueCount = computed(() => numberValue(memoryActivationCoverageDebt.value.issue_count))
+const memoryActivationMissingMemoryCount = computed(() => numberValue(memoryActivationCoverageDebt.value.missing_memory_count))
+const memoryActivationStaleRetrievalCount = computed(() => numberValue(memoryActivationCoverageDebt.value.stale_retrieval_count))
+const memoryActivationRisks = computed(() => (
+  recordList(memoryActivationOutput.value?.risks)
+    .map((item, index) => ({
+      key: `memory-activation-risk:${index}`,
+      code: safeMemoryActivationText(item.code),
+      message: safeMemoryActivationText(item.message),
+    }))
+    .filter((item) => Boolean(item.code || item.message))
+))
+const memoryActivationRows = computed(() => {
+  const activation = recordValue(memoryActivationOutput.value?.activation)
+  const buckets = [
+    { key: 'longform', label: '长篇记忆' },
+    { key: 'foreshadowing', label: '伏笔' },
+    { key: 'memory_tree', label: 'Memory Tree' },
+    { key: 'world_model', label: '世界模型' },
+    { key: 'knowledge_base', label: '知识库经验' },
+    { key: 'style', label: '风格' },
+  ]
+  return buckets.flatMap((bucket) => (
+    recordList(activation[bucket.key])
+      .slice(0, 2)
+      .map((item, index) => {
+        const title = memoryActivationItemTitle(item, bucket.label)
+        const summary = safeMemoryActivationText(item.summary)
+        return {
+          key: `memory-activation:${bucket.key}:${index}`,
+          bucket: bucket.label,
+          title,
+          summary,
+        }
+      })
+      .filter((item) => Boolean(item.title || item.summary))
+  ))
+})
 const retrievalContextOutput = computed(() => latestToolOutput('search_agent_retrieval_context'))
 const retrievalContextSummary = computed(() => recordValue(retrievalContextOutput.value?.summary))
 const retrievalContextItems = computed(() => recordList(retrievalContextOutput.value?.items))
@@ -985,6 +1034,7 @@ const memoryTreeSearchAction = computed<MemoryTreeDrilldownAction | null>(() => 
 const hasMemoryLoopProjection = computed(() => Boolean(
   memoryActivationOutput.value || retrievalContextOutput.value || postChapterMemoryOutput.value,
 ))
+const hasMemoryActivationProjection = computed(() => Boolean(memoryActivationOutput.value))
 const hasMemoryRouteProjection = computed(() => Boolean(memoryRouteOutput.value))
 const hasKnowledgeBaseRouteProjection = computed(() => Boolean(knowledgeBaseRouteOutput.value))
 const hasWorldModelRouteProjection = computed(() => Boolean(worldModelRouteOutput.value))
@@ -1388,6 +1438,14 @@ function memoryActivationStatusLabel(status: unknown) {
   return value || '未知'
 }
 
+function memoryActivationItemTitle(item: Record<string, unknown>, fallback: string) {
+  const title = safeMemoryActivationText(item.title)
+  if (title) return title
+  const summary = safeMemoryActivationText(item.summary)
+  if (summary && (fallback === '世界模型' || fallback === '风格')) return summary
+  return safeMemoryActivationText(item.predicate) || summary || fallback
+}
+
 function memoryTreeStatusLabel(status: unknown) {
   const value = stringValue(status)
   if (value === 'ready') return '可用'
@@ -1456,6 +1514,14 @@ function safePostMemoryCandidateLabel(label: unknown) {
   if (/[A-Za-z_]+:[A-Za-z0-9_-]+/.test(value)) return ''
   if (/source_refs|source_id|approval_contract|approval:|chapter-content-\d+|writing_agent_step:/i.test(value)) return ''
   return value.slice(0, 64)
+}
+
+function safeMemoryActivationText(label: unknown) {
+  const value = stringValue(label).replace(/\s+/g, ' ')
+  if (!value) return ''
+  if (/[A-Za-z_]+:[A-Za-z0-9_.:-]+/.test(value)) return ''
+  if (/project-secret|memory-secret|candidate-secret|world-secret|source_refs?|source_type|source_id|memory_id|candidate_id|proposal_item_id|node_id|approval_contract|char\.[A-Za-z0-9_.-]+|style_config\.|phase\d+\.memory_activation|build_memory_activation_plan|future_leak_guard|end_chapter_index_before_target|Writing Agent 长记忆激活|prompt-only raw context/i.test(value)) return ''
+  return value.slice(0, 96)
 }
 
 function safeMemoryRouteText(label: unknown) {
@@ -2089,6 +2155,106 @@ function missingDependencyTool(value: Record<string, unknown>) {
               {{ action.label }}
             </button>
           </div>
+        </section>
+
+        <section
+          v-if="hasMemoryActivationProjection"
+          class="agent-run-drawer__memory-activation"
+          aria-label="Agent memory activation projection"
+        >
+          <h4>记忆激活计划</h4>
+          <dl class="agent-run-drawer__facts">
+            <div>
+              <dt>状态</dt>
+              <dd>{{ memoryActivationStatusLabel(memoryActivationStatus) }}</dd>
+            </div>
+            <div v-if="memoryActivationChapterLabel">
+              <dt>章节</dt>
+              <dd>{{ memoryActivationChapterLabel }}</dd>
+            </div>
+            <div v-if="memoryActivationQuery">
+              <dt>查询</dt>
+              <dd>{{ memoryActivationQuery }}</dd>
+            </div>
+            <div v-if="memoryActivationLongformCount !== null">
+              <dt>长篇记忆</dt>
+              <dd>长篇记忆 {{ memoryActivationLongformCount }}</dd>
+            </div>
+            <div v-if="memoryActivationForeshadowingCount !== null">
+              <dt>伏笔</dt>
+              <dd>伏笔 {{ memoryActivationForeshadowingCount }}</dd>
+            </div>
+            <div v-if="memoryActivationMemoryTreeCount !== null">
+              <dt>记忆树</dt>
+              <dd>Memory Tree {{ memoryActivationMemoryTreeCount }}</dd>
+            </div>
+            <div v-if="memoryActivationWorldModelCount !== null">
+              <dt>世界模型</dt>
+              <dd>世界模型 {{ memoryActivationWorldModelCount }}</dd>
+            </div>
+            <div v-if="memoryActivationKnowledgeBaseCount !== null">
+              <dt>知识库</dt>
+              <dd>知识库经验 {{ memoryActivationKnowledgeBaseCount }}</dd>
+            </div>
+            <div v-if="memoryActivationStyleCount !== null">
+              <dt>风格</dt>
+              <dd>风格 {{ memoryActivationStyleCount }}</dd>
+            </div>
+            <div v-if="memoryActivationProvenanceStatus">
+              <dt>来源覆盖</dt>
+              <dd>{{ memoryRouteProvenanceStatusLabel(memoryActivationProvenanceStatus) }}</dd>
+            </div>
+            <div v-if="memoryActivationCoverageIssueCount !== null">
+              <dt>覆盖问题</dt>
+              <dd>覆盖问题 {{ memoryActivationCoverageIssueCount }}</dd>
+            </div>
+            <div v-if="memoryActivationMissingMemoryCount !== null">
+              <dt>缺失记忆</dt>
+              <dd>缺失记忆 {{ memoryActivationMissingMemoryCount }}</dd>
+            </div>
+            <div v-if="memoryActivationStaleRetrievalCount !== null">
+              <dt>检索陈旧</dt>
+              <dd>检索陈旧 {{ memoryActivationStaleRetrievalCount }}</dd>
+            </div>
+          </dl>
+          <ul
+            v-if="memoryActivationRecommendedTools.length"
+            class="agent-run-drawer__tools"
+          >
+            <li
+              v-for="tool in memoryActivationRecommendedTools"
+              :key="`memory-activation-next:${tool}`"
+            >
+              {{ tool }}
+            </li>
+          </ul>
+          <ul
+            v-if="memoryActivationRows.length"
+            class="agent-run-drawer__reference-patterns"
+          >
+            <li
+              v-for="row in memoryActivationRows"
+              :key="row.key"
+            >
+              <div>
+                <strong>{{ row.bucket }}</strong>
+                <span v-if="row.title">{{ row.title }}</span>
+              </div>
+              <p v-if="row.summary && row.summary !== row.title">{{ row.summary }}</p>
+            </li>
+          </ul>
+          <ul
+            v-if="memoryActivationRisks.length"
+            class="agent-run-drawer__planner-signals"
+          >
+            <li
+              v-for="risk in memoryActivationRisks"
+              :key="risk.key"
+            >
+              <strong v-if="risk.code">{{ risk.code }}</strong>
+              <span v-if="risk.message">{{ risk.message }}</span>
+            </li>
+          </ul>
         </section>
 
         <section
@@ -2935,6 +3101,7 @@ function missingDependencyTool(value: Record<string, unknown>) {
 .agent-run-drawer__execution-plan h4,
 .agent-run-drawer__planner h4,
 .agent-run-drawer__memory-loop h4,
+.agent-run-drawer__memory-activation h4,
 .agent-run-drawer__memory-route h4,
 .agent-run-drawer__knowledge-route h4,
 .agent-run-drawer__world-model-route h4,
@@ -2999,6 +3166,15 @@ function missingDependencyTool(value: Record<string, unknown>) {
 }
 
 .agent-run-drawer__memory-loop {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-secondary);
+}
+
+.agent-run-drawer__memory-activation {
   display: grid;
   gap: var(--space-3);
   padding: var(--space-3);
