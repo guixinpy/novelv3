@@ -459,6 +459,105 @@ const knowledgeBaseDiagnosticRows = computed(() => (
     }))
     .filter((item) => Boolean(item.message))
 ))
+const traceAuditOutput = computed(() => latestToolOutput('inspect_agent_trace_audit'))
+const traceAudit = computed(() => recordValue(traceAuditOutput.value?.audit))
+const traceAuditRun = computed(() => recordValue(traceAuditOutput.value?.run))
+const traceAuditFailure = computed(() => recordValue(traceAuditOutput.value?.failure))
+const traceAuditContext = computed(() => recordValue(traceAuditOutput.value?.context))
+const traceAuditSteps = computed(() => recordList(traceAuditOutput.value?.steps))
+const traceAuditTraces = computed(() => recordList(traceAuditOutput.value?.traces))
+const traceAuditEventChain = computed(() => recordList(traceAuditOutput.value?.event_chain))
+const traceAuditRecommendedActions = computed(() => recordList(traceAuditOutput.value?.recommended_actions))
+const traceAuditRunGoal = computed(() => safeTraceAuditText(traceAuditRun.value.goal))
+const traceAuditStepCount = computed(() => numberValue(traceAudit.value.step_count))
+const traceAuditTraceCount = computed(() => numberValue(traceAudit.value.trace_count))
+const traceAuditEventCount = computed(() => numberValue(traceAudit.value.event_chain_count))
+const traceAuditContextBlockCount = computed(() => numberValue(traceAudit.value.context_block_count))
+const traceAuditControlPlaneGapCount = computed(() => numberValue(traceAudit.value.control_plane_gap_count))
+const traceAuditFailureTool = computed(() => safeTraceAuditText(traceAuditFailure.value.tool_name))
+const traceAuditFailureReason = computed(() => safeTraceAuditText(traceAuditFailure.value.reason_code))
+const traceAuditFailureMessage = computed(() => safeTraceAuditText(traceAuditFailure.value.message))
+const traceAuditStepRows = computed(() => (
+  traceAuditSteps.value
+    .map((step, index) => {
+      const stepIndex = numberValue(step.step_index)
+      const toolName = safeTraceAuditText(step.tool_name)
+      return {
+        key: `trace-audit-step:${stepIndex ?? index}`,
+        label: [stepIndex !== null ? `#${stepIndex}` : '', toolName].filter(Boolean).join(' '),
+        statusLabel: traceAuditStatusLabel(step.status),
+        chapterLabel: chapterIndexLabel(step.chapter_index),
+      }
+    })
+    .filter((row) => Boolean(row.label || row.statusLabel || row.chapterLabel))
+))
+const traceAuditTraceRows = computed(() => (
+  traceAuditTraces.value
+    .map((trace, index) => {
+      const promptTokens = numberValue(trace.prompt_tokens)
+      const completionTokens = numberValue(trace.completion_tokens)
+      const latencyMs = numberValue(trace.latency_ms)
+      const contextBlockCount = numberValue(trace.context_block_count)
+      const contextCharCount = numberValue(trace.context_char_count)
+      const meta = [
+        safeTraceAuditText(trace.model),
+        promptTokens !== null ? `prompt ${promptTokens}` : '',
+        completionTokens !== null ? `completion ${completionTokens}` : '',
+        latencyMs !== null ? `${latencyMs}ms` : '',
+        contextBlockCount !== null ? `上下文块 ${contextBlockCount}` : '',
+        contextCharCount !== null ? `${contextCharCount} 字` : '',
+      ].filter(Boolean).join(' · ')
+      return {
+        key: `trace-audit-trace:${index}`,
+        label: safeTraceAuditText(trace.trace_type) || '模型 Trace',
+        statusLabel: traceAuditStatusLabel(trace.status),
+        meta,
+        error: safeTraceAuditText(trace.error_message),
+      }
+    })
+    .filter((row) => Boolean(row.label || row.statusLabel || row.meta || row.error))
+))
+const traceAuditEventRows = computed(() => (
+  traceAuditEventChain.value
+    .slice(0, 6)
+    .map((event, index) => ({
+      key: `trace-audit-event:${index}`,
+      label: traceAuditEventLabel(event),
+      detail: traceAuditEventDetail(event),
+    }))
+    .filter((row) => Boolean(row.label || row.detail))
+))
+const traceAuditContextRows = computed(() => (
+  recordList(traceAuditContext.value.blocks)
+    .map((block, index) => {
+      const charCount = numberValue(block.char_count)
+      const sourceCount = numberValue(block.source_count)
+      return {
+        key: `trace-audit-context:${index}`,
+        title: safeTraceAuditText(block.title) || '上下文块',
+        kind: safeTraceAuditText(block.kind),
+        meta: [
+          charCount !== null ? `${charCount} 字` : '',
+          sourceCount !== null ? `来源 ${sourceCount}` : '',
+          block.truncated === true ? '已截断' : '',
+        ].filter(Boolean).join(' · '),
+      }
+    })
+    .filter((row) => Boolean(row.title || row.meta))
+))
+const traceAuditRecommendedActionRows = computed(() => (
+  traceAuditRecommendedActions.value
+    .map((action, index) => {
+      const sourceStepIndex = numberValue(action.source_step_index)
+      return {
+        key: `trace-audit-action:${index}`,
+        toolName: safeTraceAuditText(action.tool_name) || '建议工具',
+        reason: safeTraceAuditText(action.reason_code),
+        sourceStepLabel: sourceStepIndex !== null ? `步骤 ${sourceStepIndex}` : '',
+      }
+    })
+    .filter((row) => Boolean(row.toolName || row.reason || row.sourceStepLabel))
+))
 const postChapterMemoryOutput = computed(() => latestToolOutput('plan_post_chapter_memory_capture'))
 const postChapterMemorySummary = computed(() => recordValue(postChapterMemoryOutput.value?.summary))
 const postChapterMemoryChapterLabel = computed(() => chapterIndexLabel(postChapterMemoryOutput.value?.chapter_index))
@@ -773,6 +872,7 @@ const hasMemoryLoopProjection = computed(() => Boolean(
   memoryActivationOutput.value || retrievalContextOutput.value || postChapterMemoryOutput.value,
 ))
 const hasKnowledgeBaseRouteProjection = computed(() => Boolean(knowledgeBaseRouteOutput.value))
+const hasTraceAuditProjection = computed(() => Boolean(traceAuditOutput.value))
 const hasKnowledgeBaseCandidateExecutionProjection = computed(() => Boolean(knowledgeBaseCandidateExecutionOutput.value))
 const hasMemoryTreeProjection = computed(() => Boolean(memoryTreeOutput.value))
 const hasRecommendedFollowupPolicy = computed(() => Boolean(
@@ -1233,12 +1333,71 @@ function safeKnowledgeBaseRouteText(label: unknown) {
   return value.slice(0, 96)
 }
 
+function safeTraceAuditText(label: unknown) {
+  const value = stringValue(label).replace(/\s+/g, ' ')
+  if (!value) return ''
+  if (/[A-Za-z_]+:[A-Za-z0-9_-]+/.test(value)) return ''
+  if (/(run|step|trace|message|task|target|chapter-content|longform)-secret|source_refs?|source_id|approval_contract|approval:/i.test(value)) return ''
+  return value.slice(0, 96)
+}
+
 function knowledgeBaseRouteStatusLabel(status: unknown) {
   const value = stringValue(status)
   if (value === 'ready') return '可用'
   if (value === 'sparse') return '稀疏'
   if (value === 'completed') return '已完成'
   return value || '未知'
+}
+
+function traceAuditStatusLabel(status: unknown) {
+  const value = stringValue(status)
+  if (value === 'completed' || value === 'success' || value === 'ready' || value === 'passed') return '已完成'
+  if (value === 'blocked') return '阻塞'
+  if (value === 'failed') return '失败'
+  if (value === 'running') return '运行中'
+  if (value === 'pending') return '等待中'
+  if (value === 'cancelled') return '已取消'
+  if (value === 'needs_attention') return '需处理'
+  return value || '未知'
+}
+
+function traceAuditEventLabel(event: Record<string, unknown>) {
+  const eventType = stringValue(event.event_type)
+  if (eventType === 'dialog_route_decision') {
+    return safeTraceAuditText(event.selected_route_label) || '对话路由'
+  }
+  if (eventType === 'approval_decision') {
+    return ['审批', safeTraceAuditText(event.decision_label)].filter(Boolean).join('：')
+  }
+  if (eventType === 'run_dispatched') {
+    return ['运行派发', traceAuditStatusLabel(event.status)].filter(Boolean).join('：')
+  }
+  if (eventType === 'tool_step') {
+    const stepIndex = numberValue(event.step_index)
+    const toolName = safeTraceAuditText(event.tool_name)
+    return ['工具步骤', stepIndex !== null ? `#${stepIndex}` : '', toolName].filter(Boolean).join(' ')
+  }
+  if (eventType === 'trace_attached') {
+    return ['Trace', safeTraceAuditText(event.trace_type)].filter(Boolean).join(' ')
+  }
+  return safeTraceAuditText(eventType)
+}
+
+function traceAuditEventDetail(event: Record<string, unknown>) {
+  const eventType = stringValue(event.event_type)
+  if (eventType === 'dialog_route_decision') {
+    return safeTraceAuditText(event.reason_label)
+  }
+  if (eventType === 'approval_decision') {
+    return safeTraceAuditText(event.action_type)
+  }
+  if (eventType === 'run_dispatched') {
+    return safeTraceAuditText(event.entrypoint)
+  }
+  if (eventType === 'tool_step' || eventType === 'trace_attached') {
+    return traceAuditStatusLabel(event.status)
+  }
+  return ''
 }
 
 function countRangeLabel(returned: number | null, total: number | null) {
@@ -1843,6 +2002,120 @@ function missingDependencyTool(value: Record<string, unknown>) {
         </section>
 
         <section
+          v-if="hasTraceAuditProjection"
+          class="agent-run-drawer__trace-audit"
+          aria-label="Agent trace audit projection"
+        >
+          <h4>Trace 审计</h4>
+          <dl class="agent-run-drawer__facts">
+            <div>
+              <dt>状态</dt>
+              <dd>{{ traceAuditStatusLabel(traceAudit.status) }}</dd>
+            </div>
+            <div v-if="traceAuditRunGoal">
+              <dt>目标</dt>
+              <dd>{{ traceAuditRunGoal }}</dd>
+            </div>
+            <div v-if="traceAuditStepCount !== null">
+              <dt>步骤</dt>
+              <dd>步骤 {{ traceAuditStepCount }}</dd>
+            </div>
+            <div v-if="traceAuditTraceCount !== null">
+              <dt>Trace</dt>
+              <dd>Trace {{ traceAuditTraceCount }}</dd>
+            </div>
+            <div v-if="traceAuditEventCount !== null">
+              <dt>事件</dt>
+              <dd>事件 {{ traceAuditEventCount }}</dd>
+            </div>
+            <div v-if="traceAuditContextBlockCount !== null">
+              <dt>上下文</dt>
+              <dd>上下文块 {{ traceAuditContextBlockCount }}</dd>
+            </div>
+            <div v-if="traceAuditControlPlaneGapCount !== null">
+              <dt>控制面</dt>
+              <dd>控制面缺口 {{ traceAuditControlPlaneGapCount }}</dd>
+            </div>
+          </dl>
+          <div
+            v-if="traceAuditFailureTool || traceAuditFailureReason || traceAuditFailureMessage"
+            class="agent-run-drawer__trace-audit-failure"
+          >
+            <strong>{{ traceAuditFailureTool || '失败摘要' }}</strong>
+            <span v-if="traceAuditFailureReason">{{ traceAuditFailureReason }}</span>
+            <p v-if="traceAuditFailureMessage">{{ traceAuditFailureMessage }}</p>
+          </div>
+          <ul
+            v-if="traceAuditRecommendedActionRows.length"
+            class="agent-run-drawer__tools"
+          >
+            <li
+              v-for="row in traceAuditRecommendedActionRows"
+              :key="row.key"
+            >
+              {{ row.toolName }}
+              <span v-if="row.reason"> · {{ row.reason }}</span>
+              <span v-if="row.sourceStepLabel"> · {{ row.sourceStepLabel }}</span>
+            </li>
+          </ul>
+          <ul
+            v-if="traceAuditEventRows.length"
+            class="agent-run-drawer__planner-signals"
+          >
+            <li
+              v-for="row in traceAuditEventRows"
+              :key="row.key"
+            >
+              <strong>{{ row.label }}</strong>
+              <span v-if="row.detail">{{ row.detail }}</span>
+            </li>
+          </ul>
+          <ul
+            v-if="traceAuditContextRows.length"
+            class="agent-run-drawer__reference-patterns"
+          >
+            <li
+              v-for="row in traceAuditContextRows"
+              :key="row.key"
+            >
+              <div>
+                <strong>{{ row.title }}</strong>
+                <span v-if="row.kind">{{ row.kind }}</span>
+              </div>
+              <p v-if="row.meta">{{ row.meta }}</p>
+            </li>
+          </ul>
+          <ul
+            v-if="traceAuditStepRows.length"
+            class="agent-run-drawer__execution-tools"
+          >
+            <li
+              v-for="row in traceAuditStepRows"
+              :key="row.key"
+            >
+              <span>{{ row.label || '工具步骤' }}</span>
+              <strong>{{ [row.chapterLabel, row.statusLabel].filter(Boolean).join(' · ') }}</strong>
+            </li>
+          </ul>
+          <ul
+            v-if="traceAuditTraceRows.length"
+            class="agent-run-drawer__reference-patterns"
+          >
+            <li
+              v-for="row in traceAuditTraceRows"
+              :key="row.key"
+            >
+              <div>
+                <strong>{{ row.label }}</strong>
+                <span>{{ row.statusLabel }}</span>
+              </div>
+              <p v-if="row.meta">{{ row.meta }}</p>
+              <p v-if="row.error">{{ row.error }}</p>
+            </li>
+          </ul>
+        </section>
+
+        <section
           v-if="hasKnowledgeBaseCandidateExecutionProjection"
           class="agent-run-drawer__knowledge-candidate"
           aria-label="Knowledge base candidate execution"
@@ -2306,6 +2579,7 @@ function missingDependencyTool(value: Record<string, unknown>) {
 .agent-run-drawer__planner h4,
 .agent-run-drawer__memory-loop h4,
 .agent-run-drawer__knowledge-route h4,
+.agent-run-drawer__trace-audit h4,
 .agent-run-drawer__knowledge-candidate h4,
 .agent-run-drawer__memory-tree h4,
 .agent-run-drawer__recovery h4,
@@ -2375,6 +2649,15 @@ function missingDependencyTool(value: Record<string, unknown>) {
 }
 
 .agent-run-drawer__knowledge-route {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-secondary);
+}
+
+.agent-run-drawer__trace-audit {
   display: grid;
   gap: var(--space-3);
   padding: var(--space-3);
@@ -2598,6 +2881,27 @@ function missingDependencyTool(value: Record<string, unknown>) {
   margin: 0;
   color: var(--color-text-secondary);
   line-height: var(--leading-normal);
+}
+
+.agent-run-drawer__trace-audit-failure {
+  display: grid;
+  gap: 2px;
+  padding: var(--space-2);
+  border-left: 3px solid var(--color-warning);
+  background: var(--color-bg-white);
+  font-size: var(--text-xs);
+}
+
+.agent-run-drawer__trace-audit-failure strong {
+  color: var(--color-text-primary);
+}
+
+.agent-run-drawer__trace-audit-failure span,
+.agent-run-drawer__trace-audit-failure p {
+  margin: 0;
+  color: var(--color-text-secondary);
+  line-height: var(--leading-normal);
+  overflow-wrap: anywhere;
 }
 
 .agent-run-drawer__tools li {

@@ -2561,6 +2561,181 @@ describe('AgentRunDrawer', () => {
     expect(text).not.toContain('source_refs')
   })
 
+  it('renders trace audit projection without internal ids', () => {
+    mount(AgentRunDrawer, {
+      attachTo: document.body,
+      props: {
+        open: true,
+        loading: false,
+        error: '',
+        run: {
+          id: 'drawer-trace-audit-run',
+          project_id: 'project-1',
+          goal: '审计第3章执行链路',
+          status: 'success',
+          entrypoint: 'ui_memory_tree_workspace_trace_audit',
+          input: {},
+          output: null,
+          error: null,
+          steps: [
+            {
+              id: 'step-trace-audit-wrapper',
+              run_id: 'drawer-trace-audit-run',
+              project_id: 'project-1',
+              step_index: 1,
+              tool_name: 'inspect_agent_trace_audit',
+              status: 'success',
+              input: { chapter_index: 3, limit: 5 },
+              output: {
+                status: 'completed',
+                audit: {
+                  status: 'blocked',
+                  reason: 'agent_run_blocked',
+                  step_count: 2,
+                  trace_count: 1,
+                  dialog_route_event_count: 1,
+                  approval_event_count: 1,
+                  event_chain_count: 5,
+                  context_block_count: 2,
+                  control_plane_status: 'needs_attention',
+                  control_plane_gap_count: 2,
+                },
+                run: {
+                  id: 'audited-run-secret-id',
+                  goal: '生成第3章',
+                  status: 'blocked',
+                  entrypoint: 'dialog_auto_plan',
+                  background_task_id: 'task-secret-id',
+                },
+                steps: [
+                  {
+                    id: 'step-secret-id-1',
+                    step_index: 1,
+                    tool_name: 'plan_writing_agent_run',
+                    status: 'success',
+                    trace_id: 'trace-secret-id',
+                  },
+                  {
+                    id: 'step-secret-id-2',
+                    step_index: 2,
+                    tool_name: 'generate_chapter',
+                    status: 'blocked',
+                    trace_id: 'trace-secret-id',
+                    target_id: 'chapter-content-secret-id',
+                    chapter_index: 3,
+                  },
+                ],
+                traces: [
+                  {
+                    id: 'trace-secret-id',
+                    trace_type: 'chapter_generation',
+                    status: 'failed',
+                    model: 'deepseek-chat',
+                    prompt_tokens: 100,
+                    completion_tokens: 20,
+                    latency_ms: 321,
+                    context_block_count: 2,
+                    context_char_count: 6000,
+                    error_message: 'provider timeout',
+                  },
+                ],
+                event_chain: [
+                  {
+                    event_type: 'dialog_route_decision',
+                    trace_id: 'route-trace-secret-id',
+                    selected_route_label: '生成下一章节',
+                    reason_label: '未发现恢复或后继，回落到章节生成',
+                  },
+                  {
+                    event_type: 'approval_decision',
+                    message_id: 'message-secret-id',
+                    action_type: 'generate_chapter',
+                    decision_label: '已确认',
+                  },
+                  {
+                    event_type: 'run_dispatched',
+                    run_id: 'audited-run-secret-id',
+                    status: 'blocked',
+                    entrypoint: 'dialog_auto_plan',
+                    background_task_id: 'task-secret-id',
+                  },
+                  {
+                    event_type: 'tool_step',
+                    step_id: 'step-secret-id-2',
+                    step_index: 2,
+                    tool_name: 'generate_chapter',
+                    status: 'blocked',
+                    trace_id: 'trace-secret-id',
+                  },
+                  {
+                    event_type: 'trace_attached',
+                    trace_id: 'trace-secret-id',
+                    trace_type: 'chapter_generation',
+                    status: 'failed',
+                    context_block_count: 2,
+                  },
+                ],
+                context: {
+                  total_blocks: 2,
+                  blocks: [
+                    {
+                      trace_id: 'trace-secret-id',
+                      key: 'longform-secret-key',
+                      kind: 'memory',
+                      title: '长篇记忆',
+                      char_count: 3200,
+                      source_count: 3,
+                      truncated: true,
+                    },
+                  ],
+                },
+                failure: {
+                  status: 'blocked',
+                  tool_name: 'generate_chapter',
+                  step_index: 2,
+                  reason_code: 'missing_preflight',
+                  message: '缺少 preflight gate',
+                },
+                recommended_actions: [
+                  {
+                    tool_name: 'plan_recovery_tools',
+                    reason_code: 'missing_preflight',
+                    source_step_index: 2,
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      },
+    })
+
+    const text = document.body.textContent || ''
+    expect(text).toContain('Trace 审计')
+    expect(text).toContain('阻塞')
+    expect(text).toContain('生成第3章')
+    expect(text).toContain('步骤 2')
+    expect(text).toContain('Trace 1')
+    expect(text).toContain('事件 5')
+    expect(text).toContain('上下文块 2')
+    expect(text).toContain('控制面缺口 2')
+    expect(text).toContain('generate_chapter')
+    expect(text).toContain('missing_preflight')
+    expect(text).toContain('缺少 preflight gate')
+    expect(text).toContain('plan_recovery_tools')
+    expect(text).toContain('生成下一章节')
+    expect(text).toContain('已确认')
+    expect(text).toContain('长篇记忆')
+    expect(text).toContain('3200 字')
+    expect(text).not.toContain('audited-run-secret-id')
+    expect(text).not.toContain('step-secret-id')
+    expect(text).not.toContain('trace-secret-id')
+    expect(text).not.toContain('message-secret-id')
+    expect(text).not.toContain('task-secret-id')
+    expect(text).not.toContain('chapter-content-secret-id')
+    expect(text).not.toContain('longform-secret-key')
+  })
+
   it('does not render route upgrade apply when contract preview is not confirmable', () => {
     mount(AgentRunDrawer, {
       attachTo: document.body,
