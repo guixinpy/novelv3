@@ -826,12 +826,35 @@ const traceAuditRecommendedActionRows = computed(() => (
 ))
 const postChapterMemoryOutput = computed(() => latestToolOutput('plan_post_chapter_memory_capture'))
 const postChapterMemorySummary = computed(() => recordValue(postChapterMemoryOutput.value?.summary))
+const postChapterMemoryProvenance = computed(() => recordValue(postChapterMemoryOutput.value?.memory_provenance))
+const postChapterMemoryStatus = computed(() => stringValue(postChapterMemoryOutput.value?.status))
 const postChapterMemoryChapterLabel = computed(() => chapterIndexLabel(postChapterMemoryOutput.value?.chapter_index))
 const postChapterMemoryCaptureStatus = computed(() => stringValue(postChapterMemoryOutput.value?.capture_status))
+const postChapterMemoryChapterAvailabilityLabel = computed(() => (
+  postChapterMemorySummary.value.chapter_available === true ? '章节可用' : '章节缺失'
+))
 const postChapterMemoryCandidateCount = computed(() => numberValue(postChapterMemorySummary.value.candidate_count))
 const postChapterMemoryReviewStepCount = computed(() => numberValue(postChapterMemorySummary.value.review_step_count))
 const postChapterMemoryRecommendedTools = computed(() => stringList(postChapterMemoryOutput.value?.recommended_next_tools))
 const postChapterMemoryCandidates = computed(() => recordList(postChapterMemoryOutput.value?.candidates))
+const postChapterMemoryProvenanceStatus = computed(() => stringValue(postChapterMemoryProvenance.value.status))
+const postChapterMemoryCandidateRows = computed(() => (
+  postChapterMemoryCandidates.value
+    .slice(0, 5)
+    .map((candidate, index) => {
+      const confidence = numberValue(candidate.confidence)
+      const evidence = recordValue(candidate.evidence)
+      return {
+        key: `post-memory-candidate:${index}`,
+        title: safePostChapterMemoryText(candidate.title) || '写后记忆候选',
+        type: knowledgeBaseCandidateTypeLabel(candidate.memory_type),
+        summary: safePostChapterMemoryText(candidate.summary),
+        chapterLabel: chapterIndexLabel(evidence.chapter_index),
+        confidenceLabel: confidence !== null ? `置信 ${confidence}` : '',
+      }
+    })
+    .filter((candidate) => Boolean(candidate.title || candidate.summary))
+))
 const knowledgeBaseCandidateExecutionOutput = computed(() => latestToolOutput('execute_record_agent_knowledge_base_candidate_with_approval'))
 const knowledgeBaseCandidateExecutionCandidate = computed(() => recordValue(knowledgeBaseCandidateExecutionOutput.value?.candidate))
 const knowledgeBaseCandidateExecutionTitle = computed(() => (
@@ -1138,6 +1161,7 @@ const hasMemoryLoopProjection = computed(() => Boolean(
   memoryActivationOutput.value || retrievalContextOutput.value || postChapterMemoryOutput.value,
 ))
 const hasRetrievalContextProjection = computed(() => Boolean(retrievalContextOutput.value))
+const hasPostChapterMemoryProjection = computed(() => Boolean(postChapterMemoryOutput.value))
 const hasMemoryActivationProjection = computed(() => Boolean(memoryActivationOutput.value))
 const hasLongformContextProjection = computed(() => Boolean(longformContextOutput.value))
 const hasMemoryRouteProjection = computed(() => Boolean(memoryRouteOutput.value))
@@ -1620,6 +1644,14 @@ function safePostMemoryCandidateLabel(label: unknown) {
   if (/[A-Za-z_]+:[A-Za-z0-9_-]+/.test(value)) return ''
   if (/source_refs|source_id|approval_contract|approval:|chapter-content-\d+|writing_agent_step:/i.test(value)) return ''
   return value.slice(0, 64)
+}
+
+function safePostChapterMemoryText(label: unknown) {
+  const value = stringValue(label).replace(/\s+/g, ' ')
+  if (!value) return ''
+  if (/[A-Za-z_]+:[A-Za-z0-9_-]+/.test(value)) return ''
+  if (/project-secret|chapter-content-\d+|review-step-secret|source_refs?|source_type|source_id|chapter_content_id|review_step_ids|memory_provenance|next_tool_call|target_type|agent_post_chapter_memory_capture_plan|phase\d+\.post_chapter_memory_capture|approval_contract|approval:/i.test(value)) return ''
+  return value.slice(0, 120)
 }
 
 function safeMemoryActivationText(label: unknown) {
@@ -2277,6 +2309,72 @@ function missingDependencyTool(value: Record<string, unknown>) {
               {{ action.label }}
             </button>
           </div>
+        </section>
+
+        <section
+          v-if="hasPostChapterMemoryProjection"
+          class="agent-run-drawer__post-memory"
+          aria-label="Agent post-chapter memory capture projection"
+        >
+          <h4>写后记忆沉淀规划</h4>
+          <dl class="agent-run-drawer__facts">
+            <div>
+              <dt>状态</dt>
+              <dd>{{ executionPlanToolStatusLabel(postChapterMemoryStatus) }}</dd>
+            </div>
+            <div v-if="postChapterMemoryChapterLabel">
+              <dt>章节</dt>
+              <dd>{{ postChapterMemoryChapterLabel }}</dd>
+            </div>
+            <div>
+              <dt>沉淀状态</dt>
+              <dd>{{ postChapterMemoryCaptureStatusLabel(postChapterMemoryCaptureStatus) }}</dd>
+            </div>
+            <div>
+              <dt>章节证据</dt>
+              <dd>{{ postChapterMemoryChapterAvailabilityLabel }}</dd>
+            </div>
+            <div v-if="postChapterMemoryCandidateCount !== null">
+              <dt>候选</dt>
+              <dd>候选 {{ postChapterMemoryCandidateCount }}</dd>
+            </div>
+            <div v-if="postChapterMemoryReviewStepCount !== null">
+              <dt>审稿</dt>
+              <dd>审稿证据 {{ postChapterMemoryReviewStepCount }}</dd>
+            </div>
+            <div v-if="postChapterMemoryProvenanceStatus">
+              <dt>来源覆盖</dt>
+              <dd>{{ memoryRouteProvenanceStatusLabel(postChapterMemoryProvenanceStatus) }}</dd>
+            </div>
+          </dl>
+          <ul
+            v-if="postChapterMemoryRecommendedTools.length"
+            class="agent-run-drawer__write-tools"
+          >
+            <li
+              v-for="tool in postChapterMemoryRecommendedTools"
+              :key="`post-memory-projection-next:${tool}`"
+            >
+              {{ tool }}
+            </li>
+          </ul>
+          <ul
+            v-if="postChapterMemoryCandidateRows.length"
+            class="agent-run-drawer__reference-patterns"
+          >
+            <li
+              v-for="candidate in postChapterMemoryCandidateRows"
+              :key="candidate.key"
+            >
+              <div>
+                <strong>{{ candidate.title }}</strong>
+                <span v-if="candidate.type">{{ candidate.type }}</span>
+                <span v-if="candidate.chapterLabel">{{ candidate.chapterLabel }}</span>
+                <span v-if="candidate.confidenceLabel">{{ candidate.confidenceLabel }}</span>
+              </div>
+              <p v-if="candidate.summary">{{ candidate.summary }}</p>
+            </li>
+          </ul>
         </section>
 
         <section
@@ -3396,6 +3494,7 @@ function missingDependencyTool(value: Record<string, unknown>) {
 .agent-run-drawer__execution-plan h4,
 .agent-run-drawer__planner h4,
 .agent-run-drawer__memory-loop h4,
+.agent-run-drawer__post-memory h4,
 .agent-run-drawer__retrieval-context h4,
 .agent-run-drawer__longform-context h4,
 .agent-run-drawer__memory-activation h4,
@@ -3463,6 +3562,15 @@ function missingDependencyTool(value: Record<string, unknown>) {
 }
 
 .agent-run-drawer__memory-loop {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-secondary);
+}
+
+.agent-run-drawer__post-memory {
   display: grid;
   gap: var(--space-3);
   padding: var(--space-3);
