@@ -144,7 +144,7 @@
 - [x] World Model Proposal Resolution Plan 只读规划意图：自然语言“规划世界模型提案解决方案 offset 2 limit 7”可投影为 plan_world_model_proposal_resolution 只读工具计划，World Model Proposal Resolution Plan run 可在 AgentRunDrawer 展示安全摘要
 - [x] Retrieval Context 只读检索意图：自然语言“检索第3章前的上下文证据 query=灯塔旧回声 limit 5”可投影为 search_agent_retrieval_context 只读工具计划，Retrieval Context run 可在 AgentRunDrawer 展示安全摘要
 - [x] Longform Context Summary 只读摘要意图：自然语言“汇总第3章长篇上下文 query=灯塔旧回声 max_chars 2000”可投影为 summarize_longform_context 只读工具计划，Longform Context Summary run 可在 AgentRunDrawer 展示安全摘要
-- [x] ContextCompressor 只读自检意图：自然语言“检查上下文压缩/预算/窗口压力”可投影为 inspect_agent_context_compression_projection 只读工具计划
+- [x] ContextCompressor 只读自检意图：自然语言“检查上下文压缩/预算/窗口压力”可投影为 inspect_agent_context_compression_projection 只读工具计划，ContextCompressor Projection run 可在 AgentRunDrawer 展示安全摘要
 - [x] ContextCompressor dry-run payload 只读意图：自然语言“构建第3章上下文压缩 dry-run payload max_chars 2000 context_guard_failure_count 2”可投影为 build_agent_context_compression_payload 只读工具计划
 - [x] Worker Dispatch 只读审计意图：自然语言“检查 worker 分发/孤儿恢复”可投影为 inspect_agent_worker_dispatch 只读工具计划
 - [x] Agent Event Projection 只读审计意图：自然语言“检查 task-abc123 的 Agent 事件投影 limit 12”可投影为 inspect_agent_event_projection 只读工具计划
@@ -299,6 +299,7 @@
 - [x] 基础上下文压缩：对话历史长度限制
 - [x] 长篇上下文摘要：longform_context_summary
 - [x] ContextCompressor 基础计划投影：context pressure 下输出头尾保护预修剪、target_max_chars 和 summarize_longform_context 工具计划
+- [x] ContextCompressor Drawer 安全投影：AgentRunDrawer 可展示 inspect_agent_context_compression_projection 的状态、章节、粒度、保护策略、上下文字符/预算/使用率、截断分区、Guard 失败次数、目标预算、头尾保护计数、预修剪计数、LLM 摘要需求、推荐工具和风险摘要，并隐藏 project id、memory_provenance、trace/version、source_ref/source_type/source id 和 payload params
 - [x] ContextCompressor dry-run payload：build_agent_context_compression_payload 输出头尾保护、summary 注入、pretrim evidence 和无副作用 trace，并成为 context pressure 的推荐恢复入口
 - [x] ContextCompressor preflight runtime gate：preflight_writing 输出 context_compression 检查、warning issue、recommended_next_tools 和裁剪后的 payload preview；ContextGuard opened 时作为 blocker 处理
 - [x] ContextCompressor 章节 prompt block 压缩：章节生成上下文构建在 longform 压力下用 dry-run compressed_context 替换原始 longform block，并在 trace metadata 记录压缩来源
@@ -321,6 +322,7 @@
 
 ### 最近完成
 
+- 2026-06-03: `AgentRunDrawer` 新增 ContextCompressor Projection 安全投影，消费 `inspect_agent_context_compression_projection` 输出并展示状态、章节、粒度、保护当前章节判断、上下文字符/预算/使用率、截断分区、Guard 失败次数、目标预算、头尾保护计数、预修剪计数、LLM 摘要需求、推荐工具和风险摘要，同时隐藏 project id、memory_provenance、trace/version、source_ref/source_type/source id、`include_prompt_context` 与 `context_guard_failure_count` 等内部参数。
 - 2026-06-03: `AgentRunDrawer` 新增 Trace Audit 安全投影，消费 `inspect_agent_trace_audit` 输出并展示审计状态、目标、步骤/Trace/事件/上下文/控制面缺口、失败摘要、推荐动作、事件链、上下文块、工具步骤和模型 Trace 概览，同时隐藏 run/step/trace/message/task/source id 与内部上下文 key。
 - 2026-06-02: `inspect_agent_trace_audit` 接入对话只读意图链路：自然语言“检查 run trace/执行链路/失败原因”会经 `trace_audit_intent` 生成无需审批的 read tool 计划，支持 run_id 和 chapter_index 的确定性抽取；这补强了端到端 Trace 链路的入口，但完整“用户意图→计划→工具调用→模型调用→结果”聚合仍未完成。
 - 2026-06-02: `build_agent_context_compression_payload` 接入对话只读意图链路：自然语言可直接构建指定章节/预算/ContextGuard 失败次数下的 dry-run payload，跳过泛化压缩自检入口但保留投影快照、pretrim evidence 和无副作用 trace。
@@ -354,11 +356,12 @@
 | 优先级 | 任务 | 完成标准 | 状态 |
 |--------|------|---------|------|
 | P1 | Agent 执行计划可视化 | 对话中展示当前执行计划、工具调用进度 | 🟡 进行中（Drawer per-tool progress + followup pending confirmation fallback） |
-| P2 | Memory Tree 可视化 | 前端展示分层摘要树、支持浏览和搜索 | 🟡 进行中（Drawer read-only projection + free search + recommended/node drilldown + project-scoped history + Hermes Memory workspace + subnav search/history/hierarchical results/expand state + chapter/retrieval drawer projection/context-summary drawer projection/post-capture drawer projection/memory-route drawer projection/memory-activation drawer projection/knowledge-base/trace audit drawer projection/world model route drawer projection/world proposal review drawer projection/world proposal resolution drawer projection；更完整树工作区能力待补） |
-| P3 | 面板整合 | Athena 面板、Memory 面板、Trace 面板的统一导航 | 🟡 进行中（Memory workspace → content/retrieval drawer projection/longform context summary drawer projection/post chapter memory capture drawer projection/memory route drawer projection/memory activation drawer projection/knowledge base route drawer projection/knowledge candidate prepare approval/execute approval payload/execution result projection/knowledge base route verification/trace audit drawer projection/world model route drawer projection/world proposal review drawer projection/world proposal resolution drawer projection；更完整导航体验待补） |
+| P2 | Memory Tree 可视化 | 前端展示分层摘要树、支持浏览和搜索 | 🟡 进行中（Drawer read-only projection + free search + recommended/node drilldown + project-scoped history + Hermes Memory workspace + subnav search/history/hierarchical results/expand state + chapter/retrieval drawer projection/context-summary drawer projection/context-compression drawer projection/post-capture drawer projection/memory-route drawer projection/memory-activation drawer projection/knowledge-base/trace audit drawer projection/world model route drawer projection/world proposal review drawer projection/world proposal resolution drawer projection；更完整树工作区能力待补） |
+| P3 | 面板整合 | Athena 面板、Memory 面板、Trace 面板的统一导航 | 🟡 进行中（Memory workspace → content/retrieval drawer projection/longform context summary drawer projection/context compression drawer projection/post chapter memory capture drawer projection/memory route drawer projection/memory activation drawer projection/knowledge base route drawer projection/knowledge candidate prepare approval/execute approval payload/execution result projection/knowledge base route verification/trace audit drawer projection/world model route drawer projection/world proposal review drawer projection/world proposal resolution drawer projection；更完整导航体验待补） |
 
 ### 最近完成
 
+- 2026-06-03: `AgentRunDrawer` 新增 ContextCompressor Projection 安全投影，消费 `inspect_agent_context_compression_projection` 输出并展示状态、章节、粒度、保护策略、上下文字符/预算/使用率、截断分区、Guard 失败次数、目标预算、头尾保护计数、预修剪计数、LLM 摘要需求、推荐工具和风险摘要，同时隐藏 project id、memory_provenance、trace/version、source_ref/source_type/source id 和 payload params。
 - 2026-06-03: `AgentRunDrawer` 新增 World Model Proposal Resolution Plan 安全投影，消费 `plan_world_model_proposal_resolution` 输出并展示计划状态、人工确认需求、自动应用判断、生成阻断判断、返回/总待审数量、高优先级步骤数、批量步骤数、风险计数、审阅模式计数、推荐动作/后续工具和最多 5 条安全步骤摘要，同时隐藏 project/profile/cluster/item/bundle id、profile_version、item_ids、bundle_ids、allowed_actions、plan_only 和 report_only 内部字段。
 - 2026-06-03: `AgentRunDrawer` 新增 World Model Proposal Review 安全投影，消费 `review_world_model_proposals` 输出并展示队列状态、生成阻断判断、返回/总待审数量、分页状态、风险计数、审阅模式计数、推荐动作和最多若干提案簇摘要，同时隐藏 project/profile/cluster/item/bundle id、profile_version、item_ids、bundle_ids 和 report_only 内部字段。
 - 2026-06-03: `AgentRunDrawer` 新增 Post Chapter Memory Capture 安全投影，消费 `plan_post_chapter_memory_capture` 输出并展示状态、章节、沉淀状态、章节可用性、候选数、审稿证据数、来源覆盖、推荐工具和最多 5 条候选标题/类型/摘要/置信度，同时隐藏 project/chapter/review step id、source_ref/source_refs/source_type、memory_provenance、next_tool_call、target_type 和 tool/provenance version。
