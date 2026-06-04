@@ -51,6 +51,7 @@ _MEMORY_TREE_LLM_CANDIDATE_SUMMARY_PREPARE_OUTPUT = object_schema(
         "required_confirmation": {"type": "object"},
         "side_effects": {"type": "object"},
         "recommended_next_tools": {"type": "array"},
+        "recommended_next_tool_calls": {"type": "array"},
         "post_approval_continuation_tools": {"type": "array"},
         "trace": {"type": "object"},
     }
@@ -199,6 +200,7 @@ MEMORY_TREE_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
                 "summary": {"type": "object"},
                 "candidates": {"type": "array"},
                 "recommended_next_tools": {"type": "array"},
+                "recommended_next_tool_calls": {"type": "array"},
                 "trace": {"type": "object"},
             }
         ),

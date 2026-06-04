@@ -173,3 +173,16 @@ The candidate write path is now trace-bound and approval-gated: `prepare_record_
 The postcheck remains `degraded` because this run materialized only chapter 2, leaving the other chapter summary gaps in the temporary copy. The semantic probe for `灯塔旧回声` is matched after the candidate summary write, proving the selected candidate can improve targeted Memory Tree recall without broad direct writes.
 
 Remaining gaps: this still uses a fake model response, and single-candidate materialization does not close whole-project summary coverage. Next increments should run a real configured model and/or batch the candidate approval flow across the remaining chapter gaps.
+
+## Follow-up Handoff Regression
+
+The approval handoff now has concrete call payloads in addition to tool-name recommendations:
+
+- `inspect_agent_memory_tree_llm_candidates` returns a `recommended_next_tool_calls` entry for `prepare_record_agent_memory_tree_llm_candidate_summary`, populated with the selected `candidate_trace_id`, `quality_chapter_index`, and a candidate salient term as `quality_query`.
+- `prepare_record_agent_memory_tree_llm_candidate_summary` returns a `recommended_next_tool_calls` entry for `execute_record_agent_memory_tree_llm_candidate_summary_with_approval`, including `confirm_execute=true`, the approval contract/hash, and `requires_confirmation=true`.
+
+Targeted regression coverage:
+
+```powershell
+pytest tests/test_writing_agent_memory_tree.py::test_memory_tree_llm_candidate_trace_inspection_lists_persisted_candidates tests/test_writing_agent_memory_tree.py::test_prepare_record_memory_tree_llm_candidate_summary_builds_trace_bound_approval_contract tests/test_writing_agent_tool_registry.py::test_agent_tool_registry_includes_memory_tree_llm_candidate_inspection tests/test_writing_agent_tool_registry.py::test_agent_tool_registry_includes_memory_tree_llm_candidate_summary_approval_chain
+```

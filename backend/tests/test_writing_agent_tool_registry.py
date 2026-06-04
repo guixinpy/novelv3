@@ -1845,6 +1845,7 @@ def test_agent_tool_registry_includes_memory_tree_llm_candidate_inspection():
     assert descriptor.input_schema["properties"]["chapter_index"]["minimum"] == 1
     assert descriptor.input_schema["properties"]["limit"]["minimum"] == 1
     assert descriptor.output_schema["properties"]["candidates"]["type"] == "array"
+    assert descriptor.output_schema["properties"]["recommended_next_tool_calls"]["type"] == "array"
     assert "inspect_agent_memory_tree_llm_candidates" in allowed_tool_names()
     assert "inspect_agent_memory_tree_llm_candidates" in non_blocking_report_tool_names()
 
@@ -1874,6 +1875,7 @@ def test_agent_tool_registry_includes_memory_tree_llm_candidate_summary_approval
     assert prepare_descriptor.input_schema["properties"]["candidate_trace_id"]["type"] == "string"
     assert prepare_descriptor.output_schema["properties"]["candidate_summary"]["type"] == "object"
     assert prepare_descriptor.output_schema["properties"]["agent_plan_approval_contract_hash"]["type"] == "string"
+    assert prepare_descriptor.output_schema["properties"]["recommended_next_tool_calls"]["type"] == "array"
     assert "prepare_record_agent_memory_tree_llm_candidate_summary" in allowed_tool_names()
     assert "prepare_record_agent_memory_tree_llm_candidate_summary" in non_blocking_report_tool_names()
 

@@ -99,6 +99,14 @@ def prepare_record_agent_memory_tree_llm_candidate_summary(
             },
             "side_effects": {"executed": [], "skipped": [CANDIDATE_RECORD_TOOL]},
             "recommended_next_tools": [CANDIDATE_EXECUTE_TOOL],
+            "recommended_next_tool_calls": [
+                _candidate_execute_recommended_tool_call(
+                    record_params,
+                    quality_params,
+                    approval_hash,
+                    approval_contract,
+                )
+            ],
             "post_approval_continuation_tools": post_approval_continuation_tools,
             "trace": {
                 "selected_tools": [CANDIDATE_PREPARE_TOOL],
@@ -447,6 +455,31 @@ def _memory_tree_llm_candidate_summary_agent_plan(project_id: str, params: dict[
             "planner_version": PREPARE_RECORD_MEMORY_TREE_LLM_CANDIDATE_SUMMARY_VERSION,
         },
         "steps": [step],
+    }
+
+
+def _candidate_execute_recommended_tool_call(
+    record_params: dict[str, Any],
+    quality_params: dict[str, Any],
+    approval_hash: str,
+    approval_contract: dict[str, Any],
+) -> dict[str, Any]:
+    params: dict[str, Any] = {
+        "candidate_trace_id": record_params.get("candidate_trace_id"),
+        "confirm_execute": True,
+        "approval_contract_hash": approval_hash,
+        "approval_contract": approval_contract,
+    }
+    quality_chapter_index = _positive_int(quality_params.get("chapter_index"))
+    if quality_chapter_index is not None:
+        params["quality_chapter_index"] = quality_chapter_index
+    quality_query = _clean_string(quality_params.get("query"))
+    if quality_query:
+        params["quality_query"] = quality_query
+    return {
+        "tool_name": CANDIDATE_EXECUTE_TOOL,
+        "params": params,
+        "requires_confirmation": True,
     }
 
 

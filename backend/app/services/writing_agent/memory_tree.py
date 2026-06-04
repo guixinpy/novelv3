@@ -249,6 +249,7 @@ def inspect_agent_memory_tree_llm_candidates(
         },
         "candidates": candidates,
         "recommended_next_tools": _llm_candidate_inspection_recommendations(candidates),
+        "recommended_next_tool_calls": _llm_candidate_inspection_recommended_tool_calls(candidates),
         "trace": {
             "source": "inspect_agent_memory_tree_llm_candidates",
             "version": MEMORY_TREE_LLM_CANDIDATE_INSPECTION_VERSION,
@@ -1408,6 +1409,41 @@ def _llm_candidate_inspection_recommendations(candidates: list[dict[str, Any]]) 
         "execute_record_agent_memory_tree_llm_candidate_summary_with_approval",
         "inspect_agent_memory_tree_quality",
     ]
+
+
+def _llm_candidate_inspection_recommended_tool_calls(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    candidate_trace = next(
+        (item for item in candidates if str((item.get("candidate") or {}).get("summary") or "").strip()),
+        None,
+    )
+    if candidate_trace is None:
+        return []
+    params: dict[str, Any] = {"candidate_trace_id": candidate_trace.get("trace_id")}
+    summary_target = candidate_trace.get("summary_target")
+    if not isinstance(summary_target, dict):
+        summary_target = {}
+    chapter_index = _optional_int(summary_target.get("chapter_index") or candidate_trace.get("chapter_index"))
+    if chapter_index is not None:
+        params["quality_chapter_index"] = chapter_index
+    quality_query = _first_llm_candidate_quality_query(candidate_trace.get("candidate"))
+    if quality_query:
+        params["quality_query"] = quality_query
+    return [
+        {
+            "tool_name": "prepare_record_agent_memory_tree_llm_candidate_summary",
+            "params": params,
+            "requires_confirmation": False,
+        }
+    ]
+
+
+def _first_llm_candidate_quality_query(candidate: Any) -> str | None:
+    if not isinstance(candidate, dict):
+        return None
+    for term in _string_list(candidate.get("salient_terms")):
+        if term:
+            return term
+    return None
 
 
 def _llm_candidate_trace_blocked(

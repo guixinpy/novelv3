@@ -385,6 +385,17 @@ async def test_memory_tree_llm_candidate_trace_inspection_lists_persisted_candid
         "execute_record_agent_memory_tree_llm_candidate_summary_with_approval",
         "inspect_agent_memory_tree_quality",
     ]
+    assert output["recommended_next_tool_calls"] == [
+        {
+            "tool_name": "prepare_record_agent_memory_tree_llm_candidate_summary",
+            "params": {
+                "candidate_trace_id": generated["trace"]["trace_id"],
+                "quality_chapter_index": 2,
+                "quality_query": "灯塔旧回声",
+            },
+            "requires_confirmation": False,
+        }
+    ]
     assert output["trace"] == {
         "source": "inspect_agent_memory_tree_llm_candidates",
         "version": "phase249.memory_tree_llm_candidate_inspection.v1",
@@ -439,6 +450,15 @@ async def test_prepare_record_memory_tree_llm_candidate_summary_builds_trace_bou
     assert output["recommended_next_tools"] == [
         "execute_record_agent_memory_tree_llm_candidate_summary_with_approval"
     ]
+    execute_call = output["recommended_next_tool_calls"][0]
+    assert execute_call["tool_name"] == "execute_record_agent_memory_tree_llm_candidate_summary_with_approval"
+    assert execute_call["requires_confirmation"] is True
+    assert execute_call["params"]["candidate_trace_id"] == generated["trace"]["trace_id"]
+    assert execute_call["params"]["quality_chapter_index"] == 2
+    assert execute_call["params"]["quality_query"] == "蓝焰证词"
+    assert execute_call["params"]["confirm_execute"] is True
+    assert execute_call["params"]["approval_contract_hash"] == output["agent_plan_approval_contract_hash"]
+    assert execute_call["params"]["approval_contract"] == output["agent_plan_approval_contract"]
     assert (
         db_session.query(LongformMemory)
         .filter(
