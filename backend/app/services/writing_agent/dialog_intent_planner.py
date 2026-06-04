@@ -34,6 +34,7 @@ _ACTION_TO_DIRECT_READ_TOOL = {
     "inspect_agent_health": "inspect_agent_health_projection",
     "inspect_control_plane_readiness": "inspect_agent_control_plane_readiness",
     "inspect_memory_tree": "inspect_agent_memory_tree",
+    "inspect_memory_tree_quality": "inspect_agent_memory_tree_quality",
     "inspect_memory_route": "inspect_agent_memory_route",
     "inspect_memory_activation_plan": "inspect_agent_memory_activation_plan",
     "inspect_knowledge_base_route": "inspect_agent_knowledge_base_route",

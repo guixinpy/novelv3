@@ -8,6 +8,7 @@ from app.models import ChapterContent, LongformMemory, Outline, Storyline
 
 MEMORY_TREE_VERSION = "phase238.memory_tree_browsing.v1"
 MEMORY_TREE_SUMMARY_MATERIALIZATION_VERSION = "phase237.memory_tree_summary_materialization.v1"
+MEMORY_TREE_QUALITY_VERSION = "phase245.memory_tree_quality.v1"
 MEMORY_TREE_LEVELS = ["volume", "chapter", "scene", "beat"]
 MEMORY_TREE_VOLUME_SUMMARY_TYPE = "memory_tree_volume_summary"
 MEMORY_TREE_CHAPTER_SUMMARY_TYPE = "memory_tree_chapter_summary"
@@ -72,6 +73,45 @@ def inspect_agent_memory_tree(
     }
 
 
+def inspect_agent_memory_tree_quality(
+    db: Session,
+    project_id: str,
+    *,
+    chapter_index: int | None = None,
+    query: str | None = None,
+) -> dict[str, Any]:
+    tree = inspect_agent_memory_tree(db, project_id)
+    nodes = tree.get("nodes") if isinstance(tree.get("nodes"), list) else []
+    coverage = _memory_tree_quality_coverage(nodes)
+    semantic_probe = _memory_tree_semantic_probe(
+        db,
+        project_id,
+        chapter_index=chapter_index,
+        query=query,
+    )
+    diagnostics = _memory_tree_quality_diagnostics(coverage, semantic_probe)
+    status = "ready" if not diagnostics else "degraded"
+    return {
+        "version": MEMORY_TREE_QUALITY_VERSION,
+        "status": status,
+        "project_id": project_id,
+        "filters": {
+            "chapter_index": chapter_index,
+            "query": str(query or "").strip() or None,
+        },
+        "coverage": coverage,
+        "semantic_probe": semantic_probe,
+        "diagnostics": diagnostics,
+        "recommended_next_tools": _memory_tree_quality_recommendations(diagnostics),
+        "trace": {
+            "source": "inspect_agent_memory_tree_quality",
+            "version": MEMORY_TREE_QUALITY_VERSION,
+            "mutability": "read",
+            "runtime_behavior_changed": False,
+        },
+    }
+
+
 def _select_nodes(
     nodes: list[dict[str, Any]],
     *,
@@ -129,6 +169,128 @@ def _select_nodes(
         "descendant_node_ids": descendant_node_ids,
         "recommended_drilldowns": recommended_drilldowns,
     }
+
+
+def _memory_tree_quality_coverage(nodes: list[dict[str, Any]]) -> dict[str, Any]:
+    volume_nodes = [node for node in nodes if node.get("level") == "volume"]
+    chapter_nodes = [node for node in nodes if node.get("level") == "chapter"]
+    scene_nodes = [node for node in nodes if node.get("level") == "scene"]
+    beat_nodes = [node for node in nodes if node.get("level") == "beat"]
+    summary_backed_volume_nodes = [node for node in volume_nodes if _node_has_source_type(node, "longform_memory")]
+    summary_backed_chapter_nodes = [node for node in chapter_nodes if _node_has_source_type(node, "longform_memory")]
+    chapter_nodes_with_children = [node for node in chapter_nodes if node.get("children")]
+    return {
+        "volume_nodes": len(volume_nodes),
+        "chapter_nodes": len(chapter_nodes),
+        "scene_nodes": len(scene_nodes),
+        "beat_nodes": len(beat_nodes),
+        "summary_backed_volume_nodes": len(summary_backed_volume_nodes),
+        "summary_backed_chapter_nodes": len(summary_backed_chapter_nodes),
+        "chapter_nodes_with_children": len(chapter_nodes_with_children),
+        "chapter_node_coverage_ratio": _ratio(len(chapter_nodes), len(chapter_nodes)),
+        "summary_backed_chapter_ratio": _ratio(len(summary_backed_chapter_nodes), len(chapter_nodes)),
+    }
+
+
+def _memory_tree_semantic_probe(
+    db: Session,
+    project_id: str,
+    *,
+    chapter_index: int | None,
+    query: str | None,
+) -> dict[str, Any]:
+    query_text = str(query or "").strip()
+    if not query_text:
+        return {
+            "status": "not_requested",
+            "query": None,
+            "chapter_index": chapter_index,
+            "matched_node_count": 0,
+            "matched_levels": [],
+            "recommended_drilldown_count": 0,
+            "top_match": None,
+        }
+    probe_tree = inspect_agent_memory_tree(
+        db,
+        project_id,
+        level="chapter",
+        chapter_index=chapter_index,
+        query=query_text,
+    )
+    nodes = probe_tree.get("nodes") if isinstance(probe_tree.get("nodes"), list) else []
+    navigation = probe_tree.get("navigation") if isinstance(probe_tree.get("navigation"), dict) else {}
+    return {
+        "status": "matched" if nodes else "missing_match",
+        "query": query_text,
+        "chapter_index": chapter_index,
+        "matched_node_count": len(nodes),
+        "matched_levels": _dedupe([str(node.get("level") or "") for node in nodes]),
+        "recommended_drilldown_count": len(navigation.get("recommended_drilldowns") or []),
+        "top_match": _memory_tree_quality_top_match(nodes[0]) if nodes else None,
+    }
+
+
+def _memory_tree_quality_top_match(node: dict[str, Any]) -> dict[str, Any]:
+    relevance = node.get("relevance") if isinstance(node.get("relevance"), dict) else {}
+    return {
+        "level": str(node.get("level") or ""),
+        "chapter_index": node.get("chapter_index"),
+        "title": str(node.get("title") or ""),
+        "score": float(relevance.get("score") or 0),
+        "matched_fields": _dedupe([str(field) for field in relevance.get("matched_fields") or []]),
+        "match_reasons": _dedupe([str(reason) for reason in relevance.get("match_reasons") or []]),
+        "matched_descendant_count": len(relevance.get("matched_descendant_ids") or []),
+    }
+
+
+def _memory_tree_quality_diagnostics(
+    coverage: dict[str, Any],
+    semantic_probe: dict[str, Any],
+) -> list[dict[str, Any]]:
+    diagnostics: list[dict[str, Any]] = []
+    if int(coverage.get("chapter_nodes") or 0) <= 0:
+        diagnostics.append(
+            {
+                "code": "memory_tree_no_chapter_nodes",
+                "severity": "warning",
+                "message": "Memory Tree has no chapter nodes to validate.",
+            }
+        )
+    if float(coverage.get("summary_backed_chapter_ratio") or 0) < 1:
+        diagnostics.append(
+            {
+                "code": "memory_tree_summary_gap",
+                "severity": "warning",
+                "message": "Some chapter nodes are not backed by materialized summary memory.",
+            }
+        )
+    if semantic_probe.get("status") == "missing_match":
+        diagnostics.append(
+            {
+                "code": "memory_tree_semantic_probe_miss",
+                "severity": "info",
+                "message": "The requested semantic probe did not match a Memory Tree node.",
+            }
+        )
+    return diagnostics
+
+
+def _memory_tree_quality_recommendations(diagnostics: list[dict[str, Any]]) -> list[str]:
+    tools = ["inspect_agent_memory_tree", "inspect_agent_dogfood_evidence"]
+    if any(item.get("code") == "memory_tree_summary_gap" for item in diagnostics):
+        tools.insert(0, "record_agent_memory_tree_summaries")
+    return _dedupe(tools)
+
+
+def _node_has_source_type(node: dict[str, Any], source_type: str) -> bool:
+    source_refs = node.get("source_refs") if isinstance(node.get("source_refs"), list) else []
+    return any(isinstance(ref, dict) and ref.get("source_type") == source_type for ref in source_refs)
+
+
+def _ratio(numerator: int, denominator: int) -> float:
+    if denominator <= 0:
+        return 0.0
+    return round(numerator / denominator, 4)
 
 
 def materialize_agent_memory_tree_summaries(

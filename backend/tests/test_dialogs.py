@@ -240,6 +240,38 @@ def test_intent_router_projection_explains_memory_tree_route():
     assert projection["extracted_params"] == {"query": "灯塔旧回声", "include_ancestors": True}
 
 
+def test_intent_router_projection_explains_memory_tree_quality_route():
+    router = IntentRouter()
+    diag = ProjectDiagnosisOut(
+        missing_items=[],
+        completed_items=["setup", "storyline", "outline", "content"],
+        suggested_next_step="preview_chapter",
+    )
+
+    projection = router.project("检查第1章记忆树质量 query=后续调查", "chatting", None, diag).to_dict()
+
+    assert projection["status"] == "matched"
+    assert projection["rule_id"] == "memory_tree_quality_intent"
+    assert projection["decision"]["rule_id"] == "memory_tree_quality_intent"
+    assert projection["decision"]["match_evidence"] == [{"kind": "pattern", "name": "memory_tree_quality_phrase"}]
+    assert projection["candidate"] == {
+        "type": "inspect_memory_tree_quality",
+        "params": {"chapter_index": 1, "query": "后续调查"},
+    }
+    assert projection["agent_route"] == _expected_agent_route(
+        "text_intent",
+        "inspect_memory_tree_quality",
+        "inspect_agent_memory_tree_quality",
+        requires_confirmation=False,
+    )
+    assert projection["tool_selection"] == {
+        "selected_tool": "inspect_agent_memory_tree_quality",
+        "why_this_tool": "dialog_action_to_agent_tool.inspect_memory_tree_quality",
+        "availability_checked": False,
+    }
+    assert projection["extracted_params"] == {"chapter_index": 1, "query": "后续调查"}
+
+
 def test_intent_router_projection_explains_memory_route():
     router = IntentRouter()
     diag = ProjectDiagnosisOut(

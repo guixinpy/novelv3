@@ -55,7 +55,7 @@ openhuman 的 Memory Tree 对网文创作天然适配：
 - **卷→章→节→段落** 的层级结构本身就是一棵树
 - 节点被分块、打分、汇总到分层摘要中
 - Agent 可以浏览顶层概览，或在感兴趣的话题上 drill-down
-- 当前 novelv3 已落地卷/章两级基础版：`record_agent_memory_tree_summaries` 将摘要 materialize 为 `LongformMemory`，`inspect_agent_memory_tree` 再把持久化摘要投影回树节点，并在精确匹配失败时用确定性 relevance 评分、后代强匹配回流和弱匹配阈值给出 drill-down 推荐；高相关节点会进入 `build_memory_activation_plan` 的写前激活桶，且自然语言“浏览/搜索记忆树”可直接规划到只读 Memory Tree 工具
+- 当前 novelv3 已落地卷/章两级基础版：`record_agent_memory_tree_summaries` 将摘要 materialize 为 `LongformMemory`，`inspect_agent_memory_tree` 再把持久化摘要投影回树节点，并在精确匹配失败时用确定性 relevance 评分、后代强匹配回流和弱匹配阈值给出 drill-down 推荐；`inspect_agent_memory_tree_quality` 会只读审计节点覆盖、摘要支撑、semantic probe 和真实长篇诊断；高相关节点会进入 `build_memory_activation_plan` 的写前激活桶，且自然语言“浏览/搜索记忆树”和“检查记忆树质量”都可直接规划到只读 Memory Tree 工具
 
 **已知 tradeoff**（来自 openhuman 实际运行经验）：
 - 语义召回需要将检索到的记忆注入上下文
@@ -240,7 +240,7 @@ novelv3 当前 trace + approval 体系已经较完整。权限分级已先在核
 6. **openclaw 孤兒恢复基础审计** → orphan worker 检测 + mark-blocked/redispatch preview，并可由自然语言只读意图直接规划到 `inspect_agent_worker_dispatch`
 7. **hermes-agent ContextCompressor persistent artifact loop** → context pressure 下输出头尾保护预修剪、summarize 工具计划、只读 dry-run payload、推荐恢复入口，在 `preflight_writing` 暴露压缩检查与 payload preview；自然语言“检查上下文压缩/预算/窗口压力”可直接规划到只读压缩投影工具，“构建上下文压缩 dry-run payload”可直达 `build_agent_context_compression_payload`；ready payload 后推荐 `record_agent_context_compression_summary`；写入 LongformMemory 持久工件后，preflight 与章节 prompt 均会优先复用匹配摘要，缺摘要时章节生成 longform block 仍可替换为 `compressed_context`
 8. **openhuman Memory Tree 分层摘要基础版** → 卷/章摘要写入 LongformMemory，并通过 memory_worker 暴露 materialize 工具
-9. **openhuman Memory Tree 基础浏览/激活** → `inspect_agent_memory_tree` 支持按节点展开、深度裁剪、搜索命中祖先上下文、确定性 relevance drill-down、过滤层级的后代强匹配回流与弱匹配降噪，可由自然语言只读意图直接规划，并被 `build_memory_activation_plan` 消费
+9. **openhuman Memory Tree 基础浏览/激活/质量审计** → `inspect_agent_memory_tree` 支持按节点展开、深度裁剪、搜索命中祖先上下文、确定性 relevance drill-down、过滤层级的后代强匹配回流与弱匹配降噪，可由自然语言只读意图直接规划，并被 `build_memory_activation_plan` 消费；`inspect_agent_memory_tree_quality` 则提供真实长篇 quality baseline，当前 dogfood 已暴露 summary backing 与 semantic probe 缺口
 10. **openclaw 孤兒恢复写入闭环基础版** → `apply_agent_worker_orphan_recovery` 确认式标记 blocked，并创建 pending redispatch run
 11. **Reference Alignment 只读审计入口** → `inspect_agent_reference_alignment` 将三参考项目模式、已采纳决策和下一步建议投影为可审计结果，并可由自然语言只读意图直接规划
 

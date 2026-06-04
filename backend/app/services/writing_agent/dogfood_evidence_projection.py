@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-DOGFOOD_EVIDENCE_VERSION = "phase244.agent_dogfood_evidence_trace_long_run_execution.v1"
+DOGFOOD_EVIDENCE_VERSION = "phase245.agent_dogfood_evidence_memory_tree_quality.v1"
 DOGFOOD_EVIDENCE_RUN_SOURCE = "planner_trace.agent_health_projection.dogfood_evidence"
 
 _FULL_AGENT_NATIVE_DOGFOOD = (
@@ -16,6 +16,9 @@ _NARRATIVE_MEMORY_DOGFOOD = (
 _TRACE_ANOMALY_CALIBRATION_TEST = "backend/tests/test_writing_agent_trace_audit.py"
 _TRACE_ANOMALY_LONG_RUN_DOGFOOD = (
     "docs/archive/superpowers/notes/long-memory-agent/2026-06-04-trace-anomaly-long-run-samples-dogfood.md"
+)
+_MEMORY_TREE_QUALITY_DOGFOOD = (
+    "docs/archive/superpowers/notes/long-memory-agent/2026-06-04-memory-tree-quality-dogfood.md"
 )
 
 _REQUIRED_CAPABILITIES: tuple[dict[str, Any], ...] = (
@@ -58,6 +61,11 @@ _REQUIRED_CAPABILITIES: tuple[dict[str, Any], ...] = (
         "capability": "trace_anomaly_long_run_sample_execution",
         "label": "Trace anomaly long-run sample execution",
         "required_for": "Prove Trace anomaly review has real Writing Agent run/step samples from an API-backed dogfood loop, not only synthetic regression windows.",
+    },
+    {
+        "capability": "memory_tree_quality_real_longform_validation",
+        "label": "Memory Tree quality real-longform validation",
+        "required_for": "Prove Memory Tree summary and semantic-search quality can be audited against real longform dogfood data.",
     },
 )
 
@@ -232,6 +240,42 @@ _EVIDENCE_RECORDS: tuple[dict[str, Any], ...] = (
             "backend/tests/test_writing_agent_trace_long_run_samples.py",
         ],
         "open_findings": [],
+    },
+    {
+        "evidence_id": "memory_tree_quality_projection_20260604",
+        "title": "Memory Tree Quality Dogfood",
+        "source_ref": _MEMORY_TREE_QUALITY_DOGFOOD,
+        "verified_on": "2026-06-04",
+        "runtime_path": "sqlite_readonly_dogfood",
+        "project_id": "3f85aed4-4f6f-413f-bd1a-03fbe02ea0f4",
+        "chapter_indexes": [1, 2, 3],
+        "capabilities": ["memory_tree_quality_real_longform_validation", "observability_snapshot"],
+        "loop": [
+            "inspect_real_dogfood_memory_tree_quality",
+            "project_summary_backing_coverage",
+            "project_semantic_probe_diagnostics",
+        ],
+        "metrics": {
+            "memory_tree_quality_chapter_nodes": 3,
+            "memory_tree_quality_summary_backed_chapter_nodes": 0,
+            "memory_tree_quality_summary_backed_chapter_ratio": 0.0,
+            "memory_tree_quality_semantic_probe_matched_count": 0,
+            "memory_tree_quality_diagnostic_count": 2,
+        },
+        "proven_tools": [
+            "inspect_agent_memory_tree_quality",
+            "record_agent_memory_tree_summaries",
+            "inspect_agent_memory_tree",
+            "inspect_agent_dogfood_evidence",
+        ],
+        "supporting_source_refs": [
+            _FULL_AGENT_NATIVE_DOGFOOD,
+            "backend/tests/test_writing_agent_memory_tree.py",
+        ],
+        "open_findings": [
+            "memory_tree_summary_gap",
+            "memory_tree_semantic_probe_miss",
+        ],
     },
 )
 

@@ -4,6 +4,7 @@ max_depth: 0
 allowed_tools:
   - inspect_agent_memory_route
   - inspect_agent_memory_tree
+  - inspect_agent_memory_tree_quality
   - record_agent_memory_tree_summaries
   - inspect_agent_knowledge_base_route
   - inspect_agent_trace_audit

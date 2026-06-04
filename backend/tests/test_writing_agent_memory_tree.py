@@ -7,6 +7,7 @@ from app.services.writing_agent.memory_tree import (
     MEMORY_TREE_VERSION,
     MEMORY_TREE_VOLUME_SUMMARY_TYPE,
     inspect_agent_memory_tree,
+    inspect_agent_memory_tree_quality,
     materialize_agent_memory_tree_summaries,
 )
 from app.services.writing_agent.tool_adapter_types import WritingAgentToolContext
@@ -166,6 +167,56 @@ def test_memory_tree_semantic_search_rolls_up_descendant_matches_to_filtered_lev
     ]
 
 
+def test_memory_tree_quality_projection_reports_summary_and_semantic_coverage(db_session):
+    project, _refs = _seed_memory_tree_project(db_session)
+    materialize_agent_memory_tree_summaries(db_session, project.id)
+
+    output = inspect_agent_memory_tree_quality(
+        db_session,
+        project.id,
+        chapter_index=1,
+        query="后续调查",
+    )
+
+    assert output["status"] == "ready"
+    assert output["coverage"] == {
+        "volume_nodes": 1,
+        "chapter_nodes": 2,
+        "scene_nodes": 1,
+        "beat_nodes": 1,
+        "summary_backed_volume_nodes": 1,
+        "summary_backed_chapter_nodes": 2,
+        "chapter_nodes_with_children": 1,
+        "chapter_node_coverage_ratio": 1.0,
+        "summary_backed_chapter_ratio": 1.0,
+    }
+    assert output["semantic_probe"] == {
+        "status": "matched",
+        "query": "后续调查",
+        "chapter_index": 1,
+        "matched_node_count": 1,
+        "matched_levels": ["chapter"],
+        "recommended_drilldown_count": 1,
+        "top_match": {
+            "level": "chapter",
+            "chapter_index": 1,
+            "title": "第一章 雨巷来信",
+            "score": 1.235,
+            "matched_fields": ["descendant.title", "descendant.summary"],
+            "match_reasons": ["descendant_semantic_match"],
+            "matched_descendant_count": 1,
+        },
+    }
+    assert output["diagnostics"] == []
+    assert output["recommended_next_tools"] == ["inspect_agent_memory_tree", "inspect_agent_dogfood_evidence"]
+    assert output["trace"] == {
+        "source": "inspect_agent_memory_tree_quality",
+        "version": "phase245.memory_tree_quality.v1",
+        "mutability": "read",
+        "runtime_behavior_changed": False,
+    }
+
+
 @pytest.mark.asyncio
 async def test_record_agent_memory_tree_summaries_tool_persists_summary_nodes(db_session):
     project, _refs = _seed_memory_tree_project(db_session)
@@ -244,6 +295,25 @@ async def test_inspect_agent_memory_tree_tool_search_can_include_ancestor_contex
     ]
 
 
+@pytest.mark.asyncio
+async def test_inspect_agent_memory_tree_quality_tool_reports_projection(db_session):
+    project, _refs = _seed_memory_tree_project(db_session)
+    materialize_agent_memory_tree_summaries(db_session, project.id)
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-memory-tree-quality"),
+        WritingAgentToolRequest(
+            tool_name="inspect_agent_memory_tree_quality",
+            params={"chapter_index": 1, "query": "后续调查"},
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output["status"] == "ready"
+    assert result.output["semantic_probe"]["status"] == "matched"
+    assert result.output["coverage"]["summary_backed_chapter_nodes"] == 2
+
+
 def test_memory_tree_tool_is_registered_with_read_metadata():
     descriptor = get_agent_tool_descriptor("inspect_agent_memory_tree")
     metadata = writing_agent_tool_adapter_metadata("inspect_agent_memory_tree")
@@ -260,6 +330,25 @@ def test_memory_tree_tool_is_registered_with_read_metadata():
         "category": "longform_memory",
         "mutability": "read",
         "handler_name": "_inspect_agent_memory_tree",
+    }
+
+
+def test_memory_tree_quality_tool_is_registered_with_read_metadata():
+    descriptor = get_agent_tool_descriptor("inspect_agent_memory_tree_quality")
+    metadata = writing_agent_tool_adapter_metadata("inspect_agent_memory_tree_quality")
+
+    assert descriptor is not None
+    assert descriptor.category == "longform_memory"
+    assert descriptor.target_type == "agent_memory_tree_quality"
+    assert descriptor.input_schema["properties"]["query"]["type"] == "string"
+    assert descriptor.input_schema["properties"]["chapter_index"]["minimum"] == 1
+    assert descriptor.output_schema["properties"]["coverage"]["type"] == "object"
+    assert metadata == {
+        "tool_name": "inspect_agent_memory_tree_quality",
+        "adapter_type": "static",
+        "category": "longform_memory",
+        "mutability": "read",
+        "handler_name": "_inspect_agent_memory_tree_quality",
     }
 
 

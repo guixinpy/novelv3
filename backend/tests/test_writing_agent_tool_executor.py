@@ -1894,6 +1894,47 @@ async def test_tool_executor_handles_dialog_intent_agent_plan_for_memory_tree_re
 
 
 @pytest.mark.asyncio
+async def test_tool_executor_handles_dialog_intent_agent_plan_for_memory_tree_quality_read(db_session):
+    project = Project(name="Dialog Intent Memory Tree Quality Plan")
+    db_session.add(project)
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-dialog-intent-memory-tree-quality"),
+        WritingAgentToolRequest(
+            tool_name="plan_dialog_intent_agent_run",
+            params={"text": "检查第1章记忆树质量 query=后续调查"},
+        ),
+    )
+
+    expected_params = {"chapter_index": 1, "query": "后续调查"}
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "completed"
+    assert result.output["intent_projection"]["rule_id"] == "memory_tree_quality_intent"
+    assert result.output["planner"]["intent_class"] == "inspect_memory_tree_quality"
+    assert result.output["planner"]["mapped_from_action_type"] == "inspect_memory_tree_quality"
+    assert result.output["plan"] == {
+        "status": "completed",
+        "intent_class": "inspect_memory_tree_quality",
+        "steps": [
+            {
+                "step_index": 1,
+                "tool_name": "inspect_agent_memory_tree_quality",
+                "params": expected_params,
+                "mutability": "read",
+                "requires_confirmation": False,
+            }
+        ],
+        "tools": [{"tool_name": "inspect_agent_memory_tree_quality", "params": expected_params}],
+        "approval_contract": {"status": "not_required", "write_steps": []},
+    }
+    assert result.output["tools"] == [{"tool_name": "inspect_agent_memory_tree_quality", "params": expected_params}]
+    assert result.output["approval_contract"] == {"status": "not_required", "write_steps": []}
+    assert result.output["trace"]["reason"] == "planned_direct_read_tool_from_intent_projection"
+
+
+@pytest.mark.asyncio
 async def test_tool_executor_handles_dialog_intent_agent_plan_for_memory_route_read(db_session):
     project = Project(name="Dialog Intent Memory Route Plan")
     db_session.add(project)
@@ -4214,8 +4255,8 @@ async def test_tool_executor_handles_inspect_agent_worker_dispatch(db_session):
     }
     assert result.output["route_registry"]["status"] == "passed"
     assert result.output["route_registry"]["summary"] == {
-        "routes": 57,
-        "ready_routes": 57,
+        "routes": 58,
+        "ready_routes": 58,
         "unrouted_allowed_tools": 0,
         "issues": 0,
     }

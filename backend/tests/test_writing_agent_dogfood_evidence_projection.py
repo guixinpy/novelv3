@@ -22,6 +22,7 @@ def test_inspect_agent_dogfood_evidence_surfaces_api_loop_and_memory_activation(
         "observability_snapshot",
         "trace_anomaly_threshold_calibration",
         "trace_anomaly_long_run_sample_execution",
+        "memory_tree_quality_real_longform_validation",
     }.issubset({item["capability"] for item in output["capability_coverage"]})
     evidence_by_id = {item["evidence_id"]: item for item in output["evidence"]}
     full_loop = evidence_by_id["full_agent_native_loop_20260526"]
@@ -87,5 +88,24 @@ def test_inspect_agent_dogfood_evidence_surfaces_api_loop_and_memory_activation(
     assert execution_coverage["status"] == "covered"
     assert execution_coverage["evidence_ids"] == ["trace_anomaly_long_run_samples_20260604"]
     assert "inspect_agent_trace_anomaly_long_run_samples" in execution_coverage["proven_tools"]
+    memory_tree_quality = evidence_by_id["memory_tree_quality_projection_20260604"]
+    assert memory_tree_quality["runtime_path"] == "sqlite_readonly_dogfood"
+    assert memory_tree_quality["metrics"] == {
+        "memory_tree_quality_chapter_nodes": 3,
+        "memory_tree_quality_summary_backed_chapter_nodes": 0,
+        "memory_tree_quality_summary_backed_chapter_ratio": 0.0,
+        "memory_tree_quality_semantic_probe_matched_count": 0,
+        "memory_tree_quality_diagnostic_count": 2,
+    }
+    assert memory_tree_quality["open_findings"] == [
+        "memory_tree_summary_gap",
+        "memory_tree_semantic_probe_miss",
+    ]
+    quality_coverage = {
+        item["capability"]: item for item in output["capability_coverage"]
+    }["memory_tree_quality_real_longform_validation"]
+    assert quality_coverage["status"] == "covered"
+    assert quality_coverage["evidence_ids"] == ["memory_tree_quality_projection_20260604"]
+    assert "inspect_agent_memory_tree_quality" in quality_coverage["proven_tools"]
     assert "inspect_agent_health_projection" in output["recommended_next_tools"]
     assert output["trace"]["runtime_behavior_changed"] is False

@@ -39,6 +39,34 @@ MEMORY_TREE_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(
+        name="inspect_agent_memory_tree_quality",
+        module="writing_agent",
+        category="longform_memory",
+        description="只读审计 Memory Tree 的节点覆盖、摘要支撑和语义探针匹配情况，作为真实长篇质量验证的可审计基线。",
+        input_schema=object_schema(
+            {
+                "chapter_index": {"type": "integer", "minimum": 1},
+                "query": {"type": "string"},
+            }
+        ),
+        output_schema=object_schema(
+            {
+                "status": {"type": "string"},
+                "filters": {"type": "object"},
+                "coverage": {"type": "object"},
+                "semantic_probe": {"type": "object"},
+                "diagnostics": {"type": "array"},
+                "recommended_next_tools": {"type": "array"},
+                "trace": {"type": "object"},
+            }
+        ),
+        target_type="agent_memory_tree_quality",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=8,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
         name="record_agent_memory_tree_summaries",
         module="writing_agent",
         category="longform_memory",

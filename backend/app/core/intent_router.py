@@ -14,6 +14,7 @@ _INTENT_RULE_IDS = (
     "chapter_intent",
     "review_intent",
     "recovery_intent",
+    "memory_tree_quality_intent",
     "memory_tree_intent",
     "memory_route_intent",
     "memory_activation_plan_intent",
@@ -297,6 +298,20 @@ class IntentRouter:
                 candidate=ActionCandidate("preview_recovery"),
                 match_evidence=[{"kind": "pattern", "name": "recovery_phrase"}],
                 preconditions=[{"code": "recovery_preview_available", "passed": True}],
+            )
+
+        if _is_memory_tree_quality_intent(text):
+            extracted_params = _memory_tree_quality_params(text)
+            return self._matched_projection(
+                text,
+                dialog_state,
+                pending_action_id,
+                diagnosis,
+                rule_id="memory_tree_quality_intent",
+                candidate=ActionCandidate("inspect_memory_tree_quality", extracted_params),
+                extracted_params=extracted_params,
+                match_evidence=[{"kind": "pattern", "name": "memory_tree_quality_phrase"}],
+                preconditions=[{"code": "memory_tree_quality_read_available", "passed": True}],
             )
 
         if _is_memory_tree_intent(text):
@@ -1018,6 +1033,34 @@ def _is_memory_tree_intent(text: str) -> bool:
         re.search(r"(记忆树|分层记忆|长期记忆).*(浏览|查看|搜索|检索|展开|线索)", text)
         or re.search(r"(浏览|查看|搜索|检索|展开).*(记忆树|分层记忆|长期记忆|记忆)", text)
     )
+
+
+def _is_memory_tree_quality_intent(text: str) -> bool:
+    memory_tree_phrase = r"(记忆树|分层记忆|memory\s*tree|长期记忆)"
+    quality_phrase = r"(质量|验证|覆盖|审计|健康|quality|真实长篇)"
+    return bool(
+        re.search(rf"{memory_tree_phrase}.*{quality_phrase}", text)
+        or re.search(rf"{quality_phrase}.*{memory_tree_phrase}", text)
+    )
+
+
+def _memory_tree_quality_params(text: str) -> dict[str, Any]:
+    params: dict[str, Any] = {}
+    chapter_index = parse_chapter_index(text)
+    if chapter_index is not None:
+        params["chapter_index"] = chapter_index
+    query = _memory_tree_quality_query(text)
+    if query:
+        params["query"] = query
+    return params
+
+
+def _memory_tree_quality_query(text: str) -> str | None:
+    match = re.search(r"(?:query|查询|关键词)\s*[:=：]\s*(.+)$", text)
+    if match:
+        value = match.group(1).strip()
+        return value or None
+    return None
 
 
 def _memory_tree_params(text: str) -> dict[str, Any]:

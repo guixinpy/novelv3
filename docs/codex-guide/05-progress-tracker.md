@@ -87,6 +87,7 @@
 - [x] Memory Tree 基础浏览：inspect_agent_memory_tree 支持 expand_node_id、max_depth、include_ancestors，用于展开/收起/搜索上下文
 - [x] Memory Tree 语义召回基础：query 精确匹配失败时返回 relevance score、matched_terms / matched_fields 和 recommended_drilldowns
 - [x] Memory Tree 层级语义回流：过滤到 volume/chapter 等上层节点时，可用 scene/beat 后代强匹配回流召回父节点，并抑制低分单字噪声
+- [x] Memory Tree 质量审计：inspect_agent_memory_tree_quality 可只读报告节点覆盖、摘要支撑、semantic probe、诊断和推荐后续，真实 dogfood 已暴露 summary backing 与 semantic probe 缺口
 - [x] Memory Tree 写前激活：build_memory_activation_plan 可将高 relevance Memory Tree 节点纳入 activation.memory_tree，并保留未来章节防泄漏
 - [x] Memory Route 对话入口：自然语言“检查第 N 章长篇记忆路由/检索维护状态”可投影为 inspect_agent_memory_route 只读工具计划；AgentRunDrawer 可展示长篇记忆/检索/维护安全摘要和诊断信息
 - [x] Memory Activation Plan 对话入口：自然语言“检查第 N 章记忆激活计划：<query>”可投影为 inspect_agent_memory_activation_plan 只读工具计划；AgentRunDrawer 可展示写前激活桶、覆盖债务、风险和推荐工具的安全摘要
@@ -107,14 +108,16 @@
 | P1 | Memory Tree 语义浏览 | Agent 能通过工具浏览 Tree：展开/收起/搜索 | ✅ 已完成（基础浏览） |
 | P2 | 世界模型 L5 语义检查 | 至少实现一个 LLM 驱动的语义一致性检查 | 🔴 待开始 |
 | P3 | 检索策略智能化 | Agent 根据上下文自主选择检索策略 | 🔴 待开始 |
-| P4 | Memory Tree 语义召回/摘要质量增强 | 接入向量/LLM 摘要或真实长篇验证，不只依赖确定性摘要和文本匹配 | 🟡 进行中（层级 relevance + 写前激活基础） |
+| P4 | Memory Tree 语义召回/摘要质量增强 | 接入向量/LLM 摘要或真实长篇验证，不只依赖确定性摘要和文本匹配 | 🟡 进行中（层级 relevance + 写前激活基础 + quality baseline；真实 dogfood 发现 summary backing / semantic probe 缺口） |
 
 ### 阻塞项
 
-- Memory Tree 摘要质量仍需真实长篇小说数据验证；当前基础版是确定性摘要写入，不等同于 LLM 语义归纳。
+- Memory Tree 摘要质量已有真实长篇 quality probe：`data/agent_native_dogfood_20260526.db` 上 `inspect_agent_memory_tree_quality` 报告 `memory_tree_summary_gap` 与 `memory_tree_semantic_probe_miss`；下一步应在真实项目 materialize Memory Tree 摘要后复核质量，再决定是否接入向量/LLM 语义归纳。
 
 ### 最近完成
 
+- 2026-06-04: 新增 `inspect_agent_memory_tree_quality` 只读质量审计投影，报告 volume/chapter/scene/beat 节点覆盖、Memory Tree 摘要支撑比例、semantic probe 命中、诊断和推荐后续；`IntentRouter` / `plan_dialog_intent_agent_run` / `memory_worker` 已支持自然语言“检查第 N 章记忆树质量 query=<query>”。
+- 2026-06-04: `inspect_agent_dogfood_evidence` 新增 `memory_tree_quality_projection_20260604` 证据，记录 `data/agent_native_dogfood_20260526.db` 中 3 个章节节点但 0 个 memory_tree summary-backed chapter，semantic probe `灯塔旧回声` miss，并把 `memory_tree_summary_gap` / `memory_tree_semantic_probe_miss` 作为下一步真实 dogfood finding。
 - 2026-06-02: `plan_post_chapter_memory_capture` 接入对话只读意图链路：Agent 可从自然语言直接规划章节后长期记忆/知识库候选沉淀，保留 chapter_index，并在有审稿证据时继续推荐 `prepare_record_agent_knowledge_base_candidate`。
 - 2026-06-02: `inspect_agent_knowledge_base_route` 接入对话只读意图链路：Agent 可从自然语言直接读取作者偏好、项目策略、学习规则、知识库候选和写法参考路由，支持 chapter_index、query、limit 的确定性抽取。
 - 2026-06-02: `search_agent_retrieval_context` 与 `summarize_longform_context` 接入对话只读意图链路：Agent 可从自然语言直接检索上下文证据或汇总指定章节长篇上下文，支持 query、limit、max_chapter_index、max_chars 和 include_prompt_context 等确定性参数抽取。
@@ -135,6 +138,7 @@
 - [x] 意图路由：IntentRouter 支持基础写作意图（设定/大纲/正文/审稿/恢复）
 - [x] 对话意图计划器：DialogIntentPlanner → WritingAgentPlan
 - [x] Memory Tree 只读浏览意图：自然语言“浏览/搜索记忆树”可投影为 inspect_agent_memory_tree 只读工具计划
+- [x] Memory Tree 质量审计意图：自然语言“检查第 N 章记忆树质量 query=<query>”可投影为 inspect_agent_memory_tree_quality 只读工具计划
 - [x] Memory Route 只读诊断意图：自然语言“检查第3章长篇记忆路由，包含上下文摘要”可投影为 inspect_agent_memory_route 只读工具计划，Memory Route run 可在 AgentRunDrawer 展示安全摘要
 - [x] Memory Activation Plan 只读诊断意图：自然语言“检查第3章记忆激活计划：灯塔旧回声”可投影为 inspect_agent_memory_activation_plan 只读工具计划，Memory Activation Plan run 可在 AgentRunDrawer 展示安全摘要
 - [x] Knowledge Base Route 只读诊断意图：自然语言“检查第4章知识库路由 query=写法偏好 limit 9”可投影为 inspect_agent_knowledge_base_route 只读工具计划
@@ -277,7 +281,7 @@
 - [x] 审稿修订工具：review_revision_tool_adapters/descriptors
 - [x] 修订执行：revision_draft_execution + revision_patch_execution
 - [x] 生成后审稿：batch_post_generation_review
-- [x] 写作质量诊断：dogfood_evidence_projection，可由自然语言“检查 dogfood pressure-test 证据覆盖”直接规划到 inspect_agent_dogfood_evidence，并暴露 Trace anomaly threshold calibration/policy/config/review/long-run sample 覆盖与真实长跑样本执行缺口
+- [x] 写作质量诊断：dogfood_evidence_projection，可由自然语言“检查 dogfood pressure-test 证据覆盖”直接规划到 inspect_agent_dogfood_evidence，并暴露 Trace anomaly threshold calibration/policy/config/review/long-run sample/long-run execution 覆盖，以及 Memory Tree quality 真实长篇诊断
 
 ### 下一步任务
 
@@ -333,7 +337,7 @@
 
 - 2026-06-04: `inspect_agent_dogfood_evidence` 新增 `trace_anomaly_long_run_samples_20260604` 证据记录，source_ref 指向 `docs/archive/superpowers/notes/long-memory-agent/2026-06-04-trace-anomaly-long-run-samples-dogfood.md`，记录隔离 dogfood DB 中 14 个真实 Writing Agent run、31 个 step、12 个 dogfood entrypoint run、第 1-3 章样本覆盖，并将 `trace_anomaly_threshold_long_run_sample_execution` 从 open finding 中移除。
 - 2026-06-04: 新增 `inspect_agent_trace_anomaly_long_run_samples` 只读采样投影，按当前项目和可选章节统计有 step 的 Writing Agent run 样本、状态分布、entrypoint 分布、章节集合和 threshold review 推荐窗口，不暴露 run/step id。
-- 2026-06-04: `IntentRouter` / `plan_dialog_intent_agent_run` / `recovery_worker` 新增 Trace anomaly long-run sample 自然语言入口和 worker 路由；`inspect_agent_dogfood_evidence` 同步记录 long_run_sample_collection_projection / intent / worker_route 指标，剩余缺口收敛为真实长跑 dogfood 样本执行。
+- 2026-06-04: `IntentRouter` / `plan_dialog_intent_agent_run` / `recovery_worker` 新增 Trace anomaly long-run sample 自然语言入口和 worker 路由；`inspect_agent_dogfood_evidence` 同步记录 long_run_sample_collection_projection / intent / worker_route 指标，当时剩余缺口收敛为真实长跑 dogfood 样本执行。
 - 2026-06-04: 新增 `inspect_agent_trace_anomaly_threshold_review` 只读复核投影，复用 Trace Anomaly Trends 的 calibration.policy 输出人工复核状态、样本数、阈值候选、推荐 prepare 调用和 side_effects 空/跳过摘要，不暴露 raw run/step/trace/context。
 - 2026-06-04: `IntentRouter` / `plan_dialog_intent_agent_run` / `recovery_worker` 新增 Trace anomaly threshold review 自然语言入口和 worker 路由；`inspect_agent_dogfood_evidence` 同步记录 threshold_review_projection / intent / worker_route 指标，当时剩余缺口收敛为真实长跑 dogfood 样本采集。
 - 2026-06-04: 新增 `record_agent_trace_anomaly_threshold_config` direct write guard，以及 `prepare_record_agent_trace_anomaly_threshold_config` / `execute_record_agent_trace_anomaly_threshold_config_with_approval` 审批链；执行前校验 Agent plan approval contract、mutation fingerprint 和 resource binding，执行后只写 `Project.style_config.agent_trace_anomaly_thresholds` 并推荐回到 `inspect_agent_trace_anomaly_trends`。
