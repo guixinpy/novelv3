@@ -4750,6 +4750,12 @@ describe('AgentRunDrawer', () => {
                   affected_run_rate_delta: 0.5,
                   critical_issue_rate_delta: 0.25,
                 },
+                threshold_config: {
+                  status: 'configured',
+                  source: 'Project.style_config.agent_trace_anomaly_thresholds',
+                  configured_keys: ['affected_run_rate_delta', 'critical_issue_rate_delta'],
+                  fallback_keys: [],
+                },
                 threshold_signals: [
                   {
                     code: 'affected_run_rate_spike',
@@ -4881,6 +4887,8 @@ describe('AgentRunDrawer', () => {
     expect(text).toContain('严重异常率升高')
     expect(text).toContain('阈值 50%')
     expect(text).toContain('阈值 25%')
+    expect(text).toContain('阈值来源')
+    expect(text).toContain('项目配置')
     expect(text).toContain('校准')
     expect(text).toContain('需要调参')
     expect(text).toContain('样本 4/4')
@@ -4921,6 +4929,7 @@ describe('AgentRunDrawer', () => {
     expect(text).not.toContain('calibration-fn-secret-step')
     expect(text).not.toContain('calibration-fp-secret-trace')
     expect(text).not.toContain('threshold-policy-secret-run')
+    expect(text).not.toContain('Project.style_config.agent_trace_anomaly_thresholds')
   })
 
   it('does not render route upgrade apply when contract preview is not confirmable', () => {

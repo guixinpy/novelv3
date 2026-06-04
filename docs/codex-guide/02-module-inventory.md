@@ -1,6 +1,6 @@
 # 02 · 模块清单与状态
 
-> **最后更新**: 2026-06-03
+> **最后更新**: 2026-06-04
 > **版本**: v1.0
 > **用途**: 快速了解任何模块的当前状态、目标状态和关键文件路径
 
@@ -292,7 +292,7 @@ Agent 化缺口：
 ### 4.2 Trace & Audit（追踪与审计）
 
 ```
-当前状态：L2-L3 AIModelCallTrace 记录每次 AI 调用的详细信息；inspect_agent_trace_audit 已可由自然语言只读意图触达，用于审计 run/step/model trace/context blocks，并输出安全 intent_chain 摘要（规则、意图、计划工具、执行匹配数）、end_to_end_chain 摘要（意图→计划→执行→模型 Trace→结果消息覆盖）和 anomaly_summary 摘要（失败步骤、失败模型 Trace、缺 Trace 绑定、未执行计划、缺结果消息、截断上下文）；inspect_agent_trace_anomaly_trends 已可按最近 run、可选章节与 baseline window 聚合异常状态、严重度、问题类型、受影响 run 摘要、基线对比、阈值信号、阈值校准建议、误报/漏报 guard、阈值固化策略投影和推荐后续；AgentRunDrawer 可展示 Trace Audit 与 Trace Anomaly Trends 安全摘要、intent_chain 意图链路、端到端链路、异常摘要、趋势基线、阈值信号、阈值校准、固化策略、失败原因、推荐动作、事件链、上下文块和模型 Trace 概览
+当前状态：L2-L3 AIModelCallTrace 记录每次 AI 调用的详细信息；inspect_agent_trace_audit 已可由自然语言只读意图触达，用于审计 run/step/model trace/context blocks，并输出安全 intent_chain 摘要（规则、意图、计划工具、执行匹配数）、end_to_end_chain 摘要（意图→计划→执行→模型 Trace→结果消息覆盖）和 anomaly_summary 摘要（失败步骤、失败模型 Trace、缺 Trace 绑定、未执行计划、缺结果消息、截断上下文）；inspect_agent_trace_anomaly_trends 已可按最近 run、可选章节与 baseline window 聚合异常状态、严重度、问题类型、受影响 run 摘要、基线对比、项目配置化阈值、阈值信号、阈值校准建议、误报/漏报 guard、阈值固化策略投影和推荐后续；AgentRunDrawer 可展示 Trace Audit 与 Trace Anomaly Trends 安全摘要、intent_chain 意图链路、端到端链路、异常摘要、趋势基线、阈值信号、阈值来源、阈值校准、固化策略、失败原因、推荐动作、事件链、上下文块和模型 Trace 概览
 目标状态：L3 全链路 trace（用户意图→计划→工具调用→模型调用→结果）
 关键文件：
   backend/app/core/model_call_trace.py    # Model Call Trace 核心
@@ -307,8 +307,8 @@ Agent 化缺口：
 Agent 化缺口：
   - trace 已有"用户意图→计划工具→执行 step→模型 trace→result_message"的后端 end_to_end_chain 安全摘要和 Drawer 展示
   - trace 已有单 run anomaly_summary 安全异常摘要，可聚合失败步骤、失败模型 Trace、缺 Trace 绑定、未执行计划、缺结果消息和截断上下文，并在 Drawer 展示
-  - trace 已有最近 run anomaly trends 安全聚合，可统计受影响 run、严重度、问题类型、baseline window、rate delta、阈值信号、阈值校准建议、误报/漏报 guard、阈值固化策略和推荐后续，并在 Drawer 展示
-  - Dogfood Evidence 已纳入 Trace anomaly threshold calibration/policy 证据；仍缺真实长跑 dogfood 样本下的阈值建议人工复核与实际固化/配置化应用
+  - trace 已有最近 run anomaly trends 安全聚合，可统计受影响 run、严重度、问题类型、baseline window、rate delta、项目配置化阈值、阈值信号、阈值校准建议、误报/漏报 guard、阈值固化策略和推荐后续，并在 Drawer 展示阈值来源
+  - Dogfood Evidence 已纳入 Trace anomaly threshold calibration/policy/config 证据；仍缺真实长跑 dogfood 样本下的阈值建议人工复核与人工复核后的阈值写入/维护流程
 关联模块：所有 AI 调用模块
 ```
 
@@ -429,6 +429,7 @@ Data & Recovery ─── (横切关注点，覆盖所有写入操作)
 | 日期 | 模块 | 变更 |
 |------|------|------|
 | 2026-06-01 | 全部 | 初始版本 |
+| 2026-06-04 | Trace & Audit | inspect_agent_trace_anomaly_trends 新增项目级阈值配置读取与 threshold_config 安全投影，AgentRunDrawer 展示阈值来源，Dogfood Evidence 记录 threshold config / drawer config 覆盖 |
 | 2026-06-03 | Trace & Audit | inspect_agent_trace_anomaly_trends 新增 calibration.policy 安全投影，基于样本量、误报/漏报 guard 和建议阈值判断 collect/review/keep 策略，并在 AgentRunDrawer 展示固化策略摘要 |
 | 2026-06-03 | Trace & Audit | inspect_agent_trace_anomaly_trends 新增阈值校准摘要，基于 recent/baseline 运行窗口输出建议阈值、误报/漏报 guard 和推荐后续，并在 AgentRunDrawer 展示安全校准投影 |
 | 2026-06-03 | Trace & Audit | inspect_agent_trace_anomaly_trends 新增 baseline window、rate delta 与阈值信号，并在 AgentRunDrawer 展示基线/阈值安全摘要 |

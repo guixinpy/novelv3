@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-DOGFOOD_EVIDENCE_VERSION = "phase239.agent_dogfood_evidence_trace_policy.v1"
+DOGFOOD_EVIDENCE_VERSION = "phase240.agent_dogfood_evidence_trace_threshold_config.v1"
 DOGFOOD_EVIDENCE_RUN_SOURCE = "planner_trace.agent_health_projection.dogfood_evidence"
 
 _FULL_AGENT_NATIVE_DOGFOOD = (
@@ -49,7 +49,7 @@ _REQUIRED_CAPABILITIES: tuple[dict[str, Any], ...] = (
     {
         "capability": "trace_anomaly_threshold_calibration",
         "label": "Trace anomaly threshold calibration",
-        "required_for": "Prove Trace anomaly trends expose baseline, threshold, calibration policy, and false-positive/false-negative guard evidence before long-running dogfood sample review.",
+        "required_for": "Prove Trace anomaly trends expose baseline, configurable thresholds, calibration policy, and false-positive/false-negative guard evidence before long-running dogfood sample review.",
     },
 )
 
@@ -143,13 +143,21 @@ _EVIDENCE_RECORDS: tuple[dict[str, Any], ...] = (
         "project_id": "",
         "chapter_indexes": [],
         "capabilities": ["trace_anomaly_threshold_calibration", "observability_snapshot"],
-        "loop": ["aggregate_recent_trace_runs", "compare_baseline_window", "emit_threshold_signals", "project_drawer_summary"],
+        "loop": [
+            "aggregate_recent_trace_runs",
+            "compare_baseline_window",
+            "apply_project_configured_thresholds",
+            "emit_threshold_signals",
+            "project_drawer_summary",
+        ],
         "metrics": {
             "trace_anomaly_trend_regression_count": 2,
             "threshold_signal_count": 2,
+            "threshold_config_projection_count": 1,
             "threshold_calibration_projection_count": 1,
             "threshold_policy_projection_count": 1,
             "drawer_projection_regression_count": 1,
+            "drawer_threshold_config_projection_count": 1,
             "drawer_calibration_projection_count": 1,
             "drawer_policy_projection_count": 1,
             "false_positive_guard_count": 1,

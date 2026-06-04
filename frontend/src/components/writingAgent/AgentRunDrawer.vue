@@ -929,6 +929,7 @@ const traceAnomalyTrendFilters = computed(() => recordValue(traceAnomalyTrendsOu
 const traceAnomalyTrendIssueCounts = computed(() => recordValue(traceAnomalyTrend.value.issue_counts))
 const traceAnomalyTrendSeverityCounts = computed(() => recordValue(traceAnomalyTrend.value.severity_counts))
 const traceAnomalyTrendThresholdSignals = computed(() => recordList(traceAnomalyTrendsOutput.value?.threshold_signals))
+const traceAnomalyTrendThresholdConfig = computed(() => recordValue(traceAnomalyTrendsOutput.value?.threshold_config))
 const traceAnomalyTrendCalibration = computed(() => recordValue(traceAnomalyTrendsOutput.value?.calibration))
 const traceAnomalyTrendCalibrationSample = computed(() => recordValue(traceAnomalyTrendCalibration.value.sample))
 const traceAnomalyTrendCalibrationSuggestedThresholds = computed(() => (
@@ -1004,6 +1005,9 @@ const traceAnomalyTrendAffectedRunRateDeltaLabel = computed(() => (
 ))
 const traceAnomalyTrendIssueRateDeltaLabel = computed(() => (
   signedPercentLabel(traceAnomalyTrendComparison.value.issue_rate_delta)
+))
+const traceAnomalyTrendThresholdConfigLabel = computed(() => (
+  traceAnomalyThresholdConfigLabel(traceAnomalyTrendThresholdConfig.value.status)
 ))
 const traceAnomalyTrendCalibrationStatusLabel = computed(() => (
   traceAnomalyCalibrationStatusLabel(traceAnomalyTrendCalibration.value.status)
@@ -1659,6 +1663,7 @@ const hasTraceAnomalyTrendsProjection = computed(() => Boolean(
     traceAnomalyTrendIssueRows.value.length ||
     traceAnomalyTrendRunRows.value.length ||
     traceAnomalyTrendThresholdSignalRows.value.length ||
+    traceAnomalyTrendThresholdConfigLabel.value ||
     traceAnomalyTrendCalibrationStatusLabel.value ||
     traceAnomalyTrendCalibrationGuardRows.value.length ||
     traceAnomalyTrendCalibrationPolicyStatusLabel.value
@@ -2387,6 +2392,14 @@ function traceAnomalyThresholdSignalLabel(code: unknown) {
   if (value === 'affected_run_rate_spike') return '受影响运行率升高'
   if (value === 'critical_issue_rate_spike') return '严重异常率升高'
   return safeTraceAuditText(value)
+}
+
+function traceAnomalyThresholdConfigLabel(status: unknown) {
+  const value = stringValue(status)
+  if (value === 'configured') return '项目配置'
+  if (value === 'partial') return '部分配置'
+  if (value === 'default') return '内置默认'
+  return ''
 }
 
 function traceAnomalyCalibrationStatusLabel(status: unknown) {
@@ -4238,6 +4251,10 @@ function missingDependencyTool(value: Record<string, unknown>) {
             <div v-if="traceAnomalyTrendIssueRateDeltaLabel">
               <dt>问题率</dt>
               <dd>问题率 {{ traceAnomalyTrendIssueRateDeltaLabel }}</dd>
+            </div>
+            <div v-if="traceAnomalyTrendThresholdConfigLabel">
+              <dt>阈值来源</dt>
+              <dd>{{ traceAnomalyTrendThresholdConfigLabel }}</dd>
             </div>
           </dl>
           <ul

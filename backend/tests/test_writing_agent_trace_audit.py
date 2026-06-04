@@ -792,7 +792,7 @@ def test_inspect_agent_trace_anomaly_trends_aggregates_recent_runs_safely(db_ses
     assert output["recommended_next_tools"] == ["inspect_agent_trace_audit", "plan_recovery_tools"]
     assert output["trace"] == {
         "source": "inspect_agent_trace_anomaly_trends",
-        "version": "phase77.agent_trace_anomaly_trends_policy.v1",
+        "version": "phase78.agent_trace_anomaly_configured_thresholds.v1",
         "mutability": "read",
     }
     assert "run-trend-secret" not in str(output)
@@ -937,6 +937,153 @@ def test_inspect_agent_trace_anomaly_trends_compares_baseline_thresholds_safely(
     assert "run-baseline-secret" not in str(output)
     assert "trace-baseline-secret" not in str(output)
     assert "step-baseline-secret" not in str(output)
+
+
+def test_inspect_agent_trace_anomaly_trends_uses_project_configured_thresholds(db_session):
+    project = Project(
+        name="Trace Anomaly Configured Thresholds",
+        style_config={
+            "agent_trace_anomaly_thresholds": {
+                "affected_run_rate_delta": 0.75,
+                "critical_issue_rate_delta": 0.4,
+            }
+        },
+    )
+    db_session.add(project)
+    db_session.flush()
+    base_time = datetime(2026, 6, 4, 9, 0, tzinfo=timezone.utc)
+    recent_runs = [
+        WritingAgentRun(
+            id=f"run-config-threshold-secret-recent-{index}",
+            project_id=project.id,
+            goal=f"预检第{index}章",
+            status="success",
+            entrypoint="dialog_auto_plan",
+            created_at=base_time + timedelta(minutes=10 + index),
+        )
+        for index in (1, 2)
+    ]
+    baseline_runs = [
+        WritingAgentRun(
+            id=f"run-config-threshold-secret-baseline-{index}",
+            project_id=project.id,
+            goal=f"历史预检第{index}章",
+            status="success",
+            entrypoint="dialog_auto_plan",
+            created_at=base_time + timedelta(minutes=index),
+        )
+        for index in (1, 2)
+    ]
+    db_session.add_all(recent_runs + baseline_runs)
+    db_session.flush()
+    clear_traces = [
+        AIModelCallTrace(
+            id=f"trace-config-threshold-secret-clear-{index}",
+            project_id=project.id,
+            trace_type="preflight",
+            status="success",
+            model="local",
+            chapter_index=index,
+            context_blocks=[],
+        )
+        for index in (1, 2, 3)
+    ]
+    db_session.add_all(clear_traces)
+    db_session.flush()
+    db_session.add_all(
+        [
+            WritingAgentStep(
+                id="step-config-threshold-secret-recent-warning",
+                run_id=recent_runs[0].id,
+                project_id=project.id,
+                step_index=1,
+                tool_name="preflight_writing",
+                status="success",
+                output={"status": "ready"},
+                chapter_index=1,
+            ),
+            WritingAgentStep(
+                id="step-config-threshold-secret-recent-clear",
+                run_id=recent_runs[1].id,
+                project_id=project.id,
+                step_index=1,
+                tool_name="preflight_writing",
+                status="success",
+                output={"status": "ready", "trace_id": clear_traces[0].id},
+                trace_id=clear_traces[0].id,
+                chapter_index=2,
+            ),
+        ]
+        + [
+            WritingAgentStep(
+                id=f"step-config-threshold-secret-baseline-clear-{index}",
+                run_id=run.id,
+                project_id=project.id,
+                step_index=1,
+                tool_name="preflight_writing",
+                status="success",
+                output={"status": "ready", "trace_id": trace.id},
+                trace_id=trace.id,
+                chapter_index=index,
+            )
+            for index, (run, trace) in enumerate(zip(baseline_runs, clear_traces[1:], strict=True), start=1)
+        ]
+    )
+    db_session.commit()
+
+    output = inspect_agent_trace_anomaly_trends(db_session, project.id, limit=2, baseline_limit=2)
+
+    assert output["comparison"]["affected_run_rate_delta"] == 0.5
+    assert output["thresholds"] == {
+        "affected_run_rate_delta": 0.75,
+        "critical_issue_rate_delta": 0.4,
+    }
+    assert output["threshold_config"] == {
+        "status": "configured",
+        "source": "Project.style_config.agent_trace_anomaly_thresholds",
+        "configured_keys": ["affected_run_rate_delta", "critical_issue_rate_delta"],
+        "fallback_keys": [],
+    }
+    assert output["threshold_signals"] == []
+    assert output["calibration"]["current_thresholds"] == {
+        "affected_run_rate_delta": 0.75,
+        "critical_issue_rate_delta": 0.4,
+    }
+    assert output["calibration"]["policy"]["recommended_thresholds"] == {
+        "affected_run_rate_delta": 0.5,
+        "critical_issue_rate_delta": 0.4,
+    }
+    assert output["calibration"]["policy"]["decision"] == "lower_affected_run_rate_delta_threshold"
+    assert "run-config-threshold-secret" not in str(output)
+    assert "trace-config-threshold-secret" not in str(output)
+    assert "step-config-threshold-secret" not in str(output)
+
+
+def test_inspect_agent_trace_anomaly_trends_marks_partial_threshold_config(db_session):
+    project = Project(
+        name="Trace Anomaly Partial Thresholds",
+        style_config={
+            "agent_trace_anomaly_thresholds": {
+                "affected_run_rate_delta": "not-a-rate",
+                "critical_issue_rate_delta": 0.4,
+            }
+        },
+    )
+    db_session.add(project)
+    db_session.commit()
+
+    output = inspect_agent_trace_anomaly_trends(db_session, project.id, limit=2, baseline_limit=2)
+
+    assert output["thresholds"] == {
+        "affected_run_rate_delta": 0.5,
+        "critical_issue_rate_delta": 0.4,
+    }
+    assert output["threshold_config"] == {
+        "status": "partial",
+        "source": "Project.style_config.agent_trace_anomaly_thresholds",
+        "configured_keys": ["critical_issue_rate_delta"],
+        "fallback_keys": ["affected_run_rate_delta"],
+    }
 
 
 def test_inspect_agent_trace_anomaly_trends_calibrates_false_negative_guard(db_session):

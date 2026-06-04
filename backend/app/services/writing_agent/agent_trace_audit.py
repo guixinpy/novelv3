@@ -19,13 +19,14 @@ from app.services.writing_agent.control_plane_readiness_projection import (
 )
 
 AGENT_TRACE_AUDIT_VERSION = "phase73.agent_trace_audit.v1"
-TRACE_ANOMALY_TRENDS_VERSION = "phase77.agent_trace_anomaly_trends_policy.v1"
+TRACE_ANOMALY_TRENDS_VERSION = "phase78.agent_trace_anomaly_configured_thresholds.v1"
 DEFAULT_AUDIT_LIMIT = 20
 MAX_AUDIT_LIMIT = 100
 TRACE_ANOMALY_AFFECTED_RATE_DELTA_THRESHOLD = 0.5
 TRACE_ANOMALY_CRITICAL_RATE_DELTA_THRESHOLD = 0.25
 TRACE_ANOMALY_CALIBRATION_MIN_RUN_COUNT = 2
 TRACE_ANOMALY_POLICY_MIN_REVIEW_RUN_COUNT = 4
+TRACE_ANOMALY_THRESHOLDS_CONFIG_KEY = "agent_trace_anomaly_thresholds"
 TRACE_EXPECTED_TOOL_NAMES = {
     "generate_chapter",
     "expand_chapter",
@@ -51,7 +52,7 @@ def inspect_agent_trace_anomaly_trends(
     baseline_limit: int | None = None,
     chapter_index: int | None = None,
 ) -> dict[str, Any]:
-    _require_project(db, project_id)
+    project = _require_project(db, project_id)
     clamped_limit = _clamp_limit(limit)
     clamped_baseline_limit = _clamp_limit(baseline_limit) if baseline_limit is not None else clamped_limit
     recent_runs = _recent_runs_for_anomaly_trends(
@@ -70,7 +71,7 @@ def inspect_agent_trace_anomaly_trends(
     trend, run_rows = _anomaly_trend_window_summary(db, project_id, recent_runs, include_rows=True)
     baseline, _baseline_rows = _anomaly_trend_window_summary(db, project_id, baseline_runs, include_rows=False)
     comparison = _trace_anomaly_trend_comparison(trend, baseline)
-    thresholds = _trace_anomaly_trend_thresholds()
+    thresholds, threshold_config = _trace_anomaly_trend_thresholds(project)
     threshold_signals = _trace_anomaly_threshold_signals(trend, baseline, comparison, thresholds)
     calibration = _trace_anomaly_threshold_calibration(trend, baseline, comparison, thresholds, threshold_signals)
     return _json_safe_output(
@@ -86,6 +87,7 @@ def inspect_agent_trace_anomaly_trends(
             "baseline": baseline,
             "comparison": comparison,
             "thresholds": thresholds,
+            "threshold_config": threshold_config,
             "threshold_signals": threshold_signals,
             "calibration": calibration,
             "runs": run_rows,
@@ -253,9 +255,11 @@ def _recent_runs_for_anomaly_trends(
     return query.order_by(WritingAgentRun.created_at.desc(), WritingAgentRun.id.desc()).offset(offset).limit(limit).all()
 
 
-def _require_project(db: Session, project_id: str) -> None:
-    if db.query(Project.id).filter(Project.id == project_id).first() is None:
+def _require_project(db: Session, project_id: str) -> Project:
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
+    return project
 
 
 def _select_run(
@@ -1162,11 +1166,51 @@ def _trace_anomaly_trend_comparison(
     }
 
 
-def _trace_anomaly_trend_thresholds() -> dict[str, float]:
-    return {
+def _trace_anomaly_trend_thresholds(project: Project) -> tuple[dict[str, float], dict[str, Any]]:
+    default_thresholds = {
         "affected_run_rate_delta": TRACE_ANOMALY_AFFECTED_RATE_DELTA_THRESHOLD,
         "critical_issue_rate_delta": TRACE_ANOMALY_CRITICAL_RATE_DELTA_THRESHOLD,
     }
+    style_config = project.style_config if isinstance(project.style_config, dict) else {}
+    configured = style_config.get(TRACE_ANOMALY_THRESHOLDS_CONFIG_KEY)
+    configured_thresholds = configured if isinstance(configured, dict) else {}
+    thresholds = dict(default_thresholds)
+    configured_keys: list[str] = []
+    fallback_keys: list[str] = []
+    for key in sorted(default_thresholds):
+        parsed = _configured_rate_threshold(configured_thresholds.get(key))
+        if parsed is None:
+            if configured_thresholds:
+                fallback_keys.append(key)
+            continue
+        thresholds[key] = parsed
+        configured_keys.append(key)
+    if configured_keys and fallback_keys:
+        config_status = "partial"
+    elif configured_keys:
+        config_status = "configured"
+    else:
+        config_status = "default"
+    return thresholds, {
+        "status": config_status,
+        "source": (
+            f"Project.style_config.{TRACE_ANOMALY_THRESHOLDS_CONFIG_KEY}"
+            if configured_keys
+            else "built_in_defaults"
+        ),
+        "configured_keys": configured_keys,
+        "fallback_keys": fallback_keys,
+    }
+
+
+def _configured_rate_threshold(value: Any) -> float | None:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    if parsed <= 0 or parsed > 1:
+        return None
+    return round(parsed, 2)
 
 
 def _trace_anomaly_threshold_signals(

@@ -1,6 +1,6 @@
 # 05 · 进度追踪
 
-> **最后更新**: 2026-06-03
+> **最后更新**: 2026-06-04
 > **版本**: v1.0
 > **重要性**: ★★★★★（**每个 session 必读**）
 > **维护规则**: 每次开发 session 结束后必须更新本文档
@@ -299,7 +299,7 @@
 - [x] 前端 Trace 抽屉：ModelTraceDrawer + modelTraces store
 - [x] Trace 脱敏：API key、Bearer token、password 等自动脱敏
 - [x] Trace Audit 自然语言只读入口：自然语言“检查 run trace/执行链路/失败原因”可直接规划到 inspect_agent_trace_audit，后端可输出安全 intent_chain 摘要（意图规则、计划工具、执行匹配）、end_to_end_chain 摘要（意图→计划→执行→模型 Trace→结果消息覆盖）和 anomaly_summary 摘要（失败步骤、失败模型 Trace、缺 Trace 绑定、未执行计划、缺结果消息、截断上下文），AgentRunDrawer 可展示安全摘要、intent_chain 意图链路、端到端链路、异常摘要、失败原因、推荐动作、事件链、上下文块和模型 Trace 概览
-- [x] Trace Anomaly Trends 自然语言只读入口：自然语言“检查第 N 章 Trace 异常趋势 limit <n> baseline <n>”可直接规划到 inspect_agent_trace_anomaly_trends，后端可聚合最近 run 的受影响数量、严重度、问题类型、主要问题、baseline window、rate delta、阈值信号、阈值校准建议、误报/漏报 guard、阈值固化策略和推荐后续，AgentRunDrawer 可展示安全摘要并隐藏 raw run/step/trace/context/calibration/policy 内部字段
+- [x] Trace Anomaly Trends 自然语言只读入口：自然语言“检查第 N 章 Trace 异常趋势 limit <n> baseline <n>”可直接规划到 inspect_agent_trace_anomaly_trends，后端可聚合最近 run 的受影响数量、严重度、问题类型、主要问题、baseline window、rate delta、项目配置化阈值、阈值信号、阈值校准建议、误报/漏报 guard、阈值固化策略和推荐后续，AgentRunDrawer 可展示安全摘要、阈值来源和固化策略，并隐藏 raw run/step/trace/context/calibration/policy/config 内部字段
 - [x] 基础上下文压缩：对话历史长度限制
 - [x] 长篇上下文摘要：longform_context_summary
 - [x] ContextCompressor 基础计划投影：context pressure 下输出头尾保护预修剪、target_max_chars 和 summarize_longform_context 工具计划
@@ -321,7 +321,7 @@
 | P1 | 智能上下文压缩（借鉴 hermes-agent） | 预修剪 + LLM 摘要 + 头尾保护 | 🟡 进行中（preflight persistent reuse） |
 | P2 | 端到端 Trace 链路 | 从用户意图→计划→工具调用→模型调用→结果的一条链 | ✅ 已完成（Trace Audit end_to_end_chain + Drawer 覆盖意图→计划→执行→模型 Trace→结果消息） |
 | P3 | 上下文预算管理 | 可视化 Token 使用量 + 接近上限时的警告 | 🟡 进行中（preflight intent + Drawer budget warning） |
-| P4 | Trace 聚合异常检测 | 单 run 异常摘要 + 跨 run 趋势和异常统计 | 🟡 进行中（单 run anomaly_summary + 最近 run anomaly trends + baseline/threshold signals + runtime calibration/policy + Drawer + dogfood calibration evidence 已完成；真实长跑 dogfood 样本复核与实际阈值固化/配置化应用待补） |
+| P4 | Trace 聚合异常检测 | 单 run 异常摘要 + 跨 run 趋势和异常统计 | 🟡 进行中（单 run anomaly_summary + 最近 run anomaly trends + baseline/threshold signals + runtime calibration/policy + 项目级阈值配置读取 + Drawer + dogfood calibration evidence 已完成；真实长跑 dogfood 样本复核与人工复核后的阈值写入/维护流程待补） |
 
 ### 阻塞项
 
@@ -329,6 +329,9 @@
 
 ### 最近完成
 
+- 2026-06-04: `inspect_agent_trace_anomaly_trends` 新增 `Project.style_config.agent_trace_anomaly_thresholds` 项目级阈值读取，`thresholds` 会优先使用已固化配置并通过 `threshold_config` 安全投影来源；未配置项目保持内置默认阈值。
+- 2026-06-04: `AgentRunDrawer` 新增 Trace Anomaly Trends 阈值来源安全投影，只展示“项目配置/内置默认/部分配置”，不渲染原始 `Project.style_config...` 路径或内部配置 key。
+- 2026-06-04: `inspect_agent_dogfood_evidence` 的 Trace anomaly threshold calibration 证据新增 threshold_config_projection 与 drawer_threshold_config_projection 指标，覆盖阈值配置化应用的回归证据。
 - 2026-06-03: `inspect_agent_trace_anomaly_trends` 新增 `calibration.policy` 安全投影，基于样本量、建议阈值和 false_positive/false_negative guard 输出 collect/review/keep 策略、复核样本数、是否可固化和后续工具；`AgentRunDrawer` 同步展示固化策略、决策、复核样本和固化候选，同时隐藏 policy 内部 id。
 - 2026-06-03: `inspect_agent_dogfood_evidence` 的 Trace anomaly threshold calibration 证据新增 threshold_policy_projection 与 drawer_policy_projection 指标，覆盖阈值固化策略只读投影。
 - 2026-06-03: `inspect_agent_trace_anomaly_trends` 新增阈值校准摘要，基于 recent/baseline 真实运行窗口输出当前信号数、建议阈值、false_negative_guard、false_positive_guard 和推荐后续工具；`AgentRunDrawer` 同步展示校准状态、样本量、建议阈值和 guard，并隐藏 project/run/step/trace/context/calibration 内部字段。
