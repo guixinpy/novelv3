@@ -68,6 +68,11 @@ AGENT_PLAN_GATED_TOOLS = {
         "gate_type": "stateless_agent_plan_approval",
         "covered_tools": ["record_agent_memory_tree_summaries"],
     },
+    "execute_record_agent_memory_tree_llm_candidate_summary_with_approval": {
+        "gate_version": "phase250.memory_tree_llm_candidate_summary_agent_plan_approval.v1",
+        "gate_type": "stateless_agent_plan_approval",
+        "covered_tools": ["record_agent_memory_tree_llm_candidate_summary"],
+    },
     "execute_create_revision_draft_with_approval": {
         "gate_version": "phase194.revision_draft_agent_plan_approval.v1",
         "gate_type": "stateless_agent_plan_approval",

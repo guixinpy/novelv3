@@ -28,6 +28,33 @@ _MEMORY_TREE_SUMMARY_PREPARE_OUTPUT = object_schema(
         "trace": {"type": "object"},
     }
 )
+_MEMORY_TREE_LLM_CANDIDATE_SUMMARY_INPUT_PROPERTIES = {
+    "candidate_trace_id": {"type": "string"},
+    "quality_chapter_index": {"type": "integer", "minimum": 1},
+    "quality_query": {"type": "string"},
+    "post_approval_continuation_tools": {"type": "array"},
+}
+_MEMORY_TREE_LLM_CANDIDATE_SUMMARY_PREPARE_OUTPUT = object_schema(
+    {
+        "status": {"type": "string"},
+        "prepare_version": {"type": "string"},
+        "project_id": {"type": "string"},
+        "target_type": {"type": "string"},
+        "candidate_summary": {"type": "object"},
+        "summary_plan": {"type": "object"},
+        "mutation_fingerprint": {"type": "object"},
+        "tool_call_id": {"type": "string"},
+        "resource_binding": {"type": "object"},
+        "agent_plan": {"type": "object"},
+        "agent_plan_approval_contract": {"type": "object"},
+        "agent_plan_approval_contract_hash": {"type": "string"},
+        "required_confirmation": {"type": "object"},
+        "side_effects": {"type": "object"},
+        "recommended_next_tools": {"type": "array"},
+        "post_approval_continuation_tools": {"type": "array"},
+        "trace": {"type": "object"},
+    }
+)
 
 
 MEMORY_TREE_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
@@ -202,6 +229,85 @@ MEMORY_TREE_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         internal=True,
         non_blocking_report=False,
         sort_key=8,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
+        name="record_agent_memory_tree_llm_candidate_summary",
+        module="writing_agent",
+        category="longform_memory",
+        description="将已审批的 Memory Tree LLM 候选摘要持久化为章级 LongformMemory 摘要；直接调用只返回审批要求，不执行写入。",
+        input_schema=object_schema(
+            {
+                "candidate_trace_id": {"type": "string"},
+                "quality_chapter_index": {"type": "integer", "minimum": 1},
+                "quality_query": {"type": "string"},
+            }
+        ),
+        output_schema=object_schema(
+            {
+                "status": {"type": "string"},
+                "reason": {"type": "string"},
+                "required_approval": {"type": "object"},
+                "materialization": {"type": "object"},
+                "side_effects": {"type": "object"},
+                "trace": {"type": "object"},
+            }
+        ),
+        target_type="agent_memory_tree_llm_candidate_summary",
+        internal=True,
+        non_blocking_report=False,
+        sort_key=8,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
+        name="prepare_record_agent_memory_tree_llm_candidate_summary",
+        module="writing_agent",
+        category="longform_memory",
+        description="为 Memory Tree LLM 候选摘要写入构建 trace 绑定的 Agent 计划审批契约，不执行写入。",
+        input_schema=object_schema(_MEMORY_TREE_LLM_CANDIDATE_SUMMARY_INPUT_PROPERTIES),
+        output_schema=_MEMORY_TREE_LLM_CANDIDATE_SUMMARY_PREPARE_OUTPUT,
+        target_type="agent_memory_tree_llm_candidate_summary_approval",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=9,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
+        name="execute_record_agent_memory_tree_llm_candidate_summary_with_approval",
+        module="writing_agent",
+        category="longform_memory",
+        description="验证 trace 绑定的 Agent 计划审批契约后，将选中的 Memory Tree LLM 候选摘要写入 LongformMemory 并返回质量复核。",
+        input_schema=object_schema(
+            {
+                **_MEMORY_TREE_LLM_CANDIDATE_SUMMARY_INPUT_PROPERTIES,
+                "confirm_execute": {"type": "boolean"},
+                "approval_contract_hash": {"type": "string"},
+                "approval_contract": {"type": "object"},
+            },
+            required=("candidate_trace_id", "confirm_execute", "approval_contract_hash", "approval_contract"),
+        ),
+        output_schema=object_schema(
+            {
+                "status": {"type": "string"},
+                "execute_version": {"type": "string"},
+                "project_id": {"type": "string"},
+                "target_type": {"type": "string"},
+                "materialization": {"type": "object"},
+                "post_materialization_quality": {"type": "object"},
+                "agent_plan_approval_verification": {"type": "object"},
+                "approval_verification_event": {"type": "object"},
+                "execution_resource_binding": {"type": "object"},
+                "evidence": {"type": "object"},
+                "side_effects": {"type": "object"},
+                "recommended_next_tools": {"type": "array"},
+                "post_approval_continuation_tools": {"type": "array"},
+                "trace": {"type": "object"},
+            }
+        ),
+        target_type="agent_memory_tree_llm_candidate_summary",
+        internal=True,
+        non_blocking_report=False,
+        sort_key=10,
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(

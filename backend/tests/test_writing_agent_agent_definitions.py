@@ -240,6 +240,18 @@ def test_worker_dispatch_routes_memory_tree_summary_materialization_to_memory_wo
     preview = preview_agent_worker_dispatches(
         [
             {
+                "tool_name": "record_agent_memory_tree_llm_candidate_summary",
+                "params": {"candidate_trace_id": "trace-1"},
+            },
+            {
+                "tool_name": "prepare_record_agent_memory_tree_llm_candidate_summary",
+                "params": {"candidate_trace_id": "trace-1"},
+            },
+            {
+                "tool_name": "execute_record_agent_memory_tree_llm_candidate_summary_with_approval",
+                "params": {"candidate_trace_id": "trace-1", "confirm_execute": True},
+            },
+            {
                 "tool_name": "record_agent_memory_tree_summaries",
                 "params": {"chapter_index": 2},
             },
@@ -260,10 +272,13 @@ def test_worker_dispatch_routes_memory_tree_summary_materialization_to_memory_wo
     )
 
     assert preview["status"] == "ready"
-    assert preview["summary"] == {"workers": 1, "planned_tasks": 4, "blocked_tasks": 0, "issues": 0}
+    assert preview["summary"] == {"workers": 1, "planned_tasks": 7, "blocked_tasks": 0, "issues": 0}
     dispatch = preview["worker_dispatches"][0]
     assert dispatch["worker"]["name"] == "memory_worker"
     assert [item["tool_name"] for item in dispatch["task_envelopes"]] == [
+        "record_agent_memory_tree_llm_candidate_summary",
+        "prepare_record_agent_memory_tree_llm_candidate_summary",
+        "execute_record_agent_memory_tree_llm_candidate_summary_with_approval",
         "record_agent_memory_tree_summaries",
         "prepare_record_agent_memory_tree_summaries",
         "execute_record_agent_memory_tree_summaries_with_approval",
@@ -342,7 +357,7 @@ def test_worker_route_registry_audit_binds_routes_to_allowed_worker_definitions(
 
     assert audit["version"] == AGENT_WORKER_ROUTE_REGISTRY_AUDIT_VERSION
     assert audit["status"] == "passed"
-    assert audit["summary"] == {"routes": 63, "ready_routes": 63, "unrouted_allowed_tools": 0, "issues": 0}
+    assert audit["summary"] == {"routes": 66, "ready_routes": 66, "unrouted_allowed_tools": 0, "issues": 0}
     assert audit["issues"] == []
     assert audit["unrouted_allowed_tools"] == []
 
@@ -350,6 +365,12 @@ def test_worker_route_registry_audit_binds_routes_to_allowed_worker_definitions(
     assert routes_by_tool["build_agent_memory_tree_llm_summary_plan"]["worker"] == "memory_worker"
     assert routes_by_tool["summarize_agent_memory_tree_llm_candidate"]["worker"] == "memory_worker"
     assert routes_by_tool["inspect_agent_memory_tree_llm_candidates"]["worker"] == "memory_worker"
+    assert routes_by_tool["record_agent_memory_tree_llm_candidate_summary"]["worker"] == "memory_worker"
+    assert routes_by_tool["prepare_record_agent_memory_tree_llm_candidate_summary"]["worker"] == "memory_worker"
+    assert (
+        routes_by_tool["execute_record_agent_memory_tree_llm_candidate_summary_with_approval"]["worker"]
+        == "memory_worker"
+    )
     assert routes_by_tool["preflight_writing"]["worker"] == "drafting_worker"
     assert routes_by_tool["preview_generate_setup_execution"]["worker"] == "drafting_worker"
     assert routes_by_tool["prepare_generate_setup_execution"]["worker"] == "drafting_worker"

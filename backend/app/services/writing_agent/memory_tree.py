@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -21,6 +23,7 @@ MEMORY_TREE_QUALITY_VERSION = "phase245.memory_tree_quality.v1"
 MEMORY_TREE_LLM_SUMMARY_PLAN_VERSION = "phase247.memory_tree_llm_summary_plan.v1"
 MEMORY_TREE_LLM_SUMMARY_CANDIDATE_VERSION = "phase248.memory_tree_llm_summary_candidate.v1"
 MEMORY_TREE_LLM_CANDIDATE_INSPECTION_VERSION = "phase249.memory_tree_llm_candidate_inspection.v1"
+MEMORY_TREE_LLM_CANDIDATE_MATERIALIZATION_VERSION = "phase250.memory_tree_llm_candidate_materialization.v1"
 MEMORY_TREE_LEVELS = ["volume", "chapter", "scene", "beat"]
 MEMORY_TREE_VOLUME_SUMMARY_TYPE = "memory_tree_volume_summary"
 MEMORY_TREE_CHAPTER_SUMMARY_TYPE = "memory_tree_chapter_summary"
@@ -200,8 +203,8 @@ def build_agent_memory_tree_llm_summary_plan(
         },
         "side_effects": {"executed": [], "skipped": ["record_agent_memory_tree_summaries"]},
         "recommended_next_tools": [
-            "prepare_record_agent_memory_tree_summaries",
-            "execute_record_agent_memory_tree_summaries_with_approval",
+            "summarize_agent_memory_tree_llm_candidate",
+            "inspect_agent_memory_tree_llm_candidates",
             "inspect_agent_memory_tree_quality",
         ],
         "trace": {
@@ -414,8 +417,8 @@ async def summarize_agent_memory_tree_llm_candidate(
         "candidate_write_policy": {
             "materialization_requires_approval": True,
             "approval_tools": [
-                "prepare_record_agent_memory_tree_summaries",
-                "execute_record_agent_memory_tree_summaries_with_approval",
+                "prepare_record_agent_memory_tree_llm_candidate_summary",
+                "execute_record_agent_memory_tree_llm_candidate_summary_with_approval",
             ],
         },
         "side_effects": {
@@ -423,8 +426,8 @@ async def summarize_agent_memory_tree_llm_candidate(
             "skipped": ["record_agent_memory_tree_summaries"],
         },
         "recommended_next_tools": [
-            "prepare_record_agent_memory_tree_summaries",
-            "execute_record_agent_memory_tree_summaries_with_approval",
+            "prepare_record_agent_memory_tree_llm_candidate_summary",
+            "execute_record_agent_memory_tree_llm_candidate_summary_with_approval",
             "inspect_agent_memory_tree_quality",
         ],
         "trace": {
@@ -435,6 +438,146 @@ async def summarize_agent_memory_tree_llm_candidate(
             "trace_type": trace.trace_type,
             "llm_call_executed": True,
             "status": trace.status,
+        },
+    }
+
+
+def inspect_agent_memory_tree_llm_candidate_trace(
+    db: Session,
+    project_id: str,
+    *,
+    candidate_trace_id: str | None,
+) -> dict[str, Any]:
+    trace_id = str(candidate_trace_id or "").strip()
+    if not trace_id:
+        return _llm_candidate_trace_blocked(project_id, reason="candidate_trace_id_required")
+    trace = (
+        db.query(AIModelCallTrace)
+        .filter(
+            AIModelCallTrace.id == trace_id,
+            AIModelCallTrace.project_id == project_id,
+            AIModelCallTrace.trace_type == "memory_tree_summary_generation",
+        )
+        .first()
+    )
+    if trace is None:
+        return _llm_candidate_trace_blocked(project_id, reason="candidate_trace_not_found")
+
+    candidate_trace = _llm_candidate_trace_summary(trace)
+    if candidate_trace["trace_status"] != "success":
+        return _llm_candidate_trace_blocked(
+            project_id,
+            reason="candidate_trace_not_successful",
+            candidate_trace=candidate_trace,
+        )
+    candidate = candidate_trace["candidate"]
+    if not candidate.get("summary"):
+        return _llm_candidate_trace_blocked(
+            project_id,
+            reason="candidate_summary_required",
+            candidate_trace=candidate_trace,
+        )
+    summary_target = candidate_trace["summary_target"]
+    if not _valid_llm_candidate_summary_target(summary_target):
+        return _llm_candidate_trace_blocked(
+            project_id,
+            reason="candidate_summary_target_invalid",
+            candidate_trace=candidate_trace,
+        )
+    return {
+        "version": MEMORY_TREE_LLM_CANDIDATE_INSPECTION_VERSION,
+        "status": "ready",
+        "project_id": project_id,
+        "candidate_trace_id": trace.id,
+        "candidate_trace": candidate_trace,
+        "summary_target": summary_target,
+        "candidate": candidate,
+        "candidate_summary_hash": _candidate_summary_hash(candidate),
+        "trace": {
+            "source": "inspect_agent_memory_tree_llm_candidate_trace",
+            "mutability": "read",
+            "runtime_behavior_changed": False,
+        },
+    }
+
+
+def materialize_agent_memory_tree_llm_candidate_summary(
+    db: Session,
+    project_id: str,
+    *,
+    candidate_trace_id: str | None,
+) -> dict[str, Any]:
+    candidate_summary = inspect_agent_memory_tree_llm_candidate_trace(
+        db,
+        project_id,
+        candidate_trace_id=candidate_trace_id,
+    )
+    if candidate_summary.get("status") != "ready":
+        return {
+            "version": MEMORY_TREE_LLM_CANDIDATE_MATERIALIZATION_VERSION,
+            "status": "blocked",
+            "project_id": project_id,
+            "reason": candidate_summary.get("reason"),
+            "candidate_summary": candidate_summary,
+            "side_effects": {"executed": [], "skipped": ["longform_memories"]},
+        }
+
+    summary_target = candidate_summary["summary_target"]
+    chapter_index = _optional_int(summary_target.get("chapter_index"))
+    if chapter_index is None:
+        return {
+            "version": MEMORY_TREE_LLM_CANDIDATE_MATERIALIZATION_VERSION,
+            "status": "blocked",
+            "project_id": project_id,
+            "reason": "candidate_chapter_index_required",
+            "candidate_summary": candidate_summary,
+            "side_effects": {"executed": [], "skipped": ["longform_memories"]},
+        }
+    chapter = (
+        db.query(ChapterContent)
+        .filter(ChapterContent.project_id == project_id, ChapterContent.chapter_index == chapter_index)
+        .first()
+    )
+    candidate = candidate_summary["candidate"]
+    candidate_trace = candidate_summary["candidate_trace"]
+    record, was_created = _upsert_summary_memory(
+        db,
+        project_id=project_id,
+        memory_type=MEMORY_TREE_CHAPTER_SUMMARY_TYPE,
+        scope_key=str(summary_target.get("scope_key") or f"chapter:{chapter_index}"),
+        start_chapter_index=chapter_index,
+        end_chapter_index=chapter_index,
+        title=(chapter.title if chapter is not None and chapter.title else f"Chapter {chapter_index}"),
+        summary=str(candidate.get("summary") or "").strip(),
+        metadata={
+            "level": "chapter",
+            "chapter_index": chapter_index,
+            "source": "memory_tree_llm_candidate_trace",
+            "candidate_trace_id": candidate_summary["candidate_trace_id"],
+            "candidate_summary_hash": candidate_summary["candidate_summary_hash"],
+            "model": candidate_trace.get("model"),
+            "prompt_tokens": candidate_trace.get("prompt_tokens"),
+            "completion_tokens": candidate_trace.get("completion_tokens"),
+            "candidate": candidate,
+        },
+    )
+    db.commit()
+    return {
+        "version": MEMORY_TREE_LLM_CANDIDATE_MATERIALIZATION_VERSION,
+        "status": "completed",
+        "project_id": project_id,
+        "candidate_summary": candidate_summary,
+        "summary": {
+            "candidate_summary_nodes": 1,
+            "created_nodes": 1 if was_created else 0,
+            "updated_nodes": 0 if was_created else 1,
+        },
+        "nodes": [_summary_record_projection(record)],
+        "side_effects": {"executed": ["longform_memories"], "skipped": []},
+        "trace": {
+            "source": "materialize_agent_memory_tree_llm_candidate_summary",
+            "storage": "longform_memories",
+            "memory_type": MEMORY_TREE_CHAPTER_SUMMARY_TYPE,
         },
     }
 
@@ -1261,10 +1404,50 @@ def _llm_candidate_inspection_recommendations(candidates: list[dict[str, Any]]) 
     if not candidates:
         return ["summarize_agent_memory_tree_llm_candidate", "build_agent_memory_tree_llm_summary_plan"]
     return [
-        "prepare_record_agent_memory_tree_summaries",
-        "execute_record_agent_memory_tree_summaries_with_approval",
+        "prepare_record_agent_memory_tree_llm_candidate_summary",
+        "execute_record_agent_memory_tree_llm_candidate_summary_with_approval",
         "inspect_agent_memory_tree_quality",
     ]
+
+
+def _llm_candidate_trace_blocked(
+    project_id: str,
+    *,
+    reason: str,
+    candidate_trace: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return {
+        "version": MEMORY_TREE_LLM_CANDIDATE_INSPECTION_VERSION,
+        "status": "blocked",
+        "project_id": project_id,
+        "reason": reason,
+        "candidate_trace": candidate_trace,
+        "recommended_next_tools": [
+            "inspect_agent_memory_tree_llm_candidates",
+            "summarize_agent_memory_tree_llm_candidate",
+        ],
+        "trace": {
+            "source": "inspect_agent_memory_tree_llm_candidate_trace",
+            "mutability": "read",
+            "runtime_behavior_changed": False,
+        },
+    }
+
+
+def _valid_llm_candidate_summary_target(summary_target: dict[str, Any]) -> bool:
+    return (
+        isinstance(summary_target, dict)
+        and summary_target.get("level") == "chapter"
+        and summary_target.get("memory_type") == MEMORY_TREE_CHAPTER_SUMMARY_TYPE
+        and _optional_int(summary_target.get("chapter_index")) is not None
+        and bool(str(summary_target.get("scope_key") or "").strip())
+    )
+
+
+def _candidate_summary_hash(candidate: dict[str, Any]) -> str:
+    normalized = _normalise_candidate_payload(candidate)
+    payload = json.dumps(normalized, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def _llm_summary_evidence_sources(

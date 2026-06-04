@@ -24,6 +24,7 @@ _KNOWN_MUTATING_TOOLS = {
     "record_agent_knowledge_base_candidate",
     "record_agent_trace_anomaly_threshold_config",
     "record_agent_memory_tree_summaries",
+    "record_agent_memory_tree_llm_candidate_summary",
     "repair_longform_maintenance",
     "create_revision_draft",
     "apply_planner_revision_patch",
@@ -243,6 +244,20 @@ def _target_for_tool(project_id: str, tool_name: str, params: dict[str, Any]) ->
         chapter_index = _positive_int(params.get("chapter_index"))
         target_scope = f"chapter:{chapter_index}" if chapter_index is not None else "all"
         return _ready("agent_memory_tree_summary", f"agent_memory_tree_summary:{project_target}:{target_scope}")
+
+    if tool_name == "record_agent_memory_tree_llm_candidate_summary":
+        project_target = _clean_string(project_id)
+        candidate_trace_id = _clean_string(params.get("candidate_trace_id"))
+        if not project_target or not candidate_trace_id:
+            return _blocked(
+                "agent_memory_tree_llm_candidate_summary",
+                "missing_target",
+                "record_agent_memory_tree_llm_candidate_summary requires project_id and candidate_trace_id",
+            )
+        return _ready(
+            "agent_memory_tree_llm_candidate_summary",
+            f"agent_memory_tree_llm_candidate_summary:{project_target}:trace:{candidate_trace_id}",
+        )
 
     if tool_name == "repair_longform_maintenance":
         project_target = _clean_string(project_id)

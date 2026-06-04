@@ -103,12 +103,53 @@ def _record_agent_memory_tree_summaries(context: WritingAgentToolContext, tool: 
     }
 
 
+def _record_agent_memory_tree_llm_candidate_summary(
+    context: WritingAgentToolContext,
+    tool: WritingAgentToolRequest,
+) -> dict[str, Any]:
+    return {
+        "status": "blocked",
+        "reason": "approval_required_before_write",
+        "project_id": context.project_id,
+        "target_type": "agent_memory_tree_llm_candidate_summary",
+        "required_approval": {
+            "prepare_tool": "prepare_record_agent_memory_tree_llm_candidate_summary",
+            "execute_tool": "execute_record_agent_memory_tree_llm_candidate_summary_with_approval",
+            "approval_scope": "agent_plan_approval",
+        },
+        "side_effects": {"executed": [], "skipped": ["record_agent_memory_tree_llm_candidate_summary"]},
+        "recommended_next_tools": ["prepare_record_agent_memory_tree_llm_candidate_summary"],
+        "trace": {
+            "selected_tools": [],
+            "rejected_tools": [
+                {
+                    "tool_name": "record_agent_memory_tree_llm_candidate_summary",
+                    "reason": "approval_required_before_write",
+                }
+            ],
+            "source": "direct_agent_write_guard",
+        },
+    }
+
+
 def build_memory_tree_tool_adapters(
     *,
     approval_tool_metadata_provider: ApprovalToolMetadataProvider,
 ) -> dict[str, WritingAgentToolAdapter]:
     return {
         **MEMORY_TREE_TOOL_ADAPTERS,
+        "prepare_record_agent_memory_tree_llm_candidate_summary": WritingAgentToolAdapter(
+            "prepare_record_agent_memory_tree_llm_candidate_summary",
+            _prepare_record_agent_memory_tree_llm_candidate_summary,
+            category="longform_memory",
+            mutability="read",
+        ),
+        "execute_record_agent_memory_tree_llm_candidate_summary_with_approval": WritingAgentToolAdapter(
+            "execute_record_agent_memory_tree_llm_candidate_summary_with_approval",
+            _execute_record_agent_memory_tree_llm_candidate_summary_with_approval(approval_tool_metadata_provider),
+            category="longform_memory",
+            mutability="write",
+        ),
         "prepare_record_agent_memory_tree_summaries": WritingAgentToolAdapter(
             "prepare_record_agent_memory_tree_summaries",
             _prepare_record_agent_memory_tree_summaries,
@@ -122,6 +163,49 @@ def build_memory_tree_tool_adapters(
             mutability="write",
         ),
     }
+
+
+def _prepare_record_agent_memory_tree_llm_candidate_summary(
+    context: WritingAgentToolContext,
+    tool: WritingAgentToolRequest,
+) -> dict[str, Any]:
+    from app.services.writing_agent.memory_tree_summary_execution import (
+        prepare_record_agent_memory_tree_llm_candidate_summary,
+    )
+
+    return prepare_record_agent_memory_tree_llm_candidate_summary(
+        context.db,
+        context.project_id,
+        action_params=tool.params,
+    )
+
+
+def _execute_record_agent_memory_tree_llm_candidate_summary_with_approval(
+    approval_tool_metadata_provider: ApprovalToolMetadataProvider,
+) -> Callable[[WritingAgentToolContext, WritingAgentToolRequest], dict[str, Any]]:
+    def execute_record_agent_memory_tree_llm_candidate_summary_with_approval_adapter(
+        context: WritingAgentToolContext,
+        tool: WritingAgentToolRequest,
+    ) -> dict[str, Any]:
+        from app.services.writing_agent.memory_tree_summary_execution import (
+            execute_record_agent_memory_tree_llm_candidate_summary_with_approval,
+        )
+
+        approval_contract = tool.params.get("approval_contract")
+        return execute_record_agent_memory_tree_llm_candidate_summary_with_approval(
+            context.db,
+            context.project_id,
+            action_params=tool.params,
+            confirm_execute=tool.params.get("confirm_execute") is True,
+            approval_contract_hash=str(tool.params.get("approval_contract_hash") or "").strip() or None,
+            approval_contract=approval_contract if isinstance(approval_contract, dict) else None,
+            approval_tool_metadata_provider=approval_tool_metadata_provider,
+        )
+
+    execute_record_agent_memory_tree_llm_candidate_summary_with_approval_adapter.__name__ = (
+        "_execute_record_agent_memory_tree_llm_candidate_summary_with_approval"
+    )
+    return execute_record_agent_memory_tree_llm_candidate_summary_with_approval_adapter
 
 
 def _prepare_record_agent_memory_tree_summaries(
@@ -197,6 +281,13 @@ MEMORY_TREE_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
         _inspect_agent_memory_tree_llm_candidates,
         category="longform_memory",
         mutability="read",
+    ),
+    "record_agent_memory_tree_llm_candidate_summary": WritingAgentToolAdapter(
+        "record_agent_memory_tree_llm_candidate_summary",
+        _record_agent_memory_tree_llm_candidate_summary,
+        category="longform_memory",
+        mutability="guarded_write",
+        write_policy="approval_required_redirect",
     ),
     "record_agent_memory_tree_summaries": WritingAgentToolAdapter(
         "record_agent_memory_tree_summaries",

@@ -55,7 +55,7 @@ openhuman 的 Memory Tree 对网文创作天然适配：
 - **卷→章→节→段落** 的层级结构本身就是一棵树
 - 节点被分块、打分、汇总到分层摘要中
 - Agent 可以浏览顶层概览，或在感兴趣的话题上 drill-down
-- 当前 novelv3 已落地卷/章两级基础版：`record_agent_memory_tree_summaries` 将摘要 materialize 为 `LongformMemory`，直接写入口已改为审批链 redirect，`prepare_record_agent_memory_tree_summaries` / `execute_record_agent_memory_tree_summaries_with_approval` 会在审批契约验证后写入并返回 quality 复核；`inspect_agent_memory_tree` 再把持久化摘要投影回树节点，并在精确匹配失败时用确定性 relevance 评分、后代强匹配回流和弱匹配阈值给出 drill-down 推荐；`inspect_agent_memory_tree_quality` 会只读审计节点覆盖、摘要支撑、semantic probe 和真实长篇诊断；`build_agent_memory_tree_llm_summary_plan` 会把真实质量缺口转成只读 evidence window、Trace-required prompt contract、quality gate 和审批式物化后续；`summarize_agent_memory_tree_llm_candidate` 可在不写 LongformMemory 的前提下执行 `memory_tree_summary_generation` Trace、把候选写入 Trace metadata 并返回摘要候选，`inspect_agent_memory_tree_llm_candidates` 可只读检查候选 Trace；高相关节点会进入 `build_memory_activation_plan` 的写前激活桶，且自然语言“浏览/搜索记忆树”“检查记忆树质量”“构建记忆树 LLM 摘要计划”“生成/查看记忆树 LLM 摘要候选”都可直接规划到只读 Memory Tree 工具
+- 当前 novelv3 已落地卷/章两级基础版：`record_agent_memory_tree_summaries` 将摘要 materialize 为 `LongformMemory`，直接写入口已改为审批链 redirect，`prepare_record_agent_memory_tree_summaries` / `execute_record_agent_memory_tree_summaries_with_approval` 会在审批契约验证后写入并返回 quality 复核；`inspect_agent_memory_tree` 再把持久化摘要投影回树节点，并在精确匹配失败时用确定性 relevance 评分、后代强匹配回流和弱匹配阈值给出 drill-down 推荐；`inspect_agent_memory_tree_quality` 会只读审计节点覆盖、摘要支撑、semantic probe 和真实长篇诊断；`build_agent_memory_tree_llm_summary_plan` 会把真实质量缺口转成只读 evidence window、Trace-required prompt contract、quality gate 和候选生成/检查后续；`summarize_agent_memory_tree_llm_candidate` 可在不写 LongformMemory 的前提下执行 `memory_tree_summary_generation` Trace、把候选写入 Trace metadata 并返回摘要候选，`inspect_agent_memory_tree_llm_candidates` 可只读检查候选 Trace；候选专用 `record_agent_memory_tree_llm_candidate_summary` / `prepare_record_agent_memory_tree_llm_candidate_summary` / `execute_record_agent_memory_tree_llm_candidate_summary_with_approval` 已把 trace id 与候选摘要 hash 绑定进审批契约，经 mutation fingerprint 和 resource binding 验证后再写入选中章级 LongformMemory；高相关节点会进入 `build_memory_activation_plan` 的写前激活桶，且自然语言“浏览/搜索记忆树”“检查记忆树质量”“构建记忆树 LLM 摘要计划”“生成/查看记忆树 LLM 摘要候选”都可直接规划到只读 Memory Tree 工具
 
 **已知 tradeoff**（来自 openhuman 实际运行经验）：
 - 语义召回需要将检索到的记忆注入上下文
@@ -241,7 +241,7 @@ novelv3 当前 trace + approval 体系已经较完整。权限分级已先在核
 7. **hermes-agent ContextCompressor persistent artifact loop** → context pressure 下输出头尾保护预修剪、summarize 工具计划、只读 dry-run payload、推荐恢复入口，在 `preflight_writing` 暴露压缩检查与 payload preview；自然语言“检查上下文压缩/预算/窗口压力”可直接规划到只读压缩投影工具，“构建上下文压缩 dry-run payload”可直达 `build_agent_context_compression_payload`；ready payload 后推荐 `record_agent_context_compression_summary`；写入 LongformMemory 持久工件后，preflight 与章节 prompt 均会优先复用匹配摘要，缺摘要时章节生成 longform block 仍可替换为 `compressed_context`
 8. **openhuman Memory Tree 分层摘要基础版** → 卷/章摘要写入 LongformMemory，并通过 memory_worker 暴露审批式 materialize/recheck 工具链
 9. **openhuman Memory Tree 基础浏览/激活/质量审计** → `inspect_agent_memory_tree` 支持按节点展开、深度裁剪、搜索命中祖先上下文、确定性 relevance drill-down、过滤层级的后代强匹配回流与弱匹配降噪，可由自然语言只读意图直接规划，并被 `build_memory_activation_plan` 消费；`inspect_agent_memory_tree_quality` 则提供真实长篇 quality baseline，当前 dogfood 已证明 summary backing 缺口可经审批式 materialize/recheck 闭环收敛
-10. **openhuman Memory Tree LLM 摘要计划/候选层** → `build_agent_memory_tree_llm_summary_plan` 在真实 dogfood 缺口上输出章级 evidence window、Trace-required prompt contract、quality precheck/postcheck 和 approval materialize 后续；`summarize_agent_memory_tree_llm_candidate` 将同一证据窗口推进到可审计 `memory_tree_summary_generation` Trace、Trace metadata 候选持久化和候选返回，`inspect_agent_memory_tree_llm_candidates` 可按章节复核候选，仍不写入 Memory Tree 摘要
+10. **openhuman Memory Tree LLM 摘要计划/候选层** → `build_agent_memory_tree_llm_summary_plan` 在真实 dogfood 缺口上输出章级 evidence window、Trace-required prompt contract、quality precheck/postcheck 和候选生成/检查后续；`summarize_agent_memory_tree_llm_candidate` 将同一证据窗口推进到可审计 `memory_tree_summary_generation` Trace、Trace metadata 候选持久化和候选返回，`inspect_agent_memory_tree_llm_candidates` 可按章节复核候选，候选专用 prepare/execute 审批链可将选中候选物化为章级 Memory Tree 摘要
 11. **openclaw 孤兒恢复写入闭环基础版** → `apply_agent_worker_orphan_recovery` 确认式标记 blocked，并创建 pending redispatch run
 12. **Reference Alignment 只读审计入口** → `inspect_agent_reference_alignment` 将三参考项目模式、已采纳决策和下一步建议投影为可审计结果，并可由自然语言只读意图直接规划
 
@@ -251,7 +251,7 @@ novelv3 当前 trace + approval 体系已经较完整。权限分级已先在核
 
 ### 短期实现（1-2 个开发周期）
 
-13. **openhuman Memory Tree 语义召回/摘要增强** → 在确定性层级 relevance、LLM-ready summary plan、traced fake-model candidate 和候选 Trace 读回基础上继续推进真实模型质量验证、候选审批式物化、向量召回和按需展开
+13. **openhuman Memory Tree 语义召回/摘要增强** → 在确定性层级 relevance、LLM-ready summary plan、traced fake-model candidate、候选 Trace 读回和 trace-bound 候选审批物化基础上继续推进真实模型质量验证、批量候选物化、向量召回和按需展开
 14. **hermes-agent ContextCompressor 摘要质量与分层压缩** → 基于 preflight/章节 prompt 的持久压缩摘要推荐、写入、复用闭环继续推进 LLM 摘要质量闭环 + 更多实际上下文构建路径按重要性分层压缩
 15. **openclaw 孤兒恢复后台执行整合** → 将 pending redispatch run 接入后台执行/前端审批入口
 

@@ -103,6 +103,6 @@ finally:
 
 The original dogfood DB still reports a Memory Tree quality gap for chapter 2 and the semantic probe `灯塔旧回声`.
 
-`build_agent_memory_tree_llm_summary_plan` converts that gap into a read-only evidence window and an LLM prompt contract with `trace_required=true` and `trace_type=memory_tree_summary_generation`. It does not mutate the DB. The recommended continuation remains the existing approval-gated summary materialization chain followed by `inspect_agent_memory_tree_quality`.
+`build_agent_memory_tree_llm_summary_plan` converts that gap into a read-only evidence window and an LLM prompt contract with `trace_required=true` and `trace_type=memory_tree_summary_generation`. It does not mutate the DB. The recommended continuation is now traced candidate generation/inspection before any approval-gated summary materialization.
 
-This is an LLM-ready planning layer, not the final LLM summary execution path. The next increment should either run the model through the existing trace infrastructure or add a traced executor that stores generated summary candidates behind the same approval boundary.
+This is an LLM-ready planning layer, not the final LLM summary execution path. The next increment should run the model through the existing trace infrastructure and keep materialization behind the candidate-specific approval boundary.

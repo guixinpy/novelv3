@@ -126,8 +126,8 @@ Remove-Item -LiteralPath $tmp
   "memory_tree_summary_count_before": 0,
   "memory_tree_summary_count_after": 0,
   "inspection_recommended_next_tools": [
-    "prepare_record_agent_memory_tree_summaries",
-    "execute_record_agent_memory_tree_summaries_with_approval",
+    "prepare_record_agent_memory_tree_llm_candidate_summary",
+    "execute_record_agent_memory_tree_llm_candidate_summary_with_approval",
     "inspect_agent_memory_tree_quality"
   ]
 }
@@ -139,6 +139,6 @@ Remove-Item -LiteralPath $tmp
 
 `inspect_agent_memory_tree_llm_candidates` can later recover that candidate from Trace metadata by chapter, proving the candidate is no longer only available in the immediate tool return.
 
-The original dogfood DB is untouched, and the temporary copy still has `memory_tree_chapter_summary` count 0 after the run. Candidate materialization remains outside this path and must continue through the approval-gated summary write chain.
+The original dogfood DB is untouched, and the temporary copy still has `memory_tree_chapter_summary` count 0 after the run. Candidate materialization remains outside this path and must continue through the candidate-specific approval-gated write chain.
 
-Remaining gap: this is a fake model response. A later increment should run a real configured model or add an approval-safe candidate persistence layer before using the candidate for summary materialization.
+Remaining gap: this is a fake model response. A later increment should run a real configured model before relying on candidate quality for broad summary materialization.

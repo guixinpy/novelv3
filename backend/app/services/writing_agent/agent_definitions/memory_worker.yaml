@@ -8,6 +8,9 @@ allowed_tools:
   - build_agent_memory_tree_llm_summary_plan
   - summarize_agent_memory_tree_llm_candidate
   - inspect_agent_memory_tree_llm_candidates
+  - record_agent_memory_tree_llm_candidate_summary
+  - prepare_record_agent_memory_tree_llm_candidate_summary
+  - execute_record_agent_memory_tree_llm_candidate_summary_with_approval
   - record_agent_memory_tree_summaries
   - prepare_record_agent_memory_tree_summaries
   - execute_record_agent_memory_tree_summaries_with_approval

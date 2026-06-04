@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-DOGFOOD_EVIDENCE_VERSION = "phase249.agent_dogfood_evidence_memory_tree_llm_candidate_inspection.v1"
+DOGFOOD_EVIDENCE_VERSION = "phase250.agent_dogfood_evidence_memory_tree_llm_candidate_materialization.v1"
 DOGFOOD_EVIDENCE_RUN_SOURCE = "planner_trace.agent_health_projection.dogfood_evidence"
 
 _FULL_AGENT_NATIVE_DOGFOOD = (
@@ -28,6 +28,9 @@ _MEMORY_TREE_LLM_SUMMARY_PLAN_DOGFOOD = (
 )
 _MEMORY_TREE_LLM_SUMMARY_CANDIDATE_DOGFOOD = (
     "docs/archive/superpowers/notes/long-memory-agent/2026-06-04-memory-tree-llm-summary-candidate-dogfood.md"
+)
+_MEMORY_TREE_LLM_CANDIDATE_MATERIALIZATION_DOGFOOD = (
+    "docs/archive/superpowers/notes/long-memory-agent/2026-06-04-memory-tree-llm-candidate-materialization-dogfood.md"
 )
 
 _REQUIRED_CAPABILITIES: tuple[dict[str, Any], ...] = (
@@ -90,6 +93,11 @@ _REQUIRED_CAPABILITIES: tuple[dict[str, Any], ...] = (
         "capability": "memory_tree_llm_summary_candidate",
         "label": "Memory Tree LLM summary candidate",
         "required_for": "Prove a real Memory Tree quality gap can execute a traced summary candidate path without bypassing approval-gated memory writes.",
+    },
+    {
+        "capability": "memory_tree_llm_candidate_materialization",
+        "label": "Memory Tree LLM candidate materialization",
+        "required_for": "Prove an inspected Memory Tree LLM candidate trace can be approval-gated, materialized into LongformMemory, and rechecked for semantic quality on an isolated dogfood copy.",
     },
 )
 
@@ -365,7 +373,7 @@ _EVIDENCE_RECORDS: tuple[dict[str, Any], ...] = (
         "loop": [
             "inspect_real_dogfood_memory_tree_quality_gap",
             "build_trace_required_llm_summary_prompt_contract",
-            "handoff_to_approval_gated_summary_materialization",
+            "handoff_to_traced_llm_summary_candidate",
         ],
         "metrics": {
             "memory_tree_llm_summary_plan_source_count": 3,
@@ -377,9 +385,9 @@ _EVIDENCE_RECORDS: tuple[dict[str, Any], ...] = (
         },
         "proven_tools": [
             "build_agent_memory_tree_llm_summary_plan",
+            "summarize_agent_memory_tree_llm_candidate",
+            "inspect_agent_memory_tree_llm_candidates",
             "inspect_agent_memory_tree_quality",
-            "prepare_record_agent_memory_tree_summaries",
-            "execute_record_agent_memory_tree_summaries_with_approval",
             "inspect_agent_dogfood_evidence",
         ],
         "supporting_source_refs": [
@@ -425,8 +433,6 @@ _EVIDENCE_RECORDS: tuple[dict[str, Any], ...] = (
             "inspect_agent_memory_tree_llm_candidates",
             "build_agent_memory_tree_llm_summary_plan",
             "inspect_agent_memory_tree_quality",
-            "prepare_record_agent_memory_tree_summaries",
-            "execute_record_agent_memory_tree_summaries_with_approval",
             "inspect_agent_dogfood_evidence",
         ],
         "supporting_source_refs": [
@@ -435,6 +441,63 @@ _EVIDENCE_RECORDS: tuple[dict[str, Any], ...] = (
             "backend/tests/test_dialogs.py",
         ],
         "open_findings": ["fake_model_response_not_external_model_quality"],
+    },
+    {
+        "evidence_id": "memory_tree_llm_candidate_materialization_20260604",
+        "title": "Memory Tree LLM Candidate Materialization Dogfood",
+        "source_ref": _MEMORY_TREE_LLM_CANDIDATE_MATERIALIZATION_DOGFOOD,
+        "verified_on": "2026-06-04",
+        "runtime_path": "sqlite_temp_copy_fake_model_approval_execute",
+        "project_id": "3f85aed4-4f6f-413f-bd1a-03fbe02ea0f4",
+        "chapter_indexes": [2],
+        "capabilities": [
+            "memory_tree_quality_real_longform_validation",
+            "memory_tree_llm_summary_candidate",
+            "memory_tree_llm_candidate_materialization",
+            "observability_snapshot",
+        ],
+        "loop": [
+            "execute_fake_model_summary_candidate_on_temp_copy",
+            "inspect_candidate_trace_metadata",
+            "prepare_trace_bound_candidate_summary_write",
+            "execute_approval_verified_candidate_summary_write",
+            "recheck_memory_tree_quality",
+        ],
+        "metrics": {
+            "memory_tree_llm_candidate_materialization_source_count": 3,
+            "memory_tree_llm_candidate_materialization_source_chars": 848,
+            "memory_tree_llm_candidate_materialization_trace_success_count": 1,
+            "memory_tree_llm_candidate_materialization_prepare_count": 1,
+            "memory_tree_llm_candidate_materialization_execute_success_count": 1,
+            "memory_tree_llm_candidate_materialization_approval_verified_count": 1,
+            "memory_tree_llm_candidate_materialization_created_nodes": 1,
+            "memory_tree_llm_candidate_materialization_updated_nodes": 0,
+            "memory_tree_llm_candidate_materialization_before_memory_count": 0,
+            "memory_tree_llm_candidate_materialization_after_memory_count": 1,
+            "memory_tree_llm_candidate_materialization_after_summary_backed_chapter_nodes": 1,
+            "memory_tree_llm_candidate_materialization_after_summary_backed_chapter_ratio": 0.3333,
+            "memory_tree_llm_candidate_materialization_semantic_probe_matched_count": 1,
+            "memory_tree_llm_candidate_materialization_after_diagnostic_count": 1,
+        },
+        "proven_tools": [
+            "summarize_agent_memory_tree_llm_candidate",
+            "inspect_agent_memory_tree_llm_candidates",
+            "prepare_record_agent_memory_tree_llm_candidate_summary",
+            "execute_record_agent_memory_tree_llm_candidate_summary_with_approval",
+            "record_agent_memory_tree_llm_candidate_summary",
+            "inspect_agent_memory_tree_quality",
+            "inspect_agent_write_gate_coverage",
+            "inspect_agent_dogfood_evidence",
+        ],
+        "supporting_source_refs": [
+            _MEMORY_TREE_LLM_CANDIDATE_MATERIALIZATION_DOGFOOD,
+            "backend/tests/test_writing_agent_memory_tree.py",
+            "backend/tests/test_writing_agent_tool_registry.py",
+        ],
+        "open_findings": [
+            "fake_model_response_not_external_model_quality",
+            "remaining_chapter_summary_gap_after_single_candidate_materialization",
+        ],
     },
 )
 

@@ -16,6 +16,8 @@ from app.services.writing_agent.memory_tree import (
     summarize_agent_memory_tree_llm_candidate,
 )
 from app.services.writing_agent.memory_tree_summary_execution import (
+    execute_record_agent_memory_tree_llm_candidate_summary_with_approval,
+    prepare_record_agent_memory_tree_llm_candidate_summary,
     prepare_record_agent_memory_tree_summaries,
 )
 from app.services.writing_agent.tool_adapter_types import WritingAgentToolContext
@@ -256,8 +258,8 @@ def test_memory_tree_llm_summary_plan_builds_trace_ready_evidence_window_without
     }
     assert output["side_effects"] == {"executed": [], "skipped": ["record_agent_memory_tree_summaries"]}
     assert output["recommended_next_tools"] == [
-        "prepare_record_agent_memory_tree_summaries",
-        "execute_record_agent_memory_tree_summaries_with_approval",
+        "summarize_agent_memory_tree_llm_candidate",
+        "inspect_agent_memory_tree_llm_candidates",
         "inspect_agent_memory_tree_quality",
     ]
     assert output["trace"]["mutability"] == "read"
@@ -304,8 +306,8 @@ async def test_memory_tree_llm_summary_candidate_records_trace_without_memory_wr
         "skipped": ["record_agent_memory_tree_summaries"],
     }
     assert output["recommended_next_tools"] == [
-        "prepare_record_agent_memory_tree_summaries",
-        "execute_record_agent_memory_tree_summaries_with_approval",
+        "prepare_record_agent_memory_tree_llm_candidate_summary",
+        "execute_record_agent_memory_tree_llm_candidate_summary_with_approval",
         "inspect_agent_memory_tree_quality",
     ]
     assert output["trace"]["llm_call_executed"] is True
@@ -379,8 +381,8 @@ async def test_memory_tree_llm_candidate_trace_inspection_lists_persisted_candid
         }
     ]
     assert output["recommended_next_tools"] == [
-        "prepare_record_agent_memory_tree_summaries",
-        "execute_record_agent_memory_tree_summaries_with_approval",
+        "prepare_record_agent_memory_tree_llm_candidate_summary",
+        "execute_record_agent_memory_tree_llm_candidate_summary_with_approval",
         "inspect_agent_memory_tree_quality",
     ]
     assert output["trace"] == {
@@ -389,6 +391,171 @@ async def test_memory_tree_llm_candidate_trace_inspection_lists_persisted_candid
         "mutability": "read",
         "runtime_behavior_changed": False,
     }
+
+
+@pytest.mark.asyncio
+async def test_prepare_record_memory_tree_llm_candidate_summary_builds_trace_bound_approval_contract(db_session):
+    project, _refs = _seed_memory_tree_project(db_session)
+    ai_service = _FakeMemoryTreeAIService(
+        '{"summary":"蓝焰证词把灯塔旧回声与空白信来源连在一起。",'
+        '"salient_terms":["蓝焰证词","灯塔旧回声"],'
+        '"open_questions":["空白信来源是否可由蓝焰证词确认？"],'
+        '"source_coverage":["chapter_content","outline"]}'
+    )
+    generated = await summarize_agent_memory_tree_llm_candidate(
+        db_session,
+        project.id,
+        chapter_index=2,
+        query="蓝焰证词",
+        max_source_chars=220,
+        ai_service=ai_service,
+    )
+
+    output = prepare_record_agent_memory_tree_llm_candidate_summary(
+        db_session,
+        project.id,
+        action_params={
+            "candidate_trace_id": generated["trace"]["trace_id"],
+            "quality_query": "蓝焰证词",
+        },
+    )
+
+    assert output["status"] == "approval_required"
+    assert output["target_type"] == "agent_memory_tree_llm_candidate_summary"
+    assert output["candidate_summary"]["candidate_trace_id"] == generated["trace"]["trace_id"]
+    assert output["candidate_summary"]["summary_target"]["scope_key"] == "chapter:2"
+    assert output["candidate_summary"]["candidate"]["summary"] == "蓝焰证词把灯塔旧回声与空白信来源连在一起。"
+    plan_step = output["agent_plan"]["steps"][0]
+    assert plan_step["tool_name"] == "record_agent_memory_tree_llm_candidate_summary"
+    assert plan_step["approval_executor_tool_name"] == (
+        "execute_record_agent_memory_tree_llm_candidate_summary_with_approval"
+    )
+    assert plan_step["params"]["candidate_trace_id"] == generated["trace"]["trace_id"]
+    assert plan_step["params"]["candidate_summary_hash"]
+    assert output["side_effects"] == {
+        "executed": [],
+        "skipped": ["record_agent_memory_tree_llm_candidate_summary"],
+    }
+    assert output["recommended_next_tools"] == [
+        "execute_record_agent_memory_tree_llm_candidate_summary_with_approval"
+    ]
+    assert (
+        db_session.query(LongformMemory)
+        .filter(
+            LongformMemory.project_id == project.id,
+            LongformMemory.memory_type == MEMORY_TREE_CHAPTER_SUMMARY_TYPE,
+        )
+        .count()
+        == 0
+    )
+
+
+@pytest.mark.asyncio
+async def test_record_memory_tree_llm_candidate_summary_tool_requires_approval(db_session):
+    project, _refs = _seed_memory_tree_project(db_session)
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-memory-tree-candidate-direct"),
+        WritingAgentToolRequest(
+            tool_name="record_agent_memory_tree_llm_candidate_summary",
+            params={"candidate_trace_id": "trace-1"},
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output["status"] == "blocked"
+    assert result.output["reason"] == "approval_required_before_write"
+    assert result.output["required_approval"] == {
+        "prepare_tool": "prepare_record_agent_memory_tree_llm_candidate_summary",
+        "execute_tool": "execute_record_agent_memory_tree_llm_candidate_summary_with_approval",
+        "approval_scope": "agent_plan_approval",
+    }
+    assert result.output["side_effects"] == {
+        "executed": [],
+        "skipped": ["record_agent_memory_tree_llm_candidate_summary"],
+    }
+
+
+@pytest.mark.asyncio
+async def test_execute_record_memory_tree_llm_candidate_summary_with_approval_persists_candidate_and_quality(db_session):
+    project, _refs = _seed_memory_tree_project(db_session)
+    ai_service = _FakeMemoryTreeAIService(
+        '{"summary":"蓝焰证词把灯塔旧回声与空白信来源连在一起。",'
+        '"salient_terms":["蓝焰证词","灯塔旧回声"],'
+        '"open_questions":["空白信来源是否可由蓝焰证词确认？"],'
+        '"source_coverage":["chapter_content","outline"]}'
+    )
+    generated = await summarize_agent_memory_tree_llm_candidate(
+        db_session,
+        project.id,
+        chapter_index=2,
+        query="蓝焰证词",
+        max_source_chars=220,
+        ai_service=ai_service,
+    )
+    prepared = prepare_record_agent_memory_tree_llm_candidate_summary(
+        db_session,
+        project.id,
+        action_params={
+            "candidate_trace_id": generated["trace"]["trace_id"],
+            "quality_query": "蓝焰证词",
+        },
+    )
+
+    output = execute_record_agent_memory_tree_llm_candidate_summary_with_approval(
+        db_session,
+        project.id,
+        action_params={
+            "candidate_trace_id": generated["trace"]["trace_id"],
+            "quality_query": "蓝焰证词",
+        },
+        confirm_execute=True,
+        approval_contract_hash=prepared["agent_plan_approval_contract_hash"],
+        approval_contract=prepared["agent_plan_approval_contract"],
+        approval_tool_metadata_provider=lambda plan: {
+            "record_agent_memory_tree_llm_candidate_summary": {
+                "tool_name": "record_agent_memory_tree_llm_candidate_summary",
+                "tool_exists": True,
+                "adapter_exists": True,
+                "adapter_type": "static",
+                "handler_name": "_record_agent_memory_tree_llm_candidate_summary",
+                "mutability": "guarded_write",
+                "requires_confirmation": True,
+                "required_fields": [],
+            }
+        },
+    )
+
+    assert output["status"] == "success"
+    assert output["materialization"]["summary"] == {
+        "candidate_summary_nodes": 1,
+        "created_nodes": 1,
+        "updated_nodes": 0,
+    }
+    assert output["post_materialization_quality"]["status"] == "degraded"
+    assert output["post_materialization_quality"]["coverage"]["summary_backed_chapter_nodes"] == 1
+    assert output["post_materialization_quality"]["semantic_probe"]["status"] == "matched"
+    assert output["agent_plan_approval_verification"]["status"] == "ready"
+    assert output["side_effects"] == {
+        "executed": ["record_agent_memory_tree_llm_candidate_summary"],
+        "skipped": [],
+    }
+
+    record = (
+        db_session.query(LongformMemory)
+        .filter(
+            LongformMemory.project_id == project.id,
+            LongformMemory.memory_type == MEMORY_TREE_CHAPTER_SUMMARY_TYPE,
+            LongformMemory.scope_key == "chapter:2",
+        )
+        .one()
+    )
+    assert record.summary == "蓝焰证词把灯塔旧回声与空白信来源连在一起。"
+    assert record.start_chapter_index == 2
+    assert record.end_chapter_index == 2
+    assert record.memory_metadata["source"] == "memory_tree_llm_candidate_trace"
+    assert record.memory_metadata["candidate_trace_id"] == generated["trace"]["trace_id"]
+    assert record.memory_metadata["candidate"]["salient_terms"] == ["蓝焰证词", "灯塔旧回声"]
 
 
 @pytest.mark.asyncio
