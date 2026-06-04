@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-DOGFOOD_EVIDENCE_VERSION = "phase247.agent_dogfood_evidence_memory_tree_llm_summary_plan.v1"
+DOGFOOD_EVIDENCE_VERSION = "phase248.agent_dogfood_evidence_memory_tree_llm_summary_candidate.v1"
 DOGFOOD_EVIDENCE_RUN_SOURCE = "planner_trace.agent_health_projection.dogfood_evidence"
 
 _FULL_AGENT_NATIVE_DOGFOOD = (
@@ -25,6 +25,9 @@ _MEMORY_TREE_SUMMARY_APPROVAL_DOGFOOD = (
 )
 _MEMORY_TREE_LLM_SUMMARY_PLAN_DOGFOOD = (
     "docs/archive/superpowers/notes/long-memory-agent/2026-06-04-memory-tree-llm-summary-plan-dogfood.md"
+)
+_MEMORY_TREE_LLM_SUMMARY_CANDIDATE_DOGFOOD = (
+    "docs/archive/superpowers/notes/long-memory-agent/2026-06-04-memory-tree-llm-summary-candidate-dogfood.md"
 )
 
 _REQUIRED_CAPABILITIES: tuple[dict[str, Any], ...] = (
@@ -82,6 +85,11 @@ _REQUIRED_CAPABILITIES: tuple[dict[str, Any], ...] = (
         "capability": "memory_tree_llm_summary_plan",
         "label": "Memory Tree LLM summary plan",
         "required_for": "Prove a real Memory Tree quality gap can be turned into a trace-required LLM summary prompt contract before any model call or write.",
+    },
+    {
+        "capability": "memory_tree_llm_summary_candidate",
+        "label": "Memory Tree LLM summary candidate",
+        "required_for": "Prove a real Memory Tree quality gap can execute a traced summary candidate path without bypassing approval-gated memory writes.",
     },
 )
 
@@ -380,6 +388,50 @@ _EVIDENCE_RECORDS: tuple[dict[str, Any], ...] = (
             "backend/tests/test_dialogs.py",
         ],
         "open_findings": [],
+    },
+    {
+        "evidence_id": "memory_tree_llm_summary_candidate_20260604",
+        "title": "Memory Tree LLM Summary Candidate Dogfood",
+        "source_ref": _MEMORY_TREE_LLM_SUMMARY_CANDIDATE_DOGFOOD,
+        "verified_on": "2026-06-04",
+        "runtime_path": "sqlite_temp_copy_fake_model_trace",
+        "project_id": "3f85aed4-4f6f-413f-bd1a-03fbe02ea0f4",
+        "chapter_indexes": [2],
+        "capabilities": [
+            "memory_tree_quality_real_longform_validation",
+            "memory_tree_llm_summary_candidate",
+            "observability_snapshot",
+        ],
+        "loop": [
+            "build_trace_required_llm_summary_plan",
+            "execute_fake_model_summary_candidate_on_temp_copy",
+            "record_memory_tree_summary_generation_trace",
+            "verify_no_memory_tree_summary_write",
+        ],
+        "metrics": {
+            "memory_tree_llm_summary_candidate_source_count": 3,
+            "memory_tree_llm_summary_candidate_source_chars": 848,
+            "memory_tree_llm_summary_candidate_trace_success_count": 1,
+            "memory_tree_llm_summary_candidate_context_block_count": 3,
+            "memory_tree_llm_summary_candidate_summary_chars": 49,
+            "memory_tree_llm_summary_candidate_open_question_count": 1,
+            "memory_tree_llm_summary_candidate_side_effect_count": 1,
+            "memory_tree_llm_summary_candidate_memory_write_count": 0,
+        },
+        "proven_tools": [
+            "summarize_agent_memory_tree_llm_candidate",
+            "build_agent_memory_tree_llm_summary_plan",
+            "inspect_agent_memory_tree_quality",
+            "prepare_record_agent_memory_tree_summaries",
+            "execute_record_agent_memory_tree_summaries_with_approval",
+            "inspect_agent_dogfood_evidence",
+        ],
+        "supporting_source_refs": [
+            _MEMORY_TREE_LLM_SUMMARY_CANDIDATE_DOGFOOD,
+            "backend/tests/test_writing_agent_memory_tree.py",
+            "backend/tests/test_dialogs.py",
+        ],
+        "open_findings": ["fake_model_response_not_external_model_quality"],
     },
 )
 

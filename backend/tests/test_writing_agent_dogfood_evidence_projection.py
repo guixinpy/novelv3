@@ -25,6 +25,7 @@ def test_inspect_agent_dogfood_evidence_surfaces_api_loop_and_memory_activation(
         "memory_tree_quality_real_longform_validation",
         "memory_tree_summary_approval_recheck",
         "memory_tree_llm_summary_plan",
+        "memory_tree_llm_summary_candidate",
     }.issubset({item["capability"] for item in output["capability_coverage"]})
     evidence_by_id = {item["evidence_id"]: item for item in output["evidence"]}
     full_loop = evidence_by_id["full_agent_native_loop_20260526"]
@@ -111,6 +112,7 @@ def test_inspect_agent_dogfood_evidence_surfaces_api_loop_and_memory_activation(
         "memory_tree_quality_projection_20260604",
         "memory_tree_summary_approval_recheck_20260604",
         "memory_tree_llm_summary_plan_20260604",
+        "memory_tree_llm_summary_candidate_20260604",
     ]
     assert "inspect_agent_memory_tree_quality" in quality_coverage["proven_tools"]
     memory_tree_summary = evidence_by_id["memory_tree_summary_approval_recheck_20260604"]
@@ -153,5 +155,24 @@ def test_inspect_agent_dogfood_evidence_surfaces_api_loop_and_memory_activation(
     assert llm_summary_plan_coverage["status"] == "covered"
     assert llm_summary_plan_coverage["evidence_ids"] == ["memory_tree_llm_summary_plan_20260604"]
     assert "build_agent_memory_tree_llm_summary_plan" in llm_summary_plan_coverage["proven_tools"]
+    llm_summary_candidate = evidence_by_id["memory_tree_llm_summary_candidate_20260604"]
+    assert llm_summary_candidate["runtime_path"] == "sqlite_temp_copy_fake_model_trace"
+    assert llm_summary_candidate["metrics"] == {
+        "memory_tree_llm_summary_candidate_source_count": 3,
+        "memory_tree_llm_summary_candidate_source_chars": 848,
+        "memory_tree_llm_summary_candidate_trace_success_count": 1,
+        "memory_tree_llm_summary_candidate_context_block_count": 3,
+        "memory_tree_llm_summary_candidate_summary_chars": 49,
+        "memory_tree_llm_summary_candidate_open_question_count": 1,
+        "memory_tree_llm_summary_candidate_side_effect_count": 1,
+        "memory_tree_llm_summary_candidate_memory_write_count": 0,
+    }
+    assert llm_summary_candidate["open_findings"] == ["fake_model_response_not_external_model_quality"]
+    llm_summary_candidate_coverage = {
+        item["capability"]: item for item in output["capability_coverage"]
+    }["memory_tree_llm_summary_candidate"]
+    assert llm_summary_candidate_coverage["status"] == "covered"
+    assert llm_summary_candidate_coverage["evidence_ids"] == ["memory_tree_llm_summary_candidate_20260604"]
+    assert "summarize_agent_memory_tree_llm_candidate" in llm_summary_candidate_coverage["proven_tools"]
     assert "inspect_agent_health_projection" in output["recommended_next_tools"]
     assert output["trace"]["runtime_behavior_changed"] is False

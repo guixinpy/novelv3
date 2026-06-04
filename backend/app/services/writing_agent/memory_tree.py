@@ -4,12 +4,22 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.models import ChapterContent, LongformMemory, Outline, Storyline
+from app.core.ai_service import AIService
+from app.core.deepseek_adapter import parse_json_safely
+from app.core.model_call_trace import (
+    build_context_block,
+    create_trace,
+    mark_trace_failed,
+    mark_trace_success,
+    now_ms,
+)
+from app.models import ChapterContent, LongformMemory, Outline, Project, Storyline
 
 MEMORY_TREE_VERSION = "phase238.memory_tree_browsing.v1"
 MEMORY_TREE_SUMMARY_MATERIALIZATION_VERSION = "phase237.memory_tree_summary_materialization.v1"
 MEMORY_TREE_QUALITY_VERSION = "phase245.memory_tree_quality.v1"
 MEMORY_TREE_LLM_SUMMARY_PLAN_VERSION = "phase247.memory_tree_llm_summary_plan.v1"
+MEMORY_TREE_LLM_SUMMARY_CANDIDATE_VERSION = "phase248.memory_tree_llm_summary_candidate.v1"
 MEMORY_TREE_LEVELS = ["volume", "chapter", "scene", "beat"]
 MEMORY_TREE_VOLUME_SUMMARY_TYPE = "memory_tree_volume_summary"
 MEMORY_TREE_CHAPTER_SUMMARY_TYPE = "memory_tree_chapter_summary"
@@ -199,6 +209,182 @@ def build_agent_memory_tree_llm_summary_plan(
             "mutability": "read",
             "runtime_behavior_changed": False,
             "llm_call_executed": False,
+        },
+    }
+
+
+async def summarize_agent_memory_tree_llm_candidate(
+    db: Session,
+    project_id: str,
+    *,
+    chapter_index: int | None = None,
+    query: str | None = None,
+    max_source_chars: int | None = None,
+    ai_service: Any | None = None,
+) -> dict[str, Any]:
+    plan = build_agent_memory_tree_llm_summary_plan(
+        db,
+        project_id,
+        chapter_index=chapter_index,
+        query=query,
+        max_source_chars=max_source_chars,
+    )
+    if plan["status"] != "ready":
+        return {
+            "version": MEMORY_TREE_LLM_SUMMARY_CANDIDATE_VERSION,
+            "status": "blocked",
+            "reason": "missing_evidence_sources",
+            "project_id": project_id,
+            "summary_target": plan["summary_target"],
+            "evidence_window": plan["evidence_window"],
+            "candidate": None,
+            "quality_gate": plan["quality_gate"],
+            "side_effects": {"executed": [], "skipped": ["memory_tree_summary_generation_trace"]},
+            "recommended_next_tools": [
+                "build_agent_memory_tree_llm_summary_plan",
+                "inspect_agent_memory_tree_quality",
+            ],
+            "trace": {
+                "source": "summarize_agent_memory_tree_llm_candidate",
+                "version": MEMORY_TREE_LLM_SUMMARY_CANDIDATE_VERSION,
+                "mutability": "read",
+                "llm_call_executed": False,
+            },
+        }
+
+    prompt_contract = plan["llm_prompt_contract"]
+    messages = [
+        {"role": "system", "content": str(prompt_contract.get("system_prompt") or "")},
+        {"role": "user", "content": str(prompt_contract.get("user_prompt") or "")},
+    ]
+    summary_target = plan["summary_target"]
+    evidence_window = plan["evidence_window"]
+    evidence_sources = evidence_window.get("sources") if isinstance(evidence_window.get("sources"), list) else []
+    project = db.query(Project).filter(Project.id == project_id).first()
+    model = getattr(project, "ai_model", None) or "deepseek-chat"
+    temperature = 0.2
+    max_tokens = 800
+    target_chapter_index = _optional_int(summary_target.get("chapter_index"))
+    chapter = (
+        db.query(ChapterContent)
+        .filter(ChapterContent.project_id == project_id, ChapterContent.chapter_index == target_chapter_index)
+        .first()
+        if target_chapter_index is not None
+        else None
+    )
+    trace = create_trace(
+        db,
+        project_id=project_id,
+        trace_type=str(prompt_contract.get("trace_type") or "memory_tree_summary_generation"),
+        messages=messages,
+        context_blocks=_llm_summary_context_blocks(evidence_sources),
+        model=model,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        chapter_id=chapter.id if chapter is not None else None,
+        chapter_index=target_chapter_index,
+        trace_metadata={
+            "memory_tree_llm_summary_candidate": {
+                "version": MEMORY_TREE_LLM_SUMMARY_CANDIDATE_VERSION,
+                "plan_version": plan.get("version"),
+                "summary_target": summary_target,
+                "source_count": evidence_window.get("source_count"),
+                "source_chars": evidence_window.get("source_chars"),
+                "quality_precheck_status": plan["quality_gate"]["precheck"].get("status"),
+            }
+        },
+    )
+    db.commit()
+    started_at = now_ms()
+    service = ai_service or AIService()
+    should_close_service = ai_service is None
+
+    try:
+        result = await service.complete(
+            messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            model=model,
+            response_format={"type": "json_object"},
+        )
+        candidate = _parse_llm_summary_candidate(getattr(result, "content", "") or "")
+        mark_trace_success(
+            db,
+            trace,
+            prompt_tokens=getattr(result, "prompt_tokens", 0),
+            completion_tokens=getattr(result, "completion_tokens", 0),
+            latency_ms=now_ms() - started_at,
+        )
+        db.commit()
+    except Exception as exc:
+        mark_trace_failed(db, trace, error_message=str(exc), latency_ms=now_ms() - started_at)
+        db.commit()
+        return {
+            "version": MEMORY_TREE_LLM_SUMMARY_CANDIDATE_VERSION,
+            "status": "failed",
+            "reason": "model_call_failed",
+            "error": str(exc),
+            "project_id": project_id,
+            "summary_target": summary_target,
+            "evidence_window": evidence_window,
+            "candidate": None,
+            "quality_gate": plan["quality_gate"],
+            "side_effects": {
+                "executed": ["memory_tree_summary_generation_trace"],
+                "skipped": ["record_agent_memory_tree_summaries"],
+            },
+            "recommended_next_tools": [
+                "build_agent_memory_tree_llm_summary_plan",
+                "inspect_agent_memory_tree_quality",
+            ],
+            "trace": {
+                "source": "summarize_agent_memory_tree_llm_candidate",
+                "version": MEMORY_TREE_LLM_SUMMARY_CANDIDATE_VERSION,
+                "mutability": "read",
+                "trace_id": trace.id,
+                "trace_type": trace.trace_type,
+                "llm_call_executed": True,
+                "status": "failed",
+            },
+        }
+    finally:
+        if should_close_service:
+            close = getattr(service, "close", None)
+            if callable(close):
+                await close()
+
+    return {
+        "version": MEMORY_TREE_LLM_SUMMARY_CANDIDATE_VERSION,
+        "status": "ready" if candidate["summary"] else "blocked",
+        "project_id": project_id,
+        "summary_target": summary_target,
+        "evidence_window": evidence_window,
+        "candidate": candidate,
+        "quality_gate": plan["quality_gate"],
+        "candidate_write_policy": {
+            "materialization_requires_approval": True,
+            "approval_tools": [
+                "prepare_record_agent_memory_tree_summaries",
+                "execute_record_agent_memory_tree_summaries_with_approval",
+            ],
+        },
+        "side_effects": {
+            "executed": ["memory_tree_summary_generation_trace"],
+            "skipped": ["record_agent_memory_tree_summaries"],
+        },
+        "recommended_next_tools": [
+            "prepare_record_agent_memory_tree_summaries",
+            "execute_record_agent_memory_tree_summaries_with_approval",
+            "inspect_agent_memory_tree_quality",
+        ],
+        "trace": {
+            "source": "summarize_agent_memory_tree_llm_candidate",
+            "version": MEMORY_TREE_LLM_SUMMARY_CANDIDATE_VERSION,
+            "mutability": "read",
+            "trace_id": trace.id,
+            "trace_type": trace.trace_type,
+            "llm_call_executed": True,
+            "status": trace.status,
         },
     }
 
@@ -1139,6 +1325,49 @@ def _llm_summary_prompt_contract(
             "source_coverage": "array[string]",
         },
     }
+
+
+def _llm_summary_context_blocks(evidence_sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    blocks: list[dict[str, Any]] = []
+    for index, source in enumerate(evidence_sources, start=1):
+        blocks.append(
+            build_context_block(
+                key=f"memory_tree_summary_source_{index}",
+                kind=str(source.get("source_type") or "memory_tree_source"),
+                title=str(source.get("title") or f"Memory Tree source {index}"),
+                content=str(source.get("excerpt") or ""),
+                sources=[
+                    {
+                        "source_type": source.get("source_type"),
+                        "source_id": source.get("source_id"),
+                        "chapter_index": source.get("chapter_index"),
+                    }
+                ],
+            )
+        )
+    return blocks
+
+
+def _parse_llm_summary_candidate(content: str) -> dict[str, Any]:
+    text = str(content or "").strip()
+    try:
+        payload = parse_json_safely(text)
+    except Exception:
+        payload = {"summary": text}
+    if not isinstance(payload, dict):
+        payload = {"summary": text}
+    return {
+        "summary": str(payload.get("summary") or payload.get("content") or text).strip(),
+        "salient_terms": _string_list(payload.get("salient_terms")),
+        "open_questions": _string_list(payload.get("open_questions")),
+        "source_coverage": _string_list(payload.get("source_coverage")),
+    }
+
+
+def _string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item).strip() for item in value if str(item).strip()]
 
 
 def _outline_by_chapter(outline: Outline | None) -> dict[int, dict[str, Any]]:

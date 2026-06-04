@@ -1817,6 +1817,23 @@ def test_agent_tool_registry_includes_memory_tree_llm_summary_plan():
     assert "build_agent_memory_tree_llm_summary_plan" in non_blocking_report_tool_names()
 
 
+def test_agent_tool_registry_includes_memory_tree_llm_summary_candidate():
+    descriptor = get_agent_tool_descriptor("summarize_agent_memory_tree_llm_candidate")
+
+    assert descriptor is not None
+    assert descriptor.internal is True
+    assert descriptor.non_blocking_report is True
+    assert descriptor.category == "longform_memory"
+    assert descriptor.target_type == "agent_memory_tree_llm_summary_candidate"
+    assert descriptor.input_schema["properties"]["chapter_index"]["minimum"] == 1
+    assert descriptor.input_schema["properties"]["query"]["type"] == "string"
+    assert descriptor.input_schema["properties"]["max_source_chars"]["minimum"] == 120
+    assert descriptor.output_schema["properties"]["candidate"]["type"] == "object"
+    assert descriptor.output_schema["properties"]["candidate_write_policy"]["type"] == "object"
+    assert "summarize_agent_memory_tree_llm_candidate" in allowed_tool_names()
+    assert "summarize_agent_memory_tree_llm_candidate" in non_blocking_report_tool_names()
+
+
 def test_agent_tool_registry_includes_repair_longform_maintenance():
     descriptor = get_agent_tool_descriptor("repair_longform_maintenance")
 

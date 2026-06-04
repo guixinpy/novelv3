@@ -342,12 +342,13 @@ def test_worker_route_registry_audit_binds_routes_to_allowed_worker_definitions(
 
     assert audit["version"] == AGENT_WORKER_ROUTE_REGISTRY_AUDIT_VERSION
     assert audit["status"] == "passed"
-    assert audit["summary"] == {"routes": 61, "ready_routes": 61, "unrouted_allowed_tools": 0, "issues": 0}
+    assert audit["summary"] == {"routes": 62, "ready_routes": 62, "unrouted_allowed_tools": 0, "issues": 0}
     assert audit["issues"] == []
     assert audit["unrouted_allowed_tools"] == []
 
     routes_by_tool = {route["tool_name"]: route for route in audit["routes"]}
     assert routes_by_tool["build_agent_memory_tree_llm_summary_plan"]["worker"] == "memory_worker"
+    assert routes_by_tool["summarize_agent_memory_tree_llm_candidate"]["worker"] == "memory_worker"
     assert routes_by_tool["preflight_writing"]["worker"] == "drafting_worker"
     assert routes_by_tool["preview_generate_setup_execution"]["worker"] == "drafting_worker"
     assert routes_by_tool["prepare_generate_setup_execution"]["worker"] == "drafting_worker"

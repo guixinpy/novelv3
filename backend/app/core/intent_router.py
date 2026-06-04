@@ -301,6 +301,20 @@ class IntentRouter:
                 preconditions=[{"code": "recovery_preview_available", "passed": True}],
             )
 
+        if _is_memory_tree_llm_summary_candidate_intent(text):
+            extracted_params = _memory_tree_llm_summary_plan_params(text)
+            return self._matched_projection(
+                text,
+                dialog_state,
+                pending_action_id,
+                diagnosis,
+                rule_id="memory_tree_llm_summary_candidate_intent",
+                candidate=ActionCandidate("summarize_memory_tree_llm_candidate", extracted_params),
+                extracted_params=extracted_params,
+                match_evidence=[{"kind": "pattern", "name": "memory_tree_llm_summary_candidate_phrase"}],
+                preconditions=[{"code": "memory_tree_llm_summary_candidate_read_available", "passed": True}],
+            )
+
         if _is_memory_tree_llm_summary_plan_intent(text):
             extracted_params = _memory_tree_llm_summary_plan_params(text)
             return self._matched_projection(
@@ -1067,6 +1081,17 @@ def _is_memory_tree_llm_summary_plan_intent(text: str) -> bool:
         re.search(rf"{memory_tree_phrase}.*{llm_phrase}.*{summary_plan_phrase}", text)
         or re.search(rf"{llm_phrase}.*{memory_tree_phrase}.*{summary_plan_phrase}", text)
         or re.search(rf"{summary_plan_phrase}.*{memory_tree_phrase}.*{llm_phrase}", text)
+    )
+
+
+def _is_memory_tree_llm_summary_candidate_intent(text: str) -> bool:
+    memory_tree_phrase = r"(记忆树|分层记忆|memory\s*tree|长期记忆)"
+    llm_phrase = r"(llm|模型|语义|ai)"
+    candidate_phrase = r"(摘要候选|生成候选|summary\s*candidate|candidate)"
+    return bool(
+        re.search(rf"{memory_tree_phrase}.*{llm_phrase}.*{candidate_phrase}", text)
+        or re.search(rf"{llm_phrase}.*{memory_tree_phrase}.*{candidate_phrase}", text)
+        or re.search(rf"{candidate_phrase}.*{memory_tree_phrase}.*{llm_phrase}", text)
     )
 
 
