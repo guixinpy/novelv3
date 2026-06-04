@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-DOGFOOD_EVIDENCE_VERSION = "phase246.agent_dogfood_evidence_memory_tree_summary_approval.v1"
+DOGFOOD_EVIDENCE_VERSION = "phase247.agent_dogfood_evidence_memory_tree_llm_summary_plan.v1"
 DOGFOOD_EVIDENCE_RUN_SOURCE = "planner_trace.agent_health_projection.dogfood_evidence"
 
 _FULL_AGENT_NATIVE_DOGFOOD = (
@@ -22,6 +22,9 @@ _MEMORY_TREE_QUALITY_DOGFOOD = (
 )
 _MEMORY_TREE_SUMMARY_APPROVAL_DOGFOOD = (
     "docs/archive/superpowers/notes/long-memory-agent/2026-06-04-memory-tree-summary-approval-dogfood.md"
+)
+_MEMORY_TREE_LLM_SUMMARY_PLAN_DOGFOOD = (
+    "docs/archive/superpowers/notes/long-memory-agent/2026-06-04-memory-tree-llm-summary-plan-dogfood.md"
 )
 
 _REQUIRED_CAPABILITIES: tuple[dict[str, Any], ...] = (
@@ -74,6 +77,11 @@ _REQUIRED_CAPABILITIES: tuple[dict[str, Any], ...] = (
         "capability": "memory_tree_summary_approval_recheck",
         "label": "Memory Tree summary approval and recheck",
         "required_for": "Prove Memory Tree summary materialization is approval-gated and can turn a real longform quality gap into a ready quality projection on an isolated dogfood copy.",
+    },
+    {
+        "capability": "memory_tree_llm_summary_plan",
+        "label": "Memory Tree LLM summary plan",
+        "required_for": "Prove a real Memory Tree quality gap can be turned into a trace-required LLM summary prompt contract before any model call or write.",
     },
 )
 
@@ -330,6 +338,46 @@ _EVIDENCE_RECORDS: tuple[dict[str, Any], ...] = (
             _MEMORY_TREE_QUALITY_DOGFOOD,
             "backend/tests/test_writing_agent_memory_tree.py",
             "backend/tests/test_writing_agent_write_gate_coverage.py",
+        ],
+        "open_findings": [],
+    },
+    {
+        "evidence_id": "memory_tree_llm_summary_plan_20260604",
+        "title": "Memory Tree LLM Summary Plan Dogfood",
+        "source_ref": _MEMORY_TREE_LLM_SUMMARY_PLAN_DOGFOOD,
+        "verified_on": "2026-06-04",
+        "runtime_path": "sqlite_readonly_dogfood",
+        "project_id": "3f85aed4-4f6f-413f-bd1a-03fbe02ea0f4",
+        "chapter_indexes": [2],
+        "capabilities": [
+            "memory_tree_quality_real_longform_validation",
+            "memory_tree_llm_summary_plan",
+            "observability_snapshot",
+        ],
+        "loop": [
+            "inspect_real_dogfood_memory_tree_quality_gap",
+            "build_trace_required_llm_summary_prompt_contract",
+            "handoff_to_approval_gated_summary_materialization",
+        ],
+        "metrics": {
+            "memory_tree_llm_summary_plan_source_count": 3,
+            "memory_tree_llm_summary_plan_source_chars": 848,
+            "memory_tree_llm_summary_plan_trace_required_count": 1,
+            "memory_tree_llm_summary_plan_precheck_diagnostic_count": 2,
+            "memory_tree_llm_summary_plan_semantic_probe_matched_count": 0,
+            "memory_tree_llm_summary_plan_side_effect_count": 0,
+        },
+        "proven_tools": [
+            "build_agent_memory_tree_llm_summary_plan",
+            "inspect_agent_memory_tree_quality",
+            "prepare_record_agent_memory_tree_summaries",
+            "execute_record_agent_memory_tree_summaries_with_approval",
+            "inspect_agent_dogfood_evidence",
+        ],
+        "supporting_source_refs": [
+            _MEMORY_TREE_QUALITY_DOGFOOD,
+            "backend/tests/test_writing_agent_memory_tree.py",
+            "backend/tests/test_dialogs.py",
         ],
         "open_findings": [],
     },

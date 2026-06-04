@@ -6,6 +6,7 @@ from app.services.writing_agent.memory_tree import (
     MEMORY_TREE_CHAPTER_SUMMARY_TYPE,
     MEMORY_TREE_VERSION,
     MEMORY_TREE_VOLUME_SUMMARY_TYPE,
+    build_agent_memory_tree_llm_summary_plan,
     inspect_agent_memory_tree,
     inspect_agent_memory_tree_quality,
     materialize_agent_memory_tree_summaries,
@@ -220,6 +221,53 @@ def test_memory_tree_quality_projection_reports_summary_and_semantic_coverage(db
     }
 
 
+def test_memory_tree_llm_summary_plan_builds_trace_ready_evidence_window_without_writes(db_session):
+    project, _refs = _seed_memory_tree_project(db_session)
+
+    output = build_agent_memory_tree_llm_summary_plan(
+        db_session,
+        project.id,
+        chapter_index=2,
+        query="蓝焰证词",
+        max_source_chars=180,
+    )
+
+    assert output["status"] == "ready"
+    assert output["summary_target"] == {
+        "level": "chapter",
+        "chapter_index": 2,
+        "scope_key": "chapter:2",
+        "memory_type": MEMORY_TREE_CHAPTER_SUMMARY_TYPE,
+    }
+    assert output["evidence_window"]["source_count"] >= 2
+    assert output["evidence_window"]["source_chars"] <= 180
+    assert output["evidence_window"]["sources"][0]["source_type"] == "chapter_content"
+    assert output["llm_prompt_contract"]["trace_required"] is True
+    assert output["llm_prompt_contract"]["trace_type"] == "memory_tree_summary_generation"
+    assert "蓝焰证词" in output["llm_prompt_contract"]["user_prompt"]
+    assert output["quality_gate"]["precheck"]["semantic_probe"]["status"] == "missing_match"
+    assert output["quality_gate"]["expected_postcheck"] == {
+        "tool_name": "inspect_agent_memory_tree_quality",
+        "params": {"chapter_index": 2, "query": "蓝焰证词"},
+    }
+    assert output["side_effects"] == {"executed": [], "skipped": ["record_agent_memory_tree_summaries"]}
+    assert output["recommended_next_tools"] == [
+        "prepare_record_agent_memory_tree_summaries",
+        "execute_record_agent_memory_tree_summaries_with_approval",
+        "inspect_agent_memory_tree_quality",
+    ]
+    assert output["trace"]["mutability"] == "read"
+    assert (
+        db_session.query(LongformMemory)
+        .filter(
+            LongformMemory.project_id == project.id,
+            LongformMemory.memory_type == MEMORY_TREE_CHAPTER_SUMMARY_TYPE,
+        )
+        .count()
+        == 0
+    )
+
+
 @pytest.mark.asyncio
 async def test_record_agent_memory_tree_summaries_tool_requires_approval(db_session):
     project, _refs = _seed_memory_tree_project(db_session)
@@ -393,6 +441,25 @@ async def test_inspect_agent_memory_tree_quality_tool_reports_projection(db_sess
     assert result.output["coverage"]["summary_backed_chapter_nodes"] == 2
 
 
+@pytest.mark.asyncio
+async def test_build_memory_tree_llm_summary_plan_tool_reports_readonly_contract(db_session):
+    project, _refs = _seed_memory_tree_project(db_session)
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-memory-tree-llm-summary-plan"),
+        WritingAgentToolRequest(
+            tool_name="build_agent_memory_tree_llm_summary_plan",
+            params={"chapter_index": 2, "query": "灯塔旧回声", "max_source_chars": 180},
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output["status"] == "ready"
+    assert result.output["llm_prompt_contract"]["trace_required"] is True
+    assert result.output["quality_gate"]["expected_postcheck"]["tool_name"] == "inspect_agent_memory_tree_quality"
+    assert result.output["side_effects"] == {"executed": [], "skipped": ["record_agent_memory_tree_summaries"]}
+
+
 def test_memory_tree_tool_is_registered_with_read_metadata():
     descriptor = get_agent_tool_descriptor("inspect_agent_memory_tree")
     metadata = writing_agent_tool_adapter_metadata("inspect_agent_memory_tree")
@@ -428,6 +495,25 @@ def test_memory_tree_quality_tool_is_registered_with_read_metadata():
         "category": "longform_memory",
         "mutability": "read",
         "handler_name": "_inspect_agent_memory_tree_quality",
+    }
+
+
+def test_memory_tree_llm_summary_plan_tool_is_registered_with_read_metadata():
+    descriptor = get_agent_tool_descriptor("build_agent_memory_tree_llm_summary_plan")
+    metadata = writing_agent_tool_adapter_metadata("build_agent_memory_tree_llm_summary_plan")
+
+    assert descriptor is not None
+    assert descriptor.category == "longform_memory"
+    assert descriptor.target_type == "agent_memory_tree_llm_summary_plan"
+    assert descriptor.non_blocking_report is True
+    assert descriptor.input_schema["properties"]["max_source_chars"]["minimum"] == 120
+    assert descriptor.output_schema["properties"]["llm_prompt_contract"]["type"] == "object"
+    assert metadata == {
+        "tool_name": "build_agent_memory_tree_llm_summary_plan",
+        "adapter_type": "static",
+        "category": "longform_memory",
+        "mutability": "read",
+        "handler_name": "_build_agent_memory_tree_llm_summary_plan",
     }
 
 

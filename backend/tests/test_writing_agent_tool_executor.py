@@ -352,12 +352,14 @@ def test_memory_tree_tool_adapter_builder_adds_summary_approval_chain():
     assert names == [
         "inspect_agent_memory_tree",
         "inspect_agent_memory_tree_quality",
+        "build_agent_memory_tree_llm_summary_plan",
         "record_agent_memory_tree_summaries",
         "prepare_record_agent_memory_tree_summaries",
         "execute_record_agent_memory_tree_summaries_with_approval",
     ]
     assert adapters["inspect_agent_memory_tree"].mutability == "read"
     assert adapters["inspect_agent_memory_tree_quality"].mutability == "read"
+    assert adapters["build_agent_memory_tree_llm_summary_plan"].mutability == "read"
     assert adapters["record_agent_memory_tree_summaries"].mutability == "guarded_write"
     assert adapters["record_agent_memory_tree_summaries"].write_policy == "approval_required_redirect"
     assert adapters["prepare_record_agent_memory_tree_summaries"].mutability == "read"
@@ -4279,8 +4281,8 @@ async def test_tool_executor_handles_inspect_agent_worker_dispatch(db_session):
     }
     assert result.output["route_registry"]["status"] == "passed"
     assert result.output["route_registry"]["summary"] == {
-        "routes": 60,
-        "ready_routes": 60,
+        "routes": 61,
+        "ready_routes": 61,
         "unrouted_allowed_tools": 0,
         "issues": 0,
     }

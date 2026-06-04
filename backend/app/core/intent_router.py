@@ -14,6 +14,7 @@ _INTENT_RULE_IDS = (
     "chapter_intent",
     "review_intent",
     "recovery_intent",
+    "memory_tree_llm_summary_plan_intent",
     "memory_tree_quality_intent",
     "memory_tree_intent",
     "memory_route_intent",
@@ -298,6 +299,20 @@ class IntentRouter:
                 candidate=ActionCandidate("preview_recovery"),
                 match_evidence=[{"kind": "pattern", "name": "recovery_phrase"}],
                 preconditions=[{"code": "recovery_preview_available", "passed": True}],
+            )
+
+        if _is_memory_tree_llm_summary_plan_intent(text):
+            extracted_params = _memory_tree_llm_summary_plan_params(text)
+            return self._matched_projection(
+                text,
+                dialog_state,
+                pending_action_id,
+                diagnosis,
+                rule_id="memory_tree_llm_summary_plan_intent",
+                candidate=ActionCandidate("build_memory_tree_llm_summary_plan", extracted_params),
+                extracted_params=extracted_params,
+                match_evidence=[{"kind": "pattern", "name": "memory_tree_llm_summary_plan_phrase"}],
+                preconditions=[{"code": "memory_tree_llm_summary_plan_read_available", "passed": True}],
             )
 
         if _is_memory_tree_quality_intent(text):
@@ -1044,6 +1059,31 @@ def _is_memory_tree_quality_intent(text: str) -> bool:
     )
 
 
+def _is_memory_tree_llm_summary_plan_intent(text: str) -> bool:
+    memory_tree_phrase = r"(记忆树|分层记忆|memory\s*tree|长期记忆)"
+    llm_phrase = r"(llm|模型|语义|ai)"
+    summary_plan_phrase = r"(摘要计划|摘要候选|摘要生成计划|summary\s*plan|summary\s*candidate|prompt)"
+    return bool(
+        re.search(rf"{memory_tree_phrase}.*{llm_phrase}.*{summary_plan_phrase}", text)
+        or re.search(rf"{llm_phrase}.*{memory_tree_phrase}.*{summary_plan_phrase}", text)
+        or re.search(rf"{summary_plan_phrase}.*{memory_tree_phrase}.*{llm_phrase}", text)
+    )
+
+
+def _memory_tree_llm_summary_plan_params(text: str) -> dict[str, Any]:
+    params: dict[str, Any] = {}
+    chapter_index = parse_chapter_index(text)
+    if chapter_index is not None:
+        params["chapter_index"] = chapter_index
+    query = _parameter_query(text) or _memory_tree_quality_query(text)
+    if query:
+        params["query"] = query
+    max_source_chars = _numeric_option(text, r"max_source_chars|max_chars|max\s*chars|最大字符|最多字符")
+    if max_source_chars is not None:
+        params["max_source_chars"] = max_source_chars
+    return params
+
+
 def _memory_tree_quality_params(text: str) -> dict[str, Any]:
     params: dict[str, Any] = {}
     chapter_index = parse_chapter_index(text)
@@ -1323,7 +1363,8 @@ def _longform_context_summary_params(text: str) -> dict[str, Any]:
 def _parameter_query(text: str) -> str | None:
     match = re.search(
         r"(?:query|查询|检索词|关键词)\s*[:=：]\s*(.+?)(?=\s+(?:limit|限制|最多|max_chars|max\s*chars|"
-        r"max_chapter_index|max\s*chapter|candidate_limit|source_type|include_prompt_context|prompt\s*context)\b|$)",
+        r"max_source_chars|max\s*source\s*chars|max_chapter_index|max\s*chapter|candidate_limit|source_type|"
+        r"include_prompt_context|prompt\s*context)\b|$)",
         text,
     )
     if not match:

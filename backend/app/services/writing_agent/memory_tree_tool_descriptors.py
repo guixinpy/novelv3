@@ -94,6 +94,36 @@ MEMORY_TREE_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(
+        name="build_agent_memory_tree_llm_summary_plan",
+        module="writing_agent",
+        category="longform_memory",
+        description="只读构建 Memory Tree 章级 LLM 摘要计划，返回证据窗口、Trace 要求、prompt 契约和质量复核门槛，不执行模型调用或写入。",
+        input_schema=object_schema(
+            {
+                "chapter_index": {"type": "integer", "minimum": 1},
+                "query": {"type": "string"},
+                "max_source_chars": {"type": "integer", "minimum": 120},
+            }
+        ),
+        output_schema=object_schema(
+            {
+                "status": {"type": "string"},
+                "summary_target": {"type": "object"},
+                "evidence_window": {"type": "object"},
+                "llm_prompt_contract": {"type": "object"},
+                "quality_gate": {"type": "object"},
+                "side_effects": {"type": "object"},
+                "recommended_next_tools": {"type": "array"},
+                "trace": {"type": "object"},
+            }
+        ),
+        target_type="agent_memory_tree_llm_summary_plan",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=9,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
         name="record_agent_memory_tree_summaries",
         module="writing_agent",
         category="longform_memory",

@@ -36,6 +36,21 @@ def _inspect_agent_memory_tree_quality(context: WritingAgentToolContext, tool: W
     )
 
 
+def _build_agent_memory_tree_llm_summary_plan(
+    context: WritingAgentToolContext,
+    tool: WritingAgentToolRequest,
+) -> dict[str, Any]:
+    from app.services.writing_agent.memory_tree import build_agent_memory_tree_llm_summary_plan
+
+    return build_agent_memory_tree_llm_summary_plan(
+        context.db,
+        context.project_id,
+        chapter_index=_optional_int(tool.params.get("chapter_index")),
+        query=str(tool.params.get("query") or tool.command_args or "").strip() or None,
+        max_source_chars=_optional_int(tool.params.get("max_source_chars")),
+    )
+
+
 def _record_agent_memory_tree_summaries(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
     return {
         "status": "blocked",
@@ -133,6 +148,12 @@ MEMORY_TREE_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
     "inspect_agent_memory_tree_quality": WritingAgentToolAdapter(
         "inspect_agent_memory_tree_quality",
         _inspect_agent_memory_tree_quality,
+        category="longform_memory",
+        mutability="read",
+    ),
+    "build_agent_memory_tree_llm_summary_plan": WritingAgentToolAdapter(
+        "build_agent_memory_tree_llm_summary_plan",
+        _build_agent_memory_tree_llm_summary_plan,
         category="longform_memory",
         mutability="read",
     ),

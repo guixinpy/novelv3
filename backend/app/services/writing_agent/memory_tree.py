@@ -9,11 +9,15 @@ from app.models import ChapterContent, LongformMemory, Outline, Storyline
 MEMORY_TREE_VERSION = "phase238.memory_tree_browsing.v1"
 MEMORY_TREE_SUMMARY_MATERIALIZATION_VERSION = "phase237.memory_tree_summary_materialization.v1"
 MEMORY_TREE_QUALITY_VERSION = "phase245.memory_tree_quality.v1"
+MEMORY_TREE_LLM_SUMMARY_PLAN_VERSION = "phase247.memory_tree_llm_summary_plan.v1"
 MEMORY_TREE_LEVELS = ["volume", "chapter", "scene", "beat"]
 MEMORY_TREE_VOLUME_SUMMARY_TYPE = "memory_tree_volume_summary"
 MEMORY_TREE_CHAPTER_SUMMARY_TYPE = "memory_tree_chapter_summary"
 MEMORY_TREE_SUMMARY_TYPES = (MEMORY_TREE_VOLUME_SUMMARY_TYPE, MEMORY_TREE_CHAPTER_SUMMARY_TYPE)
 MIN_SEMANTIC_RELEVANCE_SCORE = 0.5
+DEFAULT_LLM_SUMMARY_SOURCE_CHARS = 2400
+MIN_LLM_SUMMARY_SOURCE_CHARS = 120
+MAX_LLM_SUMMARY_SOURCE_CHARS = 8000
 
 
 def inspect_agent_memory_tree(
@@ -108,6 +112,93 @@ def inspect_agent_memory_tree_quality(
             "version": MEMORY_TREE_QUALITY_VERSION,
             "mutability": "read",
             "runtime_behavior_changed": False,
+        },
+    }
+
+
+def build_agent_memory_tree_llm_summary_plan(
+    db: Session,
+    project_id: str,
+    *,
+    chapter_index: int | None = None,
+    query: str | None = None,
+    max_source_chars: int | None = None,
+) -> dict[str, Any]:
+    target_chapter_index = _target_summary_chapter_index(db, project_id, chapter_index)
+    source_budget = _clamp_source_chars(max_source_chars)
+    query_text = str(query or "").strip() or None
+    chapters = _chapters(db, project_id)
+    chapter = next(
+        (item for item in chapters if int(item.chapter_index) == int(target_chapter_index)),
+        None,
+    )
+    outline = _outline(db, project_id)
+    storyline = _storyline(db, project_id)
+    memories = _memories(db, project_id)
+    outline_item = _outline_by_chapter(outline).get(target_chapter_index)
+    quality_precheck = inspect_agent_memory_tree_quality(
+        db,
+        project_id,
+        chapter_index=target_chapter_index,
+        query=query_text,
+    )
+    evidence_sources = _llm_summary_evidence_sources(
+        chapter=chapter,
+        outline=outline,
+        outline_item=outline_item,
+        storyline=storyline,
+        memories=memories,
+        chapter_index=target_chapter_index,
+        max_source_chars=source_budget,
+    )
+    summary_target = {
+        "level": "chapter",
+        "chapter_index": target_chapter_index,
+        "scope_key": f"chapter:{target_chapter_index}",
+        "memory_type": MEMORY_TREE_CHAPTER_SUMMARY_TYPE,
+    }
+    prompt_contract = _llm_summary_prompt_contract(
+        summary_target=summary_target,
+        query=query_text,
+        evidence_sources=evidence_sources,
+    )
+    expected_postcheck = {
+        "tool_name": "inspect_agent_memory_tree_quality",
+        "params": {"chapter_index": target_chapter_index, "query": query_text},
+    }
+    return {
+        "version": MEMORY_TREE_LLM_SUMMARY_PLAN_VERSION,
+        "status": "ready" if evidence_sources else "blocked",
+        "project_id": project_id,
+        "summary_target": summary_target,
+        "evidence_window": {
+            "source_count": len(evidence_sources),
+            "source_chars": sum(len(str(source.get("excerpt") or "")) for source in evidence_sources),
+            "max_source_chars": source_budget,
+            "sources": evidence_sources,
+        },
+        "llm_prompt_contract": prompt_contract,
+        "quality_gate": {
+            "precheck": quality_precheck,
+            "expected_postcheck": expected_postcheck,
+            "acceptance": {
+                "summary_backed_chapter_ratio": 1.0,
+                "semantic_probe_status": "matched" if query_text else "not_requested",
+                "diagnostics": [],
+            },
+        },
+        "side_effects": {"executed": [], "skipped": ["record_agent_memory_tree_summaries"]},
+        "recommended_next_tools": [
+            "prepare_record_agent_memory_tree_summaries",
+            "execute_record_agent_memory_tree_summaries_with_approval",
+            "inspect_agent_memory_tree_quality",
+        ],
+        "trace": {
+            "source": "build_agent_memory_tree_llm_summary_plan",
+            "version": MEMORY_TREE_LLM_SUMMARY_PLAN_VERSION,
+            "mutability": "read",
+            "runtime_behavior_changed": False,
+            "llm_call_executed": False,
         },
     }
 
@@ -867,6 +958,186 @@ def _summary(nodes: list[dict[str, Any]]) -> dict[str, int]:
         "chapter_nodes": sum(1 for node in nodes if node["level"] == "chapter"),
         "scene_nodes": sum(1 for node in nodes if node["level"] == "scene"),
         "beat_nodes": sum(1 for node in nodes if node["level"] == "beat"),
+    }
+
+
+def _target_summary_chapter_index(db: Session, project_id: str, chapter_index: int | None) -> int:
+    if chapter_index and int(chapter_index) > 0:
+        return int(chapter_index)
+    latest = (
+        db.query(ChapterContent)
+        .filter(
+            ChapterContent.project_id == project_id,
+            ChapterContent.content.isnot(None),
+            ChapterContent.content != "",
+        )
+        .order_by(ChapterContent.chapter_index.desc(), ChapterContent.id.desc())
+        .first()
+    )
+    return int(latest.chapter_index) if latest is not None else 1
+
+
+def _clamp_source_chars(value: int | None) -> int:
+    if value is None:
+        return DEFAULT_LLM_SUMMARY_SOURCE_CHARS
+    return max(MIN_LLM_SUMMARY_SOURCE_CHARS, min(MAX_LLM_SUMMARY_SOURCE_CHARS, int(value)))
+
+
+def _llm_summary_evidence_sources(
+    *,
+    chapter: ChapterContent | None,
+    outline: Outline | None,
+    outline_item: dict[str, Any] | None,
+    storyline: Storyline | None,
+    memories: list[LongformMemory],
+    chapter_index: int,
+    max_source_chars: int,
+) -> list[dict[str, Any]]:
+    sources: list[dict[str, Any]] = []
+    used_chars = 0
+    used_chars = _append_limited_source(
+        sources,
+        used_chars=used_chars,
+        max_source_chars=max_source_chars,
+        source_type="chapter_content",
+        source_id=chapter.id if chapter is not None else None,
+        title=chapter.title if chapter is not None else f"Chapter {chapter_index}",
+        text=str(chapter.content or "") if chapter is not None else "",
+        chapter_index=chapter_index,
+    )
+    used_chars = _append_limited_source(
+        sources,
+        used_chars=used_chars,
+        max_source_chars=max_source_chars,
+        source_type="outline",
+        source_id=outline.id if outline is not None else None,
+        title=str((outline_item or {}).get("title") or f"Outline chapter {chapter_index}"),
+        text=str((outline_item or {}).get("summary") or ""),
+        chapter_index=chapter_index,
+    )
+    used_chars = _append_limited_source(
+        sources,
+        used_chars=used_chars,
+        max_source_chars=max_source_chars,
+        source_type="storyline",
+        source_id=storyline.id if storyline is not None else None,
+        title="Storyline",
+        text=_storyline_evidence_text(storyline, chapter_index=chapter_index),
+        chapter_index=chapter_index,
+    )
+    for memory in memories:
+        if memory.memory_type not in {"scene", "beat"}:
+            continue
+        if _memory_chapter_index(memory) != chapter_index:
+            continue
+        used_chars = _append_limited_source(
+            sources,
+            used_chars=used_chars,
+            max_source_chars=max_source_chars,
+            source_type=f"longform_memory:{memory.memory_type}",
+            source_id=memory.id,
+            title=memory.title or memory.scope_key,
+            text=memory.summary or "",
+            chapter_index=chapter_index,
+        )
+        if used_chars >= max_source_chars:
+            break
+    return sources
+
+
+def _append_limited_source(
+    sources: list[dict[str, Any]],
+    *,
+    used_chars: int,
+    max_source_chars: int,
+    source_type: str,
+    source_id: str | None,
+    title: str,
+    text: str,
+    chapter_index: int,
+) -> int:
+    clean_text = " ".join(str(text or "").split())
+    if not clean_text or used_chars >= max_source_chars:
+        return used_chars
+    remaining = max_source_chars - used_chars
+    excerpt = clean_text[:remaining]
+    if not excerpt:
+        return used_chars
+    sources.append(
+        {
+            "source_type": source_type,
+            "source_id": source_id,
+            "chapter_index": chapter_index,
+            "title": str(title or source_type),
+            "excerpt": excerpt,
+            "chars": len(excerpt),
+            "truncated": len(clean_text) > len(excerpt),
+        }
+    )
+    return used_chars + len(excerpt)
+
+
+def _storyline_evidence_text(storyline: Storyline | None, *, chapter_index: int) -> str:
+    if storyline is None:
+        return ""
+    plotlines = storyline.plotlines if isinstance(storyline.plotlines, list) else []
+    foreshadowing = storyline.foreshadowing if isinstance(storyline.foreshadowing, list) else []
+    parts: list[str] = []
+    for item in plotlines:
+        if not isinstance(item, dict):
+            continue
+        chapters = item.get("chapters") if isinstance(item.get("chapters"), list) else []
+        if chapters and chapter_index not in [_optional_int(value) for value in chapters]:
+            continue
+        title = str(item.get("title") or item.get("name") or "").strip()
+        summary = str(item.get("summary") or item.get("description") or "").strip()
+        parts.append(": ".join(part for part in [title, summary] if part))
+    for item in foreshadowing:
+        if not isinstance(item, dict):
+            continue
+        introduced = _optional_int(item.get("introduced_chapter") or item.get("chapter_index"))
+        if introduced is not None and introduced > chapter_index:
+            continue
+        title = str(item.get("title") or item.get("name") or "").strip()
+        status = str(item.get("status") or "").strip()
+        parts.append(" ".join(part for part in [title, status] if part))
+    return "；".join(part for part in parts if part)
+
+
+def _llm_summary_prompt_contract(
+    *,
+    summary_target: dict[str, Any],
+    query: str | None,
+    evidence_sources: list[dict[str, Any]],
+) -> dict[str, Any]:
+    evidence_lines = [
+        f"- [{source.get('source_type')}] {source.get('title')}: {source.get('excerpt')}"
+        for source in evidence_sources
+    ]
+    query_line = f"语义探针/关注点：{query}" if query else "语义探针/关注点：未指定"
+    return {
+        "trace_required": True,
+        "trace_type": "memory_tree_summary_generation",
+        "model_task": "summarize_memory_tree_chapter",
+        "system_prompt": (
+            "你是 novelv3 的长期记忆摘要器。只根据给定证据生成可持久化的 Memory Tree 章级摘要，"
+            "不得添加证据之外的新事实。"
+        ),
+        "user_prompt": "\n".join(
+            [
+                f"目标：为 {summary_target.get('scope_key')} 生成章级 Memory Tree 摘要。",
+                query_line,
+                "输出要求：保留人物、地点、因果、伏笔和未解决问题；100-180 字；中文。",
+                "证据：",
+                *evidence_lines,
+            ]
+        ),
+        "expected_output_schema": {
+            "summary": "string",
+            "salient_terms": "array[string]",
+            "open_questions": "array[string]",
+            "source_coverage": "array[string]",
+        },
     }
 
 

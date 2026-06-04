@@ -38,6 +38,7 @@ TOOL_WORKER_ROUTES = {
     "inspect_agent_memory_route": "memory_worker",
     "inspect_agent_memory_tree": "memory_worker",
     "inspect_agent_memory_tree_quality": "memory_worker",
+    "build_agent_memory_tree_llm_summary_plan": "memory_worker",
     "record_agent_memory_tree_summaries": "memory_worker",
     "prepare_record_agent_memory_tree_summaries": "memory_worker",
     "execute_record_agent_memory_tree_summaries_with_approval": "memory_worker",
