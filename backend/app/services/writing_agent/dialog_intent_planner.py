@@ -49,6 +49,7 @@ _ACTION_TO_DIRECT_READ_TOOL = {
     "inspect_worker_dispatch": "inspect_agent_worker_dispatch",
     "inspect_trace_audit": "inspect_agent_trace_audit",
     "inspect_trace_anomaly_trends": "inspect_agent_trace_anomaly_trends",
+    "inspect_trace_anomaly_threshold_review": "inspect_agent_trace_anomaly_threshold_review",
     "inspect_write_gate_coverage": "inspect_agent_write_gate_coverage",
     "inspect_legacy_hermes_migration": "inspect_legacy_hermes_action_migration",
     "plan_route_approval_opt_in": "plan_agent_route_approval_opt_in",

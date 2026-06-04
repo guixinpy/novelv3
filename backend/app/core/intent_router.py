@@ -31,6 +31,7 @@ _INTENT_RULE_IDS = (
     "agent_event_projection_intent",
     "agent_job_projection_intent",
     "chapter_conflict_recovery_intent",
+    "trace_anomaly_threshold_review_intent",
     "trace_anomaly_trends_intent",
     "trace_audit_intent",
     "write_gate_coverage_intent",
@@ -751,6 +752,20 @@ class IntentRouter:
                 extracted_params={},
                 match_evidence=[{"kind": "pattern", "name": "control_plane_readiness_phrase"}],
                 preconditions=[{"code": "control_plane_readiness_read_available", "passed": True}],
+            )
+
+        if _is_trace_anomaly_threshold_review_intent(text):
+            extracted_params = _trace_anomaly_trends_params(text)
+            return self._matched_projection(
+                text,
+                dialog_state,
+                pending_action_id,
+                diagnosis,
+                rule_id="trace_anomaly_threshold_review_intent",
+                candidate=ActionCandidate("inspect_trace_anomaly_threshold_review", extracted_params),
+                extracted_params=extracted_params,
+                match_evidence=[{"kind": "pattern", "name": "trace_anomaly_threshold_review_phrase"}],
+                preconditions=[{"code": "trace_anomaly_threshold_review_read_available", "passed": True}],
             )
 
         if _is_trace_anomaly_trends_intent(text):
@@ -1889,6 +1904,27 @@ def _is_trace_anomaly_trends_intent(text: str) -> bool:
     return bool(
         re.search(r"(trace|追踪|执行链|链路).*(异常|anomal|趋势|trend|聚合|统计)", text)
         or re.search(r"(异常|anomal|趋势|trend|聚合|统计).*(trace|追踪|执行链|链路)", text)
+    )
+
+
+def _is_trace_anomaly_threshold_review_intent(text: str) -> bool:
+    return bool(
+        re.search(
+            r"(trace|追踪|执行链|链路).*(异常|anomal).*(阈值|threshold).*(复核|review|样本|sample|校准|固化)",
+            text,
+        )
+        or re.search(
+            r"(复核|review|样本|sample|校准|固化).*(trace|追踪|执行链|链路).*(异常|anomal).*(阈值|threshold)",
+            text,
+        )
+        or re.search(
+            r"(trace|追踪|执行链|链路).*(阈值|threshold).*(复核|review|样本|sample|校准|固化)",
+            text,
+        )
+        or re.search(
+            r"(复核|review|样本|sample|校准|固化).*(阈值|threshold).*(trace|追踪|执行链|链路)",
+            text,
+        )
     )
 
 

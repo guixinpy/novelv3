@@ -20,6 +20,7 @@ from app.services.writing_agent.control_plane_readiness_projection import (
 
 AGENT_TRACE_AUDIT_VERSION = "phase73.agent_trace_audit.v1"
 TRACE_ANOMALY_TRENDS_VERSION = "phase78.agent_trace_anomaly_configured_thresholds.v1"
+TRACE_ANOMALY_THRESHOLD_REVIEW_VERSION = "phase242.agent_trace_anomaly_threshold_review.v1"
 DEFAULT_AUDIT_LIMIT = 20
 MAX_AUDIT_LIMIT = 100
 TRACE_ANOMALY_AFFECTED_RATE_DELTA_THRESHOLD = 0.5
@@ -93,6 +94,44 @@ def inspect_agent_trace_anomaly_trends(
             "runs": run_rows,
             "recommended_next_tools": _trace_anomaly_trend_recommendations(_severity_counts(trend.get("severity_counts"))),
             "trace": _anomaly_trends_trace_metadata(),
+        }
+    )
+
+
+def inspect_agent_trace_anomaly_threshold_review(
+    db: Session,
+    project_id: str,
+    *,
+    limit: int | None = None,
+    baseline_limit: int | None = None,
+    chapter_index: int | None = None,
+) -> dict[str, Any]:
+    trends = inspect_agent_trace_anomaly_trends(
+        db,
+        project_id,
+        limit=limit,
+        baseline_limit=baseline_limit,
+        chapter_index=chapter_index,
+    )
+    calibration = trends.get("calibration") if isinstance(trends.get("calibration"), dict) else {}
+    policy = calibration.get("policy") if isinstance(calibration.get("policy"), dict) else {}
+    review = _trace_anomaly_threshold_review_summary(trends, calibration, policy)
+    threshold_candidate = (
+        dict(policy.get("recommended_thresholds")) if review["status"] == "ready_for_manual_review" else {}
+    )
+    recommended_next_tool_calls = _trace_anomaly_threshold_review_tool_calls(review, threshold_candidate)
+    recommended_next_tools = _trace_anomaly_threshold_review_recommendations(review, recommended_next_tool_calls)
+    return _json_safe_output(
+        {
+            "status": "completed",
+            "project_id": project_id,
+            "filters": trends.get("filters") if isinstance(trends.get("filters"), dict) else {},
+            "review": review,
+            "threshold_candidate": threshold_candidate,
+            "recommended_next_tools": recommended_next_tools,
+            "recommended_next_tool_calls": recommended_next_tool_calls,
+            "side_effects": _trace_anomaly_threshold_review_side_effects(recommended_next_tool_calls),
+            "trace": _threshold_review_trace_metadata(),
         }
     )
 
@@ -1641,6 +1680,78 @@ def _anomaly_trends_trace_metadata() -> dict[str, Any]:
         "version": TRACE_ANOMALY_TRENDS_VERSION,
         "mutability": "read",
     }
+
+
+def _threshold_review_trace_metadata() -> dict[str, Any]:
+    return {
+        "source": "inspect_agent_trace_anomaly_threshold_review",
+        "version": TRACE_ANOMALY_THRESHOLD_REVIEW_VERSION,
+        "mutability": "read",
+    }
+
+
+def _trace_anomaly_threshold_review_summary(
+    trends: dict[str, Any],
+    calibration: dict[str, Any],
+    policy: dict[str, Any],
+) -> dict[str, Any]:
+    calibration_sample = calibration.get("sample") if isinstance(calibration.get("sample"), dict) else {}
+    reviewed_run_count = _non_negative_int(policy.get("reviewed_run_count"))
+    minimum_review_run_count = _non_negative_int(policy.get("minimum_review_run_count"))
+    policy_status = str(policy.get("status") or "")
+    status = "collecting_samples" if policy_status == "collecting_samples" else "ready_for_manual_review"
+    threshold_signals = trends.get("threshold_signals") if isinstance(trends.get("threshold_signals"), list) else []
+    return {
+        "status": status,
+        "policy_status": policy_status,
+        "policy_decision": str(policy.get("decision") or ""),
+        "promotion_candidate": policy.get("promotion_candidate") is True,
+        "sample": {
+            "recent_run_count": _non_negative_int(calibration_sample.get("recent_run_count")),
+            "baseline_run_count": _non_negative_int(calibration_sample.get("baseline_run_count")),
+            "reviewed_run_count": reviewed_run_count,
+            "minimum_review_run_count": minimum_review_run_count,
+        },
+        "signal_count": len([signal for signal in threshold_signals if isinstance(signal, dict)]),
+        "calibration_status": str(calibration.get("status") or ""),
+    }
+
+
+def _trace_anomaly_threshold_review_tool_calls(
+    review: dict[str, Any],
+    threshold_candidate: dict[str, Any],
+) -> list[dict[str, Any]]:
+    if review.get("status") != "ready_for_manual_review" or not threshold_candidate:
+        return []
+    return [
+        {
+            "tool_name": "prepare_record_agent_trace_anomaly_threshold_config",
+            "params": {
+                "affected_run_rate_delta": threshold_candidate.get("affected_run_rate_delta"),
+                "critical_issue_rate_delta": threshold_candidate.get("critical_issue_rate_delta"),
+                "source": "trace_anomaly_threshold_review",
+                "reviewed_run_count": review.get("sample", {}).get("reviewed_run_count"),
+                "reason": "manual_review_from_trace_anomaly_threshold_review",
+            },
+        }
+    ]
+
+
+def _trace_anomaly_threshold_review_recommendations(
+    review: dict[str, Any],
+    recommended_next_tool_calls: list[dict[str, Any]],
+) -> list[str]:
+    if not recommended_next_tool_calls:
+        return ["inspect_agent_trace_anomaly_trends", "inspect_agent_dogfood_evidence"]
+    return ["prepare_record_agent_trace_anomaly_threshold_config", "inspect_agent_dogfood_evidence"]
+
+
+def _trace_anomaly_threshold_review_side_effects(
+    recommended_next_tool_calls: list[dict[str, Any]],
+) -> dict[str, list[str]]:
+    if not recommended_next_tool_calls:
+        return {"executed": [], "skipped": []}
+    return {"executed": [], "skipped": ["record_agent_trace_anomaly_threshold_config"]}
 
 
 def _clamp_limit(limit: int | None) -> int:

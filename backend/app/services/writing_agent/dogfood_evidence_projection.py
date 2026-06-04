@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-DOGFOOD_EVIDENCE_VERSION = "phase241.agent_dogfood_evidence_trace_threshold_config_approval.v1"
+DOGFOOD_EVIDENCE_VERSION = "phase242.agent_dogfood_evidence_trace_threshold_review.v1"
 DOGFOOD_EVIDENCE_RUN_SOURCE = "planner_trace.agent_health_projection.dogfood_evidence"
 
 _FULL_AGENT_NATIVE_DOGFOOD = (
@@ -49,7 +49,7 @@ _REQUIRED_CAPABILITIES: tuple[dict[str, Any], ...] = (
     {
         "capability": "trace_anomaly_threshold_calibration",
         "label": "Trace anomaly threshold calibration",
-        "required_for": "Prove Trace anomaly trends expose baseline, configurable thresholds, calibration policy, approval-gated config maintenance, and false-positive/false-negative guard evidence before long-running dogfood sample review.",
+        "required_for": "Prove Trace anomaly trends expose baseline, configurable thresholds, calibration policy, safe review projection, approval-gated config maintenance, and false-positive/false-negative guard evidence before long-running dogfood sample collection.",
     },
 )
 
@@ -136,7 +136,7 @@ _EVIDENCE_RECORDS: tuple[dict[str, Any], ...] = (
     },
     {
         "evidence_id": "trace_anomaly_threshold_calibration_20260603",
-        "title": "AgentRunDrawer Trace Anomaly Trends Calibration",
+        "title": "AgentRunDrawer Trace Anomaly Trends Threshold Review",
         "source_ref": _TRACE_ANOMALY_CALIBRATION_TEST,
         "verified_on": "2026-06-03",
         "runtime_path": "pytest_vitest_docs",
@@ -148,6 +148,7 @@ _EVIDENCE_RECORDS: tuple[dict[str, Any], ...] = (
             "compare_baseline_window",
             "apply_project_configured_thresholds",
             "emit_threshold_signals",
+            "project_threshold_review",
             "project_drawer_summary",
         ],
         "metrics": {
@@ -157,6 +158,9 @@ _EVIDENCE_RECORDS: tuple[dict[str, Any], ...] = (
             "threshold_config_approval_chain_count": 1,
             "threshold_config_write_gate_count": 1,
             "threshold_config_worker_route_count": 1,
+            "threshold_review_projection_count": 1,
+            "threshold_review_intent_count": 1,
+            "threshold_review_worker_route_count": 1,
             "threshold_calibration_projection_count": 1,
             "threshold_policy_projection_count": 1,
             "drawer_projection_regression_count": 1,
@@ -169,6 +173,7 @@ _EVIDENCE_RECORDS: tuple[dict[str, Any], ...] = (
         "proven_tools": [
             "inspect_agent_trace_audit",
             "inspect_agent_trace_anomaly_trends",
+            "inspect_agent_trace_anomaly_threshold_review",
             "record_agent_trace_anomaly_threshold_config",
             "prepare_record_agent_trace_anomaly_threshold_config",
             "execute_record_agent_trace_anomaly_threshold_config_with_approval",
@@ -179,7 +184,7 @@ _EVIDENCE_RECORDS: tuple[dict[str, Any], ...] = (
             "frontend/src/components/writingAgent/AgentRunDrawer.test.ts",
             "docs/codex-guide/05-progress-tracker.md",
         ],
-        "open_findings": ["trace_anomaly_threshold_real_dogfood_sample_collection"],
+        "open_findings": ["trace_anomaly_threshold_long_run_sample_collection"],
     },
 )
 

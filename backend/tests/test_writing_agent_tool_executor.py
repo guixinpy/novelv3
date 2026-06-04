@@ -117,6 +117,7 @@ def test_agent_memory_trace_tool_adapters_live_in_dedicated_module():
     assert names == [
         "inspect_agent_trace_audit",
         "inspect_agent_trace_anomaly_trends",
+        "inspect_agent_trace_anomaly_threshold_review",
         "record_agent_trace_anomaly_threshold_config",
         "inspect_agent_memory_route",
         "search_agent_retrieval_context",
@@ -135,6 +136,7 @@ def test_agent_memory_trace_tool_adapters_live_in_dedicated_module():
     }
     assert AGENT_MEMORY_TRACE_TOOL_ADAPTERS["inspect_agent_trace_audit"].mutability == "read"
     assert AGENT_MEMORY_TRACE_TOOL_ADAPTERS["inspect_agent_trace_anomaly_trends"].mutability == "read"
+    assert AGENT_MEMORY_TRACE_TOOL_ADAPTERS["inspect_agent_trace_anomaly_threshold_review"].mutability == "read"
     assert AGENT_MEMORY_TRACE_TOOL_ADAPTERS["record_agent_trace_anomaly_threshold_config"].mutability == (
         "guarded_write"
     )
@@ -178,6 +180,10 @@ def test_agent_memory_trace_tool_adapters_live_in_dedicated_module():
         == "_record_agent_trace_anomaly_threshold_config"
     )
     assert (
+        AGENT_MEMORY_TRACE_TOOL_ADAPTERS["inspect_agent_trace_anomaly_threshold_review"].handler.__name__
+        == "_inspect_agent_trace_anomaly_threshold_review"
+    )
+    assert (
         AGENT_MEMORY_TRACE_TOOL_ADAPTERS["inspect_agent_memory_activation_plan"].handler.__name__
         == "_inspect_agent_memory_activation_plan"
     )
@@ -190,6 +196,7 @@ def test_agent_memory_trace_tool_adapter_builder_adds_maintenance_approval_chain
     assert names == [
         "inspect_agent_trace_audit",
         "inspect_agent_trace_anomaly_trends",
+        "inspect_agent_trace_anomaly_threshold_review",
         "record_agent_trace_anomaly_threshold_config",
         "inspect_agent_memory_route",
         "search_agent_retrieval_context",
@@ -2569,6 +2576,54 @@ async def test_tool_executor_handles_dialog_intent_agent_plan_for_trace_anomaly_
 
 
 @pytest.mark.asyncio
+async def test_tool_executor_handles_dialog_intent_agent_plan_for_trace_anomaly_threshold_review_read(db_session):
+    project = Project(name="Dialog Intent Trace Anomaly Threshold Review Plan")
+    db_session.add(project)
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(
+            db=db_session,
+            project_id=project.id,
+            run_id="run-dialog-intent-trace-threshold-review-plan",
+        ),
+        WritingAgentToolRequest(
+            tool_name="plan_dialog_intent_agent_run",
+            params={"text": "复核第4章 Trace 异常阈值样本 limit 9 baseline 6"},
+        ),
+    )
+
+    expected_params = {"chapter_index": 4, "limit": 9, "baseline_limit": 6}
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "completed"
+    assert result.output["intent_projection"]["rule_id"] == "trace_anomaly_threshold_review_intent"
+    assert result.output["planner"]["intent_class"] == "inspect_trace_anomaly_threshold_review"
+    assert result.output["planner"]["mapped_from_action_type"] == "inspect_trace_anomaly_threshold_review"
+    assert result.output["planner"]["chapter_index"] == 4
+    assert result.output["plan"] == {
+        "status": "completed",
+        "intent_class": "inspect_trace_anomaly_threshold_review",
+        "steps": [
+            {
+                "step_index": 1,
+                "tool_name": "inspect_agent_trace_anomaly_threshold_review",
+                "params": expected_params,
+                "mutability": "read",
+                "requires_confirmation": False,
+            }
+        ],
+        "tools": [{"tool_name": "inspect_agent_trace_anomaly_threshold_review", "params": expected_params}],
+        "approval_contract": {"status": "not_required", "write_steps": []},
+    }
+    assert result.output["tools"] == [
+        {"tool_name": "inspect_agent_trace_anomaly_threshold_review", "params": expected_params}
+    ]
+    assert result.output["approval_contract"] == {"status": "not_required", "write_steps": []}
+    assert result.output["trace"]["reason"] == "planned_direct_read_tool_from_intent_projection"
+
+
+@pytest.mark.asyncio
 async def test_tool_executor_handles_dialog_intent_agent_plan_for_agent_event_projection_read(db_session):
     project = Project(name="Dialog Intent Agent Event Projection Plan")
     db_session.add(project)
@@ -4104,8 +4159,8 @@ async def test_tool_executor_handles_inspect_agent_worker_dispatch(db_session):
     }
     assert result.output["route_registry"]["status"] == "passed"
     assert result.output["route_registry"]["summary"] == {
-        "routes": 55,
-        "ready_routes": 55,
+        "routes": 56,
+        "ready_routes": 56,
         "unrouted_allowed_tools": 0,
         "issues": 0,
     }
@@ -6851,6 +6906,18 @@ def test_tool_executor_exposes_inspect_agent_trace_anomaly_trends_adapter_metada
     }
 
 
+def test_tool_executor_exposes_inspect_agent_trace_anomaly_threshold_review_adapter_metadata():
+    metadata = writing_agent_tool_adapter_metadata("inspect_agent_trace_anomaly_threshold_review")
+
+    assert metadata == {
+        "tool_name": "inspect_agent_trace_anomaly_threshold_review",
+        "adapter_type": "static",
+        "category": "trace",
+        "mutability": "read",
+        "handler_name": "_inspect_agent_trace_anomaly_threshold_review",
+    }
+
+
 def test_tool_executor_exposes_trace_anomaly_threshold_config_adapter_metadata():
     direct_metadata = writing_agent_tool_adapter_metadata("record_agent_trace_anomaly_threshold_config")
     prepare_metadata = writing_agent_tool_adapter_metadata("prepare_record_agent_trace_anomaly_threshold_config")
@@ -8482,6 +8549,45 @@ async def test_tool_executor_dispatches_inspect_agent_trace_anomaly_trends_adapt
 
     assert result.handled is True
     assert result.output == {"status": "completed", "trend": {"status": "clear"}}
+    assert calls == [(project.id, 9, 4, 6)]
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_dispatches_inspect_agent_trace_anomaly_threshold_review_adapter(
+    db_session,
+    monkeypatch,
+):
+    project = Project(name="Executor Trace Anomaly Threshold Review")
+    db_session.add(project)
+    db_session.commit()
+    calls: list[tuple[str, int | None, int | None, int | None]] = []
+
+    def fake_review(
+        db,
+        project_id: str,
+        *,
+        limit: int | None,
+        chapter_index: int | None,
+        baseline_limit: int | None,
+    ):
+        calls.append((project_id, limit, chapter_index, baseline_limit))
+        return {"status": "completed", "review": {"status": "ready_for_manual_review"}}
+
+    monkeypatch.setattr(
+        "app.services.writing_agent.agent_trace_audit.inspect_agent_trace_anomaly_threshold_review",
+        fake_review,
+    )
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(
+            tool_name="inspect_agent_trace_anomaly_threshold_review",
+            params={"limit": "9", "chapter_index": "4", "baseline_limit": "6"},
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output == {"status": "completed", "review": {"status": "ready_for_manual_review"}}
     assert calls == [(project.id, 9, 4, 6)]
 
 

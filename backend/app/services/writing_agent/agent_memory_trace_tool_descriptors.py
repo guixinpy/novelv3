@@ -130,6 +130,36 @@ AGENT_MEMORY_TRACE_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(
+        name="inspect_agent_trace_anomaly_threshold_review",
+        module="writing_agent",
+        category="trace",
+        description="基于 Trace 异常趋势与阈值校准策略生成安全的人工复核投影，并推荐后续审批准备调用。",
+        input_schema=object_schema(
+            {
+                "limit": {"type": "integer", "minimum": 1},
+                "baseline_limit": {"type": "integer", "minimum": 1},
+                "chapter_index": {"type": "integer", "minimum": 1},
+            }
+        ),
+        output_schema=object_schema(
+            {
+                "status": {"type": "string"},
+                "filters": {"type": "object"},
+                "review": {"type": "object"},
+                "threshold_candidate": {"type": "object"},
+                "recommended_next_tools": {"type": "array"},
+                "recommended_next_tool_calls": {"type": "array"},
+                "side_effects": {"type": "object"},
+                "trace": {"type": "object"},
+            }
+        ),
+        target_type="agent_trace_anomaly_threshold_review",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=6,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
         name="record_agent_trace_anomaly_threshold_config",
         module="writing_agent",
         category="trace",

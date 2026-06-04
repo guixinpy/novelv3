@@ -7,6 +7,7 @@ allowed_tools:
   - inspect_agent_job_projection
   - inspect_agent_trace_audit
   - inspect_agent_trace_anomaly_trends
+  - inspect_agent_trace_anomaly_threshold_review
   - record_agent_trace_anomaly_threshold_config
   - prepare_record_agent_trace_anomaly_threshold_config
   - execute_record_agent_trace_anomaly_threshold_config_with_approval

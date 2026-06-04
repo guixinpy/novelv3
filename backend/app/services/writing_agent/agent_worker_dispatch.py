@@ -54,6 +54,7 @@ TOOL_WORKER_ROUTES = {
     "execute_apply_planner_revision_patch_with_approval": "revision_worker",
     "inspect_agent_trace_audit": "recovery_worker",
     "inspect_agent_trace_anomaly_trends": "recovery_worker",
+    "inspect_agent_trace_anomaly_threshold_review": "recovery_worker",
     "record_agent_trace_anomaly_threshold_config": "recovery_worker",
     "prepare_record_agent_trace_anomaly_threshold_config": "recovery_worker",
     "execute_record_agent_trace_anomaly_threshold_config_with_approval": "recovery_worker",

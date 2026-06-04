@@ -37,6 +37,21 @@ def _inspect_agent_trace_anomaly_trends(
     )
 
 
+def _inspect_agent_trace_anomaly_threshold_review(
+    context: WritingAgentToolContext,
+    tool: WritingAgentToolRequest,
+) -> dict[str, Any]:
+    from app.services.writing_agent.agent_trace_audit import inspect_agent_trace_anomaly_threshold_review
+
+    return inspect_agent_trace_anomaly_threshold_review(
+        context.db,
+        context.project_id,
+        limit=_optional_int(tool.params.get("limit")),
+        baseline_limit=_optional_int(tool.params.get("baseline_limit")),
+        chapter_index=_optional_int(tool.params.get("chapter_index")),
+    )
+
+
 def _inspect_agent_memory_route(context: WritingAgentToolContext, tool: WritingAgentToolRequest) -> dict[str, Any]:
     from app.services.writing_agent.agent_memory_route import inspect_agent_memory_route
 
@@ -320,6 +335,12 @@ AGENT_MEMORY_TRACE_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
     "inspect_agent_trace_anomaly_trends": WritingAgentToolAdapter(
         "inspect_agent_trace_anomaly_trends",
         _inspect_agent_trace_anomaly_trends,
+        category="trace",
+        mutability="read",
+    ),
+    "inspect_agent_trace_anomaly_threshold_review": WritingAgentToolAdapter(
+        "inspect_agent_trace_anomaly_threshold_review",
+        _inspect_agent_trace_anomaly_threshold_review,
         category="trace",
         mutability="read",
     ),

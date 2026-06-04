@@ -91,6 +91,7 @@ def test_agent_memory_trace_tool_descriptors_live_in_dedicated_module():
     assert names == [
         "inspect_agent_trace_audit",
         "inspect_agent_trace_anomaly_trends",
+        "inspect_agent_trace_anomaly_threshold_review",
         "record_agent_trace_anomaly_threshold_config",
         "prepare_record_agent_trace_anomaly_threshold_config",
         "execute_record_agent_trace_anomaly_threshold_config_with_approval",
@@ -113,6 +114,9 @@ def test_agent_memory_trace_tool_descriptors_live_in_dedicated_module():
     }
     assert all(descriptor.internal for descriptor in AGENT_MEMORY_TRACE_TOOL_DESCRIPTORS)
     assert target_type_for_tool("inspect_agent_trace_audit") == "agent_trace_audit"
+    assert target_type_for_tool("inspect_agent_trace_anomaly_threshold_review") == (
+        "agent_trace_anomaly_threshold_review"
+    )
     assert target_type_for_tool("record_agent_trace_anomaly_threshold_config") == (
         "agent_trace_anomaly_threshold_config"
     )
@@ -1014,6 +1018,24 @@ def test_agent_tool_registry_includes_inspect_agent_trace_anomaly_trends():
     assert descriptor.output_schema["properties"]["threshold_signals"] == {"type": "array"}
     assert "inspect_agent_trace_anomaly_trends" in allowed_tool_names()
     assert "inspect_agent_trace_anomaly_trends" in non_blocking_report_tool_names()
+
+
+def test_agent_tool_registry_includes_inspect_agent_trace_anomaly_threshold_review():
+    descriptor = get_agent_tool_descriptor("inspect_agent_trace_anomaly_threshold_review")
+
+    assert descriptor is not None
+    assert descriptor.internal is True
+    assert descriptor.non_blocking_report is True
+    assert descriptor.category == "trace"
+    assert descriptor.target_type == "agent_trace_anomaly_threshold_review"
+    assert descriptor.input_schema["properties"]["limit"]["minimum"] == 1
+    assert descriptor.input_schema["properties"]["baseline_limit"]["minimum"] == 1
+    assert descriptor.input_schema["properties"]["chapter_index"] == {"type": "integer", "minimum": 1}
+    assert descriptor.output_schema["properties"]["review"] == {"type": "object"}
+    assert descriptor.output_schema["properties"]["threshold_candidate"] == {"type": "object"}
+    assert descriptor.output_schema["properties"]["recommended_next_tool_calls"] == {"type": "array"}
+    assert "inspect_agent_trace_anomaly_threshold_review" in allowed_tool_names()
+    assert "inspect_agent_trace_anomaly_threshold_review" in non_blocking_report_tool_names()
 
 
 def test_agent_tool_registry_includes_trace_anomaly_threshold_config_approval_chain():
