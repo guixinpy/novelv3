@@ -37,6 +37,9 @@ def test_inspect_agent_dogfood_evidence_surfaces_api_loop_and_memory_activation(
         "trace_anomaly_trend_regression_count": 2,
         "threshold_signal_count": 2,
         "threshold_config_projection_count": 1,
+        "threshold_config_approval_chain_count": 1,
+        "threshold_config_write_gate_count": 1,
+        "threshold_config_worker_route_count": 1,
         "threshold_calibration_projection_count": 1,
         "threshold_policy_projection_count": 1,
         "drawer_projection_regression_count": 1,
@@ -48,6 +51,8 @@ def test_inspect_agent_dogfood_evidence_surfaces_api_loop_and_memory_activation(
     }
     assert trace_calibration["open_findings"] == ["trace_anomaly_threshold_real_dogfood_sample_collection"]
     assert "inspect_agent_trace_anomaly_trends" in trace_calibration["proven_tools"]
+    assert "prepare_record_agent_trace_anomaly_threshold_config" in trace_calibration["proven_tools"]
+    assert "execute_record_agent_trace_anomaly_threshold_config_with_approval" in trace_calibration["proven_tools"]
     assert "AgentRunDrawer Trace Anomaly Trends" in trace_calibration["title"]
     calibration_coverage = {
         item["capability"]: item for item in output["capability_coverage"]

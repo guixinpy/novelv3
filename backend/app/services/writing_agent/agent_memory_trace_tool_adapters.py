@@ -164,6 +164,35 @@ def _repair_longform_maintenance(context: WritingAgentToolContext, tool: Writing
     }
 
 
+def _record_agent_trace_anomaly_threshold_config(
+    context: WritingAgentToolContext,
+    tool: WritingAgentToolRequest,
+) -> dict[str, Any]:
+    return {
+        "status": "blocked",
+        "reason": "approval_required_before_write",
+        "project_id": context.project_id,
+        "target_type": "agent_trace_anomaly_threshold_config",
+        "required_approval": {
+            "prepare_tool": "prepare_record_agent_trace_anomaly_threshold_config",
+            "execute_tool": "execute_record_agent_trace_anomaly_threshold_config_with_approval",
+            "approval_scope": "agent_plan_approval",
+        },
+        "side_effects": {"executed": [], "skipped": ["record_agent_trace_anomaly_threshold_config"]},
+        "recommended_next_tools": ["prepare_record_agent_trace_anomaly_threshold_config"],
+        "trace": {
+            "selected_tools": [],
+            "rejected_tools": [
+                {
+                    "tool_name": "record_agent_trace_anomaly_threshold_config",
+                    "reason": "approval_required_before_write",
+                }
+            ],
+            "source": "direct_agent_write_guard",
+        },
+    }
+
+
 def build_agent_memory_trace_tool_adapters(
     *,
     approval_tool_metadata_provider: ApprovalToolMetadataProvider,
@@ -180,6 +209,18 @@ def build_agent_memory_trace_tool_adapters(
             "execute_repair_longform_maintenance_with_approval",
             _execute_repair_longform_maintenance_with_approval(approval_tool_metadata_provider),
             category="maintenance",
+            mutability="write",
+        ),
+        "prepare_record_agent_trace_anomaly_threshold_config": WritingAgentToolAdapter(
+            "prepare_record_agent_trace_anomaly_threshold_config",
+            _prepare_record_agent_trace_anomaly_threshold_config,
+            category="trace",
+            mutability="read",
+        ),
+        "execute_record_agent_trace_anomaly_threshold_config_with_approval": WritingAgentToolAdapter(
+            "execute_record_agent_trace_anomaly_threshold_config_with_approval",
+            _execute_record_agent_trace_anomaly_threshold_config_with_approval(approval_tool_metadata_provider),
+            category="trace",
             mutability="write",
         ),
     }
@@ -226,6 +267,49 @@ def _execute_repair_longform_maintenance_with_approval(
     return execute_repair_longform_maintenance_with_approval_adapter
 
 
+def _prepare_record_agent_trace_anomaly_threshold_config(
+    context: WritingAgentToolContext,
+    tool: WritingAgentToolRequest,
+) -> dict[str, Any]:
+    from app.services.writing_agent.agent_trace_threshold_config_execution import (
+        prepare_record_agent_trace_anomaly_threshold_config,
+    )
+
+    return prepare_record_agent_trace_anomaly_threshold_config(
+        context.db,
+        context.project_id,
+        action_params=tool.params,
+    )
+
+
+def _execute_record_agent_trace_anomaly_threshold_config_with_approval(
+    approval_tool_metadata_provider: ApprovalToolMetadataProvider,
+) -> Callable[[WritingAgentToolContext, WritingAgentToolRequest], dict[str, Any]]:
+    def execute_record_agent_trace_anomaly_threshold_config_with_approval_adapter(
+        context: WritingAgentToolContext,
+        tool: WritingAgentToolRequest,
+    ) -> dict[str, Any]:
+        from app.services.writing_agent.agent_trace_threshold_config_execution import (
+            execute_record_agent_trace_anomaly_threshold_config_with_approval,
+        )
+
+        approval_contract = tool.params.get("approval_contract")
+        return execute_record_agent_trace_anomaly_threshold_config_with_approval(
+            context.db,
+            context.project_id,
+            action_params=tool.params,
+            confirm_execute=tool.params.get("confirm_execute") is True,
+            approval_contract_hash=str(tool.params.get("approval_contract_hash") or "").strip() or None,
+            approval_contract=approval_contract if isinstance(approval_contract, dict) else None,
+            approval_tool_metadata_provider=approval_tool_metadata_provider,
+        )
+
+    execute_record_agent_trace_anomaly_threshold_config_with_approval_adapter.__name__ = (
+        "_execute_record_agent_trace_anomaly_threshold_config_with_approval"
+    )
+    return execute_record_agent_trace_anomaly_threshold_config_with_approval_adapter
+
+
 AGENT_MEMORY_TRACE_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
     "inspect_agent_trace_audit": WritingAgentToolAdapter(
         "inspect_agent_trace_audit",
@@ -238,6 +322,13 @@ AGENT_MEMORY_TRACE_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
         _inspect_agent_trace_anomaly_trends,
         category="trace",
         mutability="read",
+    ),
+    "record_agent_trace_anomaly_threshold_config": WritingAgentToolAdapter(
+        "record_agent_trace_anomaly_threshold_config",
+        _record_agent_trace_anomaly_threshold_config,
+        category="trace",
+        mutability="guarded_write",
+        write_policy="approval_required_redirect",
     ),
     "inspect_agent_memory_route": WritingAgentToolAdapter(
         "inspect_agent_memory_route",

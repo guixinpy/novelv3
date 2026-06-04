@@ -91,6 +91,9 @@ def test_agent_memory_trace_tool_descriptors_live_in_dedicated_module():
     assert names == [
         "inspect_agent_trace_audit",
         "inspect_agent_trace_anomaly_trends",
+        "record_agent_trace_anomaly_threshold_config",
+        "prepare_record_agent_trace_anomaly_threshold_config",
+        "execute_record_agent_trace_anomaly_threshold_config_with_approval",
         "inspect_agent_memory_route",
         "search_agent_retrieval_context",
         "summarize_longform_context",
@@ -110,6 +113,15 @@ def test_agent_memory_trace_tool_descriptors_live_in_dedicated_module():
     }
     assert all(descriptor.internal for descriptor in AGENT_MEMORY_TRACE_TOOL_DESCRIPTORS)
     assert target_type_for_tool("inspect_agent_trace_audit") == "agent_trace_audit"
+    assert target_type_for_tool("record_agent_trace_anomaly_threshold_config") == (
+        "agent_trace_anomaly_threshold_config"
+    )
+    assert target_type_for_tool("prepare_record_agent_trace_anomaly_threshold_config") == (
+        "agent_trace_anomaly_threshold_config_approval"
+    )
+    assert target_type_for_tool("execute_record_agent_trace_anomaly_threshold_config_with_approval") == (
+        "agent_trace_anomaly_threshold_config"
+    )
     assert target_type_for_tool("inspect_agent_memory_route") == "agent_memory_route"
     assert target_type_for_tool("search_agent_retrieval_context") == "agent_retrieval_context"
     assert target_type_for_tool("summarize_longform_context") == "longform_context_summary"
@@ -998,9 +1010,59 @@ def test_agent_tool_registry_includes_inspect_agent_trace_anomaly_trends():
     assert descriptor.input_schema["properties"]["baseline_limit"]["minimum"] == 1
     assert descriptor.input_schema["properties"]["chapter_index"] == {"type": "integer", "minimum": 1}
     assert descriptor.output_schema["properties"]["baseline"] == {"type": "object"}
+    assert descriptor.output_schema["properties"]["threshold_config"] == {"type": "object"}
     assert descriptor.output_schema["properties"]["threshold_signals"] == {"type": "array"}
     assert "inspect_agent_trace_anomaly_trends" in allowed_tool_names()
     assert "inspect_agent_trace_anomaly_trends" in non_blocking_report_tool_names()
+
+
+def test_agent_tool_registry_includes_trace_anomaly_threshold_config_approval_chain():
+    direct_descriptor = get_agent_tool_descriptor("record_agent_trace_anomaly_threshold_config")
+    prepare_descriptor = get_agent_tool_descriptor("prepare_record_agent_trace_anomaly_threshold_config")
+    execute_descriptor = get_agent_tool_descriptor("execute_record_agent_trace_anomaly_threshold_config_with_approval")
+
+    assert direct_descriptor is not None
+    assert direct_descriptor.internal is True
+    assert direct_descriptor.non_blocking_report is False
+    assert direct_descriptor.category == "trace"
+    assert direct_descriptor.target_type == "agent_trace_anomaly_threshold_config"
+    assert direct_descriptor.input_schema["properties"]["affected_run_rate_delta"] == {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1,
+    }
+    assert set(direct_descriptor.input_schema["required"]) == {
+        "affected_run_rate_delta",
+        "critical_issue_rate_delta",
+    }
+    assert "record_agent_trace_anomaly_threshold_config" in allowed_tool_names()
+    assert "record_agent_trace_anomaly_threshold_config" not in non_blocking_report_tool_names()
+
+    assert prepare_descriptor is not None
+    assert prepare_descriptor.internal is True
+    assert prepare_descriptor.non_blocking_report is True
+    assert prepare_descriptor.category == "trace"
+    assert prepare_descriptor.target_type == "agent_trace_anomaly_threshold_config_approval"
+    assert prepare_descriptor.output_schema["properties"]["agent_plan_approval_contract_hash"]["type"] == "string"
+    assert "prepare_record_agent_trace_anomaly_threshold_config" in allowed_tool_names()
+    assert "prepare_record_agent_trace_anomaly_threshold_config" in non_blocking_report_tool_names()
+
+    assert execute_descriptor is not None
+    assert execute_descriptor.internal is True
+    assert execute_descriptor.non_blocking_report is False
+    assert execute_descriptor.category == "trace"
+    assert execute_descriptor.target_type == "agent_trace_anomaly_threshold_config"
+    assert set(execute_descriptor.input_schema["required"]) == {
+        "affected_run_rate_delta",
+        "critical_issue_rate_delta",
+        "confirm_execute",
+        "approval_contract_hash",
+        "approval_contract",
+    }
+    assert execute_descriptor.output_schema["properties"]["agent_plan_approval_verification"]["type"] == "object"
+    assert execute_descriptor.output_schema["properties"]["execution_resource_binding"]["type"] == "object"
+    assert "execute_record_agent_trace_anomaly_threshold_config_with_approval" in allowed_tool_names()
+    assert "execute_record_agent_trace_anomaly_threshold_config_with_approval" not in non_blocking_report_tool_names()
 
 
 def test_agent_tool_registry_inspect_agent_job_projection_accepts_chapter_index():

@@ -22,6 +22,7 @@ _KNOWN_MUTATING_TOOLS = {
     "analyze_chapter_world_model",
     "backfill_outline_gaps",
     "record_agent_knowledge_base_candidate",
+    "record_agent_trace_anomaly_threshold_config",
     "repair_longform_maintenance",
     "create_revision_draft",
     "apply_planner_revision_patch",
@@ -207,6 +208,27 @@ def _target_for_tool(project_id: str, tool_name: str, params: dict[str, Any]) ->
             "agent_knowledge_base_candidate",
             "missing_target",
             "record_agent_knowledge_base_candidate requires memory_type, title, summary, and source_refs",
+        )
+
+    if tool_name == "record_agent_trace_anomaly_threshold_config":
+        project_target = _clean_string(project_id)
+        if not project_target:
+            return _blocked(
+                "agent_trace_anomaly_threshold_config",
+                "missing_target",
+                "record_agent_trace_anomaly_threshold_config requires project_id",
+            )
+        if _rate_threshold(params.get("affected_run_rate_delta")) is None or _rate_threshold(
+            params.get("critical_issue_rate_delta")
+        ) is None:
+            return _blocked(
+                "agent_trace_anomaly_threshold_config",
+                "missing_target",
+                "record_agent_trace_anomaly_threshold_config requires valid trace anomaly thresholds",
+            )
+        return _ready(
+            "agent_trace_anomaly_threshold_config",
+            f"agent_trace_anomaly_threshold_config:{project_target}",
         )
 
     if tool_name == "repair_longform_maintenance":
@@ -467,6 +489,16 @@ def _positive_int(value: object) -> int | None:
     except (TypeError, ValueError):
         return None
     return parsed if parsed > 0 else None
+
+
+def _rate_threshold(value: object) -> float | None:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    if parsed <= 0 or parsed > 1:
+        return None
+    return round(parsed, 2)
 
 
 def _clean_string(value: object) -> str | None:

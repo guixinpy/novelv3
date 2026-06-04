@@ -278,6 +278,29 @@ def test_write_gate_coverage_marks_longform_maintenance_approval_executor_as_enf
     }
 
 
+def test_write_gate_coverage_marks_trace_anomaly_threshold_config_approval_executor_as_enforced():
+    output = inspect_agent_write_gate_coverage(adapter_metadata_by_name=_adapter_metadata())
+    tools_by_name = _tools_by_name(output)
+
+    execute_tool = tools_by_name["execute_record_agent_trace_anomaly_threshold_config_with_approval"]
+    assert execute_tool["agent_plan_gate_status"] == "enforced"
+    assert execute_tool["gate_version"] == "phase241.trace_anomaly_threshold_config_agent_plan_approval.v1"
+    assert execute_tool["gate_type"] == "stateless_agent_plan_approval"
+    assert execute_tool["risk_level"] == "low"
+    assert execute_tool["confirmation_fields"] == ["approval_contract_hash", "confirm_execute"]
+
+    record_tool = tools_by_name["record_agent_trace_anomaly_threshold_config"]
+    assert record_tool["agent_plan_gate_status"] == "indirect_agent_gate_available"
+    assert record_tool["direct_write_policy"] == "approval_required_redirect"
+    assert record_tool["direct_write_blocked"] is True
+    assert record_tool["direct_confirmation_guard"] is False
+    assert record_tool["risk_level"] == "low"
+    assert record_tool["recommended_action"] == "route_direct_calls_to_approval_executor"
+    assert {item["consumer_tool"] for item in record_tool["indirect_coverage"]} == {
+        "execute_record_agent_trace_anomaly_threshold_config_with_approval"
+    }
+
+
 def test_write_gate_coverage_marks_longform_batch_enqueue_as_approval_redirected():
     output = inspect_agent_write_gate_coverage(adapter_metadata_by_name=_adapter_metadata())
     tools_by_name = _tools_by_name(output)
@@ -703,6 +726,21 @@ def _adapter_metadata() -> dict[str, dict]:
             "category": "knowledge_base",
             "mutability": "write",
             "handler_name": "_execute_record_agent_knowledge_base_candidate_with_approval",
+        },
+        "record_agent_trace_anomaly_threshold_config": {
+            "tool_name": "record_agent_trace_anomaly_threshold_config",
+            "adapter_type": "static",
+            "category": "trace",
+            "mutability": "guarded_write",
+            "handler_name": "_record_agent_trace_anomaly_threshold_config",
+            "write_policy": "approval_required_redirect",
+        },
+        "execute_record_agent_trace_anomaly_threshold_config_with_approval": {
+            "tool_name": "execute_record_agent_trace_anomaly_threshold_config_with_approval",
+            "adapter_type": "static",
+            "category": "trace",
+            "mutability": "write",
+            "handler_name": "_execute_record_agent_trace_anomaly_threshold_config_with_approval",
         },
         "repair_longform_maintenance": {
             "tool_name": "repair_longform_maintenance",

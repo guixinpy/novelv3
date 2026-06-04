@@ -58,6 +58,11 @@ AGENT_PLAN_GATED_TOOLS = {
         "gate_type": "stateless_agent_plan_approval",
         "covered_tools": ["repair_longform_maintenance"],
     },
+    "execute_record_agent_trace_anomaly_threshold_config_with_approval": {
+        "gate_version": "phase241.trace_anomaly_threshold_config_agent_plan_approval.v1",
+        "gate_type": "stateless_agent_plan_approval",
+        "covered_tools": ["record_agent_trace_anomaly_threshold_config"],
+    },
     "execute_create_revision_draft_with_approval": {
         "gate_version": "phase194.revision_draft_agent_plan_approval.v1",
         "gate_type": "stateless_agent_plan_approval",

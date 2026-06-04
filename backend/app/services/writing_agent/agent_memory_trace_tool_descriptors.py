@@ -3,6 +3,37 @@ from __future__ import annotations
 from app.services.writing_agent.tool_descriptor_types import AgentToolDescriptor, object_schema
 
 
+_TRACE_ANOMALY_THRESHOLD_CONFIG_INPUT = object_schema(
+    {
+        "affected_run_rate_delta": {"type": "number", "minimum": 0, "maximum": 1},
+        "critical_issue_rate_delta": {"type": "number", "minimum": 0, "maximum": 1},
+        "source": {"type": "string"},
+        "reviewed_run_count": {"type": "integer", "minimum": 0},
+        "reason": {"type": "string"},
+        "post_approval_continuation_tools": {"type": "array"},
+    },
+    required=("affected_run_rate_delta", "critical_issue_rate_delta"),
+)
+_TRACE_ANOMALY_THRESHOLD_CONFIG_PREPARE_OUTPUT = object_schema(
+    {
+        "status": {"type": "string"},
+        "prepare_version": {"type": "string"},
+        "project_id": {"type": "string"},
+        "target_type": {"type": "string"},
+        "thresholds": {"type": "object"},
+        "mutation_fingerprint": {"type": "object"},
+        "tool_call_id": {"type": "string"},
+        "resource_binding": {"type": "object"},
+        "agent_plan": {"type": "object"},
+        "agent_plan_approval_contract": {"type": "object"},
+        "agent_plan_approval_contract_hash": {"type": "string"},
+        "required_confirmation": {"type": "object"},
+        "side_effects": {"type": "object"},
+        "recommended_next_tools": {"type": "array"},
+        "post_approval_continuation_tools": {"type": "array"},
+        "trace": {"type": "object"},
+    }
+)
 _LONGFORM_MAINTENANCE_INPUT = object_schema(
     {
         "limit": {"type": "integer", "minimum": 1},
@@ -84,6 +115,7 @@ AGENT_MEMORY_TRACE_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
                 "baseline": {"type": "object"},
                 "comparison": {"type": "object"},
                 "thresholds": {"type": "object"},
+                "threshold_config": {"type": "object"},
                 "threshold_signals": {"type": "array"},
                 "calibration": {"type": "object"},
                 "runs": {"type": "array"},
@@ -94,6 +126,92 @@ AGENT_MEMORY_TRACE_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         target_type="agent_trace_anomaly_trends",
         internal=True,
         non_blocking_report=True,
+        sort_key=6,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
+        name="record_agent_trace_anomaly_threshold_config",
+        module="writing_agent",
+        category="trace",
+        description="记录人工复核后的 Writing Agent Trace 异常趋势阈值配置；直接调用会被审批保护拦截。",
+        input_schema=_TRACE_ANOMALY_THRESHOLD_CONFIG_INPUT,
+        output_schema=object_schema(
+            {
+                "status": {"type": "string"},
+                "reason": {"type": "string"},
+                "project_id": {"type": "string"},
+                "target_type": {"type": "string"},
+                "required_approval": {"type": "object"},
+                "side_effects": {"type": "object"},
+                "recommended_next_tools": {"type": "array"},
+                "trace": {"type": "object"},
+            }
+        ),
+        target_type="agent_trace_anomaly_threshold_config",
+        internal=True,
+        non_blocking_report=False,
+        sort_key=6,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
+        name="prepare_record_agent_trace_anomaly_threshold_config",
+        module="writing_agent",
+        category="trace",
+        description="为记录人工复核后的 Trace 异常趋势阈值配置构建 Agent 计划审批契约，不执行写入。",
+        input_schema=_TRACE_ANOMALY_THRESHOLD_CONFIG_INPUT,
+        output_schema=_TRACE_ANOMALY_THRESHOLD_CONFIG_PREPARE_OUTPUT,
+        target_type="agent_trace_anomaly_threshold_config_approval",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=6,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
+        name="execute_record_agent_trace_anomaly_threshold_config_with_approval",
+        module="writing_agent",
+        category="trace",
+        description="在确认 Agent 计划审批契约后，将人工复核后的 Trace 异常趋势阈值写入项目配置。",
+        input_schema=object_schema(
+            {
+                "affected_run_rate_delta": {"type": "number", "minimum": 0, "maximum": 1},
+                "critical_issue_rate_delta": {"type": "number", "minimum": 0, "maximum": 1},
+                "source": {"type": "string"},
+                "reviewed_run_count": {"type": "integer", "minimum": 0},
+                "reason": {"type": "string"},
+                "confirm_execute": {"type": "boolean"},
+                "approval_contract_hash": {"type": "string"},
+                "approval_contract": {"type": "object"},
+                "post_approval_continuation_tools": {"type": "array"},
+            },
+            required=(
+                "affected_run_rate_delta",
+                "critical_issue_rate_delta",
+                "confirm_execute",
+                "approval_contract_hash",
+                "approval_contract",
+            ),
+        ),
+        output_schema=object_schema(
+            {
+                "status": {"type": "string"},
+                "execute_version": {"type": "string"},
+                "project_id": {"type": "string"},
+                "target_type": {"type": "string"},
+                "thresholds": {"type": "object"},
+                "previous_thresholds": {"type": ["object", "null"]},
+                "agent_plan_approval_verification": {"type": "object"},
+                "approval_verification_event": {"type": "object"},
+                "execution_resource_binding": {"type": "object"},
+                "evidence": {"type": "object"},
+                "side_effects": {"type": "object"},
+                "recommended_next_tools": {"type": "array"},
+                "post_approval_continuation_tools": {"type": "array"},
+                "trace": {"type": "object"},
+            }
+        ),
+        target_type="agent_trace_anomaly_threshold_config",
+        internal=True,
+        non_blocking_report=False,
         sort_key=6,
         availability_checks=("project_exists",),
     ),

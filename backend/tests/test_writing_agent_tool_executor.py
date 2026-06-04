@@ -117,6 +117,7 @@ def test_agent_memory_trace_tool_adapters_live_in_dedicated_module():
     assert names == [
         "inspect_agent_trace_audit",
         "inspect_agent_trace_anomaly_trends",
+        "record_agent_trace_anomaly_threshold_config",
         "inspect_agent_memory_route",
         "search_agent_retrieval_context",
         "summarize_longform_context",
@@ -134,6 +135,13 @@ def test_agent_memory_trace_tool_adapters_live_in_dedicated_module():
     }
     assert AGENT_MEMORY_TRACE_TOOL_ADAPTERS["inspect_agent_trace_audit"].mutability == "read"
     assert AGENT_MEMORY_TRACE_TOOL_ADAPTERS["inspect_agent_trace_anomaly_trends"].mutability == "read"
+    assert AGENT_MEMORY_TRACE_TOOL_ADAPTERS["record_agent_trace_anomaly_threshold_config"].mutability == (
+        "guarded_write"
+    )
+    assert (
+        AGENT_MEMORY_TRACE_TOOL_ADAPTERS["record_agent_trace_anomaly_threshold_config"].write_policy
+        == "approval_required_redirect"
+    )
     assert AGENT_MEMORY_TRACE_TOOL_ADAPTERS["search_agent_retrieval_context"].mutability == "read"
     assert AGENT_MEMORY_TRACE_TOOL_ADAPTERS["summarize_longform_context"].mutability == "read"
     assert AGENT_MEMORY_TRACE_TOOL_ADAPTERS["inspect_agent_context_compression_projection"].mutability == "read"
@@ -166,6 +174,10 @@ def test_agent_memory_trace_tool_adapters_live_in_dedicated_module():
         == "_repair_longform_maintenance"
     )
     assert (
+        AGENT_MEMORY_TRACE_TOOL_ADAPTERS["record_agent_trace_anomaly_threshold_config"].handler.__name__
+        == "_record_agent_trace_anomaly_threshold_config"
+    )
+    assert (
         AGENT_MEMORY_TRACE_TOOL_ADAPTERS["inspect_agent_memory_activation_plan"].handler.__name__
         == "_inspect_agent_memory_activation_plan"
     )
@@ -178,6 +190,7 @@ def test_agent_memory_trace_tool_adapter_builder_adds_maintenance_approval_chain
     assert names == [
         "inspect_agent_trace_audit",
         "inspect_agent_trace_anomaly_trends",
+        "record_agent_trace_anomaly_threshold_config",
         "inspect_agent_memory_route",
         "search_agent_retrieval_context",
         "summarize_longform_context",
@@ -188,12 +201,20 @@ def test_agent_memory_trace_tool_adapter_builder_adds_maintenance_approval_chain
         "repair_longform_maintenance",
         "prepare_repair_longform_maintenance",
         "execute_repair_longform_maintenance_with_approval",
+        "prepare_record_agent_trace_anomaly_threshold_config",
+        "execute_record_agent_trace_anomaly_threshold_config_with_approval",
     ]
     assert adapters["prepare_repair_longform_maintenance"].mutability == "read"
     assert adapters["execute_repair_longform_maintenance_with_approval"].mutability == "write"
+    assert adapters["prepare_record_agent_trace_anomaly_threshold_config"].mutability == "read"
+    assert adapters["execute_record_agent_trace_anomaly_threshold_config_with_approval"].mutability == "write"
     assert (
         adapters["execute_repair_longform_maintenance_with_approval"].handler.__name__
         == "_execute_repair_longform_maintenance_with_approval"
+    )
+    assert (
+        adapters["execute_record_agent_trace_anomaly_threshold_config_with_approval"].handler.__name__
+        == "_execute_record_agent_trace_anomaly_threshold_config_with_approval"
     )
 
 
@@ -4083,8 +4104,8 @@ async def test_tool_executor_handles_inspect_agent_worker_dispatch(db_session):
     }
     assert result.output["route_registry"]["status"] == "passed"
     assert result.output["route_registry"]["summary"] == {
-        "routes": 52,
-        "ready_routes": 52,
+        "routes": 55,
+        "ready_routes": 55,
         "unrouted_allowed_tools": 0,
         "issues": 0,
     }
@@ -6830,6 +6851,37 @@ def test_tool_executor_exposes_inspect_agent_trace_anomaly_trends_adapter_metada
     }
 
 
+def test_tool_executor_exposes_trace_anomaly_threshold_config_adapter_metadata():
+    direct_metadata = writing_agent_tool_adapter_metadata("record_agent_trace_anomaly_threshold_config")
+    prepare_metadata = writing_agent_tool_adapter_metadata("prepare_record_agent_trace_anomaly_threshold_config")
+    execute_metadata = writing_agent_tool_adapter_metadata(
+        "execute_record_agent_trace_anomaly_threshold_config_with_approval"
+    )
+
+    assert direct_metadata == {
+        "tool_name": "record_agent_trace_anomaly_threshold_config",
+        "adapter_type": "static",
+        "category": "trace",
+        "mutability": "guarded_write",
+        "handler_name": "_record_agent_trace_anomaly_threshold_config",
+        "write_policy": "approval_required_redirect",
+    }
+    assert prepare_metadata == {
+        "tool_name": "prepare_record_agent_trace_anomaly_threshold_config",
+        "adapter_type": "static",
+        "category": "trace",
+        "mutability": "read",
+        "handler_name": "_prepare_record_agent_trace_anomaly_threshold_config",
+    }
+    assert execute_metadata == {
+        "tool_name": "execute_record_agent_trace_anomaly_threshold_config_with_approval",
+        "adapter_type": "static",
+        "category": "trace",
+        "mutability": "write",
+        "handler_name": "_execute_record_agent_trace_anomaly_threshold_config_with_approval",
+    }
+
+
 def test_tool_executor_exposes_inspect_agent_knowledge_base_route_adapter_metadata():
     metadata = writing_agent_tool_adapter_metadata("inspect_agent_knowledge_base_route")
 
@@ -8431,6 +8483,117 @@ async def test_tool_executor_dispatches_inspect_agent_trace_anomaly_trends_adapt
     assert result.handled is True
     assert result.output == {"status": "completed", "trend": {"status": "clear"}}
     assert calls == [(project.id, 9, 4, 6)]
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_redirects_direct_trace_anomaly_threshold_config_to_approval(db_session):
+    project = Project(name="Direct Trace Threshold Redirect", style_config={"description_density": 3})
+    db_session.add(project)
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(
+            tool_name="record_agent_trace_anomaly_threshold_config",
+            params={"affected_run_rate_delta": "0.35", "critical_issue_rate_delta": "0.2"},
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output["status"] == "blocked"
+    assert result.output["reason"] == "approval_required_before_write"
+    assert result.output["target_type"] == "agent_trace_anomaly_threshold_config"
+    assert result.output["side_effects"] == {
+        "executed": [],
+        "skipped": ["record_agent_trace_anomaly_threshold_config"],
+    }
+    assert result.output["recommended_next_tools"] == ["prepare_record_agent_trace_anomaly_threshold_config"]
+    assert result.output["required_approval"]["prepare_tool"] == "prepare_record_agent_trace_anomaly_threshold_config"
+
+    db_session.refresh(project)
+    assert project.style_config == {"description_density": 3}
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_prepares_and_executes_trace_anomaly_threshold_config_with_approval(db_session):
+    project = Project(name="Execute Trace Threshold Config", style_config={"description_density": 3})
+    db_session.add(project)
+    db_session.commit()
+    threshold_params = {
+        "affected_run_rate_delta": "0.35",
+        "critical_issue_rate_delta": "0.2",
+        "source": "manual_review",
+        "reviewed_run_count": "8",
+        "reason": "长跑 dogfood 样本复核后固化阈值。",
+    }
+
+    prepare = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(tool_name="prepare_record_agent_trace_anomaly_threshold_config", params=threshold_params),
+    )
+
+    assert prepare.handled is True
+    assert prepare.output["status"] == "approval_required"
+    plan_step = prepare.output["agent_plan"]["steps"][0]
+    assert plan_step["tool_name"] == "record_agent_trace_anomaly_threshold_config"
+    assert plan_step["approval_executor_tool_name"] == (
+        "execute_record_agent_trace_anomaly_threshold_config_with_approval"
+    )
+    assert plan_step["params"]["affected_run_rate_delta"] == 0.35
+    assert plan_step["params"]["critical_issue_rate_delta"] == 0.2
+    assert plan_step["params"]["reviewed_run_count"] == 8
+    assert plan_step["mutation_fingerprint"]["components"]["target_type"] == "agent_trace_anomaly_threshold_config"
+    assert prepare.output["agent_plan_approval_contract_hash"]
+    assert prepare.output["agent_plan_approval_contract"]["write_steps"][0]["tool_name"] == (
+        "record_agent_trace_anomaly_threshold_config"
+    )
+    assert prepare.output["side_effects"] == {
+        "executed": [],
+        "skipped": ["record_agent_trace_anomaly_threshold_config"],
+    }
+    assert prepare.output["recommended_next_tools"] == [
+        "execute_record_agent_trace_anomaly_threshold_config_with_approval"
+    ]
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id),
+        WritingAgentToolRequest(
+            tool_name="execute_record_agent_trace_anomaly_threshold_config_with_approval",
+            params={
+                **threshold_params,
+                "confirm_execute": True,
+                "approval_contract_hash": prepare.output["agent_plan_approval_contract_hash"],
+                "approval_contract": prepare.output["agent_plan_approval_contract"],
+            },
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output["status"] == "success"
+    assert result.output["agent_plan_approval_verification"]["status"] == "ready"
+    assert result.output["approval_verification_event"]["reason"] == "approval_contract_verified"
+    assert result.output["execution_resource_binding"]["status"] == "ready"
+    assert result.output["execution_resource_binding"]["expected"]["tool_name"] == (
+        "record_agent_trace_anomaly_threshold_config"
+    )
+    assert result.output["thresholds"] == {
+        "affected_run_rate_delta": 0.35,
+        "critical_issue_rate_delta": 0.2,
+    }
+    assert result.output["side_effects"] == {
+        "executed": ["record_agent_trace_anomaly_threshold_config"],
+        "skipped": [],
+    }
+    assert result.output["recommended_next_tools"] == ["inspect_agent_trace_anomaly_trends"]
+
+    db_session.refresh(project)
+    assert project.style_config == {
+        "description_density": 3,
+        "agent_trace_anomaly_thresholds": {
+            "affected_run_rate_delta": 0.35,
+            "critical_issue_rate_delta": 0.2,
+        },
+    }
 
 
 @pytest.mark.asyncio

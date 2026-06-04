@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-DOGFOOD_EVIDENCE_VERSION = "phase240.agent_dogfood_evidence_trace_threshold_config.v1"
+DOGFOOD_EVIDENCE_VERSION = "phase241.agent_dogfood_evidence_trace_threshold_config_approval.v1"
 DOGFOOD_EVIDENCE_RUN_SOURCE = "planner_trace.agent_health_projection.dogfood_evidence"
 
 _FULL_AGENT_NATIVE_DOGFOOD = (
@@ -49,7 +49,7 @@ _REQUIRED_CAPABILITIES: tuple[dict[str, Any], ...] = (
     {
         "capability": "trace_anomaly_threshold_calibration",
         "label": "Trace anomaly threshold calibration",
-        "required_for": "Prove Trace anomaly trends expose baseline, configurable thresholds, calibration policy, and false-positive/false-negative guard evidence before long-running dogfood sample review.",
+        "required_for": "Prove Trace anomaly trends expose baseline, configurable thresholds, calibration policy, approval-gated config maintenance, and false-positive/false-negative guard evidence before long-running dogfood sample review.",
     },
 )
 
@@ -154,6 +154,9 @@ _EVIDENCE_RECORDS: tuple[dict[str, Any], ...] = (
             "trace_anomaly_trend_regression_count": 2,
             "threshold_signal_count": 2,
             "threshold_config_projection_count": 1,
+            "threshold_config_approval_chain_count": 1,
+            "threshold_config_write_gate_count": 1,
+            "threshold_config_worker_route_count": 1,
             "threshold_calibration_projection_count": 1,
             "threshold_policy_projection_count": 1,
             "drawer_projection_regression_count": 1,
@@ -166,6 +169,10 @@ _EVIDENCE_RECORDS: tuple[dict[str, Any], ...] = (
         "proven_tools": [
             "inspect_agent_trace_audit",
             "inspect_agent_trace_anomaly_trends",
+            "record_agent_trace_anomaly_threshold_config",
+            "prepare_record_agent_trace_anomaly_threshold_config",
+            "execute_record_agent_trace_anomaly_threshold_config_with_approval",
+            "inspect_agent_write_gate_coverage",
             "plan_dialog_intent_agent_run",
         ],
         "supporting_source_refs": [

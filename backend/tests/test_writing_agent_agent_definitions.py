@@ -320,7 +320,7 @@ def test_worker_route_registry_audit_binds_routes_to_allowed_worker_definitions(
 
     assert audit["version"] == AGENT_WORKER_ROUTE_REGISTRY_AUDIT_VERSION
     assert audit["status"] == "passed"
-    assert audit["summary"] == {"routes": 52, "ready_routes": 52, "unrouted_allowed_tools": 0, "issues": 0}
+    assert audit["summary"] == {"routes": 55, "ready_routes": 55, "unrouted_allowed_tools": 0, "issues": 0}
     assert audit["issues"] == []
     assert audit["unrouted_allowed_tools"] == []
 
@@ -337,6 +337,11 @@ def test_worker_route_registry_audit_binds_routes_to_allowed_worker_definitions(
     assert routes_by_tool["execute_generate_outline_with_approval"]["worker"] == "drafting_worker"
     assert routes_by_tool["inspect_agent_trace_audit"]["worker"] == "recovery_worker"
     assert routes_by_tool["inspect_agent_trace_anomaly_trends"]["worker"] == "recovery_worker"
+    assert routes_by_tool["record_agent_trace_anomaly_threshold_config"]["worker"] == "recovery_worker"
+    assert routes_by_tool["prepare_record_agent_trace_anomaly_threshold_config"]["worker"] == "recovery_worker"
+    assert routes_by_tool["execute_record_agent_trace_anomaly_threshold_config_with_approval"]["worker"] == (
+        "recovery_worker"
+    )
     assert routes_by_tool["inspect_agent_job_projection"]["worker"] == "recovery_worker"
     assert routes_by_tool["inspect_agent_dogfood_evidence"]["worker"] == "recovery_worker"
     assert routes_by_tool["apply_agent_worker_orphan_recovery"]["worker"] == "recovery_worker"
