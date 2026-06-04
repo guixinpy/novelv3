@@ -168,7 +168,7 @@
 - [x] Intent Projection 只读审计意图：自然语言“检查意图投影：<待分析文本>”可投影为 inspect_agent_intent_projection 只读工具计划
 - [x] Dialog Control Plane 只读审计意图：自然语言“检查 generate_chapter 对话控制面投影”可投影为 inspect_agent_dialog_control_plane_projection 只读工具计划
 - [x] Reference Alignment 只读审计意图：自然语言“检查参考项目模式对齐/开源项目适配”可投影为 inspect_agent_reference_alignment 只读工具计划
-- [x] Dogfood Evidence 只读审计意图：自然语言“检查 dogfood pressure-test 证据覆盖”可投影为 inspect_agent_dogfood_evidence 只读工具计划，并覆盖 Trace anomaly threshold calibration/policy/config/review/long-run sample 证据
+- [x] Dogfood Evidence 只读审计意图：自然语言“检查 dogfood pressure-test 证据覆盖”可投影为 inspect_agent_dogfood_evidence 只读工具计划，并覆盖 Trace anomaly threshold calibration/policy/config/review/long-run sample/long-run execution 证据
 - [x] Route Preference 只读审计意图：自然语言“检查 text_intent 路由偏好/Agent 审批链迁移建议”可投影为 inspect_agent_route_preference_projection 只读工具计划
 - [x] Agent Health 只读自检意图：自然语言“检查 Agent 健康/工具诊断”可投影为 inspect_agent_health_projection 只读工具计划
 - [x] Control Plane 只读自检意图：自然语言“检查控制面就绪度/工具契约/命令契约”可投影为 inspect_agent_control_plane_readiness 只读工具计划
@@ -323,7 +323,7 @@
 | P1 | 智能上下文压缩（借鉴 hermes-agent） | 预修剪 + LLM 摘要 + 头尾保护 | 🟡 进行中（preflight persistent reuse） |
 | P2 | 端到端 Trace 链路 | 从用户意图→计划→工具调用→模型调用→结果的一条链 | ✅ 已完成（Trace Audit end_to_end_chain + Drawer 覆盖意图→计划→执行→模型 Trace→结果消息） |
 | P3 | 上下文预算管理 | 可视化 Token 使用量 + 接近上限时的警告 | 🟡 进行中（preflight intent + Drawer budget warning） |
-| P4 | Trace 聚合异常检测 | 单 run 异常摘要 + 跨 run 趋势和异常统计 | 🟡 进行中（单 run anomaly_summary + 最近 run anomaly trends + baseline/threshold signals + runtime calibration/policy + long-run sample 只读采集入口 + threshold review 只读复核入口 + 项目级阈值配置读取 + approval-gated 阈值写入/维护流程 + Drawer + dogfood calibration evidence 已完成；真实长跑 dogfood 样本执行待补） |
+| P4 | Trace 聚合异常检测 | 单 run 异常摘要 + 跨 run 趋势和异常统计 | ✅ 已完成（单 run anomaly_summary + 最近 run anomaly trends + baseline/threshold signals + runtime calibration/policy + long-run sample 只读采集入口 + threshold review 只读复核入口 + 项目级阈值配置读取 + approval-gated 阈值写入/维护流程 + Drawer + dogfood calibration evidence + 真实长跑样本执行证据已完成；后续只按新 dogfood 问题增量演进） |
 
 ### 阻塞项
 
@@ -331,6 +331,7 @@
 
 ### 最近完成
 
+- 2026-06-04: `inspect_agent_dogfood_evidence` 新增 `trace_anomaly_long_run_samples_20260604` 证据记录，source_ref 指向 `docs/archive/superpowers/notes/long-memory-agent/2026-06-04-trace-anomaly-long-run-samples-dogfood.md`，记录隔离 dogfood DB 中 14 个真实 Writing Agent run、31 个 step、12 个 dogfood entrypoint run、第 1-3 章样本覆盖，并将 `trace_anomaly_threshold_long_run_sample_execution` 从 open finding 中移除。
 - 2026-06-04: 新增 `inspect_agent_trace_anomaly_long_run_samples` 只读采样投影，按当前项目和可选章节统计有 step 的 Writing Agent run 样本、状态分布、entrypoint 分布、章节集合和 threshold review 推荐窗口，不暴露 run/step id。
 - 2026-06-04: `IntentRouter` / `plan_dialog_intent_agent_run` / `recovery_worker` 新增 Trace anomaly long-run sample 自然语言入口和 worker 路由；`inspect_agent_dogfood_evidence` 同步记录 long_run_sample_collection_projection / intent / worker_route 指标，剩余缺口收敛为真实长跑 dogfood 样本执行。
 - 2026-06-04: 新增 `inspect_agent_trace_anomaly_threshold_review` 只读复核投影，复用 Trace Anomaly Trends 的 calibration.policy 输出人工复核状态、样本数、阈值候选、推荐 prepare 调用和 side_effects 空/跳过摘要，不暴露 raw run/step/trace/context。

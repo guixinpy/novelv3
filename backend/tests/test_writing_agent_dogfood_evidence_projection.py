@@ -21,6 +21,7 @@ def test_inspect_agent_dogfood_evidence_surfaces_api_loop_and_memory_activation(
         "world_model_recovery",
         "observability_snapshot",
         "trace_anomaly_threshold_calibration",
+        "trace_anomaly_long_run_sample_execution",
     }.issubset({item["capability"] for item in output["capability_coverage"]})
     evidence_by_id = {item["evidence_id"]: item for item in output["evidence"]}
     full_loop = evidence_by_id["full_agent_native_loop_20260526"]
@@ -55,7 +56,7 @@ def test_inspect_agent_dogfood_evidence_surfaces_api_loop_and_memory_activation(
         "false_positive_guard_count": 1,
         "false_negative_guard_count": 1,
     }
-    assert trace_calibration["open_findings"] == ["trace_anomaly_threshold_long_run_sample_execution"]
+    assert trace_calibration["open_findings"] == []
     assert "inspect_agent_trace_anomaly_trends" in trace_calibration["proven_tools"]
     assert "inspect_agent_trace_anomaly_long_run_samples" in trace_calibration["proven_tools"]
     assert "inspect_agent_trace_anomaly_threshold_review" in trace_calibration["proven_tools"]
@@ -68,5 +69,23 @@ def test_inspect_agent_dogfood_evidence_surfaces_api_loop_and_memory_activation(
     assert calibration_coverage["status"] == "covered"
     assert calibration_coverage["evidence_ids"] == ["trace_anomaly_threshold_calibration_20260603"]
     assert "inspect_agent_trace_anomaly_trends" in calibration_coverage["proven_tools"]
+    long_run_execution = evidence_by_id["trace_anomaly_long_run_samples_20260604"]
+    assert long_run_execution["runtime_path"] == "sqlite_readonly_dogfood"
+    assert long_run_execution["source_exists"] is True
+    assert long_run_execution["metrics"] == {
+        "long_run_sample_execution_run_count": 14,
+        "long_run_sample_execution_step_count": 31,
+        "long_run_sample_execution_dogfood_run_count": 12,
+        "long_run_sample_execution_blocked_run_count": 2,
+        "long_run_sample_execution_success_run_count": 12,
+        "long_run_sample_execution_chapter_count": 3,
+    }
+    assert long_run_execution["open_findings"] == []
+    execution_coverage = {
+        item["capability"]: item for item in output["capability_coverage"]
+    }["trace_anomaly_long_run_sample_execution"]
+    assert execution_coverage["status"] == "covered"
+    assert execution_coverage["evidence_ids"] == ["trace_anomaly_long_run_samples_20260604"]
+    assert "inspect_agent_trace_anomaly_long_run_samples" in execution_coverage["proven_tools"]
     assert "inspect_agent_health_projection" in output["recommended_next_tools"]
     assert output["trace"]["runtime_behavior_changed"] is False

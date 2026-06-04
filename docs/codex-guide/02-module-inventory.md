@@ -74,7 +74,7 @@ Agent 化缺口：
   - Agent loop budget 已具备 read 工具 refund 投影（used/charged/refunded/remaining iterations）
   - 工具契约快照已有只读审计和自然语言只读入口，可直接检查工具契约覆盖率和迁移差距
   - Reference Alignment 已有只读审计和自然语言只读入口，可直接检查参考项目模式对齐、已采纳决策和下一步适配建议
-  - Dogfood Evidence 已有只读审计和自然语言只读入口，可直接检查真实长篇 dogfood / pressure-test 证据覆盖，并纳入 Trace anomaly threshold calibration/policy/config/review/approval-chain 证据
+  - Dogfood Evidence 已有只读审计和自然语言只读入口，可直接检查真实长篇 dogfood / pressure-test 证据覆盖，并纳入 Trace anomaly threshold calibration/policy/config/review/long-run execution/approval-chain 证据
   - Route Preference 已有只读审计和自然语言只读入口，可直接检查 text_intent/slash_command/button_action 路由偏好和 Agent 审批链迁移建议
   - Route Approval Opt-in / Pending Action approval opt-in 已有只读规划、应用预览、契约生成和 Agent plan approval prepare 自然语言入口；prepare 输出会携带仍需确认的 execute-with-approval 调用骨架，推荐规范化、followup planner 与对话 action_result_view 会保留/展示该 pending confirmation handoff，可直接检查 pending_action 迁入 Agent 审批链的 plan/preview/contract/prepare/execute handoff
   - 命令契约快照已有只读审计和自然语言只读入口，可直接检查 slash command 投影、依赖工具和缺口
@@ -312,7 +312,7 @@ Agent 化缺口：
   - trace 已有 long-run sample 只读采集投影，可从自然语言进入 recovery_worker，统计当前项目候选 run/step 样本并推荐 threshold review window，不暴露 run/step id
   - trace 已有 threshold review 只读复核投影，可从自然语言进入 recovery_worker，输出复核状态、复核样本数、阈值候选和 prepare 调用建议，同时保持 side_effects 空/跳过写入
   - trace 阈值配置写入已具备 direct write guard、prepare/execute approval chain、mutation fingerprint、resource binding、write-gate coverage 和 recovery_worker 路由；执行后只写 Project.style_config.agent_trace_anomaly_thresholds 并推荐回到趋势检查
-  - Dogfood Evidence 已纳入 Trace anomaly threshold calibration/policy/config/review/long-run sample/approval-chain 证据；仍缺真实长跑 dogfood 样本执行
+  - Dogfood Evidence 已纳入 Trace anomaly threshold calibration/policy/config/review/long-run sample/long-run execution/approval-chain 证据；真实长跑样本执行已由隔离 dogfood DB 的只读查询说明归档
 关联模块：所有 AI 调用模块
 ```
 
@@ -433,6 +433,7 @@ Data & Recovery ─── (横切关注点，覆盖所有写入操作)
 | 日期 | 模块 | 变更 |
 |------|------|------|
 | 2026-06-01 | 全部 | 初始版本 |
+| 2026-06-04 | Trace & Audit | Dogfood Evidence 新增 Trace anomaly long-run sample execution 证据，记录隔离 dogfood DB 中 14 个真实 run、31 个 step、12 个 dogfood entrypoint run 和第 1-3 章样本覆盖 |
 | 2026-06-04 | Trace & Audit | 新增 inspect_agent_trace_anomaly_long_run_samples 只读采样投影、自然语言入口和 recovery_worker 路由，Dogfood Evidence 记录 long-run sample collection 覆盖 |
 | 2026-06-04 | Trace & Audit | 新增 inspect_agent_trace_anomaly_threshold_review 只读复核投影、自然语言入口和 recovery_worker 路由，Dogfood Evidence 记录 threshold review 覆盖 |
 | 2026-06-04 | Trace & Audit | 新增 Trace anomaly threshold config direct write guard、prepare/execute approval chain、write-gate 覆盖和 recovery_worker 路由，人工复核后的阈值可审批写入项目配置 |
