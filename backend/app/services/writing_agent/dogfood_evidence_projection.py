@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-DOGFOOD_EVIDENCE_VERSION = "phase245.agent_dogfood_evidence_memory_tree_quality.v1"
+DOGFOOD_EVIDENCE_VERSION = "phase246.agent_dogfood_evidence_memory_tree_summary_approval.v1"
 DOGFOOD_EVIDENCE_RUN_SOURCE = "planner_trace.agent_health_projection.dogfood_evidence"
 
 _FULL_AGENT_NATIVE_DOGFOOD = (
@@ -19,6 +19,9 @@ _TRACE_ANOMALY_LONG_RUN_DOGFOOD = (
 )
 _MEMORY_TREE_QUALITY_DOGFOOD = (
     "docs/archive/superpowers/notes/long-memory-agent/2026-06-04-memory-tree-quality-dogfood.md"
+)
+_MEMORY_TREE_SUMMARY_APPROVAL_DOGFOOD = (
+    "docs/archive/superpowers/notes/long-memory-agent/2026-06-04-memory-tree-summary-approval-dogfood.md"
 )
 
 _REQUIRED_CAPABILITIES: tuple[dict[str, Any], ...] = (
@@ -66,6 +69,11 @@ _REQUIRED_CAPABILITIES: tuple[dict[str, Any], ...] = (
         "capability": "memory_tree_quality_real_longform_validation",
         "label": "Memory Tree quality real-longform validation",
         "required_for": "Prove Memory Tree summary and semantic-search quality can be audited against real longform dogfood data.",
+    },
+    {
+        "capability": "memory_tree_summary_approval_recheck",
+        "label": "Memory Tree summary approval and recheck",
+        "required_for": "Prove Memory Tree summary materialization is approval-gated and can turn a real longform quality gap into a ready quality projection on an isolated dogfood copy.",
     },
 )
 
@@ -276,6 +284,54 @@ _EVIDENCE_RECORDS: tuple[dict[str, Any], ...] = (
             "memory_tree_summary_gap",
             "memory_tree_semantic_probe_miss",
         ],
+    },
+    {
+        "evidence_id": "memory_tree_summary_approval_recheck_20260604",
+        "title": "Memory Tree Summary Approval Recheck Dogfood",
+        "source_ref": _MEMORY_TREE_SUMMARY_APPROVAL_DOGFOOD,
+        "verified_on": "2026-06-04",
+        "runtime_path": "sqlite_temp_copy_dogfood",
+        "project_id": "3f85aed4-4f6f-413f-bd1a-03fbe02ea0f4",
+        "chapter_indexes": [1, 2, 3],
+        "capabilities": [
+            "memory_tree_quality_real_longform_validation",
+            "memory_tree_summary_approval_recheck",
+            "observability_snapshot",
+        ],
+        "loop": [
+            "copy_real_dogfood_sqlite",
+            "prepare_memory_tree_summary_materialization",
+            "execute_approval_gated_materialization",
+            "recheck_memory_tree_quality",
+        ],
+        "metrics": {
+            "memory_tree_summary_before_summary_backed_chapter_nodes": 0,
+            "memory_tree_summary_before_summary_backed_chapter_ratio": 0.0,
+            "memory_tree_summary_before_semantic_probe_matched_count": 0,
+            "memory_tree_summary_materialization_created_nodes": 4,
+            "memory_tree_summary_materialization_updated_nodes": 0,
+            "memory_tree_summary_materialization_volume_nodes": 1,
+            "memory_tree_summary_materialization_chapter_nodes": 3,
+            "memory_tree_summary_approval_verified_count": 1,
+            "memory_tree_summary_after_summary_backed_chapter_nodes": 3,
+            "memory_tree_summary_after_summary_backed_chapter_ratio": 1.0,
+            "memory_tree_summary_after_semantic_probe_matched_count": 1,
+            "memory_tree_summary_after_diagnostic_count": 0,
+        },
+        "proven_tools": [
+            "prepare_record_agent_memory_tree_summaries",
+            "execute_record_agent_memory_tree_summaries_with_approval",
+            "record_agent_memory_tree_summaries",
+            "inspect_agent_memory_tree_quality",
+            "inspect_agent_write_gate_coverage",
+            "inspect_agent_dogfood_evidence",
+        ],
+        "supporting_source_refs": [
+            _MEMORY_TREE_QUALITY_DOGFOOD,
+            "backend/tests/test_writing_agent_memory_tree.py",
+            "backend/tests/test_writing_agent_write_gate_coverage.py",
+        ],
+        "open_findings": [],
     },
 )
 

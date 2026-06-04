@@ -64,6 +64,7 @@ nodes are not backed by materialized Memory Tree summaries and that the semantic
 probe cannot match the target clue.
 
 This is not a runtime regression. It is a real validation finding: before
-claiming Memory Tree semantic quality is complete, the Agent should run
-`record_agent_memory_tree_summaries` on real longform data and re-check
-`inspect_agent_memory_tree_quality`.
+claiming Memory Tree semantic quality is complete, the Agent should route through
+`prepare_record_agent_memory_tree_summaries` and
+`execute_record_agent_memory_tree_summaries_with_approval` on real longform data,
+then re-check `inspect_agent_memory_tree_quality`.

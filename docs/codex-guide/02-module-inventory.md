@@ -184,7 +184,7 @@ Agent 化缺口：
   - 更强语义导航（当前已支持按节点展开、深度裁剪、搜索祖先上下文、确定性 token-overlap 召回、后代强匹配回流到过滤层级、弱匹配降噪、写前激活消费和自然语言只读浏览入口；后续接入向量/LLM 语义搜索）
   - 前端独立 Memory Tree 面板已具备 Hermes Memory 主工作区、子导航只读搜索、历史入口、当前返回节点层级树、安全摘要、结果节点只读展开、当前展开状态、章节正文深链基础、Retrieval 证据只读 run 深链与 Drawer 安全摘要、Longform Context Summary 只读 run 深链与 Drawer 安全摘要、Memory Activation Plan 只读 run 深链与 Drawer 安全摘要、Memory Route Drawer 安全摘要、Knowledge Base Route 只读 run 深链、Post Chapter Memory Capture 只读 run 深链与 Drawer 安全摘要、Trace Audit 只读 run 深链与 Drawer 安全摘要，以及 Athena 世界模型路由深链与 Drawer 安全摘要；仍缺更完整的独立树工作区能力
   - 与 Retrieval 的深度整合
-  - LLM 摘要质量仍未完成；真实长篇验证入口已存在，当前 dogfood 发现 `memory_tree_summary_gap` 与 `memory_tree_semantic_probe_miss`，下一步应先在真实项目上 materialize Memory Tree 摘要并复核 quality
+  - LLM 摘要质量仍未完成；真实长篇验证入口已存在，原始 dogfood DB 暴露 `memory_tree_summary_gap` 与 `memory_tree_semantic_probe_miss`，临时副本已通过审批式 `prepare_record_agent_memory_tree_summaries` / `execute_record_agent_memory_tree_summaries_with_approval` 物化摘要并复核 quality 为 ready；下一步应继续推进向量/LLM 语义归纳
 关联模块：Retrieval、Athena、Writing
 ```
 

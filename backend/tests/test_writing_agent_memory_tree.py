@@ -10,6 +10,9 @@ from app.services.writing_agent.memory_tree import (
     inspect_agent_memory_tree_quality,
     materialize_agent_memory_tree_summaries,
 )
+from app.services.writing_agent.memory_tree_summary_execution import (
+    prepare_record_agent_memory_tree_summaries,
+)
 from app.services.writing_agent.tool_adapter_types import WritingAgentToolContext
 from app.services.writing_agent.tool_executor import execute_writing_agent_tool, writing_agent_tool_adapter_metadata
 from app.services.writing_agent.tool_registry import get_agent_tool_descriptor
@@ -218,7 +221,7 @@ def test_memory_tree_quality_projection_reports_summary_and_semantic_coverage(db
 
 
 @pytest.mark.asyncio
-async def test_record_agent_memory_tree_summaries_tool_persists_summary_nodes(db_session):
+async def test_record_agent_memory_tree_summaries_tool_requires_approval(db_session):
     project, _refs = _seed_memory_tree_project(db_session)
 
     result = await execute_writing_agent_tool(
@@ -227,9 +230,85 @@ async def test_record_agent_memory_tree_summaries_tool_persists_summary_nodes(db
     )
 
     assert result.handled is True
-    assert result.output["status"] == "completed"
-    assert result.output["summary"]["volume_summary_nodes"] == 1
-    assert result.output["summary"]["chapter_summary_nodes"] == 2
+    assert result.output["status"] == "blocked"
+    assert result.output["reason"] == "approval_required_before_write"
+    assert result.output["required_approval"] == {
+        "prepare_tool": "prepare_record_agent_memory_tree_summaries",
+        "execute_tool": "execute_record_agent_memory_tree_summaries_with_approval",
+        "approval_scope": "agent_plan_approval",
+    }
+    assert result.output["side_effects"] == {"executed": [], "skipped": ["record_agent_memory_tree_summaries"]}
+    assert (
+        db_session.query(LongformMemory)
+        .filter(
+            LongformMemory.project_id == project.id,
+            LongformMemory.memory_type == MEMORY_TREE_CHAPTER_SUMMARY_TYPE,
+        )
+        .count()
+        == 0
+    )
+
+
+@pytest.mark.asyncio
+async def test_prepare_record_agent_memory_tree_summaries_tool_builds_approval_contract(db_session):
+    project, _refs = _seed_memory_tree_project(db_session)
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-memory-tree-prepare"),
+        WritingAgentToolRequest(
+            tool_name="prepare_record_agent_memory_tree_summaries",
+            params={"quality_query": "后续调查", "quality_chapter_index": 1},
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output["status"] == "approval_required"
+    assert result.output["target_type"] == "agent_memory_tree_summary"
+    assert result.output["summary_plan"] == {
+        "chapter_index": None,
+        "quality_chapter_index": 1,
+        "quality_query": "后续调查",
+    }
+    plan_step = result.output["agent_plan"]["steps"][0]
+    assert plan_step["tool_name"] == "record_agent_memory_tree_summaries"
+    assert plan_step["approval_executor_tool_name"] == "execute_record_agent_memory_tree_summaries_with_approval"
+    assert plan_step["requires_confirmation"] is True
+    assert result.output["side_effects"] == {"executed": [], "skipped": ["record_agent_memory_tree_summaries"]}
+    assert result.output["recommended_next_tools"] == ["execute_record_agent_memory_tree_summaries_with_approval"]
+
+
+@pytest.mark.asyncio
+async def test_execute_record_agent_memory_tree_summaries_with_approval_persists_and_reports_quality(db_session):
+    project, _refs = _seed_memory_tree_project(db_session)
+    prepared = prepare_record_agent_memory_tree_summaries(
+        db_session,
+        project.id,
+        action_params={"quality_query": "后续调查", "quality_chapter_index": 1},
+    )
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-memory-tree-approved"),
+        WritingAgentToolRequest(
+            tool_name="execute_record_agent_memory_tree_summaries_with_approval",
+            params={
+                "quality_query": "后续调查",
+                "quality_chapter_index": 1,
+                "confirm_execute": True,
+                "approval_contract_hash": prepared["agent_plan_approval_contract_hash"],
+                "approval_contract": prepared["agent_plan_approval_contract"],
+            },
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output["status"] == "success"
+    assert result.output["materialization"]["summary"]["chapter_summary_nodes"] == 2
+    assert result.output["post_materialization_quality"]["status"] == "ready"
+    assert result.output["post_materialization_quality"]["coverage"]["summary_backed_chapter_nodes"] == 2
+    assert result.output["post_materialization_quality"]["diagnostics"] == []
+    assert result.output["agent_plan_approval_verification"]["status"] == "ready"
+    assert result.output["side_effects"] == {"executed": ["record_agent_memory_tree_summaries"], "skipped": []}
+    assert result.output["recommended_next_tools"] == ["inspect_agent_memory_tree_quality"]
     assert (
         db_session.query(LongformMemory)
         .filter(
@@ -364,9 +443,28 @@ def test_memory_tree_summary_tool_is_registered_with_write_metadata():
         "tool_name": "record_agent_memory_tree_summaries",
         "adapter_type": "static",
         "category": "longform_memory",
-        "mutability": "write",
+        "mutability": "guarded_write",
         "handler_name": "_record_agent_memory_tree_summaries",
+        "write_policy": "approval_required_redirect",
     }
+
+    prepare_descriptor = get_agent_tool_descriptor("prepare_record_agent_memory_tree_summaries")
+    execute_descriptor = get_agent_tool_descriptor("execute_record_agent_memory_tree_summaries_with_approval")
+    prepare_metadata = writing_agent_tool_adapter_metadata("prepare_record_agent_memory_tree_summaries")
+    execute_metadata = writing_agent_tool_adapter_metadata("execute_record_agent_memory_tree_summaries_with_approval")
+
+    assert prepare_descriptor is not None
+    assert prepare_descriptor.non_blocking_report is True
+    assert prepare_descriptor.target_type == "agent_memory_tree_summary_approval"
+    assert prepare_descriptor.output_schema["properties"]["agent_plan_approval_contract_hash"]["type"] == "string"
+    assert execute_descriptor is not None
+    assert execute_descriptor.target_type == "agent_memory_tree_summary"
+    assert execute_descriptor.input_schema["properties"]["confirm_execute"]["type"] == "boolean"
+    assert execute_descriptor.output_schema["properties"]["post_materialization_quality"]["type"] == "object"
+    assert prepare_metadata["mutability"] == "read"
+    assert prepare_metadata["handler_name"] == "_prepare_record_agent_memory_tree_summaries"
+    assert execute_metadata["mutability"] == "write"
+    assert execute_metadata["handler_name"] == "_execute_record_agent_memory_tree_summaries_with_approval"
 
 
 def _seed_memory_tree_project(db_session):

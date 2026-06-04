@@ -1767,6 +1767,38 @@ def test_agent_tool_registry_includes_record_agent_context_compression_summary()
     assert "record_agent_context_compression_summary" not in non_blocking_report_tool_names()
 
 
+def test_agent_tool_registry_includes_memory_tree_summary_approval_chain():
+    prepare_descriptor = get_agent_tool_descriptor("prepare_record_agent_memory_tree_summaries")
+    execute_descriptor = get_agent_tool_descriptor("execute_record_agent_memory_tree_summaries_with_approval")
+
+    assert prepare_descriptor is not None
+    assert prepare_descriptor.internal is True
+    assert prepare_descriptor.non_blocking_report is True
+    assert prepare_descriptor.category == "longform_memory"
+    assert prepare_descriptor.target_type == "agent_memory_tree_summary_approval"
+    assert prepare_descriptor.input_schema["properties"]["quality_query"]["type"] == "string"
+    assert prepare_descriptor.output_schema["properties"]["agent_plan_approval_contract_hash"]["type"] == "string"
+    assert "prepare_record_agent_memory_tree_summaries" in allowed_tool_names()
+    assert "prepare_record_agent_memory_tree_summaries" in non_blocking_report_tool_names()
+
+    assert execute_descriptor is not None
+    assert execute_descriptor.internal is True
+    assert execute_descriptor.non_blocking_report is False
+    assert execute_descriptor.category == "longform_memory"
+    assert execute_descriptor.target_type == "agent_memory_tree_summary"
+    assert execute_descriptor.input_schema["properties"]["confirm_execute"]["type"] == "boolean"
+    assert execute_descriptor.input_schema["properties"]["approval_contract_hash"]["type"] == "string"
+    assert execute_descriptor.input_schema["properties"]["approval_contract"]["type"] == "object"
+    assert set(execute_descriptor.input_schema["required"]) == {
+        "confirm_execute",
+        "approval_contract_hash",
+        "approval_contract",
+    }
+    assert execute_descriptor.output_schema["properties"]["post_materialization_quality"]["type"] == "object"
+    assert "execute_record_agent_memory_tree_summaries_with_approval" in allowed_tool_names()
+    assert "execute_record_agent_memory_tree_summaries_with_approval" not in non_blocking_report_tool_names()
+
+
 def test_agent_tool_registry_includes_repair_longform_maintenance():
     descriptor = get_agent_tool_descriptor("repair_longform_maintenance")
 

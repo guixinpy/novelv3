@@ -23,6 +23,7 @@ _KNOWN_MUTATING_TOOLS = {
     "backfill_outline_gaps",
     "record_agent_knowledge_base_candidate",
     "record_agent_trace_anomaly_threshold_config",
+    "record_agent_memory_tree_summaries",
     "repair_longform_maintenance",
     "create_revision_draft",
     "apply_planner_revision_patch",
@@ -230,6 +231,18 @@ def _target_for_tool(project_id: str, tool_name: str, params: dict[str, Any]) ->
             "agent_trace_anomaly_threshold_config",
             f"agent_trace_anomaly_threshold_config:{project_target}",
         )
+
+    if tool_name == "record_agent_memory_tree_summaries":
+        project_target = _clean_string(project_id)
+        if not project_target:
+            return _blocked(
+                "agent_memory_tree_summary",
+                "missing_target",
+                "record_agent_memory_tree_summaries requires project_id",
+            )
+        chapter_index = _positive_int(params.get("chapter_index"))
+        target_scope = f"chapter:{chapter_index}" if chapter_index is not None else "all"
+        return _ready("agent_memory_tree_summary", f"agent_memory_tree_summary:{project_target}:{target_scope}")
 
     if tool_name == "repair_longform_maintenance":
         project_target = _clean_string(project_id)

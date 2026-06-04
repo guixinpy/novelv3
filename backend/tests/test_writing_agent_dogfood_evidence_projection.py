@@ -23,6 +23,7 @@ def test_inspect_agent_dogfood_evidence_surfaces_api_loop_and_memory_activation(
         "trace_anomaly_threshold_calibration",
         "trace_anomaly_long_run_sample_execution",
         "memory_tree_quality_real_longform_validation",
+        "memory_tree_summary_approval_recheck",
     }.issubset({item["capability"] for item in output["capability_coverage"]})
     evidence_by_id = {item["evidence_id"]: item for item in output["evidence"]}
     full_loop = evidence_by_id["full_agent_native_loop_20260526"]
@@ -105,7 +106,33 @@ def test_inspect_agent_dogfood_evidence_surfaces_api_loop_and_memory_activation(
         item["capability"]: item for item in output["capability_coverage"]
     }["memory_tree_quality_real_longform_validation"]
     assert quality_coverage["status"] == "covered"
-    assert quality_coverage["evidence_ids"] == ["memory_tree_quality_projection_20260604"]
+    assert quality_coverage["evidence_ids"] == [
+        "memory_tree_quality_projection_20260604",
+        "memory_tree_summary_approval_recheck_20260604",
+    ]
     assert "inspect_agent_memory_tree_quality" in quality_coverage["proven_tools"]
+    memory_tree_summary = evidence_by_id["memory_tree_summary_approval_recheck_20260604"]
+    assert memory_tree_summary["runtime_path"] == "sqlite_temp_copy_dogfood"
+    assert memory_tree_summary["metrics"] == {
+        "memory_tree_summary_before_summary_backed_chapter_nodes": 0,
+        "memory_tree_summary_before_summary_backed_chapter_ratio": 0.0,
+        "memory_tree_summary_before_semantic_probe_matched_count": 0,
+        "memory_tree_summary_materialization_created_nodes": 4,
+        "memory_tree_summary_materialization_updated_nodes": 0,
+        "memory_tree_summary_materialization_volume_nodes": 1,
+        "memory_tree_summary_materialization_chapter_nodes": 3,
+        "memory_tree_summary_approval_verified_count": 1,
+        "memory_tree_summary_after_summary_backed_chapter_nodes": 3,
+        "memory_tree_summary_after_summary_backed_chapter_ratio": 1.0,
+        "memory_tree_summary_after_semantic_probe_matched_count": 1,
+        "memory_tree_summary_after_diagnostic_count": 0,
+    }
+    assert memory_tree_summary["open_findings"] == []
+    summary_coverage = {
+        item["capability"]: item for item in output["capability_coverage"]
+    }["memory_tree_summary_approval_recheck"]
+    assert summary_coverage["status"] == "covered"
+    assert summary_coverage["evidence_ids"] == ["memory_tree_summary_approval_recheck_20260604"]
+    assert "execute_record_agent_memory_tree_summaries_with_approval" in summary_coverage["proven_tools"]
     assert "inspect_agent_health_projection" in output["recommended_next_tools"]
     assert output["trace"]["runtime_behavior_changed"] is False

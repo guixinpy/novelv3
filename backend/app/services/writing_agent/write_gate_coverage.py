@@ -63,6 +63,11 @@ AGENT_PLAN_GATED_TOOLS = {
         "gate_type": "stateless_agent_plan_approval",
         "covered_tools": ["record_agent_trace_anomaly_threshold_config"],
     },
+    "execute_record_agent_memory_tree_summaries_with_approval": {
+        "gate_version": "phase246.memory_tree_summary_agent_plan_approval.v1",
+        "gate_type": "stateless_agent_plan_approval",
+        "covered_tools": ["record_agent_memory_tree_summaries"],
+    },
     "execute_create_revision_draft_with_approval": {
         "gate_version": "phase194.revision_draft_agent_plan_approval.v1",
         "gate_type": "stateless_agent_plan_approval",

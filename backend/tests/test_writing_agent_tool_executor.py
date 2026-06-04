@@ -32,6 +32,7 @@ from app.services.writing_agent.knowledge_base_tool_adapters import (
     build_knowledge_base_agent_tool_adapters,
 )
 from app.services.writing_agent.longform_tool_adapters import build_longform_agent_tool_adapters
+from app.services.writing_agent.memory_tree_tool_adapters import build_memory_tree_tool_adapters
 from app.services.writing_agent.outline_generation_execution import prepare_generate_outline_execution
 from app.services.writing_agent.outline_generation_tool_adapters import build_outline_generation_agent_tool_adapters
 from app.services.writing_agent.review_revision_tool_adapters import REVIEW_REVISION_AGENT_TOOL_ADAPTERS
@@ -341,6 +342,29 @@ def test_agent_task_queue_tool_adapters_live_in_dedicated_module():
     assert (
         AGENT_TASK_QUEUE_TOOL_ADAPTERS["inspect_agent_event_projection"].handler.__name__
         == "_inspect_agent_event_projection"
+    )
+
+
+def test_memory_tree_tool_adapter_builder_adds_summary_approval_chain():
+    adapters = build_memory_tree_tool_adapters(approval_tool_metadata_provider=lambda plan: {})
+    names = list(adapters)
+
+    assert names == [
+        "inspect_agent_memory_tree",
+        "inspect_agent_memory_tree_quality",
+        "record_agent_memory_tree_summaries",
+        "prepare_record_agent_memory_tree_summaries",
+        "execute_record_agent_memory_tree_summaries_with_approval",
+    ]
+    assert adapters["inspect_agent_memory_tree"].mutability == "read"
+    assert adapters["inspect_agent_memory_tree_quality"].mutability == "read"
+    assert adapters["record_agent_memory_tree_summaries"].mutability == "guarded_write"
+    assert adapters["record_agent_memory_tree_summaries"].write_policy == "approval_required_redirect"
+    assert adapters["prepare_record_agent_memory_tree_summaries"].mutability == "read"
+    assert adapters["execute_record_agent_memory_tree_summaries_with_approval"].mutability == "write"
+    assert (
+        adapters["execute_record_agent_memory_tree_summaries_with_approval"].handler.__name__
+        == "_execute_record_agent_memory_tree_summaries_with_approval"
     )
 
 
@@ -4255,8 +4279,8 @@ async def test_tool_executor_handles_inspect_agent_worker_dispatch(db_session):
     }
     assert result.output["route_registry"]["status"] == "passed"
     assert result.output["route_registry"]["summary"] == {
-        "routes": 58,
-        "ready_routes": 58,
+        "routes": 60,
+        "ready_routes": 60,
         "unrouted_allowed_tools": 0,
         "issues": 0,
     }
