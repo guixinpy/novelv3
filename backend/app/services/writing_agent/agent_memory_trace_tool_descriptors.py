@@ -130,6 +130,36 @@ AGENT_MEMORY_TRACE_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(
+        name="inspect_agent_trace_anomaly_long_run_samples",
+        module="writing_agent",
+        category="trace",
+        description="只读检查当前项目是否已有足够长跑 Writing Agent run 样本，可用于后续 Trace 异常阈值复核。",
+        input_schema=object_schema(
+            {
+                "limit": {"type": "integer", "minimum": 1},
+                "minimum_review_run_count": {"type": "integer", "minimum": 1},
+                "chapter_index": {"type": "integer", "minimum": 1},
+            }
+        ),
+        output_schema=object_schema(
+            {
+                "status": {"type": "string"},
+                "filters": {"type": "object"},
+                "sample_collection": {"type": "object"},
+                "review_window": {"type": "object"},
+                "recommended_next_tools": {"type": "array"},
+                "recommended_next_tool_calls": {"type": "array"},
+                "side_effects": {"type": "object"},
+                "trace": {"type": "object"},
+            }
+        ),
+        target_type="agent_trace_anomaly_long_run_samples",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=6,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
         name="inspect_agent_trace_anomaly_threshold_review",
         module="writing_agent",
         category="trace",

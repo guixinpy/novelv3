@@ -31,6 +31,7 @@ _INTENT_RULE_IDS = (
     "agent_event_projection_intent",
     "agent_job_projection_intent",
     "chapter_conflict_recovery_intent",
+    "trace_anomaly_long_run_samples_intent",
     "trace_anomaly_threshold_review_intent",
     "trace_anomaly_trends_intent",
     "trace_audit_intent",
@@ -752,6 +753,20 @@ class IntentRouter:
                 extracted_params={},
                 match_evidence=[{"kind": "pattern", "name": "control_plane_readiness_phrase"}],
                 preconditions=[{"code": "control_plane_readiness_read_available", "passed": True}],
+            )
+
+        if _is_trace_anomaly_long_run_samples_intent(text):
+            extracted_params = _trace_anomaly_long_run_samples_params(text)
+            return self._matched_projection(
+                text,
+                dialog_state,
+                pending_action_id,
+                diagnosis,
+                rule_id="trace_anomaly_long_run_samples_intent",
+                candidate=ActionCandidate("inspect_trace_anomaly_long_run_samples", extracted_params),
+                extracted_params=extracted_params,
+                match_evidence=[{"kind": "pattern", "name": "trace_anomaly_long_run_samples_phrase"}],
+                preconditions=[{"code": "trace_anomaly_long_run_samples_read_available", "passed": True}],
             )
 
         if _is_trace_anomaly_threshold_review_intent(text):
@@ -1907,6 +1922,31 @@ def _is_trace_anomaly_trends_intent(text: str) -> bool:
     )
 
 
+def _is_trace_anomaly_long_run_samples_intent(text: str) -> bool:
+    return bool(
+        re.search(
+            r"(trace|追踪|执行链|链路).*(异常|anomal).*(长跑|long[-\s]*run|dogfood|自吃|真实).*(样本|sample|采集|collection)",
+            text,
+        )
+        or re.search(
+            r"(长跑|long[-\s]*run|dogfood|自吃|真实).*(样本|sample|采集|collection).*(trace|追踪|执行链|链路).*(异常|anomal)",
+            text,
+        )
+        or re.search(
+            r"(trace|追踪|执行链|链路).*(长跑|long[-\s]*run|dogfood|自吃|真实).*(样本|sample|采集|collection)",
+            text,
+        )
+    )
+
+
+def _trace_anomaly_long_run_samples_params(text: str) -> dict[str, Any]:
+    params = _trace_anomaly_trends_params(text)
+    minimum_review_run_count = _minimum_review_run_count_param(text)
+    if minimum_review_run_count is not None:
+        params["minimum_review_run_count"] = minimum_review_run_count
+    return params
+
+
 def _is_trace_anomaly_threshold_review_intent(text: str) -> bool:
     return bool(
         re.search(
@@ -1980,6 +2020,19 @@ def _baseline_limit_param(text: str) -> int | None:
     match = re.search(r"\b(?:baseline|base)\s*[:=：]?\s*(\d+)", text, re.IGNORECASE)
     if not match:
         match = re.search(r"(?:基线|历史|对照)\s*(\d+)\s*(?:个|条|次)?", text)
+    if not match:
+        return None
+    try:
+        parsed = int(match.group(1))
+    except ValueError:
+        return None
+    return parsed if parsed > 0 else None
+
+
+def _minimum_review_run_count_param(text: str) -> int | None:
+    match = re.search(r"\b(?:minimum_review_run_count|min_review_runs|min_samples)\s*[:=：]?\s*(\d+)", text, re.IGNORECASE)
+    if not match:
+        match = re.search(r"(?:最少|至少)\s*(\d+)\s*(?:个|条|次)?(?:复核)?(?:样本|run|运行)", text)
     if not match:
         return None
     try:

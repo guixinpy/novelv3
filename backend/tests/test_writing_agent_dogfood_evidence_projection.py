@@ -43,6 +43,9 @@ def test_inspect_agent_dogfood_evidence_surfaces_api_loop_and_memory_activation(
         "threshold_review_projection_count": 1,
         "threshold_review_intent_count": 1,
         "threshold_review_worker_route_count": 1,
+        "long_run_sample_collection_projection_count": 1,
+        "long_run_sample_collection_intent_count": 1,
+        "long_run_sample_collection_worker_route_count": 1,
         "threshold_calibration_projection_count": 1,
         "threshold_policy_projection_count": 1,
         "drawer_projection_regression_count": 1,
@@ -52,12 +55,13 @@ def test_inspect_agent_dogfood_evidence_surfaces_api_loop_and_memory_activation(
         "false_positive_guard_count": 1,
         "false_negative_guard_count": 1,
     }
-    assert trace_calibration["open_findings"] == ["trace_anomaly_threshold_long_run_sample_collection"]
+    assert trace_calibration["open_findings"] == ["trace_anomaly_threshold_long_run_sample_execution"]
     assert "inspect_agent_trace_anomaly_trends" in trace_calibration["proven_tools"]
+    assert "inspect_agent_trace_anomaly_long_run_samples" in trace_calibration["proven_tools"]
     assert "inspect_agent_trace_anomaly_threshold_review" in trace_calibration["proven_tools"]
     assert "prepare_record_agent_trace_anomaly_threshold_config" in trace_calibration["proven_tools"]
     assert "execute_record_agent_trace_anomaly_threshold_config_with_approval" in trace_calibration["proven_tools"]
-    assert "Threshold Review" in trace_calibration["title"]
+    assert "Long Run Samples" in trace_calibration["title"]
     calibration_coverage = {
         item["capability"]: item for item in output["capability_coverage"]
     }["trace_anomaly_threshold_calibration"]

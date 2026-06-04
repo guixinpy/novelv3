@@ -20,6 +20,7 @@ from app.services.writing_agent.control_plane_readiness_projection import (
 
 AGENT_TRACE_AUDIT_VERSION = "phase73.agent_trace_audit.v1"
 TRACE_ANOMALY_TRENDS_VERSION = "phase78.agent_trace_anomaly_configured_thresholds.v1"
+TRACE_ANOMALY_LONG_RUN_SAMPLES_VERSION = "phase243.agent_trace_anomaly_long_run_samples.v1"
 TRACE_ANOMALY_THRESHOLD_REVIEW_VERSION = "phase242.agent_trace_anomaly_threshold_review.v1"
 DEFAULT_AUDIT_LIMIT = 20
 MAX_AUDIT_LIMIT = 100
@@ -94,6 +95,45 @@ def inspect_agent_trace_anomaly_trends(
             "runs": run_rows,
             "recommended_next_tools": _trace_anomaly_trend_recommendations(_severity_counts(trend.get("severity_counts"))),
             "trace": _anomaly_trends_trace_metadata(),
+        }
+    )
+
+
+def inspect_agent_trace_anomaly_long_run_samples(
+    db: Session,
+    project_id: str,
+    *,
+    limit: int | None = None,
+    chapter_index: int | None = None,
+    minimum_review_run_count: int | None = None,
+) -> dict[str, Any]:
+    _require_project(db, project_id)
+    clamped_limit = _clamp_limit(limit)
+    minimum_count = _minimum_review_run_count(minimum_review_run_count)
+    runs = _recent_runs_for_anomaly_trends(
+        db,
+        project_id,
+        limit=clamped_limit,
+        chapter_index=chapter_index,
+    )
+    collection = _trace_anomaly_long_run_sample_collection(db, project_id, runs, minimum_count)
+    review_window = _trace_anomaly_long_run_review_window(collection, chapter_index)
+    recommended_next_tool_calls = _trace_anomaly_long_run_sample_tool_calls(review_window)
+    return _json_safe_output(
+        {
+            "status": "completed",
+            "project_id": project_id,
+            "filters": {
+                "limit": clamped_limit,
+                "chapter_index": chapter_index,
+                "minimum_review_run_count": minimum_count,
+            },
+            "sample_collection": collection,
+            "review_window": review_window,
+            "recommended_next_tools": _trace_anomaly_long_run_sample_recommendations(recommended_next_tool_calls),
+            "recommended_next_tool_calls": recommended_next_tool_calls,
+            "side_effects": {"executed": [], "skipped": []},
+            "trace": _long_run_samples_trace_metadata(),
         }
     )
 
@@ -1682,12 +1722,93 @@ def _anomaly_trends_trace_metadata() -> dict[str, Any]:
     }
 
 
+def _long_run_samples_trace_metadata() -> dict[str, Any]:
+    return {
+        "source": "inspect_agent_trace_anomaly_long_run_samples",
+        "version": TRACE_ANOMALY_LONG_RUN_SAMPLES_VERSION,
+        "mutability": "read",
+    }
+
+
 def _threshold_review_trace_metadata() -> dict[str, Any]:
     return {
         "source": "inspect_agent_trace_anomaly_threshold_review",
         "version": TRACE_ANOMALY_THRESHOLD_REVIEW_VERSION,
         "mutability": "read",
     }
+
+
+def _trace_anomaly_long_run_sample_collection(
+    db: Session,
+    project_id: str,
+    runs: list[WritingAgentRun],
+    minimum_review_run_count: int,
+) -> dict[str, Any]:
+    status_counts: Counter[str] = Counter()
+    entrypoint_counts: Counter[str] = Counter()
+    chapter_indexes: set[int] = set()
+    step_count = 0
+    candidate_run_count = 0
+    for run in runs:
+        steps = (
+            db.query(WritingAgentStep)
+            .filter(WritingAgentStep.project_id == project_id, WritingAgentStep.run_id == run.id)
+            .all()
+        )
+        if not steps:
+            continue
+        candidate_run_count += 1
+        step_count += len(steps)
+        status_counts[str(run.status or "unknown")] += 1
+        entrypoint_counts[str(run.entrypoint or "unknown")] += 1
+        for step in steps:
+            if step.chapter_index is not None:
+                chapter_indexes.add(int(step.chapter_index))
+    missing_run_count = max(0, minimum_review_run_count - candidate_run_count)
+    return {
+        "status": "ready_for_threshold_review" if missing_run_count == 0 else "collecting_samples",
+        "candidate_run_count": candidate_run_count,
+        "minimum_review_run_count": minimum_review_run_count,
+        "missing_run_count": missing_run_count,
+        "step_count": step_count,
+        "status_counts": dict(sorted(status_counts.items())),
+        "entrypoint_counts": dict(sorted(entrypoint_counts.items())),
+        "chapter_indexes": sorted(chapter_indexes),
+    }
+
+
+def _trace_anomaly_long_run_review_window(
+    collection: dict[str, Any],
+    chapter_index: int | None,
+) -> dict[str, Any]:
+    if collection.get("status") != "ready_for_threshold_review":
+        return {}
+    minimum_count = _non_negative_int(collection.get("minimum_review_run_count"))
+    recent_limit = max(1, minimum_count // 2)
+    baseline_limit = max(1, minimum_count - recent_limit)
+    window: dict[str, Any] = {"limit": recent_limit, "baseline_limit": baseline_limit}
+    if chapter_index is not None:
+        window["chapter_index"] = chapter_index
+    return window
+
+
+def _trace_anomaly_long_run_sample_tool_calls(review_window: dict[str, Any]) -> list[dict[str, Any]]:
+    if not review_window:
+        return []
+    return [
+        {
+            "tool_name": "inspect_agent_trace_anomaly_threshold_review",
+            "params": dict(review_window),
+        }
+    ]
+
+
+def _trace_anomaly_long_run_sample_recommendations(
+    recommended_next_tool_calls: list[dict[str, Any]],
+) -> list[str]:
+    if recommended_next_tool_calls:
+        return ["inspect_agent_trace_anomaly_threshold_review", "inspect_agent_dogfood_evidence"]
+    return ["plan_writing_agent_run", "inspect_agent_dogfood_evidence"]
 
 
 def _trace_anomaly_threshold_review_summary(
@@ -1758,6 +1879,12 @@ def _clamp_limit(limit: int | None) -> int:
     if limit is None:
         return DEFAULT_AUDIT_LIMIT
     return min(max(int(limit), 1), MAX_AUDIT_LIMIT)
+
+
+def _minimum_review_run_count(value: int | None) -> int:
+    if value is None:
+        return TRACE_ANOMALY_POLICY_MIN_REVIEW_RUN_COUNT
+    return max(int(value), 1)
 
 
 def _json_safe_output(output: dict[str, Any]) -> dict[str, Any]:

@@ -262,6 +262,10 @@ def test_worker_dispatch_routes_observability_and_dogfood_evidence_to_recovery_w
                 "params": {"run_id": "run-trace"},
             },
             {
+                "tool_name": "inspect_agent_trace_anomaly_long_run_samples",
+                "params": {"chapter_index": 4},
+            },
+            {
                 "tool_name": "inspect_agent_job_projection",
                 "params": {"chapter_index": 8},
             },
@@ -278,11 +282,12 @@ def test_worker_dispatch_routes_observability_and_dogfood_evidence_to_recovery_w
     )
 
     assert preview["status"] == "ready"
-    assert preview["summary"] == {"workers": 1, "planned_tasks": 4, "blocked_tasks": 0, "issues": 0}
+    assert preview["summary"] == {"workers": 1, "planned_tasks": 5, "blocked_tasks": 0, "issues": 0}
     dispatch = preview["worker_dispatches"][0]
     assert dispatch["worker"]["name"] == "recovery_worker"
     assert [item["tool_name"] for item in dispatch["task_envelopes"]] == [
         "inspect_agent_trace_audit",
+        "inspect_agent_trace_anomaly_long_run_samples",
         "inspect_agent_job_projection",
         "inspect_agent_dogfood_evidence",
         "apply_agent_worker_orphan_recovery",
@@ -320,7 +325,7 @@ def test_worker_route_registry_audit_binds_routes_to_allowed_worker_definitions(
 
     assert audit["version"] == AGENT_WORKER_ROUTE_REGISTRY_AUDIT_VERSION
     assert audit["status"] == "passed"
-    assert audit["summary"] == {"routes": 56, "ready_routes": 56, "unrouted_allowed_tools": 0, "issues": 0}
+    assert audit["summary"] == {"routes": 57, "ready_routes": 57, "unrouted_allowed_tools": 0, "issues": 0}
     assert audit["issues"] == []
     assert audit["unrouted_allowed_tools"] == []
 
@@ -337,6 +342,7 @@ def test_worker_route_registry_audit_binds_routes_to_allowed_worker_definitions(
     assert routes_by_tool["execute_generate_outline_with_approval"]["worker"] == "drafting_worker"
     assert routes_by_tool["inspect_agent_trace_audit"]["worker"] == "recovery_worker"
     assert routes_by_tool["inspect_agent_trace_anomaly_trends"]["worker"] == "recovery_worker"
+    assert routes_by_tool["inspect_agent_trace_anomaly_long_run_samples"]["worker"] == "recovery_worker"
     assert routes_by_tool["inspect_agent_trace_anomaly_threshold_review"]["worker"] == "recovery_worker"
     assert routes_by_tool["record_agent_trace_anomaly_threshold_config"]["worker"] == "recovery_worker"
     assert routes_by_tool["prepare_record_agent_trace_anomaly_threshold_config"]["worker"] == "recovery_worker"
