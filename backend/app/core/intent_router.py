@@ -301,6 +301,20 @@ class IntentRouter:
                 preconditions=[{"code": "recovery_preview_available", "passed": True}],
             )
 
+        if _is_memory_tree_llm_candidate_inspection_intent(text):
+            extracted_params = _memory_tree_llm_candidate_inspection_params(text)
+            return self._matched_projection(
+                text,
+                dialog_state,
+                pending_action_id,
+                diagnosis,
+                rule_id="memory_tree_llm_candidate_inspection_intent",
+                candidate=ActionCandidate("inspect_memory_tree_llm_candidates", extracted_params),
+                extracted_params=extracted_params,
+                match_evidence=[{"kind": "pattern", "name": "memory_tree_llm_candidate_inspection_phrase"}],
+                preconditions=[{"code": "memory_tree_llm_candidate_trace_read_available", "passed": True}],
+            )
+
         if _is_memory_tree_llm_summary_candidate_intent(text):
             extracted_params = _memory_tree_llm_summary_plan_params(text)
             return self._matched_projection(
@@ -1093,6 +1107,29 @@ def _is_memory_tree_llm_summary_candidate_intent(text: str) -> bool:
         or re.search(rf"{llm_phrase}.*{memory_tree_phrase}.*{candidate_phrase}", text)
         or re.search(rf"{candidate_phrase}.*{memory_tree_phrase}.*{llm_phrase}", text)
     )
+
+
+def _is_memory_tree_llm_candidate_inspection_intent(text: str) -> bool:
+    memory_tree_phrase = r"(记忆树|分层记忆|memory\s*tree|长期记忆)"
+    llm_phrase = r"(llm|模型|语义|ai)"
+    candidate_phrase = r"(摘要候选|summary\s*candidate|candidate)"
+    inspect_phrase = r"(查看|检查|列出|复核|读取|inspect|show|list)"
+    return bool(
+        re.search(rf"{inspect_phrase}.*{memory_tree_phrase}.*{llm_phrase}.*{candidate_phrase}", text)
+        or re.search(rf"{memory_tree_phrase}.*{llm_phrase}.*{candidate_phrase}.*{inspect_phrase}", text)
+        or re.search(rf"{candidate_phrase}.*{memory_tree_phrase}.*{llm_phrase}.*{inspect_phrase}", text)
+    )
+
+
+def _memory_tree_llm_candidate_inspection_params(text: str) -> dict[str, Any]:
+    params: dict[str, Any] = {}
+    chapter_index = parse_chapter_index(text)
+    if chapter_index is not None:
+        params["chapter_index"] = chapter_index
+    limit = _numeric_option(text, r"limit|限制|最多|条数")
+    if limit is not None:
+        params["limit"] = limit
+    return params
 
 
 def _memory_tree_llm_summary_plan_params(text: str) -> dict[str, Any]:

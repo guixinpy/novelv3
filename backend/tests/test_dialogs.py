@@ -345,6 +345,40 @@ def test_intent_router_projection_explains_memory_tree_llm_summary_candidate_rou
     assert projection["extracted_params"] == {"chapter_index": 2, "query": "灯塔旧回声", "max_source_chars": 180}
 
 
+def test_intent_router_projection_explains_memory_tree_llm_candidate_inspection_route():
+    router = IntentRouter()
+    diag = ProjectDiagnosisOut(
+        missing_items=[],
+        completed_items=["setup", "storyline", "outline", "content"],
+        suggested_next_step="preview_chapter",
+    )
+
+    projection = router.project("查看第2章记忆树 LLM 摘要候选 limit 3", "chatting", None, diag).to_dict()
+
+    assert projection["status"] == "matched"
+    assert projection["rule_id"] == "memory_tree_llm_candidate_inspection_intent"
+    assert projection["decision"]["rule_id"] == "memory_tree_llm_candidate_inspection_intent"
+    assert projection["decision"]["match_evidence"] == [
+        {"kind": "pattern", "name": "memory_tree_llm_candidate_inspection_phrase"}
+    ]
+    assert projection["candidate"] == {
+        "type": "inspect_memory_tree_llm_candidates",
+        "params": {"chapter_index": 2, "limit": 3},
+    }
+    assert projection["agent_route"] == _expected_agent_route(
+        "text_intent",
+        "inspect_memory_tree_llm_candidates",
+        "inspect_agent_memory_tree_llm_candidates",
+        requires_confirmation=False,
+    )
+    assert projection["tool_selection"] == {
+        "selected_tool": "inspect_agent_memory_tree_llm_candidates",
+        "why_this_tool": "dialog_action_to_agent_tool.inspect_memory_tree_llm_candidates",
+        "availability_checked": False,
+    }
+    assert projection["extracted_params"] == {"chapter_index": 2, "limit": 3}
+
+
 def test_intent_router_projection_explains_memory_route():
     router = IntentRouter()
     diag = ProjectDiagnosisOut(

@@ -89,7 +89,7 @@
 - [x] Memory Tree 层级语义回流：过滤到 volume/chapter 等上层节点时，可用 scene/beat 后代强匹配回流召回父节点，并抑制低分单字噪声
 - [x] Memory Tree 质量审计与复核：inspect_agent_memory_tree_quality 可只读报告节点覆盖、摘要支撑、semantic probe、诊断和推荐后续；真实 dogfood 已暴露 summary backing 与 semantic probe 缺口，隔离副本通过审批式摘要物化后复核为 ready
 - [x] Memory Tree LLM 摘要计划：build_agent_memory_tree_llm_summary_plan 可只读生成章级 evidence window、Trace-required prompt contract、quality precheck/postcheck 和审批式物化后续；真实 dogfood 可把 `灯塔旧回声` 缺口转成 3 个来源/848 字证据窗口，不执行模型调用或写入
-- [x] Memory Tree LLM 摘要候选 Trace：summarize_agent_memory_tree_llm_candidate 可复用摘要计划证据窗口，执行 `memory_tree_summary_generation` Trace 并返回候选摘要/关键词/开放问题/来源覆盖；临时 dogfood 副本 + fake model 已证明 trace success、3 个 context block、0 个章级摘要记忆写入
+- [x] Memory Tree LLM 摘要候选 Trace：summarize_agent_memory_tree_llm_candidate 可复用摘要计划证据窗口，执行 `memory_tree_summary_generation` Trace，把候选摘要/关键词/开放问题/来源覆盖写入 Trace metadata 并返回候选；inspect_agent_memory_tree_llm_candidates 可按章节读回候选；临时 dogfood 副本 + fake model 已证明 trace success、候选读回、0 个章级摘要记忆写入
 - [x] Memory Tree 写前激活：build_memory_activation_plan 可将高 relevance Memory Tree 节点纳入 activation.memory_tree，并保留未来章节防泄漏
 - [x] Memory Route 对话入口：自然语言“检查第 N 章长篇记忆路由/检索维护状态”可投影为 inspect_agent_memory_route 只读工具计划；AgentRunDrawer 可展示长篇记忆/检索/维护安全摘要和诊断信息
 - [x] Memory Activation Plan 对话入口：自然语言“检查第 N 章记忆激活计划：<query>”可投影为 inspect_agent_memory_activation_plan 只读工具计划；AgentRunDrawer 可展示写前激活桶、覆盖债务、风险和推荐工具的安全摘要
@@ -110,11 +110,11 @@
 | P1 | Memory Tree 语义浏览 | Agent 能通过工具浏览 Tree：展开/收起/搜索 | ✅ 已完成（基础浏览） |
 | P2 | 世界模型 L5 语义检查 | 至少实现一个 LLM 驱动的语义一致性检查 | 🔴 待开始 |
 | P3 | 检索策略智能化 | Agent 根据上下文自主选择检索策略 | 🔴 待开始 |
-| P4 | Memory Tree 语义召回/摘要质量增强 | 接入向量/LLM 摘要或真实长篇验证，不只依赖确定性摘要和文本匹配 | 🟡 进行中（层级 relevance + 写前激活基础 + quality baseline + 审批式 materialize/recheck + LLM-ready summary plan + traced fake-model candidate；后续补真实模型质量验证/候选持久化审批/向量召回） |
+| P4 | Memory Tree 语义召回/摘要质量增强 | 接入向量/LLM 摘要或真实长篇验证，不只依赖确定性摘要和文本匹配 | 🟡 进行中（层级 relevance + 写前激活基础 + quality baseline + 审批式 materialize/recheck + LLM-ready summary plan + traced fake-model candidate + Trace 候选读回；后续补真实模型质量验证/候选审批式物化/向量召回） |
 
 ### 阻塞项
 
-- Memory Tree 摘要质量已有真实长篇闭环证据：原始 `data/agent_native_dogfood_20260526.db` 仍报告 `memory_tree_summary_gap` 与 `memory_tree_semantic_probe_miss`，但临时副本通过 `prepare_record_agent_memory_tree_summaries` → `execute_record_agent_memory_tree_summaries_with_approval` 物化 1 个卷摘要和 3 个章摘要后，`inspect_agent_memory_tree_quality` 复核为 ready；`build_agent_memory_tree_llm_summary_plan` 已能在原始 DB 上只读生成 Trace-required LLM 摘要计划，`summarize_agent_memory_tree_llm_candidate` 已在临时副本上用 fake model 跑通 trace/candidate 路径并保持 0 记忆写入。下一步应接入真实模型质量验证、候选持久化审批或向量召回，而不是扩大直接写入口。
+- Memory Tree 摘要质量已有真实长篇闭环证据：原始 `data/agent_native_dogfood_20260526.db` 仍报告 `memory_tree_summary_gap` 与 `memory_tree_semantic_probe_miss`，但临时副本通过 `prepare_record_agent_memory_tree_summaries` → `execute_record_agent_memory_tree_summaries_with_approval` 物化 1 个卷摘要和 3 个章摘要后，`inspect_agent_memory_tree_quality` 复核为 ready；`build_agent_memory_tree_llm_summary_plan` 已能在原始 DB 上只读生成 Trace-required LLM 摘要计划，`summarize_agent_memory_tree_llm_candidate` 已在临时副本上用 fake model 跑通 trace/candidate 路径并保持 0 记忆写入，`inspect_agent_memory_tree_llm_candidates` 已能从 Trace metadata 读回候选。下一步应接入真实模型质量验证、候选审批式物化或向量召回，而不是扩大直接写入口。
 
 ### 最近完成
 
@@ -123,7 +123,7 @@
 - 2026-06-04: `record_agent_memory_tree_summaries` 直接写入口改为 approval redirect，新增 `prepare_record_agent_memory_tree_summaries` 与 `execute_record_agent_memory_tree_summaries_with_approval`；execute 会在审批契约、mutation fingerprint 与 resource binding 验证后物化摘要，并立即返回 `post_materialization_quality` 复核结果。
 - 2026-06-04: `inspect_agent_dogfood_evidence` 新增 `memory_tree_summary_approval_recheck_20260604` 证据：在真实 dogfood DB 临时副本中，审批式物化创建 4 个摘要节点，summary-backed chapter 从 0/3 提升到 3/3，`灯塔旧回声` semantic probe 从 missing_match 变为 matched，quality diagnostics 清零。
 - 2026-06-04: 新增 `build_agent_memory_tree_llm_summary_plan` 只读工具和自然语言入口“构建第 N 章记忆树 LLM 摘要计划 query=<query> max_chars <n>”，输出 evidence window、`memory_tree_summary_generation` Trace 契约、quality precheck/postcheck 和审批式物化后续；`inspect_agent_dogfood_evidence` 新增 `memory_tree_llm_summary_plan_20260604`，记录真实 dogfood 第 2 章可生成 3 个来源/848 字证据窗口且 side effects 为 0。
-- 2026-06-04: 新增 `summarize_agent_memory_tree_llm_candidate` 只读业务工具和自然语言入口“生成第 N 章记忆树 LLM 摘要候选 query=<query> max_chars <n>”，复用 LLM 摘要计划证据窗口执行 `memory_tree_summary_generation` Trace 并返回候选；`inspect_agent_dogfood_evidence` 新增 `memory_tree_llm_summary_candidate_20260604`，记录真实 dogfood 临时副本 + fake model 跑出 3 个 context block、trace success、候选 ready 且 memory_tree_chapter_summary 写入数保持 0。
+- 2026-06-04: 新增 `summarize_agent_memory_tree_llm_candidate` 只读业务工具和自然语言入口“生成第 N 章记忆树 LLM 摘要候选 query=<query> max_chars <n>”，复用 LLM 摘要计划证据窗口执行 `memory_tree_summary_generation` Trace，候选会写入 Trace metadata 并返回；新增 `inspect_agent_memory_tree_llm_candidates` 只读工具和“查看第 N 章记忆树 LLM 摘要候选 limit <n>”入口，可按章节从 Trace metadata 读回候选；`inspect_agent_dogfood_evidence` 的 `memory_tree_llm_summary_candidate_20260604` 记录真实 dogfood 临时副本 + fake model 跑出 3 个 context block、trace success、候选 ready、trace id 读回匹配且 memory_tree_chapter_summary 写入数保持 0。
 - 2026-06-02: `plan_post_chapter_memory_capture` 接入对话只读意图链路：Agent 可从自然语言直接规划章节后长期记忆/知识库候选沉淀，保留 chapter_index，并在有审稿证据时继续推荐 `prepare_record_agent_knowledge_base_candidate`。
 - 2026-06-02: `inspect_agent_knowledge_base_route` 接入对话只读意图链路：Agent 可从自然语言直接读取作者偏好、项目策略、学习规则、知识库候选和写法参考路由，支持 chapter_index、query、limit 的确定性抽取。
 - 2026-06-02: `search_agent_retrieval_context` 与 `summarize_longform_context` 接入对话只读意图链路：Agent 可从自然语言直接检索上下文证据或汇总指定章节长篇上下文，支持 query、limit、max_chapter_index、max_chars 和 include_prompt_context 等确定性参数抽取。
@@ -147,6 +147,7 @@
 - [x] Memory Tree 质量审计意图：自然语言“检查第 N 章记忆树质量 query=<query>”可投影为 inspect_agent_memory_tree_quality 只读工具计划
 - [x] Memory Tree LLM 摘要计划意图：自然语言“构建第 N 章记忆树 LLM 摘要计划 query=<query> max_chars <n>”可投影为 build_agent_memory_tree_llm_summary_plan 只读工具计划
 - [x] Memory Tree LLM 摘要候选意图：自然语言“生成第 N 章记忆树 LLM 摘要候选 query=<query> max_chars <n>”可投影为 summarize_agent_memory_tree_llm_candidate 只读工具计划
+- [x] Memory Tree LLM 摘要候选检查意图：自然语言“查看第 N 章记忆树 LLM 摘要候选 limit <n>”可投影为 inspect_agent_memory_tree_llm_candidates 只读工具计划
 - [x] Memory Route 只读诊断意图：自然语言“检查第3章长篇记忆路由，包含上下文摘要”可投影为 inspect_agent_memory_route 只读工具计划，Memory Route run 可在 AgentRunDrawer 展示安全摘要
 - [x] Memory Activation Plan 只读诊断意图：自然语言“检查第3章记忆激活计划：灯塔旧回声”可投影为 inspect_agent_memory_activation_plan 只读工具计划，Memory Activation Plan run 可在 AgentRunDrawer 展示安全摘要
 - [x] Knowledge Base Route 只读诊断意图：自然语言“检查第4章知识库路由 query=写法偏好 limit 9”可投影为 inspect_agent_knowledge_base_route 只读工具计划

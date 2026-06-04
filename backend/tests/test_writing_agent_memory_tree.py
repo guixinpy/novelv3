@@ -10,6 +10,7 @@ from app.services.writing_agent.memory_tree import (
     MEMORY_TREE_VOLUME_SUMMARY_TYPE,
     build_agent_memory_tree_llm_summary_plan,
     inspect_agent_memory_tree,
+    inspect_agent_memory_tree_llm_candidates,
     inspect_agent_memory_tree_quality,
     materialize_agent_memory_tree_summaries,
     summarize_agent_memory_tree_llm_candidate,
@@ -322,6 +323,7 @@ async def test_memory_tree_llm_summary_candidate_records_trace_without_memory_wr
     assert trace.messages[1]["role"] == "user"
     assert trace.context_blocks[0]["kind"] == "chapter_content"
     assert trace.trace_metadata["memory_tree_llm_summary_candidate"]["source_count"] >= 2
+    assert trace.trace_metadata["memory_tree_llm_summary_candidate"]["candidate"] == output["candidate"]
     assert (
         db_session.query(LongformMemory)
         .filter(
@@ -331,6 +333,62 @@ async def test_memory_tree_llm_summary_candidate_records_trace_without_memory_wr
         .count()
         == 0
     )
+
+
+@pytest.mark.asyncio
+async def test_memory_tree_llm_candidate_trace_inspection_lists_persisted_candidates(db_session):
+    project, _refs = _seed_memory_tree_project(db_session)
+    ai_service = _FakeMemoryTreeAIService(
+        '{"summary":"顾衍保留灯塔旧回声线索，蓝焰证词仍待复核。",'
+        '"salient_terms":["灯塔旧回声","蓝焰证词"],'
+        '"open_questions":["蓝焰证词是否可靠？"],'
+        '"source_coverage":["chapter_content","outline"]}'
+    )
+    generated = await summarize_agent_memory_tree_llm_candidate(
+        db_session,
+        project.id,
+        chapter_index=2,
+        query="蓝焰证词",
+        max_source_chars=220,
+        ai_service=ai_service,
+    )
+
+    output = inspect_agent_memory_tree_llm_candidates(
+        db_session,
+        project.id,
+        chapter_index=2,
+        limit=3,
+    )
+
+    assert output["status"] == "ready"
+    assert output["summary"] == {"candidate_traces": 1, "ready_candidates": 1}
+    assert output["filters"] == {"chapter_index": 2, "limit": 3}
+    assert output["candidates"] == [
+        {
+            "trace_id": generated["trace"]["trace_id"],
+            "trace_status": "success",
+            "chapter_index": 2,
+            "model": "deepseek-chat",
+            "prompt_tokens": 11,
+            "completion_tokens": 7,
+            "summary_target": generated["summary_target"],
+            "candidate": generated["candidate"],
+            "source_count": generated["evidence_window"]["source_count"],
+            "source_chars": generated["evidence_window"]["source_chars"],
+            "quality_precheck_status": "degraded",
+        }
+    ]
+    assert output["recommended_next_tools"] == [
+        "prepare_record_agent_memory_tree_summaries",
+        "execute_record_agent_memory_tree_summaries_with_approval",
+        "inspect_agent_memory_tree_quality",
+    ]
+    assert output["trace"] == {
+        "source": "inspect_agent_memory_tree_llm_candidates",
+        "version": "phase249.memory_tree_llm_candidate_inspection.v1",
+        "mutability": "read",
+        "runtime_behavior_changed": False,
+    }
 
 
 @pytest.mark.asyncio
@@ -547,6 +605,34 @@ async def test_summarize_memory_tree_llm_candidate_tool_reports_traced_candidate
     assert fake_ai_service.closed is True
 
 
+@pytest.mark.asyncio
+async def test_inspect_memory_tree_llm_candidates_tool_reports_trace_metadata(db_session, monkeypatch):
+    project, _refs = _seed_memory_tree_project(db_session)
+    fake_ai_service = _FakeMemoryTreeAIService('{"summary":"灯塔候选可复核。"}')
+    monkeypatch.setattr("app.services.writing_agent.memory_tree.AIService", lambda: fake_ai_service)
+    generated = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-memory-tree-llm-candidate"),
+        WritingAgentToolRequest(
+            tool_name="summarize_agent_memory_tree_llm_candidate",
+            params={"chapter_index": 2, "query": "灯塔旧回声", "max_source_chars": 180},
+        ),
+    )
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-memory-tree-llm-candidate-inspect"),
+        WritingAgentToolRequest(
+            tool_name="inspect_agent_memory_tree_llm_candidates",
+            params={"chapter_index": 2, "limit": 2},
+        ),
+    )
+
+    assert generated.output["trace"]["trace_id"]
+    assert result.handled is True
+    assert result.output["status"] == "ready"
+    assert result.output["candidates"][0]["trace_id"] == generated.output["trace"]["trace_id"]
+    assert result.output["candidates"][0]["candidate"]["summary"] == "灯塔候选可复核。"
+
+
 def test_memory_tree_tool_is_registered_with_read_metadata():
     descriptor = get_agent_tool_descriptor("inspect_agent_memory_tree")
     metadata = writing_agent_tool_adapter_metadata("inspect_agent_memory_tree")
@@ -620,6 +706,25 @@ def test_memory_tree_llm_summary_candidate_tool_is_registered_with_read_metadata
         "category": "longform_memory",
         "mutability": "read",
         "handler_name": "_summarize_agent_memory_tree_llm_candidate",
+    }
+
+
+def test_memory_tree_llm_candidate_inspection_tool_is_registered_with_read_metadata():
+    descriptor = get_agent_tool_descriptor("inspect_agent_memory_tree_llm_candidates")
+    metadata = writing_agent_tool_adapter_metadata("inspect_agent_memory_tree_llm_candidates")
+
+    assert descriptor is not None
+    assert descriptor.category == "longform_memory"
+    assert descriptor.target_type == "agent_memory_tree_llm_summary_candidate_trace"
+    assert descriptor.non_blocking_report is True
+    assert descriptor.input_schema["properties"]["limit"]["minimum"] == 1
+    assert descriptor.output_schema["properties"]["candidates"]["type"] == "array"
+    assert metadata == {
+        "tool_name": "inspect_agent_memory_tree_llm_candidates",
+        "adapter_type": "static",
+        "category": "longform_memory",
+        "mutability": "read",
+        "handler_name": "_inspect_agent_memory_tree_llm_candidates",
     }
 
 

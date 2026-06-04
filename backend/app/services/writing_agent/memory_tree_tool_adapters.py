@@ -51,6 +51,20 @@ def _build_agent_memory_tree_llm_summary_plan(
     )
 
 
+def _inspect_agent_memory_tree_llm_candidates(
+    context: WritingAgentToolContext,
+    tool: WritingAgentToolRequest,
+) -> dict[str, Any]:
+    from app.services.writing_agent.memory_tree import inspect_agent_memory_tree_llm_candidates
+
+    return inspect_agent_memory_tree_llm_candidates(
+        context.db,
+        context.project_id,
+        chapter_index=_optional_int(tool.params.get("chapter_index")),
+        limit=_optional_int(tool.params.get("limit")),
+    )
+
+
 async def _summarize_agent_memory_tree_llm_candidate(
     context: WritingAgentToolContext,
     tool: WritingAgentToolRequest,
@@ -175,6 +189,12 @@ MEMORY_TREE_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
     "summarize_agent_memory_tree_llm_candidate": WritingAgentToolAdapter(
         "summarize_agent_memory_tree_llm_candidate",
         _summarize_agent_memory_tree_llm_candidate,
+        category="longform_memory",
+        mutability="read",
+    ),
+    "inspect_agent_memory_tree_llm_candidates": WritingAgentToolAdapter(
+        "inspect_agent_memory_tree_llm_candidates",
+        _inspect_agent_memory_tree_llm_candidates,
         category="longform_memory",
         mutability="read",
     ),

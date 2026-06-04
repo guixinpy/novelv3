@@ -13,13 +13,14 @@ from app.core.model_call_trace import (
     mark_trace_success,
     now_ms,
 )
-from app.models import ChapterContent, LongformMemory, Outline, Project, Storyline
+from app.models import AIModelCallTrace, ChapterContent, LongformMemory, Outline, Project, Storyline
 
 MEMORY_TREE_VERSION = "phase238.memory_tree_browsing.v1"
 MEMORY_TREE_SUMMARY_MATERIALIZATION_VERSION = "phase237.memory_tree_summary_materialization.v1"
 MEMORY_TREE_QUALITY_VERSION = "phase245.memory_tree_quality.v1"
 MEMORY_TREE_LLM_SUMMARY_PLAN_VERSION = "phase247.memory_tree_llm_summary_plan.v1"
 MEMORY_TREE_LLM_SUMMARY_CANDIDATE_VERSION = "phase248.memory_tree_llm_summary_candidate.v1"
+MEMORY_TREE_LLM_CANDIDATE_INSPECTION_VERSION = "phase249.memory_tree_llm_candidate_inspection.v1"
 MEMORY_TREE_LEVELS = ["volume", "chapter", "scene", "beat"]
 MEMORY_TREE_VOLUME_SUMMARY_TYPE = "memory_tree_volume_summary"
 MEMORY_TREE_CHAPTER_SUMMARY_TYPE = "memory_tree_chapter_summary"
@@ -213,6 +214,47 @@ def build_agent_memory_tree_llm_summary_plan(
     }
 
 
+def inspect_agent_memory_tree_llm_candidates(
+    db: Session,
+    project_id: str,
+    *,
+    chapter_index: int | None = None,
+    limit: int | None = None,
+) -> dict[str, Any]:
+    normalized_limit = _clamp_candidate_limit(limit)
+    query = db.query(AIModelCallTrace).filter(
+        AIModelCallTrace.project_id == project_id,
+        AIModelCallTrace.trace_type == "memory_tree_summary_generation",
+    )
+    if chapter_index is not None:
+        query = query.filter(AIModelCallTrace.chapter_index == int(chapter_index))
+    traces = (
+        query.order_by(AIModelCallTrace.created_at.desc(), AIModelCallTrace.id.desc())
+        .limit(normalized_limit)
+        .all()
+    )
+    candidates = [_llm_candidate_trace_summary(trace) for trace in traces]
+    ready_count = sum(1 for item in candidates if item.get("candidate", {}).get("summary"))
+    return {
+        "version": MEMORY_TREE_LLM_CANDIDATE_INSPECTION_VERSION,
+        "status": "ready" if candidates else "empty",
+        "project_id": project_id,
+        "filters": {"chapter_index": chapter_index, "limit": normalized_limit},
+        "summary": {
+            "candidate_traces": len(candidates),
+            "ready_candidates": ready_count,
+        },
+        "candidates": candidates,
+        "recommended_next_tools": _llm_candidate_inspection_recommendations(candidates),
+        "trace": {
+            "source": "inspect_agent_memory_tree_llm_candidates",
+            "version": MEMORY_TREE_LLM_CANDIDATE_INSPECTION_VERSION,
+            "mutability": "read",
+            "runtime_behavior_changed": False,
+        },
+    }
+
+
 async def summarize_agent_memory_tree_llm_candidate(
     db: Session,
     project_id: str,
@@ -308,6 +350,14 @@ async def summarize_agent_memory_tree_llm_candidate(
             response_format={"type": "json_object"},
         )
         candidate = _parse_llm_summary_candidate(getattr(result, "content", "") or "")
+        trace.trace_metadata = {
+            **(trace.trace_metadata or {}),
+            "memory_tree_llm_summary_candidate": {
+                **((trace.trace_metadata or {}).get("memory_tree_llm_summary_candidate") or {}),
+                "candidate_status": "ready" if candidate["summary"] else "empty",
+                "candidate": candidate,
+            },
+        }
         mark_trace_success(
             db,
             trace,
@@ -1167,6 +1217,54 @@ def _clamp_source_chars(value: int | None) -> int:
     if value is None:
         return DEFAULT_LLM_SUMMARY_SOURCE_CHARS
     return max(MIN_LLM_SUMMARY_SOURCE_CHARS, min(MAX_LLM_SUMMARY_SOURCE_CHARS, int(value)))
+
+
+def _clamp_candidate_limit(value: int | None) -> int:
+    if value is None:
+        return 5
+    return max(1, min(20, int(value)))
+
+
+def _llm_candidate_trace_summary(trace: AIModelCallTrace) -> dict[str, Any]:
+    metadata = trace.trace_metadata if isinstance(trace.trace_metadata, dict) else {}
+    candidate_metadata = metadata.get("memory_tree_llm_summary_candidate")
+    if not isinstance(candidate_metadata, dict):
+        candidate_metadata = {}
+    candidate = candidate_metadata.get("candidate")
+    if not isinstance(candidate, dict):
+        candidate = {}
+    return {
+        "trace_id": trace.id,
+        "trace_status": trace.status,
+        "chapter_index": trace.chapter_index,
+        "model": trace.model,
+        "prompt_tokens": trace.prompt_tokens,
+        "completion_tokens": trace.completion_tokens,
+        "summary_target": candidate_metadata.get("summary_target") if isinstance(candidate_metadata.get("summary_target"), dict) else {},
+        "candidate": _normalise_candidate_payload(candidate),
+        "source_count": _optional_int(candidate_metadata.get("source_count")) or 0,
+        "source_chars": _optional_int(candidate_metadata.get("source_chars")) or 0,
+        "quality_precheck_status": str(candidate_metadata.get("quality_precheck_status") or ""),
+    }
+
+
+def _normalise_candidate_payload(candidate: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "summary": str(candidate.get("summary") or "").strip(),
+        "salient_terms": _string_list(candidate.get("salient_terms")),
+        "open_questions": _string_list(candidate.get("open_questions")),
+        "source_coverage": _string_list(candidate.get("source_coverage")),
+    }
+
+
+def _llm_candidate_inspection_recommendations(candidates: list[dict[str, Any]]) -> list[str]:
+    if not candidates:
+        return ["summarize_agent_memory_tree_llm_candidate", "build_agent_memory_tree_llm_summary_plan"]
+    return [
+        "prepare_record_agent_memory_tree_summaries",
+        "execute_record_agent_memory_tree_summaries_with_approval",
+        "inspect_agent_memory_tree_quality",
+    ]
 
 
 def _llm_summary_evidence_sources(

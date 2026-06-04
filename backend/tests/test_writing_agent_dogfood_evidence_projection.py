@@ -162,6 +162,8 @@ def test_inspect_agent_dogfood_evidence_surfaces_api_loop_and_memory_activation(
         "memory_tree_llm_summary_candidate_source_chars": 848,
         "memory_tree_llm_summary_candidate_trace_success_count": 1,
         "memory_tree_llm_summary_candidate_context_block_count": 3,
+        "memory_tree_llm_summary_candidate_inspection_count": 1,
+        "memory_tree_llm_summary_candidate_trace_match_count": 1,
         "memory_tree_llm_summary_candidate_summary_chars": 49,
         "memory_tree_llm_summary_candidate_open_question_count": 1,
         "memory_tree_llm_summary_candidate_side_effect_count": 1,
@@ -174,5 +176,6 @@ def test_inspect_agent_dogfood_evidence_surfaces_api_loop_and_memory_activation(
     assert llm_summary_candidate_coverage["status"] == "covered"
     assert llm_summary_candidate_coverage["evidence_ids"] == ["memory_tree_llm_summary_candidate_20260604"]
     assert "summarize_agent_memory_tree_llm_candidate" in llm_summary_candidate_coverage["proven_tools"]
+    assert "inspect_agent_memory_tree_llm_candidates" in llm_summary_candidate_coverage["proven_tools"]
     assert "inspect_agent_health_projection" in output["recommended_next_tools"]
     assert output["trace"]["runtime_behavior_changed"] is False

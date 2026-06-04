@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-DOGFOOD_EVIDENCE_VERSION = "phase248.agent_dogfood_evidence_memory_tree_llm_summary_candidate.v1"
+DOGFOOD_EVIDENCE_VERSION = "phase249.agent_dogfood_evidence_memory_tree_llm_candidate_inspection.v1"
 DOGFOOD_EVIDENCE_RUN_SOURCE = "planner_trace.agent_health_projection.dogfood_evidence"
 
 _FULL_AGENT_NATIVE_DOGFOOD = (
@@ -413,6 +413,8 @@ _EVIDENCE_RECORDS: tuple[dict[str, Any], ...] = (
             "memory_tree_llm_summary_candidate_source_chars": 848,
             "memory_tree_llm_summary_candidate_trace_success_count": 1,
             "memory_tree_llm_summary_candidate_context_block_count": 3,
+            "memory_tree_llm_summary_candidate_inspection_count": 1,
+            "memory_tree_llm_summary_candidate_trace_match_count": 1,
             "memory_tree_llm_summary_candidate_summary_chars": 49,
             "memory_tree_llm_summary_candidate_open_question_count": 1,
             "memory_tree_llm_summary_candidate_side_effect_count": 1,
@@ -420,6 +422,7 @@ _EVIDENCE_RECORDS: tuple[dict[str, Any], ...] = (
         },
         "proven_tools": [
             "summarize_agent_memory_tree_llm_candidate",
+            "inspect_agent_memory_tree_llm_candidates",
             "build_agent_memory_tree_llm_summary_plan",
             "inspect_agent_memory_tree_quality",
             "prepare_record_agent_memory_tree_summaries",
