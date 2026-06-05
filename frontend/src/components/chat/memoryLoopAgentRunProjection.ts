@@ -3,6 +3,7 @@ import type { ActionResultView } from '../../api/types'
 export const MEMORY_LOOP_AGENT_RUN_ACTION_TYPES = [
   'inspect_agent_memory_activation_plan',
   'inspect_agent_retrieval_strategy',
+  'inspect_agent_retrieval_strategy_quality',
   'search_agent_retrieval_context',
   'plan_post_chapter_memory_capture',
 ] as const
@@ -22,6 +23,10 @@ export const MEMORY_LOOP_AGENT_RUN_ACTION_DESCRIPTORS: Record<MemoryLoopAgentRun
   inspect_agent_retrieval_strategy: {
     type: 'inspect_agent_retrieval_strategy',
     buildView: buildRetrievalStrategyActionResultView,
+  },
+  inspect_agent_retrieval_strategy_quality: {
+    type: 'inspect_agent_retrieval_strategy_quality',
+    buildView: buildRetrievalStrategyQualityActionResultView,
   },
   search_agent_retrieval_context: {
     type: 'search_agent_retrieval_context',
@@ -68,6 +73,20 @@ function buildRetrievalStrategyActionResultView(actionResult: Record<string, unk
     status,
     label: retrievalStrategyLabel(strategyStatus, status),
     variant: memoryLoopVariant(strategyStatus, status),
+    ...(detailItems.length ? { detail_items: detailItems } : {}),
+  }
+}
+
+function buildRetrievalStrategyQualityActionResultView(actionResult: Record<string, unknown>, status: string): ActionResultView {
+  const data = recordValue(actionResult.data)
+  const quality = recordValue(data.quality)
+  const qualityStatus = stringValue(quality.status) || stringValue(data.status) || status
+  const detailItems = retrievalStrategyQualityDetailItems(data)
+  return {
+    type: 'inspect_agent_retrieval_strategy_quality',
+    status,
+    label: retrievalStrategyQualityLabel(qualityStatus, status),
+    variant: memoryLoopVariant(qualityStatus, status),
     ...(detailItems.length ? { detail_items: detailItems } : {}),
   }
 }
@@ -150,6 +169,30 @@ function retrievalStrategyDetailItems(data: Record<string, unknown>) {
   return items
 }
 
+function retrievalStrategyQualityDetailItems(data: Record<string, unknown>) {
+  const items: Array<{ label: string; value: string }> = []
+  const quality = recordValue(data.quality)
+  const strategy = recordValue(data.strategy)
+  const qualityStatus = stringValue(quality.status) || stringValue(data.status)
+  if (qualityStatus) {
+    items.push({ label: '质量', value: retrievalStrategyQualityStatusLabel(qualityStatus) })
+  }
+
+  const strategyName = retrievalStrategyNameLabel(stringValue(quality.strategy_name) || stringValue(strategy.name))
+  if (strategyName) {
+    items.push({ label: '策略', value: strategyName })
+  }
+
+  pushCountItem(items, '检索文档', quality.retrieval_documents, '个')
+  pushCountItem(items, '开放问题', quality.dogfood_open_findings, '个')
+
+  const nextToolCount = recommendedToolCount(data)
+  if (nextToolCount > 0) {
+    items.push({ label: '下一步', value: `${nextToolCount} 个工具` })
+  }
+  return items
+}
+
 function postChapterMemoryCaptureDetailItems(data: Record<string, unknown>) {
   const items: Array<{ label: string; value: string }> = []
   const chapterIndex = numberValue(data.chapter_index)
@@ -200,6 +243,18 @@ function retrievalStrategyLabel(strategyStatus: string, actionStatus: string) {
   if (strategyStatus === 'blocked') return '检索策略已阻止'
   if (strategyStatus === 'completed' || strategyStatus === 'success') return '检索策略已规划'
   return `检索策略: ${strategyStatus || '未知状态'}`
+}
+
+function retrievalStrategyQualityLabel(qualityStatus: string, actionStatus: string) {
+  if (actionStatus === 'failed' || qualityStatus === 'failed') return '检索策略质量复核失败'
+  if (actionStatus === 'running' || qualityStatus === 'running') return '检索策略质量复核中'
+  if (qualityStatus === 'blocked') return '检索策略质量已阻止'
+  if (qualityStatus === 'needs_dogfood_review') return '检索策略需要自吃复核'
+  if (qualityStatus === 'needs_retrieval_review') return '检索策略需要检索复核'
+  if (qualityStatus === 'ready' || qualityStatus === 'completed' || qualityStatus === 'success') {
+    return '检索策略质量已复核'
+  }
+  return `检索策略质量: ${qualityStatus || '未知状态'}`
 }
 
 function postChapterMemoryCaptureLabel(captureStatus: string, actionStatus: string) {
@@ -259,9 +314,24 @@ function retrievalStrategyNameLabel(name: string) {
   return name
 }
 
+function retrievalStrategyQualityStatusLabel(status: string) {
+  if (status === 'needs_dogfood_review') return '需要自吃复核'
+  if (status === 'needs_retrieval_review') return '需要检索复核'
+  if (status === 'ready') return '复核通过'
+  if (status === 'blocked') return '已阻止'
+  if (status === 'completed' || status === 'success') return '完成'
+  return status || '未知'
+}
+
 function memoryLoopVariant(innerStatus: string, actionStatus: string) {
   if (innerStatus === 'failed' || innerStatus === 'blocked' || actionStatus === 'failed') return 'error'
-  if (innerStatus === 'needs_review' || innerStatus === 'missing_chapter' || innerStatus === 'skipped') return 'neutral'
+  if (
+    innerStatus === 'needs_review'
+    || innerStatus === 'needs_dogfood_review'
+    || innerStatus === 'needs_retrieval_review'
+    || innerStatus === 'missing_chapter'
+    || innerStatus === 'skipped'
+  ) return 'neutral'
   return statusVariant(actionStatus)
 }
 

@@ -18,6 +18,7 @@ describe('memoryLoopAgentRunProjection', () => {
     expect(MEMORY_LOOP_AGENT_RUN_ACTION_TYPES).toEqual([
       'inspect_agent_memory_activation_plan',
       'inspect_agent_retrieval_strategy',
+      'inspect_agent_retrieval_strategy_quality',
       'search_agent_retrieval_context',
       'plan_post_chapter_memory_capture',
     ])
@@ -94,6 +95,62 @@ describe('memoryLoopAgentRunProjection', () => {
     expect(JSON.stringify(view)).not.toContain('recommended_next_tool_calls')
     expect(JSON.stringify(view)).not.toContain('retrieval-secret')
     expect(JSON.stringify(view)).not.toContain('phase253')
+  })
+
+  it('builds retrieval strategy quality views without leaking dogfood internals', () => {
+    const view = buildMemoryLoopView('inspect_agent_retrieval_strategy_quality', 'success', {
+      status: 'needs_dogfood_review',
+      quality: {
+        status: 'needs_dogfood_review',
+        strategy_name: 'query_aware_retrieval',
+        retrieval_documents: 8,
+        dogfood_open_findings: 2,
+        dogfood_evidence_count: 9,
+        dogfood_ready_evidence_count: 9,
+      },
+      strategy: {
+        name: 'query_aware_retrieval',
+        filters: {
+          query: '旧灯塔回声',
+          max_chapter_index: 4,
+        },
+        recommended_next_tool_calls: [
+          {
+            tool_name: 'search_agent_retrieval_context',
+            params: { source_ref: 'retrieval-secret' },
+          },
+        ],
+      },
+      dogfood_evidence: {
+        status: 'ready',
+        summary: {
+          evidence_count: 9,
+          ready_evidence_count: 9,
+          open_finding_count: 2,
+        },
+        source_refs: ['dogfood-secret-source'],
+      },
+      recommended_next_tools: [
+        'search_agent_retrieval_context',
+        'summarize_longform_context',
+        'inspect_agent_dogfood_evidence',
+      ],
+      trace: {
+        version: 'phase255.agent_retrieval_strategy_quality.v1',
+      },
+    })
+
+    expect(view.label).toBe('检索策略需要自吃复核')
+    expect(view.variant).toBe('neutral')
+    expect(view.detail_items).toContainEqual({ label: '质量', value: '需要自吃复核' })
+    expect(view.detail_items).toContainEqual({ label: '策略', value: '查询感知检索' })
+    expect(view.detail_items).toContainEqual({ label: '检索文档', value: '8 个' })
+    expect(view.detail_items).toContainEqual({ label: '开放问题', value: '2 个' })
+    expect(view.detail_items).toContainEqual({ label: '下一步', value: '3 个工具' })
+    expect(JSON.stringify(view)).not.toContain('recommended_next_tool_calls')
+    expect(JSON.stringify(view)).not.toContain('retrieval-secret')
+    expect(JSON.stringify(view)).not.toContain('dogfood-secret-source')
+    expect(JSON.stringify(view)).not.toContain('phase255')
   })
 
   it('builds memory activation views without leaking prompt blocks or provenance', () => {
