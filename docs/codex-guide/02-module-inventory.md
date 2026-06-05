@@ -152,7 +152,7 @@ Agent 化缺口：
 ### 2.1 Retrieval System（检索系统）
 
 ```
-当前状态：L2 本地 hash embedding + 可切换远程 embedding，支持 lexical + vector score；inspect_agent_retrieval_strategy 已能按章节/query/维护状态只读选择 query-aware retrieval、章节上下文摘要或维护诊断，inspect_agent_retrieval_strategy_quality 已能在只读策略规划基础上汇总 dogfood evidence 开放问题并给出质量复核状态，inspect_agent_retrieval_prefetch_plan 已能把策略输出转成章节生成前的只读预取工具调用；章节生成 planner 已从固定 search 步骤升级为先规划检索预取再进入长篇上下文摘要；Retrieval Strategy、Retrieval Strategy Quality、Retrieval Prefetch Plan 与 Retrieval Context 均可由自然语言只读意图触达，AgentRunDrawer 可展示检索策略、策略质量复核和检索证据安全摘要
+当前状态：L2 本地 hash embedding + 可切换远程 embedding，支持 lexical + vector score；inspect_agent_retrieval_strategy 已能按章节/query/维护状态只读选择 query-aware retrieval、章节上下文摘要或维护诊断，inspect_agent_retrieval_strategy_quality 已能在只读策略规划基础上汇总 dogfood evidence 开放问题并给出质量复核状态，inspect_agent_retrieval_prefetch_plan 已能把策略输出转成章节生成前的只读预取工具调用；章节生成 planner 已从固定 search 步骤升级为先规划检索预取再进入长篇上下文摘要；Retrieval Strategy、Retrieval Strategy Quality、Retrieval Prefetch Plan 与 Retrieval Context 均可由自然语言只读意图触达，AgentRunDrawer 与聊天 action descriptor 可展示检索策略、策略质量复核、预取计划和检索证据安全摘要
 目标状态：L3 混合检索（语义+全文+Memory Tree）+ 主动预取
 关键文件：
   backend/app/core/athena_retrieval.py    # Athena 检索
@@ -160,7 +160,7 @@ Agent 化缺口：
   backend/app/models/ 中的 retrieval_*.py # 检索相关模型
 Agent 化缺口：
   - 默认 embedding 质量有限
-  - 检索策略已有只读 planner、质量复核、预取计划、自然语言入口、retrieval_worker 路由和 Drawer 安全投影，可按 query、chapter_index、limit、candidate_limit 与维护状态推荐 search_agent_retrieval_context、summarize_longform_context 或维护诊断；质量复核会复用策略输出、检索/维护诊断和 dogfood evidence 摘要，遇到开放 finding 时返回 needs_dogfood_review，并在 Drawer / 聊天 action descriptor 中只展示状态、策略、检索文档数、dogfood 覆盖和推荐后续，不泄露 trace、source_ref 或 raw recommended_next_tool_calls；预取计划会过滤为只读工具调用并已被章节生成 planner 消费；检索上下文已有只读工具、自然语言入口和 Drawer 安全投影，可按 query、limit、source_type、max_chapter_index 检索证据，并展示返回窗口、来源类型、章节窗口、分数、摘要和推荐后续工具
+  - 检索策略已有只读 planner、质量复核、预取计划、自然语言入口、retrieval_worker 路由和 Drawer 安全投影，可按 query、chapter_index、limit、candidate_limit 与维护状态推荐 search_agent_retrieval_context、summarize_longform_context 或维护诊断；质量复核会复用策略输出、检索/维护诊断和 dogfood evidence 摘要，遇到开放 finding 时返回 needs_dogfood_review，并在 Drawer / 聊天 action descriptor 中只展示状态、策略、检索文档数、dogfood 覆盖和推荐后续，不泄露 trace、source_ref 或 raw recommended_next_tool_calls；预取计划会过滤为只读工具调用并已被章节生成 planner 消费，Drawer / 聊天 action descriptor 只展示预取状态、模式、策略、query、章节窗口、只读工具数、检索文档数和推荐后续，不泄露 raw tool_calls、trace/version 或 source_ref；检索上下文已有只读工具、自然语言入口和 Drawer 安全投影，可按 query、limit、source_type、max_chapter_index 检索证据，并展示返回窗口、来源类型、章节窗口、分数、摘要和推荐后续工具
   - 主动预取仍停留在只读计划层，尚未执行预取缓存、真实 strategy dogfood 反馈或 LLM 策略质量评估
   - 检索策略质量复核仍是确定性策略 + dogfood summary 聚合；下一步可接入 LLM/真实 strategy dogfood 反馈做更细粒度策略质量评估
 关联模块：Athena、Memory Tree、Writing
@@ -432,6 +432,7 @@ Data & Recovery ─── (横切关注点，覆盖所有写入操作)
 
 | 日期 | 模块 | 变更 |
 |------|------|------|
+| 2026-06-05 | Frontend Agent UX | AgentRunDrawer 与聊天 action descriptor 新增 inspect_agent_retrieval_prefetch_plan 安全投影，展示预取状态、模式、策略、query、目标章节、章节窗口、只读工具数、检索文档数和推荐后续，同时隐藏 trace/version、raw tool_calls、recommended_next_tool_calls 与 source_ref |
 | 2026-06-05 | Frontend Agent UX | AgentRunDrawer 新增 inspect_agent_world_model_semantic_check 安全投影，展示 L5 语义检查状态、事实窗口、issue、证据摘录和推荐后续工具，同时隐藏 project/profile/claim/trace/prompt/evidence_refs 等内部字段 |
 | 2026-06-05 | Frontend Agent UX | AgentRunDrawer 与聊天 action descriptor 新增 inspect_agent_retrieval_strategy_quality 安全投影，展示复核状态、策略、query、章节窗口、检索文档数、dogfood 覆盖和推荐后续，同时隐藏 trace/version、source_ref、dogfood source 和 raw recommended_next_tool_calls |
 | 2026-06-05 | Athena | 新增 inspect_agent_world_model_semantic_check 只读 L5 语义一致性检查，基于已生成章节和确认事实窗口执行 Trace-bound LLM JSON 审查，不写世界事实或提案，并接入自然语言入口、world_model_worker、followup safe list 和 loop risk known poll |

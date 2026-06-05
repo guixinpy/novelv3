@@ -73,6 +73,7 @@ describe('agentRunProjection', () => {
       'inspect_agent_memory_activation_plan',
       'inspect_agent_retrieval_strategy',
       'inspect_agent_retrieval_strategy_quality',
+      'inspect_agent_retrieval_prefetch_plan',
       'search_agent_retrieval_context',
       'plan_post_chapter_memory_capture',
     ])
@@ -251,6 +252,7 @@ describe('agentRunProjection', () => {
     expect(isAgentRunActionType('compress_chapter_to_target')).toBe(true)
     expect(isAgentRunActionType('inspect_agent_retrieval_strategy')).toBe(true)
     expect(isAgentRunActionType('inspect_agent_retrieval_strategy_quality')).toBe(true)
+    expect(isAgentRunActionType('inspect_agent_retrieval_prefetch_plan')).toBe(true)
     expect(isAgentRunActionType('search_agent_retrieval_context')).toBe(true)
     expect(isAgentRunActionType('plan_post_chapter_memory_capture')).toBe(true)
     expect(isAgentRunActionType('prepare_route_upgrade_contract')).toBe(true)
@@ -293,6 +295,7 @@ describe('agentRunProjection', () => {
     expect(getAgentRunActionDescriptor('compress_chapter_to_target')?.type).toBe('compress_chapter_to_target')
     expect(getAgentRunActionDescriptor('inspect_agent_retrieval_strategy')?.type).toBe('inspect_agent_retrieval_strategy')
     expect(getAgentRunActionDescriptor('inspect_agent_retrieval_strategy_quality')?.type).toBe('inspect_agent_retrieval_strategy_quality')
+    expect(getAgentRunActionDescriptor('inspect_agent_retrieval_prefetch_plan')?.type).toBe('inspect_agent_retrieval_prefetch_plan')
     expect(getAgentRunActionDescriptor('search_agent_retrieval_context')?.type).toBe('search_agent_retrieval_context')
     expect(getAgentRunActionDescriptor('plan_post_chapter_memory_capture')?.type).toBe('plan_post_chapter_memory_capture')
     expect(getAgentRunActionDescriptor('prepare_route_upgrade_contract')?.type).toBe('prepare_route_upgrade_contract')

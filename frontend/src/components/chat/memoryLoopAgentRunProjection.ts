@@ -4,6 +4,7 @@ export const MEMORY_LOOP_AGENT_RUN_ACTION_TYPES = [
   'inspect_agent_memory_activation_plan',
   'inspect_agent_retrieval_strategy',
   'inspect_agent_retrieval_strategy_quality',
+  'inspect_agent_retrieval_prefetch_plan',
   'search_agent_retrieval_context',
   'plan_post_chapter_memory_capture',
 ] as const
@@ -27,6 +28,10 @@ export const MEMORY_LOOP_AGENT_RUN_ACTION_DESCRIPTORS: Record<MemoryLoopAgentRun
   inspect_agent_retrieval_strategy_quality: {
     type: 'inspect_agent_retrieval_strategy_quality',
     buildView: buildRetrievalStrategyQualityActionResultView,
+  },
+  inspect_agent_retrieval_prefetch_plan: {
+    type: 'inspect_agent_retrieval_prefetch_plan',
+    buildView: buildRetrievalPrefetchPlanActionResultView,
   },
   search_agent_retrieval_context: {
     type: 'search_agent_retrieval_context',
@@ -87,6 +92,20 @@ function buildRetrievalStrategyQualityActionResultView(actionResult: Record<stri
     status,
     label: retrievalStrategyQualityLabel(qualityStatus, status),
     variant: memoryLoopVariant(qualityStatus, status),
+    ...(detailItems.length ? { detail_items: detailItems } : {}),
+  }
+}
+
+function buildRetrievalPrefetchPlanActionResultView(actionResult: Record<string, unknown>, status: string): ActionResultView {
+  const data = recordValue(actionResult.data)
+  const prefetchPlan = recordValue(data.prefetch_plan)
+  const prefetchStatus = stringValue(prefetchPlan.status) || stringValue(data.status) || status
+  const detailItems = retrievalPrefetchPlanDetailItems(data)
+  return {
+    type: 'inspect_agent_retrieval_prefetch_plan',
+    status,
+    label: retrievalPrefetchPlanLabel(prefetchStatus, status),
+    variant: memoryLoopVariant(prefetchStatus, status),
     ...(detailItems.length ? { detail_items: detailItems } : {}),
   }
 }
@@ -193,6 +212,40 @@ function retrievalStrategyQualityDetailItems(data: Record<string, unknown>) {
   return items
 }
 
+function retrievalPrefetchPlanDetailItems(data: Record<string, unknown>) {
+  const items: Array<{ label: string; value: string }> = []
+  const strategy = recordValue(data.strategy)
+  const prefetchPlan = recordValue(data.prefetch_plan)
+  const coverage = recordValue(prefetchPlan.coverage)
+  const mode = retrievalPrefetchModeLabel(stringValue(prefetchPlan.mode))
+  if (mode) {
+    items.push({ label: '预取', value: mode })
+  }
+
+  const strategyName = retrievalStrategyNameLabel(
+    stringValue(coverage.strategy_name) || stringValue(strategy.name),
+  )
+  if (strategyName) {
+    items.push({ label: '策略', value: strategyName })
+  }
+
+  const maxChapterIndex = numberValue(prefetchPlan.max_chapter_index)
+  if (maxChapterIndex !== null) {
+    items.push({ label: '章节窗口', value: `第${maxChapterIndex}章前` })
+  }
+
+  const readToolCount = Array.isArray(prefetchPlan.read_tools) ? prefetchPlan.read_tools.length : 0
+  if (readToolCount > 0) {
+    items.push({ label: '只读工具', value: `${readToolCount} 个` })
+  }
+
+  const nextToolCount = recommendedToolCount(data)
+  if (nextToolCount > 0) {
+    items.push({ label: '下一步', value: `${nextToolCount} 个工具` })
+  }
+  return items
+}
+
 function postChapterMemoryCaptureDetailItems(data: Record<string, unknown>) {
   const items: Array<{ label: string; value: string }> = []
   const chapterIndex = numberValue(data.chapter_index)
@@ -257,6 +310,16 @@ function retrievalStrategyQualityLabel(qualityStatus: string, actionStatus: stri
   return `检索策略质量: ${qualityStatus || '未知状态'}`
 }
 
+function retrievalPrefetchPlanLabel(prefetchStatus: string, actionStatus: string) {
+  if (actionStatus === 'failed' || prefetchStatus === 'failed') return '检索预取规划失败'
+  if (actionStatus === 'running' || prefetchStatus === 'running') return '检索预取规划中'
+  if (prefetchStatus === 'blocked') return '检索预取已阻止'
+  if (prefetchStatus === 'ready' || prefetchStatus === 'completed' || prefetchStatus === 'success') {
+    return '检索预取已规划'
+  }
+  return `检索预取: ${prefetchStatus || '未知状态'}`
+}
+
 function postChapterMemoryCaptureLabel(captureStatus: string, actionStatus: string) {
   if (actionStatus === 'failed' || captureStatus === 'failed') return '写后记忆规划失败'
   if (actionStatus === 'running' || captureStatus === 'running') return '写后记忆规划中'
@@ -312,6 +375,14 @@ function retrievalStrategyNameLabel(name: string) {
   if (name === 'repair_retrieval_maintenance') return '维护诊断优先'
   if (name === 'memory_route_diagnostics') return '记忆路由诊断'
   return name
+}
+
+function retrievalPrefetchModeLabel(mode: string) {
+  if (mode === 'query_aware_prefetch') return '查询感知预取'
+  if (mode === 'chapter_window_prefetch') return '章节窗口预取'
+  if (mode === 'maintenance_blocked') return '维护阻塞'
+  if (mode === 'diagnostic_prefetch') return '诊断预取'
+  return mode
 }
 
 function retrievalStrategyQualityStatusLabel(status: string) {

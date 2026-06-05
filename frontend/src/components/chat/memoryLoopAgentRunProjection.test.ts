@@ -19,6 +19,7 @@ describe('memoryLoopAgentRunProjection', () => {
       'inspect_agent_memory_activation_plan',
       'inspect_agent_retrieval_strategy',
       'inspect_agent_retrieval_strategy_quality',
+      'inspect_agent_retrieval_prefetch_plan',
       'search_agent_retrieval_context',
       'plan_post_chapter_memory_capture',
     ])
@@ -151,6 +152,59 @@ describe('memoryLoopAgentRunProjection', () => {
     expect(JSON.stringify(view)).not.toContain('retrieval-secret')
     expect(JSON.stringify(view)).not.toContain('dogfood-secret-source')
     expect(JSON.stringify(view)).not.toContain('phase255')
+  })
+
+  it('builds retrieval prefetch plan views without leaking raw tool calls', () => {
+    const view = buildMemoryLoopView('inspect_agent_retrieval_prefetch_plan', 'success', {
+      status: 'ready',
+      strategy: {
+        name: 'query_aware_retrieval',
+        filters: {
+          query: '旧灯塔回声',
+          max_chapter_index: 4,
+        },
+      },
+      prefetch_plan: {
+        status: 'ready',
+        mode: 'query_aware_prefetch',
+        target_chapter_index: 5,
+        query: '旧灯塔回声',
+        max_chapter_index: 4,
+        read_tools: ['search_agent_retrieval_context', 'summarize_longform_context'],
+        tool_calls: [
+          {
+            tool_name: 'search_agent_retrieval_context',
+            params: { source_ref: 'retrieval-secret-ref' },
+          },
+        ],
+        coverage: {
+          strategy_name: 'query_aware_retrieval',
+          retrieval_documents: 8,
+        },
+      },
+      recommended_next_tools: ['search_agent_retrieval_context', 'summarize_longform_context'],
+      recommended_next_tool_calls: [
+        {
+          tool_name: 'search_agent_retrieval_context',
+          params: { source_ref: 'retrieval-secret-ref' },
+        },
+      ],
+      trace: {
+        version: 'phase256.agent_retrieval_prefetch_plan.v1',
+      },
+    })
+
+    expect(view.label).toBe('检索预取已规划')
+    expect(view.variant).toBe('success')
+    expect(view.detail_items).toContainEqual({ label: '预取', value: '查询感知预取' })
+    expect(view.detail_items).toContainEqual({ label: '策略', value: '查询感知检索' })
+    expect(view.detail_items).toContainEqual({ label: '章节窗口', value: '第4章前' })
+    expect(view.detail_items).toContainEqual({ label: '只读工具', value: '2 个' })
+    expect(view.detail_items).toContainEqual({ label: '下一步', value: '2 个工具' })
+    expect(JSON.stringify(view)).not.toContain('tool_calls')
+    expect(JSON.stringify(view)).not.toContain('recommended_next_tool_calls')
+    expect(JSON.stringify(view)).not.toContain('retrieval-secret-ref')
+    expect(JSON.stringify(view)).not.toContain('phase256')
   })
 
   it('builds memory activation views without leaking prompt blocks or provenance', () => {
