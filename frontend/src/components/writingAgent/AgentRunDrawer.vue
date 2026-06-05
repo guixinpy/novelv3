@@ -329,6 +329,42 @@ const eventProjectionRows = computed(() => (
     ))
 ))
 const eventProjectionRecommendedTools = computed(() => uniqueStrings(stringList(eventProjectionOutput.value?.recommended_tools)))
+const chapterConflictRecoveryOutput = computed(() => latestToolOutput('plan_chapter_conflict_recovery'))
+const chapterConflictPlanStatus = computed(() => stringValue(chapterConflictRecoveryOutput.value?.status))
+const chapterConflictConflict = computed(() => recordValue(chapterConflictRecoveryOutput.value?.conflict))
+const chapterConflictRecovery = computed(() => recordValue(chapterConflictRecoveryOutput.value?.recovery))
+const chapterConflictChapterIndex = computed(() => (
+  numberValue(chapterConflictRecoveryOutput.value?.chapter_index) ??
+  numberValue(chapterConflictConflict.value.chapter_index)
+))
+const chapterConflictStatus = computed(() => stringValue(chapterConflictConflict.value.status))
+const chapterConflictActiveTaskCount = computed(() => numberValue(chapterConflictConflict.value.active_task_count))
+const chapterConflictRecoveryState = computed(() => stringValue(chapterConflictRecovery.value.status))
+const chapterConflictRecoveryNextTool = computed(() => stringValue(chapterConflictRecovery.value.next_tool))
+const chapterConflictPlanToolCount = computed(() => recordList(chapterConflictRecoveryOutput.value?.tools).length)
+const chapterConflictRecoveryOptionCount = computed(() => recordList(chapterConflictRecoveryOutput.value?.recovery_options).length)
+const chapterConflictTaskRows = computed(() => (
+  recordList(chapterConflictConflict.value.tasks)
+    .slice(0, 5)
+    .map((task, index) => ({
+      key: `chapter-conflict-task:${index}`,
+      sourceLabel: stringValue(task.source_label) || '占用任务',
+      status: chapterConflictTaskStatusLabel(task.status),
+      chapterLabel: chapterConflictTaskChapterLabel(task),
+    }))
+    .filter((task) => task.sourceLabel || task.status || task.chapterLabel)
+))
+const chapterConflictRecoveryOptionRows = computed(() => (
+  recordList(chapterConflictRecoveryOutput.value?.recovery_options)
+    .slice(0, 5)
+    .map((option, index) => ({
+      key: `chapter-conflict-option:${index}`,
+      action: chapterConflictRecoveryOptionLabel(option.action),
+      toolName: stringValue(option.tool_name),
+      safeAutoExecute: typeof option.safe_auto_execute === 'boolean' ? option.safe_auto_execute : null,
+    }))
+    .filter((option) => option.action || option.toolName)
+))
 const workerDispatchOutput = computed(() => latestToolOutput('inspect_agent_worker_dispatch'))
 const workerDispatchSummary = computed(() => recordValue(workerDispatchOutput.value?.summary))
 const workerDispatchStatus = computed(() => stringValue(workerDispatchOutput.value?.status))
@@ -2508,6 +2544,50 @@ function eventProjectionSourceTypeLabel(sourceType: unknown) {
   return value || '未知来源'
 }
 
+function chapterConflictStatusLabel(status: unknown) {
+  const value = stringValue(status)
+  if (value === 'reserved') return '已占用'
+  if (value === 'available') return '可用'
+  return value || '未知'
+}
+
+function chapterConflictRecoveryStatusLabel(status: unknown) {
+  const value = stringValue(status)
+  if (value === 'recommended') return '建议处理'
+  if (value === 'none') return '无需恢复'
+  if (value === 'completed' || value === 'success') return '已完成'
+  if (value === 'failed') return '失败'
+  return value || '未知'
+}
+
+function chapterConflictTaskStatusLabel(status: unknown) {
+  const value = stringValue(status)
+  if (value === 'pending') return '待执行'
+  if (value === 'running') return '运行中'
+  if (value === 'completed' || value === 'success') return '已完成'
+  if (value === 'failed') return '失败'
+  if (value === 'cancelled') return '已取消'
+  return value || ''
+}
+
+function chapterConflictTaskChapterLabel(task: Record<string, unknown>) {
+  const chapterIndex = numberValue(task.chapter_index)
+  if (chapterIndex !== null) return `第${chapterIndex}章`
+
+  const range = recordValue(task.chapter_range)
+  const start = numberValue(range.start)
+  const end = numberValue(range.end)
+  if (start !== null && end !== null) return `第${start}-${end}章`
+  return ''
+}
+
+function chapterConflictRecoveryOptionLabel(action: unknown) {
+  const value = stringValue(action)
+  if (value === 'inspect_occupying_task') return '检查占用任务'
+  if (value === 'wait_for_occupying_task') return '等待占用任务'
+  return value || '恢复选项'
+}
+
 function dogfoodEvidenceStatusLabel(status: unknown) {
   const value = stringValue(status)
   if (value === 'ready') return '可用'
@@ -3580,6 +3660,76 @@ function missingDependencyTool(value: Record<string, unknown>) {
               :key="`event-projection-next:${tool}`"
             >
               {{ tool }}
+            </li>
+          </ul>
+        </section>
+
+        <section
+          v-if="chapterConflictRecoveryOutput"
+          class="agent-run-drawer__chapter-conflict"
+          aria-label="Chapter conflict recovery projection"
+        >
+          <h4>章节冲突恢复</h4>
+          <dl class="agent-run-drawer__facts">
+            <div v-if="chapterConflictPlanStatus">
+              <dt>状态</dt>
+              <dd>{{ eventProjectionStatusLabel(chapterConflictPlanStatus) }}</dd>
+            </div>
+            <div v-if="chapterConflictChapterIndex !== null">
+              <dt>目标章节</dt>
+              <dd>第{{ chapterConflictChapterIndex }}章</dd>
+            </div>
+            <div v-if="chapterConflictStatus">
+              <dt>占用状态</dt>
+              <dd>{{ chapterConflictStatusLabel(chapterConflictStatus) }}</dd>
+            </div>
+            <div v-if="chapterConflictActiveTaskCount !== null">
+              <dt>占用任务</dt>
+              <dd>{{ chapterConflictActiveTaskCount }}</dd>
+            </div>
+            <div v-if="chapterConflictRecoveryState">
+              <dt>恢复状态</dt>
+              <dd>{{ chapterConflictRecoveryStatusLabel(chapterConflictRecoveryState) }}</dd>
+            </div>
+            <div v-if="chapterConflictRecoveryNextTool">
+              <dt>下一工具</dt>
+              <dd>{{ chapterConflictRecoveryNextTool }}</dd>
+            </div>
+            <div v-if="chapterConflictPlanToolCount > 0">
+              <dt>计划工具</dt>
+              <dd>{{ chapterConflictPlanToolCount }}</dd>
+            </div>
+            <div v-if="chapterConflictRecoveryOptionCount > 0">
+              <dt>恢复选项</dt>
+              <dd>{{ chapterConflictRecoveryOptionCount }}</dd>
+            </div>
+          </dl>
+          <ul
+            v-if="chapterConflictTaskRows.length"
+            class="agent-run-drawer__event-rows"
+          >
+            <li
+              v-for="task in chapterConflictTaskRows"
+              :key="task.key"
+            >
+              <div>
+                <strong>{{ task.sourceLabel }}</strong>
+                <span v-if="task.chapterLabel">{{ task.chapterLabel }}</span>
+              </div>
+              <p v-if="task.status">{{ task.status }}</p>
+            </li>
+          </ul>
+          <ul
+            v-if="chapterConflictRecoveryOptionRows.length"
+            class="agent-run-drawer__worker-dispatches"
+          >
+            <li
+              v-for="option in chapterConflictRecoveryOptionRows"
+              :key="option.key"
+            >
+              <strong>{{ option.action }}</strong>
+              <span v-if="option.toolName">{{ option.toolName }}</span>
+              <span v-if="option.safeAutoExecute !== null">{{ option.safeAutoExecute ? '可自动检查' : '需等待' }}</span>
             </li>
           </ul>
         </section>
@@ -6103,6 +6253,7 @@ function missingDependencyTool(value: Record<string, unknown>) {
 .agent-run-drawer__memory-route h4,
 .agent-run-drawer__reference-alignment h4,
 .agent-run-drawer__event-projection h4,
+.agent-run-drawer__chapter-conflict h4,
 .agent-run-drawer__worker-dispatch h4,
 .agent-run-drawer__knowledge-route h4,
 .agent-run-drawer__world-model-route h4,
@@ -6251,6 +6402,15 @@ function missingDependencyTool(value: Record<string, unknown>) {
 }
 
 .agent-run-drawer__event-projection {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-secondary);
+}
+
+.agent-run-drawer__chapter-conflict {
   display: grid;
   gap: var(--space-3);
   padding: var(--space-3);

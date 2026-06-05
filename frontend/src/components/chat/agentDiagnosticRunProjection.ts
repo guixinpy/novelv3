@@ -4,6 +4,7 @@ export const DIAGNOSTIC_AGENT_RUN_ACTION_TYPES = [
   'inspect_agent_trace_audit',
   'inspect_agent_event_projection',
   'inspect_agent_job_projection',
+  'plan_chapter_conflict_recovery',
   'inspect_agent_health_projection',
   'inspect_agent_command_contracts',
   'inspect_agent_control_plane_readiness',
@@ -34,6 +35,10 @@ export const DIAGNOSTIC_AGENT_RUN_ACTION_DESCRIPTORS: Record<DiagnosticAgentRunA
   inspect_agent_job_projection: {
     type: 'inspect_agent_job_projection',
     buildView: buildJobProjectionActionResultView,
+  },
+  plan_chapter_conflict_recovery: {
+    type: 'plan_chapter_conflict_recovery',
+    buildView: buildChapterConflictRecoveryActionResultView,
   },
   inspect_agent_health_projection: {
     type: 'inspect_agent_health_projection',
@@ -101,6 +106,17 @@ function buildJobProjectionActionResultView(actionResult: Record<string, unknown
     type: 'inspect_agent_job_projection',
     status,
     label: jobProjectionLabel(status),
+    variant: statusVariant(status),
+    ...(detailItems.length ? { detail_items: detailItems } : {}),
+  }
+}
+
+function buildChapterConflictRecoveryActionResultView(actionResult: Record<string, unknown>, status: string): ActionResultView {
+  const detailItems = chapterConflictRecoveryDetailItems(recordValue(actionResult.data))
+  return {
+    type: 'plan_chapter_conflict_recovery',
+    status,
+    label: chapterConflictRecoveryLabel(status),
     variant: statusVariant(status),
     ...(detailItems.length ? { detail_items: detailItems } : {}),
   }
@@ -224,6 +240,13 @@ function jobProjectionLabel(status: string) {
   if (status === 'failed') return '任务队列投影失败'
   if (status === 'running') return '任务队列投影中'
   return `任务队列投影: ${status || '未知状态'}`
+}
+
+function chapterConflictRecoveryLabel(status: string) {
+  if (status === 'success' || status === 'completed') return '章节冲突恢复计划已生成'
+  if (status === 'failed') return '章节冲突恢复计划失败'
+  if (status === 'running') return '章节冲突恢复规划中'
+  return `章节冲突恢复计划: ${status || '未知状态'}`
 }
 
 function agentHealthProjectionLabel(status: string) {
@@ -391,6 +414,44 @@ function eventProjectionDetailItems(data: Record<string, unknown>) {
   const recommendedTools = Array.isArray(data.recommended_tools) ? data.recommended_tools : []
   if (recommendedTools.length) {
     items.push({ label: '推荐工具', value: `${recommendedTools.length} 个` })
+  }
+  return items
+}
+
+function chapterConflictRecoveryDetailItems(data: Record<string, unknown>) {
+  const items: Array<{ label: string; value: string }> = []
+  const conflict = recordValue(data.conflict)
+  const recovery = recordValue(data.recovery)
+  const chapterIndex = numberValue(data.chapter_index) ?? numberValue(conflict.chapter_index)
+  if (chapterIndex !== null) {
+    items.push({ label: '目标章节', value: `第${chapterIndex}章` })
+  }
+
+  const conflictStatus = stringValue(conflict.status)
+  if (conflictStatus) {
+    items.push({ label: '占用状态', value: chapterConflictStatusLabel(conflictStatus) })
+  }
+  const activeTaskCount = numberValue(conflict.active_task_count)
+  if (activeTaskCount !== null) {
+    items.push({ label: '占用任务', value: `${activeTaskCount} 个` })
+  }
+
+  const recoveryStatus = stringValue(recovery.status)
+  if (recoveryStatus) {
+    items.push({ label: '恢复状态', value: chapterConflictRecoveryStatusLabel(recoveryStatus) })
+  }
+  const nextTool = stringValue(recovery.next_tool)
+  if (nextTool) {
+    items.push({ label: '下一工具', value: nextTool })
+  }
+
+  const tools = Array.isArray(data.tools) ? data.tools : []
+  if (tools.length) {
+    items.push({ label: '计划工具', value: `${tools.length} 个` })
+  }
+  const recoveryOptions = Array.isArray(data.recovery_options) ? data.recovery_options : []
+  if (recoveryOptions.length) {
+    items.push({ label: '恢复选项', value: `${recoveryOptions.length} 个` })
   }
   return items
 }
@@ -776,6 +837,20 @@ function eventProjectionStatusLabel(status: string) {
   if (status === 'completed' || status === 'success') return '已完成'
   if (status === 'running') return '进行中'
   if (status === 'failed') return '失败'
+  return status || '未知'
+}
+
+function chapterConflictStatusLabel(status: string) {
+  if (status === 'reserved') return '已占用'
+  if (status === 'available') return '可用'
+  return status || '未知'
+}
+
+function chapterConflictRecoveryStatusLabel(status: string) {
+  if (status === 'recommended') return '建议处理'
+  if (status === 'none') return '无需恢复'
+  if (status === 'failed') return '失败'
+  if (status === 'completed' || status === 'success') return '已完成'
   return status || '未知'
 }
 

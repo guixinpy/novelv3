@@ -186,7 +186,7 @@
 - [x] Worker Dispatch 只读审计意图：自然语言“检查 worker 分发/孤儿恢复”可投影为 inspect_agent_worker_dispatch 只读工具计划，AgentRunDrawer 与聊天 action descriptor 可展示分派状态、Worker/任务/问题计数、路由审计和孤儿恢复安全摘要
 - [x] Agent Event Projection 只读审计意图：自然语言“检查 task-abc123 的 Agent 事件投影 limit 12”可投影为 inspect_agent_event_projection 只读工具计划，AgentRunDrawer 与聊天 action descriptor 可展示事件链安全摘要
 - [x] Agent Job Projection 只读诊断意图：自然语言“检查第3章 generate_chapter failed 任务队列 limit 8”可投影为 inspect_agent_job_projection 只读工具计划
-- [x] Chapter Conflict Recovery 只读恢复计划意图：自然语言“规划第3章章节冲突恢复”可投影为 plan_chapter_conflict_recovery 只读工具计划
+- [x] Chapter Conflict Recovery 只读恢复计划意图：自然语言“规划第3章章节冲突恢复”可投影为 plan_chapter_conflict_recovery 只读工具计划，AgentRunDrawer 与聊天 action descriptor 可展示章节占用和恢复计划安全摘要
 - [x] Trace Audit 只读审计意图：自然语言“检查 run trace/执行链路/失败原因”可投影为 inspect_agent_trace_audit 只读工具计划，Trace Audit run 可在 AgentRunDrawer 展示安全摘要
 - [x] Trace Anomaly Trends 只读审计意图：自然语言“检查第4章 Trace 异常趋势 limit 9 baseline 6”可投影为 inspect_agent_trace_anomaly_trends 只读工具计划，Trace Anomaly Trends run 可在 AgentRunDrawer 展示趋势、基线、阈值信号、阈值校准和阈值固化策略安全摘要
 - [x] Trace Anomaly Long Run Samples 只读采样意图：自然语言“检查第4章 Trace 异常长跑样本 limit 9”可投影为 inspect_agent_trace_anomaly_long_run_samples 只读工具计划，统计当前项目候选 run/step 样本、状态分布、entrypoint 分布和推荐 threshold review 窗口，不暴露 run/step id
@@ -227,6 +227,7 @@
 
 ### 最近完成
 
+- 2026-06-05: `plan_chapter_conflict_recovery` 新增 AgentRunDrawer 与聊天 action descriptor 安全投影，可展示计划状态、目标章节、占用状态、占用任务数、恢复状态、下一工具、计划工具数、恢复选项、任务来源/章节范围/状态和恢复选项标签，同时隐藏 task id、`next_params`、trace/version 与原始工具参数。
 - 2026-06-05: `inspect_agent_event_projection` 新增 AgentRunDrawer 与聊天 action descriptor 安全投影，可展示投影状态、事件总数、后台任务/运行/工具事件计数、工具错误、事件类型、来源类型、工具名、章节、状态、错误预览和推荐后续，同时隐藏 project/selector/event/source/run/task/step/trace id、version 与 trace source。
 - 2026-06-05: `inspect_agent_worker_dispatch` 新增 AgentRunDrawer 与聊天 action descriptor 安全投影，可展示分派状态、Worker/计划任务/阻塞任务/问题计数、路由审计、未路由工具、孤儿恢复计数、Worker 角色、问题码和推荐后续，同时隐藏 `definition_registry`、`task_envelopes`、run/task id、version 与原始 route/tool 参数。
 - 2026-06-05: `IntentRouter` 新增 `retrieval_strategy_quality_intent`，可将“复核第5章检索策略质量 query=旧灯塔回声 limit 6 candidate_limit 50”等自然语言投影为 `inspect_retrieval_strategy_quality` action；`plan_dialog_intent_agent_run` 对该只读 action 生成无需审批的 `inspect_agent_retrieval_strategy_quality` 工具计划，并保留 chapter_index、query、limit、candidate_limit。
@@ -283,7 +284,7 @@
 - [x] 孤兒 Worker 恢复写入闭环基础版：apply_agent_worker_orphan_recovery 确认后标记 orphan worker blocked，并可创建 pending redispatch run
 - [x] Worker 分发/孤兒恢复只读入口：自然语言“检查 worker 分发/孤儿恢复”可直接规划到 inspect_agent_worker_dispatch，AgentRunDrawer 与聊天 fallback projection 可安全展示 Worker dispatch/孤儿恢复摘要
 - [x] Agent Event Projection 只读入口：自然语言可直接规划到 inspect_agent_event_projection，审计后台任务、Agent run 和 step 推导出的事件流，AgentRunDrawer 与聊天 fallback projection 可安全展示事件链摘要
-- [x] Agent Job Projection/章节冲突恢复只读入口：自然语言可直接规划到 inspect_agent_job_projection 和 plan_chapter_conflict_recovery，检查后台任务队列、章节占用与恢复工具计划
+- [x] Agent Job Projection/章节冲突恢复只读入口：自然语言可直接规划到 inspect_agent_job_projection 和 plan_chapter_conflict_recovery，检查后台任务队列、章节占用与恢复工具计划；章节冲突恢复 run 可在 AgentRunDrawer 与聊天 fallback projection 展示安全摘要
 
 ### 下一步任务
 
@@ -299,6 +300,7 @@
 
 ### 最近完成
 
+- 2026-06-05: `plan_chapter_conflict_recovery` 接入 AgentRunDrawer 与聊天 fallback projection，展示计划状态、目标章节、占用状态、占用任务数、恢复状态、下一工具、计划工具数、恢复选项、任务来源/章节范围/状态和恢复选项标签，同时不暴露 task id、`next_params`、trace/version 与原始工具参数。
 - 2026-06-05: `inspect_agent_event_projection` 接入 AgentRunDrawer 与聊天 fallback projection，展示事件投影状态、事件总数、后台任务/运行/工具事件计数、工具错误、事件类型、来源类型、工具名、章节、状态、错误预览和推荐后续，同时不暴露 project/selector/event/source/run/task/step/trace id、version 与 trace source。
 - 2026-06-05: `inspect_agent_worker_dispatch` 接入 AgentRunDrawer 与聊天 fallback projection，展示分派状态、Worker/任务/问题计数、路由审计、孤儿恢复计数、Worker 角色、问题码和推荐后续，同时不暴露 `definition_registry`、`task_envelopes`、run/task id、version 与原始 route/tool 参数。
 - 2026-06-02: `inspect_agent_event_projection` 接入对话只读意图链路：Agent 可从自然语言直接按 task_id/run_id/limit 查看后台任务、Agent run 和 step 记录推导出的事件流，并继续推荐 `inspect_agent_job_projection`。

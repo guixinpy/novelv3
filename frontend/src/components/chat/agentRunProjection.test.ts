@@ -154,6 +154,7 @@ describe('agentRunProjection', () => {
       'inspect_agent_trace_audit',
       'inspect_agent_event_projection',
       'inspect_agent_job_projection',
+      'plan_chapter_conflict_recovery',
       'inspect_agent_health_projection',
       'inspect_agent_command_contracts',
       'inspect_agent_control_plane_readiness',
@@ -235,6 +236,7 @@ describe('agentRunProjection', () => {
     expect(isAgentRunActionType('inspect_agent_trace_audit')).toBe(true)
     expect(isAgentRunActionType('inspect_agent_event_projection')).toBe(true)
     expect(isAgentRunActionType('inspect_agent_job_projection')).toBe(true)
+    expect(isAgentRunActionType('plan_chapter_conflict_recovery')).toBe(true)
     expect(isAgentRunActionType('inspect_agent_health_projection')).toBe(true)
     expect(isAgentRunActionType('inspect_agent_command_contracts')).toBe(true)
     expect(isAgentRunActionType('inspect_agent_control_plane_readiness')).toBe(true)
@@ -281,6 +283,7 @@ describe('agentRunProjection', () => {
     expect(getAgentRunActionDescriptor('inspect_agent_trace_audit')?.type).toBe('inspect_agent_trace_audit')
     expect(getAgentRunActionDescriptor('inspect_agent_event_projection')?.type).toBe('inspect_agent_event_projection')
     expect(getAgentRunActionDescriptor('inspect_agent_job_projection')?.type).toBe('inspect_agent_job_projection')
+    expect(getAgentRunActionDescriptor('plan_chapter_conflict_recovery')?.type).toBe('plan_chapter_conflict_recovery')
     expect(getAgentRunActionDescriptor('inspect_agent_health_projection')?.type).toBe('inspect_agent_health_projection')
     expect(getAgentRunActionDescriptor('inspect_agent_command_contracts')?.type).toBe('inspect_agent_command_contracts')
     expect(getAgentRunActionDescriptor('inspect_agent_control_plane_readiness')?.type).toBe('inspect_agent_control_plane_readiness')
@@ -555,6 +558,71 @@ describe('agentRunProjection', () => {
     expect(JSON.stringify(view)).not.toContain('trace-secret-id')
     expect(JSON.stringify(view)).not.toContain('phase234')
     expect(JSON.stringify(view)).not.toContain('internal boundary text')
+  })
+
+  it('builds fallback views for chapter conflict recovery without leaking task internals', () => {
+    const view = buildAgentRunActionResultView({
+      type: 'plan_chapter_conflict_recovery',
+      status: 'success',
+      data: {
+        status: 'completed',
+        version: 'phase141.chapter_conflict_recovery.v1',
+        chapter_index: 3,
+        conflict: {
+          chapter_index: 3,
+          status: 'reserved',
+          active_task_count: 1,
+          tasks: [
+            {
+              task_id: 'task-secret-id',
+              task_type: 'generate_chapter_range',
+              status: 'running',
+              source: 'range_task',
+              source_label: '批量生成任务',
+              chapter_range: { start: 2, end: 4 },
+            },
+          ],
+        },
+        recovery: {
+          status: 'recommended',
+          reason_code: 'chapter_target_reserved',
+          next_tool: 'inspect_agent_job_projection',
+          next_params: { task_id: 'task-secret-id' },
+          should_continue_current_run: false,
+          requires_user_input: false,
+        },
+        tools: [
+          { tool_name: 'inspect_agent_job_projection', params: { chapter_index: 3 } },
+          { tool_name: 'inspect_agent_job_projection', params: { task_id: 'task-secret-id' } },
+        ],
+        recovery_options: [
+          {
+            action: 'inspect_occupying_task',
+            tool_name: 'inspect_agent_job_projection',
+            params: { task_id: 'task-secret-id' },
+            safe_auto_execute: true,
+          },
+          { action: 'wait_for_occupying_task', safe_auto_execute: false },
+        ],
+        trace: {
+          selected_tools: ['inspect_agent_job_projection'],
+        },
+      },
+    })
+
+    expect(view?.label).toBe('章节冲突恢复计划已生成')
+    expect(view?.variant).toBe('success')
+    expect(view?.detail_items).toContainEqual({ label: '目标章节', value: '第3章' })
+    expect(view?.detail_items).toContainEqual({ label: '占用状态', value: '已占用' })
+    expect(view?.detail_items).toContainEqual({ label: '占用任务', value: '1 个' })
+    expect(view?.detail_items).toContainEqual({ label: '恢复状态', value: '建议处理' })
+    expect(view?.detail_items).toContainEqual({ label: '下一工具', value: 'inspect_agent_job_projection' })
+    expect(view?.detail_items).toContainEqual({ label: '计划工具', value: '2 个' })
+    expect(view?.detail_items).toContainEqual({ label: '恢复选项', value: '2 个' })
+    expect(JSON.stringify(view)).not.toContain('task-secret-id')
+    expect(JSON.stringify(view)).not.toContain('phase141')
+    expect(JSON.stringify(view)).not.toContain('next_params')
+    expect(JSON.stringify(view)).not.toContain('selected_tools')
   })
 
   it('builds fallback views for command contract diagnostics', () => {
