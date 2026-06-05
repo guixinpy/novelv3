@@ -358,6 +358,7 @@ def test_memory_tree_tool_adapter_builder_adds_summary_approval_chain():
         "record_agent_memory_tree_llm_candidate_summary",
         "record_agent_memory_tree_summaries",
         "prepare_record_agent_memory_tree_llm_candidate_summary",
+        "prepare_record_agent_memory_tree_llm_candidate_summaries_batch",
         "execute_record_agent_memory_tree_llm_candidate_summary_with_approval",
         "prepare_record_agent_memory_tree_summaries",
         "execute_record_agent_memory_tree_summaries_with_approval",
@@ -375,6 +376,7 @@ def test_memory_tree_tool_adapter_builder_adds_summary_approval_chain():
     assert adapters["record_agent_memory_tree_summaries"].mutability == "guarded_write"
     assert adapters["record_agent_memory_tree_summaries"].write_policy == "approval_required_redirect"
     assert adapters["prepare_record_agent_memory_tree_llm_candidate_summary"].mutability == "read"
+    assert adapters["prepare_record_agent_memory_tree_llm_candidate_summaries_batch"].mutability == "read"
     assert adapters["execute_record_agent_memory_tree_llm_candidate_summary_with_approval"].mutability == "write"
     assert (
         adapters["execute_record_agent_memory_tree_llm_candidate_summary_with_approval"].handler.__name__
@@ -4299,8 +4301,8 @@ async def test_tool_executor_handles_inspect_agent_worker_dispatch(db_session):
     }
     assert result.output["route_registry"]["status"] == "passed"
     assert result.output["route_registry"]["summary"] == {
-        "routes": 66,
-        "ready_routes": 66,
+        "routes": 67,
+        "ready_routes": 67,
         "unrouted_allowed_tools": 0,
         "issues": 0,
     }

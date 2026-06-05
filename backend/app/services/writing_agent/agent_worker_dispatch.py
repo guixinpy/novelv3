@@ -43,6 +43,7 @@ TOOL_WORKER_ROUTES = {
     "inspect_agent_memory_tree_llm_candidates": "memory_worker",
     "record_agent_memory_tree_llm_candidate_summary": "memory_worker",
     "prepare_record_agent_memory_tree_llm_candidate_summary": "memory_worker",
+    "prepare_record_agent_memory_tree_llm_candidate_summaries_batch": "memory_worker",
     "execute_record_agent_memory_tree_llm_candidate_summary_with_approval": "memory_worker",
     "record_agent_memory_tree_summaries": "memory_worker",
     "prepare_record_agent_memory_tree_summaries": "memory_worker",

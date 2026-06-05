@@ -34,6 +34,12 @@ _MEMORY_TREE_LLM_CANDIDATE_SUMMARY_INPUT_PROPERTIES = {
     "quality_query": {"type": "string"},
     "post_approval_continuation_tools": {"type": "array"},
 }
+_MEMORY_TREE_LLM_CANDIDATE_SUMMARY_BATCH_INPUT_PROPERTIES = {
+    "candidate_trace_ids": {"type": "array"},
+    "chapter_index": {"type": "integer", "minimum": 1},
+    "limit": {"type": "integer", "minimum": 1, "maximum": 20},
+    "quality_query": {"type": "string"},
+}
 _MEMORY_TREE_LLM_CANDIDATE_SUMMARY_PREPARE_OUTPUT = object_schema(
     {
         "status": {"type": "string"},
@@ -53,6 +59,22 @@ _MEMORY_TREE_LLM_CANDIDATE_SUMMARY_PREPARE_OUTPUT = object_schema(
         "recommended_next_tools": {"type": "array"},
         "recommended_next_tool_calls": {"type": "array"},
         "post_approval_continuation_tools": {"type": "array"},
+        "trace": {"type": "object"},
+    }
+)
+_MEMORY_TREE_LLM_CANDIDATE_SUMMARY_BATCH_PREPARE_OUTPUT = object_schema(
+    {
+        "status": {"type": "string"},
+        "prepare_version": {"type": "string"},
+        "project_id": {"type": "string"},
+        "target_type": {"type": "string"},
+        "filters": {"type": "object"},
+        "summary": {"type": "object"},
+        "candidate_preparations": {"type": "array"},
+        "required_confirmation": {"type": "object"},
+        "side_effects": {"type": "object"},
+        "recommended_next_tools": {"type": "array"},
+        "recommended_next_tool_calls": {"type": "array"},
         "trace": {"type": "object"},
     }
 )
@@ -269,6 +291,19 @@ MEMORY_TREE_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         input_schema=object_schema(_MEMORY_TREE_LLM_CANDIDATE_SUMMARY_INPUT_PROPERTIES),
         output_schema=_MEMORY_TREE_LLM_CANDIDATE_SUMMARY_PREPARE_OUTPUT,
         target_type="agent_memory_tree_llm_candidate_summary_approval",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=9,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
+        name="prepare_record_agent_memory_tree_llm_candidate_summaries_batch",
+        module="writing_agent",
+        category="longform_memory",
+        description="为多个 Memory Tree LLM 候选摘要批量构建逐条 trace 绑定的 Agent 计划审批契约，不执行写入。",
+        input_schema=object_schema(_MEMORY_TREE_LLM_CANDIDATE_SUMMARY_BATCH_INPUT_PROPERTIES),
+        output_schema=_MEMORY_TREE_LLM_CANDIDATE_SUMMARY_BATCH_PREPARE_OUTPUT,
+        target_type="agent_memory_tree_llm_candidate_summary_batch_approval",
         internal=True,
         non_blocking_report=True,
         sort_key=9,

@@ -17,6 +17,7 @@ from app.services.writing_agent.memory_tree import (
 )
 from app.services.writing_agent.memory_tree_summary_execution import (
     execute_record_agent_memory_tree_llm_candidate_summary_with_approval,
+    prepare_record_agent_memory_tree_llm_candidate_summaries_batch,
     prepare_record_agent_memory_tree_llm_candidate_summary,
     prepare_record_agent_memory_tree_summaries,
 )
@@ -408,6 +409,7 @@ async def test_memory_tree_llm_candidate_trace_inspection_lists_persisted_candid
         }
     ]
     assert output["recommended_next_tools"] == [
+        "prepare_record_agent_memory_tree_llm_candidate_summaries_batch",
         "prepare_record_agent_memory_tree_llm_candidate_summary",
         "execute_record_agent_memory_tree_llm_candidate_summary_with_approval",
         "inspect_agent_memory_tree_quality",
@@ -495,6 +497,107 @@ async def test_prepare_record_memory_tree_llm_candidate_summary_builds_trace_bou
     assert execute_call["params"]["confirm_execute"] is True
     assert execute_call["params"]["approval_contract_hash"] == output["agent_plan_approval_contract_hash"]
     assert execute_call["params"]["approval_contract"] == output["agent_plan_approval_contract"]
+    assert (
+        db_session.query(LongformMemory)
+        .filter(
+            LongformMemory.project_id == project.id,
+            LongformMemory.memory_type == MEMORY_TREE_CHAPTER_SUMMARY_TYPE,
+        )
+        .count()
+        == 0
+    )
+
+
+@pytest.mark.asyncio
+async def test_prepare_record_memory_tree_llm_candidate_summaries_batch_builds_per_candidate_contracts(db_session):
+    project, _refs = _seed_memory_tree_project(db_session)
+    first_ai_service = _FakeMemoryTreeAIService(
+        '{"summary":"顾衍保留灯塔旧回声线索，蓝焰证词仍待复核。",'
+        '"salient_terms":["灯塔旧回声","蓝焰证词"],'
+        '"open_questions":["蓝焰证词是否可靠？"],'
+        '"source_coverage":["chapter_content","outline"]}'
+    )
+    first_generated = await summarize_agent_memory_tree_llm_candidate(
+        db_session,
+        project.id,
+        chapter_index=2,
+        query="蓝焰证词",
+        max_source_chars=220,
+        ai_service=first_ai_service,
+    )
+    second_ai_service = _FakeMemoryTreeAIService(
+        '{"summary":"空白信来源与灯塔暗道记录形成第二条可物化候选。",'
+        '"salient_terms":["空白信来源","灯塔暗道"],'
+        '"open_questions":["灯塔暗道记录是否完整？"],'
+        '"source_coverage":["chapter_content","storyline"]}'
+    )
+    second_generated = await summarize_agent_memory_tree_llm_candidate(
+        db_session,
+        project.id,
+        chapter_index=2,
+        query="空白信来源",
+        max_source_chars=220,
+        ai_service=second_ai_service,
+    )
+
+    output = prepare_record_agent_memory_tree_llm_candidate_summaries_batch(
+        db_session,
+        project.id,
+        action_params={
+            "candidate_trace_ids": [
+                first_generated["trace"]["trace_id"],
+                second_generated["trace"]["trace_id"],
+            ],
+        },
+    )
+
+    assert output["status"] == "approval_required"
+    assert output["target_type"] == "agent_memory_tree_llm_candidate_summary_batch_approval"
+    assert output["summary"] == {
+        "candidate_traces": 2,
+        "prepared_candidates": 2,
+        "skipped_candidates": 0,
+    }
+    assert output["side_effects"] == {
+        "executed": [],
+        "skipped": ["record_agent_memory_tree_llm_candidate_summary"],
+    }
+    assert output["required_confirmation"] == {
+        "confirm_each_execute": True,
+        "candidate_count": 2,
+    }
+    assert output["recommended_next_tools"] == [
+        "execute_record_agent_memory_tree_llm_candidate_summary_with_approval"
+    ]
+
+    calls = output["recommended_next_tool_calls"]
+    assert [call["tool_name"] for call in calls] == [
+        "execute_record_agent_memory_tree_llm_candidate_summary_with_approval",
+        "execute_record_agent_memory_tree_llm_candidate_summary_with_approval",
+    ]
+    assert [call["params"]["candidate_trace_id"] for call in calls] == [
+        first_generated["trace"]["trace_id"],
+        second_generated["trace"]["trace_id"],
+    ]
+    assert [call["params"]["quality_query"] for call in calls] == ["灯塔旧回声", "空白信来源"]
+    assert all(call["params"]["confirm_execute"] is True for call in calls)
+    assert all(call["requires_confirmation"] is True for call in calls)
+    assert [item["summary_plan"]["quality_query"] for item in output["candidate_preparations"]] == [
+        "灯塔旧回声",
+        "空白信来源",
+    ]
+    assert [
+        call["params"]["approval_contract_hash"]
+        for call in calls
+    ] == [
+        item["agent_plan_approval_contract_hash"] for item in output["candidate_preparations"]
+    ]
+    assert output["trace"] == {
+        "selected_tools": ["prepare_record_agent_memory_tree_llm_candidate_summaries_batch"],
+        "approval_gate_version": "phase250.memory_tree_llm_candidate_summary_agent_plan_approval.v1",
+        "single_candidate_execute_required": True,
+        "prepared_candidate_count": 2,
+    }
     assert (
         db_session.query(LongformMemory)
         .filter(
@@ -948,6 +1051,25 @@ def test_memory_tree_llm_candidate_inspection_tool_is_registered_with_read_metad
         "category": "longform_memory",
         "mutability": "read",
         "handler_name": "_inspect_agent_memory_tree_llm_candidates",
+    }
+
+
+def test_memory_tree_llm_candidate_batch_prepare_tool_is_registered_with_read_metadata():
+    descriptor = get_agent_tool_descriptor("prepare_record_agent_memory_tree_llm_candidate_summaries_batch")
+    metadata = writing_agent_tool_adapter_metadata("prepare_record_agent_memory_tree_llm_candidate_summaries_batch")
+
+    assert descriptor is not None
+    assert descriptor.category == "longform_memory"
+    assert descriptor.target_type == "agent_memory_tree_llm_candidate_summary_batch_approval"
+    assert descriptor.non_blocking_report is True
+    assert descriptor.input_schema["properties"]["candidate_trace_ids"]["type"] == "array"
+    assert descriptor.output_schema["properties"]["candidate_preparations"]["type"] == "array"
+    assert metadata == {
+        "tool_name": "prepare_record_agent_memory_tree_llm_candidate_summaries_batch",
+        "adapter_type": "static",
+        "category": "longform_memory",
+        "mutability": "read",
+        "handler_name": "_prepare_record_agent_memory_tree_llm_candidate_summaries_batch",
     }
 
 

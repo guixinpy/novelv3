@@ -10,6 +10,7 @@ allowed_tools:
   - inspect_agent_memory_tree_llm_candidates
   - record_agent_memory_tree_llm_candidate_summary
   - prepare_record_agent_memory_tree_llm_candidate_summary
+  - prepare_record_agent_memory_tree_llm_candidate_summaries_batch
   - execute_record_agent_memory_tree_llm_candidate_summary_with_approval
   - record_agent_memory_tree_summaries
   - prepare_record_agent_memory_tree_summaries

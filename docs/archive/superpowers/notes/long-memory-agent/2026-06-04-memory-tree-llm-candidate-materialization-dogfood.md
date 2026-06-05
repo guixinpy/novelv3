@@ -180,11 +180,12 @@ The approval handoff now has concrete call payloads in addition to tool-name rec
 
 - `inspect_agent_memory_tree_llm_candidates` returns `recommended_next_tool_calls` entries for `prepare_record_agent_memory_tree_llm_candidate_summary`, one for each ready candidate trace in the inspection window, populated with the selected `candidate_trace_id`, `quality_chapter_index`, and a candidate salient term as `quality_query`.
 - `prepare_record_agent_memory_tree_llm_candidate_summary` returns a `recommended_next_tool_calls` entry for `execute_record_agent_memory_tree_llm_candidate_summary_with_approval`, including `confirm_execute=true`, the approval contract/hash, and `requires_confirmation=true`.
+- `prepare_record_agent_memory_tree_llm_candidate_summaries_batch` is covered by local regression tests: it accepts explicit candidate trace ids or an inspection window, builds per-candidate trace-bound approval contracts, and returns one `execute_record_agent_memory_tree_llm_candidate_summary_with_approval` handoff per ready candidate. It remains read-only and does not introduce a batch execute shortcut.
 
 Targeted regression coverage:
 
 ```powershell
-pytest tests/test_writing_agent_memory_tree.py::test_memory_tree_llm_candidate_trace_inspection_lists_persisted_candidates tests/test_writing_agent_memory_tree.py::test_prepare_record_memory_tree_llm_candidate_summary_builds_trace_bound_approval_contract tests/test_writing_agent_tool_registry.py::test_agent_tool_registry_includes_memory_tree_llm_candidate_inspection tests/test_writing_agent_tool_registry.py::test_agent_tool_registry_includes_memory_tree_llm_candidate_summary_approval_chain
+pytest tests/test_writing_agent_memory_tree.py::test_memory_tree_llm_candidate_trace_inspection_lists_persisted_candidates tests/test_writing_agent_memory_tree.py::test_prepare_record_memory_tree_llm_candidate_summary_builds_trace_bound_approval_contract tests/test_writing_agent_memory_tree.py::test_prepare_record_memory_tree_llm_candidate_summaries_batch_builds_per_candidate_contracts tests/test_writing_agent_tool_registry.py::test_agent_tool_registry_includes_memory_tree_llm_candidate_inspection tests/test_writing_agent_tool_registry.py::test_agent_tool_registry_includes_memory_tree_llm_candidate_summary_approval_chain
 ```
 
 ## Frontend Handoff Regression

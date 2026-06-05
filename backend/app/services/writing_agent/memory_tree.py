@@ -1402,13 +1402,24 @@ def _normalise_candidate_payload(candidate: dict[str, Any]) -> dict[str, Any]:
 
 
 def _llm_candidate_inspection_recommendations(candidates: list[dict[str, Any]]) -> list[str]:
-    if not candidates:
+    ready_count = sum(
+        1
+        for item in candidates
+        if str((item.get("candidate") or {}).get("summary") or "").strip()
+    )
+    if ready_count == 0:
         return ["summarize_agent_memory_tree_llm_candidate", "build_agent_memory_tree_llm_summary_plan"]
-    return [
-        "prepare_record_agent_memory_tree_llm_candidate_summary",
-        "execute_record_agent_memory_tree_llm_candidate_summary_with_approval",
-        "inspect_agent_memory_tree_quality",
-    ]
+    recommendations: list[str] = []
+    if ready_count > 1:
+        recommendations.append("prepare_record_agent_memory_tree_llm_candidate_summaries_batch")
+    recommendations.extend(
+        [
+            "prepare_record_agent_memory_tree_llm_candidate_summary",
+            "execute_record_agent_memory_tree_llm_candidate_summary_with_approval",
+            "inspect_agent_memory_tree_quality",
+        ]
+    )
+    return recommendations
 
 
 def _llm_candidate_inspection_recommended_tool_calls(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:

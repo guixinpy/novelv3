@@ -1853,6 +1853,9 @@ def test_agent_tool_registry_includes_memory_tree_llm_candidate_inspection():
 def test_agent_tool_registry_includes_memory_tree_llm_candidate_summary_approval_chain():
     direct_descriptor = get_agent_tool_descriptor("record_agent_memory_tree_llm_candidate_summary")
     prepare_descriptor = get_agent_tool_descriptor("prepare_record_agent_memory_tree_llm_candidate_summary")
+    batch_prepare_descriptor = get_agent_tool_descriptor(
+        "prepare_record_agent_memory_tree_llm_candidate_summaries_batch"
+    )
     execute_descriptor = get_agent_tool_descriptor(
         "execute_record_agent_memory_tree_llm_candidate_summary_with_approval"
     )
@@ -1878,6 +1881,18 @@ def test_agent_tool_registry_includes_memory_tree_llm_candidate_summary_approval
     assert prepare_descriptor.output_schema["properties"]["recommended_next_tool_calls"]["type"] == "array"
     assert "prepare_record_agent_memory_tree_llm_candidate_summary" in allowed_tool_names()
     assert "prepare_record_agent_memory_tree_llm_candidate_summary" in non_blocking_report_tool_names()
+
+    assert batch_prepare_descriptor is not None
+    assert batch_prepare_descriptor.internal is True
+    assert batch_prepare_descriptor.non_blocking_report is True
+    assert batch_prepare_descriptor.category == "longform_memory"
+    assert batch_prepare_descriptor.target_type == "agent_memory_tree_llm_candidate_summary_batch_approval"
+    assert batch_prepare_descriptor.input_schema["properties"]["candidate_trace_ids"]["type"] == "array"
+    assert batch_prepare_descriptor.input_schema["properties"]["limit"]["maximum"] == 20
+    assert batch_prepare_descriptor.output_schema["properties"]["candidate_preparations"]["type"] == "array"
+    assert batch_prepare_descriptor.output_schema["properties"]["recommended_next_tool_calls"]["type"] == "array"
+    assert "prepare_record_agent_memory_tree_llm_candidate_summaries_batch" in allowed_tool_names()
+    assert "prepare_record_agent_memory_tree_llm_candidate_summaries_batch" in non_blocking_report_tool_names()
 
     assert execute_descriptor is not None
     assert execute_descriptor.internal is True

@@ -144,6 +144,12 @@ def build_memory_tree_tool_adapters(
             category="longform_memory",
             mutability="read",
         ),
+        "prepare_record_agent_memory_tree_llm_candidate_summaries_batch": WritingAgentToolAdapter(
+            "prepare_record_agent_memory_tree_llm_candidate_summaries_batch",
+            _prepare_record_agent_memory_tree_llm_candidate_summaries_batch,
+            category="longform_memory",
+            mutability="read",
+        ),
         "execute_record_agent_memory_tree_llm_candidate_summary_with_approval": WritingAgentToolAdapter(
             "execute_record_agent_memory_tree_llm_candidate_summary_with_approval",
             _execute_record_agent_memory_tree_llm_candidate_summary_with_approval(approval_tool_metadata_provider),
@@ -174,6 +180,21 @@ def _prepare_record_agent_memory_tree_llm_candidate_summary(
     )
 
     return prepare_record_agent_memory_tree_llm_candidate_summary(
+        context.db,
+        context.project_id,
+        action_params=tool.params,
+    )
+
+
+def _prepare_record_agent_memory_tree_llm_candidate_summaries_batch(
+    context: WritingAgentToolContext,
+    tool: WritingAgentToolRequest,
+) -> dict[str, Any]:
+    from app.services.writing_agent.memory_tree_summary_execution import (
+        prepare_record_agent_memory_tree_llm_candidate_summaries_batch,
+    )
+
+    return prepare_record_agent_memory_tree_llm_candidate_summaries_batch(
         context.db,
         context.project_id,
         action_params=tool.params,
