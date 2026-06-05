@@ -1412,29 +1412,26 @@ def _llm_candidate_inspection_recommendations(candidates: list[dict[str, Any]]) 
 
 
 def _llm_candidate_inspection_recommended_tool_calls(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    candidate_trace = next(
-        (item for item in candidates if str((item.get("candidate") or {}).get("summary") or "").strip()),
-        None,
-    )
-    if candidate_trace is None:
-        return []
-    params: dict[str, Any] = {"candidate_trace_id": candidate_trace.get("trace_id")}
-    summary_target = candidate_trace.get("summary_target")
-    if not isinstance(summary_target, dict):
-        summary_target = {}
-    chapter_index = _optional_int(summary_target.get("chapter_index") or candidate_trace.get("chapter_index"))
-    if chapter_index is not None:
-        params["quality_chapter_index"] = chapter_index
-    quality_query = _first_llm_candidate_quality_query(candidate_trace.get("candidate"))
-    if quality_query:
-        params["quality_query"] = quality_query
-    return [
-        {
+    tool_calls: list[dict[str, Any]] = []
+    for candidate_trace in candidates:
+        if not str((candidate_trace.get("candidate") or {}).get("summary") or "").strip():
+            continue
+        params: dict[str, Any] = {"candidate_trace_id": candidate_trace.get("trace_id")}
+        summary_target = candidate_trace.get("summary_target")
+        if not isinstance(summary_target, dict):
+            summary_target = {}
+        chapter_index = _optional_int(summary_target.get("chapter_index") or candidate_trace.get("chapter_index"))
+        if chapter_index is not None:
+            params["quality_chapter_index"] = chapter_index
+        quality_query = _first_llm_candidate_quality_query(candidate_trace.get("candidate"))
+        if quality_query:
+            params["quality_query"] = quality_query
+        tool_calls.append({
             "tool_name": "prepare_record_agent_memory_tree_llm_candidate_summary",
             "params": params,
             "requires_confirmation": False,
-        }
-    ]
+        })
+    return tool_calls
 
 
 def _first_llm_candidate_quality_query(candidate: Any) -> str | None:

@@ -2204,8 +2204,8 @@ describe('AgentRunDrawer', () => {
                 status: 'ready',
                 filters: { chapter_index: 2, limit: 3 },
                 summary: {
-                  candidate_traces: 1,
-                  ready_candidates: 1,
+                  candidate_traces: 2,
+                  ready_candidates: 2,
                 },
                 candidates: [
                   {
@@ -2230,6 +2230,28 @@ describe('AgentRunDrawer', () => {
                     source_chars: 848,
                     quality_precheck_status: 'degraded',
                   },
+                  {
+                    trace_id: 'trace-secret-2',
+                    trace_status: 'success',
+                    chapter_index: 2,
+                    model: 'deepseek-chat',
+                    prompt_tokens: 88,
+                    completion_tokens: 55,
+                    summary_target: {
+                      level: 'chapter',
+                      scope_key: 'chapter:2',
+                      chapter_index: 2,
+                    },
+                    candidate: {
+                      summary: '空白信来源与灯塔暗道记录形成第二条摘要候选。',
+                      salient_terms: ['空白信来源', '灯塔暗道'],
+                      open_questions: ['灯塔暗道记录是否完整？'],
+                      source_coverage: ['chapter_content', 'storyline'],
+                    },
+                    source_count: 2,
+                    source_chars: 612,
+                    quality_precheck_status: 'ready',
+                  },
                 ],
                 recommended_next_tool_calls: [
                   {
@@ -2238,6 +2260,15 @@ describe('AgentRunDrawer', () => {
                       candidate_trace_id: 'trace-secret-1',
                       quality_chapter_index: 2,
                       quality_query: '灯塔旧回声',
+                    },
+                    requires_confirmation: false,
+                  },
+                  {
+                    tool_name: 'prepare_record_agent_memory_tree_llm_candidate_summary',
+                    params: {
+                      candidate_trace_id: 'trace-secret-2',
+                      quality_chapter_index: 2,
+                      quality_query: '空白信来源',
                     },
                     requires_confirmation: false,
                   },
@@ -2252,39 +2283,46 @@ describe('AgentRunDrawer', () => {
     const text = document.body.textContent || ''
     expect(text).toContain('Memory Tree 候选摘要')
     expect(text).toContain('可用')
-    expect(text).toContain('候选 1 / 可准备 1')
+    expect(text).toContain('候选 2 / 可准备 2')
     expect(text).toContain('第2章')
     expect(text).toContain('灯塔旧回声')
     expect(text).toContain('顾衍保留灯塔旧回声线索')
     expect(text).toContain('来源 3 / 848 字')
     expect(text).toContain('质量预检：降级')
+    expect(text).toContain('空白信来源')
+    expect(text).toContain('空白信来源与灯塔暗道记录形成第二条摘要候选。')
+    expect(text).toContain('来源 2 / 612 字')
+    expect(text).toContain('质量预检：通过')
     expect(text).not.toContain('trace-secret-1')
+    expect(text).not.toContain('trace-secret-2')
     expect(text).not.toContain('candidate_trace_id')
     expect(text).not.toContain('scope_key')
     expect(text).not.toContain('approval_contract')
 
-    const button = document.body.querySelector('[data-testid="memory-tree-llm-candidate-prepare"]') as HTMLButtonElement
-    expect(button).not.toBeNull()
-    expect(button.textContent).toContain('准备候选摘要')
-    expect(button.textContent).toContain('灯塔旧回声')
+    const buttons = Array.from(document.body.querySelectorAll('[data-testid="memory-tree-llm-candidate-prepare"]')) as HTMLButtonElement[]
+    expect(buttons).toHaveLength(2)
+    expect(buttons[0].textContent).toContain('准备候选摘要')
+    expect(buttons[0].textContent).toContain('灯塔旧回声')
+    expect(buttons[1].textContent).toContain('准备候选摘要')
+    expect(buttons[1].textContent).toContain('空白信来源')
 
-    await button.click()
+    await buttons[1].click()
 
     expect(wrapper.emitted('executePlannerPlan')).toEqual([[{
       sourceRunId: 'run-memory-tree-candidates',
-      sourcePlanId: 'memory-tree-llm-candidate-prepare:0',
-      goal: '准备 Memory Tree 候选摘要审批：第2章 灯塔旧回声',
+      sourcePlanId: 'memory-tree-llm-candidate-prepare:1',
+      goal: '准备 Memory Tree 候选摘要审批：第2章 空白信来源',
       tools: [
         {
           tool_name: 'prepare_record_agent_memory_tree_llm_candidate_summary',
           params: {
-            candidate_trace_id: 'trace-secret-1',
+            candidate_trace_id: 'trace-secret-2',
             quality_chapter_index: 2,
-            quality_query: '灯塔旧回声',
+            quality_query: '空白信来源',
           },
           planner: {
-            step_id: 'memory-tree-llm-candidate-prepare:0',
-            plan_id: 'memory-tree-llm-candidate-prepare:0',
+            step_id: 'memory-tree-llm-candidate-prepare:1',
+            plan_id: 'memory-tree-llm-candidate-prepare:1',
             mutability: 'read',
             requires_confirmation: false,
             reason: '准备 Memory Tree LLM 候选摘要审批，不直接写入 LongformMemory。',
@@ -2296,20 +2334,20 @@ describe('AgentRunDrawer', () => {
         intent_class: 'prepare_memory_tree_llm_candidate_summary',
         approval_contract: { status: 'not_required', write_steps: [] },
         trace: {
-          plan_id: 'memory-tree-llm-candidate-prepare:0',
+          plan_id: 'memory-tree-llm-candidate-prepare:1',
           selected_tools: ['prepare_record_agent_memory_tree_llm_candidate_summary'],
         },
         tools: [
           {
             tool_name: 'prepare_record_agent_memory_tree_llm_candidate_summary',
             params: {
-              candidate_trace_id: 'trace-secret-1',
+              candidate_trace_id: 'trace-secret-2',
               quality_chapter_index: 2,
-              quality_query: '灯塔旧回声',
+              quality_query: '空白信来源',
             },
             planner: {
-              step_id: 'memory-tree-llm-candidate-prepare:0',
-              plan_id: 'memory-tree-llm-candidate-prepare:0',
+              step_id: 'memory-tree-llm-candidate-prepare:1',
+              plan_id: 'memory-tree-llm-candidate-prepare:1',
               mutability: 'read',
               requires_confirmation: false,
               reason: '准备 Memory Tree LLM 候选摘要审批，不直接写入 LongformMemory。',

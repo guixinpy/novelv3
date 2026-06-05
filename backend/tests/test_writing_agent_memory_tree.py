@@ -340,19 +340,33 @@ async def test_memory_tree_llm_summary_candidate_records_trace_without_memory_wr
 @pytest.mark.asyncio
 async def test_memory_tree_llm_candidate_trace_inspection_lists_persisted_candidates(db_session):
     project, _refs = _seed_memory_tree_project(db_session)
-    ai_service = _FakeMemoryTreeAIService(
+    first_ai_service = _FakeMemoryTreeAIService(
         '{"summary":"顾衍保留灯塔旧回声线索，蓝焰证词仍待复核。",'
         '"salient_terms":["灯塔旧回声","蓝焰证词"],'
         '"open_questions":["蓝焰证词是否可靠？"],'
         '"source_coverage":["chapter_content","outline"]}'
     )
-    generated = await summarize_agent_memory_tree_llm_candidate(
+    first_generated = await summarize_agent_memory_tree_llm_candidate(
         db_session,
         project.id,
         chapter_index=2,
         query="蓝焰证词",
         max_source_chars=220,
-        ai_service=ai_service,
+        ai_service=first_ai_service,
+    )
+    second_ai_service = _FakeMemoryTreeAIService(
+        '{"summary":"空白信来源与灯塔暗道记录形成第二条可物化候选。",'
+        '"salient_terms":["空白信来源","灯塔暗道"],'
+        '"open_questions":["灯塔暗道记录是否完整？"],'
+        '"source_coverage":["chapter_content","storyline"]}'
+    )
+    second_generated = await summarize_agent_memory_tree_llm_candidate(
+        db_session,
+        project.id,
+        chapter_index=2,
+        query="空白信来源",
+        max_source_chars=220,
+        ai_service=second_ai_service,
     )
 
     output = inspect_agent_memory_tree_llm_candidates(
@@ -363,20 +377,33 @@ async def test_memory_tree_llm_candidate_trace_inspection_lists_persisted_candid
     )
 
     assert output["status"] == "ready"
-    assert output["summary"] == {"candidate_traces": 1, "ready_candidates": 1}
+    assert output["summary"] == {"candidate_traces": 2, "ready_candidates": 2}
     assert output["filters"] == {"chapter_index": 2, "limit": 3}
     assert output["candidates"] == [
         {
-            "trace_id": generated["trace"]["trace_id"],
+            "trace_id": second_generated["trace"]["trace_id"],
             "trace_status": "success",
             "chapter_index": 2,
             "model": "deepseek-chat",
             "prompt_tokens": 11,
             "completion_tokens": 7,
-            "summary_target": generated["summary_target"],
-            "candidate": generated["candidate"],
-            "source_count": generated["evidence_window"]["source_count"],
-            "source_chars": generated["evidence_window"]["source_chars"],
+            "summary_target": second_generated["summary_target"],
+            "candidate": second_generated["candidate"],
+            "source_count": second_generated["evidence_window"]["source_count"],
+            "source_chars": second_generated["evidence_window"]["source_chars"],
+            "quality_precheck_status": "degraded",
+        },
+        {
+            "trace_id": first_generated["trace"]["trace_id"],
+            "trace_status": "success",
+            "chapter_index": 2,
+            "model": "deepseek-chat",
+            "prompt_tokens": 11,
+            "completion_tokens": 7,
+            "summary_target": first_generated["summary_target"],
+            "candidate": first_generated["candidate"],
+            "source_count": first_generated["evidence_window"]["source_count"],
+            "source_chars": first_generated["evidence_window"]["source_chars"],
             "quality_precheck_status": "degraded",
         }
     ]
@@ -389,7 +416,16 @@ async def test_memory_tree_llm_candidate_trace_inspection_lists_persisted_candid
         {
             "tool_name": "prepare_record_agent_memory_tree_llm_candidate_summary",
             "params": {
-                "candidate_trace_id": generated["trace"]["trace_id"],
+                "candidate_trace_id": second_generated["trace"]["trace_id"],
+                "quality_chapter_index": 2,
+                "quality_query": "空白信来源",
+            },
+            "requires_confirmation": False,
+        },
+        {
+            "tool_name": "prepare_record_agent_memory_tree_llm_candidate_summary",
+            "params": {
+                "candidate_trace_id": first_generated["trace"]["trace_id"],
                 "quality_chapter_index": 2,
                 "quality_query": "灯塔旧回声",
             },

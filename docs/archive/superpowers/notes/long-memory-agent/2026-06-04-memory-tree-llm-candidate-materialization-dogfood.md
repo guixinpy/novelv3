@@ -178,7 +178,7 @@ Remaining gaps: this still uses a fake model response, and single-candidate mate
 
 The approval handoff now has concrete call payloads in addition to tool-name recommendations:
 
-- `inspect_agent_memory_tree_llm_candidates` returns a `recommended_next_tool_calls` entry for `prepare_record_agent_memory_tree_llm_candidate_summary`, populated with the selected `candidate_trace_id`, `quality_chapter_index`, and a candidate salient term as `quality_query`.
+- `inspect_agent_memory_tree_llm_candidates` returns `recommended_next_tool_calls` entries for `prepare_record_agent_memory_tree_llm_candidate_summary`, one for each ready candidate trace in the inspection window, populated with the selected `candidate_trace_id`, `quality_chapter_index`, and a candidate salient term as `quality_query`.
 - `prepare_record_agent_memory_tree_llm_candidate_summary` returns a `recommended_next_tool_calls` entry for `execute_record_agent_memory_tree_llm_candidate_summary_with_approval`, including `confirm_execute=true`, the approval contract/hash, and `requires_confirmation=true`.
 
 Targeted regression coverage:
@@ -193,7 +193,7 @@ pytest tests/test_writing_agent_memory_tree.py::test_memory_tree_llm_candidate_t
 
 - It renders status, candidate/ready counts, chapter label, safe summary text, salient terms, source count/chars, and quality precheck status.
 - It hides `candidate_trace_id`, `scope_key`, approval contract details, and other raw internal fields from the visible drawer.
-- It reads the prepare `recommended_next_tool_calls` payload and emits a read-only `prepare_record_agent_memory_tree_llm_candidate_summary` continuation, so the user can move from candidate inspection to approval preparation without hand-stitching the trace id.
+- It reads the prepare `recommended_next_tool_calls` payloads and emits read-only `prepare_record_agent_memory_tree_llm_candidate_summary` continuations for multiple ready candidates, so the user can move from candidate inspection to approval preparation without hand-stitching trace ids.
 
 Targeted regression coverage:
 
