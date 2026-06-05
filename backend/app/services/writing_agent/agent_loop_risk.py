@@ -15,6 +15,7 @@ KNOWN_POLL_TOOLS = {
     "inspect_agent_health_projection",
     "inspect_agent_job_projection",
     "inspect_agent_memory_route",
+    "inspect_agent_retrieval_strategy",
     "inspect_agent_trace_audit",
     "inspect_longform_chapter_batch",
 }

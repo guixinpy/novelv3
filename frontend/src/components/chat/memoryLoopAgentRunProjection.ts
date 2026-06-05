@@ -2,6 +2,7 @@ import type { ActionResultView } from '../../api/types'
 
 export const MEMORY_LOOP_AGENT_RUN_ACTION_TYPES = [
   'inspect_agent_memory_activation_plan',
+  'inspect_agent_retrieval_strategy',
   'search_agent_retrieval_context',
   'plan_post_chapter_memory_capture',
 ] as const
@@ -17,6 +18,10 @@ export const MEMORY_LOOP_AGENT_RUN_ACTION_DESCRIPTORS: Record<MemoryLoopAgentRun
   inspect_agent_memory_activation_plan: {
     type: 'inspect_agent_memory_activation_plan',
     buildView: buildMemoryActivationActionResultView,
+  },
+  inspect_agent_retrieval_strategy: {
+    type: 'inspect_agent_retrieval_strategy',
+    buildView: buildRetrievalStrategyActionResultView,
   },
   search_agent_retrieval_context: {
     type: 'search_agent_retrieval_context',
@@ -50,6 +55,19 @@ function buildRetrievalContextActionResultView(actionResult: Record<string, unkn
     status,
     label: retrievalContextLabel(retrievalStatus, data),
     variant: memoryLoopVariant(retrievalStatus, status),
+    ...(detailItems.length ? { detail_items: detailItems } : {}),
+  }
+}
+
+function buildRetrievalStrategyActionResultView(actionResult: Record<string, unknown>, status: string): ActionResultView {
+  const data = recordValue(actionResult.data)
+  const strategyStatus = stringValue(data.status) || status
+  const detailItems = retrievalStrategyDetailItems(data)
+  return {
+    type: 'inspect_agent_retrieval_strategy',
+    status,
+    label: retrievalStrategyLabel(strategyStatus, status),
+    variant: memoryLoopVariant(strategyStatus, status),
     ...(detailItems.length ? { detail_items: detailItems } : {}),
   }
 }
@@ -111,6 +129,27 @@ function retrievalContextDetailItems(data: Record<string, unknown>) {
   return items
 }
 
+function retrievalStrategyDetailItems(data: Record<string, unknown>) {
+  const items: Array<{ label: string; value: string }> = []
+  const strategy = recordValue(data.strategy)
+  const strategyName = retrievalStrategyNameLabel(stringValue(strategy.name))
+  if (strategyName) {
+    items.push({ label: '策略', value: strategyName })
+  }
+
+  const filters = recordValue(strategy.filters)
+  const maxChapterIndex = numberValue(filters.max_chapter_index)
+  if (maxChapterIndex !== null) {
+    items.push({ label: '章节窗口', value: `第${maxChapterIndex}章前` })
+  }
+
+  const nextToolCount = recommendedToolCount(data)
+  if (nextToolCount > 0) {
+    items.push({ label: '下一步', value: `${nextToolCount} 个工具` })
+  }
+  return items
+}
+
 function postChapterMemoryCaptureDetailItems(data: Record<string, unknown>) {
   const items: Array<{ label: string; value: string }> = []
   const chapterIndex = numberValue(data.chapter_index)
@@ -153,6 +192,14 @@ function retrievalContextLabel(status: string, data: Record<string, unknown>) {
   if (returned === 0) return '检索证据为空'
   if (status === 'completed' || status === 'success') return '检索证据已返回'
   return `检索证据: ${status || '未知状态'}`
+}
+
+function retrievalStrategyLabel(strategyStatus: string, actionStatus: string) {
+  if (actionStatus === 'failed' || strategyStatus === 'failed') return '检索策略规划失败'
+  if (actionStatus === 'running' || strategyStatus === 'running') return '检索策略规划中'
+  if (strategyStatus === 'blocked') return '检索策略已阻止'
+  if (strategyStatus === 'completed' || strategyStatus === 'success') return '检索策略已规划'
+  return `检索策略: ${strategyStatus || '未知状态'}`
 }
 
 function postChapterMemoryCaptureLabel(captureStatus: string, actionStatus: string) {
@@ -202,6 +249,14 @@ function retrievalSourceTypeLabel(sourceType: string) {
   if (sourceType === 'longform_memory') return '长篇记忆'
   if (sourceType === 'world_fact') return '世界事实'
   return ''
+}
+
+function retrievalStrategyNameLabel(name: string) {
+  if (name === 'query_aware_retrieval') return '查询感知检索'
+  if (name === 'chapter_context_summary') return '章节上下文摘要'
+  if (name === 'repair_retrieval_maintenance') return '维护诊断优先'
+  if (name === 'memory_route_diagnostics') return '记忆路由诊断'
+  return name
 }
 
 function memoryLoopVariant(innerStatus: string, actionStatus: string) {

@@ -152,7 +152,7 @@ Agent 化缺口：
 ### 2.1 Retrieval System（检索系统）
 
 ```
-当前状态：L2 本地 hash embedding + 可切换远程 embedding，支持 lexical + vector score；Retrieval Context 可由自然语言只读意图触达，AgentRunDrawer 可展示检索证据安全摘要
+当前状态：L2 本地 hash embedding + 可切换远程 embedding，支持 lexical + vector score；inspect_agent_retrieval_strategy 已能按章节/query/维护状态只读选择 query-aware retrieval、章节上下文摘要或维护诊断，章节生成 planner 已从固定 search 步骤切到先规划检索策略；Retrieval Strategy 与 Retrieval Context 均可由自然语言只读意图触达，AgentRunDrawer 可展示检索策略和检索证据安全摘要
 目标状态：L3 混合检索（语义+全文+Memory Tree）+ 主动预取
 关键文件：
   backend/app/core/athena_retrieval.py    # Athena 检索
@@ -160,9 +160,9 @@ Agent 化缺口：
   backend/app/models/ 中的 retrieval_*.py # 检索相关模型
 Agent 化缺口：
   - 默认 embedding 质量有限
-  - 检索上下文已有只读工具、自然语言入口和 Drawer 安全投影，可按 query、limit、source_type、max_chapter_index 检索证据，并展示返回窗口、来源类型、章节窗口、分数、摘要和推荐后续工具
+  - 检索策略已有只读 planner、自然语言入口、retrieval_worker 路由和 Drawer 安全投影，可按 query、chapter_index、limit、candidate_limit 与维护状态推荐 search_agent_retrieval_context、summarize_longform_context 或维护诊断；检索上下文已有只读工具、自然语言入口和 Drawer 安全投影，可按 query、limit、source_type、max_chapter_index 检索证据，并展示返回窗口、来源类型、章节窗口、分数、摘要和推荐后续工具
   - 缺少主动预取（在章节生成前预测需要的上下文）
-  - 检索策略不够智能（固定规则 vs LLM 选择检索策略）
+  - 检索策略仍是确定性启发式；下一步可接入 LLM/真实 dogfood 反馈做主动预取和策略质量复核
 关联模块：Athena、Memory Tree、Writing
 ```
 
@@ -432,6 +432,7 @@ Data & Recovery ─── (横切关注点，覆盖所有写入操作)
 
 | 日期 | 模块 | 变更 |
 |------|------|------|
+| 2026-06-05 | Retrieval | 新增 inspect_agent_retrieval_strategy 只读检索策略规划，章节生成 planner 先规划策略再进入上下文摘要，并接入自然语言入口、retrieval_worker 和 Drawer 安全投影 |
 | 2026-06-05 | Long Memory | Memory Tree semantic relevance 新增 local hash `vector_score` 与 embedding 元数据输出，为远程向量召回前提供可审计基线 |
 | 2026-06-05 | Long Memory | Dogfood Evidence 新增 Memory Tree LLM candidate batch materialization 证据，记录两个 fake-model 候选经 batch prepare/batch execute 后写入 2 个章级摘要并复核 quality ready |
 | 2026-06-01 | 全部 | 初始版本 |

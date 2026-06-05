@@ -306,6 +306,42 @@ AGENT_MEMORY_TRACE_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(
+        name="inspect_agent_retrieval_strategy",
+        module="writing_agent",
+        category="retrieval",
+        description="只读规划 Agent 检索策略，按章节、query 和索引维护状态选择 query-aware 检索、章节上下文摘要或维护诊断。",
+        input_schema=object_schema(
+            {
+                "chapter_index": {"type": "integer", "minimum": 1},
+                "query": {"type": "string"},
+                "purpose": {"type": "string"},
+                "limit": {"type": "integer", "minimum": 1},
+                "candidate_limit": {"type": "integer", "minimum": 1},
+            }
+        ),
+        output_schema=object_schema(
+            {
+                "status": {"type": "string"},
+                "version": {"type": "string"},
+                "project_id": {"type": "string"},
+                "inputs": {"type": "object"},
+                "strategy": {"type": "object"},
+                "retrieval": {"type": "object"},
+                "longform_maintenance": {"type": "object"},
+                "diagnostics": {"type": "array"},
+                "recommended_next_tools": {"type": "array"},
+                "recommended_next_tool_calls": {"type": "array"},
+                "side_effects": {"type": "object"},
+                "trace": {"type": "object"},
+            }
+        ),
+        target_type="agent_retrieval_strategy",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=8,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
         name="search_agent_retrieval_context",
         module="athena_retrieval",
         category="retrieval",

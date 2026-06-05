@@ -254,6 +254,7 @@ novelv3 当前 trace + approval 体系已经较完整。权限分级已先在核
 13. **openhuman Memory Tree 语义召回/摘要增强** → 在确定性层级 relevance、本地 hash vector_score、LLM-ready summary plan、traced fake-model candidate、候选 Trace 读回、trace-bound 候选审批物化、多候选 recommended_next_tool_calls handoff、batch prepare approval handoff、自然语言 batch prepare direct read、batch execute 逐候选审批物化、Drawer batch execute handoff/结果投影、执行后物化状态回流和跨章批量 quality ready 回归证据基础上继续推进真实模型质量验证、远程向量召回、真实 dogfood 批量质量复核和按需展开
 14. **hermes-agent ContextCompressor 摘要质量与分层压缩** → 基于 preflight/章节 prompt 的持久压缩摘要推荐、写入、复用闭环继续推进 LLM 摘要质量闭环 + 更多实际上下文构建路径按重要性分层压缩
 15. **openclaw 孤兒恢复后台执行整合** → 将 pending redispatch run 接入后台执行/前端审批入口
+16. **Retrieval Strategy Planner** → 已先落地只读策略规划层：章节生成 planner 不再直接固定 search，而是先调用 `inspect_agent_retrieval_strategy`，由策略结果推荐 query-aware retrieval、长篇上下文摘要或维护诊断；后续再接 LLM/真实 dogfood 反馈做主动预取和策略质量评估
 
 ### 中期实现（3-5 个开发周期）
 

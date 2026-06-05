@@ -25,6 +25,7 @@ _INTENT_RULE_IDS = (
     "world_model_route_intent",
     "world_model_proposal_review_intent",
     "world_model_proposal_resolution_plan_intent",
+    "retrieval_strategy_intent",
     "retrieval_context_intent",
     "longform_context_summary_intent",
     "context_compression_payload_intent",
@@ -496,6 +497,20 @@ class IntentRouter:
                 extracted_params=extracted_params,
                 match_evidence=[{"kind": "pattern", "name": "retrieval_context_phrase"}],
                 preconditions=[{"code": "retrieval_context_read_available", "passed": True}],
+            )
+
+        if _is_retrieval_strategy_intent(text):
+            extracted_params = _retrieval_strategy_params(text)
+            return self._matched_projection(
+                text,
+                dialog_state,
+                pending_action_id,
+                diagnosis,
+                rule_id="retrieval_strategy_intent",
+                candidate=ActionCandidate("inspect_retrieval_strategy", extracted_params),
+                extracted_params=extracted_params,
+                match_evidence=[{"kind": "pattern", "name": "retrieval_strategy_phrase"}],
+                preconditions=[{"code": "retrieval_strategy_read_available", "passed": True}],
             )
 
         if _is_longform_context_summary_intent(text):
@@ -1426,6 +1441,37 @@ def _retrieval_context_params(text: str) -> dict[str, Any]:
         max_chapter_index = parse_chapter_index(text)
     if max_chapter_index is not None:
         params["max_chapter_index"] = max_chapter_index
+    candidate_limit = _numeric_option(text, r"candidate_limit|候选")
+    if candidate_limit is not None:
+        params["candidate_limit"] = candidate_limit
+    return params
+
+
+def _is_retrieval_strategy_intent(text: str) -> bool:
+    strategy_phrase = r"(检索策略|检索规划|检索计划|retrieval\s*strategy|retrieval\s*plan)"
+    return bool(
+        re.search(rf"{strategy_phrase}.*(规划|选择|检查|推荐|query|limit|candidate)", text)
+        or re.search(rf"(规划|选择|检查|推荐|query|limit|candidate).*{strategy_phrase}", text)
+    )
+
+
+def _retrieval_strategy_params(text: str) -> dict[str, Any]:
+    params: dict[str, Any] = {}
+    chapter_index = parse_chapter_index(text)
+    if chapter_index is not None:
+        params["chapter_index"] = chapter_index
+    query = _parameter_query(text) or _labeled_query(
+        text,
+        r"(?:检索策略|检索规划|检索计划|retrieval\s*strategy|retrieval\s*plan)",
+    )
+    if query:
+        params["query"] = query
+    purpose = _labeled_query(text, r"(?:purpose|目的|用途)")
+    if purpose:
+        params["purpose"] = purpose
+    limit = _numeric_option(text, r"limit|限制|最多")
+    if limit is not None:
+        params["limit"] = limit
     candidate_limit = _numeric_option(text, r"candidate_limit|候选")
     if candidate_limit is not None:
         params["candidate_limit"] = candidate_limit

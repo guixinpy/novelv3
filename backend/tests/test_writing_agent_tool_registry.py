@@ -97,6 +97,7 @@ def test_agent_memory_trace_tool_descriptors_live_in_dedicated_module():
         "prepare_record_agent_trace_anomaly_threshold_config",
         "execute_record_agent_trace_anomaly_threshold_config_with_approval",
         "inspect_agent_memory_route",
+        "inspect_agent_retrieval_strategy",
         "search_agent_retrieval_context",
         "summarize_longform_context",
         "inspect_agent_context_compression_projection",
@@ -131,6 +132,7 @@ def test_agent_memory_trace_tool_descriptors_live_in_dedicated_module():
         "agent_trace_anomaly_threshold_config"
     )
     assert target_type_for_tool("inspect_agent_memory_route") == "agent_memory_route"
+    assert target_type_for_tool("inspect_agent_retrieval_strategy") == "agent_retrieval_strategy"
     assert target_type_for_tool("search_agent_retrieval_context") == "agent_retrieval_context"
     assert target_type_for_tool("summarize_longform_context") == "longform_context_summary"
     assert target_type_for_tool("inspect_agent_context_compression_projection") == "agent_context_compression_projection"
@@ -146,6 +148,7 @@ def test_agent_memory_trace_tool_descriptors_live_in_dedicated_module():
     assert target_type_for_tool("prepare_repair_longform_maintenance") == "longform_maintenance_approval"
     assert target_type_for_tool("execute_repair_longform_maintenance_with_approval") == "longform_maintenance"
     assert "inspect_agent_trace_audit" in non_blocking_report_tool_names()
+    assert "inspect_agent_retrieval_strategy" in non_blocking_report_tool_names()
     assert "search_agent_retrieval_context" in non_blocking_report_tool_names()
     assert "inspect_agent_context_compression_projection" in non_blocking_report_tool_names()
     assert "build_agent_context_compression_payload" in non_blocking_report_tool_names()
@@ -1674,6 +1677,22 @@ def test_agent_tool_registry_includes_search_agent_retrieval_context():
     assert "search_agent_retrieval_context" in non_blocking_report_tool_names()
 
 
+def test_agent_tool_registry_includes_inspect_agent_retrieval_strategy():
+    descriptor = get_agent_tool_descriptor("inspect_agent_retrieval_strategy")
+
+    assert descriptor is not None
+    assert descriptor.internal is True
+    assert descriptor.non_blocking_report is True
+    assert descriptor.category == "retrieval"
+    assert descriptor.target_type == "agent_retrieval_strategy"
+    assert descriptor.input_schema["properties"]["chapter_index"]["minimum"] == 1
+    assert descriptor.input_schema["properties"]["query"]["type"] == "string"
+    assert descriptor.output_schema["properties"]["strategy"]["type"] == "object"
+    assert descriptor.output_schema["properties"]["recommended_next_tool_calls"]["type"] == "array"
+    assert "inspect_agent_retrieval_strategy" in allowed_tool_names()
+    assert "inspect_agent_retrieval_strategy" in non_blocking_report_tool_names()
+
+
 def test_agent_tool_registry_includes_inspect_agent_health_projection():
     descriptor = get_agent_tool_descriptor("inspect_agent_health_projection")
 
@@ -2175,6 +2194,7 @@ def test_agent_tool_plan_exposes_agent_profile_tool_projection(db_session):
     assert "generate_chapter" not in profiles["orchestrator"]["allowed_visible_tools"]
     assert "generate_chapter" in profiles["orchestrator"]["blocked_visible_tools"]
     assert "generate_chapter" in profiles["drafting_worker"]["allowed_visible_tools"]
+    assert "inspect_agent_retrieval_strategy" in profiles["retrieval_worker"]["allowed_visible_tools"]
     assert "search_agent_retrieval_context" in profiles["retrieval_worker"]["allowed_visible_tools"]
     assert "inspect_agent_memory_activation_plan" in profiles["memory_worker"]["allowed_visible_tools"]
     assert "plan_chapter_revision" in profiles["revision_worker"]["allowed_hidden_tools"]

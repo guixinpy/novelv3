@@ -17,6 +17,7 @@ describe('memoryLoopAgentRunProjection', () => {
   it('exposes memory loop action descriptors', () => {
     expect(MEMORY_LOOP_AGENT_RUN_ACTION_TYPES).toEqual([
       'inspect_agent_memory_activation_plan',
+      'inspect_agent_retrieval_strategy',
       'search_agent_retrieval_context',
       'plan_post_chapter_memory_capture',
     ])
@@ -55,6 +56,44 @@ describe('memoryLoopAgentRunProjection', () => {
     expect(JSON.stringify(view)).not.toContain('memory_provenance')
     expect(JSON.stringify(view)).not.toContain('trace-secret')
     expect(JSON.stringify(view)).not.toContain('伪造货单')
+  })
+
+  it('builds retrieval strategy views without leaking raw tool call internals', () => {
+    const view = buildMemoryLoopView('inspect_agent_retrieval_strategy', 'success', {
+      status: 'completed',
+      strategy: {
+        name: 'query_aware_retrieval',
+        read_mode: 'search_then_summarize',
+        filters: {
+          query: '旧灯塔回声',
+          max_chapter_index: 4,
+          limit: 6,
+          candidate_limit: 50,
+        },
+      },
+      recommended_next_tools: ['search_agent_retrieval_context', 'summarize_longform_context'],
+      recommended_next_tool_calls: [
+        {
+          tool_name: 'search_agent_retrieval_context',
+          params: {
+            query: '旧灯塔回声',
+            secret_source_ref: 'retrieval-secret',
+          },
+        },
+      ],
+      trace: {
+        version: 'phase253.agent_retrieval_strategy.v1',
+      },
+    })
+
+    expect(view.label).toBe('检索策略已规划')
+    expect(view.variant).toBe('success')
+    expect(view.detail_items).toContainEqual({ label: '策略', value: '查询感知检索' })
+    expect(view.detail_items).toContainEqual({ label: '章节窗口', value: '第4章前' })
+    expect(view.detail_items).toContainEqual({ label: '下一步', value: '2 个工具' })
+    expect(JSON.stringify(view)).not.toContain('recommended_next_tool_calls')
+    expect(JSON.stringify(view)).not.toContain('retrieval-secret')
+    expect(JSON.stringify(view)).not.toContain('phase253')
   })
 
   it('builds memory activation views without leaking prompt blocks or provenance', () => {

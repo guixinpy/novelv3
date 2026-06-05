@@ -32,6 +32,7 @@ SAFE_RECOMMENDED_FOLLOWUP_TOOLS = frozenset(
         "inspect_agent_route_preference_projection",
         "inspect_agent_memory_route",
         "inspect_agent_memory_tree",
+        "inspect_agent_retrieval_strategy",
         "search_agent_retrieval_context",
         "summarize_longform_context",
         "prepare_generate_setup_execution",

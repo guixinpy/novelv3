@@ -719,7 +719,7 @@ def test_agent_run_detail_exposes_agent_profile_projection_for_auto_plan(client)
     route_registry = payload["agent_worker_route_registry"]
     assert route_registry["source"] == "planner_trace.agent_health_projection.agent_worker_route_registry"
     assert route_registry["status"] == "passed"
-    assert route_registry["summary"]["routes"] == 68
+    assert route_registry["summary"]["routes"] == 69
     assert route_registry["summary"]["unrouted_allowed_tools"] == 0
     dogfood_evidence = payload["agent_dogfood_evidence"]
     assert dogfood_evidence["source"] == "planner_trace.agent_health_projection.dogfood_evidence"
@@ -2382,7 +2382,7 @@ def test_agent_run_auto_plan_prepares_high_level_next_chapter_goal_for_approval(
     assert step_names[:6] == [
         "describe_agent_tools",
         "inspect_agent_knowledge_base_route",
-        "search_agent_retrieval_context",
+        "inspect_agent_retrieval_strategy",
         "summarize_longform_context",
         "preflight_writing",
         "prepare_generate_chapter_execution",
@@ -2435,7 +2435,7 @@ def test_agent_auto_plan_longform_context_blocks_stale_maintenance_before_genera
     assert [step["tool_name"] for step in payload["steps"]] == [
         "describe_agent_tools",
         "inspect_agent_knowledge_base_route",
-        "search_agent_retrieval_context",
+        "inspect_agent_retrieval_strategy",
         "summarize_longform_context",
     ]
     context_output = payload["steps"][3]["output"]

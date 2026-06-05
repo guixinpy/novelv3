@@ -439,6 +439,27 @@ const memoryActivationRows = computed(() => {
   ))
 })
 const retrievalContextOutput = computed(() => latestToolOutput('search_agent_retrieval_context'))
+const retrievalStrategyOutput = computed(() => latestToolOutput('inspect_agent_retrieval_strategy'))
+const retrievalStrategy = computed(() => recordValue(retrievalStrategyOutput.value?.strategy))
+const retrievalStrategyFilters = computed(() => recordValue(retrievalStrategy.value.filters))
+const retrievalStrategyInputs = computed(() => recordValue(retrievalStrategyOutput.value?.inputs))
+const retrievalStrategyStatus = computed(() => stringValue(retrievalStrategyOutput.value?.status))
+const retrievalStrategyName = computed(() => retrievalStrategyNameLabel(stringValue(retrievalStrategy.value.name)))
+const retrievalStrategyQuery = computed(() => (
+  safeRetrievalStrategyText(retrievalStrategyFilters.value.query) ||
+  safeRetrievalStrategyText(retrievalStrategyInputs.value.query)
+))
+const retrievalStrategyLimit = computed(() => (
+  numberValue(retrievalStrategyFilters.value.limit) ?? numberValue(retrievalStrategyInputs.value.limit)
+))
+const retrievalStrategyCandidateLimit = computed(() => (
+  numberValue(retrievalStrategyFilters.value.candidate_limit) ?? numberValue(retrievalStrategyInputs.value.candidate_limit)
+))
+const retrievalStrategyMaxChapterLabel = computed(() => {
+  const chapter = numberValue(retrievalStrategyFilters.value.max_chapter_index)
+  return chapter !== null ? `第${chapter}章前` : ''
+})
+const retrievalStrategyRecommendedTools = computed(() => stringList(retrievalStrategyOutput.value?.recommended_next_tools))
 const retrievalContextSummary = computed(() => recordValue(retrievalContextOutput.value?.summary))
 const retrievalContextItems = computed(() => recordList(retrievalContextOutput.value?.items))
 const retrievalContextFilters = computed(() => recordValue(retrievalContextOutput.value?.filters))
@@ -1887,8 +1908,9 @@ const memoryTreeSearchAction = computed<MemoryTreeDrilldownAction | null>(() => 
   }
 })
 const hasMemoryLoopProjection = computed(() => Boolean(
-  memoryActivationOutput.value || retrievalContextOutput.value || postChapterMemoryOutput.value,
+  memoryActivationOutput.value || retrievalStrategyOutput.value || retrievalContextOutput.value || postChapterMemoryOutput.value,
 ))
+const hasRetrievalStrategyProjection = computed(() => Boolean(retrievalStrategyOutput.value))
 const hasRetrievalContextProjection = computed(() => Boolean(retrievalContextOutput.value))
 const hasPostChapterMemoryProjection = computed(() => Boolean(postChapterMemoryOutput.value))
 const hasMemoryActivationProjection = computed(() => Boolean(memoryActivationOutput.value))
@@ -2506,6 +2528,14 @@ function safeRetrievalContextText(label: unknown) {
   return value.slice(0, 120)
 }
 
+function safeRetrievalStrategyText(label: unknown) {
+  const value = stringValue(label).replace(/\s+/g, ' ')
+  if (!value) return ''
+  if (/[A-Za-z_]+:[A-Za-z0-9_.:-]+/.test(value)) return ''
+  if (/project-secret|candidate-secret|memory-secret|retrieval-secret|source_refs?|source_type|source_id|memory_id|candidate_id|recommended_next_tool_calls|approval_contract|phase\d+\.agent_retrieval_strategy/i.test(value)) return ''
+  return value.slice(0, 120)
+}
+
 function safeLongformContextText(label: unknown) {
   const value = stringValue(label).replace(/\s+/g, ' ')
   if (!value) return ''
@@ -2803,6 +2833,14 @@ function retrievalSourceTypeLabel(sourceType: string) {
   if (sourceType === 'longform_memory') return '长篇记忆'
   if (sourceType === 'world_fact') return '世界事实'
   return ''
+}
+
+function retrievalStrategyNameLabel(name: string) {
+  if (name === 'query_aware_retrieval') return '查询感知检索'
+  if (name === 'chapter_context_summary') return '章节上下文摘要'
+  if (name === 'repair_retrieval_maintenance') return '维护诊断优先'
+  if (name === 'memory_route_diagnostics') return '记忆路由诊断'
+  return safeRetrievalStrategyText(name)
 }
 
 function recordValue(value: unknown): Record<string, unknown> {
@@ -3370,6 +3408,51 @@ function missingDependencyTool(value: Record<string, unknown>) {
                 <span v-if="candidate.confidenceLabel">{{ candidate.confidenceLabel }}</span>
               </div>
               <p v-if="candidate.summary">{{ candidate.summary }}</p>
+            </li>
+          </ul>
+        </section>
+
+        <section
+          v-if="hasRetrievalStrategyProjection"
+          class="agent-run-drawer__retrieval-context"
+          aria-label="Agent retrieval strategy projection"
+        >
+          <h4>检索策略摘要</h4>
+          <dl class="agent-run-drawer__facts">
+            <div>
+              <dt>状态</dt>
+              <dd>{{ executionPlanToolStatusLabel(retrievalStrategyStatus) }}</dd>
+            </div>
+            <div v-if="retrievalStrategyName">
+              <dt>策略</dt>
+              <dd>{{ retrievalStrategyName }}</dd>
+            </div>
+            <div v-if="retrievalStrategyQuery">
+              <dt>查询</dt>
+              <dd>{{ retrievalStrategyQuery }}</dd>
+            </div>
+            <div v-if="retrievalStrategyMaxChapterLabel">
+              <dt>章节窗口</dt>
+              <dd>{{ retrievalStrategyMaxChapterLabel }}</dd>
+            </div>
+            <div v-if="retrievalStrategyLimit !== null">
+              <dt>限制</dt>
+              <dd>限制 {{ retrievalStrategyLimit }}</dd>
+            </div>
+            <div v-if="retrievalStrategyCandidateLimit !== null">
+              <dt>候选</dt>
+              <dd>候选 {{ retrievalStrategyCandidateLimit }}</dd>
+            </div>
+          </dl>
+          <ul
+            v-if="retrievalStrategyRecommendedTools.length"
+            class="agent-run-drawer__tools"
+          >
+            <li
+              v-for="tool in retrievalStrategyRecommendedTools"
+              :key="`retrieval-strategy-next:${tool}`"
+            >
+              {{ tool }}
             </li>
           </ul>
         </section>

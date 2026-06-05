@@ -2,6 +2,7 @@ name: retrieval_worker
 role: worker
 max_depth: 0
 allowed_tools:
+  - inspect_agent_retrieval_strategy
   - search_agent_retrieval_context
   - summarize_longform_context
   - inspect_agent_trace_audit
