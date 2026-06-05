@@ -152,6 +152,7 @@ describe('agentRunProjection', () => {
   it('exposes diagnostic action descriptors from a dedicated module', () => {
     expect(DIAGNOSTIC_AGENT_RUN_ACTION_TYPES).toEqual([
       'inspect_agent_trace_audit',
+      'inspect_agent_event_projection',
       'inspect_agent_job_projection',
       'inspect_agent_health_projection',
       'inspect_agent_command_contracts',
@@ -232,6 +233,7 @@ describe('agentRunProjection', () => {
     expect(isAgentRunActionType('plan_recommended_followups')).toBe(true)
     expect(isAgentRunActionType('ui_recovery_execute')).toBe(true)
     expect(isAgentRunActionType('inspect_agent_trace_audit')).toBe(true)
+    expect(isAgentRunActionType('inspect_agent_event_projection')).toBe(true)
     expect(isAgentRunActionType('inspect_agent_job_projection')).toBe(true)
     expect(isAgentRunActionType('inspect_agent_health_projection')).toBe(true)
     expect(isAgentRunActionType('inspect_agent_command_contracts')).toBe(true)
@@ -277,6 +279,7 @@ describe('agentRunProjection', () => {
     expect(getAgentRunActionDescriptor('plan_recommended_followups')?.type).toBe('plan_recommended_followups')
     expect(getAgentRunActionDescriptor('ui_recovery_execute')?.type).toBe('ui_recovery_execute')
     expect(getAgentRunActionDescriptor('inspect_agent_trace_audit')?.type).toBe('inspect_agent_trace_audit')
+    expect(getAgentRunActionDescriptor('inspect_agent_event_projection')?.type).toBe('inspect_agent_event_projection')
     expect(getAgentRunActionDescriptor('inspect_agent_job_projection')?.type).toBe('inspect_agent_job_projection')
     expect(getAgentRunActionDescriptor('inspect_agent_health_projection')?.type).toBe('inspect_agent_health_projection')
     expect(getAgentRunActionDescriptor('inspect_agent_command_contracts')?.type).toBe('inspect_agent_command_contracts')
@@ -481,6 +484,77 @@ describe('agentRunProjection', () => {
     expect(view?.detail_items).toContainEqual({ label: '契约缺口', value: '1 个' })
     expect(view?.detail_items).toContainEqual({ label: '推荐工具', value: '2 个' })
     expect(JSON.stringify(view)).not.toContain('legacy_generate')
+  })
+
+  it('builds fallback views for event projection diagnostics without leaking raw ids', () => {
+    const view = buildAgentRunActionResultView({
+      type: 'inspect_agent_event_projection',
+      status: 'success',
+      data: {
+        status: 'completed',
+        version: 'phase234.agent_event_projection.v1',
+        project_id: 'project-secret-id',
+        selector: { task_id: 'task-secret-id', run_id: 'run-secret-id', limit: 20 },
+        boundary: {
+          decision: 'projection_only',
+          persistence: 'not_required',
+          reason: 'internal boundary text',
+        },
+        summary: {
+          total: 6,
+          by_event_type: {
+            task_started: 1,
+            run_started: 1,
+            tool_started: 2,
+            tool_completed: 1,
+            tool_error: 1,
+          },
+          by_source_type: {
+            background_task: 1,
+            writing_agent_run: 1,
+            writing_agent_step: 4,
+          },
+        },
+        events: [
+          {
+            event_id: 'writing_agent_step:step-secret-id:tool_error',
+            event_type: 'tool_error',
+            source_type: 'writing_agent_step',
+            source_id: 'step-secret-id',
+            project_id: 'project-secret-id',
+            task_id: 'task-secret-id',
+            run_id: 'run-secret-id',
+            step_id: 'step-secret-id',
+            trace_id: 'trace-secret-id',
+            tool_name: 'review_chapter_quality',
+            status: 'failed',
+            chapter_index: 3,
+            error_preview: 'quality model timeout',
+          },
+        ],
+        recommended_tools: ['inspect_agent_job_projection'],
+        trace: {
+          selected_sources: ['background_tasks', 'writing_agent_runs', 'writing_agent_steps'],
+        },
+      },
+    })
+
+    expect(view?.label).toBe('Agent 事件投影已生成')
+    expect(view?.variant).toBe('success')
+    expect(view?.detail_items).toContainEqual({ label: '投影状态', value: '已完成' })
+    expect(view?.detail_items).toContainEqual({ label: '事件总数', value: '6 个' })
+    expect(view?.detail_items).toContainEqual({ label: '后台任务事件', value: '1 个' })
+    expect(view?.detail_items).toContainEqual({ label: '运行事件', value: '1 个' })
+    expect(view?.detail_items).toContainEqual({ label: '工具事件', value: '4 个' })
+    expect(view?.detail_items).toContainEqual({ label: '工具错误', value: '1 个' })
+    expect(view?.detail_items).toContainEqual({ label: '推荐工具', value: '1 个' })
+    expect(JSON.stringify(view)).not.toContain('project-secret-id')
+    expect(JSON.stringify(view)).not.toContain('task-secret-id')
+    expect(JSON.stringify(view)).not.toContain('run-secret-id')
+    expect(JSON.stringify(view)).not.toContain('step-secret-id')
+    expect(JSON.stringify(view)).not.toContain('trace-secret-id')
+    expect(JSON.stringify(view)).not.toContain('phase234')
+    expect(JSON.stringify(view)).not.toContain('internal boundary text')
   })
 
   it('builds fallback views for command contract diagnostics', () => {

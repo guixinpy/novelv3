@@ -2,6 +2,7 @@ import type { ActionResultView } from '../../api/types'
 
 export const DIAGNOSTIC_AGENT_RUN_ACTION_TYPES = [
   'inspect_agent_trace_audit',
+  'inspect_agent_event_projection',
   'inspect_agent_job_projection',
   'inspect_agent_health_projection',
   'inspect_agent_command_contracts',
@@ -25,6 +26,10 @@ export const DIAGNOSTIC_AGENT_RUN_ACTION_DESCRIPTORS: Record<DiagnosticAgentRunA
   inspect_agent_trace_audit: {
     type: 'inspect_agent_trace_audit',
     buildView: buildTraceAuditActionResultView,
+  },
+  inspect_agent_event_projection: {
+    type: 'inspect_agent_event_projection',
+    buildView: buildEventProjectionActionResultView,
   },
   inspect_agent_job_projection: {
     type: 'inspect_agent_job_projection',
@@ -74,6 +79,17 @@ function buildTraceAuditActionResultView(actionResult: Record<string, unknown>, 
     type: 'inspect_agent_trace_audit',
     status,
     label: traceAuditLabel(status),
+    variant: statusVariant(status),
+    ...(detailItems.length ? { detail_items: detailItems } : {}),
+  }
+}
+
+function buildEventProjectionActionResultView(actionResult: Record<string, unknown>, status: string): ActionResultView {
+  const detailItems = eventProjectionDetailItems(recordValue(actionResult.data))
+  return {
+    type: 'inspect_agent_event_projection',
+    status,
+    label: eventProjectionLabel(status),
     variant: statusVariant(status),
     ...(detailItems.length ? { detail_items: detailItems } : {}),
   }
@@ -194,6 +210,13 @@ function traceAuditLabel(status: string) {
   if (status === 'failed') return 'Trace 审计失败'
   if (status === 'running') return 'Trace 审计中'
   return `Trace 审计: ${status || '未知状态'}`
+}
+
+function eventProjectionLabel(status: string) {
+  if (status === 'success' || status === 'completed') return 'Agent 事件投影已生成'
+  if (status === 'failed') return 'Agent 事件投影失败'
+  if (status === 'running') return 'Agent 事件投影中'
+  return `Agent 事件投影: ${status || '未知状态'}`
 }
 
 function jobProjectionLabel(status: string) {
@@ -327,6 +350,44 @@ function jobProjectionDetailItems(data: Record<string, unknown>) {
   items.push(...controlPlaneReadinessDetailItems(recordValue(selectedTask.control_plane_readiness)))
   items.push(...commandContractDetailItems(recordValue(selectedTask.command_contracts)))
 
+  const recommendedTools = Array.isArray(data.recommended_tools) ? data.recommended_tools : []
+  if (recommendedTools.length) {
+    items.push({ label: '推荐工具', value: `${recommendedTools.length} 个` })
+  }
+  return items
+}
+
+function eventProjectionDetailItems(data: Record<string, unknown>) {
+  const items: Array<{ label: string; value: string }> = []
+  const status = stringValue(data.status)
+  if (status) {
+    items.push({ label: '投影状态', value: eventProjectionStatusLabel(status) })
+  }
+
+  const summary = recordValue(data.summary)
+  const total = numberValue(summary.total)
+  if (total !== null) {
+    items.push({ label: '事件总数', value: `${total} 个` })
+  }
+  const sourceSummary = recordValue(summary.by_source_type)
+  const backgroundTaskEvents = numberValue(sourceSummary.background_task)
+  if (backgroundTaskEvents !== null) {
+    items.push({ label: '后台任务事件', value: `${backgroundTaskEvents} 个` })
+  }
+  const runEvents = numberValue(sourceSummary.writing_agent_run)
+  if (runEvents !== null) {
+    items.push({ label: '运行事件', value: `${runEvents} 个` })
+  }
+  const stepEvents = numberValue(sourceSummary.writing_agent_step)
+  if (stepEvents !== null) {
+    items.push({ label: '工具事件', value: `${stepEvents} 个` })
+  }
+
+  const eventSummary = recordValue(summary.by_event_type)
+  const toolErrors = numberValue(eventSummary.tool_error)
+  if (toolErrors !== null) {
+    items.push({ label: '工具错误', value: `${toolErrors} 个` })
+  }
   const recommendedTools = Array.isArray(data.recommended_tools) ? data.recommended_tools : []
   if (recommendedTools.length) {
     items.push({ label: '推荐工具', value: `${recommendedTools.length} 个` })
@@ -708,6 +769,13 @@ function agentControlPlaneStatusLabel(status: string) {
 function routeRegistryStatusLabel(status: string) {
   if (status === 'passed') return '通过'
   if (status === 'needs_attention') return '需处理'
+  return status || '未知'
+}
+
+function eventProjectionStatusLabel(status: string) {
+  if (status === 'completed' || status === 'success') return '已完成'
+  if (status === 'running') return '进行中'
+  if (status === 'failed') return '失败'
   return status || '未知'
 }
 

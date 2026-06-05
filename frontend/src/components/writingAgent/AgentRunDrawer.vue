@@ -292,6 +292,43 @@ const referenceAlignmentCapabilities = computed(() => (
     .filter((capability) => capability.area || capability.status)
 ))
 const referenceAlignmentRecommendedTools = computed(() => stringList(referenceAlignmentOutput.value?.recommended_next_tools))
+const eventProjectionOutput = computed(() => latestToolOutput('inspect_agent_event_projection'))
+const eventProjectionSummary = computed(() => recordValue(eventProjectionOutput.value?.summary))
+const eventProjectionStatus = computed(() => stringValue(eventProjectionOutput.value?.status))
+const eventProjectionTotalEventCount = computed(() => numberValue(eventProjectionSummary.value.total))
+const eventProjectionEventTypeSummary = computed(() => recordValue(eventProjectionSummary.value.by_event_type))
+const eventProjectionSourceTypeSummary = computed(() => recordValue(eventProjectionSummary.value.by_source_type))
+const eventProjectionBackgroundTaskEventCount = computed(() => (
+  numberValue(eventProjectionSourceTypeSummary.value.background_task)
+))
+const eventProjectionRunEventCount = computed(() => numberValue(eventProjectionSourceTypeSummary.value.writing_agent_run))
+const eventProjectionStepEventCount = computed(() => numberValue(eventProjectionSourceTypeSummary.value.writing_agent_step))
+const eventProjectionToolErrorCount = computed(() => numberValue(eventProjectionEventTypeSummary.value.tool_error))
+const eventProjectionRows = computed(() => (
+  recordList(eventProjectionOutput.value?.events)
+    .slice(0, 6)
+    .map((event, index) => {
+      const chapterIndex = numberValue(event.chapter_index)
+      return {
+        key: `agent-event-projection:${index}`,
+        eventType: eventProjectionEventTypeLabel(event.event_type),
+        sourceType: eventProjectionSourceTypeLabel(event.source_type),
+        toolName: stringValue(event.tool_name),
+        chapterLabel: chapterIndex !== null ? `第${chapterIndex}章` : '',
+        status: eventProjectionStatusLabel(event.status),
+        errorPreview: stringValue(event.error_preview),
+      }
+    })
+    .filter((event) => (
+      event.eventType ||
+      event.sourceType ||
+      event.toolName ||
+      event.chapterLabel ||
+      event.status ||
+      event.errorPreview
+    ))
+))
+const eventProjectionRecommendedTools = computed(() => uniqueStrings(stringList(eventProjectionOutput.value?.recommended_tools)))
 const workerDispatchOutput = computed(() => latestToolOutput('inspect_agent_worker_dispatch'))
 const workerDispatchSummary = computed(() => recordValue(workerDispatchOutput.value?.summary))
 const workerDispatchStatus = computed(() => stringValue(workerDispatchOutput.value?.status))
@@ -2435,6 +2472,42 @@ function routeRegistryStatusLabel(status: unknown) {
   return value || '未知'
 }
 
+function eventProjectionStatusLabel(status: unknown) {
+  const value = stringValue(status)
+  if (value === 'completed' || value === 'success') return '已完成'
+  if (value === 'running') return '进行中'
+  if (value === 'failed') return '失败'
+  if (value === 'blocked') return '已阻塞'
+  return value || '未知'
+}
+
+function eventProjectionEventTypeLabel(eventType: unknown) {
+  const value = stringValue(eventType)
+  if (value === 'task_created') return '任务创建'
+  if (value === 'task_started') return '任务开始'
+  if (value === 'task_completed') return '任务完成'
+  if (value === 'task_error') return '任务错误'
+  if (value === 'task_cancelled') return '任务取消'
+  if (value === 'run_created') return '运行创建'
+  if (value === 'run_started') return '运行开始'
+  if (value === 'run_completed') return '运行完成'
+  if (value === 'run_error') return '运行错误'
+  if (value === 'run_blocked') return '运行阻塞'
+  if (value === 'run_cancelled') return '运行取消'
+  if (value === 'tool_started') return '工具开始'
+  if (value === 'tool_completed') return '工具完成'
+  if (value === 'tool_error') return '工具错误'
+  return value || '未知事件'
+}
+
+function eventProjectionSourceTypeLabel(sourceType: unknown) {
+  const value = stringValue(sourceType)
+  if (value === 'background_task') return '后台任务'
+  if (value === 'writing_agent_run') return 'Agent 运行'
+  if (value === 'writing_agent_step') return '工具步骤'
+  return value || '未知来源'
+}
+
 function dogfoodEvidenceStatusLabel(status: unknown) {
   const value = stringValue(status)
   if (value === 'ready') return '可用'
@@ -3440,6 +3513,71 @@ function missingDependencyTool(value: Record<string, unknown>) {
             <li
               v-for="tool in referenceAlignmentRecommendedTools"
               :key="`reference-alignment-next:${tool}`"
+            >
+              {{ tool }}
+            </li>
+          </ul>
+        </section>
+
+        <section
+          v-if="eventProjectionOutput"
+          class="agent-run-drawer__event-projection"
+          aria-label="Agent event projection"
+        >
+          <h4>Agent 事件投影</h4>
+          <dl class="agent-run-drawer__facts">
+            <div v-if="eventProjectionStatus">
+              <dt>状态</dt>
+              <dd>{{ eventProjectionStatusLabel(eventProjectionStatus) }}</dd>
+            </div>
+            <div v-if="eventProjectionTotalEventCount !== null">
+              <dt>事件总数</dt>
+              <dd>{{ eventProjectionTotalEventCount }}</dd>
+            </div>
+            <div v-if="eventProjectionBackgroundTaskEventCount !== null">
+              <dt>后台任务事件</dt>
+              <dd>{{ eventProjectionBackgroundTaskEventCount }}</dd>
+            </div>
+            <div v-if="eventProjectionRunEventCount !== null">
+              <dt>运行事件</dt>
+              <dd>{{ eventProjectionRunEventCount }}</dd>
+            </div>
+            <div v-if="eventProjectionStepEventCount !== null">
+              <dt>工具事件</dt>
+              <dd>{{ eventProjectionStepEventCount }}</dd>
+            </div>
+            <div v-if="eventProjectionToolErrorCount !== null">
+              <dt>工具错误</dt>
+              <dd>{{ eventProjectionToolErrorCount }}</dd>
+            </div>
+          </dl>
+          <ul
+            v-if="eventProjectionRows.length"
+            class="agent-run-drawer__event-rows"
+          >
+            <li
+              v-for="event in eventProjectionRows"
+              :key="event.key"
+            >
+              <div>
+                <strong>{{ event.eventType }}</strong>
+                <span>{{ event.sourceType }}</span>
+              </div>
+              <p>
+                <span v-if="event.toolName">{{ event.toolName }}</span>
+                <span v-if="event.chapterLabel">{{ event.chapterLabel }}</span>
+                <span v-if="event.status">{{ event.status }}</span>
+              </p>
+              <p v-if="event.errorPreview">{{ event.errorPreview }}</p>
+            </li>
+          </ul>
+          <ul
+            v-if="eventProjectionRecommendedTools.length"
+            class="agent-run-drawer__tools"
+          >
+            <li
+              v-for="tool in eventProjectionRecommendedTools"
+              :key="`event-projection-next:${tool}`"
             >
               {{ tool }}
             </li>
@@ -5964,6 +6102,7 @@ function missingDependencyTool(value: Record<string, unknown>) {
 .agent-run-drawer__memory-activation h4,
 .agent-run-drawer__memory-route h4,
 .agent-run-drawer__reference-alignment h4,
+.agent-run-drawer__event-projection h4,
 .agent-run-drawer__worker-dispatch h4,
 .agent-run-drawer__knowledge-route h4,
 .agent-run-drawer__world-model-route h4,
@@ -6111,6 +6250,15 @@ function missingDependencyTool(value: Record<string, unknown>) {
   background: var(--color-bg-secondary);
 }
 
+.agent-run-drawer__event-projection {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-secondary);
+}
+
 .agent-run-drawer__worker-dispatch {
   display: grid;
   gap: var(--space-3);
@@ -6232,6 +6380,7 @@ function missingDependencyTool(value: Record<string, unknown>) {
 .agent-run-drawer__tools,
 .agent-run-drawer__write-tools,
 .agent-run-drawer__worker-dispatches,
+.agent-run-drawer__event-rows,
 .agent-run-drawer__execution-tools,
 .agent-run-drawer__memory-tree-nodes,
 .agent-run-drawer__planner-signals,
@@ -6266,6 +6415,35 @@ function missingDependencyTool(value: Record<string, unknown>) {
   flex: 0 0 auto;
   color: var(--color-text-secondary);
   font-weight: var(--font-semibold);
+}
+
+.agent-run-drawer__event-rows li {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-white);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+
+.agent-run-drawer__event-rows div,
+.agent-run-drawer__event-rows p {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: baseline;
+  margin: 0;
+}
+
+.agent-run-drawer__event-rows strong {
+  color: var(--color-text-primary);
+}
+
+.agent-run-drawer__event-rows span,
+.agent-run-drawer__event-rows p {
+  color: var(--color-text-secondary);
 }
 
 .agent-run-drawer__memory-tree-nodes li {
