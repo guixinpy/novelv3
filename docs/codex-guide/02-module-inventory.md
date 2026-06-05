@@ -89,7 +89,7 @@ Agent 化缺口：
   - Dialog Control Plane Projection 已有只读审计和自然语言只读入口，可直接检查 generate_chapter 等 pending action 的当前运行工具与推荐审批工具链
   - Mutation Fingerprints 已有只读审计和自然语言只读入口，可直接检查 generate_chapter 等写入工具的稳定变更指纹
   - 写入门禁覆盖已有只读审计和自然语言只读入口，可直接检查写入工具的 Agent 计划审批 gate coverage
-  - Worker dispatch 已实现基础分发，子 Agent 孤兒恢复已有只读审计、自然语言只读入口、确认式 blocked 清理和 pending redispatch run 创建
+  - Worker dispatch 已实现基础分发，子 Agent 孤兒恢复已有只读审计、自然语言只读入口、确认式 blocked 清理和 pending redispatch run 创建；AgentRunDrawer 与聊天 fallback projection 可安全展示分派状态、Worker/任务/问题计数、路由审计和孤儿恢复摘要
   - 后续可继续扩展 refund 规则，例如对白名单程序化 write 工具或批处理子步骤细分计费
 关联模块：Hermes、Athena、Retrieval、TaskQueue、Trace、Memory
 ```
@@ -432,6 +432,7 @@ Data & Recovery ─── (横切关注点，覆盖所有写入操作)
 
 | 日期 | 模块 | 变更 |
 |------|------|------|
+| 2026-06-05 | Frontend Agent UX | AgentRunDrawer 与聊天 action descriptor 新增 inspect_agent_worker_dispatch 安全投影，展示分派状态、Worker/计划任务/阻塞任务/问题计数、路由审计、未路由工具、孤儿恢复计数、Worker 角色、问题码和推荐后续，同时隐藏 definition_registry、task_envelopes、run/task id、version 与原始 route/tool 参数 |
 | 2026-06-05 | Frontend Agent UX | AgentRunDrawer 与聊天 action descriptor 新增 inspect_agent_retrieval_prefetch_plan 安全投影，展示预取状态、模式、策略、query、目标章节、章节窗口、只读工具数、检索文档数和推荐后续，同时隐藏 trace/version、raw tool_calls、recommended_next_tool_calls 与 source_ref |
 | 2026-06-05 | Frontend Agent UX | AgentRunDrawer 新增 inspect_agent_world_model_semantic_check 安全投影，展示 L5 语义检查状态、事实窗口、issue、证据摘录和推荐后续工具，同时隐藏 project/profile/claim/trace/prompt/evidence_refs 等内部字段 |
 | 2026-06-05 | Frontend Agent UX | AgentRunDrawer 与聊天 action descriptor 新增 inspect_agent_retrieval_strategy_quality 安全投影，展示复核状态、策略、query、章节窗口、检索文档数、dogfood 覆盖和推荐后续，同时隐藏 trace/version、source_ref、dogfood source 和 raw recommended_next_tool_calls |

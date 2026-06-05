@@ -174,7 +174,7 @@ novelv3 当前 worker_dispatch 已实现基础分发。应增强：
 | 增强点 | 借鉴来源 | 优先级 | 说明 |
 |--------|---------|--------|------|
 | Worker 定义配置化 | openhuman | 已完成基础版 | YAML 为主格式，TOML 兼容 openhuman agent.toml 形态；注册表审计会输出 source_format |
-| 孤兒恢复 | openclaw | 已完成基础版 | 已有 orphan worker 审计、自然语言只读审计入口、确认式 blocked 清理和 pending redispatch run 创建；后续可接入后台执行与 UI 审批 |
+| 孤兒恢复 | openclaw | 已完成基础版 | 已有 orphan worker 审计、自然语言只读审计入口、确认式 blocked 清理、pending redispatch run 创建和 Drawer/聊天安全摘要；后续可接入后台执行与 UI 审批 |
 | Worker 链追踪 | openclaw | **中** | 记录 worker 调用链：主 Agent → writing worker → review worker |
 | 级联 Worker | openhuman | **低** | Chat/Reasoning/Worker 三级，novelv3 场景可能不需要这么复杂 |
 
@@ -237,7 +237,7 @@ novelv3 当前 trace + approval 体系已经较完整。权限分级已先在核
 3. **hermes-agent refund 机制基础版** → read 工具成功调用不消耗 charged iteration
 4. **openhuman 权限分级基础版** → `ToolMutability` / `ToolPermissionLevel`，内部枚举化，公开 surface/contract 保持字符串兼容
 5. **openhuman Worker 定义配置化基础版** → YAML/TOML AgentDefinition loader + source_format 注册表审计
-6. **openclaw 孤兒恢复基础审计** → orphan worker 检测 + mark-blocked/redispatch preview，并可由自然语言只读意图直接规划到 `inspect_agent_worker_dispatch`
+6. **openclaw 孤兒恢复基础审计** → orphan worker 检测 + mark-blocked/redispatch preview，并可由自然语言只读意图直接规划到 `inspect_agent_worker_dispatch`；Drawer/聊天会展示安全摘要而不暴露 run/task 内部标识
 7. **hermes-agent ContextCompressor persistent artifact loop** → context pressure 下输出头尾保护预修剪、summarize 工具计划、只读 dry-run payload、推荐恢复入口，在 `preflight_writing` 暴露压缩检查与 payload preview；自然语言“检查上下文压缩/预算/窗口压力”可直接规划到只读压缩投影工具，“构建上下文压缩 dry-run payload”可直达 `build_agent_context_compression_payload`；ready payload 后推荐 `record_agent_context_compression_summary`；写入 LongformMemory 持久工件后，preflight 与章节 prompt 均会优先复用匹配摘要，缺摘要时章节生成 longform block 仍可替换为 `compressed_context`
 8. **openhuman Memory Tree 分层摘要基础版** → 卷/章摘要写入 LongformMemory，并通过 memory_worker 暴露审批式 materialize/recheck 工具链
 9. **openhuman Memory Tree 基础浏览/激活/质量审计** → `inspect_agent_memory_tree` 支持按节点展开、深度裁剪、搜索命中祖先上下文、确定性 relevance drill-down、local hash vector_score、过滤层级的后代强匹配回流与弱匹配降噪，可由自然语言只读意图直接规划，并被 `build_memory_activation_plan` 消费；`inspect_agent_memory_tree_quality` 则提供真实长篇 quality baseline，当前 dogfood 已证明 summary backing 缺口可经审批式 materialize/recheck 闭环收敛

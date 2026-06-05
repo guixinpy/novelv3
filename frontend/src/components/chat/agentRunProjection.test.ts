@@ -158,6 +158,7 @@ describe('agentRunProjection', () => {
       'inspect_agent_control_plane_readiness',
       'inspect_agent_dogfood_evidence',
       'inspect_agent_reference_alignment',
+      'inspect_agent_worker_dispatch',
       'inspect_agent_memory_route',
       'inspect_agent_memory_tree',
       'inspect_agent_knowledge_base_route',
@@ -237,6 +238,7 @@ describe('agentRunProjection', () => {
     expect(isAgentRunActionType('inspect_agent_control_plane_readiness')).toBe(true)
     expect(isAgentRunActionType('inspect_agent_dogfood_evidence')).toBe(true)
     expect(isAgentRunActionType('inspect_agent_reference_alignment')).toBe(true)
+    expect(isAgentRunActionType('inspect_agent_worker_dispatch')).toBe(true)
     expect(isAgentRunActionType('inspect_agent_memory_route')).toBe(true)
     expect(isAgentRunActionType('inspect_agent_memory_tree')).toBe(true)
     expect(isAgentRunActionType('inspect_agent_knowledge_base_route')).toBe(true)
@@ -281,6 +283,7 @@ describe('agentRunProjection', () => {
     expect(getAgentRunActionDescriptor('inspect_agent_control_plane_readiness')?.type).toBe('inspect_agent_control_plane_readiness')
     expect(getAgentRunActionDescriptor('inspect_agent_dogfood_evidence')?.type).toBe('inspect_agent_dogfood_evidence')
     expect(getAgentRunActionDescriptor('inspect_agent_reference_alignment')?.type).toBe('inspect_agent_reference_alignment')
+    expect(getAgentRunActionDescriptor('inspect_agent_worker_dispatch')?.type).toBe('inspect_agent_worker_dispatch')
     expect(getAgentRunActionDescriptor('inspect_agent_memory_route')?.type).toBe('inspect_agent_memory_route')
     expect(getAgentRunActionDescriptor('inspect_agent_memory_tree')?.type).toBe('inspect_agent_memory_tree')
     expect(getAgentRunActionDescriptor('inspect_agent_knowledge_base_route')?.type).toBe('inspect_agent_knowledge_base_route')
@@ -614,6 +617,69 @@ describe('agentRunProjection', () => {
     expect(JSON.stringify(view)).not.toContain('references/agent-projects')
     expect(JSON.stringify(view)).not.toContain('backend/app/services')
     expect(JSON.stringify(view)).not.toContain('phase107')
+  })
+
+  it('builds fallback views for worker dispatch diagnostics without leaking run internals', () => {
+    const view = buildAgentRunActionResultView({
+      type: 'inspect_agent_worker_dispatch',
+      status: 'success',
+      data: {
+        version: 'phase230.agent_worker_dispatch.v1',
+        status: 'blocked',
+        summary: {
+          workers: 2,
+          planned_tasks: 2,
+          blocked_tasks: 1,
+          issues: 1,
+        },
+        route_registry: {
+          status: 'needs_attention',
+          summary: {
+            routes: 40,
+            ready_routes: 39,
+            unrouted_allowed_tools: 1,
+            issues: 1,
+          },
+          routes: [{ tool_name: 'secret_route_tool' }],
+        },
+        orphan_recovery: {
+          status: 'needs_attention',
+          summary: {
+            active_worker_runs: 3,
+            orphan_worker_runs: 1,
+            recovery_actions: 2,
+          },
+          orphan_worker_runs: [{ run_id: 'worker-run-secret', parent_run_id: 'parent-run-secret' }],
+          recovery_actions: [{ action: 'mark_worker_run_blocked', run_id: 'worker-run-secret' }],
+          recommended_tools: ['inspect_agent_trace_audit'],
+        },
+        worker_dispatches: [
+          {
+            worker: { name: 'reviewer_worker' },
+            summary: { planned_tasks: 1, blocked_tasks: 0, issues: 0 },
+            task_envelopes: [{ parent_run_id: 'parent-run-secret', params: { query: 'secret-query' } }],
+          },
+        ],
+        issues: [{ code: 'child_dispatch_not_allowed', tool_name: 'search_agent_retrieval_context' }],
+      },
+    })
+
+    expect(view?.label).toBe('Worker 分派审计已生成')
+    expect(view?.variant).toBe('success')
+    expect(view?.detail_items).toContainEqual({ label: '分派状态', value: '已阻塞' })
+    expect(view?.detail_items).toContainEqual({ label: 'Worker', value: '2 个' })
+    expect(view?.detail_items).toContainEqual({ label: '计划任务', value: '2 个' })
+    expect(view?.detail_items).toContainEqual({ label: '阻塞任务', value: '1 个' })
+    expect(view?.detail_items).toContainEqual({ label: '问题', value: '1 个' })
+    expect(view?.detail_items).toContainEqual({ label: '路由审计', value: '需处理' })
+    expect(view?.detail_items).toContainEqual({ label: '未路由工具', value: '1 个' })
+    expect(view?.detail_items).toContainEqual({ label: '孤儿恢复', value: '需处理' })
+    expect(view?.detail_items).toContainEqual({ label: '孤儿 worker', value: '1 个' })
+    expect(JSON.stringify(view)).not.toContain('worker-run-secret')
+    expect(JSON.stringify(view)).not.toContain('parent-run-secret')
+    expect(JSON.stringify(view)).not.toContain('secret-query')
+    expect(JSON.stringify(view)).not.toContain('phase230')
+    expect(JSON.stringify(view)).not.toContain('secret_route_tool')
   })
 
   it('builds fallback views for agent health projection diagnostics', () => {

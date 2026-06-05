@@ -8,6 +8,7 @@ export const DIAGNOSTIC_AGENT_RUN_ACTION_TYPES = [
   'inspect_agent_control_plane_readiness',
   'inspect_agent_dogfood_evidence',
   'inspect_agent_reference_alignment',
+  'inspect_agent_worker_dispatch',
   'inspect_agent_memory_route',
   'inspect_agent_memory_tree',
   'inspect_agent_knowledge_base_route',
@@ -48,6 +49,10 @@ export const DIAGNOSTIC_AGENT_RUN_ACTION_DESCRIPTORS: Record<DiagnosticAgentRunA
   inspect_agent_reference_alignment: {
     type: 'inspect_agent_reference_alignment',
     buildView: buildReferenceAlignmentActionResultView,
+  },
+  inspect_agent_worker_dispatch: {
+    type: 'inspect_agent_worker_dispatch',
+    buildView: buildWorkerDispatchActionResultView,
   },
   inspect_agent_memory_route: {
     type: 'inspect_agent_memory_route',
@@ -140,6 +145,17 @@ function buildReferenceAlignmentActionResultView(actionResult: Record<string, un
   }
 }
 
+function buildWorkerDispatchActionResultView(actionResult: Record<string, unknown>, status: string): ActionResultView {
+  const detailItems = workerDispatchDetailItems(recordValue(actionResult.data))
+  return {
+    type: 'inspect_agent_worker_dispatch',
+    status,
+    label: workerDispatchLabel(status),
+    variant: statusVariant(status),
+    ...(detailItems.length ? { detail_items: detailItems } : {}),
+  }
+}
+
 function buildMemoryRouteActionResultView(actionResult: Record<string, unknown>, status: string): ActionResultView {
   const detailItems = memoryRouteDetailItems(recordValue(actionResult.data))
   return {
@@ -220,6 +236,13 @@ function referenceAlignmentLabel(status: string) {
   if (status === 'failed') return '参考项目对齐失败'
   if (status === 'running') return '参考项目对齐中'
   return `参考项目对齐: ${status || '未知状态'}`
+}
+
+function workerDispatchLabel(status: string) {
+  if (status === 'success' || status === 'completed') return 'Worker 分派审计已生成'
+  if (status === 'failed') return 'Worker 分派审计失败'
+  if (status === 'running') return 'Worker 分派审计中'
+  return `Worker 分派审计: ${status || '未知状态'}`
 }
 
 function memoryRouteLabel(status: string) {
@@ -413,6 +436,55 @@ function referenceAlignmentDetailItems(data: Record<string, unknown>) {
   const recommendedTools = Array.isArray(data.recommended_next_tools) ? data.recommended_next_tools : []
   if (recommendedTools.length) {
     items.push({ label: '下一步', value: `${recommendedTools.length} 个工具` })
+  }
+  return items
+}
+
+function workerDispatchDetailItems(data: Record<string, unknown>) {
+  const items: Array<{ label: string; value: string }> = []
+  const dispatchStatus = stringValue(data.status)
+  if (dispatchStatus) {
+    items.push({ label: '分派状态', value: workerDispatchStatusLabel(dispatchStatus) })
+  }
+
+  const summary = recordValue(data.summary)
+  const workerCount = numberValue(summary.workers)
+  if (workerCount !== null) {
+    items.push({ label: 'Worker', value: `${workerCount} 个` })
+  }
+  const plannedTasks = numberValue(summary.planned_tasks)
+  if (plannedTasks !== null) {
+    items.push({ label: '计划任务', value: `${plannedTasks} 个` })
+  }
+  const blockedTasks = numberValue(summary.blocked_tasks)
+  if (blockedTasks !== null) {
+    items.push({ label: '阻塞任务', value: `${blockedTasks} 个` })
+  }
+  const issues = numberValue(summary.issues)
+  if (issues !== null) {
+    items.push({ label: '问题', value: `${issues} 个` })
+  }
+
+  const routeRegistry = recordValue(data.route_registry)
+  const routeStatus = stringValue(routeRegistry.status)
+  if (routeStatus) {
+    items.push({ label: '路由审计', value: routeRegistryStatusLabel(routeStatus) })
+  }
+  const routeSummary = recordValue(routeRegistry.summary)
+  const unroutedAllowedTools = numberValue(routeSummary.unrouted_allowed_tools)
+  if (unroutedAllowedTools !== null) {
+    items.push({ label: '未路由工具', value: `${unroutedAllowedTools} 个` })
+  }
+
+  const orphanRecovery = recordValue(data.orphan_recovery)
+  const orphanStatus = stringValue(orphanRecovery.status)
+  if (orphanStatus) {
+    items.push({ label: '孤儿恢复', value: orphanRecoveryStatusLabel(orphanStatus) })
+  }
+  const orphanSummary = recordValue(orphanRecovery.summary)
+  const orphanWorkerRuns = numberValue(orphanSummary.orphan_worker_runs)
+  if (orphanWorkerRuns !== null) {
+    items.push({ label: '孤儿 worker', value: `${orphanWorkerRuns} 个` })
   }
   return items
 }
@@ -635,6 +707,21 @@ function agentControlPlaneStatusLabel(status: string) {
 
 function routeRegistryStatusLabel(status: string) {
   if (status === 'passed') return '通过'
+  if (status === 'needs_attention') return '需处理'
+  return status || '未知'
+}
+
+function workerDispatchStatusLabel(status: string) {
+  if (status === 'ready') return '就绪'
+  if (status === 'blocked') return '已阻塞'
+  if (status === 'running') return '运行中'
+  if (status === 'failed') return '失败'
+  if (status === 'success' || status === 'completed') return '已完成'
+  return status || '未知'
+}
+
+function orphanRecoveryStatusLabel(status: string) {
+  if (status === 'clear') return '无孤儿'
   if (status === 'needs_attention') return '需处理'
   return status || '未知'
 }
