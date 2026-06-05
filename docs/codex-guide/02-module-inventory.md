@@ -292,7 +292,7 @@ Agent 化缺口：
 ### 4.2 Trace & Audit（追踪与审计）
 
 ```
-当前状态：L2-L3 AIModelCallTrace 记录每次 AI 调用的详细信息；inspect_agent_trace_audit 已可由自然语言只读意图触达，用于审计 run/step/model trace/context blocks，并输出安全 intent_chain 摘要（规则、意图、计划工具、执行匹配数）、end_to_end_chain 摘要（意图→计划→执行→模型 Trace→结果消息覆盖）和 anomaly_summary 摘要（失败步骤、失败模型 Trace、缺 Trace 绑定、未执行计划、缺结果消息、截断上下文）；inspect_agent_trace_anomaly_trends 已可按最近 run、可选章节与 baseline window 聚合异常状态、严重度、问题类型、受影响 run 摘要、基线对比、项目配置化阈值、阈值信号、阈值校准建议、误报/漏报 guard、阈值固化策略投影和推荐后续；inspect_agent_trace_anomaly_long_run_samples 已可由自然语言触达，统计当前项目有 step 的长跑候选 run 样本、状态分布、entrypoint 分布、章节集合和 threshold review 推荐窗口；inspect_agent_trace_anomaly_threshold_review 已可由自然语言触达，基于 trends 的 calibration.policy 输出安全人工复核摘要、阈值候选和 prepare_record_agent_trace_anomaly_threshold_config 推荐调用，不执行写入；人工复核后的阈值可通过 prepare/execute approval chain 写入 Project.style_config；AgentRunDrawer 可展示 Trace Audit 与 Trace Anomaly Trends 安全摘要、intent_chain 意图链路、端到端链路、异常摘要、趋势基线、阈值信号、阈值来源、阈值校准、固化策略、失败原因、推荐动作、事件链、上下文块和模型 Trace 概览
+当前状态：L2-L3 AIModelCallTrace 记录每次 AI 调用的详细信息；inspect_agent_trace_audit 已可由自然语言只读意图触达，用于审计 run/step/model trace/context blocks，并输出安全 intent_chain 摘要（规则、意图、计划工具、执行匹配数）、end_to_end_chain 摘要（意图→计划→执行→模型 Trace→结果消息覆盖）和 anomaly_summary 摘要（失败步骤、失败模型 Trace、缺 Trace 绑定、未执行计划、缺结果消息、截断上下文）；inspect_agent_trace_anomaly_trends 已可按最近 run、可选章节与 baseline window 聚合异常状态、严重度、问题类型、受影响 run 摘要、基线对比、项目配置化阈值、阈值信号、阈值校准建议、误报/漏报 guard、阈值固化策略投影和推荐后续；inspect_agent_trace_anomaly_long_run_samples 已可由自然语言触达，统计当前项目有 step 的长跑候选 run 样本、状态分布、entrypoint 分布、章节集合和 threshold review 推荐窗口；inspect_agent_trace_anomaly_threshold_review 已可由自然语言触达，基于 trends 的 calibration.policy 输出安全人工复核摘要、阈值候选和 prepare_record_agent_trace_anomaly_threshold_config 推荐调用，不执行写入；人工复核后的阈值可通过 prepare/execute approval chain 写入 Project.style_config；AgentRunDrawer 可展示 Trace Audit、Trace Anomaly Trends、Trace Anomaly Long Run Samples 与 Trace Anomaly Threshold Review 安全摘要、intent_chain 意图链路、端到端链路、异常摘要、趋势基线、阈值信号、阈值来源、阈值校准、固化策略、长跑采样窗口、阈值复核候选、失败原因、推荐动作、事件链、上下文块和模型 Trace 概览
 目标状态：L3 全链路 trace（用户意图→计划→工具调用→模型调用→结果）
 关键文件：
   backend/app/core/model_call_trace.py    # Model Call Trace 核心
@@ -432,6 +432,7 @@ Data & Recovery ─── (横切关注点，覆盖所有写入操作)
 
 | 日期 | 模块 | 变更 |
 |------|------|------|
+| 2026-06-05 | Frontend Agent UX | AgentRunDrawer 新增 inspect_agent_trace_anomaly_long_run_samples 与 inspect_agent_trace_anomaly_threshold_review 安全投影，展示长跑采样状态、候选运行/步骤/章节/复核窗口、状态分布、阈值复核样本、策略决策、阈值候选和推荐工具，同时隐藏 run/step/trace id、trace version、raw recommended_next_tool_calls params、policy/config 内部字段 |
 | 2026-06-05 | Frontend Agent UX | AgentRunDrawer 新增 inspect_agent_job_projection 安全投影，展示队列深度、活跃/终止任务、返回任务数、选中任务状态/章节/范围/恢复能力、控制面与命令契约缺口、章节占用、事件摘要和推荐工具，同时隐藏 project/selector/task/run/event/trace id、version、control_plane 与原始 params |
 | 2026-06-05 | Frontend Agent UX | AgentRunDrawer 与聊天 action descriptor 新增 plan_chapter_conflict_recovery 安全投影，展示计划状态、目标章节、占用状态、占用任务数、恢复状态、下一工具、计划工具数、恢复选项、任务来源/章节范围/状态和恢复选项标签，同时隐藏 task id、next_params、trace/version 与原始工具参数 |
 | 2026-06-05 | Frontend Agent UX | AgentRunDrawer 与聊天 action descriptor 新增 inspect_agent_event_projection 安全投影，展示事件投影状态、事件总数、后台任务/运行/工具事件计数、工具错误、事件类型、来源类型、工具名、章节、状态、错误预览和推荐后续，同时隐藏 project/selector/event/source/run/task/step/trace id、version 与 trace source |

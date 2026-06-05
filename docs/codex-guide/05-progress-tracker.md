@@ -189,8 +189,8 @@
 - [x] Chapter Conflict Recovery 只读恢复计划意图：自然语言“规划第3章章节冲突恢复”可投影为 plan_chapter_conflict_recovery 只读工具计划，AgentRunDrawer 与聊天 action descriptor 可展示章节占用和恢复计划安全摘要
 - [x] Trace Audit 只读审计意图：自然语言“检查 run trace/执行链路/失败原因”可投影为 inspect_agent_trace_audit 只读工具计划，Trace Audit run 可在 AgentRunDrawer 展示安全摘要
 - [x] Trace Anomaly Trends 只读审计意图：自然语言“检查第4章 Trace 异常趋势 limit 9 baseline 6”可投影为 inspect_agent_trace_anomaly_trends 只读工具计划，Trace Anomaly Trends run 可在 AgentRunDrawer 展示趋势、基线、阈值信号、阈值校准和阈值固化策略安全摘要
-- [x] Trace Anomaly Long Run Samples 只读采样意图：自然语言“检查第4章 Trace 异常长跑样本 limit 9”可投影为 inspect_agent_trace_anomaly_long_run_samples 只读工具计划，统计当前项目候选 run/step 样本、状态分布、entrypoint 分布和推荐 threshold review 窗口，不暴露 run/step id
-- [x] Trace Anomaly Threshold Review 只读复核意图：自然语言“复核第4章 Trace 异常阈值样本 limit 9 baseline 6”可投影为 inspect_agent_trace_anomaly_threshold_review 只读工具计划，基于 trends 的 calibration.policy 输出安全人工复核摘要、阈值候选和 prepare_record_agent_trace_anomaly_threshold_config 推荐调用，不执行写入
+- [x] Trace Anomaly Long Run Samples 只读采样意图：自然语言“检查第4章 Trace 异常长跑样本 limit 9”可投影为 inspect_agent_trace_anomaly_long_run_samples 只读工具计划，统计当前项目候选 run/step 样本、状态分布、entrypoint 分布和推荐 threshold review 窗口，AgentRunDrawer 可展示长跑采样安全摘要且不暴露 run/step id
+- [x] Trace Anomaly Threshold Review 只读复核意图：自然语言“复核第4章 Trace 异常阈值样本 limit 9 baseline 6”可投影为 inspect_agent_trace_anomaly_threshold_review 只读工具计划，基于 trends 的 calibration.policy 输出安全人工复核摘要、阈值候选和 prepare_record_agent_trace_anomaly_threshold_config 推荐调用，不执行写入；AgentRunDrawer 可展示阈值复核安全摘要
 - [x] Write Gate Coverage 只读审计意图：自然语言“检查写入工具的审批门禁覆盖”可投影为 inspect_agent_write_gate_coverage 只读工具计划
 - [x] Legacy Hermes Migration 只读审计意图：自然语言“检查 legacy Hermes action 迁移路线”可投影为 inspect_legacy_hermes_action_migration 只读工具计划
 - [x] Route Approval Opt-in 只读规划意图：自然语言“规划 pending-action-123 的 Agent 审批链 opt-in”可投影为 plan_agent_route_approval_opt_in 只读工具计划
@@ -346,7 +346,7 @@
 - [x] 前端 Trace 抽屉：ModelTraceDrawer + modelTraces store
 - [x] Trace 脱敏：API key、Bearer token、password 等自动脱敏
 - [x] Trace Audit 自然语言只读入口：自然语言“检查 run trace/执行链路/失败原因”可直接规划到 inspect_agent_trace_audit，后端可输出安全 intent_chain 摘要（意图规则、计划工具、执行匹配）、end_to_end_chain 摘要（意图→计划→执行→模型 Trace→结果消息覆盖）和 anomaly_summary 摘要（失败步骤、失败模型 Trace、缺 Trace 绑定、未执行计划、缺结果消息、截断上下文），AgentRunDrawer 可展示安全摘要、intent_chain 意图链路、端到端链路、异常摘要、失败原因、推荐动作、事件链、上下文块和模型 Trace 概览
-- [x] Trace Anomaly Trends / Long Run Samples / Threshold Review 自然语言只读入口：自然语言“检查第 N 章 Trace 异常趋势 limit <n> baseline <n>”可直接规划到 inspect_agent_trace_anomaly_trends；自然语言“检查第 N 章 Trace 异常长跑样本 limit <n>”可直接规划到 inspect_agent_trace_anomaly_long_run_samples；自然语言“复核第 N 章 Trace 异常阈值样本 limit <n> baseline <n>”可直接规划到 inspect_agent_trace_anomaly_threshold_review。后端可聚合最近 run 的受影响数量、严重度、问题类型、主要问题、baseline window、rate delta、项目配置化阈值、阈值信号、阈值校准建议、误报/漏报 guard、阈值固化策略，统计当前项目候选 run/step 样本，并输出安全人工复核摘要、阈值候选和 prepare 调用建议；人工复核后的阈值可通过 `prepare_record_agent_trace_anomaly_threshold_config` → `execute_record_agent_trace_anomaly_threshold_config_with_approval` 审批链写入项目配置；AgentRunDrawer 可展示安全摘要、阈值来源和固化策略，并隐藏 raw run/step/trace/context/calibration/policy/config 内部字段
+- [x] Trace Anomaly Trends / Long Run Samples / Threshold Review 自然语言只读入口：自然语言“检查第 N 章 Trace 异常趋势 limit <n> baseline <n>”可直接规划到 inspect_agent_trace_anomaly_trends；自然语言“检查第 N 章 Trace 异常长跑样本 limit <n>”可直接规划到 inspect_agent_trace_anomaly_long_run_samples；自然语言“复核第 N 章 Trace 异常阈值样本 limit <n> baseline <n>”可直接规划到 inspect_agent_trace_anomaly_threshold_review。后端可聚合最近 run 的受影响数量、严重度、问题类型、主要问题、baseline window、rate delta、项目配置化阈值、阈值信号、阈值校准建议、误报/漏报 guard、阈值固化策略，统计当前项目候选 run/step 样本，并输出安全人工复核摘要、阈值候选和 prepare 调用建议；人工复核后的阈值可通过 `prepare_record_agent_trace_anomaly_threshold_config` → `execute_record_agent_trace_anomaly_threshold_config_with_approval` 审批链写入项目配置；AgentRunDrawer 可展示趋势、长跑采样和阈值复核安全摘要、阈值来源和固化策略，并隐藏 raw run/step/trace/context/calibration/policy/config 内部字段
 - [x] 基础上下文压缩：对话历史长度限制
 - [x] 长篇上下文摘要：longform_context_summary
 - [x] ContextCompressor 基础计划投影：context pressure 下输出头尾保护预修剪、target_max_chars 和 summarize_longform_context 工具计划
@@ -376,6 +376,7 @@
 
 ### 最近完成
 
+- 2026-06-05: `inspect_agent_trace_anomaly_long_run_samples` 与 `inspect_agent_trace_anomaly_threshold_review` 接入 AgentRunDrawer 安全投影，展示长跑采样状态、候选运行/最低样本/缺失样本/工具步骤/章节集合、状态分布、复核窗口、阈值复核状态、策略决策、样本窗口、已复核样本、阈值信号、阈值候选和推荐工具，同时不暴露 run/step/trace id、trace version、`recommended_next_tool_calls`、raw params、policy/config 内部字段和直接写入 reason。
 - 2026-06-04: `inspect_agent_dogfood_evidence` 新增 `trace_anomaly_long_run_samples_20260604` 证据记录，source_ref 指向 `docs/archive/superpowers/notes/long-memory-agent/2026-06-04-trace-anomaly-long-run-samples-dogfood.md`，记录隔离 dogfood DB 中 14 个真实 Writing Agent run、31 个 step、12 个 dogfood entrypoint run、第 1-3 章样本覆盖，并将 `trace_anomaly_threshold_long_run_sample_execution` 从 open finding 中移除。
 - 2026-06-04: 新增 `inspect_agent_trace_anomaly_long_run_samples` 只读采样投影，按当前项目和可选章节统计有 step 的 Writing Agent run 样本、状态分布、entrypoint 分布、章节集合和 threshold review 推荐窗口，不暴露 run/step id。
 - 2026-06-04: `IntentRouter` / `plan_dialog_intent_agent_run` / `recovery_worker` 新增 Trace anomaly long-run sample 自然语言入口和 worker 路由；`inspect_agent_dogfood_evidence` 同步记录 long_run_sample_collection_projection / intent / worker_route 指标，当时剩余缺口收敛为真实长跑 dogfood 样本执行。
