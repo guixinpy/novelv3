@@ -47,6 +47,7 @@ SAFE_RECOMMENDED_FOLLOWUP_TOOLS = frozenset(
         "plan_chapter_revision",
         "review_world_model_proposals",
         "inspect_agent_world_model_route",
+        "inspect_agent_world_model_semantic_check",
         "plan_world_model_proposal_resolution",
         "preview_world_model_proposal_resolution",
         "draft_world_model_proposal_resolution_decisions",

@@ -123,7 +123,7 @@ Agent 化缺口：
 ### 1.3 Athena（世界模型）
 
 ```
-当前状态：L2 结构化世界实体 + 事件账本 + 提案审批 + layered checker（L0-L4 已实现，L5-L6 预留）；World Model Route 与提案队列/解决规划可由自然语言只读意图触达，AgentRunDrawer 可展示 World Model Route 安全摘要、确认事实、待审提案压力、推荐动作和诊断信息，也可展示 review_world_model_proposals 的待审队列状态、风险/审阅模式统计、推荐动作和提案簇安全摘要，以及 plan_world_model_proposal_resolution 的处理计划状态、人工确认/自动应用判断、高优先级/批量步骤计数、推荐动作/后续工具和安全步骤摘要
+当前状态：L2 结构化世界实体 + 事件账本 + 提案审批 + layered checker（L0-L4 已实现，L5 已有只读 LLM 语义一致性检查入口，L6 预留）；World Model Route、L5 Semantic Check 与提案队列/解决规划可由自然语言只读意图触达，AgentRunDrawer 可展示 World Model Route 安全摘要、确认事实、待审提案压力、推荐动作和诊断信息，也可展示 review_world_model_proposals 的待审队列状态、风险/审阅模式统计、推荐动作和提案簇安全摘要，以及 plan_world_model_proposal_resolution 的处理计划状态、人工确认/自动应用判断、高优先级/批量步骤计数、推荐动作/后续工具和安全步骤摘要
 目标状态：L3 LLM 驱动的语义一致性检查 + 主动矛盾发现
 关键文件：
   backend/app/core/athena_*.py            # 世界模型核心服务（多个文件）
@@ -136,11 +136,11 @@ Agent 化缺口：
   ├── world_model_resolution_apply_*.py   # 世界模型决议应用
   └── world_model_tool_*.py              # 世界模型工具适配器
 Agent 化缺口：
-  - L5 语义检查和 L6 治理检查仍是预留层
+  - L5 语义检查已有 `inspect_agent_world_model_semantic_check` 基础版：对已生成章节和确认世界事实窗口执行 Trace-bound LLM JSON 检查，只返回语义冲突 issue，不写入世界事实或提案；L6 治理检查仍是预留层
   - 世界模型路由已有只读诊断、自然语言入口和 Drawer 安全投影，可检查 profile、确认事实、待审提案压力和下一步建议；提案队列 review run 与 resolution plan run 已有 Drawer 安全投影，可检查待审数量、风险/审阅模式统计、推荐动作、提案簇摘要和处理步骤摘要
-  - 世界模型提案队列审阅和提案解决规划已有自然语言只读入口，可在应用决议前先查看待处理提案并生成 offset/limit 范围内的处理计划；Drawer 会隐藏 project/profile/cluster/item/bundle id 与 allowed_actions/plan_only/report_only 等内部字段
+  - 世界模型提案队列审阅、提案解决规划和 L5 语义检查已有自然语言只读入口，可在应用决议前先查看待处理提案、生成 offset/limit 范围内的处理计划，或对第 N 章与确认事实窗口做 LLM 语义冲突审查；Drawer 会隐藏 project/profile/cluster/item/bundle id 与 allowed_actions/plan_only/report_only 等内部字段，L5 语义检查的专用 Drawer 投影仍待补
   - 章节事实抽取质量需要持续改进
-  - 缺少 LLM 驱动的"跨章节叙事一致性"检查
+  - 跨章节叙事一致性已有单章事实窗口 L5 起点，仍缺真实 dogfood、跨章事实链和前端专用安全投影
   - 世界模型分析需要更多真实长篇压测
 关联模块：Retrieval、Writing、Review、Trace
 ```
@@ -432,6 +432,7 @@ Data & Recovery ─── (横切关注点，覆盖所有写入操作)
 
 | 日期 | 模块 | 变更 |
 |------|------|------|
+| 2026-06-05 | Athena | 新增 inspect_agent_world_model_semantic_check 只读 L5 语义一致性检查，基于已生成章节和确认事实窗口执行 Trace-bound LLM JSON 审查，不写世界事实或提案，并接入自然语言入口、world_model_worker、followup safe list 和 loop risk known poll |
 | 2026-06-05 | Retrieval | 新增 inspect_agent_retrieval_strategy 只读检索策略规划，章节生成 planner 先规划策略再进入上下文摘要，并接入自然语言入口、retrieval_worker 和 Drawer 安全投影 |
 | 2026-06-05 | Long Memory | Memory Tree semantic relevance 新增 local hash `vector_score` 与 embedding 元数据输出，为远程向量召回前提供可审计基线 |
 | 2026-06-05 | Long Memory | Dogfood Evidence 新增 Memory Tree LLM candidate batch materialization 证据，记录两个 fake-model 候选经 batch prepare/batch execute 后写入 2 个章级摘要并复核 quality ready |

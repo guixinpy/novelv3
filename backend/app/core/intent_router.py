@@ -22,6 +22,7 @@ _INTENT_RULE_IDS = (
     "memory_activation_plan_intent",
     "knowledge_base_route_intent",
     "post_chapter_memory_capture_intent",
+    "world_model_semantic_check_intent",
     "world_model_route_intent",
     "world_model_proposal_review_intent",
     "world_model_proposal_resolution_plan_intent",
@@ -441,6 +442,20 @@ class IntentRouter:
                 extracted_params=extracted_params,
                 match_evidence=[{"kind": "pattern", "name": "post_chapter_memory_capture_phrase"}],
                 preconditions=[{"code": "post_chapter_memory_capture_read_available", "passed": True}],
+            )
+
+        if _is_world_model_semantic_check_intent(text):
+            extracted_params = _world_model_semantic_check_params(text)
+            return self._matched_projection(
+                text,
+                dialog_state,
+                pending_action_id,
+                diagnosis,
+                rule_id="world_model_semantic_check_intent",
+                candidate=ActionCandidate("inspect_world_model_semantic_check", extracted_params),
+                extracted_params=extracted_params,
+                match_evidence=[{"kind": "pattern", "name": "world_model_semantic_check_phrase"}],
+                preconditions=[{"code": "world_model_semantic_check_read_available", "passed": True}],
             )
 
         if _is_world_model_route_intent(text):
@@ -1332,6 +1347,31 @@ def _post_chapter_memory_capture_params(text: str) -> dict[str, Any]:
     chapter_index = parse_chapter_index(text)
     if chapter_index is not None:
         params["chapter_index"] = chapter_index
+    return params
+
+
+def _is_world_model_semantic_check_intent(text: str) -> bool:
+    semantic_phrase = (
+        r"(世界模型语义检查|语义检查.*世界模型|world\s*model\s*semantic\s*check|"
+        r"semantic\s*world\s*model\s*check|L5\s*语义检查)"
+    )
+    return bool(
+        re.search(rf"{semantic_phrase}.*(检查|审查|一致性|冲突|subject|事实|max_facts)", text, re.IGNORECASE)
+        or re.search(rf"(检查|审查|一致性|冲突|subject|事实|max_facts).*{semantic_phrase}", text, re.IGNORECASE)
+    )
+
+
+def _world_model_semantic_check_params(text: str) -> dict[str, Any]:
+    params: dict[str, Any] = {}
+    chapter_index = parse_chapter_index(text)
+    if chapter_index is not None:
+        params["chapter_index"] = chapter_index
+    subject_ref = _world_model_subject_ref(text)
+    if subject_ref:
+        params["subject_ref"] = subject_ref
+    max_facts = _numeric_option(text, r"max_facts|max\s*facts|事实|facts|limit|限制|最多")
+    if max_facts is not None:
+        params["max_facts"] = max_facts
     return params
 
 

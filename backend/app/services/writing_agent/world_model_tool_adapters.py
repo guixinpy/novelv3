@@ -121,6 +121,21 @@ def _inspect_agent_world_model_route(context: WritingAgentToolContext, tool: Wri
     )
 
 
+async def _inspect_agent_world_model_semantic_check(
+    context: WritingAgentToolContext,
+    tool: WritingAgentToolRequest,
+) -> dict[str, Any]:
+    from app.services.writing_agent.world_model_semantic_check import inspect_agent_world_model_semantic_check
+
+    return await inspect_agent_world_model_semantic_check(
+        context.db,
+        context.project_id,
+        chapter_index=_optional_int(tool.params.get("chapter_index")),
+        subject_ref=str(tool.params.get("subject_ref") or "").strip() or None,
+        max_facts=_optional_int(tool.params.get("max_facts")),
+    )
+
+
 def _plan_world_model_proposal_resolution(
     context: WritingAgentToolContext,
     tool: WritingAgentToolRequest,
@@ -320,6 +335,12 @@ WORLD_MODEL_AGENT_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
     "inspect_agent_world_model_route": WritingAgentToolAdapter(
         "inspect_agent_world_model_route",
         _inspect_agent_world_model_route,
+        category="athena_world_model",
+        mutability="read",
+    ),
+    "inspect_agent_world_model_semantic_check": WritingAgentToolAdapter(
+        "inspect_agent_world_model_semantic_check",
+        _inspect_agent_world_model_semantic_check,
         category="athena_world_model",
         mutability="read",
     ),

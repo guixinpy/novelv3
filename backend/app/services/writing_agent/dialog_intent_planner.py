@@ -46,6 +46,7 @@ _ACTION_TO_DIRECT_READ_TOOL = {
     "inspect_knowledge_base_route": "inspect_agent_knowledge_base_route",
     "plan_post_chapter_memory_capture": "plan_post_chapter_memory_capture",
     "inspect_world_model_route": "inspect_agent_world_model_route",
+    "inspect_world_model_semantic_check": "inspect_agent_world_model_semantic_check",
     "review_world_model_proposals": "review_world_model_proposals",
     "plan_world_model_proposal_resolution": "plan_world_model_proposal_resolution",
     "inspect_retrieval_strategy": "inspect_agent_retrieval_strategy",

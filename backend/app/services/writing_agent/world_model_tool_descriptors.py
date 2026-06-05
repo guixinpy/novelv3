@@ -192,6 +192,38 @@ WORLD_MODEL_AGENT_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(
+        name="inspect_agent_world_model_semantic_check",
+        module="writing_agent",
+        category="athena_world_model",
+        description="只读执行 L5 世界模型语义一致性检查，记录模型 Trace，但不写入世界事实或提案。",
+        input_schema=object_schema(
+            {
+                "chapter_index": {"type": "integer", "minimum": 1},
+                "subject_ref": {"type": "string"},
+                "max_facts": {"type": "integer", "minimum": 1},
+            },
+            required=("chapter_index",),
+        ),
+        output_schema=object_schema(
+            {
+                "status": {"type": "string"},
+                "semantic_check": {"type": "object"},
+                "issues": {"type": "array"},
+                "fact_window": {"type": "object"},
+                "chapter_window": {"type": ["object", "null"]},
+                "llm_prompt_contract": {"type": ["object", "null"]},
+                "side_effects": {"type": "object"},
+                "recommended_next_tools": {"type": "array"},
+                "trace": {"type": "object"},
+            }
+        ),
+        target_type="world_model_semantic_check",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=162,
+        availability_checks=("generated_chapter_exists", "world_model_profile_exists"),
+    ),
+    AgentToolDescriptor(
         name="plan_world_model_proposal_resolution",
         module="athena_world_model",
         category="athena_world_model",

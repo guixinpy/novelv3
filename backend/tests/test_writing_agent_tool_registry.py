@@ -322,6 +322,7 @@ def test_world_model_tool_descriptors_live_in_dedicated_module():
         "execute_analyze_chapter_world_model_with_approval",
         "review_world_model_proposals",
         "inspect_agent_world_model_route",
+        "inspect_agent_world_model_semantic_check",
         "plan_world_model_proposal_resolution",
         "preview_world_model_proposal_resolution",
         "apply_world_model_proposal_resolution",
@@ -339,6 +340,7 @@ def test_world_model_tool_descriptors_live_in_dedicated_module():
     }
     assert all(descriptor.internal for descriptor in WORLD_MODEL_AGENT_TOOL_DESCRIPTORS)
     assert target_type_for_tool("inspect_agent_world_model_route") == "agent_world_model_route"
+    assert target_type_for_tool("inspect_agent_world_model_semantic_check") == "world_model_semantic_check"
     assert target_type_for_tool("apply_world_model_proposal_resolution") == "world_model"
     assert target_type_for_tool("prepare_apply_world_model_proposal_resolution") == (
         "world_model_proposal_resolution_approval"
@@ -463,6 +465,7 @@ def test_agent_tool_registry_has_unique_names_and_contracts():
         "inspect_agent_memory_route",
         "search_agent_retrieval_context",
         "inspect_agent_world_model_route",
+        "inspect_agent_world_model_semantic_check",
         "summarize_longform_context",
         "repair_longform_maintenance",
     }.issubset(set(names))
@@ -1739,6 +1742,23 @@ def test_agent_tool_registry_includes_inspect_agent_world_model_route():
     assert descriptor.input_schema["properties"]["subject_ref"]["type"] == "string"
     assert "inspect_agent_world_model_route" in allowed_tool_names()
     assert "inspect_agent_world_model_route" in non_blocking_report_tool_names()
+
+
+def test_agent_tool_registry_includes_inspect_agent_world_model_semantic_check():
+    descriptor = get_agent_tool_descriptor("inspect_agent_world_model_semantic_check")
+
+    assert descriptor is not None
+    assert descriptor.internal is True
+    assert descriptor.non_blocking_report is True
+    assert descriptor.category == "athena_world_model"
+    assert descriptor.target_type == "world_model_semantic_check"
+    assert descriptor.input_schema["properties"]["chapter_index"]["minimum"] == 1
+    assert descriptor.input_schema["properties"]["subject_ref"]["type"] == "string"
+    assert descriptor.input_schema["properties"]["max_facts"]["minimum"] == 1
+    assert descriptor.output_schema["properties"]["semantic_check"]["type"] == "object"
+    assert descriptor.output_schema["properties"]["issues"]["type"] == "array"
+    assert "inspect_agent_world_model_semantic_check" in allowed_tool_names()
+    assert "inspect_agent_world_model_semantic_check" in non_blocking_report_tool_names()
 
 
 def test_agent_tool_registry_includes_summarize_longform_context():

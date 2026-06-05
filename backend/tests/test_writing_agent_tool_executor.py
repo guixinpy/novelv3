@@ -464,6 +464,7 @@ def test_world_model_tool_adapters_live_in_dedicated_module():
         "execute_analyze_chapter_world_model_with_approval",
         "review_world_model_proposals",
         "inspect_agent_world_model_route",
+        "inspect_agent_world_model_semantic_check",
         "plan_world_model_proposal_resolution",
         "preview_world_model_proposal_resolution",
         "apply_world_model_proposal_resolution",
@@ -482,6 +483,7 @@ def test_world_model_tool_adapters_live_in_dedicated_module():
     assert WORLD_MODEL_AGENT_TOOL_ADAPTERS["analyze_chapter_world_model"].write_policy == "approval_required_redirect"
     assert WORLD_MODEL_AGENT_TOOL_ADAPTERS["execute_analyze_chapter_world_model_with_approval"].mutability == "write"
     assert WORLD_MODEL_AGENT_TOOL_ADAPTERS["inspect_agent_world_model_route"].mutability == "read"
+    assert WORLD_MODEL_AGENT_TOOL_ADAPTERS["inspect_agent_world_model_semantic_check"].mutability == "read"
     assert WORLD_MODEL_AGENT_TOOL_ADAPTERS["apply_world_model_proposal_resolution"].mutability == "guarded_write"
     assert WORLD_MODEL_AGENT_TOOL_ADAPTERS["apply_world_model_proposal_resolution"].write_policy == (
         "approval_required_redirect"
@@ -4466,8 +4468,8 @@ async def test_tool_executor_handles_inspect_agent_worker_dispatch(db_session):
     }
     assert result.output["route_registry"]["status"] == "passed"
     assert result.output["route_registry"]["summary"] == {
-        "routes": 69,
-        "ready_routes": 69,
+        "routes": 70,
+        "ready_routes": 70,
         "unrouted_allowed_tools": 0,
         "issues": 0,
     }
@@ -6006,6 +6008,7 @@ def test_tool_executor_static_adapter_names_are_report_or_agent_native_tools():
         "inspect_agent_memory_route",
         "summarize_longform_context",
         "inspect_agent_world_model_route",
+        "inspect_agent_world_model_semantic_check",
         "review_chapter_quality",
         "review_chapter_continuity",
         "plan_chapter_revision",
@@ -6366,6 +6369,18 @@ def test_tool_executor_exposes_inspect_agent_retrieval_strategy_adapter_metadata
         "category": "retrieval",
         "mutability": "read",
         "handler_name": "_inspect_agent_retrieval_strategy",
+    }
+
+
+def test_tool_executor_exposes_inspect_agent_world_model_semantic_check_adapter_metadata():
+    metadata = writing_agent_tool_adapter_metadata("inspect_agent_world_model_semantic_check")
+
+    assert metadata == {
+        "tool_name": "inspect_agent_world_model_semantic_check",
+        "adapter_type": "static",
+        "category": "athena_world_model",
+        "mutability": "read",
+        "handler_name": "_inspect_agent_world_model_semantic_check",
     }
 
 

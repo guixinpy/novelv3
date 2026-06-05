@@ -3,6 +3,7 @@ role: worker
 max_depth: 0
 allowed_tools:
   - inspect_agent_world_model_route
+  - inspect_agent_world_model_semantic_check
   - prepare_analyze_chapter_world_model_execution
   - analyze_chapter_world_model
   - execute_analyze_chapter_world_model_with_approval

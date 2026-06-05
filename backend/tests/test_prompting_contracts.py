@@ -26,11 +26,13 @@ def test_registry_contains_expected_production_prompts():
         "dialog.compact",
         "project.diagnose",
         "athena.extract_l2",
+        "athena.world_model_semantic_check",
     }
     assert PROMPT_REGISTRY["setup.generate"].template_name == "generate_setup"
     assert PROMPT_REGISTRY["chapter.generate"].output_type == "plain_text"
     assert PROMPT_REGISTRY["athena.extract_l2"].template_name == "athena_extract_l2"
     assert PROMPT_REGISTRY["athena.extract_l2"].output_type == "json"
+    assert PROMPT_REGISTRY["athena.world_model_semantic_check"].output_type == "json"
 
 
 def test_renderer_returns_stable_template_hash():

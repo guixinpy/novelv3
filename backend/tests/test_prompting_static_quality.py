@@ -20,6 +20,8 @@ ALLOWED_INLINE_PROMPT_FILES = {
 
 SAMPLE_PROMPT_VARS = {
     "chapter_index": 1,
+    "chapter_excerpt": "顾衍在旧塔底层倒下，蓝焰证词显示其稍后仍会出现。",
+    "chapter_title": "旧塔回声",
     "characters": '[{"name":"林深"}]',
     "completed_items": "设定",
     "complexity": "中等",
@@ -35,6 +37,7 @@ SAMPLE_PROMPT_VARS = {
     "has_setup": "true",
     "has_storyline": "false",
     "language": "zh-CN",
+    "max_facts": 5,
     "missing_items": "故事线、大纲、正文",
     "name": "潮汐门",
     "profile_version": "1",
@@ -45,12 +48,14 @@ SAMPLE_PROMPT_VARS = {
     "project_status": "进行中",
     "storyline": '{"plotlines":[{"name":"记忆潮汐危机"}]}',
     "style": "冷峻",
+    "subject_ref": "char.hero",
     "suggested_next_step": "preview_storyline",
     "target_chapters": "10",
     "target_words": "30000",
     "total_chapters": 10,
     "world_building": "静默空间保存被交换的记忆。",
     "world_context": "当前世界模型为空。",
+    "facts_json": '[{"claim_id":"claim.hero.status","subject_ref":"char.hero","predicate":"status","object_ref_or_value":"alive"}]',
 }
 
 JSON_PROMPT_CALL_SITE_FILES = {
@@ -58,6 +63,9 @@ JSON_PROMPT_CALL_SITE_FILES = {
     "storyline.generate": {"backend/app/api/storylines.py"},
     "outline.generate": {"backend/app/api/outlines.py"},
     "athena.extract_l2": {"backend/app/core/l2_extractor.py"},
+    "athena.world_model_semantic_check": {
+        "backend/app/services/writing_agent/world_model_semantic_check.py"
+    },
 }
 
 JSON_PROMPT_CALL_SITE_CONTRACTS = {
@@ -68,6 +76,13 @@ JSON_PROMPT_CALL_SITE_CONTRACTS = {
         ("backend/app/api/outlines.py", "_build_outline_call_payload", "generate_outline"),
     },
     "athena.extract_l2": {("backend/app/core/l2_extractor.py", "extract", "extract")},
+    "athena.world_model_semantic_check": {
+        (
+            "backend/app/services/writing_agent/world_model_semantic_check.py",
+            "_llm_prompt_contract",
+            "inspect_agent_world_model_semantic_check",
+        )
+    },
 }
 
 REGISTRY_ONLY_JSON_PROMPTS = {"project.diagnose"}

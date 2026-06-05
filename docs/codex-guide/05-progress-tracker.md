@@ -103,6 +103,7 @@
 - [x] 知识库候选：knowledge_base_candidates + 执行；AgentRunDrawer 可从写后记忆捕获候选发起 prepare_record_agent_knowledge_base_candidate 只读审批准备 continuation，并在待审批写入区展示候选标题、触发 execute_record_agent_knowledge_base_candidate_with_approval payload；执行成功后展示候选标题、类型、数量和推荐下一步工具，并可继续发起只读 Knowledge Base Route 检查
 - [x] 世界模型分析执行：world_model_analysis_execution
 - [x] 世界模型路由诊断：自然语言“检查第 N 章 subject_ref 世界模型路由”可投影为 inspect_agent_world_model_route 只读工具计划
+- [x] 世界模型 L5 语义一致性检查基础版：inspect_agent_world_model_semantic_check 可对已生成章节和确认世界事实窗口执行 Trace-bound LLM JSON 审查，只返回 L5 issue，不写世界事实或提案；自然语言“语义检查第 N 章世界模型 subject=<ref> max_facts <n>”可投影到该只读工具，world_model_worker、followup safe list 和 loop risk known poll 已覆盖
 
 ### 下一步任务
 
@@ -110,7 +111,7 @@
 |--------|------|---------|------|
 | P0 | Memory Tree 分层摘要（卷→章两级） | 能生成并持久化卷级和章级摘要节点 | ✅ 已完成（基础版） |
 | P1 | Memory Tree 语义浏览 | Agent 能通过工具浏览 Tree：展开/收起/搜索 | ✅ 已完成（基础浏览） |
-| P2 | 世界模型 L5 语义检查 | 至少实现一个 LLM 驱动的语义一致性检查 | 🔴 待开始 |
+| P2 | 世界模型 L5 语义检查 | 至少实现一个 LLM 驱动的语义一致性检查 | ✅ 已完成（基础版：inspect_agent_world_model_semantic_check 只读 L5 Trace-bound LLM 检查 + 自然语言入口 + world_model_worker；后续补真实 dogfood、跨章事实链和 Drawer 安全投影） |
 | P3 | 检索策略智能化 | Agent 根据上下文自主选择检索策略 | 🟡 进行中（inspect_agent_retrieval_strategy 只读策略规划 + 章节生成 planner 接入 + 自然语言入口 + retrieval_worker 路由 + Drawer 安全投影；后续补 LLM/真实 dogfood 策略质量复核和主动预取） |
 | P4 | Memory Tree 语义召回/摘要质量增强 | 接入向量/LLM 摘要或真实长篇验证，不只依赖确定性摘要和文本匹配 | 🟡 进行中（层级 relevance + 本地 hash vector_score 输出 + 写前激活基础 + quality baseline + 审批式 materialize/recheck + LLM-ready summary plan + traced fake-model candidate + Trace 候选读回 + 候选 trace 绑定审批物化 + 多候选 recommended_next_tool_calls handoff + batch prepare approval handoff + batch execute 逐候选审批物化 + Drawer batch execute handoff/结果安全投影 + 执行后物化状态回流/重复 prepare 抑制 + 跨章批量候选质量回归证据；后续补真实模型质量验证/远程向量召回/真实 dogfood 批量质量复核） |
 
@@ -121,6 +122,7 @@
 ### 最近完成
 
 - 2026-06-04: 新增 `inspect_agent_memory_tree_quality` 只读质量审计投影，报告 volume/chapter/scene/beat 节点覆盖、Memory Tree 摘要支撑比例、semantic probe 命中、诊断和推荐后续；`IntentRouter` / `plan_dialog_intent_agent_run` / `memory_worker` 已支持自然语言“检查第 N 章记忆树质量 query=<query>”。
+- 2026-06-05: 新增 `inspect_agent_world_model_semantic_check` 只读 L5 语义一致性检查，基于已生成章节和确认世界事实窗口执行 Trace-bound LLM JSON 审查，返回 `semantic_consistency_llm` issue、Trace id、prompt contract 和推荐后续审批工具；自然语言入口、world_model_worker、followup safe list 与 loop risk known poll 已同步覆盖。
 - 2026-06-05: 新增 `inspect_agent_retrieval_strategy` 只读工具和自然语言入口“规划第 N 章检索策略 query=<query> limit <n> candidate_limit <n>”；工具会根据章节/query/维护状态推荐 `search_agent_retrieval_context`、`summarize_longform_context` 或维护诊断，章节生成 planner 已从固定检索步骤切到先规划检索策略，retrieval_worker 与 AgentRunDrawer 安全投影同步覆盖。
 - 2026-06-05: `inspect_agent_memory_tree` 的 semantic relevance 新增本地 hash embedding 相似度信号：当 query 进入语义召回时，节点 relevance 会保留既有 score/matched_terms/matched_fields，同时输出 `lexical_score`、`vector_score` 和 `embedding{provider,model,dimensions}`，为后续远程向量召回/质量复核提供可审计基线。
 - 2026-06-04: `inspect_agent_dogfood_evidence` 新增 `memory_tree_quality_projection_20260604` 证据，记录 `data/agent_native_dogfood_20260526.db` 中 3 个章节节点但 0 个 memory_tree summary-backed chapter，semantic probe `灯塔旧回声` miss，并把 `memory_tree_summary_gap` / `memory_tree_semantic_probe_miss` 作为下一步真实 dogfood finding。
@@ -168,6 +170,7 @@
 - [x] Knowledge Base Route 只读诊断意图：自然语言“检查第4章知识库路由 query=写法偏好 limit 9”可投影为 inspect_agent_knowledge_base_route 只读工具计划
 - [x] Post Chapter Memory Capture 只读规划意图：自然语言“规划第4章写后记忆沉淀”可投影为 plan_post_chapter_memory_capture 只读工具计划，Post Chapter Memory Capture run 可在 AgentRunDrawer 展示安全摘要
 - [x] World Model Route 只读诊断意图：自然语言“检查第2章 char.hero 世界模型路由 limit 7”可投影为 inspect_agent_world_model_route 只读工具计划，World Model Route run 可在 AgentRunDrawer 展示安全摘要
+- [x] World Model Semantic Check 只读 L5 意图：自然语言“语义检查第3章世界模型 subject=char.hero max_facts 6”可投影为 inspect_agent_world_model_semantic_check 只读工具计划，后端会记录模型 Trace 且不写入世界事实或提案
 - [x] World Model Proposal Review 只读队列意图：自然语言“检查世界模型提案队列 limit 20”可投影为 review_world_model_proposals 只读工具计划，World Model Proposal Review run 可在 AgentRunDrawer 展示安全摘要
 - [x] World Model Proposal Resolution Plan 只读规划意图：自然语言“规划世界模型提案解决方案 offset 2 limit 7”可投影为 plan_world_model_proposal_resolution 只读工具计划，World Model Proposal Resolution Plan run 可在 AgentRunDrawer 展示安全摘要
 - [x] Retrieval Strategy 只读规划意图：自然语言“规划第5章检索策略 query=旧灯塔回声 limit 6 candidate_limit 50”可投影为 inspect_agent_retrieval_strategy 只读工具计划，Retrieval Strategy run 可在 AgentRunDrawer 展示安全摘要

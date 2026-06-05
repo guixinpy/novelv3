@@ -98,4 +98,18 @@ PROMPT_REGISTRY: dict[str, PromptSpec] = {
         output_type="json",
         required_vars=("content",),
     ),
+    "athena.world_model_semantic_check": PromptSpec(
+        prompt_id="athena.world_model_semantic_check",
+        version="1",
+        template_name="athena_world_model_semantic_check",
+        output_type="json",
+        required_vars=(
+            "chapter_index",
+            "chapter_title",
+            "subject_ref",
+            "max_facts",
+            "chapter_excerpt",
+            "facts_json",
+        ),
+    ),
 }

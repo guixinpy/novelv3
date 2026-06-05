@@ -52,6 +52,7 @@ TOOL_WORKER_ROUTES = {
     "execute_record_agent_memory_tree_summaries_with_approval": "memory_worker",
     "inspect_agent_knowledge_base_route": "memory_worker",
     "inspect_agent_world_model_route": "world_model_worker",
+    "inspect_agent_world_model_semantic_check": "world_model_worker",
     "prepare_analyze_chapter_world_model_execution": "world_model_worker",
     "analyze_chapter_world_model": "world_model_worker",
     "execute_analyze_chapter_world_model_with_approval": "world_model_worker",
