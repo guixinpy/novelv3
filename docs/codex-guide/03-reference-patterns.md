@@ -255,7 +255,7 @@ novelv3 当前 trace + approval 体系已经较完整。权限分级已先在核
 14. **hermes-agent ContextCompressor 摘要质量与分层压缩** → 基于 preflight/章节 prompt 的持久压缩摘要推荐、写入、复用闭环继续推进 LLM 摘要质量闭环 + 更多实际上下文构建路径按重要性分层压缩
 15. **openclaw 孤兒恢复后台执行整合** → 将 pending redispatch run 接入后台执行/前端审批入口
 16. **Retrieval Strategy Planner** → 已先落地只读策略规划层：章节生成 planner 不再直接固定 search，而是先调用 `inspect_agent_retrieval_strategy`，由策略结果推荐 query-aware retrieval、长篇上下文摘要或维护诊断；后续再接 LLM/真实 dogfood 反馈做主动预取和策略质量评估
-17. **Athena L5 Semantic Check** → 已先落地只读 LLM 语义一致性检查：`inspect_agent_world_model_semantic_check` 对已生成章节和确认世界事实窗口执行 Trace-bound JSON 审查，只返回 L5 issue 和推荐后续审批工具，不写入世界事实或提案；后续补真实 dogfood、跨章事实链和 Drawer 安全投影
+17. **Athena L5 Semantic Check** → 已先落地只读 LLM 语义一致性检查：`inspect_agent_world_model_semantic_check` 对已生成章节和确认世界事实窗口执行 Trace-bound JSON 审查，只返回 L5 issue 和推荐后续审批工具，不写入世界事实或提案；AgentRunDrawer 已可安全展示状态、事实窗口、issue、证据摘录和推荐工具，并隐藏 trace/prompt/claim/evidence_refs 等内部字段；后续补真实 dogfood 与跨章事实链
 
 ### 中期实现（3-5 个开发周期）
 

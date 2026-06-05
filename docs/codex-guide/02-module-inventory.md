@@ -123,7 +123,7 @@ Agent 化缺口：
 ### 1.3 Athena（世界模型）
 
 ```
-当前状态：L2 结构化世界实体 + 事件账本 + 提案审批 + layered checker（L0-L4 已实现，L5 已有只读 LLM 语义一致性检查入口，L6 预留）；World Model Route、L5 Semantic Check 与提案队列/解决规划可由自然语言只读意图触达，AgentRunDrawer 可展示 World Model Route 安全摘要、确认事实、待审提案压力、推荐动作和诊断信息，也可展示 review_world_model_proposals 的待审队列状态、风险/审阅模式统计、推荐动作和提案簇安全摘要，以及 plan_world_model_proposal_resolution 的处理计划状态、人工确认/自动应用判断、高优先级/批量步骤计数、推荐动作/后续工具和安全步骤摘要
+当前状态：L2 结构化世界实体 + 事件账本 + 提案审批 + layered checker（L0-L4 已实现，L5 已有只读 LLM 语义一致性检查入口，L6 预留）；World Model Route、L5 Semantic Check 与提案队列/解决规划可由自然语言只读意图触达，AgentRunDrawer 可展示 World Model Route 安全摘要、确认事实、待审提案压力、推荐动作和诊断信息，也可展示 L5 Semantic Check 的状态、章节/主体、事实窗口、issue、证据摘录和推荐后续工具，并展示 review_world_model_proposals 的待审队列状态、风险/审阅模式统计、推荐动作和提案簇安全摘要，以及 plan_world_model_proposal_resolution 的处理计划状态、人工确认/自动应用判断、高优先级/批量步骤计数、推荐动作/后续工具和安全步骤摘要
 目标状态：L3 LLM 驱动的语义一致性检查 + 主动矛盾发现
 关键文件：
   backend/app/core/athena_*.py            # 世界模型核心服务（多个文件）
@@ -137,10 +137,10 @@ Agent 化缺口：
   └── world_model_tool_*.py              # 世界模型工具适配器
 Agent 化缺口：
   - L5 语义检查已有 `inspect_agent_world_model_semantic_check` 基础版：对已生成章节和确认世界事实窗口执行 Trace-bound LLM JSON 检查，只返回语义冲突 issue，不写入世界事实或提案；L6 治理检查仍是预留层
-  - 世界模型路由已有只读诊断、自然语言入口和 Drawer 安全投影，可检查 profile、确认事实、待审提案压力和下一步建议；提案队列 review run 与 resolution plan run 已有 Drawer 安全投影，可检查待审数量、风险/审阅模式统计、推荐动作、提案簇摘要和处理步骤摘要
-  - 世界模型提案队列审阅、提案解决规划和 L5 语义检查已有自然语言只读入口，可在应用决议前先查看待处理提案、生成 offset/limit 范围内的处理计划，或对第 N 章与确认事实窗口做 LLM 语义冲突审查；Drawer 会隐藏 project/profile/cluster/item/bundle id 与 allowed_actions/plan_only/report_only 等内部字段，L5 语义检查的专用 Drawer 投影仍待补
+  - 世界模型路由已有只读诊断、自然语言入口和 Drawer 安全投影，可检查 profile、确认事实、待审提案压力和下一步建议；L5 语义检查已有 Drawer 安全投影，可展示状态、事实窗口、issue、证据摘录和推荐后续工具，同时隐藏 project/profile/claim/trace/prompt/evidence_refs 等内部字段；提案队列 review run 与 resolution plan run 已有 Drawer 安全投影，可检查待审数量、风险/审阅模式统计、推荐动作、提案簇摘要和处理步骤摘要
+  - 世界模型提案队列审阅、提案解决规划和 L5 语义检查已有自然语言只读入口，可在应用决议前先查看待处理提案、生成 offset/limit 范围内的处理计划，或对第 N 章与确认事实窗口做 LLM 语义冲突审查；Drawer 会隐藏 project/profile/cluster/item/bundle id 与 allowed_actions/plan_only/report_only 等内部字段
   - 章节事实抽取质量需要持续改进
-  - 跨章节叙事一致性已有单章事实窗口 L5 起点，仍缺真实 dogfood、跨章事实链和前端专用安全投影
+  - 跨章节叙事一致性已有单章事实窗口 L5 起点和前端安全投影，仍缺真实 dogfood 与跨章事实链
   - 世界模型分析需要更多真实长篇压测
 关联模块：Retrieval、Writing、Review、Trace
 ```
@@ -380,7 +380,7 @@ Agent 化缺口：
 ### 6.1 Chat View（对话视图）
 
 ```
-当前状态：L2 对话界面含 action cards、followup、trace 入口，AgentRunDrawer 可展示计划工具/执行进度/下一步、逐项工具状态、Retrieval Context 安全摘要、Memory Activation Plan 安全摘要、Memory Route 安全摘要、Longform Context Summary 安全摘要、Post Chapter Memory Capture 安全摘要、Knowledge Base Route 安全摘要、Trace Audit 安全摘要、Trace Anomaly Trends 安全摘要、World Model Route 安全摘要、Memory Tree 只读节点投影和 Memory Tree LLM 候选摘要投影，并支持自由搜索、推荐 drilldown 或返回节点展开继续发起只读浏览 run；Memory Tree LLM 候选检查可在 Drawer 中展示待物化/已物化状态，并从多个 recommended_next_tool_calls 逐项触发 prepare_record_agent_memory_tree_llm_candidate_summary continuation，batch prepare run 可在 Drawer 中展示逐条候选执行准备并触发对应 execute-with-approval handoff，batch execute run 可展示安全写入结果；projectWorkspace 会在同一项目内保留安全的 Memory Tree 浏览历史，Hermes 已注册 Memory 主工作区，子导航常驻 Memory Tree 面板可切入工作区、直接搜索、按 parent/children 展示当前返回节点层级树、从结果节点发起只读展开并显示当前展开节点，也可从历史入口重新打开对应 run；Memory Tree 工作区中带 chapter_index 的节点可跳转并加载正文章节，也可从安全节点标签发起 Retrieval 证据只读 run、Longform Context Summary 只读 run、Memory Activation Plan 只读 run、Knowledge Base Route 只读 run、Post Chapter Memory Capture 写后记忆沉淀规划 run、Trace Audit 章节审计 run 或 Athena 世界模型路由 run；AgentRunDrawer 的写后记忆候选可继续准备知识库候选写入审批 run，并在待审批写入区展示候选标题、触发 execute_record_agent_knowledge_base_candidate_with_approval；执行成功后展示知识库候选写入结果与推荐下一步工具，并可发起只读 Knowledge Base Route 检查；recommended followup fallback view 可展示待确认后继并阻止 pending-only 自动执行
+当前状态：L2 对话界面含 action cards、followup、trace 入口，AgentRunDrawer 可展示计划工具/执行进度/下一步、逐项工具状态、Retrieval Context 安全摘要、Memory Activation Plan 安全摘要、Memory Route 安全摘要、Longform Context Summary 安全摘要、Post Chapter Memory Capture 安全摘要、Knowledge Base Route 安全摘要、Trace Audit 安全摘要、Trace Anomaly Trends 安全摘要、World Model Route 安全摘要、World Model Semantic Check 安全摘要、Memory Tree 只读节点投影和 Memory Tree LLM 候选摘要投影，并支持自由搜索、推荐 drilldown 或返回节点展开继续发起只读浏览 run；Memory Tree LLM 候选检查可在 Drawer 中展示待物化/已物化状态，并从多个 recommended_next_tool_calls 逐项触发 prepare_record_agent_memory_tree_llm_candidate_summary continuation，batch prepare run 可在 Drawer 中展示逐条候选执行准备并触发对应 execute-with-approval handoff，batch execute run 可展示安全写入结果；projectWorkspace 会在同一项目内保留安全的 Memory Tree 浏览历史，Hermes 已注册 Memory 主工作区，子导航常驻 Memory Tree 面板可切入工作区、直接搜索、按 parent/children 展示当前返回节点层级树、从结果节点发起只读展开并显示当前展开节点，也可从历史入口重新打开对应 run；Memory Tree 工作区中带 chapter_index 的节点可跳转并加载正文章节，也可从安全节点标签发起 Retrieval 证据只读 run、Longform Context Summary 只读 run、Memory Activation Plan 只读 run、Knowledge Base Route 只读 run、Post Chapter Memory Capture 写后记忆沉淀规划 run、Trace Audit 章节审计 run 或 Athena 世界模型路由 run；AgentRunDrawer 的写后记忆候选可继续准备知识库候选写入审批 run，并在待审批写入区展示候选标题、触发 execute_record_agent_knowledge_base_candidate_with_approval；执行成功后展示知识库候选写入结果与推荐下一步工具，并可发起只读 Knowledge Base Route 检查；recommended followup fallback view 可展示待确认后继并阻止 pending-only 自动执行
 目标状态：L2-L3 更丰富的 Agent 状态可视化（当前执行计划、工具调用进度等）
 关键文件：
   frontend/src/views/                     # 页面视图
@@ -389,7 +389,7 @@ Agent 化缺口：
 Agent 化缺口：
   - Agent 执行计划的可视化仍需继续增强（已具备计划工具/已执行/已完成/进行中/下一步摘要和逐项工具状态）
   - 工具调用进度实时展示（当前是 Drawer 详情内静态状态映射，仍缺流式刷新）
-  - World Model / Memory 面板的整合（Memory Tree 当前已有 Drawer 只读投影、自由搜索、推荐展开、返回节点展开、Memory Tree LLM 候选摘要 Drawer 安全投影、物化状态、安全去重与多候选 prepare continuation、batch prepare Drawer 投影与逐条 execute handoff、batch execute 结果投影、项目级会话浏览历史、Hermes Memory 主工作区、子导航搜索/历史/当前返回节点层级树/结果节点展开与当前展开状态、章节正文深链基础、Retrieval 证据只读 run 深链与 Drawer 安全摘要、Longform Context Summary 只读 run 深链与 Drawer 安全摘要、Memory Activation Plan 只读 run 深链与 Drawer 安全摘要、Memory Route Drawer 安全摘要、Knowledge Base Route 只读 run 深链与 Drawer 安全摘要、Post Chapter Memory Capture 只读 run 深链与 Drawer 安全摘要、写后记忆候选 prepare approval continuation、execute approval payload、执行成功投影与写入后 Knowledge Base Route 只读检查、Trace Audit 只读 run 深链与 Drawer 安全摘要，以及 Athena 世界模型路由深链与 Drawer 安全摘要；仍缺更完整独立树工作区能力）
+  - World Model / Memory 面板的整合（Memory Tree 当前已有 Drawer 只读投影、自由搜索、推荐展开、返回节点展开、Memory Tree LLM 候选摘要 Drawer 安全投影、物化状态、安全去重与多候选 prepare continuation、batch prepare Drawer 投影与逐条 execute handoff、batch execute 结果投影、项目级会话浏览历史、Hermes Memory 主工作区、子导航搜索/历史/当前返回节点层级树/结果节点展开与当前展开状态、章节正文深链基础、Retrieval 证据只读 run 深链与 Drawer 安全摘要、Longform Context Summary 只读 run 深链与 Drawer 安全摘要、Memory Activation Plan 只读 run 深链与 Drawer 安全摘要、Memory Route Drawer 安全摘要、Knowledge Base Route 只读 run 深链与 Drawer 安全摘要、Post Chapter Memory Capture 只读 run 深链与 Drawer 安全摘要、写后记忆候选 prepare approval continuation、execute approval payload、执行成功投影与写入后 Knowledge Base Route 只读检查、Trace Audit 只读 run 深链与 Drawer 安全摘要，以及 Athena 世界模型路由深链与 L5 语义检查 Drawer 安全摘要；仍缺更完整独立树工作区能力）
 关联模块：Dialog Control Plane、Trace
 ```
 
@@ -432,6 +432,7 @@ Data & Recovery ─── (横切关注点，覆盖所有写入操作)
 
 | 日期 | 模块 | 变更 |
 |------|------|------|
+| 2026-06-05 | Frontend Agent UX | AgentRunDrawer 新增 inspect_agent_world_model_semantic_check 安全投影，展示 L5 语义检查状态、事实窗口、issue、证据摘录和推荐后续工具，同时隐藏 project/profile/claim/trace/prompt/evidence_refs 等内部字段 |
 | 2026-06-05 | Athena | 新增 inspect_agent_world_model_semantic_check 只读 L5 语义一致性检查，基于已生成章节和确认事实窗口执行 Trace-bound LLM JSON 审查，不写世界事实或提案，并接入自然语言入口、world_model_worker、followup safe list 和 loop risk known poll |
 | 2026-06-05 | Retrieval | 新增 inspect_agent_retrieval_strategy 只读检索策略规划，章节生成 planner 先规划策略再进入上下文摘要，并接入自然语言入口、retrieval_worker 和 Drawer 安全投影 |
 | 2026-06-05 | Long Memory | Memory Tree semantic relevance 新增 local hash `vector_score` 与 embedding 元数据输出，为远程向量召回前提供可审计基线 |
