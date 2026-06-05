@@ -14,6 +14,7 @@ _INTENT_RULE_IDS = (
     "chapter_intent",
     "review_intent",
     "recovery_intent",
+    "memory_tree_llm_candidate_batch_prepare_intent",
     "memory_tree_llm_summary_plan_intent",
     "memory_tree_quality_intent",
     "memory_tree_intent",
@@ -299,6 +300,20 @@ class IntentRouter:
                 candidate=ActionCandidate("preview_recovery"),
                 match_evidence=[{"kind": "pattern", "name": "recovery_phrase"}],
                 preconditions=[{"code": "recovery_preview_available", "passed": True}],
+            )
+
+        if _is_memory_tree_llm_candidate_batch_prepare_intent(text):
+            extracted_params = _memory_tree_llm_candidate_inspection_params(text)
+            return self._matched_projection(
+                text,
+                dialog_state,
+                pending_action_id,
+                diagnosis,
+                rule_id="memory_tree_llm_candidate_batch_prepare_intent",
+                candidate=ActionCandidate("prepare_memory_tree_llm_candidate_summaries_batch", extracted_params),
+                extracted_params=extracted_params,
+                match_evidence=[{"kind": "pattern", "name": "memory_tree_llm_candidate_batch_prepare_phrase"}],
+                preconditions=[{"code": "memory_tree_llm_candidate_batch_prepare_read_available", "passed": True}],
             )
 
         if _is_memory_tree_llm_candidate_inspection_intent(text):
@@ -1106,6 +1121,28 @@ def _is_memory_tree_llm_summary_candidate_intent(text: str) -> bool:
         re.search(rf"{memory_tree_phrase}.*{llm_phrase}.*{candidate_phrase}", text)
         or re.search(rf"{llm_phrase}.*{memory_tree_phrase}.*{candidate_phrase}", text)
         or re.search(rf"{candidate_phrase}.*{memory_tree_phrase}.*{llm_phrase}", text)
+    )
+
+
+def _is_memory_tree_llm_candidate_batch_prepare_intent(text: str) -> bool:
+    memory_tree_phrase = r"(记忆树|分层记忆|memory\s*tree|长期记忆)"
+    llm_phrase = r"(llm|模型|语义|ai)"
+    candidate_phrase = r"(摘要候选|候选摘要|summary\s*candidate|candidate)"
+    prepare_phrase = r"(批量准备|准备|审批准备|准备审批|batch\s*prepare|prepare)"
+    approval_phrase = r"(审批|确认|approval|物化|写入)"
+    return bool(
+        re.search(
+            rf"{prepare_phrase}.*{memory_tree_phrase}.*{llm_phrase}.*{candidate_phrase}.*{approval_phrase}",
+            text,
+        )
+        or re.search(
+            rf"{memory_tree_phrase}.*{llm_phrase}.*{candidate_phrase}.*{prepare_phrase}.*{approval_phrase}",
+            text,
+        )
+        or re.search(
+            rf"{candidate_phrase}.*{memory_tree_phrase}.*{llm_phrase}.*{prepare_phrase}.*{approval_phrase}",
+            text,
+        )
     )
 
 

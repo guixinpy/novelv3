@@ -35,6 +35,12 @@ _ACTION_TO_DIRECT_READ_TOOL = {
     "inspect_control_plane_readiness": "inspect_agent_control_plane_readiness",
     "inspect_memory_tree": "inspect_agent_memory_tree",
     "inspect_memory_tree_quality": "inspect_agent_memory_tree_quality",
+    "build_memory_tree_llm_summary_plan": "build_agent_memory_tree_llm_summary_plan",
+    "summarize_memory_tree_llm_candidate": "summarize_agent_memory_tree_llm_candidate",
+    "inspect_memory_tree_llm_candidates": "inspect_agent_memory_tree_llm_candidates",
+    "prepare_memory_tree_llm_candidate_summaries_batch": (
+        "prepare_record_agent_memory_tree_llm_candidate_summaries_batch"
+    ),
     "inspect_memory_route": "inspect_agent_memory_route",
     "inspect_memory_activation_plan": "inspect_agent_memory_activation_plan",
     "inspect_knowledge_base_route": "inspect_agent_knowledge_base_route",

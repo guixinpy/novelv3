@@ -1980,6 +1980,121 @@ async def test_tool_executor_handles_dialog_intent_agent_plan_for_memory_tree_qu
     assert result.output["trace"]["reason"] == "planned_direct_read_tool_from_intent_projection"
 
 
+@pytest.mark.parametrize(
+    ("text", "rule_id", "action_type", "tool_name", "expected_params"),
+    [
+        (
+            "构建第2章记忆树 LLM 摘要计划 query=灯塔旧回声 max_chars 180",
+            "memory_tree_llm_summary_plan_intent",
+            "build_memory_tree_llm_summary_plan",
+            "build_agent_memory_tree_llm_summary_plan",
+            {"chapter_index": 2, "query": "灯塔旧回声", "max_source_chars": 180},
+        ),
+        (
+            "生成第2章记忆树 LLM 摘要候选 query=灯塔旧回声 max_chars 180",
+            "memory_tree_llm_summary_candidate_intent",
+            "summarize_memory_tree_llm_candidate",
+            "summarize_agent_memory_tree_llm_candidate",
+            {"chapter_index": 2, "query": "灯塔旧回声", "max_source_chars": 180},
+        ),
+        (
+            "查看第2章记忆树 LLM 摘要候选 limit 3",
+            "memory_tree_llm_candidate_inspection_intent",
+            "inspect_memory_tree_llm_candidates",
+            "inspect_agent_memory_tree_llm_candidates",
+            {"chapter_index": 2, "limit": 3},
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_tool_executor_handles_dialog_intent_agent_plan_for_memory_tree_llm_reads(
+    db_session,
+    text,
+    rule_id,
+    action_type,
+    tool_name,
+    expected_params,
+):
+    project = Project(name="Dialog Intent Memory Tree LLM Read Plan")
+    db_session.add(project)
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-dialog-intent-memory-tree-llm"),
+        WritingAgentToolRequest(
+            tool_name="plan_dialog_intent_agent_run",
+            params={"text": text},
+        ),
+    )
+
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "completed"
+    assert result.output["intent_projection"]["rule_id"] == rule_id
+    assert result.output["planner"]["intent_class"] == action_type
+    assert result.output["planner"]["mapped_from_action_type"] == action_type
+    assert result.output["plan"]["steps"] == [
+        {
+            "step_index": 1,
+            "tool_name": tool_name,
+            "params": expected_params,
+            "mutability": "read",
+            "requires_confirmation": False,
+        }
+    ]
+    assert result.output["tools"] == [{"tool_name": tool_name, "params": expected_params}]
+    assert result.output["approval_contract"] == {"status": "not_required", "write_steps": []}
+    assert result.output["trace"]["reason"] == "planned_direct_read_tool_from_intent_projection"
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_handles_dialog_intent_agent_plan_for_memory_tree_llm_candidate_batch_prepare(db_session):
+    project = Project(name="Dialog Intent Memory Tree LLM Candidate Batch Prepare Plan")
+    db_session.add(project)
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(
+            db=db_session,
+            project_id=project.id,
+            run_id="run-dialog-intent-memory-tree-llm-candidate-batch",
+        ),
+        WritingAgentToolRequest(
+            tool_name="plan_dialog_intent_agent_run",
+            params={"text": "准备第2章记忆树 LLM 摘要候选批量审批 limit 3"},
+        ),
+    )
+
+    expected_params = {"chapter_index": 2, "limit": 3}
+    expected_tool = "prepare_record_agent_memory_tree_llm_candidate_summaries_batch"
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "completed"
+    assert result.output["intent_projection"]["rule_id"] == "memory_tree_llm_candidate_batch_prepare_intent"
+    assert result.output["planner"]["intent_class"] == "prepare_memory_tree_llm_candidate_summaries_batch"
+    assert result.output["planner"]["mapped_from_action_type"] == (
+        "prepare_memory_tree_llm_candidate_summaries_batch"
+    )
+    assert result.output["plan"] == {
+        "status": "completed",
+        "intent_class": "prepare_memory_tree_llm_candidate_summaries_batch",
+        "steps": [
+            {
+                "step_index": 1,
+                "tool_name": expected_tool,
+                "params": expected_params,
+                "mutability": "read",
+                "requires_confirmation": False,
+            }
+        ],
+        "tools": [{"tool_name": expected_tool, "params": expected_params}],
+        "approval_contract": {"status": "not_required", "write_steps": []},
+    }
+    assert result.output["tools"] == [{"tool_name": expected_tool, "params": expected_params}]
+    assert result.output["approval_contract"] == {"status": "not_required", "write_steps": []}
+    assert result.output["trace"]["reason"] == "planned_direct_read_tool_from_intent_projection"
+
+
 @pytest.mark.asyncio
 async def test_tool_executor_handles_dialog_intent_agent_plan_for_memory_route_read(db_session):
     project = Project(name="Dialog Intent Memory Route Plan")

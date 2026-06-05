@@ -379,6 +379,40 @@ def test_intent_router_projection_explains_memory_tree_llm_candidate_inspection_
     assert projection["extracted_params"] == {"chapter_index": 2, "limit": 3}
 
 
+def test_intent_router_projection_explains_memory_tree_llm_candidate_batch_prepare_route():
+    router = IntentRouter()
+    diag = ProjectDiagnosisOut(
+        missing_items=[],
+        completed_items=["setup", "storyline", "outline", "content"],
+        suggested_next_step="preview_chapter",
+    )
+
+    projection = router.project("准备第2章记忆树 LLM 摘要候选批量审批 limit 3", "chatting", None, diag).to_dict()
+
+    assert projection["status"] == "matched"
+    assert projection["rule_id"] == "memory_tree_llm_candidate_batch_prepare_intent"
+    assert projection["decision"]["rule_id"] == "memory_tree_llm_candidate_batch_prepare_intent"
+    assert projection["decision"]["match_evidence"] == [
+        {"kind": "pattern", "name": "memory_tree_llm_candidate_batch_prepare_phrase"}
+    ]
+    assert projection["candidate"] == {
+        "type": "prepare_memory_tree_llm_candidate_summaries_batch",
+        "params": {"chapter_index": 2, "limit": 3},
+    }
+    assert projection["agent_route"] == _expected_agent_route(
+        "text_intent",
+        "prepare_memory_tree_llm_candidate_summaries_batch",
+        "prepare_record_agent_memory_tree_llm_candidate_summaries_batch",
+        requires_confirmation=False,
+    )
+    assert projection["tool_selection"] == {
+        "selected_tool": "prepare_record_agent_memory_tree_llm_candidate_summaries_batch",
+        "why_this_tool": "dialog_action_to_agent_tool.prepare_memory_tree_llm_candidate_summaries_batch",
+        "availability_checked": False,
+    }
+    assert projection["extracted_params"] == {"chapter_index": 2, "limit": 3}
+
+
 def test_intent_router_projection_explains_memory_route():
     router = IntentRouter()
     diag = ProjectDiagnosisOut(

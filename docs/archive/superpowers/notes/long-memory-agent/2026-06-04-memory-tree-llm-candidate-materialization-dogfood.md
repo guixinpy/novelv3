@@ -208,3 +208,18 @@ npx vitest run src/components/writingAgent/AgentRunDrawer.test.ts -t "memory tre
 npx vitest run src/components/writingAgent/AgentRunDrawer.test.ts -t "memory tree LLM candidate prepare"
 npx vitest run src/components/writingAgent/AgentRunDrawer.test.ts
 ```
+
+## Dialog Handoff Regression
+
+The Memory Tree LLM candidate chain is now reachable from the dialog control plane:
+
+- `IntentRouter` maps natural language such as `准备第2章记忆树 LLM 摘要候选批量审批 limit 3` to `prepare_memory_tree_llm_candidate_summaries_batch`.
+- `plan_dialog_intent_agent_run` maps Memory Tree LLM summary plan, candidate generation, candidate inspection, and batch prepare actions to direct read tool plans.
+- The batch prepare route still only calls `prepare_record_agent_memory_tree_llm_candidate_summaries_batch`; it does not execute any write or bypass per-candidate confirmation.
+
+Targeted regression coverage:
+
+```powershell
+pytest tests/test_dialogs.py::test_intent_router_projection_explains_memory_tree_llm_candidate_batch_prepare_route -q
+pytest tests/test_writing_agent_tool_executor.py::test_tool_executor_handles_dialog_intent_agent_plan_for_memory_tree_llm_reads tests/test_writing_agent_tool_executor.py::test_tool_executor_handles_dialog_intent_agent_plan_for_memory_tree_llm_candidate_batch_prepare -q
+```
