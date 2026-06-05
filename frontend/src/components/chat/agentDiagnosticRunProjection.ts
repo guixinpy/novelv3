@@ -7,6 +7,7 @@ export const DIAGNOSTIC_AGENT_RUN_ACTION_TYPES = [
   'inspect_agent_command_contracts',
   'inspect_agent_control_plane_readiness',
   'inspect_agent_dogfood_evidence',
+  'inspect_agent_reference_alignment',
   'inspect_agent_memory_route',
   'inspect_agent_memory_tree',
   'inspect_agent_knowledge_base_route',
@@ -43,6 +44,10 @@ export const DIAGNOSTIC_AGENT_RUN_ACTION_DESCRIPTORS: Record<DiagnosticAgentRunA
   inspect_agent_dogfood_evidence: {
     type: 'inspect_agent_dogfood_evidence',
     buildView: buildDogfoodEvidenceActionResultView,
+  },
+  inspect_agent_reference_alignment: {
+    type: 'inspect_agent_reference_alignment',
+    buildView: buildReferenceAlignmentActionResultView,
   },
   inspect_agent_memory_route: {
     type: 'inspect_agent_memory_route',
@@ -124,6 +129,17 @@ function buildDogfoodEvidenceActionResultView(actionResult: Record<string, unkno
   }
 }
 
+function buildReferenceAlignmentActionResultView(actionResult: Record<string, unknown>, status: string): ActionResultView {
+  const detailItems = referenceAlignmentDetailItems(recordValue(actionResult.data))
+  return {
+    type: 'inspect_agent_reference_alignment',
+    status,
+    label: referenceAlignmentLabel(status),
+    variant: statusVariant(status),
+    ...(detailItems.length ? { detail_items: detailItems } : {}),
+  }
+}
+
 function buildMemoryRouteActionResultView(actionResult: Record<string, unknown>, status: string): ActionResultView {
   const detailItems = memoryRouteDetailItems(recordValue(actionResult.data))
   return {
@@ -197,6 +213,13 @@ function dogfoodEvidenceLabel(status: string) {
   if (status === 'failed') return 'Dogfood 证据诊断失败'
   if (status === 'running') return 'Dogfood 证据诊断中'
   return `Dogfood 证据诊断: ${status || '未知状态'}`
+}
+
+function referenceAlignmentLabel(status: string) {
+  if (status === 'success' || status === 'completed') return '参考项目对齐已生成'
+  if (status === 'failed') return '参考项目对齐失败'
+  if (status === 'running') return '参考项目对齐中'
+  return `参考项目对齐: ${status || '未知状态'}`
 }
 
 function memoryRouteLabel(status: string) {
@@ -360,6 +383,36 @@ function dogfoodEvidenceDetailItems(data: Record<string, unknown>) {
   const recommendedTools = Array.isArray(data.recommended_next_tools) ? data.recommended_next_tools : []
   if (recommendedTools.length) {
     items.push({ label: '推荐工具', value: `${recommendedTools.length} 个` })
+  }
+  return items
+}
+
+function referenceAlignmentDetailItems(data: Record<string, unknown>) {
+  const items: Array<{ label: string; value: string }> = []
+  const summary = recordValue(data.summary)
+  const sourceCount = numberValue(summary.source_count)
+  if (sourceCount !== null) {
+    items.push({ label: '参考项目', value: `${sourceCount} 个` })
+  }
+  const patternCount = numberValue(summary.pattern_count)
+  if (patternCount !== null) {
+    items.push({ label: '模式', value: `${patternCount} 个` })
+  }
+  const decisionCount = numberValue(summary.decision_count)
+  if (decisionCount !== null) {
+    items.push({ label: '决策', value: `${decisionCount} 条` })
+  }
+  const capabilityAreaCount = numberValue(summary.capability_area_count)
+  if (capabilityAreaCount !== null) {
+    items.push({ label: '能力域', value: `${capabilityAreaCount} 个` })
+  }
+  const adapterBackedToolCount = numberValue(summary.adapter_backed_tool_count)
+  if (adapterBackedToolCount !== null) {
+    items.push({ label: '适配工具', value: `${adapterBackedToolCount} 个` })
+  }
+  const recommendedTools = Array.isArray(data.recommended_next_tools) ? data.recommended_next_tools : []
+  if (recommendedTools.length) {
+    items.push({ label: '下一步', value: `${recommendedTools.length} 个工具` })
   }
   return items
 }

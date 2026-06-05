@@ -73,7 +73,7 @@ Agent 化缺口：
   - StopHooks 已具备 critical loop、BudgetCap、MaxTurns、ContextGuard、approval、memory provenance 策略；后续可继续扩展为真正的运行中断控制点
   - Agent loop budget 已具备 read 工具 refund 投影（used/charged/refunded/remaining iterations）
   - 工具契约快照已有只读审计和自然语言只读入口，可直接检查工具契约覆盖率和迁移差距
-  - Reference Alignment 已有只读审计和自然语言只读入口，可直接检查参考项目模式对齐、已采纳决策和下一步适配建议
+  - Reference Alignment 已有只读审计、自然语言只读入口、AgentRunDrawer 安全投影和聊天 action descriptor，可直接检查参考项目模式对齐、已采纳决策、能力域覆盖和下一步适配建议，同时隐藏 source_path/source_refs/module_paths/trace version 等内部定位字段
   - Dogfood Evidence 已有只读审计和自然语言只读入口，可直接检查真实长篇 dogfood / pressure-test 证据覆盖，并纳入 Trace anomaly threshold calibration/policy/config/review/long-run execution/approval-chain 与 Memory Tree LLM candidate batch materialization 证据
   - Route Preference 已有只读审计和自然语言只读入口，可直接检查 text_intent/slash_command/button_action 路由偏好和 Agent 审批链迁移建议
   - Route Approval Opt-in / Pending Action approval opt-in 已有只读规划、应用预览、契约生成和 Agent plan approval prepare 自然语言入口；prepare 输出会携带仍需确认的 execute-with-approval 调用骨架，推荐规范化、followup planner 与对话 action_result_view 会保留/展示该 pending confirmation handoff，可直接检查 pending_action 迁入 Agent 审批链的 plan/preview/contract/prepare/execute handoff

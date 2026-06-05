@@ -21,7 +21,7 @@ novelv3 以三个本地参考项目为工程学习对象：
 
 **原则**：参考项目只提供模式启发，不提供优先级。模式必须先映射到 novelv3 当前缺口，再决定是否实现。不得因为参考项目存在某模式就默认需要重建同等复杂度。
 
-当前 `inspect_agent_reference_alignment` 会把 openclaw、hermes-agent、openhuman 的可复用模式、novelv3 已采纳决策和下一步工具建议投影为只读审计结果；自然语言“检查参考项目模式对齐/开源项目适配”已可直接规划到该工具。
+当前 `inspect_agent_reference_alignment` 会把 openclaw、hermes-agent、openhuman 的可复用模式、novelv3 已采纳决策和下一步工具建议投影为只读审计结果；自然语言“检查参考项目模式对齐/开源项目适配”已可直接规划到该工具，AgentRunDrawer 与聊天 action descriptor 可展示参考项目数、模式数、决策数、能力域、适配工具、模式来源和推荐后续，并隐藏 source_path/source_refs/module_paths/trace version 等内部定位字段。
 
 ---
 
@@ -243,7 +243,7 @@ novelv3 当前 trace + approval 体系已经较完整。权限分级已先在核
 9. **openhuman Memory Tree 基础浏览/激活/质量审计** → `inspect_agent_memory_tree` 支持按节点展开、深度裁剪、搜索命中祖先上下文、确定性 relevance drill-down、local hash vector_score、过滤层级的后代强匹配回流与弱匹配降噪，可由自然语言只读意图直接规划，并被 `build_memory_activation_plan` 消费；`inspect_agent_memory_tree_quality` 则提供真实长篇 quality baseline，当前 dogfood 已证明 summary backing 缺口可经审批式 materialize/recheck 闭环收敛
 10. **openhuman Memory Tree LLM 摘要计划/候选层** → `build_agent_memory_tree_llm_summary_plan` 在真实 dogfood 缺口上输出章级 evidence window、Trace-required prompt contract、quality precheck/postcheck 和候选生成/检查后续；`summarize_agent_memory_tree_llm_candidate` 将同一证据窗口推进到可审计 `memory_tree_summary_generation` Trace、Trace metadata 候选持久化和候选返回，`inspect_agent_memory_tree_llm_candidates` 可按章节复核候选并为多个未物化 ready trace 产出 prepare 调用对象，多个未物化 ready trace 时推荐 batch prepare，执行后回流 pending/materialized 状态并抑制重复 prepare；`IntentRouter` 和 `plan_dialog_intent_agent_run` 已能从自然语言直达 batch prepare direct read plan；AgentRunDrawer 可安全展示多个候选、物化状态并发起逐项 prepare continuation，也可安全展示 batch prepare 结果并逐条触发 execute-with-approval payload；候选专用 prepare/execute 审批链可将选中候选物化为章级 Memory Tree 摘要，prepare 输出的 execute 调用对象保持 `requires_confirmation=true`；batch prepare 只生成逐条 trace-bound execute handoff 而不执行写入，batch execute 则逐候选复用单条审批校验并已有跨章 quality ready 回归证据
 11. **openclaw 孤兒恢复写入闭环基础版** → `apply_agent_worker_orphan_recovery` 确认式标记 blocked，并创建 pending redispatch run
-12. **Reference Alignment 只读审计入口** → `inspect_agent_reference_alignment` 将三参考项目模式、已采纳决策和下一步建议投影为可审计结果，并可由自然语言只读意图直接规划
+12. **Reference Alignment 只读审计入口** → `inspect_agent_reference_alignment` 将三参考项目模式、已采纳决策和下一步建议投影为可审计结果，并可由自然语言只读意图直接规划；AgentRunDrawer 与聊天 action descriptor 已提供安全摘要，展示对齐计数、模式来源、能力域状态和推荐工具，同时不暴露源路径、模块路径、source_refs 或 trace version
 
 ### 立即实现（当前开发周期）
 

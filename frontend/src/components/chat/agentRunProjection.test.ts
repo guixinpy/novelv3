@@ -157,6 +157,7 @@ describe('agentRunProjection', () => {
       'inspect_agent_command_contracts',
       'inspect_agent_control_plane_readiness',
       'inspect_agent_dogfood_evidence',
+      'inspect_agent_reference_alignment',
       'inspect_agent_memory_route',
       'inspect_agent_memory_tree',
       'inspect_agent_knowledge_base_route',
@@ -235,6 +236,7 @@ describe('agentRunProjection', () => {
     expect(isAgentRunActionType('inspect_agent_command_contracts')).toBe(true)
     expect(isAgentRunActionType('inspect_agent_control_plane_readiness')).toBe(true)
     expect(isAgentRunActionType('inspect_agent_dogfood_evidence')).toBe(true)
+    expect(isAgentRunActionType('inspect_agent_reference_alignment')).toBe(true)
     expect(isAgentRunActionType('inspect_agent_memory_route')).toBe(true)
     expect(isAgentRunActionType('inspect_agent_memory_tree')).toBe(true)
     expect(isAgentRunActionType('inspect_agent_knowledge_base_route')).toBe(true)
@@ -278,6 +280,7 @@ describe('agentRunProjection', () => {
     expect(getAgentRunActionDescriptor('inspect_agent_command_contracts')?.type).toBe('inspect_agent_command_contracts')
     expect(getAgentRunActionDescriptor('inspect_agent_control_plane_readiness')?.type).toBe('inspect_agent_control_plane_readiness')
     expect(getAgentRunActionDescriptor('inspect_agent_dogfood_evidence')?.type).toBe('inspect_agent_dogfood_evidence')
+    expect(getAgentRunActionDescriptor('inspect_agent_reference_alignment')?.type).toBe('inspect_agent_reference_alignment')
     expect(getAgentRunActionDescriptor('inspect_agent_memory_route')?.type).toBe('inspect_agent_memory_route')
     expect(getAgentRunActionDescriptor('inspect_agent_memory_tree')?.type).toBe('inspect_agent_memory_tree')
     expect(getAgentRunActionDescriptor('inspect_agent_knowledge_base_route')?.type).toBe('inspect_agent_knowledge_base_route')
@@ -558,6 +561,59 @@ describe('agentRunProjection', () => {
     expect(view?.detail_items).toContainEqual({ label: '推荐工具', value: '1 个' })
     expect(JSON.stringify(view)).not.toContain('dogfood_source_missing')
     expect(JSON.stringify(view)).not.toContain('full_agent_native_loop_20260526')
+  })
+
+  it('builds fallback views for reference alignment diagnostics without leaking source paths', () => {
+    const view = buildAgentRunActionResultView({
+      type: 'inspect_agent_reference_alignment',
+      status: 'success',
+      data: {
+        status: 'completed',
+        source_refs: [
+          'references/agent-projects/hermes-agent',
+          'references/agent-projects/openhuman',
+          'references/agent-projects/openclaw',
+        ],
+        summary: {
+          source_count: 3,
+          pattern_count: 5,
+          decision_count: 9,
+          capability_area_count: 10,
+          adapter_backed_tool_count: 42,
+        },
+        patterns: [
+          {
+            source: 'hermes-agent',
+            source_path: 'references/agent-projects/hermes-agent/AGENTS.md',
+            source_lines: ['263-301'],
+            applied_patterns: ['tool_lifecycle_hooks'],
+          },
+        ],
+        capability_alignment: [
+          {
+            area: 'Hermes/dialog',
+            module_paths: ['backend/app/services/writing_agent/dialog_intent_planner.py'],
+            status: 'implemented',
+          },
+        ],
+        recommended_next_tools: ['inspect_agent_tool_contracts', 'inspect_agent_health_projection'],
+        trace: {
+          reference_pattern_version: 'phase107.reference_pattern_projection.v1',
+        },
+      },
+    })
+
+    expect(view?.label).toBe('参考项目对齐已生成')
+    expect(view?.variant).toBe('success')
+    expect(view?.detail_items).toContainEqual({ label: '参考项目', value: '3 个' })
+    expect(view?.detail_items).toContainEqual({ label: '模式', value: '5 个' })
+    expect(view?.detail_items).toContainEqual({ label: '决策', value: '9 条' })
+    expect(view?.detail_items).toContainEqual({ label: '能力域', value: '10 个' })
+    expect(view?.detail_items).toContainEqual({ label: '适配工具', value: '42 个' })
+    expect(view?.detail_items).toContainEqual({ label: '下一步', value: '2 个工具' })
+    expect(JSON.stringify(view)).not.toContain('references/agent-projects')
+    expect(JSON.stringify(view)).not.toContain('backend/app/services')
+    expect(JSON.stringify(view)).not.toContain('phase107')
   })
 
   it('builds fallback views for agent health projection diagnostics', () => {
