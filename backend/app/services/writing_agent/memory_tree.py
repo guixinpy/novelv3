@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.ai_service import AIService
 from app.core.deepseek_adapter import parse_json_safely
+from app.core.embedding_service import LocalHashEmbeddingProvider, cosine_similarity
 from app.core.model_call_trace import (
     build_context_block,
     create_trace,
@@ -17,7 +18,7 @@ from app.core.model_call_trace import (
 )
 from app.models import AIModelCallTrace, ChapterContent, LongformMemory, Outline, Project, Storyline
 
-MEMORY_TREE_VERSION = "phase238.memory_tree_browsing.v1"
+MEMORY_TREE_VERSION = "phase252.memory_tree_vector_relevance.v1"
 MEMORY_TREE_SUMMARY_MATERIALIZATION_VERSION = "phase237.memory_tree_summary_materialization.v1"
 MEMORY_TREE_QUALITY_VERSION = "phase245.memory_tree_quality.v1"
 MEMORY_TREE_LLM_SUMMARY_PLAN_VERSION = "phase247.memory_tree_llm_summary_plan.v1"
@@ -1058,16 +1059,26 @@ def _semantic_node_matches(
     query_terms = _query_terms(query_text)
     if not query_terms:
         return []
+    embedding_provider = LocalHashEmbeddingProvider()
+    query_vector = embedding_provider.embed_texts([query_text])[0]
     nodes_by_id = {str(node.get("id") or ""): node for node in all_nodes}
     matches: list[dict[str, Any]] = []
     for node in nodes:
-        relevance = _node_relevance(node, query_terms=query_terms, query_text=query_text)
+        relevance = _node_relevance(
+            node,
+            query_terms=query_terms,
+            query_text=query_text,
+            embedding_provider=embedding_provider,
+            query_vector=query_vector,
+        )
         descendant_relevance = (
             _descendant_relevance(
                 node,
                 nodes_by_id=nodes_by_id,
                 query_terms=query_terms,
                 query_text=query_text,
+                embedding_provider=embedding_provider,
+                query_vector=query_vector,
             )
             if rollup_descendants
             else _empty_relevance(query_text)
@@ -1091,6 +1102,8 @@ def _node_relevance(
     *,
     query_terms: list[str],
     query_text: str,
+    embedding_provider: LocalHashEmbeddingProvider,
+    query_vector: list[float],
 ) -> dict[str, Any]:
     field_values = {
         "title": str(node.get("title") or "").lower(),
@@ -1118,8 +1131,16 @@ def _node_relevance(
     field_bonus = 0.1 * len(matched_fields)
     title_bonus = 0.1 if "title" in matched_fields else 0
     score = round((len(matched_terms) / len(query_terms)) + field_bonus + title_bonus, 4)
+    vector_score = _node_vector_score(node, embedding_provider=embedding_provider, query_vector=query_vector)
     return {
         "score": score,
+        "lexical_score": score,
+        "vector_score": vector_score,
+        "embedding": {
+            "provider": embedding_provider.provider_name,
+            "model": embedding_provider.model_name,
+            "dimensions": embedding_provider.dimensions,
+        },
         "query": query_text,
         "matched_terms": matched_terms,
         "matched_fields": matched_fields,
@@ -1133,6 +1154,8 @@ def _descendant_relevance(
     nodes_by_id: dict[str, dict[str, Any]],
     query_terms: list[str],
     query_text: str,
+    embedding_provider: LocalHashEmbeddingProvider,
+    query_vector: list[float],
 ) -> dict[str, Any]:
     node_id = str(node.get("id") or "")
     descendant_matches: list[dict[str, Any]] = []
@@ -1140,7 +1163,13 @@ def _descendant_relevance(
         descendant = nodes_by_id.get(descendant_id)
         if descendant is None:
             continue
-        relevance = _node_relevance(descendant, query_terms=query_terms, query_text=query_text)
+        relevance = _node_relevance(
+            descendant,
+            query_terms=query_terms,
+            query_text=query_text,
+            embedding_provider=embedding_provider,
+            query_vector=query_vector,
+        )
         if float(relevance["score"]) < MIN_SEMANTIC_RELEVANCE_SCORE:
             continue
         descendant_matches.append({"node_id": descendant_id, "relevance": relevance})
@@ -1167,8 +1196,12 @@ def _descendant_relevance(
             if descendant_field not in matched_fields:
                 matched_fields.append(descendant_field)
     top_score = float(descendant_matches[0]["relevance"]["score"])
+    top_relevance = descendant_matches[0]["relevance"]
     return {
         "score": round(top_score * 0.95, 4),
+        "lexical_score": float(top_relevance.get("lexical_score") or 0),
+        "vector_score": float(top_relevance.get("vector_score") or 0),
+        **({"embedding": top_relevance["embedding"]} if isinstance(top_relevance.get("embedding"), dict) else {}),
         "query": query_text,
         "matched_terms": matched_terms,
         "matched_fields": matched_fields,
@@ -1189,7 +1222,7 @@ def _merge_relevance(
         base = dict(descendant)
     else:
         base = dict(direct)
-    return {
+    merged = {
         "score": base.get("score") or 0,
         "query": query_text,
         "matched_terms": _dedupe([str(term) for term in base.get("matched_terms") or []]),
@@ -1201,6 +1234,33 @@ def _merge_relevance(
             else {}
         ),
     }
+    if "lexical_score" in base:
+        merged["lexical_score"] = float(base.get("lexical_score") or 0)
+    if "vector_score" in base:
+        merged["vector_score"] = float(base.get("vector_score") or 0)
+    if isinstance(base.get("embedding"), dict):
+        merged["embedding"] = base["embedding"]
+    return merged
+
+
+def _node_vector_score(
+    node: dict[str, Any],
+    *,
+    embedding_provider: LocalHashEmbeddingProvider,
+    query_vector: list[float],
+) -> float:
+    node_text = " ".join(
+        str(value or "")
+        for value in (
+            node.get("title"),
+            node.get("summary"),
+            node.get("scope_key"),
+        )
+    )
+    if not node_text.strip():
+        return 0.0
+    node_vector = embedding_provider.embed_texts([node_text])[0]
+    return round(max(0.0, cosine_similarity(query_vector, node_vector)), 6)
 
 
 def _empty_relevance(query_text: str) -> dict[str, Any]:

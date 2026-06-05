@@ -147,6 +147,27 @@ def test_memory_tree_semantic_search_scores_cross_field_matches_and_recommends_d
     ]
 
 
+def test_memory_tree_semantic_search_reports_local_vector_similarity(db_session):
+    project, _refs = _seed_memory_tree_project(db_session)
+
+    tree = inspect_agent_memory_tree(
+        db_session,
+        project.id,
+        query="旧回声线索",
+        include_ancestors=True,
+    )
+
+    chapter_node = next(node for node in tree["nodes"] if node["id"] == "chapter:2")
+    relevance = chapter_node["relevance"]
+    assert relevance["lexical_score"] > 0
+    assert relevance["vector_score"] > 0
+    assert relevance["embedding"] == {
+        "provider": "local",
+        "model": "hash-bigram-v1",
+        "dimensions": 96,
+    }
+
+
 def test_memory_tree_semantic_search_rolls_up_descendant_matches_to_filtered_level(db_session):
     project, refs = _seed_memory_tree_project(db_session)
     beat_node_id = f"beat:{refs['beat_memory_id']}"
