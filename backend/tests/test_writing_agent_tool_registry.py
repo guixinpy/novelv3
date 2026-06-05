@@ -98,6 +98,7 @@ def test_agent_memory_trace_tool_descriptors_live_in_dedicated_module():
         "execute_record_agent_trace_anomaly_threshold_config_with_approval",
         "inspect_agent_memory_route",
         "inspect_agent_retrieval_strategy",
+        "inspect_agent_retrieval_strategy_quality",
         "search_agent_retrieval_context",
         "summarize_longform_context",
         "inspect_agent_context_compression_projection",
@@ -133,6 +134,9 @@ def test_agent_memory_trace_tool_descriptors_live_in_dedicated_module():
     )
     assert target_type_for_tool("inspect_agent_memory_route") == "agent_memory_route"
     assert target_type_for_tool("inspect_agent_retrieval_strategy") == "agent_retrieval_strategy"
+    assert target_type_for_tool("inspect_agent_retrieval_strategy_quality") == (
+        "agent_retrieval_strategy_quality"
+    )
     assert target_type_for_tool("search_agent_retrieval_context") == "agent_retrieval_context"
     assert target_type_for_tool("summarize_longform_context") == "longform_context_summary"
     assert target_type_for_tool("inspect_agent_context_compression_projection") == "agent_context_compression_projection"
@@ -149,6 +153,7 @@ def test_agent_memory_trace_tool_descriptors_live_in_dedicated_module():
     assert target_type_for_tool("execute_repair_longform_maintenance_with_approval") == "longform_maintenance"
     assert "inspect_agent_trace_audit" in non_blocking_report_tool_names()
     assert "inspect_agent_retrieval_strategy" in non_blocking_report_tool_names()
+    assert "inspect_agent_retrieval_strategy_quality" in non_blocking_report_tool_names()
     assert "search_agent_retrieval_context" in non_blocking_report_tool_names()
     assert "inspect_agent_context_compression_projection" in non_blocking_report_tool_names()
     assert "build_agent_context_compression_payload" in non_blocking_report_tool_names()

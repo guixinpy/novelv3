@@ -26,6 +26,7 @@ _INTENT_RULE_IDS = (
     "world_model_route_intent",
     "world_model_proposal_review_intent",
     "world_model_proposal_resolution_plan_intent",
+    "retrieval_strategy_quality_intent",
     "retrieval_strategy_intent",
     "retrieval_context_intent",
     "longform_context_summary_intent",
@@ -512,6 +513,20 @@ class IntentRouter:
                 extracted_params=extracted_params,
                 match_evidence=[{"kind": "pattern", "name": "retrieval_context_phrase"}],
                 preconditions=[{"code": "retrieval_context_read_available", "passed": True}],
+            )
+
+        if _is_retrieval_strategy_quality_intent(text):
+            extracted_params = _retrieval_strategy_params(text)
+            return self._matched_projection(
+                text,
+                dialog_state,
+                pending_action_id,
+                diagnosis,
+                rule_id="retrieval_strategy_quality_intent",
+                candidate=ActionCandidate("inspect_retrieval_strategy_quality", extracted_params),
+                extracted_params=extracted_params,
+                match_evidence=[{"kind": "pattern", "name": "retrieval_strategy_quality_phrase"}],
+                preconditions=[{"code": "retrieval_strategy_quality_read_available", "passed": True}],
             )
 
         if _is_retrieval_strategy_intent(text):
@@ -1492,6 +1507,14 @@ def _is_retrieval_strategy_intent(text: str) -> bool:
     return bool(
         re.search(rf"{strategy_phrase}.*(规划|选择|检查|推荐|query|limit|candidate)", text)
         or re.search(rf"(规划|选择|检查|推荐|query|limit|candidate).*{strategy_phrase}", text)
+    )
+
+
+def _is_retrieval_strategy_quality_intent(text: str) -> bool:
+    quality_phrase = r"(检索策略质量|检索策略复核|检索策略评估|retrieval\s*strategy\s*quality|retrieval\s*strategy\s*review)"
+    return bool(
+        re.search(rf"{quality_phrase}.*(复核|质量|检查|评估|review|query|limit|candidate)", text)
+        or re.search(rf"(复核|质量|检查|评估|review|query|limit|candidate).*{quality_phrase}", text)
     )
 
 

@@ -342,6 +342,41 @@ AGENT_MEMORY_TRACE_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(
+        name="inspect_agent_retrieval_strategy_quality",
+        module="writing_agent",
+        category="retrieval",
+        description="只读复核 Agent 检索策略质量，结合策略规划、索引维护状态与 dogfood evidence 开放问题给出下一步建议。",
+        input_schema=object_schema(
+            {
+                "chapter_index": {"type": "integer", "minimum": 1},
+                "query": {"type": "string"},
+                "purpose": {"type": "string"},
+                "limit": {"type": "integer", "minimum": 1},
+                "candidate_limit": {"type": "integer", "minimum": 1},
+            }
+        ),
+        output_schema=object_schema(
+            {
+                "status": {"type": "string"},
+                "version": {"type": "string"},
+                "project_id": {"type": "string"},
+                "inputs": {"type": "object"},
+                "quality": {"type": "object"},
+                "strategy": {"type": "object"},
+                "dogfood_evidence": {"type": "object"},
+                "diagnostics": {"type": "array"},
+                "recommended_next_tools": {"type": "array"},
+                "side_effects": {"type": "object"},
+                "trace": {"type": "object"},
+            }
+        ),
+        target_type="agent_retrieval_strategy_quality",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=9,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
         name="search_agent_retrieval_context",
         module="athena_retrieval",
         category="retrieval",

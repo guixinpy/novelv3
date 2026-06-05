@@ -97,7 +97,7 @@
 - [x] Knowledge Base Route 对话入口：自然语言“检查第 N 章知识库路由 query=<query> limit <n>”可投影为 inspect_agent_knowledge_base_route 只读工具计划；AgentRunDrawer 可展示状态、章节/query、作者偏好、学习规则、知识库候选、写法参考、推荐工具和诊断摘要
 - [x] Post Chapter Memory Capture 对话入口：自然语言“规划第 N 章写后记忆沉淀”可投影为 plan_post_chapter_memory_capture 只读工具计划，Memory Tree 工作区 chapter 节点也可直接创建对应只读 run；AgentRunDrawer 可展示章节可用性、审稿证据、候选标题/类型/摘要/置信度、来源覆盖和推荐工具安全摘要
 - [x] Retrieval Context 对话入口：自然语言“检索第 N 章前的上下文证据 query=<query> limit <n>”可投影为 search_agent_retrieval_context 只读工具计划；AgentRunDrawer 可展示查询/过滤条件、返回窗口、证据条目、来源覆盖和推荐后续的安全摘要
-- [x] Retrieval Strategy 只读策略规划：inspect_agent_retrieval_strategy 可按 chapter_index、query、limit、candidate_limit 与长篇维护状态选择 query-aware retrieval、章节上下文摘要或维护诊断；章节生成 planner 已先调用该策略工具而不是固定 search，retrieval_worker、自然语言入口和 AgentRunDrawer 安全投影已覆盖
+- [x] Retrieval Strategy 只读策略规划与质量复核：inspect_agent_retrieval_strategy 可按 chapter_index、query、limit、candidate_limit 与长篇维护状态选择 query-aware retrieval、章节上下文摘要或维护诊断；inspect_agent_retrieval_strategy_quality 可在同一输入上汇总策略输出、检索/维护诊断和 dogfood evidence 开放 finding，输出 ready / needs_dogfood_review / blocked 状态和后续工具建议；章节生成 planner 已先调用策略工具而不是固定 search，retrieval_worker、自然语言入口和 AgentRunDrawer 检索策略安全投影已覆盖
 - [x] Longform Context Summary 对话入口：自然语言“汇总第 N 章长篇上下文 query=<query> max_chars <n>”可投影为 summarize_longform_context 只读工具计划；AgentRunDrawer 可展示章节目标、生成进度、来源覆盖、预算截断、分区条目和诊断安全摘要
 - [x] 记忆激活：memory_activation.py
 - [x] 知识库候选：knowledge_base_candidates + 执行；AgentRunDrawer 可从写后记忆捕获候选发起 prepare_record_agent_knowledge_base_candidate 只读审批准备 continuation，并在待审批写入区展示候选标题、触发 execute_record_agent_knowledge_base_candidate_with_approval payload；执行成功后展示候选标题、类型、数量和推荐下一步工具，并可继续发起只读 Knowledge Base Route 检查
@@ -112,7 +112,7 @@
 | P0 | Memory Tree 分层摘要（卷→章两级） | 能生成并持久化卷级和章级摘要节点 | ✅ 已完成（基础版） |
 | P1 | Memory Tree 语义浏览 | Agent 能通过工具浏览 Tree：展开/收起/搜索 | ✅ 已完成（基础浏览） |
 | P2 | 世界模型 L5 语义检查 | 至少实现一个 LLM 驱动的语义一致性检查 | ✅ 已完成（基础版：inspect_agent_world_model_semantic_check 只读 L5 Trace-bound LLM 检查 + 自然语言入口 + world_model_worker + Drawer 安全投影；后续补真实 dogfood 和跨章事实链） |
-| P3 | 检索策略智能化 | Agent 根据上下文自主选择检索策略 | 🟡 进行中（inspect_agent_retrieval_strategy 只读策略规划 + 章节生成 planner 接入 + 自然语言入口 + retrieval_worker 路由 + Drawer 安全投影；后续补 LLM/真实 dogfood 策略质量复核和主动预取） |
+| P3 | 检索策略智能化 | Agent 根据上下文自主选择检索策略 | 🟡 进行中（inspect_agent_retrieval_strategy 只读策略规划 + inspect_agent_retrieval_strategy_quality 只读 dogfood finding 质量复核 + 章节生成 planner 接入 + 自然语言入口 + retrieval_worker 路由 + Drawer 检索策略安全投影；后续补 LLM/真实 strategy dogfood 和主动预取） |
 | P4 | Memory Tree 语义召回/摘要质量增强 | 接入向量/LLM 摘要或真实长篇验证，不只依赖确定性摘要和文本匹配 | 🟡 进行中（层级 relevance + 本地 hash vector_score 输出 + 写前激活基础 + quality baseline + 审批式 materialize/recheck + LLM-ready summary plan + traced fake-model candidate + Trace 候选读回 + 候选 trace 绑定审批物化 + 多候选 recommended_next_tool_calls handoff + batch prepare approval handoff + batch execute 逐候选审批物化 + Drawer batch execute handoff/结果安全投影 + 执行后物化状态回流/重复 prepare 抑制 + 跨章批量候选质量回归证据；后续补真实模型质量验证/远程向量召回/真实 dogfood 批量质量复核） |
 
 ### 阻塞项
@@ -125,6 +125,7 @@
 - 2026-06-05: 新增 `inspect_agent_world_model_semantic_check` 只读 L5 语义一致性检查，基于已生成章节和确认世界事实窗口执行 Trace-bound LLM JSON 审查，返回 `semantic_consistency_llm` issue、Trace id、prompt contract 和推荐后续审批工具；自然语言入口、world_model_worker、followup safe list 与 loop risk known poll 已同步覆盖。
 - 2026-06-05: `AgentRunDrawer` 新增 World Model Semantic Check 安全投影，消费 `inspect_agent_world_model_semantic_check` 输出并展示检查状态、章节/主体、确认事实窗口、issue 数量、摘要、证据摘录和推荐后续工具，同时隐藏 project/profile/claim/trace/prompt/evidence_refs 等内部字段。
 - 2026-06-05: 新增 `inspect_agent_retrieval_strategy` 只读工具和自然语言入口“规划第 N 章检索策略 query=<query> limit <n> candidate_limit <n>”；工具会根据章节/query/维护状态推荐 `search_agent_retrieval_context`、`summarize_longform_context` 或维护诊断，章节生成 planner 已从固定检索步骤切到先规划检索策略，retrieval_worker 与 AgentRunDrawer 安全投影同步覆盖。
+- 2026-06-05: 新增 `inspect_agent_retrieval_strategy_quality` 只读质量复核工具和自然语言入口“复核第 N 章检索策略质量 query=<query> limit <n> candidate_limit <n>”；工具复用检索策略基线、检索/维护诊断与 `inspect_agent_dogfood_evidence` 摘要，遇到开放 finding 时返回 `needs_dogfood_review` 并合并策略与 dogfood 后续工具建议；retrieval_worker、followup safe list 与 loop risk known poll 已同步覆盖。
 - 2026-06-05: `inspect_agent_memory_tree` 的 semantic relevance 新增本地 hash embedding 相似度信号：当 query 进入语义召回时，节点 relevance 会保留既有 score/matched_terms/matched_fields，同时输出 `lexical_score`、`vector_score` 和 `embedding{provider,model,dimensions}`，为后续远程向量召回/质量复核提供可审计基线。
 - 2026-06-04: `inspect_agent_dogfood_evidence` 新增 `memory_tree_quality_projection_20260604` 证据，记录 `data/agent_native_dogfood_20260526.db` 中 3 个章节节点但 0 个 memory_tree summary-backed chapter，semantic probe `灯塔旧回声` miss，并把 `memory_tree_summary_gap` / `memory_tree_semantic_probe_miss` 作为下一步真实 dogfood finding。
 - 2026-06-04: `record_agent_memory_tree_summaries` 直接写入口改为 approval redirect，新增 `prepare_record_agent_memory_tree_summaries` 与 `execute_record_agent_memory_tree_summaries_with_approval`；execute 会在审批契约、mutation fingerprint 与 resource binding 验证后物化摘要，并立即返回 `post_materialization_quality` 复核结果。
@@ -174,7 +175,7 @@
 - [x] World Model Semantic Check 只读 L5 意图：自然语言“语义检查第3章世界模型 subject=char.hero max_facts 6”可投影为 inspect_agent_world_model_semantic_check 只读工具计划，后端会记录模型 Trace 且不写入世界事实或提案，AgentRunDrawer 可展示安全摘要且不泄露 trace/prompt/claim/evidence_refs
 - [x] World Model Proposal Review 只读队列意图：自然语言“检查世界模型提案队列 limit 20”可投影为 review_world_model_proposals 只读工具计划，World Model Proposal Review run 可在 AgentRunDrawer 展示安全摘要
 - [x] World Model Proposal Resolution Plan 只读规划意图：自然语言“规划世界模型提案解决方案 offset 2 limit 7”可投影为 plan_world_model_proposal_resolution 只读工具计划，World Model Proposal Resolution Plan run 可在 AgentRunDrawer 展示安全摘要
-- [x] Retrieval Strategy 只读规划意图：自然语言“规划第5章检索策略 query=旧灯塔回声 limit 6 candidate_limit 50”可投影为 inspect_agent_retrieval_strategy 只读工具计划，Retrieval Strategy run 可在 AgentRunDrawer 展示安全摘要
+- [x] Retrieval Strategy 只读规划/复核意图：自然语言“规划第5章检索策略 query=旧灯塔回声 limit 6 candidate_limit 50”可投影为 inspect_agent_retrieval_strategy 只读工具计划，“复核第5章检索策略质量 query=旧灯塔回声 limit 6 candidate_limit 50”可投影为 inspect_agent_retrieval_strategy_quality 只读工具计划，Retrieval Strategy run 可在 AgentRunDrawer 展示安全摘要
 - [x] Retrieval Context 只读检索意图：自然语言“检索第3章前的上下文证据 query=灯塔旧回声 limit 5”可投影为 search_agent_retrieval_context 只读工具计划，Retrieval Context run 可在 AgentRunDrawer 展示安全摘要
 - [x] Longform Context Summary 只读摘要意图：自然语言“汇总第3章长篇上下文 query=灯塔旧回声 max_chars 2000”可投影为 summarize_longform_context 只读工具计划，Longform Context Summary run 可在 AgentRunDrawer 展示安全摘要
 - [x] ContextCompressor 只读自检意图：自然语言“检查上下文压缩/预算/窗口压力”可投影为 inspect_agent_context_compression_projection 只读工具计划，ContextCompressor Projection run 可在 AgentRunDrawer 展示安全摘要
@@ -224,6 +225,7 @@
 
 ### 最近完成
 
+- 2026-06-05: `IntentRouter` 新增 `retrieval_strategy_quality_intent`，可将“复核第5章检索策略质量 query=旧灯塔回声 limit 6 candidate_limit 50”等自然语言投影为 `inspect_retrieval_strategy_quality` action；`plan_dialog_intent_agent_run` 对该只读 action 生成无需审批的 `inspect_agent_retrieval_strategy_quality` 工具计划，并保留 chapter_index、query、limit、candidate_limit。
 - 2026-06-03: `IntentRouter` 新增 `preflight_context_budget_intent`，可将“预检第3章上下文预算 max_context_chars 500 context_guard_failure_count 2”等自然语言投影为 `preflight_context_budget` action；`plan_dialog_intent_agent_run` 对该只读 action 生成无需审批的 `preflight_writing` 工具计划，并保留 chapter_index、max_context_chars 与 context_guard_failure_count，补齐从对话到 preflight 预算 Drawer 安全摘要的直达链路。
 - 2026-06-02: `dialog` recommended followup preview 透传 `pending_confirmation_tool_calls`，`action_result_view` 新增“待确认后继/待确认工具”摘要；execute handoff 在对话层可见但仍不进入自动执行工具列表。
 - 2026-06-02: `normalize_tool_recommendations` 新增 `recommended_next_tool_calls` 保留逻辑，`plan_recommended_followups` 会把 `requires_confirmation=true` 的 execute-with-approval 调用暴露为 `pending_confirmation_tool_calls` 和 execution policy 计数；该调用不会进入 `tools` 自动执行列表，仍由写入门禁与确认流程控制。

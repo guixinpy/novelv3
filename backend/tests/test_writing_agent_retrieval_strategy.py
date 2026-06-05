@@ -1,5 +1,8 @@
 from app.models import Project
-from app.services.writing_agent.agent_retrieval_strategy import inspect_agent_retrieval_strategy
+from app.services.writing_agent.agent_retrieval_strategy import (
+    inspect_agent_retrieval_strategy,
+    inspect_agent_retrieval_strategy_quality,
+)
 
 
 def test_inspect_agent_retrieval_strategy_selects_query_aware_search(db_session, monkeypatch):
@@ -147,3 +150,83 @@ def test_inspect_agent_retrieval_strategy_blocks_for_maintenance(db_session, mon
         "longform_memory_needs_maintenance",
         "retrieval_index_empty",
     }
+
+
+def test_inspect_agent_retrieval_strategy_quality_recommends_dogfood_review(db_session, monkeypatch):
+    project = Project(name="Retrieval Strategy Quality")
+    db_session.add(project)
+    db_session.commit()
+
+    monkeypatch.setattr(
+        "app.services.writing_agent.agent_retrieval_strategy.inspect_agent_dogfood_evidence",
+        lambda: {
+            "status": "ready",
+            "summary": {
+                "evidence_count": 9,
+                "ready_evidence_count": 9,
+                "open_finding_count": 2,
+                "generated_chapter_count": 4,
+            },
+            "recommended_next_tools": ["inspect_agent_dogfood_evidence"],
+        },
+    )
+    monkeypatch.setattr(
+        "app.services.writing_agent.agent_retrieval_strategy.get_retrieval_diagnostics",
+        lambda db, project_id: {
+            "project_id": project_id,
+            "total_documents": 8,
+            "total_chunks": 32,
+            "total_terms": 180,
+            "total_embeddings": 8,
+            "documents_by_source_type": {"chapter": 6, "longform_memory": 2},
+        },
+    )
+    monkeypatch.setattr(
+        "app.services.writing_agent.agent_retrieval_strategy.get_longform_maintenance_diagnostics",
+        lambda db, project_id, limit=20: {
+            "project_id": project_id,
+            "ready_for_writing": True,
+            "issue_count": 0,
+            "recommendations": [],
+        },
+    )
+
+    output = inspect_agent_retrieval_strategy_quality(
+        db_session,
+        project.id,
+        chapter_index=5,
+        query="旧灯塔回声",
+        limit=6,
+        candidate_limit=50,
+    )
+
+    assert output["status"] == "needs_dogfood_review"
+    assert output["quality"]["status"] == "needs_dogfood_review"
+    assert output["quality"]["strategy_name"] == "query_aware_retrieval"
+    assert output["quality"]["query_available"] is True
+    assert output["quality"]["retrieval_documents"] == 8
+    assert output["quality"]["dogfood_open_findings"] == 2
+    assert output["strategy"]["recommended_next_tools"] == [
+        "search_agent_retrieval_context",
+        "summarize_longform_context",
+    ]
+    assert output["dogfood_evidence"] == {
+        "status": "ready",
+        "summary": {
+            "evidence_count": 9,
+            "ready_evidence_count": 9,
+            "open_finding_count": 2,
+            "generated_chapter_count": 4,
+        },
+        "recommended_next_tools": ["inspect_agent_dogfood_evidence"],
+    }
+    assert {diagnostic["code"] for diagnostic in output["diagnostics"]} == {
+        "retrieval_strategy_dogfood_open_findings",
+    }
+    assert output["recommended_next_tools"] == [
+        "search_agent_retrieval_context",
+        "summarize_longform_context",
+        "inspect_agent_dogfood_evidence",
+    ]
+    assert output["side_effects"] == {"writes": 0, "mutability": "read"}
+    assert output["trace"]["source"] == "inspect_agent_retrieval_strategy_quality"

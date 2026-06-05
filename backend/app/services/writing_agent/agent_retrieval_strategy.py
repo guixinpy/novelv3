@@ -7,8 +7,10 @@ from sqlalchemy.orm import Session
 
 from app.core.athena_retrieval import get_retrieval_diagnostics
 from app.core.longform_memory import get_longform_maintenance_diagnostics
+from app.services.writing_agent.dogfood_evidence_projection import inspect_agent_dogfood_evidence
 
 AGENT_RETRIEVAL_STRATEGY_VERSION = "phase253.agent_retrieval_strategy.v1"
+AGENT_RETRIEVAL_STRATEGY_QUALITY_VERSION = "phase255.agent_retrieval_strategy_quality.v1"
 DEFAULT_RETRIEVAL_STRATEGY_LIMIT = 8
 MAX_RETRIEVAL_STRATEGY_LIMIT = 20
 MAX_RETRIEVAL_STRATEGY_CANDIDATE_LIMIT = 1000
@@ -67,6 +69,63 @@ def inspect_agent_retrieval_strategy(
                 "version": AGENT_RETRIEVAL_STRATEGY_VERSION,
                 "mutability": "read",
                 "write_performed": False,
+            },
+        }
+    )
+
+
+def inspect_agent_retrieval_strategy_quality(
+    db: Session,
+    project_id: str,
+    *,
+    chapter_index: int | None = None,
+    query: str | None = None,
+    purpose: str | None = None,
+    limit: int | None = None,
+    candidate_limit: int | None = None,
+) -> dict[str, Any]:
+    strategy_output = inspect_agent_retrieval_strategy(
+        db,
+        project_id,
+        chapter_index=chapter_index,
+        query=query,
+        purpose=purpose,
+        limit=limit,
+        candidate_limit=candidate_limit,
+    )
+    dogfood_output = inspect_agent_dogfood_evidence()
+    dogfood_evidence = _compact_dogfood_evidence(dogfood_output)
+    quality = _quality_projection(strategy_output=strategy_output, dogfood_evidence=dogfood_evidence)
+    diagnostics = _quality_diagnostics(
+        strategy_output=strategy_output,
+        dogfood_evidence=dogfood_evidence,
+        quality=quality,
+    )
+    recommended_next_tools = _dedupe(
+        [
+            *[str(tool) for tool in strategy_output.get("recommended_next_tools") or []],
+            *[str(tool) for tool in dogfood_evidence.get("recommended_next_tools") or []],
+        ]
+    )
+    return _json_safe(
+        {
+            "status": quality["status"],
+            "version": AGENT_RETRIEVAL_STRATEGY_QUALITY_VERSION,
+            "project_id": project_id,
+            "inputs": dict(strategy_output.get("inputs") or {}),
+            "quality": quality,
+            "strategy": _compact_strategy_output(strategy_output),
+            "dogfood_evidence": dogfood_evidence,
+            "diagnostics": diagnostics,
+            "recommended_next_tools": recommended_next_tools,
+            "side_effects": {"writes": 0, "mutability": "read"},
+            "trace": {
+                "source": "inspect_agent_retrieval_strategy_quality",
+                "version": AGENT_RETRIEVAL_STRATEGY_QUALITY_VERSION,
+                "mutability": "read",
+                "write_performed": False,
+                "strategy_version": strategy_output.get("version"),
+                "dogfood_evidence_version": dogfood_output.get("version"),
             },
         }
     )
@@ -178,6 +237,106 @@ def _diagnostics(*, retrieval: dict[str, Any], maintenance: dict[str, Any]) -> l
     return diagnostics
 
 
+def _quality_projection(
+    *,
+    strategy_output: dict[str, Any],
+    dogfood_evidence: dict[str, Any],
+) -> dict[str, Any]:
+    strategy = strategy_output.get("strategy") if isinstance(strategy_output.get("strategy"), dict) else {}
+    inputs = strategy_output.get("inputs") if isinstance(strategy_output.get("inputs"), dict) else {}
+    retrieval = strategy_output.get("retrieval") if isinstance(strategy_output.get("retrieval"), dict) else {}
+    maintenance = (
+        strategy_output.get("longform_maintenance")
+        if isinstance(strategy_output.get("longform_maintenance"), dict)
+        else {}
+    )
+    summary = dogfood_evidence.get("summary") if isinstance(dogfood_evidence.get("summary"), dict) else {}
+    strategy_diagnostics = strategy_output.get("diagnostics") if isinstance(strategy_output.get("diagnostics"), list) else []
+    dogfood_open_findings = _non_negative_int(summary.get("open_finding_count"))
+    dogfood_status = str(dogfood_evidence.get("status") or "unknown")
+    if strategy_output.get("status") == "blocked":
+        status = "blocked"
+    elif dogfood_open_findings > 0 or dogfood_status != "ready":
+        status = "needs_dogfood_review"
+    elif strategy_diagnostics:
+        status = "needs_retrieval_review"
+    else:
+        status = "ready"
+    return {
+        "status": status,
+        "strategy_name": str(strategy.get("name") or ""),
+        "query_available": bool(inputs.get("query")),
+        "chapter_index": inputs.get("chapter_index"),
+        "retrieval_documents": _non_negative_int(retrieval.get("total_documents")),
+        "retrieval_chunks": _non_negative_int(retrieval.get("total_chunks")),
+        "maintenance_ready": maintenance.get("ready_for_writing") is not False,
+        "dogfood_status": dogfood_status,
+        "dogfood_evidence_count": _non_negative_int(summary.get("evidence_count")),
+        "dogfood_ready_evidence_count": _non_negative_int(summary.get("ready_evidence_count")),
+        "dogfood_generated_chapter_count": _non_negative_int(summary.get("generated_chapter_count")),
+        "dogfood_open_findings": dogfood_open_findings,
+    }
+
+
+def _quality_diagnostics(
+    *,
+    strategy_output: dict[str, Any],
+    dogfood_evidence: dict[str, Any],
+    quality: dict[str, Any],
+) -> list[dict[str, Any]]:
+    diagnostics: list[dict[str, Any]] = []
+    strategy_diagnostics = strategy_output.get("diagnostics") if isinstance(strategy_output.get("diagnostics"), list) else []
+    diagnostics.extend(diagnostic for diagnostic in strategy_diagnostics if isinstance(diagnostic, dict))
+    dogfood_status = str(dogfood_evidence.get("status") or "unknown")
+    if dogfood_status != "ready":
+        diagnostics.append(
+            {
+                "code": "retrieval_strategy_dogfood_evidence_degraded",
+                "severity": "warning",
+                "message": "Dogfood evidence is not fully ready, so retrieval strategy quality needs review.",
+                "dogfood_status": dogfood_status,
+            }
+        )
+    dogfood_open_findings = _non_negative_int(quality.get("dogfood_open_findings"))
+    if dogfood_open_findings > 0:
+        diagnostics.append(
+            {
+                "code": "retrieval_strategy_dogfood_open_findings",
+                "severity": "warning",
+                "message": "Retrieval strategy still has open dogfood findings before it can be treated as quality-reviewed.",
+                "open_finding_count": dogfood_open_findings,
+            }
+        )
+    return diagnostics
+
+
+def _compact_strategy_output(output: dict[str, Any]) -> dict[str, Any]:
+    strategy = output.get("strategy") if isinstance(output.get("strategy"), dict) else {}
+    return {
+        "status": str(output.get("status") or ""),
+        "name": str(strategy.get("name") or ""),
+        "reason": str(strategy.get("reason") or ""),
+        "read_mode": str(strategy.get("read_mode") or ""),
+        "filters": strategy.get("filters") if isinstance(strategy.get("filters"), dict) else {},
+        "recommended_next_tools": [str(tool) for tool in output.get("recommended_next_tools") or []],
+        "recommended_next_tool_calls": list(output.get("recommended_next_tool_calls") or []),
+    }
+
+
+def _compact_dogfood_evidence(output: dict[str, Any]) -> dict[str, Any]:
+    summary = output.get("summary") if isinstance(output.get("summary"), dict) else {}
+    return {
+        "status": str(output.get("status") or "unknown"),
+        "summary": {
+            "evidence_count": _non_negative_int(summary.get("evidence_count")),
+            "ready_evidence_count": _non_negative_int(summary.get("ready_evidence_count")),
+            "open_finding_count": _non_negative_int(summary.get("open_finding_count")),
+            "generated_chapter_count": _non_negative_int(summary.get("generated_chapter_count")),
+        },
+        "recommended_next_tools": [str(tool) for tool in output.get("recommended_next_tools") or []],
+    }
+
+
 def _safe_max_chapter_index(chapter_index: int | None) -> int | None:
     if chapter_index is None:
         return None
@@ -209,6 +368,18 @@ def _non_negative_int(value: Any) -> int:
     except (TypeError, ValueError):
         return 0
     return max(parsed, 0)
+
+
+def _dedupe(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        cleaned = str(value or "").strip()
+        if not cleaned or cleaned in seen:
+            continue
+        seen.add(cleaned)
+        result.append(cleaned)
+    return result
 
 
 def _json_safe(output: dict[str, Any]) -> dict[str, Any]:
