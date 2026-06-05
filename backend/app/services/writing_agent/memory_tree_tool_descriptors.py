@@ -40,6 +40,10 @@ _MEMORY_TREE_LLM_CANDIDATE_SUMMARY_BATCH_INPUT_PROPERTIES = {
     "limit": {"type": "integer", "minimum": 1, "maximum": 20},
     "quality_query": {"type": "string"},
 }
+_MEMORY_TREE_LLM_CANDIDATE_SUMMARY_BATCH_EXECUTE_INPUT_PROPERTIES = {
+    "confirm_execute": {"type": "boolean"},
+    "candidate_executions": {"type": "array"},
+}
 _MEMORY_TREE_LLM_CANDIDATE_SUMMARY_PREPARE_OUTPUT = object_schema(
     {
         "status": {"type": "string"},
@@ -75,6 +79,20 @@ _MEMORY_TREE_LLM_CANDIDATE_SUMMARY_BATCH_PREPARE_OUTPUT = object_schema(
         "side_effects": {"type": "object"},
         "recommended_next_tools": {"type": "array"},
         "recommended_next_tool_calls": {"type": "array"},
+        "trace": {"type": "object"},
+    }
+)
+_MEMORY_TREE_LLM_CANDIDATE_SUMMARY_BATCH_EXECUTE_OUTPUT = object_schema(
+    {
+        "status": {"type": "string"},
+        "execute_version": {"type": "string"},
+        "project_id": {"type": "string"},
+        "target_type": {"type": "string"},
+        "reason": {"type": "string"},
+        "summary": {"type": "object"},
+        "candidate_results": {"type": "array"},
+        "side_effects": {"type": "object"},
+        "recommended_next_tools": {"type": "array"},
         "trace": {"type": "object"},
     }
 )
@@ -342,6 +360,22 @@ MEMORY_TREE_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
             }
         ),
         target_type="agent_memory_tree_llm_candidate_summary",
+        internal=True,
+        non_blocking_report=False,
+        sort_key=10,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
+        name="execute_record_agent_memory_tree_llm_candidate_summaries_batch_with_approval",
+        module="writing_agent",
+        category="longform_memory",
+        description="逐条验证 Memory Tree LLM 候选摘要审批契约后批量写入已审批候选；每个候选仍必须携带独立审批 payload。",
+        input_schema=object_schema(
+            _MEMORY_TREE_LLM_CANDIDATE_SUMMARY_BATCH_EXECUTE_INPUT_PROPERTIES,
+            required=("confirm_execute", "candidate_executions"),
+        ),
+        output_schema=_MEMORY_TREE_LLM_CANDIDATE_SUMMARY_BATCH_EXECUTE_OUTPUT,
+        target_type="agent_memory_tree_llm_candidate_summary_batch",
         internal=True,
         non_blocking_report=False,
         sort_key=10,

@@ -1859,6 +1859,9 @@ def test_agent_tool_registry_includes_memory_tree_llm_candidate_summary_approval
     execute_descriptor = get_agent_tool_descriptor(
         "execute_record_agent_memory_tree_llm_candidate_summary_with_approval"
     )
+    batch_execute_descriptor = get_agent_tool_descriptor(
+        "execute_record_agent_memory_tree_llm_candidate_summaries_batch_with_approval"
+    )
 
     assert direct_descriptor is not None
     assert direct_descriptor.internal is True
@@ -1910,6 +1913,21 @@ def test_agent_tool_registry_includes_memory_tree_llm_candidate_summary_approval
     assert execute_descriptor.output_schema["properties"]["post_materialization_quality"]["type"] == "object"
     assert "execute_record_agent_memory_tree_llm_candidate_summary_with_approval" in allowed_tool_names()
     assert "execute_record_agent_memory_tree_llm_candidate_summary_with_approval" not in non_blocking_report_tool_names()
+
+    assert batch_execute_descriptor is not None
+    assert batch_execute_descriptor.internal is True
+    assert batch_execute_descriptor.non_blocking_report is False
+    assert batch_execute_descriptor.category == "longform_memory"
+    assert batch_execute_descriptor.target_type == "agent_memory_tree_llm_candidate_summary_batch"
+    assert batch_execute_descriptor.input_schema["properties"]["candidate_executions"]["type"] == "array"
+    assert batch_execute_descriptor.input_schema["properties"]["confirm_execute"]["type"] == "boolean"
+    assert set(batch_execute_descriptor.input_schema["required"]) == {"confirm_execute", "candidate_executions"}
+    assert batch_execute_descriptor.output_schema["properties"]["candidate_results"]["type"] == "array"
+    assert "execute_record_agent_memory_tree_llm_candidate_summaries_batch_with_approval" in allowed_tool_names()
+    assert (
+        "execute_record_agent_memory_tree_llm_candidate_summaries_batch_with_approval"
+        not in non_blocking_report_tool_names()
+    )
 
 
 def test_agent_tool_registry_includes_repair_longform_maintenance():

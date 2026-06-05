@@ -2638,6 +2638,125 @@ describe('AgentRunDrawer', () => {
     }]])
   })
 
+  it('renders memory tree LLM candidate batch execute output without internal approval details', () => {
+    mount(AgentRunDrawer, {
+      attachTo: document.body,
+      props: {
+        open: true,
+        loading: false,
+        error: '',
+        run: {
+          id: 'run-memory-tree-batch-execute',
+          project_id: 'project-1',
+          goal: '批量执行 Memory Tree 候选摘要写入',
+          status: 'success',
+          entrypoint: 'dialog_auto_plan',
+          input: {},
+          output: null,
+          error: null,
+          steps: [
+            {
+              id: 'step-memory-tree-batch-execute',
+              run_id: 'run-memory-tree-batch-execute',
+              project_id: 'project-1',
+              step_index: 1,
+              tool_name: 'execute_record_agent_memory_tree_llm_candidate_summaries_batch_with_approval',
+              status: 'success',
+              input: {
+                confirm_execute: true,
+                candidate_executions: [
+                  {
+                    candidate_trace_id: 'trace-secret-1',
+                    approval_contract_hash: 'approval-secret-1',
+                    approval_contract: { approval: { approval_contract_hash: 'approval-secret-1' } },
+                  },
+                ],
+              },
+              output: {
+                status: 'success',
+                execute_version: 'phase252.memory_tree_llm_candidate_summaries_batch_with_approval_execute.v1',
+                summary: {
+                  candidate_executions: 2,
+                  succeeded_candidates: 2,
+                  blocked_candidates: 0,
+                },
+                candidate_results: [
+                  {
+                    candidate_index: 1,
+                    candidate_trace_id: 'trace-secret-1',
+                    status: 'success',
+                    materialization: {
+                      summary: { created_nodes: 1, updated_nodes: 0 },
+                      nodes: [
+                        {
+                          id: 'memory-secret-1',
+                          chapter_index: 1,
+                          title: '雨巷空白信',
+                        },
+                      ],
+                    },
+                    agent_plan_approval_verification: {
+                      approval_contract_hash: 'approval-secret-1',
+                    },
+                    execution_resource_binding: {
+                      target_id: 'trace-secret-1',
+                    },
+                    post_materialization_quality: {
+                      status: 'degraded',
+                      coverage: { summary_backed_chapter_nodes: 1 },
+                    },
+                  },
+                  {
+                    candidate_index: 2,
+                    candidate_trace_id: 'trace-secret-2',
+                    status: 'success',
+                    materialization: {
+                      summary: { created_nodes: 1, updated_nodes: 0 },
+                      nodes: [
+                        {
+                          id: 'memory-secret-2',
+                          chapter_index: 2,
+                          title: '灯塔旧回声',
+                        },
+                      ],
+                    },
+                    agent_plan_approval_verification: {
+                      approval_contract_hash: 'approval-secret-2',
+                    },
+                    execution_resource_binding: {
+                      target_id: 'trace-secret-2',
+                    },
+                    post_materialization_quality: {
+                      status: 'ready',
+                      coverage: { summary_backed_chapter_nodes: 2 },
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      },
+    })
+
+    const text = document.body.textContent || ''
+    expect(text).toContain('Memory Tree 批量候选写入')
+    expect(text).toContain('已完成')
+    expect(text).toContain('成功 2 / 阻塞 0 / 候选 2')
+    expect(text).toContain('第1章')
+    expect(text).toContain('创建 1 / 更新 0')
+    expect(text).toContain('质量：降级')
+    expect(text).toContain('第2章')
+    expect(text).toContain('质量：通过')
+    expect(text).not.toContain('trace-secret-1')
+    expect(text).not.toContain('trace-secret-2')
+    expect(text).not.toContain('approval-secret-1')
+    expect(text).not.toContain('approval-secret-2')
+    expect(text).not.toContain('agent_plan_approval_verification')
+    expect(text).not.toContain('execution_resource_binding')
+    expect(text).not.toContain('memory-secret')
+  })
+
   it('emits a read-only memory tree drilldown planner continuation from recommended drilldowns', async () => {
     const wrapper = mount(AgentRunDrawer, {
       attachTo: document.body,

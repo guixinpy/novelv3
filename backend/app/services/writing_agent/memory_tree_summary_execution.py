@@ -34,10 +34,14 @@ PREPARE_RECORD_MEMORY_TREE_LLM_CANDIDATE_SUMMARIES_BATCH_VERSION = (
 EXECUTE_RECORD_MEMORY_TREE_LLM_CANDIDATE_SUMMARY_WITH_APPROVAL_VERSION = (
     "phase250.memory_tree_llm_candidate_summary_with_approval_execute.v1"
 )
+EXECUTE_RECORD_MEMORY_TREE_LLM_CANDIDATE_SUMMARIES_BATCH_WITH_APPROVAL_VERSION = (
+    "phase252.memory_tree_llm_candidate_summaries_batch_with_approval_execute.v1"
+)
 APPROVAL_GATE_VERSION = "phase246.memory_tree_summary_agent_plan_approval.v1"
 LLM_CANDIDATE_APPROVAL_GATE_VERSION = "phase250.memory_tree_llm_candidate_summary_agent_plan_approval.v1"
 TARGET_TYPE = "agent_memory_tree_summary"
 CANDIDATE_TARGET_TYPE = "agent_memory_tree_llm_candidate_summary"
+CANDIDATE_BATCH_TARGET_TYPE = "agent_memory_tree_llm_candidate_summary_batch"
 RECORD_TOOL = "record_agent_memory_tree_summaries"
 CANDIDATE_RECORD_TOOL = "record_agent_memory_tree_llm_candidate_summary"
 PREPARE_TOOL = "prepare_record_agent_memory_tree_summaries"
@@ -45,6 +49,7 @@ EXECUTE_TOOL = "execute_record_agent_memory_tree_summaries_with_approval"
 CANDIDATE_PREPARE_TOOL = "prepare_record_agent_memory_tree_llm_candidate_summary"
 CANDIDATE_BATCH_PREPARE_TOOL = "prepare_record_agent_memory_tree_llm_candidate_summaries_batch"
 CANDIDATE_EXECUTE_TOOL = "execute_record_agent_memory_tree_llm_candidate_summary_with_approval"
+CANDIDATE_BATCH_EXECUTE_TOOL = "execute_record_agent_memory_tree_llm_candidate_summaries_batch_with_approval"
 _APPROVAL_PARAM_NAMES = {
     "confirm_execute",
     "approval_contract_hash",
@@ -287,6 +292,88 @@ def execute_record_agent_memory_tree_llm_candidate_summary_with_approval(
                 "selected_tools": [CANDIDATE_EXECUTE_TOOL],
                 "approval_gate_version": LLM_CANDIDATE_APPROVAL_GATE_VERSION,
                 "post_approval_continuation_count": len(post_approval_continuation_tools),
+            },
+        }
+    )
+
+
+def execute_record_agent_memory_tree_llm_candidate_summaries_batch_with_approval(
+    db: Session,
+    project_id: str,
+    *,
+    confirm_execute: bool,
+    approval_tool_metadata_provider,
+    action_params: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    project = db.query(Project.id).filter(Project.id == project_id).first()
+    if project is None:
+        return {"status": "failed", "error": "Project not found", "project_id": project_id}
+    if confirm_execute is not True:
+        return _blocked_candidate_batch_execute_output(project_id, reason="confirmation_required")
+    if approval_tool_metadata_provider is None:
+        return _blocked_candidate_batch_execute_output(project_id, reason="agent_plan_tool_metadata_missing")
+
+    raw_executions = (action_params or {}).get("candidate_executions")
+    if not isinstance(raw_executions, list) or not raw_executions:
+        return _blocked_candidate_batch_execute_output(project_id, reason="candidate_executions_required")
+
+    candidate_results: list[dict[str, Any]] = []
+    executed_side_effects: list[str] = []
+    skipped_side_effects: list[str] = []
+    for index, raw_execution in enumerate(raw_executions, start=1):
+        if not isinstance(raw_execution, dict):
+            candidate_output = _blocked_candidate_execute_output(
+                project_id,
+                reason="candidate_execution_params_required",
+            )
+        else:
+            approval_contract = raw_execution.get("approval_contract")
+            candidate_output = execute_record_agent_memory_tree_llm_candidate_summary_with_approval(
+                db,
+                project_id,
+                action_params=raw_execution,
+                confirm_execute=raw_execution.get("confirm_execute") is True,
+                approval_contract_hash=str(raw_execution.get("approval_contract_hash") or "").strip() or None,
+                approval_contract=approval_contract if isinstance(approval_contract, dict) else None,
+                approval_tool_metadata_provider=approval_tool_metadata_provider,
+            )
+
+        side_effects = candidate_output.get("side_effects") if isinstance(candidate_output, dict) else {}
+        if isinstance(side_effects, dict):
+            executed_side_effects.extend(_string_list(side_effects.get("executed")))
+            skipped_side_effects.extend(_string_list(side_effects.get("skipped")))
+        candidate_results.append(_candidate_batch_execute_result(index, raw_execution, candidate_output))
+
+    succeeded_candidates = sum(1 for result in candidate_results if result.get("status") == "success")
+    blocked_candidates = len(candidate_results) - succeeded_candidates
+    status = "success" if blocked_candidates == 0 else "partial_success" if succeeded_candidates else "blocked"
+    recommended_next_tools = ["inspect_agent_memory_tree_quality"]
+    if blocked_candidates:
+        recommended_next_tools = [CANDIDATE_BATCH_PREPARE_TOOL, "inspect_agent_memory_tree_llm_candidates"]
+    return _json_safe_output(
+        {
+            "status": status,
+            "execute_version": EXECUTE_RECORD_MEMORY_TREE_LLM_CANDIDATE_SUMMARIES_BATCH_WITH_APPROVAL_VERSION,
+            "project_id": project_id,
+            "target_type": CANDIDATE_BATCH_TARGET_TYPE,
+            "summary": {
+                "candidate_executions": len(candidate_results),
+                "succeeded_candidates": succeeded_candidates,
+                "blocked_candidates": blocked_candidates,
+            },
+            "candidate_results": candidate_results,
+            "side_effects": {
+                "executed": executed_side_effects,
+                "skipped": skipped_side_effects,
+            },
+            "recommended_next_tools": recommended_next_tools,
+            "trace": {
+                "selected_tools": [CANDIDATE_BATCH_EXECUTE_TOOL],
+                "approval_gate_version": LLM_CANDIDATE_APPROVAL_GATE_VERSION,
+                "per_candidate_approval_required": True,
+                "candidate_execution_count": len(candidate_results),
+                "succeeded_candidate_count": succeeded_candidates,
+                "blocked_candidate_count": blocked_candidates,
             },
         }
     )
@@ -658,6 +745,39 @@ def _candidate_trace_ids(value: object) -> list[str]:
     return trace_ids
 
 
+def _string_list(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value if str(item or "").strip()]
+
+
+def _candidate_batch_execute_result(
+    index: int,
+    raw_execution: object,
+    candidate_output: dict[str, Any],
+) -> dict[str, Any]:
+    params = raw_execution if isinstance(raw_execution, dict) else {}
+    result: dict[str, Any] = {
+        "candidate_index": index,
+        "candidate_trace_id": _clean_string(params.get("candidate_trace_id")),
+        "status": str(candidate_output.get("status") or "blocked"),
+    }
+    reason = _clean_string(candidate_output.get("reason"))
+    if reason:
+        result["reason"] = reason
+    for field in (
+        "materialization",
+        "post_materialization_quality",
+        "agent_plan_approval_verification",
+        "approval_verification_event",
+        "execution_resource_binding",
+    ):
+        value = candidate_output.get(field)
+        if value is not None:
+            result[field] = value
+    return result
+
+
 def _candidate_default_quality_query(candidate_summary: dict[str, Any]) -> str | None:
     candidate = candidate_summary.get("candidate") if isinstance(candidate_summary, dict) else {}
     salient_terms = candidate.get("salient_terms") if isinstance(candidate, dict) else []
@@ -856,6 +976,37 @@ def _blocked_candidate_batch_prepare_output(
                 "selected_tools": [CANDIDATE_BATCH_PREPARE_TOOL],
                 "rejected_tools": [{"tool_name": CANDIDATE_RECORD_TOOL, "reason": reason}],
                 "approval_gate_version": LLM_CANDIDATE_APPROVAL_GATE_VERSION,
+            },
+        }
+    )
+
+
+def _blocked_candidate_batch_execute_output(
+    project_id: str,
+    *,
+    reason: str,
+    candidate_results: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    return _json_safe_output(
+        {
+            "status": "blocked",
+            "execute_version": EXECUTE_RECORD_MEMORY_TREE_LLM_CANDIDATE_SUMMARIES_BATCH_WITH_APPROVAL_VERSION,
+            "project_id": project_id,
+            "target_type": CANDIDATE_BATCH_TARGET_TYPE,
+            "reason": reason,
+            "summary": {
+                "candidate_executions": len(candidate_results or []),
+                "succeeded_candidates": 0,
+                "blocked_candidates": len(candidate_results or []),
+            },
+            "candidate_results": candidate_results or [],
+            "side_effects": {"executed": [], "skipped": [CANDIDATE_RECORD_TOOL]},
+            "recommended_next_tools": [CANDIDATE_BATCH_PREPARE_TOOL, "inspect_agent_memory_tree_llm_candidates"],
+            "trace": {
+                "selected_tools": [CANDIDATE_BATCH_EXECUTE_TOOL],
+                "rejected_tools": [{"tool_name": CANDIDATE_RECORD_TOOL, "reason": reason}],
+                "approval_gate_version": LLM_CANDIDATE_APPROVAL_GATE_VERSION,
+                "per_candidate_approval_required": True,
             },
         }
     )

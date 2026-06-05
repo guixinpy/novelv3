@@ -360,6 +360,7 @@ def test_memory_tree_tool_adapter_builder_adds_summary_approval_chain():
         "prepare_record_agent_memory_tree_llm_candidate_summary",
         "prepare_record_agent_memory_tree_llm_candidate_summaries_batch",
         "execute_record_agent_memory_tree_llm_candidate_summary_with_approval",
+        "execute_record_agent_memory_tree_llm_candidate_summaries_batch_with_approval",
         "prepare_record_agent_memory_tree_summaries",
         "execute_record_agent_memory_tree_summaries_with_approval",
     ]
@@ -4416,8 +4417,8 @@ async def test_tool_executor_handles_inspect_agent_worker_dispatch(db_session):
     }
     assert result.output["route_registry"]["status"] == "passed"
     assert result.output["route_registry"]["summary"] == {
-        "routes": 67,
-        "ready_routes": 67,
+        "routes": 68,
+        "ready_routes": 68,
         "unrouted_allowed_tools": 0,
         "issues": 0,
     }

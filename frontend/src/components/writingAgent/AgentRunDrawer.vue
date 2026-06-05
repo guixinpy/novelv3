@@ -1400,6 +1400,12 @@ const memoryTreeLlmCandidateBatchOutput = computed(() => (
   latestToolOutput('prepare_record_agent_memory_tree_llm_candidate_summaries_batch')
 ))
 const memoryTreeLlmCandidateBatchSummary = computed(() => recordValue(memoryTreeLlmCandidateBatchOutput.value?.summary))
+const memoryTreeLlmCandidateBatchExecuteOutput = computed(() => (
+  latestToolOutput('execute_record_agent_memory_tree_llm_candidate_summaries_batch_with_approval')
+))
+const memoryTreeLlmCandidateBatchExecuteSummary = computed(() => (
+  recordValue(memoryTreeLlmCandidateBatchExecuteOutput.value?.summary)
+))
 const memoryTreeLlmCandidateRows = computed(() => (
   recordList(memoryTreeLlmCandidateOutput.value?.candidates)
     .map((candidateTrace, index) => {
@@ -1479,6 +1485,37 @@ const memoryTreeLlmCandidateBatchSummaryLabel = computed(() => {
     `已准备 ${preparedCandidates ?? memoryTreeLlmCandidateBatchRows.value.length}`,
     `候选 ${candidateTraces ?? memoryTreeLlmCandidateBatchRows.value.length}`,
     `跳过 ${skippedCandidates ?? 0}`,
+  ].join(' / ')
+})
+const memoryTreeLlmCandidateBatchExecuteRows = computed(() => (
+  recordList(memoryTreeLlmCandidateBatchExecuteOutput.value?.candidate_results)
+    .map((result, index) => {
+      const materialization = recordValue(result.materialization)
+      const materializationSummary = recordValue(materialization.summary)
+      const nodes = recordList(materialization.nodes)
+      const firstNode = recordValue(nodes[0])
+      const quality = recordValue(result.post_materialization_quality)
+      const createdNodes = numberValue(materializationSummary.created_nodes)
+      const updatedNodes = numberValue(materializationSummary.updated_nodes)
+      const chapterLabel = chapterIndexLabel(firstNode.chapter_index)
+      const qualityLabel = memoryTreeLlmCandidateQualityLabel(quality.status)
+      return {
+        key: `memory-tree-llm-candidate-batch-execute:${index}`,
+        label: chapterLabel || `候选 ${index + 1}`,
+        statusLabel: memoryTreeStatusLabel(result.status),
+        writeLabel: `创建 ${createdNodes ?? 0} / 更新 ${updatedNodes ?? 0}`,
+        qualityLabel: qualityLabel ? `质量：${qualityLabel}` : '',
+      }
+    })
+))
+const memoryTreeLlmCandidateBatchExecuteSummaryLabel = computed(() => {
+  const candidateExecutions = numberValue(memoryTreeLlmCandidateBatchExecuteSummary.value.candidate_executions)
+  const succeededCandidates = numberValue(memoryTreeLlmCandidateBatchExecuteSummary.value.succeeded_candidates)
+  const blockedCandidates = numberValue(memoryTreeLlmCandidateBatchExecuteSummary.value.blocked_candidates)
+  return [
+    `成功 ${succeededCandidates ?? 0}`,
+    `阻塞 ${blockedCandidates ?? 0}`,
+    `候选 ${candidateExecutions ?? memoryTreeLlmCandidateBatchExecuteRows.value.length}`,
   ].join(' / ')
 })
 
@@ -1903,6 +1940,9 @@ const hasKnowledgeBaseCandidateExecutionProjection = computed(() => Boolean(know
 const hasMemoryTreeProjection = computed(() => Boolean(memoryTreeOutput.value))
 const hasMemoryTreeLlmCandidateProjection = computed(() => Boolean(memoryTreeLlmCandidateOutput.value))
 const hasMemoryTreeLlmCandidateBatchProjection = computed(() => Boolean(memoryTreeLlmCandidateBatchOutput.value))
+const hasMemoryTreeLlmCandidateBatchExecuteProjection = computed(() => (
+  Boolean(memoryTreeLlmCandidateBatchExecuteOutput.value)
+))
 const hasRecommendedFollowupPolicy = computed(() => Boolean(
   recommendedFollowupPreview.value &&
   (
@@ -4917,6 +4957,44 @@ function missingDependencyTool(value: Record<string, unknown>) {
               {{ action.label }}
             </button>
           </div>
+        </section>
+
+        <section
+          v-if="hasMemoryTreeLlmCandidateBatchExecuteProjection"
+          class="agent-run-drawer__memory-tree"
+          aria-label="Memory Tree LLM candidate batch execution"
+        >
+          <h4>Memory Tree 批量候选写入</h4>
+          <dl class="agent-run-drawer__facts">
+            <div>
+              <dt>状态</dt>
+              <dd>{{ memoryTreeStatusLabel(memoryTreeLlmCandidateBatchExecuteOutput?.status) }}</dd>
+            </div>
+            <div>
+              <dt>候选</dt>
+              <dd>{{ memoryTreeLlmCandidateBatchExecuteSummaryLabel }}</dd>
+            </div>
+          </dl>
+          <ol
+            v-if="memoryTreeLlmCandidateBatchExecuteRows.length"
+            class="agent-run-drawer__memory-tree-nodes"
+          >
+            <li
+              v-for="row in memoryTreeLlmCandidateBatchExecuteRows"
+              :key="row.key"
+              data-testid="memory-tree-llm-candidate-batch-execute-result"
+            >
+              <span class="agent-run-drawer__memory-tree-level">写入</span>
+              <div class="agent-run-drawer__memory-tree-content">
+                <div class="agent-run-drawer__memory-tree-title">
+                  <strong>{{ row.label }}</strong>
+                  <span>{{ row.statusLabel }}</span>
+                  <span>{{ row.writeLabel }}</span>
+                  <span v-if="row.qualityLabel">{{ row.qualityLabel }}</span>
+                </div>
+              </div>
+            </li>
+          </ol>
         </section>
 
         <section

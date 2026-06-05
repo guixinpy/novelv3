@@ -156,6 +156,14 @@ def build_memory_tree_tool_adapters(
             category="longform_memory",
             mutability="write",
         ),
+        "execute_record_agent_memory_tree_llm_candidate_summaries_batch_with_approval": WritingAgentToolAdapter(
+            "execute_record_agent_memory_tree_llm_candidate_summaries_batch_with_approval",
+            _execute_record_agent_memory_tree_llm_candidate_summaries_batch_with_approval(
+                approval_tool_metadata_provider
+            ),
+            category="longform_memory",
+            mutability="write",
+        ),
         "prepare_record_agent_memory_tree_summaries": WritingAgentToolAdapter(
             "prepare_record_agent_memory_tree_summaries",
             _prepare_record_agent_memory_tree_summaries,
@@ -227,6 +235,31 @@ def _execute_record_agent_memory_tree_llm_candidate_summary_with_approval(
         "_execute_record_agent_memory_tree_llm_candidate_summary_with_approval"
     )
     return execute_record_agent_memory_tree_llm_candidate_summary_with_approval_adapter
+
+
+def _execute_record_agent_memory_tree_llm_candidate_summaries_batch_with_approval(
+    approval_tool_metadata_provider: ApprovalToolMetadataProvider,
+) -> Callable[[WritingAgentToolContext, WritingAgentToolRequest], dict[str, Any]]:
+    def execute_record_agent_memory_tree_llm_candidate_summaries_batch_with_approval_adapter(
+        context: WritingAgentToolContext,
+        tool: WritingAgentToolRequest,
+    ) -> dict[str, Any]:
+        from app.services.writing_agent.memory_tree_summary_execution import (
+            execute_record_agent_memory_tree_llm_candidate_summaries_batch_with_approval,
+        )
+
+        return execute_record_agent_memory_tree_llm_candidate_summaries_batch_with_approval(
+            context.db,
+            context.project_id,
+            action_params=tool.params,
+            confirm_execute=tool.params.get("confirm_execute") is True,
+            approval_tool_metadata_provider=approval_tool_metadata_provider,
+        )
+
+    execute_record_agent_memory_tree_llm_candidate_summaries_batch_with_approval_adapter.__name__ = (
+        "_execute_record_agent_memory_tree_llm_candidate_summaries_batch_with_approval"
+    )
+    return execute_record_agent_memory_tree_llm_candidate_summaries_batch_with_approval_adapter
 
 
 def _prepare_record_agent_memory_tree_summaries(
