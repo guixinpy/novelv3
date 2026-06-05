@@ -27,6 +27,7 @@ TOOL_WORKER_ROUTES = {
     "review_chapter_continuity": "reviewer_worker",
     "inspect_agent_retrieval_strategy": "retrieval_worker",
     "inspect_agent_retrieval_strategy_quality": "retrieval_worker",
+    "inspect_agent_retrieval_prefetch_plan": "retrieval_worker",
     "search_agent_retrieval_context": "retrieval_worker",
     "summarize_longform_context": "memory_worker",
     "inspect_agent_context_compression_projection": "memory_worker",

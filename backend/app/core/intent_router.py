@@ -27,6 +27,7 @@ _INTENT_RULE_IDS = (
     "world_model_proposal_review_intent",
     "world_model_proposal_resolution_plan_intent",
     "retrieval_strategy_quality_intent",
+    "retrieval_prefetch_plan_intent",
     "retrieval_strategy_intent",
     "retrieval_context_intent",
     "longform_context_summary_intent",
@@ -501,18 +502,18 @@ class IntentRouter:
                 preconditions=[{"code": "world_model_proposal_review_read_available", "passed": True}],
             )
 
-        if _is_retrieval_context_intent(text):
-            extracted_params = _retrieval_context_params(text)
+        if _is_retrieval_prefetch_plan_intent(text):
+            extracted_params = _retrieval_prefetch_plan_params(text)
             return self._matched_projection(
                 text,
                 dialog_state,
                 pending_action_id,
                 diagnosis,
-                rule_id="retrieval_context_intent",
-                candidate=ActionCandidate("search_retrieval_context", extracted_params),
+                rule_id="retrieval_prefetch_plan_intent",
+                candidate=ActionCandidate("inspect_retrieval_prefetch_plan", extracted_params),
                 extracted_params=extracted_params,
-                match_evidence=[{"kind": "pattern", "name": "retrieval_context_phrase"}],
-                preconditions=[{"code": "retrieval_context_read_available", "passed": True}],
+                match_evidence=[{"kind": "pattern", "name": "retrieval_prefetch_phrase"}],
+                preconditions=[{"code": "retrieval_prefetch_plan_read_available", "passed": True}],
             )
 
         if _is_retrieval_strategy_quality_intent(text):
@@ -541,6 +542,20 @@ class IntentRouter:
                 extracted_params=extracted_params,
                 match_evidence=[{"kind": "pattern", "name": "retrieval_strategy_phrase"}],
                 preconditions=[{"code": "retrieval_strategy_read_available", "passed": True}],
+            )
+
+        if _is_retrieval_context_intent(text):
+            extracted_params = _retrieval_context_params(text)
+            return self._matched_projection(
+                text,
+                dialog_state,
+                pending_action_id,
+                diagnosis,
+                rule_id="retrieval_context_intent",
+                candidate=ActionCandidate("search_retrieval_context", extracted_params),
+                extracted_params=extracted_params,
+                match_evidence=[{"kind": "pattern", "name": "retrieval_context_phrase"}],
+                preconditions=[{"code": "retrieval_context_read_available", "passed": True}],
             )
 
         if _is_longform_context_summary_intent(text):
@@ -1466,6 +1481,25 @@ def _world_model_proposal_queue_params(text: str) -> dict[str, Any]:
     limit = _numeric_option(text, r"limit|限制|最多")
     if limit is not None:
         params["limit"] = limit
+    return params
+
+
+def _is_retrieval_prefetch_plan_intent(text: str) -> bool:
+    prefetch_phrase = r"(主动预取|预取(?:第?\d*章)?检索|检索(?:上下文|证据)?.*预取|retrieval\s*prefetch|prefetch\s*retrieval)"
+    return bool(
+        re.search(rf"{prefetch_phrase}.*(计划|规划|上下文|证据|query|limit|candidate)", text)
+        or re.search(rf"(计划|规划|上下文|证据|query|limit|candidate).*{prefetch_phrase}", text)
+    )
+
+
+def _retrieval_prefetch_plan_params(text: str) -> dict[str, Any]:
+    params = _retrieval_strategy_params(text)
+    query = params.get("query") or _labeled_query(
+        text,
+        r"(?:主动预取|预取(?:第?\d*章)?检索|retrieval\s*prefetch|prefetch\s*retrieval)",
+    )
+    if query:
+        params["query"] = query
     return params
 
 

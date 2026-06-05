@@ -14,7 +14,7 @@ def test_planner_defaults_ready_next_chapter_to_approval_prepare(db_session):
     assert _tool_names(plan) == [
         "describe_agent_tools",
         "inspect_agent_knowledge_base_route",
-        "inspect_agent_retrieval_strategy",
+        "inspect_agent_retrieval_prefetch_plan",
         "summarize_longform_context",
         "preflight_writing",
         "prepare_generate_chapter_execution",
@@ -46,7 +46,7 @@ def test_planner_defaults_ready_next_chapter_to_approval_prepare(db_session):
     )
     route_registry = plan["trace"]["agent_health_projection"]["agent_worker_route_registry"]
     assert route_registry["status"] == "passed"
-    assert route_registry["summary"]["routes"] == 71
+    assert route_registry["summary"]["routes"] == 72
     assert route_registry["summary"]["unrouted_allowed_tools"] == 0
     assert plan["trace"]["agent_health_projection"]["reference_alignment"]["summary"]["source_count"] == 3
     assert "inspect_agent_reference_alignment" in plan["trace"]["agent_health_projection"]["recommended_tools"]
@@ -104,7 +104,7 @@ def test_planner_can_prepare_next_chapter_through_approved_route(db_session):
     assert _tool_names(plan) == [
         "describe_agent_tools",
         "inspect_agent_knowledge_base_route",
-        "inspect_agent_retrieval_strategy",
+        "inspect_agent_retrieval_prefetch_plan",
         "summarize_longform_context",
         "preflight_writing",
         "prepare_generate_chapter_execution",
@@ -258,7 +258,7 @@ def test_planner_adds_outline_expansion_when_target_outline_is_missing(db_sessio
         "describe_agent_tools",
         "expand_outline_window",
         "inspect_agent_knowledge_base_route",
-        "inspect_agent_retrieval_strategy",
+        "inspect_agent_retrieval_prefetch_plan",
         "summarize_longform_context",
         "preflight_writing",
         "prepare_generate_chapter_execution",
@@ -283,7 +283,7 @@ def test_planner_legacy_continue_chapter_closes_post_generation_memory_loop(db_s
     assert _tool_names(plan) == [
         "describe_agent_tools",
         "inspect_agent_knowledge_base_route",
-        "inspect_agent_retrieval_strategy",
+        "inspect_agent_retrieval_prefetch_plan",
         "summarize_longform_context",
         "preflight_writing",
         "generate_chapter",

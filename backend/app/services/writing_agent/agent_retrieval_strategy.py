@@ -11,10 +11,18 @@ from app.services.writing_agent.dogfood_evidence_projection import inspect_agent
 
 AGENT_RETRIEVAL_STRATEGY_VERSION = "phase253.agent_retrieval_strategy.v1"
 AGENT_RETRIEVAL_STRATEGY_QUALITY_VERSION = "phase255.agent_retrieval_strategy_quality.v1"
+AGENT_RETRIEVAL_PREFETCH_PLAN_VERSION = "phase256.agent_retrieval_prefetch_plan.v1"
 DEFAULT_RETRIEVAL_STRATEGY_LIMIT = 8
 MAX_RETRIEVAL_STRATEGY_LIMIT = 20
 MAX_RETRIEVAL_STRATEGY_CANDIDATE_LIMIT = 1000
 MAINTENANCE_REPAIR_PREPARE_TOOL = "prepare_repair_longform_maintenance"
+PREFETCH_READ_TOOLS = frozenset(
+    {
+        "inspect_agent_memory_route",
+        "search_agent_retrieval_context",
+        "summarize_longform_context",
+    }
+)
 
 
 def inspect_agent_retrieval_strategy(
@@ -131,6 +139,53 @@ def inspect_agent_retrieval_strategy_quality(
     )
 
 
+def inspect_agent_retrieval_prefetch_plan(
+    db: Session,
+    project_id: str,
+    *,
+    chapter_index: int | None = None,
+    query: str | None = None,
+    purpose: str | None = None,
+    limit: int | None = None,
+    candidate_limit: int | None = None,
+) -> dict[str, Any]:
+    strategy_output = inspect_agent_retrieval_strategy(
+        db,
+        project_id,
+        chapter_index=chapter_index,
+        query=query,
+        purpose=purpose,
+        limit=limit,
+        candidate_limit=candidate_limit,
+    )
+    strategy = _compact_strategy_output(strategy_output)
+    strategy["version"] = str(strategy_output.get("version") or "")
+    prefetch_plan = _prefetch_plan(strategy_output=strategy_output)
+    recommended_calls = list(prefetch_plan.get("tool_calls") or [])
+    recommended_next_tools = _dedupe([str(call.get("tool_name") or "") for call in recommended_calls])
+    return _json_safe(
+        {
+            "status": prefetch_plan["status"],
+            "version": AGENT_RETRIEVAL_PREFETCH_PLAN_VERSION,
+            "project_id": project_id,
+            "inputs": dict(strategy_output.get("inputs") or {}),
+            "strategy": strategy,
+            "prefetch_plan": prefetch_plan,
+            "diagnostics": list(strategy_output.get("diagnostics") or []),
+            "recommended_next_tools": recommended_next_tools,
+            "recommended_next_tool_calls": recommended_calls,
+            "side_effects": {"writes": 0, "mutability": "read"},
+            "trace": {
+                "source": "inspect_agent_retrieval_prefetch_plan",
+                "version": AGENT_RETRIEVAL_PREFETCH_PLAN_VERSION,
+                "mutability": "read",
+                "write_performed": False,
+                "strategy_version": strategy_output.get("version"),
+            },
+        }
+    )
+
+
 def _strategy_and_calls(
     *,
     chapter_index: int | None,
@@ -213,6 +268,62 @@ def _strategy_and_calls(
         },
         [{"tool_name": "inspect_agent_memory_route", "params": {"include_context_summary": False}}],
     )
+
+
+def _prefetch_plan(*, strategy_output: dict[str, Any]) -> dict[str, Any]:
+    strategy = strategy_output.get("strategy") if isinstance(strategy_output.get("strategy"), dict) else {}
+    inputs = strategy_output.get("inputs") if isinstance(strategy_output.get("inputs"), dict) else {}
+    filters = strategy.get("filters") if isinstance(strategy.get("filters"), dict) else {}
+    retrieval = strategy_output.get("retrieval") if isinstance(strategy_output.get("retrieval"), dict) else {}
+    maintenance = (
+        strategy_output.get("longform_maintenance")
+        if isinstance(strategy_output.get("longform_maintenance"), dict)
+        else {}
+    )
+    tool_calls = _read_only_prefetch_calls(strategy_output.get("recommended_next_tool_calls"))
+    strategy_name = str(strategy.get("name") or "")
+    status = "blocked" if strategy_output.get("status") == "blocked" else "ready"
+    return {
+        "status": status,
+        "mode": _prefetch_mode(strategy_name=strategy_name, status=status),
+        "target_chapter_index": inputs.get("chapter_index"),
+        "query": inputs.get("query") or inputs.get("purpose"),
+        "max_chapter_index": filters.get("max_chapter_index"),
+        "read_tools": _dedupe([str(call.get("tool_name") or "") for call in tool_calls]),
+        "tool_calls": tool_calls,
+        "coverage": {
+            "strategy_name": strategy_name,
+            "retrieval_documents": _non_negative_int(retrieval.get("total_documents")),
+            "retrieval_chunks": _non_negative_int(retrieval.get("total_chunks")),
+            "maintenance_ready": maintenance.get("ready_for_writing") is not False,
+        },
+        "side_effects": {"writes": 0, "mutability": "read"},
+    }
+
+
+def _prefetch_mode(*, strategy_name: str, status: str) -> str:
+    if status == "blocked":
+        return "maintenance_blocked"
+    if strategy_name == "query_aware_retrieval":
+        return "query_aware_prefetch"
+    if strategy_name == "chapter_context_summary":
+        return "chapter_window_prefetch"
+    return "diagnostic_prefetch"
+
+
+def _read_only_prefetch_calls(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    calls: list[dict[str, Any]] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        tool_name = str(item.get("tool_name") or "").strip()
+        params = item.get("params") if isinstance(item.get("params"), dict) else {}
+        if tool_name not in PREFETCH_READ_TOOLS:
+            continue
+        calls.append({"tool_name": tool_name, "params": dict(params)})
+    return calls
 
 
 def _diagnostics(*, retrieval: dict[str, Any], maintenance: dict[str, Any]) -> list[dict[str, Any]]:

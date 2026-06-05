@@ -367,7 +367,7 @@ def test_worker_route_registry_audit_binds_routes_to_allowed_worker_definitions(
 
     assert audit["version"] == AGENT_WORKER_ROUTE_REGISTRY_AUDIT_VERSION
     assert audit["status"] == "passed"
-    assert audit["summary"] == {"routes": 71, "ready_routes": 71, "unrouted_allowed_tools": 0, "issues": 0}
+    assert audit["summary"] == {"routes": 72, "ready_routes": 72, "unrouted_allowed_tools": 0, "issues": 0}
     assert audit["issues"] == []
     assert audit["unrouted_allowed_tools"] == []
 
@@ -419,6 +419,7 @@ def test_worker_route_registry_audit_binds_routes_to_allowed_worker_definitions(
     assert routes_by_tool["inspect_agent_world_model_semantic_check"]["worker"] == "world_model_worker"
     assert routes_by_tool["inspect_agent_retrieval_strategy"]["worker"] == "retrieval_worker"
     assert routes_by_tool["inspect_agent_retrieval_strategy_quality"]["worker"] == "retrieval_worker"
+    assert routes_by_tool["inspect_agent_retrieval_prefetch_plan"]["worker"] == "retrieval_worker"
     assert [route["tool_name"] for route in audit["routes"]] == sorted(routes_by_tool)
     assert all(route["definition_status"] == "ready" for route in audit["routes"])
     assert all(route["tool_allowed"] is True for route in audit["routes"])

@@ -51,6 +51,7 @@ _ACTION_TO_DIRECT_READ_TOOL = {
     "plan_world_model_proposal_resolution": "plan_world_model_proposal_resolution",
     "inspect_retrieval_strategy": "inspect_agent_retrieval_strategy",
     "inspect_retrieval_strategy_quality": "inspect_agent_retrieval_strategy_quality",
+    "inspect_retrieval_prefetch_plan": "inspect_agent_retrieval_prefetch_plan",
     "search_retrieval_context": "search_agent_retrieval_context",
     "summarize_longform_context": "summarize_longform_context",
     "inspect_context_compression": "inspect_agent_context_compression_projection",

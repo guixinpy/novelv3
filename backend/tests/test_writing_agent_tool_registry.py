@@ -99,6 +99,7 @@ def test_agent_memory_trace_tool_descriptors_live_in_dedicated_module():
         "inspect_agent_memory_route",
         "inspect_agent_retrieval_strategy",
         "inspect_agent_retrieval_strategy_quality",
+        "inspect_agent_retrieval_prefetch_plan",
         "search_agent_retrieval_context",
         "summarize_longform_context",
         "inspect_agent_context_compression_projection",
@@ -137,6 +138,7 @@ def test_agent_memory_trace_tool_descriptors_live_in_dedicated_module():
     assert target_type_for_tool("inspect_agent_retrieval_strategy_quality") == (
         "agent_retrieval_strategy_quality"
     )
+    assert target_type_for_tool("inspect_agent_retrieval_prefetch_plan") == "agent_retrieval_prefetch_plan"
     assert target_type_for_tool("search_agent_retrieval_context") == "agent_retrieval_context"
     assert target_type_for_tool("summarize_longform_context") == "longform_context_summary"
     assert target_type_for_tool("inspect_agent_context_compression_projection") == "agent_context_compression_projection"
@@ -154,6 +156,7 @@ def test_agent_memory_trace_tool_descriptors_live_in_dedicated_module():
     assert "inspect_agent_trace_audit" in non_blocking_report_tool_names()
     assert "inspect_agent_retrieval_strategy" in non_blocking_report_tool_names()
     assert "inspect_agent_retrieval_strategy_quality" in non_blocking_report_tool_names()
+    assert "inspect_agent_retrieval_prefetch_plan" in non_blocking_report_tool_names()
     assert "search_agent_retrieval_context" in non_blocking_report_tool_names()
     assert "inspect_agent_context_compression_projection" in non_blocking_report_tool_names()
     assert "build_agent_context_compression_payload" in non_blocking_report_tool_names()
@@ -1699,6 +1702,22 @@ def test_agent_tool_registry_includes_inspect_agent_retrieval_strategy():
     assert descriptor.output_schema["properties"]["recommended_next_tool_calls"]["type"] == "array"
     assert "inspect_agent_retrieval_strategy" in allowed_tool_names()
     assert "inspect_agent_retrieval_strategy" in non_blocking_report_tool_names()
+
+
+def test_agent_tool_registry_includes_inspect_agent_retrieval_prefetch_plan():
+    descriptor = get_agent_tool_descriptor("inspect_agent_retrieval_prefetch_plan")
+
+    assert descriptor is not None
+    assert descriptor.internal is True
+    assert descriptor.non_blocking_report is True
+    assert descriptor.category == "retrieval"
+    assert descriptor.target_type == "agent_retrieval_prefetch_plan"
+    assert descriptor.input_schema["properties"]["chapter_index"]["minimum"] == 1
+    assert descriptor.input_schema["properties"]["query"]["type"] == "string"
+    assert descriptor.output_schema["properties"]["prefetch_plan"]["type"] == "object"
+    assert descriptor.output_schema["properties"]["recommended_next_tool_calls"]["type"] == "array"
+    assert "inspect_agent_retrieval_prefetch_plan" in allowed_tool_names()
+    assert "inspect_agent_retrieval_prefetch_plan" in non_blocking_report_tool_names()
 
 
 def test_agent_tool_registry_includes_inspect_agent_health_projection():

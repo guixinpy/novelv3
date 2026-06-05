@@ -4,6 +4,7 @@ max_depth: 0
 allowed_tools:
   - inspect_agent_retrieval_strategy
   - inspect_agent_retrieval_strategy_quality
+  - inspect_agent_retrieval_prefetch_plan
   - search_agent_retrieval_context
   - summarize_longform_context
   - inspect_agent_trace_audit

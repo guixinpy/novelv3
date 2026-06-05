@@ -316,15 +316,15 @@ def _build_continue_chapter_plan(
     _append_step(
         steps,
         trace,
-        "inspect_agent_retrieval_strategy",
+        "inspect_agent_retrieval_prefetch_plan",
         {
             "chapter_index": chapter_index,
             "query": f"续写第{chapter_index}章前检索相关章节、长篇记忆和世界事实证据。",
         },
-        reason="生成前先规划 retrieval 策略，按章节、query 和索引状态决定取证、摘要或维护路径。",
+        reason="生成前先规划 retrieval 预取，按章节、query 和索引状态生成只读取证工具调用。",
         on_missing="record_issue",
         on_failure="record_issue",
-        expected_output="检索策略、推荐后续工具调用和维护诊断。",
+        expected_output="检索预取计划、只读工具调用和维护诊断。",
     )
     _append_step(
         steps,

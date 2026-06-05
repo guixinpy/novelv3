@@ -377,6 +377,41 @@ AGENT_MEMORY_TRACE_TOOL_DESCRIPTORS: tuple[AgentToolDescriptor, ...] = (
         availability_checks=("project_exists",),
     ),
     AgentToolDescriptor(
+        name="inspect_agent_retrieval_prefetch_plan",
+        module="writing_agent",
+        category="retrieval",
+        description="只读规划 Agent 主动预取，基于检索策略输出生成章节生成前可执行的只读取证工具调用。",
+        input_schema=object_schema(
+            {
+                "chapter_index": {"type": "integer", "minimum": 1},
+                "query": {"type": "string"},
+                "purpose": {"type": "string"},
+                "limit": {"type": "integer", "minimum": 1},
+                "candidate_limit": {"type": "integer", "minimum": 1},
+            }
+        ),
+        output_schema=object_schema(
+            {
+                "status": {"type": "string"},
+                "version": {"type": "string"},
+                "project_id": {"type": "string"},
+                "inputs": {"type": "object"},
+                "strategy": {"type": "object"},
+                "prefetch_plan": {"type": "object"},
+                "diagnostics": {"type": "array"},
+                "recommended_next_tools": {"type": "array"},
+                "recommended_next_tool_calls": {"type": "array"},
+                "side_effects": {"type": "object"},
+                "trace": {"type": "object"},
+            }
+        ),
+        target_type="agent_retrieval_prefetch_plan",
+        internal=True,
+        non_blocking_report=True,
+        sort_key=10,
+        availability_checks=("project_exists",),
+    ),
+    AgentToolDescriptor(
         name="search_agent_retrieval_context",
         module="athena_retrieval",
         category="retrieval",

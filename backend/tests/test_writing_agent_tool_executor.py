@@ -124,6 +124,7 @@ def test_agent_memory_trace_tool_adapters_live_in_dedicated_module():
         "inspect_agent_memory_route",
         "inspect_agent_retrieval_strategy",
         "inspect_agent_retrieval_strategy_quality",
+        "inspect_agent_retrieval_prefetch_plan",
         "search_agent_retrieval_context",
         "summarize_longform_context",
         "inspect_agent_context_compression_projection",
@@ -152,6 +153,7 @@ def test_agent_memory_trace_tool_adapters_live_in_dedicated_module():
     assert AGENT_MEMORY_TRACE_TOOL_ADAPTERS["search_agent_retrieval_context"].mutability == "read"
     assert AGENT_MEMORY_TRACE_TOOL_ADAPTERS["inspect_agent_retrieval_strategy"].mutability == "read"
     assert AGENT_MEMORY_TRACE_TOOL_ADAPTERS["inspect_agent_retrieval_strategy_quality"].mutability == "read"
+    assert AGENT_MEMORY_TRACE_TOOL_ADAPTERS["inspect_agent_retrieval_prefetch_plan"].mutability == "read"
     assert AGENT_MEMORY_TRACE_TOOL_ADAPTERS["summarize_longform_context"].mutability == "read"
     assert AGENT_MEMORY_TRACE_TOOL_ADAPTERS["inspect_agent_context_compression_projection"].mutability == "read"
     assert AGENT_MEMORY_TRACE_TOOL_ADAPTERS["build_agent_context_compression_payload"].mutability == "read"
@@ -185,6 +187,10 @@ def test_agent_memory_trace_tool_adapters_live_in_dedicated_module():
     assert (
         AGENT_MEMORY_TRACE_TOOL_ADAPTERS["inspect_agent_retrieval_strategy_quality"].handler.__name__
         == "_inspect_agent_retrieval_strategy_quality"
+    )
+    assert (
+        AGENT_MEMORY_TRACE_TOOL_ADAPTERS["inspect_agent_retrieval_prefetch_plan"].handler.__name__
+        == "_inspect_agent_retrieval_prefetch_plan"
     )
     assert (
         AGENT_MEMORY_TRACE_TOOL_ADAPTERS["repair_longform_maintenance"].handler.__name__
@@ -221,6 +227,7 @@ def test_agent_memory_trace_tool_adapter_builder_adds_maintenance_approval_chain
         "inspect_agent_memory_route",
         "inspect_agent_retrieval_strategy",
         "inspect_agent_retrieval_strategy_quality",
+        "inspect_agent_retrieval_prefetch_plan",
         "search_agent_retrieval_context",
         "summarize_longform_context",
         "inspect_agent_context_compression_projection",
@@ -2549,6 +2556,48 @@ async def test_tool_executor_handles_dialog_intent_agent_plan_for_retrieval_stra
 
 
 @pytest.mark.asyncio
+async def test_tool_executor_handles_dialog_intent_agent_plan_for_retrieval_prefetch_read(db_session):
+    project = Project(name="Dialog Intent Retrieval Prefetch Plan")
+    db_session.add(project)
+    db_session.commit()
+
+    result = await execute_writing_agent_tool(
+        WritingAgentToolContext(db=db_session, project_id=project.id, run_id="run-dialog-intent-retrieval-prefetch"),
+        WritingAgentToolRequest(
+            tool_name="plan_dialog_intent_agent_run",
+            params={"text": "预取第5章检索上下文 query=旧灯塔回声 limit 6 candidate_limit 50"},
+        ),
+    )
+
+    expected_params = {"chapter_index": 5, "query": "旧灯塔回声", "limit": 6, "candidate_limit": 50}
+    assert result.handled is True
+    assert result.output is not None
+    assert result.output["status"] == "completed"
+    assert result.output["intent_projection"]["rule_id"] == "retrieval_prefetch_plan_intent"
+    assert result.output["planner"]["intent_class"] == "inspect_retrieval_prefetch_plan"
+    assert result.output["planner"]["mapped_from_action_type"] == "inspect_retrieval_prefetch_plan"
+    assert result.output["planner"]["chapter_index"] == 5
+    assert result.output["plan"] == {
+        "status": "completed",
+        "intent_class": "inspect_retrieval_prefetch_plan",
+        "steps": [
+            {
+                "step_index": 1,
+                "tool_name": "inspect_agent_retrieval_prefetch_plan",
+                "params": expected_params,
+                "mutability": "read",
+                "requires_confirmation": False,
+            }
+        ],
+        "tools": [{"tool_name": "inspect_agent_retrieval_prefetch_plan", "params": expected_params}],
+        "approval_contract": {"status": "not_required", "write_steps": []},
+    }
+    assert result.output["tools"] == [{"tool_name": "inspect_agent_retrieval_prefetch_plan", "params": expected_params}]
+    assert result.output["approval_contract"] == {"status": "not_required", "write_steps": []}
+    assert result.output["trace"]["reason"] == "planned_direct_read_tool_from_intent_projection"
+
+
+@pytest.mark.asyncio
 async def test_tool_executor_handles_dialog_intent_agent_plan_for_longform_context_summary_read(db_session):
     project = Project(name="Dialog Intent Longform Context Summary Plan")
     db_session.add(project)
@@ -4109,7 +4158,7 @@ async def test_tool_executor_handles_dialog_intent_agent_plan_for_chapter(db_ses
     assert [tool["tool_name"] for tool in result.output["tools"]] == [
         "describe_agent_tools",
         "inspect_agent_knowledge_base_route",
-        "inspect_agent_retrieval_strategy",
+        "inspect_agent_retrieval_prefetch_plan",
         "summarize_longform_context",
         "preflight_writing",
         "prepare_generate_chapter_execution",
@@ -4519,8 +4568,8 @@ async def test_tool_executor_handles_inspect_agent_worker_dispatch(db_session):
     }
     assert result.output["route_registry"]["status"] == "passed"
     assert result.output["route_registry"]["summary"] == {
-        "routes": 71,
-        "ready_routes": 71,
+        "routes": 72,
+        "ready_routes": 72,
         "unrouted_allowed_tools": 0,
         "issues": 0,
     }
@@ -6420,6 +6469,18 @@ def test_tool_executor_exposes_inspect_agent_retrieval_strategy_adapter_metadata
         "category": "retrieval",
         "mutability": "read",
         "handler_name": "_inspect_agent_retrieval_strategy",
+    }
+
+
+def test_tool_executor_exposes_inspect_agent_retrieval_prefetch_plan_adapter_metadata():
+    metadata = writing_agent_tool_adapter_metadata("inspect_agent_retrieval_prefetch_plan")
+
+    assert metadata == {
+        "tool_name": "inspect_agent_retrieval_prefetch_plan",
+        "adapter_type": "static",
+        "category": "retrieval",
+        "mutability": "read",
+        "handler_name": "_inspect_agent_retrieval_prefetch_plan",
     }
 
 

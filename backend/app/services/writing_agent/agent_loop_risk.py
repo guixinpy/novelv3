@@ -17,6 +17,7 @@ KNOWN_POLL_TOOLS = {
     "inspect_agent_memory_route",
     "inspect_agent_retrieval_strategy",
     "inspect_agent_retrieval_strategy_quality",
+    "inspect_agent_retrieval_prefetch_plan",
     "inspect_agent_trace_audit",
     "inspect_agent_world_model_semantic_check",
     "inspect_longform_chapter_batch",

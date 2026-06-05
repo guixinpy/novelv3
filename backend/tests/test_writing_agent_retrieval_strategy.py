@@ -1,5 +1,6 @@
 from app.models import Project
 from app.services.writing_agent.agent_retrieval_strategy import (
+    inspect_agent_retrieval_prefetch_plan,
     inspect_agent_retrieval_strategy,
     inspect_agent_retrieval_strategy_quality,
 )
@@ -230,3 +231,85 @@ def test_inspect_agent_retrieval_strategy_quality_recommends_dogfood_review(db_s
     ]
     assert output["side_effects"] == {"writes": 0, "mutability": "read"}
     assert output["trace"]["source"] == "inspect_agent_retrieval_strategy_quality"
+
+
+def test_inspect_agent_retrieval_prefetch_plan_projects_read_only_tool_calls(db_session, monkeypatch):
+    project = Project(name="Retrieval Prefetch Plan")
+    db_session.add(project)
+    db_session.commit()
+
+    monkeypatch.setattr(
+        "app.services.writing_agent.agent_retrieval_strategy.get_retrieval_diagnostics",
+        lambda db, project_id: {
+            "project_id": project_id,
+            "total_documents": 8,
+            "total_chunks": 32,
+            "total_terms": 180,
+            "total_embeddings": 8,
+            "documents_by_source_type": {"chapter": 6, "longform_memory": 2},
+        },
+    )
+    monkeypatch.setattr(
+        "app.services.writing_agent.agent_retrieval_strategy.get_longform_maintenance_diagnostics",
+        lambda db, project_id, limit=20: {
+            "project_id": project_id,
+            "ready_for_writing": True,
+            "issue_count": 0,
+            "recommendations": [],
+        },
+    )
+
+    output = inspect_agent_retrieval_prefetch_plan(
+        db_session,
+        project.id,
+        chapter_index=5,
+        query="旧灯塔回声",
+        limit=6,
+        candidate_limit=50,
+    )
+
+    expected_calls = [
+        {
+            "tool_name": "search_agent_retrieval_context",
+            "params": {
+                "query": "旧灯塔回声",
+                "limit": 6,
+                "candidate_limit": 50,
+                "max_chapter_index": 4,
+            },
+        },
+        {
+            "tool_name": "summarize_longform_context",
+            "params": {"chapter_index": 5, "query": "旧灯塔回声"},
+        },
+    ]
+    assert output["status"] == "ready"
+    assert output["inputs"] == {
+        "chapter_index": 5,
+        "query": "旧灯塔回声",
+        "purpose": None,
+        "limit": 6,
+        "candidate_limit": 50,
+    }
+    assert output["strategy"]["name"] == "query_aware_retrieval"
+    assert output["prefetch_plan"] == {
+        "status": "ready",
+        "mode": "query_aware_prefetch",
+        "target_chapter_index": 5,
+        "query": "旧灯塔回声",
+        "max_chapter_index": 4,
+        "read_tools": ["search_agent_retrieval_context", "summarize_longform_context"],
+        "tool_calls": expected_calls,
+        "coverage": {
+            "strategy_name": "query_aware_retrieval",
+            "retrieval_documents": 8,
+            "retrieval_chunks": 32,
+            "maintenance_ready": True,
+        },
+        "side_effects": {"writes": 0, "mutability": "read"},
+    }
+    assert output["recommended_next_tools"] == ["search_agent_retrieval_context", "summarize_longform_context"]
+    assert output["recommended_next_tool_calls"] == expected_calls
+    assert output["side_effects"] == {"writes": 0, "mutability": "read"}
+    assert output["trace"]["source"] == "inspect_agent_retrieval_prefetch_plan"
+    assert output["trace"]["strategy_version"] == output["strategy"]["version"]

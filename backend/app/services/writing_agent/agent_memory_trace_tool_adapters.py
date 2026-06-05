@@ -140,6 +140,23 @@ def _inspect_agent_retrieval_strategy_quality(
     )
 
 
+def _inspect_agent_retrieval_prefetch_plan(
+    context: WritingAgentToolContext,
+    tool: WritingAgentToolRequest,
+) -> dict[str, Any]:
+    from app.services.writing_agent.agent_retrieval_strategy import inspect_agent_retrieval_prefetch_plan
+
+    return inspect_agent_retrieval_prefetch_plan(
+        context.db,
+        context.project_id,
+        chapter_index=_optional_int(tool.params.get("chapter_index")),
+        query=str(tool.params.get("query") or tool.command_args or "").strip() or None,
+        purpose=str(tool.params.get("purpose") or "").strip() or None,
+        limit=_optional_int(tool.params.get("limit")),
+        candidate_limit=_optional_int(tool.params.get("candidate_limit")),
+    )
+
+
 def _inspect_agent_context_compression_projection(
     context: WritingAgentToolContext,
     tool: WritingAgentToolRequest,
@@ -421,6 +438,12 @@ AGENT_MEMORY_TRACE_TOOL_ADAPTERS: dict[str, WritingAgentToolAdapter] = {
     "inspect_agent_retrieval_strategy_quality": WritingAgentToolAdapter(
         "inspect_agent_retrieval_strategy_quality",
         _inspect_agent_retrieval_strategy_quality,
+        category="retrieval",
+        mutability="read",
+    ),
+    "inspect_agent_retrieval_prefetch_plan": WritingAgentToolAdapter(
+        "inspect_agent_retrieval_prefetch_plan",
+        _inspect_agent_retrieval_prefetch_plan,
         category="retrieval",
         mutability="read",
     ),
