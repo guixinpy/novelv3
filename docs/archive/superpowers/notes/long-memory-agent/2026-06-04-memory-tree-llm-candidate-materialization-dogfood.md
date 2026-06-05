@@ -195,10 +195,12 @@ pytest tests/test_writing_agent_memory_tree.py::test_memory_tree_llm_candidate_t
 - It renders status, candidate/ready counts, chapter label, safe summary text, salient terms, source count/chars, and quality precheck status.
 - It hides `candidate_trace_id`, `scope_key`, approval contract details, and other raw internal fields from the visible drawer.
 - It reads the prepare `recommended_next_tool_calls` payloads and emits read-only `prepare_record_agent_memory_tree_llm_candidate_summary` continuations for multiple ready candidates, so the user can move from candidate inspection to approval preparation without hand-stitching trace ids.
+- It also consumes `prepare_record_agent_memory_tree_llm_candidate_summaries_batch`, renders safe prepared/skipped counts and per-candidate quality query labels, and emits one `execute_record_agent_memory_tree_llm_candidate_summary_with_approval` payload per prepared candidate without showing trace ids or approval hashes.
 
 Targeted regression coverage:
 
 ```powershell
+npx vitest run src/components/writingAgent/AgentRunDrawer.test.ts -t "memory tree LLM candidate batch"
 npx vitest run src/components/writingAgent/AgentRunDrawer.test.ts -t "memory tree LLM candidate prepare"
 npx vitest run src/components/writingAgent/AgentRunDrawer.test.ts
 ```

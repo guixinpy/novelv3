@@ -2358,6 +2358,186 @@ describe('AgentRunDrawer', () => {
     }]])
   })
 
+  it('renders memory tree LLM candidate batch prepare output and emits per-candidate execute payloads', async () => {
+    const firstContract = {
+      approval: { approval_contract_hash: 'approval-secret-1' },
+      resource_binding: { target_id: 'trace-secret-1' },
+    }
+    const secondContract = {
+      approval: { approval_contract_hash: 'approval-secret-2' },
+      resource_binding: { target_id: 'trace-secret-2' },
+    }
+    const firstAgentPlan = {
+      project_id: 'project-1',
+      intent_class: 'record_agent_memory_tree_llm_candidate_summary',
+      trace: {
+        plan_id: 'memory-tree-batch-plan-1',
+        planner_version: 'phase251.memory_tree_llm_candidate_summaries_batch_prepare.v1',
+      },
+      steps: [
+        {
+          tool_name: 'record_agent_memory_tree_llm_candidate_summary',
+          params: { candidate_trace_id: 'trace-secret-1', chapter_index: 2 },
+        },
+      ],
+    }
+    const secondAgentPlan = {
+      project_id: 'project-1',
+      intent_class: 'record_agent_memory_tree_llm_candidate_summary',
+      trace: {
+        plan_id: 'memory-tree-batch-plan-2',
+        planner_version: 'phase251.memory_tree_llm_candidate_summaries_batch_prepare.v1',
+      },
+      steps: [
+        {
+          tool_name: 'record_agent_memory_tree_llm_candidate_summary',
+          params: { candidate_trace_id: 'trace-secret-2', chapter_index: 2 },
+        },
+      ],
+    }
+    const firstExecuteParams = {
+      candidate_trace_id: 'trace-secret-1',
+      quality_chapter_index: 2,
+      quality_query: '灯塔旧回声',
+      confirm_execute: true,
+      approval_contract_hash: 'approval-secret-1',
+      approval_contract: firstContract,
+    }
+    const secondExecuteParams = {
+      candidate_trace_id: 'trace-secret-2',
+      quality_chapter_index: 2,
+      quality_query: '空白信来源',
+      confirm_execute: true,
+      approval_contract_hash: 'approval-secret-2',
+      approval_contract: secondContract,
+    }
+    const wrapper = mount(AgentRunDrawer, {
+      attachTo: document.body,
+      props: {
+        open: true,
+        loading: false,
+        error: '',
+        run: {
+          id: 'run-memory-tree-batch',
+          project_id: 'project-1',
+          goal: '批量准备 Memory Tree 候选摘要',
+          status: 'success',
+          entrypoint: 'dialog_auto_plan',
+          input: {},
+          output: null,
+          error: null,
+          steps: [
+            {
+              id: 'step-memory-tree-batch',
+              run_id: 'run-memory-tree-batch',
+              project_id: 'project-1',
+              step_index: 1,
+              tool_name: 'prepare_record_agent_memory_tree_llm_candidate_summaries_batch',
+              status: 'success',
+              input: { candidate_trace_ids: ['trace-secret-1', 'trace-secret-2'] },
+              output: {
+                status: 'approval_required',
+                prepare_version: 'phase251.memory_tree_llm_candidate_summaries_batch_prepare.v1',
+                summary: {
+                  candidate_traces: 2,
+                  prepared_candidates: 2,
+                  skipped_candidates: 0,
+                },
+                candidate_preparations: [
+                  {
+                    summary_plan: {
+                      candidate_trace_id: 'trace-secret-1',
+                      chapter_index: 2,
+                      quality_chapter_index: 2,
+                      quality_query: '灯塔旧回声',
+                    },
+                    agent_plan: firstAgentPlan,
+                    agent_plan_approval_contract: firstContract,
+                    agent_plan_approval_contract_hash: 'approval-secret-1',
+                    recommended_next_tool_call: {
+                      tool_name: 'execute_record_agent_memory_tree_llm_candidate_summary_with_approval',
+                      params: firstExecuteParams,
+                      requires_confirmation: true,
+                    },
+                  },
+                  {
+                    summary_plan: {
+                      candidate_trace_id: 'trace-secret-2',
+                      chapter_index: 2,
+                      quality_chapter_index: 2,
+                      quality_query: '空白信来源',
+                    },
+                    agent_plan: secondAgentPlan,
+                    agent_plan_approval_contract: secondContract,
+                    agent_plan_approval_contract_hash: 'approval-secret-2',
+                    recommended_next_tool_call: {
+                      tool_name: 'execute_record_agent_memory_tree_llm_candidate_summary_with_approval',
+                      params: secondExecuteParams,
+                      requires_confirmation: true,
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      },
+    })
+
+    const text = document.body.textContent || ''
+    expect(text).toContain('Memory Tree 批量候选准备')
+    expect(text).toContain('等待确认')
+    expect(text).toContain('已准备 2 / 候选 2 / 跳过 0')
+    expect(text).toContain('逐条确认')
+    expect(text).toContain('第2章 灯塔旧回声')
+    expect(text).toContain('质量查询：灯塔旧回声')
+    expect(text).toContain('第2章 空白信来源')
+    expect(text).toContain('质量查询：空白信来源')
+    expect(text).toContain('写入 Memory Tree 候选摘要')
+    expect(text).not.toContain('trace-secret-1')
+    expect(text).not.toContain('trace-secret-2')
+    expect(text).not.toContain('approval-secret-1')
+    expect(text).not.toContain('approval-secret-2')
+    expect(text).not.toContain('candidate_trace_id')
+    expect(text).not.toContain('approval_contract')
+
+    const rows = Array.from(document.body.querySelectorAll('[data-testid="memory-tree-llm-candidate-batch"]'))
+    expect(rows).toHaveLength(2)
+    const buttons = Array.from(document.body.querySelectorAll('[data-testid="memory-tree-llm-candidate-batch-execute"]')) as HTMLButtonElement[]
+    expect(buttons).toHaveLength(2)
+    expect(buttons[0].textContent).toContain('确认候选摘要')
+    expect(buttons[0].textContent).toContain('灯塔旧回声')
+    expect(buttons[1].textContent).toContain('确认候选摘要')
+    expect(buttons[1].textContent).toContain('空白信来源')
+
+    await buttons[1].click()
+
+    expect(wrapper.emitted('executePlannerPlan')).toEqual([[{
+      sourceRunId: 'run-memory-tree-batch',
+      sourcePlanId: 'memory-tree-batch-plan-2',
+      goal: '执行 Memory Tree 候选摘要写入：第2章 空白信来源',
+      tools: [
+        {
+          tool_name: 'execute_record_agent_memory_tree_llm_candidate_summary_with_approval',
+          params: secondExecuteParams,
+          planner: {
+            plan_id: 'memory-tree-batch-plan-2',
+            planner_version: 'phase251.memory_tree_llm_candidate_summaries_batch_prepare.v1',
+            mutability: 'write',
+            requires_confirmation: true,
+            reason: '确认执行已准备的 Memory Tree LLM 候选摘要写入。',
+          },
+        },
+      ],
+      planner: {
+        ...secondAgentPlan,
+        approval_contract: secondContract,
+      },
+      approvalContractHash: 'approval-secret-2',
+      approvalContract: secondContract,
+    }]])
+  })
+
   it('emits a read-only memory tree drilldown planner continuation from recommended drilldowns', async () => {
     const wrapper = mount(AgentRunDrawer, {
       attachTo: document.body,
