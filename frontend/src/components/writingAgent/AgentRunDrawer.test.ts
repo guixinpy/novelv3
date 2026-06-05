@@ -2206,6 +2206,8 @@ describe('AgentRunDrawer', () => {
                 summary: {
                   candidate_traces: 2,
                   ready_candidates: 2,
+                  materialized_candidates: 0,
+                  pending_candidates: 2,
                 },
                 candidates: [
                   {
@@ -2229,6 +2231,14 @@ describe('AgentRunDrawer', () => {
                     source_count: 3,
                     source_chars: 848,
                     quality_precheck_status: 'degraded',
+                    materialization: {
+                      status: 'pending',
+                      memory_type: 'memory_tree_chapter_summary',
+                      scope_key: 'chapter:2',
+                      chapter_index: 2,
+                      summary_hash_match: null,
+                      source: 'longform_memories',
+                    },
                   },
                   {
                     trace_id: 'trace-secret-2',
@@ -2251,6 +2261,14 @@ describe('AgentRunDrawer', () => {
                     source_count: 2,
                     source_chars: 612,
                     quality_precheck_status: 'ready',
+                    materialization: {
+                      status: 'pending',
+                      memory_type: 'memory_tree_chapter_summary',
+                      scope_key: 'chapter:2',
+                      chapter_index: 2,
+                      summary_hash_match: null,
+                      source: 'longform_memories',
+                    },
                   },
                 ],
                 recommended_next_tool_calls: [
@@ -2283,12 +2301,13 @@ describe('AgentRunDrawer', () => {
     const text = document.body.textContent || ''
     expect(text).toContain('Memory Tree 候选摘要')
     expect(text).toContain('可用')
-    expect(text).toContain('候选 2 / 可准备 2')
+    expect(text).toContain('候选 2 / 可准备 2 / 已物化 0')
     expect(text).toContain('第2章')
     expect(text).toContain('灯塔旧回声')
     expect(text).toContain('顾衍保留灯塔旧回声线索')
     expect(text).toContain('来源 3 / 848 字')
     expect(text).toContain('质量预检：降级')
+    expect(text).toContain('待物化')
     expect(text).toContain('空白信来源')
     expect(text).toContain('空白信来源与灯塔暗道记录形成第二条摘要候选。')
     expect(text).toContain('来源 2 / 612 字')
@@ -2356,6 +2375,87 @@ describe('AgentRunDrawer', () => {
         ],
       },
     }]])
+  })
+
+  it('renders materialized memory tree LLM candidates without duplicate prepare actions', () => {
+    mount(AgentRunDrawer, {
+      attachTo: document.body,
+      props: {
+        open: true,
+        loading: false,
+        error: '',
+        run: {
+          id: 'run-memory-tree-candidates-materialized',
+          project_id: 'project-1',
+          goal: '查看已物化候选',
+          status: 'success',
+          entrypoint: 'dialog_auto_plan',
+          input: {},
+          output: null,
+          error: null,
+          steps: [
+            {
+              id: 'step-memory-tree-candidates-materialized',
+              run_id: 'run-memory-tree-candidates-materialized',
+              project_id: 'project-1',
+              step_index: 1,
+              tool_name: 'inspect_agent_memory_tree_llm_candidates',
+              status: 'success',
+              input: { chapter_index: 2, limit: 1 },
+              output: {
+                status: 'ready',
+                filters: { chapter_index: 2, limit: 1 },
+                summary: {
+                  candidate_traces: 1,
+                  ready_candidates: 1,
+                  materialized_candidates: 1,
+                  pending_candidates: 0,
+                },
+                candidates: [
+                  {
+                    trace_id: 'trace-materialized-secret',
+                    trace_status: 'success',
+                    chapter_index: 2,
+                    model: 'deepseek-chat',
+                    summary_target: {
+                      level: 'chapter',
+                      scope_key: 'chapter:2',
+                      chapter_index: 2,
+                    },
+                    candidate: {
+                      summary: '蓝焰证词已经写入 Memory Tree 章级摘要。',
+                      salient_terms: ['蓝焰证词'],
+                      open_questions: [],
+                      source_coverage: ['chapter_content'],
+                    },
+                    source_count: 1,
+                    source_chars: 120,
+                    quality_precheck_status: 'ready',
+                    materialization: {
+                      status: 'materialized',
+                      memory_type: 'memory_tree_chapter_summary',
+                      scope_key: 'chapter:2',
+                      chapter_index: 2,
+                      summary_hash_match: true,
+                      source: 'longform_memories',
+                    },
+                  },
+                ],
+                recommended_next_tool_calls: [],
+              },
+            },
+          ],
+        },
+      },
+    })
+
+    const text = document.body.textContent || ''
+    expect(text).toContain('候选 1 / 可准备 0 / 已物化 1')
+    expect(text).toContain('蓝焰证词已经写入 Memory Tree 章级摘要。')
+    expect(text).toContain('已物化')
+    expect(text).not.toContain('trace-materialized-secret')
+    expect(text).not.toContain('scope_key')
+    expect(document.body.querySelectorAll('[data-testid="memory-tree-llm-candidate-prepare"]')).toHaveLength(0)
   })
 
   it('renders memory tree LLM candidate batch prepare output and emits per-candidate execute payloads', async () => {

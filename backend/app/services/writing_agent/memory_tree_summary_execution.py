@@ -698,6 +698,24 @@ def _candidate_action_params(
             "reason": candidate_summary.get("reason"),
             "candidate_summary": candidate_summary,
         }
+    materialization = (
+        candidate_summary.get("materialization")
+        if isinstance(candidate_summary.get("materialization"), dict)
+        else {}
+    )
+    materialization_status = str(materialization.get("status") or "")
+    if materialization_status == "materialized":
+        return {
+            "status": "blocked",
+            "reason": "candidate_already_materialized",
+            "candidate_summary": candidate_summary,
+        }
+    if materialization_status == "hash_mismatch":
+        return {
+            "status": "blocked",
+            "reason": "candidate_materialization_hash_mismatch",
+            "candidate_summary": candidate_summary,
+        }
     summary_target = candidate_summary["summary_target"]
     chapter_index = _positive_int(summary_target.get("chapter_index"))
     quality_chapter_index = _positive_int(raw.get("quality_chapter_index") or raw.get("chapter_index")) or chapter_index

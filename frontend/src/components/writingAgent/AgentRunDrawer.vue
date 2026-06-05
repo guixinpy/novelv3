@@ -1417,6 +1417,8 @@ const memoryTreeLlmCandidateRows = computed(() => (
         ? `来源 ${sourceCount ?? 0} / ${sourceChars ?? 0} 字`
         : ''
       const qualityLabel = memoryTreeLlmCandidateQualityLabel(candidateTrace.quality_precheck_status)
+      const materialization = recordValue(candidateTrace.materialization)
+      const materializationLabel = memoryTreeLlmCandidateMaterializationLabel(materialization.status)
       return {
         key: `memory-tree-llm-candidate:${index}`,
         label: [chapterIndexLabel(chapterIndex), primaryTerm].filter(Boolean).join(' ') || `候选 ${index + 1}`,
@@ -1424,6 +1426,7 @@ const memoryTreeLlmCandidateRows = computed(() => (
         termsLabel: salientTerms.slice(0, 3).join(' / '),
         sourceLabel,
         qualityLabel: qualityLabel ? `质量预检：${qualityLabel}` : '',
+        materializationLabel,
       }
     })
     .filter((row) => Boolean(row.summary || row.termsLabel))
@@ -1431,7 +1434,14 @@ const memoryTreeLlmCandidateRows = computed(() => (
 const memoryTreeLlmCandidateSummaryLabel = computed(() => {
   const traceCount = numberValue(memoryTreeLlmCandidateSummary.value.candidate_traces)
   const readyCount = numberValue(memoryTreeLlmCandidateSummary.value.ready_candidates)
-  return `候选 ${traceCount ?? memoryTreeLlmCandidateRows.value.length} / 可准备 ${readyCount ?? memoryTreeLlmCandidateRows.value.length}`
+  const pendingCount = numberValue(memoryTreeLlmCandidateSummary.value.pending_candidates)
+  const materializedCount = numberValue(memoryTreeLlmCandidateSummary.value.materialized_candidates)
+  const parts = [
+    `候选 ${traceCount ?? memoryTreeLlmCandidateRows.value.length}`,
+    `可准备 ${pendingCount ?? readyCount ?? memoryTreeLlmCandidateRows.value.length}`,
+  ]
+  if (materializedCount !== null) parts.push(`已物化 ${materializedCount}`)
+  return parts.join(' / ')
 })
 const memoryTreeLlmCandidateChapterLabel = computed(() => (
   chapterIndexLabel(memoryTreeLlmCandidateFilters.value.chapter_index)
@@ -2363,6 +2373,15 @@ function memoryTreeLlmCandidateQualityLabel(status: unknown) {
   if (value === 'ready') return '通过'
   if (value === 'degraded') return '降级'
   if (value === 'blocked') return '已阻止'
+  return value
+}
+
+function memoryTreeLlmCandidateMaterializationLabel(status: unknown) {
+  const value = stringValue(status)
+  if (value === 'pending') return '待物化'
+  if (value === 'materialized') return '已物化'
+  if (value === 'hash_mismatch') return '摘要冲突'
+  if (value === 'not_ready') return '未就绪'
   return value
 }
 
@@ -4820,6 +4839,7 @@ function missingDependencyTool(value: Record<string, unknown>) {
                   <strong>{{ row.label }}</strong>
                   <span v-if="row.sourceLabel">{{ row.sourceLabel }}</span>
                   <span v-if="row.qualityLabel">{{ row.qualityLabel }}</span>
+                  <span v-if="row.materializationLabel">{{ row.materializationLabel }}</span>
                 </div>
                 <p v-if="row.summary">{{ row.summary }}</p>
                 <p v-if="row.termsLabel">{{ row.termsLabel }}</p>

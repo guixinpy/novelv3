@@ -236,8 +236,13 @@ def inspect_agent_memory_tree_llm_candidates(
         .limit(normalized_limit)
         .all()
     )
-    candidates = [_llm_candidate_trace_summary(trace) for trace in traces]
+    candidates = [
+        _with_llm_candidate_materialization_status(db, project_id, _llm_candidate_trace_summary(trace))
+        for trace in traces
+    ]
     ready_count = sum(1 for item in candidates if item.get("candidate", {}).get("summary"))
+    materialized_count = sum(1 for item in candidates if _llm_candidate_is_materialized(item))
+    pending_count = sum(1 for item in candidates if _llm_candidate_ready_for_materialization(item))
     return {
         "version": MEMORY_TREE_LLM_CANDIDATE_INSPECTION_VERSION,
         "status": "ready" if candidates else "empty",
@@ -246,6 +251,8 @@ def inspect_agent_memory_tree_llm_candidates(
         "summary": {
             "candidate_traces": len(candidates),
             "ready_candidates": ready_count,
+            "materialized_candidates": materialized_count,
+            "pending_candidates": pending_count,
         },
         "candidates": candidates,
         "recommended_next_tools": _llm_candidate_inspection_recommendations(candidates),
@@ -464,7 +471,11 @@ def inspect_agent_memory_tree_llm_candidate_trace(
     if trace is None:
         return _llm_candidate_trace_blocked(project_id, reason="candidate_trace_not_found")
 
-    candidate_trace = _llm_candidate_trace_summary(trace)
+    candidate_trace = _with_llm_candidate_materialization_status(
+        db,
+        project_id,
+        _llm_candidate_trace_summary(trace),
+    )
     if candidate_trace["trace_status"] != "success":
         return _llm_candidate_trace_blocked(
             project_id,
@@ -494,6 +505,7 @@ def inspect_agent_memory_tree_llm_candidate_trace(
         "summary_target": summary_target,
         "candidate": candidate,
         "candidate_summary_hash": _candidate_summary_hash(candidate),
+        "materialization": candidate_trace["materialization"],
         "trace": {
             "source": "inspect_agent_memory_tree_llm_candidate_trace",
             "mutability": "read",
@@ -1392,6 +1404,83 @@ def _llm_candidate_trace_summary(trace: AIModelCallTrace) -> dict[str, Any]:
     }
 
 
+def _with_llm_candidate_materialization_status(
+    db: Session,
+    project_id: str,
+    candidate_trace: dict[str, Any],
+) -> dict[str, Any]:
+    candidate = candidate_trace.get("candidate") if isinstance(candidate_trace.get("candidate"), dict) else {}
+    trace_id = str(candidate_trace.get("trace_id") or "").strip()
+    if not trace_id or not str(candidate.get("summary") or "").strip():
+        return {
+            **candidate_trace,
+            "materialization": {
+                "status": "not_ready",
+                "memory_type": MEMORY_TREE_CHAPTER_SUMMARY_TYPE,
+                "scope_key": None,
+                "chapter_index": candidate_trace.get("chapter_index"),
+                "source": "longform_memories",
+            },
+        }
+    return {
+        **candidate_trace,
+        "materialization": _llm_candidate_materialization_status(
+            db,
+            project_id,
+            candidate_trace_id=trace_id,
+            candidate_summary_hash=_candidate_summary_hash(candidate),
+            summary_target=candidate_trace.get("summary_target"),
+        ),
+    }
+
+
+def _llm_candidate_materialization_status(
+    db: Session,
+    project_id: str,
+    *,
+    candidate_trace_id: str,
+    candidate_summary_hash: str,
+    summary_target: object,
+) -> dict[str, Any]:
+    target_scope_key = None
+    target_chapter_index = None
+    if isinstance(summary_target, dict):
+        target_scope_key = str(summary_target.get("scope_key") or "").strip() or None
+        target_chapter_index = _optional_int(summary_target.get("chapter_index"))
+
+    records = (
+        db.query(LongformMemory)
+        .filter(
+            LongformMemory.project_id == project_id,
+            LongformMemory.memory_type == MEMORY_TREE_CHAPTER_SUMMARY_TYPE,
+        )
+        .all()
+    )
+    for record in records:
+        metadata = record.memory_metadata if isinstance(record.memory_metadata, dict) else {}
+        if str(metadata.get("candidate_trace_id") or "").strip() != candidate_trace_id:
+            continue
+        stored_hash = str(metadata.get("candidate_summary_hash") or "").strip()
+        hash_matches = stored_hash == candidate_summary_hash
+        return {
+            "status": "materialized" if hash_matches else "hash_mismatch",
+            "memory_type": record.memory_type,
+            "scope_key": record.scope_key,
+            "chapter_index": record.start_chapter_index,
+            "summary_hash_match": hash_matches,
+            "source": "longform_memories",
+        }
+
+    return {
+        "status": "pending",
+        "memory_type": MEMORY_TREE_CHAPTER_SUMMARY_TYPE,
+        "scope_key": target_scope_key,
+        "chapter_index": target_chapter_index,
+        "summary_hash_match": None,
+        "source": "longform_memories",
+    }
+
+
 def _normalise_candidate_payload(candidate: dict[str, Any]) -> dict[str, Any]:
     return {
         "summary": str(candidate.get("summary") or "").strip(),
@@ -1402,15 +1491,13 @@ def _normalise_candidate_payload(candidate: dict[str, Any]) -> dict[str, Any]:
 
 
 def _llm_candidate_inspection_recommendations(candidates: list[dict[str, Any]]) -> list[str]:
-    ready_count = sum(
-        1
-        for item in candidates
-        if str((item.get("candidate") or {}).get("summary") or "").strip()
-    )
-    if ready_count == 0:
+    pending_count = sum(1 for item in candidates if _llm_candidate_ready_for_materialization(item))
+    if pending_count == 0:
+        if any(_llm_candidate_has_materialization_record(item) for item in candidates):
+            return ["inspect_agent_memory_tree_quality", "inspect_agent_memory_tree"]
         return ["summarize_agent_memory_tree_llm_candidate", "build_agent_memory_tree_llm_summary_plan"]
     recommendations: list[str] = []
-    if ready_count > 1:
+    if pending_count > 1:
         recommendations.append("prepare_record_agent_memory_tree_llm_candidate_summaries_batch")
     recommendations.extend(
         [
@@ -1425,7 +1512,7 @@ def _llm_candidate_inspection_recommendations(candidates: list[dict[str, Any]]) 
 def _llm_candidate_inspection_recommended_tool_calls(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
     tool_calls: list[dict[str, Any]] = []
     for candidate_trace in candidates:
-        if not str((candidate_trace.get("candidate") or {}).get("summary") or "").strip():
+        if not _llm_candidate_ready_for_materialization(candidate_trace):
             continue
         params: dict[str, Any] = {"candidate_trace_id": candidate_trace.get("trace_id")}
         summary_target = candidate_trace.get("summary_target")
@@ -1443,6 +1530,29 @@ def _llm_candidate_inspection_recommended_tool_calls(candidates: list[dict[str, 
             "requires_confirmation": False,
         })
     return tool_calls
+
+
+def _llm_candidate_is_materialized(candidate_trace: dict[str, Any]) -> bool:
+    materialization = candidate_trace.get("materialization")
+    if not isinstance(materialization, dict):
+        return False
+    return materialization.get("status") == "materialized"
+
+
+def _llm_candidate_has_materialization_record(candidate_trace: dict[str, Any]) -> bool:
+    materialization = candidate_trace.get("materialization")
+    if not isinstance(materialization, dict):
+        return False
+    return materialization.get("status") in {"materialized", "hash_mismatch"}
+
+
+def _llm_candidate_ready_for_materialization(candidate_trace: dict[str, Any]) -> bool:
+    if not str((candidate_trace.get("candidate") or {}).get("summary") or "").strip():
+        return False
+    materialization = candidate_trace.get("materialization")
+    if not isinstance(materialization, dict):
+        return True
+    return materialization.get("status") == "pending"
 
 
 def _first_llm_candidate_quality_query(candidate: Any) -> str | None:

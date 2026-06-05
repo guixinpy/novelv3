@@ -181,11 +181,13 @@ The approval handoff now has concrete call payloads in addition to tool-name rec
 - `inspect_agent_memory_tree_llm_candidates` returns `recommended_next_tool_calls` entries for `prepare_record_agent_memory_tree_llm_candidate_summary`, one for each ready candidate trace in the inspection window, populated with the selected `candidate_trace_id`, `quality_chapter_index`, and a candidate salient term as `quality_query`.
 - `prepare_record_agent_memory_tree_llm_candidate_summary` returns a `recommended_next_tool_calls` entry for `execute_record_agent_memory_tree_llm_candidate_summary_with_approval`, including `confirm_execute=true`, the approval contract/hash, and `requires_confirmation=true`.
 - `prepare_record_agent_memory_tree_llm_candidate_summaries_batch` is covered by local regression tests: it accepts explicit candidate trace ids or an inspection window, builds per-candidate trace-bound approval contracts, and returns one `execute_record_agent_memory_tree_llm_candidate_summary_with_approval` handoff per ready candidate. It remains read-only and does not introduce a batch execute shortcut.
+- After an approved single-candidate execute, `inspect_agent_memory_tree_llm_candidates` reports pending/materialized candidate counts from `LongformMemory`, marks the selected trace as materialized, stops recommending duplicate prepare calls for that trace, and `prepare_record_agent_memory_tree_llm_candidate_summary` blocks repeated prepare with `candidate_already_materialized`.
 
 Targeted regression coverage:
 
 ```powershell
 pytest tests/test_writing_agent_memory_tree.py::test_memory_tree_llm_candidate_trace_inspection_lists_persisted_candidates tests/test_writing_agent_memory_tree.py::test_prepare_record_memory_tree_llm_candidate_summary_builds_trace_bound_approval_contract tests/test_writing_agent_memory_tree.py::test_prepare_record_memory_tree_llm_candidate_summaries_batch_builds_per_candidate_contracts tests/test_writing_agent_tool_registry.py::test_agent_tool_registry_includes_memory_tree_llm_candidate_inspection tests/test_writing_agent_tool_registry.py::test_agent_tool_registry_includes_memory_tree_llm_candidate_summary_approval_chain
+pytest tests/test_writing_agent_memory_tree.py -q
 ```
 
 ## Frontend Handoff Regression
@@ -195,12 +197,14 @@ pytest tests/test_writing_agent_memory_tree.py::test_memory_tree_llm_candidate_t
 - It renders status, candidate/ready counts, chapter label, safe summary text, salient terms, source count/chars, and quality precheck status.
 - It hides `candidate_trace_id`, `scope_key`, approval contract details, and other raw internal fields from the visible drawer.
 - It reads the prepare `recommended_next_tool_calls` payloads and emits read-only `prepare_record_agent_memory_tree_llm_candidate_summary` continuations for multiple ready candidates, so the user can move from candidate inspection to approval preparation without hand-stitching trace ids.
+- It renders safe candidate materialization labels such as pending/materialized/hash mismatch while still hiding trace ids, LongformMemory ids, and hashes. Materialized candidates do not get duplicate prepare buttons when the backend omits prepare tool calls.
 - It also consumes `prepare_record_agent_memory_tree_llm_candidate_summaries_batch`, renders safe prepared/skipped counts and per-candidate quality query labels, and emits one `execute_record_agent_memory_tree_llm_candidate_summary_with_approval` payload per prepared candidate without showing trace ids or approval hashes.
 
 Targeted regression coverage:
 
 ```powershell
 npx vitest run src/components/writingAgent/AgentRunDrawer.test.ts -t "memory tree LLM candidate batch"
+npx vitest run src/components/writingAgent/AgentRunDrawer.test.ts -t "memory tree LLM candidate"
 npx vitest run src/components/writingAgent/AgentRunDrawer.test.ts -t "memory tree LLM candidate prepare"
 npx vitest run src/components/writingAgent/AgentRunDrawer.test.ts
 ```

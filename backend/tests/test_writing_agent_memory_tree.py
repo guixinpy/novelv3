@@ -378,7 +378,20 @@ async def test_memory_tree_llm_candidate_trace_inspection_lists_persisted_candid
     )
 
     assert output["status"] == "ready"
-    assert output["summary"] == {"candidate_traces": 2, "ready_candidates": 2}
+    pending_materialization = {
+        "status": "pending",
+        "memory_type": MEMORY_TREE_CHAPTER_SUMMARY_TYPE,
+        "scope_key": "chapter:2",
+        "chapter_index": 2,
+        "summary_hash_match": None,
+        "source": "longform_memories",
+    }
+    assert output["summary"] == {
+        "candidate_traces": 2,
+        "ready_candidates": 2,
+        "materialized_candidates": 0,
+        "pending_candidates": 2,
+    }
     assert output["filters"] == {"chapter_index": 2, "limit": 3}
     assert output["candidates"] == [
         {
@@ -393,6 +406,7 @@ async def test_memory_tree_llm_candidate_trace_inspection_lists_persisted_candid
             "source_count": second_generated["evidence_window"]["source_count"],
             "source_chars": second_generated["evidence_window"]["source_chars"],
             "quality_precheck_status": "degraded",
+            "materialization": pending_materialization,
         },
         {
             "trace_id": first_generated["trace"]["trace_id"],
@@ -406,6 +420,7 @@ async def test_memory_tree_llm_candidate_trace_inspection_lists_persisted_candid
             "source_count": first_generated["evidence_window"]["source_count"],
             "source_chars": first_generated["evidence_window"]["source_chars"],
             "quality_precheck_status": "degraded",
+            "materialization": pending_materialization,
         }
     ]
     assert output["recommended_next_tools"] == [
@@ -715,6 +730,43 @@ async def test_execute_record_memory_tree_llm_candidate_summary_with_approval_pe
     assert record.memory_metadata["source"] == "memory_tree_llm_candidate_trace"
     assert record.memory_metadata["candidate_trace_id"] == generated["trace"]["trace_id"]
     assert record.memory_metadata["candidate"]["salient_terms"] == ["蓝焰证词", "灯塔旧回声"]
+
+    inspected = inspect_agent_memory_tree_llm_candidates(
+        db_session,
+        project.id,
+        chapter_index=2,
+        limit=1,
+    )
+    assert inspected["summary"] == {
+        "candidate_traces": 1,
+        "ready_candidates": 1,
+        "materialized_candidates": 1,
+        "pending_candidates": 0,
+    }
+    assert inspected["candidates"][0]["materialization"] == {
+        "status": "materialized",
+        "memory_type": MEMORY_TREE_CHAPTER_SUMMARY_TYPE,
+        "scope_key": "chapter:2",
+        "chapter_index": 2,
+        "summary_hash_match": True,
+        "source": "longform_memories",
+    }
+    assert inspected["recommended_next_tools"] == [
+        "inspect_agent_memory_tree_quality",
+        "inspect_agent_memory_tree",
+    ]
+    assert inspected["recommended_next_tool_calls"] == []
+
+    repeated_prepare = prepare_record_agent_memory_tree_llm_candidate_summary(
+        db_session,
+        project.id,
+        action_params={
+            "candidate_trace_id": generated["trace"]["trace_id"],
+            "quality_query": "蓝焰证词",
+        },
+    )
+    assert repeated_prepare["status"] == "blocked"
+    assert repeated_prepare["reason"] == "candidate_already_materialized"
 
 
 @pytest.mark.asyncio
