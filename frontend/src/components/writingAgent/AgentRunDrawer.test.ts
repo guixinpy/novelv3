@@ -2175,6 +2175,151 @@ describe('AgentRunDrawer', () => {
     expect(text).not.toContain('source_refs')
   })
 
+  it('emits a memory tree LLM candidate prepare continuation from inspected candidates', async () => {
+    const wrapper = mount(AgentRunDrawer, {
+      attachTo: document.body,
+      props: {
+        open: true,
+        loading: false,
+        error: '',
+        run: {
+          id: 'run-memory-tree-candidates',
+          project_id: 'project-1',
+          goal: '查看第2章记忆树 LLM 摘要候选',
+          status: 'success',
+          entrypoint: 'dialog_auto_plan',
+          input: {},
+          output: null,
+          error: null,
+          steps: [
+            {
+              id: 'step-memory-tree-candidates',
+              run_id: 'run-memory-tree-candidates',
+              project_id: 'project-1',
+              step_index: 1,
+              tool_name: 'inspect_agent_memory_tree_llm_candidates',
+              status: 'success',
+              input: { chapter_index: 2, limit: 3 },
+              output: {
+                status: 'ready',
+                filters: { chapter_index: 2, limit: 3 },
+                summary: {
+                  candidate_traces: 1,
+                  ready_candidates: 1,
+                },
+                candidates: [
+                  {
+                    trace_id: 'trace-secret-1',
+                    trace_status: 'success',
+                    chapter_index: 2,
+                    model: 'deepseek-chat',
+                    prompt_tokens: 101,
+                    completion_tokens: 66,
+                    summary_target: {
+                      level: 'chapter',
+                      scope_key: 'chapter:2',
+                      chapter_index: 2,
+                    },
+                    candidate: {
+                      summary: '顾衍保留灯塔旧回声线索，蓝焰证词仍待复核。',
+                      salient_terms: ['灯塔旧回声', '蓝焰证词'],
+                      open_questions: ['蓝焰证词是否可靠？'],
+                      source_coverage: ['chapter_content', 'outline'],
+                    },
+                    source_count: 3,
+                    source_chars: 848,
+                    quality_precheck_status: 'degraded',
+                  },
+                ],
+                recommended_next_tool_calls: [
+                  {
+                    tool_name: 'prepare_record_agent_memory_tree_llm_candidate_summary',
+                    params: {
+                      candidate_trace_id: 'trace-secret-1',
+                      quality_chapter_index: 2,
+                      quality_query: '灯塔旧回声',
+                    },
+                    requires_confirmation: false,
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      },
+    })
+
+    const text = document.body.textContent || ''
+    expect(text).toContain('Memory Tree 候选摘要')
+    expect(text).toContain('可用')
+    expect(text).toContain('候选 1 / 可准备 1')
+    expect(text).toContain('第2章')
+    expect(text).toContain('灯塔旧回声')
+    expect(text).toContain('顾衍保留灯塔旧回声线索')
+    expect(text).toContain('来源 3 / 848 字')
+    expect(text).toContain('质量预检：降级')
+    expect(text).not.toContain('trace-secret-1')
+    expect(text).not.toContain('candidate_trace_id')
+    expect(text).not.toContain('scope_key')
+    expect(text).not.toContain('approval_contract')
+
+    const button = document.body.querySelector('[data-testid="memory-tree-llm-candidate-prepare"]') as HTMLButtonElement
+    expect(button).not.toBeNull()
+    expect(button.textContent).toContain('准备候选摘要')
+    expect(button.textContent).toContain('灯塔旧回声')
+
+    await button.click()
+
+    expect(wrapper.emitted('executePlannerPlan')).toEqual([[{
+      sourceRunId: 'run-memory-tree-candidates',
+      sourcePlanId: 'memory-tree-llm-candidate-prepare:0',
+      goal: '准备 Memory Tree 候选摘要审批：第2章 灯塔旧回声',
+      tools: [
+        {
+          tool_name: 'prepare_record_agent_memory_tree_llm_candidate_summary',
+          params: {
+            candidate_trace_id: 'trace-secret-1',
+            quality_chapter_index: 2,
+            quality_query: '灯塔旧回声',
+          },
+          planner: {
+            step_id: 'memory-tree-llm-candidate-prepare:0',
+            plan_id: 'memory-tree-llm-candidate-prepare:0',
+            mutability: 'read',
+            requires_confirmation: false,
+            reason: '准备 Memory Tree LLM 候选摘要审批，不直接写入 LongformMemory。',
+          },
+        },
+      ],
+      planner: {
+        status: 'completed',
+        intent_class: 'prepare_memory_tree_llm_candidate_summary',
+        approval_contract: { status: 'not_required', write_steps: [] },
+        trace: {
+          plan_id: 'memory-tree-llm-candidate-prepare:0',
+          selected_tools: ['prepare_record_agent_memory_tree_llm_candidate_summary'],
+        },
+        tools: [
+          {
+            tool_name: 'prepare_record_agent_memory_tree_llm_candidate_summary',
+            params: {
+              candidate_trace_id: 'trace-secret-1',
+              quality_chapter_index: 2,
+              quality_query: '灯塔旧回声',
+            },
+            planner: {
+              step_id: 'memory-tree-llm-candidate-prepare:0',
+              plan_id: 'memory-tree-llm-candidate-prepare:0',
+              mutability: 'read',
+              requires_confirmation: false,
+              reason: '准备 Memory Tree LLM 候选摘要审批，不直接写入 LongformMemory。',
+            },
+          },
+        ],
+      },
+    }]])
+  })
+
   it('emits a read-only memory tree drilldown planner continuation from recommended drilldowns', async () => {
     const wrapper = mount(AgentRunDrawer, {
       attachTo: document.body,

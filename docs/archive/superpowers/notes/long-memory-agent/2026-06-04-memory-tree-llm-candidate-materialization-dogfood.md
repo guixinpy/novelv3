@@ -186,3 +186,18 @@ Targeted regression coverage:
 ```powershell
 pytest tests/test_writing_agent_memory_tree.py::test_memory_tree_llm_candidate_trace_inspection_lists_persisted_candidates tests/test_writing_agent_memory_tree.py::test_prepare_record_memory_tree_llm_candidate_summary_builds_trace_bound_approval_contract tests/test_writing_agent_tool_registry.py::test_agent_tool_registry_includes_memory_tree_llm_candidate_inspection tests/test_writing_agent_tool_registry.py::test_agent_tool_registry_includes_memory_tree_llm_candidate_summary_approval_chain
 ```
+
+## Frontend Handoff Regression
+
+`AgentRunDrawer` now consumes `inspect_agent_memory_tree_llm_candidates` directly:
+
+- It renders status, candidate/ready counts, chapter label, safe summary text, salient terms, source count/chars, and quality precheck status.
+- It hides `candidate_trace_id`, `scope_key`, approval contract details, and other raw internal fields from the visible drawer.
+- It reads the prepare `recommended_next_tool_calls` payload and emits a read-only `prepare_record_agent_memory_tree_llm_candidate_summary` continuation, so the user can move from candidate inspection to approval preparation without hand-stitching the trace id.
+
+Targeted regression coverage:
+
+```powershell
+npx vitest run src/components/writingAgent/AgentRunDrawer.test.ts -t "memory tree LLM candidate prepare"
+npx vitest run src/components/writingAgent/AgentRunDrawer.test.ts
+```

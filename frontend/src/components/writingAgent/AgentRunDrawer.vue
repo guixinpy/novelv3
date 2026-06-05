@@ -1393,6 +1393,49 @@ const memoryTreeNodesById = computed(() => {
   }
   return nodesById
 })
+const memoryTreeLlmCandidateOutput = computed(() => latestToolOutput('inspect_agent_memory_tree_llm_candidates'))
+const memoryTreeLlmCandidateFilters = computed(() => recordValue(memoryTreeLlmCandidateOutput.value?.filters))
+const memoryTreeLlmCandidateSummary = computed(() => recordValue(memoryTreeLlmCandidateOutput.value?.summary))
+const memoryTreeLlmCandidateRows = computed(() => (
+  recordList(memoryTreeLlmCandidateOutput.value?.candidates)
+    .map((candidateTrace, index) => {
+      const candidate = recordValue(candidateTrace.candidate)
+      const summaryTarget = recordValue(candidateTrace.summary_target)
+      const chapterIndex = (
+        numberValue(candidateTrace.chapter_index) ??
+        numberValue(summaryTarget.chapter_index)
+      )
+      const salientTerms = stringList(candidate.salient_terms)
+      const primaryTerm = salientTerms[0] || ''
+      const sourceCount = numberValue(candidateTrace.source_count)
+      const sourceChars = numberValue(candidateTrace.source_chars)
+      const sourceLabel = sourceCount !== null || sourceChars !== null
+        ? `来源 ${sourceCount ?? 0} / ${sourceChars ?? 0} 字`
+        : ''
+      const qualityLabel = memoryTreeLlmCandidateQualityLabel(candidateTrace.quality_precheck_status)
+      return {
+        key: `memory-tree-llm-candidate:${index}`,
+        label: [chapterIndexLabel(chapterIndex), primaryTerm].filter(Boolean).join(' ') || `候选 ${index + 1}`,
+        summary: stringValue(candidate.summary),
+        termsLabel: salientTerms.slice(0, 3).join(' / '),
+        sourceLabel,
+        qualityLabel: qualityLabel ? `质量预检：${qualityLabel}` : '',
+      }
+    })
+    .filter((row) => Boolean(row.summary || row.termsLabel))
+))
+const memoryTreeLlmCandidateSummaryLabel = computed(() => {
+  const traceCount = numberValue(memoryTreeLlmCandidateSummary.value.candidate_traces)
+  const readyCount = numberValue(memoryTreeLlmCandidateSummary.value.ready_candidates)
+  return `候选 ${traceCount ?? memoryTreeLlmCandidateRows.value.length} / 可准备 ${readyCount ?? memoryTreeLlmCandidateRows.value.length}`
+})
+const memoryTreeLlmCandidateChapterLabel = computed(() => (
+  chapterIndexLabel(memoryTreeLlmCandidateFilters.value.chapter_index)
+))
+const memoryTreeLlmCandidatePrepareCalls = computed(() => (
+  toolRequestList(memoryTreeLlmCandidateOutput.value?.recommended_next_tool_calls)
+    .filter((call) => stringValue(call.tool_name) === 'prepare_record_agent_memory_tree_llm_candidate_summary')
+))
 
 function createMemoryTreeReadPayload(
   runId: string,
@@ -1422,6 +1465,41 @@ function createMemoryTreeReadPayload(
       trace: {
         plan_id: planId,
         selected_tools: ['inspect_agent_memory_tree'],
+      },
+      tools: [toolRequest],
+    },
+  }
+}
+
+function createMemoryTreeLlmCandidatePreparePayload(
+  runId: string,
+  planId: string,
+  goal: string,
+  params: Record<string, unknown>,
+): PlannerPlanExecutePayload {
+  const toolRequest: Record<string, unknown> = {
+    tool_name: 'prepare_record_agent_memory_tree_llm_candidate_summary',
+    params,
+    planner: {
+      step_id: planId,
+      plan_id: planId,
+      mutability: 'read',
+      requires_confirmation: false,
+      reason: '准备 Memory Tree LLM 候选摘要审批，不直接写入 LongformMemory。',
+    },
+  }
+  return {
+    sourceRunId: runId,
+    sourcePlanId: planId,
+    goal,
+    tools: [toolRequest],
+    planner: {
+      status: 'completed',
+      intent_class: 'prepare_memory_tree_llm_candidate_summary',
+      approval_contract: { status: 'not_required', write_steps: [] },
+      trace: {
+        plan_id: planId,
+        selected_tools: ['prepare_record_agent_memory_tree_llm_candidate_summary'],
       },
       tools: [toolRequest],
     },
@@ -1524,6 +1602,31 @@ const postChapterMemoryCandidatePrepareActions = computed<PlannerContinuationAct
     })
   }
   return actions
+})
+
+const memoryTreeLlmCandidatePrepareActions = computed<PlannerContinuationAction[]>(() => {
+  const runId = props.run?.id
+  if (!runId || props.run?.status !== 'success') return []
+  return memoryTreeLlmCandidatePrepareCalls.value.map((call, index) => {
+    const params = recordValue(call.params)
+    const row = memoryTreeLlmCandidateRows.value[index]
+    const qualityQuery = stringValue(params.quality_query)
+    const chapterLabel = chapterIndexLabel(params.quality_chapter_index) || memoryTreeLlmCandidateChapterLabel.value
+    const candidateLabel = [chapterLabel, qualityQuery || row?.termsLabel || row?.label]
+      .filter(Boolean)
+      .join(' ')
+    const planId = `memory-tree-llm-candidate-prepare:${index}`
+    return {
+      key: planId,
+      label: `准备候选摘要：${qualityQuery || row?.label || `候选 ${index + 1}`}`,
+      payload: createMemoryTreeLlmCandidatePreparePayload(
+        runId,
+        planId,
+        `准备 Memory Tree 候选摘要审批：${candidateLabel || `候选 ${index + 1}`}`,
+        params,
+      ),
+    }
+  })
 })
 
 const knowledgeBaseCandidateRouteActions = computed<KnowledgeBaseCandidateRouteAction[]>(() => {
@@ -1671,6 +1774,7 @@ const hasTraceAnomalyTrendsProjection = computed(() => Boolean(
 ))
 const hasKnowledgeBaseCandidateExecutionProjection = computed(() => Boolean(knowledgeBaseCandidateExecutionOutput.value))
 const hasMemoryTreeProjection = computed(() => Boolean(memoryTreeOutput.value))
+const hasMemoryTreeLlmCandidateProjection = computed(() => Boolean(memoryTreeLlmCandidateOutput.value))
 const hasRecommendedFollowupPolicy = computed(() => Boolean(
   recommendedFollowupPreview.value &&
   (
@@ -1879,6 +1983,10 @@ function executeMemoryTreeSearch() {
   emit('executePlannerPlan', memoryTreeSearchAction.value.payload)
 }
 
+function executeMemoryTreeLlmCandidatePrepare(action: PlannerContinuationAction) {
+  emit('executePlannerPlan', action.payload)
+}
+
 function executePostMemoryCandidatePrepare(action: PlannerContinuationAction) {
   emit('executePlannerPlan', action.payload)
 }
@@ -2051,6 +2159,7 @@ function preparedApprovalExecuteToolLabel(toolName: string) {
   if (toolName === 'execute_generate_chapter_with_approval') return '生成正文'
   if (toolName === 'execute_analyze_chapter_world_model_with_approval') return '分析世界模型'
   if (toolName === 'execute_record_agent_knowledge_base_candidate_with_approval') return '写入知识库候选'
+  if (toolName === 'execute_record_agent_memory_tree_llm_candidate_summary_with_approval') return '写入 Memory Tree 候选摘要'
   if (toolName === 'execute_repair_longform_maintenance_with_approval') return '修复长篇维护'
   return toolName || '写入工具'
 }
@@ -2124,6 +2233,14 @@ function memoryTreeNavigationModeLabel(mode: unknown) {
   if (value === 'expanded_subtree') return '展开子树'
   if (value === 'filtered') return '筛选'
   return value || '未知'
+}
+
+function memoryTreeLlmCandidateQualityLabel(status: unknown) {
+  const value = stringValue(status)
+  if (value === 'ready') return '通过'
+  if (value === 'degraded') return '降级'
+  if (value === 'blocked') return '已阻止'
+  return value
 }
 
 function memoryRouteStatusLabel(status: unknown) {
@@ -4543,6 +4660,64 @@ function missingDependencyTool(value: Record<string, unknown>) {
               搜索
             </button>
           </form>
+        </section>
+
+        <section
+          v-if="hasMemoryTreeLlmCandidateProjection"
+          class="agent-run-drawer__memory-tree"
+          aria-label="Memory Tree LLM candidates"
+        >
+          <h4>Memory Tree 候选摘要</h4>
+          <dl class="agent-run-drawer__facts">
+            <div>
+              <dt>状态</dt>
+              <dd>{{ memoryTreeStatusLabel(memoryTreeLlmCandidateOutput?.status) }}</dd>
+            </div>
+            <div>
+              <dt>候选</dt>
+              <dd>{{ memoryTreeLlmCandidateSummaryLabel }}</dd>
+            </div>
+            <div v-if="memoryTreeLlmCandidateChapterLabel">
+              <dt>章节</dt>
+              <dd>{{ memoryTreeLlmCandidateChapterLabel }}</dd>
+            </div>
+          </dl>
+          <ol
+            v-if="memoryTreeLlmCandidateRows.length"
+            class="agent-run-drawer__memory-tree-nodes"
+          >
+            <li
+              v-for="row in memoryTreeLlmCandidateRows"
+              :key="row.key"
+              data-testid="memory-tree-llm-candidate"
+            >
+              <span class="agent-run-drawer__memory-tree-level">候选</span>
+              <div class="agent-run-drawer__memory-tree-content">
+                <div class="agent-run-drawer__memory-tree-title">
+                  <strong>{{ row.label }}</strong>
+                  <span v-if="row.sourceLabel">{{ row.sourceLabel }}</span>
+                  <span v-if="row.qualityLabel">{{ row.qualityLabel }}</span>
+                </div>
+                <p v-if="row.summary">{{ row.summary }}</p>
+                <p v-if="row.termsLabel">{{ row.termsLabel }}</p>
+              </div>
+            </li>
+          </ol>
+          <div
+            v-if="memoryTreeLlmCandidatePrepareActions.length"
+            class="agent-run-drawer__actions"
+          >
+            <button
+              v-for="action in memoryTreeLlmCandidatePrepareActions"
+              :key="action.key"
+              type="button"
+              class="agent-run-drawer__ghost"
+              data-testid="memory-tree-llm-candidate-prepare"
+              @click="executeMemoryTreeLlmCandidatePrepare(action)"
+            >
+              {{ action.label }}
+            </button>
+          </div>
         </section>
 
         <section
