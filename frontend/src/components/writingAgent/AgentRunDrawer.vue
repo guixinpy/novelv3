@@ -329,6 +329,104 @@ const eventProjectionRows = computed(() => (
     ))
 ))
 const eventProjectionRecommendedTools = computed(() => uniqueStrings(stringList(eventProjectionOutput.value?.recommended_tools)))
+const jobProjectionOutput = computed(() => latestToolOutput('inspect_agent_job_projection'))
+const jobProjectionSummary = computed(() => recordValue(jobProjectionOutput.value?.summary))
+const jobProjectionQueue = computed(() => recordValue(jobProjectionOutput.value?.queue))
+const jobProjectionStatus = computed(() => stringValue(jobProjectionOutput.value?.status))
+const jobProjectionTotalTaskCount = computed(() => numberValue(jobProjectionSummary.value.total))
+const jobProjectionReturnedTaskCount = computed(() => numberValue(jobProjectionSummary.value.returned))
+const jobProjectionQueueDepth = computed(() => numberValue(jobProjectionQueue.value.depth))
+const jobProjectionActiveTaskCount = computed(() => numberValue(jobProjectionQueue.value.active))
+const jobProjectionTerminalTaskCount = computed(() => numberValue(jobProjectionQueue.value.terminal))
+const jobProjectionSelectedTask = computed(() => recordValue(jobProjectionOutput.value?.selected_task))
+const jobProjectionSelectedTaskStatus = computed(() => stringValue(jobProjectionSelectedTask.value.status))
+const jobProjectionSelectedTaskChapterIndex = computed(() => numberValue(jobProjectionSelectedTask.value.chapter_index))
+const jobProjectionSelectedTaskChapterRange = computed(() => (
+  jobProjectionChapterRangeLabel(recordValue(jobProjectionSelectedTask.value.chapter_range))
+))
+const jobProjectionSelectedTaskProgress = computed(() => recordValue(jobProjectionSelectedTask.value.progress))
+const jobProjectionSelectedTaskResume = computed(() => recordValue(jobProjectionSelectedTask.value.resume))
+const jobProjectionNextChapterIndex = computed(() => (
+  numberValue(jobProjectionSelectedTaskResume.value.next_chapter_index) ??
+  numberValue(jobProjectionSelectedTaskProgress.value.next_chapter_index)
+))
+const jobProjectionCompletedChapterCount = computed(() => (
+  numberValue(jobProjectionSelectedTaskResume.value.completed_count) ??
+  numberValue(jobProjectionSelectedTaskProgress.value.completed_count)
+))
+const jobProjectionCanResume = computed(() => (
+  typeof jobProjectionSelectedTaskResume.value.can_resume === 'boolean'
+    ? jobProjectionSelectedTaskResume.value.can_resume
+    : jobProjectionSelectedTaskProgress.value.can_resume
+))
+const jobProjectionSelectedTaskRecovery = computed(() => recordValue(jobProjectionSelectedTask.value.recovery))
+const jobProjectionCanRetry = computed(() => (
+  typeof jobProjectionSelectedTaskRecovery.value.can_retry === 'boolean'
+    ? jobProjectionSelectedTaskRecovery.value.can_retry
+    : null
+))
+const jobProjectionRecoveryCapability = computed(() => {
+  if (jobProjectionCanResume.value === true) return '可恢复'
+  if (jobProjectionCanRetry.value === true) return '可重试'
+  if (jobProjectionCanResume.value === false || jobProjectionCanRetry.value === false) return '不可恢复'
+  return ''
+})
+const jobProjectionErrorPreview = computed(() => stringValue(jobProjectionSelectedTask.value.error_preview))
+const jobProjectionControlPlaneReadiness = computed(() => (
+  recordValue(jobProjectionSelectedTask.value.control_plane_readiness)
+))
+const jobProjectionControlPlaneSummary = computed(() => (
+  recordValue(jobProjectionControlPlaneReadiness.value.summary)
+))
+const jobProjectionControlPlaneStatus = computed(() => stringValue(jobProjectionControlPlaneReadiness.value.status))
+const jobProjectionControlPlaneGapCount = computed(() => (
+  numberValue(jobProjectionControlPlaneSummary.value.total_gap_count)
+))
+const jobProjectionCommandContracts = computed(() => recordValue(jobProjectionSelectedTask.value.command_contracts))
+const jobProjectionCommandContractSummary = computed(() => (
+  recordValue(jobProjectionCommandContracts.value.summary)
+))
+const jobProjectionCommandContractStatus = computed(() => stringValue(jobProjectionCommandContracts.value.status))
+const jobProjectionControlCommandCount = computed(() => (
+  numberValue(jobProjectionCommandContractSummary.value.agent_control_commands)
+))
+const jobProjectionCommandContractGapCount = computed(() => (
+  numberValue(jobProjectionCommandContractSummary.value.gap_count)
+))
+const jobProjectionReservation = computed(() => recordValue(jobProjectionOutput.value?.chapter_reservation))
+const jobProjectionReservationStatus = computed(() => stringValue(jobProjectionReservation.value.status))
+const jobProjectionReservationChapterIndex = computed(() => numberValue(jobProjectionReservation.value.chapter_index))
+const jobProjectionReservationActiveTaskCount = computed(() => (
+  numberValue(jobProjectionReservation.value.active_task_count)
+))
+const jobProjectionReservationRows = computed(() => (
+  recordList(jobProjectionReservation.value.tasks)
+    .slice(0, 5)
+    .map((task, index) => ({
+      key: `job-projection-reservation:${index}`,
+      sourceLabel: stringValue(task.source_label) || '占用任务',
+      status: chapterConflictTaskStatusLabel(task.status),
+      chapterLabel: chapterConflictTaskChapterLabel(task),
+    }))
+    .filter((task) => task.sourceLabel || task.status || task.chapterLabel)
+))
+const jobProjectionEventProjection = computed(() => recordValue(jobProjectionSelectedTask.value.event_projection))
+const jobProjectionEventProjectionSummary = computed(() => (
+  recordValue(jobProjectionEventProjection.value.summary)
+))
+const jobProjectionEventProjectionStatus = computed(() => (
+  stringValue(jobProjectionEventProjection.value.status)
+))
+const jobProjectionEventCount = computed(() => numberValue(jobProjectionEventProjectionSummary.value.total))
+const jobProjectionEventTypeSummary = computed(() => (
+  recordValue(jobProjectionEventProjectionSummary.value.by_event_type)
+))
+const jobProjectionToolErrorCount = computed(() => numberValue(jobProjectionEventTypeSummary.value.tool_error))
+const jobProjectionRecommendedTools = computed(() => uniqueStrings([
+  ...stringList(jobProjectionOutput.value?.recommended_tools),
+  ...stringList(jobProjectionSelectedTaskRecovery.value.recommended_tools),
+  ...stringList(jobProjectionReservation.value.recommended_tools),
+]).slice(0, 6))
 const chapterConflictRecoveryOutput = computed(() => latestToolOutput('plan_chapter_conflict_recovery'))
 const chapterConflictPlanStatus = computed(() => stringValue(chapterConflictRecoveryOutput.value?.status))
 const chapterConflictConflict = computed(() => recordValue(chapterConflictRecoveryOutput.value?.conflict))
@@ -2575,6 +2673,10 @@ function chapterConflictTaskChapterLabel(task: Record<string, unknown>) {
   if (chapterIndex !== null) return `第${chapterIndex}章`
 
   const range = recordValue(task.chapter_range)
+  return jobProjectionChapterRangeLabel(range)
+}
+
+function jobProjectionChapterRangeLabel(range: Record<string, unknown>) {
   const start = numberValue(range.start)
   const end = numberValue(range.end)
   if (start !== null && end !== null) return `第${start}-${end}章`
@@ -3658,6 +3760,134 @@ function missingDependencyTool(value: Record<string, unknown>) {
             <li
               v-for="tool in eventProjectionRecommendedTools"
               :key="`event-projection-next:${tool}`"
+            >
+              {{ tool }}
+            </li>
+          </ul>
+        </section>
+
+        <section
+          v-if="jobProjectionOutput"
+          class="agent-run-drawer__job-projection"
+          aria-label="Agent job projection"
+        >
+          <h4>任务队列投影</h4>
+          <dl class="agent-run-drawer__facts">
+            <div v-if="jobProjectionStatus">
+              <dt>状态</dt>
+              <dd>{{ eventProjectionStatusLabel(jobProjectionStatus) }}</dd>
+            </div>
+            <div v-if="jobProjectionQueueDepth !== null">
+              <dt>队列深度</dt>
+              <dd>{{ jobProjectionQueueDepth }}</dd>
+            </div>
+            <div v-if="jobProjectionActiveTaskCount !== null">
+              <dt>活跃任务</dt>
+              <dd>{{ jobProjectionActiveTaskCount }}</dd>
+            </div>
+            <div v-if="jobProjectionTerminalTaskCount !== null">
+              <dt>终止任务</dt>
+              <dd>{{ jobProjectionTerminalTaskCount }}</dd>
+            </div>
+            <div v-if="jobProjectionReturnedTaskCount !== null && jobProjectionTotalTaskCount !== null">
+              <dt>返回任务</dt>
+              <dd>{{ jobProjectionReturnedTaskCount }} / {{ jobProjectionTotalTaskCount }}</dd>
+            </div>
+            <div v-if="jobProjectionSelectedTaskStatus">
+              <dt>任务状态</dt>
+              <dd>{{ chapterConflictTaskStatusLabel(jobProjectionSelectedTaskStatus) }}</dd>
+            </div>
+            <div v-if="jobProjectionSelectedTaskChapterIndex !== null">
+              <dt>目标章节</dt>
+              <dd>第{{ jobProjectionSelectedTaskChapterIndex }}章</dd>
+            </div>
+            <div v-if="jobProjectionSelectedTaskChapterRange">
+              <dt>章节范围</dt>
+              <dd>{{ jobProjectionSelectedTaskChapterRange }}</dd>
+            </div>
+            <div v-if="jobProjectionNextChapterIndex !== null">
+              <dt>下一章</dt>
+              <dd>第{{ jobProjectionNextChapterIndex }}章</dd>
+            </div>
+            <div v-if="jobProjectionCompletedChapterCount !== null">
+              <dt>已完成章节</dt>
+              <dd>{{ jobProjectionCompletedChapterCount }}</dd>
+            </div>
+            <div v-if="jobProjectionRecoveryCapability">
+              <dt>恢复能力</dt>
+              <dd>{{ jobProjectionRecoveryCapability }}</dd>
+            </div>
+            <div v-if="jobProjectionErrorPreview">
+              <dt>错误摘要</dt>
+              <dd>{{ jobProjectionErrorPreview }}</dd>
+            </div>
+            <div v-if="jobProjectionControlPlaneStatus">
+              <dt>控制平面</dt>
+              <dd>{{ agentControlPlaneStatusLabel(jobProjectionControlPlaneStatus) }}</dd>
+            </div>
+            <div v-if="jobProjectionControlPlaneGapCount !== null">
+              <dt>控制面缺口</dt>
+              <dd>{{ jobProjectionControlPlaneGapCount }}</dd>
+            </div>
+            <div v-if="jobProjectionCommandContractStatus">
+              <dt>命令契约</dt>
+              <dd>{{ eventProjectionStatusLabel(jobProjectionCommandContractStatus) }}</dd>
+            </div>
+            <div v-if="jobProjectionControlCommandCount !== null">
+              <dt>控制命令</dt>
+              <dd>{{ jobProjectionControlCommandCount }}</dd>
+            </div>
+            <div v-if="jobProjectionCommandContractGapCount !== null">
+              <dt>契约缺口</dt>
+              <dd>{{ jobProjectionCommandContractGapCount }}</dd>
+            </div>
+            <div v-if="jobProjectionReservationStatus">
+              <dt>章节占用</dt>
+              <dd>{{ chapterConflictStatusLabel(jobProjectionReservationStatus) }}</dd>
+            </div>
+            <div v-if="jobProjectionReservationChapterIndex !== null">
+              <dt>占用章节</dt>
+              <dd>第{{ jobProjectionReservationChapterIndex }}章</dd>
+            </div>
+            <div v-if="jobProjectionReservationActiveTaskCount !== null">
+              <dt>占用任务</dt>
+              <dd>{{ jobProjectionReservationActiveTaskCount }}</dd>
+            </div>
+            <div v-if="jobProjectionEventProjectionStatus">
+              <dt>事件投影</dt>
+              <dd>{{ eventProjectionStatusLabel(jobProjectionEventProjectionStatus) }}</dd>
+            </div>
+            <div v-if="jobProjectionEventCount !== null">
+              <dt>事件</dt>
+              <dd>{{ jobProjectionEventCount }}</dd>
+            </div>
+            <div v-if="jobProjectionToolErrorCount !== null">
+              <dt>工具错误</dt>
+              <dd>{{ jobProjectionToolErrorCount }}</dd>
+            </div>
+          </dl>
+          <ul
+            v-if="jobProjectionReservationRows.length"
+            class="agent-run-drawer__event-rows"
+          >
+            <li
+              v-for="task in jobProjectionReservationRows"
+              :key="task.key"
+            >
+              <div>
+                <strong>{{ task.sourceLabel }}</strong>
+                <span v-if="task.chapterLabel">{{ task.chapterLabel }}</span>
+              </div>
+              <p v-if="task.status">{{ task.status }}</p>
+            </li>
+          </ul>
+          <ul
+            v-if="jobProjectionRecommendedTools.length"
+            class="agent-run-drawer__tools"
+          >
+            <li
+              v-for="tool in jobProjectionRecommendedTools"
+              :key="`job-projection-next:${tool}`"
             >
               {{ tool }}
             </li>
@@ -6253,6 +6483,7 @@ function missingDependencyTool(value: Record<string, unknown>) {
 .agent-run-drawer__memory-route h4,
 .agent-run-drawer__reference-alignment h4,
 .agent-run-drawer__event-projection h4,
+.agent-run-drawer__job-projection h4,
 .agent-run-drawer__chapter-conflict h4,
 .agent-run-drawer__worker-dispatch h4,
 .agent-run-drawer__knowledge-route h4,
@@ -6402,6 +6633,15 @@ function missingDependencyTool(value: Record<string, unknown>) {
 }
 
 .agent-run-drawer__event-projection {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-secondary);
+}
+
+.agent-run-drawer__job-projection {
   display: grid;
   gap: var(--space-3);
   padding: var(--space-3);
