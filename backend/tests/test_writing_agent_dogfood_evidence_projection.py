@@ -27,6 +27,7 @@ def test_inspect_agent_dogfood_evidence_surfaces_api_loop_and_memory_activation(
         "memory_tree_llm_summary_plan",
         "memory_tree_llm_summary_candidate",
         "memory_tree_llm_candidate_materialization",
+        "memory_tree_llm_candidate_batch_materialization",
     }.issubset({item["capability"] for item in output["capability_coverage"]})
     evidence_by_id = {item["evidence_id"]: item for item in output["evidence"]}
     full_loop = evidence_by_id["full_agent_native_loop_20260526"]
@@ -115,6 +116,7 @@ def test_inspect_agent_dogfood_evidence_surfaces_api_loop_and_memory_activation(
         "memory_tree_llm_summary_plan_20260604",
         "memory_tree_llm_summary_candidate_20260604",
         "memory_tree_llm_candidate_materialization_20260604",
+        "memory_tree_llm_candidate_batch_materialization_20260605",
     ]
     assert "inspect_agent_memory_tree_quality" in quality_coverage["proven_tools"]
     memory_tree_summary = evidence_by_id["memory_tree_summary_approval_recheck_20260604"]
@@ -214,6 +216,36 @@ def test_inspect_agent_dogfood_evidence_surfaces_api_loop_and_memory_activation(
     assert (
         "execute_record_agent_memory_tree_llm_candidate_summary_with_approval"
         in llm_candidate_materialization_coverage["proven_tools"]
+    )
+    llm_candidate_batch_materialization = evidence_by_id[
+        "memory_tree_llm_candidate_batch_materialization_20260605"
+    ]
+    assert llm_candidate_batch_materialization["runtime_path"] == "pytest_fake_model_batch_execute"
+    assert llm_candidate_batch_materialization["metrics"] == {
+        "memory_tree_llm_candidate_batch_prepare_count": 1,
+        "memory_tree_llm_candidate_batch_candidate_executions": 2,
+        "memory_tree_llm_candidate_batch_execute_success_count": 2,
+        "memory_tree_llm_candidate_batch_blocked_count": 0,
+        "memory_tree_llm_candidate_batch_created_nodes": 2,
+        "memory_tree_llm_candidate_batch_updated_nodes": 0,
+        "memory_tree_llm_candidate_batch_after_memory_count": 2,
+        "memory_tree_llm_candidate_batch_after_summary_backed_chapter_nodes": 2,
+        "memory_tree_llm_candidate_batch_after_summary_backed_chapter_ratio": 1.0,
+        "memory_tree_llm_candidate_batch_after_diagnostic_count": 0,
+    }
+    assert llm_candidate_batch_materialization["open_findings"] == [
+        "fake_model_response_not_external_model_quality"
+    ]
+    llm_candidate_batch_materialization_coverage = {
+        item["capability"]: item for item in output["capability_coverage"]
+    }["memory_tree_llm_candidate_batch_materialization"]
+    assert llm_candidate_batch_materialization_coverage["status"] == "covered"
+    assert llm_candidate_batch_materialization_coverage["evidence_ids"] == [
+        "memory_tree_llm_candidate_batch_materialization_20260605"
+    ]
+    assert (
+        "execute_record_agent_memory_tree_llm_candidate_summaries_batch_with_approval"
+        in llm_candidate_batch_materialization_coverage["proven_tools"]
     )
     assert "inspect_agent_health_projection" in output["recommended_next_tools"]
     assert output["trace"]["runtime_behavior_changed"] is False

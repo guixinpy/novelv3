@@ -192,6 +192,44 @@ pytest tests/test_writing_agent_memory_tree.py::test_execute_record_memory_tree_
 pytest tests/test_writing_agent_memory_tree.py -q
 ```
 
+## Batch Materialization Quality Regression
+
+`inspect_agent_dogfood_evidence` now records
+`memory_tree_llm_candidate_batch_materialization_20260605` as a separate
+candidate-batch materialization capability. This is a local fake-model
+regression, not external model-quality proof.
+
+The regression covers two traced chapter candidates prepared by
+`prepare_record_agent_memory_tree_llm_candidate_summaries_batch` and executed by
+`execute_record_agent_memory_tree_llm_candidate_summaries_batch_with_approval`.
+Each candidate still flows through the single-candidate approval contract,
+mutation fingerprint, and resource binding checks. After the second write,
+the post-materialization quality projection is `ready`, with 2/2 summary-backed
+chapter nodes and zero diagnostics.
+
+Recorded metrics:
+
+```json
+{
+  "memory_tree_llm_candidate_batch_prepare_count": 1,
+  "memory_tree_llm_candidate_batch_candidate_executions": 2,
+  "memory_tree_llm_candidate_batch_execute_success_count": 2,
+  "memory_tree_llm_candidate_batch_blocked_count": 0,
+  "memory_tree_llm_candidate_batch_created_nodes": 2,
+  "memory_tree_llm_candidate_batch_updated_nodes": 0,
+  "memory_tree_llm_candidate_batch_after_memory_count": 2,
+  "memory_tree_llm_candidate_batch_after_summary_backed_chapter_nodes": 2,
+  "memory_tree_llm_candidate_batch_after_summary_backed_chapter_ratio": 1.0,
+  "memory_tree_llm_candidate_batch_after_diagnostic_count": 0
+}
+```
+
+Targeted regression coverage:
+
+```powershell
+pytest tests/test_writing_agent_memory_tree.py::test_execute_record_memory_tree_llm_candidate_summaries_batch_with_approval_persists_each_candidate tests/test_writing_agent_dogfood_evidence_projection.py -q
+```
+
 ## Frontend Handoff Regression
 
 `AgentRunDrawer` now consumes `inspect_agent_memory_tree_llm_candidates` directly:

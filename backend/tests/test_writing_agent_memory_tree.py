@@ -831,6 +831,10 @@ async def test_execute_record_memory_tree_llm_candidate_summaries_batch_with_app
         "blocked_candidates": 0,
     }
     assert [item["status"] for item in result.output["candidate_results"]] == ["success", "success"]
+    final_quality = result.output["candidate_results"][-1]["post_materialization_quality"]
+    assert final_quality["status"] == "ready"
+    assert final_quality["coverage"]["summary_backed_chapter_nodes"] == 2
+    assert final_quality["diagnostics"] == []
     assert result.output["side_effects"] == {
         "executed": [
             "record_agent_memory_tree_llm_candidate_summary",
