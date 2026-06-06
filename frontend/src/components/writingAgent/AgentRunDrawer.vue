@@ -5,6 +5,7 @@ import AgentRunChapterConflictRecoveryPanel from './AgentRunChapterConflictRecov
 import AgentRunContextCompressionPanel from './AgentRunContextCompressionPanel.vue'
 import AgentRunEventProjectionPanel from './AgentRunEventProjectionPanel.vue'
 import AgentRunJobProjectionPanel from './AgentRunJobProjectionPanel.vue'
+import AgentRunKnowledgeBaseRoutePanel from './AgentRunKnowledgeBaseRoutePanel.vue'
 import AgentRunLongformContextPanel from './AgentRunLongformContextPanel.vue'
 import AgentRunMemoryActivationPanel from './AgentRunMemoryActivationPanel.vue'
 import AgentRunMemoryRoutePanel from './AgentRunMemoryRoutePanel.vue'
@@ -438,55 +439,6 @@ const contextCompressionOutput = computed(() => latestToolOutput('inspect_agent_
 const preflightBudgetStep = computed(() => latestToolStep('preflight_writing'))
 const memoryRouteOutput = computed(() => latestToolOutput('inspect_agent_memory_route'))
 const knowledgeBaseRouteOutput = computed(() => latestToolOutput('inspect_agent_knowledge_base_route'))
-const knowledgeBaseRoute = computed(() => recordValue(knowledgeBaseRouteOutput.value?.route))
-const knowledgeBaseAuthorPreferences = computed(() => recordValue(knowledgeBaseRouteOutput.value?.author_preferences))
-const knowledgeBaseLearnedRules = computed(() => recordValue(knowledgeBaseRouteOutput.value?.learned_rules))
-const knowledgeBaseCandidates = computed(() => recordValue(knowledgeBaseRouteOutput.value?.knowledge_candidates))
-const knowledgeBaseReferencePatterns = computed(() => recordValue(knowledgeBaseRouteOutput.value?.reference_patterns))
-const knowledgeBaseRouteDiagnostics = computed(() => recordList(knowledgeBaseRouteOutput.value?.diagnostics))
-const knowledgeBaseRouteRecommendedTools = computed(() => (
-  stringList(knowledgeBaseRouteOutput.value?.recommended_next_tools).length
-    ? stringList(knowledgeBaseRouteOutput.value?.recommended_next_tools)
-    : stringList(knowledgeBaseRoute.value.recommended_tools)
-))
-const knowledgeBaseRouteChapterLabel = computed(() => chapterIndexLabel(knowledgeBaseRouteOutput.value?.chapter_index))
-const knowledgeBaseRouteQuery = computed(() => safeKnowledgeBaseRouteText(knowledgeBaseRouteOutput.value?.query))
-const knowledgeBaseAuthorFacetCount = computed(() => recordList(knowledgeBaseAuthorPreferences.value.facets).length)
-const knowledgeBaseLearnedRuleReturned = computed(() => numberValue(knowledgeBaseLearnedRules.value.returned))
-const knowledgeBaseLearnedRuleTotal = computed(() => numberValue(knowledgeBaseLearnedRules.value.total))
-const knowledgeBaseCandidateReturned = computed(() => numberValue(knowledgeBaseCandidates.value.returned))
-const knowledgeBaseCandidateTotal = computed(() => numberValue(knowledgeBaseCandidates.value.total))
-const knowledgeBaseReferencePatternReturned = computed(() => numberValue(knowledgeBaseReferencePatterns.value.returned))
-const knowledgeBaseRouteGenerationLabel = computed(() => (
-  knowledgeBaseRoute.value.can_inform_generation === true ? '可用于生成' : '仅供诊断'
-))
-const knowledgeBaseCandidateRows = computed(() => (
-  recordList(knowledgeBaseCandidates.value.items)
-    .map((item, index) => ({
-      key: `knowledge-route-candidate:${index}`,
-      title: safeKnowledgeBaseRouteText(item.title) || '知识库候选',
-      type: knowledgeBaseCandidateTypeLabel(item.memory_type),
-      summary: safeKnowledgeBaseRouteText(item.summary),
-    }))
-    .filter((item) => Boolean(item.title || item.summary))
-))
-const knowledgeBaseLearnedRuleRows = computed(() => (
-  recordList(knowledgeBaseLearnedRules.value.items)
-    .map((item, index) => ({
-      key: `knowledge-route-rule:${index}`,
-      condition: safeKnowledgeBaseRouteText(item.condition),
-      action: safeKnowledgeBaseRouteText(item.action),
-    }))
-    .filter((item) => Boolean(item.condition || item.action))
-))
-const knowledgeBaseDiagnosticRows = computed(() => (
-  knowledgeBaseRouteDiagnostics.value
-    .map((item, index) => ({
-      key: `knowledge-route-diagnostic:${index}`,
-      message: safeKnowledgeBaseRouteText(item.message),
-    }))
-    .filter((item) => Boolean(item.message))
-))
 const worldModelRouteOutput = computed(() => latestToolOutput('inspect_agent_world_model_route'))
 const worldModelRoute = computed(() => recordValue(worldModelRouteOutput.value?.route))
 const worldModelFactSummary = computed(() => recordValue(worldModelRouteOutput.value?.fact_summary))
@@ -1762,7 +1714,6 @@ const hasMemoryLoopProjection = computed(() => Boolean(
   || postChapterMemoryOutput.value,
 ))
 const hasPostChapterMemoryProjection = computed(() => Boolean(postChapterMemoryOutput.value))
-const hasKnowledgeBaseRouteProjection = computed(() => Boolean(knowledgeBaseRouteOutput.value))
 const hasWorldModelRouteProjection = computed(() => Boolean(worldModelRouteOutput.value))
 const hasWorldModelSemanticCheckProjection = computed(() => Boolean(worldModelSemanticCheckOutput.value))
 const hasWorldModelProposalReviewProjection = computed(() => Boolean(worldModelProposalReviewOutput.value))
@@ -2348,14 +2299,6 @@ function safeRetrievalContextSummaryText(label: unknown) {
   return value.slice(0, 120)
 }
 
-function safeKnowledgeBaseRouteText(label: unknown) {
-  const value = stringValue(label).replace(/\s+/g, ' ')
-  if (!value) return ''
-  if (/[A-Za-z_]+:[A-Za-z0-9_-]+/.test(value)) return ''
-  if (/source_refs?|source_id|approval_contract|approval:|chapter-content-\d+|PromptRule:|Project\.style_config|FewShotExampleLibrary/i.test(value)) return ''
-  return value.slice(0, 96)
-}
-
 function safeWorldModelRouteText(label: unknown) {
   const value = stringValue(label).replace(/\s+/g, ' ')
   if (!value) return ''
@@ -2378,14 +2321,6 @@ function safeTraceAuditText(label: unknown) {
   if (/[A-Za-z_]+:[A-Za-z0-9_-]+/.test(value)) return ''
   if (/(run|step|trace|message|task|target|chapter-content|longform)-secret|source_refs?|source_id|approval_contract|approval:/i.test(value)) return ''
   return value.slice(0, 96)
-}
-
-function knowledgeBaseRouteStatusLabel(status: unknown) {
-  const value = stringValue(status)
-  if (value === 'ready') return '可用'
-  if (value === 'sparse') return '稀疏'
-  if (value === 'completed') return '已完成'
-  return value || '未知'
 }
 
 function worldModelRouteStatusLabel(status: unknown) {
@@ -3327,98 +3262,10 @@ function missingDependencyTool(value: Record<string, unknown>) {
           :output="memoryRouteOutput"
         />
 
-        <section
-          v-if="hasKnowledgeBaseRouteProjection"
-          class="agent-run-drawer__knowledge-route"
-          aria-label="Knowledge base route projection"
-        >
-          <h4>知识库路由</h4>
-          <dl class="agent-run-drawer__facts">
-            <div>
-              <dt>状态</dt>
-              <dd>{{ knowledgeBaseRouteStatusLabel(knowledgeBaseRoute.status) }}</dd>
-            </div>
-            <div>
-              <dt>生成</dt>
-              <dd>{{ knowledgeBaseRouteGenerationLabel }}</dd>
-            </div>
-            <div v-if="knowledgeBaseRouteChapterLabel">
-              <dt>章节</dt>
-              <dd>{{ knowledgeBaseRouteChapterLabel }}</dd>
-            </div>
-            <div v-if="knowledgeBaseRouteQuery">
-              <dt>查询</dt>
-              <dd>{{ knowledgeBaseRouteQuery }}</dd>
-            </div>
-            <div>
-              <dt>作者偏好</dt>
-              <dd>作者偏好 {{ knowledgeBaseAuthorFacetCount }}</dd>
-            </div>
-            <div v-if="countRangeLabel(knowledgeBaseLearnedRuleReturned, knowledgeBaseLearnedRuleTotal)">
-              <dt>学习规则</dt>
-              <dd>学习规则 {{ countRangeLabel(knowledgeBaseLearnedRuleReturned, knowledgeBaseLearnedRuleTotal) }}</dd>
-            </div>
-            <div v-if="countRangeLabel(knowledgeBaseCandidateReturned, knowledgeBaseCandidateTotal)">
-              <dt>知识库候选</dt>
-              <dd>知识库候选 {{ countRangeLabel(knowledgeBaseCandidateReturned, knowledgeBaseCandidateTotal) }}</dd>
-            </div>
-            <div v-if="knowledgeBaseReferencePatternReturned !== null">
-              <dt>写法参考</dt>
-              <dd>写法参考 {{ knowledgeBaseReferencePatternReturned }}</dd>
-            </div>
-          </dl>
-          <ul
-            v-if="knowledgeBaseRouteRecommendedTools.length"
-            class="agent-run-drawer__tools"
-          >
-            <li
-              v-for="tool in knowledgeBaseRouteRecommendedTools"
-              :key="`knowledge-route-next:${tool}`"
-            >
-              {{ tool }}
-            </li>
-          </ul>
-          <ul
-            v-if="knowledgeBaseLearnedRuleRows.length"
-            class="agent-run-drawer__reference-patterns"
-          >
-            <li
-              v-for="row in knowledgeBaseLearnedRuleRows"
-              :key="row.key"
-            >
-              <div>
-                <strong>{{ row.condition || '学习规则' }}</strong>
-              </div>
-              <p v-if="row.action">{{ row.action }}</p>
-            </li>
-          </ul>
-          <ul
-            v-if="knowledgeBaseCandidateRows.length"
-            class="agent-run-drawer__reference-patterns"
-          >
-            <li
-              v-for="row in knowledgeBaseCandidateRows"
-              :key="row.key"
-            >
-              <div>
-                <strong>{{ row.title }}</strong>
-                <span>{{ row.type }}</span>
-              </div>
-              <p v-if="row.summary">{{ row.summary }}</p>
-            </li>
-          </ul>
-          <ul
-            v-if="knowledgeBaseDiagnosticRows.length"
-            class="agent-run-drawer__planner-signals"
-          >
-            <li
-              v-for="row in knowledgeBaseDiagnosticRows"
-              :key="row.key"
-            >
-              {{ row.message }}
-            </li>
-          </ul>
-        </section>
+        <AgentRunKnowledgeBaseRoutePanel
+          v-if="knowledgeBaseRouteOutput"
+          :output="knowledgeBaseRouteOutput"
+        />
 
         <section
           v-if="hasWorldModelRouteProjection"
@@ -4935,7 +4782,6 @@ function missingDependencyTool(value: Record<string, unknown>) {
 .agent-run-drawer__planner h4,
 .agent-run-drawer__memory-loop h4,
 .agent-run-drawer__post-memory h4,
-.agent-run-drawer__knowledge-route h4,
 .agent-run-drawer__world-model-route h4,
 .agent-run-drawer__world-proposal-review h4,
 .agent-run-drawer__world-proposal-resolution h4,
@@ -5012,15 +4858,6 @@ function missingDependencyTool(value: Record<string, unknown>) {
 }
 
 .agent-run-drawer__post-memory {
-  display: grid;
-  gap: var(--space-3);
-  padding: var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-bg-secondary);
-}
-
-.agent-run-drawer__knowledge-route {
   display: grid;
   gap: var(--space-3);
   padding: var(--space-3);
