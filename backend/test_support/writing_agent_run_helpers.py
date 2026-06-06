@@ -499,3 +499,337 @@ def seed_longform_project(db_session, *, outline_chapters: list[int], generated_
     db_session.commit()
     db_session.refresh(project)
     return project
+
+
+def prepare_longform_batch_execution_contract(client, project_id: str) -> dict:
+    enqueue_output = enqueue_longform_batch_with_approval(client, project_id, start_chapter=2, batch_size=1)
+    task_id = enqueue_output["task"]["id"]
+    preflight_longform_batch_with_approval(client, project_id, task_id, max_chapters=1)
+    prepare_response = client.post(
+        f"/api/v1/projects/{project_id}/agent-runs",
+        json={
+            "goal": "准备长篇批次执行准备审批契约",
+            "tools": [
+                {
+                    "tool_name": "prepare_longform_chapter_batch_execution_prepare",
+                    "params": {"task_id": task_id},
+                }
+            ],
+        },
+    )
+    prepare_output = prepare_response.json()["steps"][0]["output"]
+    execute_response = client.post(
+        f"/api/v1/projects/{project_id}/agent-runs",
+        json={
+            "goal": "确认后写入长篇批次执行契约",
+            "tools": [
+                {
+                    "tool_name": "execute_longform_chapter_batch_execution_prepare_with_approval",
+                    "params": {
+                        "task_id": task_id,
+                        "confirm_execute": True,
+                        "approval_contract_hash": prepare_output["agent_plan_approval_contract_hash"],
+                        "approval_contract": prepare_output["agent_plan_approval_contract"],
+                    },
+                }
+            ],
+        },
+    )
+    output = execute_response.json()["steps"][0]["output"]
+    return {
+        "task_id": task_id,
+        "attempt_manifest_hash": output["attempt_manifest_hash"],
+        "approval_contract_hash": output["approval_contract_hash"],
+        "attempt_manifest": output["attempt_manifest"],
+        "approval_contract": output["approval_contract"],
+        "agent_plan": output["agent_plan"],
+        "agent_plan_approval_contract": output["agent_plan_approval_contract"],
+        "agent_plan_approval_contract_hash": output["agent_plan_approval_contract_hash"],
+    }
+
+
+def prepare_enqueue_longform_batch(
+    client,
+    project_id: str,
+    *,
+    start_chapter: int,
+    batch_size: int,
+    source_run_id: str | None = None,
+) -> dict:
+    params = {"start_chapter": start_chapter, "batch_size": batch_size}
+    if source_run_id is not None:
+        params["source_run_id"] = source_run_id
+    response = client.post(
+        f"/api/v1/projects/{project_id}/agent-runs",
+        json={
+            "goal": "准备把章节加入批次队列",
+            "tools": [{"tool_name": "prepare_enqueue_longform_chapter_batch", "params": params}],
+        },
+    )
+    assert response.status_code == 200
+    return response.json()["steps"][0]["output"]
+
+
+def enqueue_longform_batch_with_approval(
+    client,
+    project_id: str,
+    *,
+    start_chapter: int,
+    batch_size: int,
+    source_run_id: str | None = None,
+) -> dict:
+    prepared = prepare_enqueue_longform_batch(
+        client,
+        project_id,
+        start_chapter=start_chapter,
+        batch_size=batch_size,
+        source_run_id=source_run_id,
+    )
+    params = {
+        "start_chapter": start_chapter,
+        "batch_size": batch_size,
+        "plan_hash": prepared["plan_hash"],
+        "confirm_execute": True,
+        "approval_contract_hash": prepared["agent_plan_approval_contract_hash"],
+        "approval_contract": prepared["agent_plan_approval_contract"],
+    }
+    if source_run_id is not None:
+        params["source_run_id"] = source_run_id
+    response = client.post(
+        f"/api/v1/projects/{project_id}/agent-runs",
+        json={
+            "goal": "确认加入批次队列",
+            "tools": [{"tool_name": "execute_enqueue_longform_chapter_batch_with_approval", "params": params}],
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    return response.json()["steps"][0]["output"]
+
+
+def preflight_longform_batch_with_approval(
+    client,
+    project_id: str,
+    task_id: str,
+    *,
+    max_chapters: int,
+) -> dict:
+    prepared_response = client.post(
+        f"/api/v1/projects/{project_id}/agent-runs",
+        json={
+            "goal": "准备预检长篇批次任务",
+            "tools": [
+                {
+                    "tool_name": "prepare_longform_chapter_batch_preflight",
+                    "params": {"task_id": task_id, "max_chapters": max_chapters},
+                }
+            ],
+        },
+    )
+    assert prepared_response.status_code == 200
+    prepared = prepared_response.json()["steps"][0]["output"]
+    response = client.post(
+        f"/api/v1/projects/{project_id}/agent-runs",
+        json={
+            "goal": "确认预检长篇批次任务",
+            "tools": [
+                {
+                    "tool_name": "execute_longform_chapter_batch_preflight_with_approval",
+                    "params": {
+                        "task_id": task_id,
+                        "max_chapters": max_chapters,
+                        "confirm_execute": True,
+                        "approval_contract_hash": prepared["agent_plan_approval_contract_hash"],
+                        "approval_contract": prepared["agent_plan_approval_contract"],
+                    },
+                }
+            ],
+        },
+    )
+    assert response.status_code == 200
+    return response.json()
+
+
+def execute_approved_longform_batch_chapter(client, project_id: str, prepared: dict, monkeypatch) -> dict:
+    async def fake_execute(self, action_type, project_id, *, command_args=None, action_params=None):
+        assert action_type == "generate_chapter"
+        assert action_params == {"chapter_index": 2}
+        self.db.add(
+            ChapterContent(
+                project_id=project_id,
+                chapter_index=2,
+                title="雾港线索2",
+                content="林深和苏晚晴追入记忆诊所后巷，发现雾晶核心的回声正在扩大。",
+                word_count=2200,
+                status="generated",
+            )
+        )
+        self.db.commit()
+        return {"status": "success", "chapter_index": 2, "trace_id": "trace-batch-chapter-2"}
+
+    monkeypatch.setattr("app.services.actions.action_execution_service.ActionExecutionService.execute", fake_execute)
+    response = client.post(
+        f"/api/v1/projects/{project_id}/agent-runs",
+        json={
+            "goal": "执行已批准的长篇批次",
+            "tools": [
+                {
+                    "tool_name": "execute_longform_chapter_batch",
+                    "params": {
+                        "task_id": prepared["task_id"],
+                        "confirm_execute": True,
+                        "attempt_manifest_hash": prepared["attempt_manifest_hash"],
+                        "approval_contract_hash": prepared["approval_contract_hash"],
+                    },
+                }
+            ],
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    return response.json()["steps"][0]["output"]
+
+
+def review_executed_longform_batch_chapter(
+    client,
+    project_id: str,
+    task_id: str,
+    monkeypatch,
+    *,
+    status: str,
+    calls: list[str] | None = None,
+) -> dict:
+    def fake_quality(db, project_id: str, chapter_index: int):
+        if calls is not None:
+            calls.append("quality")
+        if status == "needs_revision":
+            return {
+                "status": "blocked",
+                "chapter_index": chapter_index,
+                "finding_count": 1,
+                "blocker_count": 1,
+                "findings": [
+                    {
+                        "code": "generic_chapter_title",
+                        "severity": "blocker",
+                        "message": "标题仍是占位标题。",
+                        "evidence": {},
+                    }
+                ],
+                "recommended_actions": ["revise_chapter"],
+            }
+        return {
+            "status": "ready",
+            "chapter_index": chapter_index,
+            "finding_count": 0,
+            "blocker_count": 0,
+            "findings": [],
+            "recommended_actions": [],
+        }
+
+    def fake_continuity(db, project_id: str, chapter_index: int, *, lookback: int):
+        if calls is not None:
+            calls.append("continuity")
+        return {
+            "status": "ready",
+            "chapter_index": chapter_index,
+            "finding_count": 0,
+            "blocker_count": 0,
+            "findings": [],
+            "recommended_actions": [],
+        }
+
+    def fake_world_model(db, project_id: str, chapter_index: int):
+        if calls is not None:
+            calls.append("world_model")
+        return {"status": "skipped", "reason": "missing_world_model_profile", "chapter_index": chapter_index}
+
+    monkeypatch.setattr("app.core.chapter_quality_review.review_chapter_quality", fake_quality)
+    monkeypatch.setattr("app.core.chapter_continuity_review.review_chapter_continuity", fake_continuity)
+    monkeypatch.setattr("app.core.athena_longform.analyze_chapter_to_world_proposals", fake_world_model)
+    prepare_response = client.post(
+        f"/api/v1/projects/{project_id}/agent-runs",
+        json={
+            "goal": "准备审查已执行的长篇批次",
+            "tools": [
+                {
+                    "tool_name": "prepare_longform_chapter_batch_execution_review",
+                    "params": {"task_id": task_id},
+                }
+            ],
+        },
+    )
+    assert prepare_response.status_code == 200
+    assert prepare_response.json()["status"] == "success"
+    prepare_output = prepare_response.json()["steps"][0]["output"]
+    response = client.post(
+        f"/api/v1/projects/{project_id}/agent-runs",
+        json={
+            "goal": "确认后审查已执行的长篇批次",
+            "tools": [
+                {
+                    "tool_name": "execute_longform_chapter_batch_execution_review_with_approval",
+                    "params": {
+                        "task_id": task_id,
+                        "confirm_execute": True,
+                        "approval_contract_hash": prepare_output["agent_plan_approval_contract_hash"],
+                        "approval_contract": prepare_output["agent_plan_approval_contract"],
+                    },
+                }
+            ],
+        },
+    )
+    assert response.status_code == 200
+    expected_status = "blocked" if status == "needs_revision" else "success"
+    assert response.json()["status"] == expected_status
+    return response.json()["steps"][0]["output"]
+
+
+def route_reviewed_longform_batch_after_review(
+    client,
+    project_id: str,
+    *,
+    task_id: str,
+    next_batch_size: int | None = None,
+    expected_post_generation_review_hash: str | None = None,
+) -> dict:
+    params: dict[str, object] = {"task_id": task_id}
+    if next_batch_size is not None:
+        params["next_batch_size"] = next_batch_size
+    if expected_post_generation_review_hash is not None:
+        params["expected_post_generation_review_hash"] = expected_post_generation_review_hash
+    prepare_response = client.post(
+        f"/api/v1/projects/{project_id}/agent-runs",
+        json={
+            "goal": "准备路由长篇批次生成后审查结果",
+            "tools": [{"tool_name": "prepare_longform_chapter_batch_after_review_route", "params": params}],
+        },
+    )
+    assert prepare_response.status_code == 200
+    prepare_payload = prepare_response.json()
+    assert prepare_payload["status"] == "success"
+    prepare_output = prepare_payload["steps"][0]["output"]
+    if prepare_output["status"] == "skipped":
+        return prepare_payload
+    assert prepare_output["status"] == "approval_required"
+
+    execute_params = {
+        **params,
+        "confirm_execute": True,
+        "approval_contract_hash": prepare_output["agent_plan_approval_contract_hash"],
+        "approval_contract": prepare_output["agent_plan_approval_contract"],
+    }
+    response = client.post(
+        f"/api/v1/projects/{project_id}/agent-runs",
+        json={
+            "goal": "确认后路由长篇批次生成后审查结果",
+            "tools": [
+                {
+                    "tool_name": "execute_longform_chapter_batch_after_review_route_with_approval",
+                    "params": execute_params,
+                }
+            ],
+        },
+    )
+    assert response.status_code == 200
+    return response.json()

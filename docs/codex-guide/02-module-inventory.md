@@ -68,6 +68,9 @@ Agent 化成熟度等级定义见 [01-愿景与架构目标](./01-vision.md#四a
   ├── worker_route_registry_projection.py # Worker 路由注册投影
   ├── ...（大量工具 descriptor/adapter/execution）...
   └── agent_definitions.py
+测试切片：
+  backend/test_support/writing_agent_run_helpers.py         # Agent run 回归共享 seed / approval / workflow helper
+  backend/tests/test_writing_agent_runs_longform_batch.py   # longform batch plan/enqueue/inspect/preflight/execution-prepare API run 回归
 Agent 化缺口：
   - 五级循环检测已具备 generic_repeat、ping-pong、unknown_tool_repeat、known_poll_no_progress、global_circuit_breaker
   - StopHooks 已具备 critical loop、BudgetCap、MaxTurns、ContextGuard、approval、memory provenance 策略；后续可继续扩展为真正的运行中断控制点
