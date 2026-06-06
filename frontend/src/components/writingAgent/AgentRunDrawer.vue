@@ -17,6 +17,7 @@ import AgentRunRetrievalPrefetchPanel from './AgentRunRetrievalPrefetchPanel.vue
 import AgentRunRetrievalStrategyPanel from './AgentRunRetrievalStrategyPanel.vue'
 import AgentRunRetrievalStrategyQualityPanel from './AgentRunRetrievalStrategyQualityPanel.vue'
 import AgentRunWorkerDispatchPanel from './AgentRunWorkerDispatchPanel.vue'
+import AgentRunWorldModelProposalResolutionPanel from './AgentRunWorldModelProposalResolutionPanel.vue'
 import AgentRunWorldModelProposalReviewPanel from './AgentRunWorldModelProposalReviewPanel.vue'
 import AgentRunWorldModelRoutePanel from './AgentRunWorldModelRoutePanel.vue'
 import AgentRunWorldModelSemanticCheckPanel from './AgentRunWorldModelSemanticCheckPanel.vue'
@@ -447,59 +448,6 @@ const worldModelRouteOutput = computed(() => latestToolOutput('inspect_agent_wor
 const worldModelSemanticCheckOutput = computed(() => latestToolOutput('inspect_agent_world_model_semantic_check'))
 const worldModelProposalReviewOutput = computed(() => latestToolOutput('review_world_model_proposals'))
 const worldModelResolutionPlanOutput = computed(() => latestToolOutput('plan_world_model_proposal_resolution'))
-const worldModelResolutionRiskCounts = computed(() => recordValue(worldModelResolutionPlanOutput.value?.risk_counts))
-const worldModelResolutionModeCounts = computed(() => recordValue(worldModelResolutionPlanOutput.value?.review_mode_counts))
-const worldModelResolutionReturned = computed(() => numberValue(worldModelResolutionPlanOutput.value?.returned_items))
-const worldModelResolutionTotal = computed(() => numberValue(worldModelResolutionPlanOutput.value?.total_items))
-const worldModelResolutionHighRiskCount = computed(() => numberValue(worldModelResolutionRiskCounts.value.high))
-const worldModelResolutionMediumRiskCount = computed(() => numberValue(worldModelResolutionRiskCounts.value.medium))
-const worldModelResolutionLowRiskCount = computed(() => numberValue(worldModelResolutionRiskCounts.value.low))
-const worldModelResolutionIndividualCount = computed(() => numberValue(worldModelResolutionModeCounts.value.individual))
-const worldModelResolutionBatchCount = computed(() => numberValue(worldModelResolutionModeCounts.value.batch))
-const worldModelResolutionHighPriorityStepCount = computed(() => numberValue(worldModelResolutionPlanOutput.value?.high_priority_step_count))
-const worldModelResolutionBatchStepCount = computed(() => numberValue(worldModelResolutionPlanOutput.value?.batch_step_count))
-const worldModelResolutionConfirmationLabel = computed(() => (
-  worldModelResolutionPlanOutput.value?.requires_human_confirmation === true ? '需要人工确认' : '无需人工确认'
-))
-const worldModelResolutionAutoApplyLabel = computed(() => (
-  worldModelResolutionPlanOutput.value?.can_auto_apply === true ? '可自动应用' : '不可自动应用'
-))
-const worldModelResolutionGenerationLabel = computed(() => (
-  worldModelResolutionPlanOutput.value?.should_generate_next_chapter === true ? '可继续生成' : '不可继续生成'
-))
-const worldModelResolutionRecommendedItems = computed(() => (
-  [
-    ...stringList(worldModelResolutionPlanOutput.value?.recommended_actions),
-    ...stringList(worldModelResolutionPlanOutput.value?.recommended_next_tools),
-  ]
-))
-const worldModelResolutionStepRows = computed(() => (
-  recordList(worldModelResolutionPlanOutput.value?.resolution_steps)
-    .slice(0, 5)
-    .map((step, index) => {
-      const stepIndex = numberValue(step.step_index)
-      const subjects = stringList(step.subject_refs)
-        .map((subject) => safeWorldModelRouteText(subject))
-        .filter(Boolean)
-      const candidateCount = numberValue(step.candidate_count)
-      return {
-        key: `world-model-resolution-step:${stepIndex ?? index}`,
-        title: [
-          stepIndex !== null ? `#${stepIndex}` : '',
-          [subjects.join(', '), safeWorldModelRouteText(step.predicate)].filter(Boolean).join(' · '),
-        ].filter(Boolean).join(' ') || '解决步骤',
-        meta: [
-          worldModelResolutionActionTypeLabel(step.action_type),
-          worldModelRecommendedResolutionLabel(step.recommended_resolution),
-          worldModelRiskLabel(step.risk_level),
-          candidateCount !== null ? `${candidateCount} 个候选` : '',
-          worldModelChapterRangeLabel(step.chapter_range),
-        ].filter(Boolean).join(' · '),
-        reason: safeWorldModelRouteText(step.reason),
-      }
-    })
-    .filter((row) => Boolean(row.title || row.meta || row.reason))
-))
 const traceAuditOutput = computed(() => latestToolOutput('inspect_agent_trace_audit'))
 const traceAnomalyTrendsOutput = computed(() => latestToolOutput('inspect_agent_trace_anomaly_trends'))
 const traceAnomalyLongRunSamplesOutput = computed(() => (
@@ -1566,7 +1514,6 @@ const hasMemoryLoopProjection = computed(() => Boolean(
   || retrievalContextOutput.value
   || postChapterMemoryOutput.value,
 ))
-const hasWorldModelResolutionPlanProjection = computed(() => Boolean(worldModelResolutionPlanOutput.value))
 const hasTraceAuditProjection = computed(() => Boolean(traceAuditOutput.value))
 const hasTraceAuditIntentChain = computed(() => Boolean(
   traceAuditIntentChainStatus.value === 'available' ||
@@ -2130,61 +2077,12 @@ function safeRetrievalContextSummaryText(label: unknown) {
   return value.slice(0, 120)
 }
 
-function safeWorldModelRouteText(label: unknown) {
-  const value = stringValue(label).replace(/\s+/g, ' ')
-  if (!value) return ''
-  if (/[A-Za-z_]+:[A-Za-z0-9_.-]+/.test(value)) return ''
-  if (/(project|profile|fact|cluster|item|bundle)-secret|source_refs?|source_id|evidence_refs?|approval_contract|approval:|world_profile:/i.test(value)) return ''
-  return value.slice(0, 96)
-}
-
 function safeTraceAuditText(label: unknown) {
   const value = stringValue(label).replace(/\s+/g, ' ')
   if (!value) return ''
   if (/[A-Za-z_]+:[A-Za-z0-9_-]+/.test(value)) return ''
   if (/(run|step|trace|message|task|target|chapter-content|longform)-secret|source_refs?|source_id|approval_contract|approval:/i.test(value)) return ''
   return value.slice(0, 96)
-}
-
-function worldModelRouteStatusLabel(status: unknown) {
-  const value = stringValue(status)
-  if (value === 'ready') return '可用'
-  if (value === 'blocked') return '已阻塞'
-  if (value === 'completed' || value === 'success') return '已完成'
-  if (value === 'missing_profile') return '缺少 Profile'
-  return value || '未知'
-}
-
-function worldModelRiskLabel(risk: unknown) {
-  const value = stringValue(risk)
-  if (value === 'high') return '高风险'
-  if (value === 'medium') return '中风险'
-  if (value === 'low') return '低风险'
-  return value
-}
-
-function worldModelResolutionActionTypeLabel(actionType: unknown) {
-  const value = stringValue(actionType)
-  if (value === 'review_individual') return '逐项审阅'
-  if (value === 'review_batch') return '批量审阅'
-  return value
-}
-
-function worldModelRecommendedResolutionLabel(resolution: unknown) {
-  const value = stringValue(resolution)
-  if (value === 'manual_individual_review') return '手动逐项审阅'
-  if (value === 'batch_review') return '批量审阅'
-  return value
-}
-
-function worldModelChapterRangeLabel(rangeValue: unknown) {
-  const range = recordValue(rangeValue)
-  const start = numberValue(range.start)
-  const end = numberValue(range.end)
-  if (start !== null && end !== null && start !== end) return `第${start}-${end}章`
-  if (start !== null) return chapterIndexLabel(start)
-  if (end !== null) return chapterIndexLabel(end)
-  return ''
 }
 
 function traceAuditStatusLabel(status: unknown) {
@@ -2399,13 +2297,6 @@ function traceAuditEventDetail(event: Record<string, unknown>) {
   if (eventType === 'tool_step' || eventType === 'trace_attached') {
     return traceAuditStatusLabel(event.status)
   }
-  return ''
-}
-
-function countRangeLabel(returned: number | null, total: number | null) {
-  if (returned !== null && total !== null) return `${returned} / ${total}`
-  if (returned !== null) return `${returned}`
-  if (total !== null) return `${total}`
   return ''
 }
 
@@ -3019,87 +2910,10 @@ function missingDependencyTool(value: Record<string, unknown>) {
           :output="worldModelProposalReviewOutput"
         />
 
-        <section
-          v-if="hasWorldModelResolutionPlanProjection"
-          class="agent-run-drawer__world-proposal-resolution"
-          aria-label="World model proposal resolution plan projection"
-        >
-          <h4>世界模型提案解决计划</h4>
-          <dl class="agent-run-drawer__facts">
-            <div>
-              <dt>状态</dt>
-              <dd>{{ worldModelRouteStatusLabel(worldModelResolutionPlanOutput?.status) }}</dd>
-            </div>
-            <div>
-              <dt>确认</dt>
-              <dd>{{ worldModelResolutionConfirmationLabel }}</dd>
-            </div>
-            <div>
-              <dt>应用</dt>
-              <dd>{{ worldModelResolutionAutoApplyLabel }}</dd>
-            </div>
-            <div>
-              <dt>生成</dt>
-              <dd>{{ worldModelResolutionGenerationLabel }}</dd>
-            </div>
-            <div v-if="countRangeLabel(worldModelResolutionReturned, worldModelResolutionTotal)">
-              <dt>返回</dt>
-              <dd>返回 {{ countRangeLabel(worldModelResolutionReturned, worldModelResolutionTotal) }}</dd>
-            </div>
-            <div v-if="worldModelResolutionHighPriorityStepCount !== null">
-              <dt>高优先级</dt>
-              <dd>高优先级步骤 {{ worldModelResolutionHighPriorityStepCount }}</dd>
-            </div>
-            <div v-if="worldModelResolutionBatchStepCount !== null">
-              <dt>批量步骤</dt>
-              <dd>批量步骤 {{ worldModelResolutionBatchStepCount }}</dd>
-            </div>
-            <div v-if="worldModelResolutionHighRiskCount !== null && worldModelResolutionHighRiskCount > 0">
-              <dt>高风险</dt>
-              <dd>高风险 {{ worldModelResolutionHighRiskCount }}</dd>
-            </div>
-            <div v-if="worldModelResolutionMediumRiskCount !== null && worldModelResolutionMediumRiskCount > 0">
-              <dt>中风险</dt>
-              <dd>中风险 {{ worldModelResolutionMediumRiskCount }}</dd>
-            </div>
-            <div v-if="worldModelResolutionLowRiskCount !== null && worldModelResolutionLowRiskCount > 0">
-              <dt>低风险</dt>
-              <dd>低风险 {{ worldModelResolutionLowRiskCount }}</dd>
-            </div>
-            <div v-if="worldModelResolutionIndividualCount !== null && worldModelResolutionIndividualCount > 0">
-              <dt>逐项</dt>
-              <dd>逐项审阅 {{ worldModelResolutionIndividualCount }}</dd>
-            </div>
-            <div v-if="worldModelResolutionBatchCount !== null && worldModelResolutionBatchCount > 0">
-              <dt>批量</dt>
-              <dd>批量审阅 {{ worldModelResolutionBatchCount }}</dd>
-            </div>
-          </dl>
-          <ul
-            v-if="worldModelResolutionRecommendedItems.length"
-            class="agent-run-drawer__tools"
-          >
-            <li
-              v-for="item in worldModelResolutionRecommendedItems"
-              :key="`world-proposal-resolution-action:${item}`"
-            >
-              {{ item }}
-            </li>
-          </ul>
-          <ul
-            v-if="worldModelResolutionStepRows.length"
-            class="agent-run-drawer__planner-signals"
-          >
-            <li
-              v-for="row in worldModelResolutionStepRows"
-              :key="row.key"
-            >
-              <strong>{{ row.title }}</strong>
-              <span v-if="row.meta">{{ row.meta }}</span>
-              <span v-if="row.reason">{{ row.reason }}</span>
-            </li>
-          </ul>
-        </section>
+        <AgentRunWorldModelProposalResolutionPanel
+          v-if="worldModelResolutionPlanOutput"
+          :output="worldModelResolutionPlanOutput"
+        />
 
         <section
           v-if="hasTraceAuditProjection"
@@ -4302,7 +4116,6 @@ function missingDependencyTool(value: Record<string, unknown>) {
 .agent-run-drawer__execution-plan h4,
 .agent-run-drawer__planner h4,
 .agent-run-drawer__memory-loop h4,
-.agent-run-drawer__world-proposal-resolution h4,
 .agent-run-drawer__trace-audit h4,
 .agent-run-drawer__trace-anomaly-trends h4,
 .agent-run-drawer__trace-anomaly-long-run h4,
@@ -4367,15 +4180,6 @@ function missingDependencyTool(value: Record<string, unknown>) {
 }
 
 .agent-run-drawer__memory-loop {
-  display: grid;
-  gap: var(--space-3);
-  padding: var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-bg-secondary);
-}
-
-.agent-run-drawer__world-proposal-resolution {
   display: grid;
   gap: var(--space-3);
   padding: var(--space-3);

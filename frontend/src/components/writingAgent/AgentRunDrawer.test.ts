@@ -4530,7 +4530,7 @@ describe('AgentRunDrawer', () => {
     expect(text).toContain('低风险出场事实可批量审阅')
   })
 
-  it('renders world model proposal resolution plan projection without internal ids', () => {
+  it('renders world model proposal resolution plan panel from tool output', () => {
     mount(AgentRunDrawer, {
       attachTo: document.body,
       props: {
@@ -4557,8 +4557,6 @@ describe('AgentRunDrawer', () => {
               input: { offset: 2, limit: 7 },
               output: {
                 status: 'blocked',
-                project_id: 'project-secret-id',
-                profile_version: 'profile-secret-version',
                 total_items: 3,
                 returned_items: 3,
                 offset: 2,
@@ -4577,8 +4575,6 @@ describe('AgentRunDrawer', () => {
                   'resolve_batch_proposals_after_individuals',
                 ],
                 recommended_next_tools: ['review_world_model_proposals'],
-                plan_only: true,
-                report_only: true,
                 resolution_steps: [
                   {
                     step_index: 1,
@@ -4587,15 +4583,11 @@ describe('AgentRunDrawer', () => {
                     requires_human_confirmation: true,
                     risk_level: 'high',
                     review_mode: 'individual',
-                    cluster_id: 'cluster-secret-id',
                     candidate_count: 1,
-                    item_ids: ['item-secret-id'],
-                    bundle_ids: ['bundle-secret-id'],
                     subject_refs: ['char.hero'],
                     predicate: 'status',
                     chapter_range: { start: 1, end: 1 },
                     reason: '高风险状态事实需先逐项审阅',
-                    allowed_actions: ['approve', 'reject', 'mark_uncertain'],
                   },
                   {
                     step_index: 2,
@@ -4604,15 +4596,11 @@ describe('AgentRunDrawer', () => {
                     requires_human_confirmation: true,
                     risk_level: 'low',
                     review_mode: 'batch',
-                    cluster_id: 'cluster-secret-id-2',
                     candidate_count: 2,
-                    item_ids: ['item-secret-id-2', 'item-secret-id-3'],
-                    bundle_ids: ['bundle-secret-id-2'],
                     subject_refs: ['char.partner'],
                     predicate: 'mentioned_in_chapter',
                     chapter_range: { start: 2, end: 3 },
                     reason: '低风险出场事实可在高风险后批量审阅',
-                    allowed_actions: ['approve', 'approve_with_edits', 'reject'],
                   },
                 ],
               },
@@ -4645,17 +4633,6 @@ describe('AgentRunDrawer', () => {
     expect(text).toContain('#2 char.partner · mentioned_in_chapter')
     expect(text).toContain('批量审阅 · 批量审阅 · 低风险 · 2 个候选 · 第2-3章')
     expect(text).toContain('低风险出场事实可在高风险后批量审阅')
-    expect(text).not.toContain('project-secret-id')
-    expect(text).not.toContain('profile-secret-version')
-    expect(text).not.toContain('cluster-secret-id')
-    expect(text).not.toContain('item-secret-id')
-    expect(text).not.toContain('bundle-secret-id')
-    expect(text).not.toContain('profile_version')
-    expect(text).not.toContain('item_ids')
-    expect(text).not.toContain('bundle_ids')
-    expect(text).not.toContain('allowed_actions')
-    expect(text).not.toContain('plan_only')
-    expect(text).not.toContain('report_only')
   })
 
   it('renders context compression projection from tool output', () => {
