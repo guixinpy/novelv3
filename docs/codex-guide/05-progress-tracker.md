@@ -428,7 +428,7 @@
 - [x] Recommended followup fallback view 可展示 pending confirmation handoff，且 pending-only 计划不会显示“执行后继”自动执行按钮
 - [x] AgentRunDrawer 执行计划进度摘要：展示计划工具数、已执行、已完成、进行中、下一步工具和逐项计划工具状态
 - [x] AgentRunDrawer Memory Tree 投影：展示 inspect_agent_memory_tree 的状态、查询条件、导航模式、推荐展开数、节点列表和项目级会话浏览历史，并可通过自由查询、推荐 drilldown 或返回节点展开发起只读浏览 run；Hermes 已注册 Memory 主工作区，子导航常驻 Memory Tree 面板可切入工作区、直接提交只读搜索 run、按 parent/children 展示当前返回节点层级树、从结果节点发起只读展开并显示当前展开节点，也可从历史入口重新打开对应 run；工作区中带 chapter_index 的节点可跳转并加载正文章节，也可从安全节点标签发起 Retrieval 证据只读 run、Longform Context Summary 只读 run、Memory Activation Plan 只读 run、Knowledge Base Route 只读 run、Post Chapter Memory Capture 写后记忆沉淀规划 run、Trace Audit 章节审计 run 或 Athena 世界模型路由 run；Retrieval Strategy run、Retrieval Strategy Quality run、Retrieval Context run、Longform Context Summary run、Post Chapter Memory Capture run、Memory Activation Plan run、Memory Route run、Knowledge Base Route run、Trace Audit run、World Model Route run、World Model Semantic Check run、World Model Proposal Review run、World Model Proposal Resolution Plan run 与 Memory Tree LLM 候选检查 run 可在 Drawer 展示安全摘要；Memory Tree LLM 候选检查可为多个未物化 ready 候选逐项触发候选摘要 prepare continuation，并展示待物化/已物化安全状态，batch prepare run 可展示逐条候选执行准备并触发对应 execute-with-approval payload，batch execute run 可展示成功/阻塞计数、逐候选章节、创建/更新计数和质量标签；写后记忆捕获候选可在 Drawer 中继续准备知识库候选写入审批，并在待审批写入区显示候选标题、触发已审批执行 payload，执行成功后展示写入结果和推荐下一步工具，并可继续只读检查 Knowledge Base Route
-- [x] AgentRunDrawer 投影拆分约束：ADR-010 已明确 Drawer Shell + Projection Panel + Shared Projector 架构；新增复杂投影优先拆为独立小组件和专属测试，避免继续向 7000 行级 Drawer 主文件堆叠逻辑；Write Gate Coverage 与 Reference Alignment 安全投影已按该约束落地
+- [x] AgentRunDrawer 投影拆分约束：ADR-010 已明确 Drawer Shell + Projection Panel + Shared Projector 架构；新增复杂投影优先拆为独立小组件和专属测试，避免继续向 7000 行级 Drawer 主文件堆叠逻辑；Write Gate Coverage、Reference Alignment 与 Agent Event Projection 安全投影已按该约束落地，Drawer 主文件已降到 7000 行以下
 - [x] AgentRunDrawer preflight 上下文预算投影：展示 preflight_writing 的 context_compression 预算状态、使用率、压缩 preview、推荐后续和压力 issue，同时隐藏 payload/trace 内部字段
 - [x] AgentRunDrawer Trace Anomaly Trends 投影：展示 inspect_agent_trace_anomaly_trends 的趋势状态、运行/受影响/问题/严重度计数、问题类型、baseline window、rate delta、阈值信号、阈值校准、误报/漏报 guard、阈值固化策略、受影响 run 摘要和推荐后续，同时隐藏 project/run/step/trace/context/signal/calibration/policy 内部字段
 - [x] Athena 世界模型面板（实体 + 提案审阅）
@@ -446,6 +446,7 @@
 
 ### 最近完成
 
+- 2026-06-06: `inspect_agent_event_projection` 安全投影按 ADR-010 从 `AgentRunDrawer` 主文件迁出为 `AgentRunEventProjectionPanel`，新增专属脱敏测试覆盖 project/task/run/step/trace id、projection version、trace source 和 selector 隐藏；Drawer 集成测试收窄为面板挂载验证，主文件降到 7000 行以下。
 - 2026-06-06: `inspect_agent_reference_alignment` 安全投影按 ADR-010 从 `AgentRunDrawer` 主文件迁出为 `AgentRunReferenceAlignmentPanel`，新增专属脱敏测试覆盖 source_path/source_refs/module_paths/trace version/pattern id 隐藏；Drawer 集成测试收窄为面板挂载验证，并新增 `agentRunProjection/safeProjection` 共享安全取值 helper。
 - 2026-06-06: `AgentRunDrawer` 新增 Write Gate Coverage 安全投影，并拆出 `AgentRunWriteGateCoveragePanel` 与专属测试；ADR-010 已记录 Drawer Shell + Projection Panel + Shared Projector 架构，Drawer 主文件只保留工具输出定位和组件挂载，后续新增复杂投影应延续小组件拆分，避免继续扩大巨型文件。
 - 2026-06-05: `AgentRunDrawer` 与聊天 action descriptor 新增 Reference Alignment 安全投影，消费 `inspect_agent_reference_alignment` 输出并展示参考项目数、模式数、决策数、能力域、适配工具、模式来源、applied patterns、能力域状态和推荐后续工具，同时隐藏 source_path、source_refs、module_paths、pattern_id 和 trace/version 等内部定位字段。

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import BaseModal from '../base/BaseModal.vue'
+import AgentRunEventProjectionPanel from './AgentRunEventProjectionPanel.vue'
 import AgentRunReferenceAlignmentPanel from './AgentRunReferenceAlignmentPanel.vue'
 import AgentRunWriteGateCoveragePanel from './AgentRunWriteGateCoveragePanel.vue'
 import type { WritingAgentRunDetail } from '../../api/types'
@@ -268,42 +269,6 @@ const agentDogfoodMissingSourceCount = computed(() => (
 const referenceAlignmentOutput = computed(() => latestToolOutput('inspect_agent_reference_alignment'))
 const writeGateCoverageOutput = computed(() => latestToolOutput('inspect_agent_write_gate_coverage'))
 const eventProjectionOutput = computed(() => latestToolOutput('inspect_agent_event_projection'))
-const eventProjectionSummary = computed(() => recordValue(eventProjectionOutput.value?.summary))
-const eventProjectionStatus = computed(() => stringValue(eventProjectionOutput.value?.status))
-const eventProjectionTotalEventCount = computed(() => numberValue(eventProjectionSummary.value.total))
-const eventProjectionEventTypeSummary = computed(() => recordValue(eventProjectionSummary.value.by_event_type))
-const eventProjectionSourceTypeSummary = computed(() => recordValue(eventProjectionSummary.value.by_source_type))
-const eventProjectionBackgroundTaskEventCount = computed(() => (
-  numberValue(eventProjectionSourceTypeSummary.value.background_task)
-))
-const eventProjectionRunEventCount = computed(() => numberValue(eventProjectionSourceTypeSummary.value.writing_agent_run))
-const eventProjectionStepEventCount = computed(() => numberValue(eventProjectionSourceTypeSummary.value.writing_agent_step))
-const eventProjectionToolErrorCount = computed(() => numberValue(eventProjectionEventTypeSummary.value.tool_error))
-const eventProjectionRows = computed(() => (
-  recordList(eventProjectionOutput.value?.events)
-    .slice(0, 6)
-    .map((event, index) => {
-      const chapterIndex = numberValue(event.chapter_index)
-      return {
-        key: `agent-event-projection:${index}`,
-        eventType: eventProjectionEventTypeLabel(event.event_type),
-        sourceType: eventProjectionSourceTypeLabel(event.source_type),
-        toolName: stringValue(event.tool_name),
-        chapterLabel: chapterIndex !== null ? `第${chapterIndex}章` : '',
-        status: eventProjectionStatusLabel(event.status),
-        errorPreview: stringValue(event.error_preview),
-      }
-    })
-    .filter((event) => (
-      event.eventType ||
-      event.sourceType ||
-      event.toolName ||
-      event.chapterLabel ||
-      event.status ||
-      event.errorPreview
-    ))
-))
-const eventProjectionRecommendedTools = computed(() => uniqueStrings(stringList(eventProjectionOutput.value?.recommended_tools)))
 const jobProjectionOutput = computed(() => latestToolOutput('inspect_agent_job_projection'))
 const jobProjectionSummary = computed(() => recordValue(jobProjectionOutput.value?.summary))
 const jobProjectionQueue = computed(() => recordValue(jobProjectionOutput.value?.queue))
@@ -2716,33 +2681,6 @@ function eventProjectionStatusLabel(status: unknown) {
   return value || '未知'
 }
 
-function eventProjectionEventTypeLabel(eventType: unknown) {
-  const value = stringValue(eventType)
-  if (value === 'task_created') return '任务创建'
-  if (value === 'task_started') return '任务开始'
-  if (value === 'task_completed') return '任务完成'
-  if (value === 'task_error') return '任务错误'
-  if (value === 'task_cancelled') return '任务取消'
-  if (value === 'run_created') return '运行创建'
-  if (value === 'run_started') return '运行开始'
-  if (value === 'run_completed') return '运行完成'
-  if (value === 'run_error') return '运行错误'
-  if (value === 'run_blocked') return '运行阻塞'
-  if (value === 'run_cancelled') return '运行取消'
-  if (value === 'tool_started') return '工具开始'
-  if (value === 'tool_completed') return '工具完成'
-  if (value === 'tool_error') return '工具错误'
-  return value || '未知事件'
-}
-
-function eventProjectionSourceTypeLabel(sourceType: unknown) {
-  const value = stringValue(sourceType)
-  if (value === 'background_task') return '后台任务'
-  if (value === 'writing_agent_run') return 'Agent 运行'
-  if (value === 'writing_agent_step') return '工具步骤'
-  return value || '未知来源'
-}
-
 function chapterConflictStatusLabel(status: unknown) {
   const value = stringValue(status)
   if (value === 'reserved') return '已占用'
@@ -3760,70 +3698,10 @@ function missingDependencyTool(value: Record<string, unknown>) {
           :output="writeGateCoverageOutput"
         />
 
-        <section
+        <AgentRunEventProjectionPanel
           v-if="eventProjectionOutput"
-          class="agent-run-drawer__event-projection"
-          aria-label="Agent event projection"
-        >
-          <h4>Agent 事件投影</h4>
-          <dl class="agent-run-drawer__facts">
-            <div v-if="eventProjectionStatus">
-              <dt>状态</dt>
-              <dd>{{ eventProjectionStatusLabel(eventProjectionStatus) }}</dd>
-            </div>
-            <div v-if="eventProjectionTotalEventCount !== null">
-              <dt>事件总数</dt>
-              <dd>{{ eventProjectionTotalEventCount }}</dd>
-            </div>
-            <div v-if="eventProjectionBackgroundTaskEventCount !== null">
-              <dt>后台任务事件</dt>
-              <dd>{{ eventProjectionBackgroundTaskEventCount }}</dd>
-            </div>
-            <div v-if="eventProjectionRunEventCount !== null">
-              <dt>运行事件</dt>
-              <dd>{{ eventProjectionRunEventCount }}</dd>
-            </div>
-            <div v-if="eventProjectionStepEventCount !== null">
-              <dt>工具事件</dt>
-              <dd>{{ eventProjectionStepEventCount }}</dd>
-            </div>
-            <div v-if="eventProjectionToolErrorCount !== null">
-              <dt>工具错误</dt>
-              <dd>{{ eventProjectionToolErrorCount }}</dd>
-            </div>
-          </dl>
-          <ul
-            v-if="eventProjectionRows.length"
-            class="agent-run-drawer__event-rows"
-          >
-            <li
-              v-for="event in eventProjectionRows"
-              :key="event.key"
-            >
-              <div>
-                <strong>{{ event.eventType }}</strong>
-                <span>{{ event.sourceType }}</span>
-              </div>
-              <p>
-                <span v-if="event.toolName">{{ event.toolName }}</span>
-                <span v-if="event.chapterLabel">{{ event.chapterLabel }}</span>
-                <span v-if="event.status">{{ event.status }}</span>
-              </p>
-              <p v-if="event.errorPreview">{{ event.errorPreview }}</p>
-            </li>
-          </ul>
-          <ul
-            v-if="eventProjectionRecommendedTools.length"
-            class="agent-run-drawer__tools"
-          >
-            <li
-              v-for="tool in eventProjectionRecommendedTools"
-              :key="`event-projection-next:${tool}`"
-            >
-              {{ tool }}
-            </li>
-          </ul>
-        </section>
+          :output="eventProjectionOutput"
+        />
 
         <section
           v-if="jobProjectionOutput"
@@ -6682,7 +6560,6 @@ function missingDependencyTool(value: Record<string, unknown>) {
 .agent-run-drawer__context-budget h4,
 .agent-run-drawer__memory-activation h4,
 .agent-run-drawer__memory-route h4,
-.agent-run-drawer__event-projection h4,
 .agent-run-drawer__job-projection h4,
 .agent-run-drawer__chapter-conflict h4,
 .agent-run-drawer__worker-dispatch h4,
@@ -6817,15 +6694,6 @@ function missingDependencyTool(value: Record<string, unknown>) {
 }
 
 .agent-run-drawer__memory-route {
-  display: grid;
-  gap: var(--space-3);
-  padding: var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-bg-secondary);
-}
-
-.agent-run-drawer__event-projection {
   display: grid;
   gap: var(--space-3);
   padding: var(--space-3);
