@@ -432,6 +432,7 @@ Data & Recovery ─── (横切关注点，覆盖所有写入操作)
 
 | 日期 | 模块 | 变更 |
 |------|------|------|
+| 2026-06-06 | Backend Agent Tests | 按 ADR-011 将 `test_writing_agent_runs.py` 中 revision draft API 回归迁出到 `test_writing_agent_runs_revision_draft.py`，并把长篇项目 seed / revision draft approval helper 收敛到 `test_support/writing_agent_run_helpers.py`；旧巨型测试文件净删 340 行 |
 | 2026-06-06 | Frontend Agent UX | 按 ADR-011 将 planner preview 与 route upgrade contract preview 的 Drawer 测试 fixture 迁出到 agentRunFixtures/plannerRuns.ts；AgentRunDrawer.test 主文件降到 3528 行 |
 | 2026-06-06 | Frontend Agent UX | 按 ADR-011 将 recommended followup、recovery preview/execute 与 recommended followup chapter approval 的 Drawer 测试 fixture 迁出到 agentRunFixtures/followupRuns.ts；AgentRunDrawer.test 主文件降到 3639 行 |
 | 2026-06-06 | Frontend Agent UX | 按 ADR-011 将 Post Chapter Memory Capture、Knowledge Base candidate prepare/execute/route continuation 与 Knowledge Base Route 的 Drawer 测试 fixture 迁出到 agentRunFixtures/knowledgeBaseRuns.ts；AgentRunDrawer.test 主文件降到 3988 行 |

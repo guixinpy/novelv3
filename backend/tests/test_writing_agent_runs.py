@@ -15,7 +15,6 @@ from app.models import (
     ProjectProfileVersion,
     RevisionAnnotation,
     RevisionCorrection,
-    Setup,
     Storyline,
     Version,
     WorldFactClaim,
@@ -25,8 +24,12 @@ from app.models import (
     WritingAgentStep,
 )
 from app.schemas.world_proposals import ProposalCandidateFactCreate
-from app.services.writing_agent.memory_provenance_contract import MEMORY_PROVENANCE_REQUIRED_FIELDS
 from app.services.writing_agent.approval_contract import build_agent_plan_approval_contract
+from app.services.writing_agent.memory_provenance_contract import MEMORY_PROVENANCE_REQUIRED_FIELDS
+from test_support.writing_agent_run_helpers import (
+    approved_create_revision_draft_tool as _approved_create_revision_draft_tool,
+    seed_longform_project as _seed_longform_project,
+)
 
 
 def test_writing_agent_run_and_step_persist(client, db_session):
@@ -7944,72 +7947,6 @@ def test_agent_draft_world_model_proposal_resolution_decisions_blocks_followup_g
     assert calls == []
 
 
-def test_agent_create_revision_draft_from_plan_is_non_destructive(client, db_session):
-    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1, 2])
-    chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=2).one()
-    chapter.title = "第2章"
-    chapter.word_count = 3400
-    original_content = chapter.content
-    db_session.commit()
-
-    response = client.post(
-        f"/api/v1/projects/{project.id}/agent-runs",
-        json={
-            "goal": "为第2章创建修订草稿",
-            "tools": [_approved_create_revision_draft_tool(db_session, project.id, chapter_index=2)],
-        },
-    )
-
-    output = response.json()["steps"][0]["output"]
-    chapter_after = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=2).one()
-    revision = db_session.query(ChapterRevision).filter_by(id=output["revision_id"]).one()
-    annotations = db_session.query(RevisionAnnotation).filter_by(revision_id=revision.id).all()
-    corrections = db_session.query(RevisionCorrection).filter_by(revision_id=revision.id).all()
-    assert response.status_code == 200
-    assert response.json()["status"] == "success"
-    assert output["status"] == "drafted"
-    assert output["annotation_count"] >= 2
-    assert output["correction_count"] == 0
-    assert revision.status == "draft"
-    assert revision.result_version_id is None
-    assert corrections == []
-    assert any("[PLAN_ACTION:retitle_chapter]" in item.comment for item in annotations)
-    assert any("[PLAN_ACTION:compress_chapter]" in item.comment for item in annotations)
-    assert chapter_after.content == original_content
-    assert chapter_after.title == "第2章"
-
-
-def test_agent_create_revision_draft_anchors_drift_actions(client, db_session):
-    project = _seed_longform_project(db_session, outline_chapters=[1], generated_chapters=[1])
-    chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=1).one()
-    chapter.title = "黑市雾晶"
-    chapter.content = "苏晚晴低声说，她以前是雾安局研究员。随后她制造幻觉骗过守卫。"
-    chapter.word_count = 2000
-    original_content = chapter.content
-    db_session.commit()
-
-    response = client.post(
-        f"/api/v1/projects/{project.id}/agent-runs",
-        json={
-            "goal": "创建第1章漂移修订草稿",
-            "tools": [_approved_create_revision_draft_tool(db_session, project.id, chapter_index=1)],
-        },
-    )
-
-    output = response.json()["steps"][0]["output"]
-    annotations = db_session.query(RevisionAnnotation).filter_by(revision_id=output["revision_id"]).all()
-    comments = [annotation.comment or "" for annotation in annotations]
-    selected = [annotation.selected_text or "" for annotation in annotations]
-    assert response.status_code == 200
-    assert output["status"] == "drafted"
-    assert output["annotation_count"] == 2
-    assert any("[PLAN_ACTION:fix_character_profile_drift]" in comment for comment in comments)
-    assert any("[PLAN_ACTION:respect_ability_boundary]" in comment for comment in comments)
-    assert any("雾安局研究员" in text for text in selected)
-    assert any("制造幻觉" in text for text in selected)
-    assert db_session.query(ChapterContent).filter_by(id=chapter.id).one().content == original_content
-
-
 def test_agent_apply_planner_revision_patch_updates_chapter_and_versions(client, db_session):
     project = _seed_longform_project(db_session, outline_chapters=[1], generated_chapters=[1])
     chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=1).one()
@@ -9213,178 +9150,6 @@ def test_agent_compress_chapter_to_target_trims_large_over_target_candidate(clie
     assert len(calls) == 1
 
 
-def test_agent_create_revision_draft_reuses_existing_draft(client, db_session):
-    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1, 2])
-    chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=2).one()
-    chapter.title = "第2章"
-    chapter.word_count = 3400
-    db_session.commit()
-
-    first = client.post(
-        f"/api/v1/projects/{project.id}/agent-runs",
-        json={
-            "goal": "为第2章创建修订草稿",
-            "tools": [_approved_create_revision_draft_tool(db_session, project.id, chapter_index=2)],
-        },
-    )
-    second = client.post(
-        f"/api/v1/projects/{project.id}/agent-runs",
-        json={
-            "goal": "再次为第2章创建修订草稿",
-            "tools": [_approved_create_revision_draft_tool(db_session, project.id, chapter_index=2)],
-        },
-    )
-
-    assert first.status_code == 200
-    assert second.status_code == 200
-    first_output = first.json()["steps"][0]["output"]
-    second_output = second.json()["steps"][0]["output"]
-    assert first_output["revision_id"] == second_output["revision_id"]
-    assert db_session.query(ChapterRevision).filter_by(project_id=project.id, chapter_index=2).count() == 1
-    assert second_output["revision_index"] == 1
-
-
-def test_agent_create_revision_draft_does_not_modify_manual_draft(client, db_session):
-    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1, 2])
-    chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=2).one()
-    chapter.title = "第2章"
-    chapter.word_count = 3400
-    revision = ChapterRevision(
-        project_id=project.id,
-        chapter_id=chapter.id,
-        chapter_index=2,
-        revision_index=1,
-        status="draft",
-    )
-    db_session.add(revision)
-    db_session.flush()
-    db_session.add(
-        RevisionAnnotation(
-            revision_id=revision.id,
-            paragraph_index=0,
-            start_offset=0,
-            end_offset=2,
-            selected_text="林深",
-            comment="用户手写批注",
-        )
-    )
-    db_session.add(
-        RevisionCorrection(
-            revision_id=revision.id,
-            paragraph_index=0,
-            original_text="旧句",
-            corrected_text="新句",
-        )
-    )
-    db_session.commit()
-
-    response = client.post(
-        f"/api/v1/projects/{project.id}/agent-runs",
-        json={
-            "goal": "不要覆盖用户手写草稿",
-            "tools": [_approved_create_revision_draft_tool(db_session, project.id, chapter_index=2)],
-        },
-    )
-
-    annotations = db_session.query(RevisionAnnotation).filter_by(revision_id=revision.id).all()
-    corrections = db_session.query(RevisionCorrection).filter_by(revision_id=revision.id).all()
-    assert response.status_code == 200
-    assert response.json()["status"] == "blocked"
-    assert response.json()["steps"][0]["output"]["reason"] == "existing_manual_draft"
-    assert db_session.query(ChapterRevision).filter_by(project_id=project.id, chapter_index=2).count() == 1
-    assert [item.comment for item in annotations] == ["用户手写批注"]
-    assert corrections[0].corrected_text == "新句"
-
-
-def test_agent_create_revision_draft_does_not_compete_with_submitted_revision(client, db_session):
-    project = _seed_longform_project(db_session, outline_chapters=[1, 2], generated_chapters=[1, 2])
-    chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=2).one()
-    chapter.title = "第2章"
-    chapter.word_count = 3400
-    submitted = ChapterRevision(
-        project_id=project.id,
-        chapter_id=chapter.id,
-        chapter_index=2,
-        revision_index=1,
-        status="submitted",
-    )
-    db_session.add(submitted)
-    db_session.commit()
-
-    response = client.post(
-        f"/api/v1/projects/{project.id}/agent-runs",
-        json={
-            "goal": "不要创建竞争修订",
-            "tools": [_approved_create_revision_draft_tool(db_session, project.id, chapter_index=2)],
-        },
-    )
-
-    assert response.status_code == 200
-    assert response.json()["status"] == "blocked"
-    assert response.json()["steps"][0]["output"]["reason"] == "existing_active_revision"
-    revisions = db_session.query(ChapterRevision).filter_by(project_id=project.id, chapter_index=2).all()
-    assert len(revisions) == 1
-    assert revisions[0].id == submitted.id
-    assert revisions[0].status == "submitted"
-
-
-def test_agent_create_revision_draft_skips_ready_chapter(client, db_session):
-    project = _seed_longform_project(db_session, outline_chapters=[1], generated_chapters=[1])
-    chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=1).one()
-    chapter.word_count = 2000
-    db_session.commit()
-
-    response = client.post(
-        f"/api/v1/projects/{project.id}/agent-runs",
-        json={
-            "goal": "检查第1章是否需要修订草稿",
-            "tools": [_approved_create_revision_draft_tool(db_session, project.id, chapter_index=1)],
-        },
-    )
-
-    output = response.json()["steps"][0]["output"]
-    assert response.status_code == 200
-    assert response.json()["status"] == "success"
-    assert output["status"] == "skipped"
-    assert output["reason"] == "no_revision_actions"
-    assert output["revision_id"] is None
-    assert db_session.query(ChapterRevision).filter_by(project_id=project.id).count() == 0
-
-
-def test_agent_create_revision_draft_blocks_followup_generation(client, db_session, monkeypatch):
-    project = _seed_longform_project(db_session, outline_chapters=[1, 2, 3], generated_chapters=[1, 2])
-    chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=2).one()
-    chapter.title = "第2章"
-    chapter.word_count = 3400
-    db_session.commit()
-    calls = []
-
-    async def fake_execute(self, action_type, project_id, *, command_args=None, action_params=None):
-        calls.append(action_type)
-        return {"status": "success", "chapter_index": 3}
-
-    monkeypatch.setattr("app.services.actions.action_execution_service.ActionExecutionService.execute", fake_execute)
-
-    response = client.post(
-        f"/api/v1/projects/{project.id}/agent-runs",
-        json={
-            "goal": "创建第2章修订草稿后尝试生成第3章",
-            "tools": [
-                _approved_create_revision_draft_tool(db_session, project.id, chapter_index=2),
-                {"tool_name": "generate_chapter", "params": {"chapter_index": 3}},
-            ],
-        },
-    )
-
-    payload = response.json()
-    assert response.status_code == 200
-    assert payload["status"] == "blocked"
-    assert payload["steps"][0]["tool_name"] == "execute_create_revision_draft_with_approval"
-    assert payload["steps"][0]["output"]["should_generate_next_chapter"] is False
-    assert len(payload["steps"]) == 1
-    assert calls == []
-
-
 @patch("app.api.outlines.load_api_key", return_value="sk-test")
 @patch("app.api.outlines.ai_service.complete", new_callable=AsyncMock)
 @patch("app.api.outlines.ai_service.parse_json")
@@ -9579,21 +9344,6 @@ def _approved_backfill_outline_gaps_tool(db_session, project_id: str, *, before_
     return {
         "tool_name": "execute_backfill_outline_gaps_with_approval",
         "params": params,
-    }
-
-
-def _approved_create_revision_draft_tool(db_session, project_id: str, *, chapter_index: int) -> dict:
-    from app.services.writing_agent.revision_draft_execution import prepare_create_revision_draft_execution
-
-    prepared = prepare_create_revision_draft_execution(db_session, project_id, chapter_index=chapter_index)
-    return {
-        "tool_name": "execute_create_revision_draft_with_approval",
-        "params": {
-            "chapter_index": chapter_index,
-            "confirm_execute": True,
-            "approval_contract_hash": prepared["agent_plan_approval_contract_hash"],
-            "approval_contract": prepared["agent_plan_approval_contract"],
-        },
     }
 
 
@@ -10296,86 +10046,6 @@ def _apply_world_model_resolution_with_approval(client, project_id: str, decisio
     )
     assert response.status_code == 200
     return response
-
-
-def _seed_longform_project(db_session, *, outline_chapters: list[int], generated_chapters: list[int]) -> Project:
-    project = Project(
-        name="Preflight Novel",
-        genre="都市悬疑",
-        target_chapter_count=600,
-        target_word_count=1200000,
-    )
-    db_session.add(project)
-    db_session.flush()
-    setup = Setup(
-        project_id=project.id,
-        status="generated",
-        world_building={
-            "background": "雾港被记忆异常和雾晶实验影响。",
-            "geography": "故事发生在‘雾港’和‘旧灯塔’，地下实验室藏有‘雾晶核心’。",
-            "society": "‘雾安局’控制异常档案，‘记忆诊所’收容失忆者。",
-            "rules": "雾晶只能放大记忆回声，不能凭空创造真实记忆。",
-        },
-        characters=[
-            {
-                "name": "林深",
-                "personality": "冷静",
-                "background": "私家侦探",
-                "goals": "查清十年前雾灾真相",
-                "character_status": "alive",
-            },
-            {
-                "name": "苏晚晴",
-                "personality": "敏锐",
-                "background": "失踪者家属",
-                "goals": "找到父亲",
-                "character_status": "alive",
-            },
-        ],
-        core_concept={"theme": "记忆与真相", "hook": "雾港会回放被删除的记忆"},
-    )
-    db_session.add(setup)
-    db_session.add(
-        Storyline(
-            project_id=project.id,
-            status="generated",
-            plotlines=[{"name": "主线", "type": "main", "summary": "追查雾港记忆异常", "milestones": []}],
-            foreshadowing=[],
-        )
-    )
-    outline = Outline(
-        project_id=project.id,
-        total_chapters=600,
-        status="generated",
-        chapters=[
-            {
-                "chapter_index": index,
-                "title": f"雾港线索{index}",
-                "summary": f"第{index}章推进雾港记忆异常调查。",
-                "scenes": ["调查现场", "冲突升级"],
-                "characters": ["林深", "苏晚晴"],
-                "purpose": "推进主线",
-            }
-            for index in outline_chapters
-        ],
-        plotlines=[],
-        foreshadowing=[],
-    )
-    db_session.add(outline)
-    for index in generated_chapters:
-        db_session.add(
-            ChapterContent(
-                project_id=project.id,
-                chapter_index=index,
-                title=f"雾港线索{index}",
-                content=f"林深和苏晚晴在雾港旧灯塔调查雾晶核心。第{index}章里，雾安局巡逻队逼近，记忆诊所留下新的证词。",
-                word_count=80,
-                status="generated",
-            )
-        )
-    db_session.commit()
-    db_session.refresh(project)
-    return project
 
 
 def _seed_activation_memories(db_session, project_id: str) -> None:
