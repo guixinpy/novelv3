@@ -6,6 +6,7 @@ import AgentRunEventProjectionPanel from './AgentRunEventProjectionPanel.vue'
 import AgentRunJobProjectionPanel from './AgentRunJobProjectionPanel.vue'
 import AgentRunReferenceAlignmentPanel from './AgentRunReferenceAlignmentPanel.vue'
 import AgentRunRetrievalStrategyPanel from './AgentRunRetrievalStrategyPanel.vue'
+import AgentRunRetrievalStrategyQualityPanel from './AgentRunRetrievalStrategyQualityPanel.vue'
 import AgentRunWorkerDispatchPanel from './AgentRunWorkerDispatchPanel.vue'
 import AgentRunWriteGateCoveragePanel from './AgentRunWriteGateCoveragePanel.vue'
 import type { WritingAgentRunDetail } from '../../api/types'
@@ -455,41 +456,6 @@ const retrievalContextOutput = computed(() => latestToolOutput('search_agent_ret
 const retrievalStrategyOutput = computed(() => latestToolOutput('inspect_agent_retrieval_strategy'))
 const retrievalStrategyQualityOutput = computed(() => latestToolOutput('inspect_agent_retrieval_strategy_quality'))
 const retrievalPrefetchOutput = computed(() => latestToolOutput('inspect_agent_retrieval_prefetch_plan'))
-const retrievalStrategyQuality = computed(() => recordValue(retrievalStrategyQualityOutput.value?.quality))
-const retrievalStrategyQualityStrategy = computed(() => recordValue(retrievalStrategyQualityOutput.value?.strategy))
-const retrievalStrategyQualityFilters = computed(() => recordValue(retrievalStrategyQualityStrategy.value.filters))
-const retrievalStrategyQualityInputs = computed(() => recordValue(retrievalStrategyQualityOutput.value?.inputs))
-const retrievalStrategyQualityStatus = computed(() => (
-  stringValue(retrievalStrategyQuality.value.status) || stringValue(retrievalStrategyQualityOutput.value?.status)
-))
-const retrievalStrategyQualityStatusText = computed(() => (
-  retrievalStrategyQualityStatusLabel(retrievalStrategyQualityStatus.value)
-))
-const retrievalStrategyQualityName = computed(() => retrievalStrategyNameLabel(
-  stringValue(retrievalStrategyQuality.value.strategy_name) || stringValue(retrievalStrategyQualityStrategy.value.name),
-))
-const retrievalStrategyQualityQuery = computed(() => (
-  safeRetrievalStrategyText(retrievalStrategyQualityFilters.value.query) ||
-  safeRetrievalStrategyText(retrievalStrategyQualityInputs.value.query)
-))
-const retrievalStrategyQualityMaxChapterLabel = computed(() => {
-  const chapter = numberValue(retrievalStrategyQualityFilters.value.max_chapter_index)
-  return chapter !== null ? `第${chapter}章前` : ''
-})
-const retrievalStrategyQualityDocuments = computed(() => numberValue(retrievalStrategyQuality.value.retrieval_documents))
-const retrievalStrategyQualityDogfoodOpenFindings = computed(() => (
-  numberValue(retrievalStrategyQuality.value.dogfood_open_findings)
-))
-const retrievalStrategyQualityDogfoodLabel = computed(() => {
-  const evidenceCount = numberValue(retrievalStrategyQuality.value.dogfood_evidence_count)
-  const readyEvidenceCount = numberValue(retrievalStrategyQuality.value.dogfood_ready_evidence_count)
-  if (evidenceCount !== null && readyEvidenceCount !== null) return `Dogfood ${readyEvidenceCount} / ${evidenceCount}`
-  if (evidenceCount !== null) return `Dogfood ${evidenceCount}`
-  return ''
-})
-const retrievalStrategyQualityRecommendedTools = computed(() => (
-  stringList(retrievalStrategyQualityOutput.value?.recommended_next_tools)
-))
 const retrievalPrefetchPlan = computed(() => recordValue(retrievalPrefetchOutput.value?.prefetch_plan))
 const retrievalPrefetchCoverage = computed(() => recordValue(retrievalPrefetchPlan.value.coverage))
 const retrievalPrefetchStrategy = computed(() => recordValue(retrievalPrefetchOutput.value?.strategy))
@@ -2106,7 +2072,6 @@ const hasMemoryLoopProjection = computed(() => Boolean(
   || retrievalContextOutput.value
   || postChapterMemoryOutput.value,
 ))
-const hasRetrievalStrategyQualityProjection = computed(() => Boolean(retrievalStrategyQualityOutput.value))
 const hasRetrievalPrefetchProjection = computed(() => Boolean(retrievalPrefetchOutput.value))
 const hasRetrievalContextProjection = computed(() => Boolean(retrievalContextOutput.value))
 const hasPostChapterMemoryProjection = computed(() => Boolean(postChapterMemoryOutput.value))
@@ -3123,17 +3088,6 @@ function retrievalStrategyNameLabel(name: string) {
   return safeRetrievalStrategyText(name)
 }
 
-function retrievalStrategyQualityStatusLabel(status: string) {
-  if (status === 'needs_dogfood_review') return '需要自吃复核'
-  if (status === 'needs_retrieval_review') return '需要检索复核'
-  if (status === 'ready') return '复核通过'
-  if (status === 'blocked') return '已阻止'
-  if (status === 'completed' || status === 'success') return '完成'
-  if (status === 'failed') return '失败'
-  if (status === 'running') return '进行中'
-  return safeRetrievalStrategyText(status) || '未知'
-}
-
 function retrievalPrefetchStatusLabel(status: string) {
   if (status === 'ready') return '预取就绪'
   if (status === 'blocked') return '已阻止'
@@ -3755,54 +3709,10 @@ function missingDependencyTool(value: Record<string, unknown>) {
           :output="retrievalStrategyOutput"
         />
 
-        <section
-          v-if="hasRetrievalStrategyQualityProjection"
-          class="agent-run-drawer__retrieval-context"
-          aria-label="Agent retrieval strategy quality projection"
-        >
-          <h4>检索策略质量复核</h4>
-          <dl class="agent-run-drawer__facts">
-            <div>
-              <dt>状态</dt>
-              <dd>{{ retrievalStrategyQualityStatusText }}</dd>
-            </div>
-            <div v-if="retrievalStrategyQualityName">
-              <dt>策略</dt>
-              <dd>{{ retrievalStrategyQualityName }}</dd>
-            </div>
-            <div v-if="retrievalStrategyQualityQuery">
-              <dt>查询</dt>
-              <dd>{{ retrievalStrategyQualityQuery }}</dd>
-            </div>
-            <div v-if="retrievalStrategyQualityMaxChapterLabel">
-              <dt>章节窗口</dt>
-              <dd>{{ retrievalStrategyQualityMaxChapterLabel }}</dd>
-            </div>
-            <div v-if="retrievalStrategyQualityDocuments !== null">
-              <dt>检索</dt>
-              <dd>检索文档 {{ retrievalStrategyQualityDocuments }}</dd>
-            </div>
-            <div v-if="retrievalStrategyQualityDogfoodLabel">
-              <dt>Dogfood</dt>
-              <dd>{{ retrievalStrategyQualityDogfoodLabel }}</dd>
-            </div>
-            <div v-if="retrievalStrategyQualityDogfoodOpenFindings !== null">
-              <dt>开放问题</dt>
-              <dd>开放问题 {{ retrievalStrategyQualityDogfoodOpenFindings }}</dd>
-            </div>
-          </dl>
-          <ul
-            v-if="retrievalStrategyQualityRecommendedTools.length"
-            class="agent-run-drawer__tools"
-          >
-            <li
-              v-for="tool in retrievalStrategyQualityRecommendedTools"
-              :key="`retrieval-strategy-quality-next:${tool}`"
-            >
-              {{ tool }}
-            </li>
-          </ul>
-        </section>
+        <AgentRunRetrievalStrategyQualityPanel
+          v-if="retrievalStrategyQualityOutput"
+          :output="retrievalStrategyQualityOutput"
+        />
 
         <section
           v-if="hasRetrievalPrefetchProjection"
