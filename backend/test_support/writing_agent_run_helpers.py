@@ -140,6 +140,66 @@ def approved_generate_chapter_tool(
     return tool
 
 
+def approved_seed_continuity_anchor_proposals_tool(db_session, project_id: str) -> dict:
+    from app.services.writing_agent.continuity_anchor_seed_execution import (
+        prepare_seed_continuity_anchor_proposals_execution,
+    )
+
+    prepared = prepare_seed_continuity_anchor_proposals_execution(db_session, project_id)
+    return {
+        "tool_name": "execute_seed_continuity_anchor_proposals_with_approval",
+        "params": {
+            "confirm_execute": True,
+            "approval_contract_hash": prepared["agent_plan_approval_contract_hash"],
+            "approval_contract": prepared["agent_plan_approval_contract"],
+        },
+    }
+
+
+def prepare_apply_world_model_resolution(client, project_id: str, decisions: list[dict]) -> dict:
+    response = client.post(
+        f"/api/v1/projects/{project_id}/agent-runs",
+        json={
+            "goal": "准备应用世界模型提案决策",
+            "tools": [
+                {
+                    "tool_name": "prepare_apply_world_model_proposal_resolution",
+                    "params": {"decisions": decisions},
+                }
+            ],
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    return response.json()["steps"][0]["output"]
+
+
+def approved_apply_world_model_resolution_tool(client, project_id: str, decisions: list[dict]) -> dict:
+    prepared = prepare_apply_world_model_resolution(client, project_id, decisions)
+    assert prepared["status"] == "approval_required"
+    return {
+        "tool_name": "execute_apply_world_model_proposal_resolution_with_approval",
+        "params": {
+            "decisions": decisions,
+            "confirm_execute": True,
+            "approval_contract_hash": prepared["agent_plan_approval_contract_hash"],
+            "approval_contract": prepared["agent_plan_approval_contract"],
+        },
+    }
+
+
+def apply_world_model_resolution_with_approval(client, project_id: str, decisions: list[dict]):
+    response = client.post(
+        f"/api/v1/projects/{project_id}/agent-runs",
+        json={
+            "goal": "确认应用世界模型提案决策",
+            "tools": [approved_apply_world_model_resolution_tool(client, project_id, decisions)],
+        },
+    )
+    assert response.status_code == 200
+    return response
+
+
 def seed_pending_world_proposal(
     db_session,
     *,

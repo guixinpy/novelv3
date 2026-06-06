@@ -432,6 +432,7 @@ Data & Recovery ─── (横切关注点，覆盖所有写入操作)
 
 | 日期 | 模块 | 变更 |
 |------|------|------|
+| 2026-06-06 | Backend Agent Tests | 按 08 实施架构框架将 world model proposal apply/draft API run 回归迁出到 `test_writing_agent_runs_world_model_proposals.py`，并把 apply approval helper 与 continuity anchor seed approval helper 收敛到 `test_support/writing_agent_run_helpers.py`；旧巨型测试文件从 7304 行降到 6572 行 |
 | 2026-06-06 | Backend Agent Tests | 按 08 实施架构框架将 world model proposal preview API run 回归迁出到 `test_writing_agent_runs_world_model_proposals.py`；旧巨型测试文件从 8541 行降到 7304 行 |
 | 2026-06-06 | Backend Agent Tests | 按 08 实施架构框架将 world model proposal review/plan 只读 API run 回归迁出到 `test_writing_agent_runs_world_model_proposals.py`，并把 generate chapter approval helper 收敛到 `test_support/writing_agent_run_helpers.py`；旧巨型测试文件从 8889 行降到 8541 行 |
 | 2026-06-06 | Backend Agent Tests | 按 08 实施架构框架将 chapter resize 的 pending world proposal guard 回归迁出到 `test_writing_agent_runs_chapter_resize.py`，并把 pending proposal seed helper 收敛到 `test_support/writing_agent_run_helpers.py`；旧巨型测试文件从 9015 行降到 8889 行 |
