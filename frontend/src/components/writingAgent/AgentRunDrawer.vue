@@ -16,6 +16,7 @@ import AgentRunRetrievalContextPanel from './AgentRunRetrievalContextPanel.vue'
 import AgentRunRetrievalPrefetchPanel from './AgentRunRetrievalPrefetchPanel.vue'
 import AgentRunRetrievalStrategyPanel from './AgentRunRetrievalStrategyPanel.vue'
 import AgentRunRetrievalStrategyQualityPanel from './AgentRunRetrievalStrategyQualityPanel.vue'
+import AgentRunTraceAnomalyTrendsPanel from './AgentRunTraceAnomalyTrendsPanel.vue'
 import AgentRunTraceAuditPanel from './AgentRunTraceAuditPanel.vue'
 import AgentRunWorkerDispatchPanel from './AgentRunWorkerDispatchPanel.vue'
 import AgentRunWorldModelProposalResolutionPanel from './AgentRunWorldModelProposalResolutionPanel.vue'
@@ -457,27 +458,6 @@ const traceAnomalyLongRunSamplesOutput = computed(() => (
 const traceAnomalyThresholdReviewOutput = computed(() => (
   latestToolOutput('inspect_agent_trace_anomaly_threshold_review')
 ))
-const traceAnomalyTrend = computed(() => recordValue(traceAnomalyTrendsOutput.value?.trend))
-const traceAnomalyTrendBaseline = computed(() => recordValue(traceAnomalyTrendsOutput.value?.baseline))
-const traceAnomalyTrendComparison = computed(() => recordValue(traceAnomalyTrendsOutput.value?.comparison))
-const traceAnomalyTrendFilters = computed(() => recordValue(traceAnomalyTrendsOutput.value?.filters))
-const traceAnomalyTrendIssueCounts = computed(() => recordValue(traceAnomalyTrend.value.issue_counts))
-const traceAnomalyTrendSeverityCounts = computed(() => recordValue(traceAnomalyTrend.value.severity_counts))
-const traceAnomalyTrendThresholdSignals = computed(() => recordList(traceAnomalyTrendsOutput.value?.threshold_signals))
-const traceAnomalyTrendThresholdConfig = computed(() => recordValue(traceAnomalyTrendsOutput.value?.threshold_config))
-const traceAnomalyTrendCalibration = computed(() => recordValue(traceAnomalyTrendsOutput.value?.calibration))
-const traceAnomalyTrendCalibrationSample = computed(() => recordValue(traceAnomalyTrendCalibration.value.sample))
-const traceAnomalyTrendCalibrationSuggestedThresholds = computed(() => (
-  recordValue(traceAnomalyTrendCalibration.value.suggested_thresholds)
-))
-const traceAnomalyTrendCalibrationFalseNegativeGuard = computed(() => (
-  recordValue(traceAnomalyTrendCalibration.value.false_negative_guard)
-))
-const traceAnomalyTrendCalibrationFalsePositiveGuard = computed(() => (
-  recordValue(traceAnomalyTrendCalibration.value.false_positive_guard)
-))
-const traceAnomalyTrendCalibrationPolicy = computed(() => recordValue(traceAnomalyTrendCalibration.value.policy))
-const traceAnomalyTrendRecommendedTools = computed(() => stringList(traceAnomalyTrendsOutput.value?.recommended_next_tools))
 const traceAnomalyLongRunSampleCollection = computed(() => (
   recordValue(traceAnomalyLongRunSamplesOutput.value?.sample_collection)
 ))
@@ -575,160 +555,6 @@ const traceAnomalyThresholdReviewSkippedDirectWrite = computed(() => (
 ))
 const traceAnomalyThresholdReviewRecommendedTools = computed(() => (
   stringList(traceAnomalyThresholdReviewOutput.value?.recommended_next_tools)
-))
-const traceAnomalyTrendStatus = computed(() => stringValue(traceAnomalyTrend.value.status))
-const traceAnomalyTrendChapterLabel = computed(() => chapterIndexLabel(traceAnomalyTrendFilters.value.chapter_index))
-const traceAnomalyTrendRunCount = computed(() => numberValue(traceAnomalyTrend.value.run_count))
-const traceAnomalyTrendAffectedRunCount = computed(() => numberValue(traceAnomalyTrend.value.affected_run_count))
-const traceAnomalyTrendIssueCount = computed(() => numberValue(traceAnomalyTrend.value.issue_count))
-const traceAnomalyTrendCriticalCount = computed(() => numberValue(traceAnomalyTrendSeverityCounts.value.critical))
-const traceAnomalyTrendWarningCount = computed(() => numberValue(traceAnomalyTrendSeverityCounts.value.warning))
-const traceAnomalyTrendInfoCount = computed(() => numberValue(traceAnomalyTrendSeverityCounts.value.info))
-const traceAnomalyTrendDominantIssueLabel = computed(() => (
-  traceAuditAnomalyCodeLabel(traceAnomalyTrend.value.dominant_issue_code)
-))
-const traceAnomalyTrendBaselineRunCount = computed(() => numberValue(traceAnomalyTrendBaseline.value.run_count))
-const traceAnomalyTrendBaselineAffectedRunCount = computed(() => (
-  numberValue(traceAnomalyTrendBaseline.value.affected_run_count)
-))
-const traceAnomalyTrendAffectedRunRateDeltaLabel = computed(() => (
-  signedPercentLabel(traceAnomalyTrendComparison.value.affected_run_rate_delta)
-))
-const traceAnomalyTrendIssueRateDeltaLabel = computed(() => (
-  signedPercentLabel(traceAnomalyTrendComparison.value.issue_rate_delta)
-))
-const traceAnomalyTrendThresholdConfigLabel = computed(() => (
-  traceAnomalyThresholdConfigLabel(traceAnomalyTrendThresholdConfig.value.status)
-))
-const traceAnomalyTrendCalibrationStatusLabel = computed(() => (
-  traceAnomalyCalibrationStatusLabel(traceAnomalyTrendCalibration.value.status)
-))
-const traceAnomalyTrendCalibrationRecentRunCount = computed(() => (
-  numberValue(traceAnomalyTrendCalibrationSample.value.recent_run_count)
-))
-const traceAnomalyTrendCalibrationBaselineRunCount = computed(() => (
-  numberValue(traceAnomalyTrendCalibrationSample.value.baseline_run_count)
-))
-const traceAnomalyTrendCalibrationCurrentSignalCount = computed(() => (
-  numberValue(traceAnomalyTrendCalibration.value.current_signal_count)
-))
-const traceAnomalyTrendCalibrationSuggestedAffectedThresholdLabel = computed(() => (
-  percentLabel(traceAnomalyTrendCalibrationSuggestedThresholds.value.affected_run_rate_delta)
-))
-const traceAnomalyTrendCalibrationSuggestedCriticalThresholdLabel = computed(() => (
-  percentLabel(traceAnomalyTrendCalibrationSuggestedThresholds.value.critical_issue_rate_delta)
-))
-const traceAnomalyTrendCalibrationPolicyStatusLabel = computed(() => (
-  traceAnomalyPolicyStatusLabel(traceAnomalyTrendCalibrationPolicy.value.status)
-))
-const traceAnomalyTrendCalibrationPolicyDecisionLabel = computed(() => (
-  traceAnomalyPolicyDecisionLabel(traceAnomalyTrendCalibrationPolicy.value.decision)
-))
-const traceAnomalyTrendCalibrationPolicyReviewedRunCount = computed(() => (
-  numberValue(traceAnomalyTrendCalibrationPolicy.value.reviewed_run_count)
-))
-const traceAnomalyTrendCalibrationPolicyMinimumRunCount = computed(() => (
-  numberValue(traceAnomalyTrendCalibrationPolicy.value.minimum_review_run_count)
-))
-const traceAnomalyTrendCalibrationPolicyPromotionLabel = computed(() => (
-  traceAnomalyPolicyPromotionLabel(traceAnomalyTrendCalibrationPolicy.value.promotion_candidate)
-))
-const traceAnomalyTrendIssueRows = computed(() => (
-  Object.entries(traceAnomalyTrendIssueCounts.value)
-    .map(([code, count]) => ({
-      key: `trace-anomaly-trend-issue:${code}`,
-      label: traceAuditAnomalyCodeLabel(code),
-      count: numberValue(count),
-    }))
-    .filter((row) => Boolean(row.label && row.count !== null))
-    .sort((left, right) => (right.count ?? 0) - (left.count ?? 0) || left.label.localeCompare(right.label))
-))
-const traceAnomalyTrendRunRows = computed(() => (
-  recordList(traceAnomalyTrendsOutput.value?.runs)
-    .slice(0, 6)
-    .map((run, index) => {
-      const runIndex = numberValue(run.run_index)
-      const issueCount = numberValue(run.issue_count)
-      const criticalCount = numberValue(run.critical_issue_count)
-      const warningCount = numberValue(run.warning_issue_count)
-      const infoCount = numberValue(run.info_issue_count)
-      const topIssues = stringList(run.top_issue_codes)
-        .map((code) => traceAuditAnomalyCodeLabel(code))
-        .filter(Boolean)
-      return {
-        key: `trace-anomaly-trend-run:${runIndex ?? index}`,
-        title: [runIndex !== null ? `#${runIndex}` : '', safeTraceAuditText(run.goal) || 'Agent run']
-          .filter(Boolean)
-          .join(' '),
-        statusLabel: traceAuditAnomalyStatusLabel(run.anomaly_status),
-        meta: [
-          chapterIndexLabel(run.chapter_index),
-          issueCount !== null ? `问题 ${issueCount}` : '',
-          criticalCount !== null ? `严重 ${criticalCount}` : '',
-          warningCount !== null ? `警告 ${warningCount}` : '',
-          infoCount !== null ? `提示 ${infoCount}` : '',
-          safeTraceAuditText(run.entrypoint),
-          traceAuditStatusLabel(run.status),
-        ].filter(Boolean).join(' · '),
-        issueLabel: topIssues.join(' · '),
-      }
-    })
-    .filter((row) => Boolean(row.title || row.statusLabel || row.meta || row.issueLabel))
-))
-const traceAnomalyTrendThresholdSignalRows = computed(() => (
-  traceAnomalyTrendThresholdSignals.value
-    .slice(0, 5)
-    .map((signal, index) => {
-      const delta = signedPercentLabel(signal.delta)
-      const threshold = percentLabel(signal.threshold)
-      const recent = percentLabel(signal.recent_value)
-      const baseline = percentLabel(signal.baseline_value)
-      return {
-        key: `trace-anomaly-threshold-signal:${index}`,
-        title: safeTraceAuditText(signal.title) || traceAnomalyThresholdSignalLabel(signal.code),
-        severityLabel: traceAuditAnomalySeverityLabel(signal.severity),
-        meta: [
-          delta ? `变化 ${delta}` : '',
-          threshold ? `阈值 ${threshold}` : '',
-          recent ? `当前 ${recent}` : '',
-          baseline ? `基线 ${baseline}` : '',
-        ].filter(Boolean).join(' · '),
-      }
-    })
-    .filter((row) => Boolean(row.title || row.severityLabel || row.meta))
-))
-const traceAnomalyTrendCalibrationGuardRows = computed(() => (
-  [
-    {
-      key: 'trace-anomaly-calibration-fn',
-      title: '漏报 guard',
-      statusLabel: traceAnomalyCalibrationGuardStatusLabel(
-        traceAnomalyTrendCalibrationFalseNegativeGuard.value.status,
-      ),
-      meta: [
-        traceAnomalyCalibrationGuardReasonLabel(traceAnomalyTrendCalibrationFalseNegativeGuard.value.reason),
-        numberValue(traceAnomalyTrendCalibrationFalseNegativeGuard.value.missed_affected_run_count) !== null
-          ? `漏过运行 ${numberValue(traceAnomalyTrendCalibrationFalseNegativeGuard.value.missed_affected_run_count)}`
-          : '',
-        numberValue(traceAnomalyTrendCalibrationFalseNegativeGuard.value.missed_issue_count) !== null
-          ? `漏过问题 ${numberValue(traceAnomalyTrendCalibrationFalseNegativeGuard.value.missed_issue_count)}`
-          : '',
-      ].filter(Boolean).join(' · '),
-    },
-    {
-      key: 'trace-anomaly-calibration-fp',
-      title: '误报 guard',
-      statusLabel: traceAnomalyCalibrationGuardStatusLabel(
-        traceAnomalyTrendCalibrationFalsePositiveGuard.value.status,
-      ),
-      meta: [
-        traceAnomalyCalibrationGuardReasonLabel(traceAnomalyTrendCalibrationFalsePositiveGuard.value.reason),
-        numberValue(traceAnomalyTrendCalibrationFalsePositiveGuard.value.info_only_signal_count) !== null
-          ? `提示信号 ${numberValue(traceAnomalyTrendCalibrationFalsePositiveGuard.value.info_only_signal_count)}`
-          : '',
-      ].filter(Boolean).join(' · '),
-    },
-  ].filter((row) => Boolean(row.statusLabel || row.meta))
 ))
 const postChapterMemoryOutput = computed(() => latestToolOutput('plan_post_chapter_memory_capture'))
 const postChapterMemorySummary = computed(() => recordValue(postChapterMemoryOutput.value?.summary))
@@ -1315,21 +1141,6 @@ const hasMemoryLoopProjection = computed(() => Boolean(
   || retrievalContextOutput.value
   || postChapterMemoryOutput.value,
 ))
-const hasTraceAnomalyTrendsProjection = computed(() => Boolean(
-  traceAnomalyTrendsOutput.value &&
-  (
-    traceAnomalyTrendStatus.value ||
-    traceAnomalyTrendRunCount.value !== null ||
-    traceAnomalyTrendBaselineRunCount.value !== null ||
-    traceAnomalyTrendIssueRows.value.length ||
-    traceAnomalyTrendRunRows.value.length ||
-    traceAnomalyTrendThresholdSignalRows.value.length ||
-    traceAnomalyTrendThresholdConfigLabel.value ||
-    traceAnomalyTrendCalibrationStatusLabel.value ||
-    traceAnomalyTrendCalibrationGuardRows.value.length ||
-    traceAnomalyTrendCalibrationPolicyStatusLabel.value
-  ),
-))
 const hasTraceAnomalyLongRunSamplesProjection = computed(() => Boolean(
   traceAnomalyLongRunSamplesOutput.value &&
   (
@@ -1605,13 +1416,6 @@ function percentLabel(value: unknown) {
   return `${Math.round(numericValue * 100)}%`
 }
 
-function signedPercentLabel(value: unknown) {
-  const numericValue = numberValue(value)
-  if (numericValue === null) return ''
-  const percent = Math.round(numericValue * 100)
-  return `${percent > 0 ? '+' : ''}${percent}%`
-}
-
 function agentProfileLabel(profile: unknown) {
   const displayName = stringValue(agentProfileDefinition.value.display_name)
   if (displayName) return displayName
@@ -1876,99 +1680,6 @@ function traceAuditStatusLabel(status: unknown) {
   if (value === 'cancelled') return '已取消'
   if (value === 'needs_attention') return '需处理'
   return value || '未知'
-}
-
-function traceAuditAnomalyStatusLabel(status: unknown) {
-  const value = stringValue(status)
-  if (value === 'clear') return '正常'
-  if (value === 'informational') return '提示'
-  if (value === 'needs_attention') return '需处理'
-  return traceAuditStatusLabel(value)
-}
-
-function traceAuditAnomalySeverityLabel(severity: unknown) {
-  const value = stringValue(severity)
-  if (value === 'critical') return '严重'
-  if (value === 'warning') return '警告'
-  if (value === 'info') return '提示'
-  return safeTraceAuditText(value)
-}
-
-function traceAuditAnomalyCodeLabel(code: unknown) {
-  const value = stringValue(code)
-  if (value === 'failed_tool_step') return '工具步骤失败'
-  if (value === 'failed_model_trace') return '模型 Trace 失败'
-  if (value === 'missing_trace_binding') return '缺少 Trace 绑定'
-  if (value === 'planned_tool_not_executed') return '计划工具未执行'
-  if (value === 'missing_result_message') return '结果消息缺失'
-  if (value === 'truncated_context_block') return '上下文块已截断'
-  return safeTraceAuditText(value)
-}
-
-function traceAnomalyThresholdSignalLabel(code: unknown) {
-  const value = stringValue(code)
-  if (value === 'affected_run_rate_spike') return '受影响运行率升高'
-  if (value === 'critical_issue_rate_spike') return '严重异常率升高'
-  return safeTraceAuditText(value)
-}
-
-function traceAnomalyThresholdConfigLabel(status: unknown) {
-  const value = stringValue(status)
-  if (value === 'configured') return '项目配置'
-  if (value === 'partial') return '部分配置'
-  if (value === 'default') return '内置默认'
-  return ''
-}
-
-function traceAnomalyCalibrationStatusLabel(status: unknown) {
-  const value = stringValue(status)
-  if (value === 'needs_tuning') return '需要调参'
-  if (value === 'calibrated') return '已校准'
-  if (value === 'insufficient_data') return '样本不足'
-  return traceAuditStatusLabel(value)
-}
-
-function traceAnomalyCalibrationGuardStatusLabel(status: unknown) {
-  const value = stringValue(status)
-  if (value === 'triggered') return '触发'
-  if (value === 'passed') return '通过'
-  if (value === 'skipped') return '跳过'
-  return traceAuditStatusLabel(value)
-}
-
-function traceAnomalyCalibrationGuardReasonLabel(reason: unknown) {
-  const value = stringValue(reason)
-  if (value === 'recent_anomalies_below_current_threshold') return '近期异常低于当前阈值'
-  if (value === 'threshold_signal_has_only_info_anomalies') return '仅提示级异常触发'
-  if (value === 'threshold_signal_present') return '阈值信号已触发'
-  if (value === 'no_threshold_signal') return '无阈值信号'
-  if (value === 'no_actionable_anomaly') return '无可行动异常'
-  if (value === 'actionable_threshold_signal') return '可行动阈值信号'
-  if (value === 'insufficient_window_data') return '样本不足'
-  return ''
-}
-
-function traceAnomalyPolicyStatusLabel(status: unknown) {
-  const value = stringValue(status)
-  if (value === 'review_required') return '需复核'
-  if (value === 'eligible_for_promotion') return '可固化'
-  if (value === 'collecting_samples') return '收集样本'
-  return traceAuditStatusLabel(value)
-}
-
-function traceAnomalyPolicyDecisionLabel(decision: unknown) {
-  const value = stringValue(decision)
-  if (value === 'lower_affected_run_rate_delta_threshold') return '降低异常阈值'
-  if (value === 'raise_affected_run_rate_delta_threshold') return '提高异常阈值'
-  if (value === 'keep_current_thresholds') return '保留当前阈值'
-  if (value === 'collect_more_samples') return '继续收集样本'
-  return ''
-}
-
-function traceAnomalyPolicyPromotionLabel(value: unknown) {
-  if (value === true) return '可固化'
-  if (value === false) return '不可固化'
-  return ''
 }
 
 function traceAnomalyLongRunSampleStatusLabel(status: unknown) {
@@ -2625,182 +2336,10 @@ function missingDependencyTool(value: Record<string, unknown>) {
           :output="traceAuditOutput"
         />
 
-        <section
-          v-if="hasTraceAnomalyTrendsProjection"
-          class="agent-run-drawer__trace-anomaly-trends"
-          aria-label="Trace anomaly trends projection"
-        >
-          <h4>Trace 异常趋势</h4>
-          <dl class="agent-run-drawer__facts">
-            <div v-if="traceAnomalyTrendStatus">
-              <dt>状态</dt>
-              <dd>{{ traceAuditAnomalyStatusLabel(traceAnomalyTrendStatus) }}</dd>
-            </div>
-            <div v-if="traceAnomalyTrendChapterLabel">
-              <dt>章节</dt>
-              <dd>{{ traceAnomalyTrendChapterLabel }}</dd>
-            </div>
-            <div v-if="traceAnomalyTrendRunCount !== null">
-              <dt>运行</dt>
-              <dd>运行 {{ traceAnomalyTrendRunCount }}</dd>
-            </div>
-            <div v-if="traceAnomalyTrendAffectedRunCount !== null">
-              <dt>受影响</dt>
-              <dd>受影响 {{ traceAnomalyTrendAffectedRunCount }}</dd>
-            </div>
-            <div v-if="traceAnomalyTrendIssueCount !== null">
-              <dt>问题</dt>
-              <dd>问题 {{ traceAnomalyTrendIssueCount }}</dd>
-            </div>
-            <div v-if="traceAnomalyTrendCriticalCount !== null">
-              <dt>严重</dt>
-              <dd>严重 {{ traceAnomalyTrendCriticalCount }}</dd>
-            </div>
-            <div v-if="traceAnomalyTrendWarningCount !== null">
-              <dt>警告</dt>
-              <dd>警告 {{ traceAnomalyTrendWarningCount }}</dd>
-            </div>
-            <div v-if="traceAnomalyTrendInfoCount !== null">
-              <dt>提示</dt>
-              <dd>提示 {{ traceAnomalyTrendInfoCount }}</dd>
-            </div>
-            <div v-if="traceAnomalyTrendDominantIssueLabel">
-              <dt>主要问题</dt>
-              <dd>主要问题 {{ traceAnomalyTrendDominantIssueLabel }}</dd>
-            </div>
-            <div v-if="traceAnomalyTrendBaselineRunCount !== null">
-              <dt>基线运行</dt>
-              <dd>基线运行 {{ traceAnomalyTrendBaselineRunCount }}</dd>
-            </div>
-            <div v-if="traceAnomalyTrendBaselineAffectedRunCount !== null">
-              <dt>基线受影响</dt>
-              <dd>基线受影响 {{ traceAnomalyTrendBaselineAffectedRunCount }}</dd>
-            </div>
-            <div v-if="traceAnomalyTrendAffectedRunRateDeltaLabel">
-              <dt>异常率</dt>
-              <dd>异常率 {{ traceAnomalyTrendAffectedRunRateDeltaLabel }}</dd>
-            </div>
-            <div v-if="traceAnomalyTrendIssueRateDeltaLabel">
-              <dt>问题率</dt>
-              <dd>问题率 {{ traceAnomalyTrendIssueRateDeltaLabel }}</dd>
-            </div>
-            <div v-if="traceAnomalyTrendThresholdConfigLabel">
-              <dt>阈值来源</dt>
-              <dd>{{ traceAnomalyTrendThresholdConfigLabel }}</dd>
-            </div>
-          </dl>
-          <ul
-            v-if="traceAnomalyTrendThresholdSignalRows.length"
-            class="agent-run-drawer__planner-signals"
-          >
-            <li
-              v-for="row in traceAnomalyTrendThresholdSignalRows"
-              :key="row.key"
-            >
-              <strong>{{ row.title }}</strong>
-              <span>{{ [row.severityLabel, row.meta].filter(Boolean).join(' · ') }}</span>
-            </li>
-          </ul>
-          <dl
-            v-if="traceAnomalyTrendCalibrationStatusLabel || traceAnomalyTrendCalibrationCurrentSignalCount !== null"
-            class="agent-run-drawer__facts"
-          >
-            <div v-if="traceAnomalyTrendCalibrationStatusLabel">
-              <dt>校准</dt>
-              <dd>{{ traceAnomalyTrendCalibrationStatusLabel }}</dd>
-            </div>
-            <div
-              v-if="
-                traceAnomalyTrendCalibrationRecentRunCount !== null &&
-                traceAnomalyTrendCalibrationBaselineRunCount !== null
-              "
-            >
-              <dt>样本</dt>
-              <dd>样本 {{ traceAnomalyTrendCalibrationRecentRunCount }}/{{ traceAnomalyTrendCalibrationBaselineRunCount }}</dd>
-            </div>
-            <div v-if="traceAnomalyTrendCalibrationCurrentSignalCount !== null">
-              <dt>当前信号</dt>
-              <dd>当前信号 {{ traceAnomalyTrendCalibrationCurrentSignalCount }}</dd>
-            </div>
-            <div v-if="traceAnomalyTrendCalibrationSuggestedAffectedThresholdLabel">
-              <dt>建议异常阈值</dt>
-              <dd>建议异常阈值 {{ traceAnomalyTrendCalibrationSuggestedAffectedThresholdLabel }}</dd>
-            </div>
-            <div v-if="traceAnomalyTrendCalibrationSuggestedCriticalThresholdLabel">
-              <dt>建议严重阈值</dt>
-              <dd>建议严重阈值 {{ traceAnomalyTrendCalibrationSuggestedCriticalThresholdLabel }}</dd>
-            </div>
-            <div v-if="traceAnomalyTrendCalibrationPolicyStatusLabel">
-              <dt>固化策略</dt>
-              <dd>{{ traceAnomalyTrendCalibrationPolicyStatusLabel }}</dd>
-            </div>
-            <div v-if="traceAnomalyTrendCalibrationPolicyDecisionLabel">
-              <dt>策略决策</dt>
-              <dd>{{ traceAnomalyTrendCalibrationPolicyDecisionLabel }}</dd>
-            </div>
-            <div
-              v-if="
-                traceAnomalyTrendCalibrationPolicyReviewedRunCount !== null &&
-                traceAnomalyTrendCalibrationPolicyMinimumRunCount !== null
-              "
-            >
-              <dt>复核样本</dt>
-              <dd>复核样本 {{ traceAnomalyTrendCalibrationPolicyReviewedRunCount }}/{{ traceAnomalyTrendCalibrationPolicyMinimumRunCount }}</dd>
-            </div>
-            <div v-if="traceAnomalyTrendCalibrationPolicyPromotionLabel">
-              <dt>固化候选</dt>
-              <dd>{{ traceAnomalyTrendCalibrationPolicyPromotionLabel }}</dd>
-            </div>
-          </dl>
-          <ul
-            v-if="traceAnomalyTrendCalibrationGuardRows.length"
-            class="agent-run-drawer__planner-signals"
-          >
-            <li
-              v-for="row in traceAnomalyTrendCalibrationGuardRows"
-              :key="row.key"
-            >
-              <strong>{{ row.title }}</strong>
-              <span>{{ [row.statusLabel, row.meta].filter(Boolean).join(' · ') }}</span>
-            </li>
-          </ul>
-          <ul
-            v-if="traceAnomalyTrendIssueRows.length"
-            class="agent-run-drawer__execution-tools"
-          >
-            <li
-              v-for="row in traceAnomalyTrendIssueRows"
-              :key="row.key"
-            >
-              <span>{{ row.label }}</span>
-              <strong>{{ row.count }}</strong>
-            </li>
-          </ul>
-          <ul
-            v-if="traceAnomalyTrendRunRows.length"
-            class="agent-run-drawer__planner-signals"
-          >
-            <li
-              v-for="row in traceAnomalyTrendRunRows"
-              :key="row.key"
-            >
-              <strong>{{ row.title }}</strong>
-              <span>{{ [row.statusLabel, row.meta].filter(Boolean).join(' · ') }}</span>
-              <span v-if="row.issueLabel">{{ row.issueLabel }}</span>
-            </li>
-          </ul>
-          <ul
-            v-if="traceAnomalyTrendRecommendedTools.length"
-            class="agent-run-drawer__tools"
-          >
-            <li
-              v-for="toolName in traceAnomalyTrendRecommendedTools"
-              :key="toolName"
-            >
-              {{ toolName }}
-            </li>
-          </ul>
-        </section>
+        <AgentRunTraceAnomalyTrendsPanel
+          v-if="traceAnomalyTrendsOutput"
+          :output="traceAnomalyTrendsOutput"
+        />
 
         <section
           v-if="hasTraceAnomalyLongRunSamplesProjection"
@@ -3560,7 +3099,6 @@ function missingDependencyTool(value: Record<string, unknown>) {
 .agent-run-drawer__execution-plan h4,
 .agent-run-drawer__planner h4,
 .agent-run-drawer__memory-loop h4,
-.agent-run-drawer__trace-anomaly-trends h4,
 .agent-run-drawer__trace-anomaly-long-run h4,
 .agent-run-drawer__trace-threshold-review h4,
 .agent-run-drawer__knowledge-candidate h4,
@@ -3623,15 +3161,6 @@ function missingDependencyTool(value: Record<string, unknown>) {
 }
 
 .agent-run-drawer__memory-loop {
-  display: grid;
-  gap: var(--space-3);
-  padding: var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-bg-secondary);
-}
-
-.agent-run-drawer__trace-anomaly-trends {
   display: grid;
   gap: var(--space-3);
   padding: var(--space-3);

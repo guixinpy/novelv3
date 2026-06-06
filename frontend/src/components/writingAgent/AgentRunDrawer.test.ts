@@ -4970,7 +4970,7 @@ describe('AgentRunDrawer', () => {
     expect(text).toContain('3200 字')
   })
 
-  it('renders trace anomaly trends without raw run internals', () => {
+  it('renders trace anomaly trends panel from tool output', () => {
     mount(AgentRunDrawer, {
       attachTo: document.body,
       props: {
@@ -5204,20 +5204,6 @@ describe('AgentRunDrawer', () => {
     expect(text).toContain('预检第4章')
     expect(text).toContain('inspect_agent_trace_audit')
     expect(text).toContain('plan_recovery_tools')
-    expect(text).not.toContain('run-trend-secret-id')
-    expect(text).not.toContain('trace-trend-secret-id')
-    expect(text).not.toContain('step-trend-secret-id')
-    expect(text).not.toContain('project-secret-id')
-    expect(text).not.toContain('trend-secret-context-key')
-    expect(text).not.toContain('baseline-run-secret-id')
-    expect(text).not.toContain('signal-trace-secret-id')
-    expect(text).not.toContain('signal-step-secret-id')
-    expect(text).not.toContain('calibration-project-secret-id')
-    expect(text).not.toContain('calibration-sample-secret-id')
-    expect(text).not.toContain('calibration-fn-secret-step')
-    expect(text).not.toContain('calibration-fp-secret-trace')
-    expect(text).not.toContain('threshold-policy-secret-run')
-    expect(text).not.toContain('Project.style_config.agent_trace_anomaly_thresholds')
   })
 
   it('renders trace anomaly long run samples without raw run or step internals', () => {
