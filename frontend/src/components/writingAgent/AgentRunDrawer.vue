@@ -18,6 +18,7 @@ import AgentRunRetrievalStrategyPanel from './AgentRunRetrievalStrategyPanel.vue
 import AgentRunRetrievalStrategyQualityPanel from './AgentRunRetrievalStrategyQualityPanel.vue'
 import AgentRunWorkerDispatchPanel from './AgentRunWorkerDispatchPanel.vue'
 import AgentRunWorldModelRoutePanel from './AgentRunWorldModelRoutePanel.vue'
+import AgentRunWorldModelSemanticCheckPanel from './AgentRunWorldModelSemanticCheckPanel.vue'
 import AgentRunWriteGateCoveragePanel from './AgentRunWriteGateCoveragePanel.vue'
 import type { WritingAgentRunDetail } from '../../api/types'
 
@@ -443,31 +444,6 @@ const memoryRouteOutput = computed(() => latestToolOutput('inspect_agent_memory_
 const knowledgeBaseRouteOutput = computed(() => latestToolOutput('inspect_agent_knowledge_base_route'))
 const worldModelRouteOutput = computed(() => latestToolOutput('inspect_agent_world_model_route'))
 const worldModelSemanticCheckOutput = computed(() => latestToolOutput('inspect_agent_world_model_semantic_check'))
-const worldModelSemanticCheck = computed(() => recordValue(worldModelSemanticCheckOutput.value?.semantic_check))
-const worldModelSemanticFactWindow = computed(() => recordValue(worldModelSemanticCheckOutput.value?.fact_window))
-const worldModelSemanticRecommendedTools = computed(() => stringList(worldModelSemanticCheckOutput.value?.recommended_next_tools))
-const worldModelSemanticChapterLabel = computed(() => chapterIndexLabel(worldModelSemanticCheckOutput.value?.chapter_index))
-const worldModelSemanticSubject = computed(() => safeWorldModelSemanticText(worldModelSemanticCheckOutput.value?.subject_ref))
-const worldModelSemanticReturnedFacts = computed(() => numberValue(worldModelSemanticFactWindow.value.returned_facts))
-const worldModelSemanticTotalFacts = computed(() => numberValue(worldModelSemanticFactWindow.value.total_confirmed_facts))
-const worldModelSemanticFactLimit = computed(() => numberValue(worldModelSemanticFactWindow.value.limit))
-const worldModelSemanticIssueCount = computed(() => (
-  numberValue(worldModelSemanticCheck.value.issue_count) ?? recordList(worldModelSemanticCheckOutput.value?.issues).length
-))
-const worldModelSemanticIssueRows = computed(() => (
-  recordList(worldModelSemanticCheckOutput.value?.issues)
-    .slice(0, 5)
-    .map((issue, index) => ({
-      key: `world-model-semantic-issue:${index}`,
-      code: safeWorldModelSemanticText(issue.code),
-      severity: worldModelSemanticSeverityLabel(issue.severity),
-      subject: safeWorldModelSemanticText(issue.subject_ref),
-      predicate: safeWorldModelSemanticText(issue.predicate),
-      message: safeWorldModelSemanticText(issue.message),
-      evidence: safeWorldModelSemanticText(issue.evidence_excerpt),
-    }))
-    .filter((row) => Boolean(row.code || row.message || row.evidence))
-))
 const worldModelProposalReviewOutput = computed(() => latestToolOutput('review_world_model_proposals'))
 const worldModelProposalReviewRiskCounts = computed(() => recordValue(worldModelProposalReviewOutput.value?.risk_counts))
 const worldModelProposalReviewModeCounts = computed(() => recordValue(worldModelProposalReviewOutput.value?.review_mode_counts))
@@ -1628,7 +1604,6 @@ const hasMemoryLoopProjection = computed(() => Boolean(
   || retrievalContextOutput.value
   || postChapterMemoryOutput.value,
 ))
-const hasWorldModelSemanticCheckProjection = computed(() => Boolean(worldModelSemanticCheckOutput.value))
 const hasWorldModelProposalReviewProjection = computed(() => Boolean(worldModelProposalReviewOutput.value))
 const hasWorldModelResolutionPlanProjection = computed(() => Boolean(worldModelResolutionPlanOutput.value))
 const hasTraceAuditProjection = computed(() => Boolean(traceAuditOutput.value))
@@ -2202,14 +2177,6 @@ function safeWorldModelRouteText(label: unknown) {
   return value.slice(0, 96)
 }
 
-function safeWorldModelSemanticText(label: unknown) {
-  const value = stringValue(label).replace(/\s+/g, ' ')
-  if (!value) return ''
-  if (/[A-Za-z_]+:[A-Za-z0-9_.-]+/.test(value)) return ''
-  if (/(project|profile|fact|claim|trace|prompt)-secret|source_refs?|source_id|evidence_refs?|claim_id|llm_prompt_contract|prompt_contract|template_hash|raw prompt|phase\d+\.world_model_semantic_check|world_profile:/i.test(value)) return ''
-  return value.slice(0, 120)
-}
-
 function safeTraceAuditText(label: unknown) {
   const value = stringValue(label).replace(/\s+/g, ' ')
   if (!value) return ''
@@ -2225,24 +2192,6 @@ function worldModelRouteStatusLabel(status: unknown) {
   if (value === 'completed' || value === 'success') return '已完成'
   if (value === 'missing_profile') return '缺少 Profile'
   return value || '未知'
-}
-
-function worldModelSemanticStatusLabel(status: unknown) {
-  const value = stringValue(status)
-  if (value === 'passed') return '通过'
-  if (value === 'issues_found') return '已发现问题'
-  if (value === 'blocked') return '已阻塞'
-  if (value === 'failed') return '失败'
-  if (value === 'completed' || value === 'success' || value === 'ready') return '已完成'
-  return value || '未知'
-}
-
-function worldModelSemanticSeverityLabel(severity: unknown) {
-  const value = stringValue(severity)
-  if (value === 'error') return '错误'
-  if (value === 'warning') return '警告'
-  if (value === 'info') return '提示'
-  return safeWorldModelSemanticText(value)
 }
 
 function worldModelRiskLabel(risk: unknown) {
@@ -3106,69 +3055,10 @@ function missingDependencyTool(value: Record<string, unknown>) {
           :output="worldModelRouteOutput"
         />
 
-        <section
-          v-if="hasWorldModelSemanticCheckProjection"
-          class="agent-run-drawer__world-semantic-check"
-          aria-label="World model semantic check projection"
-        >
-          <h4>世界模型语义检查</h4>
-          <dl class="agent-run-drawer__facts">
-            <div>
-              <dt>状态</dt>
-              <dd>{{ worldModelSemanticStatusLabel(worldModelSemanticCheck.status) }}</dd>
-            </div>
-            <div v-if="worldModelSemanticIssueCount !== null">
-              <dt>问题</dt>
-              <dd>问题 {{ worldModelSemanticIssueCount }}</dd>
-            </div>
-            <div v-if="worldModelSemanticChapterLabel">
-              <dt>章节</dt>
-              <dd>{{ worldModelSemanticChapterLabel }}</dd>
-            </div>
-            <div v-if="worldModelSemanticSubject">
-              <dt>主体</dt>
-              <dd>{{ worldModelSemanticSubject }}</dd>
-            </div>
-            <div v-if="countRangeLabel(worldModelSemanticReturnedFacts, worldModelSemanticTotalFacts)">
-              <dt>确认事实</dt>
-              <dd>确认事实 {{ countRangeLabel(worldModelSemanticReturnedFacts, worldModelSemanticTotalFacts) }}</dd>
-            </div>
-            <div v-if="worldModelSemanticFactLimit !== null">
-              <dt>事实上限</dt>
-              <dd>检查事实上限 {{ worldModelSemanticFactLimit }}</dd>
-            </div>
-          </dl>
-          <p v-if="safeWorldModelSemanticText(worldModelSemanticCheck.summary)">
-            {{ safeWorldModelSemanticText(worldModelSemanticCheck.summary) }}
-          </p>
-          <ul
-            v-if="worldModelSemanticRecommendedTools.length"
-            class="agent-run-drawer__tools"
-          >
-            <li
-              v-for="tool in worldModelSemanticRecommendedTools"
-              :key="`world-semantic-tool:${tool}`"
-            >
-              {{ tool }}
-            </li>
-          </ul>
-          <ul
-            v-if="worldModelSemanticIssueRows.length"
-            class="agent-run-drawer__planner-signals"
-          >
-            <li
-              v-for="row in worldModelSemanticIssueRows"
-              :key="row.key"
-            >
-              <strong>{{ [row.code, row.severity].filter(Boolean).join(' · ') || '语义问题' }}</strong>
-              <span v-if="[row.subject, row.predicate].filter(Boolean).length">
-                {{ [row.subject, row.predicate].filter(Boolean).join(' · ') }}
-              </span>
-              <span v-if="row.message">{{ row.message }}</span>
-              <span v-if="row.evidence">{{ row.evidence }}</span>
-            </li>
-          </ul>
-        </section>
+        <AgentRunWorldModelSemanticCheckPanel
+          v-if="worldModelSemanticCheckOutput"
+          :output="worldModelSemanticCheckOutput"
+        />
 
         <section
           v-if="hasWorldModelProposalReviewProjection"

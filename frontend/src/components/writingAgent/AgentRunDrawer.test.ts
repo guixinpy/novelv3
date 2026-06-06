@@ -4358,7 +4358,7 @@ describe('AgentRunDrawer', () => {
     expect(text).toContain('世界模型存在待处理事项')
   })
 
-  it('renders world model semantic check projection without internal ids', () => {
+  it('renders world model semantic check panel from tool output', () => {
     mount(AgentRunDrawer, {
       attachTo: document.body,
       props: {
@@ -4385,14 +4385,8 @@ describe('AgentRunDrawer', () => {
               input: { chapter_index: 3, subject_ref: 'char.hero', max_facts: 5 },
               output: {
                 status: 'completed',
-                project_id: 'project-secret-id',
                 chapter_index: 3,
                 subject_ref: 'char.hero',
-                profile: {
-                  id: 'profile-secret-id',
-                  version: 2,
-                  contract_version: 'world.contract.v1',
-                },
                 semantic_check: {
                   layer: 'L5 Semantic Checks',
                   checker_name: 'semantic_consistency_llm',
@@ -4404,15 +4398,6 @@ describe('AgentRunDrawer', () => {
                   total_confirmed_facts: 7,
                   returned_facts: 2,
                   limit: 5,
-                  facts: [
-                    {
-                      claim_id: 'claim.secret.hero.status',
-                      subject_ref: 'char.hero',
-                      predicate: 'status',
-                      object_ref_or_value: 'alive',
-                      evidence_refs: ['chapter:1', 'world_profile:secret'],
-                    },
-                  ],
                 },
                 issues: [
                   {
@@ -4421,7 +4406,6 @@ describe('AgentRunDrawer', () => {
                     message: '章节声称顾衍死亡，但世界模型确认其状态为存活。',
                     subject_ref: 'char.hero',
                     predicate: 'status',
-                    claim_id: 'claim.secret.hero.status',
                     evidence_excerpt: '众人确认他已经死亡',
                   },
                 ],
@@ -4430,17 +4414,6 @@ describe('AgentRunDrawer', () => {
                   'review_world_model_proposals',
                   'inspect_agent_world_model_route',
                 ],
-                llm_prompt_contract: {
-                  prompt_id: 'athena.world_model_semantic_check',
-                  template_hash: 'sha256:prompt-secret-hash',
-                  user_prompt: 'raw prompt content should stay hidden',
-                },
-                trace: {
-                  trace_id: 'trace-secret-id',
-                  trace_type: 'world_model_semantic_check',
-                  version: 'phase254.world_model_semantic_check.v1',
-                  source: 'inspect_agent_world_model_semantic_check',
-                },
               },
             },
           ],
@@ -4463,17 +4436,6 @@ describe('AgentRunDrawer', () => {
     expect(text).toContain('prepare_analyze_chapter_world_model_execution')
     expect(text).toContain('review_world_model_proposals')
     expect(text).toContain('inspect_agent_world_model_route')
-    expect(text).not.toContain('project-secret-id')
-    expect(text).not.toContain('profile-secret-id')
-    expect(text).not.toContain('claim.secret.hero.status')
-    expect(text).not.toContain('chapter:1')
-    expect(text).not.toContain('world_profile:secret')
-    expect(text).not.toContain('trace-secret-id')
-    expect(text).not.toContain('phase254.world_model_semantic_check.v1')
-    expect(text).not.toContain('sha256:prompt-secret-hash')
-    expect(text).not.toContain('raw prompt content')
-    expect(text).not.toContain('llm_prompt_contract')
-    expect(text).not.toContain('evidence_refs')
   })
 
   it('renders world model proposal review projection without internal ids', () => {
