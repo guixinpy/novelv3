@@ -2727,7 +2727,7 @@ describe('AgentRunDrawer', () => {
     expect(document.body.querySelectorAll('[data-testid="memory-tree-llm-candidate-prepare"]')).toHaveLength(0)
   })
 
-  it('renders memory tree LLM candidate batch prepare output and emits per-candidate execute payloads', async () => {
+  it('wires memory tree LLM candidate batch prepare execute payloads', async () => {
     const firstContract = {
       approval: { approval_contract_hash: 'approval-secret-1' },
       resource_binding: { target_id: 'trace-secret-1' },
@@ -2855,23 +2855,6 @@ describe('AgentRunDrawer', () => {
 
     const text = document.body.textContent || ''
     expect(text).toContain('Memory Tree 批量候选准备')
-    expect(text).toContain('等待确认')
-    expect(text).toContain('已准备 2 / 候选 2 / 跳过 0')
-    expect(text).toContain('逐条确认')
-    expect(text).toContain('第2章 灯塔旧回声')
-    expect(text).toContain('质量查询：灯塔旧回声')
-    expect(text).toContain('第2章 空白信来源')
-    expect(text).toContain('质量查询：空白信来源')
-    expect(text).toContain('写入 Memory Tree 候选摘要')
-    expect(text).not.toContain('trace-secret-1')
-    expect(text).not.toContain('trace-secret-2')
-    expect(text).not.toContain('approval-secret-1')
-    expect(text).not.toContain('approval-secret-2')
-    expect(text).not.toContain('candidate_trace_id')
-    expect(text).not.toContain('approval_contract')
-
-    const rows = Array.from(document.body.querySelectorAll('[data-testid="memory-tree-llm-candidate-batch"]'))
-    expect(rows).toHaveLength(2)
     const buttons = Array.from(document.body.querySelectorAll('[data-testid="memory-tree-llm-candidate-batch-execute"]')) as HTMLButtonElement[]
     expect(buttons).toHaveLength(2)
     expect(buttons[0].textContent).toContain('确认候选摘要')

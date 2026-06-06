@@ -8,6 +8,7 @@ import AgentRunJobProjectionPanel from './AgentRunJobProjectionPanel.vue'
 import AgentRunKnowledgeBaseRoutePanel from './AgentRunKnowledgeBaseRoutePanel.vue'
 import AgentRunLongformContextPanel from './AgentRunLongformContextPanel.vue'
 import AgentRunMemoryTreeLlmCandidateBatchExecutePanel from './AgentRunMemoryTreeLlmCandidateBatchExecutePanel.vue'
+import AgentRunMemoryTreeLlmCandidateBatchPreparePanel from './AgentRunMemoryTreeLlmCandidateBatchPreparePanel.vue'
 import AgentRunMemoryActivationPanel from './AgentRunMemoryActivationPanel.vue'
 import AgentRunMemoryRoutePanel from './AgentRunMemoryRoutePanel.vue'
 import AgentRunPostChapterMemoryPanel from './AgentRunPostChapterMemoryPanel.vue'
@@ -551,7 +552,6 @@ const memoryTreeLlmCandidateSummary = computed(() => recordValue(memoryTreeLlmCa
 const memoryTreeLlmCandidateBatchOutput = computed(() => (
   latestToolOutput('prepare_record_agent_memory_tree_llm_candidate_summaries_batch')
 ))
-const memoryTreeLlmCandidateBatchSummary = computed(() => recordValue(memoryTreeLlmCandidateBatchOutput.value?.summary))
 const memoryTreeLlmCandidateBatchExecuteOutput = computed(() => (
   latestToolOutput('execute_record_agent_memory_tree_llm_candidate_summaries_batch_with_approval')
 ))
@@ -608,34 +608,6 @@ const memoryTreeLlmCandidatePrepareCalls = computed(() => (
 const memoryTreeLlmCandidateBatchPreparations = computed(() => (
   recordList(memoryTreeLlmCandidateBatchOutput.value?.candidate_preparations)
 ))
-const memoryTreeLlmCandidateBatchRows = computed(() => (
-  memoryTreeLlmCandidateBatchPreparations.value
-    .map((preparation, index) => {
-      const summaryPlan = recordValue(preparation.summary_plan)
-      const chapterLabel = chapterIndexLabel(summaryPlan.chapter_index)
-      const qualityQuery = stringValue(summaryPlan.quality_query)
-      const executeCall = recordValue(preparation.recommended_next_tool_call)
-      const executeToolLabel = preparedApprovalExecuteToolLabel(stringValue(executeCall.tool_name))
-      return {
-        key: `memory-tree-llm-candidate-batch:${index}`,
-        label: [chapterLabel, qualityQuery].filter(Boolean).join(' ') || `候选 ${index + 1}`,
-        chapterLabel,
-        qualityQuery,
-        executeToolLabel,
-      }
-    })
-    .filter((row) => Boolean(row.label || row.executeToolLabel))
-))
-const memoryTreeLlmCandidateBatchSummaryLabel = computed(() => {
-  const candidateTraces = numberValue(memoryTreeLlmCandidateBatchSummary.value.candidate_traces)
-  const preparedCandidates = numberValue(memoryTreeLlmCandidateBatchSummary.value.prepared_candidates)
-  const skippedCandidates = numberValue(memoryTreeLlmCandidateBatchSummary.value.skipped_candidates)
-  return [
-    `已准备 ${preparedCandidates ?? memoryTreeLlmCandidateBatchRows.value.length}`,
-    `候选 ${candidateTraces ?? memoryTreeLlmCandidateBatchRows.value.length}`,
-    `跳过 ${skippedCandidates ?? 0}`,
-  ].join(' / ')
-})
 function createMemoryTreeReadPayload(
   runId: string,
   planId: string,
@@ -1014,7 +986,6 @@ const hasMemoryLoopProjection = computed(() => Boolean(
 const hasKnowledgeBaseCandidateExecutionProjection = computed(() => Boolean(knowledgeBaseCandidateExecutionOutput.value))
 const hasMemoryTreeProjection = computed(() => Boolean(memoryTreeOutput.value))
 const hasMemoryTreeLlmCandidateProjection = computed(() => Boolean(memoryTreeLlmCandidateOutput.value))
-const hasMemoryTreeLlmCandidateBatchProjection = computed(() => Boolean(memoryTreeLlmCandidateBatchOutput.value))
 const hasRecommendedFollowupPolicy = computed(() => Boolean(
   recommendedFollowupPreview.value &&
   (
@@ -2369,61 +2340,12 @@ function missingDependencyTool(value: Record<string, unknown>) {
           </div>
         </section>
 
-        <section
-          v-if="hasMemoryTreeLlmCandidateBatchProjection"
-          class="agent-run-drawer__memory-tree"
-          aria-label="Memory Tree LLM candidate batch approval"
-        >
-          <h4>Memory Tree 批量候选准备</h4>
-          <dl class="agent-run-drawer__facts">
-            <div>
-              <dt>状态</dt>
-              <dd>{{ memoryTreeStatusLabel(memoryTreeLlmCandidateBatchOutput?.status) }}</dd>
-            </div>
-            <div>
-              <dt>候选</dt>
-              <dd>{{ memoryTreeLlmCandidateBatchSummaryLabel }}</dd>
-            </div>
-            <div>
-              <dt>确认要求</dt>
-              <dd>逐条确认</dd>
-            </div>
-          </dl>
-          <ol
-            v-if="memoryTreeLlmCandidateBatchRows.length"
-            class="agent-run-drawer__memory-tree-nodes"
-          >
-            <li
-              v-for="row in memoryTreeLlmCandidateBatchRows"
-              :key="row.key"
-              data-testid="memory-tree-llm-candidate-batch"
-            >
-              <span class="agent-run-drawer__memory-tree-level">准备</span>
-              <div class="agent-run-drawer__memory-tree-content">
-                <div class="agent-run-drawer__memory-tree-title">
-                  <strong>{{ row.label }}</strong>
-                  <span v-if="row.executeToolLabel">{{ row.executeToolLabel }}</span>
-                </div>
-                <p v-if="row.qualityQuery">质量查询：{{ row.qualityQuery }}</p>
-              </div>
-            </li>
-          </ol>
-          <div
-            v-if="memoryTreeLlmCandidateBatchExecuteActions.length"
-            class="agent-run-drawer__actions"
-          >
-            <button
-              v-for="action in memoryTreeLlmCandidateBatchExecuteActions"
-              :key="action.key"
-              type="button"
-              class="agent-run-drawer__execute"
-              data-testid="memory-tree-llm-candidate-batch-execute"
-              @click="executeMemoryTreeLlmCandidateBatch(action)"
-            >
-              {{ action.label }}
-            </button>
-          </div>
-        </section>
+        <AgentRunMemoryTreeLlmCandidateBatchPreparePanel
+          v-if="memoryTreeLlmCandidateBatchOutput"
+          :output="memoryTreeLlmCandidateBatchOutput"
+          :execute-actions="memoryTreeLlmCandidateBatchExecuteActions"
+          @execute="executeMemoryTreeLlmCandidateBatch"
+        />
 
         <AgentRunMemoryTreeLlmCandidateBatchExecutePanel
           v-if="memoryTreeLlmCandidateBatchExecuteOutput"
