@@ -315,6 +315,61 @@ frontend/src/components/writingAgent/
 
 ---
 
+## ADR-011: Agent 能力纵切与文件规模预算
+
+- **日期**: 2026-06-06
+- **状态**: Accepted
+
+### 上下文
+
+长期 Agent 化推进已经暴露出明显结构风险：少数 Vue 组件和测试文件达到数千行，继续把每个工具的契约解析、脱敏、UI 状态和回归样例堆在同一文件，会让上下文压缩后的恢复成本越来越高，也会削弱后续审计、拆分和验证的可信度。
+
+架构约束不能只停留在“拆某个 Drawer”。后续新增能力需要按业务纵切落地：一个能力从后端 descriptor/adapter/execution，到 planner route、只读审计、前端安全投影和测试，都应该有明确所有权边界。
+
+### 决策
+
+采用 **Capability Slice + Thin Shell + Explicit Budget** 的长期推进框架：
+
+1. 每个 Agent 能力按纵切能力命名和记录，例如 `trace_audit`、`memory_route`、`world_model_proposal_resolution`；实现时优先保持 descriptor、adapter、execution、projection、panel、test 的边界清晰。
+2. Shell 文件只承载组合职责：路由、布局、挂载、通用状态和少量 glue code；不得承载某个能力的详细领域解析。
+3. Projection/Panel 文件承载单一能力的安全摘要和本地标签映射；当同类映射在两个以上能力中复用时，再提取到 shared projector。
+4. 测试按职责拆分：Shell 测试验证挂载和关键入口；能力测试验证字段脱敏、计数、标签、空状态和边界样例；大型 fixture 需要向专属 helper 或 fixture 文件迁移。
+5. 文件规模作为架构健康信号纳入验收：新增或触碰 2000 行以上文件时，本轮改动原则上不得让该文件净增长；若需要新增超过约 50 行能力逻辑，必须先拆出能力文件或说明不可拆原因。
+6. 目标预算不是硬性一次性重写门槛，而是持续迁移方向：Shell 逐步降到 1500 行以下，单个复杂 Panel 优先控制在 600 行级，单个测试文件优先控制在 800 行级；超过预算时下一轮优先拆 projector、fixture 或子面板。
+
+推荐目录形态：
+
+```
+frontend/src/components/writingAgent/
+  AgentRunDrawer.vue                  # Thin shell
+  AgentRunDrawer.test.ts              # Shell integration only
+  agentRunProjection/                 # Shared pure projectors and safe value helpers
+  agentRunPanels/                     # Target home for capability panels once panel count grows
+  agentRunFixtures/                   # Target home for large reusable test fixtures
+
+backend/app/services/agent/
+  descriptors/                        # Tool/action metadata and contracts
+  adapters/                           # Request/response normalization
+  execution/                          # Side effect or read-only implementation
+  projection/                         # Read-only audit/projection view models when shared
+```
+
+### 理由
+
+- 纵切能力能让后续上下文恢复直接定位到某个能力，而不是重新阅读巨型 UI 或 service 文件。
+- Thin Shell 降低 UI 改动的合并冲突和误删风险，能力 Panel 可以独立测试、独立审计。
+- Explicit Budget 把“文件越来越大”变成每轮都能检查的工程信号，而不是等到不可维护后再重写。
+- 预算是迁移压力阀，不是为了追求形式化架构。已有巨型文件继续按触碰范围渐进拆分，避免一次性大重写破坏行为。
+
+### 后果
+
+- 后续提交需要在进度文档中说明本轮能力属于哪个 slice，以及是否触碰超预算文件。
+- 对超预算文件的改动需要优先做到净减少；无法减少时必须补充理由和后续拆分目标。
+- 新增 Agent 能力前先定义 slice 边界和验证标准，再进入代码实现。
+- 当前 Frontend Agent UX 的优先拆分对象是 `AgentRunDrawer.vue`、`AgentRunDrawer.test.ts` 和 Trace Anomaly 系列投影；Trace Audit 已迁出为独立 Panel，并应继续向 fixture/projector 拆分收敛。
+
+---
+
 ## 待记录的决策
 
 以下是尚未正式记录但可能需要记录的决策：
