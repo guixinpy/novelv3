@@ -5,6 +5,7 @@ import AgentRunChapterConflictRecoveryPanel from './AgentRunChapterConflictRecov
 import AgentRunEventProjectionPanel from './AgentRunEventProjectionPanel.vue'
 import AgentRunJobProjectionPanel from './AgentRunJobProjectionPanel.vue'
 import AgentRunReferenceAlignmentPanel from './AgentRunReferenceAlignmentPanel.vue'
+import AgentRunRetrievalStrategyPanel from './AgentRunRetrievalStrategyPanel.vue'
 import AgentRunWorkerDispatchPanel from './AgentRunWorkerDispatchPanel.vue'
 import AgentRunWriteGateCoveragePanel from './AgentRunWriteGateCoveragePanel.vue'
 import type { WritingAgentRunDetail } from '../../api/types'
@@ -454,26 +455,6 @@ const retrievalContextOutput = computed(() => latestToolOutput('search_agent_ret
 const retrievalStrategyOutput = computed(() => latestToolOutput('inspect_agent_retrieval_strategy'))
 const retrievalStrategyQualityOutput = computed(() => latestToolOutput('inspect_agent_retrieval_strategy_quality'))
 const retrievalPrefetchOutput = computed(() => latestToolOutput('inspect_agent_retrieval_prefetch_plan'))
-const retrievalStrategy = computed(() => recordValue(retrievalStrategyOutput.value?.strategy))
-const retrievalStrategyFilters = computed(() => recordValue(retrievalStrategy.value.filters))
-const retrievalStrategyInputs = computed(() => recordValue(retrievalStrategyOutput.value?.inputs))
-const retrievalStrategyStatus = computed(() => stringValue(retrievalStrategyOutput.value?.status))
-const retrievalStrategyName = computed(() => retrievalStrategyNameLabel(stringValue(retrievalStrategy.value.name)))
-const retrievalStrategyQuery = computed(() => (
-  safeRetrievalStrategyText(retrievalStrategyFilters.value.query) ||
-  safeRetrievalStrategyText(retrievalStrategyInputs.value.query)
-))
-const retrievalStrategyLimit = computed(() => (
-  numberValue(retrievalStrategyFilters.value.limit) ?? numberValue(retrievalStrategyInputs.value.limit)
-))
-const retrievalStrategyCandidateLimit = computed(() => (
-  numberValue(retrievalStrategyFilters.value.candidate_limit) ?? numberValue(retrievalStrategyInputs.value.candidate_limit)
-))
-const retrievalStrategyMaxChapterLabel = computed(() => {
-  const chapter = numberValue(retrievalStrategyFilters.value.max_chapter_index)
-  return chapter !== null ? `第${chapter}章前` : ''
-})
-const retrievalStrategyRecommendedTools = computed(() => stringList(retrievalStrategyOutput.value?.recommended_next_tools))
 const retrievalStrategyQuality = computed(() => recordValue(retrievalStrategyQualityOutput.value?.quality))
 const retrievalStrategyQualityStrategy = computed(() => recordValue(retrievalStrategyQualityOutput.value?.strategy))
 const retrievalStrategyQualityFilters = computed(() => recordValue(retrievalStrategyQualityStrategy.value.filters))
@@ -2125,7 +2106,6 @@ const hasMemoryLoopProjection = computed(() => Boolean(
   || retrievalContextOutput.value
   || postChapterMemoryOutput.value,
 ))
-const hasRetrievalStrategyProjection = computed(() => Boolean(retrievalStrategyOutput.value))
 const hasRetrievalStrategyQualityProjection = computed(() => Boolean(retrievalStrategyQualityOutput.value))
 const hasRetrievalPrefetchProjection = computed(() => Boolean(retrievalPrefetchOutput.value))
 const hasRetrievalContextProjection = computed(() => Boolean(retrievalContextOutput.value))
@@ -3770,50 +3750,10 @@ function missingDependencyTool(value: Record<string, unknown>) {
           </ul>
         </section>
 
-        <section
-          v-if="hasRetrievalStrategyProjection"
-          class="agent-run-drawer__retrieval-context"
-          aria-label="Agent retrieval strategy projection"
-        >
-          <h4>检索策略摘要</h4>
-          <dl class="agent-run-drawer__facts">
-            <div>
-              <dt>状态</dt>
-              <dd>{{ executionPlanToolStatusLabel(retrievalStrategyStatus) }}</dd>
-            </div>
-            <div v-if="retrievalStrategyName">
-              <dt>策略</dt>
-              <dd>{{ retrievalStrategyName }}</dd>
-            </div>
-            <div v-if="retrievalStrategyQuery">
-              <dt>查询</dt>
-              <dd>{{ retrievalStrategyQuery }}</dd>
-            </div>
-            <div v-if="retrievalStrategyMaxChapterLabel">
-              <dt>章节窗口</dt>
-              <dd>{{ retrievalStrategyMaxChapterLabel }}</dd>
-            </div>
-            <div v-if="retrievalStrategyLimit !== null">
-              <dt>限制</dt>
-              <dd>限制 {{ retrievalStrategyLimit }}</dd>
-            </div>
-            <div v-if="retrievalStrategyCandidateLimit !== null">
-              <dt>候选</dt>
-              <dd>候选 {{ retrievalStrategyCandidateLimit }}</dd>
-            </div>
-          </dl>
-          <ul
-            v-if="retrievalStrategyRecommendedTools.length"
-            class="agent-run-drawer__tools"
-          >
-            <li
-              v-for="tool in retrievalStrategyRecommendedTools"
-              :key="`retrieval-strategy-next:${tool}`"
-            >
-              {{ tool }}
-            </li>
-          </ul>
-        </section>
+        <AgentRunRetrievalStrategyPanel
+          v-if="retrievalStrategyOutput"
+          :output="retrievalStrategyOutput"
+        />
 
         <section
           v-if="hasRetrievalStrategyQualityProjection"

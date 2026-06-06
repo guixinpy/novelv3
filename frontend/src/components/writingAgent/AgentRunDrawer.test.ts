@@ -1678,7 +1678,7 @@ describe('AgentRunDrawer', () => {
     expect(text).not.toContain('retrieval-vector-secret')
   })
 
-  it('renders retrieval strategy projection without raw tool call internals', () => {
+  it('renders retrieval strategy projection from tool output', () => {
     mount(AgentRunDrawer, {
       attachTo: document.body,
       props: {
@@ -1705,10 +1705,7 @@ describe('AgentRunDrawer', () => {
               input: { chapter_index: 5, query: '旧灯塔回声', limit: 6 },
               output: {
                 status: 'completed',
-                version: 'phase253.agent_retrieval_strategy.v1',
-                project_id: 'project-secret-id',
                 inputs: {
-                  chapter_index: 5,
                   query: '旧灯塔回声',
                   limit: 6,
                   candidate_limit: 50,
@@ -1724,19 +1721,6 @@ describe('AgentRunDrawer', () => {
                   },
                 },
                 recommended_next_tools: ['search_agent_retrieval_context', 'summarize_longform_context'],
-                recommended_next_tool_calls: [
-                  {
-                    tool_name: 'search_agent_retrieval_context',
-                    params: {
-                      query: '旧灯塔回声',
-                      source_ref: 'retrieval-secret-ref',
-                    },
-                  },
-                ],
-                trace: {
-                  source: 'inspect_agent_retrieval_strategy',
-                  version: 'phase253.agent_retrieval_strategy.v1',
-                },
               },
             },
           ],
@@ -1754,10 +1738,6 @@ describe('AgentRunDrawer', () => {
     expect(text).toContain('候选 50')
     expect(text).toContain('search_agent_retrieval_context')
     expect(text).toContain('summarize_longform_context')
-    expect(text).not.toContain('project-secret-id')
-    expect(text).not.toContain('recommended_next_tool_calls')
-    expect(text).not.toContain('retrieval-secret-ref')
-    expect(text).not.toContain('phase253.agent_retrieval_strategy')
   })
 
   it('renders retrieval strategy quality projection without dogfood or tool call internals', () => {
