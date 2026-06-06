@@ -116,6 +116,30 @@ def approved_compress_chapter_to_target_tool(
     }
 
 
+def approved_generate_chapter_tool(
+    db_session,
+    project_id: str,
+    *,
+    chapter_index: int,
+    command_args: str | None = None,
+) -> dict:
+    from app.services.writing_agent.chapter_generation_execution import prepare_generate_chapter_execution
+
+    prepared = prepare_generate_chapter_execution(db_session, project_id, chapter_index=chapter_index)
+    tool = {
+        "tool_name": "execute_generate_chapter_with_approval",
+        "params": {
+            "chapter_index": chapter_index,
+            "confirm_execute": True,
+            "approval_contract_hash": prepared["agent_plan_approval_contract_hash"],
+            "approval_contract": prepared["agent_plan_approval_contract"],
+        },
+    }
+    if command_args is not None:
+        tool["command_args"] = command_args
+    return tool
+
+
 def seed_pending_world_proposal(
     db_session,
     *,
