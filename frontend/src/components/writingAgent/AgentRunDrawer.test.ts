@@ -2569,23 +2569,6 @@ describe('AgentRunDrawer', () => {
 
     const text = document.body.textContent || ''
     expect(text).toContain('Memory Tree 候选摘要')
-    expect(text).toContain('可用')
-    expect(text).toContain('候选 2 / 可准备 2 / 已物化 0')
-    expect(text).toContain('第2章')
-    expect(text).toContain('灯塔旧回声')
-    expect(text).toContain('顾衍保留灯塔旧回声线索')
-    expect(text).toContain('来源 3 / 848 字')
-    expect(text).toContain('质量预检：降级')
-    expect(text).toContain('待物化')
-    expect(text).toContain('空白信来源')
-    expect(text).toContain('空白信来源与灯塔暗道记录形成第二条摘要候选。')
-    expect(text).toContain('来源 2 / 612 字')
-    expect(text).toContain('质量预检：通过')
-    expect(text).not.toContain('trace-secret-1')
-    expect(text).not.toContain('trace-secret-2')
-    expect(text).not.toContain('candidate_trace_id')
-    expect(text).not.toContain('scope_key')
-    expect(text).not.toContain('approval_contract')
 
     const buttons = Array.from(document.body.querySelectorAll('[data-testid="memory-tree-llm-candidate-prepare"]')) as HTMLButtonElement[]
     expect(buttons).toHaveLength(2)
@@ -2719,11 +2702,7 @@ describe('AgentRunDrawer', () => {
     })
 
     const text = document.body.textContent || ''
-    expect(text).toContain('候选 1 / 可准备 0 / 已物化 1')
-    expect(text).toContain('蓝焰证词已经写入 Memory Tree 章级摘要。')
-    expect(text).toContain('已物化')
-    expect(text).not.toContain('trace-materialized-secret')
-    expect(text).not.toContain('scope_key')
+    expect(text).toContain('Memory Tree 候选摘要')
     expect(document.body.querySelectorAll('[data-testid="memory-tree-llm-candidate-prepare"]')).toHaveLength(0)
   })
 

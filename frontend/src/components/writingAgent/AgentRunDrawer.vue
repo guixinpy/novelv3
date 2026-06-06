@@ -7,6 +7,7 @@ import AgentRunEventProjectionPanel from './AgentRunEventProjectionPanel.vue'
 import AgentRunJobProjectionPanel from './AgentRunJobProjectionPanel.vue'
 import AgentRunKnowledgeBaseRoutePanel from './AgentRunKnowledgeBaseRoutePanel.vue'
 import AgentRunLongformContextPanel from './AgentRunLongformContextPanel.vue'
+import AgentRunMemoryTreeLlmCandidatePanel from './AgentRunMemoryTreeLlmCandidatePanel.vue'
 import AgentRunMemoryTreeLlmCandidateBatchExecutePanel from './AgentRunMemoryTreeLlmCandidateBatchExecutePanel.vue'
 import AgentRunMemoryTreeLlmCandidateBatchPreparePanel from './AgentRunMemoryTreeLlmCandidateBatchPreparePanel.vue'
 import AgentRunMemoryActivationPanel from './AgentRunMemoryActivationPanel.vue'
@@ -547,59 +548,12 @@ const memoryTreeNodesById = computed(() => {
   return nodesById
 })
 const memoryTreeLlmCandidateOutput = computed(() => latestToolOutput('inspect_agent_memory_tree_llm_candidates'))
-const memoryTreeLlmCandidateFilters = computed(() => recordValue(memoryTreeLlmCandidateOutput.value?.filters))
-const memoryTreeLlmCandidateSummary = computed(() => recordValue(memoryTreeLlmCandidateOutput.value?.summary))
+const memoryTreeLlmCandidateTraces = computed(() => recordList(memoryTreeLlmCandidateOutput.value?.candidates))
 const memoryTreeLlmCandidateBatchOutput = computed(() => (
   latestToolOutput('prepare_record_agent_memory_tree_llm_candidate_summaries_batch')
 ))
 const memoryTreeLlmCandidateBatchExecuteOutput = computed(() => (
   latestToolOutput('execute_record_agent_memory_tree_llm_candidate_summaries_batch_with_approval')
-))
-const memoryTreeLlmCandidateRows = computed(() => (
-  recordList(memoryTreeLlmCandidateOutput.value?.candidates)
-    .map((candidateTrace, index) => {
-      const candidate = recordValue(candidateTrace.candidate)
-      const summaryTarget = recordValue(candidateTrace.summary_target)
-      const chapterIndex = (
-        numberValue(candidateTrace.chapter_index) ??
-        numberValue(summaryTarget.chapter_index)
-      )
-      const salientTerms = stringList(candidate.salient_terms)
-      const primaryTerm = salientTerms[0] || ''
-      const sourceCount = numberValue(candidateTrace.source_count)
-      const sourceChars = numberValue(candidateTrace.source_chars)
-      const sourceLabel = sourceCount !== null || sourceChars !== null
-        ? `来源 ${sourceCount ?? 0} / ${sourceChars ?? 0} 字`
-        : ''
-      const qualityLabel = memoryTreeLlmCandidateQualityLabel(candidateTrace.quality_precheck_status)
-      const materialization = recordValue(candidateTrace.materialization)
-      const materializationLabel = memoryTreeLlmCandidateMaterializationLabel(materialization.status)
-      return {
-        key: `memory-tree-llm-candidate:${index}`,
-        label: [chapterIndexLabel(chapterIndex), primaryTerm].filter(Boolean).join(' ') || `候选 ${index + 1}`,
-        summary: stringValue(candidate.summary),
-        termsLabel: salientTerms.slice(0, 3).join(' / '),
-        sourceLabel,
-        qualityLabel: qualityLabel ? `质量预检：${qualityLabel}` : '',
-        materializationLabel,
-      }
-    })
-    .filter((row) => Boolean(row.summary || row.termsLabel))
-))
-const memoryTreeLlmCandidateSummaryLabel = computed(() => {
-  const traceCount = numberValue(memoryTreeLlmCandidateSummary.value.candidate_traces)
-  const readyCount = numberValue(memoryTreeLlmCandidateSummary.value.ready_candidates)
-  const pendingCount = numberValue(memoryTreeLlmCandidateSummary.value.pending_candidates)
-  const materializedCount = numberValue(memoryTreeLlmCandidateSummary.value.materialized_candidates)
-  const parts = [
-    `候选 ${traceCount ?? memoryTreeLlmCandidateRows.value.length}`,
-    `可准备 ${pendingCount ?? readyCount ?? memoryTreeLlmCandidateRows.value.length}`,
-  ]
-  if (materializedCount !== null) parts.push(`已物化 ${materializedCount}`)
-  return parts.join(' / ')
-})
-const memoryTreeLlmCandidateChapterLabel = computed(() => (
-  chapterIndexLabel(memoryTreeLlmCandidateFilters.value.chapter_index)
 ))
 const memoryTreeLlmCandidatePrepareCalls = computed(() => (
   toolRequestList(memoryTreeLlmCandidateOutput.value?.recommended_next_tool_calls)
@@ -816,16 +770,23 @@ const memoryTreeLlmCandidatePrepareActions = computed<PlannerContinuationAction[
   if (!runId || props.run?.status !== 'success') return []
   return memoryTreeLlmCandidatePrepareCalls.value.map((call, index) => {
     const params = recordValue(call.params)
-    const row = memoryTreeLlmCandidateRows.value[index]
     const qualityQuery = stringValue(params.quality_query)
-    const chapterLabel = chapterIndexLabel(params.quality_chapter_index) || memoryTreeLlmCandidateChapterLabel.value
-    const candidateLabel = [chapterLabel, qualityQuery || row?.termsLabel || row?.label]
+    const candidateTrace = memoryTreeLlmCandidateTraces.value[index]
+    const candidate = recordValue(candidateTrace.candidate)
+    const termsLabel = stringList(candidate.salient_terms).slice(0, 3).join(' / ')
+    const candidateTraceLabel = memoryTreeLlmCandidateTraceLabel(candidateTrace, index)
+    const outputFilters = recordValue(memoryTreeLlmCandidateOutput.value?.filters)
+    const chapterLabel = (
+      chapterIndexLabel(params.quality_chapter_index) ||
+      chapterIndexLabel(outputFilters.chapter_index)
+    )
+    const candidateLabel = [chapterLabel, qualityQuery || termsLabel || candidateTraceLabel]
       .filter(Boolean)
       .join(' ')
     const planId = `memory-tree-llm-candidate-prepare:${index}`
     return {
       key: planId,
-      label: `准备候选摘要：${qualityQuery || row?.label || `候选 ${index + 1}`}`,
+      label: `准备候选摘要：${qualityQuery || candidateTraceLabel || `候选 ${index + 1}`}`,
       payload: createMemoryTreeLlmCandidatePreparePayload(
         runId,
         planId,
@@ -985,7 +946,6 @@ const hasMemoryLoopProjection = computed(() => Boolean(
 ))
 const hasKnowledgeBaseCandidateExecutionProjection = computed(() => Boolean(knowledgeBaseCandidateExecutionOutput.value))
 const hasMemoryTreeProjection = computed(() => Boolean(memoryTreeOutput.value))
-const hasMemoryTreeLlmCandidateProjection = computed(() => Boolean(memoryTreeLlmCandidateOutput.value))
 const hasRecommendedFollowupPolicy = computed(() => Boolean(
   recommendedFollowupPreview.value &&
   (
@@ -1430,29 +1390,23 @@ function memoryTreeNavigationModeLabel(mode: unknown) {
   return value || '未知'
 }
 
-function memoryTreeLlmCandidateQualityLabel(status: unknown) {
-  const value = stringValue(status)
-  if (value === 'ready') return '通过'
-  if (value === 'degraded') return '降级'
-  if (value === 'blocked') return '已阻止'
-  return value
-}
-
-function memoryTreeLlmCandidateMaterializationLabel(status: unknown) {
-  const value = stringValue(status)
-  if (value === 'pending') return '待物化'
-  if (value === 'materialized') return '已物化'
-  if (value === 'hash_mismatch') return '摘要冲突'
-  if (value === 'not_ready') return '未就绪'
-  return value
-}
-
 function safeMemoryTreeDisplayLabel(label: unknown) {
   const value = stringValue(label).replace(/\s+/g, ' ')
   if (!value) return ''
   if (/[A-Za-z_]+:[A-Za-z0-9_-]+/.test(value)) return ''
   if (/source_refs|source_id|approval_contract|approval:|chapter-content-\d+|memory-\d+/i.test(value)) return ''
   return value.slice(0, 64)
+}
+
+function memoryTreeLlmCandidateTraceLabel(candidateTrace: Record<string, unknown>, index: number) {
+  const candidate = recordValue(candidateTrace.candidate)
+  const summaryTarget = recordValue(candidateTrace.summary_target)
+  const chapterIndex = (
+    numberValue(candidateTrace.chapter_index) ??
+    numberValue(summaryTarget.chapter_index)
+  )
+  const primaryTerm = stringList(candidate.salient_terms)[0] || ''
+  return [chapterIndexLabel(chapterIndex), primaryTerm].filter(Boolean).join(' ') || `候选 ${index + 1}`
 }
 
 function safePostMemoryCandidateLabel(label: unknown) {
@@ -2281,64 +2235,12 @@ function missingDependencyTool(value: Record<string, unknown>) {
           </form>
         </section>
 
-        <section
-          v-if="hasMemoryTreeLlmCandidateProjection"
-          class="agent-run-drawer__memory-tree"
-          aria-label="Memory Tree LLM candidates"
-        >
-          <h4>Memory Tree 候选摘要</h4>
-          <dl class="agent-run-drawer__facts">
-            <div>
-              <dt>状态</dt>
-              <dd>{{ memoryTreeStatusLabel(memoryTreeLlmCandidateOutput?.status) }}</dd>
-            </div>
-            <div>
-              <dt>候选</dt>
-              <dd>{{ memoryTreeLlmCandidateSummaryLabel }}</dd>
-            </div>
-            <div v-if="memoryTreeLlmCandidateChapterLabel">
-              <dt>章节</dt>
-              <dd>{{ memoryTreeLlmCandidateChapterLabel }}</dd>
-            </div>
-          </dl>
-          <ol
-            v-if="memoryTreeLlmCandidateRows.length"
-            class="agent-run-drawer__memory-tree-nodes"
-          >
-            <li
-              v-for="row in memoryTreeLlmCandidateRows"
-              :key="row.key"
-              data-testid="memory-tree-llm-candidate"
-            >
-              <span class="agent-run-drawer__memory-tree-level">候选</span>
-              <div class="agent-run-drawer__memory-tree-content">
-                <div class="agent-run-drawer__memory-tree-title">
-                  <strong>{{ row.label }}</strong>
-                  <span v-if="row.sourceLabel">{{ row.sourceLabel }}</span>
-                  <span v-if="row.qualityLabel">{{ row.qualityLabel }}</span>
-                  <span v-if="row.materializationLabel">{{ row.materializationLabel }}</span>
-                </div>
-                <p v-if="row.summary">{{ row.summary }}</p>
-                <p v-if="row.termsLabel">{{ row.termsLabel }}</p>
-              </div>
-            </li>
-          </ol>
-          <div
-            v-if="memoryTreeLlmCandidatePrepareActions.length"
-            class="agent-run-drawer__actions"
-          >
-            <button
-              v-for="action in memoryTreeLlmCandidatePrepareActions"
-              :key="action.key"
-              type="button"
-              class="agent-run-drawer__ghost"
-              data-testid="memory-tree-llm-candidate-prepare"
-              @click="executeMemoryTreeLlmCandidatePrepare(action)"
-            >
-              {{ action.label }}
-            </button>
-          </div>
-        </section>
+        <AgentRunMemoryTreeLlmCandidatePanel
+          v-if="memoryTreeLlmCandidateOutput"
+          :output="memoryTreeLlmCandidateOutput"
+          :prepare-actions="memoryTreeLlmCandidatePrepareActions"
+          @prepare="executeMemoryTreeLlmCandidatePrepare"
+        />
 
         <AgentRunMemoryTreeLlmCandidateBatchPreparePanel
           v-if="memoryTreeLlmCandidateBatchOutput"
