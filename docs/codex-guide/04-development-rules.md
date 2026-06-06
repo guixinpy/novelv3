@@ -24,6 +24,7 @@
 □ 6. 有现成的参考模式可以用吗？（查 [03-参考模式](./03-reference-patterns.md)）
 □ 7. 我需要先写测试吗？（见 §三）
 □ 8. 我是否正在触碰巨型文件或复杂投影？如果是，是否已有拆分/止血方案？（见 §二.7）
+□ 9. 我是否已经按 [08-实施架构框架](./08-implementation-architecture.md) 定义 slice、文件预算和验证闭环？
 ```
 
 ---
@@ -185,6 +186,7 @@ cd backend && .venv/Scripts/python -m pytest tests/ -q
 | 新增/删除/重构模块 | [02-模块清单与状态](./02-module-inventory.md) |
 | 做出影响架构的决策 | [06-架构决策记录](./06-architecture-decisions.md) |
 | 从参考项目中吸收新模式 | [03-参考项目模式映射](./03-reference-patterns.md) |
+| 新增 Agent 能力或触碰巨型文件 | [08-实施架构框架](./08-implementation-architecture.md)、[05-进度追踪](./05-progress-tracker.md) |
 | 发现文档与实际情况不符 | 立即修正相关文档 |
 | 项目目标或范围变更 | [01-愿景与架构目标](./01-vision.md) |
 
@@ -249,6 +251,7 @@ cd backend && .venv/Scripts/python -m pytest tests/ -q
 □ 所有测试通过（pytest + vitest + build）
 □ 新增功能有测试覆盖
 □ 新增 AI 调用有 trace 记录
+□ 触碰超预算文件时已记录净增/净减和后续拆分目标
 □ 文档已更新（至少进度追踪已更新）
 □ 代码已 self-review（检查上述禁止事项）
 □ 提交的 commit 消息清晰描述了改动
