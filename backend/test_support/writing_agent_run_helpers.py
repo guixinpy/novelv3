@@ -43,6 +43,39 @@ def approved_apply_planner_revision_patch_tool(
     }
 
 
+def approved_expand_chapter_to_target_tool(
+    db_session,
+    project_id: str,
+    *,
+    chapter_index: int,
+    min_word_count: int | None = None,
+    extra_instruction: str = "",
+) -> dict:
+    from app.services.writing_agent.chapter_revision_execution import prepare_expand_chapter_to_target_execution
+
+    prepared = prepare_expand_chapter_to_target_execution(
+        db_session,
+        project_id,
+        chapter_index=chapter_index,
+        min_word_count=min_word_count,
+        extra_instruction=extra_instruction,
+    )
+    params = {
+        "chapter_index": chapter_index,
+        "confirm_execute": True,
+        "approval_contract_hash": prepared["agent_plan_approval_contract_hash"],
+        "approval_contract": prepared["agent_plan_approval_contract"],
+    }
+    if min_word_count is not None:
+        params["min_word_count"] = min_word_count
+    if extra_instruction:
+        params["extra_instruction"] = extra_instruction
+    return {
+        "tool_name": "execute_expand_chapter_to_target_with_approval",
+        "params": params,
+    }
+
+
 def seed_longform_project(db_session, *, outline_chapters: list[int], generated_chapters: list[int]) -> Project:
     project = Project(
         name="Preflight Novel",
