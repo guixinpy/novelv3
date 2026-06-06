@@ -42,6 +42,17 @@ import {
   recommendedFollowupProvenanceRun,
   recommendedFollowupWorkerDispatchRun,
 } from './agentRunFixtures/followupRuns'
+import {
+  readPlannerExpectedExecutePayload,
+  readPlannerPreviewRun,
+  routeUpgradeEligibleContractRun,
+  routeUpgradeExpectedApplyPayload,
+  routeUpgradeNotRequiredRun,
+  routeUpgradeStaleContractRun,
+  writePlannerExpectedExecutePayload,
+  writePlannerMissingHashRun,
+  writePlannerPreviewRun,
+} from './agentRunFixtures/plannerRuns'
 
 describe('AgentRunDrawer', () => {
   afterEach(() => {
@@ -975,47 +986,7 @@ describe('AgentRunDrawer', () => {
         open: true,
         loading: false,
         error: '',
-        run: {
-          id: 'run-plan-preview',
-          project_id: 'project-1',
-          goal: '规划审稿第12章',
-          status: 'success',
-          entrypoint: 'manual_debug_run',
-          input: {},
-          output: null,
-          error: null,
-          steps: [
-            {
-              id: 'step-plan',
-              run_id: 'run-plan-preview',
-              project_id: 'project-1',
-              step_index: 1,
-              tool_name: 'plan_writing_agent_run',
-              status: 'success',
-              input: {},
-              output: {
-                status: 'completed',
-                planner_version: 'phase53.context_gate.v1',
-                intent_class: 'review_chapter',
-                chapter_index: 12,
-                approval_contract: { status: 'not_required', write_steps: [] },
-                trace: { plan_id: 'plan:review-12', selected_tools: ['review_chapter_quality'] },
-                tools: [
-                  {
-                    tool_name: 'review_chapter_quality',
-                    params: { chapter_index: 12 },
-                    planner: {
-                      step_id: 'step:review-quality',
-                      plan_id: 'plan:review-12',
-                      mutability: 'read',
-                      requires_confirmation: false,
-                    },
-                  },
-                ],
-              },
-            },
-          ],
-        },
+        run: readPlannerPreviewRun,
       },
     })
 
@@ -1025,98 +996,17 @@ describe('AgentRunDrawer', () => {
 
     await button.click()
 
-    expect(wrapper.emitted('executePlannerPlan')).toEqual([[
-      {
-        sourceRunId: 'run-plan-preview',
-        sourcePlanId: 'plan:review-12',
-        goal: '执行规划工具链：审稿章节',
-        tools: [
-          {
-            tool_name: 'review_chapter_quality',
-            params: { chapter_index: 12 },
-            planner: {
-              step_id: 'step:review-quality',
-              plan_id: 'plan:review-12',
-              mutability: 'read',
-              requires_confirmation: false,
-            },
-          },
-        ],
-        planner: {
-          status: 'completed',
-          planner_version: 'phase53.context_gate.v1',
-          intent_class: 'review_chapter',
-          chapter_index: 12,
-          approval_contract: { status: 'not_required', write_steps: [] },
-          trace: { plan_id: 'plan:review-12', selected_tools: ['review_chapter_quality'] },
-          tools: [
-            {
-              tool_name: 'review_chapter_quality',
-              params: { chapter_index: 12 },
-              planner: {
-                step_id: 'step:review-quality',
-                plan_id: 'plan:review-12',
-                mutability: 'read',
-                requires_confirmation: false,
-              },
-            },
-          ],
-        },
-      },
-    ]])
+    expect(wrapper.emitted('executePlannerPlan')).toEqual([[readPlannerExpectedExecutePayload]])
   })
 
   it('emits a confirmed planner continuation payload when approval contract hash is present', async () => {
-    const approvalContract = {
-      status: 'requires_confirmation',
-      approval: { approval_contract_hash: 'approval:secret' },
-      write_steps: [{ tool_name: 'generate_chapter' }],
-    }
     const wrapper = mount(AgentRunDrawer, {
       attachTo: document.body,
       props: {
         open: true,
         loading: false,
         error: '',
-        run: {
-          id: 'run-plan-write-preview',
-          project_id: 'project-1',
-          goal: '规划生成第2章',
-          status: 'success',
-          entrypoint: 'manual_debug_run',
-          input: {},
-          output: null,
-          error: null,
-          steps: [
-            {
-              id: 'step-plan',
-              run_id: 'run-plan-write-preview',
-              project_id: 'project-1',
-              step_index: 1,
-              tool_name: 'plan_writing_agent_run',
-              status: 'success',
-              input: {},
-              output: {
-                status: 'completed',
-                intent_class: 'continue_next_chapter',
-                approval_contract: approvalContract,
-                trace: { plan_id: 'plan:chapter-2' },
-                tools: [
-                  {
-                    tool_name: 'generate_chapter',
-                    params: { chapter_index: 2 },
-                    planner: {
-                      step_id: 'step:generate-chapter-2',
-                      plan_id: 'plan:chapter-2',
-                      mutability: 'write',
-                      requires_confirmation: true,
-                    },
-                  },
-                ],
-              },
-            },
-          ],
-        },
+        run: writePlannerPreviewRun,
       },
     })
 
@@ -1126,45 +1016,7 @@ describe('AgentRunDrawer', () => {
 
     await button.click()
 
-    expect(wrapper.emitted('executePlannerPlan')).toEqual([[
-      {
-        sourceRunId: 'run-plan-write-preview',
-        sourcePlanId: 'plan:chapter-2',
-        goal: '执行规划工具链：续写章节',
-        tools: [
-          {
-            tool_name: 'generate_chapter',
-            params: { chapter_index: 2 },
-            planner: {
-              step_id: 'step:generate-chapter-2',
-              plan_id: 'plan:chapter-2',
-              mutability: 'write',
-              requires_confirmation: true,
-            },
-          },
-        ],
-        planner: {
-          status: 'completed',
-          intent_class: 'continue_next_chapter',
-          approval_contract: approvalContract,
-          trace: { plan_id: 'plan:chapter-2' },
-          tools: [
-            {
-              tool_name: 'generate_chapter',
-              params: { chapter_index: 2 },
-              planner: {
-                step_id: 'step:generate-chapter-2',
-                plan_id: 'plan:chapter-2',
-                mutability: 'write',
-                requires_confirmation: true,
-              },
-            },
-          ],
-        },
-        approvalContractHash: 'approval:secret',
-        approvalContract,
-      },
-    ]])
+    expect(wrapper.emitted('executePlannerPlan')).toEqual([[writePlannerExpectedExecutePayload]])
   })
 
   it('does not offer direct planner continuation when approval hash is missing', () => {
@@ -1174,38 +1026,7 @@ describe('AgentRunDrawer', () => {
         open: true,
         loading: false,
         error: '',
-        run: {
-          id: 'run-plan-write-preview',
-          project_id: 'project-1',
-          goal: '规划生成设定',
-          status: 'success',
-          entrypoint: 'manual_debug_run',
-          input: {},
-          output: null,
-          error: null,
-          steps: [
-            {
-              id: 'step-plan',
-              run_id: 'run-plan-write-preview',
-              project_id: 'project-1',
-              step_index: 1,
-              tool_name: 'plan_writing_agent_run',
-              status: 'success',
-              input: {},
-              output: {
-                status: 'completed',
-                intent_class: 'setup_project',
-                approval_contract: {
-                  status: 'requires_confirmation',
-                  approval: {},
-                  write_steps: [{ tool_name: 'generate_setup' }],
-                },
-                trace: { plan_id: 'plan:setup' },
-                tools: [{ tool_name: 'generate_setup', params: {} }],
-              },
-            },
-          ],
-        },
+        run: writePlannerMissingHashRun,
       },
     })
 
@@ -2326,35 +2147,7 @@ describe('AgentRunDrawer', () => {
         loading: false,
         error: '',
         pendingActionId: 'action-1',
-        run: {
-          id: 'run-contract',
-          project_id: 'project-1',
-          goal: '生成待确认操作的路由升级审批契约',
-          status: 'success',
-          entrypoint: 'pending_action_safety_action',
-          input: {},
-          output: null,
-          error: null,
-          steps: [
-            {
-              id: 'step-contract',
-              run_id: 'run-contract',
-              project_id: 'project-1',
-              step_index: 1,
-              tool_name: 'preview_pending_action_route_approval_opt_in_apply_contract',
-              status: 'success',
-              input: {},
-              output: {
-                status: 'requires_confirmation',
-                required_confirmation: true,
-                pending_action_id: 'action-1',
-                approval_contract_hash: 'approval:secret',
-                approval_contract: { approval: { approval_contract_hash: 'approval:secret' } },
-                recommended_next_tools: ['apply_pending_action_route_approval_opt_in'],
-              },
-            },
-          ],
-        },
+        run: routeUpgradeEligibleContractRun,
       },
     })
 
@@ -2369,14 +2162,7 @@ describe('AgentRunDrawer', () => {
     expect(button).not.toBeNull()
     await button.click()
 
-    expect(wrapper.emitted('applyRouteUpgrade')).toEqual([[
-      {
-        sourceRunId: 'run-contract',
-        pendingActionId: 'action-1',
-        approvalContractHash: 'approval:secret',
-        approvalContract: { approval: { approval_contract_hash: 'approval:secret' } },
-      },
-    ]])
+    expect(wrapper.emitted('applyRouteUpgrade')).toEqual([[routeUpgradeExpectedApplyPayload]])
   })
 
   it('renders prepared chapter generation approval from recommended followup execution', async () => {
@@ -3682,33 +3468,7 @@ describe('AgentRunDrawer', () => {
         open: true,
         loading: false,
         error: '',
-        run: {
-          id: 'run-contract',
-          project_id: 'project-1',
-          goal: '无需升级',
-          status: 'success',
-          entrypoint: 'pending_action_safety_action',
-          input: {},
-          output: null,
-          error: null,
-          steps: [
-            {
-              id: 'step-contract',
-              run_id: 'run-contract',
-              project_id: 'project-1',
-              step_index: 1,
-              tool_name: 'preview_pending_action_route_approval_opt_in_apply_contract',
-              status: 'success',
-              input: {},
-              output: {
-                status: 'not_required',
-                required_confirmation: false,
-                pending_action_id: 'action-1',
-                recommended_next_tools: [],
-              },
-            },
-          ],
-        },
+        run: routeUpgradeNotRequiredRun,
       },
     })
 
@@ -3723,35 +3483,7 @@ describe('AgentRunDrawer', () => {
         loading: false,
         error: '',
         pendingActionId: 'action-current',
-        run: {
-          id: 'run-contract',
-          project_id: 'project-1',
-          goal: '生成待确认操作的路由升级审批契约',
-          status: 'success',
-          entrypoint: 'manual_debug_run',
-          input: {},
-          output: null,
-          error: null,
-          steps: [
-            {
-              id: 'step-contract',
-              run_id: 'run-contract',
-              project_id: 'project-1',
-              step_index: 1,
-              tool_name: 'preview_pending_action_route_approval_opt_in_apply_contract',
-              status: 'success',
-              input: {},
-              output: {
-                status: 'requires_confirmation',
-                required_confirmation: true,
-                pending_action_id: 'action-stale',
-                approval_contract_hash: 'approval:secret',
-                approval_contract: { approval: { approval_contract_hash: 'approval:secret' } },
-                recommended_next_tools: ['apply_pending_action_route_approval_opt_in'],
-              },
-            },
-          ],
-        },
+        run: routeUpgradeStaleContractRun,
       },
     })
 
