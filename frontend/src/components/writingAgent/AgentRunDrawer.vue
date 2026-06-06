@@ -5,6 +5,7 @@ import AgentRunChapterConflictRecoveryPanel from './AgentRunChapterConflictRecov
 import AgentRunEventProjectionPanel from './AgentRunEventProjectionPanel.vue'
 import AgentRunJobProjectionPanel from './AgentRunJobProjectionPanel.vue'
 import AgentRunReferenceAlignmentPanel from './AgentRunReferenceAlignmentPanel.vue'
+import AgentRunWorkerDispatchPanel from './AgentRunWorkerDispatchPanel.vue'
 import AgentRunWriteGateCoveragePanel from './AgentRunWriteGateCoveragePanel.vue'
 import type { WritingAgentRunDetail } from '../../api/types'
 
@@ -274,49 +275,6 @@ const eventProjectionOutput = computed(() => latestToolOutput('inspect_agent_eve
 const jobProjectionOutput = computed(() => latestToolOutput('inspect_agent_job_projection'))
 const chapterConflictRecoveryOutput = computed(() => latestToolOutput('plan_chapter_conflict_recovery'))
 const workerDispatchOutput = computed(() => latestToolOutput('inspect_agent_worker_dispatch'))
-const workerDispatchSummary = computed(() => recordValue(workerDispatchOutput.value?.summary))
-const workerDispatchStatus = computed(() => stringValue(workerDispatchOutput.value?.status))
-const workerDispatchWorkerCount = computed(() => numberValue(workerDispatchSummary.value.workers))
-const workerDispatchPlannedTaskCount = computed(() => numberValue(workerDispatchSummary.value.planned_tasks))
-const workerDispatchBlockedTaskCount = computed(() => numberValue(workerDispatchSummary.value.blocked_tasks))
-const workerDispatchIssueCount = computed(() => numberValue(workerDispatchSummary.value.issues))
-const workerDispatchRouteRegistry = computed(() => recordValue(workerDispatchOutput.value?.route_registry))
-const workerDispatchRouteRegistrySummary = computed(() => recordValue(workerDispatchRouteRegistry.value.summary))
-const workerDispatchRouteRegistryStatus = computed(() => stringValue(workerDispatchRouteRegistry.value.status))
-const workerDispatchUnroutedToolCount = computed(() => (
-  numberValue(workerDispatchRouteRegistrySummary.value.unrouted_allowed_tools)
-))
-const workerDispatchOrphanRecovery = computed(() => recordValue(workerDispatchOutput.value?.orphan_recovery))
-const workerDispatchOrphanSummary = computed(() => recordValue(workerDispatchOrphanRecovery.value.summary))
-const workerDispatchOrphanStatus = computed(() => stringValue(workerDispatchOrphanRecovery.value.status))
-const workerDispatchActiveWorkerRunCount = computed(() => numberValue(workerDispatchOrphanSummary.value.active_worker_runs))
-const workerDispatchOrphanWorkerRunCount = computed(() => numberValue(workerDispatchOrphanSummary.value.orphan_worker_runs))
-const workerDispatchRecoveryActionCount = computed(() => numberValue(workerDispatchOrphanSummary.value.recovery_actions))
-const workerDispatchRows = computed(() => {
-  const dispatches = recordList(workerDispatchOutput.value?.worker_dispatches)
-  const output = workerDispatchOutput.value
-  const singleDispatch = output && Object.keys(recordValue(output.worker)).length ? [output] : []
-  return (dispatches.length ? dispatches : singleDispatch)
-    .slice(0, 5)
-    .map((dispatch, index) => ({
-      key: `worker-dispatch-audit:${workerDispatchName(dispatch)}:${index}`,
-      name: workerDispatchName(dispatch),
-      meta: workerDispatchTaskLabel(dispatch),
-    }))
-    .filter((dispatch) => dispatch.name || dispatch.meta)
-})
-const workerDispatchIssueRows = computed(() => (
-  recordList(workerDispatchOutput.value?.issues)
-    .slice(0, 5)
-    .map((issue, index) => ({
-      key: `worker-dispatch-issue:${stringValue(issue.code) || index}`,
-      code: stringValue(issue.code) || 'worker_dispatch_issue',
-    }))
-))
-const workerDispatchRecommendedTools = computed(() => uniqueStrings([
-  ...stringList(workerDispatchOrphanRecovery.value.recommended_tools),
-  ...stringList(workerDispatchOutput.value?.recommended_next_tools),
-]).slice(0, 5))
 const agentProfile = computed(() => (
   stringValue(props.run?.agent_profile) ||
   stringValue(agentProfileDefinition.value.profile) ||
@@ -2549,23 +2507,6 @@ function dogfoodEvidenceStatusLabel(status: unknown) {
   return value || '未知'
 }
 
-function workerDispatchStatusLabel(status: unknown) {
-  const value = stringValue(status)
-  if (value === 'ready') return '就绪'
-  if (value === 'blocked') return '已阻塞'
-  if (value === 'running') return '进行中'
-  if (value === 'failed') return '失败'
-  if (value === 'success' || value === 'completed') return '已完成'
-  return value || '未知'
-}
-
-function orphanRecoveryStatusLabel(status: unknown) {
-  const value = stringValue(status)
-  if (value === 'clear') return '无孤儿'
-  if (value === 'needs_attention') return '需处理'
-  return value || '未知'
-}
-
 function plannerIntentLabel(intent: unknown) {
   const value = stringValue(intent)
   if (value === 'setup_project') return '基础设定'
@@ -3526,95 +3467,10 @@ function missingDependencyTool(value: Record<string, unknown>) {
           :output="chapterConflictRecoveryOutput"
         />
 
-        <section
+        <AgentRunWorkerDispatchPanel
           v-if="workerDispatchOutput"
-          class="agent-run-drawer__worker-dispatch"
-          aria-label="Worker dispatch projection"
-        >
-          <h4>Worker 分派审计</h4>
-          <dl class="agent-run-drawer__facts">
-            <div v-if="workerDispatchStatus">
-              <dt>状态</dt>
-              <dd>{{ workerDispatchStatusLabel(workerDispatchStatus) }}</dd>
-            </div>
-            <div v-if="workerDispatchWorkerCount !== null">
-              <dt>Worker</dt>
-              <dd>{{ workerDispatchWorkerCount }}</dd>
-            </div>
-            <div v-if="workerDispatchPlannedTaskCount !== null">
-              <dt>计划任务</dt>
-              <dd>{{ workerDispatchPlannedTaskCount }}</dd>
-            </div>
-            <div v-if="workerDispatchBlockedTaskCount !== null">
-              <dt>阻塞任务</dt>
-              <dd>{{ workerDispatchBlockedTaskCount }}</dd>
-            </div>
-            <div v-if="workerDispatchIssueCount !== null">
-              <dt>问题</dt>
-              <dd>{{ workerDispatchIssueCount }}</dd>
-            </div>
-            <div v-if="workerDispatchRouteRegistryStatus">
-              <dt>路由审计</dt>
-              <dd>{{ routeRegistryStatusLabel(workerDispatchRouteRegistryStatus) }}</dd>
-            </div>
-            <div v-if="workerDispatchUnroutedToolCount !== null">
-              <dt>未路由工具</dt>
-              <dd>{{ workerDispatchUnroutedToolCount }}</dd>
-            </div>
-            <div v-if="workerDispatchOrphanStatus">
-              <dt>孤儿恢复</dt>
-              <dd>{{ orphanRecoveryStatusLabel(workerDispatchOrphanStatus) }}</dd>
-            </div>
-          </dl>
-          <ul
-            v-if="workerDispatchActiveWorkerRunCount !== null || workerDispatchOrphanWorkerRunCount !== null || workerDispatchRecoveryActionCount !== null"
-            class="agent-run-drawer__worker-dispatches"
-          >
-            <li v-if="workerDispatchActiveWorkerRunCount !== null">
-              <strong>活跃 worker {{ workerDispatchActiveWorkerRunCount }}</strong>
-            </li>
-            <li v-if="workerDispatchOrphanWorkerRunCount !== null">
-              <strong>孤儿 worker {{ workerDispatchOrphanWorkerRunCount }}</strong>
-            </li>
-            <li v-if="workerDispatchRecoveryActionCount !== null">
-              <strong>恢复动作 {{ workerDispatchRecoveryActionCount }}</strong>
-            </li>
-          </ul>
-          <ul
-            v-if="workerDispatchRows.length"
-            class="agent-run-drawer__worker-dispatches"
-          >
-            <li
-              v-for="dispatch in workerDispatchRows"
-              :key="dispatch.key"
-            >
-              <strong>{{ dispatch.name }}</strong>
-              <span v-if="dispatch.meta">{{ dispatch.meta }}</span>
-            </li>
-          </ul>
-          <ul
-            v-if="workerDispatchIssueRows.length"
-            class="agent-run-drawer__planner-signals"
-          >
-            <li
-              v-for="issue in workerDispatchIssueRows"
-              :key="issue.key"
-            >
-              <strong>{{ issue.code }}</strong>
-            </li>
-          </ul>
-          <ul
-            v-if="workerDispatchRecommendedTools.length"
-            class="agent-run-drawer__tools"
-          >
-            <li
-              v-for="tool in workerDispatchRecommendedTools"
-              :key="`worker-dispatch-next:${tool}`"
-            >
-              {{ tool }}
-            </li>
-          </ul>
-        </section>
+          :output="workerDispatchOutput"
+        />
 
         <section
           v-if="hasExecutionPlanProgress"
@@ -6185,7 +6041,6 @@ function missingDependencyTool(value: Record<string, unknown>) {
 .agent-run-drawer__context-budget h4,
 .agent-run-drawer__memory-activation h4,
 .agent-run-drawer__memory-route h4,
-.agent-run-drawer__worker-dispatch h4,
 .agent-run-drawer__knowledge-route h4,
 .agent-run-drawer__world-model-route h4,
 .agent-run-drawer__world-proposal-review h4,
@@ -6317,15 +6172,6 @@ function missingDependencyTool(value: Record<string, unknown>) {
 }
 
 .agent-run-drawer__memory-route {
-  display: grid;
-  gap: var(--space-3);
-  padding: var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-bg-secondary);
-}
-
-.agent-run-drawer__worker-dispatch {
   display: grid;
   gap: var(--space-3);
   padding: var(--space-3);
