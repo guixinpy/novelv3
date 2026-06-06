@@ -76,6 +76,43 @@ def approved_expand_chapter_to_target_tool(
     }
 
 
+def approved_compress_chapter_to_target_tool(
+    db_session,
+    project_id: str,
+    *,
+    chapter_index: int,
+    target_max_word_count: int | None = None,
+    extra_instruction: str = "",
+    forbidden_terms: list[str] | None = None,
+) -> dict:
+    from app.services.writing_agent.chapter_revision_execution import prepare_compress_chapter_to_target_execution
+
+    prepared = prepare_compress_chapter_to_target_execution(
+        db_session,
+        project_id,
+        chapter_index=chapter_index,
+        target_max_word_count=target_max_word_count,
+        extra_instruction=extra_instruction,
+        forbidden_terms=forbidden_terms,
+    )
+    params = {
+        "chapter_index": chapter_index,
+        "confirm_execute": True,
+        "approval_contract_hash": prepared["agent_plan_approval_contract_hash"],
+        "approval_contract": prepared["agent_plan_approval_contract"],
+    }
+    if target_max_word_count is not None:
+        params["target_max_word_count"] = target_max_word_count
+    if extra_instruction:
+        params["extra_instruction"] = extra_instruction
+    if forbidden_terms is not None:
+        params["forbidden_terms"] = forbidden_terms
+    return {
+        "tool_name": "execute_compress_chapter_to_target_with_approval",
+        "params": params,
+    }
+
+
 def seed_longform_project(db_session, *, outline_chapters: list[int], generated_chapters: list[int]) -> Project:
     project = Project(
         name="Preflight Novel",
