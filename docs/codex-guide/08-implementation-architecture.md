@@ -185,7 +185,7 @@ rg --files | ForEach-Object { ... line count ... }
 | 优先级 | 对象 | 治理方向 |
 |--------|------|----------|
 | P0 | `backend/tests/test_writing_agent_tool_executor.py` | 按工具族或 slice 拆出 executor 契约测试 |
-| P0 | `backend/tests/test_writing_agent_runs.py` | 继续迁出 planner continuation、longform batch 等 API run 测试 |
+| P0 | `backend/tests/test_writing_agent_runs.py` | 继续迁出 longform batch 等 API run 测试 |
 | P1 | `frontend/src/components/writingAgent/AgentRunDrawer.test.ts` | 继续迁出大型 fixture 和重复细节断言 |
 | P1 | `frontend/src/components/writingAgent/AgentRunDrawer.vue` | 保持 Thin Shell，只在触碰旧投影时迁出 |
 | P2 | `backend/tests/test_dialogs.py` | 按对话入口、project scope、action descriptor、regression fixture 拆分 |

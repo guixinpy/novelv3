@@ -200,6 +200,186 @@ def apply_world_model_resolution_with_approval(client, project_id: str, decision
     return response
 
 
+def planner_generate_chapter_plan(db_session, project_id: str, *, chapter_index: int) -> dict:
+    from app.services.writing_agent.approval_contract import build_agent_plan_approval_contract
+    from app.services.writing_agent.chapter_generation_execution import prepare_generate_chapter_execution
+
+    prepared = prepare_generate_chapter_execution(db_session, project_id, chapter_index=chapter_index)
+    plan_id = f"plan:generate-chapter-{chapter_index}"
+    params = {
+        "chapter_index": chapter_index,
+        "confirm_execute": True,
+        "approval_contract_hash": prepared["agent_plan_approval_contract_hash"],
+        "approval_contract": prepared["agent_plan_approval_contract"],
+    }
+    step = {
+        "step_index": 1,
+        "step_id": f"step:execute-generate-chapter-{chapter_index}",
+        "tool_name": "execute_generate_chapter_with_approval",
+        "params": params,
+        "mutability": "write",
+        "requires_confirmation": True,
+        "reason": f"生成第{chapter_index}章正文。",
+    }
+    tool = {
+        "tool_name": "execute_generate_chapter_with_approval",
+        "params": params,
+        "planner": {
+            "step_index": 1,
+            "step_id": step["step_id"],
+            "plan_id": plan_id,
+            "source_projection_id": f"projection:generate-chapter-{chapter_index}",
+            "mutability": "write",
+            "requires_confirmation": True,
+            "reason": step["reason"],
+            "planner_version": "phase53.context_gate.v1",
+        },
+    }
+    plan = {
+        "status": "completed",
+        "planner_version": "phase53.context_gate.v1",
+        "project_id": project_id,
+        "intent_class": "continue_next_chapter",
+        "goal": f"生成第{chapter_index}章",
+        "chapter_index": chapter_index,
+        "steps": [step],
+        "tools": [tool],
+        "trace": {
+            "plan_id": plan_id,
+            "source_projection_id": f"projection:generate-chapter-{chapter_index}",
+            "planner_version": "phase53.context_gate.v1",
+            "selected_tools": ["execute_generate_chapter_with_approval"],
+        },
+    }
+    plan["approval_contract"] = build_agent_plan_approval_contract(plan)
+    return plan
+
+
+def planner_revision_patch_plan(db_session, project_id: str, *, chapter_index: int, revision_id: str) -> dict:
+    from app.services.writing_agent.approval_contract import build_agent_plan_approval_contract
+    from app.services.writing_agent.revision_patch_execution import prepare_apply_planner_revision_patch_execution
+
+    prepared = prepare_apply_planner_revision_patch_execution(
+        db_session,
+        project_id,
+        chapter_index=chapter_index,
+        revision_id=revision_id,
+    )
+    plan_id = f"plan:revision-patch-{chapter_index}"
+    params = {
+        "chapter_index": chapter_index,
+        "revision_id": revision_id,
+        "confirm_execute": True,
+        "approval_contract_hash": prepared["agent_plan_approval_contract_hash"],
+        "approval_contract": prepared["agent_plan_approval_contract"],
+    }
+    step = {
+        "step_index": 1,
+        "step_id": f"step:revision-patch-{chapter_index}",
+        "tool_name": "execute_apply_planner_revision_patch_with_approval",
+        "params": params,
+        "mutability": "write",
+        "requires_confirmation": True,
+        "reason": f"应用第{chapter_index}章修订补丁。",
+    }
+    tool = {
+        "tool_name": "execute_apply_planner_revision_patch_with_approval",
+        "params": params,
+        "planner": {
+            "step_index": 1,
+            "step_id": step["step_id"],
+            "plan_id": plan_id,
+            "source_projection_id": f"projection:revision-patch-{chapter_index}",
+            "mutability": "write",
+            "requires_confirmation": True,
+            "reason": step["reason"],
+            "planner_version": "phase53.context_gate.v1",
+        },
+    }
+    plan = {
+        "status": "completed",
+        "planner_version": "phase53.context_gate.v1",
+        "project_id": project_id,
+        "intent_class": "apply_revision_patch",
+        "goal": f"应用第{chapter_index}章修订补丁",
+        "chapter_index": chapter_index,
+        "steps": [step],
+        "tools": [tool],
+        "trace": {
+            "plan_id": plan_id,
+            "source_projection_id": f"projection:revision-patch-{chapter_index}",
+            "planner_version": "phase53.context_gate.v1",
+            "selected_tools": ["execute_apply_planner_revision_patch_with_approval"],
+        },
+    }
+    plan["approval_contract"] = build_agent_plan_approval_contract(plan)
+    return plan
+
+
+def planner_world_model_resolution_plan(
+    project_id: str,
+    *,
+    decisions: list[dict],
+    apply_approval: dict | None = None,
+) -> dict:
+    from app.services.writing_agent.approval_contract import build_agent_plan_approval_contract
+
+    plan_id = f"plan:world-model-resolution:{project_id}"
+    if apply_approval is None:
+        tool_name = "apply_world_model_proposal_resolution"
+        params = {"confirm_apply": True, "decisions": decisions}
+        intent_class = "apply_world_model_proposal_resolution"
+    else:
+        tool_name = "execute_apply_world_model_proposal_resolution_with_approval"
+        params = {
+            "decisions": decisions,
+            "confirm_execute": True,
+            "approval_contract_hash": apply_approval["agent_plan_approval_contract_hash"],
+            "approval_contract": apply_approval["agent_plan_approval_contract"],
+        }
+        intent_class = "execute_apply_world_model_proposal_resolution_with_approval"
+    step = {
+        "step_index": 1,
+        "step_id": f"step:world-model-resolution:{project_id}",
+        "tool_name": tool_name,
+        "params": params,
+        "mutability": "guarded_write",
+        "requires_confirmation": True,
+        "reason": "应用世界模型提案处理决策。",
+    }
+    tool = {
+        "tool_name": tool_name,
+        "params": params,
+        "planner": {
+            "step_index": 1,
+            "step_id": step["step_id"],
+            "plan_id": plan_id,
+            "source_projection_id": f"projection:world-model-resolution:{project_id}",
+            "mutability": "guarded_write",
+            "requires_confirmation": True,
+            "reason": step["reason"],
+            "planner_version": "phase53.context_gate.v1",
+        },
+    }
+    plan = {
+        "status": "completed",
+        "planner_version": "phase53.context_gate.v1",
+        "project_id": project_id,
+        "intent_class": intent_class,
+        "goal": "应用世界模型提案处理决策",
+        "steps": [step],
+        "tools": [tool],
+        "trace": {
+            "plan_id": plan_id,
+            "source_projection_id": f"projection:world-model-resolution:{project_id}",
+            "planner_version": "phase53.context_gate.v1",
+            "selected_tools": [tool_name],
+        },
+    }
+    plan["approval_contract"] = build_agent_plan_approval_contract(plan)
+    return plan
+
+
 def seed_pending_world_proposal(
     db_session,
     *,
