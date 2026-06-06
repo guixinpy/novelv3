@@ -5,6 +5,7 @@ import AgentRunChapterConflictRecoveryPanel from './AgentRunChapterConflictRecov
 import AgentRunEventProjectionPanel from './AgentRunEventProjectionPanel.vue'
 import AgentRunJobProjectionPanel from './AgentRunJobProjectionPanel.vue'
 import AgentRunReferenceAlignmentPanel from './AgentRunReferenceAlignmentPanel.vue'
+import AgentRunRetrievalPrefetchPanel from './AgentRunRetrievalPrefetchPanel.vue'
 import AgentRunRetrievalStrategyPanel from './AgentRunRetrievalStrategyPanel.vue'
 import AgentRunRetrievalStrategyQualityPanel from './AgentRunRetrievalStrategyQualityPanel.vue'
 import AgentRunWorkerDispatchPanel from './AgentRunWorkerDispatchPanel.vue'
@@ -456,37 +457,6 @@ const retrievalContextOutput = computed(() => latestToolOutput('search_agent_ret
 const retrievalStrategyOutput = computed(() => latestToolOutput('inspect_agent_retrieval_strategy'))
 const retrievalStrategyQualityOutput = computed(() => latestToolOutput('inspect_agent_retrieval_strategy_quality'))
 const retrievalPrefetchOutput = computed(() => latestToolOutput('inspect_agent_retrieval_prefetch_plan'))
-const retrievalPrefetchPlan = computed(() => recordValue(retrievalPrefetchOutput.value?.prefetch_plan))
-const retrievalPrefetchCoverage = computed(() => recordValue(retrievalPrefetchPlan.value.coverage))
-const retrievalPrefetchStrategy = computed(() => recordValue(retrievalPrefetchOutput.value?.strategy))
-const retrievalPrefetchStrategyFilters = computed(() => recordValue(retrievalPrefetchStrategy.value.filters))
-const retrievalPrefetchInputs = computed(() => recordValue(retrievalPrefetchOutput.value?.inputs))
-const retrievalPrefetchStatus = computed(() => (
-  stringValue(retrievalPrefetchPlan.value.status) || stringValue(retrievalPrefetchOutput.value?.status)
-))
-const retrievalPrefetchStatusText = computed(() => retrievalPrefetchStatusLabel(retrievalPrefetchStatus.value))
-const retrievalPrefetchMode = computed(() => retrievalPrefetchModeLabel(stringValue(retrievalPrefetchPlan.value.mode)))
-const retrievalPrefetchStrategyName = computed(() => retrievalStrategyNameLabel(
-  stringValue(retrievalPrefetchCoverage.value.strategy_name) || stringValue(retrievalPrefetchStrategy.value.name),
-))
-const retrievalPrefetchQuery = computed(() => (
-  safeRetrievalStrategyText(retrievalPrefetchPlan.value.query) ||
-  safeRetrievalStrategyText(retrievalPrefetchStrategyFilters.value.query) ||
-  safeRetrievalStrategyText(retrievalPrefetchInputs.value.query)
-))
-const retrievalPrefetchTargetChapterLabel = computed(() => {
-  const chapter = numberValue(retrievalPrefetchPlan.value.target_chapter_index)
-  return chapter !== null ? `第${chapter}章` : ''
-})
-const retrievalPrefetchMaxChapterLabel = computed(() => {
-  const chapter = numberValue(retrievalPrefetchPlan.value.max_chapter_index)
-  return chapter !== null ? `第${chapter}章前` : ''
-})
-const retrievalPrefetchReadToolCount = computed(() => (
-  Array.isArray(retrievalPrefetchPlan.value.read_tools) ? retrievalPrefetchPlan.value.read_tools.length : 0
-))
-const retrievalPrefetchDocuments = computed(() => numberValue(retrievalPrefetchCoverage.value.retrieval_documents))
-const retrievalPrefetchRecommendedTools = computed(() => stringList(retrievalPrefetchOutput.value?.recommended_next_tools))
 const retrievalContextSummary = computed(() => recordValue(retrievalContextOutput.value?.summary))
 const retrievalContextItems = computed(() => recordList(retrievalContextOutput.value?.items))
 const retrievalContextFilters = computed(() => recordValue(retrievalContextOutput.value?.filters))
@@ -2072,7 +2042,6 @@ const hasMemoryLoopProjection = computed(() => Boolean(
   || retrievalContextOutput.value
   || postChapterMemoryOutput.value,
 ))
-const hasRetrievalPrefetchProjection = computed(() => Boolean(retrievalPrefetchOutput.value))
 const hasRetrievalContextProjection = computed(() => Boolean(retrievalContextOutput.value))
 const hasPostChapterMemoryProjection = computed(() => Boolean(postChapterMemoryOutput.value))
 const hasMemoryActivationProjection = computed(() => Boolean(memoryActivationOutput.value))
@@ -2713,14 +2682,6 @@ function safeRetrievalContextText(label: unknown) {
   return value.slice(0, 120)
 }
 
-function safeRetrievalStrategyText(label: unknown) {
-  const value = stringValue(label).replace(/\s+/g, ' ')
-  if (!value) return ''
-  if (/[A-Za-z_]+:[A-Za-z0-9_.:-]+/.test(value)) return ''
-  if (/project-secret|candidate-secret|memory-secret|retrieval-secret|source_refs?|source_type|source_id|memory_id|candidate_id|recommended_next_tool_calls|approval_contract|phase\d+\.agent_retrieval_strategy/i.test(value)) return ''
-  return value.slice(0, 120)
-}
-
 function safeLongformContextText(label: unknown) {
   const value = stringValue(label).replace(/\s+/g, ' ')
   if (!value) return ''
@@ -3078,31 +3039,6 @@ function retrievalSourceTypeLabel(sourceType: string) {
   if (sourceType === 'longform_memory') return '长篇记忆'
   if (sourceType === 'world_fact') return '世界事实'
   return ''
-}
-
-function retrievalStrategyNameLabel(name: string) {
-  if (name === 'query_aware_retrieval') return '查询感知检索'
-  if (name === 'chapter_context_summary') return '章节上下文摘要'
-  if (name === 'repair_retrieval_maintenance') return '维护诊断优先'
-  if (name === 'memory_route_diagnostics') return '记忆路由诊断'
-  return safeRetrievalStrategyText(name)
-}
-
-function retrievalPrefetchStatusLabel(status: string) {
-  if (status === 'ready') return '预取就绪'
-  if (status === 'blocked') return '已阻止'
-  if (status === 'completed' || status === 'success') return '已完成'
-  if (status === 'failed') return '失败'
-  if (status === 'running') return '进行中'
-  return safeRetrievalStrategyText(status) || '未知'
-}
-
-function retrievalPrefetchModeLabel(mode: string) {
-  if (mode === 'query_aware_prefetch') return '查询感知预取'
-  if (mode === 'chapter_window_prefetch') return '章节窗口预取'
-  if (mode === 'maintenance_blocked') return '维护阻塞'
-  if (mode === 'diagnostic_prefetch') return '诊断预取'
-  return safeRetrievalStrategyText(mode)
 }
 
 function recordValue(value: unknown): Record<string, unknown> {
@@ -3714,58 +3650,10 @@ function missingDependencyTool(value: Record<string, unknown>) {
           :output="retrievalStrategyQualityOutput"
         />
 
-        <section
-          v-if="hasRetrievalPrefetchProjection"
-          class="agent-run-drawer__retrieval-context"
-          aria-label="Agent retrieval prefetch plan projection"
-        >
-          <h4>检索预取计划</h4>
-          <dl class="agent-run-drawer__facts">
-            <div>
-              <dt>状态</dt>
-              <dd>{{ retrievalPrefetchStatusText }}</dd>
-            </div>
-            <div v-if="retrievalPrefetchMode">
-              <dt>预取</dt>
-              <dd>{{ retrievalPrefetchMode }}</dd>
-            </div>
-            <div v-if="retrievalPrefetchStrategyName">
-              <dt>策略</dt>
-              <dd>{{ retrievalPrefetchStrategyName }}</dd>
-            </div>
-            <div v-if="retrievalPrefetchQuery">
-              <dt>查询</dt>
-              <dd>{{ retrievalPrefetchQuery }}</dd>
-            </div>
-            <div v-if="retrievalPrefetchTargetChapterLabel">
-              <dt>目标章节</dt>
-              <dd>{{ retrievalPrefetchTargetChapterLabel }}</dd>
-            </div>
-            <div v-if="retrievalPrefetchMaxChapterLabel">
-              <dt>章节窗口</dt>
-              <dd>{{ retrievalPrefetchMaxChapterLabel }}</dd>
-            </div>
-            <div v-if="retrievalPrefetchReadToolCount">
-              <dt>只读工具</dt>
-              <dd>只读工具 {{ retrievalPrefetchReadToolCount }}</dd>
-            </div>
-            <div v-if="retrievalPrefetchDocuments !== null">
-              <dt>检索</dt>
-              <dd>检索文档 {{ retrievalPrefetchDocuments }}</dd>
-            </div>
-          </dl>
-          <ul
-            v-if="retrievalPrefetchRecommendedTools.length"
-            class="agent-run-drawer__tools"
-          >
-            <li
-              v-for="tool in retrievalPrefetchRecommendedTools"
-              :key="`retrieval-prefetch-next:${tool}`"
-            >
-              {{ tool }}
-            </li>
-          </ul>
-        </section>
+        <AgentRunRetrievalPrefetchPanel
+          v-if="retrievalPrefetchOutput"
+          :output="retrievalPrefetchOutput"
+        />
 
         <section
           v-if="hasRetrievalContextProjection"
