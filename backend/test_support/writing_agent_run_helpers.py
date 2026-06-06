@@ -16,6 +16,33 @@ def approved_create_revision_draft_tool(db_session, project_id: str, *, chapter_
     }
 
 
+def approved_apply_planner_revision_patch_tool(
+    db_session,
+    project_id: str,
+    *,
+    chapter_index: int,
+    revision_id: str,
+) -> dict:
+    from app.services.writing_agent.revision_patch_execution import prepare_apply_planner_revision_patch_execution
+
+    prepared = prepare_apply_planner_revision_patch_execution(
+        db_session,
+        project_id,
+        chapter_index=chapter_index,
+        revision_id=revision_id,
+    )
+    return {
+        "tool_name": "execute_apply_planner_revision_patch_with_approval",
+        "params": {
+            "chapter_index": chapter_index,
+            "revision_id": revision_id,
+            "confirm_execute": True,
+            "approval_contract_hash": prepared["agent_plan_approval_contract_hash"],
+            "approval_contract": prepared["agent_plan_approval_contract"],
+        },
+    }
+
+
 def seed_longform_project(db_session, *, outline_chapters: list[int], generated_chapters: list[int]) -> Project:
     project = Project(
         name="Preflight Novel",
