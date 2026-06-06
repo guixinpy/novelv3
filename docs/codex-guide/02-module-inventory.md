@@ -73,6 +73,7 @@ Agent 化成熟度等级定义见 [01-愿景与架构目标](./01-vision.md#四a
   backend/tests/test_writing_agent_runs_longform_batch.py   # longform batch plan/enqueue/inspect/preflight/execution-prepare API run 回归
   backend/tests/test_writing_agent_runs_longform_batch_execution.py    # longform batch execution API run 回归
   backend/tests/test_writing_agent_runs_longform_batch_review_route.py # longform batch review/route API run 回归
+  backend/tests/test_writing_agent_tool_executor_adapters.py           # executor adapter boundary / approval-chain builder 契约回归
 Agent 化缺口：
   - 五级循环检测已具备 generic_repeat、ping-pong、unknown_tool_repeat、known_poll_no_progress、global_circuit_breaker
   - StopHooks 已具备 critical loop、BudgetCap、MaxTurns、ContextGuard、approval、memory provenance 策略；后续可继续扩展为真正的运行中断控制点
