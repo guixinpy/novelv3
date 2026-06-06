@@ -432,6 +432,7 @@ Data & Recovery ─── (横切关注点，覆盖所有写入操作)
 
 | 日期 | 模块 | 变更 |
 |------|------|------|
+| 2026-06-06 | Frontend Agent UX | 按 ADR-011 将 Memory Tree LLM candidate / batch prepare / batch execute 的 Drawer 测试 fixture 迁出到 agentRunFixtures/memoryTreeLlmRuns.ts；AgentRunDrawer.test 主文件降到 4900 行级 |
 | 2026-06-06 | Frontend Agent UX | 按 ADR-011 将 Memory Tree LLM candidate 安全候选投影迁出为 AgentRunMemoryTreeLlmCandidatePanel，并新增专属脱敏测试；AgentRunDrawer 主文件降到 3000 行级 |
 | 2026-06-06 | Frontend Agent UX | 按 ADR-011 将 Memory Tree LLM candidate batch prepare 安全准备投影迁出为 AgentRunMemoryTreeLlmCandidateBatchPreparePanel，并新增专属脱敏测试；AgentRunDrawer 主文件降到 3100 行级 |
 | 2026-06-06 | Frontend Agent UX | 按 ADR-011 将 Memory Tree LLM candidate batch execute 安全结果投影迁出为 AgentRunMemoryTreeLlmCandidateBatchExecutePanel，并新增专属脱敏测试；AgentRunDrawer 主文件降到 3200 行级 |

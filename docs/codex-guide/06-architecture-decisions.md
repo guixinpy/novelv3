@@ -366,7 +366,7 @@ backend/app/services/agent/
 - 后续提交需要在进度文档中说明本轮能力属于哪个 slice，以及是否触碰超预算文件。
 - 对超预算文件的改动需要优先做到净减少；无法减少时必须补充理由和后续拆分目标。
 - 新增 Agent 能力前先定义 slice 边界和验证标准，再进入代码实现。
-- 当前 Frontend Agent UX 的优先拆分对象是 `AgentRunDrawer.vue`、`AgentRunDrawer.test.ts` 和 Drawer fixture；Memory Tree LLM candidate / batch prepare / batch execute、Trace Audit 与 Trace Anomaly 系列已迁出为独立 Panel，并应继续向 fixture/projector 拆分收敛。
+- 当前 Frontend Agent UX 的优先拆分对象是 `AgentRunDrawer.vue`、`AgentRunDrawer.test.ts` 和剩余 Drawer fixture；Memory Tree LLM candidate / batch prepare / batch execute、Trace Audit 与 Trace Anomaly 系列已迁出为独立 Panel，Memory Tree LLM Drawer fixture 已迁出到 `agentRunFixtures`，并应继续向 fixture/projector 拆分收敛。
 
 ---
 
