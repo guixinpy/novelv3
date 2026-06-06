@@ -1,6 +1,6 @@
 # 05 · 进度追踪
 
-> **最后更新**: 2026-06-05
+> **最后更新**: 2026-06-06
 > **版本**: v1.0
 > **重要性**: ★★★★★（**每个 session 必读**）
 > **维护规则**: 每次开发 session 结束后必须更新本文档
@@ -49,7 +49,7 @@
 - [x] 命令契约：agent_command_contracts + agent_step_binding
 - [x] 命令契约快照：inspect_agent_command_contracts 聚合 slash command 投影、依赖工具和缺口
 - [x] 控制面就绪度：inspect_agent_control_plane_readiness 聚合工具契约与命令契约
-- [x] 写入门禁覆盖审计：inspect_agent_write_gate_coverage 聚合写入工具的 Agent 计划审批门禁覆盖
+- [x] 写入门禁覆盖审计：inspect_agent_write_gate_coverage 聚合写入工具的 Agent 计划审批门禁覆盖，并可在 AgentRunDrawer 展示安全摘要
 - [x] 写入变更指纹审计：inspect_agent_mutation_fingerprints 计算计划写入工具的稳定 mutation fingerprint，用于恢复、审批和冲突诊断
 
 ### 下一步任务
@@ -66,6 +66,7 @@
 
 ### 最近完成
 
+- 2026-06-06: `inspect_agent_write_gate_coverage` 接入 `AgentRunDrawer` 安全投影，展示写入工具数、Agent 审批覆盖、确认守卫、门禁缺口、高风险直写、风险目标和推荐动作，同时不暴露 adapter/handler、gate version/type、raw write policy、confirmation_fields、indirect_coverage、trace coverage_basis 与 mutability 等内部字段。
 - 2026-06-02: `inspect_agent_mutation_fingerprints` 接入对话只读意图链路：自然语言“检查 generate_chapter 第4章写入变更指纹”会经 `mutation_fingerprints_intent` 生成无需审批的 read tool 计划，并把显式工具名与章节号整理为 `tools[{tool_name, params}]`。
 - 2026-06-02: `inspect_agent_command_contracts` 接入对话只读意图链路：自然语言“检查命令契约缺口/slash command 投影”会经 `command_contracts_intent` 直接生成无需审批的 read tool 计划；含“控制面/control plane”的短语仍保留给 `inspect_agent_control_plane_readiness` 综合就绪度入口。
 - 2026-06-02: `inspect_agent_tool_contracts` 接入对话只读意图链路：自然语言“检查工具契约覆盖率/迁移差距”会经 `tool_contracts_intent` 直接生成无需审批的 read tool 计划；含“控制面/control plane”的短语仍保留给 `inspect_agent_control_plane_readiness` 综合就绪度入口。
@@ -191,7 +192,7 @@
 - [x] Trace Anomaly Trends 只读审计意图：自然语言“检查第4章 Trace 异常趋势 limit 9 baseline 6”可投影为 inspect_agent_trace_anomaly_trends 只读工具计划，Trace Anomaly Trends run 可在 AgentRunDrawer 展示趋势、基线、阈值信号、阈值校准和阈值固化策略安全摘要
 - [x] Trace Anomaly Long Run Samples 只读采样意图：自然语言“检查第4章 Trace 异常长跑样本 limit 9”可投影为 inspect_agent_trace_anomaly_long_run_samples 只读工具计划，统计当前项目候选 run/step 样本、状态分布、entrypoint 分布和推荐 threshold review 窗口，AgentRunDrawer 可展示长跑采样安全摘要且不暴露 run/step id
 - [x] Trace Anomaly Threshold Review 只读复核意图：自然语言“复核第4章 Trace 异常阈值样本 limit 9 baseline 6”可投影为 inspect_agent_trace_anomaly_threshold_review 只读工具计划，基于 trends 的 calibration.policy 输出安全人工复核摘要、阈值候选和 prepare_record_agent_trace_anomaly_threshold_config 推荐调用，不执行写入；AgentRunDrawer 可展示阈值复核安全摘要
-- [x] Write Gate Coverage 只读审计意图：自然语言“检查写入工具的审批门禁覆盖”可投影为 inspect_agent_write_gate_coverage 只读工具计划
+- [x] Write Gate Coverage 只读审计意图：自然语言“检查写入工具的审批门禁覆盖”可投影为 inspect_agent_write_gate_coverage 只读工具计划，AgentRunDrawer 可展示写入门禁覆盖安全摘要
 - [x] Legacy Hermes Migration 只读审计意图：自然语言“检查 legacy Hermes action 迁移路线”可投影为 inspect_legacy_hermes_action_migration 只读工具计划
 - [x] Route Approval Opt-in 只读规划意图：自然语言“规划 pending-action-123 的 Agent 审批链 opt-in”可投影为 plan_agent_route_approval_opt_in 只读工具计划
 - [x] Pending Action Route Opt-in Apply Preview/Contract 只读意图：自然语言“预览/生成 pending-action-123 的 Agent 审批链 opt-in 应用/契约”可投影为 preview_pending_action_route_approval_opt_in_apply / preview_pending_action_route_approval_opt_in_apply_contract 只读工具计划
@@ -427,6 +428,7 @@
 - [x] Recommended followup fallback view 可展示 pending confirmation handoff，且 pending-only 计划不会显示“执行后继”自动执行按钮
 - [x] AgentRunDrawer 执行计划进度摘要：展示计划工具数、已执行、已完成、进行中、下一步工具和逐项计划工具状态
 - [x] AgentRunDrawer Memory Tree 投影：展示 inspect_agent_memory_tree 的状态、查询条件、导航模式、推荐展开数、节点列表和项目级会话浏览历史，并可通过自由查询、推荐 drilldown 或返回节点展开发起只读浏览 run；Hermes 已注册 Memory 主工作区，子导航常驻 Memory Tree 面板可切入工作区、直接提交只读搜索 run、按 parent/children 展示当前返回节点层级树、从结果节点发起只读展开并显示当前展开节点，也可从历史入口重新打开对应 run；工作区中带 chapter_index 的节点可跳转并加载正文章节，也可从安全节点标签发起 Retrieval 证据只读 run、Longform Context Summary 只读 run、Memory Activation Plan 只读 run、Knowledge Base Route 只读 run、Post Chapter Memory Capture 写后记忆沉淀规划 run、Trace Audit 章节审计 run 或 Athena 世界模型路由 run；Retrieval Strategy run、Retrieval Strategy Quality run、Retrieval Context run、Longform Context Summary run、Post Chapter Memory Capture run、Memory Activation Plan run、Memory Route run、Knowledge Base Route run、Trace Audit run、World Model Route run、World Model Semantic Check run、World Model Proposal Review run、World Model Proposal Resolution Plan run 与 Memory Tree LLM 候选检查 run 可在 Drawer 展示安全摘要；Memory Tree LLM 候选检查可为多个未物化 ready 候选逐项触发候选摘要 prepare continuation，并展示待物化/已物化安全状态，batch prepare run 可展示逐条候选执行准备并触发对应 execute-with-approval payload，batch execute run 可展示成功/阻塞计数、逐候选章节、创建/更新计数和质量标签；写后记忆捕获候选可在 Drawer 中继续准备知识库候选写入审批，并在待审批写入区显示候选标题、触发已审批执行 payload，执行成功后展示写入结果和推荐下一步工具，并可继续只读检查 Knowledge Base Route
+- [x] AgentRunDrawer 投影拆分约束：ADR-010 已明确 Drawer Shell + Projection Panel + Shared Projector 架构；新增复杂投影优先拆为独立小组件和专属测试，避免继续向 7000 行级 Drawer 主文件堆叠逻辑；Write Gate Coverage 安全投影已按该约束落地
 - [x] AgentRunDrawer preflight 上下文预算投影：展示 preflight_writing 的 context_compression 预算状态、使用率、压缩 preview、推荐后续和压力 issue，同时隐藏 payload/trace 内部字段
 - [x] AgentRunDrawer Trace Anomaly Trends 投影：展示 inspect_agent_trace_anomaly_trends 的趋势状态、运行/受影响/问题/严重度计数、问题类型、baseline window、rate delta、阈值信号、阈值校准、误报/漏报 guard、阈值固化策略、受影响 run 摘要和推荐后续，同时隐藏 project/run/step/trace/context/signal/calibration/policy 内部字段
 - [x] Athena 世界模型面板（实体 + 提案审阅）
@@ -444,6 +446,7 @@
 
 ### 最近完成
 
+- 2026-06-06: `AgentRunDrawer` 新增 Write Gate Coverage 安全投影，并拆出 `AgentRunWriteGateCoveragePanel` 与专属测试；ADR-010 已记录 Drawer Shell + Projection Panel + Shared Projector 架构，Drawer 主文件只保留工具输出定位和组件挂载，后续新增复杂投影应延续小组件拆分，避免继续扩大巨型文件。
 - 2026-06-05: `AgentRunDrawer` 与聊天 action descriptor 新增 Reference Alignment 安全投影，消费 `inspect_agent_reference_alignment` 输出并展示参考项目数、模式数、决策数、能力域、适配工具、模式来源、applied patterns、能力域状态和推荐后续工具，同时隐藏 source_path、source_refs、module_paths、pattern_id 和 trace/version 等内部定位字段。
 - 2026-06-05: `AgentRunDrawer` 与聊天 action descriptor 新增 Retrieval Prefetch Plan 安全投影，消费 `inspect_agent_retrieval_prefetch_plan` 输出并展示预取状态、模式、策略名、query、目标章节、章节窗口、只读工具数、检索文档数和推荐后续工具，同时隐藏 project id、trace/version、raw tool_calls、recommended_next_tool_calls 和 source_ref 等内部字段。
 - 2026-06-05: `AgentRunDrawer` 新增 Retrieval Strategy Quality 安全投影，消费 `inspect_agent_retrieval_strategy_quality` 输出并展示质量状态、策略名、query、章节窗口、检索文档数、Dogfood ready/evidence 覆盖、开放问题和推荐后续工具，同时隐藏 project id、trace/version、dogfood source、source_ref、recommended_next_tool_calls 和诊断内部消息；聊天 action descriptor 也可生成不泄露 dogfood/raw call 的检索策略质量摘要。

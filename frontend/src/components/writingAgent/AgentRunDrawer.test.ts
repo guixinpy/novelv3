@@ -628,6 +628,66 @@ describe('AgentRunDrawer', () => {
     expect(text).not.toContain('permission_audit_gate')
   })
 
+  it('renders write gate coverage projection from tool output', () => {
+    mount(AgentRunDrawer, {
+      attachTo: document.body,
+      props: {
+        open: true,
+        loading: false,
+        error: '',
+        run: {
+          id: 'run-write-gate',
+          project_id: 'project-1',
+          goal: '检查写入工具审批门禁覆盖',
+          status: 'success',
+          entrypoint: 'dialog_auto_plan',
+          input: {},
+          output: null,
+          error: null,
+          steps: [
+            {
+              id: 'step-write-gate',
+              run_id: 'run-write-gate',
+              project_id: 'project-1',
+              step_index: 1,
+              tool_name: 'inspect_agent_write_gate_coverage',
+              status: 'success',
+              input: {},
+              output: {
+                status: 'completed',
+                summary: {
+                  write_tool_count: 12,
+                  agent_plan_gate_enforced_count: 8,
+                  direct_confirmation_guard_count: 5,
+                },
+                recommended_next_targets: [
+                  {
+                    tool_name: 'generate_setup',
+                    category: 'generation',
+                    risk_level: 'high',
+                    agent_plan_gate_status: 'missing_agent_plan_gate',
+                    recommended_action: 'add_direct_agent_plan_approval_gate',
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      },
+    })
+
+    const text = document.body.textContent || ''
+    expect(text).toContain('写入门禁覆盖')
+    expect(text).toContain('已完成')
+    expect(text).toMatch(/写入工具\s*12/)
+    expect(text).toMatch(/Agent 审批\s*8/)
+    expect(text).toMatch(/确认守卫\s*5/)
+    expect(text).toContain('generate_setup')
+    expect(text).toContain('高风险')
+    expect(text).toContain('缺少 Agent 计划门禁')
+    expect(text).toContain('补齐 Agent 计划审批门禁')
+  })
+
   it('renders worker dispatch projection without run or task internals', () => {
     mount(AgentRunDrawer, {
       attachTo: document.body,

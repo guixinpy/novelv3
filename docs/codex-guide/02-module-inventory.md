@@ -1,6 +1,6 @@
 # 02 · 模块清单与状态
 
-> **最后更新**: 2026-06-05
+> **最后更新**: 2026-06-06
 > **版本**: v1.0
 > **用途**: 快速了解任何模块的当前状态、目标状态和关键文件路径
 
@@ -88,7 +88,7 @@ Agent 化缺口：
   - Retrieval Context 与 Longform Context Summary 已有只读工具和自然语言只读入口，可直接检索上下文证据并汇总指定章节长篇上下文；Retrieval Context run 可在 AgentRunDrawer 展示查询/过滤条件、返回窗口、证据条目、来源覆盖和推荐后续的安全摘要；Longform Context Summary run 可展示章节目标、生成进度、来源覆盖、预算截断、分区条目和诊断安全摘要
   - Dialog Control Plane Projection 已有只读审计和自然语言只读入口，可直接检查 generate_chapter 等 pending action 的当前运行工具与推荐审批工具链
   - Mutation Fingerprints 已有只读审计和自然语言只读入口，可直接检查 generate_chapter 等写入工具的稳定变更指纹
-  - 写入门禁覆盖已有只读审计和自然语言只读入口，可直接检查写入工具的 Agent 计划审批 gate coverage
+  - 写入门禁覆盖已有只读审计、自然语言只读入口和 AgentRunDrawer 安全投影，可直接检查写入工具的 Agent 计划审批 gate coverage、风险目标和推荐补齐动作，同时隐藏 adapter/handler、gate version/type、raw write policy、confirmation_fields、indirect_coverage、trace coverage_basis 与 mutability 等内部字段
   - Worker dispatch 已实现基础分发，子 Agent 孤兒恢复已有只读审计、自然语言只读入口、确认式 blocked 清理和 pending redispatch run 创建；AgentRunDrawer 与聊天 fallback projection 可安全展示分派状态、Worker/任务/问题计数、路由审计和孤儿恢复摘要
   - 后续可继续扩展 refund 规则，例如对白名单程序化 write 工具或批处理子步骤细分计费
 关联模块：Hermes、Athena、Retrieval、TaskQueue、Trace、Memory
@@ -380,7 +380,7 @@ Agent 化缺口：
 ### 6.1 Chat View（对话视图）
 
 ```
-当前状态：L2 对话界面含 action cards、followup、trace 入口，AgentRunDrawer 可展示计划工具/执行进度/下一步、逐项工具状态、Retrieval Strategy / Retrieval Strategy Quality / Retrieval Context 安全摘要、Memory Activation Plan 安全摘要、Memory Route 安全摘要、Longform Context Summary 安全摘要、Post Chapter Memory Capture 安全摘要、Knowledge Base Route 安全摘要、Agent Event Projection 安全摘要、Agent Job Projection 安全摘要、Chapter Conflict Recovery 安全摘要、Trace Audit 安全摘要、Trace Anomaly Trends 安全摘要、World Model Route 安全摘要、World Model Semantic Check 安全摘要、Memory Tree 只读节点投影和 Memory Tree LLM 候选摘要投影，并支持自由搜索、推荐 drilldown 或返回节点展开继续发起只读浏览 run；Memory Tree LLM 候选检查可在 Drawer 中展示待物化/已物化状态，并从多个 recommended_next_tool_calls 逐项触发 prepare_record_agent_memory_tree_llm_candidate_summary continuation，batch prepare run 可在 Drawer 中展示逐条候选执行准备并触发对应 execute-with-approval handoff，batch execute run 可展示安全写入结果；projectWorkspace 会在同一项目内保留安全的 Memory Tree 浏览历史，Hermes 已注册 Memory 主工作区，子导航常驻 Memory Tree 面板可切入工作区、直接搜索、按 parent/children 展示当前返回节点层级树、从结果节点发起只读展开并显示当前展开节点，也可从历史入口重新打开对应 run；Memory Tree 工作区中带 chapter_index 的节点可跳转并加载正文章节，也可从安全节点标签发起 Retrieval 证据只读 run、Longform Context Summary 只读 run、Memory Activation Plan 只读 run、Knowledge Base Route 只读 run、Post Chapter Memory Capture 写后记忆沉淀规划 run、Trace Audit 章节审计 run 或 Athena 世界模型路由 run；AgentRunDrawer 的写后记忆候选可继续准备知识库候选写入审批 run，并在待审批写入区展示候选标题、触发 execute_record_agent_knowledge_base_candidate_with_approval；执行成功后展示知识库候选写入结果与推荐下一步工具，并可发起只读 Knowledge Base Route 检查；recommended followup fallback view 可展示待确认后继并阻止 pending-only 自动执行
+当前状态：L2 对话界面含 action cards、followup、trace 入口，AgentRunDrawer 可展示计划工具/执行进度/下一步、逐项工具状态、Retrieval Strategy / Retrieval Strategy Quality / Retrieval Context 安全摘要、Memory Activation Plan 安全摘要、Memory Route 安全摘要、Longform Context Summary 安全摘要、Post Chapter Memory Capture 安全摘要、Knowledge Base Route 安全摘要、Write Gate Coverage 安全摘要、Agent Event Projection 安全摘要、Agent Job Projection 安全摘要、Chapter Conflict Recovery 安全摘要、Trace Audit 安全摘要、Trace Anomaly Trends 安全摘要、World Model Route 安全摘要、World Model Semantic Check 安全摘要、Memory Tree 只读节点投影和 Memory Tree LLM 候选摘要投影，并支持自由搜索、推荐 drilldown 或返回节点展开继续发起只读浏览 run；Memory Tree LLM 候选检查可在 Drawer 中展示待物化/已物化状态，并从多个 recommended_next_tool_calls 逐项触发 prepare_record_agent_memory_tree_llm_candidate_summary continuation，batch prepare run 可在 Drawer 中展示逐条候选执行准备并触发对应 execute-with-approval handoff，batch execute run 可展示安全写入结果；projectWorkspace 会在同一项目内保留安全的 Memory Tree 浏览历史，Hermes 已注册 Memory 主工作区，子导航常驻 Memory Tree 面板可切入工作区、直接搜索、按 parent/children 展示当前返回节点层级树、从结果节点发起只读展开并显示当前展开节点，也可从历史入口重新打开对应 run；Memory Tree 工作区中带 chapter_index 的节点可跳转并加载正文章节，也可从安全节点标签发起 Retrieval 证据只读 run、Longform Context Summary 只读 run、Memory Activation Plan 只读 run、Knowledge Base Route 只读 run、Post Chapter Memory Capture 写后记忆沉淀规划 run、Trace Audit 章节审计 run 或 Athena 世界模型路由 run；AgentRunDrawer 的写后记忆候选可继续准备知识库候选写入审批 run，并在待审批写入区展示候选标题、触发 execute_record_agent_knowledge_base_candidate_with_approval；执行成功后展示知识库候选写入结果与推荐下一步工具，并可发起只读 Knowledge Base Route 检查；recommended followup fallback view 可展示待确认后继并阻止 pending-only 自动执行
 目标状态：L2-L3 更丰富的 Agent 状态可视化（当前执行计划、工具调用进度等）
 关键文件：
   frontend/src/views/                     # 页面视图
@@ -432,6 +432,7 @@ Data & Recovery ─── (横切关注点，覆盖所有写入操作)
 
 | 日期 | 模块 | 变更 |
 |------|------|------|
+| 2026-06-06 | Frontend Agent UX | AgentRunDrawer 新增 inspect_agent_write_gate_coverage 安全投影，展示写入工具数、Agent 审批覆盖、确认守卫、门禁缺口、高风险直写、风险目标和推荐动作，同时隐藏 adapter/handler、gate version/type、raw write policy、confirmation_fields、indirect_coverage、trace coverage_basis 与 mutability 等内部字段；新增投影拆为独立小组件以避免继续膨胀 Drawer 主文件 |
 | 2026-06-05 | Frontend Agent UX | AgentRunDrawer 新增 inspect_agent_trace_anomaly_long_run_samples 与 inspect_agent_trace_anomaly_threshold_review 安全投影，展示长跑采样状态、候选运行/步骤/章节/复核窗口、状态分布、阈值复核样本、策略决策、阈值候选和推荐工具，同时隐藏 run/step/trace id、trace version、raw recommended_next_tool_calls params、policy/config 内部字段 |
 | 2026-06-05 | Frontend Agent UX | AgentRunDrawer 新增 inspect_agent_job_projection 安全投影，展示队列深度、活跃/终止任务、返回任务数、选中任务状态/章节/范围/恢复能力、控制面与命令契约缺口、章节占用、事件摘要和推荐工具，同时隐藏 project/selector/task/run/event/trace id、version、control_plane 与原始 params |
 | 2026-06-05 | Frontend Agent UX | AgentRunDrawer 与聊天 action descriptor 新增 plan_chapter_conflict_recovery 安全投影，展示计划状态、目标章节、占用状态、占用任务数、恢复状态、下一工具、计划工具数、恢复选项、任务来源/章节范围/状态和恢复选项标签，同时隐藏 task id、next_params、trace/version 与原始工具参数 |

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import BaseModal from '../base/BaseModal.vue'
+import AgentRunWriteGateCoveragePanel from './AgentRunWriteGateCoveragePanel.vue'
 import type { WritingAgentRunDetail } from '../../api/types'
 
 type PlannerPlanExecutePayload = {
@@ -292,6 +293,7 @@ const referenceAlignmentCapabilities = computed(() => (
     .filter((capability) => capability.area || capability.status)
 ))
 const referenceAlignmentRecommendedTools = computed(() => stringList(referenceAlignmentOutput.value?.recommended_next_tools))
+const writeGateCoverageOutput = computed(() => latestToolOutput('inspect_agent_write_gate_coverage'))
 const eventProjectionOutput = computed(() => latestToolOutput('inspect_agent_event_projection'))
 const eventProjectionSummary = computed(() => recordValue(eventProjectionOutput.value?.summary))
 const eventProjectionStatus = computed(() => stringValue(eventProjectionOutput.value?.status))
@@ -3860,6 +3862,11 @@ function missingDependencyTool(value: Record<string, unknown>) {
             </li>
           </ul>
         </section>
+
+        <AgentRunWriteGateCoveragePanel
+          v-if="writeGateCoverageOutput"
+          :output="writeGateCoverageOutput"
+        />
 
         <section
           v-if="eventProjectionOutput"

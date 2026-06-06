@@ -1,6 +1,6 @@
 # 06 · 架构决策记录 (ADR)
 
-> **最后更新**: 2026-06-01
+> **最后更新**: 2026-06-06
 > **版本**: v1.0
 > **用途**: 记录关键架构决策及其理由，防止重复讨论已解决的问题
 
@@ -263,6 +263,55 @@ Worker/子代理需要配置化定义能力、工具范围和写入策略。open
 - 新增 AgentDefinition 时优先使用 YAML；需要导入 openhuman 风格定义时可以使用 TOML
 - loader 必须保持 YAML/TOML 字段语义一致
 - worker 注册表、route 审计和健康面板可以通过 `source_format` 识别定义来源
+
+---
+
+## ADR-010: 前端 Agent Run 投影拆分架构
+
+- **日期**: 2026-06-06
+- **状态**: Accepted
+
+### 上下文
+
+`frontend/src/components/writingAgent/AgentRunDrawer.vue` 与对应测试已经增长到 7000 行级别。继续把每个 Agent 工具投影的解析、脱敏、标签映射、模板和测试全部堆进 Drawer，会让后续功能变成不可维护的巨型文件，并增加内部字段泄漏、回归测试脆弱和上下文压缩后误改的风险。
+
+同时，AgentRunDrawer 仍是当前用户理解 Agent 执行状态的关键入口，不能用一次性大重写打断既有行为。架构调整必须能增量落地，并允许旧投影逐步迁移。
+
+### 决策
+
+采用 **Drawer Shell + Projection Panel + Shared Projector** 的前端 Agent Run 投影架构：
+
+1. `AgentRunDrawer.vue` 是 Shell：负责 Modal 布局、run/step 基础状态、找到最新工具输出、承载通用操作和挂载投影面板。
+2. 每个复杂工具投影必须有独立 Panel 组件：组件接收单个工具输出或已清洗 view model，只展示安全摘要，不直接暴露 raw output。
+3. 投影解析优先放在 Panel 内的局部纯函数；当两个以上 Panel 复用同一类解析或标签映射时，再提取到 `frontend/src/components/writingAgent/agentRunProjection/` 或同等 shared projector 模块。
+4. Drawer 集成测试只验证“某工具输出能挂到正确面板”和关键入口文案；字段脱敏、计数、标签和边界数据由对应 Panel 的专属测试覆盖。
+5. 新增复杂投影不得继续把大段 computed/template/test 加进 `AgentRunDrawer.vue` 或 `AgentRunDrawer.test.ts`。若单次改动会向任一文件新增超过约 50 行投影逻辑，必须先拆 Panel。
+
+目标目录形态：
+
+```
+frontend/src/components/writingAgent/
+  AgentRunDrawer.vue                  # Shell：布局、基础 run 状态、面板挂载
+  AgentRunDrawer.test.ts              # Shell 集成与关键回归
+  AgentRunWriteGateCoveragePanel.vue  # 已落地的独立投影面板示例
+  AgentRunWriteGateCoveragePanel.test.ts
+  agentRunProjection/                 # 共享 projector/label/sanitizer，按真实复用再提取
+  agentRunPanels/                     # 面板数量继续增长后迁入的目标目录
+```
+
+### 理由
+
+- Shell 与 Panel 分离后，新增 Agent 能力不再天然扩大 Drawer 主文件。
+- 安全投影的脱敏规则能靠专属测试精确覆盖，减少 raw internal 字段被 UI 泄漏的概率。
+- 先抽新增投影、再逐步迁移旧投影，风险比一次性重写低，也符合当前长期 goal 的持续推进方式。
+- 与后端工具三层架构一致：后端 descriptor/adapter/execution 分离，前端也应将 run shell、projection sanitization 和 panel rendering 分离。
+
+### 后果
+
+- 后续新增 Frontend Agent UX 功能时，要优先创建小组件和专属测试；Drawer 只做路由和组合。
+- 历史巨型 Drawer 不要求一次性拆完，但每次触碰某个投影时，应优先评估能否顺手迁出，至少不能让主文件继续显著增长。
+- 共享 projector 只能在真实重复出现后抽取，避免为了“架构漂亮”提前制造空抽象。
+- 评审和提交说明需要显式说明：新增投影放在 Shell、Panel 还是 Shared Projector 的哪一层，以及为什么。
 
 ---
 
