@@ -17,6 +17,7 @@ import AgentRunRetrievalPrefetchPanel from './AgentRunRetrievalPrefetchPanel.vue
 import AgentRunRetrievalStrategyPanel from './AgentRunRetrievalStrategyPanel.vue'
 import AgentRunRetrievalStrategyQualityPanel from './AgentRunRetrievalStrategyQualityPanel.vue'
 import AgentRunWorkerDispatchPanel from './AgentRunWorkerDispatchPanel.vue'
+import AgentRunWorldModelProposalReviewPanel from './AgentRunWorldModelProposalReviewPanel.vue'
 import AgentRunWorldModelRoutePanel from './AgentRunWorldModelRoutePanel.vue'
 import AgentRunWorldModelSemanticCheckPanel from './AgentRunWorldModelSemanticCheckPanel.vue'
 import AgentRunWriteGateCoveragePanel from './AgentRunWriteGateCoveragePanel.vue'
@@ -445,45 +446,6 @@ const knowledgeBaseRouteOutput = computed(() => latestToolOutput('inspect_agent_
 const worldModelRouteOutput = computed(() => latestToolOutput('inspect_agent_world_model_route'))
 const worldModelSemanticCheckOutput = computed(() => latestToolOutput('inspect_agent_world_model_semantic_check'))
 const worldModelProposalReviewOutput = computed(() => latestToolOutput('review_world_model_proposals'))
-const worldModelProposalReviewRiskCounts = computed(() => recordValue(worldModelProposalReviewOutput.value?.risk_counts))
-const worldModelProposalReviewModeCounts = computed(() => recordValue(worldModelProposalReviewOutput.value?.review_mode_counts))
-const worldModelProposalReviewRecommendedActions = computed(() => stringList(worldModelProposalReviewOutput.value?.recommended_actions))
-const worldModelProposalReviewReturned = computed(() => numberValue(worldModelProposalReviewOutput.value?.returned_items))
-const worldModelProposalReviewTotal = computed(() => numberValue(worldModelProposalReviewOutput.value?.total_items))
-const worldModelProposalReviewHighRiskCount = computed(() => numberValue(worldModelProposalReviewRiskCounts.value.high))
-const worldModelProposalReviewMediumRiskCount = computed(() => numberValue(worldModelProposalReviewRiskCounts.value.medium))
-const worldModelProposalReviewLowRiskCount = computed(() => numberValue(worldModelProposalReviewRiskCounts.value.low))
-const worldModelProposalReviewIndividualCount = computed(() => numberValue(worldModelProposalReviewModeCounts.value.individual))
-const worldModelProposalReviewBatchCount = computed(() => numberValue(worldModelProposalReviewModeCounts.value.batch))
-const worldModelProposalReviewGenerationLabel = computed(() => (
-  worldModelProposalReviewOutput.value?.should_generate_next_chapter === true ? '可继续生成' : '不可继续生成'
-))
-const worldModelProposalReviewHasMoreLabel = computed(() => {
-  if (worldModelProposalReviewOutput.value?.has_more === true) return '有更多'
-  if (worldModelProposalReviewOutput.value?.has_more === false) return '无更多'
-  return ''
-})
-const worldModelProposalReviewClusterRows = computed(() => (
-  recordList(worldModelProposalReviewOutput.value?.clusters)
-    .map((cluster, index) => {
-      const subjects = stringList(cluster.subject_refs)
-        .map((subject) => safeWorldModelRouteText(subject))
-        .filter(Boolean)
-      const candidateCount = numberValue(cluster.candidate_count)
-      return {
-        key: `world-model-proposal-review-cluster:${index}`,
-        title: [subjects.join(', '), safeWorldModelRouteText(cluster.predicate)].filter(Boolean).join(' · ') || '待审提案',
-        meta: [
-          worldModelRiskLabel(cluster.risk_level),
-          worldModelReviewModeLabel(cluster.review_mode),
-          candidateCount !== null ? `${candidateCount} 个候选` : '',
-          worldModelChapterRangeLabel(cluster.chapter_range),
-        ].filter(Boolean).join(' · '),
-        reason: safeWorldModelRouteText(cluster.reason),
-      }
-    })
-    .filter((row) => Boolean(row.title || row.meta || row.reason))
-))
 const worldModelResolutionPlanOutput = computed(() => latestToolOutput('plan_world_model_proposal_resolution'))
 const worldModelResolutionRiskCounts = computed(() => recordValue(worldModelResolutionPlanOutput.value?.risk_counts))
 const worldModelResolutionModeCounts = computed(() => recordValue(worldModelResolutionPlanOutput.value?.review_mode_counts))
@@ -1604,7 +1566,6 @@ const hasMemoryLoopProjection = computed(() => Boolean(
   || retrievalContextOutput.value
   || postChapterMemoryOutput.value,
 ))
-const hasWorldModelProposalReviewProjection = computed(() => Boolean(worldModelProposalReviewOutput.value))
 const hasWorldModelResolutionPlanProjection = computed(() => Boolean(worldModelResolutionPlanOutput.value))
 const hasTraceAuditProjection = computed(() => Boolean(traceAuditOutput.value))
 const hasTraceAuditIntentChain = computed(() => Boolean(
@@ -2199,13 +2160,6 @@ function worldModelRiskLabel(risk: unknown) {
   if (value === 'high') return '高风险'
   if (value === 'medium') return '中风险'
   if (value === 'low') return '低风险'
-  return value
-}
-
-function worldModelReviewModeLabel(mode: unknown) {
-  const value = stringValue(mode)
-  if (value === 'individual') return '逐项审阅'
-  if (value === 'batch') return '批量审阅'
   return value
 }
 
@@ -3060,79 +3014,10 @@ function missingDependencyTool(value: Record<string, unknown>) {
           :output="worldModelSemanticCheckOutput"
         />
 
-        <section
-          v-if="hasWorldModelProposalReviewProjection"
-          class="agent-run-drawer__world-proposal-review"
-          aria-label="World model proposal review projection"
-        >
-          <h4>世界模型提案队列</h4>
-          <dl class="agent-run-drawer__facts">
-            <div>
-              <dt>状态</dt>
-              <dd>{{ worldModelRouteStatusLabel(worldModelProposalReviewOutput?.status) }}</dd>
-            </div>
-            <div>
-              <dt>生成</dt>
-              <dd>{{ worldModelProposalReviewGenerationLabel }}</dd>
-            </div>
-            <div v-if="countRangeLabel(worldModelProposalReviewReturned, worldModelProposalReviewTotal)">
-              <dt>返回</dt>
-              <dd>返回 {{ countRangeLabel(worldModelProposalReviewReturned, worldModelProposalReviewTotal) }}</dd>
-            </div>
-            <div v-if="worldModelProposalReviewTotal !== null">
-              <dt>待审</dt>
-              <dd>待审 {{ worldModelProposalReviewTotal }}</dd>
-            </div>
-            <div v-if="worldModelProposalReviewHasMoreLabel">
-              <dt>分页</dt>
-              <dd>{{ worldModelProposalReviewHasMoreLabel }}</dd>
-            </div>
-            <div v-if="worldModelProposalReviewHighRiskCount !== null && worldModelProposalReviewHighRiskCount > 0">
-              <dt>高风险</dt>
-              <dd>高风险 {{ worldModelProposalReviewHighRiskCount }}</dd>
-            </div>
-            <div v-if="worldModelProposalReviewMediumRiskCount !== null && worldModelProposalReviewMediumRiskCount > 0">
-              <dt>中风险</dt>
-              <dd>中风险 {{ worldModelProposalReviewMediumRiskCount }}</dd>
-            </div>
-            <div v-if="worldModelProposalReviewLowRiskCount !== null && worldModelProposalReviewLowRiskCount > 0">
-              <dt>低风险</dt>
-              <dd>低风险 {{ worldModelProposalReviewLowRiskCount }}</dd>
-            </div>
-            <div v-if="worldModelProposalReviewIndividualCount !== null && worldModelProposalReviewIndividualCount > 0">
-              <dt>逐项</dt>
-              <dd>逐项审阅 {{ worldModelProposalReviewIndividualCount }}</dd>
-            </div>
-            <div v-if="worldModelProposalReviewBatchCount !== null && worldModelProposalReviewBatchCount > 0">
-              <dt>批量</dt>
-              <dd>批量审阅 {{ worldModelProposalReviewBatchCount }}</dd>
-            </div>
-          </dl>
-          <ul
-            v-if="worldModelProposalReviewRecommendedActions.length"
-            class="agent-run-drawer__tools"
-          >
-            <li
-              v-for="action in worldModelProposalReviewRecommendedActions"
-              :key="`world-proposal-review-action:${action}`"
-            >
-              {{ action }}
-            </li>
-          </ul>
-          <ul
-            v-if="worldModelProposalReviewClusterRows.length"
-            class="agent-run-drawer__planner-signals"
-          >
-            <li
-              v-for="row in worldModelProposalReviewClusterRows"
-              :key="row.key"
-            >
-              <strong>{{ row.title }}</strong>
-              <span v-if="row.meta">{{ row.meta }}</span>
-              <span v-if="row.reason">{{ row.reason }}</span>
-            </li>
-          </ul>
-        </section>
+        <AgentRunWorldModelProposalReviewPanel
+          v-if="worldModelProposalReviewOutput"
+          :output="worldModelProposalReviewOutput"
+        />
 
         <section
           v-if="hasWorldModelResolutionPlanProjection"
@@ -4417,7 +4302,6 @@ function missingDependencyTool(value: Record<string, unknown>) {
 .agent-run-drawer__execution-plan h4,
 .agent-run-drawer__planner h4,
 .agent-run-drawer__memory-loop h4,
-.agent-run-drawer__world-proposal-review h4,
 .agent-run-drawer__world-proposal-resolution h4,
 .agent-run-drawer__trace-audit h4,
 .agent-run-drawer__trace-anomaly-trends h4,
@@ -4483,15 +4367,6 @@ function missingDependencyTool(value: Record<string, unknown>) {
 }
 
 .agent-run-drawer__memory-loop {
-  display: grid;
-  gap: var(--space-3);
-  padding: var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-bg-secondary);
-}
-
-.agent-run-drawer__world-proposal-review {
   display: grid;
   gap: var(--space-3);
   padding: var(--space-3);

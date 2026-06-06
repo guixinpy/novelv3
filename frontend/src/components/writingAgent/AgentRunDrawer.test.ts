@@ -4438,7 +4438,7 @@ describe('AgentRunDrawer', () => {
     expect(text).toContain('inspect_agent_world_model_route')
   })
 
-  it('renders world model proposal review projection without internal ids', () => {
+  it('renders world model proposal review panel from tool output', () => {
     mount(AgentRunDrawer, {
       attachTo: document.body,
       props: {
@@ -4465,8 +4465,6 @@ describe('AgentRunDrawer', () => {
               input: { offset: 0, limit: 20 },
               output: {
                 status: 'blocked',
-                project_id: 'project-secret-id',
-                profile_version: 'profile-secret-version',
                 total_items: 3,
                 returned_items: 2,
                 offset: 0,
@@ -4476,24 +4474,18 @@ describe('AgentRunDrawer', () => {
                 review_mode_counts: { individual: 1, batch: 2 },
                 clusters: [
                   {
-                    cluster_id: 'cluster-secret-id',
                     risk_level: 'high',
                     review_mode: 'individual',
                     candidate_count: 1,
-                    item_ids: ['item-secret-id'],
-                    bundle_ids: ['bundle-secret-id'],
                     subject_refs: ['char.hero'],
                     predicate: 'identity',
                     chapter_range: { start: 1, end: 1 },
                     reason: '主角身份存在待审冲突',
                   },
                   {
-                    cluster_id: 'cluster-secret-id-2',
                     risk_level: 'low',
                     review_mode: 'batch',
                     candidate_count: 2,
-                    item_ids: ['item-secret-id-2', 'item-secret-id-3'],
-                    bundle_ids: ['bundle-secret-id-2'],
                     subject_refs: ['char.partner'],
                     predicate: 'mentioned_in_chapter',
                     chapter_range: { start: 2, end: 3 },
@@ -4506,7 +4498,6 @@ describe('AgentRunDrawer', () => {
                   'batch_review_low_risk_proposals',
                 ],
                 should_generate_next_chapter: false,
-                report_only: true,
               },
             },
           ],
@@ -4537,15 +4528,6 @@ describe('AgentRunDrawer', () => {
     expect(text).toContain('mentioned_in_chapter')
     expect(text).toContain('低风险 · 批量审阅 · 2 个候选 · 第2-3章')
     expect(text).toContain('低风险出场事实可批量审阅')
-    expect(text).not.toContain('project-secret-id')
-    expect(text).not.toContain('profile-secret-version')
-    expect(text).not.toContain('cluster-secret-id')
-    expect(text).not.toContain('item-secret-id')
-    expect(text).not.toContain('bundle-secret-id')
-    expect(text).not.toContain('profile_version')
-    expect(text).not.toContain('item_ids')
-    expect(text).not.toContain('bundle_ids')
-    expect(text).not.toContain('report_only')
   })
 
   it('renders world model proposal resolution plan projection without internal ids', () => {
