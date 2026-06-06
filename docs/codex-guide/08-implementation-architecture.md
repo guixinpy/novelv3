@@ -140,6 +140,14 @@ Conversation Entry
 | 5000-8000 行 | 严重风险，只做拆分、止血或极小关键修复 |
 | 8000 行以上 | 关键风险，下一轮优先治理；除紧急修复外，不向内新增能力 |
 
+### 5.1 长文件硬门禁
+
+1. 8000 行以上文件不得承接新能力；触碰它们时，默认验收包含净减少，除非是明确的紧急修复。
+2. 5000 行以上文件只能做拆分、止血或局部关键修复；如果必须新增行为，先把相关 slice 迁出到专属文件。
+3. 2000 行以上文件不得因为“顺手补测试/补投影”继续增长；新增复杂样例、fixture 或 UI 投影必须优先外迁。
+4. 新建 slice 文件也要受预算约束：优先控制在 800 行以内，超过 1500 行时下一轮不得继续向内堆同类责任。
+5. 如果一个 slice 无法在本轮拆出，必须在 05 进度中写清不可拆原因、当前风险和下一个最小拆分点。
+
 每次提交前至少检查被触碰的大文件：
 
 ```
@@ -184,7 +192,7 @@ rg --files | ForEach-Object { ... line count ... }
 
 | 优先级 | 对象 | 治理方向 |
 |--------|------|----------|
-| P0 | `backend/tests/test_writing_agent_tool_executor.py` | 继续按 static metadata、route opt-in、dialog intent、tool handling 等切片拆出 executor 契约测试 |
+| P0 | `backend/tests/test_writing_agent_tool_executor.py` | 继续按 static metadata、dialog intent、tool handling 等切片拆出 executor 契约测试；route opt-in plan/preview/contract/approval 已迁出 |
 | P0 | `backend/tests/test_writing_agent_runs.py` | 继续按 direct chapter recovery、通用 Agent run API、chapter generation/review 等残留切片拆分 |
 | P1 | `frontend/src/components/writingAgent/AgentRunDrawer.test.ts` | 继续迁出大型 fixture 和重复细节断言 |
 | P1 | `frontend/src/components/writingAgent/AgentRunDrawer.vue` | 保持 Thin Shell，只在触碰旧投影时迁出 |
