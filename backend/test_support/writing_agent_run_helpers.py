@@ -1,4 +1,7 @@
-from app.models import ChapterContent, Outline, Project, Setup, Storyline
+from app.core.world_contracts import DERIVED
+from app.core.world_proposal_service import create_bundle, write_candidate_fact
+from app.models import ChapterContent, Outline, Project, ProjectProfileVersion, Setup, Storyline, WorldProposalItem
+from app.schemas.world_proposals import ProposalCandidateFactCreate
 
 
 def approved_create_revision_draft_tool(db_session, project_id: str, *, chapter_index: int) -> dict:
@@ -111,6 +114,47 @@ def approved_compress_chapter_to_target_tool(
         "tool_name": "execute_compress_chapter_to_target_with_approval",
         "params": params,
     }
+
+
+def seed_pending_world_proposal(
+    db_session,
+    *,
+    project_id: str,
+    claim_id: str,
+    predicate: str,
+    subject_ref: str,
+) -> WorldProposalItem:
+    profile = db_session.query(ProjectProfileVersion).filter_by(project_id=project_id).one()
+    bundle = create_bundle(
+        db=db_session,
+        project_id=project_id,
+        project_profile_version_id=profile.id,
+        profile_version=profile.version,
+        created_by="athena.test",
+        title="待审事实",
+    )
+    item = write_candidate_fact(
+        db=db_session,
+        bundle_id=bundle.id,
+        created_by="athena.test",
+        candidate=ProposalCandidateFactCreate(
+            project_id=project_id,
+            project_profile_version_id=profile.id,
+            profile_version=profile.version,
+            claim_id=claim_id,
+            chapter_index=1,
+            subject_ref=subject_ref,
+            predicate=predicate,
+            object_ref_or_value="雾港调查者",
+            claim_layer="truth",
+            evidence_refs=["chapter:1"],
+            authority_type=DERIVED,
+            confidence=0.9,
+            contract_version=profile.contract_version,
+        ),
+    )
+    db_session.commit()
+    return item
 
 
 def seed_longform_project(db_session, *, outline_chapters: list[int], generated_chapters: list[int]) -> Project:

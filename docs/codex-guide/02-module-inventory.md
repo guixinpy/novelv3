@@ -432,7 +432,8 @@ Data & Recovery ─── (横切关注点，覆盖所有写入操作)
 
 | 日期 | 模块 | 变更 |
 |------|------|------|
-| 2026-06-06 | Backend Agent Tests | 按 08 实施架构框架将 `test_writing_agent_runs.py` 中 chapter resize 的 compress API 回归迁出到 `test_writing_agent_runs_chapter_resize.py`，并把 compress approval helper 收敛到 `test_support/writing_agent_run_helpers.py`；旧巨型测试文件从约 9794 行降到 9015 行，pending world proposal 阻断用例暂留原文件 |
+| 2026-06-06 | Backend Agent Tests | 按 08 实施架构框架将 chapter resize 的 pending world proposal guard 回归迁出到 `test_writing_agent_runs_chapter_resize.py`，并把 pending proposal seed helper 收敛到 `test_support/writing_agent_run_helpers.py`；旧巨型测试文件从 9015 行降到 8889 行 |
+| 2026-06-06 | Backend Agent Tests | 按 08 实施架构框架将 `test_writing_agent_runs.py` 中 chapter resize 的 compress API 回归迁出到 `test_writing_agent_runs_chapter_resize.py`，并把 compress approval helper 收敛到 `test_support/writing_agent_run_helpers.py`；旧巨型测试文件从约 9794 行降到 9015 行 |
 | 2026-06-06 | Codex Guide Architecture | 新增 `08-implementation-architecture.md` 与 ADR-012，把长期代码推进约束为先定义 Agent capability slice、文件规模预算、验证闭环和文档记录；超 5000/8000 行文件列为高风险/关键风险治理对象 |
 | 2026-06-06 | Backend Agent Tests | 按 ADR-011 将 `test_writing_agent_runs.py` 中 chapter resize 的 expand API 回归迁出到 `test_writing_agent_runs_chapter_resize.py`，并把 expand approval helper 收敛到 `test_support/writing_agent_run_helpers.py`；旧巨型测试文件继续净删 203 行 |
 | 2026-06-06 | Backend Agent Tests | 按 ADR-011 将 `test_writing_agent_runs.py` 中 revision patch API 回归迁出到 `test_writing_agent_runs_revision_patch.py`，并把 revision patch approval helper 收敛到 `test_support/writing_agent_run_helpers.py`；旧巨型测试文件继续净删 120 行 |

@@ -1,10 +1,12 @@
 import json
 
+from app.core.athena_longform import import_setup_to_world_model
 from app.models import AIModelCallTrace, ChapterContent, ChapterRevision, LongformMemory, Version
 from test_support.writing_agent_run_helpers import (
     approved_compress_chapter_to_target_tool,
     approved_expand_chapter_to_target_tool,
     seed_longform_project,
+    seed_pending_world_proposal,
 )
 
 
@@ -174,6 +176,47 @@ def test_agent_expand_chapter_to_target_skips_when_chapter_already_at_target(cli
     assert output["status"] == "skipped"
     assert output["reason"] == "chapter_already_at_target"
     assert output["should_generate_next_chapter"] is True
+    assert calls == []
+
+
+def test_agent_expand_chapter_to_target_blocks_pending_world_model_proposals(client, db_session, monkeypatch):
+    project = seed_longform_project(db_session, outline_chapters=[1], generated_chapters=[1])
+    chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=1).one()
+    chapter.content = "短章。" * 300
+    chapter.word_count = 600
+    import_setup_to_world_model(db_session, project.id)
+    seed_pending_world_proposal(
+        db_session,
+        project_id=project.id,
+        claim_id="claim.phase21.pending",
+        predicate="role",
+        subject_ref="char.林深",
+    )
+    db_session.commit()
+    calls = []
+
+    class FakeAIService:
+        async def complete(self, messages, **kwargs):
+            calls.append(messages)
+            raise AssertionError("AI should not be called when world proposals are pending")
+
+    monkeypatch.setattr("app.core.chapter_expansion.AIService", FakeAIService)
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "存在世界模型提案时扩写",
+            "tools": [approved_expand_chapter_to_target_tool(db_session, project.id, chapter_index=1)],
+        },
+    )
+
+    payload = response.json()
+    output = payload["steps"][0]["output"]
+    assert response.status_code == 200
+    assert payload["status"] == "blocked"
+    assert output["status"] == "blocked"
+    assert output["reason"] == "pending_world_model_proposals"
+    assert output["pending_world_model_proposal_count"] == 1
     assert calls == []
 
 
@@ -477,6 +520,53 @@ def test_agent_compress_chapter_to_target_skips_when_chapter_already_within_targ
     assert response.json()["status"] == "success"
     assert output["status"] == "skipped"
     assert output["reason"] == "chapter_already_within_target"
+    assert calls == []
+
+
+def test_agent_compress_chapter_to_target_blocks_pending_world_model_proposals(client, db_session, monkeypatch):
+    project = seed_longform_project(db_session, outline_chapters=[1], generated_chapters=[1])
+    chapter = db_session.query(ChapterContent).filter_by(project_id=project.id, chapter_index=1).one()
+    chapter.content = "林深和苏晚晴在实验室里反复检查雾晶记录，确认线索。 " * 120
+    chapter.word_count = 3000
+    import_setup_to_world_model(db_session, project.id)
+    seed_pending_world_proposal(
+        db_session,
+        project_id=project.id,
+        claim_id="claim.phase22.pending",
+        predicate="role",
+        subject_ref="char.林深",
+    )
+    db_session.commit()
+    calls = []
+
+    class FakeAIService:
+        async def complete(self, messages, **kwargs):
+            calls.append(messages)
+            raise AssertionError("AI should not be called when world proposals are pending")
+
+    monkeypatch.setattr("app.core.chapter_compression.AIService", FakeAIService)
+
+    response = client.post(
+        f"/api/v1/projects/{project.id}/agent-runs",
+        json={
+            "goal": "存在世界模型提案时压缩",
+            "tools": [
+                approved_compress_chapter_to_target_tool(
+                    db_session,
+                    project.id,
+                    chapter_index=1,
+                    target_max_word_count=2300,
+                )
+            ],
+        },
+    )
+
+    payload = response.json()
+    output = payload["steps"][0]["output"]
+    assert response.status_code == 200
+    assert payload["status"] == "blocked"
+    assert output["reason"] == "pending_world_model_proposals"
+    assert output["pending_world_model_proposal_count"] == 1
     assert calls == []
 
 
