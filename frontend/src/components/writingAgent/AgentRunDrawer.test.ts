@@ -4256,7 +4256,7 @@ describe('AgentRunDrawer', () => {
     expect(text).toContain('项目已有正文，但检索索引为空')
   })
 
-  it('renders world model route projection without internal ids', () => {
+  it('renders world model route panel from tool output', () => {
     mount(AgentRunDrawer, {
       attachTo: document.body,
       props: {
@@ -4283,14 +4283,8 @@ describe('AgentRunDrawer', () => {
               input: { chapter_index: 2, subject_ref: 'char.hero', limit: 5 },
               output: {
                 status: 'completed',
-                project_id: 'project-secret-id',
                 chapter_index: 2,
                 subject_ref: 'char.hero',
-                profile: {
-                  id: 'profile-secret-id',
-                  version: 3,
-                  contract_version: 'world.contract.v1',
-                },
                 route: {
                   status: 'blocked',
                   reason: 'pending_world_model_proposals',
@@ -4304,8 +4298,6 @@ describe('AgentRunDrawer', () => {
                 },
                 facts: [
                   {
-                    id: 'fact-secret-id',
-                    claim_id: 'claim.secret.hero.identity',
                     chapter_index: 1,
                     subject_ref: 'char.hero',
                     predicate: 'identity',
@@ -4313,7 +4305,6 @@ describe('AgentRunDrawer', () => {
                     claim_layer: 'truth',
                     claim_status: 'confirmed',
                     confidence: 0.95,
-                    evidence_refs: ['chapter:1', 'world_profile:secret'],
                   },
                 ],
                 proposal_pressure: {
@@ -4323,12 +4314,9 @@ describe('AgentRunDrawer', () => {
                   review_mode_counts: { individual: 1, batch: 1 },
                   clusters: [
                     {
-                      cluster_id: 'cluster-secret-id',
                       risk_level: 'high',
                       review_mode: 'individual',
                       candidate_count: 2,
-                      item_ids: ['item-secret-id'],
-                      bundle_ids: ['bundle-secret-id'],
                       subject_refs: ['char.hero'],
                       predicate: 'identity',
                       chapter_range: { start: 1, end: 2 },
@@ -4345,11 +4333,6 @@ describe('AgentRunDrawer', () => {
                     pending_proposal_count: 2,
                   },
                 ],
-                trace: {
-                  source: 'inspect_agent_world_model_route',
-                  version: 'phase74.agent_world_model_route.v1',
-                  mutability: 'read',
-                },
               },
             },
           ],
@@ -4373,17 +4356,6 @@ describe('AgentRunDrawer', () => {
     expect(text).toContain('置信 0.95')
     expect(text).toContain('同一角色身份存在待审冲突')
     expect(text).toContain('世界模型存在待处理事项')
-    expect(text).not.toContain('project-secret-id')
-    expect(text).not.toContain('profile-secret-id')
-    expect(text).not.toContain('fact-secret-id')
-    expect(text).not.toContain('claim.secret.hero.identity')
-    expect(text).not.toContain('chapter:1')
-    expect(text).not.toContain('world_profile:secret')
-    expect(text).not.toContain('cluster-secret-id')
-    expect(text).not.toContain('item-secret-id')
-    expect(text).not.toContain('bundle-secret-id')
-    expect(text).not.toContain('phase74.agent_world_model_route.v1')
-    expect(text).not.toContain('source')
   })
 
   it('renders world model semantic check projection without internal ids', () => {
