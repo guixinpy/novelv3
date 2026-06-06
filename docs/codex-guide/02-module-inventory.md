@@ -74,6 +74,7 @@ Agent 化成熟度等级定义见 [01-愿景与架构目标](./01-vision.md#四a
   backend/tests/test_writing_agent_runs_longform_batch_execution.py    # longform batch execution API run 回归
   backend/tests/test_writing_agent_runs_longform_batch_review_route.py # longform batch review/route API run 回归
   backend/tests/test_writing_agent_tool_executor_adapters.py           # executor adapter boundary / approval-chain builder 契约回归
+  backend/tests/test_writing_agent_tool_executor_static_metadata.py     # executor static adapter metadata / unhandled tool tracking 契约回归
   backend/tests/test_writing_agent_tool_executor_route_opt_in.py       # executor route opt-in plan/preview/contract 契约回归
   backend/tests/test_writing_agent_tool_executor_route_opt_in_approval.py # executor route opt-in approval 契约回归
 Agent 化缺口：
@@ -440,6 +441,7 @@ Data & Recovery ─── (横切关注点，覆盖所有写入操作)
 
 | 日期 | 模块 | 变更 |
 |------|------|------|
+| 2026-06-06 | Backend Agent Tests | 按 08 实施架构框架将 `test_writing_agent_tool_executor.py` 中 static adapter metadata 与 unhandled tool tracking 回归迁出到 `test_writing_agent_tool_executor_static_metadata.py`；旧巨型测试文件从 8473 行降到 7387 行，新切片为 1028 行 |
 | 2026-06-06 | Backend Agent Tests | 按 08 实施架构框架将 `test_writing_agent_tool_executor.py` 中 route opt-in plan/preview/contract 与 approval 回归迁出到两个专属 executor 测试切片；旧巨型测试文件从 9400 行降到 8473 行，新切片分别为 521 / 444 行 |
 | 2026-06-06 | Backend Agent Tests | 按 08 实施架构框架将 planner continuation API run 回归迁出到 `test_writing_agent_runs_planner_continuation.py`，并把 planner approval plan helper 收敛到 `test_support/writing_agent_run_helpers.py`；旧巨型测试文件从 6572 行降到 5915 行 |
 | 2026-06-06 | Backend Agent Tests | 按 08 实施架构框架将 world model proposal apply/draft API run 回归迁出到 `test_writing_agent_runs_world_model_proposals.py`，并把 apply approval helper 与 continuity anchor seed approval helper 收敛到 `test_support/writing_agent_run_helpers.py`；旧巨型测试文件从 7304 行降到 6572 行 |
