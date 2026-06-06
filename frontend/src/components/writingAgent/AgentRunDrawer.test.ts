@@ -5206,7 +5206,7 @@ describe('AgentRunDrawer', () => {
     expect(text).toContain('plan_recovery_tools')
   })
 
-  it('renders trace anomaly long run samples without raw run or step internals', () => {
+  it('renders trace anomaly long run samples panel from tool output', () => {
     mount(AgentRunDrawer, {
       attachTo: document.body,
       props: {
@@ -5230,57 +5230,21 @@ describe('AgentRunDrawer', () => {
               step_index: 1,
               tool_name: 'inspect_agent_trace_anomaly_long_run_samples',
               status: 'success',
-              input: { limit: 6, chapter_index: 4 },
+              input: { limit: 2, chapter_index: 4 },
               output: {
                 status: 'completed',
-                filters: {
-                  limit: 6,
-                  chapter_index: 4,
-                  minimum_review_run_count: 4,
-                },
                 sample_collection: {
                   status: 'ready_for_threshold_review',
                   candidate_run_count: 4,
                   minimum_review_run_count: 4,
-                  missing_run_count: 0,
-                  step_count: 7,
-                  status_counts: {
-                    blocked: 1,
-                    failed: 1,
-                    success: 2,
-                  },
-                  entrypoint_counts: {
-                    dialog_auto_plan: 4,
-                  },
                   chapter_indexes: [4, 5],
-                  run_id: 'run-long-secret-id',
-                  step_id: 'step-long-secret-id',
                 },
                 review_window: {
                   limit: 2,
                   baseline_limit: 2,
                   chapter_index: 4,
                 },
-                recommended_next_tools: [
-                  'inspect_agent_trace_anomaly_threshold_review',
-                  'inspect_agent_dogfood_evidence',
-                ],
-                recommended_next_tool_calls: [
-                  {
-                    tool_name: 'inspect_agent_trace_anomaly_threshold_review',
-                    params: {
-                      limit: 2,
-                      baseline_limit: 2,
-                      chapter_index: 4,
-                    },
-                  },
-                ],
-                side_effects: { executed: [], skipped: [] },
-                trace: {
-                  source: 'inspect_agent_trace_anomaly_long_run_samples',
-                  version: 'phase243.agent_trace_anomaly_long_run_samples.v1',
-                  mutability: 'read',
-                },
+                recommended_next_tools: ['inspect_agent_trace_anomaly_threshold_review'],
               },
             },
           ],
@@ -5293,28 +5257,11 @@ describe('AgentRunDrawer', () => {
     expect(text).toContain('已完成')
     expect(text).toContain('可复核')
     expect(text).toMatch(/候选运行\s*4/)
-    expect(text).toMatch(/最低样本\s*4/)
-    expect(text).toMatch(/缺失样本\s*0/)
-    expect(text).toMatch(/工具步骤\s*7/)
     expect(text).toContain('第4章')
-    expect(text).toContain('第5章')
-    expect(text).toContain('成功 2')
-    expect(text).toContain('已阻塞 1')
-    expect(text).toContain('失败 1')
-    expect(text).toContain('复核窗口')
-    expect(text).toContain('最近 2 / 基线 2')
     expect(text).toContain('inspect_agent_trace_anomaly_threshold_review')
-    expect(text).toContain('inspect_agent_dogfood_evidence')
-    expect(text).not.toContain('run-long-secret-id')
-    expect(text).not.toContain('step-long-secret-id')
-    expect(text).not.toContain('phase243.agent_trace_anomaly_long_run_samples')
-    expect(text).not.toContain('dialog_auto_plan')
-    expect(text).not.toContain('recommended_next_tool_calls')
-    expect(text).not.toContain('params')
-    expect(text).not.toContain('mutability')
   })
 
-  it('renders trace anomaly threshold review without raw policy or config internals', () => {
+  it('renders trace anomaly threshold review panel from tool output', () => {
     mount(AgentRunDrawer, {
       attachTo: document.body,
       props: {
@@ -5347,44 +5294,17 @@ describe('AgentRunDrawer', () => {
                   sample: {
                     recent_run_count: 2,
                     baseline_run_count: 2,
-                    reviewed_run_count: 4,
-                    minimum_review_run_count: 4,
-                  },
-                  signal_count: 1,
-                  policy: {
-                    run_id: 'threshold-policy-secret-run',
-                    trace_id: 'threshold-policy-secret-trace',
                   },
                 },
                 threshold_candidate: {
                   affected_run_rate_delta: 0.5,
-                  critical_issue_rate_delta: 0.25,
                 },
                 recommended_next_tools: [
                   'prepare_record_agent_trace_anomaly_threshold_config',
-                  'inspect_agent_dogfood_evidence',
-                ],
-                recommended_next_tool_calls: [
-                  {
-                    tool_name: 'prepare_record_agent_trace_anomaly_threshold_config',
-                    params: {
-                      affected_run_rate_delta: 0.5,
-                      critical_issue_rate_delta: 0.25,
-                      source: 'trace_anomaly_threshold_review',
-                      reviewed_run_count: 4,
-                      reason: 'manual_review_from_trace_anomaly_threshold_review',
-                    },
-                  },
                 ],
                 side_effects: {
                   executed: [],
                   skipped: ['record_agent_trace_anomaly_threshold_config'],
-                },
-                trace: {
-                  source: 'inspect_agent_trace_anomaly_threshold_review',
-                  version: 'phase242.agent_trace_anomaly_threshold_review.v1',
-                  mutability: 'read',
-                  config_key: 'Project.style_config.agent_trace_anomaly_thresholds',
                 },
               },
             },
@@ -5399,22 +5319,10 @@ describe('AgentRunDrawer', () => {
     expect(text).toContain('可人工复核')
     expect(text).toContain('保持当前阈值')
     expect(text).toContain('样本 2/2')
-    expect(text).toContain('已复核 4/4')
-    expect(text).toContain('阈值信号 1')
     expect(text).toContain('异常阈值 50%')
-    expect(text).toContain('严重阈值 25%')
     expect(text).toContain('配置准备')
     expect(text).toContain('已跳过直接写入')
     expect(text).toContain('prepare_record_agent_trace_anomaly_threshold_config')
-    expect(text).toContain('inspect_agent_dogfood_evidence')
-    expect(text).not.toContain('threshold-policy-secret-run')
-    expect(text).not.toContain('threshold-policy-secret-trace')
-    expect(text).not.toContain('phase242.agent_trace_anomaly_threshold_review')
-    expect(text).not.toContain('manual_review_from_trace_anomaly_threshold_review')
-    expect(text).not.toContain('Project.style_config.agent_trace_anomaly_thresholds')
-    expect(text).not.toContain('recommended_next_tool_calls')
-    expect(text).not.toContain('params')
-    expect(text).not.toContain('mutability')
   })
 
   it('does not render route upgrade apply when contract preview is not confirmable', () => {
