@@ -7,6 +7,7 @@ import AgentRunEventProjectionPanel from './AgentRunEventProjectionPanel.vue'
 import AgentRunJobProjectionPanel from './AgentRunJobProjectionPanel.vue'
 import AgentRunLongformContextPanel from './AgentRunLongformContextPanel.vue'
 import AgentRunMemoryActivationPanel from './AgentRunMemoryActivationPanel.vue'
+import AgentRunMemoryRoutePanel from './AgentRunMemoryRoutePanel.vue'
 import AgentRunPreflightContextBudgetPanel from './AgentRunPreflightContextBudgetPanel.vue'
 import AgentRunReferenceAlignmentPanel from './AgentRunReferenceAlignmentPanel.vue'
 import AgentRunRetrievalContextPanel from './AgentRunRetrievalContextPanel.vue'
@@ -436,54 +437,6 @@ const longformContextOutput = computed(() => latestToolOutput('summarize_longfor
 const contextCompressionOutput = computed(() => latestToolOutput('inspect_agent_context_compression_projection'))
 const preflightBudgetStep = computed(() => latestToolStep('preflight_writing'))
 const memoryRouteOutput = computed(() => latestToolOutput('inspect_agent_memory_route'))
-const memoryRoute = computed(() => recordValue(memoryRouteOutput.value?.route))
-const memoryRouteLongformMemory = computed(() => recordValue(memoryRouteOutput.value?.longform_memory))
-const memoryRouteMaintenance = computed(() => recordValue(memoryRouteOutput.value?.longform_maintenance))
-const memoryRouteRetrieval = computed(() => recordValue(memoryRouteOutput.value?.retrieval))
-const memoryRouteProvenance = computed(() => recordValue(memoryRouteOutput.value?.memory_provenance))
-const memoryRouteCoverage = computed(() => recordValue(memoryRouteProvenance.value.coverage))
-const memoryRouteDiagnostics = computed(() => recordList(memoryRouteOutput.value?.diagnostics))
-const memoryRouteRecommendedTools = computed(() => (
-  stringList(memoryRouteOutput.value?.recommended_next_tools).length
-    ? stringList(memoryRouteOutput.value?.recommended_next_tools)
-    : stringList(memoryRoute.value.recommended_tools)
-))
-const memoryRouteChapterLabel = computed(() => chapterIndexLabel(memoryRouteOutput.value?.chapter_index))
-const memoryRouteQuery = computed(() => safeMemoryRouteText(memoryRouteOutput.value?.query))
-const memoryRouteContextLabel = computed(() => (
-  memoryRoute.value.can_use_longform_context === true ? '可用于长篇上下文' : '不可用于长篇上下文'
-))
-const memoryRouteChapterCount = computed(() => (
-  numberValue(memoryRouteCoverage.value.chapter_count) ??
-  numberValue(memoryRouteLongformMemory.value.chapter_count)
-))
-const memoryRouteMemoryCount = computed(() => (
-  numberValue(memoryRouteCoverage.value.longform_memory_count) ??
-  numberValue(memoryRouteLongformMemory.value.total_memories)
-))
-const memoryRouteWordCount = computed(() => numberValue(memoryRouteLongformMemory.value.current_word_count))
-const memoryRouteRetrievalDocumentCount = computed(() => (
-  numberValue(memoryRouteCoverage.value.retrieval_document_count) ??
-  numberValue(memoryRouteRetrieval.value.total_documents) ??
-  numberValue(memoryRoute.value.retrieval_document_count)
-))
-const memoryRouteRetrievalChunkCount = computed(() => numberValue(memoryRouteRetrieval.value.total_chunks))
-const memoryRouteMaintenanceIssueCount = computed(() => numberValue(memoryRouteMaintenance.value.issue_count))
-const memoryRouteMaintenanceReady = computed(() => (
-  typeof memoryRouteMaintenance.value.ready_for_writing === 'boolean'
-    ? memoryRouteMaintenance.value.ready_for_writing
-    : null
-))
-const memoryRouteProvenanceStatus = computed(() => stringValue(memoryRouteProvenance.value.status))
-const memoryRouteDiagnosticRows = computed(() => (
-  memoryRouteDiagnostics.value
-    .map((item, index) => ({
-      key: `memory-route-diagnostic:${index}`,
-      code: safeMemoryRouteText(item.code),
-      message: safeMemoryRouteText(item.message),
-    }))
-    .filter((item) => Boolean(item.code || item.message))
-))
 const knowledgeBaseRouteOutput = computed(() => latestToolOutput('inspect_agent_knowledge_base_route'))
 const knowledgeBaseRoute = computed(() => recordValue(knowledgeBaseRouteOutput.value?.route))
 const knowledgeBaseAuthorPreferences = computed(() => recordValue(knowledgeBaseRouteOutput.value?.author_preferences))
@@ -1809,7 +1762,6 @@ const hasMemoryLoopProjection = computed(() => Boolean(
   || postChapterMemoryOutput.value,
 ))
 const hasPostChapterMemoryProjection = computed(() => Boolean(postChapterMemoryOutput.value))
-const hasMemoryRouteProjection = computed(() => Boolean(memoryRouteOutput.value))
 const hasKnowledgeBaseRouteProjection = computed(() => Boolean(knowledgeBaseRouteOutput.value))
 const hasWorldModelRouteProjection = computed(() => Boolean(worldModelRouteOutput.value))
 const hasWorldModelSemanticCheckProjection = computed(() => Boolean(worldModelSemanticCheckOutput.value))
@@ -2354,14 +2306,6 @@ function memoryTreeLlmCandidateMaterializationLabel(status: unknown) {
   return value
 }
 
-function memoryRouteStatusLabel(status: unknown) {
-  const value = stringValue(status)
-  if (value === 'ready') return '可用'
-  if (value === 'blocked') return '已阻塞'
-  if (value === 'completed' || value === 'success') return '已完成'
-  return value || '未知'
-}
-
 function memoryRouteProvenanceStatusLabel(status: unknown) {
   const value = stringValue(status)
   if (value === 'available') return '可用'
@@ -2402,14 +2346,6 @@ function safeRetrievalContextSummaryText(label: unknown) {
   if (/[A-Za-z_]+:[A-Za-z0-9_.:-]+/.test(value)) return ''
   if (/project-secret|candidate-secret|memory-secret|retrieval-secret|source_refs?|source_type|source_id|memory_id|candidate_id|retrieval_internal|retrieval-vector|query_vector_cache_key|memory_provenance|retrieval_items|phase\d+\.agent_retrieval_context/i.test(value)) return ''
   return value.slice(0, 120)
-}
-
-function safeMemoryRouteText(label: unknown) {
-  const value = stringValue(label).replace(/\s+/g, ' ')
-  if (!value) return ''
-  if (/[A-Za-z_]+:[A-Za-z0-9_.-]+/.test(value)) return ''
-  if (/project-secret|source_refs?|source_type|source_id|LongformMemory|LongformMaintenance|RetrievalDocument|Athena\/world_model|phase\d+\.agent_memory_route|longform_memory_retrieval_and_maintenance_diagnostics/i.test(value)) return ''
-  return value.slice(0, 96)
 }
 
 function safeKnowledgeBaseRouteText(label: unknown) {
@@ -3386,86 +3322,10 @@ function missingDependencyTool(value: Record<string, unknown>) {
           :output="memoryActivationOutput"
         />
 
-        <section
-          v-if="hasMemoryRouteProjection"
-          class="agent-run-drawer__memory-route"
-          aria-label="Agent memory route projection"
-        >
-          <h4>记忆路由</h4>
-          <dl class="agent-run-drawer__facts">
-            <div>
-              <dt>状态</dt>
-              <dd>{{ memoryRouteStatusLabel(memoryRoute.status) }}</dd>
-            </div>
-            <div>
-              <dt>上下文</dt>
-              <dd>{{ memoryRouteContextLabel }}</dd>
-            </div>
-            <div v-if="memoryRouteChapterLabel">
-              <dt>章节</dt>
-              <dd>{{ memoryRouteChapterLabel }}</dd>
-            </div>
-            <div v-if="memoryRouteQuery">
-              <dt>查询</dt>
-              <dd>{{ memoryRouteQuery }}</dd>
-            </div>
-            <div v-if="memoryRouteChapterCount !== null">
-              <dt>章节覆盖</dt>
-              <dd>章节 {{ memoryRouteChapterCount }}</dd>
-            </div>
-            <div v-if="memoryRouteMemoryCount !== null">
-              <dt>记忆覆盖</dt>
-              <dd>记忆 {{ memoryRouteMemoryCount }}</dd>
-            </div>
-            <div v-if="memoryRouteWordCount !== null">
-              <dt>正文规模</dt>
-              <dd>字数 {{ memoryRouteWordCount }}</dd>
-            </div>
-            <div v-if="memoryRouteRetrievalDocumentCount !== null">
-              <dt>检索文档</dt>
-              <dd>检索文档 {{ memoryRouteRetrievalDocumentCount }}</dd>
-            </div>
-            <div v-if="memoryRouteRetrievalChunkCount !== null">
-              <dt>检索分片</dt>
-              <dd>检索分片 {{ memoryRouteRetrievalChunkCount }}</dd>
-            </div>
-            <div v-if="memoryRouteMaintenanceReady !== null">
-              <dt>维护</dt>
-              <dd>{{ memoryRouteMaintenanceReady ? '维护可写' : '维护阻塞' }}</dd>
-            </div>
-            <div v-if="memoryRouteMaintenanceIssueCount !== null">
-              <dt>维护问题</dt>
-              <dd>问题 {{ memoryRouteMaintenanceIssueCount }}</dd>
-            </div>
-            <div v-if="memoryRouteProvenanceStatus">
-              <dt>来源覆盖</dt>
-              <dd>{{ memoryRouteProvenanceStatusLabel(memoryRouteProvenanceStatus) }}</dd>
-            </div>
-          </dl>
-          <ul
-            v-if="memoryRouteRecommendedTools.length"
-            class="agent-run-drawer__tools"
-          >
-            <li
-              v-for="tool in memoryRouteRecommendedTools"
-              :key="`memory-route-next:${tool}`"
-            >
-              {{ tool }}
-            </li>
-          </ul>
-          <ul
-            v-if="memoryRouteDiagnosticRows.length"
-            class="agent-run-drawer__planner-signals"
-          >
-            <li
-              v-for="row in memoryRouteDiagnosticRows"
-              :key="row.key"
-            >
-              <strong v-if="row.code">{{ row.code }}</strong>
-              <span v-if="row.message">{{ row.message }}</span>
-            </li>
-          </ul>
-        </section>
+        <AgentRunMemoryRoutePanel
+          v-if="memoryRouteOutput"
+          :output="memoryRouteOutput"
+        />
 
         <section
           v-if="hasKnowledgeBaseRouteProjection"
@@ -5075,7 +4935,6 @@ function missingDependencyTool(value: Record<string, unknown>) {
 .agent-run-drawer__planner h4,
 .agent-run-drawer__memory-loop h4,
 .agent-run-drawer__post-memory h4,
-.agent-run-drawer__memory-route h4,
 .agent-run-drawer__knowledge-route h4,
 .agent-run-drawer__world-model-route h4,
 .agent-run-drawer__world-proposal-review h4,
@@ -5153,15 +5012,6 @@ function missingDependencyTool(value: Record<string, unknown>) {
 }
 
 .agent-run-drawer__post-memory {
-  display: grid;
-  gap: var(--space-3);
-  padding: var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-bg-secondary);
-}
-
-.agent-run-drawer__memory-route {
   display: grid;
   gap: var(--space-3);
   padding: var(--space-3);
