@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { numberValue, recordList, recordValue, stringValue } from './agentRunProjection/safeProjection'
 
 const props = defineProps<{
   output: Record<string, unknown>
@@ -24,26 +25,6 @@ const targetRows = computed(() => (
     }))
     .filter((row) => row.toolName || row.riskLabel || row.gateStatusLabel || row.actionLabel)
 ))
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-function recordValue(value: unknown): Record<string, unknown> {
-  return isRecord(value) ? value : {}
-}
-
-function recordList(value: unknown): Array<Record<string, unknown>> {
-  return Array.isArray(value) ? value.filter(isRecord) : []
-}
-
-function stringValue(value: unknown): string {
-  return typeof value === 'string' ? value : ''
-}
-
-function numberValue(value: unknown): number | null {
-  return typeof value === 'number' && Number.isFinite(value) ? value : null
-}
 
 function statusLabel(value: unknown) {
   const statusValue = stringValue(value)

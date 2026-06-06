@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import BaseModal from '../base/BaseModal.vue'
+import AgentRunReferenceAlignmentPanel from './AgentRunReferenceAlignmentPanel.vue'
 import AgentRunWriteGateCoveragePanel from './AgentRunWriteGateCoveragePanel.vue'
 import type { WritingAgentRunDetail } from '../../api/types'
 
@@ -265,34 +266,6 @@ const agentDogfoodMissingSourceCount = computed(() => (
   numberValue(agentDogfoodEvidenceSummary.value.missing_source_count)
 ))
 const referenceAlignmentOutput = computed(() => latestToolOutput('inspect_agent_reference_alignment'))
-const referenceAlignmentSummary = computed(() => recordValue(referenceAlignmentOutput.value?.summary))
-const referenceAlignmentStatus = computed(() => stringValue(referenceAlignmentOutput.value?.status))
-const referenceAlignmentSourceCount = computed(() => numberValue(referenceAlignmentSummary.value.source_count))
-const referenceAlignmentPatternCount = computed(() => numberValue(referenceAlignmentSummary.value.pattern_count))
-const referenceAlignmentDecisionCount = computed(() => numberValue(referenceAlignmentSummary.value.decision_count))
-const referenceAlignmentCapabilityAreaCount = computed(() => numberValue(referenceAlignmentSummary.value.capability_area_count))
-const referenceAlignmentAdapterToolCount = computed(() => numberValue(referenceAlignmentSummary.value.adapter_backed_tool_count))
-const referenceAlignmentPatterns = computed(() => (
-  recordList(referenceAlignmentOutput.value?.patterns)
-    .slice(0, 3)
-    .map((pattern, index) => ({
-      key: `reference-alignment-pattern:${stringValue(pattern.source) || index}`,
-      source: stringValue(pattern.source),
-      appliedPatterns: appliedPatternsLabel(pattern.applied_patterns),
-    }))
-    .filter((pattern) => pattern.source || pattern.appliedPatterns)
-))
-const referenceAlignmentCapabilities = computed(() => (
-  recordList(referenceAlignmentOutput.value?.capability_alignment)
-    .slice(0, 4)
-    .map((capability, index) => ({
-      key: `reference-alignment-capability:${stringValue(capability.area) || index}`,
-      area: stringValue(capability.area),
-      status: referenceAlignmentCapabilityStatusLabel(capability.status),
-    }))
-    .filter((capability) => capability.area || capability.status)
-))
-const referenceAlignmentRecommendedTools = computed(() => stringList(referenceAlignmentOutput.value?.recommended_next_tools))
 const writeGateCoverageOutput = computed(() => latestToolOutput('inspect_agent_write_gate_coverage'))
 const eventProjectionOutput = computed(() => latestToolOutput('inspect_agent_event_projection'))
 const eventProjectionSummary = computed(() => recordValue(eventProjectionOutput.value?.summary))
@@ -2825,14 +2798,6 @@ function dogfoodEvidenceStatusLabel(status: unknown) {
   return value || '未知'
 }
 
-function referenceAlignmentStatusLabel(status: unknown) {
-  const value = stringValue(status)
-  if (value === 'completed' || value === 'success') return '已完成'
-  if (value === 'running') return '进行中'
-  if (value === 'failed') return '失败'
-  return value || '未知'
-}
-
 function workerDispatchStatusLabel(status: unknown) {
   const value = stringValue(status)
   if (value === 'ready') return '就绪'
@@ -2847,13 +2812,6 @@ function orphanRecoveryStatusLabel(status: unknown) {
   const value = stringValue(status)
   if (value === 'clear') return '无孤儿'
   if (value === 'needs_attention') return '需处理'
-  return value || '未知'
-}
-
-function referenceAlignmentCapabilityStatusLabel(status: unknown) {
-  const value = stringValue(status)
-  if (value === 'implemented') return '已实现'
-  if (value === 'descriptor_only') return '仅描述符'
   return value || '未知'
 }
 
@@ -3792,76 +3750,10 @@ function missingDependencyTool(value: Record<string, unknown>) {
           </dl>
         </section>
 
-        <section
+        <AgentRunReferenceAlignmentPanel
           v-if="referenceAlignmentOutput"
-          class="agent-run-drawer__reference-alignment"
-          aria-label="Reference alignment projection"
-        >
-          <h4>参考项目对齐</h4>
-          <dl class="agent-run-drawer__facts">
-            <div v-if="referenceAlignmentStatus">
-              <dt>状态</dt>
-              <dd>{{ referenceAlignmentStatusLabel(referenceAlignmentStatus) }}</dd>
-            </div>
-            <div v-if="referenceAlignmentSourceCount !== null">
-              <dt>参考项目</dt>
-              <dd>{{ referenceAlignmentSourceCount }}</dd>
-            </div>
-            <div v-if="referenceAlignmentPatternCount !== null">
-              <dt>模式</dt>
-              <dd>{{ referenceAlignmentPatternCount }}</dd>
-            </div>
-            <div v-if="referenceAlignmentDecisionCount !== null">
-              <dt>决策</dt>
-              <dd>{{ referenceAlignmentDecisionCount }}</dd>
-            </div>
-            <div v-if="referenceAlignmentCapabilityAreaCount !== null">
-              <dt>能力域</dt>
-              <dd>{{ referenceAlignmentCapabilityAreaCount }}</dd>
-            </div>
-            <div v-if="referenceAlignmentAdapterToolCount !== null">
-              <dt>适配工具</dt>
-              <dd>{{ referenceAlignmentAdapterToolCount }}</dd>
-            </div>
-          </dl>
-          <ul
-            v-if="referenceAlignmentPatterns.length"
-            class="agent-run-drawer__reference-patterns"
-          >
-            <li
-              v-for="pattern in referenceAlignmentPatterns"
-              :key="pattern.key"
-            >
-              <div>
-                <strong>{{ pattern.source || '参考项目' }}</strong>
-              </div>
-              <p v-if="pattern.appliedPatterns">{{ pattern.appliedPatterns }}</p>
-            </li>
-          </ul>
-          <ul
-            v-if="referenceAlignmentCapabilities.length"
-            class="agent-run-drawer__worker-dispatches"
-          >
-            <li
-              v-for="capability in referenceAlignmentCapabilities"
-              :key="capability.key"
-            >
-              <strong>{{ capability.area || '能力域' }}</strong>
-              <span>{{ capability.status }}</span>
-            </li>
-          </ul>
-          <ul
-            v-if="referenceAlignmentRecommendedTools.length"
-            class="agent-run-drawer__tools"
-          >
-            <li
-              v-for="tool in referenceAlignmentRecommendedTools"
-              :key="`reference-alignment-next:${tool}`"
-            >
-              {{ tool }}
-            </li>
-          </ul>
-        </section>
+          :output="referenceAlignmentOutput"
+        />
 
         <AgentRunWriteGateCoveragePanel
           v-if="writeGateCoverageOutput"
@@ -6790,7 +6682,6 @@ function missingDependencyTool(value: Record<string, unknown>) {
 .agent-run-drawer__context-budget h4,
 .agent-run-drawer__memory-activation h4,
 .agent-run-drawer__memory-route h4,
-.agent-run-drawer__reference-alignment h4,
 .agent-run-drawer__event-projection h4,
 .agent-run-drawer__job-projection h4,
 .agent-run-drawer__chapter-conflict h4,
@@ -6926,15 +6817,6 @@ function missingDependencyTool(value: Record<string, unknown>) {
 }
 
 .agent-run-drawer__memory-route {
-  display: grid;
-  gap: var(--space-3);
-  padding: var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-bg-secondary);
-}
-
-.agent-run-drawer__reference-alignment {
   display: grid;
   gap: var(--space-3);
   padding: var(--space-3);

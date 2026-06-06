@@ -73,7 +73,7 @@ Agent 化缺口：
   - StopHooks 已具备 critical loop、BudgetCap、MaxTurns、ContextGuard、approval、memory provenance 策略；后续可继续扩展为真正的运行中断控制点
   - Agent loop budget 已具备 read 工具 refund 投影（used/charged/refunded/remaining iterations）
   - 工具契约快照已有只读审计和自然语言只读入口，可直接检查工具契约覆盖率和迁移差距
-  - Reference Alignment 已有只读审计、自然语言只读入口、AgentRunDrawer 安全投影和聊天 action descriptor，可直接检查参考项目模式对齐、已采纳决策、能力域覆盖和下一步适配建议，同时隐藏 source_path/source_refs/module_paths/trace version 等内部定位字段
+  - Reference Alignment 已有只读审计、自然语言只读入口、AgentRunDrawer 独立 Panel 安全投影和聊天 action descriptor，可直接检查参考项目模式对齐、已采纳决策、能力域覆盖和下一步适配建议，同时隐藏 source_path/source_refs/module_paths/trace version 等内部定位字段
   - Dogfood Evidence 已有只读审计和自然语言只读入口，可直接检查真实长篇 dogfood / pressure-test 证据覆盖，并纳入 Trace anomaly threshold calibration/policy/config/review/long-run execution/approval-chain 与 Memory Tree LLM candidate batch materialization 证据
   - Route Preference 已有只读审计和自然语言只读入口，可直接检查 text_intent/slash_command/button_action 路由偏好和 Agent 审批链迁移建议
   - Route Approval Opt-in / Pending Action approval opt-in 已有只读规划、应用预览、契约生成和 Agent plan approval prepare 自然语言入口；prepare 输出会携带仍需确认的 execute-with-approval 调用骨架，推荐规范化、followup planner 与对话 action_result_view 会保留/展示该 pending confirmation handoff，可直接检查 pending_action 迁入 Agent 审批链的 plan/preview/contract/prepare/execute handoff
@@ -432,6 +432,7 @@ Data & Recovery ─── (横切关注点，覆盖所有写入操作)
 
 | 日期 | 模块 | 变更 |
 |------|------|------|
+| 2026-06-06 | Frontend Agent UX | 按 ADR-010 将 inspect_agent_reference_alignment 安全投影从 AgentRunDrawer 主文件迁出为 AgentRunReferenceAlignmentPanel，并新增专属脱敏测试；Drawer 仅保留工具输出定位和面板挂载，继续降低 7000 行级主文件风险 |
 | 2026-06-06 | Frontend Agent UX | AgentRunDrawer 新增 inspect_agent_write_gate_coverage 安全投影，展示写入工具数、Agent 审批覆盖、确认守卫、门禁缺口、高风险直写、风险目标和推荐动作，同时隐藏 adapter/handler、gate version/type、raw write policy、confirmation_fields、indirect_coverage、trace coverage_basis 与 mutability 等内部字段；新增投影拆为独立小组件以避免继续膨胀 Drawer 主文件 |
 | 2026-06-05 | Frontend Agent UX | AgentRunDrawer 新增 inspect_agent_trace_anomaly_long_run_samples 与 inspect_agent_trace_anomaly_threshold_review 安全投影，展示长跑采样状态、候选运行/步骤/章节/复核窗口、状态分布、阈值复核样本、策略决策、阈值候选和推荐工具，同时隐藏 run/step/trace id、trace version、raw recommended_next_tool_calls params、policy/config 内部字段 |
 | 2026-06-05 | Frontend Agent UX | AgentRunDrawer 新增 inspect_agent_job_projection 安全投影，展示队列深度、活跃/终止任务、返回任务数、选中任务状态/章节/范围/恢复能力、控制面与命令契约缺口、章节占用、事件摘要和推荐工具，同时隐藏 project/selector/task/run/event/trace id、version、control_plane 与原始 params |
