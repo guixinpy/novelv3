@@ -367,7 +367,7 @@ backend/app/services/agent/
 - 对超预算文件的改动需要优先做到净减少；无法减少时必须补充理由和后续拆分目标。
 - 新增 Agent 能力前先定义 slice 边界和验证标准，再进入代码实现。
 - 当前 Frontend Agent UX 的优先拆分对象是 `AgentRunDrawer.vue`、`AgentRunDrawer.test.ts` 和剩余 Drawer fixture；Memory Tree LLM candidate / batch prepare / batch execute、Trace Audit 与 Trace Anomaly 系列已迁出为独立 Panel，Memory Tree LLM、Memory Tree 只读、Post Chapter Memory Capture、Knowledge Base、recommended followup / recovery、planner preview 与 route upgrade Drawer fixture 已迁出到 `agentRunFixtures`，并应继续向 fixture/projector 拆分收敛。
-- 当前 Backend Agent Tests 的优先拆分对象是 `test_writing_agent_runs.py` 与 `test_writing_agent_tool_executor.py`；`test_writing_agent_runs.py` 已先迁出 revision draft / revision patch / chapter resize expand / chapter resize compress / pending world proposal guard / world model proposal review-plan / preview / apply-draft / planner continuation / longform batch queue-preflight API 回归和共享 test_support helper，后续继续按 longform batch execution/review/route 与 executor 工具族等能力切片拆分。
+- 当前 Backend Agent Tests 的优先拆分对象是 `test_writing_agent_runs.py` 与 `test_writing_agent_tool_executor.py`；`test_writing_agent_runs.py` 已先迁出 revision draft / revision patch / chapter resize expand / chapter resize compress / pending world proposal guard / world model proposal review-plan / preview / apply-draft / planner continuation / longform batch queue-preflight / execution / review-route API 回归和共享 test_support helper，后续继续按 direct chapter recovery、通用 Agent run API、chapter generation/review 残留测试与 executor 工具族等能力切片拆分。
 
 ---
 
