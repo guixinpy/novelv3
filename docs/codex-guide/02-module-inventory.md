@@ -85,7 +85,7 @@ Agent 化缺口：
   - Memory Activation Plan 已有只读诊断、自然语言只读入口和 Drawer 安全投影，可直接检查指定章节的写前记忆激活计划
   - World Model Route 已有只读诊断、自然语言只读入口和 Drawer 安全投影，可直接检查指定章节/subject_ref 的世界模型 profile、事实和待审提案压力
   - World Model Proposal Review/Resolution Plan 已有只读入口和 Drawer 安全投影，可直接检查待审世界模型提案队列、风险/审阅模式统计、推荐动作、提案簇摘要，并生成带高优先级/批量步骤统计和安全步骤摘要的提案处理计划
-  - Retrieval Context 与 Longform Context Summary 已有只读工具和自然语言只读入口，可直接检索上下文证据并汇总指定章节长篇上下文；Retrieval Context run 可在 AgentRunDrawer 展示查询/过滤条件、返回窗口、证据条目、来源覆盖和推荐后续的安全摘要；Longform Context Summary run 可展示章节目标、生成进度、来源覆盖、预算截断、分区条目和诊断安全摘要
+  - Retrieval Context、Longform Context Summary 与 ContextCompressor Projection 已有只读工具和自然语言只读入口，可直接检索上下文证据、汇总指定章节长篇上下文并检查压缩窗口压力；Retrieval Context run 可在 AgentRunDrawer 独立 Panel 展示查询/过滤条件、返回窗口、证据条目、来源覆盖和推荐后续的安全摘要；Longform Context Summary run 可展示章节目标、生成进度、来源覆盖、预算截断、分区条目和诊断安全摘要；ContextCompressor Projection run 可展示压缩状态、粒度、保护策略、预算使用率、压缩计划和风险摘要
   - Dialog Control Plane Projection 已有只读审计和自然语言只读入口，可直接检查 generate_chapter 等 pending action 的当前运行工具与推荐审批工具链
   - Mutation Fingerprints 已有只读审计和自然语言只读入口，可直接检查 generate_chapter 等写入工具的稳定变更指纹
   - 写入门禁覆盖已有只读审计、自然语言只读入口和 AgentRunDrawer 安全投影，可直接检查写入工具的 Agent 计划审批 gate coverage、风险目标和推荐补齐动作，同时隐藏 adapter/handler、gate version/type、raw write policy、confirmation_fields、indirect_coverage、trace coverage_basis 与 mutability 等内部字段
@@ -319,7 +319,7 @@ Agent 化缺口：
 ### 4.3 Context Compression（上下文压缩）
 
 ```
-当前状态：L1 对话历史长度限制 + 基础压缩；ContextCompressor 已具备窗口压力/ContextGuard 投影、头尾保护预修剪计划、只读 dry-run payload builder、推荐恢复入口，并已接入 preflight_writing 运行时检查、自然语言只读自检入口、自然语言 dry-run payload 直达入口、自然语言 preflight 上下文预算预检入口、AgentRunDrawer 安全摘要、preflight 上下文预算安全摘要、ready payload 后续持久摘要推荐、preflight 持久摘要优先复用、章节生成 longform prompt block 压缩、LongformMemory 持久摘要工件写入与章节 prompt 自动复用
+当前状态：L1 对话历史长度限制 + 基础压缩；ContextCompressor 已具备窗口压力/ContextGuard 投影、头尾保护预修剪计划、只读 dry-run payload builder、推荐恢复入口，并已接入 preflight_writing 运行时检查、自然语言只读自检入口、自然语言 dry-run payload 直达入口、自然语言 preflight 上下文预算预检入口、AgentRunDrawer 独立 Panel 安全摘要、preflight 上下文预算安全摘要、ready payload 后续持久摘要推荐、preflight 持久摘要优先复用、章节生成 longform prompt block 压缩、LongformMemory 持久摘要工件写入与章节 prompt 自动复用
 目标状态：L2-L3 LLM 摘要压缩 + 头尾保护 + Token 预算管理
 关键文件：
   backend/app/services/writing_agent/
@@ -432,6 +432,7 @@ Data & Recovery ─── (横切关注点，覆盖所有写入操作)
 
 | 日期 | 模块 | 变更 |
 |------|------|------|
+| 2026-06-06 | Frontend Agent UX | 按 ADR-010 将 inspect_agent_context_compression_projection 安全投影迁出为 AgentRunContextCompressionPanel，并新增专属脱敏测试；preflight 上下文预算暂留 Drawer，等待后续独立迁出 |
 | 2026-06-06 | Frontend Agent UX | 按 ADR-010 将 summarize_longform_context 安全投影迁出为 AgentRunLongformContextPanel，并新增专属脱敏测试；AgentRunDrawer 继续收窄为输出定位和面板挂载 |
 | 2026-06-06 | Frontend Agent UX | 按 ADR-010 将 search_agent_retrieval_context 安全投影迁出为 AgentRunRetrievalContextPanel，并新增专属脱敏测试；AgentRunDrawer 继续收窄为输出定位和面板挂载，同时只保留记忆闭环轻量摘要 |
 | 2026-06-06 | Frontend Agent UX | 按 ADR-010 将 inspect_agent_retrieval_prefetch_plan 安全投影迁出为 AgentRunRetrievalPrefetchPanel，并新增专属脱敏测试；AgentRunDrawer 继续收窄为输出定位和面板挂载 |

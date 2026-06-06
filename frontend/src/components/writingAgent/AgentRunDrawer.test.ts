@@ -5007,7 +5007,7 @@ describe('AgentRunDrawer', () => {
     expect(text).not.toContain('report_only')
   })
 
-  it('renders context compression projection without provenance internals', () => {
+  it('renders context compression projection from tool output', () => {
     mount(AgentRunDrawer, {
       attachTo: document.body,
       props: {
@@ -5034,14 +5034,10 @@ describe('AgentRunDrawer', () => {
               input: { chapter_index: 8, max_chars: 4000 },
               output: {
                 status: 'warning',
-                version: 'phase225.agent_context_compression_projection.v1',
-                project_id: 'project-secret-id',
                 chapter_index: 8,
                 strategy: {
                   granularity: 'chapter_window',
                   protect_current_chapter: true,
-                  protect_head_sections: ['project', 'active_state'],
-                  protect_tail_sections: ['recent_chapters', 'critical_context'],
                 },
                 summary: {
                   prompt_context_chars: 3800,
@@ -5055,62 +5051,16 @@ describe('AgentRunDrawer', () => {
                     code: 'context_window_pressure',
                     severity: 'warning',
                     message: '章节上下文接近当前摘要窗口上限，应先压缩或扩大窗口再继续生成。',
-                    threshold: 0.85,
-                    observed: 0.95,
-                  },
-                  {
-                    code: 'prompt_context_truncated',
-                    severity: 'warning',
-                    message: '完整上下文已被截断，继续生成前应复查 longform context 来源窗口。',
                   },
                 ],
                 compression_plan: {
-                  status: 'recommended',
-                  mode: 'head_tail_protected_pretrim',
                   target_max_chars: 3000,
                   protected_head_sections: ['project', 'active_state'],
                   protected_tail_sections: ['recent_chapters', 'critical_context'],
                   pretrim_order: ['source_sections', 'critical_context', 'recent_chapters'],
-                  summary_tool: {
-                    tool_name: 'summarize_longform_context',
-                    params: { chapter_index: 8, max_chars: 3000, include_prompt_context: false },
-                  },
-                  payload_tool: {
-                    tool_name: 'build_agent_context_compression_payload',
-                    params: { chapter_index: 8, max_chars: 4000, context_guard_failure_count: 1 },
-                  },
                   llm_summary_required: true,
                 },
                 recommended_next_tools: ['build_agent_context_compression_payload', 'inspect_agent_memory_route'],
-                recovery: {
-                  status: 'optional',
-                  reason: 'context_compression_window_pressure',
-                  next_tools: ['build_agent_context_compression_payload', 'inspect_agent_memory_route'],
-                  tools: [
-                    {
-                      tool_name: 'build_agent_context_compression_payload',
-                      params: { chapter_index: 8, max_chars: 4000, context_guard_failure_count: 1 },
-                    },
-                  ],
-                },
-                memory_provenance: {
-                  status: 'truncated',
-                  sources: [
-                    { source_type: 'LongformMemory', source_ref: 'longform-memory-secret-id' },
-                  ],
-                  windows: {
-                    sections: {
-                      source_sections: { has_more: true, source_ids: ['source-secret-id'] },
-                      critical_context: { has_more: true, source_ids: ['critical-secret-id'] },
-                    },
-                  },
-                },
-                trace: {
-                  source: 'inspect_agent_context_compression_projection',
-                  version: 'phase225.agent_context_compression_projection.v1',
-                  mutability: 'read',
-                  runtime_behavior_changed: false,
-                },
               },
             },
           ],
@@ -5138,19 +5088,6 @@ describe('AgentRunDrawer', () => {
     expect(text).toContain('inspect_agent_memory_route')
     expect(text).toContain('context_window_pressure')
     expect(text).toContain('章节上下文接近当前摘要窗口上限')
-    expect(text).toContain('prompt_context_truncated')
-    expect(text).toContain('完整上下文已被截断')
-    expect(text).not.toContain('project-secret-id')
-    expect(text).not.toContain('longform-memory-secret-id')
-    expect(text).not.toContain('source-secret-id')
-    expect(text).not.toContain('critical-secret-id')
-    expect(text).not.toContain('source_ref')
-    expect(text).not.toContain('source_type')
-    expect(text).not.toContain('memory_provenance')
-    expect(text).not.toContain('phase225.agent_context_compression_projection.v1')
-    expect(text).not.toContain('runtime_behavior_changed')
-    expect(text).not.toContain('include_prompt_context')
-    expect(text).not.toContain('context_guard_failure_count')
   })
 
   it('renders preflight context budget warning without payload internals', () => {

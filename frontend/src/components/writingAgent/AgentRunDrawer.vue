@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import BaseModal from '../base/BaseModal.vue'
 import AgentRunChapterConflictRecoveryPanel from './AgentRunChapterConflictRecoveryPanel.vue'
+import AgentRunContextCompressionPanel from './AgentRunContextCompressionPanel.vue'
 import AgentRunEventProjectionPanel from './AgentRunEventProjectionPanel.vue'
 import AgentRunJobProjectionPanel from './AgentRunJobProjectionPanel.vue'
 import AgentRunLongformContextPanel from './AgentRunLongformContextPanel.vue'
@@ -480,42 +481,6 @@ const retrievalPrimarySourceLabel = computed(() => {
 const retrievalRecommendedTools = computed(() => stringList(retrievalContextOutput.value?.recommended_next_tools))
 const longformContextOutput = computed(() => latestToolOutput('summarize_longform_context'))
 const contextCompressionOutput = computed(() => latestToolOutput('inspect_agent_context_compression_projection'))
-const contextCompressionSummary = computed(() => recordValue(contextCompressionOutput.value?.summary))
-const contextCompressionStrategy = computed(() => recordValue(contextCompressionOutput.value?.strategy))
-const contextCompressionPlan = computed(() => recordValue(contextCompressionOutput.value?.compression_plan))
-const contextCompressionRisks = computed(() => recordList(contextCompressionOutput.value?.risks))
-const contextCompressionRecommendedTools = computed(() => stringList(contextCompressionOutput.value?.recommended_next_tools))
-const contextCompressionChapterLabel = computed(() => chapterIndexLabel(contextCompressionOutput.value?.chapter_index))
-const contextCompressionGranularityLabel = computed(() => contextCompressionGranularity(contextCompressionStrategy.value.granularity))
-const contextCompressionProtectionLabel = computed(() => (
-  contextCompressionStrategy.value.protect_current_chapter === true ? '保护当前章节' : '不保护当前章节'
-))
-const contextCompressionPromptChars = computed(() => numberValue(contextCompressionSummary.value.prompt_context_chars))
-const contextCompressionMaxChars = computed(() => numberValue(contextCompressionSummary.value.max_chars))
-const contextCompressionUsageLabel = computed(() => {
-  const ratio = numberValue(contextCompressionSummary.value.usage_ratio)
-  if (ratio === null) return ''
-  return `使用率 ${Math.round(ratio * 100)}%`
-})
-const contextCompressionTruncatedSectionCount = computed(() => numberValue(contextCompressionSummary.value.truncated_section_count))
-const contextCompressionGuardFailureCount = computed(() => numberValue(contextCompressionSummary.value.context_guard_failure_count))
-const contextCompressionTargetMaxChars = computed(() => numberValue(contextCompressionPlan.value.target_max_chars))
-const contextCompressionHeadProtectionCount = computed(() => stringList(contextCompressionPlan.value.protected_head_sections).length)
-const contextCompressionTailProtectionCount = computed(() => stringList(contextCompressionPlan.value.protected_tail_sections).length)
-const contextCompressionPretrimCount = computed(() => stringList(contextCompressionPlan.value.pretrim_order).length)
-const contextCompressionSummaryRequiredLabel = computed(() => (
-  contextCompressionPlan.value.llm_summary_required === true ? '需要 LLM 摘要' : '无需 LLM 摘要'
-))
-const contextCompressionRiskRows = computed(() => (
-  contextCompressionRisks.value
-    .map((risk, index) => ({
-      key: `context-compression-risk:${index}`,
-      code: safeContextCompressionText(risk.code),
-      severity: contextCompressionSeverityLabel(risk.severity),
-      message: safeContextCompressionText(risk.message),
-    }))
-    .filter((risk) => Boolean(risk.code || risk.message))
-))
 const preflightBudgetStep = computed(() => latestToolStep('preflight_writing'))
 const preflightBudgetOutput = computed(() => recordValue(preflightBudgetStep.value?.output))
 const preflightBudgetChecks = computed(() => recordValue(preflightBudgetOutput.value.checks))
@@ -1944,7 +1909,6 @@ const hasMemoryLoopProjection = computed(() => Boolean(
 ))
 const hasPostChapterMemoryProjection = computed(() => Boolean(postChapterMemoryOutput.value))
 const hasMemoryActivationProjection = computed(() => Boolean(memoryActivationOutput.value))
-const hasContextCompressionProjection = computed(() => Boolean(contextCompressionOutput.value))
 const hasPreflightBudgetProjection = computed(() => Boolean(Object.keys(preflightBudgetCompression.value).length))
 const hasMemoryRouteProjection = computed(() => Boolean(memoryRouteOutput.value))
 const hasKnowledgeBaseRouteProjection = computed(() => Boolean(knowledgeBaseRouteOutput.value))
@@ -2523,12 +2487,6 @@ function contextCompressionStatusLabel(status: unknown) {
   if (value === 'warning') return '警告'
   if (value === 'blocked') return '已阻塞'
   if (value === 'completed' || value === 'success') return '已完成'
-  return value || '未知'
-}
-
-function contextCompressionGranularity(granularity: unknown) {
-  const value = stringValue(granularity)
-  if (value === 'chapter_window') return '章节窗口'
   return value || '未知'
 }
 
@@ -3555,95 +3513,10 @@ function missingDependencyTool(value: Record<string, unknown>) {
           :output="longformContextOutput"
         />
 
-        <section
-          v-if="hasContextCompressionProjection"
-          class="agent-run-drawer__context-compression"
-          aria-label="Agent context compression projection"
-        >
-          <h4>上下文压缩</h4>
-          <dl class="agent-run-drawer__facts">
-            <div>
-              <dt>状态</dt>
-              <dd>{{ contextCompressionStatusLabel(contextCompressionOutput?.status) }}</dd>
-            </div>
-            <div v-if="contextCompressionChapterLabel">
-              <dt>章节</dt>
-              <dd>{{ contextCompressionChapterLabel }}</dd>
-            </div>
-            <div v-if="contextCompressionGranularityLabel">
-              <dt>粒度</dt>
-              <dd>{{ contextCompressionGranularityLabel }}</dd>
-            </div>
-            <div>
-              <dt>保护</dt>
-              <dd>{{ contextCompressionProtectionLabel }}</dd>
-            </div>
-            <div v-if="contextCompressionPromptChars !== null">
-              <dt>上下文</dt>
-              <dd>上下文字符 {{ contextCompressionPromptChars }}</dd>
-            </div>
-            <div v-if="contextCompressionMaxChars !== null">
-              <dt>预算</dt>
-              <dd>预算 {{ contextCompressionMaxChars }}</dd>
-            </div>
-            <div v-if="contextCompressionUsageLabel">
-              <dt>使用率</dt>
-              <dd>{{ contextCompressionUsageLabel }}</dd>
-            </div>
-            <div v-if="contextCompressionTruncatedSectionCount !== null">
-              <dt>截断</dt>
-              <dd>截断分区 {{ contextCompressionTruncatedSectionCount }}</dd>
-            </div>
-            <div v-if="contextCompressionGuardFailureCount !== null">
-              <dt>Guard</dt>
-              <dd>Guard 失败 {{ contextCompressionGuardFailureCount }}</dd>
-            </div>
-            <div v-if="contextCompressionTargetMaxChars !== null">
-              <dt>目标</dt>
-              <dd>目标 {{ contextCompressionTargetMaxChars }}</dd>
-            </div>
-            <div>
-              <dt>头部</dt>
-              <dd>头部保护 {{ contextCompressionHeadProtectionCount }}</dd>
-            </div>
-            <div>
-              <dt>尾部</dt>
-              <dd>尾部保护 {{ contextCompressionTailProtectionCount }}</dd>
-            </div>
-            <div>
-              <dt>预修剪</dt>
-              <dd>预修剪 {{ contextCompressionPretrimCount }}</dd>
-            </div>
-            <div>
-              <dt>摘要</dt>
-              <dd>{{ contextCompressionSummaryRequiredLabel }}</dd>
-            </div>
-          </dl>
-          <ul
-            v-if="contextCompressionRecommendedTools.length"
-            class="agent-run-drawer__tools"
-          >
-            <li
-              v-for="tool in contextCompressionRecommendedTools"
-              :key="`context-compression-tool:${tool}`"
-            >
-              {{ tool }}
-            </li>
-          </ul>
-          <ul
-            v-if="contextCompressionRiskRows.length"
-            class="agent-run-drawer__planner-signals"
-          >
-            <li
-              v-for="risk in contextCompressionRiskRows"
-              :key="risk.key"
-            >
-              <strong v-if="risk.code">{{ risk.code }}</strong>
-              <span v-if="risk.severity">{{ risk.severity }}</span>
-              <span v-if="risk.message">{{ risk.message }}</span>
-            </li>
-          </ul>
-        </section>
+        <AgentRunContextCompressionPanel
+          v-if="contextCompressionOutput"
+          :output="contextCompressionOutput"
+        />
 
         <section
           v-if="hasPreflightBudgetProjection"
@@ -5500,7 +5373,6 @@ function missingDependencyTool(value: Record<string, unknown>) {
 .agent-run-drawer__planner h4,
 .agent-run-drawer__memory-loop h4,
 .agent-run-drawer__post-memory h4,
-.agent-run-drawer__context-compression h4,
 .agent-run-drawer__context-budget h4,
 .agent-run-drawer__memory-activation h4,
 .agent-run-drawer__memory-route h4,
@@ -5581,15 +5453,6 @@ function missingDependencyTool(value: Record<string, unknown>) {
 }
 
 .agent-run-drawer__post-memory {
-  display: grid;
-  gap: var(--space-3);
-  padding: var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-bg-secondary);
-}
-
-.agent-run-drawer__context-compression {
   display: grid;
   gap: var(--space-3);
   padding: var(--space-3);
