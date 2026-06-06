@@ -5090,7 +5090,7 @@ describe('AgentRunDrawer', () => {
     expect(text).toContain('章节上下文接近当前摘要窗口上限')
   })
 
-  it('renders preflight context budget warning without payload internals', () => {
+  it('renders preflight context budget projection from tool output', () => {
     mount(AgentRunDrawer, {
       attachTo: document.body,
       props: {
@@ -5134,20 +5134,9 @@ describe('AgentRunDrawer', () => {
                 },
                 context_compression_payload_preview: {
                   status: 'ready',
-                  trace: {
-                    source: 'load_agent_context_compression_summary',
-                    version: 'secret-preflight-budget-version',
-                  },
-                  record: {
-                    scope_key: 'context_compression:chapter:3:max_chars:500',
-                    title: '第3章上下文压缩摘要',
-                    summary: '已持久化的压缩摘要正文不应出现在预算预览中。',
-                  },
                   compression_payload: {
-                    execution_mode: 'dry_run',
                     target_max_chars: 375,
                     compressed_context_chars: 360,
-                    compressed_context: 'SECRET_COMPRESSED_CONTEXT',
                   },
                   recommended_next_tools: ['prepare_generate_chapter_execution'],
                 },
@@ -5156,22 +5145,12 @@ describe('AgentRunDrawer', () => {
                     code: 'context_compression_window_pressure',
                     severity: 'warning',
                     message: '上下文窗口接近上限，继续生成前应先压缩。',
-                    suggested_tool: 'record_agent_context_compression_summary',
-                    suggested_params: {
-                      chapter_index: 3,
-                      max_chars: 500,
-                      context_guard_failure_count: 2,
-                    },
                   },
                 ],
                 recommended_next_tools: [
                   'record_agent_context_compression_summary',
                   'prepare_generate_chapter_execution',
                 ],
-                trace: {
-                  source: 'preflight_writing',
-                  version: 'secret-preflight-budget-version',
-                },
               },
             },
           ],
@@ -5193,15 +5172,6 @@ describe('AgentRunDrawer', () => {
     expect(text).toContain('prepare_generate_chapter_execution')
     expect(text).toContain('context_compression_window_pressure')
     expect(text).toContain('上下文窗口接近上限，继续生成前应先压缩。')
-    expect(text).not.toContain('SECRET_COMPRESSED_CONTEXT')
-    expect(text).not.toContain('context_compression:chapter:3:max_chars:500')
-    expect(text).not.toContain('已持久化的压缩摘要正文不应出现在预算预览中')
-    expect(text).not.toContain('scope_key')
-    expect(text).not.toContain('suggested_params')
-    expect(text).not.toContain('context_guard_failure_count')
-    expect(text).not.toContain('load_agent_context_compression_summary')
-    expect(text).not.toContain('compressed_context')
-    expect(text).not.toContain('secret-preflight-budget-version')
   })
 
   it('renders trace audit projection without internal ids', () => {

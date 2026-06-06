@@ -319,7 +319,7 @@ Agent 化缺口：
 ### 4.3 Context Compression（上下文压缩）
 
 ```
-当前状态：L1 对话历史长度限制 + 基础压缩；ContextCompressor 已具备窗口压力/ContextGuard 投影、头尾保护预修剪计划、只读 dry-run payload builder、推荐恢复入口，并已接入 preflight_writing 运行时检查、自然语言只读自检入口、自然语言 dry-run payload 直达入口、自然语言 preflight 上下文预算预检入口、AgentRunDrawer 独立 Panel 安全摘要、preflight 上下文预算安全摘要、ready payload 后续持久摘要推荐、preflight 持久摘要优先复用、章节生成 longform prompt block 压缩、LongformMemory 持久摘要工件写入与章节 prompt 自动复用
+当前状态：L1 对话历史长度限制 + 基础压缩；ContextCompressor 已具备窗口压力/ContextGuard 投影、头尾保护预修剪计划、只读 dry-run payload builder、推荐恢复入口，并已接入 preflight_writing 运行时检查、自然语言只读自检入口、自然语言 dry-run payload 直达入口、自然语言 preflight 上下文预算预检入口、AgentRunDrawer 独立 Panel 安全摘要、preflight 上下文预算独立 Panel 安全摘要、ready payload 后续持久摘要推荐、preflight 持久摘要优先复用、章节生成 longform prompt block 压缩、LongformMemory 持久摘要工件写入与章节 prompt 自动复用
 目标状态：L2-L3 LLM 摘要压缩 + 头尾保护 + Token 预算管理
 关键文件：
   backend/app/services/writing_agent/
@@ -432,6 +432,7 @@ Data & Recovery ─── (横切关注点，覆盖所有写入操作)
 
 | 日期 | 模块 | 变更 |
 |------|------|------|
+| 2026-06-06 | Frontend Agent UX | 按 ADR-010 将 preflight_writing 上下文预算安全投影迁出为 AgentRunPreflightContextBudgetPanel，并把上下文压缩状态/严重度/脱敏 helper 收敛到 shared projector |
 | 2026-06-06 | Frontend Agent UX | 按 ADR-010 将 inspect_agent_context_compression_projection 安全投影迁出为 AgentRunContextCompressionPanel，并新增专属脱敏测试；preflight 上下文预算暂留 Drawer，等待后续独立迁出 |
 | 2026-06-06 | Frontend Agent UX | 按 ADR-010 将 summarize_longform_context 安全投影迁出为 AgentRunLongformContextPanel，并新增专属脱敏测试；AgentRunDrawer 继续收窄为输出定位和面板挂载 |
 | 2026-06-06 | Frontend Agent UX | 按 ADR-010 将 search_agent_retrieval_context 安全投影迁出为 AgentRunRetrievalContextPanel，并新增专属脱敏测试；AgentRunDrawer 继续收窄为输出定位和面板挂载，同时只保留记忆闭环轻量摘要 |

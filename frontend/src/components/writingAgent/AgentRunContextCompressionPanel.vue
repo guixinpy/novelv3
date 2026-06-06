@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { numberValue, recordList, recordValue, stringList, stringValue } from './agentRunProjection/safeProjection'
+import {
+  contextCompressionChapterLabel,
+  contextCompressionSeverityLabel,
+  contextCompressionStatusLabel,
+  safeContextCompressionText,
+} from './agentRunProjection/contextCompressionProjection'
 
 const props = defineProps<{
   output: Record<string, unknown>
@@ -11,7 +17,7 @@ const strategy = computed(() => recordValue(props.output.strategy))
 const compressionPlan = computed(() => recordValue(props.output.compression_plan))
 const risks = computed(() => recordList(props.output.risks))
 const recommendedTools = computed(() => stringList(props.output.recommended_next_tools))
-const chapterLabel = computed(() => chapterIndexLabel(props.output.chapter_index))
+const chapterLabel = computed(() => contextCompressionChapterLabel(props.output.chapter_index))
 const granularityLabel = computed(() => granularityText(strategy.value.granularity))
 const protectionLabel = computed(() => (
   strategy.value.protect_current_chapter === true ? '保护当前章节' : '不保护当前章节'
@@ -36,47 +42,17 @@ const riskRows = computed(() => (
   risks.value
     .map((risk, index) => ({
       key: `context-compression-risk:${index}`,
-      code: safeText(risk.code),
-      severity: severityLabel(risk.severity),
-      message: safeText(risk.message),
+      code: safeContextCompressionText(risk.code),
+      severity: contextCompressionSeverityLabel(risk.severity),
+      message: safeContextCompressionText(risk.message),
     }))
     .filter((risk) => Boolean(risk.code || risk.message))
 ))
-
-function statusLabel(status: unknown) {
-  const value = stringValue(status)
-  if (value === 'ready') return '可用'
-  if (value === 'warning') return '警告'
-  if (value === 'blocked') return '已阻塞'
-  if (value === 'completed' || value === 'success') return '已完成'
-  return value || '未知'
-}
 
 function granularityText(granularity: unknown) {
   const value = stringValue(granularity)
   if (value === 'chapter_window') return '章节窗口'
   return value || '未知'
-}
-
-function severityLabel(severity: unknown) {
-  const value = stringValue(severity)
-  if (value === 'warning') return '警告'
-  if (value === 'error') return '错误'
-  if (value === 'info') return '信息'
-  return value
-}
-
-function chapterIndexLabel(value: unknown) {
-  const index = numberValue(value)
-  return index !== null ? `第${index}章` : ''
-}
-
-function safeText(label: unknown) {
-  const value = stringValue(label).replace(/\s+/g, ' ')
-  if (!value) return ''
-  if (/[A-Za-z_]+:[A-Za-z0-9_.:-]+/.test(value)) return ''
-  if (/project-secret|memory-secret|longform-memory-secret|source-secret|critical-secret|source_refs?|source_type|source_id|source_sections?|source_section_keys|memory_provenance|LongformMemory|phase\d+\.agent_context_compression|runtime_behavior_changed|include_prompt_context|context_guard_failure_count|compressed_context|prompt context raw/i.test(value)) return ''
-  return value.slice(0, 120)
 }
 </script>
 
@@ -89,7 +65,7 @@ function safeText(label: unknown) {
     <dl class="agent-run-drawer__facts">
       <div>
         <dt>状态</dt>
-        <dd>{{ statusLabel(output.status) }}</dd>
+        <dd>{{ contextCompressionStatusLabel(output.status) }}</dd>
       </div>
       <div v-if="chapterLabel">
         <dt>章节</dt>
