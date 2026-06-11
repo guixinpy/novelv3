@@ -46,6 +46,12 @@ const routes: RouteRecordRaw[] = [
     meta: { showSidebar: true, workspace: 'manuscript' } satisfies AppRouteMeta,
   },
   {
+    // M1 开发验证入口：未在导航中展示，仅手动访问
+    path: '/projects/:id/agent-v2',
+    component: () => import('../views/AgentV2View.vue'),
+    meta: { showSidebar: true, workspace: 'hermes' } satisfies AppRouteMeta,
+  },
+  {
     path: '/settings',
     component: SettingsView,
     meta: { showSidebar: false, workspace: null } satisfies AppRouteMeta,

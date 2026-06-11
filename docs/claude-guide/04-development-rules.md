@@ -23,6 +23,7 @@ api → agent → tools → domain → models
 ```
 
 - 上层可依赖下层，禁止反向。`domain/` 不得 import `agent/` 或 `tools/`。
+- 例外：`tools/` 可以 import `agent/` 的类型与注册机制——`agent/` 对 `tools/` 而言是框架库；反向（`agent/` import `tools/`）仍然禁止，工具注册表通过依赖注入进入循环。
 - `tools/` 是 `domain/` 的薄封装：工具函数体超过 ~50 行说明逻辑该下沉到 domain。
 - 新内核 `agent/` 不依赖任何小说领域概念（保持「通用 Agent 内核 + 领域工具」的分界，这是「先成为合格 Agent、再专业化」的结构保证）。
 
