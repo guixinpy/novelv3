@@ -13,11 +13,11 @@
 
 | 项目 | 来源 | 分支 | 快照 commit |
 | --- | --- | --- | --- |
-| openclaw | https://github.com/openclaw/openclaw | `main` | `4c613fbfe05f4dc7ee66dfffa5bc48dc3f370816` |
-| hermes-agent | https://github.com/nousresearch/hermes-agent | `main` | `94c523f0c5c8f717c5294f9048d02dee2774b469` |
-| openhuman | https://github.com/tinyhumansai/openhuman | `main` | `0f616e4a62ff21c01a16acee8b7c56e6b1d67197` |
+| openclaw | https://github.com/openclaw/openclaw | `main` | `0bcabea9cccdc5e5e44416a58a810eee6e5d1d31` |
+| hermes-agent | https://github.com/nousresearch/hermes-agent | `main` | `fe54960142d1e6edc9e43299c0e8889964f4e837` |
+| openhuman | https://github.com/tinyhumansai/openhuman | `main` | `07e60af3bbb540df41970383ea6c0eeb7dd3fdb9` |
 
-下载日期：2026-05-18
+下载日期：2026-06-11
 
 ## 后续使用方式
 
