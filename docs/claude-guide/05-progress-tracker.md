@@ -4,27 +4,31 @@
 
 ## 当前状态
 
-- **阶段**：M0 未开始（规划完成，等待用户启动指令）
+- **阶段**：M0 完成，M1 进行中
 - **分支**：`claude/agent-refactor`
 - **最近更新**：2026-06-11
 
 ## 已完成
 
-- ✅ 2026-06-11 仓库克隆、工作分支建立、旧 codex-guide 归档
-- ✅ 2026-06-11 三个参考项目源码快照更新（openhuman / openclaw / hermes-agent）
-- ✅ 2026-06-11 全代码库勘察（后端架构、前端耦合、代码健康度三路并行）
-- ✅ 2026-06-11 三参考项目深度拆解 + 旧版制度记忆挖掘
-- ✅ 2026-06-11 claude-guide 规划文档集编写（本目录）
+- ✅ 2026-06-11 仓库克隆、工作分支建立、旧 codex-guide 归档、参考快照更新、全库勘察、claude-guide 编写
+- ✅ 2026-06-11 **M0 完成**：
+  - `app/agent/providers/`：Provider 抽象 + DeepSeekProvider（原生 function calling、SSE 流式、分片重组、重试归一化、用量统计），TDD 10 测试
+  - `app/agent|tools|domain` 骨架 + 依赖方向规则测试（`tests/agent/test_dependency_rules.py`）
+  - 保留模块回归独立可跑（world_checkers / athena_retrieval / world_proposals，125 测试）
+  - `scripts/verify_refactor.sh`（kernel|kept|all 三模式）
+  - 退出标准验证：全量 1766 passed（基线 1753 + 新增 13）
 
 ## 进行中
 
-（无——等待 M0 启动）
+- 🟡 M1 · 最小可用 Agent 内核（loop / harness / registry / 首批只读工具 / budget / v2 API）
 
-## 下一步（M0 启动时）
+## 下一步
 
-1. 重写 Provider 层（DeepSeek 原生 function calling + 流式），TDD
-2. 验证保留清单模块测试独立可跑
-3. 建立 agent/tools/domain 目录骨架与依赖规则
+1. `tools/registry.py` + `@tool` 装饰器 + 权限三级（TDD）
+2. `agent/loop.py` 无状态回合引擎 + 事件 sink（TDD）
+3. `agent/budget.py` 迭代/令牌预算
+4. `agent/harness.py` 会话状态 + JSONL 日志
+5. 首批只读工具 + `/api/v2/sessions` 最小实现
 
 ## 问题清单（dogfood / 评审发现，修复优先于新功能）
 
@@ -32,5 +36,4 @@
 
 ## 阻塞 / 待用户决策
 
-- M0 启动指令
-- DeepSeek API key 可用性确认（新 provider 联调需要）
+- DeepSeek API key 可用性确认（M1 真实联调需要；fake provider 测试不受影响）
