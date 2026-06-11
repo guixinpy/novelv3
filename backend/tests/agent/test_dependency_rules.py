@@ -11,9 +11,11 @@ from pathlib import Path
 APP_ROOT = Path(__file__).resolve().parents[2] / "app"
 
 # 包名 -> 禁止 import 的 app 子包
+# agent 是通用内核库：不依赖任何领域模块。
+# tools 可向下依赖 domain/models，也可依赖 agent 的类型与注册机制（内核库角色）。
 FORBIDDEN = {
     "agent": {"app.api", "app.tools", "app.domain", "app.services", "app.core", "app.schemas", "app.prompting"},
-    "tools": {"app.api", "app.agent", "app.services"},
+    "tools": {"app.api", "app.services"},
     "domain": {"app.api", "app.agent", "app.tools", "app.services"},
 }
 

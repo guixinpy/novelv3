@@ -85,6 +85,7 @@ from app.api import (
     setups,
     storylines,
     topologies,
+    v2_sessions,
     versions,
     world_model,
     writing,
@@ -110,6 +111,7 @@ app.include_router(preferences.router)
 app.include_router(background_tasks_api.router)
 app.include_router(world_model.router)
 app.include_router(athena.router)
+app.include_router(v2_sessions.router)
 
 @app.get("/api/v1/health")
 def health():
