@@ -2,18 +2,19 @@
 
 本目录只保留项目文档入口和仍具长期参考价值的材料。一次性记录、阶段性方案、测试报告和已完成计划统一归档。
 
+## 当前状态
+
+项目正在探索新方向（在 `claude/agent-refactor` 分支上推进）。上一版（Codex 时期）的指导文档集已整体归档到 `archive/codex-guide/`，不再作为当前开发依据。
+
 ## 当前入口
 
-- **`codex-guide/`**：★ **Codex 开发指导文档集**——项目目标、模块清单、进度追踪、开发规则、架构决策、术语表。**codex 每次 session 必读。**
-- `stability-mechanisms.md`：项目长期稳定性机制说明。
-- `agent-native-guide/`：从 openclaw/hermes-agent/openhuman 提取的参考模式报告。
 - `superpowers/`：当前仍在执行中的设计或计划入口；当前没有活跃计划文件。
 - `archive/`：历史需求、阶段稿、评审记录、dogfood 记录、截图和已完成计划。
+  - `archive/codex-guide/`：上一版 Codex 开发指导文档集（项目目标、模块清单、进度追踪、开发规则、架构决策、术语表），仅作历史参考。
 
 ## 目录规则
 
 - `docs/` 顶层只放入口文档和长期有效文档，不放一次性记录。
-- `codex-guide/` 是 codex 开发的唯一真实文档来源，必须保持更新。
 - 用户视角测试、dogfood、问题清单、阶段性复盘统一放入 `archive/dogfood/`。
 - 早期需求、一次性评审、阶段性设计、历史截图统一放入 `archive/` 对应分类。
 - 当前执行中的新功能设计可临时放入 `superpowers/`；完成、过期或被覆盖后移到 `archive/superpowers/`。
