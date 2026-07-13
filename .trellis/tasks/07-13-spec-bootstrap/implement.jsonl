@@ -1,0 +1,13 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "backend spec index — update Status after backend files are filled"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "frontend spec index — update Status after frontend files are filled"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "fill with backend project layout"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "fill with SQLAlchemy/SQLite/Alembic patterns"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "fill with AppError/with_retry/HTTPException patterns"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "fill with log_event/diagnostics middleware patterns"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "fill with Ruff/pytest/test patterns"}
+{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "fill with frontend src/ layout"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "fill with Vue 3 component patterns"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "fill with composable/store patterns"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "fill with Pinia/requestCache/snapshot patterns"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "fill with TypeScript/ESLint/Vitest patterns"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "fill with TypeScript 5.6 type patterns"}
