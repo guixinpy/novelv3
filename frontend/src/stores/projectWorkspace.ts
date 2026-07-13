@@ -21,7 +21,7 @@ export interface MemoryTreeNavigationHistoryItem {
 export function createProjectWorkspaceState(): ProjectWorkspaceState {
   return {
     activeProjectId: '',
-    activeWorkspace: 'hermes',
+    activeWorkspace: 'agent',
     dirtyTargets: new Set<RefreshTarget>(),
     lastWorkspaceRouteByProject: {},
     lastManuscriptChapterByProject: {},

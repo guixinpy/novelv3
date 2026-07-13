@@ -6,7 +6,7 @@ import {
   type AthenaRouteIntent,
 } from '../views/athenaNavigation'
 
-export type Workspace = 'hermes' | 'athena' | 'manuscript'
+export type Workspace = 'agent' | 'athena' | 'manuscript'
 
 export type AthenaUiState = AthenaRouteIntent
 interface AthenaProjectUiState {
@@ -49,7 +49,7 @@ function defaultAthenaProjectState(): AthenaProjectUiState {
 }
 
 export const useUiStore = defineStore('ui', () => {
-  const activeWorkspace = ref<Workspace>('hermes')
+  const activeWorkspace = ref<Workspace>('agent')
   const subNavCollapsed = ref(false)
   const initialAthenaProjectState = defaultAthenaProjectState()
   const activeAthenaState = ref<AthenaUiState>(cloneAthenaState(initialAthenaProjectState.active))

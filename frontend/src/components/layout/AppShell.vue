@@ -39,7 +39,7 @@ function onBack() {
 }
 
 function onSelectProject(id: string) {
-  router.push(`/projects/${id}/hermes`)
+  router.push(`/projects/${id}/agent`)
 }
 
 function onNavigateSettings() {

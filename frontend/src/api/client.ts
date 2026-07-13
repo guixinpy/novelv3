@@ -1,10 +1,10 @@
 import type {
-  AthenaEvolutionPlan,
-  AthenaEvolutionPlanQuery,
   AthenaAnalyzeChapterResult,
   AthenaChapterContext,
   AthenaConsistencyIssue,
   AthenaConsistencyIssueListResponse,
+  AthenaEvolutionPlan,
+  AthenaEvolutionPlanQuery,
   AthenaImportSetupResult,
   AthenaOntology,
   AthenaOntologyQuery,
@@ -24,17 +24,15 @@ import type {
   ChapterRevisionListResponse,
   ChapterRevisionPayload,
   ChatHistoryMessage,
-  ChatCommandCatalogResponse,
-  ChatRequest,
   ChatResponse,
   LongformMaintenanceDiagnostics,
   LongformMaintenanceRepairResult,
   MessageQuery,
   ModelCallTraceDetail,
   ModelCallTraceListParams,
-  PaginatedWorldFactClaims,
   PaginatedModelCallTraces,
   PaginatedProposalBundles,
+  PaginatedWorldFactClaims,
   ProposalBundleDetail,
   ProposalReview,
   ProposalReviewQueue,
@@ -42,15 +40,11 @@ import type {
   ProposalReviewRequest,
   ProposalRollbackRequest,
   ProposalSplitRequest,
-  ResolveActionRequest,
-  ResolveActionResponse,
   VersionListResponse,
   WorldFactClaim,
   WorldModelDashboard,
   WorldModelOverview,
   WorldModelOverviewQuery,
-  WritingAgentRunCreate,
-  WritingAgentRunDetail,
   WritingState,
   WorkspaceBootstrap,
 } from './types'
@@ -332,7 +326,6 @@ export const api = {
     const qs = query.toString()
     return request<AthenaConsistencyIssueListResponse | AthenaConsistencyIssue[]>(`/projects/${id}/consistency/issues${qs ? `?${qs}` : ''}`)
   },
-  generateChapter: (id: string, index: number) => request<ChapterContent>(`/projects/${id}/chapters/${index}/generate`, { method: 'POST' }),
   getChapter: (id: string, index: number) => request<ChapterContent>(`/projects/${id}/chapters/${index}`),
   listModelCallTraces: (id: string, params?: ModelCallTraceListParams) => {
     const query = new URLSearchParams()
@@ -379,18 +372,7 @@ export const api = {
     const qs = query.toString()
     return request(`/projects/${id}/athena/ontology/relations${qs ? `?${qs}` : ''}`)
   },
-  getDiagnosis: (id: string) => request(`/projects/${id}/state-diagnosis`),
-  getMessages: (id: string, dialogType: string = 'hermes', params?: MessageQuery) => {
-    const query = messageQuery(params)
-    query.set('dialog_type', dialogType)
-    return request<ChatHistoryMessage[]>(`/dialog/projects/${id}/messages?${query.toString()}`)
-  },
-  getAgentRun: (id: string, runId: string) => request<WritingAgentRunDetail>(`/projects/${id}/agent-runs/${runId}`),
-  createAgentRun: (id: string, data: WritingAgentRunCreate) =>
-    request<WritingAgentRunDetail>(`/projects/${id}/agent-runs`, { method: 'POST', body: JSON.stringify(data) }),
-  getChatCommandCatalog: () => request<ChatCommandCatalogResponse>('/dialog/chat-commands'),
-  sendChat: (data: ChatRequest) => request<ChatResponse>('/dialog/chat', { method: 'POST', body: JSON.stringify(data) }),
-  resolveAction: (data: ResolveActionRequest) => request<ResolveActionResponse>('/dialog/resolve-action', { method: 'POST', body: JSON.stringify(data) }),
+  // v1 dialog endpoints removed — use /api/v2/sessions for agent chat
   startWriting: (id: string) => request<WritingState>(`/projects/${id}/writing/start`, { method: 'POST' }),
   getWritingState: (id: string) => request<WritingState>(`/projects/${id}/writing/state`),
   pauseWriting: (id: string) => request<WritingState>(`/projects/${id}/writing/pause`, { method: 'POST' }),

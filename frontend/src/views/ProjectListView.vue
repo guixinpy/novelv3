@@ -66,7 +66,7 @@ function formatRelativeTime(dateStr: string) {
 onMounted(() => store.loadProjects())
 
 function onRowClick(row: Record<string, unknown>) {
-  router.push(`/projects/${row.id}/hermes`)
+  router.push(`/projects/${row.id}/agent`)
 }
 
 function requestDelete(project: any, event: Event) {

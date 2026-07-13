@@ -27,12 +27,12 @@ describe('ActivityBar', () => {
   it('exposes stable workspace navigation selectors', () => {
     const wrapper = mount(ActivityBar, {
       props: {
-        activeWorkspace: 'hermes',
+        activeWorkspace: 'agent',
         projectId: 'project-1',
       },
     })
 
-    expect(wrapper.get('[data-testid="workspace-nav-hermes"]').attributes('aria-label')).toBe('Hermes')
+    expect(wrapper.get('[data-testid="workspace-nav-agent"]').attributes('aria-label')).toBe('Agent')
     expect(wrapper.get('[data-testid="workspace-nav-athena"]').attributes('aria-label')).toBe('Athena')
     expect(wrapper.get('[data-testid="workspace-nav-manuscript"]').attributes('aria-label')).toBe('Calliope')
   })
@@ -48,7 +48,7 @@ describe('ActivityBar', () => {
     })
     const wrapper = mount(ActivityBar, {
       props: {
-        activeWorkspace: 'hermes',
+        activeWorkspace: 'agent',
         projectId: 'project-1',
       },
     })
@@ -72,7 +72,7 @@ describe('ActivityBar', () => {
     })
     const wrapper = mount(ActivityBar, {
       props: {
-        activeWorkspace: 'hermes',
+        activeWorkspace: 'agent',
         projectId: 'project-1',
       },
     })

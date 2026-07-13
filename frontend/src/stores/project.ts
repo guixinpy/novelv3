@@ -332,11 +332,7 @@ export const useProjectStore = defineStore('project', () => {
     setup.value = nextSetup
   }
 
-  async function generateChapter(id: string, index: number) {
-    chapter.value = await api.generateChapter(id, index)
-    await loadProject(id, true)
-    await loadWritingState(id, true).catch(() => {})
-  }
+  // generateChapter removed — use /api/v2/sessions with write_chapter tool
 
   async function loadChapter(id: string, index: number) {
     const key = `project:${id}:chapter:${index}`
@@ -628,7 +624,7 @@ export const useProjectStore = defineStore('project', () => {
     resetProjectScopedState,
     applyWorkspaceBootstrap,
     loadProjects, createProject, updateProjectModel, deleteProject, loadProject,
-    generateSetup, loadSetup, generateChapter, loadChapter,
+    generateSetup, loadSetup, loadChapter,
     generateStoryline, loadStoryline, generateOutline, loadOutline, loadTopology,
     loadWritingState, startWriting, pauseWriting, resumeWriting,
     loadChapters, loadMoreChapters, loadVersions, loadMoreVersions, loadPreferences, updatePreferences, resetPreferences, refreshTargets,
