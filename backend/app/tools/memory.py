@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from app.agent.tooling import ToolContext, ToolResult, tool
+from app.core.athena_retrieval import search_retrieval
 from app.models import LongformMemory
 from app.tools.registry import registry
 
@@ -149,6 +150,7 @@ async def track_plotline(
     },
 )
 async def query_memory(ctx: ToolContext, memory_type: str = "all", keyword: str = "", limit: int = 20) -> ToolResult:
+    # 1. SQL text matching first
     query = ctx.db.query(LongformMemory).filter(
         LongformMemory.project_id == ctx.project_id,
     )
@@ -162,7 +164,8 @@ async def query_memory(ctx: ToolContext, memory_type: str = "all", keyword: str 
             (LongformMemory.summary.like(like))
         )
     memories = query.order_by(LongformMemory.updated_at.desc()).limit(limit).all()
-    return ToolResult.ok({
+
+    result = {
         "memories": [
             {
                 "id": m.id,
@@ -180,4 +183,28 @@ async def query_memory(ctx: ToolContext, memory_type: str = "all", keyword: str 
             for m in memories
         ],
         "total": len(memories),
-    })
+    }
+
+    # 2. Embedding fallback: SQL 无结果时用语义检索
+    if not memories and keyword:
+        try:
+            retrieval = search_retrieval(
+                ctx.db, ctx.project_id, keyword,
+                limit=limit, max_chapter_index=None,
+            )
+            items = retrieval.get("items", [])
+            result["embedding_results"] = [
+                {
+                    "source_type": i.get("source_type"),
+                    "title": i.get("title"),
+                    "chapter_index": i.get("chapter_index"),
+                    "excerpt": (i.get("snippet") or "")[:300],
+                    "score": i.get("score"),
+                }
+                for i in items[:limit]
+            ]
+            result["embedding_total"] = len(items)
+        except Exception:
+            result["embedding_error"] = "语义检索不可用"
+
+    return ToolResult.ok(result)
