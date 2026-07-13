@@ -1,7 +1,7 @@
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from app.core.intent_router import parse_chapter_index
+from app.core.chapter_utils import parse_chapter_index
 from app.models import AIModelCallTrace
 
 SUPPORTED_ACTION_EXECUTION_TYPES = frozenset(

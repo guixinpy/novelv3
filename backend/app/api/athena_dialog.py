@@ -36,9 +36,11 @@ def get_athena_messages(
 
 @router.post("/dialog/chat")
 async def athena_chat(project_id: str, payload: ChatIn, db: Session = Depends(get_db)):
-    from app.api.dialogs import (
+    from app.api.dialog_utils import (
         _build_chat_idle_hint,
         _build_diagnosis,
+    )
+    from app.api.dialogs import (
         _free_chat_reply,
         _get_or_create_dialog,
         _safe_attach_trace_response,

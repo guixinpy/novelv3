@@ -18,7 +18,7 @@ from app.core.chat_commands import (
 )
 from app.core.chat_compaction import build_compaction_summary, select_compactable_plain_messages
 from app.core.dialog_agent_routes import build_dialog_agent_route
-from app.core.intent_router import IntentRouter, parse_chapter_index
+from app.core.chapter_utils import parse_chapter_index
 from app.core.model_call_trace import (
     attach_trace_response,
     create_trace,
@@ -1475,15 +1475,8 @@ async def chat(payload: ChatIn, db: Session = Depends(get_db)):
             project_diagnosis=diagnosis,
         )
 
-    router = IntentRouter()
     candidate = None
-    if payload.input_type in {"text", "command"} and effective_text:
-        candidate = router.resolve(
-            effective_text,
-            dialog.state,
-            dialog.pending_action_id,
-            diagnosis,
-        )
+    # v1 intent_router removed — v2 agent handles routing
 
     if candidate and dialog.state == "running" and candidate.type.startswith("preview_"):
         return _build_running_guard_response(

@@ -76,7 +76,6 @@ from app.api import (
     chapters,
     config,
     consistency,
-    dialogs,
     export,
     model_call_traces,
     outlines,
@@ -89,7 +88,6 @@ from app.api import (
     versions,
     world_model,
     writing,
-    writing_agent_runs,
 )
 
 app.include_router(projects.router)
@@ -99,11 +97,9 @@ app.include_router(chapter_revisions.router)
 app.include_router(config.router)
 app.include_router(storylines.router)
 app.include_router(outlines.router)
-app.include_router(dialogs.router)
 app.include_router(topologies.router)
 app.include_router(consistency.router)
 app.include_router(writing.router)
-app.include_router(writing_agent_runs.router)
 app.include_router(versions.router)
 app.include_router(export.router)
 app.include_router(model_call_traces.router)
