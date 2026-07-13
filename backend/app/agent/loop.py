@@ -13,11 +13,13 @@ from app.agent.budget import IterationBudget, TokenBudget
 from app.agent.events import (
     AssistantDelta,
     AssistantMessage,
+    GuardTripped,
     LoopEvent,
     ToolCallFinished,
     ToolCallStarted,
     TurnEnded,
 )
+from app.agent.guards import GuardSystem
 from app.agent.providers.base import (
     Provider,
     ProviderResponse,
@@ -25,7 +27,7 @@ from app.agent.providers.base import (
     ToolCall,
     Usage,
 )
-from app.agent.tooling import ToolContext, ToolRegistry, ToolResult
+from app.agent.tooling import PermissionLevel, ToolContext, ToolRegistry, ToolResult
 
 EventSink = Callable[[LoopEvent], "Awaitable[None] | None"]
 # 返回 None 放行；返回字符串则拦截，字符串作为给模型的解释
@@ -87,6 +89,7 @@ async def run_turn(
     total_prompt = 0
     total_completion = 0
     stop_reason = StopReason.COMPLETED
+    guards = GuardSystem()
 
     async def emit(event: LoopEvent) -> None:
         outcome = event_sink(event)
@@ -132,7 +135,8 @@ async def run_turn(
 
         for tool_call in response.tool_calls:
             result = await _execute_one(
-                tool_call, registry, tool_context, before_tool_call, emit
+                tool_call, registry, tool_context, before_tool_call, emit,
+                iteration_budget=iteration_budget,
             )
             history.append(
                 {
@@ -141,6 +145,12 @@ async def run_turn(
                     "content": result.to_model_text(),
                 }
             )
+            guards.record_tool_call(tool_call.name, tool_call.arguments or {}, result.is_error, result.to_model_text())
+            guard_result = guards.check(max_iterations=iteration_budget.max_iterations)
+            if guard_result.tripped:
+                await emit(GuardTripped(level=guard_result.level, reason=guard_result.reason, diagnosis=guard_result.diagnosis))
+                stop_reason = StopReason.GUARD_TRIPPED
+                break
 
         if steering_source is not None:
             for steering_text in steering_source():
@@ -165,6 +175,7 @@ async def _execute_one(
     ctx: ToolContext,
     before_tool_call: BeforeToolCall | None,
     emit: Callable[[LoopEvent], Awaitable[None]],
+    iteration_budget: IterationBudget | None = None,
 ) -> ToolResult:
     await emit(ToolCallStarted(id=tool_call.id, name=tool_call.name, arguments=tool_call.arguments))
     if before_tool_call is not None:
@@ -185,4 +196,12 @@ async def _execute_one(
             is_error=result.is_error, result_text=result.to_model_text(),
         )
     )
+    # 只读工具 refund：读取不消耗创作迭代额度
+    if iteration_budget is not None:
+        try:
+            tool_def = registry.get(tool_call.name)
+            if tool_def.permission == PermissionLevel.READ:
+                iteration_budget.refund()
+        except KeyError:
+            pass
     return result

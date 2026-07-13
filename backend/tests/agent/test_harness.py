@@ -18,6 +18,12 @@ def make_registry() -> ToolRegistry:
     async def read_chapter(ctx: ToolContext, chapter_index: int) -> ToolResult:
         return ToolResult.ok({"index": chapter_index})
 
+    @tool(registry=registry, name="write_chapter", description="写入章节", permission="write",
+          parameters={"type": "object", "properties": {"content": {"type": "string"}},
+                      "required": ["content"]})
+    async def write_chapter(ctx: ToolContext, content: str) -> ToolResult:
+        return ToolResult.ok({"written": True})
+
     return registry
 
 
@@ -144,10 +150,13 @@ async def test_steering_injected_mid_turn(tmp_path):
 
 @pytest.mark.asyncio
 async def test_budget_config_respected(tmp_path):
-    responses = [tool_response(call("read_chapter", '{"chapter_index": 1}', id=f"c{i}"))
-                 for i in range(5)]
+    # 写入工具消耗预算，只读工具不消耗
+    responses = [
+        tool_response(call("write_chapter", '{"content": "1"}', id="c0")),
+        tool_response(call("write_chapter", '{"content": "2"}', id="c1")),
+    ]
     provider = FakeProvider(responses)
-    harness = make_harness(tmp_path, provider, max_iterations_per_turn=2)
+    harness = make_harness(tmp_path, provider, max_iterations_per_turn=1)
     events = await drain(harness, "hi")
     ended = [e for e in events if isinstance(e, TurnEnded)]
     assert ended[-1].stop_reason == StopReason.ITERATION_BUDGET_EXHAUSTED.value

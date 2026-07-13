@@ -40,10 +40,33 @@ class ApprovalPending:
 
 
 @dataclass(frozen=True)
+class GuardTripped:
+    level: str
+    reason: str
+    diagnosis: dict
+
+
+@dataclass(frozen=True)
+class ContextWarning:
+    usage_pct: float
+    total_tokens: int
+    max_tokens: int
+
+
+@dataclass(frozen=True)
 class TurnEnded:
     stop_reason: str
     iterations: int
     usage: Usage
 
 
-LoopEvent = AssistantDelta | AssistantMessage | ToolCallStarted | ToolCallFinished | ApprovalPending | TurnEnded
+LoopEvent = (
+    AssistantDelta
+    | AssistantMessage
+    | ToolCallStarted
+    | ToolCallFinished
+    | ApprovalPending
+    | GuardTripped
+    | ContextWarning
+    | TurnEnded
+)

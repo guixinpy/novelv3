@@ -22,6 +22,12 @@ def make_registry() -> ToolRegistry:
     async def read_chapter(ctx: ToolContext, chapter_index: int) -> ToolResult:
         return ToolResult.ok({"index": chapter_index, "content": f"第{chapter_index}章正文"})
 
+    @tool(registry=registry, name="write_chapter", description="写入章节", permission="write",
+          parameters={"type": "object", "properties": {"content": {"type": "string"}},
+                      "required": ["content"]})
+    async def write_chapter(ctx: ToolContext, content: str) -> ToolResult:
+        return ToolResult.ok({"written": True})
+
     return registry
 
 
@@ -111,8 +117,8 @@ async def test_tool_error_fed_back_to_model_not_raised():
 
 @pytest.mark.asyncio
 async def test_iteration_budget_stops_loop():
-    # 模型每次都要求调用工具，预算 2 次迭代后停止
-    responses = [tool_response(call("read_chapter", '{"chapter_index": 1}', id=f"c{i}"))
+    # 写入工具消耗预算。预算=2，第 3 次调用时耗尽
+    responses = [tool_response(call("write_chapter", '{"content": "1"}', id=f"c{i}"))
                  for i in range(5)]
     provider = FakeProvider(responses)
     events, sink = collect_events()
@@ -126,6 +132,7 @@ async def test_iteration_budget_stops_loop():
         event_sink=sink,
     )
     assert result.stop_reason == StopReason.ITERATION_BUDGET_EXHAUSTED
+    # 消耗了 2 次写入迭代，read 不计入
     assert len(provider.calls) == 2
 
 

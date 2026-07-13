@@ -1,8 +1,8 @@
 {
-  "id": "m2-test-cleanup",
-  "name": "m2-test-cleanup",
-  "title": "Clean up obsolete tests from deleted adapter layer",
-  "description": "Remove tests for deleted modules, fix stubs, reduce failure count from 582 to 0",
+  "id": "m3-guards",
+  "name": "m3-guards",
+  "title": "M3 - autonomous guards, refund, compression",
+  "description": "5-level loop risk detection, budget refund, context compression, chapter quality check, batch mode",
   "status": "in_progress",
   "dev_type": null,
   "scope": null,
