@@ -1,8 +1,8 @@
-"""章节读取工具。"""
+"""章节读取与写入工具。"""
 from __future__ import annotations
 
 from app.agent.tooling import ToolContext, ToolResult, tool
-from app.models import ChapterContent
+from app.models import ChapterContent, Project
 from app.tools.registry import registry
 
 
@@ -87,3 +87,111 @@ async def read_chapter(ctx: ToolContext, chapter_index: int) -> ToolResult:
             "updated_at": chapter.updated_at.isoformat() if chapter.updated_at else None,
         }
     )
+
+
+def _update_project_word_count(ctx: ToolContext) -> None:
+    """重算并更新项目总字数。"""
+    project = ctx.db.query(Project).filter(Project.id == ctx.project_id).first()
+    if project is None:
+        return
+    total = (
+        ctx.db.query(ChapterContent.word_count)
+        .filter(ChapterContent.project_id == ctx.project_id)
+        .all()
+    )
+    project.current_word_count = sum(wc for (wc,) in total)
+
+
+@tool(
+    registry=registry,
+    name="write_chapter",
+    description=(
+        "创建或覆盖指定章节的正文。如果该章节已存在，会用新内容替换旧内容。"
+        "写入完成后会自动更新项目的总字数。写入前建议先用 read_chapter 确认章节当前内容。"
+    ),
+    permission="write",
+    parameters={
+        "type": "object",
+        "properties": {
+            "chapter_index": {"type": "integer", "description": "章节序号，从 1 开始"},
+            "content": {"type": "string", "description": "章节正文"},
+            "title": {"type": "string", "description": "章节标题（可选，不传则保留旧标题或使用默认标题）"},
+        },
+        "required": ["chapter_index", "content"],
+    },
+)
+async def write_chapter(ctx: ToolContext, chapter_index: int, content: str, title: str = "") -> ToolResult:
+    if chapter_index < 1:
+        return ToolResult.fail("章节序号必须 >= 1。")
+
+    existing = (
+        ctx.db.query(ChapterContent)
+        .filter(
+            ChapterContent.project_id == ctx.project_id,
+            ChapterContent.chapter_index == chapter_index,
+        )
+        .first()
+    )
+
+    word_count = len(content.replace(" ", "").replace("\n", ""))
+    if existing:
+        existing.content = content
+        if title:
+            existing.title = title
+        existing.word_count = word_count
+        existing.status = "generated"
+    else:
+        ch = ChapterContent(
+            project_id=ctx.project_id,
+            chapter_index=chapter_index,
+            title=title or f"第{chapter_index}章",
+            content=content,
+            word_count=word_count,
+            status="generated",
+        )
+        ctx.db.add(ch)
+
+    ctx.db.flush()  # 确保新数据在查询前可见
+    _update_project_word_count(ctx)
+    ctx.db.commit()
+    return ToolResult.ok({"chapter_index": chapter_index, "word_count": word_count, "status": "written"})
+
+
+@tool(
+    registry=registry,
+    name="revise_chapter",
+    description=(
+        "对已存在的章节应用修订：替换完整正文为新内容。"
+        "使用前需要先用 read_chapter 读取当前内容。"
+    ),
+    permission="write",
+    parameters={
+        "type": "object",
+        "properties": {
+            "chapter_index": {"type": "integer", "description": "要修订的章节序号"},
+            "new_content": {"type": "string", "description": "修订后的完整正文"},
+            "new_title": {"type": "string", "description": "可选的新标题"},
+        },
+        "required": ["chapter_index", "new_content"],
+    },
+)
+async def revise_chapter(ctx: ToolContext, chapter_index: int, new_content: str, new_title: str = "") -> ToolResult:
+    chapter = (
+        ctx.db.query(ChapterContent)
+        .filter(
+            ChapterContent.project_id == ctx.project_id,
+            ChapterContent.chapter_index == chapter_index,
+        )
+        .first()
+    )
+    if chapter is None:
+        return ToolResult.fail(f"第 {chapter_index} 章不存在。请先用 write_chapter 创建或 list_chapters 确认。")
+
+    chapter.content = new_content
+    chapter.word_count = len(new_content.replace(" ", "").replace("\n", ""))
+    if new_title:
+        chapter.title = new_title
+    ctx.db.flush()
+    _update_project_word_count(ctx)
+    ctx.db.commit()
+    return ToolResult.ok({"chapter_index": chapter_index, "word_count": chapter.word_count, "status": "revised"})

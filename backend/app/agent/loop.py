@@ -30,6 +30,10 @@ from app.agent.tooling import ToolContext, ToolRegistry, ToolResult
 EventSink = Callable[[LoopEvent], "Awaitable[None] | None"]
 # 返回 None 放行；返回字符串则拦截，字符串作为给模型的解释
 BeforeToolCall = Callable[[str, dict | None, ToolContext], Awaitable[str | None]]
+# 带事件发射能力的审批回调——ApprovalGate 用 emit 发 ApprovalPending 事件
+BeforeToolCallWithEvent = Callable[
+    [str, dict | None, ToolContext, "EventSink"], Awaitable[str | None]
+]
 # 工具批执行后排空 steering 消息（openclaw 模式），返回要注入的 user 消息文本列表
 SteeringSource = Callable[[], list[str]]
 

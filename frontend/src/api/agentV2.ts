@@ -17,6 +17,7 @@ export type AgentStreamEvent =
   | { event: 'assistant_message'; data: { content: string; tool_call_names: string[] } }
   | { event: 'tool_call_started'; data: { id: string; name: string; arguments: unknown } }
   | { event: 'tool_call_finished'; data: { id: string; name: string; is_error: boolean; result_text: string } }
+  | { event: 'approval_pending'; data: { approval_id: string; tool_name: string; arguments: unknown } }
   | {
       event: 'turn_ended'
       data: { stop_reason: string; iterations: number; usage: { prompt_tokens: number; completion_tokens: number } }
@@ -66,6 +67,24 @@ export function parseSseChunk(buffer: string): { events: AgentStreamEvent[]; res
     }
   }
   return { events, rest }
+}
+
+export async function approveTool(sessionId: string): Promise<{ ok: boolean; detail: string }> {
+  const resp = await requireOk(
+    await fetch(`${BASE}/sessions/${sessionId}/approve`, { method: 'POST' }),
+  )
+  return resp.json()
+}
+
+export async function rejectTool(sessionId: string, reason = ''): Promise<{ ok: boolean; detail: string }> {
+  const resp = await requireOk(
+    await fetch(`${BASE}/sessions/${sessionId}/reject`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason }),
+    }),
+  )
+  return resp.json()
 }
 
 export async function streamAgentMessage(

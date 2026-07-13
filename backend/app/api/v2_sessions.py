@@ -1,4 +1,4 @@
-"""/api/v2 会话接口：创建会话、发消息（SSE 流）、查历史（M1 最小实现）。"""
+"""/api/v2 会话接口：创建会话、发消息（SSE 流）、审批（M1 最小实现 + M2 审批门）。"""
 from __future__ import annotations
 
 import json
@@ -11,7 +11,9 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.agent.approval import ApprovalGate
 from app.agent.events import (
+    ApprovalPending,
     AssistantDelta,
     AssistantMessage,
     LoopEvent,
@@ -36,6 +38,9 @@ SYSTEM_PROMPT = (
     "你是一位长篇网文创作助手，通过调用工具了解和操作当前小说项目。"
     "回答要基于工具返回的真实数据，不要编造项目内容。"
 )
+
+# 持有活跃会话的审批门实例，供 approve/reject 端点查找
+_active_gates: dict[str, ApprovalGate] = {}
 
 
 def build_provider() -> Provider:
@@ -63,6 +68,11 @@ class CreateSessionResponse(BaseModel):
 
 class SendMessageRequest(BaseModel):
     content: str
+
+
+class ApprovalResponse(BaseModel):
+    ok: bool
+    detail: str = ""
 
 
 @router.post("/projects/{project_id}/sessions", response_model=CreateSessionResponse)
@@ -112,6 +122,7 @@ _EVENT_NAMES: list[tuple[type, str]] = [
     (AssistantMessage, "assistant_message"),
     (ToolCallStarted, "tool_call_started"),
     (ToolCallFinished, "tool_call_finished"),
+    (ApprovalPending, "approval_pending"),
     (TurnEnded, "turn_ended"),
 ]
 
@@ -131,17 +142,53 @@ def send_message(
     if meta is None:
         raise HTTPException(status_code=404, detail="session not found")
 
+    registry = build_default_registry()
+    gate = ApprovalGate(registry=registry)
+    _active_gates[session_id] = gate
+
     harness = AgentHarness(
         session_id=session_id,
         session_dir=SESSIONS_DIR,
         provider=build_provider(),
-        registry=build_default_registry(),
+        registry=registry,
         tool_context=ToolContext(project_id=meta["project_id"], session_id=session_id, db=db),
         config=HarnessConfig(system_prompt=SYSTEM_PROMPT),
+        before_tool_call=gate.before_tool_call,
     )
 
     async def event_stream():
-        async for event in harness.send(request.content):
-            yield _sse_frame(event)
+        try:
+            async for event in harness.send(request.content):
+                yield _sse_frame(event)
+        finally:
+            _active_gates.pop(session_id, None)
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+class ApproveOrRejectRequest(BaseModel):
+    reason: str = ""
+
+
+@router.post("/sessions/{session_id}/approve", response_model=ApprovalResponse)
+def approve_tool(session_id: str):
+    gate = _active_gates.get(session_id)
+    if gate is None:
+        return ApprovalResponse(ok=False, detail="没有待审批的工具调用")
+    ok = gate.approve()
+    return ApprovalResponse(
+        ok=ok,
+        detail="已批准" if ok else "没有待审批的工具调用",
+    )
+
+
+@router.post("/sessions/{session_id}/reject", response_model=ApprovalResponse)
+def reject_tool(session_id: str, request: ApproveOrRejectRequest = ApproveOrRejectRequest()):
+    gate = _active_gates.get(session_id)
+    if gate is None:
+        return ApprovalResponse(ok=False, detail="没有待审批的工具调用")
+    ok = gate.reject(reason=request.reason)
+    return ApprovalResponse(
+        ok=ok,
+        detail="已拒绝" if ok else "没有待审批的工具调用",
+    )

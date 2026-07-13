@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import AsyncIterator
 
 from app.agent.budget import IterationBudget, TokenBudget
+from app.agent.approval import ApprovalGate
 from app.agent.events import LoopEvent, TurnEnded
 from app.agent.loop import BeforeToolCall, run_turn
 from app.agent.providers.base import Provider
@@ -40,6 +41,11 @@ class AgentHarness:
         config: HarnessConfig,
         before_tool_call: BeforeToolCall | None = None,
     ) -> None:
+        self.approval_gate: ApprovalGate | None = (
+            before_tool_call
+            if isinstance(before_tool_call, ApprovalGate)
+            else None
+        )
         self.session_id = session_id
         self.log_path = Path(session_dir) / f"{session_id}.jsonl"
         self.provider = provider
@@ -139,6 +145,9 @@ class AgentHarness:
                     },
                 )
             await sink(event)
+
+        if self.approval_gate is not None:
+            self.approval_gate.set_emitter(persisting_sink)
 
         result = await run_turn(
             provider=self.provider,

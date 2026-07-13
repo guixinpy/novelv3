@@ -33,10 +33,17 @@ class ToolCallFinished:
 
 
 @dataclass(frozen=True)
+class ApprovalPending:
+    approval_id: str
+    tool_name: str
+    arguments: dict | None
+
+
+@dataclass(frozen=True)
 class TurnEnded:
     stop_reason: str
     iterations: int
     usage: Usage
 
 
-LoopEvent = AssistantDelta | AssistantMessage | ToolCallStarted | ToolCallFinished | TurnEnded
+LoopEvent = AssistantDelta | AssistantMessage | ToolCallStarted | ToolCallFinished | ApprovalPending | TurnEnded

@@ -1,4 +1,4 @@
-"""世界观查询工具（M1：按名称/别名查实体；提案类工具在 M2 加入）。"""
+"""世界观查询与提案工具。"""
 from __future__ import annotations
 
 from sqlalchemy import func
@@ -95,3 +95,42 @@ async def query_world(ctx: ToolContext, query: str = "", limit: int = 10) -> Too
             "factions": [_named_card(f) for f in factions[:limit]],
         }
     )
+
+
+@tool(
+    registry=registry,
+    name="propose_world_change",
+    description=(
+        "提出世界观变更提案：修改/新增人物、地点、势力等实体的属性。"
+        "提案会进入审批流程，批准后模型会继续执行变更操作。"
+        "格式为实体类型+实体引用+变更字段。"
+    ),
+    permission="write",
+    parameters={
+        "type": "object",
+        "properties": {
+            "entity_type": {
+                "type": "string",
+                "description": "实体类型: character / location / faction",
+                "enum": ["character", "location", "faction"],
+            },
+            "entity_name": {"type": "string", "description": "目标实体的名称"},
+            "changes": {
+                "type": "object",
+                "description": "要变更的字段及其新值, 例如 {\"core_traits\": [\"勇敢\", \"机智\"]}",
+            },
+            "rationale": {"type": "string", "description": "变更理由"},
+        },
+        "required": ["entity_type", "entity_name", "changes"],
+    },
+)
+async def propose_world_change(ctx: ToolContext, entity_type: str, entity_name: str, changes: dict, rationale: str = "") -> ToolResult:
+    return ToolResult.ok({
+        "proposed": {
+            "entity_type": entity_type,
+            "entity_name": entity_name,
+            "changes": changes,
+            "rationale": rationale,
+        },
+        "message": f"收到{entity_type}「{entity_name}」的变更提案，请用户审批。审批通过后再用 update_setup 工具应用变更。",
+    })
