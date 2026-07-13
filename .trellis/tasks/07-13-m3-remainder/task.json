@@ -1,8 +1,8 @@
 {
-  "id": "m3-guards",
-  "name": "m3-guards",
-  "title": "M3 - autonomous guards, refund, compression",
-  "description": "5-level loop risk detection, budget refund, context compression, chapter quality check, batch mode",
+  "id": "m3-remainder",
+  "name": "m3-remainder",
+  "title": "M3 remainder - compression, quality check, batch mode",
+  "description": "context compaction, check_chapter_quality, risk->recover loop, batch follow-up",
   "status": "in_progress",
   "dev_type": null,
   "scope": null,

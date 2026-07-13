@@ -13,8 +13,9 @@ from typing import AsyncIterator
 
 from app.agent.budget import IterationBudget, TokenBudget
 from app.agent.approval import ApprovalGate
-from app.agent.events import LoopEvent, TurnEnded
-from app.agent.loop import BeforeToolCall, run_turn
+from app.agent.compaction import check_context_usage
+from app.agent.events import ContextWarning, GuardTripped, LoopEvent, TurnEnded
+from app.agent.loop import BeforeToolCall, StopReason, run_turn
 from app.agent.providers.base import Provider
 from app.agent.tooling import ToolContext, ToolRegistry
 
@@ -132,8 +133,10 @@ class AgentHarness:
 
         history = [{"role": "system", "content": self.config.system_prompt}, *self.messages]
         before_count = len(history)
+        last_guard_diagnosis: dict | None = None
 
         async def persisting_sink(event: LoopEvent) -> None:
+            nonlocal last_guard_diagnosis
             if isinstance(event, TurnEnded):
                 self._append_log(
                     "turn_ended",
@@ -144,10 +147,18 @@ class AgentHarness:
                         "completion_tokens": event.usage.completion_tokens,
                     },
                 )
+            elif isinstance(event, GuardTripped):
+                last_guard_diagnosis = event.diagnosis
             await sink(event)
 
         if self.approval_gate is not None:
             self.approval_gate.set_emitter(persisting_sink)
+
+        # 上下文用量预检
+        ctx_warning = check_context_usage(history)
+        if ctx_warning is not None:
+            pct, total = ctx_warning
+            await sink(ContextWarning(usage_pct=round(pct, 3), total_tokens=total, max_tokens=128_000))
 
         result = await run_turn(
             provider=self.provider,
@@ -162,3 +173,13 @@ class AgentHarness:
             extra_provider_kwargs=self.config.provider_kwargs,
         )
         self._persist_new_messages(before_count, result.messages)
+
+        # 风险→恢复：GuardTripped 后注入诊断+恢复建议
+        if last_guard_diagnosis is not None:
+            level = last_guard_diagnosis.get("level", "")
+            tool_name = last_guard_diagnosis.get("tool_name", "")
+            recover_advice = (
+                f"【护栏触发 - {level}】检测到循环风险：工具「{tool_name}」重复调用。"
+                f"请更换策略：换用不同的工具或调整参数后再试。"
+            )
+            self.queue_follow_up(recover_advice)

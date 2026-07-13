@@ -195,3 +195,63 @@ async def revise_chapter(ctx: ToolContext, chapter_index: int, new_content: str,
     _update_project_word_count(ctx)
     ctx.db.commit()
     return ToolResult.ok({"chapter_index": chapter_index, "word_count": chapter.word_count, "status": "revised"})
+
+
+@tool(
+    registry=registry,
+    name="check_chapter_quality",
+    description=(
+        "对指定章节做质量检查：字数范围、标题完整性、内容形式问题。"
+        "如果返回的问题列表为空，说明章节质量基础过关。"
+    ),
+    permission="read",
+    parameters={
+        "type": "object",
+        "properties": {
+            "chapter_index": {"type": "integer", "description": "要检查的章节序号"},
+        },
+        "required": ["chapter_index"],
+    },
+)
+async def check_chapter_quality(ctx: ToolContext, chapter_index: int) -> ToolResult:
+    chapter = (
+        ctx.db.query(ChapterContent)
+        .filter(
+            ChapterContent.project_id == ctx.project_id,
+            ChapterContent.chapter_index == chapter_index,
+        )
+        .first()
+    )
+    if chapter is None:
+        return ToolResult.fail(f"第 {chapter_index} 章不存在。")
+
+    issues = []
+    content = chapter.content or ""
+    word_count = len(content.replace(" ", "").replace("\n", ""))
+
+    # 字数检查
+    if word_count < 50:
+        issues.append({"severity": "warning", "type": "too_short", "detail": f"字数仅 {word_count}，建议至少 500 字"})
+    elif word_count < 500:
+        issues.append({"severity": "info", "type": "slightly_short", "detail": f"字数 {word_count}，偏短"})
+    elif word_count > 50000:
+        issues.append({"severity": "warning", "type": "too_long", "detail": f"字数 {word_count}，超过 50000 字建议拆分"})
+
+    # 标题检查
+    if not chapter.title or chapter.title.strip() == "":
+        issues.append({"severity": "error", "type": "missing_title", "detail": "章节标题为空"})
+
+    # 内容检查
+    if not content.strip():
+        issues.append({"severity": "error", "type": "empty_content", "detail": "章节正文为空"})
+    elif len(content.strip()) < 10:
+        issues.append({"severity": "error", "type": "placeholder_content", "detail": "章节正文过短，可能为占位内容"})
+
+    return ToolResult.ok({
+        "chapter_index": chapter_index,
+        "title": chapter.title,
+        "word_count": word_count,
+        "status": chapter.status,
+        "issues": issues,
+        "quality": "pass" if not issues or all(i["severity"] == "info" for i in issues) else "needs_review",
+    })
