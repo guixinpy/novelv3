@@ -45,3 +45,39 @@ M1 real DeepSeek API dogfood verification. M2 Phase A: approval gate, 5 write to
 ### Next Steps
 
 - None - task complete
+
+
+## Session 2: Backend v1 cleanup + M2-M4 dogfood
+
+**Date**: 2026-07-13
+**Task**: Backend v1 cleanup + M2-M4 dogfood
+**Branch**: `claude/agent-refactor`
+
+### Summary
+
+Removed v1 API layer: dialogs router, intent_router.py, writing_agent_runs.py, +45 test files. Extracted athena_dialog deps to dialog_utils.py. Deleted chapter_conflict_recovery_planner. Verified embedding service is functional (local hash + remote API). Ran M2-M4 dogfood: consistency check passed (7 tool calls), write chapter called correctly (DeepSeek API timeout). 827 backend + 691 frontend tests pass.
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8c87eb95` | (see git log) |
+| `f08bb44e` | (see git log) |
+| `5cd5231b` | (see git log) |
+| `26b68215` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
