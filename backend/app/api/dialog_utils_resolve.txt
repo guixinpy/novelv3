@@ -1,0 +1,88 @@
+            "decision_comment": payload.comment,
+            "resolved_at": datetime.now(UTC),
+        },
+        synchronize_session=False,
+    )
+    if claimed != 1:
+        existing = db.query(PendingAction.id).filter(PendingAction.id == payload.action_id).first()
+        db.rollback()
+        if not existing:
+            raise HTTPException(status_code=404, detail="Pending action not found")
+        raise HTTPException(status_code=409, detail="Pending action is no longer active")
+
+    pending = db.query(PendingAction).filter(PendingAction.id == payload.action_id).first()
+    if not pending:
+        db.rollback()
+        raise HTTPException(status_code=404, detail="Pending action not found")
+
+    dialog = db.query(Dialog).filter(
+        Dialog.id == pending.dialog_id,
+        Dialog.pending_action_id == pending.id,
+    ).first()
+    if not dialog:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Pending action is no longer active")
+
+    dialog.pending_action_id = None
+    dialog.state = "running" if payload.decision == "confirm" else "chatting"
+    db.commit()
+
+    action_type = pending.type
+    action_type = preview_action_to_execution(action_type)
+
+    result_data = None
+    if payload.decision == "confirm":
+        project_id = (pending.params or {}).get("project_id", "")
+        command_args = (pending.params or {}).get("command_args")
+        if supports_dialog_agent_control_plane(action_type):
+            dispatch = prepare_dialog_agent_run_dispatch(
+                db,
+                project_id=project_id,
+                dialog_id=dialog.id,
+                action_type=action_type,
+                command_args=command_args,
+                action_params=pending.params,
+            )
+            LocalTaskRunner().start(dispatch.task.id, dispatch.work)
+            result_data = {
+                "status": "generating",
+                "task_id": dispatch.task.id,
+                "agent_run_id": dispatch.run.id,
+                "control_plane": {"version": CONTROL_PLANE_VERSION},
+            }
+        else:
+            task = _execute_action_background(action_type, project_id, dialog.id, command_args=command_args, action_params=pending.params, db=db)
+            result_data = {"status": "generating"}
+            task_id = getattr(task, "id", None)
+            if isinstance(task_id, str):
+                result_data["task_id"] = task_id
+    elif payload.decision == "cancel":
+        result_data = {"status": "cancelled"}
+    elif payload.decision == "revise":
+        result_data = {"status": "revised", "comment": payload.comment}
+
+    result_data["approval_decision"] = _approval_decision_metadata(pending, payload.decision, action_type)
+    resolve_msg = _resolve_message(payload.decision)
+    action_result = {
+        "type": action_type,
+        "status": result_data["status"],
+        "data": result_data,
+    }
+    decision_message = _save_message(db, dialog.id, "system", resolve_msg, action_result)
+    _link_run_request_message(db, result_data.get("agent_run_id"), decision_message.id)
+
+    return {
+        "dialog_state": "RUNNING" if payload.decision == "confirm" else "CHATTING",
+        "action_result": action_result,
+        "action_result_view": action_result_view(action_result),
+        "message": resolve_msg,
+        "ui_hint": build_ui_hint(
+            action_type=action_type,
+            dialog_state="RUNNING" if payload.decision == "confirm" else "CHATTING",
+            status="running" if payload.decision == "confirm" else result_data["status"],
+            reason="用户确认执行" if payload.decision == "confirm" else "操作已结束",
+        ),
+        "refresh_targets": action_to_refresh_targets(action_type, result_data["status"]),
+    }
+
+

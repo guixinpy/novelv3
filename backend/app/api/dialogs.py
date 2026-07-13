@@ -80,7 +80,7 @@ from app.services.writing_agent.dialog_control_plane import (
 )
 from app.services.writing_agent.planner import latest_recoverable_run_id
 from app.services.writing_agent.recommended_followup_planner import latest_recommended_followup_run_id
-from app.services.writing_agent.run_service import WritingAgentRunService
+# WritingAgentRunService import removed - v1 endpoint deleted
 from app.services.writing_agent.tool_executor import (
     static_writing_agent_tool_adapter_names,
     writing_agent_tool_adapter_metadata_by_name,
