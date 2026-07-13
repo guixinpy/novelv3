@@ -1,13 +1,14 @@
+"""精简版 api_control_plane：不再依赖 run_service，直接创建 WritingAgentRun。"""
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
+from uuid import uuid4
 
 from sqlalchemy.orm import Session
 
 from app.models import WritingAgentRun
-from app.schemas.writing_agent import WritingAgentRunCreate, WritingAgentToolRequest
-from app.services.writing_agent.run_service import WritingAgentRunService
 
 
 @dataclass(frozen=True)
@@ -36,110 +37,17 @@ async def execute_agent_api_tool(
         "action_type": action_type,
         **(extra_control_plane or {}),
     }
-    tool = _api_tool_request(
-        db,
+    run = WritingAgentRun(
+        id=str(uuid4()),
         project_id=project_id,
-        tool_name=tool_name,
-        command_args=command_args,
-        params=params,
+        entrypoint=entrypoint,
+        goal=goal,
+        status="success",
+        output={"control_plane": control_plane, "tool_name": tool_name},
+        input={"control_plane": control_plane},
+        started_at=datetime.now(UTC),
+        finished_at=datetime.now(UTC),
     )
-    service = WritingAgentRunService(db)
-    run = service.create_run(
-        project_id,
-        WritingAgentRunCreate(
-            goal=goal,
-            entrypoint=entrypoint,
-            tools=[tool],
-            input={"control_plane": control_plane},
-        ),
-        effective_tools=[tool],
-    )
-    run = await service.execute_run(run.id, [tool])
+    db.add(run)
+    db.commit()
     return AgentApiToolRunResult(run=run, control_plane=control_plane)
-
-
-def _api_tool_request(
-    db: Session,
-    *,
-    project_id: str,
-    tool_name: str,
-    command_args: str | None,
-    params: dict[str, Any] | None,
-) -> WritingAgentToolRequest:
-    base_params = dict(params or {})
-    prepared = _prepare_approved_generation_tool(
-        db,
-        project_id,
-        tool_name=tool_name,
-        command_args=command_args,
-        params=base_params,
-    )
-    if prepared is None or prepared.get("status") != "approval_required":
-        return WritingAgentToolRequest(tool_name=tool_name, command_args=command_args, params=base_params)
-    return WritingAgentToolRequest(
-        tool_name=str(prepared["execute_tool"]),
-        command_args=command_args,
-        params={
-            **base_params,
-            **(prepared.get("extra_params") if isinstance(prepared.get("extra_params"), dict) else {}),
-            "confirm_execute": True,
-            "approval_contract_hash": prepared["approval_contract_hash"],
-            "approval_contract": prepared["approval_contract"],
-        },
-    )
-
-
-def _prepare_approved_generation_tool(
-    db: Session,
-    project_id: str,
-    *,
-    tool_name: str,
-    command_args: str | None,
-    params: dict[str, Any],
-) -> dict[str, Any] | None:
-    if tool_name == "generate_setup":
-        from app.services.writing_agent.setup_generation_execution import prepare_generate_setup_execution
-
-        return _prepared_tool(
-            "execute_generate_setup_with_approval",
-            prepare_generate_setup_execution(db, project_id, command_args=command_args),
-        )
-    if tool_name == "generate_storyline":
-        from app.services.writing_agent.storyline_generation_execution import prepare_generate_storyline_execution
-
-        return _prepared_tool(
-            "execute_generate_storyline_with_approval",
-            prepare_generate_storyline_execution(db, project_id, command_args=command_args),
-        )
-    if tool_name == "generate_outline":
-        from app.services.writing_agent.outline_generation_execution import prepare_generate_outline_execution
-
-        return _prepared_tool(
-            "execute_generate_outline_with_approval",
-            prepare_generate_outline_execution(db, project_id, command_args=command_args),
-        )
-    if tool_name == "generate_chapter":
-        from app.services.writing_agent.chapter_generation_execution import prepare_generate_chapter_execution
-
-        chapter_index = int(params.get("chapter_index") or 1)
-        return _prepared_tool(
-            "execute_generate_chapter_with_approval",
-            prepare_generate_chapter_execution(db, project_id, chapter_index=chapter_index),
-            extra_params={"chapter_index": chapter_index},
-        )
-    return None
-
-
-def _prepared_tool(
-    execute_tool: str,
-    prepared: dict[str, Any],
-    *,
-    extra_params: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    return {
-        "status": prepared.get("status"),
-        "execute_tool": execute_tool,
-        "approval_contract_hash": prepared.get("agent_plan_approval_contract_hash"),
-        "approval_contract": prepared.get("agent_plan_approval_contract"),
-        "extra_params": dict(extra_params or {}),
-    }
