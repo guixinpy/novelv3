@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from app.agent.tooling import ToolContext, ToolResult, tool
-from app.models import ChapterContent, Project
+from app.models import ChapterContent, LongformMemory, Project, WorldCharacter, WorldLocation
 from app.tools.registry import registry
 
 
@@ -89,6 +89,36 @@ async def read_chapter(ctx: ToolContext, chapter_index: int) -> ToolResult:
     )
 
 
+def _capture_entities(ctx: ToolContext, content: str, chapter_index: int) -> None:
+    """从章节内容中提取已知实体名称并创建长期记忆记录。"""
+    known_entities: dict[str, str] = {}
+    for c in ctx.db.query(WorldCharacter).filter(WorldCharacter.project_id == ctx.project_id).all():
+        known_entities[c.name] = "character"
+    for l in ctx.db.query(WorldLocation).filter(WorldLocation.project_id == ctx.project_id).all():
+        known_entities[l.name] = "location"
+
+    for name, etype in known_entities.items():
+        if name in content:
+            existing = ctx.db.query(LongformMemory).filter(
+                LongformMemory.project_id == ctx.project_id,
+                LongformMemory.memory_type == "entity_state",
+                LongformMemory.scope_key == name,
+                LongformMemory.status == "active",
+            ).first()
+            if existing:
+                existing.end_chapter_index = chapter_index
+            else:
+                ctx.db.add(LongformMemory(
+                    project_id=ctx.project_id,
+                    memory_type="entity_state",
+                    scope_key=name,
+                    title=name,
+                    summary=f"「{name}」出现在第 {chapter_index} 章",
+                    start_chapter_index=chapter_index,
+                    status="active",
+                ))
+
+
 def _update_project_word_count(ctx: ToolContext) -> None:
     """重算并更新项目总字数。"""
     project = ctx.db.query(Project).filter(Project.id == ctx.project_id).first()
@@ -152,6 +182,7 @@ async def write_chapter(ctx: ToolContext, chapter_index: int, content: str, titl
         ctx.db.add(ch)
 
     ctx.db.flush()  # 确保新数据在查询前可见
+    _capture_entities(ctx, content, chapter_index)
     _update_project_word_count(ctx)
     ctx.db.commit()
     return ToolResult.ok({"chapter_index": chapter_index, "word_count": word_count, "status": "written"})
@@ -192,6 +223,7 @@ async def revise_chapter(ctx: ToolContext, chapter_index: int, new_content: str,
     if new_title:
         chapter.title = new_title
     ctx.db.flush()
+    _capture_entities(ctx, new_content, chapter_index)
     _update_project_word_count(ctx)
     ctx.db.commit()
     return ToolResult.ok({"chapter_index": chapter_index, "word_count": chapter.word_count, "status": "revised"})
