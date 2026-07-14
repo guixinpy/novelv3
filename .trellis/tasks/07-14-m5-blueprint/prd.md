@@ -1,19 +1,47 @@
-# M5蓝图+文档更新
+# PRD · M5 百万字专业化蓝图
 
-## Goal
+## 目标
 
-TBD.
+定义从 L4（50 章一致性）到 L5（≥200 章质量不下滑）所需的能力和架构变化。
 
-## Requirements
+## L5 退出标准（来自 roadmap）
 
-- TBD
+≥200 章连续生成，质量趋势指标（长度方差、重复度、一致性违规数）不出现持续恶化斜率。
 
-## Acceptance Criteria
+## 方向性条目
 
-- [ ] TBD
+### 1. 质量趋势作为记忆
+- "最近 3 章节奏偏慢"成为可召回事实
+- 质量趋势记录进入 LongformMemory
+- Agent 在生成前查询质量趋势 → 影响生成策略
 
-## Notes
+### 2. 弧线/卷级规划
+- Agent 在卷边界自主回顾与规划
+- 卷级大纲 vs 章级大纲的层级管理
+- 弧线状态追踪工具
 
-- Keep `prd.md` focused on requirements, constraints, and acceptance criteria.
-- Lightweight tasks can remain PRD-only.
-- For complex tasks, add `design.md` for technical design and `implement.md` for execution planning before `task.py start`.
+### 3. 伏笔闭环强制
+- 长期未闭环线索在卷末触发提醒
+- 伏笔 age 追踪（自登记起过了多少章）
+- 卷末/50章节点强制审计
+
+### 4. 文风一致性采样
+- 定期采样章节开头/结尾验证文风一致性
+- 同人物对话风格一致性检查
+
+### 5. 质量趋势仪表盘
+- 长度方差、重复度、一致性违规数趋势图
+- 在进度追踪器或前端展示
+
+## 依赖 L4 狗食发现
+
+以下问题只能在 L4 的 50 章狗食中暴露，需在 M5 规划中响应：
+
+- 记忆召回是否足够支撑 200 章规模？
+- 上下文窗口在实际生成中的真实消耗曲线？
+- 护栏误触发率和漏报率？
+- Agent 在长程写作中是否出现"风格漂移"？
+
+## 实施时机
+
+**M5 不在本轮推进范围内**。完成 L3 + L4 验证后，基于狗食发现细化本蓝图。届时创建独立的任务分支。

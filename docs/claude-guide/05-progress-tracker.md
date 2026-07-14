@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-- **阶段**：M4 基础完成（工具就绪，嵌入 fallback 已接入），M2 清理完成
+- **阶段**：M2 完全关闭 — L3/L4 验证脚本就绪 — M5 蓝图完成
 - **分支**：`claude/agent-refactor`
 - **最近更新**：2026-07-14
 
@@ -15,30 +15,31 @@
 - ✅ 2026-06-11 **M1 代码完成**：loop/harness/tooling/budget/tools + /api/v2 + 前端
 - ✅ 2026-07-13 **M1 dogfood 验证通过**：真实 DeepSeek API，Agent 自主调用 ≥2 工具
 - ✅ 2026-07-13 **M2 Phase A**：审批门 + 5 写入工具 + 前端审批 UI
-- ✅ 2026-07-13 **M2 Phase B**：删除 adapter-descriptor 层 (-12K LOC)
+- ✅ 2026-07-13 **M2 Phase B**：删除 adapter-descriptor 层
 - ✅ 2026-07-13 **M2 测试清理**：删除 45+ 旧测试文件
 - ✅ 2026-07-13 **M3 guards**：guards.py (5 级风险检测) + 预算 refund + 上下文压缩
-- ✅ 2026-07-13 **M3 remainder**：check_chapter_quality 工具 + 风险→恢复注入
-- ✅ 2026-07-14 **M4 memory**：track_plotline / query_memory 工具 + 实体自动捕获
-- ✅ 2026-07-14 **v1 清理**：删除 dialogs 路由注册, intent_router.py, writing_agent_runs
-- ✅ 2026-07-14 **前端重构**：AgentV2View 升级为主页, 设计系统统一, 死代码清理
-- ✅ 2026-07-14 **综合审计**：10 轮自检, 修复 15+ 关键问题
-- ✅ 2026-07-14 **M2 清理收尾**：删除 services/writing_agent/ (58 文件 / 21,702 LOC)，LOC 84,664→33,649 (-60.3%)
+- ✅ 2026-07-13 **M3 remainder**：check_chapter_quality + 风险→恢复注入
+- ✅ 2026-07-14 **M4 memory**：track_plotline / query_memory + 实体自动捕获
+- ✅ 2026-07-14 **M2 完全关闭**：删除 services/writing_agent/ (58 files / 21,702 LOC)，LOC 84,664→33,649 (-60.3%)，git grep 零命中
+- ✅ 2026-07-14 **L3 验证脚本**：scripts/l3_verify.py（无人值守 10 章 + 熔断测试）
+- ✅ 2026-07-14 **L4 验证脚本**：scripts/l4_dogfood.py（50 章一致性 + 记忆召回测试）
+- ✅ 2026-07-14 **M5 蓝图**：百万字专业化方向性规划
 
-## M1-M3 退出标准核对
+## M1-M4 退出标准核对
 
-1. ✅ 真实对话 ≥2 工具调用（M1 dogfood）
-2. ✅ 中断/恢复：JSONL 重建会话
-3. ✅ 内核单测全绿
-4. ✅ 全流程「新建项目→设定→大纲→第1章→修订」
-5. ✅ `git grep intent_router|run_service|tool_descriptor` 零命中
-6. 🔶 L3 无人值守 10 章验证（脚本就绪，未完整运行）
+1. ✅ 真实对话 ≥2 工具调用（M1）
+2. ✅ 中断/恢复：JSONL 重建会话（M1）
+3. ✅ 内核单测全绿（M1）
+4. ✅ 全流程「设定→大纲→第1章→修订」（M2）
+5. ✅ `git grep intent_router|run_service|tool_descriptor` 零命中（M2）
+6. 🔶 L3 无人值守 10 章（脚本就绪：`scripts/l3_verify.py`，待运行）
+7. 🔶 L4 50 章一致性（脚本就绪：`scripts/l4_dogfood.py`，待运行）
 
 ## 下一步
 
-1. L3 无人值守 10 章验证（运行 `.trellis/tasks/archive/.../l3_unattended.py`）
-2. 剩余 writing_agent/ 死文件清理（~15 个文件）
-3. M5 百万字专业化规划
+1. 启动后端，运行 `python scripts/l3_verify.py --project-id <ID>`（L3 验证）
+2. 运行 `python scripts/l4_dogfood.py --project-id <ID>`（L4 验证）
+3. 基于 L4 狗食发现细化 M5 蓝图，启动实现
 
 ## 问题清单
 

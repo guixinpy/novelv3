@@ -1,19 +1,22 @@
-# L4记忆狗食：50章一致性验证
+# PRD · L4 记忆狗食：50 章一致性验证
 
-## Goal
+## 背景
 
-TBD.
+M4 记忆工具（track_plotline, query_memory）已就绪，向量嵌入 fallback 已接入。但从未在 ≥50 章规模下验证跨章一致性。
 
-## Requirements
+## 目标
 
-- TBD
+验证记忆系统能支撑 50 章长篇创作，人物/设定/伏笔零硬性漂移。
 
-## Acceptance Criteria
+## 验收标准
 
-- [ ] TBD
+- [ ] 50 章生成全量完成
+- [ ] 人物零硬性漂移（world checker + 人工抽查）
+- [ ] Agent 能通过 query_memory 回答实体状态问题（不靠全文重读）
+- [ ] 第 50 章上下文不含早期章节原文，仅含记忆召回结果
 
-## Notes
+## 约束
 
-- Keep `prd.md` focused on requirements, constraints, and acceptance criteria.
-- Lightweight tasks can remain PRD-only.
-- For complex tasks, add `design.md` for technical design and `implement.md` for execution planning before `task.py start`.
+- 需要真实 DeepSeek API key + 运行中的后端
+- 需要预创建项目（设定 + 50 章大纲）
+- 预期耗时：50 chapters × ~3 min = ~2.5 小时
