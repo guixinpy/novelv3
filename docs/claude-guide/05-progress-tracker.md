@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-- **阶段**：L3 通过 / L4 部分完成 / M5 基本验证（弧线系统消除崩塌）
+- **阶段**：L3 通过 / M5 完成（17工具+弧线自动化+前端可视化）
 - **分支**：`claude/agent-refactor`
 - **最近更新**：2026-07-14
 
@@ -52,7 +52,14 @@
 ## 测试基线
 
 - 后端：586 passed, 0 failed
-- 前端：未变
-- 工具：**15** 个 @tool（+ plan_arc, check_quality_trend, arc_consolidation）
+- 前端：91 suites, 576 tests, 0 failed
+- 工具：**17** 个 @tool（+plan_arc, check_quality_trend, derive_entity_relations, memory_tree）
+- 前端可视化：ArcProgressPanel + QualityTrendPanel（AgentV2View 侧边栏）
 - 代码量：33,649 LOC (-60.3% vs 重构前)
-- 修复的关键 Bug：3 个（approval_pending 事件 + 队列死锁 + 列名错误）
+- 修复的关键 Bug：3 个
+- 记忆研究：hermes-agent + openclaw + openhuman 模式综合
+
+## 下一步
+
+1. 30 章大规模 M5 多弧线过渡测试
+2. 两阶段摄取（openhuman hot/cold path）
