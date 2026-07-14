@@ -154,6 +154,7 @@ def send_message(
         tool_context=ToolContext(project_id=meta["project_id"], session_id=session_id, db=db),
         config=HarnessConfig(system_prompt=SYSTEM_PROMPT),
         before_tool_call=gate.before_tool_call,
+        approval_gate=gate,
     )
 
     async def event_stream():

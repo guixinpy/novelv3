@@ -41,12 +41,9 @@ class AgentHarness:
         tool_context: ToolContext,
         config: HarnessConfig,
         before_tool_call: BeforeToolCall | None = None,
+        approval_gate: ApprovalGate | None = None,
     ) -> None:
-        self.approval_gate: ApprovalGate | None = (
-            before_tool_call
-            if isinstance(before_tool_call, ApprovalGate)
-            else None
-        )
+        self.approval_gate: ApprovalGate | None = approval_gate
         self.session_id = session_id
         self.log_path = Path(session_dir) / f"{session_id}.jsonl"
         self.provider = provider
@@ -100,8 +97,8 @@ class AgentHarness:
 
     async def send(self, user_text: str) -> AsyncIterator[LoopEvent]:
         """处理一条用户消息（含 follow-up 链），逐事件产出。"""
-        # maxsize=1：消费者跟上节奏前生产者阻塞，保证 steering 注入时序可预期
-        queue: asyncio.Queue[LoopEvent | None] = asyncio.Queue(maxsize=1)
+        # 合理容量：避免审批事件与工具事件间的背压死锁
+        queue: asyncio.Queue[LoopEvent | None] = asyncio.Queue(maxsize=64)
 
         async def sink(event: LoopEvent) -> None:
             await queue.put(event)
