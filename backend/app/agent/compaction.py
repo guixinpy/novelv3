@@ -1,12 +1,29 @@
-"""上下文压缩：用量预检 + 头尾保护压缩（M3）。"""
+"""上下文压缩：用量预检 + Token-Budget 尾部保护 + 防抖（M5 增强版）。
+
+参考 hermes-agent context_compressor.py 的核心模式：
+1. Token-Budget Tail Protection — 尾部分配固定比例的 token 预算，自适应窗口大小
+2. Anti-Thrashing Guard — 追踪最近压缩效果，低效时跳过
+3. Deterministic fallback — 不确定性摘要，用结构化模板
+"""
 from __future__ import annotations
 
-from app.agent.providers.base import Usage
+# ── 防抖状态（模块级，跨 turn 保持） ──
+
+_last_compression_stats: dict = {"count": 0, "last_savings": []}  # 最近两次节省比例
+
+
+def reset_compaction_stats() -> None:
+    """重置防抖计数器（新会话开始时调用）。"""
+    global _last_compression_stats
+    _last_compression_stats = {"count": 0, "last_savings": []}
+
+
+# ── Token 估算 ──
 
 
 def estimate_tokens(text: str) -> int:
-    """粗略令牌估算：中英文混合按 ~1.5 字符/token。"""
-    return int(len(text) * 1.5 / 1)
+    """粗略令牌估算：中英文混合按 ~2 字符/token。"""
+    return max(1, len(text) // 2)
 
 
 def estimate_message_tokens(msg: dict) -> int:
@@ -24,15 +41,15 @@ def estimate_message_tokens(msg: dict) -> int:
     return total
 
 
+# ── 上下文用量预检 ──
+
+
 def check_context_usage(
     history: list[dict],
     max_tokens: int = 128_000,
     threshold: float = 0.75,
 ) -> tuple[float, int] | None:
-    """检查上下文用量。超过阈值返回 (usage_pct, total_tokens)，否则返回 None。
-
-    集成到 harness 中，每次 LLM 调用前检查。
-    """
+    """检查上下文用量。超过阈值返回 (usage_pct, total_tokens)，否则返回 None。"""
     total = sum(estimate_message_tokens(m) for m in history)
     usage_pct = total / max_tokens
     if usage_pct >= threshold:
@@ -40,27 +57,115 @@ def check_context_usage(
     return None
 
 
+# ── Token-Budget Tail Protection（hermes-agent 模式） ──
+
+
 def compact_history(
     history: list[dict],
     head_count: int = 2,
-    tail_count: int = 10,
-    summary_text: str = "（中间内容已压缩，保留开头和最近的对话记录）",
+    tail_token_budget: float = 0.20,  # 尾部占窗口 20%
+    max_tokens: int = 128_000,
+    force: bool = False,
 ) -> list[dict]:
-    """压缩对话历史：保留系统提示+开头 N 条+结尾 N 条，中间摘要为一条 user 消息。
+    """压缩对话历史：Token-Budget 尾部保护 + 防抖。
+
+    与旧版的区别：
+    - tail_count 改为 tail_token_budget（动态计算尾部保留条数）
+    - 添加防抖保护：连续两次节省 <10% 时跳过压缩
+    - 提高摘要信息量
 
     Args:
         history: 完整消息列表（含 system 消息）。
         head_count: 开头保留条数（含 system）。
-        tail_count: 结尾保留条数。
-        summary_text: 中间摘要文本。
+        tail_token_budget: 尾部 token 预算比例（默认 20% 的 max_tokens）。
+        max_tokens: 模型上下文窗口大小。
+        force: 强制压缩（跳过防抖）。
 
     Returns:
         压缩后的消息列表。
     """
+    global _last_compression_stats
+
+    if len(history) <= head_count:
+        return list(history)
+
+    # ── 防抖保护 ──
+    before_tokens = sum(estimate_message_tokens(m) for m in history)
+    tail_budget_tokens = int(max_tokens * tail_token_budget)
+
+    # 从末尾向前累加 token，动态计算 tail_count
+    tail_count = 0
+    accumulated = 0
+    for msg in reversed(history[head_count:]):
+        accumulated += estimate_message_tokens(msg)
+        tail_count += 1
+        if accumulated >= tail_budget_tokens:
+            break
+    # 最少保留 3 条
+    tail_count = max(3, tail_count)
+
     if len(history) <= head_count + tail_count:
         return list(history)
 
+    # ── 防抖：连续两次节省 <10% 则跳过 ──
+    if not force:
+        estimated_after = (
+            sum(estimate_message_tokens(m) for m in history[:head_count])
+            + estimate_tokens(_build_summary_text(history, head_count, len(history) - tail_count))
+            + sum(estimate_message_tokens(m) for m in history[-tail_count:])
+        )
+        saving_ratio = 1.0 - (estimated_after / max(1, before_tokens))
+        savings_history = _last_compression_stats.get("last_savings", [])
+        if len(savings_history) >= 2:
+            if all(s < 0.10 for s in savings_history[-2:]):
+                return list(history)  # 跳过压缩，效果太差
+        savings_history.append(saving_ratio)
+        if len(savings_history) > 2:
+            savings_history = savings_history[-2:]
+        _last_compression_stats["last_savings"] = savings_history
+        _last_compression_stats["count"] += 1
+
     head = history[:head_count]
     tail = history[-tail_count:]
-    compacted = head + [{"role": "user", "content": summary_text}] + tail
-    return compacted
+    mid_end = len(history) - tail_count
+    summary = _build_summary_text(history, head_count, mid_end)
+    return head + [{"role": "user", "content": summary}] + tail
+
+
+def _build_summary_text(history: list[dict], start: int, end: int) -> str:
+    """构建结构化中间摘要（确定性，不依赖 LLM）。"""
+    middle = history[start:end]
+    user_msgs = []
+    tool_names = set()
+    assistant_count = 0
+    error_count = 0
+
+    for m in middle:
+        role = m.get("role", "")
+        content = str(m.get("content", ""))
+        if role == "user" and content:
+            user_msgs.append(content[:200])
+        elif role == "assistant":
+            assistant_count += 1
+            if "tool_calls" in m:
+                for tc in m.get("tool_calls", []):
+                    n = tc.get("function", {}).get("name", "") if isinstance(tc, dict) else tc.get("name", "")
+                    if n:
+                        tool_names.add(n)
+        elif role == "tool":
+            c = str(m.get("content", ""))
+            if "error" in c.lower() or "失败" in c or "不存在" in c:
+                error_count += 1
+
+    parts = [
+        f"[上下文压缩] 中间 {len(middle)} 条消息被压缩。",
+        f"包含 {len(user_msgs)} 条用户消息，{assistant_count} 次助手回复。",
+    ]
+    if tool_names:
+        parts.append(f"调用的工具: {', '.join(sorted(tool_names))}。")
+    if error_count:
+        parts.append(f"⚠ 其中 {error_count} 次工具调用返回错误。")
+    if user_msgs:
+        parts.append(f"用户关注点: {'; '.join(user_msgs[:5])}。")
+
+    return " ".join(parts)
