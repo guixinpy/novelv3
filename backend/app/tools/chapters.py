@@ -297,8 +297,9 @@ async def check_chapter_quality(ctx: ToolContext, chapter_index: int) -> ToolRes
     name="check_quality_trend",
     description=(
         "分析最近 N 章的质量趋势：查看章节长度变化曲线，检测是否有持续下滑。"
-        "如果趋势显示质量在下降（字数持续缩水），请排查是否主线已完结、"
-        "是否需要规划新弧线、或者是否需要补充更多情节细节。"
+        "【跨弧线对比】写作跨越多个弧线时，务必用本工具检查全局趋势（window≥20），"
+        "确保新弧线的章节质量不低于已完成弧线。如果发现跨弧线衰减，"
+        "请检查是否对新弧线投入了足够的情节构思和场景细节。"
     ),
     permission="read",
     parameters={

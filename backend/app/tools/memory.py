@@ -271,7 +271,7 @@ async def plan_arc(
             return ToolResult.fail("define 操作需要 title 和 end_chapter（≥1）。")
         if start_chapter < 1:
             start_chapter = 1
-        # Deactivate any currently active arc
+        # Deactivate any currently active arc + auto-generate arc_summary
         active = (
             ctx.db.query(LongformMemory)
             .filter(
@@ -281,8 +281,48 @@ async def plan_arc(
             )
             .all()
         )
+        from app.models import ChapterContent
         for a in active:
             a.status = "completed"
+            # Auto-generate arc_summary (fix: was only in progress, now also on define)
+            chs = (
+                ctx.db.query(ChapterContent)
+                .filter(
+                    ChapterContent.project_id == ctx.project_id,
+                    ChapterContent.chapter_index >= (a.start_chapter_index or 1),
+                    ChapterContent.chapter_index <= (a.end_chapter_index or 1),
+                )
+                .order_by(ChapterContent.chapter_index.asc())
+                .all()
+            )
+            ch_titles = ", ".join(c.title for c in chs if c.title) or "(无标题)"
+            arc_summary_text = (
+                f"弧线「{a.title}」完成。"
+                f"章节跨度: Ch{a.start_chapter_index}-{a.end_chapter_index}。"
+                f"包含章节: {ch_titles}。"
+                f"弧线概要: {a.summary or '(无)'}"
+            )
+            existing = (
+                ctx.db.query(LongformMemory)
+                .filter(
+                    LongformMemory.project_id == ctx.project_id,
+                    LongformMemory.memory_type == "arc_summary",
+                    LongformMemory.scope_key == (a.title or f"arc_{a.id}"),
+                )
+                .first()
+            )
+            if not existing:
+                ctx.db.add(LongformMemory(
+                    project_id=ctx.project_id,
+                    memory_type="arc_summary",
+                    scope_key=a.title or f"arc_{a.id}",
+                    title=f"弧线摘要: {a.title}",
+                    summary=arc_summary_text,
+                    start_chapter_index=a.start_chapter_index,
+                    end_chapter_index=a.end_chapter_index,
+                    status="completed",
+                    memory_metadata={"provenance": "agent_inferred", "source": "arc_consolidation_auto"},
+                ))
         # Create new arc
         arc = LongformMemory(
             project_id=ctx.project_id,
