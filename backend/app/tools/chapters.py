@@ -287,3 +287,94 @@ async def check_chapter_quality(ctx: ToolContext, chapter_index: int) -> ToolRes
         "issues": issues,
         "quality": "pass" if not issues or all(i["severity"] == "info" for i in issues) else "needs_review",
     })
+
+
+# ── M5.2: Quality Trend Analysis ──
+
+
+@tool(
+    registry=registry,
+    name="check_quality_trend",
+    description=(
+        "分析最近 N 章的质量趋势：查看章节长度变化曲线，检测是否有持续下滑。"
+        "如果趋势显示质量在下降（字数持续缩水），请排查是否主线已完结、"
+        "是否需要规划新弧线、或者是否需要补充更多情节细节。"
+    ),
+    permission="read",
+    parameters={
+        "type": "object",
+        "properties": {
+            "window": {
+                "type": "integer",
+                "description": "检查最近几章，默认 10",
+                "default": 10,
+            },
+        },
+    },
+)
+async def check_quality_trend(ctx: ToolContext, window: int = 10) -> ToolResult:
+    chapters = (
+        ctx.db.query(ChapterContent)
+        .filter(ChapterContent.project_id == ctx.project_id)
+        .order_by(ChapterContent.chapter_index.asc())
+        .all()
+    )
+    if not chapters:
+        return ToolResult.ok({"trend": "no_data", "tip": "还没有章节数据。"})
+
+    # Take last N chapters
+    recent = chapters[-window:]
+    if len(recent) < 3:
+        return ToolResult.ok({"trend": "insufficient_data", "tip": f"只有 {len(recent)} 章，至少需要 3 章才能分析趋势。"})
+
+    word_counts = []
+    titles = []
+    for c in recent:
+        content = c.body if c.body else ""
+        wc = len(content) if content else 0
+        word_counts.append(wc)
+        titles.append(c.title or f"Ch{c.chapter_index}")
+
+    # Compute trend
+    first_half_avg = sum(word_counts[:len(word_counts)//2]) / max(1, len(word_counts)//2)
+    second_half_avg = sum(word_counts[len(word_counts)//2:]) / max(1, len(word_counts) - len(word_counts)//2)
+    ratio = second_half_avg / max(1, first_half_avg)
+    min_wc = min(word_counts)
+    max_wc = max(word_counts)
+
+    if ratio < 0.5:
+        trend = "severe_decline"
+        advice = (
+            f"严重下滑：近 {window} 章的字数从平均 {int(first_half_avg)} 字降至 {int(second_half_avg)} 字"
+            f"（降幅 {int((1-ratio)*100)}%）。请立即检查："
+            f"1) 主线是否已完结？如果是，用 plan_arc define 规划新弧线；"
+            f"2) 是否在写填充内容（番外/后记）？应聚焦主线情节；"
+            f"3) 是否需要补充更多场景、对话、描写来充实内容。"
+        )
+    elif ratio < 0.75:
+        trend = "declining"
+        advice = (
+            f"轻度下滑：近 {window} 章字数从平均 {int(first_half_avg)} 降至 {int(second_half_avg)}"
+            f"（降幅 {int((1-ratio)*100)}%）。注意质量控制，检查是否在接近弧线尾声。"
+        )
+    elif ratio > 1.3:
+        trend = "growing"
+        advice = f"字数增长中：从 {int(first_half_avg)} → {int(second_half_avg)}（+{int((ratio-1)*100)}%），保持势头。"
+    else:
+        trend = "stable"
+        advice = f"字数稳定：{int(first_half_avg)} → {int(second_half_avg)}，质量趋势正常。"
+
+    return ToolResult.ok({
+        "trend": trend,
+        "window": len(recent),
+        "word_counts": [
+            {"chapter_index": recent[i].chapter_index, "title": titles[i], "word_count": word_counts[i]}
+            for i in range(len(recent))
+        ],
+        "first_half_avg": int(first_half_avg),
+        "second_half_avg": int(second_half_avg),
+        "min": min_wc,
+        "max": max_wc,
+        "ratio": round(ratio, 2),
+        "advice": advice,
+    })

@@ -208,3 +208,165 @@ async def query_memory(ctx: ToolContext, memory_type: str = "all", keyword: str 
             result["embedding_error"] = "语义检索不可用"
 
     return ToolResult.ok(result)
+
+
+# ── M5.1: Story Arc Planning ──
+
+
+@tool(
+    registry=registry,
+    name="plan_arc",
+    description=(
+        "管理故事弧线，支持三种操作："
+        "define=创建新弧线（需title/start_chapter/end_chapter/summary），"
+        "progress=查询当前活跃弧线的进度（第X/Y章，剩余Z章），"
+        "list=列出所有弧线。"
+        "用于长程规划：在开始写作前定义弧线，写作过程中查询进度，弧线结束前提前规划下一弧线。"
+    ),
+    permission="read",
+    parameters={
+        "type": "object",
+        "properties": {
+            "action": {
+                "type": "string",
+                "enum": ["define", "progress", "list"],
+                "description": "操作：定义弧线、查询进度、列出弧线",
+            },
+            "title": {"type": "string", "description": "弧线标题，如「第一卷·迷雾初现」"},
+            "summary": {"type": "string", "description": "弧线概要"},
+            "start_chapter": {"type": "integer", "description": "弧线起始章节"},
+            "end_chapter": {"type": "integer", "description": "弧线结束章节"},
+        },
+        "required": ["action"],
+    },
+)
+async def plan_arc(
+    ctx: ToolContext,
+    action: str,
+    title: str = "",
+    summary: str = "",
+    start_chapter: int = 0,
+    end_chapter: int = 0,
+) -> ToolResult:
+    if action == "define":
+        if not title or end_chapter < 1:
+            return ToolResult.fail("define 操作需要 title 和 end_chapter（≥1）。")
+        if start_chapter < 1:
+            start_chapter = 1
+        # Deactivate any currently active arc
+        active = (
+            ctx.db.query(LongformMemory)
+            .filter(
+                LongformMemory.project_id == ctx.project_id,
+                LongformMemory.memory_type == "story_arc",
+                LongformMemory.status == "active",
+            )
+            .all()
+        )
+        for a in active:
+            a.status = "completed"
+        # Create new arc
+        arc = LongformMemory(
+            project_id=ctx.project_id,
+            memory_type="story_arc",
+            scope_key=title,
+            title=title,
+            summary=summary or f"{start_chapter}-{end_chapter}章弧线",
+            start_chapter_index=start_chapter,
+            end_chapter_index=end_chapter,
+            status="active",
+        )
+        ctx.db.add(arc)
+        ctx.db.commit()
+        return ToolResult.ok({
+            "action": "defined",
+            "title": title,
+            "span": f"Ch{start_chapter} → Ch{end_chapter}",
+            "total_chapters": end_chapter - start_chapter + 1,
+            "status": "active",
+            "tip": f"弧线「{title}」已激活。请在写作过程中定期调用 plan_arc progress 查看进度。弧线结束前 3 章请提前规划下一弧线。",
+        })
+
+    elif action == "progress":
+        active_arc = (
+            ctx.db.query(LongformMemory)
+            .filter(
+                LongformMemory.project_id == ctx.project_id,
+                LongformMemory.memory_type == "story_arc",
+                LongformMemory.status == "active",
+            )
+            .first()
+        )
+        if not active_arc:
+            return ToolResult.ok({
+                "action": "progress",
+                "status": "no_active_arc",
+                "tip": "当前无活跃弧线。请用 plan_arc define 创建一个新弧线来规划后续章节。",
+            })
+        # Count existing chapters in the arc range
+        from app.models import ChapterContent
+        written = (
+            ctx.db.query(ChapterContent)
+            .filter(
+                ChapterContent.project_id == ctx.project_id,
+                ChapterContent.chapter_index >= (active_arc.start_chapter_index or 1),
+                ChapterContent.chapter_index <= (active_arc.end_chapter_index or 1),
+            )
+            .count()
+        )
+        total = (active_arc.end_chapter_index or 1) - (active_arc.start_chapter_index or 1) + 1
+        remaining = max(0, total - written)
+        pct = round(written / total * 100) if total > 0 else 0
+        near_end = remaining <= 3 and remaining > 0
+
+        result = {
+            "action": "progress",
+            "arc_title": active_arc.title,
+            "span": f"Ch{active_arc.start_chapter_index} → Ch{active_arc.end_chapter_index}",
+            "written": written,
+            "total": total,
+            "remaining": remaining,
+            "percent": pct,
+        }
+        if near_end:
+            result["warning"] = (
+                f"弧线「{active_arc.title}」即将结束（还剩 {remaining} 章）。"
+                f"请尽快用 plan_arc define 规划下一弧线，避免故事失去方向。"
+            )
+        elif remaining <= 0:
+            result["warning"] = (
+                f"弧线「{active_arc.title}」已完成。"
+                f"请立即用 plan_arc define 规划下一弧线。"
+            )
+        else:
+            result["hint"] = (
+                f"还有 {remaining} 章完成当前弧线。继续按大纲推进。"
+            )
+        return ToolResult.ok(result)
+
+    elif action == "list":
+        arcs = (
+            ctx.db.query(LongformMemory)
+            .filter(
+                LongformMemory.project_id == ctx.project_id,
+                LongformMemory.memory_type == "story_arc",
+            )
+            .order_by(LongformMemory.start_chapter_index.asc())
+            .all()
+        )
+        if not arcs:
+            return ToolResult.ok({"action": "list", "arcs": [], "tip": "尚未定义任何弧线。"})
+        return ToolResult.ok({
+            "action": "list",
+            "arcs": [
+                {
+                    "title": a.title,
+                    "span": f"Ch{a.start_chapter_index} → Ch{a.end_chapter_index}",
+                    "status": a.status,
+                    "summary": a.summary,
+                }
+                for a in arcs
+            ],
+        })
+
+    return ToolResult.fail(f"未知操作：{action}，支持 define/progress/list。")
