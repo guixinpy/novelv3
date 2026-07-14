@@ -7,7 +7,7 @@
 | 项目 | 版本 | 关键贡献 |
 |------|------|----------|
 | hermes-agent | `fe54960` | 三层记忆体系 + 上下文压缩算法 + Frozen Snapshot |
-| openclaw | `0bcabea` | (待分析) |
+| openclaw | `0bcabea` | 三阶段梦境巩固 + Score-Gated Promotion + Memory Flush |
 | openhuman | `07e60af` | (待分析) |
 
 ## hermes-agent 核心模式

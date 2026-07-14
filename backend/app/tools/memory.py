@@ -334,9 +334,46 @@ async def plan_arc(
                 f"请尽快用 plan_arc define 规划下一弧线，避免故事失去方向。"
             )
         elif remaining <= 0:
+            # ── Arc Memory Consolidation (openclaw Dreaming System analogue) ──
+            # 弧线完成时自动写入摘要到 LongformMemory，供后续弧线召回
+            active_arc.status = "completed"
+            # Collect chapter titles in this arc for summary
+            from app.models import ChapterContent
+            chs = (
+                ctx.db.query(ChapterContent)
+                .filter(
+                    ChapterContent.project_id == ctx.project_id,
+                    ChapterContent.chapter_index >= (active_arc.start_chapter_index or 1),
+                    ChapterContent.chapter_index <= (active_arc.end_chapter_index or 1),
+                )
+                .order_by(ChapterContent.chapter_index.asc())
+                .all()
+            )
+            ch_titles = ", ".join(c.title for c in chs if c.title) or "(无标题)"
+            arc_summary = (
+                f"弧线「{active_arc.title}」完成。"
+                f"章节跨度: Ch{active_arc.start_chapter_index}-{active_arc.end_chapter_index}。"
+                f"包含章节: {ch_titles}。"
+                f"弧线概要: {active_arc.summary or '(无)'}"
+            )
+            summary_mem = LongformMemory(
+                project_id=ctx.project_id,
+                memory_type="arc_summary",
+                scope_key=active_arc.title or f"arc_{active_arc.id}",
+                title=f"弧线摘要: {active_arc.title}",
+                summary=arc_summary,
+                start_chapter_index=active_arc.start_chapter_index,
+                end_chapter_index=active_arc.end_chapter_index,
+                status="completed",
+            )
+            ctx.db.add(summary_mem)
+            ctx.db.commit()
+            result["arc_consolidated"] = True
+            result["arc_summary"] = arc_summary
             result["warning"] = (
-                f"弧线「{active_arc.title}」已完成。"
+                f"弧线「{active_arc.title}」已完成并已巩固记忆（arc_summary）。"
                 f"请立即用 plan_arc define 规划下一弧线。"
+                f"写下一弧线前，可用 query_memory type=arc_summary 回顾已完成弧线的摘要。"
             )
         else:
             result["hint"] = (
