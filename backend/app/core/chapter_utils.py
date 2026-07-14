@@ -1,4 +1,4 @@
-"""章节相关工具函数（从 intent_router 提取）。"""
+"""章节相关工具函数。"""
 from __future__ import annotations
 
 import re

@@ -31,7 +31,7 @@ from app.prompting.providers.chapter import (
 from app.prompting.providers.storyline import SetupContextSnapshot
 from app.prompting.tracing import build_prompt_trace_metadata
 from app.schemas import ChapterOut
-from app.services.writing_agent.api_control_plane import AgentApiToolRunResult, execute_agent_api_tool
+from app.api.dialog_utils import AgentApiToolRunResult, execute_agent_api_tool
 from app.services.writing.writing_state_service import WritingStateService
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/chapters", tags=["chapters"])

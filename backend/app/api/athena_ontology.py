@@ -17,7 +17,7 @@ from app.models import (
     WorldRule,
 )
 from app.schemas import SetupOut
-from app.services.writing_agent.api_control_plane import execute_agent_api_tool
+from app.api.dialog_utils import execute_agent_api_tool
 
 router = APIRouter()
 DEFAULT_ONTOLOGY_ENTITY_LIMIT = 500

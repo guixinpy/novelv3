@@ -29,7 +29,7 @@ from app.models import (
     RetrievalTerm,
     WorldFactClaim,
 )
-from app.services.writing_agent.agent_knowledge_base_candidates import KNOWLEDGE_CANDIDATES_KEY
+KNOWLEDGE_CANDIDATES_KEY = "knowledge_base_candidates"
 
 
 MAX_CHUNK_CHARS = 900

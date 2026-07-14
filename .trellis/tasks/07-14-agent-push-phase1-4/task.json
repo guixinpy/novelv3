@@ -1,0 +1,31 @@
+{
+  "id": "agent-push-phase1-4",
+  "name": "agent-push-phase1-4",
+  "title": "推进Agent化：M2清理→L3验证→L4狗食→M5蓝图",
+  "description": "",
+  "status": "planning",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "guixin",
+  "assignee": "guixin",
+  "createdAt": "2026-07-14",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "claude/agent-refactor",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "07-14-m2-cleanup",
+    "07-14-l3-verify",
+    "07-14-l4-dogfood",
+    "07-14-m5-blueprint"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

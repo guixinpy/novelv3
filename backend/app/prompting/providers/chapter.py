@@ -19,7 +19,7 @@ from app.prompting.providers.storyline import (
     TRUNCATED_SETUP_CONTEXT_MARKER,
     normalise_json_text,
 )
-from app.services.writing_agent.agent_context_compression_projection import (
+from app.core.agent_context_compression_projection import (
     CONTEXT_WINDOW_PRESSURE_RATIO,
     build_agent_context_compression_payload,
     load_agent_context_compression_summary,

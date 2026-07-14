@@ -10,7 +10,7 @@ from app.db import get_db
 from app.models import Outline, Storyline
 from app.schemas import ProposalBundleSplitCreate, ProposalReviewCreate, ProposalReviewRollbackCreate
 from app.schemas.world_proposals import ProposalReviewQueueOut
-from app.services.writing_agent.api_control_plane import AgentApiToolRunResult, execute_agent_api_tool
+from app.api.dialog_utils import AgentApiToolRunResult, execute_agent_api_tool
 
 router = APIRouter()
 ATHENA_EVOLUTION_AGENT_CONTROL_PLANE_VERSION = "phase68.athena_evolution_agent.v1"

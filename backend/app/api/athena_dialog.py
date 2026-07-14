@@ -10,7 +10,7 @@ from app.api.athena_shared import (
     require_project,
 )
 from app.db import get_db
-from app.schemas import ChatIn, ChatOut, ResolveActionIn
+from app.schemas import ChatIn, ChatOut
 from app.services.dialog.messages import DEFAULT_MESSAGE_CONTENT_PREVIEW_CHARS, DialogMessageService
 
 router = APIRouter()
@@ -112,8 +112,3 @@ async def athena_chat(project_id: str, payload: ChatIn, db: Session = Depends(ge
         project_diagnosis=diagnosis,
     )
 
-
-@router.post("/dialog/resolve-action")
-async def athena_resolve_action(project_id: str, payload: ResolveActionIn, db: Session = Depends(get_db)):
-    from app.api.dialogs import resolve_action
-    return await resolve_action(payload, db)
