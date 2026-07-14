@@ -87,7 +87,9 @@ async function onApprove(item: ChatItem) {
     await approveTool(sessionId.value)
     item.text = '✅ 已批准'
   } catch (e) {
-    error.value = `批准失败: ${e instanceof Error ? e.message : e}`; } }
+    error.value = `批准失败: ${e instanceof Error ? e.message : e}`
+  }
+}
 
 async function onReject(item: ChatItem) {
   if (!sessionId.value || !item.approvalId) return
@@ -96,6 +98,8 @@ async function onReject(item: ChatItem) {
     item.text = '❌ 已拒绝'
   } catch (e) {
     error.value = `拒绝失败: ${e instanceof Error ? e.message : e}`
+  }
+}
 
 function onEvent(event: AgentStreamEvent) {
   if (event.event === 'assistant_delta') {

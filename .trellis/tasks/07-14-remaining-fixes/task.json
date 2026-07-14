@@ -1,8 +1,8 @@
 {
-  "id": "goal-10-comprehensive",
-  "name": "goal-10-comprehensive",
-  "title": "10-round comprehensive project audit and fix",
-  "description": "10 major rounds: dead code, design system, types, API, tests, security, perf, errors, docs",
+  "id": "remaining-fixes",
+  "name": "remaining-fixes",
+  "title": "Complete remaining low-priority fixes A-E",
+  "description": "Delete 22 dead backend files, eliminate 50+ hardcoded colors, type safety in project.ts, update docs",
   "status": "in_progress",
   "dev_type": null,
   "scope": null,

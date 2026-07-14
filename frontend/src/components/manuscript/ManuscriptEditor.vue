@@ -662,12 +662,12 @@ onBeforeUnmount(() => {
 .manuscript-editor__paragraph-break-marker::before { content: '↵ 新段落'; }
 .manuscript-editor__marks { display: flex; flex-direction: column; gap: var(--space-1); margin-top: var(--space-2); }
 .manuscript-editor__mark { width: fit-content; padding: var(--space-1) var(--space-2); border-radius: var(--radius-md); font-size: var(--text-xs); }
-.manuscript-editor__mark--annotation { background: rgba(254, 240, 138, 0.55); color: var(--color-text-primary); }
-.manuscript-editor__mark--correction { background: rgba(187, 247, 208, 0.55); color: var(--color-text-primary); }
-.manuscript-editor__inline-annotation { background: rgba(254, 240, 138, 0.75); color: inherit; }
-.manuscript-editor__draft-selection { background: rgba(250, 204, 21, 0.35); color: inherit; }
+.manuscript-editor__mark--annotation { background: var(--color-annotation-mark); color: var(--color-text-primary); }
+.manuscript-editor__mark--correction { background: var(--color-correction-mark); color: var(--color-text-primary); }
+.manuscript-editor__inline-annotation { background: var(--color-annotation-inline); color: inherit; }
+.manuscript-editor__draft-selection { background: var(--color-draft-selection); color: inherit; }
 .manuscript-editor__inline-original { color: var(--color-text-tertiary); text-decoration-color: var(--color-error); }
-.manuscript-editor__inline-correction { background: rgba(187, 247, 208, 0.75); color: inherit; }
+.manuscript-editor__inline-correction { background: var(--color-correction-inline); color: inherit; }
 .manuscript-editor__flash-target { animation: manuscript-flash-target 1.15s ease-in-out 2; border-radius: var(--radius-sm); }
 .manuscript-editor__empty { padding: var(--space-8); color: var(--color-text-tertiary); text-align: center; }
 

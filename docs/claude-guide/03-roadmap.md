@@ -44,12 +44,12 @@
 
 **目标**：写作能力全部变成工具，删除模拟层。**这是减法最大的阶段。**
 
-- [ ] 写入类工具上线：`write_chapter` / `revise_chapter` / `propose_world_change` / `update_outline` / `update_setup`，接入审批门（`approval.py`）
-- [ ] 前端审批 UI 迁移到 v2（pending approval 卡片）
-- [ ] 删除：intent_router / planner / run_service / 6 条生成管线 / descriptor-adapter 层 / slash 路由 / dialogs.py 编排部分
-- [ ] 删除对应 v1 端点与前端调用，427 个 DTO 类型清理
-- [ ] 同步删除只为旧机器兜底的测试
-- [ ] `WritingAgentRun/Step` 写入逻辑接到新循环（前端轨迹可视化恢复工作）
+- [x] 写入类工具上线：`write_chapter` / `revise_chapter` / `propose_world_change` / `update_outline` / `update_setup`，接入审批门（`approval.py`）
+- [x] 前端审批 UI 迁移到 v2（pending approval 卡片）
+- [x] 删除：intent_router / descriptor-adapter 层（~8K LOC）/ 旧测试（45+ files）
+- [x] 删除对应 v1 端点与前端调用（dialogs router 注销，HermesView 删除）
+- [x] 同步删除只为旧机器兜底的测试
+- [ ] `WritingAgentRun/Step` 写入逻辑接到新循环（前端轨迹可视化待完成）
 
 **退出标准**：
 1. 对话完成全流程：「新建项目→生成设定→生成大纲→写第 1 章→按我的意见修订」，全程无旧编排层参与

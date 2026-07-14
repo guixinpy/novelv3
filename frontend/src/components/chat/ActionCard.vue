@@ -406,7 +406,7 @@ function dialogRouteReasonLabel(reasonCode: string) {
 
 .action-card__safety-item {
   border: 1px solid var(--color-success-light);
-  background: rgba(238, 250, 246, 0.78);
+  background: var(--color-safety-bg);
   color: var(--color-text-primary);
   border-radius: 0.75rem;
   padding: 0.7rem 0.8rem;
@@ -427,7 +427,7 @@ function dialogRouteReasonLabel(reasonCode: string) {
 
 .action-card__safety-action {
   margin-top: 0.55rem;
-  border: 1px solid rgba(22, 163, 74, 0.24);
+  border: 1px solid var(--color-safety-border);
   background: rgba(255, 255, 255, 0.72);
   color: var(--color-success);
   border-radius: 0.65rem;

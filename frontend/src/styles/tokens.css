@@ -57,6 +57,27 @@
   --color-chat-card-border: rgba(111, 69, 31, 0.22);
   --color-chat-summary-bg: rgba(244, 234, 212, 0.94);
 
+  /* Editor annotation colors */
+  --color-annotation-mark: rgba(254, 240, 138, 0.55);
+  --color-annotation-inline: rgba(254, 240, 138, 0.75);
+  --color-correction-mark: rgba(187, 247, 208, 0.55);
+  --color-correction-inline: rgba(187, 247, 208, 0.75);
+  --color-revision-insert: rgba(34, 197, 94, 0.35);
+  --color-revision-updated: rgba(187, 247, 208, 0.85);
+  --color-revision-split: rgba(34, 197, 94, 0.16);
+  --color-draft-selection: rgba(250, 204, 21, 0.35);
+
+  /* Atlas/Canvas */
+  --color-atlas-edge: rgba(79, 70, 229, 0.16);
+  --color-atlas-edge-hover: rgba(79, 70, 229, 0.5);
+  --color-atlas-edge-selected: rgba(79, 70, 229, 0.22);
+  --color-atlas-node-fill: #F8FAFC;
+  --color-atlas-trunk: #475569;
+
+  /* Safety card */
+  --color-safety-bg: rgba(238, 250, 246, 0.78);
+  --color-safety-border: rgba(22, 163, 74, 0.24);
+
   /* Activity Bar */
   --color-activity-bar-bg: #1E1E2E;
   --color-activity-bar-icon: #9CA3AF;

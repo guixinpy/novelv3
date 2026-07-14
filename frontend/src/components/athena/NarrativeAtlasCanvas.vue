@@ -695,12 +695,12 @@ onBeforeUnmount(() => {
 
 .narrative-atlas-canvas__edge-handle:hover,
 .narrative-atlas-canvas__edge-handle:focus-visible {
-  fill: rgba(79, 70, 229, 0.16);
-  stroke: rgba(79, 70, 229, 0.5);
+  fill: var(--color-atlas-edge);
+  stroke: var(--color-atlas-edge-hover);
 }
 
 .narrative-atlas-canvas__edge--trunk.narrative-atlas-canvas__edge-line {
-  stroke: #475569;
+  stroke: var(--color-atlas-trunk);
   stroke-width: 3;
 }
 
@@ -727,7 +727,7 @@ onBeforeUnmount(() => {
 }
 
 .narrative-atlas-canvas__edge--selected.narrative-atlas-canvas__edge-handle {
-  fill: rgba(79, 70, 229, 0.22);
+  fill: var(--color-atlas-edge-selected);
   stroke: var(--color-brand);
 }
 
@@ -737,7 +737,7 @@ onBeforeUnmount(() => {
 }
 
 .narrative-atlas-canvas__marker--trunk {
-  fill: #475569;
+  fill: var(--color-atlas-trunk);
 }
 
 .narrative-atlas-canvas__marker--branches {
@@ -781,7 +781,7 @@ onBeforeUnmount(() => {
 
 .narrative-atlas-canvas__node--plotline rect,
 .narrative-atlas-canvas__node--milestone rect {
-  fill: #F8FAFC;
+  fill: var(--color-atlas-node-fill);
   stroke: var(--color-brand);
 }
 
@@ -798,6 +798,6 @@ onBeforeUnmount(() => {
 .narrative-atlas-canvas__node--selected circle,
 .narrative-atlas-canvas__node--selected rect {
   stroke-width: 3;
-  filter: drop-shadow(0 10px 16px rgba(79, 70, 229, 0.22));
+  filter: drop-shadow(0 10px 16px var(--color-atlas-edge-selected));
 }
 </style>

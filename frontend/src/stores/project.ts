@@ -3,9 +3,14 @@ import { ref } from 'vue'
 import { api } from '../api/client'
 import type {
   BackgroundTaskResponse,
+  ChapterContent,
+  ChapterSummary,
   GenerationDiagnosticRecommendation,
   GenerationDiagnostics,
+  ProjectSummary,
   RefreshTarget,
+  SetupData,
+  VersionSummary,
   WorkspaceBootstrap,
   WritingTaskProgress,
   WritingState,
@@ -37,22 +42,22 @@ export const useProjectStore = defineStore('project', () => {
   const TOPOLOGY_NODE_PAGE_LIMIT = 200
   const TOPOLOGY_EDGE_PAGE_LIMIT = 500
   const WRITING_TASK_POLL_INTERVAL_MS = 1000
-  const projects = ref<any[]>([])
-  const currentProject = ref<any>(null)
-  const setup = ref<any>(null)
-  const chapter = ref<any>(null)
-  const storyline = ref<any>(null)
-  const outline = ref<any>(null)
-  const topology = ref<any>(null)
+  const projects = ref<ProjectSummary[]>([])
+  const currentProject = ref<ProjectSummary | null>(null)
+  const setup = ref<SetupData | null>(null)
+  const chapter = ref<ChapterContent | null>(null)
+  const storyline = ref<Record<string, unknown> | null>(null)
+  const outline = ref<Record<string, unknown> | null>(null)
+  const topology = ref<Record<string, unknown> | null>(null)
   const writingState = ref<WritingState | null>(null)
-  const chapters = ref<any[]>([])
+  const chapters = ref<ChapterSummary[]>([])
   const chaptersTotal = ref(0)
   const chaptersOffset = ref(0)
   const chaptersLimit = ref(0)
   const chaptersHasMore = ref(false)
   const chaptersLatestIndex = ref<number | null>(null)
   const chaptersWindowStartOffset = ref(0)
-  const versions = ref<any[]>([])
+  const versions = ref<VersionSummary[]>([])
   const versionsTotal = ref(0)
   const versionsOffset = ref(0)
   const versionsLimit = ref(0)
