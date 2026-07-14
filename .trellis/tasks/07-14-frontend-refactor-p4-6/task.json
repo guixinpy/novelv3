@@ -1,8 +1,8 @@
 {
-  "id": "frontend-refactor-p3",
-  "name": "frontend-refactor-p3",
-  "title": "Frontend refactor Phase 3 - AgentV2View upgrade",
-  "description": "Decompose AgentV2View into components, add session management, UX improvements",
+  "id": "frontend-refactor-p4-6",
+  "name": "frontend-refactor-p4-6",
+  "title": "Frontend refactor Phase 4-6 - architecture, UX, cleanup",
+  "description": "useProjectScope composable, centralize toErrorMessage, BaseSkeleton, remaining fixes",
   "status": "in_progress",
   "dev_type": null,
   "scope": null,
