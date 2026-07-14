@@ -427,3 +427,159 @@ async def plan_arc(
         })
 
     return ToolResult.fail(f"未知操作：{action}，支持 define/progress/list。")
+
+
+# ── Memory Tree: 层级摘要树 (openhuman Memory Tree pattern) ──
+
+
+@tool(
+    registry=registry,
+    name="memory_tree",
+    description=(
+        "查看项目的层级记忆树结构（project → arc → chapter → detail）。"
+        "每层显示子节点数量和摘要信息。用于了解项目整体记忆组织、"
+        "发现哪些弧线/章节缺少记忆覆盖、定位记忆空白区域。"
+        "类比 openhuman 的 root→year→month→day 层级树，novelv3 映射为 project→arc→chapter→plotline。"
+    ),
+    permission="read",
+    parameters={
+        "type": "object",
+        "properties": {
+            "detail_level": {
+                "type": "string",
+                "enum": ["overview", "arcs", "chapters", "full"],
+                "description": "详细程度：overview=总览，arcs=弧线级，chapters=章节级，full=完整树",
+                "default": "overview",
+            },
+        },
+    },
+)
+async def memory_tree(ctx: ToolContext, detail_level: str = "overview") -> ToolResult:
+    from app.models import ChapterContent
+
+    # Level 0: Project root
+    total_chapters = (
+        ctx.db.query(ChapterContent)
+        .filter(ChapterContent.project_id == ctx.project_id)
+        .count()
+    )
+    total_memories = (
+        ctx.db.query(LongformMemory)
+        .filter(LongformMemory.project_id == ctx.project_id)
+        .count()
+    )
+    tree = {
+        "project": {
+            "id": ctx.project_id,
+            "total_chapters": total_chapters,
+            "total_memories": total_memories,
+            "memory_density": round(total_memories / max(1, total_chapters), 1) if total_chapters > 0 else 0,
+        },
+    }
+
+    # Level 1: Arcs
+    arcs = (
+        ctx.db.query(LongformMemory)
+        .filter(
+            LongformMemory.project_id == ctx.project_id,
+            LongformMemory.memory_type == "story_arc",
+        )
+        .order_by(LongformMemory.start_chapter_index.asc())
+        .all()
+    )
+    tree["arcs"] = []
+    for arc in arcs:
+        arc_node = {
+            "title": arc.title,
+            "span": f"Ch{arc.start_chapter_index}-{arc.end_chapter_index}",
+            "status": arc.status,
+            "chapters_written": (
+                ctx.db.query(ChapterContent)
+                .filter(
+                    ChapterContent.project_id == ctx.project_id,
+                    ChapterContent.chapter_index >= (arc.start_chapter_index or 1),
+                    ChapterContent.chapter_index <= (arc.end_chapter_index or 1),
+                )
+                .count()
+            ),
+        }
+
+        if detail_level in ("chapters", "full"):
+            # Level 2: Chapters within arc
+            chapters = (
+                ctx.db.query(ChapterContent)
+                .filter(
+                    ChapterContent.project_id == ctx.project_id,
+                    ChapterContent.chapter_index >= (arc.start_chapter_index or 1),
+                    ChapterContent.chapter_index <= (arc.end_chapter_index or 1),
+                )
+                .order_by(ChapterContent.chapter_index.asc())
+                .all()
+            )
+            arc_node["chapters"] = []
+            for ch in chapters:
+                ch_node = {
+                    "index": ch.chapter_index,
+                    "title": ch.title or f"Ch{ch.chapter_index}",
+                    "word_count": len(ch.content) if ch.content else 0,
+                }
+
+                if detail_level == "full":
+                    # Level 3: Memories attached to this chapter
+                    ch_mems = (
+                        ctx.db.query(LongformMemory)
+                        .filter(
+                            LongformMemory.project_id == ctx.project_id,
+                            LongformMemory.memory_type.in_(["plotline", "entity_state"]),
+                            LongformMemory.start_chapter_index <= ch.chapter_index,
+                        )
+                        .all()
+                    )
+                    # Filter: memory was active during this chapter
+                    relevant = [
+                        m for m in ch_mems
+                        if (m.end_chapter_index or 999) >= ch.chapter_index
+                    ]
+                    ch_node["active_memories"] = len(relevant)
+                    ch_node["memory_types"] = list(set(m.memory_type for m in relevant))
+
+                arc_node["chapters"].append(ch_node)
+
+        tree["arcs"].append(arc_node)
+
+    # Memory coverage analysis
+    covered_chapters = set()
+    for arc in arcs:
+        for ch_idx in range(arc.start_chapter_index or 1, (arc.end_chapter_index or 1) + 1):
+            covered_chapters.add(ch_idx)
+    uncovered = [i for i in range(1, total_chapters + 1) if i not in covered_chapters]
+
+    tree["coverage"] = {
+        "arcs_defined": len(arcs),
+        "chapters_covered_by_arcs": len(covered_chapters),
+        "chapters_uncovered": len(uncovered),
+        "uncovered_chapters": uncovered[:10] if len(uncovered) <= 10 else uncovered[:10] + [f"...and {len(uncovered)-10} more"],
+        "status": (
+            "full_coverage" if len(uncovered) == 0
+            else "partial_coverage" if len(uncovered) < total_chapters * 0.3
+            else "low_coverage"
+        ),
+    }
+
+    # Summary (like OpenHuman's "folded" parent node summaries)
+    summary_parts = [f"项目共 {total_chapters} 章, {total_memories} 条记忆, {len(arcs)} 条弧线。"]
+    if arcs:
+        active = [a for a in arcs if a.status == "active"]
+        completed = [a for a in arcs if a.status == "completed"]
+        if active:
+            summary_parts.append(f"活跃弧线: {active[0].title} ({active[0].start_chapter_index}-{active[0].end_chapter_index})。")
+        if completed:
+            summary_parts.append(f"已完成 {len(completed)} 条弧线。")
+    if uncovered:
+        summary_parts.append(f"⚠ {len(uncovered)} 章未被弧线覆盖: {uncovered[:5]}{'...' if len(uncovered)>5 else ''}。")
+    if total_chapters > 0 and total_memories / total_chapters < 1:
+        summary_parts.append(f"记忆密度偏低 ({tree['project']['memory_density']}/章)，建议增加 track_plotline 调用。")
+
+    tree["summary"] = " ".join(summary_parts)
+
+    return ToolResult.ok(tree)
