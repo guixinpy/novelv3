@@ -71,7 +71,7 @@ onUnmounted(() => { document.removeEventListener('keydown', onKeydown); document
 </template>
 
 <style scoped>
-.base-modal__backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.3); z-index: var(--z-modal); display: flex; align-items: center; justify-content: center; }
+.base-modal__backdrop { position: fixed; inset: 0; background: var(--color-overlay); z-index: var(--z-modal); display: flex; align-items: center; justify-content: center; }
 .base-modal__panel { background: var(--color-bg-white); border-radius: var(--radius-lg); box-shadow: var(--shadow-md); max-height: 85vh; max-width: calc(100vw - var(--space-4)); overflow-y: auto; display: flex; flex-direction: column; outline: none; }
 .base-modal__header { padding: var(--space-4); border-bottom: 1px solid var(--color-border); display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
 .base-modal__title { font-size: var(--text-lg); font-weight: var(--font-semibold); color: var(--color-text-primary); }

@@ -1,8 +1,8 @@
 {
-  "id": "fix-audit-bugs",
-  "name": "fix-audit-bugs",
-  "title": "Fix critical bugs found by audit",
-  "description": "Fix dialog_control_plane broken import, ManuscriptView dead route, delete 33 dead backend files, remaining hardcoded colors",
+  "id": "goal-self-audit",
+  "name": "goal-self-audit",
+  "title": "10-round self-audit optimization",
+  "description": "10 rounds of finding and fixing remaining issues in the refactored project",
   "status": "in_progress",
   "dev_type": null,
   "scope": null,

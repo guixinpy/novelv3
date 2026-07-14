@@ -110,6 +110,9 @@
   --content-padding: var(--space-6);
   --athena-chat-width: 400px;
 
+  /* Overlay */
+  --color-overlay: rgba(0, 0, 0, 0.3);
+
   /* Z-Index Scale */
   --z-base: 0;
   --z-subnav: 10;
