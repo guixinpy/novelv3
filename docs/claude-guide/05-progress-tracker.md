@@ -32,7 +32,7 @@
 3. ✅ 内核单测全绿（M1）
 4. ✅ 全流程「设定→大纲→第1章→修订」（M2）
 5. ✅ `git grep intent_router|run_service|tool_descriptor` 零命中（M2）
-6. 🔶 L3 无人值守 10 章（脚本就绪：`scripts/l3_verify.py`，待运行）
+6. ✅ L3 无人值守 10 章（2026-07-14 验证通过：10章/32,421字，零护栏触发）
 7. 🔶 L4 50 章一致性（脚本就绪：`scripts/l4_dogfood.py`，待运行）
 
 ## 下一步
