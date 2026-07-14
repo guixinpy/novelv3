@@ -1,19 +1,37 @@
-# L3自治验证：无人值守10章+熔断压缩
+# PRD · L3 自治验证：无人值守 10 章 + 熔断压缩验证
 
-## Goal
+## 背景
 
-TBD.
+M3 护栏代码（guards.py, budget.py, compaction.py, approval.py）已就绪，但从未在真实模型场景下完整验证。L3 退出标准要求无人值守连续 10 章，异常自动停止并诊断。
 
-## Requirements
+## 目标
 
-- TBD
+验证新 agent 循环在真实 API 调用下的自治能力：护栏触发、预算控制、审批门、上下文压缩。
 
-## Acceptance Criteria
+## 验证项
 
-- [ ] TBD
+### 1. 无人值守 10 章生成
+- 通过 v2 sessions API + follow-up 队列驱动连续生成
+- 每章完成时自动进入下一章
+- 全流程零人工干预
 
-## Notes
+### 2. 熔断验证
+- 构造乒乓场景（互相矛盾的世界观提案）→ 熔断在 ≤5 回合触发
+- 构造超窗场景 → 压缩自动发生
 
-- Keep `prd.md` focused on requirements, constraints, and acceptance criteria.
-- Lightweight tasks can remain PRD-only.
-- For complex tasks, add `design.md` for technical design and `implement.md` for execution planning before `task.py start`.
+### 3. 质量自检
+- `check_chapter_quality` 工具可被 Agent 自主调用
+- 长度超标/大纲偏离能被检测
+
+## 验收标准
+
+- [ ] 无人值守连续生成 10 章，无人工干预
+- [ ] 异常时自动停止并给出可执行诊断
+- [ ] 乒乓场景熔断 ≤5 回合
+- [ ] 超窗场景自动压缩且后续连贯性保持
+
+## 约束
+
+- 需要真实 DeepSeek API key
+- 需要预创建项目（设定 + 大纲）
+- 验证脚本只做 API 驱动，不动代码
