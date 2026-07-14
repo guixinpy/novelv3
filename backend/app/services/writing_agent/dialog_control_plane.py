@@ -188,7 +188,7 @@ def _tools_for_action(
 ) -> tuple[list[WritingAgentToolRequest], dict[str, Any] | None]:
     planner_intent = PLANNED_DIALOG_ACTION_INTENTS.get(action_type)
     if planner_intent:
-        from app.core.intent_router import parse_chapter_index
+        from app.core.chapter_utils import parse_chapter_index
         from app.services.writing_agent.planner import build_writing_agent_run_plan, tools_from_plan
 
         params = dict(action_params or {})

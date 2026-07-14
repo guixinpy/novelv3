@@ -102,7 +102,7 @@ async function submitRevision() {
   if (activeIndex.value === null) return
   const revision = await manuscript.submitRevision(pid.value, activeIndex.value)
   submitOpen.value = false
-  await router.push({ path: `/projects/${pid.value}/hermes`, query: { revision_id: revision.id } })
+  await router.push({ path: `/projects/${pid.value}/agent`, query: { revision_id: revision.id } })
 }
 
 async function loadMoreChapters() {
