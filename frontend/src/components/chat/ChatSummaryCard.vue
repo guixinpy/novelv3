@@ -43,9 +43,9 @@ const expanded = ref(false)
 <style scoped>
 .summary-card {
   width: min(88%, 42rem);
-  border: 1px solid rgba(111, 69, 31, 0.18);
+  border: 1px solid var(--color-warm-border);
   border-radius: 1rem;
-  background: linear-gradient(180deg, rgba(244, 234, 212, 0.94) 0%, rgba(235, 222, 195, 0.95) 100%);
+  background: linear-gradient(180deg, var(--color-chat-summary-bg) 0%, var(--color-chat-summary-bg) 100%);
   box-shadow: 0 12px 22px rgba(80, 55, 26, 0.1);
   overflow: hidden;
 }
@@ -86,7 +86,7 @@ const expanded = ref(false)
 }
 
 .summary-card__body {
-  border-top: 1px solid rgba(111, 69, 31, 0.16);
+  border-top: 1px solid var(--color-warm-border);
   padding: 0.78rem 0.88rem 0.88rem;
   white-space: pre-wrap;
   font-size: 0.9rem;

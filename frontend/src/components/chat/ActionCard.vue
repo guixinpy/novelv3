@@ -267,9 +267,9 @@ function dialogRouteReasonLabel(reasonCode: string) {
 <style scoped>
 .action-card {
   margin-top: 0.85rem;
-  border: 1px solid rgba(111, 69, 31, 0.16);
+  border: 1px solid var(--color-warm-border);
   background:
-    linear-gradient(180deg, rgba(248, 239, 221, 0.96) 0%, rgba(241, 230, 209, 0.94) 100%);
+    linear-gradient(180deg, rgba(248, 239, 221, 0.96) 0%, var(--color-chat-card-bg) 100%);
   border-radius: 1rem;
   padding: 1rem;
 }
@@ -322,7 +322,7 @@ function dialogRouteReasonLabel(reasonCode: string) {
 
 .action-card__preview {
   margin-bottom: 0.85rem;
-  border: 1px solid rgba(111, 69, 31, 0.12);
+  border: 1px solid var(--color-warm-subtle);
   border-radius: 0.85rem;
   background: rgba(255, 251, 242, 0.72);
   padding: 0.8rem;
@@ -354,7 +354,7 @@ function dialogRouteReasonLabel(reasonCode: string) {
   display: grid;
   gap: 0.15rem;
   padding-left: 0.55rem;
-  border-left: 2px solid rgba(111, 69, 31, 0.22);
+  border-left: 2px solid var(--color-chat-card-border);
 }
 
 .action-card__preview-step-label {
@@ -405,7 +405,7 @@ function dialogRouteReasonLabel(reasonCode: string) {
 }
 
 .action-card__safety-item {
-  border: 1px solid rgba(45, 112, 95, 0.16);
+  border: 1px solid var(--color-success-light);
   background: rgba(238, 250, 246, 0.78);
   color: var(--color-text-primary);
   border-radius: 0.75rem;
@@ -427,9 +427,9 @@ function dialogRouteReasonLabel(reasonCode: string) {
 
 .action-card__safety-action {
   margin-top: 0.55rem;
-  border: 1px solid rgba(45, 112, 95, 0.24);
+  border: 1px solid rgba(22, 163, 74, 0.24);
   background: rgba(255, 255, 255, 0.72);
-  color: #1f6a5a;
+  color: var(--color-success);
   border-radius: 0.65rem;
   padding: 0.44rem 0.7rem;
   font-size: 0.78rem;
@@ -453,7 +453,7 @@ function dialogRouteReasonLabel(reasonCode: string) {
 }
 
 .action-card__button {
-  border: 1px solid rgba(111, 69, 31, 0.16);
+  border: 1px solid var(--color-warm-border);
   background: rgba(255, 251, 242, 0.92);
   color: var(--color-text-secondary);
   border-radius: 0.85rem;
@@ -464,7 +464,7 @@ function dialogRouteReasonLabel(reasonCode: string) {
 }
 
 .action-card__button--primary {
-  background: linear-gradient(180deg, #8d5d31 0%, #6f451f 100%);
+  background: linear-gradient(180deg, var(--color-warm-amber) 0%, var(--color-warm-brown) 100%);
   color: #fff8ef;
 }
 
@@ -487,7 +487,7 @@ function dialogRouteReasonLabel(reasonCode: string) {
 .action-card__input {
   flex: 1;
   min-width: 0;
-  border: 1px solid rgba(111, 69, 31, 0.16);
+  border: 1px solid var(--color-warm-border);
   background: rgba(255, 251, 242, 0.96);
   color: var(--color-text-primary);
   border-radius: 0.85rem;
@@ -497,7 +497,7 @@ function dialogRouteReasonLabel(reasonCode: string) {
 }
 
 .action-card__input:focus {
-  border-color: rgba(111, 69, 31, 0.34);
+  border-color: var(--color-warm-border);
   box-shadow: 0 0 0 3px rgba(141, 93, 49, 0.12);
 }
 </style>

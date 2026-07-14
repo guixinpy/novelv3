@@ -61,7 +61,7 @@ const riskLabel = computed(() => {
   border: 1px solid rgba(164, 84, 48, 0.18);
   border-radius: 1rem;
   padding: 1rem;
-  background: rgba(248, 239, 229, 0.84);
+  background: var(--color-proposal-impact-bg);
 }
 
 .impact-list__header {
@@ -87,7 +87,7 @@ const riskLabel = computed(() => {
   border-radius: 999px;
   padding: 0.3rem 0.72rem;
   background: rgba(156, 61, 36, 0.12);
-  color: #8d341f;
+  color: var(--color-error);
   font-size: 0.74rem;
   font-weight: 700;
 }

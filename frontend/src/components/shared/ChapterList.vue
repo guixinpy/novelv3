@@ -102,7 +102,7 @@ const emit = defineEmits<{
 }
 
 .chapter-list__count--under {
-  color: var(--color-warning, #a15c00);
+  color: var(--color-warning, var(--color-warning));
 }
 
 .chapter-list__count--over {

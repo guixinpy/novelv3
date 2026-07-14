@@ -144,7 +144,7 @@ function emitRollback() {
 
 .proposal-actions__field {
   width: 100%;
-  border: 1px solid rgba(111, 69, 31, 0.14);
+  border: 1px solid var(--color-warm-subtle);
   border-radius: 0.8rem;
   padding: 0.65rem 0.75rem;
   background: rgba(255, 252, 246, 0.92);
@@ -160,7 +160,7 @@ function emitRollback() {
 }
 
 .proposal-actions__buttons button {
-  border: 1px solid rgba(111, 69, 31, 0.18);
+  border: 1px solid var(--color-warm-border);
   border-radius: 999px;
   padding: 0.38rem 0.72rem;
   background: rgba(255, 252, 246, 0.92);

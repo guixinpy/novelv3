@@ -27,8 +27,28 @@
   --color-success-light: #F0FDF4;
   --color-warning: #D97706;
   --color-warning-light: #FFFBEB;
+  --color-warning-dark: #92400E;
   --color-error: #DC2626;
   --color-error-light: #FEF2F2;
+
+  /* Warm / World tones — used by proposal cards, action cards, atlas */
+  --color-warm-brown: #6F451F;
+  --color-warm-amber: #8D5D31;
+  --color-warm-bg: rgba(255, 248, 239, 0.94);
+  --color-warm-subtle: rgba(111, 69, 31, 0.12);
+  --color-warm-border: rgba(111, 69, 31, 0.16);
+  --color-warm-hover: rgba(111, 69, 31, 0.08);
+
+  /* World proposal-specific */
+  --color-proposal-impact-bg: rgba(248, 239, 229, 0.84);
+  --color-proposal-impact-border: rgba(164, 84, 48, 0.18);
+  --color-proposal-diagram-bg: rgba(245, 158, 11, 0.06);
+  --color-proposal-diagram-border: rgba(245, 158, 11, 0.12);
+
+  /* Chat card */
+  --color-chat-card-bg: rgba(241, 230, 209, 0.94);
+  --color-chat-card-border: rgba(111, 69, 31, 0.22);
+  --color-chat-summary-bg: rgba(244, 234, 212, 0.94);
 
   /* Activity Bar */
   --color-activity-bar-bg: #1E1E2E;

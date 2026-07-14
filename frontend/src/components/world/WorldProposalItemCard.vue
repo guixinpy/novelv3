@@ -172,7 +172,7 @@ function forwardRollback(reviewId: string, reason: string) {
 .proposal-item-card {
   display: grid;
   gap: 0.75rem;
-  border: 1px solid rgba(111, 69, 31, 0.14);
+  border: 1px solid var(--color-warm-subtle);
   border-radius: 1rem;
   padding: 1rem;
   background:
@@ -216,7 +216,7 @@ function forwardRollback(reviewId: string, reason: string) {
 
 .proposal-item-card__evidence-block {
   min-width: 0;
-  border: 1px solid rgba(111, 69, 31, 0.12);
+  border: 1px solid var(--color-warm-subtle);
   border-radius: var(--radius-sm);
   padding: var(--space-2) var(--space-3);
   background: rgba(255, 252, 244, 0.72);
@@ -244,12 +244,12 @@ function forwardRollback(reviewId: string, reason: string) {
   overflow-wrap: anywhere;
 }
 
-.proposal-item-card.has-conflict { border-left: 3px solid #dc2626; }
-.proposal-item-card.has-risk { border-left: 3px solid #d97706; }
+.proposal-item-card.has-conflict { border-left: 3px solid var(--color-error); }
+.proposal-item-card.has-risk { border-left: 3px solid var(--color-warning); }
 .proposal-item-card__conflicts { display: grid; gap: 0.3rem; }
 .proposal-item-card__conflict { font-size: 0.72rem; line-height: 1.4; }
-.proposal-item-card__conflict.is-truth_conflict { color: #dc2626; }
-.proposal-item-card__conflict.is-high_impact { color: #d97706; }
+.proposal-item-card__conflict.is-truth_conflict { color: var(--color-error); }
+.proposal-item-card__conflict.is-high_impact { color: var(--color-warning); }
 
 @media (max-width: 720px) {
   .proposal-item-card__evidence {

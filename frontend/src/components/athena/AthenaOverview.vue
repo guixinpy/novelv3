@@ -369,7 +369,7 @@ function goNext() {
 }
 
 .athena-overview__maintenance header .athena-overview__maintenance-status--stale {
-  color: var(--color-warning, #a15c00);
+  color: var(--color-warning, var(--color-warning));
 }
 
 .athena-overview__maintenance-actions {
@@ -405,7 +405,7 @@ function goNext() {
 .athena-overview__maintenance-recommendations {
   margin-top: var(--space-3);
   padding: var(--space-3);
-  border: 1px solid rgba(245, 158, 11, 0.24);
+  border: 1px solid var(--color-warning-light);
   border-radius: var(--radius-md);
   background: rgba(255, 251, 235, 0.72);
 }
@@ -435,7 +435,7 @@ function goNext() {
 .athena-overview__maintenance-recommendations strong,
 .athena-overview__maintenance-recommendations p {
   margin: 0;
-  color: #92400e;
+  color: var(--color-warning-dark);
   font-size: var(--text-sm);
   line-height: var(--leading-snug);
 }
