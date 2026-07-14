@@ -14,7 +14,7 @@ from typing import AsyncIterator
 from app.agent.budget import IterationBudget, TokenBudget
 from app.agent.approval import ApprovalGate
 from app.agent.compaction import check_context_usage
-from app.agent.events import ContextWarning, GuardTripped, LoopEvent, TurnEnded
+from app.agent.events import ApprovalPending, ContextWarning, GuardTripped, LoopEvent, TurnEnded
 from app.agent.loop import BeforeToolCall, EventSink, StopReason, run_turn
 from app.agent.providers.base import Provider
 from app.agent.tooling import ToolContext, ToolRegistry
@@ -75,7 +75,6 @@ class AgentHarness:
             f.write(json.dumps({"type": entry_type, "data": data}, ensure_ascii=False) + "\n")
 
     def _persist_new_messages(self, before_count: int, history: list[dict]) -> None:
-        # history = [system] + self.messages[:] + 新消息；system 不持久化
         for message in history[before_count:]:
             self._append_log("message", message)
             self.messages.append(message)
@@ -97,11 +96,16 @@ class AgentHarness:
 
     async def send(self, user_text: str) -> AsyncIterator[LoopEvent]:
         """处理一条用户消息（含 follow-up 链），逐事件产出。"""
-        # 合理容量：避免审批事件与工具事件间的背压死锁
-        queue: asyncio.Queue[LoopEvent | None] = asyncio.Queue(maxsize=64)
+        # 主队列：maxsize=1 保证 steering 注入时序
+        # 审批通道：无上限，防止 ApprovalPending 被工具事件阻塞
+        main_queue: asyncio.Queue[LoopEvent | None] = asyncio.Queue(maxsize=1)
+        approval_queue: asyncio.Queue[LoopEvent] = asyncio.Queue()
 
         async def sink(event: LoopEvent) -> None:
-            await queue.put(event)
+            # ApprovalPending 走独立通道，其余走主队列
+            if isinstance(event, ApprovalPending):
+                await approval_queue.put(event)
+            await main_queue.put(event)
 
         async def worker() -> None:
             try:
@@ -110,15 +114,32 @@ class AgentHarness:
                     await self._run_one_turn(pending, sink)
                     pending = self._follow_ups.popleft() if self._follow_ups else None
             finally:
-                await queue.put(None)
+                await main_queue.put(None)
 
         task = asyncio.create_task(worker())
         try:
             while True:
-                event = await queue.get()
+                # 优先消费审批事件（非阻塞），再等主队列
+                try:
+                    while True:
+                        approval_event = approval_queue.get_nowait()
+                        yield approval_event
+                except asyncio.QueueEmpty:
+                    pass
+
+                event = await main_queue.get()
                 if event is None:
                     break
                 yield event
+
+                # yield 后立即排空审批队列（可能在等待期间积累）
+                try:
+                    while True:
+                        approval_event = approval_queue.get_nowait()
+                        yield approval_event
+                except asyncio.QueueEmpty:
+                    pass
+
             await task
         finally:
             if not task.done():

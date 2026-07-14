@@ -31,13 +31,13 @@ def test_check_above_threshold():
 
 def test_compact_noop_when_small():
     history = [_msg("system"), _msg("user"), _msg("assistant")]
-    result = compact_history(history, head_count=2, tail_count=2)
+    result = compact_history(history, head_count=2, tail_token_budget=0.5)
     assert len(result) == len(history)
 
 
 def test_compact_large_history():
     history = [_msg("system")] + [_msg("user", f"msg{i}") for i in range(20)]
-    result = compact_history(history, head_count=2, tail_count=5)
+    result = compact_history(history, head_count=2)
     assert len(result) < len(history)
     assert result[0] == history[0]  # system preserved
     assert result[-1] == history[-1]  # last message preserved

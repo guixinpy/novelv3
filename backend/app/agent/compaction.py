@@ -91,7 +91,8 @@ def compact_history(
 
     # ── 防抖保护 ──
     before_tokens = sum(estimate_message_tokens(m) for m in history)
-    tail_budget_tokens = int(max_tokens * tail_token_budget)
+    # 尾部预算基于当前总 token 量（小上下文用更小尾部，大上下文用更大尾部）
+    tail_budget_tokens = max(int(before_tokens * tail_token_budget), 1)
 
     # 从末尾向前累加 token，动态计算 tail_count
     tail_count = 0
