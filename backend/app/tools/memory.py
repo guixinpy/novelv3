@@ -67,6 +67,7 @@ async def track_plotline(
             summary=summary,
             start_chapter_index=chapter_index or None,
             status="open",
+            memory_metadata={"provenance": "agent_inferred", "source": "track_plotline"},
         )
         ctx.db.add(mem)
         ctx.db.commit()
@@ -133,7 +134,11 @@ async def track_plotline(
     name="query_memory",
     description=(
         "查询跨章节的长期记忆：按类型和关键字检索。"
-        "写作前调用本工具了解人物/地点的历史状态，避免前后矛盾。"
+        "【上下文注入上限】每次 LLM 调用最多使用本工具 1 次，返回最多 5 条记忆。"
+        "推荐用法：1) 写作前用 memory_type='arc_summary' 回顾已完成弧线摘要（上限 3 条）；"
+        "2) 用 memory_type='plotline' 检查开放情节线（上限 5 条）；"
+        "3) 用 keyword 搜索特定人物/地点（上限 3 条）。"
+        "注意每条 memory 携带 provenance 字段：author_explicit=作者显式设定（可信度高），agent_inferred=Agent 推理（可信度低）。"
     ),
     permission="read",
     parameters={
@@ -141,21 +146,25 @@ async def track_plotline(
         "properties": {
             "memory_type": {
                 "type": "string",
-                "enum": ["plotline", "entity_state", "all"],
-                "description": "记忆类型",
+                "enum": ["plotline", "entity_state", "arc_summary", "all"],
+                "description": "记忆类型。弧线摘要用 arc_summary",
             },
             "keyword": {"type": "string", "description": "搜索关键字（标题或内容）"},
-            "limit": {"type": "integer", "description": "最多返回条数"},
+            "limit": {"type": "integer", "description": "最多返回条数（默认 5，上限 10）", "default": 5},
+            "provenance": {"type": "string", "enum": ["author_explicit", "agent_inferred", "all"], "description": "过滤来源", "default": "all"},
         },
     },
 )
-async def query_memory(ctx: ToolContext, memory_type: str = "all", keyword: str = "", limit: int = 20) -> ToolResult:
-    # 1. SQL text matching first
+async def query_memory(ctx: ToolContext, memory_type: str = "all", keyword: str = "", limit: int = 5, provenance: str = "all") -> ToolResult:
+    # Enforce injection cap (P0: Constrained Context Injection)
+    effective_limit = min(limit, 10)
     query = ctx.db.query(LongformMemory).filter(
         LongformMemory.project_id == ctx.project_id,
     )
     if memory_type != "all":
         query = query.filter(LongformMemory.memory_type == memory_type)
+    if provenance != "all":
+        query = query.filter(LongformMemory.memory_metadata["provenance"].as_string() == provenance)
     if keyword:
         like = f"%{keyword}%"
         query = query.filter(
@@ -163,7 +172,7 @@ async def query_memory(ctx: ToolContext, memory_type: str = "all", keyword: str 
             (LongformMemory.title.like(like)) |
             (LongformMemory.summary.like(like))
         )
-    memories = query.order_by(LongformMemory.updated_at.desc()).limit(limit).all()
+    memories = query.order_by(LongformMemory.updated_at.desc()).limit(effective_limit).all()
 
     result = {
         "memories": [
@@ -174,15 +183,24 @@ async def query_memory(ctx: ToolContext, memory_type: str = "all", keyword: str 
                 "title": m.title,
                 "summary": m.summary,
                 "status": m.status,
+                "provenance": (m.memory_metadata or {}).get("provenance", "agent_inferred"),
                 "chapter_range": {
                     "start": m.start_chapter_index,
                     "end": m.end_chapter_index,
                 },
-                "metadata": m.memory_metadata,
             }
             for m in memories
         ],
         "total": len(memories),
+        "injection_limit": {
+            "returned": len(memories),
+            "max_per_call": effective_limit,
+            "guideline": (
+                "上下文注入总上限: arc_summary ≤3条 + plotline ≤5条 + 实体/杂项 ≤3条。"
+                "请根据当前写作阶段筛选最相关的记忆，不要全部注入。"
+                "author_explicit 条目可信度更高，agent_inferred 条目需交叉验证。"
+            ),
+        },
     }
 
     # 2. Embedding fallback: SQL 无结果时用语义检索
@@ -275,6 +293,7 @@ async def plan_arc(
             start_chapter_index=start_chapter,
             end_chapter_index=end_chapter,
             status="active",
+            memory_metadata={"provenance": "author_explicit", "source": "plan_arc"},
         )
         ctx.db.add(arc)
         ctx.db.commit()
@@ -365,6 +384,7 @@ async def plan_arc(
                 start_chapter_index=active_arc.start_chapter_index,
                 end_chapter_index=active_arc.end_chapter_index,
                 status="completed",
+                memory_metadata={"provenance": "agent_inferred", "source": "arc_consolidation"},
             )
             ctx.db.add(summary_mem)
             ctx.db.commit()

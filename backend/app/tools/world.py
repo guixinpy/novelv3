@@ -134,3 +134,116 @@ async def propose_world_change(ctx: ToolContext, entity_type: str, entity_name: 
         },
         "message": f"收到{entity_type}「{entity_name}」的变更提案，请用户审批。审批通过后再用 update_setup 工具应用变更。",
     })
+
+
+# ── P2: On-Demand Entity Co-occurrence (openhuman pattern) ──
+
+
+@tool(
+    registry=registry,
+    name="derive_entity_relations",
+    description=(
+        "按需推导实体之间的关系（不依赖预建图数据库）。"
+        "从 LongformMemory 和章节内容中检测哪些人物/地点在相同上下文中共同出现。"
+        "用于一致性检查：如果两个角色声称在不同地点但曾同章出现，可能存在矛盾。"
+    ),
+    permission="read",
+    parameters={
+        "type": "object",
+        "properties": {
+            "entity_names": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "要检查的实体名称列表（不超过 10 个）",
+            },
+            "min_co_occurrence": {
+                "type": "integer",
+                "description": "最少共现次数阈值（默认 1）",
+                "default": 1,
+            },
+        },
+        "required": ["entity_names"],
+    },
+)
+async def derive_entity_relations(
+    ctx: ToolContext,
+    entity_names: list[str],
+    min_co_occurrence: int = 1,
+) -> ToolResult:
+    if len(entity_names) > 10:
+        return ToolResult.fail("实体名称列表不超过 10 个。")
+    if len(entity_names) < 2:
+        return ToolResult.ok({"pairs": [], "hint": "至少需要 2 个实体才能推导关系。"})
+
+    from app.models import ChapterContent, LongformMemory
+
+    # Collect contexts where entities appear
+    entity_contexts: dict[str, set] = {name: set() for name in entity_names}
+
+    # 1. Check LongformMemory (plotlines, arc_summaries, entity_states)
+    memories = (
+        ctx.db.query(LongformMemory)
+        .filter(
+            LongformMemory.project_id == ctx.project_id,
+            LongformMemory.memory_type.in_(["plotline", "entity_state", "arc_summary", "story_arc"]),
+        )
+        .all()
+    )
+    for m in memories:
+        text = f"{m.title} {m.summary} {m.scope_key}"
+        for name in entity_names:
+            if name in text:
+                entity_contexts[name].add(f"memory:{m.id[:8]}:{m.title[:30]}")
+
+    # 2. Check chapter titles
+    chapters = (
+        ctx.db.query(ChapterContent)
+        .filter(ChapterContent.project_id == ctx.project_id)
+        .all()
+    )
+    for ch in chapters:
+        text = f"{ch.title or ''} {ch.content or ''}"
+        for name in entity_names:
+            if name in text:
+                entity_contexts[name].add(f"chapter:{ch.chapter_index}")
+
+    # 3. Compute co-occurrence pairs
+    pairs = []
+    names = sorted(entity_names)
+    for i in range(len(names)):
+        for j in range(i + 1, len(names)):
+            a, b = names[i], names[j]
+            shared = entity_contexts[a] & entity_contexts[b]
+            if len(shared) >= min_co_occurrence:
+                # Determine relationship type
+                rel_type = "weak"
+                if len(shared) >= 3:
+                    rel_type = "strong"
+                elif len(shared) >= 2:
+                    rel_type = "moderate"
+
+                pairs.append({
+                    "entity_a": a,
+                    "entity_b": b,
+                    "co_occurrence_count": len(shared),
+                    "relationship": rel_type,
+                    "shared_contexts": sorted(shared)[:5],
+                })
+
+    # Find isolated entities
+    isolated = []
+    for name in entity_names:
+        if not entity_contexts[name]:
+            isolated.append({"entity": name, "status": "no_references_found"})
+        elif len(entity_contexts[name]) <= 1:
+            isolated.append({"entity": name, "status": "minimal_references", "contexts": list(entity_contexts[name])})
+
+    return ToolResult.ok({
+        "pairs": pairs,
+        "total_pairs": len(pairs),
+        "isolated_entities": isolated,
+        "hint": (
+            "共现关系从记忆和章节中按需推导（不依赖预建图数据库）。"
+            f"共发现 {len(pairs)} 对关系，{len(isolated)} 个实体缺少足够上下文。"
+        ) if pairs or isolated else "未发现实体间的共现关系。可能原因：实体名拼写不一致，或尚未在记忆/章节中充分出现。",
+    })
