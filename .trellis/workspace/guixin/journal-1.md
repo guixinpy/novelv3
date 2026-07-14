@@ -81,3 +81,50 @@ Removed v1 API layer: dialogs router, intent_router.py, writing_agent_runs.py, +
 ### Next Steps
 
 - None - task complete
+
+
+## Session 3: M2-M5全链路推进：旧层删除→L3/L4验证→M5工具集+记忆优化+前端可视化
+
+**Date**: 2026-07-14
+**Task**: M2-M5全链路推进：旧层删除→L3/L4验证→M5工具集+记忆优化+前端可视化
+**Branch**: `claude/agent-refactor`
+
+### Summary
+
+19个commits：M2清理(services/writing_agent/删除,LOC-60%) → L3验证(10章/32K字,零护栏) → L4狗食(37章/129K字,发现弧线崩塌) → M5实现(plan_arc+check_quality_trend+derive_entity_relations+memory_tree,17工具) → 记忆优化P0-P3(注入上限+来源标记+实体共现+跨会话) → 前端可视化(ArcProgressPanel+QualityTrendPanel) → 30章多弧线测试(3弧线×10章,弧线过渡自动化验证)
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `796cb175` | (see git log) |
+| `2c9bcc54` | (see git log) |
+| `3cc43e1d` | (see git log) |
+| `b3c7cde9` | (see git log) |
+| `808f4dd4` | (see git log) |
+| `aad040c4` | (see git log) |
+| `db80ad63` | (see git log) |
+| `360b64f8` | (see git log) |
+| `e360cad3` | (see git log) |
+| `b1683f80` | (see git log) |
+| `a020c095` | (see git log) |
+| `980a867f` | (see git log) |
+| `c139598a` | (see git log) |
+| `40148906` | (see git log) |
+| `f66fa16b` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
