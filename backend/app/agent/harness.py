@@ -15,7 +15,7 @@ from app.agent.budget import IterationBudget, TokenBudget
 from app.agent.approval import ApprovalGate
 from app.agent.compaction import check_context_usage
 from app.agent.events import ContextWarning, GuardTripped, LoopEvent, TurnEnded
-from app.agent.loop import BeforeToolCall, StopReason, run_turn
+from app.agent.loop import BeforeToolCall, EventSink, StopReason, run_turn
 from app.agent.providers.base import Provider
 from app.agent.tooling import ToolContext, ToolRegistry
 
@@ -127,7 +127,9 @@ class AgentHarness:
             if not task.done():
                 task.cancel()
 
-    async def _run_one_turn(self, user_text: str, sink) -> None:
+    async def _run_one_turn(
+        self, user_text: str, sink: EventSink,
+    ) -> None:
         self._append_log("message", {"role": "user", "content": user_text})
         self.messages.append({"role": "user", "content": user_text})
 

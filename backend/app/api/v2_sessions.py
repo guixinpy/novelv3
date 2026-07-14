@@ -128,7 +128,7 @@ _EVENT_NAMES: list[tuple[type, str]] = [
 
 
 def _sse_frame(event: LoopEvent) -> str:
-    name = next(n for t, n in _EVENT_NAMES if isinstance(event, t))
+    name = next((n for t, n in _EVENT_NAMES if isinstance(event, t)), "unknown")
     return f"event: {name}\ndata: {json.dumps(asdict(event), ensure_ascii=False)}\n\n"
 
 
