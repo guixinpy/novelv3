@@ -330,7 +330,7 @@ async def check_quality_trend(ctx: ToolContext, window: int = 10) -> ToolResult:
     word_counts = []
     titles = []
     for c in recent:
-        content = c.body if c.body else ""
+        content = c.content if c.content else ""
         wc = len(content) if content else 0
         word_counts.append(wc)
         titles.append(c.title or f"Ch{c.chapter_index}")
