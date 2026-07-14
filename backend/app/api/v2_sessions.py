@@ -210,3 +210,132 @@ def reject_tool(session_id: str, request: ApproveOrRejectRequest = ApproveOrReje
         ok=ok,
         detail="已拒绝" if ok else "没有待审批的工具调用",
     )
+
+
+# ── 前端可视化 API（arc_progress / quality_trend / memory_tree）──
+
+
+class ArcProgressOut(BaseModel):
+    has_active_arc: bool = False
+    arc_title: str = ""
+    span: str = ""
+    written: int = 0
+    total: int = 0
+    remaining: int = 0
+    percent: int = 0
+    warning: str = ""
+    all_arcs: list[dict] = []
+
+
+@router.get("/projects/{project_id}/arc-progress", response_model=ArcProgressOut)
+def get_arc_progress(project_id: str, db: Session = Depends(get_db)):
+    from app.models import ChapterContent, LongformMemory
+
+    active = (
+        db.query(LongformMemory)
+        .filter(
+            LongformMemory.project_id == project_id,
+            LongformMemory.memory_type == "story_arc",
+            LongformMemory.status == "active",
+        )
+        .first()
+    )
+    if not active:
+        return ArcProgressOut(has_active_arc=False, warning="无活跃弧线")
+
+    written = (
+        db.query(ChapterContent)
+        .filter(
+            ChapterContent.project_id == project_id,
+            ChapterContent.chapter_index >= (active.start_chapter_index or 1),
+            ChapterContent.chapter_index <= (active.end_chapter_index or 1),
+        )
+        .count()
+    )
+    total = (active.end_chapter_index or 1) - (active.start_chapter_index or 1) + 1
+    remaining = max(0, total - written)
+
+    all_arcs = (
+        db.query(LongformMemory)
+        .filter(
+            LongformMemory.project_id == project_id,
+            LongformMemory.memory_type == "story_arc",
+        )
+        .order_by(LongformMemory.start_chapter_index.asc())
+        .all()
+    )
+    return ArcProgressOut(
+        has_active_arc=True,
+        arc_title=active.title or "",
+        span=f"Ch{active.start_chapter_index}-{active.end_chapter_index}",
+        written=written,
+        total=total,
+        remaining=remaining,
+        percent=round(written / total * 100) if total > 0 else 0,
+        all_arcs=[{
+            "title": a.title,
+            "span": f"Ch{a.start_chapter_index}-{a.end_chapter_index}",
+            "status": a.status,
+            "chapters": (
+                db.query(ChapterContent)
+                .filter(
+                    ChapterContent.project_id == project_id,
+                    ChapterContent.chapter_index >= (a.start_chapter_index or 1),
+                    ChapterContent.chapter_index <= (a.end_chapter_index or 1),
+                )
+                .count()
+            ),
+            "total": (a.end_chapter_index or 1) - (a.start_chapter_index or 1) + 1,
+        } for a in all_arcs],
+    )
+
+
+class QualityTrendOut(BaseModel):
+    chapters: list[dict] = []
+    trend: str = "no_data"
+    first_half_avg: float = 0
+    second_half_avg: float = 0
+    ratio: float = 0
+    advice: str = ""
+
+
+@router.get("/projects/{project_id}/quality-trend", response_model=QualityTrendOut)
+def get_quality_trend(project_id: str, window: int = 10, db: Session = Depends(get_db)):
+    from app.models import ChapterContent
+
+    chapters = (
+        db.query(ChapterContent)
+        .filter(ChapterContent.project_id == project_id)
+        .order_by(ChapterContent.chapter_index.asc())
+        .all()
+    )
+    if not chapters:
+        return QualityTrendOut(trend="no_data", advice="还没有章节数据")
+
+    recent = chapters[-window:]
+    if len(recent) < 3:
+        return QualityTrendOut(trend="insufficient_data", advice=f"只有 {len(recent)} 章，需 ≥3 章")
+
+    points = []
+    for c in recent:
+        wc = len(c.content) if c.content else 0
+        points.append({"chapter_index": c.chapter_index, "title": c.title or f"Ch{c.chapter_index}", "word_count": wc})
+
+    half = len(points) // 2
+    first_avg = sum(p["word_count"] for p in points[:half]) / max(1, half)
+    second_avg = sum(p["word_count"] for p in points[half:]) / max(1, len(points) - half)
+    ratio = second_avg / max(1, first_avg)
+
+    if ratio < 0.5:
+        trend, advice = "severe_decline", f"严重下滑（{int((1-ratio)*100)}%），需立即介入"
+    elif ratio < 0.75:
+        trend, advice = "declining", f"轻度下滑（{int((1-ratio)*100)}%），注意质量控制"
+    elif ratio > 1.3:
+        trend, advice = "growing", f"字数增长中（+{int((ratio-1)*100)}%）"
+    else:
+        trend, advice = "stable", "质量趋势稳定"
+
+    return QualityTrendOut(
+        chapters=points, trend=trend, first_half_avg=first_avg,
+        second_half_avg=second_avg, ratio=round(ratio, 2), advice=advice,
+    )

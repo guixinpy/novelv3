@@ -2,6 +2,8 @@
 import { computed, nextTick, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import AgentToolCard from '../components/agent/AgentToolCard.vue'
+import ArcProgressPanel from '../components/agent/ArcProgressPanel.vue'
+import QualityTrendPanel from '../components/agent/QualityTrendPanel.vue'
 
 import {
   approveTool,
@@ -172,6 +174,9 @@ async function send() {
           暂无会话
         </div>
       </div>
+      <!-- M5 可视化面板 -->
+      <ArcProgressPanel v-if="pid" :project-id="pid" />
+      <QualityTrendPanel v-if="pid" :project-id="pid" />
       <div v-if="lastStop" class="agent-chat__stop-info">{{ lastStop }}</div>
     </aside>
 
