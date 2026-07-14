@@ -76,6 +76,8 @@ describe('AthenaChatPanel', () => {
       id: `chapter-${index + 1}`,
       chapter_index: index + 1,
       title: `第${index + 1}章`,
+      word_count: 500,
+      status: 'generated',
     }))
     athena.ontology = {
       entities: {},
@@ -117,6 +119,8 @@ describe('AthenaChatPanel', () => {
       id: `chapter-${index + 1}`,
       chapter_index: index + 1,
       title: `第${index + 1}章`,
+      word_count: 2000,
+      status: 'generated',
     }))
     project.chaptersTotal = 1000
 
@@ -134,7 +138,7 @@ describe('AthenaChatPanel', () => {
       name: '霜灯档案',
       current_word_count: 81234,
     }
-    project.chapters = [{ id: 'chapter-1', chapter_index: 1, title: '第1章' }]
+    project.chapters = [{ id: 'chapter-1', chapter_index: 1, title: '第1章', word_count: 500, status: 'generated' }]
     athena.ontology = {
       entities: {},
       relations: [],

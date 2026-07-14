@@ -1,10 +1,5 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 
-import AthenaView from '../views/AthenaView.vue'
-import ManuscriptView from '../views/ManuscriptView.vue'
-import ProjectListView from '../views/ProjectListView.vue'
-import SettingsView from '../views/SettingsView.vue'
-
 export interface AppRouteMeta {
   showSidebar: boolean
   workspace: 'agent' | 'athena' | 'manuscript' | null
@@ -17,7 +12,7 @@ declare module 'vue-router' {
 const routes: RouteRecordRaw[] = [
   {
     path: '/',
-    component: ProjectListView,
+    component: () => import('../views/ProjectListView.vue'),
     meta: { showSidebar: false, workspace: null } satisfies AppRouteMeta,
   },
   {
@@ -31,22 +26,22 @@ const routes: RouteRecordRaw[] = [
   },
   {
     path: '/projects/:id/athena',
-    component: AthenaView,
+    component: () => import('../views/AthenaView.vue'),
     meta: { showSidebar: true, workspace: 'athena' } satisfies AppRouteMeta,
   },
   {
     path: '/projects/:id/athena/:section',
-    component: AthenaView,
+    component: () => import('../views/AthenaView.vue'),
     meta: { showSidebar: true, workspace: 'athena' } satisfies AppRouteMeta,
   },
   {
     path: '/projects/:id/manuscript',
-    component: ManuscriptView,
+    component: () => import('../views/ManuscriptView.vue'),
     meta: { showSidebar: true, workspace: 'manuscript' } satisfies AppRouteMeta,
   },
   {
     path: '/settings',
-    component: SettingsView,
+    component: () => import('../views/SettingsView.vue'),
     meta: { showSidebar: false, workspace: null } satisfies AppRouteMeta,
   },
 ]
