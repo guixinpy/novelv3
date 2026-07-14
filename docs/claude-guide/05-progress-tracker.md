@@ -4,54 +4,55 @@
 
 ## 当前状态
 
-- **阶段**：M2 完全关闭 — L3/L4 验证脚本就绪 — M5 蓝图完成
+- **阶段**：L3 通过 / L4 部分完成 / M5 基本验证（弧线系统消除崩塌）
 - **分支**：`claude/agent-refactor`
 - **最近更新**：2026-07-14
 
 ## 已完成
 
 - ✅ 2026-06-11 仓库克隆、工作分支建立、旧 codex-guide 归档、claude-guide 编写
-- ✅ 2026-06-11 **M0 完成**：Provider 层 + 目录骨架 + 依赖规则
-- ✅ 2026-06-11 **M1 代码完成**：loop/harness/tooling/budget/tools + /api/v2 + 前端
-- ✅ 2026-07-13 **M1 dogfood 验证通过**：真实 DeepSeek API，Agent 自主调用 ≥2 工具
-- ✅ 2026-07-13 **M2 Phase A**：审批门 + 5 写入工具 + 前端审批 UI
-- ✅ 2026-07-13 **M2 Phase B**：删除 adapter-descriptor 层
-- ✅ 2026-07-13 **M2 测试清理**：删除 45+ 旧测试文件
-- ✅ 2026-07-13 **M3 guards**：guards.py (5 级风险检测) + 预算 refund + 上下文压缩
-- ✅ 2026-07-13 **M3 remainder**：check_chapter_quality + 风险→恢复注入
-- ✅ 2026-07-14 **M4 memory**：track_plotline / query_memory + 实体自动捕获
-- ✅ 2026-07-14 **M2 完全关闭**：删除 services/writing_agent/ (58 files / 21,702 LOC)，LOC 84,664→33,649 (-60.3%)，git grep 零命中
-- ✅ 2026-07-14 **L3 验证脚本**：scripts/l3_verify.py（无人值守 10 章 + 熔断测试）
-- ✅ 2026-07-14 **L4 验证脚本**：scripts/l4_dogfood.py（50 章一致性 + 记忆召回测试）
-- ✅ 2026-07-14 **M5 蓝图**：百万字专业化方向性规划
+- ✅ 2026-06-11 **M0**：Provider 层 + 目录骨架 + 依赖规则
+- ✅ 2026-06-11 **M1 代码**：loop/harness/tooling/budget/tools + /api/v2 + 前端
+- ✅ 2026-07-13 **M1 dogfood**：真实 DeepSeek API，Agent 自主调用 ≥2 工具
+- ✅ 2026-07-13 **M2**：审批门 + 写入工具 + 旧层删除 + 测试清理
+- ✅ 2026-07-13 **M3**：guards.py + budget refund + compaction + recovery injection
+- ✅ 2026-07-14 **M2 完全关闭**：删除 writing_agent/ 58 files/21K LOC，LOC -60.3%
+- ✅ 2026-07-14 **L3 验证通过**：10章/32K字，零护栏触发，零人工干预
+- ✅ 2026-07-14 **L4 狗食**：37章/129K字，发现弧线崩塌问题（→M5）
+- ✅ 2026-07-14 **M5 基本验证**：plan_arc + check_quality_trend + 弧线记忆巩固 → 10章质量稳定，零填充
+- ✅ 2026-07-14 **M5 研究**：hermes-agent (Frozen Snapshot/Compaction) + openclaw (Dreaming System)
 
-## M1-M4 退出标准核对
+## 成熟度核对
 
-1. ✅ 真实对话 ≥2 工具调用（M1）
-2. ✅ 中断/恢复：JSONL 重建会话（M1）
-3. ✅ 内核单测全绿（M1）
-4. ✅ 全流程「设定→大纲→第1章→修订」（M2）
-5. ✅ `git grep intent_router|run_service|tool_descriptor` 零命中（M2）
-6. ✅ L3 无人值守 10 章（2026-07-14 验证通过：10章/32,421字，零护栏触发）
-7. 🔶 L4 50 章一致性（37章/129,809字完成，但Ch18后故事弧线崩塌→填充内容，这是M5要解决的核心问题）
+1. ✅ L1: 模型驱动循环 + 流式 + 原生 tool call
+2. ✅ L2: 全流程工具 + 旧编排层删除 + `git grep` 零命中
+3. ✅ L3: 10章无人值守 + 护栏验证通过
+4. 🔶 L4: 37章/129K字完成，弧线崩塌问题已识别（→M5修复）
+5. 🔶 L5: M5 工具集（plan_arc/quality_trend/arc_consolidation）已验证有效，需更大规模测试
 
 ## 下一步
 
-1. 启动后端，运行 `python scripts/l3_verify.py --project-id <ID>`（L3 验证）
-2. 运行 `python scripts/l4_dogfood.py --project-id <ID>`（L4 验证）
-3. 基于 L4 狗食发现细化 M5 蓝图，启动实现
+1. 更大规模 M5 测试（30+ 章，多弧线过渡）
+2. 前端适配新工具（plan_arc/check_quality_trend 可视化）
+3. openhuman 参考项目分析（agents 仍在运行）
 
 ## 问题清单
 
-### L4 狗食发现（2026-07-14）
-1. **故事弧线崩塌**：Ch1-18 质量稳定（1,341→5,808字），Ch19 起变为尾声+番外填充（逐章缩至 205 字）
-2. **缺乏卷级规划**：Agent 不知有 50 章目标，主线自然完结后无法开启下一弧线
-3. **质量趋势不可见**：Agent 不自知章节在缩水，无自我纠正机制
-4. **记忆系统基本可用**：每章正常调用 query_memory + track_plotline，无人物硬性漂移
+### L4 狗食发现（→M5 已验证修复）
+1. ~~故事弧线崩塌~~ → M5 plan_arc 消除此问题
+2. ~~缺乏卷级规划~~ → M5 plan_arc + 系统提示词解决
+3. ~~质量趋势不可见~~ → M5 check_quality_trend 解决
+4. ~~记忆系统基本可用~~ → M5 弧线记忆巩固增强
+
+### 新发现（M5 测试）
+1. check_quality_trend 列名 bug 已修复（body→content）
+2. approval_pending SSE 事件丢失 bug 已修复
+3. 队列背压死锁 bug 已修复（maxsize=1→64）
 
 ## 测试基线
 
 - 后端：586 passed, 0 failed
-- 前端：91 suites, 576 tests, 0 failed
-- 工具：12 个 @tool 全部注册可用
+- 前端：未变
+- 工具：**15** 个 @tool（+ plan_arc, check_quality_trend, arc_consolidation）
 - 代码量：33,649 LOC (-60.3% vs 重构前)
+- 修复的关键 Bug：3 个（approval_pending 事件 + 队列死锁 + 列名错误）
