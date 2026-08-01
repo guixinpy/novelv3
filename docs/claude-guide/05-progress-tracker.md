@@ -90,11 +90,29 @@
 2. 决策 v1 旧生成管线（`ai_service` + 8 个 API）去留
 3. 扩展实体登记来源（Setups 角色不完整 → 正文/情节线提取）
 
-## 测试基线（2026-08-01 实测）
+## 2026-08-01 harness 系统化优化（任务 `08-01-harness-optimization`，T1-T7 全部完成）
 
-- 后端：586 passed, 0 failed（pytest 实测）
-- 前端：62 files / 485 tests, 0 failed（vitest 实测；死代码清理后 576→485）
+对 200 章实验暴露问题做系统化治理，7 个子任务独立 commit（`40a71a8a`→`7567e7af`）：
+
+| 子任务 | 内容 | 验证 |
+|---|---|---|
+| T1 内核健壮性 | before_tool_call 钩子异常 fail-closed 兜底；回合内工具错误自动注入「错误诊断+建议」；guard 触发立即结束回合（修复只 break 工具批的缺陷）；压缩重放测试矩阵 | 8 测试 |
+| T2 工具可靠性 | 参数校验错误附「参数示例」few-shot；`get_or_create_longform_memory` 统一 upsert（5 处接入）；plotline 标题规范（>40 字/含章号拒绝 + 命名模板）；query 前缀/模糊匹配 + 未命中回退最近开放线 | 11 测试 |
+| T3 终局与伏笔约束 | plan_arc define `must_resolve` 终局约束（metadata.endgame）；progress/check_quality_trend 卷尾 ≤5 章强制回收模式（禁止新增「更早/更深/更初」层级）；plotline 开放 >30 章 stale 提醒 | 7 测试 |
+| T4 输出格式守门员 | `check_chapter_format`：markdown `**` 残留/中文斜杠备选词/正文章题行/全角引号成对/半角标点 + 章末卡点（无钩子句式）；quality fail→重写 | 13 测试 |
+| T5 结构级重复检测 | `check_structure_repeat`：标题重复 + 结尾主题词指纹成团 ≥3 章 → 模板循环告警（换名城检测） | 6 测试 |
+| T6 上下文注入工程 | 回合级项目状态快照（章节/最近3章/活跃弧线/开放伏笔/事实表角色地点/格式规范，回调注入不持久化，CADR-005 合规）；压缩摘要追加「最近写作上下文」；query_memory 人物卡 author_explicit 优先 | 6 测试 |
+| T7 可观测性 | analyze_dogfood.py 补：幻觉工具名统计/未知工具频率/每章质量自检/压缩摘要质量（200 章实测：201 章质量覆盖、30 次压缩中 24 次保留写作上下文、平均节省 74.5%） | 实测 |
+
+测试基线（2026-08-01 harness 优化完成后实测）：
+- 后端：**647** passed（596 → 647，+51 新增测试）
+- 前端：62 files / 485 tests, 0 failed（vitest 实测）
 - 类型检查：`vue-tsc --noEmit` 通过
-- 工具：**17** 个 @tool
-- 代码量：backend/app 非测试约 34.5K 行（清理后）
-- 会话日志：25 个真实 v2 会话（`data/agent_sessions/`）
+- 架构规则：test_dependency_rules 通过（内核无领域依赖）
+- 工具：**19** 个 @tool（+check_chapter_format / check_structure_repeat）
+- 会话回放：20 个 200 章会话 JSONL 在改造后内核下加载全部成功
+
+遗留（未纳入本次范围）：
+- 两级压缩 LLM 摘要版（预算允许时，hermes Frozen Snapshot 模式）→ P2 候选
+- 结构相似度主题词表需随新实验补充
+- v1 旧管线去留、实体登记来源、第二部结构策略 → P1 待决策
