@@ -137,6 +137,37 @@ async def test_query_memory_by_type(ctx: ToolContext):
     assert result.data["memories"][0]["key"] == "林舟"
 
 
+@pytest.mark.asyncio
+async def test_query_memory_author_explicit_ranked_first(ctx: ToolContext):
+    """T6 R3：人物卡优先级——author_explicit 排在 agent_inferred 前（即使更新更早）。"""
+    old_explicit = LongformMemory(
+        project_id=ctx.project_id, memory_type="entity_state",
+        scope_key="程砚秋", title="程砚秋",
+        summary="主角：雾城查案人，目标是查明林舟案",
+        status="active",
+        memory_metadata={"provenance": "author_explicit"},
+    )
+    ctx.db.add(old_explicit)
+    new_inferred = LongformMemory(
+        project_id=ctx.project_id, memory_type="entity_state",
+        scope_key="苏晚晴", title="苏晚晴",
+        summary="出现在第 5 章",
+        status="active",
+        memory_metadata={"provenance": "agent_inferred"},
+    )
+    ctx.db.add(new_inferred)
+    ctx.db.commit()
+    # 让 inferred 的 updated_at 更新（确保按时间排序时它在前，验证优先级排序生效）
+    from datetime import UTC, datetime
+    new_inferred.updated_at = datetime.now(UTC)
+    ctx.db.commit()
+
+    result = await query_memory(ctx, memory_type="entity_state")
+    assert not result.is_error
+    keys = [m["key"] for m in result.data["memories"]]
+    assert keys.index("程砚秋") < keys.index("苏晚晴")
+
+
 # ── T2 R3: 情节线登记与检索规范 ──
 
 

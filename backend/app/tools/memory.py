@@ -274,7 +274,17 @@ async def query_memory(ctx: ToolContext, memory_type: str = "all", keyword: str 
             (LongformMemory.title.like(like)) |
             (LongformMemory.summary.like(like))
         )
-    memories = query.order_by(LongformMemory.updated_at.desc()).limit(effective_limit).all()
+    # T6 R3：人物卡优先级——author_explicit（人物/关系卡）优先于 agent_inferred（主题句）。
+    # 多取 3 倍再内存排序，避免 SQL 对 JSON 列排序。
+    memories = (
+        query.order_by(LongformMemory.updated_at.desc())
+        .limit(effective_limit * 3)
+        .all()
+    )
+    memories.sort(
+        key=lambda m: (0 if (m.memory_metadata or {}).get("provenance") == "author_explicit" else 1)
+    )
+    memories = memories[:effective_limit]
 
     result = {
         "memories": [

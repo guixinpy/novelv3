@@ -201,6 +201,65 @@ async def test_steering_injected_mid_turn(tmp_path):
     assert second_call[-1]["content"] == "改成读第二章"
 
 
+# ── T6 R1: 回合级项目状态快照注入（不持久化） ──
+
+
+@pytest.mark.asyncio
+async def test_snapshot_injected_into_system_not_persisted(tmp_path, db_session):
+    from app.core.project_snapshot import build_project_snapshot
+    from app.models import ChapterContent, Project, Setup
+
+    p = Project(name="测试", genre="悬疑")
+    db_session.add(p)
+    db_session.commit()
+    db_session.refresh(p)
+    db_session.add(Setup(
+        project_id=p.id,
+        characters=[{"name": "程砚秋"}],
+        status="active",
+    ))
+    for i in range(1, 3):
+        db_session.add(ChapterContent(
+            project_id=p.id, chapter_index=i,
+            title=f"第{i}章", content="正文。" * 100,
+            word_count=200, status="generated",
+        ))
+    db_session.commit()
+
+    provider = FakeProvider([text_response("回答")])
+    harness = AgentHarness(
+        session_id="s1",
+        session_dir=tmp_path,
+        provider=provider,
+        registry=make_registry(),
+        tool_context=ToolContext(project_id=p.id, session_id="s1", db=db_session),
+        config=HarnessConfig(system_prompt="你是写作助手。"),
+        snapshot_provider=lambda: build_project_snapshot(db_session, p.id),
+    )
+    await drain(harness, "你好")
+
+    system_msg = provider.calls[0][0]
+    assert system_msg["role"] == "system"
+    assert "项目状态快照" in system_msg["content"]
+    assert "程砚秋" in system_msg["content"]
+
+    # 快照不持久化：jsonl 不含快照标记与角色名
+    log_text = (tmp_path / "s1.jsonl").read_text(encoding="utf-8")
+    assert "项目状态快照" not in log_text
+
+
+@pytest.mark.asyncio
+async def test_snapshot_injection_skipped_without_db(tmp_path):
+    """无 db（纯内核场景）→ 快照跳过，行为不变。"""
+    provider = FakeProvider([text_response("回答")])
+    harness = make_harness(tmp_path, provider)
+    await drain(harness, "你好")
+
+    sent = provider.calls[0]
+    assert sent[0]["content"] == "你是写作助手。"  # 无快照追加
+    assert "项目状态快照" not in sent[0]["content"]
+
+
 @pytest.mark.asyncio
 async def test_budget_config_respected(tmp_path):
     # 写入工具消耗预算，只读工具不消耗

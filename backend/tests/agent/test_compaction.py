@@ -46,6 +46,18 @@ def test_compact_large_history():
     assert len(summaries) == 1
 
 
+def test_compact_with_extra_context_includes_writing_context():
+    """T6 R2：压缩摘要倾斜——extra_context 追加「最近写作上下文」段。"""
+    history = [_msg("system")] + [_msg("user", f"msg{i}") for i in range(20)]
+    result = compact_history(history, head_count=2, extra_context="最近3章: Ch10标题A; Ch11标题B")
+    summary = next(
+        m.get("content", "") for m in result
+        if isinstance(m.get("content"), str) and m["content"].startswith("[上下文压缩]")
+    )
+    assert "最近写作上下文" in summary
+    assert "Ch10标题A" in summary
+
+
 def test_summary_skips_previous_compression_summaries():
     """新摘要不应嵌套旧压缩摘要（M5 200 章实测：摘要互相嵌套导致上下文混乱）。"""
     from app.agent.compaction import _build_summary_text

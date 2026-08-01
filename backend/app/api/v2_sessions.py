@@ -26,6 +26,7 @@ from app.agent.providers.base import Provider
 from app.agent.providers.deepseek import DeepSeekProvider
 from app.agent.tooling import ToolContext
 from app.config import load_api_key
+from app.core.project_snapshot import build_project_snapshot
 from app.db import DATA_DIR, get_db
 from app.models import Project
 from app.tools.registry import build_default_registry
@@ -163,15 +164,19 @@ def send_message(
     gate = ApprovalGate(registry=registry)
     _active_gates[session_id] = gate
 
+    project_id = meta["project_id"]
+
     harness = AgentHarness(
         session_id=session_id,
         session_dir=SESSIONS_DIR,
         provider=build_provider(),
         registry=registry,
-        tool_context=ToolContext(project_id=meta["project_id"], session_id=session_id, db=db),
+        tool_context=ToolContext(project_id=project_id, session_id=session_id, db=db),
         config=HarnessConfig(system_prompt=SYSTEM_PROMPT),
         before_tool_call=gate.before_tool_call,
         approval_gate=gate,
+        # T6 R1：回合级项目状态快照（API 层注入，保持内核领域无关）
+        snapshot_provider=lambda: build_project_snapshot(db, project_id),
     )
 
     async def event_stream():
