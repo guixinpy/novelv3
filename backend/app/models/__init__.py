@@ -5,6 +5,7 @@ from .chapter_revision import ChapterRevision, RevisionAnnotation, RevisionCorre
 from .consistency_check import ConsistencyCheck
 from .dialog import Dialog
 from .dialog_message import DialogMessage
+from .entity_candidate import EntityCandidate
 from .extracted_fact import ExtractedFact
 from .few_shot_example import FewShotExample
 from .genre_profile import GenreProfile

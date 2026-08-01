@@ -142,3 +142,65 @@ def test_deep_check_uses_setup_character_projection_without_selecting_full_setup
     assert all("setups.world_building as setups_world_building" not in clause for clause in setup_select_clauses)
     assert all("setups.characters as setups_characters" not in clause for clause in setup_select_clauses)
     assert all("setups.core_concept as setups_core_concept" not in clause for clause in setup_select_clauses)
+
+
+def test_deep_check_l2_facts_inject_entity_candidates(db_session, monkeypatch):
+    """实体登记来源扩展：L2 事实的 subject/object 注入候选（source=l2，免转正）。"""
+    import asyncio
+
+    import app.core.background_analyzer as analyzer_module
+    from app.models import EntityCandidate
+
+    project = Project(name="L2 Entity Injection")
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    project_id = project.id  # 捕获为 str：deep_check 关闭 session 后对象 detached
+    db_session.add(ChapterContent(
+        project_id=project_id,
+        chapter_index=1,
+        title="第一章",
+        content="欧阳雪在灯塔下与婆婆交谈。",
+        word_count=20,
+        status="generated",
+    ))
+    db_session.commit()
+
+    analyzer = analyzer_module.BackgroundAnalyzer()
+    analyzer.l2.extract = AsyncMock(return_value=[
+        {
+            "type": "relation",
+            "subject": "欧阳雪",
+            "object": "婆婆",
+            "predicate": "交谈",
+            "evidence": "欧阳雪在灯塔下与婆婆交谈",
+            "validation": {"status": "confirmed"},
+        },
+        {
+            "type": "time_reference",
+            "subject": "记忆潮汐",
+            "attribute": "回卷时间",
+            "new_value": "午夜",
+            "evidence": "记忆潮汐将在午夜回卷",
+            "validation": {"status": "confirmed"},
+        },
+    ])
+    monkeypatch.setattr(analyzer_module, "SessionLocal", lambda: db_session)
+
+    result = asyncio.run(analyzer.run_deep_check(project_id, 1))
+    assert "error" not in result
+
+    rows = (
+        db_session.query(EntityCandidate)
+        .filter(EntityCandidate.project_id == project_id)
+        .all()
+    )
+    by_name = {r.name: r for r in rows}
+    assert "欧阳雪" in by_name
+    assert by_name["欧阳雪"].source == "l2"
+    assert "婆婆" in by_name
+    assert by_name["婆婆"].source == "l2"
+    # 非实体字段（attribute/new_value）不注入
+    assert "记忆潮汐" in by_name  # subject 也是实体
+    assert "回卷时间" not in by_name
+    assert "午夜" not in by_name

@@ -11,6 +11,7 @@ from app.core.l2_extractor import L2LLMExtractor
 from app.core.setup_projection import get_setup_character_projection
 from app.db import SessionLocal
 from app.models import ChapterContent, ConsistencyCheck, ExtractedFact
+from app.core.entity_miner import register_entity_candidates
 from app.core.setup_context import SetupContextSnapshot
 
 logger = logging.getLogger(__name__)
@@ -88,6 +89,20 @@ class BackgroundAnalyzer:
                     evidence={"text": fact.get("evidence", "")},
                     validation=fact.get("validation"),
                 ))
+
+            # 实体登记来源扩展：L2 事实的 subject/object 注入候选（免转正，LLM 提取可信）
+            l2_entity_names: list[str] = []
+            for fact in all_facts:
+                if not fact.get("validation"):
+                    continue  # 仅 l2_llm 提取
+                for field in ("subject", "object"):
+                    value = fact.get(field)
+                    if isinstance(value, str) and 1 <= len(value) <= 8 and value not in l2_entity_names:
+                        l2_entity_names.append(value)
+            if l2_entity_names:
+                register_entity_candidates(
+                    db, project_id, chapter_index, l2_entity_names, source="l2",
+                )
 
             db.commit()
             logger.info("Deep check completed", extra={"project_id": project_id, "chapter_index": chapter_index, "issues": len(issues)})

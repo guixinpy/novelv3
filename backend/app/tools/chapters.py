@@ -2,6 +2,11 @@
 from __future__ import annotations
 
 from app.agent.tooling import ToolContext, ToolResult, tool
+from app.core.entity_miner import (
+    mine_entities_from_text,
+    promoted_entity_names,
+    register_entity_candidates,
+)
 from app.core.format_checker import check_chapter_hook, check_text_format
 from app.core.longform_memory import get_or_create_longform_memory
 from app.core.structural_similarity import _CLUSTER_MIN, detect_structure_repeats
@@ -9,6 +14,13 @@ from app.models import ChapterContent, LongformMemory, Project, Setup, WorldChar
 from app.tools.registry import registry
 
 _CLUSTER_MIN_CHAPTERS = _CLUSTER_MIN
+
+
+def _register_mined_entities(ctx: ToolContext, content: str, chapter_index: int) -> None:
+    """实体登记来源扩展：正文规则提取候选写入 entity_candidates（rule 通道）。"""
+    names = mine_entities_from_text(content or "")
+    if names:
+        register_entity_candidates(ctx.db, ctx.project_id, chapter_index, names, source="rule")
 
 
 def _chapter_summary(ch: ChapterContent) -> dict:
@@ -107,6 +119,9 @@ def _capture_entities(ctx: ToolContext, content: str, chapter_index: int) -> Non
         for ch in setup.characters:
             if isinstance(ch, dict) and ch.get("name"):
                 known_entities[str(ch["name"])] = "character"
+    # 实体登记来源扩展：转正候选（rule 跨 ≥2 章 / l2 免转正）并入白名单
+    for name in promoted_entity_names(ctx.db, ctx.project_id):
+        known_entities.setdefault(name, "character")
 
     for name, etype in known_entities.items():
         if name in content:
@@ -186,6 +201,8 @@ async def write_chapter(ctx: ToolContext, chapter_index: int, content: str, titl
         ctx.db.add(ch)
 
     ctx.db.flush()  # 确保新数据在查询前可见
+    # 实体登记来源扩展：正文规则提取候选（rule 通道）
+    _register_mined_entities(ctx, content, chapter_index)
     _capture_entities(ctx, content, chapter_index)
     _update_project_word_count(ctx)
     # 首章写入后项目进入写作阶段（否则状态停留在 draft/setup，模型会反复补设定）
@@ -232,6 +249,7 @@ async def revise_chapter(ctx: ToolContext, chapter_index: int, new_content: str,
     if new_title:
         chapter.title = new_title
     ctx.db.flush()
+    _register_mined_entities(ctx, new_content, chapter_index)
     _capture_entities(ctx, new_content, chapter_index)
     _update_project_word_count(ctx)
     ctx.db.commit()
