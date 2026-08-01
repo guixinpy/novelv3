@@ -7,13 +7,34 @@ from datetime import UTC, datetime
 from app.agent.tooling import ToolContext, ToolResult, tool
 from app.core.athena_retrieval import search_retrieval
 from app.core.longform_memory import get_or_create_longform_memory
-from app.models import LongformMemory
+from app.models import ChapterContent, LongformMemory
 from app.tools.registry import registry
 
 # T2 R3：情节线标题登记规范
 _PLOTLINE_TITLE_MAX = 40
 _CHAPTER_REF = re.compile(r"第[0-9一二三四五六七八九十百千万]+[章卷部]")
 _PLOTLINE_TITLE_TEMPLATE = "建议命名模板：「弧名-目标」，例如「第一卷-寻找父亲-真相」。"
+# T3 R4：伏笔回收期限（超过 N 章未闭环提醒）
+_PLOTLINE_STALE_AFTER = 30
+
+
+def _open_plotlines_containing(ctx: ToolContext, items: list[str]) -> list[str]:
+    """返回 items 中仍对应开放 plotline 的项（包含匹配，容忍标题措辞差异）。"""
+    still_open = []
+    for item in items:
+        hit = (
+            ctx.db.query(LongformMemory)
+            .filter(
+                LongformMemory.project_id == ctx.project_id,
+                LongformMemory.memory_type == "plotline",
+                LongformMemory.scope_key.like(f"%{item}%"),
+                LongformMemory.status == "open",
+            )
+            .first()
+        )
+        if hit is not None:
+            still_open.append(item)
+    return still_open
 
 
 @tool(
@@ -153,6 +174,32 @@ async def track_plotline(
                 for m in memories
             ],
         }
+
+        # T3 R4：伏笔回收期限——开放超过 30 章未闭环 → stale 提醒
+        if memories:
+            latest_row = (
+                ctx.db.query(ChapterContent.chapter_index)
+                .filter(ChapterContent.project_id == ctx.project_id)
+                .order_by(ChapterContent.chapter_index.desc())
+                .first()
+            )
+            latest_index = latest_row[0] if latest_row else 0
+            stale_open: list[str] = []
+            for item, m in zip(result["plotlines"], memories):
+                if (
+                    m.status == "open"
+                    and m.start_chapter_index is not None
+                    and latest_index - m.start_chapter_index > _PLOTLINE_STALE_AFTER
+                ):
+                    item["stale"] = True
+                    item["age_chapters"] = latest_index - m.start_chapter_index
+                    stale_open.append(f"「{m.title}」(起始于第{m.start_chapter_index}章)")
+            if stale_open:
+                result["stale_warning"] = (
+                    f"以下伏笔已开放超过 {_PLOTLINE_STALE_AFTER} 章：{'、'.join(stale_open)}。"
+                    f"请在本卷收束前回收，或显式闭环。"
+                )
+
         if title and not memories:
             # 未命中：回退最近创建的开放情节线并告警，避免「登记了却找不到」
             fallback_row = (
@@ -308,7 +355,12 @@ async def query_memory(ctx: ToolContext, memory_type: str = "all", keyword: str 
             "title": {"type": "string", "description": "弧线标题，如「第一卷·迷雾初现」"},
             "summary": {"type": "string", "description": "弧线概要"},
             "start_chapter": {"type": "integer", "description": "弧线起始章节"},
-            "end_chapter": {"type": "integer", "description": "弧线结束章节"},
+            "end_chapter": {"type": "integer", "description": "弧线结束章节（即本卷收束章）"},
+            "must_resolve": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "本卷收束前必须回收的伏笔清单（可选）。接近卷尾时 harness 会核对并提醒收束",
+            },
         },
         "required": ["action"],
     },
@@ -320,6 +372,7 @@ async def plan_arc(
     summary: str = "",
     start_chapter: int = 0,
     end_chapter: int = 0,
+    must_resolve: list[str] | None = None,
 ) -> ToolResult:
     if action == "define":
         if not title or end_chapter < 1:
@@ -386,6 +439,11 @@ async def plan_arc(
         arc.start_chapter_index = start_chapter
         arc.end_chapter_index = end_chapter
         arc.status = "active"
+        # T3 R1：终局约束合并写入（不覆盖 provenance/source）
+        if must_resolve:
+            meta = dict(arc.memory_metadata or {})
+            meta["endgame"] = {"resolve_before": end_chapter, "must_resolve": list(must_resolve)}
+            arc.memory_metadata = meta
         ctx.db.commit()
         return ToolResult.ok({
             "action": "defined",
@@ -393,7 +451,10 @@ async def plan_arc(
             "span": f"Ch{start_chapter} → Ch{end_chapter}",
             "total_chapters": end_chapter - start_chapter + 1,
             "status": "active",
-            "tip": f"弧线「{title}」已激活。请在写作过程中定期调用 plan_arc progress 查看进度。弧线结束前 3 章请提前规划下一弧线。",
+            "endgame_remaining": end_chapter - start_chapter + 1,
+            "must_resolve": list(must_resolve) if must_resolve else [],
+            "tip": f"弧线「{title}」已激活。请在写作过程中定期调用 plan_arc progress 查看进度。弧线结束前 3 章请提前规划下一弧线。"
+                   f"本卷收束前必须回收的伏笔：{('、'.join(must_resolve)) if must_resolve else '(未登记)'}。",
         })
 
     elif action == "progress":
@@ -437,6 +498,29 @@ async def plan_arc(
             "remaining": remaining,
             "percent": pct,
         }
+
+        # T3 R2：终局状态——剩余章数 vs 未回收伏笔，接近卷尾强制回收模式
+        endgame = (active_arc.memory_metadata or {}).get("endgame")
+        if endgame:
+            latest_row = (
+                ctx.db.query(ChapterContent.chapter_index)
+                .filter(ChapterContent.project_id == ctx.project_id)
+                .order_by(ChapterContent.chapter_index.desc())
+                .first()
+            )
+            latest_index = latest_row[0] if latest_row else 0
+            resolve_before = int(endgame.get("resolve_before") or 0)
+            remaining_to_end = max(0, resolve_before - latest_index)
+            must_open = _open_plotlines_containing(ctx, endgame.get("must_resolve") or [])
+            result["endgame_remaining"] = remaining_to_end
+            result["must_resolve_open"] = must_open
+            if must_open and remaining_to_end <= 5:
+                result["endgame_warning"] = (
+                    f"本卷剩余 {remaining_to_end} 章，以下伏笔必须在收束前回收："
+                    f"{'、'.join(must_open)}。禁止新增「更早/更深/更初」层级，"
+                    f"请进入回收模式集中收束。"
+                )
+
         if near_end:
             result["warning"] = (
                 f"弧线「{active_arc.title}」即将结束（还剩 {remaining} 章）。"

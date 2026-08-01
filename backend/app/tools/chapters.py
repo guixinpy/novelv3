@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from app.agent.tooling import ToolContext, ToolResult, tool
 from app.core.longform_memory import get_or_create_longform_memory
-from app.models import ChapterContent, Project, Setup, WorldCharacter, WorldLocation
+from app.models import ChapterContent, LongformMemory, Project, Setup, WorldCharacter, WorldLocation
 from app.tools.registry import registry
 
 
@@ -370,7 +370,7 @@ async def check_quality_trend(ctx: ToolContext, window: int = 10) -> ToolResult:
         trend = "stable"
         advice = f"字数稳定：{int(first_half_avg)} → {int(second_half_avg)}，质量趋势正常。"
 
-    return ToolResult.ok({
+    result: dict = {
         "trend": trend,
         "window": len(recent),
         "word_counts": [
@@ -383,4 +383,50 @@ async def check_quality_trend(ctx: ToolContext, window: int = 10) -> ToolResult:
         "max": max_wc,
         "ratio": round(ratio, 2),
         "advice": advice,
-    })
+    }
+
+    # T3 R3：终局核对——活跃弧线接近收束章（≤5 章）且仍有未回收伏笔 → 强制回收模式
+    active_arc = (
+        ctx.db.query(LongformMemory)
+        .filter(
+            LongformMemory.project_id == ctx.project_id,
+            LongformMemory.memory_type == "story_arc",
+            LongformMemory.status == "active",
+        )
+        .first()
+    )
+    endgame = (active_arc.memory_metadata or {}).get("endgame") if active_arc is not None else None
+    if endgame:
+        latest_index = chapters[-1].chapter_index
+        resolve_before = int(endgame.get("resolve_before") or 0)
+        remaining = max(0, resolve_before - latest_index)
+        must_resolve = endgame.get("must_resolve") or []
+        must_open = []
+        for item in must_resolve:
+            hit = (
+                ctx.db.query(LongformMemory)
+                .filter(
+                    LongformMemory.project_id == ctx.project_id,
+                    LongformMemory.memory_type == "plotline",
+                    LongformMemory.scope_key.like(f"%{item}%"),
+                    LongformMemory.status == "open",
+                )
+                .first()
+            )
+            if hit is not None:
+                must_open.append(item)
+        if remaining <= 5:
+            result["endgame_mode"] = True
+            result["endgame_remaining"] = remaining
+            result["must_resolve_open"] = must_open
+            result["endgame_advice"] = (
+                f"本卷剩余 {remaining} 章。未回收伏笔："
+                f"{'、'.join(must_open) if must_open else '(无)'}。"
+                f"请进入回收模式：优先收束开放伏笔，禁止新增「更早/更深/更初」层级。"
+            )
+        else:
+            result["endgame_mode"] = False
+    else:
+        result["endgame_mode"] = False
+
+    return ToolResult.ok(result)

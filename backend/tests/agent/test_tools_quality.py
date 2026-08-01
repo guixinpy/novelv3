@@ -62,3 +62,58 @@ async def test_quality_reports_nonexistent_chapter(ctx: ToolContext):
     result = await check_chapter_quality(ctx, chapter_index=99)
     assert result.is_error
     assert "不存在" in result.error
+
+
+# ── T3 R3: check_quality_trend 终局核对 ──
+
+
+@pytest.mark.asyncio
+async def test_quality_trend_endgame_mode_near_arc_end(ctx: ToolContext):
+    from app.models import LongformMemory
+    from app.tools.chapters import check_quality_trend
+    from app.tools.memory import plan_arc, track_plotline
+
+    await plan_arc(
+        ctx, action="define", title="第一卷",
+        summary="雾城谜案", start_chapter=1, end_chapter=10,
+        must_resolve=["旧牌"],
+    )
+    # 已写 8 章，最新章 = 8 → 剩余 2 章 ≤ 5
+    for i in range(1, 9):
+        ctx.db.add(ChapterContent(
+            project_id=ctx.project_id, chapter_index=i,
+            title=f"第{i}章", content="正文内容。" * 100,
+            word_count=500, status="generated",
+        ))
+    await track_plotline(ctx, action="open", title="旧牌", chapter_index=1)
+
+    result = await check_quality_trend(ctx, window=10)
+    assert not result.is_error
+    data = result.data
+    assert data["endgame_mode"] is True
+    assert "旧牌" in " ".join(data["must_resolve_open"])
+    assert "回收" in data["endgame_advice"]
+
+
+@pytest.mark.asyncio
+async def test_quality_trend_no_endgame_far_from_end(ctx: ToolContext):
+    from app.tools.chapters import check_quality_trend
+    from app.tools.memory import plan_arc
+
+    await plan_arc(
+        ctx, action="define", title="第二卷",
+        summary="南洋", start_chapter=1, end_chapter=10,
+        must_resolve=["旧牌"],
+    )
+    # 最新章 = 3 → 剩余 7 章 > 5
+    for i in range(1, 4):
+        ctx.db.add(ChapterContent(
+            project_id=ctx.project_id, chapter_index=i,
+            title=f"第{i}章", content="正文内容。" * 100,
+            word_count=500, status="generated",
+        ))
+    ctx.db.commit()
+
+    result = await check_quality_trend(ctx, window=10)
+    assert not result.is_error
+    assert result.data["endgame_mode"] is False

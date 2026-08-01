@@ -250,3 +250,132 @@ async def test_get_or_create_updates_existing(ctx: ToolContext):
         .all()
     )
     assert len(rows) == 1
+
+
+# ── T3 R1: plan_arc define 终局约束 ──
+
+
+@pytest.mark.asyncio
+async def test_plan_arc_define_endgame_metadata(ctx: ToolContext):
+    result = await plan_arc(
+        ctx, action="define", title="第一卷",
+        summary="雾城谜案", start_chapter=1, end_chapter=50,
+        must_resolve=["林舟案", "姚家旧账"],
+    )
+    assert not result.is_error
+
+    arc = (
+        ctx.db.query(LongformMemory)
+        .filter(
+            LongformMemory.memory_type == "story_arc",
+            LongformMemory.scope_key == "第一卷",
+        )
+        .first()
+    )
+    metadata = arc.memory_metadata or {}
+    assert metadata["endgame"] == {
+        "resolve_before": 50,
+        "must_resolve": ["林舟案", "姚家旧账"],
+    }
+    # 合并写入：provenance/source 必须保留
+    assert metadata["provenance"] == "author_explicit"
+    assert metadata["source"] == "plan_arc"
+
+
+@pytest.mark.asyncio
+async def test_plan_arc_define_no_endgame_without_must_resolve(ctx: ToolContext):
+    result = await plan_arc(
+        ctx, action="define", title="第二卷",
+        summary="南洋", start_chapter=51, end_chapter=100,
+    )
+    assert not result.is_error
+
+    arc = (
+        ctx.db.query(LongformMemory)
+        .filter(
+            LongformMemory.memory_type == "story_arc",
+            LongformMemory.scope_key == "第二卷",
+        )
+        .first()
+    )
+    assert "endgame" not in (arc.memory_metadata or {})
+
+
+# ── T3 R2: plan_arc progress 终局状态 ──
+
+
+@pytest.mark.asyncio
+async def test_plan_arc_progress_endgame_warning_near_end(ctx: ToolContext):
+    from app.models import ChapterContent
+
+    await plan_arc(
+        ctx, action="define", title="第一卷",
+        summary="雾城谜案", start_chapter=1, end_chapter=5,
+        must_resolve=["林舟案"],
+    )
+    # 已写 1 章，最新章 = 1 → 剩余 4 章 ≤ 5
+    ctx.db.add(ChapterContent(
+        project_id=ctx.project_id, chapter_index=1,
+        title="第一章", content="正文" * 100, word_count=200, status="generated",
+    ))
+    # 开放 plotline 对应 must_resolve 项 → 未回收
+    await track_plotline(ctx, action="open", title="林舟案", chapter_index=1)
+
+    result = await plan_arc(ctx, action="progress")
+    assert not result.is_error
+    data = result.data
+    assert data["endgame_remaining"] == 4
+    assert "林舟案" in data["must_resolve_open"]
+    assert "禁止新增" in data["endgame_warning"]
+
+
+@pytest.mark.asyncio
+async def test_plan_arc_progress_endgame_resolved(ctx: ToolContext):
+    from app.models import ChapterContent
+
+    await plan_arc(
+        ctx, action="define", title="第一卷",
+        summary="雾城谜案", start_chapter=1, end_chapter=5,
+        must_resolve=["林舟案"],
+    )
+    ctx.db.add(ChapterContent(
+        project_id=ctx.project_id, chapter_index=1,
+        title="第一章", content="正文" * 100, word_count=200, status="generated",
+    ))
+    # 伏笔已闭环 → 视为已回收
+    await track_plotline(ctx, action="open", title="林舟案", chapter_index=1)
+    await track_plotline(ctx, action="close", title="林舟案", chapter_index=2)
+
+    result = await plan_arc(ctx, action="progress")
+    assert not result.is_error
+    data = result.data
+    assert data["must_resolve_open"] == []
+    assert "endgame_warning" not in data
+
+
+# ── T3 R4: 伏笔回收期限（stale） ──
+
+
+@pytest.mark.asyncio
+async def test_track_plotline_query_stale_warning(ctx: ToolContext):
+    from app.models import ChapterContent
+
+    # 最新章 = 40；老线起始于第 1 章 → 开放 39 章 > 30 → stale
+    await track_plotline(ctx, action="open", title="老线", chapter_index=1)
+    await track_plotline(ctx, action="open", title="新线", chapter_index=38)
+    ctx.db.add(ChapterContent(
+        project_id=ctx.project_id, chapter_index=40,
+        title="第40章", content="正文" * 100, word_count=200, status="generated",
+    ))
+    ctx.db.commit()
+
+    result = await track_plotline(ctx, action="query")
+    assert not result.is_error
+    data = result.data
+    stale_titles = [
+        p["title"] for p in data["plotlines"]
+        if p.get("stale")
+    ]
+    assert stale_titles == ["老线"]
+    assert "老线" in data["stale_warning"]
+    assert "30" in data["stale_warning"]
