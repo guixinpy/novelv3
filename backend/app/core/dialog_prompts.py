@@ -25,8 +25,19 @@ from app.models import (
     WorldProposalBundle,
     WorldProposalItem,
 )
-from app.prompting.assembler import PromptAssembler
-from app.prompting.tracing import build_prompt_trace_metadata
+from app.core.generation.render import prompt_trace_metadata, render_prompt
+
+
+def _message_content_with_context(content: str, context_blocks: list[dict]) -> str:
+    """上下文块拼入消息内容（原 assembler._message_content_with_context 语义）。"""
+    if not context_blocks:
+        return content
+    parts = [content, "【上下文】"]
+    for block in context_blocks:
+        title = block.get("title") or block.get("key") or "context"
+        block_content = str(block.get("content", ""))
+        parts.append(f"【{title}】\n{block_content}")
+    return "\n\n".join(parts)
 
 CHAT_HISTORY_LIMIT = 8
 DIALOG_HISTORY_MESSAGE_CONTENT_CHARS = 2_000
@@ -546,30 +557,23 @@ def build_dialog_call_payload(
         *context_blocks,
         build_dialog_history_block(db, dialog_id, limit=history_limit),
     ]
-    assembler = PromptAssembler()
-    rendered_result = assembler.build(
-        prompt_id,
-        variables,
-        context_blocks=context_blocks,
-        messages=[],
-    )
+    # 生成统一 v2：模板直接渲染（原 PromptAssembler 装配链内联；dialog 原不设上下文预算）
+    template_name = "chat_athena" if normalized_dialog_type == "athena" else "chat_hermes"
+    rendered = render_prompt(template_name, variables)
     messages = [
-        {"role": "system", "content": rendered_result.content},
+        {"role": "system", "content": _message_content_with_context(rendered, context_blocks)},
         *build_dialog_history_messages(db, dialog_id, limit=history_limit),
     ]
-    build_result = assembler.build(
-        prompt_id,
-        variables,
-        context_blocks=context_blocks,
-        messages=messages,
+    trace_metadata = prompt_trace_metadata(
+        prompt_id=prompt_id,
+        template_name=template_name,
     )
-    trace_metadata = build_prompt_trace_metadata(build_result)
     trace_metadata["dialog_type"] = normalized_dialog_type
     return {
-        "messages": build_result.messages,
-        "context_blocks": build_result.context_blocks,
+        "messages": messages,
+        "context_blocks": context_blocks,
         "trace_metadata": trace_metadata,
-        "rendered_prompt": build_result.content,
+        "rendered_prompt": rendered,
     }
 
 

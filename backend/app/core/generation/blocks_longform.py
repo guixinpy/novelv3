@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.core.longform_memory import build_longform_context_package
 from app.core.model_call_trace import build_context_block
-from app.prompting.providers.errors import build_provider_error_block
+from app.core.generation.errors import build_provider_error_block
 
 
 def build_longform_context_block(

@@ -104,7 +104,7 @@ def _build_chat_call_payload(
     diagnosis: ProjectDiagnosisOut,
     dialog_type: str = "hermes",
 ) -> dict:
-    from app.prompting.providers.dialog import build_dialog_call_payload
+    from app.core.dialog_prompts import build_dialog_call_payload
     result = build_dialog_call_payload(
         db, dialog_id, project, diagnosis,
         dialog_type=dialog_type, history_limit=40,

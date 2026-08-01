@@ -8,12 +8,12 @@ from app.core.model_call_trace import build_context_block
 from app.core.outline_lookup import find_outline_chapter
 from app.core.writing_agent_constraints import build_agent_chapter_constraint_block
 from app.models import ChapterContent, Project, Setup
-from app.prompting.providers.athena import athena_context_has_retrieval, build_athena_chapter_context_block
-from app.prompting.providers.few_shot import build_few_shot_examples_block
-from app.prompting.providers.knowledge_base import build_knowledge_base_candidate_block
-from app.prompting.providers.longform import build_longform_context_block
-from app.prompting.providers.retrieval import build_chapter_retrieval_block
-from app.prompting.providers.style import build_style_rule_block
+from app.core.generation.blocks_athena import athena_context_has_retrieval, build_athena_chapter_context_block
+from app.core.generation.blocks_few_shot import build_few_shot_examples_block
+from app.core.generation.blocks_knowledge_base import build_knowledge_base_candidate_block
+from app.core.generation.blocks_longform import build_longform_context_block
+from app.core.generation.blocks_retrieval import build_chapter_retrieval_block
+from app.core.generation.blocks_style import build_style_rule_block
 from app.core.json_utils import normalise_json_text
 from app.core.setup_context import SetupContextSnapshot, TRUNCATED_SETUP_CONTEXT_MARKER
 from app.core.agent_context_compression_projection import (

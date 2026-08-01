@@ -16,8 +16,8 @@ from app.core.setup_projection import get_setup_character_projection
 from app.core.text_stats import count_words
 from app.db import get_db
 from app.models import AIModelCallTrace, ChapterContent, Project, Setup
-from app.prompting.assembler import PromptAssembler
-from app.prompting.providers.chapter import (
+from app.core.chapter_utils import project_chapter_word_range
+from app.core.generation.chapter import (
     CHAPTER_CONTEXT_CHAR_BUDGET,
     SETUP_CHARACTERS_BLOCK_CHAR_LIMIT,
     SETUP_CORE_CONCEPT_BLOCK_CHAR_LIMIT,
@@ -26,17 +26,16 @@ from app.prompting.providers.chapter import (
     build_chapter_prompt_variables,
     build_chapter_trace_context_blocks,
     chapter_max_tokens,
-    project_chapter_word_range,
 )
+from app.core.generation.render import prompt_trace_metadata, render_prompt
+from app.core.prompt_budget import apply_context_budget
 from app.core.setup_context import SetupContextSnapshot
-from app.prompting.tracing import build_prompt_trace_metadata
 from app.schemas import ChapterOut
 from app.api.dialog_utils import AgentApiToolRunResult, execute_agent_api_tool
 from app.services.writing.writing_state_service import WritingStateService
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/chapters", tags=["chapters"])
 
-prompt_assembler = PromptAssembler()
 FENCED_CHAPTER_RE = re.compile(r"^\s*```(?:[A-Za-z0-9_-]+)?\s*\n(?P<body>.*?)\n?```\s*$", re.DOTALL)
 CHAPTER_HEADING_RE = re.compile(
     r"^\s{0,3}#{0,6}\s*第\s*[\d零〇一二两三四五六七八九十百千]+\s*章(?:\s|[：:、.．-]|$).*$"
@@ -143,6 +142,7 @@ def _build_chapter_call_payload(
     chapter_index: int,
     extra_feedback: str,
 ) -> dict:
+    # 生成统一 v2：模板直接渲染 + 预算截断（原 PromptAssembler 装配链内联）
     prompt_context_blocks, trace_only_context_blocks = build_chapter_prompt_context_blocks(
         db,
         project,
@@ -151,24 +151,46 @@ def _build_chapter_call_payload(
         extra_feedback,
         max_context_chars=CHAPTER_CONTEXT_CHAR_BUDGET,
     )
-    build_result = prompt_assembler.build(
-        "chapter.generate",
+    rendered = render_prompt(
+        "generate_chapter",
         build_chapter_prompt_variables(project, setup, chapter_index),
-        context_blocks=prompt_context_blocks,
-        max_context_chars=CHAPTER_CONTEXT_CHAR_BUDGET,
     )
+    kept_blocks, budget_report = apply_context_budget(
+        prompt_context_blocks,
+        CHAPTER_CONTEXT_CHAR_BUDGET,
+    )
+    messages = [{
+        "role": "user",
+        "content": _message_content_with_context(rendered, kept_blocks),
+    }]
 
     return {
-        "messages": build_result.messages,
+        "messages": messages,
         "context_blocks": build_chapter_trace_context_blocks(
-            build_result.content,
-            build_result.context_blocks,
+            rendered,
+            kept_blocks,
             trace_only_context_blocks,
         ),
         "max_tokens": chapter_max_tokens(extra_feedback, project=project),
-        "trace_metadata": build_prompt_trace_metadata(build_result),
-        "rendered_prompt": build_result.content,
+        "trace_metadata": prompt_trace_metadata(
+            prompt_id="chapter.generate",
+            template_name="generate_chapter",
+            budget_report=budget_report,
+        ),
+        "rendered_prompt": rendered,
     }
+
+
+def _message_content_with_context(content: str, context_blocks: list[dict]) -> str:
+    """上下文块拼入消息内容（原 assembler._message_content_with_context 语义）。"""
+    if not context_blocks:
+        return content
+    parts = [content, "【上下文】"]
+    for block in context_blocks:
+        title = block.get("title") or block.get("key") or "context"
+        block_content = str(block.get("content", ""))
+        parts.append(f"【{title}】\n{block_content}")
+    return "\n\n".join(parts)
 
 
 def _safe_create_chapter_trace(
