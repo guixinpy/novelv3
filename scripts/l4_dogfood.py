@@ -130,16 +130,16 @@ class L4DogfoodRunner:
                     events.append({"type": event_type, "data": data})
 
                     if event_type == "approval_pending":
-                        print(f"  [approval] {data.get('tool_name', '?')}")
+                        print(f"  [approval] {data.get('tool_name') or data.get('name', '?')}")
                         await self.approve()
 
                     elif event_type == "tool_call_started":
-                        tool = data.get("tool_name", "?")
+                        tool = data.get("tool_name") or data.get("name", "?")
                         print(f"  [tool] {tool}")
 
                     elif event_type == "tool_call_finished":
                         ok = "ERR" if data.get("is_error") else "OK"
-                        print(f"  [tool] {ok}: {data.get('tool_name', '?')}")
+                        print(f"  [tool] {ok}: {data.get('tool_name') or data.get('name', '?')}")
 
                     elif event_type == "turn_ended":
                         print(
@@ -161,7 +161,8 @@ class L4DogfoodRunner:
     def _count_tool_calls(self, events: list[dict[str, Any]], tool_name: str) -> int:
         return sum(
             1 for e in events
-            if e["type"] == "tool_call_started" and e["data"].get("tool_name") == tool_name
+            if e["type"] == "tool_call_started"
+            and (e["data"].get("tool_name") or e["data"].get("name")) == tool_name
         )
 
     async def run(self) -> DogfoodResult:
@@ -254,6 +255,9 @@ class L4DogfoodRunner:
                     all_ok = False
                 if query_calls + track_calls > 0:
                     print(f"  OK: Agent used memory tools ({query_calls + track_calls}x)")
+                else:
+                    print("  FAIL: no memory tool calls detected")
+                    all_ok = False
             except Exception as exc:
                 print(f"  ERROR: {exc}")
                 all_ok = False

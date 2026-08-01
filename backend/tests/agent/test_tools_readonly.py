@@ -136,6 +136,28 @@ async def test_query_world_no_profile_returns_guidance(db_session, project, ctx,
 
 
 @pytest.mark.asyncio
+async def test_query_world_falls_back_to_update_setup_data(db_session, project, ctx, registry):
+    """无 world profile 时，query_world 应回退读取 update_setup 写入的 Setups 表。"""
+    db_session.add(Setup(
+        project_id=project.id,
+        world_building={"城市": "雾镇"},
+        characters=[{"name": "沈砚", "role": "主角", "aliases": ["砚哥"]}],
+        core_concept={"主题": "记忆与真相"},
+        status="generated",
+    ))
+    db_session.commit()
+
+    result = await registry.execute("query_world", {"query": ""}, ctx)
+    assert not result.is_error
+    assert len(result.data["characters"]) == 1
+    assert result.data["characters"][0]["name"] == "沈砚"
+    assert "update_setup" in result.data["note"]
+
+    by_alias = await registry.execute("query_world", {"query": "砚哥"}, ctx)
+    assert len(by_alias.data["characters"]) == 1
+
+
+@pytest.mark.asyncio
 async def test_search_text_wraps_retrieval(db_session, project, ctx, registry):
     add_chapter(db_session, project.id, 1, title="第一章", content="林思在灯塔上点燃了旧回声。")
     from app.core.athena_retrieval import reindex_project_retrieval

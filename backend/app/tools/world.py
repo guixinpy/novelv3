@@ -4,7 +4,7 @@ from __future__ import annotations
 from sqlalchemy import func
 
 from app.agent.tooling import ToolContext, ToolResult, tool
-from app.models import ProjectProfileVersion, WorldCharacter, WorldFaction, WorldLocation
+from app.models import ProjectProfileVersion, Setup, WorldCharacter, WorldFaction, WorldLocation
 from app.tools.registry import registry
 
 
@@ -65,6 +65,31 @@ def _matches(query: str, name: str, aliases: list | None) -> bool:
 async def query_world(ctx: ToolContext, query: str = "", limit: int = 10) -> ToolResult:
     version = _current_profile_version(ctx)
     if version is None:
+        # 兜底：update_setup 写入的设定（Setups 表）在 world profile 未初始化时也可查询，
+        # 避免模型误判"设定不存在"而反复重建（M4 dogfood 实测暴露的断链）
+        setup = (
+            ctx.db.query(Setup)
+            .filter(Setup.project_id == ctx.project_id)
+            .first()
+        )
+        if setup is not None and (setup.characters or setup.world_building):
+            characters = setup.characters or []
+            if query:
+                q = query.strip().lower()
+                characters = [
+                    c for c in characters
+                    if q in str(c.get("name", "")).lower()
+                    or any(q in str(a).lower() for a in (c.get("aliases") or []))
+                ]
+            return ToolResult.ok(
+                {
+                    "profile_version": None,
+                    "characters": characters[:limit],
+                    "locations": [],
+                    "factions": [],
+                    "note": "使用 update_setup 写入的设定（Setups 表）。",
+                }
+            )
         return ToolResult.ok(
             {
                 "profile_version": None,
