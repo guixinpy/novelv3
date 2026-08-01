@@ -28,6 +28,16 @@ def _make_registry() -> ToolRegistry:
     return r
 
 
+@pytest.mark.asyncio
+async def test_before_tool_call_unknown_tool_returns_actionable_error():
+    """未知工具（模型幻觉）应返回可恢复错误，而不是抛 KeyError 断开 SSE。"""
+    gate = ApprovalGate(_make_registry())
+    result = await gate.before_tool_call("request_review", {}, ToolContext(project_id=1))
+    assert result is not None
+    assert "request_review" in result
+    assert "read_test" in result  # 告诉模型可用工具
+
+
 @pytest.fixture
 def gate():
     return ApprovalGate(registry=_make_registry())

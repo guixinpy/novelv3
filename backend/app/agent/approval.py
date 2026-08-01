@@ -44,7 +44,14 @@ class ApprovalGate:
         self, name: str, arguments: dict | None, ctx: ToolContext,
     ) -> str | None:
         """BeforeToolCall 签名兼容的回调。返回 None 放行，返回字符串拦截。"""
-        tool_def = self._registry.get(name)
+        try:
+            tool_def = self._registry.get(name)
+        except KeyError:
+            # 未知工具（模型幻觉）：拦截并给出可恢复错误，避免 KeyError 崩掉整个 SSE 请求
+            return (
+                f"工具 {name} 不存在。可用工具：{sorted(self._registry.names())}。"
+                "请改用其中之一。"
+            )
         if tool_def.permission in (PermissionLevel.READ,):
             return None  # 只读工具直接放行
 
