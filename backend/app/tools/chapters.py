@@ -184,6 +184,11 @@ async def write_chapter(ctx: ToolContext, chapter_index: int, content: str, titl
     ctx.db.flush()  # 确保新数据在查询前可见
     _capture_entities(ctx, content, chapter_index)
     _update_project_word_count(ctx)
+    # 首章写入后项目进入写作阶段（否则状态停留在 draft/setup，模型会反复补设定）
+    project = ctx.db.query(Project).filter(Project.id == ctx.project_id).first()
+    if project is not None and project.status in ("draft", "setup"):
+        project.status = "writing"
+        project.current_phase = "content"
     ctx.db.commit()
     return ToolResult.ok({"chapter_index": chapter_index, "word_count": word_count, "status": "written"})
 

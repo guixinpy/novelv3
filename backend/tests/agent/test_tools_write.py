@@ -44,6 +44,20 @@ async def test_write_chapter_creates_new(ctx: ToolContext):
 
 
 @pytest.mark.asyncio
+async def test_write_chapter_advances_project_status(ctx: ToolContext):
+    """首章写入后项目应从 draft 进入 writing/content。"""
+    project = ctx.db.query(Project).filter(Project.id == ctx.project_id).first()
+    assert project.status in ("draft", "setup")
+
+    result = await write_chapter(ctx, chapter_index=1, content="正文")
+    assert not result.is_error
+
+    project = ctx.db.query(Project).filter(Project.id == ctx.project_id).first()
+    assert project.status == "writing"
+    assert project.current_phase == "content"
+
+
+@pytest.mark.asyncio
 async def test_write_chapter_overwrites_existing(ctx: ToolContext):
     """write_chapter 应覆盖已存在的章节。"""
     ch = ChapterContent(
