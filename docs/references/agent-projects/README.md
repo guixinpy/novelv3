@@ -13,11 +13,15 @@
 
 | 项目 | 来源 | 分支 | 快照 commit |
 | --- | --- | --- | --- |
-| openclaw | https://github.com/openclaw/openclaw | `main` | `0bcabea9cccdc5e5e44416a58a810eee6e5d1d31` |
-| hermes-agent | https://github.com/nousresearch/hermes-agent | `main` | `fe54960142d1e6edc9e43299c0e8889964f4e837` |
-| openhuman | https://github.com/tinyhumansai/openhuman | `main` | `07e60af3bbb540df41970383ea6c0eeb7dd3fdb9` |
+| openclaw | https://github.com/openclaw/openclaw | `main` | `aa2a5c96f69a1be639c602649d4aa2e4de8da0a8` |
+| hermes-agent | https://github.com/nousresearch/hermes-agent | `main` | `e078c8c6ef9bf739257404d35a9a935a1720c893` |
+| openhuman | https://github.com/tinyhumansai/openhuman | `main` | `43cc1b47464f2f37a2c6b0b1a315020b0cef3131` |
 
-下载日期：2026-06-11
+下载日期：2026-08-01（2026-06-11 旧快照已替换）
+
+> 目录已于 2026-08-01 从 `docs/archive/references/` 移出到 `docs/references/`
+> （后续长期作为活跃参考使用；`docs/claude-guide/07-reference-takeaways.md`
+> 的 `references/agent-projects/` 引用即指向本目录）。
 
 ## 后续使用方式
 
