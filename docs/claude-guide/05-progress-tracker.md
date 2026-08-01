@@ -115,7 +115,24 @@
 遗留（未纳入本次范围）：
 - 两级压缩 LLM 摘要版（预算允许时，hermes Frozen Snapshot 模式）→ P2 候选
 - 结构相似度主题词表需随新实验补充
-- 实体登记来源、第二部结构策略 → P1 待决策（v1 管线去留已决：全面绞杀完成）
+- 实体登记来源、第二部结构策略 → P1 待决策（v1 管线去留与 prompting 均已决）
+- `execute_agent_api_tool`（dialog_utils）是 stub（只写运行记录不真生成）；`chapters.generate` 与
+  athena 生成端点（/athena/ontology/generate、/athena/evolution/plan/generate）均为 control-plane 记录模式，
+  真实生成由 v2 agent 会话完成；若需同步生成需真实现 agent 执行 → 待决策
+
+## 2026-08-01 生成模式统一到 v2 + prompting 全链淘汰（任务 `08-01-generation-unify-v2`，用户选 B 方案）
+
+一次性消除 v1 遗留的提示词子系统，生成统一为「内联提示词 + provider.complete」v2 风格：
+
+- **迁移**（`6a748f22`）：`core/prompt_budget.py`（预算截断纯函数，priority+头尾截断行为不变）、
+  `core/generation/`（chapter.py + blocks_* 6 模块 + errors + render.py 模板渲染/trace 元数据内联）、
+  `core/dialog_prompts.py`（624 行 dialog 装配去 PromptAssembler）；`chapters._build_chapter_call_payload`
+  改用 render_prompt + apply_context_budget；模板保留 5 个活跃文件（backend/prompts/*.txt 由 core 直接读）
+- **修复**（`3c294006`）：action_execution_service 的 generate_setup/storyline/outline 3 动作改走
+  athena control-plane 记录（v1 绞杀阶段 2 遗漏的死引用），补 4 个测试
+- **淘汰**（`9ca22e0a`）：`app/prompting/` 全包删除（-979 行）、5 个死亡模板、2 个测试文件
+- 测试基线（生成统一后实测）：后端 **583 passed**、前端 485 tests、vue-tsc 通过、
+  会话回放 20/20、依赖规则通过；代码量累计 -3,378 行（v1 绞杀 + 生成统一）
 
 ## 2026-08-01 v1 生成管线全面绞杀（任务 `08-01-v1-pipeline-removal`，用户选 C 方案）
 
