@@ -1,95 +1,26 @@
-import asyncio
-from unittest.mock import AsyncMock, patch
-
-from app.api.setups import generate_setup
-from app.models import Project
+"""设定 CRUD 测试（v1 绞杀：generate 端点已删除）。"""
+from app.models import Project, Setup
 
 
-@patch("app.api.setups.load_api_key", return_value="sk-test")
-@patch("app.api.setups.ai_service.complete", new_callable=AsyncMock)
-@patch("app.api.setups.ai_service.parse_json")
-def test_generate_setup(mock_parse, mock_complete, mock_key, client):
-    r = client.post("/api/v1/projects", json={"name": "Test"})
-    pid = r.json()["id"]
-
-    mock_complete.return_value.content = '{"world_building": {}, "characters": [], "core_concept": {}}'
-    mock_parse.return_value = {"world_building": {}, "characters": [], "core_concept": {}}
-
-    r2 = client.post(f"/api/v1/projects/{pid}/setup/generate")
-    assert r2.status_code == 200
-    assert r2.json()["status"] == "generated"
-    traces = client.get(f"/api/v1/projects/{pid}/model-call-traces?trace_type=setup_generation").json()
-    assert traces["total"] == 1
-    trace = client.get(f"/api/v1/projects/{pid}/model-call-traces/{traces['items'][0]['id']}").json()
-    assert trace["status"] == "success"
-    assert {block["key"] for block in trace["context_blocks"]} >= {
-        "project_profile",
-        "generate_setup_template",
-    }
-
-
-@patch("app.api.setups.load_api_key", return_value="sk-test")
-@patch("app.api.setups.ai_service.complete", new_callable=AsyncMock)
-@patch("app.api.setups.ai_service.parse_json")
-def test_generate_setup_uses_project_ai_model(mock_parse, mock_complete, mock_key, client, db_session):
-    r = client.post("/api/v1/projects", json={"name": "Model Routed Setup"})
-    pid = r.json()["id"]
-    project = db_session.get(Project, pid)
-    project.ai_model = "deepseek-reasoner"
+def test_get_setup_returns_stored_setup(client, db_session):
+    project = Project(name="Test")
+    db_session.add(project)
     db_session.commit()
-    mock_complete.return_value.content = '{"world_building": {}, "characters": [], "core_concept": {}}'
-    mock_parse.return_value = {"world_building": {}, "characters": [], "core_concept": {}}
+    db_session.refresh(project)
+    db_session.add(Setup(
+        project_id=project.id,
+        world_building={},
+        characters=[],
+        core_concept={},
+        status="generated",
+    ))
+    db_session.commit()
 
-    r2 = client.post(f"/api/v1/projects/{pid}/setup/generate")
-
-    assert r2.status_code == 200
-    assert mock_complete.await_args.kwargs["model"] == "deepseek-reasoner"
-
-
-@patch("app.api.setups.load_api_key", return_value="sk-test")
-def test_generate_setup_project_not_found(mock_key, client):
-    r = client.post("/api/v1/projects/nonexistent/setup/generate")
-    assert r.status_code == 404
-
-
-@patch("app.api.setups.load_api_key", return_value="sk-test")
-@patch("app.api.setups.ai_service.complete", new_callable=AsyncMock)
-@patch("app.api.setups.ai_service.parse_json")
-def test_get_setup(mock_parse, mock_complete, mock_key, client):
-    r = client.post("/api/v1/projects", json={"name": "Test"})
-    pid = r.json()["id"]
-
-    mock_complete.return_value.content = '{"world_building": {}, "characters": [], "core_concept": {}}'
-    mock_parse.return_value = {"world_building": {}, "characters": [], "core_concept": {}}
-    client.post(f"/api/v1/projects/{pid}/setup/generate")
-
-    r2 = client.get(f"/api/v1/projects/{pid}/setup")
-    assert r2.status_code == 200
-    assert r2.json()["status"] == "generated"
+    r = client.get(f"/api/v1/projects/{project.id}/setup")
+    assert r.status_code == 200
+    assert r.json()["status"] == "generated"
 
 
 def test_get_setup_not_found(client):
     r = client.get("/api/v1/projects/nonexistent/setup")
     assert r.status_code == 404
-
-
-@patch("app.api.setups.load_api_key", return_value="sk-test")
-@patch("app.api.setups.ai_service.complete", new_callable=AsyncMock)
-@patch("app.api.setups.ai_service.parse_json")
-def test_generate_setup_appends_command_args_to_prompt(mock_parse, mock_complete, mock_key, client, db_session):
-    r = client.post("/api/v1/projects", json={"name": "Test"})
-    pid = r.json()["id"]
-    mock_complete.return_value.content = '{"world_building": {}, "characters": [], "core_concept": {}}'
-    mock_parse.return_value = {"world_building": {}, "characters": [], "core_concept": {}}
-
-    asyncio.run(generate_setup(pid, db_session, command_args="主角是植物学家"))
-
-    sent_messages = mock_complete.await_args.args[0]
-    prompt = sent_messages[0]["content"]
-    assert "Test" in prompt
-    assert "附加要求：主角是植物学家" in prompt
-    traces = client.get(f"/api/v1/projects/{pid}/model-call-traces?trace_type=setup_generation").json()
-    trace = client.get(f"/api/v1/projects/{pid}/model-call-traces/{traces['items'][0]['id']}").json()
-    assert {block["key"] for block in trace["context_blocks"]} >= {"command_args"}
-    command_args_block = next(block for block in trace["context_blocks"] if block["key"] == "command_args")
-    assert command_args_block["kind"] == "user_feedback"

@@ -2,7 +2,7 @@ import pytest
 
 from app.prompting.assembler import PromptAssembler, build_generation_payload
 from app.prompting.budget import PromptBudgeter
-from app.prompting.providers.project import build_command_args_block
+from app.prompting.assembler import build_command_args_block
 from app.prompting.registry import PROMPT_REGISTRY
 from app.prompting.renderer import PromptRenderer, default_prompts_dir
 from app.prompting.tracing import build_prompt_trace_metadata

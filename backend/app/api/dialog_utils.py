@@ -174,8 +174,8 @@ def _safe_create_chat_trace(
 
 
 def _should_save_trace_messages() -> bool:
-    from app.core.ai_service import ai_service_config
-    return ai_service_config.save_trace_messages
+    # v1 绞杀：ai_service_config 已随 v1 管线删除，trace 消息默认保存
+    return True
 
 
 async def _free_chat_reply(

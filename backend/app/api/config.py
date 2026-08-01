@@ -2,7 +2,6 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from app.config import load_api_key, save_api_key
-from app.core.ai_service import AIService
 
 router = APIRouter(prefix="/api/v1/config", tags=["config"])
 
@@ -23,5 +22,5 @@ def get_config():
 @router.put("")
 async def update_config(payload: ConfigIn):
     save_api_key(payload.api_key)
-    await AIService.close_cached_adapters()
+    # v1 绞杀：adapter 缓存清理机制已随 v1 管线删除（provider 每请求创建/关闭）
     return {"has_api_key": True}

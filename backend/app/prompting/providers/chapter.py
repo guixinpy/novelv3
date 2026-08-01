@@ -14,11 +14,8 @@ from app.prompting.providers.knowledge_base import build_knowledge_base_candidat
 from app.prompting.providers.longform import build_longform_context_block
 from app.prompting.providers.retrieval import build_chapter_retrieval_block
 from app.prompting.providers.style import build_style_rule_block
-from app.prompting.providers.storyline import (
-    SetupContextSnapshot,
-    TRUNCATED_SETUP_CONTEXT_MARKER,
-    normalise_json_text,
-)
+from app.core.json_utils import normalise_json_text
+from app.core.setup_context import SetupContextSnapshot, TRUNCATED_SETUP_CONTEXT_MARKER
 from app.core.agent_context_compression_projection import (
     CONTEXT_WINDOW_PRESSURE_RATIO,
     build_agent_context_compression_payload,

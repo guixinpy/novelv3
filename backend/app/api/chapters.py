@@ -28,7 +28,7 @@ from app.prompting.providers.chapter import (
     chapter_max_tokens,
     project_chapter_word_range,
 )
-from app.prompting.providers.storyline import SetupContextSnapshot
+from app.core.setup_context import SetupContextSnapshot
 from app.prompting.tracing import build_prompt_trace_metadata
 from app.schemas import ChapterOut
 from app.api.dialog_utils import AgentApiToolRunResult, execute_agent_api_tool

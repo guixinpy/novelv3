@@ -2,8 +2,8 @@ from copy import deepcopy
 from collections.abc import Callable
 from typing import Any
 
-from app.prompting.command_args import compact_command_args
 from app.prompting.budget import PromptBudgeter
+from app.prompting.command_args import compact_command_args
 from app.prompting.contracts import PromptBuildResult
 from app.prompting.registry import PROMPT_REGISTRY
 from app.prompting.renderer import PromptRenderer
@@ -120,3 +120,15 @@ def build_generation_payload(
         "trace_metadata": build_prompt_trace_metadata(build_result),
         "rendered_prompt": build_result.content,
     }
+
+
+def build_command_args_block(command_args: str) -> dict:
+    """用户附加要求上下文块（v1 绞杀：从 providers/project 迁入，供 trace 记录）。"""
+    from app.core.model_call_trace import build_context_block
+
+    return build_context_block(
+        key="command_args",
+        kind="user_feedback",
+        title="用户附加要求",
+        content=compact_command_args(command_args),
+    )

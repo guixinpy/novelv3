@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+TRUNCATED_SETUP_CONTEXT_MARKER = "\n\n[已截断超长 Setup 内容，后续内容未进入本次生成上下文]"
+
 
 @dataclass(frozen=True)
 class SetupContextSnapshot:
