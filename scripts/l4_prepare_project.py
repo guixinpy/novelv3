@@ -1,7 +1,8 @@
-"""L4 50 章验证前置：创建项目并生成设定 + 50 章大纲 + 5 弧线规划。"""
+"""验证前置：创建项目并生成设定 + N 章大纲 + 弧线规划（L4=50 章，M5=200 章）。"""
 from __future__ import annotations
 
 import asyncio
+import argparse
 import json
 import sys
 
@@ -9,6 +10,15 @@ import httpx
 
 
 BASE = "http://127.0.0.1:8000"
+
+
+def parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(description="创建项目并生成设定/大纲/弧线")
+    p.add_argument("--name", default="M4-50章", help="项目名")
+    p.add_argument("--genre", default="悬疑", help="题材")
+    p.add_argument("--total-chapters", type=int, default=50, help="目标章节数")
+    p.add_argument("--arcs", type=int, default=5, help="弧线数量")
+    return p.parse_args()
 
 
 async def send(client: httpx.AsyncClient, sid: str, content: str) -> list[dict]:
@@ -43,10 +53,21 @@ async def send(client: httpx.AsyncClient, sid: str, content: str) -> list[dict]:
 
 
 async def main() -> int:
+    args = parse_args()
+    total = args.total_chapters
+    arcs_n = args.arcs
+    per = max(1, total // arcs_n)
+    arc_spans = []
+    for i in range(arcs_n):
+        s = i * per + 1
+        e = (i + 1) * per if i < arcs_n - 1 else total
+        arc_spans.append(f"「第{i + 1}弧」(Ch{s}-{e})")
+    arc_text = "、".join(arc_spans)
+
     async with httpx.AsyncClient(timeout=httpx.Timeout(1200.0, connect=60.0, read=300.0, write=60.0)) as client:
         r = await client.post(
             f"{BASE}/api/v1/projects",
-            json={"name": "M4-50章", "genre": "悬疑", "language": "zh-CN"},
+            json={"name": args.name, "genre": args.genre, "language": "zh-CN"},
         )
         r.raise_for_status()
         pid = r.json().get("id")
@@ -57,15 +78,14 @@ async def main() -> int:
         sid = r2.json()["session_id"]
         print(f"Session: {sid}")
 
-        print("Phase 0: 5-arc plan + setup + 50-ch outline")
+        print(f"Phase 0: {arcs_n}-arc plan + setup + {total}-ch outline")
         await send(
             client,
             sid,
-            "请为这个悬疑小说项目做开工准备，目标是一部完整的中长篇（50 章）："
-            "1) 用 plan_arc define 创建五条弧线：「第一弧·起源」(Ch1-10)、「第二弧·暗流」(Ch11-20)、"
-            "「第三弧·迷雾」(Ch21-30)、「第四弧·裂痕」(Ch31-40)、「第五弧·终局」(Ch41-50)，每条弧线写清概要；"
+            f"请为这个{args.genre}小说项目做开工准备，目标是一部完整的超长篇（{total} 章）："
+            f"1) 用 plan_arc define 创建 {arcs_n} 条弧线：{arc_text}，每条弧线写清概要；"
             "2) 用 update_setup 生成完整世界观设定（含主角与关键人物）；"
-            "3) 用 update_outline 生成 50 章大纲，确保第 50 章才是故事结局，中间章节不得提前完结。",
+            f"3) 用 update_outline 生成 {total} 章大纲，确保第 {total} 章才是故事结局，中间章节不得提前完结。",
         )
         print("Phase 0 done.")
         return 0
