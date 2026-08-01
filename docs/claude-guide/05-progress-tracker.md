@@ -115,4 +115,23 @@
 遗留（未纳入本次范围）：
 - 两级压缩 LLM 摘要版（预算允许时，hermes Frozen Snapshot 模式）→ P2 候选
 - 结构相似度主题词表需随新实验补充
-- v1 旧管线去留、实体登记来源、第二部结构策略 → P1 待决策
+- 实体登记来源、第二部结构策略 → P1 待决策（v1 管线去留已决：全面绞杀完成）
+
+## 2026-08-01 v1 生成管线全面绞杀（任务 `08-01-v1-pipeline-removal`，用户选 C 方案）
+
+统一 LLM 调用路径到 v2 provider，删除 v1 旧管线（阶段 1 迁移 → 阶段 2 删除 → 阶段 3 清理）：
+
+- **统一路径**：`Provider.complete()`（base.py 已有）+ `app/agent/providers/__init__.py::build_provider` 工厂；
+  athena 聊天（dialog_utils）、一致性 L2（l2_extractor，提示词内联）、章节修订/v2 动作
+  （chapters.create_or_replace_chapter）全部迁移，token 统计改用 `ProviderResponse.usage` 契约
+- **删除**（-2,399 行）：`core/ai_service.py`、`core/deepseek_adapter.py`、`core/chat_compaction.py`；
+  4 个死生成端点（outlines generate/expand-window、setups generate、storylines generate）；
+  `prompting/providers/{outline,setup,storyline,project}.py`（活跃符号迁 core：
+  SetupContextSnapshot/TRUNCATED_SETUP_CONTEXT_MARKER → `core/setup_context`、
+  parse_json_safely/normalise_json_text → `core/json_utils`、
+  project_chapter_word_range → `core/chapter_utils`、build_command_args_block → assembler）
+- **保留**：prompting 装配核心（assembler/registry/renderer/budgeter）+ dialog/chapter 生成链
+  （活跃功能依赖，删双套 HTTP 客户端即达目的）；chapters.generate 端点（已走 v2 agent tool）；全部 CRUD
+- **测试**：+1（provider.complete）；-29（生成端点/迁移历史/adapter 清理用例）；CRUD 用例保留
+- 测试基线（v1 绞杀后实测）：后端 **620 passed**、前端 485 tests、vue-tsc 通过、
+  会话回放 20/20 成功、依赖规则测试通过
