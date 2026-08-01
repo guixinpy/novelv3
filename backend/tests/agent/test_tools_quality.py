@@ -117,3 +117,54 @@ async def test_quality_trend_no_endgame_far_from_end(ctx: ToolContext):
     result = await check_quality_trend(ctx, window=10)
     assert not result.is_error
     assert result.data["endgame_mode"] is False
+
+
+# ── T4 R1/R2: check_chapter_format 工具 ──
+
+
+@pytest.mark.asyncio
+async def test_check_chapter_format_reports_bad_text(ctx: ToolContext):
+    from app.tools.chapters import check_chapter_format
+
+    ch = ChapterContent(
+        project_id=ctx.project_id, chapter_index=1,
+        title="第一章", content="他睡不着,又坐起来。\n同**道理**一般。",
+        word_count=100, status="generated",
+    )
+    ctx.db.add(ch)
+    ctx.db.commit()
+
+    result = await check_chapter_format(ctx, chapter_index=1)
+    assert not result.is_error
+    data = result.data
+    assert data["quality"] == "fail"
+    types = {i["type"] for i in data["issues"]}
+    assert "half_width_punct" in types
+    assert "markdown_bold" in types
+
+
+@pytest.mark.asyncio
+async def test_check_chapter_format_passes_clean_text(ctx: ToolContext):
+    from app.tools.chapters import check_chapter_format
+
+    ch = ChapterContent(
+        project_id=ctx.project_id, chapter_index=1,
+        title="第一章", content="他睡不着，又坐起来。\n“明天就走。”她说。",
+        word_count=100, status="generated",
+    )
+    ctx.db.add(ch)
+    ctx.db.commit()
+
+    result = await check_chapter_format(ctx, chapter_index=1)
+    assert not result.is_error
+    assert result.data["quality"] == "pass"
+    assert result.data["issues"] == []
+
+
+@pytest.mark.asyncio
+async def test_check_chapter_format_missing_chapter(ctx: ToolContext):
+    from app.tools.chapters import check_chapter_format
+
+    result = await check_chapter_format(ctx, chapter_index=99)
+    assert result.is_error
+    assert "不存在" in result.error

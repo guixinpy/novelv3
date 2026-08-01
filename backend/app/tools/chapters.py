@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from app.agent.tooling import ToolContext, ToolResult, tool
+from app.core.format_checker import check_chapter_hook, check_text_format
 from app.core.longform_memory import get_or_create_longform_memory
 from app.models import ChapterContent, LongformMemory, Project, Setup, WorldCharacter, WorldLocation
 from app.tools.registry import registry
@@ -291,6 +292,51 @@ async def check_chapter_quality(ctx: ToolContext, chapter_index: int) -> ToolRes
         "status": chapter.status,
         "issues": issues,
         "quality": "pass" if not issues or all(i["severity"] == "info" for i in issues) else "needs_review",
+    })
+
+
+# ── T4: 输出格式守门员 ──
+
+
+@tool(
+    registry=registry,
+    name="check_chapter_format",
+    description=(
+        "对指定章节做输出格式校验与章末卡点校验：markdown 加粗残留、备选词残留（X/Y）、"
+        "正文自带章题行、全角引号成对、半角标点混用，以及章末是否缺乏悬念钩子。"
+        "写完一章后建议立即调用；quality=fail 时请重写该章，needs_review 时请修正提示项。"
+    ),
+    permission="read",
+    parameters={
+        "type": "object",
+        "properties": {
+            "chapter_index": {"type": "integer", "description": "要检查的章节序号"},
+        },
+        "required": ["chapter_index"],
+    },
+)
+async def check_chapter_format(ctx: ToolContext, chapter_index: int) -> ToolResult:
+    chapter = (
+        ctx.db.query(ChapterContent)
+        .filter(
+            ChapterContent.project_id == ctx.project_id,
+            ChapterContent.chapter_index == chapter_index,
+        )
+        .first()
+    )
+    if chapter is None:
+        return ToolResult.fail(f"第 {chapter_index} 章不存在。")
+
+    content = chapter.content or ""
+    issues = check_text_format(content)
+    issues.extend(check_chapter_hook(content))
+    has_error = any(i["severity"] == "error" for i in issues)
+    quality = "fail" if has_error else ("pass" if not issues else "needs_review")
+    return ToolResult.ok({
+        "chapter_index": chapter_index,
+        "title": chapter.title,
+        "quality": quality,
+        "issues": issues,
     })
 
 
