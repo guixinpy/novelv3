@@ -115,10 +115,22 @@
 遗留（未纳入本次范围）：
 - 两级压缩 LLM 摘要版（预算允许时，hermes Frozen Snapshot 模式）→ P2 候选
 - 结构相似度主题词表需随新实验补充
-- 实体登记来源、第二部结构策略 → P1 待决策（v1 管线去留与 prompting 均已决）
+- 第二部结构策略 → P1 待决策（v1 管线、prompting、实体登记均已决）
 - `execute_agent_api_tool`（dialog_utils）是 stub（只写运行记录不真生成）；`chapters.generate` 与
   athena 生成端点（/athena/ontology/generate、/athena/evolution/plan/generate）均为 control-plane 记录模式，
   真实生成由 v2 agent 会话完成；若需同步生成需真实现 agent 执行 → 待决策
+
+## 2026-08-01 实体登记来源扩展（任务 `08-01-entity-registration-sources`，用户选 C 方案）
+
+解决实体登记白名单太薄（200 章项目 Setup 仅 1 角色 → entity_state 记忆仅 2 条）：
+
+- **新表 `entity_candidates`**（唯一约束 project+name，source 区分 rule/l2）
+- **rule 通道** `core/entity_miner.py`：中文姓氏白名单（~300 姓，移除虚词性那/和/从）+ 停止词尾过滤
+  + 汉字尾字校验；write_chapter/revise_chapter 正文后自动挖掘注册；**跨 ≥2 章转正**进 _capture_entities 白名单
+- **l2 通道**：background_analyzer deep_check 保存 extracted_facts 时 subject/object 注入（LLM 提取免转正）
+- **200 章数据验证**（30 章抽样）：程砚秋 29/苏晚晴 18/顾沉舟 6/林舟 8 章命中转正；
+  虚词误报（那/和/从 系）清零；称谓式角色（姚先生/婆婆/周伯）规则无法提取 → 由 L2 通道补充
+- 测试：+8；后端 591 passed、前端 485 无回归
 
 ## 2026-08-01 生成模式统一到 v2 + prompting 全链淘汰（任务 `08-01-generation-unify-v2`，用户选 B 方案）
 
