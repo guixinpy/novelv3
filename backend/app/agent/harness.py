@@ -13,7 +13,11 @@ from typing import AsyncIterator
 
 from app.agent.budget import IterationBudget, TokenBudget
 from app.agent.approval import ApprovalGate
-from app.agent.compaction import check_context_usage
+from app.agent.compaction import (
+    check_context_usage,
+    compact_history,
+    reset_compaction_stats,
+)
 from app.agent.events import ApprovalPending, ContextWarning, GuardTripped, LoopEvent, TurnEnded
 from app.agent.loop import BeforeToolCall, EventSink, StopReason, run_turn
 from app.agent.providers.base import Provider
@@ -51,6 +55,7 @@ class AgentHarness:
         self.tool_context = tool_context
         self.config = config
         self.before_tool_call = before_tool_call
+        reset_compaction_stats()
         self._steering: deque[str] = deque()
         self._follow_ups: deque[str] = deque()
         self.messages: list[dict] = self._load()
@@ -67,6 +72,9 @@ class AgentHarness:
             entry = json.loads(line)
             if entry.get("type") == "message":
                 messages.append(entry["data"])
+            elif entry.get("type") == "compaction":
+                # 压缩快照是此后消息状态的真相源（append-only 日志中的检查点）
+                messages = list(entry["data"]["messages"][1:])
         return messages
 
     def _append_log(self, entry_type: str, data: dict) -> None:
@@ -152,8 +160,34 @@ class AgentHarness:
         self.messages.append({"role": "user", "content": user_text})
 
         history = [{"role": "system", "content": self.config.system_prompt}, *self.messages]
-        before_count = len(history)
         last_guard_diagnosis: dict | None = None
+
+        # 上下文用量预检 + 自动压缩（M3：75% 阈值 + 头尾保护；超限时压缩中间历史）
+        ctx_warning = check_context_usage(history)
+        if ctx_warning is not None:
+            pct, total = ctx_warning
+            await sink(ContextWarning(usage_pct=round(pct, 3), total_tokens=total, max_tokens=128_000))
+            compressed = compact_history(history)
+            if len(compressed) < len(history):
+                summary = next(
+                    (m.get("content", "") for m in compressed
+                     if isinstance(m.get("content"), str) and m["content"].startswith("[上下文压缩]")),
+                    "",
+                )
+                self._append_log(
+                    "compaction",
+                    {
+                        "messages": compressed,
+                        "summary": summary,
+                        "before_count": len(history),
+                        "after_count": len(compressed),
+                        "usage_pct": round(pct, 3),
+                    },
+                )
+                self.messages = compressed[1:]
+                history = compressed
+
+        before_count = len(history)
 
         async def persisting_sink(event: LoopEvent) -> None:
             nonlocal last_guard_diagnosis
@@ -173,12 +207,6 @@ class AgentHarness:
 
         if self.approval_gate is not None:
             self.approval_gate.set_emitter(persisting_sink)
-
-        # 上下文用量预检
-        ctx_warning = check_context_usage(history)
-        if ctx_warning is not None:
-            pct, total = ctx_warning
-            await sink(ContextWarning(usage_pct=round(pct, 3), total_tokens=total, max_tokens=128_000))
 
         result = await run_turn(
             provider=self.provider,

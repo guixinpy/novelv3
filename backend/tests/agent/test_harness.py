@@ -82,6 +82,43 @@ async def test_multi_turn_history_accumulates(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_context_compaction_triggers_and_persists(tmp_path):
+    """历史超过 75% 阈值时自动压缩，并写入可重放的日志检查点。"""
+    provider = FakeProvider([text_response("回答")] * 6)
+    harness = make_harness(tmp_path, provider)
+    big = "x" * 60_000  # 约 30K tokens/条
+    for _ in range(4):
+        await drain(harness, big)
+
+    # 第 4 次请求前历史约 120K tokens，应已触发压缩（< 未压缩的 8 条）
+    assert len(provider.calls[3]) < 8
+
+    lines = [
+        json.loads(line)
+        for line in (tmp_path / "s1.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    compaction_entries = [l for l in lines if l["type"] == "compaction"]
+    assert len(compaction_entries) == 1
+    data = compaction_entries[0]["data"]
+    assert data["after_count"] < data["before_count"]
+
+    # 重新加载后状态与压缩后一致（无旧消息重复回放，summary 在场）
+    reloaded = AgentHarness(
+        session_id="s1",
+        session_dir=tmp_path,
+        provider=FakeProvider([]),
+        registry=make_registry(),
+        tool_context=ToolContext(project_id=1, session_id="s1"),
+        config=HarnessConfig(system_prompt="你是写作助手。"),
+    )
+    assert len(reloaded.messages) == data["after_count"]
+    assert any(
+        isinstance(m.get("content"), str) and m["content"].startswith("[上下文压缩]")
+        for m in reloaded.messages
+    )
+
+
+@pytest.mark.asyncio
 async def test_resume_from_jsonl(tmp_path):
     provider = FakeProvider([text_response("第一答")])
     harness = make_harness(tmp_path, provider)
