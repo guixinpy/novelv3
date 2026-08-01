@@ -168,3 +168,44 @@ async def test_check_chapter_format_missing_chapter(ctx: ToolContext):
     result = await check_chapter_format(ctx, chapter_index=99)
     assert result.is_error
     assert "不存在" in result.error
+
+
+# ── T5 R2: check_structure_repeat 工具 ──
+
+
+@pytest.mark.asyncio
+async def test_check_structure_repeat_detects_template_loop(ctx: ToolContext):
+    from app.tools.chapters import check_structure_repeat
+
+    tail = "他望着水光，心里那句最初的名字落下。"
+    for i in range(1, 4):
+        ctx.db.add(ChapterContent(
+            project_id=ctx.project_id, chapter_index=i,
+            title="渡到底的是心", content=f"第{i}座城的故事。" * 30 + tail,
+            word_count=500, status="generated",
+        ))
+    ctx.db.commit()
+
+    result = await check_structure_repeat(ctx, window=10)
+    assert not result.is_error
+    data = result.data
+    assert data["repeated"] is True
+    types = {i["type"] for i in data["issues"]}
+    assert "title_repeat" in types
+    assert "structure_repeat" in types
+
+
+@pytest.mark.asyncio
+async def test_check_structure_repeat_insufficient_data(ctx: ToolContext):
+    from app.tools.chapters import check_structure_repeat
+
+    ctx.db.add(ChapterContent(
+        project_id=ctx.project_id, chapter_index=1,
+        title="第一章", content="正文。" * 50, word_count=100, status="generated",
+    ))
+    ctx.db.commit()
+
+    result = await check_structure_repeat(ctx, window=10)
+    assert not result.is_error
+    assert result.data["repeated"] is False
+    assert "不足" in result.data["note"]

@@ -4,8 +4,11 @@ from __future__ import annotations
 from app.agent.tooling import ToolContext, ToolResult, tool
 from app.core.format_checker import check_chapter_hook, check_text_format
 from app.core.longform_memory import get_or_create_longform_memory
+from app.core.structural_similarity import _CLUSTER_MIN, detect_structure_repeats
 from app.models import ChapterContent, LongformMemory, Project, Setup, WorldCharacter, WorldLocation
 from app.tools.registry import registry
+
+_CLUSTER_MIN_CHAPTERS = _CLUSTER_MIN
 
 
 def _chapter_summary(ch: ChapterContent) -> dict:
@@ -337,6 +340,60 @@ async def check_chapter_format(ctx: ToolContext, chapter_index: int) -> ToolResu
         "title": chapter.title,
         "quality": quality,
         "issues": issues,
+    })
+
+
+# ── T5: 结构级重复检测 ──
+
+
+@tool(
+    registry=registry,
+    name="check_structure_repeat",
+    description=(
+        "检测最近 N 章是否存在结构级重复（标题重复、结尾句式雷同的模板循环，"
+        "如「换名城」副本连刷）。repeated=true 时请更换冲突类型/人物关系/解法，"
+        "避免同一套路循环。每写完一个副本/卷末建议调用。"
+    ),
+    permission="read",
+    parameters={
+        "type": "object",
+        "properties": {
+            "window": {
+                "type": "integer",
+                "description": "检查最近几章，默认 30，上限 60",
+                "default": 30,
+            },
+        },
+    },
+)
+async def check_structure_repeat(ctx: ToolContext, window: int = 30) -> ToolResult:
+    window = max(1, min(window, 60))
+    chapters = (
+        ctx.db.query(ChapterContent)
+        .filter(ChapterContent.project_id == ctx.project_id)
+        .order_by(ChapterContent.chapter_index.asc())
+        .all()
+    )
+    if len(chapters) < _CLUSTER_MIN_CHAPTERS:
+        return ToolResult.ok({
+            "repeated": False,
+            "issues": [],
+            "note": f"章节不足 {_CLUSTER_MIN_CHAPTERS} 章，无法做结构重复检测。",
+        })
+
+    recent = chapters[-window:]
+    issues = detect_structure_repeats([
+        {"index": c.chapter_index, "title": c.title or "", "content": c.content or ""}
+        for c in recent
+    ])
+    return ToolResult.ok({
+        "repeated": bool(issues),
+        "issues": issues,
+        "checked_window": len(recent),
+        "tip": (
+            "检测到模板循环时，请更换冲突类型、人物关系或解法；"
+            "若接近卷尾，按 plan_arc 终局约束集中收束而非开新副本。"
+        ) if issues else "未发现结构级重复。",
     })
 
 

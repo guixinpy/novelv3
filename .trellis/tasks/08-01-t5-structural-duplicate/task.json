@@ -3,7 +3,7 @@
   "name": "t5-structural-duplicate",
   "title": "T5 结构级重复检测：卷/弧线大纲相似度",
   "description": "",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": null,
   "package": null,
