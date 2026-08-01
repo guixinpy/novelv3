@@ -85,17 +85,20 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--timeout", type=int, default=600, help="Timeout per chapter (s)")
     p.add_argument("--start-chapter", type=int, default=1, help="Starting chapter index")
     p.add_argument("--recall-only", action="store_true", help="只跑记忆召回验证，不写章节")
+    p.add_argument("--new-part-chapter", type=int, default=0,
+                   help="该章节开启'第二部'指示（故事自然完结后继续长篇验证）")
     return p.parse_args()
 
 
 class L4DogfoodRunner:
-    def __init__(self, base_url: str, project_id: str, chapter_count: int, timeout: int, start_chapter: int, target_chapter: int = 50) -> None:
+    def __init__(self, base_url: str, project_id: str, chapter_count: int, timeout: int, start_chapter: int, target_chapter: int = 50, new_part_chapter: int = 0) -> None:
         self.base_url = base_url.rstrip("/")
         self.project_id = project_id
         self.chapter_count = chapter_count
         self.timeout = timeout
         self.start_chapter = start_chapter
         self.target_chapter = target_chapter
+        self.new_part_chapter = new_part_chapter
         self.client = httpx.AsyncClient(timeout=httpx.Timeout(timeout))
         self.session_id: str = ""
 
@@ -176,7 +179,17 @@ class L4DogfoodRunner:
         await self.create_session()
 
         for ch in range(self.start_chapter, self.start_chapter + self.chapter_count):
-            if ch == 1:
+            if ch == self.new_part_chapter:
+                msg = (
+                    f"第 {ch} 章：上一部已在第 {ch - 1} 章完成收官。"
+                    "现在开启第二部：先规划并推进新故事线，不要写番外/后记。"
+                    "写之前：1) 用 plan_arc define 规划第二部的新弧线（建议每 25-30 章一条）；"
+                    "2) 用 query_memory 回顾世界观与人物；"
+                    "3) 用 track_plotline query 确认开放线索；"
+                    "写完后：4) 用 check_chapter_quality 自检；"
+                    "5) 用 track_plotline 推进或闭环相关情节线。"
+                )
+            elif ch == 1:
                 msg = (
                     "请写第 1 章。完成后："
                     "1) 用 track_plotline 登记新出现的情节线和伏笔；"
@@ -278,6 +291,7 @@ async def main() -> None:
         timeout=args.timeout,
         start_chapter=args.start_chapter,
         target_chapter=args.target_chapter,
+        new_part_chapter=args.new_part_chapter,
     )
 
     try:
