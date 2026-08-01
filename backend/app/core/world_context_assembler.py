@@ -25,7 +25,7 @@ from app.models import (
     WorldRelation,
     WorldRule,
 )
-from app.prompting.providers.storyline import normalise_json_text
+from app.core.json_utils import normalise_json_text
 
 DialogTarget = Literal["athena", "hermes"]
 logger = logging.getLogger(__name__)

@@ -44,3 +44,16 @@ def _parse_chinese_chapter_number(text: str) -> int:
         if ch in _CHINESE_DIGITS:
             total = total * 10 + _CHINESE_DIGITS[ch]
     return total
+
+
+def project_chapter_word_range(project) -> tuple[int, int] | None:
+    """项目目标字数/章数 → 每章建议字数范围（v1 绞杀：从 prompting 迁出）。"""
+    target_words = int(project.target_word_count or 0)
+    target_chapters = int(project.target_chapter_count or 0)
+    if target_words <= 0 or target_chapters <= 0:
+        return None
+    average = max(1, round(target_words / target_chapters))
+    if average >= 2000:
+        return average, max(average, round(average * 1.5))
+    target_min = round(average * 0.85)
+    return max(1, target_min), max(1, round(average * 1.15))

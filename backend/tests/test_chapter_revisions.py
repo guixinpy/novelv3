@@ -1,5 +1,7 @@
 from unittest.mock import AsyncMock, patch
 
+from app.agent.providers.base import Usage
+
 from sqlalchemy import event
 
 from app.models import (
@@ -345,8 +347,11 @@ def test_empty_draft_update_removes_submitted_revision_feedback(client, db_sessi
 
 
 @patch("app.api.chapters.load_api_key", return_value="sk-test")
-@patch("app.api.chapters.ai_service.complete", new_callable=AsyncMock)
-def test_regenerate_revision_updates_chapter_and_status(mock_complete, mock_key, client, db_session):
+@patch("app.api.chapters.build_provider")
+def test_regenerate_revision_updates_chapter_and_status(mock_build_provider, mock_key, client, db_session):
+    mock_complete = AsyncMock()
+    mock_build_provider.return_value.complete = mock_complete
+    mock_build_provider.return_value.close = AsyncMock()
     project = Project(name="Test")
     db_session.add(project)
     db_session.commit()
@@ -381,8 +386,7 @@ def test_regenerate_revision_updates_chapter_and_status(mock_complete, mock_key,
     revision_id = submit_response.json()["id"]
     mock_complete.return_value.content = "重写后的正文"
     mock_complete.return_value.model = "deepseek-chat"
-    mock_complete.return_value.prompt_tokens = 100
-    mock_complete.return_value.completion_tokens = 200
+    mock_complete.return_value.usage = Usage(prompt_tokens=100, completion_tokens=200)
 
     response = client.post(f"/api/v1/projects/{project.id}/revisions/{revision_id}/regenerate")
 
@@ -396,8 +400,11 @@ def test_regenerate_revision_updates_chapter_and_status(mock_complete, mock_key,
 
 
 @patch("app.api.chapters.load_api_key", return_value="sk-test")
-@patch("app.api.chapters.ai_service.complete", new_callable=AsyncMock)
-def test_regenerate_revision_refreshes_longform_memory_and_retrieval(mock_complete, mock_key, client, db_session):
+@patch("app.api.chapters.build_provider")
+def test_regenerate_revision_refreshes_longform_memory_and_retrieval(mock_build_provider, mock_key, client, db_session):
+    mock_complete = AsyncMock()
+    mock_build_provider.return_value.complete = mock_complete
+    mock_build_provider.return_value.close = AsyncMock()
     from app.core.athena_retrieval import reindex_project_retrieval, search_retrieval
     from app.core.longform_memory import rebuild_longform_memory
 
@@ -437,8 +444,7 @@ def test_regenerate_revision_refreshes_longform_memory_and_retrieval(mock_comple
     )
     mock_complete.return_value.content = "星环钥匙第五形态在修订稿中启动，陆辞确认黑匣子换主。"
     mock_complete.return_value.model = "deepseek-chat"
-    mock_complete.return_value.prompt_tokens = 100
-    mock_complete.return_value.completion_tokens = 200
+    mock_complete.return_value.usage = Usage(prompt_tokens=100, completion_tokens=200)
 
     response = client.post(f"/api/v1/projects/{project.id}/revisions/{submit_response.json()['id']}/regenerate")
 
@@ -464,8 +470,11 @@ def test_regenerate_revision_refreshes_longform_memory_and_retrieval(mock_comple
 
 
 @patch("app.api.chapters.load_api_key", return_value="sk-test")
-@patch("app.api.chapters.ai_service.complete", new_callable=AsyncMock)
-def test_regenerate_revision_links_result_version_and_closes_active_revision(mock_complete, mock_key, client, db_session):
+@patch("app.api.chapters.build_provider")
+def test_regenerate_revision_links_result_version_and_closes_active_revision(mock_build_provider, mock_key, client, db_session):
+    mock_complete = AsyncMock()
+    mock_build_provider.return_value.complete = mock_complete
+    mock_build_provider.return_value.close = AsyncMock()
     project = Project(name="Test")
     db_session.add(project)
     db_session.commit()
@@ -486,8 +495,7 @@ def test_regenerate_revision_links_result_version_and_closes_active_revision(moc
     submit_response = client.post(f"/api/v1/projects/{project.id}/revisions/{draft_response.json()['id']}/submit")
     mock_complete.return_value.content = "重写后的正文"
     mock_complete.return_value.model = "deepseek-chat"
-    mock_complete.return_value.prompt_tokens = 100
-    mock_complete.return_value.completion_tokens = 200
+    mock_complete.return_value.usage = Usage(prompt_tokens=100, completion_tokens=200)
 
     response = client.post(f"/api/v1/projects/{project.id}/revisions/{submit_response.json()['id']}/regenerate")
 
@@ -510,8 +518,11 @@ def test_regenerate_revision_links_result_version_and_closes_active_revision(moc
 
 
 @patch("app.api.chapters.load_api_key", return_value="sk-test")
-@patch("app.api.chapters.ai_service.complete", new_callable=AsyncMock)
-def test_regenerate_revision_persists_hermes_messages(mock_complete, mock_key, client, db_session):
+@patch("app.api.chapters.build_provider")
+def test_regenerate_revision_persists_hermes_messages(mock_build_provider, mock_key, client, db_session):
+    mock_complete = AsyncMock()
+    mock_build_provider.return_value.complete = mock_complete
+    mock_build_provider.return_value.close = AsyncMock()
     project = Project(name="Test")
     db_session.add(project)
     db_session.commit()
@@ -533,8 +544,7 @@ def test_regenerate_revision_persists_hermes_messages(mock_complete, mock_key, c
     )
     mock_complete.return_value.content = "重写后的正文"
     mock_complete.return_value.model = "deepseek-chat"
-    mock_complete.return_value.prompt_tokens = 100
-    mock_complete.return_value.completion_tokens = 200
+    mock_complete.return_value.usage = Usage(prompt_tokens=100, completion_tokens=200)
 
     response = client.post(f"/api/v1/projects/{project.id}/revisions/{submit_response.json()['id']}/regenerate")
 
@@ -547,8 +557,11 @@ def test_regenerate_revision_persists_hermes_messages(mock_complete, mock_key, c
 
 
 @patch("app.api.chapters.load_api_key", return_value="sk-test")
-@patch("app.api.chapters.ai_service.complete", new_callable=AsyncMock)
-def test_regenerate_revision_marks_failed_when_generation_fails(mock_complete, mock_key, client, db_session):
+@patch("app.api.chapters.build_provider")
+def test_regenerate_revision_marks_failed_when_generation_fails(mock_build_provider, mock_key, client, db_session):
+    mock_complete = AsyncMock()
+    mock_build_provider.return_value.complete = mock_complete
+    mock_build_provider.return_value.close = AsyncMock()
     project = Project(name="Test")
     db_session.add(project)
     db_session.commit()
@@ -578,8 +591,11 @@ def test_regenerate_revision_marks_failed_when_generation_fails(mock_complete, m
 
 
 @patch("app.api.chapters.load_api_key", return_value="sk-test")
-@patch("app.api.chapters.ai_service.complete", new_callable=AsyncMock)
-def test_regenerate_revision_is_idempotent_after_completed(mock_complete, mock_key, client, db_session):
+@patch("app.api.chapters.build_provider")
+def test_regenerate_revision_is_idempotent_after_completed(mock_build_provider, mock_key, client, db_session):
+    mock_complete = AsyncMock()
+    mock_build_provider.return_value.complete = mock_complete
+    mock_build_provider.return_value.close = AsyncMock()
     project = Project(name="Test")
     db_session.add(project)
     db_session.commit()
@@ -601,8 +617,7 @@ def test_regenerate_revision_is_idempotent_after_completed(mock_complete, mock_k
     revision_id = submit_response.json()["id"]
     mock_complete.return_value.content = "第一次重写"
     mock_complete.return_value.model = "deepseek-chat"
-    mock_complete.return_value.prompt_tokens = 100
-    mock_complete.return_value.completion_tokens = 200
+    mock_complete.return_value.usage = Usage(prompt_tokens=100, completion_tokens=200)
     first_response = client.post(f"/api/v1/projects/{project.id}/revisions/{revision_id}/regenerate")
     assert first_response.status_code == 200
     mock_complete.reset_mock()

@@ -352,7 +352,7 @@ def _word_target_diagnostics(project: Project, chapters: list[Any]) -> dict[str,
         return base
 
     average = max(1, round(target_words / target_chapters))
-    from app.prompting.providers.chapter import project_chapter_word_range
+    from app.core.chapter_utils import project_chapter_word_range
 
     target_range = project_chapter_word_range(project)
     target_min = target_range[0] if target_range else max(1, round(average * 0.85))

@@ -6,7 +6,7 @@ from sqlalchemy import String, func
 from sqlalchemy.orm import Session
 
 from app.config import load_api_key
-from app.core.ai_service import AIService
+from app.agent.providers import build_provider
 from app.core.athena_retrieval import sync_longform_memory_retrieval_documents
 from app.core.chapter_target import chapter_index_exceeds_target
 from app.core.longform_memory import refresh_longform_memory_for_chapter
@@ -36,7 +36,6 @@ from app.services.writing.writing_state_service import WritingStateService
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/chapters", tags=["chapters"])
 
-ai_service = AIService()
 prompt_assembler = PromptAssembler()
 FENCED_CHAPTER_RE = re.compile(r"^\s*```(?:[A-Za-z0-9_-]+)?\s*\n(?P<body>.*?)\n?```\s*$", re.DOTALL)
 CHAPTER_HEADING_RE = re.compile(
@@ -430,12 +429,17 @@ async def create_or_replace_chapter(
     start = time.time()
     WritingStateService(db).run_chapter(project_id, chapter_index)
     try:
-        result = await ai_service.complete(
-            payload["messages"],
-            temperature=0.7,
-            max_tokens=payload["max_tokens"],
-            model=project.ai_model or "deepseek-chat",
-        )
+        # v1 绞杀：LLM 调用统一走 v2 provider（非流式一次返回）
+        provider = build_provider()
+        try:
+            result = await provider.complete(
+                payload["messages"],
+                temperature=0.7,
+                max_tokens=payload["max_tokens"],
+                model=project.ai_model or "deepseek-chat",
+            )
+        finally:
+            await provider.close()
     except Exception as exc:
         WritingStateService(db).mark_error(project_id, str(exc))
         _safe_mark_chapter_trace_failed(
@@ -466,6 +470,9 @@ async def create_or_replace_chapter(
 
     word_count = count_words(generated_content)
     previous_word_count = int(existing.word_count or 0) if existing else 0
+    # v1 绞杀：token 统计在 ProviderResponse.usage（v2 provider 契约）
+    prompt_tokens = result.usage.prompt_tokens
+    completion_tokens = result.usage.completion_tokens
     if existing:
         chapter = existing
         chapter.title = title
@@ -473,8 +480,8 @@ async def create_or_replace_chapter(
         chapter.word_count = word_count
         chapter.status = "generated"
         chapter.model = result.model
-        chapter.prompt_tokens = result.prompt_tokens
-        chapter.completion_tokens = result.completion_tokens
+        chapter.prompt_tokens = prompt_tokens
+        chapter.completion_tokens = completion_tokens
         chapter.generation_time = elapsed
         chapter.temperature = 0.7
     else:
@@ -486,8 +493,8 @@ async def create_or_replace_chapter(
             word_count=word_count,
             status="generated",
             model=result.model,
-            prompt_tokens=result.prompt_tokens,
-            completion_tokens=result.completion_tokens,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
             generation_time=elapsed,
             temperature=0.7,
         )

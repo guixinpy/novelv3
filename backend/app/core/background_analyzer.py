@@ -11,7 +11,7 @@ from app.core.l2_extractor import L2LLMExtractor
 from app.core.setup_projection import get_setup_character_projection
 from app.db import SessionLocal
 from app.models import ChapterContent, ConsistencyCheck, ExtractedFact
-from app.prompting.providers.storyline import SetupContextSnapshot
+from app.core.setup_context import SetupContextSnapshot
 
 logger = logging.getLogger(__name__)
 

@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.agent.approval import ApprovalGate
+from app.agent.providers import build_provider as _build_provider
 from app.agent.events import (
     ApprovalPending,
     AssistantDelta,
@@ -23,9 +24,7 @@ from app.agent.events import (
 )
 from app.agent.harness import AgentHarness, HarnessConfig
 from app.agent.providers.base import Provider
-from app.agent.providers.deepseek import DeepSeekProvider
 from app.agent.tooling import ToolContext
-from app.config import load_api_key
 from app.core.project_snapshot import build_project_snapshot
 from app.db import DATA_DIR, get_db
 from app.models import Project
@@ -62,10 +61,10 @@ _active_gates: dict[str, ApprovalGate] = {}
 
 
 def build_provider() -> Provider:
-    key = load_api_key()
-    if not key:
-        raise HTTPException(status_code=503, detail="DeepSeek API key 未配置")
-    return DeepSeekProvider(api_key=key)
+    try:
+        return _build_provider()
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 def _meta_path(session_id: str) -> Path:

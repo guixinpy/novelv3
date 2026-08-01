@@ -189,32 +189,35 @@ async def _free_chat_reply(
     if not load_api_key():
         return _chat_unavailable_reply(diagnosis, "当前未配置模型 API Key，聊天还没有真实接入 AI"), None
 
-    from app.core.ai_service import AIService
+    from app.agent.providers import build_provider
 
     trace = None
-    ai_service = AIService()
+    provider = build_provider()
     started_at = now_ms()
     payload = _build_chat_call_payload(db, dialog.id, project, diagnosis, dialog_type=dialog_type)
     messages = payload["messages"]
     model_name = payload["model"]
 
     try:
-        result = await ai_service.complete(
-            model=model_name, messages=messages, project_id=project.id,
+        # v1 绞杀：LLM 调用统一走 v2 provider（非流式一次返回）
+        result = await provider.complete(
+            model=model_name, messages=messages,
         )
         duration = now_ms() - started_at
         reply = result.content or ""
         trace = _safe_create_chat_trace(
             db, project.id, f"{dialog_type}_chat", model=model_name,
             request_messages=messages, response_content=reply,
-            prompt_tokens=result.prompt_tokens or 0,
-            completion_tokens=result.completion_tokens or 0,
+            prompt_tokens=result.usage.prompt_tokens or 0,
+            completion_tokens=result.usage.completion_tokens or 0,
             duration_ms=duration,
         )
         return reply, trace
     except Exception as exc:
         log_event("chat_error", error=str(exc))
         return _chat_unavailable_reply(diagnosis, f"模型调用失败：{str(exc)}"), trace
+    finally:
+        await provider.close()
 
 
 # ── Agent API tool runner (extracted from writing_agent/api_control_plane.py) ──
