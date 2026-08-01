@@ -323,19 +323,35 @@ async def plan_arc(
                     status="completed",
                     memory_metadata={"provenance": "agent_inferred", "source": "arc_consolidation_auto"},
                 ))
-        # Create new arc
-        arc = LongformMemory(
-            project_id=ctx.project_id,
-            memory_type="story_arc",
-            scope_key=title,
-            title=title,
-            summary=summary or f"{start_chapter}-{end_chapter}章弧线",
-            start_chapter_index=start_chapter,
-            end_chapter_index=end_chapter,
-            status="active",
-            memory_metadata={"provenance": "author_explicit", "source": "plan_arc"},
+        # Create new arc（upsert：同标题重复 define 时更新，避免唯一约束冲突）
+        existing_arc = (
+            ctx.db.query(LongformMemory)
+            .filter(
+                LongformMemory.project_id == ctx.project_id,
+                LongformMemory.memory_type == "story_arc",
+                LongformMemory.scope_key == title,
+            )
+            .first()
         )
-        ctx.db.add(arc)
+        if existing_arc is not None:
+            existing_arc.summary = summary or existing_arc.summary
+            existing_arc.start_chapter_index = start_chapter
+            existing_arc.end_chapter_index = end_chapter
+            existing_arc.status = "active"
+            arc = existing_arc
+        else:
+            arc = LongformMemory(
+                project_id=ctx.project_id,
+                memory_type="story_arc",
+                scope_key=title,
+                title=title,
+                summary=summary or f"{start_chapter}-{end_chapter}章弧线",
+                start_chapter_index=start_chapter,
+                end_chapter_index=end_chapter,
+                status="active",
+                memory_metadata={"provenance": "author_explicit", "source": "plan_arc"},
+            )
+            ctx.db.add(arc)
         ctx.db.commit()
         return ToolResult.ok({
             "action": "defined",

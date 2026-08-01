@@ -5,7 +5,7 @@ import pytest
 
 from app.agent.tooling import ToolContext
 from app.models import LongformMemory, Project
-from app.tools.memory import query_memory, track_plotline
+from app.tools.memory import plan_arc, query_memory, track_plotline
 
 
 @pytest.fixture
@@ -69,6 +69,33 @@ async def test_track_plotline_query(ctx: ToolContext):
     result = await track_plotline(ctx, action="query")
     assert not result.is_error
     assert len(result.data["plotlines"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_plan_arc_define_upsert_same_title(ctx: ToolContext):
+    """重复 define 同标题弧线应更新而非插入，避免唯一约束冲突。"""
+    first = await plan_arc(
+        ctx, action="define", title="第一弧",
+        summary="原概要", start_chapter=1, end_chapter=10,
+    )
+    assert not first.is_error
+    second = await plan_arc(
+        ctx, action="define", title="第一弧",
+        summary="新概要", start_chapter=1, end_chapter=12,
+    )
+    assert not second.is_error
+
+    arcs = (
+        ctx.db.query(LongformMemory)
+        .filter(
+            LongformMemory.memory_type == "story_arc",
+            LongformMemory.scope_key == "第一弧",
+        )
+        .all()
+    )
+    assert len(arcs) == 1
+    assert arcs[0].end_chapter_index == 12
+    assert arcs[0].status == "active"
 
 
 @pytest.mark.asyncio

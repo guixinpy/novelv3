@@ -135,6 +135,15 @@ class ToolRegistry:
                 result = await result
             return result
         except Exception as exc:  # noqa: BLE001 - 工具异常必须回填给模型而非炸毁循环
+            # 数据库事务失败后必须 rollback，否则同请求内后续工具全部报
+            # "transaction has been rolled back"（M4 dogfood 实测暴露）
+            db = getattr(ctx, "db", None)
+            rollback = getattr(db, "rollback", None)
+            if callable(rollback):
+                try:
+                    rollback()
+                except Exception:
+                    pass
             return ToolResult.fail(f"工具 {name} 执行失败：{exc}。可调整参数重试或改用其他工具。")
 
 

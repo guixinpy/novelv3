@@ -33,10 +33,18 @@ class DogfoodResult:
     errors: list[str] = field(default_factory=list)
     start_time: str = ""
     end_time: str = ""
+    start_chapter: int = 1
+    chapter_count: int = 50
+    target_chapter: int = 50
 
     @property
     def success(self) -> bool:
-        return self.chapters_written >= 50 and len(self.errors) == 0
+        project_total = self.start_chapter - 1 + self.chapters_written
+        return (
+            self.chapters_written == self.chapter_count
+            and len(self.errors) == 0
+            and project_total >= self.target_chapter
+        )
 
     def report(self) -> str:
         lines = [
@@ -45,7 +53,8 @@ class DogfoodResult:
             "=" * 60,
             f"  Start: {self.start_time}",
             f"  End:   {self.end_time}",
-            f"  Chapters: {self.chapters_written}/50",
+            f"  Chapters this run: {self.chapters_written}/{self.chapter_count}",
+            f"  Project total: {self.start_chapter - 1 + self.chapters_written}/{self.target_chapter}",
             f"  Plotlines tracked: {self.plotlines_tracked}",
             f"  Plotlines closed:  {self.plotlines_closed}",
             f"  Memory queries:    {self.memory_queries}",
@@ -72,18 +81,20 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--project-id", required=True, help="Project ID")
     p.add_argument("--base-url", default="http://localhost:8000", help="API URL")
     p.add_argument("--chapters", type=int, default=50, help="Target chapters")
+    p.add_argument("--target-chapter", type=int, default=50, help="Project target chapter count for PASS")
     p.add_argument("--timeout", type=int, default=600, help="Timeout per chapter (s)")
     p.add_argument("--start-chapter", type=int, default=1, help="Starting chapter index")
     return p.parse_args()
 
 
 class L4DogfoodRunner:
-    def __init__(self, base_url: str, project_id: str, chapter_count: int, timeout: int, start_chapter: int) -> None:
+    def __init__(self, base_url: str, project_id: str, chapter_count: int, timeout: int, start_chapter: int, target_chapter: int = 50) -> None:
         self.base_url = base_url.rstrip("/")
         self.project_id = project_id
         self.chapter_count = chapter_count
         self.timeout = timeout
         self.start_chapter = start_chapter
+        self.target_chapter = target_chapter
         self.client = httpx.AsyncClient(timeout=httpx.Timeout(timeout))
         self.session_id: str = ""
 
@@ -154,11 +165,16 @@ class L4DogfoodRunner:
         )
 
     async def run(self) -> DogfoodResult:
-        result = DogfoodResult(start_time=datetime.now(UTC).isoformat())
+        result = DogfoodResult(
+            start_time=datetime.now(UTC).isoformat(),
+            start_chapter=self.start_chapter,
+            chapter_count=self.chapter_count,
+            target_chapter=self.target_chapter,
+        )
+        await self.create_session()
 
         for ch in range(self.start_chapter, self.start_chapter + self.chapter_count):
             if ch == 1:
-                await self.create_session()
                 msg = (
                     "请写第 1 章。完成后："
                     "1) 用 track_plotline 登记新出现的情节线和伏笔；"
@@ -256,6 +272,7 @@ async def main() -> None:
         chapter_count=args.chapters,
         timeout=args.timeout,
         start_chapter=args.start_chapter,
+        target_chapter=args.target_chapter,
     )
 
     try:

@@ -85,6 +85,30 @@ async def test_unknown_tool_returns_model_actionable_error():
 
 
 @pytest.mark.asyncio
+async def test_execute_error_rolls_back_db_session():
+    """工具异常后必须 rollback session，否则同请求后续工具全部失败。"""
+    registry = ToolRegistry()
+
+    class FakeDb:
+        def __init__(self) -> None:
+            self.rolled_back = False
+
+        def rollback(self) -> None:
+            self.rolled_back = True
+
+    @tool(registry=registry, name="boom", description="抛错", permission="read",
+          parameters={"type": "object", "properties": {}})
+    async def boom(ctx: ToolContext) -> ToolResult:
+        raise RuntimeError("db exploded")
+
+    db = FakeDb()
+    result = await registry.execute("boom", {}, ToolContext(project_id=1, db=db))
+    assert result.is_error
+    assert "db exploded" in result.error
+    assert db.rolled_back
+
+
+@pytest.mark.asyncio
 async def test_invalid_arguments_rejected_with_reason():
     registry = make_registry()
     result = await registry.execute("read_chapter", {"chapter_index": "三"}, ToolContext(project_id=1))
