@@ -45,29 +45,62 @@ class ActionExecutionService:
             return {"status": "failed", "error": "缺少项目 ID"}
         try:
             if action_type == "generate_setup":
-                from app.api.setups import generate_setup
+                # v1 绞杀：生成入口统一走 athena control-plane 记录（真实生成由 agent 会话完成）
+                from app.api.athena_ontology import (
+                    ATHENA_ONTOLOGY_AGENT_CONTROL_PLANE_VERSION,
+                    ATHENA_ONTOLOGY_GENERATE_ENTRYPOINT,
+                )
+                from app.api.dialog_utils import execute_agent_api_tool
 
-                await generate_setup(project_id, self.db, command_args=command_args)
-                result = {"status": "success"}
-                if trace_id := self.latest_trace_id(project_id=project_id, trace_type="setup_generation"):
-                    result["trace_id"] = trace_id
-                return result
+                await execute_agent_api_tool(
+                    self.db,
+                    project_id=project_id,
+                    entrypoint=ATHENA_ONTOLOGY_GENERATE_ENTRYPOINT,
+                    version=ATHENA_ONTOLOGY_AGENT_CONTROL_PLANE_VERSION,
+                    source=ATHENA_ONTOLOGY_GENERATE_ENTRYPOINT,
+                    action_type="generate_setup",
+                    tool_name="generate_setup",
+                    goal="通过 Athena 设定入口生成项目设定",
+                )
+                return {"status": "success"}
             if action_type == "generate_storyline":
-                from app.api.storylines import generate_storyline
+                from app.api.athena_evolution import (
+                    ATHENA_EVOLUTION_AGENT_CONTROL_PLANE_VERSION,
+                    ATHENA_EVOLUTION_GENERATE_ENTRYPOINT,
+                )
+                from app.api.dialog_utils import execute_agent_api_tool
 
-                await generate_storyline(project_id, self.db, command_args=command_args)
-                result = {"status": "success"}
-                if trace_id := self.latest_trace_id(project_id=project_id, trace_type="storyline_generation"):
-                    result["trace_id"] = trace_id
-                return result
+                await execute_agent_api_tool(
+                    self.db,
+                    project_id=project_id,
+                    entrypoint=ATHENA_EVOLUTION_GENERATE_ENTRYPOINT,
+                    version=ATHENA_EVOLUTION_AGENT_CONTROL_PLANE_VERSION,
+                    source=ATHENA_EVOLUTION_GENERATE_ENTRYPOINT,
+                    action_type="generate_storyline",
+                    tool_name="generate_storyline",
+                    goal="通过 Athena 叙事脉络入口生成故事线",
+                    extra_control_plane={"target": "storyline"},
+                )
+                return {"status": "success"}
             if action_type == "generate_outline":
-                from app.api.outlines import generate_outline
+                from app.api.athena_evolution import (
+                    ATHENA_EVOLUTION_AGENT_CONTROL_PLANE_VERSION,
+                    ATHENA_EVOLUTION_GENERATE_ENTRYPOINT,
+                )
+                from app.api.dialog_utils import execute_agent_api_tool
 
-                await generate_outline(project_id, self.db, command_args=command_args)
-                result = {"status": "success"}
-                if trace_id := self.latest_trace_id(project_id=project_id, trace_type="outline_generation"):
-                    result["trace_id"] = trace_id
-                return result
+                await execute_agent_api_tool(
+                    self.db,
+                    project_id=project_id,
+                    entrypoint=ATHENA_EVOLUTION_GENERATE_ENTRYPOINT,
+                    version=ATHENA_EVOLUTION_AGENT_CONTROL_PLANE_VERSION,
+                    source=ATHENA_EVOLUTION_GENERATE_ENTRYPOINT,
+                    action_type="generate_outline",
+                    tool_name="generate_outline",
+                    goal="通过 Athena 叙事脉络入口生成章节大纲",
+                    extra_control_plane={"target": "outline"},
+                )
+                return {"status": "success"}
             if action_type == "generate_chapter":
                 from app.api.chapters import create_or_replace_chapter
 
