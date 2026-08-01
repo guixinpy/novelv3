@@ -36,6 +36,44 @@ class LongformMaintenanceState:
     latest_synced_chapter_index: int | None
 
 
+def get_or_create_longform_memory(
+    db: Session,
+    project_id: str,
+    memory_type: str,
+    scope_key: str,
+    *,
+    defaults: dict | None = None,
+    updates: dict | None = None,
+) -> LongformMemory:
+    """统一 upsert 语义：同 (project, type, scope_key) 先查后写（T2 R2）。
+
+    存在则应用 updates（未提供的字段保持不变），不存在则按 defaults 创建。
+    返回实例；调用方负责 commit（保持各工具现有的提交点语义）。
+    """
+    existing = (
+        db.query(LongformMemory)
+        .filter(
+            LongformMemory.project_id == project_id,
+            LongformMemory.memory_type == memory_type,
+            LongformMemory.scope_key == scope_key,
+        )
+        .first()
+    )
+    if existing is not None:
+        if updates:
+            for key, value in updates.items():
+                setattr(existing, key, value)
+        return existing
+    mem = LongformMemory(
+        project_id=project_id,
+        memory_type=memory_type,
+        scope_key=scope_key,
+        **(defaults or {}),
+    )
+    db.add(mem)
+    return mem
+
+
 def rebuild_longform_memory(
     db: Session,
     project_id: str,

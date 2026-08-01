@@ -77,15 +77,43 @@ _JSON_TYPES: dict[str, type | tuple[type, ...]] = {
 }
 
 
-def _validate_arguments(parameters: dict, arguments: dict) -> str | None:
-    """轻量 schema 校验：required + 顶层类型。返回 None 表示通过。"""
+def _example_arguments(parameters: dict) -> dict:
+    """从 schema 生成参数示例 JSON（只含 required 参数），供错误信息展示（T2 R1）。"""
     properties: dict = parameters.get("properties", {})
+    example: dict = {}
+    for name in parameters.get("required", []):
+        type_name = properties.get(name, {}).get("type", "string")
+        if type_name == "integer":
+            example[name] = 1
+        elif type_name == "number":
+            example[name] = 1.0
+        elif type_name == "boolean":
+            example[name] = True
+        elif type_name == "array":
+            example[name] = []
+        elif type_name == "object":
+            example[name] = {}
+        else:
+            example[name] = name  # string 用参数名做示例文本
+    return example
+
+
+def _validate_arguments(parameters: dict, arguments: dict) -> str | None:
+    """轻量 schema 校验：required + 顶层类型。返回 None 表示通过。
+
+    错误信息附加参数示例（T2 R1：few-shot），让模型不用猜参数写法。
+    """
+    properties: dict = parameters.get("properties", {})
+    example_suffix = f"参数示例：{json.dumps(_example_arguments(parameters), ensure_ascii=False)}"
     for name in parameters.get("required", []):
         if name not in arguments:
-            return f"缺少必填参数 {name}。请补全后重试。"
+            return f"缺少必填参数 {name}。请补全后重试。{example_suffix}"
     for name, value in arguments.items():
         if name not in properties:
-            return f"未知参数 {name}。本工具可用参数：{sorted(properties)}。"
+            return (
+                f"未知参数 {name}。本工具可用参数：{sorted(properties)}。"
+                f"{example_suffix}"
+            )
         type_name = properties[name].get("type", "")
         expected = _JSON_TYPES.get(type_name)
         if expected is None:
@@ -95,7 +123,7 @@ def _validate_arguments(parameters: dict, arguments: dict) -> str | None:
         if wrong_bool or not isinstance(value, expected):
             return (
                 f"参数 {name} 类型错误：期望 {type_name}，"
-                f"收到 {type(value).__name__}。请改用正确类型重试。"
+                f"收到 {type(value).__name__}。请改用正确类型重试。{example_suffix}"
             )
     return None
 

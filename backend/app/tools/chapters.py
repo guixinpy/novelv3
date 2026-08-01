@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 from app.agent.tooling import ToolContext, ToolResult, tool
-from app.models import ChapterContent, LongformMemory, Project, Setup, WorldCharacter, WorldLocation
+from app.core.longform_memory import get_or_create_longform_memory
+from app.models import ChapterContent, Project, Setup, WorldCharacter, WorldLocation
 from app.tools.registry import registry
 
 
@@ -105,24 +106,17 @@ def _capture_entities(ctx: ToolContext, content: str, chapter_index: int) -> Non
 
     for name, etype in known_entities.items():
         if name in content:
-            existing = ctx.db.query(LongformMemory).filter(
-                LongformMemory.project_id == ctx.project_id,
-                LongformMemory.memory_type == "entity_state",
-                LongformMemory.scope_key == name,
-                LongformMemory.status == "active",
-            ).first()
-            if existing:
-                existing.end_chapter_index = chapter_index
-            else:
-                ctx.db.add(LongformMemory(
-                    project_id=ctx.project_id,
-                    memory_type="entity_state",
-                    scope_key=name,
-                    title=name,
-                    summary=f"「{name}」出现在第 {chapter_index} 章",
-                    start_chapter_index=chapter_index,
-                    status="active",
-                ))
+            # T2 R2：统一 upsert（存在则更新出场章与状态，不存在则创建）
+            get_or_create_longform_memory(
+                ctx.db, ctx.project_id, "entity_state", name,
+                defaults={
+                    "title": name,
+                    "summary": f"「{name}」出现在第 {chapter_index} 章",
+                    "start_chapter_index": chapter_index,
+                    "status": "active",
+                },
+                updates={"end_chapter_index": chapter_index, "status": "active"},
+            )
 
 
 def _update_project_word_count(ctx: ToolContext) -> None:
