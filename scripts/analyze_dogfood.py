@@ -1,6 +1,6 @@
 """Dogfood 实验分析：把 DB + 会话日志汇总为结构化报告，供后续优化决策。
 
-用法：python scripts/analyze_dogfood.py --project-id <id> [--out C:\tmp\dogfood_reports]
+用法：python scripts/analyze_dogfood.py --project-id <id> [--out <dir>]
 
 输出：
   <out>/<project_id>_chapters.csv   —— 每章字数/状态

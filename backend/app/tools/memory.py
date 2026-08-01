@@ -48,13 +48,25 @@ async def track_plotline(
                 LongformMemory.project_id == ctx.project_id,
                 LongformMemory.memory_type == "plotline",
                 LongformMemory.scope_key == title,
-                LongformMemory.status == "open",
             )
             .first()
         )
         if existing:
+            if existing.status == "open":
+                return ToolResult.ok({
+                    "action": "already_exists",
+                    "id": existing.id,
+                    "title": title,
+                    "status": "open",
+                })
+            # 重新打开已闭环的情节线（复用同一行，唯一约束按 scope_key 生效）
+            existing.status = "open"
+            existing.summary = summary or existing.summary
+            existing.start_chapter_index = chapter_index or existing.start_chapter_index
+            existing.end_chapter_index = None
+            ctx.db.commit()
             return ToolResult.ok({
-                "action": "already_exists",
+                "action": "reopened",
                 "id": existing.id,
                 "title": title,
                 "status": "open",

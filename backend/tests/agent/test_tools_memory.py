@@ -57,6 +57,29 @@ async def test_track_plotline_close(ctx: ToolContext):
 
 
 @pytest.mark.asyncio
+async def test_track_plotline_reopen_after_close_avoids_unique_conflict(ctx: ToolContext):
+    """闭环后再次 open 同标题应复用记录，不触发唯一约束（200 章实验暴露）。"""
+    opened = await track_plotline(ctx, action="open", title="线X", summary="旧摘要", chapter_index=1)
+    assert not opened.is_error
+    closed = await track_plotline(ctx, action="close", title="线X", chapter_index=5)
+    assert not closed.is_error
+    reopened = await track_plotline(ctx, action="open", title="线X", summary="新摘要", chapter_index=6)
+    assert not reopened.is_error
+    assert reopened.data["action"] == "reopened"
+
+    rows = (
+        ctx.db.query(LongformMemory)
+        .filter(
+            LongformMemory.memory_type == "plotline",
+            LongformMemory.scope_key == "线X",
+        )
+        .all()
+    )
+    assert len(rows) == 1
+    assert rows[0].status == "open"
+
+
+@pytest.mark.asyncio
 async def test_track_plotline_query(ctx: ToolContext):
     mems = [
         LongformMemory(project_id=ctx.project_id, memory_type="plotline", scope_key="线A", title="线A", status="open"),
