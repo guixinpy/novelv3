@@ -47,6 +47,9 @@
 **决策**：会话真相源是追加式 JSONL（openclaw 模式，支持断点恢复与压缩条目）；同时写 `WritingAgentRun/Step` 表供前端轨迹可视化与查询。
 **理由**：JSONL 给恢复与调试，DB 给 UI 与统计；复用现有表避免前端重写。
 
+**修订（2026-08-01）**：v2 会话持久化以 JSONL 为唯一真相源（data/agent_sessions/），不再要求双写 WritingAgentRun/Step DB 表；该 DB 表保留为 athena v1 对话的兼容数据路径（dialog_utils.py 仍创建记录），不为其新建 UI 或统计。若未来需要统计/可视化，从 JSONL 投影。
+**修订理由**：实证审计发现 v2 循环从未写入 DB 轨，旧轨迹面板（frontend/src/components/writingAgent/，已删除）是 DB 轨的唯一消费者；双写增加一致性负担但没有消费方。
+
 ### CADR-005 · 先通用内核、后领域专化的结构分界
 
 **日期**：2026-06-11
