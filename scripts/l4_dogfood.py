@@ -84,6 +84,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--target-chapter", type=int, default=50, help="Project target chapter count for PASS")
     p.add_argument("--timeout", type=int, default=600, help="Timeout per chapter (s)")
     p.add_argument("--start-chapter", type=int, default=1, help="Starting chapter index")
+    p.add_argument("--recall-only", action="store_true", help="只跑记忆召回验证，不写章节")
     return p.parse_args()
 
 
@@ -280,6 +281,14 @@ async def main() -> None:
     )
 
     try:
+        if args.recall_only:
+            print("=" * 60)
+            print("L4 Memory Recall Verification Only")
+            print("=" * 60)
+            recall_ok = await runner.verify_memory_recall()
+            print("\nRECALL PASS" if recall_ok else "\nRECALL FAIL")
+            sys.exit(0 if recall_ok else 1)
+
         # Main dogfood run
         print("=" * 60)
         print("L4 Memory Dogfood: 50-Chapter Generation")
