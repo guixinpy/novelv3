@@ -26,6 +26,30 @@ from app.agent.tooling import ToolContext, ToolRegistry
 import asyncio
 
 
+def _sanitize_tool_message_order(history: list[dict]) -> list[dict]:
+    """删除孤立的 tool 消息（前面没有带 tool_calls 的 assistant 消息）。
+
+    DeepSeek 要求 tool 消息必须响应某条 assistant(tool_calls)；
+    压缩把中间 assistant 收进摘要后，会留下无配对的 tool 消息导致 HTTP 400。
+    """
+    cleaned: list[dict] = []
+    for msg in history:
+        if msg.get("role") == "tool":
+            prev_non_tool: dict | None = None
+            for m in reversed(cleaned):
+                if m.get("role") != "tool":
+                    prev_non_tool = m
+                    break
+            if (
+                prev_non_tool is None
+                or prev_non_tool.get("role") != "assistant"
+                or "tool_calls" not in prev_non_tool
+            ):
+                continue
+        cleaned.append(msg)
+    return cleaned
+
+
 @dataclass
 class HarnessConfig:
     system_prompt: str
@@ -169,6 +193,7 @@ class AgentHarness:
             await sink(ContextWarning(usage_pct=round(pct, 3), total_tokens=total, max_tokens=128_000))
             compressed = compact_history(history)
             if len(compressed) < len(history):
+                compressed = _sanitize_tool_message_order(compressed)
                 summary = next(
                     (m.get("content", "") for m in compressed
                      if isinstance(m.get("content"), str) and m["content"].startswith("[上下文压缩]")),

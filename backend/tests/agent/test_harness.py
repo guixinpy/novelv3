@@ -3,7 +3,7 @@ import json
 import pytest
 
 from app.agent.events import AssistantMessage, TurnEnded
-from app.agent.harness import AgentHarness, HarnessConfig
+from app.agent.harness import AgentHarness, HarnessConfig, _sanitize_tool_message_order
 from app.agent.loop import StopReason
 from app.agent.tooling import ToolContext, ToolRegistry, ToolResult, tool
 from test_support.agent_fakes import FakeProvider, call, text_response, tool_response
@@ -43,6 +43,22 @@ async def drain(harness, text):
     async for event in harness.send(text):
         events.append(event)
     return events
+
+
+def test_sanitize_tool_message_order_removes_orphans():
+    history = [
+        {"role": "user", "content": "写吧"},
+        {"role": "assistant", "content": None, "tool_calls": [{"id": "c1", "type": "function", "function": {"name": "write_chapter", "arguments": "{}"}}]},
+        {"role": "tool", "tool_call_id": "c1", "content": "{\"ok\": true}"},
+        {"role": "user", "content": "压缩摘要占位"},
+        {"role": "tool", "tool_call_id": "c2", "content": "{\"ok\": true}"},  # 孤儿：前一条非 tool 是 user
+        {"role": "assistant", "content": "继续", "tool_calls": [{"id": "c3", "type": "function", "function": {"name": "read_chapter", "arguments": "{}"}}]},
+        {"role": "tool", "tool_call_id": "c3", "content": "{\"ok\": true}"},
+        {"role": "tool", "tool_call_id": "c4", "content": "{\"ok\": true}"},  # 多条 tool 跟同一 assistant：保留
+    ]
+    cleaned = _sanitize_tool_message_order(history)
+    tool_ids = [m.get("tool_call_id") for m in cleaned if m.get("role") == "tool"]
+    assert tool_ids == ["c1", "c3", "c4"]
 
 
 @pytest.mark.asyncio
