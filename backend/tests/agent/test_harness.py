@@ -213,3 +213,124 @@ async def test_budget_config_respected(tmp_path):
     events = await drain(harness, "hi")
     ended = [e for e in events if isinstance(e, TurnEnded)]
     assert ended[-1].stop_reason == StopReason.ITERATION_BUDGET_EXHAUSTED.value
+
+
+# ── T1 R2: 回合内工具错误 → 通用「错误诊断 + 下一步建议」注入 ──
+
+
+@pytest.mark.asyncio
+async def test_tool_error_injects_recovery_message(tmp_path):
+    """工具错误后，同一 send 内自动注入错误诊断 + 下一步建议。"""
+    provider = FakeProvider([
+        tool_response(call("read_chapter", '{"missing_param": 1}')),
+        text_response("我改用正确参数。"),
+        text_response("修复完成"),
+    ])
+    harness = make_harness(tmp_path, provider)
+    events = await drain(harness, "读第一章")
+
+    # follow-up 回合（第 3 次调用）携带了注入的错误诊断 user 消息
+    assert len(provider.calls) == 3
+    recovery_user = provider.calls[2][-1]
+    assert recovery_user["role"] == "user"
+    assert "工具调用失败" in recovery_user["content"]
+    assert "read_chapter" in recovery_user["content"]
+    assert "建议" in recovery_user["content"]
+    # 注入消息本身不再触发新的错误（回合粒度防抖）
+    finals = [e for e in events if isinstance(e, AssistantMessage)]
+    assert finals[-1].content == "修复完成"
+
+
+@pytest.mark.asyncio
+async def test_error_recovery_injected_at_most_once_per_turn(tmp_path):
+    """一个回合内多次工具错误 → 只注入一条汇总消息。"""
+    provider = FakeProvider([
+        tool_response(call("read_chapter", '{"bad": 1}', id="a"), call("read_chapter", '{"bad": 2}', id="b")),
+        text_response("两条都错了，我换工具。"),
+        text_response("完成"),
+    ])
+    harness = make_harness(tmp_path, provider)
+    await drain(harness, "hi")
+
+    user_msgs = [
+        m for call in provider.calls
+        for m in call if m["role"] == "user" and "工具调用失败" in str(m.get("content", ""))
+    ]
+    assert len(user_msgs) == 1
+    assert "2 次" in user_msgs[0]["content"]
+
+
+@pytest.mark.asyncio
+async def test_guard_trip_skips_generic_error_recovery(tmp_path):
+    """GuardTripped 已注入恢复建议时，不再注入通用错误恢复（guard 版优先级更高）。"""
+    provider = FakeProvider([
+        tool_response(call("write_chapter", '{"content": "1"}', id="c0")),
+        tool_response(call("write_chapter", '{"content": "1"}', id="c1")),
+        tool_response(call("write_chapter", '{"content": "1"}', id="c2")),
+        text_response("好的"),
+    ])
+    harness = make_harness(tmp_path, provider)
+    await drain(harness, "hi")
+
+    recovery_texts = [
+        m.get("content", "") for call in provider.calls
+        for m in call if m["role"] == "user"
+    ]
+    # L1 guard（连续 3 次相同调用）触发恢复建议，但不应出现通用工具错误诊断
+    assert any("护栏触发" in t for t in recovery_texts)
+    assert not any("工具调用失败" in t for t in recovery_texts)
+
+
+# ── T1 R3: 压缩后重放一致性（sanitize 边界矩阵） ──
+
+
+def test_sanitize_removes_tool_first_message():
+    """tool 消息打头（前无 assistant tool_calls）→ 孤立删除。"""
+    history = [
+        {"role": "tool", "tool_call_id": "c0", "content": "{}"},
+        {"role": "user", "content": "开始"},
+        {"role": "assistant", "content": None, "tool_calls": [{"id": "c1", "type": "function", "function": {"name": "read_chapter", "arguments": "{}"}}]},
+        {"role": "tool", "tool_call_id": "c1", "content": "{}"},
+    ]
+    cleaned = _sanitize_tool_message_order(history)
+    tool_ids = [m.get("tool_call_id") for m in cleaned if m.get("role") == "tool"]
+    assert tool_ids == ["c1"]
+
+
+def test_sanitize_removes_orphan_at_end():
+    """末尾孤立 tool（前一条是 assistant 但无 tool_calls）→ 删除。"""
+    history = [
+        {"role": "user", "content": "写吧"},
+        {"role": "assistant", "content": "好的"},
+        {"role": "tool", "tool_call_id": "c9", "content": "{}"},
+    ]
+    cleaned = _sanitize_tool_message_order(history)
+    assert not any(m.get("role") == "tool" for m in cleaned)
+
+
+def test_sanitize_keeps_tools_after_each_assistant_tool_call():
+    """多条 assistant(tool_calls) 各自跟 tool 消息 → 全部保留。"""
+    history = [
+        {"role": "user", "content": "读"},
+        {"role": "assistant", "content": None, "tool_calls": [{"id": "a", "type": "function", "function": {"name": "read_chapter", "arguments": "{}"}}]},
+        {"role": "tool", "tool_call_id": "a", "content": "{}"},
+        {"role": "assistant", "content": None, "tool_calls": [{"id": "b", "type": "function", "function": {"name": "read_chapter", "arguments": "{}"}}]},
+        {"role": "tool", "tool_call_id": "b", "content": "{}"},
+    ]
+    cleaned = _sanitize_tool_message_order(history)
+    tool_ids = [m.get("tool_call_id") for m in cleaned if m.get("role") == "tool"]
+    assert tool_ids == ["a", "b"]
+
+
+def test_sanitize_then_compact_then_sanitize_is_stable():
+    """压缩后的历史再次 sanitize → 幂等（压缩摘要不产生新的孤立 tool 消息）。"""
+    history = [
+        {"role": "system", "content": "sys"},
+        {"role": "user", "content": "[上下文压缩] 中间消息被压缩。"},
+        {"role": "assistant", "content": None, "tool_calls": [{"id": "c1", "type": "function", "function": {"name": "read_chapter", "arguments": "{}"}}]},
+        {"role": "tool", "tool_call_id": "c1", "content": "{}"},
+        {"role": "assistant", "content": "继续"},
+    ]
+    cleaned_once = _sanitize_tool_message_order(history)
+    cleaned_twice = _sanitize_tool_message_order(cleaned_once)
+    assert [m for m in cleaned_twice] == [m for m in cleaned_once]

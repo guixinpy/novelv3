@@ -247,3 +247,40 @@ async def test_assistant_message_event_carries_final_content():
     finals = [e for e in events if isinstance(e, AssistantMessage)]
     assert len(finals) == 1
     assert finals[0].content == "最终回答"
+
+
+@pytest.mark.asyncio
+async def test_before_tool_call_hook_exception_blocked_not_raised():
+    """T1 R1: before_tool_call 钩子自身抛异常 → 回合不崩，fail-closed 拦截该工具调用。"""
+    provider = FakeProvider([
+        tool_response(call("read_chapter", '{"chapter_index": 1}')),
+        text_response("好的，换一个方案。"),
+    ])
+    events, sink = collect_events()
+
+    async def exploding_hook(name: str, arguments: dict | None, ctx: ToolContext):
+        raise RuntimeError("审批门内部故障")
+
+    result = await run_turn(
+        provider=provider,
+        messages=[{"role": "user", "content": "hi"}],
+        registry=make_registry(),
+        tool_context=ToolContext(project_id=1),
+        iteration_budget=IterationBudget(10),
+        token_budget=TokenBudget(None),
+        event_sink=sink,
+        before_tool_call=exploding_hook,
+    )
+    assert result.stop_reason == StopReason.COMPLETED
+    tool_msg = provider.calls[1][-1]
+    assert tool_msg["role"] == "tool"
+    assert "前置检查异常" in tool_msg["content"]
+    assert "审批门内部故障" in tool_msg["content"]
+    finishes = [e for e in events if isinstance(e, ToolCallFinished)]
+    assert len(finishes) == 1
+    assert finishes[0].is_error is True
+    # 工具未被实际执行：注册的工具 handler 不应被调用
+    assert not any(
+        m["role"] == "tool" and "第1章正文" in m["content"]
+        for m in provider.calls[1]
+    )
