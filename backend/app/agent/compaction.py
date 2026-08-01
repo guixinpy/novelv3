@@ -7,6 +7,8 @@
 """
 from __future__ import annotations
 
+import json
+
 # ── 防抖状态（模块级，跨 turn 保持） ──
 
 _last_compression_stats: dict = {"count": 0, "last_savings": []}  # 最近两次节省比例
@@ -140,11 +142,14 @@ def _build_summary_text(history: list[dict], start: int, end: int) -> str:
     tool_names = set()
     assistant_count = 0
     error_count = 0
+    recent_writes: list[tuple[int, int]] = []
+    quality_checks: list[tuple[int, str]] = []
 
     for m in middle:
         role = m.get("role", "")
         content = str(m.get("content", ""))
-        if role == "user" and content:
+        # 跳过旧压缩摘要，避免嵌套膨胀（M5 200 章实测：摘要内嵌上一轮摘要）
+        if role == "user" and content and not content.startswith("[上下文压缩]"):
             user_msgs.append(content[:200])
         elif role == "assistant":
             assistant_count += 1
@@ -157,6 +162,19 @@ def _build_summary_text(history: list[dict], start: int, end: int) -> str:
             c = str(m.get("content", ""))
             if "error" in c.lower() or "失败" in c or "不存在" in c:
                 error_count += 1
+            try:
+                parsed = json.loads(c)
+            except (ValueError, TypeError):
+                parsed = None
+            if isinstance(parsed, dict):
+                if parsed.get("status") == "written" and "chapter_index" in parsed:
+                    recent_writes.append(
+                        (int(parsed["chapter_index"]), int(parsed.get("word_count") or 0))
+                    )
+                elif parsed.get("quality") in ("pass", "fail"):
+                    quality_checks.append(
+                        (parsed.get("chapter_index"), parsed["quality"])
+                    )
 
     parts = [
         f"[上下文压缩] 中间 {len(middle)} 条消息被压缩。",
@@ -166,6 +184,12 @@ def _build_summary_text(history: list[dict], start: int, end: int) -> str:
         parts.append(f"调用的工具: {', '.join(sorted(tool_names))}。")
     if error_count:
         parts.append(f"⚠ 其中 {error_count} 次工具调用返回错误。")
+    if recent_writes:
+        writes = ", ".join(f"Ch{i}:{w}字" for i, w in recent_writes[-8:])
+        parts.append(f"最近写入章节: {writes}。")
+    if quality_checks:
+        qs = ", ".join(f"Ch{i}:{q}" for i, q in quality_checks[-8:])
+        parts.append(f"质量自检: {qs}。")
     if user_msgs:
         parts.append(f"用户关注点: {'; '.join(user_msgs[:5])}。")
 
