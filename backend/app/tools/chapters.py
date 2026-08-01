@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from app.agent.tooling import ToolContext, ToolResult, tool
-from app.models import ChapterContent, LongformMemory, Project, WorldCharacter, WorldLocation
+from app.models import ChapterContent, LongformMemory, Project, Setup, WorldCharacter, WorldLocation
 from app.tools.registry import registry
 
 
@@ -96,6 +96,12 @@ def _capture_entities(ctx: ToolContext, content: str, chapter_index: int) -> Non
         known_entities[c.name] = "character"
     for l in ctx.db.query(WorldLocation).filter(WorldLocation.project_id == ctx.project_id).all():
         known_entities[l.name] = "location"
+    # update_setup 写入的角色（Setups 表）也作为已知实体，否则 entity_state 记忆永远为空
+    setup = ctx.db.query(Setup).filter(Setup.project_id == ctx.project_id).first()
+    if setup is not None and setup.characters:
+        for ch in setup.characters:
+            if isinstance(ch, dict) and ch.get("name"):
+                known_entities[str(ch["name"])] = "character"
 
     for name, etype in known_entities.items():
         if name in content:

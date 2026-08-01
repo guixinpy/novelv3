@@ -4,7 +4,7 @@ from __future__ import annotations
 import pytest
 
 from app.agent.tooling import ToolContext
-from app.models import ChapterContent, Outline, Project, Setup
+from app.models import ChapterContent, LongformMemory, Outline, Project, Setup
 from app.tools.chapters import write_chapter, revise_chapter, list_chapters, read_chapter
 from app.tools.project import update_outline, update_setup, get_project_state
 
@@ -55,6 +55,27 @@ async def test_write_chapter_advances_project_status(ctx: ToolContext):
     project = ctx.db.query(Project).filter(Project.id == ctx.project_id).first()
     assert project.status == "writing"
     assert project.current_phase == "content"
+
+
+@pytest.mark.asyncio
+async def test_write_chapter_captures_setup_characters_as_entity_state(ctx: ToolContext):
+    """update_setup 写入的角色出现在正文中时，应生成 entity_state 记忆。"""
+    await update_setup(ctx, characters=[{"name": "沈砚", "role": "主角"}])
+
+    result = await write_chapter(ctx, chapter_index=1, content="沈砚走进雾镇。")
+    assert not result.is_error
+
+    mem = (
+        ctx.db.query(LongformMemory)
+        .filter(
+            LongformMemory.project_id == ctx.project_id,
+            LongformMemory.memory_type == "entity_state",
+            LongformMemory.scope_key == "沈砚",
+        )
+        .first()
+    )
+    assert mem is not None
+    assert mem.status == "active"
 
 
 @pytest.mark.asyncio
