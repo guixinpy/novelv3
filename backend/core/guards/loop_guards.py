@@ -38,7 +38,7 @@ def _result_similar(a: str, b: str) -> float:
     longer = max(len(a), len(b))
     if longer == 0:
         return 1.0
-    matches = sum(1 for ca, cb in zip(a, b) if ca == cb)
+    matches = sum(1 for ca, cb in zip(a, b, strict=False) if ca == cb)
     return matches / longer
 
 

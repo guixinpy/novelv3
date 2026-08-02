@@ -13,7 +13,6 @@
 """
 from __future__ import annotations
 
-import asyncio
 import json
 import uuid
 from pathlib import Path
@@ -23,13 +22,12 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from domain.memory.project_snapshot import build_project_snapshot
 from app.db import get_db
 from core.approval import ApprovalGate
-from core.events import ApprovalPending, AgentStart, TurnStart
 from core.harness import AgentHarness, HarnessConfig
 from core.providers.deepseek import DeepSeekProvider
 from core.tools.base import ToolContext, ToolRegistry
+from domain.memory.project_snapshot import build_project_snapshot
 from domain.tools.memory_tools import register_memory_tools
 from domain.tools.retrieval_tools import register_retrieval_tools
 from domain.tools.writing_tools import register_writing_tools

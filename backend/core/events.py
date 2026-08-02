@@ -6,10 +6,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 
 
-class EventKind(str, Enum):
+class EventKind(StrEnum):
     AGENT_START = "agent_start"
     TURN_START = "turn_start"
     ASSISTANT_DELTA = "assistant_delta"
@@ -28,7 +28,7 @@ class EventKind(str, Enum):
 class LoopEvent:
     kind: EventKind
 
-    def with_id(self, event_id: str) -> "LoopEvent":
+    def with_id(self, event_id: str) -> LoopEvent:
         object.__setattr__(self, "event_id", event_id)
         return self
 

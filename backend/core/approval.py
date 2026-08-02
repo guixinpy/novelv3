@@ -61,7 +61,7 @@ class ApprovalGate:
 
         try:
             await asyncio.wait_for(event.wait(), timeout=self._timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             # 超时自动拒绝（fail-closed），防 SSE 无限挂起
             approved = False
             reason = "审批等待超时（10 分钟未决策），已自动拒绝。"

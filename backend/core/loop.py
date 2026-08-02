@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from core.events import (
@@ -39,7 +39,7 @@ BeforeToolCall = Callable[[str, dict | None, ToolContext], Awaitable[str | None]
 SteeringSource = Callable[[], list[str]]
 
 
-class StopReason(str, Enum):
+class StopReason(StrEnum):
     COMPLETED = "completed"
     ITERATION_BUDGET_EXHAUSTED = "iteration_budget_exhausted"
     TOKEN_BUDGET_EXHAUSTED = "token_budget_exhausted"

@@ -10,22 +10,24 @@ from __future__ import annotations
 
 import inspect
 import json
+from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Any, Callable
+from enum import StrEnum
+from typing import Any
 
 from pydantic import BaseModel, ValidationError
 
 from core.providers.base import ToolSpec
 
 
-class PermissionLevel(str, Enum):
+class PermissionLevel(StrEnum):
     READ = "read"          # 直接执行
     PROPOSE = "propose"    # 产生提案，待审批后生效
     WRITE = "write"        # 经审批门执行
 
 
-class FailureCategory(str, Enum):
+class FailureCategory(StrEnum):
     VALIDATION = "validation"      # 参数/格式错误——模型可自行修正
     UNKNOWN_TOOL = "unknown_tool"  # 幻觉工具名
     TRANSIENT = "transient"        # 可重试（网络/限流）
@@ -72,7 +74,7 @@ class ToolResult:
         return self.error is not None
 
     @staticmethod
-    def ok(data: Any, artifact: ArtifactRef | None = None) -> "ToolResult":
+    def ok(data: Any, artifact: ArtifactRef | None = None) -> ToolResult:
         return ToolResult(data=data, artifact=artifact)
 
     @staticmethod
@@ -80,7 +82,7 @@ class ToolResult:
         error: str,
         error_code: str = "tool_failed",
         category: FailureCategory = FailureCategory.INTERNAL,
-    ) -> "ToolResult":
+    ) -> ToolResult:
         return ToolResult(error=error, error_code=error_code, category=category)
 
     def to_model_text(self) -> str:
@@ -197,10 +199,8 @@ def _rollback(ctx: ToolContext) -> None:
     db = getattr(ctx, "db", None)
     rollback = getattr(db, "rollback", None)
     if callable(rollback):
-        try:
+        with suppress(Exception):
             rollback()
-        except Exception:
-            pass
 
 
 def _example_arguments(args_model: type[BaseModel]) -> dict:

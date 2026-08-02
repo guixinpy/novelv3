@@ -65,9 +65,7 @@ class CompactionState:
         self._savings_history.append(saving_ratio)
         if len(self._savings_history) > 2:
             self._savings_history = self._savings_history[-2:]
-        if len(self._savings_history) >= 2 and all(s < 0.10 for s in self._savings_history):
-            return False
-        return True
+        return not (len(self._savings_history) >= 2 and all(s < 0.10 for s in self._savings_history))
 
     def mark_compacted(self) -> None:
         self._compaction_count += 1

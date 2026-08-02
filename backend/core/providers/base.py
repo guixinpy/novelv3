@@ -28,7 +28,7 @@ class ToolCall:
     arguments: dict | None
 
     @staticmethod
-    def from_raw(id: str, name: str, arguments_raw: str) -> "ToolCall":
+    def from_raw(id: str, name: str, arguments_raw: str) -> ToolCall:
         try:
             parsed = json.loads(arguments_raw) if arguments_raw.strip() else {}
             if not isinstance(parsed, dict):

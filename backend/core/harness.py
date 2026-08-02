@@ -18,6 +18,7 @@ from collections import deque
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from core.context.compaction import CompactionState, check_context_usage, compact_history
 from core.events import (
@@ -35,8 +36,6 @@ from core.loop import BeforeToolCall, EventSink, run_turn
 from core.providers.base import Provider
 from core.session.transcript import Transcript, strip_api_fields
 from core.tools.base import ToolContext, ToolRegistry
-
-from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from core.approval import ApprovalGate
@@ -89,7 +88,7 @@ class AgentHarness:
         tool_context: ToolContext,
         config: HarnessConfig,
         before_tool_call: BeforeToolCall | None = None,
-        approval_gate: "ApprovalGate | None" = None,
+        approval_gate: ApprovalGate | None = None,
         snapshot_provider: SnapshotProvider | None = None,
         injection_provider: InjectionProvider | None = None,
     ) -> None:
@@ -161,9 +160,8 @@ class AgentHarness:
         - 执行成功后标记；失败/中断不标记（客户端可安全重试）
         """
         async with self._write_lock:
-            if idempotency_key is not None:
-                if idempotency_key in self._processed_idempotency_keys:
-                    return
+            if idempotency_key is not None and idempotency_key in self._processed_idempotency_keys:
+                return
             try:
                 async for event in self._send_locked(user_text):
                     yield event

@@ -57,8 +57,8 @@ _STOP_TAIL = set(
     "料末文越满久传粉沫粒沙"
 )
 
-_COMPOUND_RE = re.compile(r"(?:%s)[一-鿿]{1,2}" % "|".join(_COMPOUND_SURNAMES))
-_SINGLE_RE = re.compile(r"(?:[%s])[一-鿿]{1,2}" % "".join(_COMMON_SURNAMES))
+_COMPOUND_RE = re.compile(rf"(?:{'|'.join(_COMPOUND_SURNAMES)})[一-鿿]{{1,2}}")
+_SINGLE_RE = re.compile(rf"(?:[{''.join(_COMMON_SURNAMES)}])[一-鿿]{{1,2}}")
 
 
 _HAN_CHAR = re.compile(r"[一-鿿]")

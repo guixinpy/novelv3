@@ -18,26 +18,27 @@ plan → execute ⇄ review → finalize durable 图：
 """
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Any, Awaitable, Callable
+from enum import StrEnum
+from typing import Any
 
 
-class StepKind(str, Enum):
+class StepKind(StrEnum):
     PLAN = "plan"
     EXECUTE = "execute"
     REVIEW = "review"
     FINALIZE = "finalize"
 
 
-class WorkflowStatus(str, Enum):
+class WorkflowStatus(StrEnum):
     PENDING = "pending"
     RUNNING = "running"
     FINALIZED = "finalized"
     FAILED = "failed"
 
 
-class ReviewCommand(str, Enum):
+class ReviewCommand(StrEnum):
     """review 节点的条件路由输出。"""
 
     APPROVE = "approve"

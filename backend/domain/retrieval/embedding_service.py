@@ -10,7 +10,6 @@ from typing import Protocol
 
 import httpx
 
-
 DEFAULT_LOCAL_DIMENSIONS = 96
 
 

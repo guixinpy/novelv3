@@ -10,9 +10,9 @@ from fastapi import HTTPException
 from sqlalchemy import and_, func, or_, text
 from sqlalchemy.orm import Session
 
+from app.models import ChapterContent, LongformMemory, Project, RetrievalDocument
 from domain.memory.outline_lookup import find_outline_chapter
 from domain.memory.project_stats import reconcile_project_word_count
-from app.models import ChapterContent, LongformMemory, Project, RetrievalDocument
 
 DEFAULT_ARC_SIZE = 20
 DEFAULT_VOLUME_SIZE = 100

@@ -6,13 +6,12 @@
 from __future__ import annotations
 
 import re
-from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.models import ChapterContent, LongformMemory
 from domain.memory.longform_memory import get_or_create_longform_memory
 from domain.retrieval.athena_retrieval import search_retrieval
-from app.models import ChapterContent, LongformMemory
 
 _PLOTLINE_TITLE_MAX = 60
 _PLOTLINE_TITLE_TEMPLATE = "标题格式建议：核心冲突关键词，如「林舟身世之谜」；避免含章节序号。"
@@ -145,7 +144,7 @@ def track_plotline(
             )
             latest_index = latest_row[0] if latest_row else 0
             stale_open: list[str] = []
-            for item, m in zip(result["plotlines"], memories):
+            for item, m in zip(result["plotlines"], memories, strict=False):
                 if (
                     m.status == "open"
                     and m.start_chapter_index is not None

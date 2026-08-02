@@ -9,13 +9,12 @@
 """
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from pydantic import BaseModel, Field
 
 from core.tools.artifact import validate_artifact_path
-from core.tools.base import ArtifactRef, ToolContext, ToolResult, ToolRegistry, tool
+from core.tools.base import ArtifactRef, ToolContext, ToolRegistry, ToolResult, tool
 from domain.writing.format_checker import check_chapter_hook, check_text_format
 from domain.writing.structural_similarity import detect_structure_repeats
 

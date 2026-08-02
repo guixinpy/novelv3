@@ -11,14 +11,6 @@ from fastapi import HTTPException
 from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session, load_only
 
-from domain.retrieval.embedding_service import (
-    EmbeddingProvider,
-    cosine_similarity,
-    get_embedding_provider,
-    tokenize_for_retrieval,
-    vector_hash,
-)
-from domain.memory.outline_lookup import find_outline_chapter
 from app.models import (
     ChapterContent,
     LongformMemory,
@@ -28,6 +20,15 @@ from app.models import (
     RetrievalEmbedding,
     RetrievalTerm,
 )
+from domain.memory.outline_lookup import find_outline_chapter
+from domain.retrieval.embedding_service import (
+    EmbeddingProvider,
+    cosine_similarity,
+    get_embedding_provider,
+    tokenize_for_retrieval,
+    vector_hash,
+)
+
 KNOWLEDGE_CANDIDATES_KEY = "knowledge_base_candidates"
 
 
@@ -637,10 +638,7 @@ def _retrieval_reason(item: dict[str, Any], *, user_query: str | None, max_chapt
     lexical_score = item.get("lexical_score", 0)
     vector_score = item.get("vector_score", 0)
     query_reason = "用户查询" if (user_query or "").strip() else "目标章节上下文"
-    if lexical_score >= vector_score:
-        match_type = "关键词命中"
-    else:
-        match_type = "语义相似"
+    match_type = "关键词命中" if lexical_score >= vector_score else "语义相似"
     return f"{query_reason}触发，{match_type}，得分 {score}，范围限制至第{max_chapter_index}章"
 
 
