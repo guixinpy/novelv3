@@ -192,7 +192,6 @@ async def test_check_structure_repeat_detects_template_loop(ctx: ToolContext):
     assert data["repeated"] is True
     types = {i["type"] for i in data["issues"]}
     assert "title_repeat" in types
-    assert "structure_repeat" in types
 
 
 @pytest.mark.asyncio

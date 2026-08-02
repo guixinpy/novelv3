@@ -368,9 +368,8 @@ async def check_chapter_format(ctx: ToolContext, chapter_index: int) -> ToolResu
     registry=registry,
     name="check_structure_repeat",
     description=(
-        "检测最近 N 章是否存在结构级重复（标题重复、结尾句式雷同的模板循环，"
-        "如「换名城」副本连刷）。repeated=true 时请更换冲突类型/人物关系/解法，"
-        "避免同一套路循环。每写完一个副本/卷末建议调用。"
+        "检测最近 N 章是否存在标题重复（规范化后相同的标题出现 ≥2 次）。"
+        "repeated=true 时请更换标题，避免同一主题循环。每写完一个副本/卷末建议调用。"
     ),
     permission="read",
     parameters={
