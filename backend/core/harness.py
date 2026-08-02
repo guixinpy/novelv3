@@ -257,7 +257,8 @@ class AgentHarness:
 
         async def persisting_sink(event: LoopEvent) -> None:
             if isinstance(event, TurnEnded):
-                self.transcript.append_message({"role": "agent_turn_ended", "data": event.__dict__})
+                # 回合结束元数据只写日志（事件重放用），绝不进入 messages（会被发给模型）
+                self.transcript.record_event("turn_ended", event.__dict__)
             elif isinstance(event, GuardTripped):
                 guard_diagnoses.append(event.diagnosis)
             await sink(event)

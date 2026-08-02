@@ -1,7 +1,8 @@
 import os
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
+# backend/app/database_url.py → parents[2] = repo 根（novelv3forclaude）
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 def sqlite_file_url(path: Path) -> str:

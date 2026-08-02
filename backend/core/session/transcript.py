@@ -79,6 +79,10 @@ class Transcript:
         self._append_log("compaction", {"messages": compressed, "summary": summary})
         self.messages = list(compressed[1:])
 
+    def record_event(self, entry_type: str, data: dict) -> None:
+        """只写日志、不进 messages 的事件记录（如 turn_ended 元数据）。"""
+        self._append_log(entry_type, data)
+
     def _append_log(self, entry_type: str, data: dict) -> None:
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
         with open(self.log_path, "a", encoding="utf-8") as f:
