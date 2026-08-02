@@ -114,11 +114,31 @@
 
 遗留（未纳入本次范围）：
 - 两级压缩 LLM 摘要版（预算允许时，hermes Frozen Snapshot 模式）→ P2 候选
-- 结构相似度主题词表需随新实验补充
-- 第二部结构策略 → P1 待决策（v1 管线、prompting、实体登记均已决）
+- 结构相似度主题词表需随新实验补充 → 已立为去特化子任务（内容无关结构特征）
 - `execute_agent_api_tool`（dialog_utils）是 stub（只写运行记录不真生成）；`chapters.generate` 与
   athena 生成端点（/athena/ontology/generate、/athena/evolution/plan/generate）均为 control-plane 记录模式，
   真实生成由 v2 agent 会话完成；若需同步生成需真实现 agent 执行 → 待决策
+
+## 2026-08-01 能力框架确立：六项工程不变量（用户拍板，长期判断标准）
+
+harness 只约束**对任何题材成立**的写作工程不变量，情节内容（题材/风格/反派形态/冲突类型/卷部结构/
+情节走向）完全留给模型——内容特化会污染创作自由、导致产出同一化：
+
+1. **一致性**：人物/地点/事件/设定跨章不矛盾（实体登记、query_memory、事实表）
+2. **连续性**：章间衔接、因果不断裂（状态快照、relation_to_previous）
+3. **结构完整性**：伏笔登记-回收闭环、收束（endgame/must_resolve）
+4. **节奏管理**：篇幅/信息密度/不注水（check_quality_trend）
+5. **格式语言**：标点/排版/语言规范（check_chapter_format）
+6. **容错恢复**：幻觉/走偏纠偏（hook 兜底/错误注入/guard）
+
+判断标准：约束对**所有题材**是否成立——成立则 harness 管，否则是特化。
+
+### 弧线规划结构性校验（任务 `08-01-new-part-proposal-gate`，内容无关重构）
+- `plan_arc` define 可选 `relation_to_previous`：接续启动未声明 → 提示（不拒绝）；记录 metadata.arc_relation
+- `progress`：无收束约束 → endgame_hint 提示补 must_resolve（不阻塞）
+- T3 措辞泛化：「禁止新增更早/更深/更初层级」→「优先回收开放线索，暂缓开新线」
+- 原「抽象词黑名单校验反派」草稿撤销（情节内容归模型）
+- 测试：+4；后端 595 passed、前端 485 无回归
 
 ## 2026-08-01 实体登记来源扩展（任务 `08-01-entity-registration-sources`，用户选 C 方案）
 
