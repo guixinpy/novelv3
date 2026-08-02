@@ -204,3 +204,55 @@ harness 只约束**对任何题材成立**的写作工程不变量，情节内�
 - **测试**：+1（provider.complete）；-29（生成端点/迁移历史/adapter 清理用例）；CRUD 用例保留
 - 测试基线（v1 绞杀后实测）：后端 **620 passed**、前端 485 tests、vue-tsc 通过、
   会话回放 20/20 成功、依赖规则测试通过
+
+## 2026-08-02 agent 架构重构（任务 `08-02-agent-arch-refactor`，设计先行+骨架新建）
+
+多轮重构遗留问题 + 参考三个开源 agent（hermes-agent/openclaw/openhuman，各出研究报告中吸收点），
+从基础重构为「agent 为核心」三层架构。前端不参与（后续重写）。
+
+**规划**：prd/design/implement 三件套 + 三份研究报告（research/）；用户决策：
+设计先行+骨架新建 / API 完全自由 / 测试重写为主纯函数移植 / 核心链保留扩展归档。
+
+**阶段 0 归档**（`65bf2991`）：self_optimization 实验链（learned PromptRule）4 文件归档。
+world_* 深度嵌入核心链，延迟到阶段 4 随旧后端整体清理（执行中兑现）。
+
+**阶段 1 内核骨架**（`af2d63ef`）：`backend/core/` 全新内核（领域无关，零业务依赖）：
+- 事件模型（agent_start→turn_end→agent_end 稳定协议）+ TurnState 对象化（hermes）
+- loop：无状态回合 + wall-clock + 优雅暂停（部分结果可续写）+ 失败分类进事件
+- 护栏：五级（L4 改 error_code 判断，修字符串耦合）+ 压缩后循环守卫 PC
+- 上下文：CJK 估算（中文1字≈1.5token，修 len//2）+ 指纹缓存 + CompactionState 实例化
+  （修多会话污染）+ 失败冷却/无效计数 + 状态重注入
+- 工具：pydantic schema 生成（修手写漂移）+ 失败分类学 + 结果归一化 + artifact 落盘 fail-closed
+- 会话：append-only 转录 + 压缩检查点 + 幂等键 + sidecar + 前向兼容
+- harness：steer/followUp 双队列（one-at-a-time）+ 写锁 + KV-cache 契约
+- workflow：plan→execute⇄review→finalize 图机制（worker 注入可测）
+- 测试：scripted mock provider（黄金模式）覆盖重试/护栏/压缩/双队列/优雅暂停
+
+**阶段 2 最小闭环**（`c996dad3`）：domain/writing 纯函数迁入 + chapter_gen 精简生成 +
+domain/tools（write_chapter 落库+artifact/check_format）+ api/v2（会话中心 SSE 事件流）；
+真实生成验证 Ch1《夜色下的信》1079 字。
+
+**阶段 3 领域迁入**（`7da3cdb2`）：domain/memory（snapshot/outline_lookup/longform_memory
+摘 WorldProposalItem 依赖等 7 模块）+ domain/retrieval（entity_miner/athena_retrieval 等 5 模块）；
+工具补齐：track_plotline/query_memory/plan_arc/memory_tree/get_entities/retrieve。
+200 章实验数据可读验证（201 章/28.4 万字/248 条记忆）。
+
+**阶段 4 整链退役**（`474a8f8c`，-18,728 行）：world 全套 42 文件归档兑现；
+旧 agent/tools/api/core/services/schemas 全部删除；main.py 仅挂 v2 路由；
+memory_tools 解除旧包装（业务提取为 domain/memory/memory_service.py）；
+athena_retrieval 摘 WorldFactClaim；旧测试归档 tests-legacy（550+）。
+
+**阶段 5 dogfood**（`80e685bb`）：8 章连续写作全通过（49 工具调用 0 错误、0 护栏触发、
+852-1124 字稳定、章节连贯）。实测修复 2 bug：agent_turn_ended 误入 messages 导致 400、
+database_url PROJECT_ROOT 路径多跳一层（旧 bug）。
+
+**新架构形态**：
+```
+backend/
+├── core/      内核（loop/harness/context/guards/tools/session/workflow/providers）~2,700 行
+├── domain/    领域（writing/memory/retrieval + memory_service + 8 个工具）
+├── api/v2/    新 API（5 端点：sessions/messages/steer/followup/events）
+├── app/       models/db/config/main（数据层）
+└── tests/     79 passed（mock provider 全确定性测试）
+```
+测试基线：新架构 79 passed + dogfood 8 章真实生成验证。代码量累计 -20k+ 行（重构+绞杀）。
