@@ -115,9 +115,20 @@
 遗留（未纳入本次范围）：
 - 两级压缩 LLM 摘要版（预算允许时，hermes Frozen Snapshot 模式）→ P2 候选
 - 结构相似度主题词表需随新实验补充 → 已立为去特化子任务（内容无关结构特征）
-- `execute_agent_api_tool`（dialog_utils）是 stub（只写运行记录不真生成）；`chapters.generate` 与
-  athena 生成端点（/athena/ontology/generate、/athena/evolution/plan/generate）均为 control-plane 记录模式，
-  真实生成由 v2 agent 会话完成；若需同步生成需真实现 agent 执行 → 待决策
+
+## 2026-08-02 stub 生成端点体系清理（任务 `08-02-stub-generation-removal`，四视角评审一致推荐 C）
+
+多视角评审机制首用：创作/产品体验/工程维护/成本收益 4 个子代理并行评估 → 一致推荐删除（stub 硬编码
+success 无审计价值、前端组件零调用、B 方案与审批门/SSE 架构根本矛盾）→ 用户拍板执行：
+
+- **删除**：`execute_agent_api_tool` + 4 个生成端点（chapters.generate / athena ontology/evolution）+ 假错误管道
+  （_raise_if_agent_generation_failed/_with_agent_metadata/LEGACY_GENERATION_400_ERRORS）+ action 3 个 stub 动作
+  + 前端 3 个假生成方法（注释引导 v2 会话）
+- **修复评审盲区**：continuous writing/retry 后台任务此前调 stub 从不真生成 → 改接真路径
+  `create_or_replace_chapter`（trace 关联改 DB 查询）
+- **保留**：WritingAgentRun 表/模型（历史审计）、generate_chapter 动作、GET 查询端点
+- 生成入口收敛为唯一真路径：v2 agent 会话（AgentV2View）
+- 代码量：-443 行；后端 591 passed、前端 485 + vue-tsc 通过
 
 ## 2026-08-01 能力框架确立：六项工程不变量（用户拍板，长期判断标准）
 
