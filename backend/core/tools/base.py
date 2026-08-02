@@ -150,8 +150,20 @@ class ToolRegistry:
                 error_code="validation",
                 category=FailureCategory.VALIDATION,
             )
-        # pydantic 校验（含必填/类型/约束）
+        # pydantic 校验（含必填/类型/约束）。未知参数显式报错而非静默丢弃
+        # （旧 pydantic 默认 extra=ignore 吞掉模型猜测参数，模型学不到正确 schema——
+        # code-review #12）
         if definition.args_model is not None:
+            unknown = sorted(set(arguments) - set(definition.args_model.model_fields))
+            if unknown:
+                known = sorted(definition.args_model.model_fields)
+                example = _example_arguments(definition.args_model)
+                return ToolResult.fail(
+                    f"未知参数 {unknown}。本工具可用参数：{known}。"
+                    f"参数示例：{json.dumps(example, ensure_ascii=False)}。",
+                    error_code="validation",
+                    category=FailureCategory.VALIDATION,
+                )
             try:
                 validated = definition.args_model.model_validate(arguments)
                 resolved: dict[str, Any] = validated.model_dump()

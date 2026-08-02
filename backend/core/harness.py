@@ -36,6 +36,11 @@ from core.providers.base import Provider
 from core.session.transcript import Transcript, strip_api_fields
 from core.tools.base import ToolContext, ToolRegistry
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from core.approval import ApprovalGate
+
 # 快照提供者：由外部（API 层）注入，避免内核依赖领域模块（CADR-005）
 SnapshotProvider = Callable[[], str | None]
 # 状态重注入提供者：压缩后把跨压缩存活的状态（设定/大纲/人物卡）重新注入
@@ -84,6 +89,7 @@ class AgentHarness:
         tool_context: ToolContext,
         config: HarnessConfig,
         before_tool_call: BeforeToolCall | None = None,
+        approval_gate: "ApprovalGate | None" = None,
         snapshot_provider: SnapshotProvider | None = None,
         injection_provider: InjectionProvider | None = None,
     ) -> None:
@@ -93,6 +99,7 @@ class AgentHarness:
         self.tool_context = tool_context
         self.config = config
         self.before_tool_call = before_tool_call
+        self.approval_gate = approval_gate
         self._snapshot_provider = snapshot_provider
         self._injection_provider = injection_provider
         self.transcript = Transcript(Path(session_dir) / f"{session_id}.jsonl")
@@ -105,6 +112,8 @@ class AgentHarness:
         self._processed_idempotency_keys: set[str] = set()
         # 会话写锁：同一会话并发 send 时后者等待（openclaw 写锁思想）
         self._write_lock = asyncio.Lock()
+        # follow-up 链回合上限（P1-7 逃生阀：持久性失败不无限回合）
+        self.max_turns_per_send: int = 5
         self._turn_index = 0
         self._recovery_injected = False
 
@@ -170,10 +179,20 @@ class AgentHarness:
                 await approval_queue.put(event)
             await main_queue.put(event)
 
+        # 审批门接入当前回合的事件流（ApprovalPending 经 sink 发出）
+        if self.approval_gate is not None:
+            self.approval_gate.set_emitter(sink)
+
         async def worker() -> None:
             try:
                 pending = user_text
+                turns = 0
                 while pending is not None:
+                    turns += 1
+                    if turns > self.max_turns_per_send:
+                        # P1-7 逃生阀：follow-up 链上限，防持久性失败无限回合
+                        self._follow_ups.clear()
+                        break
                     self._turn_index += 1
                     await self._run_one_turn(pending, sink)
                     pending = self._follow_ups.popleft() if self._follow_ups else None
@@ -214,14 +233,15 @@ class AgentHarness:
         user_message = {"role": "user", "content": user_text}
         self.transcript.append_message(user_message)
 
-        # KV-cache 契约：system 冻结，快照骑尾部 user 消息（不改 prompt 前缀）
+        # 快照拼入 system 尾部（旧版方案）：system 在压缩时受 head 保护且不落盘
+        # （transcript 只存 messages[1:]，P1-4 修复：dynamic_tail 曾污染转录）
         system_content = self.config.system_prompt
         snapshot = self._build_snapshot()
-        dynamic_tail: list[dict] = []
         if snapshot:
-            dynamic_tail.append({"role": "user", "content": f"[项目状态]\n{snapshot}"})
-        history = [{"role": "system", "content": system_content}, *dynamic_tail, *self.transcript.messages]
+            system_content = f"{system_content}\n\n[项目状态]\n{snapshot}"
+        history = [{"role": "system", "content": system_content}, *self.transcript.messages]
 
+        compacted_this_turn = False
         # 上下文用量预检 + 自动压缩（护栏：冷却/防抖/合理性校验由 CompactionState 承担）
         ctx_warning = check_context_usage(history)
         if ctx_warning is not None:
@@ -249,8 +269,7 @@ class AgentHarness:
                     )
                 )
                 history = compressed
-                # 压缩后：护栏新窗口从零开始（避免旧调用计入新窗口）
-                self._compaction_state.mark_compacted()
+                compacted_this_turn = True
 
         before_count = len(history)
         guard_diagnoses: list[dict] = []
@@ -275,6 +294,7 @@ class AgentHarness:
             steering_source=self._drain_steering_one,
             extra_provider_kwargs=self.config.provider_kwargs,
             max_wall_clock_ms=self.config.max_wall_clock_ms,
+            compacted=compacted_this_turn,
         )
         # 持久化新消息（sidecar：剥离 api_content 等发送专用字段）
         self.transcript.append_messages([strip_api_fields(m) for m in result.messages[before_count:]])

@@ -87,6 +87,7 @@ async def run_turn(
     steering_source: SteeringSource | None = None,
     extra_provider_kwargs: dict | None = None,
     max_wall_clock_ms: float | None = None,
+    compacted: bool = False,
 ) -> TurnResult:
     history = list(messages)
     iterations = 0
@@ -95,6 +96,7 @@ async def run_turn(
     stop_reason = StopReason.COMPLETED
     partial_response = ""
     state = TurnState(max_wall_clock_ms=max_wall_clock_ms)
+    state.compacted = compacted  # 压缩发生在 harness 层（code-review #11：此前恒 False）
     state.start()
     guards = GuardSystem()
 
@@ -191,20 +193,6 @@ async def run_turn(
                 break
         if guard_tripped:
             # guard 触发必须结束整个回合（避免空转浪费调用）
-            break
-
-        # 压缩后循环守卫（openclaw）：压缩发生后的新窗口内死循环检测
-        post_compaction = guards.check_post_compaction()
-        if post_compaction.tripped:
-            await emit(
-                GuardTripped(
-                    level=post_compaction.level,
-                    reason=post_compaction.reason,
-                    diagnosis=post_compaction.diagnosis,
-                )
-            )
-            state.record_guard(post_compaction.diagnosis)
-            stop_reason = StopReason.GUARD_TRIPPED
             break
 
         if steering_source is not None:

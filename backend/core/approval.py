@@ -1,0 +1,92 @@
+"""审批门（arch-refactor 恢复旧 ApprovalGate，与新内核双队列融合）。
+
+作为 BeforeToolCall 钩子接入 loop：permission=write 的工具调用被拦截，
+发射 ApprovalPending 事件并等待人工 approve/reject；超时自动拒绝（fail-closed）。
+
+会话级实例：由 API 层持有（一个会话一个 gate），与 harness 同生命周期。
+"""
+from __future__ import annotations
+
+import asyncio
+import uuid
+from collections.abc import Awaitable, Callable
+from typing import Any
+
+from core.events import ApprovalPending, LoopEvent
+from core.tools.base import PermissionLevel, ToolContext, ToolRegistry
+
+# 审批等待超时：10 分钟未决策自动拒绝（防 SSE 挂起）
+APPROVAL_TIMEOUT_SECONDS = 600.0
+
+
+class ApprovalGate:
+    def __init__(self, registry: ToolRegistry, timeout_seconds: float = APPROVAL_TIMEOUT_SECONDS) -> None:
+        self._registry = registry
+        self._timeout = timeout_seconds
+        self._emit: Callable[[LoopEvent], Awaitable[None] | None] | None = None
+        self._pending: dict[str, asyncio.Event] = {}
+        self._decisions: dict[str, bool] = {}
+        self._reasons: dict[str, str] = {}
+        self._pending_info: dict[str, dict[str, Any]] = {}
+
+    def set_emitter(self, emit: Callable[[LoopEvent], Awaitable[None] | None] | None) -> None:
+        self._emit = emit
+
+    def pending_requests(self) -> list[dict[str, Any]]:
+        return [
+            {"call_id": call_id, **info}
+            for call_id, info in self._pending_info.items()
+        ]
+
+    async def before_tool_call(
+        self, name: str, arguments: dict | None, ctx: ToolContext,
+    ) -> str | None:
+        """BeforeToolCall 钩子：write 工具拦截等待批准。返回 None 放行，字符串拦截。"""
+        try:
+            definition = self._registry.get(name)
+        except KeyError:
+            return None  # 未知工具由 registry 处理
+        if definition.permission != PermissionLevel.WRITE:
+            return None
+
+        call_id = uuid.uuid4().hex[:12]
+        event = asyncio.Event()
+        self._pending[call_id] = event
+        self._pending_info[call_id] = {"name": name, "arguments": arguments or {}, "status": "pending"}
+
+        if self._emit is not None:
+            outcome = self._emit(ApprovalPending(call_id=call_id, name=name, arguments=arguments))
+            if outcome is not None:
+                await outcome
+
+        try:
+            await asyncio.wait_for(event.wait(), timeout=self._timeout)
+        except asyncio.TimeoutError:
+            # 超时自动拒绝（fail-closed），防 SSE 无限挂起
+            approved = False
+            reason = "审批等待超时（10 分钟未决策），已自动拒绝。"
+        else:
+            approved = self._decisions.pop(call_id, False)
+            reason = self._reasons.pop(call_id, "")
+        finally:
+            self._pending.pop(call_id, None)
+            self._pending_info.pop(call_id, None)
+
+        if approved:
+            return None
+        return f"用户拒绝了工具「{name}」的调用。{reason}请改用其他方案，或先征得用户同意再尝试。"
+
+    def approve(self, call_id: str) -> bool:
+        if call_id not in self._pending:
+            return False
+        self._decisions[call_id] = True
+        self._pending[call_id].set()
+        return True
+
+    def reject(self, call_id: str, reason: str = "") -> bool:
+        if call_id not in self._pending:
+            return False
+        self._decisions[call_id] = False
+        self._reasons[call_id] = reason
+        self._pending[call_id].set()
+        return True

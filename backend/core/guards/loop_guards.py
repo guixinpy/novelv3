@@ -42,12 +42,24 @@ def _result_similar(a: str, b: str) -> float:
     return matches / longer
 
 
+def _args_signature(arguments: dict | None) -> str:
+    """参数签名：键值统一 str 化，避免 int/str 混用比较 TypeError（P1-5）。
+
+    旧实现 str(sorted(items)) 在同参数名出现不同类型值（如 5 与 "5"）时抛 TypeError，
+    异常穿透回合导致模型工作丢失。
+    """
+    return str(sorted((str(k), str(v)) for k, v in (arguments or {}).items()))
+
+
 class GuardSystem:
-    """五级风险检测器 + 压缩后循环守卫。每个回合新建一个实例。"""
+    """五级风险检测器。每个回合新建一个实例。
+
+    注（code-review #11）：压缩后循环守卫 PC 与 L1 条件完全相同且 L1 先查，
+    永不可达——压缩后连续相同调用由 L1 覆盖，PC 为冗余死代码，已移除。
+    """
 
     def __init__(self) -> None:
         self._history: list[ToolRecord] = []
-        self._post_compaction_history: list[ToolRecord] = []
 
     def record_tool_call(
         self,
@@ -57,16 +69,12 @@ class GuardSystem:
         error_code: str,
         result_text: str,
     ) -> None:
-        record = ToolRecord(
-            name=name, arguments=arguments, is_error=is_error,
-            error_code=error_code, result_text=result_text,
+        self._history.append(
+            ToolRecord(
+                name=name, arguments=arguments, is_error=is_error,
+                error_code=error_code, result_text=result_text,
+            )
         )
-        self._history.append(record)
-        self._post_compaction_history.append(record)
-
-    def reset_post_compaction(self) -> None:
-        """压缩发生时清空压缩后窗口（避免把压缩前的调用计入守卫）。"""
-        self._post_compaction_history.clear()
 
     def check(self, max_iterations: int = 30) -> GuardResult:
         result = self._check_l1_generic_repeat()
@@ -86,25 +94,6 @@ class GuardSystem:
             return result
         return GuardResult()
 
-    def check_post_compaction(self, min_calls: int = 3) -> GuardResult:
-        """压缩后立即死循环检测（openclaw post-compaction-loop-guard）：
-        压缩后的新窗口内出现 ≥min_calls 次完全相同调用则熔断。"""
-        if len(self._post_compaction_history) < min_calls:
-            return GuardResult()
-        recent = self._post_compaction_history[-min_calls:]
-        names = {r.name for r in recent}
-        if len(names) != 1:
-            return GuardResult()
-        args = {str(sorted((r.arguments or {}).items())) for r in recent}
-        if len(args) != 1:
-            return GuardResult()
-        return GuardResult(
-            tripped=True,
-            level="PC",
-            reason=f"压缩后连续 {min_calls} 次调用相同工具「{recent[0].name}」且参数相同，疑似压缩引发死循环。",
-            diagnosis={"level": "PC", "tool_name": recent[0].name, "repeat_count": min_calls},
-        )
-
     # ---- 五级检测 ----
 
     def _check_l1_generic_repeat(self) -> GuardResult:
@@ -115,7 +104,7 @@ class GuardSystem:
         names = [r.name for r in last3]
         if len(set(names)) != 1:
             return GuardResult()
-        args = [str(sorted((r.arguments or {}).items())) for r in last3]
+        args = [_args_signature(r.arguments) for r in last3]
         if len(set(args)) != 1:
             return GuardResult()
         return GuardResult(

@@ -31,7 +31,7 @@ def register_retrieval_tools(registry: ToolRegistry) -> None:
             "候选跨≥2 章出现会自动转正为正式实体。返回转正实体与待确认候选。"
         ),
         args_model=GetEntitiesArgs,
-        permission="read",
+        permission="write",  # 有登记副作用（code-review #15）
     )
     def get_entities(ctx: ToolContext, chapter_index: int, text: str = "", promote: bool = True) -> ToolResult:
         db = ctx.db

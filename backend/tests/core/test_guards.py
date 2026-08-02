@@ -67,21 +67,15 @@ def test_l5_global_fuse():
     assert result.tripped and result.level == "L5"
 
 
-def test_post_compaction_guard():
-    """压缩后循环守卫（openclaw）：压缩后新窗口内重复调用熔断。"""
-    g = GuardSystem()
-    record(g, "echo", {"text": "x"})   # 压缩前
-    g.reset_post_compaction()
-    for _ in range(3):
-        record(g, "echo", {"text": "x"})  # 压缩后窗口
-    result = g.check_post_compaction()
-    assert result.tripped and result.level == "PC"
+# 注（code-review #11）：压缩后循环守卫 PC 已移除——其条件与 L1 完全相同且 L1 先查，
+# 永不可达；压缩后连续相同调用由 L1 覆盖。
 
 
-def test_post_compaction_guard_not_tripped_with_mixed():
+def test_l1_mixed_argument_types_no_crash():
+    """P1-5：参数值 int/str 混用不抛 TypeError（此前 sorted 比较崩溃回合）。"""
     g = GuardSystem()
-    g.reset_post_compaction()
-    record(g, "echo", {"text": "a"})
-    record(g, "echo", {"text": "b"})
-    record(g, "echo", {"text": "c"})
-    assert not g.check_post_compaction().tripped
+    record(g, "write_chapter", {"chapter_index": 5})
+    record(g, "write_chapter", {"chapter_index": "5"})
+    record(g, "write_chapter", {"chapter_index": 5})
+    result = g.check()  # 不应抛异常
+    assert result.tripped and result.level == "L1"  # 签名归一化后视为相同参数

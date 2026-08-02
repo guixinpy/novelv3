@@ -16,7 +16,9 @@ from typing import Any
 IMAGE_TOKEN_BUDGET = 1500
 
 _CACHE_LIMIT = 10_000
+_CACHE_MAX_CHARS = 2_000_000  # 缓存总字符数上限（code-review #14：长跑进程防内存滞留）
 _cache: dict[str, int] = {}
+_cache_chars = 0
 
 
 def _is_dense(ch: str) -> bool:
@@ -34,8 +36,13 @@ def estimate_tokens(text: str) -> int:
     dense = sum(1 for ch in text if _is_dense(ch))
     sparse = len(text) - dense
     tokens = max(1, int(dense * 1.5) + (sparse + 3) // 4)
-    if len(_cache) < _CACHE_LIMIT:
-        _cache[text] = tokens
+    global _cache_chars
+    if len(_cache) >= _CACHE_LIMIT or _cache_chars + len(text) > _CACHE_MAX_CHARS:
+        # 超限清空（简单淘汰：估算缓存重算成本低，防长跑进程滞留数百 MB）
+        _cache.clear()
+        _cache_chars = 0
+    _cache[text] = tokens
+    _cache_chars += len(text)
     return tokens
 
 

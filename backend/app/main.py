@@ -54,6 +54,11 @@ if os.path.isdir(static_dir):
 
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
+        # /api/* 不落 catch-all：让 API 404 暴露真实错误，而非 200+HTML 掩盖
+        if full_path.startswith("api/"):
+            from fastapi import HTTPException
+
+            raise HTTPException(status_code=404, detail=f"API 端点不存在: /{full_path}")
         index_path = os.path.join(static_dir, "index.html")
         if os.path.exists(index_path):
             return FileResponse(index_path)

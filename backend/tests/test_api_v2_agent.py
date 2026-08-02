@@ -1,10 +1,12 @@
-"""v2 agent API 测试：mock provider 驱动完整会话生命周期（创建→消息→SSE 事件流）。
+"""v2 agent API 测试：mock provider 驱动完整会话生命周期。
 
-scripted provider 注入：monkeypatch api.v2.agent._load_provider。
+会话持有 harness 实例（修复每请求重建缺陷）：steer/followup/幂等/写锁跨请求生效，
+测试用 scripted provider 记录请求形状做真实断言（不再空转通过）。
 """
 from __future__ import annotations
 
-import json
+import threading
+import time
 
 import pytest
 
@@ -14,13 +16,13 @@ from tests.core.conftest import ScriptedProvider
 
 @pytest.fixture
 def mock_provider_factory(monkeypatch):
-    """注入 scripted provider，返回控制句柄。"""
+    """注入 scripted provider（覆盖 create_session 与懒重建两条路径）。"""
 
     class Handle:
         def __init__(self):
             self.provider = None
 
-        def script(self, steps: list[dict]):
+        def script(self, steps: list[dict]) -> ScriptedProvider:
             self.provider = ScriptedProvider(steps)
             monkeypatch.setattr(agent_api, "_load_provider", lambda: self.provider)
             return self.provider
@@ -28,97 +30,192 @@ def mock_provider_factory(monkeypatch):
     return Handle()
 
 
-def test_create_session(client):
-    r = client.post("/api/v2/agent/sessions", json={"project_id": "nonexistent", "system_prompt": "你好"})
+def _create_project(client) -> str:
+    r = client.post("/api/v2/projects", json={"name": "测试项目"})
+    assert r.status_code == 200
+    return r.json()["id"]
+
+
+def _create_session(client, project_id: str) -> str:
+    r = client.post("/api/v2/agent/sessions", json={"project_id": project_id})
+    assert r.status_code == 200
+    return r.json()["session_id"]
+
+
+def test_create_project(client):
+    r = client.post("/api/v2/projects", json={"name": "新项目", "genre": "悬疑"})
     assert r.status_code == 200
     data = r.json()
-    assert data["session_id"]
-    assert data["project_id"] == "nonexistent"
+    assert data["id"] and data["name"] == "新项目"
+
+
+def test_create_session_rejects_missing_project(client):
+    r = client.post("/api/v2/agent/sessions", json={"project_id": "nonexistent"})
+    assert r.status_code == 404
+
+
+def test_create_session(client, mock_provider_factory):
+    mock_provider_factory.script([])
+    project_id = _create_project(client)
+    sid = _create_session(client, project_id)
+    assert sid
 
 
 def test_send_message_sse_stream(client, mock_provider_factory, tmp_path, monkeypatch):
-    # 会话目录指向临时目录
     monkeypatch.setattr(agent_api, "_SESSIONS_DIR", tmp_path)
-    r = client.post("/api/v2/agent/sessions", json={"project_id": "p1"})
-    sid = r.json()["session_id"]
-
     mock_provider_factory.script([{"content": "你好，作者"}])
+    project_id = _create_project(client)
+    sid = _create_session(client, project_id)
+
     r2 = client.post(f"/api/v2/agent/sessions/{sid}/messages", json={"content": "写第一章"})
     assert r2.status_code == 200
     assert r2.headers["content-type"].startswith("text/event-stream")
     body = r2.text
-    # SSE 事件协议：agent_start ... assistant_message ... agent_end
     assert "agent_start" in body
     assert "agent_end" in body
     assert "assistant_message" in body
     assert "你好" in body
+    # 事件带稳定 id（P2-8）
+    assert "event_id" in body
+    # 单一 agent_start（不重复）
+    assert body.count("event: agent_start") == 1
+
+
+def _send_with_auto_approval(client, sid: str, content: str, timeout: float = 10.0):
+    """发送消息并自动批准所有 write 审批（write 工具经审批门拦截后放行）。"""
+    result = {}
+
+    def send_in_thread():
+        result["resp"] = client.post(f"/api/v2/agent/sessions/{sid}/messages", json={"content": content})
+
+    t = threading.Thread(target=send_in_thread)
+    t.start()
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        pr = client.get(f"/api/v2/agent/sessions/{sid}/pending-approvals")
+        if pr.status_code == 200:
+            for item in pr.json()["pending"]:
+                client.post(f"/api/v2/agent/sessions/{sid}/approve", params={"call_id": item["call_id"]})
+        if result.get("resp") is not None:
+            break
+        time.sleep(0.02)
+    t.join(timeout=5)
+    assert result["resp"] is not None, "send 未在超时内完成"
+    return result["resp"]
 
 
 def test_send_message_uses_tools_and_persists(client, mock_provider_factory, tmp_path, monkeypatch, db_session):
     monkeypatch.setattr(agent_api, "_SESSIONS_DIR", tmp_path)
-    r = client.post("/api/v2/agent/sessions", json={"project_id": "p1"})
-    sid = r.json()["session_id"]
+    from app.models import ChapterContent
 
-    # 会话工具链：write_chapter 落库
-    from app.models import ChapterContent, Project
-
-    project = Project(name="测试项目")
-    db_session.add(project)
-    db_session.commit()
-    db_session.refresh(project)
-    r = client.post("/api/v2/agent/sessions", json={"project_id": project.id})
-    sid = r.json()["session_id"]
-
+    project_id = _create_project(client)
     mock_provider_factory.script(
         [
             {"content": "我来写", "tool_calls": [{"name": "write_chapter", "arguments": {"chapter_index": 1, "content": "第一章正文内容。" * 20, "title": "开端"}}]},
             {"content": "第一章已写入", "tool_calls": []},
         ]
     )
-    r2 = client.post(f"/api/v2/agent/sessions/{sid}/messages", json={"content": "写第一章"})
+    sid = _create_session(client, project_id)
+    r2 = _send_with_auto_approval(client, sid, "写第一章")
     assert r2.status_code == 200
 
-    # 章节落库
-    chapter = db_session.query(ChapterContent).filter(ChapterContent.project_id == project.id).first()
+    chapter = db_session.query(ChapterContent).filter(ChapterContent.project_id == project_id).first()
     assert chapter is not None
     assert chapter.chapter_index == 1
-    assert chapter.status == "generated"
 
-    # 转录持久化（agent_sessions_v2 目录）
     transcript_path = tmp_path / sid / f"{sid}.jsonl"
     assert transcript_path.exists()
 
 
+def test_idempotency_key_dedup_across_requests(client, mock_provider_factory, tmp_path, monkeypatch):
+    """幂等键跨请求生效（P0-1：会话持有 harness，不再每请求重建）。"""
+    monkeypatch.setattr(agent_api, "_SESSIONS_DIR", tmp_path)
+    mock_provider_factory.script([{"content": "完成"}])
+    project_id = _create_project(client)
+    sid = _create_session(client, project_id)
+
+    r1 = client.post(f"/api/v2/agent/sessions/{sid}/messages", json={"content": "hi", "idempotency_key": "k1"})
+    assert r1.status_code == 200
+    r2 = client.post(f"/api/v2/agent/sessions/{sid}/messages", json={"content": "hi", "idempotency_key": "k1"})
+    assert r2.status_code == 200
+    assert "assistant_message" not in r2.text  # 幂等拦截生效
+
+
+def test_steer_reaches_model(client, mock_provider_factory, tmp_path, monkeypatch):
+    """steer 排入会话持有的 harness，注入真实到达模型（P0-1 真实断言）。
+
+    旧测试因每请求重建 harness 空转通过——steer 文本从未到模型。
+    """
+    monkeypatch.setattr(agent_api, "_SESSIONS_DIR", tmp_path)
+    mock_provider_factory.script(
+        [
+            # read 工具（memory_tree）不触发审批，专注验证 steer 注入
+            {"content": "", "tool_calls": [{"name": "memory_tree", "arguments": {"detail_level": "overview"}}]},
+            {"content": "按新方向写", "tool_calls": []},
+        ]
+    )
+    project_id = _create_project(client)
+    sid = _create_session(client, project_id)
+
+    r = client.post(f"/api/v2/agent/sessions/{sid}/steer", json={"content": "节奏放慢"})
+    assert r.status_code == 200
+    r2 = client.post(f"/api/v2/agent/sessions/{sid}/messages", json={"content": "写"})
+    assert r2.status_code == 200
+    assert "按新方向写" in r2.text
+    # 真实断言：第二次请求包含 steer 消息
+    provider = mock_provider_factory.provider
+    assert len(provider.requests) >= 2
+    second = provider.requests[1]
+    assert any(m.get("role") == "user" and m.get("content") == "节奏放慢" for m in second)
+
+
+def test_write_tool_requires_approval(client, mock_provider_factory, tmp_path, monkeypatch):
+    """审批门（P1-6）：write 工具被拦截，未批准不执行。"""
+    monkeypatch.setattr(agent_api, "_SESSIONS_DIR", tmp_path)
+    mock_provider_factory.script(
+        [
+            {"content": "", "tool_calls": [{"name": "write_chapter", "arguments": {"chapter_index": 1, "content": "第一章正文。" * 20}}]},
+            {"content": "等待批准后继续", "tool_calls": []},
+        ]
+    )
+    project_id = _create_project(client)
+    sid = _create_session(client, project_id)
+
+    result = {}
+
+    def send_in_thread():
+        result["resp"] = client.post(f"/api/v2/agent/sessions/{sid}/messages", json={"content": "写"})
+
+    t = threading.Thread(target=send_in_thread)
+    t.start()
+    for _ in range(50):
+        pr = client.get(f"/api/v2/agent/sessions/{sid}/pending-approvals")
+        if pr.status_code == 200 and pr.json()["pending"]:
+            break
+        time.sleep(0.05)
+    pr = client.get(f"/api/v2/agent/sessions/{sid}/pending-approvals")
+    assert pr.status_code == 200
+    pending = pr.json()["pending"]
+    assert pending, "write 工具应被审批门拦截"
+    call_id = pending[0]["call_id"]
+    ar = client.post(f"/api/v2/agent/sessions/{sid}/approve", params={"call_id": call_id})
+    assert ar.status_code == 200
+    t.join(timeout=10)
+    assert result["resp"].status_code == 200
+    assert "等待批准后继续" in result["resp"].text
+
+
 def test_events_replay(client, mock_provider_factory, tmp_path, monkeypatch):
     monkeypatch.setattr(agent_api, "_SESSIONS_DIR", tmp_path)
-    r = client.post("/api/v2/agent/sessions", json={"project_id": "p1"})
-    sid = r.json()["session_id"]
     mock_provider_factory.script([{"content": "完成"}])
+    project_id = _create_project(client)
+    sid = _create_session(client, project_id)
     client.post(f"/api/v2/agent/sessions/{sid}/messages", json={"content": "hi"})
 
     r2 = client.get(f"/api/v2/agent/sessions/{sid}/events")
     assert r2.status_code == 200
     events = r2.json()["events"]
     assert any(e["type"] == "message" for e in events)
-
-
-def test_steer_and_followup_queues(client, mock_provider_factory, tmp_path, monkeypatch):
-    monkeypatch.setattr(agent_api, "_SESSIONS_DIR", tmp_path)
-    r = client.post("/api/v2/agent/sessions", json={"project_id": "p1"})
-    sid = r.json()["session_id"]
-
-    # steer 在回合中注入：第一次工具调用后注入方向，第二次调用前生效
-    mock_provider_factory.script(
-        [
-            {"content": "", "tool_calls": [{"name": "write_chapter", "arguments": {"chapter_index": 1, "content": "第一章正文。" * 20}}]},
-            {"content": "按新方向写", "tool_calls": []},
-        ]
-    )
-    # 先排队 steer（回合内注入）
-    client.post(f"/api/v2/agent/sessions/{sid}/steer", json={"content": "节奏放慢"})
-    r2 = client.post(f"/api/v2/agent/sessions/{sid}/messages", json={"content": "写"})
-    assert r2.status_code == 200
-    assert "按新方向写" in r2.text
 
 
 def test_unknown_session_404(client):

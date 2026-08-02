@@ -308,7 +308,7 @@ def _close_active_arcs(db: Session, project_id: str) -> None:
             f"包含章节: {ch_titles}。"
             f"弧线概要: {a.summary or '(无)'}"
         )
-        get_or_create_longform_memory(
+        mem = get_or_create_longform_memory(
             db, project_id, "arc_summary",
             a.title or f"arc_{a.id}",
             defaults={
@@ -320,6 +320,11 @@ def _close_active_arcs(db: Session, project_id: str) -> None:
                 "memory_metadata": {"provenance": "agent_inferred", "source": "arc_consolidation_auto"},
             },
         )
+        # 同名弧线重复 define 时显式覆盖（get_or_create 命中已有键跳过 defaults，
+        # 否则新摘要永不落库——code-review #13）
+        mem.summary = arc_summary_text
+        mem.title = f"弧线摘要: {a.title}"
+        mem.status = "completed"
 
 
 def plan_arc(
@@ -461,7 +466,7 @@ def plan_arc(
                 f"包含章节: {ch_titles}。"
                 f"弧线概要: {active_arc.summary or '(无)'}"
             )
-            get_or_create_longform_memory(
+            mem = get_or_create_longform_memory(
                 db, project_id, "arc_summary",
                 active_arc.title or f"arc_{active_arc.id}",
                 defaults={
@@ -473,6 +478,9 @@ def plan_arc(
                     "memory_metadata": {"provenance": "agent_inferred", "source": "arc_consolidation"},
                 },
             )
+            # 显式覆盖（同名弧线复用场景，code-review #13）
+            mem.summary = arc_summary
+            mem.status = "completed"
             db.commit()
             result["arc_consolidated"] = True
             result["arc_summary"] = arc_summary

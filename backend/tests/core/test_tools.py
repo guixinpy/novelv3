@@ -95,3 +95,16 @@ def test_artifact_path_fail_closed():
     assert validate_artifact_path("a/../../escape.md", root) is None
     assert validate_artifact_path("", root) is None
     assert validate_artifact_path("..", root) is None
+
+
+async def test_unknown_parameter_reports_error():
+    """#12：未知参数显式报错回传模型（旧 extra=ignore 静默丢弃）。"""
+    registry = make_registry()
+    result = await registry.execute(
+        "write_chapter", {"chapter_index": 1, "content": "正文", "tone": "悬疑"},
+        ToolContext(),
+    )
+    assert result.is_error
+    assert result.error_code == "validation"
+    assert "tone" in result.error
+    assert "chapter_index" in result.error  # 可用参数列表

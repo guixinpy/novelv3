@@ -61,7 +61,7 @@ def register_memory_tools(registry: ToolRegistry) -> None:
             "open=创建新情节线，close=闭环，query=查询。"
         ),
         args_model=TrackPlotlineArgs,
-        permission="read",
+        permission="write",
     )
     def track_plotline_handler(ctx: ToolContext, action: str, title: str = "", summary: str = "", chapter_index: int = 0) -> ToolResult:
         return _call(ctx, track_plotline, action, title, summary=summary, chapter_index=chapter_index)
@@ -92,7 +92,7 @@ def register_memory_tools(registry: ToolRegistry) -> None:
             "每章写完后用 progress 检查；弧线还剩 3 章时提前规划下一弧线。"
         ),
         args_model=PlanArcArgs,
-        permission="read",
+        permission="write",
     )
     def plan_arc_handler(
         ctx: ToolContext, action: str, title: str = "", summary: str = "",
