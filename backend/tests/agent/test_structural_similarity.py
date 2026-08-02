@@ -1,7 +1,7 @@
 """结构级重复检测纯函数测试（T5 弱化版：仅标题重复）。"""
 from __future__ import annotations
 
-from app.core.structural_similarity import detect_structure_repeats
+from domain.writing.structural_similarity import detect_structure_repeats
 
 
 def _ch(index: int, title: str, content: str) -> dict:

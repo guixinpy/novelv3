@@ -1,7 +1,7 @@
 """上下文预算截断纯函数测试（生成统一 v2：从 prompting/budget 迁移，行为不变）。"""
 from __future__ import annotations
 
-from app.core.prompt_budget import apply_context_budget
+from domain.writing.prompt_budget import apply_context_budget
 
 
 def _block(key: str, content: str, priority: int = 100) -> dict:

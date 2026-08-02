@@ -28,7 +28,7 @@ from app.core.generation.chapter import (
     chapter_max_tokens,
 )
 from app.core.generation.render import prompt_trace_metadata, render_prompt
-from app.core.prompt_budget import apply_context_budget
+from domain.writing.prompt_budget import apply_context_budget
 from app.core.setup_context import SetupContextSnapshot
 from app.schemas import ChapterOut
 from app.services.writing.writing_state_service import WritingStateService

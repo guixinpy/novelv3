@@ -1,7 +1,7 @@
 """输出格式校验纯函数测试（T4，样本取自 200 章评审实证）。"""
 from __future__ import annotations
 
-from app.core.format_checker import check_chapter_hook, check_text_format
+from domain.writing.format_checker import check_chapter_hook, check_text_format
 
 
 def _types(issues: list[dict]) -> list[str]:

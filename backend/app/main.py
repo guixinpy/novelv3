@@ -89,6 +89,7 @@ from app.api import (
     world_model,
     writing,
 )
+from app.api.v2 import agent as agent_v2
 
 app.include_router(projects.router)
 app.include_router(setups.router)
@@ -108,6 +109,7 @@ app.include_router(background_tasks_api.router)
 app.include_router(world_model.router)
 app.include_router(athena.router)
 app.include_router(v2_sessions.router)
+app.include_router(agent_v2.router)
 
 @app.get("/api/v1/health")
 def health():

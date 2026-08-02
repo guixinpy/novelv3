@@ -8,7 +8,7 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
-from app.core.model_call_trace import estimate_tokens
+from core.context.estimate import estimate_tokens
 
 
 def apply_context_budget(

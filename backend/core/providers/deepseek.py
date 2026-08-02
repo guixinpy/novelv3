@@ -6,7 +6,7 @@ from collections.abc import AsyncIterator
 
 import httpx
 
-from app.agent.providers.base import (
+from core.providers.base import (
     Provider,
     ProviderError,
     ProviderResponse,

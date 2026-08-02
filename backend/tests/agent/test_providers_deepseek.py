@@ -3,13 +3,13 @@ import json
 import httpx
 import pytest
 
-from app.agent.providers.base import (
+from core.providers.base import (
     ProviderError,
     ProviderResponse,
     TextDelta,
     ToolSpec,
 )
-from app.agent.providers.deepseek import DeepSeekProvider
+from core.providers.deepseek import DeepSeekProvider
 
 
 def sse_body(chunks: list[dict]) -> bytes:
