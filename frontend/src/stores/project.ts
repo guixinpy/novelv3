@@ -323,10 +323,7 @@ export const useProjectStore = defineStore('project', () => {
     currentProject.value = nextProject
   }
 
-  async function generateSetup(id: string) {
-    setup.value = await api.generateSetup(id)
-    await loadProject(id, true)
-  }
+  // generateSetup removed — use /api/v2/sessions with agent tools (setup generation happens in agent session)
 
   async function loadSetup(id: string, force = false) {
     const key = `project:${id}:setup`
@@ -348,10 +345,7 @@ export const useProjectStore = defineStore('project', () => {
     chapter.value = nextChapter
   }
 
-  async function generateStoryline(id: string) {
-    storyline.value = await api.generateStoryline(id)
-    await loadProject(id, true)
-  }
+  // generateStoryline removed — use /api/v2/sessions with agent tools (storyline generation happens in agent session)
 
   async function loadStoryline(id: string, force = false) {
     const key = `project:${id}:storyline`
@@ -362,11 +356,7 @@ export const useProjectStore = defineStore('project', () => {
     storyline.value = nextStoryline
   }
 
-  async function generateOutline(id: string) {
-    outline.value = await api.generateOutline(id)
-    await loadProject(id, true)
-    await loadWritingState(id, true).catch(() => {})
-  }
+  // generateOutline removed — use /api/v2/sessions with agent tools (outline generation happens in agent session)
 
   async function loadOutline(id: string, force = false) {
     const key = `project:${id}:outline`
@@ -629,8 +619,8 @@ export const useProjectStore = defineStore('project', () => {
     resetProjectScopedState,
     applyWorkspaceBootstrap,
     loadProjects, createProject, updateProjectModel, deleteProject, loadProject,
-    generateSetup, loadSetup, loadChapter,
-    generateStoryline, loadStoryline, generateOutline, loadOutline, loadTopology,
+    loadSetup, loadChapter,
+    loadStoryline, loadOutline, loadTopology,
     loadWritingState, startWriting, pauseWriting, resumeWriting,
     loadChapters, loadMoreChapters, loadVersions, loadMoreVersions, loadPreferences, updatePreferences, resetPreferences, refreshTargets,
     createVersion, rollbackVersion, exportProject,

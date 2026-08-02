@@ -152,7 +152,7 @@ export const api = {
   getProject: (id: string) => request(`/projects/${id}`),
   getWorkspaceBootstrap: (id: string) => request<WorkspaceBootstrap>(`/projects/${id}/workspace-bootstrap`),
   deleteProject: (id: string) => request(`/projects/${id}`, { method: 'DELETE' }),
-  generateSetup: (id: string) => request(`/projects/${id}/athena/ontology/generate`, { method: 'POST' }),
+  // generateSetup removed — use /api/v2/sessions with agent tools
   getSetup: (id: string) => request(`/projects/${id}/setup`),
   getWorldModelOverview: (id: string, params?: WorldModelOverviewQuery) => {
     const query = worldModelOverviewQuery(params)
@@ -359,9 +359,9 @@ export const api = {
     request<ChapterContent>(`/projects/${id}/revisions/${revisionId}/regenerate`, { method: 'POST' }),
   getConfig: () => request('/config'),
   updateConfig: (apiKey: string) => request('/config', { method: 'PUT', body: JSON.stringify({ api_key: apiKey }) }),
-  generateStoryline: (id: string) => request(`/projects/${id}/athena/evolution/plan/generate?target=storyline`, { method: 'POST' }),
+  // generateStoryline removed — use /api/v2/sessions with agent tools
   getStoryline: async (id: string) => (await requestEvolutionPlanWindow(id)).storyline,
-  generateOutline: (id: string) => request(`/projects/${id}/athena/evolution/plan/generate?target=outline`, { method: 'POST' }),
+  // generateOutline removed — use /api/v2/sessions with agent tools
   getOutline: async (id: string) => (await requestEvolutionPlanWindow(id)).outline,
   getTopology: (id: string, params?: { node_offset?: number; node_limit?: number; edge_offset?: number; edge_limit?: number }) => {
     const query = new URLSearchParams()
