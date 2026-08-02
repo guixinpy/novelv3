@@ -287,3 +287,15 @@ docs/archive/arch-refactor/module-review.md。
 **P2 待定**：世界事实账本瘦身（实证缺口时）/ 无词表 LLM 评审 / versions 回滚 / dialog 拓扑（前端定盘时）
 
 **永久放弃**：B 自优化、G 模型层、F 杂项、I 旧脚本；全部特化词表与世界耦合件（六项不变量原则）。
+
+### 自优化系统认知纠正（2026-08-02，用户澄清）
+
+旧实现（learned PromptRule，已永久放弃）**与用户预想完全不一致**：
+
+- 用户预想的自优化：**作用于单本小说** + **agent 在创作中不断积累学习**
+  （该书写作经验：节奏/文风实践/设定细节/教训，章末自省 → 记忆 → 后续注入）
+- 旧实现：全局 PromptRule 表 + 用户反馈关键词匹配（if-else 查表）
+
+预想形态与六项不变量原则不冲突（per-book 动态积累，非题材特化），
+新架构基础已具备（LongformMemory project 级 + query_memory + pipeline 章末钩子）。
+**待办**：按用户预想重新设计（多视角评审后），实现为「章末自省 → writing_experience 记忆 → 注入」。
