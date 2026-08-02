@@ -1,0 +1,6 @@
+{
+  "include": ["backend/app", "backend/core", "backend/tests", "scripts"],
+  "executionEnvironments": [
+    { "root": "backend", "extraPaths": ["."] }
+  ]
+}
