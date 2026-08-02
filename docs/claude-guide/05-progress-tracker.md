@@ -256,3 +256,20 @@ backend/
 └── tests/     79 passed（mock provider 全确定性测试）
 ```
 测试基线：新架构 79 passed + dogfood 8 章真实生成验证。代码量累计 -20k+ 行（重构+绞杀）。
+
+## 待办（2026-08-02 记录）
+
+### 人工章节标注功能恢复（方案 B：前端重写时一并设计）
+
+旧版「章节批注/修正」功能（RevisionAnnotation/RevisionCorrection + chapter_revisions API +
+revision_feedback.py）已随整链退役归档（docs/archive/arch-refactor/legacy/）。
+
+**决策**：不在旧架构恢复，**纳入前端重写时设计**（用户 2026-08-02 确认）：
+- 新交互：用户在章节文本上画线/选中批注 + 修正（原文→改文）
+- 新 API：如 POST /api/v2/agent/sessions/{id}/annotations（待前端重写时定稿）
+- agent 修订：复用 pipeline.py 的 revise 机制，批注作为修订理由
+  （pipeline 的 extra_feedback 参数即为此预留入口）
+
+**架构现状**：工具审批（ApprovalGate）已恢复可用；人工标注是唯一的用户→agent
+文本反馈缺口。归档参考：legacy/models/chapter_revision.py、tests-legacy/、
+旧 core 的 revision_feedback.py。
