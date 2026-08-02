@@ -26,8 +26,11 @@ class TranscriptRecord:
 
 
 def strip_api_fields(message: dict) -> dict:
-    """剥离发送专用字段（api_content 等），得到持久化形态。"""
-    return {k: v for k, v in message.items() if k not in ("api_content",)}
+    """剥离发送专用字段（api_content 等）与临时消息（ephemeral），得到持久化形态。
+
+    ephemeral：回合内临时注入（如空响应 nudge），不落盘、不重放（code-review #8）。
+    """
+    return {k: v for k, v in message.items() if k not in ("api_content", "ephemeral")}
 
 
 def with_api_content(message: dict, api_content: str) -> dict:

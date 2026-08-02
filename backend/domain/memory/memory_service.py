@@ -225,6 +225,9 @@ def query_memory(
 ) -> dict:
     effective_limit = min(limit, 10)
     query = db.query(LongformMemory).filter(LongformMemory.project_id == project_id)
+    # 内部日志类型不进记忆查询（code-review #4：introspect_log 空行曾泄漏
+    # 进默认混合查询并挤占真实记忆通道配额）
+    query = query.filter(LongformMemory.memory_type != "introspect_log")
     if memory_type != "all":
         query = query.filter(LongformMemory.memory_type == memory_type)
     if provenance != "all":
@@ -244,11 +247,8 @@ def query_memory(
     memories.sort(
         key=lambda m: (0 if (m.memory_metadata or {}).get("provenance") == "author_explicit" else 1)
     )
-    if memory_type == "all":
-        # 通道配额强制（openhuman）：混合查询按通道硬截断（各通道上限见 _CHANNEL_LIMITS）
-        memories = _cap_by_channel(memories, effective_limit)
-    else:
-        memories = memories[:effective_limit]
+    # 通道配额强制（openhuman）：混合查询按通道硬截断（各通道上限见 _CHANNEL_LIMITS）
+    memories = _cap_by_channel(memories, effective_limit) if memory_type == "all" else memories[:effective_limit]
 
     result: dict = {
         "memories": [
@@ -274,7 +274,8 @@ def query_memory(
             "channel_limits": dict(_CHANNEL_LIMITS) if memory_type == "all" else None,
             "guideline": (
                 "上下文注入配额已由服务端强制（混合查询时每通道硬上限: "
-                "arc_summary ≤3条 + plotline ≤5条 + 实体/杂项 ≤3条）。"
+                "arc_summary ≤3条 + plotline ≤5条 + 实体/杂项 ≤3条；"
+                "单类型查询按 limit 返回，请自行筛选最相关条目）。"
                 "author_explicit 条目可信度更高，agent_inferred 条目需交叉验证。"
             ),
         },

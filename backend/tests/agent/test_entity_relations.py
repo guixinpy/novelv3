@@ -57,6 +57,25 @@ def test_related_entities_sorted_and_promoted_filtered(db_session):
     assert len(related_entities(db_session, project.id, "林舟", only_promoted=False)) == 2
 
 
+def test_related_entities_sql_filter_survives_truncation_line(db_session):
+    """code-review #12：转正关联在截断线以下也能返回（SQL 层过滤而非先截断）。"""
+    project = _make_project(db_session)
+    # 林舟与 30 个未转正噪声实体共现（count 高、排位靠前）+ 1 个转正实体（count=1）
+    noisy = [f"噪声{i}" for i in range(30)]
+    register_entity_candidates(db_session, project.id, 1, ["林舟"] + noisy)
+    record_entity_cooccurrences(db_session, project.id, 1, ["林舟"] + noisy)
+    register_entity_candidates(db_session, project.id, 1, ["苏晚晴"])
+    record_entity_cooccurrences(db_session, project.id, 1, ["林舟", "苏晚晴"])
+    # 噪声实体转正（count≥2），苏晚晴 count=1 未转正
+    register_entity_candidates(db_session, project.id, 2, noisy)
+    record_entity_cooccurrences(db_session, project.id, 2, ["林舟"] + noisy)
+    result = related_entities(db_session, project.id, "林舟", limit=8)
+    # 返回的关联全部是转正实体（噪声已转正），无未转正的苏晚晴
+    assert result
+    assert all(r["entity"] != "苏晚晴" for r in result)
+    assert len(result) <= 8
+
+
 async def test_get_entities_tool_builds_edges(db_session):
     """get_entities 工具：提供文本时登记候选并同步建边。"""
     from core.tools.base import ToolContext, ToolRegistry

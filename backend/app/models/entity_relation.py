@@ -1,7 +1,7 @@
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
 
 from app.db import Base
 
@@ -16,6 +16,8 @@ class EntityRelation(Base):
     __tablename__ = "entity_relations"
     __table_args__ = (
         UniqueConstraint("project_id", "entity_a", "entity_b", name="uq_entity_relations_pair"),
+        # related_entities 的 OR 查询两分支均需索引（code-review #15）
+        Index("ix_entity_relations_project_b", "project_id", "entity_b"),
     )
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))

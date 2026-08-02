@@ -73,7 +73,7 @@ def _candidate_keys(db: Session, project_id: str, category: str, limit: int = _K
             LongformMemory.memory_metadata["category"].as_string() == category,
             LongformMemory.status == _ACTIVE,
         )
-        .order_by(LongformMemory.updated_at.desc())
+        .order_by(LongformMemory.updated_at.desc())  # 普通列排序（code-review #13）
         .limit(limit)
         .all()
     )
@@ -104,10 +104,13 @@ def apply_experiences(
     chapter_index: int,
     category: str,
     items: list[dict],
+    *,
+    commit: bool = True,
 ) -> dict:
     """信任度记账：new/reinforce/override + 惰性衰减 + 预算淘汰。可独立测试。
 
     items: [{"key": str, "action": "new|reinforce|override", "text": str}]
+    commit=False：与调用方同事务（code-review #6：自省记账与幂等标记原子提交）。
     """
     applied = {"new": 0, "reinforce": 0, "override": 0, "skipped": 0}
 
@@ -147,7 +150,6 @@ def apply_experiences(
                         "last_reinforce_chapter_index": chapter_index,
                         "pinned": False,
                         "provenance": "agent_inferred",
-                        "source_chapter": chapter_index,
                     },
                 )
             )
@@ -167,19 +169,27 @@ def apply_experiences(
             entry.summary = text
             meta["last_reinforce_chapter_index"] = chapter_index
             applied["reinforce"] += 1
-        meta["source_chapter"] = chapter_index
+        # 归档复活（code-review #5）：被衰减归档的经验再次强化时恢复注入
+        if entry.status == _ARCHIVED:
+            entry.status = _ACTIVE
         entry.memory_metadata = meta
         entry.updated_at = _now()
 
-    db.commit()
+    if commit:
+        db.commit()
 
     # 预算淘汰（每类上限，按信任度淘汰最低，archived 不删除）
-    _enforce_budget(db, project_id, category)
+    _enforce_budget(db, project_id, category, commit=commit)
     return applied
 
 
 def _decay_stale(db: Session, project_id: str, category: str, chapter_index: int) -> None:
-    """惰性衰减：30 章未强化 → trust-1；≤0 → archived（pinned 豁免）。"""
+    """惰性衰减：30 章未强化 → trust-1；≤0 → archived（pinned 豁免）。
+
+    衰减计时用独立字段 last_decay_chapter_index（code-review #9：此前覆盖
+    last_reinforce 伪造「Ch35验证」锚点、把过期经验当最近注入）；last=0 的
+    旧条目（从未强化）按距当前章 30 章衰减，不再永久豁免。
+    """
     rows = (
         db.query(LongformMemory)
         .filter(
@@ -195,18 +205,19 @@ def _decay_stale(db: Session, project_id: str, category: str, chapter_index: int
         if meta.get("pinned"):
             continue
         last = int(meta.get("last_reinforce_chapter_index") or 0)
+        last_decay = int(meta.get("last_decay_chapter_index") or 0)
         trust = int(meta.get("trust_score", _TRUST_INITIAL))
-        if last and chapter_index - last >= _STALE_AFTER_CHAPTERS:
+        if chapter_index - max(last, last_decay) >= _STALE_AFTER_CHAPTERS:
             trust -= 1
             meta["trust_score"] = max(0, trust)
-            meta["last_reinforce_chapter_index"] = chapter_index  # 衰减后重新计时
+            meta["last_decay_chapter_index"] = chapter_index
             if trust <= 0:
                 entry.status = _ARCHIVED
             entry.memory_metadata = meta
             entry.updated_at = _now()
 
 
-def _enforce_budget(db: Session, project_id: str, category: str) -> None:
+def _enforce_budget(db: Session, project_id: str, category: str, *, commit: bool = True) -> None:
     """预算：每类上限 _MAX_PER_CATEGORY 条，超限按信任度淘汰最低（archived）。"""
     rows = (
         db.query(LongformMemory)
@@ -228,7 +239,8 @@ def _enforce_budget(db: Session, project_id: str, category: str) -> None:
     for entry in candidates[:overflow]:
         entry.status = _ARCHIVED
         entry.updated_at = _now()
-    db.commit()
+    if commit:
+        db.commit()
 
 
 async def introspect_and_record(
@@ -270,7 +282,9 @@ async def introspect_and_record(
         ]
     )
     items = _parse_introspect_output(response.content)
-    applied = apply_experiences(db, project_id, chapter_index, category, items)
+    # 原子提交（code-review #6）：经验记账与幂等标记单事务，崩溃不产生
+    # 「经验已落库但无标记 → 同章重自省 → 信任度虚增」
+    applied = apply_experiences(db, project_id, chapter_index, category, items, commit=False)
     # 自省完成标记（provider 调用已发生，无论解析结果；失败路径由调用方 fail-open 处理）
     db.add(
         LongformMemory(
@@ -327,6 +341,8 @@ def experience_injection_items(
     高信任轮转：取 trust≥阈值中「最近强化距当前最远」的一条，避免同条连续注入。
     每条 text 截断 _TEXT_MAX_LEN；带章节锚点（如 Ch12 验证）。
     """
+    # 排序用普通列 updated_at（code-review #13：JSON 索引 as_string().desc() 仅在
+    # 特定 SQLAlchemy 版本编译为裸 JSON_EXTRACT 才碰巧数值正确，脆弱）
     rows = (
         db.query(LongformMemory)
         .filter(
@@ -334,10 +350,7 @@ def experience_injection_items(
             LongformMemory.memory_type == EXPERIENCE_TYPE,
             LongformMemory.status == _ACTIVE,
         )
-        .order_by(
-            LongformMemory.memory_metadata["last_reinforce_chapter_index"].as_string().desc(),
-            LongformMemory.updated_at.desc(),
-        )
+        .order_by(LongformMemory.updated_at.desc())
         .all()
     )
     if not rows:

@@ -44,9 +44,9 @@ def register_retrieval_tools(registry: ToolRegistry) -> None:
             return ToolResult.fail("工具上下文缺少 db/project_id", error_code="tool_context_missing")
         if text:
             candidates = mine_entities_from_text(text)
-            for name in candidates:
-                register_entity_candidates(db, ctx.project_id, chapter_index, [name])
-            # 同章共现建边（openhuman 共现图）：边表与候选登记同步维护
+            # 批量登记 + 共现建边（code-review #11：此前逐名循环 N+1，
+            # 40 候选 ≈ 821 次 DB 往返的写作热路径延迟）
+            register_entity_candidates(db, ctx.project_id, chapter_index, candidates)
             record_entity_cooccurrences(db, ctx.project_id, chapter_index, candidates)
         promoted = promoted_entity_names(db, ctx.project_id) if promote else []
         return ToolResult.ok({"entities": promoted})

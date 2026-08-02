@@ -130,3 +130,17 @@ async def test_pipeline_introspect_fail_open(db_session, project):
     # 章节正常落库
     chapter = db_session.query(ChapterContent).filter(ChapterContent.project_id == project.id).first()
     assert chapter is not None
+
+
+async def test_pipeline_introspect_skipped_on_failed(db_session, project):
+    """code-review #14：FAILED（execute 抛错）不触发自省——无有效正文不做空自省。"""
+    calls = []
+
+    async def introspect(chapter_index, result):
+        calls.append(chapter_index)
+
+    provider = ScriptedProvider([{"content": "", "error": "network down", "retryable": True}])
+    pipeline = ChapterPipeline(provider, db_session, project.id, word_target=800, introspect=introspect)
+    result = await pipeline.run(1)
+    assert result.status == WorkflowStatus.FAILED
+    assert calls == []

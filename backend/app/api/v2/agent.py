@@ -143,44 +143,56 @@ def _create_harness(session_id: str, meta: dict, db: Session, gate: ApprovalGate
     return harness
 
 
-async def _introspect_after_send(db: Session, session: dict) -> None:
+async def _introspect_after_send(db: Session, session: dict, from_chapter: int | None = None) -> None:
     """生产路径触发点（09 定稿触发点 2）：harness 回合结束后自省最新章节（fail-open）。
 
-    core/harness 领域无关，接线放 API 层；章节幂等由 introspect_and_record 内部保证
-    （会话重启安全）；自省失败仅记日志，不阻塞、不冒泡。
+    - from_chapter：本轮起始章（follow-up 链一次 send 写多章时自省全部新章——
+      code-review #3：此前只自省最新章，前几章永久漏检）
+    - plan_context：从大纲取章节摘要（code-review #7：09 定稿要求的"锚定章纲"
+      此前在生产路径缺失）
+    - core/harness 领域无关，接线放 API 层；章节幂等由 introspect_and_record 内部保证
+      （会话重启安全）；自省失败仅记日志，不阻塞、不冒泡。
     """
     try:
-        from app.models import ChapterContent
+        from app.models import ChapterContent, Outline
         from domain.memory.writing_experience import introspect_and_record
 
         harness: AgentHarness = session["harness"]
         project_id = session["meta"]["project_id"]
-        latest = (
+        latest_row = (
             db.query(ChapterContent.chapter_index)
             .filter(ChapterContent.project_id == project_id)
             .order_by(ChapterContent.chapter_index.desc())
             .first()
         )
-        if latest is None:
+        if latest_row is None:
             return
-        chapter_index = latest[0]
-        chapter = (
-            db.query(ChapterContent)
-            .filter(
-                ChapterContent.project_id == project_id,
-                ChapterContent.chapter_index == chapter_index,
+        latest = latest_row[0]
+        outline = db.query(Outline).filter(Outline.project_id == project_id).first()
+        outline_summaries: dict[int, str] = {}
+        if outline is not None:
+            for ch in outline.chapters or []:
+                if isinstance(ch, dict) and isinstance(ch.get("chapter_index"), int):
+                    outline_summaries[int(ch["chapter_index"])] = str(ch.get("summary") or "")
+        start = from_chapter if from_chapter is not None else latest
+        for chapter_index in range(start, latest + 1):
+            chapter = (
+                db.query(ChapterContent)
+                .filter(
+                    ChapterContent.project_id == project_id,
+                    ChapterContent.chapter_index == chapter_index,
+                )
+                .first()
             )
-            .first()
-        )
-        await introspect_and_record(
-            db,
-            project_id,
-            chapter_index,
-            provider=harness.provider,
-            plan_context="",
-            chapter_text=chapter.content if chapter is not None else "",
-            review_reasons="",
-        )
+            await introspect_and_record(
+                db,
+                project_id,
+                chapter_index,
+                provider=harness.provider,
+                plan_context=outline_summaries.get(chapter_index, ""),
+                chapter_text=chapter.content if chapter is not None else "",
+                review_reasons="",
+            )
     except Exception:  # noqa: BLE001 - fail-open：自省失败不阻塞写作流程
         logger.exception("章末自省失败（fail-open 已跳过）")
 
@@ -244,7 +256,21 @@ async def send_message(session_id: str, payload: MessageSend, db: Session = Depe
     harness.max_turns_per_send = MAX_TURNS_PER_SEND
 
     async def event_stream():
+        # 本轮前的最新章号（code-review #3：follow-up 链写多章时自省全部新章）
+        from app.models import ChapterContent
+
+        before_row = (
+            db.query(ChapterContent.chapter_index)
+            .filter(ChapterContent.project_id == session["meta"]["project_id"])
+            .order_by(ChapterContent.chapter_index.desc())
+            .first()
+        )
+        before_max = before_row[0] if before_row is not None else 0
         async for event in harness.send(payload.content, idempotency_key=payload.idempotency_key):
+            # 09 定稿触发点 2（生产路径）：自省在 agent_end 事件之前完成——
+            # 前端按 agent_end 即回合结束的语义关闭连接也不会丢自省（code-review #2）
+            if isinstance(event, AgentEnd):
+                await _introspect_after_send(db, session, from_chapter=before_max + 1)
             # R6：会话级递增（跨 send 不重置），事件 id 全局唯一
             harness.event_offset += 1
             event_id = f"{session_id}-evt-{harness.event_offset}"
@@ -258,9 +284,6 @@ async def send_message(session_id: str, payload: MessageSend, db: Session = Depe
                 default=str,
             )
             yield f"event: {event.kind.value}\ndata: {data}\n\n"
-            # 09 定稿触发点 2（生产路径）：回合结束后自动章末自省（fail-open）
-            if isinstance(event, AgentEnd):
-                await _introspect_after_send(db, session)
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 

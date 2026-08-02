@@ -71,3 +71,27 @@ def test_single_type_query_unaffected_by_channel_limit(db_session):
     result = query_memory(db_session, project.id, memory_type="plotline", limit=6)
     assert len(result["memories"]) == 6
     assert result["injection_limit"]["channel_limits"] is None
+
+
+def test_introspect_log_filtered_from_query(db_session):
+    """code-review #4：introspect_log 内部标记行不进记忆查询（不挤占通道配额）。"""
+    from app.models import LongformMemory
+
+    project = Project(name="测试项目4")
+    db_session.add(project)
+    db_session.commit()
+    _seed(db_session, project.id, "plotline", 2, "伏笔")
+    # 自省标记行（title/summary 空）
+    db_session.add(LongformMemory(
+        project_id=project.id,
+        memory_type="introspect_log",
+        scope_key="chapter:1",
+        title="",
+        summary="",
+        start_chapter_index=1,
+        status="done",
+    ))
+    db_session.commit()
+    result = query_memory(db_session, project.id, memory_type="all", limit=10)
+    assert all(m["type"] != "introspect_log" for m in result["memories"])
+    assert len(result["memories"]) == 2

@@ -12,10 +12,14 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.v2 import agent as agent_v2
+from app.db import Base, engine
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    # 建表（幂等：仅建缺失表；项目无 alembic，新模型在此登记——code-review P0-1：
+    # entity_relations 等新表曾无任何建表路径，生产库缺表会在首次调用时击穿回合）
+    Base.metadata.create_all(bind=engine)
     yield
 
 

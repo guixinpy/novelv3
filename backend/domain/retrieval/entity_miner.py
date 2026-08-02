@@ -8,6 +8,7 @@ from __future__ import annotations
 import re
 from itertools import combinations
 
+from sqlalchemy import and_, or_, tuple_
 from sqlalchemy.orm import Session
 
 from app.models import EntityCandidate, EntityRelation
@@ -119,18 +120,26 @@ def register_entity_candidates(
     names: list[str],
     source: str = "rule",
 ) -> int:
-    """upsert 候选实体：同章去重（不增计数），新章 chapter_count+1。返回新增数。"""
-    added = 0
-    for name in names:
-        existing = (
-            db.query(EntityCandidate)
-            .filter(
-                EntityCandidate.project_id == project_id,
-                EntityCandidate.name == name,
-            )
-            .first()
+    """批量 upsert 候选实体：同章去重（不增计数），新章 chapter_count+1。返回新增数。
+
+    批量实现（code-review #11）：一次查询取回全部已有名，消除逐名 SELECT/commit。
+    """
+    unique = sorted(set(names))
+    if not unique:
+        return 0
+    existing_rows = (
+        db.query(EntityCandidate)
+        .filter(
+            EntityCandidate.project_id == project_id,
+            EntityCandidate.name.in_(unique),
         )
-        if existing is None:
+        .all()
+    )
+    existing = {e.name: e for e in existing_rows}
+    added = 0
+    for name in unique:
+        entry = existing.get(name)
+        if entry is None:
             db.add(EntityCandidate(
                 project_id=project_id,
                 name=name,
@@ -141,11 +150,11 @@ def register_entity_candidates(
             ))
             added += 1
         else:
-            if existing.last_chapter != chapter_index:
-                existing.chapter_count = (existing.chapter_count or 1) + 1
-            existing.last_chapter = chapter_index
-            if existing.first_chapter is None:
-                existing.first_chapter = chapter_index
+            if entry.last_chapter != chapter_index:
+                entry.chapter_count = (entry.chapter_count or 1) + 1
+            entry.last_chapter = chapter_index
+            if entry.first_chapter is None:
+                entry.first_chapter = chapter_index
     db.commit()
     return added
 
@@ -175,22 +184,27 @@ def record_entity_cooccurrences(
     同章提取到的实体两两成对 upsert 无向边（entity_a < entity_b 字典序）；
     同章重复出现不累计（register_entity_candidates 同章去重语义一致），
     新章共现 count+1。返回新增边数。
+
+    批量实现（code-review #11）：一次 tuple IN 取回全部已存在边，
+    消除 C(k,2) 次逐对 SELECT。
     """
     unique = sorted(set(names))
     if len(unique) < 2:
         return 0
-    added = 0
-    for a, b in combinations(unique, 2):
-        existing = (
-            db.query(EntityRelation)
-            .filter(
-                EntityRelation.project_id == project_id,
-                EntityRelation.entity_a == a,
-                EntityRelation.entity_b == b,
-            )
-            .first()
+    pairs = list(combinations(unique, 2))
+    existing_rows = (
+        db.query(EntityRelation)
+        .filter(
+            EntityRelation.project_id == project_id,
+            tuple_(EntityRelation.entity_a, EntityRelation.entity_b).in_(pairs),
         )
-        if existing is None:
+        .all()
+    )
+    existing = {(r.entity_a, r.entity_b): r for r in existing_rows}
+    added = 0
+    for a, b in pairs:
+        entry = existing.get((a, b))
+        if entry is None:
             db.add(EntityRelation(
                 project_id=project_id,
                 entity_a=a,
@@ -200,9 +214,9 @@ def record_entity_cooccurrences(
             ))
             added += 1
         else:
-            if existing.last_chapter != chapter_index:
-                existing.count = (existing.count or 1) + 1
-            existing.last_chapter = chapter_index
+            if entry.last_chapter != chapter_index:
+                entry.count = (entry.count or 1) + 1
+            entry.last_chapter = chapter_index
     db.commit()
     return added
 
@@ -218,35 +232,35 @@ def related_entities(
     """查询与指定实体共现的关联实体（按共现章数降序）。
 
     only_promoted=True（默认）：只返回已转正实体（chapter_count ≥2 或 l2）的关联，
-    挡掉规则提取的噪声边。
+    挡掉规则提取的噪声边。SQL 层直接过滤转正侧（code-review #12：此前先取 limit*3
+    再内存过滤，截断线以下的合法转正关联会被静默漏掉）。
     """
-    pairs = (
-        db.query(EntityRelation)
-        .filter(
-            EntityRelation.project_id == project_id,
-            (EntityRelation.entity_a == entity) | (EntityRelation.entity_b == entity),
-        )
-        .order_by(EntityRelation.count.desc(), EntityRelation.last_chapter.desc())
-        .limit(limit * 3)
-        .all()
+    query = db.query(EntityRelation).filter(
+        EntityRelation.project_id == project_id,
+        (EntityRelation.entity_a == entity) | (EntityRelation.entity_b == entity),
     )
-    promoted: set[str] | None = None
     if only_promoted:
         promoted = set(promoted_entity_names(db, project_id))
+        if not promoted:
+            return []
+        # other 侧（非查询实体）必须是转正实体
+        query = query.filter(
+            or_(
+                and_(EntityRelation.entity_a == entity, EntityRelation.entity_b.in_(promoted)),
+                and_(EntityRelation.entity_b == entity, EntityRelation.entity_a.in_(promoted)),
+            )
+        )
+    pairs = (
+        query.order_by(EntityRelation.count.desc(), EntityRelation.last_chapter.desc())
+        .limit(limit)
+        .all()
+    )
     result: list[dict] = []
-    seen: set[str] = set()
     for pair in pairs:
         other = pair.entity_b if pair.entity_a == entity else pair.entity_a
-        if other in seen:
-            continue
-        if promoted is not None and other not in promoted:
-            continue
-        seen.add(other)
         result.append({
             "entity": other,
             "cooccurrence_count": pair.count,
             "last_chapter": pair.last_chapter,
         })
-        if len(result) >= limit:
-            break
     return result

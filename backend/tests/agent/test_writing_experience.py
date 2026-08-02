@@ -106,6 +106,94 @@ def test_pinned_exempt_from_decay(db_session):
     assert (pinned.memory_metadata or {})["trust_score"] == 1  # 未衰减
 
 
+def test_archived_revived_on_reinforce(db_session):
+    """code-review #5：被衰减归档的经验再次强化时恢复注入（status 回 current）。"""
+    project = _make_project(db_session)
+    apply_experiences(
+        db_session, project.id, 1, "节奏",
+        [{"key": "开篇节奏", "action": "new", "text": "开篇冲突前置。"}],
+    )
+    # 31 章时衰减归档
+    apply_experiences(
+        db_session, project.id, 31, "节奏",
+        [{"key": "新经验", "action": "new", "text": "新内容。"}],
+    )
+    entry = _by_key(db_session, project.id)["开篇节奏"]
+    assert entry.status == "archived"
+    # 同 key 再次强化 → 复活
+    apply_experiences(
+        db_session, project.id, 32, "节奏",
+        [{"key": "开篇节奏", "action": "reinforce", "text": "开篇冲突前置再次验证有效。"}],
+    )
+    entry = _by_key(db_session, project.id)["开篇节奏"]
+    assert entry.status == "current"
+    assert (entry.memory_metadata or {})["trust_score"] == 1  # 衰减至 0 后 +1
+    # 复活后重新进入注入
+    items = experience_injection_items(db_session, project.id)
+    assert any("开篇冲突前置" in i["text"] for i in items)
+
+
+def test_decay_keeps_reinforce_anchor(db_session):
+    """code-review #9：衰减用独立 last_decay 字段计时，不伪造 last_reinforce 锚点。"""
+    project = _make_project(db_session)
+    # Ch5 创建 + Ch6 强化（trust=2，锚点 Ch6）——衰减降权但不归档
+    apply_experiences(
+        db_session, project.id, 5, "文风",
+        [{"key": "对话占比", "action": "new", "text": "对话应精简。"}],
+    )
+    apply_experiences(
+        db_session, project.id, 6, "文风",
+        [{"key": "对话占比", "action": "reinforce", "text": "对话应精简，验证有效。"}],
+    )
+    # Ch36 自省：距上次强化 30 章 → 衰减（trust 2→1）
+    apply_experiences(
+        db_session, project.id, 36, "文风",
+        [{"key": "新条目", "action": "new", "text": "新内容。"}],
+    )
+    entry = _by_key(db_session, project.id)["对话占比"]
+    meta = entry.memory_metadata or {}
+    # 锚点保留真实强化章（Ch6），衰减计时走 last_decay（Ch36）
+    assert entry.status == "current"
+    assert meta["trust_score"] == 1
+    assert meta["last_reinforce_chapter_index"] == 6
+    assert meta["last_decay_chapter_index"] == 36
+    # 注入锚点显示真实强化章（不伪造「Ch36验证」）
+    items = experience_injection_items(db_session, project.id)
+    assert any(i["anchor"] == "Ch6验证" for i in items)
+
+
+def test_decay_applies_to_zero_last_entries(db_session):
+    """code-review #9：last=0（从未强化）的旧条目按距当前章衰减，不再永久豁免。"""
+    project = _make_project(db_session)
+    from app.models import LongformMemory
+
+    db_session.add(
+        LongformMemory(
+            project_id=project.id,
+            memory_type=EXPERIENCE_TYPE,
+            scope_key="旧数据",
+            title="[节奏] 旧数据",
+            summary="旧内容。",
+            start_chapter_index=1,
+            status="current",
+            memory_metadata={
+                "category": "节奏",
+                "trust_score": 1,
+                "last_reinforce_chapter_index": 0,  # 旧数据无强化记录
+                "pinned": False,
+                "provenance": "agent_inferred",
+            },
+        )
+    )
+    db_session.commit()
+    apply_experiences(
+        db_session, project.id, 31, "节奏",
+        [{"key": "新条目", "action": "new", "text": "新内容。"}],
+    )
+    entry = _by_key(db_session, project.id)["旧数据"]
+    assert entry.status == "archived"
+
+
 def test_budget_evicts_lowest_trust(db_session):
     """每类 20 条上限：超限按信任度淘汰（archived 不删除）。"""
     project = _make_project(db_session)

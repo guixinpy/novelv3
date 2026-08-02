@@ -13,7 +13,7 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from core.providers.base import Provider
-from core.workflow.base import ReviewCommand, ReviewVerdict, WorkflowEngine, WorkflowResult
+from core.workflow.base import ReviewCommand, ReviewVerdict, WorkflowEngine, WorkflowResult, WorkflowStatus
 from domain.memory.project_snapshot import build_project_snapshot
 from domain.writing.chapter_gen import generate_chapter
 from domain.writing.format_checker import check_chapter_hook, check_text_format
@@ -26,6 +26,8 @@ class ChapterPipeline:
     introspect: 章末自省回调（per-book 自优化，09 定稿触发点之一）。
     注入式而非内建：测试注入 fake（不消耗 ScriptedProvider 脚本队列），
     生产由调用方注入 introspect_and_record 包装。None 则不触发。
+    回调契约：async (chapter_index: int, result: WorkflowResult) -> None，
+    仅在 FINALIZED 时触发（code-review #14：FAILED 不做空自省）。
     """
 
     def __init__(
@@ -59,7 +61,9 @@ class ChapterPipeline:
             "word_target": self.word_target,
         }
         result = await engine.run(context)
-        if self.introspect is not None:
+        # 仅 FINALIZED 触发（code-review #14）：FAILED（execute/review 抛错）时
+        # 不存在有效正文，空自省会误打幂等标记导致后续重写被跳过
+        if self.introspect is not None and result.status == WorkflowStatus.FINALIZED:
             try:
                 await self.introspect(chapter_index, result)
             except Exception:  # noqa: BLE001 - 自省 fail-open：失败不阻塞章节流程

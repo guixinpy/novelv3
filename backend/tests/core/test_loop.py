@@ -221,6 +221,18 @@ async def test_empty_response_nudged_then_completed(scripted_provider_factory):
     assert result.partial_response == "这次写完了"
 
 
+def test_strip_api_fields_removes_ephemeral():
+    """code-review #8：ephemeral 标记（nudge 等临时注入）持久化时被剥离。"""
+    from core.session.transcript import strip_api_fields
+
+    message = {"role": "user", "content": "（上一条回复为空。）", "ephemeral": True}
+    stripped = strip_api_fields(message)
+    assert "ephemeral" not in stripped
+    assert stripped["content"] == "（上一条回复为空。）"
+    # 持久化后不再携带 ephemeral（不会重放成永久悬空指令）
+    assert "ephemeral" not in strip_api_fields({"role": "user", "content": "正常消息"})
+
+
 async def test_empty_response_exhausted_ends_turn(scripted_provider_factory):
     """空响应恢复上限：连续空输出超上限后正常结束（不无限重试）。"""
     provider = scripted_provider_factory(

@@ -151,9 +151,11 @@ async def run_turn(
 
         if not response.tool_calls:
             if not response.content.strip() and state.empty_response_retries < _MAX_EMPTY_RESPONSE_RETRIES:
-                # 空响应恢复（hermes）：注入引导后重试，不当作正常完成
+                # 空响应恢复（hermes）：注入引导后重试，不当作正常完成。
+                # ephemeral 标记：不进 transcript（code-review #8——此前 nudge 被持久化
+                # 成永久悬空指令，与"停止"类指令冲突）
                 state.record_empty_response()
-                history.append({"role": "user", "content": _EMPTY_RESPONSE_NUDGE})
+                history.append({"role": "user", "content": _EMPTY_RESPONSE_NUDGE, "ephemeral": True})
                 continue
             history.append({"role": "assistant", "content": response.content})
             await emit(AssistantMessage(content=response.content))
