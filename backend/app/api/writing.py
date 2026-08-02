@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 from fastapi import APIRouter, Depends, HTTPException, Path
 from sqlalchemy.orm import Session
 
@@ -61,22 +63,17 @@ def get_writing_state(project_id: str, db: Session = Depends(get_db)):
 
 def build_retry_chapter_work(project_id: str, chapter_index: int):
     async def _regen(rdb: Session, running_task: BackgroundTask):
-        from app.api.chapters import generate_chapter as _gen_chapter
+        # stub 删除（C 方案）：重试改走真生成路径 create_or_replace_chapter
+        from app.api.chapters import create_or_replace_chapter
 
         try:
-            chapter = await _gen_chapter(project_id, chapter_index, rdb)
+            chapter = await create_or_replace_chapter(rdb, project_id, chapter_index)
         except Exception as exc:
             WritingStateService(rdb).mark_error(project_id, str(exc))
             raise
 
         WritingStateService(rdb).complete_chapter(project_id, chapter_index)
-        generated_index = chapter.get("chapter_index") if isinstance(chapter, dict) else chapter.chapter_index
-        result = {"chapter_index": generated_index}
-        provenance = _chapter_agent_provenance(chapter)
-        if provenance:
-            result["agent_run_id"] = provenance["agent_run_id"]
-            if "control_plane" in provenance:
-                result["control_plane"] = provenance["control_plane"]
+        result = {"chapter_index": chapter.chapter_index}
         return result
 
     return _regen
@@ -84,7 +81,8 @@ def build_retry_chapter_work(project_id: str, chapter_index: int):
 
 def build_generate_chapter_work(project_id: str, chapter_index: int):
     async def _generate(rdb: Session, running_task: BackgroundTask):
-        from app.api.chapters import generate_chapter as _gen_chapter
+        # stub 删除（C 方案）：连续写作改走真生成路径 create_or_replace_chapter
+        from app.api.chapters import _latest_chapter_generation_trace_id, create_or_replace_chapter
 
         progress_service = BackgroundTaskService(rdb)
         chapter_range = (running_task.payload or {}).get("chapter_range")
@@ -96,7 +94,6 @@ def build_generate_chapter_work(project_id: str, chapter_index: int):
             chapter_indexes = range(chapter_index, chapter_index + 1)
 
         generated_index = chapter_index
-        agent_runs: list[dict] = []
         try:
             for next_chapter_index in chapter_indexes:
                 current_state = WritingStateService(rdb).state(project_id, include_task_id=False)
@@ -104,11 +101,8 @@ def build_generate_chapter_work(project_id: str, chapter_index: int):
                     break
 
                 WritingStateService(rdb).run_chapter(project_id, next_chapter_index, include_task_id=False)
-                chapter = await _gen_chapter(project_id, next_chapter_index, rdb)
-                generated_index = chapter.get("chapter_index") if isinstance(chapter, dict) else chapter.chapter_index
-                provenance = _chapter_agent_provenance(chapter)
-                if provenance:
-                    agent_runs.append(provenance)
+                chapter = await create_or_replace_chapter(rdb, project_id, next_chapter_index)
+                generated_index = chapter.chapter_index
 
                 if isinstance(chapter_range, dict):
                     progress_service.mark_range_progress(running_task.id, completed_chapter_index=int(generated_index))
@@ -116,7 +110,10 @@ def build_generate_chapter_work(project_id: str, chapter_index: int):
                     rdb,
                     task_id=running_task.id,
                     project_id=project_id,
-                    chapter=chapter,
+                    chapter=SimpleNamespace(
+                        chapter_index=chapter.chapter_index,
+                        last_generation_trace_id=_latest_chapter_generation_trace_id(rdb, chapter),
+                    ),
                 )
         except Exception as exc:
             WritingStateService(rdb).mark_error(project_id, str(exc))
@@ -124,9 +121,6 @@ def build_generate_chapter_work(project_id: str, chapter_index: int):
 
         result = dict(progress_service.get(running_task.id).result or {})
         result["chapter_index"] = generated_index
-        if agent_runs:
-            result["agent_runs"] = agent_runs
-            result["agent_run_id"] = agent_runs[-1]["agent_run_id"]
         return result
 
     return _generate
@@ -176,18 +170,6 @@ def _generated_chapter_trace_id(chapter) -> str | None:
     return str(value) if value else None
 
 
-def _chapter_agent_provenance(chapter) -> dict | None:
-    agent_run_id = chapter.get("agent_run_id") if isinstance(chapter, dict) else getattr(chapter, "agent_run_id", None)
-    if not agent_run_id:
-        return None
-    item = {
-        "chapter_index": _generated_chapter_index(chapter),
-        "agent_run_id": str(agent_run_id),
-    }
-    control_plane = chapter.get("control_plane") if isinstance(chapter, dict) else getattr(chapter, "control_plane", None)
-    if isinstance(control_plane, dict):
-        item["control_plane"] = control_plane
-    return item
 
 
 def _generation_trace_metadata(db: Session, *, project_id: str, trace_id: str) -> dict:
