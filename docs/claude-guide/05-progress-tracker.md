@@ -273,3 +273,17 @@ revision_feedback.py）已随整链退役归档（docs/archive/arch-refactor/leg
 **架构现状**：工具审批（ApprovalGate）已恢复可用；人工标注是唯一的用户→agent
 文本反馈缺口。归档参考：legacy/models/chapter_revision.py、tests-legacy/、
 旧 core 的 revision_feedback.py。
+
+### 归档模块多视角评审（2026-08-02，四视角子代理）
+
+归档模块 A-I 九组经 4 视角评审（创作/读者/工程/成本收益），完整结论见
+docs/archive/arch-refactor/module-review.md。
+
+**P1 待办（低风险纯函数）**：① check_quality_trend 字数趋势（节奏管理#4 唯一缺失，~30 行）
+② 连续性检测纯函数重建（术语配置化）③ build_chapter_retrieval_context 接入 pipeline
+④ L2 提取通道 ⑤ json_utils/prompt_optimizer 迁入 ⑥ narrative_plan_window 瘦身重挂
+⑦ athena_setup_terms 迁入 ⑧ 旧实验脚本清理（l3/l4/m5 系列）
+
+**P2 待定**：世界事实账本瘦身（实证缺口时）/ 无词表 LLM 评审 / versions 回滚 / dialog 拓扑（前端定盘时）
+
+**永久放弃**：B 自优化、G 模型层、F 杂项、I 旧脚本；全部特化词表与世界耦合件（六项不变量原则）。
