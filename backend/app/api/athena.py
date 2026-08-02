@@ -5,7 +5,6 @@ from app.api import (
     athena_evolution,
     athena_longform,
     athena_ontology,
-    athena_optimization,
     athena_retrieval_api,
     athena_state,
 )
@@ -15,7 +14,6 @@ router = APIRouter(
     tags=["athena"],
 )
 
-router.include_router(athena_optimization.router)
 router.include_router(athena_ontology.router)
 router.include_router(athena_state.router)
 router.include_router(athena_evolution.router)

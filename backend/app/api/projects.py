@@ -19,7 +19,6 @@ from app.models import (
     PendingAction,
     Project,
     ProjectProfileVersion,
-    PromptRule,
     RetrievalChunk,
     RetrievalDocument,
     RetrievalEmbedding,
@@ -94,7 +93,6 @@ PROJECT_SCOPED_MODELS = (
     LongformMemory,
     BackgroundTask,
     Version,
-    PromptRule,
     WritingState,
 )
 

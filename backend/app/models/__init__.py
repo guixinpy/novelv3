@@ -14,7 +14,6 @@ from .outline import Outline
 from .pending_action import PendingAction
 from .project import Project
 from .project_profile_version import ProjectProfileVersion
-from .prompt_rule import PromptRule
 from .retrieval import RetrievalChunk, RetrievalDocument, RetrievalEmbedding, RetrievalTerm
 from .setup import Setup
 from .storyline import Storyline

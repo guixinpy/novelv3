@@ -6,7 +6,6 @@ from sqlalchemy.orm import Session
 
 from app.api.chapters import create_or_replace_chapter
 from app.core.revision_feedback import format_revision_feedback
-from app.core.self_optimization import apply_revision_optimization
 from app.db import get_db
 from app.models import ChapterContent, ChapterRevision, Dialog, DialogMessage, Project, RevisionAnnotation, RevisionCorrection, Version
 from app.schemas import ChapterOut
@@ -220,12 +219,6 @@ def submit_revision(project_id: str, payload: ChapterRevisionCreate, db: Session
 
     db.commit()
     db.refresh(revision)
-    apply_revision_optimization(
-        db,
-        project,
-        annotations=[item.model_dump() for item in payload.annotations],
-        corrections=[item.model_dump() for item in payload.corrections],
-    )
     return _revision_out(db, revision)
 
 
@@ -326,7 +319,6 @@ def submit_revision_draft(project_id: str, revision_id: str, db: Session = Depen
     revision.completed_at = None
     db.commit()
     db.refresh(revision)
-    apply_revision_optimization(db, project, annotations=annotation_payloads, corrections=correction_payloads)
     return _revision_out(db, revision)
 
 

@@ -9,7 +9,6 @@ from app.models import (
     Dialog,
     DialogMessage,
     LongformMemory,
-    PromptRule,
     RevisionAnnotation,
     RevisionCorrection,
     Setup,
@@ -82,9 +81,6 @@ def test_submit_revision_persists_annotations_and_corrections(client, db_session
     assert data["annotations"][0]["comment"] == "节奏太慢"
     assert len(data["corrections"]) == 1
     assert data["corrections"][0]["corrected_text"] == "夜风微凉"
-    learned_rule = db_session.query(PromptRule).filter(PromptRule.project_id == project.id, PromptRule.rule_type == "learned").first()
-    assert learned_rule is not None
-    assert "节奏" in learned_rule.condition
 
     list_response = client.get(f"/api/v1/projects/{project.id}/revisions")
     assert list_response.status_code == 200
@@ -308,9 +304,6 @@ def test_submit_draft_applies_revision_optimization(client, db_session):
     submit_response = client.post(f"/api/v1/projects/{project.id}/revisions/{draft_response.json()['id']}/submit")
 
     assert submit_response.status_code == 200
-    learned_rule = db_session.query(PromptRule).filter(PromptRule.project_id == project.id, PromptRule.rule_type == "learned").first()
-    assert learned_rule is not None
-    assert learned_rule.condition == "用户反馈节奏太慢"
 
 
 def test_empty_draft_update_removes_submitted_revision_feedback(client, db_session):
