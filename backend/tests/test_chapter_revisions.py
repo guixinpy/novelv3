@@ -398,8 +398,8 @@ def test_regenerate_revision_refreshes_longform_memory_and_retrieval(mock_build_
     mock_complete = AsyncMock()
     mock_build_provider.return_value.complete = mock_complete
     mock_build_provider.return_value.close = AsyncMock()
-    from app.core.athena_retrieval import reindex_project_retrieval, search_retrieval
-    from app.core.longform_memory import rebuild_longform_memory
+    from domain.retrieval.athena_retrieval import reindex_project_retrieval, search_retrieval
+    from domain.memory.longform_memory import rebuild_longform_memory
 
     project = Project(name="Revision Longform Maintenance")
     db_session.add(project)

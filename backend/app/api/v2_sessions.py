@@ -25,7 +25,7 @@ from app.agent.events import (
 from app.agent.harness import AgentHarness, HarnessConfig
 from app.agent.providers.base import Provider
 from app.agent.tooling import ToolContext
-from app.core.project_snapshot import build_project_snapshot
+from domain.memory.project_snapshot import build_project_snapshot
 from app.db import DATA_DIR, get_db
 from app.models import Project
 from app.tools.registry import build_default_registry

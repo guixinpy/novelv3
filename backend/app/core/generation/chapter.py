@@ -5,7 +5,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.core.model_call_trace import build_context_block
-from app.core.outline_lookup import find_outline_chapter
+from domain.memory.outline_lookup import find_outline_chapter
 from app.core.writing_agent_constraints import build_agent_chapter_constraint_block
 from app.models import ChapterContent, Project, Setup
 from app.core.generation.blocks_athena import athena_context_has_retrieval, build_athena_chapter_context_block

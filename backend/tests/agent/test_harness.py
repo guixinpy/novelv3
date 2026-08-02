@@ -206,7 +206,7 @@ async def test_steering_injected_mid_turn(tmp_path):
 
 @pytest.mark.asyncio
 async def test_snapshot_injected_into_system_not_persisted(tmp_path, db_session):
-    from app.core.project_snapshot import build_project_snapshot
+    from domain.memory.project_snapshot import build_project_snapshot
     from app.models import ChapterContent, Project, Setup
 
     p = Project(name="测试", genre="悬疑")

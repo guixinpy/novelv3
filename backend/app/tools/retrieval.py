@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from app.agent.tooling import ToolContext, ToolResult, tool
-from app.core.athena_retrieval import search_retrieval
+from domain.retrieval.athena_retrieval import search_retrieval
 from app.tools.registry import registry
 
 

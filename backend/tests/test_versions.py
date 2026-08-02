@@ -1,5 +1,5 @@
-from app.core.athena_retrieval import reindex_project_retrieval, search_retrieval
-from app.core.longform_memory import rebuild_longform_memory
+from domain.retrieval.athena_retrieval import reindex_project_retrieval, search_retrieval
+from domain.memory.longform_memory import rebuild_longform_memory
 from app.models import ChapterContent, LongformMemory, Project
 from app.models import Version
 from sqlalchemy import event

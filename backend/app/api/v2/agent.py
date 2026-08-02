@@ -19,7 +19,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.core.project_snapshot import build_project_snapshot
+from domain.memory.project_snapshot import build_project_snapshot
 from app.db import get_db
 from core.harness import AgentHarness, HarnessConfig
 from core.loop import BeforeToolCall

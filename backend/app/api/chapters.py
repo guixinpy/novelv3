@@ -7,11 +7,11 @@ from sqlalchemy.orm import Session
 
 from app.config import load_api_key
 from app.agent.providers import build_provider
-from app.core.athena_retrieval import sync_longform_memory_retrieval_documents
+from domain.retrieval.athena_retrieval import sync_longform_memory_retrieval_documents
 from app.core.chapter_target import chapter_index_exceeds_target
-from app.core.longform_memory import refresh_longform_memory_for_chapter
+from domain.memory.longform_memory import refresh_longform_memory_for_chapter
 from app.core.model_call_trace import create_trace, mark_trace_failed, mark_trace_success, now_ms, truncate_text
-from app.core.outline_lookup import find_outline_chapter
+from domain.memory.outline_lookup import find_outline_chapter
 from app.core.setup_projection import get_setup_character_projection
 from app.core.text_stats import count_words
 from app.db import get_db
@@ -528,7 +528,7 @@ async def create_or_replace_chapter(
     setattr(chapter, "athena_analysis_result", athena_analysis_result)
 
     try:
-        from app.core.athena_retrieval import index_chapter_retrieval
+        from domain.retrieval.athena_retrieval import index_chapter_retrieval
         index_chapter_retrieval(db=db, project_id=project_id, chapter_index=chapter_index)
     except Exception as exc:
         db.rollback()

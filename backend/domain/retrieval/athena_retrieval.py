@@ -11,14 +11,14 @@ from fastapi import HTTPException
 from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session, load_only
 
-from app.core.embedding_service import (
+from domain.retrieval.embedding_service import (
     EmbeddingProvider,
     cosine_similarity,
     get_embedding_provider,
     tokenize_for_retrieval,
     vector_hash,
 )
-from app.core.outline_lookup import find_outline_chapter
+from domain.memory.outline_lookup import find_outline_chapter
 from app.models import (
     ChapterContent,
     LongformMemory,

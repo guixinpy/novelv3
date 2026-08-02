@@ -8,7 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.api.deprecation import add_deprecation_header
-from app.core.narrative_plan_window import get_evolution_plan_window
+from domain.memory.narrative_plan_window import get_evolution_plan_window
 from app.db import get_db
 from app.models import Outline
 from app.schemas import OutlineOut

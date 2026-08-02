@@ -11,7 +11,7 @@ from sqlalchemy import String, func, text
 from sqlalchemy.orm import Session, load_only
 
 from app.core.model_call_trace import build_context_block
-from app.core.outline_lookup import find_outline_chapter
+from domain.memory.outline_lookup import find_outline_chapter
 from app.models import (
     ConsistencyCheck,
     ProjectProfileVersion,
@@ -502,7 +502,7 @@ class WorldContextAssembler:
 
     def _append_retrieval_context(self, *, chapter_index: int, lines: list[str], sections: list[dict[str, Any]]) -> None:
         try:
-            from app.core.athena_retrieval import build_chapter_retrieval_context
+            from domain.retrieval.athena_retrieval import build_chapter_retrieval_context
 
             retrieval_context = build_chapter_retrieval_context(
                 db=self.db,

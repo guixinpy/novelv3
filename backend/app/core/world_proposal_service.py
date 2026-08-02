@@ -7,7 +7,7 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.athena_retrieval import delete_fact_retrieval_document, sync_fact_retrieval_document
+from domain.retrieval.athena_retrieval import delete_fact_retrieval_document, sync_fact_retrieval_document
 from app.core.world_fact_scope import is_chapter_scoped_truth_predicate
 from app.core.world_projection_service import invalidate_world_projection_cache
 from app.core.world_proposal_records import child_item_from_parent, claim_payload_from_item_snapshot

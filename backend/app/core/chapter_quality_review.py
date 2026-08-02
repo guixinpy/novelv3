@@ -5,7 +5,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.core.outline_lookup import find_outline_chapter
+from domain.memory.outline_lookup import find_outline_chapter
 from app.core.world_proposal_review_queue import build_proposal_review_queue
 from app.models import ChapterContent, Outline, Project, ProjectProfileVersion, Setup
 from app.core.chapter_utils import project_chapter_word_range

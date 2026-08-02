@@ -2,13 +2,13 @@
 from __future__ import annotations
 
 from app.agent.tooling import ToolContext, ToolResult, tool
-from app.core.entity_miner import (
+from domain.retrieval.entity_miner import (
     mine_entities_from_text,
     promoted_entity_names,
     register_entity_candidates,
 )
 from domain.writing.format_checker import check_chapter_hook, check_text_format
-from app.core.longform_memory import get_or_create_longform_memory
+from domain.memory.longform_memory import get_or_create_longform_memory
 from domain.writing.structural_similarity import _CLUSTER_MIN, detect_structure_repeats
 from app.models import ChapterContent, LongformMemory, Project, Setup, WorldCharacter, WorldLocation
 from app.tools.registry import registry

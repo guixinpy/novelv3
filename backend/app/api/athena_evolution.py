@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.api.athena_shared import require_project
 from app.api.outlines import ChapterOutlineUpdate
 from app.core.athena_longform import analyze_chapter_to_world_proposals, build_chapter_context_package
-from app.core.narrative_plan_window import get_evolution_plan_window
+from domain.memory.narrative_plan_window import get_evolution_plan_window
 from app.db import get_db
 from app.models import Outline, Storyline
 from app.schemas import ProposalBundleSplitCreate, ProposalReviewCreate, ProposalReviewRollbackCreate

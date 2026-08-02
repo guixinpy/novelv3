@@ -2,8 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.core.athena_retrieval import index_chapter_retrieval, sync_longform_memory_retrieval_documents
-from app.core.longform_memory import refresh_longform_memory_for_chapter
+from domain.retrieval.athena_retrieval import index_chapter_retrieval, sync_longform_memory_retrieval_documents
+from domain.memory.longform_memory import refresh_longform_memory_for_chapter
 from app.core.text_stats import count_words
 from app.db import get_db
 from app.models import ChapterContent, Outline, Project, Setup, Storyline, Version

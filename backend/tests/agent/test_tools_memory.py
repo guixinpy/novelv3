@@ -238,7 +238,7 @@ async def test_track_plotline_query_no_match_falls_back_to_recent(ctx: ToolConte
 
 @pytest.mark.asyncio
 async def test_get_or_create_creates_new(ctx: ToolContext):
-    from app.core.longform_memory import get_or_create_longform_memory
+    from domain.memory.longform_memory import get_or_create_longform_memory
 
     mem = get_or_create_longform_memory(
         ctx.db, ctx.project_id, "plotline", "新线",
@@ -258,7 +258,7 @@ async def test_get_or_create_creates_new(ctx: ToolContext):
 
 @pytest.mark.asyncio
 async def test_get_or_create_updates_existing(ctx: ToolContext):
-    from app.core.longform_memory import get_or_create_longform_memory
+    from domain.memory.longform_memory import get_or_create_longform_memory
 
     mem = get_or_create_longform_memory(
         ctx.db, ctx.project_id, "plotline", "既有线",

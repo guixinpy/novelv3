@@ -7,10 +7,10 @@ from fastapi import HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.core.longform_memory import build_longform_context_package, get_longform_maintenance_diagnostics
-from app.core.outline_lookup import find_outline_chapter
+from domain.memory.longform_memory import build_longform_context_package, get_longform_maintenance_diagnostics
+from domain.memory.outline_lookup import find_outline_chapter
 from app.models import ChapterContent, Project
-from app.core.memory_provenance_contract import build_memory_provenance
+from domain.memory.memory_provenance_contract import build_memory_provenance
 
 DEFAULT_MAX_CHARS = 4000
 MIN_MAX_CHARS = 500

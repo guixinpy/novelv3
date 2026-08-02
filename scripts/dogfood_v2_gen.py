@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 from sqlalchemy.orm import Session  # noqa: E402
 
 from app.config import load_api_key  # noqa: E402
-from app.core.project_snapshot import build_project_snapshot  # noqa: E402
+from domain.memory.project_snapshot import build_project_snapshot  # noqa: E402
 from app.db import SessionLocal  # noqa: E402
 from app.models import ChapterContent, Project, Setup  # noqa: E402
 from core.harness import AgentHarness, HarnessConfig  # noqa: E402

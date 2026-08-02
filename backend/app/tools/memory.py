@@ -5,8 +5,8 @@ import re
 from datetime import UTC, datetime
 
 from app.agent.tooling import ToolContext, ToolResult, tool
-from app.core.athena_retrieval import search_retrieval
-from app.core.longform_memory import get_or_create_longform_memory
+from domain.retrieval.athena_retrieval import search_retrieval
+from domain.memory.longform_memory import get_or_create_longform_memory
 from app.models import ChapterContent, LongformMemory
 from app.tools.registry import registry
 

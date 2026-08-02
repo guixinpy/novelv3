@@ -1,8 +1,8 @@
 from sqlalchemy import event
 
 from app.core.world_contracts import DERIVED
-from app.core.embedding_service import LocalHashEmbeddingProvider, get_embedding_provider
-from app.core.athena_retrieval import (
+from domain.retrieval.embedding_service import LocalHashEmbeddingProvider, get_embedding_provider
+from domain.retrieval.athena_retrieval import (
     RetrievalSource,
     _index_sources,
     _chapter_context_query,
@@ -84,7 +84,7 @@ def test_chapter_context_fallback_projects_previous_chapter_preview(db_session):
 
 
 def test_local_hash_embedding_hashes_repeated_tokens_once(monkeypatch):
-    import app.core.embedding_service as embedding_service
+    import domain.retrieval.embedding_service as embedding_service
 
     embedding_service._local_hash_token_features.cache_clear()
     original_sha256 = embedding_service.hashlib.sha256
@@ -104,7 +104,7 @@ def test_local_hash_embedding_hashes_repeated_tokens_once(monkeypatch):
 
 
 def test_local_hash_embedding_reuses_token_hashes_across_batches(monkeypatch):
-    import app.core.embedding_service as embedding_service
+    import domain.retrieval.embedding_service as embedding_service
 
     embedding_service._local_hash_token_features.cache_clear()
     original_sha256 = embedding_service.hashlib.sha256
@@ -401,7 +401,7 @@ def test_reindex_preserves_unchanged_documents_without_loading_chunk_ids(db_sess
 
 
 def test_reindex_preserves_memory_documents_after_memory_rebuild(db_session):
-    from app.core.longform_memory import rebuild_longform_memory
+    from domain.memory.longform_memory import rebuild_longform_memory
 
     project = Project(name="Stable Memory Retrieval Reindex")
     db_session.add(project)
@@ -638,7 +638,7 @@ def test_reindex_fetches_changed_chapter_sources_by_id(db_session):
 
 def test_source_hash_does_not_json_serialize_full_text(monkeypatch):
     import hashlib
-    import app.core.athena_retrieval as athena_retrieval
+    import domain.retrieval.athena_retrieval as athena_retrieval
 
     captured_payloads: list[dict] = []
     original_dumps = athena_retrieval.json.dumps
@@ -878,7 +878,7 @@ def test_reindex_prefers_cjk_trigrams_over_bigrams_for_lexical_terms(db_session)
 
 
 def test_indexable_retrieval_terms_avoid_repeated_full_cjk_token_checks(monkeypatch):
-    import app.core.athena_retrieval as athena_retrieval
+    import domain.retrieval.athena_retrieval as athena_retrieval
 
     check_count = {"value": 0}
     original_is_cjk_token = athena_retrieval._is_cjk_token
@@ -945,7 +945,7 @@ def test_reindex_uses_core_insert_path_for_retrieval_rows(db_session, monkeypatc
 
 
 def test_reindex_core_inserts_lexical_term_rows(db_session, monkeypatch):
-    import app.core.athena_retrieval as athena_retrieval
+    import domain.retrieval.athena_retrieval as athena_retrieval
 
     project = _seed_retrieval_project(db_session)
     inserted_term_batches: list[list[dict]] = []
@@ -969,7 +969,7 @@ def test_reindex_core_inserts_lexical_term_rows(db_session, monkeypatch):
 
 
 def test_reindex_tokenizes_each_chunk_once_for_lexical_index(db_session, monkeypatch):
-    import app.core.athena_retrieval as athena_retrieval
+    import domain.retrieval.athena_retrieval as athena_retrieval
 
     project = _seed_retrieval_project(db_session)
     tokenize_count = {"calls": 0}
@@ -1006,7 +1006,7 @@ def test_reindex_avoids_flush_per_new_document_and_chunk(db_session, monkeypatch
 
 
 def test_reindex_batches_retrieval_rows_as_core_inserts(db_session, monkeypatch):
-    import app.core.athena_retrieval as athena_retrieval
+    import domain.retrieval.athena_retrieval as athena_retrieval
 
     project = _seed_retrieval_project(db_session)
     bulk_save_calls: list[tuple[str, int]] = []
@@ -1046,7 +1046,7 @@ def test_reindex_batches_retrieval_rows_as_core_inserts(db_session, monkeypatch)
 
 
 def test_reindex_uses_configured_write_batches_for_many_sources(db_session, monkeypatch):
-    import app.core.athena_retrieval as athena_retrieval
+    import domain.retrieval.athena_retrieval as athena_retrieval
 
     project = Project(name="Retrieval Batch Throughput")
     db_session.add(project)
@@ -1092,7 +1092,7 @@ def test_reindex_uses_configured_write_batches_for_many_sources(db_session, monk
 
 
 def test_reindex_streams_pending_sources_to_indexer(db_session, monkeypatch):
-    import app.core.athena_retrieval as athena_retrieval
+    import domain.retrieval.athena_retrieval as athena_retrieval
 
     project = Project(name="Retrieval Streaming")
     db_session.add(project)
@@ -1128,7 +1128,7 @@ def test_reindex_streams_pending_sources_to_indexer(db_session, monkeypatch):
 
 
 def test_reindex_flushes_write_batch_when_term_rows_reach_guard(db_session, monkeypatch):
-    import app.core.athena_retrieval as athena_retrieval
+    import domain.retrieval.athena_retrieval as athena_retrieval
 
     project = Project(name="Retrieval Term Guard")
     db_session.add(project)
@@ -1169,7 +1169,7 @@ def test_reindex_flushes_write_batch_when_term_rows_reach_guard(db_session, monk
 
 
 def test_reindex_does_not_generate_uuid_per_retrieval_term(db_session, monkeypatch):
-    import app.core.athena_retrieval as athena_retrieval
+    import domain.retrieval.athena_retrieval as athena_retrieval
 
     project = _seed_retrieval_project(db_session)
     original_uuid4 = athena_retrieval.uuid.uuid4
@@ -1193,7 +1193,7 @@ def test_reindex_does_not_generate_uuid_per_retrieval_term(db_session, monkeypat
 
 
 def test_search_retrieval_tokenizes_query_once(db_session, monkeypatch):
-    import app.core.athena_retrieval as athena_retrieval
+    import domain.retrieval.athena_retrieval as athena_retrieval
 
     project = Project(name="Search Query Token Reuse")
     db_session.add(project)
@@ -1276,7 +1276,7 @@ def test_search_candidate_rows_project_only_scoring_fields(db_session):
 
 
 def test_search_retrieval_bounds_default_candidate_scoring_pool(db_session, monkeypatch):
-    import app.core.athena_retrieval as athena_retrieval
+    import domain.retrieval.athena_retrieval as athena_retrieval
 
     project = Project(name="Search Candidate Bound")
     db_session.add(project)
@@ -1313,7 +1313,7 @@ def test_search_retrieval_bounds_default_candidate_scoring_pool(db_session, monk
 
 
 def test_reindex_batches_embedding_provider_calls_across_sources(db_session, monkeypatch):
-    import app.core.athena_retrieval as athena_retrieval
+    import domain.retrieval.athena_retrieval as athena_retrieval
 
     project = _seed_retrieval_project(db_session)
     base_provider = athena_retrieval.get_embedding_provider()
@@ -1340,7 +1340,7 @@ def test_reindex_batches_embedding_provider_calls_across_sources(db_session, mon
 
 
 def test_reindex_caps_embedding_provider_batch_size(db_session, monkeypatch):
-    import app.core.athena_retrieval as athena_retrieval
+    import domain.retrieval.athena_retrieval as athena_retrieval
 
     project = Project(name="Embedding Batch Cap")
     db_session.add(project)
@@ -1385,7 +1385,7 @@ def test_reindex_caps_embedding_provider_batch_size(db_session, monkeypatch):
 
 
 def test_reindex_reuses_token_batches_for_local_embedding_provider(db_session, monkeypatch):
-    import app.core.athena_retrieval as athena_retrieval
+    import domain.retrieval.athena_retrieval as athena_retrieval
 
     project = _seed_retrieval_project(db_session)
 
@@ -1415,7 +1415,7 @@ def test_reindex_reuses_token_batches_for_local_embedding_provider(db_session, m
 
 
 def test_query_aware_results_skip_context_search_when_user_query_fills_limit(db_session, monkeypatch):
-    import app.core.athena_retrieval as athena_retrieval
+    import domain.retrieval.athena_retrieval as athena_retrieval
 
     queries: list[str] = []
 

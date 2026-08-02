@@ -1,7 +1,7 @@
 """正文实体候选提取测试（实体登记来源扩展）。"""
 from __future__ import annotations
 
-from app.core.entity_miner import (
+from domain.retrieval.entity_miner import (
     mine_entities_from_text,
     promoted_entity_names,
     register_entity_candidates,

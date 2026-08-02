@@ -7,7 +7,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.core.text_mentions import count_non_overlapping_mentions, unique_non_empty as unique_non_empty_mentions
+from domain.retrieval.text_mentions import count_non_overlapping_mentions, unique_non_empty as unique_non_empty_mentions
 from app.models import WorldArtifact, WorldCharacter, WorldFaction, WorldLocation
 
 

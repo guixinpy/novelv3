@@ -160,7 +160,7 @@ async def test_query_world_falls_back_to_update_setup_data(db_session, project, 
 @pytest.mark.asyncio
 async def test_search_text_wraps_retrieval(db_session, project, ctx, registry):
     add_chapter(db_session, project.id, 1, title="第一章", content="林思在灯塔上点燃了旧回声。")
-    from app.core.athena_retrieval import reindex_project_retrieval
+    from domain.retrieval.athena_retrieval import reindex_project_retrieval
     reindex_project_retrieval(db_session, project.id)
 
     result = await registry.execute("search_text", {"query": "灯塔"}, ctx)

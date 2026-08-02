@@ -1,4 +1,4 @@
-from app.core.text_mentions import count_non_overlapping_mentions, unique_non_empty
+from domain.retrieval.text_mentions import count_non_overlapping_mentions, unique_non_empty
 from app.models import ChapterContent
 
 

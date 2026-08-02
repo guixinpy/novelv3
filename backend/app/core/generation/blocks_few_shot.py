@@ -1,4 +1,4 @@
-from app.core.few_shot_library import FewShotExampleLibrary
+from domain.retrieval.few_shot_library import FewShotExampleLibrary
 from app.core.model_call_trace import build_context_block
 from app.models import Project
 

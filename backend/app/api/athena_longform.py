@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Path, Query
 from sqlalchemy.orm import Session
 
-from app.core.longform_memory import (
+from domain.memory.longform_memory import (
     build_longform_context_package,
     get_longform_maintenance_diagnostics,
     get_longform_memory_diagnostics,

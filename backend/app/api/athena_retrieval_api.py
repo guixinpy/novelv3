@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Path, Query
 from sqlalchemy.orm import Session
 
-from app.core.athena_retrieval import (
+from domain.retrieval.athena_retrieval import (
     get_retrieval_diagnostics,
     index_chapter_retrieval,
     reindex_project_retrieval,

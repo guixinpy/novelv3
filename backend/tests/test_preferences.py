@@ -43,7 +43,7 @@ def test_prompt_optimizer():
 
 
 def test_few_shot_library():
-    from app.core.few_shot_library import FewShotExampleLibrary
+    from domain.retrieval.few_shot_library import FewShotExampleLibrary
     lib = FewShotExampleLibrary()
     examples = lib.select_examples("chapter", "末世")
     assert len(examples) >= 1

@@ -7,7 +7,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.models import LongformMemory, Project
-from app.core.longform_context_summary import summarize_longform_context
+from domain.memory.longform_context_summary import summarize_longform_context
 
 AGENT_CONTEXT_COMPRESSION_PROJECTION_VERSION = "phase225.agent_context_compression_projection.v1"
 AGENT_CONTEXT_COMPRESSION_PAYLOAD_VERSION = "phase236.agent_context_compression_payload.v1"

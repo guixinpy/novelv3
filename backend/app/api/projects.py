@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import delete, inspect, text, update
 from sqlalchemy.orm import Session
 
-from app.core.project_stats import reconcile_project_word_count
+from domain.memory.project_stats import reconcile_project_word_count
 from app.db import get_db
 from app.models import (
     AIModelCallTrace,

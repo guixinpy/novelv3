@@ -4,7 +4,7 @@ from __future__ import annotations
 import pytest
 
 from app.agent.tooling import ToolContext
-from app.core.project_snapshot import build_project_snapshot
+from domain.memory.project_snapshot import build_project_snapshot
 from app.models import ChapterContent, LongformMemory, Project, Setup
 
 
