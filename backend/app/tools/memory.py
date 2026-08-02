@@ -371,6 +371,10 @@ async def query_memory(ctx: ToolContext, memory_type: str = "all", keyword: str 
                 "items": {"type": "string"},
                 "description": "本卷收束前必须回收的伏笔清单（可选）。接近卷尾时 harness 会核对并提醒收束",
             },
+            "relation_to_previous": {
+                "type": "string",
+                "description": "与前卷/前文的关系（可选）：承接的旧线索、人物、事件。接续上一弧线启动新卷时建议声明",
+            },
         },
         "required": ["action"],
     },
@@ -383,6 +387,7 @@ async def plan_arc(
     start_chapter: int = 0,
     end_chapter: int = 0,
     must_resolve: list[str] | None = None,
+    relation_to_previous: str = "",
 ) -> ToolResult:
     if action == "define":
         if not title or end_chapter < 1:
@@ -454,8 +459,34 @@ async def plan_arc(
             meta = dict(arc.memory_metadata or {})
             meta["endgame"] = {"resolve_before": end_chapter, "must_resolve": list(must_resolve)}
             arc.memory_metadata = meta
+        # 弧线结构：与前卷关系记录（连续性维度）
+        if relation_to_previous:
+            meta = dict(arc.memory_metadata or {})
+            meta["arc_relation"] = relation_to_previous
+            arc.memory_metadata = meta
         ctx.db.commit()
-        return ToolResult.ok({
+
+        # 接续启动检测：上一弧线 end_chapter 与当前 start 相邻 → 提示声明前卷关系（不拒绝）
+        continuation_hint = ""
+        if not relation_to_previous:
+            prev_arc = (
+                ctx.db.query(LongformMemory)
+                .filter(
+                    LongformMemory.project_id == ctx.project_id,
+                    LongformMemory.memory_type == "story_arc",
+                    LongformMemory.end_chapter_index < start_chapter,
+                )
+                .order_by(LongformMemory.end_chapter_index.desc())
+                .first()
+            )
+            if prev_arc is not None and start_chapter <= (prev_arc.end_chapter_index or 0) + 2:
+                continuation_hint = (
+                    f"新卷「{title}」紧接上一弧线「{prev_arc.title}」(Ch{prev_arc.start_chapter_index}→"
+                    f"{prev_arc.end_chapter_index}) 启动。建议在 define 时声明 relation_to_previous "
+                    f"（承接的旧线索/人物/事件），避免读者产生世界重启感。"
+                )
+
+        result: dict = {
             "action": "defined",
             "title": title,
             "span": f"Ch{start_chapter} → Ch{end_chapter}",
@@ -465,7 +496,12 @@ async def plan_arc(
             "must_resolve": list(must_resolve) if must_resolve else [],
             "tip": f"弧线「{title}」已激活。请在写作过程中定期调用 plan_arc progress 查看进度。弧线结束前 3 章请提前规划下一弧线。"
                    f"本卷收束前必须回收的伏笔：{('、'.join(must_resolve)) if must_resolve else '(未登记)'}。",
-        })
+        }
+        if relation_to_previous:
+            result["relation_to_previous"] = relation_to_previous
+        if continuation_hint:
+            result["continuation_hint"] = continuation_hint
+        return ToolResult.ok(result)
 
     elif action == "progress":
         active_arc = (
@@ -511,6 +547,12 @@ async def plan_arc(
 
         # T3 R2：终局状态——剩余章数 vs 未回收伏笔，接近卷尾强制回收模式
         endgame = (active_arc.memory_metadata or {}).get("endgame")
+        if not endgame:
+            # 弧线结构：未设收束约束时提示（不阻塞）
+            result["endgame_hint"] = (
+                "本卷未设置收束约束（define 时可补 must_resolve 与收束章）。"
+                "长卷易出现开线不收束，建议补设回收清单。"
+            )
         if endgame:
             latest_row = (
                 ctx.db.query(ChapterContent.chapter_index)
@@ -527,8 +569,8 @@ async def plan_arc(
             if must_open and remaining_to_end <= 5:
                 result["endgame_warning"] = (
                     f"本卷剩余 {remaining_to_end} 章，以下伏笔必须在收束前回收："
-                    f"{'、'.join(must_open)}。禁止新增「更早/更深/更初」层级，"
-                    f"请进入回收模式集中收束。"
+                    f"{'、'.join(must_open)}。接近收束章，请优先回收开放线索，暂缓开新线，"
+                    f"进入回收模式集中收束。"
                 )
 
         if near_end:

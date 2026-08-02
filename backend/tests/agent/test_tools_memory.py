@@ -357,7 +357,7 @@ async def test_plan_arc_progress_endgame_warning_near_end(ctx: ToolContext):
     data = result.data
     assert data["endgame_remaining"] == 4
     assert "林舟案" in data["must_resolve_open"]
-    assert "禁止新增" in data["endgame_warning"]
+    assert "暂缓开新线" in data["endgame_warning"]
 
 
 @pytest.mark.asyncio
@@ -410,3 +410,52 @@ async def test_track_plotline_query_stale_warning(ctx: ToolContext):
     assert stale_titles == ["老线"]
     assert "老线" in data["stale_warning"]
     assert "30" in data["stale_warning"]
+
+
+# ── 弧线结构（内容无关）：relation_to_previous / 收束约束可见性 ──
+
+
+@pytest.mark.asyncio
+async def test_plan_arc_relation_recorded(ctx: ToolContext):
+    result = await plan_arc(
+        ctx, action="define", title="第二卷",
+        summary="新舞台", start_chapter=11, end_chapter=20,
+        relation_to_previous="承接第一卷的林舟案余波，程砚秋的关系网延续",
+    )
+    assert not result.is_error
+    assert result.data["relation_to_previous"] == "承接第一卷的林舟案余波，程砚秋的关系网延续"
+
+    arc = (
+        ctx.db.query(LongformMemory)
+        .filter(LongformMemory.memory_type == "story_arc", LongformMemory.scope_key == "第二卷")
+        .first()
+    )
+    assert (arc.memory_metadata or {}).get("arc_relation") == "承接第一卷的林舟案余波，程砚秋的关系网延续"
+
+
+@pytest.mark.asyncio
+async def test_plan_arc_continuation_hint_without_relation(ctx: ToolContext):
+    """接续上一弧线启动且未声明 relation → 提示（不拒绝，弧线照常创建）。"""
+    first = await plan_arc(ctx, action="define", title="第一卷", summary="开篇", start_chapter=1, end_chapter=10)
+    assert not first.is_error
+    second = await plan_arc(ctx, action="define", title="第二卷", summary="续篇", start_chapter=11, end_chapter=20)
+    assert not second.is_error
+    assert "continuation_hint" in second.data
+    assert "relation_to_previous" in second.data["continuation_hint"]
+
+
+@pytest.mark.asyncio
+async def test_plan_arc_no_continuation_hint_for_first_arc(ctx: ToolContext):
+    result = await plan_arc(ctx, action="define", title="第一卷", summary="开篇", start_chapter=1, end_chapter=10)
+    assert not result.is_error
+    assert "continuation_hint" not in result.data
+
+
+@pytest.mark.asyncio
+async def test_plan_arc_progress_hints_missing_endgame(ctx: ToolContext):
+    """活跃弧线未设收束约束（无 must_resolve）→ progress 提示（不阻塞）。"""
+    await plan_arc(ctx, action="define", title="第一卷", summary="开篇", start_chapter=1, end_chapter=10)
+    result = await plan_arc(ctx, action="progress")
+    assert not result.is_error
+    assert "endgame_hint" in result.data
+    assert "must_resolve" in result.data["endgame_hint"]

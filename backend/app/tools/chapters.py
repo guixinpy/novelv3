@@ -543,7 +543,7 @@ async def check_quality_trend(ctx: ToolContext, window: int = 10) -> ToolResult:
             result["endgame_advice"] = (
                 f"本卷剩余 {remaining} 章。未回收伏笔："
                 f"{'、'.join(must_open) if must_open else '(无)'}。"
-                f"请进入回收模式：优先收束开放伏笔，禁止新增「更早/更深/更初」层级。"
+                f"请进入回收模式：优先收束开放伏笔，暂缓开新线。"
             )
         else:
             result["endgame_mode"] = False
