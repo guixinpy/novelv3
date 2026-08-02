@@ -14,8 +14,16 @@ from app.models import ChapterContent, LongformMemory, Project, Setup
 _FACT_SHEET_FORMAT_RULES = "格式规范：对话用全角引号“”；正文不得含 markdown 标记（**）、备选词（X/Y）、章题重复行。"
 
 
-def build_project_snapshot(db: Session, project_id: str) -> str | None:
-    """构建项目状态快照文本（≤约 400 字）。项目不存在或无数据返回 None。"""
+def build_project_snapshot(
+    db: Session,
+    project_id: str,
+    *,
+    include_experience: bool = True,
+) -> str | None:
+    """构建项目状态快照文本（≤约 400 字）。项目不存在或无数据返回 None。
+
+    include_experience=False 可关闭写作经验段（per-book 自优化 config 开关）。
+    """
     project = db.query(Project).filter(Project.id == project_id).first()
     if project is None:
         return None
@@ -83,6 +91,19 @@ def build_project_snapshot(db: Session, project_id: str) -> str | None:
         if names:
             parts.append("事实表: " + "、".join(names))
         parts.append(_FACT_SHEET_FORMAT_RULES)
+
+    # 写作经验段（per-book 自优化，09 定稿）：最近 2 + 高信任 1，标记仅供参考
+    if include_experience:
+        try:
+            from domain.memory.writing_experience import experience_injection_items
+
+            experience_items = experience_injection_items(db, project_id)
+        except Exception:
+            # 经验段是辅助信息，查询失败静默跳过（fail-open）
+            experience_items = []
+        if experience_items:
+            desc = "；".join(f"{item['text']}({item['anchor']})" for item in experience_items)
+            parts.append(f"写作经验(仅供参考): {desc}")
 
     if not parts:
         return None

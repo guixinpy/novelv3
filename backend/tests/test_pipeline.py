@@ -102,3 +102,31 @@ async def test_pipeline_plan_reads_outline(db_session, project):
     # plan 结果在 provenance
     plan_steps = [s for s in result.steps if s.kind.value == "plan"]
     assert plan_steps and "亡父信件" in str(plan_steps[0].result)
+
+
+async def test_pipeline_invokes_introspect_after_run(db_session, project):
+    """09 触发点 1：pipeline 完成后调用自省回调（注入式，不消耗 provider 脚本）。"""
+    calls = []
+
+    async def introspect(chapter_index, result):
+        calls.append((chapter_index, result.status))
+
+    provider = ScriptedProvider([{"content": _GOOD_CHAPTER}])
+    pipeline = ChapterPipeline(provider, db_session, project.id, word_target=800, introspect=introspect)
+    result = await pipeline.run(1)
+    assert result.status == WorkflowStatus.FINALIZED
+    assert calls == [(1, WorkflowStatus.FINALIZED)]
+
+
+async def test_pipeline_introspect_fail_open(db_session, project):
+    """fail-open：自省回调抛错不阻塞章节流程（finalize 结果不受影响）。"""
+    async def introspect(chapter_index, result):
+        raise RuntimeError("自省炸了")
+
+    provider = ScriptedProvider([{"content": _GOOD_CHAPTER}])
+    pipeline = ChapterPipeline(provider, db_session, project.id, word_target=800, introspect=introspect)
+    result = await pipeline.run(1)
+    assert result.status == WorkflowStatus.FINALIZED
+    # 章节正常落库
+    chapter = db_session.query(ChapterContent).filter(ChapterContent.project_id == project.id).first()
+    assert chapter is not None

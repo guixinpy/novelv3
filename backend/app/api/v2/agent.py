@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from pathlib import Path
 
@@ -24,6 +25,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from core.approval import ApprovalGate
+from core.events import AgentEnd
 from core.harness import AgentHarness, HarnessConfig
 from core.providers.deepseek import DeepSeekProvider
 from core.tools.base import ToolContext, ToolRegistry
@@ -31,6 +33,8 @@ from domain.memory.project_snapshot import build_project_snapshot
 from domain.tools.memory_tools import register_memory_tools
 from domain.tools.retrieval_tools import register_retrieval_tools
 from domain.tools.writing_tools import register_writing_tools
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v2", tags=["agent-v2"])
 
@@ -139,6 +143,48 @@ def _create_harness(session_id: str, meta: dict, db: Session, gate: ApprovalGate
     return harness
 
 
+async def _introspect_after_send(db: Session, session: dict) -> None:
+    """生产路径触发点（09 定稿触发点 2）：harness 回合结束后自省最新章节（fail-open）。
+
+    core/harness 领域无关，接线放 API 层；章节幂等由 introspect_and_record 内部保证
+    （会话重启安全）；自省失败仅记日志，不阻塞、不冒泡。
+    """
+    try:
+        from app.models import ChapterContent
+        from domain.memory.writing_experience import introspect_and_record
+
+        harness: AgentHarness = session["harness"]
+        project_id = session["meta"]["project_id"]
+        latest = (
+            db.query(ChapterContent.chapter_index)
+            .filter(ChapterContent.project_id == project_id)
+            .order_by(ChapterContent.chapter_index.desc())
+            .first()
+        )
+        if latest is None:
+            return
+        chapter_index = latest[0]
+        chapter = (
+            db.query(ChapterContent)
+            .filter(
+                ChapterContent.project_id == project_id,
+                ChapterContent.chapter_index == chapter_index,
+            )
+            .first()
+        )
+        await introspect_and_record(
+            db,
+            project_id,
+            chapter_index,
+            provider=harness.provider,
+            plan_context="",
+            chapter_text=chapter.content if chapter is not None else "",
+            review_reasons="",
+        )
+    except Exception:  # noqa: BLE001 - fail-open：自省失败不阻塞写作流程
+        logger.exception("章末自省失败（fail-open 已跳过）")
+
+
 def _get_session(session_id: str, db: Session) -> dict:
     """取会话（进程内 registry；重启后按磁盘 meta 懒重建）。"""
     _evict_idle_sessions()
@@ -212,6 +258,9 @@ async def send_message(session_id: str, payload: MessageSend, db: Session = Depe
                 default=str,
             )
             yield f"event: {event.kind.value}\ndata: {data}\n\n"
+            # 09 定稿触发点 2（生产路径）：回合结束后自动章末自省（fail-open）
+            if isinstance(event, AgentEnd):
+                await _introspect_after_send(db, session)
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 

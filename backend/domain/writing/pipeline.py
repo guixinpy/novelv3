@@ -21,7 +21,12 @@ from domain.writing.structural_similarity import detect_structure_repeats
 
 
 class ChapterPipeline:
-    """单章写作管线：plan→execute⇄review→finalize（大纲→撰写→评审⇄修订→定稿）。"""
+    """单章写作管线：plan→execute⇄review→finalize（大纲→撰写→评审⇄修订→定稿）。
+
+    introspect: 章末自省回调（per-book 自优化，09 定稿触发点之一）。
+    注入式而非内建：测试注入 fake（不消耗 ScriptedProvider 脚本队列），
+    生产由调用方注入 introspect_and_record 包装。None 则不触发。
+    """
 
     def __init__(
         self,
@@ -31,12 +36,14 @@ class ChapterPipeline:
         *,
         max_revisions: int = 2,
         word_target: int = 2000,
+        introspect=None,
     ) -> None:
         self.provider = provider
         self.db = db
         self.project_id = project_id
         self.max_revisions = max_revisions
         self.word_target = word_target
+        self.introspect = introspect
 
     async def run(self, chapter_index: int, *, extra_feedback: str = "") -> WorkflowResult:
         engine = WorkflowEngine(
@@ -51,7 +58,15 @@ class ChapterPipeline:
             "extra_feedback": extra_feedback,
             "word_target": self.word_target,
         }
-        return await engine.run(context)
+        result = await engine.run(context)
+        if self.introspect is not None:
+            try:
+                await self.introspect(chapter_index, result)
+            except Exception:  # noqa: BLE001 - 自省 fail-open：失败不阻塞章节流程
+                import logging
+
+                logging.getLogger(__name__).exception("章末自省失败（已跳过）: Ch%s", chapter_index)
+        return result
 
     # ── workers ──
 

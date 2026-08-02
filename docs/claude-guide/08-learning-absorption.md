@@ -67,18 +67,18 @@
 
 ### B 类：需设计讨论（涉及功能设计/内核 API，先讨论需求再实施）
 
-| # | 吸收项 | 出处 | 前置条件 |
+| # | 吸收项 | 出处 | 状态 |
 |---|---|---|---|
-| B1 | 钩子体系扩展（afterToolCall/transformContext/shouldStopAfterTurn/afterToolOutcome）+ 护栏钩子化 | openclaw | 内核 API 设计评审 |
-| B2 | 工具副作用前增量持久化 | hermes | 断点恢复强化需求确认 |
-| B3 | 多通道召回配额代码强制 | openhuman | 记忆系统开发（与 per-book 自优化同批） |
-| B4 | 层级摘要内容级联 + 全书梗概自建 | openhuman | 同上（LLM 聚合成本需确认） |
-| B5 | 实体共现图 | openhuman | 同上 |
-| B6 | 证据加权稳定性检测 | openhuman | 同上（per-book 自优化核心机制） |
-| B7 | 廉价信号 + LLM 边界准入 | openhuman | 同上 |
-| B8 | 不可信背景标记（typed Provenance） | openhuman | 外部资料导入功能出现时 |
-| B9 | "先记忆后压缩" | openclaw | 压缩链强化时 |
-| B10 | check_fn 抖动吸收 | hermes | 接入外部探测工具（图片生成/外部检索）时 |
+| B1 | 钩子体系扩展（afterToolCall/transformContext/shouldStopAfterTurn/afterToolOutcome）+ 护栏钩子化 | openclaw | **护栏钩子化已完成**（guard_system 注入，2026-08-02）；剩余钩子位无消费方暂缓 |
+| B2 | 工具副作用前增量持久化 | hermes | 条件触发（write_chapter 幂等已覆盖边际价值；断点恢复需求出现时） |
+| B3 | 多通道召回配额代码强制 | openhuman | **已完成**（memory_service._cap_by_channel，2026-08-02） |
+| B4 | 层级摘要内容级联 + 全书梗概自建 | openhuman | 待定（LLM 聚合成本需确认；写作经验 MVP 未含） |
+| B5 | 实体共现图 | openhuman | **已完成**（entity_relation 模型 + 建边/查询 + get_entities 接线，2026-08-02） |
+| B6 | 证据加权稳定性检测 | openhuman | **特化完成**（writing_experience 信任度记账 new/reinforce/override + 30 章衰减 + pinned，09 定稿） |
+| B7 | 廉价信号 + LLM 边界准入 | openhuman | **特化完成**（自省 LLM 顺带准入，不做三带打分——自省已是 LLM 的适配结论，09 定稿） |
+| B8 | 不可信背景标记（typed Provenance） | openhuman | **部分完成**（快照经验段"仅供参考"标记 + 自省纪律防情节内容；typed Provenance 枚举留待外部资料导入） |
+| B9 | "先记忆后压缩" | openclaw | 条件触发（压缩链强化时） |
+| B10 | check_fn 抖动吸收 | hermes | 条件触发（接入外部探测工具时） |
 
 ### C 类：不吸收（已有替代 / 价值有限 / 与原则冲突），记档备查
 

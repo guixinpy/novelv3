@@ -63,3 +63,37 @@ async def test_snapshot_contains_writing_context(ctx: ToolContext):
 
 def test_snapshot_none_without_project(db_session):
     assert build_project_snapshot(db_session, "no-such-project") is None
+
+
+def test_snapshot_includes_experience_section(db_session, project):
+    """写作经验段（09 定稿）：最近 + 高信任，标记仅供参考。"""
+    from domain.memory.writing_experience import apply_experiences
+
+    apply_experiences(
+        db_session, project.id, 1, "节奏",
+        [{"key": "开篇节奏", "action": "new", "text": "开篇冲突前置有效。"}],
+    )
+    snapshot = build_project_snapshot(db_session, project.id)
+    assert snapshot is not None
+    assert "写作经验" in snapshot
+    assert "仅供参考" in snapshot
+    assert "开篇冲突前置" in snapshot  # 注入的是 text（summary），非 key
+
+
+def test_snapshot_experience_disabled(db_session, project):
+    """include_experience=False 关闭经验段（config 开关）。"""
+    from app.models import ChapterContent
+    from domain.memory.writing_experience import apply_experiences
+
+    db_session.add(ChapterContent(
+        project_id=project.id, chapter_index=1,
+        title="第1章", content="正文。" * 50, word_count=150, status="generated",
+    ))
+    apply_experiences(
+        db_session, project.id, 1, "节奏",
+        [{"key": "开篇节奏", "action": "new", "text": "开篇冲突前置有效。"}],
+    )
+    snapshot = build_project_snapshot(db_session, project.id, include_experience=False)
+    assert snapshot is not None
+    assert "写作经验" not in snapshot
+    assert "已写 1 章" in snapshot

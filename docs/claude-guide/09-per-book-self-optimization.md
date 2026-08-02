@@ -95,6 +95,10 @@
 
 ## 四、实现计划
 
-- **Phase 1**：领域服务（introspect_and_record + 记账函数 + 作者入口函数）+ 快照段 + 双触发点 + 全套测试
-- **Phase 2**：API 端点（否决入口）——前端重写时接线
+- **Phase 1（已完成 2026-08-02，114 passed）**：
+  - `domain/memory/writing_experience.py`（新）：introspect_and_record（自省提示词含负面采样+候选 key 防漂移；幂等用 introspect_log 普通列标记——SQLite JSON 索引比较不可靠的实测修正）+ apply_experiences（new/reinforce/override 记账 + 惰性衰减 + 预算淘汰）+ experience_injection_items（最近 2 + 高信任 1 轮转 + 60 字截断 + 章节锚点）+ delete/pin 作者入口
+  - `project_snapshot.py`：经验段（include_experience 参数，仅供参考标记，fail-open）
+  - 双触发点：pipeline `introspect` 注入参数（fail-open）；API 层 `_introspect_after_send`（AgentEnd 后，生产路径）
+  - 测试 16 个：记账/衰减/归档/pinned/预算/注入/自省解析/幂等/分类轮转/不可解析容错/作者入口/快照段/开关/双触发点/端到端
+- **Phase 2（待前端重写接线）**：API 端点（否决入口 delete/pin）
 - **独立后续项**：伏笔/悬念账本（结构化寄存器：埋设章/承诺/预计回收/状态，注入优先超期钩子）——track_plotline 升级或新模块

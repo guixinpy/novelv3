@@ -223,6 +223,64 @@ def test_unknown_session_404(client):
     assert r.status_code == 404
 
 
+def test_send_writes_chapter_then_introspects(client, mock_provider_factory, tmp_path, monkeypatch, db_session):
+    """09 触发点 2（生产路径）：写完章节后自动章末自省并写入写作经验。
+
+    自省响应是 script 的第 3 步（harness 2 步 + 自省 1 步）；幂等保证重复 send 不重复自省。
+    """
+    monkeypatch.setattr(agent_api, "_SESSIONS_DIR", tmp_path)
+    from app.models import LongformMemory
+
+    project_id = _create_project(client)
+    mock_provider_factory.script(
+        [
+            {"content": "我来写", "tool_calls": [{"name": "write_chapter", "arguments": {"chapter_index": 1, "content": "第一章正文内容。" * 20, "title": "开端"}}]},
+            {"content": "第一章已写入", "tool_calls": []},
+            {"content": '{"experiences": [{"key": "开篇钩子", "action": "new", "text": "章末留钩子有效。"}]}'},
+        ]
+    )
+    sid = _create_session(client, project_id)
+    r2 = _send_with_auto_approval(client, sid, "写第一章")
+    assert r2.status_code == 200
+    # 自省已执行：writing_experience 条目存在
+    exp = (
+        db_session.query(LongformMemory)
+        .filter(
+            LongformMemory.project_id == project_id,
+            LongformMemory.memory_type == "writing_experience",
+        )
+        .all()
+    )
+    assert exp, "生产路径应自动自省并写入经验"
+    assert exp[0].scope_key == "开篇钩子"
+    assert (exp[0].memory_metadata or {})["trust_score"] == 1
+
+
+def test_send_without_chapter_skips_introspect(client, mock_provider_factory, tmp_path, monkeypatch, db_session):
+    """未写新章节的回合不触发自省（无 chapter 时不调用 provider 自省）。"""
+    monkeypatch.setattr(agent_api, "_SESSIONS_DIR", tmp_path)
+    from app.models import LongformMemory
+
+    project_id = _create_project(client)
+    mock_provider_factory.script(
+        [
+            {"content": "完成了，无需写章节", "tool_calls": []},
+        ]
+    )
+    sid = _create_session(client, project_id)
+    r2 = client.post(f"/api/v2/agent/sessions/{sid}/messages", json={"content": "讨论"})
+    assert r2.status_code == 200
+    exp = (
+        db_session.query(LongformMemory)
+        .filter(
+            LongformMemory.project_id == project_id,
+            LongformMemory.memory_type == "writing_experience",
+        )
+        .all()
+    )
+    assert exp == []
+
+
 def test_approval_pending_emitted_once(client, mock_provider_factory, tmp_path, monkeypatch):
     """R1 回归：ApprovalPending 只发一次（此前双队列双发，SSE 出现两次）。"""
     monkeypatch.setattr(agent_api, "_SESSIONS_DIR", tmp_path)
