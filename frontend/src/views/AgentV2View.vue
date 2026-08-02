@@ -8,12 +8,13 @@ import QualityTrendPanel from '../components/agent/QualityTrendPanel.vue'
 import {
   approveTool,
   createAgentSession,
-  getAgentSession,
   rejectTool,
   streamAgentMessage,
   type AgentStreamEvent,
 } from '../api/agentV2'
 import { useProjectStore } from '../stores/project'
+
+const BASE = '/api/v2'
 
 interface ChatItem {
   kind: 'user' | 'assistant' | 'tool' | 'approval'
@@ -65,14 +66,20 @@ async function newSession() {
 async function switchSession(sid: string) {
   sessionId.value = sid
   try {
-    const s = await getAgentSession(sid)
-    items.value = s.messages
-      .filter((m: any) => m.role !== 'system')
-      .map((m: any) => {
+    // 会话历史来自事件重放端点（R4：getAgentSession 端点不存在，改用 /events）
+    const resp = await fetch(`${BASE}/agent/sessions/${sid}/events`)
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+    const { events } = await resp.json()
+    items.value = events
+      .filter((e: any) => e.type === 'message')
+      .map((e: any) => {
+        const m = e.data
         if (m.role === 'user') return { kind: 'user', text: m.content || '' }
         if (m.role === 'tool') return { kind: 'tool', toolName: m.tool_call_id || 'tool', text: m.content || '' }
-        return { kind: 'assistant', text: m.content || '' }
-      }) as ChatItem[]
+        if (m.role === 'assistant') return { kind: 'assistant', text: m.content || '' }
+        return null
+      })
+      .filter(Boolean) as ChatItem[]
   } catch {
     error.value = '无法加载会话历史'
   }
@@ -86,7 +93,7 @@ async function scrollToBottom() {
 async function onApprove(item: ChatItem) {
   if (!sessionId.value || !item.approvalId) return
   try {
-    await approveTool(sessionId.value)
+    await approveTool(sessionId.value, item.approvalId)
     item.text = '✅ 已批准'
   } catch (e) {
     error.value = `批准失败: ${e instanceof Error ? e.message : e}`
@@ -96,7 +103,7 @@ async function onApprove(item: ChatItem) {
 async function onReject(item: ChatItem) {
   if (!sessionId.value || !item.approvalId) return
   try {
-    await rejectTool(sessionId.value)
+    await rejectTool(sessionId.value, item.approvalId)
     item.text = '❌ 已拒绝'
   } catch (e) {
     error.value = `拒绝失败: ${e instanceof Error ? e.message : e}`
@@ -108,9 +115,9 @@ function onEvent(event: AgentStreamEvent) {
     const last = items.value[items.value.length - 1]
     if (last && last.kind === 'assistant') last.text += event.data.text
     else items.value.push({ kind: 'assistant', text: event.data.text })
-  } else if (event.event === 'tool_call_started') {
+  } else if (event.event === 'tool_started') {
     items.value.push({ kind: 'tool', toolName: event.data.name, text: 'pending' })
-  } else if (event.event === 'tool_call_finished') {
+  } else if (event.event === 'tool_finished') {
     const item = [...items.value].reverse().find(
       (i) => i.kind === 'tool' && i.toolName === event.data.name && i.text === 'pending'
     )
@@ -122,9 +129,9 @@ function onEvent(event: AgentStreamEvent) {
   } else if (event.event === 'approval_pending') {
     items.value.push({
       kind: 'approval',
-      approvalId: event.data.approval_id,
-      toolName: event.data.tool_name,
-      text: `${event.data.tool_name}(${JSON.stringify(event.data.arguments, null, 1)})`,
+      approvalId: event.data.call_id,
+      toolName: event.data.name,
+      text: `${event.data.name}(${JSON.stringify(event.data.arguments, null, 1)})`,
     })
   } else if (event.event === 'turn_ended') {
     lastStop.value = `${event.data.stop_reason} · ${event.data.iterations} 轮`

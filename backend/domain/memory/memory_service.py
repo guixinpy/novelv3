@@ -321,9 +321,11 @@ def _close_active_arcs(db: Session, project_id: str) -> None:
             },
         )
         # 同名弧线重复 define 时显式覆盖（get_or_create 命中已有键跳过 defaults，
-        # 否则新摘要永不落库——code-review #13）
+        # 否则新摘要永不落库——code-review #13；跨度字段一并覆盖——二轮 R9）
         mem.summary = arc_summary_text
         mem.title = f"弧线摘要: {a.title}"
+        mem.start_chapter_index = a.start_chapter_index
+        mem.end_chapter_index = a.end_chapter_index
         mem.status = "completed"
 
 
@@ -478,8 +480,11 @@ def plan_arc(
                     "memory_metadata": {"provenance": "agent_inferred", "source": "arc_consolidation"},
                 },
             )
-            # 显式覆盖（同名弧线复用场景，code-review #13）
+            # 显式覆盖（同名弧线复用场景，code-review #13；跨度字段一并覆盖——二轮 R9）
             mem.summary = arc_summary
+            mem.title = f"弧线摘要: {active_arc.title}"
+            mem.start_chapter_index = active_arc.start_chapter_index
+            mem.end_chapter_index = active_arc.end_chapter_index
             mem.status = "completed"
             db.commit()
             result["arc_consolidated"] = True

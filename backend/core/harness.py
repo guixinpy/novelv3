@@ -114,6 +114,8 @@ class AgentHarness:
         self._write_lock = asyncio.Lock()
         # follow-up 链回合上限（P1-7 逃生阀：持久性失败不无限回合）
         self.max_turns_per_send: int = 5
+        # 会话级事件计数器（R6：event_id 跨 send 递增，非每请求重置）
+        self.event_offset: int = 0
         self._turn_index = 0
         self._recovery_injected = False
 
@@ -144,10 +146,6 @@ class AgentHarness:
             # 快照是只读辅助，失败静默跳过，不阻断写作
             return None
 
-    def _build_system_and_tail(self) -> tuple[str, list[dict]]:
-        """KV-cache 契约：system 首轮构建字节冻结，动态内容骑尾部 user 消息。"""
-        return self.config.system_prompt, []
-
     # ── 主入口 ──
 
     async def send(
@@ -158,15 +156,24 @@ class AgentHarness:
     ) -> AsyncIterator[LoopEvent]:
         """处理一条用户消息（含 follow-up 链），逐事件产出。
 
-        idempotency_key 非 None 且已处理过 → 直接结束（重复投递安全）。
+        幂等键语义（二轮 review R2/R3）：
+        - check-then-act 都在写锁内（并发同键不会双执行）
+        - 执行成功后标记；失败/中断不标记（客户端可安全重试）
         """
-        if idempotency_key is not None and idempotency_key in self._processed_idempotency_keys:
-            return
-
         async with self._write_lock:
-            self._processed_idempotency_keys.add(idempotency_key) if idempotency_key else None
-            async for event in self._send_locked(user_text):
-                yield event
+            if idempotency_key is not None:
+                if idempotency_key in self._processed_idempotency_keys:
+                    return
+            try:
+                async for event in self._send_locked(user_text):
+                    yield event
+            except Exception:
+                if idempotency_key is not None:
+                    self._processed_idempotency_keys.discard(idempotency_key)
+                raise
+            else:
+                if idempotency_key is not None:
+                    self._processed_idempotency_keys.add(idempotency_key)
 
     async def _send_locked(self, user_text: str) -> AsyncIterator[LoopEvent]:
         yield AgentStart(session_id=self.session_id)
@@ -176,7 +183,9 @@ class AgentHarness:
 
         async def sink(event: LoopEvent) -> None:
             if isinstance(event, ApprovalPending):
+                # 审批事件只走独立通道（R1：此前双队列双发，SSE 出现两次同事件）
                 await approval_queue.put(event)
+                return
             await main_queue.put(event)
 
         # 审批门接入当前回合的事件流（ApprovalPending 经 sink 发出）
@@ -233,13 +242,15 @@ class AgentHarness:
         user_message = {"role": "user", "content": user_text}
         self.transcript.append_message(user_message)
 
-        # 快照拼入 system 尾部（旧版方案）：system 在压缩时受 head 保护且不落盘
-        # （transcript 只存 messages[1:]，P1-4 修复：dynamic_tail 曾污染转录）
+        # KV-cache 契约：system 首轮构建字节冻结；动态内容（快照）骑尾部 user 消息
+        # （R7：快照拼 system 使前缀每回合变化，任何 prefix cache 失效）。
+        # 快照是临时消息：压缩持久化时剥离（见下方 record_compaction 前过滤），不污染转录。
         system_content = self.config.system_prompt
         snapshot = self._build_snapshot()
+        dynamic_tail: list[dict] = []
         if snapshot:
-            system_content = f"{system_content}\n\n[项目状态]\n{snapshot}"
-        history = [{"role": "system", "content": system_content}, *self.transcript.messages]
+            dynamic_tail.append({"role": "user", "content": f"[项目状态]\n{snapshot}"})
+        history = [{"role": "system", "content": system_content}, *dynamic_tail, *self.transcript.messages]
 
         compacted_this_turn = False
         # 上下文用量预检 + 自动压缩（护栏：冷却/防抖/合理性校验由 CompactionState 承担）
@@ -260,7 +271,9 @@ class AgentHarness:
                      if isinstance(m.get("content"), str) and m["content"].startswith(_SUMMARY_PREFIX)),
                     "",
                 )
-                self.transcript.record_compaction(compressed, summary)
+                # R7：剥离动态尾部（快照等临时消息）后再持久化——临时消息不落盘
+                persist = [compressed[0], *compressed[1 + len(dynamic_tail):]]
+                self.transcript.record_compaction(persist, summary)
                 await sink(
                     Compaction(
                         before_count=len(history),

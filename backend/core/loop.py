@@ -160,7 +160,7 @@ async def run_turn(
         for tool_call in response.tool_calls:
             result = await _execute_one(
                 tool_call, registry, tool_context, before_tool_call, emit,
-                iteration_budget=iteration_budget,
+                iteration_budget=iteration_budget, state=state,
             )
             history.append(
                 {
@@ -229,9 +229,12 @@ async def _execute_one(
     before_tool_call: BeforeToolCall | None,
     emit: Callable[[Any], Awaitable[None]],
     iteration_budget: IterationBudget | None = None,
+    state: TurnState | None = None,
 ) -> ToolResult:
     await emit(ToolStarted(call_id=tool_call.id, name=tool_call.name, arguments=tool_call.arguments))
     if before_tool_call is not None:
+        if state is not None:
+            state.pause()  # 钩子执行期间暂停墙钟（审批等人工交互不计入回合预算——R5）
         try:
             block_reason = await before_tool_call(tool_call.name, tool_call.arguments, ctx)
         except Exception as exc:  # noqa: BLE001 - 钩子异常不得击穿回合（fail-closed 拦截）
@@ -247,7 +250,11 @@ async def _execute_one(
                     error_code=result.error_code,
                 )
             )
+            if state is not None:
+                state.resume()
             return result
+        if state is not None:
+            state.resume()
         if block_reason is not None:
             result = ToolResult.fail(block_reason, error_code="tool_blocked")
             await emit(

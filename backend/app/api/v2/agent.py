@@ -70,8 +70,29 @@ class RejectBody(BaseModel):
 
 
 # ── 会话注册表（进程内，会话持有 harness 实例——修复每请求重建缺陷）──
+# 空闲淘汰（R8）：超过 SESSION_IDLE_TTL 未访问的会话惰性清理，防长跑进程内存无界增长
+
+SESSION_IDLE_TTL_SECONDS = 3600.0
+
+
+def _now() -> float:
+    import time
+
+    return time.monotonic()
+
 
 _sessions: dict[str, dict] = {}
+
+
+def _evict_idle_sessions() -> None:
+    """惰性淘汰：清理超过 TTL 未访问的会话（send/steer 等访问时顺带扫描）。"""
+    cutoff = _now() - SESSION_IDLE_TTL_SECONDS
+    for sid in [s for s, entry in _sessions.items() if entry.get("last_used", 0) < cutoff]:
+        _sessions.pop(sid, None)
+
+
+def _touch(session: dict) -> None:
+    session["last_used"] = _now()
 
 
 def _load_provider() -> DeepSeekProvider:
@@ -122,6 +143,7 @@ def _create_harness(session_id: str, meta: dict, db: Session, gate: ApprovalGate
 
 def _get_session(session_id: str, db: Session) -> dict:
     """取会话（进程内 registry；重启后按磁盘 meta 懒重建）。"""
+    _evict_idle_sessions()
     session = _sessions.get(session_id)
     if session is None:
         meta_path = _SESSIONS_DIR / session_id / "meta.json"
@@ -133,6 +155,7 @@ def _get_session(session_id: str, db: Session) -> dict:
         harness = _create_harness(session_id, meta, db, gate=gate)
         session = {"meta": meta, "harness": harness, "gate": gate}
         _sessions[session_id] = session
+    _touch(session)
     return session
 
 
@@ -175,12 +198,12 @@ async def send_message(session_id: str, payload: MessageSend, db: Session = Depe
     session = _get_session(session_id, db)
     harness: AgentHarness = session["harness"]
     harness.max_turns_per_send = MAX_TURNS_PER_SEND
-    offset = {"n": 0}
 
     async def event_stream():
         async for event in harness.send(payload.content, idempotency_key=payload.idempotency_key):
-            offset["n"] += 1
-            event_id = f"{session_id}-evt-{offset['n']}"
+            # R6：会话级递增（跨 send 不重置），事件 id 全局唯一
+            harness.event_offset += 1
+            event_id = f"{session_id}-evt-{harness.event_offset}"
             data = json.dumps(
                 {
                     "kind": event.kind.value,

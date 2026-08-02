@@ -18,6 +18,9 @@ class TurnState:
     # ── 预算与计时 ──
     max_wall_clock_ms: float | None = None
     _started_at: float | None = None
+    # 暂停累计（人工交互等待如审批不计入回合墙钟——二轮 review R5）
+    _paused_at: float | None = None
+    _paused_total_ms: float = 0.0
 
     # ── 压缩 ──
     compacted: bool = False
@@ -35,10 +38,23 @@ class TurnState:
     def start(self) -> None:
         self._started_at = time.monotonic()
 
+    def pause(self) -> None:
+        """暂停墙钟（钩子/人工交互等待期间）。"""
+        if self._paused_at is None:
+            self._paused_at = time.monotonic()
+
+    def resume(self) -> None:
+        if self._paused_at is not None:
+            self._paused_total_ms += (time.monotonic() - self._paused_at) * 1000
+            self._paused_at = None
+
     def elapsed_ms(self) -> float:
         if self._started_at is None:
             return 0.0
-        return (time.monotonic() - self._started_at) * 1000
+        active = (time.monotonic() - self._started_at) * 1000 - self._paused_total_ms
+        if self._paused_at is not None:
+            active -= (time.monotonic() - self._paused_at) * 1000
+        return max(0.0, active)
 
     def wall_clock_exhausted(self) -> bool:
         return self.max_wall_clock_ms is not None and self.elapsed_ms() >= self.max_wall_clock_ms

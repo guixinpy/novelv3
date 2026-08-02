@@ -221,3 +221,37 @@ def test_events_replay(client, mock_provider_factory, tmp_path, monkeypatch):
 def test_unknown_session_404(client):
     r = client.post("/api/v2/agent/sessions/ghost/messages", json={"content": "hi"})
     assert r.status_code == 404
+
+
+def test_approval_pending_emitted_once(client, mock_provider_factory, tmp_path, monkeypatch):
+    """R1 回归：ApprovalPending 只发一次（此前双队列双发，SSE 出现两次）。"""
+    monkeypatch.setattr(agent_api, "_SESSIONS_DIR", tmp_path)
+    mock_provider_factory.script(
+        [
+            {"content": "", "tool_calls": [{"name": "write_chapter", "arguments": {"chapter_index": 1, "content": "第一章正文。" * 20}}]},
+            {"content": "继续", "tool_calls": []},
+        ]
+    )
+    project_id = _create_project(client)
+    sid = _create_session(client, project_id)
+
+    result = {}
+
+    def send_in_thread():
+        result["resp"] = client.post(f"/api/v2/agent/sessions/{sid}/messages", json={"content": "写"})
+
+    t = threading.Thread(target=send_in_thread)
+    t.start()
+    for _ in range(50):
+        pr = client.get(f"/api/v2/agent/sessions/{sid}/pending-approvals")
+        if pr.status_code == 200 and pr.json()["pending"]:
+            break
+        time.sleep(0.05)
+    pr = client.get(f"/api/v2/agent/sessions/{sid}/pending-approvals")
+    pending = pr.json()["pending"]
+    assert pending
+    client.post(f"/api/v2/agent/sessions/{sid}/approve", params={"call_id": pending[0]["call_id"]})
+    t.join(timeout=10)
+    body = result["resp"].text
+    # SSE 流中 approval_pending 恰好一次
+    assert body.count("event: approval_pending") == 1, f"approval_pending 出现 {body.count('event: approval_pending')} 次"
