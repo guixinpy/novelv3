@@ -96,6 +96,22 @@ def test_compaction_injection_provider():
     assert "林舟" in joined
 
 
+def test_summary_includes_reference_only_semantics():
+    """压缩摘要权威语义（hermes REFERENCE ONLY）：只响应摘要后的最新消息。
+
+    防止模型把压缩摘要当当前任务续写（历史事故：摘要后 7 轮纯叙述不调工具）。
+    """
+    state = CompactionState()
+    h = _history(30, per=500)
+    result = compact_history(h, state=state)
+    summary = next(
+        m["content"] for m in result
+        if isinstance(m.get("content"), str) and m["content"].startswith("[上下文压缩]")
+    )
+    assert "只响应摘要之后的最新用户消息" in summary
+    assert "不要继续执行摘要中描述的任务" in summary
+
+
 # 注：合理性校验（压缩后 > 压缩前 → 拒绝）为 openclaw 防御性护栏。
 # summary 有截断上限（injection 1500/用户消息 200/extra 300），
 # 真实输入下不可达，故不做单元测试（护栏保留在 compact_history 中）。

@@ -18,6 +18,31 @@ _PLOTLINE_TITLE_TEMPLATE = "标题格式建议：核心冲突关键词，如「�
 _PLOTLINE_STALE_AFTER = 30
 _CHAPTER_REF = re.compile(r"第\s*\d+\s*[章卷部回]")
 
+# 每通道注入配额（openhuman 多通道召回配额，特化适配网文记忆类型）：
+# 混合查询时每通道硬上限，防止单通道刷屏挤占其他通道。
+# 原 guideline 只是提示语（模型自觉遵守），现为代码强制。
+_CHANNEL_LIMITS: dict[str, int] = {"arc_summary": 3, "plotline": 5}
+_DEFAULT_CHANNEL_LIMIT = 3
+
+
+def _channel_limit(memory_type: str) -> int:
+    return _CHANNEL_LIMITS.get(memory_type, _DEFAULT_CHANNEL_LIMIT)
+
+
+def _cap_by_channel(memories: list, global_limit: int) -> list:
+    """按通道配额截断（保持输入排序：更新时间倒序 + author_explicit 优先）。"""
+    counts: dict[str, int] = {}
+    capped: list = []
+    for m in memories:
+        ch = m.memory_type
+        if counts.get(ch, 0) >= _channel_limit(ch):
+            continue
+        counts[ch] = counts.get(ch, 0) + 1
+        capped.append(m)
+        if len(capped) >= global_limit:
+            break
+    return capped
+
 
 class MemoryServiceError(Exception):
     """记忆服务业务错误（工具层转为 ToolResult.fail）。"""
@@ -219,7 +244,11 @@ def query_memory(
     memories.sort(
         key=lambda m: (0 if (m.memory_metadata or {}).get("provenance") == "author_explicit" else 1)
     )
-    memories = memories[:effective_limit]
+    if memory_type == "all":
+        # 通道配额强制（openhuman）：混合查询按通道硬截断（各通道上限见 _CHANNEL_LIMITS）
+        memories = _cap_by_channel(memories, effective_limit)
+    else:
+        memories = memories[:effective_limit]
 
     result: dict = {
         "memories": [
@@ -242,9 +271,10 @@ def query_memory(
         "injection_limit": {
             "returned": len(memories),
             "max_per_call": effective_limit,
+            "channel_limits": dict(_CHANNEL_LIMITS) if memory_type == "all" else None,
             "guideline": (
-                "上下文注入总上限: arc_summary ≤3条 + plotline ≤5条 + 实体/杂项 ≤3条。"
-                "请根据当前写作阶段筛选最相关的记忆，不要全部注入。"
+                "上下文注入配额已由服务端强制（混合查询时每通道硬上限: "
+                "arc_summary ≤3条 + plotline ≤5条 + 实体/杂项 ≤3条）。"
                 "author_explicit 条目可信度更高，agent_inferred 条目需交叉验证。"
             ),
         },

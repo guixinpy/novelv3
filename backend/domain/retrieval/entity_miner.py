@@ -6,10 +6,11 @@
 from __future__ import annotations
 
 import re
+from itertools import combinations
 
 from sqlalchemy.orm import Session
 
-from app.models import EntityCandidate
+from app.models import EntityCandidate, EntityRelation
 
 # 常见中文姓氏（百家姓主体 + 常见补充 + 复姓）
 _COMMON_SURNAMES = (
@@ -161,3 +162,91 @@ def promoted_entity_names(db: Session, project_id: str) -> list[str]:
         if c.source == "l2" or (c.chapter_count or 0) >= 2
     ]
     return sorted(set(promoted))
+
+
+def record_entity_cooccurrences(
+    db: Session,
+    project_id: str,
+    chapter_index: int,
+    names: list[str],
+) -> int:
+    """同章实体共现建边（openhuman 共现图，特化：存 (count, last_chapter) 双字段）。
+
+    同章提取到的实体两两成对 upsert 无向边（entity_a < entity_b 字典序）；
+    同章重复出现不累计（register_entity_candidates 同章去重语义一致），
+    新章共现 count+1。返回新增边数。
+    """
+    unique = sorted(set(names))
+    if len(unique) < 2:
+        return 0
+    added = 0
+    for a, b in combinations(unique, 2):
+        existing = (
+            db.query(EntityRelation)
+            .filter(
+                EntityRelation.project_id == project_id,
+                EntityRelation.entity_a == a,
+                EntityRelation.entity_b == b,
+            )
+            .first()
+        )
+        if existing is None:
+            db.add(EntityRelation(
+                project_id=project_id,
+                entity_a=a,
+                entity_b=b,
+                count=1,
+                last_chapter=chapter_index,
+            ))
+            added += 1
+        else:
+            if existing.last_chapter != chapter_index:
+                existing.count = (existing.count or 1) + 1
+            existing.last_chapter = chapter_index
+    db.commit()
+    return added
+
+
+def related_entities(
+    db: Session,
+    project_id: str,
+    entity: str,
+    *,
+    limit: int = 8,
+    only_promoted: bool = True,
+) -> list[dict]:
+    """查询与指定实体共现的关联实体（按共现章数降序）。
+
+    only_promoted=True（默认）：只返回已转正实体（chapter_count ≥2 或 l2）的关联，
+    挡掉规则提取的噪声边。
+    """
+    pairs = (
+        db.query(EntityRelation)
+        .filter(
+            EntityRelation.project_id == project_id,
+            (EntityRelation.entity_a == entity) | (EntityRelation.entity_b == entity),
+        )
+        .order_by(EntityRelation.count.desc(), EntityRelation.last_chapter.desc())
+        .limit(limit * 3)
+        .all()
+    )
+    promoted: set[str] | None = None
+    if only_promoted:
+        promoted = set(promoted_entity_names(db, project_id))
+    result: list[dict] = []
+    seen: set[str] = set()
+    for pair in pairs:
+        other = pair.entity_b if pair.entity_a == entity else pair.entity_a
+        if other in seen:
+            continue
+        if promoted is not None and other not in promoted:
+            continue
+        seen.add(other)
+        result.append({
+            "entity": other,
+            "cooccurrence_count": pair.count,
+            "last_chapter": pair.last_chapter,
+        })
+        if len(result) >= limit:
+            break
+    return result

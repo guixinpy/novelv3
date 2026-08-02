@@ -8,7 +8,12 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 from core.tools.base import ToolContext, ToolRegistry, ToolResult, tool
-from domain.retrieval.entity_miner import mine_entities_from_text, promoted_entity_names, register_entity_candidates
+from domain.retrieval.entity_miner import (
+    mine_entities_from_text,
+    promoted_entity_names,
+    record_entity_cooccurrences,
+    register_entity_candidates,
+)
 
 
 class GetEntitiesArgs(BaseModel):
@@ -41,6 +46,8 @@ def register_retrieval_tools(registry: ToolRegistry) -> None:
             candidates = mine_entities_from_text(text)
             for name in candidates:
                 register_entity_candidates(db, ctx.project_id, chapter_index, [name])
+            # 同章共现建边（openhuman 共现图）：边表与候选登记同步维护
+            record_entity_cooccurrences(db, ctx.project_id, chapter_index, candidates)
         promoted = promoted_entity_names(db, ctx.project_id) if promote else []
         return ToolResult.ok({"entities": promoted})
 

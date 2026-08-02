@@ -48,6 +48,14 @@ class StopReason(StrEnum):
     GUARD_TRIPPED = "guard_tripped"
 
 
+# 空响应恢复（hermes #7 阶梯的最小版）：模型无输出无工具调用时注入引导重试，
+# 防"写一半停"被当作正常完成静默结束。重试次数有上限（终局仍空则正常结束）。
+_EMPTY_RESPONSE_NUDGE = (
+    "（上一条回复为空。）请基于当前对话继续完成你的任务，不要重复已完成的步骤。"
+)
+_MAX_EMPTY_RESPONSE_RETRIES = 2
+
+
 @dataclass
 class TurnResult:
     stop_reason: StopReason
@@ -88,6 +96,7 @@ async def run_turn(
     extra_provider_kwargs: dict | None = None,
     max_wall_clock_ms: float | None = None,
     compacted: bool = False,
+    guard_system: GuardSystem | None = None,
 ) -> TurnResult:
     history = list(messages)
     iterations = 0
@@ -98,7 +107,8 @@ async def run_turn(
     state = TurnState(max_wall_clock_ms=max_wall_clock_ms)
     state.compacted = compacted  # 压缩发生在 harness 层（code-review #11：此前恒 False）
     state.start()
-    guards = GuardSystem()
+    # 护栏可注入（openclaw 钩子化）：默认五级护栏，外部可换实现（测试/扩展）
+    guards = guard_system if guard_system is not None else GuardSystem()
 
     async def emit(event: Any) -> None:
         outcome = event_sink(event)
@@ -140,6 +150,11 @@ async def run_turn(
         token_budget.add(response.usage)
 
         if not response.tool_calls:
+            if not response.content.strip() and state.empty_response_retries < _MAX_EMPTY_RESPONSE_RETRIES:
+                # 空响应恢复（hermes）：注入引导后重试，不当作正常完成
+                state.record_empty_response()
+                history.append({"role": "user", "content": _EMPTY_RESPONSE_NUDGE})
+                continue
             history.append({"role": "assistant", "content": response.content})
             await emit(AssistantMessage(content=response.content))
             partial_response = response.content

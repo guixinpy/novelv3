@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from core.events import AssistantDelta, AssistantMessage, GuardTripped, ToolFinished, TurnEnded
 from core.guards.budget import IterationBudget, TokenBudget
+from core.guards.loop_guards import GuardResult, GuardSystem
 from core.loop import StopReason, run_turn
 from core.tools.base import ToolContext, ToolRegistry, ToolResult, tool
 
@@ -200,3 +201,62 @@ async def test_tool_error_visible_to_model(scripted_provider_factory):
     finished = [e for e in events if isinstance(e, ToolFinished)]
     assert finished[0].error_code == "boom"
     assert finished[0].next_action == "retry_or_other_tool"
+
+
+async def test_empty_response_nudged_then_completed(scripted_provider_factory):
+    """空响应恢复（hermes）：模型空输出时注入引导重试，成功后正常完成。"""
+    provider = scripted_provider_factory(
+        [
+            {"content": ""},
+            {"content": "这次写完了"},
+        ]
+    )
+    result, events, turn_ended = await run(provider, make_registry())
+    assert result.stop_reason == StopReason.COMPLETED
+    assert result.iterations == 2
+    # 第二次请求携带 nudge user 消息（内部注入，不发出 AssistantMessage 事件）
+    second = provider.requests[1]
+    assert any(m.get("role") == "user" and "回复为空" in m.get("content", "") for m in second)
+    assert not any(isinstance(e, AssistantMessage) and "回复为空" in e.content for e in events)
+    assert result.partial_response == "这次写完了"
+
+
+async def test_empty_response_exhausted_ends_turn(scripted_provider_factory):
+    """空响应恢复上限：连续空输出超上限后正常结束（不无限重试）。"""
+    provider = scripted_provider_factory(
+        [
+            {"content": ""},
+            {"content": ""},
+            {"content": ""},
+        ]
+    )
+    result, events, turn_ended = await run(provider, make_registry())
+    assert result.stop_reason == StopReason.COMPLETED
+    assert result.iterations == 3
+    assert len(provider.requests) == 3
+    # 终局空回复：不再新增 nudge（第 3 次请求中 nudge 恰好为前两次注入的 2 条）
+    third = provider.requests[2]
+    nudges = [m for m in third if m.get("role") == "user" and "回复为空" in m.get("content", "")]
+    assert len(nudges) == 2
+
+
+class AlwaysTripGuard(GuardSystem):
+    """自定义护栏（护栏注入化测试）：首个工具调用后立即触发。"""
+
+    def check(self, max_iterations: int = 30) -> GuardResult:
+        return GuardResult(tripped=True, level="X", reason="自定义护栏", diagnosis={"level": "X"})
+
+
+async def test_custom_guard_system_injected(scripted_provider_factory):
+    """护栏注入化（openclaw 钩子化）：自定义护栏可注入引擎并生效。"""
+    provider = scripted_provider_factory(
+        [
+            {"content": "", "tool_calls": [{"name": "echo", "arguments": {"text": "x"}}]},
+            {"content": "后续", "tool_calls": []},
+        ]
+    )
+    result, events, turn_ended = await run(provider, make_registry(), guard_system=AlwaysTripGuard())
+    assert result.stop_reason == StopReason.GUARD_TRIPPED
+    assert any(isinstance(e, GuardTripped) and e.level == "X" for e in events)
+    # 自定义护栏触发后不再继续调用 provider
+    assert len(provider.requests) == 1

@@ -35,6 +35,12 @@ class TurnState:
     # ── 恢复注入计数（每回合 ≤1 条）──
     recovery_injected: bool = False
 
+    # ── 空响应恢复（hermes：空输出 nudge 重试，防"写一半停"静默结束）──
+    empty_response_retries: int = 0
+
+    def record_empty_response(self) -> None:
+        self.empty_response_retries += 1
+
     def start(self) -> None:
         self._started_at = time.monotonic()
 

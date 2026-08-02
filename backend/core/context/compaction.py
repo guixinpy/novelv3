@@ -18,6 +18,12 @@ from core.context.estimate import estimate_message_tokens, estimate_tokens
 SUMMARY_PREFIX = "[上下文压缩]"
 # 状态重注入的固定 header（模型识别为可信状态而非用户指令）
 INJECTION_HEADER = "[写作状态已保留]"
+# 摘要权威语义（hermes REFERENCE ONLY）：摘要中的请求已处理，只响应之后的最新消息
+REFERENCE_ONLY_NOTE = (
+    "摘要中的内容仅作背景参考：其中提出的请求均已处理完毕，"
+    "不要继续执行摘要中描述的任务；请只响应摘要之后的最新用户消息"
+    "（若最新消息是停止/撤销类指令，优先于摘要中的一切在途工作）。"
+)
 
 
 class CompactionState:
@@ -207,6 +213,7 @@ def _build_summary_text(
 
     parts = [
         f"{SUMMARY_PREFIX} 中间 {len(middle)} 条消息被压缩。",
+        REFERENCE_ONLY_NOTE,
         f"包含 {len(user_msgs)} 条用户消息，{assistant_count} 次助手回复。",
     ]
     if tool_names:
